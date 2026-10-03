@@ -37,12 +37,18 @@ C3_MODOS: Final[frozenset[str]] = frozenset({"shadow"})
 #: Campos nomeados que cada origem pode mandar em `estado` (jaggedness: só o que importa). Vazio de propósito: cada consumidor
 #: (31.5 em diante) registra os seus no próprio item, num diff que o revisor veja. Campo fora da lista recusa o pedido.
 CAMPOS_POR_ORIGEM: dict[str, frozenset[str]] = {o: frozenset() for o in ORIGENS}
-#: Curador (31.8): só METADADOS e CONTAGENS do dossiê (C0, F1), a lista fechada de `curador.CAMPOS`. Repetida aqui de
+#: Curador (31.8): só METADADOS e CONTAGENS do dossiê (C0, F1), a lista fechada de `curador.CAMPOS_V2`. Repetida aqui de
 #: propósito: o que sai é decidido neste arquivo, num diff que o revisor veja (o teste confere que as duas batem).
+#: Desde o 31.11 a lista aceita também os campos de SINAL do estado `v2` (versão viva, uso, idade da evidência, códigos
+#: fechados de saúde e de risco, trilha). Aceitar não é mandar: a sombra do runtime segue no `v1`
+#: (`curador.ESTADO_DA_SOMBRA`) até o braço offline medir sinal no `v2`.
 CAMPOS_POR_ORIGEM["curador"] = frozenset({
     "kind", "estado", "origem", "side_effect", "human_origin", "classe_de_risco", "politica",
     "evidencias_total", "evidencias_a_favor", "evidencias_contra", "evidencias_simuladas",
-    "falhas", "falhas_ocorrencias", "votos", "intervencoes", "execucoes", "saude"})
+    "falhas", "falhas_ocorrencias", "votos", "intervencoes", "execucoes", "saude",
+    "versao_estado", "versao_vivas", "versao_nao_testadas", "versao_viva_comprovada",
+    "uso_ok", "uso_falhas", "uso_falhas_seguidas", "uso_idade", "evidencia_a_favor_idade",
+    "saude_motivos", "risco_razoes", "trilha_transicoes", "trilha_por_pessoa", "trilha_ultimo_destino"})
 #: Intenção (31.9): `comando` (C3, já sem destinos, sem segredo e sem entidades: `entidades.remover_entidades`) e `app` (id do
 #: app do comando, quando há). O consumidor é `intencao.py`.
 CAMPOS_POR_ORIGEM["intencao"] = frozenset({"comando", "app"})

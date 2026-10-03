@@ -227,6 +227,23 @@ def test_a_saida_nao_leva_dossie_nem_item_ref(banco: Banco, tmp_path: Path) -> N
     assert md.read_text(encoding="utf-8").splitlines()[2].startswith("**acompanhamento; nenhum número")
 
 
+def test_estado_v1_por_padrao_e_v2_so_quando_pedido(banco: Banco, tmp_path: Path) -> None:
+    from app.planning.decisao_fechada.curador import CAMPOS, CAMPOS_DE_SINAL, CAMPOS_V2  # noqa: PLC0415
+    banco.revisao(contra=1)
+    v1, _ = _casos(banco)
+    assert set(v1[0].pedido.estado) <= CAMPOS and not set(v1[0].pedido.estado) & CAMPOS_DE_SINAL
+    v2, _ = braco.casos_do_curador(banco.db, desde=None, autores_dono=frozenset(), versao_do_estado="v2")
+    estado = dict(v2[0].pedido.estado)
+    assert set(estado) <= CAMPOS_V2 and estado["evidencia_a_favor_idade"] == "nunca"   # a evidência sem data
+    assert SEGREDO not in json.dumps(estado)
+    saida, md = tmp_path / "v2.json", tmp_path / "v2.md"
+    assert braco.main(["--db", str(banco.caminho), "--estado", "v2", "--json", str(saida), "--md", str(md)]) == 0
+    assert json.loads(saida.read_text(encoding="utf-8"))["estado"] == "v2"
+    assert "(C0, estado v2)" in md.read_text(encoding="utf-8").splitlines()[0]
+    with pytest.raises(SystemExit):
+        braco.main(["--db", str(banco.caminho), "--estado", "v3"])
+
+
 @pytest.mark.parametrize("argv, msg", [
     (["--enviar"], "--teto"),
     (["--enviar", "--teto", "0.06"], "--teto"),

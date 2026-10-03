@@ -823,6 +823,18 @@ ao Jev em `shadow` uma `choice` entre `manter`, `revisar`, `rebaixar`, `descarta
   efeito, origem humana, classe e política de risco, rótulo de saúde e contagens (evidência a favor, contra e simulada,
   falhas e ocorrências, votos, intervenções, execuções). Cada valor é rótulo de vocabulário ou número; conteúdo (inclusive
   o da lição), app, capability, ids e datas não saem. Memória, fluxo (C2), tela, voz e preferência não vão.
+- **Estado `v2`, com sinal (31.23):** na rodada real da R1 do braço offline (31.11, 03/10 18:53Z), os 9 estados `v1`
+  distintos deram a mesma resposta (`revisar`). O `estado_do_dossie_v2` soma ao `v1` os `CAMPOS_DE_SINAL`:
+  - estado da versão, versões vivas, versões não testadas e se há versão viva comprovada;
+  - uso (sucessos, falhas, falhas seguidas e a faixa de idade do último uso);
+  - a faixa de idade da última evidência a favor;
+  - os códigos de saúde e as razões de risco, como conjuntos de vocabulário fechado (`a+b`);
+  - a trilha: quantas transições, se houve pessoa e o último destino.
+
+  Os vocabulários (`ESTADOS_DE_VERSAO`, `MOTIVOS_DE_SAUDE`, `RAZOES_DE_RISCO`, `ESTADOS_DO_ITEM`) são repetidos no
+  arquivo de propósito, e o teste confere que são os enums do aprendizado. A privacidade aceita a lista nova; aceitar não
+  é mandar. A sombra do runtime segue no `v1` (`ESTADO_DA_SOMBRA`), e só o braço offline pede o `v2` (`--estado v2`).
+  Ele vira o estado da sombra só se a medição nos mesmos casos der sinal (golden set §2).
 - **Decisão real = o parecer do curador principal** (`TRIAGEM_DO_PARECER`, combinado com a frente Aprendizado: `manter` →
   manter; `observar`/`pedir_evidencia` → revisar; `rebaixar` → rebaixar; `desativar` → descartar; `aprovar`,
   `possivelmente_obsoleto`, `substituir` e `fundir` ficam fora da comparação). **Nada se casa na hora** (I2 da revisão do
