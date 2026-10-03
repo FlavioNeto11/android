@@ -654,7 +654,8 @@ Progressive disclosure: a lista mostra 1 linha por item (título legível, app �
 - `POST /api/aprendizado/{kind}/{ref}/status` → igual, com `review_id` opcional (registra aceite ou override). Feito no 30.17.
 - `POST /api/aprendizado/{kind}/{ref}/parecer/{review_id}` → aceitar (o passo do lado sugerido) ou recusar com motivo. Feito no 30.17.
 - `POST /api/aprendizado/{kind}/{ref}/revisao` → pede revisão (gatilho `pedido_da_pessoa`; respeita orçamento e modo). Feito no 30.17.
-- `GET /api/aprendizado/revisoes?app=&decisao=&desde=` e `GET /api/aprendizado/metricas?app=&dias=` (30.8; ainda não).
+- `GET /api/aprendizado/revisoes?app=&decisao=&desde=` e `GET /api/aprendizado/metricas?app=&dias=`. Feito no 30.8 (adendo
+  v0.89).
 
 ---
 

@@ -5929,15 +5929,61 @@
   },
   "30.28": {
    "id": "30.28",
-   "status": "partial",
+   "status": "implemented",
    "proof": "simulated",
-   "evidence": "RA-19. Fatia A: PR #139 (feat/ra-19-visao-do-livro @ 725aeaf2) na main pelo merge b1e0be7d da suíte 7 (123650cc): o livro por rótulo Produto/QA/Todos (apps.category='qa'), Produto por padrão, com os ocultos; adendo v0.83; tests/test_learning_rotulo_do_livro.py (8), 119 testes de painel; ensaio no navegador numa cópia do banco (simulado): 70 de 164 por padrão (94 do QA ocultos), QA 94, Todos 164, app de QA → Todos, 375 px. Fatia B: PR #141 (feat/ra-19-origem-simulada @ b680bb10) na suíte 8: a origem simulada nunca nasce ativa nem promove pela sombra (aprendizado.simulada_publica só na suíte); tests/test_origem_simulada.py (6, o join = 0); bateria de 32 arquivos, 657 passed; ensaio sobre a suíte 7: 515 passed. Fica partial até o #141 entrar. Real: not_run.",
-   "grupo": "aprendizado-suite-7",
+   "evidence": "RA-19. Fatia A: PR #139 (feat/ra-19-visao-do-livro @ 725aeaf2) na main pelo merge b1e0be7d da suíte 7 (123650cc): o livro por rótulo Produto/QA/Todos (apps.category='qa'), Produto por padrão, com os ocultos; adendo v0.83; tests/test_learning_rotulo_do_livro.py (8), 119 testes de painel; ensaio no navegador numa cópia do banco (simulado): 70 de 164 por padrão (94 do QA ocultos), QA 94, Todos 164, app de QA → Todos, 375 px. Fatia B: PR #141 (feat/ra-19-origem-simulada @ b680bb10) na main pelo merge 27bfc577 da suíte 8 (83f9f606): a origem simulada nunca nasce ativa nem promove pela sombra (aprendizado.simulada_publica só na suíte); tests/test_origem_simulada.py (6, o join = 0); bateria de 32 arquivos, 657 passed; suíte 8 inteira: backend 6797 sem falha, front 1339, scripts 463. Real: not_run (chega ao central com o deploy 8).",
+   "grupo": "aprendizado-suite-8",
    "modelo": "claude-opus-5-5",
    "esforco": "medio",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T07:34:22+00:00"
+   "quando": "2026-10-03T09:06:05+00:00"
+  },
+  "29.45": {
+   "id": "29.45",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entrega acima de sent; LT-6 d19224cb: open_app pelo executor na etapa app_foreground como estratégia deterministic, uma vez por tentativa, sem efeito e sem receita conduzindo, ator na mesma tentativa se não comprovar, e esperar_foco a 0,5 s nos primeiros 5 s; LT-12 516bc85d: nova tentativa no tier 0, subindo até o fim dela na 1ª decisão que repete o par tela estrutural + ação da última ação da anterior ou que dispararia o efeito, decisão descartada antes de agir e refeita no tier 1 com escalate='nova_tentativa'; memória no processo; docs 9402a9ed com adendo v0.86). simulated: tests/test_caminho_rapido_2.py (20; os do LT-5 e os do LT-12 falham contra o executor anterior). Testes cujo gancho é a decisão da IA que abre o app desligam OPEN_APP_SEM_IA (test_anr_sinal_proprio, test_estados_de_ia::recusa, test_ai_breaker::disjuntor). Na main pelo merge da suíte 8. Real: aceite de latência not_run até o deploy 8 ('NÃO comprovada' mediana 16,9 → ≤ 7 s; open_app 2,2 → ≤ 1,5 s; app_foreground com decide = 0; 'nova tentativa' < 10/semana).",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/taskqueue/executor.py",
+    "backend/app/automation/tools.py",
+    "backend/app/modules/capabilities/domain/strategy.py",
+    "backend/tests/test_caminho_rapido_2.py",
+    "docs/dominios/execution.md",
+    "docs/api-contract.md"
+   ],
+   "testes": "suíte 8 inteira (-n 8, Idle).",
+   "grupo": "suite-8-android",
+   "modelo": "opus (sessão Android)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T09:04:32+00:00"
+  },
+  "30.29": {
+   "id": "30.29",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #142 (feat/30-29-fluxos-com-variaveis-de-execucao @ 0f6f99c7) na main pelo merge 4f5a4f66 da suíte 8 (83f9f606). bind_template_parameters (skills/domain/matching.py) com a regra dos RESERVED do LT-3 (instance_id, run_id, account_label nunca exigidos), a mesma do FlowStore.match; o aprendizado do fluxo nunca os templatiza. Os 5 fluxos do QA Messenger que o bind matava (uses 0) voltam a casar; foram desligados por pessoa às 08:45:08Z antes do deploy 8 (decisão da orquestradora: só valem depois do parecer do curador). simulated: tests/test_flows_account_label.py (os 2 testes novos de bind/compilação falham com o matching.py antigo); bateria de 32 arquivos, 735 passed; suíte 8 inteira: backend 6797 sem falha. Real: not_run.",
+   "grupo": "aprendizado-suite-8",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T09:06:05+00:00"
+  },
+  "30.8": {
+   "id": "30.8",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #146 (feat/30-8-metricas @ 159244ab) na main pelo merge dd2c7fad (regra de módulo). GET /api/aprendizado/metricas?app=&dias= (um bloco por linha do §10: composição, aprovações sistema/pessoa, curador, refutados, sucesso depois de promovido, churn, tempos com n, saúde, economia do aproveitamento, proxy de falhas rotulado, orçamento do curador B_W/C_W/uso/aviso 80 %) e GET /api/aprendizado/revisoes (paginada, sem dossiê); adendo v0.89; curador.py: janela_do_orcamento compartilhada. tests/test_learning_metricas.py (11); bateria afetada 1153 passed; arquitetura/curador/pareceres/apps 100 passed. Ensaio só leitura numa cópia do banco do central (03/10 ~09:30Z): 142 ms global, ~55 ms por app; B_W 1,76 × C_W 0,29; proxy em 38 etapas; pegou 2 defeitos corrigidos antes do PR. Real: not_run (chega ao central com o deploy 9).",
+   "grupo": "aprendizado-30-8",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T09:32:50+00:00"
   }
  },
  "rodadas": [
@@ -7217,6 +7263,34 @@
    ],
    "grupos": [
     "aprendizado-suite-7"
+   ]
+  },
+  {
+   "quando": "2026-10-03T09:04:32+00:00",
+   "itens": [
+    "29.45"
+   ],
+   "grupos": [
+    "suite-8-android"
+   ]
+  },
+  {
+   "quando": "2026-10-03T09:06:05+00:00",
+   "itens": [
+    "30.28",
+    "30.29"
+   ],
+   "grupos": [
+    "aprendizado-suite-8"
+   ]
+  },
+  {
+   "quando": "2026-10-03T09:32:50+00:00",
+   "itens": [
+    "30.8"
+   ],
+   "grupos": [
+    "aprendizado-30-8"
    ]
   }
  ]

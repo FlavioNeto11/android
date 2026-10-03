@@ -88,9 +88,14 @@ def bind_template_parameters(parameters: Mapping[str, str], values: Mapping[str,
     """Parâmetros de um plano-modelo (`{"perfil": "{perfil}", "fixo": "x"}`) com os valores do comando.
 
     `None` quando algum parâmetro-modelo ficou sem valor: como em `FlowStore.match`, esse modelo NÃO é o do comando.
+    Os RESERVED (`account_label`, `instance_id`, `run_id`) não contam: nunca vêm do comando (`_captured` os trata
+    como texto literal), o valor é do APARELHO e entra na materialização (`Repository.materialize`). O molde fica
+    como está, igual ao `FlowStore.match` desde o LT-3. Exigir o valor aqui deixava morto todo fluxo cujo plano
+    declara `{account_label}` (30.29: 5 fluxos ativos do QA, 0 usos), e o comando que casava com um deles pelo
+    caminho da habilidade ia a `needs_input` sem o planejador.
     """
     ligados = {k: (values.get(k, v) if v == "{" + k + "}" else v) for k, v in parameters.items()}
-    if any(v == "{" + k + "}" for k, v in ligados.items()):
+    if any(v == "{" + k + "}" for k, v in ligados.items() if k not in RESERVED):
         return None
     return ligados
 
