@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Jev: leitura preliminar real da sombra de intenção (31.10 partial/real)
+
+- Central WIN-7S2UASNLFOP, deploy 12 (`d5a1c3a9`), às 17:19:44Z.
+  - Script: `scripts/jev-leitura-intencao.py`, mode=ro, `--desde 2026-10-03T15:29:51Z`, só contagens.
+  - Preliminar porque o P4 foi pausado às 17:18Z (K-086).
+- Resultado (veredito OK, zero violação de formato):
+  - 6 linhas = 6 chamadas = 6 comandos.
+  - R2: 4 respondidas, todas com P(escolha) ≥ 0,88; 1 recusa de privacidade (`c7_gatilho`); 1 `abaixo_do_limiar`.
+    R3: 0.
+  - Custo: US$ 0,000255 em 5 chamadas; latência p50 445 ms e p95 520 ms.
+  - O cruzamento com `ai_calls` bate (5 × 5).
+- O 31.10 segue `partial` pelo mecanismo. Fecha com a leitura de 10 ou mais linhas, que depende de comandos reais do
+  dono enquanto o P4 estiver pausado. Golden set §7.
+
 ## 2026-10-03 — Deploy 12 no central (d5a1c3a9; P4 religado; expiração do needs_input no ar)
 
 - Implantado no central (`real`, 03/10, WIN-7S2UASNLFOP): o commit d5a1c3a9 = a suíte 12 (5428abdb) mais os estados

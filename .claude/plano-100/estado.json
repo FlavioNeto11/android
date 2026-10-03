@@ -6152,19 +6152,20 @@
    "id": "31.10",
    "status": "partial",
    "proof": "real",
-   "evidence": "Curador em sombra real desde o deploy 9 (T_on 2026-10-03T11:04:15Z): 4 linhas às 13:10Z, conferidas pela prova do 31.17 (13:14:50Z). Relatório scripts/jev-relatorio-31-10.py com o 31.19 (@442a9249, na main pela suíte 11): rótulo 1 só do dono, estados_distintos, cobertura_por_limiar e percentil unificado; rodado no central em modo só leitura às 15:08Z (WIN-7S2UASNLFOP): curador, estrato receita, 4 pedidos, 0 respondidos, 0 rótulos, 1 estado C0, veredito 'sem amostra'. Deploy 11 (c8304e85, ~15:30Z) liga a intenção em sombra com C3.",
-   "blocker": "Vira implemented quando a leitura só leitura da sombra de intenção pós-deploy 11 mostrar linhas com 0 texto (a orquestradora avisa com ≥ 10 comandos pós-T_on, ~18:00Z). O GO do curador espera 30 rótulos por kind.",
+   "evidence": "Curador em sombra real desde o deploy 9 (T_on 2026-10-03T11:04:15Z): 4 linhas às 13:10Z, conferidas pela prova do 31.17 (13:14:50Z). Relatório scripts/jev-relatorio-31-10.py com o 31.19 (@442a9249, na main pela suíte 11): rótulo 1 só do dono, estados_distintos, cobertura_por_limiar e percentil unificado; rodado no central em modo só leitura às 15:08Z (WIN-7S2UASNLFOP): curador, estrato receita, 4 pedidos, 0 respondidos, 0 rótulos, 1 estado C0, veredito 'sem amostra'. Deploy 11 (c8304e85, ~15:30Z) liga a intenção em sombra com C3. | Leitura PRELIMINAR da sombra de intenção (deploy 12 d5a1c3a9, migração 082; 03/10 17:19:44Z, WIN-7S2UASNLFOP, scripts/jev-leitura-intencao.py da main @d5a1c3a9, mode=ro + query_only, --desde 2026-10-03T15:29:51Z, só contagens): veredito OK, código 0. 6 linhas = 6 chamadas = 6 comandos, todas intencao/C3/shadow. R2: 6 pedidos, 4 respondidas (1 nenhuma), 2 fallbacks (1 privacidade c7_gatilho, 1 abaixo_do_limiar com confiança 0,56 e maior probabilidade 0,59); R3: 0. P(escolha) das respondidas: n 4, mín. 0,88, p50 0,96, todas ≥ 0,85 (a porta do 31.19 coerente). Custo: 5 chamadas em ai_calls (5 ok), US$ 0,000255 (US$ 0,000051 por chamada), tokens 6072 + 2115; latência p50 445 ms, p95 520 ms; cruzamento 5 postadas × 5 em ai_calls (bate). Zero texto: nenhuma violação de formato em nenhuma coluna. decisao_real casada nas 6; ambiguos 0 nas 6.",
+   "blocker": "Fecha (implemented) com a leitura de ≥ 10 linhas de intenção (critério da orquestradora). O P4 foi pausado às 17:18Z (K-086; religa com o 30.37): linhas novas só com comandos reais do dono (painel, ou Telegram com o 28.15, ~05/10). O GO do curador espera 30 rótulos por kind.",
    "arquivos": [
-    "scripts/jev-relatorio-31-10.py",
-    "docs/design/jev-golden-set.md"
+    "docs/design/jev-golden-set.md",
+    "scripts/jev-leitura-intencao.py",
+    "scripts/jev-relatorio-31-10.py"
    ],
-   "testes": "real: relatório mode=ro no central (13:14Z e 15:08Z); simulated: scripts/tests/test_jev_relatorio_31_10.py.",
-   "grupo": "suite-11-jev",
+   "testes": "real: relatório mode=ro no central (13:14Z e 15:08Z); simulated: scripts/tests/test_jev_relatorio_31_10.py. real: leitura preliminar da intenção mode=ro às 17:19:44Z (6 linhas, só contagens); simulated: scripts/tests/test_jev_leitura_intencao.py.",
+   "grupo": "leitura-intencao-preliminar-jev",
    "modelo": "opus (sessão jev, executora da orquestradora)",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T15:33:30+00:00"
+   "quando": "2026-10-03T17:20:31+00:00"
   },
   "30.31": {
    "id": "30.31",
@@ -7847,6 +7848,15 @@
    ],
    "grupos": [
     "aprendizado-pr163"
+   ]
+  },
+  {
+   "quando": "2026-10-03T17:20:31+00:00",
+   "itens": [
+    "31.10"
+   ],
+   "grupos": [
+    "leitura-intencao-preliminar-jev"
    ]
   }
  ]

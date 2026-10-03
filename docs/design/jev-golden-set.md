@@ -263,5 +263,16 @@ Todas as medidas abaixo são PROVED:
 - Saída: dez linhas e, com `--json`, só contagens, motivos e números. Código 0 quando tudo confere, 1 com violação
   (mesmo sem amostra), 2 sem linha da intenção no período.
 
-Prova: `simulated` (`scripts/tests/test_jev_leitura_intencao.py`, com linhas falsas). Execução no banco do central:
-`not_run` (roda quando a orquestradora avisar, com 10 ou mais comandos depois do T_on).
+Prova: `simulated` (`scripts/tests/test_jev_leitura_intencao.py`, com linhas falsas). O critério de fechamento é a
+leitura com 10 ou mais linhas de intenção depois do T_on.
+
+*Registro de 03/10 (17:19:44Z), leitura PRELIMINAR (`real`, parcial):*
+- **Onde:** central WIN-7S2UASNLFOP, deploy 12 (`d5a1c3a9`, migração 082), script da main, mode=ro, `--desde
+  2026-10-03T15:29:51Z` (o T_on exato do deploy 11).
+- **Por que preliminar:** o P4 foi pausado às 17:18Z (K-086). A sombra ficou com 6 linhas = 6 chamadas = 6 comandos.
+- **Resultado:** veredito OK, zero violação de formato.
+  - R2: 4 respondidas (1 `nenhuma`), 1 `privacidade` (`c7_gatilho`) e 1 `abaixo_do_limiar` (confiança 0,56, maior
+    probabilidade 0,59). R3: 0.
+  - P(escolha) das respondidas: mínimo 0,88, todas acima do limiar.
+  - Custo: 5 chamadas, US$ 0,000255; latência p50 445 ms e p95 520 ms. O cruzamento bate (5 × 5).
+- O 31.10 segue `partial`.
