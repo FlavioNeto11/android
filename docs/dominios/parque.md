@@ -554,14 +554,16 @@ de outra pasta, a pasta muda em `adb.py`, não num `shell` montado por quem cham
   justamente esse reinício (contá-lo como ocupado travava os dois: a rede esperava o objetivo e o objetivo, a rede);
   o worker ocupado continua segurando.
   **Quem é "objetivo no meio"** (`vitrine.objetivo_que_segura`, 25.12): `running`, `waiting_user` ou `uncertain` de uma
-  execução que NÃO está em estado terminal (`RUN_TERMINAL`: `completed`, `completed_with_issues`, `cancelled`,
-  `failed`). `completed_with_issues` é o rollup de todo `waiting_user`/`uncertain` com nada rodando
-  (`recompute_run`), então um objetivo parado de ontem já não segura o aparelho: antes, ele adiava o teste de vazamento
-  por horas (android-03, 03/10) e travava a entrega do app principal (android-01, 18 objetivos desde 28/09). A execução
-  que a pessoa reabre volta a `running` e o objetivo volta a segurar. Quem chama: o teste de vazamento
-  (`_vazamento_adiado`) e o reinício da rede (`_quem_segura_o_reinicio`) da convergência, a entrega do app principal ao
-  ligar (`pendentes_ao_ligar`) e a frase do status da loja. A tela de um `uncertain`/`waiting_user` de execução já
-  encerrada deixa de ser protegida contra o reinício e a troca do app: quem precisa dela decide antes. Por estado da linha:
+  execução que não está em `completed`, `cancelled` ou `failed`. `completed_with_issues` é o rollup IMEDIATO de todo
+  `waiting_user`/`uncertain` com nada rodando (`recompute_run`), e a tela desse objetivo é a evidência de que o operador
+  precisa (PR #13): ele segura, mas só por `OBJETIVO_PARADO_SEGURA_POR_S` (2 h, valor provisório; o orquestrador decide)
+  depois de ter parado (`objectives.finished_at`; sem ele, `runs.finished_at` e `created_at`). O objetivo de 02/10
+  adiou o teste de vazamento do android-03 por ~1 h, e o android-01 tem 18 desde 28/09 (a primeira versão do 25.12 tratou
+  `completed_with_issues` como terminal e tirou a proteção também do objetivo de cinco minutos atrás; corrigida). A
+  execução VIVA segura sem limite de idade; a que a pessoa reabre volta a `running`. Quem chama, e o efeito da idade:
+  o teste de vazamento (`_vazamento_adiado`) e o reinício da rede (`_quem_segura_o_reinicio`) deixam de esperar por
+  objetivo velho; a entrega do app principal ao ligar (`pendentes_ao_ligar`) e a frase do status da loja passam a
+  trocar o app por cima da tela de um objetivo parado há mais de 2 h. Por estado da linha:
   `pendente` → aplicar (plano, chave do aparelho e par no servidor, cliente pela versão promovida na loja, receita) ou
   desfazer (pedido vazio) → `configurado` e o reinício (always-on e bloqueio só valem no boot); `configurado` →
   conectar (espera o `tun0` até `rede.espera_tun_s` contados do boot; no ar → `conectado` com a evidência lida e a

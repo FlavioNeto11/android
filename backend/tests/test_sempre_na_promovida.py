@@ -555,37 +555,64 @@ async def test_versao_voltada_com_prova_de_abertura_falha_tambem_volta(parque: H
 
 async def test_objetivo_incerto_segura_a_troca_do_app_principal(parque: Harness) -> None:
     """Revisão do PR #13: objetivo `uncertain` soltou o trabalhador e não é despachável, mas a tela dele é a evidência
-    que o operador precisa ver para decidir se o efeito aconteceu. A troca automática do app principal espera enquanto
-    a execução está viva. Item 25.12: a execução em estado TERMINAL (`completed_with_issues` é o rollup de todo
-    `waiting_user`/`uncertain` sem nada rodando) já não segura o aparelho: antes, o objetivo de 02/10 o prendia por
-    horas (e o android-01 tinha 18 deles desde 28/09)."""
+    que o operador precisa ver para decidir se o efeito aconteceu. A troca automática do app principal espera."""
     from app.util import now_iso
-    from app.vitrine import objetivo_em_andamento, objetivo_que_segura
+    from app.vitrine import objetivo_em_andamento
 
     st = parque.state
     assert st is not None
     assert not objetivo_em_andamento(st, "android-01")
     st.db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, instance_ids, created_at)"
-                  " VALUES ('r-teste-incerto','k-teste-incerto','abrir','execute','running','[\"android-01\"]',?)",
+                  " VALUES ('r-teste-incerto','k-teste-incerto','abrir','execute','completed_with_issues','[\"android-01\"]',?)",
                   (now_iso(),))
     st.db.execute("INSERT INTO objectives(id, run_id, instance_id, status) VALUES ('o-teste-incerto','r-teste-incerto',"
                   "'android-01','uncertain')")
-    for objetivo in ("uncertain", "waiting_user", "running"):
-        st.db.execute("UPDATE objectives SET status=? WHERE id='o-teste-incerto'", (objetivo,))
-        for vivo in ("running", "paused", "cancelling", "planned", "needs_input"):
-            st.db.execute("UPDATE runs SET status=? WHERE id='r-teste-incerto'", (vivo,))
-            assert objetivo_em_andamento(st, "android-01"), (objetivo, vivo)
-            assert objetivo_que_segura(st, "android-01") == "o-teste-incerto"
-        for terminal in ("completed_with_issues", "completed", "cancelled", "failed"):
-            st.db.execute("UPDATE runs SET status=? WHERE id='r-teste-incerto'", (terminal,))
-            assert not objetivo_em_andamento(st, "android-01"), (objetivo, terminal)
-            assert objetivo_que_segura(st, "android-01") is None, (objetivo, terminal)
-    # A execução que a pessoa reabre (retomada) volta a segurar o aparelho.
-    st.db.execute("UPDATE runs SET status='running' WHERE id='r-teste-incerto'")
     assert objetivo_em_andamento(st, "android-01")
-    # Só `running`/`waiting_user`/`uncertain` seguram: o objetivo já resolvido numa execução viva não.
-    st.db.execute("UPDATE objectives SET status='succeeded' WHERE run_id='r-teste-incerto'")
-    assert not objetivo_em_andamento(st, "android-01")
+
+
+async def test_objetivo_parado_so_segura_enquanto_recente_em_execucao_com_pendencias(parque: Harness) -> None:
+    """Item 25.12: `completed_with_issues` é o rollup IMEDIATO de todo `waiting_user`/`uncertain` com nada rodando, então
+    o objetivo de agora segura (a tela é a evidência, PR #13), mas o de ontem não segura mais o aparelho para sempre
+    (03/10: o de 02/10 adiou o teste de vazamento do android-03; o android-01 tem 18 desde 28/09). Execução viva segura
+    sem limite de idade."""
+    from datetime import timedelta
+
+    from app.util import now, now_iso, to_iso
+    from app.vitrine import OBJETIVO_PARADO_SEGURA_POR_S, objetivo_em_andamento, objetivo_que_segura
+
+    st = parque.state
+    assert st is not None
+    antes = lambda s: to_iso(now() - timedelta(seconds=s))                   # noqa: E731
+    velho, recente = antes(OBJETIVO_PARADO_SEGURA_POR_S + 600), antes(OBJETIVO_PARADO_SEGURA_POR_S - 600)
+    st.db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, instance_ids, created_at)"
+                  " VALUES ('r-teste-idade','k-teste-idade','abrir','execute','completed_with_issues','[\"android-01\"]',?)",
+                  (velho,))
+    st.db.execute("INSERT INTO objectives(id, run_id, instance_id, status, finished_at) VALUES ('o-teste-idade',"
+                  "'r-teste-idade','android-01','uncertain',?)", (now_iso(),))
+
+    def segura(**sql: str) -> bool:
+        for coluna, valor in sql.items():
+            tabela, campo = ("objectives", coluna[2:]) if coluna.startswith("o_") else ("runs", coluna[2:])
+            st.db.execute(f"UPDATE {tabela} SET {campo}=? WHERE id=?", (valor, "o-teste-idade" if tabela == "objectives" else "r-teste-idade"))
+        assert objetivo_em_andamento(st, "android-01") == (objetivo_que_segura(st, "android-01") == "o-teste-idade")
+        return objetivo_em_andamento(st, "android-01")
+
+    for estado in ("uncertain", "waiting_user"):
+        assert segura(o_status=estado, o_finished_at=now_iso())                    # acabou de parar: segura
+        assert segura(o_finished_at=recente)                                       # ainda dentro do limite: segura
+        assert not segura(o_finished_at=velho)                                     # passou do limite: solta
+        assert not segura(o_finished_at=None)                                      # sem data, vale a da execução (velha)
+        assert segura(r_created_at=recente)                                        # sem data e execução recente: segura
+        segura(r_created_at=velho)
+    # Só o rollup `completed_with_issues` tem o limite; a execução VIVA segura sem limite de idade, qualquer objetivo.
+    for vivo in ("running", "paused", "cancelling", "planned", "needs_input"):
+        for objetivo in ("running", "waiting_user", "uncertain"):
+            assert segura(r_status=vivo, o_status=objetivo, o_finished_at=antes(30 * 86400)), (vivo, objetivo)
+    # O objetivo `running` de uma execução em `completed_with_issues` (retomada em curso) também segura, velho ou não.
+    assert segura(r_status="completed_with_issues", o_status="running", o_finished_at=antes(30 * 86400))
+    # As três terminais de sempre soltam, por mais recente que seja o objetivo.
+    for terminal in ("completed", "cancelled", "failed"):
+        assert not segura(r_status=terminal, o_status="uncertain", o_finished_at=now_iso()), terminal
 
 
 async def test_relogio_da_tentativa_diaria_conta_so_este_app_e_so_o_que_saiu(parque: Harness) -> None:

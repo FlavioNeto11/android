@@ -21,15 +21,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-03 — 25.12: túnel morto age e o backend verifica a rede ao subir (branch feat/25-12-tunel-morto)
 
-- Objetivo de execução ENCERRADA não segura mais o aparelho (`vitrine.objetivo_que_segura`, a terceira metade do 25.12,
-  feita primeiro): `waiting_user`/`uncertain` de uma execução em estado terminal (`completed_with_issues` é o rollup
-  de todo objetivo que espera uma pessoa sem nada rodando) contava como "objetivo no meio" para sempre. Medido em 03/10:
-  o teste de vazamento do android-03 ficou adiado por ~1 h por um objetivo de 02/10, e o android-01 tem 18 objetivos
-  assim desde 28/09. A execução viva (`running`, `paused`, `planned`, `needs_input`, `cancelling`) continua segurando.
-  Efeito nos chamadores: entrega do app principal ao ligar, teste de vazamento e reinício da rede (detalhe em
-  `docs/dominios/parque.md`). O teste do PR #13 (`uncertain` segura a troca do app) passa a provar as duas faces.
-  Prova `simulated`: `tests/test_sempre_na_promovida.py::test_objetivo_incerto_segura_a_troca_do_app_principal`,
-  `tests/test_rede_sonda.py::test_objetivo_de_execucao_encerrada_nao_adia_o_teste_de_vazamento`.
+- Objetivo parado há horas não segura mais o aparelho (`vitrine.objetivo_que_segura`, metade C do 25.12; corrige
+  c185eda3, que tratava `completed_with_issues` como terminal e revertia a decisão do PR #13): `completed_with_issues` é
+  o rollup IMEDIATO de todo `waiting_user`/`uncertain` com nada rodando, então o objetivo de agora segura (a tela é a
+  evidência do operador), mas o de `OBJETIVO_PARADO_SEGURA_POR_S` (2 h, valor PROVISÓRIO: o orquestrador decide) atrás
+  solta. A idade é `objectives.finished_at` (sem ele, `runs.finished_at`/`created_at`). Execução viva segura sem limite;
+  `completed`, `cancelled` e `failed` soltam como sempre. Medido em 03/10: o objetivo de 02/10 adiou o teste de vazamento
+  do android-03 por ~1 h, e o android-01 tem 18 objetivos assim desde 28/09. Efeito nos chamadores em
+  `docs/dominios/parque.md`. Prova `simulated`:
+  `tests/test_sempre_na_promovida.py::test_objetivo_parado_so_segura_enquanto_recente_em_execucao_com_pendencias` (e o
+  teste do PR #13, restaurado), `tests/test_rede_sonda.py::test_objetivo_parado_ha_horas_nao_adia_o_teste_de_vazamento`.
 - **Túnel morto age (metade A).** A verificação de um `trafego_verificado` com política exigida cuja sonda não mede IP de
   saída tira a linha do estado (→ `conectado`, motivo e evento `tunel_morto`), religa o cliente VPN no aparelho (até 2
   vezes: `force-stop` e always-on, ou Start da interface com teto de 60 s) e, sem volta, reinicia sem wipe. Falha ou

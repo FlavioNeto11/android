@@ -911,26 +911,33 @@ async def test_vazamento_adiado_com_objetivo_no_meio_e_no_celular_sem_worker(par
     assert conv._vazamento_adiado(notebook) is None                                          # type: ignore[arg-type]
 
 
-async def test_objetivo_de_execucao_encerrada_nao_adia_o_teste_de_vazamento(parque: Harness) -> None:
+async def test_objetivo_parado_ha_horas_nao_adia_o_teste_de_vazamento(parque: Harness) -> None:
     """Item 25.12 (achado real do 03/10, android-03): o objetivo `waiting_user` de 02/10 estava numa execução
     `completed_with_issues` (o rollup de quem espera uma pessoa sem nada rodando), e o teste de vazamento ficou adiado
-    por ~1 h ("há um objetivo no meio"). Execução em estado terminal não segura; a viva (`running`) segura."""
-    from app.util import now_iso
+    por ~1 h ("há um objetivo no meio"). Recente, segura (a tela é a evidência); velho (passou do limite), solta; a
+    execução viva segura sem limite."""
+    from datetime import timedelta
+
+    from app.util import now, now_iso, to_iso
+    from app.vitrine import OBJETIVO_PARADO_SEGURA_POR_S
 
     st = parque.state
     assert st is not None
     conv, rt = st.rede_convergencia, st.devices.devices["android-01"]
     assert conv._vazamento_adiado(rt) is None                                                  # type: ignore[arg-type]
+    velho = to_iso(now() - timedelta(seconds=OBJETIVO_PARADO_SEGURA_POR_S + 600))
     st.db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, instance_ids, created_at)"
-                  " VALUES ('r-teste-25-12','k-teste-25-12','abrir','execute','running','[\"android-01\"]',?)",
-                  (now_iso(),))
-    st.db.execute("INSERT INTO objectives(id, run_id, instance_id, status) VALUES ('o-teste-25-12','r-teste-25-12',"
-                  "'android-01','waiting_user')")
-    assert "há um objetivo no meio" in (conv._vazamento_adiado(rt) or "")                      # type: ignore[arg-type]
+                  " VALUES ('r-teste-25-12','k-teste-25-12','abrir','execute','completed_with_issues','[\"android-01\"]',?)",
+                  (velho,))
+    st.db.execute("INSERT INTO objectives(id, run_id, instance_id, status, finished_at) VALUES ('o-teste-25-12',"
+                  "'r-teste-25-12','android-01','waiting_user',?)", (now_iso(),))
+    assert "há um objetivo no meio" in (conv._vazamento_adiado(rt) or "")                      # recente: segura
     assert conv._quem_segura_o_reinicio(rt) == "objetivo o-teste-25-12 em andamento"           # type: ignore[arg-type]
-    st.db.execute("UPDATE runs SET status='completed_with_issues' WHERE id='r-teste-25-12'")
-    assert conv._vazamento_adiado(rt) is None                                                  # type: ignore[arg-type]
+    st.db.execute("UPDATE objectives SET finished_at=? WHERE id='o-teste-25-12'", (velho,))
+    assert conv._vazamento_adiado(rt) is None                                                  # velho: solta
     assert conv._quem_segura_o_reinicio(rt) is None                                            # type: ignore[arg-type]
+    st.db.execute("UPDATE runs SET status='running' WHERE id='r-teste-25-12'")                 # execução viva: sem limite
+    assert "há um objetivo no meio" in (conv._vazamento_adiado(rt) or "")
 
 
 # ============================================================================ prova durável de vazamento (item 29.2)
