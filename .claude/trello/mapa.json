@@ -2619,14 +2619,14 @@
   "suite:13": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac14217053c0a18b14c2a89",
    "url": "https://trello.com/c/A0csZ0Xp",
-   "lista": "em_execucao",
+   "lista": "concluido_hoje",
    "lote": "lote_A8_atuais_pendentes",
    "nome": "Suíte 13 → deploy 13 (04/10): #162 (migração 083), #163 (30.36), polimentos da Rede"
   },
   "suite:14": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1421a17324fc5a6802ef4",
    "url": "https://trello.com/c/EbM7rZt3",
-   "lista": "proximas",
+   "lista": "em_execucao",
    "lote": "lote_A8_atuais_pendentes",
    "nome": "Suíte 14 → deploy 14 (05/10): 28.15 (Telegram) + 30.37 (prova de fluxo) + migrações 084/085"
   },
@@ -2671,7 +2671,7 @@
   "validacao:deploy-13": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac15007f0d44be67a98dffe",
    "url": "https://trello.com/c/rjsmJjJO",
-   "lista": "em_execucao",
+   "lista": "concluido_hoje",
    "lote": "canais"
   },
   "28.16": {
@@ -2702,7 +2702,7 @@
   "29.52": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac151a0d1f8b25c99ca3c0e",
    "url": "https://trello.com/c/OTC5rSZB",
-   "lista": "em_execucao",
+   "lista": "em_validacao",
    "lote": "canais"
   },
   "decisao:power-ups-nativos": {
@@ -2734,10 +2734,40 @@
    "url": "https://trello.com/c/Wgr03o8n",
    "lista": "em_execucao",
    "lote": "fatos-1916"
+  },
+  "decisao:portal-publico": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac15b620398d8d99739b21c",
+   "url": "https://trello.com/c/MHHJYfIY",
+   "lista": "decisoes",
+   "lote": "fatos-1940"
+  },
+  "29.54": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac15b648374e3546fb52ab2",
+   "url": "https://trello.com/c/jIWTRcsM",
+   "lista": "em_execucao",
+   "lote": "fatos-1940"
+  },
+  "30.39": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac15b67f01f9e9e2199273c",
+   "url": "https://trello.com/c/Om6mKPy4",
+   "lista": "em_execucao",
+   "lote": "fatos-1940"
+  },
+  "risco:incidente-reinicio-0310": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac15b697632e0150319e3ce",
+   "url": "https://trello.com/c/JQ5e6lAC",
+   "lista": "riscos",
+   "lote": "fatos-1940"
+  },
+  "29.55": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac15bcdfedbbda5922408a6",
+   "url": "https://trello.com/c/ORCuKE7V",
+   "lista": "proximas",
+   "lote": "canais"
   }
  },
  "falhas": [],
- "atualizado_em": "2026-10-03T19:20:20Z",
+ "atualizado_em": "2026-10-03T19:47:08Z",
  "arquivados": {
   "29.50": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac140b47c94d9584a3dc72e",
