@@ -268,6 +268,11 @@ achado não se confirmam nos dados.
 > **Desde 25/09/2026 o ator de produção é o Sonnet 5** ([ADR-023](decisoes.md)): o local economizava ~US$ 0,02 por
 > caso, com o dobro de escalonamento para o Opus e fragilidade operacional, e estava fora do ar sem aviso. O
 > provedor `local` continua definido no `config.yaml`; o texto abaixo é o registro de 24/09 e o caminho de volta.
+>
+> **Revisão de 03/10/2026 (RA-24).** O gatilho do ADR-023 para rever ("algumas centenas de casos" por dia) não foi
+> atingido: 90 execuções de 26/09 a 02/10, ≈ 13 por dia (central, banco em `mode=ro`). O Ollama teve 17 chamadas
+> em 24/09 e nenhuma desde então. O único uso candidato do modelo local hoje é uma triagem em SOMBRA, como a do
+> curador (31.8), e só depois de medida contra o golden set (`design/jev-golden-set.md`).
 
 **Estado em 24/09/2026 (fora do que está em `config.example.yaml`, que é o exemplo neutro — isto é produção; o
 `config.yaml` não é versionado, e o que roda de fato se confere em `GET /api/ai` e `GET /api/health` → `ai`):** o ator de produção (`decide`) foi ligado no Ollama nativo do
