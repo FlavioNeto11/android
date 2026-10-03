@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import socket
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +30,7 @@ from app.config import DecisaoFechadaCfg
 from app.db import Database
 from app.modules.context_retrieval.adapters.jev import JevSemanticProvider
 from app.planning import costs, saldos
-from app.planning.decisao_fechada import privacidade
+from app.planning.decisao_fechada import privacidade, transparencia
 from app.planning.decisao_fechada.contrato import FalhaDeDecisao, PedidoDeDecisao, Pergunta, pergunta_choice
 from app.planning.decisao_fechada.decisores import ChamadaAoJev, DecisorJev, DecisorNulo
 from app.planning.decisao_fechada.porta import Porta
@@ -44,6 +45,9 @@ OPCOES = {"opt:a": "primeira", "opt:b": "segunda"}
 #: 1 000 tokens de entrada no Jev = US$ 0,000042 (entrada a US$ 0,042 por milhão; saída grátis).
 USO = {"input_tokens": 1000, "output_tokens": 3}
 USD_POR_CHAMADA = 1000 * 0.042 / 1_000_000
+#: Relógio fixo (regra dos testes): a linha nasce num dia conhecido e a régua do dia olha o mesmo dia.
+MEIO_DIA = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
+INICIO_DO_DIA = "2026-10-03T00:00:00.000Z"
 
 
 @pytest.fixture(autouse=True)
@@ -246,7 +250,7 @@ def test_registro_quebrado_nao_derruba_a_decisao() -> None:
 # ---------------------------------------------------------------- a linha em ai_calls e as réguas
 def test_linha_em_ai_calls_e_o_que_a_fatia_e_o_livro_caixa_somam(tmp_path: Path) -> None:
     db = _banco(tmp_path)
-    repo = RepositorioDeSombra(db)
+    repo = RepositorioDeSombra(db, relogio=lambda: MEIO_DIA)
     repo.registrar_chamada(ChamadaAoJev("jev-1.13.0", "intencao", "run-9", "st-9", "run-9", 1000, 3, USD_POR_CHAMADA,
                                         412.4, True, None))
     repo.registrar_chamada(ChamadaAoJev("jev-1.13.0", "curador", None, None, "dossie-1", 0, 0, 0.0, 30.0, False, "429"))
@@ -260,17 +264,18 @@ def test_linha_em_ai_calls_e_o_que_a_fatia_e_o_livro_caixa_somam(tmp_path: Path)
     assert (falha["ok"], falha["error_kind"], falha["error_status"], falha["ref"], falha["run_id"]) == (
         0, "429", 429, "curador:dossie-1", None)
     precos = {"jev-1.13.0": [0.042, 0.0, 0.0, 0.0]}
-    assert costs.spent_today_usd(db, precos, origem="decisao_fechada") == pytest.approx(USD_POR_CHAMADA)
+    assert costs.spent_usd(db, precos, since=INICIO_DO_DIA, origem="decisao_fechada") == pytest.approx(USD_POR_CHAMADA)
     db.close()
 
 
-def test_a_fatia_do_jev_enxerga_o_gasto_e_barra_antes_do_post(tmp_path: Path) -> None:
+def test_a_fatia_do_jev_enxerga_o_gasto_e_barra_antes_do_post(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Ponta a ponta no hub: duas chamadas cabem na fatia; a terceira para na conferência, sem POST e sem linha."""
+    monkeypatch.setattr(costs, "day_start_iso", lambda: INICIO_DO_DIA)
     db = _banco(tmp_path)
     hub, _ = _hub(tmp_path, db, limites={"jev_max_usd_per_day": 1.5 * USD_POR_CHAMADA})
     servidor = Servidor(_ok())
     decisor = DecisorJev(
-        _jev(servidor), registrar=RepositorioDeSombra(db).registrar_chamada,
+        _jev(servidor), registrar=RepositorioDeSombra(db, relogio=lambda: MEIO_DIA).registrar_chamada,
         conferir_gasto=lambda p: hub.conferir_gasto(run_id=p.run_id, origem="decisao_fechada", conta="typesafe"))
     for _ in range(2):
         decisor.decidir(_pedido(run_id=None), 5.0)
@@ -329,15 +334,27 @@ def test_porta_aberta_reconfere_o_que_o_decisor_real_devolve(monkeypatch: pytest
     db.close()
 
 
-async def test_composicao_liga_o_real_so_com_decisor_jev(harness: Harness) -> None:
+async def test_composicao_liga_o_real_so_com_decisor_jev(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
     st = harness.state
     assert st is not None
     assert st.cfg.file.ai.decisao_fechada.decisor == "nulo" and isinstance(st.decisao_fechada.decisor, DecisorNulo)
     assert st._decisor_da_porta(st.cfg) is None                                         # noqa: SLF001
-    cfg = st.cfg.file.ai.decisao_fechada
-    try:
-        cfg.decisor = "jev"
-        real = st._decisor_da_porta(st.cfg)                                              # noqa: SLF001
-    finally:
-        cfg.decisor = "nulo"
+    monkeypatch.setattr(st.cfg.file.ai.decisao_fechada, "decisor", "jev")
+    # provedor sem `conferir_gasto` (o dublê do harness não roteia): o real nasce SEM conferência, isto é, nunca envia
+    sem_hub = st._decisor_da_porta(st.cfg)                                               # noqa: SLF001
+    assert isinstance(sem_hub, DecisorJev) and sem_hub._conferir_gasto is None           # noqa: SLF001
+    # com o hub (o `RoutingProvider` real tem o método): a conferência chega a ele com a origem da fatia e a conta
+    chamadas: list[dict[str, object]] = []
+    monkeypatch.setattr(st.provider, "conferir_gasto", lambda **kw: chamadas.append(kw), raising=False)
+    real = st._decisor_da_porta(st.cfg)                                                  # noqa: SLF001
     assert isinstance(real, DecisorJev) and "jev-1.13.0" in repr(real)
+    assert real._conferir_gasto is not None                                              # noqa: SLF001
+    real._conferir_gasto(_pedido(run_id="run-7"))                                        # noqa: SLF001
+    assert chamadas == [{"run_id": "run-7", "origem": "decisao_fechada", "conta": "typesafe"}]
+
+
+def test_transparencia_diz_qual_decisor_esta_montado() -> None:
+    for decisor in ("nulo", "jev"):
+        cfg = DecisaoFechadaCfg(enabled=True, consumidores={"curador": "shadow"}, decisor=decisor)  # type: ignore[arg-type]
+        bloco = transparencia.status(cfg, chave_configurada=False)
+        assert bloco is not None and bloco["decider"] == decisor and bloco["send_approved"] is False

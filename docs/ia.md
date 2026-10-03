@@ -597,7 +597,7 @@ continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). D
     informa a página em `ai.balance_consoles.typesafe`.
   - **Transparência** (`transparencia.py`). Com `ai.decisao_fechada.enabled` e algum consumidor em `shadow` ou `on`, o `notice`
     de `GET /api/ai` nomeia a TypeSafe, os consumidores e as classes que podem sair, e `/api/ai` ganha o bloco
-    `decisao_fechada` (consumidores, classes, `send_approved`, `key`). A chave é só "configurada" ou "não configurada", pela
+    `decisao_fechada` (consumidores, classes, `send_approved`, `key` e, desde o 31.14, `decider`: `nulo` ou `jev`). A chave é só "configurada" ou "não configurada", pela
     PRESENÇA (`typesafe_api_key is not None`); o valor nunca é lido para isso. Enquanto `JEV_RUNTIME_SEND_APPROVED` é `False`, o
     aviso diz que o envio está FECHADO e que nada sai.
 

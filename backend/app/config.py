@@ -528,9 +528,10 @@ class AiLimitsCfg(BaseModel):
 class DecisaoFechadaCfg(BaseModel):
     """Porta `DecisaoFechada` (Fase 31, ADR-069): decisão por conjunto fechado no Jev, DESLIGADA por padrão.
 
-    O YAML só RESTRINGE: o envio e as classes que podem sair são constantes de código (`planning/decisao_fechada/
+    O YAML só RESTRINGE o que sai: o envio e as classes que podem sair são constantes de código (`planning/decisao_fechada/
     privacidade.py`: `JEV_RUNTIME_SEND_APPROVED`, `JEV_ALLOWED_CLASSES`) e nenhuma chave aqui abre o que o código fechou.
-    `enabled: false` vence tudo; sem consumidor listado, vale `off`. `on` só por consumidor e com GO pré-registrado."""
+    `enabled: false` vence tudo; sem consumidor listado, vale `off`. `on` só por consumidor e com GO pré-registrado.
+    `decisor` (31.14) escolhe QUEM decide quando um pedido passa; não abre o envio (a porta recusa antes do decisor)."""
 
     enabled: bool = False
     consumidores: dict[Literal["curador", "intencao", "desempate", "apps"], Literal["off", "shadow", "on"]] = {}
