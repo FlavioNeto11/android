@@ -10,9 +10,11 @@ Prova `simulated`: harness (aparelhos falsos na porta 5640, planejador simulado)
 """
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
-from app.models import RunCreate
+from app.models import MissingInfo, RunCreate
 from app.modules.avisos.infrastructure.entrada import (
     OPERADOR_DO_TELEGRAM,
     RecusaDaCentral,
@@ -103,7 +105,7 @@ async def test_status_resume_o_parque(harness: Harness) -> None:
     assert texto.startswith("Central:") and "Aparelhos online:" in texto and "Esperando você:" in texto
 
 
-async def test_pergunta_de_le_a_pergunta_da_execucao_e_o_codigo_da_recusa_sobe(harness: Harness,
+async def test_pergunta_sensivel_pelo_id_ou_pelo_fim_e_o_codigo_da_recusa_sobe(harness: Harness,
                                                                               como_telegram: None) -> None:
     st = harness.state
     assert st is not None
@@ -111,9 +113,9 @@ async def test_pergunta_de_le_a_pergunta_da_execucao_e_o_codigo_da_recusa_sobe(h
     run = st.runs.create(RunCreate(command="abrir o QA Messenger no android-02", instance_ids=["android-03"],
                                    idempotency_key="telegram:ni-2"))
     await harness.wait_run(run.id, ("needs_input",))
-    inteiro, fim = portas.pergunta_de(run.id), portas.pergunta_de(run.id[-6:])
-    assert inteiro and inteiro == fim                                           # o id inteiro e o fim dele
-    assert portas.pergunta_de("r-nao-existe-000000") == ""
+    # Pergunta de destino não é credencial, pelo id inteiro e pelo fim dele; execução que não existe, também nada.
+    assert portas.pergunta_sensivel(run.id) is None and portas.pergunta_sensivel(run.id[-6:]) is None
+    assert portas.pergunta_sensivel("r-nao-existe-000000") is None
     # O código do erro do caminho comum sobe junto da frase (o serviço de entrada trata `credencial_na_resposta`).
     st.runs.cancel(run.id)
     with pytest.raises(RecusaDaCentral) as exc:
@@ -121,12 +123,32 @@ async def test_pergunta_de_le_a_pergunta_da_execucao_e_o_codigo_da_recusa_sobe(h
     assert exc.value.codigo == "invalid_state"
 
 
-async def test_ha_pergunta_sensivel_aberta_le_as_execucoes_esperando(harness: Harness, como_telegram: None) -> None:
+async def test_pergunta_sensivel_aberta_com_a_porta_real(harness: Harness, como_telegram: None) -> None:
+    """E5 da revisão de autora: o caso positivo com as portas REAIS, sobre as leituras públicas do 29.52. E o E3: a
+    resposta a essa pergunta volta do caminho comum com o código `credencial_na_resposta`."""
     st = harness.state
     assert st is not None
     portas = _portas(harness)
-    assert portas.ha_pergunta_sensivel_aberta() is False                        # nada espera
+    assert portas.pergunta_sensivel(None) is None                               # nada espera
     run = st.runs.create(RunCreate(command="abrir o QA Messenger no android-02", instance_ids=["android-03"],
                                    idempotency_key="telegram:ni-3"))
     await harness.wait_run(run.id, ("needs_input",))
-    assert portas.ha_pergunta_sensivel_aberta() is False                        # pergunta de destino, não credencial
+    assert portas.pergunta_sensivel(None) is None                               # pergunta de destino, não credencial
+    plano0 = harness.ai.inner.plan
+
+    async def plan(req: Any) -> Any:                     # o planejador com defeito pede a senha (ADR-040)
+        plano, uso = await plano0(req)
+        plano.missing = [MissingInfo(field="password", question="Qual é a senha da conta do QA Messenger?")]
+        plano.steps = []
+        return plano, uso
+
+    harness.ai.inner.plan = plan
+    senha = st.runs.create(RunCreate(command="Abra o QA Messenger e envie uma mensagem", instance_ids=["android-01"],
+                                     idempotency_key="telegram:ni-4"))
+    await harness.wait_run(senha.id, ("needs_input",))
+    assert portas.pergunta_sensivel(None) == "senha"
+    assert portas.pergunta_sensivel(senha.id) == "senha" and portas.pergunta_sensivel(senha.id[-6:]) == "senha"
+    with pytest.raises(RecusaDaCentral) as exc:
+        portas.responder(senha.id, "kiwi2024!")
+    assert exc.value.codigo == "credencial_na_resposta" and "kiwi2024" not in str(exc.value)
+    assert st.repo.run_row(senha.id)["status"] == "needs_input"

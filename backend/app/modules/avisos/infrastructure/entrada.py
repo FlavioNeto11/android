@@ -126,14 +126,11 @@ class PortasDaCentral(Protocol):
     def criar(self, texto: str, alvos: list[dict[str, object]], chave: str) -> tuple[str, str]: ...
     def online(self) -> list[str]: ...
     def desfecho(self, run_id: str) -> str | None: ...
-    def ha_pergunta_sensivel_aberta(self) -> bool:
-        """Alguma execução espera resposta a uma pergunta que pede senha, código, 2FA ou token. Leitura isolada: o caminho
-        comum (29.52) vai expô-la, e esta porta passa a só repassá-la."""
-        ...
-
-    def pergunta_de(self, ref: str) -> str:
-        """O que a(s) execução(ões) indicada(s) por `ref` (id inteiro ou o fim dele) pergunta(m): o `status_detail` e as
-        perguntas, em texto. Vazio quando não há. Serve só para a triagem de credencial; nada daqui volta ao chat."""
+    def pergunta_sensivel(self, ref: str | None) -> str | None:
+        """O tipo da credencial que a pergunta aberta pede (`senha`, `2fa`, `codigo`, `token`, `credencial`), ou None.
+        Com `ref` (id inteiro ou o fim dele), a da execução indicada; sem, alguma aberta agora (a palavra solta). Uma
+        porta só, sobre as leituras públicas do caminho comum (29.52, `taskqueue/perguntas.py`): o canal não tem
+        vocabulário próprio. Erro de leitura sobe: quem chama recusa na dúvida."""
         ...
 
 
@@ -460,8 +457,8 @@ class ServicoDeEntrada:
         if i.tipo != "responder" or not i.ref:
             return False
         try:
-            # O vocabulário é o da triagem de credencial (o mesmo do caminho comum), não uma lista do canal.
-            return self._recusa(self.portas.pergunta_de(i.ref))
+            # O vocabulário é o do caminho comum (29.52), não uma lista do canal.
+            return self.portas.pergunta_sensivel(i.ref) is not None
         except Exception as exc:  # noqa: BLE001 - sem ler a pergunta não há como afirmar que a resposta é inofensiva
             log.warning("telegram: pergunta da execução não lida (%s); a resposta é recusada por precaução",
                         type(exc).__name__)
@@ -474,7 +471,7 @@ class ServicoDeEntrada:
         if len(texto.split()) != 1:
             return False
         try:
-            return self.portas.ha_pergunta_sensivel_aberta()
+            return self.portas.pergunta_sensivel(None) is not None
         except Exception as exc:  # noqa: BLE001 - sem ler as perguntas, a palavra só é tratada como credencial
             log.warning("telegram: perguntas abertas não lidas (%s); a palavra solta é recusada por precaução",
                         type(exc).__name__)

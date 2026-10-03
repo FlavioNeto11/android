@@ -18,12 +18,12 @@ from app.db import Database
 from app.models import Health, RunCreate, RunStatus, RunTarget, RunTargetsResolveBody
 from app.modules.avisos.application.entrada import casar_ref
 from app.modules.avisos.infrastructure.entrada import Pendencia, Previa, RecusaDaCentral
-from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
 from app.security.sessions import operador_atual
 from app.shared.costuras import autor_do_gesto
 from app.social.approvals import ApprovalService
 from app.social.service import SocialError
-from app.taskqueue.assistente import ComandoAssistido, RunSuccessorBody, perguntas_da_execucao
+from app.taskqueue.assistente import ComandoAssistido, RunSuccessorBody
+from app.taskqueue.perguntas import pergunta_sensivel_aberta, pergunta_sensivel_da_execucao
 from app.taskqueue.service import RunError, RunService
 
 #: Como o status de uma execução terminada se lê na conversa.
@@ -75,28 +75,20 @@ class PortasReais:
     def online(self) -> list[str]:
         return self._online()
 
-    def ha_pergunta_sensivel_aberta(self) -> bool:
-        """Alguma execução em needs_input pergunta por senha, código, 2FA ou token (a mesma triagem de credencial do
-        caminho comum aplicada à pergunta). Simples e isolada de propósito: o 29.52 expõe esta leitura no serviço."""
-        triagem = TriagemDeCredencial()
-        return any(triagem.recusa(self.pergunta_de(rid)) for rid in self.execucoes_esperando())
-
-    def pergunta_de(self, ref: str) -> str:
-        """O que a(s) execução(ões) de `ref` pergunta(m): `status_detail`, as perguntas e o nome dos campos (um campo
-        `password` pede senha mesmo com a frase neutra). `ref` é o id inteiro (em qualquer estado) ou o fim dele entre as
-        que esperam resposta. Erro de leitura sobe: quem chama recusa na dúvida."""
+    def pergunta_sensivel(self, ref: str | None) -> str | None:
+        """As leituras públicas do 29.52 (`taskqueue/perguntas.py`), e nada mais: sem `ref`, alguma pergunta sensível
+        aberta agora; com `ref` (o id inteiro ou o fim dele entre as que esperam resposta), a da execução indicada. Só o
+        tipo volta, nunca o texto da pergunta. Erro de leitura sobe: quem chama recusa na dúvida."""
+        if ref is None:
+            return pergunta_sensivel_aberta(self.db)
         ids = set(casar_ref(ref, self.execucoes_esperando()))
         if self.runs.repo.run_row(ref) is not None:
             ids.add(ref)
-        partes: list[str] = []
         for rid in sorted(ids):
-            row = self.runs.repo.run_row(rid)
-            if row is None:
-                continue
-            partes.append(str(row["status_detail"] or ""))
-            for q in perguntas_da_execucao(self.runs, row):
-                partes += [str(q.get("question") or ""), str(q.get("field") or "")]
-        return "\n".join(p for p in partes if p)
+            tipo = pergunta_sensivel_da_execucao(self.db, rid)
+            if tipo is not None:
+                return tipo
+        return None
 
     def desfecho(self, run_id: str) -> str | None:
         row = self.runs.repo.run_row(run_id)

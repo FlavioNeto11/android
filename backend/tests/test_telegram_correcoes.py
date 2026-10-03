@@ -136,10 +136,10 @@ async def test_pergunta_comum_segue_normal(tmp_path: Path) -> None:
 async def test_pergunta_que_nao_se_le_recusa_na_duvida(tmp_path: Path) -> None:
     c = Cenario(tmp_path)
 
-    def quebrada(ref: str) -> str:
+    def quebrada(ref: str | None) -> str | None:
         raise RuntimeError("banco fora")
 
-    c.portas.pergunta_de = quebrada                                     # type: ignore[method-assign]
+    c.portas.pergunta_sensivel = quebrada                               # type: ignore[method-assign]
     await c.volta(msg(5, "/responder 4985a1 kiwi2024!"))
     assert (c.linha(5)["estado"], c.linha(5)["texto"]) == ("recusada", None)
     assert "responder" not in c.portas.nomes()
@@ -149,16 +149,18 @@ async def test_o_que_nao_e_resposta_nao_consulta_a_pergunta(tmp_path: Path) -> N
     c = Cenario(tmp_path)
     c.portas.pergunta = "Qual a senha?"
     await c.volta(msg(5, "/status"), msg(6, "abra o Chrome no android-09"))
-    assert "pergunta_de" not in c.portas.nomes()
+    assert "pergunta_sensivel" not in c.portas.nomes()
 
 
 @pytest.mark.parametrize("pergunta,pede", [
     ("Qual é a senha da conta?", True), ("Informe o código de verificação", True), ("Digite o token enviado", True),
     ("Precisa de 2FA: qual o código de acesso?", True), ("Informe o PIN", True), ("Please enter your password", True),
+    # E1 da revisão de autora: "código" e "code" sozinhos também pedem credencial.
+    ("Digite o código que enviamos por SMS", True), ("Enter the code we sent", True),
     ("Qual perfil?", False), ("Para qual contato?", False), ("Qual aparelho: android-09 ou android-10?", False)])
 async def test_o_vocabulario_e_o_da_triagem_de_credencial(pergunta: str, pede: bool) -> None:
-    # O canal não tem lista própria: decide com a `TriagemDeCredencial` (a mesma do caminho comum, item 29.52).
-    assert TriagemDeCredencial().recusa(pergunta) is pede
+    # O canal não tem lista própria: a porta usa a regra do caminho comum (29.52), `TriagemDeCredencial.pergunta_sensivel`.
+    assert (TriagemDeCredencial().pergunta_sensivel(pergunta) is not None) is pede
 
 
 async def test_409_credencial_na_resposta_do_caminho_comum_e_final(tmp_path: Path) -> None:
@@ -373,7 +375,7 @@ async def test_frase_normal_com_pergunta_sensivel_aberta_vira_previa(tmp_path: P
 async def test_palavra_solta_sem_pergunta_aberta_vira_previa(tmp_path: Path) -> None:
     c = Cenario(tmp_path)
     await c.volta(msg(5, "kiwi2024!"))
-    assert c.linha(5)["texto"] == "kiwi2024!" and c.portas.nomes() == ["ha_pergunta_sensivel_aberta", "previa"]
+    assert c.linha(5)["texto"] == "kiwi2024!" and c.portas.nomes() == ["pergunta_sensivel", "previa"]
     assert c.bot.chamou("deleteMessage") == 0
 
 
@@ -383,7 +385,7 @@ async def test_porta_que_nao_le_as_perguntas_recusa_a_palavra_solta(tmp_path: Pa
     await c.volta(msg(5, "kiwi2024!"), msg(6, "abra o QA Messenger no android-09"))
     assert (c.linha(5)["estado"], c.linha(5)["texto"]) == ("recusada", None)
     assert c.linha(6)["estado"] == "pergunta"                           # a frase não depende da leitura
-    assert c.portas.nomes() == ["ha_pergunta_sensivel_aberta", "previa"]
+    assert c.portas.nomes() == ["pergunta_sensivel", "previa"]
 
 
 async def test_comando_reconhecido_com_pergunta_sensivel_aberta_segue_normal(tmp_path: Path) -> None:

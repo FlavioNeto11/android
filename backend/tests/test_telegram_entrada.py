@@ -160,15 +160,14 @@ class PortasFalsas:
     def desfecho(self, run_id: str) -> str | None:
         return self.desfechos.get(run_id)
 
-    def ha_pergunta_sensivel_aberta(self) -> bool:
-        self._anota("ha_pergunta_sensivel_aberta")
+    def pergunta_sensivel(self, ref: str | None) -> str | None:
+        # Com `ref`, o tipo vem da MESMA regra do caminho comum (29.52) sobre a pergunta do cenário; sem, o interruptor.
+        self._anota("pergunta_sensivel", ref)
+        if ref is not None:
+            return TriagemDeCredencial().pergunta_sensivel(self.pergunta)
         if self.sensivel_quebra:
             raise RuntimeError("banco fora")
-        return self.sensivel_aberta
-
-    def pergunta_de(self, ref: str) -> str:
-        self._anota("pergunta_de", ref)
-        return self.pergunta
+        return "senha" if self.sensivel_aberta else None
 
 
 class Cenario:
