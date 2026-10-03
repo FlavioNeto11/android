@@ -1467,7 +1467,10 @@ a mediana era 6,1% contra 2,4%.
 - antes de mexer no aparelho, confira a tela e a conta (K-053).
 
 O gasto do emulador ocioso no host (1,2–1,5 CPU por aparelho com `swiftshader_indirect`) é da frente do renderizador
-([relatorio-desempenho.md](../relatorio-desempenho.md)), não do irq do convidado.
+([relatorio-desempenho.md](../relatorio-desempenho.md)), não do irq do convidado. A medida da própria plataforma
+(`resources.cpu_percent`) mostrava 0,0 nesse período porque `process_usage` recriava o `psutil.Process` a cada chamada
+(o `cpu_percent` da 1ª leitura de um objeto novo é sempre 0,0); o 14.11 passou a reaproveitar os objetos e a medida
+bate com o `Get-Process` (diferença < 2 pontos em 3 leituras). Para a CPU de um emulador, use `resources.cpu_percent`.
 
 ### K-061 — No PostgreSQL, erro engolido dentro de `tx()` aborta a transação e o COMMIT vira ROLLBACK calado
 
