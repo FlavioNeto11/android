@@ -96,7 +96,7 @@ const DeviceRow = memo(function DeviceRow({ instance, appName, personas: vincula
             <span className="truncate">{current.step_title}</span>
             <span className={styles.frameAge}>{current.steps_done}/{current.steps_total}</span>
           </span>
-        ) : anteriorSemResposta ? <ComandoAnteriorSemResposta cmd={anteriorSemResposta} /> : null}
+        ) : anteriorSemResposta ? <ComandoAnteriorSemResposta cmd={anteriorSemResposta} principal={ultimo} /> : null}
       </td>
       <td className={styles.colAcoes}>
         {primary ? (

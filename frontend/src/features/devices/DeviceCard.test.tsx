@@ -305,17 +305,18 @@ describe('DeviceCard — o comando fica visível, inclusive o que ficou sem desf
   // Abrir app · há 8 dias" em 11 de 14 cartões). Agora o último comando aparece em qualquer estado, e o concluído
   // também (antes ele era escondido de propósito, para não poluir o cartão: a orquestradora pediu o contrário, 03/10).
   it('o comando concluído aparece como o último, com o estado dele', async () => {
-    useAppStore.setState({ lastCommand: { 'android-07': comando({ state: 'succeeded', reason: null }) as never } });
+    const concluido = comando({ state: 'succeeded', reason: null }) as never;
+    useAppStore.setState({ lastCommand: { 'android-07': concluido }, ultimoDePessoa: { 'android-07': concluido } });
     const el = await renderCard(makeInstance(7, { state: 'online' }));
     expect(text(el)).toContain('Concluído');
     expect(text(el)).not.toContain('Sem resposta');
   });
 
   it('o incerto que um comando mais novo deixou para trás fica visível, dito como anterior', async () => {
+    const parar = comando({ id: 'c-10', verb: 'stop', state: 'succeeded', reason: null,
+                            created_at: '2026-09-29T08:00:00.000Z', finished_at: '2026-09-29T08:00:20.000Z' }) as never;
     useAppStore.setState({
-      lastCommand: { 'android-07': comando({ id: 'c-10', verb: 'stop', state: 'succeeded', reason: null,
-                                                created_at: '2026-09-29T08:00:00.000Z',
-                                                finished_at: '2026-09-29T08:00:20.000Z' }) as never },
+      lastCommand: { 'android-07': parar }, ultimoDePessoa: { 'android-07': parar },
       comandoSemDesfecho: { 'android-07': comando({}) as never },
     });
     const el = await renderCard(makeInstance(7, { state: 'online' }));
@@ -323,6 +324,46 @@ describe('DeviceCard — o comando fica visível, inclusive o que ficou sem desf
     expect(text(el)).toContain('Anterior sem resposta: Iniciar');
     // O último comando vem primeiro; o anterior não se apresenta como "o comando" do aparelho.
     expect(text(el).indexOf('Concluído')).toBeLessThan(text(el).indexOf('Anterior sem resposta'));
+  });
+
+  // Ajuste da orquestradora (03/10): a sonda de rede pede um `device.network` a cada poucos minutos; como "último
+  // comando" ela enterrava o que a pessoa quer ver. O último é o de pessoa ou execução; a sonda fica na tela de Rede.
+  it('a sonda de rede não é o último comando: o cartão mostra o último de pessoa', async () => {
+    const sonda = comando({ id: 'c-sonda', verb: 'device.network', requested_by: 'rede', state: 'succeeded', reason: null,
+                            created_at: '2026-10-03T15:58:25.000Z', finished_at: '2026-10-03T15:58:30.000Z' }) as never;
+    const pessoa = comando({ id: 'c-pessoa', verb: 'stop', state: 'succeeded', reason: null,
+                             created_at: '2026-10-01T09:00:00.000Z', finished_at: '2026-10-01T09:00:20.000Z' }) as never;
+    useAppStore.setState({ lastCommand: { 'android-07': sonda }, ultimoDePessoa: { 'android-07': pessoa } });
+    const el = await renderCard(makeInstance(7, { state: 'online' }));
+    expect(text(el)).toContain('Parar');
+    expect(text(el)).not.toContain('Rede do aparelho');
+  });
+
+  it('sem comando de pessoa, o cartão mostra o estado sem a linha de comando', async () => {
+    const sonda = comando({ id: 'c-sonda', verb: 'device.network', requested_by: 'rede', state: 'succeeded', reason: null,
+                            created_at: '2026-10-03T15:58:25.000Z' }) as never;
+    useAppStore.setState({ lastCommand: { 'android-07': sonda } });
+    const el = await renderCard(makeInstance(7, { state: 'online' }));
+    expect(text(el)).not.toContain('Rede do aparelho');
+    expect(text(el)).not.toContain('Concluído');
+  });
+
+  it('a sonda EM VOO aparece, porque é ela que bloqueia os verbos; e a sonda sem desfecho segue visível', async () => {
+    const emVooDaSonda = comando({ id: 'c-sonda', verb: 'device.network', requested_by: 'rede', state: 'running',
+                                   reason: null, finished_at: null, created_at: '2026-10-03T15:58:25.000Z' }) as never;
+    useAppStore.setState({ lastCommand: { 'android-07': emVooDaSonda } });
+    let el = await renderCard(makeInstance(7, { state: 'online' }));
+    expect(text(el)).toContain('Rede do aparelho');
+    const incerta = comando({ id: 'c-sonda', verb: 'device.network', requested_by: 'rede', state: 'uncertain',
+                              created_at: '2026-10-03T15:58:25.000Z' }) as never;
+    const pessoa = comando({ id: 'c-pessoa', verb: 'stop', state: 'succeeded', reason: null,
+                             created_at: '2026-10-01T09:00:00.000Z' }) as never;
+    useAppStore.setState({ lastCommand: { 'android-07': incerta }, ultimoDePessoa: { 'android-07': pessoa } });
+    el = await renderCard(makeInstance(7, { state: 'online' }));
+    expect(text(el)).toContain('Parar');
+    // mais nova que o último de pessoa: "Sem resposta", não "Anterior"
+    expect(text(el)).toContain('Sem resposta: Rede do aparelho');
+    expect(text(el)).not.toContain('Anterior sem resposta');
   });
 
   it('na Lista, o incerto deixado para trás aparece quando não há etapa em curso; com etapa, a etapa', async () => {

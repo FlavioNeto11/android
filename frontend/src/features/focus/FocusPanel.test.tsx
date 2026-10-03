@@ -519,7 +519,8 @@ describe('FocusPanel — ações em grupos', () => {
     const concluido: Command = { ...emVoo, id: 'cmd-8', verb: 'stop', state: 'succeeded', finished_at: new Date().toISOString() };
     const incerto: Command = { ...emVoo, id: 'cmd-1', verb: 'open_app', state: 'uncertain',
                                created_at: '2026-09-25T10:00:00.000Z', finished_at: '2026-09-25T10:01:00.000Z' };
-    useAppStore.setState({ lastCommand: { 'android-01': concluido }, comandoSemDesfecho: { 'android-01': incerto } });
+    useAppStore.setState({ lastCommand: { 'android-01': concluido }, ultimoDePessoa: { 'android-01': concluido },
+                           comandoSemDesfecho: { 'android-01': incerto } });
     const el = await renderFocus(makeInstance(1, { state: 'online' }));
     const barra = el.querySelector('[class*="commandBar"]')?.textContent ?? '';
     expect(barra).toContain('Concluído');

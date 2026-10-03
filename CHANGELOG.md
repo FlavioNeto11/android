@@ -26,18 +26,22 @@ Só frontend; nada de backend.
 - Painel, último comando do cartão:
   - Antes, "Comando: Sem resposta · <verbo> · há N dias" aparecia em 11 dos 14 cartões. Era o último `uncertain`, e não
     o último comando, porque o snapshot só traz os em voo e os `uncertain`.
-  - Agora o `live.ts` lê `GET /api/commands?limit=200` depois do snapshot, e um por aparelho para quem ficou de fora:
-    a sonda de rede ocupa 199 dos 200 mais novos.
-  - O cartão mostra o último comando em qualquer estado. O concluído também aparece; antes ele era escondido de
-    propósito, e a orquestradora pediu o contrário.
-  - O `uncertain` que ficou para trás segue visível, numa linha discreta "Anterior sem resposta: <verbo> · há N dias"
-    (`comandoSemDesfecho` no store), até ser verificado ou decidido.
-  - O Foco lê do mesmo jeito: o último comando no topo e o anterior sem resposta abaixo. A Lista divide a coluna com a
-    etapa em curso: comando aberto ou `uncertain` atual, depois a etapa, depois o anterior sem resposta.
-  - Limite conhecido: o anterior só nasce do `uncertain` que o snapshot traz, que é o mais novo entre os abertos e os sem
-    desfecho do aparelho. Um `uncertain` mais velho que um comando AINDA aberto não aparece, como antes.
-  - Custo: 1 leitura de 200 mais 1 por aparelho que ficou de fora, a cada hidratação (carga da página e
-    ressincronização).
+  - Agora o `live.ts` lê os comandos recentes de cada aparelho depois do snapshot: 20 por aparelho e, se nenhum deles
+    for de pessoa, 200. No central, o primeiro de pessoa era o 31º do android-03 e o 59º do android-06, por causa da
+    sonda.
+  - O cartão mostra o comando em voo (de quem for, porque é ele que bloqueia os verbos). Sem nada em voo, mostra o último
+    de PESSOA ou execução, em qualquer estado (`ultimoDePessoa`).
+  - Os pedidos automáticos (a sonda de rede `rede`, a escada `system`, `saude`, `reconciliacao` e o rodízio `scheduler`)
+    não são "o último comando". A sonda pede um a cada poucos minutos e enterrava o que a pessoa quer ver; ela fica na
+    tela de Rede. Cartão sem comando de pessoa fica sem a linha, como antes. (Ajuste da orquestradora.)
+  - O concluído também aparece; antes ele era escondido de propósito, e a orquestradora pediu o contrário.
+  - Os `uncertain` sem desfecho, de qualquer autor, seguem numa linha discreta: "Anterior sem resposta: <verbo> · há N
+    dias", ou "Sem resposta: <verbo>" quando são mais novos que o principal. Ficam até serem verificados ou decididos
+    (`comandoSemDesfecho`).
+  - O Foco lê do mesmo jeito (`useComandosDoAparelho`). A Lista divide a coluna com a etapa em curso: comando aberto ou
+    `uncertain` atual, depois a etapa, depois o anterior sem resposta.
+  - Custo: 1 leitura curta por aparelho, mais 1 funda nos que têm sonda, a cada hidratação (carga e ressincronização).
+    No central: 15 curtas e 2 fundas.
 - Infraestrutura, renderizador: "renderizador pedido: GPU do host" virou "renderizador configurado: GPU do host". A
   dica separa o configurado (o pedido ao emulador, `gpu_mode`) do efetivo (o que o emulador selecionou, só com o
   aparelho no ar). No fallback, "(configurado: host)".
@@ -47,12 +51,12 @@ Só frontend; nada de backend.
 - Aplicativos › Rede: a lista por app diz o nome do registro de aplicativos ("Outlook: sem tráfego na janela") e
   "shell do Android (a sonda)", com o pacote na dica. Fora do registro, sai o pacote.
 - Prova:
-  - `simulated`: `npm run typecheck` e `npm test` com 1388 de 1388. Testes novos em `store/reducer.test.ts`,
+  - `simulated`: `npm run typecheck` e `npm test` com 1396 de 1396. Testes novos em `store/reducer.test.ts`,
     `devices/DeviceCard.test.tsx` (com a Lista), `focus/FocusPanel.test.tsx`, `infra/infraState.test.ts`,
     `infra/InfraPage.test.tsx` e `rede/RedePage.test.tsx`.
   - Navegador (03/10, Vite do worktree na 5173 contra a API do central, só leitura):
-    - Painel: os 15 cartões com o último comando real; 11 com "Anterior sem resposta"; 1 leitura de 200 mais 5 por
-      aparelho;
+    - Painel: os 15 cartões com o último comando de pessoa (o 03 e o 06 com "Verificação da sessão", não a sonda); 11
+      com "Anterior sem resposta" (no 03, uma sonda sem desfecho de 19 h); 15 leituras curtas e 2 fundas, sem repetir;
     - Infraestrutura: "loja" com a dica, 8 "renderizador configurado", nenhum "store" nem "renderizador pedido";
     - Rede: Instagram, Outlook e shell do Android pelo nome;
     - Foco do android-06: "Concluído · Rede do aparelho" no topo e "Anterior sem resposta: Abrir app · há 8 dias";

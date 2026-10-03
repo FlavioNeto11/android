@@ -8,7 +8,7 @@ import { setServerTime } from '../lib/time';
 import { useAppStore } from './app';
 import { releaseAllLeasesOnUnload, useControlStore } from './control';
 import { usePreviewStore, visibleGrid } from './preview';
-import { eventRunId } from './reducer';
+import { deUmaPessoa, eventRunId } from './reducer';
 import { toast, toastError } from './toasts';
 import { useSessionStore } from './session';
 import { useUiStore } from './ui';
@@ -63,24 +63,26 @@ function scheduleRetry(reason: string): void {
   retryTimer = setTimeout(() => void cycle(), delay);
 }
 
-/** Quantos comandos recentes a primeira leitura pede. A sonda de rede enche a lista (199 dos 200 mais novos no central,
- *  03/10): quem ficar de fora é lido um a um. */
-const COMANDOS_RECENTES = 200;
+/** A leitura por aparelho: a curta basta quando traz um comando de pessoa. A sonda de rede empurra o de pessoa para
+ *  baixo nos aparelhos com rede (no central, 03/10: o 1º de pessoa era o 31º do android-03 e o 59º do android-06); aí
+ *  vem a funda, o máximo da rota. */
+const LEITURA_CURTA = 20;
+const LEITURA_FUNDA = 200;
 
 /**
- * O comando mais novo de cada aparelho, porque o snapshot só traz os em voo e os `uncertain`. Sem esta leitura, o
+ * Os comandos recentes de cada aparelho, porque o snapshot só traz os em voo e os `uncertain`. Sem esta leitura, o
  * cartão mostrava como "o comando" um `uncertain` de dias atrás, com comandos concluídos depois dele. Falha aqui só
  * deixa o cartão como o snapshot o pôs.
  */
 async function carregarUltimosComandos(token: number, ids: readonly string[]): Promise<void> {
   try {
-    const recentes = await api.commands(undefined, COMANDOS_RECENTES);
+    const porAparelho = await Promise.all(ids.map(async (id) => {
+      const curta = await api.commands(id, LEITURA_CURTA).catch((): Command[] => []);
+      if (curta.length < LEITURA_CURTA || curta.some(deUmaPessoa)) return curta;
+      return api.commands(id, LEITURA_FUNDA).catch(() => curta);
+    }));
     if (token !== cycleToken || !started) return;
-    const vistos = new Set(recentes.map((c) => c.instance_id));
-    const um = await Promise.all(ids.filter((id) => !vistos.has(id))
-      .map((id) => api.commands(id, 1).catch((): Command[] => [])));
-    if (token !== cycleToken || !started) return;
-    useAppStore.getState().mergeCommands([...recentes, ...um.flat()]);
+    useAppStore.getState().mergeCommands(porAparelho.flat());
   } catch {
     // Sem a leitura, vale o snapshot: o comando em voo e o `uncertain` continuam no cartão.
   }

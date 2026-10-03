@@ -3,7 +3,7 @@ import type {
   Action, Attempt, EventRecord, Instance, Objective, RunDetail, RunSummary, Snapshot, Step, Worker,
 } from '../api/types';
 import {
-  aceitaComando, applyEvent, chaveDoApp, eventRunId, hydrateFromSnapshot, initialDataState, mergeLastCommands,
+  aceitaComando, applyEvent, chaveDoApp, deUmaPessoa, eventRunId, hydrateFromSnapshot, initialDataState, mergeLastCommands,
   mergeTimeline,
   reduceDetail, upsertRun, type DataState,
 } from './reducer';
@@ -460,5 +460,47 @@ describe('mergeLastCommands — o cartão mostra o último comando de verdade', 
     const s0 = mergeLastCommands(comSnapshot(), [novo]);
     const s1 = hydrateFromSnapshot(s0, snapshot({ commands: [] }));
     expect(s1.comandoSemDesfecho).toEqual({});
+  });
+});
+
+describe('ultimoDePessoa — a sonda de rede não é o último comando do cartão', () => {
+  const sonda = (id: string, criado: string, estado = 'succeeded') =>
+    comando({ id, verb: 'device.network', requested_by: 'rede', state: estado, created_at: criado });
+
+  it('pedidos automáticos ficam de fora; painel e operador são de pessoa', () => {
+    for (const quem of ['rede', 'system', 'saude', 'reconciliacao', 'scheduler']) {
+      expect(deUmaPessoa({ requested_by: quem })).toBe(false);
+    }
+    expect(deUmaPessoa({ requested_by: 'panel' })).toBe(true);
+    expect(deUmaPessoa({ requested_by: 'Flavio' })).toBe(true);
+  });
+
+  it('na leitura recente, o último é o mais novo de todos e o de pessoa é o mais novo de pessoa', () => {
+    const pessoa = comando({ id: 'c-p', verb: 'stop', state: 'succeeded', created_at: '2026-10-01T09:00:00.000Z' });
+    const s = mergeLastCommands(hydrated(), [sonda('c-s2', '2026-10-03T15:58:00.000Z'), pessoa,
+                                             sonda('c-s1', '2026-10-03T15:43:00.000Z')]);
+    expect(s.lastCommand['android-01']?.id).toBe('c-s2');
+    expect(s.ultimoDePessoa['android-01']?.id).toBe('c-p');
+  });
+
+  it('o incerto mais novo da lista que não é o último vai para comandoSemDesfecho, de qualquer autor', () => {
+    const s = mergeLastCommands(hydrated(), [sonda('c-s2', '2026-10-03T15:58:00.000Z'),
+                                             sonda('c-s1', '2026-10-02T21:00:00.000Z', 'uncertain')]);
+    expect(s.comandoSemDesfecho['android-01']?.id).toBe('c-s1');
+  });
+
+  it('pelo WebSocket, a sonda nova não troca o último de pessoa; o comando de pessoa troca', () => {
+    const s0 = applyEvent(hydrated(), event(500, 'command.updated', { command: comando({ id: 'c-p', verb: 'stop',
+                                                                                         state: 'succeeded' }) }));
+    const s1 = applyEvent(s0, event(501, 'command.updated', { command: sonda('c-s', '2026-10-03T15:58:00.000Z') }));
+    expect(s1.ultimoDePessoa['android-01']?.id).toBe('c-p');
+    expect(s1.lastCommand['android-01']?.id).toBe('c-s');
+  });
+
+  it('a hidratação guarda o de pessoa (comando não some) e aceita o do snapshot se for mais novo', () => {
+    const s0 = mergeLastCommands(hydrated(), [comando({ id: 'c-p', state: 'succeeded' })]);
+    expect(hydrateFromSnapshot(s0, snapshot({ commands: [] })).ultimoDePessoa['android-01']?.id).toBe('c-p');
+    const novo = comando({ id: 'c-novo', state: 'running', created_at: '2026-10-03T16:00:00.000Z' });
+    expect(hydrateFromSnapshot(s0, snapshot({ commands: [novo] })).ultimoDePessoa['android-01']?.id).toBe('c-novo');
   });
 });

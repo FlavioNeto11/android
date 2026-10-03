@@ -53,6 +53,8 @@ export interface DataState {
    * último comando de verdade; sem isto, a incerteza que ficou para trás sumiria da tela e continuaria aberta no banco.
    */
   comandoSemDesfecho: Record<string, Command>;
+  /** O último comando de uma PESSOA ou execução (`deUmaPessoa`): é o que o cartão mostra quando nada está em voo. */
+  ultimoDePessoa: Record<string, Command>;
   /** Máquinas que hospedam aparelhos, por id. Vazio = só o servidor central. */
   workers: Record<string, Worker>;
   /**
@@ -97,40 +99,70 @@ export function aceitaComando(anterior: Command | undefined, cmd: Command): bool
 }
 
 /**
- * `cmd` no lugar de `lastCommand[cmd.instance_id]`, quando `aceitaComando` deixa. O `uncertain` que sai por um comando
- * mais novo vai para `comandoSemDesfecho`, e sai de lá quando o próprio comando chega com outro estado (verificado
- * ou decidido por uma pessoa).
+ * Quem pede comando sem ser uma pessoa nem uma execução: a sonda de rede (`rede`), a escada de reparo (`system`), o
+ * reinício por saúde (`saude`), a reconciliação e o rodízio (`scheduler`). A sonda pede um `device.network` a cada poucos
+ * minutos nos aparelhos com rede: como "último comando" do cartão, ela enterrava o que a pessoa quer ver (03/10).
  */
-function comTrocaDeComando<S extends Pick<DataState, 'lastCommand' | 'comandoSemDesfecho'>>(state: S, cmd: Command): S {
+export const PEDIDO_AUTOMATICO: ReadonlySet<string> = new Set(['rede', 'system', 'saude', 'reconciliacao', 'scheduler']);
+
+export function deUmaPessoa(cmd: Pick<Command, 'requested_by'>): boolean {
+  return !PEDIDO_AUTOMATICO.has(cmd.requested_by);
+}
+
+type ComandosDoStore = Pick<DataState, 'lastCommand' | 'comandoSemDesfecho' | 'ultimoDePessoa'>;
+
+/**
+ * `cmd` no lugar de `lastCommand[cmd.instance_id]`, quando `aceitaComando` deixa, e no de `ultimoDePessoa` quando é de
+ * uma pessoa. O `uncertain` que sai por um comando mais novo vai para `comandoSemDesfecho`, e sai de lá quando o próprio
+ * comando chega com outro estado (verificado ou decidido por uma pessoa).
+ */
+function comTrocaDeComando<S extends ComandosDoStore>(state: S, cmd: Command): S {
   const iid = cmd.instance_id;
-  let semDesfecho = state.comandoSemDesfecho;
+  let next = state;
+  if (deUmaPessoa(cmd) && aceitaComando(state.ultimoDePessoa[iid], cmd)) {
+    next = { ...next, ultimoDePessoa: { ...next.ultimoDePessoa, [iid]: cmd } };
+  }
+  let semDesfecho = next.comandoSemDesfecho;
   if (semDesfecho[iid]?.id === cmd.id && cmd.state !== 'uncertain') {
     const { [iid]: _resolvido, ...resto } = semDesfecho;
     semDesfecho = resto;
   }
-  const anterior = state.lastCommand[iid];
+  const anterior = next.lastCommand[iid];
   if (!aceitaComando(anterior, cmd)) {
-    return semDesfecho === state.comandoSemDesfecho ? state : { ...state, comandoSemDesfecho: semDesfecho };
+    return semDesfecho === next.comandoSemDesfecho ? next : { ...next, comandoSemDesfecho: semDesfecho };
   }
   if (anterior && anterior.id !== cmd.id && anterior.state === 'uncertain') {
     semDesfecho = { ...semDesfecho, [iid]: anterior };
   }
-  return { ...state, lastCommand: { ...state.lastCommand, [iid]: cmd }, comandoSemDesfecho: semDesfecho };
+  return { ...next, lastCommand: { ...next.lastCommand, [iid]: cmd }, comandoSemDesfecho: semDesfecho };
 }
 
 /**
- * O comando mais novo de cada aparelho, lido de `GET /api/commands` depois do snapshot. O snapshot só traz os em voo
- * e os `uncertain`: sem esta leitura, o cartão mostrava como "o comando" um `uncertain` de dias atrás, com comandos
- * concluídos depois dele (deploys 9 a 11, 11 de 14 cartões).
+ * Os comandos recentes de cada aparelho, lidos de `GET /api/commands` depois do snapshot (`live.ts`). O snapshot só
+ * traz os em voo e os `uncertain`: sem esta leitura, o cartão mostrava como "o comando" um `uncertain` de dias atrás,
+ * com comandos concluídos depois dele (deploys 9 a 11, 11 de 14 cartões).
+ *
+ * Por aparelho: o mais novo vai para `lastCommand`, o mais novo de pessoa para `ultimoDePessoa`, e o `uncertain` mais
+ * novo que não é o último vai para `comandoSemDesfecho`. Na lista, o estado é o ATUAL de cada comando: um `uncertain`
+ * nela ainda não foi resolvido.
  */
 export function mergeLastCommands(state: DataState, cmds: readonly Command[]): DataState {
-  const maisNovo = new Map<string, Command>();
-  for (const c of cmds) {
-    const atual = maisNovo.get(c.instance_id);
-    if (!atual || atual.created_at < c.created_at) maisNovo.set(c.instance_id, c);
-  }
+  const porAparelho = new Map<string, Command[]>();
+  for (const c of cmds) porAparelho.set(c.instance_id, [...(porAparelho.get(c.instance_id) ?? []), c]);
   let next = state;
-  for (const c of maisNovo.values()) next = comTrocaDeComando(next, c);
+  for (const [iid, lista] of porAparelho) {
+    const ordenada = [...lista].sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
+    const [maisNovo] = ordenada;
+    if (!maisNovo) continue;
+    const dePessoa = ordenada.find(deUmaPessoa);
+    if (dePessoa && dePessoa !== maisNovo) next = comTrocaDeComando(next, dePessoa);
+    next = comTrocaDeComando(next, maisNovo);
+    const incerto = ordenada.find((c) => c.state === 'uncertain' && c.id !== next.lastCommand[iid]?.id);
+    const guardado = next.comandoSemDesfecho[iid];
+    if (incerto && (!guardado || guardado.created_at < incerto.created_at)) {
+      next = { ...next, comandoSemDesfecho: { ...next.comandoSemDesfecho, [iid]: incerto } };
+    }
+  }
   return next;
 }
 
@@ -153,6 +185,7 @@ export const initialDataState: DataState = {
   recentEvents: [],
   lastCommand: {},
   comandoSemDesfecho: {},
+  ultimoDePessoa: {},
   workers: {},
   appState: {},
   needsPersonEpoch: 0,
@@ -233,6 +266,9 @@ export function hydrateFromSnapshot(state: DataState, snap: Snapshot): DataState
     // O que fica para trás é decidido de novo pela leitura dos comandos recentes (`mergeLastCommands`), a partir do
     // `uncertain` que o snapshot traz: o guardado pode ter sido resolvido com a página fechada.
     comandoSemDesfecho: snap.commands ? {} : state.comandoSemDesfecho,
+    // Comando não some: o de pessoa guardado continua valendo, e o do snapshot entra se for mais novo.
+    ultimoDePessoa: (snap.commands ?? []).filter(deUmaPessoa).reduce(
+      (acc, c) => (aceitaComando(acc[c.instance_id], c) ? { ...acc, [c.instance_id]: c } : acc), state.ultimoDePessoa),
   };
 }
 
