@@ -7,11 +7,11 @@ As três classes:
 - **A** (navegação e leitura, sem `commit`, sem origem humana): o sistema decide pela regra determinística de hoje, e
   a IA nunca muda esse resultado. A IA PODE opinar, mas só com sobra de orçamento na janela, depois das prioridades
   1 a 4 (decisão do dono, 02/10; o corte é do 30.11): o parecer da A é só registro.
-- **B** (efeito médio; origem humana sem efeito, D-2): a IA recomenda, o dono aprova EM LOTE.
+- **B** (efeito médio; `commit` em app sem catálogo, confirmado pelo dono em 03/10; origem humana sem efeito, D-2; o
+  reaprendido depois de uma evidência inválida, 30.23): a IA recomenda, o dono aprova EM LOTE.
 - **C** (alto risco: `risk=high`, `manual_only`, sessão e autenticação, família de envio, publicação ou exclusão,
-  texto escrito para outra pessoa (`needs_draft`), o `commit` que o catálogo não declara e, desde a emenda de 03/10, o
-  `commit` em app sem catálogo, que é efeito desconhecido): sempre o dono, ITEM A ITEM; a IA só monta parecer, nunca
-  decide.
+  texto escrito para outra pessoa (`needs_draft`), e o `commit` que o catálogo não declara): sempre o dono, ITEM A
+  ITEM; a IA só monta parecer, nunca decide.
 
 **Vale a mais restritiva** entre o catálogo (a capability da etapa) e o conteúdo (o `commit` da receita, a etapa de
 efeito do fluxo). É o que pega a anomalia da receita 100 do Outlook: `commit` numa capability que o catálogo (só de
@@ -46,6 +46,7 @@ class MotivoDeEntrada(StrEnum):
     ALTO_RISCO = "alto_risco"
     SESSAO_OU_AUTENTICACAO = "sessao_ou_autenticacao"
     PARECER_DA_IA = "parecer_da_ia"         # publicado pelo curador (30.11); a porta está pronta, ninguém a chama ainda
+    REAPRENDIDO = "reaprendido"             # (re)nasceu depois de uma evidência inválida no mesmo escopo (30.23)
 
 
 class Razao(StrEnum):
@@ -63,6 +64,7 @@ class Razao(StrEnum):
     COMMIT_SEM_FATOS_DA_ETAPA = "commit_sem_fatos_da_etapa"  # app com catálogo, capability da etapa não derivável
     COMMIT_SEM_CATALOGO = "commit_sem_catalogo"         # app sem `catalogo.yaml`
     TEXTO_DE_PESSOA = "texto_de_pessoa"                 # `human_origin` (nota, edição, resposta)
+    REAPRENDIDO_DE_EVIDENCIA_INVALIDA = "reaprendido_de_evidencia_invalida"  # 30.23: o escopo teve sucesso falso
 
 
 class PoliticaDaClasse(StrEnum):
@@ -102,19 +104,28 @@ class FatosDeRisco:
     tem_catalogo: bool                      # o app tem `catalogo.yaml`
     catalogo: FatosDoCatalogo | None = None  # None: capability não derivável ou desconhecida do catálogo
     sessao_ou_autenticacao: bool = False
+    #: (Re)nasceu no escopo de uma evidência inválida (30.23, `EntradaDoLivro.reaprendido`): o dono aprova.
+    reaprendido: bool = False
 
     def como_dados(self) -> JsonObject:
         c = self.catalogo
-        return {"side_effect": self.side_effect, "human_origin": self.human_origin, "tem_catalogo": self.tem_catalogo,
-                "sessao_ou_autenticacao": self.sessao_ou_autenticacao,
-                "catalogo": None if c is None else {
-                    "risco": c.risco, "politica": c.politica, "precisa_rascunho": c.precisa_rascunho,
-                    "efeito_externo": c.efeito_externo, "familia_do_efeito": c.familia_do_efeito,
-                    "interacao": c.interacao}}
+        dados: JsonObject = {
+            "side_effect": self.side_effect, "human_origin": self.human_origin, "tem_catalogo": self.tem_catalogo,
+            "sessao_ou_autenticacao": self.sessao_ou_autenticacao,
+            "catalogo": None if c is None else {
+                "risco": c.risco, "politica": c.politica, "precisa_rascunho": c.precisa_rascunho,
+                "efeito_externo": c.efeito_externo, "familia_do_efeito": c.familia_do_efeito,
+                "interacao": c.interacao}}
+        # Só quando vale (30.23): estes fatos entram no `dossie_hash` do curador, e a chave sempre presente mudaria o
+        # hash de todo item já revisado (pareceria dossiê novo). Só o reaprendido, cujo fato mudou, ganha hash novo.
+        if self.reaprendido:
+            dados["reaprendido"] = True
+        return dados
 
 
 #: Ordem de prioridade das razões: a primeira presente dá o MOTIVO do evento. Sessão vence o alto risco, que vence a
-#: divergência, que vence o efeito, que vence o texto de pessoa (a mesma ordem que a 30.21 já publicava).
+#: divergência, que vence o efeito, que vence o texto de pessoa (a mesma ordem que a 30.21 já publicava). O
+#: reaprendido (30.23) abre a classe B: é o motivo mais específico que o dono tem para olhar o item de novo.
 _REGRAS: tuple[tuple[Razao, ClasseDeRisco, MotivoDeEntrada | None], ...] = (
     (Razao.SESSAO_OU_AUTENTICACAO, ClasseDeRisco.C, MotivoDeEntrada.SESSAO_OU_AUTENTICACAO),
     (Razao.RISCO_ALTO, ClasseDeRisco.C, MotivoDeEntrada.ALTO_RISCO),
@@ -122,12 +133,12 @@ _REGRAS: tuple[tuple[Razao, ClasseDeRisco, MotivoDeEntrada | None], ...] = (
     (Razao.TEXTO_PARA_OUTRA_PESSOA, ClasseDeRisco.C, MotivoDeEntrada.ALTO_RISCO),
     (Razao.FAMILIA_DE_ALTO_RISCO, ClasseDeRisco.C, MotivoDeEntrada.ALTO_RISCO),
     (Razao.COMMIT_FORA_DO_CATALOGO, ClasseDeRisco.C, MotivoDeEntrada.EFEITO_EXTERNO),
-    # Emenda de 03/10 (orquestradora, pela regra do dono "A/B/C, o mais restritivo"): efeito num app sem catálogo é
-    # efeito DESCONHECIDO, que pode ter alcance em massa ("todos os contatos"); decide-se item a item, nunca em lote.
-    (Razao.COMMIT_SEM_CATALOGO, ClasseDeRisco.C, MotivoDeEntrada.COMMIT_SEM_CATALOGO),
+    (Razao.REAPRENDIDO_DE_EVIDENCIA_INVALIDA, ClasseDeRisco.B, MotivoDeEntrada.REAPRENDIDO),
     (Razao.RISCO_MEDIO, ClasseDeRisco.B, MotivoDeEntrada.EFEITO_EXTERNO),
     (Razao.EFEITO_DECLARADO, ClasseDeRisco.B, MotivoDeEntrada.EFEITO_EXTERNO),
     (Razao.COMMIT_SEM_FATOS_DA_ETAPA, ClasseDeRisco.B, MotivoDeEntrada.EFEITO_EXTERNO),
+    # B, confirmado pelo dono em 03/10: a emenda para C da mesma madrugada (PR #127) foi revertida.
+    (Razao.COMMIT_SEM_CATALOGO, ClasseDeRisco.B, MotivoDeEntrada.COMMIT_SEM_CATALOGO),
     (Razao.TEXTO_DE_PESSOA, ClasseDeRisco.B, MotivoDeEntrada.TEXTO_DE_PESSOA),
 )
 _CLASSE_DA_RAZAO = {r: c for r, c, _ in _REGRAS}
@@ -198,6 +209,8 @@ def _razoes(f: FatosDeRisco) -> list[Razao]:
             achadas.add(Razao.COMMIT_FORA_DO_CATALOGO)
     if f.human_origin:
         achadas.add(Razao.TEXTO_DE_PESSOA)
+    if f.reaprendido:
+        achadas.add(Razao.REAPRENDIDO_DE_EVIDENCIA_INVALIDA)
     return [r for r, _, _ in _REGRAS if r in achadas]
 
 

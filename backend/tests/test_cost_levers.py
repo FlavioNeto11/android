@@ -19,6 +19,8 @@ from .conftest import Harness
 
 
 async def test_commit_vai_direto_a_verificacao_e_usa_modelo_forte(harness: Harness) -> None:
+    # `true` = todo efeito sobe: com o `by_risk` padrão o QA Messenger (app de prova) fica no tier 0 (item 29.31, abaixo).
+    harness.cfg.file.ai.strong_model_for_side_effect = True
     run = harness.run(["android-01"])
     detail = await harness.wait_run(run.id)
     assert detail.status == "completed" and len(harness.fakes["android-01"].messages) == 1
@@ -252,6 +254,85 @@ def test_tier_true_e_false_preservam_o_comportamento_antigo() -> None:
     assert side_effect_tier(_etapa(), cap, True) == (1, "etapa com efeito externo")
     assert side_effect_tier(_etapa(), cap, False) == (0, "")
     assert side_effect_tier(_etapa(side_effect=False), None, True) == (0, "")           # sem efeito, nada sobe
+
+
+# ---------------------------------------------------------------- item 29.31: app de prova no tier 0 (RA-8, 03/10)
+_SEM_CATALOGO = "etapa com efeito externo sem catálogo: risco desconhecido"
+
+
+def test_app_de_prova_sem_capability_no_by_risk_fica_no_tier_0() -> None:
+    assert side_effect_tier(_etapa(), None, "by_risk", True) == (0, "")
+    # app real sem catálogo (o padrão do parâmetro) segue como hoje, com o motivo de hoje
+    assert side_effect_tier(_etapa(), None, "by_risk") == (1, _SEM_CATALOGO)
+    assert side_effect_tier(_etapa(), None, "by_risk", False) == (1, _SEM_CATALOGO)
+
+
+def test_app_de_prova_nao_muda_o_modo_explicito_nem_a_etapa_com_capability() -> None:
+    assert side_effect_tier(_etapa(), None, True, True) == (1, "etapa com efeito externo")     # `true` é escolha da instalação
+    assert side_effect_tier(_etapa(), None, False, True) == (0, "")
+    # capability pedida mas sem catálogo continua sendo risco desconhecido: o item só alivia a etapa SEM capability
+    com_capability = SimpleNamespace(side_effect=True, commit_selector=None, capability="SEND_MESSAGE")
+    assert side_effect_tier(com_capability, None, "by_risk", True) == (1, _SEM_CATALOGO)
+    # com catálogo, valem o risco e o seletor de sempre, app de prova ou não
+    alto = capability_of("com.instagram.android", "FOLLOW")
+    assert alto is not None and alto.risk == "high"
+    tier, motivo = side_effect_tier(_etapa(), alto, "by_risk", True)
+    assert tier == 1 and "risco alto" in motivo and "FOLLOW" in motivo
+    medio = SimpleNamespace(key="X", risk="medium", commit_selector=None)
+    assert side_effect_tier(_etapa(), medio, "by_risk", True)[0] == 1
+    assert side_effect_tier(_etapa(commit_selector="id=ok"), medio, "by_risk", True) == (0, "")
+
+
+def _eventos_de_escalonamento(harness: Harness, run_id: str) -> list[str]:
+    return [r["message"] for r in harness.state.db.query(
+        "SELECT message FROM events WHERE kind='decision' AND run_id=? ORDER BY id", (run_id,))
+        if "escalonada para o modelo de escalonamento" in r["message"]]
+
+
+async def test_executor_app_de_prova_no_by_risk_nao_escala_a_etapa_de_envio(harness: Harness) -> None:
+    """Caminho real do `_run_step`: o QA Messenger do harness nasce `category='qa'` (seed do `builtin`), sem catálogo.
+    Antes do 29.31 a etapa de envio caía em "risco desconhecido" e decidia no tier 1."""
+    assert harness.cfg.file.ai.strong_model_for_side_effect == "by_risk"
+    run = harness.run(["android-01"])
+    assert (await harness.wait_run(run.id)).status == "completed"
+    cat = harness.state.db.scalar("SELECT category FROM apps WHERE id='qa-messenger'")
+    assert cat == "qa"
+    assert harness.ai.count("decide", step="send_message") == 1
+    assert harness.ai.count("decide", step="send_message", tier=1) == 0
+    assert harness.ai.count("decide", tier=1) == 0
+    assert _eventos_de_escalonamento(harness, run.id) == []
+
+
+async def test_executor_app_real_sem_catalogo_no_by_risk_segue_no_tier_1(harness: Harness) -> None:
+    """A mesma etapa, o mesmo aparelho e o mesmo provedor, mas o app sem a categoria `qa` (app real sem catálogo): tier 1
+    e o motivo de hoje na linha do tempo. É o que prova que o tier 0 vem do DADO do app, não do pacote nem do fluxo."""
+    harness.state.db.execute("UPDATE apps SET category=NULL WHERE id='qa-messenger'")
+    run = harness.run(["android-01"])
+    assert (await harness.wait_run(run.id)).status == "completed"
+    assert harness.ai.count("decide", step="send_message", tier=1) == 1
+    linhas = _eventos_de_escalonamento(harness, run.id)
+    assert len(linhas) == 1 and _SEM_CATALOGO in linhas[0]
+
+
+async def test_executor_category_qa_sem_builtin_segue_no_tier_1(harness: Harness) -> None:
+    """`POST/PUT /apps` aceitam `category='qa'` em qualquer app: só o embutido (`builtin`) é app de prova."""
+    harness.state.db.execute("UPDATE apps SET builtin=0 WHERE id='qa-messenger'")
+    assert harness.state.db.scalar("SELECT category FROM apps WHERE id='qa-messenger'") == "qa"
+    run = harness.run(["android-01"])
+    assert (await harness.wait_run(run.id)).status == "completed"
+    assert harness.ai.count("decide", step="send_message", tier=1) == 1
+    linhas = _eventos_de_escalonamento(harness, run.id)
+    assert len(linhas) == 1 and _SEM_CATALOGO in linhas[0]
+
+
+async def test_executor_app_de_prova_com_modo_true_continua_no_tier_1(harness: Harness) -> None:
+    harness.cfg.file.ai.strong_model_for_side_effect = True
+    run = harness.run(["android-01"])
+    assert (await harness.wait_run(run.id)).status == "completed"
+    assert harness.state.db.scalar("SELECT category FROM apps WHERE id='qa-messenger'") == "qa"
+    assert harness.ai.count("decide", step="send_message", tier=1) == 1
+    linhas = _eventos_de_escalonamento(harness, run.id)
+    assert len(linhas) == 1 and "(etapa com efeito externo)" in linhas[0]
 
 
 # ---------------------------------------------------------------- item 7.6: dieta do contexto do ator (24/09)

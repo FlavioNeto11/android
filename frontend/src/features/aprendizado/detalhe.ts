@@ -151,8 +151,8 @@ export function textoDeAparelhos(n: number): string {
 // ---------------------------------------------------------------- relações
 
 const RELACAO_LABEL: Record<TipoDeRelacao, string> = {
-  substitui: 'Substitui', substituida_por: 'Substituída por', derivado_de: 'Derivado de', absorvida: 'Absorvida por',
-  contradiz: 'Contradiz',
+  substitui: 'Substitui', substituida_por: 'Substituída por', derivado_de: 'Derivado de', reaprende: 'Reaprende',
+  reaprendida_por: 'Reaprendida por', absorvida: 'Absorvida por', contradiz: 'Contradiz',
 };
 
 export function rotuloDaRelacao(t: string): string {

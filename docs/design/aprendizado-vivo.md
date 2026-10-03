@@ -315,8 +315,8 @@ a etapa de efeito do fluxo). A política coincide com o D1 e o estreita; não o 
 | Classe | Como se reconhece | Quem decide | Papel da IA |
 |---|---|---|---|
 | **A: navegação e leitura** | sem `commit` (`receita_tem_efeito`), sem etapa de efeito (`fluxo_tem_efeito`), capability sem `side_effect.external` e `risk=low`, `human_origin=0` | o sistema, **pela regra determinística atual** (repetição, sombra, modo do tipo em `on`; rebaixamento pelos gatilhos de hoje) | **só opinião de registro, e só com sobra** de orçamento depois das prioridades 1 a 4 (decisão do dono, 02/10; ver a nota abaixo); nunca muda o resultado |
-| **B: efeito médio** | capability com `risk=medium` (com catálogo e sem ação de efeito para a etapa, a regra é a de obsolescência do §9.2, que rebaixa). Até 03/10, também receita/fluxo com `commit` em app sem `catalogo.yaml`; desde a emenda de 03/10 esse caso é C | o dono, **em lote** | recomenda (aprovar, observar, pedir evidência, desativar); o dono aceita um lote de pareceres com um gesto (`by = pessoa`, um `review_id` por item) ou recusa com motivo (override) |
-| **C: alto risco** | `commit` em app sem `catalogo.yaml` (efeito desconhecido; emenda de 03/10, regra do dono "o mais restritivo"); `risk=high`, `default_policy=manual_only`, sessão, conta, autenticação (telas e etapas de login, desafio, 2FA, conta errada; `FailureKind.AUTENTICACAO`/`CONTA_ERRADA`), envio, publicação, exclusão (`side_effect.external` com `interaction_type` dessas famílias, `needs_draft`) | **sempre o dono, item a item** | dossiê determinístico e parecer (prioridade 2 do orçamento), nunca em lote. Conteúdo sensível de sessão e autenticação não entra no dossiê. Desafio e CAPTCHA seguem com a pessoa (ADR-009) |
+| **B: efeito médio, ou `commit` em app sem catálogo** | capability com `risk=medium`; ou receita/fluxo com `commit` em app sem `catalogo.yaml` (com catálogo e sem ação de efeito para a etapa, a regra é a de obsolescência do §9.2, que rebaixa). O dono confirmou a B em 03/10, e a emenda para C da mesma madrugada foi revertida | o dono, **em lote** | recomenda (aprovar, observar, pedir evidência, desativar); o dono aceita um lote de pareceres com um gesto (`by = pessoa`, um `review_id` por item) ou recusa com motivo (override) |
+| **C: alto risco** | `risk=high`, `default_policy=manual_only`, sessão, conta, autenticação (telas e etapas de login, desafio, 2FA, conta errada; `FailureKind.AUTENTICACAO`/`CONTA_ERRADA`), envio, publicação, exclusão (`side_effect.external` com `interaction_type` dessas famílias, `needs_draft`) | **sempre o dono, item a item** | dossiê determinístico e parecer (prioridade 2 do orçamento), nunca em lote. Conteúdo sensível de sessão e autenticação não entra no dossiê. Desafio e CAPTCHA seguem com a pessoa (ADR-009) |
 
 Fica fora das três: item com `human_origin=1` e sem efeito (lição de nota, preferência). O D1 já o entrega ao dono. Tratamento proposto:
 como a classe B, recomendação da IA e aprovação em lote (D-2, decidido pelo dono em 02/10).
@@ -344,6 +344,10 @@ hoje: **a conferir** em `catalogo.yaml`.
   `inconsistencias` e `falta` são escolhas de conjuntos fechados (`curador.OPCOES_FECHADAS`), para um adaptador de `choice` com
   probabilidade; `confianca` sai da probabilidade da escolha (baixa < 0,60 ≤ média < 0,85 ≤ alta, a recalibrar no `shadow`) e só sem
   ela de um rótulo; `conclusao` vira opcional e é o único texto livre. A `faixa` apontada pela IA só pode endurecer a da política.
+
+**Nota (30.23, 03/10).** O item reaprendido depois de uma evidência inválida (§9.3) é **B**: razão
+`reaprendido_de_evidencia_invalida`, motivo do evento `reaprendido`. Ele vem antes das outras razões B (é o motivo mais
+específico para o dono olhar o item de novo) e depois das C, que continuam vencendo.
 
 ### 8.5 Registro auditável: `learning_reviews` (migração 069, provisória: confirmar com o orquestrador no commit)
 
@@ -479,7 +483,7 @@ publica no barramento o evento **`learning.needs_person`**, no padrão de `appro
 | `app` | pacote |
 | `faixa` | `B` ou `C` |
 | `aguardando` | `true` ao entrar na espera; `false` ao sair (decidido, rebaixado pelo sistema, substituído) |
-| `motivo` | vocabulário fechado e curto: `efeito_externo`, `texto_de_pessoa`, `commit_sem_catalogo`, `alto_risco`, `sessao_ou_autenticacao`, `parecer_da_ia`; na saída, `decidido_por_pessoa`, `rebaixado_pelo_sistema`, `substituido` |
+| `motivo` | vocabulário fechado e curto: `efeito_externo`, `texto_de_pessoa`, `commit_sem_catalogo`, `alto_risco`, `sessao_ou_autenticacao`, `parecer_da_ia`, `reaprendido` (30.23, §9.3); na saída, `decidido_por_pessoa`, `rebaixado_pelo_sistema`, `substituido` |
 | `href` | link interno do painel para o detalhe (`#/aprendizado?aba=aprendido&item=<kind>:<ref>`) |
 | `desde` | quando entrou na espera |
 
@@ -546,6 +550,31 @@ O rótulo é de leitura. A transição continua com os gatilhos de hoje (quarent
 sistema, com motivo estruturado `catalogo_sem_efeito:<capability|*>` na trilha. Rebaixar já é automático no `ciclo.py`, e a porta de política
 já recusaria o efeito na execução. Se o catálogo ganhar a ação, reativar é de pessoa. Fora disso, desligar o que é de classe B ou C é do dono;
 a IA só opina.
+
+### 9.3 Evidência inválida: o sucesso falso que ensinou (30.23, decisão da coordenação, 03/10)
+
+Uma execução que termina como sucesso sem comprovar o que fez ensina errado: o que se aprende dela nasce de evidência
+inválida. Caso real: a receita 109 e o fluxo do Outlook "abrir a caixa de entrada e ler", da `r-20261002204347-8c3f6e`. Desligar por pessoa
+vetaria para sempre um conteúdo cuja navegação provavelmente é boa (o falso foi a leitura). A regra:
+
+- **Tipo próprio de desligamento.** A pessoa marca, pela ação própria do item, a execução de origem dele. A trilha recebe o
+  motivo estruturado `evidencia_invalida:<run>`, e o motivo livre nesse formato é recusado. O vivo é desligado; o já desligado
+  ganha a linha que reclassifica o motivo. O domínio lê o tipo, e o painel nunca interpreta texto.
+- **O veto barra só a mesma execução**, sem prazo. Outra execução real que ensine o mesmo no mesmo escopo faz o item
+  (re)nascer como candidato. Valem as portas de aprendizado de hoje: a receita vem de etapa comprovada, e o fluxo, de execução
+  `completed` com prova.
+- **Reaprendido.** É derivado da trilha do escopo e nunca gravado: o último nascimento do item vem depois da última marca do
+  escopo, sem publicação de pessoa no meio. Força a classe B (§8.4) e "Para aprovar". O sistema para em `validated` na
+  sombra da receita e na do fluxo, e o repositório recusa a publicação pelo sistema. Depois que uma pessoa publica no
+  escopo, o que nascer ali já segue o D1 de sempre.
+- **A evidência da execução marcada fica à vista e não mede**: sai da sombra do fluxo, da saúde (§5), da versão (§7) e
+  do dossiê do curador (§8.2), cujos fatos de risco carregam o reaprendido.
+- **Relações** (§6): `reaprende` e `reaprendida_por` entre a receita nova e a desligada. O fluxo renasce na mesma linha
+  (`match_key` único) e não aponta para si.
+- **Limites.** A receita renasce como versão nova, e a desligada vira `superseded` (o veto sobrevive à arrumação). O escopo
+  da receita inclui a versão do app, como o veto de sempre.
+
+Contrato: adendo v0.70 do [`api-contract.md`](../api-contract.md).
 
 ---
 
@@ -669,6 +698,8 @@ a partir de `modules/learning/infrastructure/`). Testes de backend no harness (`
 | 30.21 | Evento `learning.needs_person` (§8.11): porta de eventos do Livro, publicação na entrada e na saída da espera (faixas B e C), payload sem conteúdo, idempotente; linha na tabela de eventos | P | `application/ports.py`, `application/servico.py`, `application/nativos.py`, `infrastructure/montagem.py`, `docs/api-contract.md`, testes | Aprendizado | — (consumidores: 28.11 da Jev e Pendências, ADR-062, assinam depois) | `simulated` (barramento falso: entra, sai, não repete; o payload não tem campo de conteúdo) |
 | 30.22 | Backfill único e idempotente SÓ dos mineradores de lição, nas 12 execuções reais com contraste aprovável anteriores à 055 (lista explícita tirada do dry-run), sem IA; confere a migração do banco antes de gravar; backup antes; reexecutar não duplica | P | `scripts/aprendizado-backfill-licoes.py` (novo), `modules/learning/**`, testes | Aprendizado | — | `simulated` (rodar 2× = mesmo resultado); `real` = contagem de candidatas antes e depois no central |
 
+| 30.23 | Evidência inválida (§9.3): tipo próprio de desligamento com motivo estruturado, veto só da mesma execução, renascimento reaprendido em classe B, transição corretiva da 109 e do fluxo; painel (trilha, evidência, ação, Para aprovar) | M | `domain/evidencia_invalida.py` (novo), `domain/ciclo.py`, `domain/livro.py`, `domain/politica_de_risco.py`, `domain/relacoes.py`, `application/servico.py`, `application/nativos.py`, `infrastructure/`, `presentation/livro.py`, **`taskqueue/recipes.py`** (gancho da sombra: exceção ao "só leitura", aceita pela coordenação), `features/aprendizado/*`, testes | Aprendizado | — | `simulated`; a marca da 109 e do fluxo no central depois do deploy (suíte 6) |
+
 Ordem sugerida: 30.20 e 30.21 são independentes e podem ir cedo (a decisão do dono já existe). 30.1, 30.2 e 30.5 em paralelo (não compartilham arquivo, exceto `fontes.py` entre 30.1 e 30.2: em sequência). Depois 30.3 → (30.4, 30.6,
 30.7) → 30.10. Migração (30.9) cedo, porque depende do número. Front (30.15, 30.16) atrás dos contratos. 30.11 → 30.12/30.13/30.14 → 30.17 → 30.18.
 Os IDs entram num bloco de `.claude/plano-100.json` e no `docs/plano-100.md` pelo mecanismo, fora deste PR.
@@ -697,6 +728,8 @@ receita não é legível onde se decide sobre ela, que versão, lineage e saúde
    - **Política de risco (decisão do dono, 02/10)**, valendo a mais restritiva entre catálogo e `commit`: (a) navegação e leitura publica pela
      regra determinística atual, e a IA só opina (registro) se sobrar orçamento; (b) efeito médio ou `commit` em app sem catálogo: a IA recomenda e o dono aprova em lote;
      (c) alto risco, `manual_only`, sessão, autenticação, envio, publicação ou exclusão: sempre o dono, item a item.
+     *Nota de 03/10:* a orquestradora emendou a política (PR #127), passando o `commit` em app sem catálogo de (b) para (c). O dono
+     confirmou (b) na mesma madrugada, e a emenda foi revertida.
    - **Orçamento proporcional (decisão do dono, 02/10)**: `B_W = min(α·G_W, k·N_W·c̄)`, α = 10%, k = 1,5, W = 7 dias, `c_max = 4 × mediana(c_rev)`;
      prioridades conflito > (c) > falha recorrente > (b), e (a) nunca; salvaguardas relativas (§8.7). Em 02/10: B = US$ 0,85 por 7 dias.
    - **Curador (decisões do dono, 02/10)**: modelo barato por padrão (Haiku na triagem), escalada a Opus só em faixa C ou conflito (D-1);

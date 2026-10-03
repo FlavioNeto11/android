@@ -41,12 +41,13 @@ CAMPOS_DO_PAYLOAD = frozenset({"kind", "ref", "app", "faixa", "aguardando", "mot
 
 
 def classificar_espera(*, side_effect: bool, human_origin: bool, tem_catalogo: bool,
-                       catalogo: FatosDoCatalogo | None = None,
-                       sessao_ou_autenticacao: bool = False) -> tuple[Faixa, MotivoDeEntrada] | None:
+                       catalogo: FatosDoCatalogo | None = None, sessao_ou_autenticacao: bool = False,
+                       reaprendido: bool = False) -> tuple[Faixa, MotivoDeEntrada] | None:
     """A faixa e o motivo de um item que ESPERA a pessoa; `None` se a política o põe na classe A. A regra (a mais
     restritiva, §8.4) é a de `politica_de_risco.classificar`; aqui só a tradução para o evento."""
     c = classificar(FatosDeRisco(side_effect=side_effect, human_origin=human_origin, tem_catalogo=tem_catalogo,
-                                 catalogo=catalogo, sessao_ou_autenticacao=sessao_ou_autenticacao))
+                                 catalogo=catalogo, sessao_ou_autenticacao=sessao_ou_autenticacao,
+                                 reaprendido=reaprendido))
     if c.classe is ClasseDeRisco.A or c.motivo is None:
         return None
     return Faixa(c.classe.value), c.motivo

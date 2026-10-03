@@ -46,8 +46,8 @@ from ..modules.identity.domain.available_data import ResolvedSecret, SecretResol
 from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
 from ..planning.capabilities import CONHECIMENTO_DE_APPS, Capability, capability_of, contraparte, guardas_do_cartao
 from ..planning.catalog import session_provider_of
-from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, ScreenInput, StepContext,
-                                 Usage, VerifyRequest)
+from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, LeituraRequest,
+                                 ScreenInput, StepContext, Transcricao, Usage, VerifyRequest)
 from ..db import Row, loads
 from ..security.secret_store import SecretStoreLocked, SecretStoreUnavailable
 from ..security.sensitive_input import SensitiveInputError, SensitiveInputUnavailable
@@ -60,8 +60,9 @@ from .proofs import marcas_pendentes_na_tela, variantes_de_arroba
 from .projecao import HistoricoDeAcoes, app_da_etapa
 from .recipes import READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, unique_selectors
 from .repository import Repository
-from .saidas import (LeituraInvalida, args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor, nomes_citados,
-                     texto_da_tela, texto_do_elemento, triagem, variaveis_da_receita)
+from .saidas import (ChaveDeTentativa, LeituraInvalida, LeituraSemTexto, LeituraVisualRecusada,
+                     args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor, ler_valor_visual, nomes_citados,
+                     razao_sem_segredo, texto_da_tela, texto_do_elemento, triagem, variaveis_da_receita)
 
 log = logging.getLogger("poc.executor")
 
@@ -652,6 +653,19 @@ class StepExecutor:
                             step_id=step_id, ok=False, error_kind=exc.kind, error_status=exc.status,
                             error_message=str(exc), attempt_id=attempt_id)
 
+    def _tem_leitor(self) -> bool:
+        """Há um leitor para a leitura visual (barreira 8)? O roteador só tem o papel `leitura` quando `ai.roles.leitura`
+        está escrito; um provedor sem `roles` (simulado, dublê de teste) responde pelo que implementa."""
+        roles = getattr(self.provider, "roles", None)
+        return hasattr(self.provider, "transcribe") and (roles is None or "leitura" in roles)
+
+    def _leitor_visual(self) -> str:
+        """`provedor/modelo` do leitor, para a ação, a evidência e a coluna `step_outputs.leitor`."""
+        roles = getattr(self.provider, "roles", None)
+        if roles and "leitura" in roles:
+            return f"{roles['leitura'].provider}/{roles['leitura'].model}"
+        return f"{getattr(self.provider, 'name', 'leitor')}/{getattr(self.provider, 'model', '')}"
+
     def _role_model(self, role: str) -> str:
         """Modelo configurado para esta função, para quando o `AIError` não sabia qual era (falha antes de
         resolver o modelo, ex.: endpoint não configurado). Duck-typing de propósito: nem todo `AIProvider` é o
@@ -751,7 +765,8 @@ class StepExecutor:
                 rr.variables = {**loads(objective["parameters"], {}), "instance_id": rt.id, "run_id": run["id"],
                                 "account_label": account_label or "",
                                 **variaveis_da_receita(self.repo.saidas_com_tipo(objective["id"]),
-                                                       step.variables.get("item_index")),
+                                                       step.variables.get("item_index"),
+                                                       self.repo.saidas_visuais(objective["id"])),
                                 **step.variables}
                 rr.signature = self._installed_signature(rt.id, app.package)
                 rr.variant = await self.devices.variant_of(rt)
@@ -877,11 +892,16 @@ class StepExecutor:
         except Exception:  # noqa: BLE001 - histórico nunca derruba a etapa em andamento
             log.exception("%s: não foi possível registrar o efeito no histórico", rt.id)
 
-    def _gravar_saidas(self, step: StepDTO, app: AppContext, lidos: dict[str, tuple[str, str]]) -> None:
+    def _gravar_saidas(self, step: StepDTO, app: AppContext, lidos: dict[str, tuple[str, str]],
+                       visuais: dict[str, tuple[str, str, int | None]] | None = None) -> None:
         """Os valores lidos, na tabela de saídas (contrato C2), com o app onde foram lidos (`None` = o do plano). Chamado
-        dentro da transação que comprova a etapa: o valor só existe para as seguintes se a etapa que o leu valeu."""
+        dentro da transação que comprova a etapa: o valor só existe para as seguintes se a etapa que o leu valeu.
+        `visuais` (item 12.5): os nomes lidos da imagem, com leitor, sha256 do recorte e evidência; os demais são `arvore`."""
         for nome, (valor, tipo) in lidos.items():
-            self.repo.save_step_output(step.id, nome, valor, value_kind=tipo, app_id=app.id)
+            leitor, sha, evidencia = (visuais or {}).get(nome, (None, None, None))
+            self.repo.save_step_output(step.id, nome, valor, value_kind=tipo, app_id=app.id,
+                                       origem="visual" if leitor else "arvore", leitor=leitor, frame_sha256=sha,
+                                       evidence_id=evidencia)
 
     def _settle_effect(self, step: StepDTO, outcome: StepOutcome) -> None:
         aberto = self._effects.pop(step.id, None)
@@ -1085,6 +1105,13 @@ class StepExecutor:
         # Item 12.4: sem nomes escolhidos pelo planejador, a etapa entrega o que a AÇÃO declara (`Capability.saidas`).
         saidas_declaradas = saidas_exigidas(repo.saidas_da_etapa(step.id), cap)
         lidos: dict[str, tuple[str, str]] = {}
+        # Item 12.5 (ADR-070): as saídas lidas da IMAGEM (nome → (leitor, sha256 do recorte, id da evidência)); as
+        # tentativas visuais já feitas nesta tentativa da etapa (barreira `repetida`); e a conta PRÓPRIA das recusas da
+        # barreira de saídas, que `observe_screen` e `find_element` não zeram (`errors_in_row` zera): com 4, a etapa vai
+        # para `fail_or_retry`. Sem ela o ator alternava recusa e observação sem nunca esbarrar no limite (r-…-178742).
+        visuais: dict[str, tuple[str, str, int | None]] = {}
+        tentativas_visuais: set[ChaveDeTentativa] = set()
+        recusas_de_saida = 0
 
         def faltam_saidas() -> list[str]:
             return [n for n in saidas_declaradas if n not in lidos]
@@ -1112,6 +1139,11 @@ class StepExecutor:
                            + ", ".join(f"'{n}'" for n in saidas_declaradas)
                            + ": leia cada um na tela com read_value(name, element_id) antes de concluir — o executor "
                              "tira o valor do texto do elemento. Código de verificação, senha e token nunca.")
+            if self.cfg.file.ai.leitura_visual.enabled:
+                history.append("(executor) se a linha do valor NÃO expõe texto na árvore (elemento sem texto nem descrição), "
+                               "leia-o na imagem e chame read_value(name, element_id da linha, value=o que você leu, "
+                               "source='visual'): outro leitor, que não vê o seu valor, transcreve a linha e o executor só "
+                               "aceita se os dois concordarem. Só vale onde o app declara; uma recusa vem só com um código.")
 
         # Item 7.6: só os parâmetros QUE ESTA ETAPA USA, não o objetivo inteiro (que pode ter dezenas de
         # aparelhos/itens de `for_each` resolvidos). Com catálogo, a capability declara exatamente quais —
@@ -1236,7 +1268,8 @@ class StepExecutor:
         # Modelo forte (escalonamento) onde errar custa caro ou o barato já tropeçou: etapa com efeito externo
         # (conforme o risco, ver `side_effect_tier`), nova tentativa da mesma etapa, erros seguidos ou ação
         # repetida na mesma tela.
-        tier_efeito, motivo_efeito = side_effect_tier(step, cap, ai_cfg.strong_model_for_side_effect)
+        tier_efeito, motivo_efeito = side_effect_tier(step, cap, ai_cfg.strong_model_for_side_effect,
+                                                      app.builtin and app.category == CATEGORIA_APP_DE_PROVA)
         base_tier = 1 if (tier_efeito or step.attempts > 1) else 0
         escalated = False                     # a linha do escalonamento sai UMA vez por etapa, não por decisão
         # Item 7.8 (piso de conteúdo): o provedor de `decide` É o do `.env`/YAML, não o desta instância de etapa —
@@ -1264,6 +1297,35 @@ class StepExecutor:
         mortes_por_anr: set[tuple[str, int]] = set()
         fora_anterior: str | None = None
         agiu = True
+
+        async def desfecho_de_ia(exc: AIError, obs: Observation, durante: str) -> StepOutcome:
+            """O que a etapa faz quando uma chamada de IA (a decisão do ator, a leitura visual) falha por motivo que NÃO
+            é da chamada em si: chave, crédito, prazo, orçamento, recusa por política. Um só lugar, para o leitor da
+            leitura visual não ter tratamento próprio e mais frouxo que o do ator."""
+            if exc.kind == "not_configured":
+                return StepOutcome(Outcome.waiting_user, str(exc), needs="Configure a chave do provedor no .env, "
+                                   "reinicie o backend e retome este item.", ai_blocked=True)
+            if exc.kind in ("billing", "balance"):
+                return StepOutcome(Outcome.waiting_user, str(exc),
+                                   needs="Recarregue o crédito do provedor de IA e retome a execução.",
+                                   ai_blocked=True)
+            if exc.kind == "step_deadline":
+                return await fail_or_retry(com_anr(f"Prazo da etapa ({step.timeout_s}s) esgotado durante {durante}: "
+                                                   f"{exc}"), obs)
+            if exc.kind == "budget":
+                return StepOutcome(Outcome.failed if not fired else Outcome.uncertain, str(exc))
+            if exc.kind == "refusal":
+                # Achado #93: recusa do provedor por política NÃO é "IA indisponível" — repetir a etapa
+                # tende a dar a mesma recusa, e `fail_or_retry` gastaria uma tentativa à toa. Efeito já
+                # disparado: `uncertain` (mesma regra de qualquer falha após o commit); senão, espera a
+                # pessoa decidir — reescrever a intenção ou replanejar — sem consumir tentativa.
+                return StepOutcome(Outcome.uncertain if (step.side_effect and fired) else Outcome.waiting_user,
+                                   f"O provedor de IA recusou esta requisição por política: {exc}",
+                                   needs=None if (step.side_effect and fired) else
+                                   "O provedor recusou por política — repetir tende a dar o mesmo resultado. "
+                                   "Reescreva a intenção desta etapa (ou o comando) e retome, ou replaneje.",
+                                   ai_blocked=True)
+            return await fail_or_retry(f"IA indisponível: {exc}", obs)
 
         def com_anr(detalhe: str) -> str:
             """O prazo que vence DEPOIS de um ANR contado nesta etapa diz o ANR: "tempo esgotado" sozinho, como na
@@ -1487,30 +1549,7 @@ class StepExecutor:
                                         lessons=list(pedidas))),
                         step_id=step.id, role="decide", deadline=deadline, attempt_id=attempt_id)
                 except AIError as exc:
-                    if exc.kind == "not_configured":
-                        return StepOutcome(Outcome.waiting_user, str(exc), needs="Configure a chave do provedor no .env, "
-                                           "reinicie o backend e retome este item.", ai_blocked=True)
-                    if exc.kind in ("billing", "balance"):
-                        return StepOutcome(Outcome.waiting_user, str(exc),
-                                           needs="Recarregue o crédito do provedor de IA e retome a execução.",
-                                           ai_blocked=True)
-                    if exc.kind == "step_deadline":
-                        return await fail_or_retry(com_anr(f"Prazo da etapa ({step.timeout_s}s) esgotado durante a "
-                                                           f"decisão da IA: {exc}"), obs)
-                    if exc.kind == "budget":
-                        return StepOutcome(Outcome.failed if not fired else Outcome.uncertain, str(exc))
-                    if exc.kind == "refusal":
-                        # Achado #93: recusa do provedor por política NÃO é "IA indisponível" — repetir a etapa
-                        # tende a dar a mesma recusa, e `fail_or_retry` gastaria uma tentativa à toa. Efeito já
-                        # disparado: `uncertain` (mesma regra de qualquer falha após o commit); senão, espera a
-                        # pessoa decidir — reescrever a intenção ou replanejar — sem consumir tentativa.
-                        return StepOutcome(Outcome.uncertain if (step.side_effect and fired) else Outcome.waiting_user,
-                                           f"O provedor de IA recusou esta requisição por política: {exc}",
-                                           needs=None if (step.side_effect and fired) else
-                                           "O provedor recusou por política — repetir tende a dar o mesmo resultado. "
-                                           "Reescreva a intenção desta etapa (ou o comando) e retome, ou replaneje.",
-                                           ai_blocked=True)
-                    return await fail_or_retry(f"IA indisponível: {exc}", obs)
+                    return await desfecho_de_ia(exc, obs, "a decisão da IA")
                 if rr.mode == "shadow" and rr.replayer is not None and not rr.diverged:
                     self._shadow_compare(rr, obs, decision)     # aprende-se a confiar na receita antes de deixá-la agir
             # ---------- validar
@@ -1541,10 +1580,14 @@ class StepExecutor:
                 continue
             rationale = getattr(args, "rationale", None)
             if isinstance(args, ReadValue):
-                # ---------- valor para as etapas seguintes (item 24.3): lido da árvore pelo executor, triado (D3)
+                # ---------- valor para as etapas seguintes (item 24.3): lido da árvore pelo executor, triado (D3). Só na
+                # tela cega que o app declara (item 12.5, ADR-070) o valor pode vir da IMAGEM, conferido às cegas.
                 bruto = args.model_dump(mode="json")
                 erro: str | None = None
                 valor, partes, alvo = "", [], None
+                visual = False                     # a árvore não tem texto e o ator pediu a leitura visual
+                lido_da_imagem = None
+                motivo_visual: str | None = None   # a triagem recusou o que o leitor viu: segue o caminho da árvore
                 if not saidas_declaradas:
                     erro = "esta etapa não entrega valor às seguintes; read_value não se aplica aqui"
                 elif args.name not in saidas_declaradas:
@@ -1560,11 +1603,76 @@ class StepExecutor:
                     try:
                         valor, partes, alvo = ler_valor(obs.tree, element_id=args.element_id, trecho=args.value,
                                                         tipo=args.value_kind)
+                    except LeituraSemTexto as exc:
+                        # A ÚNICA falha da árvore que abre o caminho visual (barreira 1): o elemento existe e não tem
+                        # texto nem descrição. Qualquer outra falha (id, trecho, tipo) é recusa comum.
+                        if args.source == "visual":
+                            visual = True
+                        else:
+                            erro = str(exc)
                     except LeituraInvalida as exc:
                         erro = str(exc)
+                if visual:
+                    async def obter_imagem() -> tuple[UiTree, bytes | None, int, int] | None:
+                        if obs.jpeg is not None:
+                            return obs.tree, obs.jpeg, obs.width, obs.height
+                        if obs.sensitive:
+                            return None
+                        # A observação saiu só com a árvore: captura uma nova, e `ler_valor_visual` exige a MESMA
+                        # assinatura de árvore e os mesmos limites da âncora (barreira 6).
+                        try:
+                            nova = await self.devices.observe(rt, timeout=call_timeout, imagem=True,
+                                                              lado_max=ai_cfg.screenshot_max_side)
+                        except (DriverError, DriverTimeout):
+                            return None
+                        return nova.tree, nova.jpeg, nova.width, nova.height
+
+                    async def transcrever(recorte: bytes, pedidas: dict[str, str]) -> Transcricao:
+                        try:
+                            return await self._ai(
+                                run_id, oid, lambda: self.provider.transcribe(
+                                    LeituraRequest(recorte=recorte, saidas=pedidas, run_id=run_id)),
+                                step_id=step.id, role="leitura", deadline=deadline, attempt_id=attempt_id)
+                        except AIError as exc:
+                            if exc.kind in ("budget", "step_deadline", "billing", "balance", "refusal"):
+                                raise                   # o mesmo desfecho do ator (`desfecho_de_ia`), não uma recusa
+                            # Nunca o texto do erro ao ator: só a falha do provedor e a saída inválida do leitor viram
+                            # recusa como as outras. `from None`: a cadeia não leva o texto do leitor ao log.
+                            raise LeituraVisualRecusada(
+                                "sem_leitor" if exc.kind == "not_configured" else "leitor_falhou") from None
+
+                    conhecimento = telas_do_app.da_pasta(CONHECIMENTO_DE_APPS / (app.package or ""))
+                    reconhecida = (telas_do_app.classificar(conhecimento, obs.tree, package=obs.package)
+                                   if conhecimento is not None else None)
+                    tela_conhecida = reconhecida.tela if reconhecida is not None else None
+                    try:
+                        lido_da_imagem = await ler_valor_visual(
+                            habilitado=ai_cfg.leitura_visual.enabled, arvore=obs.tree, element_id=args.element_id,
+                            nome=args.name, valor_do_ator=args.value or "", conhecimento=conhecimento,
+                            tela=tela_conhecida, image_policy=ai_cfg.image_policy,
+                            # defesa em profundidade: o `elif` acima já recusa a tela de outro app antes de chegar aqui,
+                            # mas a barreira vale por si (a observação pode mudar entre uma checagem e outra).
+                            fora_do_app=self._tela_fora_do_app(step, obs, app.package),
+                            largura=obs.width, altura=obs.height, obter_imagem=obter_imagem,
+                            tentativas=tentativas_visuais, tipo_da_tela=reconhecida.tipo if reconhecida else None,
+                            transcrever=transcrever if self._tem_leitor() else None)
+                    except AIError as exc:
+                        return await desfecho_de_ia(exc, obs, "a leitura visual")
+                    except LeituraVisualRecusada as rec:
+                        if rec.codigo == "triagem":
+                            # O leitor viu código de verificação, senha ou token (ADR-009): NÃO é erro de chamada. Segue o
+                            # caminho da árvore (a etapa para em `waiting_user`), sem nova tentativa do ator e sem lhe
+                            # dizer que a linha tem código — com eco, ele leria o código em outro recorte.
+                            motivo_visual = rec.motivo or "código de verificação"
+                        else:
+                            # Barreira fechada: o ator recebe SÓ o código — nem a transcrição, nem o valor dele. O
+                            # recorte recusado não é guardado, e nada é gravado.
+                            erro = rec.rotulo
+                    else:
+                        valor, partes, alvo = lido_da_imagem.valor, [lido_da_imagem.valor], lido_da_imagem.alvo
                 if erro is not None:
-                    # Erro de chamada: o ator tenta de novo. Nada aqui passou pela triagem — nem o texto do elemento,
-                    # nem o que o modelo escreveu —, então nada disso vai para o registro da ação nem para o evento
+                    # Erro de chamada: o ator tenta de novo. Nada aqui passou pela triagem — nem o texto do elemento, nem
+                    # o que o modelo escreveu —, então nada disso vai para o registro da ação nem para o evento
                     # `action.logged`: o erro não cita valor (`saidas.ler_valor`), os argumentos saem sem o recorte e
                     # sem nome ou id que não tenham forma de nome ou de id (`args_da_chamada_invalida`), e a
                     # justificativa, que pode citar o valor, fica de fora como no caminho recusado pela triagem.
@@ -1572,14 +1680,21 @@ class StepExecutor:
                                           side_effect=False)
                     repo.finish_action(aid, ActionStatus.rejected, error=erro)
                     history.append(f"read_value REJEITADA: {erro}")
+                    if visual:
+                        repo.decision(f"{iid} · {step.title}: leitura visual de '{args.name}' recusada ({erro})",
+                                      run_id=run_id, instance_id=iid, step_id=step.id)
                     errors_in_row += 1
-                    if errors_in_row >= 4:
+                    recusas_de_saida += 1
+                    if errors_in_row >= 4 or recusas_de_saida >= 4:
                         return await fail_or_retry(f"O valor da etapa não foi lido na tela: {erro}", obs)
                     continue
-                assert alvo is not None
-                tela = texto_da_tela(obs.tree)
-                motivo = next((m for p in partes if (m := triagem(p, do_elemento=texto_do_elemento(alvo), da_tela=tela,
-                                                                  campo_de_senha=alvo.password)) is not None), None)
+                motivo = motivo_visual
+                if motivo is None and lido_da_imagem is None:
+                    assert alvo is not None
+                    tela = texto_da_tela(obs.tree)
+                    # A leitura visual já passou pela triagem (barreira 12) sobre a transcrição e o valor.
+                    motivo = next((m for p in partes if (m := triagem(p, do_elemento=texto_do_elemento(alvo), da_tela=tela,
+                                                                      campo_de_senha=alvo.password)) is not None), None)
                 if motivo is not None:
                     # D3 (ADR-009, ADR-022, ADR-058): a etapa PARA. O valor não vai para a tabela de saídas, nem para os
                     # argumentos da ação, nem para evento ou evidência — que sai em texto, sem captura da tela que o
@@ -1595,17 +1710,46 @@ class StepExecutor:
                     return StepOutcome(Outcome.waiting_user, texto,
                                        needs="Este valor é da pessoa (ADR-009): faça esta parte manualmente, ou refaça "
                                              "o comando sem depender dele, e retome o item.")
+                assert alvo is not None
                 lidos[args.name] = (valor, args.value_kind)
-                aid = repo.log_intent(attempt_id, "read_value", bruto, rationale, side_effect=False)
-                repo.finish_action(aid, ActionStatus.done, result={"name": args.name, "value_kind": args.value_kind,
-                                                                   "chars": len(valor)},
-                                   target=_safe_target(alvo, obs.tree))
+                if lido_da_imagem is not None:
+                    # O recorte vira evidência SÓ agora, com a leitura válida; a nota não traz o valor. A ação não leva o
+                    # valor (`args.value` fica **OMITIDO**) nem a transcrição: só nome, tipo, tamanho, origem e ids.
+                    leitor = self._leitor_visual()
+                    sha8 = lido_da_imagem.sha256[:8]
+                    evidencia_id = await repo.add_evidence_async(
+                        run_id=run_id, instance_id=iid, step_id=step.id, attempt_id=attempt_id, kind="screenshot",
+                        note=f"Recorte da linha de '{args.name}', lido da imagem; conferido às cegas por {leitor} "
+                             f"(captura {sha8}).", data=lido_da_imagem.recorte)
+                    visuais[args.name] = (leitor, lido_da_imagem.sha256, evidencia_id)
+                    aid = repo.log_intent(attempt_id, "read_value", args_da_chamada_invalida(bruto, obs.tree), None,
+                                          side_effect=False)
+                    repo.finish_action(aid, ActionStatus.done,
+                                       result={"name": args.name, "value_kind": args.value_kind, "chars": len(valor),
+                                               "origem": "visual", "frame_id": obs.frame_id,
+                                               "evidence_id": evidencia_id, "leitor": leitor},
+                                       target=_safe_target(alvo, obs.tree))
+                    history.append(f"read_value({args.name}) → lido da imagem e conferido às cegas"
+                                   + (f"; faltam: {', '.join(faltam_saidas())}" if faltam_saidas()
+                                      else "; todos os valores da etapa lidos"))
+                    repo.decision(f"{iid} · {step.title}: valor '{args.name}' lido da imagem ({args.value_kind}, "
+                                  f"{len(valor)} caractere(s)), conferido às cegas por {leitor}",
+                                  run_id=run_id, instance_id=iid, step_id=step.id)
+                else:
+                    visuais.pop(args.name, None)          # a releitura pela árvore substitui uma leitura visual antiga
+                    aid = repo.log_intent(attempt_id, "read_value", bruto, rationale, side_effect=False)
+                    repo.finish_action(aid, ActionStatus.done,
+                                       result={"name": args.name, "value_kind": args.value_kind, "chars": len(valor),
+                                               "origem": "arvore"},
+                                       target=_safe_target(alvo, obs.tree))
+                    faltam = faltam_saidas()
+                    history.append(f"read_value({args.name}) → lido: {como_texto(valor, args.value_kind)[:120]}"
+                                   + (f"; faltam: {', '.join(faltam)}" if faltam else "; todos os valores da etapa lidos"))
+                    repo.decision(f"{iid} · {step.title}: valor '{args.name}' lido da tela ({args.value_kind}, "
+                                  f"{len(valor)} caractere(s))", run_id=run_id, instance_id=iid, step_id=step.id)
                 faltam = faltam_saidas()
-                history.append(f"read_value({args.name}) → lido: {como_texto(valor, args.value_kind)[:120]}"
-                               + (f"; faltam: {', '.join(faltam)}" if faltam else "; todos os valores da etapa lidos"))
-                repo.decision(f"{iid} · {step.title}: valor '{args.name}' lido da tela ({args.value_kind}, "
-                              f"{len(valor)} caractere(s))", run_id=run_id, instance_id=iid, step_id=step.id)
                 errors_in_row = 0
+                recusas_de_saida = 0
                 if (not faltam and not judged_step and not obs.sensitive
                         and self._postcondition_holds(step, obs, cartao, pacote=app.package)):
                     break              # ler não muda a tela: com tudo lido e a pós-condição valendo, só comprovar
@@ -1633,7 +1777,8 @@ class StepExecutor:
                 history.append("step_done REJEITADA: esta etapa entrega " + ", ".join(f"'{n}'" for n in faltam_saidas())
                                + " às seguintes — leia na tela com read_value antes de concluir.")
                 errors_in_row += 1
-                if errors_in_row >= 4:
+                recusas_de_saida += 1
+                if errors_in_row >= 4 or recusas_de_saida >= 4:
                     return await fail_or_retry("A IA concluiu a etapa sem ler o valor que ela entrega às seguintes: "
                                                + ", ".join(f"'{n}'" for n in faltam_saidas()) + ".", obs)
                 continue
@@ -1652,19 +1797,24 @@ class StepExecutor:
                 repo.finish_action(aid, ActionStatus.done, result={"declared": True})
                 break
             if isinstance(args, StepBlocked):
-                aid = repo.log_intent(attempt_id, "step_blocked", args.model_dump(mode="json"), rationale, side_effect=False)
+                # O motivo é texto do MODELO e pode citar o que ele viu na tela (um código de verificação, um segredo). Ele
+                # vai a quatro destinos — `steps.status_detail` e `attempts.error` (pelo desfecho), a nota da evidência e o
+                # evento `decision` — e todos recebem a versão triada: se a triagem acusar, "motivo omitido (triagem: …)".
+                razao = razao_sem_segredo(args.reason)
+                aid = repo.log_intent(attempt_id, "step_blocked", {**args.model_dump(mode="json"), "reason": razao},
+                                      rationale, side_effect=False)
                 repo.finish_action(aid, ActionStatus.done, result={"kind": args.kind})
-                await evidence(obs, f"Bloqueio relatado pela IA ({args.kind}): {args.reason}")
-                repo.decision(f"{iid}: etapa '{step.title}' bloqueada — {args.reason}", run_id=run_id, instance_id=iid,
+                await evidence(obs, f"Bloqueio relatado pela IA ({args.kind}): {razao}")
+                repo.decision(f"{iid}: etapa '{step.title}' bloqueada — {razao}", run_id=run_id, instance_id=iid,
                               step_id=step.id)
                 if args.kind == "challenge":
                     # A IA reconheceu uma verificação que o detector não conhece (ele já olhou ESTA tela antes de
                     # perguntar a ela). É julgamento do modelo, não casamento determinístico: vira `auth_challenge`
                     # e pede uma pessoa, sem bloquear o perfil — quem olhar decide se é a conta travada (ADR-055).
-                    return await parar_na_trava(ContaTravada(SUBTIPO_VERIFICACAO, args.reason[:80], origem="ator"),
+                    return await parar_na_trava(ContaTravada(SUBTIPO_VERIFICACAO, razao[:80], origem="ator"),
                                                 obs.package)
                 if step.side_effect and fired:
-                    return StepOutcome(Outcome.uncertain, args.reason)
+                    return StepOutcome(Outcome.uncertain, razao)
                 if (tier == 0 and not from_recipe and not bloqueio_escalado and ai_cfg.cascade_blocked_to_tier1
                         and args.kind not in ("challenge", "auth_required", "wrong_account")):
                     # Item 17.10: o ator barato desiste cedo ("não vejo", "falta informação"). Antes de acordar uma pessoa,
@@ -1672,7 +1822,7 @@ class StepExecutor:
                     # de sempre (tier 1 não sobe de novo).
                     bloqueio_escalado = True
                     forcar_tier_1 = True
-                    history.append(f"(executor) o modelo de ação relatou bloqueio ({args.kind}: {args.reason}); o modelo de "
+                    history.append(f"(executor) o modelo de ação relatou bloqueio ({args.kind}: {razao}); o modelo de "
                                    "escalonamento reavalia esta mesma tela antes de pedir uma pessoa.")
                     repo.decision(f"{iid} · {step.title}: bloqueio relatado pelo modelo de ação ({args.kind}); "
                                   "subindo ao modelo de escalonamento antes de pedir uma pessoa",
@@ -1681,10 +1831,10 @@ class StepExecutor:
                 if args.kind in ("auth_required", "wrong_account"):
                     # A IA viu login ou conta errada na tela. O perfil para de afirmar "Conectado": `wrong_account`
                     # e desafio dependem de pessoa; `auth_required` volta a ser trabalho do autenticador.
-                    self._sessao_desmentida(iid, app.package, args.kind, args.reason)
+                    self._sessao_desmentida(iid, app.package, args.kind, razao)
                 if args.needs_user or args.kind in ("auth_required", "wrong_account", "missing_info"):
-                    return StepOutcome(Outcome.waiting_user, args.reason, needs=_needs_for(args.kind))
-                return await fail_or_retry(args.reason)
+                    return StepOutcome(Outcome.waiting_user, razao, needs=_needs_for(args.kind))
+                return await fail_or_retry(razao)
 
             # ---------- guardas de efeito externo
             tool_ctx = ToolContext(io=rt.io, call=call, tree=obs.tree, width=obs.width, height=obs.height,
@@ -1915,7 +2065,7 @@ class StepExecutor:
             await evidence(last_obs, f"Coleta comprovada pelo executor: {text}")
             repo.transition_step(step.id, StepStatus.verifying, message=f"Etapa '{step.title}': itens lidos pelo executor")
             with repo.db.tx():
-                self._gravar_saidas(step, app, lidos)
+                self._gravar_saidas(step, app, lidos, visuais)
                 repo.transition_step(step.id, StepStatus.succeeded, detail=text,
                                      result=StepResult(verified=True, evidence_text=text, items=collected,
                                                        vazio_comprovado=vazio_provado is not None),
@@ -1936,7 +2086,7 @@ class StepExecutor:
                                                                   capability=(CapabilityRef(app.package, cap.key)
                                                                               if cap and app.package else None),
                                                                   attempt_id=attempt_id, cartao=cartao,
-                                                                  pacote=app.package)
+                                                                  pacote=app.package, imagem_forcada=bool(visuais))
         except DriverTimeout as exc:
             return await self._stuck(rt, step, fired, str(exc))
         except AIError as exc:
@@ -1981,7 +2131,7 @@ class StepExecutor:
                                 (text or step.postcondition.value, now_iso(), iid))
             # As saídas e o sucesso na MESMA transação: sem etapa comprovada não há valor gravado, e vice-versa.
             with repo.db.tx():
-                self._gravar_saidas(step, app, lidos)
+                self._gravar_saidas(step, app, lidos, visuais)
                 repo.transition_step(step.id, StepStatus.succeeded, detail=text,
                                      result=StepResult(verified=True, evidence_text=text, delivery_level=level),
                                      message=f"Etapa '{step.title}' comprovada: {text}")
@@ -2069,7 +2219,8 @@ class StepExecutor:
                       objective_id: str, deadline: float, call_timeout: float, *, patient: bool,
                       facts: list[str] | None = None, failure_marks: tuple[str, ...] = (),
                       local_proof: str | None = None, capability: CapabilityRef | None = None,
-                      attempt_id: str | None = None, cartao: tuple[str, ...] = (), pacote: str | None
+                      attempt_id: str | None = None, cartao: tuple[str, ...] = (), pacote: str | None,
+                      imagem_forcada: bool = False
                       ) -> tuple[bool, str, DeliveryLevel | None, Observation | None, bool]:
         post = step.postcondition
         need = post.required_delivery_level
@@ -2165,8 +2316,10 @@ class StepExecutor:
                     ok = False             # mesma tela que já foi julgada insuficiente: espera mudar, sem gastar chamada
                 else:
                     # 1º julgamento só pela hierarquia quando ela é rica; os seguintes levam a imagem
+                    # Item 12.5: com saída lida da IMAGEM o juiz recebe a imagem à força. Ele julga a tela ("caixa
+                    # aberta, aba, mais recente"), não o valor.
                     quer_imagem = self._want_image(obs.tree, judged_step=False, first=False,
-                                                   trouble=judged_polls >= 1, requested=False)
+                                                   trouble=judged_polls >= 1, requested=imagem_forcada)
                     if quer_imagem:
                         obs = await self.devices.completar_imagem(rt, obs, timeout=call_timeout, lado_max=lado_max)
                     screen, _ = self._screen(obs, with_image=quer_imagem, protect=tuple(step.commit_guard))
@@ -2479,7 +2632,13 @@ def _safe_args(raw: Any) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {"raw": str(raw)[:300]}
 
 
-def side_effect_tier(step: Any, cap: Any, modo: Any) -> tuple[int, str]:
+#: `apps.category` do app de prova (o QA Messenger embutido). A regra lê o DADO do app, nunca o nome (ADR-052), e exige
+#: também `builtin`: `POST/PUT /apps` aceitam `category='qa'` em qualquer app, e marcar um app real assim não pode
+#: tirá-lo do escalonamento.
+CATEGORIA_APP_DE_PROVA = "qa"
+
+
+def side_effect_tier(step: Any, cap: Any, modo: Any, app_de_prova: bool = False) -> tuple[int, str]:
     """(nível, motivo) do escalonamento POR EFEITO EXTERNO desta etapa.
 
     `True` = qualquer efeito sobe (era o único modo: em 19-23/09, 39 % das decisões foram ao Opus, inclusive curtir
@@ -2488,12 +2647,20 @@ def side_effect_tier(step: Any, cap: Any, modo: Any) -> tuple[int, str]:
     software não tem como travar o alvo: risco alto do catálogo, risco médio sem seletor de commit, ou app sem
     catálogo (risco desconhecido). O motivo mantém o prefixo "etapa com efeito externo", que a linha do tempo e
     os testes reconhecem.
+
+    `app_de_prova` (item 29.31, RA-8 da reavaliação de 03/10): o app de prova (`builtin` e `apps.category='qa'`) não tem
+    catálogo e o efeito dele não sai da máquina de teste; "risco desconhecido" ali só pagava o modelo forte (64 a 66
+    escalonamentos em 7 dias, 43 % das chamadas do Opus no tier 1). Vale SÓ no `by_risk` e SÓ para etapa sem
+    capability: `True` é escolha explícita da instalação, e etapa com capability segue as regras de sempre (uma
+    capability sem catálogo continua sendo risco desconhecido).
     """
     if not getattr(step, "side_effect", False) or modo is False:
         return 0, ""
     if modo is True:
         return 1, "etapa com efeito externo"
     if cap is None:
+        if app_de_prova and not getattr(step, "capability", None):
+            return 0, ""
         return 1, "etapa com efeito externo sem catálogo: risco desconhecido"
     risco = getattr(cap, "risk", "high")
     if risco == "high":

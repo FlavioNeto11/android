@@ -69,8 +69,18 @@ export interface EntradaDoLivro {
   por_que_nao_publica: MotivoDeNaoPublicar | null;
   /** A saúde do item (30.4), do backend: o painel só a exibe. Ausente em backend antigo; `null` na memória. */
   saude?: SaudeDoItem | null;
+  /** A execução de que a receita ou o fluxo foi aprendido (30.23); `null` no treino e nos outros tipos. */
+  nasceu_de?: string | null;
+  /** (Re)nasceu no escopo de uma evidência inválida (30.23): espera o dono. Derivado no backend. */
+  reaprendido?: Reaprendido | null;
   /** O parecer pendente da IA (30.17): só nas listas Para aprovar e Revisar, e só com o curador em `on`. */
   parecer?: ParecerNaFila | null;
+}
+
+/** 30.23: a execução do sucesso falso e o item que ela ensinou (no fluxo, a própria linha, que renasce nela). */
+export interface Reaprendido {
+  run_invalidada: string;
+  item: { kind: string; ref: string };
 }
 
 /** Chave estável do passo (`ItemDoLivro` mapeia para o texto em português). */
@@ -82,7 +92,8 @@ export interface AcaoPermitida {
   exige_motivo: boolean;
 }
 
-export type CodigoDeNaoPublicar = 'habilidade' | 'efeito_externo' | 'texto_de_pessoa' | 'vetado' | 'modo_desligado';
+export type CodigoDeNaoPublicar =
+  'habilidade' | 'efeito_externo' | 'texto_de_pessoa' | 'reaprendido' | 'vetado' | 'modo_desligado';
 
 export interface MotivoDeNaoPublicar {
   codigo: CodigoDeNaoPublicar;
@@ -109,6 +120,8 @@ export interface EvidenciaDoLivro {
   simulated: boolean;
   detail: string | null;
   observed_at: string;
+  /** 30.23: a execução desta evidência foi marcada como evidência inválida no item; não prova nada. */
+  invalidada?: boolean;
 }
 
 export interface TransicaoDoLivro {
@@ -119,6 +132,9 @@ export interface TransicaoDoLivro {
   decided_by: string;
   decided_at: string;
   run_id: string | null;
+  /** 30.23: o desligamento por evidência inválida já vem lido do motivo (o painel nunca interpreta o formato). */
+  tipo?: 'evidencia_invalida' | null;
+  run_invalidada?: string | null;
 }
 
 export interface DetalheDoLivro {
@@ -130,6 +146,8 @@ export interface DetalheDoLivro {
   conteudo?: ConteudoDoItem | null;
   versao?: VersaoDoItem;
   relacoes?: RelacaoDoItem[];
+  /** 30.23: a execução de origem que a pessoa pode marcar como evidência inválida agora; `null` quando não cabe. */
+  invalidar_evidencia?: { run_id: string } | null;
   /** 30.17: as revisões do curador que o modo deixa aparecer (a mais recente primeiro) e o bloco do curador.
    *  Ausentes em backend antigo; `curador: null` sem curador composto. */
   pareceres?: ParecerDaIA[];
@@ -290,7 +308,8 @@ export interface VersaoDoItem {
   por_versao: { versao: string; viva: boolean; aparelhos: number; estado: EstadoDeVersao; receita_ref: string | null }[];
 }
 
-export type TipoDeRelacao = 'substitui' | 'substituida_por' | 'derivado_de' | 'absorvida' | 'contradiz';
+export type TipoDeRelacao =
+  'substitui' | 'substituida_por' | 'derivado_de' | 'reaprende' | 'reaprendida_por' | 'absorvida' | 'contradiz';
 
 /** `kind`/`ref` apontam para o detalhe do alvo; `regra_declarada` e `commit` (absorvida) não são itens do Livro. */
 export interface RelacaoDoItem {
@@ -452,6 +471,13 @@ export function camadaDaFalha(k: string | null | undefined): Camada | null {
   return k ? FALHA[k]?.camada ?? null : null;
 }
 
+/** 30.23: por que o reaprendido espera o dono, com a execução do sucesso falso quando o backend a manda. */
+export function textoDoReaprendido(run: string | null | undefined): string {
+  return run
+    ? `foi reaprendido depois de uma evidência inválida (a execução ${run} terminou como sucesso sem comprovar o que fez)`
+    : 'foi reaprendido depois de uma evidência inválida';
+}
+
 /** O texto do motivo que o backend mandou (apresentação: a regra é do domínio). */
 export function porQueOSistemaNaoPublica(e: Pick<EntradaDoLivro, 'por_que_nao_publica'>): string | null {
   const m = e.por_que_nao_publica;
@@ -460,6 +486,7 @@ export function porQueOSistemaNaoPublica(e: Pick<EntradaDoLivro, 'por_que_nao_pu
     case 'habilidade': return 'habilidade: publicar é sempre de uma pessoa';
     case 'efeito_externo': return 'tem efeito externo';
     case 'texto_de_pessoa': return 'tem texto de pessoa';
+    case 'reaprendido': return textoDoReaprendido(m.detalhe);
     case 'vetado': return m.detalhe ?? 'vetado pelo sistema';
     case 'modo_desligado': return 'o modo deste tipo não está ligado';
     default: return m.codigo;

@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from ..models import DeliveryLevel
 from ..util import norm_text, url_abrivel
@@ -177,6 +177,23 @@ class ReadValue(_Args):
                                                         "texto tem mais do que ele (ex.: o @nome dentro do assunto).")
     value_kind: Literal["text", "number", "url", "list"] = Field(
         default="text", description="text, number, url, ou list (os textos dentro do contêiner).")
+    # Item 12.5 (ADR-070): `visual` SÓ quando o executor disser, no histórico, que a linha desta tela não expõe texto na
+    # árvore e o app declarou que ela pode ser lida da imagem. O valor é o que VOCÊ leu na imagem; o executor o
+    # confere com a transcrição às cegas de outro leitor, sobre o recorte da linha. Sem concordância, recusa.
+    source: Literal["tree", "visual"] = Field(
+        default="tree", description="tree (padrão): o texto do elemento; visual: o valor que você leu na imagem, só "
+                                    "numa tela cega declarada (exige `value`; só value_kind=text).")
+
+    @model_validator(mode="after")
+    def _visual_exige_o_valor_e_so_texto(self) -> "ReadValue":
+        """Número, endereço e lista lidos da imagem são recusados na v1: número visto na imagem é justamente o formato
+        de um código. E sem o valor do ator não há o que conferir."""
+        if self.source == "visual":
+            if self.value_kind != "text":
+                raise ValueError("source=visual só vale com value_kind=text")
+            if not (self.value or "").strip():
+                raise ValueError("source=visual exige `value` (o que você leu na imagem)")
+        return self
 
 
 class VerifyState(_Args):

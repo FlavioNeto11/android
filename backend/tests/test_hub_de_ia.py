@@ -474,6 +474,8 @@ async def test_chamada_nao_sobrevive_ao_prazo_da_etapa() -> None:
 async def test_escalonamento_aparece_na_linha_do_tempo(harness: Any) -> None:
     """Achado #92, item 5: o escalonamento era configuração explícita do dono e já aparecia no cartão de custo —
     faltava a linha na execução dizendo POR QUE esta etapa passou a decidir no modelo caro."""
+    # `true`: o QA Messenger é app de prova e, no `by_risk` padrão, não escala por efeito (item 29.31).
+    harness.cfg.file.ai.strong_model_for_side_effect = True
     run = harness.run(["android-01"])
     await harness.wait_run(run.id)
     linhas = [r["message"] for r in harness.state.db.query(   # ORDER BY: o índice [0] abaixo depende da ordem (K-030)

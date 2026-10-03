@@ -11,6 +11,7 @@ import hashlib
 import random
 import re
 from datetime import date
+from collections.abc import Callable
 from typing import Any
 
 from ..automation.hierarchy import UiElement, UiTree
@@ -30,8 +31,8 @@ from .apps_do_comando import apps_citados
 from .curador import ParecerBruto, PedidoDeParecer, parecer_simulado
 from .capabilities import CapabilityCatalog, CapabilityNode, compose
 from .parsing import apps_do_plano, norm_key
-from .provider import (AppContext, Decision, DecisionRequest, PlanRequest, SocialRequest, Usage, Verdict,
-                       VerifyRequest)
+from .provider import (AppContext, Decision, DecisionRequest, LeituraRequest, PlanRequest, SocialRequest, Transcricao,
+                       Usage, Verdict, VerifyRequest)
 
 QA_PACKAGE = "com.pocqa.messenger"
 _HANDLE = re.compile(r"@([a-zA-Z0-9._]{2,30})")
@@ -444,6 +445,17 @@ class SimulatedProvider:
     async def generate_persona(self, req: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]:
         """Persona por sorteio determinístico (semente = hash do pedido): completa, adulta, fictícia; sem custo."""
         return persona_simulada(req), Usage()
+
+    #: Como o leitor simulado responde (item 12.5): nada programado = "não consegui ler", nunca uma leitura inventada. Um
+    #: teste ou uma bancada atribui uma `Transcricao`, ou uma função `LeituraRequest -> Transcricao`.
+    leitura: Transcricao | Callable[[LeituraRequest], Transcricao] | None = None
+
+    async def transcribe(self, req: LeituraRequest) -> tuple[Transcricao, Usage]:
+        """Leitor sem IA: devolve o que foi programado em `leitura` (sem custo). Sem programação, `legivel=False`."""
+        feita = self.leitura(req) if callable(self.leitura) else self.leitura
+        if feita is None:
+            feita = Transcricao(linhas=[], campos={n: None for n in req.saidas}, legivel=False)
+        return feita, Usage()
 
     async def verify(self, req: VerifyRequest) -> tuple[Verdict, Usage]:
         tree: UiTree = req.screen.tree

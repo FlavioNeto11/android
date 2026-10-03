@@ -3,7 +3,8 @@
 Do detalhe do Livro (`LearningService.detalhe`) vêm o conteúdo legível, a saúde, a versão, as relações e a trilha; a
 evidência é lida aqui porque o dossiê cita cada uma pelo id da linha (`ev:<id>`), que a leitura do Livro não carrega.
 Os fatos de risco seguem a mesma regra do aviso de espera (`application/espera.py`): o catálogo do app pela
-capability do item, nunca a etapa livre (`*`).
+capability do item, nunca a etapa livre (`*`), e o reaprendido depois de uma evidência inválida (30.23), que é B. A
+evidência da execução marcada como inválida no item não entra: ela não prova nada (a mesma regra da saúde e da sombra).
 
 Fica de fora nesta fatia (dossiê com menos fatos, nunca com fato inventado): os grupos do backlog e os votos e
 intervenções da etapa (fontes de outros itens). O que o dossiê não traz, a resposta não pode citar.
@@ -16,6 +17,7 @@ from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.ciclo import SYSTEM_ACTOR, NaoEncontrado
 from app.modules.learning.domain.curador import (MAX_EVIDENCIAS, Dossie, Evidencia, IdentidadeDoItem, PassoDaTrilha,
                                                  Relacao, montar_dossie)
+from app.modules.learning.domain.evidencia_invalida import run_invalidada
 from app.modules.learning.domain.politica_de_risco import FatosDeRisco, FatosDoCatalogo, toca_sessao_ou_autenticacao
 from app.modules.learning.domain.livro import EntradaDoLivro
 from app.modules.learning.domain.saude import Saude
@@ -83,7 +85,8 @@ class DossiesSql:
         tem, fatos = self._fatos_do_catalogo(e.app or "", capability)
         risco = FatosDeRisco(side_effect=e.side_effect, human_origin=e.human_origin, tem_catalogo=tem, catalogo=fatos,
                              sessao_ou_autenticacao=toca_sessao_ou_autenticacao(source_kind=source_kind,
-                                                                                tela_autenticada=tela_autenticada))
+                                                                                tela_autenticada=tela_autenticada),
+                             reaprendido=e.reaprendido is not None)
         identidade = IdentidadeDoItem(kind=e.kind.value, ref=e.ref, app=e.app or "", capability=capability,
                                       app_version=e.app_version, estado=None if e.state is None else e.state.value,
                                       origem=e.origin.value, side_effect=e.side_effect, human_origin=e.human_origin,
@@ -93,7 +96,9 @@ class DossiesSql:
                                 por_pessoa=t.decided_by != SYSTEM_ACTOR, run_id=t.run_id) for t in d.trilha]
         relacoes = [Relacao(tipo=str(r.get("tipo")), kind=str(r.get("kind")), ref=str(r.get("ref")))
                     for r in d.relacoes if isinstance(r, dict) and r.get("kind") and r.get("ref")]
-        return montar_dossie(identidade, risco, d.conteudo, evidencias=self._evidencias(e.trail_ref), trilha=trilha,
+        invalidas = frozenset(r for t in d.trilha if (r := run_invalidada(t.reason)) is not None)
+        evidencias = [x for x in self._evidencias(e.trail_ref) if x.run_id is None or x.run_id not in invalidas]
+        return montar_dossie(identidade, risco, d.conteudo, evidencias=evidencias, trilha=trilha,
                              relacoes=relacoes, saude=_saude(d.saude), versao=d.versao,
                              max_evidencias=MAX_EVIDENCIAS if max_evidencias is None else max_evidencias)
 

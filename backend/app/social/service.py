@@ -38,7 +38,8 @@ from ..security.sessions import operador_atual
 from .context import SocialContextBuilder, interaction_dto
 from .conteudo import fala_atribuida_a_terceiro
 from ..modules.identity.application.session_rules import PRECISA_DE_PESSOA, emit_needs_person_change
-from .contas_nossas import sem_o_rastro
+from .contas_nossas import emails_so_desta_conta, handle_vivo, sem_o_rastro
+from .limpeza_de_conta import PedidoDeLimpeza
 from .memory import MemoryRefused, MemoryStore, reescrever_memoria
 from .policy import CONTAM, DEFAULT_LIMITS, PolicyEngine, com_politicas_do_app, politicas_do_app
 from .repository import (AparelhoEmQuarentena, BindingConflict, SocialRepository, campos_de_persona,
@@ -124,6 +125,11 @@ class SocialService:
         #: Depois da retirada: `(profile_id, account_id, estava_bloqueada)`. O AppState liga o disjuntor de conta
         #: (ADR-055) aqui: o agendador só o dispara ao VER `blocked`, e a retirada devolve a persona a `active`.
         self.ao_retirar_conta: Callable[[str, str, bool], None] | None = None
+        #: Depois da retirada, com o pedido de limpeza CAPTURADO antes dela (29.27, emenda do ADR-068): o AppState liga a
+        #: tarefa de fundo que limpa os dados do app nos aparelhos onde a conta estava logada e resolve a quarentena.
+        #: Só é chamado quando o app da conta DECLARA `limpar_ao_retirar` e há aparelho; sem a ligação (testes, scripts),
+        #: a retirada é só banco, como na 29.23.
+        self.ao_limpar_aparelhos: Callable[[PedidoDeLimpeza], None] | None = None
         self._retirando: set[tuple[str, str]] = set()
         #: O SINAL FORTE de bloqueio (29.23): `instance_id -> a atividade de desafio do Instagram está em foco agora`.
         #: O AppState liga ao que `DeviceManager.observe` leu (`DeviceRuntime.atividade_de_desafio`). Só texto na tela
@@ -174,11 +180,12 @@ class SocialService:
         if body.password and self.secrets.status() != "ready":
             raise SocialError("secret_store_unavailable", self._vault_message(), 503)
         app_da_conta = self._app_do_pacote(pacote_ancora())
-        if body.instance_id and app_da_conta and (conflito := self.repo.quem_ja_serve(
-                str(pessoa["id"]) if pessoa is not None else None, body.instance_id, app_da_conta)) is not None:
+        if app_da_conta:
             # D2-a conferida ANTES de qualquer linha: o 409 quer dizer "nada foi criado", e não "a pessoa nasceu
-            # sem aparelho" — o cadastro que falha pela metade deixava perfil, conta e senha órfãos.
-            raise SocialError(BindingConflict.code, str(BindingConflict(body.instance_id, *conflito)), 409)
+            # sem aparelho" — o cadastro que falha pela metade deixava perfil, conta e senha órfãos. Vale para o
+            # aparelho do cadastro E para os vínculos sem app que a pessoa já tinha (29.29).
+            self._recusar_conta_que_quebra_d2a(str(pessoa["id"]) if pessoa is not None else None, app_da_conta,
+                                               body.instance_id)
 
         display_name = body.display_name or (f"{body.first_name or ''} {body.last_name or ''}".strip() or None)
         if pessoa is not None:
@@ -404,6 +411,14 @@ class SocialService:
             self.repo.bind(profile_id, instance_id, app_id=app_id, primary=primary, reason=reason)
         except (BindingConflict, AparelhoEmQuarentena) as exc:
             raise SocialError(exc.code, str(exc), 409) from exc
+
+    def _recusar_conta_que_quebra_d2a(self, profile_id: str | None, app_id: str,
+                                      instance_id: str | None = None) -> None:
+        """409 `conta_do_app_ja_no_aparelho` quando a persona, ao ganhar a conta em `app_id`, passaria a servir (por
+        um vínculo sem app, ou pelo aparelho do cadastro) um app que outra persona já serve naquele aparelho."""
+        if (conflito := self.repo.conflito_da_conta_nova(profile_id, app_id, instance_id)) is not None:
+            iid, app, outra = conflito
+            raise SocialError(BindingConflict.code, str(BindingConflict(iid, app, outra)), 409)
 
     def _rebind(self, profile_id: str, instance_id: str | None, *, confirmado: bool = False) -> None:
         """`PATCH instance_id` (o painel de hoje, "trocar de aparelho"): o vínculo da conta âncora sai do aparelho
@@ -1305,6 +1320,8 @@ class SocialService:
         if self.repo.account_by_app(profile_id, app["id"], host):
             onde = f"{app['name']} ({host})" if host else app["name"]
             raise SocialError("duplicate_account", f"Este perfil já tem uma conta em {onde}.", 409)
+        # D2-a antes de criar qualquer linha: o vínculo sem app da pessoa passa a servir este app com a conta nova.
+        self._recusar_conta_que_quebra_d2a(profile_id, str(app["id"]))
         clonar_de = getattr(body, "clonar_de", None)
         if clonar_de:
             # Tudo conferido ANTES de criar a conta, pela mesma razão do consentimento abaixo. A recusa é do serviço
@@ -1409,9 +1426,15 @@ class SocialService:
         handle = str(conta["handle"] or "")
         ancora = self.repo.eh_pacote_ancora(profile_id, self.repo.pacote_da_conta(profile_id, account_id))
         estava_bloqueada = ancora and self._status_do(profile_id) == "blocked"
-        # O evento da retirada não carrega o @ nem o id em texto: a evidência passa pelo mesmo corte da memória.
-        texto = sem_o_rastro((evidencia or "").strip()[:500], handle, account_id) or "bloqueio confirmado"
+        # Os e-mails que identificam SÓ esta conta, lidos antes de a linha e a credencial saírem: o que outra conta viva
+        # (o Outlook da mesma persona, por exemplo) ainda usa continua verdadeiro no produto e não entra (29.32).
+        emails = emails_so_desta_conta(self.repo.db, profile_id=profile_id, account_id=account_id, handle=handle,
+                                       ancora=ancora)
+        # O evento da retirada não carrega o @, o id nem o e-mail em texto: a evidência passa pelo mesmo corte da memória.
+        texto = sem_o_rastro((evidencia or "").strip()[:500], handle, account_id, emails) or "bloqueio confirmado"
         contagens: dict[str, int] = {}
+        # Onde a conta estava logada, ANTES de a retirada mascarar o @ do marcador e apagar sessões e vínculos (29.27).
+        pedido = self._pedido_de_limpeza(profile_id, conta, ancora)
         # Sessões que estavam na fila "Aguardando intervenção": a conta sai, e o item sai da fila junto.
         na_fila = [(str(s["instance_id"]), str(s["status"])) for s in self.repo.db.query(
             "SELECT instance_id, status FROM account_sessions WHERE account_id=?", (account_id,))
@@ -1421,9 +1444,14 @@ class SocialService:
                 for nome, n in (limpeza(self.repo.db, profile_id=profile_id, account_id=account_id, handle=handle,
                                         app_id=app_id) or {}).items():
                     contagens[nome] = contagens.get(nome, 0) + int(n)
-            # A memória da persona FICA, sem o @ da conta nem o id dela em texto (a linha não se apaga).
-            contagens["memory_items"] = reescrever_memoria(self.repo.db, profile_id=profile_id, handle=handle,
-                                                           account_id=account_id)
+            # A memória FICA (a linha não se apaga), de TODAS as personas, sem o @ da conta, o id dela nem o e-mail que
+            # só ela usava (29.32).
+            # O @ que outra conta viva ainda tem (o mesmo @ em outro app, ou o de outra persona) não é rastro.
+            vivo = handle_vivo(self.repo.db, profile_id=profile_id, account_id=account_id, handle=handle,
+                               ancora=ancora)
+            contagens.update(reescrever_memoria(self.repo.db, profile_id=profile_id,
+                                                handle=None if vivo else handle, account_id=account_id,
+                                                emails=emails))
             refs = self.repo.retirar_conta_bloqueada(profile_id, account_id, ancora=ancora,
                                                      motivo="conta retirada por bloqueio")
             for ref in dict.fromkeys(refs):
@@ -1443,6 +1471,7 @@ class SocialService:
             emit_needs_person_change(self.bus, profile_id=profile_id, instance_id=iid,
                                      status=SessionStatus.unknown.value, anterior_status=anterior,
                                      detail="conta retirada por bloqueio", account_id=account_id)
+        limpeza = self._agendar_limpeza(pedido)
         if self.ao_retirar_conta is not None:
             try:
                 self.ao_retirar_conta(profile_id, account_id, estava_bloqueada)
@@ -1452,7 +1481,49 @@ class SocialService:
                               data={"profile_id": profile_id, "account_id": account_id})
         return {"profile_id": profile_id, "account_id": account_id, "retirada": True, "ancora": ancora,
                 "limpezas": contagens, "status_da_persona": self._status_do(profile_id),
-                "detail": "Conta retirada; a persona continua."}
+                "limpeza_dos_aparelhos": limpeza, "detail": "Conta retirada; a persona continua."}
+
+    def _pedido_de_limpeza(self, profile_id: str, conta: Row, ancora: bool) -> PedidoDeLimpeza | None:
+        """O que pedir aos aparelhos depois da retirada (29.27), ou `None`: o pacote da conta precisa DECLARAR
+        `limpar_ao_retirar` no `app.yaml` (o núcleo não conhece app nenhum) e haver aparelho onde ela estava logada.
+        Lido ANTES da transação da retirada, que apaga a pista. Nunca levanta: sem o pedido a retirada segue, e a
+        limpeza fica para a rota manual."""
+        try:
+            pacote = self.repo.pacote_da_conta(profile_id, str(conta["id"]))
+            if not pacote or not capabilities_of(pacote).clear_on_account_retire:
+                return None
+            perfil = self.repo.profile_row(profile_id)
+            handles = [conta["handle"], perfil["username"] if perfil is not None and ancora else None]
+            aparelhos = self.repo.aparelhos_da_conta(profile_id, conta, handles)
+        except Exception as exc:  # noqa: BLE001 - ver docstring
+            self.bus.emit("log", f"Retirada da conta {conta['id']}: não deu para saber onde ela estava logada "
+                                 f"({type(exc).__name__}); a limpeza dos aparelhos fica para a rota manual.",
+                          level="error", data={"profile_id": profile_id, "account_id": str(conta["id"]),
+                                               "erro": type(exc).__name__})
+            return None
+        if not aparelhos:
+            return None
+        return PedidoDeLimpeza(profile_id=profile_id, account_id=str(conta["id"]), app_id=str(conta["app_id"]),
+                               package=pacote, aparelhos=tuple(aparelhos))
+
+    def _agendar_limpeza(self, pedido: PedidoDeLimpeza | None) -> dict[str, object]:
+        """Entrega o pedido à tarefa de fundo (uma tentativa por retirada). Quem agenda falhar não desfaz a retirada,
+        que já saiu: vira evento de erro e a quarentena segue aberta para uma pessoa."""
+        if pedido is None:
+            return {"agendada": False, "aparelhos": 0}
+        if self.ao_limpar_aparelhos is None:
+            return {"agendada": False, "aparelhos": len(pedido.aparelhos), "motivo": "sem executor ligado"}
+        try:
+            self.ao_limpar_aparelhos(pedido)
+        except Exception as exc:  # noqa: BLE001 - a conta já saiu; só a limpeza não foi pedida
+            self.bus.emit("device.account_cleanup", f"Conta {pedido.account_id} retirada, mas a limpeza dos aparelhos "
+                          f"não foi agendada ({type(exc).__name__}): a quarentena segue aberta; resolva pela rota do "
+                          "aparelho depois de limpar o app.", level="error",
+                          data={"profile_id": pedido.profile_id, "account_id": pedido.account_id,
+                                "package": pedido.package, "resultado": "nao_agendada",
+                                "aparelhos": [a.instance_id for a in pedido.aparelhos], "erro": type(exc).__name__})
+            return {"agendada": False, "aparelhos": len(pedido.aparelhos), "motivo": type(exc).__name__}
+        return {"agendada": True, "aparelhos": len(pedido.aparelhos)}
 
     def _status_do(self, profile_id: str) -> str:
         linha = self.repo.profile_row(profile_id)

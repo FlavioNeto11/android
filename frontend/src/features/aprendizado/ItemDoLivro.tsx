@@ -80,10 +80,11 @@ export function AvisoDaHabilidade({ naFila }: { naFila: boolean }) {
   );
 }
 
-function DetalheDoItem({ entrada, onMudou }: { entrada: EntradaDoLivro; onMudou: () => void }) {
+function DetalheDoItem({ entrada, onMudou }: { entrada: EntradaDoLivro; onMudou?: () => void }) {
   const [detalhe, setDetalhe] = useState<DetalheDoLivro | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  // Um gesto no detalhe (o parecer da IA) relê o detalhe e avisa a lista, que pode tirar o item da fila.
+  // Um gesto no próprio detalhe (a evidência inválida, 30.23; o parecer da IA, 30.17) relê o detalhe e avisa a lista,
+  // que pode tirar o item da fila.
   const [leitura, setLeitura] = useState(0);
   useEffect(() => {
     const ctl = new AbortController();
@@ -96,7 +97,7 @@ function DetalheDoItem({ entrada, onMudou }: { entrada: EntradaDoLivro; onMudou:
   }, [entrada.kind, entrada.ref, leitura]);
   if (erro) return <p className={styles.erroInline}>{erro}</p>;
   if (!detalhe) return <p className={styles.secaoLead}>Carregando o detalhe do item…</p>;
-  return <DetalheRico detalhe={detalhe} onMudou={() => { setLeitura((n) => n + 1); onMudou(); }} />;
+  return <DetalheRico detalhe={detalhe} onMudou={() => { setLeitura((n) => n + 1); onMudou?.(); }} />;
 }
 
 interface ItemDoLivroProps {
@@ -141,6 +142,11 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
         {/* O título cru (a chave da etapa, o texto com o código) fica no `title`: é o que quem desenvolve procura. */}
         <span className={styles.itemTitulo} title={e.title || e.ref}>{titulo}</span>
         {e.side_effect ? <Badge tone="warning" size="sm" icon={Zap} title="Tem efeito externo (mensagem, publicação, envio…)">efeito externo</Badge> : null}
+        {e.reaprendido ? (
+          <Badge tone="warning" size="sm" title={`Reaprendido depois de uma evidência inválida (execução ${e.reaprendido.run_invalidada}): a aprovação é sua`}>
+            reaprendido
+          </Badge>
+        ) : null}
         {e.state ? <StatusBadge meta={ESTADO_META[e.state]} size="sm" /> : null}
         {saude ? <Badge tone={saude.tone} size="sm" icon={saude.icon} title={saude.description} className={styles.seloDeSaude}><span className="sr-only">Saúde: </span>{saude.label}</Badge> : null}
       </div>

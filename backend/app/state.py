@@ -17,6 +17,7 @@ from .automation.appium_server import AppiumServer
 from .automation.driver import DeviceIO
 from .automation.hierarchy import SUBTIPO_CONTA_TRAVADA
 from .commands import despacho
+from .commands.limpeza_ao_retirar import LimpezaAoRetirar
 from .commands.reconciler import reconciliar_incertos
 from .commands.outbox import CommandOutbox
 from .commands.states import COMMAND_TERMINAL
@@ -338,6 +339,10 @@ class AppState:
         # O rastro textual da conta no Livro (o @ e o id em texto) sai na MESMA transação da retirada (contrato combinado
         # com o Aprendizado, 29.23): uma falha ali desfaz a retirada inteira, nada pela metade.
         self.social.limpezas_ao_retirar.append(esquecer_conta)
+        # 29.27 (emenda do ADR-068): conta retirada de app que declara `limpar_ao_retirar` leva os dados do app embora dos
+        # aparelhos onde estava logada (`pm clear` só desse pacote), numa tarefa de fundo; a quarentena resolve ao fim.
+        self.limpeza_ao_retirar = LimpezaAoRetirar(self)
+        self.social.ao_limpar_aparelhos = self.limpeza_ao_retirar.agendar
         # A porta do app passa a se resolver sozinha quando há versão distribuída por instalar naquele aparelho.
         self.scheduler.app_resolver = self._app_resolver
         # A mesma verdade sobre o app, só que SEM efeito e ANTES de planejar: é o pedaço do pré-voo que conhece
@@ -2244,12 +2249,17 @@ class AppState:
                        hint="Abra Aprovações e escolha aprovar, editar ou rejeitar.")
 
     def _seed_apps(self) -> None:
-        """Os apps do `config.yaml` entram no registro na subida; o que já existe (mesmo id) fica como está."""
+        """Os apps do `config.yaml` entram no registro na subida; o que já existe (mesmo id) fica como está.
+
+        `builtin: true` é o app de prova embutido e nasce com `category='qa'`, como a migração 041 fez com as linhas que
+        já existiam (`UPDATE … WHERE builtin = 1`). Sem isto, uma instalação nova semeava o app de prova SEM categoria e
+        o tier 0 de `side_effect_tier` (item 29.31) nunca valia nela."""
         for a in self.cfg.file.apps:
             if self.apps.obter(a.id) is not None:
                 continue
             self.apps.criar(app_id=a.id, name=a.name, package=a.package, activity=a.activity, apk_path=a.apk_path,
-                            nav_hints=a.nav_hints, known_selectors=a.known_selectors, builtin=a.builtin)
+                            nav_hints=a.nav_hints, known_selectors=a.known_selectors, builtin=a.builtin,
+                            category="qa" if a.builtin else None)
 
     def _seed_builtin_release(self) -> None:
         """Garante, na subida, que todo app embutido com APK versionado já tenha release instalável e

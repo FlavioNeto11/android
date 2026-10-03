@@ -19,6 +19,74 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: `commit` sem catálogo volta para a classe B (branch fix/commit-sem-catalogo-b)
+
+- O dono confirmou em 03/10 a decisão de 02/10: receita ou fluxo com `commit` num app SEM catálogo
+  (`commit_sem_catalogo`) é classe **B**, aprovado em lote. A emenda para C da mesma madrugada (PR #127) foi revertida
+  no código (`domain/politica_de_risco.py`), no doc do domínio e no §8.4 do desenho. O aviso de espera volta à faixa B.
+- Prova `simulated`: `test_learning_politica_de_risco.py` e `test_learning_espera.py`.
+
+## 2026-10-03 — 29.32: a conta retirada some de `memory_items` de todas as personas (branch feat/29-32-memoria-conta-retirada)
+
+- **P13 da reavaliação de 03/10 (opção A do dono):** a retirada reescrevia só a memória da persona que retirava. Agora o @, o id e o e-mail
+  da conta viram "[conta removida]" em `memory_items` de **todas** as personas. O e-mail só entra se identifica a conta (conta de e-mail, ou o login
+  dela) e nenhuma outra conta VIVA o usa (Outlook da mesma persona ou de outra: o endereço fica). `runs.command` e `actions.args` seguem como histórico.
+- `sem_o_rastro` ganhou a mesma fronteira de palavra do `esquecer_conta` do aprendizado (nem `foo@ana.com` nem a parte local `ana@x.com` casam com `ana`).
+  `limpezas` da retirada ganha `memory_items_de_outras_personas` (só contagem).
+- **Retroativo:** `scripts/memoria-conta-retirada.py` (`--ensaio` por padrão, `--aplicar`, `--lista-stdin` sem eco), fonte = lápides (hash) e ids dos
+  eventos `profile.account_retired`; o e-mail de conta já retirada não está no banco e só entra pela lista do operador. **Não rodado no banco real.**
+- Revisão adversarial: handle em forma de e-mail só some se exclusivo da conta; @ de conta viva (outro app, outra persona) não se redige; lista do operador recusa item curto ou só de dígitos; `--aplicar` exige `--backup`; `--ensaio` avisa migração divergente.
+- Prova `simulated`: `test_memoria_conta_retirada.py` (15). Prova na cópia do backup `20261002-211739` (migrada na cópia, 2 linhas sintéticas plantadas):
+  ensaio 2, aplicar 2, repetir 0; a cópia foi apagada. Nas 116 linhas reais da cópia: 0 com rastro por hash ou id (os 37 do central não se reproduzem ali).
+
+## 2026-10-02 — 12.5 nível 1: leitura visual de saída de etapa conferida às cegas (ADR-070, branch feat/12-5-leitura-visual)
+
+- **Por quê.** O passo 0 (`real`, android-01) provou que a linha da caixa do Outlook é cega na árvore (ComposeView sem texto em
+  toda a subárvore); sem leitura da imagem o `read_value` não tinha de onde tirar remetente e assunto.
+- **O que entra, DESLIGADO (`ai.leitura_visual.enabled: false`).** `read_value(source="visual")` na região que o app declara
+  (`leitura_visual.regioes` no `telas.yaml` do Outlook), com 13 barreiras e conferência cega por um segundo leitor: papel novo
+  `ai.roles.leitura` (sem herança, outro modelo que `decide`/`escalation`, com visão, sem fallback) e `transcribe(LeituraRequest)
+  -> Transcricao` nos três provedores. O recorte vira evidência; `step_outputs` ganha `origem`, `leitor`, `frame_sha256`,
+  `evidence_id` (migração 078); valor visual em etapa com efeito espera a pessoa; o juiz recebe a imagem à força.
+- **Junto.** `step_blocked.reason` redigido nos quatro destinos; conta própria das recusas da barreira de saídas (4 → `fail_or_retry`).
+- **Hub de IA.** `origem='leitura'`, fatia opcional `ai.limits.leitura_max_usd_per_day`, parse estrito da transcrição, teto do
+  recorte (nunca a tela inteira), aviso de `/api/ai` com provedor, modelo e apps que declaram a região.
+- **Ajustes da revisão (mesmo lote).** Privacidade: a `ValidationError` do parse não encadeia mais (`from None`; o texto do modelo
+  não chega ao log com traceback); triagem acusa e-mail de código por forma (número de 4 a 8 dígitos e palavra de código em
+  en/pt/es na mesma linha, valor E linha de origem), e na leitura visual o valor com forma de código é recusado sem contexto; a
+  triagem visual leva a etapa a `waiting_user` sem nova tentativa do ator; saídas visuais fora das variáveis de receita; o valor
+  gravado é o do leitor; `fora_do_app` recebe o valor real; recorte até 0,2 da altura e 320 px. Contrato: o leitor exige modelo
+  DECLARADO com visão em `ai.models` e comparado pelo nome normalizado (caixa, `vendor/`, `-AAAAMMDD`); a leitura nunca cai no
+  modelo do ator (`modelo_do_papel_leitura`); campo repetido com valores diferentes é `invalid_output`; orçamento, prazo e crédito
+  do leitor seguem o desfecho do ator (`desfecho_de_ia`); o aviso de `/api/ai` usa o rótulo do dado do app.
+- **Segunda rodada da revisão (D1 a D5).** A forma de código passa a ser lida em NFKC e com dígitos de outros alfabetos
+  convertidos, com os separadores `[\s.,·_/-]` e os de largura zero ignorados (`saidas.forma_de_codigo`, `_canonico`); na leitura
+  visual, token alfanumérico curto ("G-482913", "ABC123") também é código; o teste de forma vale para o valor e para CADA linha do
+  recorte, e a triagem do recorte roda ANTES da conferência. **A triagem da árvore ficou mais restritiva, de propósito:**
+  "Your code is 482.913" (ponto ou vírgula no número, dígitos de largura total ou árabes) e código alfanumérico ao lado de
+  palavra de código passam a ser recusados. O `AIError` do parse é levantado fora do `except` (sem `__context__`).
+- **Docs.** ADR-070, `ia.md` §17, `dominios/execution.md`, `api-contract.md` (adendo), `banco.md` (078), aprendizado K-077, item 12.5.
+- Prova `simulated`: `tests/test_leitura_visual.py`, `tests/test_leitura_visual_papel.py`. `real`: `not_run` (bancada do leitor e
+  execução no android-01 dependem de ligar a opção e do provedor escolhido).
+
+## 2026-10-03 — 29.31: app de prova no tier 0 do `side_effect_tier` (branch feat/29-31-qa-tier0)
+
+- **Custo (RA-8 da reavaliação de 03/10):** etapa com `side_effect` e SEM capability em app sem catálogo caía no tier 1 ("risco
+  desconhecido") e escalava ao modelo forte; em 7 dias, 64 a 66 desses escalonamentos eram do QA Messenger (43 % das chamadas do Opus
+  no tier 1, cerca de US$ 0,20 por dia) e distorciam a bateria de prova. Agora `side_effect_tier(step, cap, modo, app_de_prova)` devolve
+  tier 0 e motivo vazio quando o app da etapa é `builtin` e tem `apps.category='qa'`, só no `by_risk` e só sem capability. `true` (todo efeito sobe),
+  `false`, etapa com capability e app real sem catálogo ficam como estavam; `strong_model_for_side_effect` segue global.
+  `AppContext` ganhou `category` (padrão `None`), preenchida em `Scheduler._app_context`.
+- **Furo achado no caminho:** `_seed_apps` criava o app `builtin` SEM categoria (só a migração 041 a punha, nas linhas que já
+  existiam), então uma instalação nova nunca teria o app de prova como `qa`. O seed agora grava `category='qa'` para `builtin: true`
+  (sem migração). Critério por dado: no backup de 02/10, só `qa-messenger` tem `builtin=1` (e `category='qa'`). Revisão adversarial: `category='qa'` sozinho não vale (a API o aceita em qualquer app), o critério é `builtin` E `category='qa'`.
+- `simulated`: `tests/test_cost_levers.py` (função pura e caminho real do executor, nos dois sentidos). `not_run` no central; aceite real:
+  `decision` "sem catálogo" = 0 no app de prova em 7 dias depois do deploy. Sem migração.
+
+## 2026-10-03 — 14.11: CPU por emulador medida de verdade (branch feat/14-11-cpu-por-emulador)
+
+- **Corrigido (RA-3a da reavaliação de 03/10):** `devices/emulator.py::process_usage` recriava o `psutil.Process` do lançador e dos filhos a cada leitura, e o `cpu_percent(interval=None)` da 1ª leitura de um objeto novo é sempre 0,0; `resources.cpu_percent` de `GET /api/instances` mostrava 0,0 com o emulador gastando 1,1 a 1,2 núcleo. `MedidorDeUso` guarda os objetos por pid do lançador (reaproveita o filho conhecido, acrescenta o novo, descarta o que sumiu; troca tudo se o `create_time` mudar; purga o que não é lido há 60 s; `threading.Lock`). Assinatura mantida: a 1ª leitura de um objeto soma 0,0, da 2ª em diante é o valor real. Prova `simulated`: `backend/tests/test_cpu_por_emulador.py` (9). Prova `real` (leitura, 03/10, central, qemu 524 + emulator 53204): 3 leituras de 10 s, diferença de 0,8, 1,1 e 0,3 ponto contra o Δ de CPU do `Get-Process`. Sem migração; só o central, o agente do notebook herda `devices/` mas não mede CPU por emulador.
+
 ## 2026-10-03 — Aprendizado: a exposição da lição mede só o custo da execução (contrato com o 31.14 do Jev) e `commit` sem catálogo vai para a classe C (branch fix/exposicao-custo-da-execucao)
 
 - Emenda de 03/10 da política de risco (30.10, mostrada no painel pelo 30.16; decisão da orquestradora pela regra do
@@ -61,6 +129,61 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `tests/test_learning_pareceres.py`, `ParecerDaIA.test.tsx`; bateria afetada (53 arquivos, 919) e
   frontend inteiro (1298); navegador na cópia do banco do central com provedor de ensaio e hub `simulated`, nos modos `on`
   e `shadow`, e os fluxos pendentes do 30.15/30.16. `not_run` no central (curador `off` até o deploy 4).
+
+## 2026-10-03 — Aprendizado: evidência inválida como tipo próprio de desligamento (30.23, branch feat/30-23-evidencia-invalida)
+
+- Ação nova `POST /api/aprendizado/{kind}/{ref}/evidencia-invalida {run_id}`. Desliga a receita ou o fluxo aprendido de
+  um sucesso falso, com o motivo estruturado `evidencia_invalida:<run>`; o já desligado ganha a linha que reclassifica o
+  motivo. O motivo livre nesse formato é recusado (422).
+- O veto desse tipo barra só a mesma execução. Outra execução real que ensine o mesmo faz o item renascer "reaprendido",
+  em classe B: espera o dono em "Para aprovar", e o sistema para em `validated` (sombra da receita e do fluxo, e o
+  repositório). Relações `reaprende` e `reaprendida_por`.
+- A evidência da execução marcada fica à vista (`invalidada`) e sai da saúde, da versão e da sombra do fluxo.
+- O dossiê do curador (30.11, que entrou na main pela suíte 5) segue a mesma regra: o reaprendido é B nos fatos de
+  risco, e a evidência marcada fica de fora do que a IA pode citar.
+- Painel: selo na trilha, aviso na evidência, seção do reaprendido, botão "Marcar evidência inválida" com confirmação no
+  lugar, e o motivo em "Para aprovar".
+- Gancho em `taskqueue/recipes.py` (`exige_o_dono` na sombra): entra pela suíte 6. Se a leitura do livro falha, a
+  candidata não sobe nem ganha motivo na trilha; a próxima concordância pergunta de novo.
+- `test_learning_backlog` e `test_learning_repositorio` passam a usar meio-dia fixo. A suíte 5b falhou perto da meia-noite
+  UTC porque a semente cruzava o dia.
+- Adendo v0.70; emenda ao ADR-054. Prova `simulated`; a marca da 109 e do fluxo no central é `not_run` até o deploy.
+- Com o 30.17 (merge da main no branch): a marca rotula o parecer pendente do curador como o `/status` (vista em `on`,
+  às cegas fora dele); reclassificar o já desligado não rotula (`tests/test_learning_evidencia_invalida.py`).
+
+## 2026-10-02 — 29.29: D2-a também ao ganhar a conta, com vínculo sem app (branch feat/29-29-d2a, commit cdcb3fe6)
+
+- **Furo (revisão adversarial do 29.27):** pessoa sem conta, vinculada SEM app a aparelho que já tinha o Instagram de outra persona, passava a servir o
+  mesmo app ao ganhar a conta (`create_profile` com `persona_id` e sem `instance_id`; `add_account` de outro app), porque `profiles_of_instance`
+  conta o vínculo sem app de quem tem conta no app e o vínculo, feito antes, não tinha app a conferir. Agora `SocialRepository.conflito_da_conta_nova`
+  confere o aparelho do cadastro e cada aparelho de vínculo sem app da pessoa ANTES de criar qualquer linha (409 `conta_do_app_ja_no_aparelho`,
+  "nada foi criado"). Portas mapeadas: `create_profile` e `add_account` tinham o furo; `bind_device`, `_rebind` e vínculo no cadastro já
+  passavam por `repo.bind`. `simulated`: `tests/test_d2a_conta_nova_com_vinculo_sem_app.py` (6). `not_run` no central. Sem migração.
+
+## 2026-10-02 — 29.28: contas nossas podem interagir entre si, em ritmo baixo (emenda do ADR-050, branch feat/29-27-limpeza-e-adr050)
+
+- **Decisão do dono de 02/10 (relatada às 23:10Z):** `PolicyEngine._fleet_gate` deixa de recusar todo alvo que é conta nossa. Conta RETIRADA (lápide) segue recusada,
+  sem `retry_at`; conta nossa VIVA passa pelas demais regras (política do perfil, aprovação, tetos, uma conta por alvo do ADR-055) e por um
+  espaçamento mínimo desde o último gesto com efeito DESTA conta (maior entre `limits.fleet_min_spacing_to_own_account_s`, padrão 600, e o
+  cooldown do perfil), com `retry_at`. Config nova em `LimitsCfg` e `config/config.example.yaml`. Nenhum outro ponto bloqueava (varredura).
+  `simulated`: `tests/test_interacao_entre_contas_nossas.py` (7); `test_conta_bloqueada_sai.py` atualizado (2 testes). `not_run` no central.
+
+## 2026-10-02 — 29.27: retirada de conta bloqueada limpa o app nos aparelhos (branch feat/29-27-limpeza-e-adr050)
+
+- **Retirada leva os dados do app embora (emenda do ADR-068, decisão do dono de 02/10, relatada às 23:10Z):** o `app.yaml` ganhou `limpar_ao_retirar` (verdadeiro no
+  Instagram; `AppDefinition.clear_on_account_retire`). Retirada de conta (gatilho ou rota `retire`) de app que declara isso faz, em tarefa de fundo, um
+  aparelho por vez, onde a conta estava logada (marcadores abertos + vínculo, capturados antes de a retirada mascarar o @; a sessão NÃO é pista): acorda se
+  hibernado/parado, captura de tela, `pm clear` SÓ do pacote declarado (comando `session.logout` em `run_device_job`), captura de tela, resolve a
+  quarentena com a nota "limpeza automática autorizada pelo dono em 02/10" e devolve a energia. Falha: quarentena aberta e evento `device.account_cleanup`
+  em erro, sem repetir. Sem retroativo na subida; sem o @ em evento ou log. Resposta de `retire` ganha `limpeza_dos_aparelhos` (adendo v0.68).
+  `resolver_conta_travada` aceita `marcadores`. Sem migração. `simulated`: `tests/test_limpeza_ao_retirar.py` (19); `not_run` no central.
+- **Correção da revisão adversarial (defeitos que bloqueavam o merge):** o `pm clear` podia apagar o Instagram de OUTRA persona viva. (1) A sessão
+  deixa de ser fonte de aparelho (`unbind` não a apaga; `wrong_account`/`needs_person` não dizem "esta conta está aqui"). (2) Trava `outra_conta`
+  dentro do trabalho do aparelho, logo antes do `clear_data`: recusa se há vínculo (inclusive o sem app de persona com conta do app, o furo da
+  D2-a), sessão em qualquer status ou marcador de outra conta do mesmo app (`SocialRepository.outra_conta_no_aparelho`); quarentena aberta e
+  evento de erro. (3) Trava de energia: só acorda com `confirm_locked_account` se todo marcador aberto do aparelho é do pedido. **Risco residual a
+  aceitar pelo dono:** conta logada no app fora da plataforma (seletor de contas do Instagram) seria apagada. O furo da D2-a em `create_profile`
+  segue como item separado.
 
 ## 2026-10-02 — Emenda do ADR-069: a chave TypeSafe não é trocada (decisão do dono, item 9)
 

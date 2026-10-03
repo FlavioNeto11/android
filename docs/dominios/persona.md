@@ -443,6 +443,9 @@ verificar, sair e do contexto. Um aparelho tem N personas, **uma por app** (D2-a
 aparelho são recusadas com 409 `conta_do_app_ja_no_aparelho` enquanto a troca de conta no Instagram for manual). A
 sessão é da conta **naquele** aparelho (`account_sessions`); a mesma conta em N aparelhos é permitida (D3), e o
 ADR-029 bloqueia a persona se o Instagram pedir verificação. Vincular não toma o aparelho de ninguém.
+A D2-a também vale ao **ganhar a conta**: o vínculo sem app serve a todo app em que a persona tem conta, então
+cadastrar a conta (ou somar a de outro app) de quem está vinculado sem app a um aparelho já ocupado por outra persona
+naquele app é 409, conferido antes de criar qualquer linha (29.29).
 
 **Roteamento.** "Peça para o André …" resolve assim: `TargetExtractor` acha "o André" no texto (padrões fixos, sem
 IA) e o tira do comando; `resolver_alvos` escolhe o aparelho. Política `device_policy`: `one` (padrão), `primary`,

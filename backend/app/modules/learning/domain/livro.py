@@ -16,10 +16,11 @@ Os tipos sem casa nativa (tela, lição, voz, preferência) moram em `learning_i
 """
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from app.modules.learning.domain.ciclo import TRANSICOES, Actor, SkillState, exige_o_dono, permitido
+from app.modules.learning.domain.evidencia_invalida import Reaprendizado, ja_invalidada
 from app.modules.learning.domain.vocabulario import (FONTES_HUMANAS, KINDS_DE_ITEM, LivroKind, Origem, SourceKind)
 from app.modules.skills.domain.document import JsonObject, JsonValue, content_hash
 
@@ -221,11 +222,19 @@ class EntradaDoLivro:
     #: `recipes.consecutive_fail` (30.4: a saúde degrada em `saude.falhas_seguidas`). `None` onde a fonte não tem o
     #: contador (e enquanto a fonte nativa não o preenche): a dimensão fica `desconhecida`, nunca zero.
     falhas_seguidas: int | None = None
+    #: A execução de que a receita ou o fluxo foi aprendido (`learned_from_step` / `source_run_id`); `None` no treino,
+    #: nos outros tipos e no que não tem origem legível. É a única que a evidência inválida aceita (30.23).
+    nasceu_de: str | None = None
+    #: Derivado da trilha pelo serviço (`evidencia_invalida.reaprendizado`), nunca gravado: o item (re)nasceu no escopo
+    #: de uma evidência inválida e espera o dono (classe B forçada).
+    reaprendido: Reaprendizado | None = None
 
     @property
     def requires_owner(self) -> bool:
-        """Habilidade publica só por pessoa (o ciclo dela é mais estrito que o D1); o resto segue o D1."""
-        return self.kind is LivroKind.HABILIDADE or exige_o_dono(self.side_effect, self.human_origin)
+        """Habilidade publica só por pessoa (o ciclo dela é mais estrito que o D1); o resto segue o D1, com o
+        reaprendido depois de evidência inválida (30.23) também esperando o dono."""
+        return self.kind is LivroKind.HABILIDADE or exige_o_dono(self.side_effect, self.human_origin,
+                                                                 self.reaprendido is not None)
 
     @property
     def trail_ref(self) -> str:
@@ -279,7 +288,8 @@ class AcaoPermitida:
 @dataclass(frozen=True, slots=True)
 class MotivoDeNaoPublicar:
     """Por que o sistema não publica este item sozinho. `codigo`: `habilidade`, `efeito_externo`,
-    `texto_de_pessoa` (esperam o dono: `espera_o_dono`), `vetado` ou `modo_desligado`; `detalhe` é a razão do veto."""
+    `texto_de_pessoa`, `reaprendido` (esperam o dono: `espera_o_dono`), `vetado` ou `modo_desligado`; `detalhe` é a
+    razão do veto ou, no `reaprendido`, a execução da evidência inválida."""
 
     codigo: str
     espera_o_dono: bool
@@ -317,11 +327,29 @@ def por_que_o_sistema_nao_publica(e: EntradaDoLivro, *, modo_publica: bool = Tru
         return MotivoDeNaoPublicar("efeito_externo", True)
     if e.human_origin:
         return MotivoDeNaoPublicar("texto_de_pessoa", True)
+    if e.reaprendido is not None and e.state is not SkillState.PUBLISHED:
+        # publicado, o dono já aprovou: a marca e a relação ficam, a espera não
+        return MotivoDeNaoPublicar("reaprendido", True, e.reaprendido.run_invalidada)
     if veto is not None:
         return MotivoDeNaoPublicar("vetado", False, veto)
     if not modo_publica:
         return MotivoDeNaoPublicar("modo_desligado", False)
     return None
+
+
+#: Onde a evidência inválida (30.23) se aplica: o vivo é desligado com o motivo do tipo; o já desligado ganha a linha
+#: que reclassifica o desligamento. O aposentado (`deprecated`) já saiu de circulação e não muda.
+ESTADOS_DA_EVIDENCIA_INVALIDA = frozenset({_S.CANDIDATE, _S.VALIDATED, _S.PUBLISHED, _S.DISABLED})
+
+
+def evidencia_a_invalidar(e: EntradaDoLivro, trilha: Sequence[Transicao]) -> str | None:
+    """A execução que a pessoa pode marcar como evidência inválida neste item agora (a de ORIGEM dele), ou `None`:
+    só receita e fluxo aprendidos de execução, num estado em que a ação vale, e ainda não marcados por ela."""
+    if e.kind not in (LivroKind.RECEITA, LivroKind.FLUXO) or e.nasceu_de is None:
+        return None
+    if e.state not in ESTADOS_DA_EVIDENCIA_INVALIDA or ja_invalidada(trilha, e.nasceu_de):
+        return None
+    return e.nasceu_de
 
 
 def a_revisar(e: EntradaDoLivro, decididos_por_pessoa: frozenset[str]) -> bool:

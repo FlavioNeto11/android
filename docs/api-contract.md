@@ -2837,6 +2837,22 @@ com "credencial" é tratado como segredo pela redação.
     de DTO ou de migração.
 - **Relatório:** `per_instance[].values_read: [{name, value, value_kind, step_title, app, read_at}]` em
   `GET /api/runs/{id}/report`, e a seção "Valores lidos entre etapas" no markdown.
+- **Origem do valor (item 12.5, ADR-070; adendo provisório):** cada item de `values_read` ganha `origem` (`arvore`|`visual`),
+  `leitor` (`provedor/modelo`), `frame_sha256` e `evidence_id` (os três nulos quando `origem=arvore`). O markdown traz, para
+  cada valor visual, a linha "lido da imagem; conferido às cegas por <leitor> no recorte da captura <sha8>". A ferramenta
+  `read_value` ganha `source` (`tree` padrão | `visual`; `visual` exige `value` e só vale com `value_kind=text`). A ação
+  `read_value` visual registra `{name, value_kind, chars, origem, frame_id, evidence_id, leitor}` e `args.value` fica
+  `**OMITIDO**`; a recusa é uma ação `rejected` cujo `error` é só um código do vocabulário fechado (`desligado`,
+  `elemento_com_texto`, `regiao_nao_declarada`, `arvore_truncada`, `tela_sensivel`, `fora_do_app`, `sem_ancora`,
+  `captura_mudou`, `repetida`, `sem_leitor`, `leitor_falhou`, `ilegivel`, `truncado`, `nao_confere`, `triagem:<motivo>`; o
+  vocabulário é fechado e inclui `tela_sensivel` e `leitor_falhou`, que o orquestrador também aceita). A triagem (código de
+  verificação, senha, token) NÃO é erro de chamada: como no caminho da árvore, a ação fica `rejected` com
+  `valor recusado pela triagem: <motivo>` e a etapa vai para `waiting_user`, sem nova tentativa do ator. O valor gravado é o do
+  leitor (limpo); as saídas `origem=visual` não entram nas variáveis de receita; orçamento, prazo e crédito do leitor seguem o
+  desfecho do ator e não viram `leitor_falhou`.
+  `GET /api/ai` lista a função `leitura` em `roles` e `models` quando `ai.roles.leitura` está escrito, e o `notice` nomeia
+  provedor, modelo e os apps que declaram a região. `GET /api/usage` agrupa as chamadas pelo `role` `leitura`, e `ai_calls.origem`
+  é `leitura`. Sem rota nova; migração 078.
 
 ## Adendo v0.43 (30/09/2026) — Fase 29: prova de vazamento na linha do aparelho e leitura do firewall por interface (ADR-056, ADR-061)
 
@@ -3928,6 +3944,98 @@ Códigos novos (em `previa`, viram `bloqueios[]`):
   `requer_pessoa=false`. O fato também fica na memória do pedido (`evento.buraco.<gatilho>`, `pendencia`;
   `condicao.<gatilho>`, `descoberta`).
 
+## Adendo v0.68 (02/10/2026) — retirada de conta limpa o app nos aparelhos; evento `device.account_cleanup` (item 29.27, emenda do ADR-068)
+
+`POST /api/instagram/profiles/{id}/accounts/{conta}/retire` (adendo v0.55) e o gatilho automático da retirada passam a **limpar os dados do app**
+(`pm clear` só do pacote da conta) nos aparelhos onde a conta estava logada, quando o `app.yaml` do app declara `limpar_ao_retirar: true`
+(hoje o Instagram). A resposta ganha o campo **`limpeza_dos_aparelhos`**: `{agendada: bool, aparelhos: n}` (com `motivo` quando `agendada` é
+falso por falha ao agendar ou por não haver executor). Sem a chave no app, ou sem aparelho onde a conta estava logada: `{agendada: false,
+aparelhos: 0}` e nada muda. A conta que já não existe (idempotente) não traz o campo.
+
+A limpeza roda em tarefa de fundo, um aparelho por vez, como o comando `session.logout` (aparece em `GET /api/commands` com
+`requested_by: sistema:limpeza-ao-retirar`): acorda o aparelho hibernado ou parado, captura a tela, `pm clear`, captura a tela, resolve a
+quarentena (`resolved_by: sistema:limpeza-ao-retirar`, `resolution: "limpeza automática autorizada pelo dono em 02/10"`) e devolve a energia.
+Evento novo **`device.account_cleanup`** por aparelho: `data` = `{profile_id, account_id, package, instance_id, resultado, passo, motivo, antes,
+depois, energia, resolvidos}`; `resultado` é `concluida` (nível `warn`), `dispensada` (a quarentena já tinha sido resolvida por uma pessoa, ou a
+retirada não valeu; `info`), `falhou` (`error`, o aviso de atenção: a quarentena segue aberta e nada é repetido) ou `nao_agendada` (`error`).
+`antes`/`depois` são chaves do armazém de evidências (`limpeza-de-conta/<aparelho>/…png`). Os aparelhos do pedido vêm dos marcadores abertos da
+conta e do vínculo (não da sessão); `passo: outra_conta` (em `falhou`) é a recusa de limpar um aparelho que também serve a outra conta do mesmo
+app, ou que tem quarentena aberta de outra conta (sem acordá-lo). O evento e o log não carregam o @ da conta. Nada
+roda retroativamente na subida. Nenhuma migração. Prova `simulated` (`tests/test_limpeza_ao_retirar.py`); `not_run` no central.
+
+## Adendo v0.69 (02/10/2026) — D2-a também ao ganhar a conta (item 29.29, emenda do ADR da 051)
+
+Sem rota nova nem campo novo: dois 409 `conta_do_app_ja_no_aparelho` em rotas que já existiam, sempre ANTES de criar qualquer linha.
+
+- `POST /api/instagram/profiles` com `persona_id` de pessoa sem conta: 409 quando algum vínculo SEM app da pessoa (ou o `instance_id` do corpo)
+  está num aparelho onde outra persona já serve o app da conta. Antes só o `instance_id` do corpo era conferido.
+- `POST /api/instagram/profiles/{id}/accounts` (conta de outro app): 409 quando um vínculo sem app da persona passaria a servir esse app num aparelho
+  onde outra persona já o serve. O vínculo COM app não é reconferido (já foi no vínculo) e quem já tem conta no app não muda de sentido.
+- A mensagem do 409 nomeia o aparelho e a outra persona. Nada é criado: nem perfil, nem conta, nem senha no cofre.
+- Ressalvas (revisão adversarial de 03/10): a conferência só roda com o app âncora registrado em `apps` (sem ele, nada é conferido, como antes);
+  `conta_ancora(criar=True)` em dado legado cria a conta sem conferir (0 casos no central em 03/10); conferência e criação não estão numa transação
+  (janela de corrida, no backlog).
+
+## Adendo v0.70 (03/10/2026) — evidência inválida: ação própria, trilha com tipo e o item reaprendido (item 30.23)
+
+Uma rota e campos novos; nada muda de tipo. A regra é a emenda de 03/10 ao ADR-054; o desenho, o §9.3 de
+`design/aprendizado-vivo.md`.
+
+- **`POST /api/aprendizado/{kind}/{ref}/evidencia-invalida`**, corpo `{run_id}` (só esse campo). Serve para quando a receita
+  ou o fluxo foi aprendido de uma execução que terminou como sucesso sem comprovar o que fez. Quem decide é o operador da
+  sessão do painel, como em `/status`. O motivo não vem do cliente: o backend grava `evidencia_invalida:<run_id>` na trilha.
+  - O item vivo (`candidate`, `validated`, `published`) vai para `disabled`, com CAS no status nativo.
+  - O já desligado ganha a linha `disabled → disabled`, que reclassifica o desligamento sem mudar o status nativo.
+  - A mesma marca de novo não grava outra linha.
+  - Devolve o detalhe, como `GET /api/aprendizado/{kind}/{ref}`.
+  - Recusas:
+    - 422 `invalid`: o tipo não é `receita` nem `fluxo`, ou o `run_id` está fora do formato `r-AAAAMMDDhhmmss-xxxxxx`;
+    - 409 `transition_forbidden`: o item não nasceu de uma execução (treino ou origem ilegível), o `run_id` não é a execução
+      de origem dele (`nasceu_de`), ou ele está aposentado (`deprecated`);
+    - 409 `state_conflict`: o status nativo mudou entre a leitura e a escrita;
+    - 404 `not_found`.
+- **O motivo reservado é recusado em `POST …/status`** com 422 `invalid`. Vale para o `reason` que começa por
+  `evidencia_invalida`, sem diferenciar maiúsculas e ignorando espaços nas pontas, e a mensagem aponta a ação própria.
+  `PUT /api/flows/{id}` e `PUT /api/recipes/{id}` passam pelo mesmo serviço e recusam igual.
+- **Linha da trilha** (`trilha[]` do detalhe): ganha `tipo` (`"evidencia_invalida"` ou `null`) e `run_invalidada` (o id da
+  execução ou `null`), lidos do `reason` pelo backend. O cliente não interpreta o formato do motivo.
+- **Evidência** (`evidencias[]`): ganha `invalidada` (booleano). É `true` quando a execução dela foi marcada como evidência
+  inválida neste item. A evidência continua listada, mas não entra na saúde, na versão nem na sombra do fluxo.
+- **Item** (linha de `GET /api/aprendizado`, `/pendentes` e `/revisar`, e `item` do detalhe):
+  - `nasceu_de`: a execução de que a receita ou o fluxo foi aprendido; `null` no treino e nos outros tipos.
+  - `reaprendido: {run_invalidada, item: {kind, ref}} | null`: o item (re)nasceu, por outra execução real, no escopo
+    (`scope_key`) de uma evidência inválida, sem publicação de pessoa no escopo entre a marca e esse nascimento. `item` é o
+    que foi desligado; no fluxo é a própria linha, que renasce nela. Com `reaprendido`, `requires_owner` é `true` e o item
+    espera o dono em "Para aprovar". O item que o dono aprova continua com o campo, porque é a origem dele; o que nascer
+    no escopo depois dessa aprovação já não é reaprendido.
+- **`por_que_nao_publica.codigo`** ganha `reaprendido`, logo depois de `texto_de_pessoa`: `espera_o_dono` vem `true` e
+  `detalhe` traz a execução invalidada. O código não aparece no item já publicado.
+- **Detalhe** ganha `invalidar_evidencia: {run_id} | null`: a execução que a pessoa pode marcar agora (a de origem). Vem
+  `null` quando a ação não cabe: outro tipo, item sem origem, aposentado ou já marcado.
+- **`relacoes[].tipo`** ganha dois valores, ambos com `fonte` `learning_transitions: evidencia_invalida:<run>, mesmo scope_key`:
+  - `reaprende`: da receita reaprendida para a desligada, com `rotulo` "<ref> (evidência inválida da execução <run>)";
+  - `reaprendida_por`: o inverso.
+
+  O fluxo renasce na mesma linha e não ganha relação consigo.
+- **Evento `learning.needs_person`**: o `motivo` da entrada ganha `reaprendido`, na faixa B. Ele vem antes das outras
+  razões B; as da faixa C continuam vencendo.
+
+Não há migração: o tipo mora no `reason` de `learning_transitions`, com gramática fechada
+(`evidencia_invalida:r-AAAAMMDDhhmmss-xxxxxx`).
+
+## Adendo v0.71 (03/10/2026) — leitura visual de saída de etapa (item 12.5, ADR-070)
+
+Sem rota nova. O contrato do 12.5 está no adendo "Origem do valor" do relatório de execução (acima): `values_read[].origem`, `read_value(source)`, o
+vocabulário fechado de recusas (`desligado` … `leitor_falhou`, `tela_sensivel`, `triagem:<motivo>`), `GET /api/ai` com a função `leitura` e `GET
+/api/usage` com o `role` `leitura`. Ajustes desta revisão: a triagem do valor visual leva a etapa a `waiting_user` (sem nova tentativa do ator);
+o valor gravado é o do leitor; as saídas `origem=visual` não entram nas variáveis de receita; orçamento, prazo e crédito do leitor não viram
+`leitor_falhou`; o aviso de `/api/ai` nomeia os apps pelo rótulo do dado. O número v0.71 é o final, confirmado pelo orquestrador na integração da suíte 6.
+
+## Adendo v0.73 (03/10/2026; número final, confirmado na integração da suíte 6) — `retire`: `limpezas` ganha `memory_items_de_outras_personas` (item 29.32)
+
+`limpezas.memory_items` passa a contar as lembranças reescritas em TODAS as personas (não só na que retira), e a chave nova
+`memory_items_de_outras_personas` diz quantas dessas eram de outras personas. Só contagens, inteiros; o evento `profile.account_retired` leva as mesmas.
+
 ## Adendo v0.72 (03/10/2026, provisório: quem mergear depois renumera) — o parecer da IA diante da pessoa: rótulo, aceite e pedido de revisão (item 30.17)
 
 Aditivo. O curador (30.11) grava pareceres em `learning_reviews`; agora a pessoa os vê, aceita ou recusa, e cada decisão
@@ -3967,6 +4075,9 @@ pessoa: a escolha dela mede se a IA acerta, sem a influência dela (D-3). O pare
 - `review_id` que não responde ao estado de agora (já decidido, outro estado): a decisão fica, sem rótulo.
 - `PUT /api/flows/{id}` e `PUT /api/recipes/{id}` rotulam sempre às cegas (a página delas não mostra parecer), com o rótulo
   do primeiro passo. Decisão do ator `sistema` nunca rotula.
+- `POST /api/aprendizado/{kind}/{ref}/evidencia-invalida` (30.23, adendo v0.70) rotula como o `/status`: vista em `on` (o
+  detalhe mostra o parecer ao lado do botão), às cegas fora dele. Reclassificar o já desligado não muda o estado e não
+  rotula.
 
 **O gesto sobre o parecer.** `POST /api/aprendizado/{kind}/{ref}/parecer/{review_id} {resposta: "aceitar"|"recusar",
 motivo (1 a 500), em_lote?: false}` → o corpo do detalhe.

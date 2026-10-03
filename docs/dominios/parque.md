@@ -151,6 +151,12 @@ si mesmo:
     RAM que o órfão já tem não pode ser contada duas vezes. Métrica `capacidade.reserva{resultado,motivo}`.
   - A leitura de recursos efetivos (cgroup v1/v2, `cpu.max`/cpuset e PSI no Linux) está em `devices/recursos.py`.
     O que não dá para medir, como o job object no Windows, fica `null`.
+- **CPU e RSS por emulador** (`devices/emulator.py::MedidorDeUso`, item 14.11): o laço de métricas lê a cada 3 s o
+  lançador e os filhos (o qemu). O `cpu_percent` do psutil é um delta POR OBJETO, então os `psutil.Process` duram entre
+  leituras (cache por pid do lançador, com `create_time` para detectar pid reciclado, descarte do filho que sumiu,
+  purga do que não é lido há 60 s, `threading.Lock` porque a chamada vem do pool). A 1ª leitura de um pid devolve CPU 0,0
+  (não há intervalo); da 2ª em diante é o valor real, e um filho novo soma 0,0 só na volta em que aparece. Até o 14.11
+  o objeto era recriado a cada chamada e `resources.cpu_percent` ficava em 0,0 o tempo todo.
 - **Desbravador** (`_waits_for_pathfinder`): numa execução com vários aparelhos, o primeiro aprende e os de mesmo
   grupo de compatibilidade do app (pacote, versão, assinatura, variante) esperam, até `ai.pathfinder_wait_s`, para
   repetir por receita.

@@ -52,6 +52,11 @@ IDS_TODOS_MAX = 4
 _CAMPOS_DA_APRENDIDA = frozenset({"tela", "tipo", "autenticada", "ids_todos", "casa", "razao"})
 
 
+#: O alfabeto de um nome de saída de etapa (o mesmo de `models.SAIDA_NOME_RE`; repetido aqui para a camada de automação
+#: não importar o modelo de execução).
+_NOME_DE_SAIDA = re.compile(r"[a-z][a-z0-9_]{0,39}")
+
+
 class ConhecimentoInvalido(ValueError):
     """O arquivo de conhecimento não se sustenta: recusa na carga, antes de classificar a primeira tela."""
 
@@ -99,6 +104,31 @@ class Extracao:
 
 
 @dataclass(frozen=True, slots=True)
+class RegiaoVisual:
+    """Onde o app DECLARA que uma saída de etapa pode ser lida da imagem (item 12.5, ADR-070): a tela, os contêineres
+    (id da árvore) que contêm a linha e os nomes de saída que valem ali. É uma afirmação da pessoa que escreve o dado do
+    app: diz ONDE se pode ler, não que o conteúdo nunca será sensível (a triagem continua obrigatória)."""
+
+    tela: str
+    dentro_de: tuple[str, ...]
+    saidas: tuple[str, ...]
+
+    def cobre(self, tree: UiTree, ancora: object, saida: str) -> bool:
+        """A saída vale nesta região e a âncora está DENTRO de um dos contêineres declarados (mesma contenção de
+        `Extracao.cabe`: id do contêiner por sufixo exato — ou o id completo, quando declarado assim — e limites)."""
+        if saida not in self.saidas:
+            return False
+        x1, y1, x2, y2 = ancora.bounds  # type: ignore[attr-defined]
+        return any(c is not ancora and self._e_o_conteiner(c.resource_id)
+                   and c.bounds[0] <= x1 and c.bounds[1] <= y1 and x2 <= c.bounds[2] and y2 <= c.bounds[3]
+                   for c in tree.elements)
+
+    def _e_o_conteiner(self, resource_id: str) -> bool:
+        rid = (resource_id or "").lower()
+        return any(rid == d if ":id/" in d else _sufixo(rid) == d for d in self.dentro_de)
+
+
+@dataclass(frozen=True, slots=True)
 class EstadoConhecido:
     telas: tuple[str, ...]
     voltar_max: int = 4
@@ -114,6 +144,13 @@ class ConhecimentoDeTelas:
     telas: tuple[RegraDeTela, ...]
     extracoes: dict[str, Extracao]
     estado_conhecido: EstadoConhecido
+    #: Item 12.5: as regiões em que a leitura visual vale (`leitura_visual.regioes`). Vazio = nenhuma saída pode ser lida
+    #: da imagem neste app, e a leitura visual recusa com `regiao_nao_declarada`.
+    regioes_visuais: tuple[RegiaoVisual, ...] = ()
+
+    def regiao_visual(self, tela: str | None, tree: UiTree, ancora: object, saida: str) -> RegiaoVisual | None:
+        """A região declarada que cobre esta âncora para esta saída, na tela reconhecida `tela`; `None` se nenhuma."""
+        return next((r for r in self.regioes_visuais if r.tela == tela and r.cobre(tree, ancora, saida)), None)
 
     def sinais_de(self, locale: str | None) -> dict[str, re.Pattern[str]]:
         """`pt-BR` -> tabela `pt`; idioma não declarado cai no padrão do app."""
@@ -415,11 +452,42 @@ def de_dados(dados: object) -> ConhecimentoDeTelas:
     voltar_max = ec.get("voltar_max", 4)
     if not isinstance(voltar_max, int) or not 0 <= voltar_max <= 10:
         raise ConhecimentoInvalido("`estado_conhecido.voltar_max` precisa ser um inteiro de 0 a 10")
+    regioes = _regioes_visuais(raiz.get("leitura_visual"), nomes)
     versao = raiz.get("versao", 1)
     return ConhecimentoDeTelas(app=app, versao=versao if isinstance(versao, int) else 1, idioma_padrao=idioma_padrao,
                                sinais=sinais, telas=tuple(regras), extracoes=extracoes,
                                estado_conhecido=EstadoConhecido(telas=casa, voltar_max=voltar_max,
-                                                                reabrir=bool(ec.get("reabrir", True))))
+                                                                reabrir=bool(ec.get("reabrir", True))),
+                               regioes_visuais=regioes)
+
+
+def _regioes_visuais(bruto: object, telas: set[str]) -> tuple[RegiaoVisual, ...]:
+    """`leitura_visual.regioes` (item 12.5). Recusa na carga: `dentro_de` vazio (a região sem contêiner cobriria a tela
+    inteira), `saidas` vazia ou com nome fora do alfabeto de saída, e tela que o arquivo não declara. A conferência
+    contra o `catalogo.yaml` (a saída existir em alguma ação) é de `app_declarado/pacote.py`, que tem os dois."""
+    if bruto is None:
+        return ()
+    bloco = _mapa(bruto, "leitura_visual")
+    if estranhos := sorted(set(bloco) - {"regioes"}):
+        raise ConhecimentoInvalido(f"leitura_visual: campo desconhecido {', '.join(estranhos)}")
+    out: list[RegiaoVisual] = []
+    for i, item in enumerate(_lista(bloco.get("regioes"), "leitura_visual.regioes")):
+        onde = f"leitura_visual.regioes[{i}]"
+        r = _mapa(item, onde)
+        if estranhos := sorted(set(r) - {"tela", "dentro_de", "saidas"}):
+            raise ConhecimentoInvalido(f"{onde}: campo desconhecido {', '.join(estranhos)}")
+        tela = str(r.get("tela") or "")
+        if tela not in telas:
+            raise ConhecimentoInvalido(f"{onde}: a tela {tela!r} não está declarada em `telas`")
+        dentro = _textos(r.get("dentro_de"), f"{onde}.dentro_de")
+        if not dentro or any(not d.strip() for d in dentro):
+            raise ConhecimentoInvalido(f"{onde}: `dentro_de` não pode ser vazio (a região precisa de um contêiner)")
+        saidas = tuple(str(x) for x in _lista(r.get("saidas"), f"{onde}.saidas"))
+        if not saidas or any(not _NOME_DE_SAIDA.fullmatch(n) for n in saidas):
+            raise ConhecimentoInvalido(f"{onde}: `saidas` precisa listar nomes de saída (a-z, 0-9 e _)")
+        # Contêiner por sufixo, como `extracoes.dentro_de`; o id completo (`pacote:id/nome`) também vale e fica inteiro.
+        out.append(RegiaoVisual(tela=tela, dentro_de=tuple(dict.fromkeys(dentro)), saidas=saidas))
+    return tuple(out)
 
 
 def carregar(caminho: Path) -> ConhecimentoDeTelas:
@@ -517,6 +585,23 @@ def _conferir_fragmento(base: object, texto: str, regras: Sequence[RegraDeTela])
 
 
 @lru_cache(maxsize=None)
+def declaram_leitura_visual(base: Path) -> list[str]:
+    """Os pacotes (pastas de `app/conhecimento/apps/`) cujo `telas.yaml` declara `leitura_visual.regioes` (item 12.5): são os
+    apps de que o recorte de uma linha de tela pode sair para o leitor. Para o aviso de privacidade de `/api/ai`. Pasta cujo
+    arquivo não carrega fica de fora (o erro de carga é de quem descobre os apps, não do aviso)."""
+    if not base.is_dir():
+        return []
+    out: list[str] = []
+    for pasta in sorted(p for p in base.iterdir() if p.is_dir()):
+        try:
+            k = da_pasta(pasta)
+        except ConhecimentoInvalido:
+            continue
+        if k is not None and k.regioes_visuais:
+            out.append(pasta.name)
+    return out
+
+
 def da_pasta(pasta: Path) -> ConhecimentoDeTelas | None:
     """O `telas.yaml` da pasta de um app, carregado uma vez por processo; `None` quando o app não declara telas (o
     detector de conta travada fica com os sinais genéricos). Arquivo inválido levanta `ConhecimentoInvalido`."""

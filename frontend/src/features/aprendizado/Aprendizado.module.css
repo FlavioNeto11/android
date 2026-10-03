@@ -554,6 +554,16 @@
 .valoresDoModo { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: var(--sp-2); }
 .valoresDoModo ul { margin: 2px 0 0; padding-left: var(--sp-4); }
 
+/* 30.23: a confirmação da evidência inválida abre no lugar do botão (nunca modal), com o que acontece com o item. */
+.confirmacao {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px dashed var(--danger-text);
+  border-radius: var(--radius-md);
+}
+
 /* "Qual era o pedido?" (30.25): as opções de uma pergunta, em colunas que caem para uma no celular. */
 .intencaoOpcoes {
   margin: 0; padding: var(--sp-3); min-width: 0;

@@ -43,6 +43,9 @@ export const apiAprendizado = {
     apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/status`, {
       body: { to, reason: reason.trim(), ...(reviewId ? { review_id: reviewId } : {}) },
     }),
+  /** 30.23: a execução de origem terminou como sucesso sem comprovar o que fez. O motivo é estruturado pelo backend. */
+  invalidarEvidencia: (kind: LivroKind, ref: string, runId: string) =>
+    apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/evidencia-invalida`, { body: { run_id: runId } }),
   /** Aceitar ou recusar o parecer da IA (30.17). 409 com o `code` quando o gesto não vale (classe A, C em lote,
    *  simulado, já decidido, item mudou); devolve o detalhe atualizado. */
   responderParecer: (kind: LivroKind, ref: string, reviewId: string,

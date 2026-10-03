@@ -436,6 +436,9 @@ class ReceitaVista:
     step_hash: str
     #: As ações em JSON, como gravadas (a base do `content_hash`).
     actions: str
+    #: A etapa de que ela é aprendida (`learned_from_step`, `<run>:<aparelho>:v<versão>:<chave>`): a evidência
+    #: inválida (30.23) barra só renascer da MESMA execução. Vazio = desconhecida (o veto fica).
+    learned_from: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -456,6 +459,13 @@ class OuvinteDasReceitas(Protocol):
 
     def vetada(self, receita: ReceitaVista) -> bool:
         """O sistema não pode trazer de volta este caminho (uma pessoa o desligou)."""
+        ...
+
+    def exige_o_dono(self, recipe_id: int, receita: ReceitaVista) -> bool | None:
+        """A candidata que concordou espera o dono mesmo sem `commit`: foi reaprendida depois de uma evidência
+        inválida na mesma chave (30.23, classe B). A sombra a leva a `validated`, não a `active`. `None` quando a
+        pergunta ficou sem resposta (a leitura do livro falhou): a candidata não sobe agora e a próxima concordância
+        pergunta de novo — na dúvida, nada é publicado e a trilha não ganha um motivo que ninguém confirmou."""
         ...
 
     def mudou(self, mudanca: MudancaDaReceita) -> None: ...
@@ -557,7 +567,7 @@ class RecipeStore:
             gravadas = dumps(actions)
             if self.ouvinte is not None and not treino and self.ouvinte.vetada(ReceitaVista(
                     package=package, app_version=app_version, signature=signature, variant=variant,
-                    step_hash=step_hash, actions=gravadas)):
+                    step_hash=step_hash, actions=gravadas, learned_from=learned_from)):
                 return None
             ver = int(self.db.scalar(
                 "SELECT COALESCE(MAX(version),0)+1 FROM recipes WHERE app_package=? AND app_version=? AND"
@@ -621,7 +631,8 @@ class RecipeStore:
         D1 (ADR-054): a candidata com ação de efeito externo (`commit`) que concordou vai para `validated`, não para
         `active` — o sistema não publica sozinho o que age fora da máquina; ela espera o dono em "Para aprovar", e
         `find` não a devolve. Aí a resposta é False: a receita não passou a agir. O caminho que uma pessoa desligou
-        (`ouvinte.vetada`) fica candidato.
+        (`ouvinte.vetada`) fica candidato. A reaprendida depois de uma evidência inválida (`ouvinte.exige_o_dono`,
+        30.23) também para em `validated`, mesmo sem `commit`; sem resposta do ouvinte, fica candidata.
         """
         with self.db.tx():
             row = self.db.one("SELECT * FROM recipes WHERE id=?", (recipe_id,))
@@ -641,18 +652,24 @@ class RecipeStore:
                 if self._com_status(outra, row["app_package"], row["app_version"], row["step_hash"],
                                     signature=row["app_signature"], variant=row["variant"]) is not None:
                     return False
-            if self.ouvinte is not None and self.ouvinte.vetada(ReceitaVista(
-                    package=row["app_package"], app_version=row["app_version"], signature=row["app_signature"],
-                    variant=row["variant"], step_hash=row["step_hash"], actions=row["actions"])):
+            vista = ReceitaVista(
+                package=row["app_package"], app_version=row["app_version"], signature=row["app_signature"],
+                variant=row["variant"], step_hash=row["step_hash"], actions=row["actions"],
+                learned_from=row["learned_from_step"] or "")
+            if self.ouvinte is not None and self.ouvinte.vetada(vista):
                 return False
             efeito = receita_tem_efeito(loads(row["actions"], []))
-            novo = "validated" if efeito else "active"
+            reaprendida = False if efeito or self.ouvinte is None else self.ouvinte.exige_o_dono(recipe_id, vista)
+            if reaprendida is None:
+                return False
+            novo = "validated" if efeito or reaprendida else "active"
             self.db.execute("UPDATE recipes SET status=? WHERE id=? AND status='candidate'", (novo, recipe_id))
             self._avisar(recipe_id, "candidate", novo,
                          f"concordou com a IA em {seguidas} execução(ões) seguidas"
                          + ("; tem ação de efeito externo: publicar é do dono (D1)" if efeito else
-                            "; sem efeito externo: publicada pelo sistema (D1)"))
-            return not efeito
+                            "; reaprendida depois de uma evidência inválida: publicar é do dono (classe B)"
+                            if reaprendida else "; sem efeito externo: publicada pelo sistema (D1)"))
+            return novo == "active"
 
     def replayer(self, row: Row, variables: dict[str, str]) -> Replayer:
         return Replayer(recipe_id=row["id"], version=row["version"], actions=loads(row["actions"], []), variables=variables)

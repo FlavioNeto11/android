@@ -79,3 +79,48 @@ def tamanho_png(png: bytes) -> tuple[int, int]:
     """Largura e altura lendo só o cabeçalho: `Image.open` é preguiçoso e não decodifica os pixels."""
     with Image.open(io.BytesIO(png)) as img:
         return img.size
+
+
+#: Teto do recorte (item 12.5): é uma LINHA de tela (no máximo duas), nunca o print inteiro. Lado maior em pixels da imagem
+#: enviada, fração da altura da imagem, altura absoluta em pixels e bytes do JPEG. Passar de qualquer um é `ValueError`
+#: (a âncora não é uma linha). O que sai é dado de TERCEIROS (a caixa de entrada de uma conta): metade da tela seriam várias
+#: mensagens, e não a que a etapa precisa.
+#:
+#: Medida: a linha da caixa de entrada do teste tem 162 px no aparelho de 720x1280, que é 130 px na imagem de 576x1024 e 162
+#: px na de 720x1280 (`ai.screenshot_max_side` 1280, o padrão): uma linha cabe com folga em 0,2 da altura (205 a 256 px), duas
+#: não (324 px). O teto absoluto de 320 px (duas linhas dessa medida) vale para a imagem maior que o padrão, onde a fração
+#: sozinha deixaria passar mais.
+RECORTE_LADO_MAX = 1600
+RECORTE_ALTURA_MAX_FRACAO = 0.2
+RECORTE_ALTURA_MAX_PX = 320
+RECORTE_BYTES_MAX = 400_000
+
+
+def recortar_jpeg(jpeg: bytes, largura: int, altura: int, limites: tuple[int, int, int, int]) -> bytes:
+    """Um recorte do JPEG (item 12.5): `limites` em pixels do APARELHO (`largura` x `altura`) × a razão do tamanho real da
+    imagem — a observação do modelo vem reduzida —, cortados na tela e SEM margem. `ValueError` se a área é vazia ou o
+    JPEG não abre: recorte vazio não vira leitura."""
+    if largura <= 0 or altura <= 0:
+        raise ValueError("tamanho do aparelho inválido")
+    x1, y1 = max(0, limites[0]), max(0, limites[1])
+    x2, y2 = min(largura, limites[2]), min(altura, limites[3])
+    if x2 <= x1 or y2 <= y1:
+        raise ValueError("a âncora não tem área dentro da tela")
+    try:
+        with Image.open(io.BytesIO(jpeg)) as img:
+            sx, sy = img.width / largura, img.height / altura
+            caixa = (round(x1 * sx), round(y1 * sy), round(x2 * sx), round(y2 * sy))
+            if caixa[2] <= caixa[0] or caixa[3] <= caixa[1]:
+                raise ValueError("o recorte ficou sem área")
+            if (max(caixa[2] - caixa[0], caixa[3] - caixa[1]) > RECORTE_LADO_MAX
+                    or caixa[3] - caixa[1] > min(img.height * RECORTE_ALTURA_MAX_FRACAO, RECORTE_ALTURA_MAX_PX)):
+                raise ValueError("o recorte é grande demais para ser uma linha (nunca a tela inteira)")
+            corte = img.convert("RGB").crop(caixa)
+    except OSError as exc:
+        raise ValueError("JPEG ilegível") from exc
+    for qualidade in (90, 60):
+        saida = io.BytesIO()
+        corte.save(saida, "JPEG", quality=qualidade)
+        if saida.tell() <= RECORTE_BYTES_MAX:
+            return saida.getvalue()
+    raise ValueError("o recorte passa do teto de bytes")
