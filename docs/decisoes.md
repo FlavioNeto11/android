@@ -4369,8 +4369,12 @@ catálogo, comando), que o ADR-063 não cobre.
         - Gatilho: verbo de entrar, no presente ou no passado, salvo com objeto pessoa ou conversa; o campo forte; ou o
           verbo de digitar (digite, tecle, insira, type, soletre…).
         - Cara de segredo: letra e dígito, ou 4 ou mais dígitos.
-        - "entre no insta e curta as 3 fotos" e "entre na conversa com qa-001" passam.
-        - Custo aceito: o ano de 4 dígitos num comando de entrar recusa ("entre no insta e veja o post de 2024").
+        - Refinamento dos anos (orquestradora, ~12:00Z): o token SÓ de dígitos não recusa por um gatilho qualquer. Ele
+          conta só até 3 tokens antes ou depois de campo forte, verbo de digitar ou palavra C7 ("digite 4821", "usuario
+          4821"), ou até 3 tokens depois do conector de um verbo de entrar ("entre com 1987").
+        - Passam: "entre no insta e curta as 3 fotos", "entre na conversa com qa-001" e "entre no insta e veja o post de
+          2024".
+        - Custo aceito: "entre no insta e use 1987" sai mascarado.
       - **(b) A quebra de linha é token**, como o ";": separa o par e o imperativo. A navegação em várias linhas não muda.
       - **(c) O `_NAO_DONO` cobre o app de e-mail e agenda**: objetos e telas (calendário, configurações, contatos,
         tarefas, regras…, em pt, es e en) e adjetivos ("compartilhada", "rápidas"). "abra o calendário do outlook" passa.
@@ -4394,7 +4398,18 @@ catálogo, comando), que o ADR-063 não cobre.
         - algum deles: 42.
       - Dos 122 que passam, 39 (32 %) têm gatilho forte: é o custo da opção A. Com o campo amplo (48) ou o separador
         (100) como gatilho, seriam 84 e 101 comandos.
-    - Prova `simulated` no 136f80ff:
+      - Com o refinamento dos anos, os mesmos 125 voltam a 1 recusa, a da `c7_palavra`, e passam 124.
+      - Opção A-ESTREITA (pedido da orquestradora). O gatilho é qualquer um destes:
+        - verbo de entrar com conector com, with, usando, con ou mit até 3 tokens depois;
+        - campo forte;
+        - verbo de digitar;
+        - palavra C7;
+        - corrida soletrada.
+        "entre no insta" sozinho e o separador não contam.
+        - Como pedida, pega 35 dos 124 que passam (34 dos 122). Vinte e oito são "entre na conversa com …", a navegação
+          do QA Messenger; os outros são "conta" (7) e "digitar" (2).
+        - Com a exceção de pessoa ou conversa da H-1 (a), pega 7 (6 dos 122): só "conta", "usuario" e "digitar".
+    - Prova `simulated` no 136f80ff (o refinamento dos anos deixa o harness igual e soma 9 testes):
       - testes do filtro, da arquitetura e das sombras: 999 passaram; vizinhos: 164;
       - harness da orquestradora, corpus de 579 com o 538 reetiquetado para recusa:
         - 0 vazamentos e 0 passagens indevidas;

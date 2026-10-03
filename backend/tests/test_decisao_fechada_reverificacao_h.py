@@ -260,6 +260,9 @@ def test_as_saidas_dos_controles(comando: str, saida: str) -> None:
     "entre no insta tulipa42", "entre no insta tulipa42 e curta o post da Marina", "digite 4821 e curta o post",
     "entre no insta e digite tulipa42, depois curta", "na conta lucas, curta a foto tulipa42", "user zilda tulipa42",
     "entrei com tulipa42", "entre com o lucas hoje 4821",
+    # o token só de dígitos perto do campo ou depois do conector do verbo de entrar (o refinamento dos anos, 03/10)
+    "entre com 1987", "entre com o meu 1987", "digite 2024 e curta o post", "usuario 4821 e curta a foto",
+    "entre no insta, login 1987", "entrei usando 4821",
 ])
 def test_o_valor_com_digito_recusa_em_vez_de_mascarar(comando: str) -> None:
     for girassol in (False, True):
@@ -270,10 +273,14 @@ def test_o_valor_com_digito_recusa_em_vez_de_mascarar(comando: str) -> None:
 @pytest.mark.parametrize("comando", [
     "entre no insta e curta as 3 fotos", "entre no insta e mande 50 reais pro bruno", "curta o post qa-001",
     "entre na conversa com qa-001 e mande oi", "entre no chat com qa-002", "abra o insta e curta 3 fotos do perfil 2",
+    # o ano: o token só de dígitos longe do campo e do conector não recusa (refinamento, 03/10)
+    "entre no insta e veja o post de 2024", "entre no insta e curta o post de 2023 da Marina",
+    "entre no insta e use 1987",
 ])
 def test_numero_comum_e_contato_com_digito_passam(comando: str) -> None:
-    """Sem gatilho, ou com o verbo de entrar numa conversa (H-1 a), o dígito não recusa. Custo aceito: o ano de quatro
-    dígitos num comando de login recusa ("entre no insta e veja o post de 2024")."""
+    """Sem gatilho, ou com o verbo de entrar numa conversa (H-1 a), o dígito não recusa; o token só de dígitos, nem com
+    gatilho, se não estiver perto do campo ou logo depois do conector do verbo de entrar. Custo aceito (orquestradora,
+    03/10): "entre no insta e use 1987" sai mascarado."""
     assert _motivo(comando) is None
 
 

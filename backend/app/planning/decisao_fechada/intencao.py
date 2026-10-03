@@ -526,11 +526,44 @@ def _valor_com_digito(toks: list[str], d: _Destinos) -> bool:
     não é destino (o que o extrator tirou, o nome do catálogo) recusa o pedido INTEIRO. Antes ele saía mascarado ("entre no
     insta tulipa42" virava "entre no insta [termo]"): a máscara esconde o valor, mas o item 10 manda recusar. Não localiza
     o valor; é um "fechar por gatilho" só para o que tem dígito. O verbo de entrar numa conversa ou com uma pessoa ("entre
-    na conversa com qa-001", H-1 a) é navegação, não gatilho: o contato do app de QA tem dígito."""
-    gatilho = (any(not _objeto_e_pessoa(toks, _pula(toks, fim + 1, _ADVERBIOS))
-                   for _, fim in _verbos_de_entrar(toks, passado=True))
-               or any(t in _CAMPO_FORTE or t in _DIGITAR_VALOR for t in toks))
-    return gatilho and any(_cara_de_valor(t) and not d.citado(i) for i, t in enumerate(toks))
+    na conversa com qa-001", H-1 a) é navegação, não gatilho: o contato do app de QA tem dígito.
+
+    O token SÓ de dígitos (sem letra: "1987", "2024") não recusa por um gatilho qualquer, porque nos comandos reais é o ano
+    ("entre no insta e veja o post de 2024"; orquestradora, 03/10). Ele conta só perto do campo: até três tokens antes ou
+    depois de campo forte, verbo de digitar ou palavra C7 ("digite 4821", "usuario 4821"), ou até três tokens depois do
+    conector de um verbo de entrar ("entre com 1987", "entre com o meu 1987"). "entre no insta e use 1987" sai mascarado."""
+    gatilho: bool | None = None
+    for i, t in enumerate(toks):
+        if not _cara_de_valor(t) or d.citado(i):
+            continue
+        if any(c.isalpha() for c in t):
+            if gatilho is None:
+                gatilho = (any(not _objeto_e_pessoa(toks, _pula(toks, fim + 1, _ADVERBIOS))
+                               for _, fim in _verbos_de_entrar(toks, passado=True))
+                           or any(x in _CAMPO_FORTE or x in _DIGITAR_VALOR for x in toks))
+            if gatilho:
+                return True
+        elif _perto_do_campo(toks, i) or _depois_do_conector(toks, i):
+            return True
+    return False
+
+
+def _perto_do_campo(toks: list[str], i: int) -> bool:
+    """Até três tokens antes ou depois de `i` há campo forte, verbo de digitar ou palavra C7."""
+    return any(x in _CAMPO_FORTE or x in _DIGITAR_VALOR or mentions_credential(x) or _ASSUNTO_C7.search(x)
+               for x in (*toks[max(0, i - 3):i], *toks[i + 1:i + 4]))
+
+
+def _depois_do_conector(toks: list[str], i: int) -> bool:
+    """`i` está até três tokens depois do conector de um verbo de entrar (o conector achado como em `_login_valor`: até oito
+    tokens depois do verbo, sem passar do fim da oração)."""
+    for _, fim in _verbos_de_entrar(toks, passado=True):
+        for m in range(fim + 1, min(fim + 9, len(toks))):
+            if toks[m] in _PARA_A_BUSCA:
+                break
+            if toks[m] in _CONECTORES and m < i <= m + 3:
+                return True
+    return False
 
 
 def _verbos_de_entrar(toks: list[str], *, passado: bool = False) -> list[tuple[int, int]]:
