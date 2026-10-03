@@ -4634,33 +4634,6 @@ Prova:
 - `simulated`: `tests/test_learning_autopublicacao.py` e `tests/test_learning_autopublicacao_sombra.py`.
 - `not_run`: a sombra no central (deploy 11).
 
-## Adendo v0.95 (03/10/2026; número da orquestradora; item 29.50) — a pergunta sem resposta expira pelo sistema: `expirada` no `run.updated`
-
-Nenhuma rota nova, nenhum status novo e nenhuma migração. Uma execução em `needs_input` há 24 h sem resposta passa a
-`cancelled` pelo SISTEMA (`RunService.expirar_sem_resposta`, no laço de 10 min do líder da trava `retencao`). É a única
-transição que `needs_input` já permitia.
-
-- O prazo conta da entrada na pergunta (o `run.updated` daquela transição), não de `created_at`. Sem evento nenhum, vale
-  `created_at`.
-- `status_detail` é o motivo humano, sem código nem id: "Sem resposta em 24 h: a pergunta expirou e a execução foi
-  encerrada pelo sistema. Para seguir, faça o pedido de novo."
-- O `data` do `run.updated` dessa transição ganha um campo próprio, como o `issue_codes` do v0.87:
-
-```json
-{"run": {"status": "cancelled", "…": "…"},
- "expirada": {"motivo": "sem_resposta", "horas": 24, "desde": "2026-10-02T18:15:30.525Z"}}
-```
-
-- `desde` é o `ts` do evento de entrada. `cancel_requested` vira 1 e `finished_at` é preenchido, como em todo
-  `cancelled`.
-- Sem o sinal `cancelou_execucao` (ADR-054): ninguém fez o gesto. O cancelamento pela rota (`POST /api/runs/{id}/cancel`)
-  segue igual.
-- Se a pessoa responde no meio da varredura, a resposta ganha: o cancelamento é condicional ao `needs_input`, e o
-  `status_detail` "Respondida: continua na execução …" fica.
-
-Prova:
-- `simulated`: `tests/test_needs_input_expira.py`.
-- `not_run`: a varredura no central depois do deploy.
 ## Adendo v0.94 (03/10/2026; número da orquestradora; item 30.33-C) — o item de mais de um app na leitura por app; título e nomes nas revisões; os ramos do orçamento; o desfecho em 14 dias
 
 Aditivo aos v0.47, v0.89 e v0.93. Nenhuma rota nova e nenhuma migração. Origem: a validação do deploy 10 viu o fluxo
@@ -4721,3 +4694,31 @@ Prova:
   - `MetricasTab.test.tsx` e `AplicativosTab.test.tsx`;
 - percurso no navegador sobre uma CÓPIA do banco do central de 03/10, com o backend do worktree em provedor simulado;
 - `not_run`: o central.
+
+## Adendo v0.95 (03/10/2026; número da orquestradora; item 29.50) — a pergunta sem resposta expira pelo sistema: `expirada` no `run.updated`
+
+Nenhuma rota nova, nenhum status novo e nenhuma migração. Uma execução em `needs_input` há 24 h sem resposta passa a
+`cancelled` pelo SISTEMA (`RunService.expirar_sem_resposta`, no laço de 10 min do líder da trava `retencao`). É a única
+transição que `needs_input` já permitia.
+
+- O prazo conta da entrada na pergunta (o `run.updated` daquela transição), não de `created_at`. Sem evento nenhum, vale
+  `created_at`.
+- `status_detail` é o motivo humano, sem código nem id: "Sem resposta em 24 h: a pergunta expirou e a execução foi
+  encerrada pelo sistema. Para seguir, faça o pedido de novo."
+- O `data` do `run.updated` dessa transição ganha um campo próprio, como o `issue_codes` do v0.87:
+
+```json
+{"run": {"status": "cancelled", "…": "…"},
+ "expirada": {"motivo": "sem_resposta", "horas": 24, "desde": "2026-10-02T18:15:30.525Z"}}
+```
+
+- `desde` é o `ts` do evento de entrada. `cancel_requested` vira 1 e `finished_at` é preenchido, como em todo
+  `cancelled`.
+- Sem o sinal `cancelou_execucao` (ADR-054): ninguém fez o gesto. O cancelamento pela rota (`POST /api/runs/{id}/cancel`)
+  segue igual.
+- Se a pessoa responde no meio da varredura, a resposta ganha: o cancelamento é condicional ao `needs_input`, e o
+  `status_detail` "Respondida: continua na execução …" fica.
+
+Prova:
+- `simulated`: `tests/test_needs_input_expira.py`.
+- `not_run`: a varredura no central depois do deploy.
