@@ -19,6 +19,29 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 29.44: app sem tráfego na janela não segura o `parcial` (branch `feat/29-44-sem-trafego`)
+
+- **Antes.** `nao_medido` juntava o app não instalado e o instalado parado na janela, e cada app exigido tinha de
+  estar `ok`. No deploy 7, o 03 e o 06 ficaram em `parcial` só porque o Outlook estava parado.
+- **Agora** (decisão da orquestradora, 03/10):
+  - `per_app` ganha `sem_trafego` (`sonda_rede.Cobertura`).
+  - Com outro app `ok` (a sonda do shell conta) e nenhum `fora_da_rede`, o aparelho fica `trafego_verificado` com a
+    ressalva no `detail` ("… sem tráfego na janela: não provado, não segura o estado"). A porta da tarefa
+    (`apps_sem_prova`) o aceita.
+  - "Verificado" = tudo o que trafegou passou pelo túnel. Quando o app trafegar, a medição seguinte o reavalia.
+  - Seguem segurando: `nao_medido` (não instalado), `fora_da_rede` e nada ter trafegado.
+  - O `_verificar` não dispensa a medição quando o `parcial` veio só de app parado.
+  - O painel (Rede) mostra "sem tráfego na janela", com a explicação no título, e "não medido (não instalado ou não
+    lido)".
+- **Contrato**: adendo v0.88.
+- **Prova `simulated`**:
+  - `tests/test_rede_sem_trafego.py` (regra e contrato);
+  - `tests/test_rede_sonda.py`: o app parado não segura e o tráfego seguinte tira a ressalva; nada trafegou segura
+    e a tarefa abre o app; o `parcial` só de app parado não dispensa a medição (falha sem a mudança);
+  - `tests/test_rede_portao.py` reescrito para a regra nova;
+  - `RedePage.test.tsx`.
+- **`not_run`**: o 03 e o 06 saindo de `parcial` no real, depois do deploy.
+
 ## 2026-10-03 — Aprendizado: quebra de série do LT-6 no deploy 8
 
 - `docs/dominios/aprendizado.md` (O que mais falha) registra o que muda desde 03/10 09:06:28Z (deploy 8, df860763).

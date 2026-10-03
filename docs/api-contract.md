@@ -4373,3 +4373,20 @@ Sem rota nova e sem migração.
   ela encerra sem esperar o fim do orçamento (LT-5).
 - Série da Aprendizado: a partir do deploy 8, etapas `app_foreground` abertas sem IA não geram comparação de sombra. A
   candidata v4 de `open_app` do QA não promove por sombra.
+
+## Adendo v0.88 (03/10/2026; número da orquestradora; item 29.44) — `per_app` ganha `sem_trafego`
+
+Sem rota nova e sem migração.
+
+- `network_measurements.per_app` (e `last_measurement.per_app` em `GET /api/network/devices`) ganha o valor
+  `sem_trafego`: o app instalado com 0 byte na janela, na VPN e na física.
+  - `nao_medido` passa a querer dizer só "não instalado ou não lido"; antes juntava os dois casos.
+  - Quem lê com união fechada precisa do valor novo. As medições gravadas antes seguem com `nao_medido` para o app
+    parado.
+- `trafego_verificado` passa a valer com app `sem_trafego` quando outro app (a sonda do shell conta) está `ok` e
+  nenhum está `fora_da_rede`.
+  - O `detail` da linha traz a ressalva: "`<app>` sem tráfego na janela: não provado, não segura o estado".
+  - Nenhum app trafegou: segue `parcial`, com "nenhum app trafegou na janela" no `detail`.
+  - A porta da tarefa (`apps_sem_prova`) aceita o `sem_trafego` como medido.
+- A verificação que acharia o `parcial` sem prova do bloqueio não dispensa a medição quando o `parcial` veio só de
+  app parado: o app pode ter trafegado desde então.
