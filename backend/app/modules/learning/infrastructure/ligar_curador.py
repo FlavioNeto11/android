@@ -66,8 +66,9 @@ class LacoDoCurador:
         return self._ociosa.wait(max(0.0, timeout_s))
 
     def espera_inicial(self) -> float:
-        """K-087: a 1ª espera conta da última revisão gravada, não da subida. Cada restart zerava a hora: com 4 restarts em
-        03/10 (16:46Z a 17:18Z), o curador ficou 2 h sem volta. Piso de 60 s para o processo assentar."""
+        """K-087: a 1ª espera conta da última revisão gravada, não da subida. Cada restart zerava a hora: com 6 subidas na
+        tarde de 03/10 (~15:05Z a 17:18Z), nenhuma a 1 h da seguinte, o curador não pôde rodar até ~18:18Z. Piso de 60 s
+        para o processo assentar."""
         intervalo = float(self.curador.intervalo_s)
         ultima = self._ultima() if self._relogio is not None else None
         if ultima is None or self._relogio is None:

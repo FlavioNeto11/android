@@ -160,7 +160,7 @@ def test_o_laco_e_registrado_a_parte_da_curadoria(tmp_path: Path) -> None:
 
 
 def test_a_primeira_espera_do_laco_conta_da_ultima_revisao_gravada(db: Database) -> None:
-    """K-087: o restart não zera a hora do curador (03/10: 4 restarts entre 16:46Z e 17:18Z, 2 h sem volta)."""
+    """K-087: o restart não zera a hora do curador (03/10: 6 subidas de ~15:05Z a 17:18Z, nenhuma volta até ~18:18Z)."""
     m = Mundo(db)
     intervalo = float(m.curador.intervalo_s)
     registro = RegistroDeRevisoesSql(db)

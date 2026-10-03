@@ -743,7 +743,8 @@ sem adaptador (testes) usa o SIMULADO.
   `PassoDeCuradoria` e sob a trava de líder `curadoria` (ADR-064; a tomada é idempotente por dono). O `AppState` sobe os laços de
   `LearningService.lacos` (uma linha em `state.py`). Modo e intervalo são lidos a cada volta. A 1ª espera depois da subida
   conta da última revisão gravada (`RegistroDeRevisoesSql.mais_recente`), com piso de 60 s (K-087): antes, cada restart
-  zerava a hora, e os 4 restarts de 03/10 (16:46Z a 17:18Z) deixaram o curador 2 h sem volta.
+  zerava a hora. Com as 6 subidas da tarde de 03/10 (~15:05Z a 17:18Z), nenhuma a 1 h da seguinte, o curador não pôde
+  rodar até ~18:18Z.
 - **Modos**: `off` (padrão) não roda; `shadow` revisa, grava em `learning_reviews` e publica `learning.needs_person` com
   `motivo = parecer_da_ia` quando um parecer B ou C novo e válido fica pronto para item que JÁ espera o dono; `on` revisa igual e,
   desde o 30.17, mostra o parecer na fila e no detalhe e abre o aceite da pessoa (seção abaixo). A IA nunca decide: nada
