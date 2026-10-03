@@ -60,6 +60,7 @@ from .modules.learning.infrastructure.curador_do_hub import CuradorDoHub
 from .modules.learning.infrastructure.ligar_costuras import costuras_do_livro
 from .modules.learning.infrastructure.montagem import montar_aprendizado
 from .modules.learning.infrastructure.segredo import TriagemDeCredencial
+from .modules.learning.infrastructure.validacoes_sql import RegistroDeValidacoesSql
 from .modules.skills.application.registry import CompositeSkillRegistry
 from .modules.skills.application.teaching import TeachingService
 from .modules.skills.infrastructure.document_validator import DslDocumentValidator, LockedVersions
@@ -209,6 +210,35 @@ def _col_app(row: Any) -> str | None:
         return row["app_id"]
     except (KeyError, IndexError, TypeError):
         return None
+
+
+class _FontesDoEspelhoDoTrello:
+    """Liga o espelho do Trello (32.2) às portas PÚBLICAS dos módulos donos: `PedidosApi.listar` (o mesmo serviço da rota
+    `GET /api/pedidos`) e `RegistroDeValidacoesSql.vivos()` (o registro do Livro, 082). Só ids e estados saem daqui; o
+    `avisos` não importa `pedidos` nem `learning`."""
+
+    ESTADOS_DO_PEDIDO = ["ativo", "pausado", "aguardando_pessoa"]
+
+    def __init__(self, pedidos: Callable[[], PedidosApi], validacoes: RegistroDeValidacoesSql):
+        self._pedidos = pedidos
+        self._validacoes = validacoes
+
+    def pedidos_abertos(self) -> list[tuple[str, str]]:
+        abertos: list[tuple[str, str]] = []
+        cursor: str | None = None
+        while True:
+            pagina = self._pedidos().listar(estado=self.ESTADOS_DO_PEDIDO, autonomia=None, tipo=None, profile_id=None,
+                                            q=None, pede_atencao=False, ordem="criado", limit=200, cursor=cursor)
+            itens = pagina.get("items")
+            if isinstance(itens, list):
+                abertos += [(str(i["id"]), str(i["estado"])) for i in itens if isinstance(i, dict)]
+            proximo = pagina.get("proximo_cursor")
+            if not isinstance(proximo, str) or not proximo:
+                return abertos
+            cursor = proximo
+
+    def livro_em_validacao(self) -> list[tuple[str, str, str]]:
+        return [(v.id, v.item_ref, v.estado.value) for v in self._validacoes.vivos()]
 
 
 class AppState:
@@ -510,7 +540,9 @@ class AppState:
         # (`trello.enabled`). Lê as MESMAS pendências do Telegram e do painel.
         self.trello_espelho = EspelhoDoTrello(
             cfg, CartoesDoTrello(self.db, self.db.agora),
-            FontesDaCentral(self.db, portas_da_central.pendencias, lambda: cfg.file.avisos.url_painel),
+            FontesDaCentral(portas_da_central.pendencias,
+                            _FontesDoEspelhoDoTrello(lambda: self.pedidos_api, RegistroDeValidacoesSql(self.db)),
+                            lambda: cfg.file.avisos.url_painel),
             lider=self._lider, versao=self._versao_do_deploy, custos=self._linhas_de_custo, relogio=self.db.agora)
         # O catálogo da cadeia de intenção (habilidades publicadas e fluxos ativos, respeitando `skills.enabled` e
         # `ai.flows`), lido na hora. Compartilhado pela sombra da intenção (31.9) e pelo rótulo de intenção do Aprendizado

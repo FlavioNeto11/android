@@ -1,18 +1,22 @@
 """O espelho do Trello (item 32.2, passo 3; `docs/design/trello-integracao.md`, §2 e §7.4): um RECONCILIADOR, sem nada
 por evento. A cada volta compara o conjunto desejado de fatos (lido das portas da Central) com `trello_cartoes`:
 fato novo cria o cartão, hash diferente o atualiza, fato que sumiu comenta o desfecho e o arquiva. Uma segunda volta sem
-mudança não faz nenhuma chamada de escrita. Marcos (um cartão por deploy) e custos (um por dia, de hora em hora) vêm
+mudança não faz nenhuma chamada ao Trello. Marcos (um cartão por deploy) e custos (um por dia, de hora em hora) vêm
 no mesmo laço.
 
 O que vai ao Trello é só o que `application/espelho.py` monta (tipo, id curto, estado, link do painel; nunca texto de
-origem). Aqui mora a ordem das operações: chamada ao Trello PRIMEIRO, linha no banco DEPOIS. Uma falha no meio deixa a
-linha como estava, e a volta seguinte repete. A falha não definitiva só interrompe a volta; a definitiva (401/403 e os
-outros 4xx) interrompe também e aparece na saúde (`trello_recusado`, `trello_pedido_invalido`), como a recusa do
-Telegram. Roda só no líder da trava `avisos` e só com `trello.enabled` e os dois segredos.
+origem). Ordem da CRIAÇÃO: banco primeiro. A linha `criando` (com o `card_id` sentinela) é gravada antes de chamar o
+Trello; só depois do cartão criado vem o `card_id` verdadeiro e o `ativo`. Uma queda no meio deixa a linha em `criando`, e
+a volta seguinte procura o cartão pela marca `🤖 chave: <família>:<fato>` (última linha da descrição) nas listas: achou,
+adota (grava o `card_id` e o hash do que está lá); não achou, cria. Cartão sem marca (feito por pessoa) nunca é tocado.
+Atualizar e arquivar são idempotentes: Trello primeiro, banco depois. A falha não definitiva só interrompe a volta; a
+definitiva (401/403 e os outros 4xx) interrompe também e aparece na saúde (`trello_recusado`, `trello_pedido_invalido`),
+como a recusa do Telegram. Roda só no líder da trava `avisos` e só com `trello.enabled` e os dois segredos.
 
 Famílias espelhadas: `approval` e `run` (as pendências de `PortasReais.pendencias()`), `pedido` (ativo, pausado ou
-aguardando_pessoa) e `livro` (validações do 082 vivas). Ficam de fora, por falta de porta limpa: `session` (só há o
-evento, sem lista do que está aberto) e `learning` (a espera da pessoa é só evento; o Livro mostra no painel).
+aguardando_pessoa) e `livro` (validações do 082 em `pendente` ou `rodando`). Ficam de fora, por falta de porta limpa:
+`session` (só há o evento, sem lista do que está aberto) e `learning` (a espera da pessoa é só evento; o Livro mostra no
+painel).
 """
 from __future__ import annotations
 
@@ -22,23 +26,25 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 
 from app.config import Config
-from app.db import Database
 from app.models import Problem
 from app.modules.avisos.adapters.trello import ClienteTrello, FalhaDoTrello
 from app.modules.avisos.application.espelho import (
     FAMILIAS_ESPELHADAS,
     Fato,
+    FontesDoEspelho,
     LinhaDeCusto,
+    chave_da_marca,
     comentario_de_desfecho,
     fato_de_custo,
     fato_de_deploy,
     fato_de_pedido,
     fato_de_pendencia,
     fato_de_validacao,
+    hash_do_conteudo,
 )
 from app.modules.avisos.domain.mensagem import chave_do_fato
 from app.modules.avisos.infrastructure.entrada import Pendencia
-from app.modules.avisos.infrastructure.espelho_sql import ATIVO, CartoesDoTrello
+from app.modules.avisos.infrastructure.espelho_sql import ARQUIVADO, ATIVO, CRIANDO, CartoesDoTrello
 from app.taskqueue.travas import AVISOS
 from app.util import parse_iso
 
@@ -46,9 +52,9 @@ log = logging.getLogger("poc.avisos.trello")
 
 #: O custo do dia é atualizado no Trello no máximo uma vez por hora.
 CUSTO_A_CADA = timedelta(hours=1)
-ESTADOS_DO_PEDIDO = ("ativo", "pausado", "aguardando_pessoa")
-ESTADOS_DA_VALIDACAO = ("pendente", "rodando")
 _CAUSA = {401: "chave ou token inválido, ou o token foi revogado", 403: "o token não tem permissão neste quadro"}
+#: Um cartão achado pela marca: (card_id, nome, descrição, lista).
+Marcado = tuple[str, str, str, str]
 
 
 def _utc() -> datetime:
@@ -59,21 +65,18 @@ class FontesDaCentral:
     """O conjunto desejado. Cada leitura que falha SOBE: um erro de leitura nunca vira "o fato sumiu" (que arquivaria
     o cartão); quem chama interrompe a volta."""
 
-    def __init__(self, db: Database, pendencias: Callable[[], list[Pendencia]], url_painel: Callable[[], str | None]):
-        self.db = db
+    def __init__(self, pendencias: Callable[[], list[Pendencia]], fontes: FontesDoEspelho,
+                 url_painel: Callable[[], str | None]):
         self._pendencias = pendencias
+        self._fontes = fontes
         self._url = url_painel
 
     def desejado(self) -> dict[str, Fato]:
         url = self._url()
         fatos = [fato_de_pendencia(p.tipo, p.ident, url) for p in self._pendencias()]
-        marcas = ",".join("?" * len(ESTADOS_DO_PEDIDO))
-        fatos += [fato_de_pedido(str(r["id"]), str(r["estado"]), url) for r in self.db.query(
-            f"SELECT id, estado FROM pedidos WHERE estado IN ({marcas}) ORDER BY id", ESTADOS_DO_PEDIDO)]
-        marcas = ",".join("?" * len(ESTADOS_DA_VALIDACAO))
-        fatos += [fato_de_validacao(str(r["id"]), str(r["item_ref"]), str(r["estado"]), url) for r in self.db.query(
-            f"SELECT id, item_ref, estado FROM learning_validations WHERE estado IN ({marcas})"
-            " ORDER BY created_at, id", ESTADOS_DA_VALIDACAO)]
+        fatos += [fato_de_pedido(ident, estado, url) for ident, estado in self._fontes.pedidos_abertos()]
+        fatos += [fato_de_validacao(ident, item_ref, estado, url)
+                  for ident, item_ref, estado in self._fontes.livro_em_validacao()]
         return {f.chave: f for f in fatos if f is not None}
 
 
@@ -94,8 +97,11 @@ class EspelhoDoTrello:
         self._dormir = dormir
         self._recusada: FalhaDoTrello | None = None
         self._custo_lido_em: datetime | None = None
-        #: Desfecho já comentado nesta vida do processo: se o arquivamento falhar, a volta seguinte não comenta de novo.
+        #: Desfecho já comentado nesta vida do processo (atalho): se o arquivamento falhar, a volta seguinte não comenta de
+        #: novo. Depois de uma reinicialização quem decide é o último comentário do cartão (`_desfecho_ja_comentado`).
         self._comentados: set[str] = set()
+        #: Os cartões abertos com a marca do espelho, por chave: lidos UMA vez por volta, só quando há o que criar.
+        self._marcados: dict[str, list[Marcado]] | None = None
 
     # ------------------------------------------------------------------ configuração e saúde
     @property
@@ -135,6 +141,7 @@ class EspelhoDoTrello:
         cliente = self.cliente()
         if cliente is None or self._lider(AVISOS) is None:
             return False
+        self._marcados = None
         try:
             await self._fatos(cliente)
             await self._marco(cliente)
@@ -157,12 +164,40 @@ class EspelhoDoTrello:
         quadros = self.cfg.file.trello.quadros
         return quadros[0] if quadros else ""
 
-    async def _criar(self, cliente: ClienteTrello, fato: Fato, lista: str) -> None:
+    # ------------------------------------------------------------------ criar, adotar, atualizar, arquivar
+    async def _cartoes_marcados(self, cliente: ClienteTrello) -> dict[str, list[Marcado]]:
+        """Os cartões ABERTOS das listas do espelho que levam a marca `🤖 chave: …`, por chave. Sem marca (feito por
+        pessoa) não entra: nunca é tocado. Lê as listas uma vez por volta, na primeira vez que precisa."""
+        if self._marcados is None:
+            listas = self.cfg.file.trello.listas
+            achados: dict[str, list[Marcado]] = {}
+            for lista in dict.fromkeys(listas[p] for p in ("central_automatico", "marcos", "custos") if listas.get(p)):
+                for c in await cliente.cartoes_da_lista(lista):
+                    chave = chave_da_marca(str(c.get("desc") or ""))
+                    if chave and isinstance(c.get("id"), str) and c["id"]:
+                        achados.setdefault(chave, []).append(
+                            (str(c["id"]), str(c.get("name") or ""), str(c.get("desc") or ""), lista))
+            # O id do Trello começa pelo instante de criação: o menor é o mais antigo.
+            self._marcados = {k: sorted(v) for k, v in achados.items()}
+        return self._marcados
+
+    async def _garantir(self, cliente: ClienteTrello, fato: Fato, lista: str) -> None:
+        """Cria o cartão do fato, ou adota o que já existe. Banco primeiro (linha `criando`), depois o Trello, e só então
+        o `card_id` verdadeiro. Marca repetida (raro: dois processos criando o mesmo fato): adota a MAIS ANTIGA e deixa a
+        outra como está; arquivar um cartão que a Central não tem certeza de ser o duplicado seria mexer no que não é dela."""
+        quadro = self._quadro_padrao()
+        self.repo.intencao(fato.chave, quadro, lista)
+        achados = (await self._cartoes_marcados(cliente)).get(fato.chave)
+        if achados:
+            card_id, nome, desc, onde = achados[0]
+            # O hash é o do que está LÁ: se o conteúdo difere do desejado, a próxima comparação atualiza.
+            self.repo.gravar(fato.chave, card_id, quadro, onde, hash_do_conteudo(nome, desc))
+            return
         card = await cliente.criar_cartao(lista, fato.nome, fato.descricao)
         if not isinstance(card, dict) or not isinstance(card.get("id"), str) or not card["id"]:
             raise FalhaDoTrello("o Trello não devolveu o id do cartão criado")
-        quadro = card.get("idBoard")
-        self.repo.gravar(fato.chave, card["id"], quadro if isinstance(quadro, str) and quadro else self._quadro_padrao(),
+        id_quadro = card.get("idBoard")
+        self.repo.gravar(fato.chave, card["id"], id_quadro if isinstance(id_quadro, str) and id_quadro else quadro,
                          lista, fato.hash)
 
     async def _atualizar(self, cliente: ClienteTrello, fato: Fato, card_id: str) -> None:
@@ -175,12 +210,20 @@ class EspelhoDoTrello:
             return
         self.repo.novo_hash(fato.chave, fato.hash)
 
+    async def _desfecho_ja_comentado(self, cliente: ClienteTrello, chave: str, card_id: str) -> bool:
+        """O último comentário já é o desfecho da Central ("🤖 … resolvido")? Vale depois de uma reinicialização, em que
+        `_comentados` se perdeu: só arquiva, sem comentar de novo."""
+        if chave in self._comentados:
+            return True
+        recentes = await cliente.comentarios(card_id, 5)
+        return bool(recentes) and recentes[0].startswith("🤖") and "resolvido" in recentes[0]
+
     async def _arquivar(self, cliente: ClienteTrello, chave: str, card_id: str, agora: datetime) -> None:
         familia = chave.split(":", 1)[0]
         try:
-            if chave not in self._comentados:
+            if not await self._desfecho_ja_comentado(cliente, chave, card_id):
                 await cliente.comentar(card_id, comentario_de_desfecho(familia, agora))
-                self._comentados.add(chave)
+            self._comentados.add(chave)
             await cliente.arquivar_cartao(card_id)
         except FalhaDoTrello as falha:
             if falha.status != 404:
@@ -197,14 +240,24 @@ class EspelhoDoTrello:
         agora = self._relogio()
         for chave, fato in desejado.items():
             linha = linhas.get(chave)
-            if linha is None or linha["estado"] != ATIVO:
-                await self._criar(cliente, fato, lista)
+            if linha is None or linha["estado"] in (ARQUIVADO, CRIANDO):
+                await self._garantir(cliente, fato, lista)
             elif linha["hash"] != fato.hash:
                 await self._atualizar(cliente, fato, str(linha["card_id"]))
         for chave, linha in linhas.items():
-            if linha["estado"] == ATIVO and chave.split(":", 1)[0] in FAMILIAS_ESPELHADAS and chave not in desejado:
+            if chave in desejado or chave.split(":", 1)[0] not in FAMILIAS_ESPELHADAS:
+                continue
+            if linha["estado"] == ATIVO:
                 await self._arquivar(cliente, chave, str(linha["card_id"]), agora)
+            elif linha["estado"] == CRIANDO:
+                # O fato sumiu antes de a criação fechar: se o cartão chegou a nascer, sai com o desfecho; senão, só a linha.
+                nascido = (await self._cartoes_marcados(cliente)).get(chave)
+                if nascido:
+                    await self._arquivar(cliente, chave, nascido[0][0], agora)
+                else:
+                    self.repo.arquivar(chave)
 
+    # ------------------------------------------------------------------ marcos e custos
     async def _marco(self, cliente: ClienteTrello) -> None:
         """Um cartão por deploy: quando (commit, migração) da saúde não tem cartão ainda. Nunca é arquivado."""
         lista = self.cfg.file.trello.listas.get("marcos")
@@ -212,8 +265,9 @@ class EspelhoDoTrello:
         if not lista or not commit:
             return
         fato = fato_de_deploy(commit, migracao)
-        if self.repo.um(fato.chave) is None:
-            await self._criar(cliente, fato, lista)
+        linha = self.repo.um(fato.chave)
+        if linha is None or linha["estado"] == CRIANDO:
+            await self._garantir(cliente, fato, lista)
 
     async def _custo(self, cliente: ClienteTrello) -> None:
         """Um cartão por dia, atualizado no máximo de hora em hora (a marca é a `atualizado_em` da linha, que sobrevive
@@ -232,7 +286,7 @@ class EspelhoDoTrello:
                 return
         fato = fato_de_custo(chave.split(":", 1)[1], self._custos())
         if linha is None or linha["estado"] != ATIVO:
-            await self._criar(cliente, fato, lista)
+            await self._garantir(cliente, fato, lista)
         elif linha["hash"] != fato.hash:
             await self._atualizar(cliente, fato, str(linha["card_id"]))
         self._custo_lido_em = agora      # só depois de dar certo: uma falha tenta de novo na volta seguinte

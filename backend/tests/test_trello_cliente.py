@@ -116,13 +116,13 @@ async def test_nenhum_metodo_publico_poe_a_chave_ou_o_token_em_qualquer_parte_da
     chamadas = {
         "acao": ("a1",), "acoes_do_quadro": ("q1", "2026-10-03T00:00:00.000Z"),
         "criar_cartao": ("l1", "N", "D"), "atualizar_cartao": ("c1",), "arquivar_cartao": ("c1",),
-        "comentar": ("c1", "oi"), "webhook": ("w1",), "webhooks_do_membro": (),
+        "comentar": ("c1", "oi"), "cartoes_da_lista": ("l1",), "comentarios": ("c1", 5), "webhook": ("w1",), "webhooks_do_membro": (),
         "criar_webhook": ("q1", "https://exemplo.test/h", "d"), "apagar_webhook": ("w1",)}
     nomes = {n for n, f in inspect.getmembers(ClienteTrello, inspect.iscoroutinefunction) if not n.startswith("_")}
     assert nomes == set(chamadas), f"método público sem cobertura neste teste: {nomes ^ set(chamadas)}"
     for nome, args in chamadas.items():
         antes = len(srv.pedidos)
-        srv.respostas = [httpx.Response(200, json=[]) if nome == "webhooks_do_membro" else httpx.Response(200, json={"id": "x1"})]
+        srv.respostas = [httpx.Response(200, json=[]) if nome in ("webhooks_do_membro", "cartoes_da_lista", "comentarios") else httpx.Response(200, json={"id": "x1"})]
         kw = {"nome": "Outro"} if nome == "atualizar_cartao" else {}
         await getattr(cli, nome)(*args, **kw)
         assert len(srv.pedidos) == antes + 1, nome
@@ -313,3 +313,20 @@ async def test_o_cliente_passa_pelo_balde_a_cada_pedido_e_a_repeticao_do_429_tam
 
 def test_a_url_base_e_a_da_api_oficial() -> None:
     assert API == "https://api.trello.com"
+
+
+async def test_cartoes_da_lista_e_comentarios_leem_so_o_necessario_com_auth_no_cabecalho() -> None:
+    cartoes = [{"id": "c1", "name": "N", "desc": "D", "idMembers": ["m1"], "badges": {}}, {"id": "c2", "name": "M"}]
+    acoes = [{"id": "a2", "type": "commentCard", "data": {"text": "🤖 12:00Z · resolvido: x"}, "memberCreator": {"id": "m"}},
+             {"id": "a1", "data": {"text": "oi"}}, {"id": "a0", "data": {}}]
+    srv = Servidor(httpx.Response(200, json=cartoes), httpx.Response(200, json=acoes))
+    cli, _ = _cliente(srv)
+    assert await cli.cartoes_da_lista("l1") == [{"id": "c1", "name": "N", "desc": "D"}, {"id": "c2", "name": "M"}]
+    assert await cli.comentarios("c1", 5) == ["🤖 12:00Z · resolvido: x", "oi"]
+    lista, coment = srv.pedidos
+    assert (lista.method, lista.url.path, dict(lista.url.params)) == ("GET", "/1/lists/l1/cards", {"fields": "id,name,desc"})
+    assert (coment.url.path, dict(coment.url.params)) == ("/1/cards/c1/actions", {"filter": "commentCard", "limit": "5"})
+    for p in srv.pedidos:
+        assert _sem_segredo_na_url(p) and p.headers["authorization"].startswith("OAuth oauth_consumer_key=")
+    with pytest.raises(FalhaDoTrello):
+        await _cliente(Servidor(httpx.Response(200, json={})))[0].cartoes_da_lista("l1")

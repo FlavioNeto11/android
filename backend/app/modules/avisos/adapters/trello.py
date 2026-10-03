@@ -194,6 +194,29 @@ class ClienteTrello:
             params["since"] = desde
         return await self._pedir("GET", f"/1/boards/{quote(quadro, safe='')}/actions", params=params)
 
+    async def cartoes_da_lista(self, lista: str) -> list[dict[str, object]]:
+        """`GET /1/lists/{id}/cards?fields=id,name,desc`: os cartões ABERTOS da lista (o Trello não devolve os
+        arquivados aqui). Só `id`, `name` e `desc` saem; o resto fica para trás."""
+        cartoes = await self._pedir("GET", f"/1/lists/{quote(lista, safe='')}/cards", params={"fields": "id,name,desc"})
+        if not isinstance(cartoes, list):
+            raise FalhaDoTrello("resposta do Trello sem a lista de cartões")
+        return [{k: c[k] for k in ("id", "name", "desc") if k in c} for c in cartoes if isinstance(c, dict)]
+
+    async def comentarios(self, card: str, limite: int = 5) -> list[str]:
+        """`GET /1/cards/{id}/actions?filter=commentCard&limit=N`: o texto dos últimos comentários, do mais novo para o
+        mais velho."""
+        acoes = await self._pedir("GET", f"/1/cards/{quote(card, safe='')}/actions",
+                                  params={"filter": "commentCard", "limit": limite})
+        if not isinstance(acoes, list):
+            raise FalhaDoTrello("resposta do Trello sem a lista de comentários")
+        textos: list[str] = []
+        for a in acoes:
+            dados = a.get("data") if isinstance(a, dict) else None
+            texto = dados.get("text") if isinstance(dados, dict) else None
+            if isinstance(texto, str):
+                textos.append(texto)
+        return textos
+
     # ------------------------------------------------------------------ cartões
     async def criar_cartao(self, lista: str, nome: str, desc: str) -> Json:
         return await self._pedir("POST", "/1/cards", corpo={"idList": lista, "name": nome, "desc": desc})

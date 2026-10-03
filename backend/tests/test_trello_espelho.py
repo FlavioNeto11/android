@@ -16,6 +16,7 @@ from pydantic import SecretStr
 from app.config import Config
 from app.db import Database
 from app.modules.avisos.adapters.trello import BaldeDeRequisicoes, ClienteTrello
+from app.contracts.identidade import NOME_DA_IA
 from app.modules.avisos.application.espelho import LinhaDeCusto
 from app.modules.avisos.infrastructure.entrada import Pendencia
 from app.modules.avisos.infrastructure.espelho import EspelhoDoTrello, FontesDaCentral
@@ -46,22 +47,48 @@ class Relogio:
 
 
 class TrelloFalso:
-    """Guarda os pedidos de escrita e responde como o Trello. `falhar` = status a devolver nos próximos pedidos."""
+    """O Trello falso, com estado mínimo: cartões por lista (abertos ou fechados) e os comentários de cada um.
+    `falhar` = status a devolver nos próximos pedidos."""
 
     def __init__(self) -> None:
         self.pedidos: list[httpx.Request] = []
         self.falhar: list[int] = []
         self.n = 0
+        self.cartoes: dict[str, dict[str, object]] = {}
+        self.comentarios: dict[str, list[str]] = {}
+
+    def humano(self, lista: str, nome: str = "Ideia do dono", desc: str = "anotação minha") -> str:
+        """Um cartão feito por pessoa na lista (sem a marca do espelho)."""
+        self.n += 1
+        ident = f"card{self.n}"
+        self.cartoes[ident] = {"id": ident, "name": nome, "desc": desc, "idList": lista, "closed": False}
+        return ident
 
     def __call__(self, pedido: httpx.Request) -> httpx.Response:
         self.pedidos.append(pedido)
         if self.falhar:
             return httpx.Response(self.falhar.pop(0), text="falha")
-        if pedido.method == "POST" and pedido.url.path == "/1/cards":
-            self.n += 1
-            return httpx.Response(200, json={"id": f"card{self.n}", "idBoard": "quadro1"})
-        if pedido.url.path.endswith("/actions/comments"):
+        caminho = pedido.url.path
+        corpo = json.loads(pedido.content) if pedido.content else {}
+        if pedido.method == "POST" and caminho == "/1/cards":
+            ident = self.humano(corpo["idList"], corpo["name"], corpo["desc"])
+            return httpx.Response(200, json={"id": ident, "idBoard": "quadro1"})
+        if caminho.endswith("/actions/comments"):
+            self.comentarios.setdefault(caminho.split("/")[3], []).insert(0, corpo["text"])
             return httpx.Response(200, json={"id": "acao1"})
+        if pedido.method == "GET" and caminho.startswith("/1/lists/") and caminho.endswith("/cards"):
+            lista = caminho.split("/")[3]
+            return httpx.Response(200, json=[{k: c[k] for k in ("id", "name", "desc")} for c in self.cartoes.values()
+                                             if c["idList"] == lista and not c["closed"]])
+        if pedido.method == "GET" and caminho.endswith("/actions"):
+            textos = self.comentarios.get(caminho.split("/")[3], [])
+            return httpx.Response(200, json=[{"id": f"a{i}", "data": {"text": t}} for i, t in enumerate(textos)])
+        if pedido.method == "PUT" and caminho.startswith("/1/cards/"):
+            card = self.cartoes.get(caminho.split("/")[3])
+            if card is None:
+                return httpx.Response(404, text="not found")
+            card.update({"name": corpo.get("name", card["name"]), "desc": corpo.get("desc", card["desc"]),
+                         "closed": corpo.get("closed", card["closed"])})
         return httpx.Response(200, json={})
 
     def escritas(self) -> list[httpx.Request]:
@@ -69,6 +96,23 @@ class TrelloFalso:
 
     def corpos(self) -> list[dict[str, object]]:
         return [json.loads(p.content) for p in self.pedidos if p.content]
+
+
+class FontesDeTeste:
+    """O `FontesDoEspelho` do teste: lê as MESMAS tabelas que as portas dos módulos donos (o adaptador real de
+    `state.py` tem o teste dele mais abaixo)."""
+
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
+    def pedidos_abertos(self) -> list[tuple[str, str]]:
+        return [(str(r["id"]), str(r["estado"])) for r in self.db.query(
+            "SELECT id, estado FROM pedidos WHERE estado IN ('ativo','pausado','aguardando_pessoa') ORDER BY id")]
+
+    def livro_em_validacao(self) -> list[tuple[str, str, str]]:
+        return [(str(r["id"]), str(r["item_ref"]), str(r["estado"])) for r in self.db.query(
+            "SELECT id, item_ref, estado FROM learning_validations WHERE estado IN ('pendente','rodando')"
+            " ORDER BY created_at, id")]
 
 
 class Cenario:
@@ -96,7 +140,7 @@ class Cenario:
                                 balde=balde, dormir=self.relogio.dormir)
         self.espelho = EspelhoDoTrello(
             self.cfg, CartoesDoTrello(self.db, self.relogio),
-            FontesDaCentral(self.db, lambda: self.pendencias, lambda: self.cfg.file.avisos.url_painel),
+            FontesDaCentral(lambda: self.pendencias, FontesDeTeste(self.db), lambda: self.cfg.file.avisos.url_painel),
             lider=lambda nome: self.lider if nome == AVISOS else None, versao=lambda: self.versao,
             custos=lambda: self.custos, relogio=self.relogio, cliente=cliente, dormir=self.relogio.dormir)
 
@@ -187,7 +231,8 @@ async def test_fato_que_sumiu_comenta_o_desfecho_arquiva_e_nao_repete(cen: Cenar
     await cen.espelho.uma_volta()
     comentario, arquivo = cen.trello.escritas()
     assert comentario.url.path == "/1/cards/card1/actions/comments"
-    assert json.loads(comentario.content)["text"] == "🤖 21:47Z · resolvido: a aprovação foi decidida ou perdeu a validade"
+    assert json.loads(comentario.content)["text"] == f"🤖 {NOME_DA_IA} · 21:47Z · resolvido: a aprovação foi decidida ou perdeu a validade"
+    assert json.loads(comentario.content)["text"].startswith("🤖 ANA ·")
     assert (arquivo.method, arquivo.url.path, json.loads(arquivo.content)) == ("PUT", "/1/cards/card1", {"closed": True})
     assert cen.linhas() == {"approval:ap-123456": "arquivado"}
     cen.trello.pedidos.clear()
@@ -211,7 +256,7 @@ async def test_falha_nao_definitiva_nao_grava_estado_errado_e_a_proxima_volta_re
     cen.versao = (None, None)
     cen.trello.falhar = [503]
     assert await cen.espelho.uma_volta() is False
-    assert cen.linhas() == {} and cen.espelho.problemas() == []
+    assert cen.linhas() == {"approval:ap-123456": "criando"} and cen.espelho.problemas() == []
     assert await cen.espelho.uma_volta() is True
     assert cen.linhas() == {"approval:ap-123456": "ativo"}
 
@@ -262,7 +307,7 @@ async def test_credencial_recusada_vira_trello_recusado_e_some_quando_volta(cen:
     (p,) = cen.espelho.problemas()
     assert p.code == "trello_recusado" and "401" in p.message
     assert CHAVE not in p.message + p.hint and TOKEN not in p.message + p.hint
-    assert cen.linhas() == {}
+    assert cen.linhas() == {"approval:ap-123456": "criando"}
     assert await cen.espelho.uma_volta() is True
     assert cen.espelho.problemas() == []
 
@@ -392,3 +437,163 @@ async def test_nada_do_texto_de_origem_chega_ao_trello(cen_tudo: Cenario) -> Non
     for p in cen_tudo.trello.pedidos:
         assert CHAVE not in str(p.url) and TOKEN not in str(p.url)
         assert CHAVE.encode() not in p.content and TOKEN.encode() not in p.content
+
+
+# --------------------------------------------------------------------- banco primeiro, adoção, desfecho único
+def _falha_ao_gravar(cen: Cenario) -> None:
+    """O Trello cria o cartão e o banco falha ao gravar o `card_id` (a queda entre as duas escritas)."""
+    original = cen.espelho.repo.gravar
+    estado = {"vez": 0}
+
+    def gravar(*args: str) -> None:
+        estado["vez"] += 1
+        if estado["vez"] == 1:
+            raise RuntimeError("banco caiu")
+        original(*args)
+
+    cen.espelho.repo.gravar = gravar      # type: ignore[method-assign]
+
+
+async def test_a_linha_de_intencao_nasce_antes_de_o_trello_ser_chamado(cen: Cenario) -> None:
+    cen.pendencias = [Pendencia("aprovacao", "ap-123456", "x")]
+    vistas: list[dict[str, str]] = []
+    original = cen.trello.__call__
+
+    def espiar(pedido: httpx.Request) -> httpx.Response:
+        if pedido.method == "POST" and pedido.url.path == "/1/cards":
+            vistas.append({str(r["chave"]): f'{r["estado"]}|{r["card_id"]}'
+                           for r in cen.db.query("SELECT chave, estado, card_id FROM trello_cartoes")})
+        return original(pedido)
+
+    cen.espelho._cliente._client = httpx.AsyncClient(transport=httpx.MockTransport(espiar))   # type: ignore[union-attr]
+    await cen.espelho.uma_volta()
+    assert vistas == [{"approval:ap-123456": "criando|criando:approval:ap-123456"}], "a intenção já estava gravada"
+    assert cen.db.one("SELECT card_id FROM trello_cartoes")["card_id"] == "card1"
+    assert cen.linhas() == {"approval:ap-123456": "ativo"}
+
+
+async def test_criou_no_trello_e_o_banco_falhou_a_volta_seguinte_adota_e_nao_cria_outro(cen: Cenario) -> None:
+    cen.pendencias = [Pendencia("aprovacao", "ap-123456", "x")]
+    _falha_ao_gravar(cen)
+    assert await cen.espelho.uma_volta() is False
+    assert cen.linhas() == {"approval:ap-123456": "criando"} and len(_criacoes(cen)) == 1
+    assert await cen.espelho.uma_volta() is True
+    assert len(_criacoes(cen)) == 1, "adotou o cartão marcado em vez de criar outro"
+    linha = cen.db.one("SELECT * FROM trello_cartoes")
+    assert (linha["estado"], linha["card_id"], linha["lista"]) == ("ativo", "card1", CENTRAL)
+    cen.trello.pedidos.clear()
+    assert await cen.espelho.uma_volta() is True and cen.trello.pedidos == [], "hash igual: nada a atualizar"
+
+
+async def test_cartao_adotado_com_conteudo_velho_e_atualizado_na_volta_seguinte(cen: Cenario) -> None:
+    cen.pendencias = [Pendencia("aprovacao", "ap-123456", "x")]
+    cen.trello.humano(CENTRAL, "Nome antigo", "texto antigo\n\n🤖 chave: approval:ap-123456")
+    await cen.espelho.uma_volta()
+    assert len(_criacoes(cen)) == 0 and cen.linhas() == {"approval:ap-123456": "ativo"}
+    await cen.espelho.uma_volta()
+    (escrita,) = cen.trello.escritas()
+    assert escrita.method == "PUT" and json.loads(escrita.content)["name"].startswith("Aprovação")
+
+
+async def test_cartao_humano_na_lista_nunca_e_tocado(cen: Cenario) -> None:
+    humano = cen.trello.humano(CENTRAL)
+    parecido = cen.trello.humano(CENTRAL, "Aprovação aguardando", "minha nota\n🤖 chave: nao-e-chave")
+    cen.pendencias = [Pendencia("aprovacao", "ap-123456", "x")]
+    await cen.espelho.uma_volta()
+    cen.pendencias = []
+    await cen.espelho.uma_volta()
+    for ident in (humano, parecido):
+        assert cen.trello.cartoes[ident]["closed"] is False
+        assert cen.trello.cartoes[ident]["name"] in ("Ideia do dono", "Aprovação aguardando")
+    mexeu = [p.url.path for p in cen.trello.escritas() if p.url.path.endswith((f"/{humano}", f"/{parecido}"))]
+    assert mexeu == [] and len(_criacoes(cen)) == 1
+
+
+async def test_duas_marcas_iguais_adota_a_mais_antiga_e_nao_arquiva_a_outra(cen: Cenario) -> None:
+    """Raro (dois processos criaram o mesmo fato): fica o mais antigo (o id do Trello começa pelo instante de criação) e
+    o outro não é tocado, porque a Central não tem como saber qual deles o dono já mexeu."""
+    marca = "texto\n\n🤖 chave: approval:ap-123456"
+    antigo = cen.trello.humano(CENTRAL, "Aprovação", marca)
+    novo = cen.trello.humano(CENTRAL, "Aprovação", marca)
+    assert antigo < novo
+    cen.pendencias = [Pendencia("aprovacao", "ap-123456", "x")]
+    await cen.espelho.uma_volta()
+    assert cen.db.one("SELECT card_id FROM trello_cartoes")["card_id"] == antigo and len(_criacoes(cen)) == 0
+    assert cen.trello.cartoes[novo]["closed"] is False
+    cen.pendencias = []
+    await cen.espelho.uma_volta()
+    assert cen.trello.cartoes[antigo]["closed"] is True and cen.trello.cartoes[novo]["closed"] is False
+
+
+async def test_o_fato_some_com_a_criacao_em_aberto_arquiva_o_cartao_que_nasceu(cen: Cenario) -> None:
+    cen.pendencias = [Pendencia("aprovacao", "ap-123456", "x")]
+    _falha_ao_gravar(cen)
+    await cen.espelho.uma_volta()
+    cen.pendencias = []
+    assert await cen.espelho.uma_volta() is True
+    assert cen.trello.cartoes["card1"]["closed"] is True and cen.linhas() == {"approval:ap-123456": "arquivado"}
+    assert cen.trello.comentarios["card1"][0].startswith("🤖 ANA ·")
+
+
+async def test_o_fato_some_com_a_criacao_em_aberto_e_sem_cartao_so_fecha_a_linha(cen: Cenario) -> None:
+    cen.pendencias = [Pendencia("aprovacao", "ap-123456", "x")]
+    cen.trello.falhar = [503]
+    await cen.espelho.uma_volta()
+    cen.pendencias = []
+    assert await cen.espelho.uma_volta() is True
+    assert cen.linhas() == {"approval:ap-123456": "arquivado"} and cen.trello.escritas() == []
+
+
+async def test_depois_de_reiniciar_o_desfecho_ja_comentado_nao_e_comentado_de_novo(cen: Cenario) -> None:
+    cen.pendencias = [Pendencia("aprovacao", "ap-123456", "x")]
+    await cen.espelho.uma_volta()
+    cen.pendencias = []
+    original = cen.espelho.repo.arquivar
+    cen.espelho.repo.arquivar = lambda chave: (_ for _ in ()).throw(RuntimeError("banco caiu"))   # type: ignore[method-assign]
+    assert await cen.espelho.uma_volta() is False        # comentou e arquivou no Trello; o banco falhou
+    assert len(cen.trello.comentarios["card1"]) == 1
+    cen.espelho.repo.arquivar = original                  # type: ignore[method-assign]
+    cen.espelho._comentados.clear()                       # o processo reiniciou: a memória se perdeu
+    cen.trello.cartoes["card1"]["closed"] = False         # (o cartão segue aberto no fake para a volta repetir)
+    assert await cen.espelho.uma_volta() is True
+    assert len(cen.trello.comentarios["card1"]) == 1, "o último comentário já era o desfecho: só arquivou"
+    assert cen.linhas() == {"approval:ap-123456": "arquivado"} and cen.trello.cartoes["card1"]["closed"] is True
+
+
+async def test_comentario_humano_recente_nao_conta_como_desfecho(cen: Cenario) -> None:
+    cen.pendencias = [Pendencia("aprovacao", "ap-123456", "x")]
+    await cen.espelho.uma_volta()
+    cen.trello.comentarios["card1"] = ["resolvido, valeu", "🤖 ANA · 10:00Z · outra coisa"]
+    cen.pendencias = []
+    await cen.espelho.uma_volta()
+    assert cen.trello.comentarios["card1"][0].startswith("🤖 ANA · 10:00Z · resolvido")
+
+
+# --------------------------------------------------------------------- as portas dos módulos donos (state.py)
+async def test_o_adaptador_do_state_le_pelas_portas_publicas_e_pagina(tmp_path: Path) -> None:
+    from app.modules.learning.infrastructure.validacoes_sql import RegistroDeValidacoesSql
+    from app.state import _FontesDoEspelhoDoTrello
+
+    c = Cenario(tmp_path)
+    c.validacao("lv-a", "fluxo:f1", "pendente")
+    c.validacao("lv-b", "receita:r1", "rodando")
+    c.validacao("lv-c", "fluxo:f2", "feita")
+    paginas = [{"items": [{"id": "pd-1", "estado": "ativo", "titulo": "segredo"}, {"id": "pd-2", "estado": "pausado"}],
+                "proximo_cursor": "2"}, {"items": [{"id": "pd-3", "estado": "aguardando_pessoa"}], "proximo_cursor": None}]
+    chamadas: list[dict[str, object]] = []
+
+    class PedidosFalso:
+        def listar(self, **kw: object) -> dict[str, object]:
+            chamadas.append(kw)
+            return paginas[len(chamadas) - 1]
+
+    fontes = _FontesDoEspelhoDoTrello(lambda: PedidosFalso(), RegistroDeValidacoesSql(c.db))      # type: ignore[arg-type]
+    assert fontes.pedidos_abertos() == [("pd-1", "ativo"), ("pd-2", "pausado"), ("pd-3", "aguardando_pessoa")]
+    assert chamadas[0]["estado"] == ["ativo", "pausado", "aguardando_pessoa"] and chamadas[1]["cursor"] == "2"
+    assert fontes.livro_em_validacao() == [("lv-a", "fluxo:f1", "pendente"), ("lv-b", "receita:r1", "rodando")]
+
+
+async def test_o_nome_da_ia_vem_do_contrato() -> None:
+    from app.contracts.identidade import APRESENTACAO_DA_IA
+
+    assert NOME_DA_IA == "ANA" and APRESENTACAO_DA_IA == "ANA, a IA Gerente de Operações da Central"

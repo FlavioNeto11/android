@@ -14,7 +14,9 @@ import hashlib
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Protocol
 
+from app.contracts.identidade import NOME_DA_IA
 from app.modules.avisos.application.entrada import sufixo
 from app.modules.avisos.domain.mensagem import ROTULOS, chave_do_fato
 
@@ -22,6 +24,7 @@ from app.modules.avisos.domain.mensagem import ROTULOS, chave_do_fato
 FAMILIAS_ESPELHADAS = ("approval", "run", "pedido", "livro")
 PARA_LEIGO = "**Para quem não é técnico:**"
 TECNICO = "**Técnico:**"
+PREFIXO_DA_MARCA = "🤖 chave: "
 
 #: Frase de desfecho por família, para o comentário que antecede o arquivamento. Fixa: o desfecho real está no painel.
 DESFECHO = {"approval": "a aprovação foi decidida ou perdeu a validade",
@@ -39,6 +42,27 @@ _LIVRO = {"pendente": ("Conhecimento na fila de validação",
 _SEGURO = re.compile(r"[^A-Za-z0-9._:-]")
 
 
+def hash_do_conteudo(nome: str, descricao: str) -> str:
+    """A impressão do que o cartão mostra: igual = nada a atualizar. Vale para o desejado e para o cartão adotado."""
+    return hashlib.sha256(f"{nome}\n{descricao}".encode()).hexdigest()
+
+
+def marca_da_chave(chave: str) -> str:
+    """A última linha da descrição de todo cartão do espelho: fixa, sem dado sensível (a chave é `<família>:<id>`). É o
+    que deixa o espelho reconhecer o próprio cartão quando o Trello gravou e o banco não (adoção, em vez de duplicar)."""
+    return f"{PREFIXO_DA_MARCA}{chave}"
+
+
+def chave_da_marca(descricao: str) -> str | None:
+    """A chave na última linha da descrição, ou `None` (cartão feito por pessoa, ou com a marca editada)."""
+    linhas = (descricao or "").strip().splitlines()
+    ultima = linhas[-1].strip() if linhas else ""
+    if not ultima.startswith(PREFIXO_DA_MARCA):
+        return None
+    chave = ultima[len(PREFIXO_DA_MARCA):]
+    return chave if chave and " " not in chave and ":" in chave else None
+
+
 @dataclass(frozen=True)
 class Fato:
     """O cartão desejado de um fato. `chave` = `<família>:<fato>`; o `hash` só muda quando o conteúdo muda."""
@@ -53,7 +77,15 @@ class Fato:
 
     @property
     def hash(self) -> str:
-        return hashlib.sha256(f"{self.nome}\n{self.descricao}".encode()).hexdigest()
+        return hash_do_conteudo(self.nome, self.descricao)
+
+
+class FontesDoEspelho(Protocol):
+    """O que o espelho lê dos módulos donos (pedidos persistentes e Livro), pelas portas PÚBLICAS deles. Quem liga é o
+    `state.py` (raiz de composição): o `avisos` não importa `pedidos` nem `learning`. Só ids e estados saem daqui."""
+
+    def pedidos_abertos(self) -> list[tuple[str, str]]: ...                # (id, estado) em ativo, pausado, aguardando_pessoa
+    def livro_em_validacao(self) -> list[tuple[str, str, str]]: ...        # (id, item_ref, estado) em pendente, rodando
 
 
 @dataclass(frozen=True)
@@ -79,9 +111,10 @@ def _seguro(valor: str) -> str:
     return _SEGURO.sub("_", valor.strip())[:80]
 
 
-def _descricao(leigo: str, tecnico: list[str], link: str | None) -> str:
+def _descricao(leigo: str, tecnico: list[str], link: str | None, chave: str) -> str:
     partes = [*tecnico, f"painel: {link}"] if link else tecnico
-    return f"{PARA_LEIGO} {leigo}\n\n{TECNICO} " + " · ".join(partes)
+    return (f"{PARA_LEIGO} {leigo}\n\n{TECNICO} " + " · ".join(partes)
+            + f"\n\n{marca_da_chave(chave)}")
 
 
 def fato_de_pendencia(tipo: str, ident: str, url_painel: str | None) -> Fato | None:
@@ -97,7 +130,7 @@ def fato_de_pendencia(tipo: str, ident: str, url_painel: str | None) -> Fato | N
     rotulo = ROTULOS[aviso]
     return Fato(chave, f"{rotulo} · {sufixo(ident)}",
                 _descricao(f"{rotulo}. Abra o painel para ver o que é e responder.",
-                           [f"tipo `{aviso}`", f"estado `{estado}`", f"id `{sufixo(ident)}`"], link))
+                           [f"tipo `{aviso}`", f"estado `{estado}`", f"id `{sufixo(ident)}`"], link, chave))
 
 
 def fato_de_pedido(ident: str, estado: str, url_painel: str | None) -> Fato | None:
@@ -106,7 +139,7 @@ def fato_de_pedido(ident: str, estado: str, url_painel: str | None) -> Fato | No
     titulo, leigo = _PEDIDO[estado]
     return Fato(chave_do_fato("pedido", ident), f"{titulo} · {sufixo(ident)}",
                 _descricao(leigo, ["tipo `pedido`", f"estado `{estado}`", f"id `{sufixo(ident)}`"],
-                           link_do_painel(url_painel, f"#/pedidos/{_seguro(ident)}")))
+                           link_do_painel(url_painel, f"#/pedidos/{_seguro(ident)}"), chave_do_fato("pedido", ident)))
 
 
 def fato_de_validacao(ident: str, item_ref: str, estado: str, url_painel: str | None) -> Fato | None:
@@ -116,7 +149,8 @@ def fato_de_validacao(ident: str, item_ref: str, estado: str, url_painel: str | 
     titulo, leigo = _LIVRO[estado]
     return Fato(chave_do_fato("livro", ident), f"{titulo} · {sufixo(ident)}",
                 _descricao(leigo, ["tipo `livro.validacao`", f"estado `{estado}`", f"id `{sufixo(ident)}`"],
-                           link_do_painel(url_painel, f"#/aprendizado?aba=aprendido&item={_seguro(item_ref)}")))
+                           link_do_painel(url_painel, f"#/aprendizado?aba=aprendido&item={_seguro(item_ref)}"),
+                           chave_do_fato("livro", ident)))
 
 
 def fato_de_deploy(commit: str, migracao: str | None) -> Fato:
@@ -124,7 +158,8 @@ def fato_de_deploy(commit: str, migracao: str | None) -> Fato:
     curto, mig = _seguro(commit)[:8], _seguro(migracao or "") or "desconhecida"
     return Fato(chave_do_fato("deploy", curto, mig), f"Deploy · {curto}",
                 _descricao("A Central foi atualizada para uma versão nova.",
-                           ["tipo `deploy`", f"commit `{curto}`", f"migração `{mig}`"], None))
+                           ["tipo `deploy`", f"commit `{curto}`", f"migração `{mig}`"], None,
+                           chave_do_fato("deploy", curto, mig)))
 
 
 def fato_de_custo(dia: str, contas: list[LinhaDeCusto]) -> Fato:
@@ -134,8 +169,8 @@ def fato_de_custo(dia: str, contas: list[LinhaDeCusto]) -> Fato:
               for c in sorted(contas, key=lambda c: c.conta)]
     return Fato(chave_do_fato("custo", dia), f"Custo de IA · {dia}",
                 _descricao("Quanto a IA custou nas últimas 24 horas, por conta, e quanto sobra em cada uma.",
-                           linhas or ["sem conta de IA em uso"], None))
+                           linhas or ["sem conta de IA em uso"], None, chave_do_fato("custo", dia)))
 
 
 def comentario_de_desfecho(familia: str, agora: datetime) -> str:
-    return f"🤖 {agora:%H:%M}Z · resolvido: {DESFECHO.get(familia, 'o fato deixou de pedir atenção')}"
+    return f"🤖 {NOME_DA_IA} · {agora:%H:%M}Z · resolvido: {DESFECHO.get(familia, 'o fato deixou de pedir atenção')}"

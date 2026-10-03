@@ -157,6 +157,13 @@ coisas do §6:
      arquivar. Nada por evento, então não há ruído.
    - Os campos personalizados (o Power-Up Custom Fields foi aprovado pelo dono às ~19:05Z) recebem Frente e Prova pela
      API.
+     **Criação sem duplicar (3b/6):** o banco vai primeiro. A linha `criando` (com `card_id` sentinela `criando:<chave>`,
+     porque a 087 exige `card_id` único e não nulo) é gravada antes do `POST /1/cards`; o `card_id` verdadeiro e o `ativo`
+     só depois. Toda descrição termina com a marca `🤖 chave: <família>:<fato>`; a volta que encontra `criando` lê os
+     cartões abertos da lista (`GET /1/lists/{id}/cards`) e ADOTA o marcado (o mais antigo, se houver mais de um), em vez
+     de criar outro. Cartão sem marca nunca é tocado. O desfecho só é comentado se o último comentário do cartão ainda
+     não for o da Central ("🤖 ANA · … resolvido").
+
      **Ficam para um passo seguinte** (o 3/6 não os escreve): o espelho cria e atualiza nome, descrição e lista; Frente e
      Prova pelos campos personalizados entram depois, sem mudar o hash do cartão.
 5. **Marcos e custos:** o mesmo reconciliador mantém um cartão por deploy, quando `commit` e `migration` de
