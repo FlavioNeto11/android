@@ -19,6 +19,29 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Deploy 8 no central (suíte 8: RA-19 B, 30.29 e 29.45; planejador no Sonnet 5.5; curador acelerado)
+
+- Código: main `df860763` (suíte 8: #141 RA-19 B, #142 30.29 e 29.45 caminho rápido 2), sem migração nova (segue a 081).
+  Backup do deploy `20261003-060610` (carimbo em hora local; o do ensaio é `20261003-060545`); o ensaio de migração na
+  cópia do banco não aplicou nada. Agente do notebook em `0.1.0+df86076` (reparo dos aparelhos dele pausado durante a
+  troca).
+- `config/config.yaml` do central (backup `config-antes-deploy8-20261003-090601.yaml`; fora do Git):
+  - `ai.roles.plan`: `claude-sonnet-5-5` com `effort: low` (rodada QA pareada passou: 35 % mais rápido, 43 % mais
+    barato, 12/12 nos dois braços). O perfil `planejador-sonnet` fica para A/B; `escalation` segue no Opus; a leitura
+    não mudou.
+  - `aprendizado.curador.alfa: 0.7` e `k: 6`, para drenar o backlog do curador. **Voltam a 0.10 / 1.5 (o padrão) no
+    deploy 9.**
+- Quebras de série a partir deste deploy:
+  - `ai_calls.escalate = nova_tentativa` passa a marcar só a subida do LT-12 (adendo v0.86).
+  - Etapas `app_foreground` abertas pelo executor sem IA (LT-6) não alimentam o `_veredito_da_sombra`.
+  - O custo e a latência do `plan` mudam de modelo (Opus → Sonnet 5.5 low).
+- Prova `real` (03/10, central):
+  - `/api/health` às 09:07Z: ok, `df860763`, migração 081, `problems: []`;
+  - `GET /api/ai`: `plan` = `claude-sonnet-5-5` / `low`, `escalation` = `claude-opus-5-5`, `leitura` =
+    `gemini-3.1-flash-lite`;
+  - agente `0.1.0+df86076` online às 09:08Z, com os 4 aparelhos do notebook `online/ready`.
+- `not_run`: o aceite de latência do 29.45 e a validação do painel no Chrome, até o tráfego medir.
+
 ## 2026-10-03 — caminho rápido 2: LT-5, LT-6 e LT-12 (item 29.45, branch `feat/lt-5-6-12-caminho-rapido-2`)
 
 - **LT-5.** O "não" em tela parada encerra a verificação em 3 sondagens (`SONDAGENS_DA_TELA_PARADA`), sem esperar o
