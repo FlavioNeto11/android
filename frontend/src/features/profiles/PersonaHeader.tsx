@@ -37,7 +37,7 @@ export function PersonaHeader({ profile, onBack, irPara }: {
         <Button size="sm" variant="ghost" icon={ArrowLeft} onClick={onBack}>Personas</Button>
       </div>
       <div className={styles.cabecalhoLinha}>
-        <Avatar src={profileAvatarUrl(profile.id)} name={nome} size={64} />
+        <Avatar src={profileAvatarUrl(profile.id, profile.has_avatar)} name={nome} size={64} />
         <div className={styles.cabecalhoCorpo}>
           <h1 className={styles.title}>{nome}</h1>
           <p className={styles.cabecalhoHandle}>{handle ? `@${handle}` : 'Sem conta de cadastro'}</p>

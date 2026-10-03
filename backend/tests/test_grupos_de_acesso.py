@@ -114,6 +114,18 @@ def test_membros_nome_validacao_e_grupo_a_partir_de_um_perfil(tmp_path: Path) ->
         svc.update_profile(a, ProfilePatch(policy_group_id="grp-nao-existe"))
 
 
+def test_membro_sem_conta_traz_o_nome_da_pessoa(tmp_path: Path) -> None:
+    """29.25: depois que a conta da persona sai (29.23), o `username` fica vazio; o membro ainda traz o NOME para
+    o painel não desenhar um chip "@" sozinho. Com conta e sem nome próprio, o nome cai no @."""
+    svc, repo, _, _ = build(tmp_path)
+    a, b = perfil(svc), perfil(svc, "outro.perfil", "android-01")
+    repo.db.execute("UPDATE instagram_profiles SET username='', display_name='Beatriz Rocha' WHERE id=?", (a,))
+    g = svc.create_policy_group(PolicyGroupCreate(name="Sem arroba", profile_ids=[a, b]))
+    por_id = {m.id: m for m in g.members}
+    assert not por_id[a].username and por_id[a].name == "Beatriz Rocha"
+    assert por_id[b].username == "outro.perfil" and por_id[b].name
+
+
 async def test_rotas_http_dos_grupos(tmp_path: Path) -> None:
     h = Harness(tmp_path, 1)
     await h.boot()

@@ -10,7 +10,7 @@ import { appsDoAlvo, ORIGEM, type RecusaDeAlvo } from './alvos';
 import styles from './CommandPanel.module.css';
 
 /** Como mostrar uma persona pelo id: nome e @ quando a lista de personas já chegou; senão o próprio id. */
-export type NomeDaPersona = (profileId: string) => { nome: string; handle: string | null };
+export type NomeDaPersona = (profileId: string) => { nome: string; handle: string | null; temFoto?: boolean };
 
 /**
  * A prévia dos alvos (`POST /runs/targets/resolve`): persona → aparelho com a ORIGEM de cada escolha, o comando que
@@ -68,7 +68,7 @@ export function PreviaDosAlvos({ previa, recusa, carregando, comando, nomeDe, ap
                 <li key={`${t.profile_id ?? '-'}:${t.instance_id}`} className={styles.previaAlvo}>
                   {quem ? (
                     <span className={styles.previaQuem}>
-                      <Avatar src={profileAvatarUrl(t.profile_id as string)} name={quem.nome} size={22} />
+                      <Avatar src={profileAvatarUrl(t.profile_id as string, quem.temFoto)} name={quem.nome} size={22} />
                       <strong>{quem.nome}</strong>
                     </span>
                   ) : <span className={styles.previaNota}>sem persona</span>}
@@ -117,7 +117,7 @@ export function PreviaDosAlvos({ previa, recusa, carregando, comando, nomeDe, ap
                   <button key={o} type="button" className={cx(ui.chip, styles.previaOpcao)}
                           onClick={() => onResponder(q, o)}>
                     {q.field === 'profile_id' ? (
-                      <Avatar src={profileAvatarUrl(o)} name={rotuloDaOpcao(q, o)} size={18} />
+                      <Avatar src={profileAvatarUrl(o, nomeDe(o).temFoto)} name={rotuloDaOpcao(q, o)} size={18} />
                     ) : null}
                     {rotuloDaOpcao(q, o)}
                   </button>

@@ -107,13 +107,15 @@ describe('lista', () => {
   });
 
   it('um link com filtro abre já filtrado (e valor desconhecido é ignorado)', async () => {
+    backend.on('POST', /^\/api\/pedidos\/busca$/, () => json(LISTA));
     await irPara({ tela: 'pedidos', query: { estado: 'ativo,pausado,xyz', q: 'preço', ordem: 'proxima' } });
     await montar();
-    await waitFor(() => expect(backend.callsTo('GET', /^\/api\/pedidos$/).length).toBeGreaterThan(0));
-    const q = backend.callsTo('GET', /^\/api\/pedidos$/)[0]?.query;
-    expect(q?.get('estado')).toBe('ativo,pausado');
-    expect(q?.get('q')).toBe('preço');
-    expect(q?.get('ordem')).toBe('proxima');
+    // 29.26: o termo de busca é texto livre e vai no corpo do POST; a URL não leva `q`.
+    await waitFor(() => expect(backend.callsTo('POST', /^\/api\/pedidos\/busca$/).length).toBeGreaterThan(0));
+    const corpo = backend.callsTo('POST', /^\/api\/pedidos\/busca$/)[0]?.body as Record<string, unknown>;
+    expect(corpo).toMatchObject({ estado: 'ativo,pausado', q: 'preço', ordem: 'proxima' });
+    expect(backend.callsTo('POST', /^\/api\/pedidos\/busca$/).every((c) => c.query.toString() === '')).toBe(true);
+    expect(backend.callsTo('GET', /^\/api\/pedidos$/).every((c) => !c.query.has('q'))).toBe(true);
   });
 
   it('lista vazia tem uma frase só e o botão "Novo pedido" leva ao Comando com o painel de pedido pedido', async () => {

@@ -382,7 +382,7 @@ function InterventionQueue({ profiles, instances, workers }: {
             const sess = metaOf(ACCOUNT_SESSION_STATUS, p.session.status);
             return (
               <li key={p.id} className={styles.filaItem}>
-                <Avatar src={profileAvatarUrl(p.id)} name={p.display_name || p.username} size={32} />
+                <Avatar src={profileAvatarUrl(p.id, p.has_avatar)} name={p.display_name || p.username} size={32} />
                 <div className={styles.filaInfo}>
                   <p className={styles.filaPerfil}>
                     <span className={styles.filaUsuario}>@{p.username}</span>

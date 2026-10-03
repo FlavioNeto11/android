@@ -225,6 +225,11 @@ class CountingProvider:
         draft, _ = await self.inner.generate_persona(req)
         return draft, Usage(calls=1, role="persona", model="simulado")
 
+    async def review_knowledge(self, req: Any) -> Any:
+        self.calls.append({"role": "plan", "kind": "curador"})
+        parecer, _ = await self.inner.review_knowledge(req)
+        return parecer, Usage(calls=1, role="plan", model="simulado")
+
 
 class Harness:
     def __init__(self, tmp: Path, count: int, *, factory: Callable[[Any], Any] | None = None, **config_kw: Any):

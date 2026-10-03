@@ -1,11 +1,10 @@
-# Hub de IA fora de execução: curador do Livro (30.12) e rubrica única de gasto — PROPOSTA
+# Hub de IA fora de execução: curador do Livro (30.12) e rubrica única de gasto
 
-**Estado:** PROPOSTA com as decisões P1–P6 anotadas no §4 (orquestradora, 02/10); implementação do 30.12 PARADA até o roteiro do Jev e a D0. Autoria: frente Jev, dona do hub de IA (`planning/`, `routing`, `config.ai`), em 02/10/2026. **Nada
-implementado.** Pedido da orquestradora (mapa de amarração M1, §3 "30.12" e "30.11, 28.6 e ADR-051"). Duas decisões
-abertas podem mudar o desenho:
-
-- a D0 do dono, sobre o sentido de "Jev para o fluxo de navegação";
-- o roteiro do Jev-retrieval (`choice`), que traz a emenda ao ADR-063 e as classes de dado que podem sair da máquina.
+**Estado:** decisões P1–P6 no §4 (orquestradora, 02/10); o roteiro do Jev virou o ADR-069 e o 30.12 está IMPLEMENTADO (branch
+`feat/30-12-curador-hub`, ver abaixo). Autoria: frente Jev, dona do hub de IA (`planning/`, `routing`, `config.ai`), em
+02/10/2026, a pedido da orquestradora (mapa de amarração M1, §3 "30.12" e "30.11, 28.6 e ADR-051"). As duas decisões que
+seguravam o desenho foram tratadas: o roteiro do Jev-retrieval (`choice`) virou o ADR-069 (emenda ao ADR-063, classes de dado
+C0–C3). A D0 do dono (o sentido de "Jev para o fluxo de navegação") segue com ele.
 
 **Porta do Jev (31.4, 02/10): IMPLEMENTADA** em `backend/app/planning/decisao_fechada/` (contrato, privacidade que falha
 fechada, `DecisorNulo` e `DecisorFalso`, modos e timeouts; o decisor real é o 31.8). Decisão: ADR-069. Resumo em
@@ -16,8 +15,16 @@ Vocabulário: **hub de IA** = `planning/routing.py`, `config.ai`, `ai_calls`; **
 
 **Implementação (31.2 e 31.6, 02/10/2026):** a coluna `ai_calls.origem`/`ref` (migração 073), `Usage.origem`, o filtro
 `costs.spent_usd(origem=)`, `AIError.motivo` fechado e as fatias `curador` e `decisao_fechada` em `_budget` estão no
-código, com a rubrica e a ordem das réguas em `docs/ia.md` §6. Faltam o método do curador (30.12), a porta de decisão
-do Jev e o saldo da conta (ADR-051) dentro da mesma ordem.
+código, com a rubrica e a ordem das réguas em `docs/ia.md` §6. A porta de decisão do Jev é o 31.4. Falta o saldo da conta
+(ADR-051) dentro da mesma ordem.
+
+**Implementação do 30.12 (02/10/2026):** `AIRouter.review_knowledge(PedidoDeParecer) -> (ParecerBruto, Usage)` pelo precedente
+(`_call("plan", None, …, origem="curador", ref=dossie_hash)`), com o template e o esquema em `planning/curador.py`
+(`VERSAO_DO_TEMPLATE = curador-v1`; os enums do esquema saem das opções fechadas do pedido). Os três provedores respondem
+(Anthropic e OpenAI-compatível pelo modelo do `plan`, só texto; simulado por regra fixa). O adaptador real é
+`modules/learning/infrastructure/curador_do_hub.py::CuradorDoHub`, ligado pelo `AppState`; o modo segue `off` de fábrica.
+`modelo_sugerido` (`triagem`/`escalada`) ainda vai ao mesmo modelo do `plan`: baratear a triagem é por perfil (17.7) ou pelo
+Jev em sombra (31.8). Prova `simulated` (`backend/tests/test_curador_do_hub.py`); chamada real `not_run`.
 
 **PENDÊNCIA registrada (orquestradora, 02/10):** a ordem das réguas ficou a existente (pedido > execução > dia > fatia) e o saldo
 da conta continua em `_saldo` (`kind="balance"`). UNIFICAR o saldo na rubrica (o `motivo="saldo"` e a fatia `α × min(saldo, teto)`) é o

@@ -188,7 +188,7 @@ async def test_api_de_saldos_e_saude(harness: Harness) -> None:
         r = await c.get("/api/ai/balances")
         assert r.status_code == 200, r.text
         contas = {x["account"]: x for x in r.json()["accounts"]}
-        assert set(contas) == {"anthropic", "openai", "gemini"} and contas["gemini"]["currency"] == "BRL"
+        assert set(contas) == {"anthropic", "openai", "gemini", "typesafe"} and contas["gemini"]["currency"] == "BRL"
         r = await c.post("/api/ai/balances/openai", json={"balance": 8.39, "source": "console",
                                                           "observed_at": "2026-09-28T15:00:00Z"})
         assert r.status_code == 201, r.text

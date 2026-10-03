@@ -251,14 +251,16 @@ describe('Central de Aparelhos — sessão completa', () => {
   });
 
   it('comando: mostra a estimativa de custo quando o texto casa um fluxo conhecido (item 7.7)', async () => {
-    backend.on('GET', /^\/api\/flows\/match$/, (call) =>
-      call.query.get('command') === 'enviar oi'
+    backend.on('POST', /^\/api\/flows\/match$/, (call) =>
+      (call.body as { command?: string }).command === 'enviar oi'
         ? json({ flow_id: 'f-oi', name: 'Enviar oi', command_template: 'enviar oi', package: null,
                  target_version: null, steps_total: 3, steps_with_recipe: 1, ai_cost: 'parcial', estimated_usd: 0.12 })
         : json(null));
     await setValue(byRole('textbox', 'Comando em linguagem natural') as HTMLTextAreaElement, 'enviar oi');
     await waitFor(() => expect(text()).toContain('estimativa: US$ 0.12 por aparelho'));
     expect(text()).toContain('2 etapas sem IA');
+    // 29.25: o rascunho vai no corpo do POST, nunca na query string (log de acesso).
+    expect(backend.callsTo('POST', /flows\/match$/).every((c) => c.query.toString() === '')).toBe(true);
   });
 
   it('comando: reutiliza a idempotency_key nas novas tentativas e só troca após sucesso', async () => {
@@ -293,8 +295,8 @@ describe('Central de Aparelhos — sessão completa', () => {
   }, 15_000);
 
   it('comando: distribuir entre servidores mostra a prévia e manda distribute em vez de aparelhos', async () => {
-    backend.on('GET', /^\/api\/runs\/distribution$/, (call) => json({
-      requested: Number(call.query.get('count')),
+    backend.on('POST', /^\/api\/runs\/distribution$/, (call) => json({
+      requested: Number((call.body as { count: number }).count),
       picks: [
         { instance_id: 'android-09', server_id: 'worker-lan-01', server_name: 'Notebook da LAN', needs_start: false },
         { instance_id: 'android-10', server_id: 'worker-lan-01', server_name: 'Notebook da LAN', needs_start: true },

@@ -10,7 +10,8 @@
   escopo, a confiança volta;
 - a receita reaprendida aponta para a invalidada (`reaprende`) e a invalidada para ela (`reaprendida_por`); o fluxo
   renasce na mesma linha (`match_key` única) e não aponta para si mesmo;
-- a arrumação da loja (`disabled → deprecated` da quarentenada substituída) não levanta mais o veto de uma pessoa.
+- a arrumação da loja (`disabled → deprecated` da quarentenada substituída) não levanta mais o veto de uma pessoa;
+- o dossiê do curador (30.11) vê o reaprendido como B e deixa de fora a evidência da execução marcada.
 
 Nível de prova: `simulated` (banco de teste migrado pela fábrica da suíte; execução "real" é uma linha de `runs` com
 `simulated=0`; nenhum aparelho, nenhuma IA).
@@ -42,6 +43,7 @@ from app.modules.learning.domain.livro import Transicao, por_que_o_sistema_nao_p
 from app.modules.learning.domain.politica_de_risco import ClasseDeRisco, FatosDeRisco, Razao, classificar
 from app.modules.learning.domain.vocabulario import LivroKind
 from app.modules.learning.infrastructure import ligar_nativos
+from app.modules.learning.infrastructure.dossies import DossiesSql
 from app.modules.learning.infrastructure.fontes import FontesSql
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
 from app.modules.learning.infrastructure.sql_repository import SqlLearningRepository
@@ -423,6 +425,27 @@ def test_o_fluxo_do_outlook_reclassificado_renasce_na_mesma_linha_e_espera_o_don
         m.servico.mudar_estado(LivroKind.FLUXO, fid, S.PUBLISHED, by="sistema", reason="tentar")
     m.servico.mudar_estado(LivroKind.FLUXO, fid, S.PUBLISHED, by=DONO, reason="aprovado")
     assert m.status(fid) == "active"
+
+
+def test_o_dossie_do_curador_ve_o_reaprendido_em_b_e_nao_a_evidencia_invalida(fluxos: Fluxos) -> None:
+    """O curador monta o dossiê com os fatos do aviso de espera: o reaprendido é B (a IA nunca o vê como A), e a
+    evidência da execução marcada não entra (não prova nada; a IA não a pode citar)."""
+    m = fluxos
+    fid = m.roda(FALSA, "Ana")
+    assert fid
+    dossies = DossiesSql(m.db, m.servico, m.repo, None)
+    antes = dossies.dossie(m.servico.entrada(LivroKind.FLUXO, fid))
+    assert antes is not None and FALSA in {x.run_id for x in antes.evidencias}
+    assert not antes.fatos_de_risco.reaprendido and antes.risco.classe is ClasseDeRisco.A
+    m.servico.invalidar_evidencia(LivroKind.FLUXO, fid, FALSA, by=DONO)
+    marcado = dossies.dossie(m.servico.entrada(LivroKind.FLUXO, fid))
+    assert marcado is not None and FALSA not in {x.run_id for x in marcado.evidencias}
+    assert m.roda(OUTRA, "Bia") == fid
+    reaprendido = dossies.dossie(m.servico.entrada(LivroKind.FLUXO, fid))
+    assert reaprendido is not None and reaprendido.fatos_de_risco.reaprendido
+    assert reaprendido.risco.classe is ClasseDeRisco.B
+    assert reaprendido.risco.razoes[0] is Razao.REAPRENDIDO_DE_EVIDENCIA_INVALIDA
+    assert {x.run_id for x in reaprendido.evidencias} == {OUTRA}
 
 
 # ------------------------------------------------------------------ a rota e o JSON

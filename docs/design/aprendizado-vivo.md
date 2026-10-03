@@ -416,6 +416,15 @@ Números de hoje (`real`, central, 02/10): `G_7d = US$ 9,56`, `N_7d = 71`, `c̄ 
 
 Aviso a 80% de `B_W`, como os tetos de IA atuais.
 
+**Nota de implementação (30.11, 02/10).** Decisões que o texto acima não fixava (detalhe em `dominios/aprendizado.md`):
+- A classe A vai SEMPRE por último (prioridade 5), mesmo publicada e contestada: a prioridade 1 é de item B ou C (`so_com_sobra`).
+- O corte por orçamento não vira linha de `learning_reviews` (gastaria a chave (item, dossiê) e a sobra não voltaria na próxima janela);
+  só `recusada:custo`, `recusada:triagem` e `invalida:*` viram linha e não se repetem até o dossiê mudar.
+- O teto da hora (`B_W/W/2`) é conferido sobre o JÁ gasto antes de cada revisão: com `N_W` pequeno ele fica abaixo de uma revisão e
+  a leitura "mais esta cabe" nunca deixaria a primeira passar.
+- Pico: só com histórico (média > 0) e com pelo menos 5 elegíveis no dia (piso de amostra, a confirmar com o dono); o alerta é log.
+- Sem `usd` medido (a 069 é `NOT NULL DEFAULT 0`), `C_W` usa a estimativa recalculada do dossiê gravado; só `usd > 0` é medida.
+
 ### 8.8 Modos e abstração de provedor
 
 `aprendizado.curador.modo`: `off` (padrão de fábrica) | `shadow` (revisa e grava; o parecer não aparece na fila; mede a concordância
@@ -548,15 +557,16 @@ vetaria para sempre um conteúdo cuja navegação provavelmente é boa (o falso 
   `completed` com prova.
 - **Reaprendido.** É derivado da trilha do escopo e nunca gravado: o último nascimento do item vem depois da última marca do
   escopo, sem publicação de pessoa no meio. Força a classe B (§8.4) e "Para aprovar". O sistema para em `validated` na
-  sombra da receita e na do fluxo, e o repositório recusa a publicação pelo sistema. A pessoa publica, e a marca deixa de
-  pesar.
-- **A evidência da execução marcada fica à vista e não mede**: sai da sombra do fluxo, da saúde (§5) e da versão (§7).
+  sombra da receita e na do fluxo, e o repositório recusa a publicação pelo sistema. Depois que uma pessoa publica no
+  escopo, o que nascer ali já segue o D1 de sempre.
+- **A evidência da execução marcada fica à vista e não mede**: sai da sombra do fluxo, da saúde (§5), da versão (§7) e
+  do dossiê do curador (§8.2), cujos fatos de risco carregam o reaprendido.
 - **Relações** (§6): `reaprende` e `reaprendida_por` entre a receita nova e a desligada. O fluxo renasce na mesma linha
   (`match_key` único) e não aponta para si.
 - **Limites.** A receita renasce como versão nova, e a desligada vira `superseded` (o veto sobrevive à arrumação). O escopo
   da receita inclui a versão do app, como o veto de sempre.
 
-Contrato: adendo v0.67 do [`api-contract.md`](../api-contract.md).
+Contrato: adendo v0.68 do [`api-contract.md`](../api-contract.md).
 
 ---
 

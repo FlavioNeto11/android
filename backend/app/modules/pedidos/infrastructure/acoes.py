@@ -97,6 +97,8 @@ class AcoesDePedidos:
             if modo == "daqui":
                 for g in self.repo.gatilhos_ativos(pedido_id):
                     self._pular_o_da_pausa(p, g, agora, em)
+                # Evento (28.8): pausa = não observar; o que aconteceu durante ela não dispara na retomada `daqui`.
+                self.repo.base_dos_eventos(pedido_id)
         self.acordar()
 
     def _pular_o_da_pausa(self, p: Row, g: Row, agora: datetime, em: str) -> None:
@@ -157,7 +159,7 @@ class AcoesDePedidos:
         if fora:
             raise AcaoInvalida(f"campo(s) que a edição não muda: {sorted(fora)}")
         if gatilho is not None and gatilho[0] not in gatilhos.SUPORTADOS:
-            raise AcaoInvalida(f"tipo de gatilho fora do 28.4: {gatilho[0]}")
+            raise AcaoInvalida(f"a edição troca só agora, horário e recorrência, não {gatilho[0]}")
         p = self._pedido(pedido_id)
         if p["estado"] in ("concluido", "encerrado", "cancelado"):
             raise AcaoInvalida(f"pedido {p['estado']} não se edita")

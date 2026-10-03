@@ -283,6 +283,8 @@ interface PersonaAqui {
   fase: { label: string; tone: Tone } | null;
   /** Este aparelho é o PRINCIPAL da persona (só a rota N:N sabe). */
   principal: boolean;
+  /** Há foto (`has_avatar`); sem ela, iniciais e nenhuma requisição (29.26). */
+  temFoto?: boolean;
 }
 
 /**
@@ -320,7 +322,7 @@ export function PersonasSection({ contexto, instanceId }: { contexto: ContextoLi
       const app = p.app_id ? apps.find((a) => a.id === p.app_id)?.name ?? p.app_id : null;
       const nome = p.name || p.display_name || arroba(p.username) || p.profile_id;
       return {
-        chave: `${p.profile_id}:${p.app_id ?? ''}`, profileId: p.profile_id, nome, principal: p.is_primary,
+        chave: `${p.profile_id}:${p.app_id ?? ''}`, profileId: p.profile_id, nome, principal: p.is_primary, temFoto: p.has_avatar,
         sub: [arroba(p.username), app ? `conta do ${app}` : 'sem app (os apps sem conta gerenciada)'].filter(Boolean).join(' · '),
         session: p.session, fase: faseDe(p.profile_id),
       };
@@ -328,7 +330,7 @@ export function PersonasSection({ contexto, instanceId }: { contexto: ContextoLi
     : ctx ? perfis.map((p) => {
       const nome = nomeDaPersona(p);
       return {
-        chave: p.profile_id, profileId: p.profile_id, nome, principal: false, session: p.session,
+        chave: p.profile_id, profileId: p.profile_id, nome, principal: false, temFoto: p.has_avatar, session: p.session,
         fase: p.session_actions ? SESSION_PHASE_LABEL[p.session_actions.phase] : null,
         sub: [arroba(p.username), p.persona_name && p.persona_name !== nome ? `persona ${p.persona_name}` : null]
           .filter(Boolean).join(' · ') || 'sem conta vinculada',
@@ -350,7 +352,7 @@ export function PersonasSection({ contexto, instanceId }: { contexto: ContextoLi
           <ul className={styles.personaList}>
             {itens.map((p) => (
               <li key={p.chave} className={styles.personaItem}>
-                <Avatar src={profileAvatarUrl(p.profileId)} name={p.nome} size={36} />
+                <Avatar src={profileAvatarUrl(p.profileId, p.temFoto)} name={p.nome} size={36} />
                 <div className={styles.personaMain}>
                   <p className={styles.personaName}>
                     {p.nome}{' '}

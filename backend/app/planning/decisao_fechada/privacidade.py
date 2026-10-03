@@ -4,8 +4,9 @@ Duas constantes de CÓDIGO, ao lado das do ADR-063 (`context_retrieval/domain/po
 `SYNTHETIC_REMOTE_SEND_APPROVED`, que continuam False). O YAML só restringe, nunca libera: nenhuma configuração lida aqui
 abre o que o código fechou, e cada classe liberada tem linha no ADR-069 com a data da decisão do dono.
 
-`JEV_RUNTIME_SEND_APPROVED` continua False: ele só vira True no item 31.10, depois que o dono trocar a chave TypeSafe
-(ADR-069 item 7). Enquanto for False, `validar` recusa TODO pedido e o decisor nunca é chamado.
+`JEV_RUNTIME_SEND_APPROVED` continua False: ele só vira True no item 31.10, depois da suíte, do deploy e da liberação por
+classe (ADR-069 itens 7 e 9; a troca da chave TypeSafe deixou de ser condição). Enquanto for False, `validar` recusa TODO
+pedido e o decisor nunca é chamado.
 """
 from __future__ import annotations
 
@@ -16,7 +17,7 @@ from typing import Final
 from ...security.redaction import redact
 from .contrato import CLASSES, MARCADORES, MODOS, ORIGENS, PedidoDeDecisao
 
-#: O envio do Jev em runtime está aprovado? Falso até o 31.10 (chave trocada pelo dono). Constante de código.
+#: O envio do Jev em runtime está aprovado? Falso até o 31.10 (ADR-069 item 9). Constante de código.
 JEV_RUNTIME_SEND_APPROVED: bool = False
 
 #: Teto de código das classes que podem sair (ADR-069 item 4, dono, 02/10/2026): C0 e C1 em F1 para todos os consumidores,
@@ -33,6 +34,15 @@ C3_MODOS: Final[frozenset[str]] = frozenset({"shadow"})
 #: Campos nomeados que cada origem pode mandar em `estado` (jaggedness: só o que importa). Vazio de propósito: cada consumidor
 #: (31.5 em diante) registra os seus no próprio item, num diff que o revisor veja. Campo fora da lista recusa o pedido.
 CAMPOS_POR_ORIGEM: dict[str, frozenset[str]] = {o: frozenset() for o in ORIGENS}
+#: Curador (31.8): só METADADOS e CONTAGENS do dossiê (C0, F1), a lista fechada de `curador.CAMPOS`. Repetida aqui de
+#: propósito: o que sai é decidido neste arquivo, num diff que o revisor veja (o teste confere que as duas batem).
+CAMPOS_POR_ORIGEM["curador"] = frozenset({
+    "kind", "estado", "origem", "side_effect", "human_origin", "classe_de_risco", "politica",
+    "evidencias_total", "evidencias_a_favor", "evidencias_contra", "evidencias_simuladas",
+    "falhas", "falhas_ocorrencias", "votos", "intervencoes", "execucoes", "saude"})
+#: Intenção (31.9): `comando` (C3, já sem destinos, sem segredo e sem entidades: `entidades.remover_entidades`) e `app` (id do
+#: app do comando, quando há). O consumidor é `intencao.py`.
+CAMPOS_POR_ORIGEM["intencao"] = frozenset({"comando", "app"})
 
 
 @dataclass(frozen=True)

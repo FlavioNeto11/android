@@ -46,6 +46,8 @@ from ..modules.identity.domain.persona_generation import (MAX_TOKENS_DO_RASCUNHO
                                                             PersonaGenerationRequest,
                                                             persona_generation_user_text)
 from . import prompts
+from .curador import (CURADOR_SYSTEM, ParecerBruto, ParecerIlegivel, PedidoDeParecer, curador_user, esquema_do_parecer,
+                      parecer_from_json)
 from .parsing import (_CapPlanOut, _MultiPlanOut, _PlanOut, catalog_plan_from_json, plan_from_json, social_from_json,
                       verdict_from_json)
 from .provider import (AVISO_TELA_SENSIVEL, AIError, Decision, DecisionRequest, PlanRequest, ScreenInput, SocialRequest, Usage,
@@ -340,6 +342,18 @@ class OpenAICompatProvider:
         try:
             return orquestracao_from_json(self._texto(msg)), usage
         except OrquestracaoInvalida as exc:
+            raise AIError(str(exc), retryable=True, kind="invalid_output", model=modelo) from exc
+
+    # ------------------------------------------------------------------ curador do Livro (30.12)
+    async def review_knowledge(self, req: PedidoDeParecer) -> tuple[ParecerBruto, Usage]:
+        modelo = self.models.get("plan", self.model)
+        esquema = esquema_do_parecer(req.opcoes)
+        msg, usage = await self._create(role="plan", model=modelo, system=CURADOR_SYSTEM,
+                                        content=[{"type": "text", "text": curador_user(req) + self._json_hint(modelo, esquema)}],
+                                        max_tokens=3000, schema=esquema, schema_name="parecer")
+        try:
+            return ParecerBruto(bruto=parecer_from_json(self._texto(msg)), modelo=modelo), usage
+        except ParecerIlegivel as exc:
             raise AIError(str(exc), retryable=True, kind="invalid_output", model=modelo) from exc
 
     # ------------------------------------------------------------------ decisão

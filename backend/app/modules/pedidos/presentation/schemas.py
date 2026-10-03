@@ -140,3 +140,19 @@ class LerAvisosCorpo(_Corpo):
 class CancelarCorpo(_Corpo):
     confirmar: bool = False
     motivo: str | None = Field(default=None, max_length=200)
+
+
+class BuscaCorpo(BaseModel):
+    """Corpo de `POST /api/pedidos/busca` (29.26): a mesma listagem de `GET /api/pedidos`, com o termo `q` (texto livre
+    digitado pela pessoa, procurado no título e no objetivo) no corpo e não na URL: query string vira linha de log de
+    acesso. Os demais filtros são os da listagem."""
+    model_config = ConfigDict(extra="forbid")
+    q: str = Field(min_length=1, max_length=80)
+    estado: str | None = None
+    autonomia: Literal["observar", "preparar", "agir"] | None = None
+    tipo: Literal["agora", "horario", "recorrencia", "evento", "condicao", "persona"] | None = None
+    profile_id: str | None = None
+    pede_atencao: bool = False
+    ordem: Literal["atualizado", "proxima", "criado"] = "atualizado"
+    limit: int = Field(default=50, ge=1, le=200)
+    cursor: str | None = None
