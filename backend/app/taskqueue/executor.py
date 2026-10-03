@@ -94,6 +94,9 @@ ATALHO_ANTES_DO_ATOR = True
 #: veredito (~4,5 s com `judge_wait_s` de 1,5). Medido em 7 d: as "NÃO comprovada" pagavam o orçamento inteiro (mediana
 #: 16,9 s, p90 55,9 s) sem nenhuma 2ª chamada — a tela não mudou e o juiz não é consultado de novo na mesma tela.
 SONDAGENS_DA_TELA_PARADA = 3
+#: LT-6 (caminho rápido 2): a etapa `app_foreground` abre o app pelo executor antes de consultar o ator. Existe para os
+#: testes cujo gancho é a decisão do ator numa etapa dessas (como `ATALHO_ANTES_DO_ATOR`): eles desligam isto.
+OPEN_APP_SEM_IA = True
 
 
 async def reler_se_ocupada(ler: Callable[[], Awaitable[T]], *, prazo: float, quem: str) -> T:
@@ -1425,6 +1428,7 @@ class StepExecutor:
         mortes_por_anr: set[tuple[str, int]] = set()
         fora_anterior: str | None = None
         agiu = True
+        abriu_sem_ia = False                   # LT-6: o `open_app` determinístico já foi gasto nesta tentativa
 
         async def desfecho_de_ia(exc: AIError, obs: Observation, durante: str) -> StepOutcome:
             """O que a etapa faz quando uma chamada de IA (a decisão do ator, a leitura visual) falha por motivo que NÃO
@@ -1706,6 +1710,35 @@ class StepExecutor:
                         repo.decision(f"{iid} · {step.title}: {pelo_atalho}; segue para a comprovação sem chamar o ator",
                                       run_id=run_id, instance_id=iid, step_id=step.id)
                         break
+                # ---------- LT-6: "abrir o app" é código, não decisão. A etapa cuja pós-condição é `app_foreground` abre
+                # o app pelo mesmo caminho da reabertura pós-ANR (`open_app` + foco lido), UMA vez por tentativa, antes
+                # do ator — em 7 d, 48 dessas etapas pagaram um decide (p50 9,0 s) para pedir exatamente isso. Só quando
+                # a receita não conduz (ela também não chama a IA, e o funil dela fica intacto) e nunca em etapa com
+                # efeito. Interstitial ou foco que não chega: a volta seguinte não comprova e o ator assume, nesta tentativa.
+                alvo_do_foco = step.postcondition.value if step.postcondition.kind == "app_foreground" else ""
+                if (OPEN_APP_SEM_IA and alvo_do_foco and not abriu_sem_ia and rep is None and decisions == 0
+                        and not step.side_effect and not fired and alvo_do_foco in self._allowed_packages()
+                        and not self._postcondition_holds(step, obs, cartao, pacote=app.package)):
+                    abriu_sem_ia = True
+                    rr.exerceu(StrategyKind.deterministic)
+                    t_abrir = time.monotonic()
+                    try:
+                        await call(rt.io.open_app, alvo_do_foco, app.activity if alvo_do_foco == app.package else None)
+                        na_frente = await esperar_foco(lambda: call(rt.io.current_focus), alvo_do_foco, ate=deadline)
+                    except DriverTimeout as exc:
+                        return await self._stuck(rt, step, fired, str(exc))
+                    except DriverError as exc:
+                        log.info("%s: abrir %s sem IA falhou (%s); o ator assume", iid, alvo_do_foco, exc)
+                        na_frente = None
+                    gasto = time.monotonic() - t_abrir
+                    situacao = ("em primeiro plano" if na_frente else "ainda não está em primeiro plano"
+                                if na_frente is False else "o pedido de abertura falhou")
+                    repo.decision(f"{iid} · {step.title}: app {alvo_do_foco} aberto pelo executor, sem IA — {situacao} "
+                                  f"({gasto:.1f} s)", run_id=run_id, instance_id=iid, step_id=step.id)
+                    history.append(f"(executor) abriu o app {alvo_do_foco} sem IA: {situacao}. Se a tela não for a "
+                                   "dele, continue a partir dela.")
+                    agiu = True
+                    continue
                 trouble = errors_in_row >= 1 or same_count >= 1
                 piso_forcou = forcar_tier_1    # captura ANTES de zerar: o motivo do escalonamento lê daqui embaixo
                 forcar_tier_1 = False          # consumido: só a decisão SEGUINTE ao descarte sobe de tier, não todas

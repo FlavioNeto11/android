@@ -4,18 +4,25 @@
   assinatura), em vez de pagar o orçamento inteiro (15 s; 60 s `patient`). Não sai cedo onde a mudança tem dono fora da
   tela: `patient` com `pending_marks` declaradas (ADR-055) e nível de entrega acima de `sent` (entregue/lida chega sem a
   árvore mudar antes). Assinatura nova reabre a contagem. Nunca converte falha em sucesso.
+- LT-6: a etapa `app_foreground` abre o app pelo executor (estratégia `deterministic`), sem decide, uma vez por tentativa
+  e só quando a receita não conduz; o pedido que falha cai no ator NA MESMA tentativa. O foco é sondado a 0,5 s nos
+  primeiros 5 s (era um ciclo fixo de 2 s: a mediana do `open_app` medida em 7 d era exatamente 2,2 s).
 
-Nível de prova: `simulated` — aparelho e juiz falsos (o `_verify` chamado direto, como em `test_dm_verificador`). A parede
-das "NÃO comprovada" no ambiente real é o aceite, `not_run` até o deploy.
+Nível de prova: `simulated` — aparelho e juiz falsos (o `_verify` chamado direto, como em `test_dm_verificador`) e o
+Harness da porta 5640 com o provedor simulado. A parede das "NÃO comprovada", a mediana do `open_app` e as etapas
+`app_foreground` com decide = 0 no ambiente real são o aceite, `not_run` até o deploy.
 """
 from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import Any
 from types import SimpleNamespace
 
 import pytest
 
+from app.automation import tools
+from app.automation.driver import DriverError
 from app.automation.hierarchy import UiTree, parse_hierarchy
 from app.devices.manager import Observation
 from app.models import DeliveryLevel, Postcondition, StepDTO, StepStatus
@@ -23,9 +30,10 @@ from app.modules.capabilities.domain.definition import CapabilityRef
 from app.modules.capabilities.infrastructure.catalog_provider import CatalogCapabilityProvider
 from app.modules.capabilities.infrastructure.catalog_registry import CatalogCapabilityRegistry
 from app.planning.provider import Usage, Verdict, VerifyRequest
+from app.taskqueue import executor as executor_mod
 from app.taskqueue.executor import SONDAGENS_DA_TELA_PARADA, StepExecutor
 
-from .conftest import make_config
+from .conftest import Harness, make_config
 
 IID = "android-01"
 PKG = "com.pocqa.messenger"
@@ -163,3 +171,144 @@ async def test_lt5_uma_rodada_continua_com_uma_leitura_so(tmp_path: Path) -> Non
         SimpleNamespace(id=IID), etapa, lambda: SimpleNamespace(step_key=etapa.key, instance_id=IID),  # type: ignore[arg-type]
         "r-lt5", f"r-lt5:{IID}", time.monotonic() + 60.0, 5.0, patient=False, facts=[], pacote=None, uma_rodada=True)
     assert ok is False and aparelho.leituras == 1 and juiz.chamadas == 1
+
+
+# ==================================================================== LT-6
+TERMINAIS = ("completed", "completed_with_issues", "failed", "waiting_user")
+
+
+def _etapa_open_app(h: Harness, run_id: str) -> dict[str, Any]:
+    db = h.state.db
+    etapa = db.one("SELECT id, status, driven_by, attempts FROM steps WHERE run_id=? AND key='open_app'", (run_id,))
+    tentativas = db.query("SELECT strategy FROM attempts WHERE step_id=? ORDER BY number", (etapa["id"],))
+    return {"status": etapa["status"], "driven_by": etapa["driven_by"], "attempts": etapa["attempts"],
+            "estrategias": [t["strategy"] for t in tentativas]}
+
+
+async def test_lt6_etapa_app_foreground_abre_o_app_sem_decide(harness: Harness) -> None:
+    harness.cfg.file.ai.recipes = "replay"
+    run = harness.run(["android-01"])
+    await harness.wait_run(run.id, statuses=TERMINAIS)
+    etapa = _etapa_open_app(harness, run.id)
+    assert harness.ai.count("decide", step="open_app") == 0
+    assert etapa["status"] == "succeeded" and etapa["attempts"] == 1
+    assert etapa["estrategias"] == ["deterministic"]
+    assert etapa["driven_by"] == "sem_ator"            # quem conduziu não foi a IA, e nada a aprender como receita
+    linha = harness.state.db.one("SELECT COUNT(*) AS n FROM events WHERE run_id=? AND message LIKE ?",  # type: ignore[union-attr]
+                                 (run.id, "%aberto pelo executor, sem IA — em primeiro plano%"))
+    assert linha["n"] == 1
+    assert len(harness.fakes["android-01"].messages) == 1               # o resto do plano seguiu normalmente
+
+
+async def test_lt6_pedido_de_abertura_que_falha_cai_no_ator_na_mesma_tentativa(harness: Harness) -> None:
+    falhas = {"n": 0}
+    # O aparelho falso nasce no boot do harness: o defeito entra nele antes da execução, sem corrida com o executor.
+    aparelho = harness.fakes["android-01"]
+    abrir0 = aparelho.open_app
+
+    def abrir(package: str, activity: str | None) -> None:
+        if falhas["n"] == 0:
+            falhas["n"] += 1
+            raise DriverError("am start recusado (teste)", effect_possible=False)
+        abrir0(package, activity)
+
+    aparelho.open_app = abrir  # type: ignore[method-assign]
+    run = harness.run(["android-01"])
+    await harness.wait_run(run.id, statuses=TERMINAIS)
+    etapa = _etapa_open_app(harness, run.id)
+    assert falhas["n"] == 1
+    assert harness.ai.count("decide", step="open_app") >= 1           # o ator assumiu
+    assert etapa["status"] == "succeeded" and etapa["attempts"] == 1    # na mesma tentativa, sem retry
+    assert etapa["estrategias"] == ["deterministic>ai_actor"]
+
+
+async def test_lt6_desligado_volta_ao_ator(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(executor_mod, "OPEN_APP_SEM_IA", False)
+    run = harness.run(["android-01"])
+    await harness.wait_run(run.id, statuses=TERMINAIS)
+    assert harness.ai.count("decide", step="open_app") >= 1
+    assert _etapa_open_app(harness, run.id)["estrategias"] == ["ai_actor"]
+
+
+async def test_lt6_etapa_com_efeito_nunca_abre_pelo_executor(harness: Harness) -> None:
+    plano0 = harness.ai.inner.plan
+
+    async def plan(req: Any) -> Any:
+        plano, uso = await plano0(req)
+        for s in plano.steps:
+            if s.key == "open_app":
+                s.side_effect = True
+        return plano, uso
+
+    harness.ai.inner.plan = plan
+    run = harness.run(["android-01"])
+    await harness.wait_run(run.id, statuses=TERMINAIS)
+    assert harness.ai.count("decide", step="open_app") >= 1
+    assert "deterministic" not in (_etapa_open_app(harness, run.id)["estrategias"][0] or "")
+
+
+def _leitor(respostas: list[str | None]) -> tuple[Any, list[float]]:
+    momentos: list[float] = []
+
+    async def ler() -> tuple[str | None, str | None]:
+        momentos.append(time.monotonic())
+        return respostas[min(len(momentos) - 1, len(respostas) - 1)], None
+
+    return ler, momentos
+
+
+async def test_lt6_foco_e_sondado_a_meio_segundo_no_comeco() -> None:
+    ler, momentos = _leitor([None, PKG])
+    t0 = time.monotonic()
+    assert await tools.esperar_foco(ler, PKG) is True
+    assert len(momentos) == 2 and time.monotonic() - t0 < 1.5           # antes: o 2º olhar só depois de 2 s
+
+
+async def test_lt6_depois_da_janela_volta_ao_intervalo_largo(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tools, "INTERVALO_DO_FOCO_S", 0.2)
+    monkeypatch.setattr(tools, "INTERVALO_INICIAL_DO_FOCO_S", 0.01)
+    monkeypatch.setattr(tools, "JANELA_INICIAL_DO_FOCO_S", 0.05)
+    ler, momentos = _leitor([None] * 30 + [PKG])
+    assert await tools.esperar_foco(ler, PKG, ate=time.monotonic() + 0.6) is False
+    intervalos = [b - a for a, b in zip(momentos, momentos[1:])]
+    assert min(intervalos[:2]) < 0.05 and intervalos[-2] >= 0.15        # fino no começo, largo depois
+
+
+async def test_lt6_intervalo_encurtado_pelos_testes_continua_valendo(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tools, "INTERVALO_DO_FOCO_S", 0.02)
+    ler, momentos = _leitor([None, None, PKG])
+    t0 = time.monotonic()
+    assert await tools.esperar_foco(ler, PKG) is True
+    assert time.monotonic() - t0 < 0.3                                  # nunca o 0,5 s da janela fina
+
+
+@pytest.fixture
+def espera_curta(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tools, "ESPERA_DO_FOCO_S", 0.3)
+    monkeypatch.setattr(tools, "INTERVALO_DO_FOCO_S", 0.02)
+
+
+async def test_lt6_abertura_sem_ia_que_morre_por_anr_segue_a_regra_de_uma_reabertura(harness: Harness,
+                                                                                      espera_curta: None) -> None:
+    """A abertura do LT-6 entra na contagem do ANR como a da IA entrava: a 1ª morte é reaberta uma vez pelo executor,
+    e a etapa fecha sem nenhum decide."""
+    fake = harness.fakes["android-01"]
+    fake.anr_ao_abrir = 1
+    run = harness.run(["android-01"])
+    detail = await harness.wait_run(run.id)
+    assert detail.status == "completed", [(s.key, s.status, s.status_detail) for s in detail.steps]
+    assert fake.calls.count("open_app") == 2                  # a do executor (LT-6) e a reabertura do ANR
+    assert harness.ai.count("decide", step="open_app") == 0
+
+
+async def test_lt6_segunda_morte_por_anr_para_a_etapa_sem_decide(harness: Harness, espera_curta: None) -> None:
+    fake = harness.fakes["android-01"]
+    fake.anr_ao_abrir = 4
+    run = harness.run(["android-01"])
+    detail = await harness.wait_run(run.id)
+    abrir = [s for s in detail.steps if s.key == "open_app"]
+    assert abrir and all(s.status == "failed" for s in abrir), [(s.key, s.status) for s in detail.steps]
+    erros = [a.error or "" for a in detail.attempts if a.step_id in {s.id for s in abrir}]
+    assert erros and all("parou de responder (ANR)" in e for e in erros), erros
+    assert fake.calls.count("open_app") == 4                  # nenhuma 5ª partida a frio
+    assert harness.ai.count("decide", step="open_app") == 0
