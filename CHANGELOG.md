@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: a classe do fluxo pela etapa mais restritiva (30.32; branch feat/30-32-classe-do-fluxo)
+
+- O dossiê do curador classifica o fluxo pelas etapas dele, cada uma com os fatos do catálogo do app dela
+  (`EtapaDeRisco`). As razões são a união, então a classe nunca desce.
+- Antes, todo fluxo com efeito caía em `commit_sem_fatos_da_etapa` (B). Na cópia do banco do central (03/10), 9 fluxos
+  do Instagram passam a C: comentar, responder, mandar mensagem e seguir, todos com etapa `risk: high`. Os outros 24
+  não mudam.
+- O hash do dossiê só muda para o fluxo com etapa no catálogo; o curador os revê.
+- Divergência conhecida: o aviso `learning.needs_person` da transição nativa segue sem as etapas.
+- Prova `simulated` (`tests/test_learning_classe_do_fluxo.py`) e o recálculo dos 33 fluxos da cópia do banco.
+
 ## 2026-10-03 — Deploy 9 no central (suíte 9; sombra C0–C1 do curador ligada, T_on do 31.10; curador volta ao padrão)
 
 - Código: main `3dcfc9ac` (suíte 9), sem migração nova (segue a 081):

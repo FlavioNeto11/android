@@ -96,6 +96,22 @@ class FatosDoCatalogo:
 
 
 @dataclass(frozen=True, slots=True)
+class EtapaDeRisco:
+    """Uma etapa do FLUXO (30.32): a capability, se o fluxo a marca como etapa de efeito, e o que o catálogo do app da
+    etapa diz dela (`None`: capability livre, fora do catálogo ou app sem catálogo)."""
+
+    capability: str
+    efeito: bool
+    catalogo: FatosDoCatalogo | None = None
+
+
+def _dados_do_catalogo(c: FatosDoCatalogo | None) -> JsonObject | None:
+    return None if c is None else {
+        "risco": c.risco, "politica": c.politica, "precisa_rascunho": c.precisa_rascunho,
+        "efeito_externo": c.efeito_externo, "familia_do_efeito": c.familia_do_efeito, "interacao": c.interacao}
+
+
+@dataclass(frozen=True, slots=True)
 class FatosDeRisco:
     """A entrada da política: o que o item é (conteúdo) e o que o catálogo diz da etapa dele."""
 
@@ -106,20 +122,23 @@ class FatosDeRisco:
     sessao_ou_autenticacao: bool = False
     #: (Re)nasceu no escopo de uma evidência inválida (30.23, `EntradaDoLivro.reaprendido`): o dono aprova.
     reaprendido: bool = False
+    #: 30.32: as etapas do FLUXO, cada uma com os fatos do catálogo dela. O fluxo não tem UMA capability (o `catalogo`
+    #: acima fica `None`); a classe é a da etapa mais restritiva. Vazio para receita, lição e tela.
+    etapas: tuple[EtapaDeRisco, ...] = ()
 
     def como_dados(self) -> JsonObject:
-        c = self.catalogo
         dados: JsonObject = {
             "side_effect": self.side_effect, "human_origin": self.human_origin, "tem_catalogo": self.tem_catalogo,
-            "sessao_ou_autenticacao": self.sessao_ou_autenticacao,
-            "catalogo": None if c is None else {
-                "risco": c.risco, "politica": c.politica, "precisa_rascunho": c.precisa_rascunho,
-                "efeito_externo": c.efeito_externo, "familia_do_efeito": c.familia_do_efeito,
-                "interacao": c.interacao}}
+            "sessao_ou_autenticacao": self.sessao_ou_autenticacao, "catalogo": _dados_do_catalogo(self.catalogo)}
         # Só quando vale (30.23): estes fatos entram no `dossie_hash` do curador, e a chave sempre presente mudaria o
         # hash de todo item já revisado (pareceria dossiê novo). Só o reaprendido, cujo fato mudou, ganha hash novo.
         if self.reaprendido:
             dados["reaprendido"] = True
+        # 30.32: idem. Só o fluxo com alguma etapa no catálogo ganha hash novo; sem fatos em nenhuma, a classe é a de
+        # antes (a lacuna `commit_sem_fatos_da_etapa`) e o dossiê também.
+        if any(e.catalogo is not None for e in self.etapas):
+            dados["etapas"] = [{"capability": e.capability, "efeito": e.efeito,
+                                "catalogo": _dados_do_catalogo(e.catalogo)} for e in self.etapas]
         return dados
 
 
@@ -180,27 +199,42 @@ class Classificacao:
                 "razoes": [r.value for r in self.razoes]}
 
 
+def _razoes_do_catalogo(c: FatosDoCatalogo, achadas: set[Razao]) -> None:
+    if c.risco == "high":
+        achadas.add(Razao.RISCO_ALTO)
+    if c.politica in _POLITICAS_MANUAIS:
+        achadas.add(Razao.POLITICA_MANUAL)
+    if c.precisa_rascunho:
+        achadas.add(Razao.TEXTO_PARA_OUTRA_PESSOA)
+    if c.familia_do_efeito in FAMILIAS_DE_ALTO_RISCO:
+        achadas.add(Razao.FAMILIA_DE_ALTO_RISCO)
+    if c.risco == "medium":
+        achadas.add(Razao.RISCO_MEDIO)
+    if c.efeito_externo:
+        achadas.add(Razao.EFEITO_DECLARADO)
+
+
 def _razoes(f: FatosDeRisco) -> list[Razao]:
     c = f.catalogo
     achadas: set[Razao] = set()
     if f.sessao_ou_autenticacao:
         achadas.add(Razao.SESSAO_OU_AUTENTICACAO)
-    if c is not None:
-        if c.risco == "high":
-            achadas.add(Razao.RISCO_ALTO)
-        if c.politica in _POLITICAS_MANUAIS:
-            achadas.add(Razao.POLITICA_MANUAL)
-        if c.precisa_rascunho:
-            achadas.add(Razao.TEXTO_PARA_OUTRA_PESSOA)
-        if c.familia_do_efeito in FAMILIAS_DE_ALTO_RISCO:
-            achadas.add(Razao.FAMILIA_DE_ALTO_RISCO)
-        if c.risco == "medium":
-            achadas.add(Razao.RISCO_MEDIO)
-        if c.efeito_externo:
-            achadas.add(Razao.EFEITO_DECLARADO)
+    # 30.32: a etapa mais restritiva. As razões do catálogo são a UNIÃO das de cada etapa conhecida: os fatos de uma
+    # etapa só acrescentam razão (nunca tiram), então a classe do fluxo nunca fica abaixo da de nenhuma etapa dele.
+    for fatos in (c, *(e.catalogo for e in f.etapas)):
+        if fatos is not None:
+            _razoes_do_catalogo(fatos, achadas)
     if f.side_effect:
+        efeitos = [e.catalogo for e in f.etapas if e.efeito]
         if not f.tem_catalogo:
             achadas.add(Razao.COMMIT_SEM_CATALOGO)
+        elif efeitos:
+            # O fluxo marca QUAIS etapas fazem o efeito: cada uma precisa dos fatos dela. Sem os fatos de uma delas, é
+            # a lacuna de sempre (B, ou mais pelas outras razões); fatos que negam o efeito são a divergência (C).
+            if any(x is None for x in efeitos):
+                achadas.add(Razao.COMMIT_SEM_FATOS_DA_ETAPA)
+            elif any(x is not None and not x.efeito_externo for x in efeitos):
+                achadas.add(Razao.COMMIT_FORA_DO_CATALOGO)
         elif c is None:
             achadas.add(Razao.COMMIT_SEM_FATOS_DA_ETAPA)
         elif not c.efeito_externo:
@@ -282,6 +316,6 @@ def conferir_aceite(classe: ClasseDeRisco, *, por_pessoa: bool, em_lote: bool) -
 
 
 __all__ = ["FALHAS_DE_SESSAO", "FAMILIAS_DE_ALTO_RISCO", "ORIGENS_DE_SESSAO", "ClasseDeRisco", "Classificacao",
-           "EfeitoDoParecer", "FatosDeRisco", "FatosDoCatalogo", "IaPermitida", "MotivoDeEntrada", "PoliticaDaClasse",
-           "Razao", "RecusaDoAceite", "classificar", "conferir_aceite", "efeito_do_parecer", "ia_permitida",
-           "toca_sessao_ou_autenticacao"]
+           "EfeitoDoParecer", "EtapaDeRisco", "FatosDeRisco", "FatosDoCatalogo", "IaPermitida", "MotivoDeEntrada",
+           "PoliticaDaClasse", "Razao", "RecusaDoAceite", "classificar", "conferir_aceite", "efeito_do_parecer",
+           "ia_permitida", "toca_sessao_ou_autenticacao"]
