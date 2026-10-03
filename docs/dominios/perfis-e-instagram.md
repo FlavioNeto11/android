@@ -641,7 +641,13 @@ receber contas novas.
   (`social/memory.py::reescrever_memoria`; casamento seguro em `contas_nossas.sem_o_rastro`: `ana` não casa em `banana`, `ana.silva` nem `ana@x.com`).
   O e-mail só sai se identifica a conta e nenhuma outra conta VIVA o usa (`emails_so_desta_conta`): o Outlook vivo com o mesmo endereço o mantém.
   Retroativo das retiradas anteriores: `scripts/memoria-conta-retirada.py` (`--ensaio`/`--aplicar`; lápide + eventos como fonte; e-mail só por
-  `--lista-stdin`), com backup no deploy. `runs.command` e `actions.args` ficam. Gancho
+  `--lista-stdin`), com backup no deploy (`--aplicar` exige `--backup <caminho que exista>`; o `--ensaio` avisa se a migração diverge).
+  Cuidados (revisão adversarial): o @ que outra conta VIVA ainda tem (o mesmo @ em outro app, ou o cadastro de outra persona) não se
+  redige; um handle em forma de e-mail só some se o endereço é exclusivo da conta que sai; a lista do operador recusa item com menos de
+  3 caracteres ou só de dígitos (só contagens). `runs.command` e `actions.args` ficam.
+  **Medição de 03/10:** na cópia do backup `20261002-211739` (116 linhas) nenhuma tem rastro de conta nossa; as 40 que citam @ ou e-mail
+  são de TERCEIROS (35 @ sem lápide nem conta viva, 5 com e-mail sem relação), não rastro. O passe retroativo cobre o que existe desde
+  23/09 (zero contas retiradas sem lápide); conta perdida antes disso só entra pelo `--lista-stdin`, com o handle dado pelo dono. Gancho
   `limpezas_ao_retirar` para outros módulos (Aprendizado), dentro da transação; erro desfaz a retirada.
 - **Histórico** (events, runs, steps, approvals, interactions, ai_calls) fica intacto (opção A do dono).
 - **Dívida:** `DELETE /api/instagram/profiles/{id}` ainda apaga a persona inteira (os dados da pessoa moram na linha do perfil).

@@ -7,17 +7,19 @@ viram `[conta removida]` em `subject` e `content`. `runs.command` e `actions.arg
 Fonte da lista: as lápides (`contas_retiradas`, só o hash do @) e os ids dos eventos `profile.account_retired`. O @ é
 achado na memória por HASH; o texto da conta não está em lugar nenhum do banco e nunca é lido nem impresso. O e-mail
 da conta retirada também não está (a conta e a credencial já saíram): só entra pela lista do operador, em `--lista-stdin`
-(um e-mail ou @ por linha, sem eco), e o que for e-mail de conta viva é recusado.
+(um e-mail ou @ por linha, sem eco), e o que for e-mail de conta viva, item com menos de 3 caracteres ou só de dígitos é recusado (só contagens).
 
 - PADRÃO = ENSAIO (`--ensaio`): copia o banco para um arquivo temporário (API de backup do SQLite, origem em `mode=ro`),
   roda a lógica de verdade na CÓPIA, conta e apaga a cópia. O original não é tocado. `--aplicar` grava no banco dado.
+- `--aplicar` exige `--backup CAMINHO` (arquivo ou pasta que exista): a prova de que o backup foi feito. O ensaio
+  também confere a migração e AVISA se divergir.
 - Antes de gravar confere que a maior migração do banco é IGUAL à do código; se não for, aborta sem gravar (abrir o
   banco NÃO migra).
 - O relatório só tem contagens.
 
 Faça BACKUP do banco antes de `--aplicar` (o `scripts/deploy.ps1` já faz). Exemplos, a partir da raiz do repositório:
     backend/.venv/Scripts/python.exe scripts/memoria-conta-retirada.py --banco data/poc.sqlite3
-    backend/.venv/Scripts/python.exe scripts/memoria-conta-retirada.py --banco data/poc.sqlite3 --aplicar
+    backend/.venv/Scripts/python.exe scripts/memoria-conta-retirada.py --banco data/poc.sqlite3 --aplicar --backup data/backups/<pasta-do-backup>
     type lista.txt | backend/.venv/Scripts/python.exe scripts/memoria-conta-retirada.py --banco data/poc.sqlite3 --lista-stdin
 """
 from __future__ import annotations
@@ -66,6 +68,11 @@ def executar(banco: Path, *, aplicar: bool, extras: Sequence[str]) -> dict[str, 
         copiar(banco, copia)
         db = Database(copia)
         try:
+            try:
+                migracao.conferir_migracao(db)
+            except (migracao.BancoDiferenteDoCodigo, migracao.MigracaoAusente) as exc:
+                # O ensaio conta mesmo assim, mas o aviso diz que o `--aplicar` com este código abortaria.
+                print(f"AVISO: {exc}", file=sys.stderr)
             with db.tx():
                 return reescrever_memoria_das_retiradas(db, extras=extras, escrever=True)
         finally:
@@ -81,6 +88,8 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--banco", required=True, type=Path, help="o poc.sqlite3 (sem padrão, de propósito)")
     ap.add_argument("--ensaio", action="store_true", help="o padrão: ensaio numa cópia; nada é gravado")
     ap.add_argument("--aplicar", action="store_true", help="grava no banco dado (faça backup antes)")
+    ap.add_argument("--backup", type=Path, metavar="CAMINHO",
+                    help="arquivo ou pasta do backup feito antes (obrigatório com --aplicar: a prova de que existe)")
     ap.add_argument("--lista-stdin", action="store_true",
                     help="lê do stdin e-mails ou @ de contas retiradas, um por linha (nunca ecoados)")
     return ap
@@ -91,6 +100,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.aplicar and args.ensaio:
         ap.error("--aplicar e --ensaio são excludentes")
+    if args.aplicar and (args.backup is None or not args.backup.exists()):
+        ap.error("--aplicar exige --backup CAMINHO de um arquivo ou pasta que exista (faça o backup antes)")
     banco: Path = args.banco
     if str(banco).startswith(("postgres://", "postgresql://")) or not banco.is_file():
         print(f"erro: {banco} não é um arquivo SQLite existente (o passe só opera SQLite local)", file=sys.stderr)

@@ -28,6 +28,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `limpezas` da retirada ganha `memory_items_de_outras_personas` (só contagem).
 - **Retroativo:** `scripts/memoria-conta-retirada.py` (`--ensaio` por padrão, `--aplicar`, `--lista-stdin` sem eco), fonte = lápides (hash) e ids dos
   eventos `profile.account_retired`; o e-mail de conta já retirada não está no banco e só entra pela lista do operador. **Não rodado no banco real.**
+- Revisão adversarial: handle em forma de e-mail só some se exclusivo da conta; @ de conta viva (outro app, outra persona) não se redige; lista do operador recusa item curto ou só de dígitos; `--aplicar` exige `--backup`; `--ensaio` avisa migração divergente.
 - Prova `simulated`: `test_memoria_conta_retirada.py` (15). Prova na cópia do backup `20261002-211739` (migrada na cópia, 2 linhas sintéticas plantadas):
   ensaio 2, aplicar 2, repetir 0; a cópia foi apagada. Nas 116 linhas reais da cópia: 0 com rastro por hash ou id (os 37 do central não se reproduzem ali).
 

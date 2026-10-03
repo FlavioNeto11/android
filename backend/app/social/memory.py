@@ -357,9 +357,14 @@ def reescrever_memoria_das_retiradas(db: Database, *, extras: Sequence[str] = ()
     emails: list[str] = []
     arrobas: list[str] = []
     recusados = 0
+    fracos = 0
     for bruto in extras:
         item = str(bruto or "").strip()
         if not item:
+            continue
+        miolo = item.lstrip("@")
+        if len(miolo) < 3 or miolo.isdigit():
+            fracos += 1            # "a" redigiria toda palavra "a"; só dígitos, todo número: pouco demais para ser uma conta
             continue
         if parece_email(item):
             if item.lower() in emails_vivos:
@@ -371,7 +376,8 @@ def reescrever_memoria_das_retiradas(db: Database, *, extras: Sequence[str] = ()
         else:
             recusados += 1
     contagem = {"lapides": len(lapides), "ids_de_conta": len(ids), "extras_aceitos": len(emails) + len(arrobas),
-                "extras_recusados_por_estarem_vivos": recusados, "memory_items": 0}
+                "extras_recusados_por_estarem_vivos": recusados, "extras_recusados_por_serem_curtos": fracos,
+                "memory_items": 0}
     for m in db.query(f"SELECT {_COLUNAS_DA_MEMORIA} FROM memory_items"):
         achados = list(arrobas)
         for campo in (m["subject"], m["content"]):

@@ -19,7 +19,7 @@ from typing import Any
 import pytest
 
 from app.models import ProfileCreate
-from app.social.contas_nossas import MARCADOR, emails_so_desta_conta, registrar_lapide, sem_o_rastro
+from app.social.contas_nossas import MARCADOR, emails_so_desta_conta, handle_vivo, registrar_lapide, sem_o_rastro
 from app.social.memory import fingerprint, reescrever_memoria, reescrever_memoria_das_retiradas
 from app.util import now_iso
 
@@ -184,6 +184,47 @@ def test_colisao_de_fingerprint_e_por_perfil_e_nao_quebra_a_transacao(tmp_path: 
     assert _mem(db)["m-b1"] == _mem(db)["m-b2"] == ("Seguiu", f"vi {MARCADOR}")             # a linha não se apagou
 
 
+def test_handle_em_forma_de_email_so_some_se_o_endereco_e_exclusivo_da_conta() -> None:
+    texto = f"login {EMAIL_VIVO} ok"
+    assert sem_o_rastro(texto, EMAIL_VIVO, "acc1", []) == texto                       # outra conta viva o usa: fica
+    assert sem_o_rastro(texto, EMAIL_VIVO, "acc1", [EMAIL_VIVO]) == f"login {MARCADOR} ok"
+
+
+def test_outlook_retirado_com_o_endereco_vivo_como_login_do_instagram_nao_o_apaga(tmp_path: Path) -> None:
+    svc, repo, db, ana, beto, _ = _montar(tmp_path)
+    caixa = repo.create_account(ana, app_id="outlook", handle=EMAIL_VIVO)            # o handle da conta que sai é o e-mail
+    _credencial(repo, ana, _ancora(repo, ana), EMAIL_VIVO)                           # e o Instagram da persona o usa de login
+    _memoria(db, beto, "b", "Contato", f"escreva para {EMAIL_VIVO} ({caixa})")
+
+    svc.retirar_conta_bloqueada(ana, caixa, autor="dono")
+
+    assert _mem(db)["m-b"] == ("Contato", f"escreva para {EMAIL_VIVO} ({MARCADOR})")  # o endereço fica; o id da conta sai
+
+
+def test_arroba_de_conta_viva_em_outro_app_ou_de_outra_persona_nao_se_redige(tmp_path: Path) -> None:
+    svc, repo, db, ana, beto, caio = _montar(tmp_path)
+    conta = _ancora(repo, ana)
+    repo.create_account(beto, app_id="outlook", handle=f"@{ANA}")                    # o mesmo @, VIVO, em outro app
+    _memoria(db, caio, "c", "Seguiu", f"vi @{ANA} e {conta}")
+
+    r = svc.retirar_conta_bloqueada(ana, conta, autor="dono")
+
+    assert _mem(db)["m-c"] == ("Seguiu", f"vi @{ANA} e {MARCADOR}")                  # o @ vivo fica, o id sai
+    assert r["limpezas"]["memory_items"] == 1
+
+
+def test_arroba_do_cadastro_vivo_conta_menos_o_da_propria_ancora_que_sai(tmp_path: Path) -> None:
+    svc, repo, db, ana, beto, _ = _montar(tmp_path)
+    conta = _ancora(repo, ana)
+    # Conta de outro app que sai com o @ do cadastro VIVO de outra persona: não é rastro.
+    assert handle_vivo(db, profile_id=ana, account_id="acc-x", handle=BETO, ancora=False) is True
+    # A âncora que sai tem o @ nos dois lugares, e os dois saem: não há conta viva.
+    assert handle_vivo(db, profile_id=ana, account_id=conta, handle=ANA, ancora=True) is False
+    # Já uma conta de outro app com o @ da âncora da MESMA persona (viva) não o redige.
+    assert handle_vivo(db, profile_id=ana, account_id="acc-x", handle=ANA, ancora=False) is True
+    assert handle_vivo(db, profile_id=ana, account_id="acc-x", handle="ninguem.por.aqui", ancora=False) is False
+
+
 # ============================================================ o passe das retiradas antes
 def _retirada_antiga(svc: Any, repo: Any, ana: str) -> str:
     """Retira a conta e SÓ DEPOIS põe a memória: reproduz o banco de antes do 29.32 (lápide e evento, memória intacta)."""
@@ -202,7 +243,7 @@ def test_passe_unico_acha_pelo_hash_da_lapide_e_pelo_id_do_evento_e_e_idempotent
 
     ensaio = reescrever_memoria_das_retiradas(db, escrever=False)
     assert ensaio == {"lapides": 1, "ids_de_conta": 1, "extras_aceitos": 0, "extras_recusados_por_estarem_vivos": 0,
-                      "memory_items": 1}
+                      "extras_recusados_por_serem_curtos": 0, "memory_items": 1}
     assert _mem(db) == antes                                                        # o ensaio só conta
     assert reescrever_memoria_das_retiradas(db)["memory_items"] == 1
     mem = _mem(db)
@@ -235,6 +276,16 @@ def test_passe_unico_com_a_lista_do_operador_cobre_o_email_e_recusa_o_que_esta_v
     assert _mem(db)["m-b"] == ("Contato", f"{MARCADOR}; {EMAIL_VIVO}")
 
 
+def test_lista_do_operador_recusa_item_curto_ou_so_de_digitos_e_conta_so_o_numero(tmp_path: Path) -> None:
+    svc, repo, db, ana, beto, _ = _montar(tmp_path)
+    _memoria(db, beto, "b", "Seguiu", "a conta 12345 viu a ana e @ab")
+
+    r = reescrever_memoria_das_retiradas(db, extras=["a", "@ab", "12345", "@123", " "])
+
+    assert r["extras_recusados_por_serem_curtos"] == 4 and r["extras_aceitos"] == 0 and r["memory_items"] == 0
+    assert _mem(db)["m-b"] == ("Seguiu", "a conta 12345 viu a ana e @ab")
+
+
 # ============================================================ o script de operação
 def _script() -> ModuleType:
     spec = importlib.util.spec_from_file_location("memoria_conta_retirada", RAIZ / "scripts" / "memoria-conta-retirada.py")
@@ -261,9 +312,28 @@ def test_script_ensaio_so_conta_e_aplicar_grava_sem_ecoar_texto(tmp_path: Path, 
     assert _mem(db)["m-b"] == ("Seguiu", f"vi @{ANA}; {EMAIL_ANA}")                # nada foi gravado
 
     monkeypatch.setattr("sys.stdin", io.StringIO(EMAIL_ANA + "\n"))
-    assert script.main(["--banco", str(banco), "--aplicar", "--lista-stdin"]) == 0
+    with pytest.raises(SystemExit):                                                 # sem backup que exista, recusa
+        script.main(["--banco", str(banco), "--aplicar", "--lista-stdin"])
+    with pytest.raises(SystemExit):
+        script.main(["--banco", str(banco), "--aplicar", "--backup", str(tmp_path / "nao-existe")])
+    capsys.readouterr()
+    assert _mem(db)["m-b"] == ("Seguiu", f"vi @{ANA}; {EMAIL_ANA}")
+    monkeypatch.setattr("sys.stdin", io.StringIO(EMAIL_ANA + chr(10)))
+    assert script.main(["--banco", str(banco), "--aplicar", "--backup", str(tmp_path), "--lista-stdin"]) == 0
     aplicado = capsys.readouterr().out
     assert "APLICADO" in aplicado and "memory_items=1" in aplicado and ANA not in aplicado
     assert _mem(db)["m-b"] == ("Seguiu", f"vi {MARCADOR}; {MARCADOR}")
-    assert script.main(["--banco", str(banco), "--aplicar"]) == 0
+    assert script.main(["--banco", str(banco), "--aplicar", "--backup", str(tmp_path)]) == 0
     assert "memory_items=0" in capsys.readouterr().out                              # idempotente
+
+
+def test_script_ensaio_avisa_quando_a_migracao_do_banco_diverge(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    svc, repo, db, ana, beto, _ = _montar(tmp_path)
+    if db.dialect != "sqlite":
+        pytest.skip("o script só opera SQLite local")
+    db.execute("DELETE FROM schema_migrations WHERE version=(SELECT MAX(version) FROM schema_migrations)")
+
+    assert _script().main(["--banco", str(Path(db.path))]) == 0
+
+    saida = capsys.readouterr()
+    assert "AVISO" in saida.err and "ENSAIO" in saida.out

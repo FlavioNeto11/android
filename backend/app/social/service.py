@@ -38,7 +38,7 @@ from ..security.sessions import operador_atual
 from .context import SocialContextBuilder, interaction_dto
 from .conteudo import fala_atribuida_a_terceiro
 from ..modules.identity.application.session_rules import PRECISA_DE_PESSOA, emit_needs_person_change
-from .contas_nossas import emails_so_desta_conta, sem_o_rastro
+from .contas_nossas import emails_so_desta_conta, handle_vivo, sem_o_rastro
 from .limpeza_de_conta import PedidoDeLimpeza
 from .memory import MemoryRefused, MemoryStore, reescrever_memoria
 from .policy import CONTAM, DEFAULT_LIMITS, PolicyEngine, com_politicas_do_app, politicas_do_app
@@ -1446,8 +1446,12 @@ class SocialService:
                     contagens[nome] = contagens.get(nome, 0) + int(n)
             # A memória FICA (a linha não se apaga), de TODAS as personas, sem o @ da conta, o id dela nem o e-mail que
             # só ela usava (29.32).
-            contagens.update(reescrever_memoria(self.repo.db, profile_id=profile_id, handle=handle,
-                                                account_id=account_id, emails=emails))
+            # O @ que outra conta viva ainda tem (o mesmo @ em outro app, ou o de outra persona) não é rastro.
+            vivo = handle_vivo(self.repo.db, profile_id=profile_id, account_id=account_id, handle=handle,
+                               ancora=ancora)
+            contagens.update(reescrever_memoria(self.repo.db, profile_id=profile_id,
+                                                handle=None if vivo else handle, account_id=account_id,
+                                                emails=emails))
             refs = self.repo.retirar_conta_bloqueada(profile_id, account_id, ancora=ancora,
                                                      motivo="conta retirada por bloqueio")
             for ref in dict.fromkeys(refs):

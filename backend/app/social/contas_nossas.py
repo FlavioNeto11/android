@@ -117,6 +117,20 @@ def emails_so_desta_conta(db: Database, *, profile_id: str, account_id: str, han
     return out
 
 
+def handle_vivo(db: Database, *, profile_id: str, account_id: str, handle: str | None, ancora: bool) -> bool:
+    """Este @ é de OUTRA conta viva (29.32)? O mesmo @ em outro app da mesma ou de outra persona, ou o cadastro de
+    OUTRA persona. Conta viva não some da memória, como a lápide viva não é rastro no passe retroativo. O cadastro da
+    própria persona só conta se a conta que sai NÃO é a âncora (a âncora tem o @ nos dois lugares e os dois saem)."""
+    limpo = normalizar(handle)
+    if not limpo or parece_email(limpo):
+        return False
+    chaves = (limpo, f"@{limpo}")
+    if db.scalar("SELECT COUNT(*) FROM profile_accounts WHERE id<>? AND lower(handle) IN (?,?)", (account_id, *chaves)):
+        return True
+    return bool(db.scalar("SELECT COUNT(*) FROM instagram_profiles WHERE lower(username) IN (?,?)"
+                          + (" AND id<>?" if ancora else ""), (*chaves, *((profile_id,) if ancora else ()))))
+
+
 def _padroes(handle: str | None, account_id: str | None, emails: Sequence[str] = ()) -> list[re.Pattern[str]]:
     """O e-mail inteiro, o @ (com ou sem `@`, sem diferenciar caixa, só como palavra inteira: `ana` não casa dentro de
     `ana.silva`, de `banana`, de `foo@ana.com` nem é a parte local de `ana@x.com`) e o id da conta em texto. O e-mail
@@ -127,7 +141,9 @@ def _padroes(handle: str | None, account_id: str | None, emails: Sequence[str] =
         if limpo:
             out.append(re.compile(rf"(?<![\w.+-]){re.escape(limpo)}(?!\w|\.\w)", re.IGNORECASE))
     limpo = normalizar(handle)
-    if limpo:
+    # Handle em forma de e-mail (conta de e-mail): só vai ao texto como ENDEREÇO, e só se está em `emails` (é exclusivo
+    # da conta que sai). Se outra conta viva o usa, ele não é rastro: nem o padrão do handle o pode redigir.
+    if limpo and not parece_email(limpo):
         # Mesma fronteira do `esquecer_conta` do aprendizado: nada de letra/dígito/`_`/`@` antes, nem `palavra.`
         # (seria `x.ana`); depois, nada de letra/dígito/`_`, nem `.palavra` (`ana.silva`), nem `@palavra` (a parte
         # local de um e-mail). O ponto final de frase passa: o Instagram não aceita handle terminado em ponto.
@@ -149,5 +165,5 @@ def sem_o_rastro(texto: str | None, handle: str | None, account_id: str | None =
 
 def previa_do_rastro(handle: str | None, account_id: str | None, emails: Sequence[str] = ()) -> list[str]:
     """As pistas em minúsculas para o `LIKE` que pré-filtra no banco; quem decide é a regex de `sem_o_rastro`."""
-    pistas = [normalizar(handle), (account_id or "").lower(), *(e.strip().lower() for e in emails)]
+    pistas = [normalizar(handle) if not parece_email(handle) else "", (account_id or "").lower(), *(e.strip().lower() for e in emails)]
     return list(dict.fromkeys(p for p in pistas if p))
