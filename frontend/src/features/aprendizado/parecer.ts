@@ -55,6 +55,9 @@ export interface ParecerDaIA {
   override: boolean;
   override_motivo: string | null;
   transicao_id: number | null;
+  /** O desfecho medido 14 dias depois (30.35), e quando foi gravado; ausente no backend anterior, `null` antes. */
+  resultado_posterior?: string | null;
+  resultado_em?: string | null;
 }
 
 /** O parecer pendente de um item da fila (só com o curador em `on`). */
@@ -184,6 +187,16 @@ const RECUSA: Record<string, string> = {
 
 export function textoDaRecusa(code: string | null | undefined): string | null {
   return code ? RECUSA[code] ?? code : null;
+}
+
+const RESULTADO_POSTERIOR: Record<string, string> = {
+  manter: 'continuou de pé', rebaixar: 'foi rebaixado', descartar: 'foi desligado',
+  sem_desfecho: 'sem uso que dissesse algo',
+};
+
+/** O desfecho medido 14 dias depois da revisão (30.35), para o painel (30.33-C); `null` enquanto não há. */
+export function textoDoResultadoPosterior(v: string | null | undefined): string | null {
+  return v ? RESULTADO_POSTERIOR[v] ?? v : null;
 }
 
 /** A validade de uma revisão que não deu parecer. */

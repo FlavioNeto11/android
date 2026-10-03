@@ -73,6 +73,10 @@ export interface EntradaDoLivro {
   /** O nome do app (declarado, da loja ou o próprio pacote), para o painel não mostrar o pacote onde já sabe o nome
    *  (validação do deploy 4). Ausente no backend anterior. */
   app_nome?: string | null;
+  /** 30.33-C: os pacotes do fluxo que atravessa apps, na ordem do plano (só com mais de um; vazio no resto), e os
+   *  nomes deles na mesma ordem. O `app` continua o principal. Ausentes no backend anterior. */
+  apps?: string[];
+  apps_nomes?: string[];
   /** Receita: o título da etapa de que foi aprendida ("Digitar a mensagem"), o nome legível quando o app não tem
    *  catálogo. Ausente no backend anterior. */
   etapa?: string | null;

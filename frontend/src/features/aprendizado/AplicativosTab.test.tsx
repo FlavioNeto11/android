@@ -153,6 +153,18 @@ describe('Aprendizado por aplicativo', () => {
     await waitFor(() => expect(cartao('com.exemplo.vazio')).toBeTruthy());
   });
 
+  it('30.33-C: no detalhe do app, o fluxo que atravessa apps diz todos eles pelo nome e leva a cada um', async () => {
+    backend.on('GET', /^\/api\/aprendizado\/apps\/com\.exemplo\.cheio$/, () => json({ ...DETALHE, aprendido: [
+      linha({ kind: 'fluxo', ref: 'f-multi', title: 'Ler no Cheio e abrir no Social', app: 'com.exemplo.social',
+              apps: ['com.exemplo.cheio', 'com.exemplo.social'], apps_nomes: ['Exemplo Cheio', 'Social'] })] }));
+    useUiStore.getState().navegar({ tela: 'aprendizado', query: { aba: 'apps', app: 'com.exemplo.cheio' } }, 'replace');
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Ler no Cheio e abrir no Social'));
+    expect(text(container)).toContain('Apps: Exemplo Cheio → Social');
+    await click(byRole('button', /^Social$/, container));
+    expect(useUiStore.getState().rota.query).toMatchObject({ aba: 'apps', app: 'com.exemplo.social' });
+  });
+
   it('RA-24: o detalhe diz o conhecimento em uso, com o sha de cada arquivo e o que mudou depois de subir', async () => {
     backend.on('GET', /^\/api\/apps\/com\.exemplo\.cheio\/conhecimento$/, () => json({
       app: 'com.exemplo.cheio', processo_iniciado_em: '2026-10-03T07:28:40.351Z',
