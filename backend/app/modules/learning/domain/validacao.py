@@ -1,0 +1,222 @@
+"""A validação automática do que o curador manda "pedir evidência" (item 30.31; desenho aprovado pela orquestradora em
+03/10). Puro: recebe fatos já lidos e devolve decisões; quem lê o banco, grava o pedido e enfileira a execução é a
+aplicação (`application/validacao.py`).
+
+O laço: o parecer `pedir_evidencia` cuja falta uma execução produz (execução real, outro aparelho, a versão viva do
+app, a sombra) vira um PEDIDO; um despachante roda a execução de validação, o comando de origem noutro aparelho
+ocioso; a evidência entra pelos caminhos de sempre e dispara a revisão `evidencia_chegou`. O pedido nunca decide:
+quem transiciona é o ciclo do livro (A pela regra D1; B vai ao lote do dono até a P2; C item a item).
+
+Regras do desenho que moram aqui:
+- `decisao_da_pessoa` e `voto_da_pessoa` não são evidência (é a política da classe): o pedido os ignora;
+- o QA Messenger é app nosso e só grava no aparelho: a validação nele pode FAZER o efeito (P1, sim da orquestradora);
+- efeito em app real (Instagram, Outlook) não roda sozinho: o ensaio só de leitura até antes do commit é a fatia 2, e
+  o commit só em post nosso (decisão do dono de 02/10);
+- receita só se valida com fluxo ATIVO para o comando: sem ele o planejador replaneja, a chave da etapa pode mudar e a
+  execução gasta sem provar nada;
+- desligado não se valida: a pessoa o devolve à prova antes (item 0);
+- o despachante só roda em aparelho ocioso, com o central saudável e sem execução em curso (restart, suíte e deploy
+  derrubam isso), dentro do orçamento β = 5 % do gasto de IA da operação na janela e no máximo 4 execuções por hora.
+"""
+from __future__ import annotations
+
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
+from enum import StrEnum
+
+from app.modules.learning.domain.ciclo import SkillState
+from app.modules.learning.domain.curador import Decisao, Falta
+from app.modules.learning.domain.vocabulario import LivroKind
+
+#: O que uma execução de validação produz. `decisao_da_pessoa`/`voto_da_pessoa` ficam de fora: são a política.
+FALTA_AUTOMATIZAVEL = frozenset({Falta.EXECUCAO_REAL, Falta.REPRODUCAO_EM_OUTRO_APARELHO,
+                                 Falta.REPRODUCAO_NA_VERSAO_VIVA, Falta.SOMBRA})
+#: β do desenho: a fração do gasto de IA da operação na janela que a validação pode usar (sem teto fixo em US$).
+BETA_PADRAO = 0.05
+#: Execuções de validação por hora, no máximo (o parque é compartilhado com o uso).
+MAXIMO_POR_HORA = 4
+#: O pedido que não rodou em 72 h expira (o item muda, a volta seguinte pede de novo se ainda faltar).
+VALIDADE_DO_PEDIDO_H = 72
+
+
+class Grupo(StrEnum):
+    """O que a execução de validação pode fazer."""
+
+    QA = "qa"                    # app de QA (nosso, efeito só no aparelho): pode fazer o efeito
+    LEITURA = "leitura"          # sem efeito: só navega e lê
+    EFEITO_REAL = "efeito_real"  # efeito em app real: só ensaio de leitura até o commit (fatia 2)
+
+
+class EstadoDoPedido(StrEnum):
+    PENDENTE = "pendente"
+    RODANDO = "rodando"
+    FEITA = "feita"
+    RECUSADA = "recusada"
+    EXPIRADA = "expirada"
+
+
+VIVOS = frozenset({EstadoDoPedido.PENDENTE, EstadoDoPedido.RODANDO})
+
+
+class Motivo(StrEnum):
+    """Por que o pedido não nasce vivo, não roda agora, ou rodou sem provar. Vocabulário fechado (vai à coluna)."""
+
+    # ao nascer (o pedido nasce `recusada` com o motivo: o painel e as métricas mostram por que não se validou)
+    SEM_FALTA_AUTOMATIZAVEL = "sem_falta_automatizavel"
+    TIPO_SEM_EXECUCAO = "tipo_sem_execucao"           # lição, tela, habilidade: a evidência vem por outro caminho
+    DESLIGADO = "desligado"                           # devolver à prova antes (item 0)
+    VETADO = "vetado"
+    SESSAO = "sessao_ou_autenticacao"                 # entrar na conta fica com a pessoa (ADR-009/040)
+    SEM_ORIGEM = "sem_origem"                         # a execução que ensinou foi purgada: não há comando
+    CREDENCIAL = "credencial"                         # o comando parece ter credencial (triagem de sempre)
+    EFEITO_REAL = "efeito_real"                       # efeito em app real: o ensaio de leitura é a fatia 2
+    SEM_FLUXO_ATIVO = "sem_fluxo_ativo"               # receita sem fluxo ativo para o comando: a chave pode mudar
+    # ao despachar (o pedido fica `pendente` e tenta na volta seguinte)
+    AMBIENTE_OCUPADO = "ambiente_ocupado"             # health com problema, execução em curso (restart/suíte/deploy)
+    SEM_APARELHO = "sem_aparelho"                     # nenhum aparelho ocioso que sirva
+    ORCAMENTO = "orcamento"                           # β da janela gasto
+    RITMO = "ritmo"                                   # já rodaram MAXIMO_POR_HORA na última hora
+    # ao fechar
+    SEM_EVIDENCIA = "sem_evidencia"                   # a execução assentou e não deixou evidência no item
+    EXECUCAO_FALHOU = "execucao_falhou"
+    EXPIROU = "expirou"
+
+
+@dataclass(frozen=True, slots=True)
+class FatosDoParecer:
+    """O que decide se um parecer vira pedido. `efeito`: o item tem ação ou etapa de efeito externo; `app_qa`: o app
+    é da categoria QA (`apps.category='qa'`); `fluxo_ativo`: há fluxo ativo cujo modelo casa o comando de origem (só
+    importa para a receita)."""
+
+    decisao: Decisao
+    falta: tuple[Falta, ...]
+    kind: LivroKind
+    estado: SkillState | None
+    vetado: bool
+    toca_sessao: bool
+    efeito: bool
+    app_qa: bool
+    comando: str | None
+    comando_com_credencial: bool
+    fluxo_ativo: bool
+
+
+@dataclass(frozen=True, slots=True)
+class Pedido:
+    """O que o parecer gera: `estado` PENDENTE (vai à fila) ou RECUSADA (registro do porquê)."""
+
+    estado: EstadoDoPedido
+    grupo: Grupo
+    falta: tuple[Falta, ...]
+    motivo: Motivo | None = None
+
+
+def falta_automatizavel(falta: Iterable[Falta]) -> tuple[Falta, ...]:
+    """Os rótulos que uma execução produz, sem repetição e na ordem do vocabulário."""
+    pedidos = set(falta)
+    return tuple(f for f in Falta if f in pedidos and f in FALTA_AUTOMATIZAVEL)
+
+
+def grupo_de(*, efeito: bool, app_qa: bool) -> Grupo:
+    if not efeito:
+        return Grupo.LEITURA
+    return Grupo.QA if app_qa else Grupo.EFEITO_REAL
+
+
+def pedido_do_parecer(f: FatosDoParecer) -> Pedido | None:
+    """O pedido que este parecer gera, ou `None` quando não há o que pedir (parecer que não é `pedir_evidencia`, ou
+    só falta o que é da pessoa). As recusas nascem como registro, na ordem: a primeira que vale explica."""
+    if f.decisao is not Decisao.PEDIR_EVIDENCIA:
+        return None
+    falta = falta_automatizavel(f.falta)
+    if not falta:
+        return None
+    grupo = grupo_de(efeito=f.efeito, app_qa=f.app_qa)
+    motivo = _recusa(f, grupo)
+    estado = EstadoDoPedido.PENDENTE if motivo is None else EstadoDoPedido.RECUSADA
+    return Pedido(estado, grupo, falta, motivo)
+
+
+def _recusa(f: FatosDoParecer, grupo: Grupo) -> Motivo | None:
+    if f.kind not in (LivroKind.RECEITA, LivroKind.FLUXO):
+        return Motivo.TIPO_SEM_EXECUCAO
+    if f.estado is SkillState.DISABLED:
+        return Motivo.DESLIGADO
+    if f.vetado:
+        return Motivo.VETADO
+    if f.toca_sessao:
+        return Motivo.SESSAO
+    if not (f.comando or "").strip():
+        return Motivo.SEM_ORIGEM
+    if f.comando_com_credencial:
+        return Motivo.CREDENCIAL
+    if grupo is Grupo.EFEITO_REAL:
+        return Motivo.EFEITO_REAL
+    if f.kind is LivroKind.RECEITA and not f.fluxo_ativo:
+        return Motivo.SEM_FLUXO_ATIVO
+    return None
+
+
+# ------------------------------------------------------------------ o despachante
+@dataclass(frozen=True, slots=True)
+class Ambiente:
+    """O central agora: `saudavel` = `GET /api/health` sem `problems`; `execucoes_em_curso` conta as execuções que não
+    assentaram (restart, suíte e deploy as derrubam ou as seguram)."""
+
+    saudavel: bool
+    execucoes_em_curso: int
+
+
+@dataclass(frozen=True, slots=True)
+class AparelhoCandidato:
+    id: str
+    online: bool
+    ocioso: bool
+    tem_o_app: bool
+    conta_real: bool              # há conta real de terceiro logada (Instagram, Outlook) neste aparelho
+
+
+@dataclass(frozen=True, slots=True)
+class Folego:
+    """O que a janela ainda permite. `g_w`: gasto de IA da OPERAÇÃO na janela (sem curadoria nem validação), o mesmo do
+    curador; `gasto_w`: o que a validação já gastou na janela; `extra_usd`: a verba única vigente (P4), somada ao β."""
+
+    g_w: float
+    gasto_w: float
+    na_ultima_hora: int
+    beta: float = BETA_PADRAO
+    extra_usd: float = 0.0
+    maximo_por_hora: int = MAXIMO_POR_HORA
+
+    @property
+    def orcamento(self) -> float:
+        return max(0.0, self.beta) * max(0.0, self.g_w) + max(0.0, self.extra_usd)
+
+
+def pode_despachar(ambiente: Ambiente, folego: Folego, *, custo_estimado: float) -> Motivo | None:
+    """`None` quando esta volta pode rodar mais uma execução de validação; senão, por que não (o pedido espera)."""
+    if not ambiente.saudavel or ambiente.execucoes_em_curso > 0:
+        return Motivo.AMBIENTE_OCUPADO
+    if folego.na_ultima_hora >= folego.maximo_por_hora:
+        return Motivo.RITMO
+    if folego.gasto_w + max(0.0, custo_estimado) > folego.orcamento:
+        return Motivo.ORCAMENTO
+    return None
+
+
+def escolher_aparelho(grupo: Grupo, aparelhos: Sequence[AparelhoCandidato], *, excluido: str | None) -> str | None:
+    """O aparelho da validação: online, ocioso, com o app, diferente do de origem. A execução que faz o efeito (QA)
+    nunca roda onde há conta real logada; a de leitura prefere o aparelho sem conta real. Determinístico: entre os
+    iguais, o menor id."""
+    if grupo is Grupo.EFEITO_REAL:
+        return None
+    servem = [a for a in aparelhos if a.online and a.ocioso and a.tem_o_app and a.id != excluido
+              and not (grupo is Grupo.QA and a.conta_real)]
+    if not servem:
+        return None
+    return min(servem, key=lambda a: (a.conta_real, a.id)).id
+
+
+__all__ = ["BETA_PADRAO", "FALTA_AUTOMATIZAVEL", "MAXIMO_POR_HORA", "VALIDADE_DO_PEDIDO_H", "VIVOS", "Ambiente",
+           "AparelhoCandidato", "EstadoDoPedido", "FatosDoParecer", "Folego", "Grupo", "Motivo", "Pedido",
+           "escolher_aparelho", "falta_automatizavel", "grupo_de", "pedido_do_parecer", "pode_despachar"]

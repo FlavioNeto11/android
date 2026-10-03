@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: validação automática do "pedir evidência" (30.31; branch feat/30-31-validacao)
+
+- Migração `082_learning_validations`: o pedido de validação, com um pedido vivo por item (índice parcial).
+- O parecer real do curador que pede evidência que uma execução produz vira pedido (`domain/validacao.py`); as
+  recusas ficam registradas com o motivo (tipo, desligado, vetado, sessão, sem origem, credencial, efeito real,
+  receita sem fluxo ativo).
+- Um despachante sob a trava de líder roda o comando de origem noutro aparelho ocioso. Só com o central saudável, sem
+  execução em curso, dentro de β = 5% do gasto de IA da operação na janela (mais a verba única `extra_usd` até
+  `extra_ate`) e de ≤4 por hora; o grupo `qa` nunca vai a aparelho com conta real.
+- O digest fecha o pedido: `feita` com evidência da execução, senão `recusada`, com o `usd` medido. O curador revê o
+  item com o gatilho novo `evidencia_chegou`, que pula o cooldown (rótulo no painel).
+- `aprendizado.validacao.modo: "off"` de fábrica. Prova `simulated` (`test_learning_validacao*.py` e
+  `test_learning_curador.py`); nada ligado no central.
+- Fora desta fatia (avisado à orquestradora): a conferência pelo ContentProvider do QA, o ensaio só leitura do
+  Instagram em perfil de terceiro e a classe do fluxo pela etapa mais restritiva (30.32).
+
 ## 2026-10-03 — Aprendizado: "devolver à prova" (30.31, item 0; branch feat/30-31-validacao)
 
 - `ciclo.TRANSICOES` ganha `disabled → candidate`, só de pessoa e só para fluxo (adendo v0.91):

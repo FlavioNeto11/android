@@ -487,6 +487,10 @@ faz; "Como mudar" diz a chave do config e que é preciso reiniciar o central (o 
 cartão mostra só o modo próprio, e o Global lista as exceções. O painel não grava o config: editar pela tela é decisão
 pendente da orquestradora (gravar o `config.yaml` ou levar o override para o banco; as duas mexem em núcleo).
 
+**Validação automática (30.31).** `aprendizado.validacao`: `modo` (`"off"` de fábrica), `intervalo_s`, `beta`,
+`maximo_por_hora`, `janela_dias`, `extra_usd` com `extra_ate` (ISO; sem fuso = UTC; data inválida recusa o config) e
+`custo_estimado_usd`. Ver a seção da 30.31 abaixo.
+
 ## Evento `learning.needs_person` (30.21)
 
 Quando um item entra na fila "Para aprovar" (ou sai dela) o Livro publica o evento, no padrão de `session.needs_person`. Quem
@@ -645,7 +649,7 @@ sem adaptador (testes) usa o SIMULADO.
   desde o 30.17, mostra o parecer na fila e no detalhe e abre o aceite da pessoa (seção abaixo). A IA nunca decide: nada
   transiciona no curador (`conferir_aceite`).
 - **Gatilhos ligados**: `nova_pendencia_do_dono` (fila "Para aprovar"), `a_revisar`, `degradando` e `obsoleto_provavel` (saúde do
-  publicado), `conflito` (publicado com relação `contradiz`) e, desde o 30.17, `pedido_da_pessoa`. `versao_nova` e
+  publicado), `conflito` (publicado com relação `contradiz`), desde o 30.17 `pedido_da_pessoa` e, desde o 30.31, `evidencia_chegou`. `versao_nova` e
   `grupo_de_falha_acima_do_minimo` existem no vocabulário e ainda não têm fonte. Dossiê (`infrastructure/dossies.py`) do detalhe do Livro, com a evidência lida pelo id;
   sem grupos do backlog, votos e intervenções nesta fatia.
 - **Filtros**, em ordem: modo → (item, `dossie_hash`) já revisado → cooldown (`cooldown_h`) → orçamento → prioridade. A triagem de
@@ -850,6 +854,47 @@ O gabarito humano do decisor fechado da intenção (31.x, da Jev). Sem IA e sem 
   sem o palpite do sistema, e "Nenhuma destas"; com mais de 8, um filtro sem acento. O catálogo de 03/10 tem 26 opções
   e nomes de até 120 caracteres: cada nome ocupa no máximo duas linhas (inteiro no `title`), e dois fluxos com o mesmo
   nome mostram o id. Nos Sinais, a resposta aparece como "Disse qual era o pedido", não como parecer da IA.
+
+## Validação automática do "pedir evidência" (30.31)
+
+O parecer do curador que pede evidência que uma execução produz vira um pedido; um despachante roda essa execução num
+aparelho ocioso, e o item volta ao curador quando a evidência chega. Nada transiciona aqui: a evidência entra pelos
+caminhos de sempre (a sombra do fluxo, os contadores da receita) e quem decide segue sendo o ciclo do livro.
+`aprendizado.validacao.modo` é `"off"` de fábrica: nenhum pedido nasce e nada roda.
+
+- **O pedido** (`domain/validacao.py::pedido_do_parecer`). O curador o pede em `_fechar_o_laco`, depois de gravar um
+  parecer válido e NÃO simulado; o adaptador simulado nunca dispara execução real. Só `pedir_evidencia` com uma falta
+  que uma execução produz conta: `execucao_real`, `reproducao_em_outro_aparelho`, `reproducao_na_versao_viva` ou `sombra`
+  (`voto_da_pessoa` e `decisao_da_pessoa` ficam com a pessoa). As recusas ficam registradas: o pedido nasce `recusada`
+  com o motivo. Ordem: tipo sem execução (lição, tela), desligado, vetado, sessão ou autenticação, sem origem (o item
+  não nasceu de execução), comando com credencial (a triagem do aprendizado), efeito real, receita sem fluxo ativo
+  para o comando. Há um pedido vivo por item (índice parcial da 082), que vale 72 h.
+- **Grupos.** `qa` é o app de categoria `qa`, sem efeito fora da máquina; `leitura` é sem efeito; `efeito_real` nunca roda
+  nesta fatia.
+- **O despachante** (`LacoDaValidacao`, sob a trava de líder; `intervalo_s` 600). Expira os pedidos velhos: pendente há
+  mais de 72 h, rodando há mais de 6 h. Só despacha com o central saudável (`/api/health` sem problemas) e NENHUMA
+  execução em curso, porque restart, suíte e deploy seguram ou derrubam execuções. Também precisa de fôlego na janela:
+  β = 5% do gasto de IA da operação em 7 dias (o mesmo G_W do curador), mais a verba única `extra_usd` até `extra_ate`;
+  e do ritmo, ≤4 por hora. Uma execução por volta: o comando de origem, em OUTRO aparelho (o de origem fica de fora),
+  ligado, ocioso e com o app `ready`. O grupo `qa` nunca vai a aparelho com conta real, e todo grupo prefere o aparelho
+  sem conta. A execução é comum (`RunService.create`, chave de idempotência `validacao:<pedido>`) e o custo dela é o da
+  operação.
+- **O fechamento** (minerador do digest). A execução assentou: `feita` se o item ganhou evidência DELA (fluxo: uma
+  linha a favor da sombra com o `run_id`; receita: uma tentativa conduzida pela receita que deu certo); senão `recusada`
+  (`sem_evidencia` ou `execucao_falhou`). Grava o `usd` medido nas `ai_calls` da execução.
+- **A volta ao curador.** O pedido `feita` é o gatilho `evidencia_chegou`, o segundo em força depois de
+  `pedido_da_pessoa`, e pula o cooldown. A regra "uma revisão por (item, dossiê)" continua: a evidência nova muda o
+  dossiê. A revisão nova fecha a chegada (`revisao_nova_id`) e pode pedir de novo.
+- **Onde.** Tabela `learning_validations` (082, [`docs/banco.md`](../banco.md)); `application/validacao.py`,
+  `infrastructure/validacoes_sql.py`, e `infrastructure/ligar_validacao.py`, ligado em `state.py` depois do `RunService`.
+  A execução de validação se liga ao pedido por `learning_validations.run_id` (`runs.pedido_id` é do módulo de pedidos).
+- **Fora desta fatia** (desvios do desenho aprovado, avisados à orquestradora): a conferência pelo ContentProvider do
+  QA (existe só em `scripts/eval_run.py`, e os aparelhos do notebook estão fora do adb do central); o ensaio só
+  leitura do Instagram em perfil de terceiro (precisa de um modo "parar antes do commit" no executor); a classe do
+  fluxo pela etapa mais restritiva (30.32).
+- **Prova** `simulated`: `tests/test_learning_validacao.py`, `tests/test_learning_validacao_sql.py`,
+  `tests/test_learning_curador.py` (`*validacao*`, `evidencia_chegou`). Ligar no central é `modo: "on"` depois do
+  deploy que a levar (P4 do desenho: verba única de US$ 2,5 para os 15 itens do QA).
 
 ## Métricas (30.8)
 

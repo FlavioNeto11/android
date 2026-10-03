@@ -1,0 +1,219 @@
+"""30.31 (laço inteiro, banco migrado): o parecer `pedir_evidencia` vira pedido em `learning_validations` (082), o
+despachante enfileira a execução de validação noutro aparelho ocioso e sem conta real, o digest fecha o pedido com a
+evidência que ela deixou, e o curador recebe a chegada. O parque e a fila são falsos; o banco é o de verdade (SQLite,
+ou PostgreSQL com `TEST_DATABASE_URL`). Nível de prova: `simulated`."""
+from __future__ import annotations
+
+import json
+from collections.abc import Iterator, Sequence
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+import pytest
+
+from app.db import Database
+from app.modules.learning.application.validacao import AjustesDaValidacao, ServicoDeValidacao
+from app.modules.learning.domain.ciclo import SkillState
+from app.modules.learning.domain.curador import Decisao, Falta, Parecer
+from app.modules.learning.domain.livro import EntradaDoLivro
+from app.modules.learning.domain.politica_de_risco import ClasseDeRisco, Classificacao, MotivoDeEntrada, Razao
+from app.modules.learning.domain.validacao import Ambiente, AparelhoCandidato, EstadoDoPedido
+from app.modules.learning.domain.vocabulario import LivroKind, Modo, Origem
+from app.modules.learning.infrastructure.validacoes_sql import FontesDaValidacaoSql, RegistroDeValidacoesSql
+from app.util import to_iso
+
+from .fake_skills import banco as banco_migrado
+
+QA = "com.pocqa.messenger"
+COMANDO = 'No QA Messenger, envie "Entrega POC {instance_id} {run_id}" para o contato QA-001'
+B = Classificacao(ClasseDeRisco.B, (Razao.COMMIT_SEM_CATALOGO,), MotivoDeEntrada.COMMIT_SEM_CATALOGO)
+PEDE = Parecer(decisao=Decisao.PEDIR_EVIDENCIA, evidencias_citadas=("item",),
+               falta=(Falta.EXECUCAO_REAL, Falta.REPRODUCAO_EM_OUTRO_APARELHO, Falta.DECISAO_DA_PESSOA))
+
+
+class Relogio:
+    def __init__(self) -> None:
+        self.agora = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
+
+    def __call__(self) -> datetime:
+        return self.agora
+
+
+class Parque:
+    """A fila e o parque falsos: a execução enfileirada vira uma linha `running` em `runs`."""
+
+    def __init__(self, db: Database) -> None:
+        self.db = db
+        self.ambiente_ = Ambiente(saudavel=True, execucoes_em_curso=0)
+        self.lista: list[AparelhoCandidato] = []
+        self.enfileiradas: list[tuple[str, str, str]] = []
+
+    def ambiente(self) -> Ambiente:
+        return self.ambiente_
+
+    def aparelhos(self, pacote: str | None) -> Sequence[AparelhoCandidato]:
+        return self.lista if pacote == QA else []
+
+    def gasto_da_operacao(self, agora: datetime, dias: int) -> float:
+        return 18.0
+
+    def enfileirar(self, comando: str, aparelho: str, chave: str) -> str:
+        run_id = f"r-20261003120000-{len(self.enfileiradas):06x}"
+        self.enfileiradas.append((comando, aparelho, chave))
+        self.db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
+                        " VALUES (?,?,?,?,?,?,?,?)", (run_id, chave, comando, "execute", "running", 0,
+                                                       json.dumps([aparelho]), to_iso(datetime.now())))
+        return run_id
+
+
+def _ap(i: str, **kw: bool) -> AparelhoCandidato:
+    base = {"online": True, "ocioso": True, "tem_o_app": True, "conta_real": False}
+    return AparelhoCandidato(i, **{**base, **kw})
+
+
+@pytest.fixture
+def mundo(tmp_path: Path) -> Iterator[tuple[Database, ServicoDeValidacao, Parque, Relogio, dict[str, object]]]:
+    db = banco_migrado(tmp_path, "validacao.sqlite3")
+    db.execute("INSERT INTO apps(id, name, package, builtin, category) VALUES ('qa-messenger','QA Messenger',?,1,'qa')",
+               (QA,))
+    db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
+               " VALUES ('r-20260925014520-91f907','k-origem',?,'execute','completed',0,'[\"android-01\"]',?)",
+               (COMANDO, to_iso(datetime.now())))
+    ajustes: dict[str, object] = {"modo": Modo.ON}
+    parque = Parque(db)
+    relogio = Relogio()
+    fontes = FontesDaValidacaoSql(db, precos=lambda: {"m": [3.0, 0.3, 3.75, 15.0]},
+                                  fluxo_ativo_para=lambda c: c == COMANDO, vetado=lambda e: False)
+    servico = ServicoDeValidacao(RegistroDeValidacoesSql(db), fontes, parque, triagem=lambda t: "senha" in t,
+                                 ajustes=lambda: AjustesDaValidacao(**ajustes),  # type: ignore[arg-type]
+                                 relogio=relogio)
+    yield db, servico, parque, relogio, ajustes
+    db.close()
+
+
+def _receita(**kw: object) -> EntradaDoLivro:
+    base: dict[str, object] = dict(kind=LivroKind.RECEITA, ref="78", state=SkillState.PUBLISHED, native_status="active",
+                                   title="send_message (v1)", app=QA, origin=Origem.EXECUCAO, side_effect=True,
+                                   nasceu_de="r-20260925014520-91f907")
+    return EntradaDoLivro(**{**base, **kw})  # type: ignore[arg-type]
+
+
+def _linha(db: Database, pid: str) -> dict[str, object]:
+    r = db.one("SELECT * FROM learning_validations WHERE id=?", (pid,))
+    assert r is not None
+    return dict(r)
+
+
+def test_o_laco_inteiro_do_pedido_ao_fechamento(mundo: tuple[Database, ServicoDeValidacao, Parque, Relogio,
+                                                               dict[str, object]]) -> None:
+    db, servico, parque, _relogio, _ = mundo
+    pid = servico.ao_parecer(_receita(), "lr-1", PEDE, B)
+    assert pid is not None
+    linha = _linha(db, pid)
+    assert linha["estado"] == "pendente" and linha["grupo"] == "qa" and linha["aparelho_excluido"] == "android-01"
+    assert json.loads(str(linha["falta"])) == ["reproducao_em_outro_aparelho", "execucao_real"]
+    assert linha["comando"] == COMANDO and linha["run_origem"] == "r-20260925014520-91f907"
+    # Um pedido vivo por item: o curador que pede de novo (outra volta, outra réplica) não duplica.
+    assert servico.ao_parecer(_receita(), "lr-2", PEDE, B) is None
+    # O despachante: o de origem e o com conta real ficam de fora; o ocupado também.
+    parque.lista = [_ap("android-01"), _ap("android-06", conta_real=True), _ap("android-09", ocioso=False),
+                    _ap("android-10")]
+    run_id = servico.uma_volta(lambda: 1)
+    assert run_id is not None and parque.enfileiradas == [(COMANDO, "android-10", f"validacao:{pid}")]
+    assert _linha(db, pid)["estado"] == "rodando"
+    # Com a execução de validação em curso, nada mais roda (e não há outro pendente).
+    assert servico.uma_volta(lambda: 1) is None
+    # Ainda rodando: o digest não fecha.
+    assert servico.minerar(run_id) == 0
+    # Assentou com a receita conduzindo a etapa e dando certo: o pedido fecha `feita`, com o custo medido.
+    db.execute("UPDATE runs SET status='completed' WHERE id=?", (run_id,))
+    db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version) VALUES (?,?,?,?,?)",
+               (f"{run_id}:o1", run_id, "android-10", "succeeded", 1))
+    db.execute("INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
+               " postcondition, timeout_s, max_attempts, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+               (f"{run_id}:s", run_id, f"{run_id}:o1", "android-10", 1, 1, "send_message", "Enviar", "enviar",
+                '{"kind":"text_visible","value":"x","description":"x"}', 60, 3, "succeeded"))
+    db.execute("INSERT INTO attempts(id, step_id, number, status, strategy, recipe_id, started_at)"
+               " VALUES (?,?,?,?,?,?,?)", (f"{run_id}:s:a1", f"{run_id}:s", 1, "succeeded", "recipe", 78,
+                                           to_iso(datetime.now())))
+    db.execute("INSERT INTO ai_calls(ts, run_id, role, model, tier, input_tokens, cache_read, cache_write, output_tokens,"
+               " with_image, ms, ok) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+               (to_iso(datetime.now()), run_id, "plan", "m", "t", 10_000, 0, 0, 1_000, 0, 100, 1))
+    assert servico.minerar(run_id) == 1
+    fechado = _linha(db, pid)
+    assert fechado["estado"] == "feita" and fechado["motivo"] is None
+    assert abs(float(str(fechado["usd"])) - (10_000 * 3.0 + 1_000 * 15.0) / 1_000_000) < 1e-9
+    # A chegada volta ao curador (gatilho `evidencia_chegou`) até ele revisar.
+    assert [c.id for c in servico.chegadas()] == [pid]
+    servico.revisado(pid, "lr-3")
+    assert servico.chegadas() == [] and _linha(db, pid)["revisao_nova_id"] == "lr-3"
+    # Fechado o pedido, o item pode pedir de novo.
+    assert servico.ao_parecer(_receita(), "lr-4", PEDE, B) is not None
+
+
+def test_sem_evidencia_ou_com_falha_o_pedido_fecha_recusado_e_conta_o_gasto(
+        mundo: tuple[Database, ServicoDeValidacao, Parque, Relogio, dict[str, object]]) -> None:
+    db, servico, parque, _relogio, _ = mundo
+    parque.lista = [_ap("android-10")]
+    pid = servico.ao_parecer(_receita(), "lr-1", PEDE, B)
+    run_id = servico.uma_volta(lambda: 1)
+    assert pid and run_id
+    db.execute("UPDATE runs SET status='failed' WHERE id=?", (run_id,))
+    assert servico.minerar(run_id) == 1
+    assert (_linha(db, pid)["estado"], _linha(db, pid)["motivo"]) == ("recusada", "execucao_falhou")
+    assert servico.chegadas() == []
+
+
+def test_as_recusas_ficam_registradas_e_o_modo_off_nao_faz_nada(
+        mundo: tuple[Database, ServicoDeValidacao, Parque, Relogio, dict[str, object]]) -> None:
+    db, servico, parque, _relogio, ajustes = mundo
+    # Instagram com efeito: o ensaio de leitura é a fatia 2.
+    pid = servico.ao_parecer(_receita(app="com.instagram.android", ref="20"), "lr-1", PEDE, B)
+    assert pid is not None and (_linha(db, pid)["estado"], _linha(db, pid)["motivo"]) == ("recusada", "efeito_real")
+    # Receita sem fluxo ativo para o comando: a chave da etapa pode mudar.
+    db.execute("UPDATE runs SET command='outro comando' WHERE id='r-20260925014520-91f907'")
+    pid2 = servico.ao_parecer(_receita(ref="79"), "lr-2", PEDE, B)
+    assert pid2 is not None and _linha(db, pid2)["motivo"] == "sem_fluxo_ativo"
+    # Sessão ou autenticação fica com a pessoa.
+    sessao = Classificacao(ClasseDeRisco.C, (Razao.SESSAO_OU_AUTENTICACAO,), MotivoDeEntrada.SESSAO_OU_AUTENTICACAO)
+    pid3 = servico.ao_parecer(_receita(ref="80", kind=LivroKind.FLUXO), "lr-3", PEDE, sessao)
+    assert pid3 is not None and _linha(db, pid3)["motivo"] == "sessao_ou_autenticacao"
+    # Recusadas não ocupam a fila.
+    parque.lista = [_ap("android-10")]
+    assert servico.uma_volta(lambda: 1) is None and parque.enfileiradas == []
+    # `off`: nada nasce e nada roda.
+    ajustes["modo"] = Modo.OFF
+    assert servico.ao_parecer(_receita(ref="81", kind=LivroKind.FLUXO), "lr-5", PEDE, B) is None
+    assert servico.chegadas() == []
+
+
+def test_o_despachante_espera_o_lider_o_ambiente_e_o_pedido_preso_expira(
+        mundo: tuple[Database, ServicoDeValidacao, Parque, Relogio, dict[str, object]]) -> None:
+    db, servico, parque, relogio, _ = mundo
+    pid = servico.ao_parecer(_receita(), "lr-1", PEDE, B)
+    assert pid is not None
+    parque.lista = [_ap("android-10")]
+    assert servico.uma_volta(lambda: None) is None                       # outro backend é o líder
+    parque.ambiente_ = Ambiente(saudavel=True, execucoes_em_curso=2)     # suíte, deploy ou uso: espera
+    assert servico.uma_volta(lambda: 1) is None and _linha(db, pid)["estado"] == "pendente"
+    parque.ambiente_ = Ambiente(saudavel=True, execucoes_em_curso=0)
+    run_id = servico.uma_volta(lambda: 1)
+    assert run_id is not None
+    # A execução nunca assentou (ficou em needs_input sem digest): depois de 6 h o pedido expira e o item pode pedir.
+    db.execute("UPDATE learning_validations SET updated_at=? WHERE id=?",
+               (to_iso(relogio.agora - timedelta(hours=7)), pid))
+    servico.uma_volta(lambda: 1)
+    assert (_linha(db, pid)["estado"], _linha(db, pid)["motivo"]) == ("expirada", "expirou")
+
+
+def test_sem_folego_no_beta_so_a_verba_unica_dentro_do_prazo_despacha(
+        mundo: tuple[Database, ServicoDeValidacao, Parque, Relogio, dict[str, object]]) -> None:
+    """P4 do desenho: `extra_usd` soma ao beta só até `extra_ate` (comparado como data; sem fuso = UTC)."""
+    db, servico, parque, relogio, ajustes = mundo
+    pid = servico.ao_parecer(_receita(), "lr-1", PEDE, B)
+    assert pid is not None
+    parque.lista = [_ap("android-10")]
+    ajustes.update(beta=0.0, extra_usd=2.5, extra_ate="2026-10-03T11:59:59")         # a verba venceu um segundo antes
+    assert servico.uma_volta(lambda: 1) is None and _linha(db, pid)["estado"] == "pendente"
+    ajustes.update(extra_ate="2026-10-10T00:00:00.000Z")
+    assert servico.uma_volta(lambda: 1) is not None and _linha(db, pid)["estado"] == "rodando"
