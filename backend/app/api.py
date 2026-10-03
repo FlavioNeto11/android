@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, WebSocke
 from fastapi.encoders import jsonable_encoder
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .automation.appium_driver import appium_no_ar
 from .automation.driver import DriverError
@@ -48,7 +48,7 @@ from .models import (RUN_TERMINAL, RunStatus, DistributeSpec, Plan, ServerLimits
                      AdoptDeviceBody, ApprovalBatchBody, ApprovalDecision, AppInput, AppPatch, BulkBody,
                      CapabilityDTO, WorkerDeviceProposal,
                      CommandCancelBody, CommandResolveBody, CommandState, InstanceActionBody,
-                     InstancePatch, InstanceProvisionBody, InstanceState, RepairPauseBody, RepairPauseInfo, TrainingSaveBody, TrainingStartBody,
+                     InstancePatch, InstanceProvisionBody, InstanceState, RepairPauseBody, RepairPauseInfo, ResolverQuarentenaBody, TrainingSaveBody, TrainingStartBody,
                      PolicyGroupCreate, PolicyGroupPatch, ProfileAccountCreate,
                      ProfileAccountDTO, ProfileAccountPatch, ProfilePolicyPatch,
                      AppInstallBody, AppVerifyBody, CredentialClone, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaDTO,
@@ -399,6 +399,7 @@ def _saldos_dto(s: AppState) -> dict[str, object]:
             "note": "Livro-caixa: saldo = última âncora (leitura, recarga ou fechamento diário) menos o consumo desde "
                     "ela. Anthropic e OpenAI pelo relatório oficial de uso do provedor (a Anthropic de hora em hora); "
                     "o Gemini pelo consumo medido em cada chamada (usageMetadata), porque a chave é só da plataforma. "
+                    "A TypeSafe (Jev) nasce sem âncora e sem leitura automática: o dono registra a recarga. "
                     "Recarga: registre em Configuração › IA."}
 
 
@@ -716,8 +717,15 @@ async def flows_coverage(request: Request) -> Any:
     return cobertura_dos_fluxos(st(request))
 
 
-@router.get("/flows/match")
-async def flows_match(request: Request, command: str = Query(..., min_length=1)) -> Any:
+class FlowMatchBody(BaseModel):
+    """Corpo de `POST /flows/match` (29.25): o rascunho do comando, que pode trazer e-mail e nunca deve ir para a URL
+    (query string vira linha de log de acesso). O teto é o do comando de uma execução e de `/skills/resolve`."""
+    model_config = ConfigDict(extra="forbid")
+    command: str = Field(min_length=1, max_length=4000)
+
+
+@router.post("/flows/match")
+async def flows_match(request: Request, body: FlowMatchBody) -> Any:
     """Item 7.7 ("quanto vai custar?" do Osintgram): o comando digitado casa com uma habilidade ou um fluxo
     conhecido? Devolve a cobertura e a estimativa em US$ do plano, ou `null` — sem nada casado não há o que estimar.
 
@@ -728,7 +736,7 @@ async def flows_match(request: Request, command: str = Query(..., min_length=1))
     from .social.capacidades import cobertura_do_fluxo  # noqa: PLC0415
 
     s = st(request)
-    casado = s.skill_planner.for_command(s.runs.sem_destinos(command), None)   # como a execução o vê (onda C)
+    casado = s.skill_planner.for_command(s.runs.sem_destinos(body.command), None)   # como a execução o vê (onda C)
     if casado is None or casado.plan is None:
         return None
     if casado.legacy_flow_id is not None:
@@ -954,7 +962,8 @@ async def delete_profile(request: Request, profile_id: str) -> Response:
 
 @router.get("/instagram/profiles/{profile_id}/avatar")
 async def profile_avatar(request: Request, profile_id: str) -> Any:
-    """Foto do perfil. 404 quando não há — o portal cai nas iniciais sozinho, sem precisar de campo no DTO."""
+    """Foto do perfil. 404 quando não há. O painel só chama com `has_avatar` verdadeiro no DTO (29.26) e, sem ele, mostra
+    as iniciais sem requisição; o 404 fica para quem chama sem olhar o campo."""
     s = st(request)
     try:
         perfil = s.social.get_profile(profile_id)
@@ -1501,13 +1510,23 @@ async def list_interactions(request: Request, profile_id: str, counterparty: str
         raise _social_error(exc) from exc
 
 
-@router.get("/instagram/profiles/{profile_id}/context")
-async def social_context(request: Request, profile_id: str, counterparty: str | None = None,
-                         thread_key: str | None = None, content: str | None = None) -> Any:
-    """Exatamente o que o modelo veria deste perfil. Serve para conferir persona, memória — e a ausência de senha."""
+class SocialContextBody(BaseModel):
+    """Corpo de `POST /instagram/profiles/{id}/context` (29.26): `content` é a mensagem recebida, texto livre de
+    terceiro que pode trazer nome e e-mail; não vai para a URL (query string vira linha de log de acesso)."""
+    model_config = ConfigDict(extra="forbid")
+    counterparty: str | None = Field(default=None, max_length=200)
+    thread_key: str | None = Field(default=None, max_length=200)
+    content: str | None = Field(default=None, max_length=4000)
+
+
+@router.post("/instagram/profiles/{profile_id}/context")
+async def social_context(request: Request, profile_id: str, body: SocialContextBody | None = None) -> Any:
+    """Exatamente o que o modelo veria deste perfil. Serve para conferir persona, memória — e a ausência de senha.
+    Sem efeito: é POST só para o texto da mensagem ir no corpo (29.26); corpo ausente = contexto sem interlocutor."""
+    corpo = body or SocialContextBody()
     try:
-        return st(request).social.context(profile_id, counterparty=counterparty, thread_key=thread_key,
-                                          current_content=content)
+        return st(request).social.context(profile_id, counterparty=corpo.counterparty, thread_key=corpo.thread_key,
+                                          current_content=corpo.content)
     except SocialError as exc:
         raise _social_error(exc) from exc
 
@@ -2780,6 +2799,23 @@ async def hierarchy(request: Request, instance_id: str) -> Any:
 
 
 # ---------------------------------------------------------------------- controle manual
+@router.post("/instances/{instance_id}/locked-account/resolve")
+async def resolve_locked_account(request: Request, instance_id: str, body: ResolverQuarentenaBody) -> dict[str, object]:
+    """Uma pessoa resolve a QUARENTENA (ADR-055) depois de limpar o app do aparelho: o marcador aberto vira história
+    (`resolved_by/resolution` = a nota), o rótulo sincroniza e sai o evento `device.locked_account` ("resolvido").
+    Só banco: não toca disco nem app, e não reativa o perfil (isso é decisão de pessoa). A nota é obrigatória (422).
+    Sem marcador aberto, 404 `no_locked_account` — como o `repair-pause` sem pausa."""
+    s = st(request)
+    device(s, instance_id)
+    nota = body.nota.strip()
+    if not nota:
+        raise err(422, "nota_obrigatoria", "informe por que a quarentena foi resolvida")
+    resolvidos = s.social_repo.resolver_conta_travada(instance_id, por=quem(request), nota=nota)
+    if not resolvidos:
+        raise err(404, "no_locked_account", f"{instance_id} não tem marcador de conta travada aberto")
+    return {"instance_id": instance_id, "resolvidos": resolvidos}
+
+
 @router.put("/instances/{instance_id}/repair-pause")
 async def set_repair_pause(request: Request, instance_id: str, body: RepairPauseBody) -> RepairPauseInfo | None:
     """Pausa o reparo AUTOMÁTICO deste aparelho (a escada e o reinício por saúde do central) por `ttl_s` (obrigatório,
@@ -2911,14 +2947,23 @@ async def list_runs(request: Request, limit: int = Query(20, ge=1, le=200), offs
     return {"runs": [s.repo.run_summary(r) for r in rows], "total": int(total), "limit": limit, "offset": offset}
 
 
-@router.get("/runs/distribution")
-async def preview_distribution(request: Request, count: int = Query(..., ge=1, le=64),
-                               app_id: str | None = Query(None, min_length=1, max_length=80),
-                               command: str | None = Query(None, min_length=1, max_length=4000)) -> Any:
+class DistributionPreviewBody(BaseModel):
+    """Corpo de `POST /runs/distribution` (29.26): o comando, que pode trazer e-mail e nunca deve ir para a URL (query
+    string vira linha de log de acesso). O teto é o do comando de uma execução, de `/skills/resolve` e de `/flows/match`."""
+    model_config = ConfigDict(extra="forbid")
+    count: int = Field(ge=1, le=64)
+    app_id: str | None = Field(default=None, min_length=1, max_length=80)
+    command: str | None = Field(default=None, min_length=1, max_length=4000)
+
+
+@router.post("/runs/distribution")
+async def preview_distribution(request: Request, body: DistributionPreviewBody) -> Any:
     """Quais aparelhos uma execução distribuída pegaria AGORA, por servidor — sem criar nada.
 
     Item 24.6: `app_id` ficou opcional. Sem ele, os apps são os que o `command` usa (a mesma leitura da criação);
-    um dos dois é obrigatório. Comando com credencial recebe a mesma recusa da criação."""
+    um dos dois é obrigatório. Comando com credencial recebe a mesma recusa da criação. Item 29.26: era `GET` com tudo
+    na query; o texto do comando agora vai no corpo."""
+    count, app_id, command = body.count, body.app_id, body.command
     if app_id is None and command is None:
         raise err(422, "distribution_sem_alvo", "Informe o app (`app_id`) ou o comando (`command`) da distribuição.")
     s = st(request)
@@ -2928,6 +2973,13 @@ async def preview_distribution(request: Request, count: int = Query(..., ge=1, l
         return s.runs.previa_de_distribuicao(DistributeSpec(count=count, app_id=app_id), command)
     except RunError as exc:
         raise _run_error(exc) from exc
+
+
+@router.get("/runs/distribution", include_in_schema=False)
+async def preview_distribution_get_removido() -> None:
+    """Sem isto, o GET antigo cairia em `/runs/{run_id}` e responderia 404 "Execução não encontrada" (29.26)."""
+    raise HTTPException(405, detail={"code": "metodo_removido", "message": "A prévia da distribuição agora é POST /api/runs/distribution, "
+                                     "com o comando no corpo."}, headers={"Allow": "POST"})
 
 
 @router.get("/runs/{run_id}")

@@ -173,7 +173,7 @@ motivo quer dizer:
   estourada barra só aquela origem. O gasto da fatia é o do dia filtrado por origem (`costs.spent_today_usd(origem=)`,
   `ai_calls.origem`, migração 073). `0` desliga a fatia; curador sem valor explícito e sem teto do dia fica sem fatia.
 - O vocabulário de `origem` (`ORIGENS_DE_IA`): `execucao` (padrão com `run_id`), `ensino` (`generalize`),
-  `orquestracao`, `assistente` (`refine_command`), `social`, `persona`, `curador` e `decisao_fechada`. Linha antiga
+  `orquestracao`, `assistente` (`refine_command`), `social`, `persona`, `curador` (`review_knowledge`, 30.12) e `decisao_fechada`. Linha antiga
   fica NULL. Quem pede passa `origem=`/`ref=` a `RoutingProvider._call`; o `Usage` leva os dois e `add_usage` grava.
 - Os tetos de CHAMADAS e de tokens do executor (17.12 e 18.3) continuam em `kind="budget"` sem `motivo`: protegem
   contra laço, não contra preço, e não são uma régua de dinheiro.
@@ -534,7 +534,7 @@ exposição real e veredito: `not_run` ([relatório §23](relatorio-validacao.md
 A porta `DecisaoFechada` (`backend/app/planning/decisao_fechada/`, item 31.4) é o ÚNICO caminho do hub para o Jev (TypeSafe
 System One) em runtime, e só para escolher entre opções fechadas (`choice`, `noul`, `score`). **Está desligada e sem decisor
 real**: o decisor padrão é o `DecisorNulo`, o provedor que fala com a TypeSafe vem no 31.8 e `JEV_RUNTIME_SEND_APPROVED`
-continua `False` até o 31.10 (chave trocada pelo dono). Decisão e classes de dado: ADR-069.
+continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). Decisão e classes de dado: ADR-069.
 
 - **Contrato** (`contrato.py`, tipos puros): `PedidoDeDecisao(origem, classe, estado, perguntas, modo, marcadores, run_id,
   step_id, ref)`, `Pergunta(id, tipo, instrucoes, opcoes, limiar)` e `RespostaDeDecisao(escolha, probabilidades, confianca,
@@ -562,5 +562,99 @@ continua `False` até o 31.10 (chave trocada pelo dono). Decisão e classes de d
 - **Cliente único.** `backend/tests/test_decisao_fechada.py::test_cliente_unico_so_o_adaptador_de_retrieval_conhece_o_host_da_typesafe`
   varre `backend/app` e prova que só `modules/context_retrieval/adapters/jev.py` contém o host.
 
-Prova: `simulated` (`backend/tests/test_decisao_fechada.py`, `test_context_retrieval_semantic.py`: decisores nulo e falso e
-transporte falso). Chamada real ao Jev: `not_run`.
+- **Registro da sombra (31.5, migração 074).** A porta, em `shadow` e em `on`, entrega ao `observador` um `RegistroDeDecisao`
+  por chamada, e `observador_de_sombra(RepositorioDeSombra(db))` (`decisao_fechada/sombra.py`) grava UMA linha por pergunta
+  respondida ou por fallback em `decisao_fechada_sombra`, inclusive a recusa de privacidade (mostra o que o envio fechado deixou
+  de decidir). A linha tem só ids opacos, categorias dos vocabulários fechados e números: **nunca o estado enviado nem o texto
+  das opções**, e um id fora do formato vira NULL ou `unknown_choice`, nunca texto livre. `usd` e `tokens` da chamada única
+  ficam só na primeira linha.
+  - **Depois da gravação**: `casar_decisao_real({pergunta: id}, ref=...|step_id=...)` e `casar_desfecho(desfecho, ref=...|step_id=...)`
+    (vocabulário `DESFECHOS`) preenchem o caminho atual e o desfecho; só preenchem o que está vazio. É a entrada do 31.8 e do 31.9.
+  - **Agregado diário** `decisao_fechada_diario` por (dia, origem, pergunta): `n`, `concordancia`, `acima_do_limiar`,
+    **`aceite_errado`** (acima do limiar, com decisão real casada e diferente: a métrica que veta o `on`), `fallbacks` (à parte:
+    nunca acerto), `usd` e `ms_p95`. Recalculado por inteiro nos 7 dias recentes e uma última vez antes da purga.
+  - **Retenção** `ai.decisao_fechada.retencao_dias` (padrão 180), no laço de retenção geral: purga dias inteiros; o agregado fica.
+  - **Preço e livro-caixa.** `ai.prices` ganha `jev-1.13.0: [0.042, 0, 0, 0]` (US$ 0,042 por milhão de entrada, saída grátis); a
+    coluna `usd` declarada de `ai_calls` vence os tokens (`costs.spent_usd`, precedente 048). A conta `typesafe` (provedor `jev`,
+    modelo `jev*`) entra em `GET /api/ai/balances` como conta conhecida **sem âncora** (`Sem âncora: o dono registra a
+    recarga`), sem leitura automática, sem chave de administrador e sem chamada de rede; a primeira recarga registrada vira a
+    âncora (base 0). Sem limites de fábrica: o teto do Jev é a fatia dele dentro do teto do dia (31.6). `console` vazio: o dono
+    informa a página em `ai.balance_consoles.typesafe`.
+  - **Transparência** (`transparencia.py`). Com `ai.decisao_fechada.enabled` e algum consumidor em `shadow` ou `on`, o `notice`
+    de `GET /api/ai` nomeia a TypeSafe, os consumidores e as classes que podem sair, e `/api/ai` ganha o bloco
+    `decisao_fechada` (consumidores, classes, `send_approved`, `key`). A chave é só "configurada" ou "não configurada", pela
+    PRESENÇA (`typesafe_api_key is not None`); o valor nunca é lido para isso. Enquanto `JEV_RUNTIME_SEND_APPROVED` é `False`, o
+    aviso diz que o envio está FECHADO e que nada sai.
+
+Prova: `simulated` (`backend/tests/test_decisao_fechada.py`, `test_decisao_fechada_sombra.py`, `test_context_retrieval_semantic.py`:
+decisores nulo e falso, banco de teste e relógio falso). Chamada real ao Jev: `not_run`.
+
+### Triagem do curador em sombra (31.8, R1)
+
+`planning/decisao_fechada/curador.py`. `CuradorComTriagemEmSombra` decora o curador principal (porta `CuradorDeIA` do
+aprendizado, por estrutura): devolve o parecer DELE intacto e só depois entrega o item a `TriagemDoCurador`, que pergunta
+ao Jev em `shadow` uma `choice` entre `manter`, `revisar`, `rebaixar`, `descartar` e `nenhuma` (`curador_triagem`).
+
+- **Dado F1, classe C0:** só `licao` e `receita`, e só os campos de `CAMPOS_POR_ORIGEM["curador"]`: tipo, estado, origem,
+  efeito, origem humana, classe e política de risco, rótulo de saúde e contagens (evidência a favor, contra e simulada,
+  falhas e ocorrências, votos, intervenções, execuções). Cada valor é rótulo de vocabulário ou número; conteúdo (inclusive
+  o da lição), app, capability, ids e datas não saem. Memória, fluxo (C2), tela, voz e preferência não vão.
+- **Decisão real = o parecer do curador principal** (`TRIAGEM_DO_PARECER`, combinado com a frente Aprendizado: `manter` →
+  manter; `observar`/`pedir_evidencia` → revisar; `rebaixar` → rebaixar; `desativar` → descartar; `aprovar`,
+  `possivelmente_obsoleto`, `substituir` e `fundir` ficam fora da comparação), casada pelo `ref` = `dossie_hash`. Sem voto
+  da pessoa, mede CONCORDÂNCIA com o curador, não acerto.
+- **Sem GO:** os limiares de `on` são os pré-registrados no 31.7 ([design/jev-golden-set.md](design/jev-golden-set.md):
+  rótulo da pessoa ou desfecho medido, 30 ou mais por `kind`, 90 % de acordo e vantagem sobre a regra local); até lá a
+  sombra só registra. A falha do curador principal sobe como antes, sem sombra.
+- **Ligação (suíte 5):** a porta `DecisaoFechada` nasce antes do aprendizado no `AppState`, e o curador do hub (30.12) vai
+  ao aprendizado embrulhado por `CuradorComTriagemEmSombra`, com a `TriagemDoCurador` sobre a porta e a sombra do próprio
+  `AppState`. Inerte de fábrica (consumidor `curador` em `off`).
+
+Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada real: `not_run` (31.10).
+
+### Intenção em sombra (31.9, R2 e R3)
+
+- **Consumidor da intenção em sombra (31.9, R2 e R3, ADR-069).** `decisao_fechada/intencao.py` (`ConsumidorDeIntencao`), ligado por
+  `taskqueue/sombra_intencao.py` e por UMA linha em `RunService._spawn_planning`: um `add_done_callback` que agenda a sombra
+  DEPOIS que o `_plan` termina. **Fora da cadeia**: `intent_ports.py` e `intent_resolver.py` não mudam; a sombra só observa, e
+  nada do que o Jev responde volta ao plano. Origem `intencao`, classe C3, sempre `shadow` (consumidor `on` na config continua
+  sombra aqui).
+  - **Quando roda**: só depois de um plano bem-sucedido. Plano cancelado, com exceção ou recusado pelo provedor (`refusal`) não
+    vira sombra, e a execução que já está `failed` ou `cancelled` quando a thread a lê também não. No laço de eventos fica só o
+    agendamento (`asyncio.to_thread`): ler a execução, a RESOLVE, o catálogo e a porta rodam numa thread. O `stop()` do
+    `AppState` cancela as soltas e espera até 6 s as que já chamaram a porta, antes de fechar o banco.
+  - **Desligado custa zero**: `ativo()` é falso, e então nada é lido, resolvido, montado ou gravado (nem linha de recusa), quando
+    o envio não está aprovado no código (`privacidade.JEV_RUNTIME_SEND_APPROVED`, lido na hora; hoje `False`), quando a porta não
+    está em `shadow` para a intenção (padrão: `enabled=false` ou consumidor `off`) ou quando a C3 não está nas classes efetivas
+    (teto do código ∩ `classes_permitidas`).
+  - **Pedido**: um só, com duas perguntas (uma chamada). Estado: `comando` (já sem destinos, depois de `redact` e de
+    `remover_entidades`) e `app` (id do app da execução, quando há). R2 `intencao_catalogo`: `choice` sobre o catálogo inteiro,
+    habilidades publicadas (se `skills.enabled`) e fluxos ativos (se `ai.flows`), como ids opacos (`opt:` + sha1 do id da
+    habilidade, 12 hex) com descrição C2 (nome e descrição do dono; fluxo legado só o nome) mais `nenhuma`. Só vai com 1 a 254
+    entradas: truncar mediria o que o Jev não viu; acima do teto, um WARNING por processo diz que a R2 saiu da medição. R3
+    `intencao_desempate`: `choice` entre as habilidades que a cadeia registrou como empatadas (2 ou mais).
+  - **C3 por lista de permissão** (`entidades.py`, função pura `remover_entidades(texto, *, vocabulario=()) -> str | None`). Só
+    sai palavra que está num vocabulário comum de comandos (PT e EN, sem palavra que também seja nome de pessoa e sem nome de app, ADR-052) ou no
+    vocabulário do catálogo do dono e do id do app (`vocabulario_de`). Qualquer outra palavra, em qualquer caixa, vira `[termo]`;
+    palavra com dígito ou `_` também. Por forma: `[link]`, `[email]`, `[usuario]`, `[telefone]`, `[texto]` (entre aspas) e
+    `[numero]` (TODO número, até o de 2 dígitos). Recusa (`None`): endereço (rua, avenida, CEP, bairro, apto…), e-mail ofuscado
+    (`arroba`, `ponto com`, `(at)`/`(dot)`), 3 ou mais algarismos por extenso, dígito que sobrou, e mais de 6 palavras
+    desconhecidas ou metade ou mais do texto desconhecida. Com `None`, o estado vai vazio, a porta recusa e a sombra grava
+    `fallback_reason='privacidade'`: o pedido não sai. **A sombra não reduz o risco**: em `shadow` o corpo sai para o decisor
+    igual ao de `on`, e a única proteção da C3 é esta remoção. A conferência é a própria lista (o que não é conhecido não sai),
+    não um detector "mais largo" depois da troca.
+  - **C7 nunca sai, em prosa ou não**: comando que fala de senha, código, 2FA, PIN, OTP, token, captcha, verificação ou desafio
+    (`menciona_c7`: `mentions_credential`, `looks_secret` e o assunto em qualquer formato) vai com estado vazio e marcador
+    `credencial`; a porta recusa o pedido inteiro (zero chamadas) e grava `privacidade`.
+  - **Comando social**: o catálogo social é C2 e entra (a exclusão social/persona proposta na revisão foi refutada: D-J5 veta o
+    Jev decidir conteúdo social ou de persona, não ler o catálogo de habilidades). O nome de terceiro dentro do comando é que
+    não sai: vira `[termo]` pela lista.
+  - **Casamento**: a porta chama `ao_registrar` na mesma thread, logo depois de gravar a linha (também na recusa por
+    privacidade); sem polling e sem espera fixa. `casar_decisao_real` recebe o que a cadeia real resolveu (a RESOLVE refeita sem
+    efeito, `resolve_intent`, com o catálogo de agora). R2: a habilidade resolvida (ou a única de que fala, quando falta
+    parâmetro) ou `opt:nenhuma` se nada casou; empate sem desfecho fica vazio. **R3 não tem decisão real na sombra**: a cadeia
+    que termina em empate não escolhe (`AMBIGUOUS` volta para a pessoa), e a que desempata não devolve os candidatos. O rótulo
+    da R3 é a escolha da pessoa ou o desfecho, casados no 31.10. **`casar_desfecho` não é chamado**: não há gancho de fim de
+    execução sem mexer no núcleo, e fica para o 31.10.
+  - Prova `simulated`: `backend/tests/test_decisao_fechada_intencao.py` (`DecisorFalso`, banco de teste, RESOLVE de verdade sobre
+    habilidades de teste, `_plan` pelo harness com decisor segurado por evento). Chamada real ao Jev: `not_run`.

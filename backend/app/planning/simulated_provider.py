@@ -27,6 +27,7 @@ from ..modules.identity.domain.persona_generation import (IDADE_MAXIMA_GERADA, I
 from ..security.redaction import looks_secret
 from ..util import norm_text
 from .apps_do_comando import apps_citados
+from .curador import ParecerBruto, PedidoDeParecer, parecer_simulado
 from .capabilities import CapabilityCatalog, CapabilityNode, compose
 from .parsing import apps_do_plano, norm_key
 from .provider import (AppContext, Decision, DecisionRequest, PlanRequest, SocialRequest, Usage, Verdict,
@@ -89,6 +90,10 @@ class SimulatedProvider:
     async def refine_command(self, req: RefineRequest) -> tuple[CommandRefinement, Usage]:
         """Assistente do comando sem IA: blocos fixos e a pergunta do app (ver `refinamento_simulado`)."""
         return refinamento_simulado(req), Usage()
+
+    async def review_knowledge(self, req: PedidoDeParecer) -> tuple[ParecerBruto, Usage]:
+        """Curador do Livro sem IA (30.12): regra fixa sobre o dossiê (ver `parecer_simulado`)."""
+        return parecer_simulado(req), Usage()
 
     async def plan(self, req: PlanRequest) -> tuple[Plan, Usage]:
         info = PlannerInfo(provider=self.name, model=self.model, simulated=True)

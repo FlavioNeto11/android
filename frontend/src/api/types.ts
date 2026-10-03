@@ -587,7 +587,7 @@ export interface OperationalContext {
   }[];
   profiles: {
     profile_id: string; username: string; display_name: string | null; persona_id: string | null;
-    persona_name: string | null; credential_configured: boolean; credential_status: string | null;
+    persona_name: string | null; has_avatar?: boolean; credential_configured: boolean; credential_status: string | null;
     session: SessionInfo; app_on_device: AppOnDevice | null; session_actions: SessionActions | null;
     /** v0.28: as contas da persona vinculada, cada uma com credencial (metadados), consentimento e a sessão
      *  NESTE aparelho. */
@@ -668,6 +668,8 @@ export interface InstagramProfile {
   voice_gaps?: string[];
   images?: PersonaImage[];
   primary_image_id?: string | null;
+  /** Há foto principal pronta (29.26): sem ela o painel mostra as iniciais e não pede `/avatar` (404). */
+  has_avatar?: boolean;
   accounts_count?: number;
   /** v0.29 (ADR-043): TODOS os aparelhos da persona (N:N), o principal primeiro. `instance_id` (acima) passa a ser o
    *  PRINCIPAL. Opcional: backend anterior e fixtures antigas não o mandam — aí vale só o `instance_id`. */
@@ -703,6 +705,8 @@ export interface PersonaOnDevice {
   is_primary: boolean;
   bound_at: string | null;
   session: SessionInfo | null;
+  /** Como em `InstagramProfile.has_avatar` (29.26). */
+  has_avatar?: boolean;
 }
 
 /** `POST /api/personas/{id}/devices`: soma um aparelho à persona para um app, sem tirar ninguém de lá. */
@@ -1219,7 +1223,8 @@ export interface PolicyGroup {
   capabilities: Record<string, PolicyName>;
   limits: Record<string, number>;
   loosened: string[];
-  members: { id: string; username: string }[];
+  /** `username` vem vazio ou nulo quando a conta da persona foi retirada (29.23); `name` (29.25) é a pessoa. */
+  members: { id: string; username: string | null; name?: string | null }[];
   created_at: string;
   updated_at: string;
 }

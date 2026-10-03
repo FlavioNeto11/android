@@ -1,6 +1,6 @@
 """RESOLVE + COMPILE de uma execução (design §14.1): comando → intenção resolvida → o `Plan` que o runtime de hoje roda.
 
-É o que `RunService._plan`, `apps_exigidos` e `GET /api/flows/match` perguntam — os três pela MESMA porta, para que a
+É o que `RunService._plan`, `apps_exigidos` e `POST /api/flows/match` perguntam — os três pela MESMA porta, para que a
 estimativa do painel e o pré-voo não divirjam do que a execução faz (decisão P2). `POST /api/skills/resolve` pergunta
 só a RESOLVE (`resolve_intent`), pela mesma cadeia.
 

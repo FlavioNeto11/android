@@ -229,6 +229,7 @@ ai:
   decisao_fechada:
     enabled: false                # (false) vence tudo, inclusive um consumidor em `on`
     consumidores: {}              # curador | intencao | desempate | apps: off | shadow | on (ausente = off)
+    retencao_dias: 180            # (180) linhas da sombra (`decisao_fechada_sombra`); o agregado diário fica
     # classes_permitidas: [C0, C1]  # opcional: estreita o teto de código (C0..C3); nunca libera classe que o código fechou
   # Página de faturamento de cada conta de IA (ADR-051), a que o painel linka em "Abrir console". Sem o parâmetro
   # `billing`, o AI Studio abre a PRIMEIRA conta de faturamento, que pode não ser a pré-paga.
@@ -258,6 +259,7 @@ ai:
     claude-sonnet-5: [2.0, 0.2, 2.5, 10.0]
     claude-haiku-4-5: [1.0, 0.1, 1.25, 5.0]
     claude-opus-4-8: [5.0, 0.5, 6.25, 25.0]
+    jev-1.13.0: [0.042, 0, 0, 0]    # Jev (TypeSafe System One, ADR-069): US$ 0,042/M de entrada, saída grátis, sem cache
     # Fase 17: candidatos de outros provedores (preço de lista em 28/09/2026; ver docs/pesquisa-provedores-ia-*.md).
     gpt-6-luna: [0.10, 0.01, 0.10, 0.50]            # developers.openai.com/api/docs/pricing (Standard)
     gemini-3.1-flash-lite: [0.25, 0.025, 0.25, 1.50]  # ai.google.dev/gemini-api/docs/pricing
@@ -501,6 +503,17 @@ aprendizado:                      # aprendizado contínuo (ADR-054): livro, D1, 
     taxa_minima: 0.8              # eficácia acumulada replay_ok/(ok+fail); abaixo disto, com amostra, = degradando
     falhas_seguidas: 2            # consecutive_fail a partir do qual o item degrada
     contestacao_dias: 7           # janela da evidência contra/conflito (contestação recente = degradando)
+  # Curador por IA (30.11, §8.6-8.8): pede PARECER sobre itens do Livro; a IA nunca decide (o aceite é da pessoa).
+  # "off" (padrão) não roda · "shadow" revisa e grava o parecer · "on" faz o mesmo nesta fatia. Orçamento proporcional
+  # ao gasto da operação: B = min(alfa·gasto da janela, k·itens·custo médio); custo máximo = m_cmax × mediana.
+  curador:
+    modo: "off"
+    intervalo_s: 3600             # de quanto em quanto tempo o laço olha os gatilhos (sob a trava de líder)
+    cooldown_h: 24                # o mesmo item não é revisado de novo antes disto
+    alfa: 0.10
+    k: 1.5
+    janela_dias: 7
+    m_cmax: 4
   ia_resumos_por_dia: 0           # lição escrita por IA: desligada (gasta saldo e abre injeção); só 0 é aceito
   takeover_gravar: false          # gravar as entradas manuais da tomada de controle fora do treino
   retencao: {sinais_dias: 180, feedback_dias: 365, exposicoes_dias: 120, evidencias_por_item: 200, diario_dias: 400,

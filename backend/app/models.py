@@ -31,7 +31,7 @@ from .modules.execution.presentation.schemas import (  # noqa: F401
     ApprovalBatchBody, ApprovalDecision, ApprovalDecisionItem, DevicePolicy, RunTarget, RunTargetsResolveBody)
 from .modules.fleet.presentation.schemas import (  # noqa: F401
     AdoptDeviceBody, CommandCancelBody, CommandResolveBody, InstancePatch, InstanceProvisionBody, ReleaseBody,
-    RepairPauseBody, ServerLimitsPatch, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody)
+    RepairPauseBody, ResolverQuarentenaBody, ServerLimitsPatch, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody)
 from .modules.identity.domain.persona import BIOGRAPHY_SCHEMA_VERSION, crenca_legada, normalizar_biografia
 from .modules.identity.presentation.schemas import (  # noqa: F401
     CredentialClone, CredentialUpdate, MemoryCreate, PersonaDeviceBody, PersonaPreviewBody, PolicyGroupCreate, PolicyGroupPatch,
@@ -546,6 +546,8 @@ class PersonaOnDeviceDTO(BaseModel):
     is_primary: bool = False
     bound_at: str | None = None
     session: SessionInfo | None = None
+    #: Como em `PersonaDTO.has_avatar` (29.26): sem foto principal pronta o painel usa as iniciais, sem requisição.
+    has_avatar: bool = False
 
 
 class ActionGate(BaseModel):
@@ -974,6 +976,9 @@ class PersonaDTO(PersonaVoiceDTO):
     accounts_count: int = 0
     images: list[PersonaImageDTO] = Field(default_factory=list)
     primary_image_id: str | None = None
+    #: Há foto principal pronta (29.26): é o que `GET /instagram/profiles/{id}/avatar` serve. Sem ela o painel nem pede
+    #: a imagem (a rota responde 404) e mostra as iniciais.
+    has_avatar: bool = False
     last_verified_at: str | None = None
     last_activity_at: str | None = None
 
@@ -1294,6 +1299,7 @@ class TrainingSaveBody(BaseModel):
 class PolicyGroupMember(BaseModel):
     id: str
     username: str | None = None               # pessoa sem conta também pode estar num grupo
+    name: str | None = None                   # 29.25: o nome da pessoa (para quem não tem @ mostrar quem é)
 
 
 class PolicyGroupDTO(BaseModel):
@@ -2005,6 +2011,9 @@ class AiStatus(BaseModel):
     account_blocked_reason: str | None = None
     #: Saldo estimado de cada conta de IA (ADR-051): o mesmo de GET /api/ai/balances, para o cabeçalho do painel.
     balances: list[dict[str, object]] = []
+    #: Jev (TypeSafe System One, ADR-069): presente só com `ai.decisao_fechada.enabled` e algum consumidor em shadow/on. Traz
+    #: consumidores, classes que podem sair, se o envio está aprovado no código e a chave como "configurada" (só presença).
+    decisao_fechada: dict[str, object] | None = None
 
 
 class Problem(BaseModel):

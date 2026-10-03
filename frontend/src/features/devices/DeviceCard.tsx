@@ -332,7 +332,7 @@ function DeviceCardImpl({ instance, appName, personas: vinculadas, selected, foc
             <div className={cx(styles.line, styles.linhaPersonas)}>
               <span className={styles.avatares} aria-hidden>
                 {personas.slice(0, 3).map((p) => (
-                  <Avatar key={p.profile_id} src={profileAvatarUrl(p.profile_id)} name={p.name || p.profile_id} size={18} />
+                  <Avatar key={p.profile_id} src={profileAvatarUrl(p.profile_id, p.has_avatar)} name={p.name || p.profile_id} size={18} />
                 ))}
               </span>
               <span className="truncate" title={personas.map((p) => `${p.name}${p.username ? ` (@${p.username})` : ''}`).join(' · ')}>

@@ -13,8 +13,8 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
 from app.modules.pedidos.infrastructure.servico import ESTADOS, ErroDeApi, PedidosApi
-from app.modules.pedidos.presentation.schemas import (AtivarCorpo, CancelarCorpo, CriarCorpo, EdicaoCorpo, LerAvisosCorpo,
-                                                      PausarCorpo, PreviaCorpo, RetomarCorpo, selecao, utc)
+from app.modules.pedidos.presentation.schemas import (AtivarCorpo, BuscaCorpo, CancelarCorpo, CriarCorpo, EdicaoCorpo,
+                                                      LerAvisosCorpo, PausarCorpo, PreviaCorpo, RetomarCorpo, selecao, utc)
 from app.security.sessions import operador_atual
 
 router = APIRouter(prefix="/api/pedidos")
@@ -66,20 +66,37 @@ async def criar(request: Request, corpo: CriarCorpo) -> JSONResponse:
     return JSONResponse(status_code=201, content=jsonable_encoder(view))
 
 
-@router.get("")
-async def listar(request: Request, estado: str | None = None,
-                 autonomia: Literal["observar", "preparar", "agir"] | None = None,
-                 tipo: Literal["agora", "horario", "recorrencia", "evento", "condicao", "persona"] | None = None,
-                 profile_id: str | None = None, q: str | None = Query(None, max_length=80), pede_atencao: int = 0,
-                 ordem: Literal["atualizado", "proxima", "criado"] = "atualizado",
-                 limit: int = Query(50, ge=1, le=200), cursor: str | None = None) -> dict[str, object]:
+def _listar(request: Request, *, estado: str | None, autonomia: str | None, tipo: str | None, profile_id: str | None,
+            q: str | None, pede_atencao: bool, ordem: str, limit: int, cursor: str | None) -> dict[str, object]:
     estados = [e.strip() for e in estado.split(",") if e.strip()] if estado else None
     for e in estados or []:
         if e not in ESTADOS:
             raise HTTPException(422, detail={"code": "estado_invalido", "message": f"Estado desconhecido: {e!r}."})
     return _chamar(lambda: _api(request).listar(estado=estados, autonomia=autonomia, tipo=tipo, profile_id=profile_id,
-                                                q=q, pede_atencao=bool(pede_atencao), ordem=ordem, limit=limit,
+                                                q=q, pede_atencao=pede_atencao, ordem=ordem, limit=limit,
                                                 cursor=cursor))
+
+
+@router.get("")
+async def listar(request: Request, estado: str | None = None,
+                 autonomia: Literal["observar", "preparar", "agir"] | None = None,
+                 tipo: Literal["agora", "horario", "recorrencia", "evento", "condicao", "persona"] | None = None,
+                 profile_id: str | None = None, pede_atencao: int = 0,
+                 ordem: Literal["atualizado", "proxima", "criado"] = "atualizado",
+                 limit: int = Query(50, ge=1, le=200), cursor: str | None = None) -> dict[str, object]:
+    # 29.26: o termo de busca é texto livre e não vai mais na query. Ignorar `q` em silêncio devolveria a lista inteira
+    # como se fosse o resultado da busca; por isso a recusa explícita, com o caminho novo.
+    if "q" in request.query_params:
+        raise HTTPException(422, detail={"code": "busca_no_corpo", "message": "O termo de busca vai no corpo: use POST /api/pedidos/busca."})
+    return _listar(request, estado=estado, autonomia=autonomia, tipo=tipo, profile_id=profile_id, q=None,
+                   pede_atencao=bool(pede_atencao), ordem=ordem, limit=limit, cursor=cursor)
+
+
+@router.post("/busca")
+async def buscar(request: Request, corpo: BuscaCorpo) -> dict[str, object]:
+    """A listagem com o termo `q` no corpo (29.26). Só lê: é POST apenas para o texto da busca não ir para a URL."""
+    return _listar(request, estado=corpo.estado, autonomia=corpo.autonomia, tipo=corpo.tipo, profile_id=corpo.profile_id,
+                   q=corpo.q, pede_atencao=corpo.pede_atencao, ordem=corpo.ordem, limit=corpo.limit, cursor=corpo.cursor)
 
 
 @router.get("/{pedido_id}")

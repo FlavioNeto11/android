@@ -37,12 +37,21 @@ export const apiPedidos = {
     apiRequest<PedidoPrevia>('POST', '/pedidos/previa', { body: corpo, signal }),
   /** 201 (novo) ou 200 com `deduplicated: true` (a chave já existia). Com `confirmacao` o pedido nasce ativo. */
   criar: (corpo: PedidoCriacao) => apiRequest<PedidoCriado>('POST', '/pedidos', { body: corpo, timeoutMs: 60_000 }),
+  /** Com termo de busca (`q`, texto livre), vai por `POST /pedidos/busca` com o filtro no corpo (29.26): query string
+   *  vira linha de log de acesso. Sem termo, segue o GET com filtros curtos. */
   listar: (f: FiltroDePedidos = {}, signal?: AbortSignal) =>
-    apiRequest<ListaDePedidos>('GET', '/pedidos', {
-      query: { estado: f.estado || undefined, autonomia: f.autonomia, tipo: f.tipo, profile_id: f.profile_id || undefined,
-               q: f.q || undefined, pede_atencao: f.pede_atencao, ordem: f.ordem, limit: f.limit, cursor: f.cursor },
-      signal,
-    }),
+    f.q
+      ? apiRequest<ListaDePedidos>('POST', '/pedidos/busca', {
+        body: { q: f.q, estado: f.estado || undefined, autonomia: f.autonomia, tipo: f.tipo,
+                profile_id: f.profile_id || undefined, pede_atencao: f.pede_atencao ? true : undefined, ordem: f.ordem,
+                limit: f.limit, cursor: f.cursor },
+        signal,
+      })
+      : apiRequest<ListaDePedidos>('GET', '/pedidos', {
+        query: { estado: f.estado || undefined, autonomia: f.autonomia, tipo: f.tipo, profile_id: f.profile_id || undefined,
+                 pede_atencao: f.pede_atencao, ordem: f.ordem, limit: f.limit, cursor: f.cursor },
+        signal,
+      }),
   detalhe: (id: string, signal?: AbortSignal) => apiRequest<PedidoDetalhe>('GET', `/pedidos/${enc(id)}`, { signal }),
   /** `dry_run: true` calcula e devolve sem gravar; a edição real leva a `confirmacao` que o `dry_run` devolveu. */
   editar: (id: string, corpo: PedidoEdicao) =>

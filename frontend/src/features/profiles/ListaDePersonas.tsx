@@ -151,7 +151,7 @@ export function PersonaCard({ pessoa, onChanged, onOpen, selecionada, onSelecion
   return (
     <Card className={`${styles.cartaoPessoa}${selecionada ? ` ${styles.cartaoSelecionado}` : ''}`}>
       <div className={styles.cartaoTopo}>
-        <Avatar src={profileAvatarUrl(pessoa.id)} name={nome} size={40} />
+        <Avatar src={profileAvatarUrl(pessoa.id, pessoa.has_avatar)} name={nome} size={40} />
         <div className={styles.cartaoIdentidade}>
           <h2 className={styles.cartaoNome}><Truncado texto={nome} /></h2>
           <Truncado texto={handle ? `@${handle}` : 'sem conta de cadastro'} className={styles.cartaoHandle} />
@@ -248,7 +248,7 @@ export function TabelaPersonas({ pessoas, selecionadas, onSelecionar, onOpen, on
                 <td><Checkbox aria-label={`Selecionar ${nome}`} checked={selecionadas.has(p.id)} onChange={() => onSelecionar(p.id)} /></td>
                 <td>
                   <span className={styles.tabelaPessoa}>
-                    <Avatar src={profileAvatarUrl(p.id)} name={nome} size={28} />
+                    <Avatar src={profileAvatarUrl(p.id, p.has_avatar)} name={nome} size={28} />
                     <Truncado texto={nome} />
                   </span>
                 </td>

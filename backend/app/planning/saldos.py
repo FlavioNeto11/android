@@ -33,6 +33,10 @@ CONTAS: dict[str, dict[str, str]] = {
                "key_env": "OPENAI_API_KEY"},
     "gemini": {"label": "Google AI Studio (Gemini)", "console": "https://aistudio.google.com/billing",
                "key_env": "GEMINI_API_KEY"},
+    # Jev (TypeSafe System One, ADR-069): pré-pago, SEM leitura automática (nenhum relatório oficial é consultado e nenhuma
+    # chamada de rede nasce aqui). `console` vazio de propósito: a página de faturamento o dono informa em
+    # `ai.balance_consoles.typesafe`. A conta nasce SEM âncora: o saldo só existe depois que o dono registra a recarga.
+    "typesafe": {"label": "TypeSafe (Jev, System One)", "console": "", "key_env": "TYPESAFE_API_KEY"},
 }
 
 #: Regra de fábrica por conta, enquanto `ai_billing_accounts` não tem a linha dela (decidido em 28/09, com o dono
@@ -45,6 +49,8 @@ PADRAO: dict[str, dict[str, float | int | str | None]] = {
     "anthropic": {"currency": "USD", "units_per_usd": 1.0, "warn_below": 3.0, "block_below": 0.5, "stale_after_h": 72},
     "openai": {"currency": "USD", "units_per_usd": 1.0, "warn_below": 2.0, "block_below": 0.5, "stale_after_h": 72},
     "gemini": {"currency": "BRL", "units_per_usd": 5.2, "warn_below": 10.0, "block_below": 2.5, "stale_after_h": 72},
+    # Sem limites de fábrica: o teto de gasto do Jev é a fatia dele dentro do teto do dia (31.6), não um bloqueio de saldo.
+    "typesafe": {"currency": "USD", "units_per_usd": 1.0, "warn_below": None, "block_below": None, "stale_after_h": 72},
 }
 
 #: De onde veio a âncora do livro-caixa: leitura do console (`manual`/`console`), recarga registrada pelo dono
@@ -64,7 +70,9 @@ INICIO_DO_PROCESSO = now()
 
 _HOSTS = (("openai.com", "openai"), ("googleapis.com", "gemini"), ("anthropic.com", "anthropic"))
 _CHAVES = {"OPENAI_API_KEY": "openai", "GEMINI_API_KEY": "gemini", "GOOGLE_API_KEY": "gemini",
-           "ANTHROPIC_API_KEY": "anthropic"}
+           "ANTHROPIC_API_KEY": "anthropic", "TYPESAFE_API_KEY": "typesafe"}
+#: Nome de provedor em `ai_calls.provider` → conta, quando o nome não é o da conta (o provedor do Jev é `jev`).
+_PROVEDOR_DA_CONTA = {"jev": "typesafe"}
 
 
 #: Janela máxima da conciliação: os relatórios devolvem até 31 dias por página.
@@ -151,6 +159,8 @@ def conta_por_modelo(model: str | None) -> str | None:
         return "openai"
     if m.startswith(("gemini", "imagen")):
         return "gemini"
+    if m.startswith("jev"):
+        return "typesafe"
     return None
 
 
@@ -164,6 +174,8 @@ def conta_do_provedor(cfg: Config, provider: str | None, model: str | None) -> s
         return conta_por_endpoint(prov.kind, prov.base_url, prov.api_key_env)
     if nome in CONTAS:
         return nome            # provedor do `.env` (anthropic) ou o gerador de imagem (`openai`)
+    if nome in _PROVEDOR_DA_CONTA:
+        return _PROVEDOR_DA_CONTA[nome]
     if nome and nome != "local":
         return conta_por_modelo(model)
     return None if nome == "local" else conta_por_modelo(model)
@@ -259,7 +271,8 @@ def estado(db: Database, cfg: Config, *, agora: datetime | None = None, so: str 
     imagem = cfg.file.ai.image.provider          # "openai" | "simulated"
     env = cfg.env
     chaves = {"anthropic": env.anthropic_api_key is not None, "openai": env.openai_api_key is not None,
-              "gemini": env.gemini_api_key is not None}
+              "gemini": env.gemini_api_key is not None,
+              "typesafe": env.typesafe_api_key is not None}      # só a PRESENÇA: o valor nunca é lido aqui
     saida: list[SaldoConta] = []
     for conta, meta in CONTAS.items():
         if so is not None and conta != so:
@@ -276,7 +289,8 @@ def estado(db: Database, cfg: Config, *, agora: datetime | None = None, so: str 
         ancora = db.one("SELECT * FROM ai_balance_snapshots WHERE account=? ORDER BY observed_at DESC, id DESC LIMIT 1",
                         (conta,))
         if ancora is None:
-            s.message = "Sem leitura de saldo registrada."
+            s.message = ("Sem âncora: o dono registra a recarga (ou o saldo do console)." if conta == "typesafe"
+                         else "Sem leitura de saldo registrada.")
             saida.append(s)
             continue
         s.anchor_balance = float(ancora["balance"])
@@ -355,9 +369,10 @@ def registrar_recarga(db: Database, cfg: Config, conta: str, valor: float, *, cu
     if conta not in CONTAS:
         raise ValueError(f"conta desconhecida: {conta}")
     atual = de_uma(db, cfg, conta)
-    if atual is None or atual.estimated_balance is None:
+    if atual is None or (atual.estimated_balance is None and conta != "typesafe"):
         raise LookupError("Registre o saldo atual do console uma vez antes da primeira recarga.")
-    base = 0.0 if atual.state == "exhausted" else max(0.0, atual.estimated_balance)
+    # TypeSafe nasce sem âncora e sem leitura de console: a primeira recarga registrada É a âncora (base 0).
+    base = 0.0 if atual.estimated_balance is None or atual.state == "exhausted" else max(0.0, atual.estimated_balance)
     somado = base + _na_moeda_da_conta(conta, float(valor), currency, atual.currency, atual.units_per_usd)
     registrar_leitura(db, conta, round(somado, 4), source="recarga",
                       note=(note or f"recarga de {_fmt(float(valor), currency or atual.currency)}")[:300])

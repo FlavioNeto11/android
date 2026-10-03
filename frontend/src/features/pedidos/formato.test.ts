@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { makePersona } from '../../test/fixtures';
+import { ApiError } from '../../api/client';
 import { agendaLegivel, comNomesDePersonas, dataCompacta, dataCurta, fusoDoNavegador, fusoParaMostrar, horaEscrita, nomeDaPersonaNoPedido, rotuloDoAlvo } from './formato';
-import { formatUsd } from './modelo';
+import { formatUsd, mensagemDoErro } from './modelo';
 
 describe('formato da tela Pedidos', () => {
   it('dataCurta: dia da semana, dia/mês e hora, na hora do fuso do pedido', () => {
@@ -72,5 +73,14 @@ describe('o alvo da prévia pelo nome (I2)', () => {
 
   it('comNomesDePersonas troca o id citado num aviso do backend pelo nome', () => {
     expect(comNomesDePersonas('mais de um aparelho (ig-2)', ['ig-2'], pessoas)).toBe('mais de um aparelho (Ana Lima)');
+  });
+});
+
+describe('erros dos gatilhos do 28.8', () => {
+  it('explica o código e mantém o campo que o backend apontou', () => {
+    const e = new ApiError(422, 'gatilho_invalido', '`kinds` precisa ser uma lista de 1 a 10 tipos de evento');
+    expect(mensagemDoErro(e)).toBe('Os dados do gatilho não são aceitos. `kinds` precisa ser uma lista de 1 a 10 tipos de evento');
+    expect(mensagemDoErro(new ApiError(422, 'condicao_sem_observacao', 'x'))).toContain('outro gatilho que observe');
+    expect(mensagemDoErro(new ApiError(422, 'gatilho_nao_suportado', 'x'))).not.toContain('28.8');
   });
 });

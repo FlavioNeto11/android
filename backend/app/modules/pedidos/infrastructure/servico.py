@@ -26,9 +26,11 @@ from datetime import datetime
 
 from app.config import PedidosCfg
 from app.db import Database, Row, dumps, loads
+from app.events import EPHEMERAL_KINDS
 from app.models import RunTargetsPreview
 from app.modules.execution.presentation.schemas import RunTargetsResolveBody
 from app.modules.pedidos.domain import avisos as dominio_avisos
+from app.modules.pedidos.domain import gatilhos as dominio_gatilhos
 from app.modules.pedidos.domain import previa
 from app.modules.pedidos.domain.estados import ATOR_PESSOA, PEDIDO_ATORES, TransicaoInvalida, transicionar_pedido
 from app.modules.pedidos.infrastructure.acoes import AcaoInvalida
@@ -153,7 +155,8 @@ class PedidosApi:
         if fuso == corpo.fuso.strip():
             for i, (tipo, spec) in enumerate(corpo.gatilhos):
                 try:
-                    gatilhos.append(previa.normalizar_gatilho(tipo, spec, fuso, i))
+                    gatilhos.append(previa.normalizar_gatilho(tipo, spec, fuso, i,
+                                                                efemeros=EPHEMERAL_KINDS))
                 except previa.ErroDeCorpo as e:
                     bloqueios.append(e.bloqueio)
         sem_destinos = preview.command_sem_destinos if preview is not None else corpo.selecao.command
@@ -267,6 +270,8 @@ class PedidosApi:
         # O gatilho nasceu com o pedido, e o rascunho pode esperar dias: a agenda vale a partir da ativação (senão o
         # laço trataria como atrasado tudo o que passou enquanto era rascunho). `proxima_em` NULL: o laço calcula.
         self.db.execute("UPDATE pedido_gatilhos SET criado_em=? WHERE pedido_id=?", (em, pid))
+        # Gatilho de evento: a linha de base é o log AGORA (28.8, §14.2). O histórico anterior à ativação nunca dispara.
+        self.repo.base_dos_eventos(pid)
 
     def ativar(self, pedido_id: str, confirmacao: str) -> JsonObject:
         p = self._pedido(pedido_id)
@@ -396,6 +401,10 @@ class PedidosApi:
         if gatilhos is not None and len(gatilhos) != 1:
             raise ErroDeApi(422, "limite_invalido", "A edição troca a recorrência por uma só (o laço troca o gatilho "
                             "ativo por um novo).", campo="gatilhos")
+        if gatilhos is not None and gatilhos[0][0] not in dominio_gatilhos.SUPORTADOS:
+            raise ErroDeApi(422, "gatilho_nao_suportado", "A edição troca só os gatilhos agora, horário e recorrência. "
+                            "Evento, condição e persona ficam como foram criados: cancele e crie outro pedido.",
+                            campo="gatilhos[0].tipo")
         antes = self._parametros(p)
         # alvos: re-resolvidos só se a pessoa mandou outros (ou mudou o objetivo)
         novo_objetivo = str(mudancas.get("objetivo", antes.objetivo_sem_destinos))

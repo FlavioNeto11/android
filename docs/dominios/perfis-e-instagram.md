@@ -278,7 +278,9 @@ human" é sinal de conta perdida. O que muda no desafio e em volta dele:
   que sobrevive ao desvínculo: sem confirmação explícita (`confirm_locked_account`), só parar e hibernar; nenhuma outra
   persona se vincula ali (409 `aparelho_em_quarentena`); nada de entrega, escada de reparo nem reinício por irq;
   `/api/health` acusa `locked_account_on_device`. `account_label` passa a ser derivado do marcador ou do vínculo, e
-  antes de mexer num aparelho com Instagram confere-se a tela (K-053).
+  antes de mexer num aparelho com Instagram confere-se a tela (K-053). A quarentena só sai por uma PESSOA: reset do disco
+  ou `POST /api/instances/{id}/locked-account/resolve` com nota (29.24, ADR-068 item 10; só banco). Conta já retirada (29.23)
+  aparece como `[conta removida]` no rótulo, no marcador e nos avisos ("conta retirada (bloqueada)"); conta viva, com o @.
 - **Uma conta por alvo.** Seguir, DM e comentário: no máximo uma conta por pessoa numa janela de 30 dias, com o
   excedente recusado; curtida e comentário ganham o alvo (`post_author`, herdado de OPEN_POST); um pedido igual a várias
   contas na mesma execução segue numa conta só, com aprovação. Quando uma conta cai, o disjuntor pausa as que agiram

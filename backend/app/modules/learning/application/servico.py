@@ -18,7 +18,7 @@ from functools import partial
 from app.modules.learning.application.espera import AvisadorDeEspera
 from app.modules.learning.application.obsolescencia import ContextoDeObsolescencia, LeitorDeObsolescencia
 from app.modules.learning.application.ports import (Ajustes, CatalogoDeRisco, FontesDoLivro, Minerador, MudancaNativa,
-                                                    NovoSinal, PassoDeCuradoria, PortaDeEventos,
+                                                    LacoPeriodico, NovoSinal, PassoDeCuradoria, PortaDeEventos,
                                                     RepositorioDeAprendizado, TitulosDoCatalogo, TriagemDeTexto)
 from app.modules.learning.domain import relacoes as rel
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, EntradaInvalida, NaoEncontrado,
@@ -27,6 +27,7 @@ from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, EntradaInval
                                                motivo_do_veto)
 from app.modules.learning.domain.conteudo import capability_unica, licao_legivel, nome_da_capability, tela_legivel
 from app.modules.learning.domain.efeito import exposicao_json
+from app.modules.learning.domain.espera import Faixa
 from app.modules.learning.domain.livro import (EntradaDoLivro, ItemDeAprendizado, NovoItem, Transicao, a_revisar,
                                                contagem, entrada_do_item, estado_nativo, para_aprovar, status_nativo)
 from app.modules.learning.domain.modo_por_app import modo_efetivo
@@ -136,6 +137,7 @@ class LearningService:
         self._mineradores: list[Minerador] = list(mineradores)
         self._passos: list[PassoDeCuradoria] = list(passos)
         self._extensoes: list[object] = []
+        self._lacos: list[LacoPeriodico] = []
         self._espera = AvisadorDeEspera(eventos, catalogo_de_risco, relogio)
         self._titulos = titulos
 
@@ -148,6 +150,14 @@ class LearningService:
 
     def registrar_passo(self, passo: PassoDeCuradoria) -> None:
         self._passos.append(passo)
+
+    def registrar_laco(self, laco: LacoPeriodico) -> None:
+        """Um laço à parte da curadoria (o curador por IA, 30.11), que o `AppState` sobe sob a trava de líder."""
+        self._lacos.append(laco)
+
+    @property
+    def lacos(self) -> tuple[LacoPeriodico, ...]:
+        return tuple(self._lacos)
 
     def anexar(self, extensao: object) -> None:
         """O serviço de um pacote seguinte (A3–A9), pendurado aqui pela composição: a apresentação o acha pelo tipo
@@ -361,6 +371,21 @@ class LearningService:
     def pendentes(self) -> tuple[EntradaDoLivro, ...]:
         """"Para aprovar": a fila do D1 (e a contagem da barra do topo)."""
         return tuple(e for e in self._todas(None) if para_aprovar(e))
+
+    def publicados(self) -> tuple[tuple[EntradaDoLivro, Saude | None], ...]:
+        """Os publicados com a saúde de cada um (a mesma da lista e do detalhe): os gatilhos `degradando` e
+        `obsoleto_provavel` do curador (30.11)."""
+        livro = self.livro(state=SkillState.PUBLISHED)
+        return tuple((e, livro.saudes.get(e.trail_ref)) for e in livro.itens)
+
+    def contradicoes(self, e: EntradaDoLivro) -> bool:
+        """O item tem contradição derivada (30.7, relação `contradiz`): o gatilho `conflito` do curador."""
+        return any(r.get("tipo") == rel.TipoDeRelacao.CONTRADIZ.value
+                   for r in self._relacoes(e, self._conteudo(e.kind, e.ref)))
+
+    def avisar_parecer(self, e: EntradaDoLivro, faixa: Faixa) -> bool:
+        """Um parecer B/C novo e válido ficou disponível para o dono (§8.11, `parecer_da_ia`)."""
+        return self._espera.parecer_disponivel(e, faixa)
 
     def revisar(self) -> tuple[EntradaDoLivro, ...]:
         """"Revisar": o legado ativo com efeito anterior ao D1, que nenhuma pessoa decidiu pelo livro ainda."""

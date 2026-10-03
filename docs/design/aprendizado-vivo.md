@@ -412,6 +412,15 @@ Números de hoje (`real`, central, 02/10): `G_7d = US$ 9,56`, `N_7d = 71`, `c̄ 
 
 Aviso a 80% de `B_W`, como os tetos de IA atuais.
 
+**Nota de implementação (30.11, 02/10).** Decisões que o texto acima não fixava (detalhe em `dominios/aprendizado.md`):
+- A classe A vai SEMPRE por último (prioridade 5), mesmo publicada e contestada: a prioridade 1 é de item B ou C (`so_com_sobra`).
+- O corte por orçamento não vira linha de `learning_reviews` (gastaria a chave (item, dossiê) e a sobra não voltaria na próxima janela);
+  só `recusada:custo`, `recusada:triagem` e `invalida:*` viram linha e não se repetem até o dossiê mudar.
+- O teto da hora (`B_W/W/2`) é conferido sobre o JÁ gasto antes de cada revisão: com `N_W` pequeno ele fica abaixo de uma revisão e
+  a leitura "mais esta cabe" nunca deixaria a primeira passar.
+- Pico: só com histórico (média > 0) e com pelo menos 5 elegíveis no dia (piso de amostra, a confirmar com o dono); o alerta é log.
+- Sem `usd` medido (a 069 é `NOT NULL DEFAULT 0`), `C_W` usa a estimativa recalculada do dossiê gravado; só `usd > 0` é medida.
+
 ### 8.8 Modos e abstração de provedor
 
 `aprendizado.curador.modo`: `off` (padrão de fábrica) | `shadow` (revisa e grava; o parecer não aparece na fila; mede a concordância

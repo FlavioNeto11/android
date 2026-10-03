@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — Emenda do ADR-069: a chave TypeSafe não é trocada (decisão do dono, item 9)
+
+- O dono mantém a chave atual (como no ADR-017 com a Anthropic): cai a condição do item 7 e da D-J3. A prova real em sombra
+  (31.10/31.11) depende só dos tetos (`fatia_jev` de US$ 0,50/dia e o teto total registrado) e segue a ordem combinada: suíte 5,
+  merges, deploy 3, envio liberado por classe (C0 a C2 primeiro; C3 só com o 31.9 mergeado) e a sombra real numa janela sem
+  suíte. Ninguém lê nem imprime a chave; `JEV_RUNTIME_SEND_APPROVED` continua `False` até o 31.10.
+- Textos que citavam a troca como condição: `decisao_fechada/privacidade.py`, `porta.py`, `docs/ia.md`, `docs/plano-100.md`
+  e `docs/design/jev-golden-set.md`. Sem mudança de comportamento.
+
 ## 2026-10-03 — Aprendizado: "Como mudar o modo deste app" legível (30.20, branch fix/30-20-como-mudar)
 
 - O passo a passo diz o arquivo (`config/config.yaml`), mostra o trecho do bloco `aprendizado:` com o modo que vale hoje,
@@ -37,6 +46,45 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `tests/test_learning_modo_por_app.py`, `test_learning_apps.py`; `AplicativosTab.test.tsx`.
   Navegador: preview com cópia do banco do central e overrides só no config do ensaio.
 
+## 2026-10-02 — 29.26: texto livre fora da query string e persona sem foto sem requisição (branch feat/29-26-texto-fora-da-query)
+
+- **Privacidade (varredura da classe, adendo v0.66):** `GET /api/runs/distribution?command=` virou `POST /api/runs/distribution`
+  (corpo `{count, app_id?, command?}`; o GET responde 405 `metodo_removido`). A varredura de todas as rotas `GET`/`DELETE` com parâmetro de query achou mais
+  duas com texto livre: `GET /instagram/profiles/{id}/context` (`content` é a mensagem recebida; virou `POST` com `{counterparty?, thread_key?, content?}`) e a busca `q`
+  de `GET /api/pedidos` (procura no título e no objetivo; virou `POST /api/pedidos/busca`, e `GET` com `q` na URL responde 422 `busca_no_corpo`). Ficaram na URL, por serem
+  id, status, enum, paginação ou nome curto de app/capability/handle: `/diagnostics`, `/ai/balances`, `/apps-overview`, `/apps/{id}/overview`, `/training`, `/desempenho`,
+  `/usage`, `/capabilities`, `/releases`, `/store`, `/app-state`, `/approvals`, `/commands`, `/runs`, `/runs/{id}/events`, `/instances/{id}/frame`, `/instagram/profiles/{id}/{memory,interactions,
+  policy,runs,auth-attempts,operational-context}`, `/instagram/policy-groups`, `/personas/{id}/devices/{iid}` (DELETE `app_id`), `/falhas`, `/aprendizado/sinais`, `/licoes/previa`, `/export`,
+  `/voz/previa`, `/preferencias/sugestoes`, `/skills`, `/teaching-sessions`, as listas de `/pedidos/*` (sem `q`) e `/avisos`. Quebra só para o painel do mesmo commit (`api.previewDistribution`, `apiPedidos.listar`).
+- **Avatar:** persona sem foto fazia `GET /instagram/profiles/{id}/avatar` e recebia 404 (cinco erros no console). `has_avatar` entrou no `PersonaDTO`, no `PersonaOnDeviceDTO` e em `profiles[]`
+  do contexto operacional (só adição); `profileAvatarUrl(id, temFoto)` devolve `undefined` sem foto e o `Avatar` mostra as iniciais, sem `<img>`.
+- Prova `simulated`: `test_distribuicao_pelo_comando.py`, `test_limites_por_servidor.py`, `test_social_memory.py`, `test_pedidos_api.py`, `test_persona_imagens.py`, `test_personas_aparelhos_api.py`,
+  `Avatar.test.tsx`, `ProfilesPage.test.tsx`, `CommandPanel.test.tsx`, `PedidosPage.test.tsx`, `app.integration.test.tsx`. Real: `not_run` (o console sem 404 de `/avatar` precisa ser visto no Chrome).
+
+## 2026-10-02 — 29.25: persona sem @ no grupo de acesso, cabeçalho do cartão no celular e `flows/match` em POST (branch feat/29-25-ux-personas)
+
+- **B3:** o grupo de acesso mostra a persona cuja conta saiu (29.23) como "Beatriz Rocha · sem conta" (discreto, tracejado), e não como um chip "@" vazio; o
+  `aria-label` e as opções do diálogo seguem a mesma regra (`rotuloDaConta`, em `pessoa.ts`). `members[]` do grupo ganha `name` no backend (só adição).
+- **I6:** em tela estreita (≤720 px) o `CardHeader` (`components/ui.module.css`, a mesma regra do 28.12; serve a `PageSection` e a toda guia) reserva ao texto no mínimo 12rem; a ação fica no canto quando cabe e desce para a linha de baixo, à direita, quando não cabe;
+  antes o texto ficava com ~1/3 da linha ao lado de "Adicionar conta" e o título quebrava no meio da palavra. Título com `overflow-wrap: normal`.
+- **Privacidade:** `GET /api/flows/match?command=` virou `POST /api/flows/match` com corpo `{command}` (máx. 4000): o rascunho, às vezes com e-mail, não vai mais
+  para a query string nem para o log de acesso. Quebra só para o painel do mesmo commit (adendo v0.65). Pendente: `GET /api/runs/distribution?command=` tem o mesmo vazamento.
+- **Editor do grupo:** o membro sem conta some da listagem de perfis (29.23), e o diálogo contava 2 mas mostrava 1, sem como tirá-lo do grupo;
+  agora ele aparece como "Nome · sem conta" e pode ser desmarcado (achado na validação no navegador).
+- Prova `simulated`: `test_intencao_chamadores.py` (+1: GET 405, corpo validado), `test_grupos_de_acesso.py` (+1), `ProfilesPage.test.tsx` (+2);
+  painel 1243/1243. Validado no navegador contra backend simulado do worktree (8766, IA simulada; a 8000 não foi tocada): chip e editor do grupo,
+  cabeçalho a 375 e 1280 px, `POST /api/flows/match` sem query string; capturas em `data/ux-validacao/2026-10-02-29-25/` (fora do Git). Real: `not_run`.
+
+## 2026-10-02 — 29.24: rota para resolver a quarentena e aviso sem o @ de conta retirada (branch feat/29-24-resolver-quarentena)
+
+- `POST /api/instances/{id}/locked-account/resolve` (corpo `{nota}` obrigatória; 404 `no_locked_account` sem marcador aberto): só banco, resolve o
+  marcador de quarentena, sincroniza o rótulo e emite `device.locked_account` "resolvido". Nunca automática. Adendo v0.61 em `api-contract.md`.
+- O @ de conta retirada (29.23) sai do produto vivo: `SocialRepository.mascarar_contas_retiradas()` (na retirada e na subida, sem migração) troca
+  por `[conta removida]` o `handle` dos marcadores abertos e o rótulo derivado do aparelho; os avisos (frase da quarentena, recusa, start confirmado,
+  anúncio e saída do evento, problem do `/health`) dizem "conta retirada (bloqueada)". Conta viva continua com o @; evento antigo fica (ADR-068, item 10).
+- Núcleo tocado: `api.py`, `state.py` (texto da quarentena e do health), `commands/despacho.py`, `social/` (`contas_nossas`, `repository`, `service`), `models.py` (re-exporta o corpo).
+  Prova `simulated`: `test_resolver_quarentena.py` (8), `test_conta_bloqueada_sai.py` (asserção do marcador agora `[conta removida]`). Real: `not_run`.
+
 ## 2026-10-02 — Aprendizado: textos da validação no Chrome do deploy 2 (branch fix/aprendizado-textos-deploy2)
 
 - **Mesmo fato, mesmo rótulo.** O fluxo publicado e nunca usado há `sem_uso_dias` sai `sem_evidencia`/`nunca_usado`, como a
@@ -52,6 +100,28 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   inteiro no `title` (`resumirTitulo`).
 - Prova `simulated`: `tests/test_learning_capability_na_linha.py`, `test_learning_obsolescencia.py`,
   `test_learning_rotas_falhas.py`; `SaudeDoApp.test.tsx`, `DetalheRico.test.tsx`. Navegador: preview com cópia do banco do central.
+
+## 2026-10-02 — Gatilhos de evento, condição e persona nos pedidos (28.8, branch feat/28-8-gatilhos-evento)
+
+- `PedidoCorpo` aceita `evento`, `condicao` e `persona` (adendo v0.67 do contrato; antes, `gatilho_nao_suportado`). Os
+  códigos novos são `gatilho_invalido` e `condicao_sem_observacao`, e a persona com `intervalo_min_s` abaixo do piso dá
+  `frequencia_abaixo_do_piso`.
+- **Evento:** cursor `ev:<events.id>`, com a linha de base na ativação e na retomada `daqui`.
+  - Lê só eventos com mais de 5 s (ordem de COMMIT no PostgreSQL) e respeita o piso da autonomia.
+  - Ignora `pedido.*` e as execuções do próprio pedido.
+  - Faz uma ocorrência por volta, sem texto do evento.
+  - Buraco da retenção: registra (memória `pendencia`) e não dispara.
+- **Persona:** a primeira visita é na ativação. A seguinte vem quando a anterior fecha, depois da saída
+  `proxima_visita_s` presa a [mínimo, máximo], ou do máximo.
+- **Condição:** avaliada por borda sobre as observações; grava a memória `descoberta` e não cria ocorrência.
+- Passado `fim_em`, evento e persona encerram o pedido.
+- Migração `076_pedido_avisos_gatilhos`: o CHECK de `pedido_avisos.tipo` ganha `eventos_perdidos` e `condicao_atendida`.
+  No SQLite a tabela é reconstruída (molde da 047, sem perder aviso); no PostgreSQL, DROP/ADD da constraint. O buraco e
+  a condição atendida viram aviso gravado.
+- **Prova `simulated`:** `backend/tests/test_pedidos_gatilhos_dinamicos.py` (23 testes) e os de pedidos e arquitetura; no painel, as mensagens de `gatilho_invalido` e
+  `condicao_sem_observacao`. PostgreSQL: `not_run`.
+  No navegador, a lista, o filtro "Quando acontecer" e as ocorrências "Por evento" e "Por persona" foram conferidos a
+  1366 e 375 px contra o backend simulado. `real`: `not_run`.
 
 ## 2026-10-02 — 8.3: tentativa real de responder comentário (roteiro final), `not_run` sem gesto público
 
@@ -95,6 +165,50 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `costs.spent_usd` e `spent_today_usd` ganham o filtro `origem=`.
 - `AIError.motivo` fechado (`saldo | dia | fatia_curador | fatia_jev | execucao | pedido`), só com `kind="budget"`; `_budget` e o orçamento do pedido (28.6) passam a informar o motivo, sem mudar mensagem nem ordem. Fatias dentro do teto do dia, por origem: `ai.limits.curador_max_usd_per_day` (padrão 0,10 × teto do dia) e `ai.limits.jev_max_usd_per_day` (padrão US$ 0,50, D-J3 a confirmar). O saldo da conta (ADR-051) não muda nesta etapa.
 - Prova `simulated`: `backend/tests/test_origem_e_rubrica_de_ia.py` (13). Real: `not_run`.
+
+## 2026-10-02 — Triagem do curador do Livro em sombra no Jev (31.8, branch feat/31-8-curador-sombra)
+
+- `planning/decisao_fechada/curador.py`: `CuradorComTriagemEmSombra` devolve o parecer do curador principal intacto e manda
+  o item à porta em `shadow` (`choice` manter/revisar/rebaixar/descartar/nenhuma); `CAMPOS_POR_ORIGEM["curador"]` com os
+  campos C0 (metadados e contagens), só lição e receita (F1).
+- A decisão real casada é o parecer do curador (concordância, não acerto); sem GO até os limiares do 31.7.
+- Prova `simulated`: `backend/tests/test_decisao_fechada_curador.py`. Envio ao Jev continua fechado no código; real `not_run`.
+
+## 2026-10-02 — Sombra da intenção no Jev: R2 e R3 fora da cadeia, com C3 por lista de permissão (31.9, branch feat/31-9-intencao-sombra)
+
+- `planning/decisao_fechada/entidades.py`: `remover_entidades(texto, *, vocabulario=()) -> str | None`, função pura por LISTA DE
+  PERMISSÃO: só sai palavra do vocabulário comum de comandos ou do catálogo do dono; o resto vira `[termo]` (em qualquer caixa), todo
+  número vira `[numero]`, e endereço, e-mail ofuscado, algarismos por extenso ou excesso de palavras desconhecidas devolvem `None`
+  (o pedido não sai, `fallback_reason='privacidade'`). Correção da revisão independente: a versão por detector deixava passar nome em
+  minúsculas, nome no começo de frase e os destinos que o TargetExtractor não pega.
+- `planning/decisao_fechada/intencao.py` e `taskqueue/sombra_intencao.py`: consumidor de sombra da origem `intencao` (C3, sempre
+  `shadow`) com R2 (`choice` sobre o catálogo inteiro, ids opacos, até 254 + `nenhuma`) e R3 (`choice` entre os empatados), numa
+  chamada. C7 em prosa (senha, código, 2FA, captcha…) marca `credencial` e a porta recusa o pedido inteiro. Desligado (inclusive com
+  `JEV_RUNTIME_SEND_APPROVED=False`) não lê, não resolve e não grava nada. Só a R2 tem decisão real; a R3 e o `casar_desfecho`
+  ficam para o 31.10. `CAMPOS_POR_ORIGEM["intencao"]` registra `comando` e `app`.
+- `planning/decisao_fechada/porta.py`: `consultar(pedido, *, ao_registrar=None)`, chamado depois de o observador gravar (o casamento
+  da decisão real sem polling).
+- Enxerto mínimo em `taskqueue/service.py` (um `add_done_callback` em `_spawn_planning`; só plano bem-sucedido: cancelado, com
+  exceção ou recusado não vira sombra; a leitura da execução vai para a thread) e fiação em `state.py` (o `stop()` espera as sombras
+  antes de fechar o banco). `intent_ports.py` e `intent_resolver.py` não mudam.
+- Suíte 5: a lista de permissão fixa não tem mais nome de app (`instagram`, `outlook`, `chrome`…). A catraca do ADR-052
+  (`test_apps_fora_do_nucleo.py`) recusa texto de app no código; o nome do app sai pelo id do app e pelo catálogo
+  (`vocabulario_de`), e sem eles vira `[termo]`. A mudança só restringe: custa utilidade, nunca privacidade.
+- Prova: `simulated` (`backend/tests/test_decisao_fechada_intencao.py`, `DecisorFalso`, com os vazamentos medidos pela revisão como
+  testes negativos). `JEV_RUNTIME_SEND_APPROVED` continua `False`; chamada real ao Jev: `not_run`.
+
+## 2026-10-02 — Sombra da porta `DecisaoFechada`: registro, preço, livro-caixa e transparência (31.5, branch feat/31-5-sombra-registro)
+
+- Migração 074 (`decisao_fechada_sombra` e `decisao_fechada_diario`): uma linha por pergunta respondida ou por fallback, só ids opacos e
+  categorias (nunca o estado enviado nem o texto das opções); agregado diário durável (concordância, acima do limiar, aceite errado,
+  fallbacks à parte, US$, p95); retenção própria `ai.decisao_fechada.retencao_dias` (180) com agregação antes de purgar, no padrão da 055.
+- `planning/decisao_fechada/sombra.py`: `RepositorioDeSombra`, `observador_de_sombra` (ligado à porta em `AppState`) e
+  `casar_decisao_real`/`casar_desfecho` por `ref` ou `step_id` para o 31.8 e o 31.9.
+- `ai.prices` ganha `jev-1.13.0` (US$ 0,042/M de entrada, saída 0); `costs` já soma o `usd` declarado. A conta `typesafe` entra em
+  `/api/ai/balances` sem âncora, sem leitura nem rede.
+- `GET /api/ai`: com o Jev em `shadow` ou `on`, o `notice` nomeia a TypeSafe e as classes que podem sair e o bloco `decisao_fechada` lista o
+  Jev; a chave aparece só como configurada ou não. Envio continua FECHADO (`JEV_RUNTIME_SEND_APPROVED = False`).
+- Prova `simulated`: `backend/tests/test_decisao_fechada_sombra.py` (DecisorFalso, relógio falso). Chamada real à TypeSafe: `not_run`.
 
 ## 2026-10-02 — Porta `DecisaoFechada` no hub e trava de 255 opções no Jev (31.1 e 31.4, branch feat/31-4-decisao-fechada)
 
@@ -151,6 +265,24 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - 28.6, acréscimos: a ocorrência adiada por saldo além da janela vira `perdida` com o motivo do saldo (antes ficava `devida` para sempre); o limite conhecido do orçamento (excesso máximo = o custo de UMA ocorrência aberta, limitado pelo teto da execução) está escrito em `docs/design/pedidos-laco.md` §11 e no Adendo v0.45 de `docs/api-contract.md` e fixado em teste.
 - Prova `simulated`: `backend/tests/test_pedidos_tentativas.py`, `test_pedidos_retentativa.py`, `test_pedidos_orcamento.py`; `real` e PostgreSQL `not_run`. Detalhe em `docs/design/pedidos-laco.md` §13.
 
+## 2026-10-02 — Aprendizado: a revisão do curador ligada à chamada medida (migração 075, branch feat/075-revisoes-ai-call-id)
+
+- `learning_reviews.ai_call_id` (075, nulável, sem FK): a revisão grava a linha de `ai_calls` que o hub mediu (30.12). O `usd` medido NÃO é gravado ainda (pendência da rubrica no `hub-de-ia-fora-de-execucao.md`); `usd = 0` segue = não medido, e o orçamento segue estimando pelo tamanho do dossiê.
+- `RespostaDeRevisao.simulado` (opcional): o simulado da RESPOSTA vale sobre o do adaptador; parecer simulado nunca avisa o dono. Seguro também com revisões concorrentes.
+- Em cima do 30.12 (feat/30-12-curador-hub, que está sobre o 30.11): merge na ordem 30.11 → 30.12 → 075, na suíte combinada. Prova `simulated`: `test_migracao_075_revisoes_ai_call_id.py`, `test_learning_curador.py` (dois testes novos), `test_migracao_069_revisoes.py`.
+
+## 2026-10-02 — Curador do Livro pelo hub de IA (30.12, branch feat/30-12-curador-hub)
+
+- `AIRouter.review_knowledge(PedidoDeParecer)`: papel `plan` emprestado, sem execução, `origem = curador` e `ref = dossie_hash`
+  em `ai_calls`; a fatia do curador (31.6) corta ali com `AIError(kind="budget", motivo="fatia_curador")`.
+- Template e esquema do hub em `planning/curador.py` (`VERSAO_DO_TEMPLATE = curador-v1`): os enums da resposta saem das opções
+  fechadas do aprendizado; o hub só garante o objeto JSON, e quem valida o parecer é `validar_saida`. Anthropic e
+  OpenAI-compatível respondem pelo modelo do `plan`; o simulado, por regra fixa.
+- `modules/learning/infrastructure/curador_do_hub.py::CuradorDoHub`, ligado pelo `AppState` no lugar do simulado: ponte de thread
+  para o laço do processo, `AIError` → `RecusaDoProvedor(kind)`, `usd` e `ai_call_id` MEDIDOS na linha de `ai_calls`. O modo do
+  curador continua `off` de fábrica.
+- Prova `simulated`: `backend/tests/test_curador_do_hub.py` (14). Chamada real: `not_run`.
+
 ## 2026-10-02 — Conta bloqueada sai na hora e a persona fica (29.23, ADR-068, branch feat/29-23-conta-bloqueada-sai)
 
 - Bloqueio confirmado retira a conta numa transação: credencial da conta, a legada e o ciphertext do cofre, sessões, vínculo de aparelho e a linha da conta (inclusive a âncora); a persona volta a `active`, sem @. `POST /api/instagram/profiles/{id}/accounts/{conta}/retire`; gatilho em `marcar_conta_travada`; o disjuntor de conta (ADR-055) é acionado direto.
@@ -166,7 +298,6 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (`domain/versao.py::versao_canonica`) e a tela e a lição, que gravam só o nome, comparam pelo nome (`nome_da_versao`).
   Depois: 4 `obsoleto_provavel` (fluxos nunca casados). Achado no aceite visual com backend simulado sobre uma cópia do banco.
   Prova `simulated` (`tests/test_learning_versao.py`, 3 casos novos com os formatos medidos); `not_run` no central. K-076.
-
 ## 2026-10-02 — `learning.needs_person` no aviso fora do painel (28.14, branch feat/28-14-needs-person-aviso)
 
 - O aviso externo do 28.11 (Telegram) assina o evento do Livro (30.21), conforme o combinado com a frente Aprendizado em 02/10:
@@ -194,6 +325,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `api-contract` adendo v0.56 (`diagnostico`, `alvo`/`causa`/`parent_id` nas propostas). `tests/test_learning_diagnostico.py` (45, `simulated`); em
   `test_learning_backlog.py` uma contagem passou a filtrar `category='falha'` (a curadoria agora também grava propostas do diagnóstico).
 
+## 2026-10-02 — Aprendizado: curador por IA, aplicação com adaptador simulado (30.11, branch feat/30-11-curador-aplicacao)
+
+- Porta `CuradorDeIA` (`PedidoDeRevisao`/`RespostaDeRevisao`, combinados com a frente Jev) e adaptador SIMULADO determinístico; laço
+  próprio `aprendizado.curador.intervalo_s` sob a trava de líder `curadoria`, separado do `PassoDeCuradoria`; modos `off` (padrão) /
+  `shadow` / `on` (= `shadow` nesta fatia). Gatilhos, filtros (hash, cooldown, orçamento, prioridade) e o orçamento proporcional
+  aprovado (`B_W = min(α·G_W, k·N_W·c̄)`, α 0,10, k 1,5, W 7 dias, `c_max = 4 × mediana`) em `domain/orcamento_do_curador.py`; corte
+  com motivo próprio `orcamento_da_janela`. Revisões em `learning_reviews` (069) com `usd = 0` = não medido (o custo é do 30.12);
+  `learning.needs_person` com `motivo: parecer_da_ia` (`api-contract.md`, adendo v0.57). A IA nunca decide.
+- Config `aprendizado.curador` (núcleo: `config.py`, `CuradorCfg`) e uma linha em `state.py`. Sem migração, sem IA paga. Prova
+  `simulated` (`tests/test_learning_curador.py`); `not_run` no central.
+
 ## 2026-10-02 — 29.22: tráfego verificado não atravessa boot novo (branch fix/29-22-boot-invalida-verificacao)
 
 - `backend/app/devices/rede.py`: `inicio_do_boot` e `boot_depois_da_medicao`; `verificacao_invalida` ganha o motivo `boot`. O
@@ -206,8 +348,6 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Decisão: wake quente também invalida (uma medição a mais por acordar); a linha não regride de estado, a porta é que não aceita.
 - Prova `simulated`: `tests/test_rede_portao.py::test_verificacao_nao_atravessa_um_boot_novo` e `::test_boot_sem_processo_local_usa_a_entrada_no_ar_e_politica_livre_nao_tem_efeito`; `tests/test_hierarquia_sessao_morta.py` (marco do worker). Real: `not_run` (parar e ligar a frio um aparelho `exigida`).
 - Docs: `docs/dominios/parque.md`, `docs/plano-100.md` (item novo 29.22), `docs/conhecimento/aprendizados.md` (K-073).
-
-
 
 ## 2026-10-02 — Tentativas, efeito e pausa dos pedidos (28.5, branch feat/28-5-tentativas-efeito)
 
@@ -699,7 +839,6 @@ Módulo puro `backend/app/modules/pedidos/domain/recorrencia.py`: parser do subc
   carência e `stop.ps1 -Simular`. `scripts/tests` inteiro deu 173/173 mais 1 pulado, em Python 3.13. `not_run`: o
   teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
 
-
 ## 2026-09-28 — `stop.ps1` encerra o Appium órfão deste projeto (K-039) (branch `claude/zen-ptolemy-achwl2`)
 
 - **Operação.** Três deploys seguidos (27 e 28/09) subiram `degraded`, com `appium_log_masking_off` ou
@@ -712,7 +851,6 @@ Módulo puro `backend/app/modules/pedidos/domain/recorrencia.py`: parser do subc
   node 22). Cobre a seleção, a leitura do config, um `node` de verdade encerrado com o de outra árvore poupado, a
   carência e `stop.ps1 -Simular`. `scripts/tests` inteiro deu 173/173 mais 1 pulado, em Python 3.13. `not_run`: o
   teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
-
 
 ## 2026-10-02 — Testes: sondas do `_wait_boot` (T.2, J10)
 
@@ -1481,6 +1619,7 @@ ADR-040, 041, 042 e 045. **A produção segue em `524471d` e não pode dar `git 
 - **Suíte:** a primeira rodada do merge final ficou 5 h parada em
   `test_worker_agent.py::test_inscricao_grava_a_credencial_e_a_reconexao_usa_ela`. Não reproduziu isolado nem na
   repetição. O fechamento do teste ganhou prazo: se voltar, reprova em 10 s dizendo onde.
+
 ## 2026-09-27 — auditoria de usabilidade do painel (documentação; nada de código)
 
 Pedido do dono (27/09): conferir usabilidade, layout e otimização do painel antes de encerrar a evolução arquitetural.
@@ -1822,7 +1961,6 @@ contêiner de teste da porta 55433 não estava no ar, e subir o Docker mexe no W
   sempre limpa; pedido de proxy trocado enquanto o anterior era aplicado volta a `pending` em vez de ficar perdido
   sob um `applied` do pedido velho.
 
-
 ## 2026-09-26 — a automação entra com a credencial que a pessoa fornece (implantado: `3da3bb5` em 26/09 ~18:55 UTC, conferido em `/api/health`)
 
 Branch `claude/credenciais-na-automacao`. Decisão do dono (ADR-025). Prova `simulated`
@@ -1861,7 +1999,6 @@ Branch `claude/prontidao-por-subsistema`. Prova `simulated` (`backend/tests/test
   com teto antes de devolver. Erro rápido depois da prontidão exige rodada nova (`AdbError` pode ser `device
   offline`); erro benigno segue sem bloquear. Limitação conhecida: efeito tardio de um timeout no mesmo guest
   (`input tap` do diálogo, `cmd alarm set-time`) não é isolado entre tentativas — tarefa separada.
-
 
 ## 2026-09-26 — identidade do backend em /api/health (implantado com `5b81c1a`)
 

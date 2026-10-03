@@ -375,6 +375,7 @@ async def test_rotas_de_imagem_e_o_avatar_da_pessoa(tmp_path: Path) -> None:
             assert avatar.status_code == 200 and avatar.content == bytes_img.content
             pessoa = (await c.get(f"/api/personas/{pid}")).json()
             assert pessoa["primary_image_id"] == img["id"] and [i["id"] for i in pessoa["images"]] == [img["id"]]
+            assert pessoa["has_avatar"] is True          # 29.26: com foto principal pronta, o painel pede a imagem
             # Mais duas a pedido: 202, e a numeração continua.
             pedido = await c.post(f"/api/personas/{pid}/images", json={"count": 2})
             assert pedido.status_code == 202 and pedido.json() == {"accepted": True, "persona_id": pid, "count": 2,
@@ -410,6 +411,8 @@ async def test_avatar_legado_e_importado_na_partida_e_servido_sem_imagem_gerada(
             estado = app.state.poc
             pid = (await c.post("/api/personas", json={"name": "Bruno Ferreira"})).json()["id"]
             assert (await c.get(f"/api/instagram/profiles/{pid}/avatar")).status_code == 404
+            # 29.26: sem foto, o DTO diz `has_avatar: false` e o painel nem faz a requisição que daria 404.
+            assert (await c.get(f"/api/personas/{pid}")).json()["has_avatar"] is False
             (Path(cfg.data_dir) / "avatars").mkdir(parents=True, exist_ok=True)
             (Path(cfg.data_dir) / "avatars" / f"{pid}.jpg").write_bytes(_png(360, 360))
             assert (await c.get(f"/api/instagram/profiles/{pid}/avatar")).status_code == 200   # o jpg legado responde
@@ -418,6 +421,7 @@ async def test_avatar_legado_e_importado_na_partida_e_servido_sem_imagem_gerada(
             lista = (await c.get(f"/api/personas/{pid}/images")).json()
             assert len(lista) == 1 and lista[0]["source"] == "imported_legacy" and lista[0]["is_primary"]
             assert (await c.get(lista[0]["url"])).content == _png(360, 360)
+            assert (await c.get(f"/api/personas/{pid}")).json()["has_avatar"] is True
             assert identidade_para_foto((await c.get(f"/api/personas/{pid}")).json() and estado.social.get_persona(pid)).initials == "BF"
 
 
