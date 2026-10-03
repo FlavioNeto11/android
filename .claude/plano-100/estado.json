@@ -5972,6 +5972,18 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T09:06:05+00:00"
+  },
+  "30.8": {
+   "id": "30.8",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #146 (feat/30-8-metricas @ 159244ab) na main pelo merge dd2c7fad (regra de módulo). GET /api/aprendizado/metricas?app=&dias= (um bloco por linha do §10: composição, aprovações sistema/pessoa, curador, refutados, sucesso depois de promovido, churn, tempos com n, saúde, economia do aproveitamento, proxy de falhas rotulado, orçamento do curador B_W/C_W/uso/aviso 80 %) e GET /api/aprendizado/revisoes (paginada, sem dossiê); adendo v0.89; curador.py: janela_do_orcamento compartilhada. tests/test_learning_metricas.py (11); bateria afetada 1153 passed; arquitetura/curador/pareceres/apps 100 passed. Ensaio só leitura numa cópia do banco do central (03/10 ~09:30Z): 142 ms global, ~55 ms por app; B_W 1,76 × C_W 0,29; proxy em 38 etapas; pegou 2 defeitos corrigidos antes do PR. Real: not_run (chega ao central com o deploy 9).",
+   "grupo": "aprendizado-30-8",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T09:32:50+00:00"
   }
  },
  "rodadas": [
@@ -7270,6 +7282,15 @@
    ],
    "grupos": [
     "aprendizado-suite-8"
+   ]
+  },
+  {
+   "quando": "2026-10-03T09:32:50+00:00",
+   "itens": [
+    "30.8"
+   ],
+   "grupos": [
+    "aprendizado-30-8"
    ]
   }
  ]
