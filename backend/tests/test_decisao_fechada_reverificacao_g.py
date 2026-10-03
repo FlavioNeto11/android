@@ -18,8 +18,11 @@ from __future__ import annotations
 
 import pytest
 
+from app.modules.applications.infrastructure.registry import nomes_e_apelidos
 from app.modules.execution.application.target_extractor import CatalogoDeDestinos, PersonaNomeavel, TargetExtractor
-from app.planning.decisao_fechada.entidades import remover_entidades_com_motivo
+from app.planning.decisao_fechada import entidades
+from app.planning.decisao_fechada.entidades import nomes_dos_apps, remover_entidades_com_motivo
+from app.taskqueue import service as _fila  # noqa: F401  (registra a fonte dos nomes de app, como na subida)
 from app.planning.decisao_fechada.intencao import motivo_c7, nomes_de_destino
 from app.security.redaction import redact
 
@@ -294,3 +297,14 @@ def test_a_palavra_c7_sem_valor_continua_recusando(comando: str) -> None:
     de utilidade é aceito e se revê se as recusas nos comandos reais passarem de 5 %."""
     motivo = _motivo(comando)
     assert motivo is not None and motivo.startswith("c7_")
+
+
+# ------------------------------------------------------------------ catraca do ADR-052 por gancho (suíte 9)
+def test_os_nomes_dos_apps_vem_do_gancho_que_a_fila_registra(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sem import tardio no filtro (`test_arquitetura::test_imports_tardios_so_diminuem`): a fila registra
+    `registry.nomes_e_apelidos` na subida, e o filtro só conhece o gancho. Sem registro, nenhum nome de app."""
+    assert entidades._fonte_dos_apps is nomes_e_apelidos                     # noqa: SLF001
+    assert {"instagram", "insta", "outlook"} <= nomes_dos_apps()
+    assert _motivo("entra no insta com girassol e curta o post da Marina") is not None
+    monkeypatch.setattr(entidades, "_fonte_dos_apps", tuple)
+    assert nomes_dos_apps() == frozenset()
