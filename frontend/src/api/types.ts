@@ -491,7 +491,9 @@ interface UsageReport { scope: { run_id: string | null; days: number | null }; g
 interface Flow { id: string; name: string; command_template: string; app_id: string | null; source_run_id: string | null;
   // D1 (ADR-054): o fluxo aprendido de execução nasce `candidate` (inerte: o planejador segue sendo chamado) e a sombra
   // no digest o publica sozinho quando não tem efeito externo; com efeito, para em `validated` e espera o dono.
-  status: 'candidate' | 'validated' | 'active' | 'disabled'; uses: number; created_at: string; last_used_at: string | null }
+  status: 'candidate' | 'validated' | 'active' | 'disabled'; uses: number; created_at: string; last_used_at: string | null;
+  // 29.42: ids dos apps que o fluxo exige, na ordem em que o plano os usa ("QA Messenger → Chrome"). Opcional: servidor antigo.
+  required_apps?: string[] }
 interface Recipe { id: number; app_package: string; app_version: string; step_key: string; step_hash: string;
   // `candidate`: aprendida e ainda em prova — a IA conduz a etapa e a receita só é comparada (modo sombra); vira
   // `active` depois de `ai.recipes_promote_after` execuções seguidas em que a IA fez exatamente o caminho dela.

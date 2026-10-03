@@ -14,7 +14,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from app.modules.learning.domain.livro import fluxo_tem_efeito, receita_tem_efeito
+from app.modules.learning.domain.livro import apps_na_ordem_do_plano, fluxo_tem_efeito, receita_tem_efeito
 from app.modules.skills.domain.document import JsonObject, JsonValue
 
 #: Os mesmos padrões de `taskqueue/recipes.py` (`TEMPLATE_RE`, `SENSITIVE_PARAM`). O domínio não importa o executor;
@@ -267,12 +267,13 @@ def etapa_de_fluxo(indice: int, passo: JsonValue) -> JsonObject:
 
 def fluxo_legivel(plano: JsonValue, *, nome: str, comando_modelo: str, fonte: str | None,
                   source_run_id: str | None, apps: Iterable[str] = ()) -> JsonObject:
-    """`app`: o principal do plano, onde rodam as etapas sem app próprio; `apps`: os exigidos (`flow_required_apps`).
+    """`app`: o principal do plano, onde rodam as etapas sem app próprio; `apps`: os exigidos (`flow_required_apps`),
+    na ordem em que o plano os usa (29.42: ler no Outlook e depois procurar no Instagram → Outlook, Instagram).
     Um comando que atravessa apps (12.1: ler no Outlook, procurar no Instagram) tem o principal e os dois exigidos."""
     passos = plano.get("steps") if isinstance(plano, dict) else None
     etapas = [etapa_de_fluxo(i, p) for i, p in enumerate(passos if isinstance(passos, list) else [])]
     treino = bool(fonte and fonte.startswith("training"))
-    exigidos: list[JsonValue] = [*sorted(set(apps))]
+    exigidos: list[JsonValue] = [*apps_na_ordem_do_plano(plano, apps)]
     return {
         "tipo": "fluxo", "nome": nome, "comando_modelo": comando_modelo,
         "app": _texto(plano.get("app_id")) if isinstance(plano, dict) else None, "apps": exigidos,
