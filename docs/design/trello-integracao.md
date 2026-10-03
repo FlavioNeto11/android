@@ -103,8 +103,9 @@ Cada cartão tem um bloco **Vínculos**. Os links usam `url_painel` (hoje só `a
 1. Bloco `trello:` no `config.yaml` (`enabled: false`, quadros, listas, `membro_dono`, intervalos, `conteudo: redigido`);
    segredo só no `.env`; a saúde acusa `trello_sem_segredo`.
 2. Cliente `integrations/trello/` em httpx, com balde de 60 requisições por 10 s e backoff pelos cabeçalhos do 429.
-3. Migração 086: `trello_cartoes` (`chave` PK, `card_id`, `lista`, `hash`, `estado`), `trello_cursor` (`quadro` PK,
-   `ultima_action`) e `trello_acoes` (`action_id` PK, `operador`, `resultado`).
+3. Migração 087 (era 086, que passou ao 31.22 da Jev em 03/10 ~18:55Z): `trello_cartoes` (`chave` PK, `card_id`,
+   `lista`, `hash`, `estado`) e `trello_cursor` (`quadro` PK, `ultima_action`). As actions recebidas vão para a
+   `canal_entradas` genérica da 085 (`canal='trello'`, `id_externo` = action id), no lugar de uma `trello_acoes`.
 4. O espelho é o segundo `Canal` do módulo `avisos`: `avisos.canal` vira lista e a chave do aviso é a do cartão. Roda só
    no líder da trava `avisos`.
 5. Laço do espelho a cada 60 s: lê os fatos do §2, monta a descrição pela rota do §4, faz upsert só com hash novo e
@@ -114,7 +115,7 @@ Cada cartão tem um bloco **Vínculos**. Os links usam `url_painel` (hoje só `a
 8. Testes com Trello falso (`httpx.MockTransport`, sem rede): upsert idempotente, dedupe, identidade, 429 e credencial
    recusada sem eco.
 9. Documentação: ADR-072, adendo v0.99 (`/api/trello` e `/api/conhecimento/resumo`), `operacao.md` (§1), `banco.md`
-   (086).
+   (087).
 10. Rollout: lista de teste em sombra, depois as listas do dono. A prova `real` é um cartão espelhado e um `/aprovar`
     do dono.
 

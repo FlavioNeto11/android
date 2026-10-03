@@ -2181,7 +2181,7 @@
   "31.11": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1443839f93c2a1eaf8dff",
    "url": "https://trello.com/c/yTO4tL0h",
-   "lista": "em_validacao",
+   "lista": "em_execucao",
    "lote": "lote_A8_atuais_pendentes"
   },
   "31.12": {
@@ -2546,13 +2546,6 @@
    "lote": "lote_A8_atuais_pendentes",
    "nome": "30.37 · Validação de um fluxo pelo próprio fluxo (prova de fluxo)"
   },
-  "polimentos:rede-deploy12": {
-   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1414fc1828905aa2c4add",
-   "url": "https://trello.com/c/gwOQbAs2",
-   "lista": "em_execucao",
-   "lote": "lote_A8_atuais_pendentes",
-   "nome": "Polimentos da tela Rede após o deploy 12 (lista “Saída pela casa” e carga dupla)"
-  },
   "validacao:deploy-12": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1415304a25b203572df82",
    "url": "https://trello.com/c/dQTgwn9F",
@@ -2668,6 +2661,43 @@
    "url": "https://trello.com/c/eajEHo1h",
    "lista": "decisoes",
    "lote": "canais"
+  },
+  "marco:deploy-13": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac150028374e3546fa4701c",
+   "url": "https://trello.com/c/fFeOxbV3",
+   "lista": "marcos",
+   "lote": "canais"
+  },
+  "validacao:deploy-13": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac15007f0d44be67a98dffe",
+   "url": "https://trello.com/c/rjsmJjJO",
+   "lista": "em_execucao",
+   "lote": "canais"
+  },
+  "28.16": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1500d34bbb1bb5f9b8ac3",
+   "url": "https://trello.com/c/DiOgjU7L",
+   "lista": "proximas",
+   "lote": "canais"
+  },
+  "31.22": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac15013d69f731aab0ccb53",
+   "url": "https://trello.com/c/IaysgW95",
+   "lista": "proximas",
+   "lote": "canais"
+  },
+  "estudo:power-ups": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1501af4b33c20b16f5d4a",
+   "url": "https://trello.com/c/tYp0Ebq5",
+   "lista": "proximas",
+   "lote": "canais"
+  },
+  "29.51": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1414fc1828905aa2c4add",
+   "url": "https://trello.com/c/gwOQbAs2",
+   "lista": "em_validacao",
+   "lote": "lote_A8_atuais_pendentes",
+   "nome": "Polimentos da tela Rede após o deploy 12 (lista “Saída pela casa” e carga dupla)"
   }
  },
  "falhas": [],
