@@ -4925,3 +4925,29 @@ Prova `simulated`:
   409 de formato no assistente da resposta.
 
 A cobertura do canal (Telegram e Trello pelas mesmas leituras) entra no commit de integração da suíte 14.
+
+## Adendo v1.06 (03/10/2026; número da orquestradora; item 31.13) — a R5 travada não aparece em `decisao_fechada.consumers`
+
+Nenhum campo novo e nenhuma forma muda. Muda quem aparece no bloco `decisao_fechada` de `GET /api/ai` (adendo v0.90) e
+no `notice`.
+
+- **A origem `apps` ganha consumidor** (os apps do comando, R5, 31.13), só em `shadow`.
+  - Ela já estava no vocabulário (`contrato.Origem` e `ai.decisao_fechada.consumidores`), sem consumidor.
+  - Agora entra também na lista das origens que podem mandar C3 (`privacidade.C3_ORIGENS`).
+- **`transparencia.consumidores_ativos` omite `apps` enquanto a trava de código `privacidade.R5_LIBERADA` é falsa.**
+  Ela é falsa de fábrica, até o GO do 31.10, e omite mesmo com `consumidores.apps: shadow` no YAML.
+  - Por quê: travada, a R5 não lê o cadastro nem monta pedido, e nada dela sai.
+  - Anunciar o consumidor prometeria uma exposição que não acontece. É a regra do 31.17: verdade antes de conforto.
+- **Consequências, com a R5 travada:**
+  - com só `apps` ligado no YAML, `decisao_fechada` é `null` e o `notice` não fala do Jev;
+  - com outro consumidor ligado, `consumers` não traz `apps`;
+  - `sending` e o "Nada sai agora" não contam a R5;
+  - quem mais lê `consumidores_ativos` também não a vê: o `closed_decision` da conta `typesafe` em
+    `GET /api/ai/balances` (adendo v0.92) e a retenção da sombra.
+- **Destravada** (`R5_LIBERADA = True`: um commit, com suíte e deploy, só depois do GO do 31.10):
+  - `consumers` traz `"apps": "shadow"`;
+  - o `notice` diz "apps em sombra";
+  - com C2 e C3 nas classes efetivas, entre o que sai aparecem os nomes do catálogo do dono (os apps cadastrados, nas
+    perguntas) e o comando filtrado (o estado da R5 é SÓ o comando).
+- Prova `simulated`: `backend/tests/test_decisao_fechada_apps.py::test_transparencia_nao_anuncia_a_r5_travada` e
+  `backend/tests/test_decisao_fechada_sombra.py::test_aviso_nomeia_a_typesafe_e_as_classes_so_com_consumidor_em_shadow_ou_on`.

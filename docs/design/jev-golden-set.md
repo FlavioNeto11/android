@@ -465,6 +465,8 @@ pela sombra da intenção (`taskqueue/sombra_intencao.py::ligar_apps`).
   - O nome passa por `motivo_c7` e por `mascarar_catalogo(redact(...))` antes do corte em 200 caracteres, como a
     descrição da R2. Nome C7, ou que o filtro esvazia, deixa o app fora do pedido.
   - Teto: 16 apps (`apps.MAX_APPS`). Acima dele, a R5 não vai, para não medir o que o Jev não viu; o central tem 7.
+    O valor foi aceito pela orquestradora (03/10) e é revisável pelo custo medido: o relatório do `--r5` traz o custo
+    por comando (uma chamada com N perguntas) e por app (a chamada rateada pelas N). Não muda sem avisá-la.
 - **O estado é só o `comando`** (`CAMPOS_POR_ORIGEM["apps"] = {comando}`; opção A da orquestradora, 03/10). É o mesmo
   comando da intenção, com a mesma C7 e o mesmo filtro (`intencao.pedido_c3`). O `app` fica de fora porque, na hora da
   sombra, é o app PRINCIPAL do plano (`save_plan` → `runs.app_ids[0]`), que é o rótulo abaixo: com ele no estado, a

@@ -208,6 +208,39 @@ def _fracao(n: int, d: int) -> dict[str, Any]:
     return {"n": n, "de": d, "taxa": rel._taxa(n, d)}
 
 
+def custo_r5(enviaveis: Sequence[CasoDaIntencao],
+             registros: Mapping[tuple[str, str], RegistroDeDecisao | None]) -> dict[str, Any]:
+    """O custo da R5 por comando (uma chamada por caso e idioma, com N perguntas, uma por app) e por app (a chamada
+    rateada pelas N perguntas: o Jev cobra a chamada, não a pergunta). Pedido da orquestradora (03/10): `MAX_APPS` é
+    revisável com este número."""
+    def bloco(chamadas: Sequence[tuple[int, float, int, float]]) -> dict[str, Any]:
+        perguntas = sum(n for n, _, _, _ in chamadas)
+        usd = sum(u for _, u, _, _ in chamadas)
+        tokens = sum(t for _, _, t, _ in chamadas)
+        return {
+            "comandos": len(chamadas), "perguntas": perguntas, "usd": round(usd, 6), "tokens": tokens,
+            "por_comando": {"usd": round(usd / len(chamadas), 7) if chamadas else None,
+                            "tokens": round(tokens / len(chamadas), 1) if chamadas else None,
+                            "perguntas": round(perguntas / len(chamadas), 2) if chamadas else None,
+                            "ms": rel._percentis([ms for _, _, _, ms in chamadas])},
+            "por_app": {"usd": round(usd / perguntas, 8) if perguntas else None,
+                        "tokens": round(tokens / perguntas, 1) if perguntas else None},
+        }
+
+    por_idioma: dict[str, list[tuple[int, float, int, float]]] = {i: [] for i in IDIOMAS}
+    for caso in enviaveis:
+        if caso.r5 is None:
+            continue
+        for idioma in IDIOMAS:
+            registro = registros.get((caso.run_id, f"r5:{idioma}"))
+            if registro is not None and registro.resultado.postado:
+                r = registro.resultado
+                por_idioma[idioma].append((len(caso.r5.apps), r.usd, r.tokens, r.ms))
+    return {"total": bloco([c for chamadas in por_idioma.values() for c in chamadas]),
+            "idiomas": {i: bloco(c) for i, c in por_idioma.items()},
+            "nota": "só chamadas com POST; por app = a chamada rateada pelas perguntas (INFERRED: o Jev cobra a chamada)"}
+
+
 def montar_r5(leitura: LeituraDoLote, enviaveis: Sequence[CasoDaIntencao],
               registros: Mapping[tuple[str, str], RegistroDeDecisao | None],
               rotulos_: Mapping[tuple[str, str], tuple[str | None, str | None]], *, pedidos_secos: int | None
@@ -251,7 +284,7 @@ def montar_r5(leitura: LeituraDoLote, enviaveis: Sequence[CasoDaIntencao],
              and j["fallback"] != "sem_registro"]
     return {
         "casos_com_r5": sum(1 for c in enviaveis if c.r5 is not None), "fora_r5": dict(leitura.fora_r5),
-        "pedidos_secos": pedidos_secos, "limiar": 0.85, "medidas": medidas,
+        "pedidos_secos": pedidos_secos, "limiar": 0.85, "medidas": medidas, "custo": custo_r5(enviaveis, registros),
         "en_x_pt": {"comparaveis": len(pares), "iguais": sum(1 for a, b in pares if a == b),
                     "taxa": rel._taxa(sum(1 for a, b in pares if a == b), len(pares)),
                     "nota": "sem resposta (abaixo do limiar) conta como valor: `sim` × sem resposta é diferença"},
@@ -370,7 +403,10 @@ def em_markdown(r: Mapping[str, Any]) -> str:
         r5 = r["r5"]
         linhas += ["", "## R5 — apps do comando (31.13)", "",
                    f"- Casos com R5 {r5['casos_com_r5']}; fora {r5['fora_r5'] or '—'}; limiar {r5['limiar']}.",
-                   f"- Inglês × português: {r5['en_x_pt']['iguais']} de {r5['en_x_pt']['comparaveis']}."]
+                   f"- Inglês × português: {r5['en_x_pt']['iguais']} de {r5['en_x_pt']['comparaveis']}.",
+                   f"- Custo (com POST): {r5['custo']['total']['comandos']} comandos, {r5['custo']['total']['perguntas']}"
+                   f" perguntas, US$ {r5['custo']['total']['usd']}; por comando {r5['custo']['total']['por_comando']};"
+                   f" por app {r5['custo']['total']['por_app']}."]
         for idioma, m in r5["medidas"].items():
             linhas.append(f"- {idioma}: perguntas {m['perguntas']}, rotuladas {m['rotuladas']}, `sim` {m['respondidas']};"
                           f" precisão do sim {m['precisao_do_sim']}; paráfrases pegas {m['parafrases_pegas']};"

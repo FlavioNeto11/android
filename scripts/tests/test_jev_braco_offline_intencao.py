@@ -243,6 +243,7 @@ def test_r5_seco_conta_os_apps_sem_vazar_o_comando(mundo: Mundo, tmp_path: Path)
     assert {(l["app_da_pergunta"], l["controle"]) for l in r5["linhas"]} == {("instagram", "sim"), ("outlook", "nao")}
     assert all(l["rotulo"] is None for l in r5["linhas"])                     # sem sucesso comprovado, sem rótulo
     assert r5["medidas"]["en"]["rotuladas"] == 0 and r5["medidas"]["en"]["fallbacks"] == {"desligado": 2}
+    assert r5["custo"]["total"]["comandos"] == 0 and r5["custo"]["total"]["por_app"]["usd"] is None   # seco: sem POST
     for arquivo in ("saida.json", "saida.md"):
         texto = (tmp_path / arquivo).read_text(encoding="utf-8")
         assert SEGREDO not in texto and "curta o post" not in texto and "Microsoft Outlook" not in texto
@@ -277,6 +278,12 @@ def test_r5_enviar_mede_precisao_e_parafrase_com_o_estado_so_do_comando(mundo: M
     assert m["parafrases_pegas"] == {"n": 1, "de": 1, "taxa": 1.0}
     assert m["controle"] == {"precisao": {"n": 1, "de": 1, "taxa": 1.0}, "cobertura": {"n": 1, "de": 2, "taxa": 0.5}}
     assert r["r5"]["en_x_pt"]["iguais"] == 2
+    # o custo por comando e por app (a chamada rateada pelas perguntas): 2 chamadas da R5 de 105 tokens e US$ 0,00005
+    custo = r["r5"]["custo"]["total"]
+    assert (custo["comandos"], custo["perguntas"], custo["tokens"]) == (2, 4, 210) and custo["usd"] == pytest.approx(0.0001)
+    assert custo["por_comando"]["perguntas"] == 2.0 and custo["por_comando"]["tokens"] == 105.0
+    assert custo["por_comando"]["usd"] == pytest.approx(0.00005) and custo["por_app"]["usd"] == pytest.approx(0.000025)
+    assert r["r5"]["custo"]["idiomas"]["pt"]["comandos"] == 1
 
 
 def test_r5_abaixo_do_limiar_e_sem_resposta_nunca_nao(mundo: Mundo, tmp_path: Path,
