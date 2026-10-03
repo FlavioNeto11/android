@@ -127,6 +127,13 @@ MOTIVO_HUMANO: Mapping[Motivo, str] = {
     Motivo.EFEITO_REAL: "O comando tem efeito num app real; por enquanto só a leitura se valida.",
     Motivo.SEM_FLUXO_ATIVO: "Não há fluxo ativo para este comando.",
     Motivo.SEM_CAMINHO: "O fluxo de agora não passa mais pela etapa deste item.",
+    # 30.42 e 30.41: recusas ao despachar (sem execução nem gasto) e os fechamentos pela linha `invalida` da prova
+    Motivo.LIMITE_DE_PROVAS: "O item já teve 2 provas desta versão nos últimos 7 dias.",
+    Motivo.SEM_APARELHO_NOVO: "Pedia outro aparelho, e todos os que servem já foram usados nas provas.",
+    Motivo.PLANO_ACIMA_DO_TETO: "O plano é grande demais para o teto de uma prova (ou o tamanho não se sabe).",
+    Motivo.EFEITO_REPETIDO: "O efeito saiu mais de uma vez na execução: ela não vale como evidência.",
+    Motivo.PONTO_DE_PARTIDA: "A abertura não chegou ao ponto de partida do fluxo: a prova não vale.",
+    Motivo.ATOR_SEM_ACAO: "O ator declarou a etapa pronta sem agir: a prova não vale.",
     Motivo.AMBIENTE_OCUPADO: "O central estava ocupado (reinício, suíte, implantação ou saúde); tenta na volta seguinte.",
     Motivo.SEM_APARELHO: "Nenhum aparelho ocioso servia; tenta na volta seguinte.",
     Motivo.ORCAMENTO: "O orçamento de validação desta janela acabou.",
