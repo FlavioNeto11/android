@@ -349,6 +349,10 @@
 .cartaoRotulo { color: var(--text-3); font-size: var(--fs-xs); }
 .cartaoUso { font-size: var(--fs-sm); color: var(--text-3); }
 
+/* Métricas (30.33): um cartão por bloco da tabela do §10; o orçamento acima de 80 % ganha a borda de aviso. */
+.blocoTitulo { font-size: var(--fs-md); color: var(--text-2); }
+.cartaoAviso { border-color: var(--warning-border); }
+
 .migalhas { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-3); }
 
 .tabelaDeclarado {

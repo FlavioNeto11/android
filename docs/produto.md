@@ -199,7 +199,7 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
 - **Aprendizado** ([ADR-054](decisoes.md#adr-054--aprendizado-contínuo-livro-de-aprendizado-com-ciclo-de-vida-publicação-sozinha-só-sem-efeito-externo-d1-feedback-implícito-com-botão-opcional-d2-lições-medidas-e-backlog-do-que-mais-falha);
   [domínio](dominios/aprendizado.md); `frontend/src/features/aprendizado/`). O que o sistema aprendeu com as execuções e
   com quem monitora. Sem efeito externo e com repetição, ele publica sozinho; com efeito ou texto de pessoa, espera o
-  dono; rebaixar é sempre automático. A seção tem cinco abas:
+  dono; rebaixar é sempre automático. A seção tem seis abas:
   - **Aplicativos** (a inicial, 30.15): um cartão por app (existência declarado, loja ou só aprendido; o declarado, o aprendido
     por tipo e estado, o absorvido e como o aprendido é usado, inclusive "medido, não usado"), os baldes "App não resolvido" e
     "Fora do eixo" e, por app (`?aba=apps&app=<pacote>`), o detalhe Declarado, Aprendido e Absorvido, com link de volta nos dois
@@ -215,7 +215,12 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
     identidade, conteúdo legível (só nomes de parâmetro), saúde com motivos, versão do app, evidência, histórico e relações com link;
   - **O que mais falha:** grupos por app, ação, tipo de falha e tela, com US$, minutos e intervenções separados, a
     camada, "onde alterar" e o estado no backlog. O falso positivo do verificador fica no topo;
-  - **Sinais:** os votos e os gestos que viram evidência.
+  - **Sinais:** os votos e os gestos que viram evidência;
+  - **Métricas** (30.33): o aprendizado medido na janela (7, 14 ou 30 dias) e por app. Há um cartão por bloco: o livro
+    agora, o movimento, o tempo até subir, o depois de publicado, a saúde, a economia de IA, a comparação receita × só
+    IA (rotulada como comparação, não prova), o curador e o orçamento dele (global, na janela do curador, com o aviso a
+    80%). Embaixo vêm os pareceres do curador, com filtro pela sugestão e "Carregar mais". Ausente aparece como "sem
+    amostra", nunca como zero.
 
   Na aba "Por aparelho", a etapa que falhou ou ficou incerta e veio de uma habilidade tem **"Corrigir esta etapa"**
   (no detalhe; a linha recolhida mostra a marca "corrigível"): a pessoa diz o que devia ter acontecido, e a correção

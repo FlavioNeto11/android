@@ -421,7 +421,15 @@ com o banco aberto só para leitura.
     mantém ("Confirmar que fica", 30.24) ou desliga, um a um ou em lote;
   - **Aprendido:** o catálogo unificado por tipo e estado, com desligar, aposentar e reativar, sempre com motivo;
   - **O que mais falha:** o relatório do A3, com as três colunas de custo e o falso positivo no topo;
-  - **Sinais:** os votos e os gestos.
+  - **Sinais:** os votos e os gestos;
+  - **Métricas** (30.33; `?aba=metricas`): as rotas do 30.8 (adendo v0.89) num cartão por bloco do §10, na janela de 7,
+    14 ou 30 dias e por app, e embaixo os pareceres do curador em páginas pelo cursor, cada um com o link do item.
+    - Ausente é "sem amostra", nunca 0%, e o tempo abaixo de 1 h sai em minutos.
+    - A comparação receita × só IA diz no título que não é prova ("não mede falha evitada").
+    - O orçamento do curador diz que é global e que usa a janela dele, com a barra de uso e o aviso a 80%.
+    - A janela que atravessa o deploy 8 (03/10 09:06:28Z) ganha o aviso de quebra de série.
+    - Bloco sem dado diz o porquê numa frase, em vez de uma grade de zeros; 503 `not_ready` vira "não estão ligadas
+      neste servidor".
 - **Nomes, não códigos (validação do deploy 3, P2 a P5).** O painel mostra o app e a capability pelos nomes do
   agrupamento do Aprendido ("Pós-condição não comprovada — Instagram · Abrir o feed", "Instagram › Abrir o perfil";
   `app_nome` e `capability_nome` de `presentation/nomes.py`). O pacote e o código ficam no `title` e em "Para quem
