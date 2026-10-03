@@ -152,8 +152,10 @@ def _encerrada_pelo_sistema(db: Database, run_id: str) -> None:
     assert run is not None and run["status"] == "cancelled" and run["cancel_requested"] == 1
     obj = db.one("SELECT status, status_detail FROM objectives WHERE run_id=?", (run_id,))
     assert obj is not None and obj["status"] == "cancelled" and str(obj["status_detail"]).startswith(MOTIVO)
+    # A etapa que pediu a pessoa é a PRIMEIRA cancelada com o motivo: as seguintes do objetivo fecham com o mesmo texto
+    # (`cancel_open_steps`) e sem tentativa. Sem `ORDER BY` o PostgreSQL pode devolver uma delas (suíte 14, PG -n 3).
     cancelada = db.one("SELECT id, status, status_detail FROM steps WHERE run_id=? AND status='cancelled'"
-                       " AND status_detail LIKE ?", (run_id, MOTIVO + "%"))
+                       " AND status_detail LIKE ? ORDER BY seq", (run_id, MOTIVO + "%"))
     assert cancelada is not None
     tentativa = db.one("SELECT status FROM attempts WHERE step_id=? ORDER BY number DESC", (cancelada["id"],))
     assert tentativa is not None and tentativa["status"] == "interrupted"
