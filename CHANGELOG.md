@@ -32,7 +32,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   risco, e a evidência marcada fica de fora do que a IA pode citar.
 - Painel: selo na trilha, aviso na evidência, seção do reaprendido, botão "Marcar evidência inválida" com confirmação no
   lugar, e o motivo em "Para aprovar".
-- Gancho em `taskqueue/recipes.py` (`exige_o_dono` na sombra): entra pela suíte 6.
+- Gancho em `taskqueue/recipes.py` (`exige_o_dono` na sombra): entra pela suíte 6. Se a leitura do livro falha, a
+  candidata não sobe nem ganha motivo na trilha; a próxima concordância pergunta de novo.
 - `test_learning_backlog` e `test_learning_repositorio` passam a usar meio-dia fixo. A suíte 5b falhou perto da meia-noite
   UTC porque a semente cruzava o dia.
 - Adendo v0.68; emenda ao ADR-054. Prova `simulated`; a marca da 109 e do fluxo no central é `not_run` até o deploy.

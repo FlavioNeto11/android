@@ -636,15 +636,18 @@ aprendidos da `r-20261002204347-8c3f6e`, que terminou como sucesso sem comprovar
   - O item força a classe B (`politica_de_risco`, razão `reaprendido_de_evidencia_invalida`), `requires_owner`,
     "Para aprovar" e o motivo `reaprendido` no `learning.needs_person`.
 - **Duas camadas param o sistema.**
-  - Na loja: `RecipeStore.shadow` pergunta ao ouvinte (`exige_o_dono`, que falha fechado) e para em `validated`; a sombra dos
-    fluxos (`SombraDosFluxos._avaliar`) também.
+  - Na loja: `RecipeStore.shadow` pergunta ao ouvinte (`exige_o_dono`) e para em `validated`; a sombra dos fluxos
+    (`SombraDosFluxos._avaliar`) também. Se a leitura do livro falha, o ouvinte não responde (`None`): a candidata não sobe
+    nem ganha motivo na trilha, e a próxima concordância pergunta de novo.
   - No repositório: `_mover_receita` e `_mover_fluxo` recusam (`ExigeODono`) o sistema publicando o reaprendido.
   - Depois que uma pessoa publica no escopo, o que nascer ali já segue o D1 de sempre. O aprovado guarda a marca:
     `reaprendido` continua na leitura, sem `por_que_nao_publica`.
 - **A evidência da execução marcada fica à vista e não mede:** `invalidada: true` no detalhe; fora da sombra do fluxo, da
   saúde (detalhe e lista) e da versão.
 - **Curador (30.11):** o dossiê (`infrastructure/dossies.py`) passa `FatosDeRisco.reaprendido`, então a IA nunca vê o
-  reaprendido como A, e deixa de fora a evidência da execução marcada.
+  reaprendido como A, e deixa de fora a evidência da execução marcada. `FatosDeRisco.como_dados()` só leva a chave
+  `reaprendido` quando ela vale: os fatos entram no `dossie_hash`, e a chave sempre presente faria todo item já revisado
+  parecer dossiê novo.
 - **Relações:** `reaprende` e `reaprendida_por`, só entre receitas (`relacoes.de_reaprendizado`).
 - **Painel:**
   - a trilha mostra o selo "evidência inválida" com o link da execução;
@@ -654,7 +657,7 @@ aprendidos da `r-20261002204347-8c3f6e`, que terminou como sucesso sem comprovar
 - **Limites conhecidos:**
   - o escopo da receita inclui a versão do app: numa versão nova a marca não pesa, como o veto de sempre;
   - `ai.recipes_promote_after: 0` não passa pela sombra (pendência A5);
-  - os ganchos em `taskqueue/recipes.py` (`ReceitaVista.learned_from`, `OuvinteDaReceita.exige_o_dono`) são exceção ao "só
+  - os ganchos em `taskqueue/recipes.py` (`ReceitaVista.learned_from`, `OuvinteDasReceitas.exige_o_dono`) são exceção ao "só
     leitura" do §13 do desenho, aceita pela coordenação.
 - **Prova `simulated`:**
   - `tests/test_learning_evidencia_invalida.py`: domínio, cenário da 109, fluxo e rota;

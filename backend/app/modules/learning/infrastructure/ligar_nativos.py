@@ -221,15 +221,15 @@ class OuvinteD1DasReceitas:
             log.exception("aprendizado: veto da receita (%s)", r.step_hash)
             return False
 
-    def exige_o_dono(self, recipe_id: int, receita: ReceitaVista) -> bool:
+    def exige_o_dono(self, recipe_id: int, receita: ReceitaVista) -> bool | None:
         r = receita
         try:
             with self._db.savepoint():                # só leitura, dentro da transação da loja (ver `vetada`)
                 return self._d1.receita_reaprendida(escopo_da_receita(r.package, r.app_version, r.signature,
                                                                       r.variant, r.step_hash), recipe_id)
-        except Exception:  # noqa: BLE001 - na dúvida, o dono decide: a receita para em validated (nunca publica)
+        except Exception:  # noqa: BLE001 - sem resposta: não sobe agora e a trilha não ganha motivo falso
             log.exception("aprendizado: reaprendida da receita %s", recipe_id)
-            return True
+            return None
 
     def mudou(self, mudanca: MudancaDaReceita) -> None:
         m = mudanca

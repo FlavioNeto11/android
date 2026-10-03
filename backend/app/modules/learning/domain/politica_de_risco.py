@@ -109,12 +109,18 @@ class FatosDeRisco:
 
     def como_dados(self) -> JsonObject:
         c = self.catalogo
-        return {"side_effect": self.side_effect, "human_origin": self.human_origin, "tem_catalogo": self.tem_catalogo,
-                "sessao_ou_autenticacao": self.sessao_ou_autenticacao, "reaprendido": self.reaprendido,
-                "catalogo": None if c is None else {
-                    "risco": c.risco, "politica": c.politica, "precisa_rascunho": c.precisa_rascunho,
-                    "efeito_externo": c.efeito_externo, "familia_do_efeito": c.familia_do_efeito,
-                    "interacao": c.interacao}}
+        dados: JsonObject = {
+            "side_effect": self.side_effect, "human_origin": self.human_origin, "tem_catalogo": self.tem_catalogo,
+            "sessao_ou_autenticacao": self.sessao_ou_autenticacao,
+            "catalogo": None if c is None else {
+                "risco": c.risco, "politica": c.politica, "precisa_rascunho": c.precisa_rascunho,
+                "efeito_externo": c.efeito_externo, "familia_do_efeito": c.familia_do_efeito,
+                "interacao": c.interacao}}
+        # Só quando vale (30.23): estes fatos entram no `dossie_hash` do curador, e a chave sempre presente mudaria o
+        # hash de todo item já revisado (pareceria dossiê novo). Só o reaprendido, cujo fato mudou, ganha hash novo.
+        if self.reaprendido:
+            dados["reaprendido"] = True
+        return dados
 
 
 #: Ordem de prioridade das razões: a primeira presente dá o MOTIVO do evento. Sessão vence o alto risco, que vence a

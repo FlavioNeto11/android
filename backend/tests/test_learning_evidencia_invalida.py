@@ -11,7 +11,8 @@
 - a receita reaprendida aponta para a invalidada (`reaprende`) e a invalidada para ela (`reaprendida_por`); o fluxo
   renasce na mesma linha (`match_key` única) e não aponta para si mesmo;
 - a arrumação da loja (`disabled → deprecated` da quarentenada substituída) não levanta mais o veto de uma pessoa;
-- o dossiê do curador (30.11) vê o reaprendido como B e deixa de fora a evidência da execução marcada.
+- o dossiê do curador (30.11) vê o reaprendido como B e deixa de fora a evidência da execução marcada;
+- na falha da leitura do livro, a sombra da receita não promove nem escreve "reaprendida" na trilha.
 
 Nível de prova: `simulated` (banco de teste migrado pela fábrica da suíte; execução "real" é uma linha de `runs` com
 `simulated=0`; nenhum aparelho, nenhuma IA).
@@ -31,6 +32,7 @@ from fastapi import FastAPI
 
 from app.db import Database
 from app.models import Plan, PlannerInfo, PlanStep, Postcondition, StepResult
+from app.modules.learning.application import nativos
 from app.modules.learning.application.ports import Ajustes, MudancaNativa
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.ciclo import (Desligamento, EntradaInvalida, ExigeODono, SkillState,
@@ -279,6 +281,32 @@ def test_a_receita_109_reclassificada_e_reaprendida_por_outra_execucao_real(rece
     assert m.store.shadow(seguinte, True, promote_after=1) is True and m.status(seguinte) == "active"
 
 
+def test_sem_resposta_do_livro_a_candidata_nao_sobe_nem_ganha_motivo_falso(receitas: Receitas,
+                                                                          monkeypatch: pytest.MonkeyPatch) -> None:
+    """A leitura do livro falhou: o gancho não sabe se a receita é reaprendida. Ela não sobe (nunca publica na
+    dúvida), a trilha não ganha "reaprendida" e a próxima concordância pergunta de novo."""
+    m = receitas
+    for run in (FALSA, OUTRA):
+        m.execucao(run)
+    rid = m.salva(FALSA)
+    assert rid
+    m.servico.invalidar_evidencia(LivroKind.RECEITA, str(rid), FALSA, by=DONO)
+    nova = m.salva(OUTRA)
+    assert nova and m.entrada(nova).reaprendido is not None
+
+    def falha(*_a: object, **_k: object) -> bool:
+        raise RuntimeError("leitura do livro indisponível")
+
+    n = len(m.trilha(nova))
+    with monkeypatch.context() as mp:
+        mp.setattr(nativos.D1Nativo, "receita_reaprendida", falha)
+        assert m.store.shadow(nova, True, promote_after=1) is False
+        assert m.status(nova) == "candidate" and len(m.trilha(nova)) == n
+    assert m.store.shadow(nova, True, promote_after=1) is False                 # a próxima pergunta de novo
+    assert m.status(nova) == "validated"
+    assert "reaprendida depois de uma evidência inválida" in m.trilha(nova)[-1][2]
+
+
 def test_a_acao_desliga_o_vivo_e_so_aceita_a_execucao_de_origem(receitas: Receitas) -> None:
     m = receitas
     m.execucao(FALSA)
@@ -437,12 +465,13 @@ def test_o_dossie_do_curador_ve_o_reaprendido_em_b_e_nao_a_evidencia_invalida(fl
     antes = dossies.dossie(m.servico.entrada(LivroKind.FLUXO, fid))
     assert antes is not None and FALSA in {x.run_id for x in antes.evidencias}
     assert not antes.fatos_de_risco.reaprendido and antes.risco.classe is ClasseDeRisco.A
+    assert "reaprendido" not in antes.fatos_de_risco.como_dados()      # o hash de quem não foi reaprendido não muda
     m.servico.invalidar_evidencia(LivroKind.FLUXO, fid, FALSA, by=DONO)
     marcado = dossies.dossie(m.servico.entrada(LivroKind.FLUXO, fid))
     assert marcado is not None and FALSA not in {x.run_id for x in marcado.evidencias}
     assert m.roda(OUTRA, "Bia") == fid
     reaprendido = dossies.dossie(m.servico.entrada(LivroKind.FLUXO, fid))
-    assert reaprendido is not None and reaprendido.fatos_de_risco.reaprendido
+    assert reaprendido is not None and reaprendido.fatos_de_risco.como_dados()["reaprendido"] is True
     assert reaprendido.risco.classe is ClasseDeRisco.B
     assert reaprendido.risco.razoes[0] is Razao.REAPRENDIDO_DE_EVIDENCIA_INVALIDA
     assert {x.run_id for x in reaprendido.evidencias} == {OUTRA}

@@ -461,9 +461,11 @@ class OuvinteDasReceitas(Protocol):
         """O sistema não pode trazer de volta este caminho (uma pessoa o desligou)."""
         ...
 
-    def exige_o_dono(self, recipe_id: int, receita: ReceitaVista) -> bool:
+    def exige_o_dono(self, recipe_id: int, receita: ReceitaVista) -> bool | None:
         """A candidata que concordou espera o dono mesmo sem `commit`: foi reaprendida depois de uma evidência
-        inválida na mesma chave (30.23, classe B). A sombra a leva a `validated`, não a `active`."""
+        inválida na mesma chave (30.23, classe B). A sombra a leva a `validated`, não a `active`. `None` quando a
+        pergunta ficou sem resposta (a leitura do livro falhou): a candidata não sobe agora e a próxima concordância
+        pergunta de novo — na dúvida, nada é publicado e a trilha não ganha um motivo que ninguém confirmou."""
         ...
 
     def mudou(self, mudanca: MudancaDaReceita) -> None: ...
@@ -630,7 +632,7 @@ class RecipeStore:
         `active` — o sistema não publica sozinho o que age fora da máquina; ela espera o dono em "Para aprovar", e
         `find` não a devolve. Aí a resposta é False: a receita não passou a agir. O caminho que uma pessoa desligou
         (`ouvinte.vetada`) fica candidato. A reaprendida depois de uma evidência inválida (`ouvinte.exige_o_dono`,
-        30.23) também para em `validated`, mesmo sem `commit`.
+        30.23) também para em `validated`, mesmo sem `commit`; sem resposta do ouvinte, fica candidata.
         """
         with self.db.tx():
             row = self.db.one("SELECT * FROM recipes WHERE id=?", (recipe_id,))
@@ -657,7 +659,9 @@ class RecipeStore:
             if self.ouvinte is not None and self.ouvinte.vetada(vista):
                 return False
             efeito = receita_tem_efeito(loads(row["actions"], []))
-            reaprendida = not efeito and self.ouvinte is not None and self.ouvinte.exige_o_dono(recipe_id, vista)
+            reaprendida = False if efeito or self.ouvinte is None else self.ouvinte.exige_o_dono(recipe_id, vista)
+            if reaprendida is None:
+                return False
             novo = "validated" if efeito or reaprendida else "active"
             self.db.execute("UPDATE recipes SET status=? WHERE id=? AND status='candidate'", (novo, recipe_id))
             self._avisar(recipe_id, "candidate", novo,
