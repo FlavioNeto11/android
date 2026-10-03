@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { UsageGroup, UsageReport } from '../../api/types';
 import {
-  NO_PRICE, drivenBySplit, drivenByText, errorKindLabel, errorsByKindText, formatUsd, isUsageEmpty, pricingOf,
+  NO_PRICE, byOriginText, drivenBySplit, drivenByText, errorKindLabel, errorsByKindText, formatUsd, isUsageEmpty, originLabel,
+  pricingOf,
   recipeShareText, usageRows, usageTotals,
 } from './usage';
 
@@ -156,5 +157,23 @@ describe('errorsByKindText — item 7.3 (achado #101)', () => {
   it('tipo desconhecido cai no próprio nome, sem quebrar', () => {
     expect(errorKindLabel('refusal')).toBe('recusa do provedor');
     expect(errorKindLabel('algo-novo')).toBe('algo-novo');
+  });
+});
+
+describe('I1 da validação do deploy 7', () => {
+  it('o prazo da etapa e o saldo bloqueado têm rótulo (não saem crus)', () => {
+    expect(errorKindLabel('step_deadline')).toBe('prazo da etapa esgotado');
+    expect(errorsByKindText(report({ errors_by_kind: { budget: 10, step_deadline: 4, error: 1 } })))
+      .toBe('10 orçamento esgotado · 4 prazo da etapa esgotado · 1 erro');
+  });
+
+  it('por origem: maior custo primeiro, com rótulo; origem desconhecida passa crua; nada sem o grupo', () => {
+    const texto = byOriginText(report({ by_origin: {
+      sem_origem: { calls: 1320, usd: 14.68 }, execucao: { calls: 52, usd: 1.29 }, curador: { calls: 15, usd: 0.31 },
+      leitura: { calls: 128, usd: 0.04 }, vazio: { calls: 0, usd: 0 },
+    } }));
+    expect(texto).toBe(`sem origem registrada ${formatUsd(14.68)} · execução ${formatUsd(1.29)} · curador ${formatUsd(0.31)} · leitura visual ${formatUsd(0.04)}`);
+    expect(originLabel('algo-novo')).toBe('algo-novo');
+    expect(byOriginText(report({}))).toBeNull();
   });
 });

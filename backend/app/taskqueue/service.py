@@ -88,6 +88,21 @@ def _onde(o: ObjectiveDTO) -> str:
     return " · ".join(partes)
 
 
+#: Os motivos do compilador que têm frase própria para o dono (o resto vai como o compilador escreveu, sem o id).
+_MOTIVO_PARA_O_DONO = (("não dá valor a todos os parâmetros do plano", "faltam valores para os parâmetros do plano"),)
+
+
+def _motivo_para_o_dono(mensagem: str, ref: str) -> str:
+    """A mensagem do compilador sem o id da habilidade na frente (que podia vir repetido) e sem o ponto final."""
+    texto = mensagem.strip()
+    while ref and texto.startswith(ref + ":"):
+        texto = texto[len(ref) + 1:].strip()
+    for trecho, frase in _MOTIVO_PARA_O_DONO:
+        if trecho in texto:
+            return frase
+    return texto.rstrip(".")
+
+
 class RunService:
     def __init__(self, repo: Repository, scheduler: Scheduler, devices: DeviceManager, provider: AIProvider,
                  profiles: Any = None, secrets: Any = None, *, skills: SkillRunPlanner):
@@ -1138,11 +1153,15 @@ class RunService:
                                 message=f"Execução {run_id}: faltam informações — {texto}")
             return
         problemas = [i.as_dict() for i in resolvida.issues]
-        texto = "; ".join(f"{p['code']}: {p['message']}" for p in problemas) or "sem detalhe"
+        # I4 da validação do deploy 7: o texto da execução é para o dono, com o NOME da habilidade e o motivo sem o id
+        # nem o código (`E_PLAN_INVALID: flow:…@1: …` saía cru, duas vezes). Quem desenvolve acha os dois no evento abaixo.
+        motivos = "; ".join(dict.fromkeys(_motivo_para_o_dono(i.message, str(resolvida.ref)) for i in resolvida.issues))
+        nome = f"“{resolvida.name}”" if resolvida.name else "casada"
         repo.bus.emit("log", f"Execução {run_id}: a habilidade {resolvida.ref} casou com o comando e não compilou",
                       level="warn", run_id=run_id, data={"skill": str(resolvida.ref), "issues": problemas})
         repo.set_run_status(run_id, RunStatus.needs_input,
-                            f"A habilidade {resolvida.ref} não compilou para este comando: {texto}", level="warn",
+                            f"A habilidade {nome} não serve para este comando: {motivos or 'ela não compilou'}. Corrija "
+                            "o comando ou a habilidade.", level="warn",
                             message=f"Execução {run_id}: a habilidade {resolvida.ref} não compilou — corrija o comando "
                                     "ou a habilidade e tente de novo.")
 

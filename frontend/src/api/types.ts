@@ -504,7 +504,10 @@ interface UsageReport { scope: { run_id: string | null; days: number | null }; g
   spend_today_usd?: number | null
   // Item 7.3 (achado #101): chamadas com erro, por TIPO (refusal | budget | billing | not_configured |
   // invalid_output | error) — sem isto, saber por que uma chamada falhou exigia casar horário de log.
-  errors_by_kind?: Record<string, number> }
+  errors_by_kind?: Record<string, number>;
+  // v0.75 (RA-10, migração 080): custo por ORIGEM da chamada (execucao, curador, leitura, social, decisao_fechada…;
+  // `sem_origem` = linha anterior à coluna). Opcional: servidor antigo.
+  by_origin?: Record<string, { calls: number; usd: number }> }
 interface Flow { id: string; name: string; command_template: string; app_id: string | null; source_run_id: string | null;
   // D1 (ADR-054): o fluxo aprendido de execução nasce `candidate` (inerte: o planejador segue sendo chamado) e a sombra
   // no digest o publica sozinho quando não tem efeito externo; com efeito, para em `validated` e espera o dono.

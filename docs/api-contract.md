@@ -4384,3 +4384,10 @@ Só campos novos, aditivos.
   - `tests/test_aba_ia_esquema_e_perfis.py`;
   - `frontend/src/lib/aiLabels.test.ts` e `frontend/src/features/settings/AiSection.test.tsx`;
   - a tela percorrida no navegador contra um backend simulado do worktree (porta 8765, nada no central).
+- **Correção junto, sem campo novo (I1 da mesma validação):**
+  - `GET /api/usage`: o `total_usd` e o `usd` de cada grupo passam a contar o custo DECLARADO na linha (`ai_calls.usd`,
+    a imagem da persona), como já faziam `by_account` e `by_origin`. Antes, as peças por conta somavam mais que o total:
+    no central, 03/10, US$ 16,60 contra 16,34, e a diferença eram as 5 imagens da semana (US$ 0,2683; leitura só no
+    banco).
+  - O modelo sem preço por token cujas chamadas OK declararam todas o custo sai de `unpriced_models`.
+  - Prova `simulated`: `tests/test_uso_total_com_custo_declarado.py`.
