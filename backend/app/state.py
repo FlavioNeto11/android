@@ -39,7 +39,10 @@ from .devices.sdk import SdkTools
 from .events import TELEMETRIA_KINDS, TELEMETRIA_RETENCAO_H, EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
+from .modules.avisos.infrastructure.entrada import ServicoDeEntrada
+from .modules.avisos.infrastructure.entrada_sql import MensagensDoTelegram
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
+from .modules.avisos.infrastructure.portas_da_central import PortasReais
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos
 from .modules.context_retrieval.adapters.jev import JevSemanticProvider
 from .modules.identity.application.ports import SessionProvider
@@ -52,6 +55,7 @@ from .modules.learning.infrastructure import ligar_intencao, ligar_validacao, li
 from .modules.learning.infrastructure.curador_do_hub import CuradorDoHub
 from .modules.learning.infrastructure.ligar_costuras import costuras_do_livro
 from .modules.learning.infrastructure.montagem import montar_aprendizado
+from .modules.learning.infrastructure.segredo import TriagemDeCredencial
 from .modules.skills.application.registry import CompositeSkillRegistry
 from .modules.skills.application.teaching import TeachingService
 from .modules.skills.infrastructure.document_validator import DslDocumentValidator, LockedVersions
@@ -488,6 +492,15 @@ class AppState:
                                                       data={"teaching_id": tid}))
         self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social,
                                secrets=self.secrets, skills=self.skill_planner)
+        # A conversa de volta pelo Telegram (28.15, ADR-071): o mesmo bot dos avisos recebe; desligada de fábrica
+        # (`avisos.entrada.enabled`). As portas chamam os MESMOS serviços das rotas do painel.
+        triagem = TriagemDeCredencial()
+        self.telegram_entrada = ServicoDeEntrada(
+            cfg, MensagensDoTelegram(self.db),
+            PortasReais(db=self.db, runs=self.runs, aprovacoes=self.approval_service, saude=self.health,
+                        online=lambda: [d.id for d in self.devices.list_dtos()
+                                        if str(d.state) == "online" and d.kind != "store"]),
+            lider=self._lider, recusa=triagem.recusa, redigir=triagem.redigir)
         # O catálogo da cadeia de intenção (habilidades publicadas e fluxos ativos, respeitando `skills.enabled` e
         # `ai.flows`), lido na hora. Compartilhado pela sombra da intenção (31.9) e pelo rótulo de intenção do Aprendizado
         # (30.25): os dois medem contra o MESMO catálogo.
@@ -2374,6 +2387,8 @@ class AppState:
             self._bg.append(asyncio.create_task(self._saldos_loop(), name="saldos-de-ia"))
             # Aviso fora do painel: enfileira em qualquer réplica (chave única) e só o líder da trava `avisos` envia.
             self._bg.append(asyncio.create_task(self.avisos.laco(), name="avisos-fora-do-painel"))
+            # A conversa de volta (28.15): long-poll do getUpdates, só no líder da trava `avisos` (único consumidor).
+            self._bg.append(asyncio.create_task(self.telegram_entrada.laco(), name="telegram-entrada"))
             # Mesmo critério de réplica da retenção: só quem roda o scheduler; idempotente (chaves únicas e CAS).
             self._bg.append(asyncio.create_task(self._curadoria_loop(), name="aprendizado-curadoria"))
             self._bg.extend(asyncio.create_task(laco.laco(lambda: self._lider(CURADORIA)), name=f"aprendizado-{laco.nome}") for laco in self.learning.lacos)  # noqa: E501 - 30.11: o curador por IA, sob a trava `curadoria`
@@ -3167,6 +3182,7 @@ class AppState:
                                          "nenhuma tentativa foi gasta. Corrija e retome a execução para soltar."))
         problems.extend(self._problemas_de_saldo())
         problems.extend(self.avisos.problemas())
+        problems.extend(self.telegram_entrada.problemas())
         # Backlog B15 (bateria de 25/09): o Ollama estava fora do ar, as 89 decisões foram para o fallback — e a saúde
         # dizia `ok`. O fallback continua sendo o comportamento certo; o que faltava era ele aparecer.
         for linha in self._ia_em_fallback():
