@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 29.31: app de prova no tier 0 do `side_effect_tier` (branch feat/29-31-qa-tier0)
+
+- **Custo (RA-8 da reavaliação de 03/10):** etapa com `side_effect` e SEM capability em app sem catálogo caía no tier 1 ("risco
+  desconhecido") e escalava ao modelo forte; em 7 dias, 64 a 66 desses escalonamentos eram do QA Messenger (43 % das chamadas do Opus
+  no tier 1, cerca de US$ 0,20 por dia) e distorciam a bateria de prova. Agora `side_effect_tier(step, cap, modo, app_de_prova)` devolve
+  tier 0 e motivo vazio quando o app da etapa é `builtin` e tem `apps.category='qa'`, só no `by_risk` e só sem capability. `true` (todo efeito sobe),
+  `false`, etapa com capability e app real sem catálogo ficam como estavam; `strong_model_for_side_effect` segue global.
+  `AppContext` ganhou `category` (padrão `None`), preenchida em `Scheduler._app_context`.
+- **Furo achado no caminho:** `_seed_apps` criava o app `builtin` SEM categoria (só a migração 041 a punha, nas linhas que já
+  existiam), então uma instalação nova nunca teria o app de prova como `qa`. O seed agora grava `category='qa'` para `builtin: true`
+  (sem migração). Critério por dado: no backup de 02/10, só `qa-messenger` tem `builtin=1` (e `category='qa'`). Revisão adversarial: `category='qa'` sozinho não vale (a API o aceita em qualquer app), o critério é `builtin` E `category='qa'`.
+- `simulated`: `tests/test_cost_levers.py` (função pura e caminho real do executor, nos dois sentidos). `not_run` no central; aceite real:
+  `decision` "sem catálogo" = 0 no app de prova em 7 dias depois do deploy. Sem migração.
+
 ## 2026-10-03 — 14.11: CPU por emulador medida de verdade (branch feat/14-11-cpu-por-emulador)
 
 - **Corrigido (RA-3a da reavaliação de 03/10):** `devices/emulator.py::process_usage` recriava o `psutil.Process` do lançador e dos filhos a cada leitura, e o `cpu_percent(interval=None)` da 1ª leitura de um objeto novo é sempre 0,0; `resources.cpu_percent` de `GET /api/instances` mostrava 0,0 com o emulador gastando 1,1 a 1,2 núcleo. `MedidorDeUso` guarda os objetos por pid do lançador (reaproveita o filho conhecido, acrescenta o novo, descarta o que sumiu; troca tudo se o `create_time` mudar; purga o que não é lido há 60 s; `threading.Lock`). Assinatura mantida: a 1ª leitura de um objeto soma 0,0, da 2ª em diante é o valor real. Prova `simulated`: `backend/tests/test_cpu_por_emulador.py` (9). Prova `real` (leitura, 03/10, central, qemu 524 + emulator 53204): 3 leituras de 10 s, diferença de 0,8, 1,1 e 0,3 ponto contra o Δ de CPU do `Get-Process`. Sem migração; só o central, o agente do notebook herda `devices/` mas não mede CPU por emulador.

@@ -1236,7 +1236,8 @@ class StepExecutor:
         # Modelo forte (escalonamento) onde errar custa caro ou o barato já tropeçou: etapa com efeito externo
         # (conforme o risco, ver `side_effect_tier`), nova tentativa da mesma etapa, erros seguidos ou ação
         # repetida na mesma tela.
-        tier_efeito, motivo_efeito = side_effect_tier(step, cap, ai_cfg.strong_model_for_side_effect)
+        tier_efeito, motivo_efeito = side_effect_tier(step, cap, ai_cfg.strong_model_for_side_effect,
+                                                      app.builtin and app.category == CATEGORIA_APP_DE_PROVA)
         base_tier = 1 if (tier_efeito or step.attempts > 1) else 0
         escalated = False                     # a linha do escalonamento sai UMA vez por etapa, não por decisão
         # Item 7.8 (piso de conteúdo): o provedor de `decide` É o do `.env`/YAML, não o desta instância de etapa —
@@ -2479,7 +2480,13 @@ def _safe_args(raw: Any) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {"raw": str(raw)[:300]}
 
 
-def side_effect_tier(step: Any, cap: Any, modo: Any) -> tuple[int, str]:
+#: `apps.category` do app de prova (o QA Messenger embutido). A regra lê o DADO do app, nunca o nome (ADR-052), e exige
+#: também `builtin`: `POST/PUT /apps` aceitam `category='qa'` em qualquer app, e marcar um app real assim não pode
+#: tirá-lo do escalonamento.
+CATEGORIA_APP_DE_PROVA = "qa"
+
+
+def side_effect_tier(step: Any, cap: Any, modo: Any, app_de_prova: bool = False) -> tuple[int, str]:
     """(nível, motivo) do escalonamento POR EFEITO EXTERNO desta etapa.
 
     `True` = qualquer efeito sobe (era o único modo: em 19-23/09, 39 % das decisões foram ao Opus, inclusive curtir
@@ -2488,12 +2495,20 @@ def side_effect_tier(step: Any, cap: Any, modo: Any) -> tuple[int, str]:
     software não tem como travar o alvo: risco alto do catálogo, risco médio sem seletor de commit, ou app sem
     catálogo (risco desconhecido). O motivo mantém o prefixo "etapa com efeito externo", que a linha do tempo e
     os testes reconhecem.
+
+    `app_de_prova` (item 29.31, RA-8 da reavaliação de 03/10): o app de prova (`builtin` e `apps.category='qa'`) não tem
+    catálogo e o efeito dele não sai da máquina de teste; "risco desconhecido" ali só pagava o modelo forte (64 a 66
+    escalonamentos em 7 dias, 43 % das chamadas do Opus no tier 1). Vale SÓ no `by_risk` e SÓ para etapa sem
+    capability: `True` é escolha explícita da instalação, e etapa com capability segue as regras de sempre (uma
+    capability sem catálogo continua sendo risco desconhecido).
     """
     if not getattr(step, "side_effect", False) or modo is False:
         return 0, ""
     if modo is True:
         return 1, "etapa com efeito externo"
     if cap is None:
+        if app_de_prova and not getattr(step, "capability", None):
+            return 0, ""
         return 1, "etapa com efeito externo sem catálogo: risco desconhecido"
     risco = getattr(cap, "risk", "high")
     if risco == "high":
