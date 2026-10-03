@@ -23,6 +23,7 @@ from fastapi import FastAPI
 
 from app.config import CuradorCfg
 from app.db import Database
+from app.modules.learning.application.curador import _textos_livres  # noqa: PLC2701 - a regra da triagem, direta
 from app.modules.learning.application.pareceres import ServicoDePareceres
 from app.modules.learning.application.ports import (Ajustes, NovaEvidencia, NovaRevisao, PedidoDeRevisao,
                                                     RespostaDeRevisao)
@@ -502,6 +503,14 @@ async def test_review_id_de_outro_item_e_404(mundo: Mundo, cliente: httpx.AsyncC
     rid = mundo.revisao(outro)["id"]
     r = await cliente.post(f"/api/aprendizado/licao/{um}/parecer/{rid}", json={"resposta": "aceitar", "motivo": "x"})
     assert r.status_code == 404 and r.json()["detail"]["code"] == "review_not_found"
+
+
+# ------------------------------------------------------------------ a triagem do dossiê da receita
+def test_a_variante_da_receita_e_estrutural_e_nao_vai_a_triagem() -> None:
+    """Achado do ensaio do 30.17 (03/10): a variante da receita (idioma e densidade) tem cara de credencial para a
+    regra do central, e 24 de 26 receitas da cópia ficavam `recusada:triagem`: o curador nunca revisava receita."""
+    assert TriagemDeCredencial().recusa("en-US/xhdpi")             # a regra recusa mesmo: o conserto é a lista
+    assert _textos_livres({"identidade": {"variante": "en-US/xhdpi", "nome": "Enviar"}}) == ["Enviar"]
 
 
 # ------------------------------------------------------------------ pedir revisão

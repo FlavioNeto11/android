@@ -82,10 +82,13 @@ class _Elegivel:
     gatilho_da_prioridade: Gatilho | None = None
 
 
-#: Chaves do conteúdo que são identificador, hash, data ou rótulo fechado: fora da triagem de texto.
+#: Chaves do conteúdo que são identificador, hash, data ou rótulo fechado: fora da triagem de texto. `variante`: o
+#: idioma e a densidade da tela da receita (`en-US/xhdpi`), que a regra de credencial recusa; sem ela na lista, 24 de 26
+#: receitas da cópia do central ficavam `recusada:triagem` e o curador nunca revisava receita (ensaio do 30.17, 03/10).
 _CHAVES_ESTRUTURAIS = frozenset({"tipo", "app", "app_version", "assinatura", "step_key", "step_hash", "content_hash",
                                  "versao", "estado", "ref", "id", "step_id", "run_id", "source_run_id", "last_used_at",
-                                 "ferramenta", "fonte", "skill_id", "source_kind", "schema_version", "omitido"})
+                                 "ferramenta", "fonte", "skill_id", "source_kind", "schema_version", "omitido",
+                                 "variante"})
 
 
 def _textos_livres(valor: object, chave: str = "") -> list[str]:
