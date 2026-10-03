@@ -38,7 +38,7 @@ from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .api import ROTAS_DE_SESSAO, recusa_do_despacho, router, worker_router
@@ -188,7 +188,12 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
         finally:
             await poc.stop()
 
-    app = FastAPI(title="Central de Aparelhos — POC", version=VERSION, lifespan=lifespan)
+    # Os docs da API moram sob `/api/` (29.54): o portão só exige credencial de `/api/*`, e `/docs`, `/redoc` e
+    # `/openapi.json` (o mapa inteiro da API) abriam sem credencial pelo Host público. Sob `/api/` valem a regra
+    # de sempre: 401 de fora, livres no loopback.
+    app = FastAPI(title="Central de Aparelhos — POC", version=VERSION, lifespan=lifespan,
+                  docs_url="/api/docs", redoc_url="/api/redoc", openapi_url="/api/openapi.json",
+                  swagger_ui_oauth2_redirect_url="/api/docs/oauth2-redirect")
 
     @app.exception_handler(RequestValidationError)
     async def validacao_sem_segredo(_request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -281,8 +286,23 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
     app.include_router(worker_router)      # o canal do worker também atende na porta principal (modo (b))
     dist = cfg.root / "frontend" / "dist"
     if cfg.serve_api and dist.exists():
-        app.mount("/", PainelEstatico(directory=dist, html=True), name="frontend")
+        # 29.54: o painel mora em `/central/` (o Vite constrói com `base: '/central/'`), para o mesmo hostname poder
+        # ser exposto na internet como `https://<host>/central` sem que a raiz sirva arquivo. Os dois redirecionamentos
+        # são RELATIVOS de propósito: o redirecionamento automático do Starlette (`redirect_slashes`) monta URL
+        # absoluta com o esquema que o processo vê — `http`, mesmo atrás do túnel TLS, porque `proxy_headers` está
+        # desligado — e mandaria o navegador de volta em http. Antes do `mount`, para casar primeiro.
+        async def _para_o_painel() -> RedirectResponse:
+            return RedirectResponse(url=PREFIXO_DO_PAINEL + "/", status_code=307)
+
+        for caminho_de_entrada in ("/", PREFIXO_DO_PAINEL):
+            app.add_api_route(caminho_de_entrada, _para_o_painel, methods=["GET", "HEAD"], include_in_schema=False)
+
+        app.mount(PREFIXO_DO_PAINEL, PainelEstatico(directory=dist, html=True), name="frontend")
     return app
+
+
+#: Onde o painel é servido (29.54). Tem de bater com o `base` do `frontend/vite.config.ts`.
+PREFIXO_DO_PAINEL = "/central"
 
 
 class PainelEstatico(StaticFiles):
@@ -344,6 +364,7 @@ def create_worker_app(state: AppState) -> FastAPI:
     app = FastAPI(title="Central de Aparelhos — canal do worker", version=VERSION,
                   docs_url=None, redoc_url=None, openapi_url=None)
     app.state.poc = state
+    app.state.canal_dedicado = True      # `_host_do_worker_permitido`: aqui o Host público não é recusado por porta
     app.include_router(worker_router)
     return app
 

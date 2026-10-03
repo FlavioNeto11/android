@@ -20,16 +20,18 @@ if TYPE_CHECKING:
 
 NOME = "Jev (TypeSafe System One)"
 #: Quem manda mais que ids e categorias, e o quê: a intenção (31.9) leva o catálogo do dono (nomes e descrições, C2) e o
-#: comando já sanitizado (C3). A C3 sai só de quem a privacidade libera (`C3_ORIGENS`, em `shadow`); as demais origens
-#: (curador e os consumidores futuros) mandam C0/C1.
-_ORIGENS_C2 = frozenset({"intencao"})
+#: comando já sanitizado (C3); os apps do comando (R5, 31.13) levam os nomes dos apps cadastrados (C2) e o mesmo comando.
+#: A C3 sai só de quem a privacidade libera (`C3_ORIGENS`, em `shadow`); as demais origens mandam C0/C1.
+_ORIGENS_C2 = frozenset({"intencao", "apps"})
 
 
 def consumidores_ativos(cfg: DecisaoFechadaCfg | None) -> dict[str, str]:
     """Origem → modo, só dos consumidores em `shadow` ou `on`; vazio se a porta está desligada."""
     if cfg is None or not cfg.enabled:
         return {}
-    return {o: m for o, m in sorted(cfg.consumidores.items()) if m in ("shadow", "on")}
+    # A R5 travada no código (`privacidade.R5_LIBERADA`) não manda nada, mesmo com o YAML ligado: não entra no aviso.
+    return {o: m for o, m in sorted(cfg.consumidores.items())
+            if m in ("shadow", "on") and (o != "apps" or privacidade.R5_LIBERADA)}
 
 
 def classes_que_podem_sair(cfg: DecisaoFechadaCfg | None) -> list[str]:

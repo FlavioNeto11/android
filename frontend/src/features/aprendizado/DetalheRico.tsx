@@ -23,7 +23,7 @@ import {
   type ConteudoDoFluxo, type ConteudoDoItem, type DetalheDoLivro, type EntradaDoLivro, type EvidenciaDoLivro,
   type LivroKind, type OrigemDaReceita, type RelacaoDoItem, type SaudeDoItem, type TransicaoDoLivro, type VersaoDoItem,
   type VizinhaDaReceita, ORIGEM_LABEL, acoesDoItem, nomearCapabilityNoTexto, porQueOSistemaNaoPublica, rotuloDoEstado,
-  rotuloDoKind,
+  rotuloDoKind, textoDaEvidencia,
 } from './model';
 import styles from './Aprendizado.module.css';
 
@@ -426,7 +426,7 @@ function Evidencia({ evid }: { evid: readonly EvidenciaDoLivro[] }) {
               {x.app_version ? ` · app ${x.app_version}` : ''}
               {` · ${formatDateTime(x.observed_at)}`}
               {x.simulated ? ' · simulada' : ''}
-              {x.detail ? ` · ${x.detail}` : ''}
+              {x.detail && textoDaEvidencia(x.detail) ? ` · ${textoDaEvidencia(x.detail)}` : ''}
               {x.invalidada ? (
                 <>{' · '}<Badge tone="danger" size="sm">execução invalidada</Badge> não conta como prova</>
               ) : null}

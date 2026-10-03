@@ -30,6 +30,7 @@ from pydantic import ValidationError
 
 from app.db import Database
 from app.models import Plan, PlanStep
+from app.modules.learning.application.evidencia_da_receita import EvidenciaDaReceita, RetrocargaDaReceita
 from app.modules.learning.application.nativos import (AssinaturaDoPlano, ContraGravado, D1Nativo, Decidir,
                                                       ExecucaoAssentada, ExecucaoDeHabilidade, FluxoEmProva,
                                                       PassoAssinado, ProvaDaExecucao, ReclassificacaoDaForma,
@@ -42,6 +43,7 @@ from app.modules.learning.domain.livro import (escopo_da_receita, estado_nativo,
 from app.modules.learning.domain.vocabulario import LivroKind, Posicao
 from app.modules.learning.infrastructure import linhas
 from app.modules.learning.infrastructure.fontes import FontesSql
+from app.modules.learning.infrastructure.reproducao_sql import ReproducoesSql
 from app.modules.learning.infrastructure.validacao_de_skills import ValidacaoDeHabilidadesSql
 from app.modules.skills.domain.document import content_hash
 from app.modules.skills.infrastructure.sql_repository import SqlSkillRepository
@@ -354,6 +356,10 @@ def ligar(servico: LearningService, repo: RepositorioDeAprendizado, db: Database
     servico.registrar_minerador(SombraDosFluxos(servico, repo, leitura, concordancias=concordancias,
                                                 decidir=decidir))
     servico.registrar_passo(ReclassificacaoDaForma(repo, leitura, decidir=decidir))   # 30.36
+    reproducoes = ReproducoesSql(db)                                                  # 30.39: a evidência da receita
+    servico.registrar_minerador(EvidenciaDaReceita(repo, reproducoes))
+    servico.registrar_passo(RetrocargaDaReceita(
+        repo, reproducoes, limite_por_receita=lambda: servico.ajustes.retencao.evidencias_por_item))
     if habilidades is not None:
         servico.registrar_minerador(ValidacaoPorExecucao(leitura, ValidacaoDeHabilidadesSql(habilidades),
                                                          decidir=decidir))

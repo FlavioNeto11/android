@@ -4925,3 +4925,65 @@ Prova `simulated`:
   409 de formato no assistente da resposta.
 
 A cobertura do canal (Telegram e Trello pelas mesmas leituras) entra no commit de integração da suíte 14.
+
+## Adendo v1.05 (03/10/2026; número da orquestradora; item 29.54, ADR-073) — o painel estático muda de `/` para `/central/`
+
+Nenhuma rota de API nova ou alterada, nenhum campo novo e nenhuma migração. Muda onde o painel estático é servido e a
+saúde ganha um problema.
+
+- **Painel estático em `/central/`.** Antes era servido na raiz. Agora:
+  - `GET /` e `GET /central` (e `HEAD`) respondem **307** com `Location: /central/` (relativo, de propósito: atrás do túnel
+    TLS o esquema que o processo enxerga é `http`);
+  - `GET /central/` serve o `index.html` e `/central/assets/*` os bundles, com os mesmos cabeçalhos de cache de antes
+    (`no-cache, must-revalidate` no `index.html`; `public, max-age=31536000, immutable` no que tem hash no nome);
+  - fora de `/api` e `/central` nenhum caminho serve arquivo (`/index.html`, `/assets/...` e `/favicon.svg` na raiz dão
+    404). Sem `frontend/dist`, `/` e `/central/` seguem 404.
+  - O frontend é construído com `base: '/central/'`; `API_BASE` continua `/api` e o WebSocket continua `/api/ws`.
+- **Portão inalterado.** Com o `Host` declarado em `server.public_hosts` e sem credencial, passam só o que não começa com
+  `/api/` (agora `/central/` e o redirecionamento da raiz) e `/api/login`, `/api/logout`, `/api/session`; o resto de
+  `/api` responde 401 e `Host` não declarado responde 403 `forbidden_host`. O POST do login de uma origem fora de
+  `server.allowed_origins` responde 403 `forbidden_origin`.
+- **Docs da API sob `/api/`.** `/docs`, `/redoc`, `/openapi.json` e `/docs/oauth2-redirect` (que o portão tratava como
+  estático e abriam sem credencial pelo Host público) agora são `/api/docs`, `/api/redoc`, `/api/openapi.json` e
+  `/api/docs/oauth2-redirect`: 401 de fora sem credencial, livres no loopback; os caminhos antigos dão 404.
+- **WebSocket do worker pela porta do painel.** Com `server.worker_port != 0`, `/api/worker/ws` e `/api/worker/midia`
+  nessa porta recusam (4403) `Host` público e aceitam só loopback; com `worker_port: 0` nada muda. O listener dedicado
+  não muda.
+- **`Cache-Control` do ícone de release** (`GET /api/releases/{id}/icon`) passa de `public` para `private`.
+- **`GET /api/health`: problema novo `exposicao_publica_incompleta`.** Aparece quando há nome em `server.public_hosts` e
+  falta qualquer uma de: `API_TOKEN`, `server.tls_behind_proxy` (ou TLS direto) e a origem `https://<host>` em
+  `server.allowed_origins`. O `message` lista só o que falta, pelo nome da chave de configuração; nunca valor de segredo.
+
+Prova `simulated`:
+- `tests/test_painel_estatico.py` (redirecionamentos, cache, nada estático na raiz);
+- `tests/test_canal_do_worker.py` (listener dedicado, sem mudança);
+- `tests/test_portal_publico_central.py` (portão com o painel em `/central`, login e origem, problema da saúde);
+- `tests/test_autenticacao.py`, `tests/test_sessao_do_painel.py` e `tests/test_tls.py` (portão e sessão, sem mudança).
+
+Prova `real`: `not_run` (o túnel no ar é da orquestradora; ver `operacao.md`, "Portal público pelo túnel da Cloudflare").
+
+## Adendo v1.06 (03/10/2026; número da orquestradora; item 31.13) — a R5 travada não aparece em `decisao_fechada.consumers`
+
+Nenhum campo novo e nenhuma forma muda. Muda quem aparece no bloco `decisao_fechada` de `GET /api/ai` (adendo v0.90) e
+no `notice`.
+
+- **A origem `apps` ganha consumidor** (os apps do comando, R5, 31.13), só em `shadow`.
+  - Ela já estava no vocabulário (`contrato.Origem` e `ai.decisao_fechada.consumidores`), sem consumidor.
+  - Agora entra também na lista das origens que podem mandar C3 (`privacidade.C3_ORIGENS`).
+- **`transparencia.consumidores_ativos` omite `apps` enquanto a trava de código `privacidade.R5_LIBERADA` é falsa.**
+  Ela é falsa de fábrica, até o GO do 31.10, e omite mesmo com `consumidores.apps: shadow` no YAML.
+  - Por quê: travada, a R5 não lê o cadastro nem monta pedido, e nada dela sai.
+  - Anunciar o consumidor prometeria uma exposição que não acontece. É a regra do 31.17: verdade antes de conforto.
+- **Consequências, com a R5 travada:**
+  - com só `apps` ligado no YAML, `decisao_fechada` é `null` e o `notice` não fala do Jev;
+  - com outro consumidor ligado, `consumers` não traz `apps`;
+  - `sending` e o "Nada sai agora" não contam a R5;
+  - quem mais lê `consumidores_ativos` também não a vê: o `closed_decision` da conta `typesafe` em
+    `GET /api/ai/balances` (adendo v0.92) e a retenção da sombra.
+- **Destravada** (`R5_LIBERADA = True`: um commit, com suíte e deploy, só depois do GO do 31.10):
+  - `consumers` traz `"apps": "shadow"`;
+  - o `notice` diz "apps em sombra";
+  - com C2 e C3 nas classes efetivas, entre o que sai aparecem os nomes do catálogo do dono (os apps cadastrados, nas
+    perguntas) e o comando filtrado (o estado da R5 é SÓ o comando).
+- Prova `simulated`: `backend/tests/test_decisao_fechada_apps.py::test_transparencia_nao_anuncia_a_r5_travada` e
+  `backend/tests/test_decisao_fechada_sombra.py::test_aviso_nomeia_a_typesafe_e_as_classes_so_com_consumidor_em_shadow_ou_on`.

@@ -19,6 +19,77 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Portal público no ar em `https://dev.nvit.com.br/central` (29.54, ADR-073; prova real)
+
+- O hostname entrou em `server.public_hosts` do `config.yaml` do central (21:35:02Z, com cópia em `data/backups/`),
+  junto de `tls_behind_proxy: true` e da origem `https`. O `avisos.url_painel` passou a apontar para o endereço público.
+- O central foi reiniciado às 21:46:56Z (checkout `4ad5f8b6`, código do `2264843e`; migração `086`; `problems: []`).
+- Prova de fora, sem credencial, às 21:47:28Z: 19 de 19 (`.claude/handoffs/portal/prova-de-fora.sh depois`). A API
+  responde 401, o painel abre em `/central/`, a documentação da API fica atrás do login e o canal do worker não sai
+  pelo túnel. O painel local segue sem login.
+- Não provado (`not_run`): o primeiro login pelo endereço público, que é do dono.
+- Itens novos no plano, da validação do deploy 14 no navegador (0 bloqueante): 29.58, 29.59, 30.41, 30.42 e 30.43.
+
+## 2026-10-03 — Suíte 15 na main e deploy 15 no central (2264843e; sem migração nova; config sem mudança do deploy)
+
+- A suíte 15 foi integrada em `integ/suite-15`, na ordem da orquestradora:
+  - #171 29.54, o portal público em `/central` (a1ce153b);
+  - #172 30.39, a evidência datada da receita (16142fd1);
+  - #170 31.11, o lote offline da intenção (a562169b);
+  - #173 31.13, a R5 em sombra travada (313c98de, empilhado no #170; adendos v1.05 e v1.06 em ordem).
+
+  Também entraram a main de então (44cb297c, 9490b897 com o ID 30.40) e os commits da Canais só no mapa do Trello
+  (a51ffb14, f592cca4, 7e65846c, bebc8872). A troca `apps_do_comando._nomes` → `nomes_do_app` ficou sem uso antigo.
+  O 30.38 (a, b) e o 30.40 ficam para a suíte 16.
+- Portões (na a5cc9455):
+  - backend SQLite `-n 8` Idle: 8816 passed, 7 skipped, 0 failed (20:47:43–20:55:09Z);
+  - scripts 531/0, typecheck ok, frontend 1426/1426;
+  - PostgreSQL dirigido, sem migração nova: 58 arquivos (os que a suíte mudou e os do código SQL e da decisão fechada
+    que ela tocou), `-n 3` Idle, 2729 passed, 5 skipped, 0 failed (20:58:02–21:25:09Z, na bc6a9e48).
+
+  Os merges depois do portão foram só de docs, do plano e do mapa: pacotes, `relatorio` (387 itens), check e
+  docs-check limpos.
+- A main avançou por fast-forward para 2264843e.
+- Implantado no central (`real`, 03/10, WIN-7S2UASNLFOP):
+  - `deploy.ps1 -PularDependencias` (requirements inalterados; frontend reconstruído) com backup `20261003-182909`
+    (174.8 MB, integridade ok);
+  - backend no ar às 21:29:26Z;
+  - health ok: commit 2264843e, `migration 086_sombra_estado_hash`, `problems []`; `/docs` local 404;
+  - `config/config.yaml` sem mudança do deploy. O teto por pedido de validação de 0,15, gravado antes pela Aprendizado
+    com a autorização da orquestradora, passou a valer neste reinício.
+- Agente do notebook em `0.1.0+2264843` (simulação e depois o real; online às 21:31:36Z). O reparo dos 09/10/12/13
+  ficou pausado durante a troca (21:30:45–21:31:43Z). Os 01/03/06 seguiram online, sem atenção.
+
+## 2026-10-03 — 31.13, R5: os apps do comando em sombra, travados no código (branch feat/31-13-r5-apps)
+
+- `planning/decisao_fechada/apps.py`: um `noul` por app do cadastro sobre o comando da intenção. O estado é SÓ o
+  `comando` (opção A da orquestradora: o `app` da execução é o app principal do plano, o rótulo). O nome do app (C2) vai
+  mascarado e sem C7, e a decisão real é a regex do caminho atual sobre o comando original.
+- Travada: `privacidade.R5_LIBERADA = False` até o GO do 31.10. `consumidores.apps` no YAML não liga nada, e `/api/ai`
+  não anuncia a R5 enquanto travada.
+- `decisores.py`: o `noul` vai ao fio (`TIPOS_NO_FIO`), e abaixo do limiar é sem resposta, nunca `nao`.
+- `intencao.pedido_c3` é o estado C3 comum à intenção e aos apps.
+- A ligação é uma linha no `state.py` (`ligar_apps`).
+- O lote offline do 31.11 ganha `--r5`, nos mesmos casos `c`. O hash é provado pelo da intenção, e o estado da R5 está
+  contido nele.
+- Golden set: §9 (pré-registro da R5) e o viés conhecido do `app` no estado da R2 (§3).
+- Testes:
+  - `backend/tests/test_decisao_fechada_apps.py`;
+  - o fio `noul` em `test_decisao_fechada_jev.py`;
+  - R5 em `test_lote_intencao.py` e `scripts/tests/test_jev_braco_offline_intencao.py`;
+  - três testes ajustados à mudança intencional (C3 dos apps, `noul` no fio, aviso sem a R5 travada).
+
+## 2026-10-03 — 31.11, R2 e R3 offline: o lote da intenção, só com o hash (branch feat/31-11-r2-r3-offline)
+
+- `taskqueue/lote_intencao.py`: remonta, só para leitura e pelo código do runtime, os comandos que a sombra da intenção
+  já mandou ao Jev desde 15:29:51Z (ADR-069 item 21). Só o caso cujo hash do estado redigido bate com o da linha
+  (31.22) vai; a salvaguarda "b" é só relatada.
+- `scripts/jev-braco-offline-intencao.py`: o braço da intenção, em inglês e em português (D-J7), com portões de
+  10 comandos reais e teto de US$ 0,05. A R1 ganha um 2º controle, "regra da saúde", só de acompanhamento.
+- Golden set: §8 (pré-registro do lote) e §2 (o `v2` medido antes e depois do 30.39; a regra da saúde).
+- Testes: `backend/tests/test_lote_intencao.py`, `scripts/tests/test_jev_braco_offline_intencao.py` e
+  `scripts/tests/test_jev_braco_offline.py`.
+
 ## 2026-10-03 — Suíte 14 na main e deploy 14 no central (51270b9c; migrações 084, 085 e 086; config inalterada)
 
 - A suíte 14 foi integrada em `integ/suite-14`, na ordem da orquestradora:
@@ -54,6 +125,30 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Antes do deploy, um incidente no parque: um dump de crash pendente (do crash na saída de um reinício por IRQ)
   prendia todo boot sem janela no diálogo de consentimento. O arquivo foi movido para `data/quarentena-crash/`, e os
   03 e 06 subiram com um `start` cada, sem reset. A prevenção é o item 29.55.
+
+## 2026-10-03 — Painel em `/central` para a exposição pública pelo túnel da Cloudflare (item 29.54, ADR-073; `simulated`)
+
+- Frontend: `base: '/central/'` no Vite (bundles e favicon sob `/central/`). Backend: `PainelEstatico` montado em `/central`; `GET /` e `GET /central` redirecionam (307, `Location` relativo) para `/central/`; nada estático fora de `/central`.
+- Portão (`main.guarda`, `security/access.py`) sem mudança de lógica, fixado por `tests/test_portal_publico_central.py` (Host declarado sem credencial, Host não declarado, loopback, login com `Origin` fora e dentro de `allowed_origins`).
+- Saúde: problema novo `exposicao_publica_incompleta` (falta `API_TOKEN`, `tls_behind_proxy` ou `https://<host>` em `allowed_origins` com `public_hosts` declarado).
+- Docs: ADR-073, adendo v1.05 do contrato da API, seção "Portal público pelo túnel da Cloudflare" em `operacao.md` (procedimento `not_run`; ingress `^/api/worker/` com a barra final), `config.example.yaml`.
+- Correções da revisão de risco: docs da API (`/docs`, `/redoc`, `/openapi.json`) movidos para `/api/` (abriam sem credencial pelo Host público); WebSocket do worker recusa Host público na porta do painel quando há listener dedicado; `Cache-Control` do ícone de release `private`; ADR-073 e `operacao.md` com HTTPS obrigatório, `API_TOKEN` longo, tranca global e limite de taxa recomendado.
+- `not_run`: túnel no ar e conferências de fora (da orquestradora com o dono); sem script do túnel, webhook ou mudança de cookie neste item.
+
+## 2026-10-03 — 30.39: a evidência datada da receita (branch feat/30-39-evidencia-receita, sem migração)
+
+- Minerador no digest e passo de retrocarga gravam `learning_evidence` de `receita:<id>` (a favor: etapa conduzida só pela
+  receita; contra: divergiu ou fechou sem a IA), uma linha por (receita, execução, posição), datada pela etapa; o dossiê da
+  receita ganha `evidencias.contadores_e` e, sem amostra de sombra, `evidencias.sombra_e`; `VERSAO_DO_DOSSIE` segue 1;
+  `NovaEvidencia.observed_at` opcional. Origem própria `reproducao:<run_id>`: a linha é o registro datado dos contadores e
+  não conta de novo (`promocao.efetivas` e os leitores em SQL a tiram), então a saúde, a fila "Revisar", a promoção e as
+  métricas não mudam; só o dossiê a mostra. API sem mudança (o dossiê não está em rota).
+- Polimento da validação do deploy 13: a linha de evidência no detalhe do item (`DetalheRico`) mostra o texto humano
+  (`model.textoDaEvidencia`): sem a marca do conteúdo, a pós-condição pelo rótulo do painel ("nesta execução: app em
+  primeiro plano; no fluxo: elemento presente") e "(e mais N)" no lugar de "(+N)"; vale para as linhas antigas (o log não
+  muda). vitest do aprendizado 159 passed; typecheck ok.
+- Prova: `simulated` (`backend/tests/test_learning_evidencia_receita.py`, suíte `test_learning_*` 882 passam). Real: `not_run`
+  (nenhuma execução, aparelho ou conta reais; a volta das receitas ao curador é do deploy da suíte 15).
 
 ## 2026-10-03 — 31.22: a sombra guarda o hash do estado redigido (migração 086; branch feat/31-22-estado-hash)
 

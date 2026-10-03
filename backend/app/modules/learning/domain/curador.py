@@ -53,6 +53,20 @@ PRINCIPAL_DO_ITEM = "o app das etapas sem app próprio (conteudo.etapas[].app nu
 #: 30.36: as duas notas só entram quando valem (o dossiê do resto mantém as chaves e o `dossie_hash`).
 FORMA_DA_EVIDENCIA = ("posicao `forma`: a execução fez o caminho do item e só reescreveu a forma (a pós-condição de "
                       "uma etapa sem efeito, ou um parâmetro fora da ação); não conta contra nem a favor")
+#: 30.39: só no dossiê da receita. O contador acumulado não é evidência citável; a lista datada é.
+CONTADORES_DA_RECEITA = ("`conteudo.uso` (`replay_ok`, `replay_fail`) são contadores acumulados SEM data, aparelho, versão "
+                         "do app nem marca de real ou simulado; incluem o histórico de antes da evidência datada e também "
+                         "o que já está na `lista`. A evidência citável é a `lista` (uma linha por execução e posição, "
+                         "`for` = a receita levou a etapa até o fim, `against` = divergiu ou a etapa não terminou por "
+                         "ela); a retenção guarda só as mais recentes, e `total` conta o que ficou")
+#: 30.39: só com `conteudo.sombra.shadow_total == 0`. A sombra só corre com a receita candidata (a IA decide a etapa e
+#: a receita é apenas comparada) ou com `ai.recipes: shadow`; com `ai.recipes: replay` a receita ativa ou validada
+#: conduz a etapa e não volta à sombra; a concordância simulada não conta para a candidata.
+SOMBRA_DA_RECEITA = ("sem amostra de sombra (`shadow_total` 0): a comparação com a IA só corre enquanto a receita é "
+                     "candidata ou com `ai.recipes: shadow`; com `ai.recipes: replay` a receita ativa ou validada "
+                     "conduz a etapa e a comparação com a IA não roda de novo para ela, e a concordância de execução "
+                     "simulada não conta. A evidência é a `lista` datada; `sombra` não é falta que a validação "
+                     "consiga produzir para esta receita")
 SEM_CAMINHO_DA_RECEITA = ("variante sem caminho: o plano do fluxo ativo do comando de origem não chega a esta etapa "
                           "(outra variante dela é a que roda), e a validação não tem o que executar; sugerir aposentar")
 
@@ -302,6 +316,10 @@ class Dossie:
                                              "simulated": e.simulated, "em": e.em} for e in self.evidencias]}
         if any(e.posicao == "forma" for e in self.evidencias):
             evidencias["forma_e"] = FORMA_DA_EVIDENCIA
+        if i.kind == "receita":
+            evidencias["contadores_e"] = CONTADORES_DA_RECEITA
+            if (self.conteudo.get("sombra") or {}).get("shadow_total") == 0:
+                evidencias["sombra_e"] = SOMBRA_DA_RECEITA
         return {
             "versao_do_dossie": VERSAO_DO_DOSSIE,
             "item": item,
@@ -646,9 +664,9 @@ def _parecer(bruto: str | Mapping[str, object], dossie: Dossie, probabilidade: f
 
 
 __all__ = ["CAMPOS_DA_SAIDA", "CAMPOS_OBRIGATORIOS", "DECISOES_COM_ALVO", "LIMIARES_DE_CONFIANCA",
-           "FORMA_DA_EVIDENCIA", "LIMITE_DA_CONCLUSAO", "MAX_EVIDENCIAS", "OPCOES_FECHADAS", "PRINCIPAL_DO_ITEM",
+           "CONTADORES_DA_RECEITA", "FORMA_DA_EVIDENCIA", "LIMITE_DA_CONCLUSAO", "MAX_EVIDENCIAS", "OPCOES_FECHADAS", "PRINCIPAL_DO_ITEM",
            "SECOES_CITAVEIS", "SEM_CAMINHO_DA_RECEITA",
-           "VERSAO_DO_DOSSIE", "AppDoItem", "Causa",
+           "SOMBRA_DA_RECEITA", "VERSAO_DO_DOSSIE", "AppDoItem", "Causa",
            "Confianca", "Decisao",
            "Dossie", "Evidencia", "Falta", "GrupoDeFalha", "IdentidadeDoItem", "Inconsistencia", "Intervencao",
            "MotivoDeInvalidade", "Parecer", "PassoDaTrilha", "Relacao", "RiscoApontado", "Validacao", "Voto",

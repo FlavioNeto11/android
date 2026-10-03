@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-332 de 385 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+336 de 400 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -271,6 +271,9 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 28.13 | pendente | — | — | — |  |  |
 | 28.14 | implemented | simulated | sessao | — | PR #100, merge e22098c5 (02/10/2026, sessao jev). modules/avisos/domain/mensagem.py: learning.needs_person avisa so na entrada da espera, faixa C por padrao (avisos.aprendizado_faixas), chave learning:{kind}:{ref}:{desd… |  |
 | 28.15 | pendente | — | — | — |  |  |
+| 28.16 | pendente | — | — | — |  |  |
+| 28.17 | pendente | — | — | — |  |  |
+| 28.18 | pendente | — | — | — |  |  |
 | 29.1 | implemented | real | opus | — | Real, 30/09/2026, central (runner `central`), commit 9428a6a: run 36713946044 do CI verde às 13:03Z, com o job `dependências` (2m14s) passando pelo `npm audit --audit-level=high` do Appium, pelo `npm ci` (o postinstall… |  |
 | 29.2 | implemented | simulated | opus | — | Migração backend/migrations/063_prova_de_vazamento.sql (leak_rev, leak_client, leak_result, leak_at, leak_detail, leak_pending em device_network; só colunas). backend/app/devices/rede.py (ProvaDeVazamento, bloqueio_prov… |  |
 | 29.3 | implemented | simulated | opus | — | Medição real, 30/09 12:28–13:17Z, android-05 (QA), central 6997091, 7 reinícios pela API: o always-on tenta uma vez por boot e falhou em 5 de 7 (ANR de início do serviço com o convidado sem CPU em 3; serviço que sobe e… |  |
@@ -320,6 +323,13 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.50 | implemented | real | opus (sessão Android) | — | Código: feat/29-50-expira-needs-input 38b21238 (f334822c + adendo v0.95), na main pela suíte 12 (5428abdb), implantado no deploy 12 (d5a1c3a9; restart 17:02:42Z e de novo 17:18:38Z pela Aprendizado, mesmo commit). Prova… |  |
 | 29.51 | implemented | simulated | opus (sessão Android) | — | feat/polimentos-rede-deploy12 @ a742f75f (722e0664 Rede; 591c8d84 títulos sem lacunas e candidato x desligado; 41950d20 pendentes uma vez; 4773d997 os 3 do backend; a742f75f adendo v1.01), na main pela suíte 13 (integ 7… | Prova real not_run: o relatório do Chrome da orquestradora pós-deploy 13 (itens 6 a 11). |
 | 29.52 | implemented | simulated | opus (sessão Android) | — | fix/29-52-resposta-com-credencial @ 16174425 (→ 90c058e2 no integ), porta única pergunta_sensivel(ref\|None) no commit de integração 7fd72929; na main pela suíte 14 (integ 51270b9c, fast-forward) e implantado no deploy… | Prova real not_run: itens 4 e 5 do roteiro do Chrome da orquestradora pós-deploy 14 (pergunta sensível aberta no painel e o evento pergunta_sensivel); sem perg… |
+| 29.53 | pendente | — | — | — |  |  |
+| 29.54 | implemented | real | sonnet | — | Real em 03/10/2026, maquina central WIN-7S2UASNLFOP, checkout 4ad5f8b6 (codigo do 2264843e, deploy 15): hostname em server.public_hosts as 21:35:02Z, central reiniciado as 21:46:56Z, /api/health local ok sem exposicao_p… |  |
+| 29.55 | pendente | — | — | — |  |  |
+| 29.56 | pendente | — | — | — |  |  |
+| 29.57 | pendente | — | — | — |  |  |
+| 29.58 | pendente | — | — | — |  |  |
+| 29.59 | pendente | — | — | — |  |  |
 | 29.44 | implemented | real | opus (sessão Android) | — | feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a med… |  |
 | 29.45 | implemented | simulated | opus (sessão Android) | — | feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entr… |  |
 | 29.43 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/caminho-rapido-1 @60e7962e: LT-1 (atalho de entrada sem o ator, ATALHO_ANTES_DO_ATOR, nunca em etapa com efeito, driven_by='sem_ator'), LT-2 (expect_done em etapa julgada → _verify(uma_rodada=True), nunca em etapa… |  |
@@ -362,6 +372,10 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.37 | partial | simulated | claude-opus-5-5 | — | PR #168 (feat/30-37-prova @ d067d904, base 177b18cd), para a suíte 14: migração 084 (runs.prova_fluxo_id, learning_validations.teto_usd); a execução de prova roda o plano do próprio fluxo (FlowStore.plano_em_prova, cand… |  |
 | 30.38 | partial | simulated | claude-opus-5-5 | — | (c) no PR #165 (fix/30-38c-classe-de-agora @ 657ab399, base cd71ac4e), para a suíte 13: ServicoDePareceres.do_item e na_fila usam _classe_de_agora (a gravada C não monta dossiê); a API dá classe = a de agora no parecer… |  |
 | 30.39 | partial | simulated | claude-opus-5-5 | — | PR #172 (feat/30-39-evidencia-receita @ 0c472832), para a suíte 15, sem migração e sem mudança de API: minerador EvidenciaDaReceita no digest (learning_evidence de receita:<id> por receita/execução/posição, origem repro… |  |
+| 30.40 | pendente | — | — | — |  |  |
+| 30.41 | pendente | — | — | — |  |  |
+| 30.42 | pendente | — | — | — |  |  |
+| 30.43 | pendente | — | — | — |  |  |
 | 31.1 | implemented | simulated | sessao | — | Commit b5a40c98 (na main desde o PR #110, sessao jev, 02/10/2026): trava de 255 opcoes e opcao nenhuma no adaptador do Jev (choice). backend/tests/test_context_retrieval_semantic.py com provedor falso. Chamada real: not… |  |
 | 31.2 | implemented | simulated | sessao | — | PR #112 (merge b5baf3e5 na main, commits 89a92b03 + a6cfa0fd, sessao jev, 02/10/2026): migracao 073 (ai_calls.origem e ref, TEXT sem CHECK), Usage.origem, filtro por origem no gasto (costs.spent_usd). backend/tests/test… |  |
 | 31.3 | implemented | not_run | sessao | — | Item de decisao (texto do ADR): ADR-069 escrito e aprovado pelo dono (02/10/2026 ~21:35Z, 'sim para todos' no chat da orquestradora), PR #102, merge fd59fbd7. Emenda o ADR-063; D-J1 (porta unica, constantes fechadas, Te… |  |
@@ -372,9 +386,9 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.8 | implemented | real | opus (sessão jev, executora da orquestradora) | — | real (critério da linha: a triagem do curador em sombra com dado F1): deploy 9 (main 3dcfc9ac, T_on 2026-10-03T11:04:15Z, consumidores {curador: shadow}, classes [C0, C1]); a prova do 31.17 (03/10/2026 13:14:50Z, WIN-7S… |  |
 | 31.9 | implemented | simulated | opus (sessão jev, executora da orquestradora) | — | A intenção em sombra fora da cadeia, com o filtro C7 completo: rodadas E a H (suítes 7 a 10), forma A (31.18 @b7c05558) e lacunas + A-média (31.20 @ea1df281), na main pela suíte 11 (97425d5f). Portão passado em ea1df281… |  |
 | 31.10 | partial | real | opus (sessão jev, executora da orquestradora) | — | Curador em sombra real desde o deploy 9 (T_on 2026-10-03T11:04:15Z): 4 linhas às 13:10Z, conferidas pela prova do 31.17 (13:14:50Z). Relatório scripts/jev-relatorio-31-10.py com o 31.19 (@442a9249, na main pela suíte 11… | Fecha (implemented) com a leitura de ≥ 10 linhas de intenção (critério da orquestradora). O P4 foi pausado às 17:18Z (K-086; religa com o 30.37): linhas novas… |
-| 31.11 | partial | real | opus (sessão jev, executora da orquestradora) | — | Parte R1 (curador, C0) REAL; acompanhamento, nenhum número vale para GO (rótulos 1 e 2 = 0). Código: scripts/jev-braco-offline.py, na main em 926b4f6f (a Porta do runtime com o DecisorJev, sem o adaptador MIT; banco só… | R2 e R3: falta a composição offline (backend/app) e volume de comandos já enviados pela sombra (ADR-069 item 21). R5: depende do 31.13. |
+| 31.11 | partial | real | claude-opus-5-5 | — | Parte R1 (curador, C0) REAL; acompanhamento, nenhum número vale para GO (rótulos 1 e 2 = 0). Código: scripts/jev-braco-offline.py, na main em 926b4f6f (a Porta do runtime com o DecisorJev, sem o adaptador MIT; banco só… | R2, R3 e R5: código pronto nos PRs #170 e #173 (composição offline e R5), fora da main até a suíte 15; volume de comandos reais = 1 de 10 distintos no piso (AD… |
 | 31.12 | pendente | — | — | — |  |  |
-| 31.13 | pendente | — | — | — |  |  |
+| 31.13 | implemented | simulated | claude-opus-5-5 | — | PR #173 (feat/31-13-r5-apps @ 530b8702, empilhado no #170; fora da main até a suíte 15 ou 16): ConsumidorDeApps em sombra (decisao_fechada/apps.py), um noul por app do cadastro com id opaco, nomes pelo motivo_c7 e pelo… |  |
 | 31.14 | implemented | simulated | claude-opus-5-5 (sessão Jev) | — | feat/31-14-decisor-jev @ 555543fd (a9166bcb o item, 555543fd a revisão), na main pelo merge 712aaea5 da suíte 7 (123650cc). DecisorJev real: só choice vai ao fio; gasto conferido ANTES do POST (RoutingProvider.conferir_… |  |
 | 31.15 | implemented | simulated | claude-opus-5-5 (sessão Jev) | — | feat/ra-10-observabilidade @ f94022c3 (88936fea, 935bb3f5, 57dd17b8, 483635fe, f94022c3), na main pela suíte 7 (123650cc). Migração 080: verdict, escalate, motivo e image_reason em ai_calls, em vocabulário fechado no có… |  |
 | 31.16 | implemented | simulated | opus (sessão jev, executora da orquestradora) | — | feat/31-16-telas-ra10 @d5942edf (10d63168: seção "Modelo forte e conferência" em Diagnóstico › Custo de IA, com escalations por motivo, rejulgamento, cascata, recolhidos por app e imagem e o aviso do driven_by nulo, sem… |  |
@@ -383,8 +397,9 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.19 | implemented | simulated | opus (sessão jev, executora da orquestradora) | — | feat/31-19-curador-limiar @442a9249, na main pela suíte 11 (35e3b0f6). (1) As 4 respostas reais do curador (03/10 13:10Z) ficaram abaixo do limiar com confiança 0,50–0,52 e maior probabilidade 0,60–0,62 sobre UM estado… |  |
 | 31.20 | implemented | simulated | opus (sessão jev, executora da orquestradora) | — | Lacunas da rodada I e a A-média aprovada pelo dono (ADR-069 item 19): feat/31-18-forma-a @ea1df281 (parte de lista f2f49a08: E1/E2 com mascaramento de fragmento em entidades.py; A-média: o verbo de entrar recusa em qual… |  |
 | 31.21 | pendente | — | — | — |  |  |
-| 31.22 | pendente | — | — | — |  |  |
-| 31.23 | pendente | — | — | — |  |  |
+| 31.22 | implemented | real | claude-opus-5-5 | — | PR #169 @ 82dcde1e mais o fix 671a0482 (a leitura da sombra conhece a coluna nova), na main pela suíte 14 (51270b9c): migração 086_sombra_estado_hash, decisao_fechada_sombra.estado_hash = sha256 do estado depois do priv… |  |
+| 31.23 | implemented | simulated | claude-opus-5-5 | — | PR #169 @ 82dcde1e (branch feat/31-8-sinal-curador-v2), na main pela suíte 14 (51270b9c) e no deploy 14: curador.estado_do_dossie_v2 soma ao v1 os campos fechados de sinal (versão viva, uso, idade da evidência a favor,… |  |
+| 31.24 | pendente | — | — | — |  |  |
 | 32.1 | implemented | not_run | opus (sessão jev, executora da orquestradora) | — | Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env,… |  |
 | 32.2 | pendente | — | — | — |  |  |
 | T.1 | implemented | not_run | opus | ok | docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, rea… | Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de produca… |
@@ -392,7 +407,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (53): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 30.18, 30.31, 30.34, 30.36, 30.37, 30.38, 30.39, 31.10, 31.11, 31.12, 31.13, 31.21, 31.22, 31.23, 32.2, T.2
+Pendentes (64): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 28.16, 28.17, 28.18, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 29.53, 29.55, 29.56, 29.57, 29.58, 29.59, 30.18, 30.31, 30.34, 30.36, 30.37, 30.38, 30.39, 30.40, 30.41, 30.42, 30.43, 31.10, 31.11, 31.12, 31.21, 31.24, 32.2, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

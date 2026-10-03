@@ -13,7 +13,7 @@ O contrato com o backend está em [`../docs/api-contract.md`](../docs/api-contra
 | Comando | O que faz |
 |---|---|
 | `npm install` | Instala as dependências (versões exatas; `package-lock.json` versionado). Node ≥ 22.12. |
-| `npm run dev` | Servidor de desenvolvimento em `http://127.0.0.1:5173` (`strictPort`). |
+| `npm run dev` | Servidor de desenvolvimento em `http://127.0.0.1:5173/central/` (`strictPort`). |
 | `npm run build` | `tsc --noEmit` (modo estrito) + `vite build` → `frontend/dist`. |
 | `npm run typecheck` | Só a checagem de tipos. |
 | `npm test` | `vitest run`: testes de unidade (node) + integração da UI inteira (jsdom, backend simulado). |
@@ -23,7 +23,7 @@ O contrato com o backend está em [`../docs/api-contract.md`](../docs/api-contra
 
 - **Desenvolvimento:** o Vite escuta em `127.0.0.1:5173` e repassa tudo que começa com `/api` para
   `http://127.0.0.1:8000`, inclusive o WebSocket (`ws: true`). O navegador só fala com `:5173`.
-- **Produção:** `npm run build` gera `dist/`, que o backend serve em `/`. Como o código usa apenas URLs
+- **Produção:** `npm run build` gera `dist/`, que o backend serve em `/central/` (`base: '/central/'` no Vite; `GET /` redireciona; ADR-073). Como o código usa apenas URLs
   relativas (`/api/...`) e monta o WebSocket a partir de `window.location` (`ws(s)://<host>/api/ws`),
   nada muda entre os dois modos e nenhuma porta fica fixa no código.
 - A navegação entre telas usa o hash da URL (`#/painel`, `#/execucoes`, `#/configuracao`, `#/diagnostico`),

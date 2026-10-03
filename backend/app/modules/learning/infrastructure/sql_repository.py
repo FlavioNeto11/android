@@ -356,7 +356,7 @@ class SqlLearningRepository:
                 " simulated, detail, observed_at) VALUES (?,?,?,?,?,?,?,?,?)"
                 " ON CONFLICT (item_ref, origin_ref, stance) DO NOTHING RETURNING id",
                 (nova.item_ref, nova.stance.value, nova.origin_ref, nova.run_id, nova.instance_id, nova.app_version,
-                 int(nova.simulated), (nova.detail or "")[:200] or None, agora))
+                 int(nova.simulated), (nova.detail or "")[:200] or None, nova.observed_at or agora))
             if inserida is None:
                 return False
             if conta:

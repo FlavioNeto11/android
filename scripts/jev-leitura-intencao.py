@@ -50,6 +50,7 @@ from typing import Any
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ / "backend"))
 
+from app.planning.decisao_fechada.apps import NAO, SIM  # noqa: E402
 from app.planning.decisao_fechada.contrato import (  # noqa: E402
     CLASSES, FALLBACKS, ID_NENHUMA, MODOS, MOTIVOS_DE_PRIVACIDADE, ORIGENS, pergunta_choice,
 )
@@ -118,9 +119,12 @@ def percentil(valores: Sequence[float], pct: int) -> float | None:
 
 # ------------------------------------------------------------------ zero texto
 def _opaco(valor: object, origem: object = ORIGEM) -> bool:
-    """Id de opção: no curador, uma das opções da triagem; nas outras origens, `opt:<12 hex>` (o `id_opaco`)."""
+    """Id de opção: no curador, uma das opções da triagem; nos apps do comando (R5, 31.13), `sim` ou `nao` (o `noul`);
+    nas outras origens, `opt:<12 hex>` (o `id_opaco`)."""
     if not isinstance(valor, str):
         return False
+    if origem == "apps":
+        return valor in (SIM, NAO)
     if valor == ID_NENHUMA:
         return True
     return valor in OPCOES_DO_CURADOR if origem == "curador" else bool(_OPACO.fullmatch(valor))
