@@ -6319,9 +6319,9 @@
   "29.50": {
    "id": "29.50",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "feat/29-50-expira-needs-input 38b21238 (f334822c + adendo v0.95), na main pela suíte 12 (5428abdb). RunService.expirar_sem_resposta(agora): needs_input há 24 h, contadas da entrada na pergunta (MAX(ts) do run.updated; a retenção poupa evento de execução sem finished_at; sem evento, created_at), fecha como cancelled pelo sistema por _cancelar_antes_de_iniciar (o mesmo caminho do cancel antes de iniciar), com status_detail humano 'Sem resposta em 24 h: ...', a marca expirada {motivo: sem_resposta, horas: 24, desde} num campo próprio do run.updated e SEM o sinal cancelou_execucao; UPDATE condicional ao needs_input (a resposta da pessoa no meio da varredura ganha). Laço AppState._expiracao_loop: 1ª volta na subida, depois a cada 10 min, no líder da trava retencao. Simulado: tests/test_needs_input_expira.py (4: prazo com relógio injetado, relógio da entrada e não da criação, corrida com a resposta, volta do laço com now()); afetados 80 + 187 passed; suíte 12 SQLite 8460 passed, 7 skipped, 0 failed.",
-   "blocker": "Prova real not_run: a varredura no central depois do deploy 12. Entradas lidas só leitura: 4985a1 (android-05) 02/10 18:15:30Z e 12 do android-09 em 03/10 07:37:10Z a 07:51:58Z, que vencem em 04/10 07:37 a 07:52Z.",
+   "proof": "real",
+   "evidence": "Código: feat/29-50-expira-needs-input 38b21238 (f334822c + adendo v0.95), na main pela suíte 12 (5428abdb), implantado no deploy 12 (d5a1c3a9; restart 17:02:42Z e de novo 17:18:38Z pela Aprendizado, mesmo commit). Prova real (03/10/2026, central WIN-7S2UASNLFOP, /api/health commit d5a1c3a9, migração 082, 0 problemas): run r-20261002181523-4985a1 (android-05), em needs_input desde 2026-10-02T18:15:30.525Z, passou a cancelled pela varredura de ~18:18:38Z (laço de 10 min desde o restart), finished_at 2026-10-03T18:18:50.396Z, cancel_requested=1; status_detail 'Sem resposta em 24 h: a pergunta expirou e a execução foi encerrada pelo sistema. Para seguir, faça o pedido de novo.'; o run.updated de 18:18:50.409Z traz expirada {motivo: sem_resposta, horas: 24, desde: 2026-10-02T18:15:30.525Z} num campo próprio; 0 sinais cancelou_execucao da execução; as 12 do android-09 (needs_input de 07:37:10Z a 07:51:54Z de 03/10) intactas. Leitura só leitura do banco (scratchpad prova_2950.py, lido às 18:19:04Z). Simulado: tests/test_needs_input_expira.py (4); suíte 12 SQLite 8460 passed.",
+   "blocker": "",
    "arquivos": [
     "backend/app/taskqueue/service.py",
     "backend/app/state.py",
@@ -6329,13 +6329,13 @@
     "docs/dominios/execution.md",
     "docs/api-contract.md"
    ],
-   "testes": "test_needs_input_expira.py (4 novos); afetados 80 + 187; suíte 12 SQLite.",
-   "grupo": "suite-12-android",
+   "testes": "test_needs_input_expira.py (4); suíte 12 SQLite; varredura real no central (r-20261002181523-4985a1).",
+   "grupo": "29-50-real",
    "modelo": "opus (sessão Android)",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T16:59:17+00:00"
+   "quando": "2026-10-03T18:19:51+00:00"
   },
   "30.36": {
    "id": "30.36",
@@ -7907,6 +7907,15 @@
    ],
    "grupos": [
     "aprendizado-pr165"
+   ]
+  },
+  {
+   "quando": "2026-10-03T18:19:51+00:00",
+   "itens": [
+    "29.50"
+   ],
+   "grupos": [
+    "29-50-real"
    ]
   }
  ]
