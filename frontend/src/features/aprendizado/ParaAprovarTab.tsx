@@ -51,9 +51,9 @@ function AceitarPareceres({ modo, itens, escolhidos, onAbrir }: {
   const n = escolhidos.filter(entraNoLote).length;
   return (
     <Button size="sm" variant="secondary" icon={Bot}
-            disabledReason={n === 0 ? 'Selecione itens com parecer da IA da classe B (a C se decide item a item).' : null}
+            disabledReason={n === 0 ? 'Selecione itens com parecer do curador da classe B (a C se decide item a item).' : null}
             onClick={onAbrir}>
-      Aceitar pareceres da IA ({n})
+      Aceitar pareceres do curador ({n})
     </Button>
   );
 }
@@ -149,7 +149,7 @@ export function ParaAprovarTab() {
     for (const e of itens) {
       const p = e.parecer;
       if (!p || p.recusa_no_lote) {
-        falhas.push(`${tituloDe(e)}: ${textoDaRecusa(p?.recusa_no_lote) ?? 'sem parecer da IA'}`);
+        falhas.push(`${tituloDe(e)}: ${textoDaRecusa(p?.recusa_no_lote) ?? 'sem parecer do curador'}`);
         continue;
       }
       try {
@@ -202,7 +202,7 @@ export function ParaAprovarTab() {
           </p>
           {modo === 'on' ? (
             <p className={styles.secaoLead}>
-              Com o curador ligado, a IA dá um parecer sobre cada item. Ela nunca decide: na classe B você pode aceitar
+              Com o curador ligado, ele dá um parecer sobre cada item e nunca decide: na classe B você pode aceitar
               vários pareceres de uma vez; na C (envio, conta, sessão), decida um item de cada vez, pelo detalhe.
             </p>
           ) : null}

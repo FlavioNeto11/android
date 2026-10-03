@@ -1,5 +1,7 @@
-import { apiRequest } from '../../api/client';
-import { lerDetalheDoApp, lerVisaoDeApps, type DetalheDoApp, type VisaoDeApps } from './apps';
+import { ApiError, apiRequest } from '../../api/client';
+import {
+  lerDetalheDoApp, lerProvaDoConhecimento, lerVisaoDeApps, type DetalheDoApp, type ProvaDoConhecimento, type VisaoDeApps,
+} from './apps';
 import {
   type DetalheDoLivro, type EstadoDoLivro, type FeedbackDaExecucao, type ListaDoLivro, type LivroKind, type Origem, type Rotulo,
   type RelatorioDeFalhas, type RespostaDoVoto, type Sinal, type CorpoDoVoto, lerFeedbackDaExecucao,
@@ -32,6 +34,16 @@ export const apiAprendizado = {
   /** O detalhe de um app (também `nao_resolvido`): o declarado, o aprendido e o absorvido. 404 se nenhuma fonte o conhece. */
   app: async (pacote: string, signal?: AbortSignal): Promise<DetalheDoApp> =>
     lerDetalheDoApp(await apiRequest<unknown>('GET', `/aprendizado/apps/${enc(pacote)}`, { signal })),
+  /** RA-24: os arquivos de conhecimento que o processo carregou, com o sha256. `null` quando o app não tem
+   *  conhecimento declarado (404 `not_found`): não é erro, é o caso da maioria dos apps. */
+  conhecimento: async (pacote: string, signal?: AbortSignal): Promise<ProvaDoConhecimento | null> => {
+    try {
+      return lerProvaDoConhecimento(await apiRequest<unknown>('GET', `/apps/${enc(pacote)}/conhecimento`, { signal }));
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return null;
+      throw e;
+    }
+  },
   /** A fila do D1 ("Para aprovar") e a contagem da barra do topo. */
   pendentes: (signal?: AbortSignal) => apiRequest<ListaDoLivro>('GET', '/aprendizado/pendentes', { signal }),
   /** O legado ativo com efeito anterior ao D1, que nenhuma pessoa decidiu ainda. */

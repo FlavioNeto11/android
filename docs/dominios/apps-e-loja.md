@@ -90,6 +90,14 @@ aparece como `mudou_depois_do_inicio` mesmo batendo com a memória: é falso pos
 Os YAML ficam em LF no índice do Git (`git ls-files --eol`; um teste segura): com CRLF no índice, o `git_blob` do texto
 lido não seria o do commit.
 
+No painel, a prova fica em Aprendizado › Aplicativos › (o app) › Declarado (`AplicativosTab.tsx::ConhecimentoEmUso`,
+polimento I5 da validação do deploy 7):
+- a linha "Conhecimento em uso: N arquivos conferidos · sem mudança desde que o servidor subiu (servidor de pé desde …)";
+- o sha curto em cada arquivo, com o sha256 inteiro, o blob do git e a data de gravação no `title`;
+- no arquivo gravado depois do início do processo, o selo "mudou depois que o servidor subiu", e "reinicie para valer"
+  na linha. A dica explica o falso positivo da carga preguiçosa.
+O app sem conhecimento declarado (404) não mostra a linha, e isso não é erro.
+
 O registro confere na entrada (`registry.py::register`):
 
 - fábrica de sessão sem `session_provider` declarado é recusada (`ValueError`): a porta de sessão e a invalidação

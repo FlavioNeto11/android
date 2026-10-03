@@ -6,14 +6,15 @@ import { Disclosure } from '../../components/Disclosure';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { formatInt } from '../../lib/format';
+import { formatDateTime } from '../../lib/time';
 import { LoadErrorBanner, LoadErrorState } from '../../lib/loadError';
 import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
 import {
   EXISTENCIA_META, TIPOS_COM_MODO_POR_APP, abrirApp, abrirAprendidoDoApp, excecoesPorApp, linhaDeUso, modosDoAppEmTexto,
   modosEmTexto, modosProprios, trechoDeConfig, usoPorTipo, resumoDoAprendido, resumoDoDeclarado, rotuloDoArquivo, rotuloDoUso,
-  temMedidoNaoUsado, valoresDoModo, type Contagem,
-  type DetalheDoApp, type ModosDoApp, type ResumoDoApp, type VisaoDeApps,
+  provaDoArquivo, resumoDaProva, shaCurto, temMedidoNaoUsado, valoresDoModo, type Contagem,
+  type DetalheDoApp, type ModosDoApp, type ProvaDoConhecimento, type ResumoDoApp, type VisaoDeApps,
 } from './apps';
 import { contarPorRotulo, doApp, gruposDoAprendido } from './atencao';
 import { ItemDoLivro, chaveDoItem } from './ItemDoLivro';
@@ -206,11 +207,31 @@ function Global() {
   );
 }
 
-function Declarado({ d }: { d: DetalheDoApp }) {
+/** A dica do arquivo que mudou depois que o servidor subiu (RA-24): o que vale e por que pode ser falso positivo. */
+const DICA_DE_MUDOU = 'Gravado depois que o servidor subiu: o que está no ar pode ser a versão anterior. Se o arquivo é lido '
+  + 'sob demanda, ele pode já estar valendo; um reinício do servidor tira a dúvida.';
+
+/**
+ * A linha "Conhecimento em uso" (RA-24): quantos arquivos o processo carregou e desde quando nada mudou. `prova` nulo
+ * = o app não tem conhecimento declarado (ou a prova ainda não chegou): a linha não aparece.
+ */
+function ConhecimentoEmUso({ prova }: { prova: ProvaDoConhecimento }) {
+  const { texto, mudaram } = resumoDaProva(prova);
+  return (
+    <div className={styles.cartaoLinha} data-conhecimento-em-uso>
+      <span className={styles.cartaoRotulo}>Conhecimento em uso</span>
+      <span>{texto}{prova.processo_iniciado_em ? ` (servidor de pé desde ${formatDateTime(prova.processo_iniciado_em)})` : ''}</span>
+      {mudaram > 0 ? <span><Badge tone="warning" size="sm" title={DICA_DE_MUDOU}>reinicie para valer</Badge></span> : null}
+    </div>
+  );
+}
+
+function Declarado({ d, prova }: { d: DetalheDoApp; prova?: ProvaDoConhecimento | null }) {
   return (
     <section className={styles.secao} aria-label="O que o sistema sabe por declaração">
       <h3 className={styles.secaoTitulo}>Declarado</h3>
       <p className={styles.secaoLead}>Os arquivos que descrevem o app, quanto cada um traz e como é usado.</p>
+      {prova && prova.arquivos.length > 0 ? <ConhecimentoEmUso prova={prova} /> : null}
       {d.declarado.length === 0 ? <p className={styles.secaoLead}>Nada foi declarado para este app.</p> : (
         <ul className={styles.tabelaDeclarado}>
           {d.declarado.map((i) => (
@@ -223,12 +244,27 @@ function Declarado({ d }: { d: DetalheDoApp }) {
                 {i.arquivo ? <span className={styles.mono}>{i.arquivo}</span> : null}
                 {i.quantidade !== null ? <span>Quantidade: {formatInt(i.quantidade)}</span> : null}
                 <span title={i.uso?.porque ?? undefined}>Uso: {i.uso ? rotuloDoUso(i.uso.camada) : '—'}</span>
+                <ShaDoArquivo prova={prova} tipo={i.tipo} />
               </div>
             </li>
           ))}
         </ul>
       )}
     </section>
+  );
+}
+
+/** O sha curto do arquivo como o processo o carregou, com o inteiro e o blob do git no `title` (RA-24). */
+function ShaDoArquivo({ prova, tipo }: { prova?: ProvaDoConhecimento | null; tipo: string }) {
+  const a = provaDoArquivo(prova, tipo);
+  if (!a) return null;
+  const title = `sha256 ${a.sha256}${a.git_blob ? `\nblob do git ${a.git_blob}` : ''}`
+    + `${a.modificado_em ? `\ngravado em ${formatDateTime(a.modificado_em)}` : ''}`;
+  return (
+    <>
+      <span className={styles.mono} title={title} data-sha-do-arquivo={a.nome}>sha {shaCurto(a.sha256)}</span>
+      {a.mudou_depois_do_inicio ? <Badge tone="warning" size="sm" title={DICA_DE_MUDOU}>mudou depois que o servidor subiu</Badge> : null}
+    </>
   );
 }
 
@@ -377,6 +413,8 @@ function DetalheDeUmApp({ pacote }: { pacote: string }) {
   const balde = pacote === NAO_RESOLVIDO;
   // A saúde de cada item vem da lista do Livro filtrada pelo app: as linhas de /apps/{pacote} chegam sem `saude`.
   const livro = useCarga((s) => apiAprendizado.livro({ app: pacote }, s), `livro:${pacote}`);
+  // RA-24: o que o processo carregou do conhecimento declarado. 404 vira `null` (o app não declara conhecimento).
+  const prova = useCarga((s) => (balde ? Promise.resolve(null) : apiAprendizado.conhecimento(pacote, s)), `conhecimento:${pacote}`);
   const doLivro = useMemo(() => (livro.dado && Array.isArray(livro.dado.itens) ? livro.dado.itens : undefined), [livro.dado]);
   const saudePorItem = useMemo(() => new Map((doLivro ?? []).map((e) => [chaveDoItem(e), e.saude ?? null] as const)), [doLivro]);
   const aprendido = useMemo(() => (d?.aprendido ?? []).map((e) => (e.saude ? e : { ...e, saude: saudePorItem.get(chaveDoItem(e)) ?? null })), [d, saudePorItem]);
@@ -391,7 +429,7 @@ function DetalheDeUmApp({ pacote }: { pacote: string }) {
         {!balde ? <span className={styles.mono}>{pacote}</span> : null}
         {meta ? <Badge tone={meta.tone} size="sm" title={meta.dica}>{meta.label}</Badge> : null}
         <div className={styles.toolbarFim}>
-          <Button size="sm" variant="ghost" icon={RefreshCw} loading={carregando} onClick={() => void carregar()}>Atualizar</Button>
+          <Button size="sm" variant="ghost" icon={RefreshCw} loading={carregando} onClick={() => { void carregar(); void prova.carregar(); }}>Atualizar</Button>
         </div>
       </nav>
       {erro && d ? <LoadErrorBanner error={erro} onRetry={() => void carregar()} /> : null}
@@ -420,7 +458,7 @@ function DetalheDeUmApp({ pacote }: { pacote: string }) {
           {doLivro ? <FilaDeAtencao itens={doLivro} /> : null}
           <AprendidoPorCapability itens={aprendido} onMudou={() => { void carregar(); void livro.carregar(); }} />
           <FalhasDoApp pacote={pacote} />
-          {!balde ? <Declarado d={d} /> : null}
+          {!balde ? <Declarado d={d} prova={prova.dado} /> : null}
           <ListaDoApp
             titulo="Absorvido"
             lead="O que já virou conhecimento declarado do repositório: não conta mais como aprendido."

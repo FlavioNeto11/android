@@ -171,7 +171,7 @@ export const textoDoGatilho = traduz(GATILHO);
 
 /** Por que o gesto não vale (o `code` do 409 e o `recusa` do backend). */
 const RECUSA: Record<string, string> = {
-  parecer_invalido: 'A resposta da IA foi descartada: não há parecer para decidir.',
+  parecer_invalido: 'A resposta do curador foi descartada: não há parecer para decidir.',
   parecer_ja_decidido: 'Este parecer já foi decidido.',
   parecer_desatualizado: 'O item mudou depois do parecer: decida pelo estado de agora.',
   parecer_simulado: 'Parecer de teste (provedor simulado): fica só como registro e não move item real.',
@@ -189,8 +189,8 @@ export function textoDaRecusa(code: string | null | undefined): string | null {
 export function textoDaValidade(v: string): string | null {
   if (v === 'ok') return null;
   if (v === 'recusada:custo') return 'Não revisado: caro demais para o orçamento desta janela.';
-  if (v === 'recusada:triagem') return 'Não revisado: o conteúdo parecia ter credencial e não saiu para a IA.';
-  if (v.startsWith('invalida:')) return 'A resposta da IA veio fora do contrato e foi descartada.';
+  if (v === 'recusada:triagem') return 'Não revisado: o conteúdo parecia ter credencial e não saiu para o curador.';
+  if (v.startsWith('invalida:')) return 'A resposta do curador veio fora do contrato e foi descartada.';
   return v;
 }
 
@@ -224,5 +224,5 @@ export function textoDaDecisaoFinal(p: Pick<ParecerDaIA, 'decisao_final' | 'deci
   if (p.decisao_final === 'aceitou') return `${quem} aceitou.`;
   if (p.decisao_final === 'recusou') return `${quem} recusou${p.override_motivo ? `: ${p.override_motivo}` : '.'}`;
   const acao = ACAO_NO_TEXTO[p.decisao_final as RotuloDaAcao] ?? p.decisao_final;
-  return `${quem} decidiu sem ver o parecer (${acao}) e ${p.override ? 'foi para outro lado' : 'concordou com a IA'}.`;
+  return `${quem} decidiu sem ver o parecer (${acao}) e ${p.override ? 'foi para outro lado' : 'concordou com o curador'}.`;
 }

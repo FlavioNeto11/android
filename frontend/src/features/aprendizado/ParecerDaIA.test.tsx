@@ -103,7 +103,7 @@ describe('parecer da IA na fila', () => {
     backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => json({ itens: [LICAO_B], total: 1, curador: { modo: 'on' } }));
     await montar(<AprendizadoPage />);
     await waitFor(() => expect(item('licao:li-b')).toBeTruthy());
-    expect(text(item('licao:li-b'))).toContain('Parecer da IA: aprovar · confiança alta');
+    expect(text(item('licao:li-b'))).toContain('Parecer do curador: aprovar · confiança alta');
     expect(text(item('licao:li-b'))).toContain('Classe B · aceite em lote');
     await click(byRole('button', /^Validar$/, item('licao:li-b')));
     await setValue(byRole('textbox', /Motivo/, item('licao:li-b')) as HTMLInputElement, 'conferi');
@@ -116,7 +116,7 @@ describe('parecer da IA na fila', () => {
     backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => json({ itens: [RECEITA_C, LICAO_B], total: 2, curador: { modo: 'on' } }));
     await montar(<AprendizadoPage />);
     await waitFor(() => expect(item('licao:li-b')).toBeTruthy());
-    const botao = () => byRole('button', /^Aceitar pareceres da IA/, container);
+    const botao = () => byRole('button', /^Aceitar pareceres do curador/, container);
     expect(botao().getAttribute('aria-disabled')).toBe('true');          // nada selecionado
     await click(byRole('checkbox', /Selecionar/, item('receita:109')));
     expect(text(botao())).toContain('(0)');                             // a C não entra no lote
@@ -139,9 +139,9 @@ describe('parecer da IA na fila', () => {
     backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => json({ itens: [entrada({})], total: 1, curador: { modo: 'shadow' } }));
     await montar(<AprendizadoPage />);
     await waitFor(() => expect(item('licao:li-b')).toBeTruthy());
-    expect(text(item('licao:li-b'))).not.toContain('Parecer da IA');
+    expect(text(item('licao:li-b'))).not.toContain('Parecer do curador');
     expect(container.querySelector('[data-parecer-na-linha]')).toBeNull();
-    expect(text(container)).not.toContain('Aceitar pareceres da IA');
+    expect(text(container)).not.toContain('Aceitar pareceres do curador');
   });
 });
 
@@ -150,7 +150,7 @@ describe('parecer da IA no detalhe', () => {
     const mudou = vi.fn();
     await montar(<DetalheRico detalhe={detalhe([parecer({})], ON)} onMudou={mudou} />);
     const sec = secao();
-    expect(text(sec)).toContain('A IA sugere: Aprovar');
+    expect(text(sec)).toContain('O curador sugere: Aprovar');
     expect(text(sec)).toContain('confiança alta');
     expect(text(sec)).toContain('Classe B · aceite em lote');
     expect(text(sec)).toContain('Reproduziu nas duas execuções.');
@@ -201,17 +201,17 @@ describe('parecer da IA no detalhe', () => {
     const decidido = parecer({ id: 'lr-velho', atual: false, decisao_final: 'validar', decidido_por: 'panel', override: false });
     await montar(<DetalheRico detalhe={detalhe([decidido], { modo: 'shadow', pendentes_ocultos: 1, pode_pedir_revisao: false })} />);
     const sec = secao();
-    expect(text(sec)).toContain('Há um parecer da IA sobre este item. Ele aparece depois da sua decisão');
-    expect(text(sec)).not.toContain('A IA sugere:');
-    expect(text(sec)).toContain('panel decidiu sem ver o parecer (validar) e concordou com a IA.');
+    expect(text(sec)).toContain('Há um parecer do curador sobre este item. Ele aparece depois da sua decisão');
+    expect(text(sec)).not.toContain('O curador sugere:');
+    expect(text(sec)).toContain('panel decidiu sem ver o parecer (validar) e concordou com o curador.');
     expect(text(sec)).not.toContain('Pedir revisão');
   });
 
   it('com o curador desligado e nada registrado, a seção não existe', async () => {
     await montar(<DetalheRico detalhe={detalhe([], { modo: 'off', pendentes_ocultos: 0, pode_pedir_revisao: false })} />);
-    expect(text(container)).not.toContain('Parecer da IA');
+    expect(text(container)).not.toContain('Parecer do curador');
     await act(async () => root.render(<DetalheRico detalhe={detalhe([], null)} />));
-    expect(text(container)).not.toContain('Parecer da IA');
+    expect(text(container)).not.toContain('Parecer do curador');
   });
 
   it('pedir revisão: pedido registrado, já revisado, ou a recusa do modo', async () => {
@@ -220,16 +220,16 @@ describe('parecer da IA no detalhe', () => {
     const mudou = vi.fn();
     await montar(<DetalheRico detalhe={detalhe([], ON)} onMudou={mudou} />);
     const sec = secao();
-    expect(text(sec)).toContain('A IA ainda não revisou este item.');
-    await click(byRole('button', /Pedir revisão à IA/, sec));
+    expect(text(sec)).toContain('O curador ainda não revisou este item.');
+    await click(byRole('button', /Pedir revisão ao curador/, sec));
     await waitFor(() => expect(text(sec)).toContain('Pedido registrado'));
     expect(chamadas(/\/revisao$/)[0]?.path).toBe('/api/aprendizado/licao/li-b/revisao');
     resposta = json({ pedido: false, revisao: parecer({ atual: false }) });
-    await click(byRole('button', /Pedir revisão à IA/, sec));
+    await click(byRole('button', /Pedir revisão ao curador/, sec));
     await waitFor(() => expect(text(sec)).toContain('O item já foi revisado como está agora'));
     expect(mudou).toHaveBeenCalledTimes(1);
     resposta = json({ detail: { code: 'curador_fora_do_on', message: 'fora' } }, 409);
-    await click(byRole('button', /Pedir revisão à IA/, sec));
+    await click(byRole('button', /Pedir revisão ao curador/, sec));
     await waitFor(() => expect(text(sec)).toContain('Pedir revisão só com o curador ligado.'));
   });
 

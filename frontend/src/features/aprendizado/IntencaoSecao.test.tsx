@@ -196,6 +196,6 @@ describe('leitura tolerante e ordem', () => {
 
   it('o sinal da resposta não se chama "parecer da IA"', () => {
     expect(rotuloDaLinhaDeSinal({ kind: 'parecer_decidido', template: 'intencao' })).toBe('Disse qual era o pedido');
-    expect(rotuloDaLinhaDeSinal({ kind: 'parecer_decidido', template: null })).toBe('Decidiu um parecer da IA');
+    expect(rotuloDaLinhaDeSinal({ kind: 'parecer_decidido', template: null })).toBe('Decidiu um parecer do curador');
   });
 });
