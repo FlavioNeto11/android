@@ -40,7 +40,7 @@ from __future__ import annotations
 import functools
 import re
 import unicodedata
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import Final, Literal
 
 #: Marcadores fixos, minúsculos e entre colchetes: nenhum é palavra do vocabulário, e a conferência os ignora.
@@ -170,21 +170,30 @@ _ANTES_DO_PROVEDOR: Final = (r"(?:no|na|nos|nas|do|da|dos|das|de|em|pelo|pela|pr
 #: ("zilda - hotmail", "zilda (hotmail)", "zilda, no gmail"; rodada G, G-3). O dois-pontos não: é o do rótulo ("site:
 #: outlook", 1 dos 122 comandos reais de 7 dias, 03/10).
 _ENTRE_NOME_E_PROVEDOR: Final = r"(?:\s*[,(\-]\s*|\s+)"
-#: A recusa que roda ANTES das máscaras (passada 1), sobre o texto sem acento, em casefold e com o algarismo trocado pela
-#: letra parecida dentro de palavra (`arr0ba`). (motivo, padrão), na ordem do diagnóstico.
 @functools.lru_cache(maxsize=8)
 def _palavras_dos_nomes(nomes: tuple[str, ...]) -> frozenset[str]:
     return frozenset(p for n in nomes for p in re.findall(r"[^\W_]+(?:['\-.][^\W_]+)*", sem_acento(normalizar(n)))
                      if len(p) >= 3)
 
 
+#: De onde vêm os nomes dos apps da plataforma: um GANCHO, registrado na subida por quem conhece o registro de apps
+#: (`taskqueue/service.py`, com `registry.nomes_e_apelidos`). O filtro não importa a camada de módulos: a descoberta de
+#: apps importa módulos que importam o planejamento, e o import tardio que contornava o ciclo furava a catraca de
+#: `test_arquitetura` (suíte 9). Sem registro, nenhum nome: vale só o vocabulário fixo.
+_fonte_dos_apps: Callable[[], Iterable[str]] = tuple
+
+
+def registrar_fonte_dos_apps(fonte: Callable[[], Iterable[str]]) -> None:
+    """Liga a fonte dos nomes de app (nome, rótulo e apelidos de cada `app.yaml`). Lida a cada consulta, não guardada."""
+    global _fonte_dos_apps
+    _fonte_dos_apps = fonte
+
+
 def nomes_dos_apps() -> frozenset[str]:
     """Os apps da PLATAFORMA como palavras do filtro, sem acento e em minúsculas ("instagram", "insta", "outlook",
-    "microsoft"): nome, rótulo e apelidos de cada `app.yaml` (ADR-052: conhecimento de app é dado, não lista em Python).
-    Lidos do registro na consulta, e não na importação: a descoberta importa módulos que importam o planejamento."""
-    from ...modules.applications.infrastructure import registry
-
-    return _palavras_dos_nomes(tuple(n for d in registry.registered() for n in (d.name, d.label, *d.aliases) if n))
+    "microsoft"): nome, rótulo e apelidos de cada `app.yaml` (ADR-052: conhecimento de app é dado, não lista em Python),
+    pela fonte registrada (`registrar_fonte_dos_apps`)."""
+    return _palavras_dos_nomes(tuple(n for n in _fonte_dos_apps() if n))
 
 
 @functools.lru_cache(maxsize=8)
@@ -196,6 +205,8 @@ def _recusas_no_original(apps: frozenset[str]) -> tuple[tuple[MotivoDoFiltro, re
                  for motivo, padrao in _RECUSA_NO_ORIGINAL)
 
 
+#: A recusa que roda ANTES das máscaras (passada 1), sobre o texto sem acento, em casefold e com o algarismo trocado pela
+#: letra parecida dentro de palavra (`arr0ba`). (motivo, padrão), na ordem do diagnóstico.
 _RECUSA_NO_ORIGINAL: Final[tuple[tuple[MotivoDoFiltro, re.Pattern[str]], ...]] = (
     ("email_ofuscado", re.compile(
         # arroba por extenso, soletrada ou hifenizada ("a r r o b a", "a-r-r-o-b-a"); "(a)", "(a t)", "at-sign"
@@ -514,4 +525,4 @@ def mascarar_catalogo(texto: str) -> str:
 
 __all__ = ["M_EMAIL", "M_HANDLE", "M_NUMERO", "M_TELEFONE", "M_TERMO", "M_TEXTO", "M_URL", "MotivoDoFiltro",
            "escrita_nao_latina", "mascarar_catalogo", "mistura_alfabetos", "normalizar", "remover_entidades", "remover_entidades_com_motivo",
-           "nomes_dos_apps", "sem_acento", "sem_leet"]
+           "nomes_dos_apps", "registrar_fonte_dos_apps", "sem_acento", "sem_leet"]

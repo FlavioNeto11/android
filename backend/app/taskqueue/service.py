@@ -17,6 +17,7 @@ from ..modules.execution.application.alvos import (AlvoPedido, DicasDoTexto, Mun
 from ..modules.execution.application.resources import ResourceConvergence
 from ..modules.execution.application.target_extractor import (CatalogoDeDestinos, DestinosNoTexto, PersonaNomeavel,
                                                               TargetExtractor)
+from ..modules.applications.infrastructure.registry import nomes_e_apelidos
 from ..modules.execution.domain.plan_report import spec_from_decl
 from ..modules.execution.infrastructure.providers import resource_providers
 from ..modules.identity.application.available_data import common_data, missing_secrets, profile_variables
@@ -28,6 +29,7 @@ from ..models import (RUN_TERMINAL, DistributeSpec, DistributionPick, Distributi
                       StepStatus)
 from ..planning.apps_do_comando import apps_citados, pede_site
 from ..planning.capabilities import CapabilityCatalog, efeito_fora_do_catalogo, load_catalog
+from ..planning.decisao_fechada.entidades import registrar_fonte_dos_apps
 from ..planning.catalog import capabilities_of, session_provider_of
 from ..planning.parsing import apps_do_plano
 from ..planning.provider import AIError, AIProvider, AppContext, MarcaDaChamada, PlanRequest
@@ -44,6 +46,11 @@ from .scheduler import WAKEABLE, Scheduler
 from .sombra_intencao import SombraDaIntencao
 
 log = logging.getLogger("poc.runs")
+
+# O filtro da sombra da intenção conhece os apps da plataforma pelo `app.yaml` (nome, rótulo e apelidos; ADR-052) sem
+# importar a camada de módulos: a fila, que já monta os nomes do catálogo de destinos para a sombra (`dados_da_sombra`),
+# registra a fonte na subida. Inversão de dependência no lugar do import tardio (catraca de `test_arquitetura`, suíte 9).
+registrar_fonte_dos_apps(nomes_e_apelidos)
 
 #: Estados de onde, com o rodízio LIGADO, o aparelho volta ao ar sozinho: os que ele acorda (`WAKEABLE`) mais o
 #: desligamento em voo, que termina num deles. Com o rodízio desligado, nenhum destes volta sem uma pessoa.
