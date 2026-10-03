@@ -4,7 +4,7 @@ import {
   acoesDoItem, acoesNaFila, refDaHabilidade,
   desfazerDoEfeito, estadoDoLivro, lerFeedbackDaExecucao, lerRelatorioDeFalhas, lerRespostaDoVoto, lerSinais, mdDoItem,
   ordenarFalhas, ordenarPendentes, porQueOSistemaNaoPublica, rotuloDaCamada, rotuloDaFalha, rotuloDoEstado,
-  rotuloDoKind, textoDoEfeito, textoDosOcultos, votoDoItem, capabilityComNome, nomearCapabilityNoTexto, tituloDoItem,
+  rotuloDoKind, textoDoEfeito, textoDosOcultos, votoDoItem, capabilityComNome, nomearCapabilityNoTexto, semLacunas, tituloDoItem,
   titulosDaLista,
 } from './model';
 
@@ -91,6 +91,17 @@ describe('o título que a pessoa lê (validação do deploy 3, P3 e P4)', () => 
     expect(tituloDoItem({ ...r, capability: 'SEND_MESSAGE', capability_nome: 'Enviar a mensagem' })).toBe('Enviar a mensagem (v1)');
     expect(tituloDoItem({ ...r, etapa: null })).toBe('send_message_i1 (v1)');
     expect(tituloDoItem({ ...r, kind: 'licao', title: 'Em X: tocou' })).toBe('Em X: tocou');      // só a receita
+  });
+
+  it('as lacunas de parâmetro do modelo saem do título como "…" (deploys 9–12: "{…}" em claro)', () => {
+    const r = entrada({ ...ENVIAR, capability: null, capability_nome: null });
+    expect(tituloDoItem({ ...r, kind: 'fluxo', title: 'Buscar "{subject_prefix}" no Outlook' }))
+      .toBe('Buscar … no Outlook');
+    expect(tituloDoItem({ ...r, kind: 'fluxo', title: 'Nas instâncias {instance_id} {run_id}, abra o QA' }))
+      .toBe('Nas instâncias …, abra o QA');
+    expect(tituloDoItem({ ...r, kind: 'fluxo', title: 'Mandar para o {contact_position}º contato' }))
+      .toBe('Mandar para o …º contato');
+    expect(semLacunas('sem lacuna')).toBe('sem lacuna');
   });
 
   it('a lição nomeia a capability uma vez, só a palavra inteira, e nomear de novo não dobra', () => {
