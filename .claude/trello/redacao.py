@@ -45,7 +45,14 @@ def _nomes_sensiveis() -> tuple[list[str], list[str]]:
         con.close()
     except Exception:  # noqa: BLE001 - sem banco, fica a reserva
         pass
-    partes -= {p for p in partes if p.lower() in {i.lower() for i in inteiros}}
+    # Conta que saiu da plataforma some do banco (ADR-068), mas o nome dela continua no plano e nas evidências antigas
+    # (24.9, 03/10). A lista local fica em data/, fora do Git; uma linha por nome ou handle.
+    try:
+        extras = (RAIZ / "data" / "redacao_nomes_extras.txt").read_text(encoding="utf-8").splitlines()
+        inteiros.update(x.strip().lstrip("@") for x in extras if x.strip())
+    except OSError:
+        pass
+    partes -={p for p in partes if p.lower() in {i.lower() for i in inteiros}}
     ordem = lambda xs: sorted(xs, key=len, reverse=True)  # noqa: E731 - o mais longo primeiro
     return ordem(inteiros), ordem(partes)
 
@@ -90,6 +97,7 @@ def redigir(texto: str) -> str:
     t = _AUTORIA.sub(lambda m: f"{m.group(1)}{m.group(2)}{m.group(3)}[nome]{m.group(3)}", t)
     t = _PESSOA_COM_NASCIMENTO.sub("[persona de teste], [data]", t)
     t = _NASCIMENTO.sub("[data]", t)
+    t = _PERFIL_PARA_CONFERIR.sub(r"\1[conta]", t)
     t = _HANDLE.sub(_handle, t)
     t = _HANDLE_SEM_ARROBA.sub("[conta]", t)
     t = _PERSONA.sub("[persona]", t)

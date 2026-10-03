@@ -33,6 +33,8 @@ from redacao import lista, redigir  # noqa: E402
     ("três fontes; fontes.py; Marcos e deploys; Pesquisa em fontes primárias",
      "três fontes; fontes.py; Marcos e deploys; Pesquisa em fontes primárias"),
     ("IP 192.168.1.11", "IP [ip]"),
+    # conta de terceiro no assunto do e-mail de teste (24.9, 27.2)
+    ("a IA VIU 'Perfil para conferir: perfilpublico' na captura", "a IA VIU 'Perfil para conferir: [conta]' na captura"),
 ])
 def test_redigir(entrada: str, esperado: str) -> None:
     assert redigir(entrada) == esperado
