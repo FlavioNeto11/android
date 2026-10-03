@@ -523,9 +523,14 @@ nenhuma ação do catálogo entrega.
   · `tela_sensivel` (sensível, `image_policy=never`, conta travada, tela de desafio ou de código) · `fora_do_app` · `sem_ancora` ·
   `captura_mudou` (sem imagem na observação, uma nova é capturada e exige a mesma assinatura de árvore e os mesmos limites) ·
   `repetida` (chave nome + assinatura + limites, não o sha do JPEG) · `sem_leitor` · `leitor_falhou` · `ilegivel` · `truncado` ·
-  `nao_confere` · `triagem:<motivo>`.
+  `nao_confere` · `triagem:<motivo>`. `fora_do_app` recebe o valor real (`_tela_fora_do_app`), como defesa em profundidade.
+- **Triagem visual:** valor com forma de código (4 a 8 dígitos) ou linha do recorte com número de código e palavra de código
+  (`saidas.codigo_na_linha`) é recusado, e a recusa leva a etapa a `waiting_user` (sem nova tentativa do ator e sem lhe dizer que a
+  linha tem código), como no caminho da árvore. Orçamento, prazo, crédito e recusa por política do leitor seguem o desfecho do ator
+  (`desfecho_de_ia`); só falha do provedor e saída inválida viram `leitor_falhou`.
+- **Receita:** `variaveis_da_receita` exclui as saídas `origem=visual`.
 - **Concordância:** valor do ator normalizado (NFKC, caixa, espaços, pontuação das pontas, acentos mantidos) igual ao campo do
-  leitor E sequência contígua de palavras inteiras de uma das linhas. O leitor recebe só o recorte e os nomes das saídas.
+  leitor (grava-se o valor do LEITOR, limpo) E sequência contígua de palavras inteiras de uma das linhas. O leitor recebe só o recorte e os nomes das saídas.
 - **Sem eco:** na recusa o ator recebe só o código (histórico, `actions.error`, evento); a transcrição nunca sai de
   `ler_valor_visual`, e o recorte recusado não é guardado.
 - **Sucesso:** `step_outputs` com `origem=visual`, `leitor`, `frame_sha256` e `evidence_id` (o recorte vira evidência); a ação não
@@ -538,6 +543,9 @@ nenhuma ação do catálogo entrega.
   `steps.status_detail`, `attempts.error`, a nota da evidência e o evento `decision`; e as recusas da barreira de saídas
   (`step_done` recusado e `read_value` rejeitado) têm conta própria que `observe_screen` e `find_element` não zeram: com 4, a etapa
   vai para `fail_or_retry`.
+
+Limites da v1: a retomada de um `waiting_user` com valor visual não avança (não há confirmação do valor; as saídas são abandonar ou
+refazer), e uma falha passageira do provedor gasta a tentativa do par (a chave `repetida` é gravada antes da chamada).
 
 Prova: `simulated` (`tests/test_leitura_visual.py`, `tests/test_leitura_visual_papel.py`). Real: `not_run`.
 

@@ -4060,8 +4060,10 @@ funda) não se faz, e o ADR-065 §3 ("o valor é lido do texto do elemento") dei
    `origem=arvore|visual` é atributo de cada valor gravado (migração 078: `step_outputs.origem`, `leitor`, `frame_sha256`,
    `evidence_id`). Não existe "real_visual".
 3. **O leitor** é o papel novo `leitura` (`ai.roles.leitura`): **sem herança** (provider e model escritos), **de outra
-   família** que o ator por escolha do dono (OpenAI ou Gemini pelo endpoint compatível; Haiku é a alternativa), modelo
-   diferente do `decide` e do `escalation` (base e perfis) e com visão, sem `fallback_provider` nem `refusal_fallback`. Ele
+   família** que o ator por escolha do dono: o padrão é a OpenAI (`gpt-6-luna`), com o Gemini (`gemini-3.1-flash-lite`, pelo
+   endpoint compatível) de reserva. O Haiku é da mesma família do ator e depende de nova decisão do dono. O código exige modelo
+   DIFERENTE do `decide` e do `escalation` (base e perfis; comparado pelo nome normalizado) e com visão DECLARADA em `ai.models`
+   (modelo não declarado é recusado), sem `fallback_provider` nem `refusal_fallback`; a família não é checada. Ele
    recebe SÓ o recorte e os nomes e descrições das saídas pedidas: nunca o valor do ator, o comando, os fatos ou o
    contexto. O juiz de sim ou não NÃO confere o valor (a tendência dele ao "sim" está no ADR-024); ele julga a tela e
    passa a receber a imagem à força.
