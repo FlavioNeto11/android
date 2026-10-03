@@ -6413,20 +6413,23 @@
    "id": "31.11",
    "status": "partial",
    "proof": "real",
-   "evidence": "Parte R1 (curador, C0) REAL; acompanhamento, nenhum número vale para GO (rótulos 1 e 2 = 0). Código: scripts/jev-braco-offline.py, na main em 926b4f6f (a Porta do runtime com o DecisorJev, sem o adaptador MIT; banco só leitura; --seco por padrão; teto ≤ US$ 0,05). Rodada única: 03/10/2026 18:53:06Z, WIN-7S2UASNLFOP, checkout central @ 926b4f6f (deploy 13 1c54a7bb no ar), --enviar --teto 0.05, janela da orquestradora sem suíte. 29 casos de receita (29 de fluxo fora de F1), 29 chamadas ok, US$ 0,000764, 20428 tokens, p50 439,6 ms / p95 528,3 ms, jev-1.13.0. As chamadas NÃO estão em ai_calls (o banco é só leitura para o braço). Sinal: 9 estados C0 distintos e 1 resposta distinta (a maior é sempre revisar), 0 instáveis; só a probabilidade varia com o estado (0,57 a 0,87). Cobertura em 0,85: 3 de 29, as 3 iguais ao curador. Concordância da maior com o curador 26/29 e do controle 2/29 (só acompanhamento). simulated: scripts/tests/test_jev_braco_offline.py (16); scripts/tests inteiro 498 passed (cf455b9c, mesmo conteúdo do 926b4f6f). Pendentes: R2 e R3 (composição offline só leitura em backend/app, branch novo, suíte 14 ou 15; a rodada espera 10 ou mais comandos reais, como o 31.10) e R5 (entra com o 31.13: formato do noul e pergunta).",
-   "blocker": "R2 e R3: falta a composição offline (backend/app) e volume de comandos já enviados pela sombra (ADR-069 item 21). R5: depende do 31.13.",
+   "evidence": "Parte R1 (curador, C0) REAL; acompanhamento, nenhum número vale para GO (rótulos 1 e 2 = 0). Código: scripts/jev-braco-offline.py, na main em 926b4f6f (a Porta do runtime com o DecisorJev, sem o adaptador MIT; banco só leitura; --seco por padrão; teto ≤ US$ 0,05). Rodada única: 03/10/2026 18:53:06Z, WIN-7S2UASNLFOP, checkout central @ 926b4f6f (deploy 13 1c54a7bb no ar), --enviar --teto 0.05, janela da orquestradora sem suíte. 29 casos de receita (29 de fluxo fora de F1), 29 chamadas ok, US$ 0,000764, 20428 tokens, p50 439,6 ms / p95 528,3 ms, jev-1.13.0. As chamadas NÃO estão em ai_calls (o banco é só leitura para o braço). Sinal: 9 estados C0 distintos e 1 resposta distinta (a maior é sempre revisar), 0 instáveis; só a probabilidade varia com o estado (0,57 a 0,87). Cobertura em 0,85: 3 de 29, as 3 iguais ao curador. Concordância da maior com o curador 26/29 e do controle 2/29 (só acompanhamento). simulated: scripts/tests/test_jev_braco_offline.py (16); scripts/tests inteiro 498 passed (cf455b9c, mesmo conteúdo do 926b4f6f). Pendentes: R2 e R3 (composição offline só leitura em backend/app, branch novo, suíte 14 ou 15; a rodada espera 10 ou mais comandos reais, como o 31.10) e R5 (entra com o 31.13: formato do noul e pergunta). Atualização 03/10/2026 21:02:04Z, WIN-7S2UASNLFOP, central em 51270b9c (deploy 14): primeiro caso real da composição offline R2/R3/R5 com a salvaguarda (c) provada (sha256 do estado redigido reconstruído = estado_hash da linha, 31.22). Seco do lote da intenção com --r5 (código dos PRs #170 e #173 @ 313c98de, fora da main até a suíte 15; banco em mode=ro, nada enviado, US$ 0): 1 caso lido, 1 em c, 0 fora; origem validacao (execução r-20261003210026-1639eb); comandos distintos 1, piso 1 de 10; R5 montada (7 perguntas noul por idioma, 7 rotuladas, 0 fora). Não muda o estado: nenhum número novo de R2, R3 ou R5 (seco não chama o Jev).",
+   "blocker": "R2, R3 e R5: código pronto nos PRs #170 e #173 (composição offline e R5), fora da main até a suíte 15; volume de comandos reais = 1 de 10 distintos no piso (ADR-069 item 21, golden set §8 'Origem do caso'); a rodada paga só com 10 ou mais distintos e o 'vai' da orquestradora.",
    "arquivos": [
     "scripts/jev-braco-offline.py",
     "scripts/tests/test_jev_braco_offline.py",
-    "docs/design/jev-golden-set.md"
+    "docs/design/jev-golden-set.md",
+    "scripts/jev-braco-offline-intencao.py",
+    "backend/app/taskqueue/lote_intencao.py",
+    "backend/app/planning/decisao_fechada/apps.py"
    ],
    "testes": "scripts/tests/test_jev_braco_offline.py: 16 passed; scripts/tests inteiro: 498 passed (Idle). Rodada real única da R1 no central, 18:53:06Z.",
-   "grupo": "31-11-braco-offline-jev",
-   "modelo": "opus (sessão jev, executora da orquestradora)",
+   "grupo": "jev-31-22-real",
+   "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T18:55:13+00:00"
+   "quando": "2026-10-03T21:37:46+00:00"
   },
   "30.37": {
    "id": "30.37",
@@ -6493,15 +6496,15 @@
   "31.22": {
    "id": "31.22",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #169 @ 82dcde1e mais o fix 671a0482 (a leitura da sombra conhece a coluna nova), na main pela suíte 14 (51270b9c): migração 086_sombra_estado_hash, decisao_fechada_sombra.estado_hash = sha256 do estado depois do privacidade.redigir, nulo na recusa de privacidade e no legado. simulated: backend/tests/test_decisao_fechada_estado_hash.py e scripts/tests/test_jev_leitura_intencao.py (17 no arquivo); suíte 14 em SQLite 8716 passed, scripts 508 passed (sem o fix, 9 falhas coluna_desconhecida:estado_hash, registradas em 9c9fe676). Parte real já medida (central, 03/10): a 086 aplicada no deploy 14 (51270b9c, reinício 20:35:29Z, coluna presente na conferência em modo ro das 20:37Z); a leitura corrigida deu veredito OK no esquema 083 às 20:24Z (8 linhas, modo ro, só contagens). real da linha com hash: not_run, porque nenhum comando entrou no central desde 17:13Z; a Jev roda a leitura na primeira linha nova.",
+   "proof": "real",
+   "evidence": "PR #169 @ 82dcde1e mais o fix 671a0482 (a leitura da sombra conhece a coluna nova), na main pela suíte 14 (51270b9c): migração 086_sombra_estado_hash, decisao_fechada_sombra.estado_hash = sha256 do estado depois do privacidade.redigir, nulo na recusa de privacidade e no legado. simulated: backend/tests/test_decisao_fechada_estado_hash.py e scripts/tests/test_jev_leitura_intencao.py (17 no arquivo); suíte 14 em SQLite 8716 passed, scripts 508 passed (sem o fix, 9 falhas coluna_desconhecida:estado_hash, registradas em 9c9fe676). real: 03/10/2026, WIN-7S2UASNLFOP, central com o commit implantado 51270b9c (deploy 14, reinício 20:35:29Z; /api/health às 21:05Z: commit c471c493 = só docs por cima, migração 086_sombra_estado_hash, problems []). Primeira linha com hash: gerada pela execução r-20261003210026-1639eb (re-execução da validação do Aprendizado, origem validacao), linha da sombra origem intencao, C3, shadow, gravada às 21:00:27Z, estado_hash de 64 hex, postada, com ai_call_id. Leitura scripts/jev-leitura-intencao.py às 21:01:46Z (banco em mode=ro + query_only, só contagens; script e backend/app/planning idênticos aos da main f592cca4): desde o deploy 14, veredito OK, problemas [], violações {}; 6 linhas (curador C0 shadow 5, intencao C3 shadow 1); intenção: 1 comando, 1 chamada, 1 postada, marca 1, 0 fallbacks, decisão real casada 1. Desde 15:30Z: OK, 14 linhas. Contagem direta: curador 5 linhas com hash em 5 chamadas, intenção 1 linha com hash; 0 chamadas com hash divergente. Salvaguarda (c) do lote offline no real: o seco do lote (código do PR #173 @ 313c98de, mode=ro, 21:02:04Z) reconstruiu o estado redigido da execução r-20261003210026-1639eb e o sha256 bateu com o estado_hash da linha (1 caso em c, 0 fora; nada enviado).",
    "blocker": "",
-   "grupo": "jev-pr173-e-suite-14",
+   "grupo": "jev-31-22-real",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T20:42:04+00:00"
+   "quando": "2026-10-03T21:37:46+00:00"
   },
   "31.23": {
    "id": "31.23",
@@ -8138,6 +8141,16 @@
    ],
    "grupos": [
     "29.54"
+   ]
+  },
+  {
+   "quando": "2026-10-03T21:37:46+00:00",
+   "itens": [
+    "31.22",
+    "31.11"
+   ],
+   "grupos": [
+    "jev-31-22-real"
    ]
   }
  ]
