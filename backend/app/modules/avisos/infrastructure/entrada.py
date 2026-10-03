@@ -6,6 +6,10 @@ O contrato comum dos canais (`docs/design/canais-externos.md`) separa duas metad
 - a parte COMUM (`registrar` e `tratar_pendentes`): identidade, dedupe, credencial, limite, gramática e as portas do
   painel. Ela não conhece Telegram: o mesmo comando vindo de outro canal passa pelas mesmas políticas.
 
+A parte comum é a `ConversaDoCanal` (não conhece Telegram; `registrar(r, saida=None)` grava sem falar, para o canal
+que só recebe, como o webhook do Trello, e `tratar_pendentes(saida)` responde depois). O `LeitorDoTelegram` é o laço
+abaixo sobre ela; `ServicoDeEntrada` é o nome de antes, com a mesma assinatura.
+
 O laço do Telegram:
 1. só no líder da trava `avisos`, e só com `avisos.enabled` + `avisos.entrada.enabled`;
 2. `getUpdates` com o offset do banco (`MAX(ordem) + 1`), em long-poll. Na 1ª subida (canal sem nenhuma linha) o que o
@@ -263,143 +267,55 @@ def _ler_update(u: Mapping[str, object], chat_do_dono: str) -> Recebida | None:
                     escrita_em=float(d) if cb is None and msg is not None and (d := _int(msg.get("date"))) else None)
 
 
-class ServicoDeEntrada:
-    def __init__(self, cfg: Config, repo: EntradasDoCanal, portas: PortasDaCentral, *,
-                 lider: Callable[[str], int | None], recusa: Callable[[str], bool], redigir: Callable[[str], str],
-                 canal: CanalTelegram | None = None, chat_id: str | None = None,
-                 dormir: Callable[[float], Awaitable[None]] | None = None, operador: str = OPERADOR_DO_TELEGRAM,
+class ConversaDoCanal:
+    """A parte COMUM aos canais (contrato dos canais, §1): `registrar` e `tratar_pendentes`. Não conhece Telegram: fala
+    com o canal só pela `SaidaDaConversa` que recebe em cada chamada. Quem lê o canal (o `LeitorDoTelegram`; o do Trello
+    no 32.2) traduz o que chegou em `Recebida` e chama a conversa."""
+
+    def __init__(self, cfg: Config, repo: EntradasDoCanal, portas: PortasDaCentral, *, recusa: Callable[[str], bool],
+                 redigir: Callable[[str], str], operador: str = OPERADOR_DO_TELEGRAM,
                  relogio: Callable[[], float] | None = None):
         self.cfg = cfg
         self.repo = repo
         self.portas = portas
-        self._lider = lider
         self._recusa = recusa
         self._redigir = redigir
-        self._canal = canal
-        self._chat_injetado = chat_id
-        self._dormir = dormir or asyncio.sleep
         #: Quem age, como VALOR (`telegram:dono` hoje; `trello:<id>` no 32.2): vai ao ContextVar da sessão.
         self.operador = operador
-        self._conflito_desde: float | None = None
-        #: O Telegram recusou a leitura de vez (400/401/403/404): o motivo, já redigido, e o status que o explica.
-        self._recusada: str | None = None
-        self._recusada_status: int | None = None
         self._limitada_avisada = 0.0
         #: hora de parede (epoch), para comparar com a hora em que a pessoa escreveu; injetável nos testes
         self._agora = relogio or time.time
         #: mensagens antigas desta volta (escritas com a Central fora): o dono é avisado uma vez no fim da volta
         self._antigas = 0
 
-    # ------------------------------------------------------------------ configuração e saúde
-    @property
-    def ligada(self) -> bool:
-        a = self.cfg.file.avisos
-        return bool(a.enabled and a.entrada.enabled)
+    def gravar_falha(self, r: Recebida, erro: str) -> bool:
+        """O leitor não conseguiu registrar a update: o mínimo (sem texto) como `falhou`, para a ordem andar."""
+        return self._linha(r, None, "falhou", erro)
 
-    def _segredos(self) -> tuple[str, str]:
-        env = self.cfg.env
-        token = env.telegram_bot_token.get_secret_value() if env.telegram_bot_token else ""
-        chat = env.telegram_chat_id.get_secret_value() if env.telegram_chat_id else ""
-        return token.strip(), (self._chat_injetado or chat).strip()
-
-    def canal(self) -> CanalTelegram | None:
-        if not self.ligada:
-            return None
-        token, chat = self._segredos()
-        if self._canal is not None:
-            return self._canal if chat else None
-        if not token or not chat:
-            return None
-        return CanalTelegram(token, chat, timeout_s=self.cfg.file.avisos.timeout_s)
-
-    def problemas(self) -> list[Problem]:
-        if not self.ligada:
-            return []
-        achados: list[Problem] = []
-        if self._conflito_desde is not None:
-            achados.append(Problem(
-                code="telegram_entrada_conflito",
-                message="A conversa pelo Telegram está parada: outro processo lê o mesmo bot (409 no getUpdates).",
-                hint="Só um consumidor por bot, e um webhook ativo no bot também dá 409 (confira com getWebhookInfo; "
-                     "deleteWebhook o desfaz). Pare a outra leitura (a caixa provisória da orquestradora, outra réplica) "
-                     "ou desligue avisos.entrada.enabled; a Central tenta de novo sozinha a cada minuto. "
-                     "`python scripts/avisos-telegram.py descobrir` mostra o que o bot enxerga (rode-o com a entrada "
-                     "desligada: ele também lê o getUpdates)."))
-        if self._recusada is not None:
-            # E7: cada status tem a sua causa; "token revogado" para um 400 mandava o dono trocar o token à toa.
-            invalido = self._recusada_status == 400
-            causa = _CAUSA_DA_RECUSA.get(self._recusada_status or 0, "recusa não prevista do Telegram")
-            o_que_fazer = ("O token não é a causa: veja o log da Central (poc.avisos.entrada) " if invalido else
-                           "Confira TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID no .env (docs/operacao.md §15) ")
-            achados.append(Problem(
-                code="telegram_entrada_pedido_invalido" if invalido else "telegram_entrada_recusada",
-                message=f"A conversa pelo Telegram está parada: o Telegram recusou a leitura do bot ({self._recusada}).",
-                hint=f"Causa provável: {causa}. {o_que_fazer}ou desligue avisos.entrada.enabled; a Central tenta de "
-                     "novo sozinha a cada minuto."))
-        return achados
-
-    # ------------------------------------------------------------------ uma volta
-    async def uma_volta(self) -> int:
-        """Recebe, grava e trata. Devolve quantas updates chegaram (0 quando pulou)."""
-        canal = self.canal()
-        if canal is None or self._lider(AVISOS) is None:
-            return 0
-        cfg = self.cfg.file.avisos.entrada
-        try:
-            if self.repo.canal_vazio():
-                await self._descartar_historico(canal)
-            brutas = await canal.receber(self.repo.proximo_offset(), espera_s=cfg.long_poll_s)
-        except ConflitoDeConsumidor:
-            if self._conflito_desde is None:
-                log.warning("telegram: outro consumidor do bot (409); a entrada espera")
-                self._conflito_desde = time.monotonic()
-            await self._dormir(cfg.espera_conflito_s)
-            return 0
-        self._conflito_desde = None
-        self._recusada = None
-        self._recusada_status = None
-        if self._lider(AVISOS) is None:
-            return 0        # perdeu a liderança no long-poll: nada gravado = nada confirmado; o novo líder relê
-        saida = SaidaDoTelegram(canal)
+    async def enviar_ajuda_inicial(self, saida: SaidaDaConversa) -> None:
+        """A ajuda vai uma vez só por canal, na primeira volta em que o canal responde."""
         if not self.repo.ajuda_ja_enviada():
             await self._enviar(saida, "A Central agora atende por aqui.\n" + AJUDA, origem="ajuda")
-        chat = self._segredos()[1]
-        for bruta in brutas:
-            r = _ler_update(bruta, chat)
-            if r is None:
-                continue
-            try:
-                await self.registrar(saida, r)
-            except Exception as exc:  # noqa: BLE001 - uma update ruim não pode travar a conversa (o offset teria de andar)
-                # Sem a linha o offset não anda e a MESMA update voltaria a cada volta, para sempre. Registra o mínimo
-                # (sem texto) como `falhou`; só o id vai ao log, porque a exceção do banco pode trazer o texto.
-                log.error("telegram: update %s não pôde ser registrada (%s)", r.id_externo, type(exc).__name__)
-                self._linha(r, None, "falhou", f"erro ao registrar ({type(exc).__name__})")
-        if self._antigas:
-            n, self._antigas = self._antigas, 0
-            minutos = round(cfg.idade_max_s / 60)
-            texto = RESPOSTA_ANTIGAS.format(
-                quantas="1 mensagem foi escrita" if n == 1 else f"{n} mensagens foram escritas", min=minutos,
-                foi="foi" if n == 1 else "foram", s="" if n == 1 else "s", ela="ela" if n == 1 else "elas")
-            await self._enviar(saida, texto, origem="resposta")
-        await self.tratar_pendentes(saida)
-        return len(brutas)
 
-    async def _descartar_historico(self, canal: CanalTelegram) -> None:
-        """A 1ª subida do canal (nenhuma linha): o que o Telegram guardou (até 24 h) é histórico, e um "/aprovar" ou um
-        "sim" antigo não pode executar. `offset=-1` devolve só a última update e faz o Telegram esquecer as anteriores; a
-        linha-marco grava a ordem dela, então o offset passa dela, e tira o canal de "vazio" para a 1ª mensagem de
-        verdade não ser descartada por engano."""
-        velhas = await canal.receber(-1, espera_s=0)
-        ordens = [o for o in (_int(u.get("update_id")) for u in velhas) if o is not None]
-        self.repo.gravar_inicio(max(ordens) if ordens else None)
-        log.info("telegram: 1ª subida do canal; o histórico do chat foi descartado (%s)",
-                 f"até a update {max(ordens)}" if ordens else "fila vazia")
+    async def avisar_antigas(self, saida: SaidaDaConversa) -> None:
+        """Avisa o dono, uma vez, das mensagens escritas com a Central fora do ar que `registrar` descartou desde o
+        último aviso (E2). O leitor chama no fim da volta, depois de registrar o lote."""
+        if not self._antigas:
+            return
+        n, self._antigas = self._antigas, 0
+        minutos = round(self.cfg.file.avisos.entrada.idade_max_s / 60)
+        texto = RESPOSTA_ANTIGAS.format(
+            quantas="1 mensagem foi escrita" if n == 1 else f"{n} mensagens foram escritas", min=minutos,
+            foi="foi" if n == 1 else "foram", s="" if n == 1 else "s", ela="ela" if n == 1 else "elas")
+        await self._enviar(saida, texto, origem="resposta")
 
     # ------------------------------------------------------------------ a parte comum aos canais
     async def tratar_pendentes(self, saida: SaidaDaConversa) -> None:
-        """Trata as `recebida` do canal e conta na conversa o desfecho das execuções que ela criou."""
+        """Trata as `recebida` do canal e conta na conversa o desfecho das execuções que ela criou. Antes, responde as
+        recusas de credencial que `registrar(r, None)` gravou sem poder falar (o canal que só grava, como o webhook do
+        Trello): cada uma ganha a resposta uma vez só (depois dela há uma `canal_enviadas` com o seu `entrada_id`)."""
         await self._reparar_presas(saida)
+        await self._responder_recusas_sem_resposta(saida)
         for linha in self.repo.a_tratar():
             await self._tratar(saida, linha)
         await self._contar_desfechos(saida)
@@ -413,18 +329,36 @@ class ServicoDeEntrada:
                 log.warning("telegram: mensagem %s presa em executando; marcada como falhou", linha.get("id"))
                 await self._responder(saida, linha, RESPOSTA_PRESA)
 
+    async def _responder_recusas_sem_resposta(self, saida: SaidaDaConversa) -> None:
+        """A recusa de credencial gravada sem saída não respondeu nem apagou: responde agora, com o texto de quem NÃO
+        apagou a mensagem (ela segue no canal). Só as dos últimos `idade_max_s` (se o envio falha, a próxima volta tenta
+        de novo, mas não para sempre) e só as de credencial ou de pergunta sensível: a recusa por tamanho
+        (`RESPOSTA_LONGA`) gravada sem saída fica sem resposta, porque não há credencial a avisar e o texto nem foi
+        guardado."""
+        for linha in self.repo.recusadas_sem_resposta(self.cfg.file.avisos.entrada.idade_max_s):
+            ident = self._id(linha)
+            pergunta = "pergunta" in str(linha.get("erro") or "")
+            texto = RESPOSTA_PERGUNTA_CREDENCIAL_SEM_APAGAR if pergunta else RESPOSTA_CREDENCIAL_SEM_APAGAR
+            await self._enviar(saida, texto, origem="resposta", responde_a=_texto(linha.get("ref_mensagem")),
+                               entrada_id=ident)
+
     def _linha(self, r: Recebida, texto: str | None, estado: str = "recebida", erro: str | None = None) -> bool:
         return self.repo.gravar(id_externo=r.id_externo, ordem=r.ordem, tipo=r.tipo, do_dono=r.do_dono,
                                 ref_mensagem=r.ref_mensagem, responde_a=r.responde_a, texto=texto,
                                 tamanho=len(r.texto), estado=estado, erro=erro)
 
-    async def registrar(self, saida: SaidaDaConversa, r: Recebida) -> None:
+    async def registrar(self, r: Recebida, saida: SaidaDaConversa | None = None) -> None:
         """Grava o que chegou, já com as políticas que não esperam a gramática: quem não é o dono, o longo demais e o
-        que parece credencial ficam SEM o texto e não são tratados. Releitura (mesmo `id_externo`) não faz nada."""
+        que parece credencial ficam SEM o texto e não são tratados. Releitura (mesmo `id_externo`) não faz nada.
+
+        Sem `saida` (o canal que só grava, como o webhook do Trello, 32.2 §8.5) valem as MESMAS políticas e a mesma
+        gravação, mas nada sai: não apaga a mensagem, não responde e não confirma botão. A recusa de credencial fica
+        gravada `recusada` sem texto, e o `tratar_pendentes(saida)` seguinte a responde. A recusa por tamanho gravada
+        sem saída fica sem resposta."""
         if not r.do_dono or r.tipo == "outro":
             self._linha(r, None, "ignorada")
             return
-        if r.botao_id is not None:
+        if r.botao_id is not None and saida is not None:
             try:
                 await saida.confirmar_botao(r.botao_id)                 # tira o relógio do botão; não decide nada
             except FalhaDeEnvio:
@@ -435,7 +369,7 @@ class ServicoDeEntrada:
                 # Longa e com cara de senha (uma chave, um bloco): além de recusada, sai do chat como a curta.
                 await self._recusar_credencial(saida, r, "parece credencial ou código", RESPOSTA_CREDENCIAL,
                                                RESPOSTA_CREDENCIAL_SEM_APAGAR)
-            elif self._linha(r, None, "recusada", "mensagem longa demais"):
+            elif self._linha(r, None, "recusada", "mensagem longa demais") and saida is not None:
                 await self._enviar(saida, RESPOSTA_LONGA.format(n=limite), origem="resposta", responde_a=r.ref_mensagem)
             return
         if r.tipo == "mensagem" and self._parece_segredo(r.texto):
@@ -457,11 +391,14 @@ class ServicoDeEntrada:
             return
         self._linha(r, r.texto)
 
-    async def _recusar_credencial(self, saida: SaidaDaConversa, r: Recebida, motivo: str, ok: str,
+    async def _recusar_credencial(self, saida: SaidaDaConversa | None, r: Recebida, motivo: str, ok: str,
                                   sem_apagar: str) -> None:
-        """Grava SEM o texto (só o tamanho), apaga a mensagem do chat quando o canal deixa e responde sem ecoar nada."""
+        """Grava SEM o texto (só o tamanho), apaga a mensagem do chat quando o canal deixa e responde sem ecoar nada.
+        Sem `saida` só grava: a resposta fica para o `tratar_pendentes`."""
         if not self._linha(r, None, "recusada", motivo):
             return                                                      # releitura: já recusada (e apagada) antes
+        if saida is None:
+            return
         apagou = False
         if r.ref_mensagem is not None:
             try:
@@ -750,6 +687,153 @@ class ServicoDeEntrada:
             return
         self.repo.registrar_enviada(enviada, origem, entrada_id=entrada_id)
 
+
+class LeitorDoTelegram:
+    """O laço do `getUpdates` (o offset, o 409, o descarte do histórico, a recusa do Telegram) sobre uma
+    `ConversaDoCanal`. `registrar` e `tratar_pendentes` ficam aqui com a assinatura antiga (a saída primeiro) para quem
+    já os chamava; a conversa tem a nova (`registrar(r, saida=None)`)."""
+
+    def __init__(self, cfg: Config, repo: EntradasDoCanal, portas: PortasDaCentral, *,
+                 lider: Callable[[str], int | None], recusa: Callable[[str], bool], redigir: Callable[[str], str],
+                 canal: CanalTelegram | None = None, chat_id: str | None = None,
+                 dormir: Callable[[float], Awaitable[None]] | None = None, operador: str = OPERADOR_DO_TELEGRAM,
+                 relogio: Callable[[], float] | None = None):
+        self.cfg = cfg
+        self.repo = repo
+        self.portas = portas
+        self.conversa = ConversaDoCanal(cfg, repo, portas, recusa=recusa, redigir=redigir, operador=operador,
+                                        relogio=relogio)
+        self._lider = lider
+        self._canal = canal
+        self._chat_injetado = chat_id
+        self._dormir = dormir or asyncio.sleep
+        self._conflito_desde: float | None = None
+        #: O Telegram recusou a leitura de vez (400/401/403/404): o motivo, já redigido, e o status que o explica.
+        self._recusada: str | None = None
+        self._recusada_status: int | None = None
+
+    # A identidade e o relógio de parede moram na conversa; o leitor os expõe para quem os trocava aqui (os testes).
+    @property
+    def operador(self) -> str:
+        return self.conversa.operador
+
+    @operador.setter
+    def operador(self, valor: str) -> None:
+        self.conversa.operador = valor
+
+    @property
+    def _agora(self) -> Callable[[], float]:
+        return self.conversa._agora   # noqa: SLF001 - o mesmo relógio da regra de idade
+
+    @_agora.setter
+    def _agora(self, valor: Callable[[], float]) -> None:
+        self.conversa._agora = valor  # noqa: SLF001
+
+    async def registrar(self, saida: SaidaDaConversa, r: Recebida) -> None:
+        await self.conversa.registrar(r, saida)
+
+    async def tratar_pendentes(self, saida: SaidaDaConversa) -> None:
+        await self.conversa.tratar_pendentes(saida)
+
+    # ------------------------------------------------------------------ configuração e saúde
+    @property
+    def ligada(self) -> bool:
+        a = self.cfg.file.avisos
+        return bool(a.enabled and a.entrada.enabled)
+
+    def _segredos(self) -> tuple[str, str]:
+        env = self.cfg.env
+        token = env.telegram_bot_token.get_secret_value() if env.telegram_bot_token else ""
+        chat = env.telegram_chat_id.get_secret_value() if env.telegram_chat_id else ""
+        return token.strip(), (self._chat_injetado or chat).strip()
+
+    def canal(self) -> CanalTelegram | None:
+        if not self.ligada:
+            return None
+        token, chat = self._segredos()
+        if self._canal is not None:
+            return self._canal if chat else None
+        if not token or not chat:
+            return None
+        return CanalTelegram(token, chat, timeout_s=self.cfg.file.avisos.timeout_s)
+
+    def problemas(self) -> list[Problem]:
+        if not self.ligada:
+            return []
+        achados: list[Problem] = []
+        if self._conflito_desde is not None:
+            achados.append(Problem(
+                code="telegram_entrada_conflito",
+                message="A conversa pelo Telegram está parada: outro processo lê o mesmo bot (409 no getUpdates).",
+                hint="Só um consumidor por bot, e um webhook ativo no bot também dá 409 (confira com getWebhookInfo; "
+                     "deleteWebhook o desfaz). Pare a outra leitura (a caixa provisória da orquestradora, outra réplica) "
+                     "ou desligue avisos.entrada.enabled; a Central tenta de novo sozinha a cada minuto. "
+                     "`python scripts/avisos-telegram.py descobrir` mostra o que o bot enxerga (rode-o com a entrada "
+                     "desligada: ele também lê o getUpdates)."))
+        if self._recusada is not None:
+            # E7: cada status tem a sua causa; "token revogado" para um 400 mandava o dono trocar o token à toa.
+            invalido = self._recusada_status == 400
+            causa = _CAUSA_DA_RECUSA.get(self._recusada_status or 0, "recusa não prevista do Telegram")
+            o_que_fazer = ("O token não é a causa: veja o log da Central (poc.avisos.entrada) " if invalido else
+                           "Confira TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID no .env (docs/operacao.md §15) ")
+            achados.append(Problem(
+                code="telegram_entrada_pedido_invalido" if invalido else "telegram_entrada_recusada",
+                message=f"A conversa pelo Telegram está parada: o Telegram recusou a leitura do bot ({self._recusada}).",
+                hint=f"Causa provável: {causa}. {o_que_fazer}ou desligue avisos.entrada.enabled; a Central tenta de "
+                     "novo sozinha a cada minuto."))
+        return achados
+
+    # ------------------------------------------------------------------ uma volta
+    async def uma_volta(self) -> int:
+        """Recebe, grava e trata. Devolve quantas updates chegaram (0 quando pulou)."""
+        canal = self.canal()
+        if canal is None or self._lider(AVISOS) is None:
+            return 0
+        cfg = self.cfg.file.avisos.entrada
+        try:
+            if self.repo.canal_vazio():
+                await self._descartar_historico(canal)
+            brutas = await canal.receber(self.repo.proximo_offset(), espera_s=cfg.long_poll_s)
+        except ConflitoDeConsumidor:
+            if self._conflito_desde is None:
+                log.warning("telegram: outro consumidor do bot (409); a entrada espera")
+                self._conflito_desde = time.monotonic()
+            await self._dormir(cfg.espera_conflito_s)
+            return 0
+        self._conflito_desde = None
+        self._recusada = None
+        self._recusada_status = None
+        if self._lider(AVISOS) is None:
+            return 0        # perdeu a liderança no long-poll: nada gravado = nada confirmado; o novo líder relê
+        saida = SaidaDoTelegram(canal)
+        await self.conversa.enviar_ajuda_inicial(saida)
+        chat = self._segredos()[1]
+        for bruta in brutas:
+            r = _ler_update(bruta, chat)
+            if r is None:
+                continue
+            try:
+                await self.conversa.registrar(r, saida)
+            except Exception as exc:  # noqa: BLE001 - uma update ruim não pode travar a conversa (o offset teria de andar)
+                # Sem a linha o offset não anda e a MESMA update voltaria a cada volta, para sempre. Registra o mínimo
+                # (sem texto) como `falhou`; só o id vai ao log, porque a exceção do banco pode trazer o texto.
+                log.error("telegram: update %s não pôde ser registrada (%s)", r.id_externo, type(exc).__name__)
+                self.conversa.gravar_falha(r, f"erro ao registrar ({type(exc).__name__})")
+        await self.conversa.avisar_antigas(saida)
+        await self.conversa.tratar_pendentes(saida)
+        return len(brutas)
+
+    async def _descartar_historico(self, canal: CanalTelegram) -> None:
+        """A 1ª subida do canal (nenhuma linha): o que o Telegram guardou (até 24 h) é histórico, e um "/aprovar" ou um
+        "sim" antigo não pode executar. `offset=-1` devolve só a última update e faz o Telegram esquecer as anteriores; a
+        linha-marco grava a ordem dela, então o offset passa dela, e tira o canal de "vazio" para a 1ª mensagem de
+        verdade não ser descartada por engano."""
+        velhas = await canal.receber(-1, espera_s=0)
+        ordens = [o for o in (_int(u.get("update_id")) for u in velhas) if o is not None]
+        self.repo.gravar_inicio(max(ordens) if ordens else None)
+        log.info("telegram: 1ª subida do canal; o histórico do chat foi descartado (%s)",
+                 f"até a update {max(ordens)}" if ordens else "fila vazia")
+
     # ------------------------------------------------------------------ laço
     def _esperar_apos(self, falha: FalhaDeEnvio) -> float:
         """Quanto esperar depois que a LEITURA falhou. 429: o que o Telegram pediu. Definitiva (400/401/403/404, cada
@@ -778,3 +862,7 @@ class ServicoDeEntrada:
             except Exception:  # a conversa nunca derruba o processo
                 log.exception("telegram: laço da entrada")
                 await self._dormir(5)
+
+
+class ServicoDeEntrada(LeitorDoTelegram):
+    """O nome de antes da separação (28.15): o leitor do Telegram com a conversa por dentro, mesma assinatura."""

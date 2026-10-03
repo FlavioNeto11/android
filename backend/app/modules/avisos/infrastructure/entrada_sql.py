@@ -123,6 +123,18 @@ class EntradasDoCanal:
             "SELECT * FROM canal_entradas WHERE canal=? AND estado='executando' AND run_id IS NULL AND tratada_em < ?"
             " ORDER BY id LIMIT 20", (self.canal, limite))]
 
+    def recusadas_sem_resposta(self, idade_max_s: float, limite: int = 20) -> list[dict[str, object]]:
+        """As recusas de credencial ou de pergunta sensível dos últimos `idade_max_s` segundos a que a Central ainda
+        não respondeu (nenhuma `canal_enviadas` com o `entrada_id` delas): as que `registrar` gravou sem saída, e as
+        cujo envio falhou. Fora as que a mensagem já foi apagada do canal (`...; apagada do chat`): o texto de quem
+        não apagou seria falso. A janela impede de repetir para sempre a resposta que nunca sai."""
+        desde = to_iso(self.relogio() - timedelta(seconds=idade_max_s))
+        return [dict(r) for r in self.db.query(
+            "SELECT * FROM canal_entradas e WHERE e.canal=? AND e.estado='recusada' AND e.recebida_em >= ?"
+            " AND (e.erro LIKE '%credencial%' OR e.erro LIKE '%pergunta%') AND e.erro NOT LIKE '%; apagada do chat'"
+            " AND NOT EXISTS (SELECT 1 FROM canal_enviadas s WHERE s.canal=e.canal AND s.entrada_id=e.id)"
+            " ORDER BY e.id LIMIT ?", (self.canal, desde, limite))]
+
     def apagar_texto(self, ident: int) -> None:
         """Tira o texto de uma linha (a credencial que só foi reconhecida depois de gravada). Fica o `tamanho`."""
         self.db.execute("UPDATE canal_entradas SET texto=NULL, previa=NULL WHERE id=? AND canal=?", (int(ident), self.canal))
