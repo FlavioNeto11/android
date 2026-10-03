@@ -182,8 +182,9 @@ function ConteudoReceita({ c, nomeDe }: { c: ConteudoDaReceita; nomeDe: NomeDaCa
           <Fato rotulo="Capability">
             {unica ? <CapabilityNomeada codigo={unica} nome={nomeDe(unica)} /> : <Mono>{c.capability.nomes.join(', ')}</Mono>}
             {c.capability.ambigua ? <> <Badge tone="warning" size="sm" title="Etapas com a mesma forma servem a mais de uma capability: o sistema não sabe qual é a certa.">ambígua</Badge></> : null}
+            {/* Travessão, não parênteses: o nome já leva o código entre parênteses. */}
             {' '}<span className={styles.passoLinha}>
-              ({c.capability.fonte === 'origem' ? 'a da etapa onde foi aprendida' : 'deduzida das etapas com a mesma forma'})
+              — {c.capability.fonte === 'origem' ? 'a da etapa onde foi aprendida' : 'deduzida das etapas com a mesma forma'}
             </span>
           </Fato>
         ) : null}
