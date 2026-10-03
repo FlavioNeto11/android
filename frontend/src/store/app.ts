@@ -1,8 +1,8 @@
 import { create } from 'zustand';
-import type { AppConfig, EventRecord, Instance, Objective, RunDetail, RunSummary, Settings, Snapshot } from '../api/types';
+import type { AppConfig, Command, EventRecord, Instance, Objective, RunDetail, RunSummary, Settings, Snapshot } from '../api/types';
 import { slotWaitDetail, type ConnStatus } from '../lib/status';
 import {
-  applyEvent, hydrateFromSnapshot, initialDataState, mergeRuns, mergeTimeline, patchInstance, reduceDetail,
+  applyEvent, hydrateFromSnapshot, initialDataState, mergeLastCommands, mergeRuns, mergeTimeline, patchInstance, reduceDetail,
   upsertInstance, upsertObjective, upsertRun,
   type DataState, type DetailError,
 } from './reducer';
@@ -24,6 +24,8 @@ interface AppStore extends DataState {
   setConn: (patch: Partial<ConnState>) => void;
   hydrate: (snap: Snapshot) => void;
   applyEvent: (ev: EventRecord) => void;
+  /** O comando mais novo de cada aparelho, lido depois do snapshot (`live.ts`). */
+  mergeCommands: (cmds: readonly Command[]) => void;
 
   upsertRun: (run: RunSummary) => void;
   mergeRuns: (runs: RunSummary[]) => void;
@@ -52,6 +54,7 @@ export const useAppStore = create<AppStore>((set) => ({
       return next === s ? s : next;
     }),
 
+  mergeCommands: (cmds) => set((s) => mergeLastCommands(s, cmds)),
   upsertRun: (run) => set((s) => upsertRun(s, run)),
   mergeRuns: (runs) => set((s) => mergeRuns(s, runs)),
   upsertInstance: (inst) => set((s) => upsertInstance(s, inst)),

@@ -1,5 +1,5 @@
 import { ApiError, api, hintForError, toApiError } from '../api/client';
-import type { EventRecord, RunSummary } from '../api/types';
+import type { Command, EventRecord, RunSummary } from '../api/types';
 import { EMPTY_WATCH, LiveSocket, type WatchInterest } from '../api/ws';
 import { backoffDelay } from '../lib/backoff';
 import { isRecord } from '../lib/format';
@@ -8,7 +8,7 @@ import { setServerTime } from '../lib/time';
 import { useAppStore } from './app';
 import { releaseAllLeasesOnUnload, useControlStore } from './control';
 import { usePreviewStore, visibleGrid } from './preview';
-import { eventRunId } from './reducer';
+import { deUmaPessoa, eventRunId } from './reducer';
 import { toast, toastError } from './toasts';
 import { useSessionStore } from './session';
 import { useUiStore } from './ui';
@@ -63,6 +63,31 @@ function scheduleRetry(reason: string): void {
   retryTimer = setTimeout(() => void cycle(), delay);
 }
 
+/** A leitura por aparelho: a curta basta quando traz um comando de pessoa. A sonda de rede empurra o de pessoa para
+ *  baixo nos aparelhos com rede (no central, 03/10: o 1º de pessoa era o 31º do android-03 e o 59º do android-06); aí
+ *  vem a funda, o máximo da rota. */
+const LEITURA_CURTA = 20;
+const LEITURA_FUNDA = 200;
+
+/**
+ * Os comandos recentes de cada aparelho, porque o snapshot só traz os em voo e os `uncertain`. Sem esta leitura, o
+ * cartão mostrava como "o comando" um `uncertain` de dias atrás, com comandos concluídos depois dele. Falha aqui só
+ * deixa o cartão como o snapshot o pôs.
+ */
+async function carregarUltimosComandos(token: number, ids: readonly string[]): Promise<void> {
+  try {
+    const porAparelho = await Promise.all(ids.map(async (id) => {
+      const curta = await api.commands(id, LEITURA_CURTA).catch((): Command[] => []);
+      if (curta.length < LEITURA_CURTA || curta.some(deUmaPessoa)) return curta;
+      return api.commands(id, LEITURA_FUNDA).catch(() => curta);
+    }));
+    if (token !== cycleToken || !started) return;
+    useAppStore.getState().mergeCommands(porAparelho.flat());
+  } catch {
+    // Sem a leitura, vale o snapshot: o comando em voo e o `uncertain` continuam no cartão.
+  }
+}
+
 async function cycle(): Promise<void> {
   if (!started) return;
   const token = ++cycleToken;
@@ -85,6 +110,7 @@ async function cycle(): Promise<void> {
     useUiStore.getState().pruneSelection(snap.instances.map((i) => i.id));
     for (const inst of snap.instances) useControlStore.getState().reconcile(inst);
     autoSelectRun(snap.runs ?? []);
+    void carregarUltimosComandos(token, snap.instances.map((i) => i.id));
 
     // O detalhe aberto pode ter perdido eventos (queda longa / resync): recarrega em segundo plano.
     const selected = useUiStore.getState().selectedRunId;

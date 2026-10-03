@@ -547,6 +547,15 @@
   white-space: nowrap;
 }
 
+/* O `uncertain` que ficou para trás: mesma linha, tom de aviso só no ícone, para não competir com o último comando. */
+.commandAnterior {
+  color: var(--text-2);
+}
+
+.commandAnterior > svg {
+  color: var(--warning-text);
+}
+
 .commandReason {
   margin: 0;
   color: var(--text-2);

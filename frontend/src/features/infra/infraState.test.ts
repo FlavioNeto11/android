@@ -2,22 +2,24 @@ import { describe, expect, it } from 'vitest';
 import type { EventRecord, Health, Instance, RunSummary, WorkerDevice } from '../../api/types';
 import {
   STALE_HEARTBEAT_MS, centralMeta, eventosDoServidor, filaDoServidor, fracaoDeDisco, groupByWorker,
-  instanceStateMeta, isStale, orphanInstances, renderizadorMeta, vagasOcupadas,
+  instanceStateMeta, isStale, orphanInstances, pausaDoReparoMeta, renderizadorMeta, tipoDoAparelho, vagasOcupadas,
 } from './infraState';
 
 // 29.11: argumento aceito não é renderizador usado — a linha mostra o que o emulador SELECIONOU.
 describe('renderizadorMeta — o renderizador selecionado pelo emulador', () => {
-  it('no ar mostra o selecionado; fora do ar só o pedido, dito como pedido', () => {
+  it('no ar mostra o efetivo; fora do ar só o configurado, dito como configurado e com o porquê', () => {
     const noAr = renderizadorMeta({ configured: 'host', gles: 'host', vulkan: 'host', fallback: false });
     expect(noAr).toMatchObject({ label: 'renderizador: GPU do host', fallback: false });
     const parado = renderizadorMeta({ configured: 'swiftshader_indirect', gles: null, vulkan: null, fallback: false });
-    expect(parado?.label).toBe('renderizador pedido: SwiftShader');
-    expect(parado?.title).toContain('só diz o que selecionou quando está no ar');
+    expect(parado?.label).toBe('renderizador configurado: SwiftShader');
+    expect(parado?.title).toContain('o pedido ao emulador');
+    expect(parado?.title).toContain('O efetivo, o que o emulador selecionou, só se sabe com o aparelho no ar');
+    expect(noAr?.title).toContain('efetivo (selecionado pelo emulador): GLES host');
   });
 
-  it('fallback diz o selecionado E o pedido', () => {
+  it('fallback diz o efetivo E o configurado', () => {
     const caiu = renderizadorMeta({ configured: 'host', gles: 'swiftshader', vulkan: 'swiftshader', fallback: true });
-    expect(caiu).toMatchObject({ label: 'renderizador: SwiftShader (pediu host)', fallback: true });
+    expect(caiu).toMatchObject({ label: 'renderizador: SwiftShader (configurado: host)', fallback: true });
     expect(caiu?.title).toContain('sem avisar');
     expect(caiu?.title).toContain('vale no próximo reinício');      // a configuração mudada depois da subida
   });
@@ -150,5 +152,43 @@ describe('eventos e fila por servidor', () => {
       { id: 'r3', status: 'planned', instance_ids: ['android-09'] },
     ] as unknown as RunSummary[];
     expect(filaDoServidor(runs, ids).map((r) => r.id)).toEqual(['r1']);
+  });
+});
+
+// Polimento dos deploys 9 a 11: "android-11 · parado · store" (o kind cru) na linha do aparelho.
+describe('tipoDoAparelho — o tipo em português, com o porquê', () => {
+  it('a loja e o externo ganham nome; o emulador do projeto não ganha selo', () => {
+    expect(tipoDoAparelho('store')).toMatchObject({ label: 'loja' });
+    expect(tipoDoAparelho('store')?.title).toContain('nunca recebe tarefa');
+    expect(tipoDoAparelho('external')).toMatchObject({ label: 'externo' });
+    expect(tipoDoAparelho('emulator')).toBeNull();
+  });
+});
+
+// 25.13 sem tela: a pausa do reparo só existia em /api/instances[].repair_pause.
+describe('pausaDoReparoMeta — "reparo pausado até hh:mm"', () => {
+  const agora = new Date(2026, 9, 3, 15, 0, 0).getTime();          // 03/10 15:00 no fuso local
+  const pausa = (ate: Date) => ({
+    since: new Date(2026, 9, 3, 14, 57, 5).toISOString(), until: ate.toISOString(),
+    reason: '29.46: braços por flag do emulador (config temporária)', by: 'panel', remaining_s: 1800,
+  });
+
+  it('hoje mostra só a hora; o motivo e quem pausou vão na dica', () => {
+    const m = pausaDoReparoMeta(pausa(new Date(2026, 9, 3, 15, 27, 5)), agora);
+    expect(m?.label).toBe('reparo pausado até 15:27');
+    expect(m?.title).toContain('pelo painel');
+    expect(m?.title).toContain('o reparo automático não age neste aparelho');
+    expect(m?.title).toContain('29.46: braços por flag do emulador');
+    expect(m?.label).not.toContain('29.46');                        // texto do procedimento fica fora da linha
+  });
+
+  it('outro dia leva a data', () => {
+    expect(pausaDoReparoMeta(pausa(new Date(2026, 9, 4, 8, 0, 0)), agora)?.label).toBe('reparo pausado até 04/10 08:00');
+  });
+
+  it('vencida ou ausente não aparece', () => {
+    expect(pausaDoReparoMeta(pausa(new Date(2026, 9, 3, 14, 59, 0)), agora)).toBeNull();
+    expect(pausaDoReparoMeta(null, agora)).toBeNull();
+    expect(pausaDoReparoMeta(undefined, agora)).toBeNull();
   });
 });

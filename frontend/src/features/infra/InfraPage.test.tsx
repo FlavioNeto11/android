@@ -149,7 +149,7 @@ describe('InfraPage — o central e as abas por servidor', () => {
   });
 
   // 29.11: o renderizador do emulador é capacidade do aparelho; o fallback silencioso sai em destaque.
-  it('o aparelho mostra o renderizador selecionado, e o fallback aparece com o que foi pedido', async () => {
+  it('o aparelho mostra o renderizador efetivo, e o fallback aparece com o configurado', async () => {
     await comEstado({
       instances: {
         'android-13': makeInstance(13, { worker_id: 'worker-lan-01', state: 'online',
@@ -161,8 +161,32 @@ describe('InfraPage — o central e as abas por servidor', () => {
       instanceOrder: ['android-13', 'android-14', 'android-15'],
     });
     expect(text()).toContain('renderizador: GPU do host');
-    expect(text()).toContain('renderizador: SwiftShader (pediu host)');
+    expect(text()).toContain('renderizador: SwiftShader (configurado: host)');
     expect(text().match(/renderizador/g)).toHaveLength(2);
+  });
+
+  // Polimento dos deploys 9 a 11: o kind cru ("store") e a pausa do reparo (25.13) que só existia na API.
+  it('a loja sai como "loja", e a pausa do reparo em vigor aparece na linha do aparelho com o porquê na dica', async () => {
+    const pausa = (minutos: number) => ({
+      since: new Date(Date.now() - 60_000).toISOString(), until: new Date(Date.now() + minutos * 60_000).toISOString(),
+      reason: '29.46: braços por flag do emulador (config temporária)', by: 'panel', remaining_s: minutos * 60,
+    });
+    await comEstado({
+      instances: {
+        'android-13': makeInstance(13, { worker_id: 'worker-lan-01', state: 'online', repair_pause: pausa(30) }),
+        'android-14': makeInstance(14, { worker_id: 'worker-lan-01', state: 'online', repair_pause: pausa(-1) }),  // vencida
+        'android-15': makeInstance(15, { worker_id: 'worker-lan-01', state: 'stopped', kind: 'store' }),
+      },
+      instanceOrder: ['android-13', 'android-14', 'android-15'],
+    });
+    expect(text()).toMatch(/reparo pausado até (\d\d:\d\d|\d\d\/\d\d \d\d:\d\d)/);
+    expect(text().match(/reparo pausado/g)).toHaveLength(1);                 // a vencida não aparece
+    const linha = [...document.querySelectorAll('[title]')].find((e) => e.textContent?.includes('reparo pausado'));
+    expect(linha?.getAttribute('title')).toContain('pelo painel');
+    expect(linha?.getAttribute('title')).toContain('29.46: braços por flag do emulador');
+    expect(text()).not.toContain('29.46');                                   // o motivo do procedimento fica na dica
+    expect(text()).toContain('loja');
+    expect(text()).not.toMatch(/\bstore\b/);
   });
 
   it('a aba Registros mostra os eventos DOS APARELHOS daquele servidor, e não os dos outros', async () => {

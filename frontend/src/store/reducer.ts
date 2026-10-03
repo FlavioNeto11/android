@@ -48,6 +48,13 @@ export interface DataState {
    * só num log escondido — era assim que uma ação não executada ficava indistinguível de sucesso.
    */
   lastCommand: Record<string, Command>;
+  /**
+   * O comando `uncertain` que um comando MAIS NOVO tirou de `lastCommand`, enquanto não se resolve. O cartão mostra o
+   * último comando de verdade; sem isto, a incerteza que ficou para trás sumiria da tela e continuaria aberta no banco.
+   */
+  comandoSemDesfecho: Record<string, Command>;
+  /** O último comando de uma PESSOA ou execução (`deUmaPessoa`): é o que o cartão mostra quando nada está em voo. */
+  ultimoDePessoa: Record<string, Command>;
   /** Máquinas que hospedam aparelhos, por id. Vazio = só o servidor central. */
   workers: Record<string, Worker>;
   /**
@@ -91,6 +98,75 @@ export function aceitaComando(anterior: Command | undefined, cmd: Command): bool
   return (ORDEM_DO_ESTADO[cmd.state] ?? 0) >= (ORDEM_DO_ESTADO[anterior.state] ?? 0);
 }
 
+/**
+ * Quem pede comando sem ser uma pessoa nem uma execução: a sonda de rede (`rede`), a escada de reparo (`system`), o
+ * reinício por saúde (`saude`), a reconciliação e o rodízio (`scheduler`). A sonda pede um `device.network` a cada poucos
+ * minutos nos aparelhos com rede: como "último comando" do cartão, ela enterrava o que a pessoa quer ver (03/10).
+ */
+export const PEDIDO_AUTOMATICO: ReadonlySet<string> = new Set(['rede', 'system', 'saude', 'reconciliacao', 'scheduler']);
+
+export function deUmaPessoa(cmd: Pick<Command, 'requested_by'>): boolean {
+  return !PEDIDO_AUTOMATICO.has(cmd.requested_by);
+}
+
+type ComandosDoStore = Pick<DataState, 'lastCommand' | 'comandoSemDesfecho' | 'ultimoDePessoa'>;
+
+/**
+ * `cmd` no lugar de `lastCommand[cmd.instance_id]`, quando `aceitaComando` deixa, e no de `ultimoDePessoa` quando é de
+ * uma pessoa. O `uncertain` de pessoa que sai por um comando mais novo vai para `comandoSemDesfecho`, e sai de lá quando o
+ * próprio comando chega com outro estado (verificado ou decidido por uma pessoa). O de pedido automático (a sonda incerta)
+ * não entra: ele só existe na tela de Rede (ajuste da orquestradora, 03/10).
+ */
+function comTrocaDeComando<S extends ComandosDoStore>(state: S, cmd: Command): S {
+  const iid = cmd.instance_id;
+  let next = state;
+  if (deUmaPessoa(cmd) && aceitaComando(state.ultimoDePessoa[iid], cmd)) {
+    next = { ...next, ultimoDePessoa: { ...next.ultimoDePessoa, [iid]: cmd } };
+  }
+  let semDesfecho = next.comandoSemDesfecho;
+  if (semDesfecho[iid]?.id === cmd.id && cmd.state !== 'uncertain') {
+    const { [iid]: _resolvido, ...resto } = semDesfecho;
+    semDesfecho = resto;
+  }
+  const anterior = next.lastCommand[iid];
+  if (!aceitaComando(anterior, cmd)) {
+    return semDesfecho === next.comandoSemDesfecho ? next : { ...next, comandoSemDesfecho: semDesfecho };
+  }
+  if (anterior && anterior.id !== cmd.id && anterior.state === 'uncertain' && deUmaPessoa(anterior)) {
+    semDesfecho = { ...semDesfecho, [iid]: anterior };
+  }
+  return { ...next, lastCommand: { ...next.lastCommand, [iid]: cmd }, comandoSemDesfecho: semDesfecho };
+}
+
+/**
+ * Os comandos recentes de cada aparelho, lidos de `GET /api/commands` depois do snapshot (`live.ts`). O snapshot só
+ * traz os em voo e os `uncertain`: sem esta leitura, o cartão mostrava como "o comando" um `uncertain` de dias atrás,
+ * com comandos concluídos depois dele (deploys 9 a 11, 11 de 14 cartões).
+ *
+ * Por aparelho: o mais novo vai para `lastCommand`, o mais novo de pessoa para `ultimoDePessoa`, e o `uncertain` de
+ * pessoa mais novo que não é o último vai para `comandoSemDesfecho`. Na lista, o estado é o ATUAL de cada comando: um
+ * `uncertain` nela ainda não foi resolvido.
+ */
+export function mergeLastCommands(state: DataState, cmds: readonly Command[]): DataState {
+  const porAparelho = new Map<string, Command[]>();
+  for (const c of cmds) porAparelho.set(c.instance_id, [...(porAparelho.get(c.instance_id) ?? []), c]);
+  let next = state;
+  for (const [iid, lista] of porAparelho) {
+    const ordenada = [...lista].sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
+    const [maisNovo] = ordenada;
+    if (!maisNovo) continue;
+    const dePessoa = ordenada.find(deUmaPessoa);
+    if (dePessoa && dePessoa !== maisNovo) next = comTrocaDeComando(next, dePessoa);
+    next = comTrocaDeComando(next, maisNovo);
+    const incerto = ordenada.find((c) => c.state === 'uncertain' && deUmaPessoa(c) && c.id !== next.lastCommand[iid]?.id);
+    const guardado = next.comandoSemDesfecho[iid];
+    if (incerto && (!guardado || guardado.created_at < incerto.created_at)) {
+      next = { ...next, comandoSemDesfecho: { ...next.comandoSemDesfecho, [iid]: incerto } };
+    }
+  }
+  return next;
+}
+
 export const MAX_TIMELINE_EVENTS = 3000;
 export const MAX_RECENT_EVENTS = 300;
 export const MAX_RUNS = 100;
@@ -109,6 +185,8 @@ export const initialDataState: DataState = {
   detail: null,
   recentEvents: [],
   lastCommand: {},
+  comandoSemDesfecho: {},
+  ultimoDePessoa: {},
   workers: {},
   appState: {},
   needsPersonEpoch: 0,
@@ -186,6 +264,12 @@ export function hydrateFromSnapshot(state: DataState, snap: Snapshot): DataState
     lastCommand: snap.commands
       ? { ...state.lastCommand, ...Object.fromEntries(snap.commands.map((c) => [c.instance_id, c])) }
       : state.lastCommand,
+    // O que fica para trás é decidido de novo pela leitura dos comandos recentes (`mergeLastCommands`), a partir do
+    // `uncertain` que o snapshot traz: o guardado pode ter sido resolvido com a página fechada.
+    comandoSemDesfecho: snap.commands ? {} : state.comandoSemDesfecho,
+    // Comando não some: o de pessoa guardado continua valendo, e o do snapshot entra se for mais novo.
+    ultimoDePessoa: (snap.commands ?? []).filter(deUmaPessoa).reduce(
+      (acc, c) => (aceitaComando(acc[c.instance_id], c) ? { ...acc, [c.instance_id]: c } : acc), state.ultimoDePessoa),
   };
 }
 
@@ -460,10 +544,7 @@ export function applyEvent(state: DataState, ev: EventRecord): DataState {
     case 'command.updated': {
       const cmd = obj<Command>(data, 'command');
       if (cmd && typeof cmd.instance_id === 'string' && typeof cmd.id === 'string') {
-        const anterior = next.lastCommand[cmd.instance_id];
-        if (aceitaComando(anterior, cmd)) {
-          next = { ...next, lastCommand: { ...next.lastCommand, [cmd.instance_id]: cmd } };
-        }
+        next = comTrocaDeComando(next, cmd);
       }
       break;
     }

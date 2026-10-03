@@ -1,6 +1,7 @@
 import type { EventRecord, Health, Instance, RunSummary } from '../../api/types';
 import type { Tone } from '../../lib/status';
 import type { EstadoContado } from '../../store/metricas';
+import { formatQuando, parseTs } from '../../lib/time';
 
 /**
  * Regras puras da visão de infraestrutura, fora do componente para serem testáveis em node — mesmo padrão de
@@ -33,24 +34,57 @@ function nomeDoRenderizador(modo: string): string {
 }
 
 /**
- * O renderizador do emulador em uma linha (29.11). Vale o SELECIONADO pelo emulador quando se sabe; fora do ar só
- * existe o pedido, e a linha diz que é pedido. `fallback` é o caso que derruba aparelho: pediu `host`, o emulador
- * caiu para o SwiftShader sem reclamar, e um app que não roda nele (o Outlook) levaria o emulador junto.
+ * O renderizador do emulador em uma linha (29.11). Vale o EFETIVO (o que o emulador selecionou) quando se sabe; fora do
+ * ar só existe o configurado (o pedido, `gpu_mode`), e a linha diz que é o configurado, com o porquê na dica. A palavra
+ * "pedido" sozinha não dizia pedido de quem nem por que não havia outro (polimento dos deploys 9 a 11). `fallback` é o
+ * caso que derruba aparelho: configurou `host`, o emulador caiu para o SwiftShader sem reclamar, e um app que não roda
+ * nele (o Outlook) levaria o emulador junto.
  */
 export function renderizadorMeta(r: Instance['renderer']): { label: string; title: string; fallback: boolean } | null {
   if (!r || (!r.configured && !r.gles)) return null;
-  const pedido = r.configured ? `pedido (gpu_mode): ${r.configured}` : 'pedido (gpu_mode): não se sabe';
+  const configurado = r.configured
+    ? `Configurado (o pedido ao emulador, gpu_mode): ${r.configured}`
+    : 'Configurado (gpu_mode): não se sabe';
   if (!r.gles) {
-    return { label: `renderizador pedido: ${nomeDoRenderizador(r.configured ?? '')}`, fallback: false,
-             title: `${pedido}. O emulador só diz o que selecionou quando está no ar.` };
+    return { label: `renderizador configurado: ${nomeDoRenderizador(r.configured ?? '')}`, fallback: false,
+             title: `${configurado}. O efetivo, o que o emulador selecionou, só se sabe com o aparelho no ar.` };
   }
-  const selecionado = `selecionado pelo emulador: GLES ${r.gles}${r.vulkan ? `, Vulkan ${r.vulkan}` : ''}`;
+  const efetivo = `efetivo (selecionado pelo emulador): GLES ${r.gles}${r.vulkan ? `, Vulkan ${r.vulkan}` : ''}`;
   if (r.fallback) {
-    return { label: `renderizador: ${nomeDoRenderizador(r.gles)} (pediu ${r.configured ?? '?'})`, fallback: true,
-             title: `${pedido}; ${selecionado}. Se o gpu_mode mudou depois da subida, vale no próximo reinício; `
+    return { label: `renderizador: ${nomeDoRenderizador(r.gles)} (configurado: ${r.configured ?? '?'})`, fallback: true,
+             title: `${configurado}; ${efetivo}. Se o gpu_mode mudou depois da subida, vale no próximo reinício; `
                + 'se não, o emulador trocou de renderizador sem avisar.' };
   }
-  return { label: `renderizador: ${nomeDoRenderizador(r.gles)}`, fallback: false, title: `${pedido}; ${selecionado}.` };
+  return { label: `renderizador: ${nomeDoRenderizador(r.gles)}`, fallback: false, title: `${configurado}; ${efetivo}.` };
+}
+
+/** O tipo do aparelho na linha, em português e com o porquê: o `kind` cru ("store") saía como selo (polimento dos
+ *  deploys 9 a 11). O emulador do projeto não ganha selo; tipo que este painel não conhece sai como veio. */
+const TIPO: Record<string, { label: string; title: string }> = {
+  store: { label: 'loja', title: 'Aparelho-loja: liga, desliga e abre a Play Store, mas nunca recebe tarefa.' },
+  external: { label: 'externo', title: 'Aparelho de outra máquina: os verbos são os que ela expõe.' },
+};
+
+export function tipoDoAparelho(kind: Instance['kind']): { label: string; title: string } | null {
+  if (kind === 'emulator') return null;
+  return TIPO[kind] ?? { label: kind, title: kind };
+}
+
+/**
+ * A pausa do reparo automático (25.13) numa linha discreta do aparelho. Ela só existia na API: o dono não sabia pelo
+ * painel por que a escada não agia no aparelho nem até quando (polimento dos deploys 10 e 11). O `reason` é texto do
+ * procedimento, então vai na dica, não na linha. Vencida (o `until` já passou) não aparece.
+ */
+export function pausaDoReparoMeta(p: Instance['repair_pause'], agoraMs: number): { label: string; title: string } | null {
+  const ate = parseTs(p?.until);
+  if (!p || ate === null || ate <= agoraMs) return null;
+  const quando = formatQuando(p.until, agoraMs);
+  const porQuem = p.by === 'panel' ? 'pelo painel' : `por ${p.by}`;
+  return {
+    label: `reparo pausado até ${quando.startsWith('hoje, ') ? quando.slice('hoje, '.length) : quando}`,
+    title: `Pausado ${porQuem} (${formatQuando(p.since, agoraMs)}). Enquanto durar, o reparo automático não age neste `
+      + `aparelho. Motivo registrado: ${p.reason}`,
+  };
 }
 
 /** Aparelhos agrupados por servidor. `null` é o servidor central — ele também é um servidor. */

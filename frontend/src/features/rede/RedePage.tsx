@@ -16,7 +16,7 @@ import { Eye, Home, KeyRound, Plus, RefreshCw, RotateCw, Send, Server, ShieldAle
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import type {
-  DeviceNetwork, NetworkAssignDevice, NetworkAssignRequest, NetworkCentralEgress, NetworkDeviceRow, NetworkEgressHome, NetworkExpectedEgress, NetworkFirewallState,
+  AppConfig, DeviceNetwork, NetworkAssignDevice, NetworkAssignRequest, NetworkCentralEgress, NetworkDeviceRow, NetworkEgressHome, NetworkExpectedEgress, NetworkFirewallState,
   NetworkMeasurement, NetworkPolicy, NetworkProfileKind, NetworkProfileListed, NetworkProtocol, NetworkServerStatus,
 } from '../../api/types';
 import { Badge } from '../../components/Badge';
@@ -30,6 +30,7 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { type LoadError, LoadErrorState, toLoadError } from '../../lib/loadError';
 import { useIntervaloVisivel } from '../../lib/polling';
 import { metaOf, NETWORK_STATE, type Tone } from '../../lib/status';
+import { useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import lojaStyles from '../loja/Loja.module.css';
 import styles from './Rede.module.css';
@@ -364,6 +365,15 @@ const SEM_TRAFEGO = 'O app não trafegou desde que o túnel conectou nesta revis
   + '"Tráfego verificado" quer dizer que tudo o que trafegou passou pelo túnel; quando este app trafegar, a próxima '
   + 'medição o reavalia sozinha.';
 
+/** Pacotes do sistema que a medição lista sem estarem no registro de aplicativos. */
+const PACOTE_DO_SISTEMA: Record<string, string> = { 'com.android.shell': 'shell do Android (a sonda)' };
+
+/** O nome do app que a pessoa reconhece, do registro de aplicativos, como a ressalva ao lado já fazia; o pacote cru
+ *  ("com.microsoft.office.outlook: sem tráfego na janela") fica na dica (polimento do deploy 10). Sem nome, o pacote. */
+export function nomeDoPacote(pkg: string, apps: readonly Pick<AppConfig, 'package' | 'name'>[]): string {
+  return apps.find((a) => a.package === pkg)?.name ?? PACOTE_DO_SISTEMA[pkg] ?? pkg;
+}
+
 function simNao(v: boolean | null, sim: string, nao: string): string {
   return v === null ? 'não medido' : v ? sim : nao;
 }
@@ -374,7 +384,8 @@ const UDP_FALHOU = 'Uma perna de UDP ficou sem resposta em todos os datagramas d
 /** A última medição da sonda de saída (25.5), como o backend a gravou: por app (o navegador não prova os outros
  *  apps), DNS, UDP e o teste de vazamento. `null` é "não medido" — nunca um "ok" presumido. */
 function ResumoDaMedicao({ m }: { m: NetworkMeasurement }) {
-  const apps = Object.entries(m.per_app);
+  const porApp = Object.entries(m.per_app);
+  const registro = useAppStore((st) => st.apps);
   // As duas pernas de UDP (29.5): DNS por UDP e NTP. Vêm derivadas do `detail` pela listagem; sem elas (backend de
   // antes, ou `detail` que não diz), fica o "UDP ok/falhou" do `udp_ok`, como sempre foi.
   const dns = m.udp_dns_ok ?? null;
@@ -394,10 +405,10 @@ function ResumoDaMedicao({ m }: { m: NetworkMeasurement }) {
           UDP: DNS {simNao(dns, 'ok', 'falhou')} · NTP {simNao(ntp, 'ok', 'falhou')}
         </div>
       ) : null}
-      {apps.map(([pkg, r]) => (
+      {porApp.map(([pkg, r]) => (
         <div key={pkg} className={r === 'ok' || r === 'sem_trafego' ? undefined : s.dupe}
-             title={r === 'sem_trafego' ? SEM_TRAFEGO : undefined}>
-          {pkg}: {RESULTADO_POR_APP[String(r)] ?? String(r)}
+             title={r === 'sem_trafego' ? `${pkg}. ${SEM_TRAFEGO}` : pkg}>
+          {nomeDoPacote(pkg, registro)}: {RESULTADO_POR_APP[String(r)] ?? String(r)}
         </div>
       ))}
     </div>
