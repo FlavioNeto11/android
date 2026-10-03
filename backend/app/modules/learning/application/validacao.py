@@ -164,6 +164,11 @@ class RegistroDeValidacoes(Protocol):
     def contagens(self) -> dict[str, int]: ...
 
 
+#: 30.44: a janela do ritmo por hora encolhe um minuto: o despachante volta a cada `intervalo_s` desde a subida, e a
+#: execução enfileirada há 59 min e 59,9 s não pode segurar a vaga da volta seguinte por uma fração de segundo.
+FOLGA_DO_RITMO_S = 60
+
+
 class FontesDaValidacao(Protocol):
     """O que o pedido lê do mundo (só leitura)."""
 
@@ -288,7 +293,8 @@ class ServicoDeValidacao:
         extra = aj.extra_usd if ate is not None and agora <= ate else 0.0
         folego = Folego(g_w=self._despacho.gasto_da_operacao(agora, aj.janela_dias),
                         gasto_w=self._registro.gasto_desde(agora - timedelta(days=aj.janela_dias)),
-                        na_ultima_hora=self._registro.comecados_desde(agora - timedelta(hours=1)),
+                        na_ultima_hora=self._registro.comecados_desde(
+                            agora - timedelta(hours=1) + timedelta(seconds=FOLGA_DO_RITMO_S)),
                         beta=aj.beta, extra_usd=extra, maximo_por_hora=aj.maximo_por_hora)
         motivo = pode_despachar(self._despacho.ambiente(), folego, custo_estimado=aj.custo_estimado_usd)
         if motivo is not None:

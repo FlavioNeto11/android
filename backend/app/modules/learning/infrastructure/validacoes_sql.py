@@ -128,10 +128,11 @@ class RegistroDeValidacoesSql:
         return linhas.real(r, "usd") if r is not None else 0.0
 
     def comecados_desde(self, desde: datetime) -> int:
-        """O ritmo por hora. Conta por `updated_at`, que o fechamento também move: uma execução começada há 2 h e
-        fechada há 10 min conta na última hora. O erro é para o lado de despachar menos."""
-        r = self._db.one("SELECT COUNT(*) AS n FROM learning_validations WHERE run_id IS NOT NULL AND updated_at >= ?"
-                         " AND estado IN ('rodando', 'feita', 'recusada')", (to_iso(desde),))
+        """O ritmo por hora, pela hora em que a execução NASCEU (`runs.created_at`, o enfileiramento no despacho). 30.44:
+        contava por `updated_at`, que o fechamento move; a execução fechada 5 min depois de começar segurava a vaga até
+        5 min depois da hora cheia, e o despachante (a cada 10 min) perdia uma volta: 4 a cada 70 min, medido no P4."""
+        r = self._db.one("SELECT COUNT(*) AS n FROM learning_validations v JOIN runs r ON r.id = v.run_id"
+                         " WHERE r.created_at >= ? AND v.estado IN ('rodando', 'feita', 'recusada')", (to_iso(desde),))
         return linhas.inteiro(r, "n") if r is not None else 0
 
     def chegadas(self) -> list[PedidoVivo]:

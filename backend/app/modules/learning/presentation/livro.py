@@ -240,7 +240,11 @@ def _detalhe(d: DetalheDoLivro, servico: LearningService) -> JsonObject:
     a_invalidar = evidencia_a_invalidar(d.entrada, d.trilha)
     saida: JsonObject = {
         "item": _nomeada(_entrada(d.entrada, servico, d.saude, capability, nome, servico.legado_decidido()), servico),
-        "evidencias": [_evidencia(e, invalidas) for e in d.evidencias],
+        # 30.44: a ordem é a do acontecido (`observed_at`), não a da gravação: a retrocarga do 30.39 grava depois linhas
+        # de antes (a receita:87 mostrava a de ontem acima da de hoje). `sorted` é estável: no mesmo instante, a ordem
+        # de chegada (id decrescente) fica.
+        "evidencias": [_evidencia(e, invalidas)
+                       for e in sorted(d.evidencias, key=lambda e: e.observed_at or "", reverse=True)],
         "trilha": [_transicao(t) for t in d.trilha], "exposicoes": list(d.exposicoes),
         "conteudo": d.conteudo, "versao": d.versao, "relacoes": list(d.relacoes),
         "invalidar_evidencia": None if a_invalidar is None else {"run_id": a_invalidar},
