@@ -108,7 +108,8 @@ async def test_post_com_assinatura_valida_grava_so_o_id_e_acorda_o_leitor(harnes
     acordou: list[int] = []
     harness.state.trello_webhook._acordar = lambda: acordou.append(1)      # noqa: SLF001 - o laço real consumiria o evento
     async with _cliente(harness) as c:
-        r = await c.post(ROTA, content=corpo, headers={"X-Trello-Webhook": assinar(corpo)})
+        # O caminho por extenso (não `ROTA`): a cobertura de rotas (`test_cobertura_de_rotas`) só lê literal.
+        r = await c.post("/api/canais/trello/webhook", content=corpo, headers={"X-Trello-Webhook": assinar(corpo)})
         assert r.status_code == 200 and r.content == b""
         outra = await c.post(ROTA, content=corpo, headers={"X-Trello-Webhook": assinar(corpo)})     # as 3 repetições do Trello
         assert outra.status_code == 200

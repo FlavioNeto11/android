@@ -19,6 +19,7 @@ from enum import StrEnum
 from typing import Any, Awaitable, Callable, Protocol, Sequence, TypeVar
 
 from PIL import Image
+from pydantic import BaseModel
 
 from ..automation import conhecimento_de_telas as telas_do_app
 from ..automation import tools as ferramentas
@@ -3190,7 +3191,8 @@ _CAMPO_DE_COMPOSICAO = re.compile(r"(mensag|message|coment|comment|reply|respo|l
                                   re.IGNORECASE)
 
 
-def efeito_fora_da_etapa(tool: str, args: Any, ctx: ToolContext, tree: Any, package: str | None) -> str | None:
+def efeito_fora_da_etapa(tool: str, args: BaseModel, ctx: ToolContext, tree: UiTree,
+                         package: str | None) -> str | None:
     """29.58 (A): esta ação PARECE disparar um efeito externo? Devolve o porquê, ou `None`. Só é perguntado numa etapa
     sem efeito declarado. Mesma regra do caminho com efeito: com catálogo, o gatilho é ESTRUTURAL (o `commit_selector`
     das capacidades com efeito do app; o "New post" que só abre a criação não é envio); sem catálogo, o vocabulário de
@@ -3225,7 +3227,7 @@ def efeito_fora_da_etapa(tool: str, args: Any, ctx: ToolContext, tree: Any, pack
     return f"'{rotulo}' parece disparar um efeito externo (enviar, publicar, confirmar)" if looks_like_commit(alvo) else None
 
 
-def _gatilho_exato(alvo: Any, seletor: str) -> bool:
+def _gatilho_exato(alvo: UiElement, seletor: str) -> bool:
     """O `commit_selector` casa com `alvo` EXATAMENTE? Na etapa com efeito o seletor vale só para a capacidade da
     própria etapa; aqui ele é conferido contra TODAS as capacidades com efeito do app, e a substring sem caixa daria
     recusa falsa: `text=Follow` casa "Followers" e `text=Following` casa o rótulo "following" do perfil — abrir a lista

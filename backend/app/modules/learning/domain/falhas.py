@@ -110,7 +110,9 @@ REGRAS: tuple[tuple[FailureKind, tuple[str, ...]], ...] = (
     (_F.DEFEITO_DO_PLANO, ("defeito do plano", "sem ele ter sido lido por uma etapa anterior")),
     (_F.EFEITO_NAO_COMPROVADO, ("efeito foi disparado, mas nao foi possivel compro",)),
     (_F.EFEITO_ALVO_ERRADO, ("efeito externo foi tentado no elemento errado", "controle de outra publicacao",
-                             "alvo do efeito externo")),
+                             "alvo do efeito externo",
+                             # 29.58 (A): o efeito tentado numa etapa que não o declara
+                             "efeito externo foi tentado numa etapa que nao o declara")),
     (_F.EFEITO_GUARDA_NAO_ATENDIDA, ("pre-condicoes do efeito externo", "guarda do efeito externo")),
     (_F.CICLO_SEM_PROGRESSO, ("ciclo sem progresso", "acoes por etapa atingido")),
     (_F.COLETA_VAZIA, ("coleta nao encontrou nenhum item",)),
