@@ -568,15 +568,16 @@ class DecisaoFechadaCfg(BaseModel):
     O YAML só RESTRINGE o que sai: o envio e as classes que podem sair são constantes de código (`planning/decisao_fechada/
     privacidade.py`: `JEV_RUNTIME_SEND_APPROVED`, `JEV_ALLOWED_CLASSES`) e nenhuma chave aqui abre o que o código fechou.
     `enabled: false` vence tudo; sem consumidor listado, vale `off`. `on` só por consumidor e com GO pré-registrado.
-    `decisor` (31.14) escolhe QUEM decide quando um pedido passa; não abre o envio (a porta recusa antes do decisor)."""
+    `decisor` (31.14) escolhe QUEM decide quando um pedido passa. Com o envio aberto no código (31.17), sai o que esta
+    seção liga: `enabled`, o consumidor em `shadow` e `decisor: jev` (mais a chave); `nulo` nunca toca rede."""
 
     enabled: bool = False
     consumidores: dict[Literal["curador", "intencao", "desempate", "apps"], Literal["off", "shadow", "on"]] = {}
     #: Estreita o teto de código (interseção). None = não estreita além do código.
     classes_permitidas: list[Literal["C0", "C1", "C2", "C3"]] | None = None
     #: Quem decide (31.14): `nulo` (de fábrica: nunca decide, nunca toca rede) ou `jev` (o `DecisorJev`, pelo adaptador de
-    #: retrieval, com o gasto conferido antes do POST e a chamada em `ai_calls`). Escolher `jev` NÃO abre o envio: ele segue
-    #: fechado por `JEV_RUNTIME_SEND_APPROVED` (código) até o 31.10.
+    #: retrieval, com o gasto conferido antes do POST e a chamada em `ai_calls`). Com `JEV_RUNTIME_SEND_APPROVED` (código)
+    #: aberto desde o 31.17, `jev` com um consumidor em `shadow` e a chave configurada é envio de verdade.
     decisor: Literal["nulo", "jev"] = "nulo"
     #: Retenção das linhas da sombra (`decisao_fechada_sombra`, migração 074): dias inteiros; o agregado diário é calculado
     #: ANTES de purgar e fica. Prazo próprio porque `ai_calls` morre em `log_retention_days` e a sombra precisa de mais.

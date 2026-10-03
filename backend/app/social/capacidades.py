@@ -18,7 +18,7 @@ from ..db import Database, loads
 from ..models import Plan
 from ..planning import costs
 from ..taskqueue.aproveitamento import aproveitamento
-from ..taskqueue.recipes import para_hash, step_template_hash
+from ..taskqueue.recipes import hash_generico_da_etapa, para_hash, step_template_hash
 from ..util import now, to_iso
 
 #: Janela de histórico para o custo mediano por etapa (item 7.7): recente o bastante para refletir o modelo
@@ -105,7 +105,9 @@ def cobertura_do_fluxo(s: Any, fluxo: Any, *, receitas: set[str] | None = None,
         plano = None
     etapas = list(plano.steps) if plano else []
     parametros = dict(plano.parameters) if plano else {}
-    cobertas = sum(1 for e in etapas if step_template_hash(para_hash(e, parametros)) in ativas)
+    # RA-20 B: a receita que serve a qualquer valor mora na chave genérica da etapa.
+    cobertas = sum(1 for e in etapas if step_template_hash(para_hash(e, parametros)) in ativas
+                   or hash_generico_da_etapa(e) in ativas)
     total = len(etapas)
     custo = "desconhecido" if total == 0 else "zero" if cobertas == total else "total" if cobertas == 0 else "parcial"
     return {"flow_id": fluxo["id"], "package": package, "target_version": versao, "steps_total": total,

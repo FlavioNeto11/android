@@ -300,8 +300,9 @@ class AjustesDoCurador:
 
 @dataclass(frozen=True, slots=True)
 class NovaRevisao:
-    """Uma linha de `learning_reviews` (069 + `ai_call_id` da 075). `ai_call_id` só vem de chamada MEDIDA pelo hub; o
-    `usd` dela ainda não é gravado (a pendência da rubrica em `design/hub-de-ia-fora-de-execucao.md`)."""
+    """Uma linha de `learning_reviews` (069 + `ai_call_id` da 075). `ai_call_id` e `usd` só vêm de chamada MEDIDA pelo
+    hub (`RespostaDeRevisao.usd`); resposta simulada ou sem chamada grava 0. Até o 30.30 o `usd` não era gravado (saía
+    0.0 nas linhas reais de 03/10, com +US$ 0,1182 no `/api/usage`) e o orçamento do curador estimava pelo dossiê."""
 
     item_ref: str
     item_kind: str
@@ -319,6 +320,7 @@ class NovaRevisao:
     classe_de_risco: str | None
     politica: str | None
     ai_call_id: int | None = None
+    usd: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)

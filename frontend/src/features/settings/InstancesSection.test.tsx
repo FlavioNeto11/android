@@ -135,10 +135,21 @@ describe('InstancesSection — indicador de divergência', () => {
     expect(card.textContent).toContain('bate');
   });
 
-  it('conta observada diferente do rótulo mostra "diverge"', async () => {
+  it('conta observada diferente do rótulo diz o que diverge e o que fazer', async () => {
     const el = await render([makeInstance(1, { account_label: 'qa-user-01', account_evidence: 'Conta: outra-conta' })], [CENTRAL]);
     const card = byRole('button', /Editar android-01/, el);
-    expect(card.textContent).toContain('diverge');
+    expect(card.textContent).toContain('conta diferente do rótulo');
+    expect(card.querySelector('[title^="A última conta vista no aparelho não é a do rótulo"]')).not.toBeNull();
+  });
+
+  it('a evidência antiga com seletor cru aparece sem o seletor (validação do deploy 8, android-06)', async () => {
+    const el = await render([makeInstance(1, {
+      account_label: 'qa-user-01',
+      account_evidence: 'pós-condição comprovada pela árvore local, sem IA (selector:id=action_bar_title|text=={username})',
+    })], [CENTRAL]);
+    const card = byRole('button', /Editar android-01/, el);
+    expect(card.textContent).not.toContain('selector:');
+    expect(card.textContent).toContain('pós-condição comprovada pela árvore local, sem IA');
   });
 
   it('nada observado ainda mostra "não observada"', async () => {

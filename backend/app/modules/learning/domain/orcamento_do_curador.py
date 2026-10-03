@@ -51,6 +51,8 @@ FORCA_DO_GATILHO: tuple[Gatilho, ...] = (
 
 
 class Prioridade(IntEnum):
+    #: 30.30 (orquestradora, 03/10): o pedido de uma PESSOA fura a fila na volta seguinte, dentro do teto da hora.
+    PEDIDO_DA_PESSOA = 0
     CONTRA_EM_PUBLICADO = 1
     CLASSE_C = 2
     FALHA_RECORRENTE = 3
@@ -59,7 +61,7 @@ class Prioridade(IntEnum):
 
 
 #: No pico de entrada, só estas passam (§8.7).
-PRIORIDADES_NO_PICO = frozenset({Prioridade.CONTRA_EM_PUBLICADO, Prioridade.CLASSE_C})
+PRIORIDADES_NO_PICO = frozenset({Prioridade.PEDIDO_DA_PESSOA, Prioridade.CONTRA_EM_PUBLICADO, Prioridade.CLASSE_C})
 FATOR_DO_PICO = 3.0
 #: Piso de amostra do pico: com volume pequeno, "3× a média" dispara com um item só (média de 1/6 por dia e uma
 #: entrada já é pico). Escolha do 30.11, a confirmar com o dono; o volume medido é ~10/dia (§8.6).
@@ -83,11 +85,18 @@ def mais_forte(gatilhos: Iterable[Gatilho]) -> Gatilho:
     return next(g for g in FORCA_DO_GATILHO if g in presentes)
 
 
-def prioridade(classe: ClasseDeRisco, gatilho: Gatilho, *, publicado: bool) -> Prioridade:
+def prioridade(classe: ClasseDeRisco, gatilho: Gatilho, *, publicado: bool, pedido: bool = False) -> Prioridade:
     """A classe A é sempre a última, mesmo publicada e contestada: a IA só opina sobre ela com sobra (decisão do dono,
-    02/10; `ia_permitida(A) = so_com_sobra`) e quem a rebaixa é a regra determinística de hoje."""
+    02/10; `ia_permitida(A) = so_com_sobra`) e quem a rebaixa é a regra determinística de hoje. Nem o pedido de pessoa
+    muda isso.
+
+    `pedido` (30.30): uma pessoa pediu a revisão deste item (`pediu_revisao`). Antes ele só pulava o cooldown e esperava
+    a prioridade dele; com ~40 itens e ~6 por volta, os 12 pedidos de 03/10 esperariam horas. Agora vai na frente de
+    todos, também no pico, e continua sob o teto da hora e o orçamento da janela (`repartir`)."""
     if ia_permitida(classe) == "so_com_sobra":
         return Prioridade.CLASSE_A
+    if pedido:
+        return Prioridade.PEDIDO_DA_PESSOA
     if publicado and gatilho in GATILHOS_CONTRA_PUBLICADO:
         return Prioridade.CONTRA_EM_PUBLICADO
     if classe is ClasseDeRisco.C:
@@ -168,10 +177,16 @@ def custo_medio(custos_medidos: Sequence[float], estimativas: Sequence[float]) -
     return fmean(estimativas) if estimativas else 0.0
 
 
-def custo_maximo(custos_medidos: Sequence[float], estimativas: Sequence[float], m: float) -> float:
-    """`c_max = m × mediana(c_rev)` da janela; antes da primeira medida, a mediana das estimativas desta volta."""
-    base = custos_medidos or estimativas
-    return m * median(base) if base else 0.0
+def custo_maximo(estimativas: Sequence[float], m: float) -> float:
+    """`c_max = m × mediana` das ESTIMATIVAS desta volta: o item caro de verdade é o que destoa dos outros.
+
+    Estimativa e medida não estão na mesma moeda. A estimativa usa o preço do modelo MAIS CARO da tabela
+    (`preco_mais_caro`, porque o curador não sabe que modelo o hub vai usar); a medida usa o do modelo que respondeu.
+    Até o 30.30 o c_max vinha da mediana MEDIDA assim que ela existisse. Com o curador num modelo barato (o Haiku da
+    D-1), a medida dá ~US$ 0,003 por revisão, o c_max fica em ~0,012 e TODA estimativa (~0,014 nas 21 revisões reais de
+    03/10) passaria a `recusada:custo`, em silêncio, até o dossiê mudar. O medido entra só no c̄ (`custo_medio`), que é
+    gasto e não comparação."""
+    return m * median(estimativas) if estimativas else 0.0
 
 
 def orcamento_da_janela(gasto_da_operacao: float, n: int, c_barra: float, p: ParametrosDoOrcamento) -> float:
@@ -193,7 +208,7 @@ def repartir(pretendentes: Sequence[Pretendente], janela: Janela, p: ParametrosD
     # N_W: o que já chegou à curadoria na janela (as revisões gravadas) mais os elegíveis desta volta.
     n_w = janela.revisoes_antes_de_hoje + janela.revisoes_de_hoje + len(pretendentes)
     b = orcamento_da_janela(janela.gasto_da_operacao, n_w, c_barra, p)
-    c_max = custo_maximo(janela.custos_medidos, estimativas, p.m_cmax)
+    c_max = custo_maximo(estimativas, p.m_cmax)
     teto_hora = b / max(1, p.janela_dias) / 2
     pico = e_pico(janela.revisoes_de_hoje + len(pretendentes), janela, p)
     gasto, hora = janela.gasto_da_curadoria, janela.gasto_da_ultima_hora

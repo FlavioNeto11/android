@@ -14,8 +14,9 @@ aceite (o da B também em lote). Em `shadow` o parecer pendente só aparece depo
 Filtros, em ordem (§8.6): modo ≠ off → (item, dossie_hash) ainda não revisado → fora do cooldown → orçamento da janela
 → prioridade. Gatilhos ligados: `nova_pendencia_do_dono`, `a_revisar`, `degradando`, `obsoleto_provavel`, `conflito`
 (publicado com contradição derivada ou contestação recente) e `pedido_da_pessoa` (30.17: o sinal `pediu_revisao` dos
-últimos `JANELA_DO_PEDIDO_DIAS`, ainda sem revisão depois dele; só ele pula o cooldown, e a prioridade continua a do
-gatilho mais forte entre os OUTROS do item). `versao_nova` e `grupo_de_falha_acima_do_minimo` existem no vocabulário e
+últimos `JANELA_DO_PEDIDO_DIAS`, ainda sem revisão depois dele; só ele pula o cooldown e, desde o 30.30, vai na frente
+de todos — prioridade `PEDIDO_DA_PESSOA`, também no pico, sob o teto da hora e o orçamento da janela; a classe A segue
+só com sobra). O gatilho GRAVADO continua o mais forte entre os OUTROS do item. `versao_nova` e `grupo_de_falha_acima_do_minimo` existem no vocabulário e
 ainda não têm fonte.
 """
 from __future__ import annotations
@@ -78,9 +79,11 @@ class _Elegivel:
     gatilho: Gatilho
     dossie: Dossie
     custo: float
-    #: O gatilho que decide a prioridade: o pedido de pessoa fica registrado (`gatilho`), mas não rebaixa o item
-    #: publicado em conflito da prioridade 1.
+    #: O gatilho que decide a prioridade: o pedido de pessoa e a evidência pedida (30.31) ficam registrados
+    #: (`gatilho`), mas não rebaixam o item publicado em conflito da prioridade 1.
     gatilho_da_prioridade: Gatilho | None = None
+    #: 30.30: uma pessoa pediu a revisão; o item fura a fila (`prioridade(pedido=True)`).
+    pedido: bool = False
 
 
 #: Chaves do conteúdo que são identificador, hash, data ou rótulo fechado: fora da triagem de texto. `variante`: o
@@ -185,7 +188,8 @@ class CuradorPorIA:
         janela = self._janela(agora, aj.janela_dias, precos)
         pretendentes = [Pretendente(chave=x.entrada.trail_ref, custo_estimado=x.custo, desempate=x.entrada.trail_ref,
                                     prioridade=prioridade(x.dossie.classe, x.gatilho_da_prioridade or x.gatilho,
-                                                          publicado=x.entrada.state is SkillState.PUBLISHED))
+                                                          publicado=x.entrada.state is SkillState.PUBLISHED,
+                                                          pedido=x.pedido))
                         for x in elegiveis]
         partilha = repartir(pretendentes, janela, p)
         if partilha.pico:
@@ -229,7 +233,8 @@ class CuradorPorIA:
             simulado = self._curador.simulado if resposta.simulado is None else resposta.simulado
             provedor = self._curador.provedor if resposta.provedor is None else resposta.provedor
             review_id = self._gravar(x, validacao.validade, saida, agora, provedor=provedor,
-                                     modelo=resposta.modelo, simulado=simulado, ai_call_id=resposta.ai_call_id)
+                                     modelo=resposta.modelo, simulado=simulado, ai_call_id=resposta.ai_call_id,
+                                     usd=0.0 if simulado else (resposta.usd or 0.0))
             if review_id is None:
                 continue                                # outra réplica gravou o mesmo (item, dossiê) primeiro
             if validacao.parecer is None:
@@ -299,16 +304,19 @@ class CuradorPorIA:
                 continue
             if self._registro.existe(ref, dossie.dossie_hash):
                 continue                                # 1 revisão por (item, dossiê): evidência nova, hash novo
-            pedido = bool(gatilhos & {Gatilho.PEDIDO_DA_PESSOA, Gatilho.EVIDENCIA_CHEGOU})
+            pedido = Gatilho.PEDIDO_DA_PESSOA in gatilhos
+            # 30.31: a evidência que o curador pediu também pula o cooldown, mas NÃO fura a fila: a prioridade de
+            # pedido (30.30) é só do pedido de uma pessoa.
+            pula_o_cooldown = pedido or Gatilho.EVIDENCIA_CHEGOU in gatilhos
             ultima = self._registro.ultima(ref)
             quando = parse_iso(ultima) if ultima else None
-            if quando is not None and quando > corte_do_cooldown and not pedido:
+            if quando is not None and quando > corte_do_cooldown and not pula_o_cooldown:
                 continue                                # o pedido de pessoa e a evidência pedida pulam o cooldown
             if ultima is not None and self._ja_revisado_menor(e, ref):
                 continue
-            outros = gatilhos - {Gatilho.PEDIDO_DA_PESSOA}
+            outros = gatilhos - {Gatilho.PEDIDO_DA_PESSOA, Gatilho.EVIDENCIA_CHEGOU}
             x = _Elegivel(e, mais_forte(gatilhos), dossie, estimar_custo(dossie.tamanho_em_bytes(), precos),
-                          gatilho_da_prioridade=mais_forte(outros) if outros else None)
+                          gatilho_da_prioridade=mais_forte(outros) if outros else None, pedido=pedido)
             if self._recusa_o_conteudo(dossie):
                 # §8.2: o dossiê passa pela triagem antes de sair; recusa = não revisa e registra (sem o dossiê).
                 if self._gravar(x, RECUSADA_POR_TRIAGEM, None, agora, provedor="", modelo="", simulado=False,
@@ -340,10 +348,10 @@ class CuradorPorIA:
     def _cortar_os_caros(self, elegiveis: list[_Elegivel], aj: AjustesDoCurador,
                          precos: dict[str, list[float]]) -> None:
         """Acima de `c_max`, o dossiê é refeito com menos evidências (§8.7). O que ainda passar é recusado por
-        `repartir` (`recusada:custo`). A mediana é a das estimativas desta volta, até existir custo medido (30.12)."""
+        `repartir` (`recusada:custo`). A mediana é a das estimativas desta volta, sempre (30.30: estimativa com estimativa)."""
         if len(elegiveis) < 2:
             return
-        teto = custo_maximo((), [x.custo for x in elegiveis], aj.m_cmax)
+        teto = custo_maximo([x.custo for x in elegiveis], aj.m_cmax)
         for x in elegiveis:
             for n in EVIDENCIAS_NO_CORTE:
                 if x.custo <= teto:
@@ -366,14 +374,14 @@ class CuradorPorIA:
 
     def _gravar(self, x: _Elegivel, validade: str, saida: dict[str, object] | None, agora: datetime, *,
                 provedor: str, modelo: str, simulado: bool, guardar_dossie: bool = True,
-                ai_call_id: int | None = None) -> str | None:
+                ai_call_id: int | None = None, usd: float = 0.0) -> str | None:
         d = x.dossie
         nova = NovaRevisao(item_ref=x.entrada.trail_ref, item_kind=x.entrada.kind.value, scope_app=x.entrada.app or "",
                            gatilho=x.gatilho.value, dossie_hash=d.dossie_hash,
                            dossie=d.como_dados() if guardar_dossie else {}, template_id=TEMPLATE_ID,
                            template_versao=TEMPLATE_VERSAO, provedor=provedor, modelo=modelo, simulated=simulado,
                            validade=validade, saida=saida, classe_de_risco=d.classe.value,
-                           politica=d.risco.politica.value, ai_call_id=ai_call_id)
+                           politica=d.risco.politica.value, ai_call_id=ai_call_id, usd=usd)
         return self._registro.gravar(nova, agora)
 
     def _fechar_o_laco(self, x: _Elegivel, review_id: str, parecer: Parecer, simulado: bool) -> None:

@@ -26,6 +26,7 @@ from typing import Any
 
 from ..db import Database, loads
 from ..util import now, to_iso
+from .recipes import hash_generico_da_linha
 
 #: Janela padrão, a mesma do custo mediano por etapa (`social/capacidades.py`, item 7.7).
 JANELA_DIAS = 7
@@ -49,7 +50,8 @@ def aproveitamento(db: Database, *, dias: int = JANELA_DIAS, agora: datetime | N
     """
     desde = to_iso((agora or now()) - timedelta(days=dias))
     etapas = db.query(
-        "SELECT id, run_id, instance_id, template_hash, driven_by, status, app_id, started_at FROM steps"
+        "SELECT id, run_id, instance_id, template_hash, template_key, key, side_effect, postcondition, commit_guard,"
+        " driven_by, status, app_id, started_at FROM steps"
         " WHERE started_at IS NOT NULL AND started_at >= ? AND for_each IS NULL", (desde,))
 
     # ---------- fluxo e pacote de cada execução (uma leitura por execução, não por etapa)
@@ -118,9 +120,11 @@ def aproveitamento(db: Database, *, dias: int = JANELA_DIAS, agora: datetime | N
         if not elegivel:
             continue
         g["elegiveis"] += 1
-        hashes_do_grupo.setdefault((fluxo, pacote), set()).add(e["template_hash"])
+        # RA-20 B: a receita que serve a qualquer valor mora na chave genérica da etapa.
+        generico = hash_generico_da_linha(e)
+        hashes_do_grupo.setdefault((fluxo, pacote), set()).update(h for h in (e["template_hash"], generico) if h)
         if origem == "ai":
-            primeira = primeira_receita.get((pacote, e["template_hash"]))
+            primeira = min((p for h in (e["template_hash"], generico) if h and (p := primeira_receita.get((pacote, h))) is not None), default=None)
             if primeira is None or primeira >= e["started_at"]:
                 g["sem_cobertura"] += 1
             else:

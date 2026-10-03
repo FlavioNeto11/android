@@ -18,13 +18,13 @@ import psutil
 from ..config import Config
 from ..db import Database, loads
 from ..util import now_iso
-from .sdk import NO_WINDOW, SdkTools
+from .sdk import NO_WINDOW, SdkTools, ambiente_dos_filhos
 
 
 def _run(cmd: list[str], timeout: float = 25) -> str:
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
-                             creationflags=NO_WINDOW)
+                             env=ambiente_dos_filhos(), creationflags=NO_WINDOW)   # 29.47: sem os segredos
         return ((res.stdout or "") + (res.stderr or "")).strip()
     except (OSError, subprocess.TimeoutExpired) as exc:
         return f"erro: {exc}"

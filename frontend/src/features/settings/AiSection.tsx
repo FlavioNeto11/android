@@ -10,7 +10,9 @@ import { KvList, KvRow } from '../../components/JsonTree';
 import { PageSection, TableWrap } from '../../components/Page';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { balanceBrief, balanceOfRole, balanceStateLabel, balanceTone, balancesByUrgency } from '../../lib/aiBalance';
-import { aiFeatureRows, aiModelRows, aiRoleRows, spendLabel } from '../../lib/aiLabels';
+import {
+  aiFeatureRows, aiModelRows, aiProfileRows, aiRoleRows, effortLabel, esquemaDoPlanoLabel, leituraVisualLabel, spendLabel,
+} from '../../lib/aiLabels';
 import { useAppStore } from '../../store/app';
 import { EXTERNAL_DATA_NOTICE } from '../topbar/TopBar';
 import { AiBalances } from './AiBalances';
@@ -63,6 +65,8 @@ export function AiSection() {
   const usable = (status.configured || status.simulated) && !status.account_blocked;
   // Hub de IA (item 7.1): quando o backend informa as funções, ELAS são a verdade sobre "para onde isto vai".
   const papeis = aiRoleRows(status);
+  const perfis = aiProfileRows(status);
+  const leituraVisual = leituraVisualLabel(status);
   const gastoHoje = spendLabel(status.spend_today_usd, status.spend_limit_day_usd);
   // O fallback de recusa é por função quando há funções (vai no cartão delas); sem o hub, fica na situação geral.
   const fallbackDeRecusa = status.refusal_fallback ? (
@@ -110,7 +114,14 @@ export function AiSection() {
             {aiModelRows(status).map((m) => (
               <KvRow key={m.key} label={`Modelo — ${m.label.toLowerCase()}`}><span className="mono">{m.value}</span></KvRow>
             ))}
-            <KvRow label="Esforço de raciocínio">{status.effort ?? '—'}</KvRow>
+            <KvRow label="Esforço de raciocínio">{effortLabel(status.effort)}</KvRow>
+            {status.esquema_do_plano ? <KvRow label="Esquema do plano">{esquemaDoPlanoLabel(status.esquema_do_plano)}</KvRow> : null}
+            {status.profiles ? (
+              <KvRow label="Perfis de IA">
+                {perfis.length ? perfis.map((p) => p.name).join(', ') : <span className={styles.muted}>nenhum (todas as execuções usam o padrão)</span>}
+              </KvRow>
+            ) : null}
+            {leituraVisual ? <KvRow label="Leitura visual">{leituraVisual}</KvRow> : null}
             {aiFeatureRows(status, features).map((f) => <KvRow key={f.key} label={f.label}>{f.value}</KvRow>)}
             <KvRow label="Chave de API">{status.configured ? 'Presente no backend' : 'Ausente'}</KvRow>
             <KvRow label="Dados saem da máquina?">{status.sends_data_externally ? 'Sim' : 'Não'}</KvRow>
@@ -160,8 +171,8 @@ export function AiSection() {
                 <thead>
                   <tr>
                     <th scope="col">Função</th><th scope="col">Provedor</th><th scope="col">Modelo</th>
-                    <th scope="col">Endpoint</th><th scope="col">Conta · saldo</th><th scope="col">Dados saem?</th>
-                    <th scope="col">Se falhar</th>
+                    <th scope="col">Endpoint</th><th scope="col">Esforço</th><th scope="col">Raciocínio</th>
+                    <th scope="col">Conta · saldo</th><th scope="col">Dados saem?</th><th scope="col">Se falhar</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -171,6 +182,8 @@ export function AiSection() {
                       <td className="mono">{p.provider}</td>
                       <td className="mono">{p.model}{p.warnings.length ? <><br /><small className={styles.muted}>{p.warnings.join(' · ')}</small></> : null}</td>
                       <td className="mono">{p.endpoint}</td>
+                      <td>{p.effort}</td>
+                      <td>{p.thinking}</td>
                       <td>
                         {(() => {
                           const conta = balanceOfRole(status.balances, p.key);
@@ -194,6 +207,46 @@ export function AiSection() {
           ) : null}
 
           {fallbackDeRecusa}
+        </PageSection>
+      ) : null}
+
+      {perfis.length > 0 ? (
+        <PageSection
+          title="Perfis de IA"
+          subtitle="Uma execução pode escolher um perfil (ou cair nele pelo canário). Cada perfil muda só o que está listado; o resto é o padrão da tabela “Por função”."
+          bodyClassName={styles.stack}
+        >
+          <TableWrap label="Perfis de IA">
+            <table className={styles.aiRoles}>
+              <thead>
+                <tr>
+                  <th scope="col">Perfil</th><th scope="col">O que muda</th><th scope="col">Canário</th>
+                  <th scope="col">Dados saem?</th>
+                </tr>
+              </thead>
+              <tbody>
+                {perfis.map((p) => (
+                  <tr key={p.name}>
+                    <th scope="row">
+                      <span className="mono">{p.name}</span>
+                      {p.note ? <><br /><small className={styles.muted}>{p.note}</small></> : null}
+                    </th>
+                    <td>
+                      {[...p.changes, ...p.adjustments].length
+                        ? [...p.changes, ...p.adjustments].map((c) => <div key={c}>{c}</div>)
+                        : <span className={styles.muted}>nada (igual ao padrão)</span>}
+                    </td>
+                    <td>{p.canary ?? <span className={styles.muted}>não</span>}</td>
+                    <td>
+                      {p.changes.length
+                        ? <Badge tone={p.external ? 'warning' : 'success'}>{p.external ? 'Sim' : 'Não'}</Badge>
+                        : <span className={styles.muted}>como o padrão</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableWrap>
         </PageSection>
       ) : null}
     </>

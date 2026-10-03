@@ -332,10 +332,34 @@ def test_aviso_nomeia_a_typesafe_e_as_classes_so_com_consumidor_em_shadow_ou_on(
     aviso = transparencia.aviso(cfg, chave_configurada=True)
     assert aviso is not None and "TypeSafe" in aviso and "C0, C1" in aviso and "C3" not in aviso
     assert "curador (shadow)" in aviso and "apps (on)" in aviso and "configurada" in aviso
-    assert "FECHADO" in aviso                                                 # envio ainda fechado no código
+    assert "Decisor na porta: nulo." in aviso and "Nada sai agora: o decisor da porta é o nulo" in aviso
     assert "não configurada" in transparencia.aviso(cfg, chave_configurada=False)  # type: ignore[operator]
     bloco = transparencia.status(cfg, chave_configurada=False)
-    assert bloco is not None and bloco["key"] == "não configurada" and bloco["send_approved"] is False
+    assert bloco is not None and bloco["key"] == "não configurada" and bloco["send_approved"] is True
+    assert bloco["sending"] is False
+
+
+def test_aviso_so_afirma_envio_com_as_quatro_condicoes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """31.17 (ADR-069 item 8): o aviso diz qual decisor está na porta e só afirma que algo SAI com o envio aberto no código,
+    o decisor `jev`, um consumidor em `shadow` ou `on` e a chave configurada. Faltando uma, diz que nada sai e por quê."""
+    jev = DecisaoFechadaCfg(enabled=True, consumidores={"curador": "shadow", "intencao": "off"}, decisor="jev")
+    aviso = str(transparencia.aviso(jev, chave_configurada=True))
+    assert "Decisor na porta: jev." in aviso and "Envio ATIVO" in aviso and "Nada sai" not in aviso
+    assert transparencia.enviando(jev, chave_configurada=True)
+    assert transparencia.status(jev, chave_configurada=True)["sending"] is True              # type: ignore[index]
+    nulo = DecisaoFechadaCfg(enabled=True, consumidores={"curador": "shadow"})
+    for cfg, chave, motivo in ((nulo, True, "o decisor da porta é o nulo"),
+                               (jev, False, "a chave da TypeSafe não está configurada")):
+        texto = str(transparencia.aviso(cfg, chave_configurada=chave))
+        assert f"Nada sai agora: {motivo}" in texto and "Envio ATIVO" not in texto
+        assert not transparencia.enviando(cfg, chave_configurada=chave)
+    desligada = DecisaoFechadaCfg(enabled=False, consumidores={"curador": "shadow"}, decisor="jev")
+    assert transparencia.aviso(desligada, chave_configurada=True) is None
+    assert not transparencia.enviando(desligada, chave_configurada=True)
+    monkeypatch.setattr(privacidade, "JEV_RUNTIME_SEND_APPROVED", False)
+    fechado = str(transparencia.aviso(jev, chave_configurada=True))
+    assert "Nada sai agora: envio FECHADO no código" in fechado and "Envio ATIVO" not in fechado
+    assert not transparencia.enviando(jev, chave_configurada=True)
 
 
 async def test_api_ai_lista_o_jev_e_mostra_a_chave_so_como_configurada(harness: Harness,
@@ -357,6 +381,7 @@ async def test_api_ai_lista_o_jev_e_mostra_a_chave_so_como_configurada(harness: 
         assert "TypeSafe" in corpo["notice"] and "Chave da TypeSafe: configurada" in corpo["notice"]
         assert corpo["decisao_fechada"]["key"] == "configurada" and corpo["decisao_fechada"]["consumers"] == {
             "intencao": "shadow"}
+        assert corpo["decisao_fechada"]["sending"] is False and "Nada sai agora" in corpo["notice"]   # decisor nulo
         assert valor_falso not in r.text                                       # a chave nunca vai na resposta
         monkeypatch.setattr(st.cfg.env, "typesafe_api_key", None)
         assert (await c.get("/api/ai")).json()["decisao_fechada"]["key"] == "não configurada"

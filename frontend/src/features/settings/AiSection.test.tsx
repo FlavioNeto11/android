@@ -109,3 +109,55 @@ describe('AiSection — hub de IA (itens 7.1 e 7.2)', () => {
     expect(text(el)).toContain('US$ 8.88 de US$ 25.00');
   });
 });
+
+describe('AiSection — I2 da validação do deploy 7 (v0.87)', () => {
+  const PLANEJADOR = {
+    role: 'plan', provider: 'anthropic', kind: 'anthropic', model: 'claude-opus-5-5', endpoint: 'api.anthropic.com',
+    sends_data_externally: true, configured: true, priced: true, vision: true, tools: true,
+    refusal_fallback: false, fallback_provider: null, timeout_s: 120, concurrency: 4, effort: 'low', thinking: 'adaptive',
+  } as const;
+
+  it('Situação em português: esforço, esquema do plano, perfis e leitura visual', async () => {
+    const el = await renderSection({
+      ...BASE, effort: 'low', esquema_do_plano: 'curto', leitura_visual: false, roles: [PLANEJADOR],
+      profiles: [{ name: 'planejador-sonnet', note: '', canary_fraction: null, screenshot_max_side: null, rich_tree_min_elements: null,
+        roles: [{ role: 'plan', provider: 'anthropic', model: 'claude-sonnet-5-5', effort: 'low', sends_data_externally: true }] }],
+    });
+    expect(text(el)).toContain('Esforço de raciocínio');
+    expect(text(el)).toContain('baixo');
+    expect(text(el)).not.toMatch(/Esforço de raciocínio\s*low/);
+    expect(text(el)).toContain('Esquema do plano');
+    expect(text(el)).toContain('curto (o backend preenche');
+    expect(text(el)).toContain('Leitura visual');
+    expect(text(el)).toContain('desligada');
+  });
+
+  it('a tabela Por função ganha Esforço e Raciocínio; o cartão Perfis de IA diz o que muda', async () => {
+    const el = await renderSection({
+      ...BASE, roles: [PLANEJADOR],
+      profiles: [{ name: 'planejador-sonnet', note: 'plano no Sonnet', canary_fraction: 0.1, screenshot_max_side: null,
+        rich_tree_min_elements: null,
+        roles: [{ role: 'plan', provider: 'anthropic', model: 'claude-sonnet-5-5', effort: 'low', sends_data_externally: true }] }],
+    });
+    const cabecalhos = Array.from(el.querySelectorAll('th[scope="col"]')).map((th) => th.textContent);
+    expect(cabecalhos).toEqual(expect.arrayContaining(['Esforço', 'Raciocínio', 'Perfil', 'O que muda', 'Canário']));
+    expect(text(el)).toContain('adaptativo');
+    expect(text(el)).toContain('Perfis de IA');
+    expect(text(el)).toContain('Planejar: claude-sonnet-5-5 (anthropic, esforço baixo)');
+    expect(text(el)).toContain('10 % das execuções sem perfil');
+    expect(text(el)).toContain('plano no Sonnet');
+  });
+
+  it('sem perfis: a Situação diz "nenhum" e o cartão não aparece; backend anterior não ganha linha inventada', async () => {
+    const semPerfis = await renderSection({ ...BASE, profiles: [] });
+    expect(text(semPerfis)).toContain('nenhum (todas as execuções usam o padrão)');
+    expect(text(semPerfis)).not.toContain('O que muda');
+  });
+
+  it('backend anterior ao v0.87: nem esquema, nem perfis, nem leitura visual inventados', async () => {
+    const antigo = await renderSection(BASE);
+    expect(text(antigo)).not.toContain('Esquema do plano');
+    expect(text(antigo)).not.toContain('Perfis de IA');
+    expect(text(antigo)).not.toContain('Leitura visual');
+  });
+});

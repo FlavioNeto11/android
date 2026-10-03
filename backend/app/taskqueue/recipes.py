@@ -19,6 +19,7 @@ import hashlib
 import json
 import logging
 import re
+import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -110,14 +111,107 @@ def para_hash(step: PlanStep, variables: dict[str, str] | None) -> PlanStep:
         "commit_guard": [troca(g) or "" for g in step.commit_guard]})
 
 
+def _identidade(chave: str, side_effect: bool, kind: str, value: str, nivel: str | None, guard: Sequence[str]) -> str:
+    raw = json.dumps([chave, side_effect, kind, value, nivel, sorted(guard)], ensure_ascii=False)
+    return hashlib.sha1(raw.encode()).hexdigest()[:20]
+
+
 def step_template_hash(step: PlanStep) -> str:
     """Identidade da etapa em forma de template. Título e objetivo ficam de fora (o planejador os reescreve)."""
     post = step.postcondition
     # cópias de um bloco for_each (open_conversation_i1, _i2…) compartilham a identidade da etapa-modelo
-    raw = json.dumps([getattr(step, "template_key", None) or step.key, step.side_effect, post.kind, post.value,
-                      post.required_delivery_level.value if post.required_delivery_level else None,
-                      sorted(step.commit_guard)], ensure_ascii=False)
-    return hashlib.sha1(raw.encode()).hexdigest()[:20]
+    return _identidade(getattr(step, "template_key", None) or step.key, step.side_effect, post.kind, post.value,
+                       post.required_delivery_level.value if post.required_delivery_level else None, step.commit_guard)
+
+
+# ------------------------------------------------------------------ chave genérica (RA-20 fatia B)
+def hash_generico(chave: str | None, side_effect: bool | None, kind: str | None, nivel: str | None,
+                  commit_guard: Sequence[str] | None) -> str | None:
+    """A identidade da etapa SEM a pós-condição escrita, ou None quando a etapa não tem chave genérica.
+
+    Medido em 03/10/2026 (RA-20): o planejador reescreve a pós-condição julgada pelo modelo a cada plano ("conversa
+    com @x aberta", "perfil de @x aberto") e cada redação vira uma chave; 15 receitas ativas moravam em 5 caminhos
+    iguais. Sem o texto, a mesma etapa casa de novo. Só a etapa `model_judged`, sem efeito e sem `commit_guard`: o
+    texto das outras é o que a pós-condição confere (texto visível, elemento, app em frente) e não é só redação.
+    Conservadora: um campo ausente (`None`) devolve None, e a receita fica na chave específica. Uma função só para o
+    save, a consulta do executor, os consumidores e o backfill: a mesma etapa dá o mesmo hash pelos dois caminhos
+    (`hash_generico_da_etapa` e `hash_generico_da_linha`). Com a pós-condição vazia, é igual ao específico.
+    """
+    if not chave or side_effect is None or side_effect or kind != "model_judged" or commit_guard is None or commit_guard:
+        return None
+    return _identidade(chave, False, kind, "", nivel, ())
+
+
+def hash_generico_da_etapa(step: PlanStep) -> str | None:
+    """`hash_generico` da etapa do plano (a chave é a da etapa-modelo, como em `step_template_hash`)."""
+    post = step.postcondition
+    return hash_generico(getattr(step, "template_key", None) or step.key, step.side_effect, post.kind,
+                         post.required_delivery_level.value if post.required_delivery_level else None,
+                         step.commit_guard)
+
+
+def hash_generico_da_linha(row: Row) -> str | None:
+    """`hash_generico` da linha de `steps` (`template_key`, `key`, `side_effect`, `postcondition`, `commit_guard`).
+
+    O executor chega aqui pela linha, nunca pelo `StepDTO`: o DTO não traz o `template_key` da cópia do for_each."""
+    try:
+        post = loads(row["postcondition"], None)
+        guard = loads(row["commit_guard"], None) if row["commit_guard"] is not None else []
+        side = row["side_effect"]
+        chave = row["template_key"] or row["key"]
+    except (KeyError, IndexError, TypeError):
+        return None
+    if not isinstance(post, dict) or not isinstance(guard, list) or side is None:
+        return None
+    return hash_generico(chave, bool(side), post.get("kind"), post.get("required_delivery_level"), guard)
+
+
+def _normal(texto: str) -> str:
+    """Caixa, acento, arroba e espaços fora: "@NASA" e "nasa" são o mesmo literal."""
+    sem_acento = "".join(c for c in unicodedata.normalize("NFKD", texto) if not unicodedata.combining(c))
+    return " ".join(sem_acento.casefold().replace("@", " ").split())
+
+
+def _contem(texto: str, trecho: str) -> bool:
+    return bool(trecho) and re.search(r"(?<!\w)" + re.escape(trecho) + r"(?!\w)", texto) is not None
+
+
+def _literais(actions: Sequence[Mapping[str, object]]) -> list[str]:
+    """Os textos que a reprodução procura ou digita tal como foram gravados: `text`/`desc` dos seletores e os argumentos
+    de texto. O que tem `{nome}` é o valor da vez e não conta; `why` e `package` não identificam o alvo."""
+    out: list[str] = []
+    for a in actions:
+        seletores, args = a.get("selectors"), a.get("args")
+        for s in seletores if isinstance(seletores, list) else []:
+            out += [str(s[k]) for k in ("text", "desc") if isinstance(s, Mapping) and s.get(k)]
+        for k, v in args.items() if isinstance(args, Mapping) else ():
+            if k != "package":
+                out += [x for x in (v if isinstance(v, list) else [v]) if isinstance(x, str) and x]
+    return [t for t in out if "{" not in t]
+
+
+def eh_generica(actions: Sequence[Mapping[str, object]], post_value: str | None,
+                variables: Mapping[str, str] | None, titulo: str | None = None) -> bool:
+    """A receita serve a QUALQUER valor da etapa? Não, se o que ela procura ou digita traz o literal do valor dela.
+
+    O caso medido: `open_profile` grava o toque em `text: 'nasa'` (o Instagram mostra o @ sem arroba). Na chave
+    genérica, "perfil de @bia" tocaria em "nasa". Específica quando um literal da receita aparece, como palavra, na
+    pós-condição escrita (normalizada) ou quando o valor de um parâmetro da execução aparece num literal. Na dúvida,
+    específica: errar para cá só adia o ganho. "Message", "Options" e "Send message" (`open_thread`) são genéricos.
+
+    `titulo`: o título RESOLVIDO da etapa entra junto da pós-condição (revisão da Android no #145). O planejador às vezes
+    escreve o alvo só no título ("Abrir a conversa com Lucas"), sem parâmetro; sem isso, o toque em "Lucas" passaria
+    como genérico e só a sombra com outro valor o pegaria.
+    """
+    post = _normal(f"{post_value or ''} {titulo or ''}")
+    valores = [_normal(v) for k, v in (variables or {}).items()
+               if k not in _NAO_TEMPLATIZA and isinstance(v, str) and len(_normal(v)) >= 3 and "{" not in v]
+    for literal in map(_normal, _literais(actions)):
+        if len(literal) >= 3 and _contem(post, literal):
+            return False
+        if any(_contem(literal, v) for v in valores):
+            return False
+    return True
 
 
 # ------------------------------------------------------------------ des-templatização
@@ -491,7 +585,7 @@ class RecipeStore:
             self.ouvinte.mudou(MudancaDaReceita(recipe_id=recipe_id, de=de, para=para, motivo=motivo, por=por))
 
     def find(self, package: str | None, app_version: str | None, step_hash: str | None, *,
-             signature: str = "", variant: str = "") -> Row | None:
+             signature: str = "", variant: str = "", step_hash_generico: str | None = None) -> Row | None:
         """Identidade da receita: pacote + versão + ASSINATURA + VARIANTE de interface + etapa.
 
         Assinatura entra porque dois APKs podem dizer a mesma versão e não serem o mesmo app; variante entra porque
@@ -508,32 +602,49 @@ class RecipeStore:
         RA-20: no "ausente", a causa é medida (`receita.ausente`, rótulo `causa`) e a chave herda, como CANDIDATA, a
         receita provada da mesma etapa noutra chave (`_herdar`). A herdeira volta como a candidata de sempre: a IA
         decide a etapa e ela só é comparada. O resultado dessa consulta é `herdada`.
+
+        RA-20 fatia B: `step_hash_generico` (`hash_generico_da_linha`) é a segunda chave da MESMA consulta, onde mora a
+        receita que serve a qualquer valor da etapa (`eh_generica`, decidido no save). A específica vence a genérica:
+        ativa específica, ativa genérica, candidata específica, candidata genérica. Uma chamada, uma contagem: a
+        tentativa achada pela genérica leva o rótulo `chave=generica` (a específica fica na série de antes), e quem
+        chamou sabe a chave pelo `step_hash` da linha. Iguais (pós-condição vazia) ou sem genérica: uma consulta só.
+        A herança tenta a específica e depois a genérica; a causa do ausente é medida uma vez, pela específica.
         """
         if not (package and app_version and step_hash):
             return None
-        row = self._ativa(package, app_version, step_hash, signature=signature, variant=variant)
-        if row is not None:
-            resultado = "encontrada"
-        elif (row := self._candidata(package, app_version, step_hash, signature=signature,
-                                     variant=variant)) is not None:
-            # Candidata não reproduz (a IA decide e ela só é comparada): contá-la como "encontrada" quebraria a
-            # promessa do funil de que toda encontrada termina num veredito de `receita.reproducao`.
-            resultado = "candidata"
-        else:
+        hashes = [step_hash, *([step_hash_generico] if step_hash_generico and step_hash_generico != step_hash else [])]
+        row: Row | None = None
+        resultado = ""
+        # Candidata não reproduz (a IA decide e ela só é comparada): contá-la como "encontrada" quebraria a promessa do
+        # funil de que toda encontrada termina num veredito de `receita.reproducao`.
+        for achar, nome in ((self._ativa, "encontrada"), (self._candidata, "candidata")):
+            row = next((r for h in hashes
+                        if (r := achar(package, app_version, h, signature=signature, variant=variant)) is not None), None)
+            if row is not None:
+                resultado = nome
+                break
+        if row is None:
             # Uma consulta a mais, só no erro: distingue "nunca aprendida" de "aprendida e posta de lado". As duas
             # mandam a etapa para a IA, mas pedem coisas diferentes de quem lê (aprender × investigar a tela).
             quarentena = self.db.one("SELECT 1 FROM recipes WHERE app_package=? AND app_version=? AND app_signature=?"
-                                     " AND variant=? AND step_hash=? AND status='quarantined' LIMIT 1",
-                                     (package, app_version, signature, variant, step_hash))
+                                     " AND variant=? AND step_hash IN (" + ",".join("?" * len(hashes)) + ")"
+                                     " AND status='quarantined' LIMIT 1",
+                                     (package, app_version, signature, variant, *hashes))
             if quarentena is not None:
                 resultado = "quarentena"
             else:
                 resultado, row = self._herdar(package, app_version, step_hash, signature=signature, variant=variant)
-        metricas.contar("receita.consulta", resultado=resultado)
+                if row is None and len(hashes) > 1:
+                    herdou, generica = self._herdar(package, app_version, hashes[1], signature=signature,
+                                                    variant=variant, medir=False)
+                    if generica is not None:
+                        resultado, row = herdou, generica
+        generica_casou = row is not None and len(hashes) > 1 and row["step_hash"] == hashes[1]
+        metricas.contar("receita.consulta", resultado=resultado, chave="generica" if generica_casou else None)
         return row
 
     def _herdar(self, package: str, app_version: str, step_hash: str, *, signature: str,
-                variant: str) -> tuple[str, Row | None]:
+                variant: str, medir: bool = True) -> tuple[str, Row | None]:
         """A causa do "ausente" (`modules/learning/domain/causa_do_ausente.py`) e a herança, numa consulta a mais.
 
         A doadora é uma receita `active` da mesma etapa (`step_hash`) noutra versão, noutra variante ou na legada
@@ -549,7 +660,8 @@ class RecipeStore:
                         for r in self.db.query("SELECT id, app_version, app_signature, variant, status FROM recipes"
                                                " WHERE app_package=? AND step_hash=?", (package, step_hash))]
             causa = causa_do_ausente(alvo, vizinhas)
-            metricas.contar("receita.ausente", causa=causa.value)
+            if medir:   # a chave genérica é a 2ª tentativa da MESMA consulta: a causa já foi contada pela específica
+                metricas.contar("receita.ausente", causa=causa.value)
             dona = doadora(alvo, vizinhas) if self.herdar() else None
             if dona is None:
                 return "ausente", None
@@ -603,6 +715,17 @@ class RecipeStore:
         chave = (package, app_version, signature, variant, step_hash)
         treino = learned_from.startswith("training:") and heranca is None
         with self.db.tx():
+            if replaces is not None:
+                # RA-20 B: a candidata ESPECÍFICA que divergiu e um caminho da IA que serve a qualquer valor (o executor
+                # grava na chave genérica). Ela sai aqui, mesmo que a genérica não grave (já tem a sua em prova): senão,
+                # consultada antes da genérica, ficaria divergindo para sempre sem ninguém que a trocasse.
+                velha = self.db.one("SELECT step_hash, status FROM recipes WHERE id=?", (replaces,))
+                if velha is not None and velha["step_hash"] != step_hash and velha["status"] == "candidate":
+                    self.db.execute("UPDATE recipes SET status='superseded' WHERE id=? AND status='candidate'",
+                                    (replaces,))
+                    self._avisar(replaces, "candidate", "superseded",
+                                 "divergiu; o caminho da IA serve a qualquer valor e vai para a chave genérica")
+                    replaces = None
             if self._ativa(package, app_version, step_hash, signature=signature, variant=variant) is not None:
                 return None
             if self._com_status("validated", package, app_version, step_hash, signature=signature,

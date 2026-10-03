@@ -5438,26 +5438,20 @@
    "id": "31.9",
    "status": "partial",
    "proof": "simulated",
-   "evidence": "Branch feat/31-9-intencao-sombra (e1f7ee53, 1d867449, 106ecd67, a8072fb9, 8e7315ba, 6bb5261e, cd74d897), na main pelo merge 8413ddc9 da integ jev/integ-suite-5 @ 1cb9bb4a (suite 5b bvqmppz9x: a catraca do ADR-052 passou depois do cd74d897). Sombra da intencao R2/R3 fora da cadeia, depois do _plan; C3 por lista de permissao (entidades.py), C7 em prosa recusa o pedido inteiro; desligado nao le, nao resolve e nao grava. test_decisao_fechada_intencao.py (DecisorFalso). Envio fechado: JEV_RUNTIME_SEND_APPROVED=False. Chamada real: not_run.",
-   "blocker": "Correcao de privacidade antes de qualquer R2/C3: itens 1-6 da reverificacao (.claude/handoffs/reverificacao-31-9.md: vocabulario do catalogo com @handles, opcoes da R2, lista de bloqueio do banco, palavras comuns que sao nomes, C7 multilingue, aspas e simbolos) e I3/I4 da revisao da suite 5; portao: ataque.py com zero vazamento e varredura do catalogo real limpa.",
-   "files": [
-    "backend/app/planning/decisao_fechada/entidades.py",
+   "evidence": "Branch feat/31-9-intencao-sombra (e1f7ee53, 1d867449, 106ecd67, a8072fb9, 8e7315ba, 6bb5261e, cd74d897), na main pelo merge 8413ddc9 da integ jev/integ-suite-5 @ 1cb9bb4a (suite 5b bvqmppz9x: a catraca do ADR-052 passou depois do cd74d897). Sombra da intencao R2/R3 fora da cadeia, depois do _plan; C3 por lista de permissao (entidades.py), C7 em prosa recusa o pedido inteiro; desligado nao le, nao resolve e nao grava. test_decisao_fechada_intencao.py (DecisorFalso). Envio fechado: JEV_RUNTIME_SEND_APPROVED=False. Chamada real: not_run. Rodadas E, F e G (fix/31-9-rodada-e @5f020598: C7 pela intenção de entrar, 'senha' em outras línguas, e-mail em peças; F: barrar pela intenção e desfazer o 'com X' pelo catálogo real; G: @handle ou e-mail, catálogo só no destino; 5f020598: nomes de app por gancho registrado pela fila, sem import tardio) na main pelo merge da suíte 9; simulated: test_decisao_fechada_reverificacao_f.py e _g.py, corpus G 492 com 0 vazamentos, test_arquitetura 9/9.",
+   "blocker": "Rodada H (fix/31-9-rodada-h, código @54f71853) na suíte 10. Correcao de privacidade antes de qualquer R2/C3: itens 1-6 da reverificacao (.claude/handoffs/reverificacao-31-9.md: vocabulario do catalogo com @handles, opcoes da R2, lista de bloqueio do banco, palavras comuns que sao nomes, C7 multilingue, aspas e simbolos) e I3/I4 da revisao da suite 5; portao: ataque.py com zero vazamento e varredura do catalogo real limpa.",
+   "arquivos": [
     "backend/app/planning/decisao_fechada/intencao.py",
-    "backend/app/planning/decisao_fechada/porta.py",
-    "backend/app/planning/decisao_fechada/privacidade.py",
-    "backend/app/taskqueue/sombra_intencao.py",
-    "backend/app/taskqueue/service.py",
-    "backend/app/state.py"
+    "backend/app/planning/decisao_fechada/entidades.py",
+    "backend/app/taskqueue/service.py"
    ],
-   "testes": [
-    "backend/tests/test_decisao_fechada_intencao.py"
-   ],
-   "grupo": "sessao:jev-31-x",
-   "modelo": "sessao",
-   "esforco": "",
+   "testes": "suíte 9 inteira em integ/suite-9 @2c078dd1 (-n 8, Idle, 10:37–10:46Z): backend 7244 passed, 7 skipped, 1 failed (test_revisao_receitas::test_aparelho_do_lider_que_cai_libera_quem_espera: race do teste exposto pelo #145, registrado; não bloqueia, regra da orquestradora); scripts 463; frontend 1351 (112 arquivos) e typecheck; docs-check 0/0.",
+   "grupo": "suite-9-android",
+   "modelo": "opus (sessão Android, integradora)",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T00:13:49+00:00"
+   "quando": "2026-10-03T11:02:10+00:00"
   },
   "30.11": {
    "id": "30.11",
@@ -5907,13 +5901,21 @@
    "id": "29.40",
    "status": "partial",
    "proof": "simulated",
-   "evidence": "Fatia A: PR #131 (feat/ra-20-causa-do-ausente @ ffb2d2f0) na main pelo merge 752dca53 da suíte 7 (123650cc). Causa do ausente medida; herança da receita como candidata (RecipeStore(herdar=), só com recipes_heranca e promote_after > 0); _aposentar_legadas (a herdeira ativa marca superseded a legada da mesma etapa e versão); adendo v0.77. simulated: bateria de 95 arquivos, 1768 passed; depois da main, os 8 afetados: 118 passed. Fatia B pendente: hash sem post.value e backfill em Python. Real: not_run.",
-   "grupo": "aprendizado-suite-7",
-   "modelo": "claude-opus-5-5",
-   "esforco": "medio",
+   "evidence": "Fatia A: PR #131 (feat/ra-20-causa-do-ausente @ ffb2d2f0) na main pelo merge 752dca53 da suíte 7 (123650cc). Causa do ausente medida; herança da receita como candidata (RecipeStore(herdar=), só com recipes_heranca e promote_after > 0); _aposentar_legadas (a herdeira ativa marca superseded a legada da mesma etapa e versão); adendo v0.77. simulated: bateria de 95 arquivos, 1768 passed; depois da main, os 8 afetados: 118 passed. Fatia B: PR #145 (feat/ra-20-chave-generica @bd2a2d93; 3a90f383 chave genérica da receita pela linha de steps no executor, no backfill e no scheduler; da0de919 o título resolvido entra no teste de literal) na main pelo merge da suíte 9; simulated: test_receita_chave_generica.py (24; o de ponta a ponta falha com a consulta genérica desligada) e test_equivalencia_fluxo_skill.py. Item 2 (filho rotulado do alvo sem seletor) em feat/29-40-filho-rotulado, para a suíte 10. Real: not_run.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/taskqueue/recipes.py",
+    "backend/app/taskqueue/receitas_genericas.py",
+    "backend/app/taskqueue/executor.py",
+    "backend/app/taskqueue/scheduler.py"
+   ],
+   "testes": "suíte 9 inteira em integ/suite-9 @2c078dd1 (-n 8, Idle, 10:37–10:46Z): backend 7244 passed, 7 skipped, 1 failed (test_revisao_receitas::test_aparelho_do_lider_que_cai_libera_quem_espera: race do teste exposto pelo #145, registrado; não bloqueia, regra da orquestradora); scripts 463; frontend 1351 (112 arquivos) e typecheck; docs-check 0/0.",
+   "grupo": "suite-9-android",
+   "modelo": "opus (sessão Android, integradora)",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T07:34:22+00:00"
+   "quando": "2026-10-03T11:02:10+00:00"
   },
   "30.27": {
    "id": "30.27",
@@ -5996,6 +5998,107 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T09:43:46+00:00"
+  },
+  "29.47": {
+   "id": "29.47",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "feat/29-47-ambiente-dos-filhos @520e1af2 (4e998ff9 código: sdk.ambiente_dos_filhos por lista de permissão em SdkTools.env(), rede_servidor.ProcessosReais.lancar e diagnostics._run; 520e1af2 docs: operacao.md §11, linha do plano, CHANGELOG). simulated: tests/test_ambiente_dos_filhos.py (5; os 3 com filho real que imprime só os NOMES falham contra o código anterior); smoke local adb/emulator -accel-check/avdmanager/Appium 3.7.0 rc 0 com o ambiente filtrado (38 de 98 nomes). Na main pelo merge da suíte 9. Real not_run até o deploy 9 (aparelho liga e Appium sobe).",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/devices/sdk.py",
+    "backend/app/devices/rede_servidor.py",
+    "backend/app/devices/diagnostics.py",
+    "backend/tests/test_ambiente_dos_filhos.py",
+    "docs/operacao.md"
+   ],
+   "testes": "suíte 9 inteira em integ/suite-9 @2c078dd1 (-n 8, Idle, 10:37–10:46Z): backend 7244 passed, 7 skipped, 1 failed (test_revisao_receitas::test_aparelho_do_lider_que_cai_libera_quem_espera: race do teste exposto pelo #145, registrado; não bloqueia, regra da orquestradora); scripts 463; frontend 1351 (112 arquivos) e typecheck; docs-check 0/0.",
+   "grupo": "suite-9-android",
+   "modelo": "opus (sessão Android, integradora)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T11:02:10+00:00"
+  },
+  "29.44": {
+   "id": "29.44",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a medição do parcial só de app parado, RedePage; 88c86dc0 docs: parque.md, adendo v0.88, plano, CHANGELOG; 1cdacd0f: a conta observada é a frase que a nomeia, sem o seletor cru, executor.evidencia_da_conta e InstancesSection 'conta diferente do rótulo'). simulated: tests/test_rede_sem_trafego.py, test_rede_sonda.py (o parcial só de app parado não dispensa a medição: falha sem a mudança), test_rede_portao.py, test_evidencia_da_conta.py (3), RedePage.test.tsx, InstancesSection.test.tsx. Na main pelo merge da suíte 9. Real not_run até o deploy 9 (03/06 com Outlook parado saem de parcial).",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/devices/sonda_rede.py",
+    "backend/app/devices/rede.py",
+    "backend/app/devices/rede_medicao.py",
+    "backend/app/devices/rede_convergencia.py",
+    "backend/app/taskqueue/executor.py",
+    "frontend/src/features/rede/RedePage.tsx",
+    "frontend/src/features/settings/InstancesSection.tsx",
+    "docs/dominios/parque.md",
+    "docs/api-contract.md"
+   ],
+   "testes": "suíte 9 inteira em integ/suite-9 @2c078dd1 (-n 8, Idle, 10:37–10:46Z): backend 7244 passed, 7 skipped, 1 failed (test_revisao_receitas::test_aparelho_do_lider_que_cai_libera_quem_espera: race do teste exposto pelo #145, registrado; não bloqueia, regra da orquestradora); scripts 463; frontend 1351 (112 arquivos) e typecheck; docs-check 0/0.",
+   "grupo": "suite-9-android",
+   "modelo": "opus (sessão Android, integradora)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T11:02:10+00:00"
+  },
+  "30.30": {
+   "id": "30.30",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #144 @58609226 (bb35ca16: prioridade PEDIDO_DA_PESSOA fura a fila do curador, também no pico, sob o teto; fa921c02: learning_reviews.usd grava o custo medido do parecer; 82dac0cb: o c_max compara estimativa com estimativa). simulated: test_learning_curador.py (prioridade, pico, janela, hora gasta; test_chamada_medida_pelo_hub_grava_o_usd_e_fica_ligada_a_revisao; test_modelo_barato_nao_recusa_as_estimativas_em_silencio, que falha com a regra antiga) e test_learning_pareceres.py. Na main pelo merge da suíte 9. Real not_run.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/modules/learning/application/curador.py",
+    "backend/app/modules/learning/domain/orcamento_do_curador.py",
+    "backend/app/modules/learning/infrastructure/revisoes_sql.py"
+   ],
+   "testes": "suíte 9 inteira em integ/suite-9 @2c078dd1 (-n 8, Idle, 10:37–10:46Z): backend 7244 passed, 7 skipped, 1 failed (test_revisao_receitas::test_aparelho_do_lider_que_cai_libera_quem_espera: race do teste exposto pelo #145, registrado; não bloqueia, regra da orquestradora); scripts 463; frontend 1351 (112 arquivos) e typecheck; docs-check 0/0.",
+   "grupo": "suite-9-android",
+   "modelo": "opus (sessão Android, integradora)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T11:02:10+00:00"
+  },
+  "31.17": {
+   "id": "31.17",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "feat/31-17-sombra-curador @c645d4e9 (ede4a82e: privacidade.JEV_RUNTIME_SEND_APPROVED = True, ADR-069 item 15; de fábrica nada sai: enabled false e decisor nulo; o aviso diz o decisor e só afirma envio de verdade; os testes do interruptor fechado o fecham por monkeypatch; c645d4e9: K-081, off/on sem aspas no YAML viram booleano). Na main pelo merge da suíte 9. Real: a sombra C0–C1 do curador liga no deploy 9 (ai.decisao_fechada) e o T_on do 31.10 é registrado lá.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/planning/decisao_fechada/privacidade.py",
+    "backend/app/config.py",
+    "docs/conhecimento/aprendizados.md"
+   ],
+   "testes": "suíte 9 inteira em integ/suite-9 @2c078dd1 (-n 8, Idle, 10:37–10:46Z): backend 7244 passed, 7 skipped, 1 failed (test_revisao_receitas::test_aparelho_do_lider_que_cai_libera_quem_espera: race do teste exposto pelo #145, registrado; não bloqueia, regra da orquestradora); scripts 463; frontend 1351 (112 arquivos) e typecheck; docs-check 0/0.",
+   "grupo": "suite-9-android",
+   "modelo": "opus (sessão Android, integradora)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T11:02:10+00:00"
+  },
+  "29.46": {
+   "id": "29.46",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Braços por flag (real, 03/10, 10:10–10:34Z, central WIN-7S2UASNLFOP, backend 57d82a5a, emulador 37.1.11; android-19 temporário pela API, lançado pelo backend na sessão 0; config.yaml trocado por braço com backup, restaurado com sha 62ee8b42 conferido; 3 restarts). b0 -lowram: thread a 99,6 % (94 kernel), qemu 155 %; b1 netsim/câmeras/som desligados: 99,4 %, sem efeito; b2 window: true + -qt-hide-window (qemu-system-x86_64.exe): 2,9 % / qemu 7,6 % depois do boot; b2r: 5,3 % / 13,6 %; funcional (screencap 720×1280 não preto, /hierarchy 23 elementos, automação ready); sem RAM a mais (1702/3159 MB × 2125/3328 MB aos 259 s). -qt-hide-window entra no _hw_signature (hibernado → boot a frio, provado). K-078 (d9a44d3b) e K-082. Rollout é o 29.48.",
+   "blocker": "",
+   "arquivos": [
+    "docs/conhecimento/aprendizados.md"
+   ],
+   "testes": "medição real; sem código.",
+   "grupo": "suite-9-android",
+   "modelo": "opus (sessão Android, integradora)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T11:02:10+00:00"
   }
  },
  "rodadas": [
@@ -7312,6 +7415,21 @@
    ],
    "grupos": [
     "aprendizado-30-19"
+   ]
+  },
+  {
+   "quando": "2026-10-03T11:02:10+00:00",
+   "itens": [
+    "29.47",
+    "29.44",
+    "30.30",
+    "31.17",
+    "29.46",
+    "29.40",
+    "31.9"
+   ],
+   "grupos": [
+    "suite-9-android"
    ]
   }
  ]

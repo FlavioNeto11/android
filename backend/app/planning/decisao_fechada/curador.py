@@ -144,8 +144,8 @@ class TriagemDoCurador:
 
     def ativo(self) -> bool:
         """Como `ConsumidorDeIntencao.ativo`: com o envio fechado no código, NADA é feito (nem recusa gravada). A porta
-        recusaria por privacidade e mediria a recusa, mas o que se mede aqui é o Jev respondendo, e ele não pode responder
-        enquanto o dono não aprovar."""
+        recusaria por privacidade e mediria a recusa, mas o que se mede aqui é o Jev respondendo, e ele não responde com o
+        interruptor fechado. Aberto desde o 31.17: vale a config (`curador: shadow` com a porta ligada)."""
         return privacidade.JEV_RUNTIME_SEND_APPROVED and modo_efetivo("shadow", self._porta.cfg, "curador") == "shadow"
 
     @staticmethod

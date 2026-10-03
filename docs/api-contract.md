@@ -4103,8 +4103,8 @@ motivo (1 a 500), em_lote?: false}` → o corpo do detalhe.
 
 **Pedido de revisão.** `POST /api/aprendizado/{kind}/{ref}/revisao`, sem corpo:
 - 202 `{pedido: true, revisao: null}`: o pedido entrou (sinal `pediu_revisao`). O curador o atende numa volta seguinte,
-  dentro do orçamento, pelo gatilho `pedido_da_pessoa`: pedidos dos últimos 7 dias sem revisão posterior. O pedido só pula o
-  cooldown; a prioridade é a dos outros gatilhos do item.
+  dentro do orçamento, pelo gatilho `pedido_da_pessoa`: pedidos dos últimos 7 dias sem revisão posterior. O pedido pula o
+  cooldown e, desde o 30.30, vai na frente de todos os itens (fora a classe A, que segue só com sobra), sob o teto da hora.
 - 200 `{pedido: false, revisao: Revisao}`: o dossiê de agora já foi revisado (a chave (item, dossiê) da 069). O dossiê muda
   com evidência nova, outro estado ou outra saúde.
 - 409 `curador_fora_do_on` (em `shadow` o curador já revisa sozinho); 422 `invalid` para tipo que o curador não revisa
@@ -4373,6 +4373,65 @@ Sem rota nova e sem migração.
   ela encerra sem esperar o fim do orçamento (LT-5).
 - Série da Aprendizado: a partir do deploy 8, etapas `app_foreground` abertas sem IA não geram comparação de sombra. A
   candidata v4 de `open_app` do QA não promove por sombra.
+
+## Adendo v0.87 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — o `GET /api/ai` diz o esquema do plano, os perfis de IA e a leitura visual (I2 da validação do deploy 7)
+
+Só campos novos, aditivos.
+
+- `GET /api/ai` (e `health.ai`) ganha:
+  - `esquema_do_plano`: `longo` | `curto` (`ai.esquema_do_plano`, LT-4b). Vem da configuração, também no modo
+    simulado.
+  - `profiles`: lista, vazia sem `ai.profiles`. Cada item tem:
+    - `name` e `note`;
+    - `roles`: só as funções que o perfil MUDA, já resolvidas (`role`, `provider`, `model`, `effort`,
+      `sends_data_externally`). Sem bloco próprio, a `persona` é o `social`: o perfil que escreve o `social` muda as duas;
+    - `canary_fraction`: a fatia das execuções sem perfil que vai para ele (`ai.canary`), ou `null` quando não é o
+      canário;
+    - `screenshot_max_side` e `rich_tree_min_elements`: os ajustes do 17.14, ou `null`.
+  - `leitura_visual`: `ai.leitura_visual.enabled` (item 12.5). O leitor é a linha `leitura` de `roles`, quando
+    configurado.
+- Antes, o perfil só aparecia quando uma execução o usava, e o esquema só existia no YAML.
+- Painel (Configuração › IA):
+  - a Situação ganha "Esquema do plano", "Perfis de IA" e "Leitura visual";
+  - o "Esforço de raciocínio" sai em português (baixo, médio, alto…);
+  - a tabela Por função ganha as colunas "Esforço" e "Raciocínio" (a sonda do v0.84), e a linha `leitura` vira "Ler a
+    tela (leitura visual)";
+  - um cartão novo, "Perfis de IA", diz o que cada perfil muda, o canário e se os dados saem.
+- Prova `simulated`:
+  - `tests/test_aba_ia_esquema_e_perfis.py`;
+  - `frontend/src/lib/aiLabels.test.ts` e `frontend/src/features/settings/AiSection.test.tsx`;
+  - a tela percorrida no navegador contra um backend simulado do worktree (porta 8765, nada no central).
+- **Correção junto, sem campo novo (I1 da mesma validação):**
+  - `GET /api/usage`: o `total_usd` e o `usd` de cada grupo passam a contar o custo DECLARADO na linha (`ai_calls.usd`,
+    a imagem da persona), como já faziam `by_account` e `by_origin`. Antes, as peças por conta somavam mais que o total:
+    no central, 03/10, US$ 16,60 contra 16,34, e a diferença eram as 5 imagens da semana (US$ 0,2683; leitura só no
+    banco).
+  - O modelo sem preço por token cujas chamadas OK declararam todas o custo sai de `unpriced_models`.
+  - Prova `simulated`: `tests/test_uso_total_com_custo_declarado.py`.
+- **Campo novo no evento, sem campo novo na API (I4 da mesma validação, ajustado depois da suíte 8):**
+  - a habilidade que casou e não compilou põe a execução em `needs_input` com texto para o dono no `status_detail` ("A
+    habilidade “<nome>” não serve para este comando: <motivo>. Corrija o comando ou a habilidade."), sem id nem código;
+  - o código de cada problema vai num campo próprio do `data` do `run.updated` dessa transição, `issue_codes`
+    (`["E_SKILL_NOT_FOUND"]`, `["E_PLAN_INVALID"]`). O `log` da mesma transição segue com `skill` e `issues` completos;
+  - prova `simulated`: `tests/test_needs_input_da_habilidade.py` e
+    `tests/test_fatia_abrir_conversa.py::test_filha_desabilitada_poe_a_composta_em_needs_input_sem_plano`.
+
+## Adendo v0.88 (03/10/2026; número da orquestradora; item 29.44) — `per_app` ganha `sem_trafego`
+
+Sem rota nova e sem migração.
+
+- `network_measurements.per_app` (e `last_measurement.per_app` em `GET /api/network/devices`) ganha o valor
+  `sem_trafego`: o app instalado com 0 byte na janela, na VPN e na física.
+  - `nao_medido` passa a querer dizer só "não instalado ou não lido"; antes juntava os dois casos.
+  - Quem lê com união fechada precisa do valor novo. As medições gravadas antes seguem com `nao_medido` para o app
+    parado.
+- `trafego_verificado` passa a valer com app `sem_trafego` quando outro app (a sonda do shell conta) está `ok` e
+  nenhum está `fora_da_rede`.
+  - O `detail` da linha traz a ressalva: "`<app>` sem tráfego na janela: não provado, não segura o estado".
+  - Nenhum app trafegou: segue `parcial`, com "nenhum app trafegou na janela" no `detail`.
+  - A porta da tarefa (`apps_sem_prova`) aceita o `sem_trafego` como medido.
+- A verificação que acharia o `parcial` sem prova do bloqueio não dispensa a medição quando o `parcial` veio só de
+  app parado: o app pode ter trafegado desde então.
 
 ## Adendo v0.89 (03/10/2026; número da orquestradora, `.claude/reservas.md`; item 30.8) — `GET /api/aprendizado/metricas` e `GET /api/aprendizado/revisoes`
 
