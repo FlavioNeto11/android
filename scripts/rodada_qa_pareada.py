@@ -1,14 +1,16 @@
 """Rodada QA pareada: o canário do planejador, Opus padrão (braço A) × perfil `planejador-sonnet` (braço B), em ABBA
 por caso. [P] (backend vivo + adb) e [T] (chamadas pagas de IA) só com `--yes`.
 
-Roteiro aprovado pela orquestradora (03/10, `.claude/handoffs/aprendizado.md`). Os 4 casos são os do `eval-set.yaml`
-que CHAMAM o planejador: um caso que casa com fluxo ativo ou habilidade não chama (`service.py::_plan`), e o A/B não
-mediria nada (12 dos 17 casavam em 03/10). Aceite: sucesso de B ≥ A e p50 do planejador em B ≤ 11 s, com ao menos 6
-execuções válidas por braço; senão inconclusivo.
+Roteiro aprovado pela orquestradora (03/10, `.claude/handoffs/aprendizado.md`). Só valem os casos do `eval-set.yaml`
+que CHAMAM o planejador: um caso que casa com fluxo ativo (`POST /api/flows/match`) ou com habilidade
+(`POST /api/skills/resolve`, a mesma RESOLVE da execução) não chama (`service.py::_plan`), e o A/B não mediria nada.
+A habilidade que casa e não compila deixa a execução em `needs_input` sem planejador: a 1ª rodada (03/10 07:37Z)
+perdeu assim o abrir-tela, porque a pré-checagem só olhava o fluxo. Aceite: sucesso de B ≥ A e p50 do planejador em
+B ≤ 11 s, com ao menos 6 execuções válidas por braço; senão inconclusivo.
 
 Modos:
 - sem opção: só o plano (nenhuma conexão);
-- `--checar`: as pré-checagens de custo zero (saúde, aparelho, `POST /api/flows/match`);
+- `--checar`: as pré-checagens de custo zero (saúde, aparelho, `POST /api/flows/match` e `/api/skills/resolve`);
 - `--yes`: pré-checagens e a rodada, chamando `eval_run.py` por caso e braço (grava em `data/eval-results.jsonl`);
 - `--ler RODADA`: a leitura, de `data/eval-results.jsonl` + `GET /api/usage?run_id=` (grupo `role=plan`).
 """
@@ -103,10 +105,19 @@ def _comandos() -> dict[str, str]:
     return {c["id"]: c["command"] for c in spec["cases"]}
 
 
-def servida_por_fluxo(http: Any, comando: str) -> bool:
+def fora_do_planejador(http: Any, comando: str, instancia: str) -> str | None:
+    """O que serve o comando sem o planejador (`fluxo` ou `habilidade (<status>)`), ou None se ele chama o planejador.
+    A habilidade conta mesmo quando não compilaria: a execução vai a `needs_input`, também sem planejador."""
     r = http.post("/api/flows/match", json={"command": comando})
     r.raise_for_status()
-    return r.json() is not None
+    if r.json() is not None:
+        return "fluxo"
+    r = http.post("/api/skills/resolve", json={"command": comando, "instance_ids": [instancia]})
+    if r.status_code == 404:                       # skills.enabled: false — não há RESOLVE por habilidade
+        return None
+    r.raise_for_status()
+    status = r.json().get("status")
+    return None if status == "no_match" else f"habilidade ({status})"
 
 
 def pre_checagens(http: Any, casos: Iterable[str], instancia: str, exigido: str | None,
@@ -123,8 +134,8 @@ def pre_checagens(http: Any, casos: Iterable[str], instancia: str, exigido: str 
     for caso in casos:
         if caso not in comandos:
             problemas.append(f"{caso} não está no eval-set.yaml")
-        elif servida_por_fluxo(http, comandos[caso]):
-            problemas.append(f"{caso} casa com fluxo ou habilidade: o planejador não seria chamado")
+        elif (motivo := fora_do_planejador(http, comandos[caso], instancia)) is not None:
+            problemas.append(f"{caso} casa com {motivo}: o planejador não seria chamado")
     return problemas
 
 
@@ -181,6 +192,10 @@ def main(argv: list[str] | None = None) -> int:
     problemas = pre_checagens(http, casos, a.instancia, a.exige_commit or None, _e_ancestral)
     for p in problemas:
         print(f"- PRÉ-CHECAGEM: {p}")
+    if not problemas:
+        exigido = f"o central contém {a.exige_commit}, " if a.exige_commit else ""
+        print(f"Pré-checagens ok (custo zero): {exigido}{a.instancia} online e os {len(casos)} caso(s) chamam o "
+              "planejador.")
     if problemas or a.checar:
         return 1 if problemas else 0
     comandos = _comandos()
@@ -189,8 +204,8 @@ def main(argv: list[str] | None = None) -> int:
         if gasto > a.teto_usd:
             print(f"PAROU: US$ {gasto:.4f} gastos, acima do teto de US$ {a.teto_usd:.2f}")
             return 1
-        if servida_por_fluxo(http, comandos[caso]):
-            print(f"- {caso} · {braco}: PULADO (passou a casar com fluxo; o planejador não seria chamado)")
+        if (motivo := fora_do_planejador(http, comandos[caso], a.instancia)) is not None:
+            print(f"- {caso} · {braco}: PULADO (passou a casar com {motivo}; o planejador não seria chamado)")
             continue
         try:
             eval_run.main(argv_do_eval(caso, braco, a.rodada, a.instancia))

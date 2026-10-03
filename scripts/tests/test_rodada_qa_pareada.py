@@ -70,15 +70,20 @@ class _Http:
     """O backend falso das leituras de custo zero."""
 
     def __init__(self, *, commit: str = "c1", estado: str = "online", casa: frozenset[str] = frozenset(),
-                 uso: dict[str, Any] | None = None) -> None:
+                 habilidade: frozenset[str] = frozenset(), uso: dict[str, Any] | None = None) -> None:
         self.commit, self.estado, self.casa, self.uso = commit, estado, casa, uso or {}
+        self.habilidade = habilidade
 
     def get(self, caminho: str, params: dict[str, str] | None = None) -> Any:
         corpo: Any = {"/api/health": {"commit": self.commit}, "/api/instances": [{"id": "android-09", "state": self.estado}],
                       "/api/usage": self.uso.get((params or {}).get("run_id", ""), {"groups": []})}[caminho]
         return _Resposta(corpo)
 
-    def post(self, caminho: str, json: dict[str, str]) -> Any:
+    def post(self, caminho: str, json: dict[str, Any]) -> Any:
+        if caminho == "/api/skills/resolve":
+            assert json["instance_ids"] == ["android-09"]
+            casou = any(c in json["command"] for c in self.habilidade)
+            return _Resposta({"status": "resolved" if casou else "no_match"})
         assert caminho == "/api/flows/match"
         return _Resposta({"flow_id": "f"} if any(c in json["command"] for c in self.casa) else None)
 
@@ -89,6 +94,8 @@ class _Resposta:
 
     def json(self) -> Any:
         return self._corpo
+
+    status_code = 200
 
     def raise_for_status(self) -> None:
         return None
@@ -104,6 +111,21 @@ def test_pre_checagens_de_custo_zero() -> None:
     assert any("deploy 7" in p for p in problemas) and any("não está online" in p for p in problemas)
     assert any(p.startswith("abrir-tela casa com fluxo") for p in problemas)
     assert mod.pre_checagens(_Http(), ["nao-existe"], "android-09", None, sempre) == ["nao-existe não está no eval-set.yaml"]
+
+
+def test_habilidade_que_casa_tira_o_caso_da_rodada() -> None:
+    # 03/10 07:37Z: o abrir-tela não casava com fluxo, mas casava com uma habilidade que não compilou, e as 4
+    # execuções foram a needs_input sem chamar o planejador. A pré-checagem tem de ver a RESOLVE também.
+    problemas = mod.pre_checagens(_Http(habilidade=frozenset({"vá até a tela de Perfil"})), mod.CASOS,
+                                  "android-09", None, lambda _sha, _commit: True)
+    assert problemas == ["abrir-tela casa com habilidade (resolved): o planejador não seria chamado"]
+
+
+def test_checar_diz_quando_passou(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(mod.httpx, "Client", lambda **_k: _Http())
+    monkeypatch.setattr(mod.eval_run, "main", _proibido)
+    assert mod.main(["--checar"]) == 0
+    assert "Pré-checagens ok (custo zero): android-09 online" in capsys.readouterr().out
 
 
 def test_ler_a_rodada_pelo_jsonl_e_pelo_uso(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

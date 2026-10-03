@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Rodada QA pareada: a pré-checagem também olha a habilidade (branch main)
+
+- A 1ª rodada (03/10 07:37Z, `qa-par-202610030737`) foi parada pela sessão do aprendizado:
+  - o abrir-tela casava com uma habilidade de fluxo que não compila para o próprio comando, e as 4 execuções foram
+    a `needs_input` sem planejador;
+  - o msg-todos-os-contatos também casa com habilidade;
+  - com 2 casos válidos, as 6 válidas por braço do aceite eram impossíveis.
+  Custo: US$ 0,2621, em 2 execuções do planejador; 0,1777 no Opus e 0,0844 no Sonnet.
+- `scripts/rodada_qa_pareada.py`:
+  - `fora_do_planejador` consulta `POST /api/flows/match` e `POST /api/skills/resolve` (no aparelho da rodada),
+    na pré-checagem e no pulo por caso;
+  - o `--checar` imprime "Pré-checagens ok" quando passa.
+- Prova `simulated`: `scripts/tests/test_rodada_qa_pareada.py` (12).
+- No central, só leitura: os 4 casos padrão são recusados (2 por habilidade), e
+  `--casos perfil-campo-inexistente,comando-ambiguo,sessao-expirada` passa.
+
 ## 2026-10-03 — Aprendizado: quebra de série do `pct_por_receita` no deploy 7
 
 - Documentação e processo: `docs/dominios/aprendizado.md` (O que mais falha) registra que, desde 03/10 07:28:40Z
