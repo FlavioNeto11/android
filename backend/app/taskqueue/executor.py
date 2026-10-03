@@ -392,6 +392,10 @@ class StepExecutor:
         # no desfecho final da etapa. Memória do processo: reiniciado o backend, a contagem de mortes (que vem do
         # aparelho, desde `steps.started_at`) continua valendo e o pior caso é UMA reabertura a mais.
         self._reabertas_por_anr: set[str] = set()
+        # LT-12: a última ação decidida em cada etapa, como (tela estrutural, ação) — a da tentativa anterior é o que a
+        # retentativa NÃO repete no modelo barato. Some no desfecho final. Memória do processo: reiniciado o backend, a
+        # retentativa começa no tier 0 sem este gatilho (os outros — erros seguidos, ciclo, efeito — seguem valendo).
+        self._ultima_acao_da_etapa: dict[str, tuple[str, str]] = {}
         # Disjuntor de conta de IA (achado #90): por execução, a PRIMEIRA falha de cobrança/credencial represa
         # as etapas seguintes sem gastar tentativa — os aparelhos seguintes nem chegam a chamar o provedor.
         self._tripped_runs: dict[str, AiBreakerTrip] = {}
@@ -903,6 +907,7 @@ class StepExecutor:
                 self._fechar_tentativa(run, objective, step, attempt_id, rt, app, rr, None)
         if outcome.outcome in (Outcome.succeeded, Outcome.failed, Outcome.uncertain, Outcome.cancelled):
             self._reabertas_por_anr.discard(step.id)     # desfecho final: a etapa não volta a rodar com este id
+            self._ultima_acao_da_etapa.pop(step.id, None)
         try:
             self._after_step(rr, outcome, run["id"], rt.id, step, attempt_id, app)
         except Exception:  # noqa: BLE001
@@ -1396,11 +1401,18 @@ class StepExecutor:
         # seguintes. Preguiçoso de propósito — a tentativa que a receita leva até o fim nunca pede.
         licoes: list[str] | None = None
         # Modelo forte (escalonamento) onde errar custa caro ou o barato já tropeçou: etapa com efeito externo
-        # (conforme o risco, ver `side_effect_tier`), nova tentativa da mesma etapa, erros seguidos ou ação
-        # repetida na mesma tela.
+        # (conforme o risco, ver `side_effect_tier`), erros seguidos, ação repetida na mesma tela ou — na nova
+        # tentativa — a ação em que a anterior parou, e o efeito.
         tier_efeito, motivo_efeito = side_effect_tier(step, cap, ai_cfg.strong_model_for_side_effect,
                                                       app.builtin and app.category == CATEGORIA_APP_DE_PROVA)
-        base_tier = 1 if (tier_efeito or step.attempts > 1) else 0
+        base_tier = 1 if tier_efeito else 0
+        # LT-12: a nova tentativa inteira subia ao modelo forte (76 decides de tentativa 2 no tier 1 em 7 d, +1,9 s cada),
+        # mas ela recomeça quase sempre pelo prefixo que a anterior já acertou. Agora começa no tier 0 e sobe — até o fim
+        # da tentativa — na 1ª decisão que repetir, na mesma tela estrutural, a última ação da anterior (onde ela
+        # parou) ou que dispararia o efeito. Essa decisão é descartada e refeita no modelo forte.
+        retentativa = step.attempts > 1 and not tier_efeito
+        acao_onde_parou = self._ultima_acao_da_etapa.get(step.id) if retentativa else None
+        retentativa_subiu = False
         escalated = False                     # a linha do escalonamento sai UMA vez por etapa, não por decisão
         # Item 7.8 (piso de conteúdo): o provedor de `decide` É o do `.env`/YAML, não o desta instância de etapa —
         # ele não muda no meio de uma execução, então resolver uma vez aqui é o mesmo resultado de resolver a cada
@@ -1750,11 +1762,11 @@ class StepExecutor:
                     # controles abaixo. Escalar aqui é decisão do dono, com o custo medido no relatório.
                     rr.retorno_contado = True
                     contar_retorno_ia(rr.diverged)
-                tier = 1 if (base_tier or errors_in_row >= 2 or same_count >= 1 or piso_forcou) else 0
+                tier = 1 if (base_tier or retentativa_subiu or errors_in_row >= 2 or same_count >= 1 or piso_forcou) else 0
                 # RA-10: o porquê do modelo forte NESTA decisão, em vocabulário fechado (`ai_calls.escalate`); a frase
                 # da linha do tempo sai dele, uma vez por etapa.
                 escalonamento: MotivoDeEscalonamento | None = (
-                    None if not tier else "efeito" if tier_efeito else "nova_tentativa" if step.attempts > 1
+                    None if not tier else "efeito" if tier_efeito else "nova_tentativa" if retentativa_subiu
                     else "erros_seguidos" if errors_in_row >= 2
                     else ("bloqueio" if cascata else "piso") if piso_forcou else "ciclo")
                 if tier and not escalated:
@@ -2130,6 +2142,15 @@ class StepExecutor:
                         continue
                 else:
                     is_commit = alegado
+            # ---------- LT-12: na nova tentativa, o modelo barato não repete onde a anterior parou nem dispara o efeito
+            if retentativa and not retentativa_subiu and not from_recipe and tier == 0:
+                repete = acao_onde_parou == (obs.tree.signature(estrutural=True), f"{decision.tool}:{_target_key(args)}")
+                if repete or is_commit:
+                    retentativa_subiu = True
+                    history.append(f"(executor) {decision.tool} " + ("é a ação em que a tentativa anterior parou, nesta "
+                                   "mesma tela" if repete else "dispararia o efeito desta etapa")
+                                   + ": a decisão sobe ao modelo de escalonamento antes de agir.")
+                    continue
             # ---------- guarda de cartão no toque SEM efeito (o balão que abre a folha "Comments")
             # r-20260928165254-e31953: com a folha aberta a legenda do fundo continua na árvore, então a pós-condição
             # não distingue o balão do cartão vizinho — e o comentário seguinte sairia no post errado. Vale para o
@@ -2178,6 +2199,7 @@ class StepExecutor:
             same_count = same_count + 1 if sig == last_sig else 0
             last_sig = sig
             sigs.append((sig[0], obs.tree.signature(estrutural=True), sig[1]))
+            self._ultima_acao_da_etapa[step.id] = (sigs[-1][1], sigs[-1][2])      # LT-12: onde esta tentativa parou
             ciclo = ciclo_sem_progresso(sigs, int(s.no_progress_limit))
             if ciclo:
                 return await fail_or_retry(ciclo, obs)

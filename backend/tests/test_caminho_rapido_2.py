@@ -7,6 +7,9 @@
 - LT-6: a etapa `app_foreground` abre o app pelo executor (estratégia `deterministic`), sem decide, uma vez por tentativa
   e só quando a receita não conduz; o pedido que falha cai no ator NA MESMA tentativa. O foco é sondado a 0,5 s nos
   primeiros 5 s (era um ciclo fixo de 2 s: a mediana do `open_app` medida em 7 d era exatamente 2,2 s).
+- LT-12: a nova tentativa começa no tier 0 (antes, inteira no modelo de escalonamento) e sobe, até o fim dela, na 1ª
+  decisão que repetir na mesma tela estrutural a última ação da anterior ou que dispararia o efeito; essa decisão é
+  descartada antes de agir e refeita no tier 1 (`ai_calls.escalate='nova_tentativa'`).
 
 Nível de prova: `simulated` — aparelho e juiz falsos (o `_verify` chamado direto, como em `test_dm_verificador`) e o
 Harness da porta 5640 com o provedor simulado. A parede das "NÃO comprovada", a mediana do `open_app` e as etapas
@@ -29,7 +32,7 @@ from app.models import DeliveryLevel, Postcondition, StepDTO, StepStatus
 from app.modules.capabilities.domain.definition import CapabilityRef
 from app.modules.capabilities.infrastructure.catalog_provider import CatalogCapabilityProvider
 from app.modules.capabilities.infrastructure.catalog_registry import CatalogCapabilityRegistry
-from app.planning.provider import Usage, Verdict, VerifyRequest
+from app.planning.provider import Decision, Usage, Verdict, VerifyRequest
 from app.taskqueue import executor as executor_mod
 from app.taskqueue.executor import SONDAGENS_DA_TELA_PARADA, StepExecutor
 
@@ -312,3 +315,96 @@ async def test_lt6_segunda_morte_por_anr_para_a_etapa_sem_decide(harness: Harnes
     assert erros and all("parou de responder (ANR)" in e for e in erros), erros
     assert fake.calls.count("open_app") == 4                  # nenhuma 5ª partida a frio
     assert harness.ai.count("decide", step="open_app") == 0
+
+
+# ==================================================================== LT-12
+def _bloqueia(motivo: str = "falha forçada pelo teste") -> Any:
+    return Decision(tool="step_blocked", args={"rationale": "teste", "kind": "other", "reason": motivo,
+                                               "needs_user": False}), Usage()
+
+
+def _roteiro(h: Harness, etapa: str, roteiro: list[Any]) -> list[int]:
+    """As N primeiras decisões de `etapa` saem do `roteiro` (`None` = a do provedor simulado); devolve o tier de cada
+    decisão pedida para a etapa, na ordem. A cascata do 17.10 fica desligada: o bloqueio aqui é o jeito de o teste
+    forçar a nova tentativa (`fail_or_retry`), não um bloqueio a reavaliar."""
+    h.cfg.file.ai.cascade_blocked_to_tier1 = False
+    inner = h.ai.inner
+    decide0 = inner.decide
+    tiers: list[int] = []
+
+    async def decide(req: Any) -> Any:
+        if req.ctx.step_key != etapa:
+            return await decide0(req)
+        tiers.append(req.tier)
+        i = len(tiers) - 1
+        if i < len(roteiro) and roteiro[i] is not None:
+            return roteiro[i]() if callable(roteiro[i]) else roteiro[i]
+        return await decide0(req)
+
+    inner.decide = decide
+    return tiers
+
+
+def _tentativas(h: Harness, run_id: str, etapa: str) -> int:
+    db = h.state.db                                                         # type: ignore[union-attr]
+    return int(db.scalar("SELECT a.n FROM (SELECT COUNT(*) AS n FROM attempts t JOIN steps s ON s.id = t.step_id "
+                         "WHERE s.run_id=? AND s.key=?) a", (run_id, etapa)))
+
+
+async def test_lt12_nova_tentativa_comeca_e_fica_no_tier_0(harness: Harness) -> None:
+    tiers = _roteiro(harness, "open_conversation", [_bloqueia])
+    run = await harness.wait_run(harness.run(["android-01"]).id, timeout=60)
+    assert run.status == "completed" and _tentativas(harness, run.id, "open_conversation") == 2
+    assert tiers[0] == 0 and len(tiers) >= 2
+    assert all(t == 0 for t in tiers[1:]), tiers            # antes: a 2ª tentativa inteira no modelo de escalonamento
+
+
+async def test_lt12_repetir_onde_a_anterior_parou_sobe_ao_tier_1_e_descarta_a_decisao(harness: Harness) -> None:
+    esperar = (Decision(tool="wait_for", args={"rationale": "teste", "seconds": 0.5}), Usage())
+    # tentativa 1: espera (a tela não muda) e desiste; tentativa 2: o barato pede a MESMA espera na mesma tela
+    tiers = _roteiro(harness, "open_conversation", [esperar, _bloqueia, esperar])
+    run = await harness.wait_run(harness.run(["android-01"]).id, timeout=60)
+    assert run.status == "completed" and _tentativas(harness, run.id, "open_conversation") == 2
+    assert tiers[:3] == [0, 0, 0] and len(tiers) >= 4
+    assert all(t == 1 for t in tiers[3:]), tiers            # sobe e fica até o fim da tentativa
+    db = harness.state.db                                                   # type: ignore[union-attr]
+    esperas = db.scalar("SELECT COUNT(*) FROM actions a JOIN attempts t ON t.id = a.attempt_id JOIN steps s ON "
+                        "s.id = t.step_id WHERE s.run_id=? AND s.key='open_conversation' AND a.tool='wait_for'", (run.id,))
+    assert esperas == 1                                     # a repetida foi descartada antes de agir (nem gravada)
+    motivos = [r["escalate"] for r in db.query(
+        "SELECT c.escalate FROM ai_calls c JOIN steps s ON s.id = c.step_id WHERE s.run_id=? AND "
+        "s.key='open_conversation' AND c.role='decide' AND c.tier=1", (run.id,))]
+    assert motivos and set(motivos) == {"nova_tentativa"}
+
+
+async def test_lt12_o_efeito_na_nova_tentativa_e_decidido_no_tier_1(harness: Harness) -> None:
+    """O QA é app de prova: com o `by_risk` padrão o envio fica no tier 0 (29.31). Na nova tentativa, a decisão do
+    barato que dispararia o efeito é descartada e refeita no modelo forte — e a mensagem sai uma vez só."""
+    plano0 = harness.ai.inner.plan
+
+    async def plan(req: Any) -> Any:
+        plano, uso = await plano0(req)
+        for s in plano.steps:
+            if s.key == "send_message":
+                s.max_attempts = 2                      # no plano simulado é 1: a falha viraria replano, não nova tentativa
+        return plano, uso
+
+    harness.ai.inner.plan = plan
+    tiers = _roteiro(harness, "send_message", [_bloqueia])
+    run = await harness.wait_run(harness.run(["android-01"]).id, timeout=60)
+    assert run.status == "completed" and _tentativas(harness, run.id, "send_message") == 2
+    versoes = harness.state.db.scalar(                                      # type: ignore[union-attr]
+        "SELECT COUNT(DISTINCT plan_version) FROM steps WHERE run_id=? AND key='send_message'", (run.id,))
+    assert versoes == 1                                     # a MESMA etapa, na 2ª tentativa (sem replano)
+    assert tiers[0] == 0 and 0 in tiers[1:] and tiers[-1] == 1, tiers
+    assert len(harness.fakes["android-01"].messages) == 1
+    db = harness.state.db                                                   # type: ignore[union-attr]
+    assert db.scalar("SELECT COUNT(*) FROM ai_calls c JOIN steps s ON s.id = c.step_id WHERE s.run_id=? AND "
+                     "s.key='send_message' AND c.escalate='nova_tentativa'", (run.id,)) >= 1
+
+
+async def test_lt12_a_primeira_tentativa_nao_muda(harness: Harness) -> None:
+    tiers = _roteiro(harness, "open_conversation", [])
+    run = await harness.wait_run(harness.run(["android-01"]).id, timeout=60)
+    assert run.status == "completed" and _tentativas(harness, run.id, "open_conversation") == 1
+    assert tiers and all(t == 0 for t in tiers)
