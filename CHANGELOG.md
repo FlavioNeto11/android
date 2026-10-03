@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Suíte 12 na main (5428abdb): SQLite inteira verde; sem PostgreSQL (sem migração nova)
+
+- A suíte 12 entrou na main por commit-tree (5428abdb), na ordem da orquestradora:
+  - Jev: #157 (05b96b8f), K-085 percentil (fe5b469e), #160 (8b9b2548) e o índice do ADR-069 item 20 (aa4f67cf);
+  - Android: #158 K-084 (5f8a76e5), 29.50 (38b21238) e #161 polimentos do painel (9f65f22f);
+  - Aprendizado: #159 30.33-C (235e8451) e, por cherry-pick no fim, o percentil do #159 (e8af149b), que só fecha com
+    o K-085 na árvore.
+  - Conflitos só de texto: CHANGELOG e `docs/api-contract.md` por união. O adendo v0.94 foi posto antes do v0.95.
+- SQLite (`real`, 03/10, WIN-7S2UASNLFOP, `-n 8`, Idle, @a5842d4a, das 16:49 às 16:56Z): 8460 passed, 7 skipped,
+  0 failed. Scripts deram 482 passed, docs-check 0/0, typecheck ok e frontend 1407 passed, no mesmo HEAD.
+- Depois do cherry-pick do percentil (@82b09705): os `test_learning*` com `test_metricas` deram 859 passed, e
+  `test_arquitetura` 9 passed.
+- PostgreSQL: não rodou, porque não há migração nova (a 083 é da suíte 13). O K-084 corrige os 7 testes que só
+  quebravam lá; a prova na PG é a do PR #158.
+
 ## 2026-10-03 — Aprendizado: o item de mais de um app na leitura por app e os polimentos das Métricas (30.33-C; branch feat/30-33-multi-app)
 
 - O fluxo que atravessa apps aparece em cada app dele: na visão por app, no filtro `?app=` do livro e nas Métricas
