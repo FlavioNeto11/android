@@ -2854,6 +2854,13 @@
    "lista": "proximas",
    "lote": "canais",
    "nome": "30.43 · A validação com rosto no item"
+  },
+  "28.18": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac17a13adc57edc3c97a98e",
+   "url": "https://trello.com/c/ij2QiYYZ",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "28.18 · Convidado no Telegram, com o nome primeiro"
   }
  },
  "falhas": [],
