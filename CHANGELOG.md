@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Jev: a leitura da sombra de intenção (R2/R3) pronta para depois do deploy 11 (branch feat/jev-leitura-intencao)
+
+- `scripts/jev-leitura-intencao.py`, só leitura e sem IA (irmão do `jev-prova-31-17.py`, para a origem `intencao`). Mede:
+  - contagens por origem/classe/modo e, por pergunta R2/R3, pedidos, respondidas, abstenções e fallbacks;
+  - recusas por `fallback_reason` e `motivo_privacidade` (só o vocabulário fechado);
+  - confiança, P(escolha) e maior probabilidade contra o limiar da porta;
+  - US$ total e por chamada e ms p50/p95 pelo posto mais próximo.
+- A asserção de zero texto falha fechado: valor fora do formato da coluna, JSON que não é {id opaco: número} ou coluna
+  fora de 074/079 é violação. O valor nunca é impresso; nas contagens, aparece `(fora do vocabulário)`.
+- Prova: `simulated` (`scripts/tests/test_jev_leitura_intencao.py`, 8 testes com linhas falsas). Execução no central:
+  `not_run` (espera o aviso da orquestradora). Documentado em `docs/design/jev-golden-set.md` §7.
+
 ## 2026-10-03 — K-085: o percentil de `app/metricas.py` pelo posto mais próximo, sem o arredondamento de banqueiro (branch fix/k085-percentil, para a suíte 12)
 
 - `metricas.percentil` calculava o posto como `round(p/100·n + 0,5)`. O `round` do Python leva o ,5 ao par, então,
