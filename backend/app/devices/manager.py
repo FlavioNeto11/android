@@ -205,6 +205,11 @@ class Observation:
     image_omitted: str | None = None
     source: str = "central_adb"
     runtime_gen: int | None = None
+    # Item 31.24 (C-2, migração 088): quanto ESTA observação gastou lendo a hierarquia e adquirindo a imagem, em ms, os
+    # mesmos números que já iam para `observacao.ms`. O executor os grava na decisão que esta observação alimentou.
+    # `None` = não medido (observação montada fora de `observe`, dublê de teste); sem imagem, `ms_imagem` fica `None`.
+    ms_arvore: float | None = None
+    ms_imagem: float | None = None
 
 
 @dataclass(slots=True)
@@ -3629,7 +3634,8 @@ class DeviceManager:
         ex = rt.executor
         t0 = time.perf_counter()
         xml = await ex.run(rt.io.page_source, timeout=timeout, label="hierarquia")
-        metricas.observar("observacao.ms", (time.perf_counter() - t0) * 1000, parte="arvore", instancia=rt.id)
+        ms_arvore = (time.perf_counter() - t0) * 1000
+        metricas.observar("observacao.ms", ms_arvore, parte="arvore", instancia=rt.id)
         tree_at = now_iso()
         tree = self._classificar(rt, xml)
         rt.last_tree = tree
@@ -3642,8 +3648,11 @@ class DeviceManager:
         if dims is None and not sensivel:
             quer = True
         if quer:
-            return await self._observar_imagem(rt, tree, pkg, tree_at, timeout=timeout, lado_max=lado_max,
-                                               previa_sempre=imagem is True)
+            t_imagem = time.perf_counter()
+            com_imagem = await self._observar_imagem(rt, tree, pkg, tree_at, timeout=timeout, lado_max=lado_max,
+                                                     previa_sempre=imagem is True)
+            com_imagem.ms_arvore, com_imagem.ms_imagem = ms_arvore, (time.perf_counter() - t_imagem) * 1000
+            return com_imagem
         if dims is not None:
             metricas.contar("captura.evitada", motivo="sensivel" if sensivel else "politica")
         if sensivel:
@@ -3668,7 +3677,8 @@ class DeviceManager:
             frame_id = await self._previa_pela_observacao(rt) or self._novo_frame_id(rt)
         return Observation(frame_id=frame_id, ts=tree_at, width=dims[0], height=dims[1], jpeg=None, tree=tree,
                            package=pkg, sensitive=tree.sensitive, tree_at=tree_at, image_at=None,
-                           image_omitted="sensitive" if sensivel else "policy", runtime_gen=rt.geracao)
+                           image_omitted="sensitive" if sensivel else "policy", runtime_gen=rt.geracao,
+                           ms_arvore=ms_arvore)
 
     async def _previa_pela_observacao(self, rt: DeviceRuntime) -> str | None:
         """O frame do painel a partir de uma observação SÓ DE ÁRVORE da IA. Devolve o id do frame publicado, ou
@@ -3711,8 +3721,12 @@ class DeviceManager:
         executor, sem ação no meio. Tela sensível — nesta árvore ou numa leitura mais nova — continua sem imagem."""
         if obs.image_omitted != "policy" or self._previa_sensivel(rt) or rt.executor.em_trecho_sensivel:
             return obs
-        return await self._observar_imagem(rt, obs.tree, obs.package, obs.tree_at or obs.ts, timeout=timeout,
-                                           lado_max=lado_max, previa_sempre=False)
+        t_imagem = time.perf_counter()
+        completa = await self._observar_imagem(rt, obs.tree, obs.package, obs.tree_at or obs.ts, timeout=timeout,
+                                               lado_max=lado_max, previa_sempre=False)
+        # A árvore é a mesma da observação de antes; a imagem é só a desta chamada (31.24).
+        completa.ms_arvore, completa.ms_imagem = obs.ms_arvore, (time.perf_counter() - t_imagem) * 1000
+        return completa
 
     async def imagem_tardia(self, rt: DeviceRuntime, *, timeout: float) -> tuple[bytes, str] | None:
         """Imagem para EVIDÊNCIA de uma observação que não tinha (política): adquirida agora, com o próprio horário,

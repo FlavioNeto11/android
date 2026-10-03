@@ -105,6 +105,12 @@ class Usage:
     escalate: str | None = None
     motivo: str | None = None
     image_reason: str | None = None
+    # Item 31.24 (migração 088): quando a chamada foi entregue ao provedor (`ai_calls.started_at`, hora de parede; `ms`
+    # continua só a ida e volta), a espera pela vaga de IA antes disso e o preparo da decisão do ator. Quem preenche é o
+    # executor (`_ai`); fora dele, NULOS.
+    started_at: str | None = None
+    vaga_ms: int | None = None
+    preparo: "PreparoDaDecisao | None" = None
 
 
 #: RA-10 (migração 080): POR QUE a chamada foi ao modelo de escalonamento (`ai_calls.escalate`; NULO = não foi).
@@ -128,6 +134,21 @@ MotivoDaImagem = Literal["sensivel", "politica_nunca", "politica_sempre", "pedid
 MOTIVOS_DE_ESCALONAMENTO: Final[tuple[str, ...]] = get_args(MotivoDeEscalonamento)
 MOTIVOS_DA_CHAMADA: Final[tuple[str, ...]] = get_args(MotivoDaChamada)
 MOTIVOS_DA_IMAGEM: Final[tuple[str, ...]] = get_args(MotivoDaImagem)
+
+
+@dataclass(slots=True)
+class PreparoDaDecisao:
+    """Item 31.24 (C-2 e C-1, migração 088): o que o executor gastou para chegar a UMA decisão do ator, em ms de
+    `time.monotonic`, e a linha de `ai_calls` que a chamada gravou. `arvore_ms` e `imagem_ms` são partes de
+    `observacao_ms`. O executor preenche os tempos antes de `_ai`; `_ai` devolve aqui o id da linha da resposta
+    (`ai_call_id`), que a ação escolhida grava em `actions.ai_call_id`. Mutável de propósito: é um objeto por decisão,
+    de ida e volta. Os limites de cada parte estão na migração 088."""
+    settle_ms: int | None = None
+    observacao_ms: int | None = None
+    arvore_ms: int | None = None
+    imagem_ms: int | None = None
+    prompt_ms: int | None = None
+    ai_call_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
