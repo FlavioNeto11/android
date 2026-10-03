@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Suíte 11 na main (97425d5f): SQLite inteira; PostgreSQL e K-084 pendentes
+
+- A suíte 11 entrou na main por commit-tree (97425d5f), com 6 hashes:
+  - Jev: 31.18 forma A + 31.20 (ea1df281) e 31.19 (442a9249);
+  - Aprendizado: #156 30.33-B (c9f1c18a), #154 30.34-A (147ad07f) e #155 30.35 (32d8ef6b);
+  - Android: 29.49 (0b62678b).
+  - O único conflito de código foi o import de `learning/infrastructure/montagem.py`, com os dois mantidos.
+- SQLite (`real`, 03/10, WIN-7S2UASNLFOP, `-n 8`, Idle, @35e3b0f6, das 15:19 às 15:28Z): 8441 passed, 0 failed.
+  Scripts deram 474 passed, docs-check 0/0, typecheck ok e frontend 1374 passed.
+- PostgreSQL: não rodou nesta suíte, porque não há migração nova (decisão da orquestradora). Os 7 testes do K-084 (SQL só de
+  SQLite em `test_leitura_visual_papel`, `test_learning_esquecer_conta` e `test_rede_aplicacao`) seguem PENDENTES.
+
 ## 2026-10-03 — Jev: o limiar do curador analisado, o rótulo 1 só do dono e o percentil unificado (31.19; branch feat/31-19-curador-limiar)
 
 - **O limiar fica em 0,85; nada liga.** As 4 respostas reais de 03/10 (13:10Z) voltaram `abaixo_do_limiar`, com
