@@ -733,7 +733,6 @@ aparelho que alguém acabou de mandar não subir.
    `install_apk` e `open_app`, cujo efeito nenhum estado de aparelho revela. Quem decidiu, quando, o que observou
    e o motivo anterior ficam gravados em `result` (`resolved_by`, `resolved_at`, `note`, `previous_reason`).
 
-
 `POST /api/instances/bulk` mantém `accepted: string[]` e `rejected: {id, reason, command_id?}[]`, e **ganha**
 `commands: {id, command_id, deduplicated}[]` — um comando por aparelho, porque o desfecho de um não fala pelo do
 outro.
@@ -1243,7 +1242,6 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
   geração de processo; a próxima tentativa no mesmo guest é recuperação funcional. Efeitos tardios não idempotentes
   identificados: o `input tap` de `dismiss_system_dialog` e o `cmd alarm set-time` do `sync_clock`.
 
-
 ## Adendo v0.16 (26/09/2026) — credencial fornecida para a execução (ADR-025)
 
 - `POST /api/runs` aceita `credentials` (objeto nome → valor; nome em minúsculas, dígitos e `_`, até 8) e
@@ -1270,7 +1268,6 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
   continua pedindo a pessoa.
 - Comando que pede site/navegador ou nomeia outro app registrado não fica preso ao catálogo do app da conta do
   aparelho: o plano é livre.
-
 
 ## Adendo v0.17 (26/09/2026) — loja de aplicativos e proxy do aparelho
 
@@ -2001,7 +1998,6 @@ interface ProfileSkillCapacity {
 
 **`GET/PUT /api/servers/limits`**: `max_devices` entra nos valores por servidor (`ServerLimitValues`); nulo = sem
 teto. Não vai na mensagem `Limits` ao agente.
-
 
 ## Adendo v0.27 (27/09/2026) — a persona é a pessoa, geração por IA e imagens
 
@@ -3664,7 +3660,6 @@ telas), `versao_aposentada` ou `desconhecido`; `vivas` preenchido e `por_versao`
 Comparação de versão por TEXTO exato (`recipes.app_version` × `device_app_state.observed_version_name`, ambas o `versionName` do aparelho; a
 equivalência de formato segue "a conferir" no §7). Nenhum código de erro novo. Prova `simulated` (`tests/test_learning_versao.py`); `not_run` no central.
 
-
 ## Adendo v0.52 (02/10/2026) — `saude` na lista e no detalhe do Livro (item 30.4)
 
 `GET /api/aprendizado` (cada elemento de `itens[]`), `GET /api/aprendizado/pendentes`, `GET /api/aprendizado/revisar` e
@@ -3775,7 +3770,6 @@ Resposta 200: `{profile_id, account_id, retirada, ancora, limpezas, status_da_pe
 (`memory_items` e as dos módulos que registraram limpeza), sem texto da conta. A conta que já não existe devolve `retirada: false`
 (idempotente). Persona inexistente: 404 `not_found`. Evento `profile.account_retired` (`data`: `profile_id`, `account_id`,
 `app_id`, `ancora`, `origem`, `autor`, `evidencia`, `limpezas`, `status_da_persona`). O aparelho não é tocado.
-
 
 ## Adendo v0.61 (02/10/2026) — `POST /api/instances/{instance_id}/locked-account/resolve`: a pessoa resolve a quarentena (item 29.24, ADR-068)
 
@@ -5028,3 +5022,54 @@ Prova:
 - `simulated`: `backend/tests/test_learning_prova_veredito.py`, `test_learning_reclassificacao_efeito.py`,
   `test_learning_prova_ponto_de_partida.py`, `test_learning_prova_limites.py`.
 - `not_run`: a reclassificação da ev:48 e a 1ª prova do P4 depois do deploy.
+
+## Adendo v1.02 (03/10/2026; número da orquestradora; item 30.38, partes (a) e (b)) — a origem da execução e a leitura dos pedidos de validação
+
+Aditivo aos v0.97 e v1.00 (a parte (c) fica no v1.00, sem mudança de texto). Nenhuma migração e nenhuma config nova.
+
+**(a) `RunSummary.origem` e `RunSummary.origem_ref`** (também no `RunDetail`), derivados da linha pela regra única de
+`app/contracts/origem.py`, sem coluna nova:
+- `origem`: `"prova_fluxo" | "validacao_qa" | "telegram" | "trello" | null`;
+- `prova_fluxo_id` não nulo → `prova_fluxo`, com `origem_ref` = o fluxo (ganha das marcas seguintes);
+- `idempotency_key` com o prefixo `validacao:` → `validacao_qa`, `origem_ref` = o pedido (`lv-…`); o prefixo é UMA
+  constante (`PREFIXO_VALIDACAO`), a mesma que monta a chave, e um teste reprova o literal escrito fora do contrato;
+- `telegram:<id>` e `trello:<id>` → o canal, `origem_ref` = o id externo;
+- qualquer outro caso (o pedido pelo painel, a sucessora `sucessora-…`, a linha antiga): `null`.
+
+O painel põe um selo neutro na lista e no resumo da execução ("Prova de fluxo (validação)", "Validação do QA", "Pelo
+Telegram", "Pelo Trello"). Na prova e na validação o texto se chama "Comando de origem"; no canal continua "Pedido" (foi
+uma pessoa). A validação do QA leva ao pedido em Aprendizado › Validação.
+
+**(b) `GET /api/aprendizado/validacoes?estado=&limite=50&antes=`**: só leitura, sem IA, sem custo; 503 antes da
+composição; `estado` fora do vocabulário é 422; `limite` de 1 a 200.
+
+```json
+{"itens": [{"id": "lv-…", "estado": "recusada", "motivo": "sem_evidencia",
+            "motivo_humano": "A execução terminou sem deixar evidência no item.",
+            "item_ref": "fluxo:12", "item_kind": "fluxo", "app": "com.pocqa.messenger", "app_nome": "QA Messenger",
+            "grupo": "qa", "run_id": "r-…", "run_origem": "r-…", "aparelho": "android-02", "usd": 0.0512,
+            "teto_usd": 0.1, "created_at": "…", "feito_em": "…", "expira_em": "…", "revisao_nova_id": null,
+            "comando": "No QA Messenger, …"}],
+ "contagem": {"pendente": 1, "rodando": 0, "feita": 1, "recusada": 1, "expirada": 0},
+ "total": 3, "modo": "off"}
+```
+
+- `itens`: dos mais novos para os mais antigos; `antes` é o `created_at` do último da página anterior;
+- `contagem`: por estado, de TODOS os pedidos (não só do filtro), com zero no estado sem nenhum; `total` é a soma;
+- `motivo` em código e `motivo_humano` pela tabela do domínio (`MOTIVO_HUMANO`, um texto para cada valor de `Motivo`;
+  um código desconhecido volta ele mesmo);
+- `modo`: o do despachante agora; `off` = pausado (nada nasce, nada roda), e o painel explica a pausa;
+- `comando`: o comando de origem cortado em 200 caracteres. **É só para o painel. Esta rota não é fonte para espelho
+  externo: Trello e Telegram nunca recebem texto de comando.** A leitura de conhecimento do 32.2 é outra rota, da
+  frente Canais.
+
+O painel ganha a aba Aprendizado › Validação (`?aba=validacao&estado=<estado>`): fichas por estado com a contagem,
+busca, um cartão por pedido (estado, item e app, motivo em texto, aparelho, custo e teto, "Abrir execução", "Abrir no
+Livro") e o vazio que explica o que é a validação e por que ela pode estar pausada.
+
+Prova:
+- `simulated`: `tests/test_origem_da_execucao.py` (a regra, a constante única e a listagem de execuções),
+  `tests/test_validacoes_listagem.py` (ordem, filtro, página, contagem, motivo humano, 422), `SeloDeProva.test.tsx` e
+  `ValidacaoTab.test.tsx`;
+- `not_run`: o painel do central depois do deploy que levar o 30.38 (a, b).
+

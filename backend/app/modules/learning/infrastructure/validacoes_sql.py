@@ -10,7 +10,8 @@ from datetime import UTC, datetime, timedelta
 
 from app.db import Database, Row
 from app.models import Plan
-from app.modules.learning.application.validacao import NovoPedido, Origem, PedidoVivo
+from app.modules.learning.application.validacao import (COMANDO_NA_LISTA, NovoPedido, Origem, PedidoListado,
+                                                       PedidoVivo)
 from app.modules.learning.domain.validacao import EstadoDoPedido, Grupo, Motivo, ProvaAnterior, marca_da_evidencia
 from app.modules.learning.domain.vocabulario import LivroKind, Posicao
 from app.modules.learning.infrastructure import linhas
@@ -38,6 +39,18 @@ def _pedido(r: Row) -> PedidoVivo:
                       aparelho_excluido=linhas.texto_ou_nulo(r, "aparelho_excluido"),
                       estado=EstadoDoPedido(linhas.texto(r, "estado")), run_id=linhas.texto_ou_nulo(r, "run_id"),
                       created_at=linhas.texto(r, "created_at"), falta=_falta(r))
+
+
+def _listado(r: Row) -> PedidoListado:
+    return PedidoListado(
+        id=linhas.texto(r, "id"), estado=linhas.texto(r, "estado"), motivo=linhas.texto_ou_nulo(r, "motivo"),
+        item_ref=linhas.texto(r, "item_ref"), item_kind=linhas.texto(r, "item_kind"),
+        scope_app=linhas.texto(r, "scope_app"), grupo=linhas.texto(r, "grupo"), run_id=linhas.texto_ou_nulo(r, "run_id"),
+        run_origem=linhas.texto_ou_nulo(r, "run_origem"), aparelho=linhas.texto_ou_nulo(r, "aparelho"),
+        usd=linhas.real(r, "usd"), teto_usd=linhas.real(r, "teto_usd") if r.get("teto_usd") is not None else None,
+        created_at=linhas.texto(r, "created_at"), feito_em=linhas.texto_ou_nulo(r, "feito_em"),
+        expira_em=linhas.texto(r, "expira_em"), revisao_nova_id=linhas.texto_ou_nulo(r, "revisao_nova_id"),
+        comando=linhas.texto(r, "comando")[:COMANDO_NA_LISTA])
 
 
 class RegistroDeValidacoesSql:
@@ -167,6 +180,25 @@ class RegistroDeValidacoesSql:
     def revisado(self, pedido_id: str, review_id: str) -> None:
         self._db.execute("UPDATE learning_validations SET revisao_nova_id=? WHERE id=? AND revisao_nova_id IS NULL",
                          (review_id, pedido_id))
+
+    def listar(self, estado: EstadoDoPedido | None, limite: int, antes: str | None) -> list[PedidoListado]:
+        """30.38 (b): as mais novas primeiro; `id` desempata o mesmo instante (a página seguinte usa só `created_at`,
+        e o mesmo instante na fronteira de duas páginas é raro e só repete a linha). Pelo índice `(estado, created_at)`
+        com o filtro de estado."""
+        where, params = [], list[object]()
+        if estado is not None:
+            where.append("estado=?")
+            params.append(estado.value)
+        if antes:
+            where.append("created_at<?")
+            params.append(antes)
+        sql = "SELECT * FROM learning_validations" + (" WHERE " + " AND ".join(where) if where else "")
+        rows = self._db.query(sql + " ORDER BY created_at DESC, id DESC LIMIT ?", (*params, limite))
+        return [_listado(r) for r in rows]
+
+    def contagens(self) -> dict[str, int]:
+        return {linhas.texto(r, "estado"): linhas.inteiro(r, "n")
+                for r in self._db.query("SELECT estado, COUNT(*) AS n FROM learning_validations GROUP BY estado")}
 
 
 class FontesDaValidacaoSql:

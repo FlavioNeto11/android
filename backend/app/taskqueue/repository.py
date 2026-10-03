@@ -12,6 +12,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from ..contracts.origem import origem_da_execucao
 from ..db import Database, INTEGRITY_ERRORS, Row, dumps, loads
 from ..events import EventBus
 from ..models import (RUN_TERMINAL, ActionDTO, ActionStatus, AttemptDTO, AttemptStatus, DecisionDTO, DeliveryLevel,
@@ -1249,6 +1250,7 @@ class Repository:
         ids = loads(row["instance_ids"], [])
         counts = self._counts(row["id"])
         total = sum(counts.model_dump().values())
+        origem, origem_ref = origem_da_execucao(_col(row, "prova_fluxo_id"), _col(row, "idempotency_key"))
         return RunSummary(
             id=row["id"], short_id=row["id"].rsplit("-", 1)[-1], command=row["command"], status=RunStatus(row["status"]),
             simulated=bool(row["simulated"]), instance_ids=ids, instances_requested=len(ids),
@@ -1258,7 +1260,7 @@ class Repository:
             app_ids=loads(_col(row, "app_ids"), []) or [],
             ai_profile=_col(row, "ai_profile"), ai_profile_source=_col(row, "ai_profile_source"),
             pedido_id=_col(row, "pedido_id"), ocorrencia_id=_col(row, "ocorrencia_id"),
-            prova_fluxo_id=_col(row, "prova_fluxo_id"))
+            prova_fluxo_id=_col(row, "prova_fluxo_id"), origem=origem, origem_ref=origem_ref)
 
     def objective_dto(self, row: Row) -> ObjectiveDTO:
         done, total = self._step_progress(row["id"], row["plan_version"])

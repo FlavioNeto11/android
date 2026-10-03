@@ -30,6 +30,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Protocol
 
+from app.contracts.origem import PREFIXO_VALIDACAO
 from app.modules.learning.domain.curador import Falta, Parecer
 from app.modules.learning.domain.livro import EntradaDoLivro, apps_do_item
 from app.modules.learning.domain.politica_de_risco import Classificacao, Razao
@@ -101,6 +102,36 @@ class Origem:
     aparelho: str | None
 
 
+#: 30.38 (b): o comando vai ao painel cortado aqui (o resto fica na execução de origem).
+COMANDO_NA_LISTA = 200
+#: A página da listagem, no máximo.
+LISTA_MAX = 200
+
+
+@dataclass(frozen=True, slots=True)
+class PedidoListado:
+    """Um pedido como o painel (Aprendizado › Validação) e o estudo 32.1 o leem. Só leitura; `comando` já cortado em
+    `COMANDO_NA_LISTA`."""
+
+    id: str
+    estado: str
+    motivo: str | None
+    item_ref: str
+    item_kind: str
+    scope_app: str
+    grupo: str
+    run_id: str | None
+    run_origem: str | None
+    aparelho: str | None
+    usd: float
+    teto_usd: float | None
+    created_at: str
+    feito_em: str | None
+    expira_em: str
+    revisao_nova_id: str | None
+    comando: str
+
+
 class RegistroDeValidacoes(Protocol):
     """`learning_validations` (082)."""
 
@@ -125,6 +156,10 @@ class RegistroDeValidacoes(Protocol):
     #: `prova_fluxo_id`), com o fluxo ainda ligado e sem pedido posterior do mesmo item, devolvido como pedido novo
     #: (`pendente`, sem `expira_em` nem `teto_usd`: o serviço completa).
     def para_reabrir(self) -> list[NovoPedido]: ...
+    #: 30.38 (b): a listagem, das mais novas para as mais antigas (`antes`: o `created_at` do último da página
+    #: anterior), e a contagem por estado de TODOS os pedidos.
+    def listar(self, estado: EstadoDoPedido | None, limite: int, antes: str | None) -> list[PedidoListado]: ...
+    def contagens(self) -> dict[str, int]: ...
 
 
 class FontesDaValidacao(Protocol):
@@ -258,7 +293,7 @@ class ServicoDeValidacao:
             if aparelho is None:
                 continue
             prova = p.item_ref.partition(":")[2] if p.item_kind == LivroKind.FLUXO.value else None
-            chave = f"validacao:{p.id}"
+            chave = f"{PREFIXO_VALIDACAO}{p.id}"
             # `prova` só vai quando há (a receita segue com a chamada de antes).
             run_id = (self._despacho.enfileirar(p.comando, aparelho, chave, prova=prova) if prova
                       else self._despacho.enfileirar(p.comando, aparelho, chave))
@@ -405,6 +440,21 @@ class ServicoDeValidacao:
     def revisado(self, pedido_id: str, review_id: str) -> None:
         self._registro.revisado(pedido_id, review_id)
 
+    # ------------------------------------------------------------------ 5. a leitura do painel (30.38 b)
+    def listar(self, estado: EstadoDoPedido | None = None, limite: int = 50,
+               antes: str | None = None) -> list[PedidoListado]:
+        """Só leitura e independente do `modo`: com a validação pausada, o painel ainda mostra o que já se pediu."""
+        return self._registro.listar(estado, max(1, min(limite, LISTA_MAX)), antes)
+
+    def contagens(self) -> dict[str, int]:
+        """Um número por estado do vocabulário (zero quando não há), para os filtros do painel."""
+        contadas = self._registro.contagens()
+        return {e.value: int(contadas.get(e.value, 0)) for e in EstadoDoPedido}
+
+    def modo(self) -> Modo:
+        """O modo do despachante agora (`off` pausa: nada nasce e nada roda; o painel explica a pausa)."""
+        return self._ajustes().modo
+
 
 #: A evidência que não é a favor, e o motivo do pedido que ela fecha (30.36).
 _MOTIVO_DA_POSICAO: dict[Posicao, Motivo] = {Posicao.AGAINST: Motivo.EVIDENCIA_CONTRA,
@@ -412,5 +462,5 @@ _MOTIVO_DA_POSICAO: dict[Posicao, Motivo] = {Posicao.AGAINST: Motivo.EVIDENCIA_C
                                              Posicao.FORMA: Motivo.DIVERGENCIA_DE_FORMA}
 
 
-__all__ = ["AjustesDaValidacao", "DespachoDeValidacao", "FontesDaValidacao", "NovoPedido", "Origem", "PedidoVivo",
-           "RegistroDeValidacoes", "ServicoDeValidacao"]
+__all__ = ["COMANDO_NA_LISTA", "LISTA_MAX", "AjustesDaValidacao", "DespachoDeValidacao", "FontesDaValidacao",
+           "NovoPedido", "Origem", "PedidoListado", "PedidoVivo", "RegistroDeValidacoes", "ServicoDeValidacao"]

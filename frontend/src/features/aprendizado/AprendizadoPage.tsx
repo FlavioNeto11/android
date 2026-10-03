@@ -1,4 +1,4 @@
-import { AppWindow, BookOpen, ChartColumn, Flame, Inbox, MessageSquareText } from 'lucide-react';
+import { AppWindow, BookOpen, ChartColumn, Flame, FlaskConical, Inbox, MessageSquareText } from 'lucide-react';
 import { useEffect } from 'react';
 import { Page } from '../../components/Page';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
@@ -10,10 +10,11 @@ import { FalhasTab } from './FalhasTab';
 import { MetricasTab } from './MetricasTab';
 import { ParaAprovarTab } from './ParaAprovarTab';
 import { SinaisTab } from './SinaisTab';
+import { ValidacaoTab } from './ValidacaoTab';
 import styles from './Aprendizado.module.css';
 
-type Aba = 'apps' | 'aprovar' | 'aprendido' | 'falhas' | 'sinais' | 'metricas';
-const ABAS: readonly Aba[] = ['apps', 'aprovar', 'aprendido', 'falhas', 'sinais', 'metricas'];
+type Aba = 'apps' | 'aprovar' | 'aprendido' | 'falhas' | 'sinais' | 'metricas' | 'validacao';
+const ABAS: readonly Aba[] = ['apps', 'aprovar', 'aprendido', 'falhas', 'sinais', 'metricas', 'validacao'];
 const isAba = (v: unknown): v is Aba => typeof v === 'string' && (ABAS as readonly string[]).includes(v);
 const ID = 'aprendizado';
 
@@ -25,7 +26,8 @@ const ID = 'aprendizado';
  * - Aprendido: o catálogo unificado, com o estado e as decisões da pessoa;
  * - O que mais falha: o backlog para as sessões de desenvolvimento;
  * - Sinais: os votos e os gestos que viram evidência;
- * - Métricas (30.33): o aprendizado medido na janela e os pareceres do curador.
+ * - Métricas (30.33): o aprendizado medido na janela e os pareceres do curador;
+ * - Validação (30.38 b): os pedidos de validação automática do curador (`?aba=validacao&estado=<estado>`).
  */
 export function AprendizadoPage() {
   // A guia vem do link (`#/aprendizado?aba=falhas`); "Aplicativos" é a padrão (o Global) e não entra nele.
@@ -40,7 +42,7 @@ export function AprendizadoPage() {
     void useContagemDoAprendizado.getState().atualizar();
   }, []);
 
-  const trocar = (a: Aba) => trocarQuery({ aba: a === 'apps' ? undefined : a, app: undefined, item: undefined }, 'replace');
+  const trocar = (a: Aba) => trocarQuery({ aba: a === 'apps' ? undefined : a, app: undefined, item: undefined, estado: undefined }, 'replace');
 
   const tabs: TabDef<Aba>[] = [
     { id: 'apps', label: 'Aplicativos', icon: AppWindow },
@@ -49,6 +51,7 @@ export function AprendizadoPage() {
     { id: 'falhas', label: 'O que mais falha', icon: Flame },
     { id: 'sinais', label: 'Sinais', icon: MessageSquareText },
     { id: 'metricas', label: 'Métricas', icon: ChartColumn },
+    { id: 'validacao', label: 'Validação', icon: FlaskConical },
   ];
 
   return (
@@ -64,6 +67,7 @@ export function AprendizadoPage() {
         {aba === 'falhas' ? <FalhasTab /> : null}
         {aba === 'sinais' ? <SinaisTab /> : null}
         {aba === 'metricas' ? <MetricasTab /> : null}
+        {aba === 'validacao' ? <ValidacaoTab /> : null}
       </TabPanel>
     </Page>
   );

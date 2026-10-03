@@ -9,6 +9,7 @@ import {
 } from './model';
 import { lerMetricas, lerPaginaDeRevisoes, type MetricasDoAprendizado, type PaginaDeRevisoes } from './metricas';
 import type { RespostaDoPedido } from './parecer';
+import { lerListaDeValidacoes, type ListaDeValidacoes } from './validacao';
 
 /**
  * As rotas do aprendizado (ADR-054). Ficam aqui, e não no objeto `api` do cliente, porque são de UM contexto e
@@ -125,6 +126,12 @@ export const apiAprendizado = {
   revisoes: async (q: { app?: string; decisao?: string; limite?: number; cursor?: string | null }, signal?: AbortSignal): Promise<PaginaDeRevisoes> =>
     lerPaginaDeRevisoes(await apiRequest<unknown>('GET', '/aprendizado/revisoes', {
       query: { app: q.app || undefined, decisao: q.decisao || undefined, limite: q.limite ?? 50, cursor: q.cursor || undefined }, signal,
+    })),
+
+  /** 30.38 (b): os pedidos de validação automática, só leitura; `antes` é o `created_at` do último da página anterior. */
+  validacoes: async (q: { estado?: string; limite?: number; antes?: string | null }, signal?: AbortSignal): Promise<ListaDeValidacoes> =>
+    lerListaDeValidacoes(await apiRequest<unknown>('GET', '/aprendizado/validacoes', {
+      query: { estado: q.estado || undefined, limite: q.limite ?? 50, antes: q.antes || undefined }, signal,
     })),
 
   /** Os votos por item e os sinais implícitos de uma execução (A4). */

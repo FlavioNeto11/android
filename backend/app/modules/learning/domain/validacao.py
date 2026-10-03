@@ -24,7 +24,7 @@ Regras do desenho que moram aqui:
 from __future__ import annotations
 
 import re
-from collections.abc import Collection, Iterable, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -103,6 +103,42 @@ class Motivo(StrEnum):
     ATOR_SEM_ACAO = "ator_sem_acao"
     EXECUCAO_FALHOU = "execucao_falhou"
     EXPIROU = "expirou"
+
+
+#: 30.38 (b): o motivo como a pessoa lê, no painel (Aprendizado › Validação). O código fica no `title`; nunca sai cru na
+#: tela. Um texto para cada valor de `Motivo` (o teste reprova o motivo novo sem texto).
+MOTIVO_HUMANO: Mapping[Motivo, str] = {
+    Motivo.SEM_FALTA_AUTOMATIZAVEL: "Nada do que falta ao parecer sai de uma execução.",
+    Motivo.TIPO_SEM_EXECUCAO: "Este tipo de item (lição, tela, habilidade) ganha evidência por outro caminho.",
+    Motivo.DESLIGADO: "O item está desligado: volta à prova antes de ser validado.",
+    Motivo.VETADO: "O conteúdo do item foi vetado; não se valida.",
+    Motivo.SESSAO: "O comando entra numa conta: isso fica com a pessoa.",
+    Motivo.SEM_ORIGEM: "A execução que ensinou o item já foi apagada; não há comando para repetir.",
+    Motivo.CREDENCIAL: "O comando de origem parece ter uma credencial; não se repete.",
+    Motivo.EFEITO_REAL: "O comando tem efeito num app real; por enquanto só a leitura se valida.",
+    Motivo.SEM_FLUXO_ATIVO: "Não há fluxo ativo para este comando.",
+    Motivo.SEM_CAMINHO: "O fluxo de agora não passa mais pela etapa deste item.",
+    Motivo.AMBIENTE_OCUPADO: "O central estava ocupado (reinício, suíte, implantação ou saúde); tenta na volta seguinte.",
+    Motivo.SEM_APARELHO: "Nenhum aparelho ocioso servia; tenta na volta seguinte.",
+    Motivo.ORCAMENTO: "O orçamento de validação desta janela acabou.",
+    Motivo.RITMO: "Já rodou o máximo de validações desta hora.",
+    Motivo.SEM_EVIDENCIA: "A execução terminou sem deixar evidência no item.",
+    Motivo.EVIDENCIA_CONTRA: "A execução deixou evidência contra o item; o curador volta a ele.",
+    Motivo.DIVERGENCIA_DE_FORMA: "A execução fez o caminho, mas só reescreveu a forma; não conta a favor.",
+    Motivo.EXECUCAO_FALHOU: "A execução de validação falhou.",
+    Motivo.EXPIROU: "O pedido passou do prazo sem rodar.",
+}
+
+
+def motivo_humano(motivo: str | None) -> str | None:
+    """O texto do motivo gravado; `None` sem motivo. Um código fora do vocabulário (linha de versão futura) volta ele
+    mesmo: melhor o código do que um texto inventado."""
+    if not motivo:
+        return None
+    try:
+        return MOTIVO_HUMANO[Motivo(motivo)]
+    except ValueError:
+        return motivo
 
 
 @dataclass(frozen=True, slots=True)
@@ -320,8 +356,8 @@ def motivo_da_prova_invalida(detalhe: str | None) -> Motivo:
 
 
 __all__ = ["BETA_PADRAO", "FALTA_AUTOMATIZAVEL", "JANELA_DE_PROVAS_DIAS", "MAXIMO_DE_PROVAS", "MAXIMO_POR_HORA",
-           "VALIDADE_DO_PEDIDO_H", "VIVOS", "Ambiente", "AparelhoCandidato", "EstadoDoPedido", "FatosDoParecer", "Folego",
-           "Grupo", "Motivo", "Pedido", "ProvaAnterior", "conta_para_o_limite", "escolher_aparelho",
-           "excluidos_da_validacao", "falta_automatizavel", "grupo_de", "limite_de_provas_atingido",
-           "marca_da_evidencia", "motivo_da_prova_invalida", "pedido_do_parecer", "pode_despachar",
-           "sobra_aparelho_novo"]
+           "MOTIVO_HUMANO", "VALIDADE_DO_PEDIDO_H", "VIVOS", "Ambiente", "AparelhoCandidato", "EstadoDoPedido",
+           "FatosDoParecer", "Folego", "Grupo", "Motivo", "Pedido", "ProvaAnterior", "conta_para_o_limite",
+           "escolher_aparelho", "excluidos_da_validacao", "falta_automatizavel", "grupo_de",
+           "limite_de_provas_atingido", "marca_da_evidencia", "motivo_da_prova_invalida", "motivo_humano",
+           "pedido_do_parecer", "pode_despachar", "sobra_aparelho_novo"]

@@ -238,7 +238,14 @@ interface RunSummary {
   /** v0.97 (30.37): o fluxo que esta execução PROVA (validação do curador); `null` ou ausente em toda execução comum.
    *  Não é pedido de pessoa: o painel a rotula "Prova de fluxo (validação)". Aditivo e opcional. */
   prova_fluxo_id?: string | null;
+  /** 30.38 (a): de onde a execução veio, derivado no backend pela regra única de `app/contracts/origem.py`; `null` ou
+   *  ausente no pedido de pessoa pelo painel. `origem_ref`: o fluxo, o pedido de validação ou o id externo do canal. */
+  origem?: OrigemDaExecucao | null;
+  origem_ref?: string | null;
 }
+
+/** O vocabulário fechado de `app/contracts/origem.py` (`ORIGENS_DA_EXECUCAO`), o mesmo do backend. */
+export type OrigemDaExecucao = 'prova_fluxo' | 'validacao_qa' | 'telegram' | 'trello';
 
 interface Step {
   id: string;                 // estável: `${run_id}:${instance_id}:v${plan_version}:${key}`
