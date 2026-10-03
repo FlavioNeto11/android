@@ -38,6 +38,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   não serviu para este pedido: <motivo>. Responda à pergunta ou peça de novo pelo painel." A skill publicada aparece
   como "A habilidade salva". O id e o código continuam fora do texto: ficam no evento `log` e no `issue_codes` do
   `run.updated`. As execuções antigas com o texto cru saem pela expiração do 29.50.
+- O contrato dos itens 3, 5 e 6 está no adendo v1.01 de `docs/api-contract.md`. O texto antigo do v0.87 fica como
+  histórico.
 - Simulado:
   - frontend: `aprendizado/model.test.ts`, `settings/FlowsRecipesSection.test.tsx`,
     `aprendizado/AprendizadoPage.test.tsx` e `app.integration.test.tsx`;
