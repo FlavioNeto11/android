@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — ADR-069, item 21: a C3 em mais dois usos (decisão do dono, ~18:39Z)
+
+- Emenda ao item 4 em `docs/decisoes.md`: o comando já filtrado pode ir ao Jev também na R5 em sombra (31.13) e no
+  lote offline do 31.11.
+  - A R5 só liga depois do GO do 31.10.
+  - O lote usa só comandos já enviados pela sombra da intenção depois de 15:29:51Z.
+  - C7 segue nunca; o filtro do item 10 e os tetos do item 7 seguem valendo.
+
 ## 2026-10-03 — Jev: registro do braço offline (31.11) e contagem de rótulos do curador no golden set
 
 - `docs/design/jev-golden-set.md` §2 ganhou um registro datado.
