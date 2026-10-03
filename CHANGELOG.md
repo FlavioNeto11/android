@@ -19,6 +19,11 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: decisões do dono de 03/10 no desenho (docs)
+
+- Documentação e processo: `docs/design/aprendizado-vivo.md` registra que quem valida fluxo é a IA (curador; A pela regra, B
+  no lote do dono, C item a item) e não o dono à mão, e que o `commit` em app sem catálogo fica na classe B (§8.4 e §15).
+
 ## 2026-10-03 — 30.24: "Confirmar que fica" para o legado de Revisar (branch feat/30-24-confirmar-que-fica)
 
 - O legado publicado com efeito de "Revisar" ganha o gesto da pessoa que o mantém. A trilha grava uma linha
