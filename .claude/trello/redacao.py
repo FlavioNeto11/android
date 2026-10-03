@@ -57,11 +57,21 @@ def _nomes_sensiveis() -> tuple[list[str], list[str]]:
     return ordem(inteiros), ordem(partes)
 
 
+def _hosts() -> list[str]:
+    """O nome das máquinas é identificador de infraestrutura: num servidor de terceiro vira "máquina central". Lido do
+    ambiente na hora (nunca fixo no repositório); o nome do notebook pode vir na lista extra local."""
+    import os
+    import socket
+    nomes = {os.environ.get("COMPUTERNAME", ""), socket.gethostname()}
+    return sorted((n.strip() for n in nomes if n and len(n.strip()) >= 4), key=len, reverse=True)
+
+
 def _alternativa(nomes: list[str]) -> str:
     return "|".join(re.escape(n) for n in nomes) or r"(?!x)x"
 
 
 _INTEIROS, _PARTES = _nomes_sensiveis()
+_HOST = re.compile(r"(?<![\w-])(" + _alternativa(_hosts()) + r")(?![\w-])", re.I)
 _PERSONA = re.compile(r"(?<!\w)(" + _alternativa(_INTEIROS) + r")(?!\w)", re.I)
 #: parte solta só com a inicial maiúscula do jeito que está no nome (sem re.I)
 _PERSONA_PARTE = re.compile(r"(?<!\w)(" + _alternativa(_PARTES) + r")(?!\w)")
@@ -100,6 +110,7 @@ def redigir(texto: str) -> str:
     t = _PESSOA_COM_NASCIMENTO.sub("[persona de teste], [data]", t)
     t = _NASCIMENTO.sub("[data]", t)
     t = _PERFIL_PARA_CONFERIR.sub(r"\1[conta]", t)
+    t = _HOST.sub("máquina central", t)
     t = _HANDLE.sub(_handle, t)
     t = _HANDLE_SEM_ARROBA.sub("[conta]", t)
     t = _PERSONA.sub("[persona]", t)

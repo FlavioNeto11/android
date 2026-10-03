@@ -40,6 +40,13 @@ def test_redigir(entrada: str, esperado: str) -> None:
     assert redigir(entrada) == esperado
 
 
+def test_nome_da_maquina_vira_maquina_central() -> None:
+    import socket
+    host = socket.gethostname()
+    assert host not in redigir(f"real: 03/10, {host}, commit abc1234")
+    assert "máquina central" in redigir(f"real: 03/10, {host}, commit abc1234")
+
+
 def test_cortar_em_palavra_inteira_e_fecha_crase() -> None:
     t = cortar("prova com `arquivo_muito_longo.py` e mais texto", 22)
     assert t.endswith("…") and t.count("`") % 2 == 0 and "arqu…" not in t
