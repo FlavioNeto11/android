@@ -1,6 +1,6 @@
 import { Zap } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
-import { api, hintForError, toApiError } from '../../api/client';
+import { api } from '../../api/client';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
@@ -8,6 +8,7 @@ import { Checkbox } from '../../components/Field';
 import { StatusBadge } from '../../components/StatusBadge';
 import { cx, formatInt } from '../../lib/format';
 import { saveJson } from '../../lib/storage';
+import { toLoadError } from '../../lib/loadError';
 import { formatDateTime, formatQuando } from '../../lib/time';
 import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
@@ -17,7 +18,7 @@ import { metaDeSaude } from './detalhe';
 import { abrirApp } from './apps';
 import {
   type AcaoDoItem, type DetalheDoLivro, type EntradaDoLivro, ESTADO_META, ONDE_FICAM_AS_HABILIDADES,
-  ORIGEM_LABEL, porQueOSistemaNaoPublica, refDaHabilidade, rotuloDoDetalhe, rotuloDoKind,
+  ORIGEM_LABEL, porQueOSistemaNaoPublica, refDaHabilidade, rotuloDoDetalhe, rotuloDoKind, tituloDoItem,
 } from './model';
 import { ParecerNaLinha } from './ParecerDaIA';
 import styles from './Aprendizado.module.css';
@@ -47,8 +48,8 @@ export async function aplicarTransicao(e: EntradaDoLivro, acao: Pick<AcaoDoItem,
     }
     return null;
   } catch (err) {
-    const recusa = toApiError(err);
-    return `${recusa.message} ${hintForError(recusa)}`.trim();
+    const recusa = toLoadError(err);
+    return `${recusa.message} ${recusa.hint}`.trim();
   }
 }
 
@@ -89,7 +90,7 @@ function DetalheDoItem({ entrada, onMudou }: { entrada: EntradaDoLivro; onMudou:
     apiAprendizado.detalhe(entrada.kind, entrada.ref, ctl.signal)
       .then((d) => setDetalhe(d))
       .catch((e: unknown) => {
-        if (!ctl.signal.aborted) setErro(toApiError(e).message);
+        if (!ctl.signal.aborted) setErro(toLoadError(e).message);
       });
     return () => ctl.abort();
   }, [entrada.kind, entrada.ref, leitura]);
@@ -112,11 +113,14 @@ interface ItemDoLivroProps {
   ocultarApp?: boolean;
   /** Como o item é usado hoje (camada de uso), quando a lista sabe. */
   uso?: { rotulo: string; porque?: string | null };
+  /** O título já sem repetição na lista (`titulosDaLista`); sem ele, o do item (`tituloDoItem`). */
+  titulo?: string;
 }
 
 /** Uma linha do livro: o que é, em que estado, por que espera o dono e o que a pessoa pode fazer. */
-export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMudou, extra, abrirDetalhe, ocultarApp, uso }: ItemDoLivroProps) {
+export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMudou, extra, abrirDetalhe, ocultarApp, uso, titulo: tituloDaLista }: ItemDoLivroProps) {
   const [aberta, setAberta] = useState<AcaoDoItem | null>(null);
+  const titulo = tituloDaLista ?? tituloDoItem(e);
   const porQue = porQueOSistemaNaoPublica(e);
   // Publicado e ainda "espera o dono": é item anterior à regra de aprovação (efeito externo publicado antes do D1).
   const anterior = e.state === 'published' && !!e.por_que_nao_publica?.espera_o_dono;
@@ -131,10 +135,11 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
     <li className={cx(styles.item, selecionado && styles.itemSelecionado)} data-item={chaveDoItem(e)}>
       <div className={styles.itemHead}>
         {onSelecionar ? (
-          <Checkbox aria-label={`Selecionar ${e.title}`} checked={!!selecionado} onChange={(ev) => onSelecionar(ev.target.checked)} />
+          <Checkbox aria-label={`Selecionar ${titulo}`} checked={!!selecionado} onChange={(ev) => onSelecionar(ev.target.checked)} />
         ) : null}
         <Badge tone="neutral" size="sm">{rotuloDoKind(e.kind)}</Badge>
-        <span className={styles.itemTitulo} title={e.title || e.ref}>{e.title || e.ref}</span>
+        {/* O título cru (a chave da etapa, o texto com o código) fica no `title`: é o que quem desenvolve procura. */}
+        <span className={styles.itemTitulo} title={e.title || e.ref}>{titulo}</span>
         {e.side_effect ? <Badge tone="warning" size="sm" icon={Zap} title="Tem efeito externo (mensagem, publicação, envio…)">efeito externo</Badge> : null}
         {e.state ? <StatusBadge meta={ESTADO_META[e.state]} size="sm" /> : null}
         {saude ? <Badge tone={saude.tone} size="sm" icon={saude.icon} title={saude.description} className={styles.seloDeSaude}><span className="sr-only">Saúde: </span>{saude.label}</Badge> : null}

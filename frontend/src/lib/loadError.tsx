@@ -15,10 +15,21 @@ import { EmptyState } from '../components/EmptyState';
 export interface LoadError {
   message: string;
   hint: string;
+  /** O texto original quando `message` o traduziu (sem resposta HTTP): fica no `title`, para quem depura. */
+  tecnico?: string;
 }
+
+/** O que a tela diz quando não houve resposta HTTP nenhuma. */
+export const SEM_RESPOSTA = 'Sem resposta do servidor.';
 
 export function toLoadError(e: unknown): LoadError {
   const err = toApiError(e);
+  // Sem resposta HTTP, o navegador explica em inglês e sem valor para quem lê ("Failed to fetch", "Load failed"): a
+  // tela diz o que houve e a dica, o que fazer (validação do deploy 3, P5). O texto original fica em `tecnico`, porque
+  // um erro de código no meio da leitura também chega aqui com esse código.
+  if (err.status === 0 && err.code === 'network') {
+    return { message: SEM_RESPOSTA, hint: hintForError(err), ...(err.message ? { tecnico: err.message } : {}) };
+  }
   return { message: err.message, hint: hintForError(err) };
 }
 
@@ -38,7 +49,7 @@ export function LoadErrorState({ what, error, onRetry, compact }: {
       hint={error.hint}
       actions={<Button variant="outline" icon={RefreshCw} onClick={onRetry}>Tentar de novo</Button>}
     >
-      {error.message}
+      <span title={error.tecnico}>{error.message}</span>
     </EmptyState>
   );
 }
@@ -54,7 +65,7 @@ export function LoadErrorBanner({ error, onRetry }: { error: LoadError; onRetry?
       title="Mostrando a última leitura"
       actions={onRetry ? <Button size="sm" variant="ghost" icon={RefreshCw} onClick={onRetry}>Tentar de novo</Button> : undefined}
     >
-      {error.message} {error.hint}
+      <span title={error.tecnico}>{error.message}</span> {error.hint}
     </Banner>
   );
 }

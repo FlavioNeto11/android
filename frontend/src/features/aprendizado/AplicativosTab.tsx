@@ -17,7 +17,7 @@ import {
 } from './apps';
 import { contarPorRotulo, doApp, gruposDoAprendido } from './atencao';
 import { ItemDoLivro, chaveDoItem } from './ItemDoLivro';
-import { acoesDoItem, rotuloDoKind, type EntradaDoLivro } from './model';
+import { acoesDoItem, rotuloDoKind, titulosDaLista, type EntradaDoLivro } from './model';
 import { ChipsDeSaude, FalhasDoApp, FilaDeAtencao, quantosPedemAtencao } from './SaudeDoApp';
 import { useCarga } from './useCarga';
 import styles from './Aprendizado.module.css';
@@ -234,12 +234,14 @@ function Declarado({ d }: { d: DetalheDoApp }) {
 
 /** Os itens de um app, sem repetir o pacote em cada um (a página já é do app). */
 function ItensDoApp({ itens, rotulo, onMudou }: { itens: DetalheDoApp['aprendido']; rotulo: string; onMudou?: () => void }) {
+  const titulos = titulosDaLista(itens);
   return (
     <ul className={styles.lista} aria-label={rotulo}>
       {itens.map((e) => (
         <ItemDoLivro
           key={chaveDoItem(e)}
           entrada={e}
+          titulo={titulos.get(e)}
           ocultarApp
           acoes={onMudou ? acoesDoItem(e) : []}
           onMudou={onMudou ?? (() => undefined)}

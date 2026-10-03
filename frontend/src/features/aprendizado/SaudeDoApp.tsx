@@ -18,7 +18,7 @@ import { hrefDoItem } from './DetalheRico';
 import { metaDeSaude } from './detalhe';
 import { LinhaDeFalha } from './FalhasTab';
 import { chaveDoItem } from './ItemDoLivro';
-import { ordenarFalhas, rotuloDoKind, type EntradaDoLivro } from './model';
+import { ordenarFalhas, rotuloDoKind, tituloDoItem, type EntradaDoLivro } from './model';
 import { useCarga } from './useCarga';
 import styles from './Aprendizado.module.css';
 
@@ -116,7 +116,7 @@ function ListaDeAtencao({ itens, nomes }: { itens: readonly EntradaDoLivro[]; no
           return (
             <li key={chaveDoItem(e)} className={styles.item} data-atencao={chaveDoItem(e)}>
               <div className={styles.itemHead}>
-                <span className={styles.itemTitulo} title={e.title}>{rotuloDoKind(e.kind)} — {resumirTitulo(e.title)}</span>
+                <span className={styles.itemTitulo} title={e.title}>{rotuloDoKind(e.kind)} — {resumirTitulo(tituloDoItem(e))}</span>
                 {nomes && app ? <Badge tone="neutral" size="sm" title="O aplicativo do item">{app}</Badge> : null}
               </div>
               <div className={styles.itemMeta}>
@@ -166,7 +166,7 @@ export function FalhasDoApp({ pacote }: { pacote: string }) {
             {rotuloDaCapability(c.capability, c.nome)} ({formatInt(c.itens.length)})
           </h4>
           <ol className={styles.lista} aria-label={`Falhas de ${rotuloDaCapability(c.capability, c.nome)}`}>
-            {c.itens.map((g, i) => <LinhaDeFalha key={g.id} g={g} posicao={i + 1} />)}
+            {c.itens.map((g, i) => <LinhaDeFalha key={g.id} g={g} posicao={i + 1} dentroDoApp />)}
           </ol>
         </div>
       ))}
