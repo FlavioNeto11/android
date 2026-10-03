@@ -143,6 +143,23 @@ export function CommandSummary({ cmd }: { cmd: Command }) {
 }
 
 /**
+ * O `uncertain` que um comando mais novo deixou para trás (`comandoSemDesfecho`). Ele continua sem desfecho no banco,
+ * então fica no cartão, discreto e dito como ANTERIOR: a linha de cima é o último comando de verdade. Verificar ou
+ * decidir é nos "Comandos recentes" do aparelho.
+ */
+export function ComandoAnteriorSemResposta({ cmd }: { cmd: Command }) {
+  const desde = cmd.finished_at ?? cmd.started_at ?? cmd.dispatched_at ?? cmd.created_at;
+  return (
+    <span className={cx(styles.commandLine, styles.commandAnterior)}
+          title={`${COMMAND_STATE.uncertain.description} Para verificar ou decidir, abra os Comandos recentes do aparelho.`}>
+      <CircleHelp size={12} aria-hidden />
+      <span className={styles.commandText}>Anterior sem resposta: {rotuloDoVerbo(cmd.verb)}</span>
+      <span className={styles.commandAge}><Idade iso={desde} /></span>
+    </span>
+  );
+}
+
+/**
  * "Comandos recentes" do aparelho, com as duas saídas do `uncertain`: verificar pelo estado real e decidir.
  *
  * É a tela que faltava. Sem ela, "o desfecho continua sendo registrado no comando" apontava para lugar nenhum:

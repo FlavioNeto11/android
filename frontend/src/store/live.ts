@@ -1,5 +1,5 @@
 import { ApiError, api, hintForError, toApiError } from '../api/client';
-import type { EventRecord, RunSummary } from '../api/types';
+import type { Command, EventRecord, RunSummary } from '../api/types';
 import { EMPTY_WATCH, LiveSocket, type WatchInterest } from '../api/ws';
 import { backoffDelay } from '../lib/backoff';
 import { isRecord } from '../lib/format';
@@ -63,6 +63,29 @@ function scheduleRetry(reason: string): void {
   retryTimer = setTimeout(() => void cycle(), delay);
 }
 
+/** Quantos comandos recentes a primeira leitura pede. A sonda de rede enche a lista (199 dos 200 mais novos no central,
+ *  03/10): quem ficar de fora é lido um a um. */
+const COMANDOS_RECENTES = 200;
+
+/**
+ * O comando mais novo de cada aparelho, porque o snapshot só traz os em voo e os `uncertain`. Sem esta leitura, o
+ * cartão mostrava como "o comando" um `uncertain` de dias atrás, com comandos concluídos depois dele. Falha aqui só
+ * deixa o cartão como o snapshot o pôs.
+ */
+async function carregarUltimosComandos(token: number, ids: readonly string[]): Promise<void> {
+  try {
+    const recentes = await api.commands(undefined, COMANDOS_RECENTES);
+    if (token !== cycleToken || !started) return;
+    const vistos = new Set(recentes.map((c) => c.instance_id));
+    const um = await Promise.all(ids.filter((id) => !vistos.has(id))
+      .map((id) => api.commands(id, 1).catch((): Command[] => [])));
+    if (token !== cycleToken || !started) return;
+    useAppStore.getState().mergeCommands([...recentes, ...um.flat()]);
+  } catch {
+    // Sem a leitura, vale o snapshot: o comando em voo e o `uncertain` continuam no cartão.
+  }
+}
+
 async function cycle(): Promise<void> {
   if (!started) return;
   const token = ++cycleToken;
@@ -85,6 +108,7 @@ async function cycle(): Promise<void> {
     useUiStore.getState().pruneSelection(snap.instances.map((i) => i.id));
     for (const inst of snap.instances) useControlStore.getState().reconcile(inst);
     autoSelectRun(snap.runs ?? []);
+    void carregarUltimosComandos(token, snap.instances.map((i) => i.id));
 
     // O detalhe aberto pode ter perdido eventos (queda longa / resync): recarrega em segundo plano.
     const selected = useUiStore.getState().selectedRunId;

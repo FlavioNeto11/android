@@ -19,6 +19,39 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Painel: os 4 polimentos de UX que vinham dos deploys 9 a 11 (branch feat/polimentos-ux-deploy11)
+
+Só frontend; nada de backend.
+
+- Painel, último comando do cartão:
+  - Antes, "Comando: Sem resposta · <verbo> · há N dias" aparecia em 11 dos 14 cartões. Era o último `uncertain`, e não
+    o último comando, porque o snapshot só traz os em voo e os `uncertain`.
+  - Agora o `live.ts` lê `GET /api/commands?limit=200` depois do snapshot, e um por aparelho para quem ficou de fora:
+    a sonda de rede ocupa 199 dos 200 mais novos.
+  - O cartão mostra o último comando em qualquer estado. O concluído também aparece; antes ele era escondido de
+    propósito, e a orquestradora pediu o contrário.
+  - O `uncertain` que ficou para trás segue visível, numa linha discreta "Anterior sem resposta: <verbo> · há N dias"
+    (`comandoSemDesfecho` no store), até ser verificado ou decidido.
+- Infraestrutura, renderizador: "renderizador pedido: GPU do host" virou "renderizador configurado: GPU do host". A
+  dica separa o configurado (o pedido ao emulador, `gpu_mode`) do efetivo (o que o emulador selecionou, só com o
+  aparelho no ar). No fallback, "(configurado: host)".
+- Infraestrutura, tipo do aparelho: o `kind` cru "store" virou "loja", e "external" virou "externo", com o porquê na dica.
+- Infraestrutura, pausa do reparo (25.13 sem tela): linha discreta "reparo pausado até hh:mm" lida de
+  `/api/instances[].repair_pause`. Em outro dia, leva a data. Quem pausou e o motivo vão na dica. A vencida não aparece.
+- Aplicativos › Rede: a lista por app diz o nome do registro de aplicativos ("Outlook: sem tráfego na janela") e
+  "shell do Android (a sonda)", com o pacote na dica. Fora do registro, sai o pacote.
+- Prova:
+  - `simulated`: `npm run typecheck` e `npm test` com 1386 de 1386. Testes novos em `store/reducer.test.ts`,
+    `devices/DeviceCard.test.tsx`, `infra/infraState.test.ts`, `infra/InfraPage.test.tsx` e `rede/RedePage.test.tsx`.
+  - Navegador (03/10, Vite do worktree na 5173 contra a API do central, só leitura):
+    - Painel: os 15 cartões com o último comando real; 11 com "Anterior sem resposta"; 1 leitura de 200 mais 5 por
+      aparelho;
+    - Infraestrutura: "loja" com a dica, 8 "renderizador configurado", nenhum "store" nem "renderizador pedido";
+    - Rede: Instagram, Outlook e shell do Android pelo nome;
+    - 375 px: `scrollWidth` 375, nenhuma linha estourando.
+  - A linha da pausa do reparo NÃO foi vista no navegador: não havia pausa em vigor no central. Ela está provada no
+    teste de componente.
+
 ## 2026-10-03 — 29.49 com prova real: o assunto do Outlook lido de primeira no android-01
 
 - Execução real (03/10, central, android-01, deploy 11 c8304e85, liberada pela orquestradora): r-20261003155342-6a94e6.

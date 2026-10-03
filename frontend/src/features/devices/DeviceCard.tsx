@@ -19,7 +19,7 @@ import { ageMs, tempoRelativo, useNow } from '../../lib/time';
 import { selectSlotWait, useAppStore } from '../../store/app';
 import { useControlStore, userHasControl } from '../../store/control';
 import { ACTION_META, comandoAbertoDe, motivoDoComando, runInstanceAction, useBusyStore } from './actions';
-import { CommandSummary } from './CommandTrail';
+import { ComandoAnteriorSemResposta, CommandSummary } from './CommandTrail';
 import {
   MOTIVO_SERVIDOR_SEM_RESPOSTA, NO_FRAME_TITLE, canHibernate, noFrameTitle, primaryActionFor, serverHintOf, type ServerHint,
 } from './deviceState';
@@ -212,10 +212,13 @@ function DeviceCardImpl({ instance, appName, personas: vinculadas, selected, foc
   // COM o motivo. Antes o `busy` cobria so a duracao do POST, e o botao voltava a ficar clicavel durante um boot
   // remoto de ate 480 s -- o clique duplo que o aceite 9 proibe.
   const comandoAberto = useAppStore((s) => comandoAbertoDe(s.lastCommand[id]));
-  // O comando que ainda age, ou o que acabou sem desfecho conhecido: os dois precisam ficar VISÍVEIS no cartão.
-  // Um `uncertain` sumia junto com o toast e só voltava a existir no banco — o de 21/09 ficou um dia invisível.
-  const ultimoComando = useAppStore((s) => s.lastCommand[id]);
-  const comandoAMostrar = comandoAberto ?? (ultimoComando?.state === 'uncertain' ? ultimoComando : undefined);
+  // O último comando DE VERDADE, com o estado dele (o `live.ts` lê os recentes depois do snapshot). Antes só o aberto
+  // ou o `uncertain` apareciam, e um `uncertain` de dias atrás passava por "o comando" do aparelho (deploys 9 a 11).
+  const comandoAMostrar = useAppStore((s) => s.lastCommand[id]);
+  // O `uncertain` que ficou para trás continua visível, dito como anterior: o de 21/09 ficou um dia invisível quando
+  // sumia junto com o toast.
+  const semDesfecho = useAppStore((s) => s.comandoSemDesfecho[id]);
+  const anteriorSemResposta = semDesfecho && semDesfecho.id !== comandoAMostrar?.id ? semDesfecho : undefined;
   const lease = useControlStore((s) => s.leases[id]);
   const controlBusy = useControlStore((s) => !!s.busy[id]);
   const release = useControlStore((s) => s.release);
@@ -394,6 +397,7 @@ function DeviceCardImpl({ instance, appName, personas: vinculadas, selected, foc
           ) : null}
 
           {comandoAMostrar ? <CommandSummary cmd={comandoAMostrar} /> : null}
+          {anteriorSemResposta ? <ComandoAnteriorSemResposta cmd={anteriorSemResposta} /> : null}
 
           {instance.control_pending ? (
             <Banner tone="info" icon={LoaderCircle} compact className={styles.attention} role="status">

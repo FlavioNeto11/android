@@ -3,7 +3,8 @@ import type {
   Action, Attempt, EventRecord, Instance, Objective, RunDetail, RunSummary, Snapshot, Step, Worker,
 } from '../api/types';
 import {
-  aceitaComando, applyEvent, chaveDoApp, eventRunId, hydrateFromSnapshot, initialDataState, mergeTimeline,
+  aceitaComando, applyEvent, chaveDoApp, eventRunId, hydrateFromSnapshot, initialDataState, mergeLastCommands,
+  mergeTimeline,
   reduceDetail, upsertRun, type DataState,
 } from './reducer';
 
@@ -415,4 +416,49 @@ it('app_state.updated entra no store: o desfecho de uma instalação deixa de de
   // Evento sem corpo não apaga o que já se sabia.
   const s2 = applyEvent(s, { id: 2, ts: 'x', kind: 'app_state.updated', level: 'info', message: '', data: {} } as never);
   expect(s2.appState).toEqual(s.appState);
+});
+
+describe('mergeLastCommands — o cartão mostra o último comando de verdade', () => {
+  // O snapshot só traz os em voo e os `uncertain`: o de dias atrás passava por "o comando" do aparelho.
+  const incerto = () => comando({ id: 'c-velho', state: 'uncertain', created_at: '2026-09-25T10:00:00.000Z' });
+  const comSnapshot = () => hydrateFromSnapshot(initialDataState, snapshot({ commands: [incerto()] }));
+
+  it('o mais novo de cada aparelho vence, e o incerto que ficou para trás segue em comandoSemDesfecho', () => {
+    const novo = comando({ id: 'c-novo', verb: 'stop', state: 'succeeded', created_at: '2026-10-03T09:00:00.000Z' });
+    const meio = comando({ id: 'c-meio', state: 'succeeded', created_at: '2026-10-01T09:00:00.000Z' });
+    const s = mergeLastCommands(comSnapshot(), [meio, novo, incerto()]);
+    expect(s.lastCommand['android-01']?.id).toBe('c-novo');
+    expect(s.comandoSemDesfecho['android-01']?.id).toBe('c-velho');
+  });
+
+  it('sem comando mais novo, o incerto continua sendo o último e nada vai para trás', () => {
+    const s = mergeLastCommands(comSnapshot(), [incerto()]);
+    expect(s.lastCommand['android-01']?.id).toBe('c-velho');
+    expect(s.comandoSemDesfecho).toEqual({});
+  });
+
+  it('o incerto deixado para trás sai quando chega resolvido (verificado ou decidido)', () => {
+    const novo = comando({ id: 'c-novo', state: 'succeeded', created_at: '2026-10-03T09:00:00.000Z' });
+    const s0 = mergeLastCommands(comSnapshot(), [novo]);
+    expect(s0.comandoSemDesfecho['android-01']?.id).toBe('c-velho');
+    const resolvido = comando({ id: 'c-velho', state: 'failed', created_at: '2026-09-25T10:00:00.000Z' });
+    const s1 = applyEvent(s0, event(400, 'command.updated', { command: resolvido }));
+    expect(s1.comandoSemDesfecho['android-01']).toBeUndefined();
+    expect(s1.lastCommand['android-01']?.id).toBe('c-novo');           // o último segue sendo o mais novo
+  });
+
+  it('um comando novo pelo WebSocket também deixa o incerto como anterior', () => {
+    const s0 = comSnapshot();
+    const novo = comando({ id: 'c-ws', state: 'created', created_at: '2026-10-03T10:00:00.000Z' });
+    const s1 = applyEvent(s0, event(401, 'command.updated', { command: novo }));
+    expect(s1.lastCommand['android-01']?.id).toBe('c-ws');
+    expect(s1.comandoSemDesfecho['android-01']?.id).toBe('c-velho');
+  });
+
+  it('a hidratação seguinte recomeça do snapshot: o guardado pode ter sido resolvido com a página fechada', () => {
+    const novo = comando({ id: 'c-novo', state: 'succeeded', created_at: '2026-10-03T09:00:00.000Z' });
+    const s0 = mergeLastCommands(comSnapshot(), [novo]);
+    const s1 = hydrateFromSnapshot(s0, snapshot({ commands: [] }));
+    expect(s1.comandoSemDesfecho).toEqual({});
+  });
 });

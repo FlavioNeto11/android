@@ -300,10 +300,28 @@ describe('DeviceCard — o comando fica visível, inclusive o que ficou sem desf
     expect(text(el)).toContain('Executando');
   });
 
-  it('comando concluído não polui o cartão', async () => {
+  // Polimento dos deploys 9 a 11: o cartão mostrava o último `uncertain` como se fosse o último comando ("Sem resposta ·
+  // Abrir app · há 8 dias" em 11 de 14 cartões). Agora o último comando aparece em qualquer estado, e o concluído
+  // também (antes ele era escondido de propósito, para não poluir o cartão: a orquestradora pediu o contrário, 03/10).
+  it('o comando concluído aparece como o último, com o estado dele', async () => {
     useAppStore.setState({ lastCommand: { 'android-07': comando({ state: 'succeeded', reason: null }) as never } });
     const el = await renderCard(makeInstance(7, { state: 'online' }));
-    expect(text(el)).not.toContain('Concluído');
+    expect(text(el)).toContain('Concluído');
+    expect(text(el)).not.toContain('Sem resposta');
+  });
+
+  it('o incerto que um comando mais novo deixou para trás fica visível, dito como anterior', async () => {
+    useAppStore.setState({
+      lastCommand: { 'android-07': comando({ id: 'c-10', verb: 'stop', state: 'succeeded', reason: null,
+                                                created_at: '2026-09-29T08:00:00.000Z',
+                                                finished_at: '2026-09-29T08:00:20.000Z' }) as never },
+      comandoSemDesfecho: { 'android-07': comando({}) as never },
+    });
+    const el = await renderCard(makeInstance(7, { state: 'online' }));
+    expect(text(el)).toContain('Concluído');
+    expect(text(el)).toContain('Anterior sem resposta: Iniciar');
+    // O último comando vem primeiro; o anterior não se apresenta como "o comando" do aparelho.
+    expect(text(el).indexOf('Concluído')).toBeLessThan(text(el).indexOf('Anterior sem resposta'));
   });
 });
 

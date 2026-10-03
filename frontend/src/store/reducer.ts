@@ -48,6 +48,11 @@ export interface DataState {
    * só num log escondido — era assim que uma ação não executada ficava indistinguível de sucesso.
    */
   lastCommand: Record<string, Command>;
+  /**
+   * O comando `uncertain` que um comando MAIS NOVO tirou de `lastCommand`, enquanto não se resolve. O cartão mostra o
+   * último comando de verdade; sem isto, a incerteza que ficou para trás sumiria da tela e continuaria aberta no banco.
+   */
+  comandoSemDesfecho: Record<string, Command>;
   /** Máquinas que hospedam aparelhos, por id. Vazio = só o servidor central. */
   workers: Record<string, Worker>;
   /**
@@ -91,6 +96,44 @@ export function aceitaComando(anterior: Command | undefined, cmd: Command): bool
   return (ORDEM_DO_ESTADO[cmd.state] ?? 0) >= (ORDEM_DO_ESTADO[anterior.state] ?? 0);
 }
 
+/**
+ * `cmd` no lugar de `lastCommand[cmd.instance_id]`, quando `aceitaComando` deixa. O `uncertain` que sai por um comando
+ * mais novo vai para `comandoSemDesfecho`, e sai de lá quando o próprio comando chega com outro estado (verificado
+ * ou decidido por uma pessoa).
+ */
+function comTrocaDeComando<S extends Pick<DataState, 'lastCommand' | 'comandoSemDesfecho'>>(state: S, cmd: Command): S {
+  const iid = cmd.instance_id;
+  let semDesfecho = state.comandoSemDesfecho;
+  if (semDesfecho[iid]?.id === cmd.id && cmd.state !== 'uncertain') {
+    const { [iid]: _resolvido, ...resto } = semDesfecho;
+    semDesfecho = resto;
+  }
+  const anterior = state.lastCommand[iid];
+  if (!aceitaComando(anterior, cmd)) {
+    return semDesfecho === state.comandoSemDesfecho ? state : { ...state, comandoSemDesfecho: semDesfecho };
+  }
+  if (anterior && anterior.id !== cmd.id && anterior.state === 'uncertain') {
+    semDesfecho = { ...semDesfecho, [iid]: anterior };
+  }
+  return { ...state, lastCommand: { ...state.lastCommand, [iid]: cmd }, comandoSemDesfecho: semDesfecho };
+}
+
+/**
+ * O comando mais novo de cada aparelho, lido de `GET /api/commands` depois do snapshot. O snapshot só traz os em voo
+ * e os `uncertain`: sem esta leitura, o cartão mostrava como "o comando" um `uncertain` de dias atrás, com comandos
+ * concluídos depois dele (deploys 9 a 11, 11 de 14 cartões).
+ */
+export function mergeLastCommands(state: DataState, cmds: readonly Command[]): DataState {
+  const maisNovo = new Map<string, Command>();
+  for (const c of cmds) {
+    const atual = maisNovo.get(c.instance_id);
+    if (!atual || atual.created_at < c.created_at) maisNovo.set(c.instance_id, c);
+  }
+  let next = state;
+  for (const c of maisNovo.values()) next = comTrocaDeComando(next, c);
+  return next;
+}
+
 export const MAX_TIMELINE_EVENTS = 3000;
 export const MAX_RECENT_EVENTS = 300;
 export const MAX_RUNS = 100;
@@ -109,6 +152,7 @@ export const initialDataState: DataState = {
   detail: null,
   recentEvents: [],
   lastCommand: {},
+  comandoSemDesfecho: {},
   workers: {},
   appState: {},
   needsPersonEpoch: 0,
@@ -186,6 +230,9 @@ export function hydrateFromSnapshot(state: DataState, snap: Snapshot): DataState
     lastCommand: snap.commands
       ? { ...state.lastCommand, ...Object.fromEntries(snap.commands.map((c) => [c.instance_id, c])) }
       : state.lastCommand,
+    // O que fica para trás é decidido de novo pela leitura dos comandos recentes (`mergeLastCommands`), a partir do
+    // `uncertain` que o snapshot traz: o guardado pode ter sido resolvido com a página fechada.
+    comandoSemDesfecho: snap.commands ? {} : state.comandoSemDesfecho,
   };
 }
 
@@ -460,10 +507,7 @@ export function applyEvent(state: DataState, ev: EventRecord): DataState {
     case 'command.updated': {
       const cmd = obj<Command>(data, 'command');
       if (cmd && typeof cmd.instance_id === 'string' && typeof cmd.id === 'string') {
-        const anterior = next.lastCommand[cmd.instance_id];
-        if (aceitaComando(anterior, cmd)) {
-          next = { ...next, lastCommand: { ...next.lastCommand, [cmd.instance_id]: cmd } };
-        }
+        next = comTrocaDeComando(next, cmd);
       }
       break;
     }
