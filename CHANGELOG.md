@@ -19,6 +19,31 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Deploy 12 no central (d5a1c3a9; P4 religado; expiração do needs_input no ar)
+
+- Implantado no central (`real`, 03/10, WIN-7S2UASNLFOP): o commit d5a1c3a9 = a suíte 12 (5428abdb) mais os estados
+  da Android. Não há migração nova. Health ok, `migration 082_learning_validations`, `problems []`.
+- Antes do restart:
+  - nenhuma execução em andamento nem comando em voo (às 17:02:05Z e às 17:02:26Z);
+  - backup do banco `data/backups/20261003-140206` (174.8 MB, integridade ok);
+  - checkout em fast-forward. O `config.yaml` sobreviveu (sha 9f52df5f).
+- Restart às 17:02:42Z (`deploy.ps1 -PularBackup`, rc 0).
+- `config/config.yaml` (fora do Git; backup `config-antes-deploy12-20261003-170220.yaml`, sha 9f52df5f → 4a1bae92):
+  - a única troca é `aprendizado.validacao.modo` "off" → "on", com os mesmos `extra_usd 2.5` e
+    `extra_ate 2026-10-05T15:55:42.000Z`. O P4 da Aprendizado religa no próprio restart.
+  - O `load_config()` do código novo conferiu ainda: a decisão fechada com curador e intenção em sombra e as classes
+    C0/C1/C3; a autopublicação em sombra; o curador com alfa 0.10 e k 1.5.
+- `GET /api/ai`:
+  - anthropic configurada e não simulada;
+  - a Jev é o decisor, com curador e intenção em sombra, classes C0/C1/C3 e envio ativo.
+- 29.50 no ar:
+  - a 1ª volta da varredura, na subida, não expirou nada, porque nenhuma pergunta tinha 24 h. As 13 `needs_input`
+    seguem.
+  - A prova `real` fica para a primeira volta depois de 03/10 18:15:30Z. Nessa hora vence a execução do android-05,
+    que entrou na pergunta em 02/10 18:15:30Z.
+- Agente do notebook atualizado para `0.1.0+d5a1c3a`, com o reparo dos 09/10/12/13 pausado durante a troca e
+  despausado no fim. Os dois workers ficaram com `agent_outdated false`, e os 7 aparelhos ligados, online.
+
 ## 2026-10-03 — Suíte 12 na main (5428abdb): SQLite inteira verde; sem PostgreSQL (sem migração nova)
 
 - A suíte 12 entrou na main por commit-tree (5428abdb), na ordem da orquestradora:
