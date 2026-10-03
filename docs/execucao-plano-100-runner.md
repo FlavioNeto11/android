@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-315 de 363 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+315 de 366 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -348,6 +348,9 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.28 | implemented | simulated | claude-opus-5-5 | — | RA-19. Fatia A: PR #139 (feat/ra-19-visao-do-livro @ 725aeaf2) na main pelo merge b1e0be7d da suíte 7 (123650cc): o livro por rótulo Produto/QA/Todos (apps.category='qa'), Produto por padrão, com os ocultos; adendo v0.8… |  |
 | 30.29 | implemented | simulated | claude-opus-5-5 | — | PR #142 (feat/30-29-fluxos-com-variaveis-de-execucao @ 0f6f99c7) na main pelo merge 4f5a4f66 da suíte 8 (83f9f606). bind_template_parameters (skills/domain/matching.py) com a regra dos RESERVED do LT-3 (instance_id, run… |  |
 | 30.30 | implemented | simulated | opus (sessão Android, integradora) | — | PR #144 @58609226 (bb35ca16: prioridade PEDIDO_DA_PESSOA fura a fila do curador, também no pico, sob o teto; fa921c02: learning_reviews.usd grava o custo medido do parecer; 82dac0cb: o c_max compara estimativa com estim… |  |
+| 30.31 | pendente | — | — | — |  |  |
+| 30.32 | pendente | — | — | — |  |  |
+| 30.33 | pendente | — | — | — |  |  |
 | 31.1 | implemented | simulated | sessao | — | Commit b5a40c98 (na main desde o PR #110, sessao jev, 02/10/2026): trava de 255 opcoes e opcao nenhuma no adaptador do Jev (choice). backend/tests/test_context_retrieval_semantic.py com provedor falso. Chamada real: not… |  |
 | 31.2 | implemented | simulated | sessao | — | PR #112 (merge b5baf3e5 na main, commits 89a92b03 + a6cfa0fd, sessao jev, 02/10/2026): migracao 073 (ai_calls.origem e ref, TEXT sem CHECK), Usage.origem, filtro por origem no gasto (costs.spent_usd). backend/tests/test… |  |
 | 31.3 | implemented | not_run | sessao | — | Item de decisao (texto do ADR): ADR-069 escrito e aprovado pelo dono (02/10/2026 ~21:35Z, 'sim para todos' no chat da orquestradora), PR #102, merge fd59fbd7. Emenda o ADR-063; D-J1 (porta unica, constantes fechadas, Te… |  |
@@ -370,7 +373,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (48): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 25.13, 27.2, 27.4, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.40, 29.41, 29.48, 30.18, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, 31.16, T.2
+Pendentes (51): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 25.13, 27.2, 27.4, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.40, 29.41, 29.48, 30.18, 30.31, 30.32, 30.33, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, 31.16, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

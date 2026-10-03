@@ -6,6 +6,7 @@ import os
 import re
 import socket
 from dataclasses import dataclass
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
@@ -1036,6 +1037,30 @@ class CuradorCfg(BaseModel):
     m_cmax: float = Field(4.0, gt=0, le=100)
 
 
+class ValidacaoCfg(BaseModel):
+    """A validação automática do "pedir evidência" do curador (30.31; desenho aprovado pela orquestradora em 03/10). De
+    fábrica `off`: nenhum pedido nasce e nada roda. `on`: o parecer que pede evidência vira pedido e o despachante roda
+    a execução de validação (o comando de origem noutro aparelho ocioso), só com o central saudável e sem execução em
+    curso, dentro de `beta` × o gasto de IA da operação na janela (sem teto fixo em US$, como o curador) e de
+    `maximo_por_hora`. `extra_usd` até `extra_ate` (ISO) é a verba única (P4 do desenho)."""
+
+    modo: Literal["off", "on"] = "off"
+    intervalo_s: int = Field(600, ge=60, le=86_400)         # de quanto em quanto tempo o despachante olha a fila
+    beta: float = Field(0.05, ge=0, le=1)
+    maximo_por_hora: int = Field(4, ge=0, le=60)
+    janela_dias: int = Field(7, ge=1, le=90)
+    extra_usd: float = Field(0.0, ge=0, le=100)
+    extra_ate: str = ""
+    custo_estimado_usd: float = Field(0.07, ge=0, le=10)    # antes de medir: a mediana das execuções reais do QA
+
+    @field_validator("extra_ate")
+    @classmethod
+    def _extra_ate_iso(cls, v: str) -> str:
+        if v.strip():
+            datetime.fromisoformat(v.strip().replace("Z", "+00:00"))  # data errada recusa o config, não some calada
+        return v.strip()
+
+
 class LearningCfg(BaseModel):
     """Aprendizado contínuo (ADR-054): o livro, o D1, a falha classificada e a régua durável. Nenhuma chamada de IA
     no pipeline: digest por execução e curadoria determinística. De fábrica, lições em `shadow` e telas em `observe`,
@@ -1062,6 +1087,7 @@ class LearningCfg(BaseModel):
     retencao: RetencaoDoAprendizadoCfg = RetencaoDoAprendizadoCfg()
     saude: SaudeCfg = SaudeCfg()
     curador: CuradorCfg = CuradorCfg()
+    validacao: ValidacaoCfg = ValidacaoCfg()
 
 
 class AvisosCfg(BaseModel):

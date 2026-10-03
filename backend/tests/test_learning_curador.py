@@ -523,3 +523,83 @@ def test_parar_o_curador_interrompe_o_lote_entre_itens_e_impede_volta_nova(db: D
     assert set(r.cortados.values()) == {MotivoDoCorte.LOTE_INTERROMPIDO} and len(r.cortados) == 1
     assert {primeiro, segundo} == set(r.revisadas) | set(r.cortados)
     assert m.volta().rodou is False and len(chamadas) == 1                      # volta nova nem começa
+
+
+# ------------------------------------------------------------------ 30.31: o laço da validação automática
+@dataclass(frozen=True)
+class ChegadaFalsa:
+    id: str
+    item_ref: str
+    item_kind: str
+
+
+@dataclass
+class ValidacaoFalsa:
+    """O lado do curador da validação (`ValidacaoDoCurador`): grava o que recebeu e devolve as chegadas do teste."""
+
+    pareceres: list[tuple[str, str, str, tuple[str, ...]]] = field(default_factory=list)
+    vindas: list[ChegadaFalsa] = field(default_factory=list)
+    revisados: list[tuple[str, str]] = field(default_factory=list)
+
+    def ao_parecer(self, e, review_id, parecer, risco):  # noqa: ANN001, ANN201 - a assinatura do Protocol
+        self.pareceres.append((e.trail_ref, review_id, parecer.decisao.value, tuple(f.value for f in parecer.falta)))
+        return f"lv-{len(self.pareceres)}"
+
+    def chegadas(self) -> list[ChegadaFalsa]:
+        return list(self.vindas)
+
+    def revisado(self, pedido_id: str, review_id: str) -> None:
+        self.revisados.append((pedido_id, review_id))
+        self.vindas = [c for c in self.vindas if c.id != pedido_id]
+
+
+class CuradorQuePedeEvidencia(CuradorSimulado):
+    """Um provedor "real" de teste que pede uma execução real."""
+
+    def revisar(self, pedido):  # noqa: ANN001, ANN201 - mesma assinatura do simulado
+        r = super().revisar(pedido)
+        return replace(r, bruto={**r.bruto, "decisao": "pedir_evidencia", "falta": ["execucao_real"]}, simulado=False)
+
+
+def _com_validacao(m: Mundo, ia: CuradorSimulado) -> ValidacaoFalsa:
+    m.ia = ia
+    m.curador = ligar_curador.ligar(m.servico, m.repo, m.db, TriagemDeCredencial(), config=lambda: m.cfg,
+                                    precos=lambda: PRECOS, relogio=lambda: m.agora, catalogo=m.catalogo,
+                                    curador_de_ia=m.ia)
+    m.curador.validacao = v = ValidacaoFalsa()
+    return v
+
+
+def test_parecer_real_que_pede_evidencia_chega_a_validacao_com_a_revisao(db: Database) -> None:
+    m = Mundo(db)
+    v = _com_validacao(m, CuradorQuePedeEvidencia())
+    ref = m.licao(efeito=False, fonte=SourceKind.MANUAL)
+    assert m.volta().revisadas == (ref,)
+    [linha] = m.revisoes()
+    assert v.pareceres == [(ref, linha["id"], "pedir_evidencia", ("execucao_real",))]
+    assert v.revisados == []
+
+
+def test_parecer_simulado_nunca_chega_a_validacao(db: Database) -> None:
+    """O adaptador simulado não dispara execução real: o parecer falso não vira pedido."""
+    m = Mundo(db)
+    v = _com_validacao(m, CuradorSimulado())
+    ref = m.licao(efeito=False, fonte=SourceKind.MANUAL)
+    assert m.volta().revisadas == (ref,)
+    assert v.pareceres == [] and v.revisados == []
+
+
+def test_evidencia_chegou_pula_o_cooldown_e_fecha_a_chegada_com_a_revisao_nova(db: Database) -> None:
+    m = Mundo(db)
+    m.cfg = CuradorCfg(modo="shadow", cooldown_h=24)
+    v = _com_validacao(m, CuradorQuePedeEvidencia())
+    ref = m.licao(efeito=False, fonte=SourceKind.MANUAL)
+    assert m.volta().revisadas == (ref,)
+    m.evidencia(ref, "run:r-validacao")                       # a evidência nova muda o dossiê
+    assert m.volta(horas=1).revisadas == ()                   # sem a chegada, o cooldown segura o item
+    v.vindas = [ChegadaFalsa("lv-1", ref, "licao")]
+    assert m.volta(horas=1).revisadas == (ref,)
+    primeira, segunda = m.revisoes()
+    assert segunda["gatilho"] == Gatilho.EVIDENCIA_CHEGOU.value
+    assert v.revisados == [("lv-1", segunda["id"])]
+    assert [p[1] for p in v.pareceres] == [primeira["id"], segunda["id"]]   # o parecer novo pode pedir de novo

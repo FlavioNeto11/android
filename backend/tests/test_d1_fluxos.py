@@ -15,6 +15,7 @@ aparelho falso e IA simulada).
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,7 +29,7 @@ from app.models import Plan, PlannerInfo, PlanStep, Postcondition, StepResult
 from app.modules.learning.application.nativos import AssinaturaDoPlano, PassoAssinado, comparar
 from app.modules.learning.application.ports import Ajustes
 from app.modules.learning.application.servico import LearningService
-from app.modules.learning.domain.ciclo import SkillState
+from app.modules.learning.domain.ciclo import SkillState, TransicaoProibida
 from app.modules.learning.domain.vocabulario import LivroKind
 from app.modules.learning.infrastructure import ligar_nativos
 from app.modules.learning.infrastructure.fontes import FontesSql
@@ -319,6 +320,34 @@ def test_o_que_uma_pessoa_desligou_nao_renasce(mundo: Mundo) -> None:
     run = mundo.execucao("r-4", _plano("@ana"), "abra a conversa com @ana no instagram")
     assert mundo.flows.learn_from_run(run) is None
     assert mundo.status("legado") == "disabled"
+
+
+def test_devolver_a_prova_tira_o_veto_e_a_prova_recomeca_da_volta(mundo: Mundo) -> None:
+    """30.31, item 0: desligar "para validar pela IA" prendia o fluxo (a sombra só olha `candidate`/`validated`, e de
+    `disabled` só se saía publicando). Devolver à prova é da pessoa, deixa o fluxo inerte e fora do veto, e só a
+    evidência DEPOIS da volta conta."""
+    flow_id = mundo.roda("r-1", "@nasa", efeito=True)
+    assert flow_id
+    mundo.roda("r-2", "@spacex", efeito=True, aparelho="android-02")
+    assert mundo.status(flow_id) == "validated"
+    mundo.servico.mudar_estado(LivroKind.FLUXO, flow_id, S.DISABLED, by=DONO, reason="validar pela IA antes de valer")
+    with pytest.raises(TransicaoProibida):                                     # o sistema não devolve
+        mundo.servico.mudar_estado(LivroKind.FLUXO, flow_id, S.CANDIDATE, by=SYSTEM_ACTOR, reason="x")
+    with pytest.raises(TransicaoProibida):                                     # e a receita volta pela loja
+        mundo.servico.mudar_estado(LivroKind.RECEITA, "1", S.CANDIDATE, by=DONO, reason="x")
+    mundo.roda("r-3", "@esa", efeito=True)                                  # desligado: a sombra não olha
+    assert mundo.status(flow_id) == "disabled"
+    time.sleep(0.005)                                                         # o relógio é de milissegundos
+    mundo.servico.mudar_estado(LivroKind.FLUXO, flow_id, S.CANDIDATE, by=DONO, reason="devolver à prova")
+    time.sleep(0.005)
+    assert mundo.status(flow_id) == "candidate" and mundo.flows.match(_comando("@esa")) is None   # inerte
+    assert mundo.trilha(flow_id)[-1] == ("disabled", "candidate", DONO, None)
+    # r-1 e r-2 já bastariam (concordâncias=1): não contam mais. Uma execução nova não basta; a segunda valida.
+    mundo.roda("r-4", "@esa", efeito=True)
+    assert mundo.status(flow_id) == "candidate"
+    mundo.roda("r-5", "@roscosmos", efeito=True, aparelho="android-03")
+    assert mundo.status(flow_id) == "validated"                               # com efeito, para aqui: é do dono
+    assert mundo.trilha(flow_id)[-1] == ("candidate", "validated", "sistema", "r-5")
 
 
 def test_treino_e_adotado_nao_sao_reaproveitados(mundo: Mundo) -> None:

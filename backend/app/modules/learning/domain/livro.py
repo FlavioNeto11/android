@@ -292,7 +292,16 @@ _ROTULO_DO_PASSO: Mapping[tuple[SkillState, SkillState], str] = {
     (_S.CANDIDATE, _S.DISABLED): "rejeitar", (_S.VALIDATED, _S.DISABLED): "rejeitar",
     (_S.PUBLISHED, _S.DEPRECATED): "aposentar", (_S.PUBLISHED, _S.DISABLED): "desligar",
     (_S.DEPRECATED, _S.PUBLISHED): "reativar", (_S.DISABLED, _S.PUBLISHED): "reativar",
+    (_S.DISABLED, _S.CANDIDATE): "devolver",
 }
+
+#: "Devolver à prova" (30.31) vale só para o fluxo: a receita volta a provar-se pela loja quando a etapa é aprendida
+#: de novo, e a lição e a tela, pela evidência que já as promove.
+DEVOLVER_A_PROVA = (_S.DISABLED, _S.CANDIDATE)
+
+
+def devolve_a_prova(kind: LivroKind) -> bool:
+    return kind is LivroKind.FLUXO
 
 
 def rotulo_do_passo(de: SkillState, para: SkillState) -> str | None:
@@ -335,6 +344,8 @@ def acoes_da_pessoa(e: EntradaDoLivro, *, modo_publica: bool = True) -> tuple[Ac
         if de is not e.state:
             continue
         if e.kind in (LivroKind.RECEITA, LivroKind.FLUXO) and status_nativo(e.kind, para) is None:
+            continue
+        if (de, para) == DEVOLVER_A_PROVA and not devolve_a_prova(e.kind):
             continue
         if permitido(de, para, Actor.PERSON, side_effect=e.side_effect, human_origin=e.human_origin,
                      modo_publica=modo_publica):

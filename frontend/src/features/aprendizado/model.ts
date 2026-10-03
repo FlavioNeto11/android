@@ -121,7 +121,7 @@ export interface Reaprendido {
 }
 
 /** Chave estável do passo (`ItemDoLivro` mapeia para o texto em português). */
-export type RotuloDaAcao = 'validar' | 'aprovar' | 'rejeitar' | 'aposentar' | 'desligar' | 'reativar';
+export type RotuloDaAcao = 'validar' | 'aprovar' | 'rejeitar' | 'aposentar' | 'desligar' | 'reativar' | 'devolver';
 
 export interface AcaoPermitida {
   to: EstadoDoLivro;
@@ -378,7 +378,7 @@ export const ESTADO_META: Record<SkillState, StatusMeta> = {
   deprecated: { label: 'Aposentado', tone: 'muted', icon: Archive,
                 description: 'Saiu de circulação (sem uso, efeito neutro, versão nova do app ou absorvido). Uma pessoa pode reativar.' },
   disabled: { label: 'Desligado', tone: 'danger', icon: CircleOff,
-              description: 'Refutado ou rejeitado. O sistema não o traz de volta; uma pessoa pode reativar.' },
+              description: 'Refutado ou rejeitado. O sistema não o traz de volta; uma pessoa pode reativar ou, no fluxo, devolver à prova.' },
 };
 
 export function rotuloDoEstado(s: SkillState | null | undefined): string {
@@ -584,6 +584,8 @@ const TEXTO_DA_ACAO: Record<RotuloDaAcao, { label: string; confirmar: string; pe
   aposentar: { label: 'Aposentar', confirmar: 'Confirmar aposentadoria', perigo: false },
   desligar: { label: 'Desligar', confirmar: 'Confirmar desligamento', perigo: true },
   reativar: { label: 'Reativar', confirmar: 'Confirmar reativação', perigo: false },
+  // 30.31: o fluxo desligado volta a provar-se (inerte, sem publicar); a evidência conta de novo a partir daqui.
+  devolver: { label: 'Devolver à prova', confirmar: 'Confirmar volta à prova', perigo: false },
 };
 
 /**

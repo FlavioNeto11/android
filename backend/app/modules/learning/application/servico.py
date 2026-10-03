@@ -32,8 +32,8 @@ from app.modules.learning.domain.efeito import exposicao_json
 from app.modules.learning.domain.espera import Faixa
 from app.modules.learning.domain.livro import (ESTADOS_DA_EVIDENCIA_INVALIDA, EntradaDoLivro, ItemDeAprendizado,
                                                NovoItem, Transicao, a_revisar, contagem, decididos_para_revisar,
-                                               e_confirmacao, entrada_do_item, estado_nativo, motivo_da_confirmacao,
-                                               para_aprovar, status_nativo)
+                                               devolve_a_prova, e_confirmacao, entrada_do_item, estado_nativo,
+                                               motivo_da_confirmacao, para_aprovar, status_nativo)
 from app.modules.learning.domain.modo_por_app import modo_efetivo
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.saude import Saude, SinaisDeSaude, calcular
@@ -517,6 +517,9 @@ class LearningService:
                 href=f"/api/skills/{sid or ref}/versions/{versao or '?'}/status")
         if kind is LivroKind.MEMORIA:
             raise TransicaoProibida("A memória da persona segue a regra dela (fato confirmado) e fica fora do D1.")
+        if para is SkillState.CANDIDATE and not devolve_a_prova(kind):
+            raise TransicaoProibida("Devolver à prova vale só para fluxo (30.31): a receita volta a provar-se pela loja "
+                                    "quando a etapa é aprendida de novo, e a lição e a tela, pela evidência.")
         if kind in KINDS_DE_ITEM:
             return entrada_do_item(self._mover_item(kind, ref, para, by=by, reason=motivo, run_id=run_id,
                                                     detalhe=detalhe))

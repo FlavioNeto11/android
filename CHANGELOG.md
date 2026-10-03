@@ -19,6 +19,36 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: validação automática do "pedir evidência" (30.31; branch feat/30-31-validacao)
+
+- Migração `082_learning_validations`: o pedido de validação, com um pedido vivo por item (índice parcial).
+- O parecer real do curador que pede evidência que uma execução produz vira pedido (`domain/validacao.py`); as
+  recusas ficam registradas com o motivo (tipo, desligado, vetado, sessão, sem origem, credencial, efeito real,
+  receita sem fluxo ativo).
+- Um despachante sob a trava de líder roda o comando de origem noutro aparelho ocioso. Só com o central saudável, sem
+  execução em curso, dentro de β = 5% do gasto de IA da operação na janela (mais a verba única `extra_usd` até
+  `extra_ate`) e de ≤4 por hora. Nesta fatia nenhum grupo vai a aparelho com conta real logada (nem a leitura).
+- O digest fecha o pedido: `feita` com evidência da execução, senão `recusada`, com o `usd` medido. O curador revê o
+  item com o gatilho novo `evidencia_chegou`, que pula o cooldown (rótulo no painel).
+- `aprendizado.validacao.modo: "off"` de fábrica. Prova `simulated` (`test_learning_validacao*.py` e
+  `test_learning_curador.py`); nada ligado no central.
+- Fora desta fatia (avisado à orquestradora): a conferência pelo ContentProvider do QA, o ensaio só leitura do
+  Instagram em perfil de terceiro e a classe do fluxo pela etapa mais restritiva (30.32).
+
+## 2026-10-03 — Aprendizado: "devolver à prova" (30.31, item 0; branch feat/30-31-validacao)
+
+- `ciclo.TRANSICOES` ganha `disabled → candidate`, só de pessoa e só para fluxo (adendo v0.91):
+  - no livro, a chave `devolver` em `acoes`; no painel, o botão "Devolver à prova";
+  - receita, lição e tela recusam com `transition_forbidden`.
+- Na concordância do parecer, "devolver" vale como esperar (`parecer._DIRECAO_DA_ACAO`).
+- A sombra do fluxo conta só a evidência a partir da volta (`SombraDosFluxos._avaliar`).
+- Motivo: os 5 fluxos desligados em 03/10 "para validar pela IA" nunca recebiam evidência. É o pré-requisito do
+  laço de validação automática (30.31, desenho aprovado pela orquestradora).
+- Prova `simulated`:
+  - `tests/test_d1_fluxos.py::test_devolver_a_prova_tira_o_veto_e_a_prova_recomeca_da_volta`;
+  - a paridade e o roteiro em `tests/test_learning_acoes.py`; a regra do dono em `tests/test_learning_ciclo.py`;
+  - 585 testes afetados passaram; vitest de `aprendizado` 131; typecheck limpo.
+- Real: `not_run`.
 ## 2026-10-03 — Aprendizado: polimentos de texto dos deploys 7 e 8 (branch feat/aprendizado-ux-deploy8; suíte 10)
 
 Os itens de polimento da frente do Aprendizado em `.claude/handoffs/ux-deploy7-2026-10-03.md` e

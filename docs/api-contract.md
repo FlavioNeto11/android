@@ -4560,3 +4560,18 @@ e `sending` no 31.17, sem adendo próprio.
   - com servidor anterior ao v0.75 (sem as chaves) ou período sem nada disso, a seção e o aviso não aparecem.
   - Prova `simulated`: `frontend/src/features/usage/usage.test.ts` (o bloco "RA-10") e
     `frontend/src/features/diagnostics/DiagnosticsPage.test.tsx` (o bloco "Custo de IA: o RA-10").
+## Adendo v0.91 (03/10/2026; número da orquestradora, `.claude/reservas.md`; item 30.31, item 0) — "devolver à prova"
+
+`POST /api/aprendizado/{kind}/{ref}/status {to: "candidate", reason}` passa a valer para **fluxo `disabled`**, e só por
+pessoa (a sessão do painel). Nenhuma rota nova e nenhum campo novo:
+- **Entrada do livro:** `acoes` do fluxo desligado ganha `{"to": "candidate", "rotulo": "devolver", "exige_motivo": true}`,
+  ao lado de `reativar`. Clientes antigos mostram a chave como veio.
+- **Efeito:** o fluxo fica `candidate`, inerte (o casamento de comandos só usa o ativo), e sai do veto, porque a última
+  decisão da pessoa já não é desligar. A sombra só conta a evidência observada a partir da volta, a favor e contra. Com
+  efeito externo, o fluxo para em `validated`, como sempre.
+- **Recusas** (409 `transition_forbidden`):
+  - receita, lição e tela não têm "devolver";
+  - o sistema nunca devolve;
+  - de qualquer outro estado não existe `→ candidate`.
+- **Parecer do curador:** aceitar não gera "devolver". Na concordância, a decisão da pessoa "devolver" vale como esperar
+  (como `observar`/`pedir_evidencia`).

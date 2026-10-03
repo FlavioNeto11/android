@@ -299,9 +299,14 @@ class SombraDosFluxos:
         marca = marca_do_conteudo(fluxo.content_hash)
         ref = ref_da_trilha(LivroKind.FLUXO, fluxo.id)
         # 30.23: a execução marcada como evidência inválida não prova nada, nem para a encarnação nova da mesma linha
-        invalidas = {r for t in self._repo.trilha(ref) if (r := run_invalidada(t.reason)) is not None}
+        trilha = self._repo.trilha(ref)
+        invalidas = {r for t in trilha if (r := run_invalidada(t.reason)) is not None}
+        # 30.31: devolvido à prova por uma pessoa, o fluxo prova-se DE NOVO — só conta a evidência a partir da volta
+        # (a favor e contra; a de antes foi o que a pessoa pôs em dúvida ao desligá-lo).
+        desde = max((t.decided_at for t in trilha
+                     if t.from_state is SkillState.DISABLED and t.to_state is SkillState.CANDIDATE), default="")
         evidencias = [e for e in self._repo.evidencias(ref)
-                      if (e.detail or "").startswith(marca) and e.run_id not in invalidas]
+                      if (e.detail or "").startswith(marca) and e.run_id not in invalidas and e.observed_at >= desde]
         exigidas = 1 + max(0, int(self._concordancias()))
         v = veredito_de_repeticao(evidencias, Limiares(n_min=exigidas, execucoes_min=exigidas, aparelhos_min=1,
                                                        contra_max=DISCORDANCIAS_QUE_DESLIGAM - 1))

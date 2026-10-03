@@ -48,7 +48,7 @@ from .modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, 
 from .modules.identity.application.sessions import SessionProviders
 from .modules.identity.infrastructure.sessions import SessionDeps, SessionProviderFactory
 from .modules.learning import esquecer_conta
-from .modules.learning.infrastructure import ligar_intencao, ligar_voz
+from .modules.learning.infrastructure import ligar_intencao, ligar_validacao, ligar_voz
 from .modules.learning.infrastructure.curador_do_hub import CuradorDoHub
 from .modules.learning.infrastructure.ligar_costuras import costuras_do_livro
 from .modules.learning.infrastructure.montagem import montar_aprendizado
@@ -499,6 +499,13 @@ class AppState:
         # Rótulo de intenção (30.25): um minerador no digest da execução assentada, sem gancho novo e sem IA.
         ligar_intencao.ligar(self.learning, self.db, dados=self.runs.dados_da_intencao,
                              resolver=self.skill_planner.resolve_intent, catalogo=self.catalogo_da_cadeia)
+        # 30.31: a validação automática do "pedir evidência" do curador precisa da fila de execuções e do parque
+        # (`off` de fábrica). O despachante só roda com o central saudável e sem execução em curso.
+        ligar_validacao.ligar(self.learning, self.db, fila=self.runs, parque=self.scheduler,
+                              fluxo_ativo_para=lambda comando: self.scheduler.flows.match(comando) is not None,
+                              saudavel=lambda: not self.health().problems,
+                              config=lambda: self.cfg.file.aprendizado.validacao,
+                              precos=lambda: self.cfg.file.ai.prices, relogio=now)
         # Laço de pedidos persistentes (28.4). O objeto existe sempre (o gancho de fim de execução e a API do 28.9 o
         # chamam sem conferir); a TAREFA só sobe com `pedidos.enabled` e `roda_scheduler` (ver `start`).
         self.pedidos = LacoDePedidos(
