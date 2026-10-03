@@ -4139,3 +4139,20 @@ lugar do texto do navegador (`lib/loadError.tsx`, todas as telas).
 
 Prova `simulated`: `tests/test_learning_rotas_falhas.py`, `frontend/src/features/aprendizado/model.test.ts`,
 `DetalheRico.test.tsx`, `SaudeDoApp.test.tsx`, `AprendizadoPage.test.tsx` e `frontend/src/lib/loadError.test.ts`.
+
+## Adendo v0.79 (03/10/2026, provisório: quem mergear depois renumera) — evento `plan.refused`: a porta de política no planejamento (RA-7)
+
+Aditivo. Um kind novo de `EventRecord`, persistido. Nenhuma rota muda.
+
+| kind | data | persistido |
+|---|---|---|
+| `plan.refused` | `{motivo: "efeito_fora_do_catalogo", etapas: [{key, title, app_id, app, capability, motivo}]}` | sim |
+
+- Sai quando `RunService._plan` recusa o plano pela regra do item 13.2: etapa com efeito externo, num app com catálogo,
+  sem uma ação daquele catálogo. Vale para todo plano (planejador, fluxo, skill), antes de materializar.
+- `etapas[].motivo` vem do vocabulário fechado `sem_acao_do_catalogo` | `acao_de_outro_catalogo`
+  (`planning/capabilities.py::MotivoForaDoCatalogo`). `app_id` é nulo quando o app só se sabe pelo pacote, e `app` é o
+  nome (ou o pacote). `capability` é a chave que veio no plano (nula = nenhuma).
+- A execução vai a `needs_input` com o plano zerado (`steps: []`) e uma pergunta por etapa recusada em `missing`
+  (`field: "policy"`). O `message` do evento é a frase da linha do tempo, igual à da porta do despacho.
+- O painel não precisa de mudança: `EventRecord.kind` é `string`, e a execução em `needs_input` já mostra as perguntas.

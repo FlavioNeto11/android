@@ -487,6 +487,10 @@ As **senhas** não atravessam sozinhas: ver *A chave do cofre é DPAPI*, abaixo.
 - A purga de `events` vai em lotes de 2.000 linhas (`events.PURGA_LOTE`). A de 02/10 levou 41 mil linhas num comando
   só. Ao fim da volta, `PRAGMA optimize` atualiza as estatísticas do SQLite (`sqlite_stat1` não existia); no PostgreSQL,
   quem faz isso é o autovacuum. Os índices novos de `events` e `measurements` são a parte da Android no RA-11.
+- **Limite conhecido (RA-11).** O aviso `eventos_perdidos` do pedido (076) detecta a perda pelo menor `events.id` que
+  sobrou (`gatilhos_dinamicos.buraco`). A purga por tipo deixa buracos ACIMA desse mínimo. Um gatilho que observe
+  `instance.updated` e fique mais de 48 h sem ler perderia esses eventos sem aviso. Em 03/10 não havia nenhum gatilho
+  de pedido no central. Se aparecer um, a detecção precisa saber da classe de telemetria.
 - A retenção do aprendizado (`aprendizado.retencao`, ADR-054) e a da sombra da decisão fechada
   (`ai.decisao_fechada.retencao_dias`) têm prazo próprio, e o agregado diário é calculado antes de purgar.
 

@@ -210,6 +210,8 @@ despacho (`_policy_gate`, a trava de sempre, com a mesma frase) e em `RunService
 - A linha do tempo recebe a frase; o evento `plan.refused` (persistido) leva `{motivo: "efeito_fora_do_catalogo",
   etapas: [{key, title, app_id, app, capability, motivo}]}`, com o motivo de cada etapa no vocabulário fechado
   `sem_acao_do_catalogo` | `acao_de_outro_catalogo`.
+- Num plano de FLUXO, a trilha da 045 (`_registrar_resolucao`) grava a resolução antes da porta. O fluxo casou de fato; o
+  que se recusou foi o plano dele.
 - App sem catálogo (o QA Messenger) segue livre com efeito. Os 12 fluxos ativos do central com `send_message` livre
   são todos dele (medido em 03/10, só leitura).
 - **O caso que motivou** (r-20261001190557-e7bc42, 01/10 19:05Z: "enviar e-mail pelo Outlook", `fill_recipient`

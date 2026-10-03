@@ -2612,11 +2612,14 @@ class AppState:
         try:
             s = self.settings.get()
             cutoff = to_iso(now() - timedelta(days=s.log_retention_days))
-            removed = self.bus.purge_older_than(cutoff)
+            # Fora do laço de eventos, como a purga de evidências: sem o índice de `events(ts)`, cada lote varre a tabela
+            # (~80–100 ms com 82 mil linhas, 03/10), e a primeira volta depois do RA-11 leva ~14 lotes de telemetria.
+            removed = await asyncio.to_thread(self.bus.purge_older_than, cutoff)
             # RA-11: a telemetria do parque (`instance.updated`, o DTO inteiro do aparelho) vence em 48 h, antes do
             # resto do log; só a sem execução, para a linha do tempo de uma execução não perder nada.
-            telemetria = self.bus.purge_older_than(to_iso(now() - timedelta(hours=TELEMETRIA_RETENCAO_H)),
-                                                   kinds=TELEMETRIA_KINDS, so_sem_execucao=True)
+            telemetria = await asyncio.to_thread(
+                lambda: self.bus.purge_older_than(to_iso(now() - timedelta(hours=TELEMETRIA_RETENCAO_H)),
+                                                  kinds=TELEMETRIA_KINDS, so_sem_execucao=True))
             ev_cut = to_iso(now() - timedelta(days=s.evidence_retention_days))
             old = await asyncio.to_thread(self._apagar_evidencias_vencidas, ev_cut)
             # Entrega já feita de comando já fechado não é histórico — o histórico é `commands`. Sem esta
