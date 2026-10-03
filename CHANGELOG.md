@@ -19,6 +19,38 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: o pedido de pessoa fura a fila do curador e o parecer grava o custo (30.30; branch fix/30-30-pedido-fura-a-fila)
+
+- O pedido de revisão (`POST /api/aprendizado/{kind}/{ref}/revisao`) ganha a prioridade `PEDIDO_DA_PESSOA` (0).
+  - Vai na frente de todos os itens, também no pico, sob o teto da hora e o orçamento da janela.
+  - A classe A segue só com sobra.
+  - Antes ele só pulava o cooldown. Em 03/10, 12 pedidos esperavam atrás de ~40 itens, a ~6 por volta; o laço das 08:29Z
+    revisou 6 outros e adiou 36 por `gasto_da_hora`.
+- Deploy 8, só para drenar o acúmulo: `aprendizado.curador.alfa: 0.7` e `aprendizado.curador.k: 6` no `config.yaml` do
+  central (decisão da orquestradora). Dá B ≈ US$ 7,3 e teto ≈ US$ 0,52 por hora; 2 voltas drenam ~40 itens.
+  - Com G_W = US$ 11,48, o padrão dava B = 1,15 e teto ≈ US$ 0,08 por hora. O `k·n·c̄` (≈ 1,8) travava, mesmo subindo só o alfa.
+  - VOLTA a 0.10 e 1.5 no deploy 9.
+- `learning_reviews.usd` passa a gravar o custo que o hub mediu. Antes saía 0.0: nas 6 revisões das 08:29Z, contra
+  +US$ 0,1182 no `/api/usage`.
+  - A resposta simulada grava 0.
+  - O orçamento do curador passa de estimado pelo dossiê a medido (c̄, mediana e gasto da janela).
+  - A pendência da rubrica (`design/hub-de-ia-fora-de-execucao.md`) caiu por decisão da orquestradora: nada soma essa
+    coluna no `/api/usage` nem no teto do dia.
+- O `c_max` (recusa por custo) passa a comparar estimativa com estimativa: `m_cmax × mediana` das estimativas da volta.
+  O custo medido entra só no c̄.
+  - A estimativa usa o preço do modelo mais caro da tabela. Com o custo medido gravado e o curador num modelo barato (o
+    Haiku da D-1), o c_max cairia para ~0,012 e toda estimativa (~0,014 nas 21 revisões reais) viraria `recusada:custo`,
+    em silêncio.
+  - Com o deploy 8, o curador roda no Sonnet 5.5 (papel `plan`). O c_max medido seria ~0,023 e não recusaria hoje, mas
+    o risco ficava armado.
+  - O B do deploy 9 (alfa 0.10, k 1.5, c̄ medido ~0,009) volta a ~6 itens por volta.
+  - Prova `simulated`: `test_learning_curador.py::test_modelo_barato_nao_recusa_as_estimativas_em_silencio`, que FALHA
+    com a regra antiga (conferido).
+- Prova `simulated`:
+  - `test_learning_curador.py::test_pedido_da_pessoa_vai_na_frente_menos_na_classe_a_e_sob_o_teto`;
+  - `test_learning_pareceres.py::test_o_pedido_da_pessoa_fura_a_fila`: com o teto deixando UMA revisão na volta, ela é a
+    do pedido (classe B), e não a da classe C.
+
 ## 2026-10-03 — O total do custo de IA bate com as contas, e o needs_input da habilidade fala português (I1 e I4 da validação do deploy 7; branch feat/ux-deploy7-jev)
 
 - I1, `GET /api/usage`: o total e os grupos contam o custo declarado (a imagem da persona), na mesma base de `by_account` e

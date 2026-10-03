@@ -650,7 +650,9 @@ sem adaptador (testes) usa o SIMULADO.
   3 falha recorrente, 4 classe B, 5 classe A (sempre por último, mesmo contestada: `so_com_sobra`). O corte é `orcamento_da_janela`
   (motivo próprio, não o `fatia_curador` do hub), `gasto_da_hora` (`B_W/W/2`, conferido sobre o já gasto), `pico_de_entrada`,
   `lote_interrompido` ou `erro_do_provedor`; o corte NÃO vira linha (não gasta a chave (item, dossiê)) e fica no resultado e no log.
-  Acima de `c_max = m_cmax × mediana`, o dossiê é refeito com 10 e depois 0 evidências; se ainda passar, `recusada:custo`. O item já
+  Acima de `c_max = m_cmax × mediana` das ESTIMATIVAS da volta (30.30: estimativa com estimativa; o custo medido entra só no
+  c̄, porque a estimativa usa o preço do modelo mais caro e, com o curador num modelo barato, a mediana medida recusaria
+  tudo), o dossiê é refeito com 10 e depois 0 evidências; se ainda passar, `recusada:custo`. O item já
   revisado com um dossiê cortado não volta à IA com o inteiro enquanto o estado for o mesmo (confere as variantes antes do pedido).
 - **Custo**: a 069 declara `usd REAL NOT NULL DEFAULT 0`; o curador grava `usd = 0` = NÃO MEDIDO (só `usd > 0` conta como medida).
   Desde o 30.12 a `RespostaDeRevisao` traz `usd` e `ai_call_id` medidos pelo hub; a 075 grava o `ai_call_id` (a revisão fica ligada à
@@ -679,8 +681,15 @@ com o MESMO registro e a mesma fonte de dossiês do curador); leitura e gravaç�
   ordem: inválido, já decidido, oculto, simulado, desatualizado e a classe (`conferir_aceite`, com a mais restritiva entre a
   classe gravada e a do dossiê de agora). O CAS da decisão vem antes da transição, na mesma transação.
 - **Pedido de revisão**: sinal `pediu_revisao` com o `dossie_hash`; o curador o lê como o gatilho `pedido_da_pessoa`
-  (`JANELA_DO_PEDIDO_DIAS` = 7; atendido = revisão do item depois do pedido), que só pula o cooldown. Só em `on`; o dossiê
-  já revisado responde com a revisão que existe.
+  (`JANELA_DO_PEDIDO_DIAS` = 7; atendido = revisão do item depois do pedido). Só em `on`; o dossiê já revisado responde com
+  a revisão que existe.
+  - O pedido pula o cooldown e, desde o 30.30, fura a fila: prioridade `PEDIDO_DA_PESSOA` (0), na frente de todos e
+    também no pico. Continua sob o teto da hora e o orçamento da janela: com a hora gasta, espera a volta seguinte.
+  - A classe A segue só com sobra, mesmo pedida (decisão do dono, 02/10).
+  - O motivo (03/10): 12 pedidos esperavam atrás de ~40 itens, a ~6 por volta, porque até então a prioridade era a dos
+    outros gatilhos do item.
+  - A revisão continua UMA por (item, hash do dossiê): o pedido sobre um dossiê já revisado não chama a IA. Uma
+    transição de estado (desligar, por exemplo) entra na trilha e muda o hash.
 - **Painel** (`features/aprendizado/ParecerDaIA.tsx`, `parecer.ts`):
   - a seção "Parecer do curador" no detalhe: sugestão, classe, conclusão, o que o curador citou (com link), aceitar ou
     recusar com motivo, pedir revisão e histórico;

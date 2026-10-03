@@ -547,3 +547,19 @@ async def test_o_pedido_pula_so_o_cooldown_e_o_mesmo_dossie_nao_se_repete(mundo:
     assert mundo.revisao(ref)["gatilho"] == Gatilho.PEDIDO_DA_PESSOA.value
     mundo.volta()                                               # revisado depois do pedido: o pedido se esgotou
     assert len(mundo.ia.pedidos) == 2
+
+
+async def test_o_pedido_da_pessoa_fura_a_fila(mundo: Mundo, cliente: httpx.AsyncClient) -> None:
+    """30.30: sem o pedido, a classe C (prioridade 2) vai antes da B (4); com o pedido, a B vai primeiro. Medido em
+    03/10: 12 pedidos esperavam atrás de ~40 itens, a ~6 por volta, porque o pedido só pulava o cooldown."""
+    c = mundo.licao_c()
+    b = mundo.licao_b()
+    r = await cliente.post(f"/api/aprendizado/licao/{b}/revisao")
+    assert r.status_code == 202 and r.json()["pedido"] is True
+    mundo.agora += timedelta(hours=2)
+    mundo.curador.uma_volta(LIDER)
+    # o teto da hora deixa UMA revisão nesta volta: é a do pedido, não a da classe C
+    assert [p.dossie["item"]["id"] for p in mundo.ia.pedidos] == [f"licao:{b}"]
+    assert mundo.revisao(b)["gatilho"] == Gatilho.PEDIDO_DA_PESSOA.value
+    mundo.volta()
+    assert [p.dossie["item"]["id"] for p in mundo.ia.pedidos] == [f"licao:{b}", f"licao:{c}"]

@@ -4103,8 +4103,8 @@ motivo (1 a 500), em_lote?: false}` → o corpo do detalhe.
 
 **Pedido de revisão.** `POST /api/aprendizado/{kind}/{ref}/revisao`, sem corpo:
 - 202 `{pedido: true, revisao: null}`: o pedido entrou (sinal `pediu_revisao`). O curador o atende numa volta seguinte,
-  dentro do orçamento, pelo gatilho `pedido_da_pessoa`: pedidos dos últimos 7 dias sem revisão posterior. O pedido só pula o
-  cooldown; a prioridade é a dos outros gatilhos do item.
+  dentro do orçamento, pelo gatilho `pedido_da_pessoa`: pedidos dos últimos 7 dias sem revisão posterior. O pedido pula o
+  cooldown e, desde o 30.30, vai na frente de todos os itens (fora a classe A, que segue só com sobra), sob o teto da hora.
 - 200 `{pedido: false, revisao: Revisao}`: o dossiê de agora já foi revisado (a chave (item, dossiê) da 069). O dossiê muda
   com evidência nova, outro estado ou outra saúde.
 - 409 `curador_fora_do_on` (em `shadow` o curador já revisa sozinho); 422 `invalid` para tipo que o curador não revisa
