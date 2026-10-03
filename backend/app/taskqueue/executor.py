@@ -33,8 +33,8 @@ from ..devices.adb import AVISO_DE_ANR, MorteDoApp, motivo_de_anr
 from ..devices.conta_observada import evidencia_legivel
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter, Observation, dimensoes_do_modelo
 from ..metricas import metricas
-from ..models import (DELIVERY_ORDER, ActionStatus, AttemptStatus, DeliveryLevel, Plan, Postcondition, StepDTO,
-                      StepResult, StepStatus)
+from ..models import (DELIVERY_ORDER, ActionStatus, AttemptStatus, DeliveryLevel, EfeitoRepetido, Plan, Postcondition,
+                      StepDTO, StepResult, StepStatus)
 from ..modules.capabilities.domain.definition import CapabilityRef
 from ..modules.capabilities.domain.strategy import StrategyKind
 from ..modules.capabilities.domain.verification import Observation as Leitura
@@ -236,6 +236,9 @@ class StepOutcome:
     #: RA-22: o `AIError.kind` que encerrou a etapa (o desfecho saiu de um erro de IA), que vai para
     #: `attempts.error_kind` e decide o tipo da falha antes do texto (`classificar_falha`). `None` = não foi erro de IA.
     ai_error_kind: str | None = None
+    #: 29.58 (C): o resultado a gravar na etapa quando o desfecho NÃO é sucesso (hoje: `uncertain` por efeito repetido,
+    #: com `efeito_repetido`). O sucesso grava o dele no próprio executor.
+    result: StepResult | None = None
 
 
 # kinds de AIError que são problema de CONTA (crédito ou credencial), não da etapa: nenhuma tentativa nova
@@ -1552,6 +1555,7 @@ class StepExecutor:
         # depois do laço) já aprova antes do ator, o veredito fica aqui e o fim do laço o REUSA: a etapa paga uma
         # verificação, não duas. Quando não aprova, o laço segue na mesma tentativa, com o veredito no `history`.
         veredito_antecipado: tuple[bool, str, DeliveryLevel | None, Observation | None, bool] | None = None
+        copias_vistas: list[int] = []        # 29.58 (C): `Verdict.copias` de cada julgamento desta tentativa
         julgamentos_antes_do_ator = 0
         sig_julgada_antes_do_ator: str | None = None
 
@@ -1569,7 +1573,8 @@ class StepExecutor:
                                        local_proof=(cap.local_proof if cap else None),
                                        capability=(CapabilityRef(app.package, cap.key) if cap and app.package else None),
                                        attempt_id=attempt_id, cartao=cartao, pacote=app.package,
-                                       imagem_forcada=bool(visuais), uma_rodada=True, so_prova_local=so_prova_local)
+                                       imagem_forcada=bool(visuais), uma_rodada=True, so_prova_local=so_prova_local,
+                                       copias_vistas=copias_vistas)
             except DriverTimeout as exc:
                 return await self._stuck(rt, step, fired, str(exc))
             except AIError as exc:
@@ -2471,7 +2476,8 @@ class StepExecutor:
                                                                       capability=(CapabilityRef(app.package, cap.key)
                                                                                   if cap and app.package else None),
                                                                       attempt_id=attempt_id, cartao=cartao,
-                                                                      pacote=app.package, imagem_forcada=bool(visuais))
+                                                                      pacote=app.package, imagem_forcada=bool(visuais),
+                                                                      copias_vistas=copias_vistas)
         except DriverTimeout as exc:
             return await self._stuck(rt, step, fired, str(exc))
         except AIError as exc:
@@ -2505,6 +2511,15 @@ class StepExecutor:
         # o nível de entrega declarado pela IA em step_done não vale como prova; só o observado na verificação
         note = f"Pós-condição {'comprovada' if ok else 'NÃO comprovada'}: {text}"
         await evidence(obs, note, kind="verifier" if obs is None else "screenshot")
+        if step.side_effect and fired and (repetido := self._efeito_repetido(step, copias_vistas)) is not None:
+            # 29.58 (C): o efeito saiu mais de uma vez. Nunca "sucesso comprovado" — nem falha: o efeito existe. A
+            # pessoa confere e decide; `steps.result.efeito_repetido` diz quantas cópias e quem as viu.
+            motivo = (f"efeito repetido ({repetido.copias}): o efeito externo desta etapa saiu mais de uma vez "
+                      f"(visto {'pelo verificador na tela' if repetido.fonte == 'verificador' else 'nas ações gravadas'})"
+                      f"; {text}")
+            return StepOutcome(Outcome.uncertain, motivo, delivery_level=level,
+                               result=StepResult(verified=False, evidence_text=text, delivery_level=level,
+                                                 efeito_repetido=repetido))
         if ok and faltam_saidas():
             # Comprovada, mas sem o valor que as seguintes usam: nunca é sucesso — a próxima etapa pararia sem ele, e
             # com o efeito disparado repetir a etapa é o que não se faz.
@@ -2534,6 +2549,17 @@ class StepExecutor:
                                f"processo/histórico); repetir não resolve: {text}", plan_defect=True)
         return StepOutcome(Outcome.retry if step.attempts < step.max_attempts else Outcome.failed,
                            f"Pós-condição não comprovada: {text}")
+
+    def _efeito_repetido(self, step: StepDTO, copias_vistas: list[int]) -> EfeitoRepetido | None:
+        """29.58 (C): o efeito desta etapa saiu repetido? O maior entre o que o verificador contou na tela e o que as
+        ações gravadas mostram; empate fica com as ações (determinístico). `None` com menos de 2 cópias."""
+        pelo_verificador = max(copias_vistas, default=0)
+        pelas_acoes = self.repo.copias_pelas_acoes(step.id)
+        if max(pelo_verificador, pelas_acoes) < 2:
+            return None
+        if pelas_acoes >= pelo_verificador:
+            return EfeitoRepetido(copias=pelas_acoes, fonte="acoes")
+        return EfeitoRepetido(copias=pelo_verificador, fonte="verificador")
 
     # ------------------------------------------------------------------ verificação
     @staticmethod
@@ -2609,7 +2635,7 @@ class StepExecutor:
                       local_proof: str | None = None, capability: CapabilityRef | None = None,
                       attempt_id: str | None = None, cartao: tuple[str, ...] = (), pacote: str | None,
                       imagem_forcada: bool = False, uma_rodada: bool = False, so_prova_local: bool = False,
-                      proposito: MotivoDaChamada = "julgamento"
+                      proposito: MotivoDaChamada = "julgamento", copias_vistas: list[int] | None = None
                       ) -> tuple[bool, str, DeliveryLevel | None, Observation | None, bool]:
         """`uma_rodada`: uma só leitura e, se a pós-condição a exigir, um só julgamento — devolve o veredito mesmo
         negativo, sem esperar a tela mudar até o fim do orçamento. É o modo dos atalhos que conferem ANTES do ator
@@ -2784,6 +2810,8 @@ class StepExecutor:
                             marca=MarcaDaChamada(motivo="rejulgamento", escalate="sim_com_efeito",
                                                  image_reason=motivo_imagem))
                         level = verdict.delivery_level
+                    if copias_vistas is not None and verdict.copias is not None:
+                        copias_vistas.append(verdict.copias)
                     ok = verdict.satisfied == "yes"
                     if ok and need and DELIVERY_ORDER[level or DeliveryLevel.none] < DELIVERY_ORDER[need]:
                         ok = False

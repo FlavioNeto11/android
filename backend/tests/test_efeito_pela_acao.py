@@ -16,6 +16,7 @@ import pytest_asyncio
 
 from app.automation.hierarchy import UiTree, parse_hierarchy
 from app.automation.tools import LongPress, Tap, TypeText
+from app.db import loads
 from app.metricas import metricas
 from app.models import Plan, PlanStep, Postcondition
 from app.planning.provider import Decision, DecisionRequest, PlanRequest, Usage, Verdict, VerifyRequest
@@ -308,3 +309,95 @@ async def test_post_tocado_numa_etapa_sem_efeito_da_folha_e_recusado_sem_toque_n
     assert "CREATE_COMMENT" in recusas[0]["error"] or "COMMENT" in recusas[0]["error"]
     assert _estado(h).db.scalar("SELECT COUNT(*) FROM pending_approvals") == 0
     assert metricas.valor("executor.efeito_fora_da_etapa", origem="ai", ferramenta="tap") - antes == 1
+
+
+# ==================================================================== (C) efeito repetido fecha incerto
+class VerificadorQueContaDuasCopias(SimulatedProvider):
+    """O verificador vê a mensagem DESTA execução duas vezes na conversa (o que a 5f2de5 deixou na tela)."""
+
+    name = "verificador-que-conta-duas-copias"
+
+    async def verify(self, req: VerifyRequest) -> tuple[Verdict, Usage]:
+        veredito, uso = await super().verify(req)
+        if req.ctx.step_key == "send_message":
+            veredito = veredito.model_copy(update={"copias": 2})
+        return veredito, uso
+
+
+async def test_duas_copias_vistas_pelo_verificador_fecham_incerto_com_o_resultado(tmp_path: Path) -> None:
+    h = Harness(tmp_path, 1)
+    h.ai = CountingProvider(VerificadorQueContaDuasCopias())
+    await h.boot()
+    try:
+        run = h.run([IID])
+        detalhe = await h.wait_run(run.id, timeout=60,
+                                   statuses=("completed", "completed_with_issues", "cancelled", "failed", "waiting_user"))
+        etapa = _estado(h).db.one("SELECT status, status_detail, result FROM steps WHERE run_id=? AND key='send_message'",
+                                  (run.id,))
+        assert etapa is not None and etapa["status"] == "uncertain", (detalhe.status, etapa and dict(etapa))
+        assert (etapa["status_detail"] or "").startswith("efeito repetido (2)")
+        resultado = loads(etapa["result"], {})
+        assert resultado["efeito_repetido"] == {"copias": 2, "fonte": "verificador"}
+        assert resultado["verified"] is False
+        objetivo = _estado(h).db.one("SELECT status FROM objectives WHERE run_id=?", (run.id,))
+        assert objetivo is not None and objetivo["status"] == "uncertain"
+        assert len(h.fakes[IID].messages) == 1                 # nada é reenviado
+    finally:
+        if h.state is not None:
+            await h.state.stop()
+
+
+async def test_sem_repeticao_o_resultado_nao_leva_o_campo(tmp_path: Path) -> None:
+    h = Harness(tmp_path, 1)
+    h.ai = CountingProvider(SimulatedProvider())
+    await h.boot()
+    try:
+        run = h.run([IID])
+        detalhe = await h.wait_run(run.id, timeout=60)
+        assert detalhe.status == "completed"
+        etapa = _estado(h).db.one("SELECT result FROM steps WHERE run_id=? AND key='send_message'", (run.id,))
+        assert etapa is not None and "efeito_repetido" not in loads(etapa["result"], {})
+    finally:
+        if h.state is not None:
+            await h.state.stop()
+
+
+def _clonar(db: Any, tabela: str, linha: Any, **troca: Any) -> None:
+    dados = {**dict(linha), **troca}
+    colunas = ", ".join(dados)
+    db.execute(f"INSERT INTO {tabela}({colunas}) VALUES ({', '.join('?' for _ in dados)})", tuple(dados.values()))
+
+
+async def test_copias_pelas_acoes_contam_a_mesma_etapa_modelo_e_alvo_na_mesma_versao(tmp_path: Path) -> None:
+    """Duas etapas da mesma etapa-modelo e do mesmo `item`, na mesma versão do plano, com ação de efeito `done`: 2.
+    Em outra versão do plano ("repetir" é gesto da pessoa), com outro item ou com a ação recusada: não conta."""
+    h = Harness(tmp_path, 1)
+    h.ai = CountingProvider(SimulatedProvider())
+    await h.boot()
+    try:
+        run = h.run([IID])
+        assert (await h.wait_run(run.id, timeout=60)).status == "completed"
+        s = _estado(h)
+        envio = s.db.one("SELECT * FROM steps WHERE run_id=? AND key='send_message'", (run.id,))
+        assert envio is not None
+        tentativa = s.db.one("SELECT * FROM attempts WHERE step_id=?", (envio["id"],))
+        acao = s.db.one("SELECT * FROM actions WHERE attempt_id=? AND side_effect=1", (tentativa["id"],))
+        assert acao is not None and acao["status"] == "done"
+        assert s.repo.copias_pelas_acoes(envio["id"]) == 1
+
+        def copia(sufixo: str, *, status: str = "done", **etapa: Any) -> None:
+            _clonar(s.db, "steps", envio, id=f"{envio['id']}-{sufixo}", key=f"send_message_{sufixo}",
+                    template_key="send_message", seq=envio["seq"] + 100 + len(sufixo), **etapa)
+            _clonar(s.db, "attempts", tentativa, id=f"{tentativa['id']}-{sufixo}", step_id=f"{envio['id']}-{sufixo}")
+            dados = {k: v for k, v in dict(acao).items() if k != "id"}
+            _clonar(s.db, "actions", dados, attempt_id=f"{tentativa['id']}-{sufixo}", status=status)
+
+        copia("outraversao", plan_version=envio["plan_version"] + 1)
+        copia("outroitem", variables='{"item": "QA-002"}')
+        copia("recusada", status="rejected")
+        assert s.repo.copias_pelas_acoes(envio["id"]) == 1
+        copia("repetida")
+        assert s.repo.copias_pelas_acoes(envio["id"]) == 2
+    finally:
+        if h.state is not None:
+            await h.state.stop()

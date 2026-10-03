@@ -55,7 +55,9 @@ SISTEMAS = {
     # Item 24.3: a regra de `saidas` e `{{saida:<nome>}}` (valor lido numa etapa e usado nas seguintes).
     "PLANNER_SYSTEM": "88a256ad33066ececafc6d5f0bbf11dd4129cfaa113e06565094ad6011c536fb",
     "PLANNER_CAPABILITY_SYSTEM": "41bec0c6cc8a591ddf23bcfa28e9e6ba91074c6f05b0bbf1e7d7e1a9030c25cd",
-    "VERIFIER_SYSTEM": "8f0add0bef48fb5853f5c02f8fe8debe825cc3fd7d080f59a30633dc7859aefe",
+    # Item 29.58 (C): o verificador passa a contar as cópias do efeito desta execução (`copias`) — o hash muda de
+    # propósito, não é enfraquecimento do teste.
+    "VERIFIER_SYSTEM": "5da999c9734dcf67e15274124d1fd17486162fe44963b115c30677e8f941f7cb",
 }
 
 

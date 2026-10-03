@@ -1793,6 +1793,13 @@ class RunSummary(BaseModel):
     prova_fluxo_id: str | None = None
 
 
+class EfeitoRepetido(BaseModel):
+    """29.58 (C): o efeito externo da etapa saiu mais de uma vez. `fonte`: quem viu — o verificador, na tela, ou as
+    ações de efeito gravadas (mais de uma etapa da mesma etapa-modelo e alvo disparou nesta versão do plano)."""
+    copias: int = Field(ge=2)
+    fonte: Literal["verificador", "acoes"]
+
+
 class StepResult(BaseModel):
     verified: bool
     evidence_text: str | None = None
@@ -1802,6 +1809,8 @@ class StepResult(BaseModel):
     # 12.4: coleta sem item só vale com o vazio COMPROVADO pela tela (estado vazio explícito); o resultado diz isso
     vazio_comprovado: bool = Field(default=False, exclude_if=lambda v: not v)
     evidence_id: int | None = None            # confirmação manual: o print em que a pessoa se baseou (ADR-055)
+    # 29.58 (C): presente só quando o efeito saiu repetido, na etapa onde a repetição foi VISTA.
+    efeito_repetido: EfeitoRepetido | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 class StepDTO(BaseModel):

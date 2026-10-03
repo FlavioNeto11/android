@@ -1531,7 +1531,8 @@ class Scheduler:
             repo.finish_attempt(attempt_id, AttemptStatus.uncertain, error=detail, screen=out.tela_da_falha,
                                 recovery="Reconciliação pela tela não comprovou o resultado; sem reenvio automático",
                                 error_kind=kind)
-            repo.transition_step(step.id, StepStatus.uncertain, detail=detail, level="warn", error_kind=kind)
+            repo.transition_step(step.id, StepStatus.uncertain, detail=detail, level="warn", error_kind=kind,
+                                 result=out.result)
             repo.set_objective(oid, ObjectiveStatus.uncertain, detail=detail, blocked_reason=detail,
                                needs="Confira no aparelho se o efeito ocorreu e decida: confirmar, repetir ou abandonar. "
                                      "Nada será reenviado automaticamente.",
