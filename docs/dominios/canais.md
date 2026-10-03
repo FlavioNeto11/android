@@ -115,6 +115,10 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
 - **No produto:** `trello.membro_dono` e `TELEGRAM_CHAT_ID` (canais-externos §4).
 
 **C-09 · Convidado: a pergunta é respondida, o pedido passa pelo dono.**
+- **Restrição vigente (dono, Telegram 03/10 22:41Z, lida pela orquestradora às 22:50Z):** "só responda outras pessoas
+  a não ser a mim" vale, até o dono confirmar, como **não responder a ninguém além do dono no Telegram**. Quem não é
+  o dono recebe só a saudação fixa da C-10. As mensagens dessas pessoas continuam sendo lidas, gravadas (C-08) e
+  avisadas ao dono. A confirmação foi pedida ao dono com sim ou não.
 - **Origem:** dono 03/10 ~20:15Z (Trello) e Telegram 20:51Z ("mantenha o mesmo comportamento do Trello com eles
   aqui também").
 - **Regra:**
