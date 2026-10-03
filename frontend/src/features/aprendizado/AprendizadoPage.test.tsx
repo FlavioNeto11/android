@@ -124,10 +124,10 @@ const HAB = 'habilidade:instagram.abrir-conversa@2';
 const fila = () => container.querySelector('[aria-labelledby="aprendizado-fila"]') as HTMLElement;
 
 describe('página Aprendizado', () => {
-  it('tem as cinco abas, e cada uma lê a sua rota', async () => {
+  it('tem as seis abas, e cada uma lê a sua rota (a Métricas tem o teste dela)', async () => {
     await montar();
     const nomes = allByRole('tab', /.*/, container).map((t) => t.textContent?.replace(/\d+$/, '').trim());
-    expect(nomes).toEqual(['Aplicativos', 'Para aprovar', 'Aprendido', 'O que mais falha', 'Sinais']);
+    expect(nomes).toEqual(['Aplicativos', 'Para aprovar', 'Aprendido', 'O que mais falha', 'Sinais', 'Métricas']);
     await waitFor(() => expect(text(container)).toContain('Enviar oi para o contato'));
 
     await click(byRole('tab', /^Aprendido/, container));
@@ -154,7 +154,11 @@ describe('página Aprendizado', () => {
     backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => json({ itens: [qa, semNome], total: 2 }));
     await montar();
     await waitFor(() => expect(item('receita:70')).toBeTruthy());
-    expect(text(item('receita:70'))).toContain('Digitar a mensagem · etapa fill_message (v1)');
+    expect(text(item('receita:70'))).toContain('Digitar a mensagem (v1)');
+    // UX dos deploys 7 e 8: a chave da etapa e a referência no Livro saem do texto do cartão e ficam no `title`.
+    expect(text(item('receita:70'))).not.toContain('fill_message');
+    expect(text(item('receita:70'))).not.toContain('receita:70');
+    expect(item('receita:70').querySelector('[title*="fill_message (v1) · receita:70"]')).not.toBeNull();
     expect(text(item('receita:70'))).toContain('App: QA Messenger');
     expect(text(item('receita:70'))).not.toContain('com.pocqa.messenger');
     expect(byRole('button', /^QA Messenger$/, item('receita:70')).getAttribute('title')).toContain('com.pocqa.messenger');

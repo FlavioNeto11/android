@@ -507,7 +507,20 @@ interface UsageReport { scope: { run_id: string | null; days: number | null }; g
   errors_by_kind?: Record<string, number>;
   // v0.75 (RA-10, migração 080): custo por ORIGEM da chamada (execucao, curador, leitura, social, decisao_fechada…;
   // `sem_origem` = linha anterior à coluna). Opcional: servidor antigo.
-  by_origin?: Record<string, { calls: number; usd: number }> }
+  by_origin?: Record<string, { calls: number; usd: number }>;
+  // v0.75 (RA-10; tela no 31.16): por que a chamada subiu ao modelo forte (`MotivoDeEscalonamento` do backend: efeito,
+  // nova_tentativa, erros_seguidos, piso, bloqueio, ciclo, nivel, sim_com_efeito). Opcional: servidor antigo.
+  escalations?: Record<string, { calls: number; usd: number }>;
+  // O rejulgamento do verificador (7.10 e 17.10): custo e quanto o modelo forte DESFEZ o veredito do barato.
+  rejudges?: { calls: number; usd: number; by_kind: Record<string, { calls: number; usd: number }>;
+    judged: number; disagreements: number; disagreement_rate: number | null;
+    by_app: Record<string, { judged: number; disagreements: number; disagreement_rate: number }> };
+  // A cascata do bloqueio (17.10): o modelo forte olhou a tela que o barato largou; `unblocked` = não bloqueou de novo.
+  cascades?: { calls: number; usd: number; unblocked: number; by_verdict: Record<string, number> };
+  // Por que a imagem foi, ou não, junto (`MotivoDaImagem`); `with_image` = foi de fato (a captura pode falhar).
+  image_reasons?: Record<string, { calls: number; with_image: number }>;
+  // Etapas terminadas com decisão de IA e sem `driven_by`: o aceite do RA-10 é zero.
+  steps_driven_by_null?: number }
 interface Flow { id: string; name: string; command_template: string; app_id: string | null; source_run_id: string | null;
   // D1 (ADR-054): o fluxo aprendido de execução nasce `candidate` (inerte: o planejador segue sendo chamado) e a sombra
   // no digest o publica sozinho quando não tem efeito externo; com efeito, para em `validated` e espera o dono.
@@ -2541,7 +2554,7 @@ export interface RunSuccessorRequest {
 
 // =====================================================================================
 // Saldo das contas de IA (ADR-051). Estimativa: última leitura do console − gasto em `ai_calls` desde ela.
-export type AiBalanceAccount = 'anthropic' | 'openai' | 'gemini';
+export type AiBalanceAccount = 'anthropic' | 'openai' | 'gemini' | 'typesafe';
 export type AiBalanceState = 'unknown' | 'ok' | 'low' | 'blocked' | 'exhausted';
 
 export interface AiBalance {
@@ -2555,6 +2568,8 @@ export interface AiBalance {
   key_configured: boolean;
   roles: string[];                 // funções de IA que esta conta paga hoje
   image: boolean;                  // o gerador de imagem da persona usa esta conta
+  // A decisão fechada (Fase 31) usa esta conta (só a typesafe); fora de `roles`, que segura os pedidos pelo saldo.
+  closed_decision?: 'shadow' | 'on' | null;
   in_use: boolean;
   anchor_balance: number | null;
   anchor_at: string | null;

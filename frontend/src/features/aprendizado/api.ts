@@ -7,6 +7,7 @@ import {
   type RelatorioDeFalhas, type RespostaDoVoto, type Sinal, type CorpoDoVoto, lerFeedbackDaExecucao,
   lerRelatorioDeFalhas, lerRespostaDoVoto, lerSinais,
 } from './model';
+import { lerMetricas, lerPaginaDeRevisoes, type MetricasDoAprendizado, type PaginaDeRevisoes } from './metricas';
 import type { RespostaDoPedido } from './parecer';
 
 /**
@@ -85,6 +86,15 @@ export const apiAprendizado = {
   sinais: async (q: { dias: number; kind?: string; app?: string }, signal?: AbortSignal): Promise<Sinal[]> =>
     lerSinais(await apiRequest<unknown>('GET', '/aprendizado/sinais', {
       query: { dias: q.dias, kind: q.kind || undefined, app: q.app || undefined }, signal,
+    })),
+
+  /** As métricas do §10 (30.8; aba Métricas, 30.33). Ausente é `null`, com o `n` ao lado; `dias` vai de 1 a 90. */
+  metricas: async (q: { dias: number; app?: string }, signal?: AbortSignal): Promise<MetricasDoAprendizado> =>
+    lerMetricas(await apiRequest<unknown>('GET', '/aprendizado/metricas', { query: { dias: q.dias, app: q.app || undefined }, signal })),
+  /** Os pareceres do curador, do mais novo ao mais velho; `cursor` é o `proximo` da página anterior. */
+  revisoes: async (q: { app?: string; decisao?: string; limite?: number; cursor?: string | null }, signal?: AbortSignal): Promise<PaginaDeRevisoes> =>
+    lerPaginaDeRevisoes(await apiRequest<unknown>('GET', '/aprendizado/revisoes', {
+      query: { app: q.app || undefined, decisao: q.decisao || undefined, limite: q.limite ?? 50, cursor: q.cursor || undefined }, signal,
     })),
 
   /** Os votos por item e os sinais implícitos de uma execução (A4). */

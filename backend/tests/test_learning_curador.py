@@ -33,6 +33,7 @@ from app.modules.learning.infrastructure.curador_simulado import CuradorSimulado
 from app.modules.learning.infrastructure.dossies import DossiesSql
 from app.modules.learning.infrastructure.eventos import EventosNoBarramento
 from app.modules.learning.infrastructure.fontes import FontesSql
+from app.modules.learning.infrastructure.metricas_sql import FontesDeMetricasSql
 from app.modules.learning.infrastructure.montagem import GuardaDoFluxo, montar_aprendizado
 from app.modules.learning.infrastructure.revisoes_sql import RegistroDeRevisoesSql
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
@@ -330,6 +331,44 @@ def test_chamada_medida_pelo_hub_grava_o_usd_e_fica_ligada_a_revisao(db: Databas
     assert j.custos_medidos == (0.0031,) and j.tamanhos_sem_medida == ()
 
 
+def _chamada(db: Database, *, provider: str = "anthropic") -> int:
+    """Uma linha de `ai_calls` do modelo de `PRECOS`: 1000 de entrada e 500 de saída = US$ 0,014."""
+    db.execute("INSERT INTO ai_calls(ts, role, model, provider, input_tokens, output_tokens) VALUES (?,?,?,?,?,?)",
+               (to_iso(INICIO), "curador", "modelo-x", provider, 1000, 500))
+    r = db.one("SELECT MAX(id) AS id FROM ai_calls")
+    assert r is not None
+    return int(r["id"])
+
+
+@pytest.mark.parametrize(("provider", "usd"), [("anthropic", 0.014), ("simulated", 0.0)])
+def test_revisao_sem_usd_gravado_tem_o_custo_medido_na_chamada_ligada(db: Database, provider: str,
+                                                                       usd: float) -> None:
+    """I3 (03/10): as revisões de antes do 30.30 gravaram `usd = 0`, mas têm `ai_call_id`. O custo vem da chamada ligada
+    pela regra do `/api/usage` (tokens × preço; simulado a US$ 0), nas métricas, na lista e na janela do orçamento.
+    Sem `precos`, o registro lê como antes."""
+    m = Mundo(db)
+    chamada = _chamada(db, provider=provider)
+    m.ia = CuradorMedido(usd=None, ai_call_id=chamada, simulado_da_resposta=False)
+    m.curador = ligar_curador.ligar(m.servico, m.repo, db, TriagemDeCredencial(), config=lambda: m.cfg,
+                                    precos=lambda: PRECOS, relogio=lambda: m.agora, catalogo=m.catalogo,
+                                    curador_de_ia=m.ia)
+    m.licao(efeito=False, fonte=SourceKind.MANUAL)
+    m.volta()
+    [linha] = m.revisoes()
+    assert (linha["usd"], linha["ai_call_id"]) == (0, chamada)          # gravado como não medido
+    assert RegistroDeRevisoesSql(db).janela(m.agora, 7).custos_medidos == ()
+    j = RegistroDeRevisoesSql(db, precos=lambda: PRECOS).janela(m.agora, 7)
+    if usd:
+        assert j.custos_medidos == (pytest.approx(usd),) and j.tamanhos_sem_medida == ()
+    else:
+        assert j.custos_medidos == () and len(j.tamanhos_sem_medida) == 1      # simulado: segue sem medida
+    fontes = FontesDeMetricasSql(db, precos=lambda: PRECOS)
+    [lida] = fontes.revisoes(to_iso(INICIO), to_iso(m.agora + timedelta(hours=1)))
+    assert lida.usd == pytest.approx(usd)
+    pagina = fontes.lista_de_revisoes(app=None, decisao=None, desde=None, limite=10, cursor=None)
+    assert [x.usd for x in pagina.revisoes] == [pytest.approx(usd)]
+
+
 def test_resposta_simulada_nunca_avisa_mesmo_com_adaptador_real(db: Database) -> None:
     """A resposta que se diz simulada não avisa o dono, mesmo com o adaptador declarando provedor real; sem chamada,
     nada de `ai_call_id`, e o `usd` que ela traga não vira custo (30.30: simulada grava 0)."""
@@ -523,3 +562,83 @@ def test_parar_o_curador_interrompe_o_lote_entre_itens_e_impede_volta_nova(db: D
     assert set(r.cortados.values()) == {MotivoDoCorte.LOTE_INTERROMPIDO} and len(r.cortados) == 1
     assert {primeiro, segundo} == set(r.revisadas) | set(r.cortados)
     assert m.volta().rodou is False and len(chamadas) == 1                      # volta nova nem começa
+
+
+# ------------------------------------------------------------------ 30.31: o laço da validação automática
+@dataclass(frozen=True)
+class ChegadaFalsa:
+    id: str
+    item_ref: str
+    item_kind: str
+
+
+@dataclass
+class ValidacaoFalsa:
+    """O lado do curador da validação (`ValidacaoDoCurador`): grava o que recebeu e devolve as chegadas do teste."""
+
+    pareceres: list[tuple[str, str, str, tuple[str, ...]]] = field(default_factory=list)
+    vindas: list[ChegadaFalsa] = field(default_factory=list)
+    revisados: list[tuple[str, str]] = field(default_factory=list)
+
+    def ao_parecer(self, e, review_id, parecer, risco):  # noqa: ANN001, ANN201 - a assinatura do Protocol
+        self.pareceres.append((e.trail_ref, review_id, parecer.decisao.value, tuple(f.value for f in parecer.falta)))
+        return f"lv-{len(self.pareceres)}"
+
+    def chegadas(self) -> list[ChegadaFalsa]:
+        return list(self.vindas)
+
+    def revisado(self, pedido_id: str, review_id: str) -> None:
+        self.revisados.append((pedido_id, review_id))
+        self.vindas = [c for c in self.vindas if c.id != pedido_id]
+
+
+class CuradorQuePedeEvidencia(CuradorSimulado):
+    """Um provedor "real" de teste que pede uma execução real."""
+
+    def revisar(self, pedido):  # noqa: ANN001, ANN201 - mesma assinatura do simulado
+        r = super().revisar(pedido)
+        return replace(r, bruto={**r.bruto, "decisao": "pedir_evidencia", "falta": ["execucao_real"]}, simulado=False)
+
+
+def _com_validacao(m: Mundo, ia: CuradorSimulado) -> ValidacaoFalsa:
+    m.ia = ia
+    m.curador = ligar_curador.ligar(m.servico, m.repo, m.db, TriagemDeCredencial(), config=lambda: m.cfg,
+                                    precos=lambda: PRECOS, relogio=lambda: m.agora, catalogo=m.catalogo,
+                                    curador_de_ia=m.ia)
+    m.curador.validacao = v = ValidacaoFalsa()
+    return v
+
+
+def test_parecer_real_que_pede_evidencia_chega_a_validacao_com_a_revisao(db: Database) -> None:
+    m = Mundo(db)
+    v = _com_validacao(m, CuradorQuePedeEvidencia())
+    ref = m.licao(efeito=False, fonte=SourceKind.MANUAL)
+    assert m.volta().revisadas == (ref,)
+    [linha] = m.revisoes()
+    assert v.pareceres == [(ref, linha["id"], "pedir_evidencia", ("execucao_real",))]
+    assert v.revisados == []
+
+
+def test_parecer_simulado_nunca_chega_a_validacao(db: Database) -> None:
+    """O adaptador simulado não dispara execução real: o parecer falso não vira pedido."""
+    m = Mundo(db)
+    v = _com_validacao(m, CuradorSimulado())
+    ref = m.licao(efeito=False, fonte=SourceKind.MANUAL)
+    assert m.volta().revisadas == (ref,)
+    assert v.pareceres == [] and v.revisados == []
+
+
+def test_evidencia_chegou_pula_o_cooldown_e_fecha_a_chegada_com_a_revisao_nova(db: Database) -> None:
+    m = Mundo(db)
+    m.cfg = CuradorCfg(modo="shadow", cooldown_h=24)
+    v = _com_validacao(m, CuradorQuePedeEvidencia())
+    ref = m.licao(efeito=False, fonte=SourceKind.MANUAL)
+    assert m.volta().revisadas == (ref,)
+    m.evidencia(ref, "run:r-validacao")                       # a evidência nova muda o dossiê
+    assert m.volta(horas=1).revisadas == ()                   # sem a chegada, o cooldown segura o item
+    v.vindas = [ChegadaFalsa("lv-1", ref, "licao")]
+    assert m.volta(horas=1).revisadas == (ref,)
+    primeira, segunda = m.revisoes()
+    assert segunda["gatilho"] == Gatilho.EVIDENCIA_CHEGOU.value
+    assert v.revisados == [("lv-1", segunda["id"])]
+    assert [p[1] for p in v.pareceres] == [primeira["id"], segunda["id"]]   # o parecer novo pode pedir de novo

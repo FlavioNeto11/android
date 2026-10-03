@@ -1397,8 +1397,19 @@ def parcial_so_de_app_parado(st: AppState, instance_id: str) -> bool:
 
 
 def ressalva_sem_trafego(parados: list[str]) -> str:
-    """A ressalva do `trafego_verificado` com app parado: o que a pessoa lê no painel e na tarefa que espera."""
+    """A ressalva do `trafego_verificado` com app parado: o que a pessoa lê no painel e na tarefa que espera.
+    `parados` vem em nomes de app (`nomes_dos_apps`), não em pacotes."""
     return ", ".join(parados) + " sem tráfego na janela: não provado, não segura o estado"
+
+
+def nomes_dos_apps(st: AppState, pacotes: list[str]) -> list[str]:
+    """O nome que a pessoa conhece (`apps.name`, "Outlook") de cada pacote, na mesma ordem; sem cadastro, o próprio
+    pacote. O `per_app` da medição continua em pacotes: só o texto do `detail` muda (validação do deploy 9)."""
+    nomes = []
+    for pacote in pacotes:
+        linha = st.db.one("SELECT name FROM apps WHERE package=? ORDER BY builtin DESC, id LIMIT 1", (pacote,))
+        nomes.append(str(linha["name"]) if linha is not None and linha["name"] else pacote)
+    return nomes
 
 
 def registrar_medicao(st: AppState, instance_id: str, medicao: NetworkMeasurementInput, *,
@@ -1502,7 +1513,7 @@ def _registrar_medicao(st: AppState, instance_id: str, medicao: NetworkMeasureme
         if not falta:
             estado, detalhe = "trafego_verificado", f"medição #{mid} ({medicao.method}): saída e apps provados"
             if parados := apps_sem_trafego(medicao):
-                detalhe += f"; {ressalva_sem_trafego(parados)}"
+                detalhe += f"; {ressalva_sem_trafego(nomes_dos_apps(st, parados))}"
         elif mediu_ip:
             estado, detalhe = "parcial", f"medição #{mid} ({medicao.method}): " + "; ".join(falta)
         else:

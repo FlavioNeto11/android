@@ -572,6 +572,15 @@ aprendizado:                      # aprendizado contínuo (ADR-054): livro, D1, 
     k: 1.5
     janela_dias: 7
     m_cmax: 4
+  validacao:                      # 30.31: a IA valida o que o curador manda "pedir evidência" (execução de validação)
+    modo: "off"                   # DESLIGADO de fábrica; "on" roda execução REAL (o custo é o da operação)
+    intervalo_s: 600              # o despachante olha a fila (uma execução por volta, no máximo)
+    beta: 0.05                    # fração do gasto de IA da operação na janela que a validação pode usar
+    maximo_por_hora: 4
+    janela_dias: 7
+    extra_usd: 0                  # verba única somada ao beta até extra_ate (ISO, ex.: 2026-10-10T00:00:00.000Z)
+    extra_ate: ""
+    custo_estimado_usd: 0.07
   ia_resumos_por_dia: 0           # lição escrita por IA: desligada (gasta saldo e abre injeção); só 0 é aceito
   takeover_gravar: false          # gravar as entradas manuais da tomada de controle fora do treino
   retencao: {sinais_dias: 180, feedback_dias: 365, exposicoes_dias: 120, evidencias_por_item: 200, diario_dias: 400,

@@ -39,13 +39,14 @@ class Gatilho(StrEnum):
     CONFLITO = "conflito"
     GRUPO_DE_FALHA_ACIMA_DO_MINIMO = "grupo_de_falha_acima_do_minimo"
     PEDIDO_DA_PESSOA = "pedido_da_pessoa"
+    EVIDENCIA_CHEGOU = "evidencia_chegou"  # 30.31: a execução de validação que o curador pediu deixou evidência
 
 
 #: Os gatilhos que, num item PUBLICADO, são "conflito ou evidência contra" (prioridade 1).
 GATILHOS_CONTRA_PUBLICADO = frozenset({Gatilho.DEGRADANDO, Gatilho.OBSOLETO_PROVAVEL, Gatilho.CONFLITO})
 #: Quando o mesmo item chega por dois gatilhos, fica o mais forte (a ordem desta tupla).
 FORCA_DO_GATILHO: tuple[Gatilho, ...] = (
-    Gatilho.PEDIDO_DA_PESSOA, Gatilho.CONFLITO, Gatilho.OBSOLETO_PROVAVEL, Gatilho.DEGRADANDO,
+    Gatilho.PEDIDO_DA_PESSOA, Gatilho.EVIDENCIA_CHEGOU, Gatilho.CONFLITO, Gatilho.OBSOLETO_PROVAVEL, Gatilho.DEGRADANDO,
     Gatilho.GRUPO_DE_FALHA_ACIMA_DO_MINIMO, Gatilho.VERSAO_NOVA, Gatilho.NOVA_PENDENCIA_DO_DONO, Gatilho.A_REVISAR)
 
 

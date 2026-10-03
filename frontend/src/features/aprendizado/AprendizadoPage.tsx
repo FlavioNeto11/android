@@ -1,4 +1,4 @@
-import { AppWindow, BookOpen, Flame, Inbox, MessageSquareText } from 'lucide-react';
+import { AppWindow, BookOpen, ChartColumn, Flame, Inbox, MessageSquareText } from 'lucide-react';
 import { useEffect } from 'react';
 import { Page } from '../../components/Page';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
@@ -7,12 +7,13 @@ import { AplicativosTab } from './AplicativosTab';
 import { AprendidoTab } from './AprendidoTab';
 import { useContagemDoAprendizado } from './contagem';
 import { FalhasTab } from './FalhasTab';
+import { MetricasTab } from './MetricasTab';
 import { ParaAprovarTab } from './ParaAprovarTab';
 import { SinaisTab } from './SinaisTab';
 import styles from './Aprendizado.module.css';
 
-type Aba = 'apps' | 'aprovar' | 'aprendido' | 'falhas' | 'sinais';
-const ABAS: readonly Aba[] = ['apps', 'aprovar', 'aprendido', 'falhas', 'sinais'];
+type Aba = 'apps' | 'aprovar' | 'aprendido' | 'falhas' | 'sinais' | 'metricas';
+const ABAS: readonly Aba[] = ['apps', 'aprovar', 'aprendido', 'falhas', 'sinais', 'metricas'];
 const isAba = (v: unknown): v is Aba => typeof v === 'string' && (ABAS as readonly string[]).includes(v);
 const ID = 'aprendizado';
 
@@ -23,7 +24,8 @@ const ID = 'aprendizado';
  * - Para aprovar: a fila do D1 (efeito externo ou texto de pessoa) e "Revisar" (o legado com efeito);
  * - Aprendido: o catálogo unificado, com o estado e as decisões da pessoa;
  * - O que mais falha: o backlog para as sessões de desenvolvimento;
- * - Sinais: os votos e os gestos que viram evidência.
+ * - Sinais: os votos e os gestos que viram evidência;
+ * - Métricas (30.33): o aprendizado medido na janela e os pareceres do curador.
  */
 export function AprendizadoPage() {
   // A guia vem do link (`#/aprendizado?aba=falhas`); "Aplicativos" é a padrão (o Global) e não entra nele.
@@ -46,6 +48,7 @@ export function AprendizadoPage() {
     { id: 'aprendido', label: 'Aprendido', icon: BookOpen },
     { id: 'falhas', label: 'O que mais falha', icon: Flame },
     { id: 'sinais', label: 'Sinais', icon: MessageSquareText },
+    { id: 'metricas', label: 'Métricas', icon: ChartColumn },
   ];
 
   return (
@@ -60,6 +63,7 @@ export function AprendizadoPage() {
         {aba === 'aprendido' ? <AprendidoTab /> : null}
         {aba === 'falhas' ? <FalhasTab /> : null}
         {aba === 'sinais' ? <SinaisTab /> : null}
+        {aba === 'metricas' ? <MetricasTab /> : null}
       </TabPanel>
     </Page>
   );

@@ -33,6 +33,8 @@ def _excecao(kind: LivroKind, de: SkillState, para: SkillState) -> bool:
         return True                                  # rota própria / fora do D1
     if kind is LivroKind.FLUXO and para is S.DEPRECATED:
         return True                                  # fluxo não tem aposentadoria
+    if de is S.DISABLED and para is S.CANDIDATE and kind is not LivroKind.FLUXO:
+        return True                                  # 30.31: devolver à prova é só do fluxo
     return kind is LivroKind.RECEITA and de is S.DEPRECATED       # receita substituída não volta
 
 
@@ -69,7 +71,9 @@ def test_o_roteiro_de_cada_estado() -> None:
     assert passos(LivroKind.LICAO, S.VALIDATED) == [("aprovar", "published"), ("rejeitar", "disabled")]
     assert passos(LivroKind.RECEITA, S.PUBLISHED) == [("aposentar", "deprecated"), ("desligar", "disabled")]
     assert passos(LivroKind.FLUXO, S.PUBLISHED) == [("desligar", "disabled")]
-    assert passos(LivroKind.FLUXO, S.DISABLED) == [("reativar", "published")]
+    assert passos(LivroKind.FLUXO, S.DISABLED) == [("reativar", "published"), ("devolver", "candidate")]  # 30.31
+    assert passos(LivroKind.RECEITA, S.DISABLED) == [("reativar", "published")]
+    assert passos(LivroKind.LICAO, S.DISABLED) == [("reativar", "published")]
     assert passos(LivroKind.TELA, S.DEPRECATED) == [("reativar", "published")]
     assert passos(LivroKind.RECEITA, S.DEPRECATED) == []
     assert passos(LivroKind.HABILIDADE, S.VALIDATED) == []

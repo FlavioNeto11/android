@@ -10,7 +10,7 @@ import { Field, TextInput } from '../../components/Field';
 import { KvList, KvRow } from '../../components/JsonTree';
 import { PageSection } from '../../components/Page';
 import {
-  balanceAge, balanceSourceLabel, balanceStateLabel, balanceTone, balanceUsage, money,
+  balanceAge, balanceSourceLabel, balanceStateLabel, balanceTone, balanceUsage, consumptionUsd, money,
 } from '../../lib/aiBalance';
 import { toast, toastError } from '../../store/toasts';
 import styles from './AiBalances.module.css';
@@ -149,7 +149,7 @@ function BalanceCard({ b, onSaved }: { b: AiBalance; onSaved: (r: AiBalancesRepo
           {b.anchor_balance === null ? '—'
             : `${money(b.anchor_balance, b.currency)} · ${balanceAge(b.age_h)} · ${balanceSourceLabel(b.anchor_source)}`}
         </KvRow>
-        <KvRow label="Consumo desde a âncora">{money(b.spent_since_usd + b.external_usd, 'USD')}</KvRow>
+        <KvRow label="Consumo desde a âncora">{consumptionUsd(b.spent_since_usd + b.external_usd)}</KvRow>
         <KvRow label="Consumo vem de">{consumptionLabel(b)}</KvRow>
         {b.currency !== 'USD' ? <KvRow label="Câmbio">{`${b.units_per_usd} ${b.currency} por US$ 1`}</KvRow> : null}
       </KvList>

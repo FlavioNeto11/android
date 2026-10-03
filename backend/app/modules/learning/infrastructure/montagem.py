@@ -149,7 +149,8 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
     ligar_curador.ligar(servico, repo, db, TriagemDeCredencial(), config=lambda: config().curador, precos=precos,
                         relogio=relogio, catalogo=risco, curador_de_ia=curador_de_ia)
     # 30.8: as métricas (só leitura); a economia é a do aproveitamento, reaproveitada, e o orçamento, o do curador.
-    servico.anexar(ServicoDeMetricas(servico, FontesDeMetricasSql(db), aproveitamento=partial(_aproveitamento, db),
+    servico.anexar(ServicoDeMetricas(servico, FontesDeMetricasSql(db, precos=precos),
+                                     aproveitamento=partial(_aproveitamento, db),
                                      curador=lambda: ligar_curador.ajustes_do_curador(config().curador),
                                      precos=precos, relogio=relogio))
     return servico

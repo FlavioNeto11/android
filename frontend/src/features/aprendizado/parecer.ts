@@ -160,6 +160,7 @@ const GATILHO: Record<string, string> = {
   nova_pendencia_do_dono: 'item novo à sua espera', a_revisar: 'legado a revisar', degradando: 'saúde caindo',
   obsoleto_provavel: 'provavelmente obsoleto', conflito: 'conflito com outro item', versao_nova: 'versão nova do app',
   grupo_de_falha_acima_do_minimo: 'falha recorrente', pedido_da_pessoa: 'pedido de uma pessoa',
+  evidencia_chegou: 'chegou a evidência que o curador pediu',
 };
 
 const traduz = (mapa: Record<string, string>) => (k: string | null | undefined): string => (k ? mapa[k] ?? k : '');
@@ -196,7 +197,7 @@ export function textoDaValidade(v: string): string | null {
 
 const ACAO_NO_TEXTO: Record<RotuloDaAcao, string> = {
   validar: 'validar', aprovar: 'aprovar', rejeitar: 'rejeitar', aposentar: 'aposentar', desligar: 'desligar',
-  reativar: 'reativar',
+  reativar: 'reativar', devolver: 'devolver à prova',
 };
 
 /** O botão do aceite: "Aceitar e validar" quando aceitar transiciona; "Concordar" quando só registra. */
@@ -209,7 +210,7 @@ export function rotuloDoAceite(acao: PassoDoAceite | null): { label: string; con
 
 const EFEITO_DO_PASSO: Record<RotuloDaAcao, string> = {
   validar: 'validado (ainda não publicado)', aprovar: 'publicado', rejeitar: 'rejeitado', aposentar: 'aposentado',
-  desligar: 'desligado', reativar: 'reativado',
+  desligar: 'desligado', reativar: 'reativado', devolver: 'devolvido à prova (inerte até provar de novo)',
 };
 
 /** O que o aceite fez com o item, para o aviso do lote: "validado" não é "publicado". */

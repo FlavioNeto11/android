@@ -82,7 +82,7 @@ def ligar(servico: LearningService, repo: RepositorioDeAprendizado, db: Database
           relogio: Callable[[], datetime], catalogo: CatalogoDeRisco | None,
           curador_de_ia: CuradorDeIA | None = None) -> CuradorPorIA:
     dossies = DossiesSql(db, servico, repo, catalogo)
-    registro = RegistroDeRevisoesSql(db)
+    registro = RegistroDeRevisoesSql(db, precos=precos)      # I3: o custo pela chamada ligada, na janela
     curador = CuradorPorIA(servico, dossies, curador_de_ia or CuradorSimulado(), registro, triagem,
                            ajustes=lambda: ajustes_do_curador(config()), precos=precos, relogio=relogio)
     servico.anexar(curador)

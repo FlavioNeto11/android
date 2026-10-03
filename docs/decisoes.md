@@ -4482,6 +4482,119 @@ catálogo, comando), que o ADR-063 não cobre.
         o id cru da habilidade nem o hash do dossiê.
       - Os testes do interruptor fechado agora o fecham por `monkeypatch`.
       - A chamada real fica para o deploy 9 (31.10): `not_run`.
+16. **Emenda de 03/10/2026 (decisões da orquestradora na rodada H do 31.9, dentro do piso do item 10; registrada
+    ~10:40Z).** A fase 2 da rodada G teve 47 vazamentos em 9a99a8d8 (corpus de 579). A H é a camada ESTRUTURAL, segunda
+    passada depois das listas e ainda lista de bloqueio: sem lista de permissão e sem recusa por proporção.
+    - **H-1 (a)**: conector ou posposição com valor desconhecido depois de qualquer verbo de entrar recusa
+      (`c7_login_valor`), com ou sem objeto de navegação, salvo depois de pessoa ou conversa ("entre na conversa com
+      qa-001", "entre em contato com a Ana"). Valem também:
+      - o passado ("entrei com", "loguei com"), só para ligar valor: "veja se ele entrou" não é intenção de entrar;
+      - norueguês, dinamarquês, romeno, indonésio, turco (posposição "ile"), tcheco, húngaro (sufixo "-lal") e finlandês;
+      - "com a conta <nome que o catálogo não conhece>" volta a ser valor. O "conta" de `_ONDE_SE_ENTRA` o isentava.
+    - **H-1 (b)**: o campo de login (usuário, user, login, usr) com dois valores e separador que não é palavra (";", "|",
+      ":", "-", "/") forma o par sem verbo. "conta", "perfil", "nome" e "persona" ficam de fora, porque listam várias
+      contas.
+    - **H-1 (c)**: depois de um verbo de digitar, duas letras soltas ou nomes de letra com pontuação entre elas ("g+i",
+      "g · i") recusam, ou três "fortes" só com espaço. Não contam "a", "e", "o", "y" e "u", nem os nomes de letra que são
+      palavra ("de", "que", "ele", "te"). A soletração longa aceita qualquer separador.
+    - **H-1 (d)**: o telefone ditado em holandês e sueco entra pela lista de numerais (bloqueio). A forma genérica do pedido
+      ("5+ palavras curtas desconhecidas depois de verbo de ligar") exige saber quais palavras são conhecidas: é lista de
+      permissão, contra este item 10: a orquestradora manteve a versão de bloqueio, sem exceção (~10:50Z).
+    - **H-1 (e)**:
+      - o e-mail com rótulo e campos rotulados ("e-mail: X, provedor: Y, terminação: Z", "e-mail: X / Y / Z"), só com
+        dois-pontos ("o e-mail do provedor caiu" passa);
+      - o e-mail ditado em peças sem ponto, com pista ("zilda em correio, net", "para zilda em exemplo com br",
+        "para zilda correio net"), em que o "com" sozinho é a preposição;
+      - "bij" e "punt" (holandês);
+      - o "@" trocado por "#" ("zilda#correio.net").
+    - **H-2**: o domínio de topo separado do e-mail fica no `[email]` ("zilda@correio. net", "zilda@correio. com. br",
+      "zilda@correio net").
+    - **H-3 (decisão; REVERTIDA no item 17)**: o nome INTEIRO do catálogo sozinho depois do conector do verbo de entrar é
+      DESTINO ("entre com o lucas", "entre como lucas", "entre no perfil com Lucas"): é o verbo central do produto, e cai
+      o desvio da G-4.
+      - Continuam valor (G-4): o segundo do par ("com a conta Lucas e girassol"), o colado ao usuário ("com o lucas
+        girassol") e o conector depois de outro destino ("acesse como lucas com girassol").
+      - Residual aceito: a persona com o nome da própria senha ("entre com girassol" com uma persona "Girassol"). O portão
+        da fase 2 é o catálogo sem ela.
+    - **H-5**: só logradouro, número e CEP são endereço. "a padaria do bairro", "a foto da casa" e "o bloco de notas"
+      passam; "casa 3", "quadra dez" e "lote 12" recusam. "O e-mail da newsletter no outlook" é a mensagem no app.
+      Também passam:
+      - o domínio de topo desconhecido sem caminho ("maria.clara", "p.ex.");
+      - o "%40" de um link, que é o "@" codificado dentro da URL.
+    - Custos declarados e aceitos como residual (fora dos 122 comandos reais; o G-6 revê acima de 5 %). Pulam a sombra:
+      - "entre no perfil com a Ana": nome fora do catálogo depois de objeto que não é pessoa;
+      - "arquive o e-mail da Marina Prado no outlook": a isenção da H-5 vale só para nome de uma palavra;
+      - "responda para o e-mail da Marina no outlook": pista de destinatário;
+      - "escreva a, b e c": pela H-1 (c).
+    - Prova `simulated`:
+      - `backend/tests/test_decisao_fechada_reverificacao_h.py`, com os testes da G e da E ajustados à H-3;
+      - harness da orquestradora no catálogo sem a "Girassol": 0 vazamentos (eram 47) e 5 recusas indevidas (4 antigas e o
+        caso 538). O 538 é um "e-mail: X, provedor: Y" que o corpus rotulou máscara e a H-1 (e) manda recusar;
+      - nas lentes do par com a "Girassol": 0 vazamentos;
+      - os 122 comandos reais de 7 dias seguem com as mesmas 2 recusas (1,6 %).
+      Detalhes em [ia.md](ia.md), no bloco "Rodada H" da intenção.
+17. **Emenda de 03/10/2026 (NO-GO da fase 2 da rodada H; decisões da orquestradora, registradas ~11:45Z).** A fase 2 da H
+    deu NO-GO: 107 casos em 4 famílias de método. Não há rodada I nessa forma.
+    - A família 1 não reproduz na base 5f020598: era a H-3, que se reverte.
+    - As famílias 2 a 4 reproduzem na base (vêm da G) e NÃO se remendam.
+    - A forma seguinte é decisão do dono: A, fechar por gatilho; B, C3 fora, só o curador C0–C1.
+    - O que muda, sempre lista de bloqueio:
+      - **H-3 revertida**: o nome do catálogo sozinho depois do verbo de entrar volta a ser valor (postura da G-4).
+        "entre com o lucas" e "entre como lucas" recusam (`c7_login_valor`). A sintaxe de destino continua isenta ("entre
+        no perfil do lucas", "@lucas", "no android-01"). Cai o residual aceito da persona com o nome da própria senha.
+      - **(a) C7 com dígito recusa, em vez de mascarar** (`c7_valor_com_digito`, a última regra do `motivo_c7`). Recusa
+        quando o comando tem um gatilho em qualquer lugar e um token com cara de segredo que não é destino.
+        - Gatilho: verbo de entrar, no presente ou no passado, salvo com objeto pessoa ou conversa; o campo forte; ou o
+          verbo de digitar (digite, tecle, insira, type, soletre…).
+        - Cara de segredo: letra e dígito, ou 4 ou mais dígitos.
+        - Refinamento dos anos (orquestradora, ~12:00Z): o token SÓ de dígitos não recusa por um gatilho qualquer. Ele
+          conta só até 3 tokens antes ou depois de campo forte, verbo de digitar ou palavra C7 ("digite 4821", "usuario
+          4821"), ou até 3 tokens depois do conector de um verbo de entrar ("entre com 1987").
+        - Passam: "entre no insta e curta as 3 fotos", "entre na conversa com qa-001" e "entre no insta e veja o post de
+          2024".
+        - Custo aceito: "entre no insta e use 1987" sai mascarado.
+      - **(b) A quebra de linha é token**, como o ";": separa o par e o imperativo. A navegação em várias linhas não muda.
+      - **(c) O `_NAO_DONO` cobre o app de e-mail e agenda**: objetos e telas (calendário, configurações, contatos,
+        tarefas, regras…, em pt, es e en) e adjetivos ("compartilhada", "rápidas"). "abra o calendário do outlook" passa.
+        - É isenção sobre a recusa: o objeto que a lista não conhece continua recusando (falha fechada), e os ditados
+          seguem recusando.
+        - Lacuna medida, que é custo e não vazamento: num conjunto de 20 objetos fora da lista, 14 ainda recusam.
+    - Medição (d), sobre os 125 comandos reais de 7 dias. Feita às 11:41Z no 136f80ff, no banco do central só para
+      leitura, com o catálogo real e só contagens.
+      - Recusam 3 (2,4 %): 1 por `c7_palavra` e 2 por `c7_valor_com_digito`. A base 5f020598 e o 54f71853 recusam só o
+        primeiro (1 de 125) e, sem a (a), o 136f80ff também. O custo da (a) é de 2 comandos (1,6 %).
+      - Observado sem ler o texto: nos dois, os tokens com cara de segredo são só números de 4 dígitos entre 1900 e 2099
+        (1 e 4 tokens). Nenhum vem até 3 tokens depois de campo forte, verbo de digitar ou palavra C7. Inferido: são anos,
+        o custo declarado, e não segredos.
+      - Correção de método: o script das rodadas F a H não registrava os nomes dos apps, como a subida registra. Sem eles,
+        a F-A recusava 1 comando a mais ("2 de 122", "2 de 125"). Com o registro, a base recusa 1, não 2.
+      - Gatilhos no comando sem destinos:
+        - verbo de entrar: 35;
+        - campo forte: 8;
+        - verbo de digitar: 2;
+        - palavra C7: 1;
+        - algum deles: 42.
+      - Dos 122 que passam, 39 (32 %) têm gatilho forte: é o custo da opção A. Com o campo amplo (48) ou o separador
+        (100) como gatilho, seriam 84 e 101 comandos.
+      - Com o refinamento dos anos, os mesmos 125 voltam a 1 recusa, a da `c7_palavra`, e passam 124.
+      - Opção A-ESTREITA (pedido da orquestradora). O gatilho é qualquer um destes:
+        - verbo de entrar com conector com, with, usando, con ou mit até 3 tokens depois;
+        - campo forte;
+        - verbo de digitar;
+        - palavra C7;
+        - corrida soletrada.
+        "entre no insta" sozinho e o separador não contam.
+        - Como pedida, pega 35 dos 124 que passam (34 dos 122). Vinte e oito são "entre na conversa com …", a navegação
+          do QA Messenger; os outros são "conta" (7) e "digitar" (2).
+        - Com a exceção de pessoa ou conversa da H-1 (a), pega 7 (6 dos 122): só "conta", "usuario" e "digitar".
+    - Prova `simulated` no 136f80ff (o refinamento dos anos deixa o harness igual e soma 9 testes):
+      - testes do filtro, da arquitetura e das sombras: 999 passaram; vizinhos: 164;
+      - harness da orquestradora, corpus de 579 com o 538 reetiquetado para recusa:
+        - 0 vazamentos e 0 passagens indevidas;
+        - recusas indevidas: 134, 135, 348, 427, 572 e 573. O 572 e o 573 ("entre com o lucas e curta…", "entre como
+          lucas") são o custo esperado da reversão;
+        - com a "Girassol": 0 vazamentos no corpus inteiro e 0 casos que mudam entre os catálogos (o 54f71853 tinha 17).
+      - `backend/tests/test_decisao_fechada_reverificacao_h.py`, seção do piso. A G e a E voltaram à versão da base.
 
 **Consequências.** A plataforma ganha um motor barato (US$ 0,042/M de entrada, saída grátis) para decisões fechadas que hoje não
 acontecem ou vão ao Opus, medido em sombra contra o caminho atual antes de qualquer `on`. O ADR-063 continua valendo para código.

@@ -84,10 +84,10 @@ describe('o título que a pessoa lê (validação do deploy 3, P3 e P4)', () => 
     expect(tituloDoItem({ ...r, kind: 'fluxo', title: 'Enviar oi' })).toBe('Enviar oi');
   });
 
-  it('app sem catálogo: a receita usa o título da etapa de origem, com a chave; o nome do catálogo vence (deploy 4)', () => {
+  it('app sem catálogo: a receita usa o título da etapa de origem (a chave fica no title); o nome do catálogo vence (deploy 4)', () => {
     const r = entrada({ ...ENVIAR, capability: null, capability_nome: null, etapa: 'Digitar a mensagem' });
-    expect(tituloDoItem(r)).toBe('Digitar a mensagem · etapa send_message_i1 (v1)');
-    expect(tituloDoItem({ ...r, title: 'sem versão' })).toBe('Digitar a mensagem · etapa sem versão');
+    expect(tituloDoItem(r)).toBe('Digitar a mensagem (v1)');                    // UX do deploy 8: sem a chave crua
+    expect(tituloDoItem({ ...r, title: 'sem versão' })).toBe('Digitar a mensagem');
     expect(tituloDoItem({ ...r, capability: 'SEND_MESSAGE', capability_nome: 'Enviar a mensagem' })).toBe('Enviar a mensagem (v1)');
     expect(tituloDoItem({ ...r, etapa: null })).toBe('send_message_i1 (v1)');
     expect(tituloDoItem({ ...r, kind: 'licao', title: 'Em X: tocou' })).toBe('Em X: tocou');      // só a receita
@@ -136,6 +136,10 @@ describe('ações da pessoa (as `acoes` do backend; o painel só põe o texto)',
     const pub = entrada({ state: 'published', acoes: [ACAO('deprecated', 'aposentar'), ACAO('disabled', 'desligar')] });
     expect(acoesDoItem(pub).map((a) => a.label)).toEqual(['Aposentar', 'Desligar']);
     expect(acoesDoItem(entrada({ state: 'disabled', acoes: [ACAO('published', 'reativar')] }))[0]?.label).toBe('Reativar');
+    // 30.31: o fluxo desligado também pode voltar à prova (inerte, sem publicar).
+    const fluxo = entrada({ kind: 'fluxo', state: 'disabled', acoes: [ACAO('published', 'reativar'), ACAO('candidate', 'devolver')] });
+    expect(acoesDoItem(fluxo).map((a) => [a.to, a.label, a.perigo])).toEqual([
+      ['published', 'Reativar', false], ['candidate', 'Devolver à prova', false]]);
   });
 
   it('chave que o painel não conhece (backend mais novo) aparece como veio, sem perigo', () => {

@@ -314,10 +314,12 @@ android-09 15 s depois do `restart` do experimento. Só não entrou porque o com
 
 - **Desligada por padrão.** `PUT /api/instances/{id}/repair-pause` `{ttl_s, reason}` liga; `DELETE` encerra. **`ttl_s` é
   obrigatório** (60 s a 3 h) e a pausa **expira sozinha** (o monitor limpa e registra `instance.repair_pause`); repetir o
-  `PUT` renova. Fica só em memória: reiniciar o central a apaga, com o efeito de sempre (a escada volta), por isso quem
-  depende dela confere o `repair_pause` do aparelho (`GET /api/snapshot` → `instances[].repair_pause`) e do
-  `GET /api/health` → `features.repair_pause` (`{id: {until, since, reason, by, remaining_s}}`; vazio = nenhuma). É
-  informativo: não vira problema de saúde.
+  `PUT` renova. **Sobrevive ao restart do backend** (25.13, 03/10/2026; antes ficava só em memória e o restart a apagava
+  antes do prazo, K-082): fica gravada em `settings` (`repair_pauses`, `{id: {until, since, reason, by}}`) e volta com o
+  mesmo prazo quando o aparelho é carregado; a retomada e o vencimento a tiram dali, e a vencida não volta. Quem depende
+  dela confere o `repair_pause` do aparelho (`GET /api/snapshot` → `instances[].repair_pause`) e do `GET /api/health` →
+  `features.repair_pause` (`{id: {until, since, reason, by, remaining_s}}`; vazio = nenhuma). É informativo: não vira
+  problema de saúde.
 - **O que segura:** só o reparo AUTOMÁTICO de `restart`/`reset` do aparelho marcado: a escada (`requested_by='system'`,
   `despacho.remediar`) e o reinício por saúde do convidado (`requested_by='saude'`). A pausa não abre comando (nem
   rejeitado), então não conta como degrau; o aparelho volta a ser avaliado logo depois do fim da pausa e, se ainda

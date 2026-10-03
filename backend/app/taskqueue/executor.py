@@ -30,6 +30,7 @@ from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, TOOLS, ReadValue,
                                 looks_like_commit, resolve_point, urls_do_texto, validate_call)
 from ..config import AiCfg, Config, LimitsCfg
 from ..devices.adb import AVISO_DE_ANR, MorteDoApp, motivo_de_anr
+from ..devices.conta_observada import evidencia_legivel
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter, Observation, dimensoes_do_modelo
 from ..metricas import metricas
 from ..models import (DELIVERY_ORDER, ActionStatus, AttemptStatus, DeliveryLevel, Plan, Postcondition, StepDTO,
@@ -60,7 +61,7 @@ from .foreach import sanitize_item, teto_de_chamadas
 from .proofs import marcas_pendentes_na_tela, variantes_de_arroba
 from .projecao import HistoricoDeAcoes, app_da_etapa
 from .recipes import (READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, eh_generica,
-                      hash_generico_da_linha, unique_selectors)
+                      filhos_rotulados, hash_generico_da_linha, unique_selectors)
 from .repository import Repository
 from .saidas import (ChaveDeTentativa, LeituraInvalida, LeituraSemTexto, LeituraVisualRecusada,
                      args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor, ler_valor_visual, nomes_citados,
@@ -356,10 +357,13 @@ def evidencia_da_conta(account_label: str | None, pos_condicao: str, texto: str 
 
     Só quando o rótulo aparece na pós-condição ou na prova; e a evidência é a frase que NOMEIA a conta. A prova pela
     árvore local é um seletor cru, sem o nome ("…sem IA (selector:id=…|text=={username})"), e o painel a lia como
-    conta diferente do rótulo (validação do deploy 8, android-06): sem o rótulo na prova, vale a pós-condição."""
+    conta diferente do rótulo (validação do deploy 8, android-06): sem o rótulo na prova, vale a pós-condição. A prova
+    por seletor com o rótulo dentro ("seletor id=…|text=qa-user-10: 1 elemento(s)") vira "qa-user-10 visto na tela"
+    (`conta_observada.evidencia_legivel`, validação do deploy 9)."""
     if not account_label or norm_text(account_label) not in norm_text(pos_condicao + " " + (texto or "")):
         return None
-    return texto if texto and norm_text(account_label) in norm_text(texto) else pos_condicao
+    bruta = texto if texto and norm_text(account_label) in norm_text(texto) else pos_condicao
+    return evidencia_legivel(account_label, bruta)
 
 
 class StepExecutor:
@@ -2955,6 +2959,8 @@ def _safe_target(el: Any, tree: UiTree | None = None) -> dict[str, Any] | None:
     d.pop("id", None)                      # "e7" só vale naquela observação
     if tree is not None:
         d["unique"] = unique_selectors(tree, el)
+        if not d["unique"] and (filhos := filhos_rotulados(tree, el)):
+            d["filhos"] = filhos         # 29.40 item 2: o contêiner sem identidade, pelo filho rotulado
     return d
 
 

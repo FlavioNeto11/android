@@ -268,6 +268,70 @@ def _combo(kind: str, el: dict[str, Any] | UiElement) -> tuple[str | None, str |
     return parts if all(needed) else None
 
 
+#: Quantos filhos rotulados a gravação guarda do alvo sem identidade (29.40 item 2): a destilação usa o primeiro cujo
+#: texto vire seletor (`_usable_text` depende das variáveis, que só a destilação conhece).
+FILHOS_NO_ALVO = 3
+
+
+#: O rótulo que muda com o estado ou com o tempo não identifica o filho (revisão da Android, 03/10): tempo relativo ou
+#: absoluto ("2h", "5m ago", "10:42", "Yesterday") e as palavras de estado do Instagram e do Outlook ("Following",
+#: "Seen", "Active now", "Unread"). A candidata gravada com "Active now" só falharia no dia seguinte.
+_ROTULO_DE_ESTADO = re.compile(
+    r"\b(?:\d+\s?[smhdw]|ago|yesterday|ontem|hoje|today|am|pm|now|agora|seen|visto|sent|enviad[ao]|delivered|unread"
+    r"|active|ativ[ao]|follow|following|seguir|seguindo|requested|solicitado|message|mensagem|like|unlike|curtir"
+    r"|online|offline|typing|digitando|new|nov[ao])\b"                     # o selo de não lido (revisão da Android)
+    r"|\d{1,2}:\d{2}", re.IGNORECASE)
+
+
+def _dentro_de(fora: tuple[int, int, int, int], dentro: tuple[int, int, int, int]) -> bool:
+    return fora[0] <= dentro[0] and fora[1] <= dentro[1] and dentro[2] <= fora[2] and dentro[3] <= fora[3]
+
+
+def clicavel_no_ponto(tree: UiTree, x: int, y: int) -> UiElement | None:
+    """O menor elemento clicável e habilitado que contém o ponto: quem recebe o toque pelo despacho do Android."""
+    hit = [e for e in tree.elements if e.clickable and e.enabled and _dentro_de(e.bounds, (x, y, x, y))]
+    return min(hit, key=lambda e: (e.bounds[2] - e.bounds[0]) * (e.bounds[3] - e.bounds[1])) if hit else None
+
+
+def toque_no_filho_cai_no_conteiner(tree: UiTree, filho: UiElement, conteiner: str | None) -> bool:
+    """A trava de hit-test (revisão da Android): o menor clicável no centro do filho contém o filho, não é ele e tem a
+    classe do contêiner gravado. Um botão "Enviar" na linha, um ícone ou uma camada por cima fazem divergir ANTES do
+    toque."""
+    alvo = clicavel_no_ponto(tree, *filho.center)
+    return (alvo is not None and alvo is not filho and _dentro_de(alvo.bounds, filho.bounds)
+            and (not conteiner or alvo.class_name == conteiner))
+
+
+def filhos_rotulados(tree: UiTree, el: UiElement) -> list[dict[str, object]]:
+    """O alvo sem combinação única (o contêiner sem id, como o `LinearLayout` da linha da lista): os elementos DENTRO
+    dele que se identificam sozinhos nesta tela, do maior para o menor. Só os NÃO clicáveis cujo toque no centro cai
+    no próprio alvo (hit-test): o despacho do Android sobe o toque ao contêiner; um filho clicável, ou outro clicável
+    por cima, faria outra coisa. Os candidatos vêm da janela da ordem do dump (o uiautomator despeja em pré-ordem: os
+    descendentes são os nós logo depois do alvo, até o primeiro fora dos bounds), o que deixa de fora a sobreposição
+    de outra camada (FAB, diálogo, snackbar, a linha de baixo durante a rolagem)."""
+    try:
+        i = next(k for k, e in enumerate(tree.elements) if e is el)
+    except StopIteration:
+        return []
+    janela: list[UiElement] = []
+    for e in tree.elements[i + 1:]:
+        if not _dentro_de(el.bounds, e.bounds):
+            break
+        janela.append(e)
+    dentro = [e for e in janela if e.enabled and not e.clickable and not e.password
+              and clicavel_no_ponto(tree, *e.center) is el]
+    dentro.sort(key=lambda e: (-(e.bounds[2] - e.bounds[0]) * (e.bounds[3] - e.bounds[1]), e.bounds[1], e.bounds[0]))
+    saida: list[dict[str, object]] = []
+    for e in dentro:
+        unicos = unique_selectors(tree, e)
+        if unicos:
+            saida.append({"resource_id": e.resource_id, "text": e.text, "desc": e.desc, "class_name": e.class_name,
+                          "unique": unicos, "conteiner": el.class_name})
+            if len(saida) == FILHOS_NO_ALVO:
+                break
+    return saida
+
+
 def unique_selectors(tree: UiTree, el: UiElement) -> list[str]:
     """No momento da ação: quais combinações identificam SOZINHAS o alvo nesta tela (gravado junto do alvo)."""
     kinds = []
@@ -315,7 +379,25 @@ def build_selectors(target: dict[str, Any], variables: dict[str, str]) -> list[d
                 continue
             sel["desc"] = usable
         sels.append(sel)
+    if not sels:
+        # 29.40 item 2: o contêiner sem identidade é alcançado pelo filho rotulado gravado com ele; a reprodução toca o
+        # centro do filho, que fica dentro do contêiner, e a pós-condição confere como sempre.
+        for filho in target.get("filhos") or []:
+            sels = [{**s, "via": "filho", "conteiner": str(filho.get("conteiner") or "")}
+                    for s in build_selectors(filho, variables) if _rotulo_estavel(s)]
+            if sels:
+                break
     return sels
+
+
+def _rotulo_estavel(sel: dict[str, str]) -> bool:
+    """O literal do seletor do filho (sem os `{parâmetros}`) não muda com o estado nem traz um @ de pessoa: o nome de
+    pessoa só vale templatizado. Qualquer @ literal recusa ("por @lucas", "Foto de @lucas"; revisão da Android)."""
+    for chave in ("text", "desc"):
+        literal = re.sub(r"\{[^}]*\}", "", sel.get(chave) or "").strip()
+        if literal and ("@" in literal or _ROTULO_DE_ESTADO.search(literal)):
+            return False
+    return True
 
 
 def resolve_selectors(tree: UiTree, selectors: list[dict[str, str]], variables: dict[str, str]) -> UiElement | None:
@@ -378,6 +460,8 @@ def distill(action_rows: list[Row], variables: dict[str, str]) -> tuple[list[dic
                 return None, f"{tool}: o alvo não tinha seletor estável e único"
             if item["commit"] and all(s["kind"] == "text" for s in sels):
                 return None, "ação de efeito externo só com seletor por texto — fraco demais"
+            if item["commit"] and any(s.get("via") == "filho" for s in sels):
+                return None, "ação de efeito externo pelo filho do alvo — fraco demais"
             item["selectors"] = sels
         if pending_scrolls:
             item["scroll"] = {"direction": pending_scrolls[-1], "max": len(pending_scrolls) + 3}
@@ -446,6 +530,8 @@ def distill_training(inputs: list[dict[str, Any]], variables: dict[str, str], *,
                 return None, f"{tipo}: o alvo não tinha seletor estável e único"
             if commit and all(x["kind"] == "text" for x in sels):
                 return None, "ação de efeito externo só com seletor por texto — fraco demais"
+            if commit and any(x.get("via") == "filho" for x in sels):
+                return None, "ação de efeito externo pelo filho do alvo — fraco demais"
             item["args"] = {"duration_ms": 800} if tipo == "long_press" else {}
             item["selectors"] = sels
         if pending_scrolls:
@@ -499,6 +585,10 @@ class Replayer:
                                                          "direction": hint["direction"], "element_id": None,
                                                          "expect_done": False})
                 raise RecipeDiverged(f"ação {self.idx + 1} ({act['tool']}): alvo ausente ou ambíguo nesta tela")
+            filho = next((s for s in act["selectors"] if s.get("via") == "filho"), None)
+            if filho is not None and not toque_no_filho_cai_no_conteiner(tree, el, filho.get("conteiner")):
+                raise RecipeDiverged(f"ação {self.idx + 1} ({act['tool']}): o toque no rótulo não cairia no contêiner "
+                                     "gravado (outro clicável por cima ou na linha)")
             args["element_id"] = el.id
         if act["tool"] in ("tap", "long_press"):
             args.setdefault("element_id", None)

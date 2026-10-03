@@ -55,6 +55,8 @@ _DIRECAO_DA_ACAO: Mapping[str, Direcao] = {
     "rejeitar": Direcao.DESCE, "desligar": Direcao.DESCE, "aposentar": Direcao.DESCE,
     # "Confirmar que fica" (30.24) não move o item: concorda com manter, observar e pedir evidência.
     "confirmar": Direcao.ESPERA,
+    # "Devolver à prova" (30.31) não publica nem desliga: volta a medir, como observar e pedir evidência.
+    "devolver": Direcao.ESPERA,
 }
 #: O passo que ACEITAR o parecer dá, pela ordem de preferência entre as ações que a pessoa pode dar agora. Descer é
 #: desligar ou rejeitar (a pessoa reativa depois), nunca aposentar: a receita aposentada não volta. Substituir e fundir

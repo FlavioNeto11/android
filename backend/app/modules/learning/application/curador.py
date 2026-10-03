@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Protocol
@@ -32,14 +32,14 @@ from app.modules.learning.application.ports import (AjustesDoCurador, CuradorDeI
                                                     NovaRevisao, PedidoDeRevisao, RecusaDoProvedor,
                                                     RegistroDeRevisoes, TriagemDeTexto)
 from app.modules.learning.domain.ciclo import ErroDeAprendizado, SkillState
-from app.modules.learning.domain.curador import (OPCOES_FECHADAS, VERSAO_DO_DOSSIE, Dossie, opcoes_do_dossie,
+from app.modules.learning.domain.curador import (OPCOES_FECHADAS, VERSAO_DO_DOSSIE, Dossie, Parecer, opcoes_do_dossie,
                                                  validar_saida)
 from app.modules.learning.domain.espera import Faixa
 from app.modules.learning.domain.livro import EntradaDoLivro
 from app.modules.learning.domain.orcamento_do_curador import (Gatilho, Janela, MotivoDoCorte, ParametrosDoOrcamento,
                                                               Pretendente, custo_maximo, estimar_custo, mais_forte,
                                                               prioridade, repartir)
-from app.modules.learning.domain.politica_de_risco import ClasseDeRisco
+from app.modules.learning.domain.politica_de_risco import ClasseDeRisco, Classificacao
 from app.modules.learning.domain.saude import Rotulo, Saude
 from app.modules.learning.domain.vocabulario import LivroKind, Modo
 from app.util import parse_iso
@@ -79,8 +79,8 @@ class _Elegivel:
     gatilho: Gatilho
     dossie: Dossie
     custo: float
-    #: O gatilho que decide a prioridade: o pedido de pessoa fica registrado (`gatilho`), mas não rebaixa o item
-    #: publicado em conflito da prioridade 1.
+    #: O gatilho que decide a prioridade: o pedido de pessoa e a evidência pedida (30.31) ficam registrados
+    #: (`gatilho`), mas não rebaixam o item publicado em conflito da prioridade 1.
     gatilho_da_prioridade: Gatilho | None = None
     #: 30.30: uma pessoa pediu a revisão; o item fura a fila (`prioridade(pedido=True)`).
     pedido: bool = False
@@ -127,6 +127,24 @@ class LeitorDoLivro(Protocol):
     def avisar_parecer(self, e: EntradaDoLivro, faixa: Faixa) -> bool: ...
 
 
+class ValidacaoDoCurador(Protocol):
+    """O laço da validação automática (30.31, `application/validacao.py`), do lado do curador: o parecer que pede
+    evidência vira pedido, e o pedido cuja evidência chegou volta ao curador com o gatilho `evidencia_chegou`."""
+
+    def ao_parecer(self, e: EntradaDoLivro, review_id: str, parecer: Parecer, risco: Classificacao) -> str | None: ...
+    def chegadas(self) -> Sequence[ChegadaDeEvidencia]: ...
+    def revisado(self, pedido_id: str, review_id: str) -> None: ...
+
+
+class ChegadaDeEvidencia(Protocol):
+    @property
+    def id(self) -> str: ...
+    @property
+    def item_ref(self) -> str: ...
+    @property
+    def item_kind(self) -> str: ...
+
+
 class CuradorPorIA:
     nome = "curador"
 
@@ -142,6 +160,9 @@ class CuradorPorIA:
         self._precos = precos
         self._relogio = relogio
         self._parando = threading.Event()
+        #: 30.31: o laço da validação automática; `None` (testes antigos, composição sem parque) = sem pedidos.
+        self.validacao: ValidacaoDoCurador | None = None
+        self._chegadas: dict[str, str] = {}             # item_ref → pedido cuja evidência chegou (desta volta)
 
     def parar(self) -> None:
         """Desligamento: a volta em curso termina o item que já está no provedor e não pede o seguinte (o lote vira
@@ -211,14 +232,16 @@ class CuradorPorIA:
                 saida = parecer.como_dados()
             simulado = self._curador.simulado if resposta.simulado is None else resposta.simulado
             provedor = self._curador.provedor if resposta.provedor is None else resposta.provedor
-            if not self._gravar(x, validacao.validade, saida, agora, provedor=provedor,
-                                modelo=resposta.modelo, simulado=simulado, ai_call_id=resposta.ai_call_id,
-                                usd=0.0 if simulado else (resposta.usd or 0.0)):
+            review_id = self._gravar(x, validacao.validade, saida, agora, provedor=provedor,
+                                     modelo=resposta.modelo, simulado=simulado, ai_call_id=resposta.ai_call_id,
+                                     usd=0.0 if simulado else (resposta.usd or 0.0))
+            if review_id is None:
                 continue                                # outra réplica gravou o mesmo (item, dossiê) primeiro
             if validacao.parecer is None:
                 invalidas.append(ref)
                 continue
             revisadas.append(ref)
+            self._fechar_o_laco(x, review_id, validacao.parecer, simulado)
             # Parecer do adaptador SIMULADO nunca vira aviso ao dono: o evento chega ao Telegram (28.14) sem marca de
             # simulado, e um parecer falso lá é pior que nenhum. Fica só o registro (`learning_reviews.simulated=1`).
             if x.dossie.classe in (ClasseDeRisco.B, ClasseDeRisco.C) and not simulado:
@@ -250,6 +273,15 @@ class CuradorPorIA:
                 achar(e, Gatilho.OBSOLETO_PROVAVEL)
             if self._livro.contradicoes(e):
                 achar(e, Gatilho.CONFLITO)
+        # 30.31: a execução de validação que o curador pediu deixou evidência: o item volta, fora do cooldown.
+        self._chegadas = {}
+        for c in (self.validacao.chegadas() if self.validacao is not None else ()):
+            try:
+                e = self._livro.entrada(LivroKind(c.item_kind), c.item_ref.split(":", 1)[-1])
+            except (ValueError, ErroDeAprendizado):
+                continue
+            self._chegadas[e.trail_ref] = c.id
+            achar(e, Gatilho.EVIDENCIA_CHEGOU)
         for p in self._registro.pedidos(agora - timedelta(days=JANELA_DO_PEDIDO_DIAS)):
             ultima = self._registro.ultima(p.item_ref)
             if ultima is not None and ultima >= p.em:
@@ -273,13 +305,16 @@ class CuradorPorIA:
             if self._registro.existe(ref, dossie.dossie_hash):
                 continue                                # 1 revisão por (item, dossiê): evidência nova, hash novo
             pedido = Gatilho.PEDIDO_DA_PESSOA in gatilhos
+            # 30.31: a evidência que o curador pediu também pula o cooldown, mas NÃO fura a fila: a prioridade de
+            # pedido (30.30) é só do pedido de uma pessoa.
+            pula_o_cooldown = pedido or Gatilho.EVIDENCIA_CHEGOU in gatilhos
             ultima = self._registro.ultima(ref)
             quando = parse_iso(ultima) if ultima else None
-            if quando is not None and quando > corte_do_cooldown and not pedido:
-                continue                                # o pedido de pessoa é o único que pula o cooldown
+            if quando is not None and quando > corte_do_cooldown and not pula_o_cooldown:
+                continue                                # o pedido de pessoa e a evidência pedida pulam o cooldown
             if ultima is not None and self._ja_revisado_menor(e, ref):
                 continue
-            outros = gatilhos - {Gatilho.PEDIDO_DA_PESSOA}
+            outros = gatilhos - {Gatilho.PEDIDO_DA_PESSOA, Gatilho.EVIDENCIA_CHEGOU}
             x = _Elegivel(e, mais_forte(gatilhos), dossie, estimar_custo(dossie.tamanho_em_bytes(), precos),
                           gatilho_da_prioridade=mais_forte(outros) if outros else None, pedido=pedido)
             if self._recusa_o_conteudo(dossie):
@@ -339,7 +374,7 @@ class CuradorPorIA:
 
     def _gravar(self, x: _Elegivel, validade: str, saida: dict[str, object] | None, agora: datetime, *,
                 provedor: str, modelo: str, simulado: bool, guardar_dossie: bool = True,
-                ai_call_id: int | None = None, usd: float = 0.0) -> bool:
+                ai_call_id: int | None = None, usd: float = 0.0) -> str | None:
         d = x.dossie
         nova = NovaRevisao(item_ref=x.entrada.trail_ref, item_kind=x.entrada.kind.value, scope_app=x.entrada.app or "",
                            gatilho=x.gatilho.value, dossie_hash=d.dossie_hash,
@@ -347,7 +382,21 @@ class CuradorPorIA:
                            template_versao=TEMPLATE_VERSAO, provedor=provedor, modelo=modelo, simulated=simulado,
                            validade=validade, saida=saida, classe_de_risco=d.classe.value,
                            politica=d.risco.politica.value, ai_call_id=ai_call_id, usd=usd)
-        return self._registro.gravar(nova, agora) is not None
+        return self._registro.gravar(nova, agora)
+
+    def _fechar_o_laco(self, x: _Elegivel, review_id: str, parecer: Parecer, simulado: bool) -> None:
+        """30.31: a revisão da evidência que chegou fecha o pedido anterior; o parecer novo pode pedir de novo. O
+        adaptador simulado nunca dispara execução real (o parecer falso não vira pedido). Falha aqui não derruba a
+        volta: o parecer já está gravado."""
+        if self.validacao is None or simulado:
+            return
+        try:
+            pedido = self._chegadas.pop(x.entrada.trail_ref, None)
+            if pedido is not None:
+                self.validacao.revisado(pedido, review_id)
+            self.validacao.ao_parecer(x.entrada, review_id, parecer, x.dossie.risco)
+        except Exception:                           # noqa: BLE001 — o laço da validação é acessório da volta
+            log.exception("aprendizado: pedido de validação de %s não foi gravado", x.entrada.trail_ref)
 
 
 __all__ = ["EVIDENCIAS_NO_CORTE", "JANELA_DO_PEDIDO_DIAS", "KINDS_REVISADOS", "RECUSADA_POR_CUSTO",

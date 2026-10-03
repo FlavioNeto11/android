@@ -196,3 +196,131 @@ export function byOriginText(report: Pick<UsageReport, 'by_origin'>): string | n
   entries.sort(([, a], [, b]) => b.usd - a.usd || b.calls - a.calls);
   return entries.map(([origem, g]) => `${originLabel(origem)} ${formatUsd(g.usd)}`).join(' · ');
 }
+
+// ---- RA-10, a tela do 31.16: modelo forte, rejulgamento, cascata, imagem e etapas sem condutor (adendo v0.75) ----
+
+const ESCALATION_LABEL: Record<string, string> = {
+  efeito: 'efeito externo',
+  nova_tentativa: 'nova tentativa',
+  erros_seguidos: 'erros seguidos',
+  piso: 'alvo inexistente',
+  bloqueio: 'bloqueio relatado',
+  ciclo: 'ação repetida',
+  nivel: 'conferir o "não"',
+  sim_com_efeito: 'conferir o "sim" com efeito',
+};
+
+/** Rótulo pt-BR de cada `MotivoDeEscalonamento` do backend; o próprio motivo quando é novo. */
+export function escalationLabel(motivo: string): string {
+  return ESCALATION_LABEL[motivo] ?? motivo;
+}
+
+export interface EscalationRow {
+  key: string;
+  label: string;
+  calls: string;
+  usd: string;
+}
+
+/** Uma linha por motivo de subir ao modelo forte, maior custo primeiro, sem os zerados; vazio sem escalonamento. */
+export function escalationRows(report: Pick<UsageReport, 'escalations'>): EscalationRow[] {
+  const entries = Object.entries(report.escalations ?? {}).filter(([, g]) => g && g.calls > 0);
+  entries.sort(([, a], [, b]) => b.usd - a.usd || b.calls - a.calls);
+  return entries.map(([motivo, g]) => ({ key: motivo, label: escalationLabel(motivo), calls: `${formatInt(g.calls)}×`, usd: formatUsd(g.usd) }));
+}
+
+/** "8 %" (inteiro) a partir da fração do backend; `null` sem julgamento. */
+function percentText(rate: number | null | undefined): string | null {
+  return typeof rate === 'number' && Number.isFinite(rate) ? `${Math.round(rate * 100)} %` : null;
+}
+
+/** "12 julgadas, 8 % de discordância (1) · US$ 0,04 em 13 chamadas"; `null` sem rejulgamento no período. */
+export function rejudgeText(report: Pick<UsageReport, 'rejudges'>): string | null {
+  const r = report.rejudges;
+  if (!r || (r.calls <= 0 && r.judged <= 0)) return null;
+  const pct = percentText(r.disagreement_rate);
+  const juizo = r.judged > 0
+    ? `${formatInt(r.judged)} julgada(s), ${pct ?? '—'} de discordância (${formatInt(r.disagreements)})`
+    : 'nenhum veredito válido';
+  return `${juizo} · ${formatUsd(r.usd)} em ${formatInt(r.calls)} chamada(s)`;
+}
+
+export interface RejudgeAppRow {
+  key: string;
+  appId: string;
+  judged: string;
+  disagreements: string;
+  rate: string;
+}
+
+/** Linhas da discordância por app, mais julgadas primeiro. `appId` "*" é a etapa sem app. */
+export function rejudgeByAppRows(report: Pick<UsageReport, 'rejudges'>): RejudgeAppRow[] {
+  const entries = Object.entries(report.rejudges?.by_app ?? {}).filter(([, a]) => a && a.judged > 0);
+  entries.sort(([ka, a], [kb, b]) => b.judged - a.judged || ka.localeCompare(kb));
+  return entries.map(([appId, a]) => ({
+    key: appId,
+    appId,
+    judged: formatInt(a.judged),
+    disagreements: formatInt(a.disagreements),
+    rate: percentText(a.disagreement_rate) ?? '—',
+  }));
+}
+
+/** "5 subidas, 3 desbloquearam a tela · US$ 0,12"; `null` sem cascata no período. */
+export function cascadeText(report: Pick<UsageReport, 'cascades'>): string | null {
+  const c = report.cascades;
+  if (!c || c.calls <= 0) return null;
+  return `${formatInt(c.calls)} subida(s), ${formatInt(c.unblocked)} desbloquearam a tela · ${formatUsd(c.usd)}`;
+}
+
+/** Os motivos de `MotivoDaImagem` em que a imagem NÃO vai (o backend: sensivel, politica_nunca, arvore_rica). */
+const IMAGE_REASON_WITHOUT = new Set(['sensivel', 'politica_nunca', 'arvore_rica']);
+
+const IMAGE_REASON_LABEL: Record<string, string> = {
+  sensivel: 'tela sensível',
+  politica_nunca: 'política: nunca',
+  arvore_rica: 'árvore da tela bastou',
+  politica_sempre: 'política: sempre',
+  pedida: 'o modelo pediu',
+  problema: 'a etapa teve problema',
+  primeira_julgada: 'primeira tela julgada',
+  arvore_pobre: 'árvore da tela pobre',
+};
+
+export function imageReasonLabel(motivo: string): string {
+  return IMAGE_REASON_LABEL[motivo] ?? motivo;
+}
+
+export interface ImageReasonRow {
+  key: string;
+  label: string;
+  /** O motivo manda a imagem (`true`), manda NÃO mandar (`false`) ou é novo (`null`). */
+  sends: boolean | null;
+  calls: string;
+  withImage: string;
+}
+
+/** Linhas de "por que a imagem foi junto": primeiro os que mandam a imagem, depois os que não; mais chamadas antes. */
+export function imageReasonRows(report: Pick<UsageReport, 'image_reasons'>): ImageReasonRow[] {
+  const entries = Object.entries(report.image_reasons ?? {}).filter(([, g]) => g && g.calls > 0);
+  const sends = (motivo: string): boolean | null =>
+    IMAGE_REASON_WITHOUT.has(motivo) ? false : motivo in IMAGE_REASON_LABEL ? true : null;
+  const rank = (motivo: string): number => {
+    const s = sends(motivo);
+    return s === true ? 0 : s === false ? 1 : 2;
+  };
+  entries.sort(([ka, a], [kb, b]) => rank(ka) - rank(kb) || b.calls - a.calls || ka.localeCompare(kb));
+  return entries.map(([motivo, g]) => ({
+    key: motivo,
+    label: imageReasonLabel(motivo),
+    sends: sends(motivo),
+    calls: formatInt(g.calls),
+    withImage: formatInt(g.with_image),
+  }));
+}
+
+/** Etapas com decisão de IA e sem `driven_by` (o aceite do RA-10 é zero); 0 quando o servidor não manda. */
+export function stepsDrivenByNull(report: Pick<UsageReport, 'steps_driven_by_null'>): number {
+  const n = report.steps_driven_by_null;
+  return typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : 0;
+}

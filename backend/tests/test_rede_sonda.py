@@ -721,8 +721,9 @@ async def test_app_parado_nao_segura_o_parcial_e_o_trafego_seguinte_tira_a_ressa
     assert await _passo(parque, "ligou")
     linha = _linha(parque)
     assert linha["state"] == "trafego_verificado" and ap.abertos == []
-    assert INSTAGRAM in str(linha["detail"]) and "sem tráfego na janela: não provado, não segura o estado" in str(
-        linha["detail"])
+    # O `detail` fala o nome do app ("Instagram"), não o pacote (validação do deploy 9); o `per_app` segue em pacotes.
+    assert "Instagram sem tráfego na janela: não provado, não segura o estado" in str(linha["detail"])
+    assert INSTAGRAM not in str(linha["detail"])
     [m] = st.db.query("SELECT per_app FROM network_measurements WHERE instance_id='android-01'")
     assert json.loads(m["per_app"])[INSTAGRAM] == "sem_trafego"
     _liberar_a_porta(parque)

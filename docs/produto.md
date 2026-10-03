@@ -199,7 +199,7 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
 - **Aprendizado** ([ADR-054](decisoes.md#adr-054--aprendizado-contínuo-livro-de-aprendizado-com-ciclo-de-vida-publicação-sozinha-só-sem-efeito-externo-d1-feedback-implícito-com-botão-opcional-d2-lições-medidas-e-backlog-do-que-mais-falha);
   [domínio](dominios/aprendizado.md); `frontend/src/features/aprendizado/`). O que o sistema aprendeu com as execuções e
   com quem monitora. Sem efeito externo e com repetição, ele publica sozinho; com efeito ou texto de pessoa, espera o
-  dono; rebaixar é sempre automático. A seção tem cinco abas:
+  dono; rebaixar é sempre automático. A seção tem seis abas:
   - **Aplicativos** (a inicial, 30.15): um cartão por app (existência declarado, loja ou só aprendido; o declarado, o aprendido
     por tipo e estado, o absorvido e como o aprendido é usado, inclusive "medido, não usado"), os baldes "App não resolvido" e
     "Fora do eixo" e, por app (`?aba=apps&app=<pacote>`), o detalhe Declarado, Aprendido e Absorvido, com link de volta nos dois
@@ -215,7 +215,12 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
     identidade, conteúdo legível (só nomes de parâmetro), saúde com motivos, versão do app, evidência, histórico e relações com link;
   - **O que mais falha:** grupos por app, ação, tipo de falha e tela, com US$, minutos e intervenções separados, a
     camada, "onde alterar" e o estado no backlog. O falso positivo do verificador fica no topo;
-  - **Sinais:** os votos e os gestos que viram evidência.
+  - **Sinais:** os votos e os gestos que viram evidência;
+  - **Métricas** (30.33): o aprendizado medido na janela (7, 14 ou 30 dias) e por app. Há um cartão por bloco: o livro
+    agora, o movimento, o tempo até subir, o depois de publicado, a saúde, a economia de IA, a comparação receita × só
+    IA (rotulada como comparação, não prova), o curador e o orçamento dele (global, na janela do curador, com o aviso a
+    80%). Embaixo vêm os pareceres do curador, com filtro pela sugestão e "Carregar mais". Ausente aparece como "sem
+    amostra", nunca como zero.
 
   Na aba "Por aparelho", a etapa que falhou ou ficou incerta e veio de uma habilidade tem **"Corrigir esta etapa"**
   (no detalhe; a linha recolhida mostra a marca "corrigível"): a pessoa diz o que devia ter acontecido, e a correção
@@ -256,6 +261,15 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
     `-accel-check` em bloco de código.
 
   A chave desconhecida continua visível, uma linha por item ou pela árvore genérica.
+- **Diagnóstico › Custo de IA: o modelo forte e a conferência (03/10, item 31.16; RA-10).** As chaves do adendo v0.75
+  que só a API tinha viram tela (`frontend/src/features/usage/UsageView.tsx`, leitura em `usage.ts`; detalhe no adendo
+  v0.90 de `api-contract.md`):
+  - a seção "Modelo forte e conferência" diz por que as chamadas subiram ao modelo forte (por motivo, maior custo
+    primeiro), o rejulgamento do verificador (julgadas, discordância e custo) e a cascata do bloqueio (quantas subiram e
+    quantas desbloquearam a tela);
+  - a discordância por app e o motivo da imagem ficam em recolhidos;
+  - o aviso "Etapas sem registro de quem decidiu" só aparece quando há alguma (o esperado é nenhuma);
+  - com servidor anterior ao v0.75, ou período sem nada disso, nada aparece.
 - **Treinar habilidade.** Assumir o controle no Foco e realizar a tarefa; cada entrada é gravada com o elemento
   tocado; a IA generaliza a gravação em comando + etapas + receitas, com escopo por perfis/grupos (item 13.1–13.3
   do plano — ver §5). Desde a fase J, salvar recusa (409 `duplicate_command`) um comando que uma habilidade

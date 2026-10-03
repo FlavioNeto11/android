@@ -30,7 +30,8 @@ def _esperado(frm: SkillState, to: SkillState, actor: Actor, side_effect: bool, 
     """A regra do dono, reescrita sem olhar a implementação."""
     if S.DRAFT in (frm, to):
         return False
-    so_pessoa = {(S.DEPRECATED, S.PUBLISHED), (S.DISABLED, S.PUBLISHED)}
+    # 30.31: devolver à prova (o desligado volta a provar-se, inerte) também é só da pessoa.
+    so_pessoa = {(S.DEPRECATED, S.PUBLISHED), (S.DISABLED, S.PUBLISHED), (S.DISABLED, S.CANDIDATE)}
     os_dois = {(S.CANDIDATE, S.VALIDATED), (S.VALIDATED, S.PUBLISHED), (S.CANDIDATE, S.DISABLED),
                (S.VALIDATED, S.DISABLED), (S.PUBLISHED, S.DEPRECATED), (S.PUBLISHED, S.DISABLED)}
     if (frm, to) in so_pessoa:
@@ -141,6 +142,26 @@ def test_desligado_por_pessoa_nao_volta_pelo_sistema_ate_uma_pessoa_reativar() -
     assert "pessoa" in (motivo_do_veto(vetado, agora=AGORA, app_version="999") or "")    # nem com versão nova
     reativado = [*vetado, _d(S.PUBLISHED, "painel:flavio", 10)]
     assert motivo_do_veto(reativado, agora=AGORA, app_version="447") is None
+
+
+def test_a_frase_do_veto_fala_a_data_do_painel_e_o_motivo_de_quem_desligou() -> None:
+    # UX do deploy 8: a linha do item dizia "em 2026-10-03" (ISO) e escondia o motivo da pessoa na trilha.
+    pessoa = Desligamento(to_state=S.DISABLED, decided_by="orquestradora", decided_at="2026-09-27T10:00:00.000Z",
+                          app_version="447", reason="validar pela IA\n antes de valer")
+    assert motivo_do_veto([pessoa], agora=AGORA, app_version="447") == (
+        "desligado por uma pessoa (orquestradora) em 27/09/2026 (validar pela IA antes de valer): só uma pessoa o reativa")
+    sem_motivo = Desligamento(to_state=S.DISABLED, decided_by="painel:flavio", decided_at="2026-09-27T10:00:00.000Z",
+                              app_version="447")
+    assert motivo_do_veto([sem_motivo], agora=AGORA, app_version="447") == (
+        "desligado por uma pessoa (painel:flavio) em 27/09/2026: só uma pessoa o reativa")
+    longo = Desligamento(to_state=S.DISABLED, decided_by="painel:flavio", decided_at="2026-09-27", app_version=None,
+                         reason="x" * 500)
+    frase = motivo_do_veto([longo], agora=AGORA, app_version="447") or ""
+    assert frase.count("x") < 120 and "…): só uma pessoa o reativa" in frase          # cortado, numa linha
+    assert "em 19/09/2026:" in (motivo_do_veto([_d(S.DISABLED, SYSTEM_ACTOR, 10)], agora=AGORA, app_version="447") or "")
+    # O que não for ISO segue como veio (nunca some).
+    torto = Desligamento(to_state=S.DISABLED, decided_by="painel:flavio", decided_at="ontem", app_version=None)
+    assert "em ontem:" in (motivo_do_veto([torto], agora=AGORA, app_version="447") or "")
 
 
 def test_desligado_pelo_sistema_fica_vetado_90_dias_ou_ate_mudar_a_versao() -> None:

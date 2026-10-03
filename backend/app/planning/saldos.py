@@ -22,6 +22,7 @@ from ..config import AI_ROLES, Config
 from ..db import Database
 from ..util import now, now_iso, parse_iso, to_iso
 from . import costs
+from .decisao_fechada.transparencia import consumidores_ativos
 
 log = logging.getLogger("poc.ai.saldos")
 
@@ -220,6 +221,9 @@ class SaldoConta:
     key_configured: bool
     roles: list[str] = field(default_factory=list)       # funções de IA que esta conta paga hoje
     image: bool = False                                  # o gerador de imagem da persona usa esta conta
+    #: A decisão fechada (Fase 31, ADR-069) usa esta conta: `shadow` | `on` | None (`_decisao_fechada`). Fora de `roles`
+    #: de propósito: o laço de pedidos adia o despacho pelo saldo das contas de `roles`, e o Jev não segura execução.
+    closed_decision: str | None = None
     anchor_balance: float | None = None
     anchor_at: str | None = None
     anchor_source: str | None = None
@@ -241,7 +245,7 @@ class SaldoConta:
 
     @property
     def em_uso(self) -> bool:
-        return bool(self.roles) or self.image
+        return bool(self.roles) or self.image or self.closed_decision is not None
 
     @property
     def bloqueia(self) -> bool:
@@ -256,6 +260,16 @@ class SaldoConta:
 def _fmt(valor: float, moeda: str) -> str:
     simbolo = "R$" if moeda == "BRL" else "US$" if moeda == "USD" else moeda
     return f"{simbolo} {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _decisao_fechada(cfg: Config, conta: str) -> str | None:
+    """Como a decisão fechada usa a conta: só a `typesafe`, só com o decisor `jev` (o `nulo` nunca chama) e um consumidor
+    ativo. `on` se algum está ligado, senão `shadow`."""
+    df = cfg.file.ai.decisao_fechada
+    if conta != "typesafe" or df.decisor != "jev":
+        return None
+    modos = set(consumidores_ativos(df).values())
+    return ("on" if "on" in modos else "shadow") if modos else None
 
 
 def estado(db: Database, cfg: Config, *, agora: datetime | None = None, so: str | None = None) -> list[SaldoConta]:
@@ -285,7 +299,7 @@ def estado(db: Database, cfg: Config, *, agora: datetime | None = None, so: str 
             warn_below=None if r["warn_below"] is None else float(r["warn_below"]),
             block_below=None if r["block_below"] is None else float(r["block_below"]),
             key_configured=chaves.get(conta, False),
-            roles=papeis.get(conta, []), image=(imagem == conta),
+            roles=papeis.get(conta, []), image=(imagem == conta), closed_decision=_decisao_fechada(cfg, conta),
             admin_key_configured=chave_admin(cfg, conta) is not None)
         ancora = db.one("SELECT * FROM ai_balance_snapshots WHERE account=? ORDER BY observed_at DESC, id DESC LIMIT 1",
                         (conta,))

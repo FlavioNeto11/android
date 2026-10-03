@@ -161,3 +161,30 @@ Uso, a partir da raiz do checkout:
 
 Prova: `simulated` (`scripts/tests/test_jev_relatorio_31_10.py`). Execução no banco do central: `not_run` (roda depois
 do merge da suíte 7 e do deploy).
+
+## 6. A prova real do 31.17
+
+`scripts/jev-prova-31-17.py` confere, no banco do central, a sombra C0–C1 do curador desde a partida com o envio aberto
+(T_on do deploy 9, `2026-10-03T11:04:15Z`). É só leitura e não chama IA: o SQLite abre por URI `mode=ro`, com
+`PRAGMA query_only` por cima.
+
+    backend/.venv/Scripts/python.exe scripts/jev-prova-31-17.py [--db data/poc.sqlite3] [--desde <ISO-8601 UTC>] \
+        [--classes C0,C1] [--json saida.json]
+
+- **Linhas da sombra (PROVED):** só a origem `curador`, só em `shadow`, só nas classes liberadas; a pergunta da triagem,
+  escolha e probabilidades só entre as opções `opt:*`, e o `ref` como sha256 do dossiê.
+- **O corpo que saiu (INFERRED):** o corpo não é guardado (074, ADR-069 item 5). O dossiê é, em `learning_reviews` do
+  mesmo `dossie_hash`. Quando o `content_hash` dele bate com o `ref` (PROVED), o corpo é remontado com o código do
+  checkout, pelo caminho da porta (`pedido` → `validar` → `redigir` → `{state, model, questions}`). Por isso o script
+  roda no commit implantado (`GET /api/health`). Do corpo, confere:
+  - só as três chaves e o `state` só com os `CAMPOS` do curador;
+  - nenhum texto do dossiê fora do vocabulário: conteúdo, motivo de voto, ids, execuções, app, capability, aparelho;
+  - nem o `dossie_hash`, o `item_ref`, data, uuid ou hex longo.
+- **Custo e latência (PROVED):** as linhas do Jev em `ai_calls` (`provider='jev'`, `origem='decisao_fechada'`), com
+  US$, tokens e ms (p50, p95 e máximo), falhas por motivo. Cruza com as chamadas da sombra que chegaram ao POST (as
+  recusas por privacidade, orçamento e desligado não viram linha).
+- Saída: um resumo curto e, com `--json`, só contagens, ids opacos e números. Código 0 quando tudo confere, 1 com
+  violação, 2 sem linha no período.
+
+Prova: `simulated` (`scripts/tests/test_jev_prova_31_17.py`). Execução no banco do central: `not_run` (roda depois da
+primeira volta do curador com o Jev em sombra, quando a orquestradora mandar, junto do relatório do 31.10).

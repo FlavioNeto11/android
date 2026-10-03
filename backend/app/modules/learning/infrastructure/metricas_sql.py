@@ -7,7 +7,7 @@ detalhe e da saúde (`run_invalidada`, casamento exato do motivo).
 """
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import datetime
 
 from app.db import Database, Row
@@ -36,9 +36,9 @@ def _transicao(r: Row) -> TransicaoLida:
 
 
 class FontesDeMetricasSql:
-    def __init__(self, db: Database) -> None:
+    def __init__(self, db: Database, *, precos: Callable[[], dict[str, list[float]]] | None = None) -> None:
         self._db = db
-        self._registro = RegistroDeRevisoesSql(db)
+        self._registro = RegistroDeRevisoesSql(db, precos=precos)
 
     def transicoes(self, desde: str, ate: str) -> list[TransicaoLida]:
         return [_transicao(r) for r in self._db.query(
@@ -68,11 +68,13 @@ class FontesDeMetricasSql:
 
     def revisoes(self, desde: str, ate: str) -> list[RevisaoLida]:
         saida: list[RevisaoLida] = []
-        for r in self._db.query(f"SELECT {_COLUNAS}, usd, scope_app FROM learning_reviews WHERE created_at >= ?"
-                                f" AND created_at < ? AND {_DO_CURADOR}", (desde, ate)):
+        revisoes = self._db.query(f"SELECT {_COLUNAS}, usd, ai_call_id, scope_app FROM learning_reviews"
+                                  f" WHERE created_at >= ? AND created_at < ? AND {_DO_CURADOR}", (desde, ate))
+        custos = self._registro.custos(revisoes)                 # I3: a revisão de antes do 30.30, pela chamada
+        for r in revisoes:
             x = _revisao(r)
             saida.append(RevisaoLida(scope_app=linhas.texto(r, "scope_app"), validade=x.validade,
-                                     simulated=x.simulated, usd=linhas.real(r, "usd"),
+                                     simulated=x.simulated, usd=self._registro.usd(r, custos),
                                      decisao=x.parecer.decisao.value if x.parecer is not None else None,
                                      decisao_final=x.decisao_final, override=x.override))
         return saida
@@ -116,13 +118,16 @@ class FontesDeMetricasSql:
             if cursor is not None:
                 onde.append("(created_at < ? OR (created_at = ? AND id < ?))")
                 pagina_args += [cursor[0], cursor[0], cursor[1]]
-            lote = self._db.query(f"SELECT {_COLUNAS}, usd, scope_app FROM learning_reviews WHERE {' AND '.join(onde)}"
-                                  f" ORDER BY created_at DESC, id DESC LIMIT {_LOTE_DA_LISTA}", tuple(pagina_args))
+            lote = self._db.query(f"SELECT {_COLUNAS}, usd, ai_call_id, scope_app FROM learning_reviews"
+                                  f" WHERE {' AND '.join(onde)} ORDER BY created_at DESC, id DESC"
+                                  f" LIMIT {_LOTE_DA_LISTA}", tuple(pagina_args))
+            custos = self._registro.custos(lote)                 # I3
             for r in lote:
                 x = _revisao(r)
                 cursor = (x.criado_em, x.id)
                 if decisao is None or (x.parecer is not None and x.parecer.decisao.value == decisao):
-                    achadas.append(RevisaoNaLista(x, app=linhas.texto(r, "scope_app"), usd=linhas.real(r, "usd")))
+                    achadas.append(RevisaoNaLista(x, app=linhas.texto(r, "scope_app"),
+                                                  usd=self._registro.usd(r, custos)))
                     if len(achadas) > limite:
                         break
             if len(lote) < _LOTE_DA_LISTA:

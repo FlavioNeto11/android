@@ -121,7 +121,7 @@ export interface Reaprendido {
 }
 
 /** Chave estável do passo (`ItemDoLivro` mapeia para o texto em português). */
-export type RotuloDaAcao = 'validar' | 'aprovar' | 'rejeitar' | 'aposentar' | 'desligar' | 'reativar';
+export type RotuloDaAcao = 'validar' | 'aprovar' | 'rejeitar' | 'aposentar' | 'desligar' | 'reativar' | 'devolver';
 
 export interface AcaoPermitida {
   to: EstadoDoLivro;
@@ -378,7 +378,7 @@ export const ESTADO_META: Record<SkillState, StatusMeta> = {
   deprecated: { label: 'Aposentado', tone: 'muted', icon: Archive,
                 description: 'Saiu de circulação (sem uso, efeito neutro, versão nova do app ou absorvido). Uma pessoa pode reativar.' },
   disabled: { label: 'Desligado', tone: 'danger', icon: CircleOff,
-              description: 'Refutado ou rejeitado. O sistema não o traz de volta; uma pessoa pode reativar.' },
+              description: 'Refutado ou rejeitado. O sistema não o traz de volta; uma pessoa pode reativar ou, no fluxo, devolver à prova.' },
 };
 
 export function rotuloDoEstado(s: SkillState | null | undefined): string {
@@ -428,10 +428,11 @@ export function tituloDoItem(
     const m = RE_VERSAO.exec(t);
     return m ? `${e.capability_nome} (v${m[2]})` : t;
   }
-  // App sem catálogo (validação do deploy 4): o título da etapa de origem, com a chave para distinguir as do mesmo nome.
+  // App sem catálogo (validação do deploy 4): o título da etapa de origem. A chave crua ("fill_message") saiu do texto
+  // (UX do deploy 8) e fica no `title` da linha; duas do mesmo nome se distinguem em `titulosDaLista`.
   if (e.kind === 'receita' && e.etapa) {
     const m = RE_VERSAO.exec(t);
-    return m ? `${e.etapa} · etapa ${m[1]} (v${m[2]})` : `${e.etapa} · etapa ${t}`;
+    return m ? `${e.etapa} (v${m[2]})` : e.etapa;
   }
   return e.kind === 'licao' ? nomearCapabilityNoTexto(t, e.capability, e.capability_nome) : t;
 }
@@ -583,6 +584,8 @@ const TEXTO_DA_ACAO: Record<RotuloDaAcao, { label: string; confirmar: string; pe
   aposentar: { label: 'Aposentar', confirmar: 'Confirmar aposentadoria', perigo: false },
   desligar: { label: 'Desligar', confirmar: 'Confirmar desligamento', perigo: true },
   reativar: { label: 'Reativar', confirmar: 'Confirmar reativação', perigo: false },
+  // 30.31: o fluxo desligado volta a provar-se (inerte, sem publicar); a evidência conta de novo a partir daqui.
+  devolver: { label: 'Devolver à prova', confirmar: 'Confirmar volta à prova', perigo: false },
 };
 
 /**

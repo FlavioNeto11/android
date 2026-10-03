@@ -9,8 +9,9 @@
 import { Archive, CircleAlert, CircleCheck, CircleDashed, CircleHelp, CirclePause, CircleOff, TrendingDown, type LucideIcon } from 'lucide-react';
 import { formatInt, formatPercent } from '../../lib/format';
 import type { Tone } from '../../lib/status';
+import { formatQuando } from '../../lib/time';
 import {
-  type DimensaoDeSaude, type EntradaDoLivro, type EstadoDeVersao, type MotivoDeSaude, type RelacaoDoItem, type RotuloDeSaude,
+  type AlvoDaAcao, type DimensaoDeSaude, type EntradaDoLivro, type EstadoDeVersao, type MotivoDeSaude, type RelacaoDoItem, type RotuloDeSaude,
   type SaudeDoItem, type TipoDeRelacao, isLivroKind, type LivroKind,
 } from './model';
 
@@ -198,6 +199,37 @@ export function rotuloDoSeletor(tipo: string): string {
 
 export function rotuloDoCampoDoSeletor(campo: string): string {
   return SELETOR_LABEL[campo] ?? campo;
+}
+
+/**
+ * O alvo de uma ação em palavras (UX do deploy 8: o detalhe abria nos seletores crus): o texto ou a descrição do
+ * primeiro seletor que tiver, entre aspas; sem nenhum, o nome curto do id ("entry" de "com.x:id/entry"). Nulo sem
+ * seletor. Os seletores inteiros seguem em "como o encontra", para quem desenvolve.
+ */
+export function alvoLegivel(alvo: readonly AlvoDaAcao[]): string | null {
+  for (const s of alvo) {
+    const t = (s.texto ?? s.desc ?? '').trim();
+    if (t) return `“${t}”`;
+  }
+  const rid = alvo.find((s) => typeof s.rid === 'string' && s.rid.trim())?.rid;
+  return rid ? `o elemento ${rid.split(':id/').pop()}` : null;
+}
+
+/** A variante da tela em que a receita foi gravada ("en-US/xhdpi": idioma/densidade) em palavras; outro formato
+ *  segue como veio. */
+export function textoDaVariante(v: string | null | undefined): string | null {
+  if (!v) return null;
+  const partes = v.split('/');
+  return partes.length === 2 && partes[0] && partes[1] ? `idioma ${partes[0]}, tela ${partes[1]}` : v;
+}
+
+const RE_RUN_ID = /^r-(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})-[0-9a-f]+$/;
+
+/** A execução como o painel fala: "execução de 24/09 08:48" (o id `r-20260924114815-c14258` traz a hora UTC); fora
+ *  do formato, "execução <id>". O id cru vai no `title` do link. */
+export function rotuloDaExecucao(runId: string, agoraMs?: number): string {
+  const m = RE_RUN_ID.exec(runId);
+  return m ? `execução de ${formatQuando(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`, agoraMs)}` : `execução ${runId}`;
 }
 
 const ALVO_DA_LICAO: Record<string, string> = { parametro: 'o parâmetro', texto: 'o texto', elemento: 'o elemento' };

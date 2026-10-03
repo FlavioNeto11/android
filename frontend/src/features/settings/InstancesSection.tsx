@@ -349,7 +349,7 @@ export function InstancesSection() {
                       </div>
                       {inst.account_evidence ? (
                         <p className={styles.fieldsetHint}>
-                          Observado: {inst.account_evidence} · {formatDateTime(inst.account_evidence_ts)}
+                          Observado: {evidenciaLegivel(inst.account_evidence)} · {formatDateTime(inst.account_evidence_ts)}
                         </p>
                       ) : null}
                       <div className={styles.instanceEditActions}>

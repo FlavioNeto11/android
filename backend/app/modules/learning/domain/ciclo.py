@@ -51,6 +51,11 @@ TRANSICOES: Mapping[tuple[SkillState, SkillState], frozenset[Actor]] = {
     (_S.PUBLISHED, _S.DISABLED): _PS,      # sistema: atrapalha, conflito, refutação
     (_S.DEPRECATED, _S.PUBLISHED): _P,     # reativar é sempre de pessoa
     (_S.DISABLED, _S.PUBLISHED): _P,
+    # 30.31, "devolver à prova": a pessoa tira o desligado de circulação SEM publicá-lo — o item fica inerte e volta
+    # a provar-se (a sombra do fluxo só olha `candidate`/`validated`), com a evidência contada de novo a partir da
+    # volta. Desligar "para validar pela IA" prendia o fluxo: de `disabled` só se saía publicando. Só fluxo
+    # (`livro.acoes_da_pessoa` e `LearningService.mudar_estado`).
+    (_S.DISABLED, _S.CANDIDATE): _P,
 }
 
 
@@ -223,6 +228,24 @@ def _arrumacao(d: Desligamento) -> bool:
     return d.from_state is SkillState.DISABLED and d.to_state is SkillState.DEPRECATED
 
 
+#: O motivo escrito por quem desligou entra na frase até este tamanho (o painel mostra a frase na linha do item).
+MOTIVO_NA_FRASE = 120
+
+
+def _data(iso: str) -> str:
+    """A data da decisão como o painel fala (dd/mm/aaaa, deploy 8 da UX); o que não for ISO segue como veio."""
+    a, m, d = iso[:4], iso[5:7], iso[8:10]
+    if len(iso) >= 10 and iso[4] == "-" and iso[7] == "-" and (a + m + d).isdigit():
+        return f"{d}/{m}/{a}"
+    return iso[:10]
+
+
+def _motivo_da_pessoa(reason: str) -> str:
+    """O motivo livre que a pessoa escreveu ao desligar ("validar pela IA antes de valer"), numa linha e curto."""
+    motivo = " ".join((reason or "").split())
+    return motivo if len(motivo) <= MOTIVO_NA_FRASE else motivo[:MOTIVO_NA_FRASE - 1].rstrip() + "…"
+
+
 def motivo_do_veto(historico: Sequence[Desligamento], *, agora: datetime, app_version: str | None,
                    renascimento: Renascimento | None = None,
                    dias_do_sistema: int = VETO_DO_SISTEMA_DIAS) -> str | None:
@@ -248,10 +271,12 @@ def motivo_do_veto(historico: Sequence[Desligamento], *, agora: datetime, app_ve
     if run is not None:
         if renascimento is not None and renascimento.real and renascimento.run_id != run:
             return None
-        return (f"desligado por evidência inválida em {ultimo.decided_at[:10]} (a execução {run} terminou como sucesso "
+        return (f"desligado por evidência inválida em {_data(ultimo.decided_at)} (a execução {run} terminou como sucesso "
                 "sem comprovar o que fez): só outra execução real o ensina de novo")
     if actor_of(ultimo.decided_by) is Actor.PERSON:
-        return f"desligado por uma pessoa ({ultimo.decided_by}) em {ultimo.decided_at[:10]}: só uma pessoa o reativa"
+        motivo = _motivo_da_pessoa(ultimo.reason)
+        return (f"desligado por uma pessoa ({ultimo.decided_by}) em {_data(ultimo.decided_at)}"
+                + (f" ({motivo})" if motivo else "") + ": só uma pessoa o reativa")
     try:
         quando = parse_iso(ultimo.decided_at)
     except ValueError:
@@ -262,5 +287,5 @@ def motivo_do_veto(historico: Sequence[Desligamento], *, agora: datetime, app_ve
         return None
     if agora - quando >= timedelta(days=dias_do_sistema):
         return None
-    return (f"desligado pelo sistema em {ultimo.decided_at[:10]}: vetado por {dias_do_sistema} dias ou até mudar a "
+    return (f"desligado pelo sistema em {_data(ultimo.decided_at)}: vetado por {dias_do_sistema} dias ou até mudar a "
             "versão do app")

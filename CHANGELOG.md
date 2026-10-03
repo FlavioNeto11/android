@@ -19,6 +19,23 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: a aba Métricas no painel (30.33; branch feat/30-33-metricas-no-painel)
+
+- Aba nova `#/aprendizado?aba=metricas`, que lê as rotas do 30.8 sem mudar a API.
+  - Em cima, um cartão por bloco do §10, na janela de 7, 14 ou 30 dias e por app.
+  - Embaixo, os pareceres do curador, com filtro pela sugestão, páginas pelo cursor e o link de cada item.
+- Regras do contrato na tela:
+  - ausente é "sem amostra", nunca 0%;
+  - o proxy de falhas se diz comparação, não prova;
+  - o orçamento é global e usa a janela do curador, com o aviso a 80%;
+  - aparece o aviso da quebra de série do deploy 8;
+  - o bloco vazio diz o porquê numa frase;
+  - o 503 `not_ready` tem tela própria.
+- Prova:
+  - `simulated`: `MetricasTab.test.tsx`, 12 testes;
+  - autovalidação no navegador sobre uma CÓPIA do backup do central (12:08Z), com backend simulado do worktree, e
+    sobre um banco vazio: desktop e celular, paginação, filtros, link do item, vazio e erro;
+  - o passe no Chrome do dono fica para depois do deploy.
 ## 2026-10-03 — 29.48 passo 1: o emulador do central com janela (o giro do `-headless` na sessão 0 some)
 
 - `config/config.yaml` do central (fora do Git; backup `config-antes-2948-20261003-120854.yaml`): `android.window:
@@ -32,6 +49,182 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `config/config.example.yaml` passa a trazer `window: true`, com o porquê. Docs em `parque.md` (Emulador com janela
   na sessão 0) e K-078.
 - Pendente: o notebook (`C:\farm\worker.yaml`), depois de 1 h de central estável.
+## 2026-10-03 — I1: o cartão da TypeSafe diz que a decisão fechada a usa e mostra o consumo do Jev (branch feat/i1-cartao-typesafe)
+
+- Antes, o cartão da TypeSafe em Configuração › IA dizia "Nenhuma função usa esta conta · US$ 0,00", mesmo com a sombra do
+  curador ligada no deploy 9. A causa: `roles` só conhece as funções do hub.
+- Mudanças:
+  - `GET /api/ai/balances`: a conta ganha `closed_decision` (`shadow` | `on` | null), e `in_use` passa a contar a decisão
+    fechada;
+  - o "Usada por" mostra "decisão fechada (sombra)", e o chip da TypeSafe aparece em Custos;
+  - o consumo abaixo de um centavo mostra até 4 casas ("US$ 0,003");
+  - o tipo `AiBalanceAccount` ganha `typesafe`, e o nome curto é "TypeSafe".
+- A decisão fechada fica fora de `roles`: o saldo do Jev não adia o despacho dos pedidos.
+- Prova `simulated`:
+  - `tests/test_decisao_fechada_sombra.py::test_a_typesafe_diz_que_a_decisao_fechada_a_usa_e_mostra_o_consumo_do_jev`;
+  - `frontend/src/lib/aiBalance.test.ts`;
+  - navegador contra o backend simulado do worktree (decisor jev, curador em sombra, sem chave e sem classes), em desktop,
+    tablet e 375 px.
+- Real: `not_run`. No central há 0 chamadas jev até 12:11Z: a volta do curador só revisou fluxos.
+## 2026-10-03 — Receitas: o contêiner sem identidade pelo filho rotulado (29.40 item 2; branch feat/29-40-filho-rotulado)
+
+- O toque numa linha clicável sem `resource-id` nem texto (a conversa, o contato) vira receita pelo filho rotulado não
+  clicável. O filho é gravado com hit-test e janela da pré-ordem; na reprodução, o toque vai ao centro do filho,
+  depois de conferir o clicável que o contém.
+- Rótulo que muda com o estado e qualquer @ literal não viram seletor. O efeito externo pelo filho é recusado.
+- A mescla com a chave genérica (RA-20 B) trouxe um defeito: o `_contem` de bounds do 29.40 sobrescrevia o `_contem`
+  de texto do `eh_generica`. O teste pedido pela Android o pegou, e o de bounds virou `_dentro_de`.
+- Prova `simulated` (`tests/test_receita_filho_rotulado.py`); afetados (receitas, executor, chave genérica): 849 passed.
+## 2026-10-03 — Aprendizado: o custo da revisão pela chamada ligada (I3; branch fix/aprendizado-usd-por-parecer)
+
+- A revisão gravada com `usd = 0` e com `ai_call_id` (as 46 de antes do 30.30 no central) passa a ter o custo MEDIDO na
+  chamada ligada, pela regra do `/api/usage`. Vale na janela do orçamento, nas métricas e na lista `/revisoes`.
+- Na cópia do banco do central: US$ 0,6717, o mesmo do `/api/usage` do curador. Antes, `metricas.curador.usd` dava 0,0
+  e o orçamento estimava 0,6418.
+- Sem backfill e sem migração. Prova `simulated` em `test_learning_curador.py`; o recálculo na cópia do banco é a
+  prova `real` da leitura.
+## 2026-10-03 — Aprendizado: a classe do fluxo pela etapa mais restritiva (30.32; branch feat/30-32-classe-do-fluxo)
+
+- O dossiê do curador classifica o fluxo pelas etapas dele, cada uma com os fatos do catálogo do app dela
+  (`EtapaDeRisco`). As razões são a união, então a classe nunca desce.
+- Antes, todo fluxo com efeito caía em `commit_sem_fatos_da_etapa` (B). Na cópia do banco do central (03/10), 9 fluxos
+  do Instagram passam a C: comentar, responder, mandar mensagem e seguir, todos com etapa `risk: high`. Os outros 24
+  não mudam.
+- O hash do dossiê só muda para o fluxo com etapa no catálogo; o curador os revê.
+- Divergência conhecida: o aviso `learning.needs_person` da transição nativa segue sem as etapas.
+- Prova `simulated` (`tests/test_learning_classe_do_fluxo.py`) e o recálculo dos 33 fluxos da cópia do banco.
+## 2026-10-03 — Aprendizado: validação automática do "pedir evidência" (30.31; branch feat/30-31-validacao)
+
+- Migração `082_learning_validations`: o pedido de validação, com um pedido vivo por item (índice parcial).
+- O parecer real do curador que pede evidência que uma execução produz vira pedido (`domain/validacao.py`); as
+  recusas ficam registradas com o motivo (tipo, desligado, vetado, sessão, sem origem, credencial, efeito real,
+  receita sem fluxo ativo).
+- Um despachante sob a trava de líder roda o comando de origem noutro aparelho ocioso. Só com o central saudável, sem
+  execução em curso, dentro de β = 5% do gasto de IA da operação na janela (mais a verba única `extra_usd` até
+  `extra_ate`) e de ≤4 por hora. Nesta fatia nenhum grupo vai a aparelho com conta real logada (nem a leitura).
+- O digest fecha o pedido: `feita` com evidência da execução, senão `recusada`, com o `usd` medido. O curador revê o
+  item com o gatilho novo `evidencia_chegou`, que pula o cooldown (rótulo no painel).
+- `aprendizado.validacao.modo: "off"` de fábrica. Prova `simulated` (`test_learning_validacao*.py` e
+  `test_learning_curador.py`); nada ligado no central.
+- Fora desta fatia (avisado à orquestradora): a conferência pelo ContentProvider do QA, o ensaio só leitura do
+  Instagram em perfil de terceiro e a classe do fluxo pela etapa mais restritiva (30.32).
+
+## 2026-10-03 — Aprendizado: "devolver à prova" (30.31, item 0; branch feat/30-31-validacao)
+
+- `ciclo.TRANSICOES` ganha `disabled → candidate`, só de pessoa e só para fluxo (adendo v0.91):
+  - no livro, a chave `devolver` em `acoes`; no painel, o botão "Devolver à prova";
+  - receita, lição e tela recusam com `transition_forbidden`.
+- Na concordância do parecer, "devolver" vale como esperar (`parecer._DIRECAO_DA_ACAO`).
+- A sombra do fluxo conta só a evidência a partir da volta (`SombraDosFluxos._avaliar`).
+- Motivo: os 5 fluxos desligados em 03/10 "para validar pela IA" nunca recebiam evidência. É o pré-requisito do
+  laço de validação automática (30.31, desenho aprovado pela orquestradora).
+- Prova `simulated`:
+  - `tests/test_d1_fluxos.py::test_devolver_a_prova_tira_o_veto_e_a_prova_recomeca_da_volta`;
+  - a paridade e o roteiro em `tests/test_learning_acoes.py`; a regra do dono em `tests/test_learning_ciclo.py`;
+  - 585 testes afetados passaram; vitest de `aprendizado` 131; typecheck limpo.
+- Real: `not_run`.
+## 2026-10-03 — Aprendizado: polimentos de texto dos deploys 7 e 8 (branch feat/aprendizado-ux-deploy8; suíte 10)
+
+Os itens de polimento da frente do Aprendizado em `.claude/handoffs/ux-deploy7-2026-10-03.md` e
+`ux-deploy8-2026-10-03.md` que não entraram no #143. Só painel e texto; nenhuma rota nem migração.
+
+- **Veto** (`domain/ciclo.py::motivo_do_veto`):
+  - a frase traz a data em dd/mm/aaaa e o motivo de quem desligou:
+    "desligado por uma pessoa (orquestradora) em 03/10/2026 (validar pela IA antes de valer): só uma pessoa o reativa";
+  - o motivo vai numa linha só e é cortado em 120 caracteres;
+  - as frases do sistema e da evidência inválida também usam a data em dd/mm/aaaa.
+- **Configuração › Fluxos e receitas:** o selo do app cai no `app_id` quando o fluxo chega com `required_apps` vazio.
+  Eram 5 fluxos do QA no central, 2 deles desligados (`lib/appsDoFluxo.ts::appsDoFluxo`).
+- **Cartão do Livro:**
+  - a referência ("receita:108") saiu do canto e foi para o `title` do título;
+  - a receita de app sem catálogo se chama pela etapa ("Digitar a mensagem (v1)"), sem a chave crua.
+- **Detalhe e "Para aprovar":**
+  - o alvo da ação vem em palavras ("Alvo: “Enviar”"), com os seletores recolhidos em "como o encontra";
+  - a execução de origem aparece como "execução de 24/09 08:48", com o id no `title`;
+  - a variante da tela aparece como "idioma en-US, tela xhdpi".
+- **O que falha:**
+  - a ocorrência mostra "android-05 · tentativa 1", com a chave da etapa no `title`;
+  - a tela mostra "Tela: caixa de entrada", com o id do catálogo no `title`.
+- Prova `simulated`:
+  - `tests/test_learning_ciclo.py::test_a_frase_do_veto_fala_a_data_do_painel_e_o_motivo_de_quem_desligou`;
+  - vitest de `aprendizado`, `settings` e `lib/appsDoFluxo` (236 passaram);
+  - typecheck limpo.
+- Navegador: `not_run` (fica para a validação da orquestradora no deploy que levar a suíte 10).
+- Pendente com a Android: o motivo do desligamento no `title` do interruptor de Configuração › Fluxos e receitas
+  pede que `/api/flows` traga o motivo (backend de skills).
+## 2026-10-03 — Prova real do 31.17: o script que confere a sombra C0–C1 do curador no central (branch feat/31-17-prova-real)
+
+- `scripts/jev-prova-31-17.py`, só leitura (`mode=ro` mais `query_only`), sem IA, desde o T_on do deploy 9:
+  - as linhas da sombra só do curador, em `shadow`, nas classes C0/C1, com o que guardam em formato opaco;
+  - o corpo de cada chamada remontado do dossiê guardado, quando o `content_hash` bate com o `ref`, sem texto, id nem
+    hash do dossiê;
+  - US$, tokens e latência das linhas do Jev em `ai_calls`, cruzadas com a sombra.
+- `docs/design/jev-golden-set.md` §6.
+- Prova `simulated`: `scripts/tests/test_jev_prova_31_17.py` (8 testes). No central: `not_run` até a ordem da orquestradora.
+## 2026-10-03 — 31.16: telas do RA-10 no Custo de IA e o adendo v0.90 (branch feat/31-16-telas-ra10)
+
+- Diagnóstico › Custo de IA, sem API nova (lê o adendo v0.75):
+  - a seção "Modelo forte e conferência": `escalations` por motivo, o rejulgamento com a discordância e a cascata do bloqueio;
+  - recolhidos "Discordância do rejulgamento, por app" (nome do app do catálogo) e "Imagem: por que foi junto (ou não)";
+  - o aviso das etapas sem `driven_by`, só quando passa de 0;
+  - nada aparece com servidor anterior ao v0.75.
+- `docs/api-contract.md`, adendo v0.90: o bloco `decisao_fechada` de `GET /api/ai`, com `decider` (31.14) e `sending`
+  (31.17), documentado a posteriori; o `notice` "Envio ATIVO" ou "Nada sai agora: <motivo>".
+- Prova `simulated`: `frontend/src/features/usage/usage.test.ts` e `frontend/src/features/diagnostics/DiagnosticsPage.test.tsx`;
+  a tela percorrida no navegador contra um backend simulado do worktree (nada no central).
+## 2026-10-03 — 31.9: a H sem a H-3, depois do NO-GO da fase 2 da H (branch fix/31-9-rodada-h)
+
+- A fase 2 da H deu NO-GO: 107 casos em 4 famílias de método.
+  - A família 1, que não reproduz na base, era a H-3, e ela foi revertida: "entre com o lucas" volta a recusar.
+  - As famílias 2 a 4 vêm da G, não se remendam e esperam a escolha do dono: A, fechar por gatilho; ou B, só o curador
+    C0–C1.
+- Piso:
+  - (a) o C7 com dígito recusa, em vez de mascarar (`c7_valor_com_digito`);
+  - (b) a quebra de linha separa o par, como o ";";
+  - (c) os objetos e as telas do app de e-mail e agenda não são donos de endereço ("abra o calendário do outlook" passa).
+- ADR-069, item 17; bloco "Depois do NO-GO da fase 2 da H" em `docs/ia.md`.
+- Prova `simulated` no 136f80ff:
+  - harness, corpus de 579: 0 vazamentos e 0 passagens indevidas, também com a "Girassol";
+  - 6 recusas indevidas: as 4 antigas mais o 572 e o 573, que são o custo da reversão;
+  - testes do filtro: 999 passaram.
+- Medição nos 125 comandos reais de 7 dias, só leitura:
+  - recusam 3, contra 1 na base com os nomes dos apps registrados como na subida. O custo da (a) é de 2 comandos, e
+    os dois têm só números com cara de ano;
+  - correção: as medições das rodadas F a H não registravam os nomes, e a base recusava "2" em vez de 1;
+  - refinamento dos anos (orquestradora): o token só de dígitos conta só perto do campo ou logo depois do conector do
+    verbo de entrar. Os 125 voltam a 1 recusa, como na base, e o harness não muda;
+  - opção A-ESTREITA: 35 dos 124 que passam, sendo 28 "entre na conversa com …"; com a exceção de pessoa ou conversa, 7;
+  - 39 dos 122 que passam têm gatilho forte: é o custo da opção A.
+
+## 2026-10-03 — Correção do 31.9, rodada H (47 vazamentos na fase 2 da rodada G em 9a99a8d8): a camada estrutural, o nome do catálogo como destino e os controles operacionais (branch fix/31-9-rodada-h)
+
+- H-1, a segunda passada estrutural, ainda lista de bloqueio:
+  - (a) conector com valor desconhecido depois de qualquer verbo de entrar, salvo depois de pessoa ou conversa ("entra
+    aqui com", "entre no feed com", "entre no perfil com"). Valem também:
+    - o passado ("entrei com");
+    - outras oito línguas;
+    - "com a conta <nome desconhecido>". O "conta" de `_ONDE_SE_ENTRA` o isentava: era vazamento da base.
+  - (b) o par com o campo de login e separador que não é palavra, sem verbo ("user lucas | girassol", "usr lucas,
+    girassol").
+  - (c) duas letras soltas com pontuação depois de digitar ("g+i", "g · i").
+  - (d) telefone ditado em holandês e sueco, pela lista de numerais. A forma genérica do pedido exigiria lista de
+    permissão e voltou à orquestradora.
+  - (e) e-mail com rótulo ("e-mail: X, provedor: Y"), em peças sem ponto ("zilda em correio, net"), em holandês e com
+    "#" no lugar do "@".
+- H-2: o domínio de topo separado fica no `[email]` ("zilda@correio. net").
+- H-3: o nome do catálogo sozinho depois do verbo de entrar é destino ("entre com o lucas", "entre como lucas"). O
+  par, o valor colado e o conector depois de outro destino continuam recusando. Residual aceito: a persona com o nome
+  da própria senha.
+- H-5:
+  - endereço é logradouro, número e CEP: "a padaria do bairro" e "a foto da casa" passam, "casa 3" recusa;
+  - "o e-mail da newsletter no outlook" é a mensagem no app;
+  - "maria.clara" e "p.ex." não viram `[link]`.
+- ADR-069, item 16; bloco "Rodada H" em `docs/ia.md`.
+- Prova `simulated`:
+  - `tests/test_decisao_fechada_reverificacao_h.py`; os testes da G e da E foram reescritos para a H-3;
+  - harness da orquestradora, corpus de 579, catálogo sem a "Girassol": 0 vazamentos (eram 47), 0 passagens
+    indevidas, 5 recusas indevidas (as 4 antigas e o caso 538, que a orquestradora reetiquetou para recusa);
+  - 122 comandos reais: as mesmas 2 recusas da base.
 
 ## 2026-10-03 — Deploy 9 no central (suíte 9; sombra C0–C1 do curador ligada, T_on do 31.10; curador volta ao padrão)
 

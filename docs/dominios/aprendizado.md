@@ -56,11 +56,21 @@ origem.
 | `candidate`/`validated` → `disabled` | sistema ou pessoa | contradição, refutação, rejeição |
 | `published` → `deprecated`/`disabled` | sistema ou pessoa | rebaixar é sempre automático |
 | `deprecated`/`disabled` → `published` | só pessoa | reativar é sempre de pessoa |
+| `disabled` → `candidate` | só pessoa, só fluxo | "devolver à prova" (30.31): inerte, sem publicar; a sombra conta de novo |
 
 - `requires_owner = side_effect OR human_origin` é derivado: nenhuma rota o edita. O repositório confere de novo no
   próprio `UPDATE` e, com `conferir_nascimento`, no item que o sistema já cria num estado (segunda camada).
 - **Veto.** O conteúdo desligado por uma pessoa não volta pelo sistema (mesmo `content_hash`, mesmo escopo). Desligado
   pelo sistema, fica vetado por 90 dias ou até a versão do app mudar.
+- **Devolver à prova (30.31, item 0).** Desligar "para validar pela IA" prendia o fluxo: a sombra só olha
+  `candidate`/`validated`, e de `disabled` só se saía publicando.
+  - A pessoa agora devolve o fluxo desligado à prova (`disabled → candidate`, chave `devolver` em `acoes`, botão
+    "Devolver à prova"). Ele fica inerte (`FlowStore.match` só casa o ativo) e sai do veto, porque a última decisão
+    da pessoa já não é desligar.
+  - A sombra (`SombraDosFluxos._avaliar`) só conta a evidência observada a partir da volta, a favor e contra: o
+    fluxo prova-se de novo, e com efeito para em `validated`, como sempre.
+  - O sistema não devolve nada. Receita, lição e tela recusam (`transition_forbidden`): a receita volta a
+    provar-se pela loja quando a etapa é aprendida de novo, e a lição e a tela, pela evidência.
 - **Só evidência real promove** (`runs.simulated=0`), contada por execução e por aparelho distintos. A execução
   simulada deixa a sua linha em `learning_evidence` e não muda nada.
 - **Quem decide pela rota** é o operador da sessão do painel (`panel` sem sessão), nunca `sistema`.
@@ -249,6 +259,23 @@ diária.
     - Uma específica mal classificada custa só uma divergência em sombra.
     - Ensaio na cópia do central (03/10), depois da regra do título (o alvo escrito só no título da etapa conta
       como literal): 6 específicas, 9 chaves, 9 candidatas semeadas e nenhuma ativa tocada.
+- **O contêiner sem identidade vira receita pelo filho rotulado (29.40 item 2; revisão da Android em 03/10).**
+  - O caso: a linha clicável de uma lista (a conversa, o contato) não tem `resource-id` nem texto, e o nome mora num
+    filho NÃO clicável. Antes, o toque nela não virava receita.
+  - Na gravação, `_safe_target` guarda até 3 filhos rotulados (`filhos_rotulados`). O filho só entra se, pelo hit-test,
+    o próprio alvo for o menor clicável no centro dele, e só até o primeiro nó fora dos bounds (a janela da
+    pré-ordem).
+  - Na reprodução, o seletor `via: filho` (com a classe do `conteiner`) toca o CENTRO do filho. O driver toca por
+    coordenada, e o Android sobe o toque ao contêiner. Antes do toque, o clicável sob o centro tem de conter o filho,
+    não pode ser ele e tem de ter a classe gravada; outro clicável por cima faz divergir.
+  - `_rotulo_estavel` recusa rótulo que muda com o estado (tempo, "Following", "Active now", online/offline,
+    digitando, o selo "novo") e qualquer @ literal; o nome de pessoa só vale templatizado. O efeito externo pelo
+    filho é recusado em `distill` e em `distill_training`.
+  - Com a chave genérica: o seletor `via: filho` mora em `selectors`, então `_literais` o lê como os outros. O filho
+    com o literal do valor da etapa ("nasa") deixa a receita na chave específica.
+  - Os textos dos filhos ficam no `target` da ação, no banco local, como o texto do alvo já ficava. Nenhum leitor de
+    saída lê a chave `filhos`: as lições leem só `resource_id`, `text` e `desc` do alvo.
+  - Prova `simulated` (`tests/test_receita_filho_rotulado.py`, árvores sintéticas).
 - **Habilidade.** O primeiro escritor real de `skill_validation_results`: cada execução de versão grava a observação
   (`proof=real` só de execução real). Execução com etapa confirmada à mão vira `uncertain`, nunca `passed`. O sistema
   pode validar; publicar é sempre de pessoa.
@@ -421,7 +448,15 @@ com o banco aberto só para leitura.
     mantém ("Confirmar que fica", 30.24) ou desliga, um a um ou em lote;
   - **Aprendido:** o catálogo unificado por tipo e estado, com desligar, aposentar e reativar, sempre com motivo;
   - **O que mais falha:** o relatório do A3, com as três colunas de custo e o falso positivo no topo;
-  - **Sinais:** os votos e os gestos.
+  - **Sinais:** os votos e os gestos;
+  - **Métricas** (30.33; `?aba=metricas`): as rotas do 30.8 (adendo v0.89) num cartão por bloco do §10, na janela de 7,
+    14 ou 30 dias e por app, e embaixo os pareceres do curador em páginas pelo cursor, cada um com o link do item.
+    - Ausente é "sem amostra", nunca 0%, e o tempo abaixo de 1 h sai em minutos.
+    - A comparação receita × só IA diz no título que não é prova ("não mede falha evitada").
+    - O orçamento do curador diz que é global e que usa a janela dele, com a barra de uso e o aviso a 80%.
+    - A janela que atravessa o deploy 8 (03/10 09:06:28Z) ganha o aviso de quebra de série.
+    - Bloco sem dado diz o porquê numa frase, em vez de uma grade de zeros; 503 `not_ready` vira "não estão ligadas
+      neste servidor".
 - **Nomes, não códigos (validação do deploy 3, P2 a P5).** O painel mostra o app e a capability pelos nomes do
   agrupamento do Aprendido ("Pós-condição não comprovada — Instagram · Abrir o feed", "Instagram › Abrir o perfil";
   `app_nome` e `capability_nome` de `presentation/nomes.py`). O pacote e o código ficam no `title` e em "Para quem
@@ -434,10 +469,12 @@ com o banco aberto só para leitura.
   - As entradas do livro (listas, filas e detalhe) ganham `app_nome` (`presentation/nomes.py::nomear_apps`). "App:", a
     Identidade e a Versão dizem o nome, com o pacote no `title`.
   - A receita ganha `etapa`, o `steps.title` da etapa de origem. No app sem catálogo, ela vira o nome:
-    "Digitar a mensagem · etapa fill_message (v1)". O nome do catálogo vence; sem os dois, fica a chave.
+    "Digitar a mensagem (v1)" (até o deploy 8 levava a chave, "· etapa fill_message", que agora fica no `title`). O nome
+    do catálogo vence; sem os dois, fica a chave.
   - O `title` gravado não muda, e o dossiê do curador não leva `etapa`, porque o título de uma etapa pode citar um @
     ou um contato.
-  - A ocorrência de falha diz "android-05 · etapa open_app · tentativa 1".
+  - A ocorrência de falha diz "android-05 · tentativa 1"; a chave da etapa ("etapa open_app do plano") fica no `title`,
+    e a tela da falha, "Tela: caixa de entrada", com o id do catálogo no `title` (UX dos deploys 7 e 8).
 - **O app de teste fora da lista padrão (RA-19, fatia A).**
   - O Aprendido abre em **Produto**: `GET /api/aprendizado` sem `rotulo` esconde os apps de `apps.category='qa'` (o QA
     embutido, 041), que eram 94 das 164 entradas do central em 03/10.
@@ -516,6 +553,10 @@ app mostra "Lições e telas neste app" com o modo, a marca "definido para este 
 faz; "Como mudar" diz a chave do config e que é preciso reiniciar o central (o config é lido uma vez, em `state.py`). O
 cartão mostra só o modo próprio, e o Global lista as exceções. O painel não grava o config: editar pela tela é decisão
 pendente da orquestradora (gravar o `config.yaml` ou levar o override para o banco; as duas mexem em núcleo).
+
+**Validação automática (30.31).** `aprendizado.validacao`: `modo` (`"off"` de fábrica), `intervalo_s`, `beta`,
+`maximo_por_hora`, `janela_dias`, `extra_usd` com `extra_ate` (ISO; sem fuso = UTC; data inválida recusa o config) e
+`custo_estimado_usd`. Ver a seção da 30.31 abaixo.
 
 ## Evento `learning.needs_person` (30.21)
 
@@ -613,6 +654,23 @@ Só domínio puro (desenho em `design/aprendizado-vivo.md` §8.2-8.4); a porta, 
   `familia_do_efeito`, dado que os catálogos ainda não declaram. `conferir_aceite`: a IA nunca decide; aceitar parecer é da pessoa,
   em lote só na B; na A o parecer é só registro e `conferir_aceite` recusa qualquer efeito dele. `ia_permitida`: A
   `so_com_sobra` (depois das prioridades 1 a 4; o corte é do 30.11), B e C `sim`. `classificar_espera` (30.21) só traduz a classe para a faixa do evento.
+- **A classe do fluxo pela etapa mais restritiva (30.32).** O fluxo não tem UMA capability, então o dossiê o
+  classificava sem fatos do catálogo: todo fluxo com efeito caía em `commit_sem_fatos_da_etapa` (B). Agora
+  `FatosDeRisco.etapas` leva cada etapa do fluxo (`EtapaDeRisco`: a capability, se é de efeito e os `FatosDoCatalogo` do
+  app DELA). O `app_id` da etapa (12.1) vira pacote pela tabela `apps`, e o nulo é o app do fluxo.
+  - As razões do catálogo são a união das etapas: os fatos de uma etapa só acrescentam razão, e a classe nunca desce.
+  - Etapa de efeito sem fatos mantém `commit_sem_fatos_da_etapa`.
+  - Etapa de efeito que o catálogo diz sem efeito é `commit_fora_do_catalogo` (C).
+  - As etapas entram em `FatosDeRisco.como_dados` só quando alguma tem fatos (como o `reaprendido`). O dossiê de
+    receita, lição, tela e fluxo sem catálogo não muda de hash.
+
+  Na cópia do banco do central de 03/10 (deploy 9), 9 fluxos do Instagram passam de B a C: comentar, responder, mandar
+  mensagem e seguir. Todos têm uma etapa `risk: high` no catálogo; o curador os revê com o dossiê novo. Os outros 24
+  ficam na classe de antes.
+
+  Divergência conhecida, que já existia para a receita: o aviso `learning.needs_person` da transição nativa
+  (`application/espera.py`) não recebe a capability nem as etapas e segue dizendo B para esses fluxos. O parecer, o
+  Revisar e o gesto usam o dossiê (C).
 - **Dossiê** (`domain/curador.py::montar_dossie`): fatos já lidos (identidade sem título nem resumo, conteúdo legível do §4 por
   lista branca, até 30 evidências mais recentes com o total, trilha sem o motivo livre, relações, grupos de falha, votos sem nota,
   intervenções, e saúde, versão e política vigente quando fornecidas). Cada fato tem id citável (`ev:`, `run:`, `tr:`, `voto:`,
@@ -675,7 +733,7 @@ sem adaptador (testes) usa o SIMULADO.
   desde o 30.17, mostra o parecer na fila e no detalhe e abre o aceite da pessoa (seção abaixo). A IA nunca decide: nada
   transiciona no curador (`conferir_aceite`).
 - **Gatilhos ligados**: `nova_pendencia_do_dono` (fila "Para aprovar"), `a_revisar`, `degradando` e `obsoleto_provavel` (saúde do
-  publicado), `conflito` (publicado com relação `contradiz`) e, desde o 30.17, `pedido_da_pessoa`. `versao_nova` e
+  publicado), `conflito` (publicado com relação `contradiz`), desde o 30.17 `pedido_da_pessoa` e, desde o 30.31, `evidencia_chegou`. `versao_nova` e
   `grupo_de_falha_acima_do_minimo` existem no vocabulário e ainda não têm fonte. Dossiê (`infrastructure/dossies.py`) do detalhe do Livro, com a evidência lida pelo id;
   sem grupos do backlog, votos e intervenções nesta fatia.
 - **Filtros**, em ordem: modo → (item, `dossie_hash`) já revisado → cooldown (`cooldown_h`) → orçamento → prioridade. A triagem de
@@ -700,6 +758,14 @@ sem adaptador (testes) usa o SIMULADO.
   chamada paga), e a gravação do `usd` espera a unificação do saldo na rubrica (`design/hub-de-ia-fora-de-execucao.md`, PENDÊNCIA).
   A `RespostaDeRevisao.simulado` (opcional) diz se AQUELA resposta foi simulada e vale sobre o `simulado` do adaptador: é ela que
   decide se o parecer avisa o dono.
+- **Custo pela chamada ligada (I3, 03/10).** A revisão gravada com `usd = 0` e com `ai_call_id` tem o custo MEDIDO na
+  chamada ligada (`revisoes_sql.custos_das_chamadas`). A regra é a do `/api/usage`: custo declarado onde há, tokens ×
+  preço do modelo onde não, provedor simulado a US$ 0. Vale na janela do orçamento, nas métricas e na lista
+  `/revisoes`; o registro só a aplica quando recebe `precos` (o curador e as métricas recebem).
+  - Na cópia do banco do central de 03/10, as 46 revisões anteriores ao 30.30 somam US$ 0,6717, o mesmo do
+    `/api/usage` do curador.
+  - Antes, `metricas.curador.usd` dava 0,0 enquanto o orçamento, no mesmo payload, estimava 0,6418.
+  - Sem backfill e sem migração.
 - Fica para depois: o alerta do pico como evento + Problem em `/api/health` (hoje só log), o aviso a 80 % de `B_W`, as fontes dos três
   gatilhos sem fonte, e o `resultado_posterior`.
 
@@ -889,6 +955,52 @@ O gabarito humano do decisor fechado da intenção (31.x, da Jev). Sem IA e sem 
   sem o palpite do sistema, e "Nenhuma destas"; com mais de 8, um filtro sem acento. O catálogo de 03/10 tem 26 opções
   e nomes de até 120 caracteres: cada nome ocupa no máximo duas linhas (inteiro no `title`), e dois fluxos com o mesmo
   nome mostram o id. Nos Sinais, a resposta aparece como "Disse qual era o pedido", não como parecer da IA.
+
+## Validação automática do "pedir evidência" (30.31)
+
+O parecer do curador que pede evidência que uma execução produz vira um pedido; um despachante roda essa execução num
+aparelho ocioso, e o item volta ao curador quando a evidência chega. Nada transiciona aqui: a evidência entra pelos
+caminhos de sempre (a sombra do fluxo, os contadores da receita) e quem decide segue sendo o ciclo do livro.
+`aprendizado.validacao.modo` é `"off"` de fábrica: nenhum pedido nasce e nada roda.
+
+- **O pedido** (`domain/validacao.py::pedido_do_parecer`). O curador o pede em `_fechar_o_laco`, depois de gravar um
+  parecer válido e NÃO simulado; o adaptador simulado nunca dispara execução real. Só `pedir_evidencia` com uma falta
+  que uma execução produz conta: `execucao_real`, `reproducao_em_outro_aparelho`, `reproducao_na_versao_viva` ou `sombra`
+  (`voto_da_pessoa` e `decisao_da_pessoa` ficam com a pessoa). As recusas ficam registradas: o pedido nasce `recusada`
+  com o motivo. Ordem: tipo sem execução (lição, tela), desligado, vetado, sessão ou autenticação, sem origem (o item
+  não nasceu de execução), comando com credencial (a triagem do aprendizado), efeito real, receita sem fluxo ativo
+  para o comando. Há um pedido vivo por item (índice parcial da 082), que vale 72 h.
+- **Grupos.** `qa` é o app de categoria `qa`, sem efeito fora da máquina; `leitura` é sem efeito; `efeito_real` nunca roda
+  nesta fatia.
+- **O despachante** (`LacoDaValidacao`, sob a trava de líder; `intervalo_s` 600). Expira os pedidos velhos: pendente há
+  mais de 72 h, rodando há mais de 6 h. Só despacha com o central saudável (`/api/health` sem problemas) e NENHUMA
+  execução em curso, porque restart, suíte e deploy seguram ou derrubam execuções. Também precisa de fôlego na janela:
+  β = 5% do gasto de IA da operação em 7 dias (o mesmo G_W do curador), mais a verba única `extra_usd` até `extra_ate`;
+  e do ritmo, ≤4 por hora. Uma execução por volta: o comando de origem, em OUTRO aparelho (o de origem fica de fora),
+  ligado, ocioso, com o app `ready` e SEM conta real logada. Nesta fatia nem a leitura vai a conta real: a regra do
+  dono é conferir a tela antes de experimento numa conta real, e o despachante não confere tela; o pedido de leitura
+  do Instagram de hoje (só logado em 01, 03 e 06) espera e expira. A volta roda na thread do loop, como o laço de
+  pedidos: `RunService.create` agenda o planejamento com `asyncio.create_task`. A execução é comum (`RunService.create`, chave de idempotência `validacao:<pedido>`) e o custo dela é o da
+  operação.
+- **O fechamento** (minerador do digest). A execução assentou: `feita` se o item ganhou evidência DELA (fluxo: uma
+  linha a favor da sombra com o `run_id`; receita: uma tentativa conduzida pela receita que deu certo); senão `recusada`
+  (`sem_evidencia` ou `execucao_falhou`). Grava o `usd` medido nas `ai_calls` da execução.
+- **A volta ao curador.** O pedido `feita` é o gatilho `evidencia_chegou`, o segundo em força depois de
+  `pedido_da_pessoa`, e pula o cooldown. A regra "uma revisão por (item, dossiê)" continua: a evidência nova muda o
+  dossiê. A revisão nova fecha a chegada (`revisao_nova_id`) e pode pedir de novo.
+- **Onde.** Tabela `learning_validations` (082, [`docs/banco.md`](../banco.md)); `application/validacao.py`,
+  `infrastructure/validacoes_sql.py`, e `infrastructure/ligar_validacao.py`, ligado em `state.py` depois do `RunService`.
+  A execução de validação se liga ao pedido por `learning_validations.run_id` (`runs.pedido_id` é do módulo de pedidos).
+- **Limite conhecido**: a chegada cujo item não é revisto (o dossiê não mudou, ou o mesmo hash já foi recusado por
+  custo ou triagem) fica `feita` sem `revisao_nova_id` e volta como candidata a cada volta, sem custo (sai antes do
+  provedor) e sem segurar pedido novo.
+- **Fora desta fatia** (desvios do desenho aprovado, avisados à orquestradora): a conferência pelo ContentProvider do
+  QA (existe só em `scripts/eval_run.py`, e os aparelhos do notebook estão fora do adb do central); o ensaio só
+  leitura do Instagram em perfil de terceiro (precisa de um modo "parar antes do commit" no executor); a classe do
+  fluxo pela etapa mais restritiva (30.32).
+- **Prova** `simulated`: `tests/test_learning_validacao.py`, `tests/test_learning_validacao_sql.py`,
+  `tests/test_learning_curador.py` (`*validacao*`, `evidencia_chegou`). Ligar no central é `modo: "on"` depois do
+  deploy que a levar (P4 do desenho: verba única de US$ 2,5 para os 15 itens do QA).
 
 ## Métricas (30.8)
 
