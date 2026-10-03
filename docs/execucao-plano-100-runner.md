@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-331 de 381 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+331 de 382 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -319,6 +319,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.49 | implemented | real | opus (sessão Android) | — | Código: feat/29-49-laco-do-assunto 0b62678b, na main pela suíte 11 (97425d5f), implantado no deploy 11 (c8304e85). Prova real (03/10/2026, central WIN-7S2UASNLFOP, android-01, liberada pela orquestradora): run r-2026100… |  |
 | 29.50 | implemented | real | opus (sessão Android) | — | Código: feat/29-50-expira-needs-input 38b21238 (f334822c + adendo v0.95), na main pela suíte 12 (5428abdb), implantado no deploy 12 (d5a1c3a9; restart 17:02:42Z e de novo 17:18:38Z pela Aprendizado, mesmo commit). Prova… |  |
 | 29.51 | implemented | simulated | opus (sessão Android) | — | feat/polimentos-rede-deploy12 @ a742f75f (722e0664 Rede; 591c8d84 títulos sem lacunas e candidato x desligado; 41950d20 pendentes uma vez; 4773d997 os 3 do backend; a742f75f adendo v1.01), na main pela suíte 13 (integ 7… | Prova real not_run: o relatório do Chrome da orquestradora pós-deploy 13 (itens 6 a 11). |
+| 29.52 | pendente | — | — | — |  |  |
 | 29.44 | implemented | real | opus (sessão Android) | — | feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a med… |  |
 | 29.45 | implemented | simulated | opus (sessão Android) | — | feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entr… |  |
 | 29.43 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/caminho-rapido-1 @60e7962e: LT-1 (atalho de entrada sem o ator, ATALHO_ANTES_DO_ATOR, nunca em etapa com efeito, driven_by='sem_ator'), LT-2 (expect_done em etapa julgada → _verify(uma_rodada=True), nunca em etapa… |  |
@@ -388,7 +389,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (50): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 30.18, 30.31, 30.34, 30.36, 30.37, 30.38, 31.10, 31.11, 31.12, 31.13, 31.21, 32.2, T.2
+Pendentes (51): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 29.52, 30.18, 30.31, 30.34, 30.36, 30.37, 30.38, 31.10, 31.11, 31.12, 31.13, 31.21, 32.2, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

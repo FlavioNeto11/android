@@ -19,6 +19,28 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 29.52: a resposta com credencial é recusada pelo contexto (painel e canais; branch, suíte 14)
+
+- Branch `fix/29-52-resposta-com-credencial`, ainda fora da main: entra na suíte 14. Adendo v1.03 e K-089, sem
+  migração.
+- A regra é uma só, na `TriagemDeCredencial`: `pergunta_sensivel` (o tipo que a pergunta pede) e `resposta_recusada`
+  (o texto de pessoa mais o código solto de 4 a 8 dígitos, `parece_codigo`).
+- O caminho comum fica em `taskqueue/perguntas.py`:
+  - 409 `credencial_na_resposta` na sucessora e no refinamento, antes da IA e de qualquer gravação;
+  - a palavra solta no pedido novo, quando há pergunta de senha ou código aberta para o aparelho;
+  - o evento `pergunta_sensivel`, só com o id e o tipo;
+  - duas leituras públicas para os canais.
+- No painel, a pergunta sensível mostra a orientação no lugar da caixa de resposta: "Abrir Personas" ou "Abrir o
+  aparelho".
+- Prova `simulated`:
+  - backend: `test_resposta_com_credencial.py` (8), mais 772 testes afetados, com arquitetura;
+  - frontend: 1419/1419 e typecheck;
+  - percurso no navegador contra o backend simulado do worktree (porta 8766, planejador simulado que pergunta a senha
+    ou o código; nada no central): as duas orientações, "Abrir Personas", "Abrir o aparelho" (o foco com "Assumir
+    controle") e o 409 de formato no assistente da resposta.
+- `not_run`: a suíte inteira (fica para a suíte 14), o canal sobre as mesmas leituras (commit de integração) e o
+  painel no ambiente central (depois do deploy 14).
+
 ## 2026-10-03 — Suíte 13 na main e deploy 13 no central (1c54a7bb; migração 083; config inalterada)
 
 - A suíte 13 foi integrada em `integ/suite-13` na ordem da orquestradora:

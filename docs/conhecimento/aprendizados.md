@@ -2344,3 +2344,31 @@ encontrava o token do bot no texto capturado. A linha era do `httpx`, não do c�
 
 **Aplicabilidade.** Vigente. Vale para toda API que leva o segredo na URL (o Telegram hoje). Antes de afirmar "o token
 não aparece no log", conferir em que nível o logger do cliente HTTP está NAQUELE processo.
+
+### K-089 — A redação por formato não pega a senha respondida solta: a pergunta é que diz que é senha
+
+**Sintoma.** Na conferência do B2 no painel (03/10), uma execução em `needs_input` perguntava a senha. A resposta solta
+("884512", ou "Abc!2345xyz" sem rótulo) passava em `POST /api/runs/{id}/successor` e virava `runs.command`: ia ao prompt
+do planejador e ficava no histórico. O Telegram ainda barrava o código de 4 a 8 dígitos; o painel não barrava nada. No
+painel, a resposta ia antes ao modelo, pelo `POST /api/commands/refine`.
+
+**Causa.**
+- A única triagem era `_recusar_credencial` (`redact(command) != command`), que só pega FORMATO: "senha: …", tokens.
+- Uma palavra sem rótulo não tem formato de segredo. Quem diz que ela é senha é a PERGUNTA a que responde, e a
+  triagem não olhava a pergunta.
+- `mentions_credential` pega "senha" e "código de verificação", mas não "qual o código que chegou por SMS?".
+
+**O que funcionou (29.52).**
+- A regra é UMA, na `TriagemDeCredencial`:
+  - `pergunta_sensivel(pergunta, campo)` devolve o tipo, com o vocabulário de pergunta mais largo que o de memória;
+  - `resposta_recusada(texto)` é o rigor do texto de pessoa mais o código solto de 4 a 8 dígitos (`parece_codigo`).
+- O caminho comum (`taskqueue/perguntas.py`) a aplica na sucessora, no refinamento e na palavra solta do pedido novo.
+  As duas leituras públicas servem aos canais, para que nenhum tenha vocabulário próprio.
+- A pergunta sensível recusa seja qual for a resposta. Sem ela, julga-se só o que a resposta ACRESCENTOU ao comando,
+  para não recusar o pedido original por uma palavra que já estava nele.
+- O painel não mostra caixa de resposta para essa pergunta. Ele lê o evento `pergunta_sensivel` do backend, e não um
+  regex próprio em TypeScript.
+
+**Aplicabilidade.** Vigente. Antes de concluir "a credencial é recusada", conferir se a triagem vê o CONTEXTO (a
+pergunta, o campo) e não só o formato do texto. Toda entrada nova de resposta (um canal, uma rota) passa pelas
+mesmas leituras.

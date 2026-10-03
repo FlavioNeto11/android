@@ -126,3 +126,18 @@ export function perguntasDosEventos(events: readonly EventRecord[] | null): Perg
   }
   return [];
 }
+
+/**
+ * 29.52: o tipo da credencial que a pergunta aberta pede (`senha`, `codigo`, `2fa`, `token`, `credencial`), lido do
+ * evento `pergunta_sensivel` que o backend grava ao entrar em `needs_input`. O vocabulário é só o do backend (a
+ * `TriagemDeCredencial`); o painel não tem o seu. Execução anterior ao 29.52 não tem o evento: a caixa de resposta
+ * aparece, e a recusa chega pelo 409 `credencial_na_resposta`.
+ */
+export function perguntaSensivelDosEventos(events: readonly EventRecord[] | null): string | null {
+  if (!events) return null;
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const e = events[i];
+    if (e?.kind === 'pergunta_sensivel' && isRecord(e.data) && typeof e.data.tipo === 'string') return e.data.tipo;
+  }
+  return null;
+}

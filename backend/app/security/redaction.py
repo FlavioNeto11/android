@@ -201,3 +201,14 @@ def parece_senha_ou_codigo(texto: str) -> bool:
     tipos = sum((any(c.islower() for c in t), any(c.isupper() for c in t), any(c.isdigit() for c in t),
                  any(not c.isalnum() and c not in "._-@" for c in t)))   # . _ - @ são de usuário/e-mail
     return len(t) >= 8 and tipos >= 3
+
+
+#: Só dígitos (com espaço ou hífen entre eles), de 4 a 8: o formato de um código de verificação.
+_CODIGO_SOLTO = re.compile(r"[\s-]*(?:\d[\s-]?){4,8}[\s-]*")
+
+
+def parece_codigo(texto: str | None) -> bool:
+    """O texto INTEIRO é um código de 4 a 8 dígitos ("884512", "884 512", "8845-12"). Mais largo que
+    `parece_senha_ou_codigo` (6 a 8, sem espaço) porque julga uma RESPOSTA solta, em que o código chega sozinho e
+    às vezes partido (29.52; é a regra do canal do 28.15). Na dúvida, recusa: um "2024" respondido solto cai aqui."""
+    return bool(texto) and bool(_CODIGO_SOLTO.fullmatch(texto or ""))

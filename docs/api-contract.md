@@ -4815,3 +4815,48 @@ Prova `simulated`:
 - `tests/test_learning_capability_na_linha.py`, com o registro real: REPLY_COMMENT só no Instagram;
 - `tests/test_leitura_visual_papel.py`;
 - `frontend/src/features/aprendizado/AprendizadoPage.test.tsx`.
+
+## Adendo v1.03 (03/10/2026; número da orquestradora; item 29.52) — a resposta com credencial é recusada pelo contexto
+
+Nenhuma rota nova e nenhuma migração. Um código de erro novo, um evento novo e duas leituras públicas no caminho comum
+(painel e canais). O ADR-040 continua valendo: a senha mora na conta da persona e a automação a digita por
+`type_secret`. O código de verificação, a pessoa digita no aparelho (ADR-009). A resposta a uma pergunta vira comando de
+uma execução sucessora, que vai ao prompt do planejador e ao histórico; por isso a credencial não entra por ali. Na
+dúvida, recusa.
+
+- **409 `credencial_na_resposta`**, com `tipo` no `detail` (`senha`, `2fa`, `codigo`, `token`, `credencial` ou
+  `formato`). A mensagem aponta o caminho certo e nunca repete a resposta. Sai em:
+  - `POST /api/runs/{id}/successor`, antes de qualquer gravação: nenhuma execução nova nasce e a antiga segue em
+    `needs_input`. Recusa quando:
+    - alguma pergunta aberta da execução pede credencial, seja qual for a resposta;
+    - ou, sem pergunta assim, o que a resposta acrescentou ao comando (`original + "\n" + resposta`, ou as palavras novas
+      do texto refinado) tem cara de credencial ou é um código solto de 4 a 8 dígitos.
+  - `POST /api/commands/refine`, antes da chamada de IA. Em cada resposta, recusa quando a pergunta que vem no corpo
+    (`question` e `field`) pede credencial, ou quando a própria resposta tem cara de credencial. É aqui que a resposta
+    do painel iria ao modelo, antes da sucessora.
+  - `POST /api/runs` (criação, sem o laço de pedidos): quando o comando é uma palavra só, sem espaço, e há uma pergunta
+    de senha ou código aberta para os aparelhos do pedido. Sem aparelho explícito no pedido (por persona ou
+    distribuição), qualquer pergunta aberta conta. É a senha mandada como pedido novo no lugar da resposta.
+  - O `credencial_no_comando` segue como antes, para o formato (`senha: …`) no comando ou numa resposta, e é conferido
+    primeiro.
+- **Evento `pergunta_sensivel`** (`level: warn`): sai quando uma execução entra em `needs_input` com uma pergunta que
+  pede credencial (pergunta do plano ou da habilidade). Leva só o `run_id` e `data: {"tipo": …}`, sem o texto da
+  pergunta, e mede quantas vezes o planejador pede o que não devia (ADR-040). O painel o lê para trocar a caixa de
+  resposta pela orientação, com o botão "Abrir Personas" (senha) ou "Abrir o aparelho" (código). Uma execução anterior
+  ao 29.52 não tem o evento: a caixa aparece e a recusa vem pelo 409.
+- **Leituras públicas** (`backend/app/taskqueue/perguntas.py`). As duas devolvem o tipo ou `None`, sobre a mesma regra
+  (`TriagemDeCredencial.pergunta_sensivel` e `resposta_recusada`), e nenhuma devolve nem registra o texto. Os canais
+  usam as mesmas, nunca um vocabulário próprio.
+  - `pergunta_sensivel_da_execucao(db, run_id)`: a pergunta aberta desta execução pede credencial? Uma execução que não
+    existe ou não está em `needs_input` dá `None`.
+  - `pergunta_sensivel_aberta(db, instance_ids=())`: existe agora alguma pergunta assim? Com `instance_ids`, contam as
+    execuções desses aparelhos mais as que ainda não têm aparelho.
+
+Prova `simulated`:
+- `backend/tests/test_resposta_com_credencial.py`: o vocabulário; o evento sem o texto; a sucessora e o refinamento
+  pelas rotas HTTP do painel; as duas leituras; a palavra solta;
+- `frontend/src/features/runs/RunView.test.tsx`: senha, código e a execução sem o evento;
+- percurso no navegador contra o backend simulado do worktree (porta 8766), com as duas orientações, os dois botões e o
+  409 de formato no assistente da resposta.
+
+A cobertura do canal (Telegram e Trello pelas mesmas leituras) entra no commit de integração da suíte 14.
