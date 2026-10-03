@@ -406,8 +406,10 @@ function Evidencia({ evid }: { evid: readonly EvidenciaDoLivro[] }) {
   );
 }
 
-/** O passo da trilha em palavras. `disabled → disabled` é a marca que muda só o tipo do desligamento (30.23). */
-export function passoDaTransicao(t: Pick<TransicaoDoLivro, 'from' | 'to'>): string {
+/** O passo da trilha em palavras. `disabled → disabled` é a marca que muda só o tipo do desligamento (30.23);
+ *  `published → published` com `tipo: confirmacao` é "Confirmar que fica" (30.24). */
+export function passoDaTransicao(t: Pick<TransicaoDoLivro, 'from' | 'to' | 'tipo'>): string {
+  if (t.tipo === 'confirmacao') return 'Confirmado que fica';
   if (t.from && t.from === t.to) return `${rotuloDoEstado(t.to)} (motivo reclassificado)`;
   return `${t.from ? `${rotuloDoEstado(t.from)} → ` : ''}${rotuloDoEstado(t.to)}`;
 }
@@ -419,8 +421,9 @@ function Historico({ trilha }: { trilha: DetalheDoLivro['trilha'] }) {
         <ol className={styles.trilha} aria-label="Trilha">
           {trilha.map((t) => (
             <li key={t.id} data-tipo={t.tipo ?? undefined}>
-              {formatQuando(t.decided_at)} · {passoDaTransicao(t)} por <strong>{t.decided_by}</strong>:{' '}
-              {t.tipo === 'evidencia_invalida' && t.run_invalidada ? (
+              {formatQuando(t.decided_at)} · {passoDaTransicao(t)} por <strong>{t.decided_by}</strong>
+              {t.tipo === 'confirmacao' ? (t.motivo_da_pessoa ? `: ${t.motivo_da_pessoa}` : ' (sem motivo)') : ': '}
+              {t.tipo === 'confirmacao' ? null : t.tipo === 'evidencia_invalida' && t.run_invalidada ? (
                 <>
                   <Badge tone="danger" size="sm">evidência inválida</Badge>{' '}
                   a execução <a className={styles.linkAlvo} href={hrefDaExecucao(t.run_invalidada)}>{t.run_invalidada}</a>{' '}

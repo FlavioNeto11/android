@@ -320,8 +320,8 @@ com o banco aberto só para leitura.
 
 - **Aprendizado** (oitava seção da barra; `features/aprendizado/`), com a contagem de "Para aprovar" no item da barra:
   - **Para aprovar:** a fila do D1, com a evidência, "Selecionar todos" e "Aprovar selecionados". A habilidade
-    validada se decide ali pela rota das habilidades. Embaixo, **Revisar**: o legado ativo com efeito, que só se
-    rebaixa ("Rebaixar selecionados");
+    validada se decide ali pela rota das habilidades. Embaixo, **Revisar**: o legado ativo com efeito, que a pessoa
+    mantém ("Confirmar que fica", 30.24) ou desliga, um a um ou em lote;
   - **Aprendido:** o catálogo unificado por tipo e estado, com desligar, aposentar e reativar, sempre com motivo;
   - **O que mais falha:** o relatório do A3, com as três colunas de custo e o falso positivo no topo;
   - **Sinais:** os votos e os gestos.
@@ -608,8 +608,31 @@ com o MESMO registro e a mesma fonte de dossiês do curador); leitura e gravaç�
   conclusão, o que a IA citou, com link, aceitar ou recusar com motivo, pedir revisão, histórico), a frase "Parecer da IA:
   …" na linha da fila e "Aceitar pareceres da IA" em lote, só na classe B. O painel não decide regra: mostra a `acao` e a
   `recusa` que o backend manda.
-- **Lacuna conhecida** (a pendência A6): aceitar "manter" num item de "Revisar" grava a concordância, mas o item continua
-  lá, porque manter o legado pede um verbo novo no backend.
+- **A pendência A6, fechada pelo 30.24:** aceitar "manter" num item de "Revisar" é "Confirmar que fica" (abaixo), na
+  mesma transação do CAS do parecer; a linha da trilha fica ligada à revisão (`transicao_id`). Fora de "Revisar",
+  aceitar "manter" continua só concordando.
+
+## Confirmar que fica (30.24)
+
+O gesto da pessoa que mantém o legado de "Revisar" (receita ou fluxo publicado, com efeito, de antes do D1).
+
+- **O que grava.** Uma linha `published → published` em `learning_transitions`, de quem decidiu, com o motivo
+  `confirmado que fica` ou `confirmado que fica: <motivo>` (o motivo é opcional e passa pela triagem de credencial). O
+  item não muda: o status nativo segue `active`, e o CAS confere isso na mesma transação (`_no_mesmo_estado`, o mesmo
+  caminho da reclassificação do 30.23). Sem migração.
+- **A fila.** `decididos_para_revisar` (`domain/livro.py`) lê a ÚLTIMA decisão de pessoa de cada item. Toda decisão de
+  pessoa tira o item de "Revisar", menos a confirmação contestada: chegou evidência contrária REAL (`against` ou
+  `conflict`, não simulada) depois dela. Aí o item volta, e confirmar de novo o tira outra vez. A regra do retorno é só da
+  confirmação: aprovar, reativar e desligar seguem como antes. Parecer da IA não é evidência e não devolve nada.
+- **Quem pode.** Só pessoa, só item em "Revisar": confirmar duas vezes, ou um item sem efeito, desligado ou de outro
+  tipo, é recusado (409 `state_conflict`, 422 para lição e tela; motivo com cara de credencial, 409
+  `note_looks_secret`).
+- **O parecer.** Confirmar com um parecer pendente à vista o rotula com `confirmar` (direção "espera"): concorda com
+  manter, observar e pedir evidência; recusa desativar e rebaixar.
+- **No painel.** Em "Revisar", "Confirmar que fica" ao lado de "Desligar", com o motivo opcional, e "Confirmar
+  selecionados" em lote. No histórico do item, a linha aparece como "Confirmado que fica" com o motivo da pessoa
+  (`motivo_da_pessoa`, já sem o prefixo). Fora de "Revisar" (`em_revisar` falso) o aviso "vale revisar" sai e o item
+  diz quem confirmou (`confirmado`); o que voltou diz por quê (`confirmacao_contestada`).
 
 ## Obsolescência (30.14)
 
@@ -728,7 +751,7 @@ Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.
   efeito; o veto das receitas falha aberto. Fechados em 29/09: o interruptor antigo sem trilha, o texto do
   `_learn_flow` para o candidato e o `FLOW_STATUS` cru; na Fase 22, a adoção sem trilha (22.4) e a trilha que
   derrubaria o save no PostgreSQL (22.5).
-- **A6:** "Revisar" só rebaixa (manter o legado pede um verbo novo no backend); a página lê `/pendentes` duas vezes; o
+- **A6:** ~~"Revisar" só rebaixa~~ (fechado pelo 30.24, "Confirmar que fica"); a página lê `/pendentes` duas vezes; o
   limite de "outro" está fixo em 15% no painel. Do bloco da execução: a lição desligada por refutação (dois votos
   "deu errado") é gravada pelo sistema e aparece como "desligada nesta execução"; o LEFT JOIN novo da preferência só
   rodou em SQLite até a suíte em PostgreSQL da Fase 22. Fechados em 29/09: o bloco não

@@ -9,12 +9,14 @@ import styles from './Aprendizado.module.css';
  * modal: quem decide vê o item ao lado do que está escrevendo. Mora à parte da linha do item porque o detalhe (o
  * parecer da IA, 30.17) também decide, e a linha importa o detalhe.
  */
-export function DecisaoInline({ acao, rotulo = 'Motivo', dica = 'Fica na trilha do item, com o seu nome.', semMotivo, onConfirmar, onCancelar }: {
+export function DecisaoInline({ acao, rotulo, dica = 'Fica na trilha do item, com o seu nome.', semMotivo, motivoOpcional, onConfirmar, onCancelar }: {
   acao: Pick<AcaoDoItem, 'confirmar' | 'perigo'>;
   rotulo?: string;
   dica?: string;
   /** O aviso do botão enquanto falta o motivo, quando ele não vai para a trilha (o parecer da IA guarda o seu à parte). */
   semMotivo?: string;
+  /** 30.24: "Confirmar que fica" vale sem motivo (só o limite de tamanho). */
+  motivoOpcional?: boolean;
   /** Devolve a mensagem de erro, ou `null` quando deu certo. */
   onConfirmar: (motivo: string) => Promise<string | null>;
   onCancelar: () => void;
@@ -22,7 +24,9 @@ export function DecisaoInline({ acao, rotulo = 'Motivo', dica = 'Fica na trilha 
   const [motivo, setMotivo] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const invalido = semMotivo && !motivo.trim() ? semMotivo : erroDoMotivo(motivo);
+  const invalido = motivoOpcional ? (motivo.trim() ? erroDoMotivo(motivo) : null)
+    : semMotivo && !motivo.trim() ? semMotivo : erroDoMotivo(motivo);
+  const legenda = rotulo ?? (motivoOpcional ? 'Motivo (opcional)' : 'Motivo');
 
   const enviar = async () => {
     if (invalido || enviando) return;
@@ -35,7 +39,7 @@ export function DecisaoInline({ acao, rotulo = 'Motivo', dica = 'Fica na trilha 
 
   return (
     <form className={styles.decisao} onSubmit={(e) => { e.preventDefault(); void enviar(); }}>
-      <Field label={rotulo} hint={dica} error={erro} className={styles.decisaoCampo}>
+      <Field label={legenda} hint={dica} error={erro} className={styles.decisaoCampo}>
         {({ id, describedBy, invalid }) => (
           <TextInput id={id} aria-describedby={describedBy} invalid={invalid} value={motivo} maxLength={MOTIVO_MAX}
                      autoFocus placeholder="Ex.: conferi a evidência e o alvo está certo"
