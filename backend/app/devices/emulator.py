@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -113,16 +114,93 @@ def qemu_child(pid: int) -> psutil.Process | None:
     return None
 
 
+#: Quanto tempo um lançador pode ficar sem ser lido antes de o cache de uso o esquecer. O laço de métricas lê a
+#: cada 3 s, então 60 s são 20 voltas perdidas: aparelho que parou, hibernou ou trocou de pid não deixa objeto para trás.
+USO_TTL_S = 60.0
+
+
+@dataclass
+class _UsoDoEmulador:
+    """Os objetos `psutil.Process` de um emulador, mantidos entre leituras (o `cpu_percent` é um delta por objeto)."""
+    launcher: psutil.Process
+    filhos: dict[int, psutil.Process]
+    lido_em: float
+
+
+class MedidorDeUso:
+    """Mede RSS e CPU do emulador (lançador + filhos) com objetos `psutil.Process` que DURAM entre leituras.
+
+    `Process.cpu_percent(interval=None)` devolve o uso desde a chamada anterior NO MESMO objeto; num objeto recém-criado
+    a primeira leitura é sempre 0,0. Recriar `psutil.Process(pid)` e os filhos a cada chamada (como era até o 14.11)
+    fazia `resources.cpu_percent` valer 0,0 o tempo todo, com o emulador ocioso gastando de 1,1 a 1,2 núcleo.
+
+    Primeira leitura de um objeto novo: contribui com 0,0 (não há intervalo para medir). Um aparelho que acabou de ligar
+    mostra 0,0 por uma volta (3 s) e da segunda em diante o valor é o real; um filho que nasce no meio da vida soma 0,0 só
+    na volta em que aparece. Mantemos 0,0 (e não "sem medida") para não mudar a assinatura nem o contrato do painel."""
+
+    def __init__(self, ttl_s: float = USO_TTL_S) -> None:
+        self._ttl_s = ttl_s
+        self._por_pid: dict[int, _UsoDoEmulador] = {}
+        # A chamada vem de uma thread do pool (`asyncio.to_thread`): o lock cobre a leitura inteira, porque duas leituras
+        # simultâneas do mesmo pid medem a CPU uma contra a outra e estragam o delta.
+        self._lock = threading.Lock()
+
+    def tamanho(self) -> int:
+        with self._lock:
+            return len(self._por_pid)
+
+    def esquecer(self, pid: int) -> None:
+        with self._lock:
+            self._por_pid.pop(pid, None)
+
+    def _purgar(self, agora: float) -> None:
+        for pid in [p for p, u in self._por_pid.items() if agora - u.lido_em > self._ttl_s]:
+            del self._por_pid[pid]
+
+    def _launcher(self, pid: int, agora: float) -> _UsoDoEmulador:
+        novo = psutil.Process(pid)
+        uso = self._por_pid.get(pid)
+        # pid reaproveitado pelo SO: mesmo número, outro `create_time` -> outro processo, tudo de novo.
+        if uso is None or uso.launcher.create_time() != novo.create_time():
+            uso = _UsoDoEmulador(launcher=novo, filhos={}, lido_em=agora)
+            self._por_pid[pid] = uso
+        return uso
+
+    def ler(self, pid: int) -> tuple[float, float] | None:
+        """(rss_mb, cpu_percent) somando o lançador e os filhos; None se o processo sumiu."""
+        with self._lock:
+            agora = time.monotonic()
+            self._purgar(agora)
+            try:
+                uso = self._launcher(pid, agora)
+                uso.lido_em = agora
+                vivos: dict[int, psutil.Process] = {}
+                for ch in uso.launcher.children(recursive=True):
+                    antigo = uso.filhos.get(ch.pid)
+                    # reaproveita o objeto do filho já conhecido; filho novo entra; pid de filho reciclado troca.
+                    vivos[ch.pid] = antigo if antigo is not None and antigo.create_time() == ch.create_time() else ch
+                uso.filhos = vivos  # o que não apareceu mais sai do cache
+                rss = cpu = 0.0
+                for p in [uso.launcher, *vivos.values()]:
+                    try:
+                        rss += p.memory_info().rss
+                        cpu += p.cpu_percent(interval=None)
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        if p is uso.launcher:
+                            raise
+                        uso.filhos.pop(p.pid, None)   # filho que morreu entre a listagem e a leitura
+                return round(rss / (1024 * 1024), 1), round(cpu, 1)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                self._por_pid.pop(pid, None)
+                return None
+
+
+_MEDIDOR = MedidorDeUso()
+
+
 def process_usage(pid: int) -> tuple[float, float] | None:
-    """(rss_mb, cpu_percent) somando o launcher e o qemu filho."""
-    try:
-        procs = [psutil.Process(pid)]
-        procs += procs[0].children(recursive=True)
-        rss = sum(p.memory_info().rss for p in procs) / (1024 * 1024)
-        cpu = sum(p.cpu_percent(interval=None) for p in procs)
-        return round(rss, 1), round(cpu, 1)
-    except (psutil.NoSuchProcess, psutil.AccessDenied):
-        return None
+    """(rss_mb, cpu_percent) somando o launcher e o qemu filho; ver `MedidorDeUso` (a 1ª leitura de um pid devolve CPU 0,0)."""
+    return _MEDIDOR.ler(pid)
 
 
 #: Teto do `sync` antes de desligar. Normalmente leva menos de 1 s; um convidado travado não pode segurar o
