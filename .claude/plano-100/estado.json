@@ -6102,22 +6102,43 @@
   },
   "29.48": {
    "id": "29.48",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Central, passo 1 (real, 03/10/2026, WIN-7S2UASNLFOP): config.yaml com android.window: true e sem -qt-hide-window (backup config-antes-2948-20261003-120854.yaml, sha e090e655 -> 09cbaf5d), backend reiniciado 12:10:52Z, health ok, pausa do reparo renovada antes e depois. android-21 temporário hibernado com snapshot do headless: o wake carregou o snapshot no qemu-system-x86_64.exe (sessão 0, 'acordou em 60s'), nenhuma thread >= 50 % (máx 15,9 %), screencap e /hierarchy ok; boot a frio: 'pronto em 73s', um minuto depois total 9,4 % e máx 4,7 %. Passo 2 cancelado (o window basta; snapshots seguem valendo). config.example.yaml com window: true; parque.md e K-078. 01/03/06 pegam o binário no próximo boot natural.",
-   "blocker": "Notebook not_run: editar C:\\farm\\worker.yaml (window: true) e reiniciar o farm-agente depois de 1 h de central estável (>= 13:11Z), com a prova medida lá.",
+   "evidence": "Central (real, 03/10/2026, WIN-7S2UASNLFOP): config.yaml com android.window: true desde o restart das 12:10:52Z (backup config-antes-2948-20261003-120854.yaml); android-21 provou wake do snapshot do headless no binário com janela e boot a frio sem giro (data/diag-ra3b/2948-p1-*-android-21.json). Notebook (real, 03/10/2026, worker-lan-01): C:/farm/worker.yaml com window: true (backup worker.yaml.antes-2948-20261003-131114), farm-agente reiniciado 13:11:30Z; antes os 4 qemu -headless na sessão 0 com uma thread a ~100 % cada; android-13 (QA) em boot natural (stop c-20261003131259-83d8fa, start c-20261003131305-8f9bbe) subiu como qemu-system-x86_64, um minuto depois 8,4 % total e 3,6 % na thread mais quente, /hierarchy 25 elementos, screencap 720x1280 não preto; 09/10/12 (QA) reiniciados um a um (c-20261003131843-2ccb41, c-20261003132050-fa9d5a, c-20261003132301-cadb2a): os 4 com no máximo 14,2 % por aparelho e o processador do notebook em 2 % (data/diag-ra3b/2948-notebook-android-13.txt). Passo 2 (-qt-hide-window) cancelado. No central, 01/03/06 (conta real) pegam o binário no próximo boot natural.",
+   "blocker": "",
    "arquivos": [
     "config/config.example.yaml",
     "docs/dominios/parque.md",
-    "docs/conhecimento/aprendizados.md"
+    "docs/conhecimento/aprendizados.md",
+    "CHANGELOG.md"
    ],
-   "testes": "medição real; testes que leem o exemplo: 231 + 5 passed.",
-   "grupo": "29-48-android",
+   "testes": "medição real no central e no notebook.",
+   "grupo": "suite-10-android",
    "modelo": "opus (sessão Android)",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T12:23:55+00:00"
+   "quando": "2026-10-03T14:54:09+00:00"
+  },
+  "25.13": {
+   "id": "25.13",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "feat/suite10-android 5492bcb3 + b7b4fbf3 (catraca de Any), na suíte 10 (integ/suite-10). A pausa do reparo (PUT /api/instances/{id}/repair-pause) passa a ser gravada em settings.repair_pauses (uma linha, JSON por aparelho, ON CONFLICT upsert) e relida em DeviceManager._runtime na subida; retomar (DELETE) apaga; a vencida não volta. Sem migração (a tabela settings já existe). Simulado: tests/test_pausa_de_reparo.py::test_a_pausa_sobrevive_ao_restart_do_backend e ::test_a_pausa_retomada_ou_vencida_nao_volta_no_restart (crash + boot no harness). Suíte 10: SQLite 7513 passed (a única falha, test_projecao, era a bomba-relógio da main, corrigida em c2719067: afetados 30 passed); PostgreSQL 7494 passed, 8 failed (7 pré-existentes na main com SQL de SQLite em teste, 1 do 30.31, nenhuma do 25.13).",
+   "blocker": "Prova real not_run até o restart do deploy 10: pausar antes, conferir que a pausa voltou sem renovar.",
+   "arquivos": [
+    "backend/app/devices/manager.py",
+    "backend/tests/test_pausa_de_reparo.py",
+    "docs/dominios/parque.md",
+    "docs/conhecimento/aprendizados.md"
+   ],
+   "testes": "test_pausa_de_reparo.py (2 novos); suíte 10 SQLite e PostgreSQL.",
+   "grupo": "suite-10-android",
+   "modelo": "opus (sessão Android)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T14:54:09+00:00"
   }
  },
  "rodadas": [
@@ -7477,6 +7498,16 @@
    ],
    "grupos": [
     "29-48-android"
+   ]
+  },
+  {
+   "quando": "2026-10-03T14:54:09+00:00",
+   "itens": [
+    "25.13",
+    "29.48"
+   ],
+   "grupos": [
+    "suite-10-android"
    ]
   }
  ]

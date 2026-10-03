@@ -19,6 +19,32 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Suíte 10 na main (16fd1127): SQLite e PostgreSQL inteiras
+
+- A suíte 10 entrou na main por commit-tree (16fd1127), com 12 hashes:
+  - Android: 25.13, I2, o polimento do 29.44 e o teste do líder que cai;
+  - Jev: 31.9 rodada H, 31.16, 31.17 e I1;
+  - Aprendizado: #148 a #153 e a migração 082;
+  - mais duas correções de teste: c2719067 (`test_projecao`) e df0bf82d (`tier` do 30.31).
+- SQLite (`real`, 03/10, WIN-7S2UASNLFOP, `-n 8`, Idle, @008b9df2): 7513 passed, 1 failed. A falha era uma bomba-relógio
+  da main (o AGORA fixo da semente contra o `datetime.now` do corte da projeção, desde 03/10 12:00Z), corrigida em
+  c2719067; os afetados deram 30 passed. Scripts, docs-check, typecheck e frontend verdes (1374 testes).
+- PostgreSQL (`real`, 03/10, @618ba43a, `-n 8`, Idle, das 12:59:53 às 14:49:42Z): 7494 passed, 8 failed, 19 skipped.
+  - 7 falhas pré-existentes na main, provadas contra a `origin/main` 944eb949 = K-084, para a suíte 11. Não bloqueiam:
+    o central roda SQLite.
+  - 1 do 30.31 (`tier="t"`), corrigida em df0bf82d: o teste direcionado deu 13 passed na PG e no SQLite.
+  - A corrida em série foi trocada por `-n 8`: ~2,7 s por teste em série, ~5,5 h projetadas.
+
+## 2026-10-03 — 29.48 no notebook: os emuladores do worker com janela (fim do giro de ~4 núcleos)
+
+- `C:\farm\worker.yaml` (fora do Git; backup `worker.yaml.antes-2948-20261003-131114`): `android.window: true`. O `farm-agente`
+  foi reiniciado às 13:11:30Z, com pausa do reparo nos 4 aparelhos.
+- Prova `real`:
+  - antes, os 4 qemu do notebook eram `-headless`, cada um com uma thread a ~100 %;
+  - o android-13, num boot natural, subiu como `qemu-system-x86_64`: 8,4 % total um minuto depois, e funcional;
+  - os QA 09, 10 e 12 foram reiniciados um a um: os 4 ficaram com no máximo 14 % cada, e o processador em 2 %.
+- O 29.48 fecha (implemented/real). No central, o 01, o 03 e o 06 seguem no boot natural (conta real).
+
 ## 2026-10-03 — Aprendizado: a aba Métricas no painel (30.33; branch feat/30-33-metricas-no-painel)
 
 - Aba nova `#/aprendizado?aba=metricas`, que lê as rotas do 30.8 sem mudar a API.

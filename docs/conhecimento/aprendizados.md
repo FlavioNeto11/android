@@ -2115,7 +2115,15 @@ Saída bruta em `data/diag-ra3b/`: `repouso-cores4-01-600s.json`, `dif-*.json` e
   - O UNKNOWN dos braços se resolve: o binário basta, e o `-qt-hide-window` não é preciso. O passo 2 foi cancelado, e
     os snapshots dos hibernados seguem valendo.
   - O 01, o 03 e o 06 pegam o binário no próximo boot natural.
-  - Pendente: o notebook, depois de 1 h de central estável.
+- **29.48, notebook: o mesmo resultado** (`real`, 03/10, worker-lan-01).
+  - Montagem: `C:\farm\worker.yaml` com `android.window: true` (backup `worker.yaml.antes-2948-20261003-131114`) e o
+    `farm-agente` reiniciado às 13:11:30Z. Os aparelhos ligados seguem no binário antigo até o próximo boot.
+  - Antes: os 4 qemu eram `-headless` na sessão 0, cada um com uma thread a ~100 % (total de 119 a 127 % por aparelho).
+  - android-13 (QA), boot natural, pronto às 13:14:53Z: `qemu-system-x86_64` sem `-no-window`. Um minuto depois,
+    total de 8,4 % e a thread mais quente a 3,6 %. `/hierarchy` com 25 elementos; screencap 720×1280, não preto.
+  - Os outros 3 QA, reiniciados um a um (pausa do reparo, sem execução em curso): no máximo 14,2 % por aparelho, e o
+    processador do notebook a 2 %.
+  - Saída: `data/diag-ra3b/2948-notebook-android-13.txt`.
 
 ### K-079 — A prévia cortada da caixa do Outlook derruba a conferência visual
 
@@ -2208,3 +2216,33 @@ permitido, "post #tbt.com" virava e-mail.
 
 **Aplicabilidade.** Vigente para toda regra da passada 1 que olha algarismo ou codificação (`%XX`, número de documento,
 hora). O leet existe para "arr0ba" e "s3nh4"; regra que precisa do algarismo verdadeiro roda fora dele.
+
+### K-084 — SQL só de SQLite escrito no teste quebra a suíte na PostgreSQL
+
+**Sintoma.** A suíte 10 rodou inteira contra a PostgreSQL (03/10/2026, `real`, integ/suite-10 @618ba43a, `-n 8`):
+7494 passed, 8 failed, 19 skipped. Todas as 8 falhas estavam em SQL escrito no próprio teste, nenhuma em código do app.
+Sete falham igual na `origin/main` 944eb949, ou seja, são pré-existentes:
+- `test_leitura_visual_papel.py::test_078_as_linhas_ficam_arvore_e_o_check_recusa_outra_origem`: `WHERE version=78`,
+  com `schema_migrations.version` TEXT (`operator does not exist: text = integer`);
+- `test_learning_esquecer_conta.py::test_nao_toca_receitas_fluxos_nem_memoria`: `INSERT INTO flows` sem `id` (null em
+  `flows.id`);
+- `test_rede_aplicacao.py`: `test_reinicio_com_objetivo_esperando_a_rede`, nos 4 parâmetros, e
+  `test_reinicio_que_nao_sai_diz_qual_termo_segurou`. A causa é o `INSERT OR IGNORE` em `_objetivo_parado`.
+
+A oitava veio da própria suíte 10 (30.31): `tier="t"` numa coluna INTEGER, corrigida em df0bf82d.
+
+**Causa.** O SQLite aceita tudo isso: afinidade de tipo frouxa, `INTEGER PRIMARY KEY` que se preenche sozinho e
+`INSERT OR IGNORE`. A PostgreSQL recusa. A suíte inteira na PG tinha parado desde ~30/09, e cada teste novo com SQL cru
+passava só no SQLite.
+
+**O que funcionou.**
+- Classificar antes de bloquear: rodar o caso que falhou na PG contra a `origin/main`. Os 7 falharam lá também, em
+  30 s, e não bloquearam o merge, porque o central roda SQLite.
+- A PG inteira com `-n 8`: em série, eram ~2,7 s por teste, com o schema migrado por teste, ~5,5 h projetadas; com
+  `-n 8`, 1 h 50. Os schemas são por uuid, e cada sessão apaga só os seus.
+- Correção dos 7: pendente, na suíte 11. Usar o dialeto do `Database`, `ON CONFLICT`, ou o repositório, em vez de SQL
+  cru, e comparar a versão como texto.
+
+**Aplicabilidade.** Vigente para todo teste que escreve SQL direto no banco. O SQL que roda nos dois dialetos passa
+pelo `Database` (`_sql`) ou usa só o comum. Antes de um merge com migração ou repositório novo, rodar ao menos os
+arquivos tocados com `TEST_DATABASE_URL`.

@@ -304,7 +304,9 @@ headless (netsim, câmeras, som) não mudam nada.
 - **Estado (real, 03/10).**
   - Central em `window: true` desde o restart das 12:10:52Z. Os aparelhos já ligados pegam o binário no próximo boot
     natural, sem reboot forçado em conta real.
-  - Notebook (`C:\farm\worker.yaml`): pendente, depois de 1 h de central estável.
+  - Notebook (`C:\farm\worker.yaml`, `android.window: true`): desde o restart do `farm-agente` às 13:11:30Z (real, 03/10).
+    Os 4 aparelhos QA foram reiniciados um a um. Antes, cada qemu era `-headless`, com uma thread a ~100 % (4 de 12
+    núcleos). Depois, `qemu-system-x86_64` na sessão 0, com no máximo 14 % por aparelho e o processador em 2 %.
 
 ### Pausa do reparo automático por aparelho (02/10/2026, W8)
 
