@@ -309,6 +309,21 @@ com o banco aberto só para leitura.
   ela é gravada `ai` (RA-10), e a etapa fechada pelo atalho do executor sem o ator entra como `sem_ator` (LT-1).
   As duas contam no denominador e nenhuma conta como receita, então o número cai sem nenhuma receita ter piorado.
   Compare só janelas do mesmo lado de 07:28:40Z.
+- **Quebra de série do LT-6** (29.45, caminho rápido 2): desde o deploy 8 (03/10/2026, processo do central de pé às
+  09:06:28Z, commit df860763), a etapa `app_foreground` sem efeito e sem receita conduzindo abre o app pelo executor
+  (`OPEN_APP_SEM_IA`), sem chamar o ator. Ela fecha pelo atalho com `driven_by = sem_ator` (antes, `ai`, com um
+  `decide`). O que muda nas séries do aprendizado:
+  - `so_ia` cai e `sem_ator` sobe sem nada ter mudado na tela. O `pct_por_receita` NÃO quebra: as duas origens já
+    contam no denominador desde o deploy 7. O aproveitamento tira `sem_ator` das elegíveis, então `elegiveis` e
+    `sem_cobertura` caem;
+  - a etapa não deixa ação do ator: não nasce receita nova de `app_foreground`, e a candidata dessas etapas não recebe
+    veredito de sombra (`_veredito_da_sombra` não tem caminho da IA para comparar). A `open_app` candidata do QA
+    (v4) não promove por sombra e fica candidata; quem a decide é uma pessoa no livro. A ativa continua reproduzindo,
+    porque o LT-6 só age com `rep is None`;
+  - por isso o backfill da chave genérica (RA-20 B) deixa `open_app` de fora;
+  - compare só janelas do mesmo lado de 09:06:28Z. Do lado da Jev, a amostra "sem casamento" da sombra do 31.10
+    também quebra nesta data: os fluxos revividos pelo 30.29 voltam a casar. Os 5 do QA Messenger foram desligados
+    por pessoa às 08:45Z, até o parecer do curador, e só entram quando forem religados.
 
 ## Fase 22 (29/09, noite): o que mudou nas regras
 

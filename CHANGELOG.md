@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: quebra de série do LT-6 no deploy 8
+
+- `docs/dominios/aprendizado.md` (O que mais falha) registra o que muda desde 03/10 09:06:28Z (deploy 8, df860763).
+  - A etapa `app_foreground` aberta pelo executor sem IA fecha como `sem_ator`. Com isso `so_ia` cai, e as elegíveis
+    e `sem_cobertura` do aproveitamento caem.
+  - Não nasce receita de `app_foreground`, e a candidata `open_app` não recebe veredito de sombra.
+  - O `pct_por_receita` não quebra.
+  - Do lado da Jev, a amostra "sem casamento" do 31.10 quebra pelos fluxos que o 30.29 revive.
+  - Compare só janelas do mesmo lado.
+
 ## 2026-10-03 — Deploy 8 no central (suíte 8: RA-19 B, 30.29 e 29.45; planejador no Sonnet 5.5; curador acelerado)
 
 - Código: main `df860763` (suíte 8: #141 RA-19 B, #142 30.29 e 29.45 caminho rápido 2), sem migração nova (segue a 081).
