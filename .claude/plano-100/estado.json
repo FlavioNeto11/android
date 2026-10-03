@@ -5581,6 +5581,126 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T02:52:52+00:00"
+  },
+  "29.27": {
+   "id": "29.27",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Retirada de conta bloqueada limpa o app nos aparelhos onde estava logada (pm clear com trava de outra conta e de energia; sessão deixa de ser pista de aparelho), commits 5d2f0ff5, 82790f0e, 902a1f7c. simulated: tests/test_limpeza_ao_retirar.py (19) e tests/test_conta_bloqueada_sai.py. Na main pelo merge 63a81cab da suíte 6 (branch feat/29-27-limpeza-e-adr050 @ be4e50f5, com o 30.23 @ 0cae56a7 e a main 31959696). Suíte 6 inteira, SQLite, -n 8, Idle, no be4e50f5: 6275 passed, 7 skipped em 393 s (frontend 1311, scripts 427). docs-check 0/0. Prova real: not_run no central até o deploy 4.",
+   "blocker": "",
+   "files": [
+    "backend/app/social/",
+    "tests/test_limpeza_ao_retirar.py"
+   ],
+   "grupo": "29-pendencias-evolucao3",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T04:04:33+00:00"
+  },
+  "29.28": {
+   "id": "29.28",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Contas nossas vivas podem interagir entre si em ritmo baixo (emenda do ADR-050), commit 7000c47e. simulated: tests/test_interacao_entre_contas_nossas.py (7), test_conta_bloqueada_sai.py (2). Na main pelo merge 63a81cab da suíte 6 (branch feat/29-27-limpeza-e-adr050 @ be4e50f5, com o 30.23 @ 0cae56a7 e a main 31959696). Suíte 6 inteira, SQLite, -n 8, Idle, no be4e50f5: 6275 passed, 7 skipped em 393 s (frontend 1311, scripts 427). docs-check 0/0. Prova real: not_run no central até o deploy 4.",
+   "blocker": "",
+   "files": [
+    "backend/app/social/",
+    "tests/test_interacao_entre_contas_nossas.py"
+   ],
+   "grupo": "29-pendencias-evolucao3",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T04:04:33+00:00"
+  },
+  "29.29": {
+   "id": "29.29",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "D2-a também ao ganhar a conta, com vínculo sem app (merge b0a81cf7; estado de legado montado em 55f05718; ressalvas no adendo v0.69). simulated: tests/test_d2a_conta_nova_com_vinculo_sem_app.py (6). Na main pelo merge 63a81cab da suíte 6 (branch feat/29-27-limpeza-e-adr050 @ be4e50f5, com o 30.23 @ 0cae56a7 e a main 31959696). Suíte 6 inteira, SQLite, -n 8, Idle, no be4e50f5: 6275 passed, 7 skipped em 393 s (frontend 1311, scripts 427). docs-check 0/0. Prova real: not_run no central até o deploy 4.",
+   "blocker": "",
+   "files": [
+    "tests/test_d2a_conta_nova_com_vinculo_sem_app.py"
+   ],
+   "grupo": "29-pendencias-evolucao3",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T04:04:33+00:00"
+  },
+  "29.31": {
+   "id": "29.31",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "App de prova (builtin, category qa) no tier 0 do side_effect_tier em by_risk sem capability; seed grava category qa (merge 0da7fb99). simulated: tests/test_cost_levers.py. Aceite real: decision 'sem catálogo' = 0 no app de prova em 7 dias depois do deploy. Na main pelo merge 63a81cab da suíte 6 (branch feat/29-27-limpeza-e-adr050 @ be4e50f5, com o 30.23 @ 0cae56a7 e a main 31959696). Suíte 6 inteira, SQLite, -n 8, Idle, no be4e50f5: 6275 passed, 7 skipped em 393 s (frontend 1311, scripts 427). docs-check 0/0. Prova real: not_run no central até o deploy 4.",
+   "blocker": "",
+   "files": [
+    "backend/app/taskqueue/",
+    "tests/test_cost_levers.py"
+   ],
+   "grupo": "29-pendencias-evolucao3",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T04:04:33+00:00"
+  },
+  "29.32": {
+   "id": "29.32",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "A conta retirada some de memory_items de todas as personas; limpezas ganha memory_items_de_outras_personas (adendo v0.73); script retroativo scripts/memoria-conta-retirada.py NÃO rodado no banco real (merge 25d19149). simulated: tests/test_memoria_conta_retirada.py (15). Na main pelo merge 63a81cab da suíte 6 (branch feat/29-27-limpeza-e-adr050 @ be4e50f5, com o 30.23 @ 0cae56a7 e a main 31959696). Suíte 6 inteira, SQLite, -n 8, Idle, no be4e50f5: 6275 passed, 7 skipped em 393 s (frontend 1311, scripts 427). docs-check 0/0. Prova real: not_run no central até o deploy 4.",
+   "blocker": "",
+   "files": [
+    "backend/app/social/",
+    "scripts/memoria-conta-retirada.py",
+    "tests/test_memoria_conta_retirada.py"
+   ],
+   "grupo": "29-pendencias-evolucao3",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T04:04:33+00:00"
+  },
+  "14.11": {
+   "id": "14.11",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "CPU por emulador medida de verdade: MedidorDeUso guarda os psutil.Process por pid do lançador (a 1ª leitura de objeto novo era sempre 0,0) (merge a37a8162). simulated: tests/test_cpu_por_emulador.py (9). Na main pelo merge 63a81cab da suíte 6 (branch feat/29-27-limpeza-e-adr050 @ be4e50f5, com o 30.23 @ 0cae56a7 e a main 31959696). Suíte 6 inteira, SQLite, -n 8, Idle, no be4e50f5: 6275 passed, 7 skipped em 393 s (frontend 1311, scripts 427). docs-check 0/0. Prova real: not_run no central até o deploy 4.",
+   "blocker": "",
+   "files": [
+    "backend/app/devices/emulator.py",
+    "tests/test_cpu_por_emulador.py"
+   ],
+   "grupo": "14-desempenho",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T04:04:33+00:00"
+  },
+  "12.5": {
+   "id": "12.5",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Leitura visual nível 1 (ADR-070), DESLIGADA: read_value(source=visual) na região declarada, conferência às cegas pelo papel ai.roles.leitura, migração 078 (step_outputs.origem/leitor/frame_sha256/evidence_id), adendo v0.71 (merge 9cb7bbe8). simulated: tests/test_leitura_visual.py, tests/test_leitura_visual_papel.py. Bancada dos 2 leitores e execução real no android-01: not_run (sequência de 6 passos do deploy 4). Na main pelo merge 63a81cab da suíte 6 (branch feat/29-27-limpeza-e-adr050 @ be4e50f5, com o 30.23 @ 0cae56a7 e a main 31959696). Suíte 6 inteira, SQLite, -n 8, Idle, no be4e50f5: 6275 passed, 7 skipped em 393 s (frontend 1311, scripts 427). docs-check 0/0. Prova real: not_run no central até o deploy 4.",
+   "blocker": "",
+   "files": [
+    "backend/app/planning/",
+    "backend/migrations/078_origem_das_saidas.sql",
+    "tests/test_leitura_visual.py"
+   ],
+   "grupo": "11-usabilidade",
+   "modelo": "opus",
+   "esforco": "medium",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T04:04:33+00:00"
   }
  },
  "rodadas": [
@@ -6785,6 +6905,23 @@
    ],
    "grupos": [
     "30-aprendizado-vivo"
+   ]
+  },
+  {
+   "quando": "2026-10-03T04:04:33+00:00",
+   "itens": [
+    "29.27",
+    "29.28",
+    "29.29",
+    "29.31",
+    "29.32",
+    "14.11",
+    "12.5"
+   ],
+   "grupos": [
+    "11-usabilidade",
+    "14-desempenho",
+    "29-pendencias-evolucao3"
    ]
   }
  ]
