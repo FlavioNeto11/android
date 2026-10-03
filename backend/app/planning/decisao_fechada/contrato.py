@@ -20,7 +20,8 @@ Modo = Literal["off", "shadow", "on"]
 TipoDePergunta = Literal["choice", "noul", "score"]
 #: Por que o caminho do Jev não valeu e o trabalho voltou ao caminho de hoje. 401/422/429/529 são o status HTTP; `rede` cobre
 #: timeout, erro de transporte e qualquer falha inesperada do decisor (não houve resposta utilizável); `parse` é resposta que
-#: não é JSON no formato; `unknown_choice` é escolha fora das opções enviadas; `abaixo_do_limiar` é confiança insuficiente;
+#: não é JSON no formato; `unknown_choice` é escolha fora das opções enviadas; `abaixo_do_limiar` é probabilidade devolvida
+#: insuficiente (no `choice`, a da opção escolhida, que precisa ser a maior; 31.19) ou confiança ausente;
 #: `privacidade` é recusa local ANTES de montar o corpo; `desligado` é modo off, config desligada ou decisor nulo;
 #: `orcamento` é a régua de gasto (teto do dia, fatia do Jev, execução, pedido) ou o saldo da conta barrando ANTES do POST
 #: (31.14): nada saiu.

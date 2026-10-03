@@ -10,8 +10,9 @@ Ordem do que acontece num pedido, e o que cada passo garante:
 4. **`on`**: síncrono, timeout de 1 s, sem retentativa. **`shadow`**: roda numa thread própria, FORA do caminho crítico, com
    timeout de 5 s; o chamador recebe na hora um resultado neutro (`desligado`) e a resposta real só vai ao `observador`
    (registro sem o estado). Nada do caminho de trabalho usa a resposta da sombra.
-5. **Reconferência**: o decisor não é confiado. Escolha fora das opções enviadas vira `unknown_choice`; confiança ausente ou
-   abaixo do limiar vira `abaixo_do_limiar`. Em todo fallback a `escolha` é None: **um fallback nunca conta como acerto**.
+5. **Reconferência**: o decisor não é confiado. Escolha fora das opções enviadas vira `unknown_choice`; confiança ausente,
+   ou probabilidade da opção escolhida ausente, abaixo do limiar ou menor que outra (no `choice`, 31.19), vira
+   `abaixo_do_limiar`. Em todo fallback a `escolha` é None: **um fallback nunca conta como acerto**.
 
 Quem chama em código assíncrono usa `asyncio.to_thread(porta.consultar, pedido)`: o `on` bloqueia até 1 s.
 """
@@ -215,10 +216,23 @@ def _conferir_resposta(p: Pergunta, r: RespostaDeDecisao | None) -> RespostaDeDe
             return RespostaDeDecisao(fallback_reason="unknown_choice")
     elif r.escolha is not None:  # score não escolhe nada: devolve só a confiança
         return RespostaDeDecisao(fallback_reason="unknown_choice")
-    if r.confianca is None or not 0.0 <= r.confianca <= 1.0 or r.confianca < p.limiar:
+    if r.confianca is None or not 0.0 <= r.confianca <= 1.0 or _valor_do_limiar(p, r) < p.limiar:
         return RespostaDeDecisao(probabilidades=r.probabilidades, confianca=r.confianca,
                                  fallback_reason="abaixo_do_limiar")
     return RespostaDeDecisao(escolha=r.escolha, probabilidades=r.probabilidades, confianca=r.confianca)
+
+
+def _valor_do_limiar(p: Pergunta, r: RespostaDeDecisao) -> float:
+    """O valor que o limiar mede. No `choice`, a probabilidade DEVOLVIDA da opção escolhida, como diz o contrato (31.19,
+    decisão da orquestradora em 03/10): até ali a porta media a `confianca`, que nas 4 primeiras respostas reais veio
+    0,10 abaixo da maior probabilidade. Escolha sem probabilidade, ou que não é a maior, falha fechado (0): o decisor não
+    é confiado. Com o Jev coerente, é a maior probabilidade. `noul` e `score` seguem na `confianca` (nenhum produtor)."""
+    if p.tipo != "choice":
+        return r.confianca if r.confianca is not None else 0.0
+    valor = r.probabilidades.get(r.escolha) if r.escolha is not None else None
+    if valor is None or not 0.0 <= valor <= 1.0 or valor < max(r.probabilidades.values()):
+        return 0.0
+    return valor
 
 
 def construir_porta(cfg: DecisaoFechadaCfg | None = None, *, observador: Observador | None = None,

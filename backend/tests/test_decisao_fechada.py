@@ -45,8 +45,13 @@ def aberta(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setitem(privacidade.CAMPOS_POR_ORIGEM, o, frozenset({"licao", "comando", "nota"}))
 
 
-def _resp(escolha: str | None = "a", conf: float | None = 0.95, **kw: object) -> RespostaDeDecisao:
-    return RespostaDeDecisao(escolha=escolha, probabilidades={"a": 0.95, "b": 0.05}, confianca=conf,
+def _resp(escolha: str | None = "a", conf: float | None = 0.95, *, prob: float | None = None,
+          **kw: object) -> RespostaDeDecisao:
+    """`prob` é a probabilidade devolvida da escolha, o que o limiar mede no `choice` (31.19); sem ela, igual à confiança."""
+    p = prob if prob is not None else (conf if conf is not None else 0.95)
+    outra = "b" if escolha != "b" else "a"
+    probs = {escolha: p, outra: round(1 - p, 4)} if escolha is not None else {"a": 0.95, "b": 0.05}
+    return RespostaDeDecisao(escolha=escolha, probabilidades=probs, confianca=conf,
                              **kw)  # type: ignore[arg-type]
 
 
@@ -234,6 +239,28 @@ def test_nenhuma_e_resposta_valida_sem_fallback_mas_nao_e_acerto(aberta: None) -
     falso = df.DecisorFalso({"q1": _resp(ID_NENHUMA, 0.97)})
     r = Porta(falso, cfg=_cfg(curador="on")).consultar(_pedido()).respostas["q1"]
     assert r.fallback_reason is None and r.escolha == ID_NENHUMA and not r.valida
+
+
+def test_limiar_do_choice_mede_a_probabilidade_devolvida_da_escolha(aberta: None) -> None:
+    """31.19: o contrato manda medir a probabilidade devolvida; a confiança fica na resposta (e na sombra), sem decidir."""
+    casos = (
+        (_resp("a", 0.5, prob=0.9), None),                     # confiança baixa, probabilidade alta: vale
+        (_resp("a", 0.95, prob=0.6), "abaixo_do_limiar"),      # o caso real de 03/10 com a confiança invertida
+        (RespostaDeDecisao(escolha="a", probabilidades={"a": 0.86, "b": 0.9}, confianca=0.95), "abaixo_do_limiar"),
+        (RespostaDeDecisao(escolha="a", probabilidades={"b": 0.1}, confianca=0.95), "abaixo_do_limiar"),
+        (RespostaDeDecisao(escolha="a", probabilidades={}, confianca=0.95), "abaixo_do_limiar"),
+        (_resp(ID_NENHUMA, 0.5, prob=0.9), None),              # abster-se com probabilidade alta é resposta
+    )
+    for resposta, motivo in casos:
+        r = Porta(df.DecisorFalso({"q1": resposta}), cfg=_cfg(curador="on")).consultar(_pedido()).respostas["q1"]
+        assert r.fallback_reason == motivo, resposta
+        assert r.confianca == resposta.confianca                     # a confiança segue na resposta, para a sombra
+        assert (r.escolha is None) == (motivo is not None)
+    # `noul` (sem produtor) segue na confiança
+    noul = (Pergunta("q3", "noul", "Is it new?", {}, 0.7),)
+    r = Porta(df.DecisorFalso({"q3": RespostaDeDecisao(escolha="sim", probabilidades={"sim": 0.2}, confianca=0.9)}),
+              cfg=_cfg(curador="on")).consultar(_pedido(perguntas=noul)).respostas["q3"]
+    assert r.fallback_reason is None and r.escolha == "sim"
 
 
 def test_on_tem_timeout_de_1s_sem_retentativa(aberta: None, monkeypatch: pytest.MonkeyPatch) -> None:
