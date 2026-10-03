@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-277 de 326 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+277 de 339 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -107,6 +107,8 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 14.9 | implemented | not_run | opus | — | ADR-028 e docs/relatorio-desempenho.md §6 (texto da F7): matriz de executor por operação, decisões por alternativa com gatilho de reabertura e protocolo de comparação de runtime. Decisão documental; nenhum piloto execut… |  |
 | 14.10 | implemented | real | opus | — | 27/09/2026, central WIN-7S2UASNLFOP, commit a90a6e1 (deploy.ps1; agente worker-lan-01 0.1.0+a90a6e1). Prévia sob demanda: sem painel 0 capturas e 72 evitadas em 144 s; painel aberto 9 capturas (2 visíveis) e 6 evitadas… |  |
 | 14.11 | pendente | — | — | — |  |  |
+| 14.12 | pendente | — | — | — |  |  |
+| 14.13 | pendente | — | — | — |  |  |
 | 15.1 | implemented | simulated | opus | — | fc5f1eb, 6b6dbbd e merges da fase A (cf08b7b): backend/tests/test_arquitetura.py (8 regras; catracas 78→61 imports tardios, 894→875 Any, ciclos em execução 2→1), backend/mypy.ini, backend/requirements-dev.txt, job backe… |  |
 | 15.2 | implemented | real | opus | — | a4a5e84, 4a9c794: commands/despacho.py, modules/applications/infrastructure/app_repository.py; testes test_app_repository.py e o de resposta HTTP idêntica. Real (27/09, central WIN-7S2UASNLFOP, 5c98735): start c-2026092… |  |
 | 15.3 | implemented | real | opus | — | 916f358, a863e60, 6448a96, 8fe244d: app/contracts/worker, backend/worker-manifest.txt, devices/sonda_rede.py; testes test_contratos_do_worker.py, test_pacote_do_agente.py, test_instalacao_do_worker.py. Real (27/09): wor… |  |
@@ -215,6 +217,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 23.11 | partial | real |  | — | 29/09 ~22:26Z, central 081d696: contas Outlook criadas para as 3 personas ativas (acc-gHP-beH2mr0Hm4f8 André, acc-e8DatK8Dk0lqHh8S Bruno, acc-F8QScZU_KN9qdjVt Lucas) com o e-mail outlook.com confirmado pelo dono como lo… | consentimento de cada conta Outlook é do dono no painel (P5); vínculo persona-aparelho-outlook espera o P15 (o Outlook não roda no parque emulado); 5 personas… |
 | 23.12 | implemented | real | opus | — | Real, 30/09: release promovida (21:42Z) e distribuída; 'ready' em android-01, 02, 03, 06, 07, 08, 10 e 12, com o renderizador host lido de cada aparelho. | None |
 | 23.13 | implemented | real | opus | — | Real, 30/09: as três contas Outlook com session_ready lida do aparelho (André 22:56Z em android-06, Bruno 23:01Z em android-03, Lucas 23:04Z em android-01), pela senha consentida no canal sensível; nenhum desafio da Mic… | None |
+| 23.14 | pendente | — | — | — |  |  |
 | 24.1 | implemented | real |  | — | Real no central (6460baf), android-05 (QA, rede trafego_verificado), 30/09: planejador de verdade (Opus) montou planos com required_apps [qa-messenger, chrome], app por etapa e saídas declaradas (r-20260930023442-bd5c5a… |  |
 | 24.2 | implemented | simulated |  | — | No change since the previous declaration. state.py::_policy_gate judges each step by the step's own app (step app_id, else the plan's app, else the device's app, via Scheduler._app_context). A capability that the step's… |  |
 | 24.3 | implemented | real |  | — | Real no central (6460baf), android-05 (QA, rede trafego_verificado), 30/09: r-20260930023442-bd5c5a concluída 4/4: a etapa do QA Messenger gravou primeiro_contato="Suporte QA" (step_outputs, app qa-messenger), a do Chro… |  |
@@ -234,6 +237,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 25.8 | implemented | simulated |  | — | cd C:/git/android/.claude/worktrees/evo3-d3/frontend && npx vitest run src/features/rede src/features/loja src/features/apps/AppsPage.test.tsx -> 3 arquivos, 21 testes, todos passando; npm run typecheck -> limpo. Os 4 a… | Nada bloqueado no escopo D3 (só frontend). O pedido do revisor de 'testar a rota real com TestClient contra o painel' é integração backend+frontend, fora do es… |
 | 25.9 | partial | real |  | — | docs/relatorio-validacao.md §26.2.1: ondas android-05 e android-02 (QA) e android-06 e android-03 (contas reais, autorização P7, conta conferida antes e depois), todos em trafego_verificado com vazamento bloqueado e a s… | aparelhos do notebook: falta a regra de firewall do dono (25.7); android-01 (Lucas) fora da autorização P7; IP distinto por aparelho depende de provedor (P1) |
 | 25.10 | implemented | real |  | — | 29/09, central: sing-box 1.14.2 (io.nekohasekai.sfa-739-5535a350073a) e WireGuard 1.0.20260315 instalados pela IDE na Play Store do android-11 com a conta do dono (autorização P3), importados por store/sync (c-202609291… |  |
+| 25.11 | pendente | — | — | — |  |  |
 | 26.1 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §4 (cerca de 50 fontes primárias, acesso em 29/09/2026); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09) |  |
 | 26.2 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §6 (modelo: pedido, gatilho, ocorrência, execução; estados; autonomia em três graus); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09) |  |
 | 26.3 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §7 (três alternativas; recomendação: laço próprio no backend com chave única e trava de líder no relógio do banco); pesquisa e desenho (sem código de produto); docs-check 0 erros; cla… |  |
@@ -292,6 +296,15 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.30 | pendente | — | — | — |  |  |
 | 29.31 | pendente | — | — | — |  |  |
 | 29.32 | pendente | — | — | — |  |  |
+| 29.33 | pendente | — | — | — |  |  |
+| 29.34 | pendente | — | — | — |  |  |
+| 29.35 | pendente | — | — | — |  |  |
+| 29.36 | pendente | — | — | — |  |  |
+| 29.37 | pendente | — | — | — |  |  |
+| 29.38 | pendente | — | — | — |  |  |
+| 29.39 | pendente | — | — | — |  |  |
+| 29.40 | pendente | — | — | — |  |  |
+| 29.41 | pendente | — | — | — |  |  |
 | 30.1 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #76 merge 6e103d73: GET /api/aprendizado/apps e /apps/{pacote} (application/apps.py, domain/camada.py, infrastructure/declarados.py), adendo v0.47; prova simulated; not_run no central (nada implantado) |  |
 | 30.2 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #76 merge 6e103d73: chave canônica de app (pacote) no Livro; prova simulated; not_run no central (nada implantado) |  |
 | 30.3 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #86 merge 14ec911c: conteudo legível no detalhe (domain/conteudo.py, fontes.py), nenhum valor de parâmetro; adendo v0.50; 432 testes do módulo; prova simulated; not_run no central (nada implantado) |  |
@@ -333,7 +346,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (49): 8.3, 8.4, 12.3, 14.11, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.27, 29.28, 29.29, 29.30, 29.31, 29.32, 30.4, 30.8, 30.10, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 30.23, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
+Pendentes (62): 8.3, 8.4, 12.3, 14.11, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.27, 29.28, 29.29, 29.30, 29.31, 29.32, 29.33, 29.34, 29.35, 29.36, 29.37, 29.38, 29.39, 29.40, 29.41, 30.4, 30.8, 30.10, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 30.23, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
