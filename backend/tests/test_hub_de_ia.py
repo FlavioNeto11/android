@@ -578,8 +578,10 @@ async def test_piso_descarta_alvo_inexistente_e_sobe_a_proxima_decisao_para_tier
         chamadas = [c["tier"] for c in ai.calls if c["role"] == "decide" and c["step"] == "open_conversation"]
         # (1) tier 0 com o alvo fantasma: descartada, não virou ação nem erro contado; (2) a decisão SEGUINTE já
         # sobe para tier 1 — é a mesma escolhida antes, agora com o `element_id` de verdade, e o toque acontece;
-        # (3) de volta ao tier 0: a subida vale só para a PRÓXIMA decisão, não para o resto da etapa.
-        assert chamadas == [0, 1, 0], chamadas
+        # (3) o toque abriu a conversa e a pós-condição passou a valer na tela lida: o ator não é chamado de novo só
+        # para dizer "pronto" (caminho rápido 1, LT-1). Antes havia aqui uma 3ª decisão em tier 0, que provava que a
+        # subida valia só para a PRÓXIMA decisão; esse cenário não a exercita mais (a regra está em `forcar_tier_1`).
+        assert chamadas == [0, 1], chamadas
         # A linha do tempo diz POR QUE escalou — não pode herdar o motivo genérico de "ação repetida".
         # `ORDER BY id`: sem ele o PostgreSQL devolve as linhas em qualquer ordem, e a escalada da etapa SEGUINTE
         # (enviar, efeito externo sem catálogo) chegou antes da do piso no CI de 26/09 — mesma família do K-030.

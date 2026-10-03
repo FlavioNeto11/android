@@ -32,7 +32,7 @@ JANELA_DIAS = 7
 
 
 def _vazio() -> dict[str, Any]:
-    return {"etapas": 0, "elegiveis": 0, "por_receita": 0, "receita_mais_ia": 0, "so_ia": 0, "sem_registro": 0,
+    return {"etapas": 0, "elegiveis": 0, "por_receita": 0, "receita_mais_ia": 0, "so_ia": 0, "sem_ator": 0, "sem_registro": 0,
             "sem_cobertura": 0, "outra_chave_ou_quarentena": 0, "receitas_aprendidas": 0,
             "divergencias": {"so_neste_aparelho": 0, "em_todos_os_aparelhos": 0, "indeterminado": 0},
             "chamadas_ia": {"decide": 0, "verify": 0},
@@ -108,12 +108,13 @@ def aproveitamento(db: Database, *, dias: int = JANELA_DIAS, agora: datetime | N
         g = grupos.setdefault((fluxo, pacote), _vazio())
         g["etapas"] += 1
         origem = e["driven_by"]
-        chaves = {"recipe": "por_receita", "recipe+ai": "receita_mais_ia", "ai": "so_ia"}
+        chaves = {"recipe": "por_receita", "recipe+ai": "receita_mais_ia", "ai": "so_ia", "sem_ator": "sem_ator"}
         g[chaves.get(origem, "sem_registro")] += 1
         n = chamadas.get(e["id"], {})
         g["chamadas_ia"]["decide"] += n.get("decide", 0)
         g["chamadas_ia"]["verify"] += n.get("verify", 0)
-        elegivel = bool(origem and pacote and e["template_hash"])
+        # `sem_ator` fechou sem nenhuma ação: não há caminho a gravar, logo não é etapa que "podia usar receita".
+        elegivel = bool(origem and origem != "sem_ator" and pacote and e["template_hash"])
         if not elegivel:
             continue
         g["elegiveis"] += 1

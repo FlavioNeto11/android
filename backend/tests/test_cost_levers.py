@@ -56,7 +56,10 @@ async def test_politica_de_imagem_auto_decide_pela_hierarquia(harness: Harness) 
     run = harness.run(["android-02"])
     assert (await harness.wait_run(run.id)).status == "completed"
     decides = [c for c in harness.ai.calls if c["role"] == "decide"]
-    assert decides and sum(1 for c in decides if c["image"]) < len(decides) / 2      # a maioria sem imagem
+    # Antes do caminho rápido 1 a maioria dos decides ia sem imagem; o LT-1 cortou justamente os decides só de
+    # "pronto" (sem imagem), então o que sobra tem mais decisões de abertura de etapa julgada (com imagem por regra). A
+    # política continua provada onde ela decide: a árvore rica basta na etapa de navegação, e nem toda decisão leva imagem.
+    assert decides and sum(1 for c in decides if c["image"]) < len(decides)
     assert any(not c["image"] for c in decides if c["step"] == "open_conversation")
 
 
