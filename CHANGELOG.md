@@ -34,6 +34,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `retencao`.
 - A resposta que chega no meio da varredura ganha: o cancelamento é condicional ao `needs_input`.
 - `RunService.cancel` passou a usar o mesmo `_cancelar_antes_de_iniciar`, sem mudar o comportamento.
+- Contrato: adendo v0.95 do `docs/api-contract.md` (número da orquestradora).
 - Prova:
   - `simulated`: `backend/tests/test_needs_input_expira.py`, 4 testes (prazo, relógio da entrada, corrida com a
     resposta, volta do laço);

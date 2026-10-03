@@ -2680,7 +2680,7 @@ class AppState:
             expiradas = await asyncio.to_thread(self.runs.expirar_sem_resposta, now())
             if expiradas:
                 log.info("expiração: %s execução(ões) sem resposta encerradas pelo sistema", len(expiradas))
-        except Exception:  # noqa: BLE001 - a faxina nunca derruba o processo
+        except Exception:  # a faxina nunca derruba o processo
             log.exception("expiração das perguntas sem resposta")
         return True
 

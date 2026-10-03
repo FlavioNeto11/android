@@ -118,5 +118,5 @@ async def test_a_volta_do_laco_expira_com_o_relogio_de_verdade(harness: Harness)
     velho = to_iso(now() - timedelta(hours=NEEDS_INPUT_EXPIRA_H + 1))
     st.db.execute("UPDATE runs SET created_at=? WHERE id=?", (velho, run_id))
     st.db.execute("UPDATE events SET ts=? WHERE run_id=?", (velho, run_id))
-    assert await st._expiracao_uma_vez() is True                     # noqa: SLF001
+    assert await st._expiracao_uma_vez() is True
     assert st.repo.run_row(run_id)["status"] == "cancelled"
