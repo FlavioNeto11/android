@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 30.29: o fluxo com variável de execução no plano casa também pela habilidade (branch feat/30-29-fluxos-com-variaveis-de-execucao)
+
+- `skills/domain/matching.py::bind_template_parameters` deixa de exigir do comando os RESERVED (`account_label`,
+  `instance_id`, `run_id`). O valor é do aparelho e entra na materialização, como no `FlowStore.match` desde o LT-3.
+- Antes: o `LegacyFlowAdapter` resolvia o fluxo pelo `FlowStore.match`, e o `legacy_plan` não compilava.
+  - O comando que casava ia a `needs_input` sem planejador. O abrir-tela da rodada QA de 03/10 caiu assim.
+  - 5 fluxos ativos do QA, com `{account_label}` (e às vezes `{instance_id}`/`{run_id}`) nos parâmetros, tinham
+    0 usos.
+- O aprendizado do fluxo já não templatizava os RESERVED; agora há um teste de regressão.
+- Núcleo (skills): revisão da Jev na parte do `matching.py`, e suíte 8.
+- Prova `simulated`: `tests/test_flows_account_label.py` (6; os 2 novos de bind/compilação falham sem a correção).
+
 ## 2026-10-03 — Rodada QA pareada: a pré-checagem também olha a habilidade (branch main)
 
 - A 1ª rodada (03/10 07:37Z, `qa-par-202610030737`) foi parada pela sessão do aprendizado:
