@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Documentação e processo: ADR-067, o aprendizado vivo aceito (30.19; branch docs/30-19-adr-067)
+
+- `docs/decisoes.md`: ADR-067 (índice e seção), com a Fase 30 como foi implementada.
+  - Eixo de app, saúde derivada, versão e lineage, curador com política de risco e orçamento proporcional, trilha
+    `learning_reviews`, evidência inválida, origem simulada e métricas.
+  - O que ficou pendente: D-1 (modelo por faixa), `resultado_posterior`, o curador no `eval_run` (M15) e a prova
+    real (30.18).
+  - A resposta à D0: o Jev só escolhe em conjunto fechado (ADR-069); o fluxo de navegação segue com o hub e a
+    execução; a política (a) rege a curadoria, não a geração.
+  - As dependências M1–M16 entre frentes.
+- `design/aprendizado-vivo.md`: o §14 aponta para o ADR aceito; o §8.8 corrige os papéis do hub (6 em `AI_ROLES`,
+  mais `leitura`, e o `review_knowledge` do 30.12).
+- `dominios/aprendizado.md` e a linha da Fase 30 no plano citam o ADR-067.
+
 ## 2026-10-03 — Aprendizado: métricas e lista de revisões (30.8; branch feat/30-8-metricas)
 
 - `GET /api/aprendizado/metricas?app=&dias=` (adendo v0.89): um bloco por linha da tabela do §10 do desenho.
