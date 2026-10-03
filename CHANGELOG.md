@@ -19,6 +19,38 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Deploy 9 no central (suíte 9; sombra C0–C1 do curador ligada, T_on do 31.10; curador volta ao padrão)
+
+- Código: main `3dcfc9ac` (suíte 9), sem migração nova (segue a 081):
+  - 29.47 (ambiente dos filhos);
+  - 31.9 rodadas E–G, mais a correção da catraca;
+  - UX do deploy 7 da Jev;
+  - 30.30 (#144) e RA-20 B (#145);
+  - 31.17 (envio aberto no código para a sombra);
+  - 29.44 (`sem_trafego`), mais a conta observada sem seletor cru.
+- Backup do deploy: `data/backups/20261003-080304` (integridade ok). Agente do notebook em `0.1.0+3dcfc9a`, com o
+  reparo dos aparelhos dele pausado durante a troca. A pausa do 01/03/06 foi renovada depois do restart (K-082).
+- `config/config.yaml` do central (backup `config-antes-deploy9-20261003-110326.yaml`; fora do Git):
+  - `aprendizado.curador`: alfa e k voltam ao padrão (0.10 / 1.5); saem as linhas do deploy 8.
+  - `ai.decisao_fechada: {enabled: true, decisor: jev, consumidores: {curador: shadow}, classes_permitidas: [C0, C1]}`.
+    A `intencao` fica ausente, ou seja `off`. Não se escreve `off`/`on` sem aspas (K-081).
+  - Conferido pelo `load_config` do código novo antes do `deploy.ps1`.
+- **T_on do 31.10 = 11:04:15Z**, a partida do backend. `GET /api/ai` às 11:05:04Z: `decisao_fechada.sending: true`,
+  `decider: jev`, `key: configurada`, `consumers: {curador: shadow}`, `classes: [C0, C1]`.
+- Quebras de série a partir deste deploy:
+  - a fatia do curador volta ao ritmo padrão;
+  - a sombra do Jev começa a gravar em `decisao_fechada_sombra`, e as chamadas aparecem em `ai_calls`
+    (`origem='decisao_fechada'`);
+  - em `network_measurements.per_app`, o app parado passa de `nao_medido` a `sem_trafego`.
+- Prova `real`:
+  - `/api/health` ok, commit 3dcfc9ac, migração 081, `problems: []`;
+  - 29.47: os 18 filhos do backend novo e o qemu do temporário `android-20` (ligado às 11:08:15Z, automação ready) com 0
+    nomes de segredo no ambiente;
+  - 29.44: o 03 e o 06 em `trafego_verificado`, com o Outlook `sem_trafego` (medições #465/#466).
+- Suíte 9: 1 teste intermitente, `test_revisao_receitas::test_aparelho_do_lider_que_cai_libera_quem_espera`. É race do
+  teste, exposto pelo #145; a correção vai para a suíte 10.
+- Pendente: validação do painel no Chrome (orquestradora); 29.48 (janela oculta, depois do 30.18).
+
 ## 2026-10-03 — Documentação e processo: ADR-067, o aprendizado vivo aceito (30.19; branch docs/30-19-adr-067)
 
 - `docs/decisoes.md`: ADR-067 (índice e seção), com a Fase 30 como foi implementada.

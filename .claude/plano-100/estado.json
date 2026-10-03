@@ -6002,8 +6002,8 @@
   "29.47": {
    "id": "29.47",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "feat/29-47-ambiente-dos-filhos @520e1af2 (4e998ff9 código: sdk.ambiente_dos_filhos por lista de permissão em SdkTools.env(), rede_servidor.ProcessosReais.lancar e diagnostics._run; 520e1af2 docs: operacao.md §11, linha do plano, CHANGELOG). simulated: tests/test_ambiente_dos_filhos.py (5; os 3 com filho real que imprime só os NOMES falham contra o código anterior); smoke local adb/emulator -accel-check/avdmanager/Appium 3.7.0 rc 0 com o ambiente filtrado (38 de 98 nomes). Na main pelo merge da suíte 9. Real not_run até o deploy 9 (aparelho liga e Appium sobe).",
+   "proof": "real",
+   "evidence": "feat/29-47-ambiente-dos-filhos @520e1af2 (4e998ff9 código: sdk.ambiente_dos_filhos por lista de permissão em SdkTools.env(), rede_servidor.ProcessosReais.lancar e diagnostics._run; 520e1af2 docs: operacao.md §11, linha do plano, CHANGELOG). simulated: tests/test_ambiente_dos_filhos.py (5; os 3 com filho real que imprime só os NOMES falham contra o código anterior); smoke local adb/emulator -accel-check/avdmanager/Appium 3.7.0 rc 0 com o ambiente filtrado (38 de 98 nomes). Na main pelo merge da suíte 9. REAL 03/10/2026, central WIN-7S2UASNLFOP, deploy 9 (main 3dcfc9ac, backend pid 33096 desde 11:04:15Z): os 18 descendentes do backend (adb ×14, Appium node ×1, sing-box ×1, conhost ×2) com 0 nomes proibidos no ambiente (só os nomes lidos; controle: o backend tem 1 nome com prefixo proibido); aparelho temporário android-20 criado e ligado pelo backend novo às 11:08:15Z: online, automação ready, qemu com 44 variáveis e 0 nomes proibidos; aposentado (avd_removed). Agente do notebook 0.1.0+3dcfc9a online, 09/10/12/13 com automação ready. Os qemu do 01/03/06 (lançados antes do deploy) seguem com o ambiente antigo até o próximo boot.",
    "blocker": "",
    "arquivos": [
     "backend/app/devices/sdk.py",
@@ -6013,18 +6013,18 @@
     "docs/operacao.md"
    ],
    "testes": "suíte 9 inteira em integ/suite-9 @2c078dd1 (-n 8, Idle, 10:37–10:46Z): backend 7244 passed, 7 skipped, 1 failed (test_revisao_receitas::test_aparelho_do_lider_que_cai_libera_quem_espera: race do teste exposto pelo #145, registrado; não bloqueia, regra da orquestradora); scripts 463; frontend 1351 (112 arquivos) e typecheck; docs-check 0/0.",
-   "grupo": "suite-9-android",
-   "modelo": "opus (sessão Android, integradora)",
+   "grupo": "deploy-9-android",
+   "modelo": "opus (sessão Android)",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T11:02:10+00:00"
+   "quando": "2026-10-03T11:16:15+00:00"
   },
   "29.44": {
    "id": "29.44",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a medição do parcial só de app parado, RedePage; 88c86dc0 docs: parque.md, adendo v0.88, plano, CHANGELOG; 1cdacd0f: a conta observada é a frase que a nomeia, sem o seletor cru, executor.evidencia_da_conta e InstancesSection 'conta diferente do rótulo'). simulated: tests/test_rede_sem_trafego.py, test_rede_sonda.py (o parcial só de app parado não dispensa a medição: falha sem a mudança), test_rede_portao.py, test_evidencia_da_conta.py (3), RedePage.test.tsx, InstancesSection.test.tsx. Na main pelo merge da suíte 9. Real not_run até o deploy 9 (03/06 com Outlook parado saem de parcial).",
+   "proof": "real",
+   "evidence": "feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a medição do parcial só de app parado, RedePage; 88c86dc0 docs: parque.md, adendo v0.88, plano, CHANGELOG; 1cdacd0f: a conta observada é a frase que a nomeia, sem o seletor cru, executor.evidencia_da_conta e InstancesSection 'conta diferente do rótulo'). simulated: tests/test_rede_sem_trafego.py, test_rede_sonda.py (o parcial só de app parado não dispensa a medição: falha sem a mudança), test_rede_portao.py, test_evidencia_da_conta.py (3), RedePage.test.tsx, InstancesSection.test.tsx. Na main pelo merge da suíte 9. REAL 03/10/2026, central, deploy 9 (main 3dcfc9ac): medições #465 (android-03, 11:06:12Z) e #466 (android-06, 11:06:13Z), política exigida_com_bloqueio, per_app {instagram: ok, outlook: sem_trafego, shell: ok}, effective_state trafego_verificado, detail 'saída e apps provados; com.microsoft.office.outlook sem tráfego na janela: não provado, não segura o estado'.",
    "blocker": "",
    "arquivos": [
     "backend/app/devices/sonda_rede.py",
@@ -6038,12 +6038,12 @@
     "docs/api-contract.md"
    ],
    "testes": "suíte 9 inteira em integ/suite-9 @2c078dd1 (-n 8, Idle, 10:37–10:46Z): backend 7244 passed, 7 skipped, 1 failed (test_revisao_receitas::test_aparelho_do_lider_que_cai_libera_quem_espera: race do teste exposto pelo #145, registrado; não bloqueia, regra da orquestradora); scripts 463; frontend 1351 (112 arquivos) e typecheck; docs-check 0/0.",
-   "grupo": "suite-9-android",
-   "modelo": "opus (sessão Android, integradora)",
+   "grupo": "deploy-9-android",
+   "modelo": "opus (sessão Android)",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T11:02:10+00:00"
+   "quando": "2026-10-03T11:16:15+00:00"
   },
   "30.30": {
    "id": "30.30",
@@ -7430,6 +7430,16 @@
    ],
    "grupos": [
     "suite-9-android"
+   ]
+  },
+  {
+   "quando": "2026-10-03T11:16:15+00:00",
+   "itens": [
+    "29.47",
+    "29.44"
+   ],
+   "grupos": [
+    "deploy-9-android"
    ]
   }
  ]
