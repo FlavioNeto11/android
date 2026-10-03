@@ -75,6 +75,29 @@ class EntradasDoCanal:
              estado, _curto(erro, MAX_ERRO), agora, tratada))
         return (cur.rowcount or 0) == 1
 
+    # ------------------------------------------------------------------ o aviso do webhook (Trello, 32.2 §8.5)
+    def gravar_aviso(self, id_externo: str) -> bool:
+        """O webhook só ANOTA o id da action (`estado = 'aviso'`, sem texto, sem autor): quem lê a action de verdade, pela
+        API, é o líder. Devolve se a linha é nova (a chave `(canal, id_externo)` faz a repetição não gravar nada)."""
+        cur = self.db.execute(
+            "INSERT INTO canal_entradas(canal, id_externo, ordem, tipo, do_dono, texto, tamanho, estado, recebida_em)"
+            " VALUES (?,?,NULL,'outro',0,NULL,0,'aviso',?) ON CONFLICT (canal, id_externo) DO NOTHING",
+            (self.canal, id_externo, self._agora()))
+        return (cur.rowcount or 0) == 1
+
+    def avisos_pendentes(self, limite: int = 50) -> list[dict[str, object]]:
+        return [dict(r) for r in self.db.query(
+            "SELECT * FROM canal_entradas WHERE canal=? AND estado='aviso' ORDER BY id LIMIT ?", (self.canal, limite))]
+
+    def total_avisos(self) -> int:
+        return int(self.db.scalar("SELECT COUNT(*) FROM canal_entradas WHERE canal=? AND estado='aviso'",
+                                  (self.canal,)) or 0)
+
+    def descartar_aviso(self, id_externo: str) -> None:
+        """Tira a linha-aviso para a `registrar` gravar a action de verdade (a chave única impediria os dois)."""
+        self.db.execute("DELETE FROM canal_entradas WHERE canal=? AND id_externo=? AND estado='aviso'",
+                        (self.canal, id_externo))
+
     def a_tratar(self, limite: int = 50) -> list[dict[str, object]]:
         """As linhas `recebida` do canal, na ordem em que chegaram (inclusive as que uma queda deixou no meio)."""
         return [dict(r) for r in self.db.query(
@@ -122,6 +145,18 @@ class EntradasDoCanal:
         return [dict(r) for r in self.db.query(
             "SELECT * FROM canal_entradas WHERE canal=? AND estado='executando' AND run_id IS NULL AND tratada_em < ?"
             " ORDER BY id LIMIT 20", (self.canal, limite))]
+
+    def recusadas_sem_resposta(self, idade_max_s: float, limite: int = 20) -> list[dict[str, object]]:
+        """As recusas de credencial ou de pergunta sensível dos últimos `idade_max_s` segundos a que a Central ainda
+        não respondeu (nenhuma `canal_enviadas` com o `entrada_id` delas): as que `registrar` gravou sem saída, e as
+        cujo envio falhou. Fora as que a mensagem já foi apagada do canal (`...; apagada do chat`): o texto de quem
+        não apagou seria falso. A janela impede de repetir para sempre a resposta que nunca sai."""
+        desde = to_iso(self.relogio() - timedelta(seconds=idade_max_s))
+        return [dict(r) for r in self.db.query(
+            "SELECT * FROM canal_entradas e WHERE e.canal=? AND e.estado='recusada' AND e.recebida_em >= ?"
+            " AND (e.erro LIKE '%credencial%' OR e.erro LIKE '%pergunta%') AND e.erro NOT LIKE '%; apagada do chat'"
+            " AND NOT EXISTS (SELECT 1 FROM canal_enviadas s WHERE s.canal=e.canal AND s.entrada_id=e.id)"
+            " ORDER BY e.id LIMIT ?", (self.canal, desde, limite))]
 
     def apagar_texto(self, ident: int) -> None:
         """Tira o texto de uma linha (a credencial que só foi reconhecida depois de gravada). Fica o `tamanho`."""

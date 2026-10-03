@@ -5094,3 +5094,47 @@ Sem migração e sem rota nova. Mudam dois registros que o painel e o aprendizad
   declara". Antes, um toque assim saía gravado com `side_effect: false` e `done`.
 - Prova `simulated`: `backend/tests/test_efeito_pela_acao.py`. Prova real: `not_run`.
 
+## Adendo v0.99 (03/10/2026; número da orquestradora; item 32.2, ADR-072) — o Trello: a rota do webhook, a config e a saúde
+
+Uma rota nova, **fora do login**, e só ela: `HEAD` e `POST /api/canais/trello/webhook`. O Trello chama; a Central não
+guarda sessão nem credencial nela. `main.guarda` libera exatamente esses dois métodos nesse caminho (o caminho inteiro,
+sem prefixo e sem curinga); todo o resto de `/api/` segue pedindo credencial, e o `forbidden_host` (403) vale. Fica fora do
+OpenAPI. Desligada de fábrica.
+
+- **`HEAD`** (o Trello confere a URL ao cadastrar o webhook): `200` com `trello.webhook.enabled` E `TRELLO_API_SECRET` E
+  `trello.webhook.callback_url`; senão `404`. Sem assinatura.
+- **`POST`:**
+  - `404`: `trello.webhook.enabled` é false (a rota não existe);
+  - `401`, sem corpo: ligado mas sem o segredo ou sem a URL (falha fechada), cabeçalho `X-Trello-Webhook` ausente ou
+    diferente de base64(HMAC-SHA1(`TRELLO_API_SECRET`, corpo cru + `trello.webhook.callback_url`)). Nada é gravado;
+  - `413`: corpo acima de `trello.webhook.max_bytes` (262144), sem ler o resto;
+  - `200`, sem corpo: assinatura certa. Corpo ilegível, tipo que não interessa e id repetido também são `200` (o Trello
+    repetiria à toa) e não gravam nada.
+- **O corpo é só um aviso.** A Central guarda o id da action (`canal_entradas.estado = 'aviso'`, sem texto, autor nem
+  cartão) e acorda o líder, que relê a action por `GET /1/actions/{id}` com o token do dono. Autor, cartão, texto e quadro
+  do corpo são descartados. Nada do corpo vai a log, evento ou resposta.
+- **Config (`trello:`):** `enabled`, `quadros`, `listas` (`central_automatico`, `aprovado`, `vetado`, `marcos`, `custos`),
+  `membro_dono`, `espelho_s` (60), `reconciliar_s` (60), `comando_livre` (false), `idade_max_s` (900),
+  `membros_autorizados` (vazia), `responder_convidados` (false) e `webhook` (`enabled` false, `callback_url`, `max_bytes`,
+  `cadastro_automatico` false). `webhook.enabled` só faz a rota responder e nunca cadastra nada; o primeiro cadastro é
+  `scripts/trello-webhook.py --aplicar`, e o recadastro de hora em hora no líder exige `webhook.cadastro_automatico`. Os
+  segredos (`TRELLO_API_KEY`, `TRELLO_TOKEN`, `TRELLO_API_SECRET`) só no `.env`.
+- **`GET /api/health` — problemas novos**, que somem quando a causa some:
+  - `trello_sem_segredo`: `trello.enabled` sem `TRELLO_API_KEY` ou `TRELLO_TOKEN`;
+  - `trello_recusado` (401/403) e `trello_pedido_invalido` (outro 4xx): o Trello recusou a Central, no espelho, na leitura ou
+    no cadastro (uma só entrada por código);
+  - `trello_leitor_atrasado`: a última leitura das actions que deu certo tem mais de 3 × `reconciliar_s`;
+  - `trello_webhook_sem_segredo`: `webhook.enabled` sem `TRELLO_API_SECRET` ou sem `callback_url`;
+  - `trello_webhook_assinatura_invalida`: 5 ou mais assinaturas inválidas em 10 min;
+  - `trello_webhook_inativo`: com `cadastro_automatico`, o cadastro falhou ou o Trello desativou o webhook.
+- **Gestos pelo Trello:** o operador gravado é `trello:<idMember>` do autor da action. Mover o cartão de aprovação para ⛔,
+  "não" ou `/vetar` decidem `reject` (`decided_by = trello:<id>`); mover para ✅, "sim" e `/aprovar` NÃO aprovam, e a Central
+  responde que a aprovação se confirma no painel ou no Telegram. A execução criada pela resposta a uma pergunta usa a chave
+  de idempotência do canal. Qualquer comentário que comece com 🤖 é de IA e nunca é pedido.
+- **Banco:** a migração 087 cria `trello_cartoes` e `trello_cursor`; a 085 ganha o estado `aviso` em `canal_entradas`
+  (`docs/banco.md`).
+
+Prova `simulated`: `backend/tests/test_trello_webhook.py`, `test_trello_leitor.py`, `test_trello_espelho.py`,
+`test_trello_cliente.py` e `test_trello_config.py`. `not_run`: o HEAD do Trello na URL pública, o primeiro cadastro e um
+comentário real chegando pelo webhook.
+

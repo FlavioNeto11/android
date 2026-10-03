@@ -429,6 +429,7 @@ Para tirar o hostname do ar, `Stop-Service Cloudflared` (e, se for o caso, `clou
 | `test-restart-recovery.ps1` | P | Reinicia o backend com fila carregada, real |
 | `personas_criar.py` / `personas_completar.py` | P | Escreve personas no banco do ambiente central |
 | `avisos-telegram.py descobrir` / `testar` | S / P | Aviso fora do painel (28.11): `descobrir` só lê (`getUpdates` sem offset) e lista id, tipo, nome e @usuário dos chats que escreveram ao bot, sem imprimir o token; `testar` manda UMA mensagem real ao `TELEGRAM_CHAT_ID` (só o dono roda). Lê o `.env` na hora, sem reiniciar o backend |
+| `trello-webhook.py` (`--ensaio` / `--aplicar` / `--desligar`) | S / P | Webhook do Trello (32.2, ADR-072): `--ensaio` (padrão) só LÊ o Trello (`GET /1/members/me/tokens`) e imprime o plano por quadro (criar, recriar, apagar, manter); `--aplicar` faz o cadastro (`POST /1/webhooks`, token só no cabeçalho), exige `trello.webhook.enabled` e `TRELLO_API_SECRET` e **só com o "vai" da orquestradora**; `--desligar` é o pedido explícito de remover os webhooks da Central (os de outro sistema nunca são tocados). Lê o `.env` na hora; não imprime segredo |
 | `aprendizado-backlog.py` | S | Só GET em `/api/aprendizado/falhas?formato=md`: grava o "o que mais falha" em `data/aprendizado/backlog-AAAA-MM-DD.md` e imprime o topo; `--retroativo` inclui o legado classificado na leitura. Sem IA; o `API_TOKEN` nunca é impresso (ADR-054) |
 | `aprendizado-telas.py` | S | Telas aprendidas: o deixa-um-fora sobre as observações reais (`--sem-regra thread --sem-regra feed`), com o banco aberto só para leitura (`mode=ro`); `exportar --app` pede o fragmento YAML ao central. Sem IA |
 
@@ -711,3 +712,58 @@ Prova real (o dono faz com a sessão Canais; sem ela fica `not_run`):
 4. `/para android-09 abra o QA Messenger`: a prévia sai com os botões. Tocar Executar cria uma execução, e o desfecho
    volta na thread.
 5. Mandar `123456`: a mensagem some do chat, a resposta não ecoa nada, e a linha fica `recusada`, com `texto` NULL.
+
+## 16. Trello (item 32.2, ADR-072)
+
+O Trello do dono é espelho do que espera por ele e canal de veto e de resposta. Detalhe técnico e regras em
+[design/trello-integracao.md](design/trello-integracao.md) e no ADR-072; as regras do dono sobre os canais, em
+[dominios/canais.md](dominios/canais.md). Tudo vem **desligado**.
+
+**Segredos (só no `.env`, fora do Git):** `TRELLO_API_KEY` e `TRELLO_TOKEN` (a chave do Power-Up e o token do dono) para o
+espelho e a leitura; `TRELLO_API_SECRET` (o segredo do aplicativo, que assina o webhook) só para o webhook. Faltando um, a
+saúde acusa `trello_sem_segredo` ou `trello_webhook_sem_segredo`. Nunca vão na URL: o cliente os põe no cabeçalho
+`Authorization`.
+
+**Config (`trello:`, no `config/config.yaml`, com backup antes):** `enabled`, `quadros`, `listas` (`central_automatico`,
+`aprovado`, `vetado`, `marcos`, `custos`), `membro_dono` (o id do dono: só ele comanda), `reconciliar_s` (60; 300 com o
+webhook), `comando_livre` (false), `membros_autorizados` (vazia), `responder_convidados` (false) e `webhook`. O exemplo está
+comentado em `config/config.example.yaml`.
+
+**O que o dono pode esperar:**
+- Mover o cartão de aprovação para ⛔ Vetado, "não" ou `/vetar` veta. Mover para ✅ Aprovado, "sim" ou `/aprovar` **não
+  aprovam**: a Central comenta que a aprovação se confirma no painel ou no Telegram.
+- Comentário que começa com 🤖 é de IA e nunca é pedido. A Central assina `🤖 ANA · HH:MMZ ·`.
+- Senha ou código no comentário é recusado sem eco, e a resposta pede ao dono que apague o comentário.
+- Convidado não executa nada; o pedido dele vira um aviso ao dono (Telegram).
+
+**Rollout do webhook (nesta ordem; cada passo é seu próprio "vai"). Ligar uma flag nunca vale como "vai":**
+1. **Ligar a rota:** com o 32.2 implantado, o portal no ar (ADR-073), `TRELLO_API_SECRET` no `.env` e `trello.webhook.callback_url`
+   igual à URL pública (`https://dev.nvit.com.br/api/canais/trello/webhook`; sem parâmetro, sem credencial), pôr
+   `trello.webhook.enabled: true` e reiniciar a tarefa `farm-central`. Isto só faz a rota responder (`HEAD` 200, `POST`
+   verifica a assinatura). **Não cadastra nada no Trello.** O ingress do túnel não muda: encaminha o hostname inteiro, e a
+   regra `^/api/worker/` segue antes dela.
+2. **Ensaio:** `backend\.venv\Scripts\python.exe scripts\trello-webhook.py --ensaio` lê o Trello e mostra o que seria
+   feito (`criar` por quadro). Nada é escrito. Confira os quadros e a URL.
+3. **Cadastro, com o "vai" da orquestradora:** `backend\.venv\Scripts\python.exe scripts\trello-webhook.py --aplicar`. O
+   Trello faz um HEAD na URL antes de criar o webhook; sem o 200, ele não nasce.
+4. **Prova de fora:** de fora da LAN, `HEAD https://dev.nvit.com.br/api/canais/trello/webhook` dá 200 e um `POST` sem
+   assinatura dá 401, sem corpo; o resto de `/api/` segue 401 (use `.claude/handoffs/portal/prova-de-fora.sh depois`). Comente
+   `/status` num cartão: a resposta tem de chegar em segundos (antes, em `reconciliar_s`), e `canal_entradas` mostra a linha
+   `feita`. **Não chame a rota de login do endereço público em teste** (a tranca é global, item 29.56).
+5. **Só então** `trello.webhook.cadastro_automatico: true` (recadastro de hora em hora no líder, que recria o webhook
+   desativado) e a `reconciliar_s` em 300. Desligar a rota (`enabled: false`) NÃO apaga o webhook do Trello; remover é o pedido
+   explícito `scripts\trello-webhook.py --desligar`.
+
+**Saúde e diagnóstico:**
+- `trello_recusado` (401/403): confira `TRELLO_API_KEY` e `TRELLO_TOKEN`; vale para o espelho, a leitura e o cadastro.
+- `trello_leitor_atrasado`: a leitura das actions parou há mais de 3 × `reconciliar_s`; veja o líder da trava `avisos`.
+- `trello_webhook_assinatura_invalida`: 5 ou mais em 10 min. O `TRELLO_API_SECRET` mudou (regerado no aplicativo), a
+  `callback_url` difere da cadastrada, ou há sondagem. Nada foi gravado. Enquanto isso a reconciliação cobre.
+- `trello_webhook_inativo` (só com `cadastro_automatico`): o cadastro falhou ou o Trello desativou o webhook. A causa
+  comum é a URL fora do ar no momento do HEAD do Trello.
+- Contagem por estado: `SELECT estado, COUNT(*) FROM canal_entradas WHERE canal='trello' GROUP BY estado`. Avisos do
+  webhook ainda não relidos ficam em `aviso`.
+- Recuo em uma linha: `trello.enabled: false` (e `trello.webhook.enabled: false`) e reiniciar a tarefa; para tirar o webhook do
+  Trello, `scripts\trello-webhook.py --desligar`.
+
+`simulated`: `backend/tests/test_trello_*.py`. `not_run`: tudo o que fala com o Trello de verdade.

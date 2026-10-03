@@ -75,6 +75,11 @@ class RegistroDeValidacoesSql:
         return [_pedido(r) for r in self._db.query(
             "SELECT * FROM learning_validations WHERE estado='pendente' ORDER BY created_at, id")]
 
+    def vivos(self) -> list[PedidoVivo]:
+        """Os pedidos em andamento (`pendente` e `rodando`): o que um canal de fora mostra como "em validação"."""
+        return [_pedido(r) for r in self._db.query(
+            "SELECT * FROM learning_validations WHERE estado IN ('pendente', 'rodando') ORDER BY created_at, id")]
+
     def por_execucao(self, run_id: str) -> PedidoVivo | None:
         r = self._db.one("SELECT * FROM learning_validations WHERE run_id=?", (run_id,))
         return _pedido(r) if r is not None else None

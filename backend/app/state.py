@@ -41,9 +41,15 @@ from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
 from .modules.avisos.infrastructure.entrada import ServicoDeEntrada
 from .modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
+from .modules.avisos.application.espelho import LinhaDeCusto
+from .modules.avisos.infrastructure.espelho import EspelhoDoTrello, FontesDaCentral
+from .modules.avisos.infrastructure.espelho_sql import CartoesDoTrello, CursorDoTrello
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from .modules.avisos.infrastructure.portas_da_central import PortasReais
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos
+from .modules.avisos.infrastructure.trello_leitor import LeitorDoTrello
+from .modules.avisos.infrastructure.trello_webhook import CadastroDoWebhook, PortaDoWebhook
+from .modules.avisos.infrastructure.trello_saude import problemas_do_trello
 from .modules.context_retrieval.adapters.jev import JevSemanticProvider
 from .modules.identity.application.ports import SessionProvider
 from .modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, aplicar_desafio, conta_para_conferir,
@@ -56,6 +62,7 @@ from .modules.learning.infrastructure.curador_do_hub import CuradorDoHub
 from .modules.learning.infrastructure.ligar_costuras import costuras_do_livro
 from .modules.learning.infrastructure.montagem import montar_aprendizado
 from .modules.learning.infrastructure.segredo import TriagemDeCredencial
+from .modules.learning.infrastructure.validacoes_sql import RegistroDeValidacoesSql
 from .modules.skills.application.registry import CompositeSkillRegistry
 from .modules.skills.application.teaching import TeachingService
 from .modules.skills.infrastructure.document_validator import DslDocumentValidator, LockedVersions
@@ -106,7 +113,7 @@ from .taskqueue.sombra_intencao import SombraDaIntencao, catalogo_de
 from .taskqueue.travas import (AVISOS, CURADORIA, PEDIDOS, RENOVAR_TRAVA_S, RETENCAO, SALDOS, TRAVAS_DOS_LACOS, Lideranca,
                                TravaPerdida)
 from .training.generalizer import ProviderSkillGeneralizer
-from .util import now, now_iso, parse_iso, to_iso
+from .util import iso_in, now, now_iso, parse_iso, to_iso
 from .vitrine import (_apps_changed, alvos_da_distribuicao, laco_de_convergencia, previa_de_entrega,
                       trabalho_ao_ligar)
 
@@ -206,6 +213,35 @@ def _col_app(row: Any) -> str | None:
         return row["app_id"]
     except (KeyError, IndexError, TypeError):
         return None
+
+
+class _FontesDoEspelhoDoTrello:
+    """Liga o espelho do Trello (32.2) às portas PÚBLICAS dos módulos donos: `PedidosApi.listar` (o mesmo serviço da rota
+    `GET /api/pedidos`) e `RegistroDeValidacoesSql.vivos()` (o registro do Livro, 082). Só ids e estados saem daqui; o
+    `avisos` não importa `pedidos` nem `learning`."""
+
+    ESTADOS_DO_PEDIDO = ["ativo", "pausado", "aguardando_pessoa"]
+
+    def __init__(self, pedidos: Callable[[], PedidosApi], validacoes: RegistroDeValidacoesSql):
+        self._pedidos = pedidos
+        self._validacoes = validacoes
+
+    def pedidos_abertos(self) -> list[tuple[str, str]]:
+        abertos: list[tuple[str, str]] = []
+        cursor: str | None = None
+        while True:
+            pagina = self._pedidos().listar(estado=self.ESTADOS_DO_PEDIDO, autonomia=None, tipo=None, profile_id=None,
+                                            q=None, pede_atencao=False, ordem="criado", limit=200, cursor=cursor)
+            itens = pagina.get("items")
+            if isinstance(itens, list):
+                abertos += [(str(i["id"]), str(i["estado"])) for i in itens if isinstance(i, dict)]
+            proximo = pagina.get("proximo_cursor")
+            if not isinstance(proximo, str) or not proximo:
+                return abertos
+            cursor = proximo
+
+    def livro_em_validacao(self) -> list[tuple[str, str, str]]:
+        return [(v.id, v.item_ref, v.estado.value) for v in self._validacoes.vivos()]
 
 
 class AppState:
@@ -497,12 +533,33 @@ class AppState:
         # A conversa de volta pelo Telegram (28.15, ADR-071): o mesmo bot dos avisos recebe; desligada de fábrica
         # (`avisos.entrada.enabled`). As portas chamam os MESMOS serviços das rotas do painel.
         triagem = TriagemDeCredencial()
+        portas_da_central = PortasReais(db=self.db, runs=self.runs, aprovacoes=self.approval_service, saude=self.health,
+                                        online=lambda: [d.id for d in self.devices.list_dtos()
+                                                        if str(d.state) == "online" and d.kind != "store"])
         self.telegram_entrada = ServicoDeEntrada(
-            cfg, EntradasDoCanal(self.db, canal="telegram"),
-            PortasReais(db=self.db, runs=self.runs, aprovacoes=self.approval_service, saude=self.health,
-                        online=lambda: [d.id for d in self.devices.list_dtos()
-                                        if str(d.state) == "online" and d.kind != "store"]),
+            cfg, EntradasDoCanal(self.db, canal="telegram"), portas_da_central,
             lider=self._lider, recusa=triagem.recusa, redigir=triagem.redigir)
+        # O espelho do Trello (32.2, ADR-072): reconciliador no líder da trava `avisos`; desligado de fábrica
+        # (`trello.enabled`). Lê as MESMAS pendências do Telegram e do painel.
+        self.trello_espelho = EspelhoDoTrello(
+            cfg, CartoesDoTrello(self.db, self.db.agora),
+            FontesDaCentral(portas_da_central.pendencias,
+                            _FontesDoEspelhoDoTrello(lambda: self.pedidos_api, RegistroDeValidacoesSql(self.db)),
+                            lambda: cfg.file.avisos.url_painel),
+            lider=self._lider, versao=self._versao_do_deploy, custos=self._linhas_de_custo, relogio=self.db.agora)
+        # O leitor do Trello (32.2, passo 4): as actions do quadro viram comandos do dono, pela MESMA conversa do Telegram; só o
+        # dono comanda, aprovar pede confirmação fora do Trello. Desligado de fábrica (`trello.enabled`). Convidado que pede
+        # algo vira um aviso ao dono pela fila existente.
+        self.trello_cadastro = CadastroDoWebhook(cfg)
+        self.trello_leitor = LeitorDoTrello(
+            cfg, EntradasDoCanal(self.db, canal="trello"), CartoesDoTrello(self.db, self.db.agora),
+            CursorDoTrello(self.db, self.db.agora), portas_da_central, lider=self._lider, recusa=triagem.recusa,
+            redigir=triagem.redigir, avisar_dono=self.avisos.enfileirar_aviso, relogio=self.db.agora,
+            cadastro=self.trello_cadastro)
+        # O webhook do Trello (32.2, §8): a rota só confere a assinatura e ANOTA o id da action; o líder a relê pela API.
+        # Desligado de fábrica (`trello.webhook.enabled`); a reconciliação do leitor cobre sozinha.
+        self.trello_webhook = PortaDoWebhook(cfg, EntradasDoCanal(self.db, canal="trello"),
+                                             acordar=self.trello_leitor.acordar)
         # O catálogo da cadeia de intenção (habilidades publicadas e fluxos ativos, respeitando `skills.enabled` e
         # `ai.flows`), lido na hora. Compartilhado pela sombra da intenção (31.9) e pelo rótulo de intenção do Aprendizado
         # (30.25): os dois medem contra o MESMO catálogo.
@@ -2395,6 +2452,9 @@ class AppState:
             self._bg.append(asyncio.create_task(self.avisos.laco(), name="avisos-fora-do-painel"))
             # A conversa de volta (28.15): long-poll do getUpdates, só no líder da trava `avisos` (único consumidor).
             self._bg.append(asyncio.create_task(self.telegram_entrada.laco(), name="telegram-entrada"))
+            # O espelho do Trello (32.2): reconciliador no líder da trava `avisos`; sem `trello.enabled` não chama nada.
+            self._bg.append(asyncio.create_task(self.trello_espelho.laco(), name="trello-espelho"))
+            self._bg.append(asyncio.create_task(self.trello_leitor.laco(), name="trello-leitor"))
             # Mesmo critério de réplica da retenção: só quem roda o scheduler; idempotente (chaves únicas e CAS).
             self._bg.append(asyncio.create_task(self._curadoria_loop(), name="aprendizado-curadoria"))
             self._bg.extend(asyncio.create_task(laco.laco(lambda: self._lider(CURADORIA)), name=f"aprendizado-{laco.nome}") for laco in self.learning.lacos)  # noqa: E501 - 30.11: o curador por IA, sob a trava `curadoria`
@@ -2894,6 +2954,21 @@ class AppState:
     def saldos_de_ia(self) -> list[saldos.SaldoConta]:
         return saldos.estado(self.db, self.cfg)
 
+    def _versao_do_deploy(self) -> tuple[str | None, str | None]:
+        """(commit em execução, última migração): o que o cartão de marco do Trello compara entre partidas."""
+        return commit_em_execucao(self.cfg.root), self.ultima_migracao()
+
+    def _linhas_de_custo(self) -> list[LinhaDeCusto]:
+        """O custo de IA das últimas 24 h por conta (a fonte de `GET /api/usage?days=1`, `by_account`) e o saldo estimado
+        de cada uma (a de `GET /api/ai/balances`), lidos pelas funções Python, sem HTTP."""
+        gasto = saldos.gasto_usd_por_conta(self.db, self.cfg, iso_in(-86400))
+        contas = {c.account: c for c in saldos.estado(self.db, self.cfg)}
+        return [LinhaDeCusto(conta=nome, gasto_usd=round(gasto.get(nome, 0.0), 4),
+                             saldo=contas[nome].estimated_balance if nome in contas else None,
+                             moeda=contas[nome].currency if nome in contas else "USD",
+                             estado=contas[nome].state if nome in contas else "unknown")
+                for nome in sorted(set(gasto) | {n for n, c in contas.items() if c.em_uso})]
+
     async def _saldos_loop(self) -> None:
         """Livro-caixa das contas de IA (ADR-051): a cada `SALDOS_INTERVALO_S` concilia com o relatório oficial do
         provedor e fecha o dia das contas com âncora velha. Sem isto a conciliação só andava quando alguém abria o
@@ -3221,6 +3296,14 @@ class AppState:
         problems.extend(self._problemas_de_saldo())
         problems.extend(self.avisos.problemas())
         problems.extend(self.telegram_entrada.problemas())
+        achados_do_espelho = self.trello_espelho.problemas()
+        problems.extend(achados_do_espelho)
+        # A recusa do Trello é uma só para o espelho e o leitor (o mesmo token): não aparece duas vezes.
+        ja_ditos = {a.code for a in achados_do_espelho}
+        problems.extend(p for p in self.trello_leitor.problemas() if p.code not in ja_ditos)
+        problems.extend(self.trello_webhook.problemas())
+        problems.extend(self.trello_cadastro.problemas())
+        problems.extend(problemas_do_trello(self.cfg))
         # Backlog B15 (bateria de 25/09): o Ollama estava fora do ar, as 89 decisões foram para o fallback — e a saúde
         # dizia `ok`. O fallback continua sendo o comportamento certo; o que faltava era ele aparecer.
         for linha in self._ia_em_fallback():

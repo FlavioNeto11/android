@@ -48,10 +48,13 @@ As listas atuais do Execução são do programa de desenvolvimento (`.claude/tre
 
 ## 3. O que aceita de volta
 
-- **Mover o cartão** de aprovação para **✅ Aprovado** ou **⛔ Vetado** (listas novas) vira
-  `POST /api/approvals/{id}/decide` com `verb` `approve` ou `reject`. O `edit` fica no painel.
+- **Mover o cartão** de aprovação para **⛔ Vetado** (lista nova) vira `POST /api/approvals/{id}/decide` com `verb`
+  `reject`: vetar não causa ação no mundo real. Mover para **✅ Aprovado NÃO aprova** (regra da orquestradora, 03/10):
+  no Trello nem o dono autoriza ação real em conta real. A Central comenta `🤖 ANA · HH:MMZ · para aprovar, confirme no
+  painel ou no Telegram` e não chama o `decide`. O `edit` fica no painel.
 - **Comentário com comando:** a gramática comum de `canais-externos.md`, a mesma do Telegram. O fato é o cartão.
-  - Num cartão de aprovação, "sim" ou `/aprovar [nota]` aprova, e "não" ou `/vetar [nota]` veta.
+  - Num cartão de aprovação, "não" ou `/vetar [nota]` veta. "sim" e `/aprovar [nota]` valem o mesmo que mover para ✅:
+    só pedem a confirmação no painel ou no Telegram.
   - Num cartão de `needs_input`, o texto ou `/responder <texto>` é a resposta.
   - `/status` (`/estado`), `/pendencias` e `/ajuda` valem em qualquer cartão.
   - O `/para <aparelho|persona> <objetivo>` e o texto livre ficam desligados de fábrica no Trello
@@ -105,7 +108,7 @@ Cada cartão tem um bloco **Vínculos**. Os links usam `url_painel` (hoje só `a
 
 1. Bloco `trello:` no `config.yaml` (`enabled: false`, quadros, listas, `membro_dono`, intervalos, `conteudo: redigido`);
    segredo só no `.env`; a saúde acusa `trello_sem_segredo`.
-2. Cliente `integrations/trello/` em httpx, com balde de 60 requisições por 10 s e backoff pelos cabeçalhos do 429.
+2. Cliente `modules/avisos/adapters/trello.py` em httpx, com balde de 60 requisições por 10 s e backoff pelos cabeçalhos do 429.
 3. Migração 087 (era 086, que passou ao 31.22 da Jev em 03/10 ~18:55Z): `trello_cartoes` (`chave` PK, `card_id`,
    `lista`, `hash`, `estado`) e `trello_cursor` (`quadro` PK, `ultima_action`). As actions recebidas vão para a
    `canal_entradas` genérica da 085 (`canal='trello'`, `id_externo` = action id), no lugar de uma `trello_acoes`.
@@ -142,7 +145,7 @@ coisas do §6:
    vira `ConversaDoCanal` (comum, recebe `canal`, `operador` e `SaidaDaConversa`) e `LeitorDoTelegram` (a volta, o
    offset, o 409, o descarte do histórico). Os testes do 28.15 passam sem mudança. É a base do contrato do §9 de
    `canais-externos.md`.
-2. **`integrations/trello/cliente.py`:** httpx com o cabeçalho `Authorization: OAuth oauth_consumer_key=…,
+2. **`modules/avisos/adapters/trello.py` (ao lado do `telegram.py`; a saúde em `modules/avisos/infrastructure/trello_saude.py`):** httpx com o cabeçalho `Authorization: OAuth oauth_consumer_key=…,
    oauth_token=…` (nunca na URL), um balde de 60 requisições por 10 s e espera pelo 429. `TRELLO_API_KEY` e
    `TRELLO_TOKEN` entram no `EnvSettings` como `SecretStr` (no molde do `TELEGRAM_BOT_TOKEN`).
 3. **Migração 087:** `trello_cartoes` (`chave` PK `<família>:<fato>`, `card_id`, `lista`, `hash`, `estado`,
@@ -157,19 +160,52 @@ coisas do §6:
      arquivar. Nada por evento, então não há ruído.
    - Os campos personalizados (o Power-Up Custom Fields foi aprovado pelo dono às ~19:05Z) recebem Frente e Prova pela
      API.
+     **Criação sem duplicar (3b/6):** o banco vai primeiro. A linha `criando` (com `card_id` sentinela `criando:<chave>`,
+     porque a 087 exige `card_id` único e não nulo) é gravada antes do `POST /1/cards`; o `card_id` verdadeiro e o `ativo`
+     só depois. Toda descrição termina com a marca `🤖 chave: <família>:<fato>`; a volta que encontra `criando` lê os
+     cartões abertos da lista (`GET /1/lists/{id}/cards`) e ADOTA o marcado (o mais antigo, se houver mais de um), em vez
+     de criar outro. Cartão sem marca nunca é tocado. O desfecho só é comentado se o último comentário do cartão ainda
+     não for o da Central ("🤖 ANA · … resolvido").
+
+     **Ficam para um passo seguinte** (o 3/6 não os escreve): o espelho cria e atualiza nome, descrição e lista; Frente e
+     Prova pelos campos personalizados entram depois, sem mudar o hash do cartão.
 5. **Marcos e custos:** o mesmo reconciliador mantém um cartão por deploy, quando `commit` e `migration` de
    `/api/health` mudam na partida, e um cartão de custo do dia, no máximo de hora em hora, em Programa.
 6. **`LeitorDoTrello`** (no líder), reconciliação do webhook do §8:
-   `GET /1/boards/{id}/actions?filter=commentCard,updateCard:idList&since=<cursor>`, a cada `trello.reconciliar_s`
-   (300 s com o webhook ligado, 60 s sem ele). O que o webhook já trouxe cai no dedupe pela action id. A
-   tradução é a MESMA função do §8 (`recebida_da_action`). Cada action vira uma `Recebida`. `do_dono` = `idMemberCreator == trello.membro_dono`. O fato é a `chave` do cartão
-   em `trello_cartoes`. Mover para ✅ ou ⛔ vira o texto "sim"/"não" com o fato. A `ConversaDoCanal` faz o resto, com o
-   operador `trello:<idMember>`.
-7. **`SaidaDoTrello`:** `responder` comenta no cartão, `apagar` devolve False (a resposta pede ao dono que apague),
-   `botoes` não existe (a prévia vira o comentário "comente `/executar`"). Isso só acontece com
-   `trello.comando_livre: true`, que é desligado de fábrica. A porta do 28.15 depois da integração da suíte 14
-   (7fd72929), `pergunta_sensivel(ref|None)`, vale igual: com o cartão do `needs_input` como fato (ref = o id da
-   execução) ou sem ref, para o texto curto com pergunta de senha aberta (E6).
+   `GET /1/boards/{id}/actions?filter=commentCard,updateCard:idList,createCard&since=<cursor>`, a cada
+   `trello.reconciliar_s` (300 s com o webhook ligado, 60 s sem ele). O que o webhook já trouxe cai no dedupe pela action
+   id. A tradução é a MESMA função do §8 (`recebida_da_action`, em `infrastructure/trello_leitor.py`). Cada action vira
+   uma `Recebida`, e a `ConversaDoTrello` (a `ConversaDoCanal` com as regras abaixo) faz o resto, com o operador
+   `trello:<idMember>` do AUTOR.
+   - `do_dono` = `idMemberCreator == trello.membro_dono` (ou um de `membros_autorizados`, vazia) E o quadro é um dos
+     `trello.quadros`. O fato é a `chave` do cartão em `trello_cartoes` (cartão sem linha = fato None).
+   - `commentCard` → `mensagem`; `updateCard` que leva um cartão de APROVAÇÃO à lista ✅ ou ⛔ → `botao` "sim"/"não";
+     cartão novo e o resto → `outro`, sem texto. Mover outro tipo de cartão (uma pergunta, um deploy) para ✅ não vale
+     como "sim".
+   - **Aprovar não aprova no Trello** (mover para ✅, "sim", `/aprovar`): a resposta é `para aprovar, confirme no painel ou
+     no Telegram`, e o `decidir` não é chamado. **Vetar veta** (mover para ⛔, "não", `/vetar`): o mesmo serviço do
+     painel, com `decided_by='trello:<id>'`. O membro autorizado pede, mas não decide nem responde pergunta.
+   - A resposta a uma pergunta de execução (texto no cartão `run:…:needs_input` ou `/responder`) passa pela porta
+     `pergunta_sensivel`: credencial pela forma ou pelo contexto é recusada sem eco, e a resposta pede ao dono que apague o
+     comentário.
+   - `/status`, `/pendencias`, `/ajuda` respondem em comentário curto, pelo roteador do 28.15. A `/pendencias` do Trello
+     lista só tipo e id curto (o resumo traz alvo e texto, que não vão a servidor de terceiros).
+   - Anotação sem barra num cartão que não é da Central só é registrada; o comando com barra vale em qualquer cartão.
+   - **Convidado** (autor que não é o dono): nada executa e a linha fica sem texto. Com `responder_convidados: false`
+     (padrão) o Trello fica em silêncio, e o pedido (não a pergunta) vira um aviso ao dono pela fila de avisos existente,
+     sem o texto nem o nome. Com `true`, a pergunta pura (`/status`, `/pendencias`, `/ajuda` ou texto terminado em "?")
+     recebe o resumo do `/status`, e o pedido recebe `recebido; aguardando o dono` mais o aviso. Teto de 10 reações por
+     hora, e a escrita velha (E2) não recebe resposta.
+   - Cursor em `trello_cursor`; na 1ª subida (quadro sem linha) o cursor vai para a action mais nova e o histórico não é
+     tratado. A saúde `trello_leitor_atrasado` compara a última LEITURA que deu certo (`atualizado_em` do cursor, que anda
+     mesmo sem action nova) com 3 × `reconciliar_s`: um quadro quieto não é atraso.
+7. **`SaidaDoTrello`:** `responder` comenta no cartão (o da `ref_mensagem`), `apagar` devolve False (a resposta pede ao dono
+   que apague o comentário) e não há botões. Todo texto leva o prefixo `🤖 ANA · HH:MMZ · `, passa pela redação dos avisos
+   (mais e-mail, @conta e IP) e é cortado em 1000 caracteres; o que a Central escreveu volta como action do dono (o token
+   é o dele) e é ignorado, pelo prefixo e pelo registro de enviadas. Nenhuma resposta copia texto de pedido, de evidência
+   ou de convidado. `/para` e o texto livre ficam atrás de `trello.comando_livre: true` (desligado: `comando livre está
+   desligado no Trello; use o painel ou o Telegram`); ligado, o Trello só MOSTRA a prévia (alvos), sem botão e sem
+   executar: a execução se confirma no painel ou no Telegram. A porta `pergunta_sensivel(ref|None)` vale igual.
 8. **Config `trello:`** (`enabled: false`, `quadros`, `listas`, `membro_dono`, `espelho_s`, `reconciliar_s`,
    `comando_livre: false`, `idade_max_s`, e o bloco `webhook:` do §8). Saúde: `trello_sem_segredo`, `trello_recusado`
    (401/403), `trello_limite` (429 seguidos) e as do §8.
@@ -203,9 +239,16 @@ Fonte das regras do Trello: a página oficial de webhooks (developer.atlassian.c
 
 1. **A rota:** `HEAD` e `POST /api/canais/trello/webhook`, no endereço `https://dev.nvit.com.br/api/canais/trello/webhook`
    (a API fica na raiz do domínio, não sob `/central`). Nada se cadastra no Trello antes do 32.2.
-   - HEAD responde 200 só com `trello.webhook.enabled` E `TRELLO_API_SECRET` presente; senão 404. Assim nunca nasce
-     um webhook que a Central não consiga verificar. O HEAD não traz assinatura.
-   - POST desligado (ou sem o segredo) → 404, como se a rota não existisse.
+   - HEAD responde 200 só com `trello.webhook.enabled` E `TRELLO_API_SECRET` E `trello.webhook.callback_url`; senão 404.
+     Assim nunca nasce um webhook que a Central não consiga verificar. O HEAD não traz assinatura.
+   - POST com o webhook desligado → 404, como se a rota não existisse. **Ligado, mas sem o segredo ou sem a URL → 401,
+     FECHADO** (passo 5, pedido da orquestradora): nada é gravado, e uma "assinatura" feita com segredo vazio não abre
+     a porta.
+   - **O portão** (`main.guarda`): libera sem credencial exatamente `HEAD` e `POST` no caminho `/api/canais/trello/webhook`
+     (o caminho inteiro, sem prefixo e sem curinga: `.../webhook/`, `.../webhook2` e `GET`/`PUT`/`DELETE` seguem 401).
+     `forbidden_host` não é perdoado: com `Host` fora de `server.public_hosts`, mesmo com assinatura certa, 403. A rota
+     não usa o cookie de sessão. Pelo túnel (ADR-073) nada mais se abre: o ingress continua encaminhando o hostname inteiro,
+     e o resto de `/api/` segue pedindo credencial.
 2. **A assinatura, antes de qualquer outra coisa:**
    - lê os BYTES crus do corpo uma vez, com teto de 256 KB, antes do HMAC (acima disso, 413, sem ler o resto);
    - calcula `base64(HMAC-SHA1(TRELLO_API_SECRET, corpo + callback_url))`, em que `callback_url` é a string
@@ -244,19 +287,37 @@ Fonte das regras do Trello: a página oficial de webhooks (developer.atlassian.c
      `tratar_pendentes` do líder passa a responder essas linhas. No Trello, `apagar` é sempre False, então a resposta
      pede ao dono que apague o comentário.
    - Se o processo não é o líder da trava `avisos`, ele grava do mesmo jeito; o líder trata.
+   **Implementado no passo 5** (`infrastructure/trello_webhook.py`, `presentation/webhook_trello.py`): a linha-aviso é
+   `canal_entradas` com `estado = 'aviso'`, `tipo = 'outro'`, sem texto, sem autor e sem cartão; só `commentCard` e
+   `updateCard` com `listAfter` (cartão movido de lista) viram aviso, e a fila é limitada a 500. O líder, a cada volta e ao
+   ser acordado (`LeitorDoTrello.acordar`, um `asyncio.Event`; outro processo grava e o líder trata na volta seguinte), relê
+   cada aviso por `GET /1/actions/{id}`, tira a linha-aviso e chama `registrar` com a `Recebida` da action relida. A
+   action que a API não devolve (404), a de outro quadro e a mais velha que `idade_max_s` ficam `ignorada` sem texto. Uma
+   queda entre tirar a linha-aviso e gravar a action perde só o atalho: a reconciliação ainda a lê.
 6. **Repetição e replay:** a assinatura do Trello não tem hora. Como o corpo é só um aviso (item 5), repetir ou forjar
    um aviso no máximo faz o líder reler uma action que existe, com o autor verdadeiro. Quem capturasse uma chamada poderia repeti-la, mas a
    chave `(canal, id_externo)` da 085 faz a repetição não gravar nada (200, nenhuma segunda linha), e a regra de
    idade barra a action velha. As 3 repetições do próprio Trello caem no mesmo dedupe.
-7. **O cadastro** (no líder, na partida e a cada hora, só com `trello.webhook.enabled` e os três segredos):
-   - `GET /1/tokens/{token}/webhooks`; para cada quadro de `trello.quadros`, garante UM webhook com
+7. **O cadastro** (SEPARADO da flag de receber, decisão da orquestradora de 03/10 ~22:41Z: `trello.webhook.enabled` só faz a
+   ROTA responder e nunca cadastra nada; o primeiro cadastro é manual, `scripts/trello-webhook.py --aplicar`, com o "vai"; o
+   recadastro no líder, na partida e a cada hora, só roda com `trello.webhook.cadastro_automatico`, desligada de fábrica, que
+   se liga depois da prova real; ligar uma flag nunca vale como "vai"). O que ele faz:
+   - `GET /1/members/me/tokens?webhooks=true` (o cliente devolve só os webhooks; o token nunca vai na URL); para cada quadro de `trello.quadros`, garante UM webhook com
      `callbackURL = trello.webhook.callback_url` e a descrição `central-de-aparelhos:<quadro>`;
    - cria o que falta (o Trello faz o HEAD do item 1); recria o que estiver `active: false`;
-   - desligado o `trello.webhook.enabled`, apaga os webhooks com essa descrição (e só eles);
+   - desligar `trello.webhook.enabled` NÃO apaga nada; remover os webhooks com essa descrição (e só eles) é o pedido
+     explícito `scripts/trello-webhook.py --desligar`;
    - o problema `trello_webhook_inativo` aparece quando o cadastro falha ou o Trello marca o webhook inativo. A
      reconciliação segue cobrindo, a 60 s, enquanto ele estiver inativo.
+   - **Implementado no passo 5** (`CadastroDoWebhook`): roda no líder, na partida e a cada hora, só com `webhook.enabled` e
+     os três segredos; a URL tem de ser `https://`, sem parâmetro, âncora, credencial nem espaço. Um webhook que não é da
+     Central (outra descrição) nunca é tocado. **`scripts/trello-webhook.py`**: `--ensaio` (padrão) só LÊ e imprime o plano;
+     `--aplicar` cadastra, e exige `TRELLO_API_SECRET`. Nada foi cadastrado no Trello: só depois do 32.2 implantado, do
+     portal no ar e do "vai" da orquestradora.
+   - **Saúde** do webhook: `trello_webhook_sem_segredo` (config, já existia), `trello_webhook_assinatura_invalida` (5 ou mais
+     em 10 min), `trello_webhook_inativo`; a recusa 401/403 do cadastro sai como `trello_recusado`, a mesma do leitor.
 8. **Config:** `trello.webhook.enabled: false` (separado de `trello.enabled`), `trello.webhook.callback_url` (a URL
-   pública inteira, sem parâmetro e sem segredo) e `trello.webhook.max_bytes: 262144`. O segredo do aplicativo só no
+   pública inteira, sem parâmetro e sem segredo), `trello.webhook.max_bytes: 262144` e `trello.webhook.cadastro_automatico: false`. O segredo do aplicativo só no
    `.env` (`TRELLO_API_SECRET`). Opcional, do lado do dono: na Cloudflare, aceitar nesse caminho só as faixas de IP do
    Trello. É defesa em profundidade, não substitui a assinatura.
 9. **Testes** (`httpx.MockTransport` e o cliente de teste do FastAPI, sem rede):
@@ -277,8 +338,10 @@ Fonte das regras do Trello: a página oficial de webhooks (developer.atlassian.c
    - o resto de `/api/` continua pedindo credencial pelo portão (um teste de regressão do `guarda`);
    - cadastro: cria o que falta, recria o inativo, não toca webhook de outra descrição, apaga os seus ao desligar.
 10. **Rollout:** (a) o 32.2 com o webhook desligado: espelho e reconciliação a 60 s, prova real com um cartão
-    espelhado e um `/aprovar`; (b) com o 29.54 no ar, com senha e provado: gravar `TRELLO_API_SECRET`, ligar
-    `trello.webhook.enabled`, ver o cadastro e um comentário chegar em segundos; (c) a reconciliação desce a 300 s.
+    espelhado e um `/vetar` (o `/aprovar` só pede a confirmação fora do Trello); (b) com o 29.54 no ar e provado: gravar
+    `TRELLO_API_SECRET`, ligar `trello.webhook.enabled` (só a rota), `scripts/trello-webhook.py --ensaio`, depois `--aplicar`
+    com o "vai" da orquestradora, prova de fora e um comentário chegando em segundos; (c) só então
+    `trello.webhook.cadastro_automatico` e a reconciliação a 300 s. O passo a passo está em `operacao.md` §16.
 
 11. **Quadros com convidados** (dono, 03/10 ~20:15Z). O dono convidou duas pessoas, e o Trello grátis não deixa
     limitar o papel delas (podem ser admin do workspace). A regra é da Central:
