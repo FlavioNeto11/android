@@ -249,7 +249,8 @@ Todas as medidas abaixo são PROVED:
   Resposta abaixo do limiar, ou sem a probabilidade da escolha, é defeito da porta (31.19, item 20).
 - **Custo e latência:** as linhas do Jev em `ai_calls` com `ref` `intencao:<run_id>` (chamadas, falhas por motivo, US$
   total e por chamada, tokens, ms p50/p95 pelo posto mais próximo). O cruzamento com as chamadas da sombra que chegaram
-  ao POST deixa de fora as recusas por privacidade, orçamento e desligado, que não viram linha.
+  ao POST deixa de fora as recusas por privacidade, orçamento e desligado, que não viram linha. Esse cruzamento informa e
+  não reprova, porque a `rede` do prazo esgotado antes do POST também não vira linha e a sombra não a distingue.
 - **Zero texto (falha fechado):** cada coluna só aceita o formato dela, e um valor fora do formato vira violação pelo
   nome, nunca pelo conteúdo. O formato de cada coluna é:
   - ids opacos `opt:<12 hex>` ou `opt:nenhuma`;

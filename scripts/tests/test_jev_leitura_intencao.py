@@ -130,6 +130,7 @@ def test_texto_em_qualquer_coluna_falha_fechado_sem_imprimir_o_valor(banco: Banc
     assert codigo == 1 and rel["veredito"] == "FALHOU"
     v = rel["sombra"]["violacoes"]
     assert v["formato:escolha"] == 1 and v["formato:probabilidades"] == 2 and v["formato:ref"] == 1
+    assert "porta:respondida_sem_probabilidade_da_escolha" not in v      # o JSON inválido não conta duas vezes
     assert v["formato:motivo_privacidade"] == 1 and v["formato:fallback_reason"] == 1
     assert rel["sombra"]["intencao"]["fallbacks"]["(fora do vocabulário)"] == 1
     assert rel["gasto"]["falhas"] == {"(fora do vocabulário)": 1}

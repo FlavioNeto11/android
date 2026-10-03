@@ -60,7 +60,9 @@ ORIGEM = "intencao"
 PERGUNTAS = {PERGUNTA_CATALOGO: "R2", PERGUNTA_DESEMPATE: "R3"}
 PROVEDOR_DO_JEV = "jev"
 ORIGEM_NO_GASTO = "decisao_fechada"
-#: As recusas antes do POST não viram linha em `ai_calls` (nada saiu).
+#: As recusas antes do POST não viram linha em `ai_calls` (nada saiu). A exceção que a linha não distingue: a `rede` do
+#: prazo esgotado antes do POST (`decisores.DecisorJev.decidir`) também não vira linha; por isso o cruzamento informa e
+#: não reprova.
 SEM_POST = frozenset({"privacidade", "orcamento", "desligado"})
 #: O limiar que a porta aplica às perguntas da intenção: o padrão de `pergunta_choice`, lido do código.
 LIMIAR = float(inspect.signature(pergunta_choice).parameters["limiar"].default)
@@ -204,10 +206,13 @@ def ler_sombra(linhas: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     confianca = [float(x["confianca"]) for x in intencao if isinstance(x["confianca"], (int, float))]
     p_escolha, maior, sem_p_escolha, respondida_abaixo = [], [], 0, 0
     for x in intencao:
-        probs = _probabilidades(x["probabilidades"]) or {}
+        probs = _probabilidades(x["probabilidades"])
+        if probs is None:                     # já contada como `formato:probabilidades`; não vira também defeito da porta
+            continue
         if probs:
             maior.append(max(probs.values()))
-        if x["fallback_reason"] is None and x["escolha"]:
+        # escolha fora do formato já é `formato:escolha`; a porta só se confere com a escolha opaca
+        if x["fallback_reason"] is None and _opaco(x["escolha"]):
             p = probs.get(str(x["escolha"]))
             if p is None:
                 sem_p_escolha += 1
