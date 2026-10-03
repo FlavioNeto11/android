@@ -774,6 +774,13 @@ continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). D
     recarga`), sem leitura automática, sem chave de administrador e sem chamada de rede; a primeira recarga registrada vira a
     âncora (base 0). Sem limites de fábrica: o teto do Jev é a fatia dele dentro do teto do dia (31.6). `console` vazio: o dono
     informa a página em `ai.balance_consoles.typesafe`.
+    - **Quem usa a conta (I1, 03/10).** Com o decisor `jev` e um consumidor em `shadow` ou `on`, a linha da `typesafe` traz
+      `closed_decision: "shadow" | "on"`, e `in_use` passa a ser verdadeiro.
+      - No cartão de Configuração › IA, o "Usada por" diz "decisão fechada (sombra)", e o chip aparece em Custos.
+      - Fica FORA de `roles` de propósito: o laço de pedidos (`pedidos/infrastructure/saldo.py`) adia o despacho pelo saldo
+        das contas de `roles`, e o saldo do Jev não segura execução.
+      - O consumo é o das linhas `jev` que a sombra grava em `ai_calls`. O cartão mostra até 4 casas abaixo de um centavo
+        (`consumptionUsd`), porque cada chamada custa frações de centavo e virava "US$ 0,00".
   - **Transparência** (`transparencia.py`). Com `ai.decisao_fechada.enabled` e algum consumidor em `shadow` ou `on`, o `notice`
     de `GET /api/ai` nomeia a TypeSafe, os consumidores e as classes que podem sair, e `/api/ai` ganha o bloco
     `decisao_fechada` (consumidores, classes, `send_approved`, `key` e, desde o 31.14, `decider`: `nulo` ou `jev`). A chave é só "configurada" ou "não configurada", pela

@@ -19,6 +19,24 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — I1: o cartão da TypeSafe diz que a decisão fechada a usa e mostra o consumo do Jev (branch feat/i1-cartao-typesafe)
+
+- Antes, o cartão da TypeSafe em Configuração › IA dizia "Nenhuma função usa esta conta · US$ 0,00", mesmo com a sombra do
+  curador ligada no deploy 9. A causa: `roles` só conhece as funções do hub.
+- Mudanças:
+  - `GET /api/ai/balances`: a conta ganha `closed_decision` (`shadow` | `on` | null), e `in_use` passa a contar a decisão
+    fechada;
+  - o "Usada por" mostra "decisão fechada (sombra)", e o chip da TypeSafe aparece em Custos;
+  - o consumo abaixo de um centavo mostra até 4 casas ("US$ 0,003");
+  - o tipo `AiBalanceAccount` ganha `typesafe`, e o nome curto é "TypeSafe".
+- A decisão fechada fica fora de `roles`: o saldo do Jev não adia o despacho dos pedidos.
+- Prova `simulated`:
+  - `tests/test_decisao_fechada_sombra.py::test_a_typesafe_diz_que_a_decisao_fechada_a_usa_e_mostra_o_consumo_do_jev`;
+  - `frontend/src/lib/aiBalance.test.ts`;
+  - navegador contra o backend simulado do worktree (decisor jev, curador em sombra, sem chave e sem classes), em desktop,
+    tablet e 375 px.
+- Real: `not_run`. No central há 0 chamadas jev até 12:11Z: a volta do curador só revisou fluxos.
+
 ## 2026-10-03 — Deploy 9 no central (suíte 9; sombra C0–C1 do curador ligada, T_on do 31.10; curador volta ao padrão)
 
 - Código: main `3dcfc9ac` (suíte 9), sem migração nova (segue a 081):

@@ -2541,7 +2541,7 @@ export interface RunSuccessorRequest {
 
 // =====================================================================================
 // Saldo das contas de IA (ADR-051). Estimativa: última leitura do console − gasto em `ai_calls` desde ela.
-export type AiBalanceAccount = 'anthropic' | 'openai' | 'gemini';
+export type AiBalanceAccount = 'anthropic' | 'openai' | 'gemini' | 'typesafe';
 export type AiBalanceState = 'unknown' | 'ok' | 'low' | 'blocked' | 'exhausted';
 
 export interface AiBalance {
@@ -2555,6 +2555,8 @@ export interface AiBalance {
   key_configured: boolean;
   roles: string[];                 // funções de IA que esta conta paga hoje
   image: boolean;                  // o gerador de imagem da persona usa esta conta
+  // A decisão fechada (Fase 31) usa esta conta (só a typesafe); fora de `roles`, que segura os pedidos pelo saldo.
+  closed_decision?: 'shadow' | 'on' | null;
   in_use: boolean;
   anchor_balance: number | null;
   anchor_at: string | null;
