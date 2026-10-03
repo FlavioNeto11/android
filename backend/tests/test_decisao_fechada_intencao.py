@@ -1,4 +1,4 @@
-"""Sombra da intenção (item 31.9, ADR-069): remoção de entidades que falha fechada, o consumidor R2/R3 e o enxerto no `_plan`.
+"""Sombra da intenção (item 31.9, ADR-069): o filtro sensato da C3 (item 10), o consumidor R2/R3 e o enxerto no `_plan`.
 
 Prova `simulated`: `DecisorFalso`, banco de teste e a RESOLVE de verdade sobre habilidades de teste. Nada toca rede, chave ou a
 TypeSafe, e o envio continua fechado no código (`JEV_RUNTIME_SEND_APPROVED = False`): os testes que precisam de uma porta
@@ -6,6 +6,7 @@ aberta a abrem com `monkeypatch`, e um deles prova que, fechada, o decisor não 
 """
 from __future__ import annotations
 
+import re
 import threading
 import time
 from pathlib import Path
@@ -20,9 +21,10 @@ from app.planning.decisao_fechada.contrato import (
     ID_NENHUMA, PedidoDeDecisao, RespostaDeDecisao, ResultadoDeDecisao, pergunta_choice,
 )
 from app.planning.decisao_fechada.decisores import DecisorFalso
-from app.planning.decisao_fechada.entidades import remover_entidades
+from app.planning.decisao_fechada.entidades import mascarar_catalogo, normalizar, remover_entidades
 from app.planning.decisao_fechada.intencao import (
     PERGUNTA_CATALOGO, PERGUNTA_DESEMPATE, CadeiaObservada, ConsumidorDeIntencao, EntradaDeCatalogo, id_opaco,
+    menciona_c7,
 )
 from app.planning.decisao_fechada.porta import Porta
 from app.planning.decisao_fechada.sombra import RepositorioDeSombra, observador_de_sombra
@@ -36,14 +38,13 @@ from .test_intencao_resolucao import doc_abrir, publicar_doc
 CFG_SHADOW = DecisaoFechadaCfg(enabled=True, consumidores={"intencao": "shadow"})
 
 
-# ================================================================== 1. remover_entidades
+# ================================================================== 1. remover_entidades: o filtro sensato (ADR-069 item 10)
 @pytest.mark.parametrize("texto, esperado", [
     ("abra o app e curta o primeiro post", "abra o app e curta o primeiro post"),
-    ("abra o instagram e curta o primeiro post", "abra o [termo] e curta o primeiro post"),    # app sai só pelo vocabulário
+    ("abra o instagram e curta o primeiro post", "abra o instagram e curta o primeiro post"),
     ("curta 25 posts do feed", "curta [numero] posts do feed"),                   # todo número vira marcador
-    ("curta o post de Maria Silva", "curta o post de [termo]"),
-    ("Maria, abra o aplicativo", "[termo], abra o aplicativo"),
-    ("Abra o app. Depois mande para Joana", "Abra o app. Depois mande para [termo]"),
+    ("curta o post de Maria Silva", "curta o post de Maria Silva"),               # nome passa
+    ("Maria, abra o aplicativo", "Maria, abra o aplicativo"),
     ("mande para @fulano.silva agora", "mande para [usuario] agora"),
     ("escreva para fulano@exemplo.com hoje", "escreva para [email] hoje"),
     ("ligue para (11) 99999-9999 agora", "ligue para [telefone] agora"),
@@ -51,14 +52,20 @@ CFG_SHADOW = DecisaoFechadaCfg(enabled=True, consumidores={"intencao": "shadow"}
     ("curta 2500 posts", "curta [numero] posts"),
     ("veja https://exemplo.com/a?b=1 e www.exemplo.org", "veja [link] e [link]"),
     ("abra instagram.com/fulano", "abra [link]"),
-    ('comente "adorei o post" no feed', "comente [texto] no feed"),
+    ('comente "adorei o post" no feed', "comente [texto] no feed"),         # o texto a escrever não ajuda a escolher
     ("poste 'bom dia pessoal' no feed", "poste [texto] no feed"),          # aspas simples ASCII
     ("escreva `oi tudo bem` agora", "escreva [texto] agora"),
-    ("fale com D'Ávila agora", "fale com [termo] agora"),                 # o apóstrofo não abre trecho
+    ('comente "adorei a foto no feed', "comente [texto]"),                  # a aspa que sobra: o resto é o texto
+    ("fale com D'Ávila agora", "fale com D'Ávila agora"),                 # o apóstrofo não abre trecho
+    ("siga joana_silva99", "siga [termo]"),         # letra e dígito: o token inteiro (reverificação B)
+    ("curta dois posts", "curta [numero] posts"),                        # UM numeral: marcador
+    ("espere meia hora", "espere [numero] hora"),
+    ("abra o e-mail", "abra o e-mail"),
     ("segunda, curta o post", "segunda, curta o post"),
 ])
 def test_remover_entidades_troca_por_marcador_fixo(texto: str, esperado: str) -> None:
     assert remover_entidades(texto) == esperado
+    assert remover_entidades(esperado) == esperado                      # idempotente
 
 
 @pytest.mark.parametrize("texto", [
@@ -95,44 +102,48 @@ def test_remover_entidades_nao_aceita_entrada_que_nao_e_texto() -> None:
 
 def test_marcadores_nao_disparam_a_conferencia_e_o_resultado_e_estavel() -> None:
     primeiro = remover_entidades("curta o post de Ana Souza e mande para @ana.souza fulano@exemplo.com 5551234")
-    assert primeiro is not None
-    assert "Ana" not in primeiro and "@" not in primeiro and "5551234" not in primeiro
+    assert primeiro == "curta o post de Ana Souza e mande para [usuario] [email] [numero]"
     assert remover_entidades(primeiro) == primeiro                 # idempotente: o que já está limpo continua limpo
 
 
-#: Os vazamentos medidos pela revisão independente (`.claude/handoffs/revisao-31-9.md`, achados 1, 3 e os importantes) e o
-#: que NÃO pode sobrar de cada um. Com a lista de permissão, cada texto ou recusa (None) ou sai sem o termo.
-_VAZAMENTOS = [
-    ("joana curtiu isso", ["joana"]),
-    ("mande para joana silva", ["joana", "silva"]),
-    ("fale com joão da silva", ["joão", "silva"]),
-    ("Joana curtiu isso", ["Joana"]),
-    ("Joana: abra o app", ["Joana"]),
-    ("Joana! abra o app", ["Joana"]),
-    ("abra o app\nJoana curtiu", ["Joana"]),
-    ("send a message to john", ["john"]),
+#: O PISO (ADR-069 item 10) e o que não ajuda a escolher: e-mail, telefone e documento, também escondidos (ditados,
+#: ofuscados, por homóglifo ou símbolo colado entre letras), o endereço, o texto entre aspas e o símbolo. Cada texto ou
+#: recusa (None) ou sai sem o termo. A C7 é recusada antes, pelo consumidor (`menciona_c7`). Casos da revisão independente
+#: (`.claude/handoffs/revisao-31-9.md`) e da reverificação de 03/10 (`.claude/handoffs/reverificacao-31-9.md`).
+_BARRADOS = [
     ("o número dela é nove nove oito sete", ["nove nove oito"]),
     ("pedido 12", ["12"]),
     ("rua das flores 12", ["flores", "12"]),
     ("moro na rua augusta numero cento e vinte", ["augusta"]),
-    ("siga joana_silva99", ["joana", "silva99"]),
     ("joana(at)gmail(dot)com", ["joana", "gmail"]),
-    ("Mande para o Dr. Silva o relatório", ["Silva"]),
-    ("Mande o arquivo para: Joana", ["Joana"]),
-    ("Para: Joana. Mande o arquivo", ["Joana"]),
-    ("mande para Łukasz", ["Łukasz"]),
-    ("mande para Иван agora", ["Иван"]),
-    ("envie para jOANA", ["OANA"]),
-    ("comente ❤ no post da joana silva", ["joana"]),                 # o TargetExtractor em minúsculas (achado 3)
-    ("abra o chrome e procure strasse da joana souza", ["joana", "souza", "strasse"]),
-    ("distribua: curta o post com a persona lucas", ["lucas"]),     # o nome da persona em minúscula
     ("moro na Rua Augusta 12", ["Augusta", "12"]),
     ("ligue para (11) 9 8765-4321", ["11", "8765"]),
+    ("o telefone dela é noventa e nove, oitenta e sete", ["nove", "sete"]),
+    ("ligue para dez dez dez dez", ["dez"]),
+    ("llama al nueve ocho siete seis", ["nueve", "ocho"]),
+    ("o cpf dela é um e dois e tres e quatro", ["dois", "tres"]),
+    ("um e um e um", ["um e um"]),
+    ("moro na quadra dez casa sete lote quatro", ["dez", "sete"]),
+    ("fica na Vila Madalena casa nove", ["madalena", "nove"]),
+    ("entregue na Calle Mayor 5, Madrid", ["mayor", "madrid"]),
+    ("meu CPF: 123.456.789-09", ["123", "789"]),
+    ("joana {at} gmail {dot} com", ["joana", "gmail"]),
+    ("comente „bom dia a todos“ no post", ["dia a todos"]),
+    ("comente 「parabéns pelo post」", ["pelo post"]),
+    ("comente ‹adorei o novo post›", ["o novo post"]),
+    ("comente ″curta todos os posts″", ["curta todos"]),
+    ('comente "adorei a foto no feed', ["a foto"]),                  # aspa que sobra
+    ("comente “bom dia“ no post", ["bom dia"]),
+    ("mande ❤ para 🇯🇴🇦🇳🇦", ["🇯🇴🇦🇳🇦"]),
+    ("envie para ⠚⠕⠁⠝⠁", ["⠚⠕⠁⠝⠁"]),
+    ("mande para 🅹🅾🅰🅽🅰 agora", ["🅹🅾🅰🅽🅰"]),
+    ("mande para Јoana", ["oana"]),                                   # "Ј" cirílico: alfabetos misturados
+    ("mande para jo❤ana", ["jo", "ana"]),                            # símbolo colado entre letras
 ]
 
 
-@pytest.mark.parametrize("texto, proibidos", _VAZAMENTOS)
-def test_lista_de_permissao_nao_deixa_nome_nem_identificador_passar(texto: str, proibidos: list[str]) -> None:
+@pytest.mark.parametrize("texto, proibidos", _BARRADOS)
+def test_o_piso_nao_deixa_passar_email_telefone_documento_nem_endereco(texto: str, proibidos: list[str]) -> None:
     resultado = remover_entidades(texto)
     if resultado is not None:
         for termo in proibidos:
@@ -140,17 +151,84 @@ def test_lista_de_permissao_nao_deixa_nome_nem_identificador_passar(texto: str, 
         assert remover_entidades(resultado) == resultado                    # idempotente
 
 
-def test_vocabulario_do_catalogo_entra_na_lista_permitida_e_o_limiar_recusa() -> None:
-    from app.planning.decisao_fechada.entidades import vocabulario_de
-    assert remover_entidades("abra o qamessenger agora") == "abra o [termo] agora"
-    assert remover_entidades("abra o qamessenger agora", vocabulario=vocabulario_de(["QA Messenger: QAMessenger"])) == \
-        "abra o qamessenger agora"
-    # nome de app não é lista fixa (ADR-052): sai pelo id do app que o consumidor soma ao vocabulário
-    assert remover_entidades("abra o instagram e curta o post", vocabulario=vocabulario_de(["com.instagram.android"])) == \
-        "abra o instagram e curta o post"
-    # metade ou mais desconhecida: o que sobra é quase só máscara, e o texto inteiro não sai
-    assert remover_entidades("joana pedro marcos ana") is None
-    assert remover_entidades("curta joana") == "curta [termo]"             # 1 de 2: no limite, sai mascarado
+#: O que a primeira redação barrava e a emenda do ADR-069 (item 10) libera: nome de pessoa, nossa ou de terceiro, em
+#: qualquer caixa e alfabeto, depois da normalização (letra circulada, largura cheia, invisível, marca combinante).
+_NOMES_PASSAM = [
+    "joana curtiu isso",
+    "mande para joana silva",
+    "fale com joão da silva",
+    "Joana: abra o app",
+    "abra o app\nJoana curtiu",
+    "send a message to john",
+    "Mande para o Dr. Silva o relatório",
+    "mande para Łukasz",
+    "mande para Иван agora",
+    "envie para jOANA",
+    "comente ❤ no post da joana silva",
+    "distribua: curta o post com a persona lucas",
+    "send a message to Uma",
+    "mande para Do Van Minh",
+    "mande o arquivo para Bruno Dias",
+    "mande para Ⓙⓞⓐⓝⓐ",
+    "mande para ｊｏａｎａ",
+    "curta o post da a​na",
+    "curta o post da j̶o̶a̶n̶a̶",
+]
+_PALAVRAS = re.compile(r"[^\W\d_]+")
+
+
+@pytest.mark.parametrize("texto", _NOMES_PASSAM)
+def test_nome_de_pessoa_passa_pelo_filtro_sensato(texto: str) -> None:
+    """Nenhuma palavra é trocada: o filtro só normaliza (e o símbolo vira `[texto]`)."""
+    resultado = remover_entidades(texto)
+    assert resultado is not None, texto
+    assert set(_PALAVRAS.findall(normalizar(texto))) <= set(_PALAVRAS.findall(resultado)), (texto, resultado)
+    assert remover_entidades(resultado) == resultado
+
+
+def test_sem_lista_de_permissao_nem_recusa_por_proporcao() -> None:
+    """A primeira redação mascarava toda palavra fora de um vocabulário fixo e recusava o texto com metade desconhecida:
+    nos 90 comandos reais de 7 dias (03/10), as 17 recusas que não eram C7 vinham todas daí. Agora a palavra passa."""
+    assert remover_entidades("abra o qamessenger agora") == "abra o qamessenger agora"
+    assert remover_entidades("joana pedro marcos ana") == "joana pedro marcos ana"
+    assert remover_entidades("abra o Outlook e leia o e-mail mais recente") == "abra o Outlook e leia o e-mail mais recente"
+    assert remover_entidades("ABRA O APP E CURTA O POST DA JOANA") == "ABRA O APP E CURTA O POST DA JOANA"
+    longo = "abra o app e mande para joana pedro marcos ana bruno carla diego elisa fabio gina"
+    assert remover_entidades(longo) == longo
+    assert remover_entidades("curta dois posts e comente três") is None   # dois numerais: telefone ou PIN ditado
+
+
+def test_normalizar_e_idempotente_e_tira_o_invisivel() -> None:
+    for t in ("ｓｅｎｈａ", "a​na", "j̶o̶a̶n̶a̶", "Ⓙⓞⓐⓝⓐ", "D´Ávila", "linha outra", "—traço—"):
+        n = normalizar(t)
+        assert normalizar(n) == n
+    assert normalizar("ｓｅｎｈａ") == "senha" and normalizar("a​na") == "ana" and normalizar("j̶o̶a̶n̶a̶") == "joana"
+    assert normalizar("—traço—") == "-traço-" and normalizar("linha outra") == "linha\noutra"
+
+
+@pytest.mark.parametrize("texto, proibidos", [
+    ("Abrir o perfil @nasa e curtir o post", ["@", "nasa"]),
+    ('Abrir o post cuja legenda contém "Ainda sobre Setembro Amarelo', ["ainda", "setembro", "amarelo"]),   # aspa aberta
+    ("Abrir o perfil de @flavio.neto.11, segui-lo e enviar uma DM", ["flavio", "neto", "11", "@"]),
+    ("Comentar 'With your powers combined' no post", ["powers", "combined"]),
+    ("Abrir o perfil 🇯🇴🇦🇳🇦 e curtir", ["🇯🇴"]),
+])
+def test_mascarar_catalogo_tira_handle_e_aspas(texto: str, proibidos: list[str]) -> None:
+    saida = mascarar_catalogo(texto)
+    for termo in proibidos:
+        assert termo.casefold() not in saida.casefold(), (texto, saida)
+    assert mascarar_catalogo(saida) == saida
+
+
+def test_mascarar_catalogo_nao_recusa_mas_esvazia_o_que_nao_mascara() -> None:
+    assert mascarar_catalogo("Abrir o Instagram e curtir o primeiro post") == "Abrir o Instagram e curtir o primeiro post"
+    assert mascarar_catalogo("Abrir as Configurações do Android") == "Abrir as Configurações do Android"
+    assert mascarar_catalogo("Enviar mensagem para Joana Silva no QA Messenger") == \
+        "Enviar mensagem para Joana Silva no QA Messenger"                          # nome passa (ADR-069 item 10)
+    assert mascarar_catalogo("Enviar o endereço Rua Augusta 1500 para o contato") == ""
+    assert mascarar_catalogo("Abrir o perfil da Јoana") == ""                    # alfabetos misturados
+    assert mascarar_catalogo("Curtir os três primeiros posts") == "Curtir os [numero] primeiros posts"
+    assert mascarar_catalogo(None) == ""                                            # type: ignore[arg-type]
 
 
 # ================================================================== 2. consumidor (banco de teste e a RESOLVE de verdade)
@@ -224,6 +302,27 @@ def test_sombra_grava_as_duas_perguntas_e_casa_a_decisao_real_sem_inventar_a_do_
     assert all(r["origem"] == "intencao" and r["classe"] == "C3" and r["ref"] == "run-1" for r in linhas.values())
     # a cadeia ficou num empate sem desfecho: não há decisão real a casar (a pessoa decide depois)
     assert all(r["decisao_real"] is None for r in linhas.values())
+    # RA-2: as etapas AMBIGUOUS da RESOLVE ficam contadas em toda linha da execução
+    assert cadeia.ambiguos >= 1 and all(r["ambiguos"] == cadeia.ambiguos for r in linhas.values())
+    w.fechar()
+
+
+def test_ambiguos_da_resolve_ficam_contados_so_nas_linhas_da_intencao(tmp_path: Path, porta_aberta: None) -> None:
+    """RA-2: a contagem de `StageOutcome.AMBIGUOUS` por execução, também na recusa por privacidade; só número, só intenção."""
+    w = Mundo2(tmp_path, DecisorFalso())
+    nada = cadeia_de(w.m.planejador.resolve_intent("faca um bolo de cenoura", None))
+    assert nada.ambiguos == 0
+    w.consumidor.observar(run_id="run-0", comando="faca um bolo de cenoura", app=None, catalogo=w.catalogo(), cadeia=nada)
+    w.consumidor.observar(run_id="run-priv", comando="fale com fulano @ exemplo", app=None, catalogo=w.catalogo(),
+                          cadeia=CadeiaObservada(sem_casamento=True, ambiguos=2))
+    w.porta.aguardar_sombras()
+    por_run = {r["ref"]: r for r in w.linhas()}
+    assert por_run["run-0"]["ambiguos"] == 0
+    assert por_run["run-priv"]["fallback_reason"] == "privacidade" and por_run["run-priv"]["ambiguos"] == 2
+    assert w.sombra.anotar_ambiguos(5, ref="run-0") == 0                 # já anotada: não sobrescreve
+    for ruim in (-1, True, 1.5, "2"):
+        with pytest.raises(ValueError):
+            w.sombra.anotar_ambiguos(ruim, ref="run-0")                  # type: ignore[arg-type]
     w.fechar()
 
 
@@ -270,7 +369,7 @@ def test_comando_com_entidade_residual_nao_sai_e_a_sombra_registra_privacidade(t
     w.fechar()
 
 
-def test_estado_que_sai_nao_tem_entidade_nem_segredo(tmp_path: Path, porta_aberta: None) -> None:
+def test_estado_que_sai_nao_tem_email_telefone_nem_segredo(tmp_path: Path, porta_aberta: None) -> None:
     falso = DecisorFalso()
     w = Mundo2(tmp_path, falso)
     w.consumidor.observar(run_id="run-e", comando="curta o post de Maria Silva @maria.s fulano@exemplo.com 987654321",
@@ -278,7 +377,7 @@ def test_estado_que_sai_nao_tem_entidade_nem_segredo(tmp_path: Path, porta_abert
     w.porta.aguardar_sombras()
     assert len(falso.chamadas) == 1
     comando = falso.chamadas[0].estado["comando"]
-    assert comando == "curta o post de [termo] [usuario] [email] [numero]"
+    assert comando == "curta o post de Maria Silva [usuario] [email] [numero]"        # o nome fica (ADR-069 item 10)
     w.fechar()
 
 
@@ -382,18 +481,19 @@ def test_c7_em_prosa_nunca_sai_e_a_sombra_registra_privacidade(tmp_path: Path, p
     w.fechar()
 
 
-def test_nome_de_terceiro_no_comando_social_sai_mascarado(tmp_path: Path, porta_aberta: None) -> None:
-    """O catálogo social é C2 (ADR-069; a exclusão social/persona da revisão foi REFUTADA). O nome de terceiro dentro do
-    comando social é que não pode sair: a lista de permissão o troca, em qualquer caixa."""
+def test_nome_no_comando_social_sai_com_o_filtro_sensato(tmp_path: Path, porta_aberta: None) -> None:
+    """O catálogo social é C2 (ADR-069; a exclusão social/persona da revisão foi REFUTADA), e desde o item 10 o nome de
+    pessoa no comando também sai: o D-J5 veta o Jev DECIDIR por persona, não o dado. O que não ajuda (símbolo) vira marcador."""
     falso = DecisorFalso()
     w = Mundo2(tmp_path, falso)
     for i, comando in enumerate(("siga a joana no instagram", "comente que lindo no post da joana",
-                                 "Comente ❤️ no post da Joana Silva")):
+                                 "Comente ❤ no post da Joana Silva")):
         w.consumidor.observar(run_id=f"run-s{i}", comando=comando, app="com.instagram.android", catalogo=w.catalogo(),
                               cadeia=CadeiaObservada(sem_casamento=True))
     w.porta.aguardar_sombras()
     enviados = [c.estado.get("comando", "") for c in falso.chamadas]
-    assert enviados and all("joana" not in e.casefold() and "silva" not in e.casefold() for e in enviados), enviados
+    assert enviados == ["siga a joana no instagram", "comente que lindo no post da joana",
+                        "Comente [texto] no post da Joana Silva"], enviados
     w.fechar()
 
 
@@ -407,6 +507,63 @@ def test_catalogo_vazio_ou_acima_do_teto_nao_manda_r2(tmp_path: Path, porta_aber
     pedido = w.consumidor.pedido(run_id="r", comando="abra o app", app=None, catalogo=limite, cadeia=cadeia)
     assert pedido is not None and len(pedido.perguntas[0].opcoes) == 255   # 254 + `nenhuma`
     w.fechar()
+
+
+def test_a_c3_nao_depende_do_catalogo(tmp_path: Path) -> None:
+    """Reverificação de 03/10, causa 1: o vocabulário da primeira redação crescia com o nome de fluxo legado (o resumo de
+    um comando antigo, com o destino dentro). Hoje o comando sai igual com ou sem esses fluxos no catálogo."""
+    w = Mundo2(tmp_path, DecisorFalso())
+    extra = [EntradaDeCatalogo("flow:x", "Enviar mensagem para Joana Silva no QA Messenger"),
+             EntradaDeCatalogo("flow:y", "Abrir o perfil de @flavio.neto.11 e seguir"),
+             EntradaDeCatalogo("flow:z", "Curtir o post da persona Lucas", "lucas fornalhaskate")]
+    cadeia = CadeiaObservada(sem_casamento=True)
+    for comando in ("curta o post da joana silva", "fale com @flavio.neto.11 sobre o post", "curta o post do lucas"):
+        com, sem = (w.consumidor.pedido(run_id="r", comando=comando, app="com.pocqa.messenger", catalogo=cat,
+                                        cadeia=cadeia) for cat in ([*w.catalogo(), *extra], w.catalogo()))
+        assert com is not None and sem is not None
+        assert com.estado.get("comando") == sem.estado.get("comando"), comando
+        assert "@" not in com.estado.get("comando", "")
+    w.fechar()
+
+
+def test_opcoes_da_r2_saem_mascaradas_antes_do_corte(tmp_path: Path) -> None:
+    """O corte em `_DESCRICAO_MAX` vem DEPOIS da máscara: o corte não deixa meio handle nem meia aspa, e o @handle e a
+    legenda entre aspas do nome de um fluxo não vão nas opções (reverificação, achado à parte). O nome de pessoa vai."""
+    w = Mundo2(tmp_path, DecisorFalso())
+    longo = "Abrir " + "o feed e " * 20 + "o perfil @anarabottinipsicopedagoga"       # o "@" no 195: cruza o 200
+    aspa = "Abrir " + "o feed e " * 20 + 'comentar "Ainda sobre Setembro Amarelo de novo" no post'   # a aspa no 195
+    assert longo.index("@") == 195 and aspa.index('"') == 195
+    catalogo = [EntradaDeCatalogo("flow:a", longo), EntradaDeCatalogo("flow:b", aspa),
+                EntradaDeCatalogo("flow:c", "Abrir o perfil @nasa no Instagram"),
+                EntradaDeCatalogo("flow:d", "Enviar mensagem para Joana Silva")]
+    pedido = w.consumidor.pedido(run_id="r", comando="abra o app", app="com.instagram.android", catalogo=catalogo,
+                                 cadeia=CadeiaObservada(sem_casamento=True))
+    assert pedido is not None
+    descricoes = " | ".join(pedido.perguntas[0].opcoes.values()).casefold()
+    for proibido in ("@", "anara", '"', "aind", "nasa", "setembro", "amarelo"):
+        assert proibido not in descricoes, (proibido, descricoes)
+    assert "instagram" in descricoes and "joana silva" in descricoes      # nome de app e nome de pessoa ficam (item 10)
+    w.fechar()
+
+
+@pytest.mark.parametrize("comando", [
+    "minha chave é abra o feed", "pass: nove e oito e sete e seis", "o PIN é 4821", "o P.I.N. é sete e um e dois",
+    "minha senhа é nove e oito", "mi contraseña es rosa1234", "la clave es nueve ocho siete seis",
+    "my passcode is one two three four", "a palavra-passe é nove", "a palavra passe é nove", "pwd = 9876",
+    "two-factor code: four four two one", "the passphrase is post page read", "ｓｅｎｈａ: abra o app",
+    "a sen​ha é abra", "a s e n h a é abra", "as senhas do app", "o mfa chegou", "o segredo é abra o feed",
+    "use the api key", "o código chegou por SMS",
+])
+def test_c7_pega_palavra_chave_em_qualquer_formato(comando: str) -> None:
+    assert menciona_c7(comando), comando
+
+
+@pytest.mark.parametrize("comando", [
+    "passe para o próximo post", "abra o app e curta o primeiro post", "compare os dois posts", "abra o pinterest",
+    "toque no teclado", "escreva bom dia no chat",
+])
+def test_c7_nao_dispara_em_comando_comum(comando: str) -> None:
+    assert not menciona_c7(comando), comando
 
 
 # ================================================================== 3. o `_plan` não espera a sombra
@@ -557,11 +714,11 @@ async def test_execucao_que_falhou_ou_foi_cancelada_nao_e_lida_pela_sombra(harne
     st = harness.state
     run = harness.run(["android-01"], command="abra o aplicativo de configuracoes", mode="plan")
     await harness.wait_run(run.id, statuses=("planned", "needs_input", "failed"), timeout=20.0)
-    assert st.runs._dados_da_sombra(run.id) is not None                       # noqa: SLF001
+    assert st.runs.dados_da_intencao(run.id) is not None
     for status in ("failed", "cancelled"):
         st.db.execute("UPDATE runs SET status=? WHERE id=?", (status, run.id))
-        assert st.runs._dados_da_sombra(run.id) is None                       # noqa: SLF001
-    assert st.runs._dados_da_sombra("nao-existe") is None                     # noqa: SLF001
+        assert st.runs.dados_da_intencao(run.id) is None
+    assert st.runs.dados_da_intencao("nao-existe") is None
 
 
 async def test_desligada_a_sombra_nao_le_nem_resolve_nada(harness: Harness) -> None:
@@ -573,7 +730,7 @@ async def test_desligada_a_sombra_nao_le_nem_resolve_nada(harness: Harness) -> N
         ConsumidorDeIntencao(st.decisao_fechada, st.decisao_sombra),
         resolver=lambda c, p: resolvidos.append(c) or IntentResolution(ResolutionStatus.NO_MATCH),  # type: ignore[func-returns-value]
         catalogo=lambda: ())
-    st.runs._dados_da_sombra = lambda run_id: lidos.append(run_id)             # type: ignore[method-assign]  # noqa: SLF001
+    st.runs.dados_da_intencao = lambda run_id: lidos.append(run_id)             # type: ignore[method-assign]
     st.runs._intencao_em_sombra("r-qualquer")                                  # noqa: SLF001
     await st.runs.sombra_intencao.aguardar()
     assert lidos == [] and resolvidos == []

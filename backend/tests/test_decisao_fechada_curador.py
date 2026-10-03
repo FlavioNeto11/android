@@ -6,7 +6,8 @@ O que se prova, tudo `simulated` (DecisorFalso, banco de teste; `JEV_RUNTIME_SEN
   texto de pessoa nunca saem, e a lista do consumidor é a MESMA da privacidade;
 - só lição e receita (F1); memória, fluxo, tela, voz e preferência não vão;
 - o parecer do curador principal volta INTACTO, e a falha dele sobe sem sombra;
-- a sombra grava a escolha do Jev e casa o parecer do curador como decisão real (concordância, não acerto);
+- a sombra grava a escolha do Jev e NÃO casa decisão real: a do parecer só vale depois de `validar_saida`, e o relatório
+  do 31.10 a lê de `learning_reviews` (`decisao_real_da_triagem`: válido, não simulado, dentro da régua; I2);
 - com a config padrão, ou com o envio fechado no código, o decisor nunca é chamado.
 """
 from __future__ import annotations
@@ -21,8 +22,9 @@ from app.config import DecisaoFechadaCfg
 from app.db import Database
 from app.planning.decisao_fechada import privacidade
 from app.planning.decisao_fechada.contrato import ID_NENHUMA, RespostaDeDecisao
-from app.planning.decisao_fechada.curador import (CAMPOS, PERGUNTA_TRIAGEM, TRIAGEM_DO_PARECER,
-                                                  CuradorComTriagemEmSombra, TriagemDoCurador, estado_do_dossie)
+from app.planning.decisao_fechada.curador import (CAMPOS, OPCOES, PERGUNTA_TRIAGEM, TRIAGEM_DO_PARECER,
+                                                  CuradorComTriagemEmSombra, TriagemDoCurador, decisao_real_da_triagem,
+                                                  estado_do_dossie)
 from app.planning.decisao_fechada.decisores import DecisorFalso
 from app.planning.decisao_fechada.porta import Porta
 from app.planning.decisao_fechada.sombra import RepositorioDeSombra, observador_de_sombra
@@ -67,21 +69,23 @@ class Pedido:
 @dataclass
 class Resposta:
     bruto: dict[str, object]
+    simulado: bool | None = None                 # por resposta (`RespostaDeRevisao.simulado`); None = vale o do adaptador
 
 
 @dataclass
 class CuradorFalso:
     provedor: str = "anthropic"
     simulado: bool = False
-    decisao: str = "observar"
+    decisao: object = "observar"
     erro: Exception | None = None
+    simulado_da_resposta: bool | None = None
     pedidos: list[Pedido] = field(default_factory=list)
 
     def revisar(self, pedido: Pedido) -> Resposta:
         self.pedidos.append(pedido)
         if self.erro is not None:
             raise self.erro
-        return Resposta({"decisao": self.decisao, "evidencias_citadas": ["ev:2"]})
+        return Resposta({"decisao": self.decisao, "evidencias_citadas": ["ev:2"]}, self.simulado_da_resposta)
 
 
 @pytest.fixture
@@ -102,7 +106,7 @@ def _montar(db: Database, decisor: DecisorFalso, cfg: DecisaoFechadaCfg | None =
     porta = Porta(decisor, cfg=cfg if cfg is not None else DecisaoFechadaCfg(enabled=True,
                                                                              consumidores={"curador": "shadow"}),
                   observador=observador_de_sombra(repo))
-    return TriagemDoCurador(porta, repo, espera_s=5.0), porta, repo
+    return TriagemDoCurador(porta), porta, repo
 
 
 # ------------------------------------------------------------------ o estado
@@ -144,7 +148,7 @@ def test_pedido_c0_em_shadow_com_choice_e_nenhuma() -> None:
 
 
 # ------------------------------------------------------------------ o decorador e a sombra
-def test_parecer_volta_intacto_e_a_sombra_grava_e_casa(db: Database, porta_aberta: None) -> None:
+def test_parecer_volta_intacto_e_a_sombra_grava_sem_decisao_real(db: Database, porta_aberta: None) -> None:
     decisor = DecisorFalso({PERGUNTA_TRIAGEM: RespostaDeDecisao(escolha="opt:rebaixar",
                                                                 probabilidades={"opt:rebaixar": 0.9}, confianca=0.9)})
     triagem, porta, _ = _montar(db, decisor)
@@ -154,25 +158,25 @@ def test_parecer_volta_intacto_e_a_sombra_grava_e_casa(db: Database, porta_abert
     assert resposta.bruto == {"decisao": "observar", "evidencias_citadas": ["ev:2"]}
     assert (curador.provedor, curador.simulado) == ("anthropic", False)
     porta.aguardar_sombras()
-    triagem.aguardar()
     [chamada] = decisor.chamadas
     assert dict(chamada.estado) == estado_do_dossie(_dossie())
     [linha] = db.query("SELECT * FROM decisao_fechada_sombra")
     assert (linha["origem"], linha["classe"], linha["pergunta_id"], linha["ref"]) == ("curador", "C0",
                                                                                    PERGUNTA_TRIAGEM, HASH)
-    assert (linha["escolha"], linha["decisao_real"]) == ("opt:rebaixar", "opt:revisar")   # discordou do curador
+    # I2: o parecer ainda não passou por `validar_saida` (roda DEPOIS do `revisar`): nada é casado na hora; o relatório
+    # do 31.10 lê a decisão real de `learning_reviews` pelo `ref` (o `dossie_hash`)
+    assert (linha["escolha"], linha["decisao_real"]) == ("opt:rebaixar", None)
     assert TEXTO_DA_PESSOA not in json.dumps([dict(r) for r in db.query("SELECT * FROM decisao_fechada_sombra")])
 
 
-@pytest.mark.parametrize("decisao", ["aprovar", "possivelmente_obsoleto", "substituir", "fundir", "inventada"])
-def test_parecer_sem_par_na_triagem_grava_a_sombra_sem_decisao_real(db: Database, porta_aberta: None,
-                                                                     decisao: str) -> None:
+@pytest.mark.parametrize("decisao", ["aprovar", "observar", "inventada", None])
+def test_nenhum_parecer_casa_na_hora_nem_o_simulado(db: Database, porta_aberta: None, decisao: object) -> None:
     decisor = DecisorFalso({PERGUNTA_TRIAGEM: RespostaDeDecisao(escolha="opt:manter",
                                                                 probabilidades={"opt:manter": 0.9}, confianca=0.9)})
     triagem, porta, _ = _montar(db, decisor)
-    CuradorComTriagemEmSombra(CuradorFalso(decisao=decisao), triagem).revisar(Pedido(_dossie()))
+    curador = CuradorComTriagemEmSombra(CuradorFalso(decisao=decisao, simulado_da_resposta=True), triagem)
+    curador.revisar(Pedido(_dossie()))
     porta.aguardar_sombras()
-    triagem.aguardar()
     [linha] = db.query("SELECT escolha, decisao_real FROM decisao_fechada_sombra")
     assert (linha["escolha"], linha["decisao_real"]) == ("opt:manter", None)
 
@@ -203,7 +207,7 @@ def test_config_padrao_ou_desligada_nao_chama_ninguem(db: Database, porta_aberta
     decisor = DecisorFalso()
     repo = RepositorioDeSombra(db)
     porta = Porta(decisor, cfg=cfg, observador=observador_de_sombra(repo))
-    triagem = TriagemDoCurador(porta, repo)
+    triagem = TriagemDoCurador(porta)
     assert not triagem.ativo()
     CuradorComTriagemEmSombra(CuradorFalso(), triagem).revisar(Pedido(_dossie()))
     porta.aguardar_sombras()
@@ -216,7 +220,6 @@ def test_com_o_envio_fechado_no_codigo_o_decisor_nao_e_chamado(db: Database) -> 
     triagem, porta, _ = _montar(db, decisor)
     CuradorComTriagemEmSombra(CuradorFalso(), triagem).revisar(Pedido(_dossie()))
     porta.aguardar_sombras()
-    triagem.aguardar()
     assert decisor.chamadas == []
     linhas = db.query("SELECT fallback_reason, escolha FROM decisao_fechada_sombra")
     assert [(r["fallback_reason"], r["escolha"]) for r in linhas] in ([], [("privacidade", None)])
@@ -224,7 +227,7 @@ def test_com_o_envio_fechado_no_codigo_o_decisor_nao_e_chamado(db: Database) -> 
 
 async def test_o_appstate_embrulha_o_curador_do_hub_com_a_triagem(harness: Harness) -> None:
     """Ligação (suíte 5): o aprendizado recebe o curador do hub (30.12) embrulhado pela triagem em sombra, e a triagem usa
-    a porta e a sombra do próprio `AppState`. De fábrica, inerte: nada é consultado."""
+    a porta do próprio `AppState`. De fábrica, inerte: nada é consultado."""
     st = harness.state
     laco = next(x for x in st.learning.lacos if x.nome == "curador")
     curador = laco.curador._curador                                            # type: ignore[attr-defined]  # noqa: SLF001
@@ -232,5 +235,38 @@ async def test_o_appstate_embrulha_o_curador_do_hub_com_a_triagem(harness: Harne
     assert curador._interno is st._curador_do_hub                              # noqa: SLF001
     assert curador._triagem is st._triagem_do_curador                           # noqa: SLF001
     assert st._triagem_do_curador._porta is st.decisao_fechada                  # noqa: SLF001
-    assert st._triagem_do_curador._repositorio is st.decisao_sombra             # noqa: SLF001
     assert not st._triagem_do_curador.ativo()
+
+
+def test_porta_encerrada_a_triagem_nao_grava_nada(db: Database, porta_aberta: None) -> None:
+    """Desligamento (I1): sem casamento, a triagem não tem thread; depois de `Porta.encerrar` nada novo é consultado nem
+    gravado, e o parecer do curador principal continua voltando."""
+    decisor = DecisorFalso()
+    triagem, porta, _ = _montar(db, decisor)
+    porta.encerrar()
+    resposta = CuradorComTriagemEmSombra(CuradorFalso(), triagem).revisar(Pedido(_dossie()))
+    porta.aguardar_sombras()
+    assert resposta.bruto["decisao"] == "observar"
+    assert decisor.chamadas == [] and db.query("SELECT id FROM decisao_fechada_sombra") == []
+
+
+# ------------------------------------------------------------------ a decisão real (I2): só parecer VÁLIDO, real e da régua
+@pytest.mark.parametrize("decisao, real", list(TRIAGEM_DO_PARECER.items()))
+def test_parecer_valido_e_real_vira_decisao_da_regua(decisao: str, real: str) -> None:
+    assert decisao_real_da_triagem(decisao, validade="ok", simulado=0) == real and real in OPCOES
+
+
+@pytest.mark.parametrize("validade", ["invalida:citacao", "invalida:alvo", "recusada:custo", "", None])
+def test_parecer_invalido_ou_recusado_nao_e_decisao_real(validade: object) -> None:
+    assert decisao_real_da_triagem("rebaixar", validade=validade, simulado=0) is None
+
+
+@pytest.mark.parametrize("simulado", [1, True])
+def test_parecer_simulado_nao_e_decisao_real(simulado: object) -> None:
+    assert decisao_real_da_triagem("rebaixar", validade="ok", simulado=simulado) is None
+
+
+@pytest.mark.parametrize("decisao", ["aprovar", "possivelmente_obsoleto", "substituir", "fundir", "inventada", ["manter"],
+                                     7, None, {"id": "manter"}, "MANTER", ""])
+def test_parecer_sem_par_na_regua_nao_e_decisao_real(decisao: object) -> None:
+    assert decisao_real_da_triagem(decisao, validade="ok", simulado=0) is None

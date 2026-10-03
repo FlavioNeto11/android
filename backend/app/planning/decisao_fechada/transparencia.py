@@ -17,6 +17,10 @@ if TYPE_CHECKING:
     from ...config import DecisaoFechadaCfg
 
 NOME = "Jev (TypeSafe System One)"
+#: Quem manda mais que ids e categorias, e o quê: a intenção (31.9) leva o catálogo do dono (nomes e descrições, C2) e o
+#: comando já sanitizado (C3). A C3 sai só de quem a privacidade libera (`C3_ORIGENS`, em `shadow`); as demais origens
+#: (curador e os consumidores futuros) mandam C0/C1.
+_ORIGENS_C2 = frozenset({"intencao"})
 
 
 def consumidores_ativos(cfg: DecisaoFechadaCfg | None) -> dict[str, str]:
@@ -32,6 +36,21 @@ def classes_que_podem_sair(cfg: DecisaoFechadaCfg | None) -> list[str]:
     if cfg is not None and cfg.classes_permitidas is not None:
         liberadas = liberadas & frozenset(cfg.classes_permitidas)
     return sorted(liberadas)
+
+
+def o_que_sai(cfg: DecisaoFechadaCfg | None) -> list[str]:
+    """O que de fato sai, em palavras, para os consumidores LIGADOS: sempre "ids e categorias" (C0 e C1) e, quando as classes
+    efetivas (teto ∩ YAML) incluem C2 ou C3 e um consumidor ligado as manda, o catálogo do dono (C2) e o comando
+    filtrado (C3: e-mail, telefone, @handle, link e número mascarados; o nome fica, ADR-069 item 10). O aviso não
+    promete menos do que sai."""
+    ativos = consumidores_ativos(cfg)
+    classes = set(classes_que_podem_sair(cfg))
+    saidas = ["ids e categorias"]
+    if "C2" in classes and any(o in _ORIGENS_C2 for o in ativos):
+        saidas.append("nomes e descrições do catálogo do dono")
+    if "C3" in classes and any(o in privacidade.C3_ORIGENS and m in privacidade.C3_MODOS for o, m in ativos.items()):
+        saidas.append("o comando do dono filtrado (e-mail, telefone, @handle, link e número mascarados; nome fica)")
+    return saidas
 
 
 def status(cfg: DecisaoFechadaCfg | None, *, chave_configurada: bool) -> dict[str, object] | None:
@@ -53,8 +72,9 @@ def aviso(cfg: DecisaoFechadaCfg | None, *, chave_configurada: bool) -> str | No
     consumidores = ", ".join(f"{o} ({m})" for o, m in ativos.items())
     classes = ", ".join(classes_que_podem_sair(cfg))
     chave = "configurada" if chave_configurada else "não configurada"
+    saidas = ", ".join(o_que_sai(cfg))
     frase = (f"Provedor externo {NOME}: decisões por conjunto fechado dos consumidores {consumidores}; dados das classes "
-             f"{classes} podem sair para a TypeSafe (ids e categorias, nunca texto livre de persona nem tela sensível). "
+             f"{classes} podem sair para a TypeSafe ({saidas}; nunca texto livre de persona nem tela sensível). "
              f"Chave da TypeSafe: {chave}.")
     if not privacidade.JEV_RUNTIME_SEND_APPROVED:
         frase += " Envio ainda FECHADO no código (JEV_RUNTIME_SEND_APPROVED): nada sai enquanto o dono não aprovar."
