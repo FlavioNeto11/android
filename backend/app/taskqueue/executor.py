@@ -63,9 +63,10 @@ from .projecao import HistoricoDeAcoes, app_da_etapa
 from .recipes import (READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, eh_generica,
                       filhos_rotulados, hash_generico_da_linha, unique_selectors)
 from .repository import Repository
-from .saidas import (ChaveDeTentativa, LeituraInvalida, LeituraSemTexto, LeituraVisualRecusada,
-                     args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor, ler_valor_visual, nomes_citados,
-                     razao_sem_segredo, texto_da_tela, texto_do_elemento, triagem, variaveis_da_receita)
+from .saidas import (RECUSAS_DETERMINISTICAS, ChaveDeTentativa, LeituraInvalida, LeituraSemTexto,
+                     LeituraVisualRecusada, args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor,
+                     ler_valor_visual, nomes_citados, razao_sem_segredo, texto_da_tela, texto_do_elemento, triagem,
+                     variaveis_da_receita)
 
 log = logging.getLogger("poc.executor")
 
@@ -213,6 +214,9 @@ class StepOutcome:
     delivery_level: DeliveryLevel | None = None
     items: list[str] | None = None   # etapa de coleta: itens lidos (o scheduler expande o bloco for_each com eles)
     plan_defect: bool = False        # a pós-condição não é comprovável por tela: repetir ou refazer o MESMO plano não resolve
+    #: 29.49: refazer a navegação (a recuperação automática) leva à mesma tela e ao mesmo resultado — a leitura visual
+    #: que o leitor recusou e o ator repetiu. O item termina sem plano revisado; os outros aparelhos seguem.
+    sem_recuperacao: bool = False
     # Item 7.3: motivo ESTRUTURADO do bloqueio, quando o outcome é `waiting_user` por causa da IA (not_configured |
     # billing | refusal) — o scheduler grava isto em `objectives.blocked_kind='ai'` para a interface distinguir
     # "a IA está travando este item" de política/limite/aprovação, em vez de só um texto livre.
@@ -1295,6 +1299,8 @@ class StepExecutor:
         # para `fail_or_retry`. Sem ela o ator alternava recusa e observação sem nunca esbarrar no limite (r-…-178742).
         visuais: dict[str, tuple[str, str, int | None]] = {}
         tentativas_visuais: set[ChaveDeTentativa] = set()
+        # 29.49: a recusa determinística de cada par (tela, âncora) já lido; reler o par vira `repetida` definitiva.
+        recusas_visuais: dict[ChaveDeTentativa, str] = {}
         recusas_de_saida = 0
 
         def faltam_saidas() -> list[str]:
@@ -1404,6 +1410,14 @@ class StepExecutor:
             if step.side_effect and fired:
                 return StepOutcome(Outcome.uncertain, detail)
             return StepOutcome(Outcome.retry if step.attempts < step.max_attempts else Outcome.failed, detail)
+
+        async def falhar_sem_nova_tentativa(detail: str, obs: Observation | None = None) -> StepOutcome:
+            """Como `fail_or_retry`, mas sem nova tentativa nem recuperação: a falha não muda tentando de novo, nem refazendo
+            a navegação até a mesma tela (29.49)."""
+            await evidence(obs, f"Falha: {detail}")
+            if step.side_effect and fired:
+                return StepOutcome(Outcome.uncertain, detail)
+            return StepOutcome(Outcome.failed, detail, sem_recuperacao=True)
 
         async def parar_na_trava(trava: ContaTravada, pacote: str | None) -> StepOutcome:
             """ADR-055: a tela de verificação encerra a etapa SEM tocar, teclar nem reabrir — nem a receita nem o ator
@@ -1895,6 +1909,7 @@ class StepExecutor:
                 erro: str | None = None
                 valor, partes, alvo = "", [], None
                 visual = False                     # a árvore não tem texto e o ator pediu a leitura visual
+                recusa_visual: LeituraVisualRecusada | None = None
                 lido_da_imagem = None
                 motivo_visual: str | None = None   # a triagem recusou o que o leitor viu: segue o caminho da árvore
                 if not saidas_declaradas:
@@ -1965,7 +1980,7 @@ class StepExecutor:
                             fora_do_app=self._tela_fora_do_app(step, obs, app.package),
                             largura=obs.width, altura=obs.height, obter_imagem=obter_imagem,
                             tentativas=tentativas_visuais, tipo_da_tela=reconhecida.tipo if reconhecida else None,
-                            transcrever=transcrever if self._tem_leitor() else None)
+                            transcrever=transcrever if self._tem_leitor() else None, recusas=recusas_visuais)
                     except AIError as exc:
                         return await desfecho_de_ia(exc, obs, "a leitura visual")
                     except LeituraVisualRecusada as rec:
@@ -1978,6 +1993,7 @@ class StepExecutor:
                             # Barreira fechada: o ator recebe SÓ o código — nem a transcrição, nem o valor dele. O
                             # recorte recusado não é guardado, e nada é gravado.
                             erro = rec.rotulo
+                            recusa_visual = rec
                     else:
                         valor, partes, alvo = lido_da_imagem.valor, [lido_da_imagem.valor], lido_da_imagem.alvo
                 if erro is not None:
@@ -1993,6 +2009,18 @@ class StepExecutor:
                     if visual:
                         repo.decision(f"{iid} · {step.title}: leitura visual de '{args.name}' recusada ({erro})",
                                       run_id=run_id, instance_id=iid, step_id=step.id)
+                    if recusa_visual is not None and recusa_visual.definitiva:
+                        # 29.49 (run 89b814): o ator releu a âncora que o leitor já recusou, na mesma tela. Repetir de
+                        # novo, ou numa nova tentativa, daria o mesmo não e só gastaria chamadas (ali: 13, duas no modelo
+                        # de escalonamento, até o teto). A etapa termina como não lida, sem nova tentativa.
+                        return await falhar_sem_nova_tentativa(
+                            f"O valor da etapa não foi lido na tela: a leitura visual de '{args.name}' foi recusada "
+                            f"({recusa_visual.anterior}) e repetida na mesma tela", obs)
+                    if recusa_visual is not None and recusa_visual.codigo in RECUSAS_DETERMINISTICAS:
+                        history.append(
+                            f"(executor) a leitura visual de '{args.name}' foi recusada pelo leitor ({erro}). Ler de novo "
+                            "o mesmo elemento nesta mesma tela não será aceito e encerra a etapa como não lida. Se o "
+                            "objetivo permitir, leia o valor por outro caminho; senão, não repita a leitura.")
                     errors_in_row += 1
                     recusas_de_saida += 1
                     if errors_in_row >= 4 or recusas_de_saida >= 4:

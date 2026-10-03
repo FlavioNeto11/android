@@ -2145,6 +2145,19 @@ material antes e depois (a bancada guarda os recortes e o gabarito) separou a re
 listas de conversa). Ao declarar a região de uma saída, conte com a linha vizinha cortada. A armadilha da medição está
 em `docs/ia.md` §17: com o `app` de um worktree, o `.env` é procurado na raiz do worktree e as chaves vêm vazias.
 
+**Recaída (29.49, 03/10/2026, `real` no android-01, run 89b814).** Com a emenda no ar, o re-run só-leitura do Outlook teve o
+assunto recusado como `truncado` com o assunto inteiro na tela. A prévia do corpo REPETIA o assunto e terminava em "…": o
+valor aparecia em duas linhas, e a regra tratava QUALQUER linha com o valor como "a linha do valor". Pior: o ator releu a
+mesma âncora (`repetida`), a etapa recomeçou numa nova tentativa e refez o caminho até o teto (US$ 0,21, 13 chamadas, 2
+escaladas). Correção:
+- basta uma cópia do valor numa linha inteira, e as cópias cortadas viram linha alheia;
+- a releitura de um par já recusado pela conferência encerra a etapa como não lida, sem nova tentativa nem recuperação.
+
+A bancada, refeita OFFLINE sobre as transcrições que ela guarda (`resultado-*.json` tem `linhas`, `truncado` e
+`campo_lido`), deu 31→32/32 e 29→30/32 com 0/96 falsas, sem chamada paga. A lição: guardar a transcrição do leitor na
+bancada é o que permite medir uma mudança de regra de graça; na produção ela não é guardada (dado de terceiros), e o
+diagnóstico veio da evidência da tentativa (a captura da tela) comparada com a regra.
+
 ### K-080 — Toque por id de elemento velho abre a tela errada: exigir resource_id ou rótulo do mesmo elemento
 
 **Sintoma.** No controle manual do post do lucas (03/10/2026, android-01, `real`), o toque mirando a aba Profile abriu a

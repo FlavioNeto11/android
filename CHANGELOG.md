@@ -19,6 +19,23 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 29.49: o laço do assunto do Outlook (o assunto repetido na prévia cortada; a releitura recusada encerra)
+
+- `taskqueue/saidas.py::conferir_transcricao`: quando o valor aparece em mais de uma linha transcrita (a prévia que repete o
+  assunto e termina em "…"), uma cópia numa linha INTEIRA prova que ele não foi cortado. As cópias cortadas contam como
+  linha alheia para a marca global do leitor. O valor do ator e o campo do leitor cortados continuam recusando. Fica
+  registrado como precisão da emenda do ADR-070 §4 e como recaída do K-079.
+- A releitura recusada:
+  - `ler_valor_visual` guarda a recusa da conferência (`ilegivel`/`truncado`/`nao_confere`) por par (tela, âncora);
+  - a releitura do par sai `repetida` com `anterior` e vira definitiva: a etapa termina como não lida, sem nova tentativa
+    e sem recuperação automática (`StepOutcome.sem_recuperacao`, que o scheduler respeita sem reter os outros aparelhos);
+  - o ator recebe, junto do código, a frase do executor de que reler o mesmo elemento nesta tela não será aceito.
+- Prova:
+  - `simulated`: `tests/test_leitura_visual.py::test_10_29_49_a_previa_que_repete_o_assunto_nao_corta_o_assunto_inteiro`,
+    `::test_7_29_49_repetida_depois_de_recusa_deterministica_e_definitiva` e
+    `::test_29_49_repetir_a_leitura_recusada_encerra_a_etapa_sem_nova_tentativa`; 857 passed nos 33 arquivos afetados;
+  - bancada do 12.5 refeita offline sobre as transcrições guardadas: 31→32/32 e 29→30/32, 0/96 falsas;
+  - `real` no 01: `not_run` (só com a liberação da orquestradora).
 ## 2026-10-03 — Aprendizado: o aviso `learning.needs_person` da receita e do fluxo com a classe do dossiê (30.33-B; branch feat/30-33-aviso-do-fluxo)
 
 - A faixa do aviso de uma fonte nativa passa a ser a classe do dossiê do curador:
