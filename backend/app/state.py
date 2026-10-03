@@ -113,6 +113,8 @@ log = logging.getLogger("poc")
 #: Intervalo do livro-caixa das contas de IA (conciliação + fechamento diário). O relatório de uso da Anthropic é
 #: horário e o da OpenAI diário: 10 min basta para a hora cheia aparecer logo, sem martelar a API de administração.
 SALDOS_INTERVALO_S = 600
+#: 29.50: de quanto em quanto tempo a pergunta sem resposta é conferida. A expiração (24 h) sai até 10 min depois do prazo.
+EXPIRACAO_INTERVALO_S = 600
 # `VERSION` e `commit_em_execucao` moram em `version.py` e são reexportados aqui: o agente do worker
 # precisa dos dois e não pode importar `state` (ele traz banco, IA e a aplicação inteira).
 
@@ -2367,6 +2369,7 @@ class AppState:
                 self._bg.append(asyncio.create_task(self.pedidos.laco(), name="pedidos"))
             self._bg.append(asyncio.create_task(self._laco_do_outbox(), name="outbox"))
             self._bg.append(asyncio.create_task(self._retention_loop(), name="retention"))
+            self._bg.append(asyncio.create_task(self._expiracao_loop(), name="expiracao-needs-input"))
             self._bg.append(asyncio.create_task(self._worker_reaper_loop(), name="worker-reaper"))
             self._bg.append(asyncio.create_task(self._saldos_loop(), name="saldos-de-ia"))
             # Aviso fora do painel: enfileira em qualquer réplica (chave única) e só o líder da trava `avisos` envia.
@@ -2658,6 +2661,27 @@ class AppState:
             await asyncio.to_thread(self.learning.curar)
         except Exception:  # noqa: BLE001 - a curadoria nunca derruba o processo
             log.exception("aprendizado: curadoria")
+        return True
+
+    async def _expiracao_loop(self) -> None:
+        """29.50: a primeira volta é já na subida (o que venceu com o processo parado sai agora), depois a cada
+        `EXPIRACAO_INTERVALO_S`."""
+        while True:
+            await self._expiracao_uma_vez()
+            await asyncio.sleep(EXPIRACAO_INTERVALO_S)
+
+    async def _expiracao_uma_vez(self) -> bool:
+        """Uma volta da expiração das perguntas sem resposta, só no líder da trava da retenção. É faxina do mesmo
+        tipo, e uma trava nova teria de entrar em `TRAVAS_DOS_LACOS`. Idempotente: o cancelamento é condicional ao
+        `needs_input`. Devolve se rodou."""
+        if self._lider(RETENCAO) is None:
+            return False
+        try:
+            expiradas = await asyncio.to_thread(self.runs.expirar_sem_resposta, now())
+            if expiradas:
+                log.info("expiração: %s execução(ões) sem resposta encerradas pelo sistema", len(expiradas))
+        except Exception:  # noqa: BLE001 - a faxina nunca derruba o processo
+            log.exception("expiração das perguntas sem resposta")
         return True
 
     async def _retention_loop(self) -> None:
