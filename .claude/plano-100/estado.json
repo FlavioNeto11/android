@@ -5476,6 +5476,21 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T00:13:49+00:00"
+  },
+  "30.11": {
+   "id": "30.11",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Suíte 5 merge 8413ddc9 (PR #107 765a1b2b; 075 pelo PR #114 465c9c43): curador, aplicação com adaptador simulado (application/curador.py, domain/orcamento_do_curador.py, infrastructure/ligar_curador.py, curador_simulado.py, dossies.py, revisoes_sql.py), modos off/shadow/on, orçamento proporcional α=10%, adendo v0.57; migração 075: learning_reviews.ai_call_id nulável. Suíte 5b 6010 ok, 1 falha de relógio em test_learning_backlog (corrigida no 30.23, 2578f455). Implantado no deploy 3 (central 01351e66, migração 076, conferido no /api/health em 03/10 00:28Z) com o curador em off (sem bloco curador no config.yaml): parecer real not_run.",
+   "arquivos": "backend/app/modules/learning/, backend/migrations/075_revisoes_ai_call_id.sql",
+   "testes": "tests/test_learning_curador.py, tests/test_curador_do_hub.py",
+   "blocker": "",
+   "grupo": "30-aprendizado-vivo",
+   "modelo": "sonnet/opus (worker-impl, worker-arquitetura) + coordenação",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T00:28:47+00:00"
   }
  },
  "rodadas": [
@@ -6648,6 +6663,15 @@
    ],
    "grupos": [
     "sessao:jev-31-x"
+   ]
+  },
+  {
+   "quando": "2026-10-03T00:28:47+00:00",
+   "itens": [
+    "30.11"
+   ],
+   "grupos": [
+    "30-aprendizado-vivo"
    ]
   }
  ]
