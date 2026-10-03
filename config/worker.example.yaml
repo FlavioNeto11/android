@@ -85,6 +85,10 @@ android:
   # (o Outlook): ele só é instalado e aberto em aparelho com `host`. Mudar exige reiniciar o agente e os aparelhos,
   # e o boot seguinte é a frio.
   gpu_mode: swiftshader_indirect
+  # Relatório de falha pendente do emulador (29.55): `never` evita o diálogo de consentimento que prendia a subida sem
+  # janela; "" volta ao padrão do emulador. O dump vai para a pasta de dados do agente (quarentena-crash/) antes de cada
+  # subida, e a subida que ainda assim parar no diálogo fecha `failed` na hora.
+  crash_report_mode: never
   # Sem `-lowram` aqui de propósito: o perfil da imagem já o põe onde ela precisa (google_apis, AOSP). Declarado
   # neste bloco, ele valeria também para a VM da loja (ela não tem como sobrescrever flags), e o perfil da
   # imagem com Play Store roda sem ele.

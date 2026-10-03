@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 29.55: relatório de falha pendente do emulador não prende mais a subida (branch fix/29-55-crash-report)
+
+- Antes: um dump deixado pelo crashpad (`emu-crash-<versão>.db/reports/*.dmp`) fazia toda subida parar no diálogo de
+  consentimento, sem ninguém para responder. A espera ia até o prazo do boot, e a escada de reparo subia de degrau
+  (incidente de 03/10 ~19:00Z, terceiro degrau num aparelho com conta).
+- Agora, no central e no agente:
+  - (a) `android.crash_report_mode` (padrão `never`) → `-crash-report-mode never`;
+  - (b) antes do `Popen`, os dumps vão para `<dados>/quarentena-crash/`, sem apagar; no central, evento no aparelho;
+  - (c) a linha do diálogo nesta subida encerra a espera na hora, com motivo claro. No central, `error` e a marca
+    `bloqueio_de_crash`, e `_pedir_reparo` não age. No agente, `failed` com `motivo: dialogo_de_crash`, que o central
+    reconhece.
+- Config: a chave nova entra com padrão ligado; `config.example.yaml` e `worker.example.yaml` documentam.
+- Doc: `docs/dominios/parque.md` (seção nova) e o aprendizado K-090.
+- Prova `simulated`: `backend/tests/test_relatorio_de_falha_do_emulador.py` (14) e 2 casos em `test_worker_executor.py`.
+  A `real` é `not_run`: subida de um aparelho sem conta com o dump de volta, na vez da orquestradora.
+
 ## 2026-10-03 — Portal público no ar em `https://dev.nvit.com.br/central` (29.54, ADR-073; prova real)
 
 - O hostname entrou em `server.public_hosts` do `config.yaml` do central (21:35:02Z, com cópia em `data/backups/`),

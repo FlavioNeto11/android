@@ -2372,3 +2372,28 @@ painel, a resposta ia antes ao modelo, pelo `POST /api/commands/refine`.
 **Aplicabilidade.** Vigente. Antes de concluir "a credencial é recusada", conferir se a triagem vê o CONTEXTO (a
 pergunta, o campo) e não só o formato do texto. Toda entrada nova de resposta (um canal, uma rota) passa pelas
 mesmas leituras.
+
+### K-090 — Dump de crash pendente prende a subida no diálogo de consentimento, e ninguém responde: `-crash-report-mode never`, a quarentena antes do Popen e a falha rápida sem escada
+
+**Sintoma.** 03/10, ~19:00Z: depois de um reinício por IRQ que derrubou o emulador na saída, os aparelhos do central
+não subiam mais. Cada subida ficava em `booting` até o prazo (480 s), e o log do emulador terminava em `Showing
+crashdialog to get consent`. A escada de reparo chegou ao terceiro degrau num aparelho com conta.
+
+**Causa.** O crashpad do emulador deixou um dump em `%TEMP%\AndroidEmulator\emu-crash-<versão>.db\reports\*.dmp`. Com o
+padrão do emulador ("ask"), toda subida seguinte pergunta se pode enviá-lo. O backend e o agente rodam na sessão 0:
+com ou sem `-no-window`, ninguém vê o diálogo para responder. O processo fica vivo, então o `_wait_boot` só vê
+"ainda subindo" até o prazo, e o `error` resultante alimenta a escada.
+
+**O que funcionou.**
+- No incidente: mover o dump para `data/quarentena-crash/` (o arquivo estava travado por quem o escreveu; o Restart
+  Manager mostrou o dono da trava). Os 03 e 06 subiram com um `start` cada, sem reset.
+- Prevenção (29.55), no central e no agente:
+  - `android.crash_report_mode: never` vira `-crash-report-mode never` (o 37.1.11 aceita `disabled|never|always|ask`);
+  - `emu.start_process` move os dumps pendentes para `<dados>/quarentena-crash/` antes do `Popen`. O TEMP é o do
+    ambiente do emulador, nunca o do processo: um teste com ambiente vazio não alcança os dumps de verdade;
+  - a linha do diálogo no log DESTA subida (desde o offset do spawn) encerra a espera na hora. No central, `error` e
+    `bloqueio_de_crash`, e `_pedir_reparo` não age. No agente, `failed` com `motivo: dialogo_de_crash`, que o central
+    reconhece.
+
+**Aplicabilidade.** Vigente. Aparelho preso em `booting` sem erro: ler o fim de `data/logs/emulator-<avd>.log` antes de
+reiniciar ou resetar. Diálogo do emulador na sessão 0 é parada silenciosa, e esperar o prazo só alimenta a escada.

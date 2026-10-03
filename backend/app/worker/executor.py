@@ -476,7 +476,19 @@ class WorkerExecutor:
             return "absent", "AVD não existe nesta máquina"
         return "stopped", None
 
-    async def _espera_boot(self, spec: DeviceSpec, *, deadline_s: float) -> None:
+    async def _encerrar_no_dialogo_de_crash(self, spec: DeviceSpec) -> None:
+        """29.55 (c): a subida parou no diálogo de consentimento de um relatório de falha pendente. Sem janela, ninguém
+        responde: esperar o prazo do verbo (8 min) era o incidente de 03/10 19:00Z. Encerra o lançador preso e fecha
+        `failed` com motivo próprio, que o central reconhece (`dados.motivo`) para não abrir a escada por isso. A
+        próxima subida tira o dump do caminho antes do `Popen` (`emu.start_process`)."""
+        await asyncio.to_thread(emu.stop_process, self.adb_for(spec), self.pids.get(spec.avd_name), spec.avd_name)
+        self.pids.pop(spec.avd_name, None)
+        dados = {**(await asyncio.to_thread(self.cauda_do_log, spec)), "motivo": emu.MOTIVO_DIALOGO_DE_CRASH}
+        raise VerbFailed("o emulador parou no diálogo de consentimento de um relatório de falha pendente (ninguém está "
+                         "ali para responder); o processo foi encerrado, e a próxima subida tira o relatório do caminho",
+                         dados=dados)
+
+    async def _espera_boot(self, spec: DeviceSpec, *, deadline_s: float, log_offset: int | None = None) -> None:
         """`start`/`wake` só voltam quando o Android está PRONTO pela definição única de `devices/prontidao.py`:
         adb `device` → `boot_completed` → servicemanager → system_server → display.
 
@@ -497,8 +509,11 @@ class WorkerExecutor:
         limite = time.monotonic() + deadline_s
         preparado = False
         ultimo = "o adb não chegou a `device` com o boot concluído"
+        log_path = self.cfg.logs_dir / f"emulator-{spec.avd_name}.log"
         while time.monotonic() < limite:
             await asyncio.sleep(INTERVALO_SONDA_S)
+            if log_offset is not None and await asyncio.to_thread(emu.dialogo_de_crash, log_path, log_offset):
+                await self._encerrar_no_dialogo_de_crash(spec)
             try:
                 # `adb.state()` é subprocess com timeout de 8 s: no laço de eventos ele travava o agente inteiro
                 # a cada sondagem — sem batida, sem responder ping, sem tratar Ack/Cancel (achado #37).
@@ -632,6 +647,9 @@ class WorkerExecutor:
                 # segue até o fim (`to_thread` não é interrompível no meio).
                 tocado = True
                 inicio = self.reservas.relogio()
+                # 29.55 (c): o log é aberto em append; só o que vier depois deste ponto é DESTA subida.
+                log_path = self.cfg.logs_dir / f"emulator-{spec.avd_name}.log"
+                log_offset = log_path.stat().st_size if log_path.exists() else 0
                 try:
                     pid = await asyncio.to_thread(
                         emu.start_process, self.cfg, self.tools, spec.avd_name, spec.console_port, android,
@@ -642,7 +660,7 @@ class WorkerExecutor:
                     tocado = False
                     raise
                 self.pids[spec.avd_name] = pid
-                await self._espera_boot(spec, deadline_s=prazo)
+                await self._espera_boot(spec, deadline_s=prazo, log_offset=log_offset)
                 pronto = True
             finally:
                 if pronto or not tocado:

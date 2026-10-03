@@ -308,6 +308,37 @@ headless (netsim, câmeras, som) não mudam nada.
     Os 4 aparelhos QA foram reiniciados um a um. Antes, cada qemu era `-headless`, com uma thread a ~100 % (4 de 12
     núcleos). Depois, `qemu-system-x86_64` na sessão 0, com no máximo 14 % por aparelho e o processador em 2 %.
 
+### Relatório de falha pendente do emulador (29.55, K-090, 03/10/2026)
+
+O incidente (03/10, ~19:00Z): o reinício por IRQ derrubou um emulador na saída, e o crashpad deixou um dump em
+`%TEMP%\AndroidEmulator\emu-crash-<versão>.db\reports\*.dmp`. Com o padrão do emulador ("ask"), toda subida seguinte
+parou no diálogo que pede consentimento para enviá-lo (`Showing crashdialog to get consent`). Na sessão 0 ninguém vê
+a janela para responder, então a espera ia até o prazo do boot (480 s). A escada de reparo chegou ao terceiro degrau
+num aparelho com conta. O dump foi movido à mão para `data/quarentena-crash/`, e os 03 e 06 subiram com um `start` cada.
+
+Agora são três camadas, no central e no agente (`devices/emulator.py` está no manifesto do agente):
+
+- **(a) A flag.** `android.crash_report_mode` (padrão `never`) vira `-crash-report-mode never` no `build_args`: o
+  emulador não pergunta nem envia. `""` volta ao padrão do emulador. O emulador 37.1.11 aceita
+  `disabled|never|always|ask` (medido com `emulator -help-all`).
+- **(b) A quarentena antes do `Popen`.** `emu.start_process` move os dumps pendentes para
+  `<pasta de dados>/quarentena-crash/`: mover, nunca apagar, e nome repetido ganha sufixo. O TEMP é o do ambiente que
+  o EMULADOR recebe (`tools.env()`), nunca o do processo. Um dump travado fica onde está e só vai para o log. Falha da
+  quarentena nunca recusa o boot. No central a quarentena vira evento `log` (warn) no aparelho; no agente, linha no log
+  dele.
+- **(c) A falha rápida.** A linha do diálogo no log DESTA subida (a partir do offset gravado no spawn; log rotacionado
+  é lido do começo):
+  - no central (`_wait_boot`): encerra o lançador, põe o aparelho em `error` com o motivo e liga
+    `bloqueio_de_crash`, e `_pedir_reparo` não age enquanto ela valer. O snapshot de um wake não é descartado por isso;
+  - no agente (`_espera_boot`): encerra o lançador e fecha o `start` como `failed`, com `dados.motivo =
+    dialogo_de_crash`. O central (`aplicar_desfecho_remoto`) liga a mesma marca, com a atenção no cartão.
+
+  A marca cai na próxima subida (`_spawn`) ou quando o aparelho entra no ar.
+
+Prova: `simulated` (`backend/tests/test_relatorio_de_falha_do_emulador.py`, e os dois casos do agente em
+`backend/tests/test_worker_executor.py`). A prova `real` ainda é `not_run`: é a subida de um aparelho SEM conta com o
+dump da quarentena posto de volta em `reports/`, e espera a vez da orquestradora.
+
 ### Pausa do reparo automático por aparelho (02/10/2026, W8)
 
 Quase-acidente do estágio 1 do W8 (`docs/handoffs/w8-boot-recovery.md` §17.4): a escada de reparo pediu um `restart` do
