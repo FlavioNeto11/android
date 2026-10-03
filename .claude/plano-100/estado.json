@@ -6408,6 +6408,25 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T18:53:33+00:00"
+  },
+  "31.11": {
+   "id": "31.11",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Parte R1 (curador, C0) REAL; acompanhamento, nenhum número vale para GO (rótulos 1 e 2 = 0). Código: scripts/jev-braco-offline.py, na main em 926b4f6f (a Porta do runtime com o DecisorJev, sem o adaptador MIT; banco só leitura; --seco por padrão; teto ≤ US$ 0,05). Rodada única: 03/10/2026 18:53:06Z, WIN-7S2UASNLFOP, checkout central @ 926b4f6f (deploy 13 1c54a7bb no ar), --enviar --teto 0.05, janela da orquestradora sem suíte. 29 casos de receita (29 de fluxo fora de F1), 29 chamadas ok, US$ 0,000764, 20428 tokens, p50 439,6 ms / p95 528,3 ms, jev-1.13.0. As chamadas NÃO estão em ai_calls (o banco é só leitura para o braço). Sinal: 9 estados C0 distintos e 1 resposta distinta (a maior é sempre revisar), 0 instáveis; só a probabilidade varia com o estado (0,57 a 0,87). Cobertura em 0,85: 3 de 29, as 3 iguais ao curador. Concordância da maior com o curador 26/29 e do controle 2/29 (só acompanhamento). simulated: scripts/tests/test_jev_braco_offline.py (16); scripts/tests inteiro 498 passed (cf455b9c, mesmo conteúdo do 926b4f6f). Pendentes: R2 e R3 (composição offline só leitura em backend/app, branch novo, suíte 14 ou 15; a rodada espera 10 ou mais comandos reais, como o 31.10) e R5 (entra com o 31.13: formato do noul e pergunta).",
+   "blocker": "R2 e R3: falta a composição offline (backend/app) e volume de comandos já enviados pela sombra (ADR-069 item 21). R5: depende do 31.13.",
+   "arquivos": [
+    "scripts/jev-braco-offline.py",
+    "scripts/tests/test_jev_braco_offline.py",
+    "docs/design/jev-golden-set.md"
+   ],
+   "testes": "scripts/tests/test_jev_braco_offline.py: 16 passed; scripts/tests inteiro: 498 passed (Idle). Rodada real única da R1 no central, 18:53:06Z.",
+   "grupo": "31-11-braco-offline-jev",
+   "modelo": "opus (sessão jev, executora da orquestradora)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T18:55:13+00:00"
   }
  },
  "rodadas": [
@@ -7962,6 +7981,15 @@
    ],
    "grupos": [
     "suite-13-android"
+   ]
+  },
+  {
+   "quando": "2026-10-03T18:55:13+00:00",
+   "itens": [
+    "31.11"
+   ],
+   "grupos": [
+    "31-11-braco-offline-jev"
    ]
   }
  ]
