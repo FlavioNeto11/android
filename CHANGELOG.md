@@ -32,6 +32,12 @@ Só frontend; nada de backend.
     propósito, e a orquestradora pediu o contrário.
   - O `uncertain` que ficou para trás segue visível, numa linha discreta "Anterior sem resposta: <verbo> · há N dias"
     (`comandoSemDesfecho` no store), até ser verificado ou decidido.
+  - O Foco lê do mesmo jeito: o último comando no topo e o anterior sem resposta abaixo. A Lista divide a coluna com a
+    etapa em curso: comando aberto ou `uncertain` atual, depois a etapa, depois o anterior sem resposta.
+  - Limite conhecido: o anterior só nasce do `uncertain` que o snapshot traz, que é o mais novo entre os abertos e os sem
+    desfecho do aparelho. Um `uncertain` mais velho que um comando AINDA aberto não aparece, como antes.
+  - Custo: 1 leitura de 200 mais 1 por aparelho que ficou de fora, a cada hidratação (carga da página e
+    ressincronização).
 - Infraestrutura, renderizador: "renderizador pedido: GPU do host" virou "renderizador configurado: GPU do host". A
   dica separa o configurado (o pedido ao emulador, `gpu_mode`) do efetivo (o que o emulador selecionou, só com o
   aparelho no ar). No fallback, "(configurado: host)".
@@ -41,13 +47,16 @@ Só frontend; nada de backend.
 - Aplicativos › Rede: a lista por app diz o nome do registro de aplicativos ("Outlook: sem tráfego na janela") e
   "shell do Android (a sonda)", com o pacote na dica. Fora do registro, sai o pacote.
 - Prova:
-  - `simulated`: `npm run typecheck` e `npm test` com 1386 de 1386. Testes novos em `store/reducer.test.ts`,
-    `devices/DeviceCard.test.tsx`, `infra/infraState.test.ts`, `infra/InfraPage.test.tsx` e `rede/RedePage.test.tsx`.
+  - `simulated`: `npm run typecheck` e `npm test` com 1388 de 1388. Testes novos em `store/reducer.test.ts`,
+    `devices/DeviceCard.test.tsx` (com a Lista), `focus/FocusPanel.test.tsx`, `infra/infraState.test.ts`,
+    `infra/InfraPage.test.tsx` e `rede/RedePage.test.tsx`.
   - Navegador (03/10, Vite do worktree na 5173 contra a API do central, só leitura):
     - Painel: os 15 cartões com o último comando real; 11 com "Anterior sem resposta"; 1 leitura de 200 mais 5 por
       aparelho;
     - Infraestrutura: "loja" com a dica, 8 "renderizador configurado", nenhum "store" nem "renderizador pedido";
     - Rede: Instagram, Outlook e shell do Android pelo nome;
+    - Foco do android-06: "Concluído · Rede do aparelho" no topo e "Anterior sem resposta: Abrir app · há 8 dias";
+    - Lista: 11 linhas com o anterior, nenhum `uncertain` antigo como atual;
     - 375 px: `scrollWidth` 375, nenhuma linha estourando.
   - A linha da pausa do reparo NÃO foi vista no navegador: não havia pausa em vigor no central. Ela está provada no
     teste de componente.

@@ -18,7 +18,7 @@ import { useControlStore, userHasControl } from '../../store/control';
 import { toast, toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import { comandoAbertoDe, useBusyStore } from '../devices/actions';
-import { CommandHistory, CommandSummary } from '../devices/CommandTrail';
+import { ComandoAnteriorSemResposta, CommandHistory, CommandSummary } from '../devices/CommandTrail';
 import { MOTIVO_SERVIDOR_SEM_RESPOSTA, focusActionGroups, serverHintOf } from '../devices/deviceState';
 import { ServerBadge } from '../devices/ServerBadge';
 import { aparelhoDesconhecido, seloDoAparelho } from '../devices/selos';
@@ -72,8 +72,10 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
   // Um aparelho, uma operação — a mesma leitura do cartão: o comando que ainda age bloqueia os verbos de ciclo de
   // vida; o que acabou sem desfecho (`uncertain`) continua visível no topo até alguém decidir.
   const openCmd = useAppStore((s) => comandoAbertoDe(s.lastCommand[instanceId]));
-  const ultimoComando = useAppStore((s) => s.lastCommand[instanceId]);
-  const comandoAMostrar = openCmd ?? (ultimoComando?.state === 'uncertain' ? ultimoComando : undefined);
+  // O último comando de verdade, em qualquer estado, e o `uncertain` que ele deixou para trás: a mesma leitura do cartão.
+  const comandoAMostrar = useAppStore((s) => s.lastCommand[instanceId]);
+  const semDesfecho = useAppStore((s) => s.comandoSemDesfecho[instanceId]);
+  const anteriorSemResposta = semDesfecho && semDesfecho.id !== comandoAMostrar?.id ? semDesfecho : undefined;
   const hibernation = useAppStore((s) => s.health?.features?.hibernation === true);
   const workers = useAppStore((s) => s.workers);
   const telaEstreita = useTelaEstreita();
@@ -208,10 +210,13 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
         {telaEstreita ? null : <Button variant="ghost" icon={X} onClick={closeFocus}>Fechar</Button>}
       </div>
 
-      {/* O comando que ainda age (ou que acabou sem desfecho) fica no topo, como no cartão: é ele que explica por
-          que os botões de ciclo de vida estão bloqueados. */}
+      {/* O último comando fica no topo, como no cartão: o que ainda age explica por que os botões de ciclo de vida estão
+          bloqueados, e o que acabou sem desfecho segue visível (o deixado para trás, como anterior). */}
       {comandoAMostrar ? (
-        <div className={styles.commandBar}><CommandSummary cmd={comandoAMostrar} /></div>
+        <div className={styles.commandBar}>
+          <CommandSummary cmd={comandoAMostrar} />
+          {anteriorSemResposta ? <ComandoAnteriorSemResposta cmd={anteriorSemResposta} /> : null}
+        </div>
       ) : null}
 
       <div className={cx(styles.control, toneClass(owner.tone))} role="status" aria-live="polite">

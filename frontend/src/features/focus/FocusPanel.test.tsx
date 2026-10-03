@@ -515,6 +515,18 @@ describe('FocusPanel — ações em grupos', () => {
     expect(byRole('button', /^Cancelar comando/, zona)).toBeTruthy();
   });
 
+  it('o topo do Foco mostra o último comando de verdade e o incerto que ele deixou para trás, como o cartão', async () => {
+    const concluido: Command = { ...emVoo, id: 'cmd-8', verb: 'stop', state: 'succeeded', finished_at: new Date().toISOString() };
+    const incerto: Command = { ...emVoo, id: 'cmd-1', verb: 'open_app', state: 'uncertain',
+                               created_at: '2026-09-25T10:00:00.000Z', finished_at: '2026-09-25T10:01:00.000Z' };
+    useAppStore.setState({ lastCommand: { 'android-01': concluido }, comandoSemDesfecho: { 'android-01': incerto } });
+    const el = await renderFocus(makeInstance(1, { state: 'online' }));
+    const barra = el.querySelector('[class*="commandBar"]')?.textContent ?? '';
+    expect(barra).toContain('Concluído');
+    expect(barra).toContain('Anterior sem resposta: Abrir app');
+    expect(byRole('button', /^Reiniciar/, el).getAttribute('aria-disabled')).not.toBe('true');   // concluído não bloqueia
+  });
+
   it('Parar com uma execução no aparelho pede confirmação; sem execução, vai direto', async () => {
     backend.on('POST', /\/actions\/stop$/, () => json({ command_id: 'c-stop', state: 'created', deduplicated: false }, 202));
     backend.on('GET', /^\/api\/commands\/c-stop$/, () => json({ ...emVoo, id: 'c-stop', verb: 'stop', state: 'succeeded' }));

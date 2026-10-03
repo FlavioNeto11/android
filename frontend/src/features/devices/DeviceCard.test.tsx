@@ -8,6 +8,7 @@ import { initialDataState } from '../../store/reducer';
 import { makeInstance, makeRunDetail, makeSnapshot } from '../../test/fixtures';
 import { FakeBackend, allByRole, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
 import { DeviceCard } from './DeviceCard';
+import { DeviceList } from './DeviceList';
 
 const noop = () => undefined;
 let root: Root;
@@ -322,6 +323,25 @@ describe('DeviceCard — o comando fica visível, inclusive o que ficou sem desf
     expect(text(el)).toContain('Anterior sem resposta: Iniciar');
     // O último comando vem primeiro; o anterior não se apresenta como "o comando" do aparelho.
     expect(text(el).indexOf('Concluído')).toBeLessThan(text(el).indexOf('Anterior sem resposta'));
+  });
+
+  it('na Lista, o incerto deixado para trás aparece quando não há etapa em curso; com etapa, a etapa', async () => {
+    const lista = (instance: Instance) => (
+      <DeviceList instances={[instance]} appNames={new Map()} porAparelho={new Map()} selectedSet={new Set()}
+                  focusId={null} onToggle={noop} onRange={noop} onOpen={noop} />
+    );
+    useAppStore.setState({
+      lastCommand: { 'android-07': comando({ id: 'c-10', verb: 'stop', state: 'succeeded', reason: null,
+                                                created_at: '2026-09-29T08:00:00.000Z' }) as never },
+      comandoSemDesfecho: { 'android-07': comando({}) as never },
+    });
+    await act(async () => { root.render(lista(makeInstance(7, { state: 'online' }))); });
+    expect(text(container)).toContain('Anterior sem resposta: Iniciar');
+    const etapa = { run_id: 'run-1', objective_id: 'o-1', objective_status: 'running' as const, step_id: 's-1',
+                    step_title: 'Abrir o app', step_status: 'running' as const, steps_done: 1, steps_total: 3 };
+    await act(async () => { root.render(lista(makeInstance(7, { state: 'online', current: etapa }))); });
+    expect(text(container)).toContain('Abrir o app');
+    expect(text(container)).not.toContain('Anterior sem resposta');
   });
 });
 
