@@ -2117,3 +2117,20 @@ depois do `deploy.ps1`, e um `on` sem aspas também.
 
 **Aplicabilidade.** Vigente para todo campo de modo `off`/`shadow`/`on` do YAML (porta `DecisaoFechada`, aprendizado,
 telas, voz, preferências). Ao escrever um bloco desses à mão, use aspas ou omita.
+
+### K-083 — O leet da passada 1 troca os dígitos do `%XX`: o "@" codificado de um link vira "%ao"
+
+**Sintoma.** Na rodada H do 31.9 (03/10/2026, `simulated`), a regra nova do "@" trocado por outro sinal
+("zilda#correio.net") passou a recusar `abra https://exemplo.com/unsub?u=joao.silva%40exemplo.com` (caso 99 do corpus),
+que antes saía `abra [link]`. A exceção para o `%XX` da URL, um lookahead de dois hexadecimais, não pegava.
+
+**Causa.** A passada 1 do filtro (`_recusa_no_original`) casa sobre `sem_leet(sem_acento(texto))`. O leet troca o
+algarismo dentro de palavra com letra, e `40exemplo` virou `aoexemplo`. O "%40" chegou à regra como "%ao". Pior: depois
+do leet, "%co" de "zilda%correio" e "%c0" de uma URL ficam iguais.
+
+**O que funcionou.** Tirar a regra de `_RECUSA_NO_ORIGINAL` e rodá-la à parte sobre `sem_acento(texto)`, sem o leet
+(`_ARROBA_TROCADA`), com a exceção `%(?![0-9][0-9a-f])`. O sinal também precisa estar colado dos dois lados: com espaço
+permitido, "post #tbt.com" virava e-mail.
+
+**Aplicabilidade.** Vigente para toda regra da passada 1 que olha algarismo ou codificação (`%XX`, número de documento,
+hora). O leet existe para "arr0ba" e "s3nh4"; regra que precisa do algarismo verdadeiro roda fora dele.
