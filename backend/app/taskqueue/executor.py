@@ -1573,7 +1573,10 @@ class StepExecutor:
                     if not judged_step:
                         if self._postcondition_holds(step, obs, cartao, pacote=app.package):
                             pelo_atalho = "a pós-condição já vale na tela lida"
-                    elif need is None and decisions == 0 and julgamentos_antes_do_ator < JULGAMENTOS_ANTES_DO_ATOR:
+                    elif (need is None and decisions == 0 and julgamentos_antes_do_ator < JULGAMENTOS_ANTES_DO_ATOR
+                          and (ENTRADA_JULGADA_SO_COM_PROVA_LOCAL is False or (cap is not None and cap.local_proof))):
+                        # Sem prova local declarada (e a constante no padrão) a conferência de entrada não teria como
+                        # aprovar: nem se chama, para não pagar uma releitura da árvore nem uma linha enganosa no `history`.
                         sig_atual = obs.tree.signature()
                         if sig_atual != sig_julgada_antes_do_ator:      # a mesma tela já julgada "não" não paga de novo
                             sig_julgada_antes_do_ator = sig_atual

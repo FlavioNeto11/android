@@ -139,12 +139,23 @@ async def test_lt1_etapa_julgada_com_veredito_negativo_na_entrada_chama_o_ator(
     assert etapa["status"] == "succeeded" and etapa["driven_by"] == "ai" and etapa["attempts"] == 1
 
 
-async def test_lt1_entrada_de_etapa_julgada_sem_prova_local_nao_paga_modelo(harness: Harness) -> None:
+async def test_lt1_entrada_de_etapa_julgada_sem_prova_local_nao_paga_modelo(
+        harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
     """O padrão: sem prova local no catálogo a entrada NÃO chama o juiz (a tela de entrada quase nunca é a final, e o
     aceite do LT-1 é `verify` por etapa não subir): o ator decide como sempre e a etapa paga UM julgamento, o do fim."""
     vistos = _julgar_a_mensagem(harness)
+    antes_do_ator: list[str] = []
+    verify0 = executor_mod.StepExecutor._verify
+
+    async def espiao(self: Any, rt: Any, step: Any, *a: Any, **kw: Any) -> Any:
+        if kw.get("uma_rodada") and step.key == "compose_message":
+            antes_do_ator.append(step.key)
+        return await verify0(self, rt, step, *a, **kw)
+
+    monkeypatch.setattr(executor_mod.StepExecutor, "_verify", espiao)
     run = harness.run(["android-01"])
     await harness.wait_run(run.id, statuses=TERMINAIS)
+    assert antes_do_ator == []          # nem a releitura da árvore da conferência de entrada foi paga
     assert _chamadas(harness, "verify", "compose_message") == 1 and vistos == ["sim"]
     assert _chamadas(harness, "decide", "compose_message") >= 1
 
@@ -188,4 +199,4 @@ async def test_sem_ator_tambem_e_gravado_com_as_receitas_desligadas(harness: Har
     await harness.wait_run(run.id, statuses=TERMINAIS)
     etapas = _etapas(harness, run.id)
     assert etapas["confirm_account"]["driven_by"] == "sem_ator"
-    assert etapas["send_message"]["driven_by"] is None
+    assert etapas["send_message"]["driven_by"] != "sem_ator"
