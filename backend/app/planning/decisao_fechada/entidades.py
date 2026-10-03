@@ -37,6 +37,7 @@ Funções puras: sem banco, sem rede, sem configuração.
 """
 from __future__ import annotations
 
+import functools
 import re
 import unicodedata
 from collections.abc import Iterable
@@ -66,10 +67,23 @@ _ASPAS = re.compile(r'"[^"]*"|“[^”]*”|„[^“”]*[“”]|«[^»]*»|‹
                     r"|〝[^〞〟]*[〞〟]|′+[^′]*′+|(?<!\w)'[^'\n]*'(?!\w)|`[^`]*`")
 _CARACTERES_DE_ASPA: Final = frozenset("\"'`′″‴‵‶‷„‚“”‘’«»‹›「」『』〝〞〟❛❜❝❞")
 _URL = re.compile(r"(?i)\b(?:[a-z][a-z0-9+.\-]*://|www\.)\S+")
-_EMAIL = re.compile(r"[\w.+\-]+@[\w\-]+(?:\.[\w\-]+)*")
+#: Domínio de topo do e-mail soletrado ou ofuscado ("correio ponto net", "dot co", "punto org").
+_TLD: Final = (r"(?:com|net|org|br|io|co|gov|edu|info|biz|me|app|dev|test|pt|es|uk|us|de|fr|it|mx|ar|cl|uy|rf|online"
+               r"|site)")
+#: O e-mail inteiro (rodada E do 31.9, E-C): a parte local é a corrida sem espaço antes do "@" (RFC 5322 aceita "#", "!",
+#: "'"...: "abcdef#zilda@" deixava "abcdef#" fora da máscara), sem o que abre ou separa trecho ("<", "(", vírgula); o
+#: "mailto:" vem junto por estar colado, o "?subject=..." que segue o endereço também, e o domínio de topo separado por
+#: espaço ("zilda@correio .net").
+_EMAIL = re.compile(r"[^\s@<>()\[\]{}\"“”«»,;]+@[\w\-]+(?:\.[\w\-]+)*"
+                    rf"(?:\s+\.\s*{_TLD}\b)?(?:\?\S*)?")
+#: Telefone com esquema de URI ("tel:+5511912345678"): o esquema e o "+" entram na máscara (saía "tel:+[telefone]").
+_TELEFONE_URI = re.compile(r"(?i)\b(?:tel|sms|callto|facetime|whatsapp):\s*\+?\d[\d\s().\-/]*\d")
 #: O `@handle` inteiro, também com hífen ("@cassia-brandao" saía `[usuario]-brandao`; decisão da orquestradora de 03/10).
 #: Não termina em ponto nem hífen: o "." que fecha a frase fica.
 _HANDLE = re.compile(r"@\w(?:[\w.\-]*\w)?")
+#: Rodada F (F-F): a palavra soletrada, cinco ou mais letras soltas seguidas ("g i r a s s o l", "g-i-r-a-s-s-o-l"; desde a
+#: rodada G também com vírgula e barra), vira `[termo]`: lida junto, é a palavra inteira.
+_SOLETRADO = re.compile(r"(?<![^\W\d_])[^\W\d_](?![^\W\d_])(?:[\s.,/\-]{1,3}[^\W\d_](?![^\W\d_])){4,}")
 _DOMINIO = re.compile(r"(?i)\b[\w\-]+(?:\.[\w\-]+)*\.[a-z]{2,}(?:/\S*)?\b")
 _TELEFONE = re.compile(r"(?:\+?\d{1,3}[\s.\-])?\(?\d{2}\)?[\s.\-]?\d{4,5}[\s.\-]?\d{4}")
 #: Qualquer número (também quebrado por UM separador entre dígitos: "12 34 56", "1.234", "11-98"). Até "pedido 12" é
@@ -78,7 +92,11 @@ _NUMERO = re.compile(r"\d(?:[\s.\-/]?\d)*")
 #: Três ou mais algarismos por extenso em sequência, também ligados por "e", "y" ou "and" ("nove nove oito sete", "um e
 #: um e um"): é telefone ou documento ditado. Recusa. Pega também "um", "uma", "uno" e "dos", que `_NUMERAIS` não conta.
 _ALGARISMO_FALADO: Final = (r"(?:zero|um|uma|dois|duas|tr[eê]s|quatro|cinco|seis|meia|sete|oito|nove|one|two|three|four"
-                            r"|five|six|seven|eight|nine|cero|uno|una|dos|cuatro|siete|ocho|nueve)")
+                            r"|five|six|seven|eight|nine|cero|uno|una|dos|cuatro|siete|ocho|nueve"
+                            # rodada G: alemão, italiano e francês (o residual de outro idioma da rodada F, síntese item 11).
+                            # Sem "sei" (italiano), que é o "sei" do português, e sem "un" (francês), que é artigo.
+                            r"|null|eins|zwei|drei|vier|f(?:ü|u|ue)nf|sechs|sieben|acht|neun|due|tre|quattro|cinque|sette"
+                            r"|otto|z[ée]ro|deux|trois|quatre|cinq|sept|huit|neuf)")
 _DITADO = re.compile(rf"(?i)\b(?:{_ALGARISMO_FALADO}(?:\W+(?:e|y|and)\W+|\W+)){{2,}}{_ALGARISMO_FALADO}\b")
 
 # ------------------------------------------------------------------ 2. recusa (não há máscara segura)
@@ -94,25 +112,90 @@ _RECUSA_ENDERECO = re.compile(
 _RECUSA_DOCUMENTO = re.compile(r"(?i:\b(?:cpf|cnpj|rg|cnh|passaporte|passport|ssn|dni|nif)\b)")
 _SOBRA_DIGITOS = re.compile(r"\d\D{0,2}\d\D{0,2}\d")
 
-#: Domínio de topo do e-mail soletrado ou ofuscado ("correio ponto net", "dot co", "punto org").
-_TLD: Final = (r"(?:com|net|org|br|io|co|gov|edu|info|biz|me|app|dev|test|pt|es|uk|us|de|fr|it|mx|ar|cl|uy|rf|online"
-               r"|site)")
 # E-mail soletrado (rodada C do 31.9, 7 vazamentos): o "at" em outras línguas, a palavra do ponto em outras línguas, o
 # domínio de topo fora da lista e o provedor sem domínio de topo.
 _AT: Final = r"(?:at|chez|bei)"
 #: O ponto do domínio: colado ("correio.net"), com espaço ANTES ("correio . net") ou por extenso. O ponto que fecha a
 #: frase ("look at this. It's") tem espaço só depois, e não conta.
-_SEP_DOMINIO: Final = r"(?:\.(?=\w)|\s+\.\s*|\s+(?:ponto|dot|punto|punkt|point)\s+)"
+_SEP_DOMINIO: Final = (r"(?:\.(?=\w)|\s+\.\s*|\s+(?:ponto|dot|punto|punkt|point)\s+"
+                      # rodada G (G-3): a palavra do ponto entre hífens ou sublinhados ("correio-dot-net")
+                      r"|[\-_](?:ponto|dot|punto|punkt|point)[\-_])")
 #: Artigo ou determinante logo depois do "at": "look at the dot on the map" e "look at my point" não são e-mail.
 _NAO_DOMINIO: Final = r"(?!(?:the|a|an|this|that|these|those|my|your|his|her|its|our|their)\b)"
 #: Domínio de topo que vale SEM a palavra do ponto ("zilda at correio net"): só os que não são palavra comum em inglês
 #: ("look at this app", "look at the site", "look at them online", "look at the info" passam).
 _TLD_SEM_PONTO: Final = r"(?:com|net|org|br|gov|edu|pt|fr|mx|uy|ru|uk|jp|cn|xyz|tech)"
 #: Provedor de e-mail depois de "at" ou "arroba": é e-mail mesmo sem o domínio de topo ("zilda at gmail").
+#: O provedor depois de um nome é e-mail ditado mesmo sem pista ("zilda no gmail", "zilda, no icloud", "zilda no live";
+#: rodada E, E-B). "outlook", "live" e "terra" também são o app, a live do Instagram e palavra comum: o que vem antes
+#: precisa ser nome, e não verbo nem objeto (`_NAO_DONO`: "entra no outlook", "comenta no live" e "a foto da terra"
+#: passam). "correio" só com a pista de destinatário (`_PISTA_DE_EMAIL`).
+_PROVEDOR_SO_DE_EMAIL: Final = (r"(?:gmail|googlemail|hotmail|outlook|yahoo|icloud|uol|bol|terra|msn|live|proton(?:mail)?"
+                                r"|gmx|aol|yandex|zoho|fastmail|laposte|web\.de|mail\.ru|me\.com)")
+#: O provedor que é só de e-mail, sem ser também app ou palavra comum (fora outlook, live e terra).
+_PROVEDOR_SO_DE_EMAIL_E_NAO_APP: Final = (r"(?:gmail|googlemail|hotmail|yahoo|icloud|uol|bol|msn|proton(?:mail)?|gmx|aol"
+                                          r"|yandex|zoho|fastmail|laposte|web\.de|mail\.ru|me\.com)")
+#: Antes do nome, o que diz que ele é o dono do endereço: "mande PARA zilda do outlook", "USUÁRIO zilda no gmail".
+_PISTA_DE_EMAIL: Final = r"(?:para|pra|pro|usuario|usuaria|user|username|login|email|e-mail|contato|endereco)"
+#: O que, no lugar do nome, não é dono de endereço: artigo, pronome e verbo ("entra no gmail", "o que chegou no gmail").
+_NAO_DONO: Final = (r"(?:a|o|as|os|um|uma|e|que|mim|ele|ela|eles|elas|voce|vc|nos|todos|alguem|ninguem|isso|tudo|nada"
+                    r"|la|aqui|ali|entra|entre|entrar|abre|abra|abrir|acessa|acesse|acessar|loga|logue|logar|login|conta"
+                    r"|contas|caixa|inbox|email|emails|e-mail|mensagem|mensagens|pasta|lixo|spam|chegou|chegaram|veio"
+                    r"|vieram|recebi|recebido|recebidos|enviado|enviados|enviei|mandei|mandou|esta|estao|tem|ficou|caiu"
+                    r"|apareceu|aparece|salvo|salva|salvar|foto|fotos|arquivo|arquivos|anexo|anexos|logado|logada"
+                    r"|cadastro|cadastrado|cadastrada|cadastre|crie|criar|criada|criado|sua|seu|minha|meu|dela|dele"
+                    # verbos de comando e objetos do app: "comenta no live", "vai no outlook", "o post da terra"
+                    r"|vai|va|olha|olhe|veja|ve|ver|procura|procure|pesquisa|pesquise|busca|busque|comenta|comente"
+                    r"|curte|curta|responde|responda|posta|poste|publica|publique|manda|mande|envia|envie|escreve"
+                    r"|escreva|le|leia|clica|clique|toca|toque|assiste|assista|segue|siga|fica|fique|entrou|logou|foi"
+                    r"|viu|vi|abriu|comecou|comece|inicia|inicie|ta|tava|estava|aqui|post|posts|story|stories|reels"
+                    r"|video|videos|comentario|comentarios|link|aviso|notificacao|convite|app|perfil"
+                    r"|feed|planeta|volta|voltou|mundo"
+                    # as pastas do e-mail: "a caixa de entrada do outlook" (2 dos 92 comandos reais, 03/10)
+                    r"|entrada|saida|lixeira|rascunho|rascunhos|enviados|enviadas|arquivados|arquivadas|principal"
+                    r"|promocoes|atualizacoes|pastas|lidos|lidas|importantes|favoritos"
+                    # rodada G: o rótulo antes do provedor, que agora pode vir com hífen ou parêntese ("site - outlook")
+                    r"|site|sites|aplicativo|plataforma|servico|provedor|tela|aba|pagina)")
 _PROVEDOR: Final = (r"(?:gmail|googlemail|hotmail|outlook|yahoo|correio|live|icloud|uol|bol|terra|msn|proton(?:mail)?|gmx"
-                    r"|aol|yandex|zoho)")
+                    r"|aol|yandex|zoho|fastmail|laposte|web\.de|mail\.ru|me\.com)")
+#: Rodada F (F-G): o provedor COLADO ao nome, sem preposição ("zilda gmail", "zilda, hotmail", "to zilda hotmail"). Além do
+#: `_NAO_DONO`, o que vem antes do provedor não pode ser preposição nem verbo de usar o app ("entra no outlook", "a caixa
+#: de entrada do outlook", "use o gmail", "configure outlook").
+_ANTES_DO_PROVEDOR: Final = (r"(?:no|na|nos|nas|do|da|dos|das|de|em|pelo|pela|pro|pra|para|com|sem|ao|num|numa|via|by|in"
+                             r"|on|at|to|the|my|your|our|his|from|with|using|into|and|or|ou|y|use|usa|usar|usando|usei"
+                             r"|configure|configura|configurar|sincronize|sincroniza|sair|saia|logout|desconecte|conecte"
+                             r"|conecta|conectar|baixe|baixa|instale|instala|atualize|atualiza|limpe|limpa|open|check"
+                             r"|novo|nova|velho|velha|antigo|antiga|outro|outra|ultimo|ultima)")
+#: Entre o nome e o provedor (ou a preposição antes dele): espaço, ou vírgula, parêntese ou hífen com espaço opcional
+#: ("zilda - hotmail", "zilda (hotmail)", "zilda, no gmail"; rodada G, G-3). O dois-pontos não: é o do rótulo ("site:
+#: outlook", 1 dos 122 comandos reais de 7 dias, 03/10).
+_ENTRE_NOME_E_PROVEDOR: Final = r"(?:\s*[,(\-]\s*|\s+)"
 #: A recusa que roda ANTES das máscaras (passada 1), sobre o texto sem acento, em casefold e com o algarismo trocado pela
 #: letra parecida dentro de palavra (`arr0ba`). (motivo, padrão), na ordem do diagnóstico.
+@functools.lru_cache(maxsize=8)
+def _palavras_dos_nomes(nomes: tuple[str, ...]) -> frozenset[str]:
+    return frozenset(p for n in nomes for p in re.findall(r"[^\W_]+(?:['\-.][^\W_]+)*", sem_acento(normalizar(n)))
+                     if len(p) >= 3)
+
+
+def nomes_dos_apps() -> frozenset[str]:
+    """Os apps da PLATAFORMA como palavras do filtro, sem acento e em minúsculas ("instagram", "insta", "outlook",
+    "microsoft"): nome, rótulo e apelidos de cada `app.yaml` (ADR-052: conhecimento de app é dado, não lista em Python).
+    Lidos do registro na consulta, e não na importação: a descoberta importa módulos que importam o planejamento."""
+    from ...modules.applications.infrastructure import registry
+
+    return _palavras_dos_nomes(tuple(n for d in registry.registered() for n in (d.name, d.label, *d.aliases) if n))
+
+
+@functools.lru_cache(maxsize=8)
+def _recusas_no_original(apps: frozenset[str]) -> tuple[tuple[MotivoDoFiltro, re.Pattern[str]], ...]:
+    """`_RECUSA_NO_ORIGINAL` com os nomes dos apps da plataforma no `_NAO_DONO` (ADR-052: vêm do `app.yaml`, não de uma
+    lista em Python): "comenta no insta" diz o app, não o dono de um endereço."""
+    nao_dono = _NAO_DONO if not apps else _NAO_DONO[:-1] + "".join("|" + re.escape(a) for a in sorted(apps)) + ")"
+    return tuple((motivo, re.compile(padrao.pattern.replace(_NAO_DONO, nao_dono), padrao.flags))
+                 for motivo, padrao in _RECUSA_NO_ORIGINAL)
+
+
 _RECUSA_NO_ORIGINAL: Final[tuple[tuple[MotivoDoFiltro, re.Pattern[str]], ...]] = (
     ("email_ofuscado", re.compile(
         # arroba por extenso, soletrada ou hifenizada ("a r r o b a", "a-r-r-o-b-a"); "(a)", "(a t)", "at-sign"
@@ -120,6 +203,8 @@ _RECUSA_NO_ORIGINAL: Final[tuple[tuple[MotivoDoFiltro, re.Pattern[str]], ...]] =
         r"|[(\[{<]\s*a\s*t?\s*[)\]}>]|\bat[\s\-]?sign\b"
         # domínio de topo depois de "ponto", "dot", "punto" ou "punkt": "correio ponto net", "dot co"
         rf"|\b(?:ponto|dot|punto|punkt)\s*{_TLD}\b"
+        # rodada F (F-G): "point" só diante de domínio de topo que não é palavra inglesa ("point fr"; "point it out" passa)
+        rf"|\bpoint\s+{_TLD_SEM_PONTO}\b"
         # "marina at correio.net", "zilda at correio dot org", "zilda chez correio point net", "zilda at correio punkt de"
         rf"|\b\w+\s+{_AT}\s+\w+(?:{_SEP_DOMINIO}\w+)*{_SEP_DOMINIO}{_TLD}\b"
         # qualquer domínio de topo de 2 a 6 letras com o ponto colado ou por extenso: "zilda at correio dot tech"
@@ -129,11 +214,33 @@ _RECUSA_NO_ORIGINAL: Final[tuple[tuple[MotivoDoFiltro, re.Pattern[str]], ...]] =
         rf"|\b\w+\s+{_AT}\s+{_NAO_DOMINIO}\w+\s+{_TLD_SEM_PONTO}\b"
         # provedor conhecido: "zilda at gmail", "zilda arroba hotmail"
         rf"|\b\w+\s+(?:{_AT}|arroba)\s+{_PROVEDOR}\b"
+        # rodada E (E-B), e-mail ditado em peças em português: "usuario zilda no gmail", "mande para zilda do outlook",
+        # "mande para zilda em correio.net" e "o usuário é zilda e o domínio é correio.net"
+        rf"|\b{_PISTA_DE_EMAIL}\s+(?!{_NAO_DONO}\b)(?<![\w\-])[^\W\d_]+\s+(?:no|na|do|da|de|em|pelo|pela)\s+"
+        rf"(?:{_PROVEDOR}\b|\w+(?:\.\w+)*\.{_TLD}\b)"
+        # rodada G (G-3): com qualquer pontuação entre o nome e a preposição, e "lá" no meio ("zilda, lá no gmail")
+        rf"|(?<![\w\-])(?!{_NAO_DONO}\b)[^\W\d_]+{_ENTRE_NOME_E_PROVEDOR}(?:(?:la|ali|aqui|tambem|ja)\s+)?"
+        rf"(?:no|na|do|da|de|em|pelo|pela)\s+{_PROVEDOR_SO_DE_EMAIL}\b"
+        r"|\b(?:usuario|user|username|login|nome)\b[^.;!?\n]{0,40}\b(?:dominio|domain|provedor)\b"
+        # rodada F (F-G): o nome colado ao provedor ("mande para zilda gmail", "send it to zilda hotmail", "zilda, gmail")
+        rf"|(?<![\w\-])(?!(?:{_NAO_DONO}|{_ANTES_DO_PROVEDOR})\b)[^\W\d_]+{_ENTRE_NOME_E_PROVEDOR}{_PROVEDOR_SO_DE_EMAIL}\b"
+        # rodada G (G-3): "at" ou "arroba" entre hífens ou sublinhados ("zilda-at-correio-net", "zilda_at_gmail_dot_com"),
+        # só com provedor ou com domínio e domínio de topo depois ("@cafe_at_home" e "look-at-me" passam)
+        rf"|(?<![^\W_])[^\W_]+[\-_]+(?:at|arroba|chez)[\-_]+(?:{_PROVEDOR}(?![^\W_])"
+        rf"|[^\W_]+(?:[\-_.]+[^\W_]+)*?[\-_.]+{_TLD}(?![^\W_]))"
+        # e o provedor antes do nome, com pista de destinatário ("mande um oi pro gmail da zilda"). Sem a pista, "abra o
+        # gmail do lucas" é navegação e passa; o provedor que também é app ("manda pro Outlook da Ana a foto") também
+        rf"|\b{_PISTA_DE_EMAIL}\s+(?:o\s+|a\s+)?{_PROVEDOR_SO_DE_EMAIL_E_NAO_APP}\s+(?:da|do|de)\s+(?!{_NAO_DONO}\b)"
+        r"[^\W\d_]+(?![\w\-])"
         # `@` sem a parte local colada (separada por espaço ou tabulação), seguido de domínio com topo
         rf"|(?<![\w.+\-])@[\w\-]+(?:\.[\w\-]+)*\.{_TLD}\b")),
     ("endereco", re.compile(r"\bcaixa\s+postal\b|\bp\.?\s*o\.?\s+box\b|\bapartado\s+postal\b")),
     # cartão e CVV só com o número perto ("o cartão de visita do perfil" passa); título de eleitor e "ce pe efe" sempre
-    ("documento", re.compile(r"\b(?:cartao|card|cvv|cvc)\b\D{0,20}\d{3}|\btitulo\s+de\s+eleitor\b|\bce\s+pe\s+efe\b")),
+    ("documento", re.compile(r"\b(?:cartao|card|cvv|cvc)\b\D{0,20}\d{3}|\btitulo\s+de\s+eleitor\b|\bce\s+pe\s+efe\b"
+                             # rodada F (F-H): o formato é o documento ("529.982.247-25"); os 11 algarismos seguidos só
+                             # com pista de documento, porque o celular também tem 11
+                             r"|(?<![\d.\-])\d{3}\.\d{3}\.\d{3}-\d{2}(?![\d\-])"
+                             r"|\b(?:documento|doc|identidade|cadastro)\b\D{0,15}\d{11}(?!\d)")),
 )
 #: Endereço em inglês: número, uma a três palavras com maiúscula e o tipo de logradouro, no texto SEM casefold ("on the
 #: way" não é endereço; "742 Evergreen Terrace" é).
@@ -250,7 +357,9 @@ def _formas(texto: str) -> str:
     """Link, e-mail, `@handle`, domínio, telefone, token misto e número viram marcador, do mais específico ao mais geral."""
     texto = _URL.sub(M_URL, texto)
     texto = _EMAIL.sub(M_EMAIL, texto)
+    texto = _TELEFONE_URI.sub(M_TELEFONE, texto)
     texto = _HANDLE.sub(M_HANDLE, texto)
+    texto = _SOLETRADO.sub(M_TERMO, texto)
     texto = _DOMINIO.sub(M_URL, texto)
     texto = _TELEFONE.sub(M_TELEFONE, texto)
     texto = _MISTO.sub(M_TERMO, texto)
@@ -291,7 +400,7 @@ def _sem_marcadores(texto: str) -> str:
 def _recusa_no_original(texto: str) -> MotivoDoFiltro | None:
     """Passada 1: a forma escondida que a máscara apagaria (e-mail ofuscado, caixa postal, cartão, endereço em inglês)."""
     plano = sem_leet(sem_acento(texto))
-    for motivo, padrao in _RECUSA_NO_ORIGINAL:
+    for motivo, padrao in _recusas_no_original(nomes_dos_apps()):
         if padrao.search(plano):
             return motivo
     return "endereco" if _ENDERECO_EN.search(texto) else None
@@ -405,4 +514,4 @@ def mascarar_catalogo(texto: str) -> str:
 
 __all__ = ["M_EMAIL", "M_HANDLE", "M_NUMERO", "M_TELEFONE", "M_TERMO", "M_TEXTO", "M_URL", "MotivoDoFiltro",
            "escrita_nao_latina", "mascarar_catalogo", "mistura_alfabetos", "normalizar", "remover_entidades", "remover_entidades_com_motivo",
-           "sem_acento", "sem_leet"]
+           "nomes_dos_apps", "sem_acento", "sem_leet"]

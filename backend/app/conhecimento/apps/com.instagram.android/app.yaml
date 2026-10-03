@@ -4,6 +4,9 @@
 app: com.instagram.android
 nome: Instagram
 rotulo: Instagram
+# Como o dono chama o app num comando, além do nome e do rótulo. O filtro da sombra da intenção (31.9) lê nome, rótulo e
+# apelidos de todos os apps para saber que "entra no insta" é o app, e não um valor.
+apelidos: [insta]
 # Tipo do provedor de sessão da conta: dizer um tipo é dizer que o app tem login gerenciado, e exige o `sessao.yaml`
 # desta pasta. O núcleo não compara com este nome; quem acha o app da conta da persona é `ancora_do_perfil`.
 provedor_de_sessao: instagram

@@ -19,6 +19,65 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Correção do 31.9, rodada G (NO-GO da fase 2 da rodada F em 7c8f58c8): o usuário como @handle ou e-mail, o catálogo só no destino e a preposição só com faixa (branch fix/31-9-rodada-e)
+
+- G-1: "entre com @zilda.prado e girassol" e "entre com lucas@outlook.com e girassol" recusam como par; o "@" solto não é
+  destino.
+- G-2:
+  - soletração com vírgula, barra e pelo nome das letras;
+  - "log-in with";
+  - "entre" preposição só com faixa ou "os"/"as";
+  - eufemismos novos;
+  - "usuário X, Y." sem verbo.
+- G-3: e-mail com hífen, parêntese, "lá", "-at-", "_at_" e "-dot-"; provedores fastmail, laposte, web.de, mail.ru e me.com.
+- G-4: o nome do catálogo vale inteiro e só na posição de destino, nunca na de valor (a persona "Girassol" não isenta a
+  senha). "Entre com o Lucas e curta" volta a pular a sombra.
+- G-5: "é entre 8 e 12" e "é entre os melhores" passam.
+- G-6: a palavra C7 sem valor continua recusando.
+- Residual de outro idioma: sueco, catalão, "the usual is", e algarismos ditados em alemão, italiano e francês.
+- ADR-069, item 14.
+- Catraca do ADR-052: os nomes dos apps saem das listas do filtro e vêm do `app.yaml` (nome, rótulo e o campo novo
+  `apelidos`; o Instagram declara `[insta]`). Os serviços de terceiros sem pacote ficam numa lista à parte.
+- Prova `simulated`:
+  - `tests/test_decisao_fechada_reverificacao_g.py`;
+  - corpus G da orquestradora (492 casos, com a persona "Girassol"): ok 488, 0 vazamentos de portão, 0 C7 mascarada, 0
+    passagens indevidas;
+  - 122 comandos reais: 1 recusa, a mesma.
+
+## 2026-10-03 — Correção do 31.9, rodada F (NO-GO da fase 2 da rodada E em db45d4fd): barrar pela intenção de entrar, "com X" pelo catálogo real (branch fix/31-9-rodada-e)
+
+- F-A: o verbo de entrar sem objeto de navegação faz a sombra pular o comando (`c7_intencao_de_entrar`), no original.
+- F-B: os nomes do catálogo de destinos real chegam ao filtro (`RunService.dados_da_sombra`, 5º item;
+  `intencao.nomes_de_destino`). O "com X" é destino só quando X é do catálogo ou foi tirado pelo extrator.
+- "entre" preposição ("as fotos postadas entre 10/05 e 12/05") deixa de ser verbo.
+- F-C a F-H:
+  - campo de usuário mais largo;
+  - diminutivos;
+  - pergunta de segurança;
+  - letras soltas;
+  - nome + provedor sem preposição e "point";
+  - CPF nu.
+- ADR-069, item 13.
+- Prova `simulated`:
+  - `tests/test_decisao_fechada_reverificacao_f.py`;
+  - corpus F da orquestradora (427 casos, catálogo stub e real): 0 vazamentos de portão, 0 C7 mascarada, 0 passagens
+    indevidas;
+  - 122 comandos reais: 1 recusa, a mesma.
+
+## 2026-10-03 — Correção do 31.9, rodada E (NO-GO em 963f9d7b): C7 pela intenção de entrar, "senha" em outras línguas e e-mail em peças em português (branch fix/31-9-rodada-e)
+
+- C7 sem palavra-chave:
+  - traduções de "senha" em escrita latina e eufemismos novos;
+  - a regra estrutural `c7_login_valor` ("entre com girassol", "pra entrar: girassol");
+  - a regra estrutural `c7_par_credencial` ("usuário lucas e girassol, entra", "entre com a conta Lucas / girassol").
+- A C7 é conferida também no comando original: `RunService.dados_da_sombra`. `dados_da_intencao` segue igual.
+- E-mail ditado em peças em português recusa.
+- A máscara do e-mail engole a parte local inteira, o `mailto:`, o `?subject=` e o domínio de topo solto. A do telefone
+  engole o `tel:`.
+- Prova `simulated`:
+  - `tests/test_decisao_fechada_reverificacao_e.py`;
+  - corpus E da orquestradora (360 casos): 0 vazamentos de C7, 0 C7 mascarada, 0 passagens indevidas;
+  - 92 comandos reais: 1 recusa, a mesma.
 ## 2026-10-03 — 29.47: os processos filhos não herdam mais os segredos do backend (branch `feat/29-47-ambiente-dos-filhos`)
 
 - **Antes.** O ambiente dos filhos era o do backend inteiro (`dict(os.environ)`), com os segredos do `.env`:

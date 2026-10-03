@@ -62,6 +62,9 @@ class AppDefinition:
     #: (`limpar_ao_retirar: true` no `app.yaml`, 29.27/emenda do ADR-068): `pm clear` só desse pacote, com captura de tela
     #: antes e depois, sem toque na tela. Só limpa quem declara; o padrão (falso) deixa o app como estava.
     clear_on_account_retire: bool = False
+    #: Como o dono chama o app num comando, além do nome e do rótulo ("insta"; `apelidos` no `app.yaml`). É o que o filtro
+    #: da sombra da intenção (31.9) reconhece como o app, sem lista de app em Python (ADR-052).
+    aliases: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.label:
