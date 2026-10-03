@@ -1953,3 +1953,10 @@ Saída bruta em `data/diag-ra3b/`: `repouso-cores4-01-600s.json`, `dif-*.json` e
   - Teste proposto: 2 min com a tela desligada (`KEYCODE_SLEEP`) num aparelho do parque e, ao contrário, o AVD
     temporário com a tela fixa ligada.
   - Seguem UNKNOWN: a sessão do Appium/UiAutomator2 e os encaminhamentos do adb.
+- **A tela também não é a causa** (teste aprovado pelo orquestrador; `real`, sem lease, `tela-*.json`).
+  - Com a tela desligada (`KEYCODE_SLEEP`: `mWakefulness=Asleep`, foco nulo), de 03:39:59 a 03:42:01Z, o total foi
+    112,8 % e a thread 36288 ficou a 99,5 % (91,5 em kernel).
+  - Depois do `KEYCODE_WAKEUP`, de 03:42:15 a 03:43:16Z, foram 127,1 % e 99,4 %. O aparelho voltou sem keyguard.
+  - A suspeita da tela sempre ligada cai.
+  - Seguem UNKNOWN as conexões do lado do host que só o parque tem: a sessão do Appium/UiAutomator2, os
+    encaminhamentos e fluxos do adb e o console/gRPC do emulador.

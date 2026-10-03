@@ -4023,15 +4023,15 @@ Uma rota e campos novos; nada muda de tipo. A regra é a emenda de 03/10 ao ADR-
 Não há migração: o tipo mora no `reason` de `learning_transitions`, com gramática fechada
 (`evidencia_invalida:r-AAAAMMDDhhmmss-xxxxxx`).
 
-## Adendo v0.71 (03/10/2026, número PROVISÓRIO) — leitura visual de saída de etapa (item 12.5, ADR-070)
+## Adendo v0.71 (03/10/2026) — leitura visual de saída de etapa (item 12.5, ADR-070)
 
 Sem rota nova. O contrato do 12.5 está no adendo "Origem do valor" do relatório de execução (acima): `values_read[].origem`, `read_value(source)`, o
 vocabulário fechado de recusas (`desligado` … `leitor_falhou`, `tela_sensivel`, `triagem:<motivo>`), `GET /api/ai` com a função `leitura` e `GET
 /api/usage` com o `role` `leitura`. Ajustes desta revisão: a triagem do valor visual leva a etapa a `waiting_user` (sem nova tentativa do ator);
 o valor gravado é o do leitor; as saídas `origem=visual` não entram nas variáveis de receita; orçamento, prazo e crédito do leitor não viram
-`leitor_falhou`; o aviso de `/api/ai` nomeia os apps pelo rótulo do dado. O número final do adendo sai na integração da suíte 6.
+`leitor_falhou`; o aviso de `/api/ai` nomeia os apps pelo rótulo do dado. O número v0.71 é o final, confirmado pelo orquestrador na integração da suíte 6.
 
-## Adendo v0.73 (03/10/2026, número PROVISÓRIO; o final vem do orquestrador) — `retire`: `limpezas` ganha `memory_items_de_outras_personas` (item 29.32)
+## Adendo v0.73 (03/10/2026; número final, confirmado na integração da suíte 6) — `retire`: `limpezas` ganha `memory_items_de_outras_personas` (item 29.32)
 
 `limpezas.memory_items` passa a contar as lembranças reescritas em TODAS as personas (não só na que retira), e a chave nova
 `memory_items_de_outras_personas` diz quantas dessas eram de outras personas. Só contagens, inteiros; o evento `profile.account_retired` leva as mesmas.
