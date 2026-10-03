@@ -40,22 +40,26 @@ class DecisorNulo:
     """O padrão: nunca decide e nunca toca rede. Toda pergunta volta com `fallback_reason='desligado'`."""
 
     def decidir(self, pedido: PedidoDeDecisao, timeout_s: float) -> ResultadoDeDecisao:
-        return resultado_de_fallback(pedido, "desligado")
+        return resultado_de_fallback(pedido, "desligado", postado=False)
 
 
 class DecisorFalso:
     """Para testes: respostas programadas por id de pergunta; cada chamada registrada é UMA chamada (fan-out).
 
     Pergunta sem resposta programada volta com `fallback_reason=desligado`. Uma `FalhaDeDecisao` programada é levantada
-    como o decisor real faria. `atraso_s` simula um decisor lento (teste de timeout)."""
+    como o decisor real faria. `atraso_s` simula um decisor lento (teste de timeout). `postado` e `ai_call_id` vão no
+    resultado como o real os poria (31.21): é por eles que se prova o repasse da porta até a linha da sombra."""
 
     def __init__(self, respostas: Mapping[str, RespostaDeDecisao] | None = None, *, falha: FalhaDeDecisao | None = None,
-                 atraso_s: float = 0.0, custo_tokens: int = 0, custo_usd: float = 0.0) -> None:
+                 atraso_s: float = 0.0, custo_tokens: int = 0, custo_usd: float = 0.0, postado: bool | None = None,
+                 ai_call_id: int | None = None) -> None:
         self.respostas: dict[str, RespostaDeDecisao] = dict(respostas or {})
         self.falha = falha
         self.atraso_s = atraso_s
         self.custo_tokens = custo_tokens
         self.custo_usd = custo_usd
+        self.postado = postado
+        self.ai_call_id = ai_call_id
         #: Cada item é um pedido recebido = uma chamada. Nada de rede: é só o registro.
         self.chamadas: list[PedidoDeDecisao] = []
 
@@ -69,7 +73,7 @@ class DecisorFalso:
         respostas = {p.id: self.respostas.get(p.id, RespostaDeDecisao(fallback_reason="desligado"))
                      for p in pedido.perguntas}
         return ResultadoDeDecisao(respostas, tokens=self.custo_tokens, usd=self.custo_usd,
-                                  ms=(time.perf_counter() - t0) * 1000)
+                                  ms=(time.perf_counter() - t0) * 1000, postado=self.postado, ai_call_id=self.ai_call_id)
 
 
 # ---------------------------------------------------------------------------------------------------- o real (31.14)
@@ -155,10 +159,13 @@ class DecisorJev:
        Jev, o teto do dia e o saldo da conta enxergam o gasto. A falha também vira linha (`ok=0`, motivo fechado). Chave
        ausente não é chamada: nada saiu e nada é registrado.
     5. A resposta só tem o FORMATO conferido aqui; a porta reconfere opção e limiar.
+    6. **O resultado e a falha dizem se houve POST** (31.21): `postado` falso nos passos 1 a 3 e na chave ausente, verdadeiro
+       depois de o transporte ser chamado, com o `ai_call_id` que o `registrar` devolveu (None quando a linha não gravou).
+       Uma exceção que não é do transporte sobe sem marca: a porta a grava como "não se sabe".
     """
 
     def __init__(self, transporte: TransporteDoJev, *, conferir_gasto: Callable[[PedidoDeDecisao], None] | None,
-                 registrar: Callable[[ChamadaAoJev], None] | None = None) -> None:
+                 registrar: Callable[[ChamadaAoJev], int | None] | None = None) -> None:
         self._transporte = transporte
         self._conferir_gasto = conferir_gasto
         self._registrar = registrar
@@ -170,12 +177,12 @@ class DecisorJev:
         t0 = time.perf_counter()
         enviaveis = [p for p in pedido.perguntas if p.tipo == "choice"]
         if not enviaveis:
-            return resultado_de_fallback(pedido, "desligado")
+            return resultado_de_fallback(pedido, "desligado", postado=False)
         if not self._gasto_liberado(pedido):
-            raise FalhaDeDecisao("orcamento")
+            raise FalhaDeDecisao("orcamento", postado=False)
         restante = timeout_s - (time.perf_counter() - t0)
         if restante <= 0:
-            raise FalhaDeDecisao("rede")
+            raise FalhaDeDecisao("rede", postado=False)      # a `rede` sem POST que a 083 passa a separar
         # O motivo é só CLASSIFICADO dentro do `except`; a `FalhaDeDecisao` sai fora dele, para não carregar `__context__`
         # com a exceção do transporte (o mesmo cuidado do adaptador).
         motivo: FallbackReason = "rede"
@@ -189,15 +196,16 @@ class DecisorJev:
         except ProviderError as exc:
             motivo = _motivo_da_falha(exc)
         if resposta is None:
-            if motivo != "desligado":
-                self._anotar(pedido, ok=False, motivo=motivo, ms=(time.perf_counter() - enviado) * 1000)
-            raise FalhaDeDecisao(motivo)
+            if motivo == "desligado":
+                raise FalhaDeDecisao(motivo, postado=False)
+            ai_call_id = self._anotar(pedido, ok=False, motivo=motivo, ms=(time.perf_counter() - enviado) * 1000)
+            raise FalhaDeDecisao(motivo, postado=True, ai_call_id=ai_call_id)
         respostas_cruas, uso = resposta
-        self._anotar(pedido, ok=True, uso=uso)
+        ai_call_id = self._anotar(pedido, ok=True, uso=uso)
         respostas = {p.id: _resposta_choice(respostas_cruas.get(p.id)) if p.tipo == "choice"
                      else RespostaDeDecisao(fallback_reason="desligado") for p in pedido.perguntas}
         return ResultadoDeDecisao(respostas, tokens=uso.input_tokens + uso.output_tokens, usd=uso.cost_usd,
-                                  ms=uso.latency_ms)
+                                  ms=uso.latency_ms, postado=True, ai_call_id=ai_call_id)
 
     def _gasto_liberado(self, pedido: PedidoDeDecisao) -> bool:
         """Sem conferência ligada, ou com ela quebrada, não sai: o gasto que ninguém conferiu não acontece."""
@@ -211,13 +219,16 @@ class DecisorJev:
         return True
 
     def _anotar(self, pedido: PedidoDeDecisao, *, ok: bool, motivo: FallbackReason | None = None,
-                uso: ProviderUsage | None = None, ms: float = 0.0) -> None:
+                uso: ProviderUsage | None = None, ms: float = 0.0) -> int | None:
+        """Grava a linha de gasto e devolve o `ai_calls.id` dela; None quando não há registrador ou ele falhou."""
         if self._registrar is None:
-            return
+            return None
         try:
-            self._registrar(ChamadaAoJev(
+            ai_call_id = self._registrar(ChamadaAoJev(
                 modelo=self._transporte.model, origem=pedido.origem, run_id=pedido.run_id, step_id=pedido.step_id,
                 ref=pedido.ref, tokens_entrada=uso.input_tokens if uso else 0, tokens_saida=uso.output_tokens if uso else 0,
                 usd=uso.cost_usd if uso else 0.0, ms=uso.latency_ms if uso else ms, ok=ok, motivo=motivo))
         except Exception:  # noqa: BLE001 - medir nunca derruba o trabalho (a régua fica cega para ESTA chamada; fica o log)
             log.warning("decisao_fechada: não foi possível registrar a chamada ao Jev em ai_calls")
+            return None
+        return ai_call_id if isinstance(ai_call_id, int) and not isinstance(ai_call_id, bool) and ai_call_id > 0 else None

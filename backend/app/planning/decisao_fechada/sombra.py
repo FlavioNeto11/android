@@ -93,6 +93,11 @@ class RepositorioDeSombra:
         privacidade = registro.motivo_privacidade
         if privacidade is not None and privacidade not in MOTIVOS_DE_PRIVACIDADE:
             privacidade = "outro"
+        # 31.21 (083): se a chamada chegou ao POST e qual linha de gasto ficou, em TODAS as linhas dela (como `ms`): identificam
+        # a chamada e não se somam. Só bool e inteiro positivo; o resto vira NULO ("não se sabe").
+        postado = None if not isinstance(res.postado, bool) else int(res.postado)
+        ai_call_id = (res.ai_call_id if isinstance(res.ai_call_id, int) and not isinstance(res.ai_call_id, bool)
+                      and res.ai_call_id > 0 else None)
         with self._db.tx():
             for i, (pergunta_id, r) in enumerate(res.respostas.items()):
                 escolha = None if r.escolha is None else _id(r.escolha)
@@ -106,25 +111,26 @@ class RepositorioDeSombra:
                 self._db.execute(
                     "INSERT INTO decisao_fechada_sombra(ts, chamada, origem, classe, modo, pergunta_id, escolha,"
                     " probabilidades, confianca, usd, tokens, ms, fallback_reason, run_id, step_id, ref,"
-                    " motivo_privacidade) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " motivo_privacidade, postado, ai_call_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (ts, chamada, registro.origem, registro.classe, registro.modo,
                      _id(pergunta_id) or "invalido", escolha, _probabilidades(r.probabilidades),
                      None if r.confianca is None else round(float(r.confianca), 6),
                      float(res.usd) if i == 0 else 0.0, int(res.tokens) if i == 0 else 0, float(res.ms),
-                     motivo, run_id, step_id, ref, privacidade if motivo == "privacidade" else None))
+                     motivo, run_id, step_id, ref, privacidade if motivo == "privacidade" else None, postado,
+                     ai_call_id))
         return len(res.respostas)
 
-    def registrar_chamada(self, chamada: ChamadaAoJev) -> None:
+    def registrar_chamada(self, chamada: ChamadaAoJev) -> int | None:
         """A linha da chamada ao Jev em `ai_calls` (31.14): é por ela que a fatia do Jev (`origem='decisao_fechada'`), o teto
         do dia e o saldo da conta (provedor `jev` → conta `typesafe`, `saldos._PROVEDOR_DA_CONTA`) enxergam o gasto. O `usd`
-        vai DECLARADO (vence os tokens em `costs.spent_usd`).
+        vai DECLARADO (vence os tokens em `costs.spent_usd`). Devolve o `ai_calls.id`, que a linha da sombra guarda (31.21).
 
         `step_id` fica NULL de propósito: `ai_calls.step_id` é contado como chamada de IA da etapa (`executor.py`, orçamento
         por etapa) e a sombra não é chamada da etapa; o passo ou o pedido vão no `ref`, prefixado pelo consumidor. A linha
         não atualiza `runs.ai_input_tokens`: o teto de tokens da execução é do provedor do ator, não do Jev."""
         alvo = chamada.ref or chamada.step_id or chamada.run_id
         motivo = chamada.motivo if chamada.motivo in FALLBACKS else ("parse" if chamada.motivo else None)
-        self._db.execute(
+        novo = self._db.inserted_id(
             "INSERT INTO ai_calls(ts, run_id, objective_id, step_id, role, model, tier, input_tokens, cache_read,"
             " cache_write, output_tokens, with_image, ms, ok, requested_model, fallback, provider, error_kind,"
             " error_status, error_message, attempt_id, usd, origem, ref)"
@@ -135,6 +141,7 @@ class RepositorioDeSombra:
              int(motivo) if not chamada.ok and motivo is not None and motivo.isdigit() else None, None, None,
              max(0.0, float(chamada.usd)), ORIGEM_NO_GASTO,
              _ref(f"{chamada.origem}:{alvo}") if alvo and chamada.origem in ORIGENS else None))
+        return None if novo is None else int(novo)
 
     # ------------------------------------------------------------------ preenchimentos posteriores (31.8 e 31.9)
     def casar_decisao_real(self, decisoes: Mapping[str, str], *, ref: str | None = None,

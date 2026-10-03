@@ -755,6 +755,18 @@ continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). D
     `ref` = `<consumidor>:<ref>`, `step_id` NULL (a sombra não é chamada de IA da etapa) e sem somar em
     `runs.ai_input_tokens`; a falha também (`ok=0`, `error_kind` = o motivo). Chave ausente não é chamada: `desligado`,
     sem linha. É esta linha que tira a fatia de US$ 0,50 da cegueira e que move o saldo estimado da TypeSafe.
+  - **A sombra diz se houve POST (31.21, migração 083).** `postado` e `ai_call_id` vão em todas as linhas da chamada,
+    como `ms`, e nunca se somam. `ai_call_id` é o id que `registrar_chamada` devolve.
+
+    | Caso | `postado` | `ai_call_id` |
+    |---|---|---|
+    | Parou antes do POST: privacidade, `DecisorNulo`, só `noul`/`score`, orçamento, prazo esgotado, chave ausente | 0 | NULO |
+    | O transporte foi chamado (resposta ou erro dele) | 1 | o id da linha |
+    | Linha de gasto que não gravou ("régua cega") | 1 | NULO |
+    | Exceção inesperada, ou futuro em voo quando o prazo do `on` estoura | NULO | NULO |
+
+    A `rede` da sombra acima do prazo guarda a marca do decisor: o POST aconteceu. Com isso, a `rede` antes do POST deixa
+    de se confundir com a de depois. O cruzamento sombra × `ai_calls` passa a ser exato por linha nas linhas marcadas.
 - **Cliente único.** `backend/tests/test_decisao_fechada.py::test_cliente_unico_so_o_adaptador_de_retrieval_conhece_o_host_da_typesafe`
   varre `backend/app` e prova que só `modules/context_retrieval/adapters/jev.py` contém o host.
 

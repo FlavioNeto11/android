@@ -143,17 +143,26 @@ class ResultadoDeDecisao:
     ms: float = 0.0
     #: Motivo único quando a CHAMADA inteira não aconteceu ou falhou (todas as respostas levam o mesmo).
     fallback_reason: FallbackReason | None = None
+    #: A chamada chegou ao POST (31.21, migração 083)? True: o transporte foi chamado; False: parou antes (privacidade,
+    #: orçamento, prazo, chave ausente, decisor nulo); None: não se sabe (exceção inesperada, futuro em voo no `on`).
+    postado: bool | None = None
+    #: O `ai_calls.id` da linha de gasto desta chamada; None sem POST ou quando a linha não gravou ("régua cega").
+    ai_call_id: int | None = None
 
 
-def resultado_de_fallback(pedido: PedidoDeDecisao, motivo: FallbackReason, *, ms: float = 0.0) -> ResultadoDeDecisao:
+def resultado_de_fallback(pedido: PedidoDeDecisao, motivo: FallbackReason, *, ms: float = 0.0,
+                          postado: bool | None = None, ai_call_id: int | None = None) -> ResultadoDeDecisao:
     """Resultado em que nenhuma pergunta foi respondida: escolha None e `motivo` em todas."""
     return ResultadoDeDecisao({p.id: RespostaDeDecisao(fallback_reason=motivo) for p in pedido.perguntas},
-                              ms=ms, fallback_reason=motivo)
+                              ms=ms, fallback_reason=motivo, postado=postado, ai_call_id=ai_call_id)
 
 
 class FalhaDeDecisao(Exception):
-    """Falha de um decisor, com o motivo FECHADO. A mensagem é um rótulo: nunca corpo, cabeçalho nem estado."""
+    """Falha de um decisor, com o motivo FECHADO. A mensagem é um rótulo: nunca corpo, cabeçalho nem estado. `postado` e
+    `ai_call_id` dizem se a falha veio antes ou depois do POST e qual linha de gasto ficou (31.21)."""
 
-    def __init__(self, motivo: FallbackReason) -> None:
+    def __init__(self, motivo: FallbackReason, *, postado: bool | None = None, ai_call_id: int | None = None) -> None:
         super().__init__(motivo)
         self.motivo: FallbackReason = motivo
+        self.postado = postado
+        self.ai_call_id = ai_call_id

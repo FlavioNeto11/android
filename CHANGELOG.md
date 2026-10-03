@@ -19,6 +19,25 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 31.21: a sombra diz se a chamada ao Jev chegou ao POST (migração 083; branch feat/31-21-postado-na-sombra)
+
+- Migração 083: `decisao_fechada_sombra.postado` e `ai_call_id`, em todas as linhas da chamada, como `ms`.
+  - `postado` vale 1 quando o transporte foi chamado, 0 quando a chamada parou antes e NULO quando não se sabe.
+  - `ai_call_id` é o `ai_calls.id` que `RepositorioDeSombra.registrar_chamada` passa a devolver.
+- O decisor real e a porta repassam a marca:
+  - parou antes do POST (privacidade, decisor nulo, só `noul`/`score`, orçamento, prazo esgotado, chave ausente): 0;
+  - o transporte foi chamado (resposta ou erro dele): 1 com o id;
+  - a linha de gasto não gravou (régua cega): 1 sem id;
+  - exceção inesperada, ou futuro em voo no `on`: NULO;
+  - a `rede` acima do prazo da sombra guarda a marca do decisor.
+- Antes, a `rede` juntava quatro casos que a linha não separava, e o cruzamento sombra × `ai_calls` só podia informar.
+- Prova: `simulated` (`backend/tests/test_decisao_fechada_postado.py`, 19 casos; mais 2.057 testes da porta, da sombra,
+  das migrações e do banco). PostgreSQL `not_run`: o banco de teste da 55433 estava desligado. Central `not_run`: a 083
+  ainda não está implantada.
+- Falta neste branch a parte da leitura (`scripts/jev-leitura-intencao.py`, PR #160, na suíte 12): ela entra depois do
+  merge da suíte 12. **A 083 não pode ser implantada antes dela**, porque o script atual falha fechado em coluna
+  desconhecida.
+
 ## 2026-10-03 — 32.1: estudo da integração da Central com o Trello do dono (branch docs/32-1-estudo-trello)
 
 - `docs/design/trello-integracao.md` (até 2 páginas; sem código; nenhuma chamada ao Trello, `not_run`). Cobre:
