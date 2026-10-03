@@ -251,10 +251,11 @@ class FontesSql:
         row = self._db.one("SELECT * FROM flows WHERE id=?", (ref,))
         if row is None:
             return None
+        exigidos = self._exigidos("SELECT flow_id, app_id FROM flow_required_apps", "flow_id", ref)
         return fluxo_legivel(linhas.json_legado(linhas.texto(row, "plan")), nome=linhas.texto(row, "name"),
                              comando_modelo=linhas.texto(row, "command_template"),
                              fonte=linhas.texto_ou_nulo(row, "source"),
-                             source_run_id=linhas.texto_ou_nulo(row, "source_run_id"))
+                             source_run_id=linhas.texto_ou_nulo(row, "source_run_id"), apps=exigidos.get(ref, []))
 
     def _conteudo_da_habilidade(self, ref: str) -> JsonObject | None:
         row = self._db.one("SELECT skill_id, version, state, schema_version, content, content_hash, command_template,"

@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: o dossiê do fluxo diz os apps (branch fix/dossie-do-fluxo-apps)
+
+- O conteúdo legível do fluxo (detalhe do Livro e dossiê do curador) ganha `app` (o principal do plano), `apps` (os
+  exigidos, de `flow_required_apps`) e o `app` de cada etapa. Antes, um fluxo que atravessa apps (12.1) parecia rodar
+  todo no app principal, e o curador podia julgar "ler no Outlook" num fluxo do Instagram como incoerente.
+- O `dossie_hash` dos fluxos muda: um fluxo já revisado volta a ser elegível para o curador uma vez. O `comando_modelo`
+  (texto da pessoa) segue fora do dossiê.
+- Prova `simulated`: `tests/test_learning_conteudo.py` e `tests/test_learning_curador_dominio.py`.
+
 ## 2026-10-03 — 12.5: bancada do leitor, o portão que reprovou (`scripts/bancada-leitor.py`)
 
 - **`real`.** Foram 16 recortes guardados e 2 leitores reais (gpt-6-luna e gemini-3.1-flash-lite), com 128 pares cada e zero
