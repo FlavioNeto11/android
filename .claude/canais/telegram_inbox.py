@@ -58,6 +58,43 @@ def _marcar_visto(chat: object) -> bool:
     vistos.add(str(chat))
     VISTOS.write_text(json.dumps(sorted(vistos)), encoding="utf-8")
     return True
+
+
+#: Histórico de quem fala com o bot (dono, Telegram 03/10 22:44Z: "o nome, o código do chat e o máximo de informações
+#: que puder, precisamos desse histórico"). Fora do Git, como todo vínculo entre id e pessoa (regra C-08).
+CONTATOS = ROOT / ".claude" / "handoffs" / "canais" / "contatos-telegram.json"
+#: Campos do `from` e do `chat` do Telegram guardados como vieram (o que a API dá sobre a pessoa; nada é inferido).
+_CAMPOS_DA_PESSOA = ("id", "is_bot", "first_name", "last_name", "username", "language_code", "is_premium")
+_CAMPOS_DO_CHAT = ("id", "type", "title", "username", "first_name", "last_name")
+
+
+def _contatos() -> dict[str, dict[str, object]]:
+    try:
+        dado = json.loads(CONTATOS.read_text(encoding="utf-8"))
+        return dado if isinstance(dado, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _registrar_contato(chat: dict[str, object], autor: dict[str, object] | None, quando: str, *,
+                       evento: str, texto: str | None = None, message_id: object = None) -> None:
+    """Uma entrada por chat, com a identidade como o Telegram a deu e o histórico de eventos (mensagem, pergunta do
+    nome, bot posto ou tirado). Texto retido como segredo chega aqui já trocado pelo aviso de retenção."""
+    contatos = _contatos()
+    c = contatos.setdefault(str(chat.get("id")), {"chat": {}, "pessoa": {}, "primeira_vez": quando, "estado":
+                                                    "aguardando_nome", "nome_informado": None, "historico": []})
+    c["chat"] = {k: chat[k] for k in _CAMPOS_DO_CHAT if chat.get(k) is not None}
+    if autor:
+        c["pessoa"] = {k: autor[k] for k in _CAMPOS_DA_PESSOA if autor.get(k) is not None}
+    c["ultima_vez"] = quando
+    # A 1ª mensagem DEPOIS da pergunta do nome é a resposta dela: guarda-se como o nome informado (o dono confirma).
+    if evento == "mensagem" and c.get("estado") == "aguardando_nome" and any(
+            h.get("evento") == "pergunta_do_nome" for h in c["historico"]):
+        c["nome_informado"] = (texto or "")[:120]
+        c["estado"] = "aguardando_dono"
+    c["historico"].append({k: v for k, v in (("quando", quando), ("evento", evento), ("message_id", message_id),
+                                             ("texto", texto)) if v is not None})
+    CONTATOS.write_text(json.dumps(contatos, ensure_ascii=False, indent=1), encoding="utf-8")
 #: Sinais de segredo: a mensagem é retida inteira (o dono grava senha no painel, nunca por aqui). Retém pela FORMA de
 #: um valor, não pela palavra: "a chave do Trello depende do domínio" passava como segredo (falso positivo, 03/10
 #: 20:42Z). Retém: palavra-chave seguida de ":"/"=" ou "é" e um valor; sequência longa com letra e dígito; prefixo de
@@ -80,6 +117,13 @@ def _hora(ts: object) -> str:
         return datetime.fromtimestamp(int(str(ts)), tz=timezone.utc).strftime("%H:%M:%SZ")
     except (TypeError, ValueError):
         return "??:??Z"
+
+
+def _iso(ts: object) -> str:
+    try:
+        return datetime.fromtimestamp(int(str(ts)), tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except (TypeError, ValueError):
+        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _ler_offset() -> int:
@@ -110,15 +154,17 @@ PERGUNTA_DO_NOME = ("Olá! Eu sou a ANA, a IA Gerente de Operações da Central 
                     "pessoa). Para eu saber com quem estou falando: qual é o seu nome?")
 
 
-async def _pedir_nome(canal: CanalTelegram, chat: object, responder_a: object) -> None:
+async def _pedir_nome(canal: CanalTelegram, chat: object, responder_a: object) -> bool:
     corpo: dict[str, object] = {"chat_id": chat, "text": PERGUNTA_DO_NOME}
     if responder_a:
         corpo["reply_parameters"] = {"message_id": responder_a}
     try:
         r = await canal._chamar("sendMessage", json=corpo)
         print(f"[Telegram: pergunta do nome enviada ao chat={chat}: {r.status_code}]", flush=True)
+        return r.status_code == 200
     except Exception as exc:  # noqa: BLE001 - a caixa não pode cair por causa de um envio
         print(f"[Telegram: pergunta do nome FALHOU no chat={chat}: {type(exc).__name__}]", flush=True)
+        return False
 
 
 async def _uma_volta(canal: CanalTelegram, chat_id: str, offset: int) -> int:
@@ -146,6 +192,7 @@ async def _uma_volta(canal: CanalTelegram, chat_id: str, offset: int) -> int:
                     # Privado não conta como visto aqui: o /start manda este aviso antes da 1ª mensagem, e a pergunta do
                     # nome tem de sair nela.
                     _marcar_visto(chat.get("id"))
+                _registrar_contato(chat, autor, _iso(membro.get("date")), evento=f"bot_{status}")
                 print(f"[Telegram: bot {status} num chat {chat.get('type')} chat={chat.get('id')} por ({quem}) "
                       f"às {_hora(membro.get('date'))}]", flush=True)
             continue
@@ -168,9 +215,13 @@ async def _uma_volta(canal: CanalTelegram, chat_id: str, offset: int) -> int:
             autor = msg.get("from") or {}
             registro.update(de="convidado", chat=chat.get("id"), novo=_marcar_visto(chat.get("id")),
                             remetente=" ".join(str(x) for x in (autor.get("first_name"), autor.get("username")) if x))
+            quando = _iso(msg.get("date"))
+            _registrar_contato(chat, autor, quando, evento="mensagem", texto=texto[:2000],
+                               message_id=msg.get("message_id"))
             if registro["novo"]:
                 # Dono, 03/10 21:44Z: chat novo recebe SÓ a pergunta do nome; nada mais até o dono autorizar a pessoa.
-                await _pedir_nome(canal, chat.get("id"), msg.get("message_id"))
+                if await _pedir_nome(canal, chat.get("id"), msg.get("message_id")):
+                    _registrar_contato(chat, None, _iso(None), evento="pergunta_do_nome")
         _emitir(registro)
     if ultimo != offset:
         _gravar_offset(ultimo)

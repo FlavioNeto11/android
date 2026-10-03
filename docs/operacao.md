@@ -376,9 +376,14 @@ de fora 403/404 (19:47Z), "Always Use HTTPS" ligado e provado com 301 (19:54Z). 
 `data/backups/config.yaml.antes-portal-publico-20261003-213502`), central reiniciado (21:46:56Z, checkout `4ad5f8b6`,
 código do `2264843e`) e **prova de fora às 21:47:28Z, 19 de 19** (`bash .claude/handoffs/portal/prova-de-fora.sh depois`,
 sem credencial): API 401, `/api/session` 200 pedindo senha, painel 200 com os arquivos em `/central/`, documentação da
-API só atrás do login, canal do worker 404, `http` 301; antes do reinício, 403 (21:32Z). **Pendente (`not_run`):** o
-primeiro login do dono pelo endereço público. **Conhecido:** a tranca de login é global (item 29.56); até a regra de
-limite de taxa da Cloudflare ou a tranca por cliente, tentativa errada de fora conta contra o dono. O selo "agente
+API só atrás do login, canal do worker 404, `http` 301; antes do reinício, 403 (21:32Z). O primeiro login pelo endereço público
+foi feito pelo dono e funcionou (dito por ele no chat, 03/10 ~22:39Z). **Na Cloudflare (03/10 ~22:47Z, com o sim do dono):**
+regra de limite de taxa `central-login-por-ip` (só `/api/login` de `dev.nvit.com.br`, por IP: mais de 1 pedido em 10 s
+bloqueia por 10 s; é a única regra de limite do plano gratuito) e HSTS de um mês, sem subdomínios e sem preload. Prova de
+fora às 22:49:15Z, sem tentativa de login: `Strict-Transport-Security: max-age=2592000`; `GET /api/login` três vezes
+seguidas dá 405, 429 e 429, e 13 s depois volta a 405; as outras rotas não são afetadas. **Conhecido:** a tranca de login
+do app é global (item 29.56). A regra mantém um IP abaixo das 8 tentativas por minuto que trancam o login, mas não segura
+quem usa vários IPs; a tranca por cliente continua necessária. Depois de errar a senha, espere 10 s para tentar de novo. O selo "agente
 defasado" do notebook depois desse reinício é falso (item 29.59).
 
 **Recuo.** Tire `dev.nvit.com.br` de `server.public_hosts` e reinicie `farm-central`: tudo volta a 403, painel incluído.

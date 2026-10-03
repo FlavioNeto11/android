@@ -101,12 +101,24 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   - **ANA**: o id do dono com o prefixo 🤖, porque hoje escreve com a conta dele;
   - **convidado**: qualquer outro id.
 
-  Grupos e canais do Telegram são ignorados. O nome de quem fala nunca entra no Trello, no Telegram nem no Git; o
-  vínculo entre id e pessoa fica só no arquivo local da seção 7.
+  Grupos e canais do Telegram são ignorados. O nome de quem fala nunca entra no Trello nem no Git, e no Telegram
+  só no chat do dono (C-10). O vínculo entre id e pessoa fica só no arquivo local da seção 7.
+- **Histórico de quem fala (dono, Telegram 03/10 22:44Z):** "o nome, o código do chat e o máximo de informações que
+  puder, precisamos desse histórico". Para cada chat que fala com o bot fica gravado:
+  - a identidade como o Telegram a dá (id, nome, sobrenome, @, idioma, se é bot);
+  - o nome que a pessoa informou e o estado (`aguardando_nome`, `aguardando_dono`, `autorizado`);
+  - a primeira e a última vez;
+  - o histórico de eventos: mensagem, pergunta do nome, bot posto ou tirado.
+  O segredo retido entra só como o aviso de retenção. Hoje o registro fica em `contatos-telegram.json` (seção 7);
+  no produto, no banco da Central (28.18). Nunca no Trello nem no Git.
 - **Hoje:** `telegram_inbox.py` e a leitura dos quadros por `list_activity`.
 - **No produto:** `trello.membro_dono` e `TELEGRAM_CHAT_ID` (canais-externos §4).
 
 **C-09 · Convidado: a pergunta é respondida, o pedido passa pelo dono.**
+- **Restrição vigente (dono, Telegram 03/10 22:41Z, lida pela orquestradora às 22:50Z):** "só responda outras pessoas
+  a não ser a mim" vale, até o dono confirmar, como **não responder a ninguém além do dono no Telegram**. Quem não é
+  o dono recebe só a saudação fixa da C-10. As mensagens dessas pessoas continuam sendo lidas, gravadas (C-08) e
+  avisadas ao dono. A confirmação foi pedida ao dono com sim ou não.
 - **Origem:** dono 03/10 ~20:15Z (Trello) e Telegram 20:51Z ("mantenha o mesmo comportamento do Trello com eles
   aqui também").
 - **Regra:**
@@ -251,6 +263,7 @@ operação. Aqui só se descreve a forma deles.
 |---|---|
 | `.claude/handoffs/canais.md` | O handoff da frente: estado agora, fila, log datado. As regras ficam aqui neste documento. |
 | `.claude/handoffs/canais/membros-trello.json` | `convidados[]`: `n`, nome, `trello_id`, `telegram_chat_id` (vazio até o dono autorizar, C-10) e `autorizado_a_pedir`; as chaves `_regra*` repetem C-08 a C-11. |
+| `.claude/handoffs/canais/contatos-telegram.json` | Por id de chat: `chat`, `pessoa` (campos do Telegram), `primeira_vez`, `ultima_vez`, `estado`, `nome_informado` e `historico[]` (`quando`, `evento`, `message_id`, `texto`). Escrito por `telegram_inbox.py` (C-08). |
 | `.claude/handoffs/canais/situacao.json` | Curadoria do resumo: `deploy_no_ar`, `frentes`, `mudou_extra` (no máximo 5 linhas de até 140 caracteres) e `pendencias`. |
 | `.claude/handoffs/canais/eventos.md` | Uma linha por fato, escrita pela orquestradora (`HH:MMZ \| frente \| item \| o que mudou \| lista sugerida`). Nunca vai ao dono. |
 | `.claude/handoffs/telegram/telegram_offset.txt`, `telegram_inbox.jsonl`, `telegram_chats_vistos.json`, `resumo_cursor.json` | Offset do getUpdates, mensagens recebidas (com segredo já retido), ids de chat já vistos e cursor do resumo. |
