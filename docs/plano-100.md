@@ -727,6 +727,8 @@ lições e telas. Nenhum item edita `taskqueue/repository.py`, `service.py`, `tr
 | 30.20 | **Modo por app para lições e telas** (§8.10; decisão do dono de 02/10): override por pacote, padrão = global; lições depois no QAMessenger, telas `on` no Outlook depois da leitura real | diagnóstico C12 | M |
 | 30.21 | **Evento `learning.needs_person`** (§8.11): entrada e saída da espera humana (faixas B e C), sem conteúdo, para o aviso (28.11) e as Pendências (ADR-062) | pedido do orquestrador, 02/10 | P |
 | 30.22 | **Backfill único das lições** nas 12 execuções reais com contraste aprovável anteriores à 055, idempotente, sem IA, com backup antes | causa medida das 0 lições (02/10) | P |
+| 30.24 | **"Confirmar que fica"** para o legado publicado em "Revisar": gesto da pessoa que grava a confirmação (quem, quando, motivo opcional) e tira o item da fila até nova evidência contrária (a pendência A6 do 30.17) | decisão do orquestrador, 03/10 | P |
+| 30.25 | **Rótulo de intenção** (golden set do 31.10): na execução real sem casamento na RESOLVE e com sucesso comprovado, a pessoa diz qual habilidade do catálogo servia, ou nenhuma; rótulo cego em `learning_reviews` (`template_id='intencao'`, sem IA e sem custo), dossiê só com os ids, e os leitores do curador filtram `template_id='curador'` | contrato com o Jev (31.10), decisão do orquestrador, 03/10 | M |
 
 **Fecha quando:** a visão por app mostra Instagram, QAMessenger e Outlook com origem, conteúdo, saúde e versão de cada conhecimento;
 o curador grava pareceres auditáveis dentro do orçamento proporcional; e a prova real (30.18) está registrada.
