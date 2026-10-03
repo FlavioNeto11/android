@@ -258,6 +258,14 @@ cd backend; $env:TEST_DATABASE_URL = "postgresql://postgres:teste@127.0.0.1:5543
 
 Sem a variável, a suíte roda em SQLite como sempre. Para voltar: `Remove-Item Env:TEST_DATABASE_URL`.
 
+**Em paralelo (`-n 8`), desde o 29.62.** Cada teste migra o próprio esquema, e a trava de migração
+(`Database._trava_de_migracao`, `pg_advisory_lock`) era de uma chave só, global ao banco. Os workers do xdist entravam
+em fila na migração: 1006 testes levaram 22 min com `-n 4` (03/10), mais que em série. A trava passou a ser POR
+ESQUEMA (a forma de duas chaves, `_LOCK_MIGRACAO` e `hashtext(current_schema())`). Em produção há um esquema só, e dois
+backends no mesmo banco seguem em fila. A forma de uma chave e a de duas não se enxergam: um backend antigo e um novo
+subindo JUNTOS no mesmo banco não se esperariam, e o deploy para o antigo antes de subir o novo. Teste:
+`tests/test_trava_de_migracao_por_esquema.py` (só com `TEST_DATABASE_URL`).
+
 **O que ainda ficava de fora, e não fica mais.** Três arquivos abriam `Database(cfg.db_path)` — o arquivo SQLite —
 mesmo dentro da corrida do PostgreSQL, por causa de UMA asserção que lê os bytes do arquivo. Eram 43 funções de
 teste: autenticação do Instagram, perfis/vínculo e o cofre. Entre elas, o único chamador de `get_secret`, ou seja:
