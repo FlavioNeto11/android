@@ -1,5 +1,6 @@
 import { act } from 'react';
 import { vi } from 'vitest';
+import { esquecerLeituraDosPendentes } from '../features/aprendizado/api';
 
 /** Backend falso: responde às rotas do contrato e registra tudo o que o frontend pediu. */
 export interface RecordedCall {
@@ -34,6 +35,7 @@ export class FakeBackend {
   }
 
   install(): void {
+    esquecerLeituraDosPendentes();          // a leitura dividida da fila não atravessa testes
     const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://localhost');
       const method = (init?.method ?? 'GET').toUpperCase();

@@ -587,8 +587,9 @@ describe('Central de Aparelhos — sessão completa', () => {
     await click(byRole('tab', /^Fluxos e receitas/));
     await waitFor(() => expect(text()).toContain('Enviar mensagem de teste'));
     const panel = byRole('tabpanel', /.*/);
-    const marks = Array.from(panel.querySelectorAll('mark')).map((m) => m.textContent);
-    expect(marks).toEqual(['{recipient}', '{message_template}']); // marcadores destacados no comando-modelo
+    // Marcadores destacados no comando-modelo: o destaque sem as chaves (deploy 12) e o cru na dica.
+    const marks = Array.from(panel.querySelectorAll('mark')).map((m) => [m.textContent, m.getAttribute('title')]);
+    expect(marks).toEqual([['recipient', '{recipient}'], ['message template', '{message_template}']]);
     expect(text(panel)).toContain('7 usos');
     expect(text(panel)).toContain('último uso: nunca');
     expect(text(panel)).toContain('QA Messenger'); // app da receita resolvido pelo pacote
