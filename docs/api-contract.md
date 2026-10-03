@@ -4356,3 +4356,31 @@ Só campo novo, aditivo.
 
 Vale para o padrão (`ai.roles`); o perfil de uma execução não aparece aqui (como o modelo, adendo do 17.7). Prova
 `simulated`: `tests/test_perfil_esforco_e_dieta.py::test_sonda_do_thinking_na_aba_ia` e `::test_sonda_vazia_em_provedor_sem_thinking`.
+
+## Adendo v0.87 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — o `GET /api/ai` diz o esquema do plano, os perfis de IA e a leitura visual (I2 da validação do deploy 7)
+
+Só campos novos, aditivos.
+
+- `GET /api/ai` (e `health.ai`) ganha:
+  - `esquema_do_plano`: `longo` | `curto` (`ai.esquema_do_plano`, LT-4b). Vem da configuração, também no modo
+    simulado.
+  - `profiles`: lista, vazia sem `ai.profiles`. Cada item tem:
+    - `name` e `note`;
+    - `roles`: só as funções que o perfil MUDA, já resolvidas (`role`, `provider`, `model`, `effort`,
+      `sends_data_externally`). Sem bloco próprio, a `persona` é o `social`: o perfil que escreve o `social` muda as duas;
+    - `canary_fraction`: a fatia das execuções sem perfil que vai para ele (`ai.canary`), ou `null` quando não é o
+      canário;
+    - `screenshot_max_side` e `rich_tree_min_elements`: os ajustes do 17.14, ou `null`.
+  - `leitura_visual`: `ai.leitura_visual.enabled` (item 12.5). O leitor é a linha `leitura` de `roles`, quando
+    configurado.
+- Antes, o perfil só aparecia quando uma execução o usava, e o esquema só existia no YAML.
+- Painel (Configuração › IA):
+  - a Situação ganha "Esquema do plano", "Perfis de IA" e "Leitura visual";
+  - o "Esforço de raciocínio" sai em português (baixo, médio, alto…);
+  - a tabela Por função ganha as colunas "Esforço" e "Raciocínio" (a sonda do v0.84), e a linha `leitura` vira "Ler a
+    tela (leitura visual)";
+  - um cartão novo, "Perfis de IA", diz o que cada perfil muda, o canário e se os dados saem.
+- Prova `simulated`:
+  - `tests/test_aba_ia_esquema_e_perfis.py`;
+  - `frontend/src/lib/aiLabels.test.ts` e `frontend/src/features/settings/AiSection.test.tsx`;
+  - a tela percorrida no navegador contra um backend simulado do worktree (porta 8765, nada no central).

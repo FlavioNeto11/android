@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Configuração › IA mostra o esquema do plano, os perfis e o esforço por função (I2 da validação do deploy 7; branch feat/ux-deploy7-jev)
+
+- `GET /api/ai` ganha `esquema_do_plano`, `profiles[]` e `leitura_visual` (adendo v0.87).
+- Configuração › IA:
+  - a Situação ganha "Esquema do plano", "Perfis de IA" e "Leitura visual";
+  - o esforço sai em português;
+  - a tabela Por função ganha "Esforço" e "Raciocínio";
+  - a linha `leitura` vira "Ler a tela (leitura visual)";
+  - um cartão novo, "Perfis de IA".
+- Prova `simulated`:
+  - `tests/test_aba_ia_esquema_e_perfis.py`, `aiLabels.test.ts` e `AiSection.test.tsx`;
+  - tela percorrida no navegador contra um backend simulado do worktree.
+
 ## 2026-10-03 — Aprendizado: polimentos da validação do deploy 7 (B1 e I5; branch fix/aprendizado-ux-deploy7)
 
 - B1: o parecer do curador deixa de sair como "da IA" no painel.

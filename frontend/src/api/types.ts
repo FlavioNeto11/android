@@ -386,6 +386,21 @@ interface AiStatus {
   image?: AiImageStatus | null;
   // v0.28 — saldo estimado de cada conta de IA (ADR-051), o mesmo de GET /api/ai/balances.
   balances?: AiBalance[];
+  // v0.87 — o formato da etapa livre do plano (`ai.esquema_do_plano`), os perfis de IA (`ai.profiles`) e se a leitura
+  // visual está ligada (`ai.leitura_visual.enabled`). Ausentes em backend anterior.
+  esquema_do_plano?: 'longo' | 'curto' | string | null;
+  profiles?: AiProfileStatus[];
+  leitura_visual?: boolean | null;
+}
+
+/** Um perfil de IA (v0.87): só as funções que ele muda; as outras são as do padrão. */
+interface AiProfileStatus {
+  name: string;
+  note: string;
+  roles: { role: string; provider: string; model: string; effort: string | null; sends_data_externally: boolean }[];
+  canary_fraction: number | null;       // a fatia das execuções sem perfil que vai para ele; null = não é o canário
+  screenshot_max_side: number | null;
+  rich_tree_min_elements: number | null;
 }
 
 interface AiImageStatus {
@@ -416,6 +431,8 @@ interface AiRoleStatus {
   timeout_s?: number;
   concurrency?: number;
   effort?: string | null;
+  // v0.84 — "o ator pensa?": adaptive | desligado_na_funcao | nao_declarado | recusado_pelo_modelo; null = provedor sem thinking.
+  thinking?: string | null;
 }
 
 interface Health {
@@ -508,7 +525,7 @@ interface Recipe { id: number; app_package: string; app_version: string; step_ke
 export type {
   InstanceState, ControlOwner, AutomationState, RunStatus, ObjectiveStatus, StepStatus, AttemptStatus,
   ActionStatus, DeliveryLevel, FrameInfo, StreamInfo, StreamStatus, InstanceCurrent, Instance, AppConfig, PlanStep, StepOrigin, Plan, RunSummary,
-  Step, Action, Attempt, Evidence, Objective, PlanVersion, RunDetail, EventRecord, Settings, PreviewMode, AiStatus, AiRoleStatus, AiImageStatus,
+  Step, Action, Attempt, Evidence, Objective, PlanVersion, RunDetail, EventRecord, Settings, PreviewMode, AiStatus, AiRoleStatus, AiProfileStatus, AiImageStatus,
   Health, Metrics, Snapshot, ManualInput, UsageGroup, UsageReport, Flow, Recipe,
 };
 

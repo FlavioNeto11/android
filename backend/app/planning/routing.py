@@ -34,7 +34,7 @@ from ..automation.conhecimento_de_telas import declaram_leitura_visual
 from ..config import AI_ROLES, Config, ResolvedRole
 from ..modules.execution.domain.orquestracao import OrquestracaoOut, PedidoDeOrquestracao
 from ..modules.execution.domain.command_refinement import CommandRefinement, RefineRequest
-from ..models import AiRoleStatus, AiStatus, PersonaDraft, Plan, SocialDraftDTO
+from ..models import AiProfileRoleStatus, AiProfileStatus, AiRoleStatus, AiStatus, PersonaDraft, Plan, SocialDraftDTO
 from . import costs, saldos
 from .capabilities import CONHECIMENTO_DE_APPS
 from .catalog import capabilities_of
@@ -473,6 +473,26 @@ class RoutingProvider:
         # Papel `persona` (item 17.8: herda o `social` até alguém configurá-lo), sem `run_id`: nasce do portal, como
         # a prévia — o teto do dia vale, o da execução não. `image` NÃO é papel: imagem tem porta própria.
         return await self._call("persona", None, lambda p: p.generate_persona(req), origem="persona")
+
+
+def perfis_para_o_painel(cfg: Config) -> list[AiProfileStatus]:
+    """Os perfis de `ai.profiles` com as funções que cada um MUDA, para o `GET /api/ai` (adendo v0.87). A `persona` sem
+    bloco próprio é o `social`: o perfil que escreve o `social` muda as duas. A resolução é a mesma do roteador
+    (`Config.ai_roles(perfil)`), então a tela diz o que as execuções do perfil usam."""
+    ai = cfg.file.ai
+    persona_herda = "persona" not in ai.roles
+    perfis: list[AiProfileStatus] = []
+    for nome, perfil in ai.profiles.items():
+        escritas = set(perfil.roles) | ({"persona"} if persona_herda and "social" in perfil.roles else set())
+        resolvidas = cfg.ai_roles(nome)
+        funcoes = [AiProfileRoleStatus(role=papel, provider=r.provider, model=r.model, effort=r.effort,
+                                       sends_data_externally=r.sends_data_externally)
+                   for papel in AI_ROLES if papel in escritas for r in (resolvidas[papel],)]
+        perfis.append(AiProfileStatus(
+            name=nome, note=perfil.note, roles=funcoes,
+            canary_fraction=ai.canary.fraction if ai.canary.profile == nome else None,
+            screenshot_max_side=perfil.screenshot_max_side, rich_tree_min_elements=perfil.rich_tree_min_elements))
+    return perfis
 
 
 def _estado_do_thinking(provedor: AIProvider, papel: str, model: str) -> str | None:
