@@ -528,6 +528,18 @@ async def app_overview_route(request: Request, app_id: str, days: int = Query(30
     return detalhe
 
 
+@router.get("/apps/{pacote}/conhecimento")
+async def app_conhecimento_route(pacote: str) -> Any:
+    """RA-24: os YAML do conhecimento do app (`app/conhecimento/apps/<pacote>/`) com sha256 e o hash de blob do Git,
+    que confere com `git rev-parse <commit>:<caminho>` sem abrir a máquina. O parâmetro é o PACOTE, e não o id do app."""
+    from dataclasses import asdict  # noqa: PLC0415
+    from .integrations.app_declarado.prova import prova_do_pacote  # noqa: PLC0415
+    prova = prova_do_pacote(pacote)
+    if prova is None:
+        raise err(404, "not_found", "Nenhum conhecimento declarado para este pacote.")
+    return asdict(prova)
+
+
 # ---------------------------------------------------------------- modo treinamento (itens 13.1–13.3)
 def _training_error(exc: Any) -> HTTPException:
     return err(exc.status, exc.code, exc.message)
