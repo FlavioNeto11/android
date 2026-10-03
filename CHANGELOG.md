@@ -19,6 +19,36 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Suíte 15 na main e deploy 15 no central (2264843e; sem migração nova; config sem mudança do deploy)
+
+- A suíte 15 foi integrada em `integ/suite-15`, na ordem da orquestradora:
+  - #171 29.54, o portal público em `/central` (a1ce153b);
+  - #172 30.39, a evidência datada da receita (16142fd1);
+  - #170 31.11, o lote offline da intenção (a562169b);
+  - #173 31.13, a R5 em sombra travada (313c98de, empilhado no #170; adendos v1.05 e v1.06 em ordem).
+
+  Também entraram a main de então (44cb297c, 9490b897 com o ID 30.40) e os commits da Canais só no mapa do Trello
+  (a51ffb14, f592cca4, 7e65846c, bebc8872). A troca `apps_do_comando._nomes` → `nomes_do_app` ficou sem uso antigo.
+  O 30.38 (a, b) e o 30.40 ficam para a suíte 16.
+- Portões (na a5cc9455):
+  - backend SQLite `-n 8` Idle: 8816 passed, 7 skipped, 0 failed (20:47:43–20:55:09Z);
+  - scripts 531/0, typecheck ok, frontend 1426/1426;
+  - PostgreSQL dirigido, sem migração nova: 58 arquivos (os que a suíte mudou e os do código SQL e da decisão fechada
+    que ela tocou), `-n 3` Idle, 2729 passed, 5 skipped, 0 failed (20:58:02–21:25:09Z, na bc6a9e48).
+
+  Os merges depois do portão foram só de docs, do plano e do mapa: pacotes, `relatorio` (387 itens), check e
+  docs-check limpos.
+- A main avançou por fast-forward para 2264843e.
+- Implantado no central (`real`, 03/10, WIN-7S2UASNLFOP):
+  - `deploy.ps1 -PularDependencias` (requirements inalterados; frontend reconstruído) com backup `20261003-182909`
+    (174.8 MB, integridade ok);
+  - backend no ar às 21:29:26Z;
+  - health ok: commit 2264843e, `migration 086_sombra_estado_hash`, `problems []`; `/docs` local 404;
+  - `config/config.yaml` sem mudança do deploy. O teto por pedido de validação de 0,15, gravado antes pela Aprendizado
+    com a autorização da orquestradora, passou a valer neste reinício.
+- Agente do notebook em `0.1.0+2264843` (simulação e depois o real; online às 21:31:36Z). O reparo dos 09/10/12/13
+  ficou pausado durante a troca (21:30:45–21:31:43Z). Os 01/03/06 seguiram online, sem atenção.
+
 ## 2026-10-03 — 31.13, R5: os apps do comando em sombra, travados no código (branch feat/31-13-r5-apps)
 
 - `planning/decisao_fechada/apps.py`: um `noul` por app do cadastro sobre o comando da intenção. O estado é SÓ o
