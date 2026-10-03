@@ -32,6 +32,7 @@ from app.planning.provider import (AIError, AppContext, Decision, DecisionReques
                                    StepContext, Usage, build_provider)
 from app.planning.routing import RoutingProvider, _com_provedor
 from app.planning.simulated_provider import SimulatedProvider
+from app.taskqueue import executor as executor_mod
 
 from .conftest import CountingProvider, Harness, _dsn_de_teste, make_config
 
@@ -560,6 +561,22 @@ class _DecideComAlvoFantasma(CountingProvider):
         return decision, usage
 
 
+async def test_piso_a_subida_de_tier_vale_so_para_a_proxima_decisao(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A prova (3) de antes do caminho rápido 1, sem enfraquecer: com o atalho de entrada do LT-1 desligado, o ator ainda
+    é chamado depois do toque, e essa 3ª decisão volta ao tier 0 — a subida vale só para a decisão seguinte ao descarte."""
+    monkeypatch.setattr(executor_mod, "ATALHO_ANTES_DO_ATOR", False)
+    h = Harness(tmp_path, 3)
+    h.ai = _DecideComAlvoFantasma(SimulatedProvider())
+    await h.boot()
+    try:
+        run = h.run(["android-01"])
+        assert (await h.wait_run(run.id)).status == "completed"
+        chamadas = [c["tier"] for c in h.ai.calls if c["role"] == "decide" and c["step"] == "open_conversation"]
+        assert chamadas == [0, 1, 0], chamadas
+    finally:
+        await h.state.stop()
+
+
 async def test_piso_descarta_alvo_inexistente_e_sobe_a_proxima_decisao_para_tier_1(tmp_path: Path) -> None:
     """A suíte inteira roda com `AI_PROVIDER=simulated` — que aqui faz as vezes do provedor LOCAL (nenhum teste
     chama endpoint de verdade): `kind` resolve para `simulated`, que não é `anthropic`, e é exatamente essa a
@@ -579,8 +596,8 @@ async def test_piso_descarta_alvo_inexistente_e_sobe_a_proxima_decisao_para_tier
         # (1) tier 0 com o alvo fantasma: descartada, não virou ação nem erro contado; (2) a decisão SEGUINTE já
         # sobe para tier 1 — é a mesma escolhida antes, agora com o `element_id` de verdade, e o toque acontece;
         # (3) o toque abriu a conversa e a pós-condição passou a valer na tela lida: o ator não é chamado de novo só
-        # para dizer "pronto" (caminho rápido 1, LT-1). Antes havia aqui uma 3ª decisão em tier 0, que provava que a
-        # subida valia só para a PRÓXIMA decisão; esse cenário não a exercita mais (a regra está em `forcar_tier_1`).
+        # para dizer "pronto" (caminho rápido 1, LT-1). Que a subida vale só para a PRÓXIMA decisão está provado no
+        # teste seguinte, com o atalho desligado.
         assert chamadas == [0, 1], chamadas
         # A linha do tempo diz POR QUE escalou — não pode herdar o motivo genérico de "ação repetida".
         # `ORDER BY id`: sem ele o PostgreSQL devolve as linhas em qualquer ordem, e a escalada da etapa SEGUINTE

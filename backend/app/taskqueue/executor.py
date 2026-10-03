@@ -85,6 +85,10 @@ JULGAMENTOS_ANTES_DO_ATOR = 1
 #: (o aceite do LT-1 diz que não pode subir). Com `False`, a etapa sem prova local paga o juiz barato na entrada, como o
 #: handoff de latência descreve; mexer nisto só com a fração "já pronta na entrada" medida em `real`.
 ENTRADA_JULGADA_SO_COM_PROVA_LOCAL = True
+#: Liga o atalho de ENTRADA do LT-1 (a pós-condição já vale na tela lida → sai para a comprovação sem o ator). Existe
+#: para os testes que provam regras do ator NUM CENÁRIO em que o atalho cortaria a decisão observada (o piso de tier, a
+#: política de imagem): eles desligam isto e reafirmam a prova antiga sem enfraquecê-la.
+ATALHO_ANTES_DO_ATOR = True
 
 
 async def reler_se_ocupada(ler: Callable[[], Awaitable[T]], *, prazo: float, quem: str) -> T:
@@ -1568,7 +1572,8 @@ class StepExecutor:
                 # tela não sensível e nenhuma saída por ler. Prova local verdadeira: sai do laço para o `_verify` de
                 # sempre (custo zero, a árvore já foi lida). Etapa julgada sem nível de entrega: o juiz barato confere
                 # a tela agora, e só um "não" chama o ator. Receita que ainda reproduz decide antes daqui.
-                if not step.side_effect and not fired and not obs.sensitive and not faltam_saidas():
+                if (ATALHO_ANTES_DO_ATOR and not step.side_effect and not fired and not obs.sensitive
+                        and not faltam_saidas()):
                     pelo_atalho: str | None = None
                     if not judged_step:
                         if self._postcondition_holds(step, obs, cartao, pacote=app.package):

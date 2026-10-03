@@ -9,10 +9,13 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from app.automation.hierarchy import parse_hierarchy
 from app.planning.capabilities import capability_of
 from app.planning.prompts import actor_user_text, verifier_user_text
 from app.planning.provider import AppContext, DecisionRequest, ScreenInput, StepContext
+from app.taskqueue import executor as executor_mod
 from app.taskqueue.executor import actor_params, compress_history, side_effect_tier, _boost_terms
 
 from .conftest import Harness
@@ -50,16 +53,16 @@ async def test_verificacao_nao_rejulga_tela_igual_e_respeita_o_teto(harness: Har
     assert len(fake.messages) == 1
 
 
-async def test_politica_de_imagem_auto_decide_pela_hierarquia(harness: Harness) -> None:
+async def test_politica_de_imagem_auto_decide_pela_hierarquia(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A política de imagem é do ATOR: o atalho de entrada do LT-1 (caminho rápido 1) corta justamente os decides só de
+    # "pronto" (sem imagem) e mudaria a proporção que esta prova mede. Desligado aqui, a prova segue a mesma de antes.
+    monkeypatch.setattr(executor_mod, "ATALHO_ANTES_DO_ATOR", False)
     harness.cfg.file.ai.image_policy = "auto"
     harness.cfg.file.ai.rich_tree_min_elements = 3
     run = harness.run(["android-02"])
     assert (await harness.wait_run(run.id)).status == "completed"
     decides = [c for c in harness.ai.calls if c["role"] == "decide"]
-    # Antes do caminho rápido 1 a maioria dos decides ia sem imagem; o LT-1 cortou justamente os decides só de
-    # "pronto" (sem imagem), então o que sobra tem mais decisões de abertura de etapa julgada (com imagem por regra). A
-    # política continua provada onde ela decide: a árvore rica basta na etapa de navegação, e nem toda decisão leva imagem.
-    assert decides and sum(1 for c in decides if c["image"]) < len(decides)
+    assert decides and sum(1 for c in decides if c["image"]) < len(decides) / 2      # a maioria sem imagem
     assert any(not c["image"] for c in decides if c["step"] == "open_conversation")
 
 

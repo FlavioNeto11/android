@@ -87,7 +87,8 @@ async def test_capacidades_do_perfil_juntam_fluxos_etapas_e_interacoes(tmp_path:
                    " VALUES ('r1','k-r1','abrir o app','execute','completed','[\"android-01\"]','2026-09-21T00:00:00Z','f1')")
         db.execute("INSERT INTO objectives(id, run_id, instance_id, status, profile_id) VALUES ('r1:android-01','r1',"
                    "'android-01','succeeded',?)", (perfil.id,))
-        for i, origem in enumerate(("recipe", "recipe", "ai")):
+        # `sem_ator` (caminho rápido 1): a etapa fechou sem o ator — roda sem IA, entra no numerador da fração.
+        for i, origem in enumerate(("recipe", "recipe", "ai", "sem_ator")):
             db.execute("INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
                        " postcondition, timeout_s, max_attempts, status, driven_by) VALUES (?,?,?,?,1,?,?,?,?,?,30,2,"
                        "'succeeded',?)", (f"r1:android-01:v1:k{i}", "r1", "r1:android-01", "android-01", i, f"k{i}",
@@ -103,8 +104,8 @@ async def test_capacidades_do_perfil_juntam_fluxos_etapas_e_interacoes(tmp_path:
         assert [f["flow_id"] for f in corpo["flows"]] == ["f1"]
         assert corpo["flows"][0]["times"] == 1 and corpo["flows"][0]["steps_total"] == 1
         assert corpo["flows"][0]["ai_cost"] in ("total", "zero", "parcial", "desconhecido")
-        assert corpo["steps_driven_by"] == {"recipe": 2, "ai": 1}
-        assert corpo["recipe_share"] == pytest.approx(2 / 3, abs=0.01)
+        assert corpo["steps_driven_by"] == {"recipe": 2, "ai": 1, "sem_ator": 1}
+        assert corpo["recipe_share"] == pytest.approx(3 / 4, abs=0.01)
         assert corpo["interactions"] == {"dm_sent": 1}
         async with _cliente(h) as c:
             r = await c.get("/api/flows/cobertura")

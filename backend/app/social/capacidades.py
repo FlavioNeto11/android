@@ -164,7 +164,9 @@ def capacidades_do_perfil(s: Any, profile_id: str) -> dict[str, Any]:
                           "uses": int(f["uses"] or 0), "status": f["status"], "last_at": f["last_used_at"],
                           "scope": "todos os perfis" if not esc else "escolhido para este perfil ou grupo"})
     total_etapas = sum(etapas.values())
-    por_receita = etapas.get("recipe", 0)
+    # "Roda sem IA": a etapa da receita E a que fechou sem o ator (`sem_ator`, caminho rápido 1, LT-1) — nenhuma
+    # das duas pediu decisão ao modelo. Fora dela, `sem_ator` entrava no total e não no numerador, e a fração caía.
+    por_receita = etapas.get("recipe", 0) + etapas.get("sem_ator", 0)
     medianas = medianas_de_custo(s)
     habilidades = _habilidades_executadas(s.db, profile_id,
                                           lambda modelo: cobertura_do_fluxo(s, modelo, medianas=medianas))
