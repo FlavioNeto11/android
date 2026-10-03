@@ -4329,3 +4329,17 @@ do repositório e a recusa de `versao` 2, 0, 1.0, `true` e `"1"`.
 - O painel (Configurações, Fluxos) e a aba do curador mostram "QA Messenger → Chrome" com o nome de cada app.
 
 Prova `simulated`: `backend/tests/test_flows_required_apps.py`; `real`: `not_run`.
+
+## Adendo v0.83 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — `rotulo` no livro: o app de teste fora da lista padrão (RA-19, fatia A)
+
+- `GET /api/aprendizado` aceita `rotulo` = `produto` | `qa` | `todos` (outro valor: 422). Os apps de teste são os de
+  `apps.category='qa'` (o QA embutido).
+  - Sem `rotulo` e sem `app`, vale `produto`: a lista esconde as entradas dos apps de teste.
+  - Sem `rotulo` e com `app`, vale `todos`: o app escolhido mostra o que tem, mesmo sendo de teste.
+- A resposta ganha `rotulo` (o que valeu) e `ocultos` (quantos itens os outros filtros deixavam e o `rotulo`
+  escondeu). A `contagem` e o `total` são do que é mostrado.
+- **Mudança visível:** a lista padrão encolhe. No central, em 03/10, eram 164 entradas, 94 do QA. Quem quer o livro
+  inteiro passa `rotulo=todos`.
+- `/pendentes`, `/revisar`, o detalhe e `/aprendizado/apps` não mudam: as filas de decisão e a visão por app leem tudo.
+
+Prova `simulated`: `tests/test_learning_rotulo_do_livro.py`, `AprendizadoPage.test.tsx` e `model.test.ts`.

@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: o app de teste fora da lista padrão do livro (RA-19, fatia A; branch feat/ra-19-visao-do-livro)
+
+- `GET /api/aprendizado` ganha o filtro `rotulo` (`produto` | `qa` | `todos`, adendo v0.83). O padrão sem app é
+  `produto`, que esconde os apps de `apps.category='qa'`. A resposta traz `rotulo` e `ocultos`.
+- O Aprendido abre em "Produto", com o seletor segmentado "Produto · QA · Todos" e os ocultos ao lado. O acervo de teste
+  continua no livro, na visão por app e nas filas.
+- Prova `simulated`: `tests/test_learning_rotulo_do_livro.py` (8) e o painel (119). Sem migração.
+
 ## 2026-10-03 — 29.42: o fluxo entre apps diz de que apps precisa (branch feat/29-42-required-apps)
 
 - `GET /api/flows` devolve `required_apps` em cada fluxo, na ordem em que o plano usa os apps (sem migração: a ordem vem

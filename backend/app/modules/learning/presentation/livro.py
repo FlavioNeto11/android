@@ -47,7 +47,7 @@ from app.modules.learning.domain.livro import (AcaoPermitida, EntradaDoLivro, Tr
 from app.modules.learning.domain.parecer import RevisaoGravada
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.saude import Saude
-from app.modules.learning.domain.vocabulario import LivroKind, Origem
+from app.modules.learning.domain.vocabulario import LivroKind, Origem, Rotulo
 from app.modules.learning.presentation.nomes import nomear_apps
 from app.modules.skills.domain.document import JsonObject, JsonValue
 from app.shared.costuras import autor_do_gesto
@@ -304,9 +304,12 @@ class CorpoDaConfirmacao(BaseModel):
 # ------------------------------------------------------------------ rotas
 @router.get("", response_model=None)
 async def ler_livro(request: Request, kind: LivroKind | None = None, state: SkillState | None = None,
-                    app: str | None = None, origem: Origem | None = None) -> JsonObject:
+                    app: str | None = None, origem: Origem | None = None, rotulo: Rotulo | None = None) -> JsonObject:
     servico = _servico(request)
-    livro = servico.livro(kind=kind, state=state, app=app, origem=origem)
+    # RA-19: sem `rotulo`, a lista padrão esconde os apps de teste. Com um app escolhido, vale o que ele tiver: o QA
+    # Messenger escolhido no filtro de app não pode voltar vazio por causa de um padrão que a pessoa não escolheu.
+    efetivo = rotulo or (Rotulo.TODOS if app else Rotulo.PRODUTO)
+    livro = servico.livro(kind=kind, state=state, app=app, origem=origem, rotulo=efetivo)
     contagem: JsonObject = {k: {estado: n for estado, n in v.items()} for k, v in livro.contagem.items()}
     capabilities = servico.capabilities(livro.itens)
     nomes = servico.nomes_das_capabilities(livro.itens, capabilities)
@@ -314,7 +317,8 @@ async def ler_livro(request: Request, kind: LivroKind | None = None, state: Skil
     itens: list[JsonValue] = [_entrada(e, servico, livro.saudes.get(e.trail_ref), capabilities.get(e.trail_ref),
                                        nomes.get(e.trail_ref), legado) for e in livro.itens]
     nomear_apps(itens, servico)
-    return {"itens": itens, "total": len(livro.itens), "contagem": contagem}
+    return {"itens": itens, "total": len(livro.itens), "contagem": contagem, "rotulo": efetivo.value,
+            "ocultos": livro.ocultos}
 
 
 @router.get("/pendentes", response_model=None)

@@ -42,6 +42,34 @@
 
 .filtro { min-width: 150px; }
 
+/* RA-19: o filtro de apps é um seletor segmentado (Produto · QA · Todos), com os ocultos ao lado; o rótulo segue o
+   do `Field` (o `label` não serve a um radiogroup). */
+.filtroDeApps { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.filtroDeAppsNome { color: var(--text-2); font-size: var(--fs-sm); font-weight: 500; }
+.segmentado { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.segmentos {
+  display: inline-flex;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.segmento {
+  min-height: var(--hit-min);
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-left: 1px solid var(--control-border);
+  background: var(--surface-1);
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.segmento:first-child { border-left: 0; }
+.segmento:hover { background: var(--surface-2); }
+.segmento:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.segmentoOn { background: var(--accent-soft); color: var(--text-1); font-weight: 500; }
+.ocultos { color: var(--text-3); font-size: var(--fs-xs); }
+
 .lista {
   display: flex;
   flex-direction: column;

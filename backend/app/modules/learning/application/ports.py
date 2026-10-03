@@ -185,6 +185,10 @@ class FontesDoLivro(Protocol):
         """As versões do app observadas hoje em aparelho ativo (o eixo de comparação do §7)."""
         ...
 
+    def pacotes_de_teste(self) -> frozenset[str]:
+        """Os pacotes dos apps de teste (`apps.category='qa'`): a lista padrão do livro os esconde (RA-19)."""
+        ...
+
     def sucessoras_da_habilidade(self, skill_id: str, versao: int) -> list[Sucessora]:
         """As versões da habilidade editadas a partir desta (`parent_version` = `versao`), para a relação
         `substituida_por` (30.7)."""
