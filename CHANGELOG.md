@@ -65,6 +65,20 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_trello_{cliente,config,espelho,leitor,webhook}.py`. `not_run`: o HEAD do Trello na
   URL pública, o primeiro cadastro e um comentário real chegando pelo webhook (dependem do deploy e do "vai" da orquestradora).
 
+## 2026-10-03 — Scripts do portal público versionados em `scripts/portal-*` (ADR-073)
+
+- O procedimento do portal deixou de depender de arquivos fora do Git: `portal-instalar-tunel.ps1` e
+  `portal-gerar-senha.ps1` (rodados pelo dono), `portal-config.py` (`ligar`, `recuar`, `conferir`) e
+  `portal-prova-de-fora.sh`. Ligar e recuar usam a mesma lista de linhas e são inversos exatos.
+- O que mudou em relação aos originais: raiz e hostname por argumento, fim de linha do `config.yaml` preservado,
+  `conferir` não toca no `.env`, e a linha do 429 da prova de fora pode ser pulada (`SEM_LIMITE_DE_TAXA=1`).
+- Simulado: `scripts/tests/test_portal_config.py` (9 testes, ida e volta byte a byte sobre o `config.example.yaml`).
+- Real, 03/10/2026, máquina central, checkout `4ad5f8b6`: às 23:05:38Z `conferir` 5 de 5, `ligar --ensaio` "nada a
+  fazer" e `recuar --ensaio` 7 linhas, sem gravar; às 23:06:58Z a prova de fora deu 22 de 22, sem credencial.
+- Não executado (`not_run`): `portal-instalar-tunel.ps1` e `ligar`/`recuar` gravando, na forma versionada (o túnel e o
+  hostname já estão no ar; a senha só foi ensaiada num arquivo de mentira). O primeiro login do dono pelo endereço
+  público funcionou (~22:39Z) e a regra de limite de taxa e o HSTS da Cloudflare estão ligados (22:49Z).
+
 ## 2026-10-03 — Portal público no ar em `https://dev.nvit.com.br/central` (29.54, ADR-073; prova real)
 
 - O hostname entrou em `server.public_hosts` do `config.yaml` do central (21:35:02Z, com cópia em `data/backups/`),

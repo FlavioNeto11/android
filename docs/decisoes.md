@@ -5157,7 +5157,7 @@ saúde dizer quando a exposição está pela metade.
 **Pré-requisitos e limites conhecidos.**
 - **"Always Use HTTPS" LIGADO na zona da Cloudflare** é pré-requisito: sem ele o login por `http://` mandaria o token em
   claro até a borda. HSTS é opcional e decisão do dono.
-- **`API_TOKEN` aleatório e longo** (o `gerar-senha-do-portal.ps1` gera 24 bytes do gerador criptográfico, 32
+- **`API_TOKEN` aleatório e longo** (o `scripts/portal-gerar-senha.ps1` gera 24 bytes do gerador criptográfico, 32
   caracteres). Token curto ou de dicionário anula o resto.
 - **A tranca de login é GLOBAL (não por IP)** e o `Bearer` em `/api/*` não tem limite de tentativas. Por isso uma regra de
   limite de taxa da Cloudflare para `/api/` é **recomendada antes do uso de fora**; a tranca por cliente fica como item
@@ -5184,6 +5184,9 @@ preservado. Travessia de caminho em `/central/` dá 400 na borda e 404 no app. O
 O login pelo endereço público foi feito pelo dono e funcionou (dito por ele no chat, 03/10 ~22:39Z). Na Cloudflare, com o
 sim dele (03/10 ~22:47Z): regra de limite de taxa só para `/api/login` (por IP, mais de 1 pedido em 10 s bloqueia 10 s) e
 HSTS de um mês sem subdomínios; conferidos de fora às 22:49:15Z (`max-age=2592000`; `GET /api/login` seguido dá 405 e 429).
+Os scripts do procedimento, que no dia da ida ao ar estavam fora do Git, hoje são `scripts/portal-instalar-tunel.ps1`,
+`portal-gerar-senha.ps1`, `portal-config.py` e `portal-prova-de-fora.sh` (prova de fora com o versionado: 22 de 22 às
+23:06:58Z).
 Cloudflare Access ficou de fora por decisão dele.
 
 **Relação.** ADR-025/ADR-040 (credencial e cofre, não alterados), ADR-009, ADR-056 (rede por aparelho, não alterado),

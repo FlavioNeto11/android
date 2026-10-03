@@ -306,7 +306,7 @@ executado em 03/10/2026** (`real`, menos o login do dono): é o procedimento do 
 - **Sem credencial só abrem** `/central/`, os dois redirecionamentos (`/` e `/central`) e `/api/login|logout|session`.
   Os docs da API agora moram em `/api/docs`, `/api/redoc` e `/api/openapi.json` e exigem credencial (loopback livre).
 - **"Always Use HTTPS" ligado na zona** é pré-requisito (sem ele o login por http levaria o token em claro até a borda);
-  HSTS é opcional, decisão do dono. O `API_TOKEN` tem de ser aleatório e longo (`gerar-senha-do-portal.ps1`: 24 bytes
+  HSTS é opcional, decisão do dono. O `API_TOKEN` tem de ser aleatório e longo (`scripts/portal-gerar-senha.ps1`: 24 bytes
   do gerador criptográfico, 32 caracteres).
 - **A tranca de login é GLOBAL (não por IP)** e o `Bearer` em `/api/*` não tem limite: crie na Cloudflare uma regra de
   limite de taxa para `/api/` antes do uso de fora (a tranca por cliente é item futuro).
@@ -314,7 +314,9 @@ executado em 03/10/2026** (`real`, menos o login do dono): é o procedimento do 
   o procedimento nunca o lê nem o imprime. `GET /api/health` mostra `exposicao_publica_incompleta` enquanto faltar
   qualquer peça.
 
-**Procedimento** (o script do dono, ainda fora do Git, faz os passos 3 a 6 com as mesmas travas)
+**Procedimento** (`scripts/portal-instalar-tunel.ps1`, rodado pelo dono como Administrador, faz os passos 3 a 6 com as
+mesmas travas; `python scripts/portal-config.py ligar` faz as três linhas do `config.yaml` do passo 7, com cópia de
+segurança e `--ensaio`; `scripts/portal-gerar-senha.ps1`, também do dono, grava o `API_TOKEN` sem mostrá-lo)
 1. `winget install --id Cloudflare.cloudflared -e` (terminal novo depois).
 2. `cloudflared tunnel login`: consentimento do dono no navegador, escolhendo `nvit.com.br`. Grava o `cert.pem` em
    `%USERPROFILE%\.cloudflared`, que é segredo e não se lê nem se copia.
@@ -349,7 +351,10 @@ executado em 03/10/2026** (`real`, menos o login do dono): é o procedimento do 
    - reinicie a tarefa `farm-central`. Antes deste passo o central ainda não conhece o hostname e responde 403 a tudo,
      que é o estado seguro para conferir o túnel.
 
-**Conferências de ida ao ar** (de FORA da LAN, por exemplo no 4G; marque o resultado como `real`, com data e máquina)
+**Conferências de ida ao ar** (de FORA da LAN, por exemplo no 4G; marque o resultado como `real`, com data e máquina).
+`bash scripts/portal-prova-de-fora.sh depois` faz todas, menos o login, sem credencial e sem chamar a rota de login com
+senha; `antes` confere o estado seguro (403) antes do passo 7. A linha do 429 prova a regra de limite de taxa da
+Cloudflare desta instalação: sem a regra, rode com `SEM_LIMITE_DE_TAXA=1`.
 | Pedido | Esperado |
 |---|---|
 | `https://dev.nvit.com.br/central/` | 200, tela de login |
@@ -374,7 +379,7 @@ encerre esse processo e inicie o serviço, nunca `Restart-Service`.
 de fora 403/404 (19:47Z), "Always Use HTTPS" ligado e provado com 301 (19:54Z). Senha do portal (`API_TOKEN`) gravada pelo dono
 (~19:59Z), hostname declarado no `config.yaml` (21:35:02Z, cópia anterior em
 `data/backups/config.yaml.antes-portal-publico-20261003-213502`), central reiniciado (21:46:56Z, checkout `4ad5f8b6`,
-código do `2264843e`) e **prova de fora às 21:47:28Z, 19 de 19** (`bash .claude/handoffs/portal/prova-de-fora.sh depois`,
+código do `2264843e`) e **prova de fora às 21:47:28Z, 19 de 19** (o script que hoje é `scripts/portal-prova-de-fora.sh`,
 sem credencial): API 401, `/api/session` 200 pedindo senha, painel 200 com os arquivos em `/central/`, documentação da
 API só atrás do login, canal do worker 404, `http` 301; antes do reinício, 403 (21:32Z). O primeiro login pelo endereço público
 foi feito pelo dono e funcionou (dito por ele no chat, 03/10 ~22:39Z). **Na Cloudflare (03/10 ~22:47Z, com o sim do dono):**
@@ -387,6 +392,10 @@ quem usa vários IPs; a tranca por cliente continua necessária. Depois de errar
 defasado" do notebook depois desse reinício é falso (item 29.59).
 
 **Recuo.** Tire `dev.nvit.com.br` de `server.public_hosts` e reinicie `farm-central`: tudo volta a 403, painel incluído.
+`python scripts/portal-config.py recuar` tira exatamente as sete linhas que o `ligar` pôs (com cópia de segurança; ele
+para sem tirar nada se alguma foi mexida à mão) e `conferir` só lê e diz se o bloco `server` está pronto. Com o script versionado, em
+03/10/2026 às 23:05:38Z no central: `conferir` 5 de 5, `ligar --ensaio` "nada a fazer" e `recuar --ensaio` 7 linhas,
+sem gravar; a prova de fora deu 22 de 22 às 23:06:58Z.
 Para tirar o hostname do ar, `Stop-Service Cloudflared` (e, se for o caso, `cloudflared service uninstall`).
 
 ## 12. Tabela de scripts por risco
@@ -422,6 +431,11 @@ Para tirar o hostname do ar, `Stop-Service Cloudflared` (e, se for o caso, `clou
 | `worker-install.ps1` / `worker-agent.ps1 -Instalar` | P | Instala/registra o agente numa máquina worker |
 | `install-central-service.ps1` | P | Registra o backend do central como tarefa supervisionada |
 | `worker-tunnel.ps1` | P | Sobe/mantém o túnel SSH real |
+| `portal-instalar-tunel.ps1` | P | **Rodado pelo dono**, como Administrador, depois do `cloudflared tunnel login`: cria o túnel da Cloudflare, grava o `config.yml` com as travas do ADR-073, aponta o DNS e instala o serviço `Cloudflared`. Não abre porta nem mexe no central |
+| `portal-gerar-senha.ps1` | P | **Rodado pelo dono**: gera o `API_TOKEN` e grava no `.env` sem mostrar na tela (`-Trocar` substitui). Sessão de IA não roda este script no `.env` de verdade |
+| `python scripts/portal-config.py conferir`, ou `ligar`/`recuar` com `--ensaio` | S | Só lê o `config.yaml`: diz se o bloco `server` está pronto para o portal ou o que mudaria |
+| `python scripts/portal-config.py ligar` / `recuar` | P | Declara ou tira o hostname público no `config.yaml` (sete linhas, com cópia em `data/backups/`); vale no próximo reinício do central |
+| `portal-prova-de-fora.sh antes` / `depois` | S | Só pedidos sem credencial ao endereço público; nunca tenta login. Sai com 2 se `/api/instances` der 200 |
 | `usage-report.ps1` | S | Só lê `ai_calls`, não chama provedor |
 | `demo-run.ps1` | D/T | Envia comando real ao backend (gasta IA se o provedor não for simulado) |
 | `aceites-remotos.ps1` (sem `-Yes`) | S | Só mostra o roteiro |
