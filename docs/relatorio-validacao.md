@@ -2302,7 +2302,7 @@ no [ADR-067](decisoes.md).
   - D-1 (o modelo por faixa) está pendente;
   - desde o deploy 8, o curador herda o Sonnet 5.5 com effort `low` do papel `plan`.
 
-### 29.2 Real da execução (pendente, `not_run`)
+### 29.2 Real da execução (03/10, 11:34–11:37Z: duas `real`, o Outlook parado no login)
 
 Roda depois do deploy 9 e da validação da orquestradora no navegador, uma coisa pesada de cada vez, com estas regras:
 - teto de US$ 1 e os ids registrados;
@@ -2326,4 +2326,45 @@ Na mesma passagem:
 - ler `GET /api/aprendizado/metricas?dias=7` e `GET /api/aprendizado/revisoes`, que são a prova real do 30.8;
 - conferir que o que as três execuções ensinaram aparece na visão por app, com origem, saúde e versão.
 
-Este relatório recebe a data, os ids das execuções, o commit e o custo.
+**O que rodou.** Na máquina central, com o processo no commit `3dcfc9ac` (deploy 9, validado no navegador pela
+orquestradora), a migração `081_error_kind_em_attempts` e o curador em `on`.
+
+Antes de disparar:
+- `GET /api/health` sem problemas;
+- nenhuma execução em curso (a última foi criada às 07:55Z);
+- no `android-01`, o Instagram estava em primeiro plano com a conta `lucas.almeida9484` viva, na tela de comentários
+  do post dela, e não na de verificação de humano. A tela foi lida pelo `GET /hierarchy`, com o controle manual tomado
+  e devolvido sem nenhum toque.
+
+| Objetivo | Aparelho | Execução | Desfecho | Custo |
+|---|---|---|---|---:|
+| 1. Instagram | `android-01` | `r-20261003113432-46c639` | `completed`. Etapa `OPEN_PROFILE` (IA) comprovada: perfil `@lucas.almeida9484`, 26 seguidores (evidência 2094) | US$ 0,0823 |
+| 2. QA Messenger | `android-10` (notebook) | `r-20261003113532-7d649c` | `completed`. Abrir o app (`sem_ator`) e a lista (IA), comprovados por seletor (evidências 2095 e 2096) | US$ 0,0335 |
+| 3. Outlook | `android-01` | `r-20261003113615-ca3f1a` | `completed_with_issues`, objetivo em `waiting_user`. O login automático do Outlook está parado até uma pessoa olhar a conta no aparelho (ADR-009); nada foi tocado | US$ 0,0079 (só o plano) |
+
+Total: US$ 0,1237 de um teto de US$ 1 (`/api/usage?run_id=`).
+
+**O que ensinaram.** As execuções 1 e 2 ensinaram um fluxo candidato cada:
+- `fluxo:abrir-o-proprio-perfil-do-instagram-e-le` e `fluxo:abrir-a-lista-de-conversas-do-qa-messeng`;
+- cada um com uma evidência a favor da própria execução e a transição "aprendido da execução";
+- na visão: origem `execucao`, versão `independente` e saúde nula (é candidato).
+
+O Outlook não ensinou nada.
+
+**Métricas e revisões** (11:37:26Z, prova real do 30.8):
+- `GET /api/aprendizado/metricas?dias=7`, curador: 46 revisões reais, todas válidas (37 `pedir_evidencia`,
+  7 `observar`, 2 `manter`), 2 aplicadas, 2 com `override`.
+- Ali, `curador.usd` vem 0,0 e `orcamento_do_curador.gasto_da_curadoria` vem 0,6418, que é a estimativa pelo dossiê. As 46
+  são anteriores ao 30.30 e gravaram `usd = 0` (não medido), mas todas têm `ai_call_id` com os tokens da chamada. A
+  correção (I3) lê o custo pela chamada ligada.
+- Itens: fluxo 20 `published`, 6 `disabled`, 9 `candidate`; receita 80 `published`, 12 `candidate`, 11 `disabled`,
+  8 `deprecated`, 2 `validated`.
+- Saúde: 12 saudáveis, 62 com pouca amostra, 14 parados, 6 sem evidência, 4 degradando, 3 indeterminados.
+- Economia: 591 etapas na janela, 80 conduzidas por receita, 188 só por IA, ~89,5 chamadas evitadas (estimativa).
+- `GET /api/aprendizado/revisoes`: as mesmas 46 linhas (29 B, 17 C), nenhuma com `usd > 0`; a mais recente é das
+  10:07:14Z.
+
+**Ressalvas.**
+- O Outlook depende do dono: a conta do `android-01` precisa de uma pessoa antes de o login automático voltar.
+- No QA Messenger, a pós-condição comprovou a lista de conversas por seletor, mas o nome do primeiro contato não está
+  no texto da evidência. A leitura do valor não ficou registrada.
