@@ -1970,6 +1970,17 @@ Saída bruta em `data/diag-ra3b/`: `repouso-cores4-01-600s.json`, `dif-*.json` e
     ligação.
   - Sobra o que só o aparelho do parque tem (sessão do UiAutomator2, encaminhamentos do adb, sondas), a medir no 01
     por subtração.
+- **Rodada do Appium: nenhum dos três gestos derrubou o spin, que segue sem causa atribuída** (`real`, 03/10, android-01, pid 42348, thread
+  36288, sem lease; saída em `data/diag-ra3b/appium-*.json`). Um gesto por vez, cumulativo, 2 min cada:
+  - base (60 s, 06:24:06Z): 96,8 % (85,9 em kernel);
+  - g1, force-stop de `io.appium.uiautomator2.server` e `.test` (o processo saiu): 99,3 % (88,2);
+  - g2, mais `adb -s emulator-5554 forward --remove-all` (lista vazia depois): 99,1 % (88,0);
+  - g3b, mais `cmd sensorservice set-uid-state com.google.android.gms idle` e, no fim, `reset-uid-state`: 99,2 % (88,0).
+    O `cmd sensorservice restrict` pedido não existe no android-34 (só `get/set/reset-uid-state`), por isso a forma desta imagem.
+  - Ficam fora: a sessão do UiAutomator2, os encaminhamentos do adb e os sensores do Play Services. Seguem UNKNOWN o console
+    (5554) e o gRPC (8554) do emulador, e o lado do host que só o parque toca. O mesmo sintoma do UiAutomator2 apareceu no
+    android-06 às 06:09Z (`WebDriverException … root AccessibilityNodeInfo` ao religar o cliente VPN pela interface, OBSERVED),
+    e o 25.12 passou a contar essa falha como tentativa.
 
 ### K-079 — A prévia cortada da caixa do Outlook derruba a conferência visual
 

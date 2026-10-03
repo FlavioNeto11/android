@@ -98,6 +98,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   releitura retroativa, uma chamada que o roteador contornou não desmente mais a tentativa que tem o tipo gravado.
 - Nenhum desfecho de etapa, retry ou campo da API muda. Prova `simulated`: `tests/test_falha_pelo_erro_de_ia.py` (13) e
   bateria de 145 arquivos (2688 aprovados). PostgreSQL: `not_run` (só `ADD COLUMN TEXT`, sem dialeto).
+
 ## 2026-10-03 — Validação do deploy 4: I1 (sem rótulo não há "diverge") e a CPU do emulador com referência
 
 - **I1:** `observedMatchOf` (`frontend/src/features/settings/instancesView.ts`) devolve `none` sem rótulo configurado. Sem
@@ -118,6 +119,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   linha do valor cortada e a marca sem linha cortada continuam recusando. 109 aprovados com o arquivo do papel.
 - `real` (bancada, 04:57–04:59Z, `ai_calls` 3008–3071, US$ 0,02): gemini-3.1-flash-lite 31/32 e gpt-6-luna 29/32, com
   0/96 falsas. Gemini fica como principal e o luna como alternativo; a opção liga no próximo reinício do central.
+
 ## 2026-10-03 — caminho rápido 1: LT-1, LT-2 e LT-3 (pular o ator, nunca a prova)
 
 - **LT-1.** A pós-condição conferida na entrada da volta, antes de o ator decidir: etapa sem efeito, tela não sensível e
@@ -130,6 +132,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Prova `simulated`**: `tests/test_caminho_rapido_executor.py`, `tests/test_flows_account_label.py`,
   `tests/test_aproveitamento.py`, `frontend/src/lib/status.test.ts` e `ProfileDetail.test.tsx`; três testes de custo
   antigos mudaram de número por causa do atalho (ANR, hub de IA, política de imagem). `not_run`: latência no real.
+
 ## 2026-10-03 — Jev: RA-11 (parte Jev) — telemetria vence em 48 h, memória vencida sai do banco, purga em lotes
 
 - `instance.updated` sem execução vence em 48 h (`events.TELEMETRIA_KINDS`/`TELEMETRIA_RETENCAO_H`), antes dos 14 dias do
@@ -168,6 +171,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   desde que ele chegou, 5 de 5 planos ligam a capability (`docs/dominios/execution.md`).
 - Prova: simulated (`test_recusa_no_planejamento.py`, 12 testes; 616 afetados verdes). Real no android-01: `not_run`
   (frente Android).
+
 ## 2026-10-03 — Jev: formato curto do plano atrás de chave (LT-4b, item 17.13, branch feat/lt-4b-esquema-curto)
 
 - `ai.esquema_do_plano: curto` (de fábrica, `longo`, o formato de sempre byte a byte). A etapa livre (plano livre e
@@ -189,6 +193,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   seguem os globais). O preço `[2.0, 0.2, 2.5, 10.0]` e o cache mínimo de 512 dele entram no padrão e no exemplo
   (páginas da Anthropic, 03/10; antes, ele casava o prefixo do Sonnet 5). No central, as linhas vão DENTRO dos blocos
   `ai.prices` e `ai.models` que já existem: o YAML troca a tabela inteira. Prova: simulated (`test_perfil_de_ia.py`).
+
 ## 2026-10-03 — RA-10: o porquê de cada chamada de IA em `ai_calls` e os grupos de `/api/usage` (branch feat/ra-10-observabilidade, migração 080)
 
 - `ai_calls` ganha `verdict`, `escalate`, `motivo` e `image_reason` (vocabulários fechados em `planning/provider.py`,
@@ -202,6 +207,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `cascades`, `image_reasons` e `steps_driven_by_null`, no preço de `spent_usd` (`costs.usd_por`). Adendo v0.75 do
   contrato; conferência pós-deploy em `docs/ia.md` §9.
 - Prova `simulated`: `test_observabilidade_das_chamadas.py` e `test_assistente_do_comando.py`. Prova real: `not_run`.
+
 ## 2026-10-03 — Jev: o decisor real da porta `DecisaoFechada` (31.14, branch feat/31-14-decisor-jev)
 
 - `DecisorJev` (`planning/decisao_fechada/decisores.py`): uma chamada ao Jev por pedido, pelo transporte do adaptador de
@@ -217,6 +223,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `JEV_RUNTIME_SEND_APPROVED` até o 31.10.
 - Prova: `simulated` (`backend/tests/test_decisao_fechada_jev.py`: MockTransport, socket proibido, hub falso e banco de
   teste). Chamada real ao Jev: `not_run`.
+
 ## 2026-10-03 — Correção do 31.9, rodada C (NO-GO em 8e1d7a9c): `sem_destinos` sem normalizar, C7 em qualquer escrita e e-mail soletrado (branch fix/31-9-privacidade)
 
 - A rodada C (`.claude/handoffs/reverificacao-31-9c.md` §7) achou 27 vazamentos fora da suíte de 240, pelo caminho de
@@ -297,6 +304,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - rótulo humano só pelo parecer do 30.17;
   - métrica principal do 31.10: "execuções sem fluxo que o Jev teria casado ao fluxo que o desfecho confirma".
 - `JEV_RUNTIME_SEND_APPROVED` continua `False`. Nenhuma chamada real.
+
 ## 2026-10-03 — Aprendizado: nomes também nas listas (validação do deploy 4, branch fix/aprendizado-ux-deploy4)
 
 - "capability" sai da tela: "capacidade", "Etapa livre (fora do catálogo)" e "Fora do catálogo".
@@ -364,6 +372,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (`commit_sem_catalogo`) é classe **B**, aprovado em lote. A emenda para C da mesma madrugada (PR #127) foi revertida
   no código (`domain/politica_de_risco.py`), no doc do domínio e no §8.4 do desenho. O aviso de espera volta à faixa B.
 - Prova `simulated`: `test_learning_politica_de_risco.py` e `test_learning_espera.py`.
+
 ## 2026-10-03 — RA-20 (29.40), fatia A: a causa do "ausente" medida e a herança da receita provada (branch feat/ra-20-causa-do-ausente)
 
 - 52 % das consultas de receita davam "ausente" (reavaliação de 03/10), quase nenhuma por falta de receita: a chave
@@ -545,68 +554,6 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   evento de erro. (3) Trava de energia: só acorda com `confirm_locked_account` se todo marcador aberto do aparelho é do pedido. **Risco residual a
   aceitar pelo dono:** conta logada no app fora da plataforma (seletor de contas do Instagram) seria apagada. O furo da D2-a em `create_profile`
   segue como item separado.
-
-## 2026-10-03 — Correção do 31.9, reverificação B (NO-GO em 97f35fac): C7 recusa o pedido inteiro, duas passadas no filtro e o motivo da recusa na sombra (branch fix/31-9-privacidade)
-
-- A reverificação B da orquestradora (240 casos novos, 3 céticos; `.claude/handoffs/reverificacao-31-9b.md`) achou 47
-  vazamentos de portão em 97f35fac. Correções do §7:
-  - `_MISTO` antes de `_NUMERO`, com hífen;
-  - eufemismos, pergunta de segurança e frase de recuperação;
-  - leet, palavra invertida, separadores e bidi;
-  - mais idiomas;
-  - e-mail ofuscado, endereço em inglês, caixa postal, cartão e CVV com número.
-- Decisões da orquestradora:
-  - (a) C7 recusa o pedido inteiro, inclusive o código pedido pela quantidade de dígitos;
-  - (c) a regra dos dois numerais fica (0 recusas nos 90 comandos reais de 7 dias);
-  - (d) placa e nome com cidade passam.
-- `decisao_fechada_sombra.motivo_privacidade` (migração 079, trazida da 080 do RA-10): `c7_*` ou o motivo do filtro, por
-  `PedidoDeDecisao.motivo_privacidade` → `RegistroDeDecisao` → `RepositorioDeSombra.registrar`. O `fallback_reason` e
-  `validar` não mudam.
-- Contrato do 30.25: `RunService._dados_da_sombra` vira `dados_da_intencao` (mesma assinatura), e o catálogo da cadeia
-  vira `AppState.catalogo_da_cadeia`, compartilhado pela sombra e pelo rótulo de intenção.
-- Prova `simulated`:
-  - `test_decisao_fechada_reverificacao_b.py` (73 testes);
-  - portão local com o harness da orquestradora copiado: 260 casos, 0 vazamentos (eram 45), 0 passagens indevidas (eram 56).
-  - Real: not_run (o envio continua fechado no código).
-
-## 2026-10-03 — Correção do 31.9: filtro sensato da C3 (ADR-069 item 10), desligamento limpo e estratos do golden set (RA-2; branch fix/31-9-privacidade)
-
-- **ADR-069 item 10** (dono, 03/10 00:15Z, relatado pela orquestradora): dado pessoal pode ir ao Jev "desde que faça sentido
-  no filtro".
-  - A C3 e o nome ou `@handle` de pessoa podem sair; cai a remoção que falha fechada.
-  - O piso: C7 nunca; e-mail e telefone completos viram marcador; e-mail ofuscado, numeral ditado e documento recusam.
-  - O D-J5 vira só "o Jev não decide por persona".
-  - A primeira redação deste item, no mesmo branch, dizia que nome e handle de terceiro ficavam fora; foi corrigida.
-- **C3** (`decisao_fechada/entidades.py`): filtro SENSATO, uma lista de bloqueio sobre o piso.
-  - Normalização NFKC (homóglifo, largura cheia, invisível); alfabetos misturados recusam.
-  - Viram marcador: aspas (a que sobra leva o resto), link, e-mail, `@handle`, telefone, número, palavra com `_` e símbolo.
-  - Recusam: endereço, documento, e-mail ofuscado e numeral ditado, também em EN e ES.
-  - O resto passa, nome inclusive.
-  - A lista de permissão da primeira versão do branch caiu. Nos 90 comandos reais de 7 dias, as 17 recusas que não eram C7
-    vinham todas da regra de proporção, e a lista apagava cerca de 8 palavras por comando no qa-messenger.
-- **C2 e C7**: `mascarar_catalogo` nas opções da R2, antes do corte em 200, com as mesmas máscaras de forma. A C7 é
-  reconhecida em qualquer formato (`menciona_c7`).
-- **Portão** (`simulated`): no `ataque.py` da reverificação, zero vazamento de C7, e-mail e telefone em 109 casos. O
-  "escreva para ali no gmail" sai com nome e provedor, sem endereço.
-- **Real** (OBSERVED, só leitura, contagens, central 01351e66):
-  - nos 90 comandos de 7 dias, 89 sairiam; a recusa que sobra é C7, e nenhum comando que sairia tem e-mail ou telefone;
-  - as 26 opções do catálogo não têm `@`, dígito, e-mail nem telefone.
-- **Parte B** (I1, I4, M1 a M4, corrida do provedor):
-  - o `stop()` espera o que grava sombra antes do `db.close`, com prazo único de 6 s;
-  - o aviso de transparência diz o que sai: "o comando do dono filtrado (e-mail, telefone, @handle, link e número
-    mascarados; nome fica)";
-  - a triagem respeita o envio fechado;
-  - a retenção pula quando a porta está desligada;
-  - o curador lê o provedor por resposta.
-- **I2**: a triagem do curador não casa a decisão real na hora. O relatório do 31.10 lê `learning_reviews` (`validade='ok'`,
-  `simulated=0`) por `decisao_real_da_triagem`.
-- **RA-2**:
-  - migração 079 (`decisao_fechada_sombra.ambiguos`: etapas `AMBIGUOUS` da RESOLVE por execução);
-  - golden set com o 1º estrato da intenção em qa-messenger e o GO do Instagram sem data, decidido no relatório do 1º estrato;
-  - teto da R2 com dois denominadores: 4/31 cadastrados e 3/25 ativos, o principal;
-  - rótulo humano só pelo parecer do 30.17;
-  - métrica principal do 31.10: "execuções sem fluxo que o Jev teria casado ao fluxo que o desfecho confirma".
-- `JEV_RUNTIME_SEND_APPROVED` continua `False`. Nenhuma chamada real.
 
 ## 2026-10-02 — Emenda do ADR-069: a chave TypeSafe não é trocada (decisão do dono, item 9)
 

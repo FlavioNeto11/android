@@ -4344,7 +4344,7 @@ Prova `simulated`: `backend/tests/test_flows_required_apps.py`; `real`: `not_run
 
 Prova `simulated`: `tests/test_learning_rotulo_do_livro.py`, `AprendizadoPage.test.tsx` e `model.test.ts`.
 
-## Adendo v0.84 (03/10/2026, provisório: número pedido à orquestradora, `.claude/reservas.md`) — a sonda "o ator pensa?" no `GET /api/ai` (item 17.14)
+## Adendo v0.84 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — a sonda "o ator pensa?" no `GET /api/ai` (item 17.14)
 
 Só campo novo, aditivo.
 
