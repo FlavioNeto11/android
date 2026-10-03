@@ -1171,9 +1171,9 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
       - Com o espaço só depois do ponto, só o domínio de topo que não é palavra (`_TLD_SEM_PONTO`) entra no e-mail:
         "zilda@correio.net. de manhã" e ". me avise" ficam como estão.
       - O `_SEP_DOMINIO` aceita ". net" diante de domínio de topo que não é palavra: "look at this. Me too" passa.
-    - **H-3, o verbo central do produto (decisão)**: o nome INTEIRO do catálogo sozinho depois do conector do verbo de
-      entrar é destino (`_destino`): "entre com o lucas", "entre como lucas", "entre no perfil com Lucas" passam. Cai o
-      desvio da G-4.
+    - **H-3, o verbo central do produto (decisão; REVERTIDA no NO-GO da fase 2, ver abaixo)**: o nome INTEIRO do catálogo
+      sozinho depois do conector do verbo de entrar é destino (`_destino`): "entre com o lucas", "entre como lucas", "entre
+      no perfil com Lucas" passam. Cai o desvio da G-4.
       - Continuam valor, mesmo com o nome no catálogo (G-4):
         - o segundo do par ("com a conta Lucas e girassol");
         - o colado ao usuário ("com o lucas girassol", `_colado`);
@@ -1213,6 +1213,43 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
     - Prova: `backend/tests/test_decisao_fechada_reverificacao_h.py`. Cobre as 40 entradas (27 que contam e 13 de outro
       idioma), os 6 fragmentos, a H-3 nos dois catálogos, o residual aceito, a H-5 e os controles. A G e a E foram
       reescritas para a H-3: os casos da G de valor sozinho contam no catálogo sem a "Girassol", e "entre com lucas" passa.
+  - **Depois do NO-GO da fase 2 da H (03/10; 107 casos em 4 famílias de método; ADR-069 item 17).** Não há rodada I nessa
+    forma.
+    - A família 1 não reproduz na base 5f020598: era a H-3, que se reverte.
+    - As famílias 2 a 4 vêm da G e não se remendam. A forma seguinte é decisão do dono: A, fechar por gatilho; ou B, C3
+      fora e só o curador C0–C1.
+    - O que muda:
+      - **H-3 revertida** (`_destino` sem o catálogo): o nome do catálogo solto depois do conector volta a ser a posição
+        de valor, como na G-4. "entre com o lucas", "entre como lucas" e "entre com o lucas hoje girassol" recusam nos
+        dois catálogos.
+        - O lugar onde se entra continua destino ("entre no insta com…"), e a sintaxe de destino continua isenta.
+        - Cai o residual da persona "Girassol".
+      - **(a) `c7_valor_com_digito`**, a última regra do `motivo_c7`, depois da F-A. Recusa, em vez de mascarar, quando o
+        comando tem um gatilho em qualquer lugar e um token com cara de segredo que não é destino (`_valor_com_digito`).
+        - Gatilho: verbo de entrar no presente ou no passado, salvo com objeto pessoa ou conversa; o `_CAMPO_FORTE`; ou o
+          `_DIGITAR_VALOR` (digite, tecle, insira, type, soletre…).
+        - Cara de segredo (`_cara_de_valor`): letra e dígito, ou 4 ou mais dígitos.
+        - Passam "entre no insta e curta as 3 fotos" e "entre no chat com qa-002".
+        - Custo aceito: o ano num comando de entrar ("entre no insta e veja o post de 2024").
+      - **(b) A quebra de linha é token**: o `_tokens_de` tokeniza linha a linha e põe a quebra entre elas, e ela vale
+        como o ";" no imperativo e no par. Antes, o texto era achatado e "usuario lucas" + "girassol" em duas linhas
+        passava.
+      - **(c) `_NAO_DONO` do app de e-mail e agenda** (`entidades.py`): objetos e telas (calendário, configurações,
+        contatos, tarefas, regras, filtros…, em pt, es e en) e adjetivos ("compartilhada", "rápidas", "nova").
+        - É isenção sobre a recusa: o desconhecido continua recusando.
+        - Em 50 navegações sintéticas ("abra o calendário do outlook"), as recusas caíram de 44 para 0, e os 10 ditados
+          seguem recusando.
+        - Lacuna, que é custo e não vazamento: 14 de 20 objetos fora da lista ainda recusam.
+    - Medição (d) nos comandos reais: 125 de 7 dias, às 11:41Z, banco do central só para leitura, só contagens.
+      - Recusas: 3 (2,4 %), contra 2 no 54f71853. A (a) custa 1 comando: longo, com "digitar", "usuario", "conta" e
+        números de 4 dígitos.
+      - Gatilhos no comando sem destinos: verbo de entrar 35, campo forte 8, digitar 2, palavra C7 1; algum deles, 42.
+      - Dos 122 que passam, 39 têm gatilho forte: é o custo da opção A.
+    - Portão local (`simulated`, 136f80ff), corpus de 579 com o 538 reetiquetado para recusa:
+      - 0 vazamentos e 0 passagens indevidas;
+      - recusas indevidas: 134, 135, 348, 427, 572 e 573. O 572 e o 573 são o custo da reversão;
+      - com a "Girassol", 0 vazamentos e 0 casos que mudam entre os catálogos (o 54f71853 tinha 17).
+    - Testes: filtro, arquitetura e sombras, 999 passaram; vizinhos, 164. A G e a E voltaram à versão da base.
   - **C7 nunca sai, em prosa ou não**: comando que fala de senha, código, 2FA, PIN, OTP, token, captcha, verificação, chave,
     segredo ou desafio, em PT, EN ou ES (`menciona_c7`: `mentions_credential`, `looks_secret` e o assunto no texto
     normalizado, também com homóglifo, letra de largura cheia, uma letra por vez separada por ponto ou espaço, e letra de

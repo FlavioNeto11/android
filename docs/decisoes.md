@@ -4331,8 +4331,9 @@ catálogo, comando), que o ADR-063 não cobre.
       - o "@" trocado por "#" ("zilda#correio.net").
     - **H-2**: o domínio de topo separado do e-mail fica no `[email]` ("zilda@correio. net", "zilda@correio. com. br",
       "zilda@correio net").
-    - **H-3 (decisão)**: o nome INTEIRO do catálogo sozinho depois do conector do verbo de entrar é DESTINO ("entre com o
-      lucas", "entre como lucas", "entre no perfil com Lucas"): é o verbo central do produto, e cai o desvio da G-4.
+    - **H-3 (decisão; REVERTIDA no item 17)**: o nome INTEIRO do catálogo sozinho depois do conector do verbo de entrar é
+      DESTINO ("entre com o lucas", "entre como lucas", "entre no perfil com Lucas"): é o verbo central do produto, e cai
+      o desvio da G-4.
       - Continuam valor (G-4): o segundo do par ("com a conta Lucas e girassol"), o colado ao usuário ("com o lucas
         girassol") e o conector depois de outro destino ("acesse como lucas com girassol").
       - Residual aceito: a persona com o nome da própria senha ("entre com girassol" com uma persona "Girassol"). O portão
@@ -4354,6 +4355,49 @@ catálogo, comando), que o ADR-063 não cobre.
       - nas lentes do par com a "Girassol": 0 vazamentos;
       - os 122 comandos reais de 7 dias seguem com as mesmas 2 recusas (1,6 %).
       Detalhes em [ia.md](ia.md), no bloco "Rodada H" da intenção.
+17. **Emenda de 03/10/2026 (NO-GO da fase 2 da rodada H; decisões da orquestradora, registradas ~11:45Z).** A fase 2 da H
+    deu NO-GO: 107 casos em 4 famílias de método. Não há rodada I nessa forma.
+    - A família 1 não reproduz na base 5f020598: era a H-3, que se reverte.
+    - As famílias 2 a 4 reproduzem na base (vêm da G) e NÃO se remendam.
+    - A forma seguinte é decisão do dono: A, fechar por gatilho; B, C3 fora, só o curador C0–C1.
+    - O que muda, sempre lista de bloqueio:
+      - **H-3 revertida**: o nome do catálogo sozinho depois do verbo de entrar volta a ser valor (postura da G-4).
+        "entre com o lucas" e "entre como lucas" recusam (`c7_login_valor`). A sintaxe de destino continua isenta ("entre
+        no perfil do lucas", "@lucas", "no android-01"). Cai o residual aceito da persona com o nome da própria senha.
+      - **(a) C7 com dígito recusa, em vez de mascarar** (`c7_valor_com_digito`, a última regra do `motivo_c7`). Recusa
+        quando o comando tem um gatilho em qualquer lugar e um token com cara de segredo que não é destino.
+        - Gatilho: verbo de entrar, no presente ou no passado, salvo com objeto pessoa ou conversa; o campo forte; ou o
+          verbo de digitar (digite, tecle, insira, type, soletre…).
+        - Cara de segredo: letra e dígito, ou 4 ou mais dígitos.
+        - "entre no insta e curta as 3 fotos" e "entre na conversa com qa-001" passam.
+        - Custo aceito: o ano de 4 dígitos num comando de entrar recusa ("entre no insta e veja o post de 2024").
+      - **(b) A quebra de linha é token**, como o ";": separa o par e o imperativo. A navegação em várias linhas não muda.
+      - **(c) O `_NAO_DONO` cobre o app de e-mail e agenda**: objetos e telas (calendário, configurações, contatos,
+        tarefas, regras…, em pt, es e en) e adjetivos ("compartilhada", "rápidas"). "abra o calendário do outlook" passa.
+        - É isenção sobre a recusa: o objeto que a lista não conhece continua recusando (falha fechada), e os ditados
+          seguem recusando.
+        - Lacuna medida, que é custo e não vazamento: num conjunto de 20 objetos fora da lista, 14 ainda recusam.
+    - Medição (d), sobre os 125 comandos reais de 7 dias. Feita às 11:41Z no 136f80ff, no banco do central só para
+      leitura, com o catálogo real e só contagens.
+      - Recusam 3 (2,4 %); o 54f71853 recusava 2 na mesma janela. O custo da (a) é 1 comando longo, com "digitar",
+        "usuario", "conta" e números de 4 dígitos. Os outros 2 já recusavam: 1 por `c7_palavra` e 1 que agora recusa
+        por `c7_valor_com_digito`.
+      - Gatilhos no comando sem destinos:
+        - verbo de entrar: 35;
+        - campo forte: 8;
+        - verbo de digitar: 2;
+        - palavra C7: 1;
+        - algum deles: 42.
+      - Dos 122 que passam, 39 (32 %) têm gatilho forte: é o custo da opção A. Com o campo amplo (48) ou o separador
+        (100) como gatilho, seriam 84 e 101 comandos.
+    - Prova `simulated` no 136f80ff:
+      - testes do filtro, da arquitetura e das sombras: 999 passaram; vizinhos: 164;
+      - harness da orquestradora, corpus de 579 com o 538 reetiquetado para recusa:
+        - 0 vazamentos e 0 passagens indevidas;
+        - recusas indevidas: 134, 135, 348, 427, 572 e 573. O 572 e o 573 ("entre com o lucas e curta…", "entre como
+          lucas") são o custo esperado da reversão;
+        - com a "Girassol": 0 vazamentos no corpus inteiro e 0 casos que mudam entre os catálogos (o 54f71853 tinha 17).
+      - `backend/tests/test_decisao_fechada_reverificacao_h.py`, seção do piso. A G e a E voltaram à versão da base.
 
 **Consequências.** A plataforma ganha um motor barato (US$ 0,042/M de entrada, saída grátis) para decisões fechadas que hoje não
 acontecem ou vão ao Opus, medido em sombra contra o caminho atual antes de qualquer `on`. O ADR-063 continua valendo para código.

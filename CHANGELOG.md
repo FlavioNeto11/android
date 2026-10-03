@@ -19,6 +19,25 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 31.9: a H sem a H-3, depois do NO-GO da fase 2 da H (branch fix/31-9-rodada-h)
+
+- A fase 2 da H deu NO-GO: 107 casos em 4 famílias de método.
+  - A família 1, que não reproduz na base, era a H-3, e ela foi revertida: "entre com o lucas" volta a recusar.
+  - As famílias 2 a 4 vêm da G, não se remendam e esperam a escolha do dono: A, fechar por gatilho; ou B, só o curador
+    C0–C1.
+- Piso:
+  - (a) o C7 com dígito recusa, em vez de mascarar (`c7_valor_com_digito`);
+  - (b) a quebra de linha separa o par, como o ";";
+  - (c) os objetos e as telas do app de e-mail e agenda não são donos de endereço ("abra o calendário do outlook" passa).
+- ADR-069, item 17; bloco "Depois do NO-GO da fase 2 da H" em `docs/ia.md`.
+- Prova `simulated` no 136f80ff:
+  - harness, corpus de 579: 0 vazamentos e 0 passagens indevidas, também com a "Girassol";
+  - 6 recusas indevidas: as 4 antigas mais o 572 e o 573, que são o custo da reversão;
+  - testes do filtro: 999 passaram.
+- Medição nos 125 comandos reais de 7 dias, só leitura:
+  - recusam 3, contra 2 antes; o custo da (a) é 1 comando;
+  - 39 dos 122 que passam têm gatilho forte: é o custo da opção A.
+
 ## 2026-10-03 — Correção do 31.9, rodada H (47 vazamentos na fase 2 da rodada G em 9a99a8d8): a camada estrutural, o nome do catálogo como destino e os controles operacionais (branch fix/31-9-rodada-h)
 
 - H-1, a segunda passada estrutural, ainda lista de bloqueio:
