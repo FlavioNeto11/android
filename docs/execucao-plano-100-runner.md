@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-292 de 343 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+296 de 348 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -66,7 +66,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 7.11 | implemented | simulated | sessao | — | backend/app/state.py _ia_em_fallback + problema ai_fallback_em_uso em health(): chamadas dos ultimos 30 min com ai_calls.fallback preenchido, por funcao. Teste: backend/tests/test_saude_ao_vivo.py::test_chamadas_de_ia_e… |  |
 | 8.1 | implemented | not_run | opus | ok | prompts.py:75-82 (content_brief só conteúdo; tom só se o comando pedir), prompts.py:154-156 (desempate: em conflito vale a persona), prompts.py:178-189 + :204-206 (_INSTRUCAO_DE_TELA por kind: comentário cita a tela, DM… | Preencher as 8 personas e rodar a prova antes/depois é decisão e gasto do dono: exige PATCH no backend de produção (127.0.0.1:8000) e 8 chamadas pagas de IA po… |
 | 8.2 | implemented | not_run | opus | ok | navigation.py:298-344 (mensagem_de: última fala ATRIBUÍDA à contraparte; vazio quando não há certeza), state.py:99-104 (_LEITURA_DE_CONVERSA: READ_MESSAGES sim, COLLECT_THREADS não), state.py:1165-1177 (SEND_MESSAGE vir… | Aceite de nível 2 — conversa real entre duas contas do parque com memória reutilizada na execução seguinte — exige ligar emulador e operar conta real do Instag… |
-| 8.3 | partial | real | opus | — | Tentativa real 02/10/2026 ~22:10Z (central b5baf3e5, 073; roteiro-8-3-final): linha de base 0 pendentes, REPLY_COMMENT/CREATE_COMMENT approval_required nos 3 perfis vivos; android-03 verify session_ready c-2026100222105… | REPLY_COMMENT, edit em aparelho, learn_from de comentario, COLLECT_COMMENTS com itens e for_each com itens reais seguem not_run (02/10): bruno sem publicacao,… |
+| 8.3 | partial | real | opus (sessão Android) + worker-impl | — | Real 03/10/2026, central WIN-7S2UASNLFOP @1ab8e767 (078), textos exatos aprovados pelo orquestrador; nada além de um gesto público por passo, sem curtir nem seguir. Post da conta do android-01 às 04:44:53Z (rótulo de IA… | Seguem not_run: learn_from de comentário, COLLECT_COMMENTS com itens e for_each com itens reais. |
 | 8.4 | blocked | not_run | sonnet | ok | Confirmado no código de hoje (não no achado de f1e61b3): nenhuma porta do Instagram filtra por kind (emulator vs external) — state.py:_session_gate decide só por profile_id vinculado ao instance_id; state.py:aplicar_ver… | Autorização do dono para: instalar o Instagram (~238MB) num aparelho remoto pelo túnel, autenticar com senha real via Appium central num aparelho de outra máqu… |
 | 9.1 | implemented | real | opus | ok | Sessão de painel nova: backend/migrations/035_sessao_do_painel.sql (tabela panel_sessions + coluna pending_approvals.decided_by) e backend/app/security/sessions.py (token aleatório, SHA-256 no banco, janela deslizante,… |  |
 | 9.2 | implemented | real | opus | ok | Servidor: backend/app/config.py:112 (server.tls_cert/tls_key/tls_behind_proxy) e :528/:534 (Config.tls_direto/tls_ativo); backend/app/main.py:86 conferir_tls — sair do loopback passa a exigir TLS declarado (certificado… |  |
@@ -150,6 +150,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 17.10 | implemented | simulated | sessao | — | PR #40 (merge efab19d). Prova simulated: backend/tests/test_cascata_ator_barato.py (provedor falso) + os 3 testes de bloqueio forcado com a chave desligada no teste (b8d281e; decisao aceita pelo orquestrador em 02/10).… | Regra 1 (step_blocked do tier 0 sobe ao tier 1) real not_run: o gatilho deterministico do eval-set nao fez o tier 0 bloquear (02/10); nao se cacou gatilho com… |
 | 17.11 | implemented | simulated | sessao | — | PR #35 (cfe27fd, 02/10/2026, sessao jev). scripts/eval_run.py: RemoteProtocolError/ReadError do transporte repetem a leitura em vez de abandonar a execucao em curso (K-045, docs/conhecimento/aprendizados.md). Prova simu… |  |
 | 17.12 | implemented | real | sessao | — | Real 02/10/2026 ~20:48-20:57Z, central WIN-7S2UASNLFOP, main implantada c11f8217 (070). eval_run label 17-12-real-02-10-d, caso msg-todos-os-contatos (bateria congelada, 8 contatos do QA Messenger, app nosso) no android… |  |
+| 17.13 | pendente | — | — | — |  |  |
 | 17.9 | pendente | — | — | — |  |  |
 | 18.1 | implemented | simulated | opus | — | eafca07 (implantado 28/09): automation/tools.py::_conferir_digitacao relê o campo, completa só o sufixo cortado, não aperta Enter com texto incompleto e devolve typed_chars/verified; backend/tests/test_tools_and_api.py:… |  |
 | 18.2 | implemented | simulated | opus | — | eafca07 (implantado 28/09): automation/conhecimento_de_telas.py + app/conhecimento/apps/com.instagram.android/telas.yaml; backend/tests/test_conhecimento_de_telas.py (classificação idêntica, conversa/post/comentários/bu… |  |
@@ -239,7 +240,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 25.9 | partial | real |  | — | docs/relatorio-validacao.md §26.2.1: ondas android-05 e android-02 (QA) e android-06 e android-03 (contas reais, autorização P7, conta conferida antes e depois), todos em trafego_verificado com vazamento bloqueado e a s… | aparelhos do notebook: falta a regra de firewall do dono (25.7); android-01 (Lucas) fora da autorização P7; IP distinto por aparelho depende de provedor (P1) |
 | 25.10 | implemented | real |  | — | 29/09, central: sing-box 1.14.2 (io.nekohasekai.sfa-739-5535a350073a) e WireGuard 1.0.20260315 instalados pela IDE na Play Store do android-11 com a conta do dono (autorização P3), importados por store/sync (c-202609291… |  |
 | 25.11 | pendente | — | — | — |  |  |
-| 25.12 | pendente | — | — | — |  |  |
+| 25.12 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/25-12-tunel-morto @22467c70 (A 59587920: túnel morto age — sonda sem IP em trafego_verificado com política exigida religa o cliente VPN até 2 vezes, a falha/trava do Start da interface conta como tentativa com teto… |  |
 | 26.1 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §4 (cerca de 50 fontes primárias, acesso em 29/09/2026); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09) |  |
 | 26.2 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §6 (modelo: pedido, gatilho, ocorrência, execução; estados; autonomia em três graus); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09) |  |
 | 26.3 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §7 (três alternativas; recomendação: laço próprio no backend com chave única e trava de líder no relógio do banco); pesquisa e desenho (sem código de produto); docs-check 0 erros; cla… |  |
@@ -299,7 +300,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.31 | implemented | simulated | opus | — | App de prova (builtin, category qa) no tier 0 do side_effect_tier em by_risk sem capability; seed grava category qa (merge 0da7fb99). simulated: tests/test_cost_levers.py. Aceite real: decision 'sem catálogo' = 0 no app… |  |
 | 29.32 | implemented | simulated | opus | — | A conta retirada some de memory_items de todas as personas; limpezas ganha memory_items_de_outras_personas (adendo v0.73); script retroativo scripts/memoria-conta-retirada.py NÃO rodado no banco real (merge 25d19149). s… |  |
 | 29.33 | pendente | — | — | — |  |  |
-| 29.34 | pendente | — | — | — |  |  |
+| 29.34 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/29-34-relogio-do-wake @9fb82b9d: manager._wait_boot com dois relógios — t0 (spawn) só para boot_seconds; no wake, antes do veredito do log o prazo é boot_timeout_s; com 'Successfully loaded snapshot' o wake_timeout… |  |
 | 29.35 | pendente | — | — | — |  |  |
 | 29.36 | pendente | — | — | — |  |  |
 | 29.37 | pendente | — | — | — |  |  |
@@ -307,6 +308,8 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.39 | pendente | — | — | — |  |  |
 | 29.40 | pendente | — | — | — |  |  |
 | 29.41 | pendente | — | — | — |  |  |
+| 29.42 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/29-42-required-apps @295c3989: FlowStore.list devolve required_apps na ordem em que o plano gravado usa os apps (apps_na_ordem_do_plano em modules/learning/domain/livro.py, a mesma função do dossiê do curador; sem… |  |
+| 29.43 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/caminho-rapido-1 @60e7962e: LT-1 (atalho de entrada sem o ator, ATALHO_ANTES_DO_ATOR, nunca em etapa com efeito, driven_by='sem_ator'), LT-2 (expect_done em etapa julgada → _verify(uma_rodada=True), nunca em etapa… |  |
 | 30.1 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #76 merge 6e103d73: GET /api/aprendizado/apps e /apps/{pacote} (application/apps.py, domain/camada.py, infrastructure/declarados.py), adendo v0.47; prova simulated; not_run no central (nada implantado) |  |
 | 30.2 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #76 merge 6e103d73: chave canônica de app (pacote) no Livro; prova simulated; not_run no central (nada implantado) |  |
 | 30.3 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #86 merge 14ec911c: conteudo legível no detalhe (domain/conteudo.py, fontes.py), nenhum valor de parâmetro; adendo v0.50; 432 testes do módulo; prova simulated; not_run no central (nada implantado) |  |
@@ -346,12 +349,13 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.11 | pendente | — | — | — |  |  |
 | 31.12 | pendente | — | — | — |  |  |
 | 31.13 | pendente | — | — | — |  |  |
+| 31.14 | pendente | — | — | — |  |  |
 | T.1 | implemented | not_run | opus | ok | docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, rea… | Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de produca… |
 | T.2 | partial | simulated | sessao | — | backend/app/devices/manager.py:1558 (desvio io_factory de stop_instance removido; caminho real com backend.save_snapshot em :1603 e process_alive em :852 exercitado pelo aparelho falso); manager.py:1345-1368 (_boot fals… | Continuam de fora do achado #165: o veredito do snapshot durante o boot (_snapshot_verdict) sem teste proprio; worker/executor.py nao unificado com EmulatorBac… |
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (51): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 25.12, 27.2, 27.4, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.34, 29.35, 29.36, 29.37, 29.38, 29.39, 29.40, 29.41, 30.8, 30.18, 30.19, 30.24, 30.25, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
+Pendentes (52): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.13, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.40, 29.41, 30.8, 30.18, 30.19, 30.24, 30.25, 30.26, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, 31.14, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
