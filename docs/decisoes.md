@@ -74,7 +74,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-064](#adr-064--trava-de-líder-dos-laços-periódicos-cas-no-relógio-do-banco-cerca-por-token-e-renovação-no-appstate) | Trava de líder dos laços periódicos: CAS no relógio do banco, cerca por token e renovação no `AppState` | aceito (Fase 28, 28.1) | 02/10 |
 | [ADR-065](#adr-065--ação-de-catálogo-entrega-valor-lido-a-outra-etapa-saidas-declaradas-no-catalogoyaml) | Ação de catálogo entrega valor lido a outra etapa: `saidas` declaradas no `catalogo.yaml` | vigente (12.3) | 02/10 |
 | [ADR-066](#adr-066--laço-de-pedidos-desligado-por-padrão-origem-interna-na-criação-da-execução-e-edição-por-gatilho-novo) | Laço de pedidos: desligado por padrão, origem interna na criação da execução e edição por gatilho novo | aceito (Fase 28, 28.4) | 02/10 |
-| [ADR-067](#adr-067--aprendizado-vivo-eixo-de-app-saúde-derivada-e-curador-por-ia-auditável) | Aprendizado vivo: eixo de app, saúde derivada e curador por IA auditável; revê em parte a decisão 9 do ADR-054 (Fase 30) | aceito (dono, 02/10; fase implementada 03/10; prova real 30.18 pendente) | 03/10 |
+| [ADR-067](#adr-067--aprendizado-vivo-eixo-de-app-saúde-derivada-e-curador-por-ia-auditável) | Aprendizado vivo: eixo de app, saúde derivada e curador por IA auditável; revê em parte a decisão 9 do ADR-054 (Fase 30) | aceito (dono, 02/10; fase implementada 03/10; prova real 30.18 pendente); emendado 03/10 (revisão da Android) | 03/10 |
 | [ADR-068](#adr-068--conta-bloqueada-sai-na-hora-e-a-persona-fica-lápide-só-com-o-hash-do-arroba) | Conta bloqueada sai na hora e a persona fica; lápide só com o hash do @ (item 29.23) |
 | [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro; item 11: regras do filtro do 31.9) | 03/10 |
 | [ADR-070](#adr-070--valor-visto-na-imagem-conta-como-saída-de-etapa-sob-conferência-cega-de-um-segundo-leitor) | Valor visto na imagem conta como saída de etapa, sob conferência cega de um segundo leitor; substitui em parte o ADR-065 §3 (item 12.5) | vigente (dono, 02/10; opção desligada) | 02/10 |
@@ -4108,6 +4108,27 @@ costura e aviso às três frentes, porque essas falhas são silenciosas (M5, M7 
   - `resultado_posterior`;
   - M15 (o curador no `eval_run`);
   - a prova real (30.18).
+
+**Emenda de 03/10/2026, ~09:45Z (revisão da Android, a posteriori; aprovada sem bloqueio).**
+
+1. **A regra das costuras inclui `steps.driven_by` e `attempts.strategy`.**
+   - Os valores mudaram duas vezes sem aviso a quem lê: `sem_ator` (v0.81) e `deterministic` /
+     `deterministic>ai_actor` (v0.86, LT-6).
+   - O Livro já registrou duas quebras de série por isso: a do `pct_por_receita` no deploy 7 e a do LT-6 no deploy 8.
+   - É a mesma família de falha silenciosa de M5, M7 e M8. Mudar um valor exige aviso às três frentes e uma nota
+     de série no domínio.
+2. **M3 ganha uma dependência do executor.**
+   - Desde o deploy 8 (03/10 09:06:28Z, 29.45), a etapa `app_foreground` aberta pelo executor sem IA fecha
+     `sem_ator` e não gera comparação de sombra (adendo v0.86).
+   - Uma candidata de `open_app` não promove por sombra; quem decide é uma pessoa no livro.
+3. **D-1, na prática: o curador trocou de modelo sem decisão própria.**
+   - Herdando o papel `plan`, ele passou a usar o `claude-sonnet-5-5` com effort `low` desde o deploy 8 (antes,
+     o Opus do `plan`).
+   - O critério D-3 (≥ 90 % de acordo na faixa b) pode mudar com isso. A concordância do parecer se mede dos dois
+     lados de 09:06:28Z, sem misturar as janelas.
+4. **Item 3 (lineage), com o RA-20 B (#145, suíte 9):** a receita passa a ter duas chaves, a específica e a
+   genérica. A genérica entra na mesma conta das chaves, como os consumidores do #145 já fazem (capacidades,
+   aproveitamento e o `_caminho_ja_aberto` do scheduler).
 
 ## ADR-068 — Conta bloqueada sai na hora e a persona fica: lápide só com o hash do arroba
 
