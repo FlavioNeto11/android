@@ -5155,3 +5155,22 @@ Prova:
 - `simulated`: `backend/tests/test_learning_prova_teto.py`.
 - `not_run`: o primeiro despacho do P4 depois do deploy.
 
+
+## Adendo v1.10 (03/10/2026; número da orquestradora; item 30.43) — a validação com rosto no item
+
+Aditivo aos v1.07, v1.09 e ao da lista de validações (30.38 b). Nenhuma rota nova e nenhuma migração.
+
+- **`GET /api/aprendizado/validacoes`** ganha os filtros opcionais `item` (`<kind>:<ref>`) e `run` (o id da
+  execução). A `contagem` e o `total` seguem sendo de TODOS os pedidos.
+- **A entrada do livro** (`GET /api/aprendizado/{kind}/{ref}` e a lista) ganha `nasceu_em`, com o valor
+  `prova_fluxo`, `validacao_qa` ou `null`: a receita foi aprendida dentro de uma execução de validação.
+- **Dossiê do curador:** `item.nasceu_em_validacao`, a nota de origem, só na receita marcada.
+- **Evidência:** a linha `reproducao:<run>` de receita pode ganhar a irmã `invalida` (`invalida:efeito_repetido — o
+  efeito saiu N vezes nesta execução`). O pedido de validação de receita pode fechar `recusada/efeito_repetido`.
+- **Linha do tempo:** a re-execução da validação do QA mostra a decisão "Validação do QA (re-execução): ponto de
+  partida…".
+
+Prova:
+- `simulated`: `backend/tests/test_learning_reproducao_repetida.py`, `test_learning_nasceu_em_validacao.py` e
+  `test_validacoes_listagem.py::test_a_listagem_filtra_por_item_e_por_execucao`.
+- `not_run`: o central depois do deploy.

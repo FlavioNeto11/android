@@ -1436,6 +1436,53 @@ sem migração:
 `not_run` até o deploy que o levar. O esperado é que a próxima prova do P4 grave em `learning_validations.teto_usd` o
 proporcional ao plano dela.
 
+## A validação com rosto no item (30.43)
+
+Os achados 5 e 6 da validação do deploy 14 e o P4 de 03/10 (o 6f459c). Desenho aprovado pela orquestradora às 23:32Z,
+com um ajuste: a origem da execução e o selo já vêm do 30.38 (`contracts/origem.py`, `RunSummary.origem`). Sem
+migração. Adendo de contrato v1.10.
+
+**A execução de validação** é a prova de fluxo ou a re-execução da validação do QA:
+`contracts.origem.eh_execucao_de_validacao`, pela mesma derivação de `origem_da_execucao` e do `PREFIXO_VALIDACAO`.
+
+**O ponto de partida** do 30.42 (`Scheduler._partir_da_prova`) vale para toda execução de validação.
+- No 6f459c, a re-execução da receita:82 abriu o app dentro da conversa; a IA enviou já na `open_app`, e a receita
+  enviou de novo.
+- A decisão na linha do tempo diz "Validação do QA (re-execução): ponto de partida".
+
+**A reprodução que repetiu o efeito não vale** (`InvalidaDaReproducao`, minerador e passo da curadoria):
+- a linha `reproducao:<run>` da receita ganha a irmã `invalida`, com o motivo `efeito_repetido`;
+- a regra é a do 30.42 (`domain.prova.efeito_repetido`): o 29.58 vence; a regra própria, sobre o diário, só vale na
+  execução de validação (`regra_propria=False` na orgânica, onde a IA livre deixa mais ruído);
+- o pedido de validação da receita fecha `recusada/efeito_repetido` pela `invalida`, no mesmo ramo da prova de
+  fluxo, e não `feita`;
+- os contadores `replay_ok/replay_fail` não mudam: a receita conduziu a etapa dela, e a linha `reproducao:` já fica
+  fora das contagens. A `invalida` serve ao dossiê e ao fechamento;
+- o passo reclassifica POR REGRA, e não por lista, o que já foi gravado: o 6f459c (receita:82) e o que o P4 produzir
+  até o deploy. É idempotente e sem UPDATE. O pedido já `feita` não reabre;
+- a execução de validação sem repetição volta a ser conferida a cada passo; são poucas (as do P4 e as do 29.58).
+
+**O rosto no item:**
+- **Receita nascida em validação** (`EntradaDoLivro.nasceu_em`: `prova_fluxo` | `validacao_qa`):
+  - lida por `recipes.learned_from_step` → `steps.run_id` → `runs`;
+  - a API do livro a expõe; o painel mostra "Nasceu na prova de um fluxo" ou "Nasceu numa re-execução da validação
+    do QA", com o link da execução;
+  - o dossiê leva `item.nasceu_em_validacao` só nela, e o `dossie_hash` das outras não muda;
+  - continua na fila do dono (decisão da orquestradora). O achado era "sem dizer de onde veio".
+- **Validações do item**: `GET /api/aprendizado/validacoes?item=<kind>:<ref>`, um filtro na rota do 30.38 (b), sem
+  rota nova. A seção "Validações" do detalhe diferencia o motivo pelo `run_id`:
+  - "Rodou; depois: sem caminho" é o lv-2dd29, que o passo do 30.36 reclassificou depois de rodar;
+  - "Não rodou: sem caminho" é o pedido recusado ao despachar, sem gasto.
+- **O veredito no Resumo da execução**: `?run=<id>` na mesma rota. A execução de validação mostra "Veredito da
+  validação: a favor / contra / inválida (motivo) / só a forma / sem evidência" no lugar de "sucesso comprovado". A
+  e1b7d0 mostrava sucesso enquanto o fluxo levou contra: o veredito é do ITEM, não da execução.
+
+**Prova:** `simulated` em `backend/tests/test_learning_reproducao_repetida.py`, `test_learning_nasceu_em_validacao.py`,
+`test_learning_prova_ponto_de_partida.py` (a re-execução da validação) e `test_validacoes_listagem.py` (os filtros), e o
+painel no vitest. `real`: `not_run` até o deploy. Esperado: a primeira volta da curadoria grava a `invalida` irmã da
+linha `reproducao:` do 6f459c; a próxima re-execução do P4 mostra o ponto de partida na linha do tempo; a receita:135
+mostra a origem.
+
 ## Pendências conhecidas
 
 Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.
