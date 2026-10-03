@@ -106,6 +106,8 @@ export interface EntradaDoLivro {
   saude?: SaudeDoItem | null;
   /** A execução de que a receita ou o fluxo foi aprendido (30.23); `null` no treino e nos outros tipos. */
   nasceu_de?: string | null;
+  /** 30.43: a receita foi aprendida DENTRO de uma execução de validação (a prova de um fluxo ou a re-execução do QA). */
+  nasceu_em?: 'prova_fluxo' | 'validacao_qa' | null;
   /** (Re)nasceu no escopo de uma evidência inválida (30.23): espera o dono. Derivado no backend. */
   reaprendido?: Reaprendido | null;
   /** 30.24, receita e fluxo: está em "Revisar" agora (`false`: uma pessoa já decidiu o legado). */

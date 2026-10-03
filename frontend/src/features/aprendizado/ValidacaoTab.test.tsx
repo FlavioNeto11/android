@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FakeBackend, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
 import { useUiStore } from '../../store/ui';
 import { AprendizadoPage } from './AprendizadoPage';
-import { lerListaDeValidacoes, rotuloDoItem } from './validacao';
+import { leituraDoPedido, lerListaDeValidacoes, rotuloDoItem, vereditoDoPedido } from './validacao';
 
 /**
  * 30.38 (b): a aba Validação contra o contrato do adendo v1.02 (`GET /api/aprendizado/validacoes`), com o backend
@@ -136,5 +136,21 @@ describe('leitura tolerante', () => {
     expect(rotuloDoItem({ item_kind: 'fluxo', item_ref: 'fluxo:1' })).toBe('Fluxo');
     expect(rotuloDoItem({ item_kind: null, item_ref: 'receita:7' })).toBe('Receita');
     expect(rotuloDoItem({ item_kind: null, item_ref: 'li-3' })).toBe('Item do aprendizado');
+  });
+});
+
+describe('30.43: o veredito e a leitura do pedido', () => {
+  it('o mesmo motivo de recusa: com execução "Rodou; depois", sem ela "Não rodou"; sem motivo, o rótulo do estado', () => {
+    const base = { estado: 'recusada' as const, motivo: 'sem_caminho', motivo_humano: 'sem caminho até o item' };
+    expect(leituraDoPedido({ ...base, run_id: 'r-1' })).toBe('Rodou; depois: sem caminho até o item');
+    expect(leituraDoPedido({ ...base, run_id: null })).toBe('Não rodou: sem caminho até o item');
+    expect(leituraDoPedido({ ...base, motivo_humano: null, run_id: null })).toBe('Não rodou: sem_caminho');
+    expect(leituraDoPedido({ estado: 'feita', motivo: null, motivo_humano: null, run_id: 'r-1' })).toBe('Feita');
+    expect(leituraDoPedido({ estado: 'pendente', motivo: null, motivo_humano: null, run_id: null })).toBe('Pendente');
+  });
+
+  it('vereditoDoPedido: sem pedido é null (a legenda de sempre); expirada sem motivo não afirma nada', () => {
+    expect(vereditoDoPedido(null)).toBeNull();
+    expect(vereditoDoPedido({ estado: 'expirada', motivo: null, motivo_humano: null })).toBe('sem evidência (sem motivo registrado)');
   });
 });

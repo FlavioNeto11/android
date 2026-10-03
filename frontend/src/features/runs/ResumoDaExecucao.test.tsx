@@ -6,7 +6,7 @@ import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
 import { useUiStore } from '../../store/ui';
 import { REPORT, RUN_ID, makeRun, makeRunDetail } from '../../test/fixtures';
-import { FakeBackend, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
+import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
 import { RunView } from './RunView';
 import { LEGENDA_DE_SUCESSO_COMPROVADO } from './ResumoDaExecucao';
 
@@ -132,5 +132,82 @@ describe('guia padrão por situação', () => {
     expect(abaSelecionada()).toMatch(/^Relatório/);
     await act(async () => useUiStore.getState().navegar({ tela: 'execucoes', segmentos: [RUN_ID] }, 'replace'));
     await waitFor(() => expect(abaSelecionada()).toMatch(/^Linha do tempo/));
+  });
+});
+
+/**
+ * 30.43: numa execução de validação o veredito é do ITEM (a e1b7d0 era "sucesso comprovado" com evidência contra);
+ * a execução comum não faz chamada nova. `simulated`.
+ */
+describe('veredito da validação no resumo', () => {
+  const pedido = (over: Record<string, unknown>) => ({
+    id: 'lv-1', estado: 'feita', motivo: null, motivo_humano: null, item_ref: 'fluxo:abc', item_kind: 'fluxo', app: null, app_nome: null,
+    grupo: null, run_id: RUN_ID, run_origem: null, aparelho: null, usd: 0, teto_usd: null, created_at: '2026-10-03T10:00:00Z',
+    feito_em: null, expira_em: null, comando: 'Abra', ...over,
+  });
+  let itens: unknown[] = [];
+  let falha = false;
+  const chamadas = () => backend.callsTo('GET', /^\/api\/aprendizado\/validacoes$/);
+  beforeEach(() => {
+    itens = [];
+    falha = false;
+    backend.on('GET', /^\/api\/aprendizado\/validacoes$/, () => (falha ? apiError(500, 'boom', 'falhou')
+      : json({ itens, contagem: {}, total: itens.length, modo: 'on' })));
+  });
+  const resumo = () => container.querySelector('[aria-label="Resumo da execução"]') as HTMLElement;
+  async function mostrarComOrigem(origem: 'prova_fluxo' | 'validacao_qa' | null): Promise<void> {
+    preparar({ ...CONCLUIDA, origem, prova_fluxo_id: origem === 'prova_fluxo' ? 'fluxo-abc' : null });
+    await act(async () => root.render(<RunView />));
+  }
+
+  const CASOS: [string, Record<string, unknown>, string][] = [
+    ['feita', { estado: 'feita' }, 'a favor'],
+    ['evidencia_contra', { estado: 'recusada', motivo: 'evidencia_contra', motivo_humano: 'a evidência foi contra' }, 'contra'],
+    ['efeito_repetido', { estado: 'recusada', motivo: 'efeito_repetido', motivo_humano: 'o efeito rodou duas vezes' }, 'inválida (o efeito rodou duas vezes)'],
+    ['ponto_de_partida', { estado: 'recusada', motivo: 'ponto_de_partida', motivo_humano: 'partiu de outra tela' }, 'inválida (partiu de outra tela)'],
+    ['ator_sem_acao', { estado: 'recusada', motivo: 'ator_sem_acao', motivo_humano: 'a IA não agiu' }, 'inválida (a IA não agiu)'],
+    ['divergencia_de_forma', { estado: 'recusada', motivo: 'divergencia_de_forma', motivo_humano: 'só a redação mudou' }, 'só a forma (não conta)'],
+    ['sem_evidencia', { estado: 'recusada', motivo: 'sem_evidencia', motivo_humano: 'nada foi provado' }, 'sem evidência (nada foi provado)'],
+    ['execucao_falhou', { estado: 'recusada', motivo: 'execucao_falhou', motivo_humano: 'a execução falhou' }, 'sem evidência (a execução falhou)'],
+    ['pendente', { estado: 'pendente' }, 'em andamento'],
+    ['rodando', { estado: 'rodando' }, 'em andamento'],
+  ];
+
+  it.each(CASOS)('prova de fluxo, %s: "Veredito da validação: %s"', async (_nome, over, esperado) => {
+    itens = [pedido(over)];
+    await mostrarComOrigem('prova_fluxo');
+    await waitFor(() => expect(text(resumo())).toContain('Veredito da validação'));
+    expect(text(resumo())).toContain(`Veredito da validação: ${esperado}`);
+    expect(text(resumo())).not.toContain('sucesso comprovado');            // o veredito é do item, não da execução
+    const ultima = chamadas().at(-1);
+    expect(ultima?.query.get('run')).toBe(RUN_ID);
+    expect(ultima?.query.get('limite')).toBe('1');
+  });
+
+  it('re-execução do QA também mostra o veredito', async () => {
+    itens = [pedido({ estado: 'recusada', motivo: 'evidencia_contra', motivo_humano: 'contra' })];
+    await mostrarComOrigem('validacao_qa');
+    await waitFor(() => expect(text(resumo())).toContain('Veredito da validação: contra'));
+  });
+
+  it('nenhum pedido achado mantém a legenda de sempre', async () => {
+    await mostrarComOrigem('prova_fluxo');
+    await waitFor(() => expect(chamadas().length).toBeGreaterThan(0));
+    await waitFor(() => expect(byRole('button', /O que é sucesso comprovado/, resumo())).toBeTruthy());
+    expect(text(resumo())).not.toContain('Veredito da validação');
+  });
+
+  it('erro de rede: nunca "sucesso comprovado"; diz que o veredito não está disponível', async () => {
+    falha = true;
+    await mostrarComOrigem('prova_fluxo');
+    await waitFor(() => expect(text(resumo())).toContain('Veredito da validação: indisponível agora'));
+    expect(text(resumo())).not.toContain('sucesso comprovado');
+  });
+
+  it('execução comum: a legenda como está e nenhuma chamada nova', async () => {
+    await mostrarComOrigem(null);
+    expect(byRole('button', /O que é sucesso comprovado/, resumo())).toBeTruthy();
+    expect(text(resumo())).not.toContain('Veredito da validação');
+    expect(chamadas()).toHaveLength(0);
   });
 });

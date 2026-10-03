@@ -25,7 +25,10 @@ import {
   type VizinhaDaReceita, ORIGEM_LABEL, acoesDoItem, nomearCapabilityNoTexto, porQueOSistemaNaoPublica, rotuloDoEstado,
   rotuloDoKind, motivoDaInvalida, textoDaEvidencia,
 } from './model';
+import { formatUsd } from './metricas';
 import styles from './Aprendizado.module.css';
+import { useCarga } from './useCarga';
+import { META_DA_VALIDACAO, leituraDoPedido } from './validacao';
 
 /** O link do item no próprio Livro (`#/aprendizado?aba=aprendido&item=<kind>:<ref>`): um link de verdade, que abre em outra guia. */
 export const hrefDoItem = (kind: LivroKind, ref: string): string =>
@@ -96,6 +99,14 @@ function Identidade({ item, conteudo }: { item: EntradaDoLivro; conteudo: Conteu
         <Fato rotulo="Estado">{rotuloDoEstado(item.state)}</Fato>
         <Fato rotulo="Origem">{ORIGEM_LABEL[item.origin] ?? item.origin}</Fato>
       </dl>
+      {item.nasceu_em ? (
+        <p className={styles.secaoLead} data-nasceu-em={item.nasceu_em}>
+          {item.nasceu_em === 'prova_fluxo' ? 'Nasceu na prova de um fluxo' : 'Nasceu numa re-execução da validação do QA'}
+          {item.nasceu_de ? (
+            <>{' · '}execução <a className={styles.linkAlvo} href={hrefDaExecucao(item.nasceu_de)} title={item.nasceu_de}>{rotuloDaExecucao(item.nasceu_de)}</a></>
+          ) : null}
+        </p>
+      ) : null}
     </Secao>
   );
 }
@@ -443,6 +454,40 @@ function Evidencia({ evid }: { evid: readonly EvidenciaDoLivro[] }) {
   );
 }
 
+/**
+ * 30.43: os pedidos de validação deste item, do mais novo ao mais velho. O mesmo motivo de recusa tem dois sentidos
+ * (`leituraDoPedido`): com execução ele rodou e foi reclassificado; sem ela nunca rodou. A lista é do backend; a falha
+ * da rede aparece em uma linha e não derruba o resto do detalhe.
+ */
+function ValidacoesDoItem({ item }: { item: EntradaDoLivro }) {
+  const alvo = `${item.kind}:${item.ref}`;
+  const { dado, erro, carregando } = useCarga(
+    (signal) => apiAprendizado.validacoes({ item: alvo, limite: 20 }, signal), alvo);
+  const pedidos = dado?.itens ?? [];
+  return (
+    <Secao slug="validacoes" titulo="Validações">
+      {erro ? <p className={styles.secaoLead} data-validacoes-erro>Não foi possível ler as validações deste item agora.</p>
+        : carregando ? <p className={styles.secaoLead}>Lendo as validações…</p>
+        : pedidos.length === 0 ? <p className={styles.secaoLead}>Nenhum pedido de validação para este item.</p>
+        : (
+          <ul className={styles.motivos} aria-label="Validações do item">
+            {pedidos.map((p) => (
+              <li key={p.id} data-pedido={p.id} data-rodou={p.run_id ? 'sim' : 'nao'}>
+                {formatQuando(p.feito_em ?? p.created_at)}{' · '}
+                <Badge tone={META_DA_VALIDACAO[p.estado].tone} size="sm" title={p.motivo ?? undefined}>{META_DA_VALIDACAO[p.estado].label}</Badge>{' '}
+                {/* Sem motivo, o rótulo do estado já está no selo ao lado: não repete. */}
+                {p.motivo_humano || p.motivo ? leituraDoPedido(p) : null}
+                {p.aparelho ? ` · aparelho ${p.aparelho}` : ''}
+                {` · ${p.run_id || p.usd > 0 ? formatUsd(p.usd) : 'sem gasto'}`}
+                {p.run_id ? <>{' · '}<a className={styles.linkAlvo} href={hrefDaExecucao(p.run_id)} title={p.run_id}>{rotuloDaExecucao(p.run_id)}</a></> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+    </Secao>
+  );
+}
+
 /** O passo da trilha em palavras. `disabled → disabled` é a marca que muda só o tipo do desligamento (30.23);
  *  `published → published` com `tipo: confirmacao` é "Confirmar que fica" (30.24). */
 export function passoDaTransicao(t: Pick<TransicaoDoLivro, 'from' | 'to' | 'tipo'>): string {
@@ -621,6 +666,7 @@ export function DetalheRico({ detalhe, onMudou }: { detalhe: DetalheDoLivro; onM
         {saude ? <Saude s={saude} comVersao={!!versao} /> : null}
         {versao ? <Versao v={versao} appNome={versao.app === item.app ? item.app_nome ?? null : null} /> : null}
         <Evidencia evid={evid} />
+        {item.kind === 'receita' || item.kind === 'fluxo' ? <ValidacoesDoItem item={item} /> : null}
         <Historico trilha={trilha} />
         {relacoes.length > 0 ? <Relacoes relacoes={relacoes} /> : null}
         <SecaoDoParecer item={item} pareceres={Array.isArray(detalhe.pareceres) ? detalhe.pareceres : []}

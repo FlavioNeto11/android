@@ -217,11 +217,12 @@ describe('detalhe rico: relações e seções ausentes', () => {
     expect(destinoDaRelacao({ kind: 'commit', ref: 'abc123' })).toBeNull();
   });
 
-  it('sem conteúdo, saúde, versão e relações: só Identidade, Evidência e Histórico', async () => {
+  it('sem conteúdo, saúde, versão e relações: só Identidade, Evidência e Histórico (e Validações, na receita)', async () => {
     await mostrar({ item: entrada({ kind: 'licao', ref: 'li-1', saude: null }), evidencias: [], trilha: [], exposicoes: [] });
     expect(secoes()).toEqual(['Identidade', 'Evidência registrada', 'Histórico']);
+    // A receita ganha a seção Validações (30.43), mesmo sem conteúdo; a lição não.
     await mostrar(detalhe({ conteudo: null, versao: undefined, item: { saude: null }, relacoes: [] }));
-    expect(secoes()).toEqual(['Identidade', 'Evidência registrada', 'Histórico']);
+    expect(secoes()).toEqual(['Identidade', 'Evidência registrada', 'Validações', 'Histórico']);
   });
 
   it('histórico e evidência com link para a execução; ids dos títulos não se repetem entre dois detalhes', async () => {
@@ -465,7 +466,7 @@ describe('no catálogo Aprendido', () => {
     expect(backend.callsTo('GET', /^\/api\/aprendizado\/receita\/12$/)).toHaveLength(0);
     await openDetails(/Detalhes, evidência e trilha/, linha);
     await waitFor(() => expect(linha.querySelector('h4')).not.toBeNull());
-    expect(secoes()).toEqual(['Identidade', 'Conteúdo', 'Saúde', 'Versão do app', 'Evidência registrada', 'Histórico']);
+    expect(secoes()).toEqual(['Identidade', 'Conteúdo', 'Saúde', 'Versão do app', 'Evidência registrada', 'Validações', 'Histórico']);
   });
 
   it('?item=kind:ref abre o item do link no topo, já com o detalhe', async () => {
@@ -491,5 +492,85 @@ describe('os códigos do detalhe em palavras (UX do deploy 8)', () => {
     expect(alvoLegivel([{ tipo: 'rid', rid: 'com.x:id/send' }, { tipo: 'desc', desc: 'Enviar' }])).toBe('“Enviar”');
     expect(alvoLegivel([{ tipo: 'rid', rid: 'com.x:id/send' }])).toBe('o elemento send');
     expect(alvoLegivel([])).toBeNull();
+  });
+});
+
+describe('30.43: de onde o item nasceu e o histórico de validações', () => {
+  let backend: FakeBackend;
+  let respostaDaLista: () => Response;
+
+  const pedido = (over: Record<string, unknown>) => ({
+    id: 'lv-x', estado: 'feita', motivo: null, motivo_humano: null, item_ref: 'receita:12', item_kind: 'receita', app: null, app_nome: null,
+    grupo: null, run_id: null, run_origem: null, aparelho: null, usd: 0, teto_usd: null, created_at: '2026-10-03T10:00:00Z',
+    feito_em: null, expira_em: null, comando: 'Abra', ...over,
+  });
+  const lista = (itens: unknown[]) => () => json({ itens, contagem: {}, total: itens.length, modo: 'on' });
+
+  beforeEach(() => {
+    backend = new FakeBackend();
+    backend.install();
+    respostaDaLista = lista([]);
+    backend.on('GET', /^\/api\/aprendizado\/validacoes$/, () => respostaDaLista());
+  });
+
+  const secaoDeValidacoes = () => container.querySelector('section[aria-labelledby$="-validacoes"]') as HTMLElement;
+
+  it('"Nasceu na prova de um fluxo" e "numa re-execução da validação do QA", com o link da execução; nada quando nulo', async () => {
+    let t = await mostrar(detalhe({ item: { nasceu_em: 'prova_fluxo', nasceu_de: 'r-20261003-abc' } }));
+    expect(t).toContain('Nasceu na prova de um fluxo');
+    const marca = container.querySelector('[data-nasceu-em="prova_fluxo"]') as HTMLElement;
+    expect(marca.querySelector('a')?.getAttribute('href')).toBe('#/execucoes/r-20261003-abc');
+    t = await mostrar(detalhe({ item: { nasceu_em: 'validacao_qa', nasceu_de: null } }));
+    expect(t).toContain('Nasceu numa re-execução da validação do QA');
+    expect(container.querySelector('[data-nasceu-em] a')).toBeNull();     // sem execução de origem, sem link
+    t = await mostrar(detalhe({ item: { nasceu_em: null, nasceu_de: 'r-1' } }));
+    expect(t).not.toContain('Nasceu');
+  });
+
+  it('busca os pedidos do item (item=kind:ref, limite 20) e escreve os dois sentidos do mesmo motivo', async () => {
+    respostaDaLista = lista([
+      // Rodou (tem execução) e foi reclassificada depois: o caso do lv-2dd29.
+      pedido({ id: 'lv-2dd29', estado: 'recusada', motivo: 'sem_caminho', motivo_humano: 'o plano não tinha caminho até o item',
+               run_id: 'r-2dd29', aparelho: 'android-02', usd: 0.0512, feito_em: '2026-10-03T11:05:00Z' }),
+      // Nunca rodou: recusado ao despachar, sem gasto.
+      pedido({ id: 'lv-nr', estado: 'recusada', motivo: 'sem_caminho', motivo_humano: 'o plano não tinha caminho até o item', run_id: null }),
+      pedido({ id: 'lv-ok', estado: 'feita', run_id: 'r-ok', aparelho: 'android-05', usd: 0.03 }),
+      pedido({ id: 'lv-p', estado: 'pendente' }),
+    ]);
+    await mostrar(detalhe({ item: { ref: '12' } }));
+    await waitFor(() => expect(secaoDeValidacoes().querySelector('ul')).not.toBeNull());
+    const chamada = backend.callsTo('GET', /^\/api\/aprendizado\/validacoes$/).at(-1);
+    expect(chamada?.query.get('item')).toBe('receita:12');
+    expect(chamada?.query.get('limite')).toBe('20');
+    const rodou = text(secaoDeValidacoes().querySelector('[data-pedido="lv-2dd29"]') as HTMLElement);
+    expect(rodou).toContain('Rodou; depois: o plano não tinha caminho até o item');
+    expect(rodou).toContain('aparelho android-02');
+    expect(rodou).toContain('US$ 0,0512');
+    expect(rodou).toContain('Recusada');
+    expect((secaoDeValidacoes().querySelector('[data-pedido="lv-2dd29"] a') as HTMLAnchorElement).getAttribute('href')).toBe('#/execucoes/r-2dd29');
+    const naoRodou = text(secaoDeValidacoes().querySelector('[data-pedido="lv-nr"]') as HTMLElement);
+    expect(naoRodou).toContain('Não rodou: o plano não tinha caminho até o item');
+    expect(naoRodou).toContain('sem gasto');
+    expect(naoRodou).not.toContain('Rodou');
+    expect(secaoDeValidacoes().querySelector('[data-pedido="lv-nr"] a')).toBeNull();      // sem execução, sem link
+    // Sem motivo, o rótulo do estado (no selo) basta.
+    expect(text(secaoDeValidacoes().querySelector('[data-pedido="lv-ok"]') as HTMLElement)).toContain('Feita');
+    expect(text(secaoDeValidacoes().querySelector('[data-pedido="lv-p"]') as HTMLElement)).toContain('Pendente');
+  });
+
+  it('lista vazia: uma frase curta; erro de rede: aviso discreto e o resto do detalhe segue de pé', async () => {
+    await mostrar(detalhe());
+    await waitFor(() => expect(text(secaoDeValidacoes())).toContain('Nenhum pedido de validação para este item.'));
+    respostaDaLista = () => apiError(500, 'boom', 'falhou');
+    await mostrar(detalhe({ item: { ref: '13' } }));
+    await waitFor(() => expect(secaoDeValidacoes().querySelector('[data-validacoes-erro]')).not.toBeNull());
+    expect(secoes()).toContain('Evidência registrada');
+    expect(secoes()).toContain('Histórico');
+  });
+
+  it('lição e outros tipos não pedem validações', async () => {
+    await mostrar({ item: entrada({ kind: 'licao', ref: 'li-1', saude: null }), evidencias: [], trilha: [], exposicoes: [] });
+    expect(secoes()).not.toContain('Validações');
+    expect(backend.callsTo('GET', /^\/api\/aprendizado\/validacoes$/)).toHaveLength(0);
   });
 });

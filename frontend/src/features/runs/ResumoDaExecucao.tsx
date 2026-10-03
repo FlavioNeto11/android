@@ -5,6 +5,9 @@ import { Tooltip } from '../../components/Tooltip';
 import { cx } from '../../lib/format';
 import { hashDe } from '../../lib/rotas';
 import { useNow } from '../../lib/time';
+import { apiAprendizado } from '../aprendizado/api';
+import { useCarga } from '../aprendizado/useCarga';
+import { vereditoDoPedido } from '../aprendizado/validacao';
 import {
   objetivosComSucesso, oQuePrecisaDaPessoa, pedidoEhLongo, resultadoDaExecucao, type AbaDaExecucao,
 } from './resumo';
@@ -29,6 +32,21 @@ export function LegendaDeSucessoComprovado({ rotulo = 'sucesso comprovado' }: { 
       </button>
     </Tooltip>
   );
+}
+
+/**
+ * 30.43: numa execução de validação (prova de fluxo, re-execução do QA) quem comprova é o ITEM, não a execução: ela
+ * pode terminar "concluída" e o fluxo levar evidência contra (caso da e1b7d0). O veredito vem do pedido de validação
+ * dessa execução. Sem pedido achado, a legenda de sempre; enquanto lê ou se a leitura falha, nunca "sucesso comprovado".
+ */
+function VereditoDaValidacao({ runId }: { runId: string }) {
+  const { dado, erro, carregando } = useCarga(
+    (signal) => apiAprendizado.validacoes({ run: runId, limite: 1 }, signal), runId);
+  if (carregando && !dado) return <span className={styles.secundario} data-veredito="lendo">Veredito da validação: conferindo…</span>;
+  if (erro) return <span className={styles.secundario} data-veredito="indisponivel">Veredito da validação: indisponível agora</span>;
+  const veredito = vereditoDoPedido(dado?.itens[0] ?? null);
+  if (!veredito) return <LegendaDeSucessoComprovado />;
+  return <span data-veredito={veredito}>Veredito da validação: <strong>{veredito}</strong></span>;
 }
 
 interface Props {
@@ -107,7 +125,9 @@ export function ResumoDaExecucao({
           <span className={styles.resultado}>{resultado}</span>
           {sucessos ? <span className={styles.secundario}> · {sucessos}</span> : null}
           {run.status === 'completed' || run.status === 'completed_with_issues' ? (
-            <>{' '}<LegendaDeSucessoComprovado /></>
+            <>{' '}{origem === 'prova_fluxo' || origem === 'validacao_qa'
+              ? <VereditoDaValidacao runId={run.id} />
+              : <LegendaDeSucessoComprovado />}</>
           ) : null}
         </dd>
       </div>
