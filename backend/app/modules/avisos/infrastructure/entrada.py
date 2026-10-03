@@ -65,15 +65,29 @@ RESPOSTA_CREDENCIAL_SEM_APAGAR = ("Isso parece senha ou código: não guardei e 
 _ORIENTACAO = "A senha fica guardada na conta da persona; o código de verificação se digita no aparelho."
 RESPOSTA_PERGUNTA_CREDENCIAL = ("Essa execução pergunta por senha, código ou verificação: não guardei, não repassei e "
                                 "apaguei a mensagem do chat. " + _ORIENTACAO)
+#: O curto recusado pode ter sido um pedido de verdade: a resposta diz como mandá-lo.
+_SE_ERA_PEDIDO = " Se era um pedido, escreva com mais detalhe (ou use /para <aparelho> <objetivo>)."
 RESPOSTA_PERGUNTA_CREDENCIAL_SEM_APAGAR = ("Essa execução pergunta por senha, código ou verificação: não guardei e não "
                                            "repassei, mas não consegui apagar a mensagem daqui. Apague-a do chat. "
                                            + _ORIENTACAO)
 RESPOSTA_VENCIDA = "Esta prévia venceu; mande o pedido de novo."
 RESPOSTA_PRESA = ("A criação deste pedido foi interrompida antes de terminar. Confira no painel se a execução existe e, "
                   "se não, mande o pedido de novo.")
+RESPOSTA_ANTIGAS = ("{quantas} há mais de {min} min (a Central estava fora do ar) e não {foi} tratada{s}: nada foi "
+                   "aprovado, vetado nem executado por {ela}. Mande de novo o que ainda valer.")
 RESPOSTA_LONGA = "Mensagem longa demais para a conversa (limite de {n} caracteres): não guardei. Use o painel."
 #: Só dígitos (com espaço ou hífen entre eles), de 4 a 8: o formato de um código de verificação.
 _CODIGO = re.compile(r"[\s-]*(?:\d[\s-]?){4,8}[\s-]*")
+#: Com uma pergunta de senha aberta, o texto livre (ou o recado) com até isto de palavras é tratado como a senha.
+MAX_PALAVRAS_SENSIVEL = 3
+#: A causa provável de cada recusa definitiva do `getUpdates` (E7), para a saúde orientar sem mandar trocar o token
+#: quando o problema é outro. O 404 da Bot API é o bot que ela não acha pelo token (token malformado ou de outro bot).
+_CAUSA_DA_RECUSA = {
+    400: "pedido inválido ao getUpdates (parâmetro ou offset); não é o token",
+    401: "token revogado ou trocado no BotFather",
+    403: "o bot foi bloqueado ou removido da conversa",
+    404: "token malformado ou de um bot que não existe mais",
+}
 #: Pausa entre voltas quando a entrada está desligada ou sem liderança (o long-poll é a espera de verdade).
 OCIOSO_S = 15.0
 #: Quanto tempo uma linha pode ficar em `executando` sem execução criada antes de ser dada como interrompida.
@@ -148,6 +162,8 @@ class Recebida:
     ref_mensagem: str | None = None    # a mensagem da pessoa (no botão, a do bot que levava o teclado)
     responde_a: str | None = None      # a mensagem do canal a que ela responde (o fato do aviso)
     botao_id: str | None = None        # o toque num botão, para o canal tirar o relógio (`answerCallbackQuery`)
+    #: Quando a pessoa escreveu (epoch, do canal). O toque num botão não traz hora própria: a idade da prévia o protege.
+    escrita_em: float | None = None
 
 
 class SaidaDaConversa(Protocol):
@@ -242,14 +258,17 @@ def _ler_update(u: Mapping[str, object], chat_do_dono: str) -> Recebida | None:
                     texto=str(texto),
                     ref_mensagem=_texto(_int(msg.get("message_id"))) if msg is not None else None,
                     responde_a=_texto(_int(responde.get("message_id"))) if responde is not None else None,
-                    botao_id=str(cb.get("id")) if cb is not None and cb.get("id") is not None else None)
+                    botao_id=str(cb.get("id")) if cb is not None and cb.get("id") is not None else None,
+                    # no botão, `message.date` é a hora da mensagem do BOT, não a do toque: fica sem hora
+                    escrita_em=float(d) if cb is None and msg is not None and (d := _int(msg.get("date"))) else None)
 
 
 class ServicoDeEntrada:
     def __init__(self, cfg: Config, repo: EntradasDoCanal, portas: PortasDaCentral, *,
                  lider: Callable[[str], int | None], recusa: Callable[[str], bool], redigir: Callable[[str], str],
                  canal: CanalTelegram | None = None, chat_id: str | None = None,
-                 dormir: Callable[[float], Awaitable[None]] | None = None, operador: str = OPERADOR_DO_TELEGRAM):
+                 dormir: Callable[[float], Awaitable[None]] | None = None, operador: str = OPERADOR_DO_TELEGRAM,
+                 relogio: Callable[[], float] | None = None):
         self.cfg = cfg
         self.repo = repo
         self.portas = portas
@@ -262,9 +281,14 @@ class ServicoDeEntrada:
         #: Quem age, como VALOR (`telegram:dono` hoje; `trello:<id>` no 32.2): vai ao ContextVar da sessão.
         self.operador = operador
         self._conflito_desde: float | None = None
-        #: O Telegram recusou a leitura de vez (401/403: token revogado, bot removido): o motivo, já redigido.
+        #: O Telegram recusou a leitura de vez (400/401/403/404): o motivo, já redigido, e o status que o explica.
         self._recusada: str | None = None
+        self._recusada_status: int | None = None
         self._limitada_avisada = 0.0
+        #: hora de parede (epoch), para comparar com a hora em que a pessoa escreveu; injetável nos testes
+        self._agora = relogio or time.time
+        #: mensagens antigas desta volta (escritas com a Central fora): o dono é avisado uma vez no fim da volta
+        self._antigas = 0
 
     # ------------------------------------------------------------------ configuração e saúde
     @property
@@ -302,12 +326,16 @@ class ServicoDeEntrada:
                      "`python scripts/avisos-telegram.py descobrir` mostra o que o bot enxerga (rode-o com a entrada "
                      "desligada: ele também lê o getUpdates)."))
         if self._recusada is not None:
+            # E7: cada status tem a sua causa; "token revogado" para um 400 mandava o dono trocar o token à toa.
+            invalido = self._recusada_status == 400
+            causa = _CAUSA_DA_RECUSA.get(self._recusada_status or 0, "recusa não prevista do Telegram")
+            o_que_fazer = ("O token não é a causa: veja o log da Central (poc.avisos.entrada) " if invalido else
+                           "Confira TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID no .env (docs/operacao.md §15) ")
             achados.append(Problem(
-                code="telegram_entrada_recusada",
+                code="telegram_entrada_pedido_invalido" if invalido else "telegram_entrada_recusada",
                 message=f"A conversa pelo Telegram está parada: o Telegram recusou a leitura do bot ({self._recusada}).",
-                hint="Token revogado, bot removido ou sem acesso ao chat. Confira TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID no "
-                     ".env (docs/operacao.md §15) ou desligue avisos.entrada.enabled; a Central tenta de novo sozinha "
-                     "a cada minuto."))
+                hint=f"Causa provável: {causa}. {o_que_fazer}ou desligue avisos.entrada.enabled; a Central tenta de "
+                     "novo sozinha a cada minuto."))
         return achados
 
     # ------------------------------------------------------------------ uma volta
@@ -329,6 +357,7 @@ class ServicoDeEntrada:
             return 0
         self._conflito_desde = None
         self._recusada = None
+        self._recusada_status = None
         if self._lider(AVISOS) is None:
             return 0        # perdeu a liderança no long-poll: nada gravado = nada confirmado; o novo líder relê
         saida = SaidaDoTelegram(canal)
@@ -346,6 +375,13 @@ class ServicoDeEntrada:
                 # (sem texto) como `falhou`; só o id vai ao log, porque a exceção do banco pode trazer o texto.
                 log.error("telegram: update %s não pôde ser registrada (%s)", r.id_externo, type(exc).__name__)
                 self._linha(r, None, "falhou", f"erro ao registrar ({type(exc).__name__})")
+        if self._antigas:
+            n, self._antigas = self._antigas, 0
+            minutos = round(cfg.idade_max_s / 60)
+            texto = RESPOSTA_ANTIGAS.format(
+                quantas="1 mensagem foi escrita" if n == 1 else f"{n} mensagens foram escritas", min=minutos,
+                foi="foi" if n == 1 else "foram", s="" if n == 1 else "s", ela="ela" if n == 1 else "elas")
+            await self._enviar(saida, texto, origem="resposta")
         await self.tratar_pendentes(saida)
         return len(brutas)
 
@@ -406,9 +442,18 @@ class ServicoDeEntrada:
             await self._recusar_credencial(saida, r, "parece credencial ou código", RESPOSTA_CREDENCIAL,
                                            RESPOSTA_CREDENCIAL_SEM_APAGAR)
             return
-        if r.tipo == "mensagem" and self._responde_a_pergunta_de_credencial(r):
+        por_contexto = self._responde_a_pergunta_de_credencial(r) if r.tipo == "mensagem" else None
+        if por_contexto is not None:
+            extra = _SE_ERA_PEDIDO if por_contexto == "curta" else ""
             await self._recusar_credencial(saida, r, "a pergunta da execução pede credencial",
-                                           RESPOSTA_PERGUNTA_CREDENCIAL, RESPOSTA_PERGUNTA_CREDENCIAL_SEM_APAGAR)
+                                           RESPOSTA_PERGUNTA_CREDENCIAL + extra,
+                                           RESPOSTA_PERGUNTA_CREDENCIAL_SEM_APAGAR + extra)
+            return
+        if r.escrita_em is not None and self._agora() - r.escrita_em > self.cfg.file.avisos.entrada.idade_max_s:
+            # E2: o Telegram guarda até 24 h, e a Central fora por horas traria um "/aprovar" ou um "sim" velho que
+            # executaria sem ninguém olhar. Vale em TODA subida, não só na 1ª (o descarte do histórico é só a 1ª).
+            if self._linha(r, None, "ignorada", "antiga: escrita com a Central fora do ar"):
+                self._antigas += 1
             return
         self._linha(r, r.texto)
 
@@ -447,28 +492,36 @@ class ServicoDeEntrada:
         await self._enviar(saida, RESPOSTA_PERGUNTA_CREDENCIAL if apagou else RESPOSTA_PERGUNTA_CREDENCIAL_SEM_APAGAR,
                            origem="resposta", responde_a=None if apagou else mid, entrada_id=ident)
 
-    def _responde_a_pergunta_de_credencial(self, r: Recebida) -> bool:
+    def _responde_a_pergunta_de_credencial(self, r: Recebida) -> str | None:
         """É uma RESPOSTA (reply ao aviso de pergunta ou `/responder <id> <texto>`) a uma execução cuja pergunta pede
-        senha, código, 2FA, token ou verificação? Decide pelo contexto, não pela forma do texto. Na dúvida (a pergunta não
-        pôde ser lida), recusa: o dono responde pelo painel."""
+        senha, código, 2FA, token ou verificação? Decide pelo contexto, não pela forma do texto: "contexto" quando é a
+        resposta a essa pergunta, "curta" quando é texto curto com ela aberta (pode ter sido um pedido), None quando
+        passa. Na dúvida (a pergunta não pôde ser lida), recusa: o dono responde pelo painel."""
         i = self._intencao({"texto": r.texto, "responde_a": r.responde_a})
-        if i.tipo == "livre":
-            return self._palavra_solta_com_pergunta_sensivel(i.texto)
+        if i.tipo in ("livre", "orquestradora"):
+            # E6: o texto livre E o recado à orquestradora (reply a mensagem que a Central não mandou, ou `/orq`) são
+            # repassados com o texto; com uma pergunta de senha aberta, o curto é tratado como a senha.
+            return "curta" if self._curta_com_pergunta_sensivel(i.texto) else None
+        if i.tipo == "desconhecida" and r.texto.strip().lower().startswith("/responder"):
+            # "/responder kiwi2024" sem id não vira resposta, mas a linha guardaria o texto
+            return "curta" if self._curta_com_pergunta_sensivel(r.texto.strip()[len("/responder"):]) else None
         if i.tipo != "responder" or not i.ref:
-            return False
+            return None
         try:
             # O vocabulário é o do caminho comum (29.52), não uma lista do canal.
-            return self.portas.pergunta_sensivel(i.ref) is not None
+            return "contexto" if self.portas.pergunta_sensivel(i.ref) is not None else None
         except Exception as exc:  # noqa: BLE001 - sem ler a pergunta não há como afirmar que a resposta é inofensiva
             log.warning("telegram: pergunta da execução não lida (%s); a resposta é recusada por precaução",
                         type(exc).__name__)
-            return True
+            return "contexto"
 
-    def _palavra_solta_com_pergunta_sensivel(self, texto: str) -> bool:
-        """A senha digitada como mensagem NORMAL (sem reply e sem `/responder`) enquanto uma execução espera credencial.
-        Um pedido de verdade é uma frase; uma senha é uma palavra só. O que a triagem reconhece já foi recusado antes,
-        com ou sem pergunta aberta. Sem poder ler as perguntas, falha fechada: a palavra só é recusada."""
-        if len(texto.split()) != 1:
+    def _curta_com_pergunta_sensivel(self, texto: str) -> bool:
+        """A senha digitada como mensagem NORMAL (sem reply ao aviso e sem `/responder <id>`) enquanto uma execução
+        espera credencial. Um pedido de verdade é uma frase; uma senha é curta, e às vezes com espaço ("kiwi 2024", E6
+        da revisão): até `MAX_PALAVRAS_SENSIVEL` palavras é recusado, e a resposta pede o pedido com mais detalhe. O que
+        a triagem reconhece já foi recusado antes, com ou sem pergunta aberta. Sem poder ler as perguntas, falha
+        fechada: o curto é recusado."""
+        if not texto.split() or len(texto.split()) > MAX_PALAVRAS_SENSIVEL:
             return False
         try:
             return self.portas.pergunta_sensivel(None) is not None
@@ -699,13 +752,14 @@ class ServicoDeEntrada:
 
     # ------------------------------------------------------------------ laço
     def _esperar_apos(self, falha: FalhaDeEnvio) -> float:
-        """Quanto esperar depois que a LEITURA falhou. 429: o que o Telegram pediu. Definitiva (401/403/404: token
-        revogado, bot removido): vira problema na saúde e espera como o 409, sem martelar a Bot API a cada 5 s. O resto
+        """Quanto esperar depois que a LEITURA falhou. 429: o que o Telegram pediu. Definitiva (400/401/403/404, cada
+        um com a sua causa em `_CAUSA_DA_RECUSA`): vira problema na saúde e espera como o 409, sem martelar a Bot API a cada 5 s. O resto
         (rede, 5xx) tenta de novo logo."""
         if falha.definitiva:
             if self._recusada is None:
                 log.error("telegram: o Telegram recusou a leitura do bot (%s)", falha.motivo)
             self._recusada = falha.motivo
+            self._recusada_status = falha.status
             return max(self.cfg.file.avisos.entrada.espera_conflito_s, ESPERA_FALHA_S)
         log.warning("telegram: entrada (%s)", falha.motivo)
         return max(falha.espera_s, 1.0) if falha.espera_s is not None else ESPERA_FALHA_S

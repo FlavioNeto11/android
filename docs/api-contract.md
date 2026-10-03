@@ -4857,11 +4857,15 @@ Prova `simulated`:
 Nenhuma rota nova: o central PERGUNTA ao Telegram (long-poll do `getUpdates`) e nunca é chamado por ele. Muda o
 seguinte, todo desligado de fábrica.
 
-- **Config:** `avisos.entrada`, com `enabled` (false), `limite_por_min` (10), `max_chars` (1000), `long_poll_s` (50) e
-  `espera_conflito_s` (60). Ela só vale com `avisos.enabled`. O chat aceito é o `TELEGRAM_CHAT_ID` do `.env`, e nenhum
-  chat_id mora na config.
-- **`GET /api/health`:** um problema novo, `telegram_entrada_conflito` (o 409 do `getUpdates`: outro processo lê o mesmo
-  bot). Ele some quando a leitura volta a funcionar.
+- **Config:** `avisos.entrada`, com `enabled` (false), `limite_por_min` (10), `max_chars` (1000), `long_poll_s` (50),
+  `espera_conflito_s` (60), `ttl_previa_s` (900: o botão Executar de prévia mais velha não cria nada) e `idade_max_s`
+  (900: a mensagem escrita há mais que isto, com a Central fora, fica `ignorada` sem texto). Ela só vale com
+  `avisos.enabled`. O chat aceito é o `TELEGRAM_CHAT_ID` do `.env`, só em conversa privada e com o `from.id` igual a
+  ele; nenhum chat_id mora na config.
+- **`GET /api/health`:** três problemas novos, que somem quando a leitura volta a funcionar:
+  - `telegram_entrada_conflito`: o 409 do `getUpdates` (outro processo lê o mesmo bot);
+  - `telegram_entrada_recusada`: 401, 403 ou 404, com a causa de cada um no `hint`;
+  - `telegram_entrada_pedido_invalido`: o 400 (não é o token).
 - **O aviso** (`avisos_entregas.corpo` e a mensagem). Com `avisos.entrada.enabled`:
   - `approval.pending` leva o resumo, "Alvo: …" e "Texto: “…”";
   - `run.needs_input` leva o `status_detail` (a pergunta).
@@ -4874,7 +4878,8 @@ seguinte, todo desligado de fábrica.
 - **Banco:** a migração 085 cria `canal_entradas` e `canal_enviadas` (genéricas por canal; `docs/banco.md`).
 
 Prova `simulated`: `tests/test_telegram_entrada.py`, `tests/test_canais_contrato.py`, `tests/test_avisos_servico.py`,
-`tests/test_telegram_portas.py`. `not_run`: a conversa real.
+`tests/test_telegram_portas.py`, `tests/test_telegram_correcoes.py` e `tests/test_telegram_revisao_e.py` (as duas
+revisões do PR #166). `not_run`: a conversa real.
 
 ## Adendo v1.03 (03/10/2026; número da orquestradora; item 29.52) — a resposta com credencial é recusada pelo contexto
 

@@ -73,6 +73,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - I7: o 429 honra o `Retry-After`; o 401/403 vira o problema `telegram_entrada_recusada` e espera como o 409;
   - menores: linha presa em `executando` reparada, texto longo com cara de senha também apagado, dica do 409 com webhook
     e o script `avisos-telegram.py descobrir`, nota de troca de chat ou bot no `operacao.md`.
+- Correções da 2ª revisão (`test_telegram_revisao_e.py`, `simulated`):
+  - E2: em toda subida, a mensagem escrita há mais de `idade_max_s` (900 s) fica `ignorada`, sem texto, e o dono recebe
+    um aviso só; a senha antiga ainda sai do chat;
+  - E6: com pergunta de senha aberta, o texto curto (até 3 palavras) é recusado também como recado à orquestradora e
+    como `/responder` sem id, e a resposta pede o pedido com mais detalhe; a resposta atrasada (execução já fora do
+    `needs_input`), pelo id inteiro, ainda é julgada pela pergunta que a execução fez;
+  - E7: cada recusa do `getUpdates` com a sua causa (401, 403 e 404 em `telegram_entrada_recusada`; o 400 em
+    `telegram_entrada_pedido_invalido`, que não manda trocar o token);
+  - E8 e E9: `operacao.md` §15 sem grupo (só conversa privada), e o ADR-071 (decisão 10), o adendo v0.98 e o `banco.md`
+    com as emendas das duas revisões.
 - Prova:
   - `simulated`: `test_telegram_entrada.py`, `test_canais_contrato.py` (o mesmo comando por `telegram` e `trello`
     passa pelas mesmas políticas), `test_avisos_servico.py` e `test_telegram_portas.py`;

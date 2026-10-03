@@ -28,13 +28,16 @@ class FalhaDeEnvio(Exception):
 
     `espera_s`: o que o canal pediu para esperar (429 + `Retry-After`); `None` = backoff nosso.
     `definitiva`: tentar de novo não adianta (token recusado, chat inexistente, bot bloqueado).
+    `status`: o HTTP do canal, quando houve resposta; quem lê decide a orientação por ele (401 não é 400).
     """
 
-    def __init__(self, motivo: str, *, espera_s: float | None = None, definitiva: bool = False):
+    def __init__(self, motivo: str, *, espera_s: float | None = None, definitiva: bool = False,
+                 status: int | None = None):
         super().__init__(motivo)
         self.motivo = motivo
         self.espera_s = espera_s
         self.definitiva = definitiva
+        self.status = status
 
 
 class Canal(Protocol):

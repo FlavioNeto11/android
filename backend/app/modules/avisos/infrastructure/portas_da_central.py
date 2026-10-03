@@ -23,7 +23,12 @@ from app.shared.costuras import autor_do_gesto
 from app.social.approvals import ApprovalService
 from app.social.service import SocialError
 from app.taskqueue.assistente import ComandoAssistido, RunSuccessorBody
-from app.taskqueue.perguntas import pergunta_sensivel_aberta, pergunta_sensivel_da_execucao
+from app.taskqueue.perguntas import (
+    pergunta_sensivel_aberta,
+    pergunta_sensivel_da_execucao,
+    perguntas_abertas,
+    tipo_sensivel,
+)
 from app.taskqueue.service import RunError, RunService
 
 #: Como o status de uma execução terminada se lê na conversa.
@@ -86,6 +91,11 @@ class PortasReais:
             ids.add(ref)
         for rid in sorted(ids):
             tipo = pergunta_sensivel_da_execucao(self.db, rid)
+            if tipo is None and rid == ref:
+                # A resposta ATRASADA (a execução venceu ou foi cancelada antes): a leitura pública dá None fora do
+                # `needs_input`, e a linha guardaria a senha com o texto. Pelo id inteiro, vale a pergunta que ela fez.
+                row = self.runs.repo.run_row(rid)
+                tipo = tipo_sensivel(perguntas_abertas(self.db, row)) if row is not None else None
             if tipo is not None:
                 return tipo
         return None

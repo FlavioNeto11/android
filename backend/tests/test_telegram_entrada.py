@@ -375,7 +375,8 @@ async def test_orquestradora_guardada_e_nao_executada(c: Cenario) -> None:
     for uid in (5, 6):
         linha = c.linha(uid)
         assert (linha["estado"], linha["destino"]) == ("orquestradora", "orquestradora")
-    assert c.portas.nomes() == []
+    # só a leitura de pergunta sensível aberta (o recado curto, E6); nada é executado
+    assert set(c.portas.nomes()) <= {"pergunta_sensivel"}
     # Reply à própria mensagem da pessoa não é reply ao bot.
     await c.volta(msg(7, "/status", reply_to=50))
     assert c.linha(7)["estado"] == "feita"

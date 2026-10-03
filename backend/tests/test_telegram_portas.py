@@ -152,3 +152,7 @@ async def test_pergunta_sensivel_aberta_com_a_porta_real(harness: Harness, como_
         portas.responder(senha.id, "kiwi2024!")
     assert exc.value.codigo == "credencial_na_resposta" and "kiwi2024" not in str(exc.value)
     assert st.repo.run_row(senha.id)["status"] == "needs_input"
+    # A resposta atrasada, pelo id inteiro (o reply ao aviso), depois que a execução saiu do needs_input: ainda é senha.
+    st.runs.cancel(senha.id)
+    assert st.repo.run_row(senha.id)["status"] != "needs_input"
+    assert portas.pergunta_sensivel(senha.id) == "senha" and portas.pergunta_sensivel(None) is None
