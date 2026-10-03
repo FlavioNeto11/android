@@ -19,6 +19,33 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Deploy 10 no central (2432046f; migração 082; curador com alfa 0,3 temporário)
+
+- Implantado no central (`real`, 03/10, WIN-7S2UASNLFOP): commit 2432046f = suíte 10 (16fd1127) + os estados da Android.
+  Health ok, `migration 082_learning_validations`, `problems []`.
+- Antes do restart:
+  - pausa do reparo no 01/03/06; nenhuma execução nem comando em voo;
+  - backup do banco `data/backups/20261003-115511`. A 082 foi ensaiada numa cópia desse backup com o código da main:
+    aplicou só a 082, a segunda `migrate()` não aplicou nada e a integridade ficou ok;
+  - checkout em fast-forward.
+- Restart às ~14:56Z (`deploy.ps1 -PularBackup`, rc 0), com o painel reconstruído (a aba Métricas do 30.33 no bundle).
+  O relógio do curador recomeça do restart.
+- `config/config.yaml` (fora do Git; backup `config-antes-deploy10-20261003-145522.yaml`, sha 09cbaf5d → f82c6df4):
+  - só o curador com **`alfa: 0.3` TEMPORÁRIO** (k no padrão 1.5), para a fila do curador esvaziar (B_W a 92 %);
+  - **volta a 0.10 no deploy 11**;
+  - o `aprendizado.validacao` do 30.31 fica ausente (= off);
+  - conferido antes, com o `load_config()` do código novo.
+- `GET /api/ai`:
+  - configured, `anthropic`/`claude-sonnet-5`, não simulado, leitura visual ligada;
+  - decisão fechada em sombra no curador (`consumers {curador: shadow}`, classes C0/C1, decisor jev, `sending true`).
+- Agente do notebook atualizado para `0.1.0+2432046` (o `config.py` está no manifesto), com pausa do reparo nos
+  09/10/12/13 durante; os dois workers com `agent_outdated false`. Os 7 aparelhos ligados ficaram online e prontos.
+- 25.13:
+  - a pausa posta ANTES deste restart veio do backend velho, sem persistência, e não voltou: era o esperado, e este
+    restart não prova o item;
+  - a pausa renovada depois já está gravada em `settings.repair_pauses` (lida no banco do central);
+  - a prova de que ela sobrevive ao restart fica para o próximo restart.
+
 ## 2026-10-03 — Suíte 10 na main (16fd1127): SQLite e PostgreSQL inteiras
 
 - A suíte 10 entrou na main por commit-tree (16fd1127), com 12 hashes:
