@@ -17,7 +17,7 @@ import pytest
 
 from app.commands.limpeza_ao_retirar import NOTA, QUEM
 from app.devices.adb import Adb, AdbError
-from app.models import InstanceState, PersonaCreate, PersonaDeviceBody, ProfileCreate, SessionStatus
+from app.models import InstanceState, PersonaCreate, ProfileCreate, SessionStatus
 from app.social.contas_nossas import MARCADOR
 from app.util import now_iso
 
@@ -297,6 +297,18 @@ async def _persona_viva_no_aparelho(s: Any, usuario: str) -> str:
     return pid
 
 
+def _legado_d2a(s: Any, nome: str, usuario: str) -> str:
+    """Estado de LEGADO que o 29.29 hoje recusa na porta do serviço: pessoa vinculada SEM app que ganhou a conta do app
+    depois, servindo o mesmo app que outra persona no mesmo aparelho. Montado direto no repositório, de propósito, para a
+    trava `outra_conta` do 29.27 seguir exercitada contra dado que já exista no banco (anterior ao 29.29)."""
+    pid = s.social.create_persona(PersonaCreate(name=nome)).id
+    s.social_repo.bind(pid, IID)                        # sem conta ainda: o vínculo sem app não tem app a conferir
+    s.social_repo.adopt_account(pid, username=usuario, first_name=None, last_name=None, display_name=None,
+                                birth_date=None, email=None)
+    s.social_repo.create_account(pid, app_id="instagram", handle=usuario)
+    return pid
+
+
 @pytest.mark.parametrize("status_antigo", [SessionStatus.session_ready, SessionStatus.wrong_account,
                                            SessionStatus.needs_person])
 async def test_sessao_velha_de_aparelho_desvinculado_nao_e_pista_e_nao_limpa_conta_viva(
@@ -318,14 +330,13 @@ async def test_sessao_velha_de_aparelho_desvinculado_nao_e_pista_e_nao_limpa_con
 
 async def test_vinculo_sem_app_de_pessoa_que_ganhou_conta_depois_nao_limpa_conta_viva_de_outra(
         harness: Harness, correio_registrado: None, monkeypatch: pytest.MonkeyPatch) -> None:
-    """O furo antigo da D2-a: pessoa vinculada SEM app ganha a conta do app depois (`create_profile(persona_id=...)` sem
-    `instance_id`), e duas personas servem o mesmo app no mesmo aparelho. A limpeza de uma não pode apagar a outra."""
+    """O furo antigo da D2-a: pessoa vinculada SEM app ganhou a conta do app depois, e duas personas servem o mesmo app no
+    mesmo aparelho. O 29.29 fechou a porta no serviço; o dado de antes dele continua possível, e a limpeza de uma não
+    pode apagar a outra."""
     s = estado(harness)
     g = _armar(s, monkeypatch)
     pid_c = await _persona_viva_no_aparelho(s, "caio.vivo")
-    pid_a = s.social.create_persona(PersonaCreate(name="Ana Sem Conta")).id
-    s.social.bind_device(pid_a, PersonaDeviceBody(instance_id=IID))
-    s.social.create_profile(ProfileCreate(username="ana.depois", password="Depois#Senha1", persona_id=pid_a))
+    pid_a = _legado_d2a(s, "Ana Sem Conta", "ana.depois")
     ancora_a = str(s.social_repo.conta_ancora(pid_a)["id"])
     res = s.social.retirar_conta_bloqueada(pid_a, ancora_a, origem="declarado", autor="dono")
     assert res["limpeza_dos_aparelhos"] == {"agendada": True, "aparelhos": 1}     # o vínculo de A aponta para IID
@@ -341,15 +352,13 @@ async def test_vinculo_sem_app_de_pessoa_que_ganhou_conta_depois_nao_limpa_conta
 async def test_outra_persona_no_mesmo_app_do_aparelho_recusa_a_limpeza_e_a_quarentena_fica_aberta(
         harness: Harness, correio_registrado: None, monkeypatch: pytest.MonkeyPatch, pista: str) -> None:
     """O aparelho da retirada (com o marcador dela aberto) também serve a OUTRA persona viva. Com a quarentena aberta o
-    serviço já recusa vínculo novo ali, então B chega antes: pela D2-a (vínculo sem app, conta do app depois) ou com
-    só a sessão que o desvínculo deixou."""
+    serviço já recusa vínculo novo ali, então B chega antes: pelo legado da D2-a (vínculo sem app, conta do app depois,
+    anterior ao 29.29) ou com só a sessão que o desvínculo deixou."""
     s = estado(harness)
     g = _armar(s, monkeypatch)
     pid, ancora = _cenario(s, marcador=False)
     if pista == "vinculo":
-        pid_b = s.social.create_persona(PersonaCreate(name="Bia Sem Conta")).id
-        s.social.bind_device(pid_b, PersonaDeviceBody(instance_id=IID))
-        s.social.create_profile(ProfileCreate(username="bia.viva", password="Viva#Senha1", persona_id=pid_b))
+        pid_b = _legado_d2a(s, "Bia Sem Conta", "bia.viva")
     else:
         pid_b = s.social.create_profile(ProfileCreate(username="bia.viva", password="Viva#Senha1")).id
         s.social_repo.set_account_session(pid_b, str(s.social_repo.conta_ancora(pid_b)["id"]), IID,

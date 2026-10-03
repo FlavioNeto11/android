@@ -3902,3 +3902,6 @@ Sem rota nova nem campo novo: dois 409 `conta_do_app_ja_no_aparelho` em rotas qu
 - `POST /api/instagram/profiles/{id}/accounts` (conta de outro app): 409 quando um vínculo sem app da persona passaria a servir esse app num aparelho
   onde outra persona já o serve. O vínculo COM app não é reconferido (já foi no vínculo) e quem já tem conta no app não muda de sentido.
 - A mensagem do 409 nomeia o aparelho e a outra persona. Nada é criado: nem perfil, nem conta, nem senha no cofre.
+- Ressalvas (revisão adversarial de 03/10): a conferência só roda com o app âncora registrado em `apps` (sem ele, nada é conferido, como antes);
+  `conta_ancora(criar=True)` em dado legado cria a conta sem conferir (0 casos no central em 03/10); conferência e criação não estão numa transação
+  (janela de corrida, no backlog).
