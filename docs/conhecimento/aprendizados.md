@@ -1960,3 +1960,64 @@ Saída bruta em `data/diag-ra3b/`: `repouso-cores4-01-600s.json`, `dif-*.json` e
   - A suspeita da tela sempre ligada cai.
   - Seguem UNKNOWN as conexões do lado do host que só o parque tem: a sessão do Appium/UiAutomator2, os
     encaminhamentos e fluxos do adb e o console/gRPC do emulador.
+- **Braço D: o subsistema de snapshot também não é a causa** (`real`, 03/10, janela de 04:58:37 a 05:08:37Z; saída em
+  `data/diag-ra3b/bracoD-host-snapshot.json`). O AVD temporário recriado do mesmo jeito subiu com EXATAMENTE as flags
+  dos gerenciados, incluindo `-no-snapshot-load -no-snapshot-save` (a hibernação do central está ligada; o notebook e os
+  braços A a C usavam `-no-snapshot`). Resultado: 17,8 % no total, a thread mais quente em 5 % e nenhuma acima de 50 %,
+  com o convidado 5,6 % ocupado.
+  - A linha de comando do temporário agora é idêntica à dos gerenciados, salvo nome e porta.
+  - Antes, a ligação de cada qemu ao `netsimd` também caiu: os qemu do notebook, que ficam ociosos, também mantêm essa
+    ligação.
+  - Sobra o que só o aparelho do parque tem (sessão do UiAutomator2, encaminhamentos do adb, sondas), a medir no 01
+    por subtração.
+- **Rodada do Appium: nenhum dos três gestos derrubou o spin, que segue sem causa atribuída** (`real`, 03/10, android-01, pid 42348, thread
+  36288, sem lease; saída em `data/diag-ra3b/appium-*.json`). Um gesto por vez, cumulativo, 2 min cada:
+  - base (60 s, 06:24:06Z): 96,8 % (85,9 em kernel);
+  - g1, force-stop de `io.appium.uiautomator2.server` e `.test` (o processo saiu): 99,3 % (88,2);
+  - g2, mais `adb -s emulator-5554 forward --remove-all` (lista vazia depois): 99,1 % (88,0);
+  - g3b, mais `cmd sensorservice set-uid-state com.google.android.gms idle` e, no fim, `reset-uid-state`: 99,2 % (88,0).
+    O `cmd sensorservice restrict` pedido não existe no android-34 (só `get/set/reset-uid-state`), por isso a forma desta imagem.
+  - Ficam fora: a sessão do UiAutomator2, os encaminhamentos do adb e os sensores do Play Services. Seguem UNKNOWN o console
+    (5554) e o gRPC (8554) do emulador, e o lado do host que só o parque toca. O mesmo sintoma do UiAutomator2 apareceu no
+    android-06 às 06:09Z (`WebDriverException … root AccessibilityNodeInfo` ao religar o cliente VPN pela interface, OBSERVED),
+    e o 25.12 passou a contar essa falha como tentativa.
+
+### K-079 — A prévia cortada da caixa do Outlook derruba a conferência visual
+
+**Sintoma.** Na bancada do 12.5 (03/10/2026, ~04:20Z, `real`), os dois leitores (gpt-6-luna e gemini-3.1-flash-lite)
+concordaram com 0 dos 32 valores verdadeiros. Todos foram recusados como `truncado`, embora o remetente e o assunto
+estivessem inteiros no recorte.
+
+**Causa.** A linha da caixa do Outlook tem três linhas de texto: remetente, assunto e a prévia do corpo. A prévia SEMPRE
+termina em "…". A conferência recusava quando QUALQUER linha transcrita ou a marca global `truncado` do leitor indicava
+corte, e os leitores marcavam `truncado`, com razão, por causa da prévia. A regra estava certa no espírito (não aceitar
+valor cortado) e errada no escopo (a linha vizinha não é o valor).
+
+**O que funcionou.** Nível 1.1, emenda de 03/10 ao ADR-070 §4: "truncado" vale para o valor, o campo e a linha que contém
+o valor. A marca global só cai quando uma linha alheia cortada a explica; sem nenhuma, o corte pode ser o do campo e a
+leitura é recusada. Com a emenda, `real` às 04:58Z: 31/32 e 29/32, com 0/96 falsas nos dois. Medir com o MESMO
+material antes e depois (a bancada guarda os recortes e o gabarito) separou a regra errada do leitor fraco.
+
+**Aplicabilidade.** Vigente para toda leitura visual de linha de lista com prévia ou subtítulo cortado (caixas de e-mail,
+listas de conversa). Ao declarar a região de uma saída, conte com a linha vizinha cortada. A armadilha da medição está
+em `docs/ia.md` §17: com o `app` de um worktree, o `.env` é procurado na raiz do worktree e as chaves vêm vazias.
+
+### K-080 — Toque por id de elemento velho abre a tela errada: exigir resource_id ou rótulo do mesmo elemento
+
+**Sintoma.** No controle manual do post do lucas (03/10/2026, android-01, `real`), o toque mirando a aba Profile abriu a
+aba Search. Depois, um toque com o id `e34` da listagem anterior abriu um Reel do Explore, numa tela com botões de
+curtir e seguir. Nada foi curtido nem seguido.
+
+**Causa.** Os ids `eN` de `GET /instances/{id}/hierarchy` são a posição do elemento NA ÁRVORE DAQUELE MOMENTO. Quando a
+árvore muda (o feed ainda carregando acrescenta histórias e posts; outra tela), o mesmo id aponta para outro elemento. A
+ferramenta resolvia o id contra a árvore nova e só conferia rótulo proibido; uma célula de grade sem rótulo passava.
+
+**O que funcionou.** O toque passou a exigir o resource_id ou o rótulo esperado do elemento, conferido na árvore do
+momento do toque; sem bater, recusa e pede nova listagem. O interruptor sem rótulo nem id (o "Add AI label") ganhou
+comando próprio, que o acha pela linha do texto vizinho e recusa com mais de um candidato. O Share achou dois
+elementos "Share" (o botão e o texto dentro dele) e foi recusado antes de tocar; o alvo passou a ser o resource_id
+`share_footer_button`.
+
+**Aplicabilidade.** Vigente para todo controle manual por id de elemento (scripts de diagnóstico, prova manual). Nunca
+reaproveite um id de outra listagem; em conta real, a trava de rótulo proibido não basta, porque o perigo pode estar num
+elemento sem rótulo.

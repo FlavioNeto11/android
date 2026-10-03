@@ -14,6 +14,11 @@ diária só soma `ai_calls` de tentativas.
 O parecer diante da pessoa (30.17): a leitura das revisões do item e da fila, a decisão gravada com CAS
 (`decisao_final IS NULL`: dois gestos sobre o mesmo parecer não gravam dois rótulos) e a linha da trilha que a
 transição deixou, lida na MESMA transação de quem decide (`transacao`).
+
+Todos os leitores daqui são do CURADOR e filtram `template_id = curador` (30.25): a mesma tabela guarda o rótulo de
+intenção (`template_id = intencao`, provedor vazio, `usd = 0`), que não é parecer, não gastou IA e não pode entrar na
+janela do orçamento (C_W), na fila do Revisar nem na salvaguarda (item, dossiê) do curador. O rótulo tem o seu
+registro (`intencao_sql.py`).
 """
 from __future__ import annotations
 
@@ -24,6 +29,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 from app.db import Database, Row
+from app.modules.learning.application.curador import TEMPLATE_ID
 from app.modules.learning.application.ports import LeituraDaJanela, NovaRevisao, PedidoGravado
 from app.modules.learning.domain.parecer import RevisaoGravada, parecer_gravado
 from app.modules.learning.domain.politica_de_risco import ClasseDeRisco
@@ -34,6 +40,8 @@ from app.util import to_iso
 _COLUNAS = ("id, created_at, item_ref, item_kind, gatilho, validade, classe_de_risco, politica, simulated, provedor,"
             " modelo, dossie, saida, decisao_final, decidido_por, transicao_id, override, override_motivo")
 _CLASSES = frozenset(c.value for c in ClasseDeRisco)
+#: O filtro de todo leitor do curador (ver o docstring do módulo).
+_DO_CURADOR = f"template_id='{TEMPLATE_ID}'"
 
 
 def _estado_no_dossie(row: Row) -> str | None:
@@ -63,11 +71,12 @@ class RegistroDeRevisoesSql:
         self._db = db
 
     def existe(self, item_ref: str, dossie_hash: str) -> bool:
-        return self._db.one("SELECT 1 AS x FROM learning_reviews WHERE item_ref=? AND dossie_hash=?",
-                            (item_ref, dossie_hash)) is not None
+        return self._db.one(f"SELECT 1 AS x FROM learning_reviews WHERE item_ref=? AND dossie_hash=?"
+                            f" AND {_DO_CURADOR}", (item_ref, dossie_hash)) is not None
 
     def ultima(self, item_ref: str) -> str | None:
-        r = self._db.one("SELECT MAX(created_at) AS em FROM learning_reviews WHERE item_ref=?", (item_ref,))
+        r = self._db.one(f"SELECT MAX(created_at) AS em FROM learning_reviews WHERE item_ref=? AND {_DO_CURADOR}",
+                         (item_ref,))
         return linhas.texto_ou_nulo(r, "em") if r is not None else None
 
     def gravar(self, nova: NovaRevisao, agora: datetime) -> str | None:
@@ -98,7 +107,8 @@ class RegistroDeRevisoesSql:
         antes = de_hoje = 0
         # Só o que foi à IA (ou teria ido): a recusada por triagem ou custo não gastou nada.
         for r in self._db.query(
-                "SELECT created_at, usd, dossie FROM learning_reviews WHERE created_at >= ? AND provedor <> ''",
+                "SELECT created_at, usd, dossie FROM learning_reviews WHERE created_at >= ? AND provedor <> ''"
+                f" AND {_DO_CURADOR}",
                 (desde,)):
             em = linhas.texto(r, "created_at")
             usd = linhas.real(r, "usd")
@@ -129,13 +139,14 @@ class RegistroDeRevisoesSql:
             yield
 
     def uma(self, review_id: str) -> RevisaoGravada | None:
-        r = self._db.one(f"SELECT {_COLUNAS} FROM learning_reviews WHERE id=?", (review_id,))
+        r = self._db.one(f"SELECT {_COLUNAS} FROM learning_reviews WHERE id=? AND {_DO_CURADOR}", (review_id,))
         return None if r is None else _revisao(r)
 
     def do_item(self, item_ref: str, limite: int) -> list[RevisaoGravada]:
         """As revisões do item, da mais recente para a mais antiga."""
         return [_revisao(r) for r in self._db.query(
-            f"SELECT {_COLUNAS} FROM learning_reviews WHERE item_ref=? ORDER BY created_at DESC, id DESC LIMIT ?",
+            f"SELECT {_COLUNAS} FROM learning_reviews WHERE item_ref=? AND {_DO_CURADOR}"
+            " ORDER BY created_at DESC, id DESC LIMIT ?",
             (item_ref, limite))]
 
     def sem_decisao(self, item_refs: Iterable[str]) -> dict[str, list[RevisaoGravada]]:
@@ -145,14 +156,15 @@ class RegistroDeRevisoesSql:
         for lote in linhas.lotes(sorted(set(item_refs))):
             for r in self._db.query(
                     f"SELECT {_COLUNAS} FROM learning_reviews WHERE validade='ok' AND decisao_final IS NULL"
-                    f" AND item_ref IN ({linhas.marcas(len(lote))}) ORDER BY created_at DESC, id DESC", tuple(lote)):
+                    f" AND {_DO_CURADOR} AND item_ref IN ({linhas.marcas(len(lote))})"
+                    " ORDER BY created_at DESC, id DESC", tuple(lote)):
                 rev = _revisao(r)
                 saida.setdefault(rev.item_ref, []).append(rev)
         return saida
 
     def do_dossie(self, item_ref: str, dossie_hash: str) -> RevisaoGravada | None:
-        r = self._db.one(f"SELECT {_COLUNAS} FROM learning_reviews WHERE item_ref=? AND dossie_hash=?",
-                         (item_ref, dossie_hash))
+        r = self._db.one(f"SELECT {_COLUNAS} FROM learning_reviews WHERE item_ref=? AND dossie_hash=?"
+                         f" AND {_DO_CURADOR}", (item_ref, dossie_hash))
         return None if r is None else _revisao(r)
 
     def decidir(self, review_id: str, *, decisao_final: str, decidido_por: str, transicao_id: int | None,
@@ -160,7 +172,7 @@ class RegistroDeRevisoesSql:
         """CAS: só a revisão ainda sem decisão. `False` = outro gesto decidiu primeiro (quem chama desfaz a transição)."""
         cur = self._db.execute(
             "UPDATE learning_reviews SET decisao_final=?, decidido_por=?, transicao_id=?, override=?,"
-            " override_motivo=? WHERE id=? AND decisao_final IS NULL",
+            f" override_motivo=? WHERE id=? AND decisao_final IS NULL AND {_DO_CURADOR}",
             (decisao_final, decidido_por, transicao_id, int(override), override_motivo, review_id))
         return (cur.rowcount or 0) == 1
 

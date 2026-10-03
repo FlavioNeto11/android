@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
+from ..db import Database
 from ..util import now, to_iso
 
 #: Colunas de `ai_calls` na ordem dos preços: [entrada nova, cache lido, cache gravado, saída].
@@ -97,3 +98,32 @@ def spent_usd(db: Any, prices: dict[str, list[float]], *, run_id: str | None = N
 
 def spent_today_usd(db: Any, prices: dict[str, list[float]], *, origem: str | None = None) -> float:
     return spent_usd(db, prices, since=day_start_iso(), origem=origem)
+
+
+#: RA-10 (migração 080): as colunas de `ai_calls` por que `usd_por` agrupa. Lista fechada, porque o nome entra no SQL.
+COLUNAS_DE_GRUPO: frozenset[str] = frozenset({"role", "origem", "motivo", "escalate", "image_reason", "verdict"})
+
+
+def usd_por(db: Database, prices: dict[str, list[float]], coluna: str, where: str,
+            params: tuple[object, ...]) -> dict[str | None, tuple[int, float]]:
+    """(chamadas, US$) por valor de uma coluna de `ai_calls`, para os grupos de `/api/usage` (RA-10).
+
+    A regra de preço é a de `spent_usd`, sem uma terceira: o custo declarado (`usd`) onde há, tokens × preço do modelo
+    onde não, e o modo simulado a US$ 0. As chamadas simuladas CONTAM em `chamadas`, como nos demais grupos do
+    relatório. `where` é sem alias, como em `/api/usage`."""
+    if coluna not in COLUNAS_DE_GRUPO:
+        raise ValueError(f"coluna de grupo desconhecida: {coluna!r}")
+    linhas = db.query(
+        f"SELECT {coluna} grupo, model, COALESCE(provider,'') = 'simulated' simulado, COUNT(*) n,"
+        f" SUM(CASE WHEN usd IS NULL THEN input_tokens ELSE 0 END) input_tokens,"
+        f" SUM(CASE WHEN usd IS NULL THEN cache_read ELSE 0 END) cache_read,"
+        f" SUM(CASE WHEN usd IS NULL THEN cache_write ELSE 0 END) cache_write,"
+        f" SUM(CASE WHEN usd IS NULL THEN output_tokens ELSE 0 END) output_tokens,"
+        f" SUM(COALESCE(usd, 0)) usd_declarado FROM ai_calls WHERE {where}"
+        f" GROUP BY {coluna}, model, COALESCE(provider,'') = 'simulated'", params)
+    soma: dict[str | None, tuple[int, float]] = {}
+    for linha in linhas:
+        n, valor = soma.get(linha["grupo"], (0, 0.0))
+        custo = 0.0 if linha["simulado"] else row_usd(prices, linha) + float(linha["usd_declarado"] or 0)
+        soma[linha["grupo"]] = (n + int(linha["n"]), valor + custo)
+    return {grupo: (n, round(valor, 6)) for grupo, (n, valor) in soma.items()}

@@ -3,9 +3,11 @@ import { createContext, useContext, useId, useState, type ReactNode } from 'reac
 import { hintForError, toApiError } from '../../api/client';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
+import { textoDosApps } from '../../lib/appsDoFluxo';
 import { formatInt } from '../../lib/format';
 import { hashDe } from '../../lib/rotas';
 import { formatDateTime, formatQuando } from '../../lib/time';
+import { useAppStore } from '../../store/app';
 import { apiAprendizado } from './api';
 import { abrirApp } from './apps';
 import { SecaoDoParecer } from './ParecerDaIA';
@@ -208,10 +210,14 @@ function ConteudoReceita({ c, nomeDe }: { c: ConteudoDaReceita; nomeDe: NomeDaCa
 }
 
 function ConteudoFluxo({ c }: { c: ConteudoDoFluxo }) {
+  const apps = useAppStore((s) => s.apps);
+  // Os apps exigidos na ordem em que o plano os usa (29.42): "QA Messenger → Chrome".
+  const exigidos = textoDosApps(c.apps, apps);
   return (
     <>
       <dl className={styles.fatos}>
         {c.nome ? <Fato rotulo="Nome">{c.nome}</Fato> : null}
+        {exigidos ? <Fato rotulo="Apps">{exigidos}</Fato> : null}
         {c.comando_modelo ? <Fato rotulo="Comando modelo">{c.comando_modelo}</Fato> : null}
         <Fato rotulo="Origem">
           {c.origem.tipo === 'treino' ? 'Demonstrado no treino' : 'Aprendido de execução'}

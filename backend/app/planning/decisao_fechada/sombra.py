@@ -12,6 +12,9 @@ decisão real e o primeiro desfecho valem, e uma segunda chamada não reescreve 
 Retenção própria (`ai.decisao_fechada.retencao_dias`, padrão 180) no padrão da 055: a purga leva DIAS INTEIROS e o agregado
 diário (`decisao_fechada_diario`) do que vai sumir é recalculado ANTES, então um dia nunca é agregado pela metade e o agregado
 sobrevive às linhas. Um fallback nunca conta como acerto: ele só entra em `n` e `fallbacks`.
+
+A CHAMADA ao Jev (31.14) tem outra linha, em `ai_calls` (`registrar_chamada`): o gasto, para as réguas e o livro-caixa;
+a sombra é o registro da decisão.
 """
 from __future__ import annotations
 
@@ -25,7 +28,8 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Final
 
 from ...util import now, to_iso
-from .contrato import FALLBACKS, ID_NENHUMA, ORIGENS
+from .contrato import FALLBACKS, ID_NENHUMA, MOTIVOS_DE_PRIVACIDADE, ORIGENS
+from .decisores import ChamadaAoJev
 from .porta import Observador, RegistroDeDecisao
 
 if TYPE_CHECKING:
@@ -39,6 +43,11 @@ DESFECHOS: Final[tuple[str, ...]] = ("reativado", "rebaixado", "usado_com_sucess
                                      "escolha_da_pessoa", "descartado")
 #: Dias recentes recalculados a cada passo da retenção: a decisão real e o desfecho chegam depois da gravação.
 JANELA_RECALCULO_DIAS: Final = 7
+#: Como a chamada ao Jev aparece em `ai_calls` (31.14): `origem` é a da fatia (`routing._fatia_da_origem`), o provedor é o
+#: que o livro-caixa liga à conta `typesafe` e o papel separa estas linhas das do ator, do verificador e do planejador.
+ORIGEM_NO_GASTO: Final = "decisao_fechada"
+PROVEDOR_NO_GASTO: Final = "jev"
+PAPEL_NO_GASTO: Final = "decisao_fechada"
 
 _ID: Final = re.compile(r"^[A-Za-z0-9_.:\-]{1,80}$")
 _REF: Final = re.compile(r"^[A-Za-z0-9_.:/#@\-]{1,200}$")
@@ -82,6 +91,10 @@ class RepositorioDeSombra:
         ts = to_iso(self._relogio())
         chamada = uuid.uuid4().hex[:16]
         run_id, step_id, ref = _ref(registro.run_id), _ref(registro.step_id), _ref(registro.ref)
+        # Reverificação B do 31.9 (migração 079): só código de vocabulário fechado; o que vier fora dele vira `outro`.
+        privacidade = registro.motivo_privacidade
+        if privacidade is not None and privacidade not in MOTIVOS_DE_PRIVACIDADE:
+            privacidade = "outro"
         with self._db.tx():
             for i, (pergunta_id, r) in enumerate(res.respostas.items()):
                 escolha = None if r.escolha is None else _id(r.escolha)
@@ -94,14 +107,36 @@ class RepositorioDeSombra:
                     escolha = None
                 self._db.execute(
                     "INSERT INTO decisao_fechada_sombra(ts, chamada, origem, classe, modo, pergunta_id, escolha,"
-                    " probabilidades, confianca, usd, tokens, ms, fallback_reason, run_id, step_id, ref)"
-                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " probabilidades, confianca, usd, tokens, ms, fallback_reason, run_id, step_id, ref,"
+                    " motivo_privacidade) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (ts, chamada, registro.origem, registro.classe, registro.modo,
                      _id(pergunta_id) or "invalido", escolha, _probabilidades(r.probabilidades),
                      None if r.confianca is None else round(float(r.confianca), 6),
                      float(res.usd) if i == 0 else 0.0, int(res.tokens) if i == 0 else 0, float(res.ms),
-                     motivo, run_id, step_id, ref))
+                     motivo, run_id, step_id, ref, privacidade if motivo == "privacidade" else None))
         return len(res.respostas)
+
+    def registrar_chamada(self, chamada: ChamadaAoJev) -> None:
+        """A linha da chamada ao Jev em `ai_calls` (31.14): é por ela que a fatia do Jev (`origem='decisao_fechada'`), o teto
+        do dia e o saldo da conta (provedor `jev` → conta `typesafe`, `saldos._PROVEDOR_DA_CONTA`) enxergam o gasto. O `usd`
+        vai DECLARADO (vence os tokens em `costs.spent_usd`).
+
+        `step_id` fica NULL de propósito: `ai_calls.step_id` é contado como chamada de IA da etapa (`executor.py`, orçamento
+        por etapa) e a sombra não é chamada da etapa; o passo ou o pedido vão no `ref`, prefixado pelo consumidor. A linha
+        não atualiza `runs.ai_input_tokens`: o teto de tokens da execução é do provedor do ator, não do Jev."""
+        alvo = chamada.ref or chamada.step_id or chamada.run_id
+        motivo = chamada.motivo if chamada.motivo in FALLBACKS else ("parse" if chamada.motivo else None)
+        self._db.execute(
+            "INSERT INTO ai_calls(ts, run_id, objective_id, step_id, role, model, tier, input_tokens, cache_read,"
+            " cache_write, output_tokens, with_image, ms, ok, requested_model, fallback, provider, error_kind,"
+            " error_status, error_message, attempt_id, usd, origem, ref)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (to_iso(self._relogio()), _ref(chamada.run_id), None, None, PAPEL_NO_GASTO, chamada.modelo, 0,
+             max(0, int(chamada.tokens_entrada)), 0, 0, max(0, int(chamada.tokens_saida)), 0, int(round(chamada.ms)),
+             int(chamada.ok), chamada.modelo, None, PROVEDOR_NO_GASTO, None if chamada.ok else motivo,
+             int(motivo) if not chamada.ok and motivo is not None and motivo.isdigit() else None, None, None,
+             max(0.0, float(chamada.usd)), ORIGEM_NO_GASTO,
+             _ref(f"{chamada.origem}:{alvo}") if alvo and chamada.origem in ORIGENS else None))
 
     # ------------------------------------------------------------------ preenchimentos posteriores (31.8 e 31.9)
     def casar_decisao_real(self, decisoes: Mapping[str, str], *, ref: str | None = None,
@@ -118,6 +153,16 @@ class RepositorioDeSombra:
                     f"UPDATE decisao_fechada_sombra SET decisao_real=? WHERE {chave}=? AND pergunta_id=?"
                     " AND decisao_real IS NULL", (decisao, valor, pergunta_id)).rowcount or 0)
         return casadas
+
+    def anotar_ambiguos(self, ambiguos: int, *, ref: str) -> int:
+        """Preenche `ambiguos` (etapas da RESOLVE que terminaram em AMBIGUOUS, RA-2) nas linhas da INTENÇÃO do `ref` que
+        ainda não têm. Só número: nada do comando. Devolve quantas linhas anotou."""
+        if isinstance(ambiguos, bool) or not isinstance(ambiguos, int) or ambiguos < 0:
+            raise ValueError("ambiguos deve ser um inteiro >= 0")
+        with self._db.tx():
+            return int(self._db.execute(
+                "UPDATE decisao_fechada_sombra SET ambiguos=? WHERE ref=? AND origem='intencao' AND ambiguos IS NULL",
+                (ambiguos, ref)).rowcount or 0)
 
     def casar_desfecho(self, desfecho: str, *, ref: str | None = None, step_id: str | None = None,
                        pergunta_id: str | None = None) -> int:
@@ -215,4 +260,5 @@ def observador_de_sombra(repositorio: RepositorioDeSombra) -> Observador:
     return _gravar
 
 
-__all__ = ["DESFECHOS", "JANELA_RECALCULO_DIAS", "RepositorioDeSombra", "observador_de_sombra"]
+__all__ = ["DESFECHOS", "JANELA_RECALCULO_DIAS", "ORIGEM_NO_GASTO", "PAPEL_NO_GASTO", "PROVEDOR_NO_GASTO",
+           "RepositorioDeSombra", "observador_de_sombra"]

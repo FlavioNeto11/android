@@ -160,7 +160,7 @@ def test_fluxo_que_atravessa_apps_diz_o_principal_os_exigidos_e_o_de_cada_etapa(
         {"key": "buscar", "capability": "OPEN_PROFILE", "side_effect": False}]}
     c = dominio.fluxo_legivel(plano, nome="n", comando_modelo="c", fonte=None, source_run_id="r",
                               apps=["outlook", "instagram", "outlook"])
-    assert (c["app"], c["apps"]) == ("instagram", ["instagram", "outlook"])
+    assert (c["app"], c["apps"]) == ("instagram", ["outlook", "instagram"])      # ordem do plano (29.42)
     assert [e["app"] for e in c["etapas"]] == ["outlook", None]
 
 

@@ -199,7 +199,7 @@ class AndroidCfg(BaseModel):
     #: nenhum nome resolvia. É POR MÁQUINA (central e cada worker têm a sua rede): use DNS que respondem ali.
     dns_servers: list[str] = []
     hibernation: bool = False                   # rodízio desliga salvando snapshot; acordar leva segundos (medido: ~7 s)
-    wake_timeout_s: int = 90                    # acordar que não chega à interface nesse tempo → descarta snapshot, boot a frio
+    wake_timeout_s: int = 90                    # acordar que não chega à interface nesse tempo, CONTADO DO SNAPSHOT CARREGADO (RA-15) → descarta, boot a frio
     # Sobe o emulador COM janela. Existe para o aparelho-loja: a conta Google é digitada direto na janela do
     # emulador, e assim nenhuma tecla passa pelo backend, pelo Appium ou pelo adb. O parque segue sem janela.
     window: bool = False
@@ -446,6 +446,16 @@ class RoleCfg(BaseModel):
     timeout_s: float | None = None
     max_retries: int | None = None              # novas tentativas DENTRO do SDK; 0 = só o `_ai` repete
     concurrency: int | None = None              # vagas simultâneas desta função, sob o limite global
+    # --- item 17.14: o que um perfil (17.7) precisa trocar para medir latência sem mexer no padrão. Vazio = como hoje.
+    #: Esforço DESTA função (Anthropic: `output_config.effort`). Vazio = o do `.env` (AI_EFFORT_PLANNER/ACTOR/VERIFIER).
+    effort: Effort | None = None
+    #: `false` não manda `thinking` (o ator sem pensamento adaptativo, LT-10). Vazio ou `true` = a capacidade do modelo
+    #: decide (`ai.models.<m>.thinking`), como hoje. Não liga thinking num modelo declarado sem ele.
+    thinking: bool | None = None
+    #: RA-17 (dieta do contexto 2): na decisão do ator, o bloco estável da etapa (passo e lições) vai ANTES da imagem e
+    #: leva um 2º ponto de cache; a imagem e o resto da observação vêm depois. Vazio/`false` = imagem primeiro, um ponto
+    #: de cache só no system (byte a byte o de hoje). Só a Anthropic tem ponto de cache.
+    cache_da_etapa: bool | None = None
 
 
 #: Prazo e vagas por função quando o YAML não diz. Folgados diante do medido em 908 chamadas reais
@@ -472,6 +482,10 @@ class AiProfileCfg(BaseModel):
 
     roles: dict[str, RoleCfg] = {}
     note: str = ""                              # para que serve: só documentação do YAML (nada o exibe ainda)
+    #: Item 17.14 (RA-17, perfil `img-768`): o lado maior da imagem e o mínimo de elementos da árvore "rica" das
+    #: execuções DESTE perfil, por cima de `ai.screenshot_max_side` e `ai.rich_tree_min_elements`. Vazio = os globais.
+    screenshot_max_side: int | None = Field(None, ge=320, le=2560)
+    rich_tree_min_elements: int | None = Field(None, ge=0, le=200)
 
 
 class AiCanaryCfg(BaseModel):
@@ -550,14 +564,19 @@ class LeituraVisualCfg(BaseModel):
 class DecisaoFechadaCfg(BaseModel):
     """Porta `DecisaoFechada` (Fase 31, ADR-069): decisão por conjunto fechado no Jev, DESLIGADA por padrão.
 
-    O YAML só RESTRINGE: o envio e as classes que podem sair são constantes de código (`planning/decisao_fechada/
+    O YAML só RESTRINGE o que sai: o envio e as classes que podem sair são constantes de código (`planning/decisao_fechada/
     privacidade.py`: `JEV_RUNTIME_SEND_APPROVED`, `JEV_ALLOWED_CLASSES`) e nenhuma chave aqui abre o que o código fechou.
-    `enabled: false` vence tudo; sem consumidor listado, vale `off`. `on` só por consumidor e com GO pré-registrado."""
+    `enabled: false` vence tudo; sem consumidor listado, vale `off`. `on` só por consumidor e com GO pré-registrado.
+    `decisor` (31.14) escolhe QUEM decide quando um pedido passa; não abre o envio (a porta recusa antes do decisor)."""
 
     enabled: bool = False
     consumidores: dict[Literal["curador", "intencao", "desempate", "apps"], Literal["off", "shadow", "on"]] = {}
     #: Estreita o teto de código (interseção). None = não estreita além do código.
     classes_permitidas: list[Literal["C0", "C1", "C2", "C3"]] | None = None
+    #: Quem decide (31.14): `nulo` (de fábrica: nunca decide, nunca toca rede) ou `jev` (o `DecisorJev`, pelo adaptador de
+    #: retrieval, com o gasto conferido antes do POST e a chamada em `ai_calls`). Escolher `jev` NÃO abre o envio: ele segue
+    #: fechado por `JEV_RUNTIME_SEND_APPROVED` (código) até o 31.10.
+    decisor: Literal["nulo", "jev"] = "nulo"
     #: Retenção das linhas da sombra (`decisao_fechada_sombra`, migração 074): dias inteiros; o agregado diário é calculado
     #: ANTES de purgar e fica. Prazo próprio porque `ai_calls` morre em `log_retention_days` e a sombra precisa de mais.
     retencao_dias: int = Field(180, ge=1, le=3650)
@@ -570,6 +589,13 @@ class AiCfg(BaseModel):
     step_budget: StepBudgetCfg = StepBudgetCfg()
     screenshot_max_side: int = 1280             # lado maior da imagem enviada ao modelo (tokens ∝ área)
     max_hierarchy_elements: int = 140           # linhas da hierarquia no prompt (priorizadas; a árvore completa fica local)
+    # LT-4b (latência do planejador, 03/10): o plano custa ~6,6 ms por token de SAÍDA, e o esforço `low` só tirou 13 %.
+    # `curto` tira do formato da etapa livre (plano livre e parte livre do plano entre apps) o que o backend sabe
+    # preencher, e pede título e objetivo curtos. Saem `postcondition.description` (derivada do `value`: no
+    # `model_judged`, o verificador lê o próprio critério), `precondition` e `max_attempts` (1 no efeito, 3 nas
+    # demais). `timeout_s` fica, porque é o modelo que sabe qual etapa é lenta. Estimado com count_tokens em 2 planos
+    # reais do QA (a brevidade simulada por corte): −22 a −24 % de saída. `longo` é o formato de sempre, byte a byte.
+    esquema_do_plano: Literal["longo", "curto"] = "longo"
     # Item 7.6 (dieta do contexto do ator): histórico da tentativa que vai ao ator, comprimido sem chamar o
     # modelo — linhas REJEITADA/FALHOU/(executor) (sempre relevantes: dizem o que NÃO fazer de novo) mais as
     # últimas N em ordem. O verificador continua recebendo o histórico completo que o executor lhe passa.
@@ -637,6 +663,9 @@ class AiCfg(BaseModel):
         "claude-opus-5-5": [4.0, 0.2, 5.0, 20.0],
         "claude-opus-5": [5.0, 0.5, 6.25, 25.0],
         "claude-sonnet-5": [2.0, 0.2, 2.5, 10.0],
+        # Sonnet 5.5 (página de preços, 03/10/2026): o mesmo do Sonnet 5. Antes saía certo só por casar o prefixo
+        # "claude-sonnet-5" em `price_for`; declarado, não depende disso (17.13, perfil planejador-sonnet).
+        "claude-sonnet-5-5": [2.0, 0.2, 2.5, 10.0],
         "claude-haiku-4-5": [1.0, 0.1, 1.25, 5.0],
         # Destino documentado do fallback de recusa (achado #92): custava o mesmo do Opus 5 e não estava cadastrado,
         # então toda chamada que caísse nele virava "Total parcial" no painel de uso.
@@ -656,6 +685,8 @@ class AiCfg(BaseModel):
         "claude-opus-5-5": ModelCaps(min_cache_tokens=512),
         "claude-opus-5": ModelCaps(min_cache_tokens=512),
         "claude-sonnet-5": ModelCaps(min_cache_tokens=1024),
+        # Sonnet 5.5: 512 (doc de prompt caching, 03/10/2026). Sem a linha, herdava os 1024 do Sonnet 5 pelo prefixo.
+        "claude-sonnet-5-5": ModelCaps(min_cache_tokens=512),
         "claude-opus-4-8": ModelCaps(min_cache_tokens=1024),
         "claude-haiku-4-5": ModelCaps(thinking=False, effort=False, min_cache_tokens=4096),
     }
@@ -1326,6 +1357,10 @@ class ResolvedRole:
     concurrency: int
     effort: Effort
     extra_body: dict[str, Any] | None      # item 7.8: repassado tal qual ao corpo do POST (ex.: options do Ollama)
+    # Item 17.14: o que o YAML escreveu para ESTA função (padrão ou perfil). Vazio = o caminho de hoje, byte a byte.
+    effort_declarado: Effort | None = None
+    thinking: bool | None = None
+    cache_da_etapa: bool = False
 
     @property
     def endpoint(self) -> str:
@@ -1554,10 +1589,23 @@ class Config:
             timeout_s=float(r.timeout_s if r.timeout_s is not None else padrao["timeout_s"]),
             max_retries=int(r.max_retries if r.max_retries is not None else 0),
             concurrency=int(r.concurrency if r.concurrency is not None else padrao["concurrency"]),
-            effort=self.ai_effort_for(role), extra_body=prov.extra_body)
+            effort=r.effort or self.ai_effort_for(role), extra_body=prov.extra_body,
+            effort_declarado=r.effort, thinking=r.thinking, cache_da_etapa=bool(r.cache_da_etapa))
 
     def ai_roles(self, profile: str | None = None) -> dict[str, ResolvedRole]:
         return {papel: self.ai_role(papel, profile) for papel in AI_ROLES}
+
+    def ai_da_execucao(self, profile: str | None) -> AiCfg:
+        """O bloco `ai` que vale para uma execução: o global com o que o perfil escreve de imagem e de árvore por cima
+        (item 17.14). Sem perfil, ou perfil sem esses campos (ou que sumiu da configuração: a chamada de IA da execução
+        já falha com o nome dele), é o MESMO objeto de sempre."""
+        ai = self.file.ai
+        perfil = ai.profiles.get(profile) if profile else None
+        if perfil is None:
+            return ai
+        troca = {campo: valor for campo in ("screenshot_max_side", "rich_tree_min_elements")
+                 if (valor := getattr(perfil, campo)) is not None}
+        return ai.model_copy(update=troca) if troca else ai
 
     def ai_leitura(self) -> ResolvedRole | None:
         """O leitor da leitura visual (item 12.5), ou `None` quando `ai.roles.leitura` não está escrito."""

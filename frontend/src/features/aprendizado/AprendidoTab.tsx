@@ -1,10 +1,10 @@
 import { BookOpen, RefreshCw } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { Field, Select } from '../../components/Field';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
-import { formatInt } from '../../lib/format';
+import { cx, formatInt } from '../../lib/format';
 import { useUiStore } from '../../store/ui';
 import { LoadErrorBanner, LoadErrorState, toLoadError, type LoadError } from '../../lib/loadError';
 import { apiAprendizado, type FiltroDoLivro } from './api';
@@ -12,8 +12,9 @@ import { hashDe } from '../../lib/rotas';
 import type { VisaoDeApps } from './apps';
 import { AvisoDaHabilidade, ItemDoLivro, chaveDoItem } from './ItemDoLivro';
 import {
-  ESTADOS_DO_LIVRO, LIVRO_KINDS, ORIGENS, ORIGEM_LABEL, type EntradaDoLivro, type ListaDoLivro, type LivroKind, acoesDoItem, isEstadoDoLivro, isLivroKind,
-  rotuloDoEstado, rotuloDoKind, titulosDaLista,
+  ESTADOS_DO_LIVRO, LIVRO_KINDS, ORIGENS, ORIGEM_LABEL, ROTULOS, ROTULO_DICA, ROTULO_LABEL, type EntradaDoLivro, type ListaDoLivro,
+  type LivroKind, type Rotulo, acoesDoItem, isEstadoDoLivro, isLivroKind, rotuloDoEstado, rotuloDoKind, textoDosOcultos,
+  titulosDaLista,
 } from './model';
 import styles from './Aprendizado.module.css';
 
@@ -96,7 +97,11 @@ export function AprendidoTab() {
   const app = useUiStore((s) => s.rota.query.app) || undefined;
   const trocarQuery = useUiStore((s) => s.trocarQuery);
   const doLink = itemDoLink(useUiStore((s) => s.rota.query.item));
-  const filtro = useMemo<FiltroDoLivro>(() => ({ ...outros, app }), [outros, app]);
+  // RA-19: a escolha de "Apps" vale para o app em que foi feita. Trocar de app (no filtro ou por um link) volta ao padrão
+  // do servidor, em que o app escolhido mostra o que tem: escolher o QA Messenger depois de "Produto" não fica vazio.
+  const [escolhaDeApps, setEscolhaDeApps] = useState<{ app: string | undefined; rotulo: Rotulo } | null>(null);
+  const rotuloEscolhido = escolhaDeApps && escolhaDeApps.app === app ? escolhaDeApps.rotulo : undefined;
+  const filtro = useMemo<FiltroDoLivro>(() => ({ ...outros, app, rotulo: rotuloEscolhido }), [outros, app, rotuloEscolhido]);
   const [visao, setVisao] = useState<VisaoDeApps | null>(null);
   const [lista, setLista] = useState<ListaDoLivro | null>(null);
   const [erro, setErro] = useState<LoadError | null>(null);
@@ -109,7 +114,8 @@ export function AprendidoTab() {
     try {
       const res = await apiAprendizado.livro(f);
       if (minha !== vez.current) return;
-      setLista({ itens: Array.isArray(res?.itens) ? res.itens : [], total: res?.total ?? 0, contagem: res?.contagem });
+      setLista({ itens: Array.isArray(res?.itens) ? res.itens : [], total: res?.total ?? 0, contagem: res?.contagem,
+                 rotulo: res?.rotulo, ocultos: res?.ocultos });
       setErro(null);
     } catch (e) {
       if (minha === vez.current) setErro(toLoadError(e));
@@ -136,6 +142,10 @@ export function AprendidoTab() {
     return o;
   }, [visao, app]);
   const titulos = useMemo(() => titulosDaLista(lista?.itens ?? []), [lista]);
+  // RA-19: o conjunto que valeu é o escolhido, senão o que o servidor aplicou (sem app, o padrão esconde o de teste).
+  const rotulo = filtro.rotulo ?? lista?.rotulo ?? (app ? 'todos' : 'produto');
+  const ocultos = textoDosOcultos(rotulo, lista?.ocultos);
+  const idDosApps = useId();
 
   return (
     <section className={styles.secao} aria-label="Aprendido">
@@ -175,6 +185,21 @@ export function AprendidoTab() {
             </Select>
           )}
         </Field>
+        <div className={styles.filtroDeApps}>
+          <span id={idDosApps} className={styles.filtroDeAppsNome}>Apps</span>
+          <div className={styles.segmentado}>
+            <div className={styles.segmentos} role="radiogroup" aria-labelledby={idDosApps}>
+              {ROTULOS.map((r) => (
+                <button key={r} type="button" role="radio" aria-checked={rotulo === r} title={ROTULO_DICA[r]}
+                        className={cx(styles.segmento, rotulo === r && styles.segmentoOn)}
+                        onClick={() => setEscolhaDeApps({ app, rotulo: r })}>
+                  {ROTULO_LABEL[r]}
+                </button>
+              ))}
+            </div>
+            {ocultos ? <span className={styles.ocultos}>{ocultos}</span> : null}
+          </div>
+        </div>
         <div className={styles.toolbarFim}>
           <Button size="sm" variant="ghost" icon={RefreshCw} loading={carregando} onClick={() => void carregar(filtro)}>Atualizar</Button>
         </div>
@@ -193,7 +218,8 @@ export function AprendidoTab() {
         <>
           {lista.contagem ? <Contagem contagem={lista.contagem} /> : null}
           {lista.itens.length === 0 ? (
-            <EmptyState icon={BookOpen} compact title="Nada aprendido com este filtro" />
+            <EmptyState icon={BookOpen} compact title="Nada aprendido com este filtro"
+                        hint={ocultos ? `Há ${ocultos} pelo filtro de apps: escolha "Todos" para vê-los.` : undefined} />
           ) : (
             <ul className={styles.lista} aria-label="Catálogo do aprendizado">
               {lista.itens.map((e) => (

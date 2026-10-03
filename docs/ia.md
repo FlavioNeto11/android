@@ -265,6 +265,47 @@ achado não se confirmam nos dados.
 - `GET /api/usage` (`backend/app/api.py:414`) — custo por papel/modelo/tier dos últimos N dias (padrão 7),
   chamadas por execução/objetivo, erros por tipo, linhas de fallback. Não chama o provedor, só lê o já gasto —
   mesma fonte que `scripts/usage-report.ps1`.
+- **RA-10 (migração 080): o porquê de cada chamada.** `ai_calls` ganha quatro colunas, gravadas pelo executor a partir
+  da `MarcaDaChamada` que acompanha `_ai` (vocabulários fechados em `planning/provider.py`; sem CHECK no banco):
+  - `motivo` (para que a chamada foi feita): `plan` → `plano` ou `refinamento` (o assistente do comando, que grava
+    na execução respondida); `decide` → `decisao` ou `cascata` (a decisão no modelo
+    forte depois do bloqueio do barato, 17.10); `verify` → `julgamento`, `vazio` (a prova de coleta sem item, 12.4) ou
+    `rejulgamento` (7.10 e 17.10); `leitura` → `leitura` (12.5). Ficam com `motivo` nulo as chamadas fora de
+    execução (curador, persona, decisão fechada: quem as distingue é `origem`) e as dos papéis sem subdivisão, ainda
+    que dentro de uma execução: `social` (o texto que a etapa digita).
+  - `escalate` (por que subiu ao modelo de escalonamento; nulo = não subiu). No `decide`, na ordem do executor:
+    `efeito` (política do efeito externo, inclusive `by_risk`) · `nova_tentativa` · `erros_seguidos` · `piso` (alvo
+    inexistente, 7.8) · `bloqueio` (a cascata) · `ciclo`. No `verify`: `nivel` (7.10) e `sim_com_efeito` (17.10). A
+    linha com `escalate` é sempre tier ≥ 1: o rejulgamento era gravado como `verify` tier 0.
+  - `verdict` (o desfecho): `yes`/`no`/`uncertain`/`unprovable` no `verify`; o nome da ferramenta no `decide` (fora
+    da lista de ferramentas, `desconhecida`); `plano` ou `pergunta` no `plan`; nulo na leitura e na linha de erro.
+  - `image_reason` (por que a imagem foi junto, ou não), na ordem de `_motivo_da_imagem`. Sem imagem: `sensivel`,
+    `politica_nunca`, `arvore_rica`. Com imagem: `politica_sempre`, `pedida`, `problema`, `primeira_julgada`,
+    `arvore_pobre`. `with_image` continua dizendo se ela de fato foi.
+
+  A linha de erro e a de orçamento recusado passam a ter `provider` e modelo da função que a chamada usaria (a de
+  escalonamento quando a marca diz que subiu); a imagem da persona grava `origem='persona'`; a etapa que a IA conduziu
+  grava `driven_by='ai'` também com receitas desligadas e sem veredito sobre a receita. `GET /api/usage` agrupa por
+  isso (`by_origin`, `escalations`, `rejudges` com discordância por app, `cascades`, `image_reasons`,
+  `steps_driven_by_null`; adendo v0.75 de `api-contract.md`), no preço de `spent_usd` (`costs.usd_por`, que lê `usd`).
+
+  **Conferência depois do deploy** (prova real do RA-10; `:deploy` = o instante do deploy em ISO-8601 UTC). As três
+  devem dar zero linhas, ou só as explicadas:
+
+  ```sql
+  -- 1. linha nova de execução sem provedor ou sem origem; sem motivo nos papéis que o executor marca
+  SELECT role, ok, COUNT(*) n FROM ai_calls WHERE ts > :deploy AND run_id IS NOT NULL
+     AND (provider IS NULL OR origem IS NULL
+          OR (motivo IS NULL AND role IN ('plan','decide','verify','leitura'))) GROUP BY role, ok;
+  -- 2. etapa terminada com decisão de IA e sem condutor (o mesmo número de steps_driven_by_null)
+  SELECT COUNT(DISTINCT s.id) n FROM steps s JOIN ai_calls c ON c.step_id = s.id AND c.role = 'decide'
+   WHERE c.ts > :deploy AND s.driven_by IS NULL
+     AND s.status IN ('succeeded','failed','uncertain','waiting_user');
+  -- 3. rejulgamento fora do tier 1, ou chamada escalada sem motivo de escalonamento
+  SELECT role, tier, motivo, escalate, COUNT(*) n FROM ai_calls WHERE ts > :deploy
+     AND ((motivo = 'rejulgamento' AND (tier < 1 OR escalate IS NULL)) OR (role = 'decide' AND tier >= 1 AND escalate IS NULL))
+   GROUP BY role, tier, motivo, escalate;
+  ```
 - Aba IA do painel mostra o mesmo por execução, incluindo cache ativo/inativo por papel.
 - Estimativa por fluxo antes de rodar: `GET /api/flows/cobertura` ganhou `estimated_usd` (item 7.7) — etapas sem
   receita × custo mediano por etapa só-IA dos últimos 7 dias, por papel; sem histórico, `null` ("sem base").
@@ -274,6 +315,11 @@ achado não se confirmam nos dados.
 > **Desde 25/09/2026 o ator de produção é o Sonnet 5** ([ADR-023](decisoes.md)): o local economizava ~US$ 0,02 por
 > caso, com o dobro de escalonamento para o Opus e fragilidade operacional, e estava fora do ar sem aviso. O
 > provedor `local` continua definido no `config.yaml`; o texto abaixo é o registro de 24/09 e o caminho de volta.
+>
+> **Revisão de 03/10/2026 (RA-24).** O gatilho do ADR-023 para rever ("algumas centenas de casos" por dia) não foi
+> atingido: 90 execuções de 26/09 a 02/10, ≈ 13 por dia (central, banco em `mode=ro`). O Ollama teve 17 chamadas
+> em 24/09 e nenhuma desde então. O único uso candidato do modelo local hoje é uma triagem em SOMBRA, como a do
+> curador (31.8), e só depois de medida contra o golden set (`design/jev-golden-set.md`).
 
 **Estado em 24/09/2026 (fora do que está em `config.example.yaml`, que é o exemplo neutro — isto é produção; o
 `config.yaml` não é versionado, e o que roda de fato se confere em `GET /api/ai` e `GET /api/health` → `ai`):** o ator de produção (`decide`) foi ligado no Ollama nativo do
@@ -352,6 +398,46 @@ Trocar o modelo de uma função para **algumas** execuções, sem reiniciar o ce
 - **Prova:** `simulated`, `backend/tests/test_perfil_de_ia.py` (16) e `scripts/tests/test_eval_run.py`. **`real`:
   `not_run`** — o primeiro uso real é a bateria do 17.10 (`gpt-6-luna` como ator), que depende de saldo e autorização.
 
+### Esforço, thinking e dieta do contexto por função e por perfil (17.14 e RA-17)
+
+Para medir latência e custo sem mexer no padrão, a função (em `ai.roles` ou num perfil) e o perfil ganharam campos.
+**Nada escrito = a requisição de hoje, byte a byte** (imagem primeiro, um ponto de cache só no system, `thinking`
+quando o modelo declara, esforço do `.env`).
+
+- **`ai.roles.<f>.effort`** (`low`|`medium`|`high`|`xhigh`|`max`): o esforço DESTA função, no lugar do
+  `AI_EFFORT_PLANNER`/`ACTOR`/`VERIFIER` do `.env`. A aba IA mostra o efetivo.
+- **`ai.roles.<f>.thinking: false`**: não manda `thinking` (o ator sem pensamento adaptativo). `true` ou vazio = a
+  capacidade declarada do modelo decide, como hoje; não liga thinking num modelo declarado sem ele.
+- **`ai.roles.<f>.cache_da_etapa: true`** (RA-17, só na decisão do ator e na escalada): o bloco estável da etapa (o
+  passo e as lições, iguais em toda decisão da tentativa) vai ANTES da imagem e leva o 2º ponto de cache; a imagem, o
+  histórico e os elementos vêm depois. Com a imagem primeiro, nada depois do system podia ser cacheado: o prefixo
+  cacheável termina no primeiro byte que muda, e a imagem muda a cada decisão. Os dois textos juntos são exatamente o
+  texto de antes (`prompts.actor_user_partes`). O ponto é sempre marcado, como o do system: abaixo do mínimo do
+  modelo a API o ignora sem erro. No ator, tools e system já passam de 6 mil tokens (≈ 6 091 medidos em 24/09, §5), então o mínimo (512 no Opus 5.5 e
+  no Sonnet 5.5) está sempre alcançado e o ganho é o tamanho do bloco estável, lido a 0,1× a partir da 2ª decisão
+  da tentativa (a 1ª grava a 1,25×). São 2 dos 4 pontos que a API aceita.
+- **Perfil: `ai.profiles.<p>.screenshot_max_side` e `rich_tree_min_elements`** valem por cima dos globais só nas
+  execuções do perfil (`Config.ai_da_execucao`, lido de `runs.ai_profile` pelo executor). A imagem já é capturada nesse
+  lado (`observe(lado_max=…)`), e os limites e o x,y dos elementos seguem a mesma escala. Sem perfis na configuração, o
+  executor nem consulta o banco.
+- **Só a Anthropic** tem `thinking`, esforço e ponto de cache. No provedor OpenAI esses campos não mudam a requisição
+  (o esforço só aparece no registro).
+- **Instância própria:** uma função com ajuste ganha instância de provedor só dela (a chave inclui a função e os
+  ajustes). O provedor aplica o ajuste só às chamadas da função dona da instância; `decide` e `escalation` com o
+  mesmo ajuste numa instância só perderiam o da segunda. Sem ajuste, a chave e o compartilhamento são os de antes.
+- **Sonda "o ator pensa?":** `GET /api/ai` → `roles[].thinking` = `adaptive` (vai em toda chamada),
+  `desligado_na_funcao` (`thinking: false`), `nao_declarado` (`ai.models.<m>.thinking` falso), `recusado_pelo_modelo`
+  (um 400 desligou nesta instância, até reiniciar) ou vazio (provedor sem thinking). A linha `uso[...]` do log ganhou
+  `pensou=N`, o número de blocos de pensamento da resposta. O adaptativo pode não pensar num turno fácil; `pensou=0`
+  em TODAS as chamadas de uma função com `adaptive` é que diz que o pensamento não está acontecendo.
+- **Exemplo:** perfil `img-768` (RA-17), com `screenshot_max_side: 768`, `rich_tree_min_elements: 12` e
+  `roles.decide.cache_da_etapa: true`; perfil de ator sem pensamento, com `roles.decide: {thinking: false, effort:
+  low}`. Os dois estão comentados em `config/config.example.yaml`.
+- **Prova:** `simulated`, `backend/tests/test_perfil_esforco_e_dieta.py` (16 testes): padrão byte a byte, ordem e
+  ponto de cache, os dois textos iguais ao de antes, ajuste na escalada pelo despacho do hub e no rejulgamento,
+  instâncias, sonda, imagem e árvore do perfil no executor. **`real`: `not_run`.** Sem A/B pago, por decisão da
+  orquestradora. A medição é a bateria pareada com `--profile`, que depende de autorização e saldo.
+
 ## 11. Tabela: `config.example.yaml` × padrão do código
 
 O exemplo é a POC "neutra"; os valores entre parênteses no próprio arquivo já documentam o padrão de código.
@@ -367,6 +453,7 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
 | `ai.recipes_heranca` (RA-20) | `true` | `true` (`config.py`) |
 | `ai.image.provider` / `model` / `per_persona` / `on_create` | `simulated` / `gpt-image-2` / 1 / `true` | os mesmos (`config.py::ImageCfg`); `quality: medium`, `price_per_image` (estimativa) low 0,02 / medium 0,06 / high 0,2 US$, `price_per_mtok` 5 / 8 / 30 US$ |
 | `ai.limits` (fatias por origem, 31.6) | comentado, com os padrões | `curador_max_usd_per_day` vazio (= 0,10 × teto do dia), `curador_fracao_do_dia` 0,10, `jev_max_usd_per_day` 0,50 (`config.py::AiLimitsCfg`) |
+| `ai.esquema_do_plano` (LT-4b, 17.13) | `longo` | `longo` (`config.py`); `curto` = etapa livre sem `description`, `precondition` e `max_attempts` (o backend preenche), com título e objetivo curtos |
 | `ai.flows` | `true` | `false` (`config.py`) |
 | `ai.pathfinder_wait_s` | 240 | 0 (`config.py`) |
 | `android.auto_start_devices` | `true` | `false` (`config.py`) |
@@ -377,6 +464,58 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
 - **Bateria de 25/09/2026** (`relatorio-validacao.md` §11.1): 16/17 casos corretos, US$ 0,084 por caso; rejulgamento
   Opus 5.5 × Haiku em 41/56 (73 %). **O ator estava no fallback** (Sonnet 5), porque o Ollama não estava no ar, e a
   saúde não acusou. Cache do verificador em Haiku: zero em 49 chamadas.
+
+- **Latência do planejador (LT-4 e LT-4b, 03/10/2026).** O plano é a espera inicial inteira. Nas 89 chamadas `plan`
+  medidas, o tempo segue a saída: ms ≈ 5.173 + 6,6 × tokens de saída (correlação 0,91).
+  - LT-4, A/B REAL do esforço: 03/10, 02:44–02:54Z, claude-opus-5-5, os 14 casos QA pelo caminho entre apps, 28
+    chamadas, US$ 1,39.
+    - Resultado: `low` p50 15,7 s contra `medium` 18,5 s; saída −13 %; forma do plano igual em 13/14.
+    - O pensamento do planejador é ≈ 0 (2 tokens): quase toda a saída é o JSON do plano, ≈ 350 tokens por etapa.
+  - Sonda REAL do texto bruto (03/10, 03:49:55–03:50:22Z, `low`, caso msg-todos-os-contatos, 8 etapas, formato de
+    hoje, US$ 0,09 da sobra do LT-4): 2.495 tokens de saída.
+    - O texto é JSON compacto (0 quebras de linha) e é 100 % da saída; pensamento ≈ 2 tokens.
+    - Espaço em branco não é alavanca.
+  - LT-4b, `ai.esquema_do_plano: curto`: estimativa GRÁTIS por count_tokens em 2 planos reais do QA (6 e 8 etapas,
+    formato entre apps), reconstruídos do plano guardado: 102 % e 83 % da saída real. O plano guardado não carrega
+    tudo o que o modelo escreveu, então as porcentagens abaixo valem sobre a reconstrução.
+    - −13 % sem `description` e `precondition`;
+    - −20 % com a brevidade de título e objetivo (simulada por corte);
+    - −22 a −24 % sem `max_attempts`, que é o formato curto.
+  - Metade da saída é prosa, e o formato não a encolhe: o p50 esperado é ≈ 13 s, não os ≤ 11 s do aceite do LT-4.
+  - No `model_judged` curto, o verificador lê o `value`. É o critério que o planejador escreve para ele; antes, ele
+    lia a descrição curta.
+  - LT-4b (17.13), A/B REAL de 3 braços: 03/10, ~04:31–04:39Z, central, código de `feat/lt-4b-esquema-curto` @
+    `2bed3d6c`. Só o planejador, offline (nenhum aparelho, nenhuma execução), esforço `low`, os 14 casos QA: 42
+    chamadas, 0 erros, US$ 1,36 (teto US$ 3,00; preço pela tabela `ai.prices` do central).
+    - longo, claude-opus-5-5: p50 15,9 s, p90 17,2 s, saída p50 1.806 tokens, US$ 0,0428 por plano;
+    - curto, claude-opus-5-5: p50 13,3 s, p90 15,9 s, saída p50 1.468, US$ 0,0359;
+    - curto, claude-sonnet-5-5: p50 7,8 s, p90 8,7 s, saída p50 1.389, US$ 0,0181 (preço INFERRED: o do Sonnet 5
+      na tabela).
+    - Curto × longo no Opus, pareado por caso: a saída fica em 0,79 da do longo (mediana) e o plano sai 2,75 s mais
+      cedo. A forma é igual em 14/14: nº de etapas, chaves, etapas com efeito e `missing`. Confirma a estimativa
+      grátis (≈ 13 s) e não alcança os ≤ 11 s.
+    - Sonnet 5.5 curto: 7,9 s mais cedo (pareado) e metade do custo. Etapas com efeito e `missing` iguais em 14/14,
+      nº de etapas em 12/14, chaves em 4/14 (os nomes das etapas mudam).
+    - Recomendação (03/10): ligar `curto` com o Opus. O Sonnet no planejador troca o modelo da função (ADR-005:
+      planejador Opus) e passa antes por rodada QA ou perfil canário (17.7); este A/B mede forma, não sucesso.
+  - Sucesso de execução com o formato curto (rodada QA): `not_run`.
+  - **Deploy 7 (decisão da orquestradora, 03/10):** `curto` passa a valer no central, e o Sonnet 5.5 entra como PERFIL
+    (17.7), não como padrão. O perfil `planejador-sonnet` troca só o modelo do `plan` para `claude-sonnet-5-5`: o
+    esforço segue o global (`AI_EFFORT_PLANNER`, `low` no central, lido em `GET /api/ai` em 03/10) e o esquema segue
+    `ai.esquema_do_plano`. Uma execução o escolhe com `POST /api/runs {"ai_profile": "planejador-sonnet"}` ou
+    `scripts/eval_run.py --profile planejador-sonnet`, e ele fica em `runs.ai_profile`. A rodada QA pareada é da
+    Aprendizado (teto US$ 10). O aceite para trocar o padrão é sucesso ≥ Opus e p50 ≤ 11 s, com emenda datada do
+    ADR-005.
+    - Preço e capacidade do Sonnet 5.5 (páginas de preço e de prompt caching, 03/10): `[2.0, 0.2, 2.5, 10.0]`, igual
+      ao Sonnet 5, e cache mínimo de 512 tokens, contra 1024 no Sonnet 5. As duas linhas entram no padrão do código e
+      no exemplo. Antes, o modelo casava o prefixo `claude-sonnet-5`: o preço saía igual por acaso e o cache mínimo
+      herdava 1024.
+    - **No `config.yaml` do central, a Android acrescenta as linhas DENTRO dos blocos `ai.prices` e `ai.models` que já
+      existem lá.** O YAML troca a tabela padrão inteira, não soma (medido em 03/10), e o central declara os dois
+      blocos sem o Sonnet 5.5. As linhas são as do exemplo (`claude-sonnet-5-5` nos dois), mais
+      `ai.esquema_do_plano: curto` e o bloco
+      `ai.profiles: {planejador-sonnet: {note: ..., roles: {plan: {model: claude-sonnet-5-5}}}}`. Prova `simulated`:
+      `test_perfil_de_ia.py::test_planejador_sonnet_so_troca_o_modelo_do_planejador`.
 
 - `docs/relatorio-validacao.md §5` — validação com o provedor real (`claude-opus-5`): mensagem em 1 e 3
   aparelhos, formulário, app nunca visto, falhas injetadas, controle manual + retomada, `kill` do backend em
@@ -549,8 +688,8 @@ exposição real e veredito: `not_run` ([relatório §23](relatorio-validacao.md
 ## 16. Decisão por conjunto fechado (Fase 31)
 
 A porta `DecisaoFechada` (`backend/app/planning/decisao_fechada/`, item 31.4) é o ÚNICO caminho do hub para o Jev (TypeSafe
-System One) em runtime, e só para escolher entre opções fechadas (`choice`, `noul`, `score`). **Está desligada e sem decisor
-real**: o decisor padrão é o `DecisorNulo`, o provedor que fala com a TypeSafe vem no 31.8 e `JEV_RUNTIME_SEND_APPROVED`
+System One) em runtime, e só para escolher entre opções fechadas (`choice`, `noul`, `score`). **Está desligada**: o decisor
+padrão é o `DecisorNulo`; o real (`DecisorJev`, 31.14) existe e só entra com `ai.decisao_fechada.decisor: jev`; e `JEV_RUNTIME_SEND_APPROVED`
 continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). Decisão e classes de dado: ADR-069.
 
 - **Contrato** (`contrato.py`, tipos puros): `PedidoDeDecisao(origem, classe, estado, perguntas, modo, marcadores, run_id,
@@ -574,8 +713,23 @@ continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). D
   ids e categorias, nunca o estado); `on` só por consumidor, com GO pré-registrado.
 - **Recurso ao caminho atual.** Timeout de 1 s no `on` e 5 s na sombra, sem retentativa. Falha vira `RespostaDeDecisao` com
   `fallback_reason` fechado (`401`, `422`, `429`, `529`, `rede`, `parse`, `unknown_choice`, `abaixo_do_limiar`,
-  `privacidade`, `desligado`), sempre com `escolha=None`: **um fallback nunca conta como acerto**. A porta reconfere cada
+  `privacidade`, `desligado`, `orcamento`), sempre com `escolha=None`: **um fallback nunca conta como acerto**. A porta reconfere cada
   resposta contra a pergunta enviada (opção desconhecida, limiar) em vez de confiar no decisor.
+- **Decisor real (31.14, `decisores.py::DecisorJev`).** Fala pelo transporte do adaptador de retrieval
+  (`JevSemanticProvider.consultar`: `{state, model, questions}`, a chave lida do ambiente na hora do POST). Ordem:
+  - só `choice` vai ao fio (`criteria` = as opções enviadas); `noul` e `score` respondem `desligado` sem sair, até o
+    primeiro consumidor deles;
+  - **gasto conferido ANTES do POST** por `RoutingProvider.conferir_gasto` (a mesma rubrica de `_budget`: pedido,
+    execução, dia e a fatia `jev_max_usd_per_day`, mais o bloqueio de saldo da conta `typesafe`). Barrado, sem hub que
+    confira ou com a leitura quebrada: `orcamento`, e nada sai;
+  - o POST usa o prazo que sobra da conferência; erro do transporte vira o motivo fechado (`401` para 401/403, `422`,
+    `429`, `529` para 503/529, `parse`, `rede`); a resposta só tem o FORMATO conferido ali (a porta reconfere opção e
+    limiar);
+  - **toda chamada tentada vira linha em `ai_calls`** (`RepositorioDeSombra.registrar_chamada`): provedor `jev` (conta
+    `typesafe` no livro-caixa), origem `decisao_fechada` (a fatia soma por ela), papel `decisao_fechada`, `usd` declarado,
+    `ref` = `<consumidor>:<ref>`, `step_id` NULL (a sombra não é chamada de IA da etapa) e sem somar em
+    `runs.ai_input_tokens`; a falha também (`ok=0`, `error_kind` = o motivo). Chave ausente não é chamada: `desligado`,
+    sem linha. É esta linha que tira a fatia de US$ 0,50 da cegueira e que move o saldo estimado da TypeSafe.
 - **Cliente único.** `backend/tests/test_decisao_fechada.py::test_cliente_unico_so_o_adaptador_de_retrieval_conhece_o_host_da_typesafe`
   varre `backend/app` e prova que só `modules/context_retrieval/adapters/jev.py` contém o host.
 
@@ -599,11 +753,12 @@ continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). D
     informa a página em `ai.balance_consoles.typesafe`.
   - **Transparência** (`transparencia.py`). Com `ai.decisao_fechada.enabled` e algum consumidor em `shadow` ou `on`, o `notice`
     de `GET /api/ai` nomeia a TypeSafe, os consumidores e as classes que podem sair, e `/api/ai` ganha o bloco
-    `decisao_fechada` (consumidores, classes, `send_approved`, `key`). A chave é só "configurada" ou "não configurada", pela
+    `decisao_fechada` (consumidores, classes, `send_approved`, `key` e, desde o 31.14, `decider`: `nulo` ou `jev`). A chave é só "configurada" ou "não configurada", pela
     PRESENÇA (`typesafe_api_key is not None`); o valor nunca é lido para isso. Enquanto `JEV_RUNTIME_SEND_APPROVED` é `False`, o
     aviso diz que o envio está FECHADO e que nada sai.
 
-Prova: `simulated` (`backend/tests/test_decisao_fechada.py`, `test_decisao_fechada_sombra.py`, `test_context_retrieval_semantic.py`:
+Prova: `simulated` (`backend/tests/test_decisao_fechada.py`, `test_decisao_fechada_sombra.py`, `test_decisao_fechada_jev.py`,
+`test_context_retrieval_semantic.py`:
 decisores nulo e falso, banco de teste e relógio falso). Chamada real ao Jev: `not_run`.
 
 ### Triagem do curador em sombra (31.8, R1)
@@ -618,8 +773,11 @@ ao Jev em `shadow` uma `choice` entre `manter`, `revisar`, `rebaixar`, `descarta
   o da lição), app, capability, ids e datas não saem. Memória, fluxo (C2), tela, voz e preferência não vão.
 - **Decisão real = o parecer do curador principal** (`TRIAGEM_DO_PARECER`, combinado com a frente Aprendizado: `manter` →
   manter; `observar`/`pedir_evidencia` → revisar; `rebaixar` → rebaixar; `desativar` → descartar; `aprovar`,
-  `possivelmente_obsoleto`, `substituir` e `fundir` ficam fora da comparação), casada pelo `ref` = `dossie_hash`. Sem voto
-  da pessoa, mede CONCORDÂNCIA com o curador, não acerto.
+  `possivelmente_obsoleto`, `substituir` e `fundir` ficam fora da comparação). **Nada se casa na hora** (I2 da revisão do
+  31.9, 03/10): a validade do parecer só existe depois do `revisar`, e o relatório do 31.10 lê a linha de `learning_reviews`
+  do mesmo `dossie_hash` (= `ref` da sombra) e aplica `decisao_real_da_triagem`, que só devolve decisão com `validade = 'ok'`
+  e `simulated = 0`. Sem voto da pessoa, mede CONCORDÂNCIA com o curador, não acerto. A triagem respeita
+  `JEV_RUNTIME_SEND_APPROVED` (M2): com o envio fechado, nem monta o pedido.
 - **Sem GO:** os limiares de `on` são os pré-registrados no 31.7 ([design/jev-golden-set.md](design/jev-golden-set.md):
   rótulo da pessoa ou desfecho medido, 30 ou mais por `kind`, 90 % de acordo e vantagem sobre a regra local); até lá a
   sombra só registra. A falha do curador principal sobe como antes, sem sombra.
@@ -639,7 +797,10 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
   - **Quando roda**: só depois de um plano bem-sucedido. Plano cancelado, com exceção ou recusado pelo provedor (`refusal`) não
     vira sombra, e a execução que já está `failed` ou `cancelled` quando a thread a lê também não. No laço de eventos fica só o
     agendamento (`asyncio.to_thread`): ler a execução, a RESOLVE, o catálogo e a porta rodam numa thread. O `stop()` do
-    `AppState` cancela as soltas e espera até 6 s as que já chamaram a porta, antes de fechar o banco.
+    `AppState` (I1 da revisão do 31.9), antes de fechar o banco e com UM prazo de 6 s para tudo (`ESPERA_DE_SOMBRAS_S`),
+    espera nesta ordem: a volta do curador (que para entre itens), as threads da sombra da intenção (esperar vem ANTES de
+    cancelar: cancelar só solta o `Task`, e a thread seguiria no banco), as sombras da porta, `Porta.encerrar` (nada novo
+    entra) e uma última rodada da porta.
   - **Desligado custa zero**: `ativo()` é falso, e então nada é lido, resolvido, montado ou gravado (nem linha de recusa), quando
     o envio não está aprovado no código (`privacidade.JEV_RUNTIME_SEND_APPROVED`, lido na hora; hoje `False`), quando a porta não
     está em `shadow` para a intenção (padrão: `enabled=false` ou consumidor `off`) ou quando a C3 não está nas classes efetivas
@@ -647,32 +808,113 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
   - **Pedido**: um só, com duas perguntas (uma chamada). Estado: `comando` (já sem destinos, depois de `redact` e de
     `remover_entidades`) e `app` (id do app da execução, quando há). R2 `intencao_catalogo`: `choice` sobre o catálogo inteiro,
     habilidades publicadas (se `skills.enabled`) e fluxos ativos (se `ai.flows`), como ids opacos (`opt:` + sha1 do id da
-    habilidade, 12 hex) com descrição C2 (nome e descrição do dono; fluxo legado só o nome) mais `nenhuma`. Só vai com 1 a 254
+    habilidade, 12 hex) com descrição C2 (nome e descrição do dono; fluxo legado só o nome) mais `nenhuma`. A descrição passa
+    por `mascarar_catalogo` ANTES do corte em 200 caracteres: as mesmas máscaras de forma da C3, sem recusa (a opção precisa
+    existir); nome passa (ADR-069 item 10). Só vai com 1 a 254
     entradas: truncar mediria o que o Jev não viu; acima do teto, um WARNING por processo diz que a R2 saiu da medição. R3
     `intencao_desempate`: `choice` entre as habilidades que a cadeia registrou como empatadas (2 ou mais).
-  - **C3 por lista de permissão** (`entidades.py`, função pura `remover_entidades(texto, *, vocabulario=()) -> str | None`). Só
-    sai palavra que está num vocabulário comum de comandos (PT e EN, sem palavra que também seja nome de pessoa e sem nome de app, ADR-052) ou no
-    vocabulário do catálogo do dono e do id do app (`vocabulario_de`). Qualquer outra palavra, em qualquer caixa, vira `[termo]`;
-    palavra com dígito ou `_` também. Por forma: `[link]`, `[email]`, `[usuario]`, `[telefone]`, `[texto]` (entre aspas) e
-    `[numero]` (TODO número, até o de 2 dígitos). Recusa (`None`): endereço (rua, avenida, CEP, bairro, apto…), e-mail ofuscado
-    (`arroba`, `ponto com`, `(at)`/`(dot)`), 3 ou mais algarismos por extenso, dígito que sobrou, e mais de 6 palavras
-    desconhecidas ou metade ou mais do texto desconhecida. Com `None`, o estado vai vazio, a porta recusa e a sombra grava
-    `fallback_reason='privacidade'`: o pedido não sai. **A sombra não reduz o risco**: em `shadow` o corpo sai para o decisor
-    igual ao de `on`, e a única proteção da C3 é esta remoção. A conferência é a própria lista (o que não é conhecido não sai),
-    não um detector "mais largo" depois da troca.
-  - **C7 nunca sai, em prosa ou não**: comando que fala de senha, código, 2FA, PIN, OTP, token, captcha, verificação ou desafio
-    (`menciona_c7`: `mentions_credential`, `looks_secret` e o assunto em qualquer formato) vai com estado vazio e marcador
-    `credencial`; a porta recusa o pedido inteiro (zero chamadas) e grava `privacidade`.
-  - **Comando social**: o catálogo social é C2 e entra (a exclusão social/persona proposta na revisão foi refutada: D-J5 veta o
-    Jev decidir conteúdo social ou de persona, não ler o catálogo de habilidades). O nome de terceiro dentro do comando é que
-    não sai: vira `[termo]` pela lista.
+  - **C3 pelo filtro SENSATO** (`entidades.py`, função pura `remover_entidades(texto) -> str | None`; ADR-069 item 10, dono
+    em 03/10 ~00:15Z: dado pessoal pode ir "desde que faça sentido no filtro"). Lista de BLOQUEIO sobre o piso: o que não
+    ajuda a escolher a habilidade vira marcador, o que esconde e-mail, telefone ou documento recusa, e o resto passa. Passos:
+    0. `normalizar`: NFKC, sem marca combinante nem caractere invisível, todo traço como `-` (letra de largura cheia,
+       circulada ou matemática vira a comum; `s<ZWSP>enha` vira `senha`, que a C7 pega). Letra fora do alfabeto latino em
+       qualquer palavra recusa (`escrita_nao_latina`; até a rodada C, só a palavra que misturava alfabetos): é o jeito de
+       esconder C7.
+    1. Forma conhecida vira marcador: `[texto]` (entre aspas; a aspa que abre e não fecha leva o resto do texto),
+       `[link]` (link e domínio), `[email]`, `[usuario]` (`@handle`), `[telefone]`, `[numero]` (todo número) e `[termo]`
+       (palavra com `_`: handle sem `@`, identificador). Símbolo (emoji, braille...) vira `[texto]`; colado entre letras,
+       recusa ("s★enha" passaria pela conferência da C7).
+    2. Recusa (`None`) o que esconde e-mail, telefone ou documento: endereço (rua, avenida, calle, quadra...), documento
+       (CPF, RG, CNH, passaporte, SSN...), e-mail por extenso ou ofuscado (`arroba`, `(at)`, `{dot}`, `ponto com`), sobra de
+       `@` ou `://`, dois ou mais numerais por extenso SEGUIDOS ("nove oito", "dez, dez", "sete-sete") e três ou mais
+       ligados por "e", "y" ou "and" (numeral solto vira `[numero]`).
+    3. O resto passa como está: palavra comum, nome de pessoa (nossa ou de terceiro), nome de app.
+
+    Com `None`, o estado vai vazio, a porta recusa e a sombra grava `fallback_reason='privacidade'`: o pedido não sai. **A
+    sombra não reduz o risco**: em `shadow` o corpo sai para o decisor igual ao de `on`; a proteção é o filtro. Até a
+    emenda, o passo 3 era uma lista de PERMISSÃO com recusa por proporção de palavras desconhecidas (a remoção que falha
+    fechada do item 4). Medido em 03/10 sobre os 90 comandos reais de 7 dias (só leitura, contagens): as 17 recusas que não
+    eram C7 vinham todas da proporção, e a lista apagava cerca de 8 palavras por comando no qa-messenger. Com o filtro
+    sensato, 89 dos 90 sairiam (a recusa que sobra é C7), nenhum com e-mail ou telefone.
+    Portão (`simulated`, 03/10): `ataque.py` da reverificação, 109 casos, zero vazamento de C7, e-mail completo ou ofuscado
+    e telefone. Nome e handle de terceiro deixam de contar (item 10). O caso "escreva para ali no gmail" sai com o nome e o
+    nome do provedor, sem endereço: barrar "nome no provedor" barraria também "mande para a Ali no Outlook".
+  - **Reverificação B (03/10, NO-GO em 97f35fac; `.claude/handoffs/reverificacao-31-9b.md` §7).** 240 casos novos e 20
+    sondas dos céticos acharam 47 vazamentos de portão, e as correções foram:
+    - **Duas passadas.** A recusa por forma escondida roda ANTES das máscaras, no texto sem acento, em casefold e com o
+      leet desfeito dentro da palavra (`arr0ba`). Ela cobre: e-mail ofuscado (`at`/`(a)`/`(a t)`/`at-sign`/arroba
+      soletrada ou hifenizada, `ponto|dot|punto` + domínio de topo, `@` separado da parte local); caixa postal; cartão e
+      CVV com o número perto; título de eleitor; endereço em inglês (número + palavras com maiúscula + Terrace/Drive/Way…).
+    - **A máscara do token misto vem antes da do número.** Letra e dígito no mesmo token, também ligado por hífen, viram UM
+      `[termo]`. Antes, `limao77` virava `limao[numero]` e a palavra da senha saía (15 dos 22 vazamentos de C7).
+    - **C7 é recusa do pedido inteiro** (decisão (a) da orquestradora: a máscara não basta). `motivo_c7` acrescenta:
+      - eufemismos ("a de sempre", "o que você digita", "the one I always use", "lo de siempre", "segundo campo", "tela
+        de acesso", "a outra parte é", "entra com X / Y"…);
+      - pergunta de segurança e frase de recuperação;
+      - leet (`3→e 4→a 0→o 1→i $→s`) e palavra invertida (`ahnes`, `drowssap`);
+      - separadores entre todas as letras (`s/e/n/h/a`) e controle de direção (bidi) no texto cru;
+      - Passwort, Kennwort, wachtwoord, mot de passe, parola d'ordine (também em `redaction._CREDENCIAL`);
+      - o código pedido pela quantidade de dígitos ("os seis dígitos") ou "destravar";
+      - prefixo de token de acesso de qualquer tamanho.
+    - **O motivo da recusa** vai para a linha da sombra (`motivo_privacidade`, migração 079; `c7_*` ou o motivo do filtro).
+      O `fallback_reason` continua `privacidade`, e `validar` continua devolvendo `c7` ou `pedido_vazio`.
+    - **Placa e nome com cidade passam** (decisão (d)). "Dois numerais por extenso recusam" fica (decisão (c)): nos 90
+      comandos reais de 7 dias (só leitura, contagens) essa regra não recusou nenhum, e a recusa total ficou em 1/90 (a
+      mesma C7 de antes). Na rodada C ela virou a regra da SEQUÊNCIA (abaixo).
+    - **Portão local** (`simulated`, 260 casos: os 240 e as 20 sondas, harness da orquestradora copiado): 0 vazamentos
+      (eram 45), 0 passagens indevidas (eram 56) e todo C7 recusado (eram 85 sem recusa).
+      - As recusas que contrariam o rótulo do harness são as C7 rotuladas "máscara", que a decisão (a) manda recusar, e
+        mais 3 casos: dois numerais em nomes ("Ze Sete e Maria Onze"), "duas fotos … três pessoas" e um telefone ditado
+        misto que já recusava antes.
+      - Prova: `backend/tests/test_decisao_fechada_reverificacao_b.py`.
+  - **Rodada C (03/10, NO-GO em 8e1d7a9c; `.claude/handoffs/reverificacao-31-9c.md` §7).** A suíte de 240 deu 0
+    vazamentos, mas 27 casos fora dela vazaram pelo caminho de produção (20 de C7, 7 de e-mail). As correções, uma por
+    causa:
+    - **`sem_destinos` recorta sempre do original** (`target_extractor.py`, mapa de posições do texto normalizado para o
+      original). Quando o `_normal` mudava o comprimento ("ﬁ", "ß", acento decomposto), o comando saía em minúsculas e sem
+      acento, e o que depende da caixa passava: a chave `AKIA…`, o endereço em inglês. O prefixo de token também é
+      conferido sem caixa, com o comprimento de verdade (`akia`/`asia` + 16, `eyj` + 10; "asiático" passa).
+    - **Outra escrita** (decisão da orquestradora: "alfabetos misturados" vale para a FRASE): letra não latina em qualquer
+      palavra recusa (`c7_alfabetos` na C7, `alfabetos` no filtro), e a lista de palavras-chave ganhou пароль, 密码,
+      パスワード, 비밀번호, κωδικός, סיסמה, hasło, parola, lösenord, şifre e outras. A lista de outras escritas casa como
+      substring, depois da mesma normalização do texto.
+    - **Palavra colada, abreviada ou em leet**: "senha" dentro de outra palavra (menos "resenha" e "desenha"), "password" e
+      afins idem; `pw` e `psw`; leet com `5→s 7→t 8→b`.
+    - **O par sem verbo de entrar**: "login: x / y", "usuário x, acesso y" (`c7_eufemismo`).
+    - **E-mail soletrado**: "at", "chez" ou "bei"; o ponto colado, com espaço antes ou por extenso (ponto, dot, punto,
+      punkt, point); qualquer domínio de topo de 2 a 6 letras com o ponto; sem o ponto, só domínio que não é palavra comum
+      em inglês ("look at this app" passa); e o provedor conhecido sem domínio ("zilda at gmail", "arroba hotmail").
+    - **Importantes**: numerais por extenso só recusam SEGUIDOS (decisão da orquestradora; "Ze Sete e Maria Onze" e "duas
+      fotos … três pessoas" passam mascarados); `@handle` com hífen vira `[usuario]` inteiro; PIN tecla a tecla ("toque 4,
+      depois 8, depois 2") e fechado por `#` ("2580#") são `c7_digitos`.
+    - **Portão local** (`simulated`, 267 casos: os 240 e as 27 sondas da rodada C, harness da orquestradora passando por
+      `sem_destinos`): 0 vazamentos (eram 27 em 8e1d7a9c), 0 C7 ou e-mail sem recusa (eram 27) e 0 passagens indevidas.
+      As recusas contra o rótulo do harness são as C7 rotuladas "máscara" (decisão (a)), o PIN dos n=183 e n=223, o
+      e-mail com domínio cirílico (n=45, agora pela regra da frase) e o base64 com "campo de acesso" (n=155). Nos 92
+      comandos reais de 7 dias (03/10, só leitura, contagens), a recusa ficou igual: 1, a mesma C7.
+    - Prova: `backend/tests/test_decisao_fechada_reverificacao_c.py` (os 27 pelo caminho de produção até o decisor falso,
+      e 23 controles que não podem recusar).
+    - **Decisões da orquestradora sobre os efeitos** (03/10, registradas no ADR-069 item 11): o texto entre aspas em outra
+      escrita NÃO fica isento ('comente "ありがとう"' recusa: só a sombra perde o comando, a execução não muda, 0 dos 92
+      reais); a C2 segue a regra por palavra (escopo); os falsos positivos "at" + provedor ou arquivo ("check the inbox at
+      outlook", "look at photo.jpg") e "pw" isolado são aceitos (só recusa, só sombra).
+  - **C7 nunca sai, em prosa ou não**: comando que fala de senha, código, 2FA, PIN, OTP, token, captcha, verificação, chave,
+    segredo ou desafio, em PT, EN ou ES (`menciona_c7`: `mentions_credential`, `looks_secret` e o assunto no texto
+    normalizado, também com homóglifo, letra de largura cheia, uma letra por vez separada por ponto ou espaço, e letra de
+    outra escrita) vai com estado vazio e marcador `credencial`; a porta recusa o pedido inteiro (zero chamadas) e grava
+    `privacidade`.
+  - **Comando social**: o catálogo social é C2 e entra (a exclusão social/persona proposta na revisão foi refutada), e,
+    desde o ADR-069 item 10, o nome no comando social também sai: o D-J5 veta o Jev DECIDIR por persona (origem
+    `social_persona` recusada na porta), não o dado.
   - **Casamento**: a porta chama `ao_registrar` na mesma thread, logo depois de gravar a linha (também na recusa por
     privacidade); sem polling e sem espera fixa. `casar_decisao_real` recebe o que a cadeia real resolveu (a RESOLVE refeita sem
     efeito, `resolve_intent`, com o catálogo de agora). R2: a habilidade resolvida (ou a única de que fala, quando falta
     parâmetro) ou `opt:nenhuma` se nada casou; empate sem desfecho fica vazio. **R3 não tem decisão real na sombra**: a cadeia
     que termina em empate não escolhe (`AMBIGUOUS` volta para a pessoa), e a que desempata não devolve os candidatos. O rótulo
     da R3 é a escolha da pessoa ou o desfecho, casados no 31.10. **`casar_desfecho` não é chamado**: não há gancho de fim de
-    execução sem mexer no núcleo, e fica para o 31.10.
+    execução sem mexer no núcleo, e fica para o 31.10. No mesmo `ao_registrar`, `anotar_ambiguos` grava quantas etapas da
+    RESOLVE terminaram em `StageOutcome.AMBIGUOUS` (`decisao_fechada_sombra.ambiguos`, migração 079, RA-2): é onde a R3 tem o
+    que medir. A métrica principal do 31.10 e os estratos estão em [design/jev-golden-set.md](design/jev-golden-set.md) §3.
   - Prova `simulated`: `backend/tests/test_decisao_fechada_intencao.py` (`DecisorFalso`, banco de teste, RESOLVE de verdade sobre
     habilidades de teste, `_plan` pelo harness com decisor segurado por evento). Chamada real ao Jev: `not_run`.
 
@@ -778,3 +1020,21 @@ opção, e ela REPROVOU. A opção segue desligada.
 - Nenhuma concordância falsa nos 192 controles.
 - A correção (escopo do "truncado": o campo, o valor e a linha que o contém, não a linha vizinha) muda a regra do ADR-070
   §4 e precisa de decisão antes de entrar.
+
+**Bancada do nível 1.1 (`real`, 03/10/2026, 04:57–04:59Z, conferência do branch `feat/android-lote-0310` sobre o
+config, o gabarito e o banco do central).** Emenda do ADR-070 §4: "truncado" vale só para o valor, o campo e a linha que
+contém o valor; a marca global do leitor só cai quando uma linha alheia cortada a explica. Mesmo material (16 recortes, 128
+pares por leitor). APROVOU nos dois leitores.
+
+| Leitor | `ai_calls` | Custo estimado | Concordância nos verdadeiros | Concordância falsa nos controles |
+|---|---|---|---|---|
+| gemini/gemini-3.1-flash-lite | 3008–3039 | US$ 0,017 | 31/32 (1 `truncado`: o assunto do item 14) | 0/96 |
+| openai/gpt-6-luna | 3040–3071 | US$ 0,0032 | 29/32 (2 `nao_confere` no assunto, itens 6 e 8; 1 `truncado`, item 14) | 0/96 |
+
+- O item 14 é recusado pelos dois: o assunto aparece cortado na linha da tela, e recusar é o certo.
+- Leitor escolhido: gemini-3.1-flash-lite principal (mais acertos e mais rápido, ~1,2 s contra ~1,9 s), gpt-6-luna
+  alternativo. O custo é irrelevante nos dois.
+- A opção liga (`ai.leitura_visual.enabled: true` e `ai.roles.leitura` no gemini) no próximo reinício do central, o
+  deploy da suíte 7. Até lá segue desligada.
+- Armadilha da medição: rodar a bancada com o `app` de um worktree faz o `.env` ser procurado na raiz do worktree. As
+  chaves vêm vazias (401 da OpenAI, "Missing or invalid Authorization header" do Gemini) e parecem revogadas, mas não estão.

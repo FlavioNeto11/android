@@ -223,6 +223,8 @@ ai:
   rejudge_yes_on_side_effect: true  # (true) 17.10: o "sim" do verificador barato em etapa com efeito externo (ou que confirma o
                                     # nível de entrega) é conferido UMA vez pelo modelo de escalonamento; só age se os modelos diferem
   verify_max_model_calls: 2       # (5) verificação por visão só rejulga quando a tela muda
+  esquema_do_plano: longo         # (longo) LT-4b: curto = a etapa livre do plano sem description/precondition/max_attempts
+                                  # (o backend preenche) e com título e objetivo curtos; ~−23 % de saída do planejador
   recipes: replay                 # (off) aprende a etapa uma vez e repete por seletores; shadow = só compara
   recipes_heranca: true           # RA-20: sem receita na chave, herda da mesma etapa noutra versão/variante, como
                                   # candidata (só com recipes_promote_after > 0)
@@ -237,6 +239,8 @@ ai:
     enabled: false                # (false) vence tudo, inclusive um consumidor em `on`
     consumidores: {}              # curador | intencao | desempate | apps: off | shadow | on (ausente = off)
     retencao_dias: 180            # (180) linhas da sombra (`decisao_fechada_sombra`); o agregado diário fica
+    decisor: nulo                 # (nulo) jev = o decisor real (31.14): gasto conferido antes do POST, chamada em ai_calls;
+                                  # NÃO abre o envio, que segue fechado no código até o 31.10
     # classes_permitidas: [C0, C1]  # opcional: estreita o teto de código (C0..C3); nunca libera classe que o código fechou
   # Leitura visual de uma saída de etapa (item 12.5, ADR-070). DESLIGADA. Só vale na tela cega que o app declara
   # (`leitura_visual.regioes` no `telas.yaml` dele) e só com o papel `ai.roles.leitura` escrito (exemplo mais abaixo). Ligar manda
@@ -269,6 +273,7 @@ ai:
     claude-opus-5-5: [4.0, 0.2, 5.0, 20.0]   # cache lido a 0,05× (os demais são 0,1×) — platform.claude.com, 24/09/2026
     claude-opus-5: [5.0, 0.5, 6.25, 25.0]
     claude-sonnet-5: [2.0, 0.2, 2.5, 10.0]
+    claude-sonnet-5-5: [2.0, 0.2, 2.5, 10.0]  # o mesmo do Sonnet 5 — platform.claude.com, 03/10/2026
     claude-haiku-4-5: [1.0, 0.1, 1.25, 5.0]
     claude-opus-4-8: [5.0, 0.5, 6.25, 25.0]
     jev-1.13.0: [0.042, 0, 0, 0]    # Jev (TypeSafe System One, ADR-069): US$ 0,042/M de entrada, saída grátis, sem cache
@@ -287,6 +292,7 @@ ai:
     claude-opus-5-5:  {vision: true, tools: true, strict_tools: false, structured_output: json_schema, thinking: true, effort: true, min_cache_tokens: 512}
     claude-opus-5:    {vision: true, tools: true, strict_tools: false, structured_output: json_schema, thinking: true, effort: true, min_cache_tokens: 512}
     claude-sonnet-5:  {vision: true, tools: true, strict_tools: false, structured_output: json_schema, thinking: true, effort: true, min_cache_tokens: 1024}
+    claude-sonnet-5-5: {vision: true, tools: true, strict_tools: false, structured_output: json_schema, thinking: true, effort: true, min_cache_tokens: 512}
     claude-opus-4-8:  {vision: true, tools: true, strict_tools: false, structured_output: json_schema, thinking: true, effort: true, min_cache_tokens: 1024}
     claude-haiku-4-5: {vision: true, tools: true, strict_tools: false, structured_output: json_schema, thinking: false, effort: false, min_cache_tokens: 4096}
     # Fase 17. `json_object` de propósito: o esquema vai no texto e o Pydantic garante (K-042); o strict da OpenAI e o
@@ -359,7 +365,23 @@ ai:
   #     note: candidato a ator barato (bateria 17.10)
   #     roles:
   #       decide: {provider: openai, model: gpt-6-luna, fallback_provider: anthropic}
+  #   planejador-sonnet:            # 17.13: o planejador no Sonnet 5.5 (o esforço e o esquema seguem os globais:
+  #     note: planejador no Sonnet 5.5   # AI_EFFORT_PLANNER e ai.esquema_do_plano); aceite p/ trocar o padrão no
+  #     roles:                      # ADR-005: sucesso >= Opus e p50 <= 11 s na rodada QA pareada
+  #       plan: {model: claude-sonnet-5-5}
+  #   img-768:
+  #     note: dieta do contexto 2 (RA-17)
+  #     screenshot_max_side: 768        # (o global) item 17.14: lado da imagem SÓ nas execuções deste perfil
+  #     rich_tree_min_elements: 12      # (o global) item 17.14: árvore rica só com 12 elementos informativos
+  #     roles:
+  #       decide: {cache_da_etapa: true}  # (false) passo e lições antes da imagem, com o 2º ponto de cache
+  #   ator-sem-thinking:
+  #     roles:
+  #       decide: {thinking: false, effort: low}   # (vazio) item 17.14: sem thinking; esforço desta função, não do .env
   # canary: {profile: luna-ator, fraction: 0.1}   # (sem canário) 10 % das execuções sem perfil vão para o candidato
+  # `effort`, `thinking` e `cache_da_etapa` também valem em `roles` (sem perfil) e só mudam a requisição na Anthropic:
+  # no provedor OpenAI não há thinking, esforço nem ponto de cache (docs/ia.md §10c, 17.14). A aba IA mostra, por
+  # função, se o thinking vai (`thinking` no GET /api/ai).
   #
   # Item 31.6 — fatias do teto de gasto DO DIA para usos fora de execução (docs/ia.md §6). São PARTES do teto do dia
   # (`ai_max_usd_per_day`, em Configuração › Limites), nunca somas por fora: uma fatia estourada barra só a origem dela

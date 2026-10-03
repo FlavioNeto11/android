@@ -185,6 +185,10 @@ class FontesDoLivro(Protocol):
         """As versões do app observadas hoje em aparelho ativo (o eixo de comparação do §7)."""
         ...
 
+    def pacotes_de_teste(self) -> frozenset[str]:
+        """Os pacotes dos apps de teste (`apps.category='qa'`): a lista padrão do livro os esconde (RA-19)."""
+        ...
+
     def sucessoras_da_habilidade(self, skill_id: str, versao: int) -> list[Sucessora]:
         """As versões da habilidade editadas a partir desta (`parent_version` = `versao`), para a relação
         `substituida_por` (30.7)."""
@@ -254,6 +258,9 @@ class RespostaDeRevisao:
     # Se ESTA resposta veio de provedor simulado. `None` = o adaptador não diz, e vale o `simulado` dele (o do hub o
     # atualiza por resposta; com revisões concorrentes, só este campo é seguro).
     simulado: bool | None = None
+    # Quem respondeu ESTA revisão, pelo mesmo motivo do `simulado`: o `provedor` do adaptador é estado compartilhado entre
+    # revisões concorrentes. `None` = o adaptador não diz, e vale o `provedor` dele.
+    provedor: str | None = None
 
 
 class RecusaDoProvedor(Exception):
@@ -270,8 +277,10 @@ class CuradorDeIA(Protocol):
     """Quem dá o PARECER sobre um item. Nunca decide nada: o parecer vai a `learning_reviews` e o aceite é da pessoa
     (`politica_de_risco.conferir_aceite`). `provedor` e `simulado` vão ao registro (`simulated = 1` nunca é prova)."""
 
-    provedor: str
-    simulado: bool
+    @property
+    def provedor(self) -> str: ...
+    @property
+    def simulado(self) -> bool: ...
 
     def revisar(self, pedido: PedidoDeRevisao) -> RespostaDeRevisao: ...
 

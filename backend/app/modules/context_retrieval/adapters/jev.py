@@ -24,7 +24,7 @@ import httpx
 
 from ..domain.errors import (
     ProviderError, ProviderInvalidResponse, ProviderKeyMissing, ProviderOffline, ProviderOptionLimit,
-    ProviderOverloaded, ProviderRateLimited, ProviderTimeout, ProviderUnavailable,
+    ProviderOverloaded, ProviderRateLimited, ProviderRejected, ProviderTimeout, ProviderUnavailable,
 )
 from ..domain.model import (
     Chunk, FileChoice, FilesReply, ProviderUsage, RegionChoice, RegionsReply, RepoMap,
@@ -97,6 +97,18 @@ class JevSemanticProvider:
         return RegionsReply(tuple(RegionChoice(por_id[i].path, por_id[i].start_line, por_id[i].end_line, p)
                                   for i, p in ranking), usage)
 
+    def consultar(self, estado: Mapping[str, object], perguntas: Mapping[str, Mapping[str, object]], *,
+                  timeout_s: float) -> tuple[Mapping[str, object], ProviderUsage]:
+        """O mesmo fio para a porta `DecisaoFechada` (31.14): `{state, model, questions}` montados por ela, `answers` crus de
+        volta. Só serializa, envia, mede e traduz erro: conferir cada resposta contra as opções enviadas é da porta, e
+        nenhuma regra de produto mora aqui. Sem retentativa (a porta não retenta e o orçamento conta cada chamada)."""
+        if not perguntas:
+            raise ProviderInvalidResponse("sem perguntas")
+        bruto = json.dumps({"state": dict(estado), "model": self.model, "questions": dict(perguntas)},
+                           ensure_ascii=False).encode("utf-8")
+        resposta, latencia = self._postar(bruto, timeout_s)
+        return self._interpretar(resposta, len(bruto), latencia)
+
     # ------------------------------------------------------------------ fio
     def _ranquear(self, query: str, entradas: dict[str, str], instrucao: str, limite: int,
                   timeout_s: float) -> tuple[list[tuple[str, float]], ProviderUsage]:
@@ -148,6 +160,8 @@ class JevSemanticProvider:
             raise ProviderRateLimited("HTTP 429")
         if status in (503, 529):
             raise ProviderOverloaded(f"HTTP {status}")
+        if status == 422:
+            raise ProviderRejected("HTTP 422")
         if status != 200:
             raise ProviderError(f"HTTP {status}")
         corpo_json: object = None

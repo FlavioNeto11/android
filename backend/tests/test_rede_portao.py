@@ -24,6 +24,7 @@ regras e aparelho falso de QA; nenhuma VPN, nenhum emulador):
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -113,28 +114,34 @@ async def test_sem_data_de_medicao_nao_vale(parque: Harness, monkeypatch: pytest
 
 async def test_remedicao_sem_ip_espera_antes_de_repetir(parque: Harness,  # noqa: F811
                                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mudou no 25.12: a medição sem IP de um `trafego_verificado` já não deixa "o estado como estava" (era o furo do
+    android-03, 03/10: túnel morto e a tarefa passando). Agora é túnel morto: a linha sai de `trafego_verificado`, o
+    cliente é religado (2 tentativas) e, sem volta, o aparelho reinicia. O que o teste seguia provando — a sonda NÃO é
+    repetida a cada volta — vale do mesmo jeito: o reinício agendado e a medição que não concluiu seguram a repetição."""
     st = parque.state
     assert st is not None
     ap = await _verificado(parque, monkeypatch)
     conv = st.rede_convergencia
+    conv.pausa_do_force_stop_s = conv.espera_do_religar_s = 0.0
+    conv.atraso_do_reinicio_s = 3600.0                      # o reinício é só agendado: o teste o confere sem esperá-lo
     _envelhecer_verificacao(parque, float(st.cfg.file.rede.validade_verificacao_s) + 60)
     ap.ip4 = None                                           # o eco de IP não responde: medição sem saída
     antes = _medicoes(parque)
     _liberar_a_porta(parque)
     assert await _passo(parque, "tarefa")
     assert _medicoes(parque) == antes + 1
-    # O estado não muda sem IP medido, e o vencido continua vencido: a porta segura e NÃO dispara de novo.
-    assert _linha(parque)["state"] == "trafego_verificado" and conv.vencida(_linha(parque))
-    _liberar_a_porta(parque)
-    assert "não concluiu" in (conv.motivo_de_espera(IID) or "")
+    linha = _linha(parque)
+    assert linha["state"] == "configurado" and "túnel morto" in str(linha["detail"])       # saiu de trafego_verificado
+    assert "reinício" in (conv.motivo_de_espera(IID) or "")                                 # e a porta segura
     _liberar_a_porta(parque)
     assert conv.trabalho(st.devices.devices[IID], motivo="tarefa") is None
     assert conv.trabalho(st.devices.devices[IID], motivo="varredura") is None
     await parque.ticks(2)
     assert _medicoes(parque) == antes + 1
-    # Passada a espera, com a saída de volta, a porta mede e libera.
-    ap.ip4 = IP
-    conv.memoria(IID).espera_ate = 0.0
+    # O boot passou e a saída voltou: conectar, medir e liberar.
+    ap.ip4, ap.uptime = IP, 45
+    conv.memoria(IID).configurado_em = time.time() - 600
+    assert await _passo(parque, "ligou") and _linha(parque)["state"] == "conectado"
     _liberar_a_porta(parque)
     assert await _passo(parque, "tarefa")
     assert conv.motivo_de_espera(IID) is None

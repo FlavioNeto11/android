@@ -77,6 +77,7 @@ beforeEach(() => {
   backend.install();
   backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => json({ itens: [RECEITA, LICAO, HABILIDADE], total: 3 }));
   backend.on('GET', /^\/api\/aprendizado\/revisar$/, () => json({ itens: [LEGADO], total: 1 }));
+  backend.on('GET', /^\/api\/aprendizado\/intencao$/, () => json({ itens: [], total: 0 }));        // 30.25, vazia
   backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [PUBLICADO, MEMORIA, RECEITA], total: 3,
                                                           contagem: { fluxo: { published: 1 }, memoria: { '-': 12 }, receita: { validated: 1 } } }));
   backend.on('GET', /^\/api\/aprendizado\/falhas$/, () => json(FALHAS));
@@ -284,6 +285,42 @@ describe('página Aprendizado', () => {
     await waitFor(() => expect(item('receita:40')).toBeTruthy());
     expect(text(item('receita:40'))).toContain('Voltou para revisar: confirmado que fica por Ana Ribeiro');
     expect(text(item('receita:40'))).toContain('chegou evidência contrária');
+  });
+
+  it('no Aprendido, o filtro de apps é segmentado (Produto · QA · Todos), Produto por padrão, com os ocultos ao lado', async () => {
+    // RA-19: o servidor aplica `produto` quando o painel não pede; o painel mostra o que valeu e quantos ficaram fora.
+    backend.on('GET', /^\/api\/aprendizado$/, (c) => {
+      const r = c.query.get('rotulo');
+      if (r === 'todos') return json({ itens: [PUBLICADO, RECEITA], total: 2, contagem: {}, rotulo: 'todos', ocultos: 0 });
+      if (r === 'qa') return json({ itens: [RECEITA], total: 1, contagem: {}, rotulo: 'qa', ocultos: 1 });
+      return json({ itens: [PUBLICADO], total: 1, contagem: {}, rotulo: 'produto', ocultos: 94 });
+    });
+    await montar();
+    await click(byRole('tab', /^Aprendido/, container));
+    const grupo = await waitFor(() => byRole('radiogroup', /^Apps$/, container));
+    const marcado = () => allByRole('radio', /./, grupo).filter((b) => b.getAttribute('aria-checked') === 'true').map(text);
+    expect(allByRole('radio', /./, grupo).map(text)).toEqual(['Produto', 'QA', 'Todos']);
+    await waitFor(() => expect(text(container)).toContain('94 do QA ocultos'));
+    expect(marcado()).toEqual(['Produto']);
+    // a primeira leitura não pede rótulo: o padrão é do servidor (e com um app escolhido, ele vale "todos")
+    const [primeira] = backend.callsTo('GET', /^\/api\/aprendizado$/);
+    expect(primeira).toBeTruthy();
+    expect(primeira?.query.get('rotulo')).toBeNull();
+
+    await click(byRole('radio', /^Todos$/, grupo));
+    await waitFor(() => expect(item('receita:12')).toBeTruthy());
+    expect(marcado()).toEqual(['Todos']);
+    expect(text(container)).not.toContain('ocultos');
+
+    await click(byRole('radio', /^QA$/, grupo));
+    await waitFor(() => expect(text(container)).toContain('1 de produto oculto'));
+    expect(marcado()).toEqual(['QA']);
+
+    // a escolha vale para o app em que foi feita: escolher um app volta ao padrão do servidor (que mostra o que ele tem)
+    await act(async () => { useUiStore.getState().trocarQuery({ app: 'com.pocqa.messenger' }); });
+    await waitFor(() => expect(backend.callsTo('GET', /^\/api\/aprendizado$/).some((c) => c.query.get('app') === 'com.pocqa.messenger')).toBe(true));
+    const doApp = backend.callsTo('GET', /^\/api\/aprendizado$/).filter((c) => c.query.get('app') === 'com.pocqa.messenger');
+    expect(doApp.map((c) => c.query.get('rotulo'))).toEqual([null]);
   });
 
   it('no Aprendido, a habilidade aponta para onde o ciclo dela fica, sem botão do livro', async () => {

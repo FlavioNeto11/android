@@ -258,6 +258,7 @@ interface Snapshot {
 | `GET /api/settings` / `PUT /api/settings` | `Partial<Settings>` | `Settings` |
 | `GET /api/ai` | – | `AiStatus` |
 | `GET /api/usage` (v0.28) | – | `UsageReport.by_account`: US$ por conta de IA (`anthropic`, `openai`, `gemini`) na janela ou na execução (ADR-051) |
+| `GET /api/usage` (v0.75) | – | `UsageReport` ganha `by_origin`, `escalations`, `rejudges`, `cascades`, `image_reasons` e `steps_driven_by_null` (RA-10, migração 080; adendo v0.75) |
 | `GET /api/ai/balances` | – | `{accounts: AiBalance[], blocked, estimated: true, note}` (ADR-051) |
 | `POST /api/ai/balances/{conta}` | `{balance, source?: manual ou console, observed_at?, currency?, units_per_usd?, note?}` | 201, o mesmo relatório; 404 `unknown_account`, 400 `invalid_observed_at` |
 | `POST /api/ai/balances/{conta}/recharge` | `{amount > 0, currency?, note?}` | 201, o mesmo relatório (âncora nova = saldo de agora + valor); 409 `no_initial_balance`, 400 `invalid_recharge` |
@@ -376,7 +377,8 @@ interface UsageReport { scope: { run_id: string | null; days: number | null }; g
   objectives_with_ai: number; calls_per_objective: number; usd_per_objective: number;
   steps_driven_by: Record<string, number>; unpriced_models: string[] }
 interface Flow { id: string; name: string; command_template: string; app_id: string | null; source_run_id: string | null;
-  status: 'active' | 'disabled'; uses: number; created_at: string; last_used_at: string | null }
+  status: 'active' | 'disabled'; uses: number; created_at: string; last_used_at: string | null;
+  required_apps: string[] /* adendo (29.42, 03/10): ids dos apps, na ordem em que o plano os usa */ }
 interface Recipe { id: number; app_package: string; app_version: string; step_key: string; step_hash: string;
   version: number; status: 'active' | 'quarantined' | 'superseded';
   actions: { tool: string; args: Record<string, unknown>; commit: boolean; why: string;
@@ -4140,7 +4142,63 @@ lugar do texto do navegador (`lib/loadError.tsx`, todas as telas).
 Prova `simulated`: `tests/test_learning_rotas_falhas.py`, `frontend/src/features/aprendizado/model.test.ts`,
 `DetalheRico.test.tsx`, `SaudeDoApp.test.tsx`, `AprendizadoPage.test.tsx` e `frontend/src/lib/loadError.test.ts`.
 
-## Adendo v0.77 (03/10/2026, provisório até a orquestradora numerar; o v0.75 é do RA-10) — a causa do "ausente" e a herança da receita (RA-20, item 29.40)
+## Adendo v0.75 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — os grupos de observabilidade de `/api/usage` (RA-10, migração 080)
+
+Só chaves novas, aditivas; nenhuma existente muda. O preço de todo grupo é o de `spent_usd` (`usd` declarado onde
+existe, senão tokens × preço; `provider='simulated'` conta a chamada a US$ 0). As linhas anteriores à 080 têm as colunas
+nulas e não entram nos grupos que dependem delas: os números valem do deploy em diante.
+
+```ts
+interface UsageGrupo { calls: number; usd: number }
+interface UsageReport {                                   // … os campos de sempre, mais:
+  by_origin: Record<string, UsageGrupo>;                  // ai_calls.origem; nula vira "sem_origem"
+  escalations: Record<MotivoDeEscalonamento, UsageGrupo>; // ai_calls.escalate não nulo
+  rejudges: UsageGrupo & {                                // verify com motivo 'rejulgamento' (7.10 e 17.10)
+    by_kind: Record<'nivel' | 'sim_com_efeito', UsageGrupo>;
+    judged: number; disagreements: number; disagreement_rate: number | null;
+    by_app: Record<string, { judged: number; disagreements: number; disagreement_rate: number }>;
+  };
+  cascades: UsageGrupo & { unblocked: number; by_verdict: Record<string, number> };  // decide com motivo 'cascata'
+  image_reasons: Record<MotivoDaImagem, { calls: number; with_image: number }>;
+  steps_driven_by_null: number;                           // etapas terminadas com decide e driven_by nulo
+}
+```
+
+- **Discordância do rejulgamento**: o modelo forte desfez o veredito do barato. No `nivel` (7.10), o forte diz `yes`
+  onde o barato recusou; no `sim_com_efeito` (17.10), o forte não diz `yes` onde o barato disse. Só linhas `ok=1`.
+  `by_app` usa o app da etapa (`projecao.app_da_etapa`, o mesmo do histórico das ações).
+- **`cascades.unblocked`**: a decisão do modelo forte, depois do bloqueio do barato, não foi `step_blocked`; erro do
+  provedor aparece em `by_verdict` como `erro`.
+- **`steps_driven_by_null`**: o aceite do RA-10 é zero nas etapas novas. O total de `driven_by` de sempre ainda soma
+  nulo como `ai` (COALESCE), e este número mostra o que essa soma supõe.
+
+Os vocabulários (`MotivoDeEscalonamento`, `MotivoDaChamada`, `MotivoDaImagem`) estão em `docs/ia.md` §9 e em
+`backend/app/planning/provider.py`.
+
+Prova `simulated`: `backend/tests/test_observabilidade_das_chamadas.py`. Prova real: `not_run` (a consulta de
+conferência de `docs/ia.md` §9 roda um dia depois do deploy).
+
+## Adendo v0.76 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — o rótulo de intenção (item 30.25)
+
+Duas rotas novas, sem IA e sem custo. As duas entram antes da rota genérica do livro (`{kind}/{ref}`).
+
+- `GET /api/aprendizado/intencao?limite=` (1 a 200, padrão 50): `{itens, total}`, as perguntas abertas da mais
+  recente para a mais antiga. Cada item: `review_id`, `run_id`, `criado_em`, `terminou_em`, `app`, `app_nome`,
+  `comando` (lido da execução na hora; nunca gravado no rótulo), `cadeia` (`sem_casamento|empate`), `candidatos`
+  (`[{skill_id, nome}]`, o nome pelo catálogo de agora, o id quando a habilidade saiu dele), `empatados`,
+  `decisao_final` e `decidido_por` (nulos). 503 antes da composição.
+- `POST /api/aprendizado/execucao/{run_id}/intencao` com `{"escolha": "<skill_id>" | "nenhum"}`: grava a
+  resposta da pessoa (o operador da sessão) por CAS e devolve `{review_id, run_id, criado_em, app, decisao_final,
+  decidido_por}`. 404 `not_found` sem pergunta; 422 `invalid` fora do catálogo gravado; 409 `state_conflict` já
+  respondida.
+- `learning_reviews` ganha linhas com `template_id='intencao'` (sem migração: a 069 já tem as colunas). Os leitores
+  do curador filtram `template_id='curador'`. O sinal `parecer_decidido` ganha `data.template_id`.
+
+Prova `simulated`: `tests/test_learning_rotulo_de_intencao.py` e
+`frontend/src/features/aprendizado/IntencaoSecao.test.tsx`. Ensaio no navegador (03/10, cópia do banco, provedor
+simulado): responder, "Nenhuma destas", filtro, 409, 422, erro de carga e Sinais.
+
+## Adendo v0.77 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — a causa do "ausente" e a herança da receita (RA-20, item 29.40)
 
 Só nomes de métrica e uma chave de config, aditivos. Nenhuma rota muda.
 
@@ -4179,6 +4237,30 @@ Ensaio no navegador (03/10, cópia do banco do central, provedor simulado, 39 it
 motivo, em lote, o histórico, o aviso no Aprendido, a evidência contrária que devolve o item, o 409 de quem chegou
 depois e 375 px.
 
+## Adendo v0.79 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — evento `plan.refused`: a porta de política no planejamento (RA-7); `run.updated.iniciada_por` (P12)
+
+Aditivo. Um kind novo de `EventRecord`, persistido, e um campo novo no `data` de um kind que já existe. Nenhuma rota
+muda.
+
+| kind | data | persistido |
+|---|---|---|
+| `plan.refused` | `{motivo: "efeito_fora_do_catalogo", etapas: [{key, title, app_id, app, capability, motivo}]}` | sim |
+
+- Sai quando `RunService._plan` recusa o plano pela regra do item 13.2: etapa com efeito externo, num app com catálogo,
+  sem uma ação daquele catálogo. Vale para todo plano (planejador, fluxo, skill), antes de materializar.
+- `etapas[].motivo` vem do vocabulário fechado `sem_acao_do_catalogo` | `acao_de_outro_catalogo`
+  (`planning/capabilities.py::MotivoForaDoCatalogo`). `app_id` é nulo quando o app só se sabe pelo pacote, e `app` é o
+  nome (ou o pacote). `capability` é a chave que veio no plano (nula = nenhuma).
+- A execução vai a `needs_input` com o plano zerado (`steps: []`) e uma pergunta por etapa recusada em `missing`
+  (`field: "policy"`). O `message` do evento é a frase da linha do tempo, igual à da porta do despacho.
+- O painel não precisa de mudança: `EventRecord.kind` é `string`, e a execução em `needs_input` já mostra as perguntas.
+
+**`run.updated` do início** (P12): o evento da transição para `running` por `RunService.start` passa a levar
+`{iniciada_por, run: RunSummary}`. `iniciada_por` é quem iniciou: o operador da sessão, ou `panel`, por
+`POST /api/runs/{id}/start` (nunca `sistema`: `painel:sistema` se a sessão se chamar assim); `sistema` no início
+automático do `mode=execute` depois do plano. Os outros `run.updated` não mudam (sem o campo). Uma execução em
+`mode=plan` só passa a `running` por esse início explícito: a prévia é `mode='plan' AND started_at IS NULL`.
+
 ## Adendo v0.80 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — o nome do app e a etapa de origem nas entradas do livro (validação do deploy 4)
 
 Só campos novos, aditivos; o painel lê os dois com fallback para o que já mostrava.
@@ -4195,3 +4277,82 @@ curador não leva `etapa`.
 
 Prova `simulated`: `tests/test_learning_capability_na_linha.py`, `frontend/src/features/aprendizado/model.test.ts`,
 `AprendizadoPage.test.tsx`, `SaudeDoApp.test.tsx` e `falhasTexto.test.ts`.
+
+## Adendo v0.81 (03/10/2026) — `steps.driven_by` ganha `sem_ator` (caminho rápido 1)
+
+Sem rota nova. O campo `driven_by` do `Step` (e a chave `steps_driven_by` de `GET /api/profiles/{id}/capacidades`, os
+contadores por origem de `apps_overview` e do `aproveitamento` de fluxos) passa a poder ser `sem_ator`, além de `ai`,
+`recipe` e `recipe+ai`: a etapa sem efeito cuja pós-condição já valia na tela lida fechou sem o ator decidir nenhuma ação
+(a prova é a mesma, feita pelo `_verify`). `aproveitamento` ganha o contador `sem_ator` por fluxo e app e não a conta como
+elegível a receita. Quem lê `driven_by` com união fechada precisa do valor novo; o painel mostra "Sem o ator".
+
+## Adendo v0.82 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — `GET /api/apps/{pacote}/conhecimento`: a prova do conhecimento de app no ar (RA-24)
+
+Rota nova, só leitura, sem efeito. O parâmetro é o **pacote** Android (`com.instagram.android`), e não o `app_id`.
+
+```json
+{"app": "com.instagram.android", "processo_iniciado_em": "2026-10-03T05:00:00.000Z",
+ "arquivos": [{"nome": "telas.yaml", "caminho": "backend/app/conhecimento/apps/com.instagram.android/telas.yaml",
+               "bytes": 21345, "fim_de_linha": "crlf", "sha256": "…", "git_blob": "…",
+               "modificado_em": "2026-10-03T04:58:12.000Z", "mudou_depois_do_inicio": false}]}
+```
+
+- `arquivos`: cada `*.yaml` da pasta `app/conhecimento/apps/<pacote>/`, em ordem de nome.
+- `sha256` e `git_blob` são do texto que o carregador lê (CRLF e CR solto viram LF, como no `read_text`), e não dos
+  bytes do disco. O checkout do central tem `core.autocrlf=true` (CRLF no disco, LF no Git). Assim `git_blob` é o de
+  `git hash-object <arquivo>` no checkout e o de `git rev-parse <commit>:<caminho>`, e confere com o `commit` de
+  `GET /api/health` sem abrir a máquina.
+- `bytes` e `fim_de_linha` (`crlf`, `lf` ou `misto`) são do disco, como está.
+- `mudou_depois_do_inicio`: o arquivo foi gravado depois de o processo subir (`processo_iniciado_em`). Os carregadores
+  leem cada arquivo uma vez por processo, então o disco pode não ser o que está em memória; só um reinício alinha.
+- 404 `not_found` quando o pacote não tem a forma de pacote (o nome vira caminho) ou a pasta não tem YAML.
+
+Junto, a versão do formato passa a ser conferida na carga, como a `contract_version` do catálogo. `telas.yaml` e
+`sessao.yaml` só aceitam `versao: 1` (`VERSOES_DE_TELAS`, `VERSOES_DE_SESSAO`). Ausente, vale 1. Antes, `telas.yaml`
+trocava qualquer não inteiro por 1 e aceitava qualquer inteiro, e `sessao.yaml` aceitava qualquer inteiro ≥ 1. Um
+arquivo de versão nova lido por código velho seria entendido pela metade, sem aviso.
+
+Prova `simulated`: `tests/test_prova_do_conhecimento.py`, com `git_blob` comparado a `git hash-object` de cada YAML
+do repositório e a recusa de `versao` 2, 0, 1.0, `true` e `"1"`.
+
+## Adendo v0.85 (03/10/2026; número da orquestradora, `.claude/reservas.md`; item 29.42) — `GET /api/flows` devolve `required_apps` na ordem do plano
+
+- Cada fluxo de `GET /api/flows` (e a resposta de `PUT /api/flows/{id}`) ganha `required_apps: string[]`: os ids dos apps
+  que o fluxo exige, **na ordem em que o plano gravado os usa** (primeira aparição em `steps[].app_id`; a etapa sem app
+  roda no `app_id` do plano). Um comando entre apps ("mande no QA Messenger e abra no Chrome") volta como
+  `["qa-messenger", "chrome"]`, não na ordem alfabética de `flow_required_apps`, que guarda só o conjunto.
+- O conjunto é o da tabela `flow_required_apps`; sem linhas nela vale o `required_apps` congelado no plano (a mesma regra
+  de `FlowStore.match`). Exigido que nenhuma etapa cita vai ao fim, em ordem alfabética; app citado pelo plano e fora do
+  conjunto não entra. Fluxo sem apps: `[]`. Plano ilegível não derruba a lista (a ordem cai para a da tabela).
+- Sem migração e sem N+1: a lista lê `flows` e `flow_required_apps` em duas consultas. `plan` segue `null` na lista.
+- O dossiê do curador (`conteudo.apps` do `GET /api/aprendizado/{kind}/{ref}`) passa a usar a mesma ordem (antes, alfabética).
+- O painel (Configurações, Fluxos) e a aba do curador mostram "QA Messenger → Chrome" com o nome de cada app.
+
+Prova `simulated`: `backend/tests/test_flows_required_apps.py`; `real`: `not_run`.
+
+## Adendo v0.83 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — `rotulo` no livro: o app de teste fora da lista padrão (RA-19, fatia A)
+
+- `GET /api/aprendizado` aceita `rotulo` = `produto` | `qa` | `todos` (outro valor: 422). Os apps de teste são os de
+  `apps.category='qa'` (o QA embutido).
+  - Sem `rotulo` e sem `app`, vale `produto`: a lista esconde as entradas dos apps de teste.
+  - Sem `rotulo` e com `app`, vale `todos`: o app escolhido mostra o que tem, mesmo sendo de teste.
+- A resposta ganha `rotulo` (o que valeu) e `ocultos` (quantos itens os outros filtros deixavam e o `rotulo`
+  escondeu). A `contagem` e o `total` são do que é mostrado.
+- **Mudança visível:** a lista padrão encolhe. No central, em 03/10, eram 164 entradas, 94 do QA. Quem quer o livro
+  inteiro passa `rotulo=todos`.
+- `/pendentes`, `/revisar`, o detalhe e `/aprendizado/apps` não mudam: as filas de decisão e a visão por app leem tudo.
+
+Prova `simulated`: `tests/test_learning_rotulo_do_livro.py`, `AprendizadoPage.test.tsx` e `model.test.ts`.
+
+## Adendo v0.84 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — a sonda "o ator pensa?" no `GET /api/ai` (item 17.14)
+
+Só campo novo, aditivo.
+
+- `GET /api/ai` → cada item de `roles` ganha `thinking` (texto ou `null`): `adaptive` (o pedido leva `thinking` em toda
+  chamada da função), `desligado_na_funcao` (`ai.roles.<f>.thinking: false`), `nao_declarado` (o modelo está declarado
+  sem thinking em `ai.models`) ou `recusado_pelo_modelo` (um 400 desligou o thinking nesta instância, até reiniciar).
+  `null` = provedor sem thinking (OpenAI, simulado).
+- `effort` passa a ser o efetivo da função: o `ai.roles.<f>.effort` quando escrito, senão o do `.env`, como antes.
+
+Vale para o padrão (`ai.roles`); o perfil de uma execução não aparece aqui (como o modelo, adendo do 17.7). Prova
+`simulated`: `tests/test_perfil_esforco_e_dieta.py::test_sonda_do_thinking_na_aba_ia` e `::test_sonda_vazia_em_provedor_sem_thinking`.

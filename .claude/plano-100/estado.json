@@ -1505,36 +1505,18 @@
    "id": "8.3",
    "status": "partial",
    "proof": "real",
-   "evidence": "Tentativa real 02/10/2026 ~22:10Z (central b5baf3e5, 073; roteiro-8-3-final): linha de base 0 pendentes, REPLY_COMMENT/CREATE_COMMENT approval_required nos 3 perfis vivos; android-03 verify session_ready c-20261002221051-1bab35, coleta r-20261002221213-8d1c0a: OPEN_PROFILE comprovado pela arvore local (real), OPEN_POST waiting_user por grade vazia (0 posts), US$ 0,15; android-06 sem rede (connectivity unavailable, ping a IP falha), sem execucao; android-01 verify c-20261002221357-328657 failed por timeout do UiAutomator, sem execucao. Nenhum gesto publico, nenhuma aprovacao. docs/relatorio-validacao.md 8.9. 104: navigation.py:41-47(en)/56-65(pt) adiciona 'confirm you're human'/'confirme que é humano|uma pessoa' à tabela de challenge; repository.py:215-231 set_session(reobserved=) grava instagram_sessions.unknown_streak (migração 034); authentication.py:147,156 passam reobserved=True nos dois pontos onde classify() realmente rodou; state.py:587 inclui unknown em _SESSAO_PARA_REOBSERVAR, state.py:736-742 bloqueia automação após settings.session_unknown_retry_cap (config.py:192, default 3) reobservações seguidas sem reconhecer a tela. 114: policy.py DEFAULT_LIMITS ganha *_per_day + warmup_days/warmup_percent; policy.py:125-137 _aquecendo/_teto_com_aquecimento; policy.py:140-172 _fleet_gate usa repository.py:492 fleet_targeting (única exceção documentada ao isolamento por perfil) e LimitsCfg.fleet_* (config.py); state.py:1086 passa counterparty (username-alvo) a policies.check(); policy.py:90-116 fixa o docstring de policy_for (afrouxar sempre foi aceito) e adiciona is_loosened; models.py ProfilePolicyDTO.loosened; service.py get_policy popula loosened e set_policy emite log warn quando uma capability de risco alto é afrouxada abaixo do padrão; frontend: types.ts, ProfileDetail.tsx (badge 'mais frouxo que o padrão'), fixtures.ts, validation.ts (grupo 'Sinais e limites do Instagram'). 109: approvals.py:133 expire_for_objective ganhou dois chamadores — scheduler.py:855-856 _expirar_aprovacoes, chamado em _finish_cancel (~941) e em _fail_objective (~845); state.py liga scheduler.expirar_aprovacoes_do_objetivo=self.approvals.expire_for_objective. REPLY_COMMENT/editar em aparelho real: não mexido (depende de aparelho ligado). 115: config.py não tem mais auto_switch_account; authentication.py:262-271 _wrong_account virou caminho único (conta errada é sempre intervenção humana).",
-   "blocker": "REPLY_COMMENT, edit em aparelho, learn_from de comentario, COLLECT_COMMENTS com itens e for_each com itens reais seguem not_run (02/10): bruno sem publicacao, android-06 sem rede, android-01 com timeout do UiAutomator; sem comentario de terceiro elegivel. Proximo passo do dono: esperar comentario organico em post nosso e repetir uma vez, ou comentar de conta pessoal com consentimento.",
+   "evidence": "Real 03/10/2026, central WIN-7S2UASNLFOP @1ab8e767 (078), textos exatos aprovados pelo orquestrador; nada além de um gesto público por passo, sem curtir nem seguir. Post da conta do android-01 às 04:44:53Z (rótulo de IA ligado; único toque público o Share). Passo 10, CREATE_COMMENT da conta do android-03 no post: run r-20261003051135-2cbaaa, pendência apr-5snxXOUANXnt2wY9 decidida com edit para o texto aprovado, commit 05:40:58Z, interação int-VFeBi1x8OOAEwif8. Passo 11, REPLY_COMMENT da conta do android-01 ao comentário: run r-20261003054328-60e83c, pendência apr-3yuw2BBtwm--SbAd por edit, commit 05:51:53Z (10 min 13 s depois do anterior, gate do 29.28), resposta encadeada. Capturas e registro em data/diag-8-3/ (fora do Git). REPLY_COMMENT e edit em aparelho deixam de ser not_run.",
+   "blocker": "Seguem not_run: learn_from de comentário, COLLECT_COMMENTS com itens e for_each com itens reais.",
    "arquivos": [
-    "backend/app/integrations/instagram/navigation.py",
-    "backend/app/social/repository.py",
-    "backend/app/integrations/instagram/authentication.py",
-    "backend/app/state.py",
-    "backend/app/config.py",
-    "backend/migrations/034_teto_de_reobservacao.sql",
-    "backend/app/social/policy.py",
-    "backend/app/models.py",
-    "backend/app/social/service.py",
-    "backend/app/taskqueue/scheduler.py",
-    "frontend/src/api/types.ts",
-    "frontend/src/features/profiles/ProfileDetail.tsx",
-    "frontend/src/features/profiles/ProfileDetail.test.tsx",
-    "frontend/src/test/fixtures.ts",
-    "frontend/src/features/settings/validation.ts",
-    "frontend/src/features/settings/validation.test.ts",
-    "backend/tests/test_instagram_auth.py",
-    "backend/tests/test_capabilities.py",
-    "docs/relatorio-validacao.md"
+    "data/diag-8-3/ (fora do Git)"
    ],
-   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_instagram_auth.py tests/test_capabilities.py tests/test_social_dm.py -> 133 passed em 73.43s. cd frontend && npx vitest run src/features/profiles/ProfileDetail.test.tsx src/features/settings src/app.integration.test.tsx -> todos passed (12+29+16). cd frontend && npx tsc --noEmit -p . -> sem erros.",
-   "grupo": "8-operacao:8.3+8.4",
-   "modelo": "opus",
+   "testes": "Prova real; sem teste novo.",
+   "grupo": "suite-7-android",
+   "modelo": "opus (sessão Android) + worker-impl",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-02T22:19:31+00:00"
+   "quando": "2026-10-03T07:24:43+00:00"
   },
   "8.4": {
    "id": "8.4",
@@ -5713,6 +5695,91 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T05:51:24+00:00"
+  },
+  "25.12": {
+   "id": "25.12",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "feat/25-12-tunel-morto @22467c70 (A 59587920: túnel morto age — sonda sem IP em trafego_verificado com política exigida religa o cliente VPN até 2 vezes, a falha/trava do Start da interface conta como tentativa com teto de 60 s, sem volta reinicia sem wipe e o estado sai de trafego_verificado com evento; B 18201f46: ConvergenciaDeRede.verificar_ao_subir no start do scheduler marca a medição de tráfego dos aparelhos com rede exigida sem apagar a prova de vazamento; C c185eda3 + 22467c70: objetivo waiting_user/uncertain em run completed_with_issues segura o aparelho só por OBJETIVO_PARADO_SEGURA_POR_S = 7200, provisório, decisão do orquestrador, em todos os chamadores; run viva segura sem limite; o teste do PR #13 ficou intacto). simulated: tests/test_rede_sonda.py (tunel_morto_*, backend_ao_subir_*, objetivo_parado_ha_horas_*), tests/test_sempre_na_promovida.py::test_objetivo_parado_so_segura_enquanto_recente_em_execucao_com_pendencias. Na main pelo merge 123650cc da suíte 7 (backend 6768 passed, 7 skipped; frontend 1337; scripts 427). Real: not_run até o deploy 7; o caso real do android-03 (medição #216) e o do android-06 (06:09Z, WebDriverException ao religar pela interface) são o aceite.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/devices/rede_convergencia.py",
+    "backend/app/vitrine.py",
+    "backend/app/taskqueue/scheduler.py",
+    "backend/tests/test_rede_sonda.py",
+    "backend/tests/test_sempre_na_promovida.py",
+    "docs/dominios/parque.md"
+   ],
+   "testes": "suíte 7 inteira (-n 8, Idle) no 22f66a6e: 6768 passed, 7 skipped.",
+   "grupo": "suite-7-android",
+   "modelo": "opus (sessão Android) + worker-impl",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T07:24:43+00:00"
+  },
+  "29.34": {
+   "id": "29.34",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "feat/29-34-relogio-do-wake @9fb82b9d: manager._wait_boot com dois relógios — t0 (spawn) só para boot_seconds; no wake, antes do veredito do log o prazo é boot_timeout_s; com 'Successfully loaded snapshot' o wake_timeout_s conta dali; a medição boot kind=warm ganha load_ms. O worker remoto não tem relógio de 90 s próprio (_v_wake usa boot_timeout_s). simulated: tests/test_wake_relogio_do_snapshot.py (5 testes; 3 falham contra o manager antigo). Na main pelo merge 123650cc da suíte 7. Real: aceite em 7 dias depois do deploy 7 (wake > 90 s e 'snapshot descartado' = 0), not_run.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/devices/manager.py",
+    "backend/app/config.py",
+    "backend/tests/test_wake_relogio_do_snapshot.py",
+    "docs/dominios/parque.md"
+   ],
+   "testes": "tests/test_wake_relogio_do_snapshot.py + prontidão/reserva: 123 passed; suíte 7 inteira verde.",
+   "grupo": "suite-7-android",
+   "modelo": "opus (sessão Android) + worker-impl",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T07:24:43+00:00"
+  },
+  "29.42": {
+   "id": "29.42",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "feat/29-42-required-apps @295c3989: FlowStore.list devolve required_apps na ordem em que o plano gravado usa os apps (apps_na_ordem_do_plano em modules/learning/domain/livro.py, a mesma função do dossiê do curador; sem migração; 2 consultas para todos os fluxos); painel Configurações > Fluxos e DetalheRico mostram 'A → B' (frontend/src/lib/appsDoFluxo.ts). Adendo v0.85. simulated: backend/tests/test_flows_required_apps.py (11), frontend/src/lib/appsDoFluxo.test.ts, DetalheRico.test.tsx, FlowsRecipesSection.test.tsx. Na main pelo merge 123650cc da suíte 7. Real: conferência no navegador depois do deploy 7, not_run.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/taskqueue/flows.py",
+    "backend/app/modules/learning/domain/livro.py",
+    "backend/app/modules/learning/domain/conteudo.py",
+    "frontend/src/lib/appsDoFluxo.ts",
+    "frontend/src/features/aprendizado/DetalheRico.tsx",
+    "frontend/src/features/settings/FlowsRecipesSection.tsx",
+    "docs/api-contract.md"
+   ],
+   "testes": "backend 70 passed nos afetados; frontend 39; suíte 7 inteira verde.",
+   "grupo": "suite-7-android",
+   "modelo": "opus (sessão Android) + worker-impl",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T07:24:43+00:00"
+  },
+  "29.43": {
+   "id": "29.43",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "feat/caminho-rapido-1 @60e7962e: LT-1 (atalho de entrada sem o ator, ATALHO_ANTES_DO_ATOR, nunca em etapa com efeito, driven_by='sem_ator'), LT-2 (expect_done em etapa julgada → _verify(uma_rodada=True), nunca em etapa com efeito), LT-3; conferência de entrada só com prova local (ENTRADA_JULGADA_SO_COM_PROVA_LOCAL); adendo v0.81. simulated: tests/test_caminho_rapido_executor.py (inclui test_lt2_nunca_em_etapa_com_efeito), test_hub_de_ia, test_cost_levers, test_perfil_bloqueado_e_capacidades. Na suíte 7 o atalho também foi desligado por monkeypatch em test_conta_do_app_da_etapa e em 3 testes de test_interrupcao_entre_apps (o gancho deles é a decisão do ator). Na main pelo merge 123650cc. Real: aceite de latência (QA 10,1 → ≤ 8,5 s por tentativa; real 25,5 → ≤ 23 s) not_run até o deploy 7.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/taskqueue/executor.py",
+    "backend/app/social/capacidades.py",
+    "backend/tests/test_caminho_rapido_executor.py",
+    "docs/api-contract.md"
+   ],
+   "testes": "suíte 7 inteira (-n 8, Idle) no 22f66a6e: 6768 passed, 7 skipped.",
+   "grupo": "suite-7-android",
+   "modelo": "opus (sessão Android) + worker-impl",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T07:24:43+00:00"
   }
  },
  "rodadas": [
@@ -6952,6 +7019,19 @@
    ],
    "grupos": [
     "aprendizado-manual"
+   ]
+  },
+  {
+   "quando": "2026-10-03T07:24:43+00:00",
+   "itens": [
+    "25.12",
+    "29.34",
+    "29.42",
+    "29.43",
+    "8.3"
+   ],
+   "grupos": [
+    "suite-7-android"
    ]
   }
  ]

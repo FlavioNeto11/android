@@ -148,6 +148,7 @@ export const DRIVEN_BY: Record<NonNullable<Step['driven_by']>, StatusMeta> = {
   recipe: { label: 'Receita', tone: 'success', icon: ScrollText, description: 'Etapa reproduzida por receita (seletores aprendidos): nenhuma chamada de modelo.' },
   'recipe+ai': { label: 'Receita + IA', tone: 'info', icon: Route, description: 'A receita começou a etapa, a tela divergiu e a IA assumiu o restante.' },
   ai: { label: 'IA', tone: 'accent', icon: Bot, description: 'Ações decididas pela IA nesta etapa.' },
+  sem_ator: { label: 'Sem o ator', tone: 'muted', icon: SkipForward, description: 'A tela já mostrava o estado final: a etapa foi comprovada sem o ator decidir nenhuma ação (a prova é a mesma).' },
 };
 
 /** Selo de `driven_by`; `null` enquanto o backend não disser quem conduziu (etapa ainda não executada). */

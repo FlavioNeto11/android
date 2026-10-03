@@ -14,12 +14,15 @@ MESMA linha (a `match_key` é única, e `flow_scope`/`flow_required_apps` cairia
 """
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 from ..db import Database, Row
+from ..modules.learning.domain.livro import apps_na_ordem_do_plano
+from ..modules.skills.domain.document import JsonValue
 from ..models import Plan, PlannerInfo, StepResult
 from ..util import now_iso
 
@@ -288,7 +291,11 @@ class FlowStore:
                 continue
             plan = Plan.model_validate_json(row["plan"])
             plan.parameters = {k: (values.get(k, v) if v == "{" + k + "}" else v) for k, v in plan.parameters.items()}
-            if any(v == "{" + k + "}" for k, v in plan.parameters.items()):
+            # RESERVED (`account_label`, `instance_id`, `run_id`) nunca é capturado por `_extract` — o valor é do APARELHO
+            # e entra na materialização (`Repository.materialize`, `resolve_templates` sobre a base por aparelho). Exigir
+            # valor aqui recusava todo fluxo com `{account_label}` pelo molde (LT-3): o molde fica como está e a
+            # materialização o resolve; os parâmetros de verdade (os capturados) seguem exigindo valor.
+            if any(v == "{" + k + "}" for k, v in plan.parameters.items() if k not in RESERVED):
                 continue                              # faltou valor para algum parâmetro: não é este fluxo
             # Os critérios são do plano, não da etapa: nenhum `_insert_steps` os resolve. Com o valor novo aqui, o
             # critério do fluxo reaproveitado fala do alvo DESTA execução, não do `{nome}` nem do alvo da fonte.
@@ -326,9 +333,28 @@ class FlowStore:
         self.db.execute("UPDATE flows SET uses=uses+1, last_used_at=? WHERE id=?", (now_iso(), flow_id))
 
     def list(self) -> list[dict[str, Any]]:
-        return [dict(r) | {"plan": None} for r in self.db.query(
-            "SELECT id, name, command_template, app_id, source_run_id, status, uses, created_at, last_used_at FROM flows"
-            " ORDER BY last_used_at DESC, created_at DESC")]
+        """Os fluxos, cada um com `required_apps` na ordem em que o plano usa os apps (29.42). Duas consultas para
+        todos (fluxos e a tabela de exigidos), sem uma por fluxo; o `plan` segue fora da resposta."""
+        exigidos: dict[str, list[str]] = {}
+        for r in self.db.query("SELECT flow_id, app_id FROM flow_required_apps ORDER BY app_id"):
+            exigidos.setdefault(r["flow_id"], []).append(r["app_id"])
+        saida = []
+        for r in self.db.query(
+                "SELECT id, name, command_template, app_id, source_run_id, status, uses, created_at, last_used_at, plan"
+                " FROM flows ORDER BY last_used_at DESC, created_at DESC"):
+            linha = dict(r)
+            plano = linha.pop("plan")
+            linha["required_apps"] = apps_na_ordem_do_plano(_json_ou_vazio(plano), exigidos.get(linha["id"], []))
+            saida.append(linha | {"plan": None})
+        return saida
+
+
+def _json_ou_vazio(texto: str | None) -> JsonValue:
+    """O plano gravado como dado; um JSON quebrado não derruba a lista (o fluxo só fica sem ordem do plano)."""
+    try:
+        return json.loads(texto or "null")
+    except ValueError:
+        return None
 
 
 def _squash(text: str) -> str:

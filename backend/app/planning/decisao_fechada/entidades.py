@@ -1,34 +1,46 @@
-"""Remoção de entidades por LISTA DE PERMISSÃO, que falha fechada, para a C3 da intenção (item 31.9, ADR-069 item 4).
+"""Filtro SENSATO da C3 da intenção (item 31.9; ADR-069 itens 4 e 10): lista de BLOQUEIO sobre o piso do dono.
 
-A C3 é o comando do dono depois de `sem_destinos` e de `redact`: texto livre, que pode trazer nome de terceiro, `@handle`,
-e-mail, número, telefone, endereço e link. A regra do dono é "C3 só depois de remoção de entidades que FALHA FECHADA". Uma
-lista de BLOQUEIO (achar o nome e trocá-lo) falha aberta: o nome em minúsculas, o primeiro termo da frase, o handle sem
-`@` e o nome fora do Latin-1 passam (revisão independente de 02/10, `.claude/handoffs/revisao-31-9.md`). Por isso aqui é
-o contrário:
+A C3 é o comando do dono depois de `sem_destinos` e de `redact`. Desde a emenda de 03/10 (ADR-069 item 10, decisão do dono
+de ~00:15Z), dado pessoal pode ir ao Jev "desde que faça sentido no filtro": nome e `@handle` de pessoa não são vazamento.
+O filtro mascara o que não ajuda a escolher a habilidade e deixa o resto (`remover_entidades`):
 
-1. o que tem forma conhecida vira marcador fixo: o que está entre aspas (`[texto]`: é o que a pessoa manda escrever),
-   link, e-mail, `@handle`, domínio, telefone, número de 3 dígitos ou mais;
-2. o que não tem como ser mascarado com segurança RECUSA o texto inteiro (`None`): endereço (rua, avenida...), e-mail
-   escrito por extenso ou ofuscado (`arroba`, `(at)`, `ponto com`), sobra de `@`, `://` ou dígitos;
-3. TODA palavra que sobra só fica se estiver no vocabulário PERMITIDO: palavras funcionais e de comando (`_COMUNS`, abaixo,
-   sem nenhuma palavra que também seja nome de pessoa) e os termos do catálogo do dono (C2), que quem chama passa. O resto
-   vira `[termo]`, sem olhar caixa nem posição: "joana curtiu isso", "Joana: abra o app", "send a message to john" e
-   "siga joana_silva99" saem com `[termo]` no lugar do nome. Token com dígito ou `_` misturado a letra também vira `[termo]`;
-4. se a proporção de palavras trocadas passar de `LIMIAR_DESCONHECIDAS` (ou forem mais de `MAX_DESCONHECIDAS`), o texto
-   inteiro é recusado: o que sobra é sobretudo máscara, mede pouco e a forma da frase já diz demais.
+0. o texto é normalizado (`normalizar`: NFKC, sem marca combinante nem caractere invisível, todo traço como "-"): letra
+   circulada, de largura cheia ou matemática vira a letra comum, e "s<ZWSP>enha" vira "senha", que a conferência da C7 do
+   consumidor pega. Letra fora do alfabeto latino em QUALQUER palavra (o "а" cirílico em "senhа", "пароль", "密码") RECUSA
+   o texto: o comando é em português, e é o jeito de esconder C7 (rodada C do 31.9: a regra vale para a frase, não mais
+   só para a palavra que mistura alfabetos; decisão da orquestradora de 03/10);
+1. o que tem forma conhecida vira marcador fixo: o que está entre aspas (`[texto]`: o que a pessoa manda escrever), link
+   e domínio, e-mail, `@handle`, telefone, número e token de letras com `_` (`[termo]`: handle sem `@`, identificador).
+   A aspa que abre e não fecha leva o resto do texto para `[texto]`. Símbolo (emoji, braille, letra em quadrado negativo)
+   vira `[texto]`; colado entre duas letras, recusa ("s★enha" passaria pela conferência da C7);
+2. o que esconde e-mail, telefone ou documento RECUSA o texto inteiro (`None`): endereço, documento (CPF, RG, cartão...),
+   e-mail por extenso ou ofuscado (`arroba`, `(at)`, `(a)`, `{dot}`, `ponto com`, `correio ponto net`, `arr0ba`,
+   `a r r o b a`, `zilda at correio net`, `zilda at gmail`), sobra de `@` ou `://` e dois ou mais numerais por extenso
+   SEGUIDOS (telefone, documento ou PIN ditado: "nove oito", "dez, dez"). Numeral solto vira `[numero]` ("Ze Sete e Maria
+   Onze", "duas fotos e três pessoas" passam);
+3. o resto passa como está: palavra comum, nome de pessoa, nome de app.
 
-A caixa do texto não importa (o `TargetExtractor` pode devolver o comando todo em minúsculas, revisão, achado 3): a
-comparação é por palavra normalizada (casefold, sem acento). Credencial e 2FA (C7) NÃO são tratados aqui: o consumidor
-recusa o pedido inteiro antes (`intencao.py`).
+Desde a reverificação B do 31.9 (03/10, NO-GO em 97f35fac) são DUAS passadas. A recusa por forma escondida roda primeiro,
+sobre o texto normalizado e ainda sem máscara (`_RECUSA_NO_ORIGINAL`): mascarar antes apagava o que ela precisava ver (o
+`742` do endereço em inglês, o `0` de `arr0ba`). Depois vêm as máscaras, com o token de letras E dígitos (`_MISTO`) ANTES do
+número: com o número primeiro, `limao77` virava `limao[numero]` e a palavra da senha saía inteira (15 dos 22 vazamentos de
+C7). `remover_entidades_com_motivo` diz POR QUE recusou (`MotivoDoFiltro`), para a linha da sombra.
 
-Função pura: sem banco, sem rede, sem configuração.
+Até a emenda, o passo 3 era uma lista de PERMISSÃO (palavra fora de um vocabulário fixo virava `[termo]`, nome com
+maiúscula também) com recusa do texto inteiro acima de uma proporção de desconhecidas: a remoção que falha fechada da
+primeira redação do ADR-069. Medido em 03/10 sobre os 90 comandos reais de 7 dias (só leitura): as 17 recusas que não eram
+C7 vinham todas da proporção, e a lista apagava cerca de 8 palavras por comando no qa-messenger. O piso não mudou.
+
+Credencial e 2FA (C7) NÃO são tratados aqui: o consumidor recusa o pedido inteiro antes (`intencao.py`).
+
+Funções puras: sem banco, sem rede, sem configuração.
 """
 from __future__ import annotations
 
 import re
 import unicodedata
 from collections.abc import Iterable
-from typing import Final
+from typing import Final, Literal
 
 #: Marcadores fixos, minúsculos e entre colchetes: nenhum é palavra do vocabulário, e a conferência os ignora.
 M_URL: Final = "[link]"
@@ -41,117 +53,233 @@ M_TEXTO: Final = "[texto]"
 
 _MARCADORES: Final = (M_URL, M_EMAIL, M_HANDLE, M_TELEFONE, M_NUMERO, M_TERMO, M_TEXTO)
 
-#: Acima desta fração de palavras desconhecidas (trocadas por `[termo]`), o texto inteiro é recusado.
-LIMIAR_DESCONHECIDAS: Final = 0.5
-#: E acima deste número absoluto, também (um comando longo cheio de nomes não sai "com metade mascarada").
-MAX_DESCONHECIDAS: Final = 6
+#: Por que o filtro recusou a C3 (`decisao_fechada_sombra.motivo_privacidade`, migração 079). Vocabulário fechado.
+MotivoDoFiltro = Literal["nao_texto", "vazio", "alfabetos", "simbolo_colado", "email_ofuscado", "endereco", "documento",
+                         "ditado", "numerais", "sobra_de_forma"]
 
 # ------------------------------------------------------------------ 1. troca por forma (do mais específico ao mais geral)
-#: Aspas simples ASCII e crase só fora de palavra: o apóstrofo de "D'Ávila" não abre trecho.
-_ASPAS = re.compile(r'"[^"]*"|“[^”]*”|«[^»]*»|‘[^’]*’' r"|(?<!\w)'[^'\n]*'(?!\w)|`[^`]*`")
+#: Aspas simples ASCII e crase só fora de palavra: o apóstrofo de "D'Ávila" não abre trecho. Depois do NFKC o "″" vira
+#: "′′" e as aspas de largura cheia viram ASCII. Aspa que SOBRA (desbalanceada, de outro sistema, pontuação de abrir ou
+#: fechar citação, colchete que não é ASCII) abre texto até o fim (`_primeira_aspa_sobrando`): na C3 o resto vira
+#: `[texto]`; na C2, é cortado.
+_ASPAS = re.compile(r'"[^"]*"|“[^”]*”|„[^“”]*[“”]|«[^»]*»|‹[^›]*›|‘[^’]*’|‚[^‘’]*[‘’]|「[^」]*」|『[^』]*』'
+                    r"|〝[^〞〟]*[〞〟]|′+[^′]*′+|(?<!\w)'[^'\n]*'(?!\w)|`[^`]*`")
+_CARACTERES_DE_ASPA: Final = frozenset("\"'`′″‴‵‶‷„‚“”‘’«»‹›「」『』〝〞〟❛❜❝❞")
 _URL = re.compile(r"(?i)\b(?:[a-z][a-z0-9+.\-]*://|www\.)\S+")
 _EMAIL = re.compile(r"[\w.+\-]+@[\w\-]+(?:\.[\w\-]+)*")
-_HANDLE = re.compile(r"@\w[\w.]*")
+#: O `@handle` inteiro, também com hífen ("@cassia-brandao" saía `[usuario]-brandao`; decisão da orquestradora de 03/10).
+#: Não termina em ponto nem hífen: o "." que fecha a frase fica.
+_HANDLE = re.compile(r"@\w(?:[\w.\-]*\w)?")
 _DOMINIO = re.compile(r"(?i)\b[\w\-]+(?:\.[\w\-]+)*\.[a-z]{2,}(?:/\S*)?\b")
 _TELEFONE = re.compile(r"(?:\+?\d{1,3}[\s.\-])?\(?\d{2}\)?[\s.\-]?\d{4,5}[\s.\-]?\d{4}")
 #: Qualquer número (também quebrado por UM separador entre dígitos: "12 34 56", "1.234", "11-98"). Até "pedido 12" é
 #: identificador; a contagem ("curta 25 posts") perde pouco como `[numero]`.
 _NUMERO = re.compile(r"\d(?:[\s.\-/]?\d)*")
-#: Três ou mais algarismos por extenso em sequência ("nove nove oito sete"): é telefone ou documento ditado. Recusa.
-_DITADO = re.compile(r"(?i)\b(?:(?:zero|um|uma|dois|duas|tr[eê]s|quatro|cinco|seis|meia|sete|oito|nove|one|two|three|four"
-                     r"|five|six|seven|eight|nine)\W+){2,}(?:zero|um|uma|dois|duas|tr[eê]s|quatro|cinco|seis|meia|sete"
-                     r"|oito|nove|one|two|three|four|five|six|seven|eight|nine)\b")
+#: Três ou mais algarismos por extenso em sequência, também ligados por "e", "y" ou "and" ("nove nove oito sete", "um e
+#: um e um"): é telefone ou documento ditado. Recusa. Pega também "um", "uma", "uno" e "dos", que `_NUMERAIS` não conta.
+_ALGARISMO_FALADO: Final = (r"(?:zero|um|uma|dois|duas|tr[eê]s|quatro|cinco|seis|meia|sete|oito|nove|one|two|three|four"
+                            r"|five|six|seven|eight|nine|cero|uno|una|dos|cuatro|siete|ocho|nueve)")
+_DITADO = re.compile(rf"(?i)\b(?:{_ALGARISMO_FALADO}(?:\W+(?:e|y|and)\W+|\W+)){{2,}}{_ALGARISMO_FALADO}\b")
 
 # ------------------------------------------------------------------ 2. recusa (não há máscara segura)
-_RECUSA = re.compile(
+_RECUSA_EMAIL = re.compile(
     r"@|://|(?i:\bwww\b)|(?i:\barroba\b)|(?i:\bponto\s*com\b)|(?i:\bdot\s*com\b)"
-    r"|(?i:[(\[]\s*(?:at|dot|arroba|ponto)\s*[)\]])"
-    # endereço: o logradouro seguido de qualquer termo (o nome da rua é dado de lugar de uma pessoa)
-    r"|(?i:\b(?:rua|r\.|avenida|av\.?|travessa|tv\.|alameda|al\.|pra[çc]a|rodovia|estrada|largo|viela|cep|bairro"
-    r"|apartamento|apto|bloco|condom[ií]nio)\b)"
-    r"|(?i:\b(?:street|st\.|avenue|ave\.|road|rd\.|zip)\b)")
+    r"|(?i:[(\[{<]\s*(?:at|dot|arroba|ponto)\s*[)\]}>])")
+#: Endereço: o logradouro seguido de qualquer termo (o nome da rua é dado de lugar de uma pessoa).
+_RECUSA_ENDERECO = re.compile(
+    r"(?i:\b(?:rua|r\.|avenida|av\.?|travessa|tv\.|alameda|al\.|pra[çc]a|rodovia|estrada|largo|viela|cep|bairro"
+    r"|apartamento|apto|bloco|condom[ií]nio|quadra|lote|casa|vila|calle|plaza|paseo|carretera|barrio)\b)"
+    r"|(?i:\b(?:street|st\.|avenue|ave\.|road|rd\.|lane|blvd|boulevard|zip)\b)")
+#: Documento: o número que vem junto (em algarismo ou por extenso) identifica a pessoa.
+_RECUSA_DOCUMENTO = re.compile(r"(?i:\b(?:cpf|cnpj|rg|cnh|passaporte|passport|ssn|dni|nif)\b)")
 _SOBRA_DIGITOS = re.compile(r"\d\D{0,2}\d\D{0,2}\d")
+
+#: Domínio de topo do e-mail soletrado ou ofuscado ("correio ponto net", "dot co", "punto org").
+_TLD: Final = (r"(?:com|net|org|br|io|co|gov|edu|info|biz|me|app|dev|test|pt|es|uk|us|de|fr|it|mx|ar|cl|uy|rf|online"
+               r"|site)")
+# E-mail soletrado (rodada C do 31.9, 7 vazamentos): o "at" em outras línguas, a palavra do ponto em outras línguas, o
+# domínio de topo fora da lista e o provedor sem domínio de topo.
+_AT: Final = r"(?:at|chez|bei)"
+#: O ponto do domínio: colado ("correio.net"), com espaço ANTES ("correio . net") ou por extenso. O ponto que fecha a
+#: frase ("look at this. It's") tem espaço só depois, e não conta.
+_SEP_DOMINIO: Final = r"(?:\.(?=\w)|\s+\.\s*|\s+(?:ponto|dot|punto|punkt|point)\s+)"
+#: Artigo ou determinante logo depois do "at": "look at the dot on the map" e "look at my point" não são e-mail.
+_NAO_DOMINIO: Final = r"(?!(?:the|a|an|this|that|these|those|my|your|his|her|its|our|their)\b)"
+#: Domínio de topo que vale SEM a palavra do ponto ("zilda at correio net"): só os que não são palavra comum em inglês
+#: ("look at this app", "look at the site", "look at them online", "look at the info" passam).
+_TLD_SEM_PONTO: Final = r"(?:com|net|org|br|gov|edu|pt|fr|mx|uy|ru|uk|jp|cn|xyz|tech)"
+#: Provedor de e-mail depois de "at" ou "arroba": é e-mail mesmo sem o domínio de topo ("zilda at gmail").
+_PROVEDOR: Final = (r"(?:gmail|googlemail|hotmail|outlook|yahoo|correio|live|icloud|uol|bol|terra|msn|proton(?:mail)?|gmx"
+                    r"|aol|yandex|zoho)")
+#: A recusa que roda ANTES das máscaras (passada 1), sobre o texto sem acento, em casefold e com o algarismo trocado pela
+#: letra parecida dentro de palavra (`arr0ba`). (motivo, padrão), na ordem do diagnóstico.
+_RECUSA_NO_ORIGINAL: Final[tuple[tuple[MotivoDoFiltro, re.Pattern[str]], ...]] = (
+    ("email_ofuscado", re.compile(
+        # arroba por extenso, soletrada ou hifenizada ("a r r o b a", "a-r-r-o-b-a"); "(a)", "(a t)", "at-sign"
+        r"(?<![^\W\d_])a[\W_]{0,2}r[\W_]{0,2}r[\W_]{0,2}o[\W_]{0,2}b[\W_]{0,2}a(?![^\W\d_])"
+        r"|[(\[{<]\s*a\s*t?\s*[)\]}>]|\bat[\s\-]?sign\b"
+        # domínio de topo depois de "ponto", "dot", "punto" ou "punkt": "correio ponto net", "dot co"
+        rf"|\b(?:ponto|dot|punto|punkt)\s*{_TLD}\b"
+        # "marina at correio.net", "zilda at correio dot org", "zilda chez correio point net", "zilda at correio punkt de"
+        rf"|\b\w+\s+{_AT}\s+\w+(?:{_SEP_DOMINIO}\w+)*{_SEP_DOMINIO}{_TLD}\b"
+        # qualquer domínio de topo de 2 a 6 letras com o ponto colado ou por extenso: "zilda at correio dot tech"
+        rf"|\b\w+\s+{_AT}\s+{_NAO_DOMINIO}\w+(?:{_SEP_DOMINIO}\w+)*"
+        rf"(?:\.(?=\w)|\s+\.\s*|\s+(?:ponto|dot|punto)\s+)[a-z]{{2,6}}\b"
+        # sem a palavra do ponto: "zilda at correio net", "ZILDA AT CORREIO NET"
+        rf"|\b\w+\s+{_AT}\s+{_NAO_DOMINIO}\w+\s+{_TLD_SEM_PONTO}\b"
+        # provedor conhecido: "zilda at gmail", "zilda arroba hotmail"
+        rf"|\b\w+\s+(?:{_AT}|arroba)\s+{_PROVEDOR}\b"
+        # `@` sem a parte local colada (separada por espaço ou tabulação), seguido de domínio com topo
+        rf"|(?<![\w.+\-])@[\w\-]+(?:\.[\w\-]+)*\.{_TLD}\b")),
+    ("endereco", re.compile(r"\bcaixa\s+postal\b|\bp\.?\s*o\.?\s+box\b|\bapartado\s+postal\b")),
+    # cartão e CVV só com o número perto ("o cartão de visita do perfil" passa); título de eleitor e "ce pe efe" sempre
+    ("documento", re.compile(r"\b(?:cartao|card|cvv|cvc)\b\D{0,20}\d{3}|\btitulo\s+de\s+eleitor\b|\bce\s+pe\s+efe\b")),
+)
+#: Endereço em inglês: número, uma a três palavras com maiúscula e o tipo de logradouro, no texto SEM casefold ("on the
+#: way" não é endereço; "742 Evergreen Terrace" é).
+_ENDERECO_EN: Final = re.compile(
+    r"\b\d{1,5}\s+(?:[A-Z][\w'\-]*\s+){1,3}(?:Terrace|Drive|Court|Place|Way|Circle|Parkway|Highway|Square|Lane|Road"
+    r"|Street|Avenue|Boulevard|Blvd|Ave|St|Rd|Dr|Ct|Pl|Ln)\b")
+#: O algarismo que faz as vezes de letra dentro de uma palavra (leet). Só na passada 1 e na conferência da C7. O 5, o 7
+#: e o 8 entraram na rodada C do 31.9 ("pa55word", "53nh4").
+_LEET: Final = str.maketrans({"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "8": "b", "$": "s"})
+_TOKEN_COM_LETRA: Final = re.compile(r"[\w$]*[^\W\d_][\w$]*")
+
+
+def sem_leet(texto: str) -> str:
+    """Troca algarismo por letra só nas palavras que já têm letra (`arr0ba`, `s3nh4`, `pa$$word`); número sozinho fica."""
+    return _TOKEN_COM_LETRA.sub(lambda m: m.group().translate(_LEET), texto)
 _PARENTESES_COM_DIGITO = re.compile(r"\(\s*\d")
+
+#: Numerais por extenso (normalizados, sem acento). Cada um vira `[numero]`; dois ou mais SEGUIDOS, só com espaço, vírgula,
+#: ponto, barra ou hífen entre eles ("nove oito", "dez, dez", "sete-sete"), recusam: é telefone, documento ou PIN ditado.
+#: Até a rodada C do 31.9 (03/10) bastavam dois no texto, ligados por qualquer coisa, e "Ze Sete e Maria Onze" e "duas fotos
+#: e três pessoas" recusavam (14 de 25 comandos comuns na sonda); a orquestradora trocou pela sequência. Ligados por "e",
+#: três ou mais ainda recusam pelo `_DITADO` ("nove e oito e sete"). "um", "uma", "one", "uno" e "una" ficam de fora porque
+#: são artigo, e "dos" (espanhol) porque em português é "de + os"; o `_DITADO` ainda pega "um um um" e "dos dos dos".
+_NUMERAIS: Final[frozenset[str]] = frozenset("""
+zero dois duas tres quatro cinco seis meia sete oito nove dez onze doze treze catorze quatorze quinze dezesseis dezasseis
+dezessete dezassete dezoito dezenove dezanove vinte trinta quarenta cinquenta sessenta setenta oitenta noventa cem cento
+duzentos duzentas trezentos trezentas quatrocentos quatrocentas quinhentos quinhentas seiscentos seiscentas setecentos
+setecentas oitocentos oitocentas novecentos novecentas mil milhao milhoes bilhao bilhoes
+two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen
+twenty thirty forty fifty sixty seventy eighty ninety hundred thousand million billion
+cero cuatro siete ocho nueve diez once doce trece catorce quince dieciseis diecisiete dieciocho diecinueve veinte treinta
+cuarenta cincuenta sesenta ochenta cien ciento
+""".split())
 
 # ------------------------------------------------------------------ 3. palavras
 #: Palavra só de letras (com apóstrofo ou hífen dentro); `\w` sem dígito e sem `_`.
 _PALAVRA = re.compile(r"[^\W\d_]+(?:['’\-][^\W\d_]+)*")
-#: Token com letra E (dígito ou `_`): handle sem `@`, código, placa. Vira `[termo]` sempre.
-_MISTO = re.compile(r"\b(?=\w*[^\W\d_])(?=\w*[\d_])\w+\b")
-
-#: O vocabulário PERMITIDO fixo (normalizado: minúsculas, sem acento). Português e inglês (D-J7 mede os dois), palavras
-#: funcionais, verbos de comando nas formas comuns e substantivos do domínio de aparelhos e apps. NENHUMA palavra que
-#: também seja nome de pessoa (rosa, clara, flor, luz, mar, sol, vitoria, graca, celeste, aurora, marco, mark, ...): cada uma seria um
-#: nome de terceiro passando. Palavra que falta aqui só custa utilidade (vira `[termo]`), nunca privacidade. Nome de app
-#: também não entra (ADR-052: conhecimento de app é dado): vem do id do app e do catálogo, por `vocabulario_de`.
-_COMUNS: Final[frozenset[str]] = frozenset("""
-a o as os um uma uns umas de da do das dos em na no nas nos num numa por pelo pela pelos pelas para pra pro com sem sob
-sobre entre ate apos antes depois durante desde e ou mas nem que se ao aos a la lo isso isto esse essa este esta aquele
-aquela aqui ali la onde quando como qual quais quanto quantos quantas quem cada todo toda todos todas tudo nada algum
-alguma alguns algumas outro outra outros outras mesmo mesma mais menos muito muita muitos muitas pouco pouca so apenas
-tambem ainda ja agora hoje ontem amanha sempre nunca depois logo entao porque pois enquanto ja nao sim
-eu tu ele ela nos vos eles elas voce voces me te se lhe lhes meu minha meus minhas teu tua seu sua seus suas nosso nossa
-dele dela deles delas
-primeiro primeira segundo segunda terceiro terceira ultimo ultima ultimos ultimas proximo proxima proximos proximas novo
-nova novos novas antigo antiga recente recentes mesmo mesma
-domingo terca quarta quinta sexta sabado semana mes ano dia dias hora horas minuto minutos manha tarde noite
-janeiro fevereiro abril maio junho julho agosto setembro outubro novembro dezembro
-um dois tres quatro cinco seis sete oito nove dez vez vezes
-abra abrir abre abriu abrindo feche fechar fecha fechou entre entrar entra entrou saia sair sai saiu volte voltar volta
-voltou va ir vai foi veja ver ve viu olhe olhar olha leia ler le leu procure procurar procura procurou busque buscar
-busca pesquise pesquisar pesquisa encontre encontrar encontra ache achar acha toque tocar toca tocou clique clicar clica
-role rolar rola rolou deslize deslizar arraste arrastar digite digitar digita escreva escrever escreve escreveu
-mande mandar manda mandou envie enviar envia enviou responda responder responde respondeu comente comentar comenta
-comentou curta curtir curte curtiu descurta descurtir siga seguir segue seguiu deixe deixar deixa pare parar
-compartilhe compartilhar compartilha poste postar posta postou publique publicar publica publicou salve salvar salva
-salvou apague apagar apaga apagou exclua excluir remova remover edite editar edita mude mudar muda troque trocar
-copie copiar cole colar baixe baixar instale instalar desinstale desinstalar atualize atualizar atualiza
-confira conferir verifique verificar verifica conte contar conta contou liste listar lista anote anotar anota
-registre registrar diga dizer diz disse fale falar fala falou informe informar mostre mostrar mostra faca fazer faz fez use usar usa
-tire tirar tira capture capturar grave gravar inicie iniciar comece comecar termine terminar repita repetir
-aceite aceitar recuse recusar marque marcar desmarque ative ativar desative desativar ligue ligar desligue desligar
-selecione selecionar escolha escolher escolhe acompanhe acompanhar monitore monitorar observe observar compare comparar
-resuma resumir traduza traduzir confirme confirmar cancele cancelar espere esperar aguarde aguardar
-open close enter exit go back see look read search find tap click scroll swipe type write send reply comment like
-unlike follow unfollow share post publish save delete remove edit change copy paste download install uninstall update
-check count list note say tell show make do use take start stop repeat accept decline select choose wait cancel
-confirm summarize translate compare monitor watch
-the a an of to in on at for with without from by and or but if then than this that these those it its my your his her
-their our me you him them we they is are was were be been all any each every some no not yes now today first last next
-new old more less many much only also again
-aplicativo aplicativos app apps tela telas botao botoes menu aba abas pagina paginas site sites link links perfil perfis
-conta contas usuario usuarios post posts publicacao publicacoes foto fotos video videos imagem imagens story stories
-storie reels reel feed feeds legenda legendas comentario comentarios curtida curtidas mensagem mensagens conversa
-conversas chat chats direct notificacao notificacoes seguidor seguidores seguindo amigo amigos grupo grupos
-canal canais email emails mail caixa entrada lixeira spam assunto anexo anexos rascunho rascunhos pasta pastas
-arquivo arquivos documento documentos configuracao configuracoes ajuste ajustes preco precos valor valores produto
-produtos loja lojas carrinho pedido pedidos busca resultado resultados item itens noticia noticias manchete manchetes
-texto textos titulo titulos relatorio relatorios resumo resumos nome nomes numero numeros data datas lido lidos lida lidas nao_lido novo
-aparelho aparelhos celular telefone emulador wifi rede internet bluetooth bateria som volume brilho tema modo
-maps play store navegador
-camera galeria agenda calendario relogio calculadora contatos
-profile account message messages conversation photo photos image images caption comments likes followers following
-friend friends group page screen button tab settings inbox folder file files price prices product products store
-cart order result results item items news headline title name number date unread read
-""".split())
+#: Só letras, sem apóstrofo nem hífen: a unidade da conferência de alfabetos.
+_LETRAS = re.compile(r"[^\W\d_]+")
+#: Token com letra E (dígito ou `_`), também ligado por hífen: handle sem `@`, identificador, a senha `limao77`, `kiwi-77`,
+#: `lagoa-azul-3`. Vira `[termo]` INTEIRO; roda antes de `_NUMERO` (com o número primeiro, sobrava `limao[numero]`).
+_MISTO = re.compile(r"(?<![\w\-])(?=[\w\-]*[^\W\d_])(?=[\w\-]*[\d_])\w+(?:-\w+)*(?![\w\-])")
 
 
-def _chave(palavra: str) -> str:
-    """Normaliza para comparar: casefold e sem acento (NFKD sem as marcas combinantes)."""
-    decomposto = unicodedata.normalize("NFKD", palavra.casefold())
+
+# ------------------------------------------------------------------ normalização (o passo 0)
+#: Somem depois do NFKC: marca combinante que sobrou (zalgo, risco sobre a letra) e caractere invisível de formato (ZWSP,
+#: ZWJ, hífen suave, controle de direção). Assim "j̶o̶a̶n̶a̶" e "a<ZWSP>na" viram uma palavra só, julgada inteira.
+_SOMEM: Final = frozenset({"Mn", "Mc", "Me", "Cf"})
+#: Pontuação que fica no texto (o resto que não é letra, algarismo nem espaço é símbolo). A aspa ASCII que sobrevive a
+#: `_primeira_aspa_sobrando` é só o apóstrofo entre letras; os colchetes são dos marcadores.
+_PONTUACAO: Final = frozenset("!#$%&()*+,-./:;<=>?@[\\]^_{|}~'’¡¿")
+
+
+def sem_acento(texto: str) -> str:
+    """Para comparar: casefold e sem acento (NFKD sem as marcas combinantes)."""
+    decomposto = unicodedata.normalize("NFKD", texto.casefold())
     return "".join(c for c in decomposto if not unicodedata.combining(c))
 
 
-def vocabulario_de(textos: Iterable[str]) -> frozenset[str]:
-    """As palavras normalizadas de textos do catálogo do dono (C2: nome e descrição de habilidade, fluxo, app), para somar
-    à lista permitida. Só palavras de letras com 3 ou mais caracteres: id e código não viram vocabulário."""
-    saida: set[str] = set()
-    for t in textos:
-        for m in _PALAVRA.finditer(t or ""):
-            k = _chave(m.group())
-            if len(k) >= 3:
-                saida.add(k)
-    return frozenset(saida)
+_chave = sem_acento
+
+
+def normalizar(texto: str) -> str:
+    """NFKC; sem marca combinante, caractere invisível de formato nem controle que não seja espaço; todo traço como "-" e
+    separador de linha ou parágrafo como quebra de linha. Letra circulada, de largura cheia, matemática ou sobrescrita vira
+    a letra comum. Idempotente."""
+    saida: list[str] = []
+    for c in unicodedata.normalize("NFKC", texto):
+        cat = unicodedata.category(c)
+        if cat in _SOMEM or (cat == "Cc" and not c.isspace()):
+            continue
+        saida.append("-" if cat == "Pd" else "\n" if cat in ("Zl", "Zp") else c)
+    return unicodedata.normalize("NFKC", "".join(saida))
+
+
+def _alfabeto(c: str) -> str:
+    """O sistema de escrita da letra, pelo começo do nome Unicode. Hiragana, katakana e ideograma contam como um só: a
+    escrita japonesa os mistura na mesma palavra."""
+    primeiro = unicodedata.name(c, "?").split(" ", 1)[0]
+    return "CJK" if primeiro in ("CJK", "HIRAGANA", "KATAKANA", "KATAKANA-HIRAGANA", "IDEOGRAPHIC") else primeiro
+
+
+def mistura_alfabetos(texto: str) -> bool:
+    """Alguma palavra mistura sistemas de escrita (o "а" cirílico em "senhа", "Јoana")? Homóglifo é o jeito de uma palavra
+    passar por outra, e não há tabela de confusíveis na biblioteca padrão: quem chama RECUSA. Vale para o texto do catálogo
+    (C2); o comando (C3) usa a regra mais estrita, `escrita_nao_latina`."""
+    return any(len({_alfabeto(c) for c in m.group()}) > 1 for m in _LETRAS.finditer(texto))
+
+
+def escrita_nao_latina(texto: str) -> bool:
+    """Alguma letra do texto JÁ NORMALIZADO está fora do alfabeto latino ("a пароль do insta", "密码是", "κωδικός")? O comando
+    é em português; a palavra-chave da credencial em outra escrita não cabe numa lista, e o homóglifo é o mesmo caso numa
+    palavra só. Quem chama RECUSA. A letra modificadora sem equivalente ("ʼ") também conta: dentro de uma palavra, ela a
+    esconde da conferência da C7. "ª" e "º" já saem do NFKC como "a" e "o"."""
+    return any(_alfabeto(c) != "LATIN" for m in _LETRAS.finditer(texto) for c in m.group())
+
+
+# ------------------------------------------------------------------ peças das duas passadas
+def _primeira_aspa_sobrando(texto: str) -> int | None:
+    """A posição da primeira aspa que sobrou depois de `_ASPAS` (desbalanceada, de outro sistema, pontuação de abrir ou
+    fechar citação, colchete que não é ASCII), ou `None`. O apóstrofo entre duas letras ("D'Ávila", "d’água") não conta."""
+    for i, c in enumerate(texto):
+        if c in "'’" and 0 < i < len(texto) - 1 and texto[i - 1].isalpha() and texto[i + 1].isalpha():
+            continue
+        cat = unicodedata.category(c)
+        if (c in _CARACTERES_DE_ASPA or cat in ("Pi", "Pf") or (cat in ("Ps", "Pe") and not c.isascii())
+                or "QUOTATION" in unicodedata.name(c, "")):
+            return i
+    return None
+
+
+def _formas(texto: str) -> str:
+    """Link, e-mail, `@handle`, domínio, telefone, token misto e número viram marcador, do mais específico ao mais geral."""
+    texto = _URL.sub(M_URL, texto)
+    texto = _EMAIL.sub(M_EMAIL, texto)
+    texto = _HANDLE.sub(M_HANDLE, texto)
+    texto = _DOMINIO.sub(M_URL, texto)
+    texto = _TELEFONE.sub(M_TELEFONE, texto)
+    texto = _MISTO.sub(M_TERMO, texto)
+    return _NUMERO.sub(M_NUMERO, texto)
+
+
+def _e_simbolo(c: str) -> bool:
+    return not (c.isalpha() or c.isdigit() or c.isspace() or c in _PONTUACAO)
+
+
+def _simbolos(texto: str, *, recusar_colado: bool) -> str | None:
+    """Cada sequência de símbolos (emoji, indicador regional, braille, letra em quadrado negativo, pontuação que não é
+    ASCII) vira `[texto]`. Com `recusar_colado`, `None` se a sequência está entre duas letras ("jo❤ana"): do outro lado,
+    a palavra seria lida inteira."""
+    partes: list[str] = []
+    i, n = 0, len(texto)
+    while i < n:
+        if not _e_simbolo(texto[i]):
+            partes.append(texto[i])
+            i += 1
+            continue
+        j = i
+        while j < n and _e_simbolo(texto[j]):
+            j += 1
+        if recusar_colado and 0 < i and j < n and texto[i - 1].isalpha() and texto[j].isalpha():
+            return None
+        partes.append(M_TEXTO)
+        i = j
+    return "".join(partes)
 
 
 def _sem_marcadores(texto: str) -> str:
@@ -160,55 +288,121 @@ def _sem_marcadores(texto: str) -> str:
     return texto
 
 
-def remover_entidades(texto: str, *, vocabulario: Iterable[str] = ()) -> str | None:
-    """O texto com toda palavra fora do vocabulário permitido trocada por `[termo]`, ou `None` (falha fechada).
+def _recusa_no_original(texto: str) -> MotivoDoFiltro | None:
+    """Passada 1: a forma escondida que a máscara apagaria (e-mail ofuscado, caixa postal, cartão, endereço em inglês)."""
+    plano = sem_leet(sem_acento(texto))
+    for motivo, padrao in _RECUSA_NO_ORIGINAL:
+        if padrao.search(plano):
+            return motivo
+    return "endereco" if _ENDERECO_EN.search(texto) else None
 
-    `vocabulario` são palavras extras permitidas (normalizadas; use `vocabulario_de` sobre o catálogo do dono). Devolve
-    `None` quando: a entrada não é texto; sobra forma que não se mascara com segurança (endereço, e-mail por extenso ou
-    ofuscado, `@`, `://`, dígitos); ou a proporção de palavras desconhecidas passa do limiar. Idempotente."""
+
+def _recusa(resto: str) -> MotivoDoFiltro | None:
+    """O que sobrou sem os marcadores ainda tem forma que não se mascara com segurança? O motivo, ou `None`."""
+    if _RECUSA_EMAIL.search(resto):
+        return "email_ofuscado"
+    if _RECUSA_ENDERECO.search(resto):
+        return "endereco"
+    if _RECUSA_DOCUMENTO.search(resto):
+        return "documento"
+    if _DITADO.search(resto):
+        return "ditado"
+    if _SOBRA_DIGITOS.search(resto) or _PARENTESES_COM_DIGITO.search(resto):
+        return "sobra_de_forma"
+    return None
+
+
+def _limpar(texto: str) -> str:
+    return re.sub(r"[ \t]{2,}", " ", texto).strip()
+
+
+#: O que pode ficar entre dois numerais SEGUIDOS: espaço, vírgula, ponto, barra e hífen ("e" não: `_DITADO` cuida).
+_ENTRE_NUMERAIS = re.compile(r"[\s,./\-]*")
+
+
+def _numerais(texto: str) -> tuple[str, int]:
+    """Cada numeral por extenso vira `[numero]`; devolve o texto e a maior sequência de numerais seguidos. A palavra com
+    hífen só de numerais ("sete-sete") conta cada parte; com outra palavra no meio ("meia-noite") fica como está."""
+    maior = seguidos = 0
+    fim_anterior: int | None = None
+
+    def _troca(m: re.Match[str]) -> str:
+        nonlocal maior, seguidos, fim_anterior
+        partes = m.group().split("-")
+        if not all(_chave(p) in _NUMERAIS for p in partes):
+            return m.group()
+        colado = fim_anterior is not None and _ENTRE_NUMERAIS.fullmatch(texto, fim_anterior, m.start()) is not None
+        seguidos = (seguidos if colado else 0) + len(partes)
+        maior = max(maior, seguidos)
+        fim_anterior = m.end()
+        return M_NUMERO
+
+    return _PALAVRA.sub(_troca, texto), maior
+
+
+# ------------------------------------------------------------------ a C3: o comando
+def remover_entidades(texto: str) -> str | None:
+    """O comando com o piso aplicado: forma conhecida vira marcador, e o que esconde e-mail, telefone ou documento recusa
+    (`None`). Nome e palavra comum passam como estão (ADR-069 item 10). O motivo da recusa: `remover_entidades_com_motivo`.
+
+    Devolve `None` quando: a entrada não é texto; alguma letra está fora do alfabeto latino; há forma escondida no texto
+    ainda sem máscara (e-mail ofuscado ou soletrado, caixa postal, cartão, endereço em inglês); sobra símbolo colado entre
+    letras; sobra forma que não se mascara com segurança (endereço, documento, e-mail por extenso, `@`, `://`); ou há dois
+    ou mais numerais por extenso seguidos. Idempotente."""
+    return remover_entidades_com_motivo(texto)[0]
+
+
+def remover_entidades_com_motivo(texto: object) -> tuple[str | None, MotivoDoFiltro | None]:
+    """`(comando limpo, None)` ou `(None, motivo)`. O texto que sobra vazio também é recusa (`vazio`)."""
     if not isinstance(texto, str):
-        return None
-    permitidas = _COMUNS | frozenset(_chave(v) for v in vocabulario)
+        return None, "nao_texto"
+    texto = normalizar(texto)
+    if escrita_nao_latina(texto):
+        return None, "alfabetos"
     trocado = _ASPAS.sub(M_TEXTO, texto)
-    trocado = _URL.sub(M_URL, trocado)
-    trocado = _EMAIL.sub(M_EMAIL, trocado)
-    trocado = _HANDLE.sub(M_HANDLE, trocado)
-    trocado = _DOMINIO.sub(M_URL, trocado)
-    trocado = _TELEFONE.sub(M_TELEFONE, trocado)
-    trocado = _NUMERO.sub(M_NUMERO, trocado)
-    resto = _sem_marcadores(trocado)
-    if (_RECUSA.search(resto) or _DITADO.search(resto) or _SOBRA_DIGITOS.search(resto)
-            or _PARENTESES_COM_DIGITO.search(resto)):
-        return None
-    total = desconhecidas = 0
-
-    def _misto(_m: re.Match[str]) -> str:
-        nonlocal total, desconhecidas
-        total += 1
-        desconhecidas += 1
-        return M_TERMO
-
-    trocado = _MISTO.sub(_misto, trocado)
-
-    def _palavra(m: re.Match[str]) -> str:
-        nonlocal total, desconhecidas
-        p = m.group()
-        if p in ("link", "email", "usuario", "telefone", "numero", "termo", "texto") and (
-                m.start() > 0 and trocado[m.start() - 1] == "[" and trocado[m.end():m.end() + 1] == "]"):
-            return p                                     # o miolo de um marcador
-        total += 1
-        if _chave(p) in permitidas:
-            return p
-        desconhecidas += 1
-        return M_TERMO
-
-    trocado = _PALAVRA.sub(_palavra, trocado)
-    trocado = re.sub(r"\[termo\](?:[\s'’\-]*\[termo\])+", M_TERMO, trocado)      # "Joana Silva" -> um só
-    trocado = re.sub(r"[ \t]{2,}", " ", trocado).strip()
-    if total and (desconhecidas / total > LIMIAR_DESCONHECIDAS or desconhecidas > MAX_DESCONHECIDAS):
-        return None
-    return trocado
+    sobra = _primeira_aspa_sobrando(trocado)
+    if sobra is not None:                        # a aspa que abre e não fecha: o resto é o texto a escrever
+        trocado = f"{trocado[:sobra].rstrip()} {M_TEXTO}"
+    # Passada 1, antes de qualquer máscara. O que estava entre aspas já é `[texto]`: é o que a pessoa manda ESCREVER.
+    if (motivo := _recusa_no_original(trocado)) is not None:
+        return None, motivo
+    marcado = _simbolos(_formas(trocado), recusar_colado=True)
+    if marcado is None:
+        return None, "simbolo_colado"
+    if (motivo := _recusa(_sem_marcadores(marcado))) is not None:
+        return None, motivo
+    marcado, seguidos = _numerais(marcado)
+    if seguidos >= 2:
+        return None, "numerais"
+    limpo = _limpar(marcado)
+    return (limpo, None) if limpo else (None, "vazio")
 
 
-__all__ = ["LIMIAR_DESCONHECIDAS", "MAX_DESCONHECIDAS", "M_EMAIL", "M_HANDLE", "M_NUMERO", "M_TELEFONE", "M_TERMO",
-           "M_TEXTO", "M_URL", "remover_entidades", "vocabulario_de"]
+# ------------------------------------------------------------------ a C2: o texto do catálogo nas opções da R2
+def mascarar_catalogo(texto: str) -> str:
+    """O texto do catálogo do dono (C2: nome e descrição de habilidade ou fluxo) para ir como descrição de opção da R2.
+
+    O piso da C3 sem recusa (a opção precisa existir): as máscaras de forma (aspas, link, e-mail, handle, domínio,
+    telefone, número, símbolo e token com `_`), o trecho a partir de uma aspa que sobra cortado (a legenda que o corte em
+    120 caracteres deixou aberta) e numeral como `[numero]`. Nome passa (ADR-069 item 10). Texto com alfabetos misturados,
+    endereço, documento ou e-mail por extenso sai vazio: quem chama põe um texto fixo."""
+    if not isinstance(texto, str):
+        return ""
+    t = normalizar(texto)
+    if mistura_alfabetos(t):
+        return ""
+    t = _ASPAS.sub(M_TEXTO, t)
+    corte = _primeira_aspa_sobrando(t)
+    if corte is not None:
+        t = t[:corte]
+    if _recusa_no_original(t) is not None:
+        return ""
+    t = _simbolos(_formas(t), recusar_colado=False) or ""
+    if _recusa(_sem_marcadores(t)) is not None:
+        return ""
+    return _limpar(_numerais(t)[0])
+
+
+__all__ = ["M_EMAIL", "M_HANDLE", "M_NUMERO", "M_TELEFONE", "M_TERMO", "M_TEXTO", "M_URL", "MotivoDoFiltro",
+           "escrita_nao_latina", "mascarar_catalogo", "mistura_alfabetos", "normalizar", "remover_entidades", "remover_entidades_com_motivo",
+           "sem_acento", "sem_leet"]

@@ -50,6 +50,21 @@ def _normal(texto: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", texto.casefold()) if unicodedata.category(c) != "Mn")
 
 
+def _normal_com_origem(texto: str) -> tuple[str, list[int]]:
+    """O `_normal` letra a letra, com a posição no ORIGINAL de onde veio cada letra do normalizado.
+
+    `casefold` e a decomposição não dependem do vizinho, então juntar o `_normal` de cada letra dá o `_normal` do texto
+    (a reordenação canônica só mexe em marca combinante, e a marca sai). Uma letra pode virar duas ("ß" -> "ss") ou nenhuma
+    (o acento decomposto)."""
+    partes: list[str] = []
+    origem: list[int] = []
+    for i, c in enumerate(texto):
+        n = _normal(c)
+        partes.append(n)
+        origem.extend([i] * len(n))
+    return "".join(partes), origem
+
+
 #: Os começos que anunciam uma PERSONA. Cada um é seguido de um nome (ou @) que precisa casar com o catálogo.
 _PREFIXOS_PERSONA = (
     r"\bcom\s+(?:a\s+persona|o\s+perfil|a\s+conta)\s+",
@@ -117,16 +132,26 @@ class TargetExtractor:
 
     # ------------------------------------------------------------------ a extração
     def extrair(self, command: str) -> DestinosNoTexto:
-        # Acha no texto normalizado e recorta do ORIGINAL pelas mesmas posições — `_normal` preserva o comprimento
-        # (acento pré-composto vira uma letra). Quando não preserva (caractere decomposto, "ß"), recorta do normalizado.
-        normal = _normal(command)
-        mesmo_tamanho = len(normal) == len(command)
+        # Acha no texto normalizado e recorta SEMPRE do original, pelo mapa de posições (31.9, rodada C de 03/10). Antes,
+        # quando `_normal` mudava o comprimento (acento decomposto, "ß", ligadura "ﬁ"), o comando sem destinos saía
+        # normalizado — em minúsculas e sem acento —, e o filtro da C3 que vem depois perdia o que depende da caixa (a chave
+        # "AKIA…" em minúsculas passava). Com o mapa, o texto só perde os trechos de destino.
+        normal, origem = _normal_com_origem(command)
         cortes: list[tuple[int, int]] = []
         personas: list[MencaoNoTexto] = []
         aparelhos: list[MencaoNoTexto] = []
 
+        def no_original(a: int, b: int) -> tuple[int, int]:
+            """A faixa `[a, b)` do normalizado, em posições do original (com o acento decomposto que fecha a última letra)."""
+            ini = origem[a] if a < len(origem) else len(command)
+            fim = origem[b - 1] + 1 if 0 < b <= len(origem) else ini
+            while fim < len(command) and unicodedata.category(command[fim]) == "Mn":
+                fim += 1
+            return ini, fim
+
         def trecho(a: int, b: int) -> str:
-            return (command if mesmo_tamanho else normal)[a:b].strip()
+            ini, fim = no_original(a, b)
+            return command[ini:fim].strip()
 
         for prefixo in _PREFIXOS_PERSONA:
             for m in re.finditer(prefixo, normal, re.IGNORECASE):
@@ -154,8 +179,8 @@ class TargetExtractor:
             aparelhos.append(MencaoNoTexto(trecho(m.start() + ident.start(), m.end()),
                                            (self._aparelhos[ident.group(0)],)))
             cortes.append((m.start(), m.end()))
-        base = command if mesmo_tamanho else normal
-        return DestinosNoTexto(DicasDoTexto(tuple(personas), tuple(aparelhos)), _sem_trechos(base, cortes))
+        return DestinosNoTexto(DicasDoTexto(tuple(personas), tuple(aparelhos)),
+                               _sem_trechos(command, [no_original(a, b) for a, b in cortes]))
 
 
 def _palavra(c: str) -> bool:

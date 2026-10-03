@@ -241,7 +241,8 @@ class Repository:
         return False
 
     def set_run_status(self, run_id: str, status: RunStatus, detail: str | None = None, *, message: str | None = None,
-                       level: str = "info") -> None:
+                       level: str = "info", dados: dict[str, object] | None = None) -> None:
+        """`dados`: campos a mais no `data` do `run.updated` desta transição (o autor do início, P12)."""
         anterior = self.db.scalar("SELECT status FROM runs WHERE id=?", (run_id,))
         fields, params = ["status=?", "status_detail=?"], [status.value, detail]
         if status == RunStatus.running:
@@ -252,7 +253,7 @@ class Repository:
             params.append(now_iso())
         self.db.execute(f"UPDATE runs SET {', '.join(fields)} WHERE id=?", (*params, run_id))
         self._conferir(RUN, anterior, status, entidade=run_id, run_id=run_id)
-        self.emit_run(run_id, message or f"Execução {run_id}: {status.value}", level=level)
+        self.emit_run(run_id, message or f"Execução {run_id}: {status.value}", level=level, dados=dados)
 
     def request_pause(self, run_id: str, reason: str) -> None:
         """Pausa automaticamente (disjuntor de conta de IA): idempotente e sem checar quem pediu — ao contrário
@@ -550,7 +551,7 @@ class Repository:
 
     def transition_step(self, step_id: str, target: StepStatus, *, detail: str | None = None,
                         result: StepResult | None = None, next_retry_at: str | None = None,
-                        message: str | None = None, level: str = "info") -> None:
+                        message: str | None = None, level: str = "info", error_kind: str | None = None) -> None:
         with self.db.tx():
             row = self.step_row(step_id)
             check_transition(row["status"], target)
@@ -572,7 +573,8 @@ class Repository:
             # A falha classificada da ETAPA (ADR-054): o tipo do desfecho em que ela parou, pelo texto dele — o de
             # `waiting_user` diz "autenticação" enquanto a tentativa, devolvida sem consumir, diz só "interrompida".
             # Fora de um desfecho de falha o tipo não sobra (confirmada à mão, de volta à fila, comprovada depois).
-            tipo = classificar_falha(detail, target.value) if target in _ETAPA_EM_FALHA else None
+            # RA-22: o erro de IA que encerrou a etapa (`error_kind`) decide antes do texto, como na tentativa.
+            tipo = classificar_falha(detail, target.value, error_kind) if target in _ETAPA_EM_FALHA else None
             fields.append("failure_kind=?")
             params.append(tipo.value if tipo is not None else None)
             sql = f"UPDATE steps SET {', '.join(fields)} WHERE id=?"
@@ -712,29 +714,34 @@ class Repository:
 
     def finish_attempt(self, attempt_id: str, status: AttemptStatus, *, error: str | None = None,
                        recovery: str | None = None, observed: str | None = None,
-                       screen: str | None = None) -> None:
+                       screen: str | None = None, error_kind: str | None = None) -> None:
         """Fecha a tentativa. **Cercada pela posse da etapa** (item 5.3): no `_apply` do scheduler a tentativa é
         fechada ANTES da transição da etapa, então sem cerca aqui um dono que já perdeu a posse ainda gravaria o
         desfecho da tentativa por cima de quem agora executa — a cerca da etapa chegaria tarde demais.
 
         `screen`: a tela reconhecida na última observação da tentativa (`executor.tela_da_falha`, item 22.3) — um
-        nome do vocabulário declarado, nunca texto da tela."""
+        nome do vocabulário declarado, nunca texto da tela.
+
+        `error_kind` (RA-22): o `AIError.kind` que encerrou a tentativa (`StepOutcome.ai_error_kind`). Vai para
+        `attempts.error_kind` e decide o tipo antes do texto; sem ele (nenhum erro de IA), a coluna fica nula."""
         atual = self.db.one("SELECT status, error FROM attempts WHERE id=?", (attempt_id,))
         anterior = atual["status"] if atual else None
         erro = truncate(error, 800)
         # A falha classificada (ADR-054): o tipo do erro FINAL, o mesmo que o COALESCE abaixo deixa gravado — o texto
         # novo ou, sem ele, o que `note_attempt` já anotou nesta tentativa. Mesmo classificador puro da leitura do
         # legado: o gravado e o retroativo nunca discordam.
-        tipo = classificar_falha(erro if erro is not None else (atual["error"] if atual else None), status.value)
+        tipo = classificar_falha(erro if erro is not None else (atual["error"] if atual else None), status.value,
+                                 error_kind)
         # A tela só acompanha um tipo de falha: tentativa comprovada ou cancelada não tem "onde falhou", e a tela
         # sem tipo seria um grupo do backlog sem falha nenhuma.
         tela = (screen or None) if tipo is not None else None
         cur = self.db.execute(
             "UPDATE attempts SET status=?, finished_at=?, error=COALESCE(?, error), recovery=COALESCE(?, recovery),"
-            " observed_result=COALESCE(?, observed_result), failure_kind=?, failure_screen=? WHERE id=? AND EXISTS"
-            " (SELECT 1 FROM steps s WHERE s.id=attempts.step_id AND (s.claimed_by IS NULL OR s.claimed_by=?))",
+            " observed_result=COALESCE(?, observed_result), failure_kind=?, failure_screen=?, error_kind=? WHERE id=?"
+            " AND EXISTS (SELECT 1 FROM steps s WHERE s.id=attempts.step_id AND (s.claimed_by IS NULL OR"
+            " s.claimed_by=?))",
             (status.value, now_iso(), erro, truncate(recovery, 800), truncate(observed, 800),
-             tipo.value if tipo is not None else None, tela, attempt_id, self.owner_id))
+             tipo.value if tipo is not None else None, tela, truncate(error_kind, 40), attempt_id, self.owner_id))
         if (cur.rowcount or 0) != 1:
             linha = self.db.one("SELECT s.id, s.claimed_by FROM steps s JOIN attempts a ON a.step_id=s.id"
                                 " WHERE a.id=?", (attempt_id,))
@@ -859,8 +866,9 @@ class Repository:
             self.db.execute(
                 "INSERT INTO ai_calls(ts, run_id, objective_id, step_id, role, model, tier, input_tokens, cache_read,"
                 " cache_write, output_tokens, with_image, ms, ok, requested_model, fallback, provider,"
-                " error_kind, error_status, error_message, attempt_id, origem, ref)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " error_kind, error_status, error_message, attempt_id, origem, ref,"
+                " verdict, escalate, motivo, image_reason)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (now_iso(), run_id, objective_id, step_id, usage.role, usage.model, usage.tier, fresh,
                  usage.cache_read_tokens, usage.cache_write_tokens, usage.output_tokens, int(usage.with_image),
                  usage.ms, int(ok), usage.requested_model or usage.model, usage.fallback, usage.provider or None,
@@ -868,7 +876,9 @@ class Repository:
                  None if ok else truncate(error_message, 500), attempt_id,
                  # Item 31.2: quem pagou a chamada. O hub já preenche; a linha de execução que não passou por ele
                  # (erro do executor) ainda é `execucao` quando há `run_id`. Fora de execução sem origem fica NULL.
-                 usage.origem or ("execucao" if run_id else None), usage.ref))
+                 usage.origem or ("execucao" if run_id else None), usage.ref,
+                 # RA-10 (migração 080): o executor carimba; fora dele, NULO (a chamada não é de etapa).
+                 usage.verdict, usage.escalate, usage.motivo, usage.image_reason))
         self.db.execute("UPDATE runs SET ai_input_tokens=ai_input_tokens+?, ai_output_tokens=ai_output_tokens+? WHERE id=?",
                         (usage.input_tokens, usage.output_tokens, run_id))
         if objective_id:
@@ -1315,13 +1325,14 @@ class Repository:
                          objectives=objectives, steps=steps, attempts=attempts, evidence=evidence,
                          plan_versions=versions, decisions=decisions)
 
-    def emit_run(self, run_id: str, message: str | None, *, level: str = "info") -> None:
+    def emit_run(self, run_id: str, message: str | None, *, level: str = "info",
+                 dados: dict[str, object] | None = None) -> None:
         row = self.run_row(run_id)
         if row is None:
             return
         summary = self.run_summary(row)
         self.bus.emit("run.updated", message or f"Execução {run_id}: {summary.status.value}", level=level, run_id=run_id,
-                      data={"run": summary.model_dump(mode="json")})
+                      data={**(dados or {}), "run": summary.model_dump(mode="json")})
 
     def emit_step(self, step_id: str, message: str, *, level: str = "info") -> None:
         r = self.step_row(step_id)

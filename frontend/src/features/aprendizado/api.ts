@@ -1,7 +1,7 @@
 import { apiRequest } from '../../api/client';
 import { lerDetalheDoApp, lerVisaoDeApps, type DetalheDoApp, type VisaoDeApps } from './apps';
 import {
-  type DetalheDoLivro, type EstadoDoLivro, type FeedbackDaExecucao, type ListaDoLivro, type LivroKind, type Origem,
+  type DetalheDoLivro, type EstadoDoLivro, type FeedbackDaExecucao, type ListaDoLivro, type LivroKind, type Origem, type Rotulo,
   type RelatorioDeFalhas, type RespostaDoVoto, type Sinal, type CorpoDoVoto, lerFeedbackDaExecucao,
   lerRelatorioDeFalhas, lerRespostaDoVoto, lerSinais,
 } from './model';
@@ -20,11 +20,12 @@ export interface FiltroDoLivro {
   state?: EstadoDoLivro;
   app?: string;
   origem?: Origem;
+  rotulo?: Rotulo;
 }
 
 export const apiAprendizado = {
   livro: (f: FiltroDoLivro = {}, signal?: AbortSignal) =>
-    apiRequest<ListaDoLivro>('GET', '/aprendizado', { query: { kind: f.kind, state: f.state, app: f.app || undefined, origem: f.origem }, signal }),
+    apiRequest<ListaDoLivro>('GET', '/aprendizado', { query: { kind: f.kind, state: f.state, app: f.app || undefined, origem: f.origem, rotulo: f.rotulo }, signal }),
   /** A visão por aplicativo (Global): um resumo por app, o balde `nao_resolvido` e o que não tem eixo de app. */
   apps: async (signal?: AbortSignal): Promise<VisaoDeApps> =>
     lerVisaoDeApps(await apiRequest<unknown>('GET', '/aprendizado/apps', { signal })),

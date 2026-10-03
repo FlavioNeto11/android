@@ -410,6 +410,7 @@ Pesquisa: [`pesquisa-provedores-ia-2026-09-28.md`](pesquisa-provedores-ia-2026-0
 | 17.10 | **Cascata para ator barato**: `step_blocked` do tier 0 sobe ao tier 1 antes de `waiting_user`, e o "sim" do verificador barato em etapa com efeito externo é rejulgado (como no B14). Pré-condição para medir de novo o gpt-6-luna como ator | bateria de 28/09 (relatório §18) | M |
 | 17.11 | **`eval_run.py` resiste a queda transitória** (`RemoteProtocolError`/`ReadError`: repete a leitura em vez de abandonar a execução em curso; K-045) | bateria de 28/09 | P |
 | 17.12 | **Teto de chamadas proporcional ao for_each** (`teto = base + por_item × (itens − 1)`, limitado por um absoluto; o rejulgamento continua contando; tetos em US$ e de tokens intactos) | achado do 7.4 real (r-20261002181642-eff15b) | P |
+| 17.13 | **Formato curto do plano** (`ai.esquema_do_plano: curto`, LT-4b): a etapa livre sai sem `postcondition.description`, `precondition` e `max_attempts`, que o backend preenche; título e objetivo curtos; a identidade da receita é a mesma nos dois formatos. De fábrica, `longo` | LT-4 (latência do planejador, 03/10); A/B real de 3 braços em 03/10 | P |
 | 17.9 | **Trilhas paradas com gatilho**: Alibaba qwen3-vl-flash, DeepSeek (dados na China), GUI-Owl local em 8 GB, destilação por LoRA | gatilhos no plano | G |
 
 ### Fase 18 — Conhecimento de app como dado e execução medida · 8 itens (pedido do dono de 28/09/2026; ADR-052)
@@ -714,6 +715,8 @@ mecanismo quando a prova deles existir, não por fecharem aqui.
 | 29.39 | **Cópia a frio semanal dos AVDs com sessão logada (P11, desenho)** — um aparelho por vez, só hibernado ou parado, em janela calma, dentro do `farm-backup`; restauração descrita e testada numa cópia | reavaliação 03/10 (P11) | M |
 | 29.40 | **Causa do "ausente" nas receitas e herança por versão (RA-20, parte Android; depois do 30.23)** — 52 % das consultas de receita dão "ausente". Rotular a causa (`sem_receita|variante|versao|assinatura`), migrar as 19 receitas legadas de `variant=''`, herdar da versão anterior nascendo `candidate` (sombra, `recipes_promote_after`, respeitando `receita_vetada`) e normalizar o `post.value` no hash | reavaliação 03/10 (RA-20) | M |
 | 29.41 | **Aparelhos de QA no notebook e o central só com as contas reais (P7, dono 03/10)** — conferir no worker-lan-01 agente, escalonador do Hyper-V, RAM e rede do aparelho (ADR-056); levar os aparelhos de QA (02/04/05/07/08) para ele, subindo `max_slots` pelo medido, um boot por host; no central ficam 01/03/06 e uma vaga. Um 2º notebook depende do dono (máquina e ok do túnel). Prova real: boot medido por host | decisão do dono 03/10 (P7) | M |
+| 29.42 | **O fluxo entre apps diz de que apps precisa** — `GET /api/flows` devolve `required_apps` na ordem em que o plano gravado usa os apps (sem migração; `flow_required_apps` segue sendo o conjunto), e o painel (Configurações > Fluxos) e o detalhe do curador mostram "QA Messenger → Chrome". Prova real: o fluxo real entre apps no painel depois do deploy | orquestrador 03/10 | P |
+| 29.43 | **Caminho rápido 1: pular o ator, nunca a prova (LT-1, LT-2, LT-3)** — atalho de entrada sem o ator na etapa sem efeito cuja pós-condição já vale na tela lida (`driven_by='sem_ator'`), `expect_done` em etapa julgada com uma rodada só de `_verify` (nunca em etapa com efeito) e a conferência de entrada só com a prova local do catálogo; adendo v0.81. Aceite real: QA 10,1 → ≤ 8,5 s por tentativa e real 25,5 → ≤ 23 s, sem perder comprovação | relatório de latência 03/10 (LT-1..LT-3) | P |
 
 **Fecha quando:** o CI está verde no commit publicado; um reinício do backend com prova válida não reinicia nenhum
 aparelho durante 6 h reais que incluam a remedição; o Outlook abre e chega ao login pelo serviço num aparelho do
@@ -751,15 +754,18 @@ lições e telas. Nenhum item edita `taskqueue/repository.py`, `service.py`, `tr
 | 30.21 | **Evento `learning.needs_person`** (§8.11): entrada e saída da espera humana (faixas B e C), sem conteúdo, para o aviso (28.11) e as Pendências (ADR-062) | pedido do orquestrador, 02/10 | P |
 | 30.22 | **Backfill único das lições** nas 12 execuções reais com contraste aprovável anteriores à 055, idempotente, sem IA, com backup antes | causa medida das 0 lições (02/10) | P |
 | 30.23 | **Evidência inválida** como tipo próprio de desligamento (motivo estruturado `evidencia_invalida:<run>`, ação própria no livro): o veto barra só renascer da MESMA execução; outra execução real reaprende como item novo (receita) ou na mesma linha (fluxo), com relação "reaprende" e classe B forçada; transição corretiva da receita 109 e do fluxo do Outlook | decisão do orquestrador, 02/10 (trava do 12.5) | M |
+| 30.24 | **"Confirmar que fica"** para o legado publicado em "Revisar": gesto da pessoa que grava a confirmação (quem, quando, motivo opcional) e tira o item da fila até nova evidência contrária (a pendência A6 do 30.17) | decisão do orquestrador, 03/10 | P |
+| 30.25 | **Rótulo de intenção** (golden set do 31.10): na execução real sem casamento na RESOLVE e com sucesso comprovado, a pessoa diz qual habilidade do catálogo servia, ou nenhuma; rótulo cego em `learning_reviews` (`template_id='intencao'`, sem IA e sem custo), dossiê só com os ids, e os leitores do curador filtram `template_id='curador'` | contrato com o Jev (31.10), decisão do orquestrador, 03/10 | M |
+| 30.26 | **O tipo da falha pelo erro de IA que encerrou a tentativa** (RA-22): `attempts.error_kind` (migração 081), `StepOutcome.ai_error_kind` do executor ao `finish_attempt`/`transition_step`, `classificar_falha(texto, status, error_kind)` decide pelo tipo antes do texto (`step_deadline` não decide; o ANR ganha do prazo); as REGRAS de texto ficam para o legado e a releitura por `ai_calls` só sem `error_kind` | reavaliação de 03/10 (RA-22: classificação duplicada por texto e por tipo; o teto do pedido caía em `outro`) | P |
 
 **Fecha quando:** a visão por app mostra Instagram, QAMessenger e Outlook com origem, conteúdo, saúde e versão de cada conhecimento;
 o curador grava pareceres auditáveis dentro do orçamento proporcional; e a prova real (30.18) está registrada.
 
-### Fase 31 — Jev na plataforma: decisão por conjunto fechado · 13 itens (roteiro de 02/10/2026; ADR-069 proposto)
+### Fase 31 — Jev na plataforma: decisão por conjunto fechado · 14 itens (roteiro de 02/10/2026; ADR-069 proposto)
 
 Origem: a direção do dono de 02/10 ("analise tudo em que ele pode funcionar na plataforma e acelerar") e o roteiro com verificação adversarial em
 `.claude/handoffs/roteiro-jev.md`. Peça comum da frente Jev no hub de IA: a porta `DecisaoFechada`. Nada envia dado antes do ADR-069 e das respostas
-do dono (31.8 em diante); Jev fora do social e da persona (D-J5); a D-J3 (girar a chave antes de qualquer chamada nova) caiu em 02/10, por decisão do dono (ADR-069 item 9): a prova real depende só dos tetos.
+do dono (31.8 em diante); o Jev não decide por persona (D-J5, só de decisão desde o ADR-069 item 10: o dado pessoal pode ir com filtro sensato, C7 nunca); a D-J3 (girar a chave antes de qualquer chamada nova) caiu em 02/10, por decisão do dono (ADR-069 item 9): a prova real depende só dos tetos.
 
 | Item | O que | Achados | Tam. |
 |---|---|---|---|
@@ -776,6 +782,7 @@ do dono (31.8 em diante); Jev fora do social e da persona (D-J5); a D-J3 (girar 
 | 31.11 | **Jev como braço offline na bateria** (M2) [A], com o adaptador MIT | roteiro-jev §5 | M |
 | 31.12 | **`on` por consumidor aprovado**, A/B por perfil 17.7; na intenção, só sugere até o GO de "aceite errado" (D-J7: medição de português antes) | roteiro-jev §5 | G |
 | 31.13 | **Apps candidatos do comando em sombra** (R5), dado F2+F3 | roteiro-jev §2 R5 | M |
+| 31.14 | **Decisor real `DecisorJev`** pelo transporte do adaptador de retrieval (cliente único), só `choice`: gasto conferido ANTES do POST (a rubrica do hub, com a fatia do Jev e o saldo da conta; barrado = `orcamento`, nada sai) e cada chamada tentada em `ai_calls` (provedor `jev`, origem `decisao_fechada`, `usd` declarado), o que tira a fatia de US$ 0,50 da cegueira; ligado só por `ai.decisao_fechada.decisor: jev`, com o envio fechado até o 31.10 | reavaliação 03/10, RA-6 (era o 31.8b) | M |
 
 **Fecha quando:** a porta existe com provedor nulo e privacidade fechada por padrão, a sombra do curador mediu concordância, aceite errado, latência e
 custo contra limiares pré-registrados, e o GO/NO-GO por consumidor está registrado.

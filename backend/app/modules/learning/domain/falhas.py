@@ -135,18 +135,21 @@ def classificar_texto(texto: str | None) -> FailureKind:
     return _F.OUTRO
 
 
-def classificar_falha(error: str | None, status: str | None) -> FailureKind | None:
+def classificar_falha(error: str | None, status: str | None, error_kind: str | None = None) -> FailureKind | None:
     """O tipo de uma tentativa (ou etapa) no seu status FINAL. `None` quando o status não é falha.
 
     `interrupted` é sempre `interrompida`, qualquer que seja o texto: é a reconciliação de partida
     (`scheduler._reconciliar`) quem fecha, e o texto guardado pode ser o erro anterior da mesma tentativa.
+
+    `error_kind` (RA-22): o `AIError.kind` que encerrou a tentativa (`attempts.error_kind`). Quando decide
+    (`pelo_erro_que_encerrou`), vence o texto: a mensagem do executor deixa de ser contrato. Sem ele, o texto.
     """
     s = (status or "").strip()
     if s in STATUS_SEM_FALHA:
         return None
     if s == "interrupted":
         return _F.INTERROMPIDA
-    return classificar_texto(error)
+    return pelo_erro_que_encerrou(error_kind) or classificar_texto(error)
 
 
 #: `AIError.kind` (planning/provider.py) → tipo da falha, em ORDEM de precedência. Só os tipos que ENCERRAM a chamada
@@ -165,6 +168,21 @@ def classificar_pelo_tipo_da_ia(tipos: Iterable[str]) -> FailureKind | None:
     trecho e caía em `outro`."""
     vistos = set(tipos)
     return next((tipo for kind, tipo in _DO_TIPO_DE_ERRO_DE_IA if kind in vistos), None)
+
+
+#: RA-22: o `AIError.kind` que ENCERROU a tentativa (`attempts.error_kind`) → tipo. Ao contrário de `ai_calls` (uma
+#: chamada que falhou e o roteador contornou não diz nada), aqui o erro é a causa; por isso `error` e `invalid_output`
+#: entram (a IA não deu resposta usável: é o "IA indisponível" que o executor escreve). `step_deadline` não entra: o
+#: prazo vence com ou sem IA, e o ANR anotado no texto (`com_anr`) ganha dele pelas REGRAS.
+_DO_ERRO_QUE_ENCERROU: Mapping[str, FailureKind] = {
+    **dict(_DO_TIPO_DE_ERRO_DE_IA), "error": _F.IA_INDISPONIVEL, "invalid_output": _F.IA_INDISPONIVEL,
+}
+
+
+def pelo_erro_que_encerrou(error_kind: str | None) -> FailureKind | None:
+    """O tipo dado pelo erro de IA que encerrou a tentativa; `None` sem ele, com `step_deadline` ou com kind que o
+    mapa não conhece (o texto decide)."""
+    return _DO_ERRO_QUE_ENCERROU.get(error_kind or "")
 
 
 #: `recipes.motivo_do_retorno` (o vocabulário do funil de receitas) → tipo. `outro` do funil continua `outro`.

@@ -228,3 +228,12 @@ class Origem(StrEnum):
     PESSOA = "pessoa"                # texto ou decisão de pessoa (nota, edição, manual)
     ENSINO = "ensino"                # ensino v2 / habilidade escrita
     SISTEMA = "sistema"              # observação automática (tela, memória)
+
+
+class Rotulo(StrEnum):
+    """Filtro `rotulo` do livro (RA-19): de que conjunto de apps. Os apps de teste são os de `apps.category='qa'` (o QA
+    embutido); o acervo deles não é descartado (o fluxo de 17 usos serviu 16 execuções reais), só sai da lista padrão."""
+
+    PRODUTO = "produto"              # sem os apps de teste (a lista padrão)
+    QA = "qa"                        # só os apps de teste
+    TODOS = "todos"

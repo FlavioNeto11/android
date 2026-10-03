@@ -27,6 +27,24 @@ export type EstadoDoLivro = Exclude<SkillState, 'draft'>;
 export const ESTADOS_DO_LIVRO: readonly EstadoDoLivro[] = ['candidate', 'validated', 'published', 'deprecated', 'disabled'];
 export type Origem = 'execucao' | 'treino' | 'pessoa' | 'ensino' | 'sistema';
 export const ORIGENS: readonly Origem[] = ['execucao', 'treino', 'pessoa', 'ensino', 'sistema'];
+/**
+ * Filtro `rotulo` do livro (RA-19): de que conjunto de apps. Os de teste são os de `apps.category='qa'` (o QA
+ * embutido); a lista padrão os esconde, e o acervo continua no livro (o detalhe do app e as filas leem tudo).
+ */
+export type Rotulo = 'produto' | 'qa' | 'todos';
+export const ROTULOS: readonly Rotulo[] = ['produto', 'qa', 'todos'];
+export const ROTULO_LABEL: Record<Rotulo, string> = { produto: 'Produto', qa: 'QA', todos: 'Todos' };
+export const ROTULO_DICA: Record<Rotulo, string> = {
+  produto: 'Os apps de verdade, sem o app de teste (QA)',
+  qa: 'Só o app de teste (QA)',
+  todos: 'Todos os apps, com o de teste',
+};
+
+/** O que o `rotulo` escondeu, em uma linha curta ao lado do seletor ("94 do QA ocultos"); vazio sem ocultos. */
+export function textoDosOcultos(rotulo: Rotulo, ocultos: number | undefined): string {
+  if (!ocultos || rotulo === 'todos') return '';
+  return `${ocultos.toLocaleString('pt-BR')} ${rotulo === 'produto' ? 'do QA' : 'de produto'} ${ocultos === 1 ? 'oculto' : 'ocultos'}`;
+}
 
 export function isLivroKind(v: unknown): v is LivroKind {
   return typeof v === 'string' && (LIVRO_KINDS as readonly string[]).includes(v);
@@ -126,6 +144,10 @@ export interface ListaDoLivro {
   total: number;
   /** Só em `GET /api/aprendizado`: {tipo: {estado: n}}. */
   contagem?: Record<string, Record<string, number>>;
+  /** Só em `GET /api/aprendizado` (RA-19): o conjunto que valeu (sem pedir: `produto`, ou `todos` com um app escolhido). */
+  rotulo?: Rotulo;
+  /** Quantos itens os outros filtros deixavam e o `rotulo` escondeu. */
+  ocultos?: number;
   /** Nas listas Para aprovar e Revisar (30.17): o modo do curador; `null` sem curador composto. */
   curador?: { modo: ModoDoCurador } | null;
 }
@@ -271,6 +293,8 @@ export interface EtapaDoFluxo {
 export interface ConteudoDoFluxo {
   tipo: 'fluxo';
   nome: string | null;
+  /** Os apps exigidos na ordem do plano (29.42); o principal do plano vem em `app`. Ausente em backend antigo. */
+  apps?: string[];
   comando_modelo: string | null;
   origem: { tipo: 'execucao' | 'treino'; fonte: string | null; source_run_id: string | null };
   etapas: EtapaDoFluxo[];
@@ -870,6 +894,8 @@ export interface Sinal {
   capability_nome: string | null;
   failure_kind: string | null;
   simulated: boolean;
+  /** `data.template_id` do `parecer_decidido`: `curador` (parecer da IA) ou `intencao` (o rótulo do 30.25). */
+  template: string | null;
 }
 
 export const SINAL_LABEL: Record<string, string> = {
@@ -888,6 +914,11 @@ export function rotuloDoSinal(k: string): string {
   return SINAL_LABEL[k] ?? k;
 }
 
+/** O rótulo de UMA linha: a resposta a "Qual era o pedido?" (30.25) também é um `parecer_decidido`, sem IA nenhuma. */
+export function rotuloDaLinhaDeSinal(s: Pick<Sinal, 'kind' | 'template'>): string {
+  return s.kind === 'parecer_decidido' && s.template === 'intencao' ? 'Disse qual era o pedido' : rotuloDoSinal(s.kind);
+}
+
 function isPolaridade(v: unknown): v is Polaridade {
   return v === 'positive' || v === 'negative' || v === 'neutral';
 }
@@ -903,6 +934,7 @@ function lerSinal(v: unknown): Sinal | null {
     run_id: str(v.run_id), objective_id: str(v.objective_id), app_package: str(v.app_package) ?? '',
     capability: str(v.capability) ?? '', app_nome: str(v.app_nome), capability_nome: str(v.capability_nome),
     failure_kind: str(v.failure_kind), simulated: bool(v.simulated),
+    template: isRecord(v.data) ? str(v.data.template_id) : null,
   };
 }
 

@@ -36,18 +36,19 @@ from .devices.rede_convergencia import ConvergenciaDeRede
 from .devices.rede_saida_central import SaidaDoCentral
 from .devices.rede_servidor import ServidorDeRede
 from .devices.sdk import SdkTools
-from .events import EventBus
+from .events import TELEMETRIA_KINDS, TELEMETRIA_RETENCAO_H, EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos
+from .modules.context_retrieval.adapters.jev import JevSemanticProvider
 from .modules.identity.application.ports import SessionProvider
 from .modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, aplicar_desafio, conta_para_conferir,
                                                          emit_needs_person_change, motivo_do_login_parado)
 from .modules.identity.application.sessions import SessionProviders
 from .modules.identity.infrastructure.sessions import SessionDeps, SessionProviderFactory
 from .modules.learning import esquecer_conta
-from .modules.learning.infrastructure import ligar_voz
+from .modules.learning.infrastructure import ligar_intencao, ligar_voz
 from .modules.learning.infrastructure.curador_do_hub import CuradorDoHub
 from .modules.learning.infrastructure.ligar_costuras import costuras_do_livro
 from .modules.learning.infrastructure.montagem import montar_aprendizado
@@ -63,10 +64,12 @@ from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAp
                      OFFLINE_POLICY_PADRAO, PersonaCreate, PersonaDTO, Problem, SdkStatus, SessionStatus)
 from .devices.installer import AppInstaller
 from .planning import conciliacao, costs, saldos
-from .planning.decisao_fechada import RepositorioDeSombra, construir_porta, observador_de_sombra, transparencia
+from .planning.decisao_fechada import (DecisorJev, RepositorioDeSombra, construir_porta, observador_de_sombra,
+                                       transparencia)
+from .planning.decisao_fechada.sombra import ORIGEM_NO_GASTO
 from .planning.decisao_fechada.curador import CuradorComTriagemEmSombra, TriagemDoCurador
 from .planning.decisao_fechada.intencao import ConsumidorDeIntencao
-from .planning.capabilities import (Capability, alvo_da_acao, capability_of, contraparte, load_catalog,
+from .planning.capabilities import (Capability, alvo_da_acao, capability_of, contraparte, efeito_fora_do_catalogo,
                                     texto_a_gerar)
 from .planning.catalog import capabilities_of, pacote_ancora, screen_reader_of, session_factory_of
 from .planning.provider import AIProvider, build_provider
@@ -136,6 +139,11 @@ METRICAS_JANELA_S = 900.0
 #: De quanto em quanto tempo o outbox tenta de novo o que o transporte recusou (item 5.6). Curto porque o que
 #: está parado aqui é um comando que uma pessoa já pediu e o painel já mostra como aceito.
 OUTBOX_RETRY_S = 15.0
+
+#: Prazo TOTAL do desligamento para o que ainda pode gravar no banco (31.9): a volta do curador, as sombras da intenção e as
+#: da porta `DecisaoFechada`. Estourou, o `stop()` segue e fecha o banco (a escrita tardia falha e é logada, nunca trava o
+#: encerramento); `AppState.stop` o lê na hora, para o teste encolhê-lo.
+ESPERA_DE_SOMBRAS_S = 6.0
 
 
 class SettingsStore:
@@ -449,14 +457,15 @@ class AppState:
         # aprendizado porque a triagem do curador em sombra (31.8) embrulha o curador do hub. A sombra grava só ids e
         # categorias (migração 074); a retenção dela corre junto da do resto (`_purgar_demais_tabelas`).
         self.decisao_sombra = RepositorioDeSombra(self.db)
-        self.decisao_fechada = construir_porta(cfg.file.ai.decisao_fechada, observador=observador_de_sombra(self.decisao_sombra))
+        self.decisao_fechada = construir_porta(cfg.file.ai.decisao_fechada, observador=observador_de_sombra(self.decisao_sombra),
+                                               decisor=self._decisor_da_porta(cfg))
         # 30.12: o curador por IA passa pelo hub (papel `plan`, origem `curador`, fatia do 31.6); `off` de fábrica.
         # 31.8: a triagem do Jev observa cada parecer em sombra (consumidor `curador`, inerte de fábrica) e devolve o
         # parecer do curador intacto: nada do Jev volta ao Livro.
         self._curador_do_hub = CuradorDoHub(self.provider, self.db,
                                             registrar_uso=lambda u: self.repo.add_usage(None, None, u),
                                             precos=lambda: self.cfg.file.ai.prices)
-        self._triagem_do_curador = TriagemDoCurador(self.decisao_fechada, self.decisao_sombra)
+        self._triagem_do_curador = TriagemDoCurador(self.decisao_fechada)
         self.learning = montar_aprendizado(
             self.db, config=lambda: self.cfg.file.aprendizado,
             retencao_de_logs_dias=lambda: int(self.settings.get().log_retention_days),
@@ -476,12 +485,19 @@ class AppState:
                                                       data={"teaching_id": tid}))
         self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social,
                                secrets=self.secrets, skills=self.skill_planner)
+        # O catálogo da cadeia de intenção (habilidades publicadas e fluxos ativos, respeitando `skills.enabled` e
+        # `ai.flows`), lido na hora. Compartilhado pela sombra da intenção (31.9) e pelo rótulo de intenção do Aprendizado
+        # (30.25): os dois medem contra o MESMO catálogo.
+        self.catalogo_da_cadeia = lambda: catalogo_de(
+            lambda estado: self.skill_registry.list(state=estado), self.skill_registry.definition,
+            skills_ligadas=self.cfg.file.skills.enabled, fluxos_ligados=self.cfg.file.ai.flows)
         # Sombra da intenção (31.9, ADR-069): R2 e R3 fora da cadeia, depois do `_plan`. Com a config padrão é inerte.
         self.runs.sombra_intencao = SombraDaIntencao(
             ConsumidorDeIntencao(self.decisao_fechada, self.decisao_sombra), resolver=self.skill_planner.resolve_intent,
-            catalogo=lambda: catalogo_de(
-                lambda estado: self.skill_registry.list(state=estado), self.skill_registry.definition,
-                skills_ligadas=self.cfg.file.skills.enabled, fluxos_ligados=self.cfg.file.ai.flows))
+            catalogo=self.catalogo_da_cadeia)
+        # Rótulo de intenção (30.25): um minerador no digest da execução assentada, sem gancho novo e sem IA.
+        ligar_intencao.ligar(self.learning, self.db, dados=self.runs.dados_da_intencao,
+                             resolver=self.skill_planner.resolve_intent, catalogo=self.catalogo_da_cadeia)
         # Laço de pedidos persistentes (28.4). O objeto existe sempre (o gancho de fim de execução e a API do 28.9 o
         # chamam sem conferir); a TAREFA só sobe com `pedidos.enabled` e `roda_scheduler` (ver `start`).
         self.pedidos = LacoDePedidos(
@@ -520,6 +536,21 @@ class AppState:
         self._transport_cache: dict[str, str] = {}
         self.devices.transport_state_of = self._transport_state_of
         self.devices.worker_process_of = self._worker_process_of
+
+    def _decisor_da_porta(self, cfg: Config) -> DecisorJev | None:
+        """O decisor da porta `DecisaoFechada` (31.14). `nulo` de fábrica (devolve None: a porta usa o `DecisorNulo`).
+
+        Com `ai.decisao_fechada.decisor: jev`, o `DecisorJev` usa o transporte do adaptador de retrieval (cliente único; a
+        chave é lida do ambiente na hora do POST, nunca aqui), confere o gasto no HUB antes do POST (a mesma rubrica de
+        toda chamada, com a fatia do Jev e o saldo da conta dele) e registra cada chamada em `ai_calls` pela sombra. Hub sem
+        `conferir_gasto` (provedor que não roteia) = nada sai. O envio continua fechado por `JEV_RUNTIME_SEND_APPROVED`."""
+        if cfg.file.ai.decisao_fechada.decisor != "jev":
+            return None
+        conferir = getattr(self.provider, "conferir_gasto", None)
+        return DecisorJev(JevSemanticProvider(),
+                          conferir_gasto=None if conferir is None else (
+                              lambda pedido: conferir(run_id=pedido.run_id, origem=ORIGEM_NO_GASTO, conta="typesafe")),
+                          registrar=self.decisao_sombra.registrar_chamada)
 
     def _publish_worker(self, worker_id: str) -> None:
         """Qualquer mudança observável de worker vira evento. A tela de infraestrutura vive disto."""
@@ -1898,8 +1929,9 @@ class AppState:
         if cap is None:
             # Item 13.2: etapa com EFEITO externo sem ação do catálogo, num app que TEM catálogo, passaria por fora de
             # política, aprovação, limite e coordenação de frota (uma habilidade treinada, um plano livre que
-            # atravessa apps ou a ação de outro app). Não passa: pede a ação do catálogo.
-            if srow["side_effect"] and pacote and load_catalog(pacote) is not None:
+            # atravessa apps ou a ação de outro app). Não passa: pede a ação do catálogo. A mesma regra recusa o plano
+            # ANTES de ele virar etapa (RA-7, `RunService._plan`); aqui fica a trava do despacho.
+            if efeito_fora_do_catalogo(bool(srow["side_effect"]), capability, pacote):
                 nome = app_da_etapa.name if app_da_etapa and app_da_etapa.name else pacote
                 estranha = f" (a ação {capability} não é do catálogo dele)" if capability else ""
                 return Verdict(allowed=False, policy="manual_only",
@@ -2339,6 +2371,9 @@ class AppState:
             self._bg.append(asyncio.create_task(laco_de_convergencia(self), name="loja-convergencia"))
             # O servidor sing-box do central acompanha o banco (sobe com o primeiro aparelho que o pede; ADR-056).
             self._bg.append(asyncio.create_task(self.rede_convergencia.laco(), name="rede-servidor"))
+            # Todo reinício do backend derruba os túneis (25.12): a medição do tráfego dos aparelhos com rede exigida é
+            # pedida já, sem apagar a prova de vazamento (ver `verificar_ao_subir`).
+            self.rede_convergencia.verificar_ao_subir()
             # A saída do central, medida em segundo plano (29.20); desligada com `rede.sonda.medir_central: false`.
             self._bg.append(asyncio.create_task(self.rede_saida_central.laco(), name="rede-saida-central"))
         else:
@@ -2445,9 +2480,9 @@ class AppState:
     async def stop(self) -> None:
         for t in self._bg:
             t.cancel()
-        if self.runs.sombra_intencao is not None:
-            self.runs.sombra_intencao.cancelar()        # 31.9: as sombras soltas da intenção, como o `_bg`
-            self.runs.sombra_intencao = None            # e nenhuma nova: um plano que termine agora não agenda outra
+        # 31.9: nenhuma sombra nova da intenção (um plano que termine agora não agenda outra). As soltas NÃO são canceladas
+        # aqui: cancelar só solta o `Task`, a thread segue e grava; elas são esperadas antes do `db.close` (ver `finally`).
+        sombra_intencao, self.runs.sombra_intencao = self.runs.sombra_intencao, None
         try:
             await self.transport.close()
         except Exception:  # noqa: BLE001 - fechar o transporte nunca impede o resto do encerramento
@@ -2476,8 +2511,7 @@ class AppState:
                 # Um digest em thread ainda escrevendo não pode encontrar o banco fechado debaixo dele.
                 await asyncio.wait(set(self._digestoes), timeout=10)
             try:
-                # Idem para a sombra da porta `DecisaoFechada` (31.9): a linha da chamada já feita é gravada antes do close.
-                await asyncio.to_thread(self.decisao_fechada.aguardar_sombras, 6.0)
+                await self._esperar_o_que_grava_sombra(sombra_intencao)
             except Exception:  # noqa: BLE001 - esperar a sombra nunca impede fechar o banco
                 log.exception("encerramento: sombras da decisão fechada")
             try:
@@ -2486,6 +2520,26 @@ class AppState:
             except Exception:  # noqa: BLE001 - devolver a trava nunca impede fechar o banco; ela vence sozinha
                 log.exception("encerramento: falha ao soltar as travas de líder")
             self.db.close()
+
+    async def _esperar_o_que_grava_sombra(self, sombra_intencao: SombraDaIntencao | None) -> None:
+        """Antes do `db.close`, com UM prazo (`ESPERA_DE_SOMBRAS_S`) para tudo, nesta ordem (cada passo pode alimentar o
+        seguinte): a volta do curador (para entre itens; a triagem dele só chama a porta), as threads da sombra da intenção
+        (que chamam a porta e casam a decisão real ao gravar), as sombras da porta e uma última rodada da porta."""
+        prazo = time.monotonic() + ESPERA_DE_SOMBRAS_S
+
+        def restante() -> float:
+            return max(0.0, prazo - time.monotonic())
+
+        for laco in self.learning.lacos:
+            parar = getattr(laco, "parar", None)        # só o laço do curador por IA tem thread própria a esperar
+            if parar is not None and not await asyncio.to_thread(parar, restante()):
+                log.warning("encerramento: a volta do curador ainda estava no provedor; o banco fecha mesmo assim")
+        if sombra_intencao is not None:
+            await sombra_intencao.aguardar(restante())
+            sombra_intencao.cancelar()                  # o que passou do prazo: solta o `Task`, como o `_bg`
+        await asyncio.to_thread(self.decisao_fechada.aguardar_sombras, restante())
+        self.decisao_fechada.encerrar()                 # nada novo a partir daqui; o que escapou entre os passos roda e é esperado
+        await asyncio.to_thread(self.decisao_fechada.aguardar_sombras, restante())
 
     def _check_health(self) -> None:
         """Recalcula `health()` e emite `health.updated` só quando o resultado mudou desde a última checagem
@@ -2611,7 +2665,14 @@ class AppState:
         try:
             s = self.settings.get()
             cutoff = to_iso(now() - timedelta(days=s.log_retention_days))
-            removed = self.bus.purge_older_than(cutoff)
+            # Fora do laço de eventos, como a purga de evidências: sem o índice de `events(ts)`, cada lote varre a tabela
+            # (~80–100 ms com 82 mil linhas, 03/10), e a primeira volta depois do RA-11 leva ~14 lotes de telemetria.
+            removed = await asyncio.to_thread(self.bus.purge_older_than, cutoff)
+            # RA-11: a telemetria do parque (`instance.updated`, o DTO inteiro do aparelho) vence em 48 h, antes do
+            # resto do log; só a sem execução, para a linha do tempo de uma execução não perder nada.
+            telemetria = await asyncio.to_thread(
+                lambda: self.bus.purge_older_than(to_iso(now() - timedelta(hours=TELEMETRIA_RETENCAO_H)),
+                                                  kinds=TELEMETRIA_KINDS, so_sem_execucao=True))
             ev_cut = to_iso(now() - timedelta(days=s.evidence_retention_days))
             old = await asyncio.to_thread(self._apagar_evidencias_vencidas, ev_cut)
             # Entrega já feita de comando já fechado não é histórico — o histórico é `commands`. Sem esta
@@ -2625,9 +2686,13 @@ class AppState:
             # Achados #39/#143: até aqui só `events` e `evidence` venciam — commands, ai_calls e measurements
             # cresciam para sempre, e token de inscrição usado ficava eternamente na tabela.
             outras = self._purgar_demais_tabelas(cutoff)
-            if removed or old or outras or arquivos:
-                log.info("retenção: %s eventos, %s execuções com evidências, %s linhas de outras tabelas e "
-                         "%s arquivo(s) removidos", removed, len(old), outras, arquivos)
+            if removed or telemetria or old or outras or arquivos:
+                log.info("retenção: %s eventos (+%s de telemetria), %s execuções com evidências, %s linhas de outras "
+                         "tabelas e %s arquivo(s) removidos", removed, telemetria, len(old), outras, arquivos)
+            # RA-11: as estatísticas do planejador de consultas ao fim da volta (`sqlite_stat1` não existia em 03/10).
+            # `optimize` só refaz o que mudou e é barato; no PostgreSQL quem faz isso é o autovacuum.
+            if self.db.dialect == "sqlite":
+                await asyncio.to_thread(self.db.execute, "PRAGMA optimize")
         except Exception:  # noqa: BLE001
             log.exception("retenção")
         return True
@@ -2674,9 +2739,24 @@ class AppState:
             log.exception("aprendizado: retenção")
         try:
             # Sombra da porta `DecisaoFechada` (074): prazo próprio; o agregado diário é calculado antes de purgar e fica.
-            total += self.decisao_sombra.aplicar_retencao(self.cfg.file.ai.decisao_fechada.retencao_dias)
+            # Porta desligada E tabela vazia (uma consulta barata, `LIMIT 1`): nada a agregar nem a purgar, e a volta não
+            # lê a tabela à toa. Desligada com linhas antigas ainda purga: o prazo vale mesmo sem consumidor.
+            if transparencia.consumidores_ativos(self.cfg.file.ai.decisao_fechada) or self.db.one(
+                    "SELECT 1 FROM decisao_fechada_sombra LIMIT 1") is not None:
+                total += self.decisao_sombra.aplicar_retencao(self.cfg.file.ai.decisao_fechada.retencao_dias)
         except Exception:  # noqa: BLE001 - idem
             log.exception("decisao_fechada: retenção da sombra")
+        total += self._purgar_memorias_vencidas()
+        return total
+
+    def _purgar_memorias_vencidas(self) -> int:
+        """RA-11: memória com prazo (`memory_items.expires_at`) que já venceu sai do banco. `purge_expired_memories`
+        existia e ninguém o chamava: a memória vencida só sumia da leitura (o filtro de `include_expired`)."""
+        agora = now_iso()
+        total = 0
+        for r in self.db.query("SELECT DISTINCT profile_id FROM memory_items WHERE expires_at IS NOT NULL"
+                               " AND expires_at <= ?", (agora,)):
+            total += self.social_repo.purge_expired_memories(str(r["profile_id"]), now=agora)
         return total
 
     def _purgar_arquivos_vencidos(self, retention_days: int) -> int:

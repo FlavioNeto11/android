@@ -436,3 +436,54 @@ def test_classe_a_nunca_passa_a_frente_nem_contestada() -> None:
     assert prioridade(ClasseDeRisco.B, Gatilho.GRUPO_DE_FALHA_ACIMA_DO_MINIMO,
                       publicado=False) is Prioridade.FALHA_RECORRENTE
     assert prioridade(ClasseDeRisco.B, Gatilho.A_REVISAR, publicado=False) is Prioridade.CLASSE_B
+
+
+class CuradorComProvedorPorResposta(CuradorSimulado):
+    """A corrida do provedor: o `provedor` do adaptador é estado compartilhado (o da ÚLTIMA revisão); o da resposta é o dela."""
+
+    def __init__(self, provedor_da_resposta: str | None) -> None:
+        super().__init__()
+        self.provedor = "ultimo-do-estado-compartilhado"
+        self._da_resposta = provedor_da_resposta
+
+    def revisar(self, pedido):  # noqa: ANN001, ANN201 - mesma assinatura do simulado
+        return replace(super().revisar(pedido), provedor=self._da_resposta)
+
+
+@pytest.mark.parametrize(("da_resposta", "gravado"), [("openai", "openai"),
+                                                      (None, "ultimo-do-estado-compartilhado")])
+def test_provedor_gravado_e_o_da_resposta_e_so_sem_ele_o_do_adaptador(db: Database, da_resposta: str | None,
+                                                                      gravado: str) -> None:
+    m = Mundo(db)
+    m.ia = CuradorComProvedorPorResposta(da_resposta)
+    m.curador = ligar_curador.ligar(m.servico, m.repo, db, TriagemDeCredencial(), config=lambda: m.cfg,
+                                    precos=lambda: PRECOS, relogio=lambda: m.agora, catalogo=m.catalogo,
+                                    curador_de_ia=m.ia)
+    ref = m.licao(efeito=False, fonte=SourceKind.MANUAL)
+    assert m.volta().revisadas == (ref,)
+    [linha] = m.revisoes()
+    assert linha["provedor"] == gravado
+
+
+def test_parar_o_curador_interrompe_o_lote_entre_itens_e_impede_volta_nova(db: Database) -> None:
+    """Desligamento: a volta não pede o item seguinte ao provedor (nem grava) depois de `parar`."""
+    m = Mundo(db, gasto_da_operacao=1000.0)
+    m.cfg = CuradorCfg(modo="shadow", cooldown_h=0, janela_dias=1, k=100)   # folga: os dois itens passam pelo corte
+    primeiro = m.licao(efeito=False, fonte=SourceKind.MANUAL, sufixo="-a")
+    segundo = m.licao(efeito=False, fonte=SourceKind.MANUAL, sufixo="-b")
+    chamadas: list[str] = []
+
+    class ParaNoPrimeiro(CuradorSimulado):
+        def revisar(self, pedido):  # noqa: ANN001, ANN201
+            chamadas.append(pedido.dossie_hash)
+            m.curador.parar()                   # o desligamento chega com o primeiro item no provedor
+            return super().revisar(pedido)
+
+    m.curador = ligar_curador.ligar(m.servico, m.repo, db, TriagemDeCredencial(), config=lambda: m.cfg,
+                                    precos=lambda: PRECOS, relogio=lambda: m.agora, catalogo=m.catalogo,
+                                    curador_de_ia=ParaNoPrimeiro())
+    r = m.volta()
+    assert len(chamadas) == 1 and len(r.revisadas) == 1                         # o em curso termina e grava
+    assert set(r.cortados.values()) == {MotivoDoCorte.LOTE_INTERROMPIDO} and len(r.cortados) == 1
+    assert {primeiro, segundo} == set(r.revisadas) | set(r.cortados)
+    assert m.volta().rodou is False and len(chamadas) == 1                      # volta nova nem começa

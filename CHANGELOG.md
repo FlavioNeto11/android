@@ -29,6 +29,292 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Sem migração. Prova `simulated`: `tests/test_origem_simulada.py` (6), com a consulta de join = 0.
 - Núcleo (`executor.py`, `recipes.py`, `config.py`): revisão da Android e suíte 8.
 
+## 2026-10-03 — 29.34 (RA-15): o relógio do wake começa no snapshot carregado (branch feat/29-34-relogio-do-wake)
+
+- `DeviceManager._wait_boot`: o `wake_timeout_s` (90 s) deixa de contar do spawn. Antes do veredito do log vale
+  `boot_timeout_s`; com "Successfully loaded snapshot" o prazo de 90 s conta dali. `boot_seconds` continua
+  spawn→online. A medição `boot kind=warm` ganha `load_ms`. Testes: `test_wake_relogio_do_snapshot.py` (`simulated`).
+  Aceite real em 7 dias (wake > 90 s e "snapshot descartado" = 0): `not_run`.
+
+## 2026-10-03 — 25.12: túnel morto age e o backend verifica a rede ao subir (branch feat/25-12-tunel-morto)
+
+- Objetivo parado há horas não segura mais o aparelho (`vitrine.objetivo_que_segura`, metade C do 25.12; corrige
+  c185eda3, que tratava `completed_with_issues` como terminal e revertia a decisão do PR #13): `completed_with_issues` é
+  o rollup IMEDIATO de todo `waiting_user`/`uncertain` com nada rodando, então o objetivo de agora segura (a tela é a
+  evidência do operador), mas o de `OBJETIVO_PARADO_SEGURA_POR_S` (2 h, valor PROVISÓRIO: o orquestrador decide) atrás
+  solta. A idade é `objectives.finished_at` (sem ele, `runs.finished_at`/`created_at`). Execução viva segura sem limite;
+  `completed`, `cancelled` e `failed` soltam como sempre. Medido em 03/10: o objetivo de 02/10 adiou o teste de vazamento
+  do android-03 por ~1 h, e o android-01 tem 18 objetivos assim desde 28/09. Efeito nos chamadores em
+  `docs/dominios/parque.md`. Prova `simulated`:
+  `tests/test_sempre_na_promovida.py::test_objetivo_parado_so_segura_enquanto_recente_em_execucao_com_pendencias` (e o
+  teste do PR #13, restaurado), `tests/test_rede_sonda.py::test_objetivo_parado_ha_horas_nao_adia_o_teste_de_vazamento`.
+- **Túnel morto age (metade A).** A verificação de um `trafego_verificado` com política exigida cuja sonda não mede IP de
+  saída tira a linha do estado (→ `conectado`, motivo e evento `tunel_morto`), religa o cliente VPN no aparelho (até 2
+  vezes: `force-stop` e always-on, ou Start da interface com teto de 60 s) e, sem volta, reinicia sem wipe. Falha ou
+  trava da interface conta como tentativa (caso do android-06, 03/10). O teste do portão
+  `test_remedicao_sem_ip_espera_antes_de_repetir` mudou: afirmava o comportamento que o item corrige (o estado não saía de
+  `trafego_verificado`). Prova `simulated`: `tests/test_rede_sonda.py::test_tunel_morto_*`.
+- **Backend ao subir (metade B).** `ConvergenciaDeRede.verificar_ao_subir`, chamado no `start` do scheduler, marca a
+  medição do tráfego dos aparelhos com política exigida e rede conectada: todo reinício do backend derruba os túneis.
+  Não usa o `verify` (com bloqueio ele apaga a prova de vazamento e reinicia o aparelho): a prova segue valendo.
+  Prova `simulated`: `tests/test_rede_sonda.py::test_backend_ao_subir_*`.
+
+## 2026-10-03 — IA: esforço e thinking por função, sonda "o ator pensa?" e dieta do contexto 2 (17.14 e RA-17, branch feat/17-14-perfil-e-dieta)
+
+- `ai.roles.<f>` e os perfis ganham `effort`, `thinking: false` e `cache_da_etapa`; o perfil ganha
+  `screenshot_max_side` e `rich_tree_min_elements`, só nas execuções dele. Nada escrito = a requisição de antes, byte
+  a byte.
+- `cache_da_etapa` (RA-17): o passo e as lições vão antes da imagem, com o 2º ponto de cache.
+- Uma função com ajuste ganha instância de provedor própria.
+- `GET /api/ai`: `roles[].thinking` (a sonda) e `pensou=N` na linha de uso do log (adendo da API pedido à
+  orquestradora).
+- Prova `simulated`: `tests/test_perfil_esforco_e_dieta.py` (16). `real`: `not_run` (sem A/B pago).
+
+## 2026-10-03 — Aprendizado: o app de teste fora da lista padrão do livro (RA-19, fatia A; branch feat/ra-19-visao-do-livro)
+
+- `GET /api/aprendizado` ganha o filtro `rotulo` (`produto` | `qa` | `todos`, adendo v0.83). O padrão sem app é
+  `produto`, que esconde os apps de `apps.category='qa'`. A resposta traz `rotulo` e `ocultos`.
+- O Aprendido abre em "Produto", com o seletor segmentado "Produto · QA · Todos" e os ocultos ao lado. O acervo de teste
+  continua no livro, na visão por app e nas filas.
+- Prova `simulated`: `tests/test_learning_rotulo_do_livro.py` (8) e o painel (119). Sem migração.
+
+## 2026-10-03 — 29.42: o fluxo entre apps diz de que apps precisa (branch feat/29-42-required-apps)
+
+- `GET /api/flows` devolve `required_apps` em cada fluxo, na ordem em que o plano usa os apps (sem migração: a ordem vem
+  das etapas do plano gravado; `flow_required_apps` segue sendo só o conjunto). Duas consultas para todos os fluxos.
+- O painel (Configurações, Fluxos) e o detalhe do fluxo na aba do curador mostram "QA Messenger → Chrome" com o nome de
+  cada app (o id quando o app não está cadastrado). O dossiê do curador (`conteudo.apps`) passa à mesma ordem (antes,
+  alfabética); por isso dois testes de domínio mudaram a ordem esperada (outlook, instagram: a do plano).
+- Adendo v0.85 em `docs/api-contract.md`. Prova `simulated`: `tests/test_flows_required_apps.py`,
+  `frontend/src/lib/appsDoFluxo.test.ts`, `DetalheRico.test.tsx`, `FlowsRecipesSection.test.tsx`; `real`: `not_run`.
+
+## 2026-10-03 — Conhecimento de app: versão conferida e prova do que está no ar (RA-24, parte YAML; branch feat/ra-24-versao-e-prova-do-conhecimento)
+
+- `telas.yaml` e `sessao.yaml` só aceitam `versao: 1` na carga, como a `contract_version` do catálogo. Antes,
+  `telas.yaml` trocava qualquer não inteiro por 1 e aceitava qualquer inteiro.
+- `GET /api/apps/{pacote}/conhecimento` (adendo v0.82): cada YAML com `sha256` e `git_blob` do texto lido. Com CRLF→LF,
+  o `git_blob` bate com `git hash-object` no checkout com autocrlf. A resposta aponta o arquivo que mudou depois de o
+  processo subir.
+- Prova `simulated`: `tests/test_prova_do_conhecimento.py` (20 testes; 79 com os de telas e sessão). Sem migração.
+  Núcleo (`api.py`, `automation/`, `app_declarado/`): revisão da Android e suíte 7.
+
+## 2026-10-03 — 30.26 (RA-22): o tipo da falha sai do erro de IA, não do texto (branch feat/ra-22-error-kind-em-attempts)
+
+- Migração 081: `attempts.error_kind`, o `AIError.kind` que encerrou a tentativa. O executor o põe no desfecho
+  (`StepOutcome.ai_error_kind`) e o scheduler o grava na tentativa.
+- `classificar_falha(texto, status, error_kind)` decide pelo tipo antes do texto, para a tentativa e para a etapa. A
+  mensagem de IA do executor deixa de ser contrato. `step_deadline` segue pelo texto, e o ANR ganha do prazo.
+- Mudança pretendida: o teto do pedido ("Orçamento do pedido atingido…") sai de `outro` e vai para `ia_orcamento`. Na
+  releitura retroativa, uma chamada que o roteador contornou não desmente mais a tentativa que tem o tipo gravado.
+- Nenhum desfecho de etapa, retry ou campo da API muda. Prova `simulated`: `tests/test_falha_pelo_erro_de_ia.py` (13) e
+  bateria de 145 arquivos (2688 aprovados). PostgreSQL: `not_run` (só `ADD COLUMN TEXT`, sem dialeto).
+
+## 2026-10-03 — Validação do deploy 4: I1 (sem rótulo não há "diverge") e a CPU do emulador com referência
+
+- **I1:** `observedMatchOf` (`frontend/src/features/settings/instancesView.ts`) devolve `none` sem rótulo configurado. Sem
+  conta esperada não há do que divergir: o android-04, hoje de Instagram e sem rótulo, aparecia "diverge" por uma
+  observação antiga do QA Messenger. A linha "observado" sai do cartão de Configuração › Aparelhos e contas e do Foco
+  quando não há rótulo.
+- **Polimento do Foco:** "CPU 108%" passa a "CPU 108% (≈1,1 núcleo)" (`cpuDoEmulador`): o % do processo é de um núcleo
+  do host.
+- **K-080:** um toque por id de elemento velho abre a tela errada. **K-078:** adendo do braço D, em que o snapshot
+  também não é a causa.
+- `simulated`: `instancesView.test.ts`, `cpuDoEmulador.test.ts`; typecheck limpo; 139 aprovados em settings e focus.
+
+## 2026-10-03 — 12.5 nível 1.1: o "truncado" vale para o valor, não para a linha vizinha (emenda do ADR-070 §4)
+
+- `conferir_transcricao` (`backend/app/taskqueue/saidas.py`): "truncado" é o do valor do ator, do campo do leitor e da
+  linha que contém o valor. A marca global do leitor só cai quando uma linha alheia cortada a explica (K-079).
+- `simulated`: em `tests/test_leitura_visual.py`, a prévia cortada com o valor inteiro concorda; o valor cortado, a
+  linha do valor cortada e a marca sem linha cortada continuam recusando. 109 aprovados com o arquivo do papel.
+- `real` (bancada, 04:57–04:59Z, `ai_calls` 3008–3071, US$ 0,02): gemini-3.1-flash-lite 31/32 e gpt-6-luna 29/32, com
+  0/96 falsas. Gemini fica como principal e o luna como alternativo; a opção liga no próximo reinício do central.
+
+## 2026-10-03 — caminho rápido 1: LT-1, LT-2 e LT-3 (pular o ator, nunca a prova)
+
+- **LT-1.** A pós-condição conferida na entrada da volta, antes de o ator decidir: etapa sem efeito, tela não sensível e
+  sem saída por ler. Determinística: prova local, custo zero. Julgada: só na entrada e só pela prova local do catálogo
+  (`ENTRADA_JULGADA_SO_COM_PROVA_LOCAL`), porque o juiz na entrada subia `verify` por etapa nos testes de custo.
+- **LT-2.** `expect_done` em etapa julgada vai direto ao `_verify` (uma rodada) e o veredito é reusado no fim do laço;
+  "não" volta ao ator na mesma tentativa (`attempts` continua 1).
+- **LT-3.** `flows.match` não exige valor para `account_label`, `instance_id` e `run_id`.
+- **`steps.driven_by='sem_ator'`** para a etapa que fecha sem o ator (modelos, `aproveitamento`, painel "Sem o ator").
+- **Prova `simulated`**: `tests/test_caminho_rapido_executor.py`, `tests/test_flows_account_label.py`,
+  `tests/test_aproveitamento.py`, `frontend/src/lib/status.test.ts` e `ProfileDetail.test.tsx`; três testes de custo
+  antigos mudaram de número por causa do atalho (ANR, hub de IA, política de imagem). `not_run`: latência no real.
+
+## 2026-10-03 — Jev: RA-11 (parte Jev) — telemetria vence em 48 h, memória vencida sai do banco, purga em lotes
+
+- `instance.updated` sem execução vence em 48 h (`events.TELEMETRIA_KINDS`/`TELEMETRIA_RETENCAO_H`), antes dos 14 dias do
+  resto do log. A purga de `events` vai em lotes de 2.000 linhas. `memory_items` vencidos saem do banco
+  (`AppState._purgar_memorias_vencidas`). Ao fim da volta da retenção, `PRAGMA optimize` (SQLite).
+- Prova: simulated (`test_retencao_telemetria.py`, 4 testes; 625 afetados verdes). Na primeira volta depois do deploy,
+  saem ≈ 27 mil eventos do central (medido em 03/10, só leitura). Real: `not_run`.
+
+## 2026-10-03 — Jev: higiene de docs do RA-24 (parte Jev)
+
+- `docs/ia.md` §10: o gatilho do ADR-023 para voltar ao modelo local não foi atingido (≈ 13 execuções por dia na
+  semana de 26/09 a 02/10; Ollama sem chamada desde 24/09). O único uso candidato é uma triagem em sombra, medida
+  antes contra o golden set. O roteiro do Jev (local) passa a dizer que o verificador fica fora pela classe do dado
+  (C5/C6), e não pela imagem.
+
+## 2026-10-03 — Jev: prévia que executa não é defeito; o início diz quem iniciou (P12 da reavaliação)
+
+- Prévia passa a ser `mode='plan' AND started_at IS NULL`: as 11 execuções em `mode=plan` que gastaram decisões
+  tinham sido iniciadas de propósito (medido no central, 03/10). `RunService.start(por=...)` grava `iniciada_por`
+  no `run.updated` do início (a pessoa ou `panel` pela rota, `sistema` no `mode=execute`; adendo v0.79).
+- Prova: simulated (`test_inicio_com_autor.py`).
+
+## 2026-10-03 — Jev: retenção do histórico de execução registrada (P10 da reavaliação)
+
+- `runs`, `objectives`, `steps`, `attempts`, `actions` e `plan_versions` ficam "para sempre" por enquanto; o resto
+  vence como antes. Números de 03/10 (≈ 0,45 MiB/dia nessas tabelas) e os gatilhos para rever em `docs/banco.md`.
+
+## 2026-10-03 — Jev: a porta de política do item 13.2 também no planejamento (RA-7, branch feat/ra-7-recusa-no-planejamento)
+
+- `planning/capabilities.py::efeito_fora_do_catalogo` concentra a regra do item 13.2 (etapa com efeito, num app com
+  catálogo, sem ação daquele catálogo). A porta do despacho passa a usá-la, com a mesma frase.
+- `RunService._plan` aplica a regra a todo plano (planejador, fluxo, skill) antes de materializar. Uma etapa recusada
+  zera o plano, a execução vai a `needs_input` com uma pergunta por etapa, e o evento `plan.refused` leva o motivo
+  fechado (`sem_acao_do_catalogo` | `acao_de_outro_catalogo`). Nenhuma decisão é gasta nos preparativos.
+- O caso de 01/10 no Outlook (`fill_recipient` com 16 e 17 decisões) é anterior ao catálogo do Outlook no central;
+  desde que ele chegou, 5 de 5 planos ligam a capability (`docs/dominios/execution.md`).
+- Prova: simulated (`test_recusa_no_planejamento.py`, 12 testes; 616 afetados verdes). Real no android-01: `not_run`
+  (frente Android).
+
+## 2026-10-03 — Jev: formato curto do plano atrás de chave (LT-4b, item 17.13, branch feat/lt-4b-esquema-curto)
+
+- `ai.esquema_do_plano: curto` (de fábrica, `longo`, o formato de sempre byte a byte). A etapa livre (plano livre e
+  parte livre do plano entre apps) não pede mais `postcondition.description`, `precondition` nem `max_attempts`, e o
+  backend os preenche:
+  - a descrição vem do `value` (no `model_judged`, o próprio critério);
+  - a pré-condição fica nula;
+  - a etapa com efeito tem 1 tentativa, e as demais têm 3.
+- O prompt pede título e objetivo curtos. Os planejadores curtos são os de sempre com dois trechos trocados, e
+  `_trocar` falha na importação se um marcador sumir.
+- A identidade da receita é a mesma nos dois formatos. Anthropic e OpenAI mandam o formato curto só com a chave.
+- Estimativa grátis (count_tokens em 2 planos reais do QA): −22 a −24 % de saída, ≈ −2,5 s por plano. Não alcança
+  os ≤ 11 s do aceite do LT-4 (`docs/ia.md` §12).
+- Prova: simulated (`test_esquema_curto_do_plano.py`, mais os afetados). Real: A/B de 3 braços só do planejador
+  (03/10, ~04:31–04:39Z, 14 casos QA, 42 chamadas, US$ 1,36). No Opus, o curto tem p50 13,3 s contra 15,9 s,
+  2,75 s a menos por plano (pareado), a mesma forma em 14/14 e US$ 0,0359 contra 0,0428 por plano. O Sonnet 5.5
+  curto ficou em 7,8 s, mas só com a forma das etapas com efeito igual (`docs/ia.md` §12). Rodada QA: `not_run`.
+- Deploy 7: o Sonnet 5.5 entra como perfil 17.7 (`planejador-sonnet`, só o modelo do `plan`; o esforço e o esquema
+  seguem os globais). O preço `[2.0, 0.2, 2.5, 10.0]` e o cache mínimo de 512 dele entram no padrão e no exemplo
+  (páginas da Anthropic, 03/10; antes, ele casava o prefixo do Sonnet 5). No central, as linhas vão DENTRO dos blocos
+  `ai.prices` e `ai.models` que já existem: o YAML troca a tabela inteira. Prova: simulated (`test_perfil_de_ia.py`).
+
+## 2026-10-03 — RA-10: o porquê de cada chamada de IA em `ai_calls` e os grupos de `/api/usage` (branch feat/ra-10-observabilidade, migração 080)
+
+- `ai_calls` ganha `verdict`, `escalate`, `motivo` e `image_reason` (vocabulários fechados em `planning/provider.py`,
+  `MarcaDaChamada`). O executor marca toda chamada que passa por
+  `_ai` (plano, decisão, cascata, julgamento, vazio, rejulgamento, leitura) e o assistente marca o refinamento; o motivo
+  do escalonamento sai do código, e a frase da linha do tempo continua a mesma.
+- O rejulgamento (7.10 e 17.10) era gravado como `verify` tier 0: agora é tier 1 com motivo. A linha de erro e a de
+  orçamento recusado ganham `provider` e modelo da função; a imagem da persona grava `origem='persona'`; a etapa que a IA
+  conduziu grava `driven_by='ai'` também com receitas desligadas.
+- `GET /api/usage` ganha só chaves novas: `by_origin`, `escalations`, `rejudges` (com discordância por app),
+  `cascades`, `image_reasons` e `steps_driven_by_null`, no preço de `spent_usd` (`costs.usd_por`). Adendo v0.75 do
+  contrato; conferência pós-deploy em `docs/ia.md` §9.
+- Prova `simulated`: `test_observabilidade_das_chamadas.py` e `test_assistente_do_comando.py`. Prova real: `not_run`.
+
+## 2026-10-03 — Jev: o decisor real da porta `DecisaoFechada` (31.14, branch feat/31-14-decisor-jev)
+
+- `DecisorJev` (`planning/decisao_fechada/decisores.py`): uma chamada ao Jev por pedido, pelo transporte do adaptador de
+  retrieval (`JevSemanticProvider.consultar`, cliente único). Só `choice` vai ao fio; `noul` e `score` respondem `desligado`.
+- Gasto conferido ANTES do POST: `RoutingProvider.conferir_gasto` aplica a rubrica de `_budget` (pedido, execução, dia, fatia
+  do Jev) e o bloqueio de saldo da conta `typesafe`. Barrado, sem hub ou com a leitura quebrada = motivo novo `orcamento`, e
+  nada sai.
+- Cada chamada tentada vira linha em `ai_calls` (`RepositorioDeSombra.registrar_chamada`): provedor `jev`, origem
+  `decisao_fechada`, papel `decisao_fechada`, `usd` declarado e `step_id` NULL; a falha também (`ok=0`, motivo fechado).
+  A fatia de US$ 0,50 deixa de ser cega e o saldo estimado da TypeSafe passa a andar.
+- O 422 do adaptador ganhou classe própria (`ProviderRejected`); para o retrieval segue a mesma falha.
+- Ligado só por `ai.decisao_fechada.decisor: jev` (de fábrica, `nulo`). O envio continua fechado por
+  `JEV_RUNTIME_SEND_APPROVED` até o 31.10.
+- Prova: `simulated` (`backend/tests/test_decisao_fechada_jev.py`: MockTransport, socket proibido, hub falso e banco de
+  teste). Chamada real ao Jev: `not_run`.
+
+## 2026-10-03 — Correção do 31.9, rodada C (NO-GO em 8e1d7a9c): `sem_destinos` sem normalizar, C7 em qualquer escrita e e-mail soletrado (branch fix/31-9-privacidade)
+
+- A rodada C (`.claude/handoffs/reverificacao-31-9c.md` §7) achou 27 vazamentos fora da suíte de 240, pelo caminho de
+  produção. Uma correção por causa:
+  - `TargetExtractor.extrair` recorta sempre do original: com "ﬁ", "ß" ou acento decomposto, devolvia o texto em
+    minúsculas e sem acento, e a chave `AKIA…` e o endereço em inglês passavam. O prefixo de token também é conferido sem
+    caixa, com o comprimento de verdade;
+  - letra fora do alfabeto latino em qualquer palavra recusa (decisão da orquestradora: a regra vale para a frase), com a
+    lista de palavras-chave em outras escritas e idiomas;
+  - palavra-chave colada ("novasenha"), abreviada (`pw`, `psw`) e em leet com 5, 7 e 8;
+  - o par "login: x / y" e "usuário x, acesso y" sem verbo de entrar;
+  - e-mail soletrado com "at", "chez" ou "bei", o ponto por extenso em outras línguas, qualquer domínio de topo com o
+    ponto e o provedor conhecido sem domínio.
+- Importantes na mesma entrega (decisões da orquestradora): numerais por extenso só recusam seguidos; `@handle` com hífen
+  vira `[usuario]` inteiro; PIN tecla a tecla e "2580#" são C7.
+- Prova `simulated`: `tests/test_decisao_fechada_reverificacao_c.py`; harness da rodada D (267 casos, por `sem_destinos`):
+  0 vazamentos (eram 27), 0 C7 ou e-mail sem recusa (eram 27). Comandos reais de 7 dias (92, só leitura): 1 recusa, a
+  mesma C7 de antes.
+
+## 2026-10-03 — Correção do 31.9, reverificação B (NO-GO em 97f35fac): C7 recusa o pedido inteiro, duas passadas no filtro e o motivo da recusa na sombra (branch fix/31-9-privacidade)
+
+- A reverificação B da orquestradora (240 casos novos, 3 céticos; `.claude/handoffs/reverificacao-31-9b.md`) achou 47
+  vazamentos de portão em 97f35fac. Correções do §7:
+  - `_MISTO` antes de `_NUMERO`, com hífen;
+  - eufemismos, pergunta de segurança e frase de recuperação;
+  - leet, palavra invertida, separadores e bidi;
+  - mais idiomas;
+  - e-mail ofuscado, endereço em inglês, caixa postal, cartão e CVV com número.
+- Decisões da orquestradora:
+  - (a) C7 recusa o pedido inteiro, inclusive o código pedido pela quantidade de dígitos;
+  - (c) a regra dos dois numerais fica (0 recusas nos 90 comandos reais de 7 dias);
+  - (d) placa e nome com cidade passam.
+- `decisao_fechada_sombra.motivo_privacidade` (migração 079, trazida da 080 do RA-10): `c7_*` ou o motivo do filtro, por
+  `PedidoDeDecisao.motivo_privacidade` → `RegistroDeDecisao` → `RepositorioDeSombra.registrar`. O `fallback_reason` e
+  `validar` não mudam.
+- Contrato do 30.25: `RunService._dados_da_sombra` vira `dados_da_intencao` (mesma assinatura), e o catálogo da cadeia
+  vira `AppState.catalogo_da_cadeia`, compartilhado pela sombra e pelo rótulo de intenção.
+- Prova `simulated`:
+  - `test_decisao_fechada_reverificacao_b.py` (73 testes);
+  - portão local com o harness da orquestradora copiado: 260 casos, 0 vazamentos (eram 45), 0 passagens indevidas (eram 56).
+  - Real: not_run (o envio continua fechado no código).
+
+## 2026-10-03 — Correção do 31.9: filtro sensato da C3 (ADR-069 item 10), desligamento limpo e estratos do golden set (RA-2; branch fix/31-9-privacidade)
+
+- **ADR-069 item 10** (dono, 03/10 00:15Z, relatado pela orquestradora): dado pessoal pode ir ao Jev "desde que faça sentido
+  no filtro".
+  - A C3 e o nome ou `@handle` de pessoa podem sair; cai a remoção que falha fechada.
+  - O piso: C7 nunca; e-mail e telefone completos viram marcador; e-mail ofuscado, numeral ditado e documento recusam.
+  - O D-J5 vira só "o Jev não decide por persona".
+  - A primeira redação deste item, no mesmo branch, dizia que nome e handle de terceiro ficavam fora; foi corrigida.
+- **C3** (`decisao_fechada/entidades.py`): filtro SENSATO, uma lista de bloqueio sobre o piso.
+  - Normalização NFKC (homóglifo, largura cheia, invisível); alfabetos misturados recusam.
+  - Viram marcador: aspas (a que sobra leva o resto), link, e-mail, `@handle`, telefone, número, palavra com `_` e símbolo.
+  - Recusam: endereço, documento, e-mail ofuscado e numeral ditado, também em EN e ES.
+  - O resto passa, nome inclusive.
+  - A lista de permissão da primeira versão do branch caiu. Nos 90 comandos reais de 7 dias, as 17 recusas que não eram C7
+    vinham todas da regra de proporção, e a lista apagava cerca de 8 palavras por comando no qa-messenger.
+- **C2 e C7**: `mascarar_catalogo` nas opções da R2, antes do corte em 200, com as mesmas máscaras de forma. A C7 é
+  reconhecida em qualquer formato (`menciona_c7`).
+- **Portão** (`simulated`): no `ataque.py` da reverificação, zero vazamento de C7, e-mail e telefone em 109 casos. O
+  "escreva para ali no gmail" sai com nome e provedor, sem endereço.
+- **Real** (OBSERVED, só leitura, contagens, central 01351e66):
+  - nos 90 comandos de 7 dias, 89 sairiam; a recusa que sobra é C7, e nenhum comando que sairia tem e-mail ou telefone;
+  - as 26 opções do catálogo não têm `@`, dígito, e-mail nem telefone.
+- **Parte B** (I1, I4, M1 a M4, corrida do provedor):
+  - o `stop()` espera o que grava sombra antes do `db.close`, com prazo único de 6 s;
+  - o aviso de transparência diz o que sai: "o comando do dono filtrado (e-mail, telefone, @handle, link e número
+    mascarados; nome fica)";
+  - a triagem respeita o envio fechado;
+  - a retenção pula quando a porta está desligada;
+  - o curador lê o provedor por resposta.
+- **I2**: a triagem do curador não casa a decisão real na hora. O relatório do 31.10 lê `learning_reviews` (`validade='ok'`,
+  `simulated=0`) por `decisao_real_da_triagem`.
+- **RA-2**:
+  - migração 079 (`decisao_fechada_sombra.ambiguos`: etapas `AMBIGUOUS` da RESOLVE por execução);
+  - golden set com o 1º estrato da intenção em qa-messenger e o GO do Instagram sem data, decidido no relatório do 1º estrato;
+  - teto da R2 com dois denominadores: 4/31 cadastrados e 3/25 ativos, o principal;
+  - rótulo humano só pelo parecer do 30.17;
+  - métrica principal do 31.10: "execuções sem fluxo que o Jev teria casado ao fluxo que o desfecho confirma".
+- `JEV_RUNTIME_SEND_APPROVED` continua `False`. Nenhuma chamada real.
+
 ## 2026-10-03 — Aprendizado: nomes também nas listas (validação do deploy 4, branch fix/aprendizado-ux-deploy4)
 
 - "capability" sai da tela: "capacidade", "Etapa livre (fora do catálogo)" e "Fora do catálogo".
@@ -57,6 +343,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   navegador numa cópia do banco do central, inclusive a 375 px.
 - Prova `simulated`: `tests/test_learning_confirmar_que_fica.py` (10), `AprendizadoPage.test.tsx` e
   `DetalheRico.test.tsx`. Real: `not_run`.
+
 ## 2026-10-03 — Aprendizado: o dossiê do fluxo diz os apps (branch fix/dossie-do-fluxo-apps)
 
 - O conteúdo legível do fluxo (detalhe do Livro e dossiê do curador) ganha `app` (o principal do plano), `apps` (os
@@ -75,12 +362,27 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (`ai_calls` 2944–3007).
 - `ai.leitura_visual.enabled` fica false. A correção do escopo do "truncado" espera decisão. Detalhe em `docs/ia.md` §17.
 
+## 2026-10-03 — 30.25: o rótulo de intenção, "Qual era o pedido?" (branch feat/30-25-rotulo-de-intencao)
+
+- A execução real e comprovada que a cadeia de resolução não casou com nenhuma habilidade (ou deixou num empate) vira
+  uma pergunta cega à pessoa: qual habilidade do catálogo era aquela intenção, ou nenhuma. É o gabarito do decisor
+  fechado da intenção (31.x, da Jev). Minerador no digest da execução assentada, sem gancho novo no taskqueue; uma
+  linha por execução em `learning_reviews` (`template_id='intencao'`, provedor vazio, só ids no dossiê).
+- Os leitores do curador filtram `template_id='curador'`: o rótulo, de custo zero, não entra no orçamento (C_W).
+- Rotas `GET /api/aprendizado/intencao` e `POST /api/aprendizado/execucao/{run_id}/intencao` (adendo v0.76).
+  No painel, "Qual era o pedido?" no fim de Para aprovar, opcional e fora da contagem: uma pergunta por
+  vez, com "Pular", e as opções em até duas linhas (percorrido no navegador numa cópia do banco, inclusive a 375 px).
+- Núcleo: `state.py` compõe o rótulo com o mesmo catálogo da sombra do 31.9 (`catalogo_da_cadeia`). Entra na suíte 7,
+  depois do `fix/31-9-privacidade`, que torna público o acessor `dados_da_intencao`.
+- Prova `simulated`: `tests/test_learning_rotulo_de_intencao.py` (28) e `IntencaoSecao.test.tsx` (10). Real: `not_run`.
+
 ## 2026-10-03 — Aprendizado: `commit` sem catálogo volta para a classe B (branch fix/commit-sem-catalogo-b)
 
 - O dono confirmou em 03/10 a decisão de 02/10: receita ou fluxo com `commit` num app SEM catálogo
   (`commit_sem_catalogo`) é classe **B**, aprovado em lote. A emenda para C da mesma madrugada (PR #127) foi revertida
   no código (`domain/politica_de_risco.py`), no doc do domínio e no §8.4 do desenho. O aviso de espera volta à faixa B.
 - Prova `simulated`: `test_learning_politica_de_risco.py` e `test_learning_espera.py`.
+
 ## 2026-10-03 — RA-20 (29.40), fatia A: a causa do "ausente" medida e a herança da receita provada (branch feat/ra-20-causa-do-ausente)
 
 - 52 % das consultas de receita davam "ausente" (reavaliação de 03/10), quase nenhuma por falta de receita: a chave
@@ -542,6 +844,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (`domain/versao.py::versao_canonica`) e a tela e a lição, que gravam só o nome, comparam pelo nome (`nome_da_versao`).
   Depois: 4 `obsoleto_provavel` (fluxos nunca casados). Achado no aceite visual com backend simulado sobre uma cópia do banco.
   Prova `simulated` (`tests/test_learning_versao.py`, 3 casos novos com os formatos medidos); `not_run` no central. K-076.
+
 ## 2026-10-02 — `learning.needs_person` no aviso fora do painel (28.14, branch feat/28-14-needs-person-aviso)
 
 - O aviso externo do 28.11 (Telegram) assina o evento do Livro (30.21), conforme o combinado com a frente Aprendizado em 02/10:

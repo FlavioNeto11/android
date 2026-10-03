@@ -319,3 +319,69 @@ def test_a_porta_nao_importa_cliente_http() -> None:
     for p in (APP / "planning" / "decisao_fechada").glob("*.py"):
         texto = p.read_text(encoding="utf-8")
         assert "import httpx" not in texto and "import requests" not in texto and "TYPESAFE" not in texto
+
+
+# ---------------------------------------------------------------- desligamento (I1): espera com prazo e sem foto
+class _DecisorComPortao(df.DecisorFalso):
+    """Segura a primeira chamada num portão: a sombra fica "em curso" até o teste liberar (sem `sleep` longo)."""
+
+    def __init__(self, *a: object, **kw: object) -> None:
+        super().__init__(*a, **kw)  # type: ignore[arg-type]
+        import threading  # noqa: PLC0415
+        self.iniciou = threading.Event()
+        self.portao = threading.Event()
+
+    def decidir(self, pedido: PedidoDeDecisao, timeout_s: float):  # type: ignore[no-untyped-def]
+        self.iniciou.set()
+        self.portao.wait(5.0)
+        return super().decidir(pedido, timeout_s)
+
+
+def test_aguardar_sombras_inclui_a_agendada_depois_da_primeira_olhada(aberta: None) -> None:
+    """Uma thread da intenção ou do curador ainda chamando a porta agenda a sombra DEPOIS de o desligamento olhar a lista:
+    a espera repete até esvaziar, em vez de tirar uma foto só."""
+    import threading  # noqa: PLC0415
+    vistos: list[RegistroDeDecisao] = []
+    decisor = _DecisorComPortao({"q1": _resp()})
+    porta = Porta(decisor, cfg=_cfg(curador="shadow"), observador=vistos.append)
+    porta.consultar(_pedido(modo="shadow", ref="um"))
+
+    def atrasada() -> None:
+        decisor.iniciou.wait(5.0)
+        porta.consultar(_pedido(modo="shadow", ref="dois"))     # agendada com a espera já em curso
+        decisor.portao.set()
+
+    t = threading.Thread(target=atrasada)
+    t.start()
+    porta.aguardar_sombras(5.0)
+    t.join(5.0)
+    assert sorted(r.ref or "" for r in vistos) == ["dois", "um"]
+
+
+def test_aguardar_sombras_tem_um_prazo_total_e_nao_esquece_o_que_ficou(aberta: None) -> None:
+    vistos: list[RegistroDeDecisao] = []
+    decisor = _DecisorComPortao({"q1": _resp()})
+    porta = Porta(decisor, cfg=_cfg(curador="shadow"), observador=vistos.append)
+    porta.consultar(_pedido(modo="shadow"))
+    decisor.iniciou.wait(5.0)
+    t0 = time.monotonic()
+    porta.aguardar_sombras(0.2)                                  # a sombra segue no portão: estoura o prazo
+    assert 0.15 <= time.monotonic() - t0 < 2.0 and vistos == []
+    decisor.portao.set()
+    porta.aguardar_sombras(5.0)                                  # não foi esquecida: a segunda espera a alcança
+    assert len(vistos) == 1
+
+
+def test_porta_encerrada_nao_aceita_sombra_nova_mas_a_ja_agendada_termina(aberta: None) -> None:
+    vistos: list[RegistroDeDecisao] = []
+    decisor = _DecisorComPortao({"q1": _resp()})
+    porta = Porta(decisor, cfg=_cfg(curador="shadow"), observador=vistos.append)
+    porta.consultar(_pedido(modo="shadow", ref="antes"))
+    decisor.iniciou.wait(5.0)
+    porta.encerrar()
+    res = porta.consultar(_pedido(modo="shadow", ref="depois"))
+    assert res.fallback_reason == "desligado"
+    porta.encerrar()                                             # idempotente
+    decisor.portao.set()
+    porta.aguardar_sombras(5.0)
+    assert [r.ref for r in vistos] == ["antes"] and len(decisor.chamadas) == 1
