@@ -40,11 +40,13 @@ def _sem_plano(issues: tuple[CompileIssue, ...], nome: str | None) -> RepoEspiao
 def test_o_texto_da_execucao_diz_o_nome_e_o_motivo_sem_id_nem_codigo() -> None:
     falta = CompileIssue(Code.E_PLAN_INVALID, f"{REF}: {REF}: o comando não dá valor a todos os parâmetros do plano.")
     repo = _sem_plano((falta,), "Abrir o QA Messenger e navegar até a tela de Perfil")
-    [(_, status, detalhe, _)] = repo.status
+    [(_, status, detalhe, kw_status)] = repo.status
     assert status is RunStatus.needs_input
     assert detalhe == ("A habilidade “Abrir o QA Messenger e navegar até a tela de Perfil” não serve para este comando: "
                        "faltam valores para os parâmetros do plano. Corrija o comando ou a habilidade.")
     assert "E_PLAN_INVALID" not in detalhe and REF not in detalhe
+    # o código vai num campo próprio do `run.updated` da transição
+    assert kw_status["dados"] == {"issue_codes": ["E_PLAN_INVALID"]}
     # quem desenvolve acha o id e o código no evento
     [(_, kw)] = repo.eventos
     assert kw["data"]["skill"] == REF and kw["data"]["issues"][0]["code"] == "E_PLAN_INVALID"

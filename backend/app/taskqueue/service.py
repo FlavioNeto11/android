@@ -1159,11 +1159,13 @@ class RunService:
         nome = f"“{resolvida.name}”" if resolvida.name else "casada"
         repo.bus.emit("log", f"Execução {run_id}: a habilidade {resolvida.ref} casou com o comando e não compilou",
                       level="warn", run_id=run_id, data={"skill": str(resolvida.ref), "issues": problemas})
+        # o código de cada problema vai num campo próprio do `run.updated` (`issue_codes`), não no texto da tela
         repo.set_run_status(run_id, RunStatus.needs_input,
                             f"A habilidade {nome} não serve para este comando: {motivos or 'ela não compilou'}. Corrija "
                             "o comando ou a habilidade.", level="warn",
                             message=f"Execução {run_id}: a habilidade {resolvida.ref} não compilou — corrija o comando "
-                                    "ou a habilidade e tente de novo.")
+                                    "ou a habilidade e tente de novo.",
+                            dados={"issue_codes": list(dict.fromkeys(str(p["code"]) for p in problemas))})
 
     # ------------------------------------------------------------------ recursos declarativos (fase H)
     def _recursos(self) -> ResourceConvergence:

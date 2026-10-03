@@ -27,7 +27,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - "prazo da etapa esgotado" e "saldo da conta abaixo do bloqueio" saem com rótulo;
   - entra a linha "Por origem" (RA-10).
 - I4: a habilidade que casou e não compilou vira `needs_input` com o nome dela e o motivo em português ("faltam valores
-  para os parâmetros do plano"). O id e o código ficam no evento.
+  para os parâmetros do plano"). O id e o código ficam no evento; o código também num campo próprio do `run.updated`,
+  `issue_codes` (a suíte 8 pegou o teste da fatia que lia o código no texto).
 - Prova `simulated`:
   - `tests/test_uso_total_com_custo_declarado.py`, `tests/test_needs_input_da_habilidade.py` e `usage.test.ts`;
   - o cartão de custo percorrido no navegador contra um backend simulado.

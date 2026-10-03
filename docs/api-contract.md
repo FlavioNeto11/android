@@ -4391,3 +4391,10 @@ Só campos novos, aditivos.
     banco).
   - O modelo sem preço por token cujas chamadas OK declararam todas o custo sai de `unpriced_models`.
   - Prova `simulated`: `tests/test_uso_total_com_custo_declarado.py`.
+- **Campo novo no evento, sem campo novo na API (I4 da mesma validação, ajustado depois da suíte 8):**
+  - a habilidade que casou e não compilou põe a execução em `needs_input` com texto para o dono no `status_detail` ("A
+    habilidade “<nome>” não serve para este comando: <motivo>. Corrija o comando ou a habilidade."), sem id nem código;
+  - o código de cada problema vai num campo próprio do `data` do `run.updated` dessa transição, `issue_codes`
+    (`["E_SKILL_NOT_FOUND"]`, `["E_PLAN_INVALID"]`). O `log` da mesma transição segue com `skill` e `issues` completos;
+  - prova `simulated`: `tests/test_needs_input_da_habilidade.py` e
+    `tests/test_fatia_abrir_conversa.py::test_filha_desabilitada_poe_a_composta_em_needs_input_sem_plano`.
