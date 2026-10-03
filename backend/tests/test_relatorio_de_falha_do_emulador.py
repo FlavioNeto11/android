@@ -248,7 +248,25 @@ async def test_dialogo_de_crash_encerra_a_espera_com_motivo_e_sem_escada(harness
     assert st.devices._pedir_reparo(rt, rt.attention or "") is False, "a escada não sobe degrau por isso"
 
     # A próxima subida limpa a marca (e, na máquina de verdade, tira o dump do caminho antes do Popen).
-    harness.emulator.linhas_no_log = []
     await st.devices.start_instance(rt)
     await harness.wait(lambda: rt.state == InstanceState.online, what="a nova subida")
     assert rt.bloqueio_de_crash is False
+
+
+async def test_start_remoto_que_parou_no_dialogo_marca_o_aparelho_sem_escada(harness: Harness) -> None:
+    """O agente fecha `failed` com `motivo` próprio (29.55 c); o central marca o aparelho e a escada não sobe degrau."""
+    st = harness.state
+    assert st is not None
+    rt = await _desligar(harness)
+
+    await st.devices.aplicar_desfecho_remoto(rt, "start", "failed", {"motivo": emu.MOTIVO_DIALOGO_DE_CRASH})
+
+    assert rt.bloqueio_de_crash is True
+    assert "diálogo de consentimento" in (rt.attention or "")
+    rt.desired_state = InstanceState.online.value
+    assert st.devices._pedir_reparo(rt, rt.attention or "") is False
+
+    # Outro motivo de falha não marca nada (o caminho de sempre segue valendo).
+    rt2 = await _desligar(harness, "android-02")
+    await st.devices.aplicar_desfecho_remoto(rt2, "start", "failed", {"motivo": "outro"})
+    assert rt2.bloqueio_de_crash is False

@@ -77,6 +77,9 @@ def _rotate_log(path: Path, limite_bytes: int = 8 * 1024 * 1024) -> None:
 #: Sem janela, ninguém responde, e a subida fica ali até o prazo do boot (incidente de 03/10/2026 19:00Z, 29.55).
 LINHA_DO_DIALOGO_DE_CRASH = "Showing crashdialog"
 
+#: O `motivo` com que o agente fecha o `start` que parou nesse diálogo; o central o reconhece para não abrir a escada.
+MOTIVO_DIALOGO_DE_CRASH = "dialogo_de_crash"
+
 #: Pasta, dentro da pasta de dados (`cfg.data_dir`), para onde vão os relatórios de falha pendentes. Mover, nunca
 #: apagar: o dump é a única evidência do crash que o deixou.
 PASTA_DA_QUARENTENA = "quarentena-crash"

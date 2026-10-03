@@ -812,6 +812,7 @@ class DeviceManager:
             rt.ui_variant = None
             rt.online_since_mono = rt.last_activity_mono = time.monotonic()
             rt.start_refusals, rt.start_backoff_until = 0, 0.0
+            rt.bloqueio_de_crash = False     # 29.55: no ar de novo, a marca do diálogo de relatório de falha cai
             # Aparelho que ENTRA no ar começa de novo. Sem isto, um emulador degradado por 3 falhas de sessão
             # voltava do reinício com o contador em 3, e a primeira recusa pós-boot — que é comum, e por isso o
             # executor tenta três vezes com 8 s de intervalo — o degradava de novo na hora.
@@ -3110,6 +3111,14 @@ class DeviceManager:
                 # CONFERE de verdade (`adb get-state` a cada 30 s), então uma revanche do mundo real o corrige.
                 self._set_state(rt, InstanceState.online, f"não desligou na máquina do worker ({outcome})",
                                 level="warn")
+            if verb in ("start", "wake") and (data or {}).get("motivo") == emu.MOTIVO_DIALOGO_DE_CRASH:
+                # 29.55 (c): o agente encerrou a subida presa no diálogo de relatório de falha. O motivo é claro e
+                # é da pessoa: a escada não sobe degrau por isso, e a próxima subida já tira o dump do caminho.
+                # Depois do `_set_state` acima, que limpa a atenção ao voltar para `stopped`.
+                rt.bloqueio_de_crash = True
+                self.marcar_atencao(rt, "A subida parou, na máquina do worker, no diálogo de consentimento de um "
+                                        "relatório de falha pendente do emulador. O agente encerrou o processo; a "
+                                        "próxima subida tira o relatório do caminho.")
             return
         dados = data or {}
         if verb in ("stop", "hibernate"):

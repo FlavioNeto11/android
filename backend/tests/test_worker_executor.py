@@ -191,6 +191,67 @@ async def test_boot_que_nao_termina_vira_uncertain_e_nunca_falha(tmp_path: Path,
     assert "não completou o boot" in str(saida.value)
 
 
+def _sobe_escrevendo_no_log(monkeypatch: pytest.MonkeyPatch, linha: str | None) -> list[tuple[int | None, str]]:
+    """`start_process` falso que escreve `linha` no log DESTA subida (append, como o real); e o `stop_process` falso
+    devolve quem foi encerrado."""
+    encerrados: list[tuple[int | None, str]] = []
+
+    def start_process(cfg: Any, _tools: Any, avd_name: str, *_a: Any, **_k: Any) -> int:
+        cfg.logs_dir.mkdir(parents=True, exist_ok=True)
+        with (cfg.logs_dir / f"emulator-{avd_name}.log").open("ab") as fh:
+            fh.write(b"INFO | iniciando\n" + (f"INFO | {linha}\n".encode() if linha else b""))
+        return 4001
+
+    def stop_process(_adb: Any, pid: int | None, avd_name: str) -> str:
+        encerrados.append((pid, avd_name))
+        return "processo encerrado"
+
+    monkeypatch.setattr(executor_mod.emu, "start_process", start_process)
+    monkeypatch.setattr(executor_mod.emu, "stop_process", stop_process)
+    return encerrados
+
+
+async def test_start_parado_no_dialogo_de_crash_fecha_failed_com_motivo_na_hora(tmp_path: Path,
+                                                                                monkeypatch: pytest.MonkeyPatch) -> None:
+    """29.55 (c): a subida que para no diálogo de relatório de falha não espera o prazo do verbo (8 min no real).
+    O lançador preso é encerrado, e o `failed` leva o `motivo` que o central reconhece para não abrir a escada."""
+    monkeypatch.setattr(executor_mod, "INTERVALO_SONDA_S", 0.01)
+    ex = _executor(tmp_path)
+    encerrados = _sobe_escrevendo_no_log(monkeypatch, f"{executor_mod.emu.LINHA_DO_DIALOGO_DE_CRASH} to get consent")
+    _sem_guarda_de_ram(ex, monkeypatch)
+    _estado_falso(ex, monkeypatch, "stopped")
+    monkeypatch.setattr(ex.avd, "exists", lambda _n: True)
+    monkeypatch.setattr(ex, "adb_for", lambda _spec: AdbFalso(nunca_boota=True))
+
+    inicio = time.monotonic()
+    with pytest.raises(VerbFailed) as saida:
+        await ex.run("start", ex.settings.devices[0], {"boot_timeout_s": 30})
+    assert time.monotonic() - inicio < 5, "a espera tem de terminar na hora, não no prazo do verbo"
+    assert saida.value.dados and saida.value.dados["motivo"] == executor_mod.emu.MOTIVO_DIALOGO_DE_CRASH
+    assert "diálogo de consentimento" in str(saida.value)
+    assert encerrados == [(4001, "worker-01")]
+    assert "worker-01" not in ex.pids
+
+
+async def test_linha_do_dialogo_de_uma_subida_anterior_nao_conta(tmp_path: Path,
+                                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    """O log é aberto em append: a linha de uma subida de antes, no mesmo arquivo, não encerra esta."""
+    monkeypatch.setattr(executor_mod, "INTERVALO_SONDA_S", 0.01)
+    ex = _executor(tmp_path)
+    ex.cfg.logs_dir.mkdir(parents=True, exist_ok=True)
+    (ex.cfg.logs_dir / "emulator-worker-01.log").write_bytes(
+        f"INFO | {executor_mod.emu.LINHA_DO_DIALOGO_DE_CRASH} to get consent\n".encode())
+    encerrados = _sobe_escrevendo_no_log(monkeypatch, None)
+    _sem_guarda_de_ram(ex, monkeypatch)
+    _estado_falso(ex, monkeypatch, "stopped")
+    monkeypatch.setattr(ex.avd, "exists", lambda _n: True)
+    adb = AdbFalso(pronto_depois_de=2)
+    monkeypatch.setattr(ex, "adb_for", lambda _spec: adb)
+
+    saida = await ex.run("start", ex.settings.devices[0], {"boot_timeout_s": 5})
+    assert saida["started"] is True and encerrados == []
+
+
 async def test_a_sondagem_do_boot_sai_da_thread_do_laco_de_eventos(tmp_path: Path,
                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
     """Achado #37: `adb.state()` é subprocess com timeout de 8 s. Chamado no laço, ele travava o agente inteiro a
