@@ -35,6 +35,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Contrato**: adendo v0.86 (`attempts.strategy` com `deterministic`; `escalate` = `nova_tentativa` mais estreito).
 - **Prova `simulated`**: `tests/test_caminho_rapido_2.py`. Os testes de ANR e de recusa, cujo gancho é a decisão da IA
   que abre o app, desligam `OPEN_APP_SEM_IA`. `not_run`: o aceite de latência no real.
+
 ## 2026-10-03 — 30.29: o fluxo com variável de execução no plano casa também pela habilidade (branch feat/30-29-fluxos-com-variaveis-de-execucao)
 
 - `skills/domain/matching.py::bind_template_parameters` deixa de exigir do comando os RESERVED (`account_label`,
@@ -46,6 +47,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - O aprendizado do fluxo já não templatizava os RESERVED; agora há um teste de regressão.
 - Núcleo (skills): revisão da Jev na parte do `matching.py`, e suíte 8.
 - Prova `simulated`: `tests/test_flows_account_label.py` (6; os 2 novos de bind/compilação falham sem a correção).
+
 ## 2026-10-03 — Aprendizado: o que uma execução simulada ensina não publica (RA-19, fatia B; branch feat/ra-19-origem-simulada)
 
 - Origem simulada nunca nasce ativa: a receita nem com `ai.recipes_promote_after: 0`, o fluxo nem com
@@ -118,6 +120,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Só leitura, sem IA. Descrição em [ia.md](docs/ia.md) (custo e uso).
 - Prova `simulated` (`scripts/tests/test_jev_leitura_cache_latencia.py`, 12 testes). Leitura `real` só leitura no banco do
   central (esquema 078).
+
 ## 2026-10-03 — 31.10: o script do relatório da sombra do Jev (branch feat/31-10-relatorio)
 
 - `scripts/jev-relatorio-31-10.py` mede a sombra do curador (por `kind`) e da intenção (por app) contra os limiares
@@ -129,6 +132,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   §5.
 - Prova: `simulated` (`scripts/tests/test_jev_relatorio_31_10.py`, 11 testes). No banco do central: `not_run` (depois do
   merge da suíte 7).
+
 ## 2026-10-03 — 29.34 (RA-15): o relógio do wake começa no snapshot carregado (branch feat/29-34-relogio-do-wake)
 
 - `DeviceManager._wait_boot`: o `wake_timeout_s` (90 s) deixa de contar do spawn. Antes do veredito do log vale
