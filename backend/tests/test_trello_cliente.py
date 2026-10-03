@@ -77,15 +77,59 @@ async def test_autentica_so_no_cabecalho_e_nunca_na_url() -> None:
         assert CHAVE.encode() not in p.content and TOKEN.encode() not in p.content, "nem no corpo"
 
 
-async def test_webhooks_e_a_unica_chamada_com_o_token_na_url_e_so_no_caminho() -> None:
-    srv = Servidor(httpx.Response(200, json=[{"id": "w1", "description": "central-de-aparelhos:q1"}]))
+async def test_webhook_e_webhooks_do_membro_sem_token_na_url_e_so_devolvem_o_webhook() -> None:
+    wh = {"id": "w1", "description": "central-de-aparelhos:q1", "idModel": "q1", "callbackURL": "https://x.test/h",
+          "active": True, "consecutiveFailures": 0}
+    tokens = [{"id": "t1", "identifier": "ident-do-token", "idMember": "m1", "permissions": [{"idModel": "q1"}],
+               "dateExpires": None, "webhooks": [wh, {"id": "w2", "idModel": "q2", "callbackURL": "https://y.test/h",
+                                                      "active": False}]},
+              {"id": "t2", "identifier": "outro", "webhooks": []}, {"id": "t3"}]
+    srv = Servidor(httpx.Response(200, json=wh), httpx.Response(200, json=tokens))
     cli, _ = _cliente(srv)
-    lista = await cli.webhooks()
-    assert lista == [{"id": "w1", "description": "central-de-aparelhos:q1"}]
-    (p,) = srv.pedidos
-    assert p.url.path == f"/1/tokens/{TOKEN}/webhooks" and p.url.query == b""
-    assert CHAVE not in str(p.url)
-    assert p.headers["authorization"].startswith("OAuth oauth_consumer_key=")
+    assert await cli.webhook("w1") == {"id": "w1", "description": "central-de-aparelhos:q1", "idModel": "q1",
+                                       "callbackURL": "https://x.test/h", "active": True}
+    lista = await cli.webhooks_do_membro()
+    assert lista == [
+        {"id": "w1", "description": "central-de-aparelhos:q1", "idModel": "q1", "callbackURL": "https://x.test/h",
+         "active": True},
+        {"id": "w2", "idModel": "q2", "callbackURL": "https://y.test/h", "active": False}]
+    assert "ident-do-token" not in repr(lista) and "permissions" not in repr(lista), "nenhum campo de token sai"
+    um, dois = srv.pedidos
+    assert (um.method, um.url.path, um.url.query) == ("GET", "/1/webhooks/w1", b"")
+    assert (dois.method, dois.url.path, dois.url.query) == ("GET", "/1/members/me/tokens", b"webhooks=true")
+    for p in srv.pedidos:
+        assert _sem_segredo_na_url(p) and p.headers["authorization"].startswith("OAuth oauth_consumer_key=")
+
+
+async def test_webhooks_do_membro_recusa_resposta_que_nao_e_lista() -> None:
+    cli, _ = _cliente(Servidor(httpx.Response(200, json={"id": "t1"})))
+    with pytest.raises(FalhaDoTrello):
+        await cli.webhooks_do_membro()
+
+
+async def test_nenhum_metodo_publico_poe_a_chave_ou_o_token_em_qualquer_parte_da_url() -> None:
+    """Percorre TODOS os métodos públicos do cliente e confere cada `request.url` (caminho, query e fragmento)."""
+    import inspect
+
+    srv = Servidor(httpx.Response(200, json={"id": "x1"}))
+    cli, _ = _cliente(srv)
+    chamadas = {
+        "acao": ("a1",), "acoes_do_quadro": ("q1", "2026-10-03T00:00:00.000Z"),
+        "criar_cartao": ("l1", "N", "D"), "atualizar_cartao": ("c1",), "arquivar_cartao": ("c1",),
+        "comentar": ("c1", "oi"), "webhook": ("w1",), "webhooks_do_membro": (),
+        "criar_webhook": ("q1", "https://exemplo.test/h", "d"), "apagar_webhook": ("w1",)}
+    nomes = {n for n, f in inspect.getmembers(ClienteTrello, inspect.iscoroutinefunction) if not n.startswith("_")}
+    assert nomes == set(chamadas), f"método público sem cobertura neste teste: {nomes ^ set(chamadas)}"
+    for nome, args in chamadas.items():
+        antes = len(srv.pedidos)
+        srv.respostas = [httpx.Response(200, json=[]) if nome == "webhooks_do_membro" else httpx.Response(200, json={"id": "x1"})]
+        kw = {"nome": "Outro"} if nome == "atualizar_cartao" else {}
+        await getattr(cli, nome)(*args, **kw)
+        assert len(srv.pedidos) == antes + 1, nome
+        url = srv.pedidos[-1].url
+        for parte in (str(url), url.path, url.query.decode(), url.fragment, url.host):
+            assert CHAVE not in parte and TOKEN not in parte, f"{nome}: segredo na URL"
+        assert not {"key", "token"} & set(dict(url.params)), nome
 
 
 async def test_os_pedidos_levam_o_metodo_o_caminho_e_o_corpo_certos() -> None:
@@ -209,7 +253,7 @@ async def test_falha_de_rede_nao_e_definitiva_e_nao_traz_url_nem_segredo() -> No
     http = httpx.AsyncClient(transport=httpx.MockTransport(cai))
     cli = ClienteTrello(CHAVE, TOKEN, client=http, balde=BaldeDeRequisicoes(relogio=rel, dormir=rel.dormir))
     with pytest.raises(FalhaDoTrello) as e:
-        await cli.webhooks()                      # a chamada com o token no caminho: o pior caso do vazamento
+        await cli.webhooks_do_membro()
     assert not e.value.definitiva and e.value.status is None
     assert TOKEN not in e.value.motivo and "trello.com" not in e.value.motivo and "ConnectError" in e.value.motivo
     assert e.value.__cause__ is None, "`from None`: o erro original (com a URL) não viaja"

@@ -249,7 +249,7 @@ Fonte das regras do Trello: a página oficial de webhooks (developer.atlassian.c
    chave `(canal, id_externo)` da 085 faz a repetição não gravar nada (200, nenhuma segunda linha), e a regra de
    idade barra a action velha. As 3 repetições do próprio Trello caem no mesmo dedupe.
 7. **O cadastro** (no líder, na partida e a cada hora, só com `trello.webhook.enabled` e os três segredos):
-   - `GET /1/tokens/{token}/webhooks`; para cada quadro de `trello.quadros`, garante UM webhook com
+   - `GET /1/members/me/tokens?webhooks=true` (o cliente devolve só os webhooks; o token nunca vai na URL); para cada quadro de `trello.quadros`, garante UM webhook com
      `callbackURL = trello.webhook.callback_url` e a descrição `central-de-aparelhos:<quadro>`;
    - cria o que falta (o Trello faz o HEAD do item 1); recria o que estiver `active: false`;
    - desligado o `trello.webhook.enabled`, apaga os webhooks com essa descrição (e só eles);

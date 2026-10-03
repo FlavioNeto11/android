@@ -1,9 +1,9 @@
 """Cliente REST do Trello do dono (item 32.2, ADR-072; desenho em `docs/design/trello-integracao.md`, §1 e §7.2).
 
 A autenticação é a chave do Power-Up e o token do dono, e vai SÓ no cabeçalho
-`Authorization: OAuth oauth_consumer_key="…", oauth_token="…"`: nunca na query, nunca em log. A única URL que carrega o
-token é a de `webhooks()` (`GET /1/tokens/{token}/webhooks`, o formato da API); por isso a URL nunca é registrada, nem
-inteira nem em pedaço. Todo erro que sai daqui é montado a partir do NOME da exceção e do código HTTP, jamais do `str()`
+`Authorization: OAuth oauth_consumer_key="…", oauth_token="…"`: nunca na URL (nem no caminho, nem na query), nunca em
+log. Por isso o cliente não usa `/1/tokens/{token}/…`: os webhooks se leem por `webhook(id)` e `webhooks_do_membro()`.
+Todo erro que sai daqui é montado a partir do NOME da exceção e do código HTTP, jamais do `str()`
 dela (o de `httpx` costuma trazer a URL), e o texto que o Trello devolve passa por `_limpar`, que tira a chave e o token
 mesmo que apareçam ali. A redação central (`security.redaction`) é a segunda camada, não a primeira.
 
@@ -34,6 +34,8 @@ MAX_REPETICOES = 3
 ESPERA_429_PADRAO_S = 10.0
 ESPERA_429_MAX_S = 60.0
 DESCRICAO_MAX = 160
+#: O que o cliente devolve de um webhook (a descrição é a marca `central-de-aparelhos:<quadro>` do cadastro).
+CAMPOS_DO_WEBHOOK = ("id", "description", "idModel", "callbackURL", "active")
 
 #: O JSON do Trello, sem tipos ricos por enquanto: um objeto ou uma lista.
 Json = dict[str, object] | list[object]
@@ -84,6 +86,11 @@ def _limpar(texto: str, *segredos: str) -> str:
         if segredo:
             sem = sem.replace(segredo, "***")
     return " ".join(sem.split())[:DESCRICAO_MAX]
+
+
+def _so_webhook(bruto: Mapping[str, object]) -> dict[str, object]:
+    """Reduz um webhook aos campos que a Central usa; o resto (e qualquer campo de token) fica para trás."""
+    return {k: bruto[k] for k in CAMPOS_DO_WEBHOOK if k in bruto}
 
 
 def _numero(bruto: object) -> float | None:
@@ -212,10 +219,23 @@ class ClienteTrello:
         return id_acao
 
     # ------------------------------------------------------------------ webhooks (§8 do desenho)
-    async def webhooks(self) -> Json:
-        """`GET /1/tokens/{token}/webhooks`: os webhooks deste token. O token vai no CAMINHO (é o formato da API); é a
-        única chamada em que ele aparece na URL, e a URL nunca é registrada."""
-        return await self._pedir("GET", f"/1/tokens/{quote(self._token, safe='')}/webhooks")
+    async def webhook(self, id_webhook: str) -> dict[str, object]:
+        """`GET /1/webhooks/{id}`: um webhook (só os campos de `CAMPOS_DO_WEBHOOK`)."""
+        resposta = self._objeto(await self._pedir("GET", f"/1/webhooks/{quote(id_webhook, safe='')}"), "o webhook")
+        return _so_webhook(resposta)
+
+    async def webhooks_do_membro(self) -> list[dict[str, object]]:
+        """`GET /1/members/me/tokens?webhooks=true`: os webhooks de todos os tokens do dono, achatados numa lista. A rota
+        devolve dados de TOKEN (identificador, permissões, validade); nada disso sai daqui: só os campos de
+        `CAMPOS_DO_WEBHOOK` de cada webhook. O token próprio nunca vai na URL."""
+        tokens = await self._pedir("GET", "/1/members/me/tokens", params={"webhooks": "true"})
+        if not isinstance(tokens, list):
+            raise FalhaDoTrello("resposta do Trello sem a lista de tokens")
+        saida: list[dict[str, object]] = []
+        for token in tokens:
+            filhos = token.get("webhooks") if isinstance(token, dict) else None
+            saida += [_so_webhook(w) for w in filhos or [] if isinstance(w, dict)]
+        return saida
 
     async def criar_webhook(self, id_modelo: str, callback_url: str, descricao: str) -> Json:
         """O Trello faz um HEAD na `callback_url` antes de criar; sem 200, o webhook não nasce."""
