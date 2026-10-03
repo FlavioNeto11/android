@@ -262,7 +262,9 @@ Os itens de polimento da frente do Aprendizado em `.claude/handoffs/ux-deploy7-2
   - o livro da sombra, como o sinal `autopublicaria`, sem migração;
   - o laço sob a trava de líder;
   - o balanço nas métricas (`curador.autopublicacao`);
-  - o config `aprendizado.autopublicacao.modo`, `off` de fábrica, com `on` recusado até a 30.34-B.
+  - o config `aprendizado.autopublicacao.modo`, `off` de fábrica, com `on` recusado até a 30.34-B;
+  - o contrato no adendo v0.93 da API.
+- O central liga `shadow` no deploy 11 (orquestradora, 03/10). `on` só depois do relatório da sombra.
 - Prova `simulated`: `test_learning_autopublicacao.py` e `test_learning_autopublicacao_sombra.py`.
 
 ## 2026-10-03 — Deploy 9 no central (suíte 9; sombra C0–C1 do curador ligada, T_on do 31.10; curador volta ao padrão)

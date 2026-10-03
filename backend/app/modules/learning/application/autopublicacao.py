@@ -157,7 +157,7 @@ class ServicoDeAutopublicacao:
                         for c in self._sombra.casos()), self.parametros)
 
     def relatorio(self) -> dict[str, object]:
-        """O bloco das métricas (`curador.autopublicacao`, aditivo ao adendo v0.89) e do relatório à orquestradora."""
+        """O bloco das métricas (`curador.autopublicacao`, adendo v0.93, aditivo ao v0.89) e do relatório à orquestradora."""
         b = self.balanco()
         p = self.parametros
         return {"modo": self._modo().value, "casos": b.casos, "abertos": b.abertos, "limpos": b.limpos,

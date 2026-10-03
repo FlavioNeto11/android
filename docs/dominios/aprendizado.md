@@ -559,7 +559,8 @@ pendente da orquestradora (gravar o `config.yaml` ou levar o override para o ban
 `custo_estimado_usd`. Ver a seção da 30.31 abaixo.
 
 **Autopublicação do fluxo B (30.34).** `aprendizado.autopublicacao.modo: "off" | "shadow"` (`off` de fábrica) e
-`intervalo_s` (3600). `shadow` só marca o que publicaria; `on` é recusado até a 30.34-B. Os limiares são da regra, não do
+`intervalo_s` (3600). `shadow` só marca o que publicaria; `on` é recusado até a 30.34-B. O central liga `shadow` no
+deploy 11 (orquestradora, 03/10). Os limiares são da regra, não do
 config: ver "Autopublicação do fluxo B em sombra (30.34)".
 
 ## Evento `learning.needs_person` (30.21)
@@ -1047,7 +1048,7 @@ em sombra. Nesta fatia (30.34-A) a regra vai até `shadow`; publicar de verdade 
 - **O laço** (`LacoDaAutopublicacao`) roda sob a trava de líder, de `intervalo_s` em `intervalo_s` (3600 de fábrica),
   numa thread: só lê o livro e grava sinais. Sem IA, sem aparelho.
 - **Nas métricas** (`/api/aprendizado/metricas`), o bloco `curador` ganha a chave `autopublicacao`. É o balanço, global,
-  com o modo e os limiares; a chave é aditiva e só aparece com o serviço composto.
+  com o modo e os limiares; a chave é aditiva (adendo v0.93) e só aparece com o serviço composto.
 - **Config:** `aprendizado.autopublicacao.modo: "off" | "shadow"` e `intervalo_s`. `on` é recusado até a 30.34-B.
 
 ## Pendências conhecidas
