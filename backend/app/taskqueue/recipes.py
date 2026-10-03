@@ -174,6 +174,30 @@ def _combo(kind: str, el: dict[str, Any] | UiElement) -> tuple[str | None, str |
     return parts if all(needed) else None
 
 
+#: Quantos filhos rotulados a gravação guarda do alvo sem identidade (29.40 item 2): a destilação usa o primeiro cujo
+#: texto vire seletor (`_usable_text` depende das variáveis, que só a destilação conhece).
+FILHOS_NO_ALVO = 3
+
+
+def filhos_rotulados(tree: UiTree, el: UiElement) -> list[dict[str, object]]:
+    """O alvo sem combinação única (o contêiner sem id, como o `LinearLayout` da linha da lista): os elementos DENTRO
+    dos bounds dele que se identificam sozinhos nesta tela, do maior para o menor. Só os NÃO clicáveis: o toque no
+    centro deles sobe ao contêiner pelo despacho do Android; um filho clicável faria outra coisa."""
+    x1, y1, x2, y2 = el.bounds
+    dentro = [e for e in tree.elements if e is not el and e.enabled and not e.clickable and not e.password
+              and x1 <= e.bounds[0] and y1 <= e.bounds[1] and e.bounds[2] <= x2 and e.bounds[3] <= y2]
+    dentro.sort(key=lambda e: (-(e.bounds[2] - e.bounds[0]) * (e.bounds[3] - e.bounds[1]), e.bounds[1], e.bounds[0]))
+    saida: list[dict[str, object]] = []
+    for e in dentro:
+        unicos = unique_selectors(tree, e)
+        if unicos:
+            saida.append({"resource_id": e.resource_id, "text": e.text, "desc": e.desc, "class_name": e.class_name,
+                          "unique": unicos})
+            if len(saida) == FILHOS_NO_ALVO:
+                break
+    return saida
+
+
 def unique_selectors(tree: UiTree, el: UiElement) -> list[str]:
     """No momento da ação: quais combinações identificam SOZINHAS o alvo nesta tela (gravado junto do alvo)."""
     kinds = []
@@ -221,6 +245,13 @@ def build_selectors(target: dict[str, Any], variables: dict[str, str]) -> list[d
                 continue
             sel["desc"] = usable
         sels.append(sel)
+    if not sels:
+        # 29.40 item 2: o contêiner sem identidade é alcançado pelo filho rotulado gravado com ele; a reprodução toca o
+        # centro do filho, que fica dentro do contêiner, e a pós-condição confere como sempre.
+        for filho in target.get("filhos") or []:
+            sels = [{**s, "via": "filho"} for s in build_selectors(filho, variables)]
+            if sels:
+                break
     return sels
 
 
@@ -284,6 +315,8 @@ def distill(action_rows: list[Row], variables: dict[str, str]) -> tuple[list[dic
                 return None, f"{tool}: o alvo não tinha seletor estável e único"
             if item["commit"] and all(s["kind"] == "text" for s in sels):
                 return None, "ação de efeito externo só com seletor por texto — fraco demais"
+            if item["commit"] and any(s.get("via") == "filho" for s in sels):
+                return None, "ação de efeito externo pelo filho do alvo — fraco demais"
             item["selectors"] = sels
         if pending_scrolls:
             item["scroll"] = {"direction": pending_scrolls[-1], "max": len(pending_scrolls) + 3}
@@ -352,6 +385,8 @@ def distill_training(inputs: list[dict[str, Any]], variables: dict[str, str], *,
                 return None, f"{tipo}: o alvo não tinha seletor estável e único"
             if commit and all(x["kind"] == "text" for x in sels):
                 return None, "ação de efeito externo só com seletor por texto — fraco demais"
+            if commit and any(x.get("via") == "filho" for x in sels):
+                return None, "ação de efeito externo pelo filho do alvo — fraco demais"
             item["args"] = {"duration_ms": 800} if tipo == "long_press" else {}
             item["selectors"] = sels
         if pending_scrolls:
