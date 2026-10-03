@@ -27,6 +27,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `NovaEvidencia.observed_at` opcional. Origem própria `reproducao:<run_id>`: a linha é o registro datado dos contadores e
   não conta de novo (`promocao.efetivas` e os leitores em SQL a tiram), então a saúde, a fila "Revisar", a promoção e as
   métricas não mudam; só o dossiê a mostra. API sem mudança (o dossiê não está em rota).
+- Polimento da validação do deploy 13: a linha de evidência no detalhe do item (`DetalheRico`) mostra o texto humano
+  (`model.textoDaEvidencia`): sem a marca do conteúdo, a pós-condição pelo rótulo do painel ("nesta execução: app em
+  primeiro plano; no fluxo: elemento presente") e "(e mais N)" no lugar de "(+N)"; vale para as linhas antigas (o log não
+  muda). vitest do aprendizado 159 passed; typecheck ok.
 - Prova: `simulated` (`backend/tests/test_learning_evidencia_receita.py`, suíte `test_learning_*` 882 passam). Real: `not_run`
   (nenhuma execução, aparelho ou conta reais; a volta das receitas ao curador é do deploy da suíte 15).
 

@@ -250,6 +250,18 @@ describe('detalhe rico: relações e seções ausentes', () => {
     expect(linhas.filter((l) => l.startsWith('contra (reclassificada como forma; não conta)'))).toHaveLength(1);
     expect(linhas.filter((l) => l.startsWith('divergência de forma'))).toHaveLength(1);
   });
+
+  it('a linha de forma mostra a pós-condição pelo rótulo, sem a marca do conteúdo (polimento do deploy 13)', async () => {
+    await mostrar(detalhe({
+      evidencias: [{ stance: 'forma', origin_ref: 'run:r-2', run_id: 'r-2', instance_id: 'android-09', app_version: null,
+                     simulated: false, observed_at: '2026-10-03T16:30:00Z',
+                     detail: '[686ac998656d] etapa 2: pós-condição reescrita (app_foreground × element_present) (+1)' }],
+    }));
+    const linha = text(container.querySelector('[aria-label="Evidências"] li')!);
+    expect(linha).toContain('etapa 2: pós-condição reescrita (nesta execução: app em primeiro plano; no fluxo: elemento presente) (e mais 1)');
+    expect(linha).not.toContain('686ac998656d');
+    expect(linha).not.toContain('app_foreground');
+  });
 });
 
 describe('evidência inválida e reaprendido (30.23)', () => {

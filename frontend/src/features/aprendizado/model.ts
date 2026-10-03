@@ -13,7 +13,7 @@
 import { Archive, CircleCheck, CircleDashed, CircleOff, FilePen, ShieldCheck } from 'lucide-react';
 import type { SkillState } from '../../api/types';
 import { isRecord } from '../../lib/format';
-import type { StatusMeta } from '../../lib/status';
+import { POSTCONDITION_KIND, type StatusMeta } from '../../lib/status';
 import { formatQuando } from '../../lib/time';
 import type { BlocoDoCurador, ModoDoCurador, ParecerDaIA, ParecerNaFila } from './parecer';
 
@@ -583,6 +583,26 @@ export function rotuloDoDetalhe(d: string | null | undefined): string | null {
   const sombra = /^sombra (\d+)\/(\d+)$/.exec(d);
   if (sombra) return Number(sombra[2]) === 0 ? null : `na sombra, concordou com a IA em ${sombra[1]} de ${sombra[2]}`;
   return d;
+}
+
+/**
+ * O `detail` de uma linha de evidência para a pessoa ler (polimento da validação do deploy 13). O backend grava o texto
+ * técnico, e o log o guarda como está: a marca do conteúdo na frente (`[686ac998656d]`, a versão do fluxo que o D1
+ * conta), os tipos crus da pós-condição (`(app_foreground × element_present)`: o desta execução × o do fluxo) e `(+N)`
+ * quando a lista foi cortada para caber na coluna. Aqui a marca sai, os tipos ganham o rótulo do painel e o corte vira
+ * "e mais N". Vale para as linhas antigas e as novas; o que não casa passa como está.
+ */
+export function textoDaEvidencia(d: string): string {
+  const rotulo = (tipo: string) => {
+    const r = POSTCONDITION_KIND[tipo] ?? tipo;
+    return r.charAt(0).toLowerCase() + r.slice(1);              // "Avaliado pela IA" → "avaliado pela IA"
+  };
+  return d
+    .replace(/^\[[0-9a-f]{6,}\]\s*/, '')
+    .replace(/\(([a-z_]+) × ([a-z_]+)\)/g, (_, feito: string, esperado: string) =>
+      `(nesta execução: ${rotulo(feito)}; no fluxo: ${rotulo(esperado)})`)
+    .replace(/ \(\+(\d+)\)$/, (_, n: string) => ` (e mais ${n})`)
+    .trim();
 }
 
 // ---------------------------------------------------------------- o que a PESSOA pode fazer
