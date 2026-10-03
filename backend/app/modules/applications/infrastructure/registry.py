@@ -209,6 +209,12 @@ def registered() -> list[AppDefinition]:
     return sorted(_CAPS.values(), key=lambda c: c.label.lower())
 
 
+def nomes_e_apelidos() -> tuple[str, ...]:
+    """Como o dono chama cada app registrado: nome, rótulo e apelidos do `app.yaml` ("Instagram", "insta"). É a fonte dos
+    nomes de app do filtro da sombra da intenção (`decisao_fechada.entidades`, ADR-052), registrada pela fila na subida."""
+    return tuple(n for d in registered() for n in (d.name, d.label, *d.aliases) if n)
+
+
 def session_provider_of(package: str | None) -> str | None:
     """Atalho do caminho quente: quem provê sessão de conta neste pacote, se alguém provê."""
     return capabilities_of(package).session_provider
@@ -250,4 +256,4 @@ def _reset_para_teste() -> None:
 
 __all__ = ["AppCapabilities", "AppDefinition", "AppManifest", "ScreenReader", "register", "register_manifest",
            "unregister", "get", "capabilities_of", "definition_of", "screen_reader_of", "session_factory_of",
-           "registered", "session_provider_of", "package_of_provider", "pacote_ancora"]
+           "registered", "session_provider_of", "package_of_provider", "pacote_ancora", "nomes_e_apelidos"]

@@ -196,6 +196,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - corpus G da orquestradora (492 casos, com a persona "Girassol"): ok 488, 0 vazamentos de portão, 0 C7 mascarada, 0
     passagens indevidas;
   - 122 comandos reais: 1 recusa, a mesma.
+- Suíte 9: o nome dos apps chega ao filtro por GANCHO, sem import tardio. A fila registra
+  `registry.nomes_e_apelidos` na subida; sem registro, nenhum nome. O import dentro de `nomes_dos_apps` furava
+  `test_arquitetura::test_imports_tardios_so_diminuem`. Prova `simulated`: o teste de arquitetura, os do filtro (B a G)
+  e o harness da orquestradora, com 0 diferenças contra 2560756d nos 492 casos.
 
 ## 2026-10-03 — Correção do 31.9, rodada F (NO-GO da fase 2 da rodada E em db45d4fd): barrar pela intenção de entrar, "com X" pelo catálogo real (branch fix/31-9-rodada-e)
 

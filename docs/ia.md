@@ -1119,7 +1119,9 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
       - Saíram de `_OBJETO_DE_NAVEGACAO`, `_ONDE_SE_ENTRA` e `_NAO_VALOR` em `intencao.py`, e do `_NAO_DONO` em
         `entidades.py`.
       - Agora vêm do `app.yaml`: nome, rótulo e o campo novo `apelidos` (o Instagram declara `[insta]`), lidos do
-        registro na consulta (`entidades.nomes_dos_apps`).
+        registro na consulta (`entidades.nomes_dos_apps`). O filtro não importa o registro: a fila registra a fonte na
+        subida (`registrar_fonte_dos_apps(registry.nomes_e_apelidos)` em `taskqueue/service.py`; sem registro, nenhum
+        nome). O import tardio que fazia isso furava a catraca de `test_arquitetura` (suíte 9).
       - A lista fixa guarda o vocabulário genérico ("app", "conta", "perfil", "feed", "site") e, à parte, os serviços
         de terceiros SEM pacote na plataforma (gmail, facebook, tiktok, whatsapp, twitter, chrome), em
         `_SERVICOS_SEM_PACOTE`. Desvio declarado da decisão "só termos genéricos": sem eles em `_ONDE_SE_ENTRA`,
