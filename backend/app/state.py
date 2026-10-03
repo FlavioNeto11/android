@@ -2244,12 +2244,17 @@ class AppState:
                        hint="Abra Aprovações e escolha aprovar, editar ou rejeitar.")
 
     def _seed_apps(self) -> None:
-        """Os apps do `config.yaml` entram no registro na subida; o que já existe (mesmo id) fica como está."""
+        """Os apps do `config.yaml` entram no registro na subida; o que já existe (mesmo id) fica como está.
+
+        `builtin: true` é o app de prova embutido e nasce com `category='qa'`, como a migração 041 fez com as linhas que
+        já existiam (`UPDATE … WHERE builtin = 1`). Sem isto, uma instalação nova semeava o app de prova SEM categoria e
+        o tier 0 de `side_effect_tier` (item 29.31) nunca valia nela."""
         for a in self.cfg.file.apps:
             if self.apps.obter(a.id) is not None:
                 continue
             self.apps.criar(app_id=a.id, name=a.name, package=a.package, activity=a.activity, apk_path=a.apk_path,
-                            nav_hints=a.nav_hints, known_selectors=a.known_selectors, builtin=a.builtin)
+                            nav_hints=a.nav_hints, known_selectors=a.known_selectors, builtin=a.builtin,
+                            category="qa" if a.builtin else None)
 
     def _seed_builtin_release(self) -> None:
         """Garante, na subida, que todo app embutido com APK versionado já tenha release instalável e
