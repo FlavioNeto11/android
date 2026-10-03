@@ -4666,6 +4666,13 @@ reprovou por isso, com 0/32 nos dois leitores. Com a emenda, `real` às 04:58Z: 
 gpt-6-luna 29/32, com 0/96 de concordância falsa nos dois. Leitor: gemini-3.1-flash-lite principal e gpt-6-luna
 alternativo. A opção liga (`ai.leitura_visual.enabled`) no próximo reinício do central, não antes.
 
+**Precisão da emenda (03/10/2026, 29.49; orquestradora, dentro da emenda).** Quando o valor aparece em mais de uma linha
+transcrita (a prévia do corpo REPETE o assunto e termina em "…"), "a linha que contém o valor" é a cópia INTEIRA: uma
+cópia numa linha sem corte prova que o valor não foi cortado, e as cópias cortadas contam como linha alheia para explicar
+a marca global. Só quando TODAS as linhas com o valor terminam cortadas a leitura é recusada; o valor do ator e o campo
+do leitor cortados continuam recusando. A bancada de 03/10, refeita offline sobre as transcrições guardadas (sem chamada
+nova): gemini 31→32/32 e gpt-6-luna 29→30/32, com 0/96 de concordância falsa nos dois.
+
 **Relação.** ADR-065 §3 (substituído em parte), ADR-052, ADR-058, ADR-009, ADR-024, ADR-069 §4 (a transcrição é
 roteamento comum do hub, não o Jev); migração 078; `backend/app/taskqueue/saidas.py::ler_valor_visual`,
 `backend/app/planning/` (papel `leitura`, `transcribe`), [dominios/execution.md](dominios/execution.md),

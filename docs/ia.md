@@ -1347,7 +1347,18 @@ provedores (Anthropic, `OpenAICompatProvider`, simulado) e no `RoutingProvider`.
 
 **Recusas da leitura visual (vocabulário fechado).** `desligado`, `elemento_com_texto`, `regiao_nao_declarada`, `arvore_truncada`,
 `tela_sensivel`, `fora_do_app`, `sem_ancora`, `captura_mudou`, `repetida`, `sem_leitor`, `leitor_falhou`, `ilegivel`, `truncado`,
-`nao_confere` e `triagem:<motivo>`. O ator recebe SÓ o código. Três regras do caminho visual:
+`nao_confere` e `triagem:<motivo>`. O ator recebe SÓ o código. Regras do caminho visual:
+
+- **Truncado (ADR-070 §4, emenda e precisão do 29.49):** vale para o valor do ator, o campo do leitor e a linha do valor.
+  Com o valor em mais de uma linha (a prévia que repete o assunto), basta uma cópia numa linha inteira; as cópias cortadas
+  explicam a marca global do leitor como linha alheia.
+- **Releitura recusada (29.49):** a recusa da conferência (`ilegivel`, `truncado`, `nao_confere`) é guardada por par (tela
+  exata, âncora). O ator recebe o código e uma frase do executor: ler de novo o mesmo elemento nesta tela não será aceito. Se
+  ele relê, a recusa `repetida` é DEFINITIVA: a etapa termina como não lida ("O valor da etapa não foi lido na tela: …
+  repetida na mesma tela"), sem nova tentativa e sem recuperação automática (`StepOutcome.sem_recuperacao`). Antes, a etapa
+  recomeçava e refazia o mesmo caminho até o teto (run 89b814). Uma escalada ao modelo forte ainda pode ocorrer entre a 1ª
+  recusa e a releitura (a regra do `ciclo` não mudou). `repetida` depois de `leitor_falhou` (falha do provedor) não é
+  definitiva.
 
 - **Triagem (ADR-009):** além da triagem da árvore, o valor com FORMA de código (4 a 8 dígitos, com ou sem espaço ou hífen) é recusado
   mesmo sem palavra de contexto, e o recorte inteiro é triado linha a linha (`codigo_na_linha`: número de 4 a 8 dígitos E palavra de
