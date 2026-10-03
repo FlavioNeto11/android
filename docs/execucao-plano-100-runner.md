@@ -332,6 +332,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.23 | implemented | real | opus | — | PR #121 (feat/30-23-evidencia-invalida @ 4ec4eb42) na main pelo merge 63a81cab da suíte 6 (rodada 2 em cc73e6a8: backend 6275 passed, 7 skipped; frontend 109 arquivos e 1311 testes; scripts 427). Desligamento por eviden… |  |
 | 30.24 | pendente | — | — | — |  |  |
 | 30.25 | pendente | — | — | — |  |  |
+| 30.26 | pendente | — | — | — |  |  |
 | 31.1 | implemented | simulated | sessao | — | Commit b5a40c98 (na main desde o PR #110, sessao jev, 02/10/2026): trava de 255 opcoes e opcao nenhuma no adaptador do Jev (choice). backend/tests/test_context_retrieval_semantic.py com provedor falso. Chamada real: not… |  |
 | 31.2 | implemented | simulated | sessao | — | PR #112 (merge b5baf3e5 na main, commits 89a92b03 + a6cfa0fd, sessao jev, 02/10/2026): migracao 073 (ai_calls.origem e ref, TEXT sem CHECK), Usage.origem, filtro por origem no gasto (costs.spent_usd). backend/tests/test… |  |
 | 31.3 | implemented | not_run | sessao | — | Item de decisao (texto do ADR): ADR-069 escrito e aprovado pelo dono (02/10/2026 ~21:35Z, 'sim para todos' no chat da orquestradora), PR #102, merge fd59fbd7. Emenda o ADR-063; D-J1 (porta unica, constantes fechadas, Te… |  |

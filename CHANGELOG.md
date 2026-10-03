@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 30.26 (RA-22): o tipo da falha sai do erro de IA, não do texto (branch feat/ra-22-error-kind-em-attempts)
+
+- Migração 081: `attempts.error_kind`, o `AIError.kind` que encerrou a tentativa. O executor o põe no desfecho
+  (`StepOutcome.ai_error_kind`) e o scheduler o grava na tentativa.
+- `classificar_falha(texto, status, error_kind)` decide pelo tipo antes do texto, para a tentativa e para a etapa. A
+  mensagem de IA do executor deixa de ser contrato. `step_deadline` segue pelo texto, e o ANR ganha do prazo.
+- Mudança pretendida: o teto do pedido ("Orçamento do pedido atingido…") sai de `outro` e vai para `ia_orcamento`. Na
+  releitura retroativa, uma chamada que o roteador contornou não desmente mais a tentativa que tem o tipo gravado.
+- Nenhum desfecho de etapa, retry ou campo da API muda. Prova `simulated`: `tests/test_falha_pelo_erro_de_ia.py` (13) e
+  bateria de 145 arquivos (2688 aprovados). PostgreSQL: `not_run` (só `ADD COLUMN TEXT`, sem dialeto).
 ## 2026-10-03 — Validação do deploy 4: I1 (sem rótulo não há "diverge") e a CPU do emulador com referência
 
 - **I1:** `observedMatchOf` (`frontend/src/features/settings/instancesView.ts`) devolve `none` sem rótulo configurado. Sem
