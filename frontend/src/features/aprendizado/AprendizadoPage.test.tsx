@@ -124,10 +124,10 @@ const HAB = 'habilidade:instagram.abrir-conversa@2';
 const fila = () => container.querySelector('[aria-labelledby="aprendizado-fila"]') as HTMLElement;
 
 describe('página Aprendizado', () => {
-  it('tem as cinco abas, e cada uma lê a sua rota', async () => {
+  it('tem as seis abas, e cada uma lê a sua rota (a Métricas tem o teste dela)', async () => {
     await montar();
     const nomes = allByRole('tab', /.*/, container).map((t) => t.textContent?.replace(/\d+$/, '').trim());
-    expect(nomes).toEqual(['Aplicativos', 'Para aprovar', 'Aprendido', 'O que mais falha', 'Sinais']);
+    expect(nomes).toEqual(['Aplicativos', 'Para aprovar', 'Aprendido', 'O que mais falha', 'Sinais', 'Métricas']);
     await waitFor(() => expect(text(container)).toContain('Enviar oi para o contato'));
 
     await click(byRole('tab', /^Aprendido/, container));

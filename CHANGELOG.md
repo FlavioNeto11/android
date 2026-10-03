@@ -19,6 +19,23 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: a aba Métricas no painel (30.33; branch feat/30-33-metricas-no-painel)
+
+- Aba nova `#/aprendizado?aba=metricas`, que lê as rotas do 30.8 sem mudar a API.
+  - Em cima, um cartão por bloco do §10, na janela de 7, 14 ou 30 dias e por app.
+  - Embaixo, os pareceres do curador, com filtro pela sugestão, páginas pelo cursor e o link de cada item.
+- Regras do contrato na tela:
+  - ausente é "sem amostra", nunca 0%;
+  - o proxy de falhas se diz comparação, não prova;
+  - o orçamento é global e usa a janela do curador, com o aviso a 80%;
+  - aparece o aviso da quebra de série do deploy 8;
+  - o bloco vazio diz o porquê numa frase;
+  - o 503 `not_ready` tem tela própria.
+- Prova:
+  - `simulated`: `MetricasTab.test.tsx`, 12 testes;
+  - autovalidação no navegador sobre uma CÓPIA do backup do central (12:08Z), com backend simulado do worktree, e
+    sobre um banco vazio: desktop e celular, paginação, filtros, link do item, vazio e erro;
+  - o passe no Chrome do dono fica para depois do deploy.
 ## 2026-10-03 — 29.48 passo 1: o emulador do central com janela (o giro do `-headless` na sessão 0 some)
 
 - `config/config.yaml` do central (fora do Git; backup `config-antes-2948-20261003-120854.yaml`): `android.window:
