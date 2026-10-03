@@ -80,6 +80,22 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - **Corrigido (RA-3a da reavaliação de 03/10):** `devices/emulator.py::process_usage` recriava o `psutil.Process` do lançador e dos filhos a cada leitura, e o `cpu_percent(interval=None)` da 1ª leitura de um objeto novo é sempre 0,0; `resources.cpu_percent` de `GET /api/instances` mostrava 0,0 com o emulador gastando 1,1 a 1,2 núcleo. `MedidorDeUso` guarda os objetos por pid do lançador (reaproveita o filho conhecido, acrescenta o novo, descarta o que sumiu; troca tudo se o `create_time` mudar; purga o que não é lido há 60 s; `threading.Lock`). Assinatura mantida: a 1ª leitura de um objeto soma 0,0, da 2ª em diante é o valor real. Prova `simulated`: `backend/tests/test_cpu_por_emulador.py` (9). Prova `real` (leitura, 03/10, central, qemu 524 + emulator 53204): 3 leituras de 10 s, diferença de 0,8, 1,1 e 0,3 ponto contra o Δ de CPU do `Get-Process`. Sem migração; só o central, o agente do notebook herda `devices/` mas não mede CPU por emulador.
 
+## 2026-10-03 — Aprendizado: o parecer da IA diante da pessoa (30.17, branch feat/30-17-parecer-no-painel)
+
+- Painel: a seção "Parecer da IA" no detalhe do Livro (sugestão, classe, conclusão, o que a IA citou, aceitar ou recusar
+  com motivo, pedir revisão, histórico) e, com o curador em `on`, a frase "Parecer da IA: …" na linha da fila e o aceite em
+  lote só da classe B. Em `shadow`, o parecer só aparece depois da decisão da pessoa; o detalhe avisa que há um.
+- Backend: toda decisão de pessoa pelo Livro rotula o parecer pendente (`aceitou`/`recusou` quando vista; às cegas, o
+  rótulo da ação), sem nunca travar a transição; `POST /{kind}/{ref}/parecer/{review_id}`, `POST /{kind}/{ref}/revisao`,
+  `review_id` opcional no `/status`; gatilho `pedido_da_pessoa`; sinais `parecer_decidido` e `pediu_revisao`. Adendo
+  v0.72 (provisório: quem mergear depois renumera). Nenhuma migração.
+- Correção do 30.11: a `variante` da receita (`en-US/xhdpi`) fazia a triagem de credencial recusar 24 de 26 receitas da
+  cópia do central (`recusada:triagem`), e o curador nunca revisava receita; agora é chave estrutural.
+- O quadro por versão do detalhe cabe em 375 px.
+- Prova `simulated`: `tests/test_learning_pareceres.py`, `ParecerDaIA.test.tsx`; bateria afetada (53 arquivos, 919) e
+  frontend inteiro (1298); navegador na cópia do banco do central com provedor de ensaio e hub `simulated`, nos modos `on`
+  e `shadow`, e os fluxos pendentes do 30.15/30.16. `not_run` no central (curador `off` até o deploy 4).
+
 ## 2026-10-03 — Aprendizado: evidência inválida como tipo próprio de desligamento (30.23, branch feat/30-23-evidencia-invalida)
 
 - Ação nova `POST /api/aprendizado/{kind}/{ref}/evidencia-invalida {run_id}`. Desliga a receita ou o fluxo aprendido de
@@ -98,6 +114,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `test_learning_backlog` e `test_learning_repositorio` passam a usar meio-dia fixo. A suíte 5b falhou perto da meia-noite
   UTC porque a semente cruzava o dia.
 - Adendo v0.70; emenda ao ADR-054. Prova `simulated`; a marca da 109 e do fluxo no central é `not_run` até o deploy.
+- Com o 30.17 (merge da main no branch): a marca rotula o parecer pendente do curador como o `/status` (vista em `on`,
+  às cegas fora dele); reclassificar o já desligado não rotula (`tests/test_learning_evidencia_invalida.py`).
 
 ## 2026-10-02 — 29.29: D2-a também ao ganhar a conta, com vínculo sem app (branch feat/29-29-d2a, commit cdcb3fe6)
 

@@ -2,7 +2,11 @@
 laço dele é registrado à parte da curadoria (`LearningService.lacos`): o `AppState` o sobe sob a trava de líder.
 
 O adaptador padrão é o SIMULADO: o do hub de IA é do 30.12 (frente Jev) e entra por `curador_de_ia`. De fábrica o modo
-é `off` e nada roda; o modo é lido a cada volta."""
+é `off` e nada roda; o modo é lido a cada volta.
+
+30.17: o serviço dos pareceres (o que o painel mostra, o rótulo de cada decisão e o pedido de revisão) também fica
+pendurado no Livro, com o MESMO registro e a mesma fonte de dossiês do curador: a classe de agora, no aceite, é a do
+dossiê que o curador montaria."""
 from __future__ import annotations
 
 import asyncio
@@ -13,6 +17,7 @@ from datetime import datetime
 from app.config import CuradorCfg
 from app.db import Database
 from app.modules.learning.application.curador import CuradorPorIA
+from app.modules.learning.application.pareceres import ServicoDePareceres
 from app.modules.learning.application.ports import (AjustesDoCurador, CatalogoDeRisco, CuradorDeIA,
                                                     RepositorioDeAprendizado, TriagemDeTexto)
 from app.modules.learning.application.servico import LearningService
@@ -51,10 +56,12 @@ def ligar(servico: LearningService, repo: RepositorioDeAprendizado, db: Database
           config: Callable[[], CuradorCfg], precos: Callable[[], dict[str, list[float]]],
           relogio: Callable[[], datetime], catalogo: CatalogoDeRisco | None,
           curador_de_ia: CuradorDeIA | None = None) -> CuradorPorIA:
-    curador = CuradorPorIA(servico, DossiesSql(db, servico, repo, catalogo), curador_de_ia or CuradorSimulado(),
-                           RegistroDeRevisoesSql(db), triagem, ajustes=lambda: ajustes_do_curador(config()),
-                           precos=precos, relogio=relogio)
+    dossies = DossiesSql(db, servico, repo, catalogo)
+    registro = RegistroDeRevisoesSql(db)
+    curador = CuradorPorIA(servico, dossies, curador_de_ia or CuradorSimulado(), registro, triagem,
+                           ajustes=lambda: ajustes_do_curador(config()), precos=precos, relogio=relogio)
     servico.anexar(curador)
+    servico.anexar(ServicoDePareceres(servico, registro, dossies, triagem, modo=lambda: Modo(config().modo)))
     servico.registrar_laco(LacoDoCurador(curador))
     return curador
 

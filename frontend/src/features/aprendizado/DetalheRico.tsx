@@ -8,6 +8,7 @@ import { hashDe } from '../../lib/rotas';
 import { formatDateTime, formatQuando } from '../../lib/time';
 import { apiAprendizado } from './api';
 import { abrirApp } from './apps';
+import { SecaoDoParecer } from './ParecerDaIA';
 import {
   SEM_DADO, destinoDaRelacao, metaDeSaude, metaDeVersao, rotuloDaDimensao, rotuloDaFerramenta, rotuloDaRelacao,
   rotuloDoAlvoDaLicao, rotuloDoCampoDoSeletor, rotuloDoSeletor, rotuloDoStatusDaReceita, textoDeAparelhos, textoDoAlvoSemItem, textoDoMotivo,
@@ -541,7 +542,8 @@ function Acoes({ item, invalidar, onMudou }: { item: EntradaDoLivro; invalidar: 
 
 /**
  * As seções do §11.2 do desenho, só as aplicáveis: o que o backend não mandou (campo ausente ou `null`) não ganha
- * seção, e o que ele mandou como "sem dado" aparece assim, nunca como zero.
+ * seção, e o que ele mandou como "sem dado" aparece assim, nunca como zero. `onMudou`: um gesto no detalhe (marcar a
+ * evidência inválida, aceitar ou recusar o parecer da IA, pedir revisão) mudou o item; quem mostra o detalhe o relê.
  */
 export function DetalheRico({ detalhe, onMudou }: { detalhe: DetalheDoLivro; onMudou?: () => void }) {
   const item = detalhe.item;
@@ -565,6 +567,8 @@ export function DetalheRico({ detalhe, onMudou }: { detalhe: DetalheDoLivro; onM
         <Evidencia evid={evid} />
         <Historico trilha={trilha} />
         {relacoes.length > 0 ? <Relacoes relacoes={relacoes} /> : null}
+        <SecaoDoParecer item={item} pareceres={Array.isArray(detalhe.pareceres) ? detalhe.pareceres : []}
+                        curador={detalhe.curador} onMudou={onMudou} />
         <Acoes item={item} invalidar={detalhe.invalidar_evidencia?.run_id ?? null} onMudou={onMudou} />
       </div>
     </PrefixoDeIds.Provider>

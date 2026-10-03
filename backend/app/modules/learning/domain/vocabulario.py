@@ -72,6 +72,11 @@ class SignalKind(StrEnum):
     CORRECAO_DE_ENSINO = "correcao_de_ensino"
     TELA_VISTA = "tela_vista"
     TELA_DESCONHECIDA_CHAMOU_PESSOA = "tela_desconhecida_chamou_pessoa"
+    #: 30.17: a pessoa pediu ao curador a revisão de um item (`source_ref` = `pedido_de_revisao:<item>@<dossie_hash>`)
+    #: e a pessoa decidiu um parecer (`source_ref` = `parecer:<lr-id>`; a data da decisão, que `learning_reviews` não
+    #: tem coluna para guardar).
+    PEDIU_REVISAO = "pediu_revisao"
+    PARECER_DECIDIDO = "parecer_decidido"
 
 
 #: Sinais que contam como intervenção humana na régua diária (`learning_daily.interventions`).

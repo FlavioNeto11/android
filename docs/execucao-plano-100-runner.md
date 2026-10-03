@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-277 de 341 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+284 de 341 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -310,20 +310,20 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.1 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #76 merge 6e103d73: GET /api/aprendizado/apps e /apps/{pacote} (application/apps.py, domain/camada.py, infrastructure/declarados.py), adendo v0.47; prova simulated; not_run no central (nada implantado) |  |
 | 30.2 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #76 merge 6e103d73: chave canônica de app (pacote) no Livro; prova simulated; not_run no central (nada implantado) |  |
 | 30.3 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #86 merge 14ec911c: conteudo legível no detalhe (domain/conteudo.py, fontes.py), nenhum valor de parâmetro; adendo v0.50; 432 testes do módulo; prova simulated; not_run no central (nada implantado) |  |
-| 30.4 | pendente | — | — | — |  |  |
+| 30.4 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #88 merge 9af6c7d3 depois da suíte 3 verde (a08298fb; 609 testes do módulo na integração): saúde do item (domain/saude.py: dimensões, rótulo e motivos de vocabulário fechado; limiares D-5 aprovados pelo dono, no conf… |  |
 | 30.5 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #72 merge 9336088a e PR #79 merge e86b4a33: acoes_da_pessoa e por_que_o_sistema_nao_publica no backend (domain/livro.py), veto e modo na rota; adendo v0.46; prova simulated; not_run no central (nada implantado) |  |
 | 30.6 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #87 merge 73945eb2: estado de versão por item (domain/versao.py, device_app_state), adendo v0.51; 444 testes do módulo; prova simulated; not_run no central (nada implantado) |  |
 | 30.7 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #89 merge f82185fc: relações derivadas no detalhe (domain/relacoes.py), adendo v0.53; 459 testes do módulo; prova simulated; not_run no central (nada implantado) |  |
 | 30.8 | pendente | — | — | — |  |  |
 | 30.9 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #78 merge 70e03cb2: migração 069_revisoes_do_aprendizado (learning_reviews, único (item_ref, dossie_hash)); suíte combinada verde 5414 passed na árvore efd39d3e; migração não aplicada no central (sem deploy) |  |
-| 30.10 | pendente | — | — | — |  |  |
+| 30.10 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #98 merge 24b8397d (523 testes do módulo sobre a main): curador, domínio — dossiê, contrato de saída em rótulos fechados, validação de citações, política de risco por classe (domain/curador.py, domain/politica_de_ris… |  |
 | 30.11 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | Suíte 5 merge 8413ddc9 (PR #107 765a1b2b; 075 pelo PR #114 465c9c43): curador, aplicação com adaptador simulado (application/curador.py, domain/orcamento_do_curador.py, infrastructure/ligar_curador.py, curador_simulado.… |  |
 | 30.12 | implemented | simulated | sessao | — | Branch feat/30-12-curador-hub (4edecb8d + f0372b63, sobre o 30.11 8bbe35ff e o 31.2/31.6), 02/10/2026, sessao jev. AIRouter.review_knowledge(PedidoDeParecer): papel plan emprestado, run_id None, origem curador, ref = do… |  |
-| 30.13 | pendente | — | — | — |  |  |
-| 30.14 | pendente | — | — | — |  |  |
-| 30.15 | partial | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #82 merge 312808d1: 1ª fatia, aba Aplicativos (Global → App) como visão inicial, detalhe por app, filtro de app (frontend/src/features/aprendizado/AplicativosTab.tsx, apps.ts); falta saúde, falhas no detalhe do app,… | resto depende do 30.4 (PR #88) e do 30.13 |
-| 30.16 | pendente | — | — | — |  |  |
-| 30.17 | pendente | — | — | — |  |  |
+| 30.13 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #108 merge 55a62098 (626 testes do módulo): diagnóstico determinístico das falhas (domain/diagnostico.py, infrastructure/contexto_sql.py, application/falhas.py, presentation/falhas.py): conhecimento envolvido, causa… |  |
+| 30.14 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #99 merge 6e388e0c (578 testes do módulo): obsolescência — rótulo obsoleto_provavel com os sinais do §9.2 e o rebaixamento determinístico catalogo_sem_efeito (destino sempre disabled, reativável por pessoa). Implanta… |  |
+| 30.15 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #82 merge 312808d1 (1ª fatia: aba Aplicativos Global → App, detalhe por app, filtro de app) e PR #103 merge 9e3398d9 (resto: saúde e falhas no app, fila Atenção, memória fora do eixo de app; saude nas linhas de /apps… |  |
+| 30.16 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #97 merge 5b7fa342 (vitest 1181): detalhe rico do item (seções do §11.2: conteúdo, saúde, versão, relações, trilha, evidências, ações). Navegador (ensaio com cópia do banco): detalhe rico, desligar → reativar, 375 px… |  |
+| 30.17 | implemented | simulated | opus (sessão Aprendizado) + coordenação | — | PR #124 merge 546bc676 (bateria afetada: 53 arquivos que citam aprendizado/learning = 919 passed; frontend inteiro 1298; docs-check 0/0): o parecer da IA diante da pessoa. Rótulo humano em learning_reviews (visto por re… |  |
 | 30.18 | pendente | — | — | — |  |  |
 | 30.19 | pendente | — | — | — |  |  |
 | 30.20 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #75 merge af208f07 e PR #79 merge e86b4a33: modo por app (domain/modo_por_app.py, modo_efetivo; aprendizado.licoes.por_app / telas.por_app), D1 do modo por app; prova simulated; not_run no central (nada implantado) |  |
@@ -348,7 +348,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (64): 8.3, 8.4, 12.3, 12.5, 14.11, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 25.12, 27.2, 27.4, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.27, 29.28, 29.29, 29.30, 29.31, 29.32, 29.33, 29.34, 29.35, 29.36, 29.37, 29.38, 29.39, 29.40, 29.41, 30.4, 30.8, 30.10, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 30.23, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
+Pendentes (57): 8.3, 8.4, 12.3, 12.5, 14.11, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 25.12, 27.2, 27.4, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.27, 29.28, 29.29, 29.30, 29.31, 29.32, 29.33, 29.34, 29.35, 29.36, 29.37, 29.38, 29.39, 29.40, 29.41, 30.8, 30.18, 30.19, 30.23, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

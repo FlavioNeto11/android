@@ -7,13 +7,16 @@ transiciona continua sendo o `ciclo.py`. Por isso o laço é separado do `PassoD
 IA, e roda sob a trava de líder do ADR-064 (a mesma `curadoria`: a tomada é idempotente por dono).
 
 Modos (`aprendizado.curador.modo`): `off` não roda; `shadow` revisa, grava e avisa o dono (`parecer_da_ia`) quando o
-item B ou C já espera por ele; `on`, nesta fatia, é igual a `shadow` (a fila com parecer e o aceite em lote são de
-itens seguintes).
+item B ou C já espera por ele; `on` revisa igual, e o painel mostra o parecer pendente na fila e no detalhe, com o
+aceite (o da B também em lote). Em `shadow` o parecer pendente só aparece depois da decisão da pessoa (30.17,
+`domain/parecer.py`): é a concordância às cegas que decide a saída do `shadow`.
 
 Filtros, em ordem (§8.6): modo ≠ off → (item, dossie_hash) ainda não revisado → fora do cooldown → orçamento da janela
-→ prioridade. Gatilhos ligados nesta fatia: `nova_pendencia_do_dono`, `a_revisar`, `degradando`, `obsoleto_provavel` e
-`conflito` (publicado com contradição derivada ou contestação recente). `versao_nova`, `grupo_de_falha_acima_do_minimo`
-e `pedido_da_pessoa` existem no vocabulário e ainda não têm fonte (backlog e rota são de outros itens).
+→ prioridade. Gatilhos ligados: `nova_pendencia_do_dono`, `a_revisar`, `degradando`, `obsoleto_provavel`, `conflito`
+(publicado com contradição derivada ou contestação recente) e `pedido_da_pessoa` (30.17: o sinal `pediu_revisao` dos
+últimos `JANELA_DO_PEDIDO_DIAS`, ainda sem revisão depois dele; só ele pula o cooldown, e a prioridade continua a do
+gatilho mais forte entre os OUTROS do item). `versao_nova` e `grupo_de_falha_acima_do_minimo` existem no vocabulário e
+ainda não têm fonte.
 """
 from __future__ import annotations
 
@@ -26,7 +29,7 @@ from typing import Protocol
 from app.modules.learning.application.ports import (AjustesDoCurador, CuradorDeIA, FonteDeDossies, NovaRevisao,
                                                     PedidoDeRevisao, RecusaDoProvedor, RegistroDeRevisoes,
                                                     TriagemDeTexto)
-from app.modules.learning.domain.ciclo import SkillState
+from app.modules.learning.domain.ciclo import ErroDeAprendizado, SkillState
 from app.modules.learning.domain.curador import (OPCOES_FECHADAS, VERSAO_DO_DOSSIE, Dossie, opcoes_do_dossie,
                                                  validar_saida)
 from app.modules.learning.domain.espera import Faixa
@@ -52,6 +55,8 @@ RECUSADA_POR_TRIAGEM = "recusada:triagem"
 #: Os tipos que o curador revisa. Memória é só contagem (o conteúdo nunca sai); habilidade tem ciclo próprio.
 KINDS_REVISADOS = frozenset({LivroKind.RECEITA, LivroKind.FLUXO, LivroKind.LICAO, LivroKind.TELA, LivroKind.VOZ,
                              LivroKind.PREFERENCIA})
+#: Por quantos dias um pedido de revisão de pessoa espera a sua vez (o orçamento pode adiá-lo).
+JANELA_DO_PEDIDO_DIAS = 7
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,12 +77,18 @@ class _Elegivel:
     gatilho: Gatilho
     dossie: Dossie
     custo: float
+    #: O gatilho que decide a prioridade: o pedido de pessoa fica registrado (`gatilho`), mas não rebaixa o item
+    #: publicado em conflito da prioridade 1.
+    gatilho_da_prioridade: Gatilho | None = None
 
 
-#: Chaves do conteúdo que são identificador, hash, data ou rótulo fechado: fora da triagem de texto.
+#: Chaves do conteúdo que são identificador, hash, data ou rótulo fechado: fora da triagem de texto. `variante`: o
+#: idioma e a densidade da tela da receita (`en-US/xhdpi`), que a regra de credencial recusa; sem ela na lista, 24 de 26
+#: receitas da cópia do central ficavam `recusada:triagem` e o curador nunca revisava receita (ensaio do 30.17, 03/10).
 _CHAVES_ESTRUTURAIS = frozenset({"tipo", "app", "app_version", "assinatura", "step_key", "step_hash", "content_hash",
                                  "versao", "estado", "ref", "id", "step_id", "run_id", "source_run_id", "last_used_at",
-                                 "ferramenta", "fonte", "skill_id", "source_kind", "schema_version", "omitido"})
+                                 "ferramenta", "fonte", "skill_id", "source_kind", "schema_version", "omitido",
+                                 "variante"})
 
 
 def _textos_livres(valor: object, chave: str = "") -> list[str]:
@@ -93,6 +104,7 @@ def _textos_livres(valor: object, chave: str = "") -> list[str]:
 class LeitorDoLivro(Protocol):
     """O que o curador lê do serviço do Livro. O `LearningService` o cumpre (tipagem estrutural)."""
 
+    def entrada(self, kind: LivroKind, ref: str) -> EntradaDoLivro: ...
     def pendentes(self) -> tuple[EntradaDoLivro, ...]: ...
     def revisar(self) -> tuple[EntradaDoLivro, ...]: ...
     def publicados(self) -> tuple[tuple[EntradaDoLivro, Saude | None], ...]: ...
@@ -132,7 +144,7 @@ class CuradorPorIA:
         p = ParametrosDoOrcamento(alfa=aj.alfa, k=aj.k, janela_dias=aj.janela_dias, m_cmax=aj.m_cmax)
         janela = self._janela(agora, aj.janela_dias, precos)
         pretendentes = [Pretendente(chave=x.entrada.trail_ref, custo_estimado=x.custo, desempate=x.entrada.trail_ref,
-                                    prioridade=prioridade(x.dossie.classe, x.gatilho,
+                                    prioridade=prioridade(x.dossie.classe, x.gatilho_da_prioridade or x.gatilho,
                                                           publicado=x.entrada.state is SkillState.PUBLISHED))
                         for x in elegiveis]
         partilha = repartir(pretendentes, janela, p)
@@ -191,7 +203,7 @@ class CuradorPorIA:
                                 orcamento=partilha.orcamento)
 
     # ------------------------------------------------------------------ gatilhos e filtros determinísticos
-    def _candidatos(self) -> dict[str, tuple[EntradaDoLivro, Gatilho]]:
+    def _candidatos(self, agora: datetime) -> dict[str, tuple[EntradaDoLivro, frozenset[Gatilho]]]:
         achados: dict[str, tuple[EntradaDoLivro, set[Gatilho]]] = {}
 
         def achar(e: EntradaDoLivro, g: Gatilho) -> None:
@@ -210,26 +222,38 @@ class CuradorPorIA:
                 achar(e, Gatilho.OBSOLETO_PROVAVEL)
             if self._livro.contradicoes(e):
                 achar(e, Gatilho.CONFLITO)
-        return {ref: (e, mais_forte(gs)) for ref, (e, gs) in achados.items()}
+        for p in self._registro.pedidos(agora - timedelta(days=JANELA_DO_PEDIDO_DIAS)):
+            ultima = self._registro.ultima(p.item_ref)
+            if ultima is not None and ultima >= p.em:
+                continue                                # já revisado depois do pedido
+            try:
+                e = self._livro.entrada(LivroKind(p.kind), p.ref)
+            except (ValueError, ErroDeAprendizado):
+                continue                                # o item sumiu ou o tipo saiu do livro
+            achar(e, Gatilho.PEDIDO_DA_PESSOA)
+        return {ref: (e, frozenset(gs)) for ref, (e, gs) in achados.items()}
 
     def _elegiveis(self, aj: AjustesDoCurador, agora: datetime,
                    precos: dict[str, list[float]]) -> tuple[list[_Elegivel], list[str]]:
         elegiveis: list[_Elegivel] = []
         recusadas: list[str] = []
         corte_do_cooldown = agora - timedelta(hours=aj.cooldown_h)
-        for ref, (e, gatilho) in sorted(self._candidatos().items()):
+        for ref, (e, gatilhos) in sorted(self._candidatos(agora).items()):
             dossie = self._dossies.dossie(e)
             if dossie is None:
                 continue
             if self._registro.existe(ref, dossie.dossie_hash):
                 continue                                # 1 revisão por (item, dossiê): evidência nova, hash novo
+            pedido = Gatilho.PEDIDO_DA_PESSOA in gatilhos
             ultima = self._registro.ultima(ref)
             quando = parse_iso(ultima) if ultima else None
-            if quando is not None and quando > corte_do_cooldown:
-                continue
+            if quando is not None and quando > corte_do_cooldown and not pedido:
+                continue                                # o pedido de pessoa é o único que pula o cooldown
             if ultima is not None and self._ja_revisado_menor(e, ref):
                 continue
-            x = _Elegivel(e, gatilho, dossie, estimar_custo(dossie.tamanho_em_bytes(), precos))
+            outros = gatilhos - {Gatilho.PEDIDO_DA_PESSOA}
+            x = _Elegivel(e, mais_forte(gatilhos), dossie, estimar_custo(dossie.tamanho_em_bytes(), precos),
+                          gatilho_da_prioridade=mais_forte(outros) if outros else None)
             if self._recusa_o_conteudo(dossie):
                 # §8.2: o dossiê passa pela triagem antes de sair; recusa = não revisa e registra (sem o dossiê).
                 if self._gravar(x, RECUSADA_POR_TRIAGEM, None, agora, provedor="", modelo="", simulado=False,
@@ -304,5 +328,6 @@ class CuradorPorIA:
         return self._registro.gravar(nova, agora) is not None
 
 
-__all__ = ["EVIDENCIAS_NO_CORTE", "KINDS_REVISADOS", "RECUSADA_POR_CUSTO", "RECUSADA_POR_TRIAGEM", "TEMPLATE_ID",
-           "TEMPLATE_VERSAO", "CuradorPorIA", "LeitorDoLivro", "ResultadoDaVolta"]
+__all__ = ["EVIDENCIAS_NO_CORTE", "JANELA_DO_PEDIDO_DIAS", "KINDS_REVISADOS", "RECUSADA_POR_CUSTO",
+           "RECUSADA_POR_TRIAGEM", "TEMPLATE_ID", "TEMPLATE_VERSAO", "CuradorPorIA", "LeitorDoLivro",
+           "ResultadoDaVolta"]
