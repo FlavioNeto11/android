@@ -3168,6 +3168,33 @@ Mais o mypy estrito sem erro em 164 arquivos e, no frontend, o typecheck e 711 t
 - Fase 20 do plano-100; relatório §22 (fundação) e §23 (A2–A9); domínio em
   [dominios/aprendizado.md](dominios/aprendizado.md).
 
+**Emenda (03/10/2026, decidida pela coordenação; Fase 30, item 30.23): evidência inválida é um tipo próprio de
+desligamento.**
+
+O caso: a receita 109 e o fluxo do Outlook "abrir a caixa de entrada e ler" nasceram da `r-20261002204347-8c3f6e`, que terminou como
+sucesso sem comprovar o que fez. Desligados por pessoa, ficariam vetados para sempre no mesmo escopo, e a navegação deles
+provavelmente é boa: o falso foi a leitura.
+
+- **O tipo é estruturado, não texto.** A pessoa marca a execução de ORIGEM do item por uma ação própria, e o livro grava o
+  motivo `evidencia_invalida:<run_id>`, de vocabulário fechado. O motivo livre nesse formato é recusado. O item vivo é
+  desligado. O já desligado ganha a linha que reclassifica o motivo: é a transição corretiva da 109 e do fluxo. Sem migração.
+- **O veto desse tipo barra só a mesma execução**, sem prazo e sem olhar quem marcou. Outro sucesso real, de outra
+  execução, ensinando o mesmo conteúdo no mesmo escopo, faz o item renascer como candidato. Valem as portas de sempre:
+  receita só de etapa comprovada e fluxo só de execução `completed`. Quando o 12.5 provar saídas, a regra continua a mesma.
+- **O que renasce é "reaprendido" e força a classe B**: `requires_owner`, "Para aprovar" e o motivo `reaprendido` no evento.
+  O sistema não o publica. Na receita, renascer é uma versão nova, e a desligada vira `superseded` por ela (o veto sobrevive
+  à arrumação da loja). No fluxo, a mesma linha volta (`match_key` único). Depois que uma pessoa publica, a marca deixa de
+  pesar sobre o item.
+- **Limites aceitos.**
+  - O escopo da receita inclui a versão do app: numa versão nova, a marca não pesa. É o mesmo alcance do veto de sempre.
+  - O modo antigo `ai.recipes_promote_after: 0` não passa pela sombra; é o desvio já registrado na pendência A5 do domínio.
+  - Os ganchos em `taskqueue/recipes.py` (a vista da receita com a etapa de origem e a pergunta `exige_o_dono` na sombra)
+    são exceção ao "só leitura" do plano da Fase 30, aceita pela coordenação, e entram pela suíte 6.
+
+Prova `simulated`: `backend/tests/test_learning_evidencia_invalida.py` e o vitest de `DetalheRico.test.tsx`.
+`not_run`: a marca no central (109 e o fluxo, depois do deploy) e um renascimento real. Contrato: adendo v0.67 de
+[api-contract.md](api-contract.md). Domínio: [dominios/aprendizado.md](dominios/aprendizado.md), seção "Evidência inválida".
+
 ## ADR-055 — Proteção de contas: a conta travada para sem ser tocada, o aparelho entra em quarentena, uma conta por alvo e nenhum reset com conta
 
 **Data:** 29/09/2026 · **Estado:** vigente; `e9da86e` implantado em 28/09; `c359f65` (+ `2511b12`) implantado em 29/09

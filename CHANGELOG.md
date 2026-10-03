@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: evidência inválida como tipo próprio de desligamento (30.23, branch feat/30-23-evidencia-invalida)
+
+- Ação nova `POST /api/aprendizado/{kind}/{ref}/evidencia-invalida {run_id}`. Desliga a receita ou o fluxo aprendido de
+  um sucesso falso, com o motivo estruturado `evidencia_invalida:<run>`; o já desligado ganha a linha que reclassifica o
+  motivo. O motivo livre nesse formato é recusado (422).
+- O veto desse tipo barra só a mesma execução. Outra execução real que ensine o mesmo faz o item renascer "reaprendido",
+  em classe B: espera o dono em "Para aprovar", e o sistema para em `validated` (sombra da receita e do fluxo, e o
+  repositório). Relações `reaprende` e `reaprendida_por`.
+- A evidência da execução marcada fica à vista (`invalidada`) e sai da saúde, da versão e da sombra do fluxo.
+- Painel: selo na trilha, aviso na evidência, seção do reaprendido, botão "Marcar evidência inválida" com confirmação no
+  lugar, e o motivo em "Para aprovar".
+- Gancho em `taskqueue/recipes.py` (`exige_o_dono` na sombra): entra pela suíte 6.
+- `test_learning_backlog` e `test_learning_repositorio` passam a usar meio-dia fixo. A suíte 5b falhou perto da meia-noite
+  UTC porque a semente cruzava o dia.
+- Adendo v0.67; emenda ao ADR-054. Prova `simulated`; a marca da 109 e do fluxo no central é `not_run` até o deploy.
+
 ## 2026-10-03 — Aprendizado: "Como mudar o modo deste app" legível (30.20, branch fix/30-20-como-mudar)
 
 - O passo a passo diz o arquivo (`config/config.yaml`), mostra o trecho do bloco `aprendizado:` com o modo que vale hoje,
