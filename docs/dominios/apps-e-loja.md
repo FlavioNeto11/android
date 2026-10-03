@@ -85,6 +85,10 @@ A versão do formato também é conferida na carga (RA-24). `catalogo.yaml` (`co
 **O que está no ar** (RA-24): `GET /api/apps/{pacote}/conhecimento` devolve cada YAML da pasta com `sha256` e
 `git_blob` do texto lido, que é o de `git rev-parse <commit>:<caminho>`, e aponta o arquivo gravado depois de o processo
 subir (`mudou_depois_do_inicio`) ([adendo v0.82](../api-contract.md); `integrations/app_declarado/prova.py`).
+A carga é preguiçosa (na primeira consulta ao app), então um arquivo gravado entre o início do processo e essa carga
+aparece como `mudou_depois_do_inicio` mesmo batendo com a memória: é falso positivo conservador, e um reinício o limpa.
+Os YAML ficam em LF no índice do Git (`git ls-files --eol`; um teste segura): com CRLF no índice, o `git_blob` do texto
+lido não seria o do commit.
 
 O registro confere na entrada (`registry.py::register`):
 

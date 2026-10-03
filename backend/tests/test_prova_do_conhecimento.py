@@ -107,6 +107,17 @@ def test_git_blob_bate_com_git_hash_object_no_checkout(pacote: str) -> None:
         assert a.git_blob == esperado, a.caminho
 
 
+@pytest.mark.skipif(shutil.which("git") is None, reason="sem git nesta máquina")
+def test_os_yaml_do_conhecimento_estao_em_lf_no_indice_do_git() -> None:
+    """A borda do hash (revisão da Android): `git_blob` normaliza CRLF→LF, então um YAML que entrasse no índice COM CRLF
+    teria o blob do commit diferente do da rota. Hoje todos estão `i/lf` (`git ls-files --eol`); este teste segura."""
+    raiz = CONHECIMENTO_DE_APPS.parents[3]
+    saida = subprocess.run(["git", "ls-files", "--eol", "backend/app/conhecimento/apps"], cwd=raiz, capture_output=True,
+                           text=True, check=True).stdout.splitlines()
+    yamls = [linha for linha in saida if linha.rstrip().endswith(".yaml")]
+    assert yamls and all(linha.split()[0] in ("i/lf", "i/none") for linha in yamls), "\n".join(yamls)
+
+
 # -------------------------------------------------------------------------------------------------------- a rota
 @pytest.mark.asyncio
 async def test_rota_do_conhecimento_traz_os_yaml_com_os_hashes(tmp_path: Path) -> None:
