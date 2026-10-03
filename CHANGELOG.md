@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Jev: registro do braço offline (31.11) e contagem de rótulos do curador no golden set
+
+- `docs/design/jev-golden-set.md` §2 ganhou um registro datado.
+  - O braço offline usa o `DecisorJev` pela `Porta`, sem o adaptador MIT.
+  - A "pergunta 4" já está respondida pelos itens 7 e 9 do ADR-069.
+  - A contagem real de hoje (18:33:11Z, central em `mode=ro`, deploy 12 `d5a1c3a9`) deu 0 rótulos 1 e 2 nas 28 revisões
+    de receita do escopo da R1. Nenhum limiar mudou.
+
 ## 2026-10-03 — Canais externos: o contrato comum do Telegram (28.15) e do Trello (32.2)
 
 - `docs/design/canais-externos.md`, aprovado pela orquestradora (~18:15Z) e citado pelos ADR-071 e ADR-072. Define:

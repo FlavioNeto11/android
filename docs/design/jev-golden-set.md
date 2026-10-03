@@ -83,6 +83,23 @@ item nem aceita parecer (ADR-069 item 2).
   maior probabilidade foi 0,60–0,62. A `confianca` segue gravada na sombra, e o relatório mostra as duas colunas
   (`cobertura_por_limiar`). `noul` e `score`, sem produtor, seguem na `confianca`.
 
+*Registro de 03/10 (~18:45Z), 31.11, a pedido da orquestradora.* Nenhum limiar da tabela mudou.
+- **O braço offline (31.11) usa o `DecisorJev` pela `Porta`**, o mesmo caminho do runtime, sem o adaptador MIT e sem
+  dependência nova de terceiro (decisão da orquestradora, ~18:40Z).
+- **A "pergunta 4" do roteiro já está respondida** pelos itens 7 e 9 do ADR-069: a prova real paga em sombra (31.10
+  e 31.11) está autorizada com a fatia do Jev e o teto registrado, sem troca de chave. A dependência do 31.11 é o
+  31.7, que está feito. A C3 da R2, da R3 e da R5 espera o sim do dono à emenda do item 4.
+- **Contagem de rótulos do curador, real, só de contagem:** 03/10 18:33:11Z, WIN-7S2UASNLFOP, banco do central em
+  `mode=ro`, deploy 12 (`d5a1c3a9`).
+  - São 57 revisões (`learning_reviews`, template `curador`), todas válidas e reais: 29 de `fluxo`, 28 de `receita`
+    e nenhuma de `licao`.
+  - O escopo da R1 (`KINDS_F1`) são as 28 de `receita`, com 9 estados C0 distintos. O fluxo é C2 e fica fora.
+  - Rótulo 1: 0. Não há transição do dono.
+  - Rótulo 2: 0. O gravador do 30.35 usa uma janela de 14 dias, então o primeiro rótulo possível é de 17/10 (INFERRED).
+  - Concordância com o curador principal, só acompanhamento: 28 de 28 (25 `revisar`, 2 `manter`, 1 `rebaixar`).
+  - Conclusão: nenhum `kind` tem amostra para GO. A rodada offline da R1 (teto US$ 0,05) é acompanhamento: ela diz se
+    a entrada carrega sinal e dá a grade de sensibilidade.
+
 ## 3. Intenção (R2 e R3, 31.9)
 
 **Estratos (RA-2; execuções de 7 dias até 03/10 no central):** qa-messenger 58 (+3), instagram 15, outlook 5.
