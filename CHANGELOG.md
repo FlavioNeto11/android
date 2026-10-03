@@ -19,6 +19,12 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: quebra de série do `pct_por_receita` no deploy 7
+
+- Documentação e processo: `docs/dominios/aprendizado.md` (O que mais falha) registra que, desde 03/10 07:28:40Z
+  (deploy 7, 49811568), a etapa da IA com as receitas desligadas (`ai`, RA-10) e a fechada sem o ator (`sem_ator`,
+  LT-1) entram no denominador; a série só se compara do mesmo lado.
+
 ## 2026-10-03 — Script da rodada QA pareada (canário do planejador; branch chore/rodada-qa-pareada)
 
 - `scripts/rodada_qa_pareada.py`: Opus padrão × perfil `planejador-sonnet` em ABBA por caso, nos 4 casos do

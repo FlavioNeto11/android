@@ -287,6 +287,12 @@ com o banco aberto só para leitura.
 - **Propostas** (sempre decisão de pessoa): `acao_de_catalogo` (ação nova não entra no catálogo pelo banco),
   `promover_licao` e `promover_tela`.
 - `scripts/aprendizado-backlog.py` grava o md em `data/aprendizado/` e imprime o topo.
+- **Quebra de série do `pct_por_receita`** (a parte das etapas conduzidas só por receita, em `Saude`): no deploy 7
+  (03/10/2026, processo do central de pé às 07:28:40Z; commit 49811568, migração 081) o denominador mudou. Antes,
+  a etapa conduzida pela IA com as receitas desligadas ficava com `driven_by` nulo (`-`, fora da conta). Desde então
+  ela é gravada `ai` (RA-10), e a etapa fechada pelo atalho do executor sem o ator entra como `sem_ator` (LT-1).
+  As duas contam no denominador e nenhuma conta como receita, então o número cai sem nenhuma receita ter piorado.
+  Compare só janelas do mesmo lado de 07:28:40Z.
 
 ## Fase 22 (29/09, noite): o que mudou nas regras
 
