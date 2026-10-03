@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { UsageGroup, UsageReport } from '../../api/types';
 import {
-  NO_PRICE, byOriginText, drivenBySplit, drivenByText, errorKindLabel, errorsByKindText, formatUsd, isUsageEmpty, originLabel,
-  pricingOf,
-  recipeShareText, usageRows, usageTotals,
+  NO_PRICE, byOriginText, cascadeText, drivenBySplit, drivenByText, errorKindLabel, errorsByKindText, escalationLabel,
+  escalationRows, formatUsd, imageReasonLabel, imageReasonRows, isUsageEmpty, originLabel, pricingOf,
+  recipeShareText, rejudgeByAppRows, rejudgeText, stepsDrivenByNull, usageRows, usageTotals,
 } from './usage';
 
 function group(over: Partial<UsageGroup> = {}): UsageGroup {
@@ -175,5 +175,63 @@ describe('I1 da validação do deploy 7', () => {
     expect(texto).toBe(`sem origem registrada ${formatUsd(14.68)} · execução ${formatUsd(1.29)} · curador ${formatUsd(0.31)} · leitura visual ${formatUsd(0.04)}`);
     expect(originLabel('algo-novo')).toBe('algo-novo');
     expect(byOriginText(report({}))).toBeNull();
+  });
+});
+
+describe('RA-10, a tela do 31.16 (adendo v0.75)', () => {
+  const ra10: Partial<UsageReport> = {
+    escalations: {
+      efeito: { calls: 12, usd: 0.4 }, nova_tentativa: { calls: 3, usd: 0.1 }, ciclo: { calls: 0, usd: 0 },
+      motivo_novo: { calls: 1, usd: 0.01 },
+    },
+    rejudges: {
+      calls: 13, usd: 0.04, by_kind: { nivel: { calls: 9, usd: 0.03 }, sim_com_efeito: { calls: 4, usd: 0.01 } },
+      judged: 12, disagreements: 1, disagreement_rate: 0.0833,
+      by_app: { 'app-ig': { judged: 10, disagreements: 1, disagreement_rate: 0.1 }, '*': { judged: 2, disagreements: 0, disagreement_rate: 0 } },
+    },
+    cascades: { calls: 5, usd: 0.12, unblocked: 3, by_verdict: { step_blocked: 2, click: 3 } },
+    image_reasons: {
+      arvore_rica: { calls: 40, with_image: 0 }, pedida: { calls: 3, with_image: 3 }, problema: { calls: 7, with_image: 6 },
+      novo: { calls: 1, with_image: 1 }, sensivel: { calls: 0, with_image: 0 },
+    },
+    steps_driven_by_null: 2,
+  };
+
+  it('o modelo forte por motivo, maior custo primeiro, sem os zerados; o motivo novo aparece cru', () => {
+    expect(escalationRows(report(ra10)).map((r) => [r.key, r.label, r.calls, r.usd])).toEqual([
+      ['efeito', 'efeito externo', '12×', formatUsd(0.4)], ['nova_tentativa', 'nova tentativa', '3×', formatUsd(0.1)],
+      ['motivo_novo', 'motivo_novo', '1×', formatUsd(0.01)],
+    ]);
+    expect(escalationLabel('sim_com_efeito')).toBe('conferir o "sim" com efeito');
+    expect(escalationRows(report({}))).toEqual([]);
+  });
+
+  it('o rejulgamento diz julgadas, discordância e custo; por app, mais julgadas primeiro', () => {
+    expect(rejudgeText(report(ra10))).toBe(`12 julgada(s), 8 % de discordância (1) · ${formatUsd(0.04)} em 13 chamada(s)`);
+    expect(rejudgeByAppRows(report(ra10)).map((r) => [r.appId, r.judged, r.disagreements, r.rate])).toEqual([
+      ['app-ig', '10', '1', '10 %'], ['*', '2', '0', '0 %'],
+    ]);
+    // chamadas sem veredito válido (só erro): o custo aparece, a discordância não se inventa
+    const soErro = { ...ra10.rejudges!, judged: 0, disagreements: 0, disagreement_rate: null, by_app: {} };
+    expect(rejudgeText(report({ rejudges: soErro }))).toBe(`nenhum veredito válido · ${formatUsd(0.04)} em 13 chamada(s)`);
+    expect(rejudgeText(report({ rejudges: { ...soErro, calls: 0 } }))).toBeNull();
+    expect(rejudgeText(report({}))).toBeNull();
+  });
+
+  it('a cascata do bloqueio diz quantas subiram e quantas desbloquearam', () => {
+    expect(cascadeText(report(ra10))).toBe(`5 subida(s), 3 desbloquearam a tela · ${formatUsd(0.12)}`);
+    expect(cascadeText(report({ cascades: { calls: 0, usd: 0, unblocked: 0, by_verdict: {} } }))).toBeNull();
+  });
+
+  it('a imagem: primeiro os motivos que a mandam, depois os que não, e o motivo novo por último', () => {
+    expect(imageReasonRows(report(ra10)).map((r) => [r.key, r.sends, r.calls, r.withImage])).toEqual([
+      ['problema', true, '7', '6'], ['pedida', true, '3', '3'], ['arvore_rica', false, '40', '0'], ['novo', null, '1', '1'],
+    ]);
+    expect(imageReasonLabel('arvore_rica')).toBe('árvore da tela bastou');
+  });
+
+  it('etapas sem condutor', () => {
+    expect(stepsDrivenByNull(report(ra10))).toBe(2);
+    expect(stepsDrivenByNull(report({}))).toBe(0);
   });
 });

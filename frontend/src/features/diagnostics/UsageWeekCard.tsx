@@ -8,7 +8,8 @@ import { balanceShortName } from '../../lib/aiBalance';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import usageStyles from '../usage/Usage.module.css';
 import { byOriginText, formatUsd, isUsageEmpty, usageTotals } from '../usage/usage';
-import { ErrorsByKindNotice, UnpricedNotice, UsageTable, UsageTiles } from '../usage/UsageView';
+import { DrivenByNullNotice, ErrorsByKindNotice, StrongModelSection, UnpricedNotice, UsageTable, UsageTiles } from '../usage/UsageView';
+import { useAppStore } from '../../store/app';
 import type { UsageState } from '../usage/useUsage';
 import styles from './Diagnostics.module.css';
 
@@ -22,6 +23,9 @@ export const USAGE_DAYS = 7;
 export function UsageWeekCard({ state }: { state: UsageState }) {
   const { report, error, loading, reload } = state;
   const totals = report ? usageTotals(report) : null;
+  // O nome do app da discordância do rejulgamento, como o catálogo o cadastrou; o id quando o app não está carregado.
+  const apps = useAppStore((s) => s.apps);
+  const appLabel = (appId: string): string => apps.find((a) => a.id === appId)?.name ?? appId;
 
   return (
     <Card aria-label={`Custo de IA — últimos ${USAGE_DAYS} dias`} id="diag-custo">
@@ -85,6 +89,7 @@ export function UsageWeekCard({ state }: { state: UsageState }) {
                 ) : null}
                 <UnpricedNotice totals={totals} />
                 <ErrorsByKindNotice report={report} />
+                <DrivenByNullNotice report={report} />
                 <p className={styles.meta}>
                   {report.objectives_with_ai > 0
                     ? <>{totals.objectivesWithAi} aparelho-comando(s) usaram IA · {totals.callsPerObjective} chamada(s) de IA por aparelho-comando</>
@@ -96,6 +101,8 @@ export function UsageWeekCard({ state }: { state: UsageState }) {
                 <Disclosure bare summary="Ver por função e modelo">
                   {() => <UsageTable report={report} caption={`Custo de IA dos últimos ${USAGE_DAYS} dias, por função e modelo`} />}
                 </Disclosure>
+                {/* RA-10 (31.16): por que subiu ao modelo forte, o rejulgamento, a cascata e a imagem. */}
+                <StrongModelSection report={report} appLabel={appLabel} />
               </div>
             )}
           </>

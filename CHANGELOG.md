@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 31.16: telas do RA-10 no Custo de IA e o adendo v0.90 (branch feat/31-16-telas-ra10)
+
+- Diagnóstico › Custo de IA, sem API nova (lê o adendo v0.75):
+  - a seção "Modelo forte e conferência": `escalations` por motivo, o rejulgamento com a discordância e a cascata do bloqueio;
+  - recolhidos "Discordância do rejulgamento, por app" (nome do app do catálogo) e "Imagem: por que foi junto (ou não)";
+  - o aviso das etapas sem `driven_by`, só quando passa de 0;
+  - nada aparece com servidor anterior ao v0.75.
+- `docs/api-contract.md`, adendo v0.90: o bloco `decisao_fechada` de `GET /api/ai`, com `decider` (31.14) e `sending`
+  (31.17), documentado a posteriori; o `notice` "Envio ATIVO" ou "Nada sai agora: <motivo>".
+- Prova `simulated`: `frontend/src/features/usage/usage.test.ts` e `frontend/src/features/diagnostics/DiagnosticsPage.test.tsx`;
+  a tela percorrida no navegador contra um backend simulado do worktree (nada no central).
 ## 2026-10-03 — 31.9: a H sem a H-3, depois do NO-GO da fase 2 da H (branch fix/31-9-rodada-h)
 
 - A fase 2 da H deu NO-GO: 107 casos em 4 famílias de método.

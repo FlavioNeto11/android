@@ -4514,3 +4514,49 @@ Prova:
 - Ensaio só de leitura numa cópia do banco do central em 03/10 ~09:30Z (backup do SQLite, origem em `mode=ro`, código
   57d82a5a mais o branch): 142 ms no global e ~55 ms por app. Os números do exemplo acima saíram desse ensaio.
 - `real` = a leitura no central depois de implantado.
+
+## Adendo v0.90 (03/10/2026; número da orquestradora, `.claude/reservas.md`; item 31.16) — o bloco `decisao_fechada` de `GET /api/ai`, documentado a posteriori
+
+Nenhum campo novo: este adendo documenta um bloco que já saía desde o 31.5 (ADR-069 item 8) e ganhou `decider` no 31.14
+e `sending` no 31.17, sem adendo próprio.
+
+- `GET /api/ai` (e `health.ai`) traz `decisao_fechada`:
+  - `null` quando `ai.decisao_fechada.enabled` é falso ou nenhum consumidor está em `shadow` ou `on`. Nesse caso o
+    `notice` também não fala do Jev;
+  - senão, um objeto (`backend/app/planning/decisao_fechada/transparencia.py::status`):
+
+    | Campo | Tipo | O que diz |
+    |---|---|---|
+    | `provider` | `"typesafe"` | o provedor externo da porta |
+    | `name` | string | `"Jev (TypeSafe System One)"` |
+    | `consumers` | `Record<origem, "shadow" \| "on">` | só os consumidores ligados, em ordem alfabética (`curador`, `intencao`…) |
+    | `classes` | string[] | as classes de dado que PODERIAM sair: o teto do código (`JEV_ALLOWED_CLASSES`) ∩ `classes_permitidas` do YAML, em ordem (`C0`, `C1`…) |
+    | `send_approved` | bool | o envio aprovado no código (`JEV_RUNTIME_SEND_APPROVED`) |
+    | `key` | `"configurada"` \| `"não configurada"` | só a PRESENÇA da chave da TypeSafe; o valor nunca é lido para isto |
+    | `decider` | `"nulo"` \| `"jev"` | o decisor montado na porta (31.14): `nulo` nunca chama a TypeSafe, `jev` é o real |
+    | `sending` | bool | sai alguma coisa AGORA (31.17): só com as quatro condições juntas — `send_approved`, `decider: "jev"`, um consumidor ligado e a chave configurada |
+    | `retention_days` | int | `ai.decisao_fechada.retencao_dias`, a retenção da sombra local |
+
+- O `notice` de `/api/ai`, com o bloco presente, ganha uma frase que nomeia a TypeSafe, os consumidores, as classes e o que
+  sai em palavras (sempre "ids e categorias"; o catálogo do dono quando a C2 vale e a `intencao` está ligada; o comando
+  filtrado quando a C3 vale e a origem a manda), a chave (`configurada`/`não configurada`) e "Decisor na porta: nulo|jev".
+  Termina com uma de duas:
+  - "Envio ATIVO: cada pedido que passa pela privacidade sai para a TypeSafe." — exatamente quando `sending` é `true`;
+  - "Nada sai agora: <motivo>." — o primeiro que falta, nesta ordem: nenhum consumidor ligado, envio fechado no código,
+    decisor nulo, chave não configurada.
+- Quem lê: o 31.10 confere `decider` e `sending` sem ler a configuração do central; o painel ainda não mostra o bloco
+  (a Situação de Configuração › IA mostra o `notice`).
+- **Telas do RA-10 (31.16), sem campo novo:** Diagnóstico › Custo de IA passa a ler as chaves do adendo v0.75 que
+  só a API tinha:
+  - a seção "Modelo forte e conferência": `escalations`, um motivo por linha (o maior custo primeiro, sem os zerados;
+    motivo fora do vocabulário aparece cru), `rejudges` em uma linha ("N julgada(s), X % de discordância (D) · US$ em C chamada(s)";
+    "nenhum veredito válido" quando só houve erro) e `cascades` em outra ("N subida(s), M desbloquearam a tela · US$");
+  - dois recolhidos: "Discordância do rejulgamento, por app" (o nome do app do catálogo; `*` vira "etapa sem app";
+    "27 % (3)") e "Imagem: por que foi junto (ou não)" (os motivos que mandam a imagem primeiro; "6 de 6" com imagem);
+    os dois cabem no celular sem rolar de lado;
+  - o aviso "Etapas sem registro de quem decidiu" só quando `steps_driven_by_null` passa de 0;
+  - os dois motivos do rejulgamento (`nivel` e `sim_com_efeito`) aparecem também na lista de motivos, porque são
+    subidas ao modelo forte (`escalations` agrupa `escalate` não nulo): a lista não se soma à linha do rejulgamento;
+  - com servidor anterior ao v0.75 (sem as chaves) ou período sem nada disso, a seção e o aviso não aparecem.
+  - Prova `simulated`: `frontend/src/features/usage/usage.test.ts` (o bloco "RA-10") e
+    `frontend/src/features/diagnostics/DiagnosticsPage.test.tsx` (o bloco "Custo de IA: o RA-10").

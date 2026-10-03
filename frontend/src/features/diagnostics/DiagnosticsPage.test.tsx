@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Health, Instance, UsageReport } from '../../api/types';
 import { useAppStore } from '../../store/app';
-import { DIAGNOSTICS, SETTINGS, makeEvent, makeInstance } from '../../test/fixtures';
+import { APPS, DIAGNOSTICS, SETTINGS, makeEvent, makeInstance } from '../../test/fixtures';
 import { FakeBackend, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
 import { DiagnosticsPage } from './DiagnosticsPage';
 
@@ -237,5 +237,67 @@ describe('outros dados', () => {
     expect(text(host.querySelectorAll('table')[1] as HTMLElement)).toContain('5392');
     expect(host.querySelector('pre')?.textContent).toBe('accel:\n0\nWHPX(10.0.26100) is installed and usable.\naccel');
     expect(text(host)).toContain('Cabem agora1');
+  });
+});
+
+describe('Custo de IA: o RA-10 (31.16, adendo v0.75)', () => {
+  const RA10: UsageReport = {
+    ...USAGE_REPORT,
+    groups: [{ role: 'decide', model: 'barato', tier: 0, calls: 30, fresh: 1000, cache_read: 0, cache_write: 0, output: 100,
+      with_image: 9, errors: 0, avg_ms: 900, usd: 0.3 }],
+    total_usd: 0.3, steps_driven_by: { ai: 20, recipe: 5 },
+    escalations: { efeito: { calls: 12, usd: 0.4 }, piso: { calls: 2, usd: 0.05 } },
+    rejudges: {
+      calls: 13, usd: 0.04, by_kind: { nivel: { calls: 13, usd: 0.04 } }, judged: 12, disagreements: 1, disagreement_rate: 0.0833,
+      by_app: { qa: { judged: 10, disagreements: 1, disagreement_rate: 0.1 }, '*': { judged: 2, disagreements: 0, disagreement_rate: 0 } },
+    },
+    cascades: { calls: 5, usd: 0.12, unblocked: 3, by_verdict: { click: 3, step_blocked: 2 } },
+    image_reasons: { arvore_rica: { calls: 40, with_image: 0 }, problema: { calls: 7, with_image: 6 } },
+    steps_driven_by_null: 2,
+  } as UsageReport;
+
+  const resumo = (rotulo: string): HTMLElement => {
+    const achado = [...container.querySelectorAll('summary')].find((s) => text(s as HTMLElement).includes(rotulo));
+    expect(achado, `resumo "${rotulo}"`).toBeDefined();
+    return achado as HTMLElement;
+  };
+
+  it('mostra o modelo forte por motivo, o rejulgamento, a cascata e o aviso do condutor nulo; os detalhes recolhidos', async () => {
+    useAppStore.setState({ apps: APPS });
+    backend.on('GET', /^\/api\/usage$/, () => json(RA10));
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Modelo forte e conferência'));
+    const tudo = text(container);
+    // um motivo por linha, maior custo primeiro: o rótulo e "N× · US$"
+    const motivos = [...container.querySelectorAll('section[aria-labelledby="usage-modelo-forte"] li')]
+      .map((li) => [...li.children].map((s) => s.textContent));
+    expect(motivos.map(([rotulo]) => rotulo)).toEqual(['efeito externo', 'alvo inexistente']);
+    expect(motivos[0]?.[1]).toMatch(/^12× · US\$/);
+    expect(tudo).toContain('12 julgada(s), 8 % de discordância (1)');
+    expect(tudo).toContain('5 subida(s), 3 desbloquearam a tela');
+    expect(tudo).toContain('Etapas sem registro de quem decidiu');
+    expect(tudo).toContain('2 etapa(s) com decisão de IA');
+    // por app e a imagem começam recolhidos: a tabela não está no texto
+    expect(tudo).not.toContain('QA Messenger');
+    expect(tudo).not.toContain('árvore da tela bastou');
+
+    await click(resumo('Discordância do rejulgamento, por app'));
+    expect(text(container)).toContain('QA Messenger'); // o nome do catálogo, não o id
+    expect(text(container)).toContain('etapa sem app'); // o "*" do servidor
+    expect(text(container)).toContain('10 %');
+
+    await click(resumo('Imagem: por que foi junto'));
+    expect(text(container)).toContain('árvore da tela bastou');
+    expect(text(container)).toContain('não vai');
+  });
+
+  it('servidor anterior ao v0.75 (sem as chaves) e período sem nada: nem a seção nem o aviso aparecem', async () => {
+    const antigo = { ...RA10 } as Partial<UsageReport>;
+    for (const k of ['escalations', 'rejudges', 'cascades', 'image_reasons', 'steps_driven_by_null'] as const) delete antigo[k];
+    backend.on('GET', /^\/api\/usage$/, () => json(antigo));
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Ver por função e modelo'));
+    expect(text(container)).not.toContain('Modelo forte e conferência');
+    expect(text(container)).not.toContain('Etapas sem registro de quem decidiu');
   });
 });
