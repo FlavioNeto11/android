@@ -59,7 +59,7 @@ _DESCRICAO_MAX: Final = 200
 _APP: Final = re.compile(r"^[A-Za-z0-9_.\-]{1,120}$")
 #: Por que o comando é C7 (`motivo_c7`), gravado na linha da sombra (`motivo_privacidade`, migração 079).
 MotivoC7 = Literal["c7_bidi", "c7_palavra", "c7_formato", "c7_alfabetos", "c7_ofuscado", "c7_eufemismo", "c7_digitos",
-                   "c7_login_valor", "c7_par_credencial", "c7_intencao_de_entrar", "c7_valor_com_digito"]
+                   "c7_login_valor", "c7_par_credencial", "c7_intencao_de_entrar", "c7_valor_com_digito", "c7_gatilho"]
 _LETRAS: Final = re.compile(r"[^\W\d_]+")
 #: Assunto de C7 em qualquer formato, além do que `mentions_credential` já pega: na dúvida, o pedido inteiro é recusado
 #: (ADR-069: C7 nunca sai, nem em sombra). Casa no texto normalizado, sem acento e em minúsculas, com até um separador
@@ -566,6 +566,92 @@ def _depois_do_conector(toks: list[str], i: int) -> bool:
     return False
 
 
+# ------------------------------------------------------------------ forma A: fechar por gatilho (31.18, decisão do dono)
+#: O conector que liga o valor ao verbo de entrar na forma A ("entre com", "log in with", "entra usando") e os equivalentes
+#: das línguas que o filtro já cobre. Mais estreito que `_CONECTORES`: ficam de fora "use"/"usa" (o filtro e a música no
+#: produto), "como", "pelo"/"pela", "via" e os de uma letra. O custo que o dono aprovou (6 de 122 comandos reais) foi
+#: medido com com/with/usando/con/mit.
+_CONECTORES_DE_GATILHO: Final[frozenset[str]] = frozenset((
+    "com", "with", "using", "usando", "utilizando", "con", "mit", "avec", "met", "med", "cu", "dengan", "tunnuksella"))
+
+
+#: O separador que não é palavra no par sem campo forte da forma A, sem a vírgula, que lista nomes ("siga o lucas, a
+#: marina"); com a seta e o igual ("instagram -> lucas -> girassol").
+_SEPARADORES_DO_PAR_A: Final[frozenset[str]] = (_SEPARADORES_NAO_ALFABETICOS - {","}) | {">", "="}
+#: O campo amplo (perfil, persona, nome…): sozinho é navegação ("abra o perfil da Marina"); com valor, separador e valor, é
+#: o par ("perfil lucas, girassol").
+_CAMPO_AMPLO: Final[frozenset[str]] = _CAMPO_DE_USUARIO - _CAMPO_FORTE
+_EMAIL_DO_PAR: Final = re.compile(r"[^\W_][\w.+-]*@[\w-]+(?:\.[\w-]+)+")
+
+
+def _valor_do_par(t: str) -> bool:
+    return (_e_valor(t) and t not in _OBJETO_DE_NAVEGACAO and t not in _ARTIGOS and t not in _LUGAR
+            and t not in _CAMPO_DE_USUARIO)
+
+
+def _par_sem_campo_forte(toks: list[str], d: _Destinos, normal: str) -> bool:
+    """O par usuário e senha sem palavra de campo forte (forma A, a família 4 da fase 2 da H):
+
+    - campo amplo, valor, separador e valor ("persona lucas; girassol"; a vírgula só sem verbo: "perfil lucas, girassol");
+    - o nome do catálogo seguido de separador que não é palavra e de um valor ("no instagram, lucas: girassol", "instagram |
+      lucas | girassol", "instagram -> lucas -> girassol");
+    - o nome do catálogo, "e" e um valor num comando sem verbo nenhum ("no android-01, lucas e girassol");
+    - o e-mail seguido de separador e valor, ou de um valor que fecha a oração ("lucas@correio.net: girassol").
+    O valor não é artigo, lugar, objeto de navegação nem campo; o nome do catálogo na posição de valor É valor (G-4): "instagram
+    | lucas | girassol" recusa também com uma persona "Girassol"."""
+    n = len(toks)
+    sem_verbo = not _verbos_de_entrar(toks, passado=True) and not any(t in _VERBOS_DE_ACAO for t in toks)
+    # a vírgula só forma o par sem verbo: "veja o perfil Marina, Zilda e Ana" é uma lista de perfis
+    separadores = _SEPARADORES_NAO_ALFABETICOS if sem_verbo else _SEPARADORES_DO_PAR_A
+    for i, t in enumerate(toks):
+        if (t in _CAMPO_AMPLO and i + 3 < n and _valor_do_par(toks[i + 1]) and toks[i + 2] in separadores
+                and _valor_do_par(toks[i + 3])):
+            return True
+    for ini in d.catalogo:
+        fim = d.fim(ini)
+        if fim < n and toks[fim] in _SEPARADORES_DO_PAR_A:
+            k = _pula(toks, fim, _SEPARADORES_DO_PAR_A)
+            if k < n and _valor_do_par(toks[k]):
+                return True
+        if sem_verbo and fim < n and toks[fim] in ("e", "and", "y"):
+            k = _pula(toks, fim + 1, _ARTIGOS)
+            if k < n and _valor_do_par(toks[k]):
+                return True
+    for m in _EMAIL_DO_PAR.finditer(normal):
+        resto = _tokens_de(normal[m.end():])
+        if resto and resto[0] in _SEPARADORES_DO_PAR_A:
+            k = _pula(resto, 0, _SEPARADORES_DO_PAR_A)
+            if k < len(resto) and _valor_do_par(resto[k]):
+                return True
+        elif (resto and _valor_do_par(resto[0]) and any(c.isalpha() for c in resto[0])
+              and (len(resto) == 1 or resto[1] in _FIM_DE_ORACAO or resto[1] == ",")):
+            return True                                  # o número já sai mascarado ("[email] [numero]")
+    return False
+
+
+def _gatilho_de_credencial(toks: list[str], d: _Destinos, normal: str) -> bool:
+    """Forma A (31.18; ADR-069 item 18, decisão do dono em 03/10): QUALQUER gatilho de credencial no comando recusa o pedido
+    inteiro, sem localizar nem mascarar o valor. Vale no texto sem destinos E no original, onde a sintaxe de destino CONTA:
+    "entre com a conta lucas hoje girassol" vira "entre hoje girassol" sem destinos, e só o original mostra o gatilho (a
+    família 3 da fase 2 da H). A palavra C7 e a corrida soletrada já recusaram antes (`c7_palavra`, `c7_ofuscado`); aqui:
+
+    - o verbo de entrar, também no passado, com um conector de `_CONECTORES_DE_GATILHO` até três tokens depois. Exceção
+      única: o objeto pessoa ou conversa ("entre na conversa com o contato", como a H-1 a), com o residual aceito de "entre
+      na conversa com <senha>" passar em claro;
+    - o campo forte (`_CAMPO_FORTE`: usuário, login, conta…), também dentro do destino ("na conta Lucas");
+    - o verbo de digitar valor (`_DIGITAR_VALOR`);
+    - o par sem campo forte (`_par_sem_campo_forte`).
+    "entre no insta" sozinho passa; o token só de dígitos segue a regra dos anos (`_valor_com_digito`)."""
+    if any(t in _CAMPO_FORTE or t in _DIGITAR_VALOR for t in toks):
+        return True
+    for _, fim in _verbos_de_entrar(toks, passado=True):
+        if _objeto_e_pessoa(toks, _pula(toks, fim + 1, _ADVERBIOS)):
+            continue
+        if any(toks[m] in _CONECTORES_DE_GATILHO for m in range(fim + 1, min(fim + 4, len(toks)))):
+            return True
+    return _par_sem_campo_forte(toks, d, normal)
+
+
 def _verbos_de_entrar(toks: list[str], *, passado: bool = False) -> list[tuple[int, int]]:
     """(início, fim) de cada verbo de entrar, de uma, duas ou três palavras; o hífen ("connecte-toi", "logue-se") conta
     pela primeira parte, e desde a rodada G (G-2) também o verbo de duas ou três palavras ligado por hífen ("log-in",
@@ -995,7 +1081,10 @@ def motivo_c7(comando: str, *, sem_destinos: str | None = None, intencao: bool =
     - `c7_intencao_de_entrar` (rodada F, F-A): o verbo de entrar SEM objeto de navegação ("entra e curte", "entre com a
       girassol"), sem precisar achar o valor;
     - `c7_valor_com_digito` (o piso, depois da fase 2 da H): gatilho de credencial em qualquer lugar e um token com cara de
-      segredo com dígito que não é destino ("entre no insta tulipa42", "digite 4821 e curta"): recusa em vez de mascarar.
+      segredo com dígito que não é destino ("entre no insta tulipa42", "digite 4821 e curta"): recusa em vez de mascarar;
+    - `c7_gatilho` (forma A, 31.18, decisão do dono): qualquer gatilho de credencial fora da sintaxe de destino (verbo de entrar
+      com conector, campo forte, verbo de digitar) recusa o pedido inteiro, sem localizar o valor (`_gatilho_de_credencial`).
+      Fica por último só para não trocar o rótulo das regras de antes: todas recusam, e a recusa vem antes da máscara.
 
     `sem_destinos`: o texto é o ORIGINAL e este é o mesmo comando sem os destinos (`RunService.sem_destinos`). O que o
     extrator tirou é destino do catálogo real: "com a conta Lucas" vira destino, "com a conta girassol" não (F-B).
@@ -1037,6 +1126,8 @@ def motivo_c7(comando: str, *, sem_destinos: str | None = None, intencao: bool =
         return "c7_intencao_de_entrar"
     if _valor_com_digito(toks, d):
         return "c7_valor_com_digito"
+    if _gatilho_de_credencial(toks, d, normal):
+        return "c7_gatilho"
     return None
 
 

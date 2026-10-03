@@ -4417,6 +4417,57 @@ catálogo, comando), que o ADR-063 não cobre.
           lucas") são o custo esperado da reversão;
         - com a "Girassol": 0 vazamentos no corpus inteiro e 0 casos que mudam entre os catálogos (o 54f71853 tinha 17).
       - `backend/tests/test_decisao_fechada_reverificacao_h.py`, seção do piso. A G e a E voltaram à versão da base.
+18. **Emenda de 03/10/2026 (31.18, forma A na versão A-ESTREITA; decisão do dono depois do NO-GO do item 17, com as
+    duas escolhas de leitura aprovadas pela orquestradora).** A C3 (sombra da intenção) fecha por gatilho: qualquer
+    gatilho de credencial no comando sem destinos E no original recusa o pedido inteiro, sem localizar nem mascarar.
+    - Regra: `intencao._gatilho_de_credencial`, motivo `c7_gatilho`. É a última do `motivo_c7`, só para os rótulos de
+      antes não mudarem (todas recusam). Os gatilhos:
+      - o verbo de entrar, no presente ou no passado, com um conector até 3 tokens depois. Os conectores são com, with,
+        using, usando, utilizando, con, mit, avec, met, med, cu, dengan e tunnuksella. "entrei com" e "logado com" contam:
+        o passado fica, porque "entrei com" das rodadas F e G vale mais que "logado com sucesso";
+      - o campo forte (conta, usuário, user, login, account, cuenta…) e o verbo de digitar (digite, tecle, insira, type,
+        soletre…), mesmo sem valor;
+      - a palavra C7 e a sequência soletrada, as regras que já recusavam;
+      - o par campo + separador + valor, em quatro formas. Mediu custo 0 nos comandos reais:
+        - campo amplo (perfil, persona, nome, contas, profile) + valor + separador + valor (a vírgula só sem verbo);
+        - nome do catálogo + separador (`:`, `;`, `|`, `/`, `-`, `>`, `=`…) + valor;
+        - nome do catálogo + "e" (and, y) + valor, só sem verbo;
+        - e-mail + separador + valor, ou e-mail + palavra com letra que fecha a oração.
+    - **Leitura literal** (escolha 1): a sintaxe de destino conta mesmo cortada pelo extrator. Isentá-la deixava a família
+      3 da fase 2 da H aberta (0 de 28). Por isso, "entre com a conta Lucas e curta" recusa, enquanto "entre pela Lucas e
+      curta" e "entre como @lucas.almeida9484 e curta o post" passam. O nome do catálogo na posição de valor é valor
+      (postura da G-4).
+    - A única exceção é o objeto pessoa ou conversa ("entre na conversa com o contato"). "entre no insta" sozinho passa.
+      O token só de dígitos segue a regra dos anos do item 17. As máscaras de forma continuam para o que passa.
+    - **Residual documentado e aceito pelo dono:**
+      - a senha sem gatilho nenhum ("tulipa, curta o post da Marina");
+      - "entre na conversa com <senha>";
+      - o nome do catálogo + "e" + valor quando há verbo ("lucas e girassol, curta a foto").
+    - **Custo declarado:**
+      - Comandos reais: 6 de 122 na medição A-ESTREITA do item 17. Remedido às 12:44Z no código deste item: 126
+        comandos de 7 dias, no banco do central só para leitura, com o catálogo real e só contagens. Recusam 8 (6,3 %): 1
+        por `c7_palavra`, a de sempre, e 7 por `c7_gatilho`. Os 7 têm "conta"; 2 também "digitar" e 1 "usuario". O
+        conjunto inteiro de conectores dá o mesmo.
+      - Testes antigos: 38 falharam com a forma A. Desses, 29 são controles parametrizados das reverificações C a H; os
+        30 comandos distintos, contando os exemplos, foram para `CUSTO_DA_FORMA_A` como recusa. Os outros 9 são testes de
+        rótulo ou de exemplo, que foram ajustados: "com a conta Lucas" virou "pela Lucas", "com @handle" virou "como
+        @handle", e "usuario zilda no gmail" agora recusa por `c7_gatilho`, que vem antes do filtro do e-mail.
+      - Corpus da orquestradora: 9 casos viraram recusa (96, 345, 351, 352, 422, 423, 426, 574 e 575) e foram
+        reetiquetados por ela (lente `custo-forma-a`).
+    - Prova `simulated`, no código deste item:
+      - `backend/tests/test_decisao_fechada_forma_a.py`, 445 testes:
+        - recusam, nos dois catálogos, as 86 da fase 2 da H (famílias 18, 7, 28 e 33), as 40 da lente
+          `regressao-rodada-g` e as 37 da `regressao-rodada-f`;
+        - passam os 30 controles operacionais;
+        - cobre ainda os gatilhos com o motivo próprio, os controles da forma A, o residual e o custo.
+      - Os 13 arquivos do filtro e das sombras: 1458 passaram. Os vizinhos: 65, mais 11 dos scripts.
+      - Harness `ataque_b.py`, com o corpus de 579 já reetiquetado:
+        - 0 vazamentos e 0 passagens indevidas;
+        - as recusas indevidas são as mesmas do item 17: 134, 135, 348, 427, 572 e 573;
+        - 0 casos mudam entre os catálogos;
+        - os 6 fragmentos de domínio de topo seguem como antes: 5 mascarados e 1 recusado.
+    - Próximo: a rodada I (fase 2) da orquestradora, no hash deste item. O GO é zero casos contados pelo discriminador
+      (bug ou lacuna-pt) com a forma A. Depois do GO, o deploy 11 liga `intencao: shadow`.
 
 **Consequências.** A plataforma ganha um motor barato (US$ 0,042/M de entrada, saída grátis) para decisões fechadas que hoje não
 acontecem ou vão ao Opus, medido em sombra contra o caminho atual antes de qualquer `on`. O ADR-063 continua valendo para código.

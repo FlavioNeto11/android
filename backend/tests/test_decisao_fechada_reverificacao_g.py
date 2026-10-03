@@ -141,8 +141,10 @@ def test_o_par_com_handle_e_par_e_nao_mascara(comando: str) -> None:
 
 
 def test_o_handle_do_catalogo_sem_valor_passa() -> None:
-    """"entre com @<handle do catálogo>" é destino; o mesmo com um handle que o catálogo não conhece é intenção de entrar."""
-    assert _motivo("entre com @lucas.almeida9484 e curta o post") is None
+    """"entre como @<handle do catálogo>" é destino; o mesmo com um handle que o catálogo não conhece é intenção de entrar.
+    Com "com", a forma A (31.18) recusa pelo conector do verbo de entrar."""
+    assert _motivo("entre como @lucas.almeida9484 e curta o post") is None
+    assert _motivo("entre com @lucas.almeida9484 e curta o post") == "c7_gatilho"
     assert _motivo("entre com @zilda.prado e curta o post") == "c7_intencao_de_entrar"
 
 
@@ -210,14 +212,15 @@ def test_o_nome_inteiro_e_nao_a_palavra() -> None:
     nomes = nomes_de_destino(["Sol Nascente"])
     assert motivo_c7("entre com a conta do lucas e sol", destinos=nomes) is not None
     assert motivo_c7("entre e sol", destinos=nomes) is not None
-    assert motivo_c7("entre com a conta Sol Nascente e curta", destinos=nomes) is None
+    assert motivo_c7("siga a Sol Nascente e curta", destinos=nomes) is None
+    # forma A (31.18): a conta recusa mesmo com o nome inteiro do catálogo
+    assert motivo_c7("entre com a conta Sol Nascente e curta", destinos=nomes) == "c7_gatilho"
 
 
 @pytest.mark.parametrize("comando", [
     # o nome do catálogo na posição de destino continua isento
-    "siga a Girassol e curta a última foto", "entre com a conta Girassol e curta a foto", "entre pela Girassol e curta",
-    "entre como @girassol.oficial e curta", "entre com a conta do lucas e curta a foto da Marina",
-    "acesse a conta da Girassol e leia a bio",
+    # (com "conta" recusam desde a forma A, 31.18: test_decisao_fechada_forma_a.py)
+    "siga a Girassol e curta a última foto", "entre pela Girassol e curta", "entre como @girassol.oficial e curta",
 ])
 def test_o_nome_do_catalogo_no_destino_passa(comando: str) -> None:
     assert _motivo(comando) is None
@@ -277,7 +280,7 @@ def test_as_regras_da_rodada_g(comando: str, motivo: str | None) -> None:
 
 @pytest.mark.parametrize("comando", [
     # o campo de usuário com vírgula, sem verbo de entrar, só recusa com o valor (não com o verbo de ação)
-    "usuário lucas, curta o post da Marina", "na conta lucas, comente parabéns", "veja o perfil Marina, Zilda e Ana",
+    "veja o perfil Marina, Zilda e Ana",    # "usuário lucas, …" e "na conta lucas, …" recusam (forma A: test_decisao_fechada_forma_a.py)
     # "para acesso use" diante de artigo é instrução de navegação
     "para acesso use o menu de cima", "mande uma palavrinha de carinho para a Marina",
     # a lista de letras curta e o nome de letra sem separador

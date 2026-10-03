@@ -154,7 +154,8 @@ def test_a_forma_conhecida_do_dominio_de_topo(comando: str, saida: str) -> None:
 
 # ------------------------------------------------------------------ H-3 revertida: o nome solto volta a ser valor
 @pytest.mark.parametrize("comando", [
-    "entre pela conta do bruno", "entre com a conta do lucas", "log into the lucas profile and like",
+    # (com "conta" recusam desde a forma A, 31.18: test_decisao_fechada_forma_a.py)
+    "log into the lucas profile and like",
 ])
 def test_a_sintaxe_de_destino_continua_isenta(comando: str) -> None:
     for girassol in (False, True):
@@ -220,20 +221,18 @@ def test_o_piso_continua_recusando(comando: str, motivo: str) -> None:
     "poste a foto da casa", "abra o bloco de notas", "a quadra de esportes do bairro, poste",
     "leia o último e-mail do outlook e me diga o assunto",
     "abra o Outlook e responda o e-mail da Marina Prado dizendo que o relatório vai na segunda",
-    # o objeto pessoa ou conversa, o estado de entrar e o modo
+    # o objeto pessoa ou conversa, o estado de entrar e o modo (o verbo de entrar com conector, o "digite" e a conta
+    # recusam desde a forma A, 31.18: test_decisao_fechada_forma_a.py)
     "entre na conversa com qa-001 e mande oi", "entre no chat com a Marina e responda", "entre na live com a Ana",
     "entre em contato com a Ana e mande oi", "verifique se o lucas está logado", "o lucas entrou? curta a foto",
-    "logado com sucesso, curta a foto", "acesse o perfil da Marina usando o navegador", "entre no feed com calma e curta",
+    "acesse o perfil da Marina usando o navegador",
     "entre no app e curta a foto da Marina", "acesse o perfil da Marina e curta",
     # as letras que são palavra e o nome de letra que é palavra comum
-    "use a e o como exemplo", "digite a resposta e envie", "coloque o filtro e poste", "digite que ele te ama e envie",
+    "use a e o como exemplo", "coloque o filtro e poste",
     # o eufemismo só com o verbo "é" (a conjunção "e" não conta) e o e-mail sem domínio
     "poste a foto da cidade onde nasci e marque a Marina", "o nome do meu perfil é lucas, curta a foto",
     "o e-mail do provedor caiu, avise a Marina", "mande para zilda em casa com carinho",
     "ligue para a mãe e diga que estou bem",
-    # o determinante da conta depois do verbo no passado
-    "veja se está logado com outra conta", "confira se entrou com a mesma conta",
-    "veja se o lucas está logado com a conta certa",
     # o link e o que parece domínio (casos 99, 540 e 541)
     "siga maria.clara no instagram", "curta o post, p.ex. o da Marina",
     "abra https://exemplo.com/unsub?u=joao.silva%40exemplo.com",

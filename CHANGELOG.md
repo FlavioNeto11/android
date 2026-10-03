@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 31.18: forma A (A-ESTREITA), a C3 fecha por gatilho de credencial (branch feat/31-18-forma-a)
+
+- Decisão do dono depois do NO-GO da fase 2 da H (ADR-069 item 18): qualquer gatilho de credencial no comando sem
+  destinos E no original recusa o pedido inteiro da C3 (`c7_gatilho`, `intencao._gatilho_de_credencial`).
+  - Gatilhos: verbo de entrar, também no passado, com conector até 3 tokens depois; campo forte; verbo de digitar;
+    palavra C7; soletrado; e o par campo + separador + valor nas quatro formas.
+  - Leitura literal: a sintaxe de destino conta, e "entre com a conta Lucas e curta" recusa.
+  - Exceção única: objeto pessoa ou conversa.
+  - Residual aceito: senha sem gatilho e "entre na conversa com <senha>".
+- Custo: 8 de 126 comandos reais (1 `c7_palavra` e 7 `c7_gatilho`, todos com "conta"). Os 30 controles antigos foram
+  para `CUSTO_DA_FORMA_A` como recusa, e a orquestradora reetiquetou 9 casos do corpus.
+- Prova `simulated`: `backend/tests/test_decisao_fechada_forma_a.py` (445). Recusam as 86 da H e as 40 + 37 das
+  regressões G e F, nos dois catálogos; os 30 controles operacionais passam.
+  - Filtro e sombras: 1458 passaram.
+  - Harness de 579: 0 vazamentos, 0 passagens indevidas, as 6 recusas indevidas de antes.
+
 ## 2026-10-03 — 31.9: a H sem a H-3, depois do NO-GO da fase 2 da H (branch fix/31-9-rodada-h)
 
 - A fase 2 da H deu NO-GO: 107 casos em 4 famílias de método.

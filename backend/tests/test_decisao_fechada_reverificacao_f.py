@@ -103,17 +103,16 @@ def test_o_par_com_destino_real_recusa(comando: str) -> None:
 
 # ------------------------------------------------------------------ o que a rodada F NÃO pode recusar
 @pytest.mark.parametrize("comando", [
-    # contrastes da rodada F (casos 422 a 427): entrar com objeto de navegação ou com destino
-    "entre com a conta do lucas e curta a foto da Marina", "conta do lucas: abra o feed",
-    "log into the lucas profile and like", "entre no chat com a Marina e responda", "acesse a conta da Marina e leia a bio",
-    "entre na conversa com qa-001 e envie oi", "entre com o Google e abra o feed",
+    # contrastes da rodada F (casos 422 a 427): entrar com objeto de navegação ou com destino (a conta e "entre com o
+    # Google" recusam desde a forma A, 31.18: test_decisao_fechada_forma_a.py)
+    "log into the lucas profile and like", "entre no chat com a Marina e responda",
+    "entre na conversa com qa-001 e envie oi",
     # "entre" preposição
     "curta as fotos postadas entre 10/05 e 12/05", "fotos postadas entre 10-05 e 12-05", "a diferença entre os dois posts",
     "fotos entre março e abril",
     # "escolha entre a Marina e a Ana" deixou de ser controle na rodada G (G-2): sem faixa nem "os"/"as", "entre" é verbo
     # provedor de e-mail que também é app, palavra comum e o campo de usuário sem valor
     "a foto da terra vista do espaço", "abra o outlook do lucas", "manda pro Outlook da Ana",
-    "Abra o QA Messenger e confirme qual conta está conectada",
     # cinco letras soltas é o piso
     "a b c",
 ])
@@ -136,13 +135,14 @@ def test_entrar_sem_objeto_pula_a_sombra(comando: str) -> None:
 
 
 def test_a_intencao_de_entrar_so_vale_no_original() -> None:
-    """Tirar "com a conta Lucas" deixa "entre e curta": no texto sem destinos a F-A fica desligada, e o original mostra o
-    destino."""
-    original = "entre com a conta Lucas e curta a foto da Marina"
+    """Tirar "pela Lucas" deixa "entre e curta": no texto sem destinos a F-A fica desligada, e o original mostra o
+    destino. Com "com a conta Lucas", a forma A (31.18) recusa pelo original: a conta conta mesmo no destino."""
+    original = "entre pela Lucas e curta a foto da Marina"
     assert _sem_destinos(original) == "entre e curta a foto da Marina"
     assert motivo_c7("entre e curta a foto da Marina", intencao=False) is None
     assert motivo_c7(original, sem_destinos="entre e curta a foto da Marina") is None
     assert _motivo(original) is None
+    assert _motivo("entre com a conta Lucas e curta a foto da Marina") == "c7_gatilho"
 
 
 @pytest.mark.parametrize(("comando", "motivo"), [
