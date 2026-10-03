@@ -241,31 +241,65 @@ _PALAVRAS_DE_CODIGO = re.compile(
     r"\b(?:codes?|codigos?|codice|verification|verificacion|verificacao|verify|verifying|verificar|confirm|confirmar|"
     r"confirmacao|confirmacion|identity|identidad|identidade|security|seguridad|seguranca|login|log in|sign.?in|"
     r"entrar|iniciar sesion|ingresar|otp|2fa|passcode|one.?time|pin)\b")
-#: Uma sequência de dígitos que pode ser um código: sem dígito, `.`, `,`, `:` ou `/` colado (decimal, hora, data, versão).
-_SEQUENCIA_NUMERICA = re.compile(r"(?<![\d.,:/])\d(?:[ \-]?\d)*(?!\d|[.,:/]\d)")
+#: Uma sequência de dígitos que pode ser um código, com UM separador entre dígitos (espaço, hífen, ponto, vírgula, ponto médio,
+#: sublinhado, barra, espaço de largura zero). Sem dígito nem `:` colado antes (hora). O texto já vem canônico (`_canonico`).
+_SEP_DE_CODIGO = r"[\s.,·_/\-​-‍⁠﻿]"
+_SEQUENCIA_NUMERICA = re.compile(rf"(?<![\d:])\d(?:{_SEP_DE_CODIGO}?\d)*(?!\d)")
+_SEPARADOR = re.compile(_SEP_DE_CODIGO)
 #: Quantos caracteres separam o número da palavra de código quando o texto é a TELA inteira (várias linhas coladas): a
 #: mesma linha, e não o resto da tela. No texto de UM elemento ou de uma linha, vale o texto todo.
 _JANELA_DA_TELA = 48
 #: Dígitos de um código: 4 a 8 (os de 2FA, e-mail e SMS vão de 4 a 8). Abaixo disso é contagem pequena ou ano; acima, é
 #: telefone, cartão, id. É o mesmo limiar de `_DIGITOS_DE_CODIGO`.
 _CODIGO_MIN, _CODIGO_MAX = 4, 8
+#: Código alfanumérico curto ("G-482913", "ABC123"): sem espaço, de 4 a 10 caracteres, com letra e pelo menos 3 dígitos. É o
+#: limiar da leitura visual (`forma_de_codigo`): palavra sem dígito, data ("12/10") e hora ("14h30", "14:30") não casam.
+_TOKEN_CURTO = re.compile(r"\S{4,10}")
+_HORA = re.compile(r"[0-9]{1,2}[h:][0-9]{2}(?:min)?|[0-9]{1,2}h")
+_TOKEN_ALFANUMERICO_DIGITOS_MIN = 3
+
+
+def _canonico(texto: str | None) -> str:
+    """O texto como ele é LIDO: NFKC (largura total vira ASCII) e os dígitos de outros alfabetos ("٤٨٢٩١٣") em ASCII. Sem isto,
+    "４８２９１３" e "٤٨٢٩١٣" passariam por texto comum ao lado de um código."""
+    t = unicodedata.normalize("NFKC", texto or "")
+    return "".join(str(d) if not c.isascii() and c.isdigit() and (d := unicodedata.digit(c, None)) is not None else c
+                   for c in t)
+
+
+def _data_plausivel(a: int, b: int) -> bool:
+    return (1 <= a <= 31 and 1 <= b <= 12) or (1 <= a <= 12 and 1 <= b <= 31)
+
+
+def _eh_data(grupos: list[str]) -> bool:
+    """Os grupos de dígitos têm a forma de uma data ("12/10", "14.10.2026", "2026-10-02")? Dia e mês plausíveis."""
+    n, tam = [int(g) for g in grupos], [len(g) for g in grupos]
+    if len(grupos) == 2:
+        return max(tam) <= 2 and _data_plausivel(n[0], n[1])
+    if len(grupos) == 3:
+        if tam[0] == 4 and 1900 <= n[0] <= 2100 and tam[1] <= 2 and tam[2] <= 2:
+            return _data_plausivel(n[1], n[2])
+        if tam[0] <= 2 and tam[1] <= 2 and tam[2] in (2, 4):
+            return _data_plausivel(n[0], n[1])
+    return False
 
 
 def _numeros_de_codigo(texto: str) -> list[tuple[int, int, str]]:
-    """Posição e dígitos de cada número de 4 a 8 dígitos do texto já normalizado, com espaço ou hífen entre grupos iguais
-    ("123 456", "1234-5678"). Data ("2026-10-02"), telefone ("555-1234") e hora ficam de fora: os grupos de um código
-    têm o mesmo tamanho; os de uma data, não."""
+    """Posição e dígitos de cada número de 4 a 8 dígitos do texto já canônico e normalizado, com separador entre grupos IGUAIS
+    ("123 456", "1234-5678", "482.913"). Data ("2026-10-02", "12/10"), telefone ("555-1234"), decimal ("12.345") e hora ficam
+    de fora: os grupos de um código têm o mesmo tamanho; os dessas coisas, em geral, não."""
     achados: list[tuple[int, int, str]] = []
     for m in _SEQUENCIA_NUMERICA.finditer(texto):
         bruto = m.group(0)
-        grupos = re.split(r"[ \-]", bruto)
-        if len(grupos) == 1 or (len({len(g) for g in grupos}) == 1 and 2 <= len(grupos[0]) <= 4):
+        grupos = _SEPARADOR.split(bruto)
+        if len(grupos) == 1 or (len({len(g) for g in grupos}) == 1 and 2 <= len(grupos[0]) <= 4
+                                and not _eh_data(grupos)):
             digitos = "".join(grupos)
             if _CODIGO_MIN <= len(digitos) <= _CODIGO_MAX:
                 achados.append((m.start(), m.end(), digitos))
             continue
-        if "-" in bruto:
-            continue                                    # hífen com grupos desiguais: data, telefone, número de série
+        if not re.fullmatch(r"[0-9 ]+", bruto):
+            continue                                    # outro separador com grupos desiguais: data, telefone, decimal
         pos = m.start()
         for g in bruto.split(" "):                      # "123456 2 minutos": o código vem antes do resto
             if _CODIGO_MIN <= len(g) <= _CODIGO_MAX:
@@ -274,15 +308,41 @@ def _numeros_de_codigo(texto: str) -> list[tuple[int, int, str]]:
     return achados
 
 
+def forma_de_codigo(texto: str | None) -> bool:
+    """O texto INTEIRO (um valor, uma linha do recorte) tem FORMA de código, sem precisar de palavra de contexto?
+
+    1. só número, de 4 a 8 dígitos, com ou sem separadores ("482913", "482 913", "482.913", "482·913"), em qualquer alfabeto de
+       dígitos; fora as datas plausíveis ("12/10", "02/10/26") — um número com separador de milhar ("1.234") também é recusado;
+    2. token curto alfanumérico (4 a 10 caracteres, sem espaço, com letra e ao menos 3 dígitos: "G-482913", "ABC123"), fora a
+       hora ("14h30"). Username curto com ano ("joao2024") é recusado também: o limiar é conservador, de propósito.
+
+    É o teste da leitura visual, onde só se tem a linha (a árvore vê a tela inteira e acha o contexto)."""
+    t = _canonico(texto).strip()
+    if not t:
+        return False
+    if re.fullmatch(rf"\d(?:{_SEP_DE_CODIGO}?\d)*", t):
+        grupos = _SEPARADOR.split(t)
+        return _CODIGO_MIN <= len("".join(grupos)) <= _CODIGO_MAX and not _eh_data(grupos)
+    return _token_alfanumerico(t)
+
+
+def _token_alfanumerico(token: str) -> bool:
+    """Token curto (4 a 10 caracteres, sem espaço) com letra e ao menos 3 dígitos, fora a hora: "G-482913", "ABC123"."""
+    if not _TOKEN_CURTO.fullmatch(token) or not any(c.isalpha() for c in token) or _HORA.fullmatch(token.casefold()):
+        return False
+    return sum(c.isdigit() for c in token) >= _TOKEN_ALFANUMERICO_DIGITOS_MIN
+
+
 def codigo_na_linha(texto: str | None, *, so_digitos: str | None = None, janela: int | None = None) -> bool:
-    """O texto (um elemento, uma linha, um valor) tem um número de 4 a 8 dígitos E fala de código ou verificação?
+    """O texto (um elemento, uma linha, um valor) tem um número de 4 a 8 dígitos (ou um código alfanumérico curto) E fala de
+    código ou verificação?
 
     Generoso de propósito (ADR-009: levar um código de um app a outro é o que se veda; recusar um dado comum custa uma
     parada com o motivo). Sem palavra de código, "Reunião às 14h do dia 12345" passa; com a palavra e um número fora de
     4 a 8 dígitos ("login 123 vezes", "verificação de 123456789 itens") também. `so_digitos` restringe ao número que for
     exatamente este (o valor que o ator leu); `janela` (caracteres) pede a palavra PERTO do número: é o texto da tela
     inteira, onde um menu "Entrar" não torna código a contagem de seguidores do outro lado."""
-    t = normalizar_texto_de_tela(texto)
+    t = normalizar_texto_de_tela(_canonico(texto))
     palavras = [m.span() for m in _PALAVRAS_DE_CODIGO.finditer(t)]
     if not palavras:
         return False
@@ -290,6 +350,13 @@ def codigo_na_linha(texto: str | None, *, so_digitos: str | None = None, janela:
         if so_digitos is not None and digitos != so_digitos:
             continue
         if janela is None or any(a - fim <= janela and ini - b <= janela for a, b in palavras):
+            return True
+    if so_digitos is not None:
+        return False
+    # Código alfanumérico curto na mesma linha da palavra de código ("Your code is ABC123", "G-482913 is your … code").
+    for m in re.finditer(r"\S+", t):
+        if _token_alfanumerico(m.group(0).strip(".,;:!?()[]\"'")) and (
+                janela is None or any(a - m.end() <= janela and m.start() - b <= janela for a, b in palavras)):
             return True
     return False
 
@@ -330,7 +397,7 @@ def triagem(valor: str, *, do_elemento: str = "", da_tela: str = "", campo_de_se
     contexto_da_tela = normalizar_texto_de_tela(f"{do_elemento} {da_tela}")
     fala_de_codigo = (detectar_trava_generica(contexto_da_tela, tem_onde_digitar=True) is not None
                       or mentions_credential(do_elemento))
-    compacto = re.sub(r"[\s.\-]", "", v)
+    compacto = _SEPARADOR.sub("", _canonico(v))
     if _DIGITOS_DE_CODIGO.fullmatch(compacto) and (
             fala_de_codigo or codigo_na_linha(do_elemento, so_digitos=compacto)
             or codigo_na_linha(da_tela, so_digitos=compacto, janela=_JANELA_DA_TELA)):
@@ -548,29 +615,42 @@ async def ler_valor_visual(*, habilitado: bool, arvore: UiTree, element_id: str,
     recorte = recortar(jpeg, largura2, altura2, ancora.bounds)
     do_ator = limpar(valor_do_ator)
     t = await transcrever(recorte, {nome: nome.replace("_", " ")})
+    texto = " ".join(t.linhas)
+    # 12 ANTES de 9 a 11: a triagem do RECORTE inteiro roda primeiro. Com código na imagem a leitura vai SEMPRE para a pessoa
+    # (como na árvore): se a conferência rodasse antes, o ator receberia `nao_confere` ou `truncado` e tentaria outra âncora
+    # sem que a triagem tivesse rodado. O recorte recusado não é guardado (quem chama só o grava quando esta função devolve).
+    motivo = _triagem_do_recorte(t.linhas, texto)
+    if motivo is not None:
+        raise LeituraVisualRecusada("triagem", motivo)
     conferir_transcricao(do_ator, nome, t)
     # Grava-se o valor do LEITOR (o que está na imagem), limpo do mesmo jeito: a concordância é no normalizado (caixa,
     # pontuação das pontas), e gravar o do ator deixaria "FLAVIO PADILHA!" passar por "Flavio Padilha". O ator concordou
     # (acima), então só a forma muda.
     valor = limpar(t.campos[nome] or "")
-    # 12: a triagem roda sobre a transcrição e sobre o valor. O recorte recusado não é guardado (quem chama só o grava
-    # quando esta função devolve).
-    texto = " ".join(t.linhas)
     motivo = triagem(valor, do_elemento=texto, da_tela=texto)
-    # Na leitura visual o valor com FORMA de código (4 a 8 dígitos, com ou sem espaço ou hífen) é recusado mesmo sem palavra
-    # de contexto: a árvore tem a tela inteira para ver que "482913" está sob "código de verificação"; o recorte de uma
-    # linha só tem a linha, e um código que o ator leu sozinho é exatamente o que o ADR-009 veda levar a outra etapa.
-    if motivo is None and _DIGITOS_DE_CODIGO.fullmatch(re.sub(r"[\s\-]", "", valor)):
+    # Na leitura visual o valor com FORMA de código é recusado mesmo sem palavra de contexto: a árvore tem a tela inteira para
+    # ver que "482913" está sob "código de verificação"; o recorte de uma linha só tem a linha, e um código que o ator leu
+    # sozinho é exatamente o que o ADR-009 veda levar a outra etapa.
+    if motivo is None and forma_de_codigo(valor):
         motivo = "código de verificação"
-    # Linha a linha: o código pode estar numa linha que NÃO é a do valor (o assunto do e-mail traz o código, o ator leu o
-    # remetente), e o recorte inteiro é o que o leitor viu.
-    if motivo is None and any(codigo_na_linha(linha) for linha in t.linhas):
-        motivo = "código de verificação"
-    if motivo is None and (trava := detectar_trava_generica(normalizar_texto_de_tela(texto), tem_onde_digitar=True)):
-        motivo = "código de verificação" if trava.subtipo == SUBTIPO_CODIGO else "verificação da conta"
     if motivo is not None:
         raise LeituraVisualRecusada("triagem", motivo)
     return LeituraVisual(valor=valor, recorte=recorte, sha256=hashlib.sha256(recorte).hexdigest(), alvo=ancora)
+
+
+def _triagem_do_recorte(linhas: list[str], texto: str) -> str | None:
+    """Por que o RECORTE inteiro não pode virar saída: qualquer LINHA com forma de código (`forma_de_codigo`: só número de 4 a 8
+    dígitos, com separador ou de outro alfabeto; token alfanumérico curto), com número de código e palavra de código
+    (`codigo_na_linha`) ou que a triagem comum recusa, ou a transcrição com sinal de desafio de conta. O código pode estar numa
+    linha que NÃO é a do valor (o ator leu o remetente, o código é o assunto), com ou sem palavra de contexto na imagem."""
+    for linha in linhas:
+        if forma_de_codigo(linha) or codigo_na_linha(linha):
+            return "código de verificação"
+        if (m := triagem(linha, do_elemento=linha, da_tela=texto)) is not None:
+            return m
+    if trava := detectar_trava_generica(normalizar_texto_de_tela(texto), tem_onde_digitar=True):
+        return "código de verificação" if trava.subtipo == SUBTIPO_CODIGO else "verificação da conta"
+    return None
 
 
 def razao_sem_segredo(texto: str | None) -> str:

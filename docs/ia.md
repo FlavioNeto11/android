@@ -626,6 +626,12 @@ provedores (Anthropic, `OpenAICompatProvider`, simulado) e no `RoutingProvider`.
   código ou verificação em inglês, português ou espanhol na mesma linha; data, hora, decimal e telefone não contam). A triagem NÃO
   é um erro de chamada: leva a etapa a `waiting_user`, como no caminho da árvore, sem nova tentativa do ator e sem lhe dizer que a
   linha tem código.
+- **Forma de código, em qualquer grafia (limiar):** `forma_de_codigo` lê o texto em NFKC e com dígitos de outros alfabetos em ASCII,
+  ignora os separadores `espaço . , · _ / -` e os de largura zero, e recusa (a) só número de 4 a 8 dígitos, fora data plausível
+  ("12/10", "02/10/26"); número com separador de milhar ("1.234") também é recusado; (b) token de 4 a 10 caracteres sem espaço com
+  letra e ao menos 3 dígitos ("G-482913", "ABC123"), fora a hora ("14h30"). Vale para o valor e para CADA linha do recorte, e a
+  triagem do recorte roda ANTES da conferência (um recorte com código vai sempre para a pessoa). O mesmo conserto, com palavra de
+  código na linha, vale para a árvore (`codigo_na_linha`: "Your code is 482.913", "Your code is ABC123").
 - **Valor gravado é o do leitor**, limpo (`limpar`): a concordância é no normalizado, e o que está na imagem é o que se grava.
 - **Orçamento, prazo, crédito e recusa por política** na chamada do leitor NÃO viram `leitor_falhou`: seguem o desfecho do ator
   (`desfecho_de_ia`). Só a falha do provedor e a saída inválida viram `leitor_falhou`.

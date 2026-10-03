@@ -282,6 +282,50 @@ async def test_valor_com_forma_de_codigo_e_recusado_na_leitura_visual_mesmo_sem_
         assert (await _ler(valor=comum, leitor=_Leitor(t))).valor == comum
 
 
+FORMAS_DE_CODIGO = ["482913", "４８２９１３", "٤٨٢٩١٣", "482.913", "482,913", "482/913", "482_913", "482·913", "482\u200b913",
+                    "482\u00a0913", "482\u2009913", "48-29-13", "4829 13", "4829-1300", "G-482913", "ABC123",
+                    "Your code is 482.913", "Seu código é 482.913", "Your code is ４８２９１３", "Your code is G-482913",
+                    "Your code is ABC123", "Your code: 4829 13"]
+
+
+@pytest.mark.parametrize("forma", FORMAS_DE_CODIGO)
+async def test_d1_d2_valor_com_forma_de_codigo_em_qualquer_grafia_e_recusado_na_leitura_visual(forma: str) -> None:
+    t = Transcricao(linhas=[forma], campos={"assunto": forma})
+    erro = await _recusa("triagem", valor=forma, leitor=_Leitor(t))
+    assert erro.motivo == "código de verificação" and "482" not in erro.rotulo
+
+
+@pytest.mark.parametrize("comum", ["Reunião 14h", "Pedido 123", "Fatura 123456789012", "12/10", "02/10/26", "14h30", "14:30",
+                                   "natgeo", "Flavio Padilha", "Joao_Silva2024", "482913123"])
+async def test_d2_texto_comum_data_e_hora_nao_sao_codigo_na_leitura_visual(comum: str) -> None:
+    # limiar: só número de 4 a 8 dígitos (fora data plausível) ou token de 4 a 10 caracteres com letra e 3+ dígitos
+    t = Transcricao(linhas=[comum], campos={"assunto": comum})
+    assert (await _ler(valor=comum, leitor=_Leitor(t))).valor == comum
+
+
+@pytest.mark.parametrize("linhas", [["Instagram", "482913"], ["Instagram", "４８２９１３"], ["Instagram", "Your code is 482.913"],
+                                    ["Instagram", "G-482913"], ["Instagram", "٤٨٢٩١٣"], ["Instagram 482913 is your code"],
+                                    ["Flavio Padilha", "482913", "is your verification code"]])
+async def test_d3_qualquer_linha_do_recorte_com_forma_de_codigo_leva_a_triagem(linhas: list[str]) -> None:
+    t = Transcricao(linhas=linhas, campos={"remetente": linhas[0]})
+    erro = await _recusa("triagem", valor=linhas[0], nome="remetente", leitor=_Leitor(t))
+    assert "482" not in erro.rotulo
+    # o leitor que não viu a linha do código não torna o recorte suspeito
+    ok = Transcricao(linhas=["Instagram"], campos={"remetente": "Instagram"})
+    assert (await _ler(valor="Instagram", nome="remetente", leitor=_Leitor(ok))).valor == "Instagram"
+
+
+async def test_d4_a_triagem_do_recorte_roda_antes_da_conferencia() -> None:
+    # o ator leu outra coisa (`nao_confere`) e o recorte traz um código: vai para a triagem, e não para uma nova tentativa
+    t = Transcricao(linhas=["Instagram", "482913"], campos={"remetente": "Instagram"})
+    await _recusa("triagem", valor="outra coisa", nome="remetente", leitor=_Leitor(t))
+    cortado = Transcricao(linhas=["Instagram…", "482913"], campos={"remetente": "Instagram…"}, truncado=True)
+    await _recusa("triagem", valor="Instagram", nome="remetente", leitor=_Leitor(cortado))
+    # sem código, a conferência continua valendo
+    sem = Transcricao(linhas=["Instagram"], campos={"remetente": "Instagram"})
+    await _recusa("nao_confere", valor="outra coisa", nome="remetente", leitor=_Leitor(sem))
+
+
 async def test_codigo_numa_linha_do_recorte_que_nao_e_a_do_valor_tambem_recusa() -> None:
     t = Transcricao(linhas=[REMETENTE, f"Use {CODIGO} to confirm your identity"], campos={"remetente": REMETENTE})
     erro = await _recusa("triagem", valor=REMETENTE, nome="remetente", leitor=_Leitor(t))

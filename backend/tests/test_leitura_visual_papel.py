@@ -192,10 +192,21 @@ def test_resposta_invalida_nao_leva_o_texto_do_modelo_ao_log_nem_com_traceback(c
             try:
                 transcricao_from_json(bruto, ["assunto"])
             except AIError as exc:
-                assert exc.__cause__ is None and exc.__suppress_context__
+                assert exc.__cause__ is None and exc.__context__ is None
                 log.warning("leitura falhou: %s", exc, exc_info=True)
     assert len(caplog.records) == len(ruins) and "Traceback" in caplog.text
     assert "482913" not in caplog.text and all("482913" not in (r.exc_text or "") for r in caplog.records)
+
+
+def test_d5_a_falha_do_parse_nao_guarda_a_validation_error_nem_em_context() -> None:
+    import traceback
+
+    for bruto in (json.dumps({**BRUTO, "extra": "codigo 482913"}), "codigo 482913",
+                  json.dumps({**BRUTO, "linhas": "codigo 482913"})):
+        with pytest.raises(AIError) as e:
+            transcricao_from_json(bruto, ["assunto"])
+        assert e.value.__cause__ is None and e.value.__context__ is None
+        assert "482913" not in repr(e.value) and "482913" not in "".join(traceback.format_exception(e.value))
 
 
 def test_campo_pedido_repetido_com_valores_diferentes_recusa_como_chave_extra() -> None:

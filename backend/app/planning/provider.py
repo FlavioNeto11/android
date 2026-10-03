@@ -335,13 +335,17 @@ def transcricao_from_json(raw: str, pedidas: Sequence[str]) -> Transcricao:
     if texto.startswith("```"):
         texto = re.sub(r"^```[a-zA-Z]*\s*", "", texto)
         texto = re.sub(r"\s*```$", "", texto).strip()
+    fio: TranscricaoWire | None = None
     try:
         fio = TranscricaoWire.model_validate(json.loads(texto))
     except (ValueError, ValidationError):
-        # `from None`, de propósito: a `ValidationError` do pydantic carrega `input_value=` com o texto que o MODELO
-        # devolveu (o corpo de um e-mail, um código), e o executor loga esta falha com `exc_info=True`: a cadeia
-        # (`__cause__` ou `__context__`) levaria o texto transcrito ao log.
-        raise AIError("A transcrição devolvida pelo leitor não tem o formato pedido.", kind="invalid_output") from None
+        pass
+    if fio is None:
+        # Levantado FORA do `except`, de propósito: a `ValidationError` do pydantic carrega `input_value=` com o texto que o
+        # MODELO devolveu (o corpo de um e-mail, um código) e o executor loga esta falha com `exc_info=True`. Dentro do
+        # `except`, mesmo `from None` deixa a falha em `__context__` (um serializador que o percorra vazaria o valor); aqui
+        # `__cause__` e `__context__` ficam `None`.
+        raise AIError("A transcrição devolvida pelo leitor não tem o formato pedido.", kind="invalid_output")
     # Um nome pedido que vem duas vezes com valores diferentes é resposta incoerente: o mapa guardaria só a última e a
     # conferência passaria a depender da ordem. A mensagem não cita nome nem valor.
     vistos: dict[str, str | None] = {}

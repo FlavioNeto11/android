@@ -91,6 +91,19 @@ def test_triagem_o_numero_so_conta_com_a_palavra_de_codigo_perto_na_tela_inteira
     assert triagem("12345", da_tela="Código 12345 seguidores") == "código de verificação"
 
 
+@pytest.mark.parametrize("valor", ["Your code is 482.913", "Seu código é 482.913", "Your code is 482,913",
+                                   "Your code is ４８２９１３", "Seu código é ٤٨٢٩١٣", "Your code is 482\u200b913",
+                                   "Your code is G-482913", "Your code is ABC123", "Use 482 913 to log in"])
+def test_d1_d2_triagem_da_arvore_acusa_codigo_com_separador_unicode_e_alfanumerico(valor: str) -> None:
+    assert triagem(valor) in ("código de verificação", "token ou segredo")
+
+
+@pytest.mark.parametrize("valor", ["Versão 12.345 do código", "Data 12/10 login", "Login em 12/10/2026 às 14h30",
+                                   "Seu código tem 6 dígitos", "Entrar no grupo 123"])
+def test_d1_a_triagem_mais_restritiva_nao_pega_data_hora_nem_decimal(valor: str) -> None:
+    assert triagem(valor) is None
+
+
 def test_receita_nao_recebe_saida_lida_da_imagem() -> None:
     lidas = {"remetente": ("Maria", "text"), "assunto": ("Oi", "text"), "assunto_i2": ("Oi B", "text")}
     assert variaveis_da_receita(lidas, None, {"remetente"}) == {"saida_assunto": "Oi", "saida_assunto_i2": "Oi B"}
