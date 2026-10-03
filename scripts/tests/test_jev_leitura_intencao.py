@@ -142,6 +142,21 @@ def test_texto_em_qualquer_coluna_falha_fechado_sem_imprimir_o_valor(banco: Banc
     assert "girassol" not in (tmp_path / "leitura.json").read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize("valor, violacoes", [
+    ("a" * 64, set()),                                  # o sha256 do estado redigido (086, 31.22)
+    (None, set()),                                      # recusa de privacidade e legado
+    ("A" * 64, {"formato:estado_hash"}),
+    ("abra o feed", {"formato:estado_hash", "texto_em:estado_hash"}),   # texto no lugar do hash: o valor nunca sai
+])
+def test_estado_hash_da_086_e_conferido_pelo_formato(banco: Banco, tmp_path: Path, valor: str | None,
+                                                     violacoes: set[str]) -> None:
+    _sombra_limpa(banco)
+    banco.db.execute("UPDATE decisao_fechada_sombra SET estado_hash=?", (valor,))
+    codigo, rel = banco.rodar(tmp_path)
+    assert set(rel["sombra"]["violacoes"]) == violacoes
+    assert "abra o feed" not in json.dumps(rel, ensure_ascii=False)
+
+
 def test_coluna_nova_sem_conferencia_falha_fechado(banco: Banco, tmp_path: Path) -> None:
     banco.db.execute("ALTER TABLE decisao_fechada_sombra ADD COLUMN comando TEXT")
     banco.sombra("r-1", "ch1")

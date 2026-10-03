@@ -77,13 +77,15 @@ FAIXAS = (0.50, 0.60, 0.70, LIMIAR)
 #: As colunas que a sombra tem (074, 079 e 083). Coluna nova sem passar por aqui é violação: ninguém confere o que ela guarda.
 COLUNAS = frozenset({"id", "ts", "chamada", "origem", "classe", "modo", "pergunta_id", "escolha", "probabilidades",
                      "confianca", "decisao_real", "desfecho", "usd", "tokens", "ms", "fallback_reason", "run_id",
-                     "step_id", "ref", "ambiguos", "motivo_privacidade", "postado", "ai_call_id"})
+                     "step_id", "ref", "ambiguos", "motivo_privacidade", "postado", "ai_call_id", "estado_hash"})
 #: Rótulo da marca de POST de uma chamada (083): 1, 0 ou sem marca (NULO: não se sabe, ou linha anterior à 083).
 SEM_MARCA = "sem_marca"
 _TS = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z")
 _OPACO = re.compile(r"opt:[0-9a-f]{12}")
 _ID = re.compile(r"[A-Za-z0-9_.:\-]{1,80}")
 _REF = re.compile(r"[A-Za-z0-9_.:/#@\-]{1,200}")
+#: O `estado_hash` da 086 (31.22): o sha256 do estado redigido, em hex minúsculo. Nunca o estado.
+_HASH = re.compile(r"[0-9a-f]{64}")
 
 
 # ------------------------------------------------------------------ banco
@@ -149,6 +151,7 @@ def violacoes_da_linha(linha: Mapping[str, Any]) -> list[str]:
     v: list[str] = [f"coluna_desconhecida:{c}" for c in linha.keys() if c not in COLUNAS]
     d = dict(linha)
     postado, ai_call_id = d.get("postado"), d.get("ai_call_id")      # ausentes num banco anterior à 083
+    estado_hash = d.get("estado_hash")                               # ausente num banco anterior à 086
     # a marca da 083 tem de ser coerente: sem POST não há linha de gasto nem resposta
     if postado == 0 and ai_call_id is not None:
         v.append("marca:id_sem_post")
@@ -182,6 +185,7 @@ def violacoes_da_linha(linha: Mapping[str, Any]) -> list[str]:
         ("ambiguos", linha["ambiguos"] is None or (isinstance(linha["ambiguos"], int) and linha["ambiguos"] >= 0)),
         ("postado", postado is None or (_inteiro(postado) and postado in (0, 1))),
         ("ai_call_id", ai_call_id is None or (_inteiro(ai_call_id) and ai_call_id > 0)),
+        ("estado_hash", estado_hash is None or (isinstance(estado_hash, str) and bool(_HASH.fullmatch(estado_hash)))),
     )
     v += [f"formato:{coluna}" for coluna, ok in regras if not ok]
     return v
