@@ -7,7 +7,7 @@
 -- intenção na mesma hora em que casa a decisão real.
 --
 -- NULO = a linha não é da intenção, ou é anterior a esta migração. Só número: nada do comando nem do catálogo.
--- Sem BEGIN/COMMIT (o executor de migrações já abre a transação). A 077 (28.10) está reservada em outro branch; a lacuna
--- na numeração é esperada.
+-- Sem BEGIN/COMMIT (o executor de migrações já abre a transação). A 077 (Jev, 28.10) e a 078 (Android, 12.5) estão
+-- reservadas em outros branches; a lacuna na numeração é esperada, e o migrador aplica em ordem o que falta.
 
 ALTER TABLE decisao_fechada_sombra ADD COLUMN ambiguos INTEGER;
