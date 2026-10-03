@@ -461,10 +461,22 @@ reaplicar só regridem. `registrar_observacao(rev, estado, evidencia)` é o úni
 é descartada, como no `proxy._fechar`. `registrar_medicao(medicao, rev)` acrescenta ao histórico sempre, grava a
 última saída medida (`egress_ipv4`, `egress_ipv6`, `verified_at`) e decide: `trafego_verificado` só com a revisão
 pedida aplicada, IP de saída medido, cada app de `rede.apps_exigidos` medido `ok` (sem app exigido, ao menos um app,
-todos `ok`), na política com bloqueio, `leak_blocked` verdadeiro e, quando o perfil declara a saída esperada, a
+todos `ok`; o `sem_trafego` não segura, ver abaixo), na política com bloqueio, `leak_blocked` verdadeiro e, quando o perfil declara a saída esperada, a
 saída medida igual a ela (29.6); IP medido com algo faltando é `parcial`, com o
 que falta no `detail`; sem IP, o estado fica. Vocabulário de `per_app`: `ok` (saiu pela rede pedida),
-`fora_da_rede` (vazou), `falhou`, `nao_medido`.
+`fora_da_rede` (vazou), `falhou`, `nao_medido` (não instalado ou não lido) e `sem_trafego` (instalado, 0 byte na
+janela; 29.44).
+
+- **"Verificado" = tudo o que TRAFEGOU passou pelo túnel** (29.44, 03/10/2026). O app parado na janela não prova
+  nem desprova. Ele fica `sem_trafego` e não segura o `parcial` quando outro app passou pelo túnel e nenhum saiu por
+  fora; a sonda do shell conta como app.
+  - O estado é `trafego_verificado` com a ressalva no `detail` ("Outlook sem tráfego na janela: não provado, não
+    segura o estado"), e o painel mostra "sem tráfego na janela".
+  - Quando o app trafega numa janela seguinte, a medição o reavalia e o estado muda sozinho (`ok`, ou `parcial` se
+    ele saiu por fora).
+  - Seguem segurando: `nao_medido` (não instalado), `fora_da_rede`, e nada ter trafegado ("nenhum app trafegou na
+    janela").
+  - Origem: o 03 e o 06, no deploy 7, ficaram em `parcial` só porque o Outlook estava parado.
 
 - **IP de saída é o público.** `NetworkMeasurementInput` recusa endereço que não é global (`is_global`): o NAT do
   emulador (10.0.2.15), a interface do túnel, loopback, rede local, CGNAT, link-local, ULA e as faixas de
@@ -699,8 +711,9 @@ nada é medido. O que se mede:
 - **cobertura por app** (`per_app`): `pm list packages -U` dá o UID de cada app de `apps_exigidos` (Instagram,
   Outlook…), e `dumpsys netstats --poll` + `detail` (seção "UID stats", `tag=0x0`) dá os bytes por (tipo, uid). No
   delta da janela, `ok` = o que saiu pela física também passou pela VPN (tipo 17 = tipo 1, como o Chrome no 25.1;
-  folga de 512 B ou 2%); `fora_da_rede` = saiu por fora (o uid 0 no 25.1: 868 B na física, 52 B na VPN); `nao_medido`
-  = sem tráfego na janela ou app não instalado. A janela dos apps é ACUMULADA desde que o túnel conectou nesta
+  folga de 512 B ou 2%); `fora_da_rede` = saiu por fora (o uid 0 no 25.1: 868 B na física, 52 B na VPN); `sem_trafego`
+  = 0 byte na janela, na VPN e na física (29.44; contador que andou para trás conta zero); `nao_medido` = app não
+  instalado. A janela dos apps é ACUMULADA desde que o túnel conectou nesta
   revisão (a contabilidade é guardada no `conectar`; com o backend reiniciado depois disso, no primeiro `conferir`
   da readoção que acha o túnel no ar, ou, sem ele, na primeira medição): um vazamento visto não some na medição seguinte, e um app parado desde a última sonda não derruba um
   `trafego_verificado` a cada "Verificar". A do shell (`com.android.shell`, a própria sonda, sempre no `per_app`) é
@@ -935,7 +948,8 @@ e três casos de `RedePage.test.tsx`); com provedor e aparelho reais, `not_run` 
 **Decisão: a sonda abre o app exigido só quando uma tarefa espera por ele** (substitui a de "não abre por padrão",
 que travava; para o dono ratificar). App exigido é app de conta vinculada, e abrir o app é usar a conta (ADR-056 §7,
 K-057). Sem tarefa esperando (varredura, `ligou`, pedido), com `rede.sonda.abrir_apps: false` (padrão), app parado
-na janela fica `nao_medido` e o aparelho `parcial`. Mas com política exigida a porta segura TODA tarefa fora de
+na janela fica `sem_trafego` — desde o 29.44 isso não segura o `parcial` se outro app passou pelo túnel, então o que
+segue abaixo vale quando NADA trafegou. Com política exigida a porta segura TODA tarefa fora de
 `trafego_verificado`, inclusive a que abriria o app: o app vinculado e nunca aberto depois do reinício que a própria
 aplicação pede travava o aparelho para sempre. Por isso, quando a medição é disparada pela porta (`motivo='tarefa'`,
 uma tarefa segurada no aparelho), a sonda abre o app sem tráfego na janela pela tela inicial dele, espera
@@ -943,7 +957,7 @@ uma tarefa segurada no aparelho), a sonda abre o app sem tráfego na janela pela
 `parcial` medido sem abrir não faz a tarefa esperar `reverificar_s`: a porta mede de novo já, abrindo, uma vez
 (`_Memoria.medida_sem_abrir`); medido assim e ainda `parcial` (o app aberto não usou a rede), a espera volta a valer
 e a frase da tarefa traz o porquê. `abrir_apps: true` abre também sem tarefa esperando. Resíduo conhecido: app
-exigido NÃO instalado também fica `nao_medido` (não há o que abrir), e a porta da rede vem antes da porta do app que
+exigido NÃO instalado fica `nao_medido` (não há o que abrir) e segura, e a porta da rede vem antes da porta do app que
 o instalaria; só a entrega ao ligar (`vitrine.pendentes_ao_ligar`, quando o app está distribuído para o aparelho; o
 reinício da própria aplicação passa por ela) o instala sem tarefa — sem isso, a tarefa espera com o motivo na frase.
 

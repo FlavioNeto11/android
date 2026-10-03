@@ -9,8 +9,8 @@ O que cada bloco prova:
   não é chamada (`desligado`, sem linha).
 - **Régua que enxerga:** a linha em `ai_calls` (provedor `jev`, origem `decisao_fechada`, `usd` declarado) é o que a fatia do
   Jev soma: depois de gastar a fatia, o próximo pedido para ANTES do POST. O saldo bloqueado da conta também barra.
-- **Existir não é enviar:** com `JEV_RUNTIME_SEND_APPROVED` falso (o de fábrica) a porta recusa antes do decisor, e a
-  composição só liga o real com `ai.decisao_fechada.decisor: jev`.
+- **Existir não é enviar:** com `JEV_RUNTIME_SEND_APPROVED` falso (o interruptor, aberto de fábrica desde o 31.17) a porta
+  recusa antes do decisor, e a composição só liga o real com `ai.decisao_fechada.decisor: jev`.
 
 Prova `simulated`: o Jev só fala com `httpx.MockTransport` (o fixture derruba qualquer socket), banco de teste e hub com
 provedor falso. Nada aqui prova o serviço real; chamada real ao Jev: `not_run`.
@@ -309,8 +309,9 @@ def test_hub_sem_repositorio_nao_confere_e_barra(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------- existir não é enviar
-def test_com_o_envio_fechado_de_fabrica_a_porta_recusa_antes_do_decisor_real(tmp_path: Path) -> None:
-    assert privacidade.JEV_RUNTIME_SEND_APPROVED is False
+def test_com_o_envio_fechado_no_codigo_a_porta_recusa_antes_do_decisor_real(monkeypatch: pytest.MonkeyPatch,
+                                                                             tmp_path: Path) -> None:
+    monkeypatch.setattr(privacidade, "JEV_RUNTIME_SEND_APPROVED", False)
     db = _banco(tmp_path)
     servidor = Servidor(_ok())
     decisor, linhas = _decisor(servidor)
@@ -357,4 +358,6 @@ def test_transparencia_diz_qual_decisor_esta_montado() -> None:
     for decisor in ("nulo", "jev"):
         cfg = DecisaoFechadaCfg(enabled=True, consumidores={"curador": "shadow"}, decisor=decisor)  # type: ignore[arg-type]
         bloco = transparencia.status(cfg, chave_configurada=False)
-        assert bloco is not None and bloco["decider"] == decisor and bloco["send_approved"] is False
+        assert bloco is not None and bloco["decider"] == decisor and bloco["send_approved"] is True
+        assert bloco["sending"] is False                                  # sem a chave, nada sai com decisor nenhum
+        assert f"Decisor na porta: {decisor}." in str(transparencia.aviso(cfg, chave_configurada=True))

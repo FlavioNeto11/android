@@ -976,11 +976,12 @@ class ConvergenciaDeRede:
                 return desfecho                    # o cliente ficou parado: reinicia, e a medição vem depois do boot
             vazamento = desfecho
             if vazamento.bloqueado is not True and row["state"] == "parcial" and not a_pedido \
-                    and not self._medicao_envelhecida(row):
+                    and not self._medicao_envelhecida(row) and not rede.parcial_so_de_app_parado(self.st, iid):
                 # Sem prova do bloqueio, nenhuma medição leva a `trafego_verificado`, e esta linha já foi medida
                 # dentro da validade: medir de novo não muda nada. No android-05 (30/09), com o teste adiado por um
                 # objetivo parado, a sonda rodou 34 vezes em seis horas para escrever o mesmo `parcial`. A pedido
-                # (`POST …/apply`, `…/verify`) mede; vencida a validade, mede (a saída medida não fica velha).
+                # (`POST …/apply`, `…/verify`) mede; vencida a validade, mede (a saída medida não fica velha). O
+                # `parcial` só de app parado (29.44) mede: o app pode ter trafegado, e é isso que a medição relê.
                 mem.medida_sem_abrir = False
                 mem.espera_ate = max(mem.espera_ate, self._agora() + float(self.cfg.sonda.reverificar_s))
                 return {"instance_id": iid, "rev": rev, "state": "parcial", "measured": False,

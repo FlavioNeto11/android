@@ -64,7 +64,51 @@ export function aiModelRows(ai: Pick<AiStatus, 'models'>): LabeledValue[] {
 }
 
 /** Rótulo de cada função do hub, incluindo as que não aparecem no relatório de custo. */
-const HUB_ROLE_LABEL: Record<string, string> = { ...AI_ROLE_LABEL, escalation: 'Escalonamento' };
+const HUB_ROLE_LABEL: Record<string, string> = {
+  ...AI_ROLE_LABEL,
+  escalation: 'Escalonamento',
+  leitura: 'Ler a tela (leitura visual)',
+};
+
+const EFFORT_LABEL: Record<string, string> = {
+  minimal: 'mínimo', low: 'baixo', medium: 'médio', high: 'alto', xhigh: 'muito alto', max: 'máximo',
+};
+
+/** Esforço de raciocínio (`low`, `high`…) em pt-BR; o valor cru se vier algo fora do contrato. */
+export function effortLabel(effort: string | null | undefined): string {
+  return lookup(EFFORT_LABEL, effort);
+}
+
+const THINKING_LABEL: Record<string, string> = {
+  adaptive: 'adaptativo',
+  desligado_na_funcao: 'desligado nesta função',
+  nao_declarado: 'o modelo não declara',
+  recusado_pelo_modelo: 'recusado pelo modelo (desligado até reiniciar)',
+};
+
+/** A sonda "o ator pensa?" (v0.84). `—` quando o provedor não tem raciocínio estendido (OpenAI, simulado). */
+export function thinkingLabel(thinking: string | null | undefined): string {
+  return lookup(THINKING_LABEL, thinking);
+}
+
+const ESQUEMA_LABEL: Record<string, string> = {
+  longo: 'longo (cada etapa com descrição, pré-condição e tentativas)',
+  curto: 'curto (o backend preenche descrição, pré-condição e tentativas)',
+};
+
+/** `ai.esquema_do_plano` (v0.87). */
+export function esquemaDoPlanoLabel(esquema: string | null | undefined): string {
+  return lookup(ESQUEMA_LABEL, esquema);
+}
+
+/** "ligada · gemini-3.1-flash-lite (gemini)" a partir da função `leitura` e do `leitura_visual` (v0.87). `null` quando o
+ * backend não informa. */
+export function leituraVisualLabel(ai: Pick<AiStatus, 'leitura_visual' | 'roles'>): string | null {
+  if (ai.leitura_visual === undefined || ai.leitura_visual === null) return null;
+  const leitor = (ai.roles ?? []).find((r) => r.role === 'leitura');
+  if (!ai.leitura_visual) return 'desligada';
+  return leitor ? `ligada · ${leitor.model} (${leitor.provider})` : 'ligada, sem leitor configurado (recusa toda leitura)';
+}
 
 export function hubRoleLabel(role: string): string {
   return Object.prototype.hasOwnProperty.call(HUB_ROLE_LABEL, role) ? (HUB_ROLE_LABEL[role] as string) : role;
@@ -79,6 +123,9 @@ export interface AiRoleRow {
   external: boolean;
   /** Para onde a falha DESTA função cai. `null` = não cai: o erro sobe, sem provedor pago silencioso. */
   fallback: string | null;
+  /** Esforço e raciocínio em pt-BR (17.14); `—` quando não se aplica. */
+  effort: string;
+  thinking: string;
   refusalFallback: boolean;
   /** O que o operador precisa ver sem abrir o YAML: capacidade declarada e preço ausente. */
   warnings: string[];
@@ -103,8 +150,43 @@ export function aiRoleRows(ai: Pick<AiStatus, 'roles'>): AiRoleRow[] {
       endpoint: r.endpoint,
       external: r.sends_data_externally,
       fallback: r.fallback_provider ?? null,
+      effort: effortLabel(r.effort),
+      thinking: thinkingLabel(r.thinking),
       refusalFallback: r.refusal_fallback,
       warnings,
+    };
+  });
+}
+
+export interface AiProfileRow {
+  name: string;
+  note: string;
+  /** "Planejar: claude-sonnet-5-5 (anthropic, esforço baixo)", uma por função que o perfil muda. */
+  changes: string[];
+  /** "imagem até 768 px", "árvore rica a partir de 12 elementos". */
+  adjustments: string[];
+  /** "25 % das execuções sem perfil"; `null` quando não é o canário. */
+  canary: string | null;
+  external: boolean;
+}
+
+/** Os perfis de IA (v0.87) como a aba IA os mostra. Vazio em backend anterior ou sem `ai.profiles`. */
+export function aiProfileRows(ai: Pick<AiStatus, 'profiles'>): AiProfileRow[] {
+  return (ai.profiles ?? []).map((p) => {
+    const adjustments: string[] = [];
+    if (p.screenshot_max_side) adjustments.push(`imagem até ${p.screenshot_max_side} px`);
+    if (p.rich_tree_min_elements !== null && p.rich_tree_min_elements !== undefined) {
+      adjustments.push(`árvore rica a partir de ${p.rich_tree_min_elements} elementos`);
+    }
+    return {
+      name: p.name,
+      note: p.note,
+      changes: p.roles.map((r) => `${hubRoleLabel(r.role)}: ${r.model} (${r.provider}${r.effort ? `, esforço ${effortLabel(r.effort)}` : ''})`),
+      adjustments,
+      canary: p.canary_fraction !== null && p.canary_fraction !== undefined
+        ? `${Math.round(p.canary_fraction * 100)} % das execuções sem perfil`
+        : null,
+      external: p.roles.some((r) => r.sends_data_externally),
     };
   });
 }

@@ -268,6 +268,16 @@ isso). Pontos que já causaram incidente:
 - **Túnel com chave de host conferida** — o canal do agente e o ADB remoto passam por SSH
   (`scripts/worker-tunnel.ps1`); a digital da chave de host do worker precisa ser conferida manualmente antes de
   confiar no túnel (feito parcialmente em 23/09 para o worker do parque — item 9.4 do plano-100, resto pendente).
+- **Ambiente dos processos filhos por lista de permissão** (item 29.47, 03/10/2026) —
+  `backend/app/devices/sdk.py` (`ambiente_dos_filhos`). Os filhos são adb, emulador, avdmanager, Appium, o sing-box da
+  rede e as sondas do Diagnóstico.
+  - Recebem só as variáveis do sistema e do perfil (`PATH`, `SYSTEMROOT`, `TEMP`, `USERPROFILE`, `APPDATA`…),
+    `JAVA_HOME`, `ANDROID_*` e `ADB_*`.
+  - Nunca passa `TYPESAFE_*`, `OPENAI_*`, `ANTHROPIC_*`, `GEMINI_*`, `FARM_*` nem nome com cara de segredo (`TOKEN`,
+    `SECRET`, `PASSWORD`, `API_KEY`…).
+  - Antes, eles herdavam o ambiente inteiro do backend, e o qemu tinha `TYPESAFE_API_KEY` (K-078).
+  - Um filho que precise de uma variável nova a recebe pelo nome em `AMBIENTE_PERMITIDO`. Proxy (`HTTP_PROXY`) fica de
+    fora de propósito, porque a URL pode levar senha.
 
 ## 12. Tabela de scripts por risco
 

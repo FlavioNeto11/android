@@ -412,8 +412,8 @@ async def test_releitura_entre_etapas_sem_queda_nao_segura_e_respeita_o_interval
 async def test_app_nunca_aberto_nao_trava_a_tarefa_com_politica_exigida(parque: Harness,  # noqa: F811
                                                                         monkeypatch: pytest.MonkeyPatch) -> None:
     """O ciclo da revisão: conta do Instagram vinculada, app nunca aberto desde a conexão, `abrir_apps` desligado
-    (o padrão). A medição sem tarefa deixa `parcial`; com a tarefa segurada pela porta, a sonda abre o app (é o que a
-    tarefa faria), o tráfego dele passa pelo túnel e o objetivo roda."""
+    (o padrão). Desde o 29.44, o app parado fica `sem_trafego` e não segura o `parcial` (a sonda do shell passou pelo
+    túnel): a medição sem tarefa já dá `trafego_verificado` com a ressalva, e o objetivo roda sem a sonda abrir app."""
     st = parque.state
     assert st is not None
     assert st.cfg.file.rede.sonda.abrir_apps is False
@@ -426,15 +426,16 @@ async def test_app_nunca_aberto_nao_trava_a_tarefa_com_politica_exigida(parque: 
     ap.ao_abrir = {pkg: (3000, 3000) for pkg in exigidos}            # aberto, o app usa a rede pelo túnel
     await _ate_conectado(parque, ap)
     assert await _passo(parque, "ligou")                              # a medição da varredura/boot: não abre
-    assert _linha(parque)["state"] == "parcial" and ap.abertos == []
+    linha = _linha(parque)
+    assert linha["state"] == "trafego_verificado" and ap.abertos == []
+    assert "sem tráfego na janela: não provado, não segura o estado" in str(linha["detail"])
     run = parque.run([IID])
     detalhe = await parque.wait_run(run.id, timeout=90)
     assert detalhe.status == "completed", [(s.key, s.status, s.status_detail) for s in detalhe.steps]
-    assert sorted(ap.abertos) == sorted(exigidos)
-    assert _linha(parque)["state"] == "trafego_verificado"
-    [ultima] = st.db.query("SELECT per_app, detail FROM network_measurements WHERE instance_id=? ORDER BY id DESC"
-                           " LIMIT 1", (IID,))
-    assert "aberto pela sonda" in str(ultima["detail"]) and json.loads(ultima["per_app"])[INSTAGRAM] == "ok"
+    assert ap.abertos == []                                           # a porta não segurou: nada a abrir
+    [ultima] = st.db.query("SELECT per_app FROM network_measurements WHERE instance_id=? ORDER BY id DESC LIMIT 1",
+                           (IID,))
+    assert json.loads(ultima["per_app"])[INSTAGRAM] == "sem_trafego"
 
 
 def _boot_do_aparelho(h: Harness, quando: datetime, iid: str = IID) -> None:

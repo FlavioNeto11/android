@@ -2094,17 +2094,14 @@ Saída bruta em `data/diag-ra3b/`: `repouso-cores4-01-600s.json`, `dif-*.json` e
     - Na troca do padrão, cada hibernado (02/04/05/07/08) pagaria um boot a frio no próximo wake.
   - O `Saving snapshot 'default_boot'` de 1 a 3 ms na saída aparece nos dois binários e já existia nos reais (33, 32 e
     38 vezes nos logs do 01, do 03 e do 06). Não vem do binário com janela.
-  - **A pausa do reparo vive na memória** (PROVED). `PUT /repair-pause` grava em `DeviceRuntime.repair_pause`, e o
-    restart do backend a perde.
-    - A pausa pedida às 10:10Z, até 10:40Z, sumiu no primeiro restart (10:16Z). Os dois restarts seguintes rodaram
-      sem ela; não houve incidente, e o 01, o 03 e o 06 ficaram online o tempo todo.
-    - Regra: renovar a pausa DEPOIS de cada restart, quando o health voltar.
+  - A pausa do reparo pedida antes dos braços sumiu no primeiro restart do backend: K-082.
   - Notebook: `C:\farm\worker.yaml` tem `extra_emulator_args: ["-lowram"]` e nenhum `window`, então é headless. O b2
     lá é `not_run`.
   - Desvios do pedido: um temporário só para todos os braços, em vez de um por braço; o b2 trocou `window`, não só os
     args; acrescentei o teste de hibernar e acordar; foram 3 restarts dos 4 liberados.
-  - Correção candidata, com a decisão do rollout na orquestradora: `window: true` mais `-qt-hide-window` como padrão no
-    central e no notebook.
+  - Correção: o 29.48 (decisão da orquestradora, 03/10). Depois do deploy 9 e do T_on do 31.10, em dois passos no
+    central. O 1º restart leva só o `window: true`, que preserva os snapshots, e mede. Se o giro persistir, o 2º leva o
+    `-qt-hide-window`. Com o central estável por 1 h ou mais, vem o notebook.
 
 ### K-079 — A prévia cortada da caixa do Outlook derruba a conferência visual
 
@@ -2145,3 +2142,37 @@ elementos "Share" (o botão e o texto dentro dele) e foi recusado antes de tocar
 **Aplicabilidade.** Vigente para todo controle manual por id de elemento (scripts de diagnóstico, prova manual). Nunca
 reaproveite um id de outra listagem; em conta real, a trava de rótulo proibido não basta, porque o perigo pode estar num
 elemento sem rótulo.
+
+### K-081 — `off` e `on` sem aspas no YAML viram booleano: o consumidor da porta não carrega
+
+**Sintoma.** No 31.17 (03/10/2026, `simulated`), o exemplo ganhou `consumidores: {curador: shadow, intencao: off}` e
+`tests/test_configuracao_de_exemplo.py` recusou a configuração inteira: `ai.decisao_fechada.consumidores.intencao`,
+"Input should be 'off', 'shadow' or 'on'", com `input_value=False`.
+
+**Causa.** O carregador lê YAML 1.1, em que `off`, `on`, `yes` e `no` sem aspas são booleanos. O modo do consumidor é um
+`Literal["off", "shadow", "on"]`, e `False` não é nenhum deles. `shadow` passa porque não é palavra reservada, o que
+esconde a armadilha.
+
+**O que funcionou.** Aspas (`intencao: "off"`), como o resto do exemplo já fazia (`modo: "off"`), ou omitir o consumidor
+(ausente = `off`). No `config.yaml` do central, a omissão é a forma mais segura: um `off` sem aspas derruba a subida
+depois do `deploy.ps1`, e um `on` sem aspas também.
+
+**Aplicabilidade.** Vigente para todo campo de modo `off`/`shadow`/`on` do YAML (porta `DecisaoFechada`, aprendizado,
+telas, voz, preferências). Ao escrever um bloco desses à mão, use aspas ou omita.
+
+### K-082 — A pausa do reparo some no restart do backend: renovar depois de cada restart
+
+**Sintoma.** Nos braços do 29.46 (03/10, central), a pausa do reparo do 01, do 03 e do 06 foi pedida às 10:10Z com prazo
+até 10:40Z. Às 10:34Z, o `DELETE /api/instances/{id}/repair-pause` devolveu 404 (sem pausa) nos três, antes do prazo.
+
+**Causa (PROVED).** `PUT /repair-pause` grava em `DeviceRuntime.repair_pause` (`devices/manager.py::pausar_reparo`), só
+em memória. O restart do backend (a tarefa `farm-central`) recria os runtimes sem ela.
+- A pausa sumiu no primeiro restart (10:16Z), e os dois seguintes rodaram sem ela.
+- Não houve incidente: os três ficaram online o tempo todo, mas a escada de reparo esteve armada durante o experimento.
+
+**O que fazer.** Em todo procedimento com restart do backend (deploy, braços, troca de config), renove a pausa DEPOIS de
+o health voltar, além de antes. A persistência da pausa é o 25.13.
+
+**Aplicabilidade.** O central. INFERRED: vale também para os aparelhos do notebook, cuja pausa mora no mesmo
+`DeviceRuntime` do central. A atualização do agente não reinicia o central, então não a perde.
+

@@ -52,6 +52,7 @@ from ..security.redaction import redact
 from ..security.secret_store import SecretStore
 from ..security.segredo_de_rede import Fonte, gerar_chave_wireguard, gravar_configuracao_do_servidor
 from .rede_firewall import FirewallDoCentral, LeituraDoFirewall
+from .sdk import ambiente_dos_filhos
 from ..util import now_iso
 
 if TYPE_CHECKING:
@@ -201,8 +202,10 @@ class ProcessosReais:
 
     def lancar(self, argv: list[str], *, cwd: Path, saida: Path) -> int:
         with open(saida, "ab") as out:
+            # 29.47: processo longo de terceiro; recebe o caminho da configuração, nunca os segredos do backend.
             proc = subprocess.Popen(argv, cwd=str(cwd), stdout=out, stderr=subprocess.STDOUT,
-                                    stdin=subprocess.DEVNULL, creationflags=NO_WINDOW | NOVO_GRUPO)
+                                    stdin=subprocess.DEVNULL, env=ambiente_dos_filhos(),
+                                    creationflags=NO_WINDOW | NOVO_GRUPO)
         self._filhos[proc.pid] = proc
         return proc.pid
 
