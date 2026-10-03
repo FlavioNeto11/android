@@ -4161,3 +4161,20 @@ Prova `simulated`: `tests/test_learning_confirmar_que_fica.py`, `AprendizadoPage
 Ensaio no navegador (03/10, cópia do banco do central, provedor simulado, 39 itens em "Revisar"): confirmar com e sem
 motivo, em lote, o histórico, o aviso no Aprendido, a evidência contrária que devolve o item, o 409 de quem chegou
 depois e 375 px.
+
+## Adendo v0.80 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — o nome do app e a etapa de origem nas entradas do livro (validação do deploy 4)
+
+Só campos novos, aditivos; o painel lê os dois com fallback para o que já mostrava.
+
+- `GET /api/aprendizado`, `/pendentes`, `/revisar` e o `item` de `GET /api/aprendizado/{kind}/{ref}`: cada entrada
+  ganha `app_nome` (texto ou `null`), o nome do app pelo mesmo ajudante do adendo v0.74 (`VisaoPorApp.nomes`: o
+  declarado, depois o da loja, depois o próprio pacote; nulo sem app).
+- As mesmas entradas ganham `etapa` (texto ou `null`): na receita, o `steps.title` da etapa de que ela foi aprendida
+  (`recipes.learned_from_step`); nulo no treino, na receita sem origem e nos outros tipos. O `title` não muda.
+
+O painel mostra o nome do app onde mostrava o pacote, com o pacote no `title`. Na receita de app sem catálogo (sem
+`capability_nome`), mostra o título da etapa com a chave: "Digitar a mensagem · etapa fill_message (v1)". O dossiê do
+curador não leva `etapa`.
+
+Prova `simulated`: `tests/test_learning_capability_na_linha.py`, `frontend/src/features/aprendizado/model.test.ts`,
+`AprendizadoPage.test.tsx`, `SaudeDoApp.test.tsx` e `falhasTexto.test.ts`.

@@ -80,12 +80,12 @@ function Identidade({ item, conteudo }: { item: EntradaDoLivro; conteudo: Conteu
         <Fato rotulo="Tipo">{rotuloDoKind(item.kind)}</Fato>
         {item.app ? (
           <Fato rotulo="Aplicativo">
-            <button type="button" className={styles.linkBtn} title="Abrir este aplicativo" onClick={() => abrirApp(item.app as string)}>
-              <span className={styles.mono}>{item.app}</span>
+            <button type="button" className={styles.linkBtn} title={`Abrir este aplicativo (${item.app})`} onClick={() => abrirApp(item.app as string)}>
+              {item.app_nome && item.app_nome !== item.app ? item.app_nome : <span className={styles.mono}>{item.app}</span>}
             </button>
           </Fato>
         ) : null}
-        {capability ? <Fato rotulo="Capability"><CapabilityNomeada codigo={capability} nome={nomeDaCapabilityDo(item)(capability)} /></Fato> : null}
+        {capability ? <Fato rotulo="Capacidade"><CapabilityNomeada codigo={capability} nome={nomeDaCapabilityDo(item)(capability)} /></Fato> : null}
         {versao ? <Fato rotulo="Versão">{versao}</Fato> : null}
         <Fato rotulo="Estado">{rotuloDoEstado(item.state)}</Fato>
         <Fato rotulo="Origem">{ORIGEM_LABEL[item.origin] ?? item.origin}</Fato>
@@ -183,9 +183,9 @@ function ConteudoReceita({ c, nomeDe }: { c: ConteudoDaReceita; nomeDe: NomeDaCa
       </ol>
       <dl className={styles.fatos}>
         {c.capability ? (
-          <Fato rotulo="Capability">
+          <Fato rotulo="Capacidade">
             {unica ? <CapabilityNomeada codigo={unica} nome={nomeDe(unica)} /> : <Mono>{c.capability.nomes.join(', ')}</Mono>}
-            {c.capability.ambigua ? <> <Badge tone="warning" size="sm" title="Etapas com a mesma forma servem a mais de uma capability: o sistema não sabe qual é a certa.">ambígua</Badge></> : null}
+            {c.capability.ambigua ? <> <Badge tone="warning" size="sm" title="Etapas com a mesma forma servem a mais de uma capacidade: o sistema não sabe qual é a certa.">ambígua</Badge></> : null}
             {/* Travessão, não parênteses: o nome já leva o código entre parênteses. */}
             {' '}<span className={styles.passoLinha}>
               — {c.capability.fonte === 'origem' ? 'a da etapa onde foi aprendida' : 'deduzida das etapas com a mesma forma'}
@@ -226,7 +226,7 @@ function ConteudoFluxo({ c }: { c: ConteudoDoFluxo }) {
               <strong>{e.chave ?? `Etapa ${e.indice + 1}`}</strong>
               {e.efeito ? <Badge tone="warning" size="sm" icon={Zap} title="Esta etapa tem efeito externo">efeito</Badge> : null}
             </span>
-            {e.capability ? <span className={styles.passoLinha}>Capability <Mono>{e.capability}</Mono></span> : null}
+            {e.capability ? <span className={styles.passoLinha}>Capacidade <Mono>{e.capability}</Mono></span> : null}
             {e.alvo ? <span className={styles.passoLinha}>Alvo: <Mono>{e.alvo}</Mono></span> : null}
             {e.pos_condicao ? <span className={styles.passoLinha}>Confere: {e.pos_condicao.descricao ?? e.pos_condicao.tipo ?? SEM_DADO}</span> : null}
             {e.segredo ? <span className={styles.passoLinha}>Usa um dado sigiloso (nunca mostrado)</span> : null}
@@ -262,7 +262,7 @@ function ConteudoLicao({ c, nomeDe }: { c: ConteudoDaLicao; nomeDe: NomeDaCapabi
       <dl className={styles.fatos}>
         {c.acao ? <Fato rotulo="Orienta a ação">{c.acao}</Fato> : null}
         {c.alvo?.valor ? <Fato rotulo="Sobre">{rotuloDoAlvoDaLicao(c.alvo.tipo)} <Mono>{c.alvo.valor}</Mono></Fato> : null}
-        {esc.capability ? <Fato rotulo="Capability"><CapabilityNomeada codigo={esc.capability} nome={nome} /></Fato> : null}
+        {esc.capability ? <Fato rotulo="Capacidade"><CapabilityNomeada codigo={esc.capability} nome={nome} /></Fato> : null}
         {esc.role ? <Fato rotulo="Papel">{esc.role}</Fato> : null}
         {c.modelo ? <Fato rotulo="Modelo">{c.modelo}</Fato> : null}
         {typeof c.tokens === 'number' ? <Fato rotulo="Tamanho">{formatInt(c.tokens)} tokens no prompt</Fato> : null}
@@ -334,7 +334,7 @@ function Saude({ s, comVersao = false }: { s: SaudeDoItem; comVersao?: boolean }
 
 // ---------------------------------------------------------------- versão
 
-function Versao({ v }: { v: VersaoDoItem }) {
+function Versao({ v, appNome }: { v: VersaoDoItem; appNome: string | null }) {
   const meta = metaDeVersao(v.estado);
   return (
     <Secao slug="versao" titulo="Versão do app">
@@ -343,7 +343,12 @@ function Versao({ v }: { v: VersaoDoItem }) {
         <span className={styles.secaoLead}>{meta.description}</span>
       </p>
       <dl className={styles.fatos}>
-        {v.app ? <Fato rotulo="Aplicativo"><Mono>{v.app}</Mono>{v.app_version ? ` · versão ${v.app_version}` : ''}</Fato> : null}
+        {v.app ? (
+          <Fato rotulo="Aplicativo">
+            {appNome && appNome !== v.app ? <span title={v.app}>{appNome}</span> : <Mono>{v.app}</Mono>}
+            {v.app_version ? ` · versão ${v.app_version}` : ''}
+          </Fato>
+        ) : null}
         <Fato rotulo="Vivas no parque">
           {v.vivas.length > 0 ? v.vivas.map((x) => `${x.versao} (${textoDeAparelhos(x.aparelhos)})`).join(' · ')
             : <span className={styles.semDado}>nenhuma versão observada</span>}
@@ -582,7 +587,7 @@ export function DetalheRico({ detalhe, onMudou }: { detalhe: DetalheDoLivro; onM
           <Secao slug="conteudo" titulo="Conteúdo"><Conteudo c={conteudo} nomeDe={nomeDaCapabilityDo(item)} /></Secao>
         ) : null}
         {saude ? <Saude s={saude} comVersao={!!versao} /> : null}
-        {versao ? <Versao v={versao} /> : null}
+        {versao ? <Versao v={versao} appNome={versao.app === item.app ? item.app_nome ?? null : null} /> : null}
         <Evidencia evid={evid} />
         <Historico trilha={trilha} />
         {relacoes.length > 0 ? <Relacoes relacoes={relacoes} /> : null}

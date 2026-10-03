@@ -21,17 +21,27 @@ def nomear(linhas: Iterable[object], servico: LearningService | None, *, app: st
     dicts = [x for x in linhas if isinstance(x, dict)]
     if not dicts:
         return
-    visao = servico.extensao(VisaoPorApp) if servico is not None else None
-    pacotes = {p for x in dicts if isinstance(p := x.get(app), str) and p and p != QUALQUER}
-    apps = visao.nomes(pacotes) if visao is not None and pacotes else {}
+    nomear_apps(dicts, servico, app=app)
     vistos: dict[tuple[str, str], str | None] = {}
     for x in dicts:
         pacote, cap = x.get(app), x.get(capability)
-        x["app_nome"] = apps.get(pacote) if isinstance(pacote, str) else None
         par = (pacote, cap) if isinstance(pacote, str) and isinstance(cap, str) else None
         if par is not None and par not in vistos:
             vistos[par] = servico.nome_da_capability(*par) if servico is not None else None
         x["capability_nome"] = vistos.get(par) if par is not None else None
 
 
-__all__ = ["nomear"]
+def nomear_apps(linhas: Iterable[object], servico: LearningService | None, *, app: str = "app") -> None:
+    """Só `app_nome` em cada linha (dict), numa leitura de nomes: o livro já traz `capability_nome` por item
+    (`servico.nomes_das_capabilities`) e não pode tê-lo apagado (validação do deploy 4: as listas e a Identidade
+    mostravam o pacote onde "O que mais falha" já dizia o nome)."""
+    dicts = [x for x in linhas if isinstance(x, dict)]
+    visao = servico.extensao(VisaoPorApp) if servico is not None else None
+    pacotes = {p for x in dicts if isinstance(p := x.get(app), str) and p and p != QUALQUER}
+    apps = visao.nomes(pacotes) if visao is not None and pacotes else {}
+    for x in dicts:
+        pacote = x.get(app)
+        x["app_nome"] = apps.get(pacote) if isinstance(pacote, str) else None
+
+
+__all__ = ["nomear", "nomear_apps"]

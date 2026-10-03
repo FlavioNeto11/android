@@ -159,8 +159,8 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
         {memoria ? <span><strong>{formatInt(e.count ?? 0)} lembranças</strong> (o conteúdo fica com a persona)</span> : null}
         {e.app && !ocultarApp ? (
           <span>App:{' '}
-            <button type="button" className={styles.linkBtn} title="Abrir este aplicativo" onClick={() => abrirApp(e.app as string)}>
-              <span className={styles.mono}>{e.app}</span>
+            <button type="button" className={styles.linkBtn} title={`Abrir este aplicativo (${e.app})`} onClick={() => abrirApp(e.app as string)}>
+              {e.app_nome && e.app_nome !== e.app ? e.app_nome : <span className={styles.mono}>{e.app}</span>}
             </button>
           </span>
         ) : null}

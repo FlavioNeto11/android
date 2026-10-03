@@ -83,14 +83,14 @@ class FontesSql:
 
     # ------------------------------------------------------------------ receita
     def receitas(self) -> list[EntradaDoLivro]:
-        return [_receita(r) for r in self._db.query("SELECT * FROM recipes ORDER BY app_package, step_key, version")]
+        return [_receita(r) for r in self._db.query(_RECEITAS + " ORDER BY r.app_package, r.step_key, r.version")]
 
     def receita(self, ref: str) -> EntradaDoLivro | None:
         try:
             recipe_id = int(ref)
         except ValueError:
             return None
-        row = self._db.one("SELECT * FROM recipes WHERE id=?", (recipe_id,))
+        row = self._db.one(_RECEITAS + " WHERE r.id=?", (recipe_id,))
         return _receita(row) if row else None
 
     # ------------------------------------------------------------------ conteúdo legível (30.3)
@@ -312,6 +312,10 @@ class FontesSql:
         return _memoria(row) if row else None
 
 
+#: A receita com o título da etapa de que foi aprendida (`EntradaDoLivro.etapa`); a de treino não casa com `steps`.
+_RECEITAS = "SELECT r.*, s.title AS etapa_titulo FROM recipes r LEFT JOIN steps s ON s.id = r.learned_from_step"
+
+
 def _receita(r: Row) -> EntradaDoLivro:
     status = linhas.texto(r, "status")
     acoes = linhas.json_legado(linhas.texto(r, "actions"))
@@ -330,7 +334,7 @@ def _receita(r: Row) -> EntradaDoLivro:
                                     linhas.texto(r, "app_signature"), linhas.texto(r, "variant"),
                                     linhas.texto(r, "step_hash")),
         app_version=linhas.texto(r, "app_version"), falhas_seguidas=linhas.inteiro(r, "consecutive_fail"),
-        nasceu_de=run_da_etapa(aprendida))
+        nasceu_de=run_da_etapa(aprendida), etapa=linhas.texto_ou_nulo(r, "etapa_titulo"))
 
 
 def _receita_lida(r: Row) -> ReceitaLida:
