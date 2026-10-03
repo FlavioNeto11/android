@@ -37,6 +37,7 @@ from app.modules.learning.domain.livro import (ESTADOS_DA_EVIDENCIA_INVALIDA, En
                                                status_nativo)
 from app.modules.learning.domain.modo_por_app import modo_efetivo
 from app.modules.learning.domain.promocao import Evidencia, contrarias, efetivas
+from app.modules.learning.domain.prova import etapa_citada
 from app.modules.learning.domain.saude import Saude, SinaisDeSaude, calcular
 from app.modules.learning.domain.versao import quadro_da_tela, quadro_independente
 from app.modules.learning.domain.vocabulario import (KINDS_DE_ITEM, LivroKind, Modo, ModoDeTelas, Origem, Posicao,
@@ -90,6 +91,9 @@ class DetalheDoLivro:
     #: reaprende e reaprendida por (30.23), absorvida e contradiz, montadas na leitura, sem tabela de arestas. Vazio
     #: quando nada se deriva.
     relacoes: tuple[JsonObject, ...] = ()
+    #: 30.44: o título da etapa que o texto de cada evidência cita, por (execução, posição, chave), lido da execução na
+    #: hora (nunca gravado: é texto do planejador). A etapa que a execução não tem mais fica fora.
+    titulos_das_etapas: Mapping[tuple[str, int, str], str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,7 +278,17 @@ class LearningService:
         invalidas = frozenset(r for t in trilha if (r := run_invalidada(t.reason)) is not None)
         validas = tuple(x for x in evidencias if x.run_id not in invalidas) if invalidas else evidencias
         return DetalheDoLivro(e, evidencias, trilha, exposicoes, conteudo, saude=self.saude_de(e, validas, trilha),
-                              versao=self._versao(e, validas), relacoes=self._relacoes(e, conteudo))
+                              versao=self._versao(e, validas), relacoes=self._relacoes(e, conteudo),
+                              titulos_das_etapas=self._titulos_das_etapas(evidencias))
+
+    def _titulos_das_etapas(self, evidencias: Sequence[Evidencia]) -> dict[tuple[str, int, str], str]:
+        """30.44: o título da etapa citada no texto de cada evidência com execução ("etapa 5 (send_message)"), lido de
+        `steps` na hora e sem gravar. O que a triagem de credencial recusa não sai (o título é texto do planejador)."""
+        citadas = {(x.run_id, *c) for x in evidencias if x.run_id and (c := etapa_citada(x.detail)) is not None}
+        if not citadas:
+            return {}
+        titulos = self._fontes.titulos_das_etapas(sorted(citadas))
+        return {k: t for k, t in titulos.items() if not self._recusa(t)}
 
     # ================================================================== saúde (30.4)
     def saudes(self, entradas: Sequence[EntradaDoLivro]) -> dict[str, Saude]:

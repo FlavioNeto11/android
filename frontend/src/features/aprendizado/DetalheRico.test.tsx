@@ -140,7 +140,7 @@ describe('detalhe rico: saúde', () => {
   it('traz o rótulo, o motivo com fato e limiar e as dimensões, com "sem dado" no lugar do zero', async () => {
     const t = await mostrar(detalhe());
     expect(t).toContain('Degradando');
-    expect(t).toContain('Acerta 60% das vezes, abaixo do mínimo de 80% (10 usos)');
+    expect(t).toContain('6 de 10 deram certo (60%), abaixo de 80%');                // 30.44: a conta, não só a taxa
     const linhas = Array.from(container.querySelectorAll('table'))
       .find((tb) => /O que foi medido/.test(tb.textContent ?? ''))!.querySelectorAll('tbody tr');
     const porNome = Object.fromEntries(Array.from(linhas).map((tr) => [tr.querySelector('th')?.textContent, tr.querySelector('td')?.textContent]));
@@ -168,6 +168,20 @@ describe('detalhe rico: saúde', () => {
     const d: DimensaoDeSaude = { nome: 'eficacia', estado: 'desconhecida', valor: null, amostra: null, fonte: 'x' };
     expect(valorDaDimensao(d)).toBe('sem dado');
     expect(valorDaDimensao({ ...d, nome: 'frescor', estado: 'medida', valor: 0 })).toContain('0 dias');
+  });
+
+  it('30.44: o motivo de eficácia diz "3 de 5 deram certo (60%), abaixo de 80%"; sem a dimensão, o texto antigo', () => {
+    const motivo = { codigo: 'eficacia_abaixo_do_minimo', dimensao: 'eficacia', valor: 0.6, limite: 0.8, detalhe: '5 usos' };
+    const dimensoes: DimensaoDeSaude[] = [{ nome: 'eficacia', estado: 'medida', valor: 0.6, amostra: 5, fonte: 'x' }];
+    expect(textoDoMotivo(motivo, { dimensoes })).toBe('3 de 5 deram certo (60%), abaixo de 80%');
+    // a amostra é a da dimensão (acertos + falhas), não os usos do contador
+    expect(textoDoMotivo({ ...motivo, valor: 0.75 }, { dimensoes: [{ ...dimensoes[0]!, valor: 0.75, amostra: 8 }] }))
+      .toBe('6 de 8 deram certo (75%), abaixo de 80%');
+    // sem dimensão, dimensão sem dado ou taxa que não fecha em inteiros: o texto de antes, nunca um número inventado
+    const antigo = 'Acerta 60% das vezes, abaixo do mínimo de 80% (5 usos)';
+    expect(textoDoMotivo(motivo)).toBe(antigo);
+    expect(textoDoMotivo(motivo, { dimensoes: [{ ...dimensoes[0]!, estado: 'desconhecida', valor: null, amostra: null }] })).toBe(antigo);
+    expect(textoDoMotivo({ ...motivo, valor: 0.61 }, { dimensoes })).toContain('Acerta 61%');
   });
 
   it('obsoleto_provavel (30.14): rótulo traduzido e o sinal do catálogo em palavras', () => {
@@ -236,6 +250,21 @@ describe('detalhe rico: relações e seções ausentes', () => {
     expect(text(container)).toContain('simulada');
     const ids = Array.from(container.querySelectorAll('h4')).map((h) => h.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('30.44: o título da etapa vai ao lado da chave; sem título, o texto fica como veio', async () => {
+    const ev = (run: string, detail: string, etapa_titulo: string | null) => ({
+      stance: 'for' as const, origin_ref: `reproducao:${run}`, run_id: run, instance_id: 'android-09', app_version: null,
+      simulated: false, detail, observed_at: '2026-10-03T16:00:00Z', etapa_titulo });
+    await mostrar(detalhe({
+      evidencias: [ev('r-1', 'etapa 5 (send_message): reproduzida', 'Enviar a mensagem'),
+                   ev('r-2', 'etapa 2 (open_inbox): reproduzida', null)],
+    }));
+    const linhas = Array.from(container.querySelectorAll('[aria-label="Evidências"] li')).map((li) => text(li));
+    expect(linhas.find((l) => l.includes('r-1'))).toContain('etapa 5 (send_message) — Enviar a mensagem: reproduzida');
+    const sem = linhas.find((l) => l.includes('r-2'))!;
+    expect(sem).toContain('etapa 2 (open_inbox): reproduzida');
+    expect(sem).not.toContain('—');
   });
 
   it('30.36: a divergência de forma aparece à parte, e o contra que ela reclassificou sai da conta', async () => {

@@ -176,6 +176,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Golden set: §8 (pré-registro do lote) e §2 (o `v2` medido antes e depois do 30.39; a regra da saúde).
 - Testes: `backend/tests/test_lote_intencao.py`, `scripts/tests/test_jev_braco_offline_intencao.py` e
   `scripts/tests/test_jev_braco_offline.py`.
+## 2026-10-03 — 30.44: polimentos da validação do deploy 15 (branch feat/30-44-polimentos)
+
+- O detalhe do item lista a evidência pela data do acontecido, e não pela ordem de gravação.
+- O painel mostra o título da etapa ao lado da chave, lido da execução sem gravar (`etapa_titulo`).
+- O motivo da eficácia fica legível: "3 de 5 deram certo (60%), abaixo de 80%". A regra D-5 não muda.
+- O ritmo por hora do P4 conta pela hora em que a execução nasceu. Antes dava 4 execuções a cada 70 min.
+
 ## 2026-10-03 — 30.43: a validação com rosto no item (branch feat/30-43-validacao-com-rosto)
 
 - A re-execução da validação do QA também parte de estado conhecido. O caso foi o 6f459c, que enviou duas vezes.

@@ -452,4 +452,14 @@ describe('textoDaEvidencia (polimento da validação do deploy 13)', () => {
     expect(textoDaEvidencia('Receita × só IA (+2) no meio')).toBe('Receita × só IA (+2) no meio');
     expect(textoDaEvidencia('[abc123def456] ')).toBe('');
   });
+
+  it('30.44: o título da etapa entra ao lado da chave, só na primeira citação e sem quebrar a frase', () => {
+    expect(textoDaEvidencia('etapa 5 (send_message): reproduzida', 'Enviar a mensagem'))
+      .toBe('etapa 5 (send_message) — Enviar a mensagem: reproduzida');
+    expect(textoDaEvidencia('prova: etapa 5 (send_message) reprovada: ator sem ação', 'Enviar a mensagem'))
+      .toBe('prova: etapa 5 (send_message) — Enviar a mensagem, reprovada: ator sem ação');
+    expect(textoDaEvidencia('etapa 5 (send_message): reproduzida', null)).toBe('etapa 5 (send_message): reproduzida');
+    expect(textoDaEvidencia('etapa 5 (send_message): reproduzida', '  ')).toBe('etapa 5 (send_message): reproduzida');
+    expect(textoDaEvidencia('prova: 3/3 etapas comprovadas', 'Qualquer')).toBe('prova: 3/3 etapas comprovadas');
+  });
 });

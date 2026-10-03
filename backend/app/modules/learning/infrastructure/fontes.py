@@ -75,6 +75,31 @@ class FontesSql:
         return frozenset(p for r in self._db.query("SELECT package FROM apps WHERE category='qa'")
                          if (p := linhas.texto_ou_nulo(r, "package")))
 
+    def titulos_das_etapas(self, citadas: Sequence[tuple[str, int, str]]) -> dict[tuple[str, int, str], str]:
+        """O título da etapa citada, lido de `steps` por execução e chave (uma consulta por lote de execuções). A
+        mesma (execução, chave) pode ter várias linhas (aparelho, versão do plano): vale a da MESMA posição e, nela, a
+        de menor id; sem a posição, a de menor posição. O título vazio não conta."""
+        saida: dict[tuple[str, int, str], str] = {}
+        por_run: dict[str, set[str]] = {}
+        for run, _, chave in citadas:
+            por_run.setdefault(run, set()).add(chave)
+        for lote in linhas.lotes(sorted(por_run)):
+            chaves = sorted({c for run in lote for c in por_run[run]})
+            rows = self._db.query(
+                "SELECT run_id, seq, key, title FROM steps"
+                f" WHERE run_id IN ({linhas.marcas(len(lote))}) AND key IN ({linhas.marcas(len(chaves))})"
+                " ORDER BY run_id, seq, id", (*lote, *chaves))
+            achadas: dict[tuple[str, str], list[tuple[int, str]]] = {}
+            for r in rows:
+                if titulo := linhas.texto(r, "title").strip():
+                    achadas.setdefault((linhas.texto(r, "run_id"), linhas.texto(r, "key")), []).append(
+                        (linhas.inteiro(r, "seq"), titulo))
+            for run, posicao, chave in citadas:
+                candidatas = achadas.get((run, chave))
+                if run in lote and candidatas:
+                    saida[(run, posicao, chave)] = next((t for s, t in candidatas if s == posicao), candidatas[0][1])
+        return saida
+
     def _resolvedor(self) -> ResolvedorDeApp:
         por_id = {linhas.texto(r, "id"): linhas.texto_ou_nulo(r, "package") or linhas.texto(r, "id")
                   for r in self._db.query("SELECT id, package FROM apps")}

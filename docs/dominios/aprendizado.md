@@ -1483,6 +1483,22 @@ painel no vitest. `real`: `not_run` até o deploy. Esperado: a primeira volta da
 linha `reproducao:` do 6f459c; a próxima re-execução do P4 mostra o ponto de partida na linha do tempo; a receita:135
 mostra a origem.
 
+## Polimentos da validação do deploy 15 (30.44)
+
+- **A evidência do item na ordem do acontecido:** o detalhe ordena por `observed_at`. A retrocarga do 30.39 grava
+  depois linhas de antes (a receita:87). O dossiê já ordenava assim.
+- **O título da etapa ao lado da chave:** "etapa N (chave)" fica no `detail` gravado, porque o título é texto do
+  planejador e pode ter nome de pessoa. O detalhe lê o título de `steps` na hora (`FontesDoLivro.titulos_das_etapas`,
+  com a triagem de credencial) e o painel o mostra ao lado.
+- **O motivo legível da eficácia:** "3 de 5 deram certo (60%), abaixo de 80%" (a receita:82). A regra D-5 do dono não
+  muda.
+- **O ritmo por hora do P4** conta pela hora em que a execução nasceu (`runs.created_at`), com 1 min de folga. Contava
+  por `updated_at`, que o fechamento move: medido no P4 de 03/10, eram 4 execuções a cada 70 min. Conferir a cadência
+  no central depois do deploy.
+
+**Prova:** `simulated` em `test_learning_ritmo_p4.py`, `test_learning_titulo_da_etapa.py`,
+`test_learning_evidencia_receita.py` (a ordem) e no vitest do painel. `real`: `not_run`.
+
 ## Pendências conhecidas
 
 Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.

@@ -59,6 +59,17 @@ def motivo_da_invalida(detalhe: str | None) -> MotivoDaInvalida | None:
         return None
 
 
+_ETAPA_CITADA = re.compile(r"\betapa (\d+) \(([A-Za-z0-9_.-]+)\)")
+
+
+def etapa_citada(detalhe: str | None) -> tuple[int, str] | None:
+    """A etapa que o `detail` de uma evidência cita ("etapa 5 (send_message): reproduzida", "prova: etapa 5
+    (send_message) reprovada: …"): (posição, chave). Só a PRIMEIRA citação; sem ela, `None`. O painel usa a chave para
+    ler o título da etapa na execução, na hora da leitura: o título é texto do planejador e nunca vai para o `detail`."""
+    m = _ETAPA_CITADA.search(detalhe or "")
+    return None if m is None else (int(m.group(1)), m.group(2))
+
+
 # ------------------------------------------------------------------ o veredito da prova (a regra, só sobre dados)
 #: Ferramentas que não mexem no aparelho: quem só as usou não agiu (o ator observou e declarou pronto).
 SEM_ACAO = frozenset({"step_done", "step_blocked", "observe_screen", "find_element", "wait_for", "verify_state"})

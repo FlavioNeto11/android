@@ -29,7 +29,7 @@ Camada de apresentação: fala FastAPI, traduz as recusas do domínio (`ErroDeAp
 """
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Literal, TypeVar
 
 from fastapi import APIRouter, HTTPException, Request
@@ -47,6 +47,7 @@ from app.modules.learning.domain.livro import (AcaoPermitida, EntradaDoLivro, Tr
 from app.modules.learning.domain.parecer import RevisaoGravada
 from app.modules.learning.domain.politica_de_risco import ClasseDeRisco
 from app.modules.learning.domain.promocao import Evidencia
+from app.modules.learning.domain.prova import etapa_citada
 from app.modules.learning.domain.saude import Saude
 from app.modules.learning.domain.vocabulario import LivroKind, Origem, Rotulo
 from app.modules.learning.presentation.nomes import nomear_apps
@@ -173,12 +174,16 @@ def _reaprendido(r: Reaprendizado | None) -> JsonObject | None:
     return {"run_invalidada": r.run_invalidada, "item": {"kind": kind, "ref": ref}}
 
 
-def _evidencia(e: Evidencia, invalidas: frozenset[str] = frozenset()) -> JsonObject:
+def _evidencia(e: Evidencia, invalidas: frozenset[str] = frozenset(),
+               titulos: Mapping[tuple[str, int, str], str] | None = None) -> JsonObject:
     """`invalidada` (30.23): a execução desta evidência foi marcada como evidência inválida no item; ela fica no
-    histórico, mas não prova nada (a sombra a ignora)."""
+    histórico, mas não prova nada (a sombra a ignora). `etapa_titulo` (30.44): o título da etapa que o `detail` cita,
+    lido da execução na hora da leitura (o `detail` gravado só traz a chave); `None` sem etapa citada ou sem o título."""
+    citada = etapa_citada(e.detail) if e.run_id else None
+    titulo = titulos.get((e.run_id, *citada)) if titulos and e.run_id and citada else None
     return {"stance": e.stance.value, "origin_ref": e.origin_ref, "run_id": e.run_id, "instance_id": e.instance_id,
             "app_version": e.app_version, "simulated": e.simulated, "detail": e.detail, "observed_at": e.observed_at,
-            "invalidada": e.run_id is not None and e.run_id in invalidas}
+            "invalidada": e.run_id is not None and e.run_id in invalidas, "etapa_titulo": titulo}
 
 
 def _transicao(t: Transicao) -> JsonObject:
@@ -243,7 +248,7 @@ def _detalhe(d: DetalheDoLivro, servico: LearningService) -> JsonObject:
         # 30.44: a ordem é a do acontecido (`observed_at`), não a da gravação: a retrocarga do 30.39 grava depois linhas
         # de antes (a receita:87 mostrava a de ontem acima da de hoje). `sorted` é estável: no mesmo instante, a ordem
         # de chegada (id decrescente) fica.
-        "evidencias": [_evidencia(e, invalidas)
+        "evidencias": [_evidencia(e, invalidas, d.titulos_das_etapas)
                        for e in sorted(d.evidencias, key=lambda e: e.observed_at or "", reverse=True)],
         "trilha": [_transicao(t) for t in d.trilha], "exposicoes": list(d.exposicoes),
         "conteudo": d.conteudo, "versao": d.versao, "relacoes": list(d.relacoes),

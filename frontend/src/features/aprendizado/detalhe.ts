@@ -50,11 +50,20 @@ const num = (v: number | string | null): string => (typeof v === 'number' ? form
 const dias = (v: number | string | null): string => (typeof v === 'number' ? `${formatInt(v)} ${v === 1 ? 'dia' : 'dias'}` : SEM_DADO);
 const com = (frase: string, detalhe: string | null) => (detalhe ? `${frase} (${detalhe})` : frase);
 
+/** Os acertos e a amostra por trás da taxa de eficácia, da dimensão `eficacia` (valor = taxa, amostra = acertos + falhas).
+ *  `null` sem a dimensão medida ou quando a taxa não é acertos/amostra inteiros (nunca arredonda para caber). */
+function acertosDaEficacia(taxa: number | string | null, saude?: Pick<SaudeDoItem, 'dimensoes'> | null): { acertos: number; amostra: number } | null {
+  const dim = saude?.dimensoes.find((d) => d.nome === 'eficacia' && d.estado === 'medida');
+  if (typeof taxa !== 'number' || !dim || typeof dim.amostra !== 'number' || dim.amostra <= 0) return null;
+  const acertos = Math.round(taxa * dim.amostra);
+  return Math.abs(acertos / dim.amostra - taxa) < 0.00006 ? { acertos, amostra: dim.amostra } : null;
+}
+
 /**
  * Um motivo da saúde como frase: o fato medido e o limiar que ele cruzou (ou não). O vocabulário é fechado no
  * backend (`CodigoDoMotivo`); código novo aparece como veio, com o que ele mediu, em vez de sumir.
  */
-export function textoDoMotivo(m: MotivoDeSaude): string {
+export function textoDoMotivo(m: MotivoDeSaude, saude?: Pick<SaudeDoItem, 'dimensoes'> | null): string {
   const { valor, limite, detalhe } = m;
   switch (m.codigo) {
     case 'desligado': return com('Foi desligado', detalhe);
@@ -63,8 +72,14 @@ export function textoDoMotivo(m: MotivoDeSaude): string {
     case 'aguarda_o_dono': return 'Espera a decisão do dono';
     case 'validado_aguarda_publicacao': return 'Validado; falta ser publicado';
     case 'falhas_seguidas': return `${num(valor)} falhas seguidas (o limite é ${num(limite)})`;
-    case 'eficacia_abaixo_do_minimo':
-      return com(`Acerta ${pct(valor)} das vezes, abaixo do mínimo de ${pct(limite)}`, detalhe);
+    case 'eficacia_abaixo_do_minimo': {
+      // 30.44: "3 de 5 deram certo (60%), abaixo de 80%", dos números que a saúde já traz: a taxa é acertos sobre a
+      // AMOSTRA da dimensão (a favor + contra), e não sobre os usos do contador. Sem a dimensão (ou se não fechar), o texto antigo.
+      const contagem = acertosDaEficacia(valor, saude);
+      return contagem
+        ? `${contagem.acertos} de ${contagem.amostra} deram certo (${pct(valor)}), abaixo de ${pct(limite)}`
+        : com(`Acerta ${pct(valor)} das vezes, abaixo do mínimo de ${pct(limite)}`, detalhe);
+    }
     case 'contestado_recentemente': return com(`${num(valor)} contestação(ões) recente(s)`, detalhe);
     // O mesmo texto no fluxo e na receita: o fato é o mesmo e o rótulo também (`sem_evidencia`). `fluxo_nunca_casado`
     // fica só para o backend anterior, que ainda o manda.

@@ -340,7 +340,7 @@ function Saude({ s, comVersao = false }: { s: SaudeDoItem; comVersao?: boolean }
       {meta ? <p><Badge tone={meta.tone} icon={meta.icon} title={meta.description}>{meta.label}</Badge> <span className={styles.secaoLead}>{meta.description}</span></p> : null}
       {s.motivos.length > 0 ? (
         <ul className={styles.motivos} aria-label="Por que este rótulo">
-          {s.motivos.map((m, i) => <li key={`${m.codigo}-${i}`}>{textoDoMotivo(m)}</li>)}
+          {s.motivos.map((m, i) => <li key={`${m.codigo}-${i}`}>{textoDoMotivo(m, s)}</li>)}
         </ul>
       ) : null}
       {dimensoes.length > 0 ? (
@@ -442,7 +442,7 @@ function Evidencia({ evid }: { evid: readonly EvidenciaDoLivro[] }) {
               {x.app_version ? ` · app ${x.app_version}` : ''}
               {` · ${formatDateTime(x.observed_at)}`}
               {x.simulated ? ' · simulada' : ''}
-              {x.detail && textoDaEvidencia(x.detail) ? ` · ${textoDaEvidencia(x.detail)}` : ''}
+              {x.detail && textoDaEvidencia(x.detail, x.etapa_titulo) ? ` · ${textoDaEvidencia(x.detail, x.etapa_titulo)}` : ''}
               {x.invalidada ? (
                 <>{' · '}<Badge tone="danger" size="sm">execução invalidada</Badge> não conta como prova</>
               ) : null}
