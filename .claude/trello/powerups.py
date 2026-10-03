@@ -7,7 +7,7 @@ O conector MCP do Trello não liga Power-Up; a API sim (`boardPlugins`), com a c
 Pare se a resposta pedir pagamento ou plano pago: o script não insiste e diz qual foi.
 
 Uso (python do backend/.venv, a partir de C:/git/android):
-  powerups.py --checar      só True/False: a chave e o token estão no .env?
+  powerups.py --checar      só True/False: a chave, o token e o segredo do aplicativo estão no .env?
   powerups.py --estado      Power-Ups ligados em cada quadro
   powerups.py --ligar       liga os aprovados (idempotente) e cria os campos personalizados que faltarem
 """
@@ -60,6 +60,8 @@ _PAGO = ("upgrade", "premium", "standard", "payment", "billing", "paid", "pago")
 class _Env(EnvSettings):
     trello_api_key: SecretStr | None = Field(default=None, alias="TRELLO_API_KEY")
     trello_token: SecretStr | None = Field(default=None, alias="TRELLO_TOKEN")
+    #: segredo do aplicativo: assina o webhook do 32.2 (X-Trello-Webhook); aqui só se confere a presença
+    trello_api_secret: SecretStr | None = Field(default=None, alias="TRELLO_API_SECRET")
 
 
 def _segredo(v: SecretStr | None) -> str:
@@ -85,6 +87,7 @@ def checar() -> int:
     env = _Env()
     print(f"TRELLO_API_KEY presente: {bool(_segredo(env.trello_api_key))}")
     print(f"TRELLO_TOKEN presente: {bool(_segredo(env.trello_token))}")
+    print(f"TRELLO_API_SECRET presente: {bool(_segredo(env.trello_api_secret))}")
     return 0
 
 
