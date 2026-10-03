@@ -31,7 +31,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - `fora_do_planejador` consulta `POST /api/flows/match` e `POST /api/skills/resolve` (no aparelho da rodada),
     na pré-checagem e no pulo por caso;
   - o `--checar` imprime "Pré-checagens ok" quando passa.
-- Prova `simulated`: `scripts/tests/test_rodada_qa_pareada.py` (12).
+- `--repeticoes N` repete o bloco ABBA de cada caso (ABBAABBA). Decisão da orquestradora para a 2ª rodada: os 3
+  casos que chegam ao planejador × 2 = 12 por braço.
+- Prova `simulated`: `scripts/tests/test_rodada_qa_pareada.py` (13).
 - No central, só leitura: os 4 casos padrão são recusados (2 por habilidade), e
   `--casos perfil-campo-inexistente,comando-ambiguo,sessao-expirada` passa.
 

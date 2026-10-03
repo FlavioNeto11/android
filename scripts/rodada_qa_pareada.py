@@ -11,7 +11,7 @@ B ≤ 11 s, com ao menos 6 execuções válidas por braço; senão inconclusivo.
 Modos:
 - sem opção: só o plano (nenhuma conexão);
 - `--checar`: as pré-checagens de custo zero (saúde, aparelho, `POST /api/flows/match` e `/api/skills/resolve`);
-- `--yes`: pré-checagens e a rodada, chamando `eval_run.py` por caso e braço (grava em `data/eval-results.jsonl`);
+- `--yes`: pré-checagens e a rodada (`--repeticoes N` repete o bloco ABBA de cada caso), chamando `eval_run.py` por caso e braço (grava em `data/eval-results.jsonl`);
 - `--ler RODADA`: a leitura, de `data/eval-results.jsonl` + `GET /api/usage?run_id=` (grupo `role=plan`).
 """
 from __future__ import annotations
@@ -41,9 +41,11 @@ VALIDAS_MIN = 6
 
 
 # ------------------------------------------------------------------ puras (testadas)
-def ordem_abba(casos: Iterable[str]) -> list[tuple[str, str]]:
-    """ABBA por caso: a deriva dentro do caso (cache, fluxo que nasce, aparelho que esquenta) cai igual nos dois."""
-    return [(caso, braco) for caso in casos for braco in ORDEM]
+def ordem_abba(casos: Iterable[str], repeticoes: int = 1) -> list[tuple[str, str]]:
+    """ABBA por caso: a deriva dentro do caso (cache, fluxo que nasce, aparelho que esquenta) cai igual nos dois.
+    Com `repeticoes`, o bloco ABBA do caso se repete seguido (ABBAABBA): 3 casos × 2 dão 12 por braço, folga sobre
+    as 6 válidas do aceite."""
+    return [(caso, braco) for caso in casos for _ in range(repeticoes) for braco in ORDEM]
 
 
 def rotulo(rodada: str, braco: str) -> str:
@@ -90,11 +92,11 @@ def veredito(linhas: list[dict[str, Any]]) -> dict[str, Any]:
     return {"bracos": por_braco, "decisao": decisao, "motivo": motivo}
 
 
-def plano(casos: Iterable[str], instancia: str, rodada: str, teto: float) -> str:
+def plano(casos: Iterable[str], instancia: str, rodada: str, teto: float, repeticoes: int = 1) -> str:
     linhas = [f"PLANO (nada foi executado) — rodada {rodada}, aparelho {instancia}, teto US$ {teto:.2f}",
               f"A = funções padrão (Opus no plan); B = --profile {PERFIL_B} (só o plan muda).",
               "Antes de cada execução: POST /api/flows/match do caso (casou = pula: o planejador não seria chamado)."]
-    for n, (caso, braco) in enumerate(ordem_abba(casos), start=1):
+    for n, (caso, braco) in enumerate(ordem_abba(casos, repeticoes), start=1):
         linhas.append(f"{n:2}. {caso} · braço {braco} · eval_run.py {' '.join(argv_do_eval(caso, braco, rodada, instancia))}")
     return "\n".join(linhas)
 
@@ -174,6 +176,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--instancia", default="android-09")
     ap.add_argument("--casos", default=",".join(CASOS))
     ap.add_argument("--rodada", default=time.strftime("%Y%m%d%H%M"))
+    ap.add_argument("--repeticoes", type=int, default=1, help="quantas vezes o bloco ABBA de cada caso se repete")
     ap.add_argument("--teto-usd", type=float, default=8.0, help="para ANTES da próxima execução se a soma passar disto")
     ap.add_argument("--exige-commit", default="", help="sha que o central tem de conter (o do perfil, e4a597f8)")
     ap.add_argument("--checar", action="store_true", help="só as pré-checagens de custo zero")
@@ -183,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     eval_run.saida_segura()
     casos = [c for c in a.casos.split(",") if c]
     if not (a.checar or a.yes or a.ler):
-        print(plano(casos, a.instancia, a.rodada, a.teto_usd))
+        print(plano(casos, a.instancia, a.rodada, a.teto_usd, a.repeticoes))
         return 2
     http = eval_run.Resistente(httpx.Client(base_url=a.base, timeout=30, headers={"Origin": a.base}))
     if a.ler:
@@ -199,7 +202,7 @@ def main(argv: list[str] | None = None) -> int:
     if problemas or a.checar:
         return 1 if problemas else 0
     comandos = _comandos()
-    for caso, braco in ordem_abba(casos):
+    for caso, braco in ordem_abba(casos, a.repeticoes):
         gasto = sum(float(r.get("usd") or 0) for r in _linhas_da_rodada(a.rodada))
         if gasto > a.teto_usd:
             print(f"PAROU: US$ {gasto:.4f} gastos, acima do teto de US$ {a.teto_usd:.2f}")

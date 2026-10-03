@@ -37,6 +37,13 @@ def test_ordem_abba_e_o_perfil_so_no_braco_b() -> None:
     assert mod.argv_do_eval("x", "A", "r1", "android-09")[:2] == ["--label", "qa-par-r1-A"]
 
 
+def test_repeticoes_repetem_o_bloco_abba_do_caso() -> None:
+    assert mod.ordem_abba(["x", "y"], 2) == [("x", b) for b in "ABBAABBA"] + [("y", b) for b in "ABBAABBA"]
+    tres = mod.ordem_abba(["a", "b", "c"], 2)
+    assert sum(1 for _c, b in tres if b == "A") == sum(1 for _c, b in tres if b == "B") == 12
+    assert mod.ordem_abba(["x"]) == mod.ordem_abba(["x"], 1)
+
+
 def test_percentil_por_posicao() -> None:
     assert mod.percentil([], 50) is None
     assert mod.percentil([3.0, 1.0, 2.0], 50) == 2.0
