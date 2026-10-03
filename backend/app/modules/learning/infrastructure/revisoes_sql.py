@@ -7,6 +7,11 @@ continua querendo dizer NÃO MEDIDO (as linhas de antes, a resposta simulada), n
 custo medido (c̄ e mediana), e a revisão sem medida entra no gasto da curadoria pela ESTIMATIVA do tamanho do dossiê
 gravado (a aplicação a calcula; aqui só se lê o tamanho). O `ai_call_id` liga a revisão à chamada paga, para a auditoria.
 
+I3 (03/10): a revisão sem `usd` gravado e COM `ai_call_id` (as 46 anteriores ao 30.30 no central) tem o custo MEDIDO na
+chamada ligada: `custos_das_chamadas` aplica a regra do `/api/usage` (`app.planning.costs`): o custo declarado onde há,
+tokens × preço do modelo onde não, provedor simulado a US$ 0. Só sem chamada ligada a revisão fica sem medida (e entra
+pela estimativa). Sem `precos` (quem constrói o registro só para gravar ou ler a fila), nada muda.
+
 `G_W` é o gasto de IA da operação: `SUM(learning_daily.usd)` na janela, sem filtro de falha (o relatório filtra
 `failure_kind <> ''` porque fala de falhas; o orçamento fala do gasto todo). A curadoria não entra nele: a régua
 diária só soma `ai_calls` de tentativas.
@@ -24,7 +29,7 @@ from __future__ import annotations
 
 import json
 import secrets
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 
@@ -35,6 +40,7 @@ from app.modules.learning.domain.parecer import RevisaoGravada, parecer_gravado
 from app.modules.learning.domain.politica_de_risco import ClasseDeRisco
 from app.modules.learning.domain.vocabulario import SignalKind
 from app.modules.learning.infrastructure import linhas
+from app.planning import costs
 from app.util import to_iso
 
 _COLUNAS = ("id, created_at, item_ref, item_kind, gatilho, validade, classe_de_risco, politica, simulated, provedor,"
@@ -66,9 +72,40 @@ def _revisao(row: Row) -> RevisaoGravada:
         override_motivo=linhas.texto_ou_nulo(row, "override_motivo"))
 
 
+def custos_das_chamadas(db: Database, ids: Iterable[int], precos: dict[str, list[float]]) -> dict[int, float]:
+    """I3: o custo de cada chamada de `ai_calls` pela regra do `/api/usage` (`costs.spent_usd`, linha a linha)."""
+    saida: dict[int, float] = {}
+    for lote in linhas.lotes(sorted(set(ids))):
+        for c in db.query("SELECT id, model, provider, usd, input_tokens, cache_read, cache_write, output_tokens"
+                          f" FROM ai_calls WHERE id IN ({linhas.marcas(len(lote))})", tuple(lote)):
+            if (linhas.texto_ou_nulo(c, "provider") or "") == "simulated":
+                saida[linhas.inteiro(c, "id")] = 0.0
+            elif c["usd"] is not None:
+                saida[linhas.inteiro(c, "id")] = linhas.real(c, "usd")
+            else:
+                saida[linhas.inteiro(c, "id")] = costs.row_usd(precos, c)
+    return saida
+
+
 class RegistroDeRevisoesSql:
-    def __init__(self, db: Database) -> None:
+    def __init__(self, db: Database, *, precos: Callable[[], dict[str, list[float]]] | None = None) -> None:
         self._db = db
+        self._precos = precos
+
+    def custos(self, linhas_: Iterable[Row]) -> dict[int, float]:
+        """I3: o custo medido pela chamada ligada das revisões SEM `usd` gravado (vazio sem `precos`)."""
+        if self._precos is None:
+            return {}
+        ids = [i for r in linhas_ if linhas.real(r, "usd") <= 0 and (i := linhas.inteiro_ou_nulo(r, "ai_call_id"))]
+        return custos_das_chamadas(self._db, ids, self._precos()) if ids else {}
+
+    def usd(self, r: Row, custos: dict[int, float]) -> float:
+        """O `usd` gravado; sem ele, o da chamada ligada (I3); sem os dois, 0 = não medido."""
+        gravado = linhas.real(r, "usd")
+        if gravado > 0:
+            return gravado
+        chamada = linhas.inteiro_ou_nulo(r, "ai_call_id")
+        return custos.get(chamada, 0.0) if chamada is not None else 0.0
 
     def existe(self, item_ref: str, dossie_hash: str) -> bool:
         return self._db.one(f"SELECT 1 AS x FROM learning_reviews WHERE item_ref=? AND dossie_hash=?"
@@ -106,12 +143,13 @@ class RegistroDeRevisoesSql:
         gasto = gasto_hora = 0.0
         antes = de_hoje = 0
         # Só o que foi à IA (ou teria ido): a recusada por triagem ou custo não gastou nada.
-        for r in self._db.query(
-                "SELECT created_at, usd, dossie FROM learning_reviews WHERE created_at >= ? AND provedor <> ''"
-                f" AND {_DO_CURADOR}",
-                (desde,)):
+        revisoes = self._db.query(
+            "SELECT created_at, usd, ai_call_id, dossie FROM learning_reviews WHERE created_at >= ? AND provedor <> ''"
+            f" AND {_DO_CURADOR}", (desde,))
+        custos = self.custos(revisoes)
+        for r in revisoes:
             em = linhas.texto(r, "created_at")
-            usd = linhas.real(r, "usd")
+            usd = self.usd(r, custos)
             na_hora = em >= hora
             if usd > 0:
                 medidos.append(usd)
