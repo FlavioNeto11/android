@@ -211,4 +211,14 @@ describe('caixa de pendências', () => {
     await waitFor(() => expect(text(container)).toContain('pode estar incompleta'));
     expect(allByRole('listitem', /./, container).filter((l) => l.hasAttribute('data-origem'))).toHaveLength(0);
   });
+
+  it('polimento (d): filtro por origem sem nada diz UMA vez que não há pedido aguardando (sem "Nenhuma pendência." repetido)', async () => {
+    backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => json({ itens: [], total: 0 }));
+    useAppStore.setState({ runs: [] });
+    useUiStore.getState().navegar({ tela: 'pendencias', query: { origem: 'pedido' } }, 'replace');
+    await act(async () => { root.render(<PendenciasPage />); });
+    await waitFor(() => expect(text(container)).toContain('Nada de pedido aguardando você'));
+    expect(text(container)).not.toContain('Nenhuma pendência.');
+    expect(text(container)).toContain('Escolha "Todas" para ver as outras origens.');
+  });
 });

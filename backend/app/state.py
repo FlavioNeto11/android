@@ -48,6 +48,7 @@ from .modules.identity.application.sessions import SessionProviders
 from .modules.identity.infrastructure.sessions import SessionDeps, SessionProviderFactory
 from .modules.learning import esquecer_conta
 from .modules.learning.infrastructure import ligar_voz
+from .modules.learning.infrastructure.curador_do_hub import CuradorDoHub
 from .modules.learning.infrastructure.ligar_costuras import costuras_do_livro
 from .modules.learning.infrastructure.montagem import montar_aprendizado
 from .modules.skills.application.registry import CompositeSkillRegistry
@@ -62,6 +63,9 @@ from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAp
                      OFFLINE_POLICY_PADRAO, PersonaCreate, PersonaDTO, Problem, SdkStatus, SessionStatus)
 from .devices.installer import AppInstaller
 from .planning import conciliacao, costs, saldos
+from .planning.decisao_fechada import RepositorioDeSombra, construir_porta, observador_de_sombra, transparencia
+from .planning.decisao_fechada.curador import CuradorComTriagemEmSombra, TriagemDoCurador
+from .planning.decisao_fechada.intencao import ConsumidorDeIntencao
 from .planning.capabilities import (Capability, alvo_da_acao, capability_of, contraparte, load_catalog,
                                     texto_a_gerar)
 from .planning.catalog import capabilities_of, pacote_ancora, screen_reader_of, session_factory_of
@@ -89,6 +93,7 @@ from .modules.pedidos.infrastructure.servico import PedidosApi
 from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
 from .taskqueue.service import RunService
+from .taskqueue.sombra_intencao import SombraDaIntencao, catalogo_de
 from .taskqueue.travas import (AVISOS, CURADORIA, PEDIDOS, RENOVAR_TRAVA_S, RETENCAO, SALDOS, TRAVAS_DOS_LACOS, Lideranca,
                                TravaPerdida)
 from .training.generalizer import ProviderSkillGeneralizer
@@ -440,12 +445,25 @@ class AppState:
         # Aprendizado contínuo (ADR-054): o livro de aprendizado, o D1 e a régua durável. Nenhuma IA no pipeline: digest
         # quando a execução assenta, curadoria a cada `aprendizado.curadoria_s`, retenção junto da do resto.
         # As lojas do scheduler ganham o D1 (fluxo nasce candidato; receita com efeito para em `validated`) e a trilha.
+        # Porta `DecisaoFechada` (Fase 31, ADR-069): desligada por padrão e com decisor NULO até o 31.10. Nasce antes do
+        # aprendizado porque a triagem do curador em sombra (31.8) embrulha o curador do hub. A sombra grava só ids e
+        # categorias (migração 074); a retenção dela corre junto da do resto (`_purgar_demais_tabelas`).
+        self.decisao_sombra = RepositorioDeSombra(self.db)
+        self.decisao_fechada = construir_porta(cfg.file.ai.decisao_fechada, observador=observador_de_sombra(self.decisao_sombra))
+        # 30.12: o curador por IA passa pelo hub (papel `plan`, origem `curador`, fatia do 31.6); `off` de fábrica.
+        # 31.8: a triagem do Jev observa cada parecer em sombra (consumidor `curador`, inerte de fábrica) e devolve o
+        # parecer do curador intacto: nada do Jev volta ao Livro.
+        self._curador_do_hub = CuradorDoHub(self.provider, self.db,
+                                            registrar_uso=lambda u: self.repo.add_usage(None, None, u),
+                                            precos=lambda: self.cfg.file.ai.prices)
+        self._triagem_do_curador = TriagemDoCurador(self.decisao_fechada, self.decisao_sombra)
         self.learning = montar_aprendizado(
             self.db, config=lambda: self.cfg.file.aprendizado,
             retencao_de_logs_dias=lambda: int(self.settings.get().log_retention_days),
             precos=lambda: self.cfg.file.ai.prices, habilidades=self.skill_repo, fluxos=self.scheduler.flows,
             receitas=self.scheduler.executor.recipes,
-            decidir=lambda texto, run_id: self.repo.decision(texto, run_id=run_id), eventos=self.bus)
+            decidir=lambda texto, run_id: self.repo.decision(texto, run_id=run_id), eventos=self.bus,
+            curador_de_ia=CuradorComTriagemEmSombra(self._curador_do_hub, self._triagem_do_curador))
         self._digestoes: set[asyncio.Task[None]] = set()
         # Ensino v2 (fase F, §13): as rotas ficam atrás de `skills.enabled`; o generalizador é o `generalize` do
         # provedor (simulado: regras fixas; real: uma chamada paga do planejador, contada em `ai_calls`).
@@ -458,6 +476,12 @@ class AppState:
                                                       data={"teaching_id": tid}))
         self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social,
                                secrets=self.secrets, skills=self.skill_planner)
+        # Sombra da intenção (31.9, ADR-069): R2 e R3 fora da cadeia, depois do `_plan`. Com a config padrão é inerte.
+        self.runs.sombra_intencao = SombraDaIntencao(
+            ConsumidorDeIntencao(self.decisao_fechada, self.decisao_sombra), resolver=self.skill_planner.resolve_intent,
+            catalogo=lambda: catalogo_de(
+                lambda estado: self.skill_registry.list(state=estado), self.skill_registry.definition,
+                skills_ligadas=self.cfg.file.skills.enabled, fluxos_ligados=self.cfg.file.ai.flows))
         # Laço de pedidos persistentes (28.4). O objeto existe sempre (o gancho de fim de execução e a API do 28.9 o
         # chamam sem conferir); a TAREFA só sobe com `pedidos.enabled` e `roda_scheduler` (ver `start`).
         self.pedidos = LacoDePedidos(
@@ -2250,6 +2274,7 @@ class AppState:
     # ------------------------------------------------------------------ ciclo de vida
     async def start(self) -> None:
         self.bus.bind_loop(asyncio.get_running_loop())
+        self._curador_do_hub.ligar_laco(asyncio.get_running_loop())
         # O transporte do despacho sobe ANTES de qualquer efeito: com a bandeira do NATS ligada e sem broker no
         # ar, a falha tem de ser na partida, alta e visível — nunca no meio de um comando de aparelho.
         await self.transport.start(lambda envelope: despacho.executar_envelope(self, envelope))
@@ -2303,6 +2328,7 @@ class AppState:
             self._bg.append(asyncio.create_task(self.avisos.laco(), name="avisos-fora-do-painel"))
             # Mesmo critério de réplica da retenção: só quem roda o scheduler; idempotente (chaves únicas e CAS).
             self._bg.append(asyncio.create_task(self._curadoria_loop(), name="aprendizado-curadoria"))
+            self._bg.extend(asyncio.create_task(laco.laco(lambda: self._lider(CURADORIA)), name=f"aprendizado-{laco.nome}") for laco in self.learning.lacos)  # noqa: E501 - 30.11: o curador por IA, sob a trava `curadoria`
             # Loja de apps: o que ficou pendente em aparelho ligado e livre é entregue na varredura (e a rede de cada
             # aparelho converge no mesmo trabalho: `vitrine.trabalho_ao_ligar`).
             self._bg.append(asyncio.create_task(laco_de_convergencia(self), name="loja-convergencia"))
@@ -2414,6 +2440,9 @@ class AppState:
     async def stop(self) -> None:
         for t in self._bg:
             t.cancel()
+        if self.runs.sombra_intencao is not None:
+            self.runs.sombra_intencao.cancelar()        # 31.9: as sombras soltas da intenção, como o `_bg`
+            self.runs.sombra_intencao = None            # e nenhuma nova: um plano que termine agora não agenda outra
         try:
             await self.transport.close()
         except Exception:  # noqa: BLE001 - fechar o transporte nunca impede o resto do encerramento
@@ -2441,6 +2470,11 @@ class AppState:
             if self._digestoes:
                 # Um digest em thread ainda escrevendo não pode encontrar o banco fechado debaixo dele.
                 await asyncio.wait(set(self._digestoes), timeout=10)
+            try:
+                # Idem para a sombra da porta `DecisaoFechada` (31.9): a linha da chamada já feita é gravada antes do close.
+                await asyncio.to_thread(self.decisao_fechada.aguardar_sombras, 6.0)
+            except Exception:  # noqa: BLE001 - esperar a sombra nunca impede fechar o banco
+                log.exception("encerramento: sombras da decisão fechada")
             try:
                 # Saída limpa devolve as travas de líder na hora: o outro backend assume sem esperar o prazo.
                 self.lideranca.soltar_todas()
@@ -2633,6 +2667,11 @@ class AppState:
             total += self.learning.aplicar_retencao()        # `aprendizado.retencao` (ADR-054)
         except Exception:  # noqa: BLE001 - idem
             log.exception("aprendizado: retenção")
+        try:
+            # Sombra da porta `DecisaoFechada` (074): prazo próprio; o agregado diário é calculado antes de purgar e fica.
+            total += self.decisao_sombra.aplicar_retencao(self.cfg.file.ai.decisao_fechada.retencao_dias)
+        except Exception:  # noqa: BLE001 - idem
+            log.exception("decisao_fechada: retenção da sombra")
         return total
 
     def _purgar_arquivos_vencidos(self, retention_days: int) -> int:
@@ -2795,8 +2834,15 @@ class AppState:
             log.exception("não foi possível calcular os saldos de IA")
             contas = []
         # O gerador de imagem não é papel do hub: entra aqui, ao lado, para a aba IA dizer quem é e se está pronto.
-        return status.model_copy(update={"image": status_de_imagem(self.persona_images, self.cfg),
-                                         "balances": contas})
+        # Transparência do Jev (ADR-069 item 8): só a PRESENÇA da chave entra; o valor nunca é lido para este fim.
+        jev = self.cfg.file.ai.decisao_fechada
+        chave = self.cfg.env.typesafe_api_key is not None
+        aviso_jev = transparencia.aviso(jev, chave_configurada=chave)
+        extra: dict[str, object] = {"image": status_de_imagem(self.persona_images, self.cfg), "balances": contas}
+        if aviso_jev is not None:
+            extra["notice"] = f"{status.notice} {aviso_jev}"
+            extra["decisao_fechada"] = transparencia.status(jev, chave_configurada=chave)
+        return status.model_copy(update=extra)
 
     def _saude_do_banco(self) -> tuple[DatabaseStatus, list[Problem]]:
         """O banco responde? E o esquema dele ainda é o que estes arquivos de migração geram?

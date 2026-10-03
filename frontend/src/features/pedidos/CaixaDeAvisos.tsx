@@ -13,7 +13,7 @@ import { toastError } from '../../store/toasts';
 import { apiPedidos } from './api';
 import { EsqueletoDaLista } from './Esqueleto';
 import { ROTULO_DO_AVISO, mensagemDoErro } from './modelo';
-import { usePedidosStore } from './store';
+import { LIMITE_DA_CAIXA, usePedidosStore } from './store';
 import styles from './Pedidos.module.css';
 
 const TOM = { info: 'info', warn: 'warning', error: 'danger' } as const;
@@ -33,13 +33,13 @@ export function CaixaDeAvisos() {
 
   const ler = useCallback(async (sinal?: AbortSignal) => {
     try {
-      const r = await apiPedidos.avisos({ requer_pessoa: 0, ...(todos ? {} : { lido: 0 }), limit: 100 }, sinal);
+      const r = await apiPedidos.avisos({ requer_pessoa: 0, ...(todos ? {} : { lido: 0 }), limit: LIMITE_DA_CAIXA }, sinal);
       setItens(Array.isArray(r?.items) ? r.items : []);
       setErro(null);
     } catch (e) {
       if (sinal?.aborted) return;
+      // Sem dado anterior `itens` fica `null`: só o aviso com "Tentar de novo", nunca "Nenhum aviso" (que seria falso).
       setErro(mensagemDoErro(toApiError(e)));
-      setItens((atual) => atual ?? []);
     }
   }, [todos]);
 
@@ -70,19 +70,19 @@ export function CaixaDeAvisos() {
           <button type="button" className={cx(styles.seletorItem, todos && styles.seletorAtivo)} aria-pressed={todos} onClick={() => setTodos(true)}>Todos</button>
         </div>
         <Button size="sm" icon={CheckCheck} loading={ocupado}
-                disabledReason={itens === null ? 'Carregando os avisos.' : naoLidos.length === 0 ? 'Nenhum aviso não lido.' : null}
+                disabledReason={itens === null ? (erro ? 'Os avisos não puderam ser lidos.' : 'Carregando os avisos.') : naoLidos.length === 0 ? 'Nenhum aviso não lido.' : null}
                 onClick={() => void marcar({ todos: true })}>
           {naoLidos.length > 0 ? `Marcar todos como lidos (${naoLidos.length})` : 'Marcar todos como lidos'}
         </Button>
       </div>
       {erro ? (
         <Banner tone="warning" icon={TriangleAlert} compact role="status"
-                actions={<Button size="sm" onClick={() => void ler()}>Tentar de novo</Button>}>
+                actions={<Button size="sm" onClick={() => { if (itens === null) setErro(null); void ler(); }}>Tentar de novo</Button>}>
           Não foi possível ler os avisos agora. {erro}
         </Banner>
       ) : null}
       {itens === null ? (
-        <EsqueletoDaLista label="Carregando os avisos…" />
+        erro ? null : <EsqueletoDaLista label="Carregando os avisos…" />
       ) : itens.length === 0 ? (
         <EmptyState icon={Bell} title={todos ? 'Nenhum aviso' : 'Nenhum aviso novo'}
                     hint="Quando um pedido pausar sozinho, gastar o orçamento, perder uma ocorrência ou ficar pronto, o aviso aparece aqui." />

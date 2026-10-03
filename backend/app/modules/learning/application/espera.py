@@ -93,6 +93,25 @@ class AvisadorDeEspera:
                                                      faixa=faixa, aguardando=espera, motivo=motivo, desde=desde))
         self._ultimo[chave] = _Ultimo(espera, desde)
 
+    def parecer_disponivel(self, e: EntradaDoLivro, faixa: Faixa) -> bool:
+        """Um parecer B ou C novo e válido do curador (30.11) ficou disponível para o dono: `motivo = parecer_da_ia`
+        (§8.11, ponto 2). Só para item que ESTÁ esperando a pessoa; o item continua na espera, então a memória do último
+        aviso não muda (a saída posterior é avisada normalmente). Cada parecer novo avisa uma vez: quem garante é a
+        chave única (item, dossiê) de `learning_reviews`. Nunca levanta. Devolve se publicou."""
+        if self._porta is None or faixa not in (Faixa.B, Faixa.C) or not aguarda_a_pessoa(e):
+            return False
+        ultimo = self._ultimo.get(f"{e.kind.value}:{e.ref}")
+        agora = to_iso(self._relogio())
+        desde = ultimo.desde if ultimo is not None and ultimo.aguardando else (e.state_at or agora)
+        try:
+            self._porta.esperando_a_pessoa(AvisoDeEspera(kind=e.kind.value, ref=e.ref, app=e.app or "", faixa=faixa,
+                                                         aguardando=True, motivo=MotivoDeEntrada.PARECER_DA_IA.value,
+                                                         desde=desde))
+        except Exception:  # noqa: BLE001 - o aviso informa; o parecer já foi gravado
+            log.exception("aprendizado: aviso de parecer de %s %s", e.kind.value, e.ref)
+            return False
+        return True
+
     def _classificar(self, e: EntradaDoLivro, *, capability: str, sessao: bool) -> tuple[Faixa, MotivoDeEntrada] | None:
         app = e.app or ""
         tem = bool(app) and self._catalogo is not None and self._catalogo.tem_catalogo(app)

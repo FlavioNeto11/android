@@ -1569,7 +1569,7 @@ type ClientMessage = { type: 'ping' } | { type: 'focus'; instance_id: string | n
 Fase G da evolução arquitetural: a execução resolve o comando por skill publicada antes do fluxo
 ([execution](dominios/execution.md), [skills](dominios/skills.md)). Nada implantado; prova `simulated`.
 
-**`POST /api/flows/match`** com corpo `{"command"}` (era `GET …?command=` até o v0.58; ver o adendo v0.64) (`api.py::flows_match`):
+**`POST /api/flows/match`** com corpo `{"command"}` (era `GET …?command=` até o v0.58; ver o adendo v0.65) (`api.py::flows_match`):
 
 - Resolve pela mesma porta da execução (`AppState.skill_planner.for_command(command, None)`): skill publicada atrás de
   `skills.enabled`, depois fluxo ativo atrás de `ai.flows`.
@@ -3057,6 +3057,8 @@ interface PedidoView extends PedidoDTO {    // o que a lista e o detalhe devolve
   gatilhos_resumo: { tipo: TipoDeGatilho; descricao: string }[];   // 'Todo dia às 08:00 (America/Sao_Paulo)'
   personas: { profile_id: string; nome: string }[];                // lidas de `alvos`
   proxima_local: string | null;             // `proxima_em` no fuso do pedido, com o deslocamento
+  proxima_prevista: ProximaData | null;     // (28.12) sem `proxima_em` e com agenda (ativo, pausado, aguardando_pessoa,
+                                            // rascunho): a 1ª data CALCULADA pelos gatilhos; com `proxima_em`, null
   ultima_ocorrencia: { id: string; estado: EstadoOcorrencia; terminada_em: string | null; motivo: string | null;
                        run_id: string | null } | null;
   ocorrencias_por_estado: Partial<Record<EstadoOcorrencia, number>>;
@@ -3069,6 +3071,7 @@ interface PedidoView extends PedidoDTO {    // o que a lista e o detalhe devolve
 interface PedidoDetalhe extends PedidoView {
   gatilhos: GatilhoDTO[];
   proximas: ProximaData[];                  // as próximas 5, calculadas com `recorrencia.proximas`
+  laco: { ligado: boolean };                // (28.12) o laço de pedidos roda nesta instalação (`pedidos.enabled`)
   ocorrencias_recentes: OcorrenciaDTO[];    // as últimas 20; a lista completa é a rota de ocorrências
   execucoes_em_curso: { run_id: string; ocorrencia_id: string; status: RunStatus }[];
   pendencias: PendenciaDoPedido[];          // só com estado = 'aguardando_pessoa'; lido do estado vivo
@@ -3103,7 +3106,7 @@ local aconteceu duas vezes e o pedido roda só na primeira. O painel diz isso ao
 |---|---|---|
 | `POST /api/pedidos/previa` | `PedidoCorpo` + `proximas?` | `200 PedidoPrevia`; sem efeito, sem gravação, **sem chamada de IA** |
 | `POST /api/pedidos` | `PedidoCorpo` + `idempotency_key` + `titulo?` + `confirmacao?` | `201 PedidoView` (`ativo` se veio `confirmacao`, senão `rascunho`); `200 {…, deduplicated: true}` se a chave já existia |
-| `GET /api/pedidos` | filtros em query | `200 {items: PedidoView[], proximo_cursor, total_por_estado}` |
+| `GET /api/pedidos` | filtros em query | `200 {items: PedidoView[], proximo_cursor, total_por_estado, laco: {ligado}}` |
 | `GET /api/pedidos/{id}` | – | `PedidoDetalhe`; `404 not_found` |
 | `PATCH /api/pedidos/{id}` | `PedidoEdicao` | `200 PedidoEdicaoResultado` (`dry_run: true` = prévia da edição, nada grava) |
 | `POST /api/pedidos/{id}/ativar` | `{confirmacao}` | `200 PedidoView` (`rascunho` → `ativo`) |
@@ -3211,7 +3214,9 @@ link e a chamada serem a mesma coisa (ADR-062, item 4).
 | `limit`, `cursor` | 1–200 (padrão 50); cursor opaco devolvido em `proximo_cursor` |
 
 `total_por_estado` conta TODOS os pedidos por estado, ignorando `estado` e `cursor` (os chips da tela), no mesmo espírito
-do snapshot completo da ADR-062. Estado fora dos sete → `422`.
+do snapshot completo da ADR-062. Estado fora dos sete → `422`. `laco.ligado` (28.12) é `pedidos.enabled` desta instalação:
+a tarefa do laço só sobe no boot com ele, e desligado nenhum gatilho dispara (a tela diz isso em vez de prometer a próxima
+data).
 
 **`GET /api/pedidos/{id}/ocorrencias`** pagina pelo tempo, do mais novo ao mais antigo: `antes_de` é um `previsto_para`
 canônico, e `proximo` é o valor para a página seguinte (`null` no fim). `limit` 1–500 (padrão 50). Uma `pulada` ou `perdida`
@@ -3567,8 +3572,8 @@ fechado (também é persistida e transmitida).
 **Quando publica.** Na transição ou no nascimento que deixa o item na fila "Para aprovar" (`validated` com `requires_owner`;
 candidata de origem humana) e em qualquer transição que o tira dela, incluindo a mudança que a própria loja de receitas ou de
 fluxos faz. Idempotente por (`kind:ref`, `aguardando`): mover entre dois estados que não mudam a espera, ou repetir a mesma
-mudança, não publica. Habilidade fica de fora (ciclo próprio, não passa pelo serviço do Livro). `parecer_da_ia` existe no
-vocabulário para o curador do 30.11; ninguém o publica ainda.
+mudança, não publica. Habilidade fica de fora (ciclo próprio, não passa pelo serviço do Livro). `parecer_da_ia` é publicado
+pelo curador do 30.11 (adendo v0.55).
 
 **Faixa (mínima, `domain/espera.py::classificar_espera`; o 30.10 a estende).** C: `risk=high`, `default_policy=manual_only`,
 ação que envia texto escrito (`needs_draft`) ou item nascido de sessão desconhecida. B: efeito externo médio ou commit sem
@@ -3806,7 +3811,7 @@ legado para a que não tem. Na leitura retroativa (`retroativo=true`) o tipo ven
 
 Prova `simulated` (`tests/test_learning_diagnostico.py`); `not_run` no central.
 
-## Adendo v0.64 (02/10/2026) — `flows/match` passa a `POST` com corpo JSON; `members[].name` nos grupos de acesso (item 29.25)
+## Adendo v0.65 (02/10/2026) — `flows/match` passa a `POST` com corpo JSON; `members[].name` nos grupos de acesso (item 29.25)
 
 **Quebra de contrato só para o painel do mesmo commit.** `GET /api/flows/match?command=<rascunho>` deixa de existir (responde 405) e vira
 `POST /api/flows/match` com corpo `{"command": "1 a 4000 caracteres"}` (`extra="forbid"`; vazio, longo demais ou campo a mais: 422). Motivo: o
@@ -3821,7 +3826,7 @@ Adição (compatível): `members[]` de `PolicyGroup` (`GET/POST/PATCH /api/insta
 sobrenome ou o @; `null` se nada existir). `username` continua `""`/nulo para quem teve a conta retirada (29.23); o painel mostra "nome · sem conta".
 Prova `simulated` (`test_intencao_chamadores.py`, `test_grupos_de_acesso.py`); `not_run` no central.
 
-## Adendo v0.65 (02/10/2026) — texto livre fora da query string; `has_avatar` (item 29.26)
+## Adendo v0.66 (02/10/2026) — texto livre fora da query string; `has_avatar` (item 29.26)
 
 **Quebra de contrato só para o painel do mesmo commit.** Continuação do v0.59: nenhuma rota `GET` carrega mais comando, mensagem ou busca de conteúdo na URL (query string vira linha de log de acesso e o texto pode ter e-mail ou nome).
 
@@ -3860,8 +3865,6 @@ catálogo Aprendido com o item aberto, e os avisos já enviados continuam funcio
 
 ## Adendo v0.63 (02/10/2026) — mesmo rótulo para o mesmo fato e o nome da capability
 
-Número provisório: a orquestradora renumera no merge se outro adendo chegar antes.
-
 - **`saude`: sai o motivo `fluxo_nunca_casado`.** O fluxo publicado e nunca usado há `sem_uso_dias` passa a sair como
   `sem_evidencia`, com o motivo `nunca_usado`, igual à receita. Antes, o mesmo fato era `obsoleto_provavel` no fluxo e
   `sem_evidencia` na receita, e o dono via o rótulo mudar sem saber por quê (validação no Chrome do deploy 2). A obsolescência
@@ -3873,8 +3876,59 @@ Número provisório: a orquestradora renumera no merge se outro adendo chegar an
   internas, sem as lacunas de parâmetro: `OPEN_PROFILE` → "Abrir o perfil", `SEARCH_MAIL` → "Buscar no Outlook". Vem `null` se o
   app não tem catálogo, se a capability é desconhecida ou se a linha não tem capability. Nesses casos o painel mostra o código.
 
+## Adendo v0.64 (02/10/2026) — o modo por app de lições e telas na visão por app
 
-## Adendo v0.66 (02/10/2026) — retirada de conta limpa o app nos aparelhos; evento `device.account_cleanup` (item 29.27, emenda do ADR-068)
+Só campos novos; nada muda de tipo.
+
+- `GET /api/aprendizado/apps` e `/apps/{pacote}`: o resumo de cada app (`apps[]`, `nao_resolvido`, `app`) ganha
+  **`modos_do_app`**: `{licoes: {modo, origem}, telas: {modo, origem}}`. `modo` é o efetivo no pacote (`off|shadow|on` para
+  lições, `off|observe|on` para telas; `null` se o global não pôde ser lido). `origem` é `app` quando o config tem
+  `aprendizado.<tipo>.por_app.<pacote>`, senão `global`.
+- `modos` (visão e detalhe) ganha **`licoes_por_app`** e **`telas_por_app`**: as exceções do config, pacote → modo,
+  ordenadas pelo pacote; `{}` quando todo app segue o global.
+
+Só leitura: o config é da instalação e é lido ao iniciar o central. Mudar um modo é editar o `config.yaml` e reiniciar.
+O `modos` do detalhe (`/apps/{pacote}`) continua sendo o GLOBAL, como na visão; o do app é o `modos_do_app`.
+
+## Adendo v0.57 (02/10/2026) — `learning.needs_person` publica `motivo: parecer_da_ia` (item 30.11)
+
+O curador por IA (`aprendizado.curador.modo` ≠ `off`; de fábrica `off`) passa a publicar o motivo `parecer_da_ia`, que já existia no
+vocabulário (v0.49): quando um parecer B ou C **novo e válido** é gravado em `learning_reviews` para um item que JÁ está na fila "Para
+aprovar". Mesmo payload (`aguardando: true`, `faixa`, `desde` = quando entrou na espera); a conclusão da IA nunca vai no evento. Não é
+idempotente por (`kind:ref`, `aguardando`): cada parecer novo avisa uma vez (a chave única (item, dossiê) da 069 garante); a saída da
+espera continua avisada normalmente. Parecer da faixa A, inválido ou recusado não publica. Em `shadow` também publica (o parecer não
+decide nada; o aceite é da pessoa). Nenhuma rota, nenhuma migração, nenhum código de erro novo. Prova `simulated`
+(`tests/test_learning_curador.py`); `not_run` no central.
+
+## Adendo v0.67 (02/10/2026) — gatilhos `evento`, `condicao` e `persona` no `PedidoCorpo` (item 28.8)
+
+Aditivo para quem lê; muda a resposta para quem já mandava esses tipos. Antes, `evento`, `condicao` e `persona` davam sempre
+`gatilho_nao_suportado` (adendo v0.45). Agora são aceitos, com a `spec` validada (desenho em `docs/design/pedidos-laco.md` §14):
+
+| tipo | `spec` | o que faz |
+|---|---|---|
+| `evento` | `{"kinds": ["run.failed", ...], "niveis": ["warn", "error"]?}`: de 1 a 10 tipos de evento; nunca `pedido.*` nem um tipo efêmero (`frame`, `metrics`...) | cada volta que acha eventos novos que casam cria UMA ocorrência (origem `evento`), respeitando o piso da autonomia; os eventos das execuções do próprio pedido não contam |
+| `persona` | `{"intervalo_min_s": N, "intervalo_max_s": M}`, `300 ≤ N ≤ M ≤ 30 dias` | a primeira visita na ativação; a seguinte quando a anterior fecha, depois da saída `proxima_visita_s` da visita (presa a [N, M]) ou de M |
+| `condicao` | `{"observacao": "<saída>", "op": "<", "valor": 3500}` (`op` em `<`, `<=`, `>`, `>=`, `==`, `!=`, `mudou`; `mudou` sem `valor`) | avalia a observação mais nova; só a passagem de falso para verdadeiro avisa; não cria ocorrência |
+
+Códigos novos (em `previa`, viram `bloqueios[]`):
+
+| HTTP | `codigo` | Quando | `campo` |
+|---|---|---|---|
+| 422 | `gatilho_invalido` | a `spec` de um dos três não serve (a mensagem diz o quê) | `gatilhos[i].spec.<campo>` |
+| 422 | `condicao_sem_observacao` | o pedido só tem gatilhos `condicao`: nada observaria | `gatilhos` |
+| 422 | `frequencia_abaixo_do_piso` | (já existia) também `persona` com `intervalo_min_s` abaixo do piso da autonomia | `gatilhos[i].spec.intervalo_min_s` |
+
+- `gatilhos_resumo[].descricao` ganha os textos "Quando acontecer: …", "A persona volta entre … e …" e "Avisa quando …".
+- `proximas` (prévia) mostra a primeira visita da persona e nenhuma data para evento e condição: elas dependem do que acontecer.
+- A edição (`PATCH`) continua trocando só `agora`, `horario` e `recorrencia`. Os gatilhos dos três tipos novos ficam como
+  foram criados.
+- Dois tipos novos de aviso (`pedido.aviso` e `GET /api/pedidos/avisos`), migração 076: `eventos_perdidos` (warn;
+  `dados`: `de_id`, `ate_id`) e `condicao_atendida` (warn; `dados`: `gatilho_id`, `observacao`, `op`). Os dois com
+  `requer_pessoa=false`. O fato também fica na memória do pedido (`evento.buraco.<gatilho>`, `pendencia`;
+  `condicao.<gatilho>`, `descoberta`).
+
+## Adendo v0.68 (02/10/2026, número PROVISÓRIO) — retirada de conta limpa o app nos aparelhos; evento `device.account_cleanup` (item 29.27, emenda do ADR-068)
 
 `POST /api/instagram/profiles/{id}/accounts/{conta}/retire` (adendo v0.55) e o gatilho automático da retirada passam a **limpar os dados do app**
 (`pm clear` só do pacote da conta) nos aparelhos onde a conta estava logada, quando o `app.yaml` do app declara `limpar_ao_retirar: true`

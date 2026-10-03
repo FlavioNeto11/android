@@ -412,6 +412,15 @@ Números de hoje (`real`, central, 02/10): `G_7d = US$ 9,56`, `N_7d = 71`, `c̄ 
 
 Aviso a 80% de `B_W`, como os tetos de IA atuais.
 
+**Nota de implementação (30.11, 02/10).** Decisões que o texto acima não fixava (detalhe em `dominios/aprendizado.md`):
+- A classe A vai SEMPRE por último (prioridade 5), mesmo publicada e contestada: a prioridade 1 é de item B ou C (`so_com_sobra`).
+- O corte por orçamento não vira linha de `learning_reviews` (gastaria a chave (item, dossiê) e a sobra não voltaria na próxima janela);
+  só `recusada:custo`, `recusada:triagem` e `invalida:*` viram linha e não se repetem até o dossiê mudar.
+- O teto da hora (`B_W/W/2`) é conferido sobre o JÁ gasto antes de cada revisão: com `N_W` pequeno ele fica abaixo de uma revisão e
+  a leitura "mais esta cabe" nunca deixaria a primeira passar.
+- Pico: só com histórico (média > 0) e com pelo menos 5 elegíveis no dia (piso de amostra, a confirmar com o dono); o alerta é log.
+- Sem `usd` medido (a 069 é `NOT NULL DEFAULT 0`), `C_W` usa a estimativa recalculada do dossiê gravado; só `usd > 0` é medida.
+
 ### 8.8 Modos e abstração de provedor
 
 `aprendizado.curador.modo`: `off` (padrão de fábrica) | `shadow` (revisa e grava; o parecer não aparece na fila; mede a concordância
@@ -439,6 +448,19 @@ Desenho: override por pacote, `aprendizado.licoes.por_app: {<pacote>: off|shadow
 com padrão = o modo global. Uma função só, `modo_efetivo(tipo, pacote)`, usada pela coleta, pelo D1 (`conferir_transicao` recebe o modo
 efetivo do pacote do item), pelo fornecedor de lições, pelo fornecedor de telas e pela camada de uso do §3.3. O pacote é dado de instalação
 (config), não código: nenhuma regra por app no Python. Item 30.20.
+
+**Painel (30.20, só leitura; adendo v0.64).** O detalhe do app mostra o modo que vale e se é do app ou do global, com o
+passo a passo para mudar (arquivo, trecho, reiniciar o central).
+
+**Ideia de backlog (fora do escopo; decisão da orquestradora, 02/10): editar o modo pelo painel.** Hoje o painel só
+mostra, porque o config é lido uma vez, ao iniciar (`state.py`), e não há escrita de config no backend. Duas formas, as
+duas mexem em núcleo e vão à suíte combinada:
+- **(a) gravar o `config.yaml` e recarregar** o bloco `aprendizado` sem reiniciar: toca `config.py` e `state.py`;
+  preserva o "dado de instalação" deste §8.10, mas abre escrita em arquivo de instalação pelo painel;
+- **(b) levar o override para o banco** (tabela própria ou o store de `settings`), editável com trilha: **conflita com
+  este §8.10**, que diz que o pacote é dado de instalação (config), não estado do banco.
+
+Fica para quando o dono pedir edição pelo painel; a orquestradora leva a ele.
 
 ### 8.11 Evento de domínio: conhecimento aguardando a pessoa
 

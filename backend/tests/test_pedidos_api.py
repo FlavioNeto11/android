@@ -94,8 +94,9 @@ async def test_previa_lista_bloqueios_e_nao_da_selo(h: Harness) -> None:
         gatilhos=[{"tipo": "evento", "spec": {}}, {"tipo": "recorrencia", "spec": {"dtstart": "x", "rrule": "FREQ=NUNCA"}}])).json()
     codigos = {x["codigo"] for x in ruins["bloqueios"]}
     assert {"fuso_desconhecido", "sobreposicao_incompativel", "limite_invalido"} <= codigos
+    # 28.8: o evento existe; a spec vazia é que não serve.
     assert c.post("/api/pedidos/previa", json=_corpo(gatilhos=[{"tipo": "evento", "spec": {}}])).json()["bloqueios"][0][
-        "codigo"] == "gatilho_nao_suportado"
+        "codigo"] == "gatilho_invalido"
 
 
 async def test_previa_recusa_credencial_no_objetivo_sem_eco(h: Harness) -> None:
@@ -192,6 +193,29 @@ async def test_lista_com_filtros_detalhe_e_404(h: Harness) -> None:
     nf = c.get("/api/pedidos/nao-existe")
     assert nf.status_code == 404 and nf.json()["detail"]["code"] == "not_found"
     assert c.get("/api/pedidos/avisos").status_code == 200, "/avisos vem antes de /{id}"
+
+
+async def test_lista_traz_a_proxima_prevista_e_o_sinal_do_laco(h: Harness) -> None:
+    """28.12: sem `proxima_em` (o laço ainda não gravou, ou está desligado) a lista mostra a próxima data CALCULADA pela
+    agenda, igual à primeira das `proximas` do detalhe; e a lista e o detalhe dizem se o laço roda nesta instalação."""
+    c = _cliente(h)
+    a = _criar(c, "chave-prevista-0001").json()
+    lista = c.get("/api/pedidos").json()
+    [item] = lista["items"]
+    d = c.get(f"/api/pedidos/{a['id']}").json()
+    assert item["proxima_em"] is None and item["proxima_prevista"] is not None
+    assert item["proxima_prevista"]["utc"] == d["proximas"][0]["utc"] and item["proxima_prevista"]["local"]
+    assert lista["laco"] == {"ligado": False} and d["laco"] == {"ligado": False}       # harness: `pedidos.enabled` falso
+    h.state.pedidos_api.cfg = PedidosCfg(enabled=True)
+    assert c.get("/api/pedidos").json()["laco"] == {"ligado": True}
+    # Com a data do laço gravada, vale a dele: a prevista some.
+    h.state.db.execute("UPDATE pedidos SET proxima_em=? WHERE id=?", (d["proximas"][1]["utc"], a["id"]))
+    [item] = c.get("/api/pedidos").json()["items"]
+    assert item["proxima_em"] and item["proxima_prevista"] is None
+    # Encerrado não tem agenda.
+    assert c.post(f"/api/pedidos/{a['id']}/cancelar", json={"confirmar": True}).status_code == 200
+    [item] = c.get("/api/pedidos").json()["items"]
+    assert item["proxima_prevista"] is None
 
 
 # =============================================================================================== ações

@@ -35,6 +35,7 @@ from ..modules.execution.domain.orquestracao import OrquestracaoOut, PedidoDeOrq
 from ..modules.execution.domain.command_refinement import CommandRefinement, RefineRequest
 from ..models import AiRoleStatus, AiStatus, PersonaDraft, Plan, SocialDraftDTO
 from . import costs, saldos
+from .curador import ParecerBruto, PedidoDeParecer
 from .provider import (AIError, AIProvider, Decision, DecisionRequest, PersonaGenerationRequest, PlanRequest,
                        SocialRequest, Usage, Verdict, VerifyRequest, build_one)
 
@@ -385,6 +386,11 @@ class RoutingProvider:
     async def refine_command(self, req: RefineRequest) -> tuple[CommandRefinement, Usage]:
         """Assistente do comando (ADR-047): mesma função/modelo/orçamento do planejador, sem execução."""
         return await self._call("plan", None, lambda p: p.refine_command(req), origem="assistente")
+
+    async def review_knowledge(self, req: PedidoDeParecer) -> tuple[ParecerBruto, Usage]:
+        """Curador do Livro (30.12; hub §2): papel `plan` emprestado, sem execução; a fatia `curador` do teto do dia
+        vale aqui (31.6) e `ref` leva o `dossie_hash` a `ai_calls.ref`."""
+        return await self._call("plan", None, lambda p: p.review_knowledge(req), origem="curador", ref=req.ref)
 
     async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]:
         # Escalonamento pode ser OUTRO provedor, não só outro modelo: o despacho olha o tier.

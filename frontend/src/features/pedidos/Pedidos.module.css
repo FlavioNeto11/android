@@ -70,6 +70,13 @@
 .seletorItem:disabled { cursor: not-allowed; opacity: 0.5; }
 .seletorAtivo, .seletorAtivo:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent-text); box-shadow: inset 0 0 0 1px var(--accent-border); font-weight: 600; }
 
+/* Objetivo da prévia: com as quebras que a pessoa escreveu, recolhido em 4 linhas quando é longo */
+.previaObjetivo { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-1); min-width: 0; }
+.objetivoTexto { white-space: pre-line; overflow-wrap: anywhere; }
+.objetivoRecolhido { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; line-clamp: 4; overflow: hidden; }
+/* Leitura em português do seletor nativo de data e hora (o navegador o escreve no formato dele) */
+.leituraDaData { margin: 0; color: var(--text-2); font-size: var(--fs-xs); }
+
 /* Prévia em blocos */
 .previaCabeca { margin: 0; font-size: var(--fs-md); color: var(--text-1); }
 .previaGrade { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--sp-3); }
@@ -95,6 +102,8 @@
 .cartaoResumo dl { display: flex; flex-direction: column; gap: var(--sp-2); margin: 0; }
 .cartaoResumo dt { color: var(--text-3); font-size: var(--fs-xs); }
 .cartaoResumo dd { margin: 0; color: var(--text-1); font-size: var(--fs-sm); overflow-wrap: anywhere; }
-.objetivoCompleto { margin: 0; color: var(--text-1); font-size: var(--fs-sm); max-width: 90ch; overflow-wrap: anywhere; }
-.tituloLinha { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* pre-line: o objetivo escrito em várias linhas (passos) mantém as quebras, como na prévia. */
+.objetivoCompleto { margin: 0; color: var(--text-1); font-size: var(--fs-sm); max-width: 90ch; overflow-wrap: anywhere; white-space: pre-line; }
+/* O título do detalhe QUEBRA a linha (a 375 px o corte com reticências escondia o fim e não deixava ler o nome inteiro). */
+.tituloLinha { display: block; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .barraDeAvisos { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2) var(--sp-3); }

@@ -11,6 +11,7 @@ pelo orçamento; duas voltas não criam duas tentativas; `max_ocorrencias` não 
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -86,6 +87,9 @@ async def test_falha_sem_efeito_vira_nova_tentativa_depois_do_atraso_e_com_a_cha
     assert "tentativa 1 falhou (o app travou)" in o["motivo"]
     esperado = r.t + timedelta(seconds=60)
     assert o["terminada_em"].startswith(esperado.strftime("%Y-%m-%dT%H:%M:%S")), "atraso base de 60 s"
+    # O motivo é lido pela pessoa: o instante vai legível, em UTC, e nunca como o ISO cru que a coluna guarda.
+    assert f"nova tentativa a partir de {esperado:%d/%m %H:%M} UTC" in o["motivo"]
+    assert re.search(r"\d{4}-\d{2}-\d{2}T", o["motivo"]) is None, "sem ISO cru no texto do motivo"
     assert float(o["custo_usd"]) >= custo_antes
     assert _pedido_estado(db)["estado"] == "ativo", "uma falha repetida não pausa nem encerra o pedido"
 

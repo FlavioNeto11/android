@@ -455,14 +455,12 @@
   .kv { grid-template-columns: minmax(0, 1fr); gap: 2px 0; }
   .kvVal { min-width: 0; overflow-wrap: anywhere; margin-bottom: 6px; }
   .cardHeader { flex-wrap: wrap; }
-  .cardActions { flex: 1 1 auto; flex-wrap: wrap; justify-content: flex-end; }
-}
-
-/* 29.25 (I6) — celular: o texto do cabeçalho do cartão não divide a linha com a ação. Com `flex: 1` (base 0) o texto
-   ficava com ~1/3 da largura ao lado de "Adicionar conta" e o título quebrava no meio da palavra ("Recuperaç/ão"). Abaixo
-   de 480 px o texto ocupa a linha inteira e a ação desce, alinhada à esquerda. É o ponto compartilhado: `CardHeader`
-   serve a `PageSection`, aos cartões de grupo de acesso e à guia "Contas e acesso". */
-@media (max-width: 479px) {
-  .cardHeaderText { flex: 1 1 100%; }
-  .cardActions { flex: 1 1 100%; justify-content: flex-start; }
+  /* Cabeçalho de cartão em tela estreita (28.12 e 29.25 I6, uma regra só). O texto tem prioridade: com `flex: 1` (base 0)
+     nos dois, a ação dividia a linha com o título (o X de fechar deixava uns 110 px de coluna em 386 px; ao lado de
+     "Adicionar conta" o texto ficava com ~1/3 da largura e o título quebrava no meio da palavra, "Recuperaç/ão"). Agora o
+     texto pede no mínimo 12rem e cresce; a ação fica no canto quando cabe ao lado (um ícone, em 375–386 px) e desce para a
+     linha de baixo, no canto, quando não cabe (um botão com texto). `CardHeader` serve a `PageSection`, aos cartões de
+     grupo de acesso, à guia "Contas e acesso" e aos cartões de Pedidos. */
+  .cardHeaderText { flex: 1 1 min(100%, 12rem); }
+  .cardActions { flex: 0 1 auto; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
 }

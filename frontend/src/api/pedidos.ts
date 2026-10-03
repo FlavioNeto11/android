@@ -94,6 +94,8 @@ export interface PedidoView extends PedidoDTO {
   gatilhos_resumo: { tipo: TipoDeGatilho; descricao: string }[];
   personas: { profile_id: string; nome: string }[];
   proxima_local: string | null;
+  /** (28.12) Sem `proxima_em` e com agenda: a 1ª data CALCULADA pelos gatilhos; com `proxima_em`, `null`. */
+  proxima_prevista?: ProximaData | null;
   ultima_ocorrencia: { id: string; estado: EstadoOcorrencia; terminada_em: string | null; motivo: string | null;
                        run_id: string | null } | null;
   ocorrencias_por_estado: Partial<Record<EstadoOcorrencia, number>>;
@@ -120,9 +122,15 @@ export interface PendenciaDoPedido {
   desde: string;
 }
 
+/** (28.12) Se o laço de pedidos roda nesta instalação (`pedidos.enabled`). Desligado, nenhum gatilho dispara. */
+export interface SinalDoLaco {
+  ligado: boolean;
+}
+
 export interface PedidoDetalhe extends PedidoView {
   gatilhos: GatilhoDTO[];
   proximas: ProximaData[];
+  laco?: SinalDoLaco;
   ocorrencias_recentes: OcorrenciaDTO[];
   execucoes_em_curso: { run_id: string; ocorrencia_id: string; status: RunStatus }[];
   pendencias: PendenciaDoPedido[];
@@ -221,6 +229,7 @@ export interface ListaDePedidos {
   items: PedidoView[];
   proximo_cursor: string | null;
   total_por_estado: Partial<Record<EstadoPedido, number>>;
+  laco?: SinalDoLaco;
 }
 
 export interface ListaDeOcorrencias {

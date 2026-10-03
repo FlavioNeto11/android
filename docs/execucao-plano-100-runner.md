@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-268 de 322 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+276 de 317 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -244,7 +244,6 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 27.1 | implemented | not_run |  | — | docs/relatorio-validacao.md §26.3 (revisão adversarial por frente com os achados graves corrigidos, correção da integração eb38139 e das regressões 99abe23) e §26.4 (cenários do aceite integrado no mesmo aparelho); crit… |  |
 | 27.2 | partial | real | opus | — | Real: android-03 e 06 com rede trafego_verificado (prova de vazamento preservada), Instagram e Outlook logados na conta certa; C1 provado no android-01 (r-20260930230500-f52eec). Em 01/10, no android-03, três tentativas… | Limitação da plataforma, medida: read_value só aceita valor lido de texto da árvore, e a lista do Outlook no android-03 não o expõe (no android-01, em 30/09, e… |
 | 27.3 | implemented | not_run |  | — | docs/relatorio-validacao.md §26 (implantações, provas reais, matriz de rede por aparelho, comando entre apps, revisão, cenários), CHANGELOG 2026-09-30, docs/estado-atual.md, docs/handoffs/terceira-evolucao.md (estado po… |  |
-| 27.4 | pendente | — | — | — |  |  |
 | 28.1 | implemented | simulated | sessao | — | PR #56 via #61 (merge c82a5210, 02/10). Trava de lider dos lacos periodicos: migracao 066_travas, taskqueue/travas.py (Lideranca: CAS no relogio do banco, cerca por token, renovacao em laco proprio do AppState), saldos/… | Prova real com DOIS backends no mesmo banco: not_run (o central roda um so). |
 | 28.2 | implemented | simulated | sessao | — | PR #55 via #61 (merge c82a5210). Migracao 067_pedidos (pedidos, gatilhos, ocorrencias; runs.pedido_id/ocorrencia_id), modules/pedidos/domain/estados.py e chave.py (chave deterministica, formatar_instante). Implantado no… | Uso real dos dados so com o laco ligado (28.6/28.12). |
 | 28.3 | implemented | simulated | sessao | — | PR #54 (d372a4c7). modules/pedidos/domain/recorrencia.py puro (RRULE parcial, zoneinfo, tzdata declarado em requirements.in). |  |
@@ -252,11 +251,11 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 28.5 | implemented | simulated | sessao | — | PR #90, merge 04998b0e na main (02/10/2026, sessao jev). backend/app/modules/pedidos/domain/tentativas.py (puro): repetir so a falha sem efeito possivel (mesma linha falhou->devida, tentativa+1, chave:t<n>, atraso expon… |  |
 | 28.6 | implemented | simulated | sessao | — | PR #85, merge d75ca783 (02/10/2026, sessao jev), acrescimos no PR #90. Custo da ocorrencia por costs.spent_usd no mesmo UPDATE do fechamento; domain/orcamento.py (estimativa pela mediana, encerra com encerrado_motivo=or… |  |
 | 28.7 | implemented | simulated | sessao | — | PR #85, merge d75ca783 (02/10/2026, sessao jev); migracao 070_pedidos_memoria implantada no central (health 070, deploy da sessao Android ~20:20Z). domain/memoria.py (versionada, segredo recusado, compactar sem IA), obs… |  |
-| 28.8 | pendente | — | — | — |  |  |
+| 28.8 | implemented | simulated | sessao | — | Branch feat/28-8-gatilhos-evento (999d159d..HEAD, sobre a main c12f749a), 02/10/2026, sessao jev. Desenho em docs/design/pedidos-laco.md §14; contrato adendo v0.67 (era v0.60; renumerado na integracao da suite 5). Event… |  |
 | 28.9 | implemented | simulated | sessao | — | PR #106, merge f35a816d (02/10/2026, sessao jev). API /api/pedidos (previa, criacao idempotente, acoes, leitura, eventos, snapshot), migracao 072 pedido_avisos (dedupe, lido/nao lidos, POST /avisos/ler, emissores orcame… |  |
 | 28.10 | pendente | — | — | — |  |  |
 | 28.11 | implemented | real | sessao | — | Decisao do dono 02/10: Telegram. PR #73 (merge e6e9cd13). Migracao 068_avisos_entregas (confirmada pelo orquestrador). modules/avisos: canal Telegram so de saida (httpx, 429 com Retry-After, erro sem token), fila durave… | Fonte pedido.aviso so com o 28.9; o 'Para aprovar' do Aprendizado sem evento no barramento (avisado a frente Aprendizado). |
-| 28.12 | pendente | — | — | — |  |  |
+| 28.12 | partial | simulated | sessao | — | PR #118, merge 26eee424 na main (02/10/2026, sessao jev). Ajustes de API: PedidoView.proxima_prevista (data calculada pela agenda quando o laco ainda nao gerou) e laco{ligado} na lista (sinal do laco desligado). Achados… | Prova real pendente: so depois do deploy 3, com pedidos.enabled ligado no central (e desligado no fim), teto US$ 1,00 no total e US$ 0,30 por pedido, aparelho… |
 | 28.13 | pendente | — | — | — |  |  |
 | 28.14 | implemented | simulated | sessao | — | PR #100, merge e22098c5 (02/10/2026, sessao jev). modules/avisos/domain/mensagem.py: learning.needs_person avisa so na entrada da espera, faixa C por padrao (avisos.aprendizado_faixas), chave learning:{kind}:{ref}:{desd… |  |
 | 29.1 | implemented | real | opus | — | Real, 30/09/2026, central (runner `central`), commit 9428a6a: run 36713946044 do CI verde às 13:03Z, com o job `dependências` (2m14s) passando pelo `npm audit --audit-level=high` do Appium, pelo `npm ci` (o postinstall… |  |
@@ -285,10 +284,6 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.24 | pendente | — | — | — |  |  |
 | 29.25 | pendente | — | — | — |  |  |
 | 29.26 | pendente | — | — | — |  |  |
-| 29.27 | pendente | — | — | — |  |  |
-| 29.28 | pendente | — | — | — |  |  |
-| 29.29 | pendente | — | — | — |  |  |
-| 29.30 | pendente | — | — | — |  |  |
 | 30.1 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #76 merge 6e103d73: GET /api/aprendizado/apps e /apps/{pacote} (application/apps.py, domain/camada.py, infrastructure/declarados.py), adendo v0.47; prova simulated; not_run no central (nada implantado) |  |
 | 30.2 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #76 merge 6e103d73: chave canônica de app (pacote) no Livro; prova simulated; not_run no central (nada implantado) |  |
 | 30.3 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #86 merge 14ec911c: conteudo legível no detalhe (domain/conteudo.py, fontes.py), nenhum valor de parâmetro; adendo v0.50; 432 testes do módulo; prova simulated; not_run no central (nada implantado) |  |
@@ -300,7 +295,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.9 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #78 merge 70e03cb2: migração 069_revisoes_do_aprendizado (learning_reviews, único (item_ref, dossie_hash)); suíte combinada verde 5414 passed na árvore efd39d3e; migração não aplicada no central (sem deploy) |  |
 | 30.10 | pendente | — | — | — |  |  |
 | 30.11 | pendente | — | — | — |  |  |
-| 30.12 | pendente | — | — | — |  |  |
+| 30.12 | implemented | simulated | sessao | — | Branch feat/30-12-curador-hub (4edecb8d + f0372b63, sobre o 30.11 8bbe35ff e o 31.2/31.6), 02/10/2026, sessao jev. AIRouter.review_knowledge(PedidoDeParecer): papel plan emprestado, run_id None, origem curador, ref = do… |  |
 | 30.13 | pendente | — | — | — |  |  |
 | 30.14 | pendente | — | — | — |  |  |
 | 30.15 | partial | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #82 merge 312808d1: 1ª fatia, aba Aplicativos (Global → App) como visão inicial, detalhe por app, filtro de app (frontend/src/features/aprendizado/AplicativosTab.tsx, apps.ts); falta saúde, falhas no detalhe do app,… | resto depende do 30.4 (PR #88) e do 30.13 |
@@ -311,15 +306,15 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.20 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #75 merge af208f07 e PR #79 merge e86b4a33: modo por app (domain/modo_por_app.py, modo_efetivo; aprendizado.licoes.por_app / telas.por_app), D1 do modo por app; prova simulated; not_run no central (nada implantado) |  |
 | 30.21 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #83 merge f0f02125: evento learning.needs_person (domain/espera.py, application/espera.py, infrastructure/eventos.py, state.py eventos=self.bus), adendo v0.49; suíte combinada verde (efd39d3e); prova simulated; not_r… |  |
 | 30.22 | implemented | real | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #69 merge 657c5f85: scripts/aprendizado-backfill-licoes.py + infrastructure/backfill_licoes.py; aplicado no central em 02/10 sobre as 12 execuções aprováveis (10 lições nascidas, em shadow); saídas em .claude/handoff… |  |
-| 31.1 | pendente | — | — | — |  |  |
-| 31.2 | pendente | — | — | — |  |  |
+| 31.1 | implemented | simulated | sessao | — | Commit b5a40c98 (na main desde o PR #110, sessao jev, 02/10/2026): trava de 255 opcoes e opcao nenhuma no adaptador do Jev (choice). backend/tests/test_context_retrieval_semantic.py com provedor falso. Chamada real: not… |  |
+| 31.2 | implemented | simulated | sessao | — | PR #112 (merge b5baf3e5 na main, commits 89a92b03 + a6cfa0fd, sessao jev, 02/10/2026): migracao 073 (ai_calls.origem e ref, TEXT sem CHECK), Usage.origem, filtro por origem no gasto (costs.spent_usd). backend/tests/test… |  |
 | 31.3 | implemented | not_run | sessao | — | Item de decisao (texto do ADR): ADR-069 escrito e aprovado pelo dono (02/10/2026 ~21:35Z, 'sim para todos' no chat da orquestradora), PR #102, merge fd59fbd7. Emenda o ADR-063; D-J1 (porta unica, constantes fechadas, Te… |  |
-| 31.4 | pendente | — | — | — |  |  |
-| 31.5 | pendente | — | — | — |  |  |
-| 31.6 | pendente | — | — | — |  |  |
-| 31.7 | pendente | — | — | — |  |  |
-| 31.8 | pendente | — | — | — |  |  |
-| 31.9 | pendente | — | — | — |  |  |
+| 31.4 | implemented | simulated | sessao | — | PR #110 (merge 6a6e54d7 na main, commit b4645c91, sessao jev, 02/10/2026): porta DecisaoFechada no hub, contrato, decisores falso e nulo, privacidade.validar com JEV_RUNTIME_SEND_APPROVED=False (constante de codigo), re… |  |
+| 31.5 | implemented | simulated | sessao | — | Branch feat/31-5-sombra-registro (5a29096c, 5ad49126, dda637ad, 0b0d7102), na main pelo merge 8413ddc9 da integ jev/integ-suite-5 @ 1cb9bb4a (suites 5 e 5b: bb8bfc1q2, bvqmppz9x). Migracao 074 (decisao_fechada_sombra e… |  |
+| 31.6 | implemented | simulated | sessao | — | PR #112 (merge b5baf3e5 na main, commit a6cfa0fd, sessao jev, 02/10/2026): rubrica unica de gasto com fatias por origem, fatia_jev (ai.limits.jev_max_usd_per_day, US$ 0,50/dia, D-J3) e AIError.motivo fechado (P6). backe… |  |
+| 31.7 | implemented | not_run | sessao | — | Golden set e limiares PRE-REGISTRADOS em docs/design/jev-golden-set.md (commit ae2e5370, 02/10/2026 UTC, branch feat/31-8-curador-sombra; data corrigida em 59ac9706), com a frente Aprendizado (mapeamento de rotulos). It… |  |
+| 31.8 | partial | simulated | sessao | — | Branch feat/31-8-curador-sombra (b18476e1, ae2e5370, 59ac9706) + ligacao no AppState (5e8bb8a5: CuradorComTriagemEmSombra embrulha o CuradorDoHub; simulado por resposta), na main pelo merge 8413ddc9 da integ jev/integ-s… | Revisao adversarial da suite 5: I1 (stop() nao espera o pool sombra-curador antes do db.close) e I2 (decisao real casada = parecer bruto, mesmo invalido ou sim… |
+| 31.9 | partial | simulated | sessao | — | Branch feat/31-9-intencao-sombra (e1f7ee53, 1d867449, 106ecd67, a8072fb9, 8e7315ba, 6bb5261e, cd74d897), na main pelo merge 8413ddc9 da integ jev/integ-suite-5 @ 1cb9bb4a (suite 5b bvqmppz9x: a catraca do ADR-052 passou… | Correcao de privacidade antes de qualquer R2/C3: itens 1-6 da reverificacao (.claude/handoffs/reverificacao-31-9.md: vocabulario do catalogo com @handles, opco… |
 | 31.10 | pendente | — | — | — |  |  |
 | 31.11 | pendente | — | — | — |  |  |
 | 31.12 | pendente | — | — | — |  |  |
@@ -329,7 +324,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (54): 8.3, 8.4, 12.3, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 27.4, 28.8, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.27, 29.28, 29.29, 29.30, 30.4, 30.8, 30.10, 30.11, 30.12, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 31.1, 31.2, 31.4, 31.5, 31.6, 31.7, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
+Pendentes (41): 8.3, 8.4, 12.3, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 30.4, 30.8, 30.10, 30.11, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

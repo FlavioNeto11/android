@@ -15,7 +15,8 @@ import { nomeDe } from '../profiles/pessoa';
 import { usePersonas } from '../profiles/usePersonas';
 import { apiPedidos } from './api';
 import { EsqueletoDaLista } from './Esqueleto';
-import { agendaLegivel, dataCompacta, fusoParaMostrar, horaEscrita, horaNoFuso, quemFazDoPedido } from './formato';
+import { agendaLegivel, dataCompacta, fusoParaMostrar, horaEscrita, horaNoFuso, proximaDoPedido, quemFazDoPedido } from './formato';
+import { AvisoDoLacoDesligado } from './LacoDesligado';
 import {
   AUTONOMIAS, ORDENS, ROTULO_DA_ORDEM, TIPOS_DE_GATILHO, chaveDoFiltro, filtroDoLink, temFiltro, type FiltroDoLink,
 } from './filtro';
@@ -32,6 +33,7 @@ function usePedidosDoFiltro(filtro: FiltroDoLink) {
   const epoch = usePedidosStore((s) => s.epoch);
   const [itens, setItens] = useState<PedidoView[] | null>(null);
   const [totais, setTotais] = useState<Lista['total_por_estado']>({});
+  const [laco, setLaco] = useState<Lista['laco'] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [maisCarregando, setMaisCarregando] = useState(false);
@@ -39,23 +41,28 @@ function usePedidosDoFiltro(filtro: FiltroDoLink) {
   const filtroRef = useRef(filtro);
   filtroRef.current = filtro;
   const anterior = useRef<string | null>(null);
+  const temDado = useRef(false);
 
   useEffect(() => {
     const ctrl = new AbortController();
     // Outro filtro: a lista de antes não é a resposta; mesma chave (evento ao vivo): mantém o que está na tela.
-    if (anterior.current !== chave) setItens(null);
+    if (anterior.current !== chave) { setItens(null); temDado.current = false; }
     anterior.current = chave;
+    // Sem dado nenhum (primeira carga, outro filtro ou "Tentar de novo"), o aviso de antes sai e volta o esqueleto até a resposta.
+    if (!temDado.current) setErro(null);
     apiPedidos.listar({ ...filtroRef.current, limit: PAGINA }, ctrl.signal)
       .then((r) => {
+        temDado.current = true;
         setItens(Array.isArray(r?.items) ? r.items : []);
         setTotais(r?.total_por_estado ?? {});
+        setLaco(r?.laco ?? null);
         setCursor(r?.proximo_cursor ?? null);
         setErro(null);
       })
       .catch((e) => {
         if (ctrl.signal.aborted) return;
+        // Sem dado anterior `itens` fica `null`: a tela mostra só o aviso, nunca "0 pedidos" nem "Nenhum pedido ainda" (que seria falso).
         setErro(mensagemDoErro(toApiError(e)));
-        setItens((atual) => atual ?? []);
       });
     return () => ctrl.abort();
   }, [chave, epoch]);
@@ -74,7 +81,7 @@ function usePedidosDoFiltro(filtro: FiltroDoLink) {
     }
   }, [cursor]);
 
-  return { itens, totais, cursor, erro, maisCarregando, maisUm };
+  return { itens, totais, laco, cursor, erro, maisCarregando, maisUm };
 }
 
 /** A lista (`#/pedidos`): uma linha por pedido, com os filtros no link (ADR-062, item 4). */
@@ -82,7 +89,7 @@ export function ListaDePedidos() {
   const query = useUiStore((s) => s.rota.query);
   const trocarQuery = useUiStore((s) => s.trocarQuery);
   const filtro = useMemo(() => filtroDoLink(query), [query]);
-  const { itens, totais, cursor, erro, maisCarregando, maisUm } = usePedidosDoFiltro(filtro);
+  const { itens, totais, laco, cursor, erro, maisCarregando, maisUm } = usePedidosDoFiltro(filtro);
   const pessoas = usePersonas();
   const agora = useNow();
 
@@ -96,6 +103,10 @@ export function ListaDePedidos() {
   }, [busca, filtro.q, trocarQuery]);
 
   const totalGeral = Object.values(totais).reduce<number>((a, n) => a + (n ?? 0), 0);
+  // Sem nenhum pedido (ou sem leitura nenhuma, por erro) e sem filtro ativo, buscar e filtrar não leva a lugar algum: a barra
+  // inteira some e fica só o estado vazio (ou o aviso). Com filtro no link ela fica, para que dê para limpá-lo.
+  const semFiltroAtivo = !temFiltro(filtro) && busca.trim() === '';
+  const semNada = semFiltroAtivo && ((itens !== null && totalGeral === 0) || (itens === null && erro !== null));
   const filtros: FiltroListagem[] = [
     {
       chave: 'estado', rotulo: 'Estado do pedido', tipo: 'chips', rotuloTodos: 'Todos', contagemTodos: totalGeral,
@@ -126,16 +137,20 @@ export function ListaDePedidos() {
 
   return (
     <>
-      <BarraListagem
-        nome="pedidos"
-        busca={{ valor: busca, onChange: setBusca, placeholder: 'Buscar por título ou objetivo' }}
-        filtros={filtros}
-        ordem={{ valor: filtro.ordem, onChange: (v) => trocarQuery({ ordem: v === 'atualizado' ? undefined : v }),
-                 opcoes: ORDENS.map((o) => ({ valor: o, rotulo: ROTULO_DA_ORDEM[o] })) }}
-        resumo={itens ? `${itens.length}${cursor ? '+' : ''} ${itens.length === 1 ? 'pedido' : 'pedidos'}` : undefined}
-        onLimpar={temFiltro(filtro) ? () => trocarQuery({ q: undefined, estado: undefined, autonomia: undefined, tipo: undefined,
-                                                         profile_id: undefined, pede_atencao: undefined }) : undefined}
-      />
+      {/* Vale para a instalação inteira: vem antes dos filtros, não entre a contagem e a lista. */}
+      {laco?.ligado === false ? <AvisoDoLacoDesligado /> : null}
+      {semNada ? null : (
+        <BarraListagem
+          nome="pedidos"
+          busca={{ valor: busca, onChange: setBusca, placeholder: 'Buscar por título ou objetivo' }}
+          filtros={filtros}
+          ordem={{ valor: filtro.ordem, onChange: (v) => trocarQuery({ ordem: v === 'atualizado' ? undefined : v }),
+                   opcoes: ORDENS.map((o) => ({ valor: o, rotulo: ROTULO_DA_ORDEM[o] })) }}
+          resumo={itens ? `${itens.length}${cursor ? '+' : ''} ${itens.length === 1 ? 'pedido' : 'pedidos'}` : undefined}
+          onLimpar={temFiltro(filtro) ? () => trocarQuery({ q: undefined, estado: undefined, autonomia: undefined, tipo: undefined,
+                                                           profile_id: undefined, pede_atencao: undefined }) : undefined}
+        />
+      )}
       {erro ? (
         <Banner tone="warning" icon={TriangleAlert} compact role="status"
                 actions={<Button size="sm" onClick={() => usePedidosStore.getState().bater()}>Tentar de novo</Button>}>
@@ -143,7 +158,7 @@ export function ListaDePedidos() {
         </Banner>
       ) : null}
       {itens === null ? (
-        <EsqueletoDaLista label="Carregando os pedidos…" />
+        erro ? null : <EsqueletoDaLista label="Carregando os pedidos…" />
       ) : itens.length === 0 ? (
         temFiltro(filtro) ? (
           <EmptyState icon={CalendarClock} title="Nenhum pedido neste filtro">Limpe os filtros para ver todos.</EmptyState>
@@ -171,9 +186,10 @@ function LinhaDoPedido({ p, agora }: { p: PedidoView; agora: number }) {
   const quem = personas.length > 0 ? personas.join(', ') : aparelhos.join(', ');
   // A hora fica no texto da agenda ("Todo dia às 19:00"); o backend só a escreve quando a regra a traz, então completa-se
   // com a hora da próxima data (escrita no fuso do pedido). O fuso vai uma vez, e só se difere do navegador.
-  const hora = horaEscrita(p.proxima_local) ?? horaNoFuso(p.proxima_em, p.fuso);
+  // Sem a data do laço (desligado ou ainda não gerou), vale a PREVISTA pela agenda, que a API calcula (28.12).
+  const proxima = proximaDoPedido(p, p.proxima_prevista ? [p.proxima_prevista] : null);
+  const hora = horaEscrita(p.proxima_local) ?? horaEscrita(p.proxima_prevista?.local) ?? horaNoFuso(proxima?.iso, p.fuso);
   const agenda = p.gatilhos_resumo?.length ? p.gatilhos_resumo.map((g) => agendaLegivel(g.descricao, p.fuso, hora)).join(' · ') : null;
-  const proxima = p.proxima_em ?? p.proxima_local;
   const fusoMostrado = fusoParaMostrar(p.fuso);
   const usado = p.orcamento_usado !== null && p.orcamento_usado !== undefined ? ` (${Math.round(p.orcamento_usado * 100)}% do orçamento)` : '';
   return (
@@ -189,8 +205,12 @@ function LinhaDoPedido({ p, agora }: { p: PedidoView; agora: number }) {
         <p className={styles.agenda}>
           <CalendarClock size={13} aria-hidden />
           {agenda ? <span>{agenda}</span> : null}
-          {proxima ? <span>{agenda ? '· ' : ''}próxima <strong title={proxima}>{dataCompacta(proxima, p.fuso)}</strong></span>
-            : p.estado === 'ativo' ? <span className={styles.dim}>{agenda ? '· ' : ''}próxima data ainda não calculada</span> : null}
+          {proxima ? (
+            <span>
+              {agenda ? '· ' : ''}{proxima.calculada ? 'prevista' : 'próxima'} <strong title={proxima.iso}>{dataCompacta(proxima.iso, p.fuso)}</strong>
+              {proxima.calculada ? <span className={styles.dim} title="Calculada pela agenda: o laço ainda não gerou esta ocorrência."> (pela agenda)</span> : null}
+            </span>
+          ) : p.estado === 'ativo' ? <span className={styles.dim}>{agenda ? '· ' : ''}sem data prevista</span> : null}
           {fusoMostrado ? <span className={styles.dim}>(fuso {fusoMostrado})</span> : null}
         </p>
         ) : null}

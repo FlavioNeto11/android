@@ -20,14 +20,14 @@ from app.modules.applications.infrastructure import registry
 from app.modules.learning.application.apps import VisaoPorApp
 from app.modules.learning.application.falhas import ServicoDeFalhas
 from app.modules.learning.application.nativos import Decidir
-from app.modules.learning.application.ports import Ajustes, Retencao
+from app.modules.learning.application.ports import Ajustes, CuradorDeIA, Retencao
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.backlog import RegrasDoBacklog
 from app.modules.learning.domain.camada import ModosDeRuntime
 from app.modules.learning.domain.saude import LimiaresDeSaude
 from app.modules.learning.domain.vocabulario import Modo, ModoDeTelas
-from app.modules.learning.infrastructure import (ligar_costuras, ligar_licoes, ligar_nativos, ligar_obsolescencia,
-                                                 ligar_telas, ligar_voz)
+from app.modules.learning.infrastructure import (ligar_costuras, ligar_curador, ligar_licoes, ligar_nativos,
+                                                 ligar_obsolescencia, ligar_telas, ligar_voz)
 from app.modules.learning.infrastructure.declarados import DeclaradosDoRegistro, LojaSql
 from app.modules.learning.infrastructure.eventos import (Barramento, EventosNoBarramento, RiscoDoRegistro,
                                                          TitulosDoRegistro)
@@ -106,20 +106,22 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
                        fluxos: FlowStore | None = None, receitas: RecipeStore | None = None,
                        decidir: Decidir | None = None, relogio: Callable[[], datetime] = now,
                        commit: Callable[[], str | None] | None = None,
-                       eventos: Barramento | None = None) -> LearningService:
+                       eventos: Barramento | None = None,
+                       curador_de_ia: CuradorDeIA | None = None) -> LearningService:
     """`fluxos`/`receitas`: as lojas do scheduler, que passam a nascer e mudar de status com o D1 e a trilha.
     `decidir(texto, run_id)`: a linha do tempo da execução (cada transição do sistema vira uma decisão nela).
     `commit`: o commit que este processo carregou — o MESMO que o `/api/health` mostra; a prova da correção do
     backlog o registra ao começar. Sem ele, lido do `.git` da raiz do projeto (sem chamar `git`).
     `eventos`: o barramento do central (`EventBus`): com ele, o livro publica `learning.needs_person` (30.21). Sem ele,
-    nada é publicado."""
+    nada é publicado. `curador_de_ia`: o adaptador do curador por IA (30.11); sem ele, o simulado (o do hub: 30.12)."""
     repo = SqlLearningRepository(db, guarda_do_fluxo=GuardaDoFluxo(db, habilidades) if habilidades else None,
                                  precos=precos)
+    risco = RiscoDoRegistro()
     servico = LearningService(repo, FontesSql(db, pacotes_do_registro=pacotes_do_registro),
                               TriagemDeCredencial(), ajustes=lambda: ajustes_do_config(config()),
                               relogio=relogio, retencao_de_logs_dias=retencao_de_logs_dias,
                               eventos=EventosNoBarramento(eventos) if eventos is not None else None,
-                              catalogo_de_risco=RiscoDoRegistro(), titulos=TitulosDoRegistro())
+                              catalogo_de_risco=risco, titulos=TitulosDoRegistro())
     # Pacote A3: o que mais falha e o backlog. A apresentação o acha pelo tipo; a curadoria roda o passo dele.
     falhas = ServicoDeFalhas(FontesDeFalhaSql(db, precos=precos), SqlBacklogRepository(db), repo,
                              TriagemDeCredencial(), regras=lambda: regras_do_backlog(config().backlog),
@@ -139,4 +141,7 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
     ligar_telas.ligar(servico, repo, db, config=lambda: config().telas, relogio=relogio)
     # 30.14: o rótulo `obsoleto_provavel` e o rebaixamento `catalogo_sem_efeito` (passo da curadoria, sem IA).
     ligar_obsolescencia.ligar(servico, repo, db, fontes=FontesSql(db, pacotes_do_registro=pacotes_do_registro))
+    # 30.11: o curador por IA (laço próprio sob a trava de líder; `off` de fábrica; adaptador simulado até o 30.12).
+    ligar_curador.ligar(servico, repo, db, TriagemDeCredencial(), config=lambda: config().curador, precos=precos,
+                        relogio=relogio, catalogo=risco, curador_de_ia=curador_de_ia)
     return servico

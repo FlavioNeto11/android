@@ -5210,6 +5210,272 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-02T21:53:18+00:00"
+  },
+  "28.12": {
+   "id": "28.12",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "PR #118, merge 26eee424 na main (02/10/2026, sessao jev). Ajustes de API: PedidoView.proxima_prevista (data calculada pela agenda quando o laco ainda nao gerou) e laco{ligado} na lista (sinal do laco desligado). Achados da validacao do deploy 2 na tela Pedidos: erro na primeira carga so com o aviso e Tentar de novo; previa com persona e app pelo nome, aviso de autonomia (Observar/Preparar) e objetivo recolhido com as quebras; cabecalho de cartao compartilhado (ui.module.css, <=720 px, texto com base 12rem e acao no canto); leitura em portugues das datas; barra de filtros some sem pedidos; botao no link velho; titulo dado pela pessoa inteiro no detalhe; objetivo do Resumo com pre-line; 'Carregar mais antigas' so com detalhe cheio (20); motivo de nova tentativa legivel (UTC). Prova simulated: vitest 1279/106 arquivos, typecheck limpo, pytest de pedidos 458 (Idle, -n 3), docs-check 0/0; navegador contra backend simulado a 1366/600/386/375 px (lista, filtros, Avisos, erro e nova tentativa, novo pedido, datas, previa nas tres autonomias, detalhe e abas, link velho, Pendencias). Persona e app pelo nome na previa: so vitest (o simulado nao tem persona). Suite inteira do backend: not_run neste PR.",
+   "blocker": "Prova real pendente: so depois do deploy 3, com pedidos.enabled ligado no central (e desligado no fim), teto US$ 1,00 no total e US$ 0,30 por pedido, aparelho sem conta real, navegador so leitura percorrendo o detalhe de um pedido.",
+   "files": [
+    "backend/app/modules/pedidos/infrastructure/laco.py",
+    "backend/app/modules/pedidos/infrastructure/servico.py",
+    "frontend/src/features/pedidos/ListaDePedidos.tsx",
+    "frontend/src/features/pedidos/DetalheDoPedido.tsx",
+    "frontend/src/features/pedidos/PreviaDoPedido.tsx",
+    "frontend/src/features/pedidos/NovoPedido.tsx",
+    "frontend/src/features/pedidos/CaixaDeAvisos.tsx",
+    "frontend/src/components/ui.module.css"
+   ],
+   "testes": [
+    "frontend/src/features/pedidos/PedidosPage.test.tsx",
+    "frontend/src/features/pedidos/NovoPedido.test.tsx",
+    "frontend/src/features/pedidos/formato.test.ts",
+    "backend/tests/test_pedidos_api.py",
+    "backend/tests/test_pedidos_retentativa.py"
+   ],
+   "grupo": "sessao:jev-28-12",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-02T23:44:10+00:00"
+  },
+  "30.12": {
+   "id": "30.12",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Branch feat/30-12-curador-hub (4edecb8d + f0372b63, sobre o 30.11 8bbe35ff e o 31.2/31.6), 02/10/2026, sessao jev. AIRouter.review_knowledge(PedidoDeParecer): papel plan emprestado, run_id None, origem curador, ref = dossie_hash, fatia do curador (31.6). Template e esquema em planning/curador.py (curador-v1, enums das opcoes fechadas); Anthropic, OpenAI-compativel e simulado. Adaptador modules/learning/infrastructure/curador_do_hub.py::CuradorDoHub ligado pelo AppState: ponte de thread para o laco do processo, AIError -> RecusaDoProvedor(kind), usd e ai_call_id medidos na linha de ai_calls, simulado vindo da RESPOSTA (regressao do roteador misto). backend/tests/test_curador_do_hub.py (15) + afetados 178 verdes. Modo do curador segue off de fabrica. Chamada real: not_run. Pendencias: modelo_sugerido vai ao mesmo modelo do plan; NovaRevisao grava ai_call_id desde o #114 (075), na mesma integracao; saldo da conta fora da rubrica. Integracao: jev/integ-suite-5 (merge 6b33fcb9 do f0372b63, depois do #107/30.11); suites 5 (bb8bfc1q2) e 5b (bvqmppz9x) verdes nessa parte; na main pelo merge 8413ddc9 (integ jev/integ-suite-5 @ 1cb9bb4a).",
+   "blocker": "",
+   "files": [
+    "backend/app/planning/curador.py",
+    "backend/app/planning/routing.py",
+    "backend/app/planning/anthropic_provider.py",
+    "backend/app/planning/openai_provider.py",
+    "backend/app/planning/simulated_provider.py",
+    "backend/app/modules/learning/infrastructure/curador_do_hub.py",
+    "backend/app/state.py"
+   ],
+   "testes": [
+    "backend/tests/test_curador_do_hub.py"
+   ],
+   "grupo": "sessao:jev-30-12",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T00:13:49+00:00"
+  },
+  "28.8": {
+   "id": "28.8",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Branch feat/28-8-gatilhos-evento (999d159d..HEAD, sobre a main c12f749a), 02/10/2026, sessao jev. Desenho em docs/design/pedidos-laco.md §14; contrato adendo v0.67 (era v0.60; renumerado na integracao da suite 5). Evento: cursor ev:<events.id>, base na ativacao e na retomada daqui, margem de 5 s, piso da autonomia, sem pedido.* e sem a execucao do proprio pedido, uma ocorrencia por volta sem texto do evento, buraco da retencao registrado (memoria pendencia) sem disparo, log que volta refaz a base. Persona: primeira visita na ativacao, seguinte pelo proxima_visita_s presa a [min, max] e a fim_em. Condicao: por borda sobre as observacoes, memoria descoberta, sem ocorrencia. backend/tests/test_pedidos_gatilhos_dinamicos.py (20) + pedidos e arquitetura 486 verdes; frontend 1250 verdes; navegador 1366/375 contra backend simulado (lista, filtro Quando acontecer, ocorrencias Por evento e Por persona). PostgreSQL: not_run. real: not_run. Migracao 076_pedido_avisos_gatilhos (CHECK com eventos_perdidos e condicao_atendida; reconstrucao no SQLite, DROP/ADD no PG): aceite fechado em test_buraco_e_condicao_viram_aviso_gravado_uma_vez; migracao em test_pedidos_avisos.py. 23 testes no arquivo proprio; 511 afetados verdes. Integracao: jev/integ-suite-5 (merge f62e74b9 do 73e00dce); suites 5 (bb8bfc1q2) e 5b (bvqmppz9x) verdes nessa parte; na main pelo merge 8413ddc9 (integ jev/integ-suite-5 @ 1cb9bb4a).",
+   "blocker": "",
+   "files": [
+    "backend/app/modules/pedidos/domain/gatilhos_dinamicos.py",
+    "backend/app/modules/pedidos/domain/previa.py",
+    "backend/app/modules/pedidos/infrastructure/laco.py",
+    "backend/app/modules/pedidos/infrastructure/repositorio.py",
+    "backend/app/modules/pedidos/infrastructure/servico.py",
+    "backend/app/modules/pedidos/infrastructure/acoes.py",
+    "frontend/src/features/pedidos/modelo.ts",
+    "backend/migrations/076_pedido_avisos_gatilhos.sql",
+    "backend/app/modules/pedidos/domain/avisos.py"
+   ],
+   "testes": [
+    "backend/tests/test_pedidos_gatilhos_dinamicos.py",
+    "frontend/src/features/pedidos/formato.test.ts",
+    "backend/tests/test_pedidos_avisos.py"
+   ],
+   "grupo": "sessao:jev-28-8",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T00:13:49+00:00"
+  },
+  "31.1": {
+   "id": "31.1",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Commit b5a40c98 (na main desde o PR #110, sessao jev, 02/10/2026): trava de 255 opcoes e opcao nenhuma no adaptador do Jev (choice). backend/tests/test_context_retrieval_semantic.py com provedor falso. Chamada real: not_run.",
+   "blocker": "",
+   "files": [
+    "backend/app/modules/context_retrieval/adapters/jev.py",
+    "backend/app/modules/context_retrieval/domain/errors.py"
+   ],
+   "testes": [
+    "backend/tests/test_context_retrieval_semantic.py"
+   ],
+   "grupo": "sessao:jev-31-x",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T00:13:49+00:00"
+  },
+  "31.2": {
+   "id": "31.2",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #112 (merge b5baf3e5 na main, commits 89a92b03 + a6cfa0fd, sessao jev, 02/10/2026): migracao 073 (ai_calls.origem e ref, TEXT sem CHECK), Usage.origem, filtro por origem no gasto (costs.spent_usd). backend/tests/test_origem_e_rubrica_de_ia.py. Suites 5 e 5b verdes nessa parte (bb8bfc1q2, bvqmppz9x).",
+   "blocker": "",
+   "files": [
+    "backend/migrations/073_origem_das_chamadas_de_ia.sql",
+    "backend/app/planning/costs.py",
+    "backend/app/planning/provider.py",
+    "backend/app/planning/routing.py",
+    "backend/app/taskqueue/repository.py",
+    "backend/app/config.py"
+   ],
+   "testes": [
+    "backend/tests/test_origem_e_rubrica_de_ia.py"
+   ],
+   "grupo": "sessao:jev-31-x",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T00:13:49+00:00"
+  },
+  "31.4": {
+   "id": "31.4",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #110 (merge 6a6e54d7 na main, commit b4645c91, sessao jev, 02/10/2026): porta DecisaoFechada no hub, contrato, decisores falso e nulo, privacidade.validar com JEV_RUNTIME_SEND_APPROVED=False (constante de codigo), recusa total em C7, modos off/shadow/on, desligada por padrao. backend/tests/test_decisao_fechada.py. Nada sai: chamada real not_run (so no 31.10).",
+   "blocker": "",
+   "files": [
+    "backend/app/planning/decisao_fechada/contrato.py",
+    "backend/app/planning/decisao_fechada/decisores.py",
+    "backend/app/planning/decisao_fechada/porta.py",
+    "backend/app/planning/decisao_fechada/privacidade.py",
+    "backend/app/planning/decisao_fechada/__init__.py",
+    "backend/app/config.py"
+   ],
+   "testes": [
+    "backend/tests/test_decisao_fechada.py"
+   ],
+   "grupo": "sessao:jev-31-x",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T00:13:49+00:00"
+  },
+  "31.5": {
+   "id": "31.5",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Branch feat/31-5-sombra-registro (5a29096c, 5ad49126, dda637ad, 0b0d7102), na main pelo merge 8413ddc9 da integ jev/integ-suite-5 @ 1cb9bb4a (suites 5 e 5b: bb8bfc1q2, bvqmppz9x). Migracao 074 (decisao_fechada_sombra e decisao_fechada_diario, retencao propria com agregacao antes de purgar), preco jev-1.13.0, conta typesafe no livro-caixa (ADR-051), transparencia em GET /api/ai com a chave so como configurada. Testes test_decisao_fechada_sombra.py e test_saldos_de_ia.py. Ancora real da conta typesafe: depois do deploy 3. Chamada real: not_run.",
+   "blocker": "",
+   "files": [
+    "backend/migrations/074_sombra_da_decisao_fechada.sql",
+    "backend/app/planning/decisao_fechada/sombra.py",
+    "backend/app/planning/decisao_fechada/transparencia.py",
+    "backend/app/planning/saldos.py",
+    "backend/app/api.py",
+    "backend/app/models.py",
+    "backend/app/state.py",
+    "backend/app/config.py"
+   ],
+   "testes": [
+    "backend/tests/test_decisao_fechada_sombra.py",
+    "backend/tests/test_saldos_de_ia.py"
+   ],
+   "grupo": "sessao:jev-31-x",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T00:13:49+00:00"
+  },
+  "31.6": {
+   "id": "31.6",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #112 (merge b5baf3e5 na main, commit a6cfa0fd, sessao jev, 02/10/2026): rubrica unica de gasto com fatias por origem, fatia_jev (ai.limits.jev_max_usd_per_day, US$ 0,50/dia, D-J3) e AIError.motivo fechado (P6). backend/tests/test_origem_e_rubrica_de_ia.py. Pendencia registrada em docs/ia.md (e0eb7732): unificar o saldo da conta na rubrica.",
+   "blocker": "",
+   "files": [
+    "backend/app/planning/routing.py",
+    "backend/app/config.py"
+   ],
+   "testes": [
+    "backend/tests/test_origem_e_rubrica_de_ia.py"
+   ],
+   "grupo": "sessao:jev-31-x",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T00:13:49+00:00"
+  },
+  "31.7": {
+   "id": "31.7",
+   "status": "implemented",
+   "proof": "not_run",
+   "evidence": "Golden set e limiares PRE-REGISTRADOS em docs/design/jev-golden-set.md (commit ae2e5370, 02/10/2026 UTC, branch feat/31-8-curador-sombra; data corrigida em 59ac9706), com a frente Aprendizado (mapeamento de rotulos). Item de pre-registro, sem chamada: nada a executar ate o 31.10. O mapeamento do curador tem teste simulated em test_decisao_fechada_curador.py.",
+   "blocker": "",
+   "files": [
+    "docs/design/jev-golden-set.md",
+    "backend/app/planning/decisao_fechada/curador.py"
+   ],
+   "testes": [
+    "backend/tests/test_decisao_fechada_curador.py"
+   ],
+   "grupo": "sessao:jev-31-x",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T00:13:49+00:00"
+  },
+  "31.8": {
+   "id": "31.8",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "Branch feat/31-8-curador-sombra (b18476e1, ae2e5370, 59ac9706) + ligacao no AppState (5e8bb8a5: CuradorComTriagemEmSombra embrulha o CuradorDoHub; simulado por resposta), na main pelo merge 8413ddc9 da integ jev/integ-suite-5 @ 1cb9bb4a (suites 5 e 5b verdes nessa parte). Triagem do curador em sombra C0/F1, campos fechados (privacidade.CAMPOS_POR_ORIGEM['curador']). Desligada por padrao e envio fechado (JEV_RUNTIME_SEND_APPROVED=False). Chamada real: not_run.",
+   "blocker": "Revisao adversarial da suite 5: I1 (stop() nao espera o pool sombra-curador antes do db.close) e I2 (decisao real casada = parecer bruto, mesmo invalido ou simulado; contamina a concordancia do GO) precisam de correcao antes de ligar shadow (31.10).",
+   "files": [
+    "backend/app/planning/decisao_fechada/curador.py",
+    "backend/app/planning/decisao_fechada/privacidade.py",
+    "backend/app/modules/learning/infrastructure/curador_do_hub.py",
+    "backend/app/state.py"
+   ],
+   "testes": [
+    "backend/tests/test_decisao_fechada_curador.py"
+   ],
+   "grupo": "sessao:jev-31-x",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T00:13:49+00:00"
+  },
+  "31.9": {
+   "id": "31.9",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "Branch feat/31-9-intencao-sombra (e1f7ee53, 1d867449, 106ecd67, a8072fb9, 8e7315ba, 6bb5261e, cd74d897), na main pelo merge 8413ddc9 da integ jev/integ-suite-5 @ 1cb9bb4a (suite 5b bvqmppz9x: a catraca do ADR-052 passou depois do cd74d897). Sombra da intencao R2/R3 fora da cadeia, depois do _plan; C3 por lista de permissao (entidades.py), C7 em prosa recusa o pedido inteiro; desligado nao le, nao resolve e nao grava. test_decisao_fechada_intencao.py (DecisorFalso). Envio fechado: JEV_RUNTIME_SEND_APPROVED=False. Chamada real: not_run.",
+   "blocker": "Correcao de privacidade antes de qualquer R2/C3: itens 1-6 da reverificacao (.claude/handoffs/reverificacao-31-9.md: vocabulario do catalogo com @handles, opcoes da R2, lista de bloqueio do banco, palavras comuns que sao nomes, C7 multilingue, aspas e simbolos) e I3/I4 da revisao da suite 5; portao: ataque.py com zero vazamento e varredura do catalogo real limpa.",
+   "files": [
+    "backend/app/planning/decisao_fechada/entidades.py",
+    "backend/app/planning/decisao_fechada/intencao.py",
+    "backend/app/planning/decisao_fechada/porta.py",
+    "backend/app/planning/decisao_fechada/privacidade.py",
+    "backend/app/taskqueue/sombra_intencao.py",
+    "backend/app/taskqueue/service.py",
+    "backend/app/state.py"
+   ],
+   "testes": [
+    "backend/tests/test_decisao_fechada_intencao.py"
+   ],
+   "grupo": "sessao:jev-31-x",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T00:13:49+00:00"
   }
  },
  "rodadas": [
@@ -6339,6 +6605,49 @@
    ],
    "grupos": [
     "8-operacao:8.3+8.4"
+   ]
+  },
+  {
+   "quando": "2026-10-02T23:44:10+00:00",
+   "itens": [
+    "28.12"
+   ],
+   "grupos": [
+    "sessao:jev-28-12"
+   ]
+  },
+  {
+   "quando": "2026-10-03T00:13:49+00:00",
+   "itens": [
+    "30.12"
+   ],
+   "grupos": [
+    "sessao:jev-30-12"
+   ]
+  },
+  {
+   "quando": "2026-10-03T00:13:49+00:00",
+   "itens": [
+    "28.8"
+   ],
+   "grupos": [
+    "sessao:jev-28-8"
+   ]
+  },
+  {
+   "quando": "2026-10-03T00:13:49+00:00",
+   "itens": [
+    "31.1",
+    "31.2",
+    "31.4",
+    "31.5",
+    "31.6",
+    "31.7",
+    "31.8",
+    "31.9"
+   ],
+   "grupos": [
+    "sessao:jev-31-x"
    ]
   }
  ]

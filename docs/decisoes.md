@@ -75,7 +75,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-065](#adr-065--ação-de-catálogo-entrega-valor-lido-a-outra-etapa-saidas-declaradas-no-catalogoyaml) | Ação de catálogo entrega valor lido a outra etapa: `saidas` declaradas no `catalogo.yaml` | vigente (12.3) | 02/10 |
 | [ADR-066](#adr-066--laço-de-pedidos-desligado-por-padrão-origem-interna-na-criação-da-execução-e-edição-por-gatilho-novo) | Laço de pedidos: desligado por padrão, origem interna na criação da execução e edição por gatilho novo | aceito (Fase 28, 28.4) | 02/10 |
 | [ADR-068](#adr-068--conta-bloqueada-sai-na-hora-e-a-persona-fica-lápide-só-com-o-hash-do-arroba) | Conta bloqueada sai na hora e a persona fica; lápide só com o hash do @ (item 29.23) |
-| [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31) | 02/10 |
+| [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) | 02/10 |
 
 ---
 
@@ -4096,16 +4096,26 @@ catálogo, comando), que o ADR-063 não cobre.
    aprendizados derivados do nosso uso; até C0 revela o padrão de uso do parque.
 6. **Modos e prova.** `off` é o padrão; `shadow` é assíncrono e fora do caminho crítico; `on` só por consumidor, com GO
    pré-registrado (limiares escritos antes do primeiro resultado, 31.7). Um fallback nunca conta como acerto.
-7. **Gasto.** Fatia própria `fatia_jev` dentro do teto do dia (31.6), US$ 0,50/dia; a conta TypeSafe entra no livro-caixa do
-   ADR-051. A prova real paga em sombra (31.10/31.11) está AUTORIZADA com essa fatia e teto total registrado, **condicionada à
+7. **Gasto.** *(Emendado em 02/10/2026, ~23:25Z: a condição da troca da chave caiu; ver o item 9.)* Fatia própria `fatia_jev`
+   dentro do teto do dia (31.6), US$ 0,50/dia; a conta TypeSafe entra no livro-caixa do ADR-051. A prova real paga em sombra (31.10/31.11) está AUTORIZADA com essa fatia e teto total registrado~~, **condicionada à
    troca da chave TypeSafe pelo dono ANTES de qualquer chamada nova** (D-J3; o piloto marcou rotação obrigatória). Até o dono
-   confirmar a troca, nenhuma chamada real ao Jev; ninguém lê nem toca a chave.
+   confirmar a troca, nenhuma chamada real ao Jev~~ (condição revogada pelo item 9, que fixa a ordem das chamadas reais);
+   ninguém lê nem toca a chave.
 8. **Transparência.** Com `shadow` ligado, o `notice` de `GET /api/ai` nomeia a TypeSafe e as classes enviadas; a chave aparece só
    como "configurada".
+9. **Emenda de 02/10/2026 (decisão do dono no chat da orquestradora, ~23:25Z, relatada à frente Jev): a chave TypeSafe NÃO
+   será trocada.** O dono mantém a chave atual ("tira essa regra"), como no ADR-017 com a Anthropic. Cai a condição do item 7
+   e da D-J3 (troca da chave antes de qualquer chamada nova). A prova real em sombra (31.10/31.11) depende só dos tetos, a
+   `fatia_jev` de US$ 0,50/dia dentro do teto do dia (31.6) e o teto total registrado, e segue a ordem combinada com a
+   orquestradora: suíte 5, merges, deploy 3, envio liberado por classe (C0 a C2 primeiro; C3 só com o 31.9 corrigido e
+   mergeado) e, por fim, a sombra real numa janela combinada, sem suíte rodando junto. O resto não muda: ninguém lê nem
+   imprime a chave (ela aparece só como "configurada" ou "não configurada", item 8), e `JEV_RUNTIME_SEND_APPROVED` só vira
+   `True` no 31.10.
 
 **Consequências.** A plataforma ganha um motor barato (US$ 0,042/M de entrada, saída grátis) para decisões fechadas que hoje não
 acontecem ou vão ao Opus, medido em sombra contra o caminho atual antes de qualquer `on`. O ADR-063 continua valendo para código.
-Prova: `simulated` nos itens 31.1–31.9 (provedor nulo e falso); `real` só no 31.10/31.11, depois da chave nova.
+Prova: `simulated` nos itens 31.1–31.9 (provedor nulo e falso); `real` só no 31.10/31.11 (item 9: sem troca de chave, depois do
+deploy 3 e da liberação por classe).
 
 **Relação.** ADR-063 (emendado), ADR-009, ADR-040, ADR-051, ADR-054; Fase 31 em [plano-100.md](plano-100.md);
 `backend/app/modules/context_retrieval/adapters/jev.py`; `backend/app/planning/` (porta, 31.4).

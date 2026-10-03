@@ -26,9 +26,11 @@ from datetime import datetime
 
 from app.config import PedidosCfg
 from app.db import Database, Row, dumps, loads
+from app.events import EPHEMERAL_KINDS
 from app.models import RunTargetsPreview
 from app.modules.execution.presentation.schemas import RunTargetsResolveBody
 from app.modules.pedidos.domain import avisos as dominio_avisos
+from app.modules.pedidos.domain import gatilhos as dominio_gatilhos
 from app.modules.pedidos.domain import previa
 from app.modules.pedidos.domain.estados import ATOR_PESSOA, PEDIDO_ATORES, TransicaoInvalida, transicionar_pedido
 from app.modules.pedidos.infrastructure.acoes import AcaoInvalida
@@ -153,7 +155,8 @@ class PedidosApi:
         if fuso == corpo.fuso.strip():
             for i, (tipo, spec) in enumerate(corpo.gatilhos):
                 try:
-                    gatilhos.append(previa.normalizar_gatilho(tipo, spec, fuso, i))
+                    gatilhos.append(previa.normalizar_gatilho(tipo, spec, fuso, i,
+                                                                efemeros=EPHEMERAL_KINDS))
                 except previa.ErroDeCorpo as e:
                     bloqueios.append(e.bloqueio)
         sem_destinos = preview.command_sem_destinos if preview is not None else corpo.selecao.command
@@ -267,6 +270,8 @@ class PedidosApi:
         # O gatilho nasceu com o pedido, e o rascunho pode esperar dias: a agenda vale a partir da ativação (senão o
         # laço trataria como atrasado tudo o que passou enquanto era rascunho). `proxima_em` NULL: o laço calcula.
         self.db.execute("UPDATE pedido_gatilhos SET criado_em=? WHERE pedido_id=?", (em, pid))
+        # Gatilho de evento: a linha de base é o log AGORA (28.8, §14.2). O histórico anterior à ativação nunca dispara.
+        self.repo.base_dos_eventos(pid)
 
     def ativar(self, pedido_id: str, confirmacao: str) -> JsonObject:
         p = self._pedido(pedido_id)
@@ -396,6 +401,10 @@ class PedidosApi:
         if gatilhos is not None and len(gatilhos) != 1:
             raise ErroDeApi(422, "limite_invalido", "A edição troca a recorrência por uma só (o laço troca o gatilho "
                             "ativo por um novo).", campo="gatilhos")
+        if gatilhos is not None and gatilhos[0][0] not in dominio_gatilhos.SUPORTADOS:
+            raise ErroDeApi(422, "gatilho_nao_suportado", "A edição troca só os gatilhos agora, horário e recorrência. "
+                            "Evento, condição e persona ficam como foram criados: cancele e crie outro pedido.",
+                            campo="gatilhos[0].tipo")
         antes = self._parametros(p)
         # alvos: re-resolvidos só se a pessoa mandou outros (ou mudou o objetivo)
         novo_objetivo = str(mudancas.get("objetivo", antes.objetivo_sem_destinos))
@@ -540,6 +549,7 @@ class PedidosApi:
             (g["tipo"], loads(g["spec"], {}) or {}), p["fuso"])} for g in gat]
         v["personas"] = personas
         v["proxima_local"] = proxima_local
+        v["proxima_prevista"] = self._proxima_prevista(p, gat)
         v["ultima_ocorrencia"] = dict(ultima) if ultima else None
         v["ocorrencias_por_estado"] = por_estado
         v["gasto_usd"] = round(gasto, 6)
@@ -547,6 +557,26 @@ class PedidosApi:
         v["avisos_nao_lidos"] = self.caixa.nao_lidos(pid)
         v["acoes_permitidas"] = previa.acoes_permitidas(p["estado"])
         return v
+
+    #: Estados em que a agenda ainda vale (os mesmos das `proximas` do detalhe).
+    _COM_AGENDA = ("ativo", "pausado", "aguardando_pessoa", "rascunho")
+
+    def _proxima_prevista(self, p: Row, gatilhos: Sequence[Row]) -> JsonObject | None:
+        """A próxima data CALCULADA pela agenda quando o laço ainda não gravou `proxima_em` (laço desligado, pedido
+        recém-ativado ou rascunho). Sem ela a lista não tinha hora nenhuma; com `proxima_em`, é `None` (vale a do laço)."""
+        if p["proxima_em"] or p["estado"] not in self._COM_AGENDA:
+            return None
+        ativos = [previa.GatilhoPedido(g["tipo"], loads(g["spec"], {}) or {}) for g in gatilhos]
+        try:
+            datas = previa.proximas_do_pedido(ativos, p["fuso"], self.agora(), 1, parse_iso(p["fim_em"]))
+        except Exception:  # noqa: BLE001 - agenda inválida: sem data prevista, nunca um erro na leitura
+            return None
+        return datas[0].para_dict() if datas else None
+
+    def sinal_do_laco(self) -> JsonObject:
+        """Se o laço de pedidos roda nesta instalação. A tarefa só sobe no boot com `pedidos.enabled` (ver `AppState.start`):
+        desligado, nenhum gatilho dispara e a tela precisa dizer isso, senão "próxima 08:00" promete o que não vai acontecer."""
+        return {"ligado": bool(self.cfg.enabled)}
 
     def ocorrencia(self, o: Row) -> JsonObject:
         run = None
@@ -582,6 +612,7 @@ class PedidosApi:
             "gatilhos": [{"id": g["id"], "tipo": g["tipo"], "ativo": bool(g["ativo"]), "criado_em": g["criado_em"],
                           "spec": loads(g["spec"], {}), "cursor": g["cursor"]} for g in gat],
             "proximas": proximas,
+            "laco": self.sinal_do_laco(),
             "ocorrencias_recentes": [self.ocorrencia(o) for o in recentes],
             "execucoes_em_curso": [dict(r) for r in em_curso],
             "pendencias": self.pendencias(pedido_id) if p["estado"] == "aguardando_pessoa" else [],
@@ -676,7 +707,7 @@ class PedidosApi:
             total[r["estado"]] = int(r["n"])
         return {"items": [self.view(r) for r in pagina],
                 "proximo_cursor": self._cursor(ini + limit) if ini + limit < len(linhas) else None,
-                "total_por_estado": total}
+                "total_por_estado": total, "laco": self.sinal_do_laco()}
 
     def ocorrencias(self, pedido_id: str, *, estado: str | None, origem: str | None, de: str | None, ate: str | None,
                     limit: int, antes_de: str | None) -> JsonObject:

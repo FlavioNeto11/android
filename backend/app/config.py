@@ -540,6 +540,9 @@ class DecisaoFechadaCfg(BaseModel):
     consumidores: dict[Literal["curador", "intencao", "desempate", "apps"], Literal["off", "shadow", "on"]] = {}
     #: Estreita o teto de código (interseção). None = não estreita além do código.
     classes_permitidas: list[Literal["C0", "C1", "C2", "C3"]] | None = None
+    #: Retenção das linhas da sombra (`decisao_fechada_sombra`, migração 074): dias inteiros; o agregado diário é calculado
+    #: ANTES de purgar e fica. Prazo próprio porque `ai_calls` morre em `log_retention_days` e a sombra precisa de mais.
+    retencao_dias: int = Field(180, ge=1, le=3650)
 
 
 class AiCfg(BaseModel):
@@ -615,6 +618,10 @@ class AiCfg(BaseModel):
         # Destino documentado do fallback de recusa (achado #92): custava o mesmo do Opus 5 e não estava cadastrado,
         # então toda chamada que caísse nele virava "Total parcial" no painel de uso.
         "claude-opus-4-8": [5.0, 0.5, 6.25, 25.0],
+        # Jev (TypeSafe System One, ADR-069): US$ 0,042 por milhão de tokens de entrada, saída grátis, sem cache. A chamada
+        # grava o `usd` declarado (costs soma a coluna quando existe); a entrada aqui evita que o modelo, não cadastrado,
+        # pague o preço MAIS CARO da tabela.
+        "jev-1.13.0": [0.042, 0.0, 0.0, 0.0],
     }
     #: Capacidade DECLARADA por modelo. Chave por família (o sufixo de data é ignorado no casamento).
     #: `min_cache_tokens` (achado #100): prefixo cacheável mínimo de CADA modelo — não é monótono entre gerações
@@ -957,6 +964,21 @@ class SaudeCfg(BaseModel):
     contestacao_dias: int = Field(7, ge=1, le=365)         # janela da evidência contra/conflito
 
 
+class CuradorCfg(BaseModel):
+    """O curador por IA (30.11, `aprendizado-vivo.md` §8.6-8.8): o laço que pede PARECER sobre itens do Livro. De
+    fábrica `off` (nada roda). `shadow` revisa e grava o parecer em `learning_reviews`; `on`, nesta fatia, faz o mesmo
+    (o aceite é sempre da pessoa). O orçamento é proporcional ao gasto da operação (decisão do dono, 02/10):
+    `B_W = min(alfa·G_W, k·N_W·c̄)` na janela de `janela_dias`; `c_max = m_cmax × mediana` do custo por revisão."""
+
+    modo: Literal["off", "shadow", "on"] = "off"
+    intervalo_s: int = Field(3600, ge=60, le=86_400)        # de quanto em quanto tempo o laço olha os gatilhos
+    cooldown_h: float = Field(24.0, ge=0, le=24 * 90)       # o mesmo item não é revisado de novo antes disto
+    alfa: float = Field(0.10, ge=0, le=1)
+    k: float = Field(1.5, ge=0, le=100)
+    janela_dias: int = Field(7, ge=1, le=90)
+    m_cmax: float = Field(4.0, gt=0, le=100)
+
+
 class LearningCfg(BaseModel):
     """Aprendizado contínuo (ADR-054): o livro, o D1, a falha classificada e a régua durável. Nenhuma chamada de IA
     no pipeline: digest por execução e curadoria determinística. De fábrica, lições em `shadow` e telas em `observe`,
@@ -977,6 +999,7 @@ class LearningCfg(BaseModel):
     takeover_gravar: bool = False                          # gravar as entradas manuais da tomada fora do treino
     retencao: RetencaoDoAprendizadoCfg = RetencaoDoAprendizadoCfg()
     saude: SaudeCfg = SaudeCfg()
+    curador: CuradorCfg = CuradorCfg()
 
 
 class AvisosCfg(BaseModel):

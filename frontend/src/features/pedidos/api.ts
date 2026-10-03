@@ -12,6 +12,25 @@ import type { RunSummary } from '../../api/types';
  */
 const enc = encodeURIComponent;
 
+type QueryDeAvisos = { lido?: 0 | 1; requer_pessoa?: 0 | 1; pedido_id?: string; limit?: number; cursor?: string };
+
+/**
+ * A mesma leitura de avisos pedida por dois lugares ao mesmo tempo (o selo do menu e a caixa, por exemplo) vira UMA
+ * chamada. A chamada de rede não leva o `signal` de ninguém: cada quem recebe a resposta, e quem sai (aborta) só deixa
+ * de esperar, sem derrubar a leitura dos outros.
+ */
+const avisosEmVoo = new Map<string, Promise<ListaDeAvisos>>();
+
+function esperarAte<T>(leitura: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return leitura;
+  return new Promise<T>((resolve, reject) => {
+    const abortou = () => reject(new DOMException('Leitura cancelada', 'AbortError'));
+    if (signal.aborted) { abortou(); return; }
+    signal.addEventListener('abort', abortou, { once: true });
+    leitura.then(resolve, reject).finally(() => signal.removeEventListener('abort', abortou));
+  });
+}
+
 export const apiPedidos = {
   /** Sem efeito, sem gravação e SEM chamada de IA: devolve o que a criação decidiria (ADR-044). */
   previa: (corpo: PedidoCorpo & { proximas?: number }, signal?: AbortSignal) =>
@@ -53,9 +72,15 @@ export const apiPedidos = {
     apiRequest<RunSummary[]>('GET', `/pedidos/${enc(id)}/execucoes`, { query: { limit }, signal }),
 
   /** A caixa de avisos. `requer_pessoa=0` é o filtro do painel: o que depende de uma pessoa mora nas Pendências. */
-  avisos: (q: { lido?: 0 | 1; requer_pessoa?: 0 | 1; pedido_id?: string; limit?: number; cursor?: string } = {},
-           signal?: AbortSignal) =>
-    apiRequest<ListaDeAvisos>('GET', '/pedidos/avisos', { query: q, signal }),
+  avisos: (q: QueryDeAvisos = {}, signal?: AbortSignal) => {
+    const chave = JSON.stringify(q);
+    let leitura = avisosEmVoo.get(chave);
+    if (!leitura) {
+      leitura = apiRequest<ListaDeAvisos>('GET', '/pedidos/avisos', { query: q }).finally(() => avisosEmVoo.delete(chave));
+      avisosEmVoo.set(chave, leitura);
+    }
+    return esperarAte(leitura, signal);
+  },
   /** Idempotente. `todos` marca os informativos (os da caixa), só os de `pedido_id` quando ele vem; `ids` marca exatamente os dados. */
   lerAvisos: (corpo: { ids?: string[]; todos?: true; pedido_id?: string }) =>
     apiRequest<{ lidos: number; nao_lidos: number }>('POST', '/pedidos/avisos/ler', { body: corpo }),

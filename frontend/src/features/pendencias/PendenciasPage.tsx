@@ -81,9 +81,7 @@ export function PendenciasPage() {
         <LoadingRegion label="Carregando as pendências…"><Skeleton height={64} radius={8} /><Skeleton height={64} radius={8} /></LoadingRegion>
       ) : visiveis.length === 0 ? (
         <EmptyState icon={CheckCircle2} title={filtro ? `Nada de ${ROTULO_DA_ORIGEM[filtro].toLowerCase()} aguardando você` : 'Nada aguardando você'}
-                    hint={filtro ? 'Escolha "Todas" para ver as outras origens.' : 'Quando algo precisar da sua decisão, aparece aqui e no contador do menu.'}>
-          Nenhuma pendência.
-        </EmptyState>
+                    hint={filtro ? 'Escolha "Todas" para ver as outras origens.' : 'Quando algo precisar da sua decisão, aparece aqui e no contador do menu.'} />
       ) : (
         <>
           {recentes.length > 0 ? (

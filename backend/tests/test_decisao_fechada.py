@@ -51,7 +51,7 @@ def _resp(escolha: str | None = "a", conf: float | None = 0.95, **kw: object) ->
 
 # ---------------------------------------------------------------- contrato
 def test_constantes_de_codigo_nascem_fechadas_para_envio_e_o_teto_segue_o_adr_069() -> None:
-    assert privacidade.JEV_RUNTIME_SEND_APPROVED is False  # só vira True no 31.10, com a chave nova do dono
+    assert privacidade.JEV_RUNTIME_SEND_APPROVED is False  # só vira True no 31.10 (ADR-069 item 9: a chave não muda)
     assert privacidade.JEV_ALLOWED_CLASSES == frozenset({"C0", "C1", "C2", "C3"})  # ADR-069 item 4
     assert df.JEV_RUNTIME_SEND_APPROVED is False
 
