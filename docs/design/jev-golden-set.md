@@ -106,5 +106,6 @@ ambígua: só ali a R3 (desempate) tem o que medir.
 
 ## 4. O que fica fora
 
-- Memória (conteúdo nunca sai), fluxo (C2, F2) e social/persona (D-J5).
+- Memória (conteúdo nunca sai), fluxo (C2, F2) e a DECISÃO por persona (D-J5; desde o ADR-069 item 10, o dado pessoal pode
+  ir com filtro sensato, C7 nunca).
 - Qualquer chamada: o 31.7 não chama nada. A primeira medição real é o 31.10, nos tetos do ADR-069 (sem troca de chave: item 9).

@@ -4014,16 +4014,18 @@ catálogo, comando), que o ADR-063 não cobre.
 3. **Constantes de código fechadas por padrão**, ao lado das do ADR-063 (que continuam: código privado e sintético NEGADOS):
    `JEV_RUNTIME_SEND_APPROVED` e `JEV_ALLOWED_CLASSES`. O YAML só restringe, nunca libera. Cada classe liberada tem linha aqui,
    com data.
-4. **Classes de dado liberadas pelo dono em 02/10/2026:**
+4. **Classes de dado liberadas pelo dono em 02/10/2026:** *(Emendado em 03/10/2026, ~00:15Z: C3 com filtro sensato em vez de
+   remoção que falha fechada, e D-J5 só de decisão; ver o item 10.)*
 
    | Classe | O que | Liberada para |
    |---|---|---|
    | C0 | categorias e metadados (`failure_kind`, risco, `side_effect`, tier, contagens, status) | F1: todos os consumidores da porta |
    | C1 estrito | Livro sanitizado por campos nomeados de lista fechada (lição de texto fechado, metadados de receita sem rótulo de seletor) | F1 |
    | C2 | catálogo próprio do dono (nome, descrição e modelo de habilidade, fluxo, capability, app declarado) | F2 |
-   | C3 | comando do dono, depois de `sem_destinos`, `redact` e remoção de entidades que FALHA FECHADA | F3: só a sombra da intenção (31.9) |
+   | C3 | comando do dono, depois de `sem_destinos`, `redact` e remoção de entidades ~~que FALHA FECHADA~~ com filtro sensato (item 10) | F3: só a sombra da intenção (31.9) |
 
-   Fora: C4 (cartão e texto da persona) e todo o pipeline social e de persona (D-J5; AUP 1.3, 1.6 e 3.3); C5 (árvore de UI);
+   Fora: C4 (cartão e texto da persona) e todo o pipeline social e de persona (D-J5; AUP 1.3, 1.6 e 3.3; desde o item 10, D-J5
+   veta só a DECISÃO por persona, não o dado); C5 (árvore de UI);
    C6 (tela e texto de conta real) até pedido de privacidade/ZDR e ADR próprio; **C7 nunca**, em modo nenhum, sombra inclusa
    (tela sensível, aparelho-loja, segredo, credencial, desafio, 2FA, CAPTCHA: o pedido INTEIRO é recusado); C8 segue o ADR-063.
 5. **Telemetria do MCA aceita por escrito.** O dono aceita que a TypeSafe processe logs, estatísticas, classificações e
@@ -4046,17 +4048,31 @@ catálogo, comando), que o ADR-063 não cobre.
    imprime a chave (ela aparece só como "configurada" ou "não configurada", item 8), e `JEV_RUNTIME_SEND_APPROVED` só vira
    `True` no 31.10.
 10. **Emenda de 03/10/2026 (decisão do dono, ~00:15Z, no chat da orquestradora, relatada à frente Jev): dado pessoal pode ir
-    ao Jev com filtro sensato.**
-    - Pode ir sem máscara: o nome da persona NOSSA e o nome e o pacote do app, no golden set, na triagem do curador e na
-      sombra da intenção.
-    - Continua fora: C7 (segredo, credencial, token, código de verificação: o pedido inteiro é recusado), código-fonte (C8,
-      ADR-063), `@handle`, nome e texto de TERCEIROS (quem não é persona nossa) e texto livre de tela.
-    - O filtro da C3 é o do 31.9 corrigido (`planning/decisao_fechada/entidades.py`): lista de permissão fixa mais os nomes
-      de app do registro (ADR-052), nunca o texto do catálogo; o que não se mascara com segurança recusa o pedido. Ele ainda
-      mascara o nome de persona fora do vocabulário: "pode ir" não obriga, e mascarar a mais só custa utilidade. As opções
-      da R2 (C2) passam por `mascarar_catalogo` antes do corte.
-    - Os portões não mudam: `JEV_RUNTIME_SEND_APPROVED` só vira `True` no 31.10, a C3 só sai depois do 31.9 corrigido e
-      mergeado, e o pipeline social e de persona segue fora como consumidor da porta (D-J5).
+    ao Jev, com filtro SENSATO.** Nas palavras relatadas: "mandar informação pessoal pro Jev não tem problema, desde que faça
+    sentido no filtro". *(Texto corrigido em 03/10 ~02:20Z: a primeira redação deste item dizia que `@handle` e nome de
+    terceiro continuavam fora, o que contradiz a decisão relatada.)*
+    - A C3 (comando do dono) e os nomes e `@handles` de pessoas, nossas ou de terceiros, PODEM sair. Cai a exigência de
+      remoção que FALHA FECHADA (item 4): o filtro mascara o que não ajuda a decisão e mantém o que ajuda.
+    - Piso mantido pela orquestradora, sem nova pergunta ao dono:
+      - **C7 nunca sai** (segredo, credencial, código de verificação, 2FA, PIN, OTP, tela sensível: o pedido inteiro é
+        recusado);
+      - e-mail e telefone completos viram `[email]` e `[telefone]`;
+      - o que esconde e-mail, telefone ou documento recusa o pedido: e-mail ofuscado, numerais por extenso (telefone, CPF) e
+        documento.
+    - O filtro do 31.9 corrigido (`planning/decisao_fechada/entidades.py`) é uma lista de BLOQUEIO sobre esse piso, sem lista
+      de permissão e sem recusa por proporção de palavras desconhecidas. Link, `@handle`, número e token de código também
+      viram marcador, porque não ajudam a escolher a habilidade. As opções da R2 (C2) passam pelas mesmas máscaras de forma.
+    - Portão do 31.9: só C7, e-mail e telefone contam como vazamento; nome e handle deixam de contar.
+    - **D-J5 deixa de ser exclusão de DADO e vira só de decisão:**
+      - o Jev não decide por persona, e a origem `social_persona` continua recusada na porta;
+      - nome de persona pode aparecer no que já sai (C3, C2);
+      - C4, como classe própria, continua sem consumidor.
+    - Os portões de envio não mudam:
+      - `JEV_RUNTIME_SEND_APPROVED` só vira `True` no 31.10;
+      - a C3 só sai depois do 31.9 corrigido e mergeado;
+      - o curador (C0 e C1) vai primeiro, e a intenção (C3) fica liberada para o 31.10 assim que a correção passar no portão
+        novo.
+    - Código-fonte segue o ADR-063 (C8).
 
 **Consequências.** A plataforma ganha um motor barato (US$ 0,042/M de entrada, saída grátis) para decisões fechadas que hoje não
 acontecem ou vão ao Opus, medido em sombra contra o caminho atual antes de qualquer `on`. O ADR-063 continua valendo para código.

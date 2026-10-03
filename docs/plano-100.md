@@ -735,7 +735,7 @@ o curador grava pareceres auditáveis dentro do orçamento proporcional; e a pro
 
 Origem: a direção do dono de 02/10 ("analise tudo em que ele pode funcionar na plataforma e acelerar") e o roteiro com verificação adversarial em
 `.claude/handoffs/roteiro-jev.md`. Peça comum da frente Jev no hub de IA: a porta `DecisaoFechada`. Nada envia dado antes do ADR-069 e das respostas
-do dono (31.8 em diante); Jev fora do social e da persona (D-J5); a D-J3 (girar a chave antes de qualquer chamada nova) caiu em 02/10, por decisão do dono (ADR-069 item 9): a prova real depende só dos tetos.
+do dono (31.8 em diante); o Jev não decide por persona (D-J5, só de decisão desde o ADR-069 item 10: o dado pessoal pode ir com filtro sensato, C7 nunca); a D-J3 (girar a chave antes de qualquer chamada nova) caiu em 02/10, por decisão do dono (ADR-069 item 9): a prova real depende só dos tetos.
 
 | Item | O que | Achados | Tam. |
 |---|---|---|---|
