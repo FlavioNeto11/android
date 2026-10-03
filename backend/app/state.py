@@ -48,6 +48,7 @@ from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from .modules.avisos.infrastructure.portas_da_central import PortasReais
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos
 from .modules.avisos.infrastructure.trello_leitor import LeitorDoTrello
+from .modules.avisos.infrastructure.trello_webhook import CadastroDoWebhook, PortaDoWebhook
 from .modules.avisos.infrastructure.trello_saude import problemas_do_trello
 from .modules.context_retrieval.adapters.jev import JevSemanticProvider
 from .modules.identity.application.ports import SessionProvider
@@ -548,10 +549,16 @@ class AppState:
         # O leitor do Trello (32.2, passo 4): as actions do quadro viram comandos do dono, pela MESMA conversa do Telegram; só o
         # dono comanda, aprovar pede confirmação fora do Trello. Desligado de fábrica (`trello.enabled`). Convidado que pede
         # algo vira um aviso ao dono pela fila existente.
+        self.trello_cadastro = CadastroDoWebhook(cfg)
         self.trello_leitor = LeitorDoTrello(
             cfg, EntradasDoCanal(self.db, canal="trello"), CartoesDoTrello(self.db, self.db.agora),
             CursorDoTrello(self.db, self.db.agora), portas_da_central, lider=self._lider, recusa=triagem.recusa,
-            redigir=triagem.redigir, avisar_dono=self.avisos.enfileirar_aviso, relogio=self.db.agora)
+            redigir=triagem.redigir, avisar_dono=self.avisos.enfileirar_aviso, relogio=self.db.agora,
+            cadastro=self.trello_cadastro)
+        # O webhook do Trello (32.2, §8): a rota só confere a assinatura e ANOTA o id da action; o líder a relê pela API.
+        # Desligado de fábrica (`trello.webhook.enabled`); a reconciliação do leitor cobre sozinha.
+        self.trello_webhook = PortaDoWebhook(cfg, EntradasDoCanal(self.db, canal="trello"),
+                                             acordar=self.trello_leitor.acordar)
         # O catálogo da cadeia de intenção (habilidades publicadas e fluxos ativos, respeitando `skills.enabled` e
         # `ai.flows`), lido na hora. Compartilhado pela sombra da intenção (31.9) e pelo rótulo de intenção do Aprendizado
         # (30.25): os dois medem contra o MESMO catálogo.
@@ -3260,6 +3267,8 @@ class AppState:
         # A recusa do Trello é uma só para o espelho e o leitor (o mesmo token): não aparece duas vezes.
         ja_ditos = {a.code for a in achados_do_espelho}
         problems.extend(p for p in self.trello_leitor.problemas() if p.code not in ja_ditos)
+        problems.extend(self.trello_webhook.problemas())
+        problems.extend(self.trello_cadastro.problemas())
         problems.extend(problemas_do_trello(self.cfg))
         # Backlog B15 (bateria de 25/09): o Ollama estava fora do ar, as 89 decisões foram para o fallback — e a saúde
         # dizia `ok`. O fallback continua sendo o comportamento certo; o que faltava era ele aparecer.

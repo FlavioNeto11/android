@@ -75,6 +75,29 @@ class EntradasDoCanal:
              estado, _curto(erro, MAX_ERRO), agora, tratada))
         return (cur.rowcount or 0) == 1
 
+    # ------------------------------------------------------------------ o aviso do webhook (Trello, 32.2 §8.5)
+    def gravar_aviso(self, id_externo: str) -> bool:
+        """O webhook só ANOTA o id da action (`estado = 'aviso'`, sem texto, sem autor): quem lê a action de verdade, pela
+        API, é o líder. Devolve se a linha é nova (a chave `(canal, id_externo)` faz a repetição não gravar nada)."""
+        cur = self.db.execute(
+            "INSERT INTO canal_entradas(canal, id_externo, ordem, tipo, do_dono, texto, tamanho, estado, recebida_em)"
+            " VALUES (?,?,NULL,'outro',0,NULL,0,'aviso',?) ON CONFLICT (canal, id_externo) DO NOTHING",
+            (self.canal, id_externo, self._agora()))
+        return (cur.rowcount or 0) == 1
+
+    def avisos_pendentes(self, limite: int = 50) -> list[dict[str, object]]:
+        return [dict(r) for r in self.db.query(
+            "SELECT * FROM canal_entradas WHERE canal=? AND estado='aviso' ORDER BY id LIMIT ?", (self.canal, limite))]
+
+    def total_avisos(self) -> int:
+        return int(self.db.scalar("SELECT COUNT(*) FROM canal_entradas WHERE canal=? AND estado='aviso'",
+                                  (self.canal,)) or 0)
+
+    def descartar_aviso(self, id_externo: str) -> None:
+        """Tira a linha-aviso para a `registrar` gravar a action de verdade (a chave única impediria os dois)."""
+        self.db.execute("DELETE FROM canal_entradas WHERE canal=? AND id_externo=? AND estado='aviso'",
+                        (self.canal, id_externo))
+
     def a_tratar(self, limite: int = 50) -> list[dict[str, object]]:
         """As linhas `recebida` do canal, na ordem em que chegaram (inclusive as que uma queda deixou no meio)."""
         return [dict(r) for r in self.db.query(

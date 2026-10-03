@@ -239,9 +239,16 @@ Fonte das regras do Trello: a página oficial de webhooks (developer.atlassian.c
 
 1. **A rota:** `HEAD` e `POST /api/canais/trello/webhook`, no endereço `https://dev.nvit.com.br/api/canais/trello/webhook`
    (a API fica na raiz do domínio, não sob `/central`). Nada se cadastra no Trello antes do 32.2.
-   - HEAD responde 200 só com `trello.webhook.enabled` E `TRELLO_API_SECRET` presente; senão 404. Assim nunca nasce
-     um webhook que a Central não consiga verificar. O HEAD não traz assinatura.
-   - POST desligado (ou sem o segredo) → 404, como se a rota não existisse.
+   - HEAD responde 200 só com `trello.webhook.enabled` E `TRELLO_API_SECRET` E `trello.webhook.callback_url`; senão 404.
+     Assim nunca nasce um webhook que a Central não consiga verificar. O HEAD não traz assinatura.
+   - POST com o webhook desligado → 404, como se a rota não existisse. **Ligado, mas sem o segredo ou sem a URL → 401,
+     FECHADO** (passo 5, pedido da orquestradora): nada é gravado, e uma "assinatura" feita com segredo vazio não abre
+     a porta.
+   - **O portão** (`main.guarda`): libera sem credencial exatamente `HEAD` e `POST` no caminho `/api/canais/trello/webhook`
+     (o caminho inteiro, sem prefixo e sem curinga: `.../webhook/`, `.../webhook2` e `GET`/`PUT`/`DELETE` seguem 401).
+     `forbidden_host` não é perdoado: com `Host` fora de `server.public_hosts`, mesmo com assinatura certa, 403. A rota
+     não usa o cookie de sessão. Pelo túnel (ADR-073) nada mais se abre: o ingress continua encaminhando o hostname inteiro,
+     e o resto de `/api/` segue pedindo credencial.
 2. **A assinatura, antes de qualquer outra coisa:**
    - lê os BYTES crus do corpo uma vez, com teto de 256 KB, antes do HMAC (acima disso, 413, sem ler o resto);
    - calcula `base64(HMAC-SHA1(TRELLO_API_SECRET, corpo + callback_url))`, em que `callback_url` é a string
@@ -280,6 +287,13 @@ Fonte das regras do Trello: a página oficial de webhooks (developer.atlassian.c
      `tratar_pendentes` do líder passa a responder essas linhas. No Trello, `apagar` é sempre False, então a resposta
      pede ao dono que apague o comentário.
    - Se o processo não é o líder da trava `avisos`, ele grava do mesmo jeito; o líder trata.
+   **Implementado no passo 5** (`infrastructure/trello_webhook.py`, `presentation/webhook_trello.py`): a linha-aviso é
+   `canal_entradas` com `estado = 'aviso'`, `tipo = 'outro'`, sem texto, sem autor e sem cartão; só `commentCard` e
+   `updateCard` com `listAfter` (cartão movido de lista) viram aviso, e a fila é limitada a 500. O líder, a cada volta e ao
+   ser acordado (`LeitorDoTrello.acordar`, um `asyncio.Event`; outro processo grava e o líder trata na volta seguinte), relê
+   cada aviso por `GET /1/actions/{id}`, tira a linha-aviso e chama `registrar` com a `Recebida` da action relida. A
+   action que a API não devolve (404), a de outro quadro e a mais velha que `idade_max_s` ficam `ignorada` sem texto. Uma
+   queda entre tirar a linha-aviso e gravar a action perde só o atalho: a reconciliação ainda a lê.
 6. **Repetição e replay:** a assinatura do Trello não tem hora. Como o corpo é só um aviso (item 5), repetir ou forjar
    um aviso no máximo faz o líder reler uma action que existe, com o autor verdadeiro. Quem capturasse uma chamada poderia repeti-la, mas a
    chave `(canal, id_externo)` da 085 faz a repetição não gravar nada (200, nenhuma segunda linha), e a regra de
@@ -291,6 +305,13 @@ Fonte das regras do Trello: a página oficial de webhooks (developer.atlassian.c
    - desligado o `trello.webhook.enabled`, apaga os webhooks com essa descrição (e só eles);
    - o problema `trello_webhook_inativo` aparece quando o cadastro falha ou o Trello marca o webhook inativo. A
      reconciliação segue cobrindo, a 60 s, enquanto ele estiver inativo.
+   - **Implementado no passo 5** (`CadastroDoWebhook`): roda no líder, na partida e a cada hora, só com `webhook.enabled` e
+     os três segredos; a URL tem de ser `https://`, sem parâmetro, âncora, credencial nem espaço. Um webhook que não é da
+     Central (outra descrição) nunca é tocado. **`scripts/trello-webhook.py`**: `--ensaio` (padrão) só LÊ e imprime o plano;
+     `--aplicar` cadastra, e exige `TRELLO_API_SECRET`. Nada foi cadastrado no Trello: só depois do 32.2 implantado, do
+     portal no ar e do "vai" da orquestradora.
+   - **Saúde** do webhook: `trello_webhook_sem_segredo` (config, já existia), `trello_webhook_assinatura_invalida` (5 ou mais
+     em 10 min), `trello_webhook_inativo`; a recusa 401/403 do cadastro sai como `trello_recusado`, a mesma do leitor.
 8. **Config:** `trello.webhook.enabled: false` (separado de `trello.enabled`), `trello.webhook.callback_url` (a URL
    pública inteira, sem parâmetro e sem segredo) e `trello.webhook.max_bytes: 262144`. O segredo do aplicativo só no
    `.env` (`TRELLO_API_SECRET`). Opcional, do lado do dono: na Cloudflare, aceitar nesse caminho só as faixas de IP do

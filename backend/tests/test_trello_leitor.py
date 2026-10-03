@@ -111,6 +111,9 @@ class TrelloFalso:
                 ids = [str(a["id"]) for a in lista]
                 lista = lista[ids.index(desde) + 1:] if desde in ids else [a for a in lista if str(a["date"]) > desde]
             return httpx.Response(200, json=lista[::-1][: int(q.get("limit", 1000))])
+        if pedido.method == "GET" and caminho.startswith("/1/actions/"):
+            achada = [a for a in self.acoes if a["id"] == caminho.split("/")[3]]
+            return httpx.Response(200, json=achada[0]) if achada else httpx.Response(404, text="not found")
         if pedido.method == "POST" and caminho.endswith("/actions/comments"):
             corpo = json.loads(pedido.content)
             card = caminho.split("/")[3]

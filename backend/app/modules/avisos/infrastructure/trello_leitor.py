@@ -51,6 +51,7 @@ from app.modules.avisos.infrastructure.entrada import (
 )
 from app.modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
 from app.modules.avisos.infrastructure.espelho_sql import CartoesDoTrello, CursorDoTrello
+from app.modules.avisos.infrastructure.trello_webhook import CadastroDoWebhook
 from app.taskqueue.travas import AVISOS
 from app.util import parse_iso
 
@@ -67,6 +68,8 @@ SEM_HISTORICO = "1970-01-01T00:00:00.000Z"
 FATOR_DE_ATRASO = 3
 #: Teto do comentário da Central (o Trello aceita 16 mil; a conversa é curta).
 TAMANHO_MAX = 1000
+#: De quanto em quanto tempo o cadastro do webhook confere o Trello.
+CADASTRO_A_CADA_S = 3600.0
 #: Quantas reações a convidados por hora: acima disso a Central se cala (um convidado não a faz falar sem parar).
 CONVIDADOS_POR_HORA = 10
 _CAUSA = {401: "chave ou token inválido, ou o token foi revogado", 403: "o token não tem permissão neste quadro"}
@@ -354,7 +357,7 @@ class LeitorDoTrello:
                  portas: PortasDaCentral, *, lider: Callable[[str], int | None], recusa: Callable[[str], bool],
                  redigir: Callable[[str], str], avisar_dono: Callable[[Aviso], bool] | None = None,
                  relogio: Callable[[], datetime] = _utc, cliente: ClienteTrello | None = None,
-                 dormir: Callable[[float], Awaitable[None]] = asyncio.sleep):
+                 dormir: Callable[[float], Awaitable[None]] = asyncio.sleep, cadastro: CadastroDoWebhook | None = None):
         self.cfg = cfg
         self.repo = repo
         self.cartoes = cartoes
@@ -370,6 +373,10 @@ class LeitorDoTrello:
                                          relogio=lambda: relogio().timestamp())
         self._recusada: FalhaDoTrello | None = None
         self._reacoes: deque[float] = deque()      # as reações a convidados na última hora (monotônico)
+        #: O webhook (§8) só ANOTA o id da action e acorda o laço; a volta de avisos relê a action pela API.
+        self._acordado = asyncio.Event()
+        self._cadastro = cadastro
+        self._cadastro_em: float | None = None
 
     # ------------------------------------------------------------------ configuração e saúde
     @property
@@ -423,8 +430,9 @@ class LeitorDoTrello:
         return achados
 
     # ------------------------------------------------------------------ uma volta
-    async def uma_volta(self) -> int:
-        """Lê, grava e trata. Devolve quantas actions chegaram (0 quando pulou)."""
+    async def uma_volta(self, *, so_avisos: bool = False) -> int:
+        """Lê, grava e trata. Devolve quantas actions chegaram (0 quando pulou). `so_avisos`: só as que o webhook anotou
+        (o laço acordou por ele), sem varrer os quadros."""
         cliente = self.cliente()
         trello = self.cfg.file.trello
         if cliente is None or not trello.membro_dono or self._lider(AVISOS) is None:
@@ -432,8 +440,10 @@ class LeitorDoTrello:
         saida = SaidaDoTrello(cliente, self._redigir, self._relogio)
         lidas = 0
         try:
-            for quadro in trello.quadros:
-                lidas += await self._ler_quadro(cliente, saida, quadro)
+            lidas += await self._tratar_avisos(cliente, saida)      # antes dos quadros: a releitura deles cai no dedupe
+            if not so_avisos:
+                for quadro in trello.quadros:
+                    lidas += await self._ler_quadro(cliente, saida, quadro)
             await self.conversa.tratar_pendentes(saida)
         except FalhaDoTrello as falha:
             self._falhou(falha)
@@ -443,6 +453,53 @@ class LeitorDoTrello:
         else:
             self._recusada = None
         return lidas
+
+    def acordar(self) -> None:
+        """O webhook anotou uma action: o laço trata os avisos sem esperar a próxima reconciliação."""
+        self._acordado.set()
+
+    async def _tratar_avisos(self, cliente: ClienteTrello, saida: SaidaDoTrello) -> int:
+        """Relê, pela API, cada action que o webhook anotou. DALI, e só dali, saem autor, cartão, quadro, tipo, data e
+        texto: o corpo do POST nunca foi a fonte (§8.5). A action que a API não devolve (apagada, 404) fica `ignorada`
+        sem texto; a velha (acima de `idade_max_s`) também; a falha passageira deixa o aviso para a volta seguinte."""
+        idade = self.cfg.file.trello.idade_max_s
+        tratadas = 0
+        for linha in self.repo.avisos_pendentes():
+            ident, numero = str(linha["id_externo"]), int(str(linha["id"]))
+            desde = parse_iso(str(linha.get("recebida_em") or ""))
+            if desde is not None and (self._relogio() - desde).total_seconds() > idade:
+                self.repo.marcar(numero, "ignorada", erro="aviso antigo: a Central estava fora do ar", de=("aviso",))
+                continue
+            try:
+                bruta = await cliente.acao(ident)
+            except FalhaDoTrello as falha:
+                if falha.status == 404:
+                    self.repo.marcar(numero, "ignorada", erro="a API não devolve a action", de=("aviso",))
+                    continue
+                raise
+            if not isinstance(bruta, dict) or bruta.get("id") != ident:
+                self.repo.marcar(numero, "ignorada", erro="a API devolveu outra coisa", de=("aviso",))
+                continue
+            # Tira a linha-aviso e grava a action de verdade logo em seguida (a chave única impede as duas). Uma queda
+            # entre os dois passos perde só o atalho: a reconciliação por leitura ainda lê a action.
+            self.repo.descartar_aviso(ident)
+            await self._registrar(bruta, None, saida)
+            tratadas += 1
+        return tratadas
+
+    async def _cadastro_se_devido(self) -> None:
+        """O webhook de cada quadro (§8.7): na partida e a cada hora, só no líder e só com `webhook.enabled`."""
+        cad, cliente = self._cadastro, self.cliente()
+        if cad is None or cliente is None or not cad.pode_agir() or self._lider(AVISOS) is None:
+            return
+        agora = time.monotonic()
+        if self._cadastro_em is not None and agora - self._cadastro_em < CADASTRO_A_CADA_S:
+            return
+        self._cadastro_em = agora
+        try:
+            await cad.reconciliar(cliente)
+        except FalhaDoTrello as falha:
+            self._falhou(falha)          # 401/403: a mesma recusa (`trello_recusado`) do resto da integração
 
     def _falhou(self, falha: FalhaDoTrello) -> None:
         if falha.definitiva:
@@ -473,7 +530,7 @@ class LeitorDoTrello:
         self.cursor.gravar(quadro, _texto(ultima.get("id")), _texto(ultima.get("date")))     # anda `atualizado_em` sempre
         return len(acoes)
 
-    async def _registrar(self, acao: Mapping[str, object], quadro: str, saida: SaidaDoTrello) -> None:
+    async def _registrar(self, acao: Mapping[str, object], quadro: str | None, saida: SaidaDoTrello) -> None:
         r = recebida_da_action(acao, self.cfg.file.trello, chave_do_cartao=self.cartoes.chave_do_cartao,
                                da_central=lambda i: self.repo.enviada(i) is not None, quadro=quadro)
         if r is None:
@@ -525,12 +582,25 @@ class LeitorDoTrello:
             try:
                 if self.ligado:
                     await self.uma_volta()
-                await self._dormir(float(self.cfg.file.trello.reconciliar_s))
+                    await self._cadastro_se_devido()
+                await self._esperar(float(self.cfg.file.trello.reconciliar_s))
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001 - o leitor nunca derruba o processo
                 log.exception("trello: laço do leitor")
                 await self._dormir(5)
+
+    async def _esperar(self, segundos: float) -> None:
+        """Dorme até a próxima reconciliação, mas acorda quando o webhook anota uma action: só os avisos são tratados."""
+        fim = time.monotonic() + segundos
+        while (restante := fim - time.monotonic()) > 0:
+            try:
+                await asyncio.wait_for(self._acordado.wait(), timeout=restante)
+            except asyncio.TimeoutError:
+                return
+            self._acordado.clear()
+            if self.ligado:
+                await self.uma_volta(so_avisos=True)
 
 
 def _lista(bruto: object) -> list[dict[str, object]]:

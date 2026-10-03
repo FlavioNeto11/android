@@ -44,6 +44,11 @@ from fastapi.staticfiles import StaticFiles
 from .api import ROTAS_DE_SESSAO, recusa_do_despacho, router, worker_router
 from .commands.despacho import DespachoRecusado
 from .config import Config, get_config
+from .modules.avisos.presentation.webhook_trello import (
+    METODOS_DO_WEBHOOK_DO_TRELLO,
+    ROTA_DO_WEBHOOK_DO_TRELLO,
+)
+from .modules.avisos.presentation.webhook_trello import router as trello_webhook_router
 from .modules.context_retrieval.presentation.router import router as context_retrieval_router
 from .modules.learning.presentation.router import router as learning_router
 from .modules.pedidos.presentation.router import router as pedidos_router
@@ -243,6 +248,11 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
             caminho = request.url.path
             if recusa == "unauthorized" and (caminho in ROTAS_DE_SESSAO or not caminho.startswith("/api/")):
                 recusa = None
+            if (recusa == "unauthorized" and caminho == ROTA_DO_WEBHOOK_DO_TRELLO
+                    and request.method in METODOS_DO_WEBHOOK_DO_TRELLO):
+                # 32.2 §8 (ADR-072): o Trello não tem credencial nossa. Só `HEAD` e `POST` neste caminho EXATO passam sem
+                # ela; quem autentica é a assinatura `X-Trello-Webhook`, conferida na rota. `forbidden_host` não é perdoado.
+                recusa = None
             if recusa == "unauthorized":
                 # Nada do segredo recebido entra na resposta nem no log: só o fato de não servir.
                 return JSONResponse({"detail": {"code": "unauthorized", "message": "Credencial ausente ou inválida."}},
@@ -267,6 +277,7 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
         # Depois do `router`: `/api/skills/resolve` (fase I) mora lá e precisa casar antes de `/api/skills/{id}`.
         app.include_router(skills_router)
         app.include_router(context_retrieval_router)   # só leitura (ADR-063)
+        app.include_router(trello_webhook_router)      # o webhook do Trello (32.2): assinatura, fora do login
     app.include_router(worker_router)      # o canal do worker também atende na porta principal (modo (b))
     dist = cfg.root / "frontend" / "dist"
     if cfg.serve_api and dist.exists():
