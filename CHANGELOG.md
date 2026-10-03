@@ -26,7 +26,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   contrária real depois da confirmação; confirmar de novo o tira outra vez. O item não muda e não há migração.
 - Fecha a pendência A6 do 30.17: aceitar o parecer "manter" num item de "Revisar" é a mesma confirmação, ligada à
   revisão.
-- Rota `POST /api/aprendizado/{kind}/{ref}/confirmar` (adendo v0.78, provisório). No painel, "Confirmar que fica" e
+- Rota `POST /api/aprendizado/{kind}/{ref}/confirmar` (adendo v0.78). No painel, "Confirmar que fica" e
   "Confirmar selecionados" em "Revisar", e "Confirmado que fica" no histórico. O item já decidido por uma pessoa perde
   o aviso "vale revisar" (antes ele ficava mesmo depois de religado), e o que voltou diz por quê. Percorrido no
   navegador numa cópia do banco do central, inclusive a 375 px.
