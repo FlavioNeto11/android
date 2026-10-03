@@ -44,6 +44,7 @@ from .modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from .modules.avisos.infrastructure.portas_da_central import PortasReais
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos
+from .modules.avisos.infrastructure.trello_saude import problemas_do_trello
 from .modules.context_retrieval.adapters.jev import JevSemanticProvider
 from .modules.identity.application.ports import SessionProvider
 from .modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, aplicar_desafio, conta_para_conferir,
@@ -3187,6 +3188,7 @@ class AppState:
         problems.extend(self._problemas_de_saldo())
         problems.extend(self.avisos.problemas())
         problems.extend(self.telegram_entrada.problemas())
+        problems.extend(problemas_do_trello(self.cfg))
         # Backlog B15 (bateria de 25/09): o Ollama estava fora do ar, as 89 decisões foram para o fallback — e a saúde
         # dizia `ok`. O fallback continua sendo o comportamento certo; o que faltava era ele aparecer.
         for linha in self._ia_em_fallback():

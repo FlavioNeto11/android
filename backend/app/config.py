@@ -63,6 +63,12 @@ class EnvSettings(BaseSettings):
     #: FIXOS, só do `.env` ou do ambiente, nunca do `config.yaml`. `SecretStr`: não aparecem em repr nem em log.
     telegram_bot_token: SecretStr | None = Field(default=None, alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: SecretStr | None = Field(default=None, alias="TELEGRAM_CHAT_ID")
+    #: Trello do dono (item 32.2, ADR-072): a chave do Power-Up, o token do dono e o segredo do aplicativo (que assina o
+    #: webhook). Nomes FIXOS, só do `.env` ou do ambiente, nunca do `config.yaml`. A autenticação vai no cabeçalho
+    #: `Authorization`, nunca na URL.
+    trello_api_key: SecretStr | None = Field(default=None, alias="TRELLO_API_KEY")
+    trello_token: SecretStr | None = Field(default=None, alias="TRELLO_TOKEN")
+    trello_api_secret: SecretStr | None = Field(default=None, alias="TRELLO_API_SECRET")
     ai_model: str = Field(default="claude-opus-5", alias="AI_MODEL")
     # Modelo por função (vazio = AI_MODEL). O ator/verificador fazem ~90 % das chamadas: é onde o modelo barato paga.
     ai_model_planner: str | None = Field(default=None, alias="AI_MODEL_PLANNER")
@@ -1144,6 +1150,52 @@ class AvisosCfg(BaseModel):
     entrada: EntradaDoTelegramCfg = EntradaDoTelegramCfg()
 
 
+#: Os papéis que `trello.listas` aceita (32.2): onde a Central cria os cartões, e as listas cujo destino vale sim e não.
+PAPEIS_DE_LISTA_DO_TRELLO = frozenset({"central_automatico", "aprovado", "vetado"})
+
+
+class TrelloWebhookCfg(BaseModel):
+    """O webhook do Trello (32.2, §8 de `docs/design/trello-integracao.md`): caminho principal da entrada; a
+    reconciliação por leitura continua cobrindo. Desligado de fábrica e SEPARADO de `trello.enabled`. O segredo do
+    aplicativo que assina o corpo é `TRELLO_API_SECRET`, só no `.env`; aqui mora só a URL pública (sem parâmetro e sem
+    segredo)."""
+
+    enabled: bool = False
+    callback_url: str | None = None                          # a URL pública inteira; entra no HMAC tal como escrita
+    max_bytes: int = Field(262144, ge=1024, le=4_194_304)    # acima disso, 413 sem ler o resto
+
+
+class TrelloCfg(BaseModel):
+    """Trello do dono como espelho legível do plano e canal de comandos (item 32.2, ADR-072; desenho em
+    `docs/design/trello-integracao.md`). Desligado de fábrica; ligar exige `TRELLO_API_KEY` e `TRELLO_TOKEN` no `.env`
+    (procedimento em `docs/operacao.md`). Os valores secretos nunca moram aqui; só ids de quadro, lista e membro."""
+
+    enabled: bool = False
+    quadros: list[str] = Field(default_factory=list)         # ids dos quadros que a Central espelha e lê
+    #: ids das listas, por papel: `central_automatico` (onde a Central cria os cartões), `aprovado` e `vetado` (mover o
+    #: cartão para elas vale "sim" e "não" do dono). Papel ausente = a função correspondente fica desligada.
+    listas: dict[str, str] = Field(default_factory=dict)
+    membro_dono: str = ""                                    # o idMember do dono: só ele comanda
+    espelho_s: float = Field(60.0, ge=10, le=3600)           # de quanto em quanto tempo o reconciliador do espelho roda
+    reconciliar_s: float = Field(60.0, ge=10, le=3600)       # leitura das actions do quadro (a rede de segurança do webhook)
+    comando_livre: bool = False                              # false = a Central só espelha; true aceita comando por cartão
+    # A action escrita há mais que isto (a Central estava fora) não é tratada: um "sim" de horas atrás não executa.
+    idade_max_s: float = Field(900.0, ge=60, le=86400)
+    #: Quem o dono autorizou a PEDIR (além dele). Vazia de fábrica: o pedido de convidado vira aviso ao dono.
+    membros_autorizados: list[str] = Field(default_factory=list)
+    responder_convidados: bool = False                       # responde a pergunta de convidado no cartão, só com o já visível
+    webhook: TrelloWebhookCfg = TrelloWebhookCfg()
+
+    @field_validator("listas")
+    @classmethod
+    def _papeis_conhecidos(cls, v: dict[str, str]) -> dict[str, str]:
+        # Um papel digitado errado desligaria a função em silêncio; erra na partida, com o nome da chave.
+        desconhecidos = sorted(set(v) - PAPEIS_DE_LISTA_DO_TRELLO)
+        if desconhecidos:
+            raise ValueError(f"trello.listas: papel desconhecido {desconhecidos}; use {sorted(PAPEIS_DE_LISTA_DO_TRELLO)}")
+        return v
+
+
 class ContextRetrievalLexicalCfg(BaseModel):
     use_ripgrep: bool = True       # false força o caminho Python puro (mesmo resultado, mais lento)
     ripgrep_path: str | None = None  # opcional; sem ele, RIPGREP_PATH e depois o PATH; sem rg, o motor é o Python
@@ -1287,6 +1339,7 @@ class AppConfigFile(BaseModel):
     rede: RedeCfg = RedeCfg()
     aprendizado: LearningCfg = LearningCfg()
     avisos: AvisosCfg = AvisosCfg()
+    trello: TrelloCfg = TrelloCfg()
     pedidos: PedidosCfg = PedidosCfg()
     apps: list[AppSeed] = []
     sensitive_screens: list[SensitiveScreenSeed] = []

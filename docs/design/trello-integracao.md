@@ -105,7 +105,7 @@ Cada cartão tem um bloco **Vínculos**. Os links usam `url_painel` (hoje só `a
 
 1. Bloco `trello:` no `config.yaml` (`enabled: false`, quadros, listas, `membro_dono`, intervalos, `conteudo: redigido`);
    segredo só no `.env`; a saúde acusa `trello_sem_segredo`.
-2. Cliente `integrations/trello/` em httpx, com balde de 60 requisições por 10 s e backoff pelos cabeçalhos do 429.
+2. Cliente `modules/avisos/adapters/trello.py` em httpx, com balde de 60 requisições por 10 s e backoff pelos cabeçalhos do 429.
 3. Migração 087 (era 086, que passou ao 31.22 da Jev em 03/10 ~18:55Z): `trello_cartoes` (`chave` PK, `card_id`,
    `lista`, `hash`, `estado`) e `trello_cursor` (`quadro` PK, `ultima_action`). As actions recebidas vão para a
    `canal_entradas` genérica da 085 (`canal='trello'`, `id_externo` = action id), no lugar de uma `trello_acoes`.
@@ -142,7 +142,7 @@ coisas do §6:
    vira `ConversaDoCanal` (comum, recebe `canal`, `operador` e `SaidaDaConversa`) e `LeitorDoTelegram` (a volta, o
    offset, o 409, o descarte do histórico). Os testes do 28.15 passam sem mudança. É a base do contrato do §9 de
    `canais-externos.md`.
-2. **`integrations/trello/cliente.py`:** httpx com o cabeçalho `Authorization: OAuth oauth_consumer_key=…,
+2. **`modules/avisos/adapters/trello.py` (ao lado do `telegram.py`; a saúde em `modules/avisos/infrastructure/trello_saude.py`):** httpx com o cabeçalho `Authorization: OAuth oauth_consumer_key=…,
    oauth_token=…` (nunca na URL), um balde de 60 requisições por 10 s e espera pelo 429. `TRELLO_API_KEY` e
    `TRELLO_TOKEN` entram no `EnvSettings` como `SecretStr` (no molde do `TELEGRAM_BOT_TOKEN`).
 3. **Migração 087:** `trello_cartoes` (`chave` PK `<família>:<fato>`, `card_id`, `lista`, `hash`, `estado`,

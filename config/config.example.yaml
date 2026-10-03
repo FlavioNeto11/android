@@ -498,6 +498,25 @@ avisos:                           # aviso fora do painel (item 28.11): espelho d
   #   ttl_previa_s: 900           # o botão Executar de uma prévia mais velha que isto não cria a execução
   #   idade_max_s: 900            # mensagem escrita há mais que isto (Central fora do ar) não é tratada; o dono é avisado
 
+trello:                           # Trello do dono (item 32.2, ADR-072): espelho do plano e canal de comandos. Ligar exige TRELLO_API_KEY e TRELLO_TOKEN no .env
+  enabled: false                  # (false) desligado = nenhuma chamada ao Trello. Os segredos NUNCA moram aqui (docs/operacao.md)
+  # quadros: []                   # ids dos quadros que a Central espelha e lê
+  # listas:                       # ids das listas, por papel
+  #   central_automatico: ""      # onde a Central cria os cartões
+  #   aprovado: ""                # mover o cartão para cá vale "sim" do dono
+  #   vetado: ""                  # mover o cartão para cá vale "não" do dono
+  # membro_dono: ""               # o idMember do dono: só ele comanda (o autor é lido pela API, nunca do texto)
+  # espelho_s: 60                 # de quanto em quanto tempo o reconciliador do espelho roda
+  # reconciliar_s: 60             # leitura das actions do quadro (a rede de segurança do webhook; 300 com ele ligado)
+  # comando_livre: false          # (false) só espelha; true aceita comando por comentário e por cartão movido
+  # idade_max_s: 900              # action mais velha que isto (Central fora do ar) não é tratada
+  # membros_autorizados: []       # quem o dono autorizou a PEDIR além dele; vazia = o pedido de convidado vira aviso ao dono
+  # responder_convidados: false   # responde a pergunta de convidado no cartão, só com o que o quadro já mostra
+  # webhook:                      # caminho principal da entrada (§8 do desenho); exige TRELLO_API_SECRET no .env e o portal público
+  #   enabled: false              # (false) separado de trello.enabled
+  #   callback_url: ""            # a URL pública inteira (sem parâmetro e sem segredo); entra no HMAC tal como escrita
+  #   max_bytes: 262144           # corpo acima disso: 413
+
 provisioning:                     # aparelho novo pela plataforma, neste servidor (POST /api/instances)
   min_free_disk_gb: 10            # disco livre mínimo do hospedeiro (última batida) para aceitar criar mais um AVD
 
