@@ -541,11 +541,13 @@ Procedimento (o dono faz; sem ele a prova real fica `not_run`):
 2. Cole `TELEGRAM_BOT_TOKEN=<token>` no `.env` do central (`C:\git\android\.env`, fora do Git) e reinicie a tarefa
    `farm-central` (`Stop-ScheduledTask farm-central; Start-ScheduledTask farm-central`): o `.env` é lido só na partida.
    O cofre DPAPI não é usado: ele guarda credencial de conta, e este token é configuração do ambiente, como as chaves de IA.
-3. No Telegram, abra o seu bot e mande `/start` (para um grupo: adicione o bot e escreva nele).
+3. No Telegram, abra a conversa PRIVADA com o seu bot e mande `/start`. Não use grupo: a conversa de volta (§15.1) só
+   aceita o dono em conversa privada, e num grupo qualquer membro escreveria pela Central.
 4. Rode a descoberta e confirme qual `id` é o seu chat (ela só lê; pode repetir):
    `backend\.venv\Scripts\python.exe scripts\avisos-telegram.py descobrir`
    A saída lista `id`, `tipo`, `nome` e `@usuario` de cada chat; o token não aparece.
-5. Grave `TELEGRAM_CHAT_ID=<id>` no mesmo `.env` (grupo tem id negativo; copie com o sinal) e reinicie a `farm-central`.
+5. Grave `TELEGRAM_CHAT_ID=<id>` no mesmo `.env` e reinicie a `farm-central`. O `id` é o da linha de `tipo` `private`
+   (o seu); um `id` negativo é de grupo ou canal e não serve.
 6. Ligue `avisos.enabled: true` em `config/config.yaml` (opcional: `avisos.url_painel: http://<ip-do-central>:8000` para o
    link; sem ela a mensagem vai só com o texto) e reinicie a `farm-central`. Teste com
    `backend\.venv\Scripts\python.exe scripts\avisos-telegram.py testar` (manda uma mensagem de teste real). Confira
@@ -576,16 +578,23 @@ A Central trata isso como o painel trata. A gramática fechada está em [design/
   texto (decide pelo contexto, com o vocabulário da triagem de credencial): não é guardada, é apagada do chat, e a
   resposta orienta o dono: a senha se grava na conta da persona, e o código de verificação se digita no aparelho. Vale
   para o reply ao aviso e para `/responder <id> <texto>`.
-- Enquanto uma execução espera senha, código, 2FA ou token, uma palavra solta (sem reply e sem `/responder`, como
-  "kiwi2024!") também é recusada, apagada do chat e nunca gravada; uma frase segue como pedido, com a prévia.
+- Enquanto uma execução espera senha, código, 2FA ou token, um texto curto (até 3 palavras, como "kiwi2024!" ou
+  "kiwi 2024") também é recusado, apagado do chat e nunca gravado: como texto livre, como recado à orquestradora (`/orq`
+  ou reply a mensagem que a Central não mandou) e como `/responder` sem id. A resposta pede o pedido com mais detalhe;
+  uma frase segue como pedido, com a prévia.
 - Só vale o dono em conversa PRIVADA: `chat.type = private` e `from.id` igual ao `TELEGRAM_CHAT_ID`. Grupo, canal ou
   outro membro ficam gravados sem texto e sem resposta.
 - Na primeira subida (canal sem nenhuma linha) o que o Telegram guardou antes (até 24 h) é descartado, não tratado: um
   "/aprovar" ou um "sim" antigo não executa. Mande o primeiro comando depois de ver a `/ajuda`.
+- Em TODA subida, a mensagem escrita há mais de `avisos.entrada.idade_max_s` (900 s) não é tratada (a Central estava
+  fora e o Telegram guardou): fica `ignorada`, sem texto, e o dono recebe uma mensagem só dizendo quantas foram e que
+  nada foi aprovado, vetado nem executado por elas. A senha antiga ainda é apagada do chat.
 - O botão Executar vale por `avisos.entrada.ttl_previa_s` (900 s); passado o prazo a Central pede o pedido de novo. Uma
   linha presa em `executando` sem execução (queda no meio) vira `falhou` depois de 5 min, e o dono é avisado.
-- O 429 do `getUpdates` espera o `Retry-After`. O 401/403 vira o problema `telegram_entrada_recusada` na saúde e espera
-  `espera_conflito_s`, como o 409; corrigido o token, o problema some sozinho.
+- O 429 do `getUpdates` espera o `Retry-After`. O 401, 403 e 404 viram o problema `telegram_entrada_recusada` na saúde,
+  com a causa de cada um (401: token revogado ou trocado; 403: bot bloqueado ou removido da conversa; 404: token
+  malformado ou de bot que não existe mais). O 400 vira `telegram_entrada_pedido_invalido`: não é o token, veja o log.
+  Todos esperam `espera_conflito_s`, como o 409; corrigida a causa, o problema some sozinho.
 - **Trocar de chat ou de bot** pede limpar o registro do canal antes: `DELETE FROM canal_entradas WHERE canal='telegram'`
   e `DELETE FROM canal_enviadas WHERE canal='telegram'`. Sem isso o offset antigo (de outro bot) e os `message_id` de
   outro chat ficam valendo; com a limpeza, a próxima subida descarta o histórico de novo.

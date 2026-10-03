@@ -20,6 +20,7 @@ from app.modules.avisos.infrastructure.entrada import (
     RESPOSTA_PERGUNTA_CREDENCIAL_SEM_APAGAR,
     RESPOSTA_PRESA,
     RESPOSTA_VENCIDA,
+    _SE_ERA_PEDIDO,
     RecusaDaCentral,
 )
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
@@ -215,7 +216,8 @@ async def test_update_que_nao_grava_nao_trava_a_conversa(tmp_path: Path, caplog:
     assert await c.volta(msg(5, "texto que quebra"), msg(6, "/status")) == 2
     linha = c.linha(5)
     assert (linha["estado"], linha["texto"]) == ("falhou", None)
-    assert c.portas.nomes() == ["status"] and c.linha(6)["estado"] == "feita"       # a válida foi tratada
+    tratadas = [n for n in c.portas.nomes() if n != "pergunta_sensivel"]    # o curto lê as perguntas (E6)
+    assert tratadas == ["status"] and c.linha(6)["estado"] == "feita"                # a válida foi tratada
     assert c.repo.proximo_offset() == 7                                             # o offset andou
     nossos = " | ".join(r.getMessage() for r in caplog.records if not r.name.startswith(("httpx", "httpcore")))
     assert "update 5" in nossos and "texto que quebra" not in nossos
@@ -358,7 +360,7 @@ async def test_palavra_solta_com_pergunta_sensivel_aberta_e_recusada(tmp_path: P
     linha = c.linha(5)
     assert (linha["estado"], linha["texto"], linha["tamanho"]) == ("recusada", None, 9)
     assert [b for m, _, b in c.bot.chamadas if m == "deleteMessage"] == [{"chat_id": str(CHAT), "message_id": 50}]
-    assert RESPOSTA_PERGUNTA_CREDENCIAL in c.bot.textos()
+    assert RESPOSTA_PERGUNTA_CREDENCIAL + _SE_ERA_PEDIDO in c.bot.textos()           # o curto pode ter sido um pedido
     assert "previa" not in c.portas.nomes() and "criar" not in c.portas.nomes()
     resto = c.db.query("SELECT * FROM canal_entradas WHERE canal='telegram'")
     assert "kiwi2024" not in " ".join(str(v) for r in resto for v in dict(r).values())
