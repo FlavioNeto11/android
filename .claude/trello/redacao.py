@@ -84,6 +84,8 @@ _AUTORIA = re.compile(r"\b((?:requested|decided|resolved|created|approved)_by|au
 #: persona de teste com data de nascimento: "Nome Sobrenome, 1995-04-12"
 _PESSOA_COM_NASCIMENTO = re.compile(r"\b[A-ZÀ-Ý][a-zà-ÿ]+(?: [A-ZÀ-Ý][a-zà-ÿ]+)+,\s*(?:19\d\d|200\d)-\d\d-\d\d\b")
 _NASCIMENTO = re.compile(r"\b(?:19\d\d|200\d)-[01]\d-[0-3]\d\b")
+#: assunto do e-mail de teste do comando entre apps (24.9, 27.2): "Perfil para conferir: <conta>" é conta de terceiro
+_PERFIL_PARA_CONFERIR = re.compile(r"(?i)(perfil para conferir:\s*)@?[A-Za-z0-9_.]{2,30}")
 
 
 def _handle(m: re.Match[str]) -> str:
