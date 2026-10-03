@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, get_args
 
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -26,6 +26,21 @@ if TYPE_CHECKING:
 #: critério. Aviso que descreve outra coisa que não o código é pior do que aviso nenhum.
 AVISO_TELA_SENSIVEL = ("Telas sensíveis nunca são enviadas: campo de senha, desafio de verificação/2FA, telas "
                        "declaradas por app em `sensitive_screens` e todas as do aparelho-loja.")
+
+#: Rótulo de cada função na frase "Modelos por função" do aviso de `/api/ai`, na ordem de sempre.
+_ROTULOS_DAS_FUNCOES: Final = (("plan", "plano"), ("decide", "ação"), ("verify", "verificação"),
+                               ("escalation", "escalonamento"), ("social", "social"), ("persona", "persona"))
+
+
+def frase_dos_modelos(models: Mapping[str, str]) -> str | None:
+    """A frase "Modelos por função — plano: X · ação: Y · …." do aviso; `None` se falta alguma função.
+
+    O hub a refaz com a resolução EFETIVA de cada função (`ai.roles`), a mesma de `roles[]` e `models`: a instância do ator
+    só conhece o próprio papel roteado e diria o `.env` nos demais (validação do deploy 8: o aviso dizia o Opus no plano
+    enquanto o plano estava roteado ao Sonnet)."""
+    if any(papel not in models for papel, _ in _ROTULOS_DAS_FUNCOES):
+        return None
+    return "Modelos por função — " + " · ".join(f"{rotulo}: {models[papel]}" for papel, rotulo in _ROTULOS_DAS_FUNCOES) + "."
 
 
 #: Quem pediu a chamada de IA (item 31.2; migração 073, `ai_calls.origem`). Vocabulário FECHADO: o gasto por origem

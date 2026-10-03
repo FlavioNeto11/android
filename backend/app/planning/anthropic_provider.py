@@ -35,7 +35,7 @@ from .curador import (CURADOR_SYSTEM, ParecerBruto, ParecerIlegivel, PedidoDePar
 from .parsing import (_CapPlanOut, _MultiPlanCurtoOut, _MultiPlanOut, _PlanCurtoOut, _PlanOut, catalog_plan_from_json,
                       plan_from_json, social_from_json, verdict_from_json)
 from .provider import (AVISO_TELA_SENSIVEL, AIError, Decision, DecisionRequest, LeituraRequest, PlanRequest, ScreenInput,
-                       SocialRequest, Transcricao, TranscricaoWire, modelo_do_papel_leitura,
+                       SocialRequest, Transcricao, TranscricaoWire, frase_dos_modelos, modelo_do_papel_leitura,
                        transcricao_from_json, Usage,
                        Verdict, VerifyRequest, persona_draft_from_json)
 
@@ -143,10 +143,8 @@ class AnthropicProvider:
             notice = ("Chave ANTHROPIC_API_KEY ausente no .env. Gerenciamento e controle manual seguem disponíveis; "
                       "planejar/executar com IA fica pendente até configurar a chave e reiniciar o backend.")
         m = self.models
-        roles = (f"plano: {m['plan']} · ação: {m['decide']} · verificação: {m['verify']} · "
-                 f"escalonamento: {m['escalation']} · social: {m['social']} · persona: {m['persona']}")
         return AiStatus(provider=self.name, model=self.model, configured=self.configured, simulated=False,
-                        sends_data_externally=True, notice=f"{notice} Modelos por função — {roles}.",
+                        sends_data_externally=True, notice=f"{notice} {frase_dos_modelos(m)}",
                         effort=self.cfg.env.ai_effort_actor, models=dict(m), recipes=self.cfg.file.ai.recipes,
                         flows=self.cfg.file.ai.flows, image_policy=self.cfg.file.ai.image_policy)
 

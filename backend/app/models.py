@@ -1975,6 +1975,31 @@ class AiRoleStatus(BaseModel):
     thinking: str | None = None
 
 
+class AiProfileRoleStatus(BaseModel):
+    """Uma função que o perfil MUDA (o que ele escreve em `ai.profiles.<perfil>.roles`, e a `persona` quando ela herda o
+    `social` escrito), já resolvida como as execuções do perfil a usam."""
+
+    role: str
+    provider: str
+    model: str
+    effort: str | None = None
+    sends_data_externally: bool
+
+
+class AiProfileStatus(BaseModel):
+    """Um perfil de IA nomeado (item 17.7), para a aba IA (adendo v0.87). Sem isto o perfil só aparecia quando uma
+    execução o usava (validação do deploy 7, I2)."""
+
+    name: str
+    note: str = ""
+    #: Só as funções que o perfil muda; as outras são as do padrão (`roles` do `AiStatus`).
+    roles: list[AiProfileRoleStatus] = []
+    #: A fatia das execuções SEM perfil escolhido que vai para ele (`ai.canary`). `None` = não é o canário.
+    canary_fraction: float | None = None
+    screenshot_max_side: int | None = None
+    rich_tree_min_elements: int | None = None
+
+
 class AiImageStatus(BaseModel):
     """O gerador de IMAGEM da persona, para a aba IA (evolução 2, onda A). Não é papel de IA: porta própria, chave
     própria (`OPENAI_API_KEY`), preço por imagem declarado; só o teto do dia em US$ é compartilhado."""
@@ -2018,6 +2043,12 @@ class AiStatus(BaseModel):
     account_blocked_reason: str | None = None
     #: Saldo estimado de cada conta de IA (ADR-051): o mesmo de GET /api/ai/balances, para o cabeçalho do painel.
     balances: list[dict[str, object]] = []
+    #: Formato da etapa livre do plano (`ai.esquema_do_plano`, LT-4b): `longo` | `curto` (adendo v0.87).
+    esquema_do_plano: str | None = None
+    #: Os perfis de IA declarados em `ai.profiles` (item 17.7), com o que cada um muda (adendo v0.87).
+    profiles: list[AiProfileStatus] = []
+    #: `ai.leitura_visual.enabled` (item 12.5), para a Situação dizer "ligada" sem depender do parágrafo do aviso (v0.87).
+    leitura_visual: bool | None = None
     #: Jev (TypeSafe System One, ADR-069): presente só com `ai.decisao_fechada.enabled` e algum consumidor em shadow/on. Traz
     #: consumidores, classes que podem sair, se o envio está aprovado no código e a chave como "configurada" (só presença).
     decisao_fechada: dict[str, object] | None = None

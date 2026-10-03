@@ -73,6 +73,7 @@ from .planning.capabilities import (Capability, alvo_da_acao, capability_of, con
                                     texto_a_gerar)
 from .planning.catalog import capabilities_of, pacote_ancora, screen_reader_of, session_factory_of
 from .planning.provider import AIProvider, build_provider
+from .planning.routing import perfis_para_o_painel
 from .modules.identity.infrastructure.persona_images import (compor_servico_de_imagens, identidade_para_foto,
                                                               imagens_dto, status_de_imagem)
 from .releases.catalog import ReleaseValidationError
@@ -2924,6 +2925,14 @@ class AppState:
         chave = self.cfg.env.typesafe_api_key is not None
         aviso_jev = transparencia.aviso(jev, chave_configurada=chave)
         extra: dict[str, object] = {"image": status_de_imagem(self.persona_images, self.cfg), "balances": contas}
+        # Adendo v0.87 (I2 da validação do deploy 7): o formato do plano e os perfis vêm da configuração, não do provedor,
+        # para valerem também no modo simulado. O perfil que some da configuração não derruba a aba.
+        extra["esquema_do_plano"] = self.cfg.file.ai.esquema_do_plano
+        extra["leitura_visual"] = self.cfg.file.ai.leitura_visual.enabled
+        try:
+            extra["profiles"] = perfis_para_o_painel(self.cfg)
+        except Exception:  # noqa: BLE001 - o status da IA nunca cai por causa da lista de perfis
+            log.exception("não foi possível montar os perfis de IA para o painel")
         if aviso_jev is not None:
             extra["notice"] = f"{status.notice} {aviso_jev}"
             extra["decisao_fechada"] = transparencia.status(jev, chave_configurada=chave)

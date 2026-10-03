@@ -19,6 +19,37 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — O total do custo de IA bate com as contas, e o needs_input da habilidade fala português (I1 e I4 da validação do deploy 7; branch feat/ux-deploy7-jev)
+
+- I1, `GET /api/usage`: o total e os grupos contam o custo declarado (a imagem da persona), na mesma base de `by_account` e
+  `by_origin`. No central, as contas somavam US$ 0,27 a mais que o total.
+- I1, Diagnóstico › Custo de IA:
+  - "prazo da etapa esgotado" e "saldo da conta abaixo do bloqueio" saem com rótulo;
+  - entra a linha "Por origem" (RA-10).
+- I4: a habilidade que casou e não compilou vira `needs_input` com o nome dela e o motivo em português ("faltam valores
+  para os parâmetros do plano"). O id e o código ficam no evento; o código também num campo próprio do `run.updated`,
+  `issue_codes` (a suíte 8 pegou o teste da fatia que lia o código no texto).
+- Prova `simulated`:
+  - `tests/test_uso_total_com_custo_declarado.py`, `tests/test_needs_input_da_habilidade.py` e `usage.test.ts`;
+  - o cartão de custo percorrido no navegador contra um backend simulado.
+
+## 2026-10-03 — Configuração › IA mostra o esquema do plano, os perfis e o esforço por função (I2 da validação do deploy 7; branch feat/ux-deploy7-jev)
+
+- `GET /api/ai` ganha `esquema_do_plano`, `profiles[]` e `leitura_visual` (adendo v0.87).
+- Configuração › IA:
+  - a Situação ganha "Esquema do plano", "Perfis de IA" e "Leitura visual";
+  - o esforço sai em português;
+  - a tabela Por função ganha "Esforço" e "Raciocínio";
+  - a linha `leitura` vira "Ler a tela (leitura visual)";
+  - um cartão novo, "Perfis de IA".
+- O aviso ("Modelos por função — plano: …") passa a dizer o modelo que cada função usa de fato, a mesma resolução de
+  `roles[]` e `models`. Na validação do deploy 8 ele dizia `claude-opus-5-5` no plano, que a instância do ator lê do
+  `.env`, enquanto a Situação e a tabela diziam o `claude-sonnet-5-5` de `ai.roles.plan`. A frase sai de
+  `provider.frase_dos_modelos`, e o hub a refaz com `ai.roles`.
+- Prova `simulated`:
+  - `tests/test_aba_ia_esquema_e_perfis.py` (inclusive `test_o_aviso_diz_os_modelos_que_as_funcoes_usam_de_fato`),
+    `aiLabels.test.ts` e `AiSection.test.tsx`;
+  - tela percorrida no navegador contra um backend simulado do worktree.
 ## 2026-10-03 — Correção do 31.9, rodada G (NO-GO da fase 2 da rodada F em 7c8f58c8): o usuário como @handle ou e-mail, o catálogo só no destino e a preposição só com faixa (branch fix/31-9-rodada-e)
 
 - G-1: "entre com @zilda.prado e girassol" e "entre com lucas@outlook.com e girassol" recusam como par; o "@" solto não é

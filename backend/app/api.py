@@ -662,17 +662,29 @@ async def usage(request: Request, run_id: str | None = None, days: int = Query(7
     # `datetime('now', ?)` é aritmética de data do SQLite. As colunas guardam ISO-8601, que ordena
     # lexicograficamente, então o corte calculado em Python compara igual nos dois dialetos.
     where, params = ("run_id=?", (run_id,)) if run_id else ("ts >= ?", (iso_in(-days * 86400),))
+    # I1 da validação do deploy 7: o custo DECLARADO na linha (`usd`: a imagem da persona, que não tem preço por token)
+    # entra no total como entra nas peças por conta (`saldos.gasto_usd_por_conta`) e por origem (`costs.usd_por`). Antes
+    # o total só fazia tokens × preço, e as peças somavam US$ 0,27 a mais (as 5 imagens da semana) sem a tela dizer por quê.
     rows = s.db.query(
         f"SELECT role, model, tier, COUNT(*) calls, SUM(input_tokens) fresh, SUM(cache_read) cache_read,"
         f" SUM(cache_write) cache_write, SUM(output_tokens) output, SUM(with_image) with_image, SUM(1-ok) errors,"
-        f" AVG(ms) avg_ms FROM ai_calls WHERE {where} GROUP BY role, model, tier ORDER BY role, model", params)
+        f" AVG(ms) avg_ms, SUM(CASE WHEN usd IS NULL THEN 0 ELSE 1 END) declaradas, SUM(COALESCE(usd, 0)) usd_declarado,"
+        f" SUM(CASE WHEN usd IS NULL THEN input_tokens ELSE 0 END) p_fresh,"
+        f" SUM(CASE WHEN usd IS NULL THEN cache_read ELSE 0 END) p_cache_read,"
+        f" SUM(CASE WHEN usd IS NULL THEN cache_write ELSE 0 END) p_cache_write,"
+        f" SUM(CASE WHEN usd IS NULL THEN output_tokens ELSE 0 END) p_output"
+        f" FROM ai_calls WHERE {where} GROUP BY role, model, tier ORDER BY role, model", params)
     groups, total = [], 0.0
     for r in rows:
         p = _price(prices, r["model"])
-        usd = None if p is None else round((r["fresh"] * p[0] + r["cache_read"] * p[1] + r["cache_write"] * p[2]
-                                            + r["output"] * p[3]) / 1_000_000, 4)
+        # Sem preço por token, o grupo só tem custo se toda chamada OK declarou o dela; senão fica sem preço (total parcial).
+        por_token = (0.0 if r["declaradas"] >= r["calls"] - r["errors"] else None) if p is None else (
+            r["p_fresh"] * p[0] + r["p_cache_read"] * p[1] + r["p_cache_write"] * p[2] + r["p_output"] * p[3]) / 1_000_000
+        usd = None if por_token is None else round(por_token + float(r["usd_declarado"] or 0), 4)
         total += usd or 0.0
-        groups.append({**dict(r), "avg_ms": round(r["avg_ms"] or 0), "usd": usd})
+        linha = {k: r[k] for k in ("role", "model", "tier", "calls", "fresh", "cache_read", "cache_write", "output",
+                                   "with_image", "errors")}
+        groups.append({**linha, "avg_ms": round(r["avg_ms"] or 0), "usd": usd})
     per_obj = s.db.query(
         f"SELECT run_id, objective_id, COUNT(*) calls FROM ai_calls WHERE {where} AND objective_id IS NOT NULL"
         f" GROUP BY run_id, objective_id", params)
@@ -706,7 +718,8 @@ async def usage(request: Request, run_id: str | None = None, days: int = Query(7
             # entrar aqui é o que fazia o pseudo-modelo '(erro)' virar um "Total parcial" que não existia — chamada
             # com erro não é chamada que faltou preço.
             "unpriced_models": sorted({r["model"] for r in rows
-                                       if r["calls"] > r["errors"] and _price(prices, r["model"]) is None}),
+                                       if r["calls"] > r["errors"] and _price(prices, r["model"]) is None
+                                       and r["declaradas"] < r["calls"] - r["errors"]}),
             # Cache de prompt que não bate em DECISÃO é defeito, não escolha: toda decisão leva as 15 ferramentas
             # (prefixo ≈ 6 mil tokens, acima do mínimo de qualquer modelo). Verificação fica de fora — o system
             # sozinho (≈ 1 mil tokens) fica legitimamente abaixo do mínimo do Sonnet/Haiku. Achado de 24/09: 46

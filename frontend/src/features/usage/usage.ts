@@ -158,6 +158,8 @@ const ERROR_KIND_LABEL: Record<string, string> = {
   billing: 'sem crédito',
   not_configured: 'credencial ausente/inválida',
   invalid_output: 'saída inválida do modelo',
+  step_deadline: 'prazo da etapa esgotado',
+  balance: 'saldo da conta abaixo do bloqueio',
   error: 'erro',
 };
 
@@ -171,4 +173,26 @@ export function errorsByKindText(report: Pick<UsageReport, 'errors_by_kind'>): s
   if (entries.length === 0) return null;
   entries.sort(([, a], [, b]) => b - a);
   return entries.map(([kind, n]) => `${formatInt(n)} ${errorKindLabel(kind)}`).join(' · ');
+}
+
+const ORIGIN_LABEL: Record<string, string> = {
+  execucao: 'execução',
+  curador: 'curador',
+  leitura: 'leitura visual',
+  social: 'responder',
+  persona: 'persona',
+  decisao_fechada: 'decisão fechada (Jev)',
+  sem_origem: 'sem origem registrada',
+};
+
+export function originLabel(origin: string): string {
+  return ORIGIN_LABEL[origin] ?? origin;
+}
+
+/** "execução US$ 1,29 · curador US$ 0,31 · …", maior custo primeiro (RA-10); `null` sem o grupo ou sem chamadas. */
+export function byOriginText(report: Pick<UsageReport, 'by_origin'>): string | null {
+  const entries = Object.entries(report.by_origin ?? {}).filter(([, g]) => g && g.calls > 0);
+  if (entries.length === 0) return null;
+  entries.sort(([, a], [, b]) => b.usd - a.usd || b.calls - a.calls);
+  return entries.map(([origem, g]) => `${originLabel(origem)} ${formatUsd(g.usd)}`).join(' · ');
 }

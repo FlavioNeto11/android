@@ -522,7 +522,8 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
     (17.7), não como padrão. O perfil `planejador-sonnet` troca só o modelo do `plan` para `claude-sonnet-5-5`: o
     esforço segue o global (`AI_EFFORT_PLANNER`, `low` no central, lido em `GET /api/ai` em 03/10) e o esquema segue
     `ai.esquema_do_plano`. Uma execução o escolhe com `POST /api/runs {"ai_profile": "planejador-sonnet"}` ou
-    `scripts/eval_run.py --profile planejador-sonnet`, e ele fica em `runs.ai_profile`. A rodada QA pareada é da
+    `scripts/eval_run.py --profile planejador-sonnet`, e ele fica em `runs.ai_profile`. Desde o adendo v0.87, o perfil,
+    o esquema e o esforço e o raciocínio por função aparecem em Configuração › IA e no `GET /api/ai`. A rodada QA pareada é da
     Aprendizado (teto US$ 10). O aceite para trocar o padrão é sucesso ≥ Opus e p50 ≤ 11 s, com emenda datada do
     ADR-005.
     - Preço e capacidade do Sonnet 5.5 (páginas de preço e de prompt caching, 03/10): `[2.0, 0.2, 2.5, 10.0]`, igual
