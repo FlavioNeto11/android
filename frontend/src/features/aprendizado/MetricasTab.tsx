@@ -10,7 +10,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { Field, Select } from '../../components/Field';
 import { ProgressBar } from '../../components/ProgressBar';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
-import { cx, formatInt } from '../../lib/format';
+import { cx, formatInt, formatPercent } from '../../lib/format';
 import { LoadErrorBanner, LoadErrorState } from '../../lib/loadError';
 import { formatDateTime } from '../../lib/time';
 import { apiAprendizado } from './api';
@@ -237,6 +237,29 @@ function Painel({ m }: { m: MetricasDoAprendizado }) {
           )}
         </Bloco>
 
+        {/* 30.34: a sombra da autopublicação só aparecia na API (validação do deploy 11). */}
+        {cur?.autopublicacao ? (
+          <Bloco icone={Scale} titulo="Autopublicação (sombra)"
+                 sobre="O fluxo de classe B que publicaria sozinho: na sombra nada é publicado; cada caso é anotado e se mede se regrediu. Vale para todos os apps.">
+            <div className={styles.numeros}>
+              <Numero valor={formatInt(cur.autopublicacao.casos)} rotulo="casos" />
+              <Numero valor={formatInt(cur.autopublicacao.abertos)} rotulo="ainda abertos" />
+              <Numero valor={formatInt(cur.autopublicacao.limpos)} rotulo="fechados sem regressão" />
+              <Numero valor={formatInt(cur.autopublicacao.regrediram)} rotulo="regrediram" />
+            </div>
+            <p className={styles.cartaoLinha}>
+              <span className={styles.cartaoRotulo}>Sem regressão</span>
+              {formatTaxa(cur.autopublicacao.taxa_sem_regressao)}
+            </p>
+            <p className={styles.cartaoUso}>
+              {rotuloDoModo(cur.autopublicacao.modo)} · {cur.autopublicacao.libera ? 'já cumpre' : 'ainda não cumpre'} a regra para
+              publicar de verdade: pelo menos {formatInt(cur.autopublicacao.limiares.casos_fechados)} casos fechados e
+              {' '}{formatTaxa(cur.autopublicacao.limiares.taxa_sem_regressao)} sem regressão em
+              {' '}{formatInt(cur.autopublicacao.limiares.janela_dias)} dias.
+            </p>
+          </Bloco>
+        ) : null}
+
         <Bloco icone={Gauge} titulo="Orçamento do curador" tom={orc?.aviso ? 'aviso' : undefined}
                sobre={orc ? `Vale para todos os apps e usa a janela do curador (${formatInt(orc.janela_dias)} dias), não a escolhida acima.` : 'O curador não está composto neste servidor.'}>
           {orc ? (
@@ -248,15 +271,29 @@ function Painel({ m }: { m: MetricasDoAprendizado }) {
               {orc.uso === null && !orc.gasto_da_operacao && !orc.gasto_da_curadoria ? null : (
               <div className={styles.numeros}>
                 <Numero valor={formatUsd(orc.gasto_da_curadoria)} rotulo="gasto da curadoria" />
-                <Numero valor={formatUsd(orc.orcamento)} rotulo="orçamento (piso)" dica="Calculado com as revisões já gravadas: a próxima volta só pode aumentá-lo." />
+                {/* Validação do deploy 10: "piso" nomeava ao contrário o ramo que manda. O orçamento é o MENOR dos dois
+                    ramos; os dois aparecem, e o que manda leva a marca. */}
+                <Numero valor={formatUsd(orc.orcamento)} rotulo="orçamento (o menor dos ramos)"
+                        dica="Calculado com as revisões já gravadas: a próxima volta só pode aumentá-lo." />
                 <Numero valor={formatUsd(orc.gasto_da_operacao)} rotulo="gasto da operação" />
-                <Numero valor={formatUsd(orc.teto_alfa)} rotulo="teto (fração da operação)" />
+                <Numero valor={formatUsd(orc.teto_alfa)} rotulo={`ramo da operação${orc.ramo === 'operacao' ? ' · manda' : ''}`}
+                        dica="Fração α do gasto da operação na janela." />
+                {orc.pelas_revisoes !== null ? (
+                  <Numero valor={formatUsd(orc.pelas_revisoes)} rotulo={`ramo das revisões${orc.ramo === 'revisoes' ? ' · manda' : ''}`}
+                          dica="k × revisões na janela × custo médio de uma revisão." />
+                ) : null}
               </div>
               )}
               <p className={styles.cartaoUso}>
                 Curador {rotuloDoModo(orc.modo)} · {formatInt(orc.revisoes_na_janela)} revisões na janela
                 {orc.aviso ? ' · passou de 80% do orçamento' : ''}
               </p>
+              {orc.ramo === 'revisoes' && orc.k ? (
+                <p className={styles.notaDoItem}>
+                  Enquanto o ramo das revisões manda, o uso fica perto de {formatPercent(100 / orc.k)} por construção: a barra
+                  não mede folga.
+                </p>
+              ) : null}
             </>
           ) : null}
         </Bloco>

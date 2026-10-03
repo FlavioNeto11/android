@@ -4478,7 +4478,7 @@ Ausente é `null`, nunca zero: uma taxa sem amostra ou um tempo sem par saem `nu
   acumulados) e aparece pelo proxy e pela economia.
 - `tempos`: para cada chegada a `validated` (ou `published`) dentro da janela, conta desde a última chegada a `candidate`
   (ou `validated`) no mesmo item. O item sem essa chegada na trilha, como a receita de antes da trilha, fica fora, e o
-  `n` diz quantos pares entraram. O percentil é por posição mais próxima.
+  `n` diz quantos pares entraram. O percentil é pelo posto mais próximo, `ceil(p·n/100)`, o do K-085 (ver o v0.94).
 - `saude` traz todos os rótulos do §5.3, inclusive os zerados, e sai da mesma função da lista e do detalhe.
   `sem_evidencia` é o "nunca usado".
 - `economia` é a de `taskqueue/aproveitamento.py`, com os totais ou a soma dos fluxos do pacote, reaproveitada e não
@@ -4633,3 +4633,97 @@ recusado na carga até a 30.34-B. O central liga `shadow` no deploy 11 (decisão
 Prova:
 - `simulated`: `tests/test_learning_autopublicacao.py` e `tests/test_learning_autopublicacao_sombra.py`.
 - `not_run`: a sombra no central (deploy 11).
+
+## Adendo v0.94 (03/10/2026; número da orquestradora; item 30.33-C) — o item de mais de um app na leitura por app; título e nomes nas revisões; os ramos do orçamento; o desfecho em 14 dias
+
+Aditivo aos v0.47, v0.89 e v0.93. Nenhuma rota nova e nenhuma migração. Origem: a validação do deploy 10 viu o fluxo
+que lê o Outlook arquivado sob o Instagram. Não era dado errado: o `app_id` do fluxo é o app PRINCIPAL, onde rodam as
+etapas sem app próprio. A leitura por app é que só olhava o principal.
+
+**Livro** (`GET /api/aprendizado`, o detalhe e as linhas de `GET /api/aprendizado/apps/{pacote}`):
+- cada entrada ganha `apps`, os pacotes do fluxo que atravessa apps na ordem em que o plano os usa. Só vem preenchido
+  com mais de um app; no resto é `[]`. Com `apps` preenchido, a linha leva também `apps_nomes`, na mesma ordem;
+- `app` continua o principal;
+- o filtro `?app=` e a visão por app põem o item em cada app de `apps`. O rótulo QA/PRODUTO continua pelo principal;
+- o fluxo sem principal resolvido continua só no balde `nao_resolvido` (30.2).
+
+**Métricas** (`GET /api/aprendizado/metricas?app=`):
+- com `app`, o recorte do livro, a saúde, as revisões do curador e a economia contam o fluxo multi-app em cada app
+  dele;
+- `orcamento_do_curador` ganha três chaves:
+  - `pelas_revisoes`: o ramo k·N_W·c̄;
+  - `ramo`: qual dos dois manda no mínimo, `"operacao"` ou `"revisoes"`;
+  - `k`;
+- `orcamento` continua o menor dos dois ramos, e `teto_alfa` continua o ramo da operação (α·G_W). Enquanto o ramo das
+  revisões manda, o `uso` fica perto de 1/k por construção.
+
+**Revisões** (`GET /api/aprendizado/revisoes?app=`):
+- com `app`, entram também as revisões dos itens multi-app que usam esse app sem ser o principal. O `scope_app` é o
+  gravado, o principal;
+- cada linha ganha:
+  - `app_nome`;
+  - `titulo`, o título do item no livro, ou `null` se o item saiu dele;
+  - `etapa`, `capability` e `capability_nome`, para nomear a receita como no catálogo;
+  - `apps` e, só no multi-app, `apps_nomes`;
+  - `resultado_posterior` e `resultado_em` (30.35), `null` enquanto a janela de 14 dias não fecha.
+
+**Pareceres do item** (`pareceres[]` do detalhe): ganham `resultado_posterior` e `resultado_em`.
+
+```json
+{"id": "lr-6a9d1102ca65ceec", "item_ref": "fluxo:ler-no-outlook-o-assunto-do-e-mail-mais-", "app": "com.instagram.android",
+ "app_nome": "Instagram", "titulo": "No Outlook, abra a caixa de entrada e leia o assunto…", "etapa": null,
+ "capability": null, "capability_nome": null, "apps": ["com.microsoft.office.outlook", "com.instagram.android"],
+ "apps_nomes": ["Microsoft Outlook", "Instagram"], "resultado_posterior": null, "resultado_em": null, "…": "…"}
+```
+
+**Dossiê do curador:**
+- no fluxo de mais de um app, `item.apps` vira `[{"id", "pacote", "principal"}]`, na ordem do plano, e
+  `item.principal_e` diz o que é o principal. O curador tinha lido `item.app` (pacote) contra `conteudo.apps` (ids)
+  como divergência;
+- no item de um app só nada muda: as mesmas chaves, o mesmo `dossie_hash` e `versao_do_dossie` 1;
+- no central, só os três fluxos multi-app ganham revisão nova, até ~US$ 0,03 (autorizado pela orquestradora).
+
+**Validação** (30.31):
+- o pedido de um item multi-app só nasce `qa` se TODOS os apps forem de QA (a regra "mais restritivo");
+- o despachante só oferece o aparelho que tem todos os apps do item prontos.
+
+**Percentil de `tempos`** (v0.89): segue o `app/metricas.percentil` do K-085, posto `ceil(p·n/100)` em aritmética
+exata. A mediana de dois valores passa a ser o MENOR (o `round` de antes levava o ,5 ao par e dava o maior). Um teste de
+igualdade prende as duas fórmulas, porque a camada de aplicação não importa `app.metricas`.
+
+Prova:
+- `simulated`:
+  - `tests/test_learning_multi_app.py`;
+  - `tests/test_learning_validacao_sql.py` (dois casos novos);
+  - `tests/test_learning_metricas.py` (o percentil igual ao do processo, n de 1 a 200);
+  - `MetricasTab.test.tsx` e `AplicativosTab.test.tsx`;
+- percurso no navegador sobre uma CÓPIA do banco do central de 03/10, com o backend do worktree em provedor simulado;
+- `not_run`: o central.
+
+## Adendo v0.95 (03/10/2026; número da orquestradora; item 29.50) — a pergunta sem resposta expira pelo sistema: `expirada` no `run.updated`
+
+Nenhuma rota nova, nenhum status novo e nenhuma migração. Uma execução em `needs_input` há 24 h sem resposta passa a
+`cancelled` pelo SISTEMA (`RunService.expirar_sem_resposta`, no laço de 10 min do líder da trava `retencao`). É a única
+transição que `needs_input` já permitia.
+
+- O prazo conta da entrada na pergunta (o `run.updated` daquela transição), não de `created_at`. Sem evento nenhum, vale
+  `created_at`.
+- `status_detail` é o motivo humano, sem código nem id: "Sem resposta em 24 h: a pergunta expirou e a execução foi
+  encerrada pelo sistema. Para seguir, faça o pedido de novo."
+- O `data` do `run.updated` dessa transição ganha um campo próprio, como o `issue_codes` do v0.87:
+
+```json
+{"run": {"status": "cancelled", "…": "…"},
+ "expirada": {"motivo": "sem_resposta", "horas": 24, "desde": "2026-10-02T18:15:30.525Z"}}
+```
+
+- `desde` é o `ts` do evento de entrada. `cancel_requested` vira 1 e `finished_at` é preenchido, como em todo
+  `cancelled`.
+- Sem o sinal `cancelou_execucao` (ADR-054): ninguém fez o gesto. O cancelamento pela rota (`POST /api/runs/{id}/cancel`)
+  segue igual.
+- Se a pessoa responde no meio da varredura, a resposta ganha: o cancelamento é condicional ao `needs_input`, e o
+  `status_detail` "Respondida: continua na execução …" fica.
+
+Prova:
+- `simulated`: `tests/test_needs_input_expira.py`.
+- `not_run`: a varredura no central depois do deploy.

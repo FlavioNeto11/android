@@ -21,7 +21,7 @@ from datetime import datetime, timedelta
 from typing import Protocol
 
 from app.modules.learning.domain.curador import Parecer
-from app.modules.learning.domain.livro import EntradaDoLivro
+from app.modules.learning.domain.livro import EntradaDoLivro, apps_do_item
 from app.modules.learning.domain.politica_de_risco import Classificacao, Razao
 from app.modules.learning.domain.validacao import (VALIDADE_DO_PEDIDO_H, Ambiente, AparelhoCandidato, EstadoDoPedido,
                                                    FatosDoParecer, Folego, Grupo, Motivo, escolher_aparelho,
@@ -105,6 +105,7 @@ class FontesDaValidacao(Protocol):
 
     def origem(self, run_id: str) -> Origem | None: ...
     def app_de_qa(self, pacote: str | None) -> bool: ...
+    def apps_do_item(self, item_ref: str) -> tuple[str, ...]: ...     # os pacotes exigidos (fluxo; 30.33-C)
     def fluxo_ativo_para(self, comando: str) -> bool: ...
     def vetado(self, e: EntradaDoLivro) -> bool: ...
     def evidencia_da_execucao(self, item_ref: str, run_id: str) -> bool: ...
@@ -115,7 +116,7 @@ class DespachoDeValidacao(Protocol):
     """O parque e a fila de execuções (o lado do `taskqueue`)."""
 
     def ambiente(self) -> Ambiente: ...
-    def aparelhos(self, pacote: str | None) -> Sequence[AparelhoCandidato]: ...
+    def aparelhos(self, pacotes: Sequence[str]) -> Sequence[AparelhoCandidato]: ...  # com TODOS prontos
     def gasto_da_operacao(self, agora: datetime, dias: int) -> float: ...
     def enfileirar(self, comando: str, aparelho: str, chave: str) -> str: ...  # o run_id
 
@@ -144,7 +145,7 @@ class ServicoDeValidacao:
         fatos = FatosDoParecer(
             decisao=parecer.decisao, falta=tuple(parecer.falta), kind=e.kind, estado=e.state,
             vetado=self._fontes.vetado(e), toca_sessao=Razao.SESSAO_OU_AUTENTICACAO in risco.razoes,
-            efeito=e.side_effect, app_qa=self._fontes.app_de_qa(e.app), comando=comando,
+            efeito=e.side_effect, app_qa=self._todos_de_qa(e), comando=comando,
             comando_com_credencial=bool(comando) and self._triagem(comando or ""),
             fluxo_ativo=bool(comando) and e.kind is LivroKind.RECEITA and self._fontes.fluxo_ativo_para(comando or ""))
         pedido = pedido_do_parecer(fatos)
@@ -157,6 +158,12 @@ class ServicoDeValidacao:
             comando=comando or "", aparelho_excluido=origem.aparelho if origem is not None else None,
             estado=pedido.estado.value, motivo=pedido.motivo.value if pedido.motivo else None,
             expira_em=to_iso(agora + timedelta(hours=VALIDADE_DO_PEDIDO_H))), agora)
+
+    def _todos_de_qa(self, e: EntradaDoLivro) -> bool:
+        """O item é de QA só se TODOS os apps dele forem (30.33-C, a regra "mais restritivo" do dono): um fluxo que
+        passa pelo QA Messenger e pelo Instagram não é QA. Sem app, não é."""
+        apps = apps_do_item(e)
+        return bool(apps) and all(self._fontes.app_de_qa(a) for a in apps)
 
     # ------------------------------------------------------------------ 2. o despachante
     @property
@@ -185,8 +192,9 @@ class ServicoDeValidacao:
             log.info("aprendizado: validação espera (%s; %d pedido(s) pendente(s))", motivo.value, len(pendentes))
             return None
         for p in pendentes:                                      # o mais antigo que tiver aparelho
-            aparelho = escolher_aparelho(p.grupo, self._despacho.aparelhos(p.scope_app or None),
-                                         excluido=p.aparelho_excluido)
+            # 30.33-C: o aparelho precisa de TODOS os apps do item prontos, não só do principal (`scope_app`).
+            pacotes = tuple(dict.fromkeys(a for a in (p.scope_app, *self._fontes.apps_do_item(p.item_ref)) if a))
+            aparelho = escolher_aparelho(p.grupo, self._despacho.aparelhos(pacotes), excluido=p.aparelho_excluido)
             if aparelho is None:
                 continue
             run_id = self._despacho.enfileirar(p.comando, aparelho, chave=f"validacao:{p.id}")

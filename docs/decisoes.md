@@ -76,7 +76,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-066](#adr-066--laço-de-pedidos-desligado-por-padrão-origem-interna-na-criação-da-execução-e-edição-por-gatilho-novo) | Laço de pedidos: desligado por padrão, origem interna na criação da execução e edição por gatilho novo | aceito (Fase 28, 28.4) | 02/10 |
 | [ADR-067](#adr-067--aprendizado-vivo-eixo-de-app-saúde-derivada-e-curador-por-ia-auditável) | Aprendizado vivo: eixo de app, saúde derivada e curador por IA auditável; revê em parte a decisão 9 do ADR-054 (Fase 30) | aceito (dono, 02/10; fase implementada 03/10; prova real 30.18 pendente); emendado 03/10 (revisões da Android e da Jev) | 03/10 |
 | [ADR-068](#adr-068--conta-bloqueada-sai-na-hora-e-a-persona-fica-lápide-só-com-o-hash-do-arroba) | Conta bloqueada sai na hora e a persona fica; lápide só com o hash do @ (item 29.23) |
-| [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro; item 11: regras do filtro do 31.9; item 12: C7 sem palavra-chave e e-mail em peças, rodada E; item 13: barrar pela intenção de entrar, rodada F; item 14: o usuário como @handle ou e-mail, o catálogo só no destino e a preposição só com faixa, rodada G; item 15: envio aberto no código para a sombra C0–C1 do 31.10, 31.17) | 03/10 |
+| [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro; item 11: regras do filtro do 31.9; item 12: C7 sem palavra-chave e e-mail em peças, rodada E; item 13: barrar pela intenção de entrar, rodada F; item 14: o usuário como @handle ou e-mail, o catálogo só no destino e a preposição só com faixa, rodada G; item 15: envio aberto no código para a sombra C0–C1 do 31.10, 31.17; item 16: a camada estrutural da rodada H; item 17: NO-GO da fase 2 da H e a forma seguinte com o dono; item 18: forma A na versão A-estreita, 31.18; item 19: lacunas da rodada I e a A-média aprovada pelo dono, 31.20; item 20: o limiar da porta sobre a probabilidade devolvida e o rótulo 1 do curador só do dono, 31.19) | 03/10 |
 | [ADR-070](#adr-070--valor-visto-na-imagem-conta-como-saída-de-etapa-sob-conferência-cega-de-um-segundo-leitor) | Valor visto na imagem conta como saída de etapa, sob conferência cega de um segundo leitor; substitui em parte o ADR-065 §3 (item 12.5) | vigente (dono, 02/10; opção desligada) | 02/10 |
 
 ---
@@ -4763,6 +4763,35 @@ catálogo, comando), que o ADR-063 não cobre.
         e 108 (com);
       - os 14 arquivos do filtro e das sombras: 1889 passaram. Os vizinhos e a arquitetura: 74. O recorte `-k "sombra or
         intencao or decisao"`: 2114.
+20. **Emenda de 03/10/2026 (31.19: o limiar da porta sobre a probabilidade devolvida e o rótulo 1 do curador só do
+    dono; decisões da orquestradora, ~15:15Z).** As 4 primeiras respostas reais do curador (13:10Z, deploy 9) voltaram
+    `abaixo_do_limiar`, com confiança 0,50–0,52 e maior probabilidade (`revisar`) 0,60–0,62, todas sobre o mesmo estado
+    C0. O limiar não separa o que a entrada não distingue, e por isso fica em 0,85 (registro datado no
+    [golden set](design/jev-golden-set.md) §2).
+    - **A porta segue o contrato.** A `Pergunta` diz que o limiar vale sobre a probabilidade devolvida, mas a porta
+      media a `confianca`. Desde o 31.19 (`porta._valor_do_limiar`), no `choice` o limiar mede a probabilidade devolvida
+      da opção escolhida, e ela precisa ser a maior. Com o Jev coerente, isso é a maior probabilidade. A escolha sem
+      probabilidade, ou que não é a maior, falha fechado (`abaixo_do_limiar`): o decisor não é confiado.
+      - `noul` e `score`, que não têm produtor, seguem medindo a `confianca`.
+      - A `confianca` continua na resposta e na linha da sombra, e o relatório do 31.10 mostra as duas colunas
+        (`cobertura_por_limiar`).
+      - Nas 4 respostas nada muda: 0,60–0,62 é menor que 0,85.
+    - **O rótulo 1 do curador vale só do dono.** Antes ele valia para todo `decided_by` diferente de `sistema`. No
+      central, as 11 transições assim eram:
+      - 7 da `orquestradora` e 2 de sessão Claude do Aprendizado;
+      - 2 de `panel`, o último recurso de `api.quem`, quando ninguém se identificou.
+
+      Todas eram anteriores à sombra. Agora o rótulo 1 só vale quando o `decided_by` está entre os autores declarados
+      ao relatório (`--autor-dono`); sem nome, fica desligado. O dono é `Flavio` (`panel_sessions`, confirmado pela
+      orquestradora).
+      - Ressalva: o nome do painel é declarado atrás de um token compartilhado.
+      - Ressalva: um agente de validação no Chrome do dono também aparece como `Flavio`, mas por regra só lê e não gera
+        transição.
+    - Prova:
+      - `simulated`: `backend/tests/test_decisao_fechada*.py` (1044, com os casos da porta) e
+        `scripts/tests/test_jev_relatorio_31_10.py`, na main pela suíte 11 (442a9249);
+      - `real`: o relatório no banco do central, só leitura, às 15:08Z, com 1 estado C0, cobertura 1,0 em 0,50 e 0 em
+        0,85.
 
 **Consequências.** A plataforma ganha um motor barato (US$ 0,042/M de entrada, saída grátis) para decisões fechadas que hoje não
 acontecem ou vão ao Opus, medido em sombra contra o caminho atual antes de qualquer `on`. O ADR-063 continua valendo para código.

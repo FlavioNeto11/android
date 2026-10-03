@@ -1536,9 +1536,10 @@ def _objetivo_parado(parque: Harness, status: str, wait_reason: str | None, iid:
     e a vitrine leem. `wait_reason='rede'` é a espera da porta (25.6 `running`, ou `pending` pelo despacho)."""
     st = parque.state
     assert st is not None
-    st.db.execute("INSERT OR IGNORE INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids,"
-                  " created_at, plan) VALUES ('run-2921','k-2921','teste','execute','running',1,?,?,'{}')",
-                  (json.dumps([iid]), now_iso()))
+    # K-084: `INSERT OR IGNORE` é só do SQLite; `ON CONFLICT DO NOTHING` vale nos dois.
+    st.db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids,"
+                  " created_at, plan) VALUES ('run-2921','k-2921','teste','execute','running',1,?,?,'{}')"
+                  " ON CONFLICT DO NOTHING", (json.dumps([iid]), now_iso()))
     st.db.execute("DELETE FROM objectives WHERE id=?", (oid,))
     st.db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, wait_reason)"
                   " VALUES (?,'run-2921',?,?,1,?)", (oid, iid, status, wait_reason))

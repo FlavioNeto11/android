@@ -44,7 +44,8 @@ from app.planning import costs
 from app.util import to_iso
 
 _COLUNAS = ("id, created_at, item_ref, item_kind, gatilho, validade, classe_de_risco, politica, simulated, provedor,"
-            " modelo, dossie, saida, decisao_final, decidido_por, transicao_id, override, override_motivo")
+            " modelo, dossie, saida, decisao_final, decidido_por, transicao_id, override, override_motivo,"
+            " resultado_posterior, resultado_em")
 _CLASSES = frozenset(c.value for c in ClasseDeRisco)
 #: O filtro de todo leitor do curador (ver o docstring do módulo).
 _DO_CURADOR = f"template_id='{TEMPLATE_ID}'"
@@ -69,7 +70,9 @@ def _revisao(row: Row) -> RevisaoGravada:
         decisao_final=linhas.texto_ou_nulo(row, "decisao_final"),
         decidido_por=linhas.texto_ou_nulo(row, "decidido_por"),
         transicao_id=linhas.inteiro_ou_nulo(row, "transicao_id"), override=bool(linhas.inteiro(row, "override")),
-        override_motivo=linhas.texto_ou_nulo(row, "override_motivo"))
+        override_motivo=linhas.texto_ou_nulo(row, "override_motivo"),
+        resultado_posterior=linhas.texto_ou_nulo(row, "resultado_posterior"),
+        resultado_em=linhas.texto_ou_nulo(row, "resultado_em"))
 
 
 def custos_das_chamadas(db: Database, ids: Iterable[int], precos: dict[str, list[float]]) -> dict[int, float]:

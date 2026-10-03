@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  aiFeatureRows, aiModelRows, aiProfileRows, aiRoleLabel, aiRoleRows, effortLabel, esquemaDoPlanoLabel, flowsLabel, hubRoleLabel,
-  imagePolicyLabel, leituraVisualLabel, recipesModeLabel, thinkingLabel,
+  aiFeatureRows, aiModelRows, aiProfileRows, aiRoleLabel, aiRoleRows, decisaoFechadaConsumidoresLabel, effortLabel,
+  esquemaDoPlanoLabel, flowsLabel, hubRoleLabel, imagePolicyLabel, leituraVisualLabel, recipesModeLabel, thinkingLabel,
 } from './aiLabels';
 
 describe('chip da IA — modelos por função', () => {
@@ -104,5 +104,20 @@ describe('I2 da validação do deploy 7 (v0.87): a aba IA em português', () => 
     expect(dieta?.adjustments).toEqual(['imagem até 768 px', 'árvore rica a partir de 0 elementos']);
     expect([dieta?.canary, dieta?.external]).toEqual([null, false]);
     expect(aiProfileRows({})).toEqual([]);
+  });
+});
+
+describe('polimento do deploy 10: os consumidores da decisão fechada (v0.90)', () => {
+  it('origem e modo em palavras; valor fora do contrato passa cru; sem bloco é null', () => {
+    const bloco = (consumers: Record<string, string>) => ({ decisao_fechada: {
+      provider: 'typesafe', name: 'Jev', consumers, classes: ['C0'], send_approved: true, key: 'configurada', decider: 'jev',
+      sending: true, retention_days: 180,
+    } });
+    expect(decisaoFechadaConsumidoresLabel(bloco({ curador: 'shadow', intencao: 'shadow' })))
+      .toBe('curador: em sombra · intenção: em sombra');
+    expect(decisaoFechadaConsumidoresLabel(bloco({ apps: 'on', novo: 'turbo' }))).toBe('apps: ligado · novo: turbo');
+    expect(decisaoFechadaConsumidoresLabel(bloco({}))).toBeNull();
+    expect(decisaoFechadaConsumidoresLabel({ decisao_fechada: null })).toBeNull();
+    expect(decisaoFechadaConsumidoresLabel({})).toBeNull();
   });
 });

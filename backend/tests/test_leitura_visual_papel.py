@@ -482,8 +482,9 @@ async def test_078_as_linhas_ficam_arvore_e_o_check_recusa_outra_origem(harness:
         repo.save_step_output(step["id"], "y", "v", leitor="oa/leitor-x")
     with pytest.raises(Exception):                                                       # e o CHECK do banco recusa por baixo
         db.execute("UPDATE step_outputs SET origem='inventada' WHERE name='antigo'")
-    row = db.one("SELECT checksum FROM schema_migrations WHERE version=78") if _tem_coluna(db) else None
-    assert row is None or len(row["checksum"]) == 64                                     # o sha256 da 078 foi gravado
+    # K-084: `version` é TEXT ("078_…"). `version=78` nunca casava no SQLite (a asserção passava vazia) e quebrava na PG.
+    row = db.one("SELECT checksum FROM schema_migrations WHERE version LIKE ?", ("078%",)) if _tem_coluna(db) else None
+    assert row is not None and len(row["checksum"]) == 64                                # o sha256 da 078 foi gravado
 
 
 def _tem_coluna(db: Any) -> bool:

@@ -128,6 +128,16 @@ class FontesDaValidacaoSql:
         r = self._db.one("SELECT category FROM apps WHERE package=?", (pacote,))
         return r is not None and linhas.texto_ou_nulo(r, "category") == "qa"
 
+    def apps_do_item(self, item_ref: str) -> tuple[str, ...]:
+        """Os pacotes que o fluxo exige (`flow_required_apps`); vazio nos outros tipos e no id sem linha em `apps`
+        (o despachante soma o `scope_app` do pedido)."""
+        kind, _, ref = item_ref.partition(":")
+        if kind != "fluxo" or not ref:
+            return ()
+        return tuple(linhas.texto(r, "package") for r in self._db.query(
+            "SELECT DISTINCT a.package FROM flow_required_apps f JOIN apps a ON a.id = f.app_id"
+            " WHERE f.flow_id=? AND a.package IS NOT NULL AND a.package <> '' ORDER BY a.package", (ref,)))
+
     def fluxo_ativo_para(self, comando: str) -> bool:
         return self._fluxo_ativo_para(comando)
 

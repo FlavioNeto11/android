@@ -1,7 +1,7 @@
 import {
   CircleCheck, CircleHelp, CircleSlash, CircleX, LoaderCircle, Send, Radio, Hourglass, type LucideIcon,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client';
 import type { Command, CommandState, InstanceAction } from '../../api/types';
 import { Button } from '../../components/Button';
@@ -12,6 +12,7 @@ import { metaOf, type StatusMeta } from '../../lib/status';
 import { rotuloDoComando } from '../../lib/rotulos';
 import { tempoRelativo, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
+import { deUmaPessoa } from '../../store/reducer';
 import { toast, toastError } from '../../store/toasts';
 import { ACTION_META, cancelarComando, comandoAbertoDe } from './actions';
 import styles from './Devices.module.css';
@@ -138,6 +139,50 @@ export function CommandSummary({ cmd }: { cmd: Command }) {
       <span className={styles.commandText} title={`Identificador: ${cmd.verb}`}>{rotuloDoVerbo(cmd.verb)}</span>
       <span className={styles.commandAge}><Idade iso={desde} /></span>
       <CancelCommandButton cmd={cmd} />
+    </span>
+  );
+}
+
+/**
+ * O comando que o cartão e o Foco mostram de um aparelho (03/10).
+ * - `principal`: o que está em voo, de quem for, porque é ele que explica os verbos bloqueados. Sem nada em voo, o
+ *   último de uma PESSOA ou execução (`ultimoDePessoa`). A sonda de rede e os outros pedidos automáticos não são "o
+ *   último comando": a sonda aparece a cada poucos minutos e enterrava o que a pessoa quer ver. Ela fica na tela de Rede.
+ * - `incertos`: os `uncertain` de pessoa ou execução ainda sem desfecho que não são o principal. A incerteza não some;
+ *   a de pedido automático (a sonda incerta) fica só na tela de Rede, como a sonda concluída.
+ */
+export function useComandosDoAparelho(id: string): { principal: Command | undefined; incertos: Command[] } {
+  const ultimo = useAppStore((s) => s.lastCommand[id]);
+  const dePessoa = useAppStore((s) => s.ultimoDePessoa[id]);
+  const semDesfecho = useAppStore((s) => s.comandoSemDesfecho[id]);
+  return useMemo(() => {
+    const principal = comandoAbertoDe(ultimo) ?? dePessoa;
+    const vistos = new Set<string>(principal ? [principal.id] : []);
+    const incertos: Command[] = [];
+    for (const c of [ultimo, semDesfecho]) {
+      if (c?.state === 'uncertain' && deUmaPessoa(c) && !vistos.has(c.id)) {
+        vistos.add(c.id);
+        incertos.push(c);
+      }
+    }
+    return { principal, incertos };
+  }, [ultimo, dePessoa, semDesfecho]);
+}
+
+/**
+ * Um `uncertain` sem desfecho que não é o comando principal do aparelho. Ele continua aberto no banco, então fica no
+ * cartão, discreto: "Anterior sem resposta" quando é mais velho que o principal, "Sem resposta" quando não há principal
+ * ou ele é mais novo. Verificar ou decidir é nos "Comandos recentes".
+ */
+export function ComandoAnteriorSemResposta({ cmd, principal }: { cmd: Command; principal?: Command }) {
+  const desde = cmd.finished_at ?? cmd.started_at ?? cmd.dispatched_at ?? cmd.created_at;
+  const anterior = !!principal && cmd.created_at < principal.created_at;
+  return (
+    <span className={cx(styles.commandLine, styles.commandAnterior)}
+          title={`${COMMAND_STATE.uncertain.description} Para verificar ou decidir, abra os Comandos recentes do aparelho.`}>
+      <CircleHelp size={12} aria-hidden />
+      <span className={styles.commandText}>{anterior ? 'Anterior sem resposta' : 'Sem resposta'}: {rotuloDoVerbo(cmd.verb)}</span>
+      <span className={styles.commandAge}><Idade iso={desde} /></span>
     </span>
   );
 }

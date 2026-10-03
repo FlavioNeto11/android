@@ -18,6 +18,7 @@ from app.modules.learning.domain.camada import ModosDeUso, Uso
 from app.modules.learning.domain.saude import Saude
 from app.modules.learning.infrastructure.montagem import modos_de_runtime
 from app.modules.learning.presentation.livro import _chamar, _entrada, _servico
+from app.modules.learning.presentation.nomes import nomear_apps
 from app.modules.skills.domain.document import JsonObject, JsonValue
 
 router = APIRouter(prefix="/api/aprendizado")
@@ -97,10 +98,11 @@ def _detalhe(d: DetalheDoApp, servico: LearningService) -> JsonObject:
     saudes = servico.saudes(entradas)
     capabilities = servico.capabilities(entradas)       # em lote, como a saúde: nunca uma consulta por linha
     nomes = servico.nomes_das_capabilities(entradas, capabilities)
+    aprendido = [_linha(x, servico, saudes, capabilities, nomes) for x in d.aprendido]
+    absorvido = [_linha(x, servico, saudes, capabilities, nomes) for x in d.absorvido]
+    nomear_apps([*aprendido, *absorvido], servico)      # 30.33-C: "Outlook → Instagram" na linha do multi-app
     return {"app": _resumo(d.resumo, d.modos), "declarado": [_item_declarado(i) for i in d.declarado],
-            "aprendido": [_linha(x, servico, saudes, capabilities, nomes) for x in d.aprendido],
-            "absorvido": [_linha(x, servico, saudes, capabilities, nomes) for x in d.absorvido],
-            "modos": _modos(d.modos)}
+            "aprendido": aprendido, "absorvido": absorvido, "modos": _modos(d.modos)}
 
 
 @router.get("/apps", response_model=None)

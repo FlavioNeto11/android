@@ -136,6 +136,10 @@ class RevisaoGravada:
     transicao_id: int | None = None
     override: bool = False
     override_motivo: str | None = None
+    #: O desfecho medido 14 dias depois (30.35): `manter`, `rebaixar`, `descartar` ou `sem_desfecho`, e quando foi
+    #: gravado; `None` enquanto a janela não fecha (ou fora de receita e lição). O painel o mostra (30.33-C).
+    resultado_posterior: str | None = None
+    resultado_em: str | None = None
 
     @property
     def decidida(self) -> bool:

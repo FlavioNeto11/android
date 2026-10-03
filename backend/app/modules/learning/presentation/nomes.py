@@ -34,14 +34,23 @@ def nomear(linhas: Iterable[object], servico: LearningService | None, *, app: st
 def nomear_apps(linhas: Iterable[object], servico: LearningService | None, *, app: str = "app") -> None:
     """Só `app_nome` em cada linha (dict), numa leitura de nomes: o livro já traz `capability_nome` por item
     (`servico.nomes_das_capabilities`) e não pode tê-lo apagado (validação do deploy 4: as listas e a Identidade
-    mostravam o pacote onde "O que mais falha" já dizia o nome)."""
+    mostravam o pacote onde "O que mais falha" já dizia o nome). A linha do fluxo multi-app (30.33-C) leva também
+    `apps_nomes`, na ordem de `apps` ("Outlook → Instagram"), na mesma leitura."""
     dicts = [x for x in linhas if isinstance(x, dict)]
     visao = servico.extensao(VisaoPorApp) if servico is not None else None
     pacotes = {p for x in dicts if isinstance(p := x.get(app), str) and p and p != QUALQUER}
+    pacotes |= {p for x in dicts for p in _apps(x) if p != QUALQUER}
     apps = visao.nomes(pacotes) if visao is not None and pacotes else {}
     for x in dicts:
         pacote = x.get(app)
         x["app_nome"] = apps.get(pacote) if isinstance(pacote, str) else None
+        if _apps(x):
+            x["apps_nomes"] = [apps.get(p, p) for p in _apps(x)]
+
+
+def _apps(x: dict[object, object]) -> list[str]:
+    v = x.get("apps")
+    return [p for p in v if isinstance(p, str) and p] if isinstance(v, list) else []
 
 
 __all__ = ["nomear", "nomear_apps"]

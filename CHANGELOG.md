@@ -19,6 +19,154 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: o item de mais de um app na leitura por app e os polimentos das Métricas (30.33-C; branch feat/30-33-multi-app)
+
+- O fluxo que atravessa apps aparece em cada app dele: na visão por app, no filtro `?app=` do livro e nas Métricas
+  (recorte, saúde, revisões e economia). Antes ficava só no app principal (validação do deploy 10: o fluxo do Outlook
+  sob o Instagram).
+  - O dado não estava errado e não mudou.
+  - O balde `nao_resolvido` não muda.
+- O dossiê do curador ganha `item.apps` (id, pacote e principal) só no multi-app. No item de um app só, o
+  `dossie_hash` fica igual.
+- 30.31: o item multi-app é QA só com todos os apps de QA, e o aparelho precisa de todos eles prontos.
+- Painel:
+  - "Microsoft Outlook → Instagram" na linha do item e nos pareceres;
+  - os pareceres mostram o título do item e o nome do app;
+  - o orçamento mostra os dois ramos e qual manda (sai o "piso");
+  - a sombra da autopublicação e o desfecho em 14 dias aparecem na tela.
+- Contrato: adendo v0.94.
+- Prova `simulated`:
+  - `test_learning_multi_app.py`;
+  - dois casos em `test_learning_validacao_sql.py`;
+  - `MetricasTab.test.tsx` e `AplicativosTab.test.tsx`;
+  - percurso no navegador sobre uma cópia do banco do central.
+
+## 2026-10-03 — ADR-069 item 20: o limiar da porta sobre a probabilidade devolvida e o rótulo 1 do curador só do dono (branch docs/adr-069-item-20, para a suíte 12)
+
+- Documentação e processo: registra as duas decisões da orquestradora do 31.19 (03/10 ~15:15Z), que já estão no
+  código da suíte 11 (442a9249). A porta mede o limiar na probabilidade devolvida da escolha, que precisa ser a maior;
+  o rótulo 1 do curador só vale do autor dono declarado (`--autor-dono`, `Flavio`). Inclui as ressalvas do nome do
+  painel. Nenhum código muda.
+## 2026-10-03 — Jev: a leitura da sombra de intenção (R2/R3) pronta para depois do deploy 11 (branch feat/jev-leitura-intencao)
+
+- `scripts/jev-leitura-intencao.py`, só leitura e sem IA (irmão do `jev-prova-31-17.py`, para a origem `intencao`). Mede:
+  - contagens por origem/classe/modo e, por pergunta R2/R3, pedidos, respondidas, abstenções e fallbacks;
+  - recusas por `fallback_reason` e `motivo_privacidade` (só o vocabulário fechado);
+  - confiança, P(escolha) e maior probabilidade contra o limiar da porta;
+  - US$ total e por chamada e ms p50/p95 pelo posto mais próximo.
+- A asserção de zero texto falha fechado: valor fora do formato da coluna, JSON que não é {id opaco: número} ou coluna
+  fora de 074/079 é violação. O valor nunca é impresso; nas contagens, aparece `(fora do vocabulário)`.
+- Prova: `simulated` (`scripts/tests/test_jev_leitura_intencao.py`, 8 testes com linhas falsas). Execução no central:
+  `not_run` (espera o aviso da orquestradora). Documentado em `docs/design/jev-golden-set.md` §7.
+
+## 2026-10-03 — K-085: o percentil de `app/metricas.py` pelo posto mais próximo, sem o arredondamento de banqueiro (branch fix/k085-percentil, para a suíte 12)
+
+- `metricas.percentil` calculava o posto como `round(p/100·n + 0,5)`. O `round` do Python leva o ,5 ao par, então,
+  quando `p·n/100` dava inteiro ímpar, o posto subia um. Isso acontecia em 13 de 160 casos com n ≤ 40 e p em
+  {50, 90, 95, 99}; com n=2, por exemplo, o p50 dava o maior dos dois valores.
+- Agora o posto é `ceil(p·n/100)`, em aritmética exata (`Fraction`). Afeta o p50 e o p95 de `GET /api/desempenho`: as
+  distribuições do processo (C5) e o histórico do `desempenho.py`.
+- `sombra._p95`, que grava `decisao_fechada_diario.ms_p95`, passa a delegar a ele: um percentil só no processo, o mesmo
+  dos scripts do Jev (31.19).
+- Prova `simulated`: `tests/test_metricas.py` com os 13 casos e a igualdade com a sombra para n de 1 a 200; os 38
+  arquivos de teste que tocam percentil passaram (725 testes).
+- Fora deste item: `modules/learning/application/metricas.py::_percentil` (os `tempos` do Aprendizado) é uma cópia com
+  o mesmo defeito.
+## 2026-10-03 — Painel: os 4 polimentos de UX que vinham dos deploys 9 a 11 (branch feat/polimentos-ux-deploy11)
+
+Só frontend; nada de backend.
+
+- Painel, último comando do cartão:
+  - Antes, "Comando: Sem resposta · <verbo> · há N dias" aparecia em 11 dos 14 cartões. Era o último `uncertain`, e não
+    o último comando, porque o snapshot só traz os em voo e os `uncertain`.
+  - Agora o `live.ts` lê os comandos recentes de cada aparelho depois do snapshot: 20 por aparelho e, se nenhum deles
+    for de pessoa, 200. No central, o primeiro de pessoa era o 31º do android-03 e o 59º do android-06, por causa da
+    sonda.
+  - O cartão mostra o comando em voo (de quem for, porque é ele que bloqueia os verbos). Sem nada em voo, mostra o último
+    de PESSOA ou execução, em qualquer estado (`ultimoDePessoa`).
+  - Os pedidos automáticos (a sonda de rede `rede`, a escada `system`, `saude`, `reconciliacao` e o rodízio `scheduler`)
+    não são "o último comando". A sonda pede um a cada poucos minutos e enterrava o que a pessoa quer ver; ela fica na
+    tela de Rede. Cartão sem comando de pessoa fica sem a linha, como antes. (Ajuste da orquestradora.)
+  - O concluído também aparece; antes ele era escondido de propósito, e a orquestradora pediu o contrário.
+  - Os `uncertain` sem desfecho de pessoa ou execução seguem numa linha discreta: "Anterior sem resposta: <verbo> · há N
+    dias", ou "Sem resposta: <verbo>" quando são mais novos que o principal. Ficam até serem verificados ou decididos
+    (`comandoSemDesfecho`). O de pedido automático (a sonda incerta) também fica só na tela de Rede (ajuste da
+    orquestradora).
+  - O Foco lê do mesmo jeito (`useComandosDoAparelho`). A Lista divide a coluna com a etapa em curso: comando aberto ou
+    `uncertain` atual, depois a etapa, depois o anterior sem resposta.
+  - Custo: 1 leitura curta por aparelho, mais 1 funda nos que têm sonda, a cada hidratação (carga e ressincronização).
+    No central: 15 curtas e 2 fundas.
+- Infraestrutura, renderizador: "renderizador pedido: GPU do host" virou "renderizador configurado: GPU do host". A
+  dica separa o configurado (o pedido ao emulador, `gpu_mode`) do efetivo (o que o emulador selecionou, só com o
+  aparelho no ar). No fallback, "(configurado: host)".
+- Infraestrutura, tipo do aparelho: o `kind` cru "store" virou "loja", e "external" virou "externo", com o porquê na dica.
+- Infraestrutura, pausa do reparo (25.13 sem tela): linha discreta "reparo pausado até hh:mm" lida de
+  `/api/instances[].repair_pause`. Em outro dia, leva a data. Quem pausou e o motivo vão na dica. A vencida não aparece.
+- Aplicativos › Rede: a lista por app diz o nome do registro de aplicativos ("Outlook: sem tráfego na janela") e
+  "shell do Android (a sonda)", com o pacote na dica. Fora do registro, sai o pacote.
+- Prova:
+  - `simulated`: `npm run typecheck` e `npm test` com 1398 de 1398. Testes novos em `store/reducer.test.ts`,
+    `devices/DeviceCard.test.tsx` (com a Lista), `focus/FocusPanel.test.tsx`, `infra/infraState.test.ts`,
+    `infra/InfraPage.test.tsx` e `rede/RedePage.test.tsx`.
+  - Navegador (03/10, Vite do worktree na 5173 contra a API do central, só leitura):
+    - Painel: os 15 cartões com o último comando de pessoa (o 03 e o 06 com "Verificação da sessão", não a sonda); 10
+      com "Anterior sem resposta"; nenhum "Rede do aparelho" na página; 15 leituras curtas e 2 fundas, sem repetir;
+    - Infraestrutura: "loja" com a dica, 8 "renderizador configurado", nenhum "store" nem "renderizador pedido";
+    - Rede: Instagram, Outlook e shell do Android pelo nome;
+    - Foco do android-06: "Concluído · Rede do aparelho" no topo e "Anterior sem resposta: Abrir app · há 8 dias";
+    - Lista: 11 linhas com o anterior, nenhum `uncertain` antigo como atual;
+    - 375 px: `scrollWidth` 375, nenhuma linha estourando.
+  - A linha da pausa do reparo NÃO foi vista no navegador: não havia pausa em vigor no central. Ela está provada no
+    teste de componente.
+
+## 2026-10-03 — 29.50: a pergunta sem resposta expira pelo sistema em 24 h (branch feat/29-50-expira-needs-input)
+
+- O problema: 13 execuções de QA estavam em `needs_input` no android-05 e no android-09 desde 02/10 18:15Z e 03/10
+  07:37Z e 07:51Z. Não havia prazo. Só o cancelamento pela rota as tirava do ar, e ele grava o sinal de pessoa
+  `cancelou_execucao` (ADR-054), que ninguém deu.
+- Agora `RunService.expirar_sem_resposta`:
+  - fecha como `cancelled` a execução em `needs_input` há 24 h, contadas da entrada na pergunta (o `run.updated`
+    daquela transição) e não da criação;
+  - grava o motivo humano no `status_detail` ("Sem resposta em 24 h: …"), sem código nem id;
+  - leva `expirada: {motivo, horas, desde}` num campo próprio do `run.updated`;
+  - não grava `cancelou_execucao`.
+- O laço `AppState._expiracao_loop` faz a primeira volta na subida e depois uma a cada 10 min, só no líder da trava
+  `retencao`.
+- A resposta que chega no meio da varredura ganha: o cancelamento é condicional ao `needs_input`.
+- `RunService.cancel` passou a usar o mesmo `_cancelar_antes_de_iniciar`, sem mudar o comportamento.
+- Contrato: adendo v0.95 do `docs/api-contract.md` (número da orquestradora).
+- Prova:
+  - `simulated`: `backend/tests/test_needs_input_expira.py`, 4 testes (prazo, relógio da entrada, corrida com a
+    resposta, volta do laço);
+  - os afetados passaram: 80 testes (costuras, assistente, máquinas de estado, travas, retenção, arquitetura) e 187
+    dos 11 arquivos que cancelam;
+  - real: `not_run`. É a varredura no central depois do deploy, que deve liberar as 13.
+
+## 2026-10-03 — K-084: os 7 testes com SQL só de SQLite passam na PostgreSQL (branch fix/k-084-sql-so-de-sqlite)
+
+- `tests/test_leitura_visual_papel.py::test_078_as_linhas_ficam_arvore_e_o_check_recusa_outra_origem`: a versão
+  comparada como texto (`version LIKE '078%'`). No SQLite, `version=78` nunca casava, e a asserção do sha256 da 078
+  passava vazia; agora ela exige a linha.
+- `tests/test_learning_esquecer_conta.py::test_nao_toca_receitas_fluxos_nem_memoria`: `flows` com `id` explícito
+  (TEXT PRIMARY KEY sem padrão: o SQLite aceitava o id nulo).
+- `tests/test_rede_aplicacao.py::_objetivo_parado`: `ON CONFLICT DO NOTHING` no lugar do `INSERT OR IGNORE`. Afeta os 4
+  parâmetros de `test_reinicio_com_objetivo_esperando_a_rede` e `test_reinicio_que_nao_sai_diz_qual_termo_segurou`.
+- Prova `simulated`: os 7 casos passam na PostgreSQL (farm-pg, 03/10). Os 3 arquivos deram 95 passed na PG e 95 no SQLite.
+  Só testes mudaram; nada no app.
+## 2026-10-03 — Jev: polimentos de UX do deploy 10 (branch feat/ux-jev-polimento, para a suíte 12)
+
+- O aviso do Jev em `/api/ai` (`transparencia.aviso`) fala o modo em palavras: "decisões por conjunto fechado (curador
+  em sombra, intenção em sombra)", e não mais "dos consumidores curador (shadow)". O bloco `decisao_fechada.consumers`
+  continua com os valores do YAML (adendo v0.90).
+- Configuração › IA ganha a linha "Decisão fechada (Jev)" (curador: em sombra · intenção: em sombra), com o selo
+  "envio ativo" ou "nada sai agora" vindo do `sending`. O frontend passa a tipar o bloco v0.90 (`AiDecisaoFechada`).
+- Diagnóstico › Detalhes técnicos: as chaves cruas (`usable`, `raw`, `guidance`, `hypervisor_present`, núcleos, memória
+  virtual e discos) ganham rótulo em português.
+- Prova `simulated`:
+  - backend: `tests/test_decisao_fechada_sombra.py` e os arquivos do `/api/ai`, 149 passed;
+  - frontend: typecheck, mais `aiLabels`, `AiSection` e `DiagnosticsPage`, com 37 passed;
+  - navegador: as duas telas percorridas contra um backend simulado do worktree (porta 8765, decisor nulo, nada sai),
+    no desktop e em 375 px, sem rolagem lateral.
 ## 2026-10-03 — 29.49 com prova real: o assunto do Outlook lido de primeira no android-01
 
 - Execução real (03/10, central, android-01, deploy 11 c8304e85, liberada pela orquestradora): r-20261003155342-6a94e6.

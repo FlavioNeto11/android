@@ -15,8 +15,8 @@ from app.db import Database
 from app.modules.learning.application.ports import CatalogoDeRisco, RepositorioDeAprendizado
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.ciclo import SYSTEM_ACTOR, NaoEncontrado
-from app.modules.learning.domain.curador import (MAX_EVIDENCIAS, Dossie, Evidencia, IdentidadeDoItem, PassoDaTrilha,
-                                                 Relacao, montar_dossie)
+from app.modules.learning.domain.curador import (MAX_EVIDENCIAS, AppDoItem, Dossie, Evidencia, IdentidadeDoItem,
+                                                 PassoDaTrilha, Relacao, montar_dossie)
 from app.modules.learning.domain.evidencia_invalida import run_invalidada
 from app.modules.learning.domain.politica_de_risco import FatosDeRisco, toca_sessao_ou_autenticacao
 from app.modules.learning.domain.livro import EntradaDoLivro
@@ -56,6 +56,18 @@ class DossiesSql:
                     "SELECT id, stance, origin_ref, run_id, instance_id, app_version, simulated, observed_at"
                     " FROM learning_evidence WHERE item_ref=? ORDER BY id DESC LIMIT 200", (item_ref,))]
 
+    def _apps(self, e: EntradaDoLivro, conteudo: JsonObject | None) -> tuple[AppDoItem, ...]:
+        """30.33-C: os apps do fluxo multi-app pelo id E pelo pacote, na ordem do plano, com a marca do principal
+        (o curador leu `item.app` = pacote contra `conteudo.apps` = ids como divergência). Só com mais de um app."""
+        ids = (conteudo or {}).get("apps") if e.kind is LivroKind.FLUXO and len(e.apps) > 1 else None
+        if not isinstance(ids, list):
+            return ()
+        principal = (conteudo or {}).get("app")
+        todos = [*ids, principal]                       # o principal fora da tabela de exigidos entra no fim
+        apps = tuple(AppDoItem(id=a, pacote=self._risco.pacote(a), principal=a == principal)
+                     for a in dict.fromkeys(x for x in todos if isinstance(x, str) and x))
+        return apps if len(apps) > 1 else ()
+
     def dossie(self, entrada: EntradaDoLivro, *, max_evidencias: int | None = None) -> Dossie | None:
         if entrada.kind in (LivroKind.MEMORIA, LivroKind.HABILIDADE):
             return None
@@ -76,7 +88,7 @@ class DossiesSql:
         identidade = IdentidadeDoItem(kind=e.kind.value, ref=e.ref, app=e.app or "", capability=capability,
                                       app_version=e.app_version, estado=None if e.state is None else e.state.value,
                                       origem=e.origin.value, side_effect=e.side_effect, human_origin=e.human_origin,
-                                      criado_em=e.created_at)
+                                      criado_em=e.created_at, apps=self._apps(e, d.conteudo))
         trilha = [PassoDaTrilha(id=t.id, para=t.to_state.value, em=t.decided_at,
                                 de=None if t.from_state is None else t.from_state.value,
                                 por_pessoa=t.decided_by != SYSTEM_ACTOR, run_id=t.run_id) for t in d.trilha]

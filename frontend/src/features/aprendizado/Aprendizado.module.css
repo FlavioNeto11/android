@@ -211,6 +211,9 @@
 
 .exemplos li { overflow-wrap: anywhere; }
 
+/* 30.33-C: "Correio → Social", os apps do fluxo que atravessa apps; quebra entre os nomes no celular. */
+.appsDoItem { overflow-wrap: anywhere; }
+
 .linkBtn {
   /* 32 px de área de clique: o respiro vertical entra como padding (o botão é inline, a linha não muda) */
   padding: 6px 0;
@@ -230,6 +233,15 @@
   align-items: center;
   padding: 9px 4px;
   margin: -9px -4px;
+}
+
+/* 30.33-C: o título do item no parecer (o comando inteiro, no fluxo) em até duas linhas, como no catálogo. */
+.tituloDaRevisao {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
 }
 
 .trilha {

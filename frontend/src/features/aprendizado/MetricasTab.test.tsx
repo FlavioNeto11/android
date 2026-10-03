@@ -196,6 +196,67 @@ describe('Aprendizado: a aba Métricas', () => {
     await waitFor(() => expect(text(container)).toContain('O curador passou de 80% do orçamento da janela dele'));
     expect(text(bloco('Orçamento do curador'))).toContain('passou de 80% do orçamento');
   });
+
+  it('30.33-C: o orçamento diz qual ramo manda, sem "piso", e avisa que o uso fica perto de 1/k', async () => {
+    backend.on('GET', /^\/api\/aprendizado\/metricas$/, () => json({ ...METRICAS, orcamento_do_curador: {
+      ...METRICAS.orcamento_do_curador, orcamento: 1.17, teto_alfa: 3.52, pelas_revisoes: 1.17, ramo: 'revisoes', k: 1.5,
+      uso: 0.667 } }));
+    await montar();
+    await waitFor(() => expect(text(bloco('Orçamento do curador'))).toContain('ramo das revisões · manda'));
+    const o = text(bloco('Orçamento do curador'));
+    expect(o).not.toContain('piso');
+    expect(o).toContain('ramo da operação');
+    expect(o).not.toContain('ramo da operação · manda');
+    expect(o).toContain('o uso fica perto de 67%');
+  });
+
+  it('30.33-C: a sombra da autopublicação aparece no painel, com a regra para ligar; sem ela, o bloco some', async () => {
+    backend.on('GET', /^\/api\/aprendizado\/metricas$/, () => json({ ...METRICAS, curador: { ...METRICAS.curador, autopublicacao: {
+      modo: 'shadow', casos: 3, abertos: 2, limpos: 1, regrediram: 0, taxa_sem_regressao: 1.0, libera: false,
+      limiares: { casos_fechados: 30, taxa_sem_regressao: 0.9, janela_dias: 7 } } } }));
+    await montar();
+    await waitFor(() => expect(bloco('Autopublicação (sombra)')).toBeTruthy());
+    const s = text(bloco('Autopublicação (sombra)'));
+    expect(s).toContain('3casos');
+    expect(s).toContain('2ainda abertos');
+    expect(s).toContain('Sem regressão100%');
+    expect(s).toContain('em sombra · ainda não cumpre a regra para publicar de verdade: pelo menos 30 casos fechados e 90% sem regressão em 7 dias.');
+  });
+
+  it('30.33-C: sem o ramo (backend anterior) os dois números de antes aparecem e a nota não', async () => {
+    expect(METRICAS.curador).not.toHaveProperty('autopublicacao');
+    await montar();
+    await waitFor(() => expect(text(bloco('Orçamento do curador'))).toContain('ramo da operação'));
+    const o = text(bloco('Orçamento do curador'));
+    expect(bloco('Autopublicação (sombra)')).toBeNull();
+    expect(o).not.toContain('ramo das revisões');
+    expect(o).not.toContain('não mede folga');
+  });
+
+  it('30.33-C: o parecer mostra o título do item e os apps pelo nome; sem título, a referência', async () => {
+    backend.on('GET', /^\/api\/aprendizado\/revisoes$/, () => json({ revisoes: [
+      { ...REVISAO, id: 'lr-m', item_ref: 'fluxo:ler-no-correio', app: 'com.exemplo.social', app_nome: 'Social',
+        titulo: 'No Correio, leia o assunto e abra o perfil no Social', apps: ['com.exemplo.correio', 'com.exemplo.social'],
+        apps_nomes: ['Correio', 'Social'] },
+      { ...REVISAO, id: 'lr-r', item_ref: 'receita:10', item_kind: 'receita', app_nome: 'QA Messenger',
+        titulo: 'send_message (v2)', capability: 'SEND_MESSAGE', capability_nome: 'Enviar a mensagem',
+        resultado_posterior: 'rebaixar', resultado_em: '2026-10-17T07:10:00Z' },
+      { ...REVISAO, id: 'lr-x', item_ref: 'fluxo:sumiu', app_nome: 'QA Messenger', titulo: null }], proximo: null }));
+    await montar();
+    await waitFor(() => expect(container.querySelector('[data-revisao="lr-m"]')).toBeTruthy());
+    const multi = container.querySelector('[data-revisao="lr-m"]') as HTMLElement;
+    expect(text(multi)).toContain('Fluxo: No Correio, leia o assunto e abra o perfil no Social');
+    expect(text(multi)).toContain('Correio → Social');
+    expect(text(multi)).not.toContain('com.exemplo');
+    expect(multi.querySelector('a')?.getAttribute('title')).toBe('Fluxo ler-no-correio');
+    const receita = text(container.querySelector('[data-revisao="lr-r"]') as HTMLElement);
+    expect(receita).toContain('Receita: Enviar a mensagem (v2)');
+    expect(receita).toContain('QA Messenger');
+    expect(receita).not.toContain('com.pocqa.messenger');
+    expect(receita).toContain('Em 14 dias, o item foi rebaixado.');
+    expect(text(multi)).not.toContain('Em 14 dias');
+    expect(text(container.querySelector('[data-revisao="lr-x"]') as HTMLElement)).toContain('Fluxo sumiu');
+  });
 });
 
 describe('metricas.ts: leitura tolerante e texto', () => {

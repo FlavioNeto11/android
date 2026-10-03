@@ -110,6 +110,30 @@ fluxo que casaria o mesmo comando ([skills](skills.md#resolução-de-intenção)
 
 `RunService.apps_exigidos` e `POST /api/flows/match` tratam a pergunta como "nada casou": `[]` e `null`.
 
+### A pergunta sem resposta expira (29.50)
+
+Uma execução em `needs_input` há `NEEDS_INPUT_EXPIRA_H` (24 h) sem resposta é encerrada pelo sistema.
+
+- Quem faz: `RunService.expirar_sem_resposta(agora)`. O laço é `AppState._expiracao_loop`: a primeira volta é na
+  subida, depois a cada `EXPIRACAO_INTERVALO_S` (10 min). Roda só no líder da trava `retencao`, porque é faxina do
+  mesmo tipo.
+- O relógio é a ENTRADA em `needs_input`, o `run.updated` daquela transição, e não a criação:
+  - a retenção poupa todo evento de execução sem `finished_at`, e `needs_input` não tem `finished_at`;
+  - `needs_input` só sai para `cancelled`, então o último `run.updated` é o da entrada;
+  - sem evento nenhum, vale `created_at`.
+- O que muda na execução:
+  - fecha como `cancelled`, pelo mesmo caminho do cancelamento antes de iniciar (`_cancelar_antes_de_iniciar`:
+    etapas abertas, objetivos e aprovações);
+  - o `status_detail` é o motivo humano: "Sem resposta em 24 h: a pergunta expirou e a execução foi encerrada pelo
+    sistema. Para seguir, faça o pedido de novo.";
+  - o `data` do `run.updated` da transição leva `expirada: {motivo: "sem_resposta", horas: 24, desde: <entrada>}`;
+  - não grava o sinal `cancelou_execucao`: ninguém fez o gesto (ADR-054).
+- A resposta que chega no meio da varredura ganha. O cancelamento é condicional (`UPDATE … WHERE status='needs_input'`),
+  e o "Respondida: continua na execução …" da sucessora fica.
+- Pedido recorrente: a ocorrência da execução expirada fecha como `cancelada`, como qualquer `cancelled` sem objetivo
+  iniciado e sem a intenção do prazo de início (`pedidos/domain/fechamento.py`).
+- Prova `simulated`: `backend/tests/test_needs_input_expira.py`.
+
 Provas (`simulated`, harness na porta 5640):
 `backend/tests/test_intencao_chamadores.py::test_os_tres_chamadores_coerentes_para_a_mesma_frase` (valor inválido,
 buraco vazio e empate, com `count("plan")` inalterado) e `::test_empate_na_execucao_pergunta_com_as_opcoes_e_nao_grava_skill`.

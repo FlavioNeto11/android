@@ -48,6 +48,10 @@ const LABELS: Record<string, string> = {
   name: 'Nome', value: 'Valor', unit: 'Unidade', ok: 'OK', result: 'Resultado', duration_s: 'Duração (s)', error: 'Erro',
   kind: 'Tipo', instance_id: 'Aparelho', clock_skew_before_after_s: 'Desvio de relógio antes/depois (s)', online_after: 'Online depois de',
   image: 'Imagem', saved: 'Salvo', save_seconds: 'Salvar (s)', wake_seconds: 'Acordar (s)', mem_free_gb: 'Memória livre (GB)',
+  // as chaves de `devices/diagnostics.py` que saíam cruas ("Usable", "Raw", "Guidance", "Hypervisor present"…)
+  usable: 'Utilizável', raw: 'Saída bruta', guidance: 'Orientação', hypervisor_present: 'Hipervisor presente',
+  cores_physical: 'Núcleos físicos', cores_logical: 'Núcleos lógicos', swap_total_gb: 'Memória virtual (GB)',
+  disk_project: 'Disco do projeto', disk_sdk: 'Disco do SDK',
 };
 
 const TILE_ICON: Record<DecisionTileKey, typeof Activity> = {

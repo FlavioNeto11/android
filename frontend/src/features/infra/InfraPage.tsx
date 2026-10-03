@@ -28,7 +28,7 @@ import { personasPorAparelho } from '../profiles/pessoa';
 import { usePersonas } from '../profiles/usePersonas';
 import {
   centralMeta, eventosDoServidor, filaDoServidor, fracaoDeDisco, groupByWorker, instanceStateMeta, isStale,
-  ocupacaoDoServidor, orphanInstances, renderizadorMeta,
+  ocupacaoDoServidor, orphanInstances, pausaDoReparoMeta, renderizadorMeta, tipoDoAparelho,
 } from './infraState';
 import { estadoContado, type Ocupacao } from '../../store/metricas';
 import { CriarAparelhoDialog } from './CriarAparelho';
@@ -583,6 +583,7 @@ function ListaDeAparelhos({ instancias, personas, doWorker, onAposentado }: {
       {instancias.map((i) => {
         // RF-40: aparelho de servidor fora do ar é "desconhecido", como no Painel e no Foco (era "parado").
         const meta = instanceStateMeta(estadoContado(i, workers));
+        const tipo = tipoDoAparelho(i.kind);
         const proc = processo.get(i.id);
         // A instância do config.yaml sai editando o arquivo: o botão nem aparece para ela.
         const aposentavel = !!onAposentado && i.origin === 'dynamic';
@@ -594,7 +595,7 @@ function ListaDeAparelhos({ instancias, personas, doWorker, onAposentado }: {
                     aria-label={`Abrir ${i.id} na visão de foco`}>
               <span className={styles.aparelhoId}>{i.id}</span>
               <Badge tone={meta.tone} size="sm" plain>{meta.label}</Badge>
-              {i.kind !== 'emulator' ? <Badge tone="muted" size="sm" plain>{i.kind}</Badge> : null}
+              {tipo ? <Badge tone="muted" size="sm" plain title={tipo.title}>{tipo.label}</Badge> : null}
               {/* As três fontes de inventário discordam sobre qual aparelho está por trás deste id: enquanto
                   isso durar, o backend recusa verbo destrutivo — e a tela precisa dizer por quê. */}
               {i.inventory_state === 'divergent' ? (
@@ -606,6 +607,7 @@ function ListaDeAparelhos({ instancias, personas, doWorker, onAposentado }: {
               {proc ? <span className={styles.dim}>processo: {proc.state}</span> : null}
               {proc?.detail ? <span className={styles.dim} title={proc.detail}> · {proc.detail}</span> : null}
               <Capacidades instancia={i} />
+              <PausaDoReparo instancia={i} />
             </span>
             {i.current?.run_id ? (
               <button type="button" className={styles.tarefa}
@@ -662,6 +664,13 @@ function ListaDeAparelhos({ instancias, personas, doWorker, onAposentado }: {
  * incompatibilidade aparecia no meio, como `INSTALL_FAILED_NO_MATCHING_ABIS`. O que não se sabe não é mostrado:
  * campo vazio aqui quer dizer "ainda não foi observado nem declarado", nunca "não tem".
  */
+/** "reparo pausado até 15:27": discreta como as capacidades, com o porquê na dica (25.13). */
+function PausaDoReparo({ instancia }: { instancia: Instance }) {
+  const agora = useNow();
+  const pausa = pausaDoReparoMeta(instancia.repair_pause, agora);
+  return pausa ? <span className={styles.dim} title={pausa.title}> · {pausa.label}</span> : null;
+}
+
 function Capacidades({ instancia }: { instancia: Instance }) {
   const partes: string[] = [];
   if (instancia.api_level) partes.push(`API ${instancia.api_level}`);

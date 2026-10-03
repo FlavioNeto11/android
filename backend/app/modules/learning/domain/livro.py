@@ -253,6 +253,11 @@ class EntradaDoLivro:
     #: citar parâmetro da execução de origem (um @, um contato): o painel só o usa sem `capability_nome`, e o dossiê do
     #: curador não o leva. `None` no treino e nos outros tipos.
     etapa: str | None = None
+    #: 30.33-C: os pacotes dos apps que o fluxo exige, na ordem em que o plano os usa (`apps_na_ordem_do_plano`), só
+    #: quando são MAIS DE UM (ler no Outlook e procurar no Instagram: Outlook, Instagram). Vazio no item de um app só,
+    #: que fica todo no `app`. O `app` continua o principal (onde rodam as etapas sem app próprio): por ele se leem o
+    #: modo do pacote, o rótulo QA/PRODUTO e o `scope_app` da revisão; quem agrupa ou filtra por app usa `apps_do_item`.
+    apps: tuple[str, ...] = ()
 
     @property
     def requires_owner(self) -> bool:
@@ -264,6 +269,13 @@ class EntradaDoLivro:
     @property
     def trail_ref(self) -> str:
         return ref_da_trilha(self.kind, self.ref)
+
+
+def apps_do_item(e: EntradaDoLivro) -> tuple[str, ...]:
+    """Os apps a que o item pertence na leitura por app (30.33-C): os do fluxo multi-app, na ordem do plano, mais o
+    principal quando a tabela de exigidos não o cita; no item de um app só, o `app`. Sem app, vazio. Um fluxo que lê
+    o Outlook e abre o perfil no Instagram aparece nos dois apps, não só no principal (validação do deploy 10)."""
+    return tuple(dict.fromkeys((*e.apps, *((e.app,) if e.app else ()))))
 
 
 def entrada_do_item(item: ItemDeAprendizado) -> EntradaDoLivro:

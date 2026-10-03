@@ -61,12 +61,15 @@ class DespachoDoParque:
         r = self._db.one(f"SELECT COUNT(*) AS n FROM runs WHERE status IN ({marcas})", EM_CURSO)
         return Ambiente(saudavel=self._saudavel(), execucoes_em_curso=linhas.inteiro(r, "n") if r is not None else 0)
 
-    def aparelhos(self, pacote: str | None) -> Sequence[AparelhoCandidato]:
-        if not pacote:
+    def aparelhos(self, pacotes: Sequence[str]) -> Sequence[AparelhoCandidato]:
+        """Os aparelhos com TODOS os `pacotes` prontos (30.33-C: o fluxo multi-app precisa de cada app dele)."""
+        exigidos = sorted({p for p in pacotes if p})
+        if not exigidos:
             return []
         com_o_app = [linhas.texto(r, "instance_id") for r in self._db.query(
-            "SELECT instance_id FROM device_app_state WHERE package_name=? AND state='ready' ORDER BY instance_id",
-            (pacote,))]
+            f"SELECT instance_id FROM device_app_state WHERE package_name IN ({linhas.marcas(len(exigidos))})"
+            " AND state='ready' GROUP BY instance_id HAVING COUNT(DISTINCT package_name) = ? ORDER BY instance_id",
+            (*exigidos, len(exigidos)))]
         if not com_o_app:
             return []
         com_conta = {linhas.texto(r, "instance_id") for r in self._db.query(

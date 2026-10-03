@@ -10,9 +10,10 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
 import type { NetworkDeviceRow, NetworkProfileListed, NetworkServerStatus } from '../../api/types';
 import { ConfirmHost } from '../../components/Confirm';
+import { useAppStore } from '../../store/app';
 import { useToastStore } from '../../store/toasts';
 import { FakeBackend, apiError, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
-import { RedePage } from './RedePage';
+import { RedePage, nomeDoPacote } from './RedePage';
 
 function perfil(over: Partial<NetworkProfileListed> = {}): NetworkProfileListed {
   return { id: 'vpn-1', name: 'WireGuard escritório', kind: 'vpn', protocol: 'wireguard', endpoint_host: '10.0.0.9',
@@ -410,6 +411,38 @@ it('a última medição da sonda mostra por app, DNS, UDP, vazamento e a saída 
   expect(text()).toContain('com.whatsapp: não medido (não instalado ou não lido)');
   expect(text()).toContain('com.instagram.android: pelo túnel');
   expect(container.querySelectorAll('[title="Outro aparelho mediu o mesmo IP agora."]').length).toBe(1);
+});
+
+// Polimento do deploy 10: a lista por app saía com o pacote cru, e a ressalva ao lado já dizia "Outlook".
+it('a lista por app diz o nome do app do registro, com o pacote na dica; sem nome, o pacote', async () => {
+  useAppStore.setState({ apps: [
+    { id: 'outlook', name: 'Outlook', package: 'com.microsoft.office.outlook' },
+    { id: 'instagram', name: 'Instagram', package: 'com.instagram.android' },
+  ] as never });
+  try {
+    backend.on('GET', /\/network\/devices/, () => json({
+      devices: [linha({
+        instance_id: 'android-01',
+        last_measurement: {
+          id: 4, instance_id: 'android-01', measured_at: '2026-10-03T14:57:41Z', method: 'sonda', egress_ipv4: '198.51.100.7',
+          egress_ipv6: null, dns_resolver: '172.19.0.2', udp_ok: true, leak_blocked: true, detail: null,
+          per_app: { 'com.instagram.android': 'ok', 'com.microsoft.office.outlook': 'sem_trafego', 'com.android.shell': 'ok',
+                     'com.whatsapp': 'nao_medido' },
+        },
+      })],
+    }));
+    await render(<RedePage />);
+    await waitFor(() => text().includes('Outlook: sem tráfego na janela'));
+    expect(text()).toContain('Instagram: pelo túnel');
+    expect(text()).toContain('shell do Android (a sonda): pelo túnel');
+    expect(text()).toContain('com.whatsapp: não medido');                   // fora do registro: o pacote, como veio
+    expect(text()).not.toContain('com.microsoft.office.outlook:');
+    const outlook = [...container.querySelectorAll('[title]')].find((e) => e.textContent?.startsWith('Outlook:'));
+    expect(outlook?.getAttribute('title')).toContain('com.microsoft.office.outlook.');
+    expect(nomeDoPacote('com.exemplo', [])).toBe('com.exemplo');
+  } finally {
+    useAppStore.setState({ apps: [] });
+  }
 });
 
 it('UDP aparece por perna, com destaque na que falhou (29.5); sem os campos novos, fica como antes', async () => {

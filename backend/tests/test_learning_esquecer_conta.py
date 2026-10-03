@@ -208,8 +208,9 @@ def test_nao_toca_receitas_fluxos_nem_memoria(db: Database) -> None:
     _popular(db)
     db.execute("INSERT INTO recipes (app_package, app_version, step_hash, step_key, actions, created_at) "
                "VALUES ('com.fake.app', '1', 'sh', ?, ?, ?)", (f"curtir {HANDLE}", f'["abrir @{HANDLE}"]', TS))
-    db.execute("INSERT INTO flows (name, match_key, command_template, plan, created_at) VALUES (?, 'mk', ?, ?, ?)",
-               (f"fluxo {HANDLE}", f"curtir {HANDLE}", f'["{ACCOUNT}"]', TS))
+    # K-084: `flows.id` é TEXT PRIMARY KEY sem padrão; o SQLite aceitava o id nulo, a PG não.
+    db.execute("INSERT INTO flows (id, name, match_key, command_template, plan, created_at) VALUES ('fluxo-fake', ?, 'mk', "
+               "?, ?, ?)", (f"fluxo {HANDLE}", f"curtir {HANDLE}", f'["{ACCOUNT}"]', TS))
     db.execute("INSERT INTO instagram_profiles (id, created_at, updated_at) VALUES ('per-fake', ?, ?)", (TS, TS))
     db.execute("INSERT INTO memory_items (id, profile_id, subject, content, source, fingerprint, created_at, "
                "updated_at) VALUES ('mem-1', 'per-fake', 'fato', ?, 'teste', 'fp', ?, ?)",

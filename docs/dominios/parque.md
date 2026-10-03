@@ -322,6 +322,8 @@ android-09 15 s depois do `restart` do experimento. Só não entrou porque o com
   dela confere o `repair_pause` do aparelho (`GET /api/snapshot` → `instances[].repair_pause`) e do `GET /api/health` →
   `features.repair_pause` (`{id: {until, since, reason, by, remaining_s}}`; vazio = nenhuma). É informativo: não vira
   problema de saúde.
+- **No painel** (03/10/2026): a linha do aparelho em Infraestrutura diz "reparo pausado até hh:mm" (em outro dia, com a
+  data), e a dica leva quem pausou e o `reason`. A vencida não aparece (`infra/infraState.ts::pausaDoReparoMeta`).
 - **O que segura:** só o reparo AUTOMÁTICO de `restart`/`reset` do aparelho marcado: a escada (`requested_by='system'`,
   `despacho.remediar`) e o reinício por saúde do convidado (`requested_by='saude'`). A pausa não abre comando (nem
   rejeitado), então não conta como degrau; o aparelho volta a ser avaliado logo depois do fim da pausa e, se ainda

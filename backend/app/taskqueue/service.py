@@ -6,6 +6,7 @@ import asyncio
 import logging
 import random
 from collections.abc import Callable, Mapping, Sequence
+from datetime import datetime, timedelta
 from typing import Any
 
 from ..db import Row, dumps, loads
@@ -36,7 +37,7 @@ from ..planning.provider import AIError, AIProvider, AppContext, MarcaDaChamada,
 from ..security.redaction import redact
 from ..shared.costuras import SISTEMA
 from ..shared.resources import Target
-from ..util import now_iso
+from ..util import now_iso, to_iso
 from .balanceamento import Candidato, distribuir
 from .costuras import (SEM_COSTURAS, CancelamentoDeExecucao, CosturasDeAprendizado, PedidoDeLicoes,
                        RepeticaoDeExecucao, ResolucaoDeItem, avisar, pedir_licoes)
@@ -55,6 +56,10 @@ registrar_fonte_dos_apps(nomes_e_apelidos)
 #: Estados de onde, com o rodízio LIGADO, o aparelho volta ao ar sozinho: os que ele acorda (`WAKEABLE`) mais o
 #: desligamento em voo, que termina num deles. Com o rodízio desligado, nenhum destes volta sem uma pessoa.
 _VOLTAM_COM_RODIZIO = WAKEABLE | {InstanceState.stopping}
+#: 29.50: a pergunta (`needs_input`) sem resposta por este tempo expira PELO SISTEMA (`RunService.expirar_sem_resposta`).
+#: Antes, a execução esperava para sempre, e só um cancelamento pela rota a tirava do ar, o que é um sinal de PESSOA
+#: (`cancelou_execucao`, ADR-054) que ninguém deu.
+NEEDS_INPUT_EXPIRA_H = 24
 
 
 def pede_outro_alvo(command: str, apps: list[AppContext], pacotes_dos_aparelhos: set[str]) -> bool:
@@ -1329,11 +1334,7 @@ class RunService:
         self.repo.db.execute("UPDATE runs SET cancel_requested=1, pause_requested=0 WHERE id=?", (run_id,))
         antes_de_iniciar = status in (RunStatus.planned, RunStatus.needs_input, RunStatus.planning)
         if antes_de_iniciar:
-            self.repo.cancel_open_steps(run_id, reason="execução cancelada")
-            for o in self.repo.db.query("SELECT id FROM objectives WHERE run_id=?", (run_id,)):
-                self.repo.set_objective(o["id"], ObjectiveStatus.cancelled, detail="Cancelado antes de iniciar.")
-                self.scheduler._expirar_aprovacoes(o["id"], "execução cancelada")  # noqa: SLF001
-            self.repo.set_run_status(run_id, RunStatus.cancelled, "Cancelada antes de iniciar")
+            self._cancelar_antes_de_iniciar(run_id, "Cancelada antes de iniciar")
         else:
             self.repo.set_run_status(run_id, RunStatus.cancelling,
                                      "Cancelando: trabalho futuro interrompido; o que já foi feito permanece registrado",
@@ -1344,6 +1345,53 @@ class RunService:
             avisar(self.costuras.cancelou_execucao, CancelamentoDeExecucao(
                 run_id=run_id, status_anterior=status.value, antes_de_iniciar=antes_de_iniciar, quem=por, em=em))
         return self.repo.run_summary(self._run(run_id))
+
+    def _cancelar_antes_de_iniciar(self, run_id: str, detalhe: str, *, message: str | None = None,
+                                   dados: dict[str, object] | None = None) -> None:
+        """Fecha como `cancelled` a execução que não começou: etapas abertas, objetivos e aprovações junto. Quem chama
+        já gravou `cancel_requested`; o gesto da pessoa (`cancel`) e a expiração do sistema (29.50) diferem só no texto
+        e no sinal."""
+        self.repo.cancel_open_steps(run_id, reason="execução cancelada")
+        for o in self.repo.db.query("SELECT id FROM objectives WHERE run_id=?", (run_id,)):
+            self.repo.set_objective(o["id"], ObjectiveStatus.cancelled, detail="Cancelado antes de iniciar.")
+            self.scheduler._expirar_aprovacoes(o["id"], "execução cancelada")  # noqa: SLF001
+        self.repo.set_run_status(run_id, RunStatus.cancelled, detalhe, message=message, dados=dados)
+
+    def expirar_sem_resposta(self, agora: datetime) -> list[str]:
+        """29.50: cancela PELO SISTEMA a execução que espera resposta (`needs_input`) há `NEEDS_INPUT_EXPIRA_H` horas.
+        Devolve as execuções expiradas.
+
+        Não passa por `cancel`: sem `por`, sem o sinal `cancelou_execucao` (ninguém fez o gesto), e com o motivo humano
+        no texto. A marca para máquina (`expirada`) vai num campo próprio do `run.updated`, como os `issue_codes`.
+
+        O relógio é a ENTRADA em `needs_input`, não a criação: o `run.updated` daquela transição. Ele não se perde,
+        porque a retenção poupa todo evento de execução sem `finished_at`, e `needs_input` não tem `finished_at`. Como
+        `needs_input` só sai para `cancelled`, o último `run.updated` é o da entrada; outro depois dele só atrasaria a
+        expiração, nunca a adiantaria. Sem evento nenhum (execução anterior aos eventos), vale a criação."""
+        limite = to_iso(agora - timedelta(hours=NEEDS_INPUT_EXPIRA_H))
+        expiradas: list[str] = []
+        # A entrada é depois da criação: quem nasceu depois do limite não pode ter vencido.
+        for run in self.repo.db.query("SELECT id, created_at FROM runs WHERE status=? AND created_at < ? "
+                                      "ORDER BY created_at", (RunStatus.needs_input.value, limite)):
+            run_id = str(run["id"])
+            entrada = self.repo.db.scalar("SELECT MAX(ts) FROM events WHERE run_id=? AND kind='run.updated'",
+                                          (run_id,)) or run["created_at"]
+            if str(entrada) >= limite:
+                continue
+            # Só se ainda espera: a resposta da pessoa (`ComandoAssistido.sucessora`) pode ter cancelado a execução
+            # entre a leitura e aqui, e o "Respondida: continua na execução …" dela não pode virar "expirada".
+            if not self.repo.db.execute("UPDATE runs SET cancel_requested=1, pause_requested=0 WHERE id=? AND status=?",
+                                        (run_id, RunStatus.needs_input.value)).rowcount:
+                continue
+            self._cancelar_antes_de_iniciar(
+                run_id, f"Sem resposta em {NEEDS_INPUT_EXPIRA_H} h: a pergunta expirou e a execução foi encerrada pelo "
+                        "sistema. Para seguir, faça o pedido de novo.",
+                message=f"Execução {run_id}: ninguém respondeu às perguntas em {NEEDS_INPUT_EXPIRA_H} h; encerrada "
+                        "pelo sistema",
+                dados={"expirada": {"motivo": "sem_resposta", "horas": NEEDS_INPUT_EXPIRA_H,
+                                    "desde": str(entrada)}})
+            expiradas.append(run_id)
+        return expiradas
 
     # ------------------------------------------------------------------ retomadas
     def _requeue(self, obj: Any, reason: str) -> None:

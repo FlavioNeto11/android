@@ -17,21 +17,24 @@ fecha `sem_ator` (LT-6) e sai do proxy e de `so_ia`; compare só janelas do mesm
 """
 from __future__ import annotations
 
+import math
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from fractions import Fraction
 from typing import Protocol
 
 from app.modules.learning.application.curador import janela_do_orcamento
 from app.modules.learning.application.ports import AjustesDoCurador, LeituraDaJanela
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.ciclo import SYSTEM_ACTOR, SkillState
-from app.modules.learning.domain.livro import contagem, para_aprovar
+from app.modules.learning.domain.livro import apps_do_item, contagem, para_aprovar
 from app.modules.learning.domain.orcamento_do_curador import (ParametrosDoOrcamento, custo_medio, estimar_custo,
                                                               orcamento_da_janela)
 from app.modules.learning.domain.parecer import RevisaoGravada
 from app.modules.learning.domain.saude import Rotulo
+from app.modules.learning.domain.vocabulario import LivroKind
 from app.util import parse_iso, to_iso
 
 #: O aviso do custo da curadoria (§10): a 80 % do orçamento da janela.
@@ -78,6 +81,9 @@ class RevisaoLida:
     decisao: str | None         # a sugestão da IA, só na revisão válida
     decisao_final: str | None
     override: bool
+    #: O item revisado (30.33-C): o recorte por app inclui a revisão do fluxo multi-app nos apps dele, não só no
+    #: `scope_app` (o principal, gravado na revisão).
+    item_ref: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,7 +116,7 @@ class FontesDeMetricas(Protocol):
     def conducao(self, desde: str, ate: str) -> list[ConducaoDaEtapa]: ...
     def janela_do_curador(self, agora: datetime, dias: int) -> LeituraDaJanela: ...
     def lista_de_revisoes(self, *, app: str | None, decisao: str | None, desde: str | None, limite: int,
-                          cursor: tuple[str, str] | None) -> PaginaDeRevisoes: ...
+                          cursor: tuple[str, str] | None, tambem: Sequence[str] = ()) -> PaginaDeRevisoes: ...
 
 
 # ------------------------------------------------------------------ a resposta
@@ -185,10 +191,13 @@ def _tempo(amostra: list[float]) -> Tempo:
 
 
 def _percentil(ordenada: list[float], p: float) -> float | None:
-    """A posição mais próxima, a mesma regra de `app/metricas.py` (que a camada de aplicação não importa)."""
+    """O posto mais próximo, `ceil(p·n/100)`, a mesma regra de `app/metricas.percentil` depois do K-085 — a camada de
+    aplicação não importa `app.metricas` (`tests/test_arquitetura.py`), então a fórmula é a mesma e um teste de
+    igualdade as prende (`test_learning_metricas.py`). Em aritmética exata: `0.9 * n` em ponto flutuante cai logo
+    abaixo do inteiro, e o `round` antigo levava o ,5 ao par (n=2 no p50 dava o maior dos dois)."""
     if not ordenada:
         return None
-    k = max(0, min(len(ordenada) - 1, round(p / 100 * len(ordenada) + 0.5) - 1))
+    k = max(0, min(len(ordenada) - 1, math.ceil(Fraction(str(p)) * len(ordenada) / 100) - 1))
     return round(ordenada[k], 3)
 
 
@@ -226,12 +235,17 @@ def orcamento(leitura: LeituraDaJanela, aj: AjustesDoCurador, precos: dict[str, 
     estimativas = [estimar_custo(t, precos) for t in leitura.tamanhos_sem_medida]
     p = ParametrosDoOrcamento(alfa=aj.alfa, k=aj.k, janela_dias=aj.janela_dias, m_cmax=aj.m_cmax)
     n = janela.revisoes_antes_de_hoje + janela.revisoes_de_hoje
-    b = orcamento_da_janela(janela.gasto_da_operacao, n, custo_medio(janela.custos_medidos, estimativas), p)
+    c_barra = custo_medio(janela.custos_medidos, estimativas)
+    b = orcamento_da_janela(janela.gasto_da_operacao, n, c_barra, p)
     uso = round(janela.gasto_da_curadoria / b, 3) if b > 0 else None
+    # Os dois ramos do mínimo (validação do deploy 10: o painel chamava o que manda de "piso"). Enquanto o ramo das
+    # revisões manda, o `uso` fica perto de 1/k por construção (C_W ≈ N_W·c̄): a barra não mede folga real.
+    teto_alfa, pelas_revisoes = p.alfa * janela.gasto_da_operacao, p.k * n * c_barra
     return {"modo": aj.modo.value, "janela_dias": aj.janela_dias, "gasto_da_operacao": round(janela.gasto_da_operacao, 4),
             "gasto_da_curadoria": round(janela.gasto_da_curadoria, 4), "orcamento": round(b, 4),
-            "teto_alfa": round(p.alfa * janela.gasto_da_operacao, 4), "revisoes_na_janela": n, "uso": uso,
-            "aviso": uso is not None and uso >= AVISO_DO_ORCAMENTO}
+            "teto_alfa": round(teto_alfa, 4), "pelas_revisoes": round(pelas_revisoes, 4),
+            "ramo": "operacao" if teto_alfa <= pelas_revisoes else "revisoes", "k": p.k,
+            "revisoes_na_janela": n, "uso": uso, "aviso": uso is not None and uso >= AVISO_DO_ORCAMENTO}
 
 
 def resumo_do_curador(revisoes: Sequence[RevisaoLida]) -> dict[str, object]:
@@ -266,7 +280,10 @@ class ServicoDeMetricas:
         desde, ate = to_iso(agora - timedelta(days=dias)), to_iso(agora)
         livro = self._servico.livro()
         app_da_ref = {e.trail_ref: e.app for e in livro.itens}
-        no_recorte = [e for e in livro.itens if app is None or e.app == app]
+        # 30.33-C: o recorte por app é o de `apps_do_item` (o fluxo multi-app entra em cada app dele), como a visão
+        # por app; o `scope_app` da revisão segue o principal e só é completado pelos apps do item.
+        no_recorte = [e for e in livro.itens if app is None or app in apps_do_item(e)]
+        multi = {e.trail_ref: apps_do_item(e) for e in livro.itens if e.apps}
         refs = {e.trail_ref for e in no_recorte}
         sem_item: Counter[str] = Counter()
 
@@ -303,8 +320,9 @@ class ServicoDeMetricas:
 
         tocados = {t.item_ref for t in transicoes if t.to_state in {b for _, b in PARES_DE_TEMPO}}
         saude = Counter(s.rotulo.value for e, s in self._servico.publicados()
-                        if s is not None and (app is None or e.app == app))
-        revisoes = [r for r in self._fontes.revisoes(desde, ate) if app is None or r.scope_app == app]
+                        if s is not None and (app is None or app in apps_do_item(e)))
+        revisoes = [r for r in self._fontes.revisoes(desde, ate)
+                    if app is None or r.scope_app == app or app in multi.get(r.item_ref, ())]
         return MetricasDoAprendizado(
             app=app, janela_dias=dias, desde=desde, ate=ate,
             itens=contagem(no_recorte), por_origem=dict(sorted(Counter(e.origin.value for e in no_recorte).items())),
@@ -321,7 +339,8 @@ class ServicoDeMetricas:
                    "desligados": sum(1 for t in transicoes if t.to_state in _DESLIGADO and t.from_state != t.to_state)},
             tempos=tempos(self._fontes.trilhas(tocados, ate), desde, ate),
             saude={r.value: saude.get(r.value, 0) for r in Rotulo},
-            economia=self._economia(app, dias, agora),
+            economia=self._economia(app, dias, agora, {e.ref: apps_do_item(e) for e in livro.itens
+                                                       if e.kind is LivroKind.FLUXO and e.apps}),
             falhas_evitadas_proxy=proxy_de_falhas(self._fontes.conducao(desde, ate), app),
             orcamento_do_curador=(orcamento(self._fontes.janela_do_curador(agora, (aj := self._curador()).janela_dias),
                                             aj, self._precos()) if self._curador is not None else None),
@@ -338,10 +357,15 @@ class ServicoDeMetricas:
     def revisoes(self, *, app: str | None, decisao: str | None, desde: str | None, limite: int,
                  cursor: tuple[str, str] | None) -> PaginaDeRevisoes:
         """`GET /api/aprendizado/revisoes`: os pareceres do curador, do mais novo ao mais velho; `decisao` filtra
-        pela sugestão da IA."""
-        return self._fontes.lista_de_revisoes(app=app, decisao=decisao, desde=desde, limite=limite, cursor=cursor)
+        pela sugestão da IA. Com `app`, entram também as revisões dos itens multi-app que usam esse app sem ser o
+        principal (30.33-C), pela lista desses itens: o `scope_app` gravado continua o principal."""
+        tambem = ([e.trail_ref for e in self._servico.livro().itens if app in e.apps and e.app != app]
+                  if app is not None else [])
+        return self._fontes.lista_de_revisoes(app=app, decisao=decisao, desde=desde, limite=limite, cursor=cursor,
+                                              tambem=tambem)
 
-    def _economia(self, app: str | None, dias: int, agora: datetime) -> dict[str, float] | None:
+    def _economia(self, app: str | None, dias: int, agora: datetime,
+                  multi: Mapping[str, tuple[str, ...]] | None = None) -> dict[str, float] | None:
         if self._aproveitamento is None:
             return None
         resumo = self._aproveitamento(dias, agora)
@@ -349,7 +373,9 @@ class ServicoDeMetricas:
             fonte: Iterable[object] = [resumo.get("totais") or {}]
         else:
             fluxos = resumo.get("fluxos")
-            fonte = [f for f in fluxos if isinstance(f, dict) and f.get("package") == app] if isinstance(fluxos, list) else []
+            # O fluxo multi-app (30.33-C) conta em cada app dele, como no recorte do livro.
+            fonte = [f for f in fluxos if isinstance(f, dict) and (f.get("package") == app or app in (multi or {}).get(
+                str(f.get("flow_id") or ""), ()))] if isinstance(fluxos, list) else []
         saida = dict.fromkeys(CAMPOS_DA_ECONOMIA, 0.0)
         for g in fonte:
             if isinstance(g, dict):

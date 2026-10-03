@@ -11,6 +11,7 @@ import { formatDateTime, formatQuando } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { apiAprendizado } from './api';
 import { abrirApp } from './apps';
+import { AppsDoItem, eMultiApp } from './AppsDoItem';
 import { SecaoDoParecer } from './ParecerDaIA';
 import {
   SEM_DADO, destinoDaRelacao, metaDeSaude, metaDeVersao, rotuloDaDimensao, rotuloDaFerramenta, rotuloDaRelacao,
@@ -81,7 +82,9 @@ function Identidade({ item, conteudo }: { item: EntradaDoLivro; conteudo: Conteu
     <Secao slug="identidade" titulo="Identidade">
       <dl className={styles.fatos}>
         <Fato rotulo="Tipo">{rotuloDoKind(item.kind)}</Fato>
-        {item.app ? (
+        {eMultiApp(item.apps) ? (
+          <Fato rotulo="Aplicativos"><AppsDoItem apps={item.apps} nomes={item.apps_nomes} principal={item.app} /></Fato>
+        ) : item.app ? (
           <Fato rotulo="Aplicativo">
             <button type="button" className={styles.linkBtn} title={`Abrir este aplicativo (${item.app})`} onClick={() => abrirApp(item.app as string)}>
               {item.app_nome && item.app_nome !== item.app ? item.app_nome : <span className={styles.mono}>{item.app}</span>}
@@ -219,10 +222,11 @@ function ConteudoReceita({ c, nomeDe }: { c: ConteudoDaReceita; nomeDe: NomeDaCa
   );
 }
 
-function ConteudoFluxo({ c }: { c: ConteudoDoFluxo }) {
+function ConteudoFluxo({ c, appsNaIdentidade }: { c: ConteudoDoFluxo; appsNaIdentidade?: boolean }) {
   const apps = useAppStore((s) => s.apps);
-  // Os apps exigidos na ordem em que o plano os usa (29.42): "QA Messenger → Chrome".
-  const exigidos = textoDosApps(c.apps, apps);
+  // Os apps exigidos na ordem em que o plano os usa (29.42): "QA Messenger → Chrome". No fluxo que atravessa apps a
+  // Identidade já os mostra, com link para cada um (30.33-C); repetir aqui, com o nome do registro, só confundia.
+  const exigidos = appsNaIdentidade ? '' : textoDosApps(c.apps, apps);
   return (
     <>
       <dl className={styles.fatos}>
@@ -303,10 +307,10 @@ function ConteudoTela({ c }: { c: ConteudoDaTela }) {
   );
 }
 
-function Conteudo({ c, nomeDe }: { c: ConteudoDoItem; nomeDe: NomeDaCapability }) {
+function Conteudo({ c, nomeDe, appsNaIdentidade }: { c: ConteudoDoItem; nomeDe: NomeDaCapability; appsNaIdentidade?: boolean }) {
   switch (c.tipo) {
     case 'receita': return <ConteudoReceita c={c} nomeDe={nomeDe} />;
-    case 'fluxo': return <ConteudoFluxo c={c} />;
+    case 'fluxo': return <ConteudoFluxo c={c} appsNaIdentidade={appsNaIdentidade} />;
     case 'habilidade': return <ConteudoHabilidade c={c} />;
     case 'licao': return <ConteudoLicao c={c} nomeDe={nomeDe} />;
     case 'tela': return <ConteudoTela c={c} />;
@@ -600,7 +604,7 @@ export function DetalheRico({ detalhe, onMudou }: { detalhe: DetalheDoLivro; onM
         <Identidade item={item} conteudo={conteudo} />
         <Reaprendimento item={item} />
         {conteudo ? (
-          <Secao slug="conteudo" titulo="Conteúdo"><Conteudo c={conteudo} nomeDe={nomeDaCapabilityDo(item)} /></Secao>
+          <Secao slug="conteudo" titulo="Conteúdo"><Conteudo c={conteudo} nomeDe={nomeDaCapabilityDo(item)} appsNaIdentidade={eMultiApp(item.apps)} /></Secao>
         ) : null}
         {saude ? <Saude s={saude} comVersao={!!versao} /> : null}
         {versao ? <Versao v={versao} appNome={versao.app === item.app ? item.app_nome ?? null : null} /> : null}
