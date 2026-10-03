@@ -258,7 +258,7 @@ cd backend; $env:TEST_DATABASE_URL = "postgresql://postgres:teste@127.0.0.1:5543
 
 Sem a variável, a suíte roda em SQLite como sempre. Para voltar: `Remove-Item Env:TEST_DATABASE_URL`.
 
-**Em paralelo (`-n 8`), desde o 29.62.** Cada teste migra o próprio esquema, e a trava de migração
+**Em paralelo, desde o 29.62.** Cada teste migra o próprio esquema, e a trava de migração
 (`Database._trava_de_migracao`, `pg_advisory_lock`) era de uma chave só, global ao banco. Os workers do xdist entravam
 em fila na migração: 1006 testes levaram 22 min com `-n 4` (03/10), mais que em série. A trava passou a ser POR
 ESQUEMA (a forma de duas chaves, `_LOCK_MIGRACAO` e `hashtext(current_schema())`). Em produção há um esquema só, e dois
