@@ -261,6 +261,11 @@ _ROTULO_DO_PASSO: Mapping[tuple[SkillState, SkillState], str] = {
 }
 
 
+def rotulo_do_passo(de: SkillState, para: SkillState) -> str | None:
+    """A chave do passo que uma pessoa dá de `de` para `para` (`aprovar`, `desligar`...); `None` fora da tabela."""
+    return _ROTULO_DO_PASSO.get((de, para))
+
+
 @dataclass(frozen=True, slots=True)
 class AcaoPermitida:
     """Um passo que a PESSOA pode dar neste item agora. `rotulo` é a chave (`aprovar`, `desligar`...); decidir

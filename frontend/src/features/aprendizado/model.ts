@@ -14,6 +14,7 @@ import { Archive, CircleCheck, CircleDashed, CircleOff, FilePen, ShieldCheck } f
 import type { SkillState } from '../../api/types';
 import { isRecord } from '../../lib/format';
 import type { StatusMeta } from '../../lib/status';
+import type { BlocoDoCurador, ModoDoCurador, ParecerDaIA, ParecerNaFila } from './parecer';
 
 // ---------------------------------------------------------------- vocabulário do livro
 
@@ -67,6 +68,8 @@ export interface EntradaDoLivro {
   por_que_nao_publica: MotivoDeNaoPublicar | null;
   /** A saúde do item (30.4), do backend: o painel só a exibe. Ausente em backend antigo; `null` na memória. */
   saude?: SaudeDoItem | null;
+  /** O parecer pendente da IA (30.17): só nas listas Para aprovar e Revisar, e só com o curador em `on`. */
+  parecer?: ParecerNaFila | null;
 }
 
 /** Chave estável do passo (`ItemDoLivro` mapeia para o texto em português). */
@@ -92,6 +95,8 @@ export interface ListaDoLivro {
   total: number;
   /** Só em `GET /api/aprendizado`: {tipo: {estado: n}}. */
   contagem?: Record<string, Record<string, number>>;
+  /** Nas listas Para aprovar e Revisar (30.17): o modo do curador; `null` sem curador composto. */
+  curador?: { modo: ModoDoCurador } | null;
 }
 
 export interface EvidenciaDoLivro {
@@ -124,6 +129,10 @@ export interface DetalheDoLivro {
   conteudo?: ConteudoDoItem | null;
   versao?: VersaoDoItem;
   relacoes?: RelacaoDoItem[];
+  /** 30.17: as revisões do curador que o modo deixa aparecer (a mais recente primeiro) e o bloco do curador.
+   *  Ausentes em backend antigo; `curador: null` sem curador composto. */
+  pareceres?: ParecerDaIA[];
+  curador?: BlocoDoCurador | null;
 }
 
 // ---------------------------------------------------------------- o detalhe rico (30.16): o que o backend manda
@@ -750,6 +759,7 @@ export const SINAL_LABEL: Record<string, string> = {
   escolheu_habilidade: 'Escolheu a habilidade', aprovacao_decidida: 'Decidiu uma aprovação',
   comando_incerto_resolvido: 'Resolveu um comando incerto', correcao_de_ensino: 'Corrigiu no ensino',
   tela_vista: 'Tela vista', tela_desconhecida_chamou_pessoa: 'Tela desconhecida chamou uma pessoa',
+  pediu_revisao: 'Pediu revisão à IA', parecer_decidido: 'Decidiu um parecer da IA',
 };
 
 export const SINAL_KINDS: readonly string[] = Object.keys(SINAL_LABEL);

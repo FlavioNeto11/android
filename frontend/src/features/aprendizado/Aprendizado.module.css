@@ -400,6 +400,10 @@
 .tabelaDetalhe caption { text-align: left; padding-bottom: var(--sp-1); color: var(--text-3); }
 .tabelaDetalhe th { text-align: left; font-weight: 500; color: var(--text-3); }
 .tabelaDetalhe th, .tabelaDetalhe td { padding: 3px var(--sp-3) 3px 0; vertical-align: top; }
+/* Em 375 px, a versão do app ("447.0.0.55.81(385311929)", o cabeçalho da linha) é um token só: quebra em qualquer ponto
+   em vez de alargar a tabela para fora do cartão (`anywhere`, e não `break-word`, porque só ele baixa a largura mínima
+   da célula). O cabeçalho das colunas quebra como sempre. */
+.tabelaDetalhe tbody th, .tabelaDetalhe td { overflow-wrap: anywhere; }
 
 .semDado { color: var(--text-3); font-style: italic; }
 
@@ -441,6 +445,35 @@
 }
 
 .avisoDoItem { border-left-color: var(--warning-text); background: var(--warning-soft); color: var(--warning-text); border-radius: 0 var(--radius-sm, 4px) var(--radius-sm, 4px) 0; }
+
+/* 30.17: o parecer da IA. No detalhe, um cartão com a sugestão e os botões; na linha da fila, uma frase com selos. */
+.parecer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--info-border);
+  border-radius: var(--radius-md);
+  background: var(--info-soft);
+}
+
+.parecerCabeca { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.parecerSugestao { color: var(--text-1); font-size: var(--fs-md); overflow-wrap: anywhere; }
+
+.parecerNaLinha {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.parecerNaLinha > svg { flex: none; color: var(--info-text); }
+.parecerDica { color: var(--text-3); font-size: var(--fs-xs); }
+.pedirRevisao { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 
 /* O nível Capability no detalhe do app: um bloco recolhível por capability, com contagem e saúde no resumo. */
 .grupos { display: flex; flex-direction: column; gap: var(--sp-2); }
