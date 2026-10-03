@@ -308,7 +308,7 @@ headless (netsim, câmeras, som) não mudam nada.
     Os 4 aparelhos QA foram reiniciados um a um. Antes, cada qemu era `-headless`, com uma thread a ~100 % (4 de 12
     núcleos). Depois, `qemu-system-x86_64` na sessão 0, com no máximo 14 % por aparelho e o processador em 2 %.
 
-### Relatório de falha pendente do emulador (29.55, 03/10/2026)
+### Relatório de falha pendente do emulador (29.55, K-090, 03/10/2026)
 
 O incidente (03/10, ~19:00Z): o reinício por IRQ derrubou um emulador na saída, e o crashpad deixou um dump em
 `%TEMP%\AndroidEmulator\emu-crash-<versão>.db\reports\*.dmp`. Com o padrão do emulador ("ask"), toda subida seguinte

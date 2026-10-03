@@ -31,6 +31,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     `bloqueio_de_crash`, e `_pedir_reparo` não age. No agente, `failed` com `motivo: dialogo_de_crash`, que o central
     reconhece.
 - Config: a chave nova entra com padrão ligado; `config.example.yaml` e `worker.example.yaml` documentam.
+- Doc: `docs/dominios/parque.md` (seção nova) e o aprendizado K-090.
 - Prova `simulated`: `backend/tests/test_relatorio_de_falha_do_emulador.py` (14) e 2 casos em `test_worker_executor.py`.
   A `real` é `not_run`: subida de um aparelho sem conta com o dump de volta, na vez da orquestradora.
 
