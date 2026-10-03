@@ -157,8 +157,10 @@ export interface ListaDoLivro {
 }
 
 export interface EvidenciaDoLivro {
-  /** `forma` (30.36): a execução fez o caminho do item e só reescreveu a forma; não conta contra nem a favor. */
-  stance: 'for' | 'against' | 'conflict' | 'forma';
+  /** `forma` (30.36): a execução fez o caminho do item e só reescreveu a forma; não conta contra nem a favor.
+   *  `invalida` (30.42): a prova não vale como evidência (efeito repetido, ponto de partida, ator sem ação); o `detail`
+   *  traz o motivo (`motivoDaInvalida`); não conta, e o `for`/`against` da mesma execução que ela corrigiu também não. */
+  stance: 'for' | 'against' | 'conflict' | 'forma' | 'invalida';
   origin_ref: string;
   run_id: string | null;
   instance_id: string | null;
@@ -592,6 +594,15 @@ export function rotuloDoDetalhe(d: string | null | undefined): string | null {
  * quando a lista foi cortada para caber na coluna. Aqui a marca sai, os tipos ganham o rótulo do painel e o corte vira
  * "e mais N". Vale para as linhas antigas e as novas; o que não casa passa como está.
  */
+/** 30.42: o motivo da linha `invalida`, em português (`[marca] invalida:<codigo> — texto`); `null` fora do vocabulário. */
+const MOTIVO_DA_INVALIDA: Record<string, string> = {
+  efeito_repetido: 'efeito repetido', ponto_de_partida: 'ponto de partida', ator_sem_acao: 'o ator não agiu',
+};
+export function motivoDaInvalida(d: string | null | undefined): string | null {
+  const m = /^(?:\[[0-9a-f]{6,}\]\s*)?invalida:([a-z_]+)/.exec(d ?? '');
+  return (m && MOTIVO_DA_INVALIDA[m[1] ?? '']) || null;
+}
+
 export function textoDaEvidencia(d: string): string {
   const rotulo = (tipo: string) => {
     const r = POSTCONDITION_KIND[tipo] ?? tipo;
@@ -599,6 +610,7 @@ export function textoDaEvidencia(d: string): string {
   };
   return d
     .replace(/^\[[0-9a-f]{6,}\]\s*/, '')
+    .replace(/^invalida:[a-z_]+\s*(— )?/, '')                     // 30.42: o motivo já vai no rótulo da linha
     .replace(/\(([a-z_]+) × ([a-z_]+)\)/g, (_, feito: string, esperado: string) =>
       `(nesta execução: ${rotulo(feito)}; no fluxo: ${rotulo(esperado)})`)
     .replace(/ \(\+(\d+)\)$/, (_, n: string) => ` (e mais ${n})`)

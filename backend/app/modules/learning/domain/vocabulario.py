@@ -125,6 +125,11 @@ class Posicao(StrEnum):
     #: parâmetro fora da ação). Nem a favor nem contra: fica à vista na trilha e fora das contagens. Ao lado de um
     #: `against` da MESMA origem, tira esse `against` do contra (`promocao.efetivas`).
     FORMA = "forma"
+    #: 30.42: a execução de prova não vale como evidência do fluxo (efeito repetido, ponto de partida, ator que não
+    #: agiu; o motivo vai no começo do `detail`, `domain/prova.py`). Nem a favor nem contra: fica à vista na trilha e
+    #: fora das contagens. Ao lado de um `for` ou `against` da MESMA origem, tira essa linha das contagens
+    #: (`promocao.efetivas`), como a `forma` faz com o `against`.
+    INVALIDA = "invalida"
 
 
 class Braco(StrEnum):

@@ -251,6 +251,24 @@ describe('detalhe rico: relações e seções ausentes', () => {
     expect(linhas.filter((l) => l.startsWith('divergência de forma'))).toHaveLength(1);
   });
 
+  it('30.42: a prova inválida mostra o motivo, e o a favor que ela reclassificou sai da conta', async () => {
+    const ev = (stance: EvidenciaDoLivro['stance'], run: string, minuto: string, detail: string | null = null) => ({
+      stance, origin_ref: `run:${run}`, run_id: run, instance_id: 'android-09', app_version: null, simulated: false,
+      detail, observed_at: `2026-10-03T16:${minuto}:00Z` });
+    await mostrar(detalhe({
+      evidencias: [ev('for', 'r-1', '00'), ev('for', 'r-2', '07', '[686ac998656d] prova: 3/3 etapas comprovadas'),
+                   ev('invalida', 'r-2', '30', '[686ac998656d] invalida:efeito_repetido — o efeito saiu 2 vezes (reclassificada)'),
+                   ev('invalida', 'r-3', '40', '[686ac998656d] invalida:ponto_de_partida — a etapa de abertura (open_app) não chegou')],
+    }));
+    const secao = text(container.querySelector('[aria-label="Evidências"]')!.parentElement!);
+    expect(secao).toContain('1 a favor · 0 contra · 0 em conflito · 2 inválidas (a prova não valeu; não contam)');
+    const linhas = Array.from(container.querySelectorAll('[aria-label="Evidências"] li')).map((li) => text(li));
+    expect(linhas.filter((l) => l.startsWith('a favor (reclassificada como inválida; não conta)'))).toHaveLength(1);
+    expect(linhas.filter((l) => l.startsWith('inválida (efeito repetido; não conta)'))).toHaveLength(1);
+    expect(linhas.filter((l) => l.startsWith('inválida (ponto de partida; não conta)'))).toHaveLength(1);
+    expect(linhas.join(' ')).not.toContain('invalida:');                  // o formato nunca aparece cru
+  });
+
   it('a linha de forma mostra a pós-condição pelo rótulo, sem a marca do conteúdo (polimento do deploy 13)', async () => {
     await mostrar(detalhe({
       evidencias: [{ stance: 'forma', origin_ref: 'run:r-2', run_id: 'r-2', instance_id: 'android-09', app_version: null,

@@ -153,6 +153,8 @@ class Scheduler:
         self.relogio: Callable[[], float] = time.monotonic
         #: aparelho → (package a encerrar antes da próxima etapa, se ele estava vivo em primeiro plano na falha)
         self._restart_app: dict[str, tuple[str, bool | None]] = {}
+        #: 30.42: as execuções de prova cujo ponto de partida (force-stop dos apps do plano + abertura) já rodou
+        self._partida_da_prova: set[str] = set()
         self._wake = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
         # Achado #164: quantas voltas o laço já deu. É o que permite a um teste esperar "um tick passou e NADA
@@ -1245,6 +1247,8 @@ class Scheduler:
                     # Antes de assumir a etapa: nenhuma tentativa consumida, nenhuma chamada de modelo gasta.
                     self._hold(obj, srow, porta)
                     break
+                if run["prova_fluxo_id"]:
+                    await self._partir_da_prova(obj, run, rt)
                 attempt = repo.claim_step(srow["id"])
                 if attempt is None:
                     break
@@ -1421,6 +1425,52 @@ class Scheduler:
         return (AppContext(row["id"], row["name"], row["package"], row["activity"], row["nav_hints"],
                            loads(row["known_selectors"]), row["category"], bool(row["builtin"])),
                 self.repo.conta_esperada(profile_id, str(row["id"]), rotulo, do_aparelho=do_aparelho))
+
+    async def _partir_da_prova(self, obj: Row, run: Row, rt: DeviceRuntime) -> None:
+        """30.42: a EXECUÇÃO DE PROVA parte de um estado conhecido. Antes da 1ª etapa: `force-stop` de TODOS os apps do
+        plano do fluxo e abertura do app da 1ª etapa (o principal). Uma vez por execução, e nunca `pm clear`: o rascunho
+        que sobrevive ao force-stop é resultado da prova real. Sem isto a prova herdava a tela da execução anterior
+        (a `e1b7d0`, o app dentro de uma conversa) e o veredito dependia do acaso. Falha aqui não derruba a prova: a
+        etapa de abertura é quem comprova o ponto de partida (`ponto_de_partida`), e o diário diz o que aconteceu."""
+        run_id = obj["run_id"]
+        if run_id in self._partida_da_prova:
+            return
+        # Já houve tentativa nesta execução (retomada depois de pausa ou reinício): o estado é o da prova em curso, e
+        # encerrar o app agora jogaria fora o que ela fez.
+        if self.repo.db.scalar("SELECT COUNT(*) FROM attempts a JOIN steps s ON s.id = a.step_id WHERE s.run_id=?",
+                               (run_id,)):
+            self._partida_da_prova.add(run_id)
+            return
+        self._partida_da_prova.add(run_id)
+        ids = [r["app_id"] for r in self.repo.db.query(
+            "SELECT app_id, MIN(seq) AS ordem FROM steps WHERE objective_id=? AND plan_version=? AND for_each IS NULL"
+            " GROUP BY app_id ORDER BY ordem", (obj["id"], obj["plan_version"]))] or [None]
+        apps: list[AppContext] = []
+        for app_id in ids:
+            try:
+                app, _ = self._app_context(run, rt, app_id)
+            except KeyError:
+                continue
+            if app.package and all(a.package != app.package for a in apps):
+                apps.append(app)
+        if not apps:
+            return
+        try:
+            for app in apps:
+                await self.devices.force_stop_app(rt, app.package)         # type: ignore[arg-type]
+            principal = apps[0]
+            abriu, detalhe = await self.devices.open_app(
+                rt, {"id": principal.id, "package": principal.package, "activity": principal.activity})
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - a prova segue: a etapa de abertura comprova (ou reprova) o ponto de partida
+            log.info("%s: ponto de partida da prova não preparado — %s", rt.id, exc)
+            abriu, detalhe = False, str(exc).splitlines()[0][:200] if str(exc) else type(exc).__name__
+        pacotes = ", ".join(str(a.package) for a in apps)
+        self.repo.decision(
+            f"{rt.id}: Prova de fluxo (validação): ponto de partida. Encerrou {pacotes} (sem apagar dados) e abriu "
+            f"{apps[0].package}: " + ("o app está em primeiro plano." if abriu else f"não confirmado ({detalhe})."),
+            run_id=run_id, instance_id=rt.id)
 
     def _app_da_linha(self, run: Row, rt: DeviceRuntime, srow: Row) -> tuple[str | None, str | None]:
         """`(app_id, pacote)` do app de uma etapa (linha do banco), como `_apps_do_objetivo` o conta."""
@@ -1895,9 +1945,14 @@ class Scheduler:
                            (dumps(bindings) if bindings else None, dumps(guardas), rascunho, nova["id"]))
 
     def _try_recover(self, obj: Any, step: Any, detail: str, *, app_vivo: bool | None = None) -> _Recuperacao:
+        run = self.repo.run_row(obj["run_id"])
+        if run is not None and run["prova_fluxo_id"]:
+            # 30.42: a prova não replaneja: um plano novo não é mais o fluxo, e a prova dele já não diria nada sobre o
+            # fluxo (o plano revisado também deixa de contar no veredito)
+            return _Recuperacao(False, motivo=(f"Prova de fluxo: a etapa {step.seq} falhou; a prova não replaneja, "
+                                               "porque um plano novo não é mais o fluxo."))
         if not self._pode_recuperar(obj["id"], step.id, step.side_effect):
             return _Recuperacao(False)
-        run = self.repo.run_row(obj["run_id"])
         iid = obj["instance_id"]
         # Encerrar o app só quando ele não está vivo na frente, ou a falha não foi de demora nem de guarda. Com o
         # app vivo, o force-stop jogava fora a tela certa (r-20260928165254-e31953).

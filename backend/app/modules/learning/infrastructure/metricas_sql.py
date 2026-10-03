@@ -59,13 +59,14 @@ class FontesDeMetricasSql:
         invalidas = {(linhas.texto(r, "item_ref"), run) for r in self._db.query(
             "SELECT item_ref, reason FROM learning_transitions WHERE reason LIKE ?", (PREFIXO + ":%",))
             if (run := run_invalidada(linhas.texto_ou_nulo(r, "reason"))) is not None}
-        # 30.36: a forma não é a favor nem contra, e o `against` que ela corrigiu sai (`linhas.contra_efetivo`)
+        # 30.36/30.42: a forma e a `invalida` não são a favor nem contra, e o `against`/`for` que elas corrigiram saem
+        # (`linhas.contra_efetivo`, `linhas.favor_efetivo`)
         return [EvidenciaLida(item_ref=linhas.texto(r, "item_ref"), stance=linhas.texto(r, "stance"),
                               observed_at=linhas.texto(r, "observed_at"))
                 for r in self._db.query(
                     "SELECT e.item_ref, e.stance, e.run_id, e.observed_at FROM learning_evidence e WHERE e.observed_at >= ?"
                     f" AND e.observed_at < ? AND e.simulated = 0 AND {linhas.fora_da_reproducao('e')}"
-                    f" AND (e.stance = 'for' OR {linhas.contra_efetivo('e')})",
+                    f" AND ({linhas.favor_efetivo('e')} OR {linhas.contra_efetivo('e')})",
                     (desde, ate))
                 if (linhas.texto(r, "item_ref"), linhas.texto_ou_nulo(r, "run_id")) not in invalidas]
 

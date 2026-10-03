@@ -26,6 +26,7 @@ por `LearningService.mudar_estado(by='sistema')` — o D1 do domínio e a segund
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -37,6 +38,7 @@ from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, ErroDeAprend
                                                motivo_do_veto)
 from app.modules.learning.domain.evidencia_invalida import Renascimento, reaprendizado, run_invalidada
 from app.modules.learning.domain.livro import escopo_do_fluxo, ref_da_trilha
+from app.modules.learning.domain.prova import MotivoDaInvalida, detalhe_da_invalida
 from app.modules.learning.domain.promocao import Decisao, Evidencia, Limiares, contrarias, veredito_de_repeticao
 from app.modules.learning.domain.vocabulario import LivroKind, Posicao
 from app.modules.skills.domain.matching import bind_template_parameters, extract_parameters
@@ -155,9 +157,12 @@ class ExecucaoAssentada:
 
 @dataclass(frozen=True, slots=True)
 class ProvaDaExecucao:
-    """O desfecho da execução de prova, lido das etapas dela (30.37). `posicao`: `FOR` com todas as etapas comprovadas
-    (`succeeded`, nenhuma pulada); `AGAINST` com uma etapa reprovada na própria pós-condição (`failed` sem erro de IA);
-    `None` para infra (aparelho, teto, cancelamento pelo sistema, erro de IA): não conta nem a favor nem contra."""
+    """O desfecho da execução de prova, lido das etapas dela (30.37) pela regra única `domain.prova.veredito_da_prova`
+    (30.42). `posicao`: `FOR` com todas as etapas comprovadas (`succeeded`, nenhuma pulada) e sem efeito repetido;
+    `AGAINST` com uma etapa que AGIU e reprovou na própria pós-condição (`failed` sem erro de IA); `INVALIDA` quando a
+    prova não diz nada sobre o fluxo (efeito repetido, ponto de partida, ator sem ação; o `detalhe` já vem no formato
+    `invalida:<motivo> — texto`); `None` para infra (aparelho, teto, cancelamento pelo sistema, erro de IA) e para plano
+    revisado: não conta nem a favor nem contra."""
 
     fluxo_id: str
     content_hash: str                       # o do fluxo de agora: a marca da evidência (`marca_do_conteudo`)
@@ -205,6 +210,18 @@ class ObservacaoDeHabilidade:
 
 # ------------------------------------------------------------------ portas
 @dataclass(frozen=True, slots=True)
+class ForDeProva:
+    """Uma linha `for` de fluxo, de uma EXECUÇÃO DE PROVA, que ainda não tem a `invalida` da mesma origem ao lado (30.42)."""
+
+    item_ref: str
+    origin_ref: str
+    run_id: str
+    detail: str | None
+    simulada: bool
+    aparelho: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class ContraGravado:
     """Uma linha `against` de fluxo, de uma execução, que ainda não tem a `forma` da mesma origem ao lado (30.36)."""
 
@@ -219,6 +236,8 @@ class LeituraNativa(Protocol):
     def fluxos_em_prova(self) -> list[FluxoEmProva]: ...
     def execucao_de_habilidade(self, run_id: str) -> ExecucaoDeHabilidade | None: ...
     def contra_de_fluxos(self) -> list[ContraGravado]: ...
+    def fors_de_prova(self) -> list[ForDeProva]: ...
+    def efeito_repetido_da_execucao(self, run_id: str) -> int | None: ...
 
 
 class PortaDeValidacao(Protocol):
@@ -509,6 +528,54 @@ class ReclassificacaoDaForma:
                 log.exception("aprendizado: decisão na execução %s", run_id)
 
 
+# ------------------------------------------------------------------ o efeito duplicado (passo da curadoria)
+_MARCA = re.compile(r"^\[([0-9a-f]{6,})\]")
+
+
+class ReclassificacaoDoEfeitoDuplicado:
+    """30.42: o `for` que uma execução de PROVA deixou antes da regra do efeito repetido (a `5f2de5`, a mensagem enviada
+    duas vezes, virou evidência a favor) é recomparado com a regra de hoje (`domain.prova.efeito_repetido`, a mesma do
+    veredito); se o efeito saiu mais de uma vez, ganha ao lado a linha `invalida` da MESMA origem, e
+    `promocao.efetivas` tira o `for` das contagens. O log só cresce: nada se apaga nem se reescreve, e nenhum UPDATE.
+
+    Vale para o fluxo em qualquer estado (a marca do conteúdo vem da própria linha `for`, então a `invalida` entra na
+    mesma encarnação). Sem transição: o que o `for` já tiver feito pelo estado do fluxo fica, e quem decide de novo é a
+    próxima evidência. Idempotente pelo índice único (item, origem, posição). Nunca chama IA."""
+
+    nome = "efeito_duplicado_das_provas"
+
+    def __init__(self, repo: RepositorioDeAprendizado, leitura: LeituraNativa, *, decidir: Decidir | None = None) -> None:
+        self._repo = repo
+        self._leitura = leitura
+        self._decidir = decidir
+
+    def executar(self, agora: datetime) -> int:
+        n = 0
+        for f in self._leitura.fors_de_prova():
+            copias = self._leitura.efeito_repetido_da_execucao(f.run_id)
+            if copias is None:
+                continue
+            achada = _MARCA.match(f.detail or "")
+            detalhe = detalhe_da_invalida(MotivoDaInvalida.EFEITO_REPETIDO,
+                                          f"o efeito saiu {copias} vezes (reclassificada)",
+                                          marca=achada.group(1) if achada else None)
+            if not self._repo.registrar_evidencia(NovaEvidencia(
+                    item_ref=f.item_ref, stance=Posicao.INVALIDA, origin_ref=f.origin_ref, simulated=f.simulada,
+                    run_id=f.run_id, instance_id=f.aparelho, detail=detalhe)):
+                continue
+            n += 1
+            self._anunciar(f.run_id, f"Fluxo “{f.item_ref.split(':', 1)[-1]}”: o efeito saiu {copias} vezes nesta "
+                                     "prova; ela deixou de valer a favor dele (30.42)")
+        return n
+
+    def _anunciar(self, run_id: str, texto: str) -> None:
+        if self._decidir is not None:
+            try:
+                self._decidir(texto, run_id)
+            except Exception:  # noqa: BLE001 - a linha do tempo informa; a evidência já foi gravada
+                log.exception("aprendizado: decisão na execução %s", run_id)
+
+
 def _casa(fluxo: FluxoEmProva, comando: str) -> bool:
     """A mesma regra de `FlowStore.match`: o comando casa o modelo e dá valor a todo `{nome}` do plano."""
     valores = extract_parameters(fluxo.comando_modelo, comando)
@@ -569,6 +636,7 @@ class ValidacaoPorExecucao:
 
 
 __all__ = ["AssinaturaDoPlano", "D1Nativo", "DISCORDANCIAS_QUE_DESLIGAM", "Decidir", "Divergencia", "ExecucaoAssentada",
-           "ExecucaoDeHabilidade", "FluxoEmProva", "LeituraNativa", "ObservacaoDeHabilidade", "PassoAssinado",
-           "PortaDeValidacao", "ProvaDaExecucao", "ReclassificacaoDaForma", "SombraDosFluxos", "ValidacaoPorExecucao",
+           "ExecucaoDeHabilidade", "FluxoEmProva", "ForDeProva", "LeituraNativa", "ObservacaoDeHabilidade", "PassoAssinado",
+           "PortaDeValidacao", "ProvaDaExecucao", "ReclassificacaoDaForma", "ReclassificacaoDoEfeitoDuplicado",
+           "SombraDosFluxos", "ValidacaoPorExecucao",
            "comparar", "marca_do_conteudo"]

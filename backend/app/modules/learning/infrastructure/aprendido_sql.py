@@ -59,12 +59,16 @@ class LeituraDoAprendidoSql:
                     " WHERE t.run_id=? ORDER BY t.id", (run_id,))),
             evidencias=tuple(EvidenciaDaExecucao(
                 item_ref=linhas.texto(r, "item_ref"), item_kind=linhas.texto_ou_nulo(r, "item_kind"),
-                posicao=linhas.texto(r, "stance"), n=linhas.inteiro(r, "n"))
+                posicao=linhas.texto(r, "stance"), n=linhas.inteiro(r, "n"),
+                detalhe=linhas.texto_ou_nulo(r, "detalhe"))
                 for r in self._db.query(
-                    "SELECT e.item_ref, e.stance, i.kind AS item_kind, COUNT(*) AS n, MIN(e.id) AS primeira"
+                    "SELECT e.item_ref, e.stance, i.kind AS item_kind, COUNT(*) AS n, MIN(e.id) AS primeira,"
+                    " MIN(e.detail) AS detalhe"
                     " FROM learning_evidence e LEFT JOIN learning_items i ON i.id = e.item_ref WHERE e.run_id=?"
-                    # 30.36: o `against` que a forma corrigiu sai; a forma aparece com o rótulo dela
-                    f" AND (e.stance <> 'against' OR {linhas.contra_efetivo('e')})"
+                    # 30.36/30.42: o `against` que a forma corrigiu e o `for`/`against` que a `invalida` corrigiu saem;
+                    # a forma e a `invalida` aparecem com o rótulo delas
+                    f" AND (e.stance NOT IN ('for', 'against') OR {linhas.favor_efetivo('e')}"
+                    f" OR {linhas.contra_efetivo('e')})"
                     # 30.39: a reprodução da receita não é o que a execução ensinou (os contadores já a contam)
                     f" AND {linhas.fora_da_reproducao('e')}"
                     " GROUP BY e.item_ref, e.stance, i.kind ORDER BY primeira", (run_id,))),

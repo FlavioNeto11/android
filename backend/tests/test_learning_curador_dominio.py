@@ -326,3 +326,30 @@ def test_dossie_do_fluxo_leva_os_apps_sem_o_comando() -> None:
     assert (d["app"], d["apps"]) == ("instagram", ["outlook", "instagram"])      # ordem do plano (29.42)
     assert [e["app"] for e in d["etapas"]] == ["outlook", None]
     assert "achar no Instagram" not in json.dumps(d, ensure_ascii=False)
+
+
+def test_contrato_do_dossie_com_evidencia_invalida() -> None:
+    """30.42: a posição `invalida` (prova que não vale) entra na lista com o nome dela, o dossiê ganha a nota, e nada a
+    conta como contra nem a favor: o curador simulado e o parecer simulado (`planning/curador`) a ignoram. A nota só
+    existe quando há linha `invalida`. (O `evidencias_contra` do `decisao_fechada` é da frente da Jev: ver o PR.)"""
+    from app.modules.learning.domain.curador import INVALIDA_DA_EVIDENCIA
+    from app.planning.curador import PedidoDeParecer, parecer_simulado
+
+    fatos = FatosDeRisco(side_effect=False, human_origin=False, tem_catalogo=False)
+    sem = montar_dossie(IdentidadeDoItem(kind="fluxo", ref="f"), fatos, {},
+                        evidencias=[Evidencia(id=1, posicao="for", origin_ref="run:a", em="2026-10-03T10:00:00Z")]
+                        ).como_dados()["evidencias"]
+    assert isinstance(sem, dict) and "invalida_e" not in sem
+    dossie = montar_dossie(IdentidadeDoItem(kind="fluxo", ref="f"), fatos, {}, evidencias=[
+        Evidencia(id=2, posicao="invalida", origin_ref="run:b", em="2026-10-03T11:00:00Z"),
+        Evidencia(id=1, posicao="for", origin_ref="run:a", em="2026-10-03T10:00:00Z")]).como_dados()
+    evidencias = dossie["evidencias"]
+    assert isinstance(evidencias, dict) and evidencias["invalida_e"] == INVALIDA_DA_EVIDENCIA
+    lista = evidencias["lista"]
+    assert isinstance(lista, list) and [e["posicao"] for e in lista] == ["invalida", "for"]
+    # o parecer simulado do hub: só `against`/`conflict` contam contra, e a `invalida` não é um dos dois
+    contra = sum(1 for e in lista if e["posicao"] in ("against", "conflict"))
+    assert contra == 0
+    parecer = parecer_simulado(PedidoDeParecer(dossie=dossie, classe="B", opcoes={"evidencias_citadas": []}))
+    assert parecer.bruto["decisao"] == "manter"
+

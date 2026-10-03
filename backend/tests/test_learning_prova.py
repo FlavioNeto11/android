@@ -248,7 +248,8 @@ def _fluxo_unico(mundo: Mundo) -> str:
 
 
 def _prova(mundo: Mundo, run_id: str, flow_id: str, etapas: list[tuple[str, str]], *, status: str = "completed",
-           erro: dict[str, str] | None = None, simulada: bool = False, usuario: str = "@nasa") -> None:
+           erro: dict[str, str] | None = None, simulada: bool = False, usuario: str = "@nasa",
+           agiu: bool = True) -> None:
     """Uma execução de prova assentada. `etapas`: `(chave, estado)`; `erro`: `chave -> error_kind` da última tentativa.
     O plano gravado é o MESMO de uma execução comum comparável, para que só `prova_fluxo_id` a faça diferente."""
     db = mundo.db
@@ -272,6 +273,9 @@ def _prova(mundo: Mundo, run_id: str, flow_id: str, etapas: list[tuple[str, str]
             db.execute("INSERT INTO attempts(id, step_id, number, status, started_at, error_kind) VALUES (?,?,?,?,?,?)",
                        (f"{sid}:a1", sid, 1, {"succeeded": "succeeded", "failed": "failed"}.get(estado, "interrupted"),
                         now_iso(), (erro or {}).get(chave)))
+            if agiu:                  # 30.42: a etapa reprovada só conta contra se o ator AGIU (um toque no diário)
+                db.execute("INSERT INTO actions(attempt_id, seq, tool, args, status, intent_at) VALUES (?,?,?,?,?,?)",
+                           (f"{sid}:a1", 1, "tap", "{}", "done", now_iso()))
 
 
 def _evidencias(mundo: Mundo, flow_id: str, run_id: str | None = None) -> list[tuple[str, str, str]]:
@@ -392,7 +396,7 @@ def test_candidato_provado_roda_o_d1_e_promove_ou_desliga(mundo: Mundo, monkeypa
 def test_duas_provas_reprovadas_desligam_o_candidato_pelo_d1(mundo: Mundo) -> None:
     flow_id = _candidato(mundo, concordancias=5)                        # sem promoção no caminho: só a regra do contra
     for n in (1, 2):
-        _prova(mundo, f"p-{n}", flow_id, [("abrir_perfil", "failed")], status="completed_with_issues")
+        _prova(mundo, f"p-{n}", flow_id, [("abrir_perfil", "succeeded"), ("seguir", "failed")], status="completed_with_issues")
         _digerir(mundo, f"p-{n}")
     assert mundo.status(flow_id) == "disabled"
 

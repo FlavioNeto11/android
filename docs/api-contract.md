@@ -4987,3 +4987,44 @@ no `notice`.
     perguntas) e o comando filtrado (o estado da R5 é SÓ o comando).
 - Prova `simulated`: `backend/tests/test_decisao_fechada_apps.py::test_transparencia_nao_anuncia_a_r5_travada` e
   `backend/tests/test_decisao_fechada_sombra.py::test_aviso_nomeia_a_typesafe_e_as_classes_so_com_consumidor_em_shadow_ou_on`.
+
+## Adendo v1.07 (03/10/2026; número da orquestradora; item 30.42) — a prova de fluxo parte de um estado conhecido e a posição `invalida`
+
+Aditivo aos v0.96 e v0.47. Nenhuma rota nova e nenhuma migração. Origem: no P4 de 03/10, uma prova mandou a mensagem
+duas vezes e virou evidência a favor (ev:48), e outra herdou a tela da execução anterior e virou contra.
+
+**Evidência** (`evidencias[].stance` do detalhe `GET /api/aprendizado/{kind}/{ref}`):
+- ganha o valor `invalida`: a execução de prova não vale como evidência do fluxo. Não conta contra nem a favor;
+- o `detail` começa pelo motivo, de vocabulário fechado: `"[marca] invalida:<motivo> — texto"`, com `<motivo>` em
+  `efeito_repetido`, `ponto_de_partida` ou `ator_sem_acao`;
+- um `for` ou `against` com uma `invalida` da MESMA `origin_ref` continua na lista, mas sai de toda contagem: a saúde,
+  as Métricas, a regressão da autopublicação (v0.93), o `a_favor` do fluxo e o dossiê do curador;
+- a reclassificação de uma prova antiga leva `"… (reclassificada)"` no texto.
+
+**O que a execução ensinou** (o bloco da execução): o papel do item diz "inválida (<motivo>; não conta)".
+
+**Linha do tempo da execução de prova**: uma decisão "Prova de fluxo (validação): ponto de partida…" antes da 1ª etapa;
+a etapa que falha fecha sem replanejar, com "a prova não replaneja, porque um plano novo não é mais o fluxo".
+
+**Dossiê do curador** (só quando vale): `evidencias.invalida_e`, a nota do que é a posição `invalida`, quando alguma
+evidência incluída é `invalida`.
+
+**`learning_validations.motivo`** (sem CHECK, vocabulário do domínio) ganha, todos com `estado = recusada`:
+- `efeito_repetido`, `ponto_de_partida`, `ator_sem_acao`: a prova deixou a linha `invalida` com esse motivo;
+- `limite_de_provas`: o item já teve 2 provas da mesma versão do conteúdo em 7 dias; fecha ao despachar, sem execução;
+- `sem_aparelho_novo`: a falta pede outro aparelho e nenhum aparelho que serve ficou fora dos já usados; fecha ao
+  despachar, sem execução.
+
+Nenhum deles devolve o item ao curador nem reabre o pedido. `sem_aparelho_novo` e `plano_acima_do_teto` (30.41) já
+existiam no banco do central, gravados à mão em 03/10.
+
+**Contrato com a Android (29.58)**: `steps.result.efeito_repetido = {"copias": int >= 2, "fonte": "verificador" |
+"acoes"}` na etapa onde a repetição foi vista; chave AUSENTE sem repetição. Quando existe, vence a regra própria do
+aprendizado.
+
+**Rollback**: o código anterior lê `stance` como enum e quebra com a linha `invalida`.
+
+Prova:
+- `simulated`: `backend/tests/test_learning_prova_veredito.py`, `test_learning_reclassificacao_efeito.py`,
+  `test_learning_prova_ponto_de_partida.py`, `test_learning_prova_limites.py`.
+- `not_run`: a reclassificação da ev:48 e a 1ª prova do P4 depois do deploy.

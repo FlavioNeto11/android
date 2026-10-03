@@ -28,16 +28,20 @@ from datetime import datetime
 
 from pydantic import ValidationError
 
-from app.db import Database
+from app.automation.tools import COMMIT_VOCAB
+from app.db import Database, Row
 from app.models import Plan, PlanStep
 from app.modules.learning.application.evidencia_da_receita import EvidenciaDaReceita, RetrocargaDaReceita
 from app.modules.learning.application.nativos import (AssinaturaDoPlano, ContraGravado, D1Nativo, Decidir,
                                                       ExecucaoAssentada, ExecucaoDeHabilidade, FluxoEmProva,
-                                                      PassoAssinado, ProvaDaExecucao, ReclassificacaoDaForma,
+                                                      ForDeProva, PassoAssinado, ProvaDaExecucao,
+                                                      ReclassificacaoDaForma, ReclassificacaoDoEfeitoDuplicado,
                                                       SombraDosFluxos, ValidacaoPorExecucao)
 from app.modules.learning.application.ports import RepositorioDeAprendizado
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.evidencia_invalida import run_da_etapa
+from app.modules.learning.domain.prova import (AcaoDaProva, EtapaDaProva, TentativaDaProva, detalhe_da_invalida,
+                                               efeito_repetido, veredito_da_prova)
 from app.modules.learning.domain.livro import (escopo_da_receita, estado_nativo, fluxo_tem_efeito, hash_da_receita,
                                                ref_da_trilha)
 from app.modules.learning.domain.vocabulario import LivroKind, Posicao
@@ -105,6 +109,23 @@ def _na_acao(plano: Plan, parametros: Mapping[str, str]) -> frozenset[str]:
     return frozenset(nome for nome, valor in parametros.items() if usa(nome, valor))
 
 
+def _acao_da_prova(a: Row) -> AcaoDaProva:
+    """Uma linha de `actions` como dado da prova. `parece_commit`: o ALVO resolvido (`actions.target`, o `UiElement`
+    do que foi tocado) tem cara de envio, o mesmo critério de `automation.tools.looks_like_commit`, que o executor
+    aplica ao elemento; só vale para o toque (o `type_text` tem o campo como alvo, e o campo não é o envio)."""
+    args = linhas.json_legado(linhas.texto_ou_nulo(a, "args"))
+    alvo = linhas.json_legado(linhas.texto_ou_nulo(a, "target"))
+    tool = linhas.texto(a, "tool")
+    parece = False
+    if tool in ("tap", "long_press") and isinstance(alvo, dict):
+        partes = [alvo.get("text"), alvo.get("desc"),
+                  str(alvo.get("resource_id") or "").rsplit("/", 1)[-1].replace("_", " ")]
+        parece = bool(COMMIT_VOCAB.search(" ".join(p for p in partes if isinstance(p, str))))
+    return AcaoDaProva(tool=tool, status=linhas.texto(a, "status"),
+                       is_commit_action=isinstance(args, dict) and args.get("is_commit_action") is True,
+                       parece_commit=parece)
+
+
 def _primeiro_aparelho(bruto: str | None) -> str | None:
     ids = linhas.json_legado(bruto)
     if isinstance(ids, list):
@@ -134,29 +155,72 @@ class LeituraSql:
                                  prova=self._prova(run_id, prova, linhas.texto(row, "status")) if prova else None)
 
     def _prova(self, run_id: str, fluxo_id: str, status: str) -> ProvaDaExecucao | None:
-        """30.37: o desfecho da execução de prova pelas etapas (não pelo plano). A etapa-modelo do `for_each` nunca é
-        executada e fica fora. Reprovada = `failed` cuja última tentativa não traz erro de IA (`attempts.error_kind`,
-        RA-22): orçamento, teto, recusa e chave são infra, e infra não conta."""
+        """30.37/30.42: o desfecho da execução de prova pelas etapas (não pelo plano), pela regra única de
+        `domain.prova.veredito_da_prova`: a etapa-modelo do `for_each` nunca é executada e fica fora; infra
+        (`attempts.error_kind`, RA-22: orçamento, teto, recusa e chave) não conta; o efeito repetido, a abertura que
+        falhou e o ator que não agiu viram `invalida`; plano revisado não conta."""
         linha = self._db.one("SELECT plan FROM flows WHERE id=?", (fluxo_id,))
         conteudo = linhas.json_legado(linhas.texto_ou_nulo(linha, "plan")) if linha is not None else None
         if conteudo is None:
             return None
-        hash_ = content_hash(conteudo)
+        v = veredito_da_prova(self._etapas_da_prova(run_id), status=status)
+        texto = detalhe_da_invalida(v.motivo, v.texto) if v.motivo is not None else v.texto
+        return ProvaDaExecucao(fluxo_id, content_hash(conteudo), v.posicao, texto)
+
+    def efeito_repetido_da_execucao(self, run_id: str) -> int | None:
+        """30.42: as cópias do efeito da execução (`domain.prova.efeito_repetido`), ou `None`. O passo da curadoria
+        aplica a MESMA regra do veredito às provas que já deixaram o `for`."""
+        return efeito_repetido(self._etapas_da_prova(run_id))
+
+    def _etapas_da_prova(self, run_id: str) -> list[EtapaDaProva]:
+        """As etapas executadas da prova, com o diário de ações (`actions`, todas as tentativas) e a última tentativa."""
         etapas = self._db.query(
-            "SELECT s.seq, s.key, s.status, s.status_detail, (SELECT a.error_kind FROM attempts a WHERE a.step_id=s.id"
-            " ORDER BY a.number DESC LIMIT 1) AS erro FROM steps s WHERE s.run_id=? AND s.for_each IS NULL"
-            " ORDER BY s.seq, s.id", (run_id,))
-        reprovada = next((e for e in etapas if linhas.texto(e, "status") == "failed"
-                          and not linhas.texto_ou_nulo(e, "erro")), None)
-        if reprovada is not None:
-            motivo = (linhas.texto_ou_nulo(reprovada, "status_detail") or "sem detalhe")[:160]
-            return ProvaDaExecucao(fluxo_id, hash_, Posicao.AGAINST,
-                                   f"prova: etapa {linhas.inteiro(reprovada, 'seq')} ({linhas.texto(reprovada, 'key')}) "
-                                   f"reprovada: {motivo}")
-        if status == "completed" and etapas and all(linhas.texto(e, "status") == "succeeded" for e in etapas):
-            return ProvaDaExecucao(fluxo_id, hash_, Posicao.FOR,
-                                   f"prova: {len(etapas)}/{len(etapas)} etapas comprovadas")
-        return ProvaDaExecucao(fluxo_id, hash_, None, f"prova sem desfecho de tarefa ({status})")
+            "SELECT s.id, s.seq, s.key, s.status, s.status_detail, s.plan_version, s.side_effect, s.driven_by,"
+            " s.result FROM steps s WHERE s.run_id=? AND s.for_each IS NULL ORDER BY s.seq, s.id", (run_id,))
+        ultimas: dict[str, tuple[str, str | None, str | None]] = {}
+        for t in self._db.query(
+                "SELECT t.step_id, t.id, t.error_kind, t.failure_kind FROM attempts t JOIN steps s ON s.id = t.step_id"
+                " WHERE s.run_id=? AND s.for_each IS NULL ORDER BY t.step_id, t.number", (run_id,)):
+            ultimas[linhas.texto(t, "step_id")] = (linhas.texto(t, "id"), linhas.texto_ou_nulo(t, "error_kind"),
+                                                   linhas.texto_ou_nulo(t, "failure_kind"))
+        por_etapa: dict[str, list[AcaoDaProva]] = {}
+        por_tentativa: dict[str, list[AcaoDaProva]] = {}
+        for a in self._db.query(
+                "SELECT s.id AS step_id, t.id AS attempt_id, a.tool, a.status, a.args, a.target FROM actions a"
+                " JOIN attempts t ON t.id = a.attempt_id JOIN steps s ON s.id = t.step_id"
+                " WHERE s.run_id=? AND s.for_each IS NULL ORDER BY s.id, t.number, a.seq", (run_id,)):
+            acao = _acao_da_prova(a)
+            por_etapa.setdefault(linhas.texto(a, "step_id"), []).append(acao)
+            por_tentativa.setdefault(linhas.texto(a, "attempt_id"), []).append(acao)
+        saida: list[EtapaDaProva] = []
+        for e in etapas:
+            sid = linhas.texto(e, "id")
+            ultima = None
+            if sid in ultimas:
+                tentativa, erro, falha = ultimas[sid]
+                ultima = TentativaDaProva(erro, falha, tuple(por_tentativa.get(tentativa, ())))
+            resultado = linhas.json_legado(linhas.texto_ou_nulo(e, "result"))
+            saida.append(EtapaDaProva(
+                seq=linhas.inteiro(e, "seq"), key=linhas.texto(e, "key"), status=linhas.texto(e, "status"),
+                plan_version=linhas.inteiro(e, "plan_version"), side_effect=bool(linhas.inteiro(e, "side_effect")),
+                driven_by=linhas.texto_ou_nulo(e, "driven_by"), detalhe=linhas.texto_ou_nulo(e, "status_detail"),
+                ultima=ultima, acoes=tuple(por_etapa.get(sid, ())),
+                efeito_do_resultado=resultado.get("efeito_repetido") if isinstance(resultado, dict) else None))
+        return saida
+
+    def fors_de_prova(self) -> list[ForDeProva]:
+        """30.42: as linhas `for` de fluxo cuja origem é uma EXECUÇÃO DE PROVA (`runs.prova_fluxo_id`) e que ainda não
+        têm a `invalida` da mesma origem ao lado. O passo da curadoria as recompara com a regra de hoje."""
+        return [ForDeProva(item_ref=linhas.texto(r, "item_ref"), origin_ref=linhas.texto(r, "origin_ref"),
+                           run_id=linhas.texto(r, "run_id"), detail=linhas.texto_ou_nulo(r, "detail"),
+                           simulada=bool(linhas.inteiro(r, "simulated")),
+                           aparelho=linhas.texto_ou_nulo(r, "instance_id"))
+                for r in self._db.query(
+                    "SELECT e.item_ref, e.origin_ref, e.run_id, e.detail, e.simulated, e.instance_id"
+                    " FROM learning_evidence e JOIN runs r ON r.id = e.run_id"
+                    " WHERE e.stance = 'for' AND e.item_ref LIKE 'fluxo:%' AND r.prova_fluxo_id IS NOT NULL"
+                    " AND NOT EXISTS (SELECT 1 FROM learning_evidence f WHERE f.item_ref = e.item_ref"
+                    " AND f.origin_ref = e.origin_ref AND f.stance = 'invalida') ORDER BY e.id")]
 
     def fluxos_em_prova(self) -> list[FluxoEmProva]:
         saida: list[FluxoEmProva] = []
@@ -186,7 +250,10 @@ class LeituraSql:
                     "SELECT e.item_ref, e.origin_ref, e.run_id, e.detail FROM learning_evidence e"
                     " WHERE e.stance = 'against' AND e.item_ref LIKE 'fluxo:%' AND e.run_id IS NOT NULL"
                     " AND NOT EXISTS (SELECT 1 FROM learning_evidence f WHERE f.item_ref = e.item_ref"
-                    " AND f.origin_ref = e.origin_ref AND f.stance = 'forma') ORDER BY e.id")]
+                    " AND f.origin_ref = e.origin_ref AND f.stance = 'forma')"
+                    # 30.42: o `against` que a `invalida` da mesma origem corrigiu não é recomparado (não conta mais)
+                    " AND NOT EXISTS (SELECT 1 FROM learning_evidence g WHERE g.item_ref = e.item_ref"
+                    " AND g.origin_ref = e.origin_ref AND g.stance = 'invalida') ORDER BY e.id")]
 
     def execucao_real(self, run_id: str) -> bool:
         """A execução existe e não é simulada (`runs.simulated=0`): a única que ensina de novo o que a evidência
@@ -356,6 +423,7 @@ def ligar(servico: LearningService, repo: RepositorioDeAprendizado, db: Database
     servico.registrar_minerador(SombraDosFluxos(servico, repo, leitura, concordancias=concordancias,
                                                 decidir=decidir))
     servico.registrar_passo(ReclassificacaoDaForma(repo, leitura, decidir=decidir))   # 30.36
+    servico.registrar_passo(ReclassificacaoDoEfeitoDuplicado(repo, leitura, decidir=decidir))   # 30.42
     reproducoes = ReproducoesSql(db)                                                  # 30.39: a evidência da receita
     servico.registrar_minerador(EvidenciaDaReceita(repo, reproducoes))
     servico.registrar_passo(RetrocargaDaReceita(

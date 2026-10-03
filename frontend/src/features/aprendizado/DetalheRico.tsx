@@ -23,7 +23,7 @@ import {
   type ConteudoDoFluxo, type ConteudoDoItem, type DetalheDoLivro, type EntradaDoLivro, type EvidenciaDoLivro,
   type LivroKind, type OrigemDaReceita, type RelacaoDoItem, type SaudeDoItem, type TransicaoDoLivro, type VersaoDoItem,
   type VizinhaDaReceita, ORIGEM_LABEL, acoesDoItem, nomearCapabilityNoTexto, porQueOSistemaNaoPublica, rotuloDoEstado,
-  rotuloDoKind, textoDaEvidencia,
+  rotuloDoKind, motivoDaInvalida, textoDaEvidencia,
 } from './model';
 import styles from './Aprendizado.module.css';
 
@@ -398,13 +398,16 @@ function Versao({ v, appNome }: { v: VersaoDoItem; appNome: string | null }) {
 // ---------------------------------------------------------------- evidência, histórico, relações, ações
 
 const POSTURA: Record<EvidenciaDoLivro['stance'], string> = {
-  for: 'a favor', against: 'contra', conflict: 'em conflito', forma: 'divergência de forma',
+  for: 'a favor', against: 'contra', conflict: 'em conflito', forma: 'divergência de forma', invalida: 'inválida',
 };
 
 function Evidencia({ evid }: { evid: readonly EvidenciaDoLivro[] }) {
   // 30.36: o "contra" que tem a forma da mesma execução ao lado foi reclassificado: fica na lista, fora da conta.
   const formas = new Set(evid.filter((x) => x.stance === 'forma').map((x) => x.origin_ref));
-  const corrigida = (x: EvidenciaDoLivro) => x.stance === 'against' && formas.has(x.origin_ref);
+  // 30.42: o `for` ou `against` que tem a `invalida` da mesma execução ao lado (a prova que não vale) também sai da conta.
+  const invalidas = new Set(evid.filter((x) => x.stance === 'invalida').map((x) => x.origin_ref));
+  const porInvalida = (x: EvidenciaDoLivro) => (x.stance === 'for' || x.stance === 'against') && invalidas.has(x.origin_ref);
+  const corrigida = (x: EvidenciaDoLivro) => (x.stance === 'against' && formas.has(x.origin_ref)) || porInvalida(x);
   const n = (s: EvidenciaDoLivro['stance']) => evid.filter((x) => x.stance === s && !corrigida(x)).length;
   return (
     <Secao slug="evidencia" titulo="Evidência registrada">
@@ -413,6 +416,7 @@ function Evidencia({ evid }: { evid: readonly EvidenciaDoLivro[] }) {
         reproduções.{' '}
         {n('for')} a favor · {n('against')} contra · {n('conflict')} em conflito
         {n('forma') > 0 ? ` · ${n('forma')} de forma (só a redação do plano mudou; não contam)` : ''}
+        {n('invalida') > 0 ? ` · ${n('invalida')} inválida${n('invalida') > 1 ? 's' : ''} (a prova não valeu; não contam)` : ''}
         {evid.some((x) => x.simulated) ? ' (as simuladas nunca contam para publicar)' : ''}.
       </p>
       {evid.length > 0 ? (
@@ -420,7 +424,8 @@ function Evidencia({ evid }: { evid: readonly EvidenciaDoLivro[] }) {
           {evid.map((x, i) => (
             <li key={`${x.origin_ref}-${i}`}>
               {POSTURA[x.stance] ?? x.stance}
-              {corrigida(x) ? ' (reclassificada como forma; não conta)' : ''}
+              {x.stance === 'invalida' ? ` (${motivoDaInvalida(x.detail) ?? 'a prova não vale'}; não conta)` : ''}
+              {porInvalida(x) ? ' (reclassificada como inválida; não conta)' : corrigida(x) ? ' (reclassificada como forma; não conta)' : ''}
               {x.run_id ? <>{' · '}<a className={styles.linkAlvo} href={hrefDaExecucao(x.run_id)} title={x.run_id}>{rotuloDaExecucao(x.run_id)}</a></> : ''}
               {x.instance_id ? ` · aparelho ${x.instance_id}` : ''}
               {x.app_version ? ` · app ${x.app_version}` : ''}

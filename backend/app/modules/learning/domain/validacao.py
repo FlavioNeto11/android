@@ -23,12 +23,15 @@ Regras do desenho que moram aqui:
 """
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+import re
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from enum import StrEnum
 
 from app.modules.learning.domain.ciclo import SkillState
 from app.modules.learning.domain.curador import Decisao, Falta
+from app.modules.learning.domain.prova import motivo_da_invalida
 from app.modules.learning.domain.vocabulario import LivroKind
 
 #: O que uma execução de validação produz. `decisao_da_pessoa`/`voto_da_pessoa` ficam de fora: são a política.
@@ -38,6 +41,9 @@ FALTA_AUTOMATIZAVEL = frozenset({Falta.EXECUCAO_REAL, Falta.REPRODUCAO_EM_OUTRO_
 BETA_PADRAO = 0.05
 #: Execuções de validação por hora, no máximo (o parque é compartilhado com o uso).
 MAXIMO_POR_HORA = 4
+#: 30.42: provas da MESMA versão do conteúdo do fluxo que o item aceita na janela; a 3ª fecha `limite_de_provas`.
+MAXIMO_DE_PROVAS = 2
+JANELA_DE_PROVAS_DIAS = 7
 #: O pedido que não rodou em 72 h expira (o item muda, a volta seguinte pede de novo se ainda faltar).
 VALIDADE_DO_PEDIDO_H = 72
 
@@ -78,6 +84,10 @@ class Motivo(StrEnum):
     #: pós-condição reescrita do RA-20). 30.37: no fluxo, o comando de origem não cabe mais no molde dele (a execução de
     #: prova não teria os parâmetros). Recusa também AO DESPACHAR, sem execução, porque o fluxo pode mudar.
     SEM_CAMINHO = "sem_caminho"
+    #: 30.42: recusas AO DESPACHAR, sem execução nem gasto: o item já teve 2 provas da mesma versão do conteúdo em 7
+    #: dias; ou a falta pede outro aparelho e nenhum aparelho que serve ficou fora dos já usados (origem e provas).
+    LIMITE_DE_PROVAS = "limite_de_provas"
+    SEM_APARELHO_NOVO = "sem_aparelho_novo"
     # ao despachar (o pedido fica `pendente` e tenta na volta seguinte)
     AMBIENTE_OCUPADO = "ambiente_ocupado"             # health com problema, execução em curso (restart/suíte/deploy)
     SEM_APARELHO = "sem_aparelho"                     # nenhum aparelho ocioso que sirva
@@ -87,6 +97,10 @@ class Motivo(StrEnum):
     SEM_EVIDENCIA = "sem_evidencia"                   # a execução assentou e não deixou evidência no item
     EVIDENCIA_CONTRA = "evidencia_contra"             # 30.36: deixou evidência CONTRA (o curador volta ao item)
     DIVERGENCIA_DE_FORMA = "divergencia_de_forma"     # 30.36: fez o caminho e só reescreveu a forma (nem a favor)
+    #: 30.42: a prova deixou a linha `invalida` (nem a favor nem contra); o motivo é o dela (`domain/prova.py`)
+    EFEITO_REPETIDO = "efeito_repetido"
+    PONTO_DE_PARTIDA = "ponto_de_partida"
+    ATOR_SEM_ACAO = "ator_sem_acao"
     EXECUCAO_FALHOU = "execucao_falhou"
     EXPIROU = "expirou"
 
@@ -217,9 +231,11 @@ def pode_despachar(ambiente: Ambiente, folego: Folego, *, custo_estimado: float)
     return None
 
 
-def escolher_aparelho(grupo: Grupo, aparelhos: Sequence[AparelhoCandidato], *, excluido: str | None) -> str | None:
-    """O aparelho da validação: online, ocioso, com o app, diferente do de origem e SEM conta real logada.
-    Determinístico: entre os iguais, o menor id.
+def escolher_aparelho(grupo: Grupo, aparelhos: Sequence[AparelhoCandidato], *,
+                      excluido: str | Collection[str] | None) -> str | None:
+    """O aparelho da validação: online, ocioso, com o app, fora dos EXCLUÍDOS e SEM conta real logada. `excluido` é um
+    aparelho (a origem, como sempre) ou um conjunto (30.42: origem + aparelhos das provas anteriores). Determinístico:
+    entre os iguais, o menor id.
 
     Fatia 1 (03/10): nenhum grupo roda onde há conta real, nem a leitura. A regra do dono é conferir a tela antes de
     qualquer experimento numa conta real ("Confirm you're human" é conta bloqueada, e nada toca nela), e o despachante
@@ -227,10 +243,85 @@ def escolher_aparelho(grupo: Grupo, aparelhos: Sequence[AparelhoCandidato], *, e
     expira; levar a leitura às contas reais é decisão da orquestradora."""
     if grupo is Grupo.EFEITO_REAL:
         return None
-    servem = [a for a in aparelhos if a.online and a.ocioso and a.tem_o_app and a.id != excluido and not a.conta_real]
+    fora = _conjunto(excluido)
+    servem = [a for a in aparelhos if a.online and a.ocioso and a.tem_o_app and a.id not in fora and not a.conta_real]
     return min(servem, key=lambda a: a.id).id if servem else None
 
 
-__all__ = ["BETA_PADRAO", "FALTA_AUTOMATIZAVEL", "MAXIMO_POR_HORA", "VALIDADE_DO_PEDIDO_H", "VIVOS", "Ambiente",
-           "AparelhoCandidato", "EstadoDoPedido", "FatosDoParecer", "Folego", "Grupo", "Motivo", "Pedido",
-           "escolher_aparelho", "falta_automatizavel", "grupo_de", "pedido_do_parecer", "pode_despachar"]
+def _conjunto(excluido: str | Collection[str] | None) -> frozenset[str]:
+    if excluido is None:
+        return frozenset()
+    return frozenset({excluido}) if isinstance(excluido, str) else frozenset(excluido)
+
+
+def excluidos_da_validacao(falta: Iterable[str], *, origem: str | None, provas: Iterable[str | None]) -> frozenset[str]:
+    """30.42: os aparelhos em que a validação NÃO roda. Só a origem, como sempre; com `reproducao_em_outro_aparelho`
+    na falta, também os aparelhos onde o item já foi provado (reproduzir noutro aparelho é, justamente, um aparelho que
+    ainda não viu o item)."""
+    fora = {origem} if origem else set()
+    if Falta.REPRODUCAO_EM_OUTRO_APARELHO.value in set(falta):
+        fora |= {a for a in provas if a}
+    return frozenset(fora)
+
+
+def sobra_aparelho_novo(grupo: Grupo, aparelhos: Sequence[AparelhoCandidato], excluidos: Collection[str]) -> bool:
+    """Falta aparelho NOVO? `False` só quando há aparelho que SERVE ao grupo (tem os apps do item, sem conta real) e todos
+    eles estão entre os excluídos: ligado ou não, ocupado ou não, o que serve já foi usado, e esperar não adianta (o
+    pedido fecha `sem_aparelho_novo`). Se sobra algum fora dos excluídos, o pedido espera (`sem_aparelho`); se NENHUM
+    aparelho serve ainda (o app não está pronto em lugar nenhum), também espera: não é falta de aparelho novo."""
+    if grupo is Grupo.EFEITO_REAL:
+        return True                                   # nunca chega aqui (nasce `efeito_real`); quem recusa é outro
+    servem = [a for a in aparelhos if a.tem_o_app and not a.conta_real]
+    return not servem or any(a.id not in excluidos for a in servem)
+
+
+# ------------------------------------------------------------------ o limite de provas (30.42)
+_MARCA = re.compile(r"^\[([0-9a-f]{6,})\]")
+
+
+def marca_da_evidencia(detalhe: str | None) -> str | None:
+    """A marca de conteúdo `[xxxxxxxxxxxx]` no começo do `detail` de uma linha de prova, ou `None` (sem marca)."""
+    m = _MARCA.match(detalhe or "")
+    return m.group(1) if m else None
+
+
+@dataclass(frozen=True, slots=True)
+class ProvaAnterior:
+    """Uma execução de prova que o item já teve: o aparelho, quando rodou e a marca de cada linha de evidência que ela
+    deixou (`None` = linha sem marca). Sem linha nenhuma, `marcas` vem vazio."""
+
+    aparelho: str | None
+    quando: datetime
+    marcas: tuple[str | None, ...] = ()
+
+
+def conta_para_o_limite(prova: ProvaAnterior, marca_atual: str | None) -> bool:
+    """A prova conta como da versão de agora? Só deixa de contar a que TEM linha e todas as linhas dela trazem OUTRA
+    marca. Sem linha, sem marca, ou sem a marca de agora a comparar, conta (lado seguro: o limite protege o gasto)."""
+    if marca_atual is None or not prova.marcas:
+        return True
+    marca = marca_atual[:12]
+    return any(m is None or m[:12] == marca for m in prova.marcas)
+
+
+def limite_de_provas_atingido(provas: Iterable[ProvaAnterior], marca_atual: str | None, agora: datetime) -> bool:
+    """30.42: o item já teve `MAXIMO_DE_PROVAS` provas da mesma versão do conteúdo nos últimos `JANELA_DE_PROVAS_DIAS`
+    dias? Então a próxima não roda (sem gastar)."""
+    desde = agora - timedelta(days=JANELA_DE_PROVAS_DIAS)
+    n = sum(1 for p in provas if p.quando >= desde and conta_para_o_limite(p, marca_atual))
+    return n >= MAXIMO_DE_PROVAS
+
+
+def motivo_da_prova_invalida(detalhe: str | None) -> Motivo:
+    """O motivo do pedido cuja execução deixou a linha `invalida` (30.42): o dela (`domain/prova.py`); a linha cujo
+    detalhe não se lê não prova nada nem aponta o porquê, e fecha `sem_evidencia` (o lado seguro)."""
+    m = motivo_da_invalida(detalhe)
+    return Motivo.SEM_EVIDENCIA if m is None else Motivo(m.value)
+
+
+__all__ = ["BETA_PADRAO", "FALTA_AUTOMATIZAVEL", "JANELA_DE_PROVAS_DIAS", "MAXIMO_DE_PROVAS", "MAXIMO_POR_HORA",
+           "VALIDADE_DO_PEDIDO_H", "VIVOS", "Ambiente", "AparelhoCandidato", "EstadoDoPedido", "FatosDoParecer", "Folego",
+           "Grupo", "Motivo", "Pedido", "ProvaAnterior", "conta_para_o_limite", "escolher_aparelho",
+           "excluidos_da_validacao", "falta_automatizavel", "grupo_de", "limite_de_provas_atingido",
+           "marca_da_evidencia", "motivo_da_prova_invalida", "pedido_do_parecer", "pode_despachar",
+           "sobra_aparelho_novo"]

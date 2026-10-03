@@ -30,12 +30,14 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Protocol
 
-from app.modules.learning.domain.curador import Parecer
+from app.modules.learning.domain.curador import Falta, Parecer
 from app.modules.learning.domain.livro import EntradaDoLivro, apps_do_item
 from app.modules.learning.domain.politica_de_risco import Classificacao, Razao
 from app.modules.learning.domain.validacao import (VALIDADE_DO_PEDIDO_H, Ambiente, AparelhoCandidato, EstadoDoPedido,
-                                                   FatosDoParecer, Folego, Grupo, Motivo, escolher_aparelho,
-                                                   pedido_do_parecer, pode_despachar)
+                                                   FatosDoParecer, Folego, Grupo, Motivo, ProvaAnterior,
+                                                   escolher_aparelho, excluidos_da_validacao,
+                                                   limite_de_provas_atingido, motivo_da_prova_invalida,
+                                                   pedido_do_parecer, pode_despachar, sobra_aparelho_novo)
 from app.modules.learning.domain.vocabulario import LivroKind, Modo, Posicao
 from app.util import parse_iso, to_iso
 
@@ -87,6 +89,8 @@ class PedidoVivo:
     estado: EstadoDoPedido
     run_id: str | None
     created_at: str
+    #: 30.42: os rótulos da falta do pedido (`Falta.value`); o despachante lê `reproducao_em_outro_aparelho` daqui.
+    falta: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,6 +144,16 @@ class FontesDaValidacao(Protocol):
     #: A posição da evidência que DESTA execução ficou no item (30.36): a favor vence; depois a forma; depois o contra
     #: efetivo; `None` sem evidência dela. A receita só tem a favor (a tentativa conduzida por ela que deu certo).
     def posicao_da_execucao(self, item_ref: str, run_id: str) -> Posicao | None: ...
+    #: 30.42: o `detail` da linha `invalida` que ESTA execução deixou no item (a prova que não vale: efeito repetido,
+    #: ponto de partida, ator sem ação), ou `None` sem a linha. Quando há, VENCE a posição (`posicao_da_execucao`): o
+    #: pedido fecha com o motivo dela (`domain.validacao.motivo_da_prova_invalida`). `""` = linha sem detalhe.
+    def invalida_da_execucao(self, item_ref: str, run_id: str) -> str | None: ...
+    #: 30.42: a marca `content_hash(plano do fluxo)[:12]` de agora (a mesma `[xxxxxxxxxxxx]` do `detail` das linhas da
+    #: prova); `None` fora do fluxo ou sem plano legível.
+    def versao_do_conteudo(self, item_ref: str) -> str | None: ...
+    #: 30.42: as execuções de PROVA que o item já teve (pedido com `run_id` cuja execução tem `prova_fluxo_id`), com o
+    #: aparelho e a marca de cada linha de evidência que deixaram. Só do fluxo; nos outros tipos, vazio.
+    def provas_do_item(self, item_ref: str) -> list[ProvaAnterior]: ...
     def desfecho(self, run_id: str) -> tuple[str, float] | None: ...    # (status, usd) quando assentou
 
 
@@ -239,9 +253,8 @@ class ServicoDeValidacao:
             log.info("aprendizado: validação espera (%s; %d pedido(s) pendente(s))", motivo.value, len(pendentes))
             return None
         for p in pendentes:                                      # o mais antigo que tiver aparelho
-            # 30.33-C: o aparelho precisa de TODOS os apps do item prontos, não só do principal (`scope_app`).
-            pacotes = tuple(dict.fromkeys(a for a in (p.scope_app, *self._fontes.apps_do_item(p.item_ref)) if a))
-            aparelho = escolher_aparelho(p.grupo, self._despacho.aparelhos(pacotes), excluido=p.aparelho_excluido)
+            aparelho = escolher_aparelho(p.grupo, self._despacho.aparelhos(self._pacotes(p)),
+                                         excluido=self._excluidos(p))
             if aparelho is None:
                 continue
             prova = p.item_ref.partition(":")[2] if p.item_kind == LivroKind.FLUXO.value else None
@@ -257,6 +270,17 @@ class ServicoDeValidacao:
                  len(pendentes))
         return None
 
+    def _pacotes(self, p: PedidoVivo) -> tuple[str, ...]:
+        """30.33-C: o aparelho precisa de TODOS os apps do item prontos, não só do principal (`scope_app`)."""
+        return tuple(dict.fromkeys(a for a in (p.scope_app, *self._fontes.apps_do_item(p.item_ref)) if a))
+
+    def _excluidos(self, p: PedidoVivo) -> frozenset[str]:
+        """30.42: a origem; e, com `reproducao_em_outro_aparelho` na falta, também os aparelhos das provas anteriores."""
+        if Falta.REPRODUCAO_EM_OUTRO_APARELHO.value not in p.falta:
+            return excluidos_da_validacao(p.falta, origem=p.aparelho_excluido, provas=())
+        provas = (a.aparelho for a in self._fontes.provas_do_item(p.item_ref))
+        return excluidos_da_validacao(p.falta, origem=p.aparelho_excluido, provas=provas)
+
     # ------------------------------------------------------------------ 3. o minerador do digest
     def minerar(self, run_id: str) -> int:
         """A execução assentou: se é de validação, o pedido fecha. `1` quando fechou um pedido."""
@@ -269,8 +293,14 @@ class ServicoDeValidacao:
         status, usd = desfecho
         # A sombra do fluxo (`fluxos_d1`) é registrada antes deste minerador e o digest roda em ordem: a evidência
         # desta execução já está no item quando o pedido fecha.
-        posicao = self._fontes.posicao_da_execucao(p.item_ref, run_id)
-        if posicao is Posicao.FOR:
+        # 30.42: a linha `invalida` da execução VENCE (antes do `for`): a prova que repetiu o efeito, que não chegou ao
+        # ponto de partida ou em que o ator não agiu não vale nem a favor nem contra. Esses motivos NÃO são chegada do
+        # curador (`chegadas()`) nem se reabrem (`para_reabrir()`): fechar sem evidência de verdade é o ponto.
+        invalida = self._fontes.invalida_da_execucao(p.item_ref, run_id)
+        posicao = None if invalida is not None else self._fontes.posicao_da_execucao(p.item_ref, run_id)
+        if invalida is not None:
+            estado, motivo = EstadoDoPedido.RECUSADA, motivo_da_prova_invalida(invalida)
+        elif posicao is Posicao.FOR:
             estado, motivo = EstadoDoPedido.FEITA, None
         else:
             estado = EstadoDoPedido.RECUSADA
@@ -298,8 +328,30 @@ class ServicoDeValidacao:
                              "o fluxo ativo não chega à etapa" if p.item_kind == LivroKind.RECEITA.value
                              else "o comando de origem não cabe no molde do fluxo")
                 continue
+            motivo = self._recusa_de_prova(p, agora)
+            if motivo is not None:
+                if self._registro.recusar(p.id, motivo, agora):
+                    log.info("aprendizado: validação %s de %s recusada ao despachar (%s)", p.id, p.item_ref,
+                             motivo.value)
+                continue
             vivos.append(p)
         return vivos
+
+    def _recusa_de_prova(self, p: PedidoVivo, agora: datetime) -> Motivo | None:
+        """30.42: o pedido de FLUXO que gastaria uma prova inútil fecha antes de gastar. (1) `limite_de_provas`: o item já
+        teve `MAXIMO_DE_PROVAS` provas da mesma versão do conteúdo na janela; (2) `sem_aparelho_novo`: a falta pede
+        OUTRO aparelho e nenhum que serve (tem os apps, sem conta real, ligado ou não, ocupado ou não) ficou fora dos já
+        usados. Se sobra um ocupado ou fora do ar, o pedido espera (`sem_aparelho`), como sempre."""
+        if p.item_kind != LivroKind.FLUXO.value:
+            return None
+        provas = self._fontes.provas_do_item(p.item_ref)
+        if limite_de_provas_atingido(provas, self._fontes.versao_do_conteudo(p.item_ref), agora):
+            return Motivo.LIMITE_DE_PROVAS
+        if Falta.REPRODUCAO_EM_OUTRO_APARELHO.value in p.falta:
+            fora = excluidos_da_validacao(p.falta, origem=p.aparelho_excluido, provas=(a.aparelho for a in provas))
+            if not sobra_aparelho_novo(p.grupo, self._despacho.aparelhos(self._pacotes(p)), fora):
+                return Motivo.SEM_APARELHO_NOVO
+        return None
 
     # ------------------------------------------------------------------ 3b. o motivo segue a evidência (30.36)
     def executar(self, agora: datetime) -> int:
@@ -310,6 +362,12 @@ class ServicoDeValidacao:
         motivo."""
         n = 0
         for p in self._registro.sem_evidencia():
+            invalida = self._fontes.invalida_da_execucao(p.item_ref, p.run_id) if p.run_id else None
+            if invalida is not None:                # 30.42: a linha `invalida` (a reclassificação, depois) vence a posição
+                motivo = motivo_da_prova_invalida(invalida)
+                if motivo is not Motivo.SEM_EVIDENCIA and self._registro.remotivar(p.id, motivo, agora):
+                    n += 1
+                continue
             posicao = self._fontes.posicao_da_execucao(p.item_ref, p.run_id) if p.run_id else None
             motivo = _MOTIVO_DA_POSICAO.get(posicao) if posicao is not None else None
             if (motivo is None and p.item_kind == LivroKind.RECEITA.value and p.comando

@@ -4,7 +4,7 @@ import {
   acoesDoItem, acoesNaFila, refDaHabilidade,
   desfazerDoEfeito, estadoDoLivro, lerFeedbackDaExecucao, lerRelatorioDeFalhas, lerRespostaDoVoto, lerSinais, mdDoItem,
   ordenarFalhas, ordenarPendentes, porQueOSistemaNaoPublica, rotuloDaCamada, rotuloDaFalha, rotuloDoEstado,
-  rotuloDoKind, textoDaEvidencia, textoDoEfeito, textoDosOcultos, votoDoItem, capabilityComNome, nomearCapabilityNoTexto, semLacunas, tituloDoItem,
+  rotuloDoKind, motivoDaInvalida, textoDaEvidencia, textoDoEfeito, textoDosOcultos, votoDoItem, capabilityComNome, nomearCapabilityNoTexto, semLacunas, tituloDoItem,
   titulosDaLista,
 } from './model';
 
@@ -418,6 +418,17 @@ describe('textoDosOcultos (RA-19)', () => {
     expect(textoDosOcultos('todos', 5)).toBe('');
     expect(textoDosOcultos('produto', 0)).toBe('');
     expect(textoDosOcultos('produto', undefined)).toBe('');
+  });
+});
+
+describe('30.42: o motivo da evidência inválida', () => {
+  it('traduz o código do detail, com ou sem a marca, e some do texto da linha', () => {
+    expect(motivoDaInvalida('[686ac998656d] invalida:efeito_repetido — x')).toBe('efeito repetido');
+    expect(motivoDaInvalida('invalida:ator_sem_acao')).toBe('o ator não agiu');
+    expect(motivoDaInvalida('invalida:ponto_de_partida — y')).toBe('ponto de partida');
+    expect(motivoDaInvalida('invalida:desconhecido')).toBeNull();
+    expect(motivoDaInvalida(null)).toBeNull();
+    expect(textoDaEvidencia('[686ac998656d] invalida:efeito_repetido — o efeito saiu 2 vezes')).toBe('o efeito saiu 2 vezes');
   });
 });
 
