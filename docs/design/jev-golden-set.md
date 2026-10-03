@@ -216,7 +216,8 @@ ambígua: só ali a R3 (desempate) tem o que medir.
 
 **Controle:** a própria cadeia de hoje (`intent_resolver`), que é gratuita e já roda.
 
-**Viés conhecido do estado (registro de 03/10, ~20:05Z, a pedido da orquestradora; a pesar no GO do 31.10).**
+**Viés conhecido do estado (registrado em 03/10 20:17:10Z, no commit 42a63c5b, a pedido da orquestradora; a pesar no GO
+do 31.10).**
 - O que acontece: o estado da intenção leva o `app` da execução. A sombra roda depois do `_plan`, e nessa hora o `app` é
   o app PRINCIPAL do plano (`save_plan` grava `runs.app_ids`).
 - Efeito na R2: é uma dica para a escolha do catálogo (as entradas daquele app). INFERRED: o viés é menor que na R5,
@@ -451,8 +452,9 @@ Prova `simulated`:
 
 ## 9. Apps do comando (R5, 31.13)
 
-*Pré-registro de 03/10 (~20:30Z), antes de qualquer rodada, com o sim da orquestradora ao desenho (19:48Z) e à opção A
-(~20:05Z).* Nenhuma chamada paga foi feita para isto. O código é `backend/app/planning/decisao_fechada/apps.py`, ligado
+*Pré-registro gravado em 03/10 20:17:10Z (commit 42a63c5b), antes de qualquer rodada, com o sim da orquestradora ao
+desenho (19:48Z) e à opção A (resposta dela à inconsistência do `app` no estado).* Nenhuma chamada paga foi feita para
+isto. O código é `backend/app/planning/decisao_fechada/apps.py`, ligado
 pela sombra da intenção (`taskqueue/sombra_intencao.py::ligar_apps`).
 
 - **A pergunta.** É um `noul` por app do cadastro (`apps`): "cumprir este comando no aparelho exige o app X?". Os
