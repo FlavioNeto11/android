@@ -156,6 +156,22 @@ def test_sinal_por_estado_e_estabilidade(banco: Banco) -> None:
     assert medidas["respondidos"] == 3 and medidas["cobertura"] == 1.0
     assert r["custo"]["chamadas"] == 3 and r["custo"]["usd"] == pytest.approx(0.00015)
     assert r["custo"]["em_ai_calls"] is False
+    md = braco.em_markdown(r)
+    assert "**Sinal (receita):** 2 estados C0 distintos, 2 com resposta → 2 respostas distintas" in md
+    assert "a entrada separa ao menos parte dos casos" in md
+    assert "Estas 3 chamadas NÃO estão em `ai_calls`" in md and "O controle é a regra local gratuita" in md
+
+
+def test_sinal_de_uma_resposta_so(banco: Banco) -> None:
+    banco.revisao(contra=0)
+    banco.revisao(contra=0, a_favor=4)
+    casos, fora = _casos(banco)
+    decisor, teto = _real(TransporteFalso(), 0.05)
+    registros, _ = braco.rodar(casos, decisor)
+    r = braco.montar(casos, registros, fora=fora, agora=AGORA, enviado=True, interrompido=None, teto=teto,
+                     pedidos_secos=None)
+    assert "2 estados C0 distintos, 2 com resposta → 1 respostas distintas" in braco.em_markdown(r)
+    assert "a entrada NÃO separa os casos" in braco.em_markdown(r)
 
 
 def test_abaixo_do_limiar_conta_na_grade_e_na_maior(banco: Banco) -> None:

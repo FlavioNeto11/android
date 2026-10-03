@@ -270,10 +270,30 @@ def montar(casos: Sequence[Caso], registros: Sequence[RegistroDeDecisao | None],
     }
 
 
+#: O que o braço de controle mede (golden set §2), para quem lê a concordância dele com o curador.
+CONTROLE_EM_UMA_LINHA: Final = (
+    "O controle é a regra local gratuita do golden set (mais evidência contra que a favor → `revisar`, senão `manter`); "
+    "a concordância dele com o curador mede quanto o parecer do curador se explica só pelas contagens de evidência.")
+
+
+def _resposta_do_sinal(m: Mapping[str, Any], s: Mapping[str, Any]) -> str:
+    """A pergunta do 31.19 respondida numa frase: estados distintos × respostas distintas, e os instáveis."""
+    if not s["estados_com_resposta"]:
+        return "sem resposta do Jev: nada a dizer sobre o sinal"
+    veredito = ("a entrada NÃO separa os casos (uma resposta só)" if s["respostas_distintas_entre_estados"] <= 1
+                else "a entrada separa ao menos parte dos casos")
+    return (f"{m['estados_distintos']} estados C0 distintos, {s['estados_com_resposta']} com resposta →"
+            f" {s['respostas_distintas_entre_estados']} respostas distintas (maior probabilidade); estados instáveis"
+            f" (respostas diferentes no MESMO estado): {len(s['estados_instaveis'])}. {veredito}.")
+
+
 def em_markdown(r: Mapping[str, Any]) -> str:
-    linhas = [f"# Braço offline do Jev — {r['consumidor']} ({r['classe']})", "", f"**{r['aviso']}**", "",
-              f"- Enviado: {'sim' if r['enviado'] else 'não (--seco)'}; casos {r['casos']}, rodados {r['rodados']};"
-              f" fora de F1 {r['fora_de_f1'] or '—'}; interrompido: {r['interrompido'] or 'não'}."]
+    linhas = [f"# Braço offline do Jev — {r['consumidor']} ({r['classe']})", "", f"**{r['aviso']}**", ""]
+    linhas += [f"**Sinal ({kind}):** {_resposta_do_sinal(e['medidas'], e['sinal'])}"
+               for kind, e in r["estratos"].items()]
+    linhas += ["", f"- Enviado: {'sim' if r['enviado'] else 'não (--seco)'}; casos {r['casos']}, rodados {r['rodados']};"
+               f" fora de F1 {r['fora_de_f1'] or '—'}; interrompido: {r['interrompido'] or 'não'}.",
+               f"- {CONTROLE_EM_UMA_LINHA}"]
     for kind, e in r["estratos"].items():
         m, s = e["medidas"], e["sinal"]
         linhas += ["", f"## {kind}", "",
@@ -291,7 +311,10 @@ def em_markdown(r: Mapping[str, Any]) -> str:
     c = r["custo"]
     linhas += ["", "## Custo", "", f"- {c['nivel']}"
                + (f": US$ {c['usd']} de {c['teto_usd']}, {c['chamadas']} chamadas ({c['ok']} ok), tokens {c['tokens']},"
-                  f" ms p50 {c['ms']['p50']} / p95 {c['ms']['p95']}; fora de `ai_calls`." if "usd" in c else ".")]
+                  f" ms p50 {c['ms']['p50']} / p95 {c['ms']['p95']}." if "usd" in c else ".")]
+    if "usd" in c:
+        linhas.append(f"- Estas {c['chamadas']} chamadas NÃO estão em `ai_calls` (o braço abre o banco só para leitura):"
+                      f" o total de US$ {c['usd']} explica a diferença no livro-caixa da conta do Jev (ADR-051).")
     return "\n".join(linhas) + "\n"
 
 
