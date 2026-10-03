@@ -2045,6 +2045,21 @@ Saída bruta em `data/diag-ra3b/`: `repouso-cores4-01-600s.json`, `dif-*.json` e
     interativo, ou descobrir a opção do emulador que evita o subsistema. Opções de desenho em aberto: um ajudante na
     sessão do usuário que recebe o pedido de lançamento do backend; ou uma flag ou variável de ambiente, se o subsistema
     for identificado. O notebook (agente `farm-agente`) não foi medido nesta rodada.
+- **O notebook gira igual** (29.46, `real`, 03/10, 09:10:37Z, depois do deploy 8; janela de 20 s, simultânea nas duas
+  máquinas; leitura por ssh com `Get-Process`/CIM, sem lançar nada; saída em `data/diag-ra3b/2946-*.json`, fora do Git):
+
+| Máquina | qemu | Sessão | Lançado por | Thread mais quente (kernel) | Total do qemu |
+|---|---|---|---|---|---|
+| notebook (12 núcleos) | 4 (android-09/10/12/13) | 0 | agente da tarefa `farm-agente` (Administrator, logon S4U) | 101,6–103,4 % (94,1–96,5) | 118–130 % |
+| central (22 núcleos) | 3 (android-01/03/06) | 0 | backend da tarefa `farm-central` | 100,6–106,2 % (89,5–93,6) | 121–133 % |
+
+  - Nas duas máquinas há sessão interativa no console (sessão 1, ativa). No notebook o desperdício é ~4 dos 12 núcleos.
+  - No 01, a thread quente é a mesma 36288 do ETW: o reinício do backend no deploy não para o laço, porque os
+    emuladores seguem ligados.
+  - O nome das threads (`GetThreadDescription`, lido no central) não ajuda: só a `RenderThread` tem nome, e a thread
+    quente não tem (PROVED).
+  - INFERRED: a mesma causa nas duas máquinas, o lançamento na sessão 0. O logon S4U da tarefa do agente também não é
+    interativo.
 
 ### K-079 — A prévia cortada da caixa do Outlook derruba a conferência visual
 
