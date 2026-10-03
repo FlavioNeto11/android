@@ -9,7 +9,7 @@ orquestradora, `.claude/handoffs/reverificacao-31-9g.md`).
 - H-1 (c): duas ou mais letras soltas ou nomes de letra depois de digite, use ou coloque, com qualquer separador ("+", "·"),
   ou três fortes só com espaço.
 - H-1 (d): o telefone ditado em holandês e sueco pela lista de numerais (lista de BLOQUEIO; a corrida genérica de "palavras
-  curtas desconhecidas" exigiria uma lista de permissão, que o item 10 proíbe: devolvida à orquestradora).
+  curtas desconhecidas" exigiria uma lista de permissão, que o item 10 proíbe: decisão da orquestradora).
 - H-1 (e): o e-mail em peças com rótulo e sem ponto ("e-mail: X, provedor: Y", "zilda em correio, net", "zilda bij correio
   punt nl").
 - H-2: o domínio de topo separado do e-mail ("zilda@correio. net" saía "[email]. net").
@@ -154,7 +154,8 @@ def test_o_dominio_de_topo_separado_fica_no_email(comando: str, saida: str) -> N
 
 def test_os_campos_rotulados_recusam_mesmo_com_o_dominio_no_lugar_do_nome() -> None:
     """O 6º fragmento (caso 538): o harness o rotulou "mascara", mas é o formato de campos rotulados que a H-1 (e) manda
-    recusar ("e-mail: X, provedor: Y, terminação: Z"). Fica a recusa, o lado seguro; a divergência foi relatada."""
+    recusar ("e-mail: X, provedor: Y, terminação: Z"). Fica a recusa, o lado seguro; a orquestradora reetiquetou o caso
+    no corpus."""
     assert _motivo("e-mail: zilda.prado, provedor: petrobras, terminação: com br") == "email_ofuscado"
 
 

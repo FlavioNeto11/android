@@ -4321,7 +4321,7 @@ catálogo, comando), que o ADR-063 não cobre.
       palavra ("de", "que", "ele", "te"). A soletração longa aceita qualquer separador.
     - **H-1 (d)**: o telefone ditado em holandês e sueco entra pela lista de numerais (bloqueio). A forma genérica do pedido
       ("5+ palavras curtas desconhecidas depois de verbo de ligar") exige saber quais palavras são conhecidas: é lista de
-      permissão. Foi devolvida à orquestradora como conflito com este item 10.
+      permissão, contra este item 10: a orquestradora manteve a versão de bloqueio, sem exceção (~10:50Z).
     - **H-1 (e)**:
       - o e-mail com rótulo e campos rotulados ("e-mail: X, provedor: Y, terminação: Z", "e-mail: X / Y / Z"), só com
         dois-pontos ("o e-mail do provedor caiu" passa);
@@ -4342,7 +4342,7 @@ catálogo, comando), que o ADR-063 não cobre.
       Também passam:
       - o domínio de topo desconhecido sem caminho ("maria.clara", "p.ex.");
       - o "%40" de um link, que é o "@" codificado dentro da URL.
-    - Custos declarados (fora dos 122 comandos reais). Pulam a sombra:
+    - Custos declarados e aceitos como residual (fora dos 122 comandos reais; o G-6 revê acima de 5 %). Pulam a sombra:
       - "entre no perfil com a Ana": nome fora do catálogo depois de objeto que não é pessoa;
       - "arquive o e-mail da Marina Prado no outlook": a isenção da H-5 vale só para nome de uma palavra;
       - "responda para o e-mail da Marina no outlook": pista de destinatário;

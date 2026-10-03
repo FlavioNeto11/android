@@ -1155,7 +1155,8 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
     - **H-1 (d), o telefone ditado**: holandês, sueco, norueguês e dinamarquês no `_ALGARISMO_FALADO` (lista de bloqueio).
       Ficam de fora "een"/"en", "to" e "ni", que são palavras de outras línguas.
       - A forma genérica do pedido (5+ palavras curtas DESCONHECIDAS depois de verbo de ligar) exige um vocabulário de
-        palavras conhecidas: é lista de permissão, contra o item 10. Foi devolvida à orquestradora.
+        palavras conhecidas: é lista de permissão, contra o item 10. Decisão da orquestradora (~10:50Z): fica a versão
+        de bloqueio, sem exceção ao item 10; o telefone ditado em língua sem lista é residual de outro idioma.
     - **H-1 (e), o e-mail em peças**:
       - o rótulo com dois-pontos e os campos ("e-mail: X, provedor: Y, terminação: Z", "e-mail: X / Y / Z"). Sem
         dois-pontos, "o e-mail do provedor caiu" passa;
@@ -1191,7 +1192,8 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
         outlook"). Pela G-3, "zilda no live" sem "e-mail da" continua recusando.
       - O domínio sem esquema só vale com domínio de topo conhecido (`_TLD_DE_LINK`) ou com caminho depois. "siga
         maria.clara" e "p.ex." não saem mais mutilados como `[link]` (casos 540 e 541).
-    - Custos declarados (INFERRED: nenhum aparece nos 122 comandos reais). Pulam a sombra:
+    - Custos declarados, aceitos pela orquestradora como residual documentado (INFERRED: nenhum aparece nos 122
+      comandos reais; o G-6 revê se a taxa real passar de 5 %). Pulam a sombra:
       - "entre no perfil com a Ana": nome fora do catálogo depois de objeto que não é pessoa;
       - "arquive o e-mail da Marina Prado no outlook": a isenção da H-5 vale para o nome de UMA palavra, porque o
         lookbehind tem largura fixa;
@@ -1202,7 +1204,7 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
       - 5 recusas indevidas:
         - as 4 antigas de numeral e termo (n=134, 135, 348 e 427);
         - o n=538, "e-mail: zilda.prado, provedor: petrobras, terminação: com br". O corpus o rotula máscara; a H-1 (e)
-          manda recusar campos rotulados. Ficou a recusa, e a divergência foi relatada.
+          manda recusar campos rotulados. Ficou a recusa, e a orquestradora reetiquetou o caso para recusa no corpus.
       - Com a "Girassol", nas 57 das lentes do par e da utilidade: 0 vazamentos.
       - Contra a linha de base 9a99a8d8, 54 n mudam: os 47 vazamentos, 6 recusas indevidas que saem (540, 541, 556, 558,
         572 e 573) e 1 só de motivo.

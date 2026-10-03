@@ -46,7 +46,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`:
   - `tests/test_decisao_fechada_reverificacao_h.py`; os testes da G e da E foram reescritos para a H-3;
   - harness da orquestradora, corpus de 579, catálogo sem a "Girassol": 0 vazamentos (eram 47), 0 passagens
-    indevidas, 5 recusas indevidas (as 4 antigas e o caso 538, divergência de rótulo relatada);
+    indevidas, 5 recusas indevidas (as 4 antigas e o caso 538, que a orquestradora reetiquetou para recusa);
   - 122 comandos reais: as mesmas 2 recusas da base.
 
 ## 2026-10-03 — 31.17: envio do Jev aberto no código para a sombra C0–C1 do 31.10; o aviso diz o decisor e só afirma envio de verdade (branch feat/31-17-sombra-curador)
