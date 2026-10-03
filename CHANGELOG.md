@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: a exposição da lição mede só o custo da execução (contrato com o 31.14 do Jev) e `commit` sem catálogo vai para a classe C (branch fix/exposicao-custo-da-execucao)
+
+- Emenda de 03/10 da política de risco (30.10, mostrada no painel pelo 30.16; decisão da orquestradora pela regra do
+  dono "o mais restritivo"): receita ou fluxo com `commit` num app SEM catálogo (`commit_sem_catalogo`) passa de B para
+  C. Efeito desconhecido, com alcance possível em massa: decide-se item a item, nunca em lote, e o aviso de espera
+  (`learning.needs_person`) sai na faixa C. Prova `simulated`: `test_learning_politica_de_risco.py` e
+  `test_learning_espera.py`.
+
+- `licoes_sql.py::_desfecho_do_plano` conta só as chamadas de `ai_calls` com `origem` `execucao` ou nula: a decisão
+  fechada do Jev (31.14) grava o `run_id` com `origem='decisao_fechada'` e não entra no `ai_calls` nem no `usd` da
+  exposição do planejador. O `_desfecho_da_etapa` já filtrava por etapa. Prova `simulated`:
+  `tests/test_learning_efeito.py::test_a_exposicao_do_planejador_mede_so_o_custo_da_execucao`.
+
 ## 2026-10-03 — Aprendizado: nomes no lugar de códigos e o erro de rede traduzido (P2 a P5 da validação do deploy 3, branch fix/aprendizado-ux-deploy3)
 
 - P2: "O que mais falha" diz o motivo e onde, com os nomes do Aprendido ("Pós-condição não comprovada — Instagram ·

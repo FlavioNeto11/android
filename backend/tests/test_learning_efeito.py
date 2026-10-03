@@ -242,6 +242,25 @@ def test_desfecho_preenchido_no_digest_so_em_execucao_real(mundo: Mundo) -> None
         None, to_iso(AGORA))                                                        # simulada não renova o uso
 
 
+def test_a_exposicao_do_planejador_mede_so_o_custo_da_execucao(mundo: Mundo) -> None:
+    """A chamada de decisão fechada do Jev (31.14) leva o `run_id`, mas não é da execução: a lição muda o planejador e
+    o ator, não o decisor. Fica fora do `ai_calls` e do `usd` da exposição; a linha sem origem (anterior à 073) e a de
+    origem `execucao` entram."""
+    db = mundo.db
+    contraste_ciclo(db, "r1")
+    quando = to_iso(AGORA - timedelta(days=1))
+    for origem, papel, usd in ((None, "plan", 0.5), ("execucao", "decide", 0.25),
+                               ("decisao_fechada", "decisao_fechada", 0.042)):
+        db.execute("INSERT INTO ai_calls(ts, run_id, role, model, tier, input_tokens, output_tokens, usd, origem)"
+                   " VALUES (?,?,?,?,?,?,?,?,?)", (quando, "r1", papel, "modelo-x", 0, 10, 10, usd, origem))
+    plano = licao(mundo, "Em com.instagram.android: p.", capability="", papel="planner")
+    mundo.licoes.licoes_para(Pedido(papel=Papel.PLANNER, unidade="plan:r1", run_id="r1", app=IG, capability="",
+                                    step_hash="", simulated=False))
+    assert mundo.servico.digerir_execucao("r1").feito["licoes.exposicoes"] == 1
+    [planejador] = mundo.repo.exposicoes(plano.id)
+    assert planejador.ai_calls == 2 and abs((planejador.usd or 0) - 0.75) < 1e-9
+
+
 def test_confirmacao_a_mao_nunca_conta_como_sucesso_no_desfecho(mundo: Mundo) -> None:
     """`confirm_done` grava a etapa `succeeded` com `verified=false`, e o escalonador conclui a execução mesmo assim
     (`completed`). A unidade entra na amostra como NÃO sucesso — nem como sucesso, nem fora da amostra: a lição que
