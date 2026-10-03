@@ -2100,3 +2100,20 @@ elementos "Share" (o botão e o texto dentro dele) e foi recusado antes de tocar
 **Aplicabilidade.** Vigente para todo controle manual por id de elemento (scripts de diagnóstico, prova manual). Nunca
 reaproveite um id de outra listagem; em conta real, a trava de rótulo proibido não basta, porque o perigo pode estar num
 elemento sem rótulo.
+
+### K-081 — `off` e `on` sem aspas no YAML viram booleano: o consumidor da porta não carrega
+
+**Sintoma.** No 31.17 (03/10/2026, `simulated`), o exemplo ganhou `consumidores: {curador: shadow, intencao: off}` e
+`tests/test_configuracao_de_exemplo.py` recusou a configuração inteira: `ai.decisao_fechada.consumidores.intencao`,
+"Input should be 'off', 'shadow' or 'on'", com `input_value=False`.
+
+**Causa.** O carregador lê YAML 1.1, em que `off`, `on`, `yes` e `no` sem aspas são booleanos. O modo do consumidor é um
+`Literal["off", "shadow", "on"]`, e `False` não é nenhum deles. `shadow` passa porque não é palavra reservada, o que
+esconde a armadilha.
+
+**O que funcionou.** Aspas (`intencao: "off"`), como o resto do exemplo já fazia (`modo: "off"`), ou omitir o consumidor
+(ausente = `off`). No `config.yaml` do central, a omissão é a forma mais segura: um `off` sem aspas derruba a subida
+depois do `deploy.ps1`, e um `on` sem aspas também.
+
+**Aplicabilidade.** Vigente para todo campo de modo `off`/`shadow`/`on` do YAML (porta `DecisaoFechada`, aprendizado,
+telas, voz, preferências). Ao escrever um bloco desses à mão, use aspas ou omita.
