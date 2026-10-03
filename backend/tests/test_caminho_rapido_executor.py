@@ -191,6 +191,28 @@ async def test_lt2_veredito_negativo_volta_ao_ator_na_mesma_tentativa_com_o_moti
     assert etapa["status"] == "succeeded" and etapa["attempts"] == 1     # nunca uma tentativa nova por causa do "não"
 
 
+async def test_lt2_nunca_em_etapa_com_efeito(harness: Harness) -> None:
+    """Revisão (03/10): em etapa COM efeito, o `expect_done` de uma ação que não é o commit não vai ao juiz. O juiz que diz
+    "sim" cedo (o texto digitado no campo lido como já publicado) fecharia a etapa como sucesso sem o efeito; com a
+    trava, o ator segue e só o caminho de sempre (commit ou `step_done`, depois a verificação) fecha a etapa."""
+    _julgar_a_mensagem(harness, marcar_expect_done=True, sempre_sim=True)
+    plano0 = harness.ai.inner.plan
+
+    async def plan(req: Any) -> Any:
+        plano, uso = await plano0(req)
+        for s in plano.steps:
+            if s.key == "compose_message":
+                s.side_effect = True
+        return plano, uso
+
+    harness.ai.inner.plan = plan
+    run = harness.run(["android-01"])
+    await harness.wait_run(run.id, statuses=TERMINAIS)
+    # sem a trava seria 1 decide (a digitação com expect_done) e a etapa fechava pelo juiz; com ela o ator decide de novo
+    assert _chamadas(harness, "decide", "compose_message") >= 2
+    assert _etapas(harness, run.id)["compose_message"]["driven_by"] != "sem_ator"
+
+
 async def test_sem_ator_tambem_e_gravado_com_as_receitas_desligadas(harness: Harness) -> None:
     """Com `ai.recipes: off` as outras etapas ficam com `driven_by` nulo (legado); a que fechou sem o ator ainda diz
     `sem_ator` — o atalho não depende das receitas."""

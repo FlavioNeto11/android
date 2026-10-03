@@ -2146,10 +2146,12 @@ class StepExecutor:
                                    + ", ".join(faltam_saidas()) + ".")
                     continue
                 history.append("(executor) a pós-condição ainda NÃO vale depois desta ação; continue.")
-            elif getattr(args, "expect_done", False) and not faltam_saidas():
+            elif getattr(args, "expect_done", False) and not faltam_saidas() and not step.side_effect:
                 # LT-2: o ator previu que esta ação conclui uma etapa JULGADA. Em vez de devolvê-la ao ator só para dizer
                 # "pronto" (um decide a mais), o juiz de sempre confere a tela agora e o veredito é reusado no fim do
                 # laço. "Não"/"incerto": entra no `history` e o laço segue NESTA tentativa (sem retry, sem falha).
+                # NUNCA em etapa com efeito (como o LT-1): o commit sai do laço sozinho logo acima, e antes dele um "sim"
+                # do juiz (o texto digitado no campo lido como já publicado) fecharia a etapa como sucesso sem o efeito.
                 r = await julgar_antes_do_ator("depois desta ação (expect_done)")
                 if isinstance(r, StepOutcome):
                     return r
