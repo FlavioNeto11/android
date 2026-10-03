@@ -4379,9 +4379,13 @@ catálogo, comando), que o ADR-063 não cobre.
         - Lacuna medida, que é custo e não vazamento: num conjunto de 20 objetos fora da lista, 14 ainda recusam.
     - Medição (d), sobre os 125 comandos reais de 7 dias. Feita às 11:41Z no 136f80ff, no banco do central só para
       leitura, com o catálogo real e só contagens.
-      - Recusam 3 (2,4 %); o 54f71853 recusava 2 na mesma janela. O custo da (a) é 1 comando longo, com "digitar",
-        "usuario", "conta" e números de 4 dígitos. Os outros 2 já recusavam: 1 por `c7_palavra` e 1 que agora recusa
-        por `c7_valor_com_digito`.
+      - Recusam 3 (2,4 %): 1 por `c7_palavra` e 2 por `c7_valor_com_digito`. A base 5f020598 e o 54f71853 recusam só o
+        primeiro (1 de 125) e, sem a (a), o 136f80ff também. O custo da (a) é de 2 comandos (1,6 %).
+      - Observado sem ler o texto: nos dois, os tokens com cara de segredo são só números de 4 dígitos entre 1900 e 2099
+        (1 e 4 tokens). Nenhum vem até 3 tokens depois de campo forte, verbo de digitar ou palavra C7. Inferido: são anos,
+        o custo declarado, e não segredos.
+      - Correção de método: o script das rodadas F a H não registrava os nomes dos apps, como a subida registra. Sem eles,
+        a F-A recusava 1 comando a mais ("2 de 122", "2 de 125"). Com o registro, a base recusa 1, não 2.
       - Gatilhos no comando sem destinos:
         - verbo de entrar: 35;
         - campo forte: 8;

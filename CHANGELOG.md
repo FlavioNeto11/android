@@ -35,7 +35,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - 6 recusas indevidas: as 4 antigas mais o 572 e o 573, que são o custo da reversão;
   - testes do filtro: 999 passaram.
 - Medição nos 125 comandos reais de 7 dias, só leitura:
-  - recusam 3, contra 2 antes; o custo da (a) é 1 comando;
+  - recusam 3, contra 1 na base com os nomes dos apps registrados como na subida. O custo da (a) é de 2 comandos, e
+    os dois têm só números com cara de ano;
+  - correção: as medições das rodadas F a H não registravam os nomes, e a base recusava "2" em vez de 1;
   - 39 dos 122 que passam têm gatilho forte: é o custo da opção A.
 
 ## 2026-10-03 — Correção do 31.9, rodada H (47 vazamentos na fase 2 da rodada G em 9a99a8d8): a camada estrutural, o nome do catálogo como destino e os controles operacionais (branch fix/31-9-rodada-h)

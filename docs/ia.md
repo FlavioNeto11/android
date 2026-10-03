@@ -1241,8 +1241,12 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
           seguem recusando.
         - Lacuna, que é custo e não vazamento: 14 de 20 objetos fora da lista ainda recusam.
     - Medição (d) nos comandos reais: 125 de 7 dias, às 11:41Z, banco do central só para leitura, só contagens.
-      - Recusas: 3 (2,4 %), contra 2 no 54f71853. A (a) custa 1 comando: longo, com "digitar", "usuario", "conta" e
-        números de 4 dígitos.
+      - Recusas: 3 (2,4 %), contra 1 (0,8 %) na base 5f020598 e no 54f71853. As 2 a mais são da (a). Nelas, os tokens
+        com cara de segredo são só números de 4 dígitos entre 1900 e 2099, longe de campo forte, de verbo de digitar e de
+        palavra C7. O texto não foi lido, e a inferência é que são anos (o custo declarado).
+      - Correção de método: as medições das rodadas F a H rodavam sem registrar os nomes dos apps, como a subida faz
+        (`app.taskqueue.service`). Por isso, a F-A recusava 1 comando a mais ("2 de 122"). Com o registro, a base recusa
+        1.
       - Gatilhos no comando sem destinos: verbo de entrar 35, campo forte 8, digitar 2, palavra C7 1; algum deles, 42.
       - Dos 122 que passam, 39 têm gatilho forte: é o custo da opção A.
     - Portão local (`simulated`, 136f80ff), corpus de 579 com o 538 reetiquetado para recusa:
