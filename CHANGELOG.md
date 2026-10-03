@@ -19,6 +19,29 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 29.50: a pergunta sem resposta expira pelo sistema em 24 h (branch feat/29-50-expira-needs-input)
+
+- O problema: 13 execuções de QA estavam em `needs_input` no android-05 e no android-09 desde 02/10 18:15Z e 03/10
+  07:37Z e 07:51Z. Não havia prazo. Só o cancelamento pela rota as tirava do ar, e ele grava o sinal de pessoa
+  `cancelou_execucao` (ADR-054), que ninguém deu.
+- Agora `RunService.expirar_sem_resposta`:
+  - fecha como `cancelled` a execução em `needs_input` há 24 h, contadas da entrada na pergunta (o `run.updated`
+    daquela transição) e não da criação;
+  - grava o motivo humano no `status_detail` ("Sem resposta em 24 h: …"), sem código nem id;
+  - leva `expirada: {motivo, horas, desde}` num campo próprio do `run.updated`;
+  - não grava `cancelou_execucao`.
+- O laço `AppState._expiracao_loop` faz a primeira volta na subida e depois uma a cada 10 min, só no líder da trava
+  `retencao`.
+- A resposta que chega no meio da varredura ganha: o cancelamento é condicional ao `needs_input`.
+- `RunService.cancel` passou a usar o mesmo `_cancelar_antes_de_iniciar`, sem mudar o comportamento.
+- Contrato: adendo v0.95 do `docs/api-contract.md` (número da orquestradora).
+- Prova:
+  - `simulated`: `backend/tests/test_needs_input_expira.py`, 4 testes (prazo, relógio da entrada, corrida com a
+    resposta, volta do laço);
+  - os afetados passaram: 80 testes (costuras, assistente, máquinas de estado, travas, retenção, arquitetura) e 187
+    dos 11 arquivos que cancelam;
+  - real: `not_run`. É a varredura no central depois do deploy, que deve liberar as 13.
+
 ## 2026-10-03 — K-084: os 7 testes com SQL só de SQLite passam na PostgreSQL (branch fix/k-084-sql-so-de-sqlite)
 
 - `tests/test_leitura_visual_papel.py::test_078_as_linhas_ficam_arvore_e_o_check_recusa_outra_origem`: a versão
