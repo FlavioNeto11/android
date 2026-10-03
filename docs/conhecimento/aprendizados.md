@@ -1994,6 +1994,32 @@ Saída bruta em `data/diag-ra3b/`: `repouso-cores4-01-600s.json`, `dif-*.json` e
   - Conclusão (INFERRED, forte): o laço é do lado do host, numa thread que não é vCPU (o tempo de vCPU no WHPX aparece como
     usuário). O próximo passo proposto é uma amostragem ETW de CPU com pilha (`wpr`, já instalado) de ~20 s no qemu do 01,
     lida por módulo (ntoskrnl, winhvr, afd, …), sem símbolos de fora. Só leitura, mas mais pesada que as anteriores.
+- **ETW: a thread quente é um laço de `WaitForSingleObject` de um único ponto do qemu, e existe nos três aparelhos do
+  central** (`real`, 03/10, 07:57:43–07:58:50Z, android-01 ocioso e sem lease; emulador 37.1.11; liberada pela
+  orquestradora depois da rodada QA pareada). `wpr -start CPU -filemode` (~66 s, 1,55 GB, 17.110 eventos perdidos; leitura
+  com `-tle`), lido pelo xperf local sem nenhum símbolo: `-a profile -detail`, `-a stack -tid` e um `dumper` de 1 s com as
+  pilhas. Os endereços foram resolvidos pela lista de módulos do processo vivo e pela tabela de EXPORTAÇÕES dos DLLs do
+  sistema (nome = exportação mais próxima abaixo). Saída em `data/diag-ra3b/etw-01/` (`janela.json`, `profile-detail.txt`,
+  `stack-36288b.txt`, `pilhas-*.txt`), fora do Git.
+  - Processo do 01, por módulo (≈ 59,4 s de amostras): ntoskrnl 76,9 %, o próprio qemu 9,1 %, ntdll 7,5 %, KernelBase
+    2,5 %, WinHvPlatform + WinHvEmulation 1,5 %, `winhvr.sys` ~0. O tempo de kernel é do núcleo do Windows, não de driver.
+  - Thread 36288 (98,4 % na janela, 87,7 em kernel): a `WinHvPlatform.dll` não aparece em nenhuma pilha dela, então ela
+    NÃO é vCPU (PROVED). Das 992 amostras do segundo despejado, 95,4 % estão dentro de `ntdll!ZwWaitForSingleObject`, no
+    retorno do `syscall`, e 99,1 % têm como 1º frame do qemu o mesmo ponto, `qemu-system-x86_64-headless.exe+0x4c2c7e`.
+  - O mesmo nos outros dois: android-03 (thread 25680, 97,8 % em `ZwWaitForSingleObject`, 100 % do ponto `+0x4c2c7e`) e
+    android-06 (thread 14316, 96,8 % e 99,7 %). Cada qemu do central tem uma thread a ~100 % (88–95 % em kernel), que gira
+    desde a partida: o CPU dela é 98–99 % do tempo de vida do processo (01: 321 de 327 min; 03 e 06: ~30 min, religados
+    pouco antes). Nos três, a thread começa no mesmo endereço do qemu (`+0x25b4a68`).
+  - Conexões TCP dos três (OBSERVED): o adb, pares de loopback internos do qemu e uma ligação ao `netsimd`; nenhum
+    `CLOSE_WAIT` e nenhuma conexão aberta no console. O gerenciador só usa o console para `emu kill` e `snapshot save`
+    (`adb.py`), nunca na subida.
+  - Conclusão (INFERRED, forte): uma thread do qemu chama `WaitForSingleObject` num laço que volta na hora (prazo zero ou
+    objeto sempre sinalizado), e o custo é a própria chamada de sistema; são ~3 núcleos do host para 3 aparelhos ociosos.
+    Seguem UNKNOWN qual função do qemu está em `+0x4c2c7e` (sem símbolos) e qual objeto ela espera.
+  - Próximo passo proposto: atribuição por ADIÇÃO num AVD temporário sem conta, que não gira (braços A a D). A subtração
+    no 01 não serve, porque o laço, uma vez iniciado, não para (g1–g3b, tela, lease). No temporário, repetir um passo da
+    subida do parque por vez (ajustes de `settings`, instalação e sessão do UiAutomator2, `adb forward`/`reverse`, rede
+    declarada, fluxo de frames) e medir a thread após cada um: o passo que a leva a ~100 % é a causa.
 
 ### K-079 — A prévia cortada da caixa do Outlook derruba a conferência visual
 
