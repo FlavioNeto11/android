@@ -35,6 +35,8 @@ _HANDLE = re.compile(r"(?<![\w/])@(?![0-9a-f]{7,8}\b)[A-Za-z0-9_.]{3,}")
 #: nome.sobrenome seguido de 4+ dígitos é handle de persona mesmo sem o "@"
 _HANDLE_SEM_ARROBA = re.compile(r"\b[a-z]+\.[a-z]+\d{4,}\b", re.I)
 _IP = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+#: slug de perfil de terceiro nas evidências (ex.: perfil-nomedapessoa-3): nunca vai ao Trello
+_PERFIL_SLUG = re.compile(r"\bperfil-[a-z0-9_.]+-\d+\b", re.I)
 _PERSONA = re.compile(r"\b(" + "|".join(re.escape(n) for n in _nomes_sensiveis()) + r")\b", re.I)
 
 
@@ -42,6 +44,7 @@ def redigir(texto: str) -> str:
     t = _HANDLE.sub("@[conta]", texto or "")
     t = _HANDLE_SEM_ARROBA.sub("[conta]", t)
     t = _PERSONA.sub("[persona]", t)
+    t = _PERFIL_SLUG.sub("perfil-[terceiro]", t)
     return _IP.sub("[ip]", t)
 
 

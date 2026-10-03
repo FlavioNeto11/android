@@ -37,6 +37,8 @@ def titulo_curto(oque: str, limite: int = 80) -> str:
     m = re.match(r"\s*\*\*(.+?)\*\*", oque or "")
     base = m.group(1) if m else re.split(r"[.:;(]\s", (oque or "").strip(), maxsplit=1)[0]
     base = re.sub(r"[`*_]", "", base).strip()
+    if len(base) < 16:  # 'Persona N', 'Fatia 1': nome genérico demais; usa o começo da frase inteira
+        base = re.sub(r"[`*_]", "", (oque or "").strip())
     if len(base) <= limite:
         return base
     corte = base[:limite].rsplit(" ", 1)[0]
@@ -77,12 +79,20 @@ def frente(item: dict) -> str:
 
 
 def registro_changelog(ident: str, changelog: list[str]) -> str:
+    """A linha do CHANGELOG mais ESPECÍFICA do item: entre as que citam o id, a que cita menos ids diferentes
+    (uma linha de suíte cita dez itens; a do próprio item, só ele). Empate: a primeira."""
     pad = re.compile(r"(?<![\d.])" + re.escape(ident) + r"(?![\d])")
+    todos = re.compile(r"(?<![\d.])\d{1,2}\.\d{1,2}(?![\d])")
+    melhor, menor = "", 10**6
     for l in changelog:
-        if pad.search(l):
-            return re.sub(r"\s+", " ", l.strip("-* ")).strip()[:300]
-    return ""
-
+        if not pad.search(l):
+            continue
+        n = len(set(todos.findall(l)))
+        if n < menor:
+            melhor, menor = re.sub(r"\s+", " ", l.strip("-* ")).strip()[:300], n
+        if menor == 1:
+            break
+    return melhor
 
 def desc_tecnica(it: dict, fase: str, registro: str) -> str:
     arquivos = ", ".join(f"`{a}`" for a in (it.get("arquivos") or [])[:6]) or "—"
