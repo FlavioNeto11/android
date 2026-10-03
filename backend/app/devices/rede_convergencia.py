@@ -11,7 +11,7 @@ rastro (comando `device.network` no histórico do aparelho; reinício como coman
 | `pendente`, pedido vazio (tirou tudo) | **desfazer**: tira always-on e bloqueio; → `configurado` e pede o reinício |
 | `configurado` | **conectar**: lê como uid 2000 (depois de um boot, esperando o `tun0` até `rede.espera_tun_s` contados do boot); túnel no ar → `conectado`; sem reinício desde a configuração → pede o reinício; a configuração valendo e só o túnel faltando → o Start da interface do cliente (`rede.cliente_atividade`, W8: o tile não recalcula o `serviceMode` do SFA) e, se ele não religar, outro reinício; passados `rede.reinicios_max` reinícios PEDIDOS na revisão (aceitos ou recusados, com boot detectado ou não), `pendente` com erro. No desfazer: removido → a linha sai |
 | `conectado`, `parcial` | **verificar** (25.5; ao ligar, a pedido, pela porta da tarefa, e na varredura quando vence `rede.deriva_s` ou, no `parcial`, `rede.sonda.reverificar_s`): relê como o conferir e, com o túnel no ar, roda a sonda de saída (`rede_medicao.medir`) e grava a medição — só ela leva a `trafego_verificado` ou `parcial`. Com bloqueio, antes, a prova de vazamento: a que a linha guarda para a revisão e para a instalação do cliente VPN (colunas `leak_*`, item 29.2) ou, sem ela, o teste (`rede_medicao.sondar_vazamento`: o cliente VPN parado, com a intenção gravada antes); sem o túnel de volta, → `configurado` e reinicia (o boot religa o cliente), e a medição vem depois |
-| `trafego_verificado` | **conferir** (ao ligar, ao acordar, depois do reinício do backend e a cada `rede.deriva_s`): configuração que sumiu → `pendente` (reaplica); túnel caído com a configuração no lugar → `configurado` (reinicia). Com a verificação pedida (`POST …/verify`), **verificar** no próximo ponto seguro. Com política exigida, **verificar** também quando a medição vence (`rede.validade_verificacao_s`, item 25.6), quando o aparelho subiu depois dela (boot a frio ou acordar, item 29.22: a prova é do Android de antes), quando a política com bloqueio está sem prova de vazamento que valha, ou quando a medição não cobre um app exigido hoje (conta vinculada depois): a varredura mede de novo um pouco antes do vencimento, com o aparelho livre; a porta da tarefa, se já não vale |
+| `trafego_verificado` | **túnel morto** (25.12): a medição da verificação sem IP de saída tira a linha de `trafego_verificado` (`conectado`, motivo e evento `tunel_morto`), religa o cliente VPN no aparelho (parar e deixar o always-on subir, ou o Start da interface; até 2 vezes na passada) e, sem volta, `configurado` e reinício sem wipe. **conferir** (ao ligar, ao acordar, depois do reinício do backend e a cada `rede.deriva_s`): configuração que sumiu → `pendente` (reaplica); túnel caído com a configuração no lugar → `configurado` (reinicia). Com a verificação pedida (`POST …/verify`), **verificar** no próximo ponto seguro. Com política exigida, **verificar** também quando a medição vence (`rede.validade_verificacao_s`, item 25.6), quando o aparelho subiu depois dela (boot a frio ou acordar, item 29.22: a prova é do Android de antes), quando a política com bloqueio está sem prova de vazamento que valha, ou quando a medição não cobre um app exigido hoje (conta vinculada depois): a varredura mede de novo um pouco antes do vencimento, com o aparelho livre; a porta da tarefa, se já não vale |
 
 Quem chama:
 - `vitrine.trabalho_ao_ligar` (aparelho que entrou no ar: boot, wake, readoção depois do reinício do backend ou do
@@ -52,7 +52,8 @@ from . import rede
 from .rede_aplicacao import (CLASSE_ERRADA_PARA_TUN, AparelhoDaRede, AparelhoPeloAdb, Observacao, RedeAplicacaoError,
                              apagar_relatorios_de_falha, desfazer, endereco_no_tunel, instalado_em, montar_plano,
                              observar, parar_cliente_solto, provisionar, religar_pela_interface)
-from .rede_medicao import TesteDeVazamento, Vazamento, contabilidade, medir, medir_saida, sondar_vazamento
+from .rede_medicao import (ResultadoDaSonda, TesteDeVazamento, Vazamento, contabilidade, medir, medir_saida,
+                           sondar_vazamento)
 from .sonda_rede import Contabilidade
 
 if TYPE_CHECKING:
@@ -81,6 +82,10 @@ _DESVIO_DE_RELOGIO_S = 120.0
 #: Fração final da validade de um `trafego_verificado` em que a varredura (aparelho livre) já mede de novo: a tarefa
 #: que chega depois encontra a medição renovada em vez de esperar por ela.
 _ANTECEDENCIA_DA_VALIDADE = 0.1
+#: Túnel morto (25.12): quantas vezes, na mesma passada, o cliente VPN é parado e religado antes de o aparelho ser
+#: reiniciado (sem wipe). Dentro da passada de propósito: entre passadas a espera da medição (`reverificar_s`, 10 min)
+#: faria a segunda tentativa demorar 10 min com a tarefa esperando.
+_RELIGADAS_DO_TUNEL_MORTO = 2
 
 
 @dataclass
@@ -158,6 +163,16 @@ class ConvergenciaDeRede:
         #: Quanto esperar o botão Start aparecer na árvore depois de abrir o app, e o intervalo entre as leituras.
         self.prazo_do_botao_s = 15.0
         self.pausa_da_interface_s = 1.0
+        #: Túnel morto (25.12): a pausa depois do `force-stop` do cliente, quanto esperar o always-on religá-lo (medido no
+        #: android-05: menos de 1 s; com folga para o convidado sob carga) e o intervalo entre as leituras dessa espera.
+        self.pausa_do_force_stop_s = 2.0
+        self.espera_do_religar_s = 12.0
+        self.intervalo_do_religar_s = 3.0
+        #: O teto de cada Start da interface dentro do túnel morto. Medido em 03/10 (log do central, 06:09Z, android-06): a
+        #: interface do cliente falhou com `WebDriverException ... Timed out ... waiting for the root AccessibilityNodeInfo`;
+        #: o gesto que trava não pode segurar o aparelho nem a passada: estoura o teto, conta como tentativa falha, e
+        #: depois da segunda vem o reinício.
+        self.prazo_da_interface_no_tunel_morto_s = 60.0
 
     # ------------------------------------------------------------------ utilidades
     @property
@@ -954,6 +969,16 @@ class ConvergenciaDeRede:
         except Exception:
             mem.espera_ate = max(mem.espera_ate, self._agora() + float(self.cfg.sonda.reverificar_s))
             raise
+        sem_saida = not (r.medicao.egress_ipv4 or r.medicao.egress_ipv6)
+        if sem_saida and row["state"] == "trafego_verificado" and row["policy"] != "livre":
+            # Verificado e a sonda não sai mais: o túnel está morto (com o backend do central reiniciado, o servidor
+            # do túnel é refeito e o cliente do aparelho segue "no ar" sem handshake). Religar, ou reiniciar.
+            refeita = await self._tunel_morto(rt, ap, row, r, lambda: medir(
+                ap, self.cfg.sonda, exigidos=rede.apps_exigidos(self.st, iid), linha_de_base=base, bloqueio=bloqueio,
+                vazamento=vazamento, abrir=abrir))
+            if isinstance(refeita, dict):
+                return refeita
+            r = refeita
         mem.medida_sem_abrir = not abrir
         if base is None:
             # Só quando não havia (backend reiniciado depois da conexão): a janela é ACUMULADA desde a conexão, e
@@ -969,6 +994,80 @@ class ConvergenciaDeRede:
             mem.espera_ate = max(mem.espera_ate, self._agora() + float(self.cfg.sonda.reverificar_s))
         return {"instance_id": iid, "rev": rev, "state": estado, "measurement_id": mid, "measured": True,
                 "opened": list(r.abertos), "evidence": r.medicao.detail}
+
+    async def _tunel_morto(self, rt: DeviceRuntime, ap: AparelhoDaRede, row: Row, r: ResultadoDaSonda,
+                           refazer: Callable[[], Awaitable[ResultadoDaSonda]]) -> ResultadoDaSonda | dict[str, object]:
+        """A sonda de um `trafego_verificado` com política exigida não mediu IP de saída (25.12): o túnel está morto,
+        e antes isto só escrevia "o estado não muda" e deixava a tarefa passar por uma rede sem saída (android-03,
+        03/10: túnel caído depois do reinício do backend, internet de volta só com reinício manual; medição #216).
+
+        1. a medição fica no histórico e a linha SAI de `trafego_verificado` (→ `conectado`, com o motivo e o evento
+           `tunel_morto`): a porta da tarefa segura até uma medição nova com IP;
+        2. até `_RELIGADAS_DO_TUNEL_MORTO` vezes: `force-stop` do cliente (o always-on o religa) e, se o `tun0` não
+           voltar, o Start da interface (só sem objetivo no meio: ele abre a tela do cliente); com o túnel de volta, a
+           sonda de IP confere. Voltou → devolve a medição COMPLETA refeita (o que sai dali é a medição normal);
+        3. sem volta: `configurado` e reinício do aparelho pelo caminho de sempre (`restart`, nunca wipe), que passa
+           pelas mesmas guardas de objetivo no meio e de teto de reinícios; o `conectar` confere depois do boot.
+
+        A prova de vazamento não é tocada em nenhum ramo (o cliente é o mesmo; o teste de vazamento é outro gesto).
+        Só `trafego_verificado` entra aqui: `conectado`/`parcial` sem IP seguem como eram (não liberam tarefa, e a
+        medição que não verificou espera `reverificar_s`), e o que acabou de voltar de um reinício não reinicia de novo."""
+        iid, rev = rt.id, int(row["desired_rev"])
+        pkg = self.cfg.cliente_pacote
+        bloqueio = row["policy"] == "exigida_com_bloqueio"
+        mem = self.memoria(iid)
+        mid, _ = rede.registrar_medicao(self.st, iid, r.medicao, rev=rev)
+        # Curto: o `detail` da linha tem 500 caracteres e o que importa (o desfecho das tentativas) vem depois.
+        sintoma = f"túnel morto: a sonda não mediu IP de saída (medição #{mid})"
+        rede.registrar_observacao(self.st, iid, rev=rev, estado="conectado",
+                                  evidencia=f"{sintoma}; sai de trafego_verificado e tenta religar o cliente VPN")
+        self.st.bus.emit("network.updated", f"Rede de {iid}: {sintoma}: {r.medicao.detail[:160]}", level="warn",
+                         instance_id=iid,
+                         data={"instance_id": iid, "acao": "tunel_morto", "measurement_id": mid, "desired_rev": rev,
+                               "state": "conectado"})
+        ocupado = objetivo_em_andamento(self.st, iid, exceto_quem_espera_a_rede=True)
+        passos: list[str] = []
+        for n in range(1, _RELIGADAS_DO_TUNEL_MORTO + 1):
+            try:
+                await parar_cliente_solto(ap, pkg, espera_s=self.pausa_do_force_stop_s)
+                obs = await observar(ap, pkg, esperar_tun_s=self.espera_do_religar_s,
+                                     intervalo_s=self.intervalo_do_religar_s)
+                if not obs.conectada(bloqueio) and not ocupado:
+                    try:
+                        nova = await asyncio.wait_for(self._religar_sem_reinicio(ap, iid, bloqueio),
+                                                      self.prazo_da_interface_no_tunel_morto_s)
+                    except asyncio.TimeoutError:
+                        nova = None
+                        mem.religar_codigo = "prazo_estourado"
+                        mem.religar_motivo = (f"religar pela interface: passou de "
+                                              f"{self.prazo_da_interface_no_tunel_morto_s:g} s")
+                    obs = nova if nova is not None else obs
+                if not obs.conectada(bloqueio):
+                    passos.append(f"{n}ª: o cliente não voltou (tun0 {'no ar' if obs.tun else 'ausente'}, VPN "
+                                  f"{'conectada' if obs.vpn_conectada else 'não conectada'}){self._motivo_da_interface(iid)[:110]}")
+                    continue
+                ipv4, ipv6, detalhe = await medir_saida(ap, self.cfg.sonda)
+            except Exception as exc:  # noqa: BLE001 - cada tentativa é um gesto: a falha vira passo, e o reinício é o fim
+                passos.append(f"{n}ª: {type(exc).__name__}: {str(exc)[:80]}")
+                continue
+            if ipv4 or ipv6:
+                self.st.bus.emit("log", f"{iid}: túnel religado sem reinício (cliente parado e religado, {n}ª tentativa); "
+                                        "medindo de novo", instance_id=iid)
+                mem.verificacao_pedida = True              # se a medição completa falhar, a seguinte sai logo
+                refeita = await refazer()
+                mem.verificacao_pedida = False
+                return refeita
+            passos.append(f"{n}ª: cliente religado, a sonda segue sem IP")
+        resumo = "; ".join(passos)
+        if ocupado:
+            resumo += "; Start da interface não tentado (objetivo no meio neste aparelho)"
+        texto = f"{sintoma}; religar o cliente VPN não bastou em {_RELIGADAS_DO_TUNEL_MORTO} tentativas ({resumo})"
+        mem.configurado_em = time.time()
+        novo = rede.registrar_observacao(self.st, iid, rev=rev, estado="configurado",
+                                         evidencia=f"{texto}; reinicia o aparelho (sem apagar dados)")
+        self._agendar_reinicio(iid, rev, f"túnel morto da rev {rev}: religar não bastou ({resumo})"[:200])
+        return {"instance_id": iid, "rev": rev, "state": novo.state, "measurement_id": mid, "measured": True,
+                "evidence": novo.detail}
 
     async def reler_entre_etapas(self, rt: DeviceRuntime) -> None:
         """A queda do túnel NO MEIO de um objetivo (item 25.6): o scheduler chama isto de dentro do worker, entre uma

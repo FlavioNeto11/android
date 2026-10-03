@@ -30,6 +30,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `docs/dominios/parque.md`). O teste do PR #13 (`uncertain` segura a troca do app) passa a provar as duas faces.
   Prova `simulated`: `tests/test_sempre_na_promovida.py::test_objetivo_incerto_segura_a_troca_do_app_principal`,
   `tests/test_rede_sonda.py::test_objetivo_de_execucao_encerrada_nao_adia_o_teste_de_vazamento`.
+- **Túnel morto age (metade A).** A verificação de um `trafego_verificado` com política exigida cuja sonda não mede IP de
+  saída tira a linha do estado (→ `conectado`, motivo e evento `tunel_morto`), religa o cliente VPN no aparelho (até 2
+  vezes: `force-stop` e always-on, ou Start da interface com teto de 60 s) e, sem volta, reinicia sem wipe. Falha ou
+  trava da interface conta como tentativa (caso do android-06, 03/10). O teste do portão
+  `test_remedicao_sem_ip_espera_antes_de_repetir` mudou: afirmava o comportamento que o item corrige (o estado não saía de
+  `trafego_verificado`). Prova `simulated`: `tests/test_rede_sonda.py::test_tunel_morto_*`.
 
 ## 2026-10-03 — Aprendizado: nomes também nas listas (validação do deploy 4, branch fix/aprendizado-ux-deploy4)
 

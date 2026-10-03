@@ -564,7 +564,26 @@ de outra pasta, a pasta muda em `adb.py`, não num `shell` montado por quem cham
   saída do 25.5, abaixo: relê como o conferir e, com o túnel no ar, mede e grava); `trafego_verificado` → conferir (ao
   ligar, ao acordar, na readoção depois do reinício do backend ou do worker, e a cada `rede.deriva_s` na varredura):
   configuração que sumiu → `pendente` (reaplica), túnel caído com a configuração no lugar → `configurado`
-  (reinicia). Conferir só regride; `trafego_verificado` continua sendo só da medição. Falha não se repete às
+  (reinicia). Conferir só regride; `trafego_verificado` continua sendo só da medição.
+
+  **Túnel morto (25.12).** O conferir só vê o `tun0` e o `CONNECTED` do `dumpsys`: depois que o backend do central
+  reinicia (o servidor do túnel é refeito), o cliente do aparelho segue "no ar" sem handshake e a sonda não mede IP.
+  Antes, a medição sem IP de um `trafego_verificado` só escrevia "o estado não muda" e a tarefa passava por uma rede sem
+  saída (android-03, 03/10, medição #216: a internet só voltou com reinício manual). Agora, a verificação de um
+  `trafego_verificado` com política exigida (`exigida` ou `exigida_com_bloqueio`) cuja medição vem sem IPv4 e sem IPv6:
+  (1) grava a medição no histórico e tira a linha de `trafego_verificado` (→ `conectado`, com o motivo no `detail` e o
+  evento `network.updated` `warn` com `acao: tunel_morto`), e a porta da tarefa segura; (2) religa o cliente VPN no
+  aparelho, até 2 vezes na mesma passada: `am force-stop` do cliente (o always-on o sobe), e, se o `tun0` não voltar,
+  o Start da interface (`religar_pela_interface`, só sem objetivo no meio: ele abre a tela do cliente; com teto de
+  `prazo_da_interface_no_tunel_morto_s`, 60 s — em 03/10, android-06, a interface falhou com `WebDriverException … Timed
+  out … AccessibilityNodeInfo`: falha ou trava conta como tentativa e nunca entra em laço); com o túnel de volta, a
+  sonda de IP confere e a medição completa é refeita na mesma passada; (3) sem volta, `configurado` e reinício pelo
+  caminho de sempre (`restart`, nunca wipe, com as guardas de objetivo no meio e o teto `rede.reinicios_max`), e o
+  `conectar` confere depois do boot. A prova de vazamento não é tocada. Só o `trafego_verificado` entra aqui: o
+  `conectado`/`parcial` sem IP (eco fora, servidor fora) segue esperando `rede.sonda.reverificar_s`, sem parar o
+  cliente nem reiniciar, e o que acabou de voltar de um reinício não reinicia de novo. Limite conhecido: um eco de IP
+  fora do ar com o túnel bom também parece túnel morto, e custa até 2 `force-stop` do cliente e um reinício por
+  `trafego_verificado` perdido (a linha só volta a ele com IP medido, então não há laço apertado). Falha não se repete às
   cegas: espera em memória de 5, 15, 45 e 60 min (um reinício do backend dá mais uma chance); `POST …/apply` passa por
   cima. Wipe, reset ou outro aparelho físico atrás do id (`on_device_wiped`, `on_disk_erased`) regridem a linha a
   `pendente`; com o pedido vazio, a linha sai. Desfeito e conferido depois do reinício, a linha também sai (nada

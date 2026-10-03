@@ -1417,3 +1417,182 @@ def test_desfecho_de_revisao_antiga_nao_vira_prova_da_nova(parque: Harness, monk
     assert P(1, "c", True, "t", "d", False).situacao(1, "c") == "vale"
     assert P(1, "c", False, "t", "d", False).situacao(1, "c") == "vazou"
     assert P(1, "c", None, "t", "d", False).situacao(1, "c") == "inconclusiva"
+
+
+# ============================================================================ túnel morto (item 25.12)
+# Caso real: 03/10, android-03 — o reinício do backend derrubou o túnel; o cliente seguia "no ar" e a sonda não media IP
+# (medição #216), mas o `trafego_verificado` ficava como estava e a internet só voltou com um reinício manual. Aqui o
+# aparelho é o falso da sonda (`simulated`): nada de emulador, nada de VPN, nenhum IP de verdade.
+@dataclass
+class SondaDeTunelMorto(SondaFalsa):
+    """O `am force-stop` do cliente (o gesto da convergência, fora do teste de vazamento): o `tun0` cai e o always-on
+    sobe o cliente de novo. `volta_na`: a partir de qual `force-stop` (1 = o primeiro) o túnel religado SAI (0 = nunca
+    sai: o cliente volta, mas a sonda segue sem IP); `sem_tun_depois`: o cliente não volta (sem `tun0`)."""
+
+    volta_na: int = 0
+    sem_tun_depois: bool = False
+    forcados: int = 0
+
+    async def shell(self, comando: str, *, timeout: float = 40) -> str:
+        saida = await super().shell(comando, timeout=timeout)
+        if comando.startswith("am force-stop ") and "==SONDA-INICIO==" not in comando:
+            self.forcados += 1
+            self.tun = self.vpn = not self.sem_tun_depois
+            if self.volta_na and self.forcados >= self.volta_na:
+                self.ip4 = IP
+        return saida
+
+
+async def _verificado_e_morto(parque: Harness, monkeypatch: pytest.MonkeyPatch, *, policy: str = "exigida_com_bloqueio",
+                              **kw: object) -> tuple[SondaDeTunelMorto, Reinicios]:
+    """`trafego_verificado` e, depois, o túnel morre (a sonda deixa de medir IP) e a verificação seguinte é pedida."""
+    st = parque.state
+    assert st is not None
+    _, reinicios = _preparar_sonda(parque, monkeypatch, policy=policy)
+    ap = SondaDeTunelMorto(id="android-01", **kw)                                   # type: ignore[arg-type]
+    st.rede_convergencia._aparelho = lambda _s, _rt: ap
+    conv = st.rede_convergencia
+    conv.pausa_do_force_stop_s = conv.espera_do_religar_s = 0.0
+    if policy == "exigida_com_bloqueio":
+        await _ate_verificado(parque, ap)
+    else:
+        await _ate_conectado(parque, ap)
+        assert await _passo(parque, "tarefa") and _linha(parque)["state"] == "trafego_verificado"
+    ap.ip4 = None                                                                   # o túnel morreu: a sonda não sai
+    conv.memoria("android-01").verificacao_pedida = True                            # o gesto do backend ao subir (B)
+    return ap, reinicios
+
+
+def _avisos_de_tunel_morto(parque: Harness) -> list[dict[str, object]]:
+    return [d for d in (json.loads(e["data"]) for e in parque.state.db.query(       # type: ignore[union-attr]
+        "SELECT data FROM events WHERE kind='network.updated' AND level='warn' ORDER BY id"))
+        if d.get("acao") == "tunel_morto"]
+
+
+async def test_tunel_morto_religa_o_cliente_sem_reiniciar_e_mede_de_novo(parque: Harness,
+                                                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    st = parque.state
+    assert st is not None
+    ap, reinicios = await _verificado_e_morto(parque, monkeypatch, volta_na=1)
+    pedidos, medicoes, paradas = len(reinicios.pedidos), st.db.scalar("SELECT COUNT(*) FROM network_measurements"), ap.paradas
+    antes = ap.forcados                                                             # a aplicação também para o cliente
+    assert await _passo(parque, "varredura")
+    linha = _linha(parque)
+    assert linha["state"] == "trafego_verificado" and linha["egress_ipv4"] == IP
+    assert ap.forcados - antes == 1                                                 # um gesto bastou
+    assert st.db.scalar("SELECT COUNT(*) FROM network_measurements") == medicoes + 2    # a morta (#N) e a refeita
+    morta = st.db.one("SELECT egress_ipv4 FROM network_measurements WHERE id=?",
+                      (st.db.scalar("SELECT MAX(id) FROM network_measurements") - 1,))
+    assert morta["egress_ipv4"] is None
+    assert len(reinicios.pedidos) == pedidos                                        # sem reinício
+    assert ap.paradas == paradas                                                    # o teste de vazamento NÃO foi refeito
+    assert (linha["leak_rev"], linha["leak_result"]) == (1, 1)                       # e a prova segue na linha
+    [aviso] = _avisos_de_tunel_morto(parque)
+    assert aviso["instance_id"] == "android-01" and aviso["state"] == "conectado"
+    assert st.rede_convergencia.motivo_de_espera("android-01") is None              # a tarefa passa de novo
+
+
+@pytest.mark.parametrize("variante", ["cliente_volta_sem_saida", "cliente_nao_volta"])
+async def test_tunel_morto_sem_volta_em_duas_tentativas_reinicia_sem_wipe(parque: Harness,
+                                                                          monkeypatch: pytest.MonkeyPatch,
+                                                                          variante: str) -> None:
+    st = parque.state
+    assert st is not None
+    ap, reinicios = await _verificado_e_morto(parque, monkeypatch, sem_tun_depois=variante == "cliente_nao_volta")
+    st.rede_convergencia.cfg.cliente_atividade = ""                                 # sem o Start da interface (outro teste)
+    pedidos, paradas, antes = len(reinicios.pedidos), ap.paradas, ap.forcados
+    assert await _passo(parque, "varredura")
+    linha = _linha(parque)
+    assert ap.forcados - antes == 2                                                         # duas tentativas, nenhuma a mais
+    assert linha["state"] == "configurado"                                          # saiu de trafego_verificado
+    assert "túnel morto" in str(linha["detail"]) and "não bastou em 2 tentativas" in str(linha["detail"])
+    assert "sem apagar dados" in str(linha["detail"])
+    assert ("o cliente não voltou" if variante == "cliente_nao_volta" else "a sonda segue sem IP") in str(linha["detail"])
+    # Sem porta aberta para a tarefa (a linha já não é trafego_verificado) e com o rastro do motivo e do evento.
+    assert "reinício" in (st.rede_convergencia.motivo_de_espera("android-01") or "")
+    [aviso] = _avisos_de_tunel_morto(parque)
+    assert aviso["acao"] == "tunel_morto"
+    await asyncio.sleep(0.2)                                                        # o reinício sai depois do trabalho
+    assert len(reinicios.pedidos) == pedidos + 1 and "túnel morto" in reinicios.pedidos[-1][1]
+    assert not any("wipe" in c or "pm clear" in c for c in ap.comandos)             # nunca apaga dados
+    assert ap.paradas == paradas and (linha["leak_rev"], linha["leak_result"]) == (1, 1)
+    # Depois do boot o túnel sobe e sai: conectar → verificar → trafego_verificado, sem refazer o teste de vazamento.
+    ap.ip4, ap.sem_tun_depois = IP, False
+    await _reiniciar(parque, ap)
+    _liberar_a_porta(parque)
+    assert await _passo(parque, "tarefa") and _linha(parque)["state"] == "trafego_verificado"
+    assert ap.paradas == paradas
+
+
+async def test_tunel_morto_com_objetivo_no_meio_nao_abre_a_interface_do_cliente(parque: Harness,
+                                                                                monkeypatch: pytest.MonkeyPatch) -> None:
+    """O Start da interface abre a tela do cliente VPN: com um objetivo no meio (a tela é a evidência dele) ele não é
+    tentado. O `force-stop` do cliente não toca na tela e segue valendo; o reinício passa pela guarda de sempre."""
+    from app.models import ObjectiveStatus
+
+    st = parque.state
+    assert st is not None
+    ap, _ = await _verificado_e_morto(parque, monkeypatch, sem_tun_depois=True)
+    porta = st.scheduler.rede_gate
+    st.scheduler.rede_gate = lambda _iid: "segura (teste)"                          # o objetivo nasce sem ser despachado
+    run = parque.run(["android-01"])
+    oid = f"{run.id}:android-01"
+    await parque.wait(lambda: st.db.one("SELECT 1 FROM objectives WHERE id=?", (oid,)) is not None, what="objetivo")
+    st.repo.set_objective(oid, ObjectiveStatus.waiting_user, detail="esperando a pessoa (teste)")
+    st.scheduler.rede_gate = porta
+    antes, comandos = ap.forcados, len(ap.comandos)
+    assert await _passo(parque, "varredura")
+    linha = _linha(parque)
+    assert linha["state"] == "configurado" and "Start da interface não tentado" in str(linha["detail"])
+    assert ap.forcados - antes == 2 and not any(c.startswith("am start -n") for c in ap.comandos[comandos:])
+
+
+async def test_sem_ip_fora_de_trafego_verificado_nao_dispara_o_gesto_de_tunel_morto(parque: Harness,
+                                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    """O gesto é só do `trafego_verificado`: o `conectado`/`parcial` sem IP (eco fora, servidor fora) segue só esperando a
+    próxima medição, sem parar o cliente nem reiniciar."""
+    st = parque.state
+    assert st is not None
+    _, reinicios = _preparar_sonda(parque, monkeypatch, policy="exigida")
+    ap = SondaDeTunelMorto(id="android-01")
+    st.rede_convergencia._aparelho = lambda _s, _rt: ap
+    await _ate_conectado(parque, ap)
+    ap.ip4, antes = None, ap.forcados
+    assert await _passo(parque, "tarefa")                                            # conectado → medida sem IP
+    assert _linha(parque)["state"] == "conectado" and ap.forcados == antes and _avisos_de_tunel_morto(parque) == []
+    await asyncio.sleep(0.2)
+    assert len(reinicios.pedidos) == 1                                              # só o da aplicação
+
+
+@pytest.mark.parametrize("falha", ["webdriver_timeout", "trava"])
+async def test_tunel_morto_start_da_interface_que_falha_ou_trava_conta_como_tentativa_e_reinicia(
+        parque: Harness, monkeypatch: pytest.MonkeyPatch, falha: str) -> None:
+    """Dado real de 03/10 (log do central, 06:09Z, android-06): o Start da interface do cliente falhou com
+    `WebDriverException ... Timed out ... waiting for the root AccessibilityNodeInfo`. O gesto que falha, ou que trava,
+    vale UMA tentativa (com teto de tempo), nunca laço: depois da segunda vem o reinício sem wipe."""
+    from app.devices import rede_convergencia
+
+    st = parque.state
+    assert st is not None
+    ap, reinicios = await _verificado_e_morto(parque, monkeypatch, sem_tun_depois=True)
+    conv = st.rede_convergencia
+    conv.prazo_da_interface_no_tunel_morto_s = 0.2
+    chamadas: list[int] = []
+
+    async def interface(*_a: object, **_k: object) -> object:
+        chamadas.append(1)
+        if falha == "trava":
+            await asyncio.sleep(30)
+        raise RuntimeError("WebDriverException: Timed out while waiting for the root AccessibilityNodeInfo")
+
+    monkeypatch.setattr(rede_convergencia, "religar_pela_interface", interface)
+    pedidos, antes = len(reinicios.pedidos), ap.forcados
+    inicio = asyncio.get_running_loop().time()
+    assert await _passo(parque, "varredura")
+    assert asyncio.get_running_loop().time() - inicio < 5                           # o teto vale: nada de espera longa
+    assert len(chamadas) == 2 and ap.forcados - antes == 2                          # duas tentativas, nenhuma a mais
+    assert _linha(parque)["state"] == "configurado"
+    assert "não bastou em 2 tentativas" in str(_linha(parque)["detail"])
+    await asyncio.sleep(0.2)
+    assert len(reinicios.pedidos) == pedidos + 1
+    assert not any("wipe" in c or "pm clear" in c for c in ap.comandos)
