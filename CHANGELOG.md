@@ -35,6 +35,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_relatorio_de_falha_do_emulador.py` (14) e 2 casos em `test_worker_executor.py`.
   A `real` é `not_run`: subida de um aparelho sem conta com o dump de volta, na vez da orquestradora.
 
+## 2026-10-03 — Portal público no ar em `https://dev.nvit.com.br/central` (29.54, ADR-073; prova real)
+
+- O hostname entrou em `server.public_hosts` do `config.yaml` do central (21:35:02Z, com cópia em `data/backups/`),
+  junto de `tls_behind_proxy: true` e da origem `https`. O `avisos.url_painel` passou a apontar para o endereço público.
+- O central foi reiniciado às 21:46:56Z (checkout `4ad5f8b6`, código do `2264843e`; migração `086`; `problems: []`).
+- Prova de fora, sem credencial, às 21:47:28Z: 19 de 19 (`.claude/handoffs/portal/prova-de-fora.sh depois`). A API
+  responde 401, o painel abre em `/central/`, a documentação da API fica atrás do login e o canal do worker não sai
+  pelo túnel. O painel local segue sem login.
+- Não provado (`not_run`): o primeiro login pelo endereço público, que é do dono.
+- Itens novos no plano, da validação do deploy 14 no navegador (0 bloqueante): 29.58, 29.59, 30.41, 30.42 e 30.43.
+
 ## 2026-10-03 — Suíte 15 na main e deploy 15 no central (2264843e; sem migração nova; config sem mudança do deploy)
 
 - A suíte 15 foi integrada em `integ/suite-15`, na ordem da orquestradora:

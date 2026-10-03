@@ -2819,6 +2819,62 @@
    "lista": "marcos",
    "lote": "canais",
    "nome": "📅 Deploy 15 · 03/10 21:29Z (2264843e) · sem migração nova · suíte 15: 4 entregas"
+  },
+  "29.58": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1790f30a090ce503b5e01",
+   "url": "https://trello.com/c/Ct2DFcIL",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "29.58 · Ação com efeito dentro de etapa declarada sem efeito"
+  },
+  "29.59": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac17918c21bca05cd2a18f1",
+   "url": "https://trello.com/c/k6lSiEQY",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "29.59 · Selo \"agente defasado\" falso depois de reinício sobre commit de docs"
+  },
+  "30.41": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1791eca145d99e9d64bce",
+   "url": "https://trello.com/c/AphOEZ6K",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "30.41 · Teto por pedido proporcional ao plano; o que não cabe não despacha"
+  },
+  "30.42": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac179236661f9a5b7052e74",
+   "url": "https://trello.com/c/Q1f6mAn2",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "30.42 · A prova parte de estado conhecido e fecha pelo que o verificador viu"
+  },
+  "30.43": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac179276281aa9b3107f942",
+   "url": "https://trello.com/c/7xy7InvO",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "30.43 · A validação com rosto no item"
+  },
+  "28.18": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac17a13adc57edc3c97a98e",
+   "url": "https://trello.com/c/ij2QiYYZ",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "28.18 · Convidado no Telegram, com o nome primeiro"
+  },
+  "29.56": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac17a622682763afc0dc24a",
+   "url": "https://trello.com/c/zjNg5xh1",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "29.56 · Tranca de login por cliente no acesso público"
+  },
+  "31.24": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac17a694cb8e046843e30c8",
+   "url": "https://trello.com/c/EutILvSJ",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "31.24 · Latência por etapa como métrica de primeira classe"
   }
  },
  "falhas": [],

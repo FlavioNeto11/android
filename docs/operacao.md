@@ -288,12 +288,12 @@ isso). Pontos que já causaram incidente:
     `os.popen`, `os.spawn*` ou `os.exec*`, e qualquer cópia de `os.environ`. Exceção única, pelo nome:
     `supervisor.iniciar_backend`, cujo filho é o próprio backend.
 
-### Portal público pelo túnel da Cloudflare (29.54, ADR-073; `not_run` até a prova de fora)
+### Portal público pelo túnel da Cloudflare (29.54, ADR-073; no ar desde 03/10/2026, prova `real`)
 
 O painel abre em `https://dev.nvit.com.br/central/` por um túnel de SAÍDA da Cloudflare nesta máquina: nenhuma porta é
 aberta, o roteador não é tocado e `server.host` continua `127.0.0.1`. O `cloudflared` entrega ao central, com par
-`127.0.0.1`, cada requisição do hostname; quem separa o público do local é o `Host` (ADR-073). **Nada abaixo foi
-executado** (`not_run`): é o procedimento do dono e da orquestradora, nesta ordem. A decisão e o que fica de fora
+`127.0.0.1`, cada requisição do hostname; quem separa o público do local é o `Host` (ADR-073). **Tudo abaixo foi
+executado em 03/10/2026** (`real`, menos o login do dono): é o procedimento do dono e da orquestradora, nesta ordem. A decisão e o que fica de fora
 (webhook do Trello, WAF) estão no ADR-073.
 
 **Regras que não se negociam na configuração do túnel**
@@ -371,8 +371,15 @@ preservado:** 403 antes de declarar o hostname e 401 depois. 200 em qualquer mom
 encerre esse processo e inicie o serviço, nunca `Restart-Service`.
 
 **Já feito no `real` (03/10/2026, máquina central):** túnel `central-farm` criado e no ar (19:45Z), DNS apontado, prova
-de fora 403/404 (19:47Z), "Always Use HTTPS" ligado e provado com 301 (19:54Z). **Pendentes:** a declaração do hostname
-no `config.yaml` (passo 7) e a senha (`API_TOKEN`).
+de fora 403/404 (19:47Z), "Always Use HTTPS" ligado e provado com 301 (19:54Z). Senha do portal (`API_TOKEN`) gravada pelo dono
+(~19:59Z), hostname declarado no `config.yaml` (21:35:02Z, cópia anterior em
+`data/backups/config.yaml.antes-portal-publico-20261003-213502`), central reiniciado (21:46:56Z, checkout `4ad5f8b6`,
+código do `2264843e`) e **prova de fora às 21:47:28Z, 19 de 19** (`bash .claude/handoffs/portal/prova-de-fora.sh depois`,
+sem credencial): API 401, `/api/session` 200 pedindo senha, painel 200 com os arquivos em `/central/`, documentação da
+API só atrás do login, canal do worker 404, `http` 301; antes do reinício, 403 (21:32Z). **Pendente (`not_run`):** o
+primeiro login do dono pelo endereço público. **Conhecido:** a tranca de login é global (item 29.56); até a regra de
+limite de taxa da Cloudflare ou a tranca por cliente, tentativa errada de fora conta contra o dono. O selo "agente
+defasado" do notebook depois desse reinício é falso (item 29.59).
 
 **Recuo.** Tire `dev.nvit.com.br` de `server.public_hosts` e reinicie `farm-central`: tudo volta a 403, painel incluído.
 Para tirar o hostname do ar, `Stop-Service Cloudflared` (e, se for o caso, `cloudflared service uninstall`).
