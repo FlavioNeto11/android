@@ -21,9 +21,12 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Mapping
-from concurrent.futures import ThreadPoolExecutor
-from typing import Final, Protocol
+from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import wait as esperar
+from threading import Event, Lock
+from typing import Final, Generic, Protocol, TypeVar
 
+from . import privacidade
 from .contrato import PedidoDeDecisao, pergunta_choice
 from .porta import TIMEOUT_SHADOW_S, Porta, modo_efetivo
 from .sombra import RepositorioDeSombra
@@ -68,13 +71,24 @@ class PedidoDoCurador(Protocol):
 class RespostaDoCurador(Protocol):
     @property
     def bruto(self) -> Mapping[str, object]: ...
+    @property
+    def simulado(self) -> bool | None:
+        """Se ESTA resposta veio de provedor simulado; `None` = o adaptador não diz e vale o `simulado` dele."""
 
 
-class CuradorInterno(Protocol):
-    provedor: str
-    simulado: bool
+# O pedido e a resposta são genéricos para o embrulho devolver EXATAMENTE o tipo do curador que ele decora (a porta
+# `CuradorDeIA` do aprendizado pede `RespostaDeRevisao`, não a forma mais larga lida aqui).
+Pedido = TypeVar("Pedido", bound=PedidoDoCurador, contravariant=True)
+Resposta = TypeVar("Resposta", bound=RespostaDoCurador, covariant=True)
 
-    def revisar(self, pedido: PedidoDoCurador) -> RespostaDoCurador: ...
+
+class CuradorInterno(Protocol[Pedido, Resposta]):
+    @property
+    def provedor(self) -> str: ...
+    @property
+    def simulado(self) -> bool: ...
+
+    def revisar(self, pedido: Pedido) -> Resposta: ...
 
 
 def _rotulo(valor: object) -> str | None:
@@ -138,9 +152,15 @@ class TriagemDoCurador:
         self._repositorio = repositorio
         self._espera_s = espera_s
         self._pool: ThreadPoolExecutor | None = None
+        self._casamentos: list[Future[None]] = []
+        self._trava = Lock()
+        self._encerrado = Event()          # desligamento: nada novo, e quem espera a linha da sombra desiste após a tentativa
 
     def ativo(self) -> bool:
-        return modo_efetivo("shadow", self._porta.cfg, "curador") == "shadow"
+        """Como `ConsumidorDeIntencao.ativo`: com o envio fechado no código, NADA é feito (nem recusa gravada, nem pool). A
+        porta recusaria por privacidade e mediria a recusa, mas o que se mede aqui é o Jev respondendo, e ele não pode
+        responder enquanto o dono não aprovar."""
+        return privacidade.JEV_RUNTIME_SEND_APPROVED and modo_efetivo("shadow", self._porta.cfg, "curador") == "shadow"
 
     @staticmethod
     def pedido(dossie: Mapping[str, object], dossie_hash: str) -> PedidoDeDecisao | None:
@@ -156,48 +176,70 @@ class TriagemDoCurador:
     def observar(self, dossie: Mapping[str, object], dossie_hash: str, decisao_do_parecer: object) -> None:
         """Agenda a sombra e o casamento. Nunca levanta: medir nunca derruba o curador."""
         try:
-            if not self.ativo():
+            if self._encerrado.is_set() or not self.ativo():
                 return
             pedido = self.pedido(dossie, dossie_hash)
             if pedido is None:
                 return
             self._porta.consultar(pedido)            # shadow: a porta agenda e volta na hora
+            # Só um id FECHADO da pergunta (`OPCOES`) é decisão real: o parecer fora do vocabulário não casa.
             real = TRIAGEM_DO_PARECER.get(decisao_do_parecer) if isinstance(decisao_do_parecer, str) else None
-            if real is not None:
-                self._executor().submit(self._casar, dossie_hash, real)
+            if real is not None and real in OPCOES:
+                self._agendar_casamento(dossie_hash, real)
         except Exception:  # noqa: BLE001
             log.warning("decisao_fechada: falha na sombra da triagem do curador")
 
-    def aguardar(self) -> None:
-        """Testes e desligamento: espera os casamentos pendentes."""
-        if self._pool is not None:
-            self._pool.shutdown(wait=True)
-            self._pool = None
+    def aguardar(self, timeout_s: float | None = None) -> None:
+        """Testes: espera os casamentos pendentes (sem `timeout_s`, todos) e libera o pool. Com prazo, o que não terminou
+        fica rodando e o pool fica de pé."""
+        with self._trava:
+            futuros = list(self._casamentos)
+        if futuros:
+            esperar(futuros, timeout=timeout_s)
+        with self._trava:
+            self._casamentos = [f for f in self._casamentos if not f.done()]
+            if not self._casamentos and self._pool is not None:
+                self._pool.shutdown(wait=False)       # ocioso: os workers saem sozinhos
+                self._pool = None
 
-    def _executor(self) -> ThreadPoolExecutor:
-        if self._pool is None:
-            self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sombra-curador")
-        return self._pool
+    def encerrar(self, timeout_s: float) -> None:
+        """Desligamento: não aceita casamento novo e manda os pendentes desistirem depois da próxima tentativa (sem isto, um
+        casamento sem linha esperaria até `espera_s`, mais que o prazo do desligamento), espera até `timeout_s` e solta o
+        pool sem aguardar. Chamar DEPOIS de `Porta.aguardar_sombras`: as linhas já existem e o casamento acerta de primeira."""
+        self._encerrado.set()
+        self.aguardar(timeout_s)
+        with self._trava:
+            pool, self._pool = self._pool, None
+        if pool is not None:
+            pool.shutdown(wait=False)
+
+    def _agendar_casamento(self, ref: str, real: str) -> None:
+        with self._trava:
+            if self._pool is None:
+                self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sombra-curador")
+            f = self._pool.submit(self._casar, ref, real)
+            self._casamentos = [c for c in self._casamentos if not c.done()] + [f]
 
     def _casar(self, ref: str, real: str) -> None:
         limite = time.monotonic() + self._espera_s
         while True:
+            desistir = self._encerrado.is_set()         # lido ANTES da tentativa: o desligamento sempre dá uma tentativa inteira
             try:
                 if self._repositorio.casar_decisao_real({PERGUNTA_TRIAGEM: real}, ref=ref):
                     return
             except Exception:  # noqa: BLE001
                 log.warning("decisao_fechada: não foi possível casar a triagem do curador")
                 return
-            if time.monotonic() >= limite:
-                return                                  # recusa por privacidade ou sombra perdida: nada a casar
+            if desistir or time.monotonic() >= limite:
+                return                                  # recusa por privacidade, sombra perdida ou desligamento: nada a casar
             time.sleep(0.05)
 
 
-class CuradorComTriagemEmSombra:
+class CuradorComTriagemEmSombra(Generic[Pedido, Resposta]):
     """Decora o curador principal (porta `CuradorDeIA` do aprendizado): devolve o parecer DELE, intacto, e só depois
     entrega o item à triagem em sombra. Falha do curador principal sobe como antes, sem sombra."""
 
-    def __init__(self, interno: CuradorInterno, triagem: TriagemDoCurador) -> None:
+    def __init__(self, interno: CuradorInterno[Pedido, Resposta], triagem: TriagemDoCurador) -> None:
         self._interno = interno
         self._triagem = triagem
 
@@ -209,11 +251,15 @@ class CuradorComTriagemEmSombra:
     def simulado(self) -> bool:
         return self._interno.simulado
 
-    def revisar(self, pedido: PedidoDoCurador) -> RespostaDoCurador:
+    def revisar(self, pedido: Pedido) -> Resposta:
         resposta = self._interno.revisar(pedido)
         bruto = resposta.bruto
+        # A "decisão real" que a concordância do GO do 31.7 mede é o parecer do curador, nunca o de provedor SIMULADO
+        # (`None` = o adaptador não diz por resposta, vale o dele, como na gravação do aprendizado). Parecer simulado é só
+        # observado: a sombra grava a escolha do Jev e fica sem decisão real.
+        simulado = self._interno.simulado if resposta.simulado is None else resposta.simulado
         self._triagem.observar(pedido.dossie, pedido.dossie_hash,
-                               bruto.get("decisao") if isinstance(bruto, Mapping) else None)
+                               None if simulado or not isinstance(bruto, Mapping) else bruto.get("decisao"))
         return resposta
 
 

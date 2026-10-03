@@ -136,6 +136,11 @@ METRICAS_JANELA_S = 900.0
 #: está parado aqui é um comando que uma pessoa já pediu e o painel já mostra como aceito.
 OUTBOX_RETRY_S = 15.0
 
+#: Prazo TOTAL do desligamento para o que ainda pode gravar no banco (31.9): a volta do curador, as sombras da intenção, as da
+#: porta `DecisaoFechada` e o casamento da triagem. Estourou, o `stop()` segue e fecha o banco (a escrita tardia falha e é
+#: logada, nunca trava o encerramento); `AppState.stop` o lê na hora, para o teste encolhê-lo.
+ESPERA_DE_SOMBRAS_S = 6.0
+
 
 class SettingsStore:
     """Limites editáveis em tempo de execução, persistidos no banco (semente: config.yaml).
@@ -2435,9 +2440,9 @@ class AppState:
     async def stop(self) -> None:
         for t in self._bg:
             t.cancel()
-        if self.runs.sombra_intencao is not None:
-            self.runs.sombra_intencao.cancelar()        # 31.9: as sombras soltas da intenção, como o `_bg`
-            self.runs.sombra_intencao = None            # e nenhuma nova: um plano que termine agora não agenda outra
+        # 31.9: nenhuma sombra nova da intenção (um plano que termine agora não agenda outra). As soltas NÃO são canceladas
+        # aqui: cancelar só solta o `Task`, a thread segue e grava; elas são esperadas antes do `db.close` (ver `finally`).
+        sombra_intencao, self.runs.sombra_intencao = self.runs.sombra_intencao, None
         try:
             await self.transport.close()
         except Exception:  # noqa: BLE001 - fechar o transporte nunca impede o resto do encerramento
@@ -2466,8 +2471,7 @@ class AppState:
                 # Um digest em thread ainda escrevendo não pode encontrar o banco fechado debaixo dele.
                 await asyncio.wait(set(self._digestoes), timeout=10)
             try:
-                # Idem para a sombra da porta `DecisaoFechada` (31.9): a linha da chamada já feita é gravada antes do close.
-                await asyncio.to_thread(self.decisao_fechada.aguardar_sombras, 6.0)
+                await self._esperar_o_que_grava_sombra(sombra_intencao)
             except Exception:  # noqa: BLE001 - esperar a sombra nunca impede fechar o banco
                 log.exception("encerramento: sombras da decisão fechada")
             try:
@@ -2476,6 +2480,27 @@ class AppState:
             except Exception:  # noqa: BLE001 - devolver a trava nunca impede fechar o banco; ela vence sozinha
                 log.exception("encerramento: falha ao soltar as travas de líder")
             self.db.close()
+
+    async def _esperar_o_que_grava_sombra(self, sombra_intencao: SombraDaIntencao | None) -> None:
+        """Antes do `db.close`, com UM prazo (`ESPERA_DE_SOMBRAS_S`) para tudo, nesta ordem (cada passo pode alimentar o
+        seguinte): a volta do curador (para entre itens), as threads da sombra da intenção (que chamam a porta), as sombras
+        da porta, o casamento da triagem (precisa da linha que a porta gravou) e uma última rodada da porta."""
+        prazo = time.monotonic() + ESPERA_DE_SOMBRAS_S
+
+        def restante() -> float:
+            return max(0.0, prazo - time.monotonic())
+
+        for laco in self.learning.lacos:
+            parar = getattr(laco, "parar", None)        # só o laço do curador por IA tem thread própria a esperar
+            if parar is not None and not await asyncio.to_thread(parar, restante()):
+                log.warning("encerramento: a volta do curador ainda estava no provedor; o banco fecha mesmo assim")
+        if sombra_intencao is not None:
+            await sombra_intencao.aguardar(restante())
+            sombra_intencao.cancelar()                  # o que passou do prazo: solta o `Task`, como o `_bg`
+        await asyncio.to_thread(self.decisao_fechada.aguardar_sombras, restante())
+        await asyncio.to_thread(self._triagem_do_curador.encerrar, restante())
+        self.decisao_fechada.encerrar()                 # nada novo a partir daqui; o que escapou entre os passos roda e é esperado
+        await asyncio.to_thread(self.decisao_fechada.aguardar_sombras, restante())
 
     def _check_health(self) -> None:
         """Recalcula `health()` e emite `health.updated` só quando o resultado mudou desde a última checagem
@@ -2664,7 +2689,11 @@ class AppState:
             log.exception("aprendizado: retenção")
         try:
             # Sombra da porta `DecisaoFechada` (074): prazo próprio; o agregado diário é calculado antes de purgar e fica.
-            total += self.decisao_sombra.aplicar_retencao(self.cfg.file.ai.decisao_fechada.retencao_dias)
+            # Porta desligada E tabela vazia (uma consulta barata, `LIMIT 1`): nada a agregar nem a purgar, e a volta não
+            # lê a tabela à toa. Desligada com linhas antigas ainda purga: o prazo vale mesmo sem consumidor.
+            if transparencia.consumidores_ativos(self.cfg.file.ai.decisao_fechada) or self.db.one(
+                    "SELECT 1 FROM decisao_fechada_sombra LIMIT 1") is not None:
+                total += self.decisao_sombra.aplicar_retencao(self.cfg.file.ai.decisao_fechada.retencao_dias)
         except Exception:  # noqa: BLE001 - idem
             log.exception("decisao_fechada: retenção da sombra")
         return total

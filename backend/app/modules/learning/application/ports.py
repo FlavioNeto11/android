@@ -247,6 +247,9 @@ class RespostaDeRevisao:
     # Se ESTA resposta veio de provedor simulado. `None` = o adaptador não diz, e vale o `simulado` dele (o do hub o
     # atualiza por resposta; com revisões concorrentes, só este campo é seguro).
     simulado: bool | None = None
+    # Quem respondeu ESTA revisão, pelo mesmo motivo do `simulado`: o `provedor` do adaptador é estado compartilhado entre
+    # revisões concorrentes. `None` = o adaptador não diz, e vale o `provedor` dele.
+    provedor: str | None = None
 
 
 class RecusaDoProvedor(Exception):
@@ -263,8 +266,10 @@ class CuradorDeIA(Protocol):
     """Quem dá o PARECER sobre um item. Nunca decide nada: o parecer vai a `learning_reviews` e o aceite é da pessoa
     (`politica_de_risco.conferir_aceite`). `provedor` e `simulado` vão ao registro (`simulated = 1` nunca é prova)."""
 
-    provedor: str
-    simulado: bool
+    @property
+    def provedor(self) -> str: ...
+    @property
+    def simulado(self) -> bool: ...
 
     def revisar(self, pedido: PedidoDeRevisao) -> RespostaDeRevisao: ...
 
