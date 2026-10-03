@@ -45,15 +45,17 @@ function Nomeado({ codigo, nome }: { codigo: string; nome: string | null }) {
   return nome ? <span title={codigo}>{nome}</span> : <span className={styles.mono}>{codigo}</span>;
 }
 
-/** Onde o sinal aconteceu: "Instagram › Abrir o perfil", com os nomes do Aprendido. */
+/** Onde o sinal aconteceu: "Instagram › Abrir o perfil", com os nomes do Aprendido. A decisão de aprovação sem nome
+ *  no catálogo diz o que foi, nunca o código cru (polimento do Chrome do deploy 12); o código fica no `title`. */
 function OndeDoSinal({ s }: { s: Sinal }) {
   const cap = s.capability && s.capability !== ETAPA_LIVRE ? s.capability : null;
   if (!s.app_package && !cap) return null;
+  const nomeDaCap = s.capability_nome || (s.kind === 'aprovacao_decidida' ? 'decisão de aprovação' : null);
   return (
     <span>
       {s.app_package ? <Nomeado codigo={s.app_package} nome={s.app_nome} /> : null}
       {s.app_package && cap ? ' › ' : null}
-      {cap ? <Nomeado codigo={cap} nome={s.capability_nome} /> : null}
+      {cap ? <Nomeado codigo={cap} nome={nomeDaCap} /> : null}
     </span>
   );
 }

@@ -349,6 +349,8 @@ def test_o_aviso_nomeia_provedor_modelo_e_os_apps_que_declaram_a_regiao(tmp_path
     assert "Leitura visual (ligada)" in st.notice and "oa" in st.notice and "leitor-x" in st.notice
     # o rótulo do DADO do app (`AppDefinition.label`), não o pacote cru
     assert "Outlook" in st.notice and "com.microsoft.office.outlook" not in st.notice and "terceiros" in st.notice
+    # Polimento do Chrome do deploy 12: a preposição contraída ("a o provedor" saía no painel).
+    assert "é enviado ao provedor “oa”" in st.notice and "a o provedor" not in st.notice
     assert "chave-que-nunca-aparece" not in st.model_dump_json() and st.sends_data_externally
     assert declaram_leitura_visual(CONHECIMENTO_DE_APPS) == ["com.microsoft.office.outlook"]
 

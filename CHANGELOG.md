@@ -19,6 +19,31 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Android: seis polimentos do Chrome do deploy 12 (branch feat/polimentos-rede-deploy12, sem migração)
+
+- (1) Títulos sem as lacunas de parâmetro em claro. Métricas, Para aprovar e Fluxos e receitas mostravam
+  `"{message_template}"`. Agora sai "…", e o original vai na dica. Os marcadores do comando-modelo dizem
+  "message template", com `{message_template}` na dica.
+- (2) Em Fluxos e receitas, o fluxo candidato ganha o selo "candidato" e o interruptor "Não vale ainda". Antes, ele
+  aparecia como "Desativado". O desligado diz quem o desligou, quando e por quê, com o motivo da trilha (`detalhe`
+  do Livro).
+- (3) Nos Sinais, a decisão de aprovação vem sem `app_package`, e o painel mostrava `REPLY_COMMENT` cru.
+  - `nomear()` agora procura a capability nos catálogos declarados e só a nomeia se um único app a declara
+    (`TitulosDoCatalogo.apps_que_declaram`). Com dois apps, o nome fica nulo.
+  - Se ainda faltar nome, o painel diz "decisão de aprovação", com o código na dica.
+- (4) `/api/aprendizado/pendentes` era lido 3× na carga e agora é lido uma vez. As leituras dentro de 2 s
+  compartilham a mesma resposta, e toda decisão (mudar estado, confirmar, invalidar, parecer) esquece essa leitura.
+- (5) O aviso de `/api/ai` diz "é enviado ao provedor". Antes saía "a o provedor".
+- (6) Execução parada porque o fluxo salvo não compilou para o pedido: o `status_detail` agora é "O fluxo salvo “…”
+  não serviu para este pedido: <motivo>. Responda à pergunta ou peça de novo pelo painel." A skill publicada aparece
+  como "A habilidade salva". O id e o código continuam fora do texto: ficam no evento `log` e no `issue_codes` do
+  `run.updated`. As execuções antigas com o texto cru saem pela expiração do 29.50.
+- Simulado:
+  - frontend: `aprendizado/model.test.ts`, `settings/FlowsRecipesSection.test.tsx`,
+    `aprendizado/AprendizadoPage.test.tsx` e `app.integration.test.tsx`;
+  - backend: `test_learning_capability_na_linha.py`, `test_leitura_visual_papel.py`,
+    `test_needs_input_da_habilidade.py` e `test_fatia_abrir_conversa.py`.
+
 ## 2026-10-03 — Android: dois polimentos da Rede dos relatórios do Chrome dos deploys 10/11 (branch feat/polimentos-rede-deploy12)
 
 - "Saída pela casa" cita no máximo 3 ids. Acima disso, mostra os 3 primeiros e "e mais N", com a lista inteira na dica.

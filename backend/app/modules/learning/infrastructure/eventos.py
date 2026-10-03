@@ -65,5 +65,10 @@ class TitulosDoRegistro:
         except UnknownCapability:
             return None
 
+    def apps_que_declaram(self, capability: str) -> tuple[str, ...]:
+        if not capability:
+            return ()
+        return tuple(d.package for d in registry.registered() if self.titulo(d.package, capability) is not None)
+
 
 __all__ = ["TIPO_DO_EVENTO", "Barramento", "EventosNoBarramento", "RiscoDoRegistro", "TitulosDoRegistro"]

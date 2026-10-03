@@ -230,6 +230,10 @@ class TitulosDoCatalogo(Protocol):
     português. É texto do catálogo, não da execução. App sem catálogo ou capability desconhecida: `None`."""
 
     def titulo(self, app: str, capability: str) -> str | None: ...
+    def apps_que_declaram(self, capability: str) -> tuple[str, ...]:
+        """Os pacotes cujo catálogo declara a capability: o sinal sem app (a decisão de aprovação) acha o nome
+        quando só um app a declara."""
+        ...
 
 
 # ------------------------------------------------------------------ o curador por IA (30.11, §8.5-8.8)

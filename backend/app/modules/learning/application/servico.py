@@ -323,9 +323,16 @@ class LearningService:
 
     def nome_da_capability(self, app: str | None, capability: str | None) -> str | None:
         """O nome em português da capability no catálogo do app (`domain/conteudo.nome_da_capability`), para o grupo
-        do painel. Sem catálogo, sem app ou capability desconhecida: `None` (o painel mostra o código)."""
-        if self._titulos is None or not app or not capability:
+        do painel. Sem app (o sinal da decisão de aprovação vem sem pacote), o do único catálogo que declara a
+        capability; declarada por dois apps, não há como escolher. Sem catálogo ou capability desconhecida: `None`
+        (o painel mostra o código)."""
+        if self._titulos is None or not capability:
             return None
+        if not app:
+            apps = self._titulos.apps_que_declaram(capability)
+            if len(apps) != 1:
+                return None
+            app = apps[0]
         return nome_da_capability(self._titulos.titulo(app, capability))
 
     def nomes_das_capabilities(self, entradas: Sequence[EntradaDoLivro],

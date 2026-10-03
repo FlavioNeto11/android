@@ -247,7 +247,7 @@ async def test_filha_desabilitada_poe_a_composta_em_needs_input_sem_plano(parque
     detalhe = await parque.wait_run(run.id, statuses=("needs_input", "failed", "completed"), timeout=30)
     # o texto da tela é para o dono (I4 da validação do deploy 7); o código vai num campo próprio do `run.updated`
     assert detalhe.status == "needs_input" and "E_SKILL_NOT_FOUND" not in (detalhe.status_detail or "")
-    assert "não serve para este comando" in (detalhe.status_detail or "")
+    assert "não serviu para este pedido" in (detalhe.status_detail or "")
     codigos = [json.loads(r["data"] or "{}").get("issue_codes") for r in s.db.query(
         "SELECT data FROM events WHERE run_id=? AND kind='run.updated' ORDER BY id", (run.id,))]
     assert ["E_SKILL_NOT_FOUND"] in codigos

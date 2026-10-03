@@ -42,8 +42,9 @@ def test_o_texto_da_execucao_diz_o_nome_e_o_motivo_sem_id_nem_codigo() -> None:
     repo = _sem_plano((falta,), "Abrir o QA Messenger e navegar até a tela de Perfil")
     [(_, status, detalhe, kw_status)] = repo.status
     assert status is RunStatus.needs_input
-    assert detalhe == ("A habilidade “Abrir o QA Messenger e navegar até a tela de Perfil” não serve para este comando: "
-                       "faltam valores para os parâmetros do plano. Corrija o comando ou a habilidade.")
+    # Polimento do Chrome do deploy 12: o que a pessoa faz agora, não "corrija a habilidade".
+    assert detalhe == ("O fluxo salvo “Abrir o QA Messenger e navegar até a tela de Perfil” não serviu para este pedido: "
+                       "faltam valores para os parâmetros do plano. Responda à pergunta ou peça de novo pelo painel.")
     assert "E_PLAN_INVALID" not in detalhe and REF not in detalhe
     # o código vai num campo próprio do `run.updated` da transição
     assert kw_status["dados"] == {"issue_codes": ["E_PLAN_INVALID"]}
@@ -56,8 +57,21 @@ def test_motivos_repetidos_saem_uma_vez_e_os_outros_passam_sem_o_id() -> None:
     a = CompileIssue(Code.E_PLAN_INVALID, f"{REF}: o comando não dá valor a todos os parâmetros do plano.")
     b = CompileIssue(Code.E_PLAN_INVALID, "nó n2: a capability saiu do catálogo.")
     [(_, _, detalhe, _)] = _sem_plano((a, a, b), None).status
-    assert detalhe == ("A habilidade casada não serve para este comando: faltam valores para os parâmetros do plano; "
-                       "nó n2: a capability saiu do catálogo. Corrija o comando ou a habilidade.")
+    assert detalhe == ("O fluxo salvo não serviu para este pedido: faltam valores para os parâmetros do plano; "
+                       "nó n2: a capability saiu do catálogo. Responda à pergunta ou peça de novo pelo painel.")
+
+
+def test_a_skill_publicada_se_chama_habilidade_e_nao_fluxo() -> None:
+    repo = RepoEspiao()
+    ref = "skill:ler-a-conversa@2"
+    falta = CompileIssue(Code.E_SKILL_NOT_FOUND, f"{ref}: nó n1: a habilidade filha não está publicada.")
+    resolvida = SimpleNamespace(resolved=None, questions=(), issues=(falta,), ref=ref, name="Ler a conversa")
+    RunService._skill_sem_plano(SimpleNamespace(repo=repo), "r-2", resolvida)  # type: ignore[arg-type]
+    [(_, _, detalhe, kw_status)] = repo.status
+    assert detalhe == ("A habilidade salva “Ler a conversa” não serviu para este pedido: nó n1: a habilidade filha não "
+                       "está publicada. Responda à pergunta ou peça de novo pelo painel.")
+    assert ref not in detalhe and "E_SKILL_NOT_FOUND" not in detalhe
+    assert kw_status["dados"] == {"issue_codes": ["E_SKILL_NOT_FOUND"]}
 
 
 def test_o_motivo_sem_o_id_na_frente() -> None:

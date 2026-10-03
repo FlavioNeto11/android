@@ -115,6 +115,9 @@ class TitulosFalsos:
     def titulo(self, app: str, capability: str) -> str | None:
         return self.TITULOS.get(capability) if app == PACOTE else None
 
+    def apps_que_declaram(self, capability: str) -> tuple[str, ...]:
+        return (PACOTE,) if capability in self.TITULOS else ()
+
 
 class RegistroVazio:
     def declarados(self) -> list[Declarado]:
@@ -273,6 +276,29 @@ def test_titulos_do_registro_le_o_catalogo_real_com_as_internas() -> None:
     assert t.titulo("com.microsoft.office.outlook", "OPEN_MAIL_INBOX") == "Abrir a caixa de entrada do Outlook"
     assert t.titulo("com.instagram.android", "NAO_EXISTE") is None
     assert t.titulo("com.exemplo.sem.catalogo", "OPEN_PROFILE") is None and t.titulo("", "X") is None
+    # O sinal da decisão de aprovação vem sem pacote: quem declara o código (polimento do Chrome do deploy 12).
+    assert t.apps_que_declaram("REPLY_COMMENT") == ("com.instagram.android",)
+    assert t.apps_que_declaram("NAO_EXISTE") == () and t.apps_que_declaram("") == ()
+
+
+def test_linha_sem_app_e_nomeada_pelo_unico_catalogo_que_declara_a_capability(mundo: Mundo) -> None:
+    """Polimento do Chrome do deploy 12: `aprovacao_decidida` chega aos Sinais sem `app_package` e o painel mostrava
+    REPLY_COMMENT cru. Sem app, o nome vem do catálogo que declara o código, só se for um; dois apps, nulo."""
+    from app.modules.learning.presentation.nomes import nomear
+    linhas: list[object] = [{"app_package": None, "capability": "LIKE_POST"},
+                            {"app_package": None, "capability": "COMMENT"},
+                            {"app_package": "*", "capability": "LIKE_POST"}]
+    nomear(linhas, mundo.servico, app="app_package")
+    assert [x["capability_nome"] for x in linhas if isinstance(x, dict)] == ["Curtir a publicação", None, None]
+
+    class DoisApps(TitulosFalsos):
+        def apps_que_declaram(self, capability: str) -> tuple[str, ...]:
+            return (PACOTE, OUTRO)
+
+    mundo.servico._titulos = DoisApps()
+    ambigua: list[object] = [{"app_package": None, "capability": "LIKE_POST"}]
+    nomear(ambigua, mundo.servico, app="app_package")
+    assert isinstance(ambigua[0], dict) and ambigua[0]["capability_nome"] is None
 
 
 async def test_linhas_e_grupos_trazem_o_nome_da_capability(mundo: Mundo, cliente: httpx.AsyncClient) -> None:
