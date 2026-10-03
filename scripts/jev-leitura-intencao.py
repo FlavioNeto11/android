@@ -17,6 +17,11 @@ O que mede, e com que nível:
    `contrato.pergunta_choice`, que a intenção usa). Desde o 31.19 a porta mede a probabilidade da escolha (ADR-069 item 20).
 4. **Custo e latência** (PROVED): as linhas de `ai_calls` do Jev com `ref` `intencao:<run_id>`: chamadas, falhas, US$
    total e por chamada, tokens, ms p50/p95 pelo posto mais próximo (o mesmo dos outros scripts do Jev e do K-085).
+   Desde a 083 (31.21), cada chamada da sombra diz se chegou ao POST (`postado`) e qual linha de `ai_calls` gerou
+   (`ai_call_id`). Com isso a leitura separa a `rede` antes, depois e sem marca, conta a régua cega (POST sem linha de
+   gasto) e cruza por id: um `ai_call_id` que não é linha do Jev da intenção em `ai_calls` REPROVA. As linhas sem marca
+   (anteriores à 083) seguem só no cruzamento por contagem, que informa. O `--desde` precisa caber na retenção de
+   `ai_calls` (`log_retention_days`, 14 dias de fábrica): linha purgada também não se acha.
 5. **Zero texto** (falha fechado): cada coluna da linha só pode guardar o que o formato dela permite (ids opacos
    `opt:<12 hex>`, vocabulário fechado, números, o `run_id`). Qualquer coluna fora do esquema conhecido, valor fora do
    formato, JSON que não é {id: número} ou string com espaço conta como violação, e o valor nunca é impresso.
@@ -69,10 +74,12 @@ LIMIAR = float(inspect.signature(pergunta_choice).parameters["limiar"].default)
 #: Faixas da distribuição, fixas para comparar leituras de dias diferentes; a última começa no limiar.
 FAIXAS = (0.50, 0.60, 0.70, LIMIAR)
 
-#: As colunas que a sombra tem (074 e 079). Coluna nova sem passar por aqui é violação: ninguém confere o que ela guarda.
+#: As colunas que a sombra tem (074, 079 e 083). Coluna nova sem passar por aqui é violação: ninguém confere o que ela guarda.
 COLUNAS = frozenset({"id", "ts", "chamada", "origem", "classe", "modo", "pergunta_id", "escolha", "probabilidades",
                      "confianca", "decisao_real", "desfecho", "usd", "tokens", "ms", "fallback_reason", "run_id",
-                     "step_id", "ref", "ambiguos", "motivo_privacidade"})
+                     "step_id", "ref", "ambiguos", "motivo_privacidade", "postado", "ai_call_id"})
+#: Rótulo da marca de POST de uma chamada (083): 1, 0 ou sem marca (NULO: não se sabe, ou linha anterior à 083).
+SEM_MARCA = "sem_marca"
 _TS = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z")
 _OPACO = re.compile(r"opt:[0-9a-f]{12}")
 _ID = re.compile(r"[A-Za-z0-9_.:\-]{1,80}")
@@ -133,9 +140,20 @@ def _probabilidades(bruto: object, origem: object = ORIGEM) -> dict[str, float] 
     return {str(k): float(v) for k, v in probs.items()}
 
 
+def _inteiro(valor: object) -> bool:
+    return isinstance(valor, int) and not isinstance(valor, bool)
+
+
 def violacoes_da_linha(linha: Mapping[str, Any]) -> list[str]:
     """O que a linha guarda fora do formato da coluna. Devolve só o NOME da violação, nunca o valor."""
     v: list[str] = [f"coluna_desconhecida:{c}" for c in linha.keys() if c not in COLUNAS]
+    d = dict(linha)
+    postado, ai_call_id = d.get("postado"), d.get("ai_call_id")      # ausentes num banco anterior à 083
+    # a marca da 083 tem de ser coerente: sem POST não há linha de gasto nem resposta
+    if postado == 0 and ai_call_id is not None:
+        v.append("marca:id_sem_post")
+    if postado == 0 and d["fallback_reason"] is None:
+        v.append("marca:resposta_sem_post")
     for coluna, valor in dict(linha).items():
         # o JSON das probabilidades tem espaço pelo `json.dumps` (", " e ": "); ele é conferido pela estrutura, abaixo
         if coluna != "probabilidades" and isinstance(valor, str) and (any(ch.isspace() for ch in valor)
@@ -162,6 +180,8 @@ def violacoes_da_linha(linha: Mapping[str, Any]) -> list[str]:
         ("confianca", linha["confianca"] is None or (isinstance(linha["confianca"], (int, float))
                                                      and 0.0 <= float(linha["confianca"]) <= 1.0)),
         ("ambiguos", linha["ambiguos"] is None or (isinstance(linha["ambiguos"], int) and linha["ambiguos"] >= 0)),
+        ("postado", postado is None or (_inteiro(postado) and postado in (0, 1))),
+        ("ai_call_id", ai_call_id is None or (_inteiro(ai_call_id) and ai_call_id > 0)),
     )
     v += [f"formato:{coluna}" for coluna, ok in regras if not ok]
     return v
@@ -189,6 +209,35 @@ def distribuicao(valores: Sequence[float]) -> dict[str, Any]:
             "p50": percentil(valores, 50), "p95": percentil(valores, 95),
             "max": round(max(valores), 4) if valores else None,
             "acima_do_limiar": sum(1 for x in valores if x >= LIMIAR), "faixas": dict(sorted(faixas.items()))}
+
+
+# ------------------------------------------------------------------ marca de POST (083, 31.21)
+def ler_marcas(intencao: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], set[int], int]:
+    """Por CHAMADA (a marca vai em todas as linhas dela): quantas chegaram ao POST, a `rede` antes/depois/sem marca e a
+    régua cega. Devolve o resumo, os `ai_call_id` das chamadas postadas (para o cruzamento por id) e quantas chamadas
+    têm linhas com marcas diferentes (defeito do registro)."""
+    por_chamada: dict[str, set[tuple[object, object]]] = {}
+    rede: set[str] = set()
+    for x in intencao:
+        d = dict(x)
+        por_chamada.setdefault(str(d["chamada"]), set()).add((d.get("postado"), d.get("ai_call_id")))
+        if d["fallback_reason"] == "rede":
+            rede.add(str(d["chamada"]))
+    divergentes = sum(1 for marcas in por_chamada.values() if len(marcas) > 1)
+    marca = {c: next(iter(sorted(m, key=repr))) for c, m in por_chamada.items()}
+
+    def _rotulo(postado: object) -> str:
+        return str(postado) if postado in (0, 1) and _inteiro(postado) else SEM_MARCA
+
+    ids = {int(i) for p, i in marca.values() if p == 1 and _inteiro(i) and int(i) > 0}
+    resumo = {
+        "chamadas_por_marca": dict(Counter(_rotulo(p) for p, _ in marca.values())),
+        "rede": {"antes_do_post": sum(1 for c in rede if marca[c][0] == 0),
+                 "depois_do_post": sum(1 for c in rede if marca[c][0] == 1),
+                 SEM_MARCA: sum(1 for c in rede if _rotulo(marca[c][0]) == SEM_MARCA)},
+        "regua_cega": sum(1 for p, i in marca.values() if p == 1 and i is None),
+    }
+    return resumo, ids, divergentes
 
 
 # ------------------------------------------------------------------ montagem
@@ -228,7 +277,11 @@ def ler_sombra(linhas: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     for x in intencao:
         if float(x["ms"] or 0) > 0:
             chamadas_ms.setdefault(str(x["chamada"]), float(x["ms"]))
+    marcas, ids_postados, divergentes = ler_marcas(intencao)
+    if divergentes:
+        violacoes["marca:chamada_com_marcas_diferentes"] += divergentes
     return {
+        "_ids_postados": ids_postados,              # só para o cruzamento por id; `montar` tira antes de sair
         "linhas": len(linhas),
         "por_origem_classe_modo": dict(Counter(f"{_vocab(x['origem'], ORIGENS)}/{_vocab(x['classe'], CLASSES)}/"
                                                f"{_vocab(x['modo'], MODOS)}" for x in linhas)),
@@ -251,6 +304,7 @@ def ler_sombra(linhas: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
                                          "p95": percentil(list(chamadas_ms.values()), 95)},
             "usd_na_sombra": round(sum(float(x["usd"] or 0) for x in intencao), 6),
             "chamadas_postadas": len({x["chamada"] for x in intencao if x["fallback_reason"] not in SEM_POST}),
+            "marca_de_post": marcas,
         },
         "limiar": LIMIAR,
         "violacoes": dict(violacoes),
@@ -281,18 +335,39 @@ def montar(conn: sqlite3.Connection, *, desde: str) -> dict[str, Any]:
     sombra = ler_sombra(linhas)
     gasto = ler_gasto(chamadas)
     postadas = sombra["intencao"]["chamadas_postadas"]
-    problemas = sorted(sombra["violacoes"])
+    por_id = cruzar_por_id(conn, sombra.pop("_ids_postados"), {int(c["id"]) for c in chamadas})
+    problemas = sorted(sombra["violacoes"]) + (["cruzamento:ai_call_id_sem_linha_do_jev"] if por_id["nao_achadas"] else [])
     # falha fechado: com violação em qualquer linha (de qualquer origem), nem a falta de amostra da intenção passa
     veredito = "FALHOU" if problemas else ("SEM AMOSTRA" if not sombra["intencao"]["linhas"] else "OK")
     return {"desde": desde, "sombra": sombra, "gasto": gasto,
             "cruzamento": {"chamadas_postadas_na_sombra": postadas, "linhas_em_ai_calls": gasto["chamadas"],
                            "bate": postadas == gasto["chamadas"]},
-            "problemas": problemas, "veredito": veredito}
+            "cruzamento_por_id": por_id, "problemas": problemas, "veredito": veredito}
+
+
+def cruzar_por_id(conn: sqlite3.Connection, ids_postados: set[int], ids_no_periodo: set[int]) -> dict[str, Any]:
+    """O cruzamento EXATO da 083: cada `ai_call_id` de chamada postada tem de ser uma linha do Jev da intenção em
+    `ai_calls`. Procura por id, e não pela janela `ts >= desde`, porque a linha de gasto nasce antes da linha da sombra
+    e uma chamada na borda do `--desde` não pode reprovar. A linha de `ai_calls` sem linha marcada na sombra só informa:
+    as anteriores à 083, a exceção depois do POST e o futuro em voo no `on` não têm marca."""
+    achadas: set[int] = set()
+    lista = sorted(ids_postados)
+    for i in range(0, len(lista), 500):
+        lote = lista[i:i + 500]
+        achadas |= {int(r["id"]) for r in conn.execute(
+            f"SELECT id FROM ai_calls WHERE id IN ({','.join('?' * len(lote))}) AND provider=? AND origem=? AND ref LIKE ?",
+            (*lote, PROVEDOR_DO_JEV, ORIGEM_NO_GASTO, f"{ORIGEM}:%"))}
+    return {"chamadas_postadas_com_id": len(lista), "achadas": len(achadas), "nao_achadas": len(lista) - len(achadas),
+            "ai_calls_sem_linha_marcada": len(ids_no_periodo - ids_postados), "bate": len(achadas) == len(lista),
+            "nivel": "PROVED"}
 
 
 def resumo(rel: Mapping[str, Any]) -> str:
     s, i, g, x = rel["sombra"], rel["sombra"]["intencao"], rel["gasto"], rel["cruzamento"]
     r2, r3 = i["por_pergunta"]["R2"], i["por_pergunta"]["R3"]
+    m, p = i["marca_de_post"], rel["cruzamento_por_id"]
+    problemas = {**s["violacoes"], **({"cruzamento:ai_call_id_sem_linha_do_jev": p["nao_achadas"]} if p["nao_achadas"]
+                                      else {})}
 
     def _dist(d: Mapping[str, Any]) -> str:
         return (f"n {d['n']}, p50 {d['p50']}, p95 {d['p95']}, máx. {d['max']}, ≥ limiar {d['acima_do_limiar']}"
@@ -304,7 +379,9 @@ def resumo(rel: Mapping[str, Any]) -> str:
         f"3. Intenção: {i['linhas']} linhas, {i['chamadas']} chamadas, {i['comandos']} comandos",
         f"4. R2: {r2['pedidos']} pedidos, {r2['respondidas']} respondidas ({r2['abstencoes']} nenhuma), "
         f"{r2['fallbacks']} fallbacks; R3: {r3['pedidos']} pedidos, {r3['respondidas']} respondidas, {r3['fallbacks']} fallbacks",
-        f"5. Recusas por fallback: {i['fallbacks'] or 'nenhuma'}; privacidade por motivo: {i['motivos_de_privacidade'] or '—'}",
+        f"5. Recusas por fallback: {i['fallbacks'] or 'nenhuma'}; privacidade por motivo: {i['motivos_de_privacidade'] or '—'}; "
+        f"rede por chamada (083): {m['rede']['antes_do_post']} antes do POST, {m['rede']['depois_do_post']} depois, "
+        f"{m['rede'][SEM_MARCA]} sem marca",
         f"6. Confiança: {_dist(i['confianca'])}",
         f"7. Probabilidade da escolha (respondidas): {_dist(i['probabilidade_da_escolha'])}; "
         f"maior probabilidade (todas): {_dist(i['maior_probabilidade'])}",
@@ -313,8 +390,10 @@ def resumo(rel: Mapping[str, Any]) -> str:
         f"tokens {g['tokens_entrada']} + {g['tokens_saida']}",
         f"9. Latência: p50 {g['ms_p50']} ms, p95 {g['ms_p95']} ms, máx. {g['ms_max']} ms; cruzamento "
         f"{x['chamadas_postadas_na_sombra']} postadas × {x['linhas_em_ai_calls']} em ai_calls "
-        f"({'bate' if x['bate'] else 'NÃO bate'})",
-        f"10. Zero texto: {'nenhuma violação' if not rel['problemas'] else 'VIOLAÇÕES ' + str(s['violacoes'])}",
+        f"({'bate' if x['bate'] else 'NÃO bate'}; informa); por id (083): {p['achadas']} de "
+        f"{p['chamadas_postadas_com_id']} achadas ({'bate' if p['bate'] else 'NÃO bate'}), régua cega {m['regua_cega']}, "
+        f"chamadas por marca {m['chamadas_por_marca'] or '—'}",
+        f"10. Zero texto e marca: {'nenhuma violação' if not rel['problemas'] else 'VIOLAÇÕES ' + str(problemas)}",
     ])
 
 

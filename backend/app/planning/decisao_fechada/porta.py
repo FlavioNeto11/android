@@ -95,7 +95,7 @@ class Porta:
             return resultado_de_fallback(pedido, "desligado")
         recusa = privacidade.validar(replace(pedido, modo=modo), classes_yaml=self._classes_yaml())
         if not recusa.permitido:
-            res = resultado_de_fallback(pedido, "privacidade")
+            res = resultado_de_fallback(pedido, "privacidade", postado=False)
             self._observar(pedido, modo, res, ao_registrar)  # a recusa também é medida (ids e categorias, sem estado)
             return res
         pronto = privacidade.redigir(pedido)
@@ -156,13 +156,15 @@ class Porta:
         try:
             bruto = self.decisor.decidir(pedido, TIMEOUT_SHADOW_S)
             ms = (time.perf_counter() - t0) * 1000
-            res = (resultado_de_fallback(pedido, "rede", ms=ms) if ms > TIMEOUT_SHADOW_S * 1000
-                   else self._conferir(pedido, bruto))
+            # acima do prazo é `rede`, mas o POST aconteceu: a marca e a linha de gasto do decisor seguem (31.21)
+            res = (resultado_de_fallback(pedido, "rede", ms=ms, postado=bruto.postado, ai_call_id=bruto.ai_call_id)
+                   if ms > TIMEOUT_SHADOW_S * 1000 else self._conferir(pedido, bruto))
         except FalhaDeDecisao as exc:
-            res = resultado_de_fallback(pedido, exc.motivo, ms=(time.perf_counter() - t0) * 1000)
+            res = resultado_de_fallback(pedido, exc.motivo, ms=(time.perf_counter() - t0) * 1000, postado=exc.postado,
+                                        ai_call_id=exc.ai_call_id)
         except Exception:
             log.warning("decisao_fechada: falha inesperada do decisor na sombra")
-            res = resultado_de_fallback(pedido, "rede", ms=(time.perf_counter() - t0) * 1000)
+            res = resultado_de_fallback(pedido, "rede", ms=(time.perf_counter() - t0) * 1000)  # postado: não se sabe
         self._observar(pedido, "shadow", res, ao_registrar)
 
     def _chamar_com_timeout(self, pedido: PedidoDeDecisao, timeout_s: float) -> ResultadoDeDecisao:
@@ -172,9 +174,11 @@ class Porta:
             return self._conferir(pedido, fut.result(timeout=timeout_s))
         except FuturoExpirou:
             fut.cancel()  # se já começou, a resposta tardia é descartada: o caminho de hoje não espera
+            # o futuro pode estar antes ou depois do POST: `postado` fica "não se sabe"
             return resultado_de_fallback(pedido, "rede", ms=(time.perf_counter() - t0) * 1000)
         except FalhaDeDecisao as exc:
-            return resultado_de_fallback(pedido, exc.motivo, ms=(time.perf_counter() - t0) * 1000)
+            return resultado_de_fallback(pedido, exc.motivo, ms=(time.perf_counter() - t0) * 1000, postado=exc.postado,
+                                         ai_call_id=exc.ai_call_id)
         except Exception:
             log.warning("decisao_fechada: falha inesperada do decisor")
             return resultado_de_fallback(pedido, "rede", ms=(time.perf_counter() - t0) * 1000)
@@ -199,7 +203,8 @@ class Porta:
     def _conferir(pedido: PedidoDeDecisao, bruto: ResultadoDeDecisao) -> ResultadoDeDecisao:
         respostas = {p.id: _conferir_resposta(p, bruto.respostas.get(p.id)) for p in pedido.perguntas}
         return ResultadoDeDecisao(respostas, tokens=bruto.tokens, usd=bruto.usd, ms=bruto.ms,
-                                  fallback_reason=bruto.fallback_reason)
+                                  fallback_reason=bruto.fallback_reason, postado=bruto.postado,
+                                  ai_call_id=bruto.ai_call_id)
 
 
 def _conferir_resposta(p: Pergunta, r: RespostaDeDecisao | None) -> RespostaDeDecisao:

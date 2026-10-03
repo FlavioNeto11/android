@@ -43,25 +43,27 @@ class Banco:
     def sombra(self, run: str, chamada: str, *, pergunta: str = "intencao_catalogo", escolha: str | None = A,
                probs: Any = None, conf: float | None = 0.9, fallback: str | None = None, motivo: str | None = None,
                usd: float = 0.0, ms: float = 400.0, ts: str = DEPOIS, origem: str = "intencao", classe: str = "C3",
-               ref: str | None = None) -> None:
+               ref: str | None = None, postado: Any = None, ai_call_id: Any = None) -> None:
+        """`postado`/`ai_call_id` NULOS por padrão: a linha como era antes da 083 (sem marca)."""
         if probs is None and fallback != "privacidade":
             probs = {escolha or A: conf or 0.0, NENHUMA: round(1 - (conf or 0.0), 2)}
         self.db.execute(
             "INSERT INTO decisao_fechada_sombra(ts, chamada, origem, classe, modo, pergunta_id, escolha, probabilidades,"
-            " confianca, usd, tokens, ms, fallback_reason, run_id, ref, motivo_privacidade)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " confianca, usd, tokens, ms, fallback_reason, run_id, ref, motivo_privacidade, postado, ai_call_id)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (ts, chamada, origem, classe, "shadow", pergunta, escolha if fallback is None else None,
              probs if isinstance(probs, str) else (json.dumps(probs, sort_keys=True) if probs else None),
              conf, usd, 10 if usd else 0, ms if fallback != "privacidade" else 0.0, fallback, run,
-             ref if ref is not None else run, motivo))
+             ref if ref is not None else run, motivo, postado, ai_call_id))
 
     def chamada(self, run: str, *, ok: bool = True, usd: float = 0.00003, ms: int = 400, ts: str = DEPOIS,
-                origem: str = "intencao", erro: str | None = None) -> None:
-        self.db.execute(
+                origem: str = "intencao", erro: str | None = None) -> int:
+        """A linha do Jev em `ai_calls`; devolve o id, como `registrar_chamada` devolve desde a 083."""
+        return int(self.db.inserted_id(
             "INSERT INTO ai_calls(ts, role, model, tier, input_tokens, output_tokens, ms, ok, provider, error_kind, usd,"
             " origem, ref) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (ts, "decisao_fechada", "jev-1.13.0", 0, 600, 80, ms, int(ok), "jev", erro, usd, "decisao_fechada",
-             f"{origem}:{run}"))
+             f"{origem}:{run}")))
 
     def rodar(self, tmp: Path, *args: str) -> tuple[int, dict[str, Any]]:
         self.db.close()
@@ -194,3 +196,87 @@ def test_abre_so_leitura_e_nao_cria_banco(tmp_path: Path, banco: Banco) -> None:
             conn.execute("DELETE FROM decisao_fechada_sombra")
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------- a marca de POST (083, 31.21)
+def _sombra_marcada(b: Banco) -> None:
+    """Cinco chamadas: r-1 respondida (POST, com o id da linha de gasto); r-2 `rede` antes do POST; r-3 privacidade (sem
+    POST); r-4 `rede` depois do POST sem linha de gasto (régua cega); r-5 `rede` sem marca (anterior à 083)."""
+    id1 = b.chamada("r-1", ms=420)
+    b.sombra("r-1", "ch1", escolha=A, conf=0.9, probs={A: 0.9, NENHUMA: 0.1}, usd=0.00003, ms=420.0, postado=1,
+             ai_call_id=id1)
+    b.sombra("r-1", "ch1", pergunta="intencao_desempate", escolha=None, conf=0.5, probs={A: 0.6, B: 0.4},
+             fallback="abaixo_do_limiar", ms=420.0, postado=1, ai_call_id=id1)
+    b.sombra("r-2", "ch2", escolha=None, conf=None, probs={}, fallback="rede", ms=5.0, postado=0)
+    b.sombra("r-3", "ch3", escolha=None, conf=None, fallback="privacidade", motivo="c7_gatilho", postado=0)
+    b.sombra("r-4", "ch4", escolha=None, conf=None, probs={}, fallback="rede", ms=5100.0, postado=1)
+    b.sombra("r-5", "ch5", escolha=None, conf=None, probs={}, fallback="rede", ms=5100.0)
+    b.chamada("r-5", ok=False, erro="rede", usd=0.0)
+
+
+def test_a_marca_separa_a_rede_e_o_cruzamento_por_id_bate(banco: Banco, tmp_path: Path,
+                                                         capsys: pytest.CaptureFixture[str]) -> None:
+    _sombra_marcada(banco)
+    codigo, rel = banco.rodar(tmp_path)
+    assert codigo == 0 and rel["veredito"] == "OK", rel["problemas"]
+    assert rel["sombra"]["intencao"]["marca_de_post"] == {
+        "chamadas_por_marca": {"1": 2, "0": 2, "sem_marca": 1},
+        "rede": {"antes_do_post": 1, "depois_do_post": 1, "sem_marca": 1}, "regua_cega": 1}
+    assert rel["cruzamento_por_id"] == {"chamadas_postadas_com_id": 1, "achadas": 1, "nao_achadas": 0,
+                                        "ai_calls_sem_linha_marcada": 1, "bate": True, "nivel": "PROVED"}
+    linhas = capsys.readouterr().out.strip().splitlines()
+    assert len(linhas) == 10
+    assert "1 antes do POST, 1 depois, 1 sem marca" in linhas[4]
+    assert "por id (083): 1 de 1 achadas (bate), régua cega 1" in linhas[8]
+
+
+def test_id_que_nao_e_linha_do_jev_da_intencao_reprova(banco: Banco, tmp_path: Path) -> None:
+    _sombra_marcada(banco)
+    do_curador = banco.chamada("abc", origem="curador")
+    banco.sombra("r-6", "ch6", escolha=A, conf=0.9, probs={A: 0.9}, postado=1, ai_call_id=do_curador)
+    banco.sombra("r-7", "ch7", escolha=A, conf=0.9, probs={A: 0.9}, postado=1, ai_call_id=987654)    # não existe
+    codigo, rel = banco.rodar(tmp_path)
+    assert codigo == 1 and rel["veredito"] == "FALHOU"
+    assert rel["problemas"] == ["cruzamento:ai_call_id_sem_linha_do_jev"]
+    assert (rel["cruzamento_por_id"]["nao_achadas"], rel["cruzamento_por_id"]["bate"]) == (2, False)
+
+
+def test_linha_de_gasto_antes_do_desde_ainda_e_achada_pelo_id(banco: Banco, tmp_path: Path) -> None:
+    """A linha de gasto nasce antes da linha da sombra: na borda do `--desde`, procurar por id não reprova à toa."""
+    id_antigo = banco.chamada("r-1", ts=ANTES)
+    banco.sombra("r-1", "ch1", escolha=A, conf=0.9, probs={A: 0.9}, postado=1, ai_call_id=id_antigo)
+    codigo, rel = banco.rodar(tmp_path)
+    assert codigo == 0, rel["problemas"]
+    assert (rel["cruzamento_por_id"]["achadas"], rel["gasto"]["chamadas"]) == (1, 0)
+
+
+def test_marca_incoerente_ou_fora_do_formato_falha_fechado(banco: Banco, tmp_path: Path) -> None:
+    id1 = banco.chamada("r-1")
+    banco.sombra("r-1", "ch1", escolha=None, conf=None, probs={}, fallback="rede", postado=0, ai_call_id=id1)
+    banco.sombra("r-2", "ch2", escolha=A, conf=0.9, probs={A: 0.9}, postado=0)               # resposta sem POST
+    banco.sombra("r-3", "ch3", escolha=None, conf=None, probs={}, fallback="rede", postado=2)
+    banco.sombra("r-4", "ch4", escolha=None, conf=None, probs={}, fallback="rede", postado=1, ai_call_id=-1)
+    banco.sombra("r-5", "ch5", escolha=None, conf=None, probs={}, fallback="rede", postado=1, ai_call_id="abc")
+    banco.sombra("r-6", "ch6", escolha=A, conf=0.9, probs={A: 0.9}, postado=1, ai_call_id=id1)
+    banco.sombra("r-6", "ch6", pergunta="intencao_desempate", escolha=None, conf=None, probs={}, fallback="rede",
+                 postado=0)                                                                  # a mesma chamada, outra marca
+    codigo, rel = banco.rodar(tmp_path)
+    assert codigo == 1
+    v = rel["sombra"]["violacoes"]
+    assert v["marca:id_sem_post"] == 1 and v["marca:resposta_sem_post"] == 1
+    assert v["formato:postado"] == 1 and v["formato:ai_call_id"] == 2
+    assert v["marca:chamada_com_marcas_diferentes"] == 1
+
+
+def test_banco_anterior_a_083_le_tudo_sem_marca(banco: Banco, tmp_path: Path) -> None:
+    banco.db.execute("ALTER TABLE decisao_fechada_sombra DROP COLUMN ai_call_id")
+    banco.db.execute("ALTER TABLE decisao_fechada_sombra DROP COLUMN postado")
+    banco.db.execute(
+        "INSERT INTO decisao_fechada_sombra(ts, chamada, origem, classe, modo, pergunta_id, escolha, probabilidades,"
+        " confianca, ms, fallback_reason, run_id, ref) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (DEPOIS, "ch1", "intencao", "C3", "shadow", "intencao_catalogo", None, None, None, 5100.0, "rede", "r-1", "r-1"))
+    codigo, rel = banco.rodar(tmp_path)
+    assert codigo == 0, rel["problemas"]
+    assert rel["sombra"]["intencao"]["marca_de_post"]["rede"] == {"antes_do_post": 0, "depois_do_post": 0,
+                                                                  "sem_marca": 1}
+    assert rel["cruzamento_por_id"]["chamadas_postadas_com_id"] == 0 and rel["cruzamento_por_id"]["bate"] is True

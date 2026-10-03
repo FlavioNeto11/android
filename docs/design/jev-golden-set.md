@@ -251,6 +251,18 @@ Todas as medidas abaixo são PROVED:
   total e por chamada, tokens, ms p50/p95 pelo posto mais próximo). O cruzamento com as chamadas da sombra que chegaram
   ao POST deixa de fora as recusas por privacidade, orçamento e desligado, que não viram linha. Esse cruzamento informa e
   não reprova, porque a `rede` do prazo esgotado antes do POST também não vira linha e a sombra não a distingue.
+- **Marca de POST (desde a 083, 31.21):** cada chamada da sombra diz se chegou ao POST (`postado`) e qual linha de
+  `ai_calls` gerou (`ai_call_id`; `docs/ia.md` §16). A leitura:
+  - conta as chamadas por marca (1, 0, sem marca);
+  - separa a `rede` em antes do POST, depois e sem marca;
+  - conta a régua cega (POST sem linha de gasto);
+  - cruza por id: cada `ai_call_id` tem de ser uma linha do Jev da intenção em `ai_calls`, procurada pelo id e não pela
+    janela do `--desde`. Se não for, REPROVA. Por isso o `--desde` precisa caber na retenção de `ai_calls` (14 dias de
+    fábrica).
+
+  Marca incoerente também é violação: id sem POST, resposta sem POST ou a mesma chamada com marcas diferentes. As linhas
+  anteriores à 083 ficam sem marca e só entram no cruzamento por contagem, e um banco sem as colunas é lido do mesmo
+  jeito.
 - **Zero texto (falha fechado):** cada coluna só aceita o formato dela, e um valor fora do formato vira violação pelo
   nome, nunca pelo conteúdo. O formato de cada coluna é:
   - ids opacos `opt:<12 hex>` ou `opt:nenhuma`;
@@ -259,7 +271,7 @@ Todas as medidas abaixo são PROVED:
   - números;
   - `ref` e `run_id` sem espaço.
 
-  Coluna fora do esquema de 074 e 079 também é violação.
+  Coluna fora do esquema de 074, 079 e 083 também é violação.
 - Saída: dez linhas e, com `--json`, só contagens, motivos e números. Código 0 quando tudo confere, 1 com violação
   (mesmo sem amostra), 2 sem linha da intenção no período.
 
