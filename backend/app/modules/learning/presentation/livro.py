@@ -311,7 +311,11 @@ async def mudar_status(request: Request, kind: LivroKind, ref: str, corpo: Corpo
 async def invalidar_evidencia(request: Request, kind: LivroKind, ref: str, corpo: CorpoDeEvidenciaInvalida) -> JsonObject:
     servico = _servico(request)
     quem = _quem(request)
-    entrada = _chamar(lambda: servico.invalidar_evidencia(kind, ref, corpo.run_id, by=quem))
+    pareceres = _pareceres(servico)
+    if pareceres is not None:
+        entrada = _chamar(lambda: pareceres.invalidar_evidencia(kind, ref, corpo.run_id, by=quem))
+    else:
+        entrada = _chamar(lambda: servico.invalidar_evidencia(kind, ref, corpo.run_id, by=quem))
     return _detalhe(_chamar(lambda: servico.detalhe(entrada.kind, entrada.ref)), servico)
 
 

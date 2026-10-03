@@ -4014,6 +4014,9 @@ pessoa: a escolha dela mede se a IA acerta, sem a influência dela (D-3). O pare
 - `review_id` que não responde ao estado de agora (já decidido, outro estado): a decisão fica, sem rótulo.
 - `PUT /api/flows/{id}` e `PUT /api/recipes/{id}` rotulam sempre às cegas (a página delas não mostra parecer), com o rótulo
   do primeiro passo. Decisão do ator `sistema` nunca rotula.
+- `POST /api/aprendizado/{kind}/{ref}/evidencia-invalida` (30.23, adendo v0.70) rotula como o `/status`: vista em `on` (o
+  detalhe mostra o parecer ao lado do botão), às cegas fora dele. Reclassificar o já desligado não muda o estado e não
+  rotula.
 
 **O gesto sobre o parecer.** `POST /api/aprendizado/{kind}/{ref}/parecer/{review_id} {resposta: "aceitar"|"recusar",
 motivo (1 a 500), em_lote?: false}` → o corpo do detalhe.

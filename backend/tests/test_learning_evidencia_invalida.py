@@ -30,23 +30,27 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from app.config import CuradorCfg
 from app.db import Database
 from app.models import Plan, PlannerInfo, PlanStep, Postcondition, StepResult
 from app.modules.learning.application import nativos
-from app.modules.learning.application.ports import Ajustes, MudancaNativa
+from app.modules.learning.application.pareceres import ServicoDePareceres
+from app.modules.learning.application.ports import Ajustes, MudancaNativa, NovaRevisao
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.ciclo import (Desligamento, EntradaInvalida, ExigeODono, SkillState,
                                                TransicaoProibida, conferir_transicao, exige_o_dono, motivo_do_veto,
                                                permitido)
+from app.modules.learning.domain.curador import Decisao, Parecer
 from app.modules.learning.domain.espera import AvisoDeEspera, Faixa, MotivoDeEntrada
 from app.modules.learning.domain.evidencia_invalida import (Renascimento, ja_invalidada, motivo_de_evidencia_invalida,
                                                             reaprendizado, reservado, run_da_etapa, run_invalidada)
 from app.modules.learning.domain.livro import Transicao, por_que_o_sistema_nao_publica
 from app.modules.learning.domain.politica_de_risco import ClasseDeRisco, FatosDeRisco, Razao, classificar
 from app.modules.learning.domain.vocabulario import LivroKind
-from app.modules.learning.infrastructure import ligar_nativos
+from app.modules.learning.infrastructure import ligar_curador, ligar_nativos
 from app.modules.learning.infrastructure.dossies import DossiesSql
 from app.modules.learning.infrastructure.fontes import FontesSql
+from app.modules.learning.infrastructure.revisoes_sql import RegistroDeRevisoesSql
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
 from app.modules.learning.infrastructure.sql_repository import SqlLearningRepository
 from app.modules.learning.presentation.router import router as learning_router
@@ -353,6 +357,67 @@ def test_reaprendida_com_commit_segue_no_dono_e_a_aposentada_nao_muda(receitas: 
 
 # ------------------------------------------------------------------ fluxo: a mesma linha renasce
 MODELO = "no outlook, leia o remetente da mensagem de {remetente}"
+
+
+# ------------------------------------------------------------------ 30.17 × 30.23: a marca rotula o parecer
+def _com_curador(m: Receitas, modo: str) -> ServicoDePareceres:
+    cfg = CuradorCfg(modo=modo, cooldown_h=0)
+    ligar_curador.ligar(m.servico, m.repo, m.db, TriagemDeCredencial(), config=lambda: cfg, precos=dict,
+                        relogio=now, catalogo=None)
+    pareceres = m.servico.extensao(ServicoDePareceres)
+    assert pareceres is not None
+    return pareceres
+
+
+def _parecer_pendente(m: Receitas, rid: int, decisao: Decisao) -> str:
+    """Uma revisão válida, sem decisão, sobre o estado de agora da receita (gravada direto, sem o laço)."""
+    ref = f"receita:{rid}"
+    estado = m.entrada(rid).state
+    assert estado is not None
+    rev = RegistroDeRevisoesSql(m.db).gravar(NovaRevisao(
+        item_ref=ref, item_kind="receita", scope_app=PKG, gatilho="nova_pendencia_do_dono",
+        dossie_hash=f"h-{rid}-{estado.value}-{decisao.value}", dossie={"item": {"estado": estado.value}},
+        template_id="curador", template_versao="dossie-v1", provedor="teste", modelo="m", simulated=False,
+        validade="ok", saida=Parecer(decisao=decisao, evidencias_citadas=(ref,)).como_dados(), classe_de_risco="B",
+        politica="teste"), AGORA)
+    assert rev is not None
+    return rev
+
+
+@pytest.mark.parametrize(("modo", "candidata", "decisao", "esperado"), [
+    ("shadow", True, Decisao.APROVAR, ("rejeitar", 1)),       # às cegas: o rótulo da ação; desceu contra "aprovar"
+    ("on", False, Decisao.REBAIXAR, ("aceitou", 0)),          # vista: desligar o publicado é o lado de "rebaixar"
+])
+def test_a_evidencia_invalida_rotula_o_parecer_pendente(receitas: Receitas, modo: str, candidata: bool,
+                                                         decisao: Decisao, esperado: tuple[str, int]) -> None:
+    """30.17 × 30.23: marcar a evidência inválida é decisão de pessoa como o `/status`: o parecer pendente do estado
+    de antes ganha o rótulo, às cegas fora do `on`, e a transição da marca fica ligada a ele."""
+    m = receitas
+    m.execucao(FALSA)
+    rid = m.salva(FALSA, candidate=candidata)
+    assert rid
+    pareceres = _com_curador(m, modo)
+    rev = _parecer_pendente(m, rid, decisao)
+    pareceres.invalidar_evidencia(LivroKind.RECEITA, str(rid), FALSA, by=DONO)
+    linha = m.db.one("SELECT decisao_final, override, decidido_por, transicao_id FROM learning_reviews WHERE id=?",
+                     (rev,))
+    assert (linha["decisao_final"], linha["override"], linha["decidido_por"]) == (*esperado, DONO)
+    marca = m.repo.trilha(f"receita:{rid}")[-1]
+    assert marca.reason == motivo_de_evidencia_invalida(FALSA) and linha["transicao_id"] == marca.id
+
+
+def test_reclassificar_o_ja_desligado_nao_rotula(receitas: Receitas) -> None:
+    """O já desligado ganha só a linha que reclassifica: o estado não muda e o parecer de `disabled` segue pendente."""
+    m = receitas
+    m.execucao(FALSA)
+    rid = m.salva(FALSA)
+    assert rid
+    m.servico.mudar_estado(LivroKind.RECEITA, str(rid), S.DISABLED, by=DONO, reason="desligada à mão antes do tipo")
+    pareceres = _com_curador(m, "on")
+    rev = _parecer_pendente(m, rid, Decisao.MANTER)
+    pareceres.invalidar_evidencia(LivroKind.RECEITA, str(rid), FALSA, by=DONO)
+    assert m.trilha(rid)[-1] == ("disabled", "disabled", motivo_de_evidencia_invalida(FALSA))
+    assert m.db.scalar("SELECT decisao_final FROM learning_reviews WHERE id=?", (rev,)) is None
 
 
 def _plano(remetente: str) -> Plan:

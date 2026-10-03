@@ -53,6 +53,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `test_learning_backlog` e `test_learning_repositorio` passam a usar meio-dia fixo. A suíte 5b falhou perto da meia-noite
   UTC porque a semente cruzava o dia.
 - Adendo v0.70; emenda ao ADR-054. Prova `simulated`; a marca da 109 e do fluxo no central é `not_run` até o deploy.
+- Com o 30.17 (merge da main no branch): a marca rotula o parecer pendente do curador como o `/status` (vista em `on`,
+  às cegas fora dele); reclassificar o já desligado não rotula (`tests/test_learning_evidencia_invalida.py`).
 
 ## 2026-10-02 — Emenda do ADR-069: a chave TypeSafe não é trocada (decisão do dono, item 9)
 

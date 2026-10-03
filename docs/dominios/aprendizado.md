@@ -581,7 +581,8 @@ com o MESMO registro e a mesma fonte de dossiês do curador); leitura e gravaç�
 - **Visibilidade** (`parecer_visivel`): em `on`, sempre; fora dele, só o parecer já decidido. A sombra mede a IA contra a
   decisão da pessoa sem que ela veja a sugestão (D-3); o detalhe só avisa que há um parecer escondido.
 - **Rótulo.** É o único produtor de rótulo humano de `learning_reviews` (decisão da orquestradora, 03/10: sem caminho
-  paralelo). Toda transição de pessoa pelo Livro (`/status`, os `PUT` legados) rotula o parecer pendente do estado de antes,
+  paralelo). Toda transição de pessoa pelo Livro (`/status`, os `PUT` legados e a evidência inválida do 30.23) rotula o
+  parecer pendente do estado de antes,
   DEPOIS da transição e sem nunca travá-la (uma falha do rótulo só vai ao log). Vista (`review_id` ou modo `on`):
   `aceitou` ou `recusou`, pelo lado da sugestão (`Direcao`: sobe, desce, espera). Às cegas: o rótulo da própria ação, com
   `override` pelo lado. O instante da decisão é o `created_at` do sinal `parecer_decidido` (a 069 não tem coluna).
