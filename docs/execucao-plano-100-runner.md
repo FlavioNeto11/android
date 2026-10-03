@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-327 de 374 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+328 de 374 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -352,7 +352,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.30 | implemented | real | claude-opus-5-5 | — | PR #144 @58609226 (bb35ca16: prioridade PEDIDO_DA_PESSOA fura a fila do curador, também no pico, sob o teto; fa921c02: learning_reviews.usd grava o custo medido do parecer; 82dac0cb: o c_max compara estimativa com estim… |  |
 | 30.31 | partial | simulated | claude-opus-5-5 | — | PR #149 (feat/30-31-validacao @ 3a662764, migração 082) mais a correção df0bf82d (ai_calls.tier inteiro no teste, achada pela PG da suíte 10), na main pela suíte 10 (16fd1127) e no central pelo deploy 10 (2432046f; migr… |  |
 | 30.32 | implemented | simulated | claude-opus-5-5 | — | PR #150 (feat/30-32-classe-do-fluxo @ 148de71c) na main pela suíte 10 (16fd1127) e no central pelo deploy 10 (2432046f). As etapas do fluxo entram na classe de risco, cada uma com os fatos do catálogo do app dela; vale… |  |
-| 30.33 | partial | simulated | claude-opus-5-5 | — | Fatia A: PR #153 na main pela suíte 10 e no central pelo deploy 10; a orquestradora percorreu a aba Métricas no Chrome do deploy 10 (.claude/handoffs/ux-deploy10-2026-10-03.md, item 12b: ok, 375 px ok). Fatia B: PR #156… |  |
+| 30.33 | implemented | simulated | claude-opus-5-5 | — | As três fatias na main. Fatia A: PR #153, suíte 10, deploy 10, percorrida pela orquestradora no Chrome (.claude/handoffs/ux-deploy10-2026-10-03.md, item 12b; 375 px ok). Fatia B: PR #156 @ c9f1c18a, suíte 11 (97425d5f):… |  |
 | 30.34 | partial | simulated | claude-opus-5-5 | — | Fatia A: PR #154 (feat/30-34-autopublicacao-sombra @ 147ad07f) na main pela suíte 11 (97425d5f): a regra pura, o livro da sombra (sinal autopublicaria, sem migração), o laço sob a trava de líder e o balanço nas métricas… |  |
 | 30.35 | implemented | simulated | claude-opus-5-5 | — | PR #155 (feat/30-35-resultado-posterior @ 32d8ef6b) na main pela suíte 11 (97425d5f): o GravadorDoResultadoPosterior (passo da curadoria) grava learning_reviews.resultado_posterior (descartar, rebaixar pela escada ou pe… |  |
 | 30.36 | pendente | — | — | — |  |  |
@@ -381,7 +381,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (47): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 30.18, 30.31, 30.33, 30.34, 30.36, 31.8, 31.10, 31.11, 31.12, 31.13, T.2
+Pendentes (46): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 30.18, 30.31, 30.34, 30.36, 31.8, 31.10, 31.11, 31.12, 31.13, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

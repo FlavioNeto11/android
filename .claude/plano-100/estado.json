@@ -6192,15 +6192,15 @@
   },
   "30.33": {
    "id": "30.33",
-   "status": "partial",
+   "status": "implemented",
    "proof": "simulated",
-   "evidence": "Fatia A: PR #153 na main pela suíte 10 e no central pelo deploy 10; a orquestradora percorreu a aba Métricas no Chrome do deploy 10 (.claude/handoffs/ux-deploy10-2026-10-03.md, item 12b: ok, 375 px ok). Fatia B: PR #156 (feat/30-33-aviso-do-fluxo @ c9f1c18a) na main pela suíte 11 (97425d5f): o aviso learning.needs_person da receita e do fluxo com a classe do dossiê, pelo leitor comum RiscoDoConteudo. simulated: bateria de 60 arquivos 1897 passed; suíte 11 SQLite -n 8 @35e3b0f6 8441 passed, 0 failed (PG não rodou, sem migração). Real da B: not_run até um aviso de fluxo C no central. Fatia C: PR #159 (feat/30-33-multi-app @ 235e8451, base 4c34f943; adendo v0.94): o item multi-app em cada app dele (visão por app, ?app= do livro, Métricas), item.apps no dossiê só no multi-app (o item de um app mantém o dossie_hash), o 30.31 com todos os apps de QA e aparelho com todos prontos, e os polimentos das Métricas (título e nome do app nos pareceres, os dois ramos do orçamento, a sombra da autopublicação e o desfecho em 14 dias na tela). simulated: tests/test_learning_multi_app.py (11) e dois casos em test_learning_validacao_sql.py, MetricasTab.test.tsx e AplicativosTab.test.tsx, vitest do aprendizado 150 passed; percurso no navegador sobre uma cópia do banco do central. Pendentes da C: o percentil do K-085 (mesma fórmula com teste de igualdade, porque a camada de aplicação não importa app.metricas) quando o K-085 entrar na main, a bateria dos afetados e a suíte.",
-   "grupo": "aprendizado-pr159",
+   "evidence": "As três fatias na main. Fatia A: PR #153, suíte 10, deploy 10, percorrida pela orquestradora no Chrome (.claude/handoffs/ux-deploy10-2026-10-03.md, item 12b; 375 px ok). Fatia B: PR #156 @ c9f1c18a, suíte 11 (97425d5f): learning.needs_person da receita e do fluxo com a classe do dossiê. Fatia C: PR #159 (feat/30-33-multi-app @ 235e8451), merge e55dccfd na suíte 12, com o percentil do K-085 (fix/30-33c-percentil @ e8af149b, cherry-pick 82b09705 depois do K-085 5a6700be): o item multi-app em cada app dele (visão por app, ?app= do livro, Métricas), item.apps no dossiê só no multi-app, o 30.31 com todos os apps de QA e aparelho com todos prontos, os polimentos das Métricas; _percentil = app.metricas.percentil (ceil(p·n/100)), preso por teste de igualdade n=1..200; adendo v0.94. simulated: tests/test_learning_multi_app.py, test_learning_validacao_sql.py, test_learning_metricas.py, MetricasTab.test.tsx, AplicativosTab.test.tsx; suíte 12 na main 5428abdb (SQLite inteira 8460 passed, 0 failed; 859 passed em test_learning*+test_metricas depois do cherry-pick, pela orquestradora); PG não rodou (sem migração). Deploy 12 no central em d5a1c3a9 (03/10 ~17:03Z). real: not_run (o aviso de fluxo C da fatia B e o item multi-app no painel do central ainda sem observação registrada).",
+   "grupo": "aprendizado-suite12",
    "modelo": "claude-opus-5-5",
    "esforco": "medio",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T16:10:44+00:00"
+   "quando": "2026-10-03T17:03:57+00:00"
   },
   "29.49": {
    "id": "29.49",
@@ -7817,6 +7817,15 @@
    ],
    "grupos": [
     "suite-12-jev"
+   ]
+  },
+  {
+   "quando": "2026-10-03T17:03:57+00:00",
+   "itens": [
+    "30.33"
+   ],
+   "grupos": [
+    "aprendizado-suite12"
    ]
   }
  ]
