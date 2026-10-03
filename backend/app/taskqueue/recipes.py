@@ -672,7 +672,7 @@ class RecipeStore:
                 return True
         return False
 
-    def shadow(self, recipe_id: int, agreed: bool, *, promote_after: int) -> bool:
+    def shadow(self, recipe_id: int, agreed: bool, *, promote_after: int, simulada: bool = False) -> bool:
         """Veredito da sombra de UMA execução da etapa. Devolve True se a candidata foi promovida a ativa agora.
 
         A unidade é a execução, não a decisão: duas decisões concordantes numa mesma etapa não são repetição. Na
@@ -686,10 +686,16 @@ class RecipeStore:
         `find` não a devolve. Aí a resposta é False: a receita não passou a agir. O caminho que uma pessoa desligou
         (`ouvinte.vetada`) fica candidato. A reaprendida depois de uma evidência inválida (`ouvinte.exige_o_dono`,
         30.23) também para em `validated`, mesmo sem `commit`; sem resposta do ouvinte, fica candidata.
+
+        RA-19 B: a concordância de uma execução SIMULADA (`simulada`) não conta para a candidata: não soma à sequência
+        nem a promove; só evidência real publica. A divergência dela zera, como qualquer outra (o lado seguro), e na
+        ativa a taxa acumula igual.
         """
         with self.db.tx():
             row = self.db.one("SELECT * FROM recipes WHERE id=?", (recipe_id,))
             if row is None:
+                return False
+            if agreed and simulada and row["status"] == "candidate":
                 return False
             if agreed:
                 self.db.execute("UPDATE recipes SET shadow_total=shadow_total+1, shadow_agree=shadow_agree+1"

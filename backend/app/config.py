@@ -1015,6 +1015,11 @@ class LearningCfg(BaseModel):
     licoes: LicoesCfg = LicoesCfg()
     telas: TelasAprendidasCfg = TelasAprendidasCfg()
     fluxo: FluxoAprendidoCfg = FluxoAprendidoCfg()
+    #: RA-19 B: o que uma execução SIMULADA ensina (`runs.simulated=1`) nunca nasce ativo, receita ou fluxo, nem com
+    #: `ai.recipes_promote_after: 0` ou `fluxo.com_prova: false`; e a concordância dela na sombra não promove receita.
+    #: Só evidência real publica (a sombra do fluxo já só conta execução real), e a pessoa promove à mão. `true` = o
+    #: modo anterior, só para a suíte: o Harness é todo simulado e prova a reprodução e o reaproveitamento.
+    simulada_publica: bool = False
     voz: ModoDoAprendizadoCfg = ModoDoAprendizadoCfg()
     preferencias: ModoDoAprendizadoCfg = ModoDoAprendizadoCfg()
     backlog: BacklogCfg = BacklogCfg()

@@ -977,14 +977,19 @@ class StepExecutor:
             log.info("%s: etapa %s não virou receita: %s", iid, step.key, why)
             return
         n = self.cfg.file.ai.recipes_promote_after
+        # RA-19 B: a execução simulada não publica. A receita que ela ensina nasce candidata mesmo com
+        # `recipes_promote_after: 0`, e só a concordância de uma execução real a promove (`RecipeStore.shadow`).
+        simulada = self._origem_simulada(run_id)
+        candidata = n > 0 or simulada
         rid = self.recipes.save(package=app.package, app_version=rr.app_version, step_hash=rr.step_hash,
                                 step_key=step.key, actions=actions, learned_from=step.id,
-                                signature=rr.signature, variant=rr.variant, candidate=n > 0, replaces=substitui)
-        if rid and n > 0:
+                                signature=rr.signature, variant=rr.variant, candidate=candidata, replaces=substitui)
+        if rid and candidata:
             no_lugar = f", no lugar da v{rr.row['version']}, que divergiu" if substitui else ""
             repo.decision(f"{iid} · {step.title}: receita aprendida como candidata ({len(actions)} ação(ões)){no_lugar}"
-                          f" — a IA segue conduzindo esta etapa e a receita só é comparada; vira ativa depois de {n} "
-                          "execução(ões) seguidas em que a IA fizer exatamente o caminho dela",
+                          f" — a IA segue conduzindo esta etapa e a receita só é comparada; vira ativa depois de "
+                          f"{max(1, n)} execução(ões) seguidas em que a IA fizer exatamente o caminho dela"
+                          + (" (execuções reais: esta foi simulada)" if simulada else ""),
                           run_id=run_id, instance_id=iid, step_id=step.id)
         elif rid:
             repo.decision(f"{iid} · {step.title}: receita aprendida ({len(actions)} ação(ões)) — as próximas execuções "
@@ -992,6 +997,15 @@ class StepExecutor:
         elif substitui:
             log.info("%s: etapa %s: candidata v%s não trocada (a IA comprovou o mesmo caminho, ou a chave já tem "
                      "ativa); segue em prova", iid, step.key, rr.row["version"])
+
+    def _origem_simulada(self, run_id: str) -> bool:
+        """RA-19 B: a execução é simulada (`runs.simulated=1`) e o que ela ensina não publica. `False` com
+        `aprendizado.simulada_publica` (o modo anterior, só da suíte). Sem a linha da execução, simulada: nada se
+        publica pelo que não se sabe de onde veio."""
+        if self.cfg.file.aprendizado.simulada_publica:
+            return False
+        valor = self.repo.db.scalar("SELECT simulated FROM runs WHERE id=?", (run_id,))
+        return valor is None or bool(valor)
 
     def _veredito_da_sombra(self, rr: "_RecipeRun", ok: bool, run_id: str, iid: str, step: StepDTO) -> None:
         """Uma execução da etapa, um veredito sobre a receita comparada. Concordar = a IA fez, uma a uma, todas as
@@ -1011,7 +1025,8 @@ class StepExecutor:
             concordou = True
         else:
             return
-        promovida = self.recipes.shadow(rr.row["id"], concordou, promote_after=self.cfg.file.ai.recipes_promote_after)
+        promovida = self.recipes.shadow(rr.row["id"], concordou, promote_after=self.cfg.file.ai.recipes_promote_after,
+                                        simulada=self._origem_simulada(run_id))
         if promovida:
             self.repo.decision(f"{iid} · {step.title}: receita v{rr.row['version']} promovida a ativa — a IA fez "
                                "exatamente o caminho dela em execuções seguidas; as próximas execuções desta etapa "

@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: o que uma execução simulada ensina não publica (RA-19, fatia B; branch feat/ra-19-origem-simulada)
+
+- Origem simulada nunca nasce ativa: a receita nem com `ai.recipes_promote_after: 0`, o fluxo nem com
+  `aprendizado.fluxo.com_prova: false`.
+- A concordância de uma execução simulada não promove receita (`RecipeStore.shadow(simulada=True)`). A sombra segue
+  promovendo com evidência real, e a pessoa promove à mão.
+- Config nova: `aprendizado.simulada_publica` (padrão `false`; `true` só na suíte, que é toda simulada).
+- Sem migração. Prova `simulated`: `tests/test_origem_simulada.py` (6), com a consulta de join = 0.
+- Núcleo (`executor.py`, `recipes.py`, `config.py`): revisão da Android e suíte 8.
+
 ## 2026-10-03 — Aprendizado: nomes também nas listas (validação do deploy 4, branch fix/aprendizado-ux-deploy4)
 
 - "capability" sai da tela: "capacidade", "Etapa livre (fora do catálogo)" e "Fora do catálogo".

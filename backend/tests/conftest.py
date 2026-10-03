@@ -76,7 +76,9 @@ def make_config(tmp: Path, count: int = 3, *, store: str | None = None,
         # O mesmo para o fluxo (ADR-054, D1): a suíte que prova o REAPROVEITAMENTO (aprende na 1ª execução, reaproveita
         # na 2ª) segue com o fluxo nascendo ativo. O D1 de produção (nasce candidato, sombra no digest) tem os testes
         # próprios (test_d1_fluxos), que ligam `com_prova`.
-        "aprendizado": {"fluxo": {"com_prova": False}},
+        # E o que a execução simulada ensina (RA-19 B): o Harness é todo simulado, então a suíte que prova a reprodução e
+        # o reaproveitamento segue no modo anterior; a regra de produção tem os testes próprios (test_origem_simulada).
+        "aprendizado": {"fluxo": {"com_prova": False}, "simulada_publica": True},
         # Rede por aparelho (25.4): o executável do sing-box aponta para um caminho que NÃO existe. No checkout do
         # ambiente central o binário de verdade está em `data/rede/`, e um teste que escapasse do dublê de processo
         # subiria um servidor WireGuard na 51820 da máquina — em cima do que o parque usa. Assim, escapar é erro.
