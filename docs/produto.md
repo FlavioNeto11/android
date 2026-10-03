@@ -256,6 +256,15 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
     `-accel-check` em bloco de código.
 
   A chave desconhecida continua visível, uma linha por item ou pela árvore genérica.
+- **Diagnóstico › Custo de IA: o modelo forte e a conferência (03/10, item 31.16; RA-10).** As chaves do adendo v0.75
+  que só a API tinha viram tela (`frontend/src/features/usage/UsageView.tsx`, leitura em `usage.ts`; detalhe no adendo
+  v0.90 de `api-contract.md`):
+  - a seção "Modelo forte e conferência" diz por que as chamadas subiram ao modelo forte (por motivo, maior custo
+    primeiro), o rejulgamento do verificador (julgadas, discordância e custo) e a cascata do bloqueio (quantas subiram e
+    quantas desbloquearam a tela);
+  - a discordância por app e o motivo da imagem ficam em recolhidos;
+  - o aviso "Etapas sem registro de quem decidiu" só aparece quando há alguma (o esperado é nenhuma);
+  - com servidor anterior ao v0.75, ou período sem nada disso, nada aparece.
 - **Treinar habilidade.** Assumir o controle no Foco e realizar a tarefa; cada entrada é gravada com o elemento
   tocado; a IA generaliza a gravação em comando + etapas + receitas, com escopo por perfis/grupos (item 13.1–13.3
   do plano — ver §5). Desde a fase J, salvar recusa (409 `duplicate_command`) um comando que uma habilidade

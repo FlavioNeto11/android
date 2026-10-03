@@ -97,6 +97,11 @@
   text-align: right;
 }
 
+/* As tabelas curtas do RA-10: o rótulo da linha quebra, para a tabela caber no celular sem rolar de lado. */
+.tableWrapLabels tbody th {
+  white-space: normal;
+}
+
 .model {
   display: inline-flex;
   align-items: center;
@@ -119,4 +124,70 @@
 .empty {
   color: var(--text-3);
   font-size: var(--fs-sm);
+}
+
+/* RA-10 (31.16): "Modelo forte e conferência" — fatos curtos em linha (rótulo em cima, frase embaixo) e os recolhidos. */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border-1);
+}
+
+.sectionTitle {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--sp-2);
+  margin: 0;
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+
+.factLabel {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+.factValue {
+  margin: 0;
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Um motivo por linha: o rótulo à esquerda, "6× · US$ 0,19" alinhado à direita. */
+.factList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.factList li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.factNums {
+  color: var(--text-2);
+  white-space: nowrap;
 }

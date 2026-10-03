@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 31.16: telas do RA-10 no Custo de IA e o adendo v0.90 (branch feat/31-16-telas-ra10)
+
+- Diagnóstico › Custo de IA, sem API nova (lê o adendo v0.75):
+  - a seção "Modelo forte e conferência": `escalations` por motivo, o rejulgamento com a discordância e a cascata do bloqueio;
+  - recolhidos "Discordância do rejulgamento, por app" (nome do app do catálogo) e "Imagem: por que foi junto (ou não)";
+  - o aviso das etapas sem `driven_by`, só quando passa de 0;
+  - nada aparece com servidor anterior ao v0.75.
+- `docs/api-contract.md`, adendo v0.90: o bloco `decisao_fechada` de `GET /api/ai`, com `decider` (31.14) e `sending`
+  (31.17), documentado a posteriori; o `notice` "Envio ATIVO" ou "Nada sai agora: <motivo>".
+- Prova `simulated`: `frontend/src/features/usage/usage.test.ts` e `frontend/src/features/diagnostics/DiagnosticsPage.test.tsx`;
+  a tela percorrida no navegador contra um backend simulado do worktree (nada no central).
+
 ## 2026-10-03 — 31.17: envio do Jev aberto no código para a sombra C0–C1 do 31.10; o aviso diz o decisor e só afirma envio de verdade (branch feat/31-17-sombra-curador)
 
 - `JEV_RUNTIME_SEND_APPROVED = True` (ADR-069 item 15). De fábrica nada sai: `enabled: false` e decisor `nulo`.
