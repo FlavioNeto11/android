@@ -101,7 +101,7 @@ else {
 }
 if ($Dev) {
   Start-Process -FilePath 'npm.cmd' -ArgumentList 'run', 'dev' -WorkingDirectory (Join-Path $root 'frontend') -WindowStyle Minimized
-  $url = 'http://127.0.0.1:5173'
+  $url = 'http://127.0.0.1:5173/central/'
 } else { $url = $base }
 if ($StartInstances -gt 0) {
   # Achado #153: gerar `android-{0:d2}` de 1..N mandava `start` a aparelho de OUTRA máquina no dia em que

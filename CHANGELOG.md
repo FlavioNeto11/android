@@ -55,6 +55,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   prendia todo boot sem janela no diálogo de consentimento. O arquivo foi movido para `data/quarentena-crash/`, e os
   03 e 06 subiram com um `start` cada, sem reset. A prevenção é o item 29.55.
 
+## 2026-10-03 — Painel em `/central` para a exposição pública pelo túnel da Cloudflare (item 29.54, ADR-073; `simulated`)
+
+- Frontend: `base: '/central/'` no Vite (bundles e favicon sob `/central/`). Backend: `PainelEstatico` montado em `/central`; `GET /` e `GET /central` redirecionam (307, `Location` relativo) para `/central/`; nada estático fora de `/central`.
+- Portão (`main.guarda`, `security/access.py`) sem mudança de lógica, fixado por `tests/test_portal_publico_central.py` (Host declarado sem credencial, Host não declarado, loopback, login com `Origin` fora e dentro de `allowed_origins`).
+- Saúde: problema novo `exposicao_publica_incompleta` (falta `API_TOKEN`, `tls_behind_proxy` ou `https://<host>` em `allowed_origins` com `public_hosts` declarado).
+- Docs: ADR-073, adendo v1.05 do contrato da API, seção "Portal público pelo túnel da Cloudflare" em `operacao.md` (procedimento `not_run`; ingress `^/api/worker/` com a barra final), `config.example.yaml`.
+- Correções da revisão de risco: docs da API (`/docs`, `/redoc`, `/openapi.json`) movidos para `/api/` (abriam sem credencial pelo Host público); WebSocket do worker recusa Host público na porta do painel quando há listener dedicado; `Cache-Control` do ícone de release `private`; ADR-073 e `operacao.md` com HTTPS obrigatório, `API_TOKEN` longo, tranca global e limite de taxa recomendado.
+- `not_run`: túnel no ar e conferências de fora (da orquestradora com o dono); sem script do túnel, webhook ou mudança de cookie neste item.
+
 ## 2026-10-03 — 31.22: a sombra guarda o hash do estado redigido (migração 086; branch feat/31-22-estado-hash)
 
 - `decisao_fechada_sombra.estado_hash`: o sha256 do estado DEPOIS do `privacidade.redigir`, em todas as linhas da

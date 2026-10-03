@@ -6445,12 +6445,13 @@
    "status": "partial",
    "proof": "simulated",
    "evidence": "PR #172 (feat/30-39-evidencia-receita @ 0c472832), para a suíte 15, sem migração e sem mudança de API: minerador EvidenciaDaReceita no digest (learning_evidence de receita:<id> por receita/execução/posição, origem reproducao:<run_id>; a favor driven_by='recipe' comprovada, contra recipe+ai/sem_ator), retrocarga RetrocargaDaReceita (passo idempotente, dentro da retenção, datada pela etapa), dossiê da receita com a lista e evidencias.contadores_e / evidencias.sombra_e (VERSAO_DO_DOSSIE 1); a reprodução não conta de novo (promocao.efetivas, linhas.contra_efetivo e linhas.fora_da_reproducao): saúde, fila Revisar, promoção e métricas inalteradas, guardado por teste que falha sem o filtro. simulated: test_learning_evidencia_receita 13; test_learning_* + test_metricas* + test_arquitetura 903 passed; receitas/D1/funil/aprendizado/executor 155 passed; docs-check 0/0. Falta: merge e deploy da suíte 15, e a volta das ~29 receitas ao curador (pago, teto US$ 0,50, custo registrado) com o parecer citando execução real.",
+   "blocker": "",
    "grupo": "aprendizado-pr172",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T19:53:43+00:00"
+   "quando": "2026-10-03T20:09:25+00:00"
   },
   "29.52": {
    "id": "29.52",
@@ -6476,6 +6477,19 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T20:39:39+00:00"
+  },
+  "29.54": {
+   "id": "29.54",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "feat/29-54-portal-central: tests/test_painel_estatico.py (6) e tests/test_portal_publico_central.py (12) passed; afetados do portao, sessao, TLS, canal do worker, saude e arquitetura 99 passed e 32 arquivos de saude/health 592 passed 1 skipped; frontend typecheck, 1415 testes e build com /central/assets/ no dist/index.html. Tunel no ar e conferencias de fora: not_run (orquestradora).",
+   "blocker": "",
+   "grupo": "29.54",
+   "modelo": "sonnet",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T19:42:43+00:00"
   }
  },
  "rodadas": [
@@ -8066,6 +8080,24 @@
    ],
    "grupos": [
     "suite-14-android"
+   ]
+  },
+  {
+   "quando": "2026-10-03T19:42:43+00:00",
+   "itens": [
+    "29.54"
+   ],
+   "grupos": [
+    "29.54"
+   ]
+  },
+  {
+   "quando": "2026-10-03T20:09:25+00:00",
+   "itens": [
+    "30.39"
+   ],
+   "grupos": [
+    "aprendizado-pr172"
    ]
   }
  ]

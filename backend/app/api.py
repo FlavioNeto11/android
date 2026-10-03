@@ -1792,7 +1792,7 @@ async def release_icon(request: Request, release_id: str) -> Any:
     if dados is None:
         raise err(404, "sem_icone", "Esta versão não tem ícone extraído.")
     conteudo, tipo = dados
-    return Response(content=conteudo, media_type=tipo, headers={"Cache-Control": "public, max-age=86400, immutable"})
+    return Response(content=conteudo, media_type=tipo, headers={"Cache-Control": "private, max-age=86400, immutable"})
 
 
 @router.get("/releases/{release_id}/targets")
@@ -3589,7 +3589,14 @@ async def _host_do_worker_permitido(s: AppState, websocket: WebSocket, ip: str) 
     """`Host` contra loopback + `public_hosts`, a mesma defesa de DNS rebinding do resto da API — para os DOIS
     sockets do worker (comando e mídia). Recusa fecha antes do `accept()` e vira evento persistido."""
     nome = acesso.host_de(websocket.headers.get("host"))
-    if nome in acesso.LOOPBACK or nome in acesso.LOOPBACK_DE_TESTE or nome in publicos_de(s.cfg):
+    # 29.54 (ADR-073): com o listener dedicado ligado (`worker_port != 0`), o canal do worker NÃO atende pela porta do
+    # painel por nome público — pelo túnel da Cloudflare todo par é 127.0.0.1, então um `hello` errado vindo da
+    # internet bloquearia o worker legítimo por 60 s. A regra do ingress (`^/api/worker/` → 404) é a primeira barreira;
+    # esta é a segunda. Com `worker_port: 0` o canal é da porta principal e o nome público segue valendo.
+    so_loopback = (bool(int(s.cfg.file.server.worker_port or 0))
+                   and not getattr(websocket.app.state, "canal_dedicado", False))
+    publico_vale = nome in publicos_de(s.cfg) and not so_loopback
+    if nome in acesso.LOOPBACK or nome in acesso.LOOPBACK_DE_TESTE or publico_vale:
         return True
     s.bus.emit("worker.refused", f"Conexão de worker recusada: host '{nome}' não está em "
                                  f"server.public_hosts (origem {ip}).", level="warn",
