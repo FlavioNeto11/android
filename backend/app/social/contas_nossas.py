@@ -4,14 +4,16 @@ A conta bloqueada some de tudo, mas o produto precisa continuar sabendo que aque
 nossa trataria a conta antiga como terceira e poderia responder ou engajar com ela, que é engajamento simulado
 (ADR-050). A lápide (`contas_retiradas`, migração 071) guarda só o HASH do @ normalizado, nunca o texto.
 
-Este módulo também tem a reescrita do rastro textual da conta na memória da persona (`reescrever_memoria`, parte da
-retirada). O HISTÓRICO (eventos, comandos, etapas, aprovações, interações, ai_calls) fica intacto por decisão do dono
-(ADR-068, opção A): as provas antigas seguem legíveis.
+Este módulo também tem o casamento do rastro textual da conta (@, id e e-mail) que a retirada usa para reescrever
+`memory_items` (`social/memory.py::reescrever_memoria`, de TODAS as personas, 29.32). O HISTÓRICO (eventos, comandos,
+etapas, aprovações, interações, ai_calls) fica intacto por decisão do dono (ADR-068, opção A): as provas antigas seguem
+legíveis.
 """
 from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Sequence
 
 from ..db import Database
 from ..util import now_iso
@@ -79,26 +81,73 @@ def eh_conta_nossa(db: Database, handle: str | None) -> bool:
     return bool(db.scalar("SELECT COUNT(*) FROM contas_retiradas WHERE handle_sha256=?", (hash_do_handle(limpo),)))
 
 
-def _padroes(handle: str | None, account_id: str | None) -> list[re.Pattern[str]]:
-    """O @ (com ou sem `@`, sem diferenciar caixa, só como palavra inteira: `ana` não casa dentro de `ana.silva` nem
-    de `banana`) e o id da conta em texto."""
+def parece_email(texto: str | None) -> bool:
+    """Forma de e-mail (`x@y.z`, sem espaço): o login da conta pode ser um @ do app ou um e-mail, e só o e-mail entra
+    na reescrita por endereço."""
+    return bool(re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", (texto or "").strip()))
+
+
+def emails_so_desta_conta(db: Database, *, profile_id: str, account_id: str, handle: str | None,
+                          ancora: bool) -> list[str]:
+    """Os e-mails que IDENTIFICAM a conta que sai (o `handle`, se a conta é de e-mail, e o login dela) E que nenhuma
+    outra conta VIVA usa (29.32). O Outlook segue vivo com o mesmo endereço do login do Instagram retirado: o
+    endereço continua verdadeiro no produto e não pode sumir da memória. Só conta (`profile_accounts` e a credencial
+    por conta, de qualquer persona, e a credencial LEGADA de outra persona, ou da mesma se a conta que sai não é a
+    âncora: ali ela é a credencial de outra conta) segura o e-mail; o e-mail de cadastro da persona (`email` do
+    perfil) não é conta e fica de fora, a persona nem precisa dele na memória. Minúsculas, sem repetição."""
+    candidatos = [handle]
+    cred = db.one("SELECT login_identifier FROM account_credentials WHERE account_id=?", (account_id,))
+    candidatos.append(cred["login_identifier"] if cred is not None else None)
+    if ancora:
+        legada = db.one("SELECT login_identifier FROM instagram_credentials WHERE profile_id=?", (profile_id,))
+        candidatos.append(legada["login_identifier"] if legada is not None else None)
+    out: list[str] = []
+    for bruto in candidatos:
+        email = str(bruto or "").strip().lower()
+        if not parece_email(email) or email in out:
+            continue
+        viva = (db.scalar("SELECT COUNT(*) FROM profile_accounts WHERE id<>? AND lower(handle)=?", (account_id, email))
+                or db.scalar("SELECT COUNT(*) FROM account_credentials WHERE account_id<>? AND lower(login_identifier)=?",
+                             (account_id, email))
+                or db.scalar("SELECT COUNT(*) FROM instagram_credentials WHERE lower(login_identifier)=?"
+                             + ("" if not ancora else " AND profile_id<>?"),
+                             (email,) if not ancora else (email, profile_id)))
+        if not viva:
+            out.append(email)
+    return out
+
+
+def _padroes(handle: str | None, account_id: str | None, emails: Sequence[str] = ()) -> list[re.Pattern[str]]:
+    """O e-mail inteiro, o @ (com ou sem `@`, sem diferenciar caixa, só como palavra inteira: `ana` não casa dentro de
+    `ana.silva`, de `banana`, de `foo@ana.com` nem é a parte local de `ana@x.com`) e o id da conta em texto. O e-mail
+    vem PRIMEIRO: o `ana@x.com` de uma conta que sai some inteiro antes de o @ `ana` ser procurado."""
     out: list[re.Pattern[str]] = []
+    for email in emails:
+        limpo = email.strip().lower()
+        if limpo:
+            out.append(re.compile(rf"(?<![\w.+-]){re.escape(limpo)}(?!\w|\.\w)", re.IGNORECASE))
     limpo = normalizar(handle)
     if limpo:
-        out.append(re.compile(rf"(?<![\w.])@?{re.escape(limpo)}(?!\w|\.\w)", re.IGNORECASE))
+        # Mesma fronteira do `esquecer_conta` do aprendizado: nada de letra/dígito/`_`/`@` antes, nem `palavra.`
+        # (seria `x.ana`); depois, nada de letra/dígito/`_`, nem `.palavra` (`ana.silva`), nem `@palavra` (a parte
+        # local de um e-mail). O ponto final de frase passa: o Instagram não aceita handle terminado em ponto.
+        out.append(re.compile(rf"(?<![\w@])(?<!\w\.)@?{re.escape(limpo)}(?!\w|\.\w|@\w)", re.IGNORECASE))
     if account_id:
         out.append(re.compile(re.escape(account_id), re.IGNORECASE))
     return out
 
 
-def sem_o_rastro(texto: str | None, handle: str | None, account_id: str | None = None) -> str | None:
-    """`texto` com o @ e o id da conta trocados por `[conta removida]`. `None` e vazio passam como vieram."""
+def sem_o_rastro(texto: str | None, handle: str | None, account_id: str | None = None,
+                 emails: Sequence[str] = ()) -> str | None:
+    """`texto` com o e-mail, o @ e o id da conta trocados por `[conta removida]`. `None` e vazio passam como vieram."""
     if not texto:
         return texto
-    for padrao in _padroes(handle, account_id):
+    for padrao in _padroes(handle, account_id, emails):
         texto = padrao.sub(MARCADOR, texto)
     return texto
 
 
-def previa_do_rastro(handle: str | None, account_id: str | None) -> list[str]:
-    return [p for p in (normalizar(handle), (account_id or "").lower()) if p]
+def previa_do_rastro(handle: str | None, account_id: str | None, emails: Sequence[str] = ()) -> list[str]:
+    """As pistas em minúsculas para o `LIKE` que pré-filtra no banco; quem decide é a regex de `sem_o_rastro`."""
+    pistas = [normalizar(handle), (account_id or "").lower(), *(e.strip().lower() for e in emails)]
+    return list(dict.fromkeys(p for p in pistas if p))

@@ -15,14 +15,15 @@ import hashlib
 import logging
 import re
 import unicodedata
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..db import Database, loads
+from ..db import Database, Row, loads
 from ..models import InteractionStatus, MemoryItemDTO
 from ..security.redaction import looks_secret, mentions_credential
 from ..util import now_iso
-from .contas_nossas import previa_do_rastro, sem_o_rastro
+from .contas_nossas import hash_do_handle, parece_email, previa_do_rastro, sem_o_rastro
 from .repository import SocialRepository
 
 log = logging.getLogger("poc.social.memory")
@@ -264,30 +265,126 @@ class MemoryStore:
             app_id=_app_de(row))
 
 
-# ------------------------------------------------------------------ retirada da conta (29.23, ADR-068)
-def reescrever_memoria(db: Database, *, profile_id: str, handle: str | None, account_id: str | None) -> int:
-    """`memory_items` da PERSONA: `subject` e `content` passam a dizer `[conta removida]` onde diziam o @ da conta
-    (com e sem `@`, sem diferenciar caixa) ou o id dela. A linha FICA: a persona sobrevive e lembra do que viveu.
+# ------------------------------------------------------------------ retirada da conta (29.23 e 29.32, ADR-068)
+_COLUNAS_DA_MEMORIA = "seq, profile_id, subject, content, fingerprint"
 
-    O `fingerprint` (unique por perfil) é recalculado com o texto novo; se colidir com outra lembrança, a linha
-    guarda um fingerprint próprio em vez de ser apagada ou mesclada. Devolve quantas lembranças mudaram."""
 
-    previas = previa_do_rastro(handle, account_id)
+def _regravar(db: Database, m: Row, assunto: str | None, conteudo: str | None) -> None:
+    """Grava o texto novo da lembrança. O `fingerprint` (unique por perfil) é recalculado; se colidir com outra
+    lembrança DO MESMO perfil, a linha guarda um fingerprint próprio em vez de ser apagada ou mesclada."""
+    fp = fingerprint(str(assunto), str(conteudo))
+    if db.one("SELECT 1 FROM memory_items WHERE profile_id=? AND fingerprint=? AND seq<>?",
+              (m["profile_id"], fp, m["seq"])) is not None:
+        fp = f"{fp[:24]}r{m['seq']}"
+    db.execute("UPDATE memory_items SET subject=?, content=?, fingerprint=? WHERE seq=?",
+               (assunto, conteudo, fp, m["seq"]))
+
+
+def reescrever_memoria(db: Database, *, profile_id: str, handle: str | None, account_id: str | None,
+                       emails: Sequence[str] = ()) -> dict[str, int]:
+    """`memory_items` de TODAS as personas: `subject` e `content` passam a dizer `[conta removida]` onde diziam o @
+    da conta que sai (com e sem `@`, sem diferenciar caixa), o id dela ou os e-mails que a identificam (29.32: outra
+    persona também pode ter lembrado do @ que nós retiramos; `emails` já vem filtrado de quem outra conta VIVA usa,
+    ver `contas_nossas.emails_so_desta_conta`). A linha FICA: a persona sobrevive e lembra do que viveu.
+
+    `profile_id` é a persona que retira: só separa, na contagem, as lembranças das OUTRAS. Roda na transação de quem
+    chama (sem commit nem rollback) e é idempotente: texto já reescrito não casa mais. Devolve só contagens."""
+
+    previas = previa_do_rastro(handle, account_id, emails)
+    contagem = {"memory_items": 0, "memory_items_de_outras_personas": 0}
     if not previas:
-        return 0
+        return contagem
     casa = " OR ".join(f"lower({c}) LIKE ?" for c in ("subject", "content") for _ in previas)
     args = tuple(f"%{p}%" for _ in ("subject", "content") for p in previas)
-    mudou = 0
-    for m in db.query(f"SELECT seq, subject, content, fingerprint FROM memory_items WHERE profile_id=? AND ({casa})",
-                      (profile_id, *args)):
-        assunto, conteudo = sem_o_rastro(m["subject"], handle, account_id), sem_o_rastro(m["content"], handle, account_id)
+    for m in db.query(f"SELECT {_COLUNAS_DA_MEMORIA} FROM memory_items WHERE {casa}", args):
+        assunto = sem_o_rastro(m["subject"], handle, account_id, emails)
+        conteudo = sem_o_rastro(m["content"], handle, account_id, emails)
         if assunto == m["subject"] and conteudo == m["content"]:
             continue
-        fp = fingerprint(str(assunto), str(conteudo))
-        if db.one("SELECT 1 FROM memory_items WHERE profile_id=? AND fingerprint=? AND seq<>?",
-                  (profile_id, fp, m["seq"])) is not None:
-            fp = f"{fp[:24]}r{m['seq']}"
-        db.execute("UPDATE memory_items SET subject=?, content=?, fingerprint=? WHERE seq=?",
-                   (assunto, conteudo, fp, m["seq"]))
-        mudou += 1
-    return mudou
+        _regravar(db, m, assunto, conteudo)
+        contagem["memory_items"] += 1
+        if m["profile_id"] != profile_id:
+            contagem["memory_items_de_outras_personas"] += 1
+    return contagem
+
+
+# ------------------------------------------------------------------ retroativo das retiradas antes do 29.32
+_TOKEN = re.compile(r"@?[\w.]+")
+
+
+def _contas_vivas_hash(db: Database) -> set[str]:
+    """Os hashes dos @ que HOJE são de conta viva (conta ou cadastro de persona): uma lápide cujo @ voltou a existir
+    não é rastro, é a conta nova."""
+    vivos = [r["handle"] for r in db.query("SELECT handle FROM profile_accounts")]
+    vivos += [r["username"] for r in db.query("SELECT username FROM instagram_profiles")]
+    return {h for h in (hash_do_handle(v) for v in vivos) if h}
+
+
+def _sem_os_rastros(texto: str | None, handles: Sequence[str], ids: Sequence[str],
+                    emails: Sequence[str]) -> str | None:
+    for handle in handles:
+        texto = sem_o_rastro(texto, handle, None)
+    for conta in ids:
+        texto = sem_o_rastro(texto, None, conta)
+    return sem_o_rastro(texto, None, None, emails)
+
+
+def reescrever_memoria_das_retiradas(db: Database, *, extras: Sequence[str] = (),
+                                     escrever: bool = True) -> dict[str, int]:
+    """Passe ÚNICO e idempotente para as contas retiradas ANTES de a retirada reescrever a memória de todas as
+    personas (29.32). A fonte confiável são as lápides (`contas_retiradas`, só o HASH do @) e os ids de conta dos
+    eventos `profile.account_retired`: o @ é achado no texto da memória por hash (cada palavra do texto é comparada
+    com a lápide; o texto da conta nunca é lido de lugar nenhum) e trocado pelo mesmo `sem_o_rastro` da retirada.
+
+    O e-mail da conta retirada NÃO está em lugar nenhum do banco (a conta e a credencial já saíram): só entra pela
+    lista `extras` do operador (e-mails ou @, um por item; o que for e-mail de conta VIVA é recusado e contado).
+
+    `escrever=False` é o ensaio: conta o que mudaria sem gravar. Roda na transação de quem chama e devolve SÓ
+    contagens (nenhum texto de conta, nem no retorno nem em log)."""
+
+    lapides = {str(r["handle_sha256"]) for r in db.query("SELECT handle_sha256 FROM contas_retiradas")}
+    vivas = _contas_vivas_hash(db)
+    lapides -= vivas
+    ids: list[str] = []
+    for ev in db.query("SELECT data FROM events WHERE kind='profile.account_retired'"):
+        dado = loads(ev["data"], {})
+        if isinstance(dado, dict) and isinstance(dado.get("account_id"), str) and dado["account_id"]:
+            ids.append(dado["account_id"])
+    ids = list(dict.fromkeys(ids))
+    emails_vivos = {str(r["h"]).lower() for r in db.query(
+        "SELECT handle AS h FROM profile_accounts UNION SELECT login_identifier FROM account_credentials"
+        " UNION SELECT login_identifier FROM instagram_credentials")}
+    emails: list[str] = []
+    arrobas: list[str] = []
+    recusados = 0
+    for bruto in extras:
+        item = str(bruto or "").strip()
+        if not item:
+            continue
+        if parece_email(item):
+            if item.lower() in emails_vivos:
+                recusados += 1
+            elif item.lower() not in emails:
+                emails.append(item.lower())
+        elif hash_do_handle(item) not in vivas:
+            arrobas.append(item)
+        else:
+            recusados += 1
+    contagem = {"lapides": len(lapides), "ids_de_conta": len(ids), "extras_aceitos": len(emails) + len(arrobas),
+                "extras_recusados_por_estarem_vivos": recusados, "memory_items": 0}
+    for m in db.query(f"SELECT {_COLUNAS_DA_MEMORIA} FROM memory_items"):
+        achados = list(arrobas)
+        for campo in (m["subject"], m["content"]):
+            for pedaco in _TOKEN.finditer(campo or ""):
+                palavra = pedaco.group(0).lstrip("@").rstrip(".")
+                if palavra and palavra not in achados and hash_do_handle(palavra) in lapides:
+                    achados.append(palavra)
+
+        assunto = _sem_os_rastros(m["subject"], achados, ids, emails)
+        conteudo = _sem_os_rastros(m["content"], achados, ids, emails)
+        if assunto == m["subject"] and conteudo == m["content"]:
+            continue
+        if escrever:
+            _regravar(db, m, assunto, conteudo)
+        contagem["memory_items"] += 1
+    return contagem
