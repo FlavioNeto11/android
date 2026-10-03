@@ -255,12 +255,15 @@ async def test_lider_so_e_eleito_quando_despachado(harness: Harness) -> None:
 
 async def test_aparelho_do_lider_que_cai_libera_quem_espera(harness: Harness) -> None:
     _liga(harness)
-    portao = asyncio.Event()
-    _segura(harness, "android-01", portao)
+    portao, parado = asyncio.Event(), asyncio.Event()
+    _segura(harness, "android-01", portao, parado=parado)
     run = harness.run(["android-01", "android-02"])
     rt1 = harness.state.devices.devices["android-01"]                      # type: ignore[union-attr]
     try:
         await _esperando(harness, run.id, "android-02")
+        # Só derruba com o líder já na decisão segurada: antes dela, o executor do líder ainda toca o aparelho e
+        # encerra o objetivo por conta própria (`falhou`, não `liberado`) em parte das rodadas (03/10, suíte 9).
+        await harness.wait(parado.is_set, what="líder parado na decisão segurada")
         rt1.state = InstanceState.error                                    # o aparelho do líder sai do ar
         await harness.wait(lambda: metricas.valor("pathfinder.desfecho", resultado="liberado") == 1,
                            what="espera liberada")

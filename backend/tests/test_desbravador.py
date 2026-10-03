@@ -39,8 +39,13 @@ def _liga(h: Harness) -> _Relogio:
 
 
 def _segura(h: Harness, instancia: str, portao: asyncio.Event,
-            depois: Callable[[Any], tuple[Decision, Usage]] | None = None) -> None:
-    """A PRIMEIRA decisão de IA de `instancia` fica parada até o portão abrir: o líder "ainda está aprendendo"."""
+            depois: Callable[[Any], tuple[Decision, Usage]] | None = None, *,
+            parado: asyncio.Event | None = None) -> None:
+    """A PRIMEIRA decisão de IA de `instancia` fica parada até o portão abrir: o líder "ainda está aprendendo".
+
+    `parado` é sinalizado quando o líder CHEGA à decisão segurada. Quem mexe no aparelho do líder espera por ele:
+    antes disso o executor ainda está nos passos que tocam o aparelho, e derrubá-lo ali faz o próprio executor
+    encerrar o objetivo (`falhou`) antes de a volta do scheduler ver o aparelho fora do ar (`liberado`)."""
     inner = h.ai.inner
     decide0 = inner.decide
     segurou = {"feito": False}
@@ -48,6 +53,8 @@ def _segura(h: Harness, instancia: str, portao: asyncio.Event,
     async def decide(req: Any) -> Any:
         if req.ctx.instance_id == instancia and not segurou["feito"]:
             segurou["feito"] = True
+            if parado is not None:
+                parado.set()
             await portao.wait()
             if depois is not None:
                 return depois(req)
