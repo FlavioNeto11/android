@@ -126,3 +126,53 @@ Cada cartão tem um bloco **Vínculos**. Os links usam `url_painel` (hoje só `a
 - conteúdo **redigido**, com a regra do Telegram: redação e corte, sem captura. O padrão do 32.2 passa a ser
   `conteudo: redigido`;
 - link do painel só na LAN, por enquanto, registrado como limitação no ADR-072.
+
+## 7. Desenho de código do 32.2 sobre o 28.15 (Canais, 03/10 ~19:20Z)
+
+Base: o PR #166 em 69dcea02 (migração 085 genérica, `Recebida`, `SaidaDaConversa`, `PortasDaCentral`). Ele muda duas
+coisas do §6:
+- o espelho não é um segundo `Canal` da fila de avisos, e sim um reconciliador de estado;
+- a entrada reaproveita a parte comum da conversa em vez de repetir o laço.
+
+1. **Separar a conversa do leitor (1º commit, só mudança de lugar).** Hoje `ServicoDeEntrada` junta a parte comum
+   (`registrar`, `tratar_pendentes`, a gramática, as políticas, a recusa de credencial) e o laço do `getUpdates`. Ela
+   vira `ConversaDoCanal` (comum, recebe `canal`, `operador` e `SaidaDaConversa`) e `LeitorDoTelegram` (a volta, o
+   offset, o 409, o descarte do histórico). Os testes do 28.15 passam sem mudança. É a base do contrato do §9 de
+   `canais-externos.md`.
+2. **`integrations/trello/cliente.py`:** httpx com o cabeçalho `Authorization: OAuth oauth_consumer_key=…,
+   oauth_token=…` (nunca na URL), um balde de 60 requisições por 10 s e espera pelo 429. `TRELLO_API_KEY` e
+   `TRELLO_TOKEN` entram no `EnvSettings` como `SecretStr` (no molde do `TELEGRAM_BOT_TOKEN`).
+3. **Migração 087:** `trello_cartoes` (`chave` PK `<família>:<fato>`, `card_id`, `lista`, `hash`, `estado`,
+   `atualizado_em`) e `trello_cursor` (`quadro` PK, `ultima_action`). As actions recebidas vão para a `canal_entradas`
+   (`canal='trello'`, `id_externo` = action id, `ordem` NULL, `tipo` = 'mensagem' para comentário, 'botao' para cartão
+   movido para ✅/⛔), e as respostas para a `canal_enviadas` (`ref_mensagem` = id do comentário).
+4. **Espelho = reconciliador** (`EspelhoDoTrello`, no líder da trava `avisos`, a cada `trello.espelho_s` = 60 s):
+   - o conjunto desejado sai das portas que já existem (`pendencias()`, os pedidos em ativo, pausado ou
+     aguardando_pessoa, os itens do Livro em validação);
+   - a descrição sai da rota do §4, redigida;
+   - cartão novo → criar na lista 🤖 Central; hash mudou → atualizar; o fato sumiu → comentário de desfecho e
+     arquivar. Nada por evento, então não há ruído.
+   - Os campos personalizados (o Power-Up Custom Fields foi aprovado pelo dono às ~19:05Z) recebem Frente e Prova pela
+     API.
+5. **Marcos e custos:** o mesmo reconciliador mantém um cartão por deploy, quando `commit` e `migration` de
+   `/api/health` mudam na partida, e um cartão de custo do dia, no máximo de hora em hora, em Programa.
+6. **`LeitorDoTrello`** (no líder): `GET /1/boards/{id}/actions?filter=commentCard,updateCard:idList&since=<cursor>`.
+   Cada action vira uma `Recebida`. `do_dono` = `idMemberCreator == trello.membro_dono`. O fato é a `chave` do cartão
+   em `trello_cartoes`. Mover para ✅ ou ⛔ vira o texto "sim"/"não" com o fato. A `ConversaDoCanal` faz o resto, com o
+   operador `trello:<idMember>`.
+7. **`SaidaDoTrello`:** `responder` comenta no cartão, `apagar` devolve False (a resposta pede ao dono que apague),
+   `botoes` não existe (a prévia vira o comentário "comente `/executar`"). Isso só acontece com
+   `trello.comando_livre: true`, que é desligado de fábrica. As portas novas do 28.15 (`pergunta_de`,
+   `ha_pergunta_sensivel_aberta`) valem iguais.
+8. **Config `trello:`** (`enabled: false`, `quadros`, `listas`, `membro_dono`, `espelho_s`, `leitura_s`,
+   `comando_livre: false`). Saúde: `trello_sem_segredo`, `trello_recusado` (401/403) e `trello_limite` (429 seguidos).
+   A linha-marco `inicio` do 28.15 vale igual: na 1ª subida, o cursor começa na action mais nova e o histórico do
+   quadro não é tratado.
+9. **Testes** (`httpx.MockTransport`, sem rede):
+   - reconciliador: cria, atualiza só com hash novo, arquiva com desfecho, idempotente;
+   - leitor: cursor, dedupe pela action id, membro que não é o dono, 1ª subida;
+   - contrato comum: o mesmo `Comando` por telegram e por trello passa pelas mesmas políticas;
+   - credencial recusada sem eco; 429.
+10. **Ordem dos commits:** (1) a separação; (2) cliente + 087 + config; (3) espelho; (4) leitor + saída; (5) docs
+    (ADR-072, adendo v0.99, operacao §1, banco 087). O branch nasce da main depois do merge do #166 (suíte 14). O
+    32.3, o portal, vem depois e lê `trello_cartoes` e `canal_entradas`.
