@@ -154,7 +154,9 @@ def test_a_forma_conhecida_do_dominio_de_topo(comando: str, saida: str) -> None:
 
 # ------------------------------------------------------------------ H-3 revertida: o nome solto volta a ser valor
 @pytest.mark.parametrize("comando", [
-    "entre pela conta do bruno", "entre com a conta do lucas", "log into the lucas profile and like",
+    # (com "conta" recusam desde a forma A, 31.18: test_decisao_fechada_forma_a.py; com o verbo de entrar, desde a
+    # A-média, 31.20: `CUSTO_DA_A_MEDIA` em test_decisao_fechada_reverificacao_i.py)
+    "like the post on the lucas profile",
 ])
 def test_a_sintaxe_de_destino_continua_isenta(comando: str) -> None:
     for girassol in (False, True):
@@ -220,20 +222,17 @@ def test_o_piso_continua_recusando(comando: str, motivo: str) -> None:
     "poste a foto da casa", "abra o bloco de notas", "a quadra de esportes do bairro, poste",
     "leia o último e-mail do outlook e me diga o assunto",
     "abra o Outlook e responda o e-mail da Marina Prado dizendo que o relatório vai na segunda",
-    # o objeto pessoa ou conversa, o estado de entrar e o modo
+    # o objeto pessoa ou conversa (o verbo de entrar com conector, o "digite" e a conta recusam desde a forma A, 31.18:
+    # test_decisao_fechada_forma_a.py; o estado de entrar e o verbo de entrar com objeto de navegação, desde a A-média,
+    # 31.20: `CUSTO_DA_A_MEDIA` em test_decisao_fechada_reverificacao_i.py)
     "entre na conversa com qa-001 e mande oi", "entre no chat com a Marina e responda", "entre na live com a Ana",
-    "entre em contato com a Ana e mande oi", "verifique se o lucas está logado", "o lucas entrou? curta a foto",
-    "logado com sucesso, curta a foto", "acesse o perfil da Marina usando o navegador", "entre no feed com calma e curta",
-    "entre no app e curta a foto da Marina", "acesse o perfil da Marina e curta",
+    "entre em contato com a Ana e mande oi",
     # as letras que são palavra e o nome de letra que é palavra comum
-    "use a e o como exemplo", "digite a resposta e envie", "coloque o filtro e poste", "digite que ele te ama e envie",
+    "use a e o como exemplo", "coloque o filtro e poste",
     # o eufemismo só com o verbo "é" (a conjunção "e" não conta) e o e-mail sem domínio
     "poste a foto da cidade onde nasci e marque a Marina", "o nome do meu perfil é lucas, curta a foto",
     "o e-mail do provedor caiu, avise a Marina", "mande para zilda em casa com carinho",
     "ligue para a mãe e diga que estou bem",
-    # o determinante da conta depois do verbo no passado
-    "veja se está logado com outra conta", "confira se entrou com a mesma conta",
-    "veja se o lucas está logado com a conta certa",
     # o link e o que parece domínio (casos 99, 540 e 541)
     "siga maria.clara no instagram", "curta o post, p.ex. o da Marina",
     "abra https://exemplo.com/unsub?u=joao.silva%40exemplo.com",
@@ -271,16 +270,17 @@ def test_o_valor_com_digito_recusa_em_vez_de_mascarar(comando: str) -> None:
 
 
 @pytest.mark.parametrize("comando", [
-    "entre no insta e curta as 3 fotos", "entre no insta e mande 50 reais pro bruno", "curta o post qa-001",
+    # (com "entre no insta" recusam desde a A-média, 31.20: o verbo de entrar recusa sozinho)
+    "abra o insta e curta as 3 fotos", "abra o insta e mande 50 reais pro bruno", "curta o post qa-001",
     "entre na conversa com qa-001 e mande oi", "entre no chat com qa-002", "abra o insta e curta 3 fotos do perfil 2",
     # o ano: o token só de dígitos longe do campo e do conector não recusa (refinamento, 03/10)
-    "entre no insta e veja o post de 2024", "entre no insta e curta o post de 2023 da Marina",
-    "entre no insta e use 1987",
+    "abra o insta e veja o post de 2024", "abra o insta e curta o post de 2023 da Marina",
+    "abra o insta e use 1987",
 ])
 def test_numero_comum_e_contato_com_digito_passam(comando: str) -> None:
     """Sem gatilho, ou com o verbo de entrar numa conversa (H-1 a), o dígito não recusa; o token só de dígitos, nem com
     gatilho, se não estiver perto do campo ou logo depois do conector do verbo de entrar. Custo aceito (orquestradora,
-    03/10): "entre no insta e use 1987" sai mascarado."""
+    03/10): "abra o insta e use 1987" sai mascarado."""
     assert _motivo(comando) is None
 
 
@@ -295,7 +295,7 @@ def test_a_quebra_de_linha_separa_o_par(comando: str) -> None:
 
 
 @pytest.mark.parametrize("comando", [
-    "abra o insta\ncurta o post da Marina\ndepois comente parabéns", "entre no insta\ne curta 3 fotos",
+    "abra o insta\ncurta o post da Marina\ndepois comente parabéns", "abra o insta\ne curta 3 fotos",
 ])
 def test_a_quebra_de_linha_na_navegacao_passa(comando: str) -> None:
     assert _motivo(comando) is None

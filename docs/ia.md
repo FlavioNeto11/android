@@ -1274,6 +1274,68 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
       - recusas indevidas: 134, 135, 348, 427, 572 e 573. O 572 e o 573 são o custo da reversão;
       - com a "Girassol", 0 vazamentos e 0 casos que mudam entre os catálogos (o 54f71853 tinha 17).
     - Testes: filtro, arquitetura e sombras, 999 passaram; vizinhos, 164. A G e a E voltaram à versão da base.
+  - **Forma A, A-ESTREITA (31.18; decisão do dono depois do NO-GO da H; ADR-069 item 18).** A C3 fecha por gatilho.
+    Qualquer gatilho de credencial no comando sem destinos E no original recusa o pedido inteiro, sem localizar nem
+    mascarar.
+    - A regra é `_gatilho_de_credencial`, a última do `motivo_c7`, com o motivo `c7_gatilho`. Os gatilhos:
+      - o verbo de entrar, também no passado, com conector até 3 tokens depois (`_CONECTORES_DE_GATILHO`: com, with,
+        using, usando, utilizando, con, mit, avec, met, med, cu, dengan, tunnuksella);
+      - o `_CAMPO_FORTE` e o `_DIGITAR_VALOR`, mesmo sem valor;
+      - a palavra C7 e o soletrado, que já recusavam;
+      - o par sem campo forte (`_par_sem_campo_forte`), nas quatro formas:
+        - `_CAMPO_AMPLO` + valor + separador + valor (a vírgula só sem verbo);
+        - nome do catálogo + separador + valor;
+        - nome do catálogo + "e" + valor (só sem verbo);
+        - e-mail + separador + valor, ou e-mail + palavra com letra que fecha a oração.
+    - **Leitura literal**: a sintaxe de destino conta mesmo cortada pelo extrator. É o que fecha a família 3 da H
+      ("entre com a conta lucas hoje girassol"). "entre com a conta Lucas e curta" recusa; "entre pela Lucas e curta" e
+      "entre como @lucas.almeida9484 e curta o post" passam.
+    - Exceção única: objeto pessoa ou conversa (`_objeto_e_pessoa`). "entre no insta" sozinho passa. Os dígitos soltos
+      seguem a regra dos anos, e as máscaras de forma continuam para o que passa.
+    - Residual aceito:
+      - a senha sem gatilho ("tulipa, curta o post da Marina");
+      - "entre na conversa com <senha>";
+      - o nome do catálogo + "e" + valor quando há verbo.
+    - Custo:
+      - nos comandos reais (126 de 7 dias, 12:44Z, só leitura, só contagens), 8 recusas (6,3 %): 1 por `c7_palavra` e 7 por
+        `c7_gatilho`, todas com "conta";
+      - nos testes antigos, 30 comandos que eram controle (`CUSTO_DA_FORMA_A`);
+      - no corpus, 9 casos que a orquestradora reetiquetou.
+    - Prova `simulated`: `backend/tests/test_decisao_fechada_forma_a.py`. As 86 da fase 2 da H e as 40 + 37 das
+      regressões G e F recusam nos dois catálogos, e os 30 controles operacionais passam. No harness de 579 há 0
+      vazamentos, 0 passagens indevidas e as 6 recusas indevidas de antes.
+  - **Depois do NO-GO da rodada I (31.20; ADR-069 item 19).** Primeiro, as lacunas da rodada I fecharam só por lista de
+    bloqueio (f2f49a08). Depois, a A-média aprovada pelo dono (03/10 ~14:15Z) mudou a definição do gatilho.
+    - **A-média**: o verbo de entrar (`_ENTRAR`, `_ENTRAR_PASSADO`, as locuções e `_DESTRAVAR`) recusa sozinho, em
+      qualquer forma, tempo e posição, sem conector (`_gatilho_de_credencial`, `c7_gatilho`).
+      - A exceção única é o objeto pessoa ou conversa (`_objeto_e_pessoa`). Nela, os outros gatilhos seguem valendo.
+      - O "entre" preposição não é verbo (`_e_preposicao`): faixa, regente antes, "entre <det> A e <det> B" no começo
+        da oração, "entre os/as" no começo da oração sem conector de gatilho perto, ou "entre os/as" depois de palavra
+        de conteúdo.
+    - O que mais recusa, por lista:
+      - a locução de entrar com até 2 tokens no meio (`_LOCUCAO_DE_ENTRAR`, `_fim_da_locucao`) e "identifique-se";
+      - o futuro, o condicional e o "já tinha entrado" no `_ENTRAR`;
+      - o conector com hífen (`_separa_conector`) e "amb";
+      - o valor depois do destino cortado (`_valor_depois_do_corte`, estrito);
+      - a vírgula no par (`_par_sem_campo_forte`);
+      - a conta do catálogo como identidade (`_usa_conta_do_catalogo`: "use o lucas com x", "como lucas, x", "sendo o
+        lucas, x");
+      - os eufemismos novos de `_EUFEMISMO_C7` e `_EUFEMISMO_EH`.
+    - E-mail (`entidades.py`):
+      - o `_EMAIL` engole o domínio de topo solto (`_SEPARADOR_DO_TLD`, `_TLD_SOLTO`);
+      - o e-mail em peças e o provedor rotulado recusam por `email_ofuscado`;
+      - `_mascarar_fragmentos` mascara, frase a frase, provedor, domínio de topo e valor rotulado ao lado de `[email]`,
+        `[usuario]` ou handle com ponto. Prosa sem âncora passa.
+    - C2: `_descricao` devolve "(sem nome)" quando o nome do fluxo cai no `motivo_c7`, também pelo verbo de entrar. No
+      catálogo vivo, isso vale para 4 dos 20 fluxos ativos.
+    - Residual que não entra: sem gatilho e "entre na conversa/chat com".
+    - Custo, só contagens:
+      - nos 126 comandos reais, 14 recusas (11,1 %), 6 a mais que a parte de lista; as 112 que passam têm a mesma saída
+        do b7c05558;
+      - na HM3, 31 → 48 recusas, todas as novas por verbo de entrar;
+      - nos testes, 27 controles com verbo de entrar viraram recusa (`CUSTO_DA_A_MEDIA`).
+    - Prova `simulated`: no harness de 785 casos (corpus regenerado pela orquestradora às 14:29Z), 0 vazamentos nos
+      dois catálogos, só as 4 recusas indevidas conhecidas, e 0 diferenças entre catálogos.
   - **C7 nunca sai, em prosa ou não**: comando que fala de senha, código, 2FA, PIN, OTP, token, captcha, verificação, chave,
     segredo ou desafio, em PT, EN ou ES (`menciona_c7`: `mentions_credential`, `looks_secret` e o assunto no texto
     normalizado, também com homóglifo, letra de largura cheia, uma letra por vez separada por ponto ou espaço, e letra de

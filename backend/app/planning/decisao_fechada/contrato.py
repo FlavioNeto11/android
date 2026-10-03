@@ -35,7 +35,7 @@ Marcador = Literal["tela_sensivel", "tela_protegida", "aparelho_loja", "segredo"
 #: (`entidades.remover_entidades_com_motivo`). Fora daqui, a linha grava `outro`.
 MotivoDePrivacidade = Literal[
     "c7_bidi", "c7_palavra", "c7_formato", "c7_alfabetos", "c7_ofuscado", "c7_eufemismo", "c7_digitos",
-    "c7_login_valor", "c7_par_credencial", "c7_intencao_de_entrar", "c7_valor_com_digito",
+    "c7_login_valor", "c7_par_credencial", "c7_intencao_de_entrar", "c7_valor_com_digito", "c7_gatilho",
     "nao_texto", "vazio", "alfabetos", "simbolo_colado", "email_ofuscado", "endereco", "documento", "ditado", "numerais",
     "sobra_de_forma", "outro"]
 

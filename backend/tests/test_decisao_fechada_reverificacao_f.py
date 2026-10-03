@@ -103,17 +103,19 @@ def test_o_par_com_destino_real_recusa(comando: str) -> None:
 
 # ------------------------------------------------------------------ o que a rodada F NÃO pode recusar
 @pytest.mark.parametrize("comando", [
-    # contrastes da rodada F (casos 422 a 427): entrar com objeto de navegação ou com destino
-    "entre com a conta do lucas e curta a foto da Marina", "conta do lucas: abra o feed",
-    "log into the lucas profile and like", "entre no chat com a Marina e responda", "acesse a conta da Marina e leia a bio",
-    "entre na conversa com qa-001 e envie oi", "entre com o Google e abra o feed",
+    # contrastes da rodada F (casos 422 a 427): entrar com objeto de navegação ou com destino (a conta e "entre com o
+    # Google" recusam desde a forma A, 31.18: test_decisao_fechada_forma_a.py)
+    # ("log into the lucas profile and like" recusa desde a A-média, 31.20: `CUSTO_DA_A_MEDIA`)
+    "like the post on the lucas profile", "entre no chat com a Marina e responda",
+    "entre na conversa com qa-001 e envie oi",
     # "entre" preposição
     "curta as fotos postadas entre 10/05 e 12/05", "fotos postadas entre 10-05 e 12-05", "a diferença entre os dois posts",
     "fotos entre março e abril",
-    # "escolha entre a Marina e a Ana" deixou de ser controle na rodada G (G-2): sem faixa nem "os"/"as", "entre" é verbo
+    # "escolha entre a Marina e a Ana" deixou de ser controle na rodada G (G-2) e voltou no 31.20: "escolha" rege a
+    # preposição
+    "escolha entre a Marina e a Ana",
     # provedor de e-mail que também é app, palavra comum e o campo de usuário sem valor
     "a foto da terra vista do espaço", "abra o outlook do lucas", "manda pro Outlook da Ana",
-    "Abra o QA Messenger e confirme qual conta está conectada",
     # cinco letras soltas é o piso
     "a b c",
 ])
@@ -136,13 +138,16 @@ def test_entrar_sem_objeto_pula_a_sombra(comando: str) -> None:
 
 
 def test_a_intencao_de_entrar_so_vale_no_original() -> None:
-    """Tirar "com a conta Lucas" deixa "entre e curta": no texto sem destinos a F-A fica desligada, e o original mostra o
-    destino."""
-    original = "entre com a conta Lucas e curta a foto da Marina"
+    """Tirar "pela Lucas" deixa "entre e curta": no texto sem destinos a F-A fica desligada, e o original mostra o
+    destino. Com "com a conta Lucas", a forma A (31.18) recusa pelo original: a conta conta mesmo no destino. Desde a
+    A-média (31.20), o verbo de entrar recusa sozinho, com ou sem a F-A, nos dois textos."""
+    original = "entre pela Lucas e curta a foto da Marina"
     assert _sem_destinos(original) == "entre e curta a foto da Marina"
-    assert motivo_c7("entre e curta a foto da Marina", intencao=False) is None
-    assert motivo_c7(original, sem_destinos="entre e curta a foto da Marina") is None
-    assert _motivo(original) is None
+    assert motivo_c7("entre e curta a foto da Marina", intencao=False) == "c7_gatilho"
+    assert motivo_c7(original, sem_destinos="entre e curta a foto da Marina") == "c7_gatilho"
+    assert _motivo(original) == "c7_gatilho"
+    assert _motivo("curta a foto da Marina pela Lucas") is None
+    assert _motivo("entre com a conta Lucas e curta a foto da Marina") == "c7_gatilho"
 
 
 @pytest.mark.parametrize(("comando", "motivo"), [
@@ -153,7 +158,8 @@ def test_a_intencao_de_entrar_so_vale_no_original() -> None:
     # diante de número só é preposição em data ou faixa
     ("no insta entre 4471 e curte", "c7_intencao_de_entrar"),
     # no começo da oração é sempre verbo: a faixa no começo recusa a sombra (custo aceito, só sombra)
-    ("entre 3 e 5 fotos", "c7_intencao_de_entrar"),
+    # 31.20 (rodada I): a faixa é preposição em qualquer posição (os números saem mascarados)
+    ("entre 3 e 5 fotos", None),
 ])
 def test_entre_verbo_depois_de_palavra_de_conteudo(comando: str, motivo: str) -> None:
     assert _motivo(comando) == motivo

@@ -19,6 +19,48 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 31.20: as lacunas da rodada I e a A-média aprovada pelo dono (branch feat/31-18-forma-a)
+
+- A rodada I deu NO-GO no b7c05558, e o 31.20 é a ordem da orquestradora (ADR-069 item 19).
+- Parte de lista (f2f49a08, aceita). Fecha:
+  - a locução e os verbos de credencial ("inicie a sessão com", "identifique-se");
+  - o valor depois do destino cortado e a vírgula no par;
+  - o conector com hífen e "amb";
+  - o futuro e o "já tinha entrado";
+  - os eufemismos novos;
+  - a conta do catálogo como identidade ("use o lucas com x", "como lucas, x", "sendo o lucas, x");
+  - o domínio de topo solto depois do e-mail, o e-mail em peças e o fragmento de provedor ao lado de `[email]`;
+  - o C2: nome de fluxo com C7 vai como "(sem nome)";
+  - "entre" preposição deixa de recusar.
+- A-média, aprovada pelo dono em 03/10 ~14:15Z: o verbo de entrar recusa sozinho, em qualquer forma, tempo e posição.
+  A exceção única é o objeto pessoa ou conversa, onde os outros gatilhos seguem valendo. "Entre os/as" no começo da
+  oração, sem conector perto, é preposição. Residual: sem gatilho e "entre na conversa/chat com".
+- Custo:
+  - 126 comandos reais: 14 recusas (11,1 %), 6 a mais que a parte de lista; as que passam têm a mesma saída do b7c05558;
+  - HM3: 31 → 48 recusas, todas as novas por verbo de entrar;
+  - C2: 4 dos 20 fluxos ativos vão sem nome;
+  - 27 controles de teste viraram recusa (`CUSTO_DA_A_MEDIA`).
+- Prova `simulated`:
+  - `backend/tests/test_decisao_fechada_reverificacao_i.py`;
+  - harness de 785 casos (corpus de 14:29Z): 0 vazamentos nos dois catálogos e só as 4 recusas indevidas conhecidas;
+  - filtro e sombras: 1889 passaram.
+
+## 2026-10-03 — 31.18: forma A (A-ESTREITA), a C3 fecha por gatilho de credencial (branch feat/31-18-forma-a)
+
+- Decisão do dono depois do NO-GO da fase 2 da H (ADR-069 item 18): qualquer gatilho de credencial no comando sem
+  destinos E no original recusa o pedido inteiro da C3 (`c7_gatilho`, `intencao._gatilho_de_credencial`).
+  - Gatilhos: verbo de entrar, também no passado, com conector até 3 tokens depois; campo forte; verbo de digitar;
+    palavra C7; soletrado; e o par campo + separador + valor nas quatro formas.
+  - Leitura literal: a sintaxe de destino conta, e "entre com a conta Lucas e curta" recusa.
+  - Exceção única: objeto pessoa ou conversa.
+  - Residual aceito: senha sem gatilho e "entre na conversa com <senha>".
+- Custo: 8 de 126 comandos reais (1 `c7_palavra` e 7 `c7_gatilho`, todos com "conta"). Os 30 controles antigos foram
+  para `CUSTO_DA_FORMA_A` como recusa, e a orquestradora reetiquetou 9 casos do corpus.
+- Prova `simulated`: `backend/tests/test_decisao_fechada_forma_a.py` (445). Recusam as 86 da H e as 40 + 37 das
+  regressões G e F, nos dois catálogos; os 30 controles operacionais passam.
+  - Filtro e sombras: 1458 passaram.
+  - Harness de 579: 0 vazamentos, 0 passagens indevidas, as 6 recusas indevidas de antes.
+
 ## 2026-10-03 — Deploy 10 no central (2432046f; migração 082; curador com alfa 0,3 temporário)
 
 - Implantado no central (`real`, 03/10, WIN-7S2UASNLFOP): commit 2432046f = suíte 10 (16fd1127) + os estados da Android.
