@@ -593,7 +593,8 @@ com o MESMO registro e a mesma fonte de dossiês do curador); leitura e gravaç�
 - **Visibilidade** (`parecer_visivel`): em `on`, sempre; fora dele, só o parecer já decidido. A sombra mede a IA contra a
   decisão da pessoa sem que ela veja a sugestão (D-3); o detalhe só avisa que há um parecer escondido.
 - **Rótulo.** É o único produtor de rótulo humano de `learning_reviews` (decisão da orquestradora, 03/10: sem caminho
-  paralelo). Toda transição de pessoa pelo Livro (`/status`, os `PUT` legados) rotula o parecer pendente do estado de antes,
+  paralelo). Toda transição de pessoa pelo Livro (`/status`, os `PUT` legados e a evidência inválida do 30.23) rotula o
+  parecer pendente do estado de antes,
   DEPOIS da transição e sem nunca travá-la (uma falha do rótulo só vai ao log). Vista (`review_id` ou modo `on`):
   `aceitou` ou `recusou`, pelo lado da sugestão (`Direcao`: sobe, desce, espera). Às cegas: o rótulo da própria ação, com
   `override` pelo lado. O instante da decisão é o `created_at` do sinal `parecer_decidido` (a 069 não tem coluna).
@@ -656,6 +657,59 @@ hub de IA e o curador, 30.11): a causa `indeterminada` sai como dado, sem chamad
   (`failure_kind` em `repository.finish_attempt`, a partir do `StepOutcome` do `executor.py`) é do taskqueue e fica para a frente dele. `steps` não guarda a versão do
   app: `versao_nova` só vem do estado de versão da receita. A comparação entre aparelhos exige a mesma execução.
 - Prova `simulated`: `tests/test_learning_diagnostico.py`. `not_run` no central.
+
+## Evidência inválida e o reaprendido (30.23)
+
+Decisão da coordenação (03/10), registrada como emenda ao ADR-054. Desenho: `design/aprendizado-vivo.md` §9.3. Contrato:
+adendo v0.70 de `api-contract.md`. Caso que a motivou: a receita 109 e o fluxo `no-outlook-abrir-a-caixa-de-entrada-e-le`,
+aprendidos da `r-20261002204347-8c3f6e`, que terminou como sucesso sem comprovar o que fez.
+
+- **Gramática fechada, sem migração.** `domain/evidencia_invalida.py` define o motivo `evidencia_invalida:<run>` (execução
+  `r-AAAAMMDDhhmmss-xxxxxx`), a leitura de volta (`run_invalidada`) e o prefixo reservado.
+  - `mudar_estado` (rotas `/status` e as legadas) recusa o reservado; a marca só entra por `LearningService.invalidar_evidencia`.
+  - Ela aceita só a execução de origem do item (`EntradaDoLivro.nasceu_de`): na receita, a execução de `learned_from_step`;
+    no fluxo, o `source_run_id` fora do treino.
+  - O vivo vai a `disabled`; o já desligado ganha `disabled → disabled` (`reclassificar_desligamento`, CAS no status
+    nativo); o aposentado recusa. A operação é idempotente.
+- **Veto da mesma execução** (`ciclo.motivo_do_veto`): é conferido antes de quem decidiu e não tem prazo. Cai só com um
+  `Renascimento` de outra execução real (`runs.simulated = 0`, lido por `LeituraSql.execucao_real`). A linha de arrumação da
+  loja (`disabled → deprecated`, quando a versão nova aposenta a velha) não conta como decisão.
+- **Reaprendido** (`evidencia_invalida.reaprendizado`): derivado da trilha do `scope_key` e nunca gravado. O último
+  (re)nascimento do item vem depois da última marca do escopo, sem publicação de pessoa entre os dois.
+  - Na receita, renascer é versão nova, e a 109 vira `superseded`.
+  - No fluxo, a mesma linha volta de `disabled` a `candidate` (`D1Nativo._pode_reaproveitar`).
+  - O item força a classe B (`politica_de_risco`, razão `reaprendido_de_evidencia_invalida`), `requires_owner`,
+    "Para aprovar" e o motivo `reaprendido` no `learning.needs_person`.
+- **Duas camadas param o sistema.**
+  - Na loja: `RecipeStore.shadow` pergunta ao ouvinte (`exige_o_dono`) e para em `validated`; a sombra dos fluxos
+    (`SombraDosFluxos._avaliar`) também. Se a leitura do livro falha, o ouvinte não responde (`None`): a candidata não sobe
+    nem ganha motivo na trilha, e a próxima concordância pergunta de novo.
+  - No repositório: `_mover_receita` e `_mover_fluxo` recusam (`ExigeODono`) o sistema publicando o reaprendido.
+  - Depois que uma pessoa publica no escopo, o que nascer ali já segue o D1 de sempre. O aprovado guarda a marca:
+    `reaprendido` continua na leitura, sem `por_que_nao_publica`.
+- **A evidência da execução marcada fica à vista e não mede:** `invalidada: true` no detalhe; fora da sombra do fluxo, da
+  saúde (detalhe e lista) e da versão.
+- **Curador (30.11):** o dossiê (`infrastructure/dossies.py`) passa `FatosDeRisco.reaprendido`, então a IA nunca vê o
+  reaprendido como A, e deixa de fora a evidência da execução marcada. `FatosDeRisco.como_dados()` só leva a chave
+  `reaprendido` quando ela vale: os fatos entram no `dossie_hash`, e a chave sempre presente faria todo item já revisado
+  parecer dossiê novo.
+- **Relações:** `reaprende` e `reaprendida_por`, só entre receitas (`relacoes.de_reaprendizado`).
+- **Painel:**
+  - a trilha mostra o selo "evidência inválida" com o link da execução;
+  - a evidência mostra "execução invalidada", "não conta como prova";
+  - o detalhe tem a seção do reaprendido e o botão "Marcar evidência inválida", com confirmação no lugar;
+  - "Para aprovar" explica o motivo.
+- **Limites conhecidos:**
+  - o escopo da receita inclui a versão do app: numa versão nova a marca não pesa, como o veto de sempre;
+  - `ai.recipes_promote_after: 0` não passa pela sombra (pendência A5);
+  - os ganchos em `taskqueue/recipes.py` (`ReceitaVista.learned_from`, `OuvinteDasReceitas.exige_o_dono`) são exceção ao "só
+    leitura" do §13 do desenho, aceita pela coordenação.
+- **Prova `simulated`:**
+  - `tests/test_learning_evidencia_invalida.py`: domínio, cenário da 109, fluxo e rota;
+  - o vitest de `DetalheRico.test.tsx`;
+  - o ensaio no navegador sobre uma cópia do banco do central, com IA simulada (03/10).
+
+  `not_run`: a marca no central (109 e o fluxo, depois do deploy da suíte 6) e um renascimento real.
 
 ## Pendências conhecidas
 

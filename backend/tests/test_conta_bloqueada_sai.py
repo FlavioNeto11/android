@@ -125,7 +125,7 @@ def test_retirada_apaga_credencial_conta_legada_e_o_ciphertext_e_a_persona_fica(
     assert mem["m-a"] == (MARCADOR, f"{MARCADOR} gosta de café; falou com a conta {MARCADOR}")
     assert mem["m-b"] == ("Ana", "treina para a maratona")
     ev = _eventos(db, "profile.account_retired")
-    assert len(ev) == 1 and ev[0]["data"]["limpezas"] == {"memory_items": 1}
+    assert len(ev) == 1 and ev[0]["data"]["limpezas"] == {"memory_items": 1, "memory_items_de_outras_personas": 0}
     assert FELIPE not in json.dumps(ev[0]).lower()                      # o @ não vai no evento
     assert ev[0]["data"]["account_id"] == conta                        # o id é a lápide, legível nas provas
 
@@ -177,16 +177,16 @@ def test_eh_conta_nossa_vale_para_viva_e_para_a_retirada_e_o_filtro_de_terceiro_
     follow = capability_of(IG, "FOLLOW")
     assert eh_conta_nossa(db, FELIPE) and eh_conta_nossa(db, f"@{LUCAS.upper()}")        # vivas
     assert not eh_conta_nossa(db, "alguem.de.fora") and not eh_conta_nossa(db, "") and not eh_conta_nossa(db, None)
-    # Viva: a persona do Lucas não age sobre uma conta da própria frota.
-    antes = policies.check(outro, follow, counterparty=f"@{FELIPE}")
-    assert not antes.allowed and antes.retry_at is None and "frota" in antes.reason
+    # Viva: desde a emenda do ADR-050 (29.28) a persona do Lucas PODE agir sobre uma conta nossa viva (passa pelas demais
+    # regras; o ritmo baixo entre gestos está em `test_interacao_entre_contas_nossas.py`).
+    assert policies.check(outro, follow, counterparty=f"@{FELIPE}").allowed
     assert policies.check(outro, follow, counterparty="@alguem.de.fora").allowed
 
     svc.retirar_conta_bloqueada(pid, _ancora(repo, pid))
 
     assert eh_conta_nossa(db, FELIPE) and eh_conta_nossa(db, f"@{FELIPE}") and eh_conta_nossa(db, FELIPE.upper())
     depois = policies.check(outro, follow, counterparty=f"@{FELIPE.title()}")             # o filtro real do produto
-    assert not depois.allowed and "frota" in depois.reason
+    assert not depois.allowed and depois.retry_at is None and "retirada" in depois.reason      # retirada segue recusada
     assert policies.check(outro, follow, counterparty="@alguem.de.fora").allowed
 
 
@@ -213,7 +213,8 @@ def test_limpeza_registrada_e_chamada_com_os_argumentos_e_as_contagens_entram_no
     r = svc.retirar_conta_bloqueada(pid, conta)
     assert len(vistas) == 1 and set(vistas[0]) == {"profile_id", "account_id", "handle", "app_id"}
     assert vistas[0]["profile_id"] == pid and vistas[0]["account_id"] == conta and vistas[0]["handle"] == FELIPE
-    assert r["limpezas"] == {"rastro_do_aprendizado": 5, "outra": 1, "memory_items": 0}
+    assert r["limpezas"] == {"rastro_do_aprendizado": 5, "outra": 1, "memory_items": 0,
+                            "memory_items_de_outras_personas": 0}
     assert _eventos(db, "profile.account_retired")[0]["data"]["limpezas"] == r["limpezas"]
 
 
@@ -456,14 +457,15 @@ def test_migracao_071_cria_a_lapide_sem_chave_estrangeira(tmp_path: Path) -> Non
     assert re.fullmatch(r"[0-9a-f]{64}", hash_do_handle("x"))
 
 
-def test_responder_a_terceiro_num_post_nosso_segue_permitido_e_conta_nossa_segue_recusada(tmp_path: Path) -> None:
+def test_responder_a_terceiro_num_post_nosso_segue_permitido_e_conta_retirada_segue_recusada(tmp_path: Path) -> None:
     """O caminho do roteiro 8.3: a conta dona do post responde ao comentário de um TERCEIRO (`counterparty` é o dele)."""
     svc, repo, db, pid, outro = _montar(tmp_path)
     policies = PolicyEngine(repo, lambda: _Frota(curtidas=3))
     responder = capability_of(IG, "REPLY_COMMENT")
     assert policies.check(pid, responder, counterparty="@terceiro.qualquer").allowed
     svc.retirar_conta_bloqueada(outro, _ancora(repo, outro))
-    # Conta nossa, viva (felipe) ou aposentada (lucas, retirado agora), continua recusada para qualquer ação com efeito.
+    # Conta nossa APOSENTADA (lucas, retirado agora) continua recusada para qualquer ação com efeito; a VIVA (felipe) passa a
+    # poder receber a interação de outra conta nossa (29.28, emenda do ADR-050).
     assert not policies.check(pid, responder, counterparty=f"@{LUCAS}").allowed
-    assert not policies.check(outro, responder, counterparty=f"@{FELIPE}").allowed
-    assert not policies.check(pid, capability_of(IG, "FOLLOW"), counterparty=f"@{FELIPE}").allowed
+    assert not policies.check(pid, capability_of(IG, "FOLLOW"), counterparty=f"@{LUCAS}").allowed
+    assert policies.check(outro, responder, counterparty=f"@{FELIPE}").allowed

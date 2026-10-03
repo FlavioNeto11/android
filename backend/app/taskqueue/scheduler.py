@@ -1226,6 +1226,8 @@ class Scheduler:
                 # Item 24.3: `{{saida:<nome>}}` vira o valor lido ANTES da porta de política — aprovação, limite por
                 # alvo, coordenação de frota e o ator veem o valor, não o molde. Sem o valor, a etapa não começa:
                 # nenhuma tentativa consumida, nada inventado.
+                if self._valor_visual_sem_a_pessoa(obj, srow):
+                    break
                 srow, faltam = repo.resolver_saidas(srow["id"])
                 if faltam:
                     self._saida_ausente(obj, srow, faltam)
@@ -1408,7 +1410,7 @@ class Scheduler:
             return AppContext(None, None, plan.app_package if plan else None, None, None, None), rotulo
         do_aparelho = step_app_id is None or (inst is not None and inst["app_id"] == row["id"])
         return (AppContext(row["id"], row["name"], row["package"], row["activity"], row["nav_hints"],
-                           loads(row["known_selectors"])),
+                           loads(row["known_selectors"]), row["category"], bool(row["builtin"])),
                 self.repo.conta_esperada(profile_id, str(row["id"]), rotulo, do_aparelho=do_aparelho))
 
     def _app_da_linha(self, run: Row, rt: DeviceRuntime, srow: Row) -> tuple[str | None, str | None]:
@@ -1543,6 +1545,23 @@ class Scheduler:
         if not self._skip_failed_item(obj, step, detail or "falha"):
             self._fail_objective(obj, f"Etapa '{step.title}' falhou: {detail}" + (f" {rec.motivo}" if rec.motivo else ""))
         return False
+
+    def _valor_visual_sem_a_pessoa(self, obj: Row, srow: Row) -> bool:
+        """Item 12.5 (ADR-070): uma etapa com efeito (`side_effect` ou `commit_guard`) que consome um valor lido da IMAGEM
+        não anda sozinha: vai para `waiting_user`, com o motivo, sem gastar tentativa. Navegação e busca seguem. Confirmar
+        o valor na árvore do app consumidor não vale (é circular: a árvore é a que não tinha o texto). Devolve `True` quando
+        segurou a etapa."""
+        if not (srow["side_effect"] or loads(srow["commit_guard"], [])):
+            return False
+        visuais = self.repo.saidas_visuais_citadas(srow)
+        if not visuais:
+            return False
+        nomes = ", ".join(f"'{n}'" for n in visuais)
+        self._block(obj, f"A etapa '{srow['title']}' tem efeito e usa o valor {nomes}, lido da imagem: valor lido da "
+                         "imagem precisa da sua confirmação.",
+                    "Confira o valor na tela do aparelho e refaça o comando informando-o, ou abandone o item: um valor lido "
+                    "da imagem não alimenta uma ação com efeito sem a sua confirmação (ADR-070).")
+        return True
 
     def _saida_ausente(self, obj: Row, srow: Row, faltam: list[str]) -> None:
         """A etapa cita `{{saida:<nome>}}` e o valor não existe (item 24.3). Nada é inventado, e nenhuma tentativa

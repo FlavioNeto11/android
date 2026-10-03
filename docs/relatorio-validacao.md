@@ -617,6 +617,29 @@ Custo total US$ 0,15 de um teto de US$ 1,50. Ficam `not_run`: `COLLECT_COMMENTS`
 `edit` em aparelho, o `learn_from` de comentário e o `for_each` com itens reais. O próximo passo é do dono: esperar um
 comentário orgânico num post nosso e repetir uma vez, ou comentar de uma conta pessoal com consentimento explícito.
 
+**Continuação real de 02/10/2026 (22:42Z a 23:03Z, mesmo central):**
+- O android-06 e o android-01 foram reiniciados sem apagar dados (`c-20261002224218-44c8a0` e `c-20261002225258-839324`).
+  O 06 voltou com rede `healthy`; o 01 voltou sem ANR.
+- Os verifies, só de observação, deram `session_ready`: `c-20261002225457-e7a86e` (06) e `c-20261002230127-8ec0af` (01).
+- As coletas, só de leitura, pararam honestas na grade vazia: `r-20261002225627-a5b878` no 06 ("0 posts") e
+  `r-20261002230215-bc9b44` no 01 ("Create your first post").
+- **Conclusão: as três contas vivas não têm publicação, então não existe post nosso que receba comentário de
+  terceiro.** As coletas custaram US$ 0,40 no total, de um teto de US$ 1,50.
+
+**Decisão do dono** (relatada pelo orquestrador às 23:10Z e às 23:18Z de 02/10; é a emenda do ADR-050 e o item 29.28):
+- As contas nossas vivas podem interagir entre si em ritmo baixo.
+- O lucas publica UM post simples, com legenda curta e neutra e imagem gerada pela plataforma (`img-huWjsuK_9G7ZfAa4`,
+  US$ 0,0537).
+- O catálogo do Instagram não tem capability de publicar. Por isso o post sai pelo controle manual da API (take/input):
+  **manual, fora do produto**, como o orquestrador aceitou às ~23:38Z. Isso significa:
+  - não há aprovação do produto; a vez explícita do orquestrador faz esse papel;
+  - não há registro de interação nem memória da persona;
+  - a imagem vai para a galeria por adb.
+- Depois, com o 29.28 implantado, outra conta nossa comenta (`CREATE_COMMENT` com aprovação) e o lucas responde
+  (`REPLY_COMMENT` com o verbo `edit`), com ≥ 10 min entre os gestos.
+- Estado: `not_run`. Falta o deploy, e falta a resposta do dono sobre o rótulo de IA do Instagram.
+- O caminho definitivo do post é o item 29.30 (CREATE_POST), no backlog.
+
 **Repetido com as oito contas (19/09/2026).** A mesma mensagem recebida (*"acabei de ver seu último post, ficou
 muito bom!"*) foi apresentada aos 8 perfis pela rota de prévia da persona — que não toca em tela nem grava
 interação. Saíram **8 respostas distintas**, cada uma reconhecível pela persona declarada:

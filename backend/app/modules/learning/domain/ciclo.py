@@ -13,6 +13,8 @@ Três regras em volta da tabela:
 - rebaixar é automático; promover algo com efeito ou com texto de pessoa é do dono;
 - conteúdo desligado por uma PESSOA não volta pelo sistema (veto por `content_hash` no mesmo escopo). Desligado pelo
   sistema, fica vetado por `VETO_DO_SISTEMA_DIAS` ou até mudar a versão do app. A pessoa sempre pode reativar.
+  Desligado por EVIDÊNCIA INVÁLIDA (30.23, `evidencia_invalida.py`), o veto barra só a mesma execução: outra execução
+  real ensina de novo, e o reaprendido espera o dono (`exige_o_dono(..., reaprendido=True)`).
 """
 from __future__ import annotations
 
@@ -20,6 +22,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from app.modules.learning.domain.evidencia_invalida import Renascimento, run_invalidada
 from app.modules.skills.domain.lifecycle import SYSTEM_ACTOR, Actor, SkillState, actor_of
 from app.util import parse_iso
 
@@ -105,24 +108,33 @@ class NotaComCaraDeSegredo(ErroDeAprendizado):
 
 
 # ------------------------------------------------------------------ regras
-def exige_o_dono(side_effect: bool, human_origin: bool) -> bool:
-    """`requires_owner` do D1. Derivado, nunca gravado."""
-    return side_effect or human_origin
+def exige_o_dono(side_effect: bool, human_origin: bool, reaprendido: bool = False) -> bool:
+    """`requires_owner` do D1. Derivado, nunca gravado. `reaprendido` (30.23): o item (re)nasceu no escopo de uma
+    evidência inválida e espera o dono mesmo sem efeito e sem texto de pessoa (classe B forçada)."""
+    return side_effect or human_origin or reaprendido
 
 
 def permitido(frm: SkillState, to: SkillState, actor: Actor, *, side_effect: bool = False,
-              human_origin: bool = False, modo_publica: bool = True) -> bool:
+              human_origin: bool = False, modo_publica: bool = True, reaprendido: bool = False) -> bool:
     """A mesma resposta de `conferir_transicao`, sem a mensagem (é o que o teste da tabela percorre)."""
     try:
         conferir_transicao(frm, to, SYSTEM_ACTOR if actor is Actor.SYSTEM else "painel", side_effect=side_effect,
-                           human_origin=human_origin, modo_publica=modo_publica)
+                           human_origin=human_origin, modo_publica=modo_publica, reaprendido=reaprendido)
     except TransicaoProibida:
         return False
     return True
 
 
+def _por_que_exige_o_dono(side_effect: bool, human_origin: bool) -> str:
+    if side_effect:
+        return "tem efeito externo"
+    if human_origin:
+        return "tem texto de pessoa"
+    return "foi reaprendido depois de uma evidência inválida (classe B)"
+
+
 def conferir_transicao(frm: SkillState, to: SkillState, by: str, *, side_effect: bool, human_origin: bool,
-                       modo_publica: bool) -> Actor:
+                       modo_publica: bool, reaprendido: bool = False) -> Actor:
     """Confere a tabela e o D1 e devolve quem está movendo. Recusa com a razão legível.
 
     `modo_publica`: o modo do tipo está em `on` (lição, tela...) — sem isso o sistema grava e mede, mas não publica.
@@ -139,8 +151,8 @@ def conferir_transicao(frm: SkillState, to: SkillState, by: str, *, side_effect:
     if actor not in quem:
         raise TransicaoProibida(f"{frm} → {to} é decisão de uma pessoa, não do sistema.")
     if actor is Actor.SYSTEM and to is SkillState.PUBLISHED:
-        if exige_o_dono(side_effect, human_origin):
-            motivo = "tem efeito externo" if side_effect else "tem texto de pessoa"
+        if exige_o_dono(side_effect, human_origin, reaprendido):
+            motivo = _por_que_exige_o_dono(side_effect, human_origin)
             raise ExigeODono(f"O item {motivo}: publicar é decisão do dono (D1). Ele fica em 'validated', na fila "
                              "Para aprovar.")
         if not modo_publica:
@@ -193,28 +205,51 @@ def conferir_nascimento(estado: SkillState, by: str, *, side_effect: bool, human
 
 @dataclass(frozen=True, slots=True)
 class Desligamento:
-    """Uma transição para `disabled` (ou `deprecated`) do mesmo conteúdo no mesmo escopo, lida da trilha."""
+    """Uma transição do mesmo conteúdo no mesmo escopo, lida da trilha (o veto olha a mais recente que decide).
+    `reason` e `from_state` (30.23): o tipo do desligamento (`evidencia_invalida:<run>`) e a arrumação da loja."""
 
     to_state: SkillState
     decided_by: str
     decided_at: str
     app_version: str | None
+    reason: str = ""
+    from_state: SkillState | None = None
+
+
+def _arrumacao(d: Desligamento) -> bool:
+    """`disabled → deprecated`: a loja da receita marcando como substituída a quarentenada da mesma chave quando nasce
+    uma versão nova (`recipes.save`). Não é decisão sobre o conteúdo (a tabela do ciclo nem tem esse passo): sem
+    pular, ela levantava o veto do que uma pessoa desligou assim que outra versão nascesse na chave."""
+    return d.from_state is SkillState.DISABLED and d.to_state is SkillState.DEPRECATED
 
 
 def motivo_do_veto(historico: Sequence[Desligamento], *, agora: datetime, app_version: str | None,
+                   renascimento: Renascimento | None = None,
                    dias_do_sistema: int = VETO_DO_SISTEMA_DIAS) -> str | None:
     """Por que o SISTEMA não pode recriar nem promover este conteúdo agora — ou `None` quando pode.
 
     `historico` vem na ORDEM DA TRILHA (a mais antiga primeiro; é o `id` da transição, não o relógio: duas decisões no
-    mesmo milissegundo empatam no horário). Vale a mais recente: uma pessoa que reativou depois de desligar desfaz o
-    veto dela; o sistema que desligou há mais de `dias_do_sistema` dias, ou numa versão do app que já não é a de
-    agora, não trava mais nada. Só `disabled` veta (`deprecated` é aposentadoria, não refutação).
+    mesmo milissegundo empatam no horário). Vale a mais recente que DECIDE (a arrumação da loja, `_arrumacao`, não
+    conta): uma pessoa que reativou depois de desligar desfaz o veto dela; o sistema que desligou há mais de
+    `dias_do_sistema` dias, ou numa versão do app que já não é a de agora, não trava mais nada. Só `disabled` veta
+    (`deprecated` é aposentadoria, não refutação).
+
+    Evidência inválida (30.23), conferida ANTES de quem decidiu (vale igual se um dia o sistema a escrever): barra só
+    a mesma execução. `renascimento` é quem tenta trazer o conteúdo de volta; sem ele (promoção, leitura do painel), ou
+    com execução simulada, o veto fica.
     """
-    if not historico:
+    decisoes = [d for d in historico if not _arrumacao(d)]
+    if not decisoes:
         return None
-    ultimo = historico[-1]
+    ultimo = decisoes[-1]
     if ultimo.to_state is not SkillState.DISABLED:
         return None
+    run = run_invalidada(ultimo.reason)
+    if run is not None:
+        if renascimento is not None and renascimento.real and renascimento.run_id != run:
+            return None
+        return (f"desligado por evidência inválida em {ultimo.decided_at[:10]} (a execução {run} terminou como sucesso "
+                "sem comprovar o que fez): só outra execução real o ensina de novo")
     if actor_of(ultimo.decided_by) is Actor.PERSON:
         return f"desligado por uma pessoa ({ultimo.decided_by}) em {ultimo.decided_at[:10]}: só uma pessoa o reativa"
     try:

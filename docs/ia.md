@@ -19,6 +19,8 @@ provedor, modelo, prazo e concorrência próprios, roteados por `RoutingProvider
 | `social` | Escreve a mensagem na voz da persona; nunca recebe imagem nem credencial | 1 por interação social |
 | `persona` | Gera e completa a persona (rascunho em texto); sem `ai.roles.persona` é o `social` (item 17.8) | 1 por persona gerada ou completada |
 
+**Função opcional `leitura` (item 12.5, ADR-070)** fica FORA de `AI_ROLES`: só existe com `ai.roles.leitura` escrito, sem herança de nenhuma outra (§17).
+
 **`generalize` (modo treinamento, item 13.2) não é uma sexta função registrada** — despacha no provedor/modelo do
 papel `plan` (mesmo hub, sem `ai.roles.generalize` dedicado): `backend/app/planning/training.py` monta o pedido e
 chama o provedor resolvido para `plan`.
@@ -203,6 +205,14 @@ Ver [docs/produto.md §2](produto.md) para os conceitos. Mecanismo de custo, res
   controles de sempre (erros seguidos, repetição, efeito externo). O código nunca escalou; o comentário que
   prometia isso foi corrigido. Escalar na divergência é **decisão do dono pendente**, com o custo medido no
   [relatório](relatorio-desempenho.md): 22 etapas `recipe+ai` em 7 dias.
+- **App de prova no tier 0 do `by_risk`** (item 29.31, RA-8 da reavaliação de 03/10): a etapa SEM capability do app de prova
+  (`builtin` e `apps.category='qa'`: o QA Messenger embutido, que nasce `qa` no seed e na migração 041) não escala por efeito externo.
+  `category='qa'` sozinho não basta, porque `POST/PUT /apps` o aceitam em qualquer app.
+  Sem catálogo, "risco desconhecido" mandava toda etapa de envio ao modelo forte: 64 a 66 escalonamentos em 7 dias,
+  43 % das chamadas do Opus no tier 1, cerca de US$ 0,20 por dia, e uma bateria de prova distorcida. A regra lê o dado
+  do app, nunca o nome (ADR-052). `strong_model_for_side_effect: true` continua subindo tudo (escolha explícita), etapa com
+  capability segue o risco do catálogo, e app real sem catálogo continua no tier 1. Retentativa, erros seguidos e ciclo
+  escalam em qualquer app.
 - **Desbravador** (`ai.pathfinder_wait_s`): visível (`wait_reason: pathfinder`), medido, agrupado por
   compatibilidade do app e solto na hora quando o líder falha ou sai do ar
   ([`dominios/parque.md`](dominios/parque.md#escalonamento)).
@@ -658,3 +668,87 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
     execução sem mexer no núcleo, e fica para o 31.10.
   - Prova `simulated`: `backend/tests/test_decisao_fechada_intencao.py` (`DecisorFalso`, banco de teste, RESOLVE de verdade sobre
     habilidades de teste, `_plan` pelo harness com decisor segurado por evento). Chamada real ao Jev: `not_run`.
+
+## 17. Leitura visual: o papel `leitura` (item 12.5, ADR-070)
+
+Quando a árvore do app não expõe o texto de uma linha (passo 0 do 12.5: a caixa do Outlook é um `ComposeView` cega), o valor lido
+na imagem conta como saída de etapa se um **segundo leitor**, que não vê o valor do ator, transcreve o mesmo no recorte da mesma
+captura. O papel `leitura` é esse leitor. É **roteamento comum do hub**, nunca a porta `DecisaoFechada` nem as sombras do Jev
+(ADR-069 §4).
+
+**`ai.roles.leitura` (contrato de configuração).**
+
+- Opcional e **sem herança**: sem o bloco com `provider` e `model` escritos o papel fica DESLIGADO (`Config.ai_leitura()` é
+  `None`, `Config.ai_role("leitura")` levanta `KeyError`), não entra em `AI_ROLES`, em `ai_roles()` nem em `ai.profiles.<p>.roles`
+  (escrever `leitura` num perfil recusa a partida). Sem o papel, a leitura visual recusa com `sem_leitor`.
+- Na partida (`Config.validar_leitura`, chamada por `Config.__init__` e por `RoutingProvider`): exige modelo **declarado em
+  `ai.models` com `vision: true`** (modelo ausente da tabela é recusado, porque o `ModelCaps()` padrão presume visão; a mensagem diz
+  a linha `ai.models.<modelo>` a escrever) e recusa o MESMO MODELO do `decide` e do `escalation` — o de base e o de cada perfil —,
+  dizendo a linha a corrigir; o provedor simulado passa direto. Compara o modelo, e não só o par (provedor, modelo): é mais estrito
+  que o par, de propósito (o mesmo modelo por dois endpoints erra junto). O nome é normalizado antes de comparar e de procurar em
+  `ai.models` (caixa, prefixo de gateway `vendor/` e sufixo `-AAAAMMDD` saem, como no `model_caps`): "openai/GPT-6-Luna-20261001" e
+  "gpt-6-luna" são o mesmo modelo. **O código exige modelo DIFERENTE e com visão declarada; a família não é checada.**
+- Não aceita `fallback_provider` nem `refusal_fallback`: o recorte vai exatamente para o provedor que o aviso de privacidade nomeia.
+- Padrões: prazo 30 s, 2 vagas (`ROLE_DEFAULTS["leitura"]`). Aceita provedor `anthropic`, `openai` ou compatível (Gemini pelo
+  endpoint OpenAI-compatível, como os outros papéis). O padrão decidido pelo dono é a OpenAI (`gpt-6-luna`), com o Gemini
+  (`gemini-3.1-flash-lite`) de reserva. O Haiku é da MESMA família do ator e só entra com nova decisão do dono.
+- **A leitura nunca cai no modelo do ator** (`provider.modelo_do_papel_leitura`): o `transcribe` de cada provedor usa o modelo
+  explícito do papel `leitura` (a instância do hub tem de ser a do papel; sem hub, o de `ai.roles.leitura`) e, sem ele, levanta
+  `AIError(kind="not_configured")` (o executor recusa com `sem_leitor`), em vez de usar `self.model`.
+- Opção `ai.leitura_visual.enabled` (padrão `false`) liga o uso; o exemplo está comentado em `config.example.yaml`.
+
+**`transcribe` (contrato de provedor).** `async transcribe(req: LeituraRequest) -> tuple[Transcricao, Usage]`, nos três
+provedores (Anthropic, `OpenAICompatProvider`, simulado) e no `RoutingProvider`.
+
+- `LeituraRequest(recorte: bytes, saidas: dict[str, str], run_id: str | None)`: SÓ o JPEG do recorte e os nomes e descrições das
+  saídas pedidas (nomes `^[a-z][a-z0-9_]{0,39}$`, no máximo 20). Nunca o valor do ator, o comando, os fatos ou a tela inteira; o
+  `run_id` serve ao teto e à contabilidade, e não vai ao prompt.
+- `Transcricao(linhas: list[str], campos: dict[str, str | None], legivel: bool, truncado: bool)`. No fio o modelo devolve
+  `campos` como lista de pares `{nome, valor}` (`TranscricaoWire`, gramática estrita).
+- **Parse estrito** (`provider.transcricao_from_json`): JSON inválido, chave fora do esquema, tipo errado ou **campo pedido
+  repetido com valores diferentes** é `AIError(kind="invalid_output")` — nunca `legivel=False` (isso é o MODELO dizendo que não
+  leu) e nunca sucesso. O erro é levantado com `from None`: a `ValidationError` do pydantic traz `input_value=` com o texto do
+  modelo, e o executor loga a falha com `exc_info=True`. Só os campos pedidos entram, e o pedido que não veio fica `None`. Passou de 12 linhas ou de 400 caracteres: o excesso é cortado e marca `truncado=True`.
+- `Transcricao` não se imprime (`__repr__` oculta o conteúdo): o texto transcrito é dado de terceiro, pode trazer injeção de prompt
+  ou um código, e nunca entra no `plan`, no `decide`, em log, evento ou mensagem de erro.
+- Contabilidade: `Usage.role="leitura"`, `ai_calls.origem="leitura"` (`ORIGENS_DE_IA`), `with_image=True`. A chamada passa pelo
+  `_budget` com o `run_id` da execução (valem os tetos do pedido, da execução e do dia), pelo `_saldo` da conta do provedor e
+  entra no teto de chamadas do objetivo (`Executor._ai`). Fatia opcional `ai.limits.leitura_max_usd_per_day` (0, padrão,
+  desliga; motivo `fatia_leitura`).
+- Imagem: só o recorte (`devices.codificacao.recortar_jpeg`): lado maior até 1600 px, no máximo **0,2 da altura da imagem e 320 px**
+  (a linha da caixa do teste mede 162 px: uma linha cabe, duas não) e até 400 KB; passou de qualquer um, a âncora não é uma linha
+  e a leitura recusa (`sem_ancora`). O recorte é dado de terceiros: metade da tela seriam várias mensagens.
+
+**Recusas da leitura visual (vocabulário fechado).** `desligado`, `elemento_com_texto`, `regiao_nao_declarada`, `arvore_truncada`,
+`tela_sensivel`, `fora_do_app`, `sem_ancora`, `captura_mudou`, `repetida`, `sem_leitor`, `leitor_falhou`, `ilegivel`, `truncado`,
+`nao_confere` e `triagem:<motivo>`. O ator recebe SÓ o código. Três regras do caminho visual:
+
+- **Triagem (ADR-009):** além da triagem da árvore, o valor com FORMA de código (4 a 8 dígitos, com ou sem espaço ou hífen) é recusado
+  mesmo sem palavra de contexto, e o recorte inteiro é triado linha a linha (`codigo_na_linha`: número de 4 a 8 dígitos E palavra de
+  código ou verificação em inglês, português ou espanhol na mesma linha; data, hora, decimal e telefone não contam). A triagem NÃO
+  é um erro de chamada: leva a etapa a `waiting_user`, como no caminho da árvore, sem nova tentativa do ator e sem lhe dizer que a
+  linha tem código.
+- **Forma de código, em qualquer grafia (limiar):** `forma_de_codigo` lê o texto em NFKC e com dígitos de outros alfabetos em ASCII,
+  ignora os separadores `espaço . , · _ / -` e os de largura zero, e recusa (a) só número de 4 a 8 dígitos, fora data plausível
+  ("12/10", "02/10/26"); número com separador de milhar ("1.234") também é recusado; (b) token de 4 a 10 caracteres sem espaço com
+  letra e ao menos 3 dígitos ("G-482913", "ABC123"), fora a hora ("14h30"). Vale para o valor e para CADA linha do recorte, e a
+  triagem do recorte roda ANTES da conferência (um recorte com código vai sempre para a pessoa). O mesmo conserto, com palavra de
+  código na linha, vale para a árvore (`codigo_na_linha`: "Your code is 482.913", "Your code is ABC123").
+- **Valor gravado é o do leitor**, limpo (`limpar`): a concordância é no normalizado, e o que está na imagem é o que se grava.
+- **Orçamento, prazo, crédito e recusa por política** na chamada do leitor NÃO viram `leitor_falhou`: seguem o desfecho do ator
+  (`desfecho_de_ia`). Só a falha do provedor e a saída inválida viram `leitor_falhou`.
+- **Receita:** as saídas de origem `visual` ficam fora das variáveis de receita (`variaveis_da_receita`): o valor lido da imagem não
+  chega a uma reprodução sem a pessoa.
+
+**Limites conhecidos da v1.** (a) A retomada de um `waiting_user` com valor visual não avança: não há confirmação do valor, isso é item
+posterior, e as saídas são abandonar ou refazer o comando. (b) Uma falha passageira do provedor gasta a tentativa daquele par: a chave
+`repetida` é gravada antes da chamada ao leitor. (c) Com `leitura_visual.enabled` desligado o ator ainda vê `source` no esquema da
+ferramenta (o esquema é estático) e pode gastar 1 das 4 recusas com `desligado`.
+
+**`/api/ai`.** Com o papel escrito aparece em `roles` e em `models`, e o `notice` ganha a frase da leitura visual (ligada ou
+desligada) nomeando o provedor, o endpoint, o modelo e os apps que declaram a região (`declaram_leitura_visual`, pelo rótulo do
+dado do app, `AppDefinition.label`, e não pelo pacote cru); a chave
+aparece só como "configurada". Telas sensíveis e de verificação nunca são recortadas.
+
+Prova: `simulated` (`tests/test_leitura_visual.py`, `tests/test_leitura_visual_papel.py`). Real: `not_run` (a bancada com capturas
+guardadas é o portão para ligar a opção no central).

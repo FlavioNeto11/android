@@ -25,11 +25,14 @@ from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, EntradaInval
                                                NotaComCaraDeSegredo, SkillState, TransicaoProibida,
                                                UseARotaDasHabilidades, Vetado, caminho_da_pessoa, conferir_transicao,
                                                motivo_do_veto)
+from app.modules.learning.domain.evidencia_invalida import (ja_invalidada, motivo_de_evidencia_invalida,
+                                                            reaprendizado, reservado, run_invalidada, run_valida)
 from app.modules.learning.domain.conteudo import capability_unica, licao_legivel, nome_da_capability, tela_legivel
 from app.modules.learning.domain.efeito import exposicao_json
 from app.modules.learning.domain.espera import Faixa
-from app.modules.learning.domain.livro import (EntradaDoLivro, ItemDeAprendizado, NovoItem, Transicao, a_revisar,
-                                               contagem, entrada_do_item, estado_nativo, para_aprovar, status_nativo)
+from app.modules.learning.domain.livro import (ESTADOS_DA_EVIDENCIA_INVALIDA, EntradaDoLivro, ItemDeAprendizado,
+                                               NovoItem, Transicao, a_revisar, contagem, entrada_do_item,
+                                               estado_nativo, para_aprovar, status_nativo)
 from app.modules.learning.domain.modo_por_app import modo_efetivo
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.saude import Saude, SinaisDeSaude, calcular
@@ -80,7 +83,8 @@ class DetalheDoLivro:
     #: parque e o estado por versão. Sempre presente; o que não se sabe é `desconhecido`, nunca inventado.
     versao: JsonObject | None = None
     #: As relações derivadas do item (30.7, `domain/relacoes.py`, §6): substitui, substituída por, derivado de,
-    #: absorvida e contradiz, montadas na leitura, sem tabela de arestas. Vazio quando nada se deriva.
+    #: reaprende e reaprendida por (30.23), absorvida e contradiz, montadas na leitura, sem tabela de arestas. Vazio
+    #: quando nada se deriva.
     relacoes: tuple[JsonObject, ...] = ()
 
 
@@ -187,6 +191,7 @@ class LearningService:
         for k, ler in fontes.items():
             if kind is None or kind is k:
                 saida.extend(ler())
+        saida = self._com_reaprendizado(saida)
         if kind is None or kind in KINDS_DE_ITEM:
             saida.extend(entrada_do_item(i) for i in self._repo.itens(kind=kind if kind in KINDS_DE_ITEM else None))
         return saida
@@ -204,7 +209,30 @@ class LearningService:
         achada = ler[kind](ref)
         if achada is None:
             raise NaoEncontrado(f"Não há {kind.value} '{ref}' no livro.")
-        return achada
+        return self._reaprendida(achada)
+
+    # ================================================================== reaprendido (30.23)
+    def _com_reaprendizado(self, entradas: list[EntradaDoLivro]) -> list[EntradaDoLivro]:
+        """Marca as receitas e os fluxos (re)nascidos no escopo de uma evidência inválida, numa leitura só da trilha
+        (`trilhas_com_evidencia_invalida`): o reaprendido espera o dono (classe B forçada). Derivado, nunca gravado."""
+        if not any(e.kind in (LivroKind.RECEITA, LivroKind.FLUXO) for e in entradas):
+            return entradas
+        por_escopo = self._repo.trilhas_com_evidencia_invalida()
+        if not por_escopo:
+            return entradas
+        saida: list[EntradaDoLivro] = []
+        for e in entradas:
+            trilha = por_escopo.get(e.scope_key) if e.kind in (LivroKind.RECEITA, LivroKind.FLUXO) else None
+            r = reaprendizado(trilha, e.trail_ref) if trilha else None
+            saida.append(replace(e, reaprendido=r) if r is not None else e)
+        return saida
+
+    def _reaprendida(self, e: EntradaDoLivro) -> EntradaDoLivro:
+        """`_com_reaprendizado` de UMA entrada (o detalhe, a transição, o aviso da loja): a trilha do escopo dela."""
+        if e.kind not in (LivroKind.RECEITA, LivroKind.FLUXO) or not e.scope_key:
+            return e
+        r = reaprendizado(self._repo.trilha_do_escopo(e.scope_key), e.trail_ref)
+        return replace(e, reaprendido=r) if r is not None else e
 
     def detalhe(self, kind: LivroKind, ref: str) -> DetalheDoLivro:
         e = self.entrada(kind, ref)
@@ -217,8 +245,11 @@ class LearningService:
         evidencias = tuple(self._repo.evidencias(e.trail_ref))
         trilha = tuple(self._repo.trilha(e.trail_ref))
         conteudo = self._conteudo(kind, e.ref)
-        return DetalheDoLivro(e, evidencias, trilha, exposicoes, conteudo, saude=self.saude_de(e, evidencias, trilha),
-                              versao=self._versao(e, evidencias), relacoes=self._relacoes(e, conteudo))
+        # 30.23: a evidência da execução marcada como inválida fica à vista (o painel a marca), mas não mede nada
+        invalidas = frozenset(r for t in trilha if (r := run_invalidada(t.reason)) is not None)
+        validas = tuple(x for x in evidencias if x.run_id not in invalidas) if invalidas else evidencias
+        return DetalheDoLivro(e, evidencias, trilha, exposicoes, conteudo, saude=self.saude_de(e, validas, trilha),
+                              versao=self._versao(e, validas), relacoes=self._relacoes(e, conteudo))
 
     # ================================================================== saúde (30.4)
     def saudes(self, entradas: Sequence[EntradaDoLivro]) -> dict[str, Saude]:
@@ -226,12 +257,25 @@ class LearningService:
         o rótulo pelo estado), com o mesmo limite do detalhe: o rótulo é o mesmo nos dois."""
         saida: dict[str, Saude] = {}
         contexto = self._contexto_de_obsolescencia()             # os lotes são lidos uma vez para a lista inteira
+        invalidas = self._runs_invalidadas() if any(e.state is SkillState.PUBLISHED for e in entradas) else {}
         for e in entradas:
             evidencias = self._repo.evidencias(e.trail_ref) if e.state is SkillState.PUBLISHED else ()
+            fora = invalidas.get(e.trail_ref)
+            if fora:                                            # 30.23: a mesma regra do detalhe
+                evidencias = [x for x in evidencias if x.run_id not in fora]
             saude = self.saude_de(e, tuple(evidencias), contexto=contexto)
             if saude is not None:
                 saida[e.trail_ref] = saude
         return saida
+
+    def _runs_invalidadas(self) -> dict[str, frozenset[str]]:
+        """As execuções marcadas como evidência inválida, por ref da trilha do item (30.23), numa leitura só."""
+        saida: dict[str, set[str]] = {}
+        for linhas_do_escopo in self._repo.trilhas_com_evidencia_invalida().values():
+            for t in linhas_do_escopo:
+                if (r := run_invalidada(t.reason)) is not None:
+                    saida.setdefault(t.item_ref, set()).add(r)
+        return {k: frozenset(v) for k, v in saida.items()}
 
     def capabilities(self, entradas: Sequence[EntradaDoLivro]) -> dict[str, str | None]:
         """A capability de cada entrada, pela ref da trilha, para a hierarquia App → Capability → Item do painel. Em
@@ -340,6 +384,9 @@ class LearningService:
             # vivas com caminho diferente é anomalia. Fluxo (`match_key` único) e habilidade (as versões da mesma
             # habilidade têm o mesmo comando) não têm critério seguro: ficam sem contradição derivada.
             achadas += rel.contradiz(e, tema, [rel.Parente(o, "") for o in self._todas(e.kind)])
+        if e.kind is LivroKind.RECEITA and e.scope_key in self._repo.trilhas_com_evidencia_invalida():
+            # 30.23: só a receita tem "item novo" (o fluxo renasce na mesma linha); as do mesmo escopo, já marcadas
+            achadas += rel.de_reaprendizado(e, [o for o in self._todas(e.kind) if o.scope_key == e.scope_key])
         return tuple(rel.ordenar(achadas))
 
     def _versao(self, e: EntradaDoLivro, evidencias: Sequence[Evidencia]) -> JsonObject:
@@ -427,6 +474,9 @@ class LearningService:
         motivo = reason.strip()
         if not motivo:
             raise EntradaInvalida("Diga o motivo: aprovar, rejeitar, desligar e reativar ficam na trilha.")
+        if reservado(motivo):
+            raise EntradaInvalida("'evidencia_invalida' é um tipo de desligamento com ação própria (marcar a "
+                                  "evidência inválida do item), não um motivo livre.")
         if kind is LivroKind.HABILIDADE:
             sid, _, versao = ref.rpartition("@")
             raise UseARotaDasHabilidades(
@@ -486,7 +536,8 @@ class LearningService:
         if e.kind is LivroKind.RECEITA and e.state is SkillState.DEPRECATED:
             raise TransicaoProibida("Receita substituída não volta: a versão nova da mesma etapa é a que vale.")
         actor = conferir_transicao(e.state, para, by, side_effect=e.side_effect, human_origin=e.human_origin,
-                                   modo_publica=self._modo_publica(e.kind, e.app))
+                                   modo_publica=self._modo_publica(e.kind, e.app),
+                                   reaprendido=e.reaprendido is not None)
         if actor is Actor.SYSTEM and para in (SkillState.VALIDATED, SkillState.PUBLISHED) and e.content_hash:
             self._conferir_veto(e.content_hash, e.scope_key, e.app_version)
         self._repo.transicionar_nativo(
@@ -495,6 +546,42 @@ class LearningService:
                           app_version=e.app_version), by=by, reason=reason, run_id=run_id)
         self._espera.mudou_sem_falhar(e, replace(e, state=para, native_status=para_status),
                                       por_sistema=by == SYSTEM_ACTOR)
+
+    def invalidar_evidencia(self, kind: LivroKind, ref: str, run_id: str, *, by: str) -> EntradaDoLivro:
+        """30.23: a receita ou o fluxo foi aprendido de um sucesso falso (a execução `run_id` terminou como sucesso sem
+        comprovar o que fez). O vivo é desligado com o motivo estruturado `evidencia_invalida:<run>`; o já desligado
+        ganha a linha `disabled → disabled` que reclassifica o desligamento (o status nativo não muda). Idempotente: a
+        mesma marca duas vezes não grava duas linhas.
+
+        Só a execução de ORIGEM do item (`EntradaDoLivro.nasceu_de`): é a evidência que o criou. O que isso muda: o
+        veto barra só renascer da mesma execução, e o que outra execução real ensinar no mesmo escopo nasce candidato,
+        reaprendido, esperando o dono (classe B)."""
+        if kind not in (LivroKind.RECEITA, LivroKind.FLUXO):
+            raise EntradaInvalida(f"Evidência inválida vale para receita e fluxo, não para {kind.value}.")
+        run = run_id.strip()
+        if not run_valida(run):
+            raise EntradaInvalida(f"'{run}' não é o id de uma execução (r-AAAAMMDDhhmmss-xxxxxx).")
+        e = self.entrada(kind, ref)
+        if e.nasceu_de is None:
+            raise TransicaoProibida(f"{kind.value} {ref} não foi aprendido de uma execução (treino ou origem "
+                                    "ilegível): não há evidência de execução a invalidar.")
+        if e.nasceu_de != run:
+            raise TransicaoProibida(f"{kind.value} {ref} foi aprendido da execução {e.nasceu_de}, não da {run}: só a "
+                                    "execução de origem pode ser marcada como evidência inválida.")
+        if e.state not in ESTADOS_DA_EVIDENCIA_INVALIDA or e.native_status is None:
+            raise TransicaoProibida(f"{kind.value} {ref} está '{e.native_status}': o aposentado já saiu de circulação "
+                                    "e a evidência inválida não muda nada nele.")
+        if ja_invalidada(self._repo.trilha(e.trail_ref), run):
+            return e
+        motivo = motivo_de_evidencia_invalida(run)
+        if e.state is SkillState.DISABLED:
+            self._repo.reclassificar_desligamento(
+                MudancaNativa(kind=e.kind, ref=e.ref, de_status=e.native_status, para_status=e.native_status,
+                              de_estado=e.state, para_estado=e.state, content_hash=e.content_hash,
+                              scope_key=e.scope_key, app_version=e.app_version), by=by, reason=motivo)
+        else:
+            self._mover_nativo(e, SkillState.DISABLED, by=by, reason=motivo, run_id=None)
+        return self.entrada(kind, ref)
 
     def _conferir_veto(self, content_hash: str, scope_key: str, app_version: str | None) -> None:
         motivo = motivo_do_veto(self._repo.desligamentos(content_hash, scope_key), agora=self._relogio(),
@@ -542,9 +629,10 @@ class LearningService:
         a falha: a loja chama isto DENTRO da transação dela, num `savepoint` próprio (22.5) que precisa vê-la."""
         if kind not in (LivroKind.RECEITA, LivroKind.FLUXO):
             return
-        depois = self._fontes.receita(ref) if kind is LivroKind.RECEITA else self._fontes.fluxo(ref)
-        if depois is None:
+        lida = self._fontes.receita(ref) if kind is LivroKind.RECEITA else self._fontes.fluxo(ref)
+        if lida is None:
             return
+        depois = self._reaprendida(lida)              # 30.23: o reaprendido validado espera o dono (classe B)
         antes = None
         if de_status is not None:
             antes = replace(depois, state=estado_nativo(kind, de_status), native_status=de_status)

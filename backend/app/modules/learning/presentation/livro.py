@@ -9,8 +9,12 @@
 - `GET  /api/aprendizado/{kind}/{ref}`: o item com a evidência e a trilha (memória: só a contagem) e, desde o 30.17,
   os pareceres do curador que o modo deixa aparecer (`pareceres`) e o bloco `curador`;
 - `POST /api/aprendizado/{kind}/{ref}/status {to, reason, review_id?}`: em receita e fluxo, CAS no status nativo e
-  trilha; em habilidade, 409 com o endereço da rota das habilidades; motivo obrigatório. O `review_id` diz que a pessoa
-  VIU o parecer: a decisão vira `aceitou`/`recusou` dele (sem ele, rótulo às cegas); o parecer nunca trava a decisão;
+  trilha; em habilidade, 409 com o endereço da rota das habilidades; motivo obrigatório (e nunca no formato reservado
+  `evidencia_invalida:…`, que tem ação própria). O `review_id` diz que a pessoa VIU o parecer: a decisão vira
+  `aceitou`/`recusou` dele (sem ele, rótulo às cegas); o parecer nunca trava a decisão;
+- `POST /api/aprendizado/{kind}/{ref}/evidencia-invalida {run_id}` (30.23): a receita ou o fluxo foi aprendido de um
+  sucesso falso. Desliga com o motivo estruturado (o já desligado ganha a linha que reclassifica); só a execução de
+  origem do item;
 - `POST /api/aprendizado/{kind}/{ref}/parecer/{review_id} {resposta, motivo, em_lote}`: aceitar ou recusar o parecer
   (30.17), com a classe conferida (A só registro, C nunca em lote);
 - `POST /api/aprendizado/{kind}/{ref}/revisao`: pede revisão ao curador (só em `on`; 202 = pedido, 200 = o estado de
@@ -26,9 +30,7 @@ Camada de apresentação: fala FastAPI, traduz as recusas do domínio (`ErroDeAp
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TypeVar
-
-from typing import Literal
+from typing import Literal, TypeVar
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -38,8 +40,9 @@ from app.modules.learning.application.pareceres import ParecerNaFila, PareceresD
 from app.modules.learning.application.servico import DetalheDoLivro, LearningService
 from app.modules.learning.domain.ciclo import (EntradaInvalida, ErroDeAprendizado, NaoEncontrado, SkillState,
                                                UseARotaDasHabilidades)
+from app.modules.learning.domain.evidencia_invalida import Reaprendizado, run_invalidada
 from app.modules.learning.domain.livro import (AcaoPermitida, EntradaDoLivro, Transicao, acoes_da_pessoa,
-                                               por_que_o_sistema_nao_publica)
+                                               evidencia_a_invalidar, por_que_o_sistema_nao_publica)
 from app.modules.learning.domain.parecer import RevisaoGravada
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.saude import Saude
@@ -139,17 +142,32 @@ def _entrada(e: EntradaDoLivro, servico: LearningService | None = None, saude: S
                       for a in acoes_da_pessoa(e)],
             "por_que_nao_publica": None if motivo is None else {
                 "codigo": motivo.codigo, "espera_o_dono": motivo.espera_o_dono, "detalhe": motivo.detalhe},
-            "saude": _saude(saude)}
+            "saude": _saude(saude), "nasceu_de": e.nasceu_de, "reaprendido": _reaprendido(e.reaprendido)}
 
 
-def _evidencia(e: Evidencia) -> JsonObject:
+def _reaprendido(r: Reaprendizado | None) -> JsonObject | None:
+    """30.23: a execução da evidência inválida e o item que ela desligou (`kind`/`ref` do detalhe dele)."""
+    if r is None:
+        return None
+    kind, _, ref = r.item_invalidado.partition(":")
+    return {"run_invalidada": r.run_invalidada, "item": {"kind": kind, "ref": ref}}
+
+
+def _evidencia(e: Evidencia, invalidas: frozenset[str] = frozenset()) -> JsonObject:
+    """`invalidada` (30.23): a execução desta evidência foi marcada como evidência inválida no item; ela fica no
+    histórico, mas não prova nada (a sombra a ignora)."""
     return {"stance": e.stance.value, "origin_ref": e.origin_ref, "run_id": e.run_id, "instance_id": e.instance_id,
-            "app_version": e.app_version, "simulated": e.simulated, "detail": e.detail, "observed_at": e.observed_at}
+            "app_version": e.app_version, "simulated": e.simulated, "detail": e.detail, "observed_at": e.observed_at,
+            "invalidada": e.run_id is not None and e.run_id in invalidas}
 
 
 def _transicao(t: Transicao) -> JsonObject:
+    """`tipo` e `run_invalidada` (30.23): o desligamento por evidência inválida já vem lido; o painel nunca interpreta
+    o formato do motivo."""
+    run = run_invalidada(t.reason)
     return {"id": t.id, "from": t.from_state.value if t.from_state else None, "to": t.to_state.value,
-            "reason": t.reason, "decided_by": t.decided_by, "decided_at": t.decided_at, "run_id": t.run_id}
+            "reason": t.reason, "decided_by": t.decided_by, "decided_at": t.decided_at, "run_id": t.run_id,
+            "tipo": "evidencia_invalida" if run is not None else None, "run_invalidada": run}
 
 
 def _acao(a: AcaoPermitida | None) -> JsonObject | None:
@@ -189,10 +207,15 @@ def _parecer_na_fila(x: ParecerNaFila | None) -> JsonObject | None:
 def _detalhe(d: DetalheDoLivro, servico: LearningService) -> JsonObject:
     capability = servico.capabilities([d.entrada]).get(d.entrada.trail_ref)
     nome = servico.nome_da_capability(d.entrada.app, capability)
+    invalidas = frozenset(r for t in d.trilha if (r := run_invalidada(t.reason)) is not None)
+    a_invalidar = evidencia_a_invalidar(d.entrada, d.trilha)
     saida: JsonObject = {
-        "item": _entrada(d.entrada, servico, d.saude, capability, nome), "evidencias": [_evidencia(e) for e in d.evidencias],
+        "item": _entrada(d.entrada, servico, d.saude, capability, nome),
+        "evidencias": [_evidencia(e, invalidas) for e in d.evidencias],
         "trilha": [_transicao(t) for t in d.trilha], "exposicoes": list(d.exposicoes),
-        "conteudo": d.conteudo, "versao": d.versao, "relacoes": list(d.relacoes), "pareceres": [], "curador": None}
+        "conteudo": d.conteudo, "versao": d.versao, "relacoes": list(d.relacoes),
+        "invalidar_evidencia": None if a_invalidar is None else {"run_id": a_invalidar},
+        "pareceres": [], "curador": None}
     pareceres = _pareceres(servico)
     if pareceres is not None:
         p = pareceres.do_item(d.entrada)
@@ -229,6 +252,14 @@ class CorpoDoParecer(BaseModel):
     resposta: Literal["aceitar", "recusar"]
     motivo: str = Field(min_length=1, max_length=500)
     em_lote: bool = False
+
+
+class CorpoDeEvidenciaInvalida(BaseModel):
+    """Só a execução: o motivo é estruturado (`evidencia_invalida:<run>`) e quem decide é o operador da sessão."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str = Field(min_length=1, max_length=64)
 
 
 # ------------------------------------------------------------------ rotas
@@ -273,6 +304,18 @@ async def mudar_status(request: Request, kind: LivroKind, ref: str, corpo: Corpo
                                                          review_id=corpo.review_id))
     else:
         entrada = _chamar(lambda: servico.mudar_estado(kind, ref, corpo.to, by=quem, reason=corpo.reason))
+    return _detalhe(_chamar(lambda: servico.detalhe(entrada.kind, entrada.ref)), servico)
+
+
+@router.post("/{kind}/{ref}/evidencia-invalida", response_model=None)
+async def invalidar_evidencia(request: Request, kind: LivroKind, ref: str, corpo: CorpoDeEvidenciaInvalida) -> JsonObject:
+    servico = _servico(request)
+    quem = _quem(request)
+    pareceres = _pareceres(servico)
+    if pareceres is not None:
+        entrada = _chamar(lambda: pareceres.invalidar_evidencia(kind, ref, corpo.run_id, by=quem))
+    else:
+        entrada = _chamar(lambda: servico.invalidar_evidencia(kind, ref, corpo.run_id, by=quem))
     return _detalhe(_chamar(lambda: servico.detalhe(entrada.kind, entrada.ref)), servico)
 
 

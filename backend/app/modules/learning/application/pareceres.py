@@ -4,12 +4,12 @@ que o painel mostra de `learning_reviews`, o rótulo que cada decisão da pessoa
 Quem transiciona continua sendo o Livro (`LearningService.mudar_estado`, com o D1 e o veto); aqui só se decide o que
 o parecer pode fazer (`domain/parecer.py`) e se grava a decisão:
 
-- **Pelo `/status` (e pelas rotas legadas)**, a pessoa decide sozinha e o parecer nunca a trava. Depois da transição, a
-  revisão válida e sem decisão sobre o estado de antes recebe o rótulo: com o parecer à vista (o `review_id` veio, ou o
-  curador está em `on`), `aceitou`/`recusou`; oculto (`shadow`, `off`, rota legada), o rótulo da própria ação, às
-  cegas. O modo decide, e não só o `review_id`: em `on` o painel mostra o parecer em toda parte, e uma decisão que o viu
-  gravada como cega inflaria a concordância que tira o curador do `shadow`. É ACESSÓRIO: falhar aqui não desfaz a
-  decisão da pessoa (fica no log).
+- **Pelo `/status` (e pelas rotas legadas e pela evidência inválida do 30.23)**, a pessoa decide sozinha e o parecer
+  nunca a trava. Depois da transição, a revisão válida e sem decisão sobre o estado de antes recebe o rótulo: com o
+  parecer à vista (o `review_id` veio, ou o curador está em `on`), `aceitou`/`recusou`; oculto (`shadow`, `off`, rota
+  legada), o rótulo da própria ação, às cegas. O modo decide, e não só o `review_id`: em `on` o painel mostra o parecer
+  em toda parte, e uma decisão que o viu gravada como cega inflaria a concordância que tira o curador do `shadow`. É
+  ACESSÓRIO: falhar aqui não desfaz a decisão da pessoa (fica no log).
 - **O gesto sobre o parecer** (`responder`: aceitar ou recusar, um ou em lote) confere a classe mais restritiva entre a
   do registro e a de agora (`conferir_gesto`) e grava a decisão ANTES da transição, na mesma transação: o CAS de
   `decisao_final` recusa o segundo gesto antes de qualquer coisa mudar, e a transição recusada desfaz a decisão.
@@ -30,6 +30,7 @@ from app.modules.learning.application.curador import KINDS_REVISADOS
 from app.modules.learning.application.ports import FonteDeDossies, NovoSinal, RegistroDePareceres, TriagemDeTexto
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, ConflitoDeEstado, EntradaInvalida, NaoEncontrado,
                                                NotaComCaraDeSegredo, SkillState, caminho_da_pessoa)
+from app.modules.learning.domain.evidencia_invalida import motivo_de_evidencia_invalida
 from app.modules.learning.domain.livro import AcaoPermitida, EntradaDoLivro, acoes_da_pessoa, rotulo_do_passo
 from app.modules.learning.domain.parecer import (DecisaoDaPessoa, DecisaoFinal, GestoRecusado, RecusaDoGesto,
                                                  RevisaoGravada, acao_do_aceite, conferir_gesto,
@@ -52,6 +53,7 @@ class LivroDosPareceres(Protocol):
     def mudar_estado(self, kind: LivroKind, ref: str, para: SkillState, *, by: str, reason: str) -> EntradaDoLivro: ...
     def mudar_status_nativo(self, kind: LivroKind, ref: str, status: str, *, by: str,
                             reason: str) -> EntradaDoLivro: ...
+    def invalidar_evidencia(self, kind: LivroKind, ref: str, run_id: str, *, by: str) -> EntradaDoLivro: ...
     def registrar_sinal(self, sinal: NovoSinal) -> int | None: ...
 
 
@@ -162,6 +164,19 @@ class ServicoDePareceres:
             if passos:
                 self._rotular(antes, rotulo_do_passo(antes.state, passos[0]), by=by, reason=reason, review_id=None,
                               marca=marca, viu=False)
+        return depois
+
+    def invalidar_evidencia(self, kind: LivroKind, ref: str, run_id: str, *, by: str) -> EntradaDoLivro:
+        """A evidência inválida (30.23) é decisão de pessoa como o `/status`: desligar o vivo rotula o parecer pendente
+        do estado de antes, visto em `on` (o detalhe mostra o parecer ao lado do botão) e às cegas fora dele.
+        Reclassificar o já desligado não muda o estado e não rotula: o parecer de `disabled` segue pendente."""
+        antes = self._livro.entrada(kind, ref)
+        marca = self._registro.ultima_transicao(antes.trail_ref)
+        depois = self._livro.invalidar_evidencia(kind, ref, run_id, by=by)
+        if antes.state is not None and depois.state is not None and depois.state is not antes.state:
+            self._rotular(antes, rotulo_do_passo(antes.state, depois.state), by=by,
+                          reason=motivo_de_evidencia_invalida(run_id.strip()), review_id=None, marca=marca,
+                          viu=self._modo() is Modo.ON)
         return depois
 
     def _rotular(self, antes: EntradaDoLivro, rotulo: str | None, *, by: str, reason: str, review_id: str | None,

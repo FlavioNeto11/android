@@ -281,6 +281,12 @@ human" é sinal de conta perdida. O que muda no desafio e em volta dele:
   antes de mexer num aparelho com Instagram confere-se a tela (K-053). A quarentena só sai por uma PESSOA: reset do disco
   ou `POST /api/instances/{id}/locked-account/resolve` com nota (29.24, ADR-068 item 10; só banco). Conta já retirada (29.23)
   aparece como `[conta removida]` no rótulo, no marcador e nos avisos ("conta retirada (bloqueada)"); conta viva, com o @.
+- **Contas nossas entre si (29.28, emenda do ADR-050).** Conta nossa VIVA pode ser alvo de outra conta nossa (Instagram: comentar,
+  responder, editar nos posts umas das outras; Outlook: trocar e-mails), em ritmo baixo: o gesto com efeito exige no mínimo
+  `limits.fleet_min_spacing_to_own_account_s` (600 s) — ou o `cooldown_between_external_actions_s` do perfil, se maior — desde o último
+  gesto com efeito DESTA conta, com `retry_at`; uma interação por vez, sem link, texto natural; a conduta e a regra de desafio/2FA
+  continuam. Conta RETIRADA por bloqueio segue recusada. "Uma conta por alvo" e a aprovação valem entre contas nossas como para qualquer
+  alvo, e a conta nossa continua fora da elegibilidade de "terceiro" (8.3).
 - **Uma conta por alvo.** Seguir, DM e comentário: no máximo uma conta por pessoa numa janela de 30 dias, com o
   excedente recusado; curtida e comentário ganham o alvo (`post_author`, herdado de OPEN_POST); um pedido igual a várias
   contas na mesma execução segue numa conta só, com aprovação. Quando uma conta cai, o disjuntor pausa as que agiram
@@ -630,9 +636,33 @@ receber contas novas.
   mesmo âncora. Idempotente. O aparelho não é tocado e o marcador de quarentena fica.
 - **Gatilho:** ao fim de `marcar_conta_travada`, SÓ no Instagram (conta âncora) e SÓ com sinal forte: a `ChallengeActivity` em foco (lida por `DeviceManager.observe`) ou a declaração do dono. Só texto na tela, ou conta de outro app, fica `blocked`/marcada para a pessoa; a rota manual retira qualquer conta. Falha deixa a persona `blocked` e o erro no histórico; a rota refaz.
 - **Lápide:** `contas_retiradas` (071) guarda só o hash do @; `eh_conta_nossa()` (`social/contas_nossas.py`) é a consulta
-  única de "é conta nossa?", usada pelo filtro de frota: nada se faz entre contas nossas, viva ou aposentada (ADR-050).
-- **Memória:** `memory_items` ficam, com o @ e o id da conta trocados por "[conta removida]". Gancho
+  única de "é conta nossa?", usada pelo filtro de frota: conta RETIRADA nunca é alvo; conta nossa VIVA pode receber a interação de outra conta nossa, em ritmo baixo (emenda do ADR-050, 29.28, abaixo).
+- **Memória (29.32):** `memory_items` ficam, de TODAS as personas, com o @, o id e o e-mail da conta trocados por "[conta removida]"
+  (`social/memory.py::reescrever_memoria`; casamento seguro em `contas_nossas.sem_o_rastro`: `ana` não casa em `banana`, `ana.silva` nem `ana@x.com`).
+  O e-mail só sai se identifica a conta e nenhuma outra conta VIVA o usa (`emails_so_desta_conta`): o Outlook vivo com o mesmo endereço o mantém.
+  Retroativo das retiradas anteriores: `scripts/memoria-conta-retirada.py` (`--ensaio`/`--aplicar`; lápide + eventos como fonte; e-mail só por
+  `--lista-stdin`), com backup no deploy (`--aplicar` exige `--backup <caminho que exista>`; o `--ensaio` avisa se a migração diverge).
+  Cuidados (revisão adversarial): o @ que outra conta VIVA ainda tem (o mesmo @ em outro app, ou o cadastro de outra persona) não se
+  redige; um handle em forma de e-mail só some se o endereço é exclusivo da conta que sai; a lista do operador recusa item com menos de
+  3 caracteres ou só de dígitos (só contagens). `runs.command` e `actions.args` ficam.
+  **Medição de 03/10:** na cópia do backup `20261002-211739` (116 linhas) nenhuma tem rastro de conta nossa; as 40 que citam @ ou e-mail
+  são de TERCEIROS (35 @ sem lápide nem conta viva, 5 com e-mail sem relação), não rastro. O passe retroativo cobre o que existe desde
+  23/09 (zero contas retiradas sem lápide); conta perdida antes disso só entra pelo `--lista-stdin`, com o handle dado pelo dono. Gancho
   `limpezas_ao_retirar` para outros módulos (Aprendizado), dentro da transação; erro desfaz a retirada.
 - **Histórico** (events, runs, steps, approvals, interactions, ai_calls) fica intacto (opção A do dono).
 - **Dívida:** `DELETE /api/instagram/profiles/{id}` ainda apaga a persona inteira (os dados da pessoa moram na linha do perfil).
-- **Ideia de backlog (depois do 12.4, não implementada):** ação explícita "limpar o app da conta retirada" (`pm clear` por aparelho, com confirmação do dono, nunca automática).
+- **Limpeza do app ao retirar (29.27, emenda do ADR-068, decisão do dono de 02/10, relatada às 23:10Z).** Conta de app que declara `limpar_ao_retirar: true`
+  no `app.yaml` (hoje o Instagram; lido em `AppDefinition.clear_on_account_retire`) leva os dados do app embora dos aparelhos onde estava
+  logada: `pm clear` SÓ desse pacote, captura de tela antes e depois, nenhum toque na tela, e a quarentena do aparelho resolvida pelo caminho do
+  29.24 com a nota "limpeza automática autorizada pelo dono em 02/10". Os aparelhos são os marcadores abertos do @ da conta e o vínculo que
+  serve ao app, CAPTURADOS antes da retirada (`SocialRepository.aparelhos_da_conta`); a sessão NÃO é pista (sobrevive ao desvínculo e pode ser
+  de aparelho que já serve outra persona). Antes do `pm clear` há a trava `outra_conta` (vínculo, sessão em qualquer status ou marcador de outra
+  conta do mesmo app no aparelho: recusa, sem limpar, quarentena aberta) e, antes de acordar, a trava de energia (só acorda se todo marcador
+  aberto do aparelho é do pedido). **Risco residual (o dono aceita):** conta logada no app fora da plataforma (seletor de contas do Instagram)
+  seria apagada pelo `pm clear`. Quem executa é
+  `commands/limpeza_ao_retirar.py` (gancho `SocialService.ao_limpar_aparelhos`, ligado no `AppState`): tarefa de fundo, um aparelho por vez,
+  comando `session.logout` dentro de `run_device_job`; hibernado ou parado é acordado com a confirmação de quarentena do SISTEMA e devolvido ao
+  estado de antes. Falha em qualquer passo: quarentena aberta, evento `device.account_cleanup` em erro, sem nova tentativa. Idempotente (não repete
+  se uma pessoa já resolveu), sem retroativo na subida (retirada anterior ao deploy segue pela rota manual do 29.24), sem o @ em evento ou log.
+  **Antes do deploy:** um marcador velho e já mascarado (retirada anterior ao deploy) aberto num aparelho faz a limpeza nova recusar ali
+  (`outra_conta`, recusa segura, evento de erro); resolva-o antes pela rota do 29.24 (em 03/10: o do android-04).

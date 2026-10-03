@@ -76,6 +76,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-066](#adr-066--laço-de-pedidos-desligado-por-padrão-origem-interna-na-criação-da-execução-e-edição-por-gatilho-novo) | Laço de pedidos: desligado por padrão, origem interna na criação da execução e edição por gatilho novo | aceito (Fase 28, 28.4) | 02/10 |
 | [ADR-068](#adr-068--conta-bloqueada-sai-na-hora-e-a-persona-fica-lápide-só-com-o-hash-do-arroba) | Conta bloqueada sai na hora e a persona fica; lápide só com o hash do @ (item 29.23) |
 | [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) | 02/10 |
+| [ADR-070](#adr-070--valor-visto-na-imagem-conta-como-saída-de-etapa-sob-conferência-cega-de-um-segundo-leitor) | Valor visto na imagem conta como saída de etapa, sob conferência cega de um segundo leitor; substitui em parte o ADR-065 §3 (item 12.5) | vigente (dono, 02/10; opção desligada) | 02/10 |
 
 ---
 
@@ -2102,6 +2103,9 @@ dentro do mesmo aparelho (achado #115, frágil); usuários Android múltiplos no
   manual) e no máximo um principal por persona.
 - `bind` não toma aparelho de ninguém: colisão é 409 `conta_do_app_ja_no_aparelho`. Um vínculo sem app de uma
   persona que tem conta no app conta para a regra.
+- **Emenda 29.29, 02/10/2026:** a regra vale também quando a pessoa GANHA a conta tendo vínculo sem app; conferida
+  antes de criar (cadastro com `persona_id` e `POST …/accounts`), pelo mesmo 409 `conta_do_app_ja_no_aparelho`.
+  O vínculo feito antes da conta não tinha app a conferir, e o índice da 051 não enxerga vínculo sem `app_id`.
 - A sessão continua em `account_sessions` (conta × aparelho), sem tabela nova; a mesma conta em N aparelhos é
   permitida (D3), protegida pelo ADR-029.
 - O **principal** é o alvo padrão de conectar, verificar, sair e do contexto operacional; `?instance_id=` escolhe
@@ -2554,6 +2558,30 @@ backend simulado com três personas de teste. `real`: uma chamada no central em 
 
 **Relação.** ADR-044 (prévia e eco dos alvos); ADR-048 (crenças e conduta); ADR-047 (assistente do comando, que
 continua cuidando do TEXTO); K-044 (domínio fora do ciclo de `planning`).
+
+**Emenda de 02/10/2026 (decisão do dono relatada pelo orquestrador às 23:10Z; item 29.28): contas e personas NOSSAS podem interagir entre si.** O filtro de
+frota (`PolicyEngine._fleet_gate`, ADR-055/ADR-068) citava este ADR para recusar todo efeito cujo alvo fosse conta nossa ("engajamento
+simulado"). O dono decidiu o contrário: no Instagram, comentar, responder e editar nos posts umas das outras; no Outlook, trocar e-mails.
+Os limites: **ritmo baixo** (no mínimo 600 s entre gestos públicos da MESMA conta quando o alvo é conta nossa), **uma interação por vez**,
+nada em lote ou laço, sem link, texto natural; a conduta continua (sem ofensa, sem fake news); desafio, "Confirm you're human" ou 2FA param
+tudo (ADR-009). No código: (a) alvo conta nossa RETIRADA por bloqueio (`contas_nossas.foi_retirada`, lápide do 29.23) continua recusado, sem
+`retry_at`; (b) alvo conta nossa VIVA passa pelas demais regras (política do perfil, aprovação, tetos por hora e dia, "uma conta por alvo" do
+ADR-055, que vale também entre contas nossas) e por um espaçamento desde o último gesto com efeito DESTA conta: o maior entre
+`limits.fleet_min_spacing_to_own_account_s` (padrão 600, também em `config/config.example.yaml`) e `cooldown_between_external_actions_s`
+do perfil, devolvendo `retry_at` (espera, não recusa). Ficam como estavam: a exclusão de conta nossa como "terceiro" (elegibilidade de
+comentário de terceiro, 8.3: regra do roteiro julgada pela sessão executora, sem filtro em código) e a proteção da conta retirada.
+Limite conhecido (2ª revisão adversarial, 03/10): o espaçamento é conferido na execução (a retomada depois da aprovação passa de novo
+pelo `check`), mas nada reserva o gesto entre o `check` e o `_open_effect`; duas execuções simultâneas da MESMA persona em dois aparelhos
+poderiam passar juntas. A regra operacional ("uma interação por vez") cobre isso hoje; reservar o gesto seria item novo. Nada no prompt da persona ou da decisão social bloqueava a interação entre
+contas nossas (varredura de `ADR-050`/`eh_conta_nossa` em `backend/app`: só o `_fleet_gate`). Prova `simulated`:
+`tests/test_interacao_entre_contas_nossas.py` (7) e os dois testes de `test_conta_bloqueada_sai.py` atualizados; `not_run` no central. A
+conduta do conteúdo (sem ofensa, sem fake news, sem link) é do texto gerado, não do filtro: este item não a afrouxa nem a reforça.
+**Post do lucas (8.3; decisão do dono relatada às 23:18Z do mesmo dia):** o dono autorizou UM post simples da conta do lucas,
+com imagem gerada pela plataforma (o caminho de imagem real da Fase 17) e legenda curta e neutra em português, sem link, sem
+hashtag em excesso e sem nada de terceiro. Ele é a base do comentário de outra conta nossa e da resposta do lucas. Tudo passa
+por aprovação, com texto e imagem mostrados ao dono antes de cada decisão, ≥ 10 min entre gestos públicos, uma coisa por vez e
+parada em qualquer desafio. O catálogo do app não tem capability de publicar nem verbo que ponha mídia no aparelho; o meio do
+post fica no roteiro da prova 8.3, não neste ADR.
 
 ## ADR-051 — Saldo das contas de IA: livro-caixa com consumo dos relatórios oficiais, aviso e bloqueio
 
@@ -3167,6 +3195,33 @@ Mais o mypy estrito sem erro em 164 arquivos e, no frontend, o typecheck e 711 t
 - ADR-049 e ADR-051: provedor por papel e saldo; nenhuma chamada paga no pipeline.
 - Fase 20 do plano-100; relatório §22 (fundação) e §23 (A2–A9); domínio em
   [dominios/aprendizado.md](dominios/aprendizado.md).
+
+**Emenda (03/10/2026, decidida pela coordenação; Fase 30, item 30.23): evidência inválida é um tipo próprio de
+desligamento.**
+
+O caso: a receita 109 e o fluxo do Outlook "abrir a caixa de entrada e ler" nasceram da `r-20261002204347-8c3f6e`, que terminou como
+sucesso sem comprovar o que fez. Desligados por pessoa, ficariam vetados para sempre no mesmo escopo, e a navegação deles
+provavelmente é boa: o falso foi a leitura.
+
+- **O tipo é estruturado, não texto.** A pessoa marca a execução de ORIGEM do item por uma ação própria, e o livro grava o
+  motivo `evidencia_invalida:<run_id>`, de vocabulário fechado. O motivo livre nesse formato é recusado. O item vivo é
+  desligado. O já desligado ganha a linha que reclassifica o motivo: é a transição corretiva da 109 e do fluxo. Sem migração.
+- **O veto desse tipo barra só a mesma execução**, sem prazo e sem olhar quem marcou. Outro sucesso real, de outra
+  execução, ensinando o mesmo conteúdo no mesmo escopo, faz o item renascer como candidato. Valem as portas de sempre:
+  receita só de etapa comprovada e fluxo só de execução `completed`. Quando o 12.5 provar saídas, a regra continua a mesma.
+- **O que renasce é "reaprendido" e força a classe B**: `requires_owner`, "Para aprovar" e o motivo `reaprendido` no evento.
+  O sistema não o publica. Na receita, renascer é uma versão nova, e a desligada vira `superseded` por ela (o veto sobrevive
+  à arrumação da loja). No fluxo, a mesma linha volta (`match_key` único). Depois que uma pessoa publica no escopo, o que
+  nascer ali já segue o D1 de sempre; o item aprovado guarda a marca.
+- **Limites aceitos.**
+  - O escopo da receita inclui a versão do app: numa versão nova, a marca não pesa. É o mesmo alcance do veto de sempre.
+  - O modo antigo `ai.recipes_promote_after: 0` não passa pela sombra; é o desvio já registrado na pendência A5 do domínio.
+  - Os ganchos em `taskqueue/recipes.py` (a vista da receita com a etapa de origem e a pergunta `exige_o_dono` na sombra)
+    são exceção ao "só leitura" do plano da Fase 30, aceita pela coordenação, e entram pela suíte 6.
+
+Prova `simulated`: `backend/tests/test_learning_evidencia_invalida.py` e o vitest de `DetalheRico.test.tsx`.
+`not_run`: a marca no central (109 e o fluxo, depois do deploy) e um renascimento real. Contrato: adendo v0.70 de
+[api-contract.md](api-contract.md). Domínio: [dominios/aprendizado.md](dominios/aprendizado.md), seção "Evidência inválida".
 
 ## ADR-055 — Proteção de contas: a conta travada para sem ser tocada, o aparelho entra em quarentena, uma conta por alvo e nenhum reset com conta
 
@@ -3959,7 +4014,7 @@ Até aqui o sistema as mantinha vivas: linha em `profile_accounts`, credencial n
    nunca levanta; falhar deixa a persona `blocked` (estado seguro) com o erro no histórico, e a rota refaz. O disjuntor de
    conta (ADR-055) é acionado direto pela retirada, porque o agendador só o dispara ao VER `blocked` e a persona volta a
    `active` no mesmo gesto.
-9. **Filtro de frota (`_fleet_gate`).** Ação com efeito cujo ALVO é conta nossa (viva ou aposentada) é recusada. Responder
+9. **Filtro de frota (`_fleet_gate`).** *(Emendado em 02/10/2026 pelo ADR-050, 29.28: só a conta RETIRADA segue recusada; a conta nossa VIVA passa a poder receber interação de outra conta nossa, com ritmo baixo.)* Ação com efeito cujo ALVO é conta nossa (viva ou aposentada) era recusada. Responder
    a comentário de um TERCEIRO num post nosso (roteiro 8.3: a conta dona do post age, o `counterparty` é o do terceiro)
    continua permitido; coberto por teste.
 10. **29.24: rota de resolução e aviso sem o @** (orquestrador, a partir da validação real de 02/10). (a) A quarentena
@@ -3972,6 +4027,45 @@ Até aqui o sistema as mantinha vivas: linha em `profile_accounts`, credencial n
    Os avisos (frase da quarentena, recusa, start confirmado, anúncio e saída do `device.locked_account`, problem do
    `/health`) dizem "conta retirada (bloqueada)" quando o handle é o marcador ou está na lápide
    (`contas_nossas.foi_retirada`); conta VIVA em quarentena continua com o @. Evento antigo fica (opção A).
+11. **Emenda de 02/10/2026 (decisão do dono relatada pelo orquestrador às 23:10Z; item 29.27): a retirada limpa o app sozinha.** A "ideia de backlog"
+   abaixo deixa de ser só proposta para o caso da conta RETIRADA: quando a conta de um app que DECLARA
+   `limpar_ao_retirar: true` no `app.yaml` (hoje só o âncora do perfil) sai da plataforma, a própria plataforma faz
+   `pm clear` SÓ desse pacote em cada aparelho onde a conta estava logada, com captura de tela antes e depois, nenhum
+   toque na tela (nem na de bloqueio) e nenhum outro pacote; depois resolve a quarentena do aparelho pelo caminho do 29.24
+   (`resolver_conta_travada`), com a nota "limpeza automática autorizada pelo dono em 02/10". O pacote vem do DADO
+   (`AppDefinition.clear_on_account_retire`, lido por `capabilities_of`): o núcleo não conhece app nenhum.
+   (a) **Onde a conta estava logada:** capturado em `SocialService.retirar_conta_bloqueada` ANTES da transação (que
+   mascara o @ do marcador e apaga sessão e vínculo), juntando só os marcadores abertos do @ da conta e o vínculo ativo
+   que serve ao app dela. A SESSÃO não é pista (corrigido na revisão adversarial): `unbind` não a apaga, e
+   `wrong_account`/`needs_person` dizem "outra conta aberta" ou "pessoa precisa agir", não "esta conta está aqui", então
+   o aparelho de uma sessão velha podia já servir OUTRA persona viva. Perder um aparelho é recuperável (rota manual do
+   29.24); apagar conta viva não é. Vale para o gatilho automático e para a rota manual `retire`.
+   (b) **Canal:** o comando `session.logout` (o `pm clear` do "sair da conta"), aberto por `comando_no_trabalho` dentro de
+   `run_device_job` (exclusividade do aparelho), por `Adb.clear_data`, que serve aparelho local e de worker remoto (o
+   túnel é o transporte). Aparelho hibernado ou parado é acordado com `confirm_locked_account` dado pelo SISTEMA (só
+   para acordar) e devolvido ao estado de antes ao fim. Tarefa de fundo, um aparelho por vez (`commands/limpeza_ao_retirar.py`).
+   (c) **Falha:** em qualquer passo a quarentena segue aberta, sai o evento `device.account_cleanup` em erro (o aviso de
+   atenção) e nada se repete: uma tentativa por retirada. A captura de antes que falha impede o `pm clear` (não se apaga o
+   que não ficou provado); a de depois que falha deixa a quarentena aberta.
+   (d) **Idempotente e sem retroativo:** não repete se uma pessoa já resolveu o marcador (a tarefa confere antes) nem se a
+   retirada não valeu; nada roda na subida. Retirada anterior ao deploy segue pela rota manual do 29.24, decisão de pessoa.
+   (e) O evento e o log não carregam o @ (só ids, o pacote e o aparelho). As capturas vão ao armazém de evidências sob
+   `limpeza-de-conta/<aparelho>/`, fora da tabela `evidence` (que exige execução) e sem prazo de retenção próprio.
+   (f) **Trava "outra conta", na hora de executar:** DENTRO do trabalho exclusivo do aparelho, depois de acordar e logo
+   antes do `Adb.clear_data`, a limpeza relê o banco (a retirada já apagou sessões e vínculos da conta retirada em TODOS
+   os aparelhos: `account_sessions WHERE account_id` e os vínculos ativos do app dela e sem app) e RECUSA, passo
+   `outra_conta`, se sobra no aparelho vínculo ativo que serve ao mesmo app (o do app, ou o sem app de persona com conta
+   nele: o furo antigo da D2-a), sessão de outra conta do app em QUALQUER status, ou marcador aberto de outra conta do app.
+   Recusa = nenhum `pm clear`, quarentena aberta, evento `device.account_cleanup` em erro, nada repetido
+   (`SocialRepository.outra_conta_no_aparelho`).
+   (g) **Trava de energia:** acordar ou ligar vai com `confirm_locked_account=True`, que passa por cima de QUALQUER
+   marcador do aparelho. Só se acorda se todo marcador aberto do aparelho é do pedido; com marcador de outra conta, a
+   limpeza falha (`outra_conta`) sem acordar, sem capturar e sem limpar.
+   (h) **RISCO RESIDUAL, para o dono aceitar:** a plataforma só protege as contas que CONHECE (marcadores, vínculos e
+   sessões). Uma conta logada no app fora da plataforma (por exemplo, no seletor de contas do Instagram do aparelho) não
+   aparece em nenhuma tabela e seria apagada pelo `pm clear`, que limpa o app inteiro. As travas (f) e (g) não a enxergam.
+   Fora de escopo aqui: o furo da D2-a em `create_profile` (pessoa vinculada sem app ganha a conta do app depois, sem
+   `instance_id`) segue aberto como item separado; a trava (f) é a rede enquanto isso.
 
 **Dívidas registradas.**
 
@@ -3979,7 +4073,7 @@ Até aqui o sistema as mantinha vivas: linha em `profile_accounts`, credencial n
   conta não passa por ele e nada muda ali; é item separado.
 - Aplicar a regra às cinco contas `blocked` já existentes é operação pós-deploy (rota `retire`), não migração.
 - Os ids de conta e o @ continuam nas provas antigas (opção A); apagá-los (opção B) foi recusado pelo dono.
-- **Ideia de backlog (não implementada; depois do 12.4):** ação explícita "limpar o app da conta retirada" (`pm clear` por aparelho, com confirmação do dono, nunca automática), que também resolveria o marcador de quarentena do aparelho.
+- **Ideia de backlog (SUPERADA pela emenda 11, 29.27, para a conta retirada de app que declara `limpar_ao_retirar`):** "limpar o app da conta retirada" (`pm clear` por aparelho) era proposta com confirmação do dono, nunca automática; o dono autorizou a regra automática em 02/10. Fora dela (app que não declara, ou retirada anterior ao deploy) segue a decisão de pessoa.
 
 **Consequências.** Migração 071. Persona sem conta já era roteável (`resolver_alvos` não exige conta quando o app do
 comando não usa conta); precisa de vínculo de aparelho para um app sem conta. Prova `simulated`:
@@ -4053,3 +4147,62 @@ deploy 3 e da liberação por classe).
 
 **Relação.** ADR-063 (emendado), ADR-009, ADR-040, ADR-051, ADR-054; Fase 31 em [plano-100.md](plano-100.md);
 `backend/app/modules/context_retrieval/adapters/jev.py`; `backend/app/planning/` (porta, 31.4).
+
+---
+
+## ADR-070 — Valor visto na imagem conta como saída de etapa, sob conferência cega de um segundo leitor
+
+**Data:** 02/10/2026 · **Estado:** vigente, **aprovado pelo dono em 02/10 ~23:25Z; leitor de outra família autorizado**
+(item 12.5, nível 1; substitui em parte o ADR-065 §3). A opção nasce **desligada** (`ai.leitura_visual.enabled: false`).
+Decisão completa e notas das propostas: `.claude/handoffs/decisao-12-5.md`.
+
+**Contexto.** A r-20261002204347-8c3f6e (Outlook no android-01) fechou como sucesso sem remetente nem assunto, e a 178742
+gastou 14 chamadas sem conseguir lê-los. O passo 0 (`real`, 02/10 ~23:05Z, android-01) provou que a árvore é cega ali: a
+lista da caixa é um `ComposeView` (`com.microsoft.office.outlook:id/conversation_list`, [0,160][720,1115]) e a linha
+clicável [0,323][720,485] tem 4 filhos sem texto nem descrição em toda a subárvore (profundidade 21, 77 a 79 nós), com
+`snapshotMaxDepth` 70 ou 200 e com `allowInvisibleElements`. O texto só existe na imagem. Por isso o nível 0 (árvore mais
+funda) não se faz, e o ADR-065 §3 ("o valor é lido do texto do elemento") deixa o valor sem como ser lido.
+
+**Decisão.**
+
+1. **Texto novo do ADR-065 §3:** o valor é lido do texto do elemento **ou, na tela cega declarada pelo app, por leitura
+   visual conferida às cegas**. O valor visual conta como saída da etapa sob UMA conferência: a transcrição cega e
+   concordante de um segundo leitor independente sobre o recorte da mesma captura, nos limites de um elemento que o
+   executor provou sem texto, dentro de uma região que o app declarou (`leitura_visual.regioes` do `telas.yaml`, ADR-052).
+2. **Origem não é nível de prova.** `real`, `simulated` e `not_run` dizem como uma afirmação foi validada;
+   `origem=arvore|visual` é atributo de cada valor gravado (migração 078: `step_outputs.origem`, `leitor`, `frame_sha256`,
+   `evidence_id`). Não existe "real_visual".
+3. **O leitor** é o papel novo `leitura` (`ai.roles.leitura`): **sem herança** (provider e model escritos), **de outra
+   família** que o ator por escolha do dono: o padrão é a OpenAI (`gpt-6-luna`), com o Gemini (`gemini-3.1-flash-lite`, pelo
+   endpoint compatível) de reserva. O Haiku é da mesma família do ator e depende de nova decisão do dono. O código exige modelo
+   DIFERENTE do `decide` e do `escalation` (base e perfis; comparado pelo nome normalizado) e com visão DECLARADA em `ai.models`
+   (modelo não declarado é recusado), sem `fallback_provider` nem `refusal_fallback`; a família não é checada. Ele
+   recebe SÓ o recorte e os nomes e descrições das saídas pedidas: nunca o valor do ator, o comando, os fatos ou o
+   contexto. O juiz de sim ou não NÃO confere o valor (a tendência dele ao "sim" está no ADR-024); ele julga a tela e
+   passa a receber a imagem à força.
+4. **Concordância:** o valor do ator, normalizado (NFKC, caixa, espaços, pontuação das pontas, acentos mantidos), é igual
+   ao campo do leitor E é uma sequência contígua de palavras inteiras de uma das linhas transcritas. Discordância,
+   ilegível, truncado, triagem, captura mudada, tentativa repetida na mesma tela e leitor ausente RECUSAM, com um código
+   de vocabulário fechado, sem gravar. O ator recebe só o código: a transcrição nunca volta a ele (senão uma nova tentativa
+   faria dos dois um leitor só).
+5. **Valor visual não alimenta efeito externo sem a pessoa.** Etapa com `side_effect` ou `commit_guard` que consome valor
+   visual vai para `waiting_user` ("valor lido da imagem precisa da sua confirmação"); navegação e busca seguem.
+6. **Só `text`** na v1: número, endereço e lista lidos da imagem são recusados (número visto é justamente o formato de um
+   código). A leitura não serve para código de 2FA ou de desafio (ADR-009): tela classificada como desafio não chama o leitor.
+7. **Junto, sem depender desta decisão:** o `step_blocked.reason` (texto do modelo) passa por redação e triagem antes de
+   `steps.status_detail`, `attempts.error`, a nota da evidência e o evento `decision`; e as recusas da barreira de saídas
+   têm conta própria que `observe_screen` e `find_element` não zeram (com 4, `fail_or_retry`).
+
+**Alternativas.** Árvore mais funda (nível 0): provada insuficiente. O próprio ator ler a imagem sem segundo leitor: um
+modelo só concordando consigo mesmo. O juiz conferir o valor: viés ao "sim" (ADR-024). OCR local: dependência nova sem
+ganho de independência declarado.
+
+**Consequências.** Destino novo das capturas: o recorte de uma linha de tela vai ao provedor de `ai.roles.leitura`
+(aviso de `/api/ai` o nomeia, com os apps que declaram a região). Custo estimado por par de leitura em torno de US$ 0,001
+(`not_run`). Erro correlacionado entre ator e leitor reduzido pela outra família, não zerado; a bancada com controles é o
+portão para ligar a opção no central. O recorte prova "esta linha diz X", não "X é a mais recente".
+
+**Relação.** ADR-065 §3 (substituído em parte), ADR-052, ADR-058, ADR-009, ADR-024, ADR-069 §4 (a transcrição é
+roteamento comum do hub, não o Jev); migração 078; `backend/app/taskqueue/saidas.py::ler_valor_visual`,
+`backend/app/planning/` (papel `leitura`, `transcribe`), [dominios/execution.md](dominios/execution.md),
+[ia.md](ia.md).

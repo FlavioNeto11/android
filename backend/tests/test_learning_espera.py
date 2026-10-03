@@ -142,7 +142,7 @@ def test_motivo_de_saida() -> None:
 
 def test_o_vocabulario_do_payload_e_o_da_especificacao() -> None:
     assert {m.value for m in MotivoDeEntrada} == {"efeito_externo", "texto_de_pessoa", "commit_sem_catalogo",
-                                                  "alto_risco", "sessao_ou_autenticacao", "parecer_da_ia"}
+                                                  "alto_risco", "sessao_ou_autenticacao", "parecer_da_ia", "reaprendido"}
     assert {m.value for m in MotivoDeSaida} == {"decidido_por_pessoa", "rebaixado_pelo_sistema", "substituido"}
     assert href_do_item("receita", "100") == "#/aprendizado?aba=aprendido&item=receita:100"
 

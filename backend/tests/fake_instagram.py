@@ -543,3 +543,6 @@ class AtorDoInstagram:
         from app.planning.simulated_provider import persona_simulada
 
         return persona_simulada(req), Usage()
+
+    async def transcribe(self, req: Any) -> tuple[Any, Usage]:
+        raise AssertionError("o ator do Instagram falso não lê recortes de tela (leitura visual, item 12.5)")

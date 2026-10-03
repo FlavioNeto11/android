@@ -30,14 +30,17 @@ import asyncio
 import logging
 from typing import Any, Callable
 
+from ..automation.conhecimento_de_telas import declaram_leitura_visual
 from ..config import AI_ROLES, Config, ResolvedRole
 from ..modules.execution.domain.orquestracao import OrquestracaoOut, PedidoDeOrquestracao
 from ..modules.execution.domain.command_refinement import CommandRefinement, RefineRequest
 from ..models import AiRoleStatus, AiStatus, PersonaDraft, Plan, SocialDraftDTO
 from . import costs, saldos
+from .capabilities import CONHECIMENTO_DE_APPS
+from .catalog import capabilities_of
 from .curador import ParecerBruto, PedidoDeParecer
-from .provider import (AIError, AIProvider, Decision, DecisionRequest, PersonaGenerationRequest, PlanRequest,
-                       SocialRequest, Usage, Verdict, VerifyRequest, build_one)
+from .provider import (AIError, AIProvider, Decision, DecisionRequest, LeituraRequest, PersonaGenerationRequest,
+                       PlanRequest, SocialRequest, Transcricao, Usage, Verdict, VerifyRequest, build_one)
 
 log = logging.getLogger("poc.ai")
 
@@ -81,6 +84,7 @@ class RoutingProvider:
         self.cfg = cfg
         self.roles: dict[str, ResolvedRole] = cfg.ai_roles()
         _valida_capacidade(cfg, self.roles)
+        cfg.validar_leitura()                  # item 12.5: o leitor é outro modelo que o ator e vê imagem (ADR-070)
         # Uma instância por combinação (provedor, modelo, prazo, tentativas): sem `ai.roles` as cinco funções
         # caem na mesma chave e o hub reaproveita UMA instância — exatamente o que existia antes dele.
         self._por_chave: dict[tuple[Any, ...], AIProvider] = {}
@@ -102,6 +106,12 @@ class RoutingProvider:
             self.roles_por_perfil[nome] = roles
         #: run_id → perfil. O perfil da execução é gravado na criação e não muda depois: lê-se uma vez.
         self._perfil_por_execucao: dict[str, str | None] = {}
+        # Item 12.5: `leitura` só existe quando escrita em `ai.roles`. Entra em `roles` DEPOIS de montar `providers` de
+        # propósito: o leitor ausente ou sem chave não derruba `configured` do hub inteiro (só a leitura visual recusa),
+        # e a instância dele sai de `_instance`, sob demanda.
+        leitura = cfg.ai_leitura()
+        if leitura is not None:
+            self.roles["leitura"] = leitura
         self._gates = {papel: _RoleGate(r.concurrency) for papel, r in self.roles.items()}
         if not self._persona_tem_vagas_proprias(cfg):
             # Persona sem bloco próprio dividia as vagas do social (a geração chamava o papel social). Com um semáforo
@@ -149,6 +159,16 @@ class RoutingProvider:
                 refusal_fallback=r.refusal_fallback and r.kind == "anthropic",
                 fallback_provider=r.fallback_provider, timeout_s=r.timeout_s, concurrency=r.concurrency,
                 effort=r.effort))
+        if "leitura" in self.roles:
+            r = self.roles["leitura"]
+            caps = self.cfg.model_caps(r.model)
+            linhas.append(AiRoleStatus(
+                role="leitura", provider=r.provider, kind=r.kind, model=r.model, endpoint=r.endpoint,
+                sends_data_externally=r.sends_data_externally,
+                configured=bool(getattr(self._instance("leitura", r), "configured", True)),
+                priced=costs.price_for(prices, r.model) is not None, vision=caps.vision, tools=caps.tools,
+                refusal_fallback=False, fallback_provider=None, timeout_s=r.timeout_s, concurrency=r.concurrency,
+                effort=None))
         externas = [linha.role for linha in linhas if linha.sends_data_externally]
         aviso = base.notice
         if externas and len(externas) < len(linhas):
@@ -170,9 +190,23 @@ class RoutingProvider:
                              for papel, r in roles.items() if r.sends_data_externally and papel not in externas})
         if por_perfil:
             aviso += " Perfis de IA que enviam dados para fora desta máquina: " + ", ".join(por_perfil) + "."
+        if "leitura" in self.roles:
+            # O leitor recebe o RECORTE de uma linha de tela, e pode ser outro provedor que o do ator: o destino das
+            # capturas muda, e o aviso do painel diz para onde vai (item 12.5, ADR-070).
+            r = self.roles["leitura"]
+            ligada = self.cfg.file.ai.leitura_visual.enabled
+            destino = (f"o provedor “{r.provider}” ({r.endpoint or 'endpoint local'}, modelo {r.model})"
+                       if r.sends_data_externally else "um endpoint que não sai desta máquina")
+            # O rótulo do DADO do app (`AppDefinition.label`, que cai para o nome e depois para o pacote), e não o
+            # pacote cru: a pessoa reconhece "Outlook", não "com.microsoft.office.outlook".
+            apps = ", ".join(capabilities_of(p).label for p in declaram_leitura_visual(CONHECIMENTO_DE_APPS)) or "nenhum app"
+            aviso += (f" Leitura visual ({'ligada' if ligada else 'desligada'}): quando ligada, o recorte de uma linha da "
+                      f"tela que a árvore não expõe (apps que declaram a região: {apps}; remetente e assunto de mensagens "
+                      f"de terceiros, por exemplo) é enviado a {destino} para uma segunda transcrição, às cegas. Telas "
+                      "sensíveis e de verificação nunca são recortadas; a chave aparece só como configurada.")
         refusal = any(linha.refusal_fallback for linha in linhas)
         return base.model_copy(update={
-            "models": {papel: self.roles[papel].model for papel in AI_ROLES},
+            "models": {papel: self.roles[papel].model for papel in (*AI_ROLES, *(("leitura",) if "leitura" in self.roles else ()))},
             "roles": linhas, "notice": aviso, "configured": self.configured,
             "sends_data_externally": bool(externas or por_perfil), "simulated": self.simulated,
             "provider": self.name, "model": self.model,
@@ -225,7 +259,7 @@ class RoutingProvider:
                          ) -> tuple[tuple[str, float, Callable[[], float], str, str], ...]:
         """A régua da fatia desta origem, no mesmo formato das de `_budget` (vazia quando não há fatia).
 
-        Só `curador` e `decisao_fechada` têm fatia. Sem fatia configurada nada muda: o curador sem valor explícito e sem
+        Só `curador`, `decisao_fechada` e `leitura` têm fatia. Sem fatia configurada nada muda: o curador sem valor explícito e sem
         teto do dia não tem fatia (a fração é do teto do dia, e `0` o desliga), e `0` em qualquer uma a desliga."""
         limites = self.cfg.file.ai.limits
         if origem == "curador":
@@ -234,6 +268,8 @@ class RoutingProvider:
             rotulo, motivo = "da fatia do curador", "fatia_curador"
         elif origem == "decisao_fechada":
             limite, rotulo, motivo = float(limites.jev_max_usd_per_day), "da fatia da decisão fechada", "fatia_jev"
+        elif origem == "leitura":
+            limite, rotulo, motivo = float(limites.leitura_max_usd_per_day), "da fatia da leitura visual", "fatia_leitura"
         else:
             return ()
         return ((rotulo, limite, lambda: costs.spent_today_usd(self.repo.db, prices, origem=origem),
@@ -287,6 +323,8 @@ class RoutingProvider:
 
     def _funcao(self, papel: str, run_id: str | None) -> tuple[ResolvedRole, str | None]:
         perfil = self.perfil_da_execucao(run_id)
+        if papel == "leitura":
+            return self.roles["leitura"], perfil       # o perfil troca o ator, não o conferente (item 12.5)
         return (self.roles_por_perfil[perfil][papel] if perfil else self.roles[papel]), perfil
 
     # ------------------------------------------------------------------ despacho
@@ -406,6 +444,17 @@ class RoutingProvider:
         # Sem `run_id` (a prévia de persona nasce do portal): o teto por execução não se aplica, o do dia sim —
         # e era exatamente este o caminho que passava por fora de qualquer orçamento.
         return await self._call("social", None, lambda p: p.generate_social_response(req), origem="social")
+
+    async def transcribe(self, req: LeituraRequest) -> tuple[Transcricao, Usage]:
+        """Leitura visual (item 12.5, ADR-070): o segundo leitor transcreve o recorte, às cegas. Papel `leitura` sem
+        herança, contado em `ai_calls` com `role='leitura'` e `origem='leitura'` (com o `run_id`, para os tetos). Sem o papel
+        em `ai.roles`, `not_configured`: o executor recusa a leitura visual com `sem_leitor`."""
+        if "leitura" not in self.roles:
+            raise AIError("Não há leitor configurado (ai.roles.leitura): a leitura visual está indisponível.",
+                          kind="not_configured")
+        # `origem='leitura'` (073): a chamada passa pelo `_budget` COM o `run_id` (valem os tetos do pedido, da execução e
+        # do dia) e, quando `ai.limits.leitura_max_usd_per_day` > 0, pela fatia própria; o saldo vale por conta.
+        return await self._call("leitura", req.run_id, lambda p: p.transcribe(req), origem="leitura")
 
     async def generate_persona(self, req: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]:
         # Papel `persona` (item 17.8: herda o `social` até alguém configurá-lo), sem `run_id`: nasce do portal, como

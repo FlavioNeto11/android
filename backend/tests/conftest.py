@@ -220,6 +220,13 @@ class CountingProvider:
         refinado, _ = await self.inner.refine_command(req)
         return refinado, Usage(calls=1, role="plan", model="simulado")
 
+    async def transcribe(self, req: Any) -> Any:
+        """O leitor da leitura visual (item 12.5): registra o pedido (só as saídas pedidas, nunca o conteúdo) e devolve o que o
+        teste programou em `inner.leitura` (sem programação, "ilegível")."""
+        self.calls.append({"role": "leitura", "saidas": list(req.saidas), "image": bool(req.recorte)})
+        t, _ = await self.inner.transcribe(req)
+        return t, Usage(calls=1, role="leitura", model="simulado", with_image=bool(req.recorte))
+
     async def generate_persona(self, req: Any) -> Any:
         self.calls.append({"role": "persona", "kind": "persona", "enrich": req.existing is not None})
         draft, _ = await self.inner.generate_persona(req)
