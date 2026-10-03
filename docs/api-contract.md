@@ -4762,6 +4762,43 @@ caminho.
 Prova:
 - `simulated`: `tests/test_learning_forma.py` e `DetalheRico.test.tsx`;
 - `not_run`: o central (a reclassificação das linhas do P4 de 03/10).
+
+## Adendo v0.97 (03/10/2026; número da orquestradora; item 30.37) — a execução de prova de fluxo: `RunSummary.prova_fluxo_id`
+
+Aditivo aos v0.47, v0.89 e v0.96. Nenhuma rota nova; migração 084 (`runs.prova_fluxo_id`,
+`learning_validations.teto_usd`). Origem: o K-086 (a validação por re-execução não deixava evidência para o fluxo ativo
+e media o planejador livre no candidato).
+
+**`RunSummary.prova_fluxo_id`** (`string | null`, também no `RunDetail`):
+- o id do fluxo que a execução PROVA, ou `null` numa execução comum;
+- a execução de prova roda o plano do próprio fluxo com os parâmetros do comando de origem, sem planejador;
+- aparece como "Prova de fluxo (validação)": nunca como comando de pessoa, nunca aviso, nunca o último comando do
+  cartão;
+- sem `flow_id` nem `skill_hash` nela, e a sombra da intenção não a vê;
+- se a prova precisaria de uma pessoa (`needs_input`, `approval_required`, incerteza), o SISTEMA a encerra na hora
+  (`cancelled`, sem `cancelou_execucao`, sem pergunta pendente).
+
+**Config** `aprendizado.validacao.teto_por_pedido_usd` (padrão `0.10`, `0..10`):
+- o teto de IA de UM pedido de validação, gravado em `learning_validations.teto_usd`;
+- o roteador o aplica como o teto do pedido do 28.6 (`teto_usd_da_execucao`: o menor dos dois);
+- vale também para a reabertura;
+- o teto total do P4 não muda (US$ 3,09).
+
+**`learning_validations.motivo`** (sem CHECK; os valores do v0.96 seguem):
+- `sem_caminho` passa a valer também para o FLUXO cujo comando de origem não cabe mais no molde (ao nascer ou ao
+  despachar); só a receita `sem_caminho` volta ao curador (`chegadas`);
+- `sem_evidencia` (já existia) é também o fechamento da prova que não deixou evidência (infra: erro de IA, teto, aparelho, etapa que pediria pessoa);
+- o pedido de FLUXO fechado `sem_evidencia` ou `divergencia_de_forma` numa execução comum ganha UM pedido novo (a
+  reabertura), que roda como prova.
+
+**Evidência** (`evidencias[]` do detalhe `GET /api/aprendizado/{kind}/{ref}`):
+- a linha da prova tem `origin_ref = "run:<id da execução de prova>"`, e o `detail` abre com a marca do conteúdo do fluxo;
+- `for`: execução `completed` com todas as etapas comprovadas; `against`: uma etapa `failed` na própria pós-condição;
+- vale também para o fluxo ativo; o veredito do D1 só avalia o que ainda está em prova.
+
+Prova:
+- `simulated`: `tests/test_learning_prova.py`;
+- `not_run`: o central (a 1ª validação de fluxo depois do deploy que levar o 30.37).
 ## Adendo v1.00 (03/10/2026; número da orquestradora; item 30.38) — validação e pareceres com a verdade no painel
 
 **Parcial:** só a (c) está aqui; a (a), a origem nas execuções de validação, e a (b), a rota de leitura dos pedidos
@@ -4815,6 +4852,79 @@ Prova `simulated`:
 - `tests/test_learning_capability_na_linha.py`, com o registro real: REPLY_COMMENT só no Instagram;
 - `tests/test_leitura_visual_papel.py`;
 - `frontend/src/features/aprendizado/AprendizadoPage.test.tsx`.
+## Adendo v0.98 (03/10/2026; número da orquestradora; item 28.15, ADR-071) — a conversa de volta pelo Telegram: config, saúde e o conteúdo do aviso
+
+Nenhuma rota nova: o central PERGUNTA ao Telegram (long-poll do `getUpdates`) e nunca é chamado por ele. Muda o
+seguinte, todo desligado de fábrica.
+
+- **Config:** `avisos.entrada`, com `enabled` (false), `limite_por_min` (10), `max_chars` (1000), `long_poll_s` (50),
+  `espera_conflito_s` (60), `ttl_previa_s` (900: o botão Executar de prévia mais velha não cria nada) e `idade_max_s`
+  (900: a mensagem escrita há mais que isto, com a Central fora, fica `ignorada` sem texto). Ela só vale com
+  `avisos.enabled`. O chat aceito é o `TELEGRAM_CHAT_ID` do `.env`, só em conversa privada e com o `from.id` igual a
+  ele; nenhum chat_id mora na config.
+- **`GET /api/health`:** três problemas novos, que somem quando a leitura volta a funcionar:
+  - `telegram_entrada_conflito`: o 409 do `getUpdates` (outro processo lê o mesmo bot);
+  - `telegram_entrada_recusada`: 401, 403 ou 404, com a causa de cada um no `hint`;
+  - `telegram_entrada_pedido_invalido`: o 400 (não é o token).
+- **O aviso** (`avisos_entregas.corpo` e a mensagem). Com `avisos.entrada.enabled`:
+  - `approval.pending` leva o resumo, "Alvo: …" e "Texto: “…”";
+  - `run.needs_input` leva o `status_detail` (a pergunta).
+  Os dois passam pelo redator de credencial e são cortados em 500 caracteres, terminando em "…". Depois vem a instrução
+  de resposta ("Responda a esta mensagem com sim ou não (ou /vetar <motivo>)." ou "Responda a esta mensagem com a
+  resposta."). Os outros tipos não mudam. Com a entrada desligada, nada muda (28.11).
+- **Gestos pela conversa:** a decisão grava `decided_by = telegram:dono`, e a auditoria e o sinal contam o gesto como de
+  pessoa. A execução criada pela conversa usa a chave de idempotência `telegram:<update_id>`. A sucessora da resposta ao
+  `needs_input` é a mesma do painel.
+- **Banco:** a migração 085 cria `canal_entradas` e `canal_enviadas` (genéricas por canal; `docs/banco.md`).
+
+Prova `simulated`: `tests/test_telegram_entrada.py`, `tests/test_canais_contrato.py`, `tests/test_avisos_servico.py`,
+`tests/test_telegram_portas.py`, `tests/test_telegram_correcoes.py` e `tests/test_telegram_revisao_e.py` (as duas
+revisões do PR #166). `not_run`: a conversa real.
+
+## Adendo v1.03 (03/10/2026; número da orquestradora; item 29.52) — a resposta com credencial é recusada pelo contexto
+
+Nenhuma rota nova e nenhuma migração. Um código de erro novo, um evento novo e duas leituras públicas no caminho comum
+(painel e canais). O ADR-040 continua valendo: a senha mora na conta da persona e a automação a digita por
+`type_secret`. O código de verificação, a pessoa digita no aparelho (ADR-009). A resposta a uma pergunta vira comando de
+uma execução sucessora, que vai ao prompt do planejador e ao histórico; por isso a credencial não entra por ali. Na
+dúvida, recusa.
+
+- **409 `credencial_na_resposta`**, com `tipo` no `detail` (`senha`, `2fa`, `codigo`, `token`, `credencial` ou
+  `formato`). A mensagem aponta o caminho certo e nunca repete a resposta. Sai em:
+  - `POST /api/runs/{id}/successor`, antes de qualquer gravação: nenhuma execução nova nasce e a antiga segue em
+    `needs_input`. Recusa quando:
+    - alguma pergunta aberta da execução pede credencial, seja qual for a resposta;
+    - ou, sem pergunta assim, o que a resposta acrescentou ao comando (`original + "\n" + resposta`, ou as palavras novas
+      do texto refinado) tem cara de credencial ou é um código solto de 4 a 8 dígitos.
+  - `POST /api/commands/refine`, antes da chamada de IA. Em cada resposta, recusa quando a pergunta que vem no corpo
+    (`question` e `field`) pede credencial, ou quando a própria resposta tem cara de credencial. É aqui que a resposta
+    do painel iria ao modelo, antes da sucessora.
+  - `POST /api/runs` (criação, sem o laço de pedidos): quando o comando é uma palavra só, sem espaço, e há uma pergunta
+    de senha ou código aberta para os aparelhos do pedido. Sem aparelho explícito no pedido (por persona ou
+    distribuição), qualquer pergunta aberta conta. É a senha mandada como pedido novo no lugar da resposta.
+  - O `credencial_no_comando` segue como antes, para o formato (`senha: …`) no comando ou numa resposta, e é conferido
+    primeiro.
+- **Evento `pergunta_sensivel`** (`level: warn`): sai quando uma execução entra em `needs_input` com uma pergunta que
+  pede credencial (pergunta do plano ou da habilidade). Leva só o `run_id` e `data: {"tipo": …}`, sem o texto da
+  pergunta, e mede quantas vezes o planejador pede o que não devia (ADR-040). O painel o lê para trocar a caixa de
+  resposta pela orientação, com o botão "Abrir Personas" (senha) ou "Abrir o aparelho" (código). Uma execução anterior
+  ao 29.52 não tem o evento: a caixa aparece e a recusa vem pelo 409.
+- **Leituras públicas** (`backend/app/taskqueue/perguntas.py`). As duas devolvem o tipo ou `None`, sobre a mesma regra
+  (`TriagemDeCredencial.pergunta_sensivel` e `resposta_recusada`), e nenhuma devolve nem registra o texto. Os canais
+  usam as mesmas, nunca um vocabulário próprio.
+  - `pergunta_sensivel_da_execucao(db, run_id)`: a pergunta aberta desta execução pede credencial? Uma execução que não
+    existe ou não está em `needs_input` dá `None`.
+  - `pergunta_sensivel_aberta(db, instance_ids=())`: existe agora alguma pergunta assim? Com `instance_ids`, contam as
+    execuções desses aparelhos mais as que ainda não têm aparelho.
+
+Prova `simulated`:
+- `backend/tests/test_resposta_com_credencial.py`: o vocabulário; o evento sem o texto; a sucessora e o refinamento
+  pelas rotas HTTP do painel; as duas leituras; a palavra solta;
+- `frontend/src/features/runs/RunView.test.tsx`: senha, código e a execução sem o evento;
+- percurso no navegador contra o backend simulado do worktree (porta 8766), com as duas orientações, os dois botões e o
+  409 de formato no assistente da resposta.
+
+A cobertura do canal (Telegram e Trello pelas mesmas leituras) entra no commit de integração da suíte 14.
 
 
 ## Adendo v1.05 (03/10/2026; número da orquestradora; item 29.54, ADR-073) — o painel estático muda de `/` para `/central/`

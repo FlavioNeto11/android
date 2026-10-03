@@ -1300,3 +1300,21 @@ button.evTile:hover {
   .objHead, .stepHead { display: flex; flex-wrap: wrap; row-gap: 6px; }
   .progressRow { grid-template-columns: minmax(0, 1fr); gap: var(--sp-3); }   /* barra em cima, contadores embaixo */
 }
+
+/* 29.52: a pergunta que pede senha ou código mostra o caminho certo no lugar da caixa de resposta. */
+.respostaSensivel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.respostaSensivelTexto {
+  margin: 0;
+  color: var(--text-1);
+}
+
+.respostaSensivelAcoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

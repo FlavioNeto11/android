@@ -27,10 +27,12 @@ import { InstancesTab } from './InstancesTab';
 import { nomeDe } from '../profiles/pessoa';
 import { usePersonas } from '../profiles/usePersonas';
 import {
-  EMPTY_COUNTS, countSegments, isBlocked, objectivesTotal, perguntasDosEventos, type PerguntaDaExecucao,
+  EMPTY_COUNTS, countSegments, isBlocked, objectivesTotal, perguntaSensivelDosEventos, perguntasDosEventos,
+  type PerguntaDaExecucao,
 } from './model';
 import { PlanTab } from './PlanTab';
 import { ReportTab } from './ReportTab';
+import { RespostaSensivel } from './RespostaSensivel';
 import { ResumoDaExecucao } from './ResumoDaExecucao';
 import { abaPadraoDaExecucao, type AbaDaExecucao } from './resumo';
 import { AssistenteDoComando } from '../command/AssistenteDoComando';
@@ -256,6 +258,8 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
     ? missing.map((m) => ({ field: m.field, question: m.question, options: [] }))
     : run.status === 'needs_input' ? perguntasDosEventos(events) : [];
   const deDestino = perguntas.some((q) => q.field === 'profile_id' || q.field === 'instance_id');
+  // 29.52: a pergunta que pede senha ou código não tem caixa de resposta (o tipo vem do evento do backend).
+  const sensivel = run.status === 'needs_input' && !deDestino ? perguntaSensivelDosEventos(events) : null;
   // As opções de persona chegam como ids: o nome só vem da lista de personas, lida só quando há uma pergunta assim.
   const pessoas = usePersonas(perguntas.some((q) => q.field === 'profile_id'));
   const nomeDaOpcao = (id: string) => {
@@ -339,6 +343,7 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
         <ResumoDaExecucao
           run={run}
           perguntas={perguntas.length}
+          sensivel={sensivel}
           bloqueados={blockedCount}
           textosParaAprovar={pendentes}
           terminal={terminal}
@@ -387,7 +392,9 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
                 </Button>
               }
             >
-              {perguntas.length > 0 && !deDestino ? (
+              {perguntas.length > 0 && sensivel ? (
+                <RespostaSensivel tipo={sensivel} perguntas={perguntas} instanceId={run.instance_ids[0] ?? null} />
+              ) : perguntas.length > 0 && !deDestino ? (
                 // ADR-047: responder aqui mesmo. A IA junta as respostas ao comando e nasce a execução sucessora —
                 // sem voltar ao Comando para reescrever o texto.
                 <AssistenteDoComando
@@ -435,7 +442,9 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
               <p style={{ marginTop: 6 }}>
                 {deDestino
                   ? 'Escolha no Comando (modo “Por persona”, ou marcando os aparelhos) e envie de novo — esta execução não avança sozinha.'
-                  : 'Esta execução não avança sozinha: responda acima (nasce outra, com o comando completo) ou edite o comando.'}
+                  : sensivel
+                    ? 'Esta execução não avança sozinha: depois disso, edite o comando e peça de novo (ou cancele).'
+                    : 'Esta execução não avança sozinha: responda acima (nasce outra, com o comando completo) ou edite o comando.'}
               </p>
             </Banner>
           ) : null}

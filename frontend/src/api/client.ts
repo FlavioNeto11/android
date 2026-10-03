@@ -195,6 +195,10 @@ export function hintForError(e: ApiError): string {
     // ADR-040: a senha mora na conta da persona, nunca no comando nem na execução.
     case 'credencial_no_comando':
       return 'Tire a senha do texto e guarde-a na conta da persona (Persona → Contas e acesso), com o consentimento.';
+    // 29.52: a resposta a uma pergunta de senha ou código (ou com cara de uma) não vira comando.
+    case 'credencial_na_resposta':
+      return 'Senha fica na conta da persona (Persona → Contas e acesso); código de verificação se digita no aparelho, '
+        + 'pelo controle manual. Depois, peça de novo.';
     case 'consentimento_de_credencial':
       return 'Marque que a pessoa autoriza a automação a digitar esta senha, só no app e no site desta conta.';
     case 'no_credential':
@@ -854,11 +858,13 @@ export const api = {
   resolveRunTargets: (body: ResolveTargetsRequest, signal?: AbortSignal) =>
     request<ResolveTargetsResponse>('POST', '/runs/targets/resolve', { body, signal }),
   /** ADR-047: o assistente reescreve o comando em blocos e diz o que ainda falta. Uma chamada de IA (papel `plan`);
-   *  não cria execução. Credencial no texto ou numa resposta → 409 `credencial_no_comando`. */
+   *  não cria execução. Credencial no texto ou numa resposta → 409 `credencial_no_comando`; resposta a uma pergunta
+   *  de senha ou código, ou com cara de credencial → 409 `credencial_na_resposta` (29.52), sem chamar a IA. */
   refineCommand: (body: RefineCommandRequest, signal?: AbortSignal) =>
     request<CommandRefinement>('POST', '/commands/refine', { body, signal, timeoutMs: 120_000 }),
   /** ADR-047: responde a uma execução em `needs_input` — nasce a sucessora com o comando novo e os mesmos alvos, e a
-   *  antiga é cancelada apontando para ela. */
+   *  antiga é cancelada apontando para ela. Pergunta de senha ou código aberta, ou resposta com cara de credencial →
+   *  409 `credencial_na_resposta` (29.52), sem execução nova e sem cancelar a antiga. */
   runSuccessor: (runId: string, body: RunSuccessorRequest) =>
     request<RunSummary>('POST', `/runs/${enc(runId)}/successor`, { body, timeoutMs: 120_000 }),
   /** ADR-050: quem faz e onde, pelo pedido (modo Automático). Não cria execução; pode custar uma chamada de IA

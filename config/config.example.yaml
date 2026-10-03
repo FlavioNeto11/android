@@ -495,6 +495,14 @@ avisos:                           # aviso fora do painel (item 28.11): espelho d
   # incerto_apos_s: 600           # `enviando` parado há isto (queda no meio do envio) vira `incerto`, sem reenvio
   # retencao_dias: 30             # purga das linhas finais
   # aprendizado_faixas: [C]       # faixas do learning.needs_person que avisam (28.14); a B (lote) fica só na caixa
+  # entrada:                       # a conversa de volta (28.15, ADR-071): o chat do .env aprova, veta, responde e pede
+  #   enabled: false              # (false) desligada; só liga com avisos.enabled. Ligar troca o consumidor do bot (docs/operacao.md)
+  #   limite_por_min: 10          # mensagens do chat por minuto; o excesso vira `limitada`
+  #   max_chars: 1000             # maior que isto é recusada sem guardar
+  #   long_poll_s: 50             # quanto o getUpdates segura a conexão esperando
+  #   espera_conflito_s: 60       # 409 (outro consumidor do bot): espera e avisa na saúde, não disputa
+  #   ttl_previa_s: 900           # o botão Executar de uma prévia mais velha que isto não cria a execução
+  #   idade_max_s: 900            # mensagem escrita há mais que isto (Central fora do ar) não é tratada; o dono é avisado
 
 provisioning:                     # aparelho novo pela plataforma, neste servidor (POST /api/instances)
   min_free_disk_gb: 10            # disco livre mínimo do hospedeiro (última batida) para aceitar criar mais um AVD
@@ -587,6 +595,7 @@ aprendizado:                      # aprendizado contínuo (ADR-054): livro, D1, 
     extra_usd: 0                  # verba única somada ao beta até extra_ate (ISO, ex.: 2026-10-10T00:00:00.000Z)
     extra_ate: ""
     custo_estimado_usd: 0.07
+    teto_por_pedido_usd: 0.10     # 30.37: teto de gasto de IA de UM pedido (a execução de prova); acima, o roteador barra
   # Autopublicação do fluxo de classe B (30.34): parecer "aprovar" com confiança alta + ≥ 2 execuções reais em ≥ 2
   # aparelhos. "off" (padrão) não roda · "shadow" só marca o que publicaria (o livro da sombra). "on" ainda não é aceito:
   # vem depois do relatório da sombra (≥ 30 casos fechados com ≥ 90 % sem regressão).

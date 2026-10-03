@@ -68,12 +68,18 @@ export function objetivosComSucesso(run: Pick<RunSummary, 'status' | 'counts' | 
 /** O que a execução espera de uma pessoa, em linhas curtas; vazio quando nada depende dela. */
 export function oQuePrecisaDaPessoa(a: {
   status: RunStatus; perguntas: number; bloqueados: number; textosParaAprovar: number; terminal: boolean;
+  /** 29.52: o tipo da credencial que a pergunta pede (evento `pergunta_sensivel`); ela não se responde aqui. */
+  sensivel?: string | null;
 }): { chave: 'perguntas' | 'bloqueios' | 'textos'; texto: string; aba: AbaDaExecucao | null }[] {
   const linhas: { chave: 'perguntas' | 'bloqueios' | 'textos'; texto: string; aba: AbaDaExecucao | null }[] = [];
   if (a.status === 'needs_input') {
     linhas.push({
       chave: 'perguntas',
-      texto: a.perguntas > 0
+      texto: a.sensivel
+        ? (a.sensivel === 'codigo' || a.sensivel === '2fa'
+          ? 'Digitar o código no aparelho e pedir de novo: ele não se responde aqui'
+          : 'Guardar a senha na conta da persona e pedir de novo: ela não se responde aqui')
+        : a.perguntas > 0
         ? `Responder ${a.perguntas === 1 ? 'a pergunta' : `às ${a.perguntas} perguntas`} da IA para a execução seguir`
         : 'Informar o que falta para a execução seguir',
       aba: null,

@@ -1229,6 +1229,45 @@ O passo da curadoria do pedido remotiva o `sem_evidencia` quando a evidência ch
 - o que ela mede é se o planejador refaz o mesmo plano, não se o fluxo funciona;
 - por isso, com o 30.36, os candidatos tendem a `forma` e não se validam sozinhos;
 - a alternativa é executar o PRÓPRIO fluxo (como se publicado) no outro aparelho e checar as pós-condições dele.
+  Foi o que o 30.37 fez, para o fluxo (seção abaixo).
+
+## A prova de fluxo (30.37)
+
+O pedido de validação de FLUXO (`pedir_evidencia` do curador, 30.31) roda como EXECUÇÃO DE PROVA, e a evidência vem das
+etapas dela. É a emenda datada de 03/10/2026 à D1 do ADR-054: validação de fluxo pelo próprio fluxo; a receita segue por
+re-execução.
+
+**A execução** (`runs.prova_fluxo_id`, migração 084):
+- o plano é o do próprio fluxo com os parâmetros do comando de origem (`FlowStore.plano_em_prova`: candidate, validated
+  ou active; `disabled` ou comando fora do molde não roda);
+- sem planejador, sem RESOLVE, sem `runs.flow_id`, sem `flows.used`, sem `skill_hash`; a sombra da intenção não a vê, e
+  a prova não ensina fluxo novo (`_learn_flow` volta cedo);
+- aparece como "Prova de fluxo (validação)" (`RunSummary.prova_fluxo_id`): nunca comando de pessoa, nunca aviso, nunca o
+  último comando do cartão;
+- `needs_input`, `approval_required` ou incerteza é infra: o sistema encerra a execução na hora (sem
+  `cancelou_execucao`, sem pergunta pendente, sem aviso) e o pedido fecha `sem_evidencia`.
+
+**A evidência** (`SombraDosFluxos.minerar`, ramo da prova), UMA linha do fluxo provado, com a marca do conteúdo:
+- a favor: execução `completed` e todas as etapas comprovadas;
+- contra: uma etapa `failed` na própria pós-condição (a última tentativa sem `error_kind`);
+- infra (erro de IA, teto, aparelho, cancelamento pelo sistema): sem evidência;
+- vale também para o fluxo ATIVO (o K-086 achou que nenhuma das 13 evidências de fluxo vinha de execução que usava o
+  próprio fluxo); o D1 só avalia quem ainda está em prova;
+- a prova nunca é comparável na sombra (assinatura `None`). A sombra orgânica segue gravando com a `forma` do 30.36 e
+  nunca conta para o pedido.
+
+**O pedido:**
+- teto por pedido `aprendizado.validacao.teto_por_pedido_usd` (US$ 0,10, `learning_validations.teto_usd`), aplicado
+  pelo roteador como o teto do 28.6 (vale o menor), também nas reaberturas; o teto total do P4 segue US$ 3,09;
+- comando de origem fora do molde: `sem_caminho`, ao nascer ou ao despachar; só a receita `sem_caminho` volta ao
+  curador, para não pagar revisão em laço;
+- reabertura: com a validação ligada, o pedido de FLUXO fechado `sem_evidencia` ou `divergencia_de_forma` numa
+  execução comum ganha um pedido novo, uma vez, que roda como prova (3 esperados no central: QA conta, localizar
+  contato, QA-001-2);
+- o custo da prova terá coluna própria no `registro_p4.py` (fim do P4).
+
+**Prova:** `simulated` em `backend/tests/test_learning_prova.py`. `real`: `not_run` até a 1ª validação de fluxo depois
+do deploy que levar o 30.37; o P4 fica pausado (`validacao.modo: off`) até lá.
 
 ## Pendências conhecidas
 

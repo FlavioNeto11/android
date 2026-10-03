@@ -18,6 +18,11 @@ casos que já estão no banco, para medir cedo o que a sombra mediria. Parte R1:
   retrieval (`wiring._AmbienteDoProvedor`), lida só na hora do POST. Num worktree sem `.env`, `--enviar` recusa antes
   de começar. Nada aqui imprime a chave.
 
+`--estado v2` (31.11, branch do sinal): o pedido leva também os campos de SINAL do curador (`curador.CAMPOS_DE_SINAL`:
+versão viva, uso, idade da evidência a favor, códigos fechados de saúde e de risco, trilha), com as faixas de idade
+contadas a partir da hora da REVISÃO, para o caso ser reprodutível. A sombra do runtime segue no `v1`
+(`curador.ESTADO_DA_SOMBRA`) até esta medição mostrar respostas distintas.
+
 O que a saída mostra por `kind`: o estrato do golden set (as mesmas contas do relatório do 31.10, reaproveitadas) e o
 SINAL da entrada, a pergunta do 31.19: os estados C0 distintos ganham respostas distintas, e o mesmo estado repetido
 ganha a mesma resposta? Cada caso leva `dossie_hash`, `kind`, um hash do estado, a escolha opaca, as probabilidades, o
@@ -50,7 +55,9 @@ from app.config import DecisaoFechadaCfg, EnvSettings  # noqa: E402
 from app.modules.context_retrieval.adapters.jev import JevSemanticProvider  # noqa: E402
 from app.modules.context_retrieval.wiring import _AmbienteDoProvedor  # noqa: E402
 from app.planning.decisao_fechada.contrato import PedidoDeDecisao, ResultadoDeDecisao, resultado_de_fallback  # noqa: E402
-from app.planning.decisao_fechada.curador import TriagemDoCurador, decisao_real_da_triagem  # noqa: E402
+from app.planning.decisao_fechada.curador import (  # noqa: E402
+    ESTADO_DA_SOMBRA, VERSOES_DO_ESTADO, TriagemDoCurador, decisao_real_da_triagem,
+)
 from app.planning.decisao_fechada.decisores import ChamadaAoJev, Decisor, DecisorJev  # noqa: E402
 from app.planning.decisao_fechada.porta import TIMEOUT_SHADOW_S, Porta, RegistroDeDecisao  # noqa: E402
 
@@ -128,7 +135,8 @@ def _hash_curto(texto: str) -> str:
     return hashlib.sha256(texto.encode("utf-8")).hexdigest()[:12]
 
 
-def casos_do_curador(db: Any, *, desde: str | None, autores_dono: frozenset[str]) -> tuple[list[Caso], Counter[str]]:
+def casos_do_curador(db: Any, *, desde: str | None, autores_dono: frozenset[str],
+                     versao_do_estado: str = ESTADO_DA_SOMBRA) -> tuple[list[Caso], Counter[str]]:
     """Os casos da R1: uma revisão do curador por caso, só os `kind` de F1 (`TriagemDoCurador.pedido`). O rótulo é o
     do relatório do 31.10, contado a partir da revisão (não há linha de sombra no braço offline)."""
     sql = "SELECT * FROM learning_reviews WHERE template_id=?" + (" AND created_at>=?" if desde else "")
@@ -140,7 +148,9 @@ def casos_do_curador(db: Any, *, desde: str | None, autores_dono: frozenset[str]
             dossie = json.loads(r["dossie"] or "{}")
         except ValueError:
             dossie = {}
-        pedido = TriagemDoCurador.pedido(dossie, str(r["dossie_hash"])) if isinstance(dossie, dict) else None
+        pedido = (TriagemDoCurador.pedido(dossie, str(r["dossie_hash"]), versao_do_estado=versao_do_estado,
+                                          agora=rel._ts(str(r["created_at"])))
+                  if isinstance(dossie, dict) else None)
         if pedido is None:
             fora[str(r["item_kind"])] += 1
             continue
@@ -225,6 +235,7 @@ def _sinal(itens: Sequence[dict[str, Any]]) -> dict[str, Any]:
 
 
 def montar(casos: Sequence[Caso], registros: Sequence[RegistroDeDecisao | None], *, fora: Mapping[str, int],
+           versao_do_estado: str = ESTADO_DA_SOMBRA,
            agora: datetime, enviado: bool, interrompido: str | None, teto: Teto | None,
            pedidos_secos: int | None) -> dict[str, Any]:
     por_kind: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -263,7 +274,8 @@ def montar(casos: Sequence[Caso], registros: Sequence[RegistroDeDecisao | None],
                       "em_ai_calls": False})
     return {
         "aviso": AVISO.format(n=rotulos),
-        "consumidor": "curador", "classe": "C0", "enviado": enviado, "interrompido": interrompido,
+        "consumidor": "curador", "classe": "C0", "estado": versao_do_estado, "enviado": enviado,
+        "interrompido": interrompido,
         "casos": len(casos), "rodados": sum(1 for r in registros if r is not None), "fora_de_f1": dict(fora),
         "pedidos_secos": pedidos_secos, "estratos": estratos, "custo": custo, "linhas": linhas_saida,
         "nota": "concordância com o curador principal é acompanhamento, nunca GO sozinha (golden set §2)",
@@ -288,7 +300,8 @@ def _resposta_do_sinal(m: Mapping[str, Any], s: Mapping[str, Any]) -> str:
 
 
 def em_markdown(r: Mapping[str, Any]) -> str:
-    linhas = [f"# Braço offline do Jev — {r['consumidor']} ({r['classe']})", "", f"**{r['aviso']}**", ""]
+    linhas = [f"# Braço offline do Jev — {r['consumidor']} ({r['classe']}, estado {r['estado']})", "",
+              f"**{r['aviso']}**", ""]
     linhas += [f"**Sinal ({kind}):** {_resposta_do_sinal(e['medidas'], e['sinal'])}"
                for kind, e in r["estratos"].items()]
     linhas += ["", f"- Enviado: {'sim' if r['enviado'] else 'não (--seco)'}; casos {r['casos']}, rodados {r['rodados']};"
@@ -323,6 +336,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     p.add_argument("--db", default=str(RAIZ / "data" / "poc.sqlite3"))
     p.add_argument("--dsn", help="PostgreSQL; no lugar de --db")
     p.add_argument("--consumidor", default="curador", help="hoje só `curador` (R1)")
+    p.add_argument("--estado", default=ESTADO_DA_SOMBRA, choices=VERSOES_DO_ESTADO,
+                   help="a versão do estado do curador (o v2 leva os campos de sinal; a sombra do runtime segue no v1)")
     p.add_argument("--desde", help="ISO-8601 UTC; padrão: todas as revisões ainda no banco")
     p.add_argument("--autor-dono", action="append", default=[], metavar="NOME",
                    help="o `decided_by` do dono no rótulo 1 (repetível); sem ele, o rótulo 1 fica desligado")
@@ -340,14 +355,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         teto = Teto(args.teto)
     db = rel._abrir(args)
     try:
-        casos, fora = casos_do_curador(db, desde=args.desde,
+        casos, fora = casos_do_curador(db, desde=args.desde, versao_do_estado=args.estado,
                                        autores_dono=frozenset(n.strip() for n in args.autor_dono if n.strip()))
     finally:
         db.close()
     seco = DecisorSeco() if teto is None else None
     decisor: Decisor = seco if seco is not None else decisor_real(teto)  # type: ignore[arg-type]
     registros, interrompido = rodar(casos, decisor)
-    rel_ = montar(casos, registros, fora=fora, agora=datetime.now(UTC), enviado=teto is not None,
+    rel_ = montar(casos, registros, fora=fora, versao_do_estado=args.estado, agora=datetime.now(UTC),
+                  enviado=teto is not None,
                   interrompido=interrompido, teto=teto, pedidos_secos=len(seco.pedidos) if seco is not None else None)
     texto = json.dumps(rel_, ensure_ascii=False, indent=1, default=str)
     if args.json:

@@ -28,6 +28,146 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Correções da revisão de risco: docs da API (`/docs`, `/redoc`, `/openapi.json`) movidos para `/api/` (abriam sem credencial pelo Host público); WebSocket do worker recusa Host público na porta do painel quando há listener dedicado; `Cache-Control` do ícone de release `private`; ADR-073 e `operacao.md` com HTTPS obrigatório, `API_TOKEN` longo, tranca global e limite de taxa recomendado.
 - `not_run`: túnel no ar e conferências de fora (da orquestradora com o dono); sem script do túnel, webhook ou mudança de cookie neste item.
 
+## 2026-10-03 — 31.22: a sombra guarda o hash do estado redigido (migração 086; branch feat/31-22-estado-hash)
+
+- `decisao_fechada_sombra.estado_hash`: o sha256 do estado DEPOIS do `privacidade.redigir`, em todas as linhas da
+  chamada; NULO na recusa de privacidade e no legado (`porta.hash_do_estado`).
+- Serve ao lote offline do 31.11, que só reenvia o comando cujo estado remontado bate com o hash (ADR-069 item 21).
+- Sem rota nova: nenhuma rota expõe as linhas da sombra, então não há adendo de contrato.
+- Teste: `backend/tests/test_decisao_fechada_estado_hash.py`.
+
+## 2026-10-03 — 31.23: estado `v2` da triagem do curador, com sinal (branch feat/31-8-sinal-curador-v2)
+
+- `curador.estado_do_dossie_v2` soma ao `v1` os campos fechados de sinal: versão viva, uso, idade da evidência a
+  favor, códigos de saúde e de risco, trilha.
+- A privacidade aceita a lista nova; a sombra do runtime segue no `v1` (`ESTADO_DA_SOMBRA`).
+- O braço offline ganha `--estado v2`; o critério para o `v2` virar o estado da sombra está pré-registrado no golden
+  set §2.
+- Testes: `backend/tests/test_decisao_fechada_curador_v2.py` e `scripts/tests/test_jev_braco_offline.py`.
+
+## 2026-10-03 — 29.47, varredura: os outros filhos também não herdam os segredos (branch `fix/ambiente-filhos-varredura`)
+
+- **Antes.** Depois do 29.47, nove lançamentos do `backend/app` ainda herdavam o `os.environ` inteiro, com as chaves
+  do `.env`:
+  - o PowerShell da leitura do firewall (`rede_firewall.executar_powershell`);
+  - o `icacls` de `rede_servidor.restringir_ao_usuario`, `security/local_secret.restringir_acesso` e
+    `worker/settings.restringir_acesso` (este também no agente do notebook);
+  - o git do Context Retrieval: `github_visibility` (2 chamadas) e `workspace._git_bytes`;
+  - o ripgrep do Context Retrieval (`lexical`, 2 chamadas).
+- **Agora.** O PowerShell e o `icacls` recebem `ambiente_dos_filhos()`. O git e o rg recebem `sdk.sem_segredos()`,
+  que é só a segunda trava: tudo menos os nomes de segredo. Mantêm `GIT_*`, `SSH_*` e `GIT_OPTIONAL_LOCKS=0`. A
+  decisão continua pelo nome; o valor não é olhado.
+- **Guarda.** Uma varredura por AST em `tests/test_ambiente_dos_filhos.py` recusa no `backend/app`:
+  - lançamento sem `env=`;
+  - `env=os.environ`;
+  - cópia de `os.environ`;
+  - `os.system`, `os.popen`, `os.spawn*` e `os.exec*`.
+
+  Exceção única: `supervisor.iniciar_backend`, que lança o próprio backend. Contra a árvore anterior, a guarda aponta
+  exatamente os 9 lançamentos; contra a nova, nenhum.
+- **Prova `simulated`**: `tests/test_ambiente_dos_filhos.py`, 14 testes.
+  - Os testes por chamada capturam o `env` e só olham NOMES, com variáveis sentinela de valor falso.
+  - Um teste usa filho real: o PowerShell do firewall lista os nomes que recebeu.
+  - Os 39 arquivos de teste que importam os módulos tocados: 1164 passed, 9 skipped.
+- **Fumaça local, nível `real` local** (03/10, central, sessão 1, código do branch): o script real de leitura do
+  firewall (só leitura) rodou com o ambiente filtrado, 36 de 96 nomes. Deu 3 perfis, 4 redes e 16 regras, uma saída
+  idêntica à do ambiente inteiro.
+- **`not_run`**: a observação, depois do deploy, dos filhos curtos (PowerShell, `icacls`) no central e no agente.
+  Os qemu do 01/03/06, lançados antes do deploy 9, seguem com o ambiente antigo até o próximo boot. Sem reinício nem
+  deploy nesta entrega.
+
+## 2026-10-03 — 29.52: a resposta com credencial é recusada pelo contexto (painel e canais; branch, suíte 14)
+
+- Branch `fix/29-52-resposta-com-credencial`, ainda fora da main: entra na suíte 14. Adendo v1.03 e K-089, sem
+  migração.
+- A regra é uma só, na `TriagemDeCredencial`: `pergunta_sensivel` (o tipo que a pergunta pede) e `resposta_recusada`
+  (o texto de pessoa mais o código solto de 4 a 8 dígitos, `parece_codigo`).
+- O caminho comum fica em `taskqueue/perguntas.py`:
+  - 409 `credencial_na_resposta` na sucessora e no refinamento, antes da IA e de qualquer gravação;
+  - a palavra solta no pedido novo, quando há pergunta de senha ou código aberta para o aparelho;
+  - o evento `pergunta_sensivel`, só com o id e o tipo;
+  - duas leituras públicas para os canais.
+- No painel, a pergunta sensível mostra a orientação no lugar da caixa de resposta: "Abrir Personas" ou "Abrir o
+  aparelho".
+- Prova `simulated`:
+  - backend: `test_resposta_com_credencial.py` (8), mais 772 testes afetados, com arquitetura;
+  - frontend: 1419/1419 e typecheck;
+  - percurso no navegador contra o backend simulado do worktree (porta 8766, planejador simulado que pergunta a senha
+    ou o código; nada no central): as duas orientações, "Abrir Personas", "Abrir o aparelho" (o foco com "Assumir
+    controle") e o 409 de formato no assistente da resposta.
+- `not_run`: a suíte inteira (fica para a suíte 14), o canal sobre as mesmas leituras (commit de integração) e o
+  painel no ambiente central (depois do deploy 14).
+
+## 2026-10-03 — 28.15: a conversa de volta pelo Telegram (migração 085; branch feat/28-15-telegram-entrada; desligada de fábrica)
+
+- O mesmo bot do aviso agora também recebe, com o dono como único interlocutor (o `TELEGRAM_CHAT_ID`). Pelo chat ele
+  aprova, veta (com nota), responde à pergunta de uma execução, faz pedidos (`/para` e texto livre) e consulta
+  `/status` e `/pendencias`.
+  - Toda ação passa pelos serviços das rotas do painel: prévia de alvos obrigatória com os botões Executar e Cancelar,
+    approval_required, pré-voo e tetos.
+  - O operador é `telegram:dono`. O `/orq` e o reply a uma mensagem que a Central não mandou ficam guardados para a
+    orquestradora, sem execução.
+- Long-poll com o offset no banco. Um 409 vira `telegram_entrada_conflito` na saúde e uma espera, sem disputa. Os
+  limites são 10 mensagens por minuto e 1000 caracteres.
+- Migração 085 genérica (`canal_entradas` e `canal_enviadas`, com a chave `(canal, id_externo)`): o Trello do 32.2 usa
+  as mesmas tabelas.
+  - A gramática e a parte comum do serviço não conhecem canal. Cada canal traduz o que chegou numa `Recebida` e
+    responde por uma `SaidaDaConversa`.
+- Credencial ou código: a mensagem é recusada sem guardar e apagada do chat (`deleteMessage`). Se não der para apagar,
+  a resposta pede ao dono que apague.
+- Com a conversa ligada, o aviso de aprovação e o de pergunta levam o conteúdo, redigido e cortado em 500 caracteres
+  (decisão (d)).
+- Documentado no ADR-071, no adendo v0.98 do api-contract, em `operacao.md` §15.1, em `banco.md` (085) e em
+  `config.example.yaml`.
+- Correções da revisão do PR #166 (`test_telegram_correcoes.py`, `simulated`):
+  - B1: na 1ª subida o histórico do chat é descartado (`getUpdates` com `offset=-1` e uma linha-marco), não executado;
+  - B2: a resposta a uma pergunta que pede senha, código, 2FA ou token é recusada pelo contexto (vocabulário da triagem de
+    credencial), apagada do chat e nunca gravada; o 409 `credencial_na_resposta` do caminho comum é final;
+  - B2 (canal): com uma execução esperando senha, código, 2FA ou token, a palavra solta (sem reply e sem `/responder`) é
+    recusada, apagada do chat e não gravada; sem poder ler as perguntas, falha fechada;
+  - I3: a update que não grava vira `falhou` sem texto e o offset anda; I4: a prévia vence em `ttl_previa_s` (900 s);
+  - I5: o dono é `chat.type = private` com `from.id` igual ao chat, na mensagem e no botão;
+  - I7: o 429 honra o `Retry-After`; o 401/403 vira o problema `telegram_entrada_recusada` e espera como o 409;
+  - menores: linha presa em `executando` reparada, texto longo com cara de senha também apagado, dica do 409 com webhook
+    e o script `avisos-telegram.py descobrir`, nota de troca de chat ou bot no `operacao.md`.
+- Correções da 2ª revisão (`test_telegram_revisao_e.py`, `simulated`):
+  - E2: em toda subida, a mensagem escrita há mais de `idade_max_s` (900 s) fica `ignorada`, sem texto, e o dono recebe
+    um aviso só; a senha antiga ainda sai do chat;
+  - E6: com pergunta de senha aberta, o texto curto (até 3 palavras) é recusado também como recado à orquestradora e
+    como `/responder` sem id, e a resposta pede o pedido com mais detalhe; a resposta atrasada (execução já fora do
+    `needs_input`), pelo id inteiro, ainda é julgada pela pergunta que a execução fez;
+  - E7: cada recusa do `getUpdates` com a sua causa (401, 403 e 404 em `telegram_entrada_recusada`; o 400 em
+    `telegram_entrada_pedido_invalido`, que não manda trocar o token);
+  - E8 e E9: `operacao.md` §15 sem grupo (só conversa privada), e o ADR-071 (decisão 10), o adendo v0.98 e o `banco.md`
+    com as emendas das duas revisões.
+- Prova:
+  - `simulated`: `test_telegram_entrada.py`, `test_canais_contrato.py` (o mesmo comando por `telegram` e `trello`
+    passa pelas mesmas políticas), `test_avisos_servico.py` e `test_telegram_portas.py`;
+  - `not_run`: a conversa real, que depende do "vai" da orquestradora para trocar a caixa provisória.
+
+## 2026-10-03 — Aprendizado: a validação do fluxo roda o próprio fluxo, e a evidência vem das etapas da prova (30.37; branch feat/30-37-prova)
+
+- **A execução de prova.**
+  - Antes: a validação por re-execução rodava o planejador livre; o candidato ficava inerte e o fluxo ativo não ganhava
+    evidência (K-086: nenhuma das 13 evidências de fluxo vinha de execução que usava o próprio fluxo).
+  - Agora o pedido de validação de FLUXO roda o plano do próprio fluxo com os parâmetros do comando de origem
+    (`runs.prova_fluxo_id`, migração 084), sem planejador, sem RESOLVE, sem `flow_id`, `used` nem `skill_hash`, fora da
+    sombra da intenção, e sem ensinar fluxo novo.
+  - Emenda datada à D1 do ADR-054: validação de fluxo pelo próprio fluxo; a receita segue por re-execução.
+- **A evidência vem das etapas.** A favor: `completed` com todas comprovadas. Contra: etapa reprovada na própria
+  pós-condição. Infra (erro de IA, teto, aparelho, etapa que pediria pessoa) não conta. Vale também para o fluxo ativo;
+  o D1 só avalia o que ainda está em prova.
+- **A prova nunca espera pessoa.** `needs_input`, `approval_required` ou incerteza encerra a execução pelo sistema, na
+  hora (sem `cancelou_execucao`, sem pergunta, sem aviso), e o pedido fecha `sem_evidencia`.
+- **No painel e na API.** "Prova de fluxo (validação)" (`RunSummary.prova_fluxo_id`), nunca comando de pessoa nem aviso.
+- **Teto por pedido** `aprendizado.validacao.teto_por_pedido_usd` (US$ 0,10), aplicado pelo roteador como o teto do
+  28.6 (o menor), também nas reaberturas. O teto total do P4 segue US$ 3,09.
+- **`sem_caminho` do fluxo** (comando fora do molde); só a receita `sem_caminho` volta ao curador.
+- **Reabertura:** o pedido de fluxo fechado `sem_evidencia` ou `divergencia_de_forma` ganha um pedido novo, uma vez,
+  que roda como prova (3 esperados no central).
+- Contrato: adendo v0.97. Banco: migração 084 (só `ADD COLUMN`).
+- Prova `simulated`: `tests/test_learning_prova.py`. `real`: `not_run` até a 1ª validação de fluxo depois do deploy que
+  levar o 30.37; o P4 fica pausado (`validacao.modo: off`) até lá.
 ## 2026-10-03 — Suíte 13 na main e deploy 13 no central (1c54a7bb; migração 083; config inalterada)
 
 - A suíte 13 foi integrada em `integ/suite-13` na ordem da orquestradora:

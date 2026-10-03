@@ -46,6 +46,8 @@ from pathlib import Path
 
 import httpx
 
+from app.devices.sdk import sem_segredos
+
 from ..domain.ports import RepositoryProof, Visibility
 
 API = "https://api.github.com"
@@ -82,7 +84,7 @@ def ler_remotos_do_git(raiz: Path) -> list[str]:
     """URLs de todos os remotos (busca e envio) do repositório em `raiz`. Vazio se não houver, ou se o git falhar."""
     try:
         r = subprocess.run(["git", "remote", "-v"], cwd=raiz, capture_output=True, timeout=10, check=False,
-                           env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"})
+                           env={**sem_segredos(), "GIT_OPTIONAL_LOCKS": "0"})
     except (OSError, subprocess.SubprocessError):
         return []
     if r.returncode != 0:
@@ -98,7 +100,7 @@ def ler_remotos_do_git(raiz: Path) -> list[str]:
 def _git(raiz: Path, *args: str, timeout: float = 30.0) -> subprocess.CompletedProcess[bytes] | None:
     try:
         r = subprocess.run(["git", *args], cwd=raiz, capture_output=True, timeout=timeout, check=False,
-                           env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"})
+                           env={**sem_segredos(), "GIT_OPTIONAL_LOCKS": "0"})
     except (OSError, subprocess.SubprocessError):
         return None
     return r if r.returncode == 0 else None

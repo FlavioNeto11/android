@@ -18,8 +18,10 @@ from app.db import Database
 from app.events import EventBus
 from app.modules.avisos.adapters.telegram import CanalTelegram
 from app.modules.avisos.application.entrega import FalhaDeEnvio
+from app.modules.avisos.domain.mensagem import COMO_DECIDIR, COMO_RESPONDER, CONTEUDO_MAX
 from app.modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from app.modules.avisos.infrastructure.servico import ServicoDeAvisos
+from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
 from app.taskqueue.travas import AVISOS, Lideranca
 from app.util import now
 
@@ -174,6 +176,33 @@ def test_o_canal_real_sobre_transporte_falso_nao_deixa_o_token_em_log_nem_no_ban
         assert TOKEN not in repr(dict(tabela_linha))
 
 
+def test_com_a_conversa_ligada_aprovacao_e_pergunta_levam_o_conteudo_redigido_e_cortado(tmp_path: Path) -> None:
+    """28.15, decisão (d) do ADR-071: com `avisos.entrada.enabled`, o dono responde no próprio aviso, então a aprovação
+    leva resumo, alvo e texto, e a pergunta leva a pergunta. Tudo pelo redator e cortado em 500; a conta que pede
+    pessoa continua sem dado (só aprovação e pergunta mudam)."""
+    cfg = _cfg(tmp_path)
+    cfg.file.avisos.entrada.enabled = True
+    banco = Database(cfg.db_dsn)
+    banco.migrate()
+    r = Relogio()
+    servico = ServicoDeAvisos(cfg, EventBus(banco, origin=AQUI), FilaDeAvisos(banco, relogio=r),
+                              Lideranca(banco, dono=AQUI, relogio=r), canal=CanalFalso(),
+                              redigir=TriagemDeCredencial().redigir)
+    servico.enfileirar_evento("approval.pending", {"approval": {
+        "id": "ap1", "summary": "Responder o comentário de @maria", "target": "@maria",
+        "content": "oi! a senha: Abc!2345xyz " + "x" * 600}}, 3)
+    servico.enfileirar_evento("run.updated", {"run": {"id": "r9", "status": "needs_input",
+                                                      "status_detail": "Para qual contato do QA Messenger?"}}, 4)
+    servico.enfileirar_evento("session.needs_person", {"active": True, "detail": "senha errada da conta lucas.real"}, 5)
+    corpos = {str(x["tipo"]): str(x["corpo"]) for x in banco.query("SELECT tipo, corpo FROM avisos_entregas")}
+    aprovacao = corpos["approval.pending"]
+    assert aprovacao.startswith("Responder o comentário de @maria\nAlvo: @maria\nTexto: “oi! a senha: **REDACTED**")
+    assert "Abc!2345xyz" not in aprovacao and aprovacao.endswith("…\n" + COMO_DECIDIR)
+    assert len(aprovacao) == CONTEUDO_MAX + 1 + len(COMO_DECIDIR)
+    assert corpos["run.needs_input"] == "Para qual contato do QA Messenger?\n" + COMO_RESPONDER
+    assert corpos["session.needs_person"] == "Abra a caixa de Pendências do painel para ver."
+
+
 def test_conteudo_da_fila_nao_leva_dado_de_persona(tmp_path: Path) -> None:
     servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
     servico.enfileirar_evento("approval.pending", {"approval": {
@@ -255,3 +284,39 @@ async def test_trava_de_avisos_so_com_o_aviso_ligado(tmp_path: Path, ligado: boo
             assert trava is None or trava["dono"] is None, "desligado: não segura a trava"
     finally:
         await hh.state.stop()
+
+
+def _run(banco: Database, run_id: str, *, chave: str, prova: str | None = None) -> None:
+    banco.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, instance_ids, created_at, prova_fluxo_id)"
+                  " VALUES (?,?,?,?,?,?,?,?)", (run_id, chave, "abrir o app", "single", "planning", "[]", now().isoformat(), prova))
+
+
+def test_execucao_de_prova_nunca_vira_aviso_ao_dono(tmp_path: Path) -> None:
+    """30.37: a prova de fluxo é do sistema. Nem a pergunta (`needs_input`) nem a aprovação dela avisam; o mesmo evento
+    de uma execução comum avisa. Reconhece pelo campo no evento, pelo banco (`prova_fluxo_id`) e pela chave `validacao:`."""
+    servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
+    _run(banco, "rp", chave="k-prova", prova="fluxo-1")
+    _run(banco, "rv", chave="validacao:p9")
+    _run(banco, "rc", chave="k-comum")
+    needs = lambda rid, extra=None: servico.enfileirar_evento(  # noqa: E731
+        "run.updated", {"run": {"id": rid, "status": "needs_input", **(extra or {})}}, 1)
+    assert needs("rp", {"prova_fluxo_id": "fluxo-1"}) is False, "o campo do evento já a denuncia"
+    assert needs("rp") is False, "evento sem o campo: o banco diz que é prova"
+    assert needs("rv") is False, "a validação do curador pela chave de idempotência"
+    assert servico.enfileirar_evento("approval.pending", {"approval": {"id": "ap-p", "run_id": "rp"}}, 2) is False
+    assert servico.enfileirar_evento("approval.pending", {"approval": {"id": "ap-v", "run_id": "rv"}}, 3) is False
+    assert banco.scalar("SELECT COUNT(*) FROM avisos_entregas") == 0
+    assert needs("rc") is True, "a execução comum continua avisando"
+    assert servico.enfileirar_evento("approval.pending", {"approval": {"id": "ap-c", "run_id": "rc"}}, 4) is True
+    assert banco.scalar("SELECT COUNT(*) FROM avisos_entregas") == 2
+
+
+def test_run_summary_expoe_o_fluxo_provado_so_na_execucao_de_prova(tmp_path: Path) -> None:
+    """30.37: `RunSummary.prova_fluxo_id` vem de `runs.prova_fluxo_id` (o painel rotula a prova com ele)."""
+    from app.taskqueue.repository import Repository
+    _, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio())
+    _run(banco, "rp", chave="k-prova", prova="fluxo-1")
+    _run(banco, "rc", chave="k-comum")
+    repo = Repository(banco, EventBus(banco), tmp_path / "ev")
+    assert repo.run_summary(repo.run_row("rp")).prova_fluxo_id == "fluxo-1"
+    assert repo.run_summary(repo.run_row("rc")).prova_fluxo_id is None

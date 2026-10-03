@@ -8,6 +8,7 @@ import {
   objetivosComSucesso, oQuePrecisaDaPessoa, pedidoEhLongo, resultadoDaExecucao, type AbaDaExecucao,
 } from './resumo';
 import styles from './ResumoDaExecucao.module.css';
+import { SeloDeProva, ehProvaDeFluxo } from './SeloDeProva';
 
 /** O texto da legenda de "sucesso comprovado": um só, para a tela e para o teste. */
 export const LEGENDA_DE_SUCESSO_COMPROVADO =
@@ -33,6 +34,8 @@ interface Props {
   run: RunSummary;
   /** Perguntas da IA que esperam resposta (execução `needs_input`). */
   perguntas: number;
+  /** 29.52: o tipo da credencial que a pergunta pede; ela não se responde aqui. */
+  sensivel?: string | null;
   bloqueados: number;
   textosParaAprovar: number;
   terminal: boolean;
@@ -44,7 +47,9 @@ interface Props {
  * Três linhas no topo do detalhe: o pedido (completo, com "Ver pedido completo" quando é longo), o resultado em uma
  * frase e o que depende da pessoa. A terceira só existe quando há algo a decidir.
  */
-export function ResumoDaExecucao({ run, perguntas, bloqueados, textosParaAprovar, terminal, irParaAba }: Props) {
+export function ResumoDaExecucao({
+  run, perguntas, sensivel = null, bloqueados, textosParaAprovar, terminal, irParaAba,
+}: Props) {
   const now = useNow();
   const idPedido = useId();
   const pedidoRef = useRef<HTMLParagraphElement>(null);
@@ -60,16 +65,20 @@ export function ResumoDaExecucao({ run, perguntas, bloqueados, textosParaAprovar
     return () => window.removeEventListener('resize', medir);
   }, [run.command, aberto]);
 
+  const prova = ehProvaDeFluxo(run);
   const longo = pedidoEhLongo(run.command) || cortado;
   const resultado = resultadoDaExecucao(run, now);
   const sucessos = objetivosComSucesso(run);
-  const precisa = oQuePrecisaDaPessoa({ status: run.status, perguntas, bloqueados, textosParaAprovar, terminal });
+  const precisa = oQuePrecisaDaPessoa({
+    status: run.status, perguntas, sensivel, bloqueados, textosParaAprovar, terminal,
+  });
 
   return (
     <dl className={styles.resumo} aria-label="Resumo da execução">
       <div className={styles.linha}>
-        <dt className={styles.rotulo}>Pedido</dt>
+        <dt className={styles.rotulo}>{prova ? 'Comando de origem' : 'Pedido'}</dt>
         <dd className={styles.valor}>
+          {prova ? <p className={styles.origemDaProva}><SeloDeProva size="md" /></p> : null}
           <p ref={pedidoRef} id={idPedido} className={cx(styles.pedido, longo && !aberto && styles.pedidoCortado)}>
             {run.command}
           </p>

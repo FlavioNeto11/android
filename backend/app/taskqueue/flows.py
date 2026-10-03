@@ -289,23 +289,41 @@ class FlowStore:
             values = self._extract(row["command_template"], command)
             if values is None:
                 continue
-            plan = Plan.model_validate_json(row["plan"])
-            plan.parameters = {k: (values.get(k, v) if v == "{" + k + "}" else v) for k, v in plan.parameters.items()}
-            # RESERVED (`account_label`, `instance_id`, `run_id`) nunca é capturado por `_extract` — o valor é do APARELHO
-            # e entra na materialização (`Repository.materialize`, `resolve_templates` sobre a base por aparelho). Exigir
-            # valor aqui recusava todo fluxo com `{account_label}` pelo molde (LT-3): o molde fica como está e a
-            # materialização o resolve; os parâmetros de verdade (os capturados) seguem exigindo valor.
-            if any(v == "{" + k + "}" for k, v in plan.parameters.items() if k not in RESERVED):
+            plan = self._plano_com_valores(row, values, provider="fluxo")
+            if plan is None:
                 continue                              # faltou valor para algum parâmetro: não é este fluxo
-            # Os critérios são do plano, não da etapa: nenhum `_insert_steps` os resolve. Com o valor novo aqui, o
-            # critério do fluxo reaproveitado fala do alvo DESTA execução, não do `{nome}` nem do alvo da fonte.
-            plan.success_criteria = [_com_valores(c, plan.parameters) for c in plan.success_criteria]
-            plan.planner = PlannerInfo(provider="fluxo", model=f"fluxo:{row['id']}", simulated=plan.planner.simulated)
-            # O que o fluxo EXIGE vem da tabela, não do JSON congelado: assim um fluxo aprendido antes desta
-            # mudança passa a declarar o que precisa assim que alguém o declarar, sem reescrever plano nenhum.
-            plan.required_apps = self.required_apps(row["id"]) or plan.required_apps
             return row, plan
         return None
+
+    def plano_em_prova(self, flow_id: str, command: str) -> Plan | None:
+        """30.37: o plano do PRÓPRIO fluxo para a execução de prova (a validação do fluxo pelo próprio fluxo), com os
+        parâmetros do comando de origem, pelo molde DELE. Vale para qualquer status menos `disabled` (candidato ou
+        ativo): o `match` não entra, então a ordem por uso e o fluxo vizinho que casaria antes não importam. O escopo de
+        perfis (13.2) não se aplica: a prova roda num aparelho de QA, sem conta real. `None`: o fluxo sumiu, foi
+        desligado ou o comando não cabe no molde (o pedido fecha `sem_caminho`)."""
+        row = self.db.one("SELECT * FROM flows WHERE id=? AND status<>'disabled'", (flow_id,))
+        if row is None:
+            return None
+        values = self._extract(row["command_template"], command)
+        return None if values is None else self._plano_com_valores(row, values, provider="fluxo-prova")
+
+    def _plano_com_valores(self, row: Row, values: dict[str, str], *, provider: str) -> Plan | None:
+        plan = Plan.model_validate_json(row["plan"])
+        plan.parameters = {k: (values.get(k, v) if v == "{" + k + "}" else v) for k, v in plan.parameters.items()}
+        # RESERVED (`account_label`, `instance_id`, `run_id`) nunca é capturado por `_extract` — o valor é do APARELHO
+        # e entra na materialização (`Repository.materialize`, `resolve_templates` sobre a base por aparelho). Exigir
+        # valor aqui recusava todo fluxo com `{account_label}` pelo molde (LT-3): o molde fica como está e a
+        # materialização o resolve; os parâmetros de verdade (os capturados) seguem exigindo valor.
+        if any(v == "{" + k + "}" for k, v in plan.parameters.items() if k not in RESERVED):
+            return None
+        # Os critérios são do plano, não da etapa: nenhum `_insert_steps` os resolve. Com o valor novo aqui, o
+        # critério do fluxo reaproveitado fala do alvo DESTA execução, não do `{nome}` nem do alvo da fonte.
+        plan.success_criteria = [_com_valores(c, plan.parameters) for c in plan.success_criteria]
+        plan.planner = PlannerInfo(provider=provider, model=f"{provider}:{row['id']}", simulated=plan.planner.simulated)
+        # O que o fluxo EXIGE vem da tabela, não do JSON congelado: assim um fluxo aprendido antes desta
+        # mudança passa a declarar o que precisa assim que alguém o declarar, sem reescrever plano nenhum.
+        plan.required_apps = self.required_apps(row["id"]) or plan.required_apps
+        return plan
 
     @staticmethod
     def _extract(template: str, command: str) -> dict[str, str] | None:

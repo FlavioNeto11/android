@@ -278,6 +278,15 @@ isso). Pontos que já causaram incidente:
   - Antes, eles herdavam o ambiente inteiro do backend, e o qemu tinha `TYPESAFE_API_KEY` (K-078).
   - Um filho que precise de uma variável nova a recebe pelo nome em `AMBIENTE_PERMITIDO`. Proxy (`HTTP_PROXY`) fica de
     fora de propósito, porque a URL pode levar senha.
+  - A mesma lista vale para o PowerShell da leitura do firewall (`rede_firewall.executar_powershell`) e para o
+    `icacls` das trancas de arquivo: o da rede, o do segredo local e o do agente (`worker/settings.py`). Desde
+    03/10/2026.
+  - O git e o ripgrep do Context Retrieval recebem `sem_segredos()`: o ambiente inteiro menos os nomes de segredo, só
+    com a segunda trava. Precisam de `GIT_*`, `SSH_*` e da configuração do usuário.
+  - A guarda é `tests/test_ambiente_dos_filhos.py::test_nenhum_lancamento_do_backend_herda_o_ambiente_inteiro`. Por
+    AST, ela recusa no `backend/app` todo `subprocess.*` e todo `create_subprocess_*` sem `env=`, qualquer `os.system`,
+    `os.popen`, `os.spawn*` ou `os.exec*`, e qualquer cópia de `os.environ`. Exceção única, pelo nome:
+    `supervisor.iniciar_backend`, cujo filho é o próprio backend.
 
 ### Portal público pelo túnel da Cloudflare (29.54, ADR-073; `not_run` até a prova de fora)
 
@@ -621,11 +630,13 @@ Procedimento (o dono faz; sem ele a prova real fica `not_run`):
 2. Cole `TELEGRAM_BOT_TOKEN=<token>` no `.env` do central (`C:\git\android\.env`, fora do Git) e reinicie a tarefa
    `farm-central` (`Stop-ScheduledTask farm-central; Start-ScheduledTask farm-central`): o `.env` é lido só na partida.
    O cofre DPAPI não é usado: ele guarda credencial de conta, e este token é configuração do ambiente, como as chaves de IA.
-3. No Telegram, abra o seu bot e mande `/start` (para um grupo: adicione o bot e escreva nele).
+3. No Telegram, abra a conversa PRIVADA com o seu bot e mande `/start`. Não use grupo: a conversa de volta (§15.1) só
+   aceita o dono em conversa privada, e num grupo qualquer membro escreveria pela Central.
 4. Rode a descoberta e confirme qual `id` é o seu chat (ela só lê; pode repetir):
    `backend\.venv\Scripts\python.exe scripts\avisos-telegram.py descobrir`
    A saída lista `id`, `tipo`, `nome` e `@usuario` de cada chat; o token não aparece.
-5. Grave `TELEGRAM_CHAT_ID=<id>` no mesmo `.env` (grupo tem id negativo; copie com o sinal) e reinicie a `farm-central`.
+5. Grave `TELEGRAM_CHAT_ID=<id>` no mesmo `.env` e reinicie a `farm-central`. O `id` é o da linha de `tipo` `private`
+   (o seu); um `id` negativo é de grupo ou canal e não serve.
 6. Ligue `avisos.enabled: true` em `config/config.yaml` (opcional: `avisos.url_painel: http://<ip-do-central>:8000` para o
    link; sem ela a mensagem vai só com o texto) e reinicie a `farm-central`. Teste com
    `backend\.venv\Scripts\python.exe scripts\avisos-telegram.py testar` (manda uma mensagem de teste real). Confira
@@ -635,3 +646,56 @@ Se o canal estiver ligado e faltar `TELEGRAM_BOT_TOKEN` ou `TELEGRAM_CHAT_ID`, a
 enviado. Estados da fila para diagnóstico: `SELECT estado, COUNT(*) FROM avisos_entregas GROUP BY estado` (`falhou` e
 `incerto` trazem o `ultimo_erro`, já sem segredo). O que o backend perde por estar parado não é reenviado na partida: a
 caixa do painel é a fonte da verdade.
+
+### 15.1 A conversa de volta (item 28.15, ADR-071)
+
+O mesmo bot também RECEBE: o chat do `TELEGRAM_CHAT_ID` aprova, veta, responde à pergunta de uma execução e faz pedidos.
+A Central trata isso como o painel trata. A gramática fechada está em [design/canais-externos.md](design/canais-externos.md)
+§2, e a `/ajuda` do bot a repete. O detalhe técnico está no ADR-071.
+
+- Vem **desligada** (`avisos.entrada.enabled: false`) e só liga com `avisos.enabled`. O token, o chat e a trava `avisos`
+  são os do aviso.
+- Ligar troca o consumidor do bot: só um processo pode ler o `getUpdates`. Enquanto outro lê (a caixa provisória da
+  orquestradora, uma segunda réplica), a Central recebe 409, espera `espera_conflito_s` e mostra o problema
+  `telegram_entrada_conflito` em `/api/health`. Ela não disputa. **Ligar só com o "vai" da orquestradora**, que para a
+  caixa dela no mesmo momento.
+- Com a entrada ligada, o aviso de aprovação leva o resumo, o alvo e o texto, e o de pergunta leva a pergunta. Os dois
+  vão redigidos e cortados em 500 caracteres, para o dono responder ali mesmo (decisão (d)).
+- A mensagem com cara de senha ou código não é guardada: a Central a apaga do chat e responde sem ecoar nada. Se o
+  Telegram não deixar apagar, a resposta pede ao dono que apague.
+- A resposta a uma execução que pergunta por senha, código, 2FA ou token também é recusada, qualquer que seja a forma do
+  texto (decide pelo contexto, com o vocabulário da triagem de credencial): não é guardada, é apagada do chat, e a
+  resposta orienta o dono: a senha se grava na conta da persona, e o código de verificação se digita no aparelho. Vale
+  para o reply ao aviso e para `/responder <id> <texto>`.
+- Enquanto uma execução espera senha, código, 2FA ou token, um texto curto (até 3 palavras, como "kiwi2024!" ou
+  "kiwi 2024") também é recusado, apagado do chat e nunca gravado: como texto livre, como recado à orquestradora (`/orq`
+  ou reply a mensagem que a Central não mandou) e como `/responder` sem id. A resposta pede o pedido com mais detalhe;
+  uma frase segue como pedido, com a prévia.
+- Só vale o dono em conversa PRIVADA: `chat.type = private` e `from.id` igual ao `TELEGRAM_CHAT_ID`. Grupo, canal ou
+  outro membro ficam gravados sem texto e sem resposta.
+- Na primeira subida (canal sem nenhuma linha) o que o Telegram guardou antes (até 24 h) é descartado, não tratado: um
+  "/aprovar" ou um "sim" antigo não executa. Mande o primeiro comando depois de ver a `/ajuda`.
+- Em TODA subida, a mensagem escrita há mais de `avisos.entrada.idade_max_s` (900 s) não é tratada (a Central estava
+  fora e o Telegram guardou): fica `ignorada`, sem texto, e o dono recebe uma mensagem só dizendo quantas foram e que
+  nada foi aprovado, vetado nem executado por elas. A senha antiga ainda é apagada do chat.
+- O botão Executar vale por `avisos.entrada.ttl_previa_s` (900 s); passado o prazo a Central pede o pedido de novo. Uma
+  linha presa em `executando` sem execução (queda no meio) vira `falhou` depois de 5 min, e o dono é avisado.
+- O 429 do `getUpdates` espera o `Retry-After`. O 401, 403 e 404 viram o problema `telegram_entrada_recusada` na saúde,
+  com a causa de cada um (401: token revogado ou trocado; 403: bot bloqueado ou removido da conversa; 404: token
+  malformado ou de bot que não existe mais). O 400 vira `telegram_entrada_pedido_invalido`: não é o token, veja o log.
+  Todos esperam `espera_conflito_s`, como o 409; corrigida a causa, o problema some sozinho.
+- **Trocar de chat ou de bot** pede limpar o registro do canal antes: `DELETE FROM canal_entradas WHERE canal='telegram'`
+  e `DELETE FROM canal_enviadas WHERE canal='telegram'`. Sem isso o offset antigo (de outro bot) e os `message_id` de
+  outro chat ficam valendo; com a limpeza, a próxima subida descarta o histórico de novo.
+- O registro fica em `canal_entradas` e `canal_enviadas` (migração 085), com o texto só do que veio do dono e foi aceito.
+  Contagem por estado: `SELECT estado, COUNT(*) FROM canal_entradas WHERE canal='telegram' GROUP BY estado`.
+
+Prova real (o dono faz com a sessão Canais; sem ela fica `not_run`):
+1. Ligar `avisos.entrada.enabled: true` no `config/config.yaml`, com backup antes, e reiniciar a tarefa `farm-central`.
+2. Mandar `/status` e depois `/pendencias` ao bot. Cada um tem de responder na thread, e a linha correspondente em
+   `canal_entradas` fica `feita`.
+3. Responder "não" a um aviso de aprovação de teste. Conferir no painel a aprovação vetada com `decided_by =
+   telegram:dono`.
+4. `/para android-09 abra o QA Messenger`: a prévia sai com os botões. Tocar Executar cria uma execução, e o desfecho
+   volta na thread.
+5. Mandar `123456`: a mensagem some do chat, a resposta não ecoa nada, e a linha fica `recusada`, com `texto` NULL.

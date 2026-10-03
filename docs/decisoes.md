@@ -78,6 +78,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-068](#adr-068--conta-bloqueada-sai-na-hora-e-a-persona-fica-lápide-só-com-o-hash-do-arroba) | Conta bloqueada sai na hora e a persona fica; lápide só com o hash do @ (item 29.23) |
 | [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro; item 11: regras do filtro do 31.9; item 12: C7 sem palavra-chave e e-mail em peças, rodada E; item 13: barrar pela intenção de entrar, rodada F; item 14: o usuário como @handle ou e-mail, o catálogo só no destino e a preposição só com faixa, rodada G; item 15: envio aberto no código para a sombra C0–C1 do 31.10, 31.17; item 16: a camada estrutural da rodada H; item 17: NO-GO da fase 2 da H e a forma seguinte com o dono; item 18: forma A na versão A-estreita, 31.18; item 19: lacunas da rodada I e a A-média aprovada pelo dono, 31.20; item 20: o limiar da porta sobre a probabilidade devolvida e o rótulo 1 do curador só do dono, 31.19) | 03/10 |
 | [ADR-070](#adr-070--valor-visto-na-imagem-conta-como-saída-de-etapa-sob-conferência-cega-de-um-segundo-leitor) | Valor visto na imagem conta como saída de etapa, sob conferência cega de um segundo leitor; substitui em parte o ADR-065 §3 (item 12.5) | vigente (dono, 02/10; opção desligada) | 02/10 |
+| [ADR-071](#adr-071--a-conversa-de-volta-pelo-telegram-o-dono-fala-com-a-central-como-no-painel) | A conversa de volta pelo Telegram: o dono fala com a Central como no painel (item 28.15) | vigente (orquestradora, 03/10; entrada desligada) | 03/10 |
 | [ADR-073](#adr-073--portal-na-internet-por-túnel-de-saída-da-cloudflare-o-host-separa-o-público-do-local-o-painel-mora-em-central) | Portal na internet por túnel de saída da Cloudflare: o `Host` separa o público do local, o painel mora em `/central` (item 29.54) | aceito (dono, 03/10; túnel `not_run`) | 03/10 |
 
 ---
@@ -3280,6 +3281,42 @@ android-09), a execução comprovou 2/2 etapas e a sombra gravou `against` "etap
 Prova `simulated`: `backend/tests/test_learning_forma.py`. `not_run`: a reclassificação no central depois do deploy.
 Domínio: [dominios/aprendizado.md](dominios/aprendizado.md), seção "A divergência de forma (30.36)".
 
+**Emenda (03/10/2026, desenho aprovado pela orquestradora, ~17:05Z; Fase 30, item 30.37): validação de fluxo pelo
+próprio fluxo; receita segue por re-execução.**
+
+O limite deixado pelo 30.36 era este: a validação por re-execução roda o planejador livre, e o fluxo candidato fica
+inerte. Ela mede se o planejador refaz o plano, não se o fluxo funciona. O K-086 achou o mesmo pelo outro lado: das 13
+evidências de fluxo, nenhuma vinha de execução que usava o próprio fluxo; o fluxo ativo não ganhava evidência.
+
+- **O pedido de validação de FLUXO (`pedir_evidencia` do curador, 30.31) roda como EXECUÇÃO DE PROVA**
+  (`runs.prova_fluxo_id`, migração 084). O plano é o do próprio fluxo com os parâmetros do comando de origem
+  (`FlowStore.plano_em_prova`: candidate, validated ou active). Fluxo `disabled` ou comando fora do molde não roda.
+  Sem planejador, sem RESOLVE, sem `runs.flow_id`, sem `flows.used`, sem `skill_hash`, sem sombra da intenção, e a
+  prova não ensina fluxo novo.
+- **A evidência vem das ETAPAS da prova**, não da sombra.
+  - A favor: todas as etapas comprovadas e a execução `completed`.
+  - Contra: uma etapa reprovada na própria pós-condição (`failed` sem `error_kind`).
+  - Infra não conta: erro de IA, teto, aparelho, etapa que pediria pessoa.
+  - A linha leva a marca do conteúdo do fluxo (conta para o D1). Vale também para o fluxo ATIVO. O D1 só avalia quem
+    ainda está em prova.
+- **A prova nunca espera pessoa.** `needs_input`, `approval_required` ou incerteza é infra: o SISTEMA encerra a
+  execução na hora (sem `cancelou_execucao`, sem pergunta pendente, sem aviso) e o pedido fecha `sem_evidencia`.
+- **A sombra orgânica segue** gravando com a `forma` do 30.36 e nunca conta para o pedido.
+- **Não é comando de pessoa.** Aparece como "Prova de fluxo (validação)" (`RunSummary.prova_fluxo_id`), nunca é
+  aviso nem o último comando do cartão.
+- **Teto por pedido** `aprendizado.validacao.teto_por_pedido_usd` (US$ 0,10, `learning_validations.teto_usd`),
+  aplicado pelo roteador como o teto do pedido do 28.6 (vale o menor), também nas reaberturas. O teto total do P4
+  segue US$ 3,09; o custo da prova terá coluna própria no `registro_p4.py`.
+- **Comando de origem fora do molde:** o pedido fecha `sem_caminho`, ao nascer ou ao despachar. Só a receita
+  `sem_caminho` volta ao curador, para não pagar revisão em laço.
+- **Reabertura:** com a validação ligada, o pedido de FLUXO fechado `sem_evidencia` ou `divergencia_de_forma` numa
+  execução comum ganha um pedido novo, uma vez, que roda como prova. São 3 esperados no central.
+- **A receita segue por re-execução** (o que ela prova é o passo, que não tem plano próprio para rodar).
+
+Prova `simulated`: `backend/tests/test_learning_prova.py`. `real`: `not_run` até a 1ª validação de fluxo depois do
+deploy que levar o 30.37 (o P4 fica pausado, `validacao.modo: off`, até lá). Domínio:
+[dominios/aprendizado.md](dominios/aprendizado.md), seção "A prova de fluxo (30.37)".
+
 ## ADR-055 — Proteção de contas: a conta travada para sem ser tocada, o aparelho entra em quarentena, uma conta por alvo e nenhum reset com conta
 
 **Data:** 29/09/2026 · **Estado:** vigente; `e9da86e` implantado em 28/09; `c359f65` (+ `2511b12`) implantado em 29/09
@@ -4914,6 +4951,80 @@ roteamento comum do hub, não o Jev); migração 078; `backend/app/taskqueue/sai
 `backend/app/planning/` (papel `leitura`, `transcribe`), [dominios/execution.md](dominios/execution.md),
 [ia.md](ia.md).
 
+---
+## ADR-071 — A conversa de volta pelo Telegram: o dono fala com a Central como no painel
+
+**Data:** 03/10/2026 · **Estado:** vigente. Pedido do dono (item 28.15); desenho e decisões (a)–(e) aprovados pela
+orquestradora em 03/10 (`.claude/handoffs/desenho-28-15.md`). O contrato comum aos canais (Telegram e Trello) está em
+[design/canais-externos.md](design/canais-externos.md), e este ADR não o repete. A entrada nasce **desligada**
+(`avisos.entrada.enabled: false`). Depois do PR, a dona do canal é a sessão Canais.
+
+**Contexto.** O 28.11 só mandava avisos. O dono quer responder pelo celular: aprovar ou vetar, responder à pergunta de
+uma execução e pedir coisas, sem abrir o painel e sem atalho de política.
+
+**Decisão.**
+
+1. **Só long-poll, sem webhook:** o mesmo bot do aviso também recebe. Um laço no líder da trava `avisos` chama
+   `getUpdates` com o offset tirado do banco. A update é gravada ANTES de o offset avançar: reiniciar não repete nem
+   perde. 409 é outro consumidor do bot: vira o problema `telegram_entrada_conflito` na saúde e uma espera, sem disputa.
+2. **(a)** O único chat aceito é o `TELEGRAM_CHAT_ID` do `.env`. O que vem de outro chat é gravado sem texto e não é
+   tratado.
+3. **(b)** O operador é um valor, `telegram:dono`, posto no ContextVar da sessão. A auditoria, `decided_by` e o sinal
+   contam o gesto como de pessoa, sem o chat_id.
+4. **(c)** A prévia de alvos é obrigatória, como no painel, inclusive no `/para`. Ela sai numa linha, com os botões
+   Executar e Cancelar. Sem destino, a Central pergunta e oferece os aparelhos online como botões. O segundo toque no
+   mesmo botão perde no estado da linha.
+5. **(d)** Com a conversa ligada, o aviso de aprovação leva o resumo, o alvo e o texto. O de pergunta leva a pergunta.
+   Os dois passam por `TriagemDeCredencial.redigir`, com corte em 500 caracteres, sem captura de tela, e o link segue.
+   É decisão da orquestradora dentro do pedido do dono: se ele vetar, o aviso volta a ter só o link.
+6. **(e)** O que vai para a orquestradora: `/orq`, ou reply a uma mensagem do bot que a Central não registrou como
+   enviada (`canal_enviadas`). Fica guardado e não é executado.
+7. **Políticas iguais às do painel:** toda ação chama os mesmos serviços das rotas (`PortasReais`): a prévia, a criação
+   da execução, `ApprovalService.decide` (só aprovar e vetar; editar fica no painel) e a sucessora do `needs_input`. O
+   approval_required, o pré-voo, a rede e os tetos valem iguais.
+   - Limites: 10 mensagens por minuto e 1000 caracteres, configuráveis. O excesso vira `limitada` ou `recusada`.
+8. **Credencial:** a mensagem que parece senha ou código (a triagem da C3 e mais o formato de código de 4 a 8 dígitos)
+   é recusada e gravada sem texto. A Central a apaga do chat (`deleteMessage`), e a resposta não ecoa nada. Se o
+   Telegram não deixar apagar, a resposta pede ao dono que apague.
+9. **Registro genérico (migração 085):** `canal_entradas` e `canal_enviadas`, com a chave `(canal, id_externo)`. O Trello
+   (32.2, ADR-072) usa as mesmas tabelas com `canal = 'trello'`.
+   - A gramática (`application/entrada.rotear`) e a parte comum do serviço (`registrar`, `tratar_pendentes`) não
+     conhecem canal. Cada canal só traduz o que chegou numa `Recebida` e cumpre uma `SaidaDaConversa`.
+
+10. **Emendas das duas revisões do PR #166 (Android, 03/10).** Valem junto das decisões acima:
+    - só o dono em conversa PRIVADA (`chat.type = private` e `from.id` igual ao chat do `.env`);
+    - a 1ª subida do canal descarta o histórico do Telegram (linha-marco `inicio`), e em TODA subida a mensagem escrita
+      há mais de `idade_max_s` (900 s) fica `ignorada`, sem texto, com um aviso só ao dono;
+    - a credencial também se decide pelo contexto: a resposta (reply ou `/responder <id>`) a uma execução que pede
+      senha, código, 2FA ou token é recusada qualquer que seja a forma, com o vocabulário da `TriagemDeCredencial`, e o
+      caminho comum devolve o erro final `credencial_na_resposta`; com essa pergunta aberta, o texto curto (até 3
+      palavras) como texto livre, recado à orquestradora ou `/responder` sem id também é recusado, e a resposta
+      atrasada a uma execução que já saiu do `needs_input` ainda é julgada pela pergunta que ela fez;
+    - a update que não grava vira `falhou` sem texto (o offset anda); o botão Executar vale `ttl_previa_s`;
+    - o 429 espera o `Retry-After`; 401, 403 e 404 viram `telegram_entrada_recusada` e o 400
+      `telegram_entrada_pedido_invalido`, cada um com a sua causa.
+
+**Consequências.**
+- Nenhuma rota nova. A config ganha `avisos.entrada`, e a saúde ganha `telegram_entrada_conflito`,
+  `telegram_entrada_recusada` e `telegram_entrada_pedido_invalido`.
+- Ligar a entrada troca o consumidor do bot: a caixa provisória da orquestradora para de ler `getUpdates` no mesmo
+  momento. Isso só acontece com o "vai" dela.
+- O redator tira credenciais, não dado pessoal (um CPF passa). O texto da aprovação é o que a persona publicaria, e a
+  decisão (d) aceita que ele saia para o Telegram.
+- O `httpx` registra em INFO a URL com o token do bot. Em produção, `setup_logging` põe o `httpx` em WARNING e o
+  `RedactingFilter` fica no handler. Teste que captura log em DEBUG precisa deixar de fora os loggers do `httpx`.
+
+**Prova.** `simulated`:
+- `tests/test_telegram_entrada.py`, `tests/test_canais_contrato.py`, `tests/test_telegram_roteador.py`,
+  `tests/test_avisos_servico.py`;
+- `tests/test_telegram_portas.py`, com as portas reais no harness;
+- `tests/test_telegram_correcoes.py` e `tests/test_telegram_revisao_e.py` (as emendas da decisão 10).
+
+`not_run`: a conversa real com o dono, que depende do "vai" da orquestradora para trocar a caixa provisória.
+
+**Relação.** ADR-009, ADR-025/040 (credencial), ADR-054 (sinal), ADR-062 (Pendências), item 28.11 (aviso), ADR-072
+(Trello); `backend/app/modules/avisos/`, migração 085, [api-contract.md](api-contract.md) (adendo v0.98),
+[operacao.md](operacao.md).
 
 ---
 

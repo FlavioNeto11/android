@@ -229,6 +229,12 @@ def validacao(tmp_path: Path) -> Iterator[tuple[Database, ServicoDeValidacao, Pa
     db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
                " VALUES ('r-origem','k-origem',?,'execute','completed',0,'[\"android-05\"]',?)",
                (COMANDO_QA, to_iso(Relogio().agora)))
+    # 30.37: o pedido do fluxo só nasce vivo se o comando de origem cabe no molde do fluxo (a prova roda o plano dele).
+    db.execute("INSERT INTO flows(id, name, match_key, command_template, plan, app_id, status, created_at)"
+               " VALUES ('abrir-o-qa','abrir-o-qa','k-abrir-o-qa',?,?,'qa-messenger','candidate',?)",
+               (COMANDO_QA, json.dumps({"summary": "Abrir o QA", "app_id": "qa-messenger",
+                                        "planner": {"provider": "fluxo", "model": "m", "simulated": True}}),
+                to_iso(Relogio().agora)))
     parque, relogio, planos = Parque(db), Relogio(), Planos()
     parque.lista = [_ap("android-09")]
     fontes = FontesDaValidacaoSql(db, precos=lambda: {"m": [3.0, 0.3, 3.75, 15.0]},

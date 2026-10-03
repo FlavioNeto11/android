@@ -51,6 +51,8 @@ PAPEL_NO_GASTO: Final = "decisao_fechada"
 
 _ID: Final = re.compile(r"^[A-Za-z0-9_.:\-]{1,80}$")
 _REF: Final = re.compile(r"^[A-Za-z0-9_.:/#@\-]{1,200}$")
+#: 31.22 (086): o `estado_hash` da linha é um sha256 em hexadecimal, e nada mais.
+_SHA256: Final = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _id(valor: str | None) -> str | None:
@@ -98,6 +100,8 @@ class RepositorioDeSombra:
         postado = None if not isinstance(res.postado, bool) else int(res.postado)
         ai_call_id = (res.ai_call_id if isinstance(res.ai_call_id, int) and not isinstance(res.ai_call_id, bool)
                       and res.ai_call_id > 0 else None)
+        # 31.22 (086): o hash do estado redigido, em TODAS as linhas da chamada. Só o formato do sha256 entra; o resto é NULO.
+        estado_hash = registro.estado_hash if _SHA256.fullmatch(registro.estado_hash or "") else None
         with self._db.tx():
             for i, (pergunta_id, r) in enumerate(res.respostas.items()):
                 escolha = None if r.escolha is None else _id(r.escolha)
@@ -111,13 +115,14 @@ class RepositorioDeSombra:
                 self._db.execute(
                     "INSERT INTO decisao_fechada_sombra(ts, chamada, origem, classe, modo, pergunta_id, escolha,"
                     " probabilidades, confianca, usd, tokens, ms, fallback_reason, run_id, step_id, ref,"
-                    " motivo_privacidade, postado, ai_call_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " motivo_privacidade, postado, ai_call_id, estado_hash)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (ts, chamada, registro.origem, registro.classe, registro.modo,
                      _id(pergunta_id) or "invalido", escolha, _probabilidades(r.probabilidades),
                      None if r.confianca is None else round(float(r.confianca), 6),
                      float(res.usd) if i == 0 else 0.0, int(res.tokens) if i == 0 else 0, float(res.ms),
                      motivo, run_id, step_id, ref, privacidade if motivo == "privacidade" else None, postado,
-                     ai_call_id))
+                     ai_call_id, estado_hash))
         return len(res.respostas)
 
     def registrar_chamada(self, chamada: ChamadaAoJev) -> int | None:

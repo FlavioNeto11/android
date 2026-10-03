@@ -1052,6 +1052,9 @@ class ValidacaoCfg(BaseModel):
     extra_usd: float = Field(0.0, ge=0, le=100)
     extra_ate: str = ""
     custo_estimado_usd: float = Field(0.07, ge=0, le=10)    # antes de medir: a mediana das execuções reais do QA
+    #: 30.37: o teto de gasto de IA de UM pedido (a execução de prova); o roteador barra a chamada seguinte quando a
+    #: execução já gastou isto. Vai à coluna `learning_validations.teto_usd` na hora do nascimento do pedido.
+    teto_por_pedido_usd: float = Field(0.10, ge=0, le=10)
 
     @field_validator("extra_ate")
     @classmethod
@@ -1101,10 +1104,27 @@ class LearningCfg(BaseModel):
     autopublicacao: AutopublicacaoCfg = AutopublicacaoCfg()
 
 
+class EntradaDoTelegramCfg(BaseModel):
+    """A conversa de volta (item 28.15, ADR-071): o chat do `.env` dá comandos e responde à Central como no painel.
+    Desligada de fábrica, e só liga com `avisos.enabled` (mesmo bot, mesmo token, mesma trava `avisos`). O chat aceito
+    é o `TELEGRAM_CHAT_ID` do `.env`; nenhum chat_id mora aqui (regra do 28.11)."""
+
+    enabled: bool = False
+    limite_por_min: int = Field(10, ge=1, le=120)           # mensagens do chat por minuto; o excesso vira `limitada`
+    max_chars: int = Field(1000, ge=50, le=4000)            # maior que isto é recusada (o comando do painel vai a 4000)
+    long_poll_s: int = Field(50, ge=1, le=60)               # quanto o `getUpdates` segura a conexão esperando
+    espera_conflito_s: float = Field(60.0, ge=5, le=3600)   # 409 (outro consumidor do bot): espera, não disputa
+    ttl_previa_s: float = Field(900.0, ge=30, le=86400)     # a prévia mais velha que isto não executa (manda de novo)
+    # A mensagem escrita há mais que isto (a Central estava fora e o Telegram guardou) não é tratada: um "/aprovar" ou
+    # um "sim" de horas atrás não executa. Gravada sem texto; o dono é avisado uma vez para mandar de novo.
+    idade_max_s: float = Field(900.0, ge=60, le=86400)
+
+
 class AvisosCfg(BaseModel):
-    """Aviso fora do painel (item 28.11; decisão do dono, 02/10: Telegram). Espelho da caixa de Pendências (ADR-062):
-    tipo do evento e link, nunca dado de persona. Desligado de fábrica; ligar exige `TELEGRAM_BOT_TOKEN` e
-    `TELEGRAM_CHAT_ID` no `.env` (procedimento em `docs/operacao.md`). Os valores nunca moram aqui."""
+    """Aviso fora do painel (item 28.11; decisão do dono, 02/10: Telegram). Espelho da caixa de Pendências (ADR-062).
+    Desde o 28.15 (ADR-071) o aviso leva o conteúdo (a pergunta, o que se aprova), redigido e cortado, e o mesmo bot
+    recebe (`entrada`). Desligado de fábrica; ligar exige `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID` no `.env`
+    (procedimento em `docs/operacao.md`). Os valores nunca moram aqui."""
 
     enabled: bool = False
     canal: Literal["telegram"] = "telegram"
@@ -1122,6 +1142,7 @@ class AvisosCfg(BaseModel):
     #: Faixas do `learning.needs_person` (30.21) que avisam fora do painel (28.14). Padrão: só a C (item a item); a B é
     #: aprovação em lote e fica na caixa de Pendências, para não virar um aviso por receita.
     aprendizado_faixas: list[Literal["B", "C"]] = Field(default_factory=lambda: ["C"])
+    entrada: EntradaDoTelegramCfg = EntradaDoTelegramCfg()
 
 
 class ContextRetrievalLexicalCfg(BaseModel):
