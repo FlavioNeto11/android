@@ -43,7 +43,8 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
 - **Origem:** dono, 03/10 18:15Z.
 - **Regra:** no Trello e no Telegram nunca entra segredo, nome de pessoa ou de persona, @conta, e-mail, telefone, IP,
   texto de comando de execução ou dado de terceiro. Isso vale também para este repositório quando o assunto é quem
-  fala com os canais (veja C-09).
+  fala com os canais (veja C-09). Exceção única (dono, 03/10 22:41Z): o nome que uma pessoa nova der pode ir ao
+  chat do próprio dono, no aviso da C-10.
 - **Hoje:** tudo o que sai do banco ou do estado passa por `redigir` (`.claude/trello/redacao.py`), e o que um
   agente escreve passa por conferência.
 - **No produto:** canais-externos §8; o espelho do 32.2 redige antes de enviar, e o desfecho de execução volta ao
@@ -132,8 +133,9 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   ADR-071. Até lá, o que responde a quem é desconhecido é ferramenta da sessão: uma saudação fixa, nenhum dado e
   nenhum comando aceito.
 - **Prova:** `simulated` (caixa com chat falso).
-- **Pendente do dono (sim ou não, perguntado 21:47Z):** se o nome que a pessoa der pode ser escrito no chat do
-  próprio dono. Até a resposta, o aviso diz só "chat novo" e o número do convidado.
+- **Nome no aviso ao dono:** SIM (dono, Telegram 03/10 22:41Z). O nome que a pessoa der vai no aviso, mas só no
+  chat do próprio dono. Nunca vai ao chat de outra pessoa, ao Trello ou ao Git: o vínculo id↔nome fica no arquivo
+  local da seção 7.
 
 **C-11 · Avisos sobre chats.**
 - **Origem:** dono, Telegram 03/10 ~20:55Z.
