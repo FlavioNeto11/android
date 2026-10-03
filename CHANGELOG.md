@@ -64,6 +64,21 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Correções da revisão de risco: docs da API (`/docs`, `/redoc`, `/openapi.json`) movidos para `/api/` (abriam sem credencial pelo Host público); WebSocket do worker recusa Host público na porta do painel quando há listener dedicado; `Cache-Control` do ícone de release `private`; ADR-073 e `operacao.md` com HTTPS obrigatório, `API_TOKEN` longo, tranca global e limite de taxa recomendado.
 - `not_run`: túnel no ar e conferências de fora (da orquestradora com o dono); sem script do túnel, webhook ou mudança de cookie neste item.
 
+## 2026-10-03 — 30.39: a evidência datada da receita (branch feat/30-39-evidencia-receita, sem migração)
+
+- Minerador no digest e passo de retrocarga gravam `learning_evidence` de `receita:<id>` (a favor: etapa conduzida só pela
+  receita; contra: divergiu ou fechou sem a IA), uma linha por (receita, execução, posição), datada pela etapa; o dossiê da
+  receita ganha `evidencias.contadores_e` e, sem amostra de sombra, `evidencias.sombra_e`; `VERSAO_DO_DOSSIE` segue 1;
+  `NovaEvidencia.observed_at` opcional. Origem própria `reproducao:<run_id>`: a linha é o registro datado dos contadores e
+  não conta de novo (`promocao.efetivas` e os leitores em SQL a tiram), então a saúde, a fila "Revisar", a promoção e as
+  métricas não mudam; só o dossiê a mostra. API sem mudança (o dossiê não está em rota).
+- Polimento da validação do deploy 13: a linha de evidência no detalhe do item (`DetalheRico`) mostra o texto humano
+  (`model.textoDaEvidencia`): sem a marca do conteúdo, a pós-condição pelo rótulo do painel ("nesta execução: app em
+  primeiro plano; no fluxo: elemento presente") e "(e mais N)" no lugar de "(+N)"; vale para as linhas antigas (o log não
+  muda). vitest do aprendizado 159 passed; typecheck ok.
+- Prova: `simulated` (`backend/tests/test_learning_evidencia_receita.py`, suíte `test_learning_*` 882 passam). Real: `not_run`
+  (nenhuma execução, aparelho ou conta reais; a volta das receitas ao curador é do deploy da suíte 15).
+
 ## 2026-10-03 — 31.22: a sombra guarda o hash do estado redigido (migração 086; branch feat/31-22-estado-hash)
 
 - `decisao_fechada_sombra.estado_hash`: o sha256 do estado DEPOIS do `privacidade.redigir`, em todas as linhas da
