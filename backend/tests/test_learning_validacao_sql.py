@@ -4,6 +4,7 @@ evidência que ela deixou, e o curador recebe a chegada. O parque e a fila são 
 ou PostgreSQL com `TEST_DATABASE_URL`). Nível de prova: `simulated`."""
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime, timedelta
@@ -19,6 +20,7 @@ from app.modules.learning.domain.livro import EntradaDoLivro
 from app.modules.learning.domain.politica_de_risco import ClasseDeRisco, Classificacao, MotivoDeEntrada, Razao
 from app.modules.learning.domain.validacao import Ambiente, AparelhoCandidato, EstadoDoPedido
 from app.modules.learning.domain.vocabulario import LivroKind, Modo, Origem
+from app.modules.learning.infrastructure.ligar_validacao import LacoDaValidacao
 from app.modules.learning.infrastructure.validacoes_sql import FontesDaValidacaoSql, RegistroDeValidacoesSql
 from app.util import to_iso
 
@@ -217,3 +219,21 @@ def test_sem_folego_no_beta_so_a_verba_unica_dentro_do_prazo_despacha(
     assert servico.uma_volta(lambda: 1) is None and _linha(db, pid)["estado"] == "pendente"
     ajustes.update(extra_ate="2026-10-10T00:00:00.000Z")
     assert servico.uma_volta(lambda: 1) is not None and _linha(db, pid)["estado"] == "rodando"
+
+
+def test_o_despachante_roda_a_volta_na_thread_do_loop() -> None:
+    """`RunService.create` agenda o planejamento com `asyncio.create_task`: a volta tem de rodar no loop. Numa thread
+    (`asyncio.to_thread`), `get_running_loop` levanta e a volta morre no `except` do laço."""
+    no_loop: list[bool] = []
+
+    class Servico:
+        intervalo_s = 0
+
+        def uma_volta(self, lider):  # noqa: ANN001, ANN201
+            asyncio.get_running_loop()                        # RuntimeError fora da thread do loop
+            no_loop.append(True)
+            laco.parar(0)
+
+    laco = LacoDaValidacao(Servico())  # type: ignore[arg-type]
+    asyncio.run(asyncio.wait_for(laco.laco(lambda: 1), timeout=5))
+    assert no_loop == [True]

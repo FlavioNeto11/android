@@ -205,16 +205,17 @@ def pode_despachar(ambiente: Ambiente, folego: Folego, *, custo_estimado: float)
 
 
 def escolher_aparelho(grupo: Grupo, aparelhos: Sequence[AparelhoCandidato], *, excluido: str | None) -> str | None:
-    """O aparelho da validação: online, ocioso, com o app, diferente do de origem. A execução que faz o efeito (QA)
-    nunca roda onde há conta real logada; a de leitura prefere o aparelho sem conta real. Determinístico: entre os
-    iguais, o menor id."""
+    """O aparelho da validação: online, ocioso, com o app, diferente do de origem e SEM conta real logada.
+    Determinístico: entre os iguais, o menor id.
+
+    Fatia 1 (03/10): nenhum grupo roda onde há conta real, nem a leitura. A regra do dono é conferir a tela antes de
+    qualquer experimento numa conta real ("Confirm you're human" é conta bloqueada, e nada toca nela), e o despachante
+    não confere tela. O pedido de leitura de um app que só existe logado em conta real (o Instagram de hoje) espera e
+    expira; levar a leitura às contas reais é decisão da orquestradora."""
     if grupo is Grupo.EFEITO_REAL:
         return None
-    servem = [a for a in aparelhos if a.online and a.ocioso and a.tem_o_app and a.id != excluido
-              and not (grupo is Grupo.QA and a.conta_real)]
-    if not servem:
-        return None
-    return min(servem, key=lambda a: (a.conta_real, a.id)).id
+    servem = [a for a in aparelhos if a.online and a.ocioso and a.tem_o_app and a.id != excluido and not a.conta_real]
+    return min(servem, key=lambda a: a.id).id if servem else None
 
 
 __all__ = ["BETA_PADRAO", "FALTA_AUTOMATIZAVEL", "MAXIMO_POR_HORA", "VALIDADE_DO_PEDIDO_H", "VIVOS", "Ambiente",

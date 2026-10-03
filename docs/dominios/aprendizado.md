@@ -925,8 +925,10 @@ caminhos de sempre (a sombra do fluxo, os contadores da receita) e quem decide s
   execução em curso, porque restart, suíte e deploy seguram ou derrubam execuções. Também precisa de fôlego na janela:
   β = 5% do gasto de IA da operação em 7 dias (o mesmo G_W do curador), mais a verba única `extra_usd` até `extra_ate`;
   e do ritmo, ≤4 por hora. Uma execução por volta: o comando de origem, em OUTRO aparelho (o de origem fica de fora),
-  ligado, ocioso e com o app `ready`. O grupo `qa` nunca vai a aparelho com conta real, e todo grupo prefere o aparelho
-  sem conta. A execução é comum (`RunService.create`, chave de idempotência `validacao:<pedido>`) e o custo dela é o da
+  ligado, ocioso, com o app `ready` e SEM conta real logada. Nesta fatia nem a leitura vai a conta real: a regra do
+  dono é conferir a tela antes de experimento numa conta real, e o despachante não confere tela; o pedido de leitura
+  do Instagram de hoje (só logado em 01, 03 e 06) espera e expira. A volta roda na thread do loop, como o laço de
+  pedidos: `RunService.create` agenda o planejamento com `asyncio.create_task`. A execução é comum (`RunService.create`, chave de idempotência `validacao:<pedido>`) e o custo dela é o da
   operação.
 - **O fechamento** (minerador do digest). A execução assentou: `feita` se o item ganhou evidência DELA (fluxo: uma
   linha a favor da sombra com o `run_id`; receita: uma tentativa conduzida pela receita que deu certo); senão `recusada`
@@ -937,6 +939,9 @@ caminhos de sempre (a sombra do fluxo, os contadores da receita) e quem decide s
 - **Onde.** Tabela `learning_validations` (082, [`docs/banco.md`](../banco.md)); `application/validacao.py`,
   `infrastructure/validacoes_sql.py`, e `infrastructure/ligar_validacao.py`, ligado em `state.py` depois do `RunService`.
   A execução de validação se liga ao pedido por `learning_validations.run_id` (`runs.pedido_id` é do módulo de pedidos).
+- **Limite conhecido**: a chegada cujo item não é revisto (o dossiê não mudou, ou o mesmo hash já foi recusado por
+  custo ou triagem) fica `feita` sem `revisao_nova_id` e volta como candidata a cada volta, sem custo (sai antes do
+  provedor) e sem segurar pedido novo.
 - **Fora desta fatia** (desvios do desenho aprovado, avisados à orquestradora): a conferência pelo ContentProvider do
   QA (existe só em `scripts/eval_run.py`, e os aparelhos do notebook estão fora do adb do central); o ensaio só
   leitura do Instagram em perfil de terceiro (precisa de um modo "parar antes do commit" no executor); a classe do

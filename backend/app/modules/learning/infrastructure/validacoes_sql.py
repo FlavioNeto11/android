@@ -87,6 +87,8 @@ class RegistroDeValidacoesSql:
         return linhas.real(r, "usd") if r is not None else 0.0
 
     def comecados_desde(self, desde: datetime) -> int:
+        """O ritmo por hora. Conta por `updated_at`, que o fechamento também move: uma execução começada há 2 h e
+        fechada há 10 min conta na última hora. O erro é para o lado de despachar menos."""
         r = self._db.one("SELECT COUNT(*) AS n FROM learning_validations WHERE run_id IS NOT NULL AND updated_at >= ?"
                          " AND estado IN ('rodando', 'feita', 'recusada')", (to_iso(desde),))
         return linhas.inteiro(r, "n") if r is not None else 0

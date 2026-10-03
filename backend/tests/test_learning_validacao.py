@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import pytest
+from pydantic import ValidationError
+
+from app.config import ValidacaoCfg
 from app.modules.learning.domain.ciclo import SkillState
 from app.modules.learning.domain.curador import Decisao, Falta
 from app.modules.learning.domain.validacao import (Ambiente, AparelhoCandidato, EstadoDoPedido, FatosDoParecer, Folego,
@@ -86,7 +90,15 @@ def test_o_aparelho_e_ocioso_outro_que_o_de_origem_e_sem_conta_real_quando_faz_o
               ap("android-13", tem_o_app=False), ap("android-01", conta_real=True)]
     assert escolher_aparelho(Grupo.QA, parque, excluido="android-09") is None    # 12 e 01 têm conta real
     assert escolher_aparelho(Grupo.QA, parque, excluido="android-05") == "android-09"
-    # A leitura pode rodar onde há conta real, mas prefere o aparelho sem.
-    assert escolher_aparelho(Grupo.LEITURA, parque, excluido="android-09") == "android-01"
+    # Fatia 1: nem a leitura roda onde há conta real (o despachante não confere a tela da conta).
+    assert escolher_aparelho(Grupo.LEITURA, parque, excluido="android-09") is None
     assert escolher_aparelho(Grupo.LEITURA, parque, excluido="android-05") == "android-09"
     assert escolher_aparelho(Grupo.EFEITO_REAL, parque, excluido=None) is None
+
+
+def test_extra_ate_errado_recusa_o_config_e_o_certo_passa() -> None:
+    """A data da verba única (P4) é conferida ao ler o config: errada, o central não sobe calado sem a verba."""
+    with pytest.raises(ValidationError):
+        ValidacaoCfg(extra_ate="semana que vem")
+    assert ValidacaoCfg(extra_ate=" 2026-10-10T00:00:00.000Z ").extra_ate == "2026-10-10T00:00:00.000Z"
+    assert ValidacaoCfg().modo == "off" and ValidacaoCfg().extra_ate == ""

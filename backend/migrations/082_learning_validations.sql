@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS learning_validations (
     created_at        TEXT NOT NULL,
     updated_at        TEXT NOT NULL,
     review_id         TEXT NOT NULL,                  -- `learning_reviews.id` do parecer que pediu (sem FK)
-    item_ref          TEXT NOT NULL,                  -- 'receita:<id>' ou 'fluxo:<id>'
+    item_ref          TEXT NOT NULL,                  -- a chave da trilha: 'receita:<id>', 'fluxo:<id>' ou 'li-…' (recusado)
     item_kind         TEXT NOT NULL,
     scope_app         TEXT NOT NULL DEFAULT '',
     grupo             TEXT NOT NULL,                  -- 'qa' | 'leitura' | 'efeito_real' (o que a execução pode fazer)

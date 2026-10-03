@@ -27,7 +27,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   receita sem fluxo ativo).
 - Um despachante sob a trava de líder roda o comando de origem noutro aparelho ocioso. Só com o central saudável, sem
   execução em curso, dentro de β = 5% do gasto de IA da operação na janela (mais a verba única `extra_usd` até
-  `extra_ate`) e de ≤4 por hora; o grupo `qa` nunca vai a aparelho com conta real.
+  `extra_ate`) e de ≤4 por hora. Nesta fatia nenhum grupo vai a aparelho com conta real logada (nem a leitura).
 - O digest fecha o pedido: `feita` com evidência da execução, senão `recusada`, com o `usd` medido. O curador revê o
   item com o gatilho novo `evidencia_chegou`, que pula o cooldown (rótulo no painel).
 - `aprendizado.validacao.modo: "off"` de fábrica. Prova `simulated` (`test_learning_validacao*.py` e

@@ -84,7 +84,11 @@ class DespachoDoParque:
 
 
 class LacoDaValidacao:
-    """O despachante, sob a trava de líder da curadoria. Lê `intervalo_s` e `modo` a cada volta."""
+    """O despachante, sob a trava de líder da curadoria. Lê `intervalo_s` e `modo` a cada volta.
+
+    A volta roda NA THREAD DO LOOP, não em `asyncio.to_thread`: `RunService.create` agenda o planejamento com
+    `asyncio.create_task`, que fora do loop levanta "no running event loop". É o que fazem o laço de pedidos (28.4) e
+    `POST /api/runs`; a volta é curta (banco, `health()` e a fila) e só passa do `pendentes()` com pedido na fila."""
 
     nome = "validacao"
 
@@ -102,7 +106,7 @@ class LacoDaValidacao:
             if self._parado.is_set():
                 return
             try:
-                await asyncio.to_thread(self.servico.uma_volta, lider)
+                self.servico.uma_volta(lider)
             except Exception:  # noqa: BLE001 - a validação nunca derruba o processo
                 log.exception("aprendizado: despachante da validação")
 
