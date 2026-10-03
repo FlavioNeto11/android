@@ -6368,6 +6368,18 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T17:43:32+00:00"
+  },
+  "30.38": {
+   "id": "30.38",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "(c) no PR #165 (fix/30-38c-classe-de-agora @ 657ab399, base cd71ac4e), para a suíte 13: ServicoDePareceres.do_item e na_fila usam _classe_de_agora (a gravada C não monta dossiê); a API dá classe = a de agora no parecer pendente e classe_no_parecer = a gravada quando difere; o selo diz '(era B no parecer)' e a linha sai do aceite em lote; adendo v1.00 parcial. simulated: test_learning_pareceres (detalhe e fila C/B), ParecerDaIA.test.tsx (2 casos), test_learning* + arquitetura 857 passed, vitest do aprendizado 152 passed, typecheck ok, docs-check 0/0. Cópia do central (03/10 17:49Z): os 9 fluxos do Instagram com parecer de antes do 30.32 aparecem C com classe_no_parecer B; na_fila com 55 pareceres pendentes de 6 ms para 178 ms. Falta: (a) a origem nas execuções de validação e (b) a rota e a tela dos pedidos de validação, na suíte 14 depois do 30.37; o real da (c) no painel do central depois do deploy 13.",
+   "grupo": "aprendizado-pr165",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T18:03:11+00:00"
   }
  },
  "rodadas": [
@@ -7886,6 +7898,15 @@
    ],
    "grupos": [
     "32-estudo-trello-jev"
+   ]
+  },
+  {
+   "quando": "2026-10-03T18:03:11+00:00",
+   "itens": [
+    "30.38"
+   ],
+   "grupos": [
+    "aprendizado-pr165"
    ]
   }
  ]
