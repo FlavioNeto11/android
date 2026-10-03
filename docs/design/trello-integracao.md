@@ -224,16 +224,28 @@ Fonte das regras do Trello: a página oficial de webhooks (developer.atlassian.c
    - `do_dono` = `action.idMemberCreator == trello.membro_dono`; o quadro tem de ser um dos `trello.quadros`;
    - `commentCard` → `mensagem`; `updateCard` com `listAfter` ✅/⛔ → `botao` com "sim"/"não"; o resto → `outro`
      (gravado sem texto, não tratado).
-5. **O pedido HTTP só grava.** Nenhuma chamada ao Trello dentro do pedido: um comentário lento atrasaria a resposta, o
-   Trello repetiria e viria ruído. O handler chama `ConversaDoCanal.registrar(r, saida=None)`, que aplica as mesmas
-   políticas (identidade, tamanho, credencial pela forma e pelo contexto, idade) e grava, e acorda o laço do líder
-   (`asyncio.Event`). Responde 200 em seguida.
+5. **O pedido HTTP só grava um AVISO; a verdade vem da API** (requisito da orquestradora, 03/10 20:18Z, com o quadro
+   aberto a convidados). O corpo assinado nunca é a fonte da identidade nem do texto. Um convidado com papel de admin
+   do workspace pode chegar à página do aplicativo e ao segredo que assina o webhook; com ele, forjaria um corpo
+   assinado dizendo que o autor é o dono. O desenho vale mesmo com o segredo vazado:
+   - o handler, depois da assinatura (item 2), grava só o id da action (`canal_entradas`, estado `aviso`, sem texto) e
+     acorda o laço do líder (`asyncio.Event`). Responde 200 em seguida. Nenhuma chamada ao Trello dentro do pedido: um
+     comentário lento atrasaria a resposta, o Trello repetiria e viria ruído;
+   - o líder RELÊ a action pela API com o token do dono (`GET /1/actions/{id}`). Dali, e só dali, saem o autor
+     (`idMemberCreator`), o cartão, o quadro, o tipo, a data e o texto. A tradução do item 4 roda sobre a action
+     relida, e o que veio no corpo é descartado;
+   - comando só existe se o autor relido for `trello.membro_dono` e o quadro for um de `trello.quadros`. Qualquer outro
+     autor vira registro sem texto; a pergunta de convidado segue a regra do item 11;
+   - a action que a API não devolve (apagada, de outro quadro, 404) vira `ignorada` sem texto.
+   A reconciliação do §7.6 já lê pela API, então os dois caminhos chegam à mesma tradução. O `registrar(r, saida=None)`
+   do §7.1 recebe a `Recebida` montada da action relida.
    - **Mudança na parte comum (§7.1):** `registrar` sem saída não responde nem apaga. A resposta pendente fica
      marcada pelo próprio estado: uma linha `recusada` sem nenhuma `canal_enviadas` com o seu `entrada_id`. O
      `tratar_pendentes` do líder passa a responder essas linhas. No Trello, `apagar` é sempre False, então a resposta
      pede ao dono que apague o comentário.
    - Se o processo não é o líder da trava `avisos`, ele grava do mesmo jeito; o líder trata.
-6. **Repetição e replay:** a assinatura do Trello não tem hora. Quem capturasse uma chamada poderia repeti-la, mas a
+6. **Repetição e replay:** a assinatura do Trello não tem hora. Como o corpo é só um aviso (item 5), repetir ou forjar
+   um aviso no máximo faz o líder reler uma action que existe, com o autor verdadeiro. Quem capturasse uma chamada poderia repeti-la, mas a
    chave `(canal, id_externo)` da 085 faz a repetição não gravar nada (200, nenhuma segunda linha), e a regra de
    idade barra a action velha. As 3 repetições do próprio Trello caem no mesmo dedupe.
 7. **O cadastro** (no líder, na partida e a cada hora, só com `trello.webhook.enabled` e os três segredos):
@@ -257,11 +269,32 @@ Fonte das regras do Trello: a página oficial de webhooks (developer.atlassian.c
    - comentário com cara de senha → `recusada` sem texto, e a resposta sai pelo líder, não pelo pedido;
    - a rota não aceita nem usa sessão: com cookie de sessão válido e assinatura errada → 401; o operador gravado é
      sempre `trello:<idMember>`;
+   - **segredo vazado:** corpo assinado CORRETAMENTE, com o autor forjado no corpo (= `membro_dono`), e a leitura da
+     API devolvendo outro autor → nada executa, a linha fica sem texto e o operador nunca é o do dono;
+   - action relida de quadro fora da config, ou 404 na releitura → `ignorada` sem texto;
+   - cartão criado por convidado (autor da action `createCard` relida ≠ `membro_dono`) → pedido de convidado, nada
+     se formata nem executa;
    - o resto de `/api/` continua pedindo credencial pelo portão (um teste de regressão do `guarda`);
    - cadastro: cria o que falta, recria o inativo, não toca webhook de outra descrição, apaga os seus ao desligar.
 10. **Rollout:** (a) o 32.2 com o webhook desligado: espelho e reconciliação a 60 s, prova real com um cartão
     espelhado e um `/aprovar`; (b) com o 29.54 no ar, com senha e provado: gravar `TRELLO_API_SECRET`, ligar
     `trello.webhook.enabled`, ver o cadastro e um comentário chegar em segundos; (c) a reconciliação desce a 300 s.
+
+11. **Quadros com convidados** (dono, 03/10 ~20:15Z). O dono convidou duas pessoas, e o Trello grátis não deixa
+    limitar o papel delas (podem ser admin do workspace). A regra é da Central:
+    - quem é quem sai do AUTOR lido pela API (`idMemberCreator` da action), nunca do texto, do prefixo nem de "o id
+      não está no mapa". Vale para comentário, cartão novo, cartão movido e arquivado;
+    - só `trello.membro_dono` comanda. `trello.membros_autorizados` (vazia de fábrica) é a lista de quem o dono
+      autorizou a pedir; até lá, o pedido de convidado vira um aviso ao dono (sim ou não), e nada executa;
+    - a pergunta de convidado pode ser respondida no cartão, só com o que os quadros já mostram (decisão do dono; a
+      Central só responde com `trello.responder_convidados: true`, desligado de fábrica);
+    - texto de convidado é dado, nunca instrução: não vai ao planejador nem vira comando;
+    - comentário de QUALQUER autor, inclusive o dono, é PEDIDO, nunca autorização de ação real em conta real. Essa se
+      confirma no chat ou no Telegram, com uma pergunta de sim ou não (a porta `pergunta_sensivel` do 28.15 vale);
+    - cartão movido ou arquivado por convidado não muda o estado da Central: o espelho é reconciliador (§7.4) e
+      devolve o cartão ao lugar na volta seguinte, com um comentário 🤖 do porquê.
+    - Antes de ligar a entrada de comandos pelo Trello: a orquestradora recomendou rebaixar convidado admin a membro
+      normal; no plano grátis isso pode não existir, e então a garantia é só a do item 5 (releitura pela API).
 
 **Texto para o ADR-072 (decisão do portão; precisa da revisão da Android):**
 
@@ -273,6 +306,9 @@ Fonte das regras do Trello: a página oficial de webhooks (developer.atlassian.c
 > configurada), comparada em tempo constante. Ela falha fechada: sem o segredo ou com o webhook desligado, a rota
 > responde 404 ao HEAD e ao POST; assinatura ausente ou errada dá 401; corpo acima do teto dá 413. A checagem de
 > `Origin` do `guarda` não se aplica: o Trello não manda `Origin`, e a regra só vale com o cabeçalho presente. Nada
-> do corpo vai a log, evento ou resposta. A idempotência pela chave `(canal, id_externo)` da 085 e a regra de idade
-> neutralizam a repetição de uma chamada capturada. O `forbidden_host` continua valendo: o host público entra em
+> do corpo vai a log, evento ou resposta. A assinatura só autentica um AVISO: o corpo nunca é a fonte da identidade nem
+> do texto. O líder relê a action pela API com o token do dono, e só o autor relido igual a `membro_dono`, num dos
+> quadros configurados, comanda; assim a decisão vale mesmo com o segredo do aplicativo vazado (o quadro tem
+> convidados que podem ser admin do workspace). A idempotência pela chave `(canal, id_externo)` da 085 e a regra de
+> idade neutralizam a repetição de uma chamada capturada. O `forbidden_host` continua valendo: o host público entra em
 > `publicos` pelo 29.54, não por esta exceção.
