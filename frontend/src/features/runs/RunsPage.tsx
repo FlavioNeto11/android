@@ -22,7 +22,7 @@ import {
 } from './filtroExecucoes';
 import styles from './Runs.module.css';
 import { RunView } from './RunView';
-import { SeloDeProva, ehProvaDeFluxo } from './SeloDeProva';
+import { SeloDeOrigem, origemDaExecucao } from './SeloDeProva';
 
 /** Página do servidor na navegação normal. */
 const HISTORY_LIMIT = 50;
@@ -240,6 +240,7 @@ function RunItem({ run, current, onSelect }: { run: RunSummary; current: boolean
   // Título curto (tarefa UX 05): o que a execução faz, sem a abertura repetida ("No QA Messenger, …"); o app vai à
   // parte e o objetivo inteiro fica no `title` e no detalhe.
   const { titulo, app } = tituloCurto(run.command);
+  const origem = origemDaExecucao(run);
   return (
     <button type="button" className={styles.runItem} aria-current={current ? 'true' : undefined} onClick={onSelect}
             title={run.command}>
@@ -249,7 +250,7 @@ function RunItem({ run, current, onSelect }: { run: RunSummary; current: boolean
         <span className={styles.runItemAge} title={formatDateTime(run.created_at)}><Age ts={run.created_at} /></span>
       </span>
       <span className={styles.runItemMeta}>
-        {ehProvaDeFluxo(run) ? <SeloDeProva /> : null}
+        {origem ? <SeloDeOrigem origem={origem} /> : null}
         {app ? <TruncatedText className={styles.runItemApp}>{app}</TruncatedText> : null}
         <span className={styles.shortId}>{run.short_id}</span>
         <span><Smartphone size={11} aria-hidden /> {run.instances_used}/{run.instances_requested}</span>

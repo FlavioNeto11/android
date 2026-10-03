@@ -119,3 +119,6 @@
     gap: 2px;
   }
 }
+
+/* 30.38 (a): o link da execução de validação para o pedido dela, ao lado do selo. */
+.linkDaOrigem { margin-left: var(--sp-2); font-size: var(--fs-sm); }

@@ -3,12 +3,13 @@ import { useId, useLayoutEffect, useRef, useState } from 'react';
 import type { RunSummary } from '../../api/types';
 import { Tooltip } from '../../components/Tooltip';
 import { cx } from '../../lib/format';
+import { hashDe } from '../../lib/rotas';
 import { useNow } from '../../lib/time';
 import {
   objetivosComSucesso, oQuePrecisaDaPessoa, pedidoEhLongo, resultadoDaExecucao, type AbaDaExecucao,
 } from './resumo';
 import styles from './ResumoDaExecucao.module.css';
-import { SeloDeProva, ehProvaDeFluxo } from './SeloDeProva';
+import { SeloDeOrigem, ehDoSistema, origemDaExecucao } from './SeloDeProva';
 
 /** O texto da legenda de "sucesso comprovado": um só, para a tela e para o teste. */
 export const LEGENDA_DE_SUCESSO_COMPROVADO =
@@ -61,7 +62,8 @@ export function ResumoDaExecucao({ run, perguntas, bloqueados, textosParaAprovar
     return () => window.removeEventListener('resize', medir);
   }, [run.command, aberto]);
 
-  const prova = ehProvaDeFluxo(run);
+  const origem = origemDaExecucao(run);
+  const doSistema = ehDoSistema(run);
   const longo = pedidoEhLongo(run.command) || cortado;
   const resultado = resultadoDaExecucao(run, now);
   const sucessos = objetivosComSucesso(run);
@@ -70,9 +72,18 @@ export function ResumoDaExecucao({ run, perguntas, bloqueados, textosParaAprovar
   return (
     <dl className={styles.resumo} aria-label="Resumo da execução">
       <div className={styles.linha}>
-        <dt className={styles.rotulo}>{prova ? 'Comando de origem' : 'Pedido'}</dt>
+        <dt className={styles.rotulo}>{doSistema ? 'Comando de origem' : 'Pedido'}</dt>
         <dd className={styles.valor}>
-          {prova ? <p className={styles.origemDaProva}><SeloDeProva size="md" /></p> : null}
+          {origem ? (
+            <p className={styles.origemDaProva}>
+              <SeloDeOrigem origem={origem} size="md" />
+              {/* 30.38 (a): a validação do QA leva ao pedido dela, em Aprendizado › Validação. */}
+              {origem === 'validacao_qa' ? (
+                <a className={styles.linkDaOrigem} href={hashDe('aprendizado', { query: { aba: 'validacao' } })}
+                   title={run.origem_ref ?? undefined}>Ver o pedido de validação</a>
+              ) : null}
+            </p>
+          ) : null}
           <p ref={pedidoRef} id={idPedido} className={cx(styles.pedido, longo && !aberto && styles.pedidoCortado)}>
             {run.command}
           </p>

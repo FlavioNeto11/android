@@ -22,6 +22,7 @@ from typing import Annotated, Any, Literal
 from pydantic import (BaseModel, ConfigDict, Field, SecretStr, ValidationInfo, computed_field,
                       field_validator, model_validator)
 
+from .contracts.origem import OrigemDaExecucao
 # Reexport dos corpos movidos (ver o docstring). Importados, não usados aqui: é o que mantém `app.models` como
 # ponto de import dos importadores antigos.
 from .modules.applications.presentation.schemas import (  # noqa: F401
@@ -1791,6 +1792,11 @@ class RunSummary(BaseModel):
     #: uma pessoa: o painel a rotula "Prova de fluxo (validação)" e ela nunca vira aviso nem "último comando". `None`
     #: em toda execução comum.
     prova_fluxo_id: str | None = None
+    #: 30.38 (a): de onde a execução veio, DERIVADA da linha pela regra única de `app/contracts/origem.py`
+    #: (`prova_fluxo`, `validacao_qa`, `telegram`, `trello`); `None` no pedido de pessoa pelo painel. `origem_ref`: o
+    #: fluxo provado, o pedido de validação ou o id externo do canal.
+    origem: OrigemDaExecucao | None = None
+    origem_ref: str | None = None
 
 
 class StepResult(BaseModel):

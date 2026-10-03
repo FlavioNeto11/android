@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Painel: de onde veio cada execução, e os pedidos de validação na aba Aprendizado › Validação (30.38 a, b; branch feat/30-38-ab-validacao)
+
+- **A origem da execução (a).**
+  - Antes: a execução de validação do QA aparecia na lista como um pedido comum; só a prova de fluxo tinha selo.
+  - Agora: `RunSummary.origem`/`origem_ref`, derivados da linha pela regra única de `app/contracts/origem.py`
+    (prova de fluxo, validação do QA, Telegram, Trello), sem migração. O painel põe o selo na lista e no resumo; na do
+    sistema o texto vira "Comando de origem", e a validação leva ao pedido dela. O prefixo `validacao:` é uma constante
+    só, com teste.
+- **A leitura dos pedidos (b).**
+  - Antes: os pedidos de `learning_validations` só existiam no banco.
+  - Agora: `GET /api/aprendizado/validacoes` (só leitura: estado, motivo em texto, app, aparelho, custo e teto, comando
+    cortado em 200, contagem por estado e o modo do despachante) e a aba Validação, com fichas por estado, cartões e o
+    vazio que explica a validação e a pausa. O comando é só para o painel: a rota não é fonte para Trello nem Telegram.
+- Contrato: adendo v1.02. Prova `simulated` (backend e frontend); `not_run` no central até o deploy da suíte 15.
+
 ## 2026-10-03 — Aprendizado: a validação do fluxo roda o próprio fluxo, e a evidência vem das etapas da prova (30.37; branch feat/30-37-prova)
 
 - **A execução de prova.**
