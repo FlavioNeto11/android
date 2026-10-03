@@ -96,12 +96,34 @@ class ServicoDeAvisos:
             return False
         cfg = self.cfg.file.avisos
         aviso = aviso_de_evento(kind, data, evento_id, cfg.url_painel, frozenset(cfg.aprendizado_faixas))
-        if aviso is None:
+        if aviso is None or self._e_de_prova(kind, data):
             return False
         try:
             return self.fila.enfileirar(aviso)
         except Exception:  # noqa: BLE001 - o aviso nunca derruba o emissor nem o laço
             log.exception("avisos: não foi possível enfileirar %s", aviso.chave)
+            return False
+
+    def _e_de_prova(self, kind: str, data: dict[str, object] | None) -> bool:
+        """30.37: a execução de PROVA de fluxo (a validação do curador) é do sistema, não de uma pessoa: nada dela vira
+        aviso ao dono, nem a pergunta (`run.updated` em `needs_input`) nem a aprovação que ela abriria. A prova se
+        reconhece pelo fluxo que prova (`runs.prova_fluxo_id`) ou pela chave de idempotência da validação
+        (`validacao:`). Só consulto o banco para o evento que AVISARIA; falha na consulta deixa o aviso seguir (o dono
+        recebe um aviso a mais, nunca perde um de pessoa)."""
+        if kind not in ("run.updated", "approval.pending"):
+            return False
+        filho = (data or {}).get("run" if kind == "run.updated" else "approval")
+        run_id = filho.get("id" if kind == "run.updated" else "run_id") if isinstance(filho, dict) else None
+        if isinstance(filho, dict) and filho.get("prova_fluxo_id"):
+            return True
+        if not isinstance(run_id, str) or not run_id:
+            return False
+        try:
+            return self.fila.db.one(
+                "SELECT 1 FROM runs WHERE id=? AND (prova_fluxo_id IS NOT NULL OR idempotency_key LIKE 'validacao:%')",
+                (run_id,)) is not None
+        except Exception:  # noqa: BLE001 - ver a docstring: na dúvida, avisa
+            log.exception("avisos: não foi possível conferir se a execução %s é de prova", run_id)
             return False
 
     # ------------------------------------------------------------------ saída (líder)

@@ -22,6 +22,7 @@ import {
 } from './filtroExecucoes';
 import styles from './Runs.module.css';
 import { RunView } from './RunView';
+import { SeloDeProva, ehProvaDeFluxo } from './SeloDeProva';
 
 /** Página do servidor na navegação normal. */
 const HISTORY_LIMIT = 50;
@@ -248,6 +249,7 @@ function RunItem({ run, current, onSelect }: { run: RunSummary; current: boolean
         <span className={styles.runItemAge} title={formatDateTime(run.created_at)}><Age ts={run.created_at} /></span>
       </span>
       <span className={styles.runItemMeta}>
+        {ehProvaDeFluxo(run) ? <SeloDeProva /> : null}
         {app ? <TruncatedText className={styles.runItemApp}>{app}</TruncatedText> : null}
         <span className={styles.shortId}>{run.short_id}</span>
         <span><Smartphone size={11} aria-hidden /> {run.instances_used}/{run.instances_requested}</span>

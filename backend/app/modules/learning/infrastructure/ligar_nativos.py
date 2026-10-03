@@ -32,14 +32,14 @@ from app.db import Database
 from app.models import Plan, PlanStep
 from app.modules.learning.application.nativos import (AssinaturaDoPlano, ContraGravado, D1Nativo, Decidir,
                                                       ExecucaoAssentada, ExecucaoDeHabilidade, FluxoEmProva,
-                                                      PassoAssinado, ReclassificacaoDaForma, SombraDosFluxos,
-                                                      ValidacaoPorExecucao)
+                                                      PassoAssinado, ProvaDaExecucao, ReclassificacaoDaForma,
+                                                      SombraDosFluxos, ValidacaoPorExecucao)
 from app.modules.learning.application.ports import RepositorioDeAprendizado
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.evidencia_invalida import run_da_etapa
 from app.modules.learning.domain.livro import (escopo_da_receita, estado_nativo, fluxo_tem_efeito, hash_da_receita,
                                                ref_da_trilha)
-from app.modules.learning.domain.vocabulario import LivroKind
+from app.modules.learning.domain.vocabulario import LivroKind, Posicao
 from app.modules.learning.infrastructure import linhas
 from app.modules.learning.infrastructure.fontes import FontesSql
 from app.modules.learning.infrastructure.validacao_de_skills import ValidacaoDeHabilidadesSql
@@ -115,18 +115,46 @@ class LeituraSql:
         self._db = db
 
     def execucao(self, run_id: str) -> ExecucaoAssentada | None:
-        row = self._db.one("SELECT id, command, status, simulated, plan, flow_id, skill_id, instance_ids FROM runs"
-                           " WHERE id=?", (run_id,))
+        row = self._db.one("SELECT id, command, status, simulated, plan, flow_id, skill_id, instance_ids, prova_fluxo_id"
+                           " FROM runs WHERE id=?", (run_id,))
         if row is None:
             return None
+        prova = linhas.texto_ou_nulo(row, "prova_fluxo_id")
         comparavel = (linhas.texto(row, "status") == "completed" and not linhas.texto_ou_nulo(row, "flow_id")
-                      and not linhas.texto_ou_nulo(row, "skill_id") and not confirmada_a_mao(self._db, run_id))
+                      and not linhas.texto_ou_nulo(row, "skill_id") and not prova
+                      and not confirmada_a_mao(self._db, run_id))
         plano = _plano(linhas.texto_ou_nulo(row, "plan")) if comparavel else None
         forma = assinatura(plano, run_id) if plano is not None and plano.steps and not plano.missing else None
         return ExecucaoAssentada(run_id=run_id, comando=linhas.texto(row, "command"),
                                  simulada=bool(linhas.inteiro(row, "simulated")),
                                  aparelho=_primeiro_aparelho(linhas.texto_ou_nulo(row, "instance_ids")),
-                                 assinatura=forma)
+                                 assinatura=forma,
+                                 prova=self._prova(run_id, prova, linhas.texto(row, "status")) if prova else None)
+
+    def _prova(self, run_id: str, fluxo_id: str, status: str) -> ProvaDaExecucao | None:
+        """30.37: o desfecho da execução de prova pelas etapas (não pelo plano). A etapa-modelo do `for_each` nunca é
+        executada e fica fora. Reprovada = `failed` cuja última tentativa não traz erro de IA (`attempts.error_kind`,
+        RA-22): orçamento, teto, recusa e chave são infra, e infra não conta."""
+        linha = self._db.one("SELECT plan FROM flows WHERE id=?", (fluxo_id,))
+        conteudo = linhas.json_legado(linhas.texto_ou_nulo(linha, "plan")) if linha is not None else None
+        if conteudo is None:
+            return None
+        hash_ = content_hash(conteudo)
+        etapas = self._db.query(
+            "SELECT s.seq, s.key, s.status, s.status_detail, (SELECT a.error_kind FROM attempts a WHERE a.step_id=s.id"
+            " ORDER BY a.number DESC LIMIT 1) AS erro FROM steps s WHERE s.run_id=? AND s.for_each IS NULL"
+            " ORDER BY s.seq, s.id", (run_id,))
+        reprovada = next((e for e in etapas if linhas.texto(e, "status") == "failed"
+                          and not linhas.texto_ou_nulo(e, "erro")), None)
+        if reprovada is not None:
+            motivo = (linhas.texto_ou_nulo(reprovada, "status_detail") or "sem detalhe")[:160]
+            return ProvaDaExecucao(fluxo_id, hash_, Posicao.AGAINST,
+                                   f"prova: etapa {linhas.inteiro(reprovada, 'seq')} ({linhas.texto(reprovada, 'key')}) "
+                                   f"reprovada: {motivo}")
+        if status == "completed" and etapas and all(linhas.texto(e, "status") == "succeeded" for e in etapas):
+            return ProvaDaExecucao(fluxo_id, hash_, Posicao.FOR,
+                                   f"prova: {len(etapas)}/{len(etapas)} etapas comprovadas")
+        return ProvaDaExecucao(fluxo_id, hash_, None, f"prova sem desfecho de tarefa ({status})")
 
     def fluxos_em_prova(self) -> list[FluxoEmProva]:
         saida: list[FluxoEmProva] = []

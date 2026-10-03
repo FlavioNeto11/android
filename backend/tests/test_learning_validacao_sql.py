@@ -52,6 +52,7 @@ class Parque:
         self.prontos: set[str] = {QA}                    # os pacotes prontos nos aparelhos de `lista`
         self.pedidos_de_aparelho: list[tuple[str, ...]] = []
         self.enfileiradas: list[tuple[str, str, str]] = []
+        self.provas: list[str | None] = []               # 30.37: o fluxo provado de cada execução enfileirada
 
     def ambiente(self) -> Ambiente:
         return self.ambiente_
@@ -63,12 +64,15 @@ class Parque:
     def gasto_da_operacao(self, agora: datetime, dias: int) -> float:
         return 18.0
 
-    def enfileirar(self, comando: str, aparelho: str, chave: str) -> str:
+    def enfileirar(self, comando: str, aparelho: str, chave: str, prova: str | None = None) -> str:
+        self.provas.append(prova)
         run_id = f"r-20261003120000-{len(self.enfileiradas):06x}"
         self.enfileiradas.append((comando, aparelho, chave))
-        self.db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
-                        " VALUES (?,?,?,?,?,?,?,?)", (run_id, chave, comando, "execute", "running", 0,
-                                                       json.dumps([aparelho]), to_iso(datetime.now())))
+        # Como o `RunService.create(..., prova=)`: a execução de prova (30.37) leva o fluxo em `prova_fluxo_id`.
+        self.db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at,"
+                        " prova_fluxo_id) VALUES (?,?,?,?,?,?,?,?,?)",
+                        (run_id, chave, comando, "execute", "running", 0, json.dumps([aparelho]), to_iso(datetime.now()),
+                         prova))
         return run_id
 
 
@@ -250,9 +254,17 @@ def test_o_despachante_roda_a_volta_na_thread_do_loop() -> None:
 QA2, FORA = "com.pocqa.segundo", "com.exemplo.fora"
 
 
+#: O molde do fluxo de teste: o COMANDO com os dois reservados viram UMA captura (o `_extract` do `FlowStore` tira o espaço
+#: antes de um reservado literal, então o comando com `{instance_id}` escrito não cabe num molde que o repete igual).
+MOLDE = COMANDO.replace("{instance_id} {run_id}", "{alvo}")
+#: O plano do fluxo de teste: legível (a prova de 30.37 lê o plano pelo molde) e sem parâmetro (o molde é o comando).
+PLANO_DO_FLUXO = json.dumps({"summary": "Entrega QA", "app_id": "qa-messenger",
+                             "planner": {"provider": "fluxo", "model": "m", "simulated": True}})
+
+
 def _fluxo_multi(db: Database, fid: str, apps: tuple[str, ...]) -> EntradaDoLivro:
     db.execute("INSERT INTO flows(id, name, match_key, command_template, plan, app_id, status, created_at)"
-               " VALUES (?,?,?,?,?,?,?,?)", (fid, fid, f"cmd {fid}", COMANDO, "{}", "qa-messenger", "active",
+               " VALUES (?,?,?,?,?,?,?,?)", (fid, fid, f"cmd {fid}", MOLDE, PLANO_DO_FLUXO, "qa-messenger", "active",
                                              to_iso(datetime.now())))
     for a in apps:
         db.execute("INSERT INTO flow_required_apps(flow_id, app_id) VALUES (?,?)", (fid, a))

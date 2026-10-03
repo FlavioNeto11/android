@@ -12,9 +12,10 @@ from app.db import Database, Row
 from app.models import Plan
 from app.modules.learning.application.validacao import NovoPedido, Origem, PedidoVivo
 from app.modules.learning.domain.validacao import EstadoDoPedido, Grupo, Motivo
-from app.modules.learning.domain.vocabulario import Posicao
+from app.modules.learning.domain.vocabulario import LivroKind, Posicao
 from app.modules.learning.infrastructure import linhas
 from app.planning import costs
+from app.taskqueue.flows import FlowStore
 from app.taskqueue.recipes import hash_generico_da_etapa, para_hash, step_template_hash
 from app.util import to_iso
 
@@ -44,11 +45,11 @@ class RegistroDeValidacoesSql:
         # segundo sem abortar a transação de quem chama (no PostgreSQL, o `except IntegrityError` abortaria).
         cur = self._db.execute(
             "INSERT INTO learning_validations(id, created_at, updated_at, review_id, item_ref, item_kind, scope_app,"
-            " grupo, falta, run_origem, comando, aparelho_excluido, estado, motivo, expira_em)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
+            " grupo, falta, run_origem, comando, aparelho_excluido, estado, motivo, expira_em, teto_usd)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
             (pid, em, em, novo.review_id, novo.item_ref, novo.item_kind, novo.scope_app, novo.grupo,
              json.dumps(list(novo.falta)), novo.run_origem, novo.comando, novo.aparelho_excluido, novo.estado,
-             novo.motivo, novo.expira_em))
+             novo.motivo, novo.expira_em, novo.teto_usd))
         return pid if (cur.rowcount or 0) == 1 else None
 
     def pendentes(self) -> list[PedidoVivo]:
@@ -106,11 +107,13 @@ class RegistroDeValidacoesSql:
 
     def chegadas(self) -> list[PedidoVivo]:
         """Os pedidos que voltaram com resposta para o curador: a favor (`feita`) e, desde o 30.36, contra
-        (`evidencia_contra`) e a variante sem caminho (`sem_caminho`). A forma e o "sem evidência" não respondem nada."""
+        (`evidencia_contra`) e a variante sem caminho (`sem_caminho`, SÓ da receita: a marca "variante sem caminho" do
+        dossiê só existe para ela; o fluxo sem caminho voltaria ao curador sem marca, ele pediria evidência de novo e o
+        laço seria pago). A forma e o "sem evidência" não respondem nada."""
         return [_pedido(r) for r in self._db.query(
             "SELECT * FROM learning_validations WHERE revisao_nova_id IS NULL AND (estado='feita'"
-            " OR (estado='recusada' AND motivo IN (?, ?))) ORDER BY feito_em, id",
-            (Motivo.EVIDENCIA_CONTRA.value, Motivo.SEM_CAMINHO.value))]
+            " OR (estado='recusada' AND (motivo=? OR (motivo=? AND item_kind=?)))) ORDER BY feito_em, id",
+            (Motivo.EVIDENCIA_CONTRA.value, Motivo.SEM_CAMINHO.value, LivroKind.RECEITA.value))]
 
     def sem_evidencia(self) -> list[PedidoVivo]:
         return [_pedido(r) for r in self._db.query(
@@ -124,6 +127,30 @@ class RegistroDeValidacoesSql:
             "UPDATE learning_validations SET motivo=?, updated_at=? WHERE id=? AND estado='recusada' AND motivo=?",
             (motivo.value, to_iso(agora), pedido_id, Motivo.SEM_EVIDENCIA.value))
         return (cur.rowcount or 0) == 1
+
+    def para_reabrir(self) -> list[NovoPedido]:
+        """30.37: o pedido de fluxo fechado `sem_evidencia`/`divergencia_de_forma` cuja execução rodou ANTES da prova
+        (`runs.prova_fluxo_id` nulo), com o fluxo ainda ligado e sem pedido POSTERIOR do mesmo item. O novo pedido é
+        posterior e tira o antigo desta lista (idempotente); a prova que fecha `sem_evidencia` não reabre (a execução
+        dela tem `prova_fluxo_id`). `expira_em` e `teto_usd` ficam para o serviço."""
+        saida: list[NovoPedido] = []
+        for r in self._db.query(
+                "SELECT v.* FROM learning_validations v JOIN runs r ON r.id = v.run_id"
+                " JOIN flows f ON 'fluxo:' || f.id = v.item_ref"
+                " WHERE v.item_kind=? AND v.estado='recusada' AND v.motivo IN (?, ?) AND v.run_id IS NOT NULL"
+                " AND r.prova_fluxo_id IS NULL AND f.status <> 'disabled'"
+                " AND NOT EXISTS (SELECT 1 FROM learning_validations n WHERE n.item_ref = v.item_ref"
+                " AND n.created_at > v.created_at) ORDER BY v.created_at, v.id",
+                (LivroKind.FLUXO.value, Motivo.SEM_EVIDENCIA.value, Motivo.DIVERGENCIA_DE_FORMA.value)):
+            falta = linhas.json_legado(linhas.texto_ou_nulo(r, "falta") or "[]")
+            saida.append(NovoPedido(
+                review_id=linhas.texto(r, "review_id"), item_ref=linhas.texto(r, "item_ref"),
+                item_kind=linhas.texto(r, "item_kind"), scope_app=linhas.texto(r, "scope_app"),
+                grupo=linhas.texto(r, "grupo"), falta=tuple(str(f) for f in falta) if isinstance(falta, list) else (),
+                run_origem=linhas.texto_ou_nulo(r, "run_origem"), comando=linhas.texto(r, "comando"),
+                aparelho_excluido=linhas.texto_ou_nulo(r, "aparelho_excluido"), estado=EstadoDoPedido.PENDENTE.value,
+                motivo=None, expira_em=""))
+        return saida
 
     def revisado(self, pedido_id: str, review_id: str) -> None:
         self._db.execute("UPDATE learning_validations SET revisao_nova_id=? WHERE id=? AND revisao_nova_id IS NULL",
@@ -212,6 +239,18 @@ class FontesDaValidacaoSql:
         alcancados = {h for e in plano.steps
                       for h in (step_template_hash(para_hash(e, parametros)), hash_generico_da_etapa(e)) if h}
         return linhas.texto(r, "step_hash") in alcancados
+
+    def molde_do_fluxo(self, item_ref: str, comando: str) -> bool:
+        """30.37: o comando de origem cabe no molde do fluxo (`FlowStore.plano_em_prova`: o plano do próprio fluxo com os
+        parâmetros do comando; `None` se o fluxo sumiu, foi desligado ou o molde não casa). Fora do fluxo, `True`. Um
+        plano ilegível não é caminho (a execução de prova o recusaria do mesmo modo)."""
+        kind, _, ref = item_ref.partition(":")
+        if kind != "fluxo":
+            return True
+        try:
+            return FlowStore(self._db).plano_em_prova(ref, comando) is not None
+        except ValueError:                       # `pydantic.ValidationError` é `ValueError`
+            return False
 
     def desfecho(self, run_id: str) -> tuple[str, float] | None:
         r = self._db.one("SELECT status FROM runs WHERE id=?", (run_id,))

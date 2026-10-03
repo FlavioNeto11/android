@@ -1324,6 +1324,8 @@ class Scheduler:
             # Execução de habilidade (fase G): o plano já é de uma versão publicada. Aprender um fluxo dela criaria
             # o mesmo comando vivo nos dois backends — e o fluxo, sem versão nem trava, passaria a disputar a skill.
             return
+        if run["prova_fluxo_id"]:
+            return                              # 30.37: a prova roda o plano do próprio fluxo; não ensina fluxo nenhum
         self._pathfinders.pop(run_id, None)
         try:
             flow_id = self.flows.learn_from_run(run)
@@ -1509,6 +1511,9 @@ class Scheduler:
                                 error_kind=kind)
             repo.transition_step(step.id, StepStatus.retry_wait, detail=detail,
                                  next_retry_at=iso_in(self.get_settings().retry_backoff_s), level="warn")
+            return False
+        if o in (Outcome.waiting_user, Outcome.uncertain, Outcome.device_stuck) and self._prova_sem_pessoa(
+                str(obj["run_id"]), oid, step.id, attempt_id, rt, detail, kind):
             return False
         if o == Outcome.waiting_user:
             repo.refund_attempt(step.id)
@@ -1933,6 +1938,33 @@ class Scheduler:
                            data={"text": texto, "package": pacote, "app_vivo": vivo})
 
     # ------------------------------------------------------------------ cancelamento
+    def _prova_sem_pessoa(self, run_id: str, objective_id: str, step_id: str, attempt_id: str, rt: DeviceRuntime,
+                          detail: str, kind: str | None) -> bool:
+        """30.37, ajuste (c) da orquestradora: a EXECUÇÃO DE PROVA nunca espera uma pessoa. A etapa que pediria
+        (`waiting_user`: pergunta, aprovação, login; `uncertain`; aparelho retido) encerra a execução PELO SISTEMA, na
+        hora, antes de o objetivo virar `waiting_user`/`uncertain`, o que soltaria pendência e aviso ao dono. Não passa
+        por `cancel`: sem `por` e sem o sinal `cancelou_execucao` (ninguém fez o gesto), como a expiração do 29.50. O
+        pedido de validação fecha sem evidência. `False`: não é prova, e o desfecho segue o caminho de sempre."""
+        run = self.repo.run_row(run_id)
+        if run is None or not run["prova_fluxo_id"]:
+            return False
+        repo = self.repo
+        motivo = (f"Prova de fluxo (validação): a etapa precisaria de uma pessoa ({detail}). A prova foi encerrada pelo "
+                  "sistema, sem esperar.")
+        repo.finish_attempt(attempt_id, AttemptStatus.interrupted, error=detail, screen=None,
+                            recovery="Prova de fluxo: encerrada pelo sistema", error_kind=kind)
+        repo.db.execute("UPDATE runs SET cancel_requested=1, pause_requested=0 WHERE id=?", (run_id,))
+        repo.transition_step(step_id, StepStatus.cancelled, detail=motivo, level="warn")
+        repo.set_objective(objective_id, ObjectiveStatus.cancelled, detail=motivo, level="warn", message=f"{rt.id}: {motivo}")
+        # A aprovação da etapa de efeito nasce (`approval.pending`) antes de o desfecho chegar aqui: sem expirar, ela
+        # ficaria aberta na caixa de Pendências de uma execução que ninguém pediu.
+        self._expirar_aprovacoes(objective_id, "Prova de fluxo (validação): encerrada pelo sistema")
+        # As etapas seguintes do objetivo ficariam `pending` numa execução já `cancelled`: o `_finish_cancel` pula o
+        # objetivo que já está `cancelled`. Fecham aqui, como no cancelamento comum.
+        repo.cancel_open_steps(run_id, objective_id=objective_id, reason=motivo)
+        repo.recompute_run(run_id)
+        return True
+
     def _finish_cancel(self, run: Any) -> None:
         run_id = run["id"]
         # Só os objetivos de aparelho que EU hospedo (item 5.1). Sem o filtro, o segundo backend cancelava o

@@ -3279,6 +3279,42 @@ android-09), a execução comprovou 2/2 etapas e a sombra gravou `against` "etap
 Prova `simulated`: `backend/tests/test_learning_forma.py`. `not_run`: a reclassificação no central depois do deploy.
 Domínio: [dominios/aprendizado.md](dominios/aprendizado.md), seção "A divergência de forma (30.36)".
 
+**Emenda (03/10/2026, desenho aprovado pela orquestradora, ~17:05Z; Fase 30, item 30.37): validação de fluxo pelo
+próprio fluxo; receita segue por re-execução.**
+
+O limite deixado pelo 30.36 era este: a validação por re-execução roda o planejador livre, e o fluxo candidato fica
+inerte. Ela mede se o planejador refaz o plano, não se o fluxo funciona. O K-086 achou o mesmo pelo outro lado: das 13
+evidências de fluxo, nenhuma vinha de execução que usava o próprio fluxo; o fluxo ativo não ganhava evidência.
+
+- **O pedido de validação de FLUXO (`pedir_evidencia` do curador, 30.31) roda como EXECUÇÃO DE PROVA**
+  (`runs.prova_fluxo_id`, migração 084). O plano é o do próprio fluxo com os parâmetros do comando de origem
+  (`FlowStore.plano_em_prova`: candidate, validated ou active). Fluxo `disabled` ou comando fora do molde não roda.
+  Sem planejador, sem RESOLVE, sem `runs.flow_id`, sem `flows.used`, sem `skill_hash`, sem sombra da intenção, e a
+  prova não ensina fluxo novo.
+- **A evidência vem das ETAPAS da prova**, não da sombra.
+  - A favor: todas as etapas comprovadas e a execução `completed`.
+  - Contra: uma etapa reprovada na própria pós-condição (`failed` sem `error_kind`).
+  - Infra não conta: erro de IA, teto, aparelho, etapa que pediria pessoa.
+  - A linha leva a marca do conteúdo do fluxo (conta para o D1). Vale também para o fluxo ATIVO. O D1 só avalia quem
+    ainda está em prova.
+- **A prova nunca espera pessoa.** `needs_input`, `approval_required` ou incerteza é infra: o SISTEMA encerra a
+  execução na hora (sem `cancelou_execucao`, sem pergunta pendente, sem aviso) e o pedido fecha `sem_evidencia`.
+- **A sombra orgânica segue** gravando com a `forma` do 30.36 e nunca conta para o pedido.
+- **Não é comando de pessoa.** Aparece como "Prova de fluxo (validação)" (`RunSummary.prova_fluxo_id`), nunca é
+  aviso nem o último comando do cartão.
+- **Teto por pedido** `aprendizado.validacao.teto_por_pedido_usd` (US$ 0,10, `learning_validations.teto_usd`),
+  aplicado pelo roteador como o teto do pedido do 28.6 (vale o menor), também nas reaberturas. O teto total do P4
+  segue US$ 3,09; o custo da prova terá coluna própria no `registro_p4.py`.
+- **Comando de origem fora do molde:** o pedido fecha `sem_caminho`, ao nascer ou ao despachar. Só a receita
+  `sem_caminho` volta ao curador, para não pagar revisão em laço.
+- **Reabertura:** com a validação ligada, o pedido de FLUXO fechado `sem_evidencia` ou `divergencia_de_forma` numa
+  execução comum ganha um pedido novo, uma vez, que roda como prova. São 3 esperados no central.
+- **A receita segue por re-execução** (o que ela prova é o passo, que não tem plano próprio para rodar).
+
+Prova `simulated`: `backend/tests/test_learning_prova.py`. `real`: `not_run` até a 1ª validação de fluxo depois do
+deploy que levar o 30.37 (o P4 fica pausado, `validacao.modo: off`, até lá). Domínio:
+[dominios/aprendizado.md](dominios/aprendizado.md), seção "A prova de fluxo (30.37)".
+
 ## ADR-055 — Proteção de contas: a conta travada para sem ser tocada, o aparelho entra em quarentena, uma conta por alvo e nenhum reset com conta
 
 **Data:** 29/09/2026 · **Estado:** vigente; `e9da86e` implantado em 28/09; `c359f65` (+ `2511b12`) implantado em 29/09

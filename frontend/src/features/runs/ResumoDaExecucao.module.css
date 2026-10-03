@@ -30,6 +30,11 @@
   overflow-wrap: anywhere;
 }
 
+/* 30.37: o selo da execução de prova fica acima do comando de origem, para ele não parecer pedido de uma pessoa. */
+.origemDaProva {
+  margin: 0 0 var(--sp-1);
+}
+
 .pedido {
   margin: 0;
   color: var(--text-1);

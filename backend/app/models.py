@@ -1787,6 +1787,10 @@ class RunSummary(BaseModel):
     #: O pedido persistente e a ocorrência que originaram a execução (28.9; `null` em toda execução anterior).
     pedido_id: str | None = None
     ocorrencia_id: str | None = None
+    #: 30.37: o fluxo que esta execução PROVA (a validação do curador roda o plano do próprio fluxo). Não é pedido de
+    #: uma pessoa: o painel a rotula "Prova de fluxo (validação)" e ela nunca vira aviso nem "último comando". `None`
+    #: em toda execução comum.
+    prova_fluxo_id: str | None = None
 
 
 class StepResult(BaseModel):

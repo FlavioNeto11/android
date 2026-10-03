@@ -146,7 +146,8 @@ class Repository:
     # ================================================================== execuções
     def create_run(self, req: RunCreate, *, simulated: bool, targets: str | None = None,
                    ai_profile: tuple[str, str] | None = None,
-                   origem: tuple[str, str] | None = None, prioridade: int = 0) -> tuple[Row, bool]:
+                   origem: tuple[str, str] | None = None, prioridade: int = 0,
+                   prova: str | None = None) -> tuple[Row, bool]:
         """Cria a execução. A chave de idempotência é UNIQUE: repetição devolve a mesma execução.
 
         `targets`: a foto JSON dos alvos resolvidos (migração 051) — persona e origem de cada aparelho e o comando
@@ -159,7 +160,10 @@ class Repository:
         `RunCreate` da API pública tem `extra="forbid"` e não ganhou o campo.
 
         `prioridade` (item 28.6, migração 067): número MAIOR passa na frente em `dispatchable_objectives`; 0 é o que
-        toda execução sempre foi. Também só de chamada interna (o laço de pedidos), pelo mesmo motivo de `origem`."""
+        toda execução sempre foi. Também só de chamada interna (o laço de pedidos), pelo mesmo motivo de `origem`.
+
+        `prova` (item 30.37, migração 084): o fluxo que esta EXECUÇÃO DE PROVA prova (a validação do fluxo pelo próprio
+        fluxo). Só de chamada interna (o despachante da validação), pelo mesmo motivo de `origem`."""
         perfil, perfil_origem = ai_profile if ai_profile is not None else (None, None)
         pedido_id, ocorrencia_id = origem if origem is not None else (None, None)
         run_id = new_run_id()
@@ -167,13 +171,13 @@ class Repository:
             with self.db.tx():
                 self.db.execute(
                     "INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at,"
-                    " targets, ai_profile, ai_profile_source, pedido_id, ocorrencia_id, prioridade)"
-                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " targets, ai_profile, ai_profile_source, pedido_id, ocorrencia_id, prioridade, prova_fluxo_id)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     # `redact` é a SEGUNDA linha (a primeira é a recusa em `RunService.create`): comando com formato de
                     # segredo não chega a esta tabela, que a API de execuções devolve e o planejador lê (ADR-025).
                     (run_id, req.idempotency_key, redact(req.command.strip()), req.mode, RunStatus.planning.value,
                      int(simulated), dumps(req.instance_ids), now_iso(), targets, perfil, perfil_origem,
-                     pedido_id, ocorrencia_id, int(prioridade)))
+                     pedido_id, ocorrencia_id, int(prioridade), prova))
         except INTEGRITY_ERRORS:
             row = self.db.one("SELECT * FROM runs WHERE idempotency_key=?", (req.idempotency_key,))
             assert row is not None
@@ -1087,12 +1091,21 @@ class Repository:
             " (SELECT COALESCE(SUM(x.custo_usd), 0) FROM pedido_ocorrencias x WHERE x.pedido_id=p.id) AS gasto"
             " FROM runs r JOIN pedido_ocorrencias o ON o.id=r.ocorrencia_id JOIN pedidos p ON p.id=o.pedido_id"
             " WHERE r.id=?", (run_id,))
-        if linha is None:
-            return None
-        def _f(v: object) -> float | None:
-            return None if v is None else float(v)
-        return teto_da_execucao(_f(linha["total"]), float(linha["gasto"] or 0.0), _f(linha["por_ocorrencia"]),
-                                float(linha["custo_ocorrencia"] or 0.0))
+        tetos: list[float] = []
+        if linha is not None:
+            def _f(v: object) -> float | None:
+                return None if v is None else float(v)
+            do_pedido = teto_da_execucao(_f(linha["total"]), float(linha["gasto"] or 0.0), _f(linha["por_ocorrencia"]),
+                                         float(linha["custo_ocorrencia"] or 0.0))
+            if do_pedido is not None:
+                tetos.append(do_pedido)
+        # 30.37: o teto do pedido de VALIDAÇÃO cuja execução é esta (índice `ix_learning_validations_run`); nulo nos
+        # pedidos de antes da 084 e nos que nasceram sem teto. Vale o MENOR dos dois.
+        validacao = self.db.one("SELECT teto_usd FROM learning_validations WHERE run_id=? AND teto_usd IS NOT NULL",
+                                (run_id,))
+        if validacao is not None:
+            tetos.append(float(validacao["teto_usd"]))
+        return min(tetos) if tetos else None
 
     def active_runs(self) -> list[Row]:
         return self.db.query("SELECT * FROM runs WHERE status IN ('running','cancelling') ORDER BY created_at")
@@ -1244,7 +1257,8 @@ class Repository:
             status_detail=row["status_detail"], deduplicated=deduplicated,
             app_ids=loads(_col(row, "app_ids"), []) or [],
             ai_profile=_col(row, "ai_profile"), ai_profile_source=_col(row, "ai_profile_source"),
-            pedido_id=_col(row, "pedido_id"), ocorrencia_id=_col(row, "ocorrencia_id"))
+            pedido_id=_col(row, "pedido_id"), ocorrencia_id=_col(row, "ocorrencia_id"),
+            prova_fluxo_id=_col(row, "prova_fluxo_id"))
 
     def objective_dto(self, row: Row) -> ObjectiveDTO:
         done, total = self._step_progress(row["id"], row["plan_version"])
