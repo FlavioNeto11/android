@@ -30,6 +30,7 @@ from .executor import Outcome, StepExecutor, StepOutcome, saidas_exigidas, tela_
 from .flows import FlowStore
 from .foreach import expand
 from .projecao import projetar
+from .recipes import hash_generico_da_linha
 from .repository import MOTIVO_REJEICAO, RENOVAR_POSSE_S, PosseDaEtapaPerdida, Repository
 
 log = logging.getLogger("poc.scheduler")
@@ -696,7 +697,8 @@ class Scheduler:
         if run is None:
             return False
         etapas = self.repo.db.query(
-            "SELECT template_hash, app_id FROM steps WHERE objective_id=? AND plan_version=? AND for_each IS NULL"
+            "SELECT template_hash, template_key, key, side_effect, postcondition, commit_guard, app_id FROM steps"
+            " WHERE objective_id=? AND plan_version=? AND for_each IS NULL"
             " AND status NOT IN ('succeeded','skipped','cancelled')", (obj["id"], obj["plan_version"]))
         # Isto roda a cada volta enquanto alguém espera: pacote e chave são resolvidos uma vez por app, e a primeira
         # etapa sem receita encerra a conta (no primeiro contato com um fluxo, é já a primeira).
@@ -714,9 +716,12 @@ class Scheduler:
                 continue
             if not (e["template_hash"] and versao and variante is not None):
                 return False
+            # RA-20 B: a receita que serve a qualquer valor mora na chave genérica da etapa.
+            hashes = [h for h in (e["template_hash"], hash_generico_da_linha(e)) if h]
             if self.repo.db.one("SELECT 1 FROM recipes WHERE app_package=? AND app_version=? AND app_signature=?"
-                                " AND variant=? AND step_hash=? AND status='active' LIMIT 1",
-                                (pacote, versao, assinatura, variante, e["template_hash"])) is None:
+                                " AND variant=? AND step_hash IN (" + ",".join("?" * len(hashes)) + ")"
+                                " AND status='active' LIMIT 1",
+                                (pacote, versao, assinatura, variante, *hashes)) is None:
                 return False
             cobertas += 1
         return cobertas > 0

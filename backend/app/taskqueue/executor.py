@@ -59,7 +59,8 @@ from .costuras import (SAIU_POR_EXCECAO, SEM_COSTURAS, CosturasDeAprendizado, Fe
 from .foreach import sanitize_item, teto_de_chamadas
 from .proofs import marcas_pendentes_na_tela, variantes_de_arroba
 from .projecao import HistoricoDeAcoes, app_da_etapa
-from .recipes import READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, unique_selectors
+from .recipes import (READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, eh_generica,
+                      hash_generico_da_linha, unique_selectors)
 from .repository import Repository
 from .saidas import (ChaveDeTentativa, LeituraInvalida, LeituraSemTexto, LeituraVisualRecusada,
                      args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor, ler_valor_visual, nomes_citados,
@@ -872,7 +873,11 @@ class StepExecutor:
         if mode != "off" and app.package and not fired_at_entry:
             try:
                 rr.app_version = await self.devices.app_version(rt, app.package)
-                rr.step_hash = self.repo.step_row(step.id)["template_hash"]
+                linha = self.repo.step_row(step.id)
+                rr.step_hash = linha["template_hash"]
+                # RA-20 B: a 2ª chave, a da receita que serve a qualquer valor. Pela linha, não pelo DTO: o DTO não traz
+                # o `template_key` da cópia do for_each e vem com as variáveis resolvidas.
+                rr.step_hash_generico = hash_generico_da_linha(linha)
                 # As saídas do objetivo entram como `saida_<nome>` (item 24.3): a identidade da etapa é a do MOLDE
                 # (`{{saida:x}}`), então a receita aprendida digitando "@ana" reproduziria "@ana" quando o valor lido
                 # fosse "@bia" — com a variável, `distill` guarda `{saida_x}` e a reprodução digita o valor da vez.
@@ -885,7 +890,8 @@ class StepExecutor:
                 rr.signature = self._installed_signature(rt.id, app.package)
                 rr.variant = await self.devices.variant_of(rt)
                 rr.row = self.recipes.find(app.package, rr.app_version, rr.step_hash,
-                                           signature=rr.signature, variant=rr.variant)
+                                           signature=rr.signature, variant=rr.variant,
+                                           step_hash_generico=rr.step_hash_generico)
                 if rr.row is not None:
                     rr.replayer = self.recipes.replayer(rr.row, rr.variables)
                     if rr.row["status"] == "candidate":
@@ -1085,7 +1091,8 @@ class StepExecutor:
             driven = "recipe" if clean else ("sem_ator" if sem_ator else "recipe+ai")
             repo.db.execute("UPDATE steps SET driven_by=? WHERE id=?", (driven, step.id))
             if clean:
-                repo.decision(f"{iid} · {step.title}: receita v{rr.row['version']} reproduzida (0 decisões de IA)",
+                pela = " pela chave genérica" if rr.row["step_hash"] != rr.step_hash else ""
+                repo.decision(f"{iid} · {step.title}: receita v{rr.row['version']} reproduzida{pela} (0 decisões de IA)",
                               run_id=run_id, instance_id=iid, step_id=step.id)
             if quarantined:
                 repo.decision(f"{iid} · {step.title}: receita v{rr.row['version']} em quarentena após falhas seguidas; "
@@ -1112,9 +1119,21 @@ class StepExecutor:
         # `recipes_promote_after: 0`, e só a concordância de uma execução real a promove (`RecipeStore.shadow`).
         simulada = self._origem_simulada(run_id)
         candidata = n > 0 or simulada
-        rid = self.recipes.save(package=app.package, app_version=rr.app_version, step_hash=rr.step_hash,
+        # RA-20 B: o caminho que não traz o literal do valor desta etapa vale para qualquer valor e vai para a chave
+        # genérica; o que traz (o toque em "nasa") fica na específica. A genérica que divergiu num valor e um caminho
+        # específico: ela segue em prova para os outros valores (a divergência já foi contada) e a específica nasce
+        # ao lado — sem `replaces`, que a trocaria.
+        generica = bool(rr.step_hash_generico) and eh_generica(actions, step.postcondition.value, rr.variables,
+                                                               titulo=step.title)
+        chave = rr.step_hash_generico if generica else rr.step_hash
+        if substitui is not None and not generica and rr.row["step_hash"] != rr.step_hash:
+            substitui = None
+        rid = self.recipes.save(package=app.package, app_version=rr.app_version, step_hash=chave,
                                 step_key=step.key, actions=actions, learned_from=step.id,
                                 signature=rr.signature, variant=rr.variant, candidate=candidata, replaces=substitui)
+        if rid and generica and rr.step_hash_generico != rr.step_hash:
+            repo.decision(f"{iid} · {step.title}: o caminho não depende do valor desta etapa — a receita vale para "
+                          "qualquer valor (chave genérica)", run_id=run_id, instance_id=iid, step_id=step.id)
         if rid and candidata:
             no_lugar = f", no lugar da v{rr.row['version']}, que divergiu" if substitui else ""
             repo.decision(f"{iid} · {step.title}: receita aprendida como candidata ({len(actions)} ação(ões)){no_lugar}"
@@ -2937,6 +2956,8 @@ class _RecipeRun:
     variables: dict[str, str] = field(default_factory=dict)
     app_version: str | None = None
     step_hash: str | None = None
+    #: RA-20 B: a chave sem a pós-condição escrita (`hash_generico_da_linha`); None = a etapa só tem a específica.
+    step_hash_generico: str | None = None
     signature: str = ""
     variant: str = ""
     diverged: str | None = None

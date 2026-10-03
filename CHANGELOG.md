@@ -19,6 +19,24 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Receitas: a chave genérica (RA-20 fatia B, item 29.40; branch feat/ra-20-chave-generica)
+
+- A receita da etapa julgada pelo modelo, sem efeito e sem `commit_guard`, cujo caminho não traz o literal do valor,
+  mora na chave genérica (sem o texto da pós-condição). Assim casa com outra redação e outro valor.
+  - `hash_generico`, `eh_generica` e a consulta em duas chaves no `RecipeStore.find` (a específica vence).
+  - Os consumidores leem as duas chaves: capacidades, aproveitamento e o `_caminho_ja_aberto` do scheduler.
+- Backfill não destrutivo: `scripts/ra20b-receitas-genericas.py` (ensaio por padrão; `--aplicar` com backup e o OK da
+  Android e da orquestradora).
+  - Ensaio na cópia do central, depois da regra do título (da0de919): 9 candidatas semeadas em 9 chaves; 6 específicas.
+  - Nenhuma receita atual muda.
+- Prova:
+  - `simulated`: `test_receita_chave_generica.py` (24 testes), com o classificador nas ações reais das receitas 25, 73,
+    38 e 40 (@ fictícios), a paridade linha × etapa, a ordem da consulta, a troca entre chaves, o passe e uma execução
+    de ponta a ponta: outra redação e outro valor reproduzem pela genérica, com 0 decisões de IA;
+  - o teste de ponta a ponta FALHA com a consulta genérica desligada;
+  - `test_equivalencia_fluxo_skill.py` passa a esperar a chave genérica.
+  - `real`: `not_run`. O efeito aparece depois do backfill e de `recipes_promote_after` concordâncias.
+
 ## 2026-10-03 — Aprendizado: o pedido de pessoa fura a fila do curador e o parecer grava o custo (30.30; branch fix/30-30-pedido-fura-a-fila)
 
 - O pedido de revisão (`POST /api/aprendizado/{kind}/{ref}/revisao`) ganha a prioridade `PEDIDO_DA_PESSOA` (0).
