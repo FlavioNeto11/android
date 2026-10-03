@@ -400,6 +400,10 @@
 .tabelaDetalhe caption { text-align: left; padding-bottom: var(--sp-1); color: var(--text-3); }
 .tabelaDetalhe th { text-align: left; font-weight: 500; color: var(--text-3); }
 .tabelaDetalhe th, .tabelaDetalhe td { padding: 3px var(--sp-3) 3px 0; vertical-align: top; }
+/* Em 375 px, a versão do app ("447.0.0.55.81(385311929)", o cabeçalho da linha) é um token só: quebra em qualquer ponto
+   em vez de alargar a tabela para fora do cartão (`anywhere`, e não `break-word`, porque só ele baixa a largura mínima
+   da célula). O cabeçalho das colunas quebra como sempre. */
+.tabelaDetalhe tbody th, .tabelaDetalhe td { overflow-wrap: anywhere; }
 
 .semDado { color: var(--text-3); font-style: italic; }
 

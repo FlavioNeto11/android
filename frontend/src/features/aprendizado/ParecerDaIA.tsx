@@ -41,13 +41,13 @@ function Fato({ rotulo, children }: { rotulo: string; children: ReactNode }) {
 
 /** O selo compacto do parecer na linha da fila: o que a IA sugere, com que confiança e em que classe. */
 export function ParecerNaLinha({ p }: { p: ParecerNaFila }) {
-  const classe = seloDaClasse(p.classe);
+  const classe = seloDaClasse(p.classe, p.recusa);
   return (
     <p className={styles.parecerNaLinha} data-parecer-na-linha={p.id}>
       <Bot size={14} aria-hidden />
-      <span>A IA sugere <strong>{textoDaDecisao(p.decisao).toLowerCase()}</strong> · {textoDaConfianca(p.confianca)}</span>
-      {classe ? <Badge tone={p.classe ? TOM_DA_CLASSE[p.classe] : 'neutral'} size="sm" title={classe.explica}>{classe.selo}</Badge> : null}
-      {p.simulated ? <Badge tone="muted" size="sm" title="Provedor de teste: não é opinião de IA real">simulado</Badge> : null}
+      <span>Parecer da IA: <strong>{textoDaDecisao(p.decisao).toLowerCase()}</strong> · {textoDaConfianca(p.confianca)}</span>
+      {classe && p.classe ? <Badge tone={p.recusa ? 'muted' : TOM_DA_CLASSE[p.classe]} size="sm" title={classe.explica}>{classe.selo}</Badge> : null}
+      {classe?.registro ? <Badge tone="muted" size="sm" title={textoDaRecusa(p.recusa) ?? undefined}>{classe.registro}</Badge> : null}
       <span className={styles.parecerDica}>O parecer completo fica em “Detalhes”.</span>
     </p>
   );
@@ -57,7 +57,7 @@ function CartaoDoParecer({ p, item, onMudou }: { p: ParecerDaIA; item: EntradaDo
   const [gesto, setGesto] = useState<'aceitar' | 'recusar' | null>(null);
   const s = p.parecer;
   if (!s) return null;
-  const classe = seloDaClasse(p.classe);
+  const classe = seloDaClasse(p.classe, p.recusa);
   const aceite = rotuloDoAceite(p.acao);
   const responder = async (resposta: 'aceitar' | 'recusar', motivo: string): Promise<string | null> => {
     try {
@@ -75,7 +75,7 @@ function CartaoDoParecer({ p, item, onMudou }: { p: ParecerDaIA; item: EntradaDo
       <div className={styles.parecerCabeca}>
         <span className={styles.parecerSugestao}>A IA sugere: <strong>{textoDaDecisao(s.decisao)}</strong></span>
         <Badge tone={TOM_DO_LADO[ladoDaDecisao(s.decisao)]} size="sm">{textoDaConfianca(s.confianca)}</Badge>
-        {classe && p.classe ? <Badge tone={TOM_DA_CLASSE[p.classe]} size="sm" title={classe.explica}>{classe.selo}</Badge> : null}
+        {classe && p.classe ? <Badge tone={p.recusa ? 'muted' : TOM_DA_CLASSE[p.classe]} size="sm" title={classe.explica}>{classe.selo}</Badge> : null}
         {p.simulated ? <Badge tone="muted" size="sm" title="Provedor de teste: não é opinião de IA real">simulado</Badge> : null}
       </div>
       {s.conclusao ? <p className={styles.citacao}>{s.conclusao}</p> : null}
@@ -103,6 +103,7 @@ function CartaoDoParecer({ p, item, onMudou }: { p: ParecerDaIA; item: EntradaDo
             dica={gesto === 'aceitar'
               ? (p.acao ? 'Fica na trilha do item e no registro do parecer, com o seu nome.' : 'Fica no registro do parecer, com o seu nome. O item não muda.')
               : 'Fica no registro do parecer, com o seu nome. O item não muda: decida-o pelos botões dele.'}
+            semMotivo={gesto === 'aceitar' && p.acao ? undefined : 'Diga o motivo: fica no registro do parecer.'}
             onCancelar={() => setGesto(null)}
             onConfirmar={(motivo) => responder(gesto, motivo)}
           />

@@ -115,14 +115,24 @@ export function textoDaConfianca(c: string | null | undefined): string {
   return c ? CONFIANCA[c] ?? c : 'confiança sem medida';
 }
 
-const CLASSE: Record<ClasseDeRisco, { selo: string; explica: string }> = {
-  A: { selo: 'Classe A · só registro', explica: 'Navegação e leitura: quem decide é a regra automática; o parecer fica só registrado.' },
-  B: { selo: 'Classe B · aceite em lote', explica: 'Efeito médio: você pode aceitar vários pareceres de uma vez.' },
-  C: { selo: 'Classe C · item a item', explica: 'Alto risco (envio, conta, sessão): decida um item de cada vez.' },
+const CLASSE: Record<ClasseDeRisco, { politica: string; sentido: string; gesto: string }> = {
+  A: { politica: 'só registro', sentido: 'Navegação e leitura.', gesto: 'Quem decide é a regra automática; o parecer fica só registrado.' },
+  B: { politica: 'aceite em lote', sentido: 'Efeito médio.', gesto: 'Você pode aceitar vários pareceres de uma vez.' },
+  C: { politica: 'item a item', sentido: 'Alto risco (envio, conta, sessão).', gesto: 'Decida um item de cada vez.' },
 };
 
-export function seloDaClasse(c: ClasseDeRisco | null | undefined): { selo: string; explica: string } | null {
-  return c ? CLASSE[c] ?? null : null;
+/**
+ * O selo da classe. Com o gesto valendo, diz a regra da classe ("Classe B · aceite em lote"); quando o parecer não
+ * se decide (simulado, classe A), só a classe, e `registro` e a dica dizem por quê: nem o selo nem a dica prometem um
+ * aceite que não há.
+ */
+export function seloDaClasse(c: ClasseDeRisco | null | undefined, recusa: string | null = null):
+  { selo: string; explica: string; registro: string | null } | null {
+  const k = c ? CLASSE[c] : undefined;
+  if (!c || !k) return null;
+  if (!recusa) return { selo: `Classe ${c} · ${k.politica}`, explica: `${k.sentido} ${k.gesto}`, registro: null };
+  const registro = recusa === 'parecer_simulado' ? 'simulado · só registro' : recusa === 'so_registro_na_classe_a' ? 'só registro' : null;
+  return { selo: `Classe ${c}`, explica: `${k.sentido} ${textoDaRecusa(recusa) ?? ''}`.trim(), registro };
 }
 
 const CAUSA: Record<string, string> = {
@@ -195,6 +205,16 @@ export function rotuloDoAceite(acao: PassoDoAceite | null): { label: string; con
   const verbo = ACAO_NO_TEXTO[acao.rotulo] ?? acao.rotulo;
   const perigo = acao.rotulo === 'rejeitar' || acao.rotulo === 'desligar';
   return { label: `Aceitar e ${verbo}`, confirmar: `Confirmar: ${verbo}`, perigo };
+}
+
+const EFEITO_DO_PASSO: Record<RotuloDaAcao, string> = {
+  validar: 'validado (ainda não publicado)', aprovar: 'publicado', rejeitar: 'rejeitado', aposentar: 'aposentado',
+  desligar: 'desligado', reativar: 'reativado',
+};
+
+/** O que o aceite fez com o item, para o aviso do lote: "validado" não é "publicado". */
+export function efeitoDoAceite(acao: PassoDoAceite | null): string {
+  return acao ? EFEITO_DO_PASSO[acao.rotulo] ?? acao.rotulo : 'concordância registrada; o item não muda';
 }
 
 /** Quem decidiu e como, em uma frase (o histórico do parecer). */

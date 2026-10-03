@@ -9,10 +9,12 @@ import styles from './Aprendizado.module.css';
  * modal: quem decide vê o item ao lado do que está escrevendo. Mora à parte da linha do item porque o detalhe (o
  * parecer da IA, 30.17) também decide, e a linha importa o detalhe.
  */
-export function DecisaoInline({ acao, rotulo = 'Motivo', dica = 'Fica na trilha do item, com o seu nome.', onConfirmar, onCancelar }: {
+export function DecisaoInline({ acao, rotulo = 'Motivo', dica = 'Fica na trilha do item, com o seu nome.', semMotivo, onConfirmar, onCancelar }: {
   acao: Pick<AcaoDoItem, 'confirmar' | 'perigo'>;
   rotulo?: string;
   dica?: string;
+  /** O aviso do botão enquanto falta o motivo, quando ele não vai para a trilha (o parecer da IA guarda o seu à parte). */
+  semMotivo?: string;
   /** Devolve a mensagem de erro, ou `null` quando deu certo. */
   onConfirmar: (motivo: string) => Promise<string | null>;
   onCancelar: () => void;
@@ -20,7 +22,7 @@ export function DecisaoInline({ acao, rotulo = 'Motivo', dica = 'Fica na trilha 
   const [motivo, setMotivo] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const invalido = erroDoMotivo(motivo);
+  const invalido = semMotivo && !motivo.trim() ? semMotivo : erroDoMotivo(motivo);
 
   const enviar = async () => {
     if (invalido || enviando) return;

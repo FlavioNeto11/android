@@ -17,7 +17,7 @@ import { ResumoParaDecidir } from './ResumoParaDecidir';
 import {
   type AcaoDoItem, type EntradaDoLivro, ONDE_FICAM_AS_HABILIDADES, acaoDeAprovarNaFila, acoesNaFila, ordenarPendentes,
 } from './model';
-import { type ModoDoCurador, textoDaRecusa } from './parecer';
+import { type ModoDoCurador, efeitoDoAceite, textoDaRecusa } from './parecer';
 import styles from './Aprendizado.module.css';
 
 /** "Revisar": o legado ativo com efeito só pode ser desligado pela pessoa (published → disabled). Na tela, "desligar";
@@ -134,6 +134,7 @@ export function ParaAprovarTab() {
   const aceitarPareceres = async (itens: EntradaDoLivro[], motivo: string): Promise<string | null> => {
     let ok = 0;
     const falhas: string[] = [];
+    const feitos: string[] = [];
     for (const e of itens) {
       const p = e.parecer;
       if (!p || p.recusa_no_lote) {
@@ -143,6 +144,7 @@ export function ParaAprovarTab() {
       try {
         await apiAprendizado.responderParecer(e.kind, e.ref, p.id, { resposta: 'aceitar', motivo, em_lote: true });
         ok += 1;
+        feitos.push(`${e.title}: ${efeitoDoAceite(p.acao)}`);
       } catch (err) {
         const x = toApiError(err);
         falhas.push(`${e.title}: ${textoDaRecusa(x.code) === x.code ? x.message : textoDaRecusa(x.code)}`);
@@ -151,7 +153,7 @@ export function ParaAprovarTab() {
     toast({
       tone: falhas.length > 0 ? 'warning' : 'success',
       title: `${ok} parecer(es) aceito(s) de ${itens.length} item(ns) selecionado(s)`,
-      details: falhas.length > 0 ? falhas : null,
+      details: falhas.length + feitos.length > 0 ? [...falhas, ...feitos] : null,
     });
     setSelFila(new Set());
     setSelLegado(new Set());
@@ -184,10 +186,12 @@ export function ParaAprovarTab() {
             texto escrito por uma pessoa para aqui, já validado, aguardando você. Quando um item publicado passa a
             falhar, o sistema o desliga sozinho.
           </p>
-          <p className={styles.secaoLead}>
-            Com o curador ligado, a IA dá um parecer sobre cada item. Ela nunca decide: na classe B você pode aceitar
-            vários pareceres de uma vez; na C (envio, conta, sessão), decida um item de cada vez, pelo detalhe.
-          </p>
+          {modo === 'on' ? (
+            <p className={styles.secaoLead}>
+              Com o curador ligado, a IA dá um parecer sobre cada item. Ela nunca decide: na classe B você pode aceitar
+              vários pareceres de uma vez; na C (envio, conta, sessão), decida um item de cada vez, pelo detalhe.
+            </p>
+          ) : null}
         </Disclosure>
         {fila.erro ? <LoadErrorBanner error={fila.erro} onRetry={() => void carregar()} /> : null}
         {itensFila.length > 0 ? (

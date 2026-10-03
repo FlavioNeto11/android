@@ -103,7 +103,7 @@ describe('parecer da IA na fila', () => {
     backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => json({ itens: [LICAO_B], total: 1, curador: { modo: 'on' } }));
     await montar(<AprendizadoPage />);
     await waitFor(() => expect(item('licao:li-b')).toBeTruthy());
-    expect(text(item('licao:li-b'))).toContain('A IA sugere aprovar · confiança alta');
+    expect(text(item('licao:li-b'))).toContain('Parecer da IA: aprovar · confiança alta');
     expect(text(item('licao:li-b'))).toContain('Classe B · aceite em lote');
     await click(byRole('button', /^Validar$/, item('licao:li-b')));
     await setValue(byRole('textbox', /Motivo/, item('licao:li-b')) as HTMLInputElement, 'conferi');
@@ -131,6 +131,7 @@ describe('parecer da IA na fila', () => {
     const [aviso] = useToastStore.getState().toasts;
     expect(aviso?.title).toContain('1 parecer(es) aceito(s) de 2');
     expect(JSON.stringify(aviso?.details)).toContain('Classe C: decida item a item');
+    expect(aviso?.details).toContain('Role a lista antes: validado (ainda não publicado)');   // validar não é publicar
     expect(chamadas(/\/status$/)).toHaveLength(0);                       // aceitar o parecer não é o /status
   });
 
@@ -138,7 +139,7 @@ describe('parecer da IA na fila', () => {
     backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => json({ itens: [entrada({})], total: 1, curador: { modo: 'shadow' } }));
     await montar(<AprendizadoPage />);
     await waitFor(() => expect(item('licao:li-b')).toBeTruthy());
-    expect(text(item('licao:li-b'))).not.toContain('A IA sugere');
+    expect(text(item('licao:li-b'))).not.toContain('Parecer da IA');
     expect(container.querySelector('[data-parecer-na-linha]')).toBeNull();
     expect(text(container)).not.toContain('Aceitar pareceres da IA');
   });
@@ -172,6 +173,8 @@ describe('parecer da IA no detalhe', () => {
     await montar(<DetalheRico detalhe={detalhe([parecer({})], ON)} />);
     const sec = secao();
     await click(byRole('button', /^Recusar o parecer$/, sec));
+    // A recusa não toca o item: o aviso do botão não promete a trilha.
+    expect(text(byRole('button', /^Confirmar recusa/, sec))).toContain('fica no registro do parecer');
     await setValue(byRole('textbox', /Por que você recusa/, sec) as HTMLInputElement, 'a nota fala de outra tela');
     await click(byRole('button', /^Confirmar recusa/, sec));
     await waitFor(() => expect(text(sec)).toContain('O item mudou depois do parecer'));
@@ -183,10 +186,13 @@ describe('parecer da IA no detalhe', () => {
     let sec = secao();
     expect(text(sec)).toContain('simulado');
     expect(text(sec)).toContain('Parecer de teste');
+    expect(text(sec)).not.toContain('aceite em lote');                 // o selo não promete o aceite que não há
+    expect(sec.querySelector('[title^="Efeito médio."]')?.getAttribute('title')).toContain('Parecer de teste');
     expect(text(sec)).not.toContain('Aceitar e validar');
     await act(async () => root.render(<DetalheRico detalhe={detalhe([parecer({ classe: 'A', recusa: 'so_registro_na_classe_a' })], ON)} />));
     sec = secao();
-    expect(text(sec)).toContain('Classe A · só registro');
+    expect(text(sec)).toContain('Classe A');
+    expect(text(sec)).not.toContain('Classe A · só registro · ');
     expect(text(sec)).toContain('quem decide é a regra automática');
     expect(text(sec)).not.toContain('Recusar o parecer');
   });
