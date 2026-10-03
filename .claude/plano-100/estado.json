@@ -6201,13 +6201,13 @@
    "id": "30.33",
    "status": "partial",
    "proof": "simulated",
-   "evidence": "Fatia A: PR #153 (feat/30-33-metricas-no-painel @ 882046db), a aba Métricas e as revisões do curador no painel, na main pela suíte 10 (16fd1127) e no central pelo deploy 10. simulated: 12 testes; vitest 1363 passed; autovalidada no preview sobre uma cópia do backup das 12:08 (backend simulado na 8765; banco vazio e backend parado também). O passe no Chrome do deploy 10 é da orquestradora. Fatia B: PR #156 (feat/30-33-aviso-do-fluxo @ c9f1c18a, suíte 11): o aviso learning.needs_person da receita e do fluxo com a classe do dossiê, pelo leitor comum RiscoDoConteudo; bateria de 60 arquivos depois do rebase, 1897 passed.",
-   "grupo": "aprendizado-suite-10",
+   "evidence": "Fatia A: PR #153 na main pela suíte 10 e no central pelo deploy 10; a orquestradora percorreu a aba Métricas no Chrome do deploy 10 (.claude/handoffs/ux-deploy10-2026-10-03.md, item 12b: ok, 375 px ok). Fatia B: PR #156 (feat/30-33-aviso-do-fluxo @ c9f1c18a) na main pela suíte 11 (97425d5f): o aviso learning.needs_person da receita e do fluxo com a classe do dossiê, pelo leitor comum RiscoDoConteudo. simulated: bateria de 60 arquivos 1897 passed; suíte 11 SQLite -n 8 @35e3b0f6 8441 passed, 0 failed (PG não rodou, sem migração). Real da B: not_run até o deploy 11 e um aviso de fluxo C. Fatia C aprovada em 03/10 (o item multi-app em cada app dele, item.apps no dossiê, aparelho do 30.31 com todos os apps; polimentos da Métricas do deploy 10): em curso no worktree apr-30-33c, para a suíte 12.",
+   "grupo": "aprendizado-suite-11",
    "modelo": "claude-opus-5-5",
    "esforco": "medio",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T15:02:10+00:00"
+   "quando": "2026-10-03T15:34:12+00:00"
   },
   "29.49": {
    "id": "29.49",
@@ -6292,6 +6292,30 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T15:33:30+00:00"
+  },
+  "30.34": {
+   "id": "30.34",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "Fatia A: PR #154 (feat/30-34-autopublicacao-sombra @ 147ad07f) na main pela suíte 11 (97425d5f): a regra pura, o livro da sombra (sinal autopublicaria, sem migração), o laço sob a trava de líder e o balanço nas métricas (adendo v0.93); o rascunho do contrato do relatório da sombra em docs/dominios/aprendizado.md. simulated: bateria 1953 passed depois do rebase; suíte 11 SQLite -n 8 @35e3b0f6 8441 passed, 0 failed. O deploy 11 liga aprendizado.autopublicacao.modo shadow. Falta: o relatório da sombra à orquestradora e a fatia B (o on pela trava da D1, só com ≥ 30 casos fechados e ≥ 90 % sem regressão em 7 dias).",
+   "grupo": "aprendizado-suite-11",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T15:34:12+00:00"
+  },
+  "30.35": {
+   "id": "30.35",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #155 (feat/30-35-resultado-posterior @ 32d8ef6b) na main pela suíte 11 (97425d5f): o GravadorDoResultadoPosterior (passo da curadoria) grava learning_reviews.resultado_posterior (descartar, rebaixar pela escada ou pelo degrau D-5 da saúde, manter, sem_desfecho) 14 dias depois de cada revisão real e válida de receita ou lição, uma vez por revisão; determinístico, sem IA, sem migração. simulated: tests/test_learning_resultado_posterior.py (20 testes); bateria 1922 passed depois do rebase; suíte 11 SQLite -n 8 @35e3b0f6 8441 passed, 0 failed. Real: not_run; a primeira revisão real elegível é de 03/10 07:08Z, então o primeiro desfecho pode ser gravado a partir de 17/10 07:08Z.",
+   "grupo": "aprendizado-suite-11",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T15:34:12+00:00"
   }
  },
  "rodadas": [
@@ -7726,6 +7750,17 @@
    ],
    "grupos": [
     "suite-11-jev"
+   ]
+  },
+  {
+   "quando": "2026-10-03T15:34:12+00:00",
+   "itens": [
+    "30.33",
+    "30.34",
+    "30.35"
+   ],
+   "grupos": [
+    "aprendizado-suite-11"
    ]
   }
  ]
