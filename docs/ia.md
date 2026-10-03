@@ -767,6 +767,11 @@ continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). D
 
     A `rede` da sombra acima do prazo guarda a marca do decisor: o POST aconteceu. Com isso, a `rede` antes do POST deixa
     de se confundir com a de depois. O cruzamento sombra × `ai_calls` passa a ser exato por linha nas linhas marcadas.
+  - **O hash do que saiu (31.22, migração 086).** `estado_hash` é o sha256 do JSON canônico do estado DEPOIS do
+    `privacidade.redigir` (`porta.hash_do_estado`: chaves em ordem, sem espaços, UTF-8). Vai em todas as linhas da
+    chamada, na sombra e no `on`, e fica NULO na recusa de privacidade e no legado. O lote offline do 31.11 recalcula
+    o hash do estado remontado e redigido e só reenvia o caso que bate (ADR-069 item 21: nenhum comando sai pela
+    primeira vez pelo lote). As linhas anteriores à 086 seguem pela salvaguarda do código do filtro.
 - **Cliente único.** `backend/tests/test_decisao_fechada.py::test_cliente_unico_so_o_adaptador_de_retrieval_conhece_o_host_da_typesafe`
   varre `backend/app` e prova que só `modules/context_retrieval/adapters/jev.py` contém o host.
 
