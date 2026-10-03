@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: o pedido de pessoa fura a fila do curador e o parecer grava o custo (30.30; branch fix/30-30-pedido-fura-a-fila)
+
+- O pedido de revisão (`POST /api/aprendizado/{kind}/{ref}/revisao`) ganha a prioridade `PEDIDO_DA_PESSOA` (0).
+  - Vai na frente de todos os itens, também no pico, sob o teto da hora e o orçamento da janela.
+  - A classe A segue só com sobra.
+  - Antes ele só pulava o cooldown. Em 03/10, 12 pedidos esperavam atrás de ~40 itens, a ~6 por volta; o laço das 08:29Z
+    revisou 6 outros e adiou 36 por `gasto_da_hora`.
+- Deploy 8, só para drenar o acúmulo: `aprendizado.curador.alfa: 0.7` e `aprendizado.curador.k: 6` no `config.yaml` do
+  central (decisão da orquestradora). Dá B ≈ US$ 7,3 e teto ≈ US$ 0,52 por hora; 2 voltas drenam ~40 itens.
+  - Com G_W = US$ 11,48, o padrão dava B = 1,15 e teto ≈ US$ 0,08 por hora. O `k·n·c̄` (≈ 1,8) travava, mesmo subindo só o alfa.
+  - VOLTA a 0.10 e 1.5 no deploy 9.
+- Prova `simulated`:
+  - `test_learning_curador.py::test_pedido_da_pessoa_vai_na_frente_menos_na_classe_a_e_sob_o_teto`;
+  - `test_learning_pareceres.py::test_o_pedido_da_pessoa_fura_a_fila`: com o teto deixando UMA revisão na volta, ela é a
+    do pedido (classe B), e não a da classe C.
+
 ## 2026-10-03 — Aprendizado: polimentos da validação do deploy 7 (B1 e I5; branch fix/aprendizado-ux-deploy7)
 
 - B1: o parecer do curador deixa de sair como "da IA" no painel.

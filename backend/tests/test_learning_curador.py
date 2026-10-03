@@ -408,6 +408,26 @@ def test_repartir_ordem_estrita_e_motivo_proprio() -> None:
     assert p.alfa == 0.10 and p.k == 1.5 and p.janela_dias == 7 and p.m_cmax == 4
 
 
+def test_pedido_da_pessoa_vai_na_frente_menos_na_classe_a_e_sob_o_teto() -> None:
+    """30.30: o pedido de pessoa é a prioridade máxima, também no pico; a classe A segue só com sobra (dono, 02/10), e o
+    teto da hora e o orçamento da janela continuam valendo para ele."""
+    for classe, gatilho in ((ClasseDeRisco.B, Gatilho.A_REVISAR), (ClasseDeRisco.C, Gatilho.NOVA_PENDENCIA_DO_DONO)):
+        assert prioridade(classe, gatilho, publicado=False, pedido=True) is Prioridade.PEDIDO_DA_PESSOA
+    assert prioridade(ClasseDeRisco.A, Gatilho.A_REVISAR, publicado=False, pedido=True) is Prioridade.CLASSE_A
+    assert prioridade(ClasseDeRisco.B, Gatilho.A_REVISAR, publicado=False) is Prioridade.CLASSE_B
+    janela = Janela(gasto_da_operacao=1000.0, revisoes_antes_de_hoje=6)   # pico: só as prioridades 0, 1 e 2
+    todos = [_p("x", Prioridade.CONTRA_EM_PUBLICADO), _p("c", Prioridade.CLASSE_C), _p("f", Prioridade.FALHA_RECORRENTE),
+             _p("b", Prioridade.CLASSE_B), _p("p", Prioridade.PEDIDO_DA_PESSOA)]
+    partilha = repartir(todos, janela, ParametrosDoOrcamento(k=100))
+    assert partilha.pico is True and partilha.aprovados == ("p", "x", "c")
+    # o orçamento da janela (α·G = 2,5 revisões) corta depois do pedido, na ordem estrita
+    curta = repartir(todos, Janela(gasto_da_operacao=25.0), ParametrosDoOrcamento(janela_dias=1))
+    assert curta.aprovados == ("p", "x")
+    # com a hora já gasta, nem o pedido passa: espera a volta seguinte
+    gasta = repartir(todos, Janela(gasto_da_operacao=1000.0, gasto_da_ultima_hora=999.0), ParametrosDoOrcamento(k=100))
+    assert gasta.aprovados == () and gasta.cortados["p"] is MotivoDoCorte.GASTO_DA_HORA
+
+
 def test_pico_de_entrada_deixa_so_as_prioridades_1_e_2() -> None:
     janela = Janela(gasto_da_operacao=1000.0, revisoes_antes_de_hoje=6)   # média de 1 por dia na janela
     todos = [_p("x", Prioridade.CONTRA_EM_PUBLICADO), _p("c", Prioridade.CLASSE_C),

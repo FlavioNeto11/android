@@ -648,8 +648,15 @@ com o MESMO registro e a mesma fonte de dossiês do curador); leitura e gravaç�
   ordem: inválido, já decidido, oculto, simulado, desatualizado e a classe (`conferir_aceite`, com a mais restritiva entre a
   classe gravada e a do dossiê de agora). O CAS da decisão vem antes da transição, na mesma transação.
 - **Pedido de revisão**: sinal `pediu_revisao` com o `dossie_hash`; o curador o lê como o gatilho `pedido_da_pessoa`
-  (`JANELA_DO_PEDIDO_DIAS` = 7; atendido = revisão do item depois do pedido), que só pula o cooldown. Só em `on`; o dossiê
-  já revisado responde com a revisão que existe.
+  (`JANELA_DO_PEDIDO_DIAS` = 7; atendido = revisão do item depois do pedido). Só em `on`; o dossiê já revisado responde com
+  a revisão que existe.
+  - O pedido pula o cooldown e, desde o 30.30, fura a fila: prioridade `PEDIDO_DA_PESSOA` (0), na frente de todos e
+    também no pico. Continua sob o teto da hora e o orçamento da janela: com a hora gasta, espera a volta seguinte.
+  - A classe A segue só com sobra, mesmo pedida (decisão do dono, 02/10).
+  - O motivo (03/10): 12 pedidos esperavam atrás de ~40 itens, a ~6 por volta, porque até então a prioridade era a dos
+    outros gatilhos do item.
+  - A revisão continua UMA por (item, hash do dossiê): o pedido sobre um dossiê já revisado não chama a IA. Uma
+    transição de estado (desligar, por exemplo) entra na trilha e muda o hash.
 - **Painel** (`features/aprendizado/ParecerDaIA.tsx`, `parecer.ts`):
   - a seção "Parecer do curador" no detalhe: sugestão, classe, conclusão, o que o curador citou (com link), aceitar ou
     recusar com motivo, pedir revisão e histórico;

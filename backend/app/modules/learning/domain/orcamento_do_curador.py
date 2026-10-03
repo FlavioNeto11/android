@@ -50,6 +50,8 @@ FORCA_DO_GATILHO: tuple[Gatilho, ...] = (
 
 
 class Prioridade(IntEnum):
+    #: 30.30 (orquestradora, 03/10): o pedido de uma PESSOA fura a fila na volta seguinte, dentro do teto da hora.
+    PEDIDO_DA_PESSOA = 0
     CONTRA_EM_PUBLICADO = 1
     CLASSE_C = 2
     FALHA_RECORRENTE = 3
@@ -58,7 +60,7 @@ class Prioridade(IntEnum):
 
 
 #: No pico de entrada, só estas passam (§8.7).
-PRIORIDADES_NO_PICO = frozenset({Prioridade.CONTRA_EM_PUBLICADO, Prioridade.CLASSE_C})
+PRIORIDADES_NO_PICO = frozenset({Prioridade.PEDIDO_DA_PESSOA, Prioridade.CONTRA_EM_PUBLICADO, Prioridade.CLASSE_C})
 FATOR_DO_PICO = 3.0
 #: Piso de amostra do pico: com volume pequeno, "3× a média" dispara com um item só (média de 1/6 por dia e uma
 #: entrada já é pico). Escolha do 30.11, a confirmar com o dono; o volume medido é ~10/dia (§8.6).
@@ -82,11 +84,18 @@ def mais_forte(gatilhos: Iterable[Gatilho]) -> Gatilho:
     return next(g for g in FORCA_DO_GATILHO if g in presentes)
 
 
-def prioridade(classe: ClasseDeRisco, gatilho: Gatilho, *, publicado: bool) -> Prioridade:
+def prioridade(classe: ClasseDeRisco, gatilho: Gatilho, *, publicado: bool, pedido: bool = False) -> Prioridade:
     """A classe A é sempre a última, mesmo publicada e contestada: a IA só opina sobre ela com sobra (decisão do dono,
-    02/10; `ia_permitida(A) = so_com_sobra`) e quem a rebaixa é a regra determinística de hoje."""
+    02/10; `ia_permitida(A) = so_com_sobra`) e quem a rebaixa é a regra determinística de hoje. Nem o pedido de pessoa
+    muda isso.
+
+    `pedido` (30.30): uma pessoa pediu a revisão deste item (`pediu_revisao`). Antes ele só pulava o cooldown e esperava
+    a prioridade dele; com ~40 itens e ~6 por volta, os 12 pedidos de 03/10 esperariam horas. Agora vai na frente de
+    todos, também no pico, e continua sob o teto da hora e o orçamento da janela (`repartir`)."""
     if ia_permitida(classe) == "so_com_sobra":
         return Prioridade.CLASSE_A
+    if pedido:
+        return Prioridade.PEDIDO_DA_PESSOA
     if publicado and gatilho in GATILHOS_CONTRA_PUBLICADO:
         return Prioridade.CONTRA_EM_PUBLICADO
     if classe is ClasseDeRisco.C:

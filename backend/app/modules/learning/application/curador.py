@@ -14,8 +14,9 @@ aceite (o da B também em lote). Em `shadow` o parecer pendente só aparece depo
 Filtros, em ordem (§8.6): modo ≠ off → (item, dossie_hash) ainda não revisado → fora do cooldown → orçamento da janela
 → prioridade. Gatilhos ligados: `nova_pendencia_do_dono`, `a_revisar`, `degradando`, `obsoleto_provavel`, `conflito`
 (publicado com contradição derivada ou contestação recente) e `pedido_da_pessoa` (30.17: o sinal `pediu_revisao` dos
-últimos `JANELA_DO_PEDIDO_DIAS`, ainda sem revisão depois dele; só ele pula o cooldown, e a prioridade continua a do
-gatilho mais forte entre os OUTROS do item). `versao_nova` e `grupo_de_falha_acima_do_minimo` existem no vocabulário e
+últimos `JANELA_DO_PEDIDO_DIAS`, ainda sem revisão depois dele; só ele pula o cooldown e, desde o 30.30, vai na frente
+de todos — prioridade `PEDIDO_DA_PESSOA`, também no pico, sob o teto da hora e o orçamento da janela; a classe A segue
+só com sobra). O gatilho GRAVADO continua o mais forte entre os OUTROS do item. `versao_nova` e `grupo_de_falha_acima_do_minimo` existem no vocabulário e
 ainda não têm fonte.
 """
 from __future__ import annotations
@@ -81,6 +82,8 @@ class _Elegivel:
     #: O gatilho que decide a prioridade: o pedido de pessoa fica registrado (`gatilho`), mas não rebaixa o item
     #: publicado em conflito da prioridade 1.
     gatilho_da_prioridade: Gatilho | None = None
+    #: 30.30: uma pessoa pediu a revisão; o item fura a fila (`prioridade(pedido=True)`).
+    pedido: bool = False
 
 
 #: Chaves do conteúdo que são identificador, hash, data ou rótulo fechado: fora da triagem de texto. `variante`: o
@@ -153,7 +156,8 @@ class CuradorPorIA:
         janela = self._janela(agora, aj.janela_dias, precos)
         pretendentes = [Pretendente(chave=x.entrada.trail_ref, custo_estimado=x.custo, desempate=x.entrada.trail_ref,
                                     prioridade=prioridade(x.dossie.classe, x.gatilho_da_prioridade or x.gatilho,
-                                                          publicado=x.entrada.state is SkillState.PUBLISHED))
+                                                          publicado=x.entrada.state is SkillState.PUBLISHED,
+                                                          pedido=x.pedido))
                         for x in elegiveis]
         partilha = repartir(pretendentes, janela, p)
         if partilha.pico:
@@ -265,7 +269,7 @@ class CuradorPorIA:
                 continue
             outros = gatilhos - {Gatilho.PEDIDO_DA_PESSOA}
             x = _Elegivel(e, mais_forte(gatilhos), dossie, estimar_custo(dossie.tamanho_em_bytes(), precos),
-                          gatilho_da_prioridade=mais_forte(outros) if outros else None)
+                          gatilho_da_prioridade=mais_forte(outros) if outros else None, pedido=pedido)
             if self._recusa_o_conteudo(dossie):
                 # §8.2: o dossiê passa pela triagem antes de sair; recusa = não revisa e registra (sem o dossiê).
                 if self._gravar(x, RECUSADA_POR_TRIAGEM, None, agora, provedor="", modelo="", simulado=False,
