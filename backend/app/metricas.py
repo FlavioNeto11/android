@@ -18,10 +18,12 @@ Thread-safe: captura e codificação rodam em `asyncio.to_thread`.
 """
 from __future__ import annotations
 
+import math
 import random
 import threading
 import time
 from dataclasses import dataclass, field
+from fractions import Fraction
 from datetime import datetime, timezone
 from typing import Any
 
@@ -67,10 +69,16 @@ class _Distribuicao:
 
 
 def percentil(ordenada: list[float], p: float) -> float | None:
-    """Percentil por posição mais próxima numa lista JÁ ordenada; `None` sem amostra (desconhecido ≠ zero)."""
+    """Percentil pelo posto mais próximo, `ceil(p·n/100)`, numa lista JÁ ordenada; `None` sem amostra (desconhecido ≠
+    zero). Sem interpolação: o valor é uma amostra que aconteceu.
+
+    K-085: o posto antes era `round(p/100·n + 0,5)`, e o `round` do Python leva o ,5 ao par (arredondamento de banqueiro).
+    Quando `p·n/100` dava inteiro ímpar, o posto subia um: 13 de 160 casos com n ≤ 40 (n=2 no p50 dava o maior dos dois).
+    O teto vem em aritmética exata (`Fraction`), porque `0.95 * n` em ponto flutuante pode cair logo abaixo do inteiro.
+    É o mesmo posto da sombra da decisão fechada (`sombra._p95`) e dos scripts do Jev."""
     if not ordenada:
         return None
-    k = max(0, min(len(ordenada) - 1, round(p / 100 * len(ordenada) + 0.5) - 1))
+    k = max(0, min(len(ordenada) - 1, math.ceil(Fraction(str(p)) * len(ordenada) / 100) - 1))
     return round(ordenada[k], 3)
 
 

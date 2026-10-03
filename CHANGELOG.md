@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — K-085: o percentil de `app/metricas.py` pelo posto mais próximo, sem o arredondamento de banqueiro (branch fix/k085-percentil, para a suíte 12)
+
+- `metricas.percentil` calculava o posto como `round(p/100·n + 0,5)`. O `round` do Python leva o ,5 ao par, então,
+  quando `p·n/100` dava inteiro ímpar, o posto subia um. Isso acontecia em 13 de 160 casos com n ≤ 40 e p em
+  {50, 90, 95, 99}; com n=2, por exemplo, o p50 dava o maior dos dois valores.
+- Agora o posto é `ceil(p·n/100)`, em aritmética exata (`Fraction`). Afeta o p50 e o p95 de `GET /api/desempenho`: as
+  distribuições do processo (C5) e o histórico do `desempenho.py`.
+- `sombra._p95`, que grava `decisao_fechada_diario.ms_p95`, passa a delegar a ele: um percentil só no processo, o mesmo
+  dos scripts do Jev (31.19).
+- Prova `simulated`: `tests/test_metricas.py` com os 13 casos e a igualdade com a sombra para n de 1 a 200; os 38
+  arquivos de teste que tocam percentil passaram (725 testes).
+- Fora deste item: `modules/learning/application/metricas.py::_percentil` (os `tempos` do Aprendizado) é uma cópia com
+  o mesmo defeito.
 ## 2026-10-03 — Painel: os 4 polimentos de UX que vinham dos deploys 9 a 11 (branch feat/polimentos-ux-deploy11)
 
 Só frontend; nada de backend.
