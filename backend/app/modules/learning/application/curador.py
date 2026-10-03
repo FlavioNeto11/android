@@ -302,10 +302,10 @@ class CuradorPorIA:
     def _cortar_os_caros(self, elegiveis: list[_Elegivel], aj: AjustesDoCurador,
                          precos: dict[str, list[float]]) -> None:
         """Acima de `c_max`, o dossiê é refeito com menos evidências (§8.7). O que ainda passar é recusado por
-        `repartir` (`recusada:custo`). A mediana é a das estimativas desta volta, até existir custo medido (30.12)."""
+        `repartir` (`recusada:custo`). A mediana é a das estimativas desta volta, sempre (30.30: estimativa com estimativa)."""
         if len(elegiveis) < 2:
             return
-        teto = custo_maximo((), [x.custo for x in elegiveis], aj.m_cmax)
+        teto = custo_maximo([x.custo for x in elegiveis], aj.m_cmax)
         for x in elegiveis:
             for n in EVIDENCIAS_NO_CORTE:
                 if x.custo <= teto:

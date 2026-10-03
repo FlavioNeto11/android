@@ -36,6 +36,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - O orçamento do curador passa de estimado pelo dossiê a medido (c̄, mediana e gasto da janela).
   - A pendência da rubrica (`design/hub-de-ia-fora-de-execucao.md`) caiu por decisão da orquestradora: nada soma essa
     coluna no `/api/usage` nem no teto do dia.
+- O `c_max` (recusa por custo) passa a comparar estimativa com estimativa: `m_cmax × mediana` das estimativas da volta.
+  O custo medido entra só no c̄.
+  - A estimativa usa o preço do modelo mais caro da tabela. Com o custo medido gravado e o curador num modelo barato (o
+    Haiku da D-1), o c_max cairia para ~0,012 e toda estimativa (~0,014 nas 21 revisões reais) viraria `recusada:custo`,
+    em silêncio.
+  - Com o deploy 8, o curador roda no Sonnet 5.5 (papel `plan`). O c_max medido seria ~0,023 e não recusaria hoje, mas
+    o risco ficava armado.
+  - O B do deploy 9 (alfa 0.10, k 1.5, c̄ medido ~0,009) volta a ~6 itens por volta.
+  - Prova `simulated`: `test_learning_curador.py::test_modelo_barato_nao_recusa_as_estimativas_em_silencio`, que FALHA
+    com a regra antiga (conferido).
 - Prova `simulated`:
   - `test_learning_curador.py::test_pedido_da_pessoa_vai_na_frente_menos_na_classe_a_e_sob_o_teto`;
   - `test_learning_pareceres.py::test_o_pedido_da_pessoa_fura_a_fila`: com o teto deixando UMA revisão na volta, ela é a

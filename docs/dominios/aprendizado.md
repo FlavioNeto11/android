@@ -619,7 +619,9 @@ sem adaptador (testes) usa o SIMULADO.
   3 falha recorrente, 4 classe B, 5 classe A (sempre por último, mesmo contestada: `so_com_sobra`). O corte é `orcamento_da_janela`
   (motivo próprio, não o `fatia_curador` do hub), `gasto_da_hora` (`B_W/W/2`, conferido sobre o já gasto), `pico_de_entrada`,
   `lote_interrompido` ou `erro_do_provedor`; o corte NÃO vira linha (não gasta a chave (item, dossiê)) e fica no resultado e no log.
-  Acima de `c_max = m_cmax × mediana`, o dossiê é refeito com 10 e depois 0 evidências; se ainda passar, `recusada:custo`. O item já
+  Acima de `c_max = m_cmax × mediana` das ESTIMATIVAS da volta (30.30: estimativa com estimativa; o custo medido entra só no
+  c̄, porque a estimativa usa o preço do modelo mais caro e, com o curador num modelo barato, a mediana medida recusaria
+  tudo), o dossiê é refeito com 10 e depois 0 evidências; se ainda passar, `recusada:custo`. O item já
   revisado com um dossiê cortado não volta à IA com o inteiro enquanto o estado for o mesmo (confere as variantes antes do pedido).
 - **Custo**: a 069 declara `usd REAL NOT NULL DEFAULT 0`; o curador grava `usd = 0` = NÃO MEDIDO (só `usd > 0` conta como medida).
   Desde o 30.12 a `RespostaDeRevisao` traz `usd` e `ai_call_id` medidos pelo hub; a 075 grava o `ai_call_id` (a revisão fica ligada à

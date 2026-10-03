@@ -176,10 +176,16 @@ def custo_medio(custos_medidos: Sequence[float], estimativas: Sequence[float]) -
     return fmean(estimativas) if estimativas else 0.0
 
 
-def custo_maximo(custos_medidos: Sequence[float], estimativas: Sequence[float], m: float) -> float:
-    """`c_max = m × mediana(c_rev)` da janela; antes da primeira medida, a mediana das estimativas desta volta."""
-    base = custos_medidos or estimativas
-    return m * median(base) if base else 0.0
+def custo_maximo(estimativas: Sequence[float], m: float) -> float:
+    """`c_max = m × mediana` das ESTIMATIVAS desta volta: o item caro de verdade é o que destoa dos outros.
+
+    Estimativa e medida não estão na mesma moeda. A estimativa usa o preço do modelo MAIS CARO da tabela
+    (`preco_mais_caro`, porque o curador não sabe que modelo o hub vai usar); a medida usa o do modelo que respondeu.
+    Até o 30.30 o c_max vinha da mediana MEDIDA assim que ela existisse. Com o curador num modelo barato (o Haiku da
+    D-1), a medida dá ~US$ 0,003 por revisão, o c_max fica em ~0,012 e TODA estimativa (~0,014 nas 21 revisões reais de
+    03/10) passaria a `recusada:custo`, em silêncio, até o dossiê mudar. O medido entra só no c̄ (`custo_medio`), que é
+    gasto e não comparação."""
+    return m * median(estimativas) if estimativas else 0.0
 
 
 def orcamento_da_janela(gasto_da_operacao: float, n: int, c_barra: float, p: ParametrosDoOrcamento) -> float:
@@ -201,7 +207,7 @@ def repartir(pretendentes: Sequence[Pretendente], janela: Janela, p: ParametrosD
     # N_W: o que já chegou à curadoria na janela (as revisões gravadas) mais os elegíveis desta volta.
     n_w = janela.revisoes_antes_de_hoje + janela.revisoes_de_hoje + len(pretendentes)
     b = orcamento_da_janela(janela.gasto_da_operacao, n_w, c_barra, p)
-    c_max = custo_maximo(janela.custos_medidos, estimativas, p.m_cmax)
+    c_max = custo_maximo(estimativas, p.m_cmax)
     teto_hora = b / max(1, p.janela_dias) / 2
     pico = e_pico(janela.revisoes_de_hoje + len(pretendentes), janela, p)
     gasto, hora = janela.gasto_da_curadoria, janela.gasto_da_ultima_hora

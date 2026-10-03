@@ -449,6 +449,22 @@ def test_revisao_cara_demais_e_recusada_por_custo() -> None:
     assert partilha.recusados_por_custo == ("c",) and partilha.custo_maximo == 4.0
 
 
+def test_modelo_barato_nao_recusa_as_estimativas_em_silencio() -> None:
+    """30.30: com o curador num modelo barato (o Haiku da D-1), o custo MEDIDO por revisão (~0,003) fica bem abaixo da
+    estimativa, que usa o preço do modelo mais caro (~0,014 nas 21 revisões reais de 03/10). Comparar uma com a outra
+    dava c_max ≈ 0,012 e recusava tudo por custo; agora o c_max é das estimativas, e o medido só entra no c̄."""
+    medidos = (0.003, 0.0029, 0.0031, 0.003, 0.0032)
+    tipicos = [_p(f"r{i}", Prioridade.CLASSE_B, 0.014 + i / 10_000) for i in range(5)]
+    janela = Janela(gasto_da_operacao=1e6, custos_medidos=medidos)
+    partilha = repartir(tipicos, janela, ParametrosDoOrcamento(janela_dias=1, k=100))
+    assert partilha.recusados_por_custo == () and len(partilha.aprovados) == 5
+    assert partilha.custo_maximo == pytest.approx(4 * 0.0142)
+    assert partilha.custo_medio == pytest.approx(sum(medidos) / len(medidos))     # o medido segue no c̄
+    # o que destoa das outras estimativas continua recusado
+    caro = repartir([*tipicos, _p("caro", Prioridade.CLASSE_B, 0.5)], janela, ParametrosDoOrcamento(janela_dias=1, k=100))
+    assert caro.recusados_por_custo == ("caro",)
+
+
 def test_classe_a_nunca_passa_a_frente_nem_contestada() -> None:
     assert prioridade(ClasseDeRisco.A, Gatilho.CONFLITO, publicado=True) is Prioridade.CLASSE_A
     assert prioridade(ClasseDeRisco.B, Gatilho.DEGRADANDO, publicado=True) is Prioridade.CONTRA_EM_PUBLICADO
