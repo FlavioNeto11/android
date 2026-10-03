@@ -75,7 +75,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-065](#adr-065--ação-de-catálogo-entrega-valor-lido-a-outra-etapa-saidas-declaradas-no-catalogoyaml) | Ação de catálogo entrega valor lido a outra etapa: `saidas` declaradas no `catalogo.yaml` | vigente (12.3) | 02/10 |
 | [ADR-066](#adr-066--laço-de-pedidos-desligado-por-padrão-origem-interna-na-criação-da-execução-e-edição-por-gatilho-novo) | Laço de pedidos: desligado por padrão, origem interna na criação da execução e edição por gatilho novo | aceito (Fase 28, 28.4) | 02/10 |
 | [ADR-068](#adr-068--conta-bloqueada-sai-na-hora-e-a-persona-fica-lápide-só-com-o-hash-do-arroba) | Conta bloqueada sai na hora e a persona fica; lápide só com o hash do @ (item 29.23) |
-| [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro; item 11: regras do filtro do 31.9; item 12: C7 sem palavra-chave e e-mail em peças, rodada E; item 13: barrar pela intenção de entrar, rodada F) | 03/10 |
+| [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro; item 11: regras do filtro do 31.9; item 12: C7 sem palavra-chave e e-mail em peças, rodada E; item 13: barrar pela intenção de entrar, rodada F; item 14: o usuário como @handle ou e-mail, o catálogo só no destino e a preposição só com faixa, rodada G) | 03/10 |
 
 ---
 
@@ -4160,6 +4160,39 @@ catálogo, comando), que o ADR-063 não cobre.
         mascarada, 0 passagens indevidas e 5 recusas indevidas (2 delas são rótulo do corpus a atualizar);
       - 1 recusa nos 122 comandos reais, a mesma de antes.
       Detalhes em [ia.md](ia.md), no bloco "Rodada F" da intenção.
+14. **Emenda de 03/10/2026 (decisões da orquestradora na rodada G do 31.9, dentro do piso do item 10; registrada
+    ~09:05Z).** A fase 2 da rodada F deu NO-GO em 7c8f58c8: 30 achados contam (bug e lacuna em português) e 7 são residual
+    de outro idioma. As causas são de forma; a estratégia da F fica.
+    - **G-1**: o par com @handle ou e-mail no lugar do usuário recusa (`c7_par_credencial`). O "@" solto deixou de ser
+      destino. Com dígito no valor, o par recusa, nunca `[termo]`.
+    - **G-2**:
+      - soletração com vírgula, barra e pelo nome das letras;
+      - verbo de entrar com hífen;
+      - "entre" preposição só diante de faixa (número, hora, data, mês ou dia da semana dos dois lados) ou de "os"/"as";
+      - os eufemismos "la de siempre", "a palavrinha é", "a de todo dia é", "acesso: X" e "para acesso use X";
+      - "usuário X, Y." sem verbo, depois de usuário, user ou login.
+    - **G-3**: e-mail em peças com hífen, parêntese e "lá"; "at" e "dot" entre hífens ou sublinhados, só com provedor ou
+      domínio de topo depois; provedores novos.
+    - **G-4**: o nome do catálogo real vale INTEIRO e só na posição de destino (depois da palavra de conta ou do "@", ou
+      pela sintaxe que o extrator tira), nunca na de valor. A persona "Girassol" não isenta a senha "girassol".
+      - Desvio declarado: "entre com o Lucas e curta" volta a pular a sombra (cai o "entre com lucas passa" da F-B).
+      - Custo medido: 0 dos 122 comandos reais de 7 dias.
+    - **G-5**: o "é" verbo não vira a conjunção "e"; "é entre 8 e 12", "entre 08:00 e 12:00" e "é entre os melhores"
+      passam.
+    - **G-6 (decisão)**: a palavra-chave da C7 sem valor continua recusando (lado seguro; custo de utilidade aceito).
+      - Revê-se se as recusas nos comandos reais passarem de 5 %.
+      - Hoje: 1 em 122, com valor aparente; por palavra sem valor, 0.
+    - Feito também o residual de outro idioma (síntese da F, item 11): sueco, catalão, "the usual is" e algarismos ditados
+      em alemão, italiano e francês.
+    - Custos declarados:
+      - "entre com @<handle fora do catálogo> e curta" e "escolha entre a Marina e a Ana" pulam a sombra;
+      - o dois-pontos entre nome e provedor não conta, porque é o do rótulo ("site: outlook" num comando real).
+    - Prova `simulated`:
+      - `backend/tests/test_decisao_fechada_reverificacao_g.py`;
+      - harness da orquestradora com o corpus de 492 casos e a persona "Girassol" no stub: ok 488, 4 recusas indevidas
+        antigas, 0 vazamentos de portão, 0 C7 mascarada e 0 passagens indevidas;
+      - 1 recusa nos 122 comandos reais, a mesma.
+      Detalhes em [ia.md](ia.md), no bloco "Rodada G" da intenção.
 
 **Consequências.** A plataforma ganha um motor barato (US$ 0,042/M de entrada, saída grátis) para decisões fechadas que hoje não
 acontecem ou vão ao Opus, medido em sombra contra o caminho atual antes de qualquer `on`. O ADR-063 continua valendo para código.

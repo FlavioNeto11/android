@@ -131,8 +131,8 @@ def test_o_consumidor_confere_o_original_e_nao_o_envia(tmp_path: Path, porta_abe
 @pytest.mark.parametrize("comando", [
     # verbo de entrar com objeto de navegação, ou "com" que é a pessoa, o modo ou o provedor de entrada
     "entre no perfil da Marina e curta", "acesse o perfil da Ana e curta a última foto",
-    "entre na conversa com qa-001 e mande oi", "entre no chat com a Marina", "entre com o lucas e curta",
-    "entre com o Google e abra o feed", "entre no perfil com calma e curta", "entre com lucas e curta",
+    "entre na conversa com qa-001 e mande oi", "entre no chat com a Marina", "entre com a conta do lucas e curta",
+    "entre com o Google e abra o feed", "entre no perfil com calma e curta", "entre pela Lucas e curta",
     "faça login no app e abra o feed", "log in to the app and like the post", "inicie sessão no app",
     "acesse a conta e curta", "entre na conta do lucas e curta a foto da marina", "use o lucas pra curtir a foto da marina",
     "pesquise por girassol e entre no primeiro perfil", "curta as fotos postadas entre 10/05 e 12/05",
@@ -148,11 +148,14 @@ def test_controles_passam(comando: str) -> None:
 
 
 def test_o_nome_do_catalogo_desfaz_o_com() -> None:
-    """Rodada F (F-B): o filtro recebe os nomes do catálogo real. "entre com lucas" é destino; "entre com girassol", que tem a
-    mesma forma, é valor. Sem o catálogo, os dois recusam (o desvio declarado da rodada E)."""
-    assert _motivo("entre com lucas e curta") is None
+    """Rodada F (F-B): o filtro recebe os nomes do catálogo real. Desde a rodada G (G-4), o nome solto depois do conector é
+    a posição de VALOR e não é isento: "entre com lucas" tem a forma de "entre com girassol", e uma persona "Girassol"
+    isentaria a senha. O destino continua isento na sintaxe de destino ("com a conta Lucas", "pela Lucas", "a conta do
+    lucas"). Custo medido: nos 122 comandos reais de 7 dias (03/10), a isenção pelo catálogo não mudou nenhuma decisão."""
+    assert _motivo("entre com lucas e curta") == "c7_login_valor"
     assert _motivo("entre com girassol e curta") == "c7_login_valor"
-    assert motivo_c7("entre com lucas e curta") == "c7_login_valor"
+    assert _motivo("entre com a conta Lucas e curta") is None
+    assert _motivo("entre pela Lucas e curta") is None
 
 
 @pytest.mark.parametrize("comando", ["abre o insta, entra e curte", "entre e comente com parabéns"])

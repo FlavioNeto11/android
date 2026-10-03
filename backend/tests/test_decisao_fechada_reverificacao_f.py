@@ -109,7 +109,8 @@ def test_o_par_com_destino_real_recusa(comando: str) -> None:
     "entre na conversa com qa-001 e envie oi", "entre com o Google e abra o feed",
     # "entre" preposição
     "curta as fotos postadas entre 10/05 e 12/05", "fotos postadas entre 10-05 e 12-05", "a diferença entre os dois posts",
-    "escolha entre a Marina e a Ana", "fotos entre março e abril",
+    "fotos entre março e abril",
+    # "escolha entre a Marina e a Ana" deixou de ser controle na rodada G (G-2): sem faixa nem "os"/"as", "entre" é verbo
     # provedor de e-mail que também é app, palavra comum e o campo de usuário sem valor
     "a foto da terra vista do espaço", "abra o outlook do lucas", "manda pro Outlook da Ana",
     "Abra o QA Messenger e confirme qual conta está conectada",
@@ -167,10 +168,9 @@ def test_o_com_seguido_de_valor_recusa(comando: str) -> None:
 
 
 def test_os_nomes_de_destino() -> None:
-    """Cada palavra dos nomes, sem o "@" e sem palavra de ligação."""
-    nomes = nomes_de_destino(["@lucas.almeida9484", "Lucas Almeida", "android-01", "Ana da Silva"])
-    assert {"lucas.almeida9484", "lucas", "almeida", "android-01", "ana", "silva"} <= nomes
-    assert "da" not in nomes
+    """Cada nome INTEIRO, sem o "@" (rodada G, G-4: a palavra solta de um nome de várias não é destino)."""
+    nomes = nomes_de_destino(["@lucas.almeida9484", "Lucas Almeida", "android-01", "Ana da Silva", "de"])
+    assert nomes == {"lucas.almeida9484", "lucas almeida", "android-01", "ana da silva"}
 
 
 # ------------------------------------------------------------------ F-C a F-H

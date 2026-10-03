@@ -845,6 +845,71 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
     - A coluna `motivo_privacidade` (migração 079) é texto sem CHECK: `c7_intencao_de_entrar` entra sem DDL.
     - **Plano B descartado por ora** (decisão da orquestradora, 03/10): enviar só um esqueleto de vocabulário fechado.
       Medido a olho em 20 dos 39 comandos reais distintos: 12 inteiros e 2 colisões danosas. Não é candidato hoje.
+  - **Rodada G (03/10; a fase 2 da rodada F deu NO-GO em 7c8f58c8 com 30 achados que contam;
+    `.claude/handoffs/reverificacao-31-9f.md`, § Decisões da orquestradora).** Os achados eram de forma, com causa
+    concreta; a estratégia da F (barrar pela intenção de entrar) fica.
+    - **G-1, o usuário como @handle ou e-mail**: "entre com @zilda.prado e girassol" e "entre com lucas@outlook.com e
+      girassol" recusam como par (`c7_par_credencial`).
+      - O "@" solto deixou de ser destino: só o "@" diante de handle do catálogo é.
+      - Depois do conector do verbo de entrar, "@handle", "local@domínio" ou o nome do catálogo é o usuário, e o "@" e o
+        domínio não quebram o par.
+      - Com dígito no valor ("acesse com @zilda.prado e Girassol2024"), o par recusa; antes saía `[termo]`.
+      - Custo: "entre com @<handle fora do catálogo> e curta" pula a sombra (F-A).
+    - **G-2**:
+      - a soletração com vírgula e barra ("g, i, r, a…", "g/i/r/a/…") e pelo nome das letras ("ge, i, erre, a, esse…",
+        com pontuação entre eles; só com espaço não conta);
+      - o verbo com hífen ("log-in with", "sign-in with");
+      - os eufemismos "la de siempre", "a palavrinha é", "a de todo dia é", "acesso: X" e "para acesso use X" (diante de
+        artigo é instrução: "para acesso use o menu" passa);
+      - "usuário X, Y." com vírgula vale sem verbo de entrar, mas só depois de usuário, user ou login: "na conta lucas,
+        comente" e "veja o perfil Marina, Zilda" passam.
+    - **"entre" preposição só com faixa (G-2 e G-5)**: depois de palavra de conteúdo, "entre" só é preposição diante de
+      faixa ou de "os"/"as" e pronome.
+      - Faixa é número, hora ("08:00"), data ("12/09") ou mês e dia da semana por extenso, dos dois lados de "e", "a",
+        "-" ou "/".
+      - O "é" verbo chega aos tokens como "eh" (`_tokens_de`): sem o acento, "é entre" lia "e entre", o imperativo.
+      - Passam "a entrega é entre 8 e 12", "entre 08:00 e 12:00", "entre 12/09 e 15/09", "é entre os melhores" e "fotos
+        entre março e abril".
+      - "No insta entre girassol e curta" recusa.
+      - Custo: "escolha entre a Marina e a Ana" pula a sombra (era controle da F).
+    - **G-3, e-mail em peças**:
+      - o nome antes do provedor com hífen ou parêntese ("zilda - hotmail", "zilda (hotmail)") e "lá" antes da
+        preposição ("zilda, lá no gmail"); o dois-pontos não, porque é o do rótulo ("site: outlook", 1 dos 122 comandos
+        reais);
+      - "at" entre hífens ou sublinhados ("zilda-at-correio-net", "zilda_at_gmail_dot_com") só com provedor ou domínio
+        de topo depois: "@cafe_at_home" e "look-at-me" passam;
+      - "-dot-" como ponto do domínio;
+      - os provedores fastmail, laposte, web.de, mail.ru e me.com (protonmail, zoho, gmx, yandex e aol já estavam).
+    - **G-4, o catálogo real**: os nomes chegam INTEIROS (`nomes_de_destino`: "lucas almeida", não "lucas" e "almeida"
+      soltos), e o nome solto só é destino depois da palavra de conta ou do "@" (`_Destinos`).
+      - Nunca na posição de valor: uma persona "Girassol" não isenta a senha "girassol", nem em "entre com girassol" nem
+        como segundo do par ("entre com a conta Lucas e girassol").
+      - O destino pela sintaxe continua isento: o que o extrator tira ("com a conta Lucas", "pela Lucas", "como @lucas").
+      - O nome de duas palavras é UMA menção e "André girassol" são duas: o par vê o segundo.
+      - Desvio declarado: "entre com o Lucas e curta" volta a pular a sombra, porque tem a forma de "entre com girassol". O
+        "Entre com lucas passa" da F cai. Custo medido: nos 122 comandos reais de 7 dias, a isenção pelo catálogo não
+        mudou nenhuma decisão.
+    - **G-6, decisão**: a palavra-chave da C7 sem valor ("lembre de trocar a senha depois") continua recusando. É o lado
+      seguro: a palavra segura o valor irreconhecível. Revê-se se as recusas nos comandos reais passarem de 5 %.
+      - Hoje há 1 recusa em 122 (0,8 %), e ela tem a forma "senha: **‹palavra›**", palavra com valor aparente
+        (INFERRED pela forma, sem ler o texto).
+      - Recusas por palavra sem valor: 0.
+    - **Residual de outro idioma** (síntese da F, item 11, recomendação não bloqueante; feito por ser barato, para o teste
+      das 37 entradas afirmar recusa em todas): "logga in" (sueco), "inicia sessió" (catalão), "the usual is", e os
+      algarismos ditados em alemão, italiano e francês no `_DITADO` (sem "sei" e "un", que são palavras do português e
+      artigo).
+    - **Portão local** (`simulated`): o harness da orquestradora (`ataque_b.py`, que espelha o original e os nomes)
+      com o corpus de 492 casos da rodada G e o catálogo stub com a persona "Girassol", no worktree.
+      - ok 488, recusa indevida 4 (as 4 antigas de utilidade: n=134, 135, 348 e 427);
+      - 0 vazamentos de portão, 0 C7 mascarada, 0 passagens indevidas; `erros` vazio; sondas da rodada C 27/27.
+      - Contra a linha de base da G em 7ea3aa18: 90 casos mudam, todos para ok ou só de motivo. Inclui os 37 da síntese,
+        os 29 antigos que vazavam pela persona "Girassol" e os 5 contrastes de "entre".
+      - Os 122 comandos reais de 7 dias (03/10, só leitura, catálogo real): 1 recusa, a mesma.
+    - Prova: `backend/tests/test_decisao_fechada_reverificacao_g.py`, com:
+      - as 37 entradas;
+      - os 12 pares com @handle ou e-mail, os 8 separadores de e-mail e os 6 contrastes de "entre";
+      - os casos da persona "Girassol" e os controles.
+      Os testes da E e da F que a G-4 e a G-5 mudam de propósito foram reescritos para a regra nova.
   - **C7 nunca sai, em prosa ou não**: comando que fala de senha, código, 2FA, PIN, OTP, token, captcha, verificação, chave,
     segredo ou desafio, em PT, EN ou ES (`menciona_c7`: `mentions_credential`, `looks_secret` e o assunto no texto
     normalizado, também com homóglifo, letra de largura cheia, uma letra por vez separada por ponto ou espaço, e letra de
