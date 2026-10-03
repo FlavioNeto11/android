@@ -2635,7 +2635,7 @@
    "url": "https://trello.com/c/o5Kxnu6A",
    "lista": "em_execucao",
    "lote": "lote_A8_atuais_pendentes",
-   "nome": "32.2 · Integração da Central com o Trello (em código: passo 2 de 6)"
+   "nome": "32.2 · Integração da Central com o Trello (em código: passo 4 de 6)"
   },
   "pendencia:chave-api-trello": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac142200275ff1e8499b35d",
@@ -2797,7 +2797,21 @@
    "url": "https://trello.com/c/4d2HMyDP",
    "lista": "decisoes",
    "lote": "lote_A9_programa",
-   "nome": "⚖️ A IA da Central se chama ANA: no bot, no Trello e no painel (03/10 21:14Z)"
+   "nome": "⚖️ A IA da Central é a ANA, a IA Gerente de Operações da Central (03/10 21:14Z e 21:16Z)"
+  },
+  "28.17": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac170e3d399a256f48a3cf3",
+   "url": "https://trello.com/c/vMpRwu4h",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "28.17 · Os canais se identificam como ANA (Telegram e Trello)"
+  },
+  "29.57": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac170e70c386021a6386f78",
+   "url": "https://trello.com/c/FLOtosDi",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "29.57 · Painel e falas da IA à pessoa como ANA"
   }
  },
  "falhas": [],
