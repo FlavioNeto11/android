@@ -103,6 +103,34 @@ def test_websocket_do_worker_recusa_host_publico_com_o_listener_dedicado(harness
     assert _ws_worker(harness, host="127.0.0.1:8000") == 0
 
 
+def _ws_worker_dedicado(h: Harness, *, host: str) -> int:
+    """Como `_ws_worker`, mas no app do listener DEDICADO (`create_worker_app`): 0 = aceito no portão do Host."""
+    from starlette.testclient import TestClient
+    from starlette.websockets import WebSocketDisconnect
+
+    from app.main import create_worker_app
+
+    try:
+        with TestClient(create_worker_app(h.state), client=PAR_DO_TUNEL).websocket_connect(
+                "/api/worker/ws", headers={"host": host}) as ws:
+            ws.close()
+            return 0
+    except WebSocketDisconnect as e:
+        return e.code
+
+
+def test_listener_dedicado_aceita_nome_declarado_e_loopback_e_recusa_o_resto(harness: Harness) -> None:
+    """O ramo `canal_dedicado` (`app.state.canal_dedicado` em `create_worker_app`): a recusa por porta só vale no app do
+    painel. No listener dedicado o nome declarado segue aceito como antes do PR, o loopback do agente do notebook
+    (`127.0.0.1:18000`, pelo túnel reverso) também, e a defesa de DNS rebinding continua (4403). Sem a marca, o
+    primeiro caso viraria 4403."""
+    _publicar(harness)
+    harness.cfg.file.server.worker_port = 8010
+    assert _ws_worker_dedicado(harness, host=PUBLICO) == 0
+    assert _ws_worker_dedicado(harness, host="127.0.0.1:18000") == 0
+    assert _ws_worker_dedicado(harness, host="atacante.example") == 4403
+
+
 def test_websocket_do_worker_com_worker_port_zero_mantem_o_modo_de_porta_de_rede(harness: Harness) -> None:
     _publicar(harness)
     harness.cfg.file.server.worker_port = 0
