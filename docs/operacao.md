@@ -45,7 +45,7 @@ o README fica desatualizado (corrigido em 24/09 para `>=22.12.0`).
 ## 3. Desenvolvimento
 
 ```powershell
-pwsh -File scripts\start.ps1                  # backend + Appium + painel em 127.0.0.1:8000
+pwsh -File scripts\start.ps1                  # backend + Appium + painel em 127.0.0.1:8000/central/
 pwsh -File scripts\start.ps1 -Dev              # + Vite com hot reload em 127.0.0.1:5173 (proxy para o backend)
 pwsh -File scripts\start.ps1 -Simulated        # MODO SIMULADO (sem IA; regras fixas para o app de QA)
 ```
@@ -278,6 +278,76 @@ isso). Pontos que já causaram incidente:
   - Antes, eles herdavam o ambiente inteiro do backend, e o qemu tinha `TYPESAFE_API_KEY` (K-078).
   - Um filho que precise de uma variável nova a recebe pelo nome em `AMBIENTE_PERMITIDO`. Proxy (`HTTP_PROXY`) fica de
     fora de propósito, porque a URL pode levar senha.
+
+### Portal público pelo túnel da Cloudflare (29.54, ADR-073; `not_run` até a prova de fora)
+
+O painel abre em `https://dev.nvit.com.br/central/` por um túnel de SAÍDA da Cloudflare nesta máquina: nenhuma porta é
+aberta, o roteador não é tocado e `server.host` continua `127.0.0.1`. O `cloudflared` entrega ao central, com par
+`127.0.0.1`, cada requisição do hostname; quem separa o público do local é o `Host` (ADR-073). **Nada abaixo foi
+executado** (`not_run`): é o procedimento do dono e da orquestradora, nesta ordem. A decisão e o que fica de fora
+(webhook do Trello, WAF) estão no ADR-073.
+
+**Regras que não se negociam na configuração do túnel**
+- **`httpHostHeader` nunca.** Ele reescreve o `Host` para um nome de loopback, e o tráfego da internet passaria como
+  local, sem credencial.
+- **O canal do worker não vai ao hostname.** A regra `path: ^/api/worker/` devolve 404 antes da regra geral, e o destino
+  nunca é a porta `server.worker_port`. A barra final é de propósito: sem ela a regra casaria também `/api/workers`, a
+  rota REST da tela de workers do painel, e a quebraria de fora.
+- **Sem `API_TOKEN` ninguém entra pelo endereço público** (o login é por token). Quem grava o token no `.env` é o dono;
+  o procedimento nunca o lê nem o imprime. `GET /api/health` mostra `exposicao_publica_incompleta` enquanto faltar
+  qualquer peça.
+
+**Procedimento** (o script do dono, ainda fora do Git, faz os passos 3 a 6 com as mesmas travas)
+1. `winget install --id Cloudflare.cloudflared -e` (terminal novo depois).
+2. `cloudflared tunnel login`: consentimento do dono no navegador, escolhendo `nvit.com.br`. Grava o `cert.pem` em
+   `%USERPROFILE%\.cloudflared`, que é segredo e não se lê nem se copia.
+3. `cloudflared tunnel create central-farm` (grava `<uuid>.json`, a credencial do túnel, também segredo).
+4. Pasta `C:\cloudflared-central`, fechada a SYSTEM e Administradores, com o `<uuid>.json` e o `config.yml`:
+   ```yaml
+   tunnel: <uuid>
+   credentials-file: C:\cloudflared-central\<uuid>.json
+   ingress:
+     - hostname: dev.nvit.com.br
+       path: ^/api/worker/
+       service: http_status:404
+     - hostname: dev.nvit.com.br
+       service: http://127.0.0.1:8000
+     - service: http_status:404
+   ```
+   Confira com `cloudflared tunnel --config C:\cloudflared-central\config.yml ingress validate` e, com
+   `ingress rule https://dev.nvit.com.br/api/worker/ws`, que cai na regra 404 e que `.../central/` cai na do central.
+5. `cloudflared tunnel route dns --overwrite-dns central-farm dev.nvit.com.br` (tira o hostname de um túnel antigo, se
+   houver).
+6. Serviço do Windows: `cloudflared --config C:\cloudflared-central\config.yml service install` e corrija o `ImagePath`
+   do serviço `Cloudflared` para `"<cloudflared.exe>" --config "C:\cloudflared-central\config.yml" tunnel run
+   central-farm` (o `service install` não guarda o `--config`; sem a correção o serviço sobe sem túnel); reinicie o
+   serviço.
+7. **Só depois**, no `config/config.yaml` da instalação (fora do Git; o exemplo é `config/config.example.yaml`) e no
+   `.env`:
+   - `server.public_hosts: [dev.nvit.com.br]`;
+   - `server.tls_behind_proxy: true`;
+   - `https://dev.nvit.com.br` em `server.allowed_origins` (sem ela o POST do login leva 403 `forbidden_origin`);
+   - `API_TOKEN` no `.env` (dono);
+   - opcional: `avisos.url_painel: https://dev.nvit.com.br/central` para o link do aviso do Telegram;
+   - reinicie a tarefa `farm-central`. Antes deste passo o central ainda não conhece o hostname e responde 403 a tudo,
+     que é o estado seguro para conferir o túnel.
+
+**Conferências de ida ao ar** (de FORA da LAN, por exemplo no 4G; marque o resultado como `real`, com data e máquina)
+| Pedido | Esperado |
+|---|---|
+| `https://dev.nvit.com.br/central/` | 200, tela de login |
+| `https://dev.nvit.com.br/` | 307 para `/central/` |
+| `https://dev.nvit.com.br/api/instances` | **401**, nunca 200 |
+| `https://dev.nvit.com.br/api/health` | 401 |
+| `https://dev.nvit.com.br/api/worker/ws` | 404 (regra do túnel) |
+| login com o `API_TOKEN` no painel | entra; sem o token, não |
+| `GET /api/health` por dentro | sem `exposicao_publica_incompleta` |
+
+Antes do passo 7 o esperado em `/api/instances` é 403. Se algum pedido sem credencial a `/api/*` der 200, **pare o
+serviço** (`Stop-Service Cloudflared`) e investigue.
+
+**Recuo.** Tire `dev.nvit.com.br` de `server.public_hosts` e reinicie `farm-central`: tudo volta a 403, painel incluído.
+Para tirar o hostname do ar, `Stop-Service Cloudflared` (e, se for o caso, `cloudflared service uninstall`).
 
 ## 12. Tabela de scripts por risco
 

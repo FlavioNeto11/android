@@ -86,7 +86,7 @@ apaga os dados só daquela instância (`-wipe-data`).
 ## 3. Iniciar e parar
 
 ```powershell
-pwsh -File scripts\start.ps1                 # backend + Appium + painel em http://127.0.0.1:8000
+pwsh -File scripts\start.ps1                 # backend + Appium + painel em http://127.0.0.1:8000/central/
 pwsh -File scripts\start.ps1 -StartInstances 2   # já pede o boot de 2 instâncias
 pwsh -File scripts\start.ps1 -Dev            # + Vite com hot reload em http://127.0.0.1:5173
 pwsh -File scripts\start.ps1 -Simulated      # MODO SIMULADO de desenvolvimento (sem IA; só conhece o app de QA)

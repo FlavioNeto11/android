@@ -4815,3 +4815,32 @@ Prova `simulated`:
 - `tests/test_learning_capability_na_linha.py`, com o registro real: REPLY_COMMENT só no Instagram;
 - `tests/test_leitura_visual_papel.py`;
 - `frontend/src/features/aprendizado/AprendizadoPage.test.tsx`.
+
+
+## Adendo v1.05 (03/10/2026; número da orquestradora; item 29.54, ADR-073) — o painel estático muda de `/` para `/central/`
+
+Nenhuma rota de API nova ou alterada, nenhum campo novo e nenhuma migração. Muda onde o painel estático é servido e a
+saúde ganha um problema.
+
+- **Painel estático em `/central/`.** Antes era servido na raiz. Agora:
+  - `GET /` e `GET /central` (e `HEAD`) respondem **307** com `Location: /central/` (relativo, de propósito: atrás do túnel
+    TLS o esquema que o processo enxerga é `http`);
+  - `GET /central/` serve o `index.html` e `/central/assets/*` os bundles, com os mesmos cabeçalhos de cache de antes
+    (`no-cache, must-revalidate` no `index.html`; `public, max-age=31536000, immutable` no que tem hash no nome);
+  - fora de `/api` e `/central` nenhum caminho serve arquivo (`/index.html`, `/assets/...` e `/favicon.svg` na raiz dão
+    404). Sem `frontend/dist`, `/` e `/central/` seguem 404.
+  - O frontend é construído com `base: '/central/'`; `API_BASE` continua `/api` e o WebSocket continua `/api/ws`.
+- **Portão inalterado.** Com o `Host` declarado em `server.public_hosts` e sem credencial, passam só o que não começa com
+  `/api/` (agora `/central/` e o redirecionamento da raiz) e `/api/login`, `/api/logout`, `/api/session`; o resto de
+  `/api` responde 401 e `Host` não declarado responde 403 `forbidden_host`. O POST do login de uma origem fora de
+  `server.allowed_origins` responde 403 `forbidden_origin`.
+- **`GET /api/health`: problema novo `exposicao_publica_incompleta`.** Aparece quando há nome em `server.public_hosts` e
+  falta qualquer uma de: `API_TOKEN`, `server.tls_behind_proxy` (ou TLS direto) e a origem `https://<host>` em
+  `server.allowed_origins`. O `message` lista só o que falta, pelo nome da chave de configuração; nunca valor de segredo.
+
+Prova `simulated`:
+- `tests/test_painel_estatico.py` (redirecionamentos, cache, nada estático na raiz);
+- `tests/test_portal_publico_central.py` (portão com o painel em `/central`, login e origem, problema da saúde);
+- `tests/test_autenticacao.py`, `tests/test_sessao_do_painel.py` e `tests/test_tls.py` (portão e sessão, sem mudança).
+
+Prova `real`: `not_run` (o túnel no ar é da orquestradora; ver `operacao.md`, "Portal público pelo túnel da Cloudflare").

@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Painel em `/central` para a exposição pública pelo túnel da Cloudflare (item 29.54, ADR-073; `simulated`)
+
+- Frontend: `base: '/central/'` no Vite (bundles e favicon sob `/central/`). Backend: `PainelEstatico` montado em `/central`; `GET /` e `GET /central` redirecionam (307, `Location` relativo) para `/central/`; nada estático fora de `/central`.
+- Portão (`main.guarda`, `security/access.py`) sem mudança de lógica, fixado por `tests/test_portal_publico_central.py` (Host declarado sem credencial, Host não declarado, loopback, login com `Origin` fora e dentro de `allowed_origins`).
+- Saúde: problema novo `exposicao_publica_incompleta` (falta `API_TOKEN`, `tls_behind_proxy` ou `https://<host>` em `allowed_origins` com `public_hosts` declarado).
+- Docs: ADR-073, adendo v1.05 do contrato da API, seção "Portal público pelo túnel da Cloudflare" em `operacao.md` (procedimento `not_run`; ingress `^/api/worker/` com a barra final), `config.example.yaml`.
+- `not_run`: túnel no ar e conferências de fora (da orquestradora com o dono); sem script do túnel, webhook ou mudança de cookie neste item.
+
 ## 2026-10-03 — Suíte 13 na main e deploy 13 no central (1c54a7bb; migração 083; config inalterada)
 
 - A suíte 13 foi integrada em `integ/suite-13` na ordem da orquestradora:

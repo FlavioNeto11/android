@@ -21,12 +21,18 @@ server:
   # credencial do worker, o cookie de sessão do painel e todo screenshot. Ver docs/worker.md.
   # public_hosts: [parque.exemplo.local]
   # tls_behind_proxy: true
+  # Portal público pelo túnel da Cloudflare (ADR-073, painel em https://<host>/central): `server.host` segue
+  # 127.0.0.1 e são TRÊS linhas aqui (mais API_TOKEN no .env; sem ele ninguém entra pelo endereço público):
+  #   public_hosts: [dev.nvit.com.br]       # o `Host` é o que separa o público do local
+  #   tls_behind_proxy: true                # a Cloudflare termina o TLS; o cookie de sessão ganha Secure
+  #   allowed_origins: + https://dev.nvit.com.br   (sem ela o POST do login leva 403 forbidden_origin)
   # Origens aceitas (CORS, conferência de CSRF e WebSocket): o que o navegador mostra na barra de endereços.
   allowed_origins:
     - http://127.0.0.1:8000
     - http://localhost:8000
     - http://127.0.0.1:5173
     - http://localhost:5173
+    # - https://dev.nvit.com.br
 
 paths:
   data_dir: data
@@ -479,7 +485,7 @@ context_retrieval:                # retrieval de contexto de código: léxico + 
 avisos:                           # aviso fora do painel (item 28.11): espelho da caixa de Pendências no Telegram, só saída
   enabled: false                  # (false) desligado = nada é enfileirado nem enviado. Ligar exige TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID no .env
   canal: telegram                 # o único canal; o token e o chat_id NUNCA moram aqui (nomes fixos no .env; docs/operacao.md)
-  # url_painel: http://192.168.1.10:8000   # base pública do painel p/ o link <base>/#/pendencias; sem ela a mensagem leva só o texto
+  # url_painel: http://192.168.1.10:8000/central   # base pública do painel (inclui /central) p/ o link <base>/#/pendencias; sem ela a mensagem leva só o texto
   # intervalo_s: 15               # de quanto em quanto tempo o laço olha a fila
   # lote: 5                       # avisos por volta
   # timeout_s: 10                 # por chamada ao Telegram

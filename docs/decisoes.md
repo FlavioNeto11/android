@@ -78,6 +78,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-068](#adr-068--conta-bloqueada-sai-na-hora-e-a-persona-fica-lápide-só-com-o-hash-do-arroba) | Conta bloqueada sai na hora e a persona fica; lápide só com o hash do @ (item 29.23) |
 | [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro; item 11: regras do filtro do 31.9; item 12: C7 sem palavra-chave e e-mail em peças, rodada E; item 13: barrar pela intenção de entrar, rodada F; item 14: o usuário como @handle ou e-mail, o catálogo só no destino e a preposição só com faixa, rodada G; item 15: envio aberto no código para a sombra C0–C1 do 31.10, 31.17; item 16: a camada estrutural da rodada H; item 17: NO-GO da fase 2 da H e a forma seguinte com o dono; item 18: forma A na versão A-estreita, 31.18; item 19: lacunas da rodada I e a A-média aprovada pelo dono, 31.20; item 20: o limiar da porta sobre a probabilidade devolvida e o rótulo 1 do curador só do dono, 31.19) | 03/10 |
 | [ADR-070](#adr-070--valor-visto-na-imagem-conta-como-saída-de-etapa-sob-conferência-cega-de-um-segundo-leitor) | Valor visto na imagem conta como saída de etapa, sob conferência cega de um segundo leitor; substitui em parte o ADR-065 §3 (item 12.5) | vigente (dono, 02/10; opção desligada) | 02/10 |
+| [ADR-073](#adr-073--portal-na-internet-por-túnel-de-saída-da-cloudflare-o-host-separa-o-público-do-local-o-painel-mora-em-central) | Portal na internet por túnel de saída da Cloudflare: o `Host` separa o público do local, o painel mora em `/central` (item 29.54) | aceito (dono, 03/10; túnel `not_run`) | 03/10 |
 
 ---
 
@@ -4912,3 +4913,66 @@ nova): gemini 31→32/32 e gpt-6-luna 29→30/32, com 0/96 de concordância fals
 roteamento comum do hub, não o Jev); migração 078; `backend/app/taskqueue/saidas.py::ler_valor_visual`,
 `backend/app/planning/` (papel `leitura`, `transcribe`), [dominios/execution.md](dominios/execution.md),
 [ia.md](ia.md).
+
+
+---
+
+## ADR-073 — Portal na internet por túnel de saída da Cloudflare: o `Host` separa o público do local, o painel mora em `/central`
+
+**Data:** 03/10/2026 · **Estado:** aceito (decisão do dono, chat de 03/10 ~19:20Z; item 29.54). Código e testes
+`simulated`; o túnel no ar é `not_run` até a orquestradora provar de fora (procedimento em
+[operacao.md](operacao.md), "Portal público pelo túnel da Cloudflare").
+
+**Contexto.** O dono quer o portal acessível em `https://dev.nvit.com.br/central` sem abrir porta nesta máquina. O
+`cloudflared` abre uma conexão de SAÍDA até a Cloudflare e entrega ao central cada requisição que chega ao hostname,
+**sempre com o par TCP `127.0.0.1`**. O portão (`main.guarda` + `security/access.py::avaliar`, ADR-025/ADR-040) já só
+isenta loopback quando par E nome são de loopback, e já recusa com 403 `forbidden_host` qualquer `Host` não declarado em
+`server.public_hosts`. O que faltava era o painel ter um endereço próprio sob um prefixo (a raiz servia arquivo) e a
+saúde dizer quando a exposição está pela metade.
+
+**Decisão.**
+
+1. **Túnel de SAÍDA nesta máquina, nenhuma porta aberta.** `server.host` continua `127.0.0.1`. O `cloudflared` encaminha o
+   hostname inteiro para `http://127.0.0.1:8000`.
+2. **O que separa o público do local é o `Host`, não o par** (o par é sempre `127.0.0.1` pelo túnel). Por isso:
+   - `httpHostHeader` é **PROIBIDO** na configuração do túnel: ele reescreveria o `Host` para um nome de loopback e o
+     tráfego da internet passaria como local, sem credencial;
+   - o portão não lê `X-Forwarded-*` nem `CF-*` para decidir acesso, e `proxy_headers` segue `False`.
+3. **O canal do worker nunca vai ao hostname público.** `/api/worker/*` e a porta `server.worker_port` ficam fora do túnel:
+   a regra de ingress `^/api/worker/` devolve 404 **antes** da regra geral. A barra final é de propósito: sem ela a regra
+   casaria também `/api/workers`, que é rota REST da tela de workers do painel, e a quebraria de fora. O destino do túnel
+   nunca é a porta do canal do worker.
+4. **Sem credencial, de fora, só abrem quatro coisas:** o estático em `/central/`, o redirecionamento de `/` (307 para
+   `/central/`) e de `/central` (307 para `/central/`), e as três rotas de sessão (`/api/login`, `/api/logout`,
+   `/api/session`). Todo o resto de `/api` responde 401. Nenhuma isenção nova: a lógica do portão não mudou.
+5. **Painel em `/central`.** O Vite constrói com `base: '/central/'`; o backend monta o `PainelEstatico` em `/central` e a
+   raiz só redireciona (Location relativo: o redirecionamento automático do Starlette montaria URL `http` absoluta atrás
+   do túnel TLS). Nenhum outro caminho fora de `/api` e `/central` serve arquivo. A API não ganha prefixo. O roteador do
+   painel é por hash (`/#/...`), então não há rota de servidor a reescrever; o link do aviso do Telegram passa a usar
+   `avisos.url_painel: https://dev.nvit.com.br/central`.
+6. **Login por `API_TOKEN`**, com a tranca de tentativas já existente (`PortaoDeLogin`). **Sem `API_TOKEN` ninguém entra
+   pelo endereço público.**
+7. **Configuração da instalação** (`config/config.yaml`, fora do Git): três linhas em `server`, mais o token no `.env`:
+   `public_hosts: [dev.nvit.com.br]`; `tls_behind_proxy: true` (a Cloudflare termina o TLS; o cookie de sessão ganha
+   `Secure`); e `https://dev.nvit.com.br` em `allowed_origins` (sem ela o POST do login leva 403 `forbidden_origin`).
+8. **Saúde.** `GET /api/health` ganha o problema `exposicao_publica_incompleta` quando há nome em `public_hosts` e falta
+   qualquer das três coisas (`API_TOKEN`, `tls_behind_proxy`, origem `https://<host>` em `allowed_origins`). O texto cita
+   só os nomes das chaves de configuração, nunca valor de segredo.
+9. **Recuo** em uma linha: tirar o hostname de `server.public_hosts` e reiniciar o central; tudo volta a 403, painel
+   incluído. Parar o serviço `Cloudflared` tira o hostname do ar de vez.
+
+**Fica de fora (de propósito).**
+- O **webhook do Trello**: será decisão do ADR-072, com rota e assinatura próprias; não ganha isenção aqui.
+- **Regras de WAF** da Cloudflare (limite de taxa, país, desafio): opcionais e do dono; o portão do central não depende
+  delas.
+- Script de instalação do túnel no repositório (entra depois da prova real), mudança de cookie e prefixo na API.
+
+**Consequências.** O endereço do painel local muda de `http://127.0.0.1:8000/` para `.../central/` (a raiz redireciona,
+então o favorito antigo segue funcionando). O dev do frontend abre em `http://127.0.0.1:5173/central/`. Atrás do túnel,
+o central acredita ser `http` (não lê `X-Forwarded-Proto`); por isso `tls_behind_proxy` é declaração, não detecção.
+
+**Relação.** ADR-025/ADR-040 (credencial e cofre, não alterados), ADR-009, ADR-056 (rede por aparelho, não alterado),
+[operacao.md](operacao.md) §11 e "Portal público pelo túnel da Cloudflare", [api-contract.md](api-contract.md) adendo
+v1.05; `backend/app/main.py` (`PREFIXO_DO_PAINEL`, `guarda`), `backend/app/security/access.py`,
+`backend/app/state.py::_problema_de_exposicao_publica`, `frontend/vite.config.ts`;
+`backend/tests/test_portal_publico_central.py`, `backend/tests/test_painel_estatico.py`.

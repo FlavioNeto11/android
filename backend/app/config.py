@@ -1108,7 +1108,8 @@ class AvisosCfg(BaseModel):
 
     enabled: bool = False
     canal: Literal["telegram"] = "telegram"
-    #: Base pública do painel para o link `<base>/#/pendencias`. Vazia: a mensagem leva só o texto.
+    #: Base pública do painel para o link `<base>/#/pendencias`. Vazia: a mensagem leva só o texto. O painel mora em
+    #: `/central/` (29.54), então a base inclui o prefixo: `https://dev.nvit.com.br/central`.
     url_painel: str | None = None
     intervalo_s: int = Field(15, ge=5, le=3600)             # de quanto em quanto tempo o laço olha a fila
     lote: int = Field(5, ge=1, le=50)                       # avisos por volta (o limite do Telegram é ~1 msg/s por chat)

@@ -6439,6 +6439,19 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T19:07:53+00:00"
+  },
+  "29.54": {
+   "id": "29.54",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "feat/29-54-portal-central: tests/test_painel_estatico.py (6) e tests/test_portal_publico_central.py (12) passed; afetados do portao, sessao, TLS, canal do worker, saude e arquitetura 99 passed e 32 arquivos de saude/health 592 passed 1 skipped; frontend typecheck, 1415 testes e build com /central/assets/ no dist/index.html. Tunel no ar e conferencias de fora: not_run (orquestradora).",
+   "blocker": "",
+   "grupo": "29.54",
+   "modelo": "sonnet",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T19:42:43+00:00"
   }
  },
  "rodadas": [
@@ -8011,6 +8024,15 @@
    ],
    "grupos": [
     "aprendizado-pr168"
+   ]
+  },
+  {
+   "quando": "2026-10-03T19:42:43+00:00",
+   "itens": [
+    "29.54"
+   ],
+   "grupos": [
+    "29.54"
    ]
   }
  ]

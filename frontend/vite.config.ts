@@ -2,10 +2,13 @@ import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 // Dev: http://127.0.0.1:5173 com proxy de /api (REST + WebSocket) para o backend FastAPI.
-// Produção: `vite build` gera frontend/dist, servido estaticamente pelo backend em "/".
+// Produção: `vite build` gera frontend/dist, servido estaticamente pelo backend em "/central/" (29.54: o painel
+// ganhou prefixo para poder ser exposto em https://<host>/central; `GET /` redireciona para lá).
 // `--mode simulado` aponta o proxy para um backend SIMULADO em 127.0.0.1:8765 (aceite visual sem tocar a produção,
 // que na máquina central é o 8000); `VITE_API_TARGET` no ambiente manda sobre os dois.
 export default defineConfig(({ mode }) => ({
+  // Vale para o build (URLs dos bundles e do favicon) e para o dev (o painel abre em http://127.0.0.1:5173/central/).
+  base: '/central/',
   plugins: [react()],
   server: {
     host: '127.0.0.1',
