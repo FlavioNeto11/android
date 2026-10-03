@@ -2,6 +2,7 @@
 normal medido era 16–28 chamadas e 3–5 min, sem nada dizer que estava fora)."""
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -97,16 +98,22 @@ def test_a_janela_nunca_passa_da_retencao_de_ai_calls(tmp_path: Path) -> None:
     A janela efetiva é `min(janela, retenção)`, e a etapa que COMEÇOU antes do corte fica de fora (pode ter perdido as
     primeiras chamadas). A projeção diz a janela efetiva e quantas amostras não custaram nada."""
     db = banco_migrado(tmp_path, "projecao.sqlite3")
+    # O `HistoricoDeAcoes` corta pelo relógio REAL (`_iso_dias_atras`): a semente anda com ele. Com o AGORA fixo do
+    # repositório, ela envelhecia um dia por dia e, em 03/10, a retenção de 3 dias já não pegava `r-recente-0`.
+    # Um minuto antes do corte: `r-recente-1`, a exatamente 3 dias, fica fora sem depender do milissegundo (o corte
+    # trunca o segundo).
+    agora = datetime.now(UTC) - timedelta(minutes=1)
     try:
         abrir = [("abrir", "OPEN_POST", "succeeded", [("succeeded", None)], 3)]
         for i in range(5):
-            semear_execucao(db, f"r-recente-{i}", dias_atras=2 + i, etapas=abrir)
+            semear_execucao(db, f"r-recente-{i}", dias_atras=2 + i, etapas=abrir, agora=agora)
         for i in range(6):                             # as chamadas destas já foram purgadas pela retenção
-            semear_execucao(db, f"r-velha-{i}", dias_atras=20 + i,
+            semear_execucao(db, f"r-velha-{i}", dias_atras=20 + i, agora=agora,
                             etapas=[("abrir", "OPEN_POST", "succeeded", [("succeeded", None)], 0)])
-        semear_execucao(db, "r-borda", dias_atras=13.9, etapas=abrir)
-        db.execute("UPDATE steps SET started_at=? WHERE run_id='r-borda'", (iso(14.5),))   # começou antes do corte
-        semear_execucao(db, "r-receita", dias_atras=1,          # receita reproduzindo: sem custo DE VERDADE
+        semear_execucao(db, "r-borda", dias_atras=13.9, etapas=abrir, agora=agora)
+        db.execute("UPDATE steps SET started_at=? WHERE run_id='r-borda'",   # começou antes do corte
+                   (iso(14.5, agora=agora),))
+        semear_execucao(db, "r-receita", dias_atras=1, agora=agora,   # receita reproduzindo: sem custo DE VERDADE
                         etapas=[("abrir", "OPEN_POST", "succeeded", [("succeeded", None)], 0)])
 
         sem_correcao = HistoricoDeAcoes(db, lambda: PRECOS, janela_dias=30).de("instagram", "OPEN_POST")

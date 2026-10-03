@@ -6099,6 +6099,25 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T11:02:10+00:00"
+  },
+  "29.48": {
+   "id": "29.48",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Central, passo 1 (real, 03/10/2026, WIN-7S2UASNLFOP): config.yaml com android.window: true e sem -qt-hide-window (backup config-antes-2948-20261003-120854.yaml, sha e090e655 -> 09cbaf5d), backend reiniciado 12:10:52Z, health ok, pausa do reparo renovada antes e depois. android-21 temporário hibernado com snapshot do headless: o wake carregou o snapshot no qemu-system-x86_64.exe (sessão 0, 'acordou em 60s'), nenhuma thread >= 50 % (máx 15,9 %), screencap e /hierarchy ok; boot a frio: 'pronto em 73s', um minuto depois total 9,4 % e máx 4,7 %. Passo 2 cancelado (o window basta; snapshots seguem valendo). config.example.yaml com window: true; parque.md e K-078. 01/03/06 pegam o binário no próximo boot natural.",
+   "blocker": "Notebook not_run: editar C:\\farm\\worker.yaml (window: true) e reiniciar o farm-agente depois de 1 h de central estável (>= 13:11Z), com a prova medida lá.",
+   "arquivos": [
+    "config/config.example.yaml",
+    "docs/dominios/parque.md",
+    "docs/conhecimento/aprendizados.md"
+   ],
+   "testes": "medição real; testes que leem o exemplo: 231 + 5 passed.",
+   "grupo": "29-48-android",
+   "modelo": "opus (sessão Android)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T12:23:55+00:00"
   }
  },
  "rodadas": [
@@ -7440,6 +7459,24 @@
    ],
    "grupos": [
     "deploy-9-android"
+   ]
+  },
+  {
+   "quando": "2026-10-03T12:23:31+00:00",
+   "itens": [
+    "29.48"
+   ],
+   "grupos": [
+    "29-48-android"
+   ]
+  },
+  {
+   "quando": "2026-10-03T12:23:55+00:00",
+   "itens": [
+    "29.48"
+   ],
+   "grupos": [
+    "29-48-android"
    ]
   }
  ]

@@ -2364,7 +2364,28 @@ O Outlook não ensinou nada.
 - `GET /api/aprendizado/revisoes`: as mesmas 46 linhas (29 B, 17 C), nenhuma com `usd > 0`; a mais recente é das
   10:07:14Z.
 
+**Outlook, segunda tentativa (12:29Z).** A orquestradora destravou a sessão do Outlook no `android-01` pela API do
+painel às 12:27Z (sessão `session_ready`, a conta confirmada na tela). Mesmo objetivo, mesmo aparelho, teto de US$ 0,20,
+nenhuma execução em curso antes:
+- execução `r-20261003122911-89b814`, cancelada pelo vigia no teto: US$ 0,2052 em 13 chamadas e ~1 min (1 plano,
+  11 decisões, 2 delas escaladas ao Opus por ciclo, e 1 leitura visual com `gemini-3.1-flash-lite`);
+- a sessão serviu: sem login e sem `waiting_user`, a IA chegou à caixa de entrada e localizou o e-mail mais recente;
+- o valor não foi aceito. A leitura visual do assunto (`read_value`) foi recusada como `truncado` (barreira 10 de
+  `taskqueue/saidas.py::conferir_transcricao`), e as duas seguintes, na mesma captura, como `repetida`. A tentativa 1
+  falhou ("O valor da etapa não foi lido na tela: repetida"), e a 2 recomeçou o mesmo caminho até o teto;
+- nada foi aberto, movido, respondido ou enviado.
+
+Leitura: o objetivo proíbe abrir o e-mail, e a transcrição do leitor não é gravada, então não dá para saber daqui se o
+corte é o do assunto na lista ou o de outra linha que a emenda do K-079 não pôs de lado. Duas pontas para quem cuida da
+leitura visual:
+- a recusa `truncado` ainda pega o assunto da caixa do Outlook depois da emenda do K-079;
+- depois de `repetida`, o ator repete o mesmo pedido em vez de mudar de caminho ou parar, e o custo sobe (com a escalada
+  ao Opus).
+
+Desfecho: não concluído; prova `real` da falha, com custo pelo `/api/usage?run_id=`.
+
 **Ressalvas.**
-- O Outlook depende do dono: a conta do `android-01` precisa de uma pessoa antes de o login automático voltar.
+- O Outlook dependia do dono: a conta do `android-01` precisou de uma pessoa antes de o login voltar (destravada às
+  12:27Z; a segunda tentativa está acima).
 - No QA Messenger, a pós-condição comprovou a lista de conversas por seletor, mas o nome do primeiro contato não está
   no texto da evidência. A leitura do valor não ficou registrada.

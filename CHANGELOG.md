@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 29.48 passo 1: o emulador do central com janela (o giro do `-headless` na sessão 0 some)
+
+- `config/config.yaml` do central (fora do Git; backup `config-antes-2948-20261003-120854.yaml`): `android.window:
+  true`, sem `-qt-hide-window`. Backend reiniciado às 12:10:52Z, health ok; pausa do reparo do 01/03/06 renovada antes e
+  depois do restart (K-082).
+- Prova `real`, aparelho temporário `android-21`:
+  - o snapshot salvo pelo headless carrega no binário com janela;
+  - no wake e no boot a frio, nenhuma thread do qemu passa de 50 % (antes, uma a ~99,5 %);
+  - funcional.
+- O passo 2 (`-qt-hide-window`) foi cancelado: não foi preciso, e os snapshots dos hibernados seguem valendo.
+- `config/config.example.yaml` passa a trazer `window: true`, com o porquê. Docs em `parque.md` (Emulador com janela
+  na sessão 0) e K-078.
+- Pendente: o notebook (`C:\farm\worker.yaml`), depois de 1 h de central estável.
 ## 2026-10-03 — I1: o cartão da TypeSafe diz que a decisão fechada a usa e mostra o consumo do Jev (branch feat/i1-cartao-typesafe)
 
 - Antes, o cartão da TypeSafe em Configuração › IA dizia "Nenhuma função usa esta conta · US$ 0,00", mesmo com a sombra do

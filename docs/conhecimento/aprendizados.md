@@ -2102,6 +2102,20 @@ Saída bruta em `data/diag-ra3b/`: `repouso-cores4-01-600s.json`, `dif-*.json` e
   - Correção: o 29.48 (decisão da orquestradora, 03/10). Depois do deploy 9 e do T_on do 31.10, em dois passos no
     central. O 1º restart leva só o `window: true`, que preserva os snapshots, e mede. Se o giro persistir, o 2º leva o
     `-qt-hide-window`. Com o central estável por 1 h ou mais, vem o notebook.
+- **29.48, passo 1: o `window: true` sozinho resolve** (`real`, 03/10, central WIN-7S2UASNLFOP).
+  - Montagem: backend reiniciado às 12:10:52Z com `android.window: true` e sem `-qt-hide-window` (backup
+    `config-antes-2948-20261003-120854.yaml`, sha e090e655 → 09cbaf5d).
+  - Aparelho temporário `android-21`, hibernado antes com snapshot salvo pelo HEADLESS. Saída em
+    `data/diag-ra3b/2948-p1-*-android-21.json`.
+  - Wake: o snapshot do headless CARREGOU no binário com janela (`qemu-system-x86_64.exe`, `-snapshot`, "acordou em
+    60s", sessão 0). Nenhuma thread passou de 50 % (a mais quente ficou em 15,9 %, com o total em 38–40 % logo depois do
+    wake); screencap 720×1280, não preto; `/hierarchy` com 23 elementos.
+  - Boot a frio: o mesmo binário, "pronto em 73s". Um minuto depois, o total ficou em 9,4 % e a mais quente em 4,7 %,
+    nenhuma ≥ 50 %; funcional.
+  - O UNKNOWN dos braços se resolve: o binário basta, e o `-qt-hide-window` não é preciso. O passo 2 foi cancelado, e
+    os snapshots dos hibernados seguem valendo.
+  - O 01, o 03 e o 06 pegam o binário no próximo boot natural.
+  - Pendente: o notebook, depois de 1 h de central estável.
 
 ### K-079 — A prévia cortada da caixa do Outlook derruba a conferência visual
 

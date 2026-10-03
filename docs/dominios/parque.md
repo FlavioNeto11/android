@@ -289,6 +289,23 @@ Cada degrau emite `instance.remediation` (evento, não efêmero) com `{degrau, v
 faz o relatório de uso e o painel não confundirem reparo automático com comando manual. O adiamento por máquina
 saturada não emite nada além do aviso no cartão.
 
+### Emulador com janela na sessão 0 (29.48, 03/10/2026)
+
+O backend do central (tarefa `farm-central`) e o agente do notebook (`farm-agente`, logon S4U) rodam na sessão 0, sem
+área de trabalho. O `-no-window` escolhe o binário `qemu-system-x86_64-headless`, e esse binário, lançado ali, mantém
+uma thread num laço de `WaitForSingleObject` a ~100 % de um núcleo por aparelho, do boot em diante (K-078). As flags do
+headless (netsim, câmeras, som) não mudam nada.
+
+- **`android.window: true`** tira o `-no-window`: o emulador sobe como `qemu-system-x86_64`, e o giro some. Na sessão 0
+  a janela não aparece para ninguém. Funciona igual: screencap, hierarquia e automação; e não usa mais RAM.
+- **Hibernação.** `window` não entra no `_hw_signature`. O snapshot salvo pelo headless carrega no binário com janela
+  (provado no android-21), então os hibernados não perdem o snapshot na troca. O `-qt-hide-window` (só esconde a
+  janela) entraria na assinatura, e não foi preciso.
+- **Estado (real, 03/10).**
+  - Central em `window: true` desde o restart das 12:10:52Z. Os aparelhos já ligados pegam o binário no próximo boot
+    natural, sem reboot forçado em conta real.
+  - Notebook (`C:\farm\worker.yaml`): pendente, depois de 1 h de central estável.
+
 ### Pausa do reparo automático por aparelho (02/10/2026, W8)
 
 Quase-acidente do estágio 1 do W8 (`docs/handoffs/w8-boot-recovery.md` §17.4): a escada de reparo pediu um `restart` do
