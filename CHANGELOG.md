@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 32.1: estudo da integração da Central com o Trello do dono (branch docs/32-1-estudo-trello)
+
+- `docs/design/trello-integracao.md` (até 2 páginas; sem código; nenhuma chamada ao Trello, `not_run`). Cobre:
+  - o acesso: REST com chave + token só no `.env`, o passo a passo do dono, os limites, e polling no lugar do
+    webhook, que exigiria URL pública;
+  - o espelho: um cartão por fato, sem ruído por evento;
+  - os comandos de volta: mover para Aprovado/Vetado e a gramática `/aprovar`, `/vetar`, `/responder`, `/para`,
+    `/estado`, proposta comum ao 28.15. A identidade é o membro do dono, com dedupe pela action id;
+  - os vínculos ao painel, ao plano, aos ADRs, aos K-*, ao conhecimento de app e ao Livro, e a rota proposta
+    `GET /api/conhecimento/resumo`;
+  - o que não fazer;
+  - o desenho do 32.2 em 10 linhas.
+- Ficam com o dono: o `expiration` do token, as 3 listas novas, o nível de conteúdo e se o link só na LAN basta.
+
 ## 2026-10-03 — Jev: leitura preliminar real da sombra de intenção (31.10 partial/real)
 
 - Central WIN-7S2UASNLFOP, deploy 12 (`d5a1c3a9`), às 17:19:44Z.
