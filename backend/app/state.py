@@ -512,6 +512,7 @@ class AppState:
         self.runs.sombra_intencao = SombraDaIntencao(
             ConsumidorDeIntencao(self.decisao_fechada, self.decisao_sombra), resolver=self.skill_planner.resolve_intent,
             catalogo=self.catalogo_da_cadeia)
+        self.runs.sombra_intencao.ligar_apps(self.decisao_fechada, self.decisao_sombra, self.apps.listar)  # R5 (31.13), travada
         # Rótulo de intenção (30.25): um minerador no digest da execução assentada, sem gancho novo e sem IA.
         ligar_intencao.ligar(self.learning, self.db, dados=self.runs.dados_da_intencao,
                              resolver=self.skill_planner.resolve_intent, catalogo=self.catalogo_da_cadeia)

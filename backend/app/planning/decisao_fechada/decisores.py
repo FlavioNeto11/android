@@ -17,7 +17,7 @@ import logging
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Final, Protocol
 
 from ...modules.context_retrieval.domain.errors import (
     ProviderError, ProviderInvalidResponse, ProviderKeyMissing, ProviderOverloaded, ProviderRateLimited,
@@ -142,16 +142,43 @@ def _resposta_choice(bruta: object) -> RespostaDeDecisao:
     return RespostaDeDecisao(escolha=escolha, probabilidades=limpas, confianca=confianca)
 
 
+def _resposta_noul(bruta: object) -> RespostaDeDecisao:
+    """A resposta `noul` do fio (`noul`: a probabilidade do "verdadeiro", em [0, 1]; documentação oficial lida no piloto em
+    01/10) em `RespostaDeDecisao`. A escolha é sempre `sim` com essa probabilidade como confiança: a porta só aceita acima
+    do limiar, e abaixo dele é sem resposta. O complemento nunca vira `nao` (B7 do roteiro: P(noul) != 1 - P(não-noul))."""
+    if not isinstance(bruta, Mapping) or bruta.get("type") != "noul":
+        return RespostaDeDecisao(fallback_reason="parse")
+    p = _probabilidade(bruta.get("noul"))
+    if p is None:
+        return RespostaDeDecisao(fallback_reason="parse")
+    return RespostaDeDecisao(escolha="sim", probabilidades={"sim": p}, confianca=p)
+
+
+#: Os tipos que vão ao fio: `choice` (31.14) e `noul` (31.13, R5). `score` segue sem consumidor e responde `desligado`.
+TIPOS_NO_FIO: Final = ("choice", "noul")
+
+
 def _pergunta_do_fio(p: Pergunta) -> dict[str, object]:
+    if p.tipo == "noul":                    # `criteria` opcional do `noul`: o que é "verdadeiro" e o que é "falso"
+        criterios = {k: v for k, v in p.opcoes.items() if k in ("true", "false") and v}
+        return {"type": "noul", "instructions": p.instrucoes, **({"criteria": criterios} if criterios else {})}
     return {"type": "choice", "instructions": p.instrucoes, "criteria": dict(p.opcoes)}
+
+
+def _resposta_do_fio(p: Pergunta, bruta: object) -> RespostaDeDecisao:
+    if p.tipo == "choice":
+        return _resposta_choice(bruta)
+    if p.tipo == "noul":
+        return _resposta_noul(bruta)
+    return RespostaDeDecisao(fallback_reason="desligado")
 
 
 class DecisorJev:
     """O decisor REAL (31.14): uma chamada ao Jev por pedido, pelo transporte do adaptador de retrieval.
 
     Ordem, e o que cada passo garante:
-    1. Só `choice` vai ao fio. `noul` e `score` ainda não têm consumidor: respondem `desligado` sem sair (o formato deles
-       entra junto do primeiro consumidor, com teste).
+    1. `choice` e `noul` vão ao fio (`TIPOS_NO_FIO`; o `noul` desde o 31.13, com o primeiro consumidor, a R5). `score`
+       ainda não tem consumidor: responde `desligado` sem sair.
     2. **Gasto conferido ANTES do POST** (`conferir_gasto`: teto do pedido, da execução e do dia, fatia do Jev e saldo da
        conta do Jev, a mesma rubrica do hub). Barrado, ou sem como conferir, é `orcamento` e nada sai: falha fechada.
     3. O POST usa o que resta do prazo depois da conferência; sem prazo é `rede`, sem POST.
@@ -175,7 +202,7 @@ class DecisorJev:
 
     def decidir(self, pedido: PedidoDeDecisao, timeout_s: float) -> ResultadoDeDecisao:
         t0 = time.perf_counter()
-        enviaveis = [p for p in pedido.perguntas if p.tipo == "choice"]
+        enviaveis = [p for p in pedido.perguntas if p.tipo in TIPOS_NO_FIO]
         if not enviaveis:
             return resultado_de_fallback(pedido, "desligado", postado=False)
         if not self._gasto_liberado(pedido):
@@ -202,8 +229,7 @@ class DecisorJev:
             raise FalhaDeDecisao(motivo, postado=True, ai_call_id=ai_call_id)
         respostas_cruas, uso = resposta
         ai_call_id = self._anotar(pedido, ok=True, uso=uso)
-        respostas = {p.id: _resposta_choice(respostas_cruas.get(p.id)) if p.tipo == "choice"
-                     else RespostaDeDecisao(fallback_reason="desligado") for p in pedido.perguntas}
+        respostas = {p.id: _resposta_do_fio(p, respostas_cruas.get(p.id)) for p in pedido.perguntas}
         return ResultadoDeDecisao(respostas, tokens=uso.input_tokens + uso.output_tokens, usd=uso.cost_usd,
                                   ms=uso.latency_ms, postado=True, ai_call_id=ai_call_id)
 

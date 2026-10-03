@@ -40,9 +40,11 @@ def pede_site(command: str) -> bool:
     return bool(PEDE_NAVEGADOR.search(pedido) or ABRIR_ENDERECO.search(pedido))
 
 
-def _nomes(app: AppContext) -> list[str]:
+def nomes_do_app(app: AppContext) -> list[str]:
     """Como uma pessoa escreve o app: o nome do cadastro e o rótulo do manifesto ("Microsoft Outlook" no cadastro,
-    "no Outlook" no comando). O rótulo de um app sem manifesto é o próprio pacote, e pacote não é nome falado."""
+    "no Outlook" no comando). O rótulo de um app sem manifesto é o próprio pacote, e pacote não é nome falado.
+
+    Público desde o 31.13: a sombra da R5 pergunta ao Jev pelos MESMOS nomes que esta leitura casa."""
     nomes = [app.name] if app.name else []
     rotulo = capabilities_of(app.package).label if app.package else ""
     if rotulo and rotulo != app.package:
@@ -55,7 +57,7 @@ def apps_citados(command: str, apps: Sequence[AppContext]) -> list[AppContext]:
     texto = sem_citacoes(command).casefold()
     posicoes: list[tuple[int, int, AppContext]] = []
     for ordem, app in enumerate(apps):
-        achados = [m.start() for nome in _nomes(app)
+        achados = [m.start() for nome in nomes_do_app(app)
                    if (m := re.search(rf"(?<!\w){re.escape(nome.casefold())}(?!\w)", texto))]
         if achados:
             posicoes.append((min(achados), ordem, app))

@@ -15,6 +15,10 @@ remontados fora do caminho e só para leitura, para o braço offline medir a mes
   nunca vai ao Jev (orquestradora, 03/10 19:33Z), porque a identidade de arquivos não prova a igualdade do estado (a
   leitura da execução, o extrator e os nomes de app do filtro também decidem o texto). Só o hash prova.
 - **Falha fechada.** Faltou qualquer peça, o caso fica de fora, contado pelo motivo (`LeituraDoLote.fora`).
+- **R5 (31.13, `r5=True`).** Para cada caso `c`, o pedido dos apps do comando pelo código do runtime
+  (`apps.pedido_dos_apps`, uma pergunta `noul` por app do cadastro) e o controle (a leitura de apps citados sobre o comando
+  ORIGINAL). O hash continua provado sobre o estado da INTENÇÃO; o da R5 só sai se o estado dele estiver contido nele
+  (sem o `app`), com o MESMO comando (opção A da orquestradora, 03/10): nada novo sai. O que não fecha fica em `fora_r5`.
 
 Nada aqui grava: o script abre o banco só para leitura, e `ConsumidorDeIntencao.observar` (que casa a decisão real na
 sombra) não é usado.
@@ -39,7 +43,9 @@ from ..modules.skills.infrastructure.document_validator import DslDocumentValida
 from ..modules.skills.infrastructure.legacy_flows import LegacyFlowAdapter
 from ..modules.skills.infrastructure.run_planning import SkillRunPlanner
 from ..modules.skills.infrastructure.sql_repository import SqlSkillRepository
+from ..planning.apps_do_comando import apps_citados, nomes_do_app
 from ..planning.decisao_fechada import privacidade
+from ..planning.decisao_fechada.apps import AppDeclarado, id_da_pergunta, pedido_dos_apps, perguntas_dos_apps
 from ..planning.decisao_fechada.contrato import PedidoDeDecisao
 from ..planning.decisao_fechada.intencao import (PERGUNTA_CATALOGO, PERGUNTA_DESEMPATE, ConsumidorDeIntencao,
                                                  EntradaDeCatalogo)
@@ -50,7 +56,7 @@ from .flows import FlowStore
 from .repository import Repository
 from .scheduler import Scheduler
 from .service import RunService
-from .sombra_intencao import cadeia_de, catalogo_de
+from .sombra_intencao import apps_de, cadeia_de, catalogo_de
 
 #: ADR-069 item 21 (o dono, 03/10 ~18:39Z): o lote só reenvia comando que a sombra da intenção já mandou depois desta hora.
 DESDE_ITEM_21: Final = "2026-10-03T15:29:51Z"
@@ -124,6 +130,7 @@ class LoteOffline:
     def __init__(self, db: Database, *, skills_ligadas: bool, fluxos_ligados: bool) -> None:
         self.db = db
         apps = AppRepository(db)
+        self.listar_apps = apps.listar
 
         def pacote_do_app_id(app_id: str) -> str | None:        # `AppState._pacote_do_app_id`
             row = apps.obter(app_id)
@@ -156,6 +163,18 @@ class SalvaguardaB:
 
 
 @dataclass(frozen=True)
+class PedidoDaR5:
+    """Os apps do comando (R5) de um caso `c`: o pedido do runtime (inglês), o mesmo em português (D-J7), o hash do estado
+    redigido, {pergunta: id do app} e o controle (os apps que a regex do caminho atual cita no comando original)."""
+
+    pedido: PedidoDeDecisao
+    pt: PedidoDeDecisao
+    estado_hash: str
+    apps: Mapping[str, str]
+    citados: frozenset[str]
+
+
+@dataclass(frozen=True)
 class CasoDaIntencao:
     run_id: str
     app: str                          # o estrato: o app principal da execução, como no relatório do 31.10
@@ -164,6 +183,7 @@ class CasoDaIntencao:
     pedido: PedidoDeDecisao           # remontado, com as instruções do runtime (inglês)
     estado_hash: str                  # o hash do estado redigido remontado
     salvaguarda: str                  # "c": bateu com o hash da linha (só este vai); "b": sem hash, passaria na "b"
+    r5: PedidoDaR5 | None = None      # só com `r5=True` e só no caso `c`
 
 
 @dataclass(frozen=True)
@@ -172,6 +192,7 @@ class LeituraDoLote:
     fora: Counter[str]
     ultima_remocao: str | None
     horizonte_dos_eventos: str | None
+    fora_r5: Counter[str] = field(default_factory=Counter)
 
 
 def ultima_remocao(db: Database, desde: str) -> str | None:
@@ -196,9 +217,9 @@ def _tem_foto(run: Mapping[str, object]) -> bool:
 
 
 def ler_lote(lote: LoteOffline, consumidor: ConsumidorDeIntencao, *, desde: str = DESDE_ITEM_21,
-             salvaguarda_b: SalvaguardaB = SalvaguardaB()) -> LeituraDoLote:
+             salvaguarda_b: SalvaguardaB = SalvaguardaB(), r5: bool = False) -> LeituraDoLote:
     """Os casos do lote, um por execução, e os de fora contados por motivo. O pedido é o do runtime; `consumidor` só monta
-    (`pedido`), nunca observa."""
+    (`pedido`), nunca observa. `r5`: monta também os apps do comando de cada caso `c` (31.13)."""
     db = lote.db
     por_execucao: dict[str, list[Row]] = {}
     fora: Counter[str] = Counter()
@@ -212,13 +233,49 @@ def ler_lote(lote: LoteOffline, consumidor: ConsumidorDeIntencao, *, desde: str 
     primeiro_evento = db.scalar("SELECT MIN(ts) FROM events")     # a retenção apaga eventos: antes disto não se sabe
     horizonte = str(primeiro_evento) if primeiro_evento else None
     casos: list[CasoDaIntencao] = []
+    fora_r5: Counter[str] = Counter()
     for run_id, linhas in por_execucao.items():
         motivo, caso = _caso(lote, consumidor, run_id, linhas, salvaguarda_b, remocao, horizonte)
         if caso is None:
             fora[motivo] += 1
-        else:
-            casos.append(caso)
-    return LeituraDoLote(casos, fora, remocao, horizonte)
+            continue
+        if r5 and caso.salvaguarda == "c":
+            motivo_r5, da_r5 = _r5(lote, caso)
+            if da_r5 is None:
+                fora_r5[motivo_r5] += 1
+            else:
+                caso = replace(caso, r5=da_r5)
+        casos.append(caso)
+    return LeituraDoLote(casos, fora, remocao, horizonte, fora_r5)
+
+
+def _r5(lote: LoteOffline, caso: CasoDaIntencao) -> tuple[str, PedidoDaR5 | None]:
+    """(motivo, R5 do caso). Lê a execução de novo pelo mesmo caminho; o estado da R5 tem de estar contido no da intenção
+    já provado pelo hash (estritamente, quando a intenção leva o app), com o mesmo comando, e passar na privacidade.
+    Faltou algo: fora, pelo motivo."""
+    dados = lote.runs.dados_da_sombra(caso.run_id)
+    if dados is None:
+        return "sem_dados", None
+    comando, _, _, original, destinos = dados
+    apps = apps_de(lote.listar_apps())
+    declarados = [AppDeclarado(str(a.id), tuple(nomes_do_app(a))) for a in apps if a.id]
+    perguntas = perguntas_dos_apps(declarados)
+    if not perguntas:
+        return "sem_apps", None
+    pedido = pedido_dos_apps(run_id=caso.run_id, perguntas=perguntas, comando=comando, original=original,
+                             destinos=destinos)
+    intencao = caso.pedido.estado
+    contido = set(pedido.estado) <= set(intencao) and pedido.estado.get("comando") == intencao.get("comando")
+    if not pedido.estado or not contido:
+        return "estado_nao_contido", None             # nada novo sai: o que não está contido no estado provado não vai
+    if not privacidade.validar(pedido).permitido:
+        return "privacidade_hoje", None
+    pt = replace(pedido, perguntas=perguntas_dos_apps(declarados, pt=True))
+    citados = frozenset(str(a.id) for a in apps_citados(original or comando, apps) if a.id)
+    enviadas = {p.id for p in perguntas}
+    por_pergunta = {id_da_pergunta(a.app_id): a.app_id for a in declarados if id_da_pergunta(a.app_id) in enviadas}
+    return "", PedidoDaR5(pedido=pedido, pt=pt, estado_hash=hash_do_estado(privacidade.redigir(pedido).estado),
+                          apps=MappingProxyType(por_pergunta), citados=citados)
 
 
 def _caso(lote: LoteOffline, consumidor: ConsumidorDeIntencao, run_id: str, linhas: list[Row],
@@ -269,5 +326,5 @@ def consumidor_do_lote(porta: Porta, db: Database) -> ConsumidorDeIntencao:
 
 
 __all__ = ["DESDE_ITEM_21", "FALLBACKS_DEPOIS_DO_POST", "INSTRUCOES_PT", "MENSAGEM_CONTA_REMOVIDA",
-           "MENSAGEM_PERFIL_REMOVIDO", "CasoDaIntencao", "LeituraDoLote", "LoteOffline", "SalvaguardaB",
+           "MENSAGEM_PERFIL_REMOVIDO", "CasoDaIntencao", "LeituraDoLote", "LoteOffline", "PedidoDaR5", "SalvaguardaB",
            "consumidor_do_lote", "em_portugues", "enviada", "ler_lote", "ultima_remocao"]
