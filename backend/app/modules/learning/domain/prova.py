@@ -137,17 +137,22 @@ def _copias_do_resultado(valor: object) -> int | None:
     return copias
 
 
-def efeito_repetido(etapas: Sequence[EtapaDaProva]) -> int | None:
+def efeito_repetido(etapas: Sequence[EtapaDaProva], *, regra_propria: bool = True) -> int | None:
     """A ÚNICA fonte do "o efeito saiu mais de uma vez" (AJUSTE 6: trocar a fonte é trocar esta função). Devolve as
     cópias, ou `None` quando não houve repetição.
 
     1. `steps.result["efeito_repetido"]` (29.58, o verificador ou o diário): vence, e a chave ausente é "sem repetição".
     2. A regra própria, sobre o diário: mais de uma ação de efeito concluída numa etapa com efeito externo, ou uma ação
        de efeito concluída numa etapa SEM efeito (o toque no botão de enviar durante a abertura do app). Conta as
-       tentativas todas da etapa: o efeito da primeira que "falhou" já saiu."""
+       tentativas todas da etapa: o efeito da primeira que "falhou" já saiu.
+
+    `regra_propria=False` (30.43): só o resultado do 29.58. É o que vale na execução orgânica, onde a IA livre deixa
+    mais ruído no diário do que a execução de validação, que parte de estado conhecido."""
     do_resultado = [c for e in etapas if (c := _copias_do_resultado(e.efeito_do_resultado)) is not None]
     if do_resultado:
         return max(do_resultado)
+    if not regra_propria:
+        return None
     total, repetido = 0, False
     for e in etapas:
         n = sum(1 for a in e.acoes if a.efeito)

@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 
+from app.contracts.origem import PREFIXO_VALIDACAO
 from app.models import StepDTO
 from app.taskqueue.executor import Outcome, StepOutcome
 
@@ -108,3 +109,15 @@ async def test_controle_a_execucao_comum_replaneja_na_mesma_falha(real: Real, mo
     comum = real.h.run(["android-01"])
     await real.h.wait_run(comum.id, timeout=60)
     assert real.db.scalar("SELECT COUNT(*) FROM plan_versions WHERE objective_id=?", (f"{comum.id}:android-01",)) >= 2
+
+
+async def test_a_reexecucao_da_validacao_do_qa_tambem_parte_de_estado_conhecido(real: Real) -> None:
+    """30.43: a re-execução de receita do P4 (chave `PREFIXO_VALIDACAO`, origem `validacao_qa`) também encerra os apps
+    e abre o principal antes da 1ª etapa (o 6f459c abriu o app dentro da conversa e enviou já na abertura)."""
+    fake = real.h.fakes["android-01"]
+    antes = len(fake.calls)
+    run = real.h.run(["android-01"], key=f"{PREFIXO_VALIDACAO}lv-teste")
+    assert (await real.h.wait_run(run.id)).status == "completed"
+    nova = fake.calls[antes:]
+    assert nova.count("force_stop") == 1 and nova.index("force_stop") == 0
+    assert any("Validação do QA (re-execução): ponto de partida" in d for d in _eventos(real, run.id, "decision"))

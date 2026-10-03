@@ -30,6 +30,7 @@ from typing import Protocol
 from app.modules.learning.application.ports import NovaEvidencia, RepositorioDeAprendizado
 from app.modules.learning.domain.livro import ref_da_trilha
 from app.modules.learning.domain.promocao import ORIGEM_DA_REPRODUCAO
+from app.modules.learning.domain.prova import MotivoDaInvalida, detalhe_da_invalida
 from app.modules.learning.domain.vocabulario import LivroKind, Posicao
 
 
@@ -108,4 +109,69 @@ class RetrocargaDaReceita:
         return feito
 
 
-__all__ = ["EvidenciaDaReceita", "LeituraDeReproducoes", "ReproducaoDaReceita", "RetrocargaDaReceita"]
+# ------------------------------------------------------------------ 30.43: a reprodução que repetiu o efeito
+@dataclass(frozen=True, slots=True)
+class ReproducaoAConferir:
+    """Uma linha `reproducao:` (for/against) ainda sem a `invalida` irmã, de execução onde o efeito repetido se mede:
+    execução de VALIDAÇÃO (`contracts.origem.eh_execucao_de_validacao`) ou com o `efeito_repetido` do 29.58."""
+
+    item_ref: str
+    origin_ref: str
+    run_id: str
+    simulada: bool
+    aparelho: str | None
+    de_validacao: bool
+
+
+class LeituraDoEfeito(Protocol):
+    def reproducoes_a_conferir(self, run_id: str | None = None) -> list[ReproducaoAConferir]: ...
+    def efeito_repetido_da_execucao(self, run_id: str, *, regra_propria: bool = True) -> int | None: ...
+
+
+class InvalidaDaReproducao:
+    """30.43: a reprodução da receita numa execução que repetiu o efeito não vale: ganha a linha `invalida` irmã (mesma
+    origem `reproducao:<run>`, motivo `efeito_repetido`). Caso do P4 de 03/10 (6f459c, receita:82): a IA abriu o app
+    dentro da conversa e enviou já na abertura, e a receita enviou de novo na etapa dela.
+
+    A regra é a do 30.42 (`domain.prova.efeito_repetido`): o 29.58 vence; a regra própria, sobre o diário, só na
+    execução de validação (a orgânica tem a IA livre e mais ruído). O pedido de validação da receita fecha
+    `recusada/efeito_repetido` pela `invalida` (o mesmo ramo da prova de fluxo), e não `feita`. Os contadores
+    `replay_ok/replay_fail` não mudam: a receita conduziu a etapa dela, e a linha `reproducao:` já fica fora das
+    contagens (`promocao.efetivas`). Serve ao dossiê e ao fechamento do pedido.
+
+    Dois papéis, a mesma regra: minerador do digest (a execução que acabou de assentar, antes do fechamento do pedido)
+    e passo da curadoria (a reclassificação POR REGRA do que já foi gravado, o 6f459c incluído). Idempotente pelo
+    índice único; nunca UPDATE, nunca IA. O pedido já `feita` não reabre."""
+
+    nome = "receitas_efeito_repetido"
+
+    def __init__(self, repo: RepositorioDeAprendizado, leitura: LeituraDoEfeito) -> None:
+        self._repo = repo
+        self._leitura = leitura
+
+    def minerar(self, run_id: str) -> int:
+        return self._marcar(self._leitura.reproducoes_a_conferir(run_id))
+
+    def executar(self, agora: datetime) -> int:
+        return self._marcar(self._leitura.reproducoes_a_conferir())
+
+    def _marcar(self, linhas: list[ReproducaoAConferir]) -> int:
+        copias_por_run: dict[str, int | None] = {}
+        feito = 0
+        for x in linhas:
+            if x.run_id not in copias_por_run:
+                copias_por_run[x.run_id] = self._leitura.efeito_repetido_da_execucao(
+                    x.run_id, regra_propria=x.de_validacao)
+            copias = copias_por_run[x.run_id]
+            if copias is None:
+                continue
+            feito += int(self._repo.registrar_evidencia(NovaEvidencia(
+                item_ref=x.item_ref, stance=Posicao.INVALIDA, origin_ref=x.origin_ref, simulated=x.simulada,
+                run_id=x.run_id, instance_id=x.aparelho,
+                detail=detalhe_da_invalida(MotivoDaInvalida.EFEITO_REPETIDO,
+                                           f"o efeito saiu {copias} vezes nesta execução"))))
+        return feito
+
+
+__all__ = ["EvidenciaDaReceita", "InvalidaDaReproducao", "LeituraDeReproducoes", "LeituraDoEfeito",
+           "ReproducaoAConferir", "ReproducaoDaReceita", "RetrocargaDaReceita"]
