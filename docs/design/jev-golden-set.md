@@ -83,6 +83,11 @@ produtor de rótulo humano, da frente Aprendizado; o campo se combina com ela), 
 Nunca é a escolha do Jev nem a concordância com a cadeia; sem esse rótulo, a execução fica só na cobertura. A decisão real
 que a sombra casa hoje (o que a cadeia resolveu) é acompanhamento.
 
+O rótulo de intenção do Aprendizado (30.25) é uma linha de `learning_reviews` com `template_id='intencao'`. Ela lê a
+execução por `RunService.dados_da_intencao` (o comando sem destinos, as personas e o app principal) e o catálogo por
+`AppState.catalogo_da_cadeia`: os MESMOS da sombra da intenção. Assim rótulo e sombra medem o mesmo comando contra o mesmo
+catálogo. O contrato vem da orquestradora (03/10); o fix do 31.9 entra antes do 30.25 na suíte 7.
+
 **Métrica principal do 31.10 (RA-2):** entre as execuções sem fluxo do estrato (`sem_casamento`: o planejador fez o
 trabalho), quantas o Jev teria casado ao fluxo que o desfecho confirma. Por quê: as execuções com fluxo já não chamam o
 planejador (0 chamadas `plan` em 51 de 51, 7 dias), e 168 de 172 sem fluxo chamam. O ganho em latência e custo só existe

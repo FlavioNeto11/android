@@ -665,6 +665,34 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
     Portão (`simulated`, 03/10): `ataque.py` da reverificação, 109 casos, zero vazamento de C7, e-mail completo ou ofuscado
     e telefone. Nome e handle de terceiro deixam de contar (item 10). O caso "escreva para ali no gmail" sai com o nome e o
     nome do provedor, sem endereço: barrar "nome no provedor" barraria também "mande para a Ali no Outlook".
+  - **Reverificação B (03/10, NO-GO em 97f35fac; `.claude/handoffs/reverificacao-31-9b.md` §7).** 240 casos novos e 20
+    sondas dos céticos acharam 47 vazamentos de portão, e as correções foram:
+    - **Duas passadas.** A recusa por forma escondida roda ANTES das máscaras, no texto sem acento, em casefold e com o
+      leet desfeito dentro da palavra (`arr0ba`). Ela cobre: e-mail ofuscado (`at`/`(a)`/`(a t)`/`at-sign`/arroba
+      soletrada ou hifenizada, `ponto|dot|punto` + domínio de topo, `@` separado da parte local); caixa postal; cartão e
+      CVV com o número perto; título de eleitor; endereço em inglês (número + palavras com maiúscula + Terrace/Drive/Way…).
+    - **A máscara do token misto vem antes da do número.** Letra e dígito no mesmo token, também ligado por hífen, viram UM
+      `[termo]`. Antes, `limao77` virava `limao[numero]` e a palavra da senha saía (15 dos 22 vazamentos de C7).
+    - **C7 é recusa do pedido inteiro** (decisão (a) da orquestradora: a máscara não basta). `motivo_c7` acrescenta:
+      - eufemismos ("a de sempre", "o que você digita", "the one I always use", "lo de siempre", "segundo campo", "tela
+        de acesso", "a outra parte é", "entra com X / Y"…);
+      - pergunta de segurança e frase de recuperação;
+      - leet (`3→e 4→a 0→o 1→i $→s`) e palavra invertida (`ahnes`, `drowssap`);
+      - separadores entre todas as letras (`s/e/n/h/a`) e controle de direção (bidi) no texto cru;
+      - Passwort, Kennwort, wachtwoord, mot de passe, parola d'ordine (também em `redaction._CREDENCIAL`);
+      - o código pedido pela quantidade de dígitos ("os seis dígitos") ou "destravar";
+      - prefixo de token de acesso de qualquer tamanho.
+    - **O motivo da recusa** vai para a linha da sombra (`motivo_privacidade`, migração 079; `c7_*` ou o motivo do filtro).
+      O `fallback_reason` continua `privacidade`, e `validar` continua devolvendo `c7` ou `pedido_vazio`.
+    - **Placa e nome com cidade passam** (decisão (d)). "Dois numerais por extenso recusam" fica (decisão (c)): nos 90
+      comandos reais de 7 dias (só leitura, contagens) essa regra não recusou nenhum, e a recusa total ficou em 1/90 (a
+      mesma C7 de antes).
+    - **Portão local** (`simulated`, 260 casos: os 240 e as 20 sondas, harness da orquestradora copiado): 0 vazamentos
+      (eram 45), 0 passagens indevidas (eram 56) e todo C7 recusado (eram 85 sem recusa).
+      - As recusas que contrariam o rótulo do harness são as C7 rotuladas "máscara", que a decisão (a) manda recusar, e
+        mais 3 casos: dois numerais em nomes ("Ze Sete e Maria Onze"), "duas fotos … três pessoas" e um telefone ditado
+        misto que já recusava antes.
+      - Prova: `backend/tests/test_decisao_fechada_reverificacao_b.py`.
   - **C7 nunca sai, em prosa ou não**: comando que fala de senha, código, 2FA, PIN, OTP, token, captcha, verificação, chave,
     segredo ou desafio, em PT, EN ou ES (`menciona_c7`: `mentions_credential`, `looks_secret` e o assunto no texto
     normalizado, também com homóglifo, letra de largura cheia, uma letra por vez separada por ponto ou espaço, e palavra de

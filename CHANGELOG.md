@@ -19,6 +19,29 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Correção do 31.9, reverificação B (NO-GO em 97f35fac): C7 recusa o pedido inteiro, duas passadas no filtro e o motivo da recusa na sombra (branch fix/31-9-privacidade)
+
+- A reverificação B da orquestradora (240 casos novos, 3 céticos; `.claude/handoffs/reverificacao-31-9b.md`) achou 47
+  vazamentos de portão em 97f35fac. Correções do §7:
+  - `_MISTO` antes de `_NUMERO`, com hífen;
+  - eufemismos, pergunta de segurança e frase de recuperação;
+  - leet, palavra invertida, separadores e bidi;
+  - mais idiomas;
+  - e-mail ofuscado, endereço em inglês, caixa postal, cartão e CVV com número.
+- Decisões da orquestradora:
+  - (a) C7 recusa o pedido inteiro, inclusive o código pedido pela quantidade de dígitos;
+  - (c) a regra dos dois numerais fica (0 recusas nos 90 comandos reais de 7 dias);
+  - (d) placa e nome com cidade passam.
+- `decisao_fechada_sombra.motivo_privacidade` (migração 079, trazida da 080 do RA-10): `c7_*` ou o motivo do filtro, por
+  `PedidoDeDecisao.motivo_privacidade` → `RegistroDeDecisao` → `RepositorioDeSombra.registrar`. O `fallback_reason` e
+  `validar` não mudam.
+- Contrato do 30.25: `RunService._dados_da_sombra` vira `dados_da_intencao` (mesma assinatura), e o catálogo da cadeia
+  vira `AppState.catalogo_da_cadeia`, compartilhado pela sombra e pelo rótulo de intenção.
+- Prova `simulated`:
+  - `test_decisao_fechada_reverificacao_b.py` (73 testes);
+  - portão local com o harness da orquestradora copiado: 260 casos, 0 vazamentos (eram 45), 0 passagens indevidas (eram 56).
+  - Real: not_run (o envio continua fechado no código).
+
 ## 2026-10-03 — Correção do 31.9: filtro sensato da C3 (ADR-069 item 10), desligamento limpo e estratos do golden set (RA-2; branch fix/31-9-privacidade)
 
 - **ADR-069 item 10** (dono, 03/10 00:15Z, relatado pela orquestradora): dado pessoal pode ir ao Jev "desde que faça sentido

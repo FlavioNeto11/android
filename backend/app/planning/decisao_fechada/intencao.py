@@ -19,7 +19,10 @@ linhas gravadas, o que a cadeia REAL resolveu. Nada do que o Jev responde volta 
 - **C2** (as opções da R2): nome e descrição do catálogo passam por `mascarar_catalogo` ANTES do corte em
   `_DESCRICAO_MAX` (as mesmas máscaras de forma da C3: handle, aspas, e-mail, telefone e número).
 - **C7** (senha, código, 2FA, captcha, chave, PIN, em prosa ou não, também com homóglifo, letra de largura cheia ou
-  separada por ponto): marcador `credencial`, e a porta recusa o pedido inteiro.
+  separada por ponto): marcador `credencial`, e a porta recusa o pedido inteiro. Desde a reverificação B (03/10) também o
+  eufemismo ("a de sempre", "o que você digita"), a pergunta de segurança, a frase de recuperação, o leet, a palavra
+  invertida, o controle de direção e o código pedido pela quantidade de dígitos (`motivo_c7`): C7 é RECUSA, a máscara não
+  basta. O motivo vai para a linha da sombra (`motivo_privacidade`).
 - **Desligado** (padrão: `enabled=false`, consumidor `off`; ou envio não aprovado; ou C3 fora das classes): `ativo()` é falso
   e o chamador não faz NADA, nem a RESOLVE.
 
@@ -33,13 +36,13 @@ import logging
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Literal
 
 from ...security.redaction import looks_secret, mentions_credential, redact
 from . import privacidade
 from .contrato import ID_NENHUMA, MAX_OPCOES, PedidoDeDecisao, Pergunta, pergunta_choice
 from .entidades import (
-    mascarar_catalogo, mistura_alfabetos, normalizar, remover_entidades, sem_acento,
+    mascarar_catalogo, mistura_alfabetos, normalizar, remover_entidades_com_motivo, sem_acento, sem_leet,
 )
 from .porta import Porta, modo_efetivo
 from .sombra import RepositorioDeSombra
@@ -53,6 +56,9 @@ PERGUNTA_DESEMPATE: Final = "intencao_desempate"
 MAX_CATALOGO: Final = MAX_OPCOES - 1
 _DESCRICAO_MAX: Final = 200
 _APP: Final = re.compile(r"^[A-Za-z0-9_.\-]{1,120}$")
+#: Por que o comando é C7 (`motivo_c7`), gravado na linha da sombra (`motivo_privacidade`, migração 079).
+MotivoC7 = Literal["c7_bidi", "c7_palavra", "c7_formato", "c7_alfabetos", "c7_ofuscado", "c7_eufemismo", "c7_digitos"]
+_LETRAS: Final = re.compile(r"[^\W\d_]+")
 #: Assunto de C7 em qualquer formato, além do que `mentions_credential` já pega: na dúvida, o pedido inteiro é recusado
 #: (ADR-069: C7 nunca sai, nem em sombra). Casa no texto normalizado, sem acento e em minúsculas, com até um separador
 #: entre as letras ("p.i.n", "s e n h a", "palavra-passe") e plural. "passe" sozinho NÃO entra: é o imperativo de passar
@@ -61,9 +67,48 @@ _PALAVRAS_C7: Final = (
     "codigo", "code", "captcha", "verificacao", "verification", "autenticacao", "authentication", "autenticador",
     "authenticator", "desafio", "senha", "password", "passwd", "pwd", "pass", "passcode", "passphrase", "palavrapasse",
     "contrasena", "clave", "chave", "key", "pin", "otp", "2fa", "mfa", "twofactor", "token", "segredo", "secret",
-    "secreto")
+    "secreto",
+    # reverificação B (03/10): outros idiomas ("mot de passe" e "parola d'ordine" casam pelos separadores entre letras)
+    "passwort", "kennwort", "wachtwoord", "motdepasse", "paroladordine")
+#: A palavra-chave com até UM separador qualquer entre as letras ("p.i.n", "palavra-passe", "s/enha"), ou com um a três
+#: separadores entre TODAS as letras ("s/e/n/h/a", "s  e  n  h  a", "s,e,n,h,a"): reverificação B do 31.9.
 _ASSUNTO_C7: Final = re.compile(
-    r"(?<![^\W_])(?:" + "|".join(r"[\s.\-_*]?".join(map(re.escape, p)) for p in _PALAVRAS_C7) + r")s?(?![^\W_])")
+    r"(?<![^\W_])(?:" + "|".join(
+        alt for p in _PALAVRAS_C7
+        for alt in (r"[\W_]?".join(map(re.escape, p)), r"[\W_]{1,3}".join(map(re.escape, p)))) + r")s?(?![^\W_])")
+#: As palavras-chave de uma palavra só, para a conferência da palavra INVERTIDA ("ahnes", "drowssap").
+_C7_INVERTIDAS: Final[frozenset[str]] = frozenset(p[::-1] for p in _PALAVRAS_C7 if len(p) >= 3)
+#: Eufemismo de credencial, pergunta de segurança, frase de recuperação e código pedido sem a palavra-chave (reverificação B
+#: do 31.9, §7.2 e §7.5; decisão (a) da orquestradora: C7 é RECUSA do pedido inteiro, a máscara não basta). Casa no texto
+#: sem acento, em casefold, com espaços colapsados.
+_EUFEMISMO_C7: Final = re.compile("|".join((
+    # português
+    r"\ba de sempre\b", r"\b(?:aquela|a) mesma de (?:sempre|antes)\b", r"\bo que (?:voce|vc) digita\b",
+    r"\ba outra parte e\b", r"\bsegundo campo\b", r"\b(?:tela|campo) de (?:acesso|entrada)\b", r"\bcampo de baixo\b",
+    r"\bnao (?:conte|conta) (?:pra|para) ninguem\b", r"\ba minha nova e\b", r"\bde recuperacao\b",
+    r"\bpergunta de seguranca\b", r"\banimal de estimacao\b", r"\bnome de solteira\b",
+    r"\b(?:pra|para) (?:liberar|recuperar|destravar) a conta\b", r"\bque chegou (?:agora )?(?:no celular|por sms|por mensagem)\b",
+    r"\bo que apareceu no (?:app|celular)\b",
+    # inglês
+    r"\bthe one i always use\b", r"\bwhat you type to (?:get in|log in|sign in)\b", r"\bthe access one\b",
+    r"\bthe thing only you and i know\b", r"\bsecond field\b", r"\brecovery (?:phrase|codes?)\b", r"\bseed(?: phrase)?\b",
+    r"\bsecurity question\b", r"\bmaiden name\b", r"\barrived by (?:text|sms)\b",
+    # espanhol
+    r"\blo de siempre\b", r"\blo que tecleas\b", r"\bcampo de abajo\b", r"\bfrase de recuperacion\b",
+    r"\bpregunta de seguridad\b",
+    # usuário e senha separados por barra: "entra com admin / admin1234", "log in with x / y"
+    r"\b(?:entr\w*|log\s*in|login|sign\s*in)\s+(?:com|with|con)\s+\S+\s*/\s*\S+",
+)))
+#: O código pedido pela quantidade de dígitos ("os seis dígitos", "aquela de quatro dígitos", "the six digits", "los seis
+#: números") ou o verbo de destravar: código de verificação ou PIN sem a palavra-chave (decisão (a)).
+_DIGITOS_C7: Final = re.compile(
+    r"\b(?:\d|tres|quatro|cinco|seis|sete|oito|three|four|five|six|seven|eight|cuatro|siete|ocho)\s+"
+    r"(?:digitos|digits|numeros|numbers|numerinhos)\b|\b(?:destravar|desbloquear|unlock)\b")
+#: Prefixo de token de acesso, de qualquer tamanho (o `looks_secret` só pega o longo): GitHub, Slack, chave de API, JWT.
+_PREFIXO_DE_TOKEN: Final = re.compile(
+    r"(?<![A-Za-z0-9])(?:gh[pousr]_|github_pat_|sk-|sk_live_|pk_live_|xox[abprs]-|AKIA|ASIA|eyJ)[A-Za-z0-9]")
+#: Controle de direção do texto (override e isolate): o jeito de escrever "senha" ao contrário na tela.
+_BIDI: Final = re.compile("[‪-‮⁦-⁩]")
 
 _INSTRUCOES_CATALOGO: Final = (
     "The state is a command written by the owner of a device fleet, in Portuguese, with names and numbers masked. Pick the "
@@ -114,12 +159,39 @@ def _opcoes(entradas: Sequence[EntradaDeCatalogo]) -> dict[str, str]:
 
 
 def menciona_c7(comando: str) -> bool:
-    """O comando fala de credencial, código, 2FA ou desafio (C7), em qualquer formato, ou tem cara de segredo. Confere o
-    texto como veio e normalizado (NFKC, sem caractere invisível), e palavra com alfabetos misturados conta como C7: o
-    homóglifo ("senhа" com "а" cirílico) é o jeito de a palavra-chave passar."""
+    """O comando fala de credencial, código, 2FA ou desafio (C7), em qualquer formato, ou tem cara de segredo."""
+    return motivo_c7(comando) is not None
+
+
+def motivo_c7(comando: str) -> MotivoC7 | None:
+    """Por que o comando é C7, ou `None`. Confere o texto como veio e normalizado (NFKC, sem caractere invisível):
+
+    - `c7_bidi`: controle de direção no texto CRU (a normalização o apaga, e com ele "ahnes" se lê "senha" na tela);
+    - `c7_palavra`: a palavra-chave, inclusive separada ("s/e/n/h/a") e em outro idioma (`mentions_credential`, `_ASSUNTO_C7`);
+    - `c7_formato`: cara de segredo (`looks_secret`: "código 123456", chave de API, base64 longo) ou prefixo de token de
+      acesso de qualquer tamanho (`ghp_`, `sk-`, `AKIA`, `eyJ`);
+    - `c7_alfabetos`: palavra com alfabetos misturados (o homóglifo "senhа" com "а" cirílico);
+    - `c7_ofuscado`: a palavra-chave em leet ("s3nh4", "pa$$word") ou invertida ("drowssap");
+    - `c7_eufemismo`: "a de sempre", "o que você digita", "segundo campo", pergunta de segurança, frase de recuperação;
+    - `c7_digitos`: o código pedido pela quantidade de dígitos ("os seis dígitos") ou "destravar".
+    """
+    if _BIDI.search(comando):
+        return "c7_bidi"
     normal = normalizar(comando)
-    return (mentions_credential(comando) or mentions_credential(normal) or looks_secret(comando)
-            or looks_secret(normal) or mistura_alfabetos(normal) or bool(_ASSUNTO_C7.search(sem_acento(normal))))
+    plano = " ".join(sem_acento(normal).split())
+    if mentions_credential(comando) or mentions_credential(normal) or _ASSUNTO_C7.search(plano):
+        return "c7_palavra"
+    if looks_secret(comando) or looks_secret(normal) or _PREFIXO_DE_TOKEN.search(normal):
+        return "c7_formato"
+    if mistura_alfabetos(normal):
+        return "c7_alfabetos"
+    if _ASSUNTO_C7.search(sem_leet(plano)) or any(m.group() in _C7_INVERTIDAS for m in _LETRAS.finditer(plano)):
+        return "c7_ofuscado"
+    if _EUFEMISMO_C7.search(plano):
+        return "c7_eufemismo"
+    if _DIGITOS_C7.search(plano):
+        return "c7_digitos"
+    return None
 
 
 class ConsumidorDeIntencao:
@@ -162,17 +234,19 @@ class ConsumidorDeIntencao:
             perguntas.append(pergunta_choice(PERGUNTA_DESEMPATE, _INSTRUCOES_DESEMPATE, _opcoes(empatados)))
         if not perguntas:
             return None
-        if menciona_c7(comando):
+        if (motivo := motivo_c7(comando)) is not None:
             return PedidoDeDecisao(origem="intencao", classe="C3", estado={}, perguntas=tuple(perguntas), modo="shadow",
-                                   run_id=run_id, ref=run_id, marcadores=frozenset({"credencial"}))
-        limpo = remover_entidades(redact(comando) or "") if comando.strip() else None
+                                   run_id=run_id, ref=run_id, marcadores=frozenset({"credencial"}),
+                                   motivo_privacidade=motivo)
+        limpo, motivo_filtro = (remover_entidades_com_motivo(redact(comando) or "") if comando.strip()
+                                else (None, "vazio"))
         estado: dict[str, str] = {}
         if limpo:                                    # `None` (forma do piso) ou vazio: estado vazio, a porta recusa
             estado["comando"] = limpo
             if app and _APP.fullmatch(app):
                 estado["app"] = app
         return PedidoDeDecisao(origem="intencao", classe="C3", estado=estado, perguntas=tuple(perguntas), modo="shadow",
-                               run_id=run_id, ref=run_id)
+                               run_id=run_id, ref=run_id, motivo_privacidade=None if limpo else motivo_filtro)
 
     def observar(self, *, run_id: str, comando: str, app: str | None, catalogo: Sequence[EntradaDeCatalogo],
                  cadeia: CadeiaObservada) -> None:

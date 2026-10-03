@@ -858,10 +858,13 @@ class RunService:
         sombra = self.sombra_intencao
         if sombra is None or not sombra.ativo():
             return
-        sombra.agendar(run_id, lambda: self._dados_da_sombra(run_id))
+        sombra.agendar(run_id, lambda: self.dados_da_intencao(run_id))
 
-    def _dados_da_sombra(self, run_id: str) -> tuple[str, list[str | None], str | None] | None:
-        """Roda na THREAD da sombra. `None` = não observar: execução sumida, que falhou ou foi cancelada, ou com pergunta."""
+    def dados_da_intencao(self, run_id: str) -> tuple[str, list[str | None], str | None] | None:
+        """Roda na THREAD da sombra. `None` = não observar: execução sumida, que falhou ou foi cancelada, ou com pergunta.
+
+        Público desde a reverificação B do 31.9 (03/10; era `_dados_da_sombra`): o rótulo de intenção do Aprendizado (30.25)
+        lê a execução por aqui, com a MESMA assinatura, para os dois medirem o mesmo comando sem destinos."""
         run = self.repo.run_row(run_id)
         if run is None or run["status"] in (RunStatus.failed.value, RunStatus.cancelled.value):
             return None

@@ -57,7 +57,7 @@ CFG_SHADOW = DecisaoFechadaCfg(enabled=True, consumidores={"intencao": "shadow"}
     ("escreva `oi tudo bem` agora", "escreva [texto] agora"),
     ('comente "adorei a foto no feed', "comente [texto]"),                  # a aspa que sobra: o resto é o texto
     ("fale com D'Ávila agora", "fale com D'Ávila agora"),                 # o apóstrofo não abre trecho
-    ("siga joana_silva99", "siga [termo][numero]"),                        # palavra com `_`: identificador
+    ("siga joana_silva99", "siga [termo]"),         # letra e dígito: o token inteiro (reverificação B)
     ("curta dois posts", "curta [numero] posts"),                        # UM numeral: marcador
     ("espere meia hora", "espere [numero] hora"),
     ("abra o e-mail", "abra o e-mail"),
@@ -714,11 +714,11 @@ async def test_execucao_que_falhou_ou_foi_cancelada_nao_e_lida_pela_sombra(harne
     st = harness.state
     run = harness.run(["android-01"], command="abra o aplicativo de configuracoes", mode="plan")
     await harness.wait_run(run.id, statuses=("planned", "needs_input", "failed"), timeout=20.0)
-    assert st.runs._dados_da_sombra(run.id) is not None                       # noqa: SLF001
+    assert st.runs.dados_da_intencao(run.id) is not None
     for status in ("failed", "cancelled"):
         st.db.execute("UPDATE runs SET status=? WHERE id=?", (status, run.id))
-        assert st.runs._dados_da_sombra(run.id) is None                       # noqa: SLF001
-    assert st.runs._dados_da_sombra("nao-existe") is None                     # noqa: SLF001
+        assert st.runs.dados_da_intencao(run.id) is None
+    assert st.runs.dados_da_intencao("nao-existe") is None
 
 
 async def test_desligada_a_sombra_nao_le_nem_resolve_nada(harness: Harness) -> None:
@@ -730,7 +730,7 @@ async def test_desligada_a_sombra_nao_le_nem_resolve_nada(harness: Harness) -> N
         ConsumidorDeIntencao(st.decisao_fechada, st.decisao_sombra),
         resolver=lambda c, p: resolvidos.append(c) or IntentResolution(ResolutionStatus.NO_MATCH),  # type: ignore[func-returns-value]
         catalogo=lambda: ())
-    st.runs._dados_da_sombra = lambda run_id: lidos.append(run_id)             # type: ignore[method-assign]  # noqa: SLF001
+    st.runs.dados_da_intencao = lambda run_id: lidos.append(run_id)             # type: ignore[method-assign]
     st.runs._intencao_em_sombra("r-qualquer")                                  # noqa: SLF001
     await st.runs.sombra_intencao.aguardar()
     assert lidos == [] and resolvidos == []

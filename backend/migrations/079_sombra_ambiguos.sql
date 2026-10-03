@@ -11,3 +11,10 @@
 -- reservadas em outros branches; a lacuna na numeração é esperada, e o migrador aplica em ordem o que falta.
 
 ALTER TABLE decisao_fechada_sombra ADD COLUMN ambiguos INTEGER;
+
+-- Por que o chamador recusou o pedido por privacidade (reverificação B do 31.9, 03/10): `c7_*` quando o comando é C7
+-- (`intencao.motivo_c7`), ou o motivo do filtro da C3 (`entidades.remover_entidades_com_motivo`), em vocabulário fechado
+-- (`contrato.MOTIVOS_DE_PRIVACIDADE`; fora dele, `outro`). Só nas linhas com `fallback_reason = 'privacidade'`; NULO no
+-- resto e no legado. Só o código: nada do comando. Estava reservada na 080 (RA-10); veio para cá porque o 31.9 a grava e
+-- entra antes na suíte 7.
+ALTER TABLE decisao_fechada_sombra ADD COLUMN motivo_privacidade TEXT;

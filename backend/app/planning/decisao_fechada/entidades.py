@@ -11,10 +11,17 @@ O filtro mascara o que não ajuda a escolher a habilidade e deixa o resto (`remo
    e domínio, e-mail, `@handle`, telefone, número e token de letras com `_` (`[termo]`: handle sem `@`, identificador).
    A aspa que abre e não fecha leva o resto do texto para `[texto]`. Símbolo (emoji, braille, letra em quadrado negativo)
    vira `[texto]`; colado entre duas letras, recusa ("s★enha" passaria pela conferência da C7);
-2. o que esconde e-mail, telefone ou documento RECUSA o texto inteiro (`None`): endereço, documento (CPF, RG...), e-mail
-   por extenso ou ofuscado (`arroba`, `(at)`, `{dot}`, `ponto com`), sobra de `@` ou `://` e DOIS ou mais numerais por
-   extenso (telefone, documento ou PIN ditado). UM numeral vira `[numero]`;
+2. o que esconde e-mail, telefone ou documento RECUSA o texto inteiro (`None`): endereço, documento (CPF, RG, cartão...),
+   e-mail por extenso ou ofuscado (`arroba`, `(at)`, `(a)`, `{dot}`, `ponto com`, `correio ponto net`, `arr0ba`,
+   `a r r o b a`), sobra de `@` ou `://` e DOIS ou mais numerais por extenso (telefone, documento ou PIN ditado). UM numeral
+   vira `[numero]`;
 3. o resto passa como está: palavra comum, nome de pessoa, nome de app.
+
+Desde a reverificação B do 31.9 (03/10, NO-GO em 97f35fac) são DUAS passadas. A recusa por forma escondida roda primeiro,
+sobre o texto normalizado e ainda sem máscara (`_RECUSA_NO_ORIGINAL`): mascarar antes apagava o que ela precisava ver (o
+`742` do endereço em inglês, o `0` de `arr0ba`). Depois vêm as máscaras, com o token de letras E dígitos (`_MISTO`) ANTES do
+número: com o número primeiro, `limao77` virava `limao[numero]` e a palavra da senha saía inteira (15 dos 22 vazamentos de
+C7). `remover_entidades_com_motivo` diz POR QUE recusou (`MotivoDoFiltro`), para a linha da sombra.
 
 Até a emenda, o passo 3 era uma lista de PERMISSÃO (palavra fora de um vocabulário fixo virava `[termo]`, nome com
 maiúscula também) com recusa do texto inteiro acima de uma proporção de desconhecidas: a remoção que falha fechada da
@@ -30,7 +37,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Iterable
-from typing import Final
+from typing import Final, Literal
 
 #: Marcadores fixos, minúsculos e entre colchetes: nenhum é palavra do vocabulário, e a conferência os ignora.
 M_URL: Final = "[link]"
@@ -42,6 +49,10 @@ M_TERMO: Final = "[termo]"
 M_TEXTO: Final = "[texto]"
 
 _MARCADORES: Final = (M_URL, M_EMAIL, M_HANDLE, M_TELEFONE, M_NUMERO, M_TERMO, M_TEXTO)
+
+#: Por que o filtro recusou a C3 (`decisao_fechada_sombra.motivo_privacidade`, migração 079). Vocabulário fechado.
+MotivoDoFiltro = Literal["nao_texto", "vazio", "alfabetos", "simbolo_colado", "email_ofuscado", "endereco", "documento",
+                         "ditado", "numerais", "sobra_de_forma"]
 
 # ------------------------------------------------------------------ 1. troca por forma (do mais específico ao mais geral)
 #: Aspas simples ASCII e crase só fora de palavra: o apóstrofo de "D'Ávila" não abre trecho. Depois do NFKC o "″" vira
@@ -66,16 +77,51 @@ _ALGARISMO_FALADO: Final = (r"(?:zero|um|uma|dois|duas|tr[eê]s|quatro|cinco|sei
 _DITADO = re.compile(rf"(?i)\b(?:{_ALGARISMO_FALADO}(?:\W+(?:e|y|and)\W+|\W+)){{2,}}{_ALGARISMO_FALADO}\b")
 
 # ------------------------------------------------------------------ 2. recusa (não há máscara segura)
-_RECUSA = re.compile(
+_RECUSA_EMAIL = re.compile(
     r"@|://|(?i:\bwww\b)|(?i:\barroba\b)|(?i:\bponto\s*com\b)|(?i:\bdot\s*com\b)"
-    r"|(?i:[(\[{<]\s*(?:at|dot|arroba|ponto)\s*[)\]}>])"
-    # endereço: o logradouro seguido de qualquer termo (o nome da rua é dado de lugar de uma pessoa)
-    r"|(?i:\b(?:rua|r\.|avenida|av\.?|travessa|tv\.|alameda|al\.|pra[çc]a|rodovia|estrada|largo|viela|cep|bairro"
+    r"|(?i:[(\[{<]\s*(?:at|dot|arroba|ponto)\s*[)\]}>])")
+#: Endereço: o logradouro seguido de qualquer termo (o nome da rua é dado de lugar de uma pessoa).
+_RECUSA_ENDERECO = re.compile(
+    r"(?i:\b(?:rua|r\.|avenida|av\.?|travessa|tv\.|alameda|al\.|pra[çc]a|rodovia|estrada|largo|viela|cep|bairro"
     r"|apartamento|apto|bloco|condom[ií]nio|quadra|lote|casa|vila|calle|plaza|paseo|carretera|barrio)\b)"
-    r"|(?i:\b(?:street|st\.|avenue|ave\.|road|rd\.|lane|blvd|boulevard|zip)\b)"
-    # documento: o número que vem junto (em algarismo ou por extenso) identifica a pessoa
-    r"|(?i:\b(?:cpf|cnpj|rg|cnh|passaporte|passport|ssn|dni|nif)\b)")
+    r"|(?i:\b(?:street|st\.|avenue|ave\.|road|rd\.|lane|blvd|boulevard|zip)\b)")
+#: Documento: o número que vem junto (em algarismo ou por extenso) identifica a pessoa.
+_RECUSA_DOCUMENTO = re.compile(r"(?i:\b(?:cpf|cnpj|rg|cnh|passaporte|passport|ssn|dni|nif)\b)")
 _SOBRA_DIGITOS = re.compile(r"\d\D{0,2}\d\D{0,2}\d")
+
+#: Domínio de topo do e-mail soletrado ou ofuscado ("correio ponto net", "dot co", "punto org").
+_TLD: Final = (r"(?:com|net|org|br|io|co|gov|edu|info|biz|me|app|dev|test|pt|es|uk|us|de|fr|it|mx|ar|cl|uy|rf|online"
+               r"|site)")
+#: A recusa que roda ANTES das máscaras (passada 1), sobre o texto sem acento, em casefold e com o algarismo trocado pela
+#: letra parecida dentro de palavra (`arr0ba`). (motivo, padrão), na ordem do diagnóstico.
+_RECUSA_NO_ORIGINAL: Final[tuple[tuple[MotivoDoFiltro, re.Pattern[str]], ...]] = (
+    ("email_ofuscado", re.compile(
+        # arroba por extenso, soletrada ou hifenizada ("a r r o b a", "a-r-r-o-b-a"); "(a)", "(a t)", "at-sign"
+        r"(?<![^\W\d_])a[\W_]{0,2}r[\W_]{0,2}r[\W_]{0,2}o[\W_]{0,2}b[\W_]{0,2}a(?![^\W\d_])"
+        r"|[(\[{<]\s*a\s*t?\s*[)\]}>]|\bat[\s\-]?sign\b"
+        # domínio de topo depois de "ponto", "dot" ou "punto": "correio ponto net", "dot co"
+        rf"|\b(?:ponto|dot|punto)\s*{_TLD}\b"
+        # "marina at correio.net", "zilda at correio dot org"
+        rf"|\b\w+\s+at\s+\w+(?:\s*(?:\.|ponto|dot|punto)\s*\w+)*\s*(?:\.|ponto|dot|punto)\s*{_TLD}\b"
+        # `@` sem a parte local colada (separada por espaço ou tabulação), seguido de domínio com topo
+        rf"|(?<![\w.+\-])@[\w\-]+(?:\.[\w\-]+)*\.{_TLD}\b")),
+    ("endereco", re.compile(r"\bcaixa\s+postal\b|\bp\.?\s*o\.?\s+box\b|\bapartado\s+postal\b")),
+    # cartão e CVV só com o número perto ("o cartão de visita do perfil" passa); título de eleitor e "ce pe efe" sempre
+    ("documento", re.compile(r"\b(?:cartao|card|cvv|cvc)\b\D{0,20}\d{3}|\btitulo\s+de\s+eleitor\b|\bce\s+pe\s+efe\b")),
+)
+#: Endereço em inglês: número, uma a três palavras com maiúscula e o tipo de logradouro, no texto SEM casefold ("on the
+#: way" não é endereço; "742 Evergreen Terrace" é).
+_ENDERECO_EN: Final = re.compile(
+    r"\b\d{1,5}\s+(?:[A-Z][\w'\-]*\s+){1,3}(?:Terrace|Drive|Court|Place|Way|Circle|Parkway|Highway|Square|Lane|Road"
+    r"|Street|Avenue|Boulevard|Blvd|Ave|St|Rd|Dr|Ct|Pl|Ln)\b")
+#: O algarismo que faz as vezes de letra dentro de uma palavra (leet). Só na passada 1 e na conferência da C7.
+_LEET: Final = str.maketrans({"0": "o", "1": "i", "3": "e", "4": "a", "$": "s"})
+_TOKEN_COM_LETRA: Final = re.compile(r"[\w$]*[^\W\d_][\w$]*")
+
+
+def sem_leet(texto: str) -> str:
+    """Troca algarismo por letra só nas palavras que já têm letra (`arr0ba`, `s3nh4`, `pa$$word`); número sozinho fica."""
+    return _TOKEN_COM_LETRA.sub(lambda m: m.group().translate(_LEET), texto)
 _PARENTESES_COM_DIGITO = re.compile(r"\(\s*\d")
 
 #: Numerais por extenso (normalizados, sem acento). UM só vira `[numero]`; DOIS ou mais no texto, ligados por qualquer coisa
@@ -98,9 +144,9 @@ cuarenta cincuenta sesenta ochenta cien ciento
 _PALAVRA = re.compile(r"[^\W\d_]+(?:['’\-][^\W\d_]+)*")
 #: Só letras, sem apóstrofo nem hífen: a unidade da conferência de alfabetos.
 _LETRAS = re.compile(r"[^\W\d_]+")
-#: Token com letra E (dígito ou `_`): handle sem `@`, identificador. Os dígitos já viraram `[numero]` em `_formas`, então
-#: na prática é a palavra com `_`. Vira `[termo]`.
-_MISTO = re.compile(r"\b(?=\w*[^\W\d_])(?=\w*[\d_])\w+\b")
+#: Token com letra E (dígito ou `_`), também ligado por hífen: handle sem `@`, identificador, a senha `limao77`, `kiwi-77`,
+#: `lagoa-azul-3`. Vira `[termo]` INTEIRO; roda antes de `_NUMERO` (com o número primeiro, sobrava `limao[numero]`).
+_MISTO = re.compile(r"(?<![\w\-])(?=[\w\-]*[^\W\d_])(?=[\w\-]*[\d_])\w+(?:-\w+)*(?![\w\-])")
 
 
 
@@ -163,12 +209,13 @@ def _primeira_aspa_sobrando(texto: str) -> int | None:
 
 
 def _formas(texto: str) -> str:
-    """Link, e-mail, `@handle`, domínio, telefone e número viram marcador, do mais específico ao mais geral."""
+    """Link, e-mail, `@handle`, domínio, telefone, token misto e número viram marcador, do mais específico ao mais geral."""
     texto = _URL.sub(M_URL, texto)
     texto = _EMAIL.sub(M_EMAIL, texto)
     texto = _HANDLE.sub(M_HANDLE, texto)
     texto = _DOMINIO.sub(M_URL, texto)
     texto = _TELEFONE.sub(M_TELEFONE, texto)
+    texto = _MISTO.sub(M_TERMO, texto)
     return _NUMERO.sub(M_NUMERO, texto)
 
 
@@ -203,10 +250,28 @@ def _sem_marcadores(texto: str) -> str:
     return texto
 
 
-def _recusa(resto: str) -> bool:
-    """O que sobrou sem os marcadores ainda tem forma que não se mascara com segurança?"""
-    return bool(_RECUSA.search(resto) or _DITADO.search(resto) or _SOBRA_DIGITOS.search(resto)
-                or _PARENTESES_COM_DIGITO.search(resto))
+def _recusa_no_original(texto: str) -> MotivoDoFiltro | None:
+    """Passada 1: a forma escondida que a máscara apagaria (e-mail ofuscado, caixa postal, cartão, endereço em inglês)."""
+    plano = sem_leet(sem_acento(texto))
+    for motivo, padrao in _RECUSA_NO_ORIGINAL:
+        if padrao.search(plano):
+            return motivo
+    return "endereco" if _ENDERECO_EN.search(texto) else None
+
+
+def _recusa(resto: str) -> MotivoDoFiltro | None:
+    """O que sobrou sem os marcadores ainda tem forma que não se mascara com segurança? O motivo, ou `None`."""
+    if _RECUSA_EMAIL.search(resto):
+        return "email_ofuscado"
+    if _RECUSA_ENDERECO.search(resto):
+        return "endereco"
+    if _RECUSA_DOCUMENTO.search(resto):
+        return "documento"
+    if _DITADO.search(resto):
+        return "ditado"
+    if _SOBRA_DIGITOS.search(resto) or _PARENTESES_COM_DIGITO.search(resto):
+        return "sobra_de_forma"
+    return None
 
 
 def _limpar(texto: str) -> str:
@@ -230,27 +295,39 @@ def _numerais(texto: str) -> tuple[str, int]:
 # ------------------------------------------------------------------ a C3: o comando
 def remover_entidades(texto: str) -> str | None:
     """O comando com o piso aplicado: forma conhecida vira marcador, e o que esconde e-mail, telefone ou documento recusa
-    (`None`). Nome e palavra comum passam como estão (ADR-069 item 10).
+    (`None`). Nome e palavra comum passam como estão (ADR-069 item 10). O motivo da recusa: `remover_entidades_com_motivo`.
 
-    Devolve `None` quando: a entrada não é texto; alguma palavra mistura alfabetos; sobra símbolo colado entre letras;
-    sobra forma que não se mascara com segurança (endereço, documento, e-mail por extenso ou ofuscado, `@`, `://`); ou há
-    dois ou mais numerais por extenso. Idempotente."""
+    Devolve `None` quando: a entrada não é texto; alguma palavra mistura alfabetos; há forma escondida no texto ainda sem
+    máscara (e-mail ofuscado, caixa postal, cartão, endereço em inglês); sobra símbolo colado entre letras; sobra forma que
+    não se mascara com segurança (endereço, documento, e-mail por extenso, `@`, `://`); ou há dois ou mais numerais por
+    extenso. Idempotente."""
+    return remover_entidades_com_motivo(texto)[0]
+
+
+def remover_entidades_com_motivo(texto: object) -> tuple[str | None, MotivoDoFiltro | None]:
+    """`(comando limpo, None)` ou `(None, motivo)`. O texto que sobra vazio também é recusa (`vazio`)."""
     if not isinstance(texto, str):
-        return None
+        return None, "nao_texto"
     texto = normalizar(texto)
     if mistura_alfabetos(texto):
-        return None
+        return None, "alfabetos"
     trocado = _ASPAS.sub(M_TEXTO, texto)
     sobra = _primeira_aspa_sobrando(trocado)
     if sobra is not None:                        # a aspa que abre e não fecha: o resto é o texto a escrever
         trocado = f"{trocado[:sobra].rstrip()} {M_TEXTO}"
-    trocado = _simbolos(_formas(trocado), recusar_colado=True)
-    if trocado is None or _recusa(_sem_marcadores(trocado)):
-        return None
-    trocado, numerais = _numerais(_MISTO.sub(M_TERMO, trocado))
+    # Passada 1, antes de qualquer máscara. O que estava entre aspas já é `[texto]`: é o que a pessoa manda ESCREVER.
+    if (motivo := _recusa_no_original(trocado)) is not None:
+        return None, motivo
+    marcado = _simbolos(_formas(trocado), recusar_colado=True)
+    if marcado is None:
+        return None, "simbolo_colado"
+    if (motivo := _recusa(_sem_marcadores(marcado))) is not None:
+        return None, motivo
+    marcado, numerais = _numerais(marcado)
     if numerais >= 2:
-        return None
-    return _limpar(trocado)
+        return None, "numerais"
+    limpo = _limpar(marcado)
+    return (limpo, None) if limpo else (None, "vazio")
 
 
 # ------------------------------------------------------------------ a C2: o texto do catálogo nas opções da R2
@@ -270,11 +347,14 @@ def mascarar_catalogo(texto: str) -> str:
     corte = _primeira_aspa_sobrando(t)
     if corte is not None:
         t = t[:corte]
-    t = _simbolos(_formas(t), recusar_colado=False) or ""
-    if _recusa(_sem_marcadores(t)):
+    if _recusa_no_original(t) is not None:
         return ""
-    return _limpar(_numerais(_MISTO.sub(M_TERMO, t))[0])
+    t = _simbolos(_formas(t), recusar_colado=False) or ""
+    if _recusa(_sem_marcadores(t)) is not None:
+        return ""
+    return _limpar(_numerais(t)[0])
 
 
-__all__ = ["M_EMAIL", "M_HANDLE", "M_NUMERO", "M_TELEFONE", "M_TERMO", "M_TEXTO", "M_URL", "mascarar_catalogo",
-           "mistura_alfabetos", "normalizar", "remover_entidades", "sem_acento"]
+__all__ = ["M_EMAIL", "M_HANDLE", "M_NUMERO", "M_TELEFONE", "M_TERMO", "M_TEXTO", "M_URL", "MotivoDoFiltro",
+           "mascarar_catalogo", "mistura_alfabetos", "normalizar", "remover_entidades", "remover_entidades_com_motivo",
+           "sem_acento", "sem_leet"]

@@ -57,6 +57,8 @@ class RegistroDeDecisao:
     step_id: str | None
     ref: str | None
     resultado: ResultadoDeDecisao
+    #: Por que o chamador recusou por privacidade (`PedidoDeDecisao.motivo_privacidade`); só código, nunca o estado.
+    motivo_privacidade: str | None = None
 
 
 Observador = Callable[[RegistroDeDecisao], None]
@@ -182,7 +184,7 @@ class Porta:
             return
         try:
             self.observador(RegistroDeDecisao(pedido.origem, pedido.classe, modo, pedido.run_id, pedido.step_id,
-                                              pedido.ref, res))
+                                              pedido.ref, res, pedido.motivo_privacidade))
         except Exception:  # medir nunca derruba o trabalho
             log.warning("decisao_fechada: observador falhou")
             return
