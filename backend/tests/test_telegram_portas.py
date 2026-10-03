@@ -119,3 +119,14 @@ async def test_pergunta_de_le_a_pergunta_da_execucao_e_o_codigo_da_recusa_sobe(h
     with pytest.raises(RecusaDaCentral) as exc:
         portas.responder(run.id, "pode ser")
     assert exc.value.codigo == "invalid_state"
+
+
+async def test_ha_pergunta_sensivel_aberta_le_as_execucoes_esperando(harness: Harness, como_telegram: None) -> None:
+    st = harness.state
+    assert st is not None
+    portas = _portas(harness)
+    assert portas.ha_pergunta_sensivel_aberta() is False                        # nada espera
+    run = st.runs.create(RunCreate(command="abrir o QA Messenger no android-02", instance_ids=["android-03"],
+                                   idempotency_key="telegram:ni-3"))
+    await harness.wait_run(run.id, ("needs_input",))
+    assert portas.ha_pergunta_sensivel_aberta() is False                        # pergunta de destino, não credencial

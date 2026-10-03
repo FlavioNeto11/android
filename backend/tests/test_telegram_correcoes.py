@@ -205,18 +205,18 @@ async def test_update_que_nao_grava_nao_trava_a_conversa(tmp_path: Path, caplog:
     original = c.repo.gravar
 
     def gravar(**kw: object) -> bool:
-        if kw.get("texto") == "texto-que-quebra":
-            raise RuntimeError("falha do banco com texto-que-quebra")
+        if kw.get("texto") == "texto que quebra":
+            raise RuntimeError("falha do banco com texto que quebra")
         return original(**kw)                                           # type: ignore[arg-type]
 
     c.repo.gravar = gravar                                              # type: ignore[method-assign]
-    assert await c.volta(msg(5, "texto-que-quebra"), msg(6, "/status")) == 2
+    assert await c.volta(msg(5, "texto que quebra"), msg(6, "/status")) == 2
     linha = c.linha(5)
     assert (linha["estado"], linha["texto"]) == ("falhou", None)
     assert c.portas.nomes() == ["status"] and c.linha(6)["estado"] == "feita"       # a válida foi tratada
     assert c.repo.proximo_offset() == 7                                             # o offset andou
     nossos = " | ".join(r.getMessage() for r in caplog.records if not r.name.startswith(("httpx", "httpcore")))
-    assert "update 5" in nossos and "texto-que-quebra" not in nossos
+    assert "update 5" in nossos and "texto que quebra" not in nossos
     assert await c.volta() == 0                                         # e a 5 não volta a cada volta
 
 
@@ -346,3 +346,49 @@ async def test_dica_do_409_cita_webhook_e_o_script_de_descoberta(tmp_path: Path)
     await c.volta()
     [problema] = c.servico.problemas()
     assert "webhook" in problema.hint and "avisos-telegram.py descobrir" in problema.hint
+
+
+# --------------------------------------------------------------------------- a senha digitada como mensagem normal
+async def test_palavra_solta_com_pergunta_sensivel_aberta_e_recusada(tmp_path: Path) -> None:
+    c = Cenario(tmp_path)
+    c.portas.sensivel_aberta = True
+    await c.volta(msg(5, "kiwi2024!"))
+    linha = c.linha(5)
+    assert (linha["estado"], linha["texto"], linha["tamanho"]) == ("recusada", None, 9)
+    assert [b for m, _, b in c.bot.chamadas if m == "deleteMessage"] == [{"chat_id": str(CHAT), "message_id": 50}]
+    assert RESPOSTA_PERGUNTA_CREDENCIAL in c.bot.textos()
+    assert "previa" not in c.portas.nomes() and "criar" not in c.portas.nomes()
+    resto = c.db.query("SELECT * FROM canal_entradas WHERE canal='telegram'")
+    assert "kiwi2024" not in " ".join(str(v) for r in resto for v in dict(r).values())
+
+
+async def test_frase_normal_com_pergunta_sensivel_aberta_vira_previa(tmp_path: Path) -> None:
+    c = Cenario(tmp_path)
+    c.portas.sensivel_aberta = True
+    await c.volta(msg(5, "abra o QA Messenger no android-09"))
+    assert c.linha(5)["estado"] == "pergunta" and c.linha(5)["texto"] == "abra o QA Messenger no android-09"
+    assert c.portas.nomes() == ["previa"] and c.bot.chamou("deleteMessage") == 0
+
+
+async def test_palavra_solta_sem_pergunta_aberta_vira_previa(tmp_path: Path) -> None:
+    c = Cenario(tmp_path)
+    await c.volta(msg(5, "kiwi2024!"))
+    assert c.linha(5)["texto"] == "kiwi2024!" and c.portas.nomes() == ["ha_pergunta_sensivel_aberta", "previa"]
+    assert c.bot.chamou("deleteMessage") == 0
+
+
+async def test_porta_que_nao_le_as_perguntas_recusa_a_palavra_solta(tmp_path: Path) -> None:
+    c = Cenario(tmp_path)
+    c.portas.sensivel_quebra = True
+    await c.volta(msg(5, "kiwi2024!"), msg(6, "abra o QA Messenger no android-09"))
+    assert (c.linha(5)["estado"], c.linha(5)["texto"]) == ("recusada", None)
+    assert c.linha(6)["estado"] == "pergunta"                           # a frase não depende da leitura
+    assert c.portas.nomes() == ["ha_pergunta_sensivel_aberta", "previa"]
+
+
+async def test_comando_reconhecido_com_pergunta_sensivel_aberta_segue_normal(tmp_path: Path) -> None:
+    c = Cenario(tmp_path)
+    c.portas.sensivel_aberta = True
+    await c.volta(msg(5, "/status"), msg(6, "/pendencias"))
+    assert [c.linha(5)["estado"], c.linha(6)["estado"]] == ["feita", "feita"]
+    assert c.portas.nomes() == ["status"] and c.bot.chamou("deleteMessage") == 0

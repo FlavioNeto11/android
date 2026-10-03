@@ -567,6 +567,8 @@ A Central trata isso como o painel trata. A gramática fechada está em [design/
   texto (decide pelo contexto, com o vocabulário da triagem de credencial): não é guardada, é apagada do chat, e a
   resposta orienta o dono: a senha se grava na conta da persona, e o código de verificação se digita no aparelho. Vale
   para o reply ao aviso e para `/responder <id> <texto>`.
+- Enquanto uma execução espera senha, código, 2FA ou token, uma palavra solta (sem reply e sem `/responder`, como
+  "kiwi2024!") também é recusada, apagada do chat e nunca gravada; uma frase segue como pedido, com a prévia.
 - Só vale o dono em conversa PRIVADA: `chat.type = private` e `from.id` igual ao `TELEGRAM_CHAT_ID`. Grupo, canal ou
   outro membro ficam gravados sem texto e sem resposta.
 - Na primeira subida (canal sem nenhuma linha) o que o Telegram guardou antes (até 24 h) é descartado, não tratado: um

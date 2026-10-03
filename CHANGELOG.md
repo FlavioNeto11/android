@@ -44,6 +44,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - B1: na 1ª subida o histórico do chat é descartado (`getUpdates` com `offset=-1` e uma linha-marco), não executado;
   - B2: a resposta a uma pergunta que pede senha, código, 2FA ou token é recusada pelo contexto (vocabulário da triagem de
     credencial), apagada do chat e nunca gravada; o 409 `credencial_na_resposta` do caminho comum é final;
+  - B2 (canal): com uma execução esperando senha, código, 2FA ou token, a palavra solta (sem reply e sem `/responder`) é
+    recusada, apagada do chat e não gravada; sem poder ler as perguntas, falha fechada;
   - I3: a update que não grava vira `falhou` sem texto e o offset anda; I4: a prévia vence em `ttl_previa_s` (900 s);
   - I5: o dono é `chat.type = private` com `from.id` igual ao chat, na mensagem e no botão;
   - I7: o 429 honra o `Retry-After`; o 401/403 vira o problema `telegram_entrada_recusada` e espera como o 409;

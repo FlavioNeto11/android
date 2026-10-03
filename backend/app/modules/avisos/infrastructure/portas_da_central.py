@@ -18,6 +18,7 @@ from app.db import Database
 from app.models import Health, RunCreate, RunStatus, RunTarget, RunTargetsResolveBody
 from app.modules.avisos.application.entrada import casar_ref
 from app.modules.avisos.infrastructure.entrada import Pendencia, Previa, RecusaDaCentral
+from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
 from app.security.sessions import operador_atual
 from app.shared.costuras import autor_do_gesto
 from app.social.approvals import ApprovalService
@@ -73,6 +74,12 @@ class PortasReais:
 
     def online(self) -> list[str]:
         return self._online()
+
+    def ha_pergunta_sensivel_aberta(self) -> bool:
+        """Alguma execução em needs_input pergunta por senha, código, 2FA ou token (a mesma triagem de credencial do
+        caminho comum aplicada à pergunta). Simples e isolada de propósito: o 29.52 expõe esta leitura no serviço."""
+        triagem = TriagemDeCredencial()
+        return any(triagem.recusa(self.pergunta_de(rid)) for rid in self.execucoes_esperando())
 
     def pergunta_de(self, ref: str) -> str:
         """O que a(s) execução(ões) de `ref` pergunta(m): `status_detail`, as perguntas e o nome dos campos (um campo

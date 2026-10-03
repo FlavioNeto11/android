@@ -126,6 +126,11 @@ class PortasDaCentral(Protocol):
     def criar(self, texto: str, alvos: list[dict[str, object]], chave: str) -> tuple[str, str]: ...
     def online(self) -> list[str]: ...
     def desfecho(self, run_id: str) -> str | None: ...
+    def ha_pergunta_sensivel_aberta(self) -> bool:
+        """Alguma execução espera resposta a uma pergunta que pede senha, código, 2FA ou token. Leitura isolada: o caminho
+        comum (29.52) vai expô-la, e esta porta passa a só repassá-la."""
+        ...
+
     def pergunta_de(self, ref: str) -> str:
         """O que a(s) execução(ões) indicada(s) por `ref` (id inteiro ou o fim dele) pergunta(m): o `status_detail` e as
         perguntas, em texto. Vazio quando não há. Serve só para a triagem de credencial; nada daqui volta ao chat."""
@@ -450,6 +455,8 @@ class ServicoDeEntrada:
         senha, código, 2FA, token ou verificação? Decide pelo contexto, não pela forma do texto. Na dúvida (a pergunta não
         pôde ser lida), recusa: o dono responde pelo painel."""
         i = self._intencao({"texto": r.texto, "responde_a": r.responde_a})
+        if i.tipo == "livre":
+            return self._palavra_solta_com_pergunta_sensivel(i.texto)
         if i.tipo != "responder" or not i.ref:
             return False
         try:
@@ -457,6 +464,19 @@ class ServicoDeEntrada:
             return self._recusa(self.portas.pergunta_de(i.ref))
         except Exception as exc:  # noqa: BLE001 - sem ler a pergunta não há como afirmar que a resposta é inofensiva
             log.warning("telegram: pergunta da execução não lida (%s); a resposta é recusada por precaução",
+                        type(exc).__name__)
+            return True
+
+    def _palavra_solta_com_pergunta_sensivel(self, texto: str) -> bool:
+        """A senha digitada como mensagem NORMAL (sem reply e sem `/responder`) enquanto uma execução espera credencial.
+        Um pedido de verdade é uma frase; uma senha é uma palavra só. O que a triagem reconhece já foi recusado antes,
+        com ou sem pergunta aberta. Sem poder ler as perguntas, falha fechada: a palavra só é recusada."""
+        if len(texto.split()) != 1:
+            return False
+        try:
+            return self.portas.ha_pergunta_sensivel_aberta()
+        except Exception as exc:  # noqa: BLE001 - sem ler as perguntas, a palavra só é tratada como credencial
+            log.warning("telegram: perguntas abertas não lidas (%s); a palavra solta é recusada por precaução",
                         type(exc).__name__)
             return True
 

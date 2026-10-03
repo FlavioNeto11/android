@@ -110,6 +110,8 @@ class PortasFalsas:
         self.recusar_criar = False
         self.desfechos: dict[str, str] = {}
         self.pergunta = "Para qual contato?"        # o que a execução em needs_input pergunta (B2)
+        self.sensivel_aberta = False                # há execução esperando senha/código/2FA/token (palavra solta)
+        self.sensivel_quebra = False
 
     def _anota(self, nome: str, *args: object) -> None:
         self.chamadas.append((nome, args, operador_atual()))
@@ -157,6 +159,12 @@ class PortasFalsas:
 
     def desfecho(self, run_id: str) -> str | None:
         return self.desfechos.get(run_id)
+
+    def ha_pergunta_sensivel_aberta(self) -> bool:
+        self._anota("ha_pergunta_sensivel_aberta")
+        if self.sensivel_quebra:
+            raise RuntimeError("banco fora")
+        return self.sensivel_aberta
 
     def pergunta_de(self, ref: str) -> str:
         self._anota("pergunta_de", ref)
