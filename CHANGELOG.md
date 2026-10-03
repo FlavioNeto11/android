@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — RA-10: o porquê de cada chamada de IA em `ai_calls` e os grupos de `/api/usage` (branch feat/ra-10-observabilidade, migração 080)
+
+- `ai_calls` ganha `verdict`, `escalate`, `motivo` e `image_reason` (vocabulários fechados em `planning/provider.py`,
+  `MarcaDaChamada`), e `decisao_fechada_sombra` ganha `motivo_privacidade`. O executor marca toda chamada que passa por
+  `_ai` (plano, decisão, cascata, julgamento, vazio, rejulgamento, leitura) e o assistente marca o refinamento; o motivo
+  do escalonamento sai do código, e a frase da linha do tempo continua a mesma.
+- O rejulgamento (7.10 e 17.10) era gravado como `verify` tier 0: agora é tier 1 com motivo. A linha de erro e a de
+  orçamento recusado ganham `provider` e modelo da função; a imagem da persona grava `origem='persona'`; a etapa que a IA
+  conduziu grava `driven_by='ai'` também com receitas desligadas.
+- `GET /api/usage` ganha só chaves novas: `by_origin`, `escalations`, `rejudges` (com discordância por app),
+  `cascades`, `image_reasons` e `steps_driven_by_null`, no preço de `spent_usd` (`costs.usd_por`). Adendo v0.75 do
+  contrato; conferência pós-deploy em `docs/ia.md` §9.
+- Prova `simulated`: `test_observabilidade_das_chamadas.py` e `test_assistente_do_comando.py`. Prova real: `not_run`.
+
 ## 2026-10-03 — Aprendizado: `commit` sem catálogo volta para a classe B (branch fix/commit-sem-catalogo-b)
 
 - O dono confirmou em 03/10 a decisão de 02/10: receita ou fluxo com `commit` num app SEM catálogo

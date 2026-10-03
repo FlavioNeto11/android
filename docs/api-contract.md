@@ -258,6 +258,7 @@ interface Snapshot {
 | `GET /api/settings` / `PUT /api/settings` | `Partial<Settings>` | `Settings` |
 | `GET /api/ai` | – | `AiStatus` |
 | `GET /api/usage` (v0.28) | – | `UsageReport.by_account`: US$ por conta de IA (`anthropic`, `openai`, `gemini`) na janela ou na execução (ADR-051) |
+| `GET /api/usage` (v0.75) | – | `UsageReport` ganha `by_origin`, `escalations`, `rejudges`, `cascades`, `image_reasons` e `steps_driven_by_null` (RA-10, migração 080; adendo v0.75) |
 | `GET /api/ai/balances` | – | `{accounts: AiBalance[], blocked, estimated: true, note}` (ADR-051) |
 | `POST /api/ai/balances/{conta}` | `{balance, source?: manual ou console, observed_at?, currency?, units_per_usd?, note?}` | 201, o mesmo relatório; 404 `unknown_account`, 400 `invalid_observed_at` |
 | `POST /api/ai/balances/{conta}/recharge` | `{amount > 0, currency?, note?}` | 201, o mesmo relatório (âncora nova = saldo de agora + valor); 409 `no_initial_balance`, 400 `invalid_recharge` |
@@ -4139,3 +4140,39 @@ lugar do texto do navegador (`lib/loadError.tsx`, todas as telas).
 
 Prova `simulated`: `tests/test_learning_rotas_falhas.py`, `frontend/src/features/aprendizado/model.test.ts`,
 `DetalheRico.test.tsx`, `SaudeDoApp.test.tsx`, `AprendizadoPage.test.tsx` e `frontend/src/lib/loadError.test.ts`.
+
+## Adendo v0.75 (03/10/2026, provisório: quem mergear depois renumera) — os grupos de observabilidade de `/api/usage` (RA-10, migração 080)
+
+Só chaves novas, aditivas; nenhuma existente muda. O preço de todo grupo é o de `spent_usd` (`usd` declarado onde
+existe, senão tokens × preço; `provider='simulated'` conta a chamada a US$ 0). As linhas anteriores à 080 têm as colunas
+nulas e não entram nos grupos que dependem delas: os números valem do deploy em diante.
+
+```ts
+interface UsageGrupo { calls: number; usd: number }
+interface UsageReport {                                   // … os campos de sempre, mais:
+  by_origin: Record<string, UsageGrupo>;                  // ai_calls.origem; nula vira "sem_origem"
+  escalations: Record<MotivoDeEscalonamento, UsageGrupo>; // ai_calls.escalate não nulo
+  rejudges: UsageGrupo & {                                // verify com motivo 'rejulgamento' (7.10 e 17.10)
+    by_kind: Record<'nivel' | 'sim_com_efeito', UsageGrupo>;
+    judged: number; disagreements: number; disagreement_rate: number | null;
+    by_app: Record<string, { judged: number; disagreements: number; disagreement_rate: number }>;
+  };
+  cascades: UsageGrupo & { unblocked: number; by_verdict: Record<string, number> };  // decide com motivo 'cascata'
+  image_reasons: Record<MotivoDaImagem, { calls: number; with_image: number }>;
+  steps_driven_by_null: number;                           // etapas terminadas com decide e driven_by nulo
+}
+```
+
+- **Discordância do rejulgamento**: o modelo forte desfez o veredito do barato. No `nivel` (7.10), o forte diz `yes`
+  onde o barato recusou; no `sim_com_efeito` (17.10), o forte não diz `yes` onde o barato disse. Só linhas `ok=1`.
+  `by_app` usa o app da etapa (`projecao.app_da_etapa`, o mesmo do histórico das ações).
+- **`cascades.unblocked`**: a decisão do modelo forte, depois do bloqueio do barato, não foi `step_blocked`; erro do
+  provedor aparece em `by_verdict` como `erro`.
+- **`steps_driven_by_null`**: o aceite do RA-10 é zero nas etapas novas. O total de `driven_by` de sempre ainda soma
+  nulo como `ai` (COALESCE), e este número mostra o que essa soma supõe.
+
+Os vocabulários (`MotivoDeEscalonamento`, `MotivoDaChamada`, `MotivoDaImagem`) estão em `docs/ia.md` §9 e em
+`backend/app/planning/provider.py`.
+
+Prova `simulated`: `backend/tests/test_observabilidade_das_chamadas.py`. Prova real: `not_run` (a consulta de
+conferência de `docs/ia.md` §9 roda um dia depois do deploy).

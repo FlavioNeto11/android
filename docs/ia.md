@@ -259,6 +259,47 @@ achado não se confirmam nos dados.
 - `GET /api/usage` (`backend/app/api.py:414`) — custo por papel/modelo/tier dos últimos N dias (padrão 7),
   chamadas por execução/objetivo, erros por tipo, linhas de fallback. Não chama o provedor, só lê o já gasto —
   mesma fonte que `scripts/usage-report.ps1`.
+- **RA-10 (migração 080): o porquê de cada chamada.** `ai_calls` ganha quatro colunas, gravadas pelo executor a partir
+  da `MarcaDaChamada` que acompanha `_ai` (vocabulários fechados em `planning/provider.py`; sem CHECK no banco):
+  - `motivo` (para que a chamada foi feita): `plan` → `plano` ou `refinamento` (o assistente do comando, que grava
+    na execução respondida); `decide` → `decisao` ou `cascata` (a decisão no modelo
+    forte depois do bloqueio do barato, 17.10); `verify` → `julgamento`, `vazio` (a prova de coleta sem item, 12.4) ou
+    `rejulgamento` (7.10 e 17.10); `leitura` → `leitura` (12.5). Ficam com `motivo` nulo as chamadas fora de
+    execução (curador, persona, decisão fechada: quem as distingue é `origem`) e as dos papéis sem subdivisão, ainda
+    que dentro de uma execução: `social` (o texto que a etapa digita).
+  - `escalate` (por que subiu ao modelo de escalonamento; nulo = não subiu). No `decide`, na ordem do executor:
+    `efeito` (política do efeito externo, inclusive `by_risk`) · `nova_tentativa` · `erros_seguidos` · `piso` (alvo
+    inexistente, 7.8) · `bloqueio` (a cascata) · `ciclo`. No `verify`: `nivel` (7.10) e `sim_com_efeito` (17.10). A
+    linha com `escalate` é sempre tier ≥ 1: o rejulgamento era gravado como `verify` tier 0.
+  - `verdict` (o desfecho): `yes`/`no`/`uncertain`/`unprovable` no `verify`; o nome da ferramenta no `decide` (fora
+    da lista de ferramentas, `desconhecida`); `plano` ou `pergunta` no `plan`; nulo na leitura e na linha de erro.
+  - `image_reason` (por que a imagem foi junto, ou não), na ordem de `_motivo_da_imagem`. Sem imagem: `sensivel`,
+    `politica_nunca`, `arvore_rica`. Com imagem: `politica_sempre`, `pedida`, `problema`, `primeira_julgada`,
+    `arvore_pobre`. `with_image` continua dizendo se ela de fato foi.
+
+  A linha de erro e a de orçamento recusado passam a ter `provider` e modelo da função que a chamada usaria (a de
+  escalonamento quando a marca diz que subiu); a imagem da persona grava `origem='persona'`; a etapa que a IA conduziu
+  grava `driven_by='ai'` também com receitas desligadas e sem veredito sobre a receita. `GET /api/usage` agrupa por
+  isso (`by_origin`, `escalations`, `rejudges` com discordância por app, `cascades`, `image_reasons`,
+  `steps_driven_by_null`; adendo v0.75 de `api-contract.md`), no preço de `spent_usd` (`costs.usd_por`, que lê `usd`).
+
+  **Conferência depois do deploy** (prova real do RA-10; `:deploy` = o instante do deploy em ISO-8601 UTC). As três
+  devem dar zero linhas, ou só as explicadas:
+
+  ```sql
+  -- 1. linha nova de execução sem provedor ou sem origem; sem motivo nos papéis que o executor marca
+  SELECT role, ok, COUNT(*) n FROM ai_calls WHERE ts > :deploy AND run_id IS NOT NULL
+     AND (provider IS NULL OR origem IS NULL
+          OR (motivo IS NULL AND role IN ('plan','decide','verify','leitura'))) GROUP BY role, ok;
+  -- 2. etapa terminada com decisão de IA e sem condutor (o mesmo número de steps_driven_by_null)
+  SELECT COUNT(DISTINCT s.id) n FROM steps s JOIN ai_calls c ON c.step_id = s.id AND c.role = 'decide'
+   WHERE c.ts > :deploy AND s.driven_by IS NULL
+     AND s.status IN ('succeeded','failed','uncertain','waiting_user');
+  -- 3. rejulgamento fora do tier 1, ou chamada escalada sem motivo de escalonamento
+  SELECT role, tier, motivo, escalate, COUNT(*) n FROM ai_calls WHERE ts > :deploy
+     AND ((motivo = 'rejulgamento' AND (tier < 1 OR escalate IS NULL)) OR (role = 'decide' AND tier >= 1 AND escalate IS NULL))
+   GROUP BY role, tier, motivo, escalate;
+  ```
 - Aba IA do painel mostra o mesmo por execução, incluindo cache ativo/inativo por papel.
 - Estimativa por fluxo antes de rodar: `GET /api/flows/cobertura` ganhou `estimated_usd` (item 7.7) — etapas sem
   receita × custo mediano por etapa só-IA dos últimos 7 dias, por papel; sem histórico, `null` ("sem base").
