@@ -190,7 +190,20 @@ _NAO_DONO: Final = (r"(?:a|o|as|os|um|uma|e|que|mim|ele|ela|eles|elas|voce|vc|no
                     r"|entrada|saida|lixeira|rascunho|rascunhos|enviados|enviadas|arquivados|arquivadas|principal"
                     r"|promocoes|atualizacoes|pastas|lidos|lidas|importantes|favoritos"
                     # rodada G: o rótulo antes do provedor, que agora pode vir com hífen ou parêntese ("site - outlook")
-                    r"|site|sites|aplicativo|plataforma|servico|provedor|tela|aba|pagina)")
+                    r"|site|sites|aplicativo|plataforma|servico|provedor|tela|aba|pagina"
+                    # piso do 31.9, depois da fase 2 da H: os objetos e telas dos apps de e-mail e agenda ("abra o
+                    # calendário do outlook", "veja a agenda do gmail", "abra as configurações rápidas do outlook"): 44 de
+                    # 50 navegações realistas recusavam como e-mail. Lista de ISENÇÃO do que não é dono de endereço: a
+                    # palavra que falta aqui recusa (custo de utilidade), não vaza
+                    r"|calendario|calendarios|agenda|agendas|configuracao|configuracoes|config|configs|ajuste|ajustes"
+                    r"|preferencia|preferencias|opcao|opcoes|contatos|tarefa|tarefas|nota|notas|evento|eventos|reuniao"
+                    r"|reunioes|compromisso|compromissos|lembrete|lembretes|assinatura|assinaturas|regra|regras|filtro"
+                    r"|filtros|categoria|categorias|tema|temas|idioma|seguranca|privacidade|drive|documento|documentos"
+                    r"|planilha|planilhas|menu|inicio|historico|painel|barra|lateral|versao|notificacoes|busca|calendar"
+                    r"|calendars|settings|contacts|tasks|events|meeting|meetings|notes|rules|filters|folder|folders"
+                    r"|account|accounts|preferences|signature|options|configuracion|contactos|tareas|reunion|reuniones"
+                    r"|compartilhada|compartilhado|compartilhadas|compartilhados|rapida|rapidas|rapido|rapidos|nova|novo"
+                    r"|novas|novos|antiga|antigo|padrao|geral|gerais|avancada|avancadas|avancado|avancados)")
 _PROVEDOR: Final = (r"(?:gmail|googlemail|hotmail|outlook|yahoo|correio|live|icloud|uol|bol|terra|msn|proton(?:mail)?|gmx"
                     r"|aol|yandex|zoho|fastmail|laposte|web\.de|mail\.ru|me\.com)")
 #: Rodada F (F-G): o provedor COLADO ao nome, sem preposição ("zilda gmail", "zilda, hotmail", "to zilda hotmail"). Além do

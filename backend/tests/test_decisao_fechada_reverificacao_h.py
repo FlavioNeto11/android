@@ -252,3 +252,63 @@ def test_controles_passam(comando: str) -> None:
 ])
 def test_as_saidas_dos_controles(comando: str, saida: str) -> None:
     assert _saida(comando) == saida
+
+
+# ------------------------------------------------------------------ o piso depois do NO-GO da fase 2 da H (03/10)
+@pytest.mark.parametrize("comando", [
+    # (a) o C7 com dígito recusava mascarado ("[termo]"); agora recusa o pedido inteiro
+    "entre no insta tulipa42", "entre no insta tulipa42 e curta o post da Marina", "digite 4821 e curta o post",
+    "entre no insta e digite tulipa42, depois curta", "na conta lucas, curta a foto tulipa42", "user zilda tulipa42",
+    "entrei com tulipa42", "entre com o lucas hoje 4821",
+])
+def test_o_valor_com_digito_recusa_em_vez_de_mascarar(comando: str) -> None:
+    for girassol in (False, True):
+        motivo = _motivo(comando, girassol=girassol)
+        assert motivo is not None and motivo.startswith("c7_"), (girassol, motivo)
+
+
+@pytest.mark.parametrize("comando", [
+    "entre no insta e curta as 3 fotos", "entre no insta e mande 50 reais pro bruno", "curta o post qa-001",
+    "entre na conversa com qa-001 e mande oi", "entre no chat com qa-002", "abra o insta e curta 3 fotos do perfil 2",
+])
+def test_numero_comum_e_contato_com_digito_passam(comando: str) -> None:
+    """Sem gatilho, ou com o verbo de entrar numa conversa (H-1 a), o dígito não recusa. Custo aceito: o ano de quatro
+    dígitos num comando de login recusa ("entre no insta e veja o post de 2024")."""
+    assert _motivo(comando) is None
+
+
+@pytest.mark.parametrize("comando", [
+    "usuario lucas\ngirassol\ncurta o post da Marina", "usuario lucas\r\ngirassol",
+    "entre com a conta do lucas\ngirassol\ncurta a foto", "user lucas\ntulipa e curta",
+])
+def test_a_quebra_de_linha_separa_o_par(comando: str) -> None:
+    """(b) A quebra de linha vira token e vale como o ";" (antes o texto era achatado e o par passava inteiro)."""
+    motivo = _motivo(comando)
+    assert motivo is not None and motivo.startswith("c7_"), motivo
+
+
+@pytest.mark.parametrize("comando", [
+    "abra o insta\ncurta o post da Marina\ndepois comente parabéns", "entre no insta\ne curta 3 fotos",
+])
+def test_a_quebra_de_linha_na_navegacao_passa(comando: str) -> None:
+    assert _motivo(comando) is None
+
+
+@pytest.mark.parametrize("comando", [
+    "abra o calendário do outlook", "abra as configurações do outlook", "veja a agenda do gmail",
+    "abra a agenda do outlook e veja a reunião de amanhã", "entre nas configurações do gmail", "veja os contatos do outlook",
+    "abra as tarefas do outlook", "crie um filtro no gmail", "mude o idioma do gmail", "abra el calendario de outlook",
+    "abre la configuración de gmail", "abra a agenda compartilhada do outlook", "abra as configurações rápidas do outlook",
+])
+def test_o_objeto_do_app_de_email_nao_e_dono_de_endereco(comando: str) -> None:
+    """(c) "X do outlook/gmail" com X objeto do app (calendário, agenda, configurações…) é navegação, não e-mail ditado.
+    `_NAO_DONO` é lista de ISENÇÃO: o objeto que falta nela continua recusando (utilidade), não vaza."""
+    assert remover_entidades_com_motivo(comando)[1] is None
+
+
+@pytest.mark.parametrize("comando", [
+    "mande a foto para zilda do outlook", "mande para zilda no gmail", "usuario zilda no gmail", "zilda do hotmail",
+    "mande pra zilda, lá no gmail", "para o e-mail da zilda no outlook", "envie para zilda pelo gmail",
+])
+def test_o_email_ditado_continua_recusando(comando: str) -> None:
+    assert remover_entidades_com_motivo(comando)[1] == "email_ofuscado"

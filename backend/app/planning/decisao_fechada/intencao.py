@@ -59,7 +59,7 @@ _DESCRICAO_MAX: Final = 200
 _APP: Final = re.compile(r"^[A-Za-z0-9_.\-]{1,120}$")
 #: Por que o comando é C7 (`motivo_c7`), gravado na linha da sombra (`motivo_privacidade`, migração 079).
 MotivoC7 = Literal["c7_bidi", "c7_palavra", "c7_formato", "c7_alfabetos", "c7_ofuscado", "c7_eufemismo", "c7_digitos",
-                   "c7_login_valor", "c7_par_credencial", "c7_intencao_de_entrar"]
+                   "c7_login_valor", "c7_par_credencial", "c7_intencao_de_entrar", "c7_valor_com_digito"]
 _LETRAS: Final = re.compile(r"[^\W\d_]+")
 #: Assunto de C7 em qualquer formato, além do que `mentions_credential` já pega: na dúvida, o pedido inteiro é recusado
 #: (ADR-069: C7 nunca sai, nem em sombra). Casa no texto normalizado, sem acento e em minúsculas, com até um separador
@@ -220,8 +220,8 @@ _ENTRAR_PASSADO: Final[frozenset[str]] = frozenset((
 #: "entre" também é preposição ("as fotos postadas ENTRE 10/05 e 12/05", "a diferença entre os dois"): no começo da oração
 #: ou depois destas palavras é sempre verbo; depois de palavra de conteúdo, `_e_preposicao` decide pelo que vem depois.
 _ANTES_DO_IMPERATIVO: Final[frozenset[str]] = frozenset((
-    ",", ".", ";", "!", "?", ":", "-", "(", "e", "and", "y", "ou", "mas", "depois", "entao", "ai", "agora", "ja", "so",
-    "pra", "para", "favor", "pf", "pfv", "voce", "vc", "tambem", "logo", "primeiro", "then", "now", "please", "pls",
+    ",", ".", ";", "\n", "!", "?", ":", "-", "(", "e", "and", "y", "ou", "mas", "depois", "entao", "ai", "agora", "ja",
+    "so", "pra", "para", "favor", "pf", "pfv", "voce", "vc", "tambem", "logo", "primeiro", "then", "now", "please", "pls",
     "que", "nao", "pode", "por"))
 #: Rodada G (G-2 e G-5): depois de palavra de conteúdo, "entre" só é preposição diante de FAIXA (número, hora ou data dos
 #: dois lados) ou do artigo plural e do pronome. Antes, qualquer palavra que não seguisse o verbo bastava, e "no insta entre
@@ -417,9 +417,11 @@ _CAMPO_FORTE: Final[frozenset[str]] = frozenset(("usuario", "usuaria", "user", "
 #: "conta" e "perfil", que também são o lugar da navegação ("na conta lucas, comente"), nem "nome" e "persona", que listam
 #: várias contas ("persona lucas; persona bruno").
 _CAMPO_DE_LOGIN: Final[frozenset[str]] = frozenset(("usuario", "usuaria", "user", "username", "login", "usr"))
-_SEPARADORES_DO_PAR: Final[frozenset[str]] = frozenset(("e", ",", "/", ";", "and", "y", "-", ":", "&", "+", "|", "·"))
+_SEPARADORES_DO_PAR: Final[frozenset[str]] = frozenset((
+    "e", ",", "/", ";", "\n", "and", "y", "-", ":", "&", "+", "|", "·"))
 #: Os separadores do par que não são palavra: com eles e o campo de login, o par vale sem verbo de entrar (H-1 b).
-_SEPARADORES_NAO_ALFABETICOS: Final[frozenset[str]] = frozenset((",", ";", "|", ":", "/", "-", "&", "+", "·"))
+#: A quebra de linha vale como o ";" (piso do 31.9, depois da fase 2 da H): "usuario lucas" numa linha e o valor na outra.
+_SEPARADORES_NAO_ALFABETICOS: Final[frozenset[str]] = frozenset((",", ";", "\n", "|", ":", "/", "-", "&", "+", "·"))
 _ANTES_DE_PRA_ENTRAR: Final[frozenset[str]] = frozenset((
     "use", "usa", "usar", "digite", "digita", "coloque", "coloca", "bota", "poe", "ponha", "insira", "informe", "type",
     "enter"))
@@ -489,12 +491,46 @@ def _tokens(plano: str) -> list[str]:
 def _tokens_de(normal: str) -> list[str]:
     """Os tokens do texto JÁ normalizado, sem acento e em casefold, com o "é" verbo como "eh" (rodada G, G-5): sem o acento
     ele vira a conjunção "e", e "a entrega é entre 8 e 12" lia "e entre" como o imperativo. Se a remoção do acento mudar a
-    contagem de tokens, fica o "e" (o lado seguro: mais recusa)."""
-    toks = _tokens(" ".join(sem_acento(normal).split()))
-    com_acento = _tokens(" ".join(normal.casefold().split()))
-    if len(com_acento) == len(toks):
-        return ["eh" if a == "é" else t for t, a in zip(toks, com_acento, strict=True)]
-    return toks
+    contagem de tokens, fica o "e" (o lado seguro: mais recusa).
+
+    A quebra de linha vira um token próprio entre as linhas (piso do 31.9, depois da fase 2 da H): antes o texto era
+    achatado e "usuario lucas" numa linha e o valor na outra virava uma frase só, sem separador."""
+    saida: list[str] = []
+    for linha in (x for x in normal.splitlines() if x.strip()):
+        if saida:
+            saida.append("\n")
+        toks = _tokens(" ".join(sem_acento(linha).split()))
+        com_acento = _tokens(" ".join(linha.casefold().split()))
+        if len(com_acento) == len(toks):
+            toks = ["eh" if a == "é" else t for t, a in zip(toks, com_acento, strict=True)]
+        saida.extend(toks)
+    return saida
+
+
+#: O verbo de digitar que põe um VALOR num campo (o piso do 31.9, depois da fase 2 da H). Sem "use", "coloque" e "escreva",
+#: que no produto são o filtro, a música e o comentário.
+_DIGITAR_VALOR: Final[frozenset[str]] = frozenset((
+    "digite", "digita", "digitar", "tecle", "tecla", "insira", "insere", "type", "teclea", "soletro", "soletra", "soletre"))
+
+
+def _cara_de_valor(tok: str) -> bool:
+    """O token tem a cara de um segredo com dígito: letra e dígito juntos ("tulipa42", "qa-001") ou quatro dígitos ou mais
+    ("4821"). "As 3 fotos" e "50 reais" não."""
+    digitos = sum(c.isdigit() for c in tok)
+    return digitos > 0 and (digitos >= 4 or any(c.isalpha() for c in tok))
+
+
+def _valor_com_digito(toks: list[str], d: _Destinos) -> bool:
+    """O piso do item 10 (fase 2 da rodada H, 03/10): com gatilho de credencial em QUALQUER lugar do comando (verbo de entrar,
+    no presente ou no passado, palavra de campo forte, verbo de digitar valor), um token com cara de segredo com dígito que
+    não é destino (o que o extrator tirou, o nome do catálogo) recusa o pedido INTEIRO. Antes ele saía mascarado ("entre no
+    insta tulipa42" virava "entre no insta [termo]"): a máscara esconde o valor, mas o item 10 manda recusar. Não localiza
+    o valor; é um "fechar por gatilho" só para o que tem dígito. O verbo de entrar numa conversa ou com uma pessoa ("entre
+    na conversa com qa-001", H-1 a) é navegação, não gatilho: o contato do app de QA tem dígito."""
+    gatilho = (any(not _objeto_e_pessoa(toks, _pula(toks, fim + 1, _ADVERBIOS))
+                   for _, fim in _verbos_de_entrar(toks, passado=True))
+               or any(t in _CAMPO_FORTE or t in _DIGITAR_VALOR for t in toks))
+    return gatilho and any(_cara_de_valor(t) and not d.citado(i) for i, t in enumerate(toks))
 
 
 def _verbos_de_entrar(toks: list[str], *, passado: bool = False) -> list[tuple[int, int]]:
@@ -924,7 +960,9 @@ def motivo_c7(comando: str, *, sem_destinos: str | None = None, intencao: bool =
     - `c7_par_credencial` (rodada E): usuário e senha juntos ("entre com a conta Lucas / girassol", "usuário lucas e
       girassol, entra", "lucas, girassol, entra");
     - `c7_intencao_de_entrar` (rodada F, F-A): o verbo de entrar SEM objeto de navegação ("entra e curte", "entre com a
-      girassol"), sem precisar achar o valor.
+      girassol"), sem precisar achar o valor;
+    - `c7_valor_com_digito` (o piso, depois da fase 2 da H): gatilho de credencial em qualquer lugar e um token com cara de
+      segredo com dígito que não é destino ("entre no insta tulipa42", "digite 4821 e curta"): recusa em vez de mascarar.
 
     `sem_destinos`: o texto é o ORIGINAL e este é o mesmo comando sem os destinos (`RunService.sem_destinos`). O que o
     extrator tirou é destino do catálogo real: "com a conta Lucas" vira destino, "com a conta girassol" não (F-B).
@@ -964,6 +1002,8 @@ def motivo_c7(comando: str, *, sem_destinos: str | None = None, intencao: bool =
         return "c7_login_valor"
     if intencao and _entrar_sem_navegacao(toks, d):
         return "c7_intencao_de_entrar"
+    if _valor_com_digito(toks, d):
+        return "c7_valor_com_digito"
     return None
 
 
