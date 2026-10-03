@@ -28,7 +28,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - o teto de cobertura da R2.
 - O script é só leitura, também na reconexão, e não chama IA. Descrição e limites: [jev-golden-set.md](docs/design/jev-golden-set.md)
   §5.
-- Prova: `simulated` (`scripts/tests/test_jev_relatorio_31_10.py`, 10 testes). No banco do central: `not_run` (depois do
+- Prova: `simulated` (`scripts/tests/test_jev_relatorio_31_10.py`, 11 testes). No banco do central: `not_run` (depois do
   merge da suíte 7).
 ## 2026-10-03 — 29.34 (RA-15): o relógio do wake começa no snapshot carregado (branch feat/29-34-relogio-do-wake)
 

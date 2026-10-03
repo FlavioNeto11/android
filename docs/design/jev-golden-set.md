@@ -135,8 +135,9 @@ Uso, a partir da raiz do checkout:
         [--desde <ISO-8601 UTC>] [--sem-flows] [--json saida.json] [--md saida.md]
 
 - **Curador, por `kind`** (o `item_kind` da revisão do mesmo dossiê):
-  - rótulo 1: a primeira transição de PESSOA no item depois da linha da sombra. `validated` ou `published` dão `manter`;
-    `candidate` ou `deprecated` dão `rebaixar`; `disabled` dá `descartar`.
+  - rótulo 1: a primeira transição de PESSOA no item depois da linha da sombra, pela direção (`from_state` e `to_state`):
+    `disabled` dá `descartar`; `deprecated` ou descer na escada (`draft` < `candidate` < `validated` < `published`) dá
+    `rebaixar`; subir, ficar ou reativar dá `manter`.
   - rótulo 2: o `resultado_posterior`.
   - controle: a regra do adaptador simulado sobre o mesmo dossiê (mais evidência contra que a favor dá `revisar`).
 - **Intenção, por app** (o primeiro de `runs.app_ids`):
@@ -156,6 +157,7 @@ Uso, a partir da raiz do checkout:
 - A métrica principal só se mede com rótulo da pessoa. A execução sem fluxo não tem habilidade resolvida que o desfecho
   confirme.
 - O "aceite errado" é a escolha diferente de `nenhuma` que o rótulo desmente, sobre os comandos rotulados.
+- A R3 (desempate) só é contada (`pedidos_r3`): a sombra da R3 não tem decisão real, e o veredito por app é o da R2.
 
 Prova: `simulated` (`scripts/tests/test_jev_relatorio_31_10.py`). Execução no banco do central: `not_run` (roda depois
 do merge da suíte 7 e do deploy).

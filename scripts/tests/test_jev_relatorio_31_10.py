@@ -59,9 +59,10 @@ class Banco:
              template, "v1", simulated, json.dumps(saida) if saida is not None else None, validade, decisao_final,
              decidido_por))
 
-    def transicao(self, item_ref: str, to_state: str, *, por: str = "sessao-1", em: str = "2026-10-06T00:00:00Z") -> None:
+    def transicao(self, item_ref: str, to_state: str, *, por: str = "sessao-1", em: str = "2026-10-06T00:00:00Z",
+                  de: str = "published") -> None:
         self.db.execute("INSERT INTO learning_transitions(item_ref, item_kind, from_state, to_state, reason, decided_by,"
-                        " decided_at) VALUES (?,?,?,?,?,?,?)", (item_ref, "receita", "published", to_state, "teste", por, em))
+                        " decided_at) VALUES (?,?,?,?,?,?,?)", (item_ref, "receita", de, to_state, "teste", por, em))
 
     def execucao(self, run_id: str, app: str, *, comprovada: bool = True) -> None:
         self.db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, instance_ids, created_at, app_ids)"
@@ -127,6 +128,15 @@ def test_curador_so_rotula_decisao_de_pessoa_depois_da_sombra(banco: Banco) -> N
     m = rel.relatorio_do_curador(banco.db, None, AGORA)["estratos"]["receita"]["medidas"]
     assert m["rotulos"] == 0
     assert m["concordancia_com_o_curador"] == 1.0 and m["com_parecer_valido"] == 1   # acompanhamento, não GO
+
+
+def test_curador_rotulo_pela_direcao_da_transicao() -> None:
+    assert rel._rotulo_da_transicao("draft", "candidate") == "manter"          # subiu
+    assert rel._rotulo_da_transicao("published", "candidate") == "rebaixar"    # desceu
+    assert rel._rotulo_da_transicao(None, "validated") == "manter"
+    assert rel._rotulo_da_transicao("disabled", "candidate") == "manter"       # reativou
+    assert rel._rotulo_da_transicao("validated", "deprecated") == "rebaixar"
+    assert rel._rotulo_da_transicao("candidate", "disabled") == "descartar"
 
 
 # ------------------------------------------------------------------ intenção

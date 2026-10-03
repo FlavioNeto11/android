@@ -52,10 +52,20 @@ SEM_DATA = frozenset({"instagram"})
 FATIA_DO_DIA_USD = 0.50
 TEMPLATE_DO_CURADOR = "curador"
 
-#: Rótulo 1 do curador (§2): a decisão da PESSOA, pelo estado para onde ela levou o item. Publicar ou manter → `manter`;
-#: rebaixar → `rebaixar`; desligar → `descartar` (os estados de `skills.domain.lifecycle.SkillState`).
-ROTULO_DA_TRANSICAO = {"validated": "manter", "published": "manter", "candidate": "rebaixar", "deprecated": "rebaixar",
-                       "disabled": "descartar"}
+#: Rótulo 1 do curador (§2): a decisão da PESSOA, pela DIREÇÃO da transição (os estados de
+#: `skills.domain.lifecycle.SkillState`). Desligar → `descartar`; aposentar ou descer na escada → `rebaixar`; subir, ficar ou
+#: reativar → `manter`. O estado de destino sozinho não basta: `candidate` vem de `draft` (subiu) ou de `published` (desceu).
+ESCADA = {"draft": 0, "candidate": 1, "validated": 2, "published": 3}
+
+
+def _rotulo_da_transicao(de: str | None, para: str) -> str | None:
+    if para == "disabled":
+        return "descartar"
+    if para == "deprecated":
+        return "rebaixar"
+    if para in ESCADA:
+        return "rebaixar" if de in ESCADA and ESCADA[para] < ESCADA[de] else "manter"
+    return None
 #: Rótulo 2 do curador: `resultado_posterior` (14 e 30 dias). Em 03/10 nenhum código o grava; quando gravar, só o que já
 #: está na régua da triagem conta.
 ROTULO_POSTERIOR = frozenset({"manter", "revisar", "rebaixar", "descartar"})
@@ -136,9 +146,9 @@ def _revisao_do_curador(db: Any, dossie_hash: str) -> Mapping[str, Any] | None:
 
 def _rotulo_do_curador(db: Any, revisao: Mapping[str, Any], desde_ts: str) -> tuple[str | None, str | None]:
     """(rótulo na régua da triagem, fonte). 1: a decisão da PESSOA no item depois da sombra; 2: `resultado_posterior`."""
-    transicao = db.one("SELECT to_state FROM learning_transitions WHERE item_ref=? AND decided_by<>'sistema'"
+    transicao = db.one("SELECT from_state, to_state FROM learning_transitions WHERE item_ref=? AND decided_by<>'sistema'"
                        " AND decided_at>=? ORDER BY decided_at, id LIMIT 1", (revisao["item_ref"], desde_ts))
-    if transicao is not None and (rotulo := ROTULO_DA_TRANSICAO.get(str(transicao["to_state"]))):
+    if transicao is not None and (rotulo := _rotulo_da_transicao(transicao["from_state"], str(transicao["to_state"]))):
         return rotulo, "pessoa"
     posterior = revisao["resultado_posterior"]
     if isinstance(posterior, str) and posterior in ROTULO_POSTERIOR:
