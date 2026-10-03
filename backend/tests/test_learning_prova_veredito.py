@@ -132,3 +132,21 @@ def test_o_detalhe_da_invalida_e_o_contrato_com_a_validacao() -> None:
     d = detalhe_da_invalida(MotivoDaInvalida.EFEITO_REPETIDO, "o efeito saiu 2 vezes", marca="0123456789ab")
     assert d == "[0123456789ab] invalida:efeito_repetido — o efeito saiu 2 vezes"
     assert motivo_da_invalida(d) is MotivoDaInvalida.EFEITO_REPETIDO
+
+
+def test_versao_da_expansao_do_for_each_nao_e_plano_revisado() -> None:
+    """30.42: a `seq` recomeça em cada versão; a abertura é a 1ª etapa da v1, não a 1ª da versão da expansão."""
+    pulada = EtapaDaProva(seq=2, key="enviar", status="skipped", plan_version=1, side_effect=True,
+                          detalhe="plano revisado (v2)")
+    etapas = [_etapa(1, "open_app", acoes=(_tap(),)), pulada,
+              _etapa(1, "enviar_i1", efeito=True, acoes=(_tap(commit=True),), versao=2),
+              _etapa(2, "enviar_i2", efeito=True, acoes=(_tap(commit=True),), versao=2)]
+    v = veredito_da_prova(etapas, status="completed", expansoes=frozenset({2}))
+    assert (v.posicao, v.motivo) == (Posicao.FOR, None) and "3/3" in v.texto
+    assert veredito_da_prova(etapas, status="completed").posicao is None          # sem a expansão: plano revisado
+    falha_no_item = [*etapas[:3], _etapa(2, "enviar_i2", "failed", efeito=True, acoes=(_tap(),), versao=2)]
+    v = veredito_da_prova(falha_no_item, status="completed_with_issues", expansoes=frozenset({2}))
+    assert v.posicao is Posicao.AGAINST                     # não é `ponto_de_partida`: a abertura é a da v1
+    falha_no_1o_item = [*etapas[:2], _etapa(1, "enviar_i1", "failed", efeito=True, acoes=(_tap(),), versao=2)]
+    assert veredito_da_prova(falha_no_1o_item, status="completed_with_issues",
+                             expansoes=frozenset({2})).posicao is Posicao.AGAINST

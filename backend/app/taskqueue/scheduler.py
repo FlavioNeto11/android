@@ -1697,6 +1697,8 @@ class Scheduler:
                                                 (obj["id"],))}
         steps = [s for s in expand(plan.steps, collected) if s.key not in done]
         if steps:
+            # O começo "Expandido para " é lido pelo veredito da prova de fluxo (30.42, `domain.prova.PREFIXO_DA_EXPANSAO`):
+            # a versão que só expande não é replanejamento.
             repo.revise_plan(obj["id"], f"Expandido para {len(items)} item(ns) lidos em '{step.title}'", steps)
 
     def _skip_failed_item(self, obj: Any, step: Any, detail: str) -> bool:
