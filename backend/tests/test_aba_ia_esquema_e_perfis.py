@@ -15,6 +15,7 @@ import httpx
 
 from app.config import AiCanaryCfg, AiProfileCfg
 from app.main import create_app
+from app.planning.provider import frase_dos_modelos
 from app.planning.routing import RoutingProvider, perfis_para_o_painel
 
 from .conftest import Harness
@@ -31,6 +32,20 @@ def _cfg(tmp: Path, perfis: dict[str, Any], roles: dict[str, Any] | None = None)
 
 def test_sem_perfis_a_lista_vem_vazia(tmp_path: Path) -> None:
     assert perfis_para_o_painel(_cfg(tmp_path, {})) == []
+
+
+def test_o_aviso_diz_os_modelos_que_as_funcoes_usam_de_fato(tmp_path: Path) -> None:
+    """Validação do deploy 8: o `notice` dizia "plano: claude-opus-5-5" (o `.env`, como a instância do ator o vê) enquanto
+    `roles[]` e `models` diziam o Sonnet de `ai.roles.plan`. A frase agora usa a mesma resolução dos dois."""
+    cfg = _cfg(tmp_path, {}, roles={"plan": {"model": "claude-sonnet-5-5"}})
+    assert cfg.ai_model_for("plan") != "claude-sonnet-5-5"        # o `.env` diz outro modelo: senão o teste não prova nada
+    status = RoutingProvider(cfg).status()
+    assert status.models["plan"] == "claude-sonnet-5-5"
+    assert {linha.role: linha.model for linha in status.roles}["plan"] == "claude-sonnet-5-5"
+    frase = frase_dos_modelos(status.models)
+    assert frase is not None and frase in status.notice and status.notice.count("Modelos por função") == 1
+    assert "plano: claude-sonnet-5-5 ·" in status.notice
+    assert f"plano: {cfg.ai_model_for('plan')} ·" not in status.notice
 
 
 def test_o_perfil_diz_so_as_funcoes_que_muda(tmp_path: Path) -> None:

@@ -40,7 +40,8 @@ from .capabilities import CONHECIMENTO_DE_APPS
 from .catalog import capabilities_of
 from .curador import ParecerBruto, PedidoDeParecer
 from .provider import (AIError, AIProvider, Decision, DecisionRequest, LeituraRequest, PersonaGenerationRequest,
-                       PlanRequest, SocialRequest, Transcricao, Usage, Verdict, VerifyRequest, build_one)
+                       PlanRequest, SocialRequest, Transcricao, Usage, Verdict, VerifyRequest, build_one,
+                       frase_dos_modelos)
 
 log = logging.getLogger("poc.ai")
 
@@ -171,6 +172,12 @@ class RoutingProvider:
                 effort=None))
         externas = [linha.role for linha in linhas if linha.sends_data_externally]
         aviso = base.notice
+        # O aviso do ator diz os modelos que a instância DELE conhece (o próprio papel roteado e o `.env` nos demais); a frase
+        # passa a dizer a resolução efetiva de cada função, a mesma de `roles[]` e `models` (validação do deploy 8).
+        do_ator = frase_dos_modelos(getattr(self.providers["decide"], "models", None) or {})
+        efetiva = frase_dos_modelos({papel: self.roles[papel].model for papel in AI_ROLES})
+        if do_ator and efetiva:
+            aviso = aviso.replace(do_ator, efetiva)
         if externas and len(externas) < len(linhas):
             # O aviso-base é o do provedor do ATOR. Sem dizer isso, um ator local abre a frase com "os dados NÃO
             # saem desta máquina" enquanto o agregado diz o contrário — as duas coisas verdadeiras, e lidas juntas

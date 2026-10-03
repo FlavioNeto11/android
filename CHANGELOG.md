@@ -42,8 +42,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - a tabela Por função ganha "Esforço" e "Raciocínio";
   - a linha `leitura` vira "Ler a tela (leitura visual)";
   - um cartão novo, "Perfis de IA".
+- O aviso ("Modelos por função — plano: …") passa a dizer o modelo que cada função usa de fato, a mesma resolução de
+  `roles[]` e `models`. Na validação do deploy 8 ele dizia `claude-opus-5-5` no plano, que a instância do ator lê do
+  `.env`, enquanto a Situação e a tabela diziam o `claude-sonnet-5-5` de `ai.roles.plan`. A frase sai de
+  `provider.frase_dos_modelos`, e o hub a refaz com `ai.roles`.
 - Prova `simulated`:
-  - `tests/test_aba_ia_esquema_e_perfis.py`, `aiLabels.test.ts` e `AiSection.test.tsx`;
+  - `tests/test_aba_ia_esquema_e_perfis.py` (inclusive `test_o_aviso_diz_os_modelos_que_as_funcoes_usam_de_fato`),
+    `aiLabels.test.ts` e `AiSection.test.tsx`;
   - tela percorrida no navegador contra um backend simulado do worktree.
 
 ## 2026-10-03 — Aprendizado: quebra de série do LT-6 no deploy 8
