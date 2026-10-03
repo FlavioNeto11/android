@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-283 de 317 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+284 de 317 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -300,7 +300,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.14 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #99 merge 6e388e0c (578 testes do módulo): obsolescência — rótulo obsoleto_provavel com os sinais do §9.2 e o rebaixamento determinístico catalogo_sem_efeito (destino sempre disabled, reativável por pessoa). Implanta… |  |
 | 30.15 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #82 merge 312808d1 (1ª fatia: aba Aplicativos Global → App, detalhe por app, filtro de app) e PR #103 merge 9e3398d9 (resto: saúde e falhas no app, fila Atenção, memória fora do eixo de app; saude nas linhas de /apps… |  |
 | 30.16 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #97 merge 5b7fa342 (vitest 1181): detalhe rico do item (seções do §11.2: conteúdo, saúde, versão, relações, trilha, evidências, ações). Navegador (ensaio com cópia do banco): detalhe rico, desligar → reativar, 375 px… |  |
-| 30.17 | pendente | — | — | — |  |  |
+| 30.17 | implemented | simulated | opus (sessão Aprendizado) + coordenação | — | PR #124 merge 546bc676 (bateria afetada: 53 arquivos que citam aprendizado/learning = 919 passed; frontend inteiro 1298; docs-check 0/0): o parecer da IA diante da pessoa. Rótulo humano em learning_reviews (visto por re… |  |
 | 30.18 | pendente | — | — | — |  |  |
 | 30.19 | pendente | — | — | — |  |  |
 | 30.20 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #75 merge af208f07 e PR #79 merge e86b4a33: modo por app (domain/modo_por_app.py, modo_efetivo; aprendizado.licoes.por_app / telas.por_app), D1 do modo por app; prova simulated; not_run no central (nada implantado) |  |
@@ -324,7 +324,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (34): 8.3, 8.4, 12.3, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 30.8, 30.17, 30.18, 30.19, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
+Pendentes (33): 8.3, 8.4, 12.3, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 30.8, 30.18, 30.19, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
