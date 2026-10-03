@@ -203,6 +203,13 @@ Ver [docs/produto.md §2](produto.md) para os conceitos. Mecanismo de custo, res
   controles de sempre (erros seguidos, repetição, efeito externo). O código nunca escalou; o comentário que
   prometia isso foi corrigido. Escalar na divergência é **decisão do dono pendente**, com o custo medido no
   [relatório](relatorio-desempenho.md): 22 etapas `recipe+ai` em 7 dias.
+- **App de prova no tier 0 do `by_risk`** (item 29.31, RA-8 da reavaliação de 03/10): a etapa SEM capability de um app com
+  `apps.category='qa'` (o QA Messenger embutido, que nasce `qa` no seed e na migração 041) não escala por efeito externo.
+  Sem catálogo, "risco desconhecido" mandava toda etapa de envio ao modelo forte: 64 a 66 escalonamentos em 7 dias,
+  43 % das chamadas do Opus no tier 1, cerca de US$ 0,20 por dia, e uma bateria de prova distorcida. A regra lê o dado
+  do app, nunca o nome (ADR-052). `strong_model_for_side_effect: true` continua subindo tudo (escolha explícita), etapa com
+  capability segue o risco do catálogo, e app real sem catálogo continua no tier 1. Retentativa, erros seguidos e ciclo
+  escalam em qualquer app.
 - **Desbravador** (`ai.pathfinder_wait_s`): visível (`wait_reason: pathfinder`), medido, agrupado por
   compatibilidade do app e solto na hora quando o líder falha ou sai do ar
   ([`dominios/parque.md`](dominios/parque.md#escalonamento)).
