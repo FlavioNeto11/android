@@ -59,20 +59,23 @@ AGORA = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
 PRECOS = {"modelo-x": [1.0, 0.1, 1.25, 5.0]}
 
 
-def iso(dias_atras: float, *, horas: float = 0.0) -> str:
-    return to_iso(AGORA - timedelta(days=dias_atras, hours=horas))
+def iso(dias_atras: float, *, horas: float = 0.0, agora: datetime = AGORA) -> str:
+    return to_iso(agora - timedelta(days=dias_atras, hours=horas))
 
 
 # ------------------------------------------------------------------ semente de execução (usada também na projeção)
 def semear_execucao(db: Database, run_id: str, *, dias_atras: float, simulated: bool = False,
                     etapas: list[tuple[str, str | None, str, list[tuple[str, str | None]], int]] | None = None,
-                    app_id: str = "instagram") -> None:
+                    app_id: str = "instagram", agora: datetime = AGORA) -> None:
     """Uma execução com etapas; cada etapa = (chave, ação, status final, [(status, erro) por tentativa], chamadas de IA
-    na ÚLTIMA tentativa). Horários `dias_atras` antes de agora; as chamadas vão com `attempt_id` e `usd` gravado."""
+    na ÚLTIMA tentativa). Horários `dias_atras` antes de `agora`; as chamadas vão com `attempt_id` e `usd` gravado.
+
+    `agora` é o AGORA fixo por padrão. Quem lê a semente pelo relógio REAL (a projeção corta por `datetime.now`) passa o
+    relógio real: com o fixo, a semente envelhece a cada dia e sai da janela (a retenção de 3 dias caiu em 03/10)."""
     if db.one("SELECT id FROM apps WHERE id=?", (app_id,)) is None:
         db.execute("INSERT INTO apps(id, name, package, builtin) VALUES (?,?,?,0)",
                    (app_id, app_id, "com.instagram.android" if app_id == "instagram" else f"pkg.{app_id}"))
-    inicio = iso(dias_atras)
+    inicio = iso(dias_atras, agora=agora)
     db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at,"
                " app_ids) VALUES (?,?,?,?,?,?,?,?,?)",
                (run_id, run_id, "abrir o perfil", "execute", "completed", int(simulated), '["android-06"]', inicio,
@@ -86,17 +89,18 @@ def semear_execucao(db: Database, run_id: str, *, dias_atras: float, simulated: 
                    " postcondition, timeout_s, max_attempts, status, capability, app_id, driven_by, started_at,"
                    " finished_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                    (sid, run_id, objetivo, "android-06", 1, seq, chave, chave, chave, "{}", 60, 3, status, acao, None,
-                    "ai", inicio, iso(dias_atras, horas=-0.1)))
+                    "ai", inicio, iso(dias_atras, horas=-0.1, agora=agora)))
         for n, (st, erro) in enumerate(tentativas, start=1):
             aid = f"{sid}:a{n}"
             db.execute("INSERT INTO attempts(id, step_id, number, status, started_at, finished_at, error)"
-                       " VALUES (?,?,?,?,?,?,?)", (aid, sid, n, st, inicio, iso(dias_atras, horas=-0.05), erro))
+                       " VALUES (?,?,?,?,?,?,?)",
+                       (aid, sid, n, st, inicio, iso(dias_atras, horas=-0.05, agora=agora), erro))
             if n == len(tentativas):
                 for _ in range(chamadas):
                     db.execute("INSERT INTO ai_calls(ts, run_id, objective_id, step_id, role, model, tier,"
                                " input_tokens, output_tokens, attempt_id, usd) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                               (iso(dias_atras, horas=-0.01), run_id, objetivo, sid, "decide", "modelo-x", 0, 1000,
-                                100, aid, 0.01))
+                               (iso(dias_atras, horas=-0.01, agora=agora), run_id, objetivo, sid, "decide",
+                                "modelo-x", 0, 1000, 100, aid, 0.01))
 
 
 @pytest.fixture
