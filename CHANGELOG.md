@@ -334,6 +334,15 @@ Os itens de polimento da frente do Aprendizado em `.claude/handoffs/ux-deploy7-2
     indevidas, 5 recusas indevidas (as 4 antigas e o caso 538, que a orquestradora reetiquetou para recusa);
   - 122 comandos reais: as mesmas 2 recusas da base.
 
+## 2026-10-03 — Aprendizado: o desfecho medido das revisões do curador (30.35; branch feat/30-35-resultado-posterior)
+
+- Catorze dias depois de uma revisão do curador sobre receita ou lição, a curadoria grava
+  `learning_reviews.resultado_posterior`, o rótulo 2 do golden set do Jev, e `resultado_em`.
+  - Valores: `descartar`, `rebaixar` (pela escada ou pelo degrau D-5 da saúde), `manter` e `sem_desfecho`.
+  - Sem IA, sem migração, uma gravação por revisão.
+- O relatório do 31.10 já lê o campo e não muda.
+- Prova `simulated`: `test_learning_resultado_posterior.py` (20 testes). Bateria dos afetados: 320 passed.
+- `real`: a partir de 17/10.
 ## 2026-10-03 — Aprendizado: a autopublicação do fluxo B em sombra (30.34-A; branch feat/30-34-autopublicacao-sombra)
 
 - Emenda datada à D1 do ADR-054, decidida pelo dono ("sim" à P2): o fluxo de classe B pode publicar sozinho. Precisa do
