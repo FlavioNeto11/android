@@ -16,15 +16,16 @@ from app.modules.learning.domain.backlog import QUALQUER
 def nomear(linhas: Iterable[object], servico: LearningService | None, *, app: str = "app",
            capability: str = "capability") -> None:
     """Põe `app_nome` e `capability_nome` em cada linha (dict) pelo pacote em `app` e a capability em `capability`;
-    uma leitura de nomes de app e uma consulta por par. Sem serviço, sem visão por app, app `*` ou capability
-    desconhecida, o nome sai nulo e o painel cai no código."""
+    uma leitura de nomes de app e uma consulta por par. A linha sem app (a decisão de aprovação nos Sinais, polimento
+    do deploy 12) procura a capability nos catálogos declarados e só a nomeia se um único app a declara. Sem serviço,
+    sem visão por app, app `*` ou capability desconhecida, o nome sai nulo e o painel cai no código."""
     dicts = [x for x in linhas if isinstance(x, dict)]
     if not dicts:
         return
     nomear_apps(dicts, servico, app=app)
     vistos: dict[tuple[str, str], str | None] = {}
     for x in dicts:
-        pacote, cap = x.get(app), x.get(capability)
+        pacote, cap = x.get(app) or "", x.get(capability)
         par = (pacote, cap) if isinstance(pacote, str) and isinstance(cap, str) else None
         if par is not None and par not in vistos:
             vistos[par] = servico.nome_da_capability(*par) if servico is not None else None

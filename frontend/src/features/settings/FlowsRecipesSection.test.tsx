@@ -295,3 +295,30 @@ it('receitas: a coluna dos botões é fixa à direita da tabela (cabeçalho e c�
     expect(text(linha.lastElementChild as HTMLElement)).toMatch(/Excluir/);
   }
 });
+
+it('candidato não se passa por desligado, e o desligado mostra quem desligou e por quê (deploys 11–12)', async () => {
+  comHabilidades(false);
+  backend.on('GET', /\/flows$/, () => json([
+    { ...fluxo(), id: 'mandar-oi', name: 'Mandar para o {contact_position}º contato', status: 'candidate' },
+    { ...fluxo('disabled'), id: 'abrir-qa', name: 'Abrir o QA' },
+  ]));
+  backend.on('GET', /\/aprendizado\/fluxo\/abrir-qa$/, () => json({
+    item: {}, evidencias: [], exposicoes: [],
+    trilha: [{ id: 1, from: null, to: 'published', reason: 'nasceu', decided_by: 'sistema',
+               decided_at: '2026-10-02T10:00:00Z', run_id: null },
+             { id: 2, from: 'published', to: 'disabled', reason: 'validar pela IA antes de valer',
+               decided_by: 'orquestradora', decided_at: '2026-10-03T08:45:07Z', run_id: null }],
+  }));
+  await renderComDialogo();
+  await waitFor(() => expect(text()).toContain('validar pela IA antes de valer'));
+  expect(text()).toContain('Desligado por orquestradora em');
+  expect(text()).toContain('candidato');
+  expect(text()).toContain('Não vale ainda');
+  // O nome sem a lacuna em claro; o comando-modelo destaca o parâmetro sem as chaves (o cru fica na dica).
+  expect(text()).toContain('Mandar para o …º contato');
+  expect(text()).not.toContain('{contact_position}');
+  expect(text()).not.toContain('{username}');
+  expect(container.querySelector('mark[title="{username}"]')?.textContent).toBe('username');
+  // Só o desligado lê a trilha.
+  expect(backend.callsTo('GET', /\/aprendizado\/fluxo\//)).toHaveLength(1);
+});

@@ -22,6 +22,8 @@ import { jumpTo, useSectionOpen } from '../../lib/sections';
 import { metaOf, type StatusMeta } from '../../lib/status';
 import { formatDateTime } from '../../lib/time';
 import { useAppStore } from '../../store/app';
+import { apiAprendizado } from '../aprendizado/api';
+import { semLacunas, type TransicaoDoLivro } from '../aprendizado/model';
 import { toast, toastError } from '../../store/toasts';
 import { LEARN_ONCE_NOTE, RECIPE_STATUS, recipeToggleTarget, scrollText, selectorText, shadowText, splitTemplate } from './flowsRecipes';
 import styles from './Settings.module.css';
@@ -67,6 +69,33 @@ function RefusalBanner({ refusal }: { refusal: Refusal }) {
         </ul>
       ) : null}
     </Banner>
+  );
+}
+
+/** A lacuna do comando-modelo sem as chaves: "{contact_position}" vira "contact position" no destaque (a marca já diz
+ *  que é parâmetro); o texto cru fica na dica. */
+function nomeDaLacuna(texto: string): string {
+  return texto.replace(/^\{|\}$/g, '').replace(/_/g, ' ');
+}
+
+/**
+ * Por que o fluxo está desligado (validação dos deploys 11–12: 16 "Desativado" sem motivo). A trilha do item no
+ * Aprendizado já guarda quem desligou, quando e por quê; lida só para os desligados, uma vez por fluxo.
+ */
+function MotivoDoDesligamento({ flowId }: { flowId: string }) {
+  const [motivo, setMotivo] = useState<TransicaoDoLivro | null>(null);
+  useEffect(() => {
+    const ctl = new AbortController();
+    apiAprendizado.detalhe('fluxo', flowId, ctl.signal)
+      .then((d) => setMotivo([...(d.trilha ?? [])].reverse().find((t) => t.to === 'disabled') ?? null))
+      .catch(() => setMotivo(null));                 // sem motivo legível, a linha fica como antes
+    return () => ctl.abort();
+  }, [flowId]);
+  if (!motivo?.reason) return null;
+  return (
+    <p className={styles.appMeta} aria-label="Por que está desligado">
+      Desligado por {motivo.decided_by || 'alguém'} em {formatDateTime(motivo.decided_at)}: {motivo.reason}
+    </p>
   );
 }
 
@@ -581,7 +610,7 @@ function FlowList({ state, onRetry, onChange, cobertura, conversao }: ListProps<
             return (
             <li key={flow.id} className={styles.learnItem}>
               <div className={styles.learnHead}>
-                <span className={`${styles.appName} truncate`} title={flow.name}>{flow.name}</span>
+                <span className={`${styles.appName} truncate`} title={flow.name}>{semLacunas(flow.name)}</span>
                 {textoDosApps(appsDoFluxo(flow), appNames) ? (
                   <span className={styles.appMeta} aria-label="Apps do fluxo">{textoDosApps(appsDoFluxo(flow), appNames)}</span>
                 ) : null}
@@ -597,8 +626,14 @@ function FlowList({ state, onRetry, onChange, cobertura, conversao }: ListProps<
                     Converter em habilidade
                   </Button>
                 ) : null}
+                {flow.status === 'candidate' ? (
+                  <Badge tone="neutral" title="Fluxo salvo que ainda não vale: espera a prova (validação) antes de ser usado.">
+                    candidato
+                  </Badge>
+                ) : null}
                 <Switch
                   checked={flow.status === 'active'}
+                  offText={flow.status === 'candidate' ? 'Não vale ainda' : 'Desativado'}
                   label={`Fluxo “${flow.name}” ativo`}
                   busy={ocupado === 'toggle'}
                   disabled={(!!ocupado && ocupado !== 'toggle') || !!publicada}
@@ -608,9 +643,12 @@ function FlowList({ state, onRetry, onChange, cobertura, conversao }: ListProps<
                   Excluir
                 </Button>
               </div>
+              {flow.status === 'disabled' ? <MotivoDoDesligamento flowId={flow.id} /> : null}
               <p className={styles.template} aria-label="Comando-modelo">
                 {splitTemplate(flow.command_template).map((part, i) =>
-                  part.placeholder ? <mark key={i} className={styles.placeholder}>{part.text}</mark> : <span key={i}>{part.text}</span>,
+                  part.placeholder
+                    ? <mark key={i} className={styles.placeholder} title={part.text}>{nomeDaLacuna(part.text)}</mark>
+                    : <span key={i}>{part.text}</span>,
                 )}
               </p>
               {(() => {

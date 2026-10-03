@@ -4788,3 +4788,30 @@ Prova:
 - `simulated`: `tests/test_learning_pareceres.py` (`test_a_classe_de_agora_endurece_o_aceite`) e `ParecerDaIA.test.tsx`
   (o selo "era B no parecer" e a linha da fila fora do lote);
 - `not_run`: o painel do central depois do deploy.
+## Adendo v1.01 (03/10/2026; número da orquestradora; polimentos 3, 5 e 6 do Chrome do deploy 12) — texto para o dono em três respostas existentes
+
+Nenhuma rota nova, nenhum campo novo e nenhuma migração. Três textos e um nome que já saíam mudam de valor. O texto
+antigo do v0.87 fica como histórico.
+
+- **`status_detail` do fluxo ou da habilidade que casou e não serviu** (o `needs_input` do v0.87, sem pergunta):
+  - fluxo salvo (`flow:…`): "O fluxo salvo “<nome>” não serviu para este pedido: <motivo>. Responda à pergunta ou peça de
+    novo pelo painel.";
+  - skill publicada: começa com "A habilidade salva".
+  - Sem nome, sai sem as aspas. Antes era "A habilidade “<nome>” não serve para este comando: … Corrija o comando ou a
+    habilidade."
+  - O código e o id continuam fora do texto, só no `issue_codes` do `run.updated` e no `log` da mesma transição
+    (`skill`, `issues`).
+- **`capability_nome` da linha sem app** (`GET /api/aprendizado/sinais`, e também as linhas de falhas e intenção que
+  passam por `nomear()`):
+  - o sinal `aprovacao_decidida` chega sem `app_package`. Agora o nome vem do catálogo que declara a capability, mas só
+    se UM app a declara (`TitulosDoCatalogo.apps_que_declaram`). Com dois apps ou nenhum, `null`.
+  - O app `*` segue `null`.
+  - Na aba Sinais, a decisão de aprovação ainda sem nome mostra "decisão de aprovação", com o código só na dica (`title`).
+- **`notice` de `GET /api/ai`**: a frase da leitura visual diz "é enviado ao provedor “…”", ou "a um endpoint que não sai
+  desta máquina". Antes saía "é enviado a o provedor".
+
+Prova `simulated`:
+- `tests/test_needs_input_da_habilidade.py` e `tests/test_fatia_abrir_conversa.py`;
+- `tests/test_learning_capability_na_linha.py`, com o registro real: REPLY_COMMENT só no Instagram;
+- `tests/test_leitura_visual_papel.py`;
+- `frontend/src/features/aprendizado/AprendizadoPage.test.tsx`.

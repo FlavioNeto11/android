@@ -419,6 +419,18 @@ export function nomearCapabilityNoTexto(texto: string, codigo?: string | null, n
 }
 
 const RE_VERSAO = /^(.*) \(v(\d+)\)$/;
+/** A lacuna de parâmetro do modelo ("{subject_prefix}", "\"{query}\""), como o `_LACUNA` de `domain/conteudo.py`. */
+const RE_LACUNA = /"?\{[^{}]*\}"?/g;
+
+/**
+ * O título sem as lacunas de parâmetro em claro (validação dos deploys 9–12: "{contact_position}", "{instance_id}
+ * {run_id}" nos títulos): cada lacuna vira "…", e lacunas seguidas viram uma só. O título cru continua no `title` da
+ * linha, para quem desenvolve.
+ */
+export function semLacunas(texto: string): string {
+  if (!texto.includes('{')) return texto;
+  return texto.replace(RE_LACUNA, '…').replace(/…(\s*…)+/g, '…').replace(/\s+/g, ' ').trim();
+}
 
 /**
  * O título de uma linha do livro para a pessoa. A receita troca a chave da etapa pelo nome da capability
@@ -426,6 +438,12 @@ const RE_VERSAO = /^(.*) \(v(\d+)\)$/;
  * manda. O título cru continua no `title` da linha, para quem desenvolve.
  */
 export function tituloDoItem(
+  e: Pick<EntradaDoLivro, 'kind' | 'ref' | 'title' | 'capability' | 'capability_nome' | 'etapa'>,
+): string {
+  return semLacunas(tituloComNomes(e));
+}
+
+function tituloComNomes(
   e: Pick<EntradaDoLivro, 'kind' | 'ref' | 'title' | 'capability' | 'capability_nome' | 'etapa'>,
 ): string {
   const t = e.title || e.ref;

@@ -147,6 +147,23 @@ describe('página Aprendizado', () => {
     expect(backend.callsTo('GET', /^\/api\/aprendizado\/sinais$/)[0]?.query.get('dias')).toBe('14');
   });
 
+  it('a decisão de aprovação sem app diz o nome do catálogo ou "decisão de aprovação", nunca o código cru (deploy 12)', async () => {
+    const decisao = { kind: 'aprovacao_decidida', polarity: 'positive', created_by: 'painel', created_at: '2026-10-03T10:00:00Z',
+                      app_package: null, app_nome: null, simulated: 0 };
+    backend.on('GET', /^\/api\/aprendizado\/sinais$/, () => json({
+      sinais: [{ ...decisao, id: 7, source_ref: 'approval:a-7', capability: 'CREATE_COMMENT', capability_nome: 'Comentar na publicação' },
+               { ...decisao, id: 8, source_ref: 'approval:a-8', capability: 'REPLY_COMMENT', capability_nome: null }],
+      total: 2, contagem: { aprovacao_decidida: 2 }, dias: 14 }));
+    await montar();
+    await click(byRole('tab', /^Sinais/, container));
+    await waitFor(() => expect(container.querySelector('[data-item="sinal:8"]')).not.toBeNull());
+    expect(text(container.querySelector('[data-item="sinal:7"]') as HTMLElement)).toContain('Comentar na publicação');
+    const semNome = container.querySelector('[data-item="sinal:8"]') as HTMLElement;
+    expect(text(semNome)).toContain('decisão de aprovação');
+    expect(text(container)).not.toMatch(/CREATE_COMMENT|REPLY_COMMENT/);
+    expect(semNome.querySelector('[title="REPLY_COMMENT"]')).not.toBeNull();       // o código fica na dica
+  });
+
   it('Para aprovar diz o nome do app (o pacote no title) e dá nome à receita de app sem catálogo (deploy 4)', async () => {
     const qa = entrada({ ref: '70', title: 'fill_message (v1)', app: 'com.pocqa.messenger', app_nome: 'QA Messenger',
                          etapa: 'Digitar a mensagem', capability: null, capability_nome: null });

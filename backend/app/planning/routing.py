@@ -202,14 +202,15 @@ class RoutingProvider:
             # capturas muda, e o aviso do painel diz para onde vai (item 12.5, ADR-070).
             r = self.roles["leitura"]
             ligada = self.cfg.file.ai.leitura_visual.enabled
-            destino = (f"o provedor “{r.provider}” ({r.endpoint or 'endpoint local'}, modelo {r.model})"
-                       if r.sends_data_externally else "um endpoint que não sai desta máquina")
+            # Com a preposição já contraída ("ao provedor"): o painel mostrava "é enviado a o provedor" (deploy 12).
+            destino = (f"ao provedor “{r.provider}” ({r.endpoint or 'endpoint local'}, modelo {r.model})"
+                       if r.sends_data_externally else "a um endpoint que não sai desta máquina")
             # O rótulo do DADO do app (`AppDefinition.label`, que cai para o nome e depois para o pacote), e não o
             # pacote cru: a pessoa reconhece "Outlook", não "com.microsoft.office.outlook".
             apps = ", ".join(capabilities_of(p).label for p in declaram_leitura_visual(CONHECIMENTO_DE_APPS)) or "nenhum app"
             aviso += (f" Leitura visual ({'ligada' if ligada else 'desligada'}): quando ligada, o recorte de uma linha da "
                       f"tela que a árvore não expõe (apps que declaram a região: {apps}; remetente e assunto de mensagens "
-                      f"de terceiros, por exemplo) é enviado a {destino} para uma segunda transcrição, às cegas. Telas "
+                      f"de terceiros, por exemplo) é enviado {destino} para uma segunda transcrição, às cegas. Telas "
                       "sensíveis e de verificação nunca são recortadas; a chave aparece só como configurada.")
         refusal = any(linha.refusal_fallback for linha in linhas)
         return base.model_copy(update={

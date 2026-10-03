@@ -26,6 +26,36 @@ export interface FiltroDoLivro {
   rotulo?: Rotulo;
 }
 
+/**
+ * A fila "Para aprovar" é lida por três lugares que costumam pedir juntos (o selo do topo, a caixa de Pendências e a
+ * própria aba): na carga do Para aprovar eram 3 leituras iguais (validação do deploy 12). Leituras sem `signal` que
+ * chegam dentro de `JANELA_DOS_PENDENTES_MS` dividem a mesma; toda decisão no livro zera a janela, para a releitura
+ * depois dela ser nova.
+ */
+const JANELA_DOS_PENDENTES_MS = 2000;
+let leituraDosPendentes: { promessa: Promise<ListaDoLivro>; em: number } | null = null;
+
+function lerPendentes(signal?: AbortSignal): Promise<ListaDoLivro> {
+  if (signal) return apiRequest<ListaDoLivro>('GET', '/aprendizado/pendentes', { signal });
+  const agora = Date.now();
+  if (leituraDosPendentes && agora - leituraDosPendentes.em < JANELA_DOS_PENDENTES_MS) return leituraDosPendentes.promessa;
+  const promessa = apiRequest<ListaDoLivro>('GET', '/aprendizado/pendentes');
+  const esta = { promessa, em: agora };
+  leituraDosPendentes = esta;
+  promessa.catch(() => { if (leituraDosPendentes === esta) leituraDosPendentes = null; });
+  return promessa;
+}
+
+/** Esquece a leitura dividida (o backend falso de cada teste é um mundo novo). */
+export function esquecerLeituraDosPendentes(): void {
+  leituraDosPendentes = null;
+}
+
+/** Uma decisão no livro: a próxima leitura da fila vai ao servidor. */
+function decisao<T>(p: Promise<T>): Promise<T> {
+  return p.finally(() => { leituraDosPendentes = null; });
+}
+
 export const apiAprendizado = {
   livro: (f: FiltroDoLivro = {}, signal?: AbortSignal) =>
     apiRequest<ListaDoLivro>('GET', '/aprendizado', { query: { kind: f.kind, state: f.state, app: f.app || undefined, origem: f.origem, rotulo: f.rotulo }, signal }),
@@ -46,7 +76,7 @@ export const apiAprendizado = {
     }
   },
   /** A fila do D1 ("Para aprovar") e a contagem da barra do topo. */
-  pendentes: (signal?: AbortSignal) => apiRequest<ListaDoLivro>('GET', '/aprendizado/pendentes', { signal }),
+  pendentes: (signal?: AbortSignal) => lerPendentes(signal),
   /** O legado ativo com efeito anterior ao D1, que nenhuma pessoa decidiu ainda. */
   revisar: (signal?: AbortSignal) => apiRequest<ListaDoLivro>('GET', '/aprendizado/revisar', { signal }),
   detalhe: (kind: LivroKind, ref: string, signal?: AbortSignal) =>
@@ -54,24 +84,24 @@ export const apiAprendizado = {
   /** Move o item com a trilha; o motivo é obrigatório. Habilidade devolve 409 com o endereço da rota dela.
    *  `reviewId`: o parecer da IA que a pessoa via ao decidir (30.17); a decisão fica registrada contra ele. */
   mudarEstado: (kind: LivroKind, ref: string, to: EstadoDoLivro, reason: string, reviewId?: string | null) =>
-    apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/status`, {
+    decisao(apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/status`, {
       body: { to, reason: reason.trim(), ...(reviewId ? { review_id: reviewId } : {}) },
-    }),
+    })),
   /** 30.24: "Confirmar que fica" o legado de Revisar. O motivo é opcional; 409 quando o item já não está em Revisar. */
   confirmarQueFica: (kind: LivroKind, ref: string, motivo: string, reviewId?: string | null) =>
-    apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/confirmar`, {
+    decisao(apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/confirmar`, {
       body: { ...(motivo.trim() ? { motivo: motivo.trim() } : {}), ...(reviewId ? { review_id: reviewId } : {}) },
-    }),
+    })),
   /** 30.23: a execução de origem terminou como sucesso sem comprovar o que fez. O motivo é estruturado pelo backend. */
   invalidarEvidencia: (kind: LivroKind, ref: string, runId: string) =>
-    apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/evidencia-invalida`, { body: { run_id: runId } }),
+    decisao(apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/evidencia-invalida`, { body: { run_id: runId } })),
   /** Aceitar ou recusar o parecer da IA (30.17). 409 com o `code` quando o gesto não vale (classe A, C em lote,
    *  simulado, já decidido, item mudou); devolve o detalhe atualizado. */
   responderParecer: (kind: LivroKind, ref: string, reviewId: string,
                      corpo: { resposta: 'aceitar' | 'recusar'; motivo: string; em_lote?: boolean }) =>
-    apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/parecer/${enc(reviewId)}`, {
+    decisao(apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/parecer/${enc(reviewId)}`, {
       body: { resposta: corpo.resposta, motivo: corpo.motivo.trim(), em_lote: !!corpo.em_lote },
-    }),
+    })),
   /** Pede revisão ao curador (só com ele ligado). `pedido: false` = o estado de agora do item já tem revisão. */
   pedirRevisao: (kind: LivroKind, ref: string) =>
     apiRequest<RespostaDoPedido>('POST', `/aprendizado/${kind}/${enc(ref)}/revisao`),

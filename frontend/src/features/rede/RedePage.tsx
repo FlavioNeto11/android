@@ -82,7 +82,9 @@ export function RedePage() {
   const [aparelhos, setAparelhos] = useState<NetworkDeviceRow[] | null>(null);
   const [central, setCentral] = useState<NetworkCentralEgress | null>(null);
   const [erro, setErro] = useState<LoadError | null>(null);
-  const [temDados, setTemDados] = useState(false);
+  // Ref, não estado: com `temDados` nas dependências, a 1ª carga trocava a identidade de `carregar` e o efeito de
+  // montagem lia tudo de novo (2× por carga, medido no deploy 10).
+  const temDados = useRef(false);
   const [ocupadoPorId, setOcupadoPorId] = useState<Record<string, 'verify' | 'reapply' | undefined>>({});
 
   const carregar = useCallback(async () => {
@@ -94,12 +96,12 @@ export function RedePage() {
       setAparelhos(ds.devices);
       setCentral(ds.central_egress ?? null);
       setErro(null);
-      setTemDados(true);
+      temDados.current = true;
     } catch (e) {
       setErro(toLoadError(e));
-      if (temDados) toastError('Não foi possível recarregar a rede', e, { key: 'rede-carregar' });
+      if (temDados.current) toastError('Não foi possível recarregar a rede', e, { key: 'rede-carregar' });
     }
-  }, [temDados]);
+  }, []);
 
   useEffect(() => { void carregar(); }, [carregar]);
   const emAndamento = (aparelhos ?? []).some((a) => a.pending !== null);
@@ -332,13 +334,22 @@ function ResumoDaCasa({ aparelhos, central }: { aparelhos: NetworkDeviceRow[]; c
   return (
     <Banner tone={saem.length > 0 ? 'danger' : 'info'} icon={Home} compact title="Saída pela casa">
       <strong>{saem.length === 1 ? '1 aparelho ainda sai' : `${saem.length} aparelhos ainda saem`} pela casa</strong>
-      {saem.length > 0 ? ` (${saem.map((a) => a.instance_id).join(', ')})` : ''}
+      {saem.length > 0 ? <> (<IdsResumidos ids={saem.map((a) => a.instance_id)} />)</> : ''}
       {presumidos > 0 ? ` · ${presumidos} presumido${presumidos === 1 ? '' : 's'} (sem rede pedida)` : ''} · {semMedida} sem medida.{' '}
       {saidaCentral
         ? <>Saída medida do central: <code>{saidaCentral}</code>.</>
         : <span title={central?.reason}>Saída do central ainda não medida{central ? ` (${central.reason})` : ''}.</span>}
     </Banner>
   );
+}
+
+/** Até 3 ids na linha; acima disso, os 3 primeiros e "e mais N", com a lista inteira na dica. No central eram 14 ids
+ *  seguidos (deploys 10 e 11), e a tabela logo abaixo já diz aparelho por aparelho. */
+const IDS_NA_LINHA = 3;
+
+function IdsResumidos({ ids }: { ids: string[] }) {
+  if (ids.length <= IDS_NA_LINHA) return <>{ids.join(', ')}</>;
+  return <>{ids.slice(0, IDS_NA_LINHA).join(', ')} <span title={ids.join(', ')}>e mais {ids.length - IDS_NA_LINHA}</span></>;
 }
 
 /** A saída que o perfil declara (29.6) ao lado da medida. Três leituras, e nenhuma presumida: `confere` (a medida
