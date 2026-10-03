@@ -293,8 +293,16 @@ Fonte das regras do Trello: a página oficial de webhooks (developer.atlassian.c
       confirma no chat ou no Telegram, com uma pergunta de sim ou não (a porta `pergunta_sensivel` do 28.15 vale);
     - cartão movido ou arquivado por convidado não muda o estado da Central: o espelho é reconciliador (§7.4) e
       devolve o cartão ao lugar na volta seguinte, com um comentário 🤖 do porquê.
-    - Antes de ligar a entrada de comandos pelo Trello: a orquestradora recomendou rebaixar convidado admin a membro
-      normal; no plano grátis isso pode não existir, e então a garantia é só a do item 5 (releitura pela API).
+    - O plano grátis não deixa rebaixar convidado admin (dono, 03/10 ~20:18Z): a garantia é a do item 5 (releitura pela
+      API).
+    - **Condições para ligar a entrada de comandos pelo Trello** (orquestradora, 03/10 20:18Z): (a) o item 5
+      implementado, com os testes do item 9 verdes, em especial o do autor forjado com assinatura certa; (b) a revisão
+      da Android (dona da segurança) sobre os itens 5 e 11 e o texto do portão; (c) `trello.membros_autorizados` vazia e
+      `trello.responder_convidados` desligado na subida; (d) o "vai" da orquestradora.
+    - **Risco que sobra (disponibilidade, não integridade):** um admin do workspace pode trocar ou regerar o segredo do
+      aplicativo, tirar Power-Up, fechar quadro e convidar gente. A assinatura passa a falhar fechada (401) e a
+      reconciliação a cada 5 min segue lendo pela API com o token do dono. A verdade do plano mora no repositório; o
+      Trello é a vista.
 
 **Texto para o ADR-072 (decisão do portão; precisa da revisão da Android):**
 
