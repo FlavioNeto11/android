@@ -309,6 +309,25 @@ achado não se confirmam nos dados.
 - Aba IA do painel mostra o mesmo por execução, incluindo cache ativo/inativo por papel.
 - Estimativa por fluxo antes de rodar: `GET /api/flows/cobertura` ganhou `estimated_usd` (item 7.7) — etapas sem
   receita × custo mediano por etapa só-IA dos últimos 7 dias, por papel; sem histórico, `null` ("sem base").
+- **Antes × depois de um deploy** (03/10): `scripts/jev-leitura-cache-latencia.py --corte <instante do deploy, ISO UTC>`.
+  É a régua do RA-17 e do caminho rápido nas execuções reais, sem A/B pago.
+  - Lê `ai_calls` e `runs.ai_profile`. As quatro colunas do RA-10 (migração 080) entram quando existem; sem elas, a
+    quebra por motivo é `not_run`.
+  - Agrupa por função (`role`; o ator grava `decide`, e `tier` ≥ 1 vira `escalation`) e por perfil (NULO = `padrão`).
+  - Mede:
+    - o cache lido e escrito sobre a entrada TOTAL (`input_tokens` já é só a fresca);
+    - a entrada p50, total e fresca;
+    - a latência p50 e p95 das chamadas ok;
+    - o custo por etapa e por execução (o plano não tem `step_id`).
+  - O custo segue a regra de `planning/costs.py`: o `usd` declarado, senão tokens × `ai.prices` do `config.yaml`. Só
+    essa chave é lida; o `.env` não é aberto.
+  - Só leitura em toda conexão, sem IA. O hash de commit no lugar do instante vale a data do commit, não a do deploy.
+    A causa de uma diferença é INFERRED: antes × depois não é A/B.
+  - Por cima do deploy 7: o rejulgamento do `verify` passou a tier 1 na suíte 7 (`executor.py`, "tier 1 também
+    no `verify`"). Antes era `verify` tier 0, depois cai em `escalation`. Nesse corte, compare pelos totais `(todas)` ou
+    por `--por-motivo`; entre dois deploys posteriores, `verify` e `escalation` comparam direto.
+  - Prova `simulated`: `scripts/tests/test_jev_leitura_cache_latencia.py`.
+  - Leitura `real` no banco do central em 03/10 ~07:18Z (só leitura, esquema 078): roda, com o RA-10 `not_run`.
 
 ## 10. Modelo local — Ollama
 
