@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 29.49 com prova real: o assunto do Outlook lido de primeira no android-01
+
+- Execução real (03/10, central, android-01, deploy 11 c8304e85, liberada pela orquestradora): r-20261003155342-6a94e6.
+  É o mesmo pedido só-leitura da run 89b814, sobre o mesmo e-mail cuja prévia repete o assunto.
+- Resultado:
+  - completed em 34 s; a etapa passou em 1 tentativa;
+  - o `read_value` do assunto foi aceito pela leitura visual, sem `truncado` nem `repetida`;
+  - nenhuma escalada ao modelo forte, nenhum plano revisado.
+- 10 chamadas, ~US$ 0,107. A 89b814 fez 13 chamadas (2 no modelo forte), ~US$ 0,213, e foi cancelada no teto.
+- A mesma execução gerou a 1ª linha da sombra de intenção do deploy 11 (`decisao_fechada_sombra`, origem `intencao`,
+  classe C3, modo shadow, confiança 0,99, sem fallback).
+
 ## 2026-10-03 — Deploy 11 no central (c8304e85; decisão fechada em sombra na intenção; autopublicação em sombra; 25.13 real)
 
 - Implantado no central (`real`, 03/10, WIN-7S2UASNLFOP): commit c8304e85 = suíte 11 (97425d5f) + os estados da Android.

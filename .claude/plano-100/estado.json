@@ -6212,9 +6212,9 @@
   "29.49": {
    "id": "29.49",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "feat/29-49-laco-do-assunto 0b62678b, na main pela suíte 11 (97425d5f). Causa provada pela evidência 2097 da run 89b814 (a captura da tentativa): a prévia do corpo repetia o assunto e terminava em reticências, e conferir_transcricao tratava qualquer linha com o valor como a linha dele. (1) Uma cópia do valor numa linha inteira basta; as cópias cortadas contam como linha alheia; valor e campo cortados seguem recusando (precisão da emenda do ADR-070 §4, confirmada pela orquestradora). (2) ler_valor_visual guarda a recusa da conferência por par (tela, âncora); a releitura vira repetida definitiva e a etapa termina como não lida, sem nova tentativa e sem recuperação automática (StepOutcome.sem_recuperacao), com a recusa explicada ao ator. Simulado: tests/test_leitura_visual.py::test_10_29_49_a_previa_que_repete_o_assunto_nao_corta_o_assunto_inteiro, ::test_7_29_49_repetida_depois_de_recusa_deterministica_e_definitiva e ::test_29_49_repetir_a_leitura_recusada_encerra_a_etapa_sem_nova_tentativa; 857 passed nos 33 arquivos afetados; suíte 11 SQLite 8441 passed, 0 failed. Bancada do 12.5 refeita offline sobre as transcrições guardadas (sem chamada paga): 31->32/32 e 29->30/32, 0/96 concordâncias falsas.",
-   "blocker": "Prova real not_run: o re-run só-leitura do Outlook no android-01 depois do deploy 11, quando a orquestradora liberar.",
+   "proof": "real",
+   "evidence": "Código: feat/29-49-laco-do-assunto 0b62678b, na main pela suíte 11 (97425d5f), implantado no deploy 11 (c8304e85). Prova real (03/10/2026, central WIN-7S2UASNLFOP, android-01, liberada pela orquestradora): run r-20261003155342-6a94e6, o mesmo pedido só-leitura da 89b814 (assunto do e-mail mais recente; o mesmo e-mail cuja prévia repete o assunto), 15:53:42–15:54:16Z (34 s): completed, etapa open_inbox succeeded em 1 tentativa, read_value aceito pela leitura visual (sem truncado nem repetida), saída 'assunto' de origem visual; sem escalada (todos os decide no tier 0), sem plano v2; 10 chamadas, ~US$ 0,107 (contra 13 chamadas, ~US$ 0,213 e cancelamento no teto na 89b814). Simulado: tests/test_leitura_visual.py (3 testes do 29.49); bancada do 12.5 refeita offline 31->32/32 e 29->30/32, 0/96 falsas.",
+   "blocker": "",
    "arquivos": [
     "backend/app/taskqueue/saidas.py",
     "backend/app/taskqueue/executor.py",
@@ -6224,13 +6224,13 @@
     "docs/ia.md",
     "docs/conhecimento/aprendizados.md"
    ],
-   "testes": "test_leitura_visual.py (3 novos); 33 arquivos afetados; suíte 11 SQLite.",
-   "grupo": "suite-11-android",
+   "testes": "test_leitura_visual.py; suíte 11; execução real r-20261003155342-6a94e6.",
+   "grupo": "29-49-real",
    "modelo": "opus (sessão Android)",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T15:28:41+00:00"
+   "quando": "2026-10-03T15:55:37+00:00"
   },
   "31.18": {
    "id": "31.18",
@@ -7761,6 +7761,15 @@
    ],
    "grupos": [
     "aprendizado-suite-11"
+   ]
+  },
+  {
+   "quando": "2026-10-03T15:55:37+00:00",
+   "itens": [
+    "29.49"
+   ],
+   "grupos": [
+    "29-49-real"
    ]
   }
  ]
