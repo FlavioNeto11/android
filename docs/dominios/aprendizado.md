@@ -1269,6 +1269,28 @@ re-execução.
 **Prova:** `simulated` em `backend/tests/test_learning_prova.py`. `real`: `not_run` até a 1ª validação de fluxo depois
 do deploy que levar o 30.37; o P4 fica pausado (`validacao.modo: off`) até lá.
 
+## O teto do legado e a receita sem caminho (30.40)
+
+Duas correções do que o P4 mostrou no central em 03/10, sem migração e sem mudar o dossiê:
+
+- **O teto do pedido legado.** O pedido sem `teto_usd` (nascido antes do 30.37) herda
+  `aprendizado.validacao.teto_por_pedido_usd` ao despachar, no mesmo UPDATE que liga a execução
+  (`RegistroDeValidacoes.comecar(..., teto_usd=)`, com `COALESCE`). O roteador só acha o pedido pelo `run_id`, então a
+  execução nunca fica ligada sem teto, e o legado não depende de UPDATE à mão (em 03/10 20:56Z foi preciso um, nos 16
+  pendentes, autorizado pela orquestradora). O teto já gravado não muda: a config nova vale para o pedido que nasce e
+  para o que não tinha teto.
+- **A receita sem caminho.** Com a marca "variante sem caminho" (30.36) no dossiê, 5 das 6 receitas marcadas pediram
+  evidência de novo na revisão de 20:51Z; só a `receita:63` sugeriu `possivelmente_obsoleto`. Agora `pedir_evidencia`
+  sai das opções do item (`decisoes_do_item`, dentro de `opcoes_do_dossie`), e o esquema estrito do hub (Anthropic e
+  OpenAI) só aceita as decisões oferecidas. O parecer que a escolher assim mesmo é inválido
+  (`invalida:decisao_indevida`): fica o registro, nenhum pedido nasce, e o item só volta ao curador com dossiê novo.
+  O `dossie_hash` não muda, então esta mudança sozinha não provoca revisão nova.
+
+**Prova:** `simulated` em `backend/tests/test_learning_prova_validacao.py` (o legado herda o teto, o gravado não muda) e
+`backend/tests/test_learning_curador_dominio.py` (as opções, o esquema do hub e o parecer inválido). `real`: `not_run`
+até a primeira revisão de receita sem caminho depois do deploy que o levar. O esperado é nenhum `pedir_evidencia` e
+nenhum pedido `recusada/sem_caminho` novo para ela.
+
 ## Pendências conhecidas
 
 Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.

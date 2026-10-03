@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import replace
 
+from app.modules.learning.application.curador import CuradorPorIA
 from app.modules.learning.domain import conteudo
 from app.modules.learning.domain.curador import (CAMPOS_DA_SAIDA, LIMITE_DA_CONCLUSAO, OPCOES_FECHADAS, Confianca,
                                                  Decisao, Dossie, Evidencia, GrupoDeFalha, IdentidadeDoItem,
@@ -218,6 +220,28 @@ def test_opcoes_para_o_adaptador_de_choice() -> None:
     d = _dossie()
     opcoes = opcoes_do_dossie(d)
     assert opcoes["alvo"] == ("receita:101",) and set(opcoes["evidencias_citadas"]) == d.citaveis
+    assert opcoes["decisao"] == OPCOES_FECHADAS["decisao"]                  # item sem marca: todas as decisões
+
+
+def test_a_receita_sem_caminho_nao_tem_pedir_evidencia_nas_opcoes_nem_no_parecer() -> None:
+    """30.40: com a marca "variante sem caminho" (30.36), `pedir_evidencia` sai das opções do item, o pedido ao
+    provedor e o esquema estrito do hub não a oferecem, e o parecer que a escolher assim mesmo é inválido
+    (`decisao_indevida`: fica o registro, nenhum pedido de validação nasce). As outras decisões seguem valendo."""
+    from app.planning.curador import esquema_do_parecer
+
+    comum = _dossie()
+    assert validar_saida(_saida(decisao="pedir_evidencia"), comum).parecer is not None
+    marcado = replace(comum, item=_item(sem_caminho=True))
+    decisoes = opcoes_do_dossie(marcado)["decisao"]
+    assert set(decisoes) == set(OPCOES_FECHADAS["decisao"]) - {Decisao.PEDIR_EVIDENCIA.value}
+    pedido = CuradorPorIA._pedido(marcado)
+    assert Decisao.PEDIR_EVIDENCIA.value not in pedido.opcoes["decisao"]
+    esquema = esquema_do_parecer(pedido.opcoes)["properties"]
+    assert isinstance(esquema, dict) and Decisao.PEDIR_EVIDENCIA.value not in esquema["decisao"]["enum"]
+    v = validar_saida(_saida(decisao="pedir_evidencia"), marcado)
+    assert v.parecer is None and v.motivo is MotivoDeInvalidade.DECISAO_INDEVIDA
+    for d in ("possivelmente_obsoleto", "observar", "manter"):
+        assert validar_saida(_saida(decisao=d), marcado).ok, d
 
 
 def test_confianca_derivada_da_probabilidade_nunca_numero_da_ia() -> None:

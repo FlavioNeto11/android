@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 30.40: o teto do pedido legado e a receita sem caminho (branch feat/30-40-teto-e-sem-caminho)
+
+- O pedido de validação sem `teto_usd` (o legado, de antes do 30.37) herda `teto_por_pedido_usd` no despacho, no mesmo
+  UPDATE que liga a execução; o teto já gravado não muda. Assim o legado não depende de UPDATE à mão.
+- A receita marcada "variante sem caminho" não recebe `pedir_evidencia` nas opções do curador (`decisoes_do_item`), e
+  o esquema estrito do hub só aceita o que foi oferecido. O parecer que a escolher assim mesmo grava
+  `invalida:decisao_indevida`, sem pedido. Medido no central às 20:51Z: 5 das 6 marcadas tinham pedido de novo.
+- Sem migração, sem rota nova, mesmo `dossie_hash`.
+- Testes: `backend/tests/test_learning_prova_validacao.py` e `backend/tests/test_learning_curador_dominio.py`.
+
 ## 2026-10-03 — Suíte 14 na main e deploy 14 no central (51270b9c; migrações 084, 085 e 086; config inalterada)
 
 - A suíte 14 foi integrada em `integ/suite-14`, na ordem da orquestradora:
