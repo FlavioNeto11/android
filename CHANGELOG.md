@@ -41,6 +41,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - `tests/test_rede_portao.py` reescrito para a regra nova;
   - `RedePage.test.tsx`.
 - **`not_run`**: o 03 e o 06 saindo de `parcial` no real, depois do deploy.
+- **Junto (achado do Chrome no deploy 8, commit próprio).** Em Configuração › Aparelhos e contas, o android-06
+  aparecia "diverge · …sem IA (selector:id=action_bar_title|text=={username})" com o aparelho conectado.
+  - Causa: o executor gravava em `account_evidence` o texto da prova quando o rótulo aparecia na pós-condição, e a
+    prova pela árvore local é um seletor cru, sem o nome.
+  - Agora `evidencia_da_conta` grava a frase que nomeia a conta (a prova, se a nomeia; senão a pós-condição).
+  - O painel diz "conta diferente do rótulo" com o que fazer no título, e tira o seletor cru das evidências antigas.
+  - Prova `simulated`: `tests/test_evidencia_da_conta.py` (3) e `InstancesSection.test.tsx` (2).
 
 ## 2026-10-03 — Aprendizado: quebra de série do LT-6 no deploy 8
 

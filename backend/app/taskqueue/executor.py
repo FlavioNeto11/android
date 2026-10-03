@@ -350,6 +350,17 @@ class AiBreakerTrip:
     at: str               # ISO 8601
 
 
+def evidencia_da_conta(account_label: str | None, pos_condicao: str, texto: str | None) -> str | None:
+    """O que a etapa comprovada grava como conta observada (`instances.account_evidence`), ou None.
+
+    Só quando o rótulo aparece na pós-condição ou na prova; e a evidência é a frase que NOMEIA a conta. A prova pela
+    árvore local é um seletor cru, sem o nome ("…sem IA (selector:id=…|text=={username})"), e o painel a lia como
+    conta diferente do rótulo (validação do deploy 8, android-06): sem o rótulo na prova, vale a pós-condição."""
+    if not account_label or norm_text(account_label) not in norm_text(pos_condicao + " " + (texto or "")):
+        return None
+    return texto if texto and norm_text(account_label) in norm_text(texto) else pos_condicao
+
+
 class StepExecutor:
     def __init__(self, cfg: Config, repo: Repository, devices: DeviceManager, provider: AIProvider,
                  ai_limiter: Limiter, settings_getter: Callable[[], Any]):
@@ -2431,9 +2442,9 @@ class StepExecutor:
                 return StepOutcome(Outcome.uncertain, falta, delivery_level=level)
             return StepOutcome(Outcome.retry if step.attempts < step.max_attempts else Outcome.failed, falta)
         if ok:
-            if account_label and norm_text(account_label) in norm_text(step.postcondition.value + " " + (text or "")):
+            if (conta := evidencia_da_conta(account_label, step.postcondition.value, text)) is not None:
                 repo.db.execute("UPDATE instances SET account_evidence=?, account_evidence_ts=? WHERE id=?",
-                                (text or step.postcondition.value, now_iso(), iid))
+                                (conta, now_iso(), iid))
             # As saídas e o sucesso na MESMA transação: sem etapa comprovada não há valor gravado, e vice-versa.
             with repo.db.tx():
                 self._gravar_saidas(step, app, lidos, visuais)
