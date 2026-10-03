@@ -4514,3 +4514,32 @@ Prova:
 - Ensaio só de leitura numa cópia do banco do central em 03/10 ~09:30Z (backup do SQLite, origem em `mode=ro`, código
   57d82a5a mais o branch): 142 ms no global e ~55 ms por app. Os números do exemplo acima saíram desse ensaio.
 - `real` = a leitura no central depois de implantado.
+
+## Adendo v0.92 (03/10/2026; número da orquestradora, `.claude/reservas.md`; item I1 da suíte 10) — `GET /api/ai/balances`: a conta `typesafe` e `closed_decision`
+
+A lista de `accounts` já trazia a conta `typesafe` (TypeSafe, o Jev; ADR-069) desde o 31.5. Este adendo a documenta e
+acrescenta um campo a cada conta:
+
+```json
+{"account": "typesafe", "label": "TypeSafe (Jev, System One)", "currency": "USD", "roles": [], "image": false,
+ "closed_decision": "shadow", "in_use": true, "anchor_balance": 5.0, "spent_since_usd": 0.003,
+ "estimated_balance": 4.997, "state": "ok", "…": "…"}
+```
+
+- `account` vale `anthropic`, `openai`, `gemini` ou `typesafe`.
+- `closed_decision` diz se a decisão fechada (a porta `DecisaoFechada`, Fase 31) usa a conta, e em que modo:
+  - `"shadow"`: com `ai.decisao_fechada.enabled`, o `decisor: jev` e um consumidor em `shadow`, e nenhum em `on`;
+  - `"on"`: algum consumidor em `on`;
+  - `null`: em todos os outros casos. As outras contas são sempre `null`. Com o decisor `nulo`, que nunca chama, também.
+  É a configuração, não a garantia de envio: se algo sai agora, quem diz é o `sending` do bloco `decisao_fechada` de
+  `GET /api/ai`.
+- `in_use` passa a ser `roles` não vazio, OU `image`, OU `closed_decision` não nulo.
+- A decisão fechada NÃO entra em `roles`. O laço de pedidos adia o despacho pelo saldo das contas de `roles`
+  (item 28.6), e o saldo do Jev não segura execução.
+- `spent_since_usd` da `typesafe` já somava as linhas de `ai_calls` com o provedor `jev` (a sombra grava o `usd`
+  declarado). O painel mostra esse consumo com até 4 casas abaixo de um centavo.
+
+Prova:
+- `simulated`: `tests/test_decisao_fechada_sombra.py::test_a_typesafe_diz_que_a_decisao_fechada_a_usa_e_mostra_o_consumo_do_jev`;
+  `frontend/src/lib/aiBalance.test.ts`; navegador contra o backend simulado do worktree.
+- `real`: `not_run`.
