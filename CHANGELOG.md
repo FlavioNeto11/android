@@ -36,6 +36,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - G-6: a palavra C7 sem valor continua recusando.
 - Residual de outro idioma: sueco, catalão, "the usual is", e algarismos ditados em alemão, italiano e francês.
 - ADR-069, item 14.
+- Catraca do ADR-052: os nomes dos apps saem das listas do filtro e vêm do `app.yaml` (nome, rótulo e o campo novo
+  `apelidos`; o Instagram declara `[insta]`). Os serviços de terceiros sem pacote ficam numa lista à parte.
 - Prova `simulated`:
   - `tests/test_decisao_fechada_reverificacao_g.py`;
   - corpus G da orquestradora (492 casos, com a persona "Girassol"): ok 488, 0 vazamentos de portão, 0 C7 mascarada, 0

@@ -37,6 +37,7 @@ Funções puras: sem banco, sem rede, sem configuração.
 """
 from __future__ import annotations
 
+import functools
 import re
 import unicodedata
 from collections.abc import Iterable
@@ -148,7 +149,7 @@ _NAO_DONO: Final = (r"(?:a|o|as|os|um|uma|e|que|mim|ele|ela|eles|elas|voce|vc|no
                     r"|curte|curta|responde|responda|posta|poste|publica|publique|manda|mande|envia|envie|escreve"
                     r"|escreva|le|leia|clica|clique|toca|toque|assiste|assista|segue|siga|fica|fique|entrou|logou|foi"
                     r"|viu|vi|abriu|comecou|comece|inicia|inicie|ta|tava|estava|aqui|post|posts|story|stories|reels"
-                    r"|video|videos|comentario|comentarios|link|aviso|notificacao|convite|insta|instagram|app|perfil"
+                    r"|video|videos|comentario|comentarios|link|aviso|notificacao|convite|app|perfil"
                     r"|feed|planeta|volta|voltou|mundo"
                     # as pastas do e-mail: "a caixa de entrada do outlook" (2 dos 92 comandos reais, 03/10)
                     r"|entrada|saida|lixeira|rascunho|rascunhos|enviados|enviadas|arquivados|arquivadas|principal"
@@ -171,6 +172,30 @@ _ANTES_DO_PROVEDOR: Final = (r"(?:no|na|nos|nas|do|da|dos|das|de|em|pelo|pela|pr
 _ENTRE_NOME_E_PROVEDOR: Final = r"(?:\s*[,(\-]\s*|\s+)"
 #: A recusa que roda ANTES das máscaras (passada 1), sobre o texto sem acento, em casefold e com o algarismo trocado pela
 #: letra parecida dentro de palavra (`arr0ba`). (motivo, padrão), na ordem do diagnóstico.
+@functools.lru_cache(maxsize=8)
+def _palavras_dos_nomes(nomes: tuple[str, ...]) -> frozenset[str]:
+    return frozenset(p for n in nomes for p in re.findall(r"[^\W_]+(?:['\-.][^\W_]+)*", sem_acento(normalizar(n)))
+                     if len(p) >= 3)
+
+
+def nomes_dos_apps() -> frozenset[str]:
+    """Os apps da PLATAFORMA como palavras do filtro, sem acento e em minúsculas ("instagram", "insta", "outlook",
+    "microsoft"): nome, rótulo e apelidos de cada `app.yaml` (ADR-052: conhecimento de app é dado, não lista em Python).
+    Lidos do registro na consulta, e não na importação: a descoberta importa módulos que importam o planejamento."""
+    from ...modules.applications.infrastructure import registry
+
+    return _palavras_dos_nomes(tuple(n for d in registry.registered() for n in (d.name, d.label, *d.aliases) if n))
+
+
+@functools.lru_cache(maxsize=8)
+def _recusas_no_original(apps: frozenset[str]) -> tuple[tuple[MotivoDoFiltro, re.Pattern[str]], ...]:
+    """`_RECUSA_NO_ORIGINAL` com os nomes dos apps da plataforma no `_NAO_DONO` (ADR-052: vêm do `app.yaml`, não de uma
+    lista em Python): "comenta no insta" diz o app, não o dono de um endereço."""
+    nao_dono = _NAO_DONO if not apps else _NAO_DONO[:-1] + "".join("|" + re.escape(a) for a in sorted(apps)) + ")"
+    return tuple((motivo, re.compile(padrao.pattern.replace(_NAO_DONO, nao_dono), padrao.flags))
+                 for motivo, padrao in _RECUSA_NO_ORIGINAL)
+
+
 _RECUSA_NO_ORIGINAL: Final[tuple[tuple[MotivoDoFiltro, re.Pattern[str]], ...]] = (
     ("email_ofuscado", re.compile(
         # arroba por extenso, soletrada ou hifenizada ("a r r o b a", "a-r-r-o-b-a"); "(a)", "(a t)", "at-sign"
@@ -375,7 +400,7 @@ def _sem_marcadores(texto: str) -> str:
 def _recusa_no_original(texto: str) -> MotivoDoFiltro | None:
     """Passada 1: a forma escondida que a máscara apagaria (e-mail ofuscado, caixa postal, cartão, endereço em inglês)."""
     plano = sem_leet(sem_acento(texto))
-    for motivo, padrao in _RECUSA_NO_ORIGINAL:
+    for motivo, padrao in _recusas_no_original(nomes_dos_apps()):
         if padrao.search(plano):
             return motivo
     return "endereco" if _ENDERECO_EN.search(texto) else None
@@ -489,4 +514,4 @@ def mascarar_catalogo(texto: str) -> str:
 
 __all__ = ["M_EMAIL", "M_HANDLE", "M_NUMERO", "M_TELEFONE", "M_TERMO", "M_TEXTO", "M_URL", "MotivoDoFiltro",
            "escrita_nao_latina", "mascarar_catalogo", "mistura_alfabetos", "normalizar", "remover_entidades", "remover_entidades_com_motivo",
-           "sem_acento", "sem_leet"]
+           "nomes_dos_apps", "sem_acento", "sem_leet"]

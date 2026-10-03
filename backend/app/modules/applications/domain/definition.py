@@ -58,6 +58,9 @@ class AppDefinition:
     #: (`atividades_de_conta_perdida` no `app.yaml`, 29.23/ADR-068). É o sinal forte da retirada automática: app que não
     #: declara nenhuma não retira conta sozinho (a conta travada fica para a pessoa, e a retirada é só pela rota).
     lost_account_activities: tuple[str, ...] = ()
+    #: Como o dono chama o app num comando, além do nome e do rótulo ("insta"; `apelidos` no `app.yaml`). É o que o filtro
+    #: da sombra da intenção (31.9) reconhece como o app, sem lista de app em Python (ADR-052).
+    aliases: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.label:

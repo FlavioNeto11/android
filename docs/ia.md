@@ -910,6 +910,16 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
       - os 12 pares com @handle ou e-mail, os 8 separadores de e-mail e os 6 contrastes de "entre";
       - os casos da persona "Girassol" e os controles.
       Os testes da E e da F que a G-4 e a G-5 mudam de propósito foram reescritos para a regra nova.
+    - **Catraca do ADR-052** (a suíte 8 a pegou na rodada F; decisão da orquestradora: vocabulário por dado): os nomes
+      dos apps da plataforma saíram das listas do filtro.
+      - Saíram de `_OBJETO_DE_NAVEGACAO`, `_ONDE_SE_ENTRA` e `_NAO_VALOR` em `intencao.py`, e do `_NAO_DONO` em
+        `entidades.py`.
+      - Agora vêm do `app.yaml`: nome, rótulo e o campo novo `apelidos` (o Instagram declara `[insta]`), lidos do
+        registro na consulta (`entidades.nomes_dos_apps`).
+      - A lista fixa guarda o vocabulário genérico ("app", "conta", "perfil", "feed", "site") e, à parte, os serviços
+        de terceiros SEM pacote na plataforma (gmail, facebook, tiktok, whatsapp, twitter, chrome), em
+        `_SERVICOS_SEM_PACOTE`. Desvio declarado da decisão "só termos genéricos": sem eles em `_ONDE_SE_ENTRA`,
+        "entra no facebook com girassol" passaria (há navegação, e a F-A não pega).
   - **C7 nunca sai, em prosa ou não**: comando que fala de senha, código, 2FA, PIN, OTP, token, captcha, verificação, chave,
     segredo ou desafio, em PT, EN ou ES (`menciona_c7`: `mentions_credential`, `looks_secret` e o assunto no texto
     normalizado, também com homóglifo, letra de largura cheia, uma letra por vez separada por ponto ou espaço, e letra de

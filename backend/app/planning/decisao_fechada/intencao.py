@@ -43,7 +43,7 @@ from ...security.redaction import looks_secret, mentions_credential, redact
 from . import privacidade
 from .contrato import ID_NENHUMA, MAX_OPCOES, PedidoDeDecisao, Pergunta, pergunta_choice
 from .entidades import (
-    escrita_nao_latina, mascarar_catalogo, normalizar, remover_entidades_com_motivo, sem_acento, sem_leet,
+    escrita_nao_latina, mascarar_catalogo, nomes_dos_apps, normalizar, remover_entidades_com_motivo, sem_acento, sem_leet,
 )
 from .porta import Porta, modo_efetivo
 from .sombra import RepositorioDeSombra
@@ -251,6 +251,24 @@ _ENTRAR_3: Final[frozenset[tuple[str, str, str]]] = frozenset((
 _ADVERBIOS: Final[frozenset[str]] = frozenset((
     "agora", "ja", "logo", "rapidinho", "rapido", "novamente", "entao", "ai", "por", "favor", "pf", "pfv", "pls",
     "please", "now", "again", "ahora", "so", "apenas", "tambem", "de", "novo", "depois", "then", "too"))
+class _ComOsApps:
+    """Um vocabulário fixo e genérico ("app", "conta", "perfil", "feed") mais os nomes dos apps da plataforma
+    (`nomes_dos_apps`). Só responde a `in`, que é o único uso destes conjuntos."""
+
+    __slots__ = ("_fixos",)
+
+    def __init__(self, fixos: Iterable[str]) -> None:
+        self._fixos = frozenset(fixos)
+
+    def __contains__(self, tok: object) -> bool:
+        return tok in self._fixos or tok in nomes_dos_apps()
+
+
+#: Serviços de terceiros SEM pacote na plataforma (sem pasta em `app/conhecimento/apps/`), onde se entra com conta ou
+#: para onde se navega. Não são conhecimento de app da plataforma, e sair da lista abriria vazamento: com o "facebook"
+#: fora de `_ONDE_SE_ENTRA`, "entra no facebook com girassol" passaria (há navegação, e a F-A não pega). Os apps da
+#: plataforma NÃO entram aqui: vêm do registro.
+_SERVICOS_SEM_PACOTE: Final[frozenset[str]] = frozenset(("gmail", "facebook", "tiktok", "whatsapp", "twitter", "chrome"))
 #: Lugar logo depois do verbo: "entre NO perfil", "entre NESSA tela" (4 dos 92 comandos reais, 03/10), "log INTO the app".
 _LUGAR: Final[frozenset[str]] = frozenset((
     "no", "na", "nos", "nas", "em", "num", "numa", "ao", "aos", "in", "into", "on", "onto", "to", "at", "en", "nel",
@@ -267,24 +285,25 @@ _DESTINO_PALAVRA: Final[frozenset[str]] = frozenset((
     "usuario", "usuaria", "user", "username"))
 #: O provedor de login ("entre com o Google"): destino, não valor.
 _PROVEDOR_DE_ENTRADA: Final[frozenset[str]] = frozenset((
-    "google", "facebook", "apple", "microsoft", "outlook", "gmail", "github", "biometria", "digital", "rosto", "face",
-    "faceid", "sms"))
+    "google", "facebook", "apple", "microsoft", "gmail", "github", "biometria", "digital", "rosto", "face", "faceid",
+    "sms"))
 #: O objeto da navegação: com artigo antes, é navegação ("acesse O APP", "acesse a CONTA da Marina"); o artigo diante de
 #: outra palavra não é ("entre com a girassol", "acesse o girassol").
-_OBJETO_DE_NAVEGACAO: Final[frozenset[str]] = frozenset((
-    "perfil", "perfis", "conta", "contas", "app", "aplicativo", "insta", "instagram", "feed", "site", "pagina",
+_OBJETO_DE_NAVEGACAO: Final = _ComOsApps((
+    "perfil", "perfis", "conta", "contas", "app", "aplicativo", "feed", "site", "pagina",
     "conversa", "conversas", "chat", "tela", "aba", "menu", "botao", "link", "atalho", "navegador", "porta", "grupo",
     "story", "stories", "reels", "reel", "post", "posts", "dm", "dms", "direct", "caixa", "pasta", "inbox",
-    "configuracoes", "ajustes", "mensagens", "notificacoes", "sistema", "painel", "portal", "outlook", "gmail", "email",
-    "e-mail", "facebook", "tiktok", "whatsapp", "twitter", "banco", "account", "cuenta", "profile", "page", "website",
+    "configuracoes", "ajustes", "mensagens", "notificacoes", "sistema", "painel", "portal", "email",
+    "e-mail", "banco", "account", "cuenta", "profile", "page", "website",
     "home", "inicio", "busca", "explorar", "video", "videos", "foto", "fotos", "live", "lives", "comentarios",
-    "seguidores", "seguindo", "bio", "area", "loja", "chrome", "lista", "pagamento", "jogo", "modo"))
+    "seguidores", "seguindo", "bio", "area", "loja", "lista", "pagamento", "jogo", "modo",
+    *_SERVICOS_SEM_PACOTE))
 #: Depois do objeto de navegação, o conector só liga um valor se o objeto é onde se entra com credencial ("entra no insta
 #: com girassol"). Na conversa, no chat ou no perfil, o "com" é a pessoa ("entre na conversa com qa-001": 12 dos 92
 #: comandos reais de 7 dias, medidos em 03/10).
-_ONDE_SE_ENTRA: Final[frozenset[str]] = frozenset((
-    "insta", "instagram", "app", "aplicativo", "conta", "site", "sistema", "painel", "portal", "outlook", "gmail",
-    "email", "e-mail", "facebook", "tiktok", "whatsapp", "twitter", "banco", "account", "cuenta"))
+_ONDE_SE_ENTRA: Final = _ComOsApps((
+    "app", "aplicativo", "conta", "site", "sistema", "painel", "portal", "email", "e-mail", "banco", "account", "cuenta",
+    *(s for s in _SERVICOS_SEM_PACOTE if s != "chrome")))
 #: Quem liga o verbo ao valor ("entre COM girassol", "login USANDO x", "inloggen MET x", "zaloguj się Z x").
 _CONECTORES: Final[frozenset[str]] = frozenset((
     "com", "usando", "use", "usa", "utilizando", "with", "using", "con", "mit", "avec", "met", "z", "via", "through",
@@ -293,13 +312,13 @@ _CONECTORES: Final[frozenset[str]] = frozenset((
 _SEPARADORES_DE_VALOR: Final[frozenset[str]] = frozenset((":", "/", "=", ",", "-"))
 #: O que, no lugar do valor, NÃO é valor: artigo, pronome, conjunção, o objeto de navegação, o provedor de entrada
 #: ("entre com o Google") e o modo ("com calma"). Tudo o mais conta: na dúvida, C7 é recusa.
-_NAO_VALOR: Final[frozenset[str]] = frozenset((
+_NAO_VALOR: Final = _ComOsApps((
     "a", "o", "as", "os", "um", "uma", "uns", "umas", "e", "eh", "ou", "de", "do", "da", "dos", "das", "que", "pra", "para",
     "the", "an", "my", "your", "and", "or", "el", "la", "los", "las", "un", "una", "y", "mi", "tu", "su", "le", "les",
     "meu", "minha", "seu", "sua", "nosso", "nossa", "ele", "ela", "eles", "elas", "voce", "vc", "mim", "isso", "isto",
     "esse", "essa", "este", "esta", "aquele", "aquela", "dele", "dela", "it", "this", "that", "me", "him", "her",
-    "conta", "contas", "perfil", "perfis", "persona", "personas", "usuario", "user", "app", "aplicativo", "insta",
-    "instagram", "aparelho", "celular", "telefone", "google", "facebook", "apple", "microsoft", "outlook", "gmail",
+    "conta", "contas", "perfil", "perfis", "persona", "personas", "usuario", "user", "app", "aplicativo",
+    "aparelho", "celular", "telefone", "google", "facebook", "apple", "microsoft", "gmail",
     "email", "e-mail", "sms", "biometria", "digital", "face", "rosto", "calma", "cuidado", "carinho", "pressa", "atencao",
     "jeito", "emoji", "emojis", "foto", "fotos", "video", "imagem", "texto", "legenda", "comentario", "mensagem", "link",
     "voz", "audio", "account", "profile", "phone", "cuenta", "todos", "todas", "tudo"))

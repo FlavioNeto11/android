@@ -68,8 +68,10 @@ perfil vêm de `links_de_perfil` do `app.yaml`.
 
 1. `app.yaml` (obrigatório): `app` (o mesmo pacote da pasta), `nome`, `rotulo`, `provedor_de_sessao` (só com conta
    gerenciada), `precisa_de_perfil`, `precisa_de_internet`, `ancora_do_perfil`, `links_de_perfil`, `tipos_de_texto`,
-   `leituras_de_conversa`, `leitura` e `renderizador_recusado` (campo fora desta lista é recusado:
-   `pacote.py::_CAMPOS`);
+   `leituras_de_conversa`, `leitura`, `renderizador_recusado`, `atividades_de_conta_perdida` e `apelidos` (campo fora
+   desta lista é recusado: `pacote.py::_CAMPOS`). `apelidos` é como o dono chama o app num comando além do nome e do
+   rótulo (o Instagram declara `[insta]`); o filtro da sombra da intenção (31.9) lê nome, rótulo e apelidos de todos os
+   apps (`entidades.nomes_dos_apps`) em vez de uma lista em Python;
 2. `catalogo.yaml`, se o app tem ações: `app`, `contract_version` e `acoes`;
 3. `telas.yaml` + `sessao.yaml`, se o app tem conta gerenciada: telas e estado conhecido, login declarado.
    `provedor_de_sessao` e `sessao.yaml` vêm juntos ou não vêm (`pacote.py::manifesto_da_pasta` recusa um sem o
