@@ -24,6 +24,25 @@ ESTRUTURA = json.load(io.open(Path(__file__).with_name("estrutura.json"), encodi
 HOJE = date.today().isoformat()
 
 
+import sys as _sys
+
+if str(Path(__file__).parent) not in _sys.path:
+    _sys.path.insert(0, str(Path(__file__).parent))
+from redacao import lista as _lista, redigir  # noqa: E402
+
+
+def titulo_curto(oque: str, limite: int = 80) -> str:
+    """O nome do cartão: o trecho em negrito do início da linha (o nome do item), senão a 1ª frase, cortada em
+    palavra inteira. Nunca corta no meio de um identificador."""
+    m = re.match(r"\s*\*\*(.+?)\*\*", oque or "")
+    base = m.group(1) if m else re.split(r"[.:;(]\s", (oque or "").strip(), maxsplit=1)[0]
+    base = re.sub(r"[`*_]", "", base).strip()
+    if len(base) <= limite:
+        return base
+    corte = base[:limite].rsplit(" ", 1)[0]
+    return corte + "…"
+
+
 def grupo_fase(n: int) -> str:
     if n <= 5:
         return "Fases 0–5 · fundação"
@@ -70,7 +89,7 @@ def desc_tecnica(it: dict, fase: str, registro: str) -> str:
     testes = ", ".join(f"`{t}`" for t in (it.get("testes") or [])[:4]) or "—"
     prova = it.get("proof") or "not_run"
     evid = (it.get("evidence") or "").replace("\n", " ")[:500]
-    return "\n".join([
+    return redigir("\n".join([
         "**Para quem não é técnico:** {{NAO_TECNICO}}",
         "**Por que importa:** {{POR_QUE}}",
         "",
@@ -83,7 +102,7 @@ def desc_tecnica(it: dict, fase: str, registro: str) -> str:
         f"**Estado no plano:** `{it['status']}` · **Concluído em:** {it.get('quando') or '—'} · **Fase:** {fase}",
         (f"**Registro (CHANGELOG):** {registro}" if registro else "**Registro (CHANGELOG):** —"),
         f"**Fonte:** `docs/plano-100.md` linha {it['linha']} (`| {it['id']} |`), `.claude/plano-100/estado.json`",
-    ])
+    ]))
 
 
 def main() -> int:
@@ -109,15 +128,15 @@ def main() -> int:
             continue
         cols = [c.strip() for c in m.group(2).split("|")]
         e = estado.get(m.group(1), {})
-        oque = cols[0] if cols else ""
+        oque = redigir(cols[0] if cols else "")
         it = {
             "id": m.group(1), "fase": fase, "linha": i + 1, "oque": oque,
-            "titulo": re.sub(r"\*\*", "", oque.split(":")[0]).strip()[:90],
-            "achados": cols[1] if len(cols) > 1 else "", "tam": cols[2] if len(cols) > 2 else "",
-            "status": e.get("status", "pendente"), "proof": e.get("proof"), "evidence": (e.get("evidence") or "")[:500],
+            "titulo": titulo_curto(oque),
+            "achados": redigir(cols[1] if len(cols) > 1 else ""), "tam": cols[2] if len(cols) > 2 else "",
+            "status": e.get("status", "pendente"), "proof": e.get("proof"), "evidence": redigir((e.get("evidence") or "")[:500]),
             "grupo": e.get("grupo"), "modelo": e.get("modelo"), "esforco": e.get("esforco"), "quando": e.get("quando"),
-            "blocker": (e.get("blocker") or "")[:300] if isinstance(e.get("blocker"), str) else "",
-            "arquivos": (e.get("arquivos") or e.get("files") or [])[:6], "testes": (e.get("testes") or [])[:4],
+            "blocker": redigir((e.get("blocker") or "")[:300]) if isinstance(e.get("blocker"), str) else "",
+            "arquivos": _lista(e.get("arquivos") or e.get("files"), 6), "testes": _lista(e.get("testes"), 4),
         }
         it["frente"] = frente(it)
         rows.append(it)
