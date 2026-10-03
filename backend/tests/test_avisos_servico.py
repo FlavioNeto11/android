@@ -18,8 +18,10 @@ from app.db import Database
 from app.events import EventBus
 from app.modules.avisos.adapters.telegram import CanalTelegram
 from app.modules.avisos.application.entrega import FalhaDeEnvio
+from app.modules.avisos.domain.mensagem import COMO_DECIDIR, COMO_RESPONDER, CONTEUDO_MAX
 from app.modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from app.modules.avisos.infrastructure.servico import ServicoDeAvisos
+from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
 from app.taskqueue.travas import AVISOS, Lideranca
 from app.util import now
 
@@ -172,6 +174,33 @@ def test_o_canal_real_sobre_transporte_falso_nao_deixa_o_token_em_log_nem_no_ban
     assert TOKEN not in caplog.text
     for tabela_linha in banco.query("SELECT * FROM avisos_entregas"):
         assert TOKEN not in repr(dict(tabela_linha))
+
+
+def test_com_a_conversa_ligada_aprovacao_e_pergunta_levam_o_conteudo_redigido_e_cortado(tmp_path: Path) -> None:
+    """28.15, decisão (d) do ADR-071: com `avisos.entrada.enabled`, o dono responde no próprio aviso, então a aprovação
+    leva resumo, alvo e texto, e a pergunta leva a pergunta. Tudo pelo redator e cortado em 500; a conta que pede
+    pessoa continua sem dado (só aprovação e pergunta mudam)."""
+    cfg = _cfg(tmp_path)
+    cfg.file.avisos.entrada.enabled = True
+    banco = Database(cfg.db_dsn)
+    banco.migrate()
+    r = Relogio()
+    servico = ServicoDeAvisos(cfg, EventBus(banco, origin=AQUI), FilaDeAvisos(banco, relogio=r),
+                              Lideranca(banco, dono=AQUI, relogio=r), canal=CanalFalso(),
+                              redigir=TriagemDeCredencial().redigir)
+    servico.enfileirar_evento("approval.pending", {"approval": {
+        "id": "ap1", "summary": "Responder o comentário de @maria", "target": "@maria",
+        "content": "oi! a senha: Abc!2345xyz " + "x" * 600}}, 3)
+    servico.enfileirar_evento("run.updated", {"run": {"id": "r9", "status": "needs_input",
+                                                      "status_detail": "Para qual contato do QA Messenger?"}}, 4)
+    servico.enfileirar_evento("session.needs_person", {"active": True, "detail": "senha errada da conta lucas.real"}, 5)
+    corpos = {str(x["tipo"]): str(x["corpo"]) for x in banco.query("SELECT tipo, corpo FROM avisos_entregas")}
+    aprovacao = corpos["approval.pending"]
+    assert aprovacao.startswith("Responder o comentário de @maria\nAlvo: @maria\nTexto: “oi! a senha: **REDACTED**")
+    assert "Abc!2345xyz" not in aprovacao and aprovacao.endswith("…\n" + COMO_DECIDIR)
+    assert len(aprovacao) == CONTEUDO_MAX + 1 + len(COMO_DECIDIR)
+    assert corpos["run.needs_input"] == "Para qual contato do QA Messenger?\n" + COMO_RESPONDER
+    assert corpos["session.needs_person"] == "Abra a caixa de Pendências do painel para ver."
 
 
 def test_conteudo_da_fila_nao_leva_dado_de_persona(tmp_path: Path) -> None:

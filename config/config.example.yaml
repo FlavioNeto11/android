@@ -489,6 +489,13 @@ avisos:                           # aviso fora do painel (item 28.11): espelho d
   # incerto_apos_s: 600           # `enviando` parado há isto (queda no meio do envio) vira `incerto`, sem reenvio
   # retencao_dias: 30             # purga das linhas finais
   # aprendizado_faixas: [C]       # faixas do learning.needs_person que avisam (28.14); a B (lote) fica só na caixa
+  # entrada:                       # a conversa de volta (28.15, ADR-071): o chat do .env aprova, veta, responde e pede
+  #   enabled: false              # (false) desligada; só liga com avisos.enabled. Ligar troca o consumidor do bot (docs/operacao.md)
+  #   limite_por_min: 10          # mensagens do chat por minuto; o excesso vira `limitada`
+  #   max_chars: 1000             # maior que isto é recusada sem guardar
+  #   long_poll_s: 50             # quanto o getUpdates segura a conexão esperando
+  #   espera_conflito_s: 60       # 409 (outro consumidor do bot): espera e avisa na saúde, não disputa
+  #   ttl_previa_s: 900           # o botão Executar de uma prévia mais velha que isto não cria a execução
 
 provisioning:                     # aparelho novo pela plataforma, neste servidor (POST /api/instances)
   min_free_disk_gb: 10            # disco livre mínimo do hospedeiro (última batida) para aceitar criar mais um AVD

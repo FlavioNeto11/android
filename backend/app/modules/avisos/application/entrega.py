@@ -38,9 +38,10 @@ class FalhaDeEnvio(Exception):
 
 
 class Canal(Protocol):
-    """Por onde o aviso sai. Só saída: nenhum canal recebe nada de volta."""
+    """Por onde o aviso sai. Devolve o id da mensagem no canal (o `message_id` do Telegram), ou `None` se o canal
+    não informa: é o que liga a resposta (reply) da pessoa ao fato do aviso (28.15)."""
 
-    async def enviar(self, titulo: str, corpo: str, link: str | None) -> None: ...
+    async def enviar(self, titulo: str, corpo: str, link: str | None) -> int | None: ...
 
 
 @dataclass(frozen=True)
@@ -59,7 +60,7 @@ Cerca = Callable[[], AbstractContextManager[None]]
 
 class Fila(Protocol):
     def reivindicar_um(self, *, cerca: Cerca) -> Entrega | None: ...
-    def marcar_enviado(self, entrega_id: int) -> None: ...
+    def marcar_enviado(self, entrega_id: int, *, message_id: int | None = None) -> None: ...
     def marcar_retentar(self, entrega_id: int, *, ate: datetime, erro: str) -> None: ...
     def marcar_falhou(self, entrega_id: int, *, erro: str) -> None: ...
 
@@ -90,7 +91,7 @@ async def entregar(fila: Fila, canal: Canal, *, cerca: Cerca, agora: Callable[[]
         if entrega is None:
             break
         try:
-            await canal.enviar(entrega.titulo, entrega.corpo, entrega.link)
+            message_id = await canal.enviar(entrega.titulo, entrega.corpo, entrega.link)
         except FalhaDeEnvio as falha:
             if falha.definitiva or entrega.tentativas >= max_tentativas:
                 fila.marcar_falhou(entrega.id, erro=falha.motivo)
@@ -103,6 +104,6 @@ async def entregar(fila: Fila, canal: Canal, *, cerca: Cerca, agora: Callable[[]
                 r.esperar_s = falha.espera_s
                 break
             continue
-        fila.marcar_enviado(entrega.id)
+        fila.marcar_enviado(entrega.id, message_id=message_id)
         r.enviados += 1
     return r

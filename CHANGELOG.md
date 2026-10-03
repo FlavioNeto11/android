@@ -19,6 +19,43 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 28.15: a conversa de volta pelo Telegram (migração 085; branch feat/28-15-telegram-entrada; desligada de fábrica)
+
+- O mesmo bot do aviso agora também recebe, com o dono como único interlocutor (o `TELEGRAM_CHAT_ID`). Pelo chat ele
+  aprova, veta (com nota), responde à pergunta de uma execução, faz pedidos (`/para` e texto livre) e consulta
+  `/status` e `/pendencias`.
+  - Toda ação passa pelos serviços das rotas do painel: prévia de alvos obrigatória com os botões Executar e Cancelar,
+    approval_required, pré-voo e tetos.
+  - O operador é `telegram:dono`. O `/orq` e o reply a uma mensagem que a Central não mandou ficam guardados para a
+    orquestradora, sem execução.
+- Long-poll com o offset no banco. Um 409 vira `telegram_entrada_conflito` na saúde e uma espera, sem disputa. Os
+  limites são 10 mensagens por minuto e 1000 caracteres.
+- Migração 085 genérica (`canal_entradas` e `canal_enviadas`, com a chave `(canal, id_externo)`): o Trello do 32.2 usa
+  as mesmas tabelas.
+  - A gramática e a parte comum do serviço não conhecem canal. Cada canal traduz o que chegou numa `Recebida` e
+    responde por uma `SaidaDaConversa`.
+- Credencial ou código: a mensagem é recusada sem guardar e apagada do chat (`deleteMessage`). Se não der para apagar,
+  a resposta pede ao dono que apague.
+- Com a conversa ligada, o aviso de aprovação e o de pergunta levam o conteúdo, redigido e cortado em 500 caracteres
+  (decisão (d)).
+- Documentado no ADR-071, no adendo v0.98 do api-contract, em `operacao.md` §15.1, em `banco.md` (085) e em
+  `config.example.yaml`.
+- Correções da revisão do PR #166 (`test_telegram_correcoes.py`, `simulated`):
+  - B1: na 1ª subida o histórico do chat é descartado (`getUpdates` com `offset=-1` e uma linha-marco), não executado;
+  - B2: a resposta a uma pergunta que pede senha, código, 2FA ou token é recusada pelo contexto (vocabulário da triagem de
+    credencial), apagada do chat e nunca gravada; o 409 `credencial_na_resposta` do caminho comum é final;
+  - B2 (canal): com uma execução esperando senha, código, 2FA ou token, a palavra solta (sem reply e sem `/responder`) é
+    recusada, apagada do chat e não gravada; sem poder ler as perguntas, falha fechada;
+  - I3: a update que não grava vira `falhou` sem texto e o offset anda; I4: a prévia vence em `ttl_previa_s` (900 s);
+  - I5: o dono é `chat.type = private` com `from.id` igual ao chat, na mensagem e no botão;
+  - I7: o 429 honra o `Retry-After`; o 401/403 vira o problema `telegram_entrada_recusada` e espera como o 409;
+  - menores: linha presa em `executando` reparada, texto longo com cara de senha também apagado, dica do 409 com webhook
+    e o script `avisos-telegram.py descobrir`, nota de troca de chat ou bot no `operacao.md`.
+- Prova:
+  - `simulated`: `test_telegram_entrada.py`, `test_canais_contrato.py` (o mesmo comando por `telegram` e `trello`
+    passa pelas mesmas políticas), `test_avisos_servico.py` e `test_telegram_portas.py`;
+  - `not_run`: a conversa real, que depende do "vai" da orquestradora para trocar a caixa provisória.
+
 ## 2026-10-03 — Aprendizado: a validação do fluxo roda o próprio fluxo, e a evidência vem das etapas da prova (30.37; branch feat/30-37-prova)
 
 - **A execução de prova.**

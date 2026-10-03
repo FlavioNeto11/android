@@ -4852,3 +4852,26 @@ Prova `simulated`:
 - `tests/test_learning_capability_na_linha.py`, com o registro real: REPLY_COMMENT só no Instagram;
 - `tests/test_leitura_visual_papel.py`;
 - `frontend/src/features/aprendizado/AprendizadoPage.test.tsx`.
+## Adendo v0.98 (03/10/2026; número da orquestradora; item 28.15, ADR-071) — a conversa de volta pelo Telegram: config, saúde e o conteúdo do aviso
+
+Nenhuma rota nova: o central PERGUNTA ao Telegram (long-poll do `getUpdates`) e nunca é chamado por ele. Muda o
+seguinte, todo desligado de fábrica.
+
+- **Config:** `avisos.entrada`, com `enabled` (false), `limite_por_min` (10), `max_chars` (1000), `long_poll_s` (50) e
+  `espera_conflito_s` (60). Ela só vale com `avisos.enabled`. O chat aceito é o `TELEGRAM_CHAT_ID` do `.env`, e nenhum
+  chat_id mora na config.
+- **`GET /api/health`:** um problema novo, `telegram_entrada_conflito` (o 409 do `getUpdates`: outro processo lê o mesmo
+  bot). Ele some quando a leitura volta a funcionar.
+- **O aviso** (`avisos_entregas.corpo` e a mensagem). Com `avisos.entrada.enabled`:
+  - `approval.pending` leva o resumo, "Alvo: …" e "Texto: “…”";
+  - `run.needs_input` leva o `status_detail` (a pergunta).
+  Os dois passam pelo redator de credencial e são cortados em 500 caracteres, terminando em "…". Depois vem a instrução
+  de resposta ("Responda a esta mensagem com sim ou não (ou /vetar <motivo>)." ou "Responda a esta mensagem com a
+  resposta."). Os outros tipos não mudam. Com a entrada desligada, nada muda (28.11).
+- **Gestos pela conversa:** a decisão grava `decided_by = telegram:dono`, e a auditoria e o sinal contam o gesto como de
+  pessoa. A execução criada pela conversa usa a chave de idempotência `telegram:<update_id>`. A sucessora da resposta ao
+  `needs_input` é a mesma do painel.
+- **Banco:** a migração 085 cria `canal_entradas` e `canal_enviadas` (genéricas por canal; `docs/banco.md`).
+
+Prova `simulated`: `tests/test_telegram_entrada.py`, `tests/test_canais_contrato.py`, `tests/test_avisos_servico.py`,
+`tests/test_telegram_portas.py`. `not_run`: a conversa real.

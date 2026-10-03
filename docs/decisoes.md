@@ -78,6 +78,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-068](#adr-068--conta-bloqueada-sai-na-hora-e-a-persona-fica-lápide-só-com-o-hash-do-arroba) | Conta bloqueada sai na hora e a persona fica; lápide só com o hash do @ (item 29.23) |
 | [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro; item 11: regras do filtro do 31.9; item 12: C7 sem palavra-chave e e-mail em peças, rodada E; item 13: barrar pela intenção de entrar, rodada F; item 14: o usuário como @handle ou e-mail, o catálogo só no destino e a preposição só com faixa, rodada G; item 15: envio aberto no código para a sombra C0–C1 do 31.10, 31.17; item 16: a camada estrutural da rodada H; item 17: NO-GO da fase 2 da H e a forma seguinte com o dono; item 18: forma A na versão A-estreita, 31.18; item 19: lacunas da rodada I e a A-média aprovada pelo dono, 31.20; item 20: o limiar da porta sobre a probabilidade devolvida e o rótulo 1 do curador só do dono, 31.19) | 03/10 |
 | [ADR-070](#adr-070--valor-visto-na-imagem-conta-como-saída-de-etapa-sob-conferência-cega-de-um-segundo-leitor) | Valor visto na imagem conta como saída de etapa, sob conferência cega de um segundo leitor; substitui em parte o ADR-065 §3 (item 12.5) | vigente (dono, 02/10; opção desligada) | 02/10 |
+| [ADR-071](#adr-071--a-conversa-de-volta-pelo-telegram-o-dono-fala-com-a-central-como-no-painel) | A conversa de volta pelo Telegram: o dono fala com a Central como no painel (item 28.15) | vigente (orquestradora, 03/10; entrada desligada) | 03/10 |
 
 ---
 
@@ -4948,3 +4949,63 @@ nova): gemini 31→32/32 e gpt-6-luna 29→30/32, com 0/96 de concordância fals
 roteamento comum do hub, não o Jev); migração 078; `backend/app/taskqueue/saidas.py::ler_valor_visual`,
 `backend/app/planning/` (papel `leitura`, `transcribe`), [dominios/execution.md](dominios/execution.md),
 [ia.md](ia.md).
+
+---
+## ADR-071 — A conversa de volta pelo Telegram: o dono fala com a Central como no painel
+
+**Data:** 03/10/2026 · **Estado:** vigente. Pedido do dono (item 28.15); desenho e decisões (a)–(e) aprovados pela
+orquestradora em 03/10 (`.claude/handoffs/desenho-28-15.md`). O contrato comum aos canais (Telegram e Trello) está em
+[design/canais-externos.md](design/canais-externos.md), e este ADR não o repete. A entrada nasce **desligada**
+(`avisos.entrada.enabled: false`). Depois do PR, a dona do canal é a sessão Canais.
+
+**Contexto.** O 28.11 só mandava avisos. O dono quer responder pelo celular: aprovar ou vetar, responder à pergunta de
+uma execução e pedir coisas, sem abrir o painel e sem atalho de política.
+
+**Decisão.**
+
+1. **Só long-poll, sem webhook:** o mesmo bot do aviso também recebe. Um laço no líder da trava `avisos` chama
+   `getUpdates` com o offset tirado do banco. A update é gravada ANTES de o offset avançar: reiniciar não repete nem
+   perde. 409 é outro consumidor do bot: vira o problema `telegram_entrada_conflito` na saúde e uma espera, sem disputa.
+2. **(a)** O único chat aceito é o `TELEGRAM_CHAT_ID` do `.env`. O que vem de outro chat é gravado sem texto e não é
+   tratado.
+3. **(b)** O operador é um valor, `telegram:dono`, posto no ContextVar da sessão. A auditoria, `decided_by` e o sinal
+   contam o gesto como de pessoa, sem o chat_id.
+4. **(c)** A prévia de alvos é obrigatória, como no painel, inclusive no `/para`. Ela sai numa linha, com os botões
+   Executar e Cancelar. Sem destino, a Central pergunta e oferece os aparelhos online como botões. O segundo toque no
+   mesmo botão perde no estado da linha.
+5. **(d)** Com a conversa ligada, o aviso de aprovação leva o resumo, o alvo e o texto. O de pergunta leva a pergunta.
+   Os dois passam por `TriagemDeCredencial.redigir`, com corte em 500 caracteres, sem captura de tela, e o link segue.
+   É decisão da orquestradora dentro do pedido do dono: se ele vetar, o aviso volta a ter só o link.
+6. **(e)** O que vai para a orquestradora: `/orq`, ou reply a uma mensagem do bot que a Central não registrou como
+   enviada (`canal_enviadas`). Fica guardado e não é executado.
+7. **Políticas iguais às do painel:** toda ação chama os mesmos serviços das rotas (`PortasReais`): a prévia, a criação
+   da execução, `ApprovalService.decide` (só aprovar e vetar; editar fica no painel) e a sucessora do `needs_input`. O
+   approval_required, o pré-voo, a rede e os tetos valem iguais.
+   - Limites: 10 mensagens por minuto e 1000 caracteres, configuráveis. O excesso vira `limitada` ou `recusada`.
+8. **Credencial:** a mensagem que parece senha ou código (a triagem da C3 e mais o formato de código de 4 a 8 dígitos)
+   é recusada e gravada sem texto. A Central a apaga do chat (`deleteMessage`), e a resposta não ecoa nada. Se o
+   Telegram não deixar apagar, a resposta pede ao dono que apague.
+9. **Registro genérico (migração 085):** `canal_entradas` e `canal_enviadas`, com a chave `(canal, id_externo)`. O Trello
+   (32.2, ADR-072) usa as mesmas tabelas com `canal = 'trello'`.
+   - A gramática (`application/entrada.rotear`) e a parte comum do serviço (`registrar`, `tratar_pendentes`) não
+     conhecem canal. Cada canal só traduz o que chegou numa `Recebida` e cumpre uma `SaidaDaConversa`.
+
+**Consequências.**
+- Nenhuma rota nova. A config ganha `avisos.entrada`, e a saúde ganha `telegram_entrada_conflito`.
+- Ligar a entrada troca o consumidor do bot: a caixa provisória da orquestradora para de ler `getUpdates` no mesmo
+  momento. Isso só acontece com o "vai" dela.
+- O redator tira credenciais, não dado pessoal (um CPF passa). O texto da aprovação é o que a persona publicaria, e a
+  decisão (d) aceita que ele saia para o Telegram.
+- O `httpx` registra em INFO a URL com o token do bot. Em produção, `setup_logging` põe o `httpx` em WARNING e o
+  `RedactingFilter` fica no handler. Teste que captura log em DEBUG precisa deixar de fora os loggers do `httpx`.
+
+**Prova.** `simulated`:
+- `tests/test_telegram_entrada.py`, `tests/test_canais_contrato.py`, `tests/test_telegram_roteador.py`,
+  `tests/test_avisos_servico.py`;
+- `tests/test_telegram_portas.py`, com as portas reais no harness.
+
+`not_run`: a conversa real com o dono, que depende do "vai" da orquestradora para trocar a caixa provisória.
+
+**Relação.** ADR-009, ADR-025/040 (credencial), ADR-054 (sinal), ADR-062 (Pendências), item 28.11 (aviso), ADR-072
+(Trello); `backend/app/modules/avisos/`, migração 085, [api-contract.md](api-contract.md) (adendo v0.98),
+[operacao.md](operacao.md).
