@@ -250,12 +250,14 @@ class ServicoDeMetricas:
     def __init__(self, servico: LearningService, fontes: FontesDeMetricas, *,
                  aproveitamento: Callable[[int, datetime], Mapping[str, object]] | None = None,
                  curador: Callable[[], AjustesDoCurador] | None = None,
+                 autopublicacao: Callable[[], dict[str, object]] | None = None,
                  precos: Callable[[], dict[str, list[float]]] = dict,
                  relogio: Callable[[], datetime]) -> None:
         self._servico = servico
         self._fontes = fontes
         self._aproveitamento = aproveitamento
         self._curador = curador
+        self._autopublicacao = autopublicacao
         self._precos = precos
         self._relogio = relogio
 
@@ -308,7 +310,7 @@ class ServicoDeMetricas:
             itens=contagem(no_recorte), por_origem=dict(sorted(Counter(e.origin.value for e in no_recorte).items())),
             pendentes=sum(1 for e in no_recorte if para_aprovar(e)),
             aprovacoes={k: dict(sorted(v.items())) for k, v in aprovacoes.items()},
-            curador=resumo_do_curador(revisoes),
+            curador=self._do_curador(revisoes),
             refutados_depois_de_promovidos={"desligados_pelo_sistema": refutados["sistema"],
                                             "desligados_por_pessoa": refutados["pessoa"],
                                             "publicados_com_evidencia_contra": len(contestados)},
@@ -324,6 +326,14 @@ class ServicoDeMetricas:
             orcamento_do_curador=(orcamento(self._fontes.janela_do_curador(agora, (aj := self._curador()).janela_dias),
                                             aj, self._precos()) if self._curador is not None else None),
             sem_item=dict(sem_item))
+
+    def _do_curador(self, revisoes: Sequence[RevisaoLida]) -> dict[str, object]:
+        """O resumo das revisões e, com a autopublicação composta (30.34), o balanço da sombra dela, global (não
+        depende do app nem da janela do pedido: o caso tem a janela própria de 7 dias). Chave nova, aditiva."""
+        resumo = resumo_do_curador(revisoes)
+        if self._autopublicacao is not None:
+            resumo["autopublicacao"] = self._autopublicacao()
+        return resumo
 
     def revisoes(self, *, app: str | None, decisao: str | None, desde: str | None, limite: int,
                  cursor: tuple[str, str] | None) -> PaginaDeRevisoes:

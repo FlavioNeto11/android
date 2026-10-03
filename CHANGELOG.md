@@ -334,6 +334,21 @@ Os itens de polimento da frente do Aprendizado em `.claude/handoffs/ux-deploy7-2
     indevidas, 5 recusas indevidas (as 4 antigas e o caso 538, que a orquestradora reetiquetou para recusa);
   - 122 comandos reais: as mesmas 2 recusas da base.
 
+## 2026-10-03 — Aprendizado: a autopublicação do fluxo B em sombra (30.34-A; branch feat/30-34-autopublicacao-sombra)
+
+- Emenda datada à D1 do ADR-054, decidida pelo dono ("sim" à P2): o fluxo de classe B pode publicar sozinho. Precisa do
+  parecer `aprovar` com confiança alta e de ≥ 2 execuções reais em ≥ 2 aparelhos, sem evidência contra. Só depois da
+  sombra: ≥ 30 casos fechados com ≥ 90 % sem regressão em 7 dias.
+- Esta fatia vai até `shadow`:
+  - a regra pura;
+  - o livro da sombra, como o sinal `autopublicaria`, sem migração;
+  - o laço sob a trava de líder;
+  - o balanço nas métricas (`curador.autopublicacao`);
+  - o config `aprendizado.autopublicacao.modo`, `off` de fábrica, com `on` recusado até a 30.34-B;
+  - o contrato no adendo v0.93 da API.
+- O central liga `shadow` no deploy 11 (orquestradora, 03/10). `on` só depois do relatório da sombra.
+- Prova `simulated`: `test_learning_autopublicacao.py` e `test_learning_autopublicacao_sombra.py`.
+
 ## 2026-10-03 — Deploy 9 no central (suíte 9; sombra C0–C1 do curador ligada, T_on do 31.10; curador volta ao padrão)
 
 - Código: main `3dcfc9ac` (suíte 9), sem migração nova (segue a 081):
