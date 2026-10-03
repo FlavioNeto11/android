@@ -496,6 +496,7 @@ avisos:                           # aviso fora do painel (item 28.11): espelho d
   #   long_poll_s: 50             # quanto o getUpdates segura a conexão esperando
   #   espera_conflito_s: 60       # 409 (outro consumidor do bot): espera e avisa na saúde, não disputa
   #   ttl_previa_s: 900           # o botão Executar de uma prévia mais velha que isto não cria a execução
+  #   idade_max_s: 900            # mensagem escrita há mais que isto (Central fora do ar) não é tratada; o dono é avisado
 
 provisioning:                     # aparelho novo pela plataforma, neste servidor (POST /api/instances)
   min_free_disk_gb: 10            # disco livre mínimo do hospedeiro (última batida) para aceitar criar mais um AVD

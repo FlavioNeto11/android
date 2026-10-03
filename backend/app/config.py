@@ -1112,6 +1112,9 @@ class EntradaDoTelegramCfg(BaseModel):
     long_poll_s: int = Field(50, ge=1, le=60)               # quanto o `getUpdates` segura a conexão esperando
     espera_conflito_s: float = Field(60.0, ge=5, le=3600)   # 409 (outro consumidor do bot): espera, não disputa
     ttl_previa_s: float = Field(900.0, ge=30, le=86400)     # a prévia mais velha que isto não executa (manda de novo)
+    # A mensagem escrita há mais que isto (a Central estava fora e o Telegram guardou) não é tratada: um "/aprovar" ou
+    # um "sim" de horas atrás não executa. Gravada sem texto; o dono é avisado uma vez para mandar de novo.
+    idade_max_s: float = Field(900.0, ge=60, le=86400)
 
 
 class AvisosCfg(BaseModel):

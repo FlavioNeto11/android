@@ -4916,8 +4916,21 @@ uma execução e pedir coisas, sem abrir o painel e sem atalho de política.
    - A gramática (`application/entrada.rotear`) e a parte comum do serviço (`registrar`, `tratar_pendentes`) não
      conhecem canal. Cada canal só traduz o que chegou numa `Recebida` e cumpre uma `SaidaDaConversa`.
 
+10. **Emendas das duas revisões do PR #166 (Android, 03/10).** Valem junto das decisões acima:
+    - só o dono em conversa PRIVADA (`chat.type = private` e `from.id` igual ao chat do `.env`);
+    - a 1ª subida do canal descarta o histórico do Telegram (linha-marco `inicio`), e em TODA subida a mensagem escrita
+      há mais de `idade_max_s` (900 s) fica `ignorada`, sem texto, com um aviso só ao dono;
+    - a credencial também se decide pelo contexto: a resposta (reply ou `/responder <id>`) a uma execução que pede
+      senha, código, 2FA ou token é recusada qualquer que seja a forma, com o vocabulário da `TriagemDeCredencial`, e o
+      caminho comum devolve o erro final `credencial_na_resposta`; com essa pergunta aberta, o texto curto (até 3
+      palavras) como texto livre, recado à orquestradora ou `/responder` sem id também é recusado;
+    - a update que não grava vira `falhou` sem texto (o offset anda); o botão Executar vale `ttl_previa_s`;
+    - o 429 espera o `Retry-After`; 401, 403 e 404 viram `telegram_entrada_recusada` e o 400
+      `telegram_entrada_pedido_invalido`, cada um com a sua causa.
+
 **Consequências.**
-- Nenhuma rota nova. A config ganha `avisos.entrada`, e a saúde ganha `telegram_entrada_conflito`.
+- Nenhuma rota nova. A config ganha `avisos.entrada`, e a saúde ganha `telegram_entrada_conflito`,
+  `telegram_entrada_recusada` e `telegram_entrada_pedido_invalido`.
 - Ligar a entrada troca o consumidor do bot: a caixa provisória da orquestradora para de ler `getUpdates` no mesmo
   momento. Isso só acontece com o "vai" dela.
 - O redator tira credenciais, não dado pessoal (um CPF passa). O texto da aprovação é o que a persona publicaria, e a
@@ -4928,7 +4941,8 @@ uma execução e pedir coisas, sem abrir o painel e sem atalho de política.
 **Prova.** `simulated`:
 - `tests/test_telegram_entrada.py`, `tests/test_canais_contrato.py`, `tests/test_telegram_roteador.py`,
   `tests/test_avisos_servico.py`;
-- `tests/test_telegram_portas.py`, com as portas reais no harness.
+- `tests/test_telegram_portas.py`, com as portas reais no harness;
+- `tests/test_telegram_correcoes.py` e `tests/test_telegram_revisao_e.py` (as emendas da decisão 10).
 
 `not_run`: a conversa real com o dono, que depende do "vai" da orquestradora para trocar a caixa provisória.
 

@@ -121,8 +121,9 @@ class CanalTelegram:
         descricao = corpo.get("description")
         detalhe = f": {_limpar(descricao, self._token)}" if isinstance(descricao, str) and descricao else ""
         if status == 429:
-            return FalhaDeEnvio(f"Telegram pediu para esperar (429){detalhe}", espera_s=_espera_pedida(resposta, corpo))
-        return FalhaDeEnvio(f"Telegram recusou ({status}){detalhe}", definitiva=status in DEFINITIVOS)
+            return FalhaDeEnvio(f"Telegram pediu para esperar (429){detalhe}", espera_s=_espera_pedida(resposta, corpo),
+                                status=status)
+        return FalhaDeEnvio(f"Telegram recusou ({status}){detalhe}", definitiva=status in DEFINITIVOS, status=status)
 
     async def enviar(self, titulo: str, corpo: str, link: str | None) -> int | None:
         return await self.responder(texto_da_mensagem(titulo, corpo, link))
