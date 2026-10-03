@@ -6476,6 +6476,45 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T20:39:39+00:00"
+  },
+  "31.13": {
+   "id": "31.13",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #173 (feat/31-13-r5-apps @ 530b8702, empilhado no #170; fora da main até a suíte 15 ou 16): ConsumidorDeApps em sombra (decisao_fechada/apps.py), um noul por app do cadastro com id opaco, nomes pelo motivo_c7 e pelo mascarar_catalogo, estado só com o comando (opção A da orquestradora), limiar 0,85, TRAVADO (R5_LIBERADA=False: não lê o cadastro nem monta pedido); lote 31.11 com --r5 e custo por comando e por app; MAX_APPS=16 pré-registrado (golden set §9, aceito pela orquestradora em 03/10 20:20Z, revisável pelo custo medido); origem do caso e piso de 10 comandos distintos por estado_hash (golden set §8, pré-registro de 03/10 20:28Z com 0 casos); GET /api/ai omite apps de consumidores_ativos enquanto travado (adendo v1.06). simulated: 2128 testes de backend (decisao_fechada*, lote, arquitetura e afins), 529 de scripts/tests, 55 do lote e do braço offline. real: not_run (rodada paga --r5 só com o vai da orquestradora e 10 comandos distintos depois do deploy 14; em 03/10 20:24Z havia 0).",
+   "blocker": "",
+   "grupo": "jev-pr173-e-suite-14",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T20:42:04+00:00"
+  },
+  "31.22": {
+   "id": "31.22",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #169 @ 82dcde1e mais o fix 671a0482 (a leitura da sombra conhece a coluna nova), na main pela suíte 14 (51270b9c): migração 086_sombra_estado_hash, decisao_fechada_sombra.estado_hash = sha256 do estado depois do privacidade.redigir, nulo na recusa de privacidade e no legado. simulated: backend/tests/test_decisao_fechada_estado_hash.py e scripts/tests/test_jev_leitura_intencao.py (17 no arquivo); suíte 14 em SQLite 8716 passed, scripts 508 passed (sem o fix, 9 falhas coluna_desconhecida:estado_hash, registradas em 9c9fe676). Parte real já medida (central, 03/10): a 086 aplicada no deploy 14 (51270b9c, reinício 20:35:29Z, coluna presente na conferência em modo ro das 20:37Z); a leitura corrigida deu veredito OK no esquema 083 às 20:24Z (8 linhas, modo ro, só contagens). real da linha com hash: not_run, porque nenhum comando entrou no central desde 17:13Z; a Jev roda a leitura na primeira linha nova.",
+   "blocker": "",
+   "grupo": "jev-pr173-e-suite-14",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T20:42:04+00:00"
+  },
+  "31.23": {
+   "id": "31.23",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #169 @ 82dcde1e (branch feat/31-8-sinal-curador-v2), na main pela suíte 14 (51270b9c) e no deploy 14: curador.estado_do_dossie_v2 soma ao v1 os campos fechados de sinal (versão viva, uso, idade da evidência a favor, códigos de saúde e de risco, trilha); a privacidade aceita a lista nova; a sombra do runtime segue no v1; o braço offline ganha --estado v2, com o critério de troca pré-registrado no golden set §2. simulated: backend/tests/test_decisao_fechada_curador_v2.py e scripts/tests/test_jev_braco_offline.py. real: not_run (medida paga do v2 antes e depois do 30.39, cada uma com o vai da orquestradora e teto de US$ 0,05).",
+   "blocker": "",
+   "grupo": "jev-pr173-e-suite-14",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T20:42:04+00:00"
   }
  },
  "rodadas": [
@@ -8066,6 +8105,17 @@
    ],
    "grupos": [
     "suite-14-android"
+   ]
+  },
+  {
+   "quando": "2026-10-03T20:42:04+00:00",
+   "itens": [
+    "31.13",
+    "31.22",
+    "31.23"
+   ],
+   "grupos": [
+    "jev-pr173-e-suite-14"
    ]
   }
  ]
