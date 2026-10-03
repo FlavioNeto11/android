@@ -45,8 +45,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   sombra (`recipes_promote_after > 0`): com 0, o modo anterior da suíte de reaproveitamento, a receita aprendida já nasce
   ativa e uma herdeira só tomaria o lugar dela.
 - A herdeira que se prova na chave completa e passa a agir (`active`) aposenta a legada ativa da mesma etapa e versão
-  (assinatura ou variante vazias), com a trilha "provou-se na chave completa": a legada não casava mais consulta
-  nenhuma. A que espera o dono (`validated`) não aposenta nada.
+  (cada parte da chave é a dela ou vazia), com a trilha "provou-se na chave completa": a legada não casava mais
+  consulta nenhuma. A ativa de outra assinatura ou de outra variante fica, mesmo com a outra parte vazia (revisão da
+  Android). A que espera o dono (`validated`) não aposenta nada.
 - A causa de cada "ausente" é contada em `receita.ausente{causa}` (vocabulário do Aprendizado,
   `domain/causa_do_ausente.py`); a consulta que herdou conta `receita.consulta{resultado=herdada}`. Adendo v0.75
   (provisório).

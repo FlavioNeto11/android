@@ -169,3 +169,20 @@ def test_com_efeito_a_legada_espera_a_decisao_do_dono(db: Database) -> None:
         assert store.shadow(herdeira["id"], True, promote_after=2) is False
     assert db.scalar("SELECT status FROM recipes WHERE id=?", (herdeira["id"],)) == "validated"
     assert db.scalar("SELECT status FROM recipes WHERE id=?", (legada,)) == "active"
+
+
+def test_aposenta_so_a_legada_da_familia_da_provada(db: Database) -> None:
+    """A ativa de OUTRA assinatura com a variante vazia e a de OUTRA variante sem assinatura atendem a consulta de quem
+    tem aquelas chaves: não são a legada desta chave e ficam (achado da Android no PR #131)."""
+    legada = _receita(db, signature="", variant="")
+    sem_variante = _receita(db, signature=AQUI["signature"], variant="")
+    outra_assinatura = _receita(db, signature="ff00ff00", variant="")
+    outra_variante = _receita(db, signature="", variant="pt-BR/hdpi")
+    store = RecipeStore(db, Ouvinte(), herdar=_ligada)
+    herdeira = _procura(store, versao="1.0(1)")
+    for _ in range(2):
+        store.shadow(herdeira["id"], True, promote_after=2)
+    status = {r["id"]: r["status"] for r in db.query("SELECT id, status FROM recipes")}
+    assert status[herdeira["id"]] == "active"
+    assert (status[legada], status[sem_variante]) == ("superseded", "superseded")
+    assert (status[outra_assinatura], status[outra_variante]) == ("active", "active")

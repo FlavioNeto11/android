@@ -730,13 +730,19 @@ class RecipeStore:
         """RA-20: a receita que se provou na chave COMPLETA (assinatura e variante conhecidas) aposenta a legada ativa da
         mesma etapa e da mesma versão (assinatura ou variante vazias, de antes de a chave tê-las). A legada não casava
         mais nenhuma consulta com a chave completa; a trilha diz quem a substituiu. Só no `active`: a herdeira que
-        espera o dono (`validated`) ainda não age, e a legada fica até ele decidir."""
-        if not (provada["app_signature"] and provada["variant"]):
+        espera o dono (`validated`) ainda não age, e a legada fica até ele decidir.
+
+        Só a família da provada: cada parte da chave é a dela ou vazia. A ativa de OUTRA assinatura (mesmo com a
+        variante vazia) ou de OUTRA variante (mesmo sem assinatura) ainda atende a consulta de quem tem aquela chave, e
+        fica (revisão da Android no PR #131)."""
+        assinatura, variante = provada["app_signature"], provada["variant"]
+        if not (assinatura and variante):
             return
         legadas = self.db.query(
             "SELECT id FROM recipes WHERE app_package=? AND app_version=? AND step_hash=? AND status='active'"
-            " AND (app_signature='' OR variant='') AND id<>?",
-            (provada["app_package"], provada["app_version"], provada["step_hash"], provada["id"]))
+            " AND app_signature IN ('', ?) AND variant IN ('', ?) AND NOT (app_signature=? AND variant=?) AND id<>?",
+            (provada["app_package"], provada["app_version"], provada["step_hash"], assinatura, variante, assinatura,
+             variante, provada["id"]))
         for legada in legadas:
             self.db.execute("UPDATE recipes SET status='superseded' WHERE id=? AND status='active'", (legada["id"],))
             self._avisar(int(legada["id"]), "active", "superseded",
