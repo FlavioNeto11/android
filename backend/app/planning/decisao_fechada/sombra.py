@@ -119,6 +119,16 @@ class RepositorioDeSombra:
                     " AND decisao_real IS NULL", (decisao, valor, pergunta_id)).rowcount or 0)
         return casadas
 
+    def anotar_ambiguos(self, ambiguos: int, *, ref: str) -> int:
+        """Preenche `ambiguos` (etapas da RESOLVE que terminaram em AMBIGUOUS, RA-2) nas linhas da INTENÇÃO do `ref` que
+        ainda não têm. Só número: nada do comando. Devolve quantas linhas anotou."""
+        if isinstance(ambiguos, bool) or not isinstance(ambiguos, int) or ambiguos < 0:
+            raise ValueError("ambiguos deve ser um inteiro >= 0")
+        with self._db.tx():
+            return int(self._db.execute(
+                "UPDATE decisao_fechada_sombra SET ambiguos=? WHERE ref=? AND origem='intencao' AND ambiguos IS NULL",
+                (ambiguos, ref)).rowcount or 0)
+
     def casar_desfecho(self, desfecho: str, *, ref: str | None = None, step_id: str | None = None,
                        pergunta_id: str | None = None) -> int:
         """Preenche `desfecho` (vocabulário `DESFECHOS`) nas linhas do `ref` ou `step_id` que ainda não têm; `pergunta_id`

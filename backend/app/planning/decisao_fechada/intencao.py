@@ -88,11 +88,13 @@ class CadeiaObservada:
     """O que a cadeia REAL fez com o comando, em ids de habilidade (sem versão).
 
     `resolvida`: a habilidade escolhida, ou a única de que a cadeia fala quando falta parâmetro; `sem_casamento`: nada casou
-    (o planejador fica com o comando); `empatados`: as habilidades entre as quais nada decidiu, ou que a cadeia desempatou."""
+    (o planejador fica com o comando); `empatados`: as habilidades entre as quais nada decidiu, ou que a cadeia desempatou;
+    `ambiguos`: quantas etapas da RESOLVE terminaram em AMBIGUOUS (RA-2: o relatório do 31.10 conta por execução)."""
 
     resolvida: str | None = None
     sem_casamento: bool = False
     empatados: tuple[str, ...] = ()
+    ambiguos: int = 0
 
 
 def id_opaco(skill_id: str) -> str:
@@ -200,8 +202,13 @@ class ConsumidorDeIntencao:
             if pedido is None:
                 return
             reais = self.decisoes_reais(cadeia, {p.id for p in pedido.perguntas})
-            casar = (lambda: self._repositorio.casar_decisao_real(reais, ref=run_id)) if reais else None
-            self._porta.consultar(pedido, ao_registrar=casar)
+
+            def ao_registrar() -> None:
+                if reais:
+                    self._repositorio.casar_decisao_real(reais, ref=run_id)
+                self._repositorio.anotar_ambiguos(cadeia.ambiguos, ref=run_id)
+
+            self._porta.consultar(pedido, ao_registrar=ao_registrar)
         except Exception:  # noqa: BLE001
             log.warning("decisao_fechada: falha na sombra da intenção")
 

@@ -19,6 +19,34 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Correção do 31.9: C3 da intenção que falha fechada, desligamento limpo e estratos do golden set (RA-2; branch fix/31-9-privacidade)
+
+- **C3** (`decisao_fechada/entidades.py`): corrige as 6 causas de vazamento da reverificação de 03/10. O vocabulário permitido
+  passa a ser só `_COMUNS` mais nomes de app do registro (`nomes_de_app`), nunca o texto do catálogo. Entram a normalização
+  NFKC (homóglifo, largura cheia, invisível) com recusa de alfabetos misturados, as aspas e os símbolos, e a recusa de
+  endereço, documento, e-mail ofuscado e numeral ditado também em EN e ES. Nome com maiúscula fora do início da frase vira
+  `[termo]`.
+- **C2 e C7**: `mascarar_catalogo` nas opções da R2, antes do corte em 200. A C7 é reconhecida em qualquer formato
+  (`menciona_c7`).
+- **Ensaio** (`simulated`): `ataque.py` da reverificação com 109 casos, zero vazamento (eram 49). Dos 53 comandos benignos,
+  3 foram recusados.
+- **Parte B** (I1, I4, M1 a M4, corrida do provedor):
+  - o `stop()` espera o que grava sombra antes do `db.close`, com prazo único de 6 s;
+  - o aviso de transparência diz o que sai (agora "nome de pessoa, @handle e número mascarados; nome de app vai");
+  - a triagem respeita o envio fechado;
+  - a retenção pula quando a porta está desligada;
+  - o curador lê o provedor por resposta.
+- **I2**: a triagem do curador não casa a decisão real na hora. O relatório do 31.10 lê `learning_reviews` (`validade='ok'`,
+  `simulated=0`) por `decisao_real_da_triagem`.
+- **RA-2**:
+  - migração 079 (`decisao_fechada_sombra.ambiguos`: etapas `AMBIGUOUS` da RESOLVE por execução);
+  - golden set com o 1º estrato da intenção em qa-messenger e o GO do Instagram sem data;
+  - teto de cobertura da R2 em 4 de 31 fluxos;
+  - métrica principal do 31.10 trocada para "execuções sem fluxo que o Jev teria casado ao fluxo que o desfecho confirma".
+- **ADR-069 item 10** (dono, 03/10 00:15Z): persona nossa e nome de app podem sair sem máscara. C7, código, terceiro e texto
+  livre de tela continuam fora.
+- `JEV_RUNTIME_SEND_APPROVED` continua `False`. Nenhuma chamada real.
+
 ## 2026-10-02 — Emenda do ADR-069: a chave TypeSafe não é trocada (decisão do dono, item 9)
 
 - O dono mantém a chave atual (como no ADR-017 com a Anthropic): cai a condição do item 7 e da D-J3. A prova real em sombra

@@ -601,8 +601,11 @@ ao Jev em `shadow` uma `choice` entre `manter`, `revisar`, `rebaixar`, `descarta
   o da lição), app, capability, ids e datas não saem. Memória, fluxo (C2), tela, voz e preferência não vão.
 - **Decisão real = o parecer do curador principal** (`TRIAGEM_DO_PARECER`, combinado com a frente Aprendizado: `manter` →
   manter; `observar`/`pedir_evidencia` → revisar; `rebaixar` → rebaixar; `desativar` → descartar; `aprovar`,
-  `possivelmente_obsoleto`, `substituir` e `fundir` ficam fora da comparação), casada pelo `ref` = `dossie_hash`. Sem voto
-  da pessoa, mede CONCORDÂNCIA com o curador, não acerto.
+  `possivelmente_obsoleto`, `substituir` e `fundir` ficam fora da comparação). **Nada se casa na hora** (I2 da revisão do
+  31.9, 03/10): a validade do parecer só existe depois do `revisar`, e o relatório do 31.10 lê a linha de `learning_reviews`
+  do mesmo `dossie_hash` (= `ref` da sombra) e aplica `decisao_real_da_triagem`, que só devolve decisão com `validade = 'ok'`
+  e `simulated = 0`. Sem voto da pessoa, mede CONCORDÂNCIA com o curador, não acerto. A triagem respeita
+  `JEV_RUNTIME_SEND_APPROVED` (M2): com o envio fechado, nem monta o pedido.
 - **Sem GO:** os limiares de `on` são os pré-registrados no 31.7 ([design/jev-golden-set.md](design/jev-golden-set.md):
   rótulo da pessoa ou desfecho medido, 30 ou mais por `kind`, 90 % de acordo e vantagem sobre a regra local); até lá a
   sombra só registra. A falha do curador principal sobe como antes, sem sombra.
@@ -622,7 +625,10 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
   - **Quando roda**: só depois de um plano bem-sucedido. Plano cancelado, com exceção ou recusado pelo provedor (`refusal`) não
     vira sombra, e a execução que já está `failed` ou `cancelled` quando a thread a lê também não. No laço de eventos fica só o
     agendamento (`asyncio.to_thread`): ler a execução, a RESOLVE, o catálogo e a porta rodam numa thread. O `stop()` do
-    `AppState` cancela as soltas e espera até 6 s as que já chamaram a porta, antes de fechar o banco.
+    `AppState` (I1 da revisão do 31.9), antes de fechar o banco e com UM prazo de 6 s para tudo (`ESPERA_DE_SOMBRAS_S`),
+    espera nesta ordem: a volta do curador (que para entre itens), as threads da sombra da intenção (esperar vem ANTES de
+    cancelar: cancelar só solta o `Task`, e a thread seguiria no banco), as sombras da porta, `Porta.encerrar` (nada novo
+    entra) e uma última rodada da porta.
   - **Desligado custa zero**: `ativo()` é falso, e então nada é lido, resolvido, montado ou gravado (nem linha de recusa), quando
     o envio não está aprovado no código (`privacidade.JEV_RUNTIME_SEND_APPROVED`, lido na hora; hoje `False`), quando a porta não
     está em `shadow` para a intenção (padrão: `enabled=false` ou consumidor `off`) ou quando a C3 não está nas classes efetivas
@@ -630,22 +636,44 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
   - **Pedido**: um só, com duas perguntas (uma chamada). Estado: `comando` (já sem destinos, depois de `redact` e de
     `remover_entidades`) e `app` (id do app da execução, quando há). R2 `intencao_catalogo`: `choice` sobre o catálogo inteiro,
     habilidades publicadas (se `skills.enabled`) e fluxos ativos (se `ai.flows`), como ids opacos (`opt:` + sha1 do id da
-    habilidade, 12 hex) com descrição C2 (nome e descrição do dono; fluxo legado só o nome) mais `nenhuma`. Só vai com 1 a 254
+    habilidade, 12 hex) com descrição C2 (nome e descrição do dono; fluxo legado só o nome) mais `nenhuma`. A descrição passa
+    por `mascarar_catalogo` ANTES do corte em 200 caracteres: as mesmas máscaras de forma e a regra da maiúscula, sem recusa
+    (a opção precisa existir) e sem lista de permissão (o nome de fluxo legado é o resumo de um comando antigo, com o destino
+    dentro; o nome em minúsculas que sobra ali é risco residual aceito pelo dono). Só vai com 1 a 254
     entradas: truncar mediria o que o Jev não viu; acima do teto, um WARNING por processo diz que a R2 saiu da medição. R3
     `intencao_desempate`: `choice` entre as habilidades que a cadeia registrou como empatadas (2 ou mais).
-  - **C3 por lista de permissão** (`entidades.py`, função pura `remover_entidades(texto, *, vocabulario=()) -> str | None`). Só
-    sai palavra que está num vocabulário comum de comandos (PT e EN, sem palavra que também seja nome de pessoa e sem nome de app, ADR-052) ou no
-    vocabulário do catálogo do dono e do id do app (`vocabulario_de`). Qualquer outra palavra, em qualquer caixa, vira `[termo]`;
-    palavra com dígito ou `_` também. Por forma: `[link]`, `[email]`, `[usuario]`, `[telefone]`, `[texto]` (entre aspas) e
-    `[numero]` (TODO número, até o de 2 dígitos). Recusa (`None`): endereço (rua, avenida, CEP, bairro, apto…), e-mail ofuscado
-    (`arroba`, `ponto com`, `(at)`/`(dot)`), 3 ou mais algarismos por extenso, dígito que sobrou, e mais de 6 palavras
-    desconhecidas ou metade ou mais do texto desconhecida. Com `None`, o estado vai vazio, a porta recusa e a sombra grava
-    `fallback_reason='privacidade'`: o pedido não sai. **A sombra não reduz o risco**: em `shadow` o corpo sai para o decisor
-    igual ao de `on`, e a única proteção da C3 é esta remoção. A conferência é a própria lista (o que não é conhecido não sai),
-    não um detector "mais largo" depois da troca.
-  - **C7 nunca sai, em prosa ou não**: comando que fala de senha, código, 2FA, PIN, OTP, token, captcha, verificação ou desafio
-    (`menciona_c7`: `mentions_credential`, `looks_secret` e o assunto em qualquer formato) vai com estado vazio e marcador
-    `credencial`; a porta recusa o pedido inteiro (zero chamadas) e grava `privacidade`.
+  - **C3 por lista de permissão** (`entidades.py`, função pura `remover_entidades(texto, *, vocabulario=()) -> str | None`;
+    corrigida na reverificação de 03/10, que achou 6 causas de vazamento na primeira versão). Passos:
+    0. `normalizar`: NFKC, sem marca combinante nem caractere invisível, todo traço como `-` (letra de largura cheia,
+       circulada ou matemática vira a comum; `a<ZWSP>na` vira `ana`). Palavra que mistura alfabetos recusa.
+    1. Forma conhecida vira marcador: `[texto]` (entre aspas; aspa que sobra recusa), `[link]` (link e domínio), `[email]`,
+       `[usuario]` (`@handle`), `[telefone]` e `[numero]` (todo número). Símbolo (emoji, braille...) vira `[texto]`; colado
+       entre letras, recusa.
+    2. Recusa (`None`) o que não se mascara com segurança: endereço (rua, avenida, calle, quadra...), documento (CPF, RG,
+       CNH, passaporte, SSN...), e-mail por extenso ou ofuscado (`arroba`, `(at)`, `{dot}`, `ponto com`), sobra de `@` ou
+       `://` e dois ou mais numerais por extenso, também ligados por "e", "y" ou "and" (um só vira `[numero]`).
+    3. Só fica palavra do vocabulário PERMITIDO: `_COMUNS` (funcionais e de comando, PT e EN, sem palavra que também seja
+       nome de pessoa e sem nome de app, ADR-052) e os nomes de app que o chamador passa (`nomes_de_app`: o id do app da
+       execução e os rótulos e nomes do registro de apps). **Nunca o texto do catálogo**: o nome de fluxo legado é o resumo
+       de um comando antigo e liberava nome e handle de terceiro. O resto, em qualquer caixa, vira `[termo]`; palavra com
+       dígito ou `_` também. A palavra com maiúscula fora do início da frase vira `[termo]` mesmo permitida (o "Uma" de
+       "send a message to Uma"), salvo nome de app.
+    4. Mais de 6 palavras trocadas, ou mais da metade do texto, recusa.
+
+    Com `None`, o estado vai vazio, a porta recusa e a sombra grava `fallback_reason='privacidade'`: o pedido não sai. **A
+    sombra não reduz o risco**: em `shadow` o corpo sai para o decisor igual ao de `on`, e a única proteção da C3 é esta
+    remoção. A conferência é a própria lista (o que não é conhecido não sai), não um detector "mais largo" depois da troca.
+    Nome de persona NOSSA e nome ou pacote de app podem sair sem máscara (dono, 03/10 00:15Z, ADR-069 item 10): não há
+    lista de bloqueio do banco, e o nome de persona fora do vocabulário vira `[termo]` como qualquer outro. **Riscos
+    residuais**, todos de nome que coincide com palavra comum: palavras de `_COMUNS` que também são nomes em alguma língua
+    (an, close, do, durante, edit, ela, em, la, le, lo, mas, novo, post, read, segundo, sim, uma) saem quando escritas em
+    minúsculas ou no início da frase, e o nome em minúsculas dentro da descrição de uma opção da R2 (C2). Ensaio
+    (`simulated`, 03/10): `ataque.py` da reverificação, 109 casos, zero vazamento; 53 comandos benignos, 3 recusas.
+  - **C7 nunca sai, em prosa ou não**: comando que fala de senha, código, 2FA, PIN, OTP, token, captcha, verificação, chave,
+    segredo ou desafio, em PT, EN ou ES (`menciona_c7`: `mentions_credential`, `looks_secret` e o assunto no texto
+    normalizado, também com homóglifo, letra de largura cheia, uma letra por vez separada por ponto ou espaço, e palavra de
+    alfabetos misturados) vai com estado vazio e marcador `credencial`; a porta recusa o pedido inteiro (zero chamadas) e
+    grava `privacidade`.
   - **Comando social**: o catálogo social é C2 e entra (a exclusão social/persona proposta na revisão foi refutada: D-J5 veta o
     Jev decidir conteúdo social ou de persona, não ler o catálogo de habilidades). O nome de terceiro dentro do comando é que
     não sai: vira `[termo]` pela lista.
@@ -655,6 +683,8 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
     parâmetro) ou `opt:nenhuma` se nada casou; empate sem desfecho fica vazio. **R3 não tem decisão real na sombra**: a cadeia
     que termina em empate não escolhe (`AMBIGUOUS` volta para a pessoa), e a que desempata não devolve os candidatos. O rótulo
     da R3 é a escolha da pessoa ou o desfecho, casados no 31.10. **`casar_desfecho` não é chamado**: não há gancho de fim de
-    execução sem mexer no núcleo, e fica para o 31.10.
+    execução sem mexer no núcleo, e fica para o 31.10. No mesmo `ao_registrar`, `anotar_ambiguos` grava quantas etapas da
+    RESOLVE terminaram em `StageOutcome.AMBIGUOUS` (`decisao_fechada_sombra.ambiguos`, migração 079, RA-2): é onde a R3 tem o
+    que medir. A métrica principal do 31.10 e os estratos estão em [design/jev-golden-set.md](design/jev-golden-set.md) §3.
   - Prova `simulated`: `backend/tests/test_decisao_fechada_intencao.py` (`DecisorFalso`, banco de teste, RESOLVE de verdade sobre
     habilidades de teste, `_plan` pelo harness com decisor segurado por evento). Chamada real ao Jev: `not_run`.

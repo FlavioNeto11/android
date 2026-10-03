@@ -75,7 +75,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-065](#adr-065--ação-de-catálogo-entrega-valor-lido-a-outra-etapa-saidas-declaradas-no-catalogoyaml) | Ação de catálogo entrega valor lido a outra etapa: `saidas` declaradas no `catalogo.yaml` | vigente (12.3) | 02/10 |
 | [ADR-066](#adr-066--laço-de-pedidos-desligado-por-padrão-origem-interna-na-criação-da-execução-e-edição-por-gatilho-novo) | Laço de pedidos: desligado por padrão, origem interna na criação da execução e edição por gatilho novo | aceito (Fase 28, 28.4) | 02/10 |
 | [ADR-068](#adr-068--conta-bloqueada-sai-na-hora-e-a-persona-fica-lápide-só-com-o-hash-do-arroba) | Conta bloqueada sai na hora e a persona fica; lápide só com o hash do @ (item 29.23) |
-| [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) | 02/10 |
+| [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro) | 03/10 |
 
 ---
 
@@ -4045,6 +4045,18 @@ catálogo, comando), que o ADR-063 não cobre.
    mergeado) e, por fim, a sombra real numa janela combinada, sem suíte rodando junto. O resto não muda: ninguém lê nem
    imprime a chave (ela aparece só como "configurada" ou "não configurada", item 8), e `JEV_RUNTIME_SEND_APPROVED` só vira
    `True` no 31.10.
+10. **Emenda de 03/10/2026 (decisão do dono, ~00:15Z, no chat da orquestradora, relatada à frente Jev): dado pessoal pode ir
+    ao Jev com filtro sensato.**
+    - Pode ir sem máscara: o nome da persona NOSSA e o nome e o pacote do app, no golden set, na triagem do curador e na
+      sombra da intenção.
+    - Continua fora: C7 (segredo, credencial, token, código de verificação: o pedido inteiro é recusado), código-fonte (C8,
+      ADR-063), `@handle`, nome e texto de TERCEIROS (quem não é persona nossa) e texto livre de tela.
+    - O filtro da C3 é o do 31.9 corrigido (`planning/decisao_fechada/entidades.py`): lista de permissão fixa mais os nomes
+      de app do registro (ADR-052), nunca o texto do catálogo; o que não se mascara com segurança recusa o pedido. Ele ainda
+      mascara o nome de persona fora do vocabulário: "pode ir" não obriga, e mascarar a mais só custa utilidade. As opções
+      da R2 (C2) passam por `mascarar_catalogo` antes do corte.
+    - Os portões não mudam: `JEV_RUNTIME_SEND_APPROVED` só vira `True` no 31.10, a C3 só sai depois do 31.9 corrigido e
+      mergeado, e o pipeline social e de persona segue fora como consumidor da porta (D-J5).
 
 **Consequências.** A plataforma ganha um motor barato (US$ 0,042/M de entrada, saída grátis) para decisões fechadas que hoje não
 acontecem ou vão ao Opus, medido em sombra contra o caminho atual antes de qualquer `on`. O ADR-063 continua valendo para código.

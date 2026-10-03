@@ -15,7 +15,7 @@ import asyncio
 import logging
 from collections.abc import Callable, Sequence
 
-from ..modules.skills.domain.intent import IntentResolution, ResolutionStatus
+from ..modules.skills.domain.intent import IntentResolution, ResolutionStatus, StageOutcome
 from ..modules.skills.domain.lifecycle import SkillState
 from ..modules.skills.domain.versions import SkillDefinition, SkillSummary
 from ..planning.decisao_fechada.intencao import CadeiaObservada, ConsumidorDeIntencao, EntradaDeCatalogo
@@ -27,12 +27,14 @@ DadosDaExecucao = tuple[str, Sequence[str | None], str | None]
 
 
 def cadeia_de(resolucao: IntentResolution) -> CadeiaObservada:
-    """A resolução da cadeia real em ids de habilidade. `candidates` só vem preenchido num empate (ou depois dele)."""
+    """A resolução da cadeia real em ids de habilidade. `candidates` só vem preenchido num empate (ou depois dele); a
+    contagem de etapas AMBIGUOUS sai da trilha (RA-2)."""
     skill = resolucao.skill
     return CadeiaObservada(
         resolvida=skill.ref.skill_id if skill is not None else None,
         sem_casamento=resolucao.status is ResolutionStatus.NO_MATCH,
-        empatados=tuple(c.ref.skill_id for c in resolucao.candidates))
+        empatados=tuple(c.ref.skill_id for c in resolucao.candidates),
+        ambiguos=sum(1 for t in resolucao.trace if t.outcome is StageOutcome.AMBIGUOUS))
 
 
 def catalogo_de(listar: Callable[[SkillState], Sequence[SkillSummary]],

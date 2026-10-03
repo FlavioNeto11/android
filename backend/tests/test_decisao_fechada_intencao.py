@@ -317,6 +317,27 @@ def test_sombra_grava_as_duas_perguntas_e_casa_a_decisao_real_sem_inventar_a_do_
     assert all(r["origem"] == "intencao" and r["classe"] == "C3" and r["ref"] == "run-1" for r in linhas.values())
     # a cadeia ficou num empate sem desfecho: não há decisão real a casar (a pessoa decide depois)
     assert all(r["decisao_real"] is None for r in linhas.values())
+    # RA-2: as etapas AMBIGUOUS da RESOLVE ficam contadas em toda linha da execução
+    assert cadeia.ambiguos >= 1 and all(r["ambiguos"] == cadeia.ambiguos for r in linhas.values())
+    w.fechar()
+
+
+def test_ambiguos_da_resolve_ficam_contados_so_nas_linhas_da_intencao(tmp_path: Path, porta_aberta: None) -> None:
+    """RA-2: a contagem de `StageOutcome.AMBIGUOUS` por execução, também na recusa por privacidade; só número, só intenção."""
+    w = Mundo2(tmp_path, DecisorFalso())
+    nada = cadeia_de(w.m.planejador.resolve_intent("faca um bolo de cenoura", None))
+    assert nada.ambiguos == 0
+    w.consumidor.observar(run_id="run-0", comando="faca um bolo de cenoura", app=None, catalogo=w.catalogo(), cadeia=nada)
+    w.consumidor.observar(run_id="run-priv", comando="fale com fulano @ exemplo", app=None, catalogo=w.catalogo(),
+                          cadeia=CadeiaObservada(sem_casamento=True, ambiguos=2))
+    w.porta.aguardar_sombras()
+    por_run = {r["ref"]: r for r in w.linhas()}
+    assert por_run["run-0"]["ambiguos"] == 0
+    assert por_run["run-priv"]["fallback_reason"] == "privacidade" and por_run["run-priv"]["ambiguos"] == 2
+    assert w.sombra.anotar_ambiguos(5, ref="run-0") == 0                 # já anotada: não sobrescreve
+    for ruim in (-1, True, 1.5, "2"):
+        with pytest.raises(ValueError):
+            w.sombra.anotar_ambiguos(ruim, ref="run-0")                  # type: ignore[arg-type]
     w.fechar()
 
 
