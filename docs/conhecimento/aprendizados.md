@@ -2291,3 +2291,31 @@ para isso (o `recusar` do registro de validações nasceu no 30.36), e escrita c
 
 **Aplicabilidade.** Vigente até o 30.37 (suíte 14). Todo pedido de validação de item `fluxo:` cujo comando de origem casa
 com um fluxo ativo fecha `sem_evidencia`, e a evidência de uso de fluxo ativo só vem da sombra de outras execuções.
+
+### K-087 — O restart zera a espera do curador: num dia de deploys, ele fica horas sem volta
+
+**Sintoma.** Em 03/10, o pedido de validação `feita` das 16:37:59Z (receita:78) ficou sem a revisão `evidencia_chegou`.
+A última revisão do curador (`template_id` curador) era das 13:10:51Z. As de 15:54Z e 16:07Z são do rótulo de
+intenção, outro caminho.
+
+**Causa.** O laço do curador (`LacoDoCurador.laco`) dormia `intervalo_s` (3600) a partir da SUBIDA do processo, antes da
+1ª volta, e cada restart zerava a espera. Na tarde de 03/10 houve 6 subidas da farm-central:
+- deploy 10, ~15:05Z;
+- deploy 11, ~15:30Z;
+- subida do P4, ~15:55Z;
+- pausa do P4, 16:46Z;
+- deploy 12, 17:02Z;
+- pausa do K-086, 17:18Z.
+
+Nenhum intervalo entre elas chegou a 1 h, então o curador não pôde rodar de ~15:05Z até ~18:18Z. Somou-se outro defeito:
+`ServicoDeValidacao.chegadas()` devolvia [] com `validacao.modo` off, e o P4 estava pausado.
+
+**O que funcionou.**
+- Conferir a hora das últimas revisões do curador contra as subidas do processo: o buraco coincidia com os restarts.
+- A correção (branch do PR #163, commit bda8f576, para a suíte 13) tem duas partes:
+  - a 1ª espera é o resto da hora desde a última revisão gravada (`RegistroDeRevisoesSql.mais_recente`), com piso de
+    60 s para o processo assentar;
+  - a chegada deixou de depender do modo do despachante.
+
+**Aplicabilidade.** Vigente até a suíte 13 levar o #163. A regra vale para todo laço periódico que dorme antes da 1ª
+volta: num ambiente com restarts frequentes, ancorar a espera no último registro gravado, não na subida.
