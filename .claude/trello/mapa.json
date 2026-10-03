@@ -2781,7 +2781,7 @@
   "suite:15": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac16c2afdeb1c4e0359847e",
    "url": "https://trello.com/c/ajdDDjrR",
-   "lista": "em_execucao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "Suíte 15 → deploy 15 (03/10): portal público (29.54) + 30.39 + 31.11 + 31.13"
   },
@@ -2812,6 +2812,13 @@
    "lista": "proximas",
    "lote": "canais",
    "nome": "29.57 · Painel e falas da IA à pessoa como ANA"
+  },
+  "marco:deploy-15": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac17567df59cea002a54f55",
+   "url": "https://trello.com/c/JehcHYNX",
+   "lista": "marcos",
+   "lote": "canais",
+   "nome": "📅 Deploy 15 · 03/10 21:29Z (2264843e) · sem migração nova · suíte 15: 4 entregas"
   }
  },
  "falhas": [],
