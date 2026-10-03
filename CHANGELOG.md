@@ -19,6 +19,42 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Suíte 14 na main e deploy 14 no central (51270b9c; migrações 084, 085 e 086; config inalterada)
+
+- A suíte 14 foi integrada em `integ/suite-14`, na ordem da orquestradora:
+  - 30.37 (d067d904, migração 084);
+  - #166 28.15 (69dcea02, migração 085) e as duas revisões da Canais (7fd72929, e657b4c8). A porta única
+    `pergunta_sensivel(ref|None)` ficou no commit de integração 7fd72929;
+  - 29.52 (90c058e2), a varredura do ambiente dos filhos (c3de7973) e #169 31.22 (82dcde1e, migração 086);
+  - o fix da Jev 671a0482 (a leitura da sombra conhece `estado_hash`) e o `ORDER BY seq` num teste do 30.37
+    (7ca3e185), com o ok da autora.
+
+  Conflitos só em docs: o de código, em `avisos/infrastructure/servico.py`, foi resolvido juntando os dois lados.
+  O #171 (portal público, 29.54) ficou para a suíte 15.
+- Portões:
+  - na 9c9fe676: backend SQLite `-n 8` Idle 8716 passed, 7 skipped, 0 failed (20:07:32–20:15:16Z); typecheck ok;
+    frontend 1422/1422; scripts com as 9 falhas esperadas (`coluna_desconhecida:estado_hash`);
+  - na 2497cc93 (com o 671a0482): scripts 508/0;
+  - PostgreSQL: um schema novo migrado do zero (80 migrações, até `086_sombra_estado_hash`) e os 21 arquivos dirigidos
+    (436 passed, 1 failed). A falha era a ordem de uma consulta de teste sem `ORDER BY`, não o produto. Com a correção, o
+    arquivo passou 15/15 no PG `-n 3` e no SQLite.
+- Ensaio numa cópia, sem tocar no central: backup `20261003-172214`, `restore.ps1` e migrate com o código da integração.
+  Aplicou 084, 085 e 086, com integridade ok.
+- A main avançou por fast-forward para 51270b9c (a integração mais os commits só de docs da main).
+- Implantado no central (`real`, 03/10, WIN-7S2UASNLFOP):
+  - `deploy.ps1 -PularDependencias` (requirements inalterados; frontend reconstruído) com backup `20261003-173512`
+    (174.8 MB, integridade ok);
+  - restart às 20:35:29Z;
+  - health ok: commit 51270b9c, `migration 086_sombra_estado_hash`, `problems []`;
+  - `config/config.yaml` inalterado: `avisos.entrada` ausente (desligado), `validacao.modo` off e `public_hosts` vazio;
+  - `canal_entradas` e `canal_enviadas` vazias.
+- Agente do notebook em `0.1.0+51270b9` (ensaio `-Simular` e depois o real). O reparo dos 09/10/12/13 ficou pausado
+  durante a troca e despausado no fim. Os dois workers ficaram com `agent_outdated false` e os 7 aparelhos ligados,
+  online.
+- Antes do deploy, um incidente no parque: um dump de crash pendente (do crash na saída de um reinício por IRQ)
+  prendia todo boot sem janela no diálogo de consentimento. O arquivo foi movido para `data/quarentena-crash/`, e os
+  03 e 06 subiram com um `start` cada, sem reset. A prevenção é o item 29.55.
+
 ## 2026-10-03 — 31.22: a sombra guarda o hash do estado redigido (migração 086; branch feat/31-22-estado-hash)
 
 - `decisao_fechada_sombra.estado_hash`: o sha256 do estado DEPOIS do `privacidade.redigir`, em todas as linhas da
