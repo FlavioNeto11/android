@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-305 de 354 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+306 de 355 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -311,6 +311,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.40 | partial | simulated | claude-opus-5-5 | — | Fatia A: PR #131 (feat/ra-20-causa-do-ausente @ ffb2d2f0) na main pelo merge 752dca53 da suíte 7 (123650cc). Causa do ausente medida; herança da receita como candidata (RecipeStore(herdar=), só com recipes_heranca e pro… |  |
 | 29.41 | pendente | — | — | — |  |  |
 | 29.42 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/29-42-required-apps @295c3989: FlowStore.list devolve required_apps na ordem em que o plano gravado usa os apps (apps_na_ordem_do_plano em modules/learning/domain/livro.py, a mesma função do dossiê do curador; sem… |  |
+| 29.45 | implemented | simulated | opus (sessão Android) | — | feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entr… |  |
 | 29.43 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/caminho-rapido-1 @60e7962e: LT-1 (atalho de entrada sem o ator, ATALHO_ANTES_DO_ATOR, nunca em etapa com efeito, driven_by='sem_ator'), LT-2 (expect_done em etapa julgada → _verify(uma_rodada=True), nunca em etapa… |  |
 | 30.1 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #76 merge 6e103d73: GET /api/aprendizado/apps e /apps/{pacote} (application/apps.py, domain/camada.py, infrastructure/declarados.py), adendo v0.47; prova simulated; not_run no central (nada implantado) |  |
 | 30.2 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #76 merge 6e103d73: chave canônica de app (pacote) no Livro; prova simulated; not_run no central (nada implantado) |  |
