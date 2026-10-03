@@ -241,7 +241,8 @@ class Repository:
         return False
 
     def set_run_status(self, run_id: str, status: RunStatus, detail: str | None = None, *, message: str | None = None,
-                       level: str = "info") -> None:
+                       level: str = "info", dados: dict[str, Any] | None = None) -> None:
+        """`dados`: campos a mais no `data` do `run.updated` desta transição (o autor do início, P12)."""
         anterior = self.db.scalar("SELECT status FROM runs WHERE id=?", (run_id,))
         fields, params = ["status=?", "status_detail=?"], [status.value, detail]
         if status == RunStatus.running:
@@ -252,7 +253,7 @@ class Repository:
             params.append(now_iso())
         self.db.execute(f"UPDATE runs SET {', '.join(fields)} WHERE id=?", (*params, run_id))
         self._conferir(RUN, anterior, status, entidade=run_id, run_id=run_id)
-        self.emit_run(run_id, message or f"Execução {run_id}: {status.value}", level=level)
+        self.emit_run(run_id, message or f"Execução {run_id}: {status.value}", level=level, dados=dados)
 
     def request_pause(self, run_id: str, reason: str) -> None:
         """Pausa automaticamente (disjuntor de conta de IA): idempotente e sem checar quem pediu — ao contrário
@@ -1315,13 +1316,14 @@ class Repository:
                          objectives=objectives, steps=steps, attempts=attempts, evidence=evidence,
                          plan_versions=versions, decisions=decisions)
 
-    def emit_run(self, run_id: str, message: str | None, *, level: str = "info") -> None:
+    def emit_run(self, run_id: str, message: str | None, *, level: str = "info",
+                 dados: dict[str, Any] | None = None) -> None:
         row = self.run_row(run_id)
         if row is None:
             return
         summary = self.run_summary(row)
         self.bus.emit("run.updated", message or f"Execução {run_id}: {summary.status.value}", level=level, run_id=run_id,
-                      data={"run": summary.model_dump(mode="json")})
+                      data={**(dados or {}), "run": summary.model_dump(mode="json")})
 
     def emit_step(self, step_id: str, message: str, *, level: str = "info") -> None:
         r = self.step_row(step_id)

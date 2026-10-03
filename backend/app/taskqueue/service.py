@@ -32,6 +32,7 @@ from ..planning.catalog import capabilities_of, session_provider_of
 from ..planning.parsing import apps_do_plano
 from ..planning.provider import AIError, AIProvider, AppContext, PlanRequest
 from ..security.redaction import redact
+from ..shared.costuras import SISTEMA
 from ..shared.resources import Target
 from ..util import now_iso
 from .balanceamento import Candidato, distribuir
@@ -1201,13 +1202,18 @@ class RunService:
             raise RunError("not_found", "Execução não encontrada.", 404)
         return run
 
-    def start(self, run_id: str) -> RunSummary:
+    def start(self, run_id: str, *, por: str = SISTEMA) -> RunSummary:
+        """`por`: quem iniciou, no `data.iniciada_por` do `run.updated` (P12, 03/10). A rota passa a pessoa da sessão (ou
+        `panel`); o início automático do `mode=execute` depois do plano fica com `sistema`. A prévia (`mode=plan`) só
+        executa por esse início explícito: medido em 03/10, as 11 prévias que gastaram decisões tinham sido iniciadas 12 a
+        44 s depois de criadas, e sem o autor no evento não dava para separar isso de uma prévia que executasse sozinha."""
         run = self._run(run_id)
         if run["status"] not in (RunStatus.planned.value, RunStatus.planning.value):
             raise RunError("invalid_state", f"A execução está em '{run['status']}' e não pode ser iniciada.")
         if not self.repo.db.scalar("SELECT COUNT(*) FROM objectives WHERE run_id=?", (run_id,)):
             raise RunError("no_plan", "A execução ainda não tem plano materializado.")
-        self.repo.set_run_status(run_id, RunStatus.running, None, message=f"Execução {run_id} iniciada")
+        self.repo.set_run_status(run_id, RunStatus.running, None, message=f"Execução {run_id} iniciada",
+                                 dados={"iniciada_por": por})
         # O MESMO pré-voo da criação, agora item a item: um plano pronto pode ficar dias parado, e o que estava
         # apto na criação pode não estar mais. O motivo específico ("é de outra máquina e está stopped", "o
         # servidor está em manutenção", "a entrega do app falhou") substitui o antigo "Aparelho offline", que

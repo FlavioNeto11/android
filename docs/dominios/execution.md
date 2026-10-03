@@ -876,6 +876,13 @@ Com `mode=execute`, a resposta não muda.
   em `runs.plan`. Vazio no fluxo legado.
 - **A foto:** `RunService._fotografar_recursos` grava `objectives.resource_plan` logo depois do `materialize`, nos dois
   modos, quando `RunPlan.resources` não é vazio (ver [a trilha](#a-trilha-colunas-da-045)).
+- **Prévia é `mode='plan' AND started_at IS NULL`** (P12, 03/10/2026; decisão da orquestradora: não é defeito). A
+  execução em `mode=plan` para em `planned` e só executa pelo início explícito (`POST /api/runs/{id}/start`), e daí
+  em diante gasta decisões como qualquer outra. Contar como prévia toda linha com `mode='plan'` dava "12 de 25 prévias
+  executando, 211 decisões" na reavaliação; medido no central em 03/10 (só leitura), as 11 que executaram tinham sido
+  iniciadas 12 a 44 s depois de criadas. O `run.updated` do início leva `iniciada_por` (a pessoa da sessão ou `panel`
+  pela rota, `sistema` no `mode=execute`; [contrato, adendo v0.79](../api-contract.md)). Prova `simulated`:
+  `backend/tests/test_inicio_com_autor.py`.
 
 Provas (`simulated`), em `backend/tests/test_plan_report_na_execucao.py` (harness na porta 5640, `FakeInstagram`,
 `ig.abrir_conversa` publicada):

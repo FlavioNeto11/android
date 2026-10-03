@@ -4140,9 +4140,10 @@ lugar do texto do navegador (`lib/loadError.tsx`, todas as telas).
 Prova `simulated`: `tests/test_learning_rotas_falhas.py`, `frontend/src/features/aprendizado/model.test.ts`,
 `DetalheRico.test.tsx`, `SaudeDoApp.test.tsx`, `AprendizadoPage.test.tsx` e `frontend/src/lib/loadError.test.ts`.
 
-## Adendo v0.79 (03/10/2026, provisório: quem mergear depois renumera) — evento `plan.refused`: a porta de política no planejamento (RA-7)
+## Adendo v0.79 (03/10/2026, provisório: quem mergear depois renumera) — evento `plan.refused`: a porta de política no planejamento (RA-7); `run.updated.iniciada_por` (P12)
 
-Aditivo. Um kind novo de `EventRecord`, persistido. Nenhuma rota muda.
+Aditivo. Um kind novo de `EventRecord`, persistido, e um campo novo no `data` de um kind que já existe. Nenhuma rota
+muda.
 
 | kind | data | persistido |
 |---|---|---|
@@ -4156,3 +4157,9 @@ Aditivo. Um kind novo de `EventRecord`, persistido. Nenhuma rota muda.
 - A execução vai a `needs_input` com o plano zerado (`steps: []`) e uma pergunta por etapa recusada em `missing`
   (`field: "policy"`). O `message` do evento é a frase da linha do tempo, igual à da porta do despacho.
 - O painel não precisa de mudança: `EventRecord.kind` é `string`, e a execução em `needs_input` já mostra as perguntas.
+
+**`run.updated` do início** (P12): o evento da transição para `running` por `RunService.start` passa a levar
+`{iniciada_por, run: RunSummary}`. `iniciada_por` é quem iniciou: o operador da sessão, ou `panel`, por
+`POST /api/runs/{id}/start` (nunca `sistema`: `painel:sistema` se a sessão se chamar assim); `sistema` no início
+automático do `mode=execute` depois do plano. Os outros `run.updated` não mudam (sem o campo). Uma execução em
+`mode=plan` só passa a `running` por esse início explícito: a prévia é `mode='plan' AND started_at IS NULL`.

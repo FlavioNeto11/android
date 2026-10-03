@@ -34,6 +34,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   antes contra o golden set. O roteiro do Jev (local) passa a dizer que o verificador fica fora pela classe do dado
   (C5/C6), e não pela imagem.
 
+## 2026-10-03 — Jev: prévia que executa não é defeito; o início diz quem iniciou (P12 da reavaliação)
+
+- Prévia passa a ser `mode='plan' AND started_at IS NULL`: as 11 execuções em `mode=plan` que gastaram decisões
+  tinham sido iniciadas de propósito (medido no central, 03/10). `RunService.start(por=...)` grava `iniciada_por`
+  no `run.updated` do início (a pessoa ou `panel` pela rota, `sistema` no `mode=execute`; adendo v0.79).
+- Prova: simulated (`test_inicio_com_autor.py`).
+
 ## 2026-10-03 — Jev: retenção do histórico de execução registrada (P10 da reavaliação)
 
 - `runs`, `objectives`, `steps`, `attempts`, `actions` e `plan_versions` ficam "para sempre" por enquanto; o resto
