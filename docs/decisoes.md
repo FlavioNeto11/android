@@ -79,6 +79,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro; item 11: regras do filtro do 31.9; item 12: C7 sem palavra-chave e e-mail em peças, rodada E; item 13: barrar pela intenção de entrar, rodada F; item 14: o usuário como @handle ou e-mail, o catálogo só no destino e a preposição só com faixa, rodada G; item 15: envio aberto no código para a sombra C0–C1 do 31.10, 31.17; item 16: a camada estrutural da rodada H; item 17: NO-GO da fase 2 da H e a forma seguinte com o dono; item 18: forma A na versão A-estreita, 31.18; item 19: lacunas da rodada I e a A-média aprovada pelo dono, 31.20; item 20: o limiar da porta sobre a probabilidade devolvida e o rótulo 1 do curador só do dono, 31.19) | 03/10 |
 | [ADR-070](#adr-070--valor-visto-na-imagem-conta-como-saída-de-etapa-sob-conferência-cega-de-um-segundo-leitor) | Valor visto na imagem conta como saída de etapa, sob conferência cega de um segundo leitor; substitui em parte o ADR-065 §3 (item 12.5) | vigente (dono, 02/10; opção desligada) | 02/10 |
 | [ADR-071](#adr-071--a-conversa-de-volta-pelo-telegram-o-dono-fala-com-a-central-como-no-painel) | A conversa de volta pelo Telegram: o dono fala com a Central como no painel (item 28.15) | vigente (orquestradora, 03/10; entrada desligada) | 03/10 |
+| [ADR-072](#adr-072--o-trello-do-dono-como-espelho-e-canal-de-comandos-só-o-dono-comanda-aprovar-pelo-trello-nunca-aprova-e-o-webhook-é-um-aviso) | O Trello do dono como espelho e canal de comandos: só o dono comanda, aprovar pelo Trello nunca aprova, o webhook é um aviso (item 32.2) | vigente (dono e orquestradora, 03/10; entrada e cadastro desligados) | 03/10 |
 | [ADR-073](#adr-073--portal-na-internet-por-túnel-de-saída-da-cloudflare-o-host-separa-o-público-do-local-o-painel-mora-em-central) | Portal na internet por túnel de saída da Cloudflare: o `Host` separa o público do local, o painel mora em `/central` (item 29.54) | aceito (dono, 03/10; túnel `real` desde 03/10 21:47Z) | 03/10 |
 
 ---
@@ -5028,6 +5029,79 @@ uma execução e pedir coisas, sem abrir o painel e sem atalho de política.
 
 ---
 
+## ADR-072 — O Trello do dono como espelho e canal de comandos: só o dono comanda, aprovar pelo Trello nunca aprova, e o webhook é um aviso
+
+**Data:** 03/10/2026 · **Estado:** vigente (dono e orquestradora, 03/10; item 32.2). Código e testes `simulated`; nada foi
+cadastrado no Trello e a entrada nasce **desligada** (`trello.enabled: false`, `trello.webhook.enabled: false`). Desenho em
+[design/trello-integracao.md](design/trello-integracao.md); as regras do dono sobre os canais, em
+[dominios/canais.md](dominios/canais.md). O contrato comum aos canais está em
+[design/canais-externos.md](design/canais-externos.md), e este ADR não o repete.
+
+**Contexto.** O dono acompanha a Central pelo Trello e quer comandá-la de lá, como já faz pelo Telegram (ADR-071). O Trello
+é um servidor de terceiros, o quadro tem convidados (que podem ser admin do workspace, no plano grátis) e o token que a
+Central usa é o do próprio dono: tudo o que ela escreve volta como ação do dono.
+
+**Decisão.**
+
+1. **Espelho = reconciliador, sem ruído por evento.** Um laço no líder da trava `avisos` compara os fatos da Central
+   (aprovações, perguntas, pedidos, Livro, marcos de deploy e custo do dia) com `trello_cartoes` (migração 087): cria, atualiza
+   só com hash novo, comenta o desfecho e arquiva. O cartão leva tipo, id curto, estado e link do painel; nunca texto de
+   origem, nome de persona, @conta, e-mail, IP nem segredo.
+2. **Quem comanda sai do AUTOR lido pela API** (`idMemberCreator`), nunca do texto: só `trello.membro_dono`, num quadro de
+   `trello.quadros`. Convidado não executa nada: com `responder_convidados` (desligado) a pergunta pura recebe o resumo do
+   `/status`; o pedido vira aviso ao dono pela fila existente, sem o texto nem o nome, e um comentário fixo.
+   `membros_autorizados` (vazia) pede, mas não decide.
+3. **Aprovar pelo Trello nunca aprova.** Mover o cartão para ✅, "sim" e `/aprovar` só respondem `para aprovar, confirme no
+   painel ou no Telegram` e não chamam o `decide`: no Trello nem o dono autoriza ação real em conta real. **O veto do dono
+   veta** (⛔, "não", `/vetar`, o mesmo serviço do painel, `decided_by='trello:<id>'`), porque vetar não causa ação no mundo
+   real. A resposta a uma pergunta de execução passa pela porta `pergunta_sensivel`; credencial é recusada sem eco, e a
+   resposta pede ao dono que apague o comentário (a Central não apaga conteúdo dele). `/para` e texto livre ficam atrás de
+   `trello.comando_livre` (desligado; ligado, o Trello só mostra a prévia, não executa).
+4. **Qualquer comentário que comece com 🤖 é de IA** (a ANA, a orquestradora `🤖 ORQ`, o formato antigo), nunca pedido do
+   dono. Toda escrita da Central começa com `🤖 ANA · HH:MMZ · `, passa pela redação dos avisos (mais e-mail, @conta e IP) e
+   é cortada; a volta ignora o próprio eco.
+5. **O webhook é a entrada rápida, não a verdade.** A rota `POST /api/canais/trello/webhook` confere a assinatura
+   `X-Trello-Webhook` (HMAC-SHA1 em base64 sobre o corpo cru MAIS a `callback_url` configurada, em tempo constante) e
+   **falha fechada**: sem segredo, sem URL ou com assinatura errada, 401 e nada gravado; corpo acima do teto, 413. O corpo
+   é só um AVISO: dele sai o id da action e mais nada. O líder RELÊ a action por `GET /1/actions/{id}` com o token do dono, e
+   só dali saem autor, cartão, quadro, tipo, data e texto. Assim a decisão vale mesmo com o segredo do aplicativo vazado. A
+   idempotência é a chave `(canal, id_externo)` da 085, e a idade máxima (`idade_max_s`) barra a repetição. A reconciliação
+   por leitura (cursor em `trello_cursor`; na 1ª subida o histórico é descartado) cobre qualquer falha do webhook.
+6. **Exceção do portão.** `main.guarda` libera sem credencial exatamente `HEAD` e `POST` em `/api/canais/trello/webhook`,
+   comparando o caminho inteiro, sem prefixo e sem curinga. **É a ÚNICA exceção sem credencial em `/api/` no endereço
+   público** (ADR-073); as três rotas de sessão seguem como estão. A rota responde 404 enquanto
+   `trello.webhook.enabled` for false (o HEAD também), não honra sessão, e o `forbidden_host` não é perdoado. Nada do corpo
+   vai a log, evento ou resposta.
+7. **O cadastro é manual primeiro.** `trello.webhook.enabled` só faz a ROTA responder e nunca cadastra nada. O primeiro
+   cadastro é `scripts/trello-webhook.py --aplicar`, depois do ensaio e com o "vai" da orquestradora; a remoção também é
+   pedido explícito (`--desligar`). O recadastro de hora em hora no líder fica atrás de uma chave separada,
+   `trello.webhook.cadastro_automatico` (desligada de fábrica), que só se liga depois da prova real. Ligar uma flag nunca vale
+   como "vai".
+8. **Saúde:** `trello_sem_segredo`, `trello_recusado` (401/403, uma só para espelho, leitor e cadastro), `trello_pedido_invalido`,
+   `trello_leitor_atrasado` (a última leitura que deu certo, não o cursor, para um quadro quieto não alarmar),
+   `trello_webhook_sem_segredo`, `trello_webhook_assinatura_invalida` e `trello_webhook_inativo`.
+
+**Alternativas recusadas.** (i) Aprovar pelo Trello com confirmação por emoji ou lista: a lista é movida por qualquer admin
+do workspace. (ii) Confiar no autor e no texto do corpo assinado: o segredo do aplicativo está ao alcance de um convidado
+admin. (iii) Um token na URL do webhook: URL vai a log e a proxy. (iv) Ligar o cadastro junto da flag de receber: uma flag
+de configuração viraria autorização de efeito real no Trello do dono.
+
+**Consequências.** O Trello fica uma vista com um canal de veto e de resposta; aprovar continua no painel e no Telegram.
+Risco que sobra (disponibilidade, não integridade): um admin do workspace pode regerar o segredo do aplicativo, tirar o
+Power-Up ou fechar o quadro; a assinatura passa a falhar fechada e a reconciliação segue lendo pela API.
+
+`simulated`: `backend/tests/test_trello_{cliente,config,espelho,leitor,webhook}.py`. `not_run`: o HEAD do Trello na URL pública, o
+primeiro cadastro real e um comentário chegando em segundos pelo webhook (dependem do 32.2 implantado, do portal no ar e do
+"vai" da orquestradora).
+
+**Relação.** ADR-009, ADR-025/040 (credencial), ADR-071 (Telegram), ADR-073 (portal; a exceção do portão é este ADR),
+[design/trello-integracao.md](design/trello-integracao.md), [dominios/canais.md](dominios/canais.md),
+[api-contract.md](api-contract.md) (adendo v0.99), [banco.md](banco.md) (migrações 085 e 087), [operacao.md](operacao.md)
+(Trello); `backend/app/modules/avisos/` (`infrastructure/trello_leitor.py`, `trello_webhook.py`, `espelho.py`,
+`presentation/webhook_trello.py`), `scripts/trello-webhook.py`.
+
+---
+
 ## ADR-073 — Portal na internet por túnel de saída da Cloudflare: o `Host` separa o público do local, o painel mora em `/central`
 
 **Data:** 03/10/2026 · **Estado:** aceito (decisão do dono, chat de 03/10 ~19:20Z; item 29.54). Código e testes
@@ -5090,7 +5164,7 @@ saúde dizer quando a exposição está pela metade.
   futuro.
 
 **Fica de fora (de propósito).**
-- O **webhook do Trello**: será decisão do ADR-072, com rota e assinatura próprias; não ganha isenção aqui.
+- O **webhook do Trello**: é decisão do ADR-072, com rota e assinatura próprias; a exceção do portão é dele, não deste ADR.
 - **Regras de WAF** da Cloudflare (limite de taxa, país, desafio): opcionais e do dono; o portão do central não depende
   delas.
 - Script de instalação do túnel no repositório (entra depois da prova real), mudança de cookie e prefixo na API.

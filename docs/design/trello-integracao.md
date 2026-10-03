@@ -298,11 +298,15 @@ Fonte das regras do Trello: a página oficial de webhooks (developer.atlassian.c
    um aviso no máximo faz o líder reler uma action que existe, com o autor verdadeiro. Quem capturasse uma chamada poderia repeti-la, mas a
    chave `(canal, id_externo)` da 085 faz a repetição não gravar nada (200, nenhuma segunda linha), e a regra de
    idade barra a action velha. As 3 repetições do próprio Trello caem no mesmo dedupe.
-7. **O cadastro** (no líder, na partida e a cada hora, só com `trello.webhook.enabled` e os três segredos):
+7. **O cadastro** (SEPARADO da flag de receber, decisão da orquestradora de 03/10 ~22:41Z: `trello.webhook.enabled` só faz a
+   ROTA responder e nunca cadastra nada; o primeiro cadastro é manual, `scripts/trello-webhook.py --aplicar`, com o "vai"; o
+   recadastro no líder, na partida e a cada hora, só roda com `trello.webhook.cadastro_automatico`, desligada de fábrica, que
+   se liga depois da prova real; ligar uma flag nunca vale como "vai"). O que ele faz:
    - `GET /1/members/me/tokens?webhooks=true` (o cliente devolve só os webhooks; o token nunca vai na URL); para cada quadro de `trello.quadros`, garante UM webhook com
      `callbackURL = trello.webhook.callback_url` e a descrição `central-de-aparelhos:<quadro>`;
    - cria o que falta (o Trello faz o HEAD do item 1); recria o que estiver `active: false`;
-   - desligado o `trello.webhook.enabled`, apaga os webhooks com essa descrição (e só eles);
+   - desligar `trello.webhook.enabled` NÃO apaga nada; remover os webhooks com essa descrição (e só eles) é o pedido
+     explícito `scripts/trello-webhook.py --desligar`;
    - o problema `trello_webhook_inativo` aparece quando o cadastro falha ou o Trello marca o webhook inativo. A
      reconciliação segue cobrindo, a 60 s, enquanto ele estiver inativo.
    - **Implementado no passo 5** (`CadastroDoWebhook`): roda no líder, na partida e a cada hora, só com `webhook.enabled` e
@@ -313,7 +317,7 @@ Fonte das regras do Trello: a página oficial de webhooks (developer.atlassian.c
    - **Saúde** do webhook: `trello_webhook_sem_segredo` (config, já existia), `trello_webhook_assinatura_invalida` (5 ou mais
      em 10 min), `trello_webhook_inativo`; a recusa 401/403 do cadastro sai como `trello_recusado`, a mesma do leitor.
 8. **Config:** `trello.webhook.enabled: false` (separado de `trello.enabled`), `trello.webhook.callback_url` (a URL
-   pública inteira, sem parâmetro e sem segredo) e `trello.webhook.max_bytes: 262144`. O segredo do aplicativo só no
+   pública inteira, sem parâmetro e sem segredo), `trello.webhook.max_bytes: 262144` e `trello.webhook.cadastro_automatico: false`. O segredo do aplicativo só no
    `.env` (`TRELLO_API_SECRET`). Opcional, do lado do dono: na Cloudflare, aceitar nesse caminho só as faixas de IP do
    Trello. É defesa em profundidade, não substitui a assinatura.
 9. **Testes** (`httpx.MockTransport` e o cliente de teste do FastAPI, sem rede):
@@ -334,8 +338,10 @@ Fonte das regras do Trello: a página oficial de webhooks (developer.atlassian.c
    - o resto de `/api/` continua pedindo credencial pelo portão (um teste de regressão do `guarda`);
    - cadastro: cria o que falta, recria o inativo, não toca webhook de outra descrição, apaga os seus ao desligar.
 10. **Rollout:** (a) o 32.2 com o webhook desligado: espelho e reconciliação a 60 s, prova real com um cartão
-    espelhado e um `/aprovar`; (b) com o 29.54 no ar, com senha e provado: gravar `TRELLO_API_SECRET`, ligar
-    `trello.webhook.enabled`, ver o cadastro e um comentário chegar em segundos; (c) a reconciliação desce a 300 s.
+    espelhado e um `/vetar` (o `/aprovar` só pede a confirmação fora do Trello); (b) com o 29.54 no ar e provado: gravar
+    `TRELLO_API_SECRET`, ligar `trello.webhook.enabled` (só a rota), `scripts/trello-webhook.py --ensaio`, depois `--aplicar`
+    com o "vai" da orquestradora, prova de fora e um comentário chegando em segundos; (c) só então
+    `trello.webhook.cadastro_automatico` e a reconciliação a 300 s. O passo a passo está em `operacao.md` §16.
 
 11. **Quadros com convidados** (dono, 03/10 ~20:15Z). O dono convidou duas pessoas, e o Trello grátis não deixa
     limitar o papel delas (podem ser admin do workspace). A regra é da Central:

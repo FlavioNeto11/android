@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — O Trello do dono como espelho e canal de comandos (32.2, ADR-072; `simulated`, tudo desligado)
+
+- Branch `canais/32-2-trello`, em 6 passos, ainda NÃO integrado na `main` e não implantado:
+  - o cliente REST (chave e token só no cabeçalho, balde de 60 por 10 s), a migração 087 e a config `trello:`;
+  - o espelho: reconciliador por fato, com marcos de deploy e custo do dia, que adota o cartão órfão em vez de duplicar;
+  - o leitor e a saída: só o dono comanda (o autor vem da API), mover para ✅, "sim" e `/aprovar` NÃO aprovam (pedem a
+    confirmação no painel ou no Telegram), o veto do dono veta, qualquer comentário com 🤖 é de IA, convidado não executa;
+  - a rota `HEAD`/`POST /api/canais/trello/webhook`, a única exceção sem credencial em `/api/` no endereço público: assinatura
+    HMAC-SHA1 que falha fechada, o corpo é só um aviso e o líder relê a action pela API;
+  - `scripts/trello-webhook.py` (`--ensaio`, `--aplicar`, `--desligar`): o cadastro é manual primeiro; o recadastro
+    automático fica atrás de `trello.webhook.cadastro_automatico` (desligada de fábrica);
+  - ADR-072, adendo v0.99 do contrato da API, `operacao.md` §16 (rollout em 5 passos) e `banco.md` (087 e o estado `aviso`).
+- Prova `simulated`: `backend/tests/test_trello_{cliente,config,espelho,leitor,webhook}.py`. `not_run`: o HEAD do Trello na
+  URL pública, o primeiro cadastro e um comentário real chegando pelo webhook (dependem do deploy e do "vai" da orquestradora).
+
 ## 2026-10-03 — Portal público no ar em `https://dev.nvit.com.br/central` (29.54, ADR-073; prova real)
 
 - O hostname entrou em `server.public_hosts` do `config.yaml` do central (21:35:02Z, com cópia em `data/backups/`),
