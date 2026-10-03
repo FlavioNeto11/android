@@ -64,7 +64,8 @@ class FontesDeMetricasSql:
                               observed_at=linhas.texto(r, "observed_at"))
                 for r in self._db.query(
                     "SELECT e.item_ref, e.stance, e.run_id, e.observed_at FROM learning_evidence e WHERE e.observed_at >= ?"
-                    f" AND e.observed_at < ? AND e.simulated = 0 AND (e.stance = 'for' OR {linhas.contra_efetivo('e')})",
+                    f" AND e.observed_at < ? AND e.simulated = 0 AND {linhas.fora_da_reproducao('e')}"
+                    f" AND (e.stance = 'for' OR {linhas.contra_efetivo('e')})",
                     (desde, ate))
                 if (linhas.texto(r, "item_ref"), linhas.texto_ou_nulo(r, "run_id")) not in invalidas]
 

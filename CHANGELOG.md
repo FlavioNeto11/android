@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 30.39: a evidência datada da receita (branch feat/30-39-evidencia-receita, sem migração)
+
+- Minerador no digest e passo de retrocarga gravam `learning_evidence` de `receita:<id>` (a favor: etapa conduzida só pela
+  receita; contra: divergiu ou fechou sem a IA), uma linha por (receita, execução, posição), datada pela etapa; o dossiê da
+  receita ganha `evidencias.contadores_e` e, sem amostra de sombra, `evidencias.sombra_e`; `VERSAO_DO_DOSSIE` segue 1;
+  `NovaEvidencia.observed_at` opcional. Origem própria `reproducao:<run_id>`: a linha é o registro datado dos contadores e
+  não conta de novo (`promocao.efetivas` e os leitores em SQL a tiram), então a saúde, a fila "Revisar", a promoção e as
+  métricas não mudam; só o dossiê a mostra. API sem mudança (o dossiê não está em rota).
+- Prova: `simulated` (`backend/tests/test_learning_evidencia_receita.py`, suíte `test_learning_*` 882 passam). Real: `not_run`
+  (nenhuma execução, aparelho ou conta reais; a volta das receitas ao curador é do deploy da suíte 15).
+
 ## 2026-10-03 — 31.22: a sombra guarda o hash do estado redigido (migração 086; branch feat/31-22-estado-hash)
 
 - `decisao_fechada_sombra.estado_hash`: o sha256 do estado DEPOIS do `privacidade.redigir`, em todas as linhas da

@@ -96,6 +96,9 @@ class NovaEvidencia:
     instance_id: str | None = None
     app_version: str | None = None
     detail: str | None = None
+    #: Quando o fato aconteceu, se não for agora (30.39: a retrocarga das reproduções datada pela tentativa, não pelo dia
+    #: em que o passo rodou). `None`: o relógio do repositório.
+    observed_at: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
