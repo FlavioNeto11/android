@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Cache, entrada e latência antes × depois de um deploy (branch feat/jev-leitura-cache-latencia)
+
+- `scripts/jev-leitura-cache-latencia.py` compara, por função e por perfil, as chamadas de `ai_calls` antes e depois de
+  um corte (o instante do deploy). Mede:
+  - o cache lido e escrito sobre a entrada total;
+  - a entrada p50;
+  - a latência p50 e p95;
+  - o custo por etapa e por execução, pela regra de `planning/costs.py`.
+- As colunas do RA-10 entram quando a migração 080 existe; sem ela, a quebra por motivo é `not_run`.
+- Só leitura, sem IA. Descrição em [ia.md](docs/ia.md) (custo e uso).
+- Prova `simulated` (`scripts/tests/test_jev_leitura_cache_latencia.py`, 12 testes). Leitura `real` só leitura no banco do
+  central (esquema 078).
 ## 2026-10-03 — 31.10: o script do relatório da sombra do Jev (branch feat/31-10-relatorio)
 
 - `scripts/jev-relatorio-31-10.py` mede a sombra do curador (por `kind`) e da intenção (por app) contra os limiares
