@@ -19,6 +19,36 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Suíte 13 na main e deploy 13 no central (1c54a7bb; migração 083; config inalterada)
+
+- A suíte 13 foi integrada em `integ/suite-13` na ordem da orquestradora:
+  - #162 31.21 (e12d15fd, migração 083);
+  - #163 30.36 (59c84eaa);
+  - #165 30.38-c (657ab399);
+  - os polimentos do deploy 12 (a742f75f, item 29.51).
+
+  Os conflitos, só em CHANGELOG, api-contract e runner, foram resolvidos por união. Os adendos ficaram na ordem v0.95 →
+  v0.96 → v1.00 → v1.01. O run de CI do #165 foi cancelado por ser redundante.
+- Portões na 798f1849:
+  - scripts 487; typecheck ok; frontend 1415/1415;
+  - backend SQLite `-n 8` Idle: 8503 passed, 7 skipped, 0 failed (18:26–18:34Z).
+  - PostgreSQL: parado em 27% por decisão da orquestradora, com 2370 passed e 0 failed. Ele é lento pelo advisory lock da
+    migração por schema. A 083 foi provada à parte no PG: um schema novo migrado do zero até `083_sombra_postado`
+    (77 migrações, coluna `postado`). O PG completo será relançado depois das conferências.
+- Ensaio da 083 numa cópia, sem tocar no central: backup `20261003-154300`, `restore.ps1` para `C:\temp\ensaio-083` e
+  migrate com o código da integração. Aplicou só a 083, e as 320 execuções ficaram intactas.
+- A main ficou igual à integração mais o merge dos commits só de docs (1c54a7bb), sem diferença de código para a
+  798f1849.
+- Implantado no central (`real`, 03/10, WIN-7S2UASNLFOP):
+  - `deploy.ps1` com backup (`20261003-154944`, 174.8 MB, integridade ok);
+  - antes, 0 execuções em andamento e 0 comandos em voo;
+  - restart às 18:50:02Z;
+  - health ok: commit 1c54a7bb, `migration 083_sombra_postado`, `problems []`;
+  - `config/config.yaml` inalterado (`validacao.modo` segue off até o deploy 14).
+- Agente do notebook em `0.1.0+1c54a7b` (ensaio `-Simular` e depois o real). O reparo dos 09/10/12/13 ficou pausado
+  durante a troca e despausado no fim. Os dois workers ficaram com `agent_outdated false` e os 7 aparelhos ligados,
+  online.
+
 ## 2026-10-03 — Golden set: o rótulo "2v" (validação automática) pré-registrado como proposta, não vigente
 
 - Nota datada em `docs/design/jev-golden-set.md` §2. O GO não muda; a orquestradora reavalia depois do deploy 14.

@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-330 de 380 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+331 de 381 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -318,6 +318,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.48 | implemented | real | opus (sessão Android) | — | Central (real, 03/10/2026, WIN-7S2UASNLFOP): config.yaml com android.window: true desde o restart das 12:10:52Z (backup config-antes-2948-20261003-120854.yaml); android-21 provou wake do snapshot do headless no binário… |  |
 | 29.49 | implemented | real | opus (sessão Android) | — | Código: feat/29-49-laco-do-assunto 0b62678b, na main pela suíte 11 (97425d5f), implantado no deploy 11 (c8304e85). Prova real (03/10/2026, central WIN-7S2UASNLFOP, android-01, liberada pela orquestradora): run r-2026100… |  |
 | 29.50 | implemented | real | opus (sessão Android) | — | Código: feat/29-50-expira-needs-input 38b21238 (f334822c + adendo v0.95), na main pela suíte 12 (5428abdb), implantado no deploy 12 (d5a1c3a9; restart 17:02:42Z e de novo 17:18:38Z pela Aprendizado, mesmo commit). Prova… |  |
+| 29.51 | implemented | simulated | opus (sessão Android) | — | feat/polimentos-rede-deploy12 @ a742f75f (722e0664 Rede; 591c8d84 títulos sem lacunas e candidato x desligado; 41950d20 pendentes uma vez; 4773d997 os 3 do backend; a742f75f adendo v1.01), na main pela suíte 13 (integ 7… | Prova real not_run: o relatório do Chrome da orquestradora pós-deploy 13 (itens 6 a 11). |
 | 29.44 | implemented | real | opus (sessão Android) | — | feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a med… |  |
 | 29.45 | implemented | simulated | opus (sessão Android) | — | feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entr… |  |
 | 29.43 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/caminho-rapido-1 @60e7962e: LT-1 (atalho de entrada sem o ator, ATALHO_ANTES_DO_ATOR, nunca em etapa com efeito, driven_by='sem_ator'), LT-2 (expect_done em etapa julgada → _verify(uma_rodada=True), nunca em etapa… |  |

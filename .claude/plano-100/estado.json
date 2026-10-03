@@ -6381,6 +6381,33 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T18:03:11+00:00"
+  },
+  "29.51": {
+   "id": "29.51",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "feat/polimentos-rede-deploy12 @ a742f75f (722e0664 Rede; 591c8d84 títulos sem lacunas e candidato x desligado; 41950d20 pendentes uma vez; 4773d997 os 3 do backend; a742f75f adendo v1.01), na main pela suíte 13 (integ 798f1849 → main 1c54a7bb) e implantado no deploy 13 (03/10 18:50:02Z, WIN-7S2UASNLFOP, migração 083, problems []). Simulado: frontend 1415/1415 + typecheck na integ; suíte 13 SQLite 8503 passed, 7 skipped, 0 failed; afetados: test_learning_capability_na_linha.py (registro real: REPLY_COMMENT só no Instagram; sem app e dois apps = nulo), test_leitura_visual_papel.py ('ao provedor'), test_needs_input_da_habilidade.py e test_fatia_abrir_conversa.py (o fluxo salvo/habilidade salva que não serviu, sem id nem código), RedePage.test.tsx, aprendizado/model.test.ts, AprendizadoPage.test.tsx, FlowsRecipesSection.test.tsx, app.integration.test.tsx.",
+   "blocker": "Prova real not_run: o relatório do Chrome da orquestradora pós-deploy 13 (itens 6 a 11).",
+   "arquivos": [
+    "frontend/src/features/rede/RedePage.tsx",
+    "frontend/src/features/aprendizado/model.ts",
+    "frontend/src/features/aprendizado/api.ts",
+    "frontend/src/features/aprendizado/SinaisTab.tsx",
+    "frontend/src/features/settings/FlowsRecipesSection.tsx",
+    "backend/app/modules/learning/presentation/nomes.py",
+    "backend/app/modules/learning/application/servico.py",
+    "backend/app/modules/learning/infrastructure/eventos.py",
+    "backend/app/planning/routing.py",
+    "backend/app/taskqueue/service.py",
+    "docs/api-contract.md"
+   ],
+   "testes": "frontend 1415; suíte 13 SQLite 8503/7/0; afetados do backend.",
+   "grupo": "suite-13-android",
+   "modelo": "opus (sessão Android)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T18:53:33+00:00"
   }
  },
  "rodadas": [
@@ -7926,6 +7953,15 @@
    ],
    "grupos": [
     "31-8-estado-jev"
+   ]
+  },
+  {
+   "quando": "2026-10-03T18:53:33+00:00",
+   "itens": [
+    "29.51"
+   ],
+   "grupos": [
+    "suite-13-android"
    ]
   }
  ]
