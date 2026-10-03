@@ -6427,6 +6427,18 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T18:55:13+00:00"
+  },
+  "30.37": {
+   "id": "30.37",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "PR #168 (feat/30-37-prova @ d067d904, base 177b18cd), para a suíte 14: migração 084 (runs.prova_fluxo_id, learning_validations.teto_usd); a execução de prova roda o plano do próprio fluxo (FlowStore.plano_em_prova, candidate/validated/active) sem planejador, RESOLVE, flow_id, flows.used, skill_hash, sombra da intenção nem aprendizado de fluxo; etapa que pediria pessoa encerra a prova pelo sistema (etapas fechadas, aprovações expiradas, sem cancelou_execucao, sem aviso); evidência pelas etapas (for/against, infra não conta) com a marca do conteúdo, inclusive no fluxo ativo; pedido de fluxo despacha como prova, sem_caminho pelo molde (só a receita volta ao curador), infra fecha sem_evidencia, teto 0,10 por pedido no roteador, reabertura do item 8 uma vez; selo 'Prova de fluxo (validação)' e RunSummary.prova_fluxo_id; emenda datada à D1 do ADR-054, adendo v0.97. simulated: test_learning_prova, test_learning_prova_validacao, test_learning_forma, test_learning_validacao_sql, test_avisos_servico, SeloDeProva/ResumoDaExecucao/RunsPage; bateria dos 259 afetados 5676 passed; vitest 1417/1418 (RunsPage '50 por vez' com tempo esgotado sob prioridade ociosa, 559 ms isolado); typecheck ok; docs-check 0/0. Cópia do central (03/10 ~19:00Z): os 26 fluxos vivos cabem no próprio comando de origem; a reabertura dá os 3 esperados (QA conta, localizar contato, QA-001-2). Falta: merge e deploy da suíte 14, P4 religado (validacao.modo on) e a prova real na primeira validação de fluxo depois do deploy; o custo da prova em coluna própria no registro_p4.py.",
+   "grupo": "aprendizado-pr168",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T19:07:53+00:00"
   }
  },
  "rodadas": [
@@ -7990,6 +8002,15 @@
    ],
    "grupos": [
     "31-11-braco-offline-jev"
+   ]
+  },
+  {
+   "quando": "2026-10-03T19:07:53+00:00",
+   "itens": [
+    "30.37"
+   ],
+   "grupos": [
+    "aprendizado-pr168"
    ]
   }
  ]
