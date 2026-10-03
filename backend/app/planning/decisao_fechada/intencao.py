@@ -12,10 +12,15 @@ linhas gravadas, o que a cadeia REAL resolveu. Nada do que o Jev responde volta 
 - **R3** (`intencao_desempate`): `choice` entre os candidatos que a cadeia registrou como empatados (2 ou mais). Sem decisão
   real aqui: a cadeia em empate não escolhe; o rótulo é a escolha da pessoa ou o desfecho (31.10).
 - **C3**: o comando passa por `redact` e pela LISTA DE PERMISSÃO de `remover_entidades` (palavra fora do vocabulário vira
-  `[termo]`; endereço, e-mail ofuscado e excesso de desconhecidas recusam). Recusa = estado VAZIO, e a porta grava
+  `[termo]`; endereço, documento, e-mail ofuscado, numeral ditado e excesso de desconhecidas recusam). O vocabulário extra
+  são só NOMES DE APP (o id do app da execução e os rótulos e nomes do registro, `nomes_de_app`): nunca o texto do
+  catálogo, que traz destinos de comandos antigos (reverificação de 03/10). Recusa = estado VAZIO, e a porta grava
   `privacidade`: a linha da sombra existe, com o motivo, e nada sai. A sombra NÃO reduz o risco: em `shadow` o corpo sai
   igual para o decisor; a única proteção é a remoção.
-- **C7** (senha, código, 2FA, captcha, em prosa ou não): marcador `credencial`, e a porta recusa o pedido inteiro.
+- **C2** (as opções da R2): nome e descrição do catálogo passam por `mascarar_catalogo` ANTES do corte em
+  `_DESCRICAO_MAX` (handle, aspas, número e nome de terceiro escrito com maiúscula viram marcador).
+- **C7** (senha, código, 2FA, captcha, chave, PIN, em prosa ou não, também com homóglifo, letra de largura cheia ou
+  separada por ponto): marcador `credencial`, e a porta recusa o pedido inteiro.
 - **Desligado** (padrão: `enabled=false`, consumidor `off`; ou envio não aprovado; ou C3 fora das classes): `ativo()` é falso
   e o chamador não faz NADA, nem a RESOLVE.
 
@@ -27,14 +32,16 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Final
 
 from ...security.redaction import looks_secret, mentions_credential, redact
 from . import privacidade
 from .contrato import ID_NENHUMA, MAX_OPCOES, PedidoDeDecisao, Pergunta, pergunta_choice
-from .entidades import remover_entidades, vocabulario_de
+from .entidades import (
+    mascarar_catalogo, mistura_alfabetos, normalizar, remover_entidades, sem_acento, vocabulario_de,
+)
 from .porta import Porta, modo_efetivo
 from .sombra import RepositorioDeSombra
 
@@ -47,10 +54,17 @@ PERGUNTA_DESEMPATE: Final = "intencao_desempate"
 MAX_CATALOGO: Final = MAX_OPCOES - 1
 _DESCRICAO_MAX: Final = 200
 _APP: Final = re.compile(r"^[A-Za-z0-9_.\-]{1,120}$")
-#: Assunto de C7 em qualquer formato, além do que `mentions_credential` já pega ("o código é...", "captcha", "verificação"):
-#: na dúvida, o pedido inteiro é recusado (ADR-069: C7 nunca sai, nem em sombra).
+#: Assunto de C7 em qualquer formato, além do que `mentions_credential` já pega: na dúvida, o pedido inteiro é recusado
+#: (ADR-069: C7 nunca sai, nem em sombra). Casa no texto normalizado, sem acento e em minúsculas, com até um separador
+#: entre as letras ("p.i.n", "s e n h a", "palavra-passe") e plural. "passe" sozinho NÃO entra: é o imperativo de passar
+#: ("passe para o próximo post"); "pass" e "palavra passe" entram (reverificação do 31.9, 03/10).
+_PALAVRAS_C7: Final = (
+    "codigo", "code", "captcha", "verificacao", "verification", "autenticacao", "authentication", "autenticador",
+    "authenticator", "desafio", "senha", "password", "passwd", "pwd", "pass", "passcode", "passphrase", "palavrapasse",
+    "contrasena", "clave", "chave", "key", "pin", "otp", "2fa", "mfa", "twofactor", "token", "segredo", "secret",
+    "secreto")
 _ASSUNTO_C7: Final = re.compile(
-    r"(?i)\b(?:c[oó]digo|codigo|captcha|verifica[çc][aã]o|autentica[çc][aã]o|desafio|senha|password|pin|otp|2fa|token)\b")
+    r"(?<![^\W_])(?:" + "|".join(r"[\s.\-_*]?".join(map(re.escape, p)) for p in _PALAVRAS_C7) + r")s?(?![^\W_])")
 
 _INSTRUCOES_CATALOGO: Final = (
     "The state is a command written by the owner of a device fleet, in Portuguese, with names and numbers masked. Pick the "
@@ -86,25 +100,39 @@ def id_opaco(skill_id: str) -> str:
     return "opt:" + hashlib.sha1(skill_id.encode("utf-8")).hexdigest()[:12]
 
 
-def _descricao(e: EntradaDeCatalogo) -> str:
-    # C2 é o catálogo do dono, liberado; o `redact` é só a rede para um segredo que tenha ido parar numa descrição.
+def _descricao(e: EntradaDeCatalogo, isentas: Iterable[str]) -> str:
+    # C2 é o catálogo do dono, liberado, mas o nome de fluxo legado é o resumo de um comando antigo, com o destino dentro
+    # (reverificação de 03/10): `mascarar_catalogo` ANTES do corte, para o corte não deixar meia aspa nem meio handle. O
+    # `redact` é a rede para um segredo que tenha ido parar numa descrição.
     texto = " ".join(f"{e.nome}: {e.descricao}".split() if e.descricao else e.nome.split())
-    return (redact(texto) or "")[:_DESCRICAO_MAX] or "(sem nome)"
+    return mascarar_catalogo(redact(texto) or "", isentas=isentas)[:_DESCRICAO_MAX] or "(sem nome)"
 
 
-def _opcoes(entradas: Sequence[EntradaDeCatalogo]) -> dict[str, str]:
-    return {id_opaco(e.skill_id): _descricao(e) for e in sorted(entradas, key=lambda e: e.skill_id)}
+def _opcoes(entradas: Sequence[EntradaDeCatalogo], isentas: Iterable[str]) -> dict[str, str]:
+    return {id_opaco(e.skill_id): _descricao(e, isentas) for e in sorted(entradas, key=lambda e: e.skill_id)}
 
 
 def menciona_c7(comando: str) -> bool:
-    """O comando fala de credencial, código, 2FA ou desafio (C7), em qualquer formato, ou tem cara de segredo."""
-    return mentions_credential(comando) or looks_secret(comando) or bool(_ASSUNTO_C7.search(comando))
+    """O comando fala de credencial, código, 2FA ou desafio (C7), em qualquer formato, ou tem cara de segredo. Confere o
+    texto como veio e normalizado (NFKC, sem caractere invisível), e palavra com alfabetos misturados conta como C7: o
+    homóglifo ("senhа" com "а" cirílico) é o jeito de a palavra-chave passar."""
+    normal = normalizar(comando)
+    return (mentions_credential(comando) or mentions_credential(normal) or looks_secret(comando)
+            or looks_secret(normal) or mistura_alfabetos(normal) or bool(_ASSUNTO_C7.search(sem_acento(normal))))
+
+
+def _nenhum_nome() -> tuple[str, ...]:
+    return ()
 
 
 class ConsumidorDeIntencao:
-    def __init__(self, porta: Porta, repositorio: RepositorioDeSombra) -> None:
+    def __init__(self, porta: Porta, repositorio: RepositorioDeSombra, *,
+                 nomes_de_app: Callable[[], Iterable[str]] = _nenhum_nome) -> None:
+        """`nomes_de_app`: os rótulos e nomes dos apps do registro (ADR-052), lidos a cada pedido; somam-se ao id do app
+        da execução no vocabulário permitido da C3 e isentam a palavra da regra da maiúscula ("abra o Outlook")."""
         self._porta = porta
         self._repositorio = repositorio
+        self._nomes_de_app = nomes_de_app
         self._avisou_teto = False
 
     def ativo(self) -> bool:
@@ -125,12 +153,18 @@ class ConsumidorDeIntencao:
                cadeia: CadeiaObservada) -> PedidoDeDecisao | None:
         """O pedido de sombra, ou `None` se não há pergunta a fazer.
 
-        Sanitiza o comando (C3) pela lista de permissão (`remover_entidades`, com o vocabulário do catálogo do dono). C7 no
-        texto (senha, código, 2FA, captcha, em prosa ou não) marca `credencial`: a porta recusa o pedido INTEIRO e grava
-        `privacidade`. Sobra de entidade = estado vazio, que a porta também recusa."""
+        Sanitiza o comando (C3) pela lista de permissão (`remover_entidades`, com os nomes de app como vocabulário extra).
+        C7 no texto (senha, código, 2FA, captcha, em prosa ou não) marca `credencial`: a porta recusa o pedido INTEIRO e
+        grava `privacidade`. Sobra de entidade = estado vazio, que a porta também recusa."""
+        try:
+            nomes = list(self._nomes_de_app())
+        except Exception:  # noqa: BLE001 - sem os nomes de app só se mascara mais (falha fechada)
+            log.warning("decisao_fechada: nomes de app indisponíveis para a intenção; seguem só o id do app")
+            nomes = []
+        vocabulario = vocabulario_de([*nomes, app or ""])
         perguntas: list[Pergunta] = []
         if 0 < len(catalogo) <= MAX_CATALOGO:
-            perguntas.append(pergunta_choice(PERGUNTA_CATALOGO, _INSTRUCOES_CATALOGO, _opcoes(catalogo)))
+            perguntas.append(pergunta_choice(PERGUNTA_CATALOGO, _INSTRUCOES_CATALOGO, _opcoes(catalogo, vocabulario)))
         elif catalogo and not self._avisou_teto:
             self._avisou_teto = True             # uma vez por processo: a R2 some da medição enquanto o catálogo não cabe
             log.warning("decisao_fechada: catálogo de %d entradas acima do teto (%d); a R2 da intenção não vai",
@@ -138,13 +172,12 @@ class ConsumidorDeIntencao:
         por_id = {e.skill_id: e for e in catalogo}
         empatados = [por_id[s] for s in dict.fromkeys(cadeia.empatados) if s in por_id]
         if len(empatados) >= 2:
-            perguntas.append(pergunta_choice(PERGUNTA_DESEMPATE, _INSTRUCOES_DESEMPATE, _opcoes(empatados)))
+            perguntas.append(pergunta_choice(PERGUNTA_DESEMPATE, _INSTRUCOES_DESEMPATE, _opcoes(empatados, vocabulario)))
         if not perguntas:
             return None
         if menciona_c7(comando):
             return PedidoDeDecisao(origem="intencao", classe="C3", estado={}, perguntas=tuple(perguntas), modo="shadow",
                                    run_id=run_id, ref=run_id, marcadores=frozenset({"credencial"}))
-        vocabulario = vocabulario_de([e.nome for e in catalogo] + [e.descricao for e in catalogo] + [app or ""])
         limpo = remover_entidades(redact(comando) or "", vocabulario=vocabulario) if comando.strip() else None
         estado: dict[str, str] = {}
         if limpo:                                    # `None` (sobrou entidade) ou vazio: estado vazio, a porta recusa
