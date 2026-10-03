@@ -771,7 +771,14 @@ continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). D
     `privacidade.redigir` (`porta.hash_do_estado`: chaves em ordem, sem espaços, UTF-8). Vai em todas as linhas da
     chamada, na sombra e no `on`, e fica NULO na recusa de privacidade e no legado. O lote offline do 31.11 recalcula
     o hash do estado remontado e redigido e só reenvia o caso que bate (ADR-069 item 21: nenhum comando sai pela
-    primeira vez pelo lote). As linhas anteriores à 086 seguem pela salvaguarda do código do filtro.
+    primeira vez pelo lote). As linhas anteriores à 086 ficam fora do lote (`anterior_a_086`): só o hash libera envio
+    (orquestradora, 03/10 19:33Z).
+  - **O lote offline da intenção (R2 e R3 do 31.11).** `taskqueue/lote_intencao.py` remonta, só para leitura, cada
+    execução que a sombra da intenção já mandou ao Jev desde 15:29:51Z (ADR-069 item 21). Usa o código do runtime:
+    `RunService.dados_da_sombra`, a composição de habilidades do `AppState` e `ConsumidorDeIntencao.pedido`. Só o caso
+    cujo hash do estado redigido bate com o `estado_hash` da linha vai ao Jev, em inglês e em português (D-J7,
+    `INSTRUCOES_PT`); o resto fica contado por motivo. O script é `scripts/jev-braco-offline-intencao.py` (golden set
+    §8).
 - **Cliente único.** `backend/tests/test_decisao_fechada.py::test_cliente_unico_so_o_adaptador_de_retrieval_conhece_o_host_da_typesafe`
   varre `backend/app` e prova que só `modules/context_retrieval/adapters/jev.py` contém o host.
 

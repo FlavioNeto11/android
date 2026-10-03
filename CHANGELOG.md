@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 31.11, R2 e R3 offline: o lote da intenção, só com o hash (branch feat/31-11-r2-r3-offline)
+
+- `taskqueue/lote_intencao.py`: remonta, só para leitura e pelo código do runtime, os comandos que a sombra da intenção
+  já mandou ao Jev desde 15:29:51Z (ADR-069 item 21). Só o caso cujo hash do estado redigido bate com o da linha
+  (31.22) vai; a salvaguarda "b" é só relatada.
+- `scripts/jev-braco-offline-intencao.py`: o braço da intenção, em inglês e em português (D-J7), com portões de
+  10 comandos reais e teto de US$ 0,05. A R1 ganha um 2º controle, "regra da saúde", só de acompanhamento.
+- Golden set: §8 (pré-registro do lote) e §2 (o `v2` medido antes e depois do 30.39; a regra da saúde).
+- Testes: `backend/tests/test_lote_intencao.py`, `scripts/tests/test_jev_braco_offline_intencao.py` e
+  `scripts/tests/test_jev_braco_offline.py`.
+
 ## 2026-10-03 — Suíte 14 na main e deploy 14 no central (51270b9c; migrações 084, 085 e 086; config inalterada)
 
 - A suíte 14 foi integrada em `integ/suite-14`, na ordem da orquestradora:

@@ -128,6 +128,28 @@ da tabela mudou.
   - Nenhum dossiê de receita traz evidência na lista. A evidência da receita vai aos contadores, e por isso a idade da
     evidência a favor é `nunca` nos 29.
 
+*Complemento de 03/10 (~19:40Z), com a resposta da Aprendizado e a decisão da orquestradora.* Nenhum limiar da
+tabela mudou.
+- **A lista vazia é lacuna, não desenho** (`docs/dominios/aprendizado.md`). Os contadores da receita não têm data,
+  aparelho, versão nem marca de real ou simulado. Vira o 30.39 (frente Aprendizado): evidência datada por tentativa
+  conduzida pela receita, e o dossiê da receita passa a ler a lista como o do fluxo.
+- **Duas medições do `v2`, cada uma com o "vai" da orquestradora e o mesmo teto (US$ 0,05):** uma logo depois do
+  deploy 14 e outra depois do 30.39, nos mesmos casos.
+  - O critério acima (2 ou mais respostas distintas, no máximo 10 % de estados instáveis) vale para cada medição,
+    separadamente.
+  - Antes do 30.39, `evidencia_a_favor_idade` é constante (`nunca` nos 29) e não conta como sinal: a primeira
+    medição é lida sem esse campo.
+- **2º controle, "regra da saúde", só de acompanhamento** (fora do critério de GO; o controle pré-registrado não
+  muda). A Aprendizado leu os 29 pareceres: o curador segue o rótulo de saúde do dossiê, não as contagens cruas
+  (pedir evidência 17, observar 9, manter 2, rebaixar 1).
+  - O braço mapeia o rótulo pela tabela `CONTROLE_DA_SAUDE` do script: `saudavel` → `manter`; `pouca_amostra`,
+    `em_prova`, `sem_evidencia`, `parado` e `degradando` → `revisar`. Na triagem, pedir evidência e observar são
+    `revisar`.
+  - Rótulo fora da tabela (inativo, obsoleto provável, indeterminado ou ausente) fica sem resposta de controle e é
+    contado à parte.
+  - O JSON traz a concordância dele com o curador ao lado da do controle pré-registrado: quanto do parecer se
+    explica só pela saúde.
+
 *Nota de 03/10 (~18:55Z), PROPOSTA, NÃO VIGENTE: a validação automática como rótulo "2v".* Fica pré-registrada
 antes de existir qualquer rótulo e não muda o GO da tabela. A orquestradora reavalia depois do deploy 14, com o P4
 de volta e volume real, e só então decide o contrato com a Aprendizado.
@@ -352,3 +374,70 @@ leitura com 10 ou mais linhas de intenção depois do T_on.
   - P(escolha) das respondidas: mínimo 0,88, todas acima do limiar.
   - Custo: 5 chamadas, US$ 0,000255; latência p50 445 ms e p95 520 ms. O cruzamento bate (5 × 5).
 - O 31.10 segue `partial`.
+
+## 8. O lote offline da intenção (R2 e R3 do 31.11)
+
+*Pré-registro de 03/10 (~19:40Z), antes de qualquer rodada do lote.* Nenhum limiar da §3 muda, e nenhum número do lote
+vale para GO. O código é `scripts/jev-braco-offline-intencao.py`, com `backend/app/taskqueue/lote_intencao.py`.
+
+    backend/.venv/Scripts/python.exe scripts/jev-braco-offline-intencao.py [--db data/poc.sqlite3] \
+        [--desde 2026-10-03T15:29:51Z] [--commits-da-janela <c1,c2,...>] [--json saida.json] [--md saida.md] \
+        [--enviar --teto 0.05]
+
+- **Amostra.** Entra a execução com linha de sombra de intenção desde 15:29:51Z de 03/10 (ADR-069 item 21; o
+  `--desde` não pode ser anterior) e com prova de POST:
+  - desde a 083: `postado=1`;
+  - antes da 083: escolha preenchida, ou fallback `abaixo_do_limiar`, `unknown_choice` ou `parse`.
+
+  Privacidade, `desligado`, `orcamento` e `rede` sem marca não provam POST.
+- **Remontagem.** O código é o do runtime: `RunService.dados_da_sombra` sobre a foto da execução, a composição de
+  habilidades do `AppState` e `ConsumidorDeIntencao.pedido`. Ele roda sobre o banco aberto só para leitura. A R3 é a
+  RESOLVE de hoje sobre o catálogo de hoje, porque o empate não é gravado na sombra.
+- **Só o hash libera envio** (orquestradora, 03/10 19:33Z).
+  - O caso vai ao Jev só se o hash do estado remontado e redigido bate com o `estado_hash` da linha (31.22, migração
+    086). A igualdade do texto fica PROVED caso a caso.
+  - O hash que a porta registra no envio é conferido de novo; se for diferente, a rodada para.
+  - Linha anterior à 086 fica fora, contada como `anterior_a_086`.
+- **A salvaguarda "b" é só relatada e nunca libera envio.** Para a linha sem hash, o relatório diz quantas
+  passariam, por três conferências:
+  - os arquivos que decidem o texto (`ARQUIVOS_DO_FILTRO`: os 5 do filtro, mais `service.py`, `alvos.py`, o registro
+    de apps e os `app.yaml`) iguais entre cada commit de `--commits-da-janela` e a árvore do lote;
+  - nenhum nome saído do catálogo de destinos depois da linha: aparelho aposentado, lápide, persona ou conta
+    removida, persona ou conta alterada;
+  - os eventos persistidos alcançando a linha.
+
+  Por que não libera: identidade de arquivos não prova igualdade do estado. A leitura da execução, o extrator e os
+  nomes de app também decidem o texto.
+- **Português × inglês (D-J7).** Cada caso vai duas vezes, intercalado (inglês, depois português), com o mesmo estado
+  e as mesmas opções. As instruções em português ficam fixadas antes de qualquer rodada em
+  `lote_intencao.INSTRUCOES_PT`. São a tradução literal das inglesas de `intencao.py`, que fica intocado:
+  - R2: "O estado é um comando escrito pelo dono de um parque de aparelhos, em português, com nomes e números
+    mascarados. Escolha a entrada do catálogo que este comando pede para executar, ou nenhuma se nenhuma entrada
+    servir claramente."
+  - R3: "O estado é um comando escrito pelo dono de um parque de aparelhos, em português, com nomes e números
+    mascarados. Várias entradas do catálogo casam com ele igualmente. Escolha a que o comando pede, ou nenhuma se
+    não der para saber."
+  - A descrição da opção `nenhuma` não muda entre os idiomas.
+- **O que o relatório traz.**
+  - Por idioma e app, as medidas da §3, com as mesmas contas e os rótulos do relatório do 31.10.
+  - Inglês × português: mesma escolha e mesma maior probabilidade.
+  - O lote em inglês × a linha viva da mesma execução (estabilidade).
+
+  O idioma que perder sai antes de qualquer `on` (§1). "Perder" se decide sobre rótulos, com amostra, e não neste
+  lote de acompanhamento.
+- **Portões da rodada paga.**
+  - `--enviar --teto` de no máximo US$ 0,05, numa rodada só, sem repetição.
+  - Ao menos 10 casos enviáveis (`MIN_COMANDOS_REAIS`); abaixo disso, a recusa vem antes de qualquer chamada.
+  - O custo fica no JSON e no registro do estado, não em `ai_calls`.
+
+Prova `simulated`:
+- `backend/tests/test_lote_intencao.py`, inclusive o `AppState` do harness: a sombra do runtime manda, e o lote remonta
+  o mesmo estado e as mesmas perguntas;
+- `scripts/tests/test_jev_braco_offline_intencao.py`.
+
+*Registro de 03/10 (19:33:48Z), seco no central (`real`, só leitura, nada enviado).*
+- **Onde:** worktree do ramo C, banco do central em `mode=ro`, `--commits-da-janela c8304e85,d5a1c3a9,1c54a7bb`.
+- **Resultado:** 6 execuções lidas, 5 `anterior_a_086` e 1 `nao_enviado`; 0 enviáveis.
+- **Salvaguarda b:** daria `diferente` nos três commits. O `privacidade.py` mudou com o 31.23 e o `service.py` depois
+  do deploy 11. Nenhuma remoção desde 15:29:51Z; eventos desde 19/09.
+- A rodada espera 10 comandos reais depois do deploy 14, que passa a gravar o hash.

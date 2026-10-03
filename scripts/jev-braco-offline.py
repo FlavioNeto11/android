@@ -70,13 +70,20 @@ TETO_MAX_USD: Final = 0.05
 #: Folga antes de cada POST: a chamada só sai se o gasto somado mais esta reserva cabe no teto. Medido na leitura
 #: preliminar de 03/10: US$ 0,000051 por chamada; a reserva é ~20 vezes isso.
 RESERVA_POR_CHAMADA_USD: Final = 0.001
-#: Consumidores que este braço roda. A R1 (curador, C0) não depende da emenda do item 4; as partes R2, R3 e R5 (C3)
-#: entram com as condições do item 21 do ADR-069.
+#: Consumidores que este braço roda. A R1 (curador, C0) não depende da emenda do item 4. A R2 e a R3 (C3, item 21 do
+#: ADR-069) ficam no script irmão `jev-braco-offline-intencao.py`; a R5 entra com o 31.13.
 CONSUMIDORES_LIBERADOS: Final = ("curador",)
 #: A porta do braço: só o consumidor da rodada, em sombra, só C0 e C1. O YAML só estreita o código (ADR-069 item 3).
 CFG_DO_BRACO: Final = DecisaoFechadaCfg(enabled=True, consumidores={"curador": "shadow"},
                                         classes_permitidas=["C0", "C1"], decisor="jev")
 AVISO: Final = "acompanhamento; nenhum número aqui vale para GO (rótulos 1 e 2 = {n})"
+#: 2º controle, "regra da saúde" (orquestradora, 03/10 ~19:40Z; golden set §2): só acompanhamento, fora do GO, e o
+#: controle pré-registrado não muda. Por quê: a Aprendizado leu os 29 pareceres da R1 e o curador segue o rótulo de
+#: saúde do dossiê, não as contagens cruas (pouca amostra, em prova ou nunca usado → pedir evidência; saudável →
+#: manter; parado ou degradando → observar). Na triagem, pedir evidência e observar são `revisar`. Rótulo fora do mapa
+#: (inativo, obsoleto provável, indeterminado ou ausente) não tem resposta de controle.
+CONTROLE_DA_SAUDE: Final = {"saudavel": "manter", "pouca_amostra": "revisar", "em_prova": "revisar",
+                            "sem_evidencia": "revisar", "parado": "revisar", "degradando": "revisar"}
 
 
 @dataclass(frozen=True)
@@ -91,6 +98,7 @@ class Caso:
     fonte: str | None
     real: str | None
     controle: str
+    controle_saude: str | None = None
 
 
 # ------------------------------------------------------------------ decisores do braço
@@ -165,8 +173,14 @@ def casos_do_curador(db: Any, *, desde: str | None, autores_dono: frozenset[str]
             estado_json=json.dumps(dict(pedido.estado), sort_keys=True, ensure_ascii=False),
             rotulo=rotulo, fonte=fonte,
             real=decisao_real_da_triagem(parecer, validade=r["validade"], simulado=r["simulated"]),
-            controle=rel._controle_do_curador(r)))
+            controle=rel._controle_do_curador(r), controle_saude=controle_da_saude(r)))
     return casos, fora
+
+
+def controle_da_saude(revisao: Mapping[str, Any]) -> str | None:
+    """O 2º controle (acompanhamento): o rótulo de saúde do C0 pelo `CONTROLE_DA_SAUDE`, ou `None` fora do mapa."""
+    destino = CONTROLE_DA_SAUDE.get(str(rel._estado_c0(revisao).get("saude") or ""))
+    return rel._opt(destino) if destino else None
 
 
 # ------------------------------------------------------------------ rodada
@@ -243,12 +257,13 @@ def montar(casos: Sequence[Caso], registros: Sequence[RegistroDeDecisao | None],
     for caso, registro in zip(casos, registros, strict=False):
         linha = _linha(caso, registro)
         item = {"linha": linha, "rotulo": caso.rotulo, "fonte": caso.fonte, "real": caso.real,
-                "estado": caso.estado_json, "controle": caso.controle}
+                "estado": caso.estado_json, "controle": caso.controle, "controle_saude": caso.controle_saude}
         por_kind[caso.kind].append(item)
         linhas_saida.append({
             "dossie_hash": caso.dossie_hash, "kind": caso.kind, "estado": _hash_curto(caso.estado_json),
             "escolha": linha["escolha"], "maior": _maior(linha), "probabilidades": linha["probabilidades"],
             "confianca": linha["confianca"], "fallback": linha["fallback_reason"], "controle": caso.controle,
+            "controle_saude": caso.controle_saude,
             "real": caso.real, "rotulo": caso.rotulo, "fonte": caso.fonte})
     rotulos = sum(1 for c in casos if c.rotulo)
     estratos = {}
@@ -261,6 +276,10 @@ def montar(casos: Sequence[Caso], registros: Sequence[RegistroDeDecisao | None],
             sum(1 for i in com_maior if _maior(i["linha"]) == i["real"]), len(com_maior))
         estrato["medidas"]["concordancia_do_controle_com_o_curador"] = rel._taxa(
             sum(1 for i in com_real if i["controle"] == i["real"]), len(com_real))
+        com_saude = [i for i in com_real if i["controle_saude"]]           # rótulo fora do mapa não conta
+        estrato["medidas"]["concordancia_do_controle_da_saude_com_o_curador"] = rel._taxa(
+            sum(1 for i in com_saude if i["controle_saude"] == i["real"]), len(com_saude))
+        estrato["medidas"]["controle_da_saude_sem_resposta"] = len(com_real) - len(com_saude)
         estrato["sinal"] = _sinal(itens)
         estratos[kind] = estrato
     custo: dict[str, Any] = {"nivel": "PROVED (medido pelo transporte)" if enviado else "not_run (--seco)"}
@@ -285,7 +304,9 @@ def montar(casos: Sequence[Caso], registros: Sequence[RegistroDeDecisao | None],
 #: O que o braço de controle mede (golden set §2), para quem lê a concordância dele com o curador.
 CONTROLE_EM_UMA_LINHA: Final = (
     "O controle é a regra local gratuita do golden set (mais evidência contra que a favor → `revisar`, senão `manter`); "
-    "a concordância dele com o curador mede quanto o parecer do curador se explica só pelas contagens de evidência.")
+    "a concordância dele com o curador mede quanto o parecer do curador se explica só pelas contagens de evidência. "
+    "O 2º controle, só de acompanhamento, é a regra da saúde (`CONTROLE_DA_SAUDE`): quanto do parecer se explica só "
+    "pelo rótulo de saúde do dossiê.")
 
 
 def _resposta_do_sinal(m: Mapping[str, Any], s: Mapping[str, Any]) -> str:
@@ -318,7 +339,9 @@ def em_markdown(r: Mapping[str, Any]) -> str:
                    f" estados instáveis {len(s['estados_instaveis'])}.",
                    f"- Concordância com o curador (acompanhamento): escolha {m['concordancia_com_o_curador']},"
                    f" maior probabilidade {m['concordancia_da_maior_com_o_curador']},"
-                   f" controle {m['concordancia_do_controle_com_o_curador']}.",
+                   f" controle {m['concordancia_do_controle_com_o_curador']},"
+                   f" regra da saúde {m['concordancia_do_controle_da_saude_com_o_curador']}"
+                   f" (sem resposta {m['controle_da_saude_sem_resposta']}).",
                    "- Cobertura por limiar (maior probabilidade): "
                    + ", ".join(f"{k}: {v['maior_probabilidade']}" for k, v in m["cobertura_por_limiar"].items()) + "."]
     c = r["custo"]
