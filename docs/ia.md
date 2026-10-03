@@ -1122,6 +1122,89 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
         de terceiros SEM pacote na plataforma (gmail, facebook, tiktok, whatsapp, twitter, chrome), em
         `_SERVICOS_SEM_PACOTE`. Desvio declarado da decisão "só termos genéricos": sem eles em `_ONDE_SE_ENTRA`,
         "entra no facebook com girassol" passaria (há navegação, e a F-A não pega).
+  - **Rodada H (03/10; a fase 2 da G teve 47 vazamentos em 9a99a8d8, corpus de 579;
+    `.claude/handoffs/reverificacao-31-9g.md`, § Decisões da orquestradora; ADR-069 item 16).** É a camada ESTRUTURAL,
+    segunda passada sobre as listas e ainda lista de bloqueio: sem lista de permissão e sem recusa por proporção (item 10).
+    - **H-1 (a), o conector depois de qualquer objeto** (`_login_valor`):
+      - Até a G, o objeto de navegação isentava o conector, salvo o lugar onde se entra ("no insta com x"). Agora só o
+        objeto PESSOA ou conversa isenta (`_OBJETO_PESSOA`: conversa, chat, dm, grupo, live, chamada, sala, contato…).
+        Recusam "entra aqui com girassol", "entre no feed com girassol" e "entre no perfil com girassol"; passam "entre na
+        conversa com qa-001" e "entre em contato com a Ana".
+      - Depois do conector:
+        - o objeto de navegação não é valor ("acesse o perfil da Marina usando o navegador");
+        - a palavra de conta com nome que o catálogo não conhece é valor ("entre com a conta girassol"). O "conta" de
+          `_ONDE_SE_ENTRA` a isentava: era vazamento da base, que a sonda achou.
+      - O passado e o particípio (`_ENTRAR_PASSADO`: entrei, loguei, logado, acessou…) só ligam VALOR. Fora disso, "veja
+        se o lucas está logado" é pergunta de estado, e a F-A a recusaria.
+      - Línguas novas:
+        - verbos: "logg inn", "log ind", "intră", "masuk", "přihlas se", "kirjaudu sisään", "giriş yap", "lépj be";
+        - conectores: med, cu, dengan, s, tunnuksella;
+        - a posposição turca ("girassol ile giriş yap") e o sufixo instrumental húngaro ("girassol-lal").
+    - **H-1 (b), o par sem verbo**: com o campo de login (usuário, user, login e o novo "usr") e separador que não é palavra
+      (`_SEPARADORES_NAO_ALFABETICOS`: vírgula, ";", "|", ":", "/", "-", "&", "+", "·"), o par vale sem verbo de entrar:
+      "usuario lucas; a outra: girassol", "user lucas | girassol". "conta", "perfil", "nome" e "persona" ficam fora,
+      porque listam contas ("persona lucas; persona bruno").
+    - **H-1 (c), as letras depois de digitar** (`_letras_depois_de_digitar`): depois de digite, use, coloque, escreva,
+      type…
+      - duas ou mais letras soltas ou nomes de letra, com pontuação entre elas, recusam ("g+i", "g · i", "x/y");
+      - só com espaço, três "fortes": a letra que não é palavra (não "a", "e", "o", "y", "u") e o nome de letra que não é
+        palavra comum ("ge", "erre", "esse"; não "de", "que", "ele", "te"). Passam "use a e o como exemplo" e "digite que
+        ele te ama".
+      - A soletração longa (`_SOLETRADO`, nos dois arquivos) aceita qualquer separador que não é letra nem algarismo. No
+        filtro vira `[termo]` antes do símbolo virar `[texto]`, e "g [texto] i [texto] r" não sai mais.
+    - **H-1 (d), o telefone ditado**: holandês, sueco, norueguês e dinamarquês no `_ALGARISMO_FALADO` (lista de bloqueio).
+      Ficam de fora "een"/"en", "to" e "ni", que são palavras de outras línguas.
+      - A forma genérica do pedido (5+ palavras curtas DESCONHECIDAS depois de verbo de ligar) exige um vocabulário de
+        palavras conhecidas: é lista de permissão, contra o item 10. Foi devolvida à orquestradora.
+    - **H-1 (e), o e-mail em peças**:
+      - o rótulo com dois-pontos e os campos ("e-mail: X, provedor: Y, terminação: Z", "e-mail: X / Y / Z"). Sem
+        dois-pontos, "o e-mail do provedor caiu" passa;
+      - com pista, o nome, a preposição, a palavra e o domínio de topo como peça (`_TLD_PECA`): "zilda em correio, net",
+        "zilda no correio, terminação net", "para zilda em exemplo com br". O "com" sozinho é a preposição: "mande para
+        zilda em casa com carinho" passa;
+      - o nome e o provedor sem preposição ("para zilda correio net");
+      - "bij" e "punt" (holandês) e o "@" trocado por "#", "*", "&", "~" ou "%" colado (`_ARROBA_TROCADA`, sem o leet: o
+        "%40" de um link é o "@" codificado que a máscara de link apaga).
+    - **H-2, o domínio de topo separado**: o `_EMAIL` leva o domínio de topo depois de ponto com espaço ("zilda@correio.
+      net", "zilda@correio. com. br") e sem ponto ("zilda@correio net", com quebra de linha; não o "com", a preposição).
+      - Forma conhecida: com "me" minúsculo depois, "zilda@correio.net. me avise" perde o "me" para a máscara. Sobra
+        máscara, não vazamento.
+      - O `_SEP_DOMINIO` aceita ". net" diante de domínio de topo que não é palavra: "look at this. Me too" passa.
+    - **H-3, o verbo central do produto (decisão)**: o nome INTEIRO do catálogo sozinho depois do conector do verbo de
+      entrar é destino (`_destino`): "entre com o lucas", "entre como lucas", "entre no perfil com Lucas" passam. Cai o
+      desvio da G-4.
+      - Continuam valor, mesmo com o nome no catálogo (G-4):
+        - o segundo do par ("com a conta Lucas e girassol");
+        - o colado ao usuário ("com o lucas girassol", `_colado`);
+        - o conector depois de outro destino ("acesse como lucas com girassol", `catalogo=False`).
+      - O tempo e o reforço depois do nome ("hoje", "mesmo", "primeiro") entraram em `_ADVERBIOS`.
+      - **Residual aceito** (orquestradora, 03/10): com uma persona "Girassol", "entre com girassol" passa como destino.
+        O portão da fase 2 é o catálogo sem ela; com ela, contam só as lentes do par e da utilidade.
+    - **H-5, os controles operacionais**:
+      - Endereço é logradouro, número e CEP. A palavra de lugar que é palavra comum (bairro, casa, vila, bloco, quadra,
+        lote, apartamento, condomínio) só recusa com número logo depois (`_ENDERECO_COM_NUMERO`, lido com os marcadores:
+        "casa 3", "quadra dez"). Passam "a padaria do bairro", "a foto da casa" e "o bloco de notas".
+      - "e-mail da X" antes do provedor que é app (outlook, live, terra) é a MENSAGEM ("arquive o e-mail da newsletter no
+        outlook"), salvo com domínio de topo depois ("no outlook.com") ou com pista ("mande para o e-mail da zilda no
+        outlook"). Pela G-3, "zilda no live" sem "e-mail da" continua recusando.
+      - O domínio sem esquema só vale com domínio de topo conhecido (`_TLD_DE_LINK`) ou com caminho depois. "siga
+        maria.clara" e "p.ex." não saem mais mutilados como `[link]` (casos 540 e 541).
+    - Custos declarados: "entre com a conta certa" e "entre no perfil com a Ana" (nome fora do catálogo depois de objeto
+      que não é pessoa) pulam a sombra.
+    - **Portão local** (`simulated`, worktree em d0a771a1 mais a H, antes do commit): `ataque_b.py` com o corpus de 579.
+      - Catálogo sem a "Girassol": 0 vazamentos (eram 47) e 0 passagens indevidas.
+      - 5 recusas indevidas:
+        - as 4 antigas de numeral e termo (n=134, 135, 348 e 427);
+        - o n=538, "e-mail: zilda.prado, provedor: petrobras, terminação: com br". O corpus o rotula máscara; a H-1 (e)
+          manda recusar campos rotulados. Ficou a recusa, e a divergência foi relatada.
+      - Com a "Girassol", nas 57 das lentes do par e da utilidade: 0 vazamentos.
+      - Contra a linha de base 9a99a8d8, 54 n mudam: os 47 vazamentos, 6 recusas indevidas que saem (540, 541, 556, 558,
+        572 e 573) e 1 só de motivo.
+      - Os 122 comandos reais de 7 dias (10:30Z, só leitura, catálogo real): 2 recusas (1,6 %), as MESMAS da base
+        5f020598.
+    - Prova: `backend/tests/test_decisao_fechada_reverificacao_h.py`. Cobre as 40 entradas (27 que contam e 13 de outro
+      idioma), os 6 fragmentos, a H-3 nos dois catálogos, o residual aceito, a H-5 e os controles. A G e a E foram
+      reescritas para a H-3: os casos da G de valor sozinho contam no catálogo sem a "Girassol", e "entre com lucas" passa.
   - **C7 nunca sai, em prosa ou não**: comando que fala de senha, código, 2FA, PIN, OTP, token, captcha, verificação, chave,
     segredo ou desafio, em PT, EN ou ES (`menciona_c7`: `mentions_credential`, `looks_secret` e o assunto no texto
     normalizado, também com homóglifo, letra de largura cheia, uma letra por vez separada por ponto ou espaço, e letra de

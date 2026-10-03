@@ -19,6 +19,36 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Correção do 31.9, rodada H (47 vazamentos na fase 2 da rodada G em 9a99a8d8): a camada estrutural, o nome do catálogo como destino e os controles operacionais (branch fix/31-9-rodada-h)
+
+- H-1, a segunda passada estrutural, ainda lista de bloqueio:
+  - (a) conector com valor desconhecido depois de qualquer verbo de entrar, salvo depois de pessoa ou conversa ("entra
+    aqui com", "entre no feed com", "entre no perfil com"). Valem também:
+    - o passado ("entrei com");
+    - outras oito línguas;
+    - "com a conta <nome desconhecido>". O "conta" de `_ONDE_SE_ENTRA` o isentava: era vazamento da base.
+  - (b) o par com o campo de login e separador que não é palavra, sem verbo ("user lucas | girassol", "usr lucas,
+    girassol").
+  - (c) duas letras soltas com pontuação depois de digitar ("g+i", "g · i").
+  - (d) telefone ditado em holandês e sueco, pela lista de numerais. A forma genérica do pedido exigiria lista de
+    permissão e voltou à orquestradora.
+  - (e) e-mail com rótulo ("e-mail: X, provedor: Y"), em peças sem ponto ("zilda em correio, net"), em holandês e com
+    "#" no lugar do "@".
+- H-2: o domínio de topo separado fica no `[email]` ("zilda@correio. net").
+- H-3: o nome do catálogo sozinho depois do verbo de entrar é destino ("entre com o lucas", "entre como lucas"). O
+  par, o valor colado e o conector depois de outro destino continuam recusando. Residual aceito: a persona com o nome
+  da própria senha.
+- H-5:
+  - endereço é logradouro, número e CEP: "a padaria do bairro" e "a foto da casa" passam, "casa 3" recusa;
+  - "o e-mail da newsletter no outlook" é a mensagem no app;
+  - "maria.clara" e "p.ex." não viram `[link]`.
+- ADR-069, item 16; bloco "Rodada H" em `docs/ia.md`.
+- Prova `simulated`:
+  - `tests/test_decisao_fechada_reverificacao_h.py`; os testes da G e da E foram reescritos para a H-3;
+  - harness da orquestradora, corpus de 579, catálogo sem a "Girassol": 0 vazamentos (eram 47), 0 passagens
+    indevidas, 5 recusas indevidas (as 4 antigas e o caso 538, divergência de rótulo relatada);
+  - 122 comandos reais: as mesmas 2 recusas da base.
+
 ## 2026-10-03 — 31.17: envio do Jev aberto no código para a sombra C0–C1 do 31.10; o aviso diz o decisor e só afirma envio de verdade (branch feat/31-17-sombra-curador)
 
 - `JEV_RUNTIME_SEND_APPROVED = True` (ADR-069 item 15). De fábrica nada sai: `enabled: false` e decisor `nulo`.

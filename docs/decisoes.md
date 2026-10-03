@@ -4304,6 +4304,53 @@ catálogo, comando), que o ADR-063 não cobre.
         o id cru da habilidade nem o hash do dossiê.
       - Os testes do interruptor fechado agora o fecham por `monkeypatch`.
       - A chamada real fica para o deploy 9 (31.10): `not_run`.
+16. **Emenda de 03/10/2026 (decisões da orquestradora na rodada H do 31.9, dentro do piso do item 10; registrada
+    ~10:40Z).** A fase 2 da rodada G teve 47 vazamentos em 9a99a8d8 (corpus de 579). A H é a camada ESTRUTURAL, segunda
+    passada depois das listas e ainda lista de bloqueio: sem lista de permissão e sem recusa por proporção.
+    - **H-1 (a)**: conector ou posposição com valor desconhecido depois de qualquer verbo de entrar recusa
+      (`c7_login_valor`), com ou sem objeto de navegação, salvo depois de pessoa ou conversa ("entre na conversa com
+      qa-001", "entre em contato com a Ana"). Valem também:
+      - o passado ("entrei com", "loguei com"), só para ligar valor: "veja se ele entrou" não é intenção de entrar;
+      - norueguês, dinamarquês, romeno, indonésio, turco (posposição "ile"), tcheco, húngaro (sufixo "-lal") e finlandês;
+      - "com a conta <nome que o catálogo não conhece>" volta a ser valor. O "conta" de `_ONDE_SE_ENTRA` o isentava.
+    - **H-1 (b)**: o campo de login (usuário, user, login, usr) com dois valores e separador que não é palavra (";", "|",
+      ":", "-", "/") forma o par sem verbo. "conta", "perfil", "nome" e "persona" ficam de fora, porque listam várias
+      contas.
+    - **H-1 (c)**: depois de um verbo de digitar, duas letras soltas ou nomes de letra com pontuação entre elas ("g+i",
+      "g · i") recusam, ou três "fortes" só com espaço. Não contam "a", "e", "o", "y" e "u", nem os nomes de letra que são
+      palavra ("de", "que", "ele", "te"). A soletração longa aceita qualquer separador.
+    - **H-1 (d)**: o telefone ditado em holandês e sueco entra pela lista de numerais (bloqueio). A forma genérica do pedido
+      ("5+ palavras curtas desconhecidas depois de verbo de ligar") exige saber quais palavras são conhecidas: é lista de
+      permissão. Foi devolvida à orquestradora como conflito com este item 10.
+    - **H-1 (e)**:
+      - o e-mail com rótulo e campos rotulados ("e-mail: X, provedor: Y, terminação: Z", "e-mail: X / Y / Z"), só com
+        dois-pontos ("o e-mail do provedor caiu" passa);
+      - o e-mail ditado em peças sem ponto, com pista ("zilda em correio, net", "para zilda em exemplo com br",
+        "para zilda correio net"), em que o "com" sozinho é a preposição;
+      - "bij" e "punt" (holandês);
+      - o "@" trocado por "#" ("zilda#correio.net").
+    - **H-2**: o domínio de topo separado do e-mail fica no `[email]` ("zilda@correio. net", "zilda@correio. com. br",
+      "zilda@correio net").
+    - **H-3 (decisão)**: o nome INTEIRO do catálogo sozinho depois do conector do verbo de entrar é DESTINO ("entre com o
+      lucas", "entre como lucas", "entre no perfil com Lucas"): é o verbo central do produto, e cai o desvio da G-4.
+      - Continuam valor (G-4): o segundo do par ("com a conta Lucas e girassol"), o colado ao usuário ("com o lucas
+        girassol") e o conector depois de outro destino ("acesse como lucas com girassol").
+      - Residual aceito: a persona com o nome da própria senha ("entre com girassol" com uma persona "Girassol"). O portão
+        da fase 2 é o catálogo sem ela.
+    - **H-5**: só logradouro, número e CEP são endereço. "a padaria do bairro", "a foto da casa" e "o bloco de notas"
+      passam; "casa 3", "quadra dez" e "lote 12" recusam. "O e-mail da newsletter no outlook" é a mensagem no app.
+      Também passam:
+      - o domínio de topo desconhecido sem caminho ("maria.clara", "p.ex.");
+      - o "%40" de um link, que é o "@" codificado dentro da URL.
+    - Custo declarado: "entre com a conta certa" e "entre no perfil com a Ana" (nome fora do catálogo depois de objeto que
+      não é pessoa) pulam a sombra.
+    - Prova `simulated`:
+      - `backend/tests/test_decisao_fechada_reverificacao_h.py`, com os testes da G e da E ajustados à H-3;
+      - harness da orquestradora no catálogo sem a "Girassol": 0 vazamentos (eram 47) e 5 recusas indevidas (4 antigas e o
+        caso 538). O 538 é um "e-mail: X, provedor: Y" que o corpus rotulou máscara e a H-1 (e) manda recusar;
+      - nas lentes do par com a "Girassol": 0 vazamentos;
+      - os 122 comandos reais de 7 dias seguem com as mesmas 2 recusas (1,6 %).
+      Detalhes em [ia.md](ia.md), no bloco "Rodada H" da intenção.
 
 **Consequências.** A plataforma ganha um motor barato (US$ 0,042/M de entrada, saída grátis) para decisões fechadas que hoje não
 acontecem ou vão ao Opus, medido em sombra contra o caminho atual antes de qualquer `on`. O ADR-063 continua valendo para código.

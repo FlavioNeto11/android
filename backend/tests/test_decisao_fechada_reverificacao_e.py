@@ -148,11 +148,11 @@ def test_controles_passam(comando: str) -> None:
 
 
 def test_o_nome_do_catalogo_desfaz_o_com() -> None:
-    """Rodada F (F-B): o filtro recebe os nomes do catálogo real. Desde a rodada G (G-4), o nome solto depois do conector é
-    a posição de VALOR e não é isento: "entre com lucas" tem a forma de "entre com girassol", e uma persona "Girassol"
-    isentaria a senha. O destino continua isento na sintaxe de destino ("com a conta Lucas", "pela Lucas", "a conta do
-    lucas"). Custo medido: nos 122 comandos reais de 7 dias (03/10), a isenção pelo catálogo não mudou nenhuma decisão."""
-    assert _motivo("entre com lucas e curta") == "c7_login_valor"
+    """Rodada F (F-B): o filtro recebe os nomes do catálogo real. Na rodada G (G-4) o nome solto depois do conector era a
+    posição de VALOR; a rodada H (H-3, decisão da orquestradora de 03/10) o devolveu a DESTINO: "entre com lucas" é o verbo
+    central do produto, e a persona com o nome da própria senha é residual aceito. O nome fora do catálogo continua valor,
+    e a sintaxe de destino ("com a conta Lucas", "pela Lucas", "a conta do lucas") continua isenta."""
+    assert _motivo("entre com lucas e curta") is None
     assert _motivo("entre com girassol e curta") == "c7_login_valor"
     assert _motivo("entre com a conta Lucas e curta") is None
     assert _motivo("entre pela Lucas e curta") is None
