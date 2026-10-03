@@ -83,7 +83,8 @@ onde o casador determinístico erra; concordar com a cadeia onde ela já casou n
 
 **Teto de cobertura da R2 (RA-2):** uma `choice` só resolve SEM pergunta um fluxo ou habilidade sem `{parâmetro}`: a etapa
 semântica exige `achado.complete` (`intent_resolver.py:214`), e com parâmetro vira `needs_input`. No central em 03/10, 4 de
-31 fluxos não tinham parâmetro. A cobertura da R2 usa esse denominador, e o relatório traz o teto do dia (fluxos sem
+31 fluxos cadastrados não tinham parâmetro; entre os 25 ativos, que são os que a cadeia vê, eram 3 (GET local de
+`/api/flows`, ~01:40Z). A cobertura da R2 usa esse denominador, e o relatório traz o teto do dia (fluxos ativos sem
 parâmetro sobre fluxos ativos). Um acerto num fluxo com parâmetro conta à parte, porque ainda pede o parâmetro à pessoa.
 
 **Ambiguidade da cadeia (RA-2):** cada linha da intenção grava quantas etapas da RESOLVE terminaram em
