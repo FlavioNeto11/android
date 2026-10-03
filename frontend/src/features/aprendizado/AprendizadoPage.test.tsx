@@ -49,7 +49,8 @@ const FALHAS = {
   dias: 14, outro_pct: 4,
   grupos: [
     { id: 'fk-a1b2c3d4e5', app_package: 'com.instagram.android', capability: 'abrir_perfil', failure_kind: 'app_anr',
-      camada: 'aparelho', onde_alterar: { arquivos: ['backend/app/devices/manager.py'], doc: 'docs/dominios/parque.md',
+      app_nome: 'Instagram', capability_nome: 'Abrir o perfil',
+      titulo: 'com.instagram.android · abrir_perfil: app sem resposta', camada: 'aparelho', onde_alterar: { arquivos: ['backend/app/devices/manager.py'], doc: 'docs/dominios/parque.md',
                                            prova: 'a mesma etapa no mesmo aparelho' },
       ocorrencias: 6, taxa: 0.25, execucoes: 4, aparelhos: 2, usd_perdido: 0.4, min_perdidos: 12, intervencoes: 1,
       custo_total: 0.65, exemplos: [{ run_id: 'r-20260928165254-e31953', attempt_id: 'a-7', erro: 'ANR' }] },
@@ -60,7 +61,8 @@ const FALHAS = {
 
 const SINAIS = [
   { id: 3, kind: 'tomou_controle', polarity: 'negative', source_ref: 'takeover:a-1', created_by: 'sistema',
-    created_at: '2026-09-28T10:00:00Z', run_id: 'r-1', app_package: 'com.instagram.android', capability: 'abrir_perfil', simulated: 0 },
+    created_at: '2026-09-28T10:00:00Z', run_id: 'r-1', app_package: 'com.instagram.android', capability: 'abrir_perfil',
+    app_nome: 'Instagram', capability_nome: 'Abrir o perfil', simulated: 0 },
 ];
 
 let backend: FakeBackend;
@@ -130,9 +132,14 @@ describe('página Aprendizado', () => {
 
     await click(byRole('tab', /^O que mais falha/, container));
     await waitFor(() => expect(text(container)).toContain('App sem resposta (ANR)'));
+    // P2 do deploy 3: o motivo e onde, com os nomes; o título de quem desenvolve não aparece na linha.
+    expect(text(container)).toContain('App sem resposta (ANR) — Instagram · Abrir o perfil');
+    expect(text(container)).not.toContain('com.instagram.android · abrir_perfil: app sem resposta');
 
     await click(byRole('tab', /^Sinais/, container));
     await waitFor(() => expect(text(container)).toContain('Tomou o controle'));
+    expect(text(container)).toContain('Instagram › Abrir o perfil');    // P3: os nomes, com o código no `title`
+    expect(text(container)).not.toContain('com.instagram.android ›');
     expect(backend.callsTo('GET', /^\/api\/aprendizado\/sinais$/)[0]?.query.get('dias')).toBe('14');
   });
 

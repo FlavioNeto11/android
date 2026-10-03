@@ -19,6 +19,33 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: a exposição da lição mede só o custo da execução (contrato com o 31.14 do Jev) e `commit` sem catálogo vai para a classe C (branch fix/exposicao-custo-da-execucao)
+
+- Emenda de 03/10 da política de risco (30.10, mostrada no painel pelo 30.16; decisão da orquestradora pela regra do
+  dono "o mais restritivo"): receita ou fluxo com `commit` num app SEM catálogo (`commit_sem_catalogo`) passa de B para
+  C. Efeito desconhecido, com alcance possível em massa: decide-se item a item, nunca em lote, e o aviso de espera
+  (`learning.needs_person`) sai na faixa C. Prova `simulated`: `test_learning_politica_de_risco.py` e
+  `test_learning_espera.py`.
+
+- `licoes_sql.py::_desfecho_do_plano` conta só as chamadas de `ai_calls` com `origem` `execucao` ou nula: a decisão
+  fechada do Jev (31.14) grava o `run_id` com `origem='decisao_fechada'` e não entra no `ai_calls` nem no `usd` da
+  exposição do planejador. O `_desfecho_da_etapa` já filtrava por etapa. Prova `simulated`:
+  `tests/test_learning_efeito.py::test_a_exposicao_do_planejador_mede_so_o_custo_da_execucao`.
+
+## 2026-10-03 — Aprendizado: nomes no lugar de códigos e o erro de rede traduzido (P2 a P5 da validação do deploy 3, branch fix/aprendizado-ux-deploy3)
+
+- P2: "O que mais falha" diz o motivo e onde, com os nomes do Aprendido ("Pós-condição não comprovada — Instagram ·
+  Abrir o feed"); dentro da página do app, só o motivo. O pacote e o código ficam em "Para quem desenvolve". Backend:
+  `app_nome` nos grupos (`presentation/nomes.py`, `VisaoPorApp.nomes`).
+- P3: a capability com o nome do catálogo na Identidade, no conteúdo da receita e da lição e nos Sinais (`app_nome` e
+  `capability_nome` em `GET /api/aprendizado/sinais`). O texto da lição nomeia a capability só na tela; o gravado, que
+  vai ao prompt, não muda.
+- P4: a receita troca a chave da etapa pelo nome da capability ("Enviar a mensagem (v1)"), e dois itens iguais numa
+  lista ganham quando foram aprendidos ou o número (Para aprovar, Revisar, Aprendido, página do app e avisos do lote).
+- P5 (mudança GLOBAL, fora do módulo, decidida pela orquestradora): sem resposta HTTP, o estado de erro de todas as
+  telas do painel diz "Sem resposta do servidor." no lugar de "Failed to fetch" (`lib/loadError.tsx`; o texto original
+  fica no `title`). Adendo v0.74 (provisório) no contrato.
+
 ## 2026-10-03 — Aprendizado: o parecer da IA diante da pessoa (30.17, branch feat/30-17-parecer-no-painel)
 
 - Painel: a seção "Parecer da IA" no detalhe do Livro (sugestão, classe, conclusão, o que a IA citou, aceitar ou recusar
