@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 30.25: o rótulo de intenção, "Qual era o pedido?" (branch feat/30-25-rotulo-de-intencao)
+
+- A execução real e comprovada que a cadeia de resolução não casou com nenhuma habilidade (ou deixou num empate) vira
+  uma pergunta cega à pessoa: qual habilidade do catálogo era aquela intenção, ou nenhuma. É o gabarito do decisor
+  fechado da intenção (31.x, da Jev). Minerador no digest da execução assentada, sem gancho novo no taskqueue; uma
+  linha por execução em `learning_reviews` (`template_id='intencao'`, provedor vazio, só ids no dossiê).
+- Os leitores do curador filtram `template_id='curador'`: o rótulo, de custo zero, não entra no orçamento (C_W).
+- Rotas `GET /api/aprendizado/intencao` e `POST /api/aprendizado/execucao/{run_id}/intencao` (adendo v0.76,
+  provisório). No painel, "Qual era o pedido?" no fim de Para aprovar, opcional e fora da contagem.
+- Núcleo: `state.py` compõe o rótulo com o mesmo catálogo da sombra do 31.9 (`catalogo_da_cadeia`). Entra na suíte 7,
+  depois do `fix/31-9-privacidade`, que torna público o acessor `dados_da_intencao`.
+- Prova `simulated`: `tests/test_learning_rotulo_de_intencao.py` (28) e `IntencaoSecao.test.tsx` (7). Real: `not_run`.
+
 ## 2026-10-03 — Aprendizado: `commit` sem catálogo volta para a classe B (branch fix/commit-sem-catalogo-b)
 
 - O dono confirmou em 03/10 a decisão de 02/10: receita ou fluxo com `commit` num app SEM catálogo

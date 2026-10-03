@@ -4139,3 +4139,22 @@ lugar do texto do navegador (`lib/loadError.tsx`, todas as telas).
 
 Prova `simulated`: `tests/test_learning_rotas_falhas.py`, `frontend/src/features/aprendizado/model.test.ts`,
 `DetalheRico.test.tsx`, `SaudeDoApp.test.tsx`, `AprendizadoPage.test.tsx` e `frontend/src/lib/loadError.test.ts`.
+
+## Adendo v0.76 (03/10/2026, provisório: quem mergear depois renumera) — o rótulo de intenção (item 30.25)
+
+Duas rotas novas, sem IA e sem custo. As duas entram antes da rota genérica do livro (`{kind}/{ref}`).
+
+- `GET /api/aprendizado/intencao?limite=` (1 a 200, padrão 50): `{itens, total}`, as perguntas abertas da mais
+  recente para a mais antiga. Cada item: `review_id`, `run_id`, `criado_em`, `terminou_em`, `app`, `app_nome`,
+  `comando` (lido da execução na hora; nunca gravado no rótulo), `cadeia` (`sem_casamento|empate`), `candidatos`
+  (`[{skill_id, nome}]`, o nome pelo catálogo de agora, o id quando a habilidade saiu dele), `empatados`,
+  `decisao_final` e `decidido_por` (nulos). 503 antes da composição.
+- `POST /api/aprendizado/execucao/{run_id}/intencao` com `{"escolha": "<skill_id>" | "nenhum"}`: grava a
+  resposta da pessoa (o operador da sessão) por CAS e devolve `{review_id, run_id, criado_em, app, decisao_final,
+  decidido_por}`. 404 `not_found` sem pergunta; 422 `invalid` fora do catálogo gravado; 409 `state_conflict` já
+  respondida.
+- `learning_reviews` ganha linhas com `template_id='intencao'` (sem migração: a 069 já tem as colunas). Os leitores
+  do curador filtram `template_id='curador'`. O sinal `parecer_decidido` ganha `data.template_id`.
+
+Prova `simulated`: `tests/test_learning_rotulo_de_intencao.py` e
+`frontend/src/features/aprendizado/IntencaoSecao.test.tsx`.

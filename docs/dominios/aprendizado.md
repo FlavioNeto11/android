@@ -710,6 +710,29 @@ aprendidos da `r-20261002204347-8c3f6e`, que terminou como sucesso sem comprovar
 
   `not_run`: a marca no central (109 e o fluxo, depois do deploy da suíte 6) e um renascimento real.
 
+## Rótulo de intenção (30.25)
+
+O gabarito humano do decisor fechado da intenção (31.x, da Jev). Sem IA e sem custo; a pergunta é CEGA.
+
+- **Quem vira pergunta.** Um minerador no digest da execução assentada (`application/intencao.py`, ligado por
+  `infrastructure/ligar_intencao.py`; nenhum gancho novo no taskqueue). Só execução real (`simulated=0`), `completed`,
+  com pelo menos uma etapa e TODAS `succeeded` com `result.verified`, sem habilidade casada no plano (`runs.skill_id`),
+  e com a cadeia de agora (a RESOLVE da sombra do 31.9, refeita sem efeito) em `sem_casamento` ou num empate sem
+  resolvida. Falha provada, etapa incerta, pulada ou confirmada à mão ficam fora. Catálogo vazio não pergunta.
+- **O que se grava.** Uma linha por execução em `learning_reviews`: `template_id='intencao'`, `item_kind='execucao'`,
+  `item_ref='run:<id>'`, `scope_app` = o app principal, provedor vazio, `usd` 0, sem `saida`, `gatilho`
+  `execucao_sem_intencao`. O dossiê guarda só ids: os `skill_id` do catálogo inteiro que a cadeia enxergava (em ordem
+  canônica, mesmo num empate), os empatados à parte e a cadeia. O comando nunca entra: o painel o lê da execução.
+- **Fora do curador.** Todo leitor do curador (`revisoes_sql.py`) filtra `template_id='curador'`: o rótulo não entra na
+  janela do orçamento (C_W), no Revisar, nem na salvaguarda (item, dossiê).
+- **A resposta.** `POST /api/aprendizado/execucao/{run_id}/intencao` com um candidato do dossiê GRAVADO ou `nenhum`
+  (422 fora disso; 404 sem pergunta; 409 já respondida, por CAS). A decisão deixa o sinal `parecer_decidido` com
+  `template_id='intencao'`, `viu` e `override` falsos, que dá a data da decisão. Quem consome é a Jev (`id_opaco`,
+  `nenhum` ↔ `ID_NENHUMA`).
+- **No painel.** "Qual era o pedido?", no fim de Para aprovar, à parte e fora da contagem (é opcional): o comando, onde e
+  quando, as opções em ordem alfabética, sem o palpite do sistema, e "Nenhuma destas"; com mais de 8, um filtro. Nos
+  Sinais, a resposta aparece como "Disse qual era o pedido", não como parecer da IA.
+
 ## Pendências conhecidas
 
 Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.
