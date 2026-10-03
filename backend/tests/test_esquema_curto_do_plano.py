@@ -3,11 +3,13 @@
 O que se prova:
 - o esquema curto não pede `postcondition.description`, `precondition` nem `max_attempts` (plano livre e etapa livre
   do plano entre apps), e o longo segue pedindo tudo;
-- o backend preenche o que o modelo não escreveu: a descrição vem do `value` (no `model_judged`, o próprio critério),
-  nenhuma pré-condição, 1 tentativa no efeito e 3 nas demais; o prazo continua do modelo, com os limites de sempre;
+- o backend preenche o que o modelo não escreveu: a descrição vem do `value` (no `model_judged`, o próprio
+  critério), nenhuma pré-condição, 1 tentativa no efeito e 3 nas demais; o prazo continua do modelo, com os limites
+  de sempre;
 - a identidade da receita (`step_template_hash`) é a mesma nos dois formatos;
 - os prompts curtos são os de sempre com dois trechos trocados (e a regra de textos curtos), e os de sempre não mudam;
-- os provedores Anthropic e OpenAI (sem rede) mandam o sistema e o esquema curtos só com a chave, e o padrão é o longo.
+- os provedores Anthropic e OpenAI (sem rede) mandam o sistema e o esquema curtos só com a chave, e o padrão é o
+  longo.
 
 Nível de prova: `simulated` (cliente falso; nenhuma chamada de IA). O ganho de tempo é estimado por count_tokens em
 planos reais (handoff da Jev, 03/10); o A/B pago e o sucesso na rodada QA: `not_run`.
@@ -59,14 +61,16 @@ def _etapa_curta(key: str, titulo: str, pos: dict[str, Any], **kw: Any) -> dict[
 
 
 def _plano_livre_curto() -> dict[str, Any]:
-    return {"summary": "Enviar mensagem", "app_id": "qa-messenger", "parameters": [{"name": "recipient", "value": "QA-001"}],
+    return {"summary": "Enviar mensagem", "app_id": "qa-messenger",
+            "parameters": [{"name": "recipient", "value": "QA-001"}],
             "success_criteria": ["Mensagem entregue"], "missing": [], "steps": [
                 _etapa_curta("open_app", "Abrir o app", _pos("app_foreground", "com.pocqa.messenger"), prazo=5),
                 _etapa_curta("open_conversation", "Abrir a conversa",
                              _pos("element_present", "id=chat_title|text={recipient}")),
                 _etapa_curta("fill_message", "Preencher a mensagem", _pos("text_visible", "Bom dia {run_id}"),
                              saidas=["Rascunho"]),
-                _etapa_curta("send_message", "Enviar", _pos("model_judged", "o balão novo mostra o texto enviado", "sent"),
+                _etapa_curta("send_message", "Enviar",
+                             _pos("model_judged", "o balão novo mostra o texto enviado", "sent"),
                              efeito=True, guarda=["QA-001", "Bom dia {run_id}"], prazo=900),
                 _etapa_curta("list_contacts", "Ler os contatos", _pos("items_collected", "nome de cada contato"))]}
 
@@ -150,7 +154,8 @@ def test_plano_livre_curto_recebe_descricao_precondicao_e_tentativas_do_backend(
             por_chave["open_conversation"].timeout_s) == (30, 600, 60)
     enviar = por_chave["send_message"]
     assert enviar.side_effect and enviar.commit_guard == ["QA-001", "Bom dia {run_id}"]
-    assert enviar.postcondition.required_delivery_level is not None and enviar.postcondition.required_delivery_level.value == "sent"
+    nivel = enviar.postcondition.required_delivery_level
+    assert nivel is not None and nivel.value == "sent"
     assert por_chave["fill_message"].saidas == ["rascunho"]
 
 
@@ -160,7 +165,8 @@ def test_plano_entre_apps_curto_monta_a_etapa_livre_e_a_do_catalogo() -> None:
     assert not plano.missing
     abrir, enviar, perfil = plano.steps
     assert abrir.postcondition.description == "O app com.pocqa.messenger está em primeiro plano."
-    assert (enviar.max_attempts, enviar.precondition, enviar.postcondition.description) == (1, None, "o balão novo aparece")
+    assert (enviar.max_attempts, enviar.precondition, enviar.postcondition.description) == (
+        1, None, "o balão novo aparece")
     # a etapa de catálogo é montada pelo catálogo, como sempre: idêntica à do formato longo
     assert perfil.capability == "OPEN_PROFILE" and perfil.app_id == "instagram"
     longo = json.loads(_plano_entre_apps_curto())
@@ -173,8 +179,8 @@ def test_plano_entre_apps_curto_monta_a_etapa_livre_e_a_do_catalogo() -> None:
 
 
 def test_chave_e_formato_andam_juntos() -> None:
-    """O formato curto lido como longo falta `description`: é saída inválida, nunca etapa sem descrição. O longo lido
-    como curto perde só o que o backend preenche (o pydantic ignora campo a mais)."""
+    """O formato curto lido como longo falta `description`: é saída inválida, nunca etapa sem descrição. O longo
+    lido como curto perde só o que o backend preenche (o pydantic ignora campo a mais)."""
     with pytest.raises(AIError) as erro:
         _montar_livre(_plano_livre_curto(), curto=False)
     assert erro.value.kind == "invalid_output"
@@ -190,8 +196,8 @@ def test_chave_e_formato_andam_juntos() -> None:
 
 
 def test_identidade_da_receita_e_a_mesma_nos_dois_formatos() -> None:
-    """`step_template_hash` (chave, efeito, tipo e valor da pós-condição, nível, guardas) não lê descrição, pré-condição
-    nem tentativas: uma receita aprendida no formato longo serve à etapa planejada no curto."""
+    """`step_template_hash` (chave, efeito, tipo e valor da pós-condição, nível, guardas) não lê descrição,
+    pré-condição nem tentativas: uma receita aprendida no formato longo serve à etapa planejada no curto."""
     curto = _montar_livre(_plano_livre_curto())
     longo = _plano_livre_curto()
     for etapa in longo["steps"]:
@@ -281,9 +287,9 @@ async def test_openai_manda_o_formato_curto_so_com_a_chave(tmp_path: Path) -> No
 
     def responder(request: httpx.Request) -> httpx.Response:
         vistos.append(request)
-        return httpx.Response(200, json={"model": "qwen-vl", "choices": [{"index": 0, "finish_reason": "stop", "message": {
-            "role": "assistant", "content": json.dumps(_plano_livre_curto())}}],
-            "usage": {"prompt_tokens": 10, "completion_tokens": 5}})
+        mensagem = {"role": "assistant", "content": json.dumps(_plano_livre_curto())}
+        return httpx.Response(200, json={"model": "qwen-vl", "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+                                         "choices": [{"index": 0, "finish_reason": "stop", "message": mensagem}]})
     p.set_client(httpx.AsyncClient(transport=httpx.MockTransport(responder)))
     try:
         plano, _ = await p.plan(PlanRequest(command="No QA Messenger, envie Bom dia para QA-001", run_id="r",

@@ -125,8 +125,8 @@ class _MultiPlanOut(BaseModel):
 
 # Formato CURTO da etapa livre (LT-4b, `ai.esquema_do_plano: curto`): o plano custa ~6,6 ms por token de saída, e
 # metade da saída era estrutura. Saem os campos que o backend sabe preencher (`description` vem do `value`;
-# `precondition` fica nula; `max_attempts` é 1 no efeito e 3 nas demais). Classes à parte, e não herança: a ordem dos
-# campos é a do esquema estrito, e o formato longo tem de seguir idêntico.
+# `precondition` fica nula; `max_attempts` é 1 no efeito e 3 nas demais). Classes à parte, e não herança: a ordem
+# dos campos é a do esquema estrito, e o formato longo tem de seguir idêntico.
 class _PostCurtoOut(BaseModel):
     kind: Literal["text_visible", "app_foreground", "element_present", "model_judged", "items_collected"]
     value: str
@@ -255,7 +255,8 @@ def _etapa_livre(key: str, e: _StepOut | _LivreOut | _StepCurtoOut | _LivreCurto
     descrição derivada do `value`, nenhuma pré-condição e as tentativas pelo padrão."""
     if isinstance(e, (_StepCurtoOut, _LivreCurtoOut)):
         pos = e.postcondition
-        postcondicao = Postcondition(kind=pos.kind, value=pos.value, description=_descricao_derivada(pos.kind, pos.value),
+        postcondicao = Postcondition(kind=pos.kind, value=pos.value,
+                                     description=_descricao_derivada(pos.kind, pos.value),
                                      required_delivery_level=pos.required_delivery_level)
         precondicao, tentativas = None, TENTATIVAS_DO_FORMATO_CURTO
     else:

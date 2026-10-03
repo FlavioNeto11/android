@@ -200,10 +200,12 @@ def _trocar(texto: str, de: str, para: str) -> str:
 # `precondition` nem `max_attempts`, que o backend preenche) e com textos curtos. Derivados por troca de trechos, e não
 # reescritos: uma regra, um texto; os de sempre seguem byte a byte (`test_prompts_licoes.py`).
 _REGRA_DE_TEXTOS_CURTOS = (
-    "- Textos curtos: o plano é lido pelo sistema, e cada palavra a mais atrasa o início da execução. `title` com até 6\n"
+    "- Textos curtos: o plano é lido pelo sistema, e cada palavra a mais atrasa o início da execução. "
+    "`title` com até 6\n"
     "  palavras; `goal` em uma frase de até 15 palavras, sem repetir a pós-condição; `summary` em uma frase;\n"
     "  `success_criteria` com 1 ou 2 itens curtos. A pós-condição NÃO encurta: o `value` segue as regras acima.\n")
-_REGRA_DA_CHAVE = "- `key` de etapa: minúsculas, dígitos e sublinhado (ex.: open_app, open_conversation, send_message).\n"
+_REGRA_DA_CHAVE = ("- `key` de etapa: minúsculas, dígitos e sublinhado (ex.: open_app, open_conversation, "
+                   "send_message).\n")
 PLANNER_SYSTEM_CURTO = _trocar(
     _trocar(PLANNER_SYSTEM, "(destinatário, conteúdo). max_attempts dessa etapa = 1.", "(destinatário, conteúdo)."),
     _REGRA_DA_CHAVE, _REGRA_DA_CHAVE + _REGRA_DE_TEXTOS_CURTOS)

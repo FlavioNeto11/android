@@ -368,9 +368,13 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
     chamadas, US$ 1,39.
     - Resultado: `low` p50 15,7 s contra `medium` 18,5 s; saída −13 %; forma do plano igual em 13/14.
     - O pensamento do planejador é ≈ 0 (2 tokens): quase toda a saída é o JSON do plano, ≈ 350 tokens por etapa.
+  - Sonda REAL do texto bruto (03/10, 03:49:55–03:50:22Z, `low`, caso msg-todos-os-contatos, 8 etapas, formato de
+    hoje, US$ 0,09 da sobra do LT-4): 2.495 tokens de saída.
+    - O texto é JSON compacto (0 quebras de linha) e é 100 % da saída; pensamento ≈ 2 tokens.
+    - Espaço em branco não é alavanca.
   - LT-4b, `ai.esquema_do_plano: curto`: estimativa GRÁTIS por count_tokens em 2 planos reais do QA (6 e 8 etapas,
-    formato entre apps). O modelo escreve JSON compacto (93–102 % da saída real), então espaço em branco não é
-    alavanca.
+    formato entre apps), reconstruídos do plano guardado: 102 % e 83 % da saída real. O plano guardado não carrega
+    tudo o que o modelo escreveu, então as porcentagens abaixo valem sobre a reconstrução.
     - −13 % sem `description` e `precondition`;
     - −20 % com a brevidade de título e objetivo (simulada por corte);
     - −22 a −24 % sem `max_attempts`, que é o formato curto.
