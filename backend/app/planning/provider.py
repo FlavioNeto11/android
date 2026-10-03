@@ -101,8 +101,10 @@ MotivoDeEscalonamento = Literal["efeito", "nova_tentativa", "erros_seguidos", "p
                                 "sim_com_efeito"]
 #: RA-10: PARA QUE a chamada foi feita dentro do papel (`ai_calls.motivo`). São os grupos de `/api/usage`:
 #: `verify` julgamento · rejulgamento · vazio (a coleta sem item, 12.4); `decide` decisao · cascata (a decisão no
-#: modelo forte depois do bloqueio do barato); `plan` plano; `leitura` leitura (a transcrição do recorte, 12.5).
-MotivoDaChamada = Literal["julgamento", "rejulgamento", "vazio", "decisao", "cascata", "plano", "leitura"]
+#: modelo forte depois do bloqueio do barato); `plan` plano · refinamento (o assistente do comando, que também é `plan`
+#: e grava na execução respondida); `leitura` leitura (a transcrição do recorte, 12.5).
+MotivoDaChamada = Literal["julgamento", "rejulgamento", "vazio", "decisao", "cascata", "plano", "refinamento",
+                          "leitura"]
 #: RA-10: por que a imagem foi, ou não, junto (`ai_calls.image_reason`), na ordem de `StepExecutor._motivo_da_imagem`.
 #: Sem imagem: sensivel · politica_nunca · arvore_rica. Com imagem: politica_sempre · pedida · problema ·
 #: primeira_julgada · arvore_pobre. A coluna `with_image` diz se ela de fato foi (a captura pode falhar).
