@@ -5705,17 +5705,14 @@
   "30.23": {
    "id": "30.23",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #121 (feat/30-23-evidencia-invalida @ 4ec4eb42) na main pelo merge 63a81cab da suíte 6 (rodada 2 em cc73e6a8: backend 6275 passed, 7 skipped; frontend 109 arquivos e 1311 testes; scripts 427). Desligamento por evidencia_invalida:<run> com ação própria no livro; o veto barra só renascer da mesma execução; outra execução real reaprende (receita: item novo; fluxo: a mesma linha) com relação reaprende e classe B forçada; contrato com taskqueue/recipes.py combinado com a Android. Prova simulated: tests/test_learning_evidencia_invalida.py, DetalheRico.test.tsx. As transições corretivas da receita 109 e do fluxo do Outlook no central ficam not_run até o deploy 4.",
-   "arquivos": "backend/app/modules/learning/domain/evidencia_invalida.py, domain/ciclo.py, domain/livro.py, domain/politica_de_risco.py, infrastructure/sql_repository.py, presentation/livro.py, backend/app/taskqueue/recipes.py, frontend/src/features/aprendizado/DetalheRico.tsx",
-   "testes": "backend/tests/test_learning_evidencia_invalida.py, frontend/src/features/aprendizado/DetalheRico.test.tsx",
-   "blocker": "",
-   "esforco": "",
-   "grupo": "30-aprendizado-vivo",
-   "modelo": "opus (sessão Aprendizado) + worker-impl",
+   "proof": "real",
+   "evidence": "PR #121 (feat/30-23-evidencia-invalida @ 4ec4eb42) na main pelo merge 63a81cab da suíte 6 (rodada 2 em cc73e6a8: backend 6275 passed, 7 skipped; frontend 109 arquivos e 1311 testes; scripts 427). Desligamento por evidencia_invalida:<run> com ação própria no livro; o veto barra só renascer da mesma execução; outra execução real reaprende (receita: item novo; fluxo: a mesma linha) com relação reaprende e classe B forçada; contrato com taskqueue/recipes.py combinado com a Android. Prova simulated: tests/test_learning_evidencia_invalida.py, DetalheRico.test.tsx. As transições corretivas da receita 109 e do fluxo do Outlook no central ficam not_run até o deploy 4. | REAL 03/10 05:50:35Z, central 8000 @ 1ab8e767 (migração 078): a corretiva da receita 109 e do fluxo no-outlook-abrir-a-caixa-de-entrada-e-le pela rota POST /api/aprendizado/{kind}/{ref}/evidencia-invalida {run_id: r-20261002204347-8c3f6e}, operador da sessão 'orquestradora' (pré-aprovação do dono em 03/10 ~04:00Z, relatada pela orquestradora; trilha terminava nas linhas 50/51): linhas novas 56 (receita) e 57 (fluxo), tipo evidencia_invalida, motivo evidencia_invalida:r-20261002204347-8c3f6e; depois disso invalidar_evidencia=None no detalhe.",
+   "grupo": "aprendizado-manual",
+   "modelo": "opus",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T04:05:47+00:00"
+   "quando": "2026-10-03T05:51:24+00:00"
   }
  },
  "rodadas": [
@@ -6946,6 +6943,15 @@
    ],
    "grupos": [
     "30-aprendizado-vivo"
+   ]
+  },
+  {
+   "quando": "2026-10-03T05:51:24+00:00",
+   "itens": [
+    "30.23"
+   ],
+   "grupos": [
+    "aprendizado-manual"
    ]
   }
  ]
