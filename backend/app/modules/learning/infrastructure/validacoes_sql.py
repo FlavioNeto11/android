@@ -60,10 +60,15 @@ class RegistroDeValidacoesSql:
         r = self._db.one("SELECT * FROM learning_validations WHERE run_id=?", (run_id,))
         return _pedido(r) if r is not None else None
 
-    def comecar(self, pedido_id: str, run_id: str, aparelho: str, agora: datetime) -> bool:
+    def comecar(self, pedido_id: str, run_id: str, aparelho: str, agora: datetime,
+                teto_usd: float | None = None) -> bool:
+        """30.40: o pedido sem teto (o legado, de antes do 30.37) herda `teto_usd` no MESMO UPDATE que liga a execução:
+        o roteador só acha o pedido pelo `run_id`, então não há janela em que a execução ligada fique sem teto. O teto
+        já gravado não muda."""
         cur = self._db.execute(
-            "UPDATE learning_validations SET estado='rodando', run_id=?, aparelho=?, updated_at=?"
-            " WHERE id=? AND estado='pendente'", (run_id, aparelho, to_iso(agora), pedido_id))
+            "UPDATE learning_validations SET estado='rodando', run_id=?, aparelho=?, updated_at=?,"
+            " teto_usd=COALESCE(teto_usd, ?) WHERE id=? AND estado='pendente'",
+            (run_id, aparelho, to_iso(agora), teto_usd, pedido_id))
         return (cur.rowcount or 0) == 1
 
     def recusar(self, pedido_id: str, motivo: Motivo, agora: datetime) -> bool:
