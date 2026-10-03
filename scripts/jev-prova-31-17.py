@@ -66,6 +66,8 @@ _SHA256 = re.compile(r"[0-9a-f]{64}")
 _DATA_ISO = re.compile(r"\d{4}-\d{2}-\d{2}")
 _UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 _HEX_LONGO = re.compile(r"[0-9a-f]{24,}")
+#: Rótulo de vocabulário fechado: uma palavra, sem espaço, curta. Só ele, num campo dos `CAMPOS`, escapa da busca de texto.
+_ROTULO = re.compile(r"[\w-]{1,40}")
 #: Chaves do dossiê cujo valor nunca pode sair (texto livre, id, data); as folhas delas entram na busca de vazamento.
 _CHAVES_PROIBIDAS = frozenset({"conteudo", "motivo", "id", "origin_ref", "run_id", "aparelho", "app_version", "em",
                                "criado_em", "execucoes", "citaveis", "versao", "ref", "trail_ref", "item_ref", "titulo",
@@ -186,7 +188,8 @@ def conferir_corpo(corpo: bytes, dossie: Mapping[str, object], *, dossie_hash: s
     # Texto do dossiê só pode chegar pelo `state` (as perguntas são texto fixo do código): a busca é nele, para uma folha
     # que por acaso seja trecho da instrução não acusar. Uma folha igual a um rótulo do `state` (ex.: "published" no
     # conteúdo e no estado do item) sai pelo campo nomeado, não como vazamento do conteúdo.
-    rotulos = set(estado.values()) if isinstance(estado, dict) else set()
+    rotulos = ({v for k, v in estado.items() if k in CAMPOS and isinstance(v, str) and _ROTULO.fullmatch(v)}
+               if isinstance(estado, dict) else set())
     texto_do_estado = json.dumps(estado, ensure_ascii=False)
     if any(len(f) >= TEXTO_MIN and f not in rotulos and f in texto_do_estado for f in _folhas(dossie)):
         violacoes.append("texto_do_dossie_no_corpo")
