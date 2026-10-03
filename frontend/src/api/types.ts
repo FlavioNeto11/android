@@ -252,7 +252,7 @@ interface Step {
   // `evidence_id`: na confirmação manual, o print em que a pessoa se baseou (ADR-055)
   result: { verified: boolean; evidence_text: string | null; delivery_level?: DeliveryLevel; evidence_id?: number | null } | null;
   claimed_by?: string | null;                        // backend que assumiu a etapa; null = nunca despachada
-  driven_by: 'ai' | 'recipe' | 'recipe+ai' | null;   // v0.2 — quem decidiu as ações da etapa
+  driven_by: 'ai' | 'recipe' | 'recipe+ai' | 'sem_ator' | null;   // v0.2 — quem decidiu as ações; `sem_ator`: fechou sem ator (caminho rápido 1)
   /** Item 12.1: app em que esta etapa roda. `null`/ausente = o app do plano (`Plan.app_id`). */
   app_id?: string | null;
 }

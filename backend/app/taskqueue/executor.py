@@ -76,6 +76,20 @@ T = TypeVar("T")
 #: sessão (`FalhaDeLeitura`: o screencap pelo adb, a captura na origem) — o mesmo convidado saturado.
 RELEITURAS_UI_OCUPADA = 3
 RECUO_UI_OCUPADA_S = 4.0
+#: Quantas conferências do juiz (`_verify`, uma rodada) a etapa julgada paga ANTES de o ator decidir nada, por tentativa
+#: (LT-1, caminho rápido 1): só na entrada, onde a tela já pode ser a final. O juiz custa uma chamada, e uma etapa de
+#: várias ações não pode pagar uma a cada volta — depois que o ator agiu, o atalho da julgada é o `expect_done` (LT-2).
+JULGAMENTOS_ANTES_DO_ATOR = 1
+#: A conferência de ENTRADA de uma etapa julgada (LT-1) usa só a prova local do catálogo, sem chamar o modelo. Medido nos
+#: testes de custo (`test_equivalencia_fluxo_skill`, `test_fatia_abrir_conversa`): na maioria das etapas julgadas a tela de
+#: entrada AINDA não é a final, e um julgamento pago ali — antes de o ator fazer qualquer coisa — sobe `verify` por etapa
+#: (o aceite do LT-1 diz que não pode subir). Com `False`, a etapa sem prova local paga o juiz barato na entrada, como o
+#: handoff de latência descreve; mexer nisto só com a fração "já pronta na entrada" medida em `real`.
+ENTRADA_JULGADA_SO_COM_PROVA_LOCAL = True
+#: Liga o atalho de ENTRADA do LT-1 (a pós-condição já vale na tela lida → sai para a comprovação sem o ator). Existe
+#: para os testes que provam regras do ator NUM CENÁRIO em que o atalho cortaria a decisão observada (o piso de tier, a
+#: política de imagem): eles desligam isto e reafirmam a prova antiga sem enfraquecê-la.
+ATALHO_ANTES_DO_ATOR = True
 
 
 async def reler_se_ocupada(ler: Callable[[], Awaitable[T]], *, prazo: float, quem: str) -> T:
@@ -1003,13 +1017,19 @@ class StepExecutor:
         # RA-10: a IA decidiu nesta tentativa, e ela não foi cedida, cancelada nem devolvida para outra tentativa.
         conduziu_a_ia = (StrategyKind.ai_actor.value in rr.exercised
                          and outcome.outcome not in (Outcome.yielded, Outcome.cancelled, Outcome.retry))
+        ok = outcome.outcome == Outcome.succeeded
+        # LT-1: a etapa fechou por atalho do executor sem o ator decidir nada nem receita agir. É `sem_ator` — nunca `ai`
+        # (o ator não conduziu) e nunca nulo (pareceria legado). Fora do modo de receitas o nome vale do mesmo jeito.
+        sem_ator = rr.sem_ator and ok and not rr.leitura
+        if sem_ator and rr.mode == "off":
+            self.repo.db.execute("UPDATE steps SET driven_by='sem_ator' WHERE id=?", (step.id,))
+            return
         if rr.mode == "off" or outcome.outcome in (Outcome.yielded, Outcome.cancelled):
             if rr.mode == "off" and conduziu_a_ia:
                 # RA-10: receitas desligadas (ou indisponíveis nesta etapa) e a IA decidiu: quem conduziu foi ela. Sem
                 # isto `driven_by` ficava nulo, e `/api/usage` o contava como IA por suposição (o COALESCE).
                 self.repo.db.execute("UPDATE steps SET driven_by='ai' WHERE id=?", (step.id,))
             return                                     # tentativa interrompida (cedida, cancelada): não é veredito
-        ok = outcome.outcome == Outcome.succeeded
         replayed = rr.mode == "replay" and rr.replayer is not None and rr.replayer.done_actions + int(rr.completed_by_recipe) > 0
         # `retry` não é veredito sobre a receita: só o desfecho da etapa (ou a divergência) entra na conta — senão um
         # aparelho com problema próprio poria em quarentena, sozinho, uma receita que funciona nos demais. Defeito do
@@ -1037,7 +1057,7 @@ class StepExecutor:
         if na_receita:
             clean = ok and not rr.diverged
             quarantined = self.recipes.result(rr.row["id"], clean)
-            driven = "recipe" if clean else "recipe+ai"
+            driven = "recipe" if clean else ("sem_ator" if sem_ator else "recipe+ai")
             repo.db.execute("UPDATE steps SET driven_by=? WHERE id=?", (driven, step.id))
             if clean:
                 repo.decision(f"{iid} · {step.title}: receita v{rr.row['version']} reproduzida (0 decisões de IA)",
@@ -1045,6 +1065,10 @@ class StepExecutor:
             if quarantined:
                 repo.decision(f"{iid} · {step.title}: receita v{rr.row['version']} em quarentena após falhas seguidas; "
                               "a etapa será reaprendida com a IA", run_id=run_id, instance_id=iid, step_id=step.id)
+            return
+        if sem_ator:
+            # Nenhuma ação foi feita: não há caminho a aprender (receita vazia) e quem conduziu não foi a IA.
+            repo.db.execute("UPDATE steps SET driven_by='sem_ator' WHERE id=?", (step.id,))
             return
         repo.db.execute("UPDATE steps SET driven_by='ai' WHERE id=?", (step.id,))
         # A candidata que divergiu é trocada pelo caminho que a IA acabou de comprovar: sem isto, uma IA que passou a
@@ -1423,6 +1447,51 @@ class StepExecutor:
             self._avisar_anr(rt, motivo)
             return f"{detalhe.rstrip('.')}; {motivo}."
 
+        # Atalhos do caminho rápido 1 (LT-1, LT-2): "pular o ator, nunca a prova". Quando o juiz (`_verify`, o mesmo de
+        # depois do laço) já aprova antes do ator, o veredito fica aqui e o fim do laço o REUSA: a etapa paga uma
+        # verificação, não duas. Quando não aprova, o laço segue na mesma tentativa, com o veredito no `history`.
+        veredito_antecipado: tuple[bool, str, DeliveryLevel | None, Observation | None, bool] | None = None
+        julgamentos_antes_do_ator = 0
+        sig_julgada_antes_do_ator: str | None = None
+
+        async def julgar_antes_do_ator(onde: str, *, so_prova_local: bool = False) -> StepOutcome | bool:
+            """`True`: o veredito foi guardado para o fim do laço (comprovada, ou incomprovável pela tela: o desfecho
+            do fim do laço é o mesmo). `False`: não comprovou (nem "não" nem "incerto" valem como prova) — o ator segue, na
+            MESMA tentativa; nunca `retry` nem `failed` por causa disso, porque uma tentativa nova custa mais que o decide
+            poupado, e o veredito definitivo continua sendo o do fim do laço. `StepOutcome`: o desfecho que a falha de IA
+            ou de driver já tinha depois do laço."""
+            nonlocal veredito_antecipado, last_obs
+            try:
+                v = await self._verify(rt, step, ctx_for, run_id, oid, deadline, call_timeout,
+                                       patient=bool(need) or fired, facts=history[-12:],
+                                       failure_marks=(tuple(cap.failure_marks) if cap and fired else ()),
+                                       local_proof=(cap.local_proof if cap else None),
+                                       capability=(CapabilityRef(app.package, cap.key) if cap and app.package else None),
+                                       attempt_id=attempt_id, cartao=cartao, pacote=app.package,
+                                       imagem_forcada=bool(visuais), uma_rodada=True, so_prova_local=so_prova_local)
+            except DriverTimeout as exc:
+                return await self._stuck(rt, step, fired, str(exc))
+            except AIError as exc:
+                return await desfecho_de_ia(exc, last_obs, "a verificação antes do ator")
+            except DriverError as exc:
+                log.info("%s: a conferência %s falhou (%s); segue pelo ator", iid, onde, exc)
+                return False
+            ok_v, texto_v, _nivel, obs_v, sem_prova = v
+            if obs_v is not None:
+                last_obs = obs_v
+            if ok_v or sem_prova:
+                # "Incomprovável pela tela" é do TEXTO da pós-condição (descreve processo/histórico), não da tela da
+                # vez: o desfecho é o mesmo que o fim do laço daria (defeito do plano), e voltar ao ator para só então
+                # perguntar de novo ao juiz pagaria outro julgamento para ouvir a mesma coisa. `ok` e `unprovable`
+                # seguem no veredito guardado.
+                veredito_antecipado = v
+                return True
+            history.append(f"(executor) {onde}: o verificador conferiu a tela e a pós-condição NÃO está comprovada: "
+                           f"{texto_v[:300]}. Continue a partir da tela atual.")
+            repo.decision(f"{iid} · {step.title}: o verificador não comprovou a pós-condição {onde}; o ator segue "
+                          "nesta mesma tentativa", run_id=run_id, instance_id=iid, step_id=step.id)
+            return False
+
         for _ in range(max_actions + 1):
             # ---------- ponto seguro
             why = stop_reason()
@@ -1585,6 +1654,37 @@ class StepExecutor:
                                   run_id=run_id, instance_id=iid, step_id=step.id)
             scale = self._image_scale(obs)
             if decision is None:
+                # ---------- LT-1: a pós-condição já vale na tela que acabou de ser lida? Pular o ator, nunca a prova.
+                # Só etapa SEM efeito (a UI otimista de uma etapa com efeito mostra o "feito" antes de ele valer),
+                # tela não sensível e nenhuma saída por ler. Prova local verdadeira: sai do laço para o `_verify` de
+                # sempre (custo zero, a árvore já foi lida). Etapa julgada sem nível de entrega: o juiz barato confere
+                # a tela agora, e só um "não" chama o ator. Receita que ainda reproduz decide antes daqui.
+                if (ATALHO_ANTES_DO_ATOR and not step.side_effect and not fired and not obs.sensitive
+                        and not faltam_saidas()):
+                    pelo_atalho: str | None = None
+                    if not judged_step:
+                        if self._postcondition_holds(step, obs, cartao, pacote=app.package):
+                            pelo_atalho = "a pós-condição já vale na tela lida"
+                    elif (need is None and decisions == 0 and julgamentos_antes_do_ator < JULGAMENTOS_ANTES_DO_ATOR
+                          and (ENTRADA_JULGADA_SO_COM_PROVA_LOCAL is False or (cap is not None and cap.local_proof))):
+                        # Sem prova local declarada (e a constante no padrão) a conferência de entrada não teria como
+                        # aprovar: nem se chama, para não pagar uma releitura da árvore nem uma linha enganosa no `history`.
+                        sig_atual = obs.tree.signature()
+                        if sig_atual != sig_julgada_antes_do_ator:      # a mesma tela já julgada "não" não paga de novo
+                            sig_julgada_antes_do_ator = sig_atual
+                            julgamentos_antes_do_ator += 1
+                            r = await julgar_antes_do_ator("antes de chamar o ator",
+                                                           so_prova_local=(ENTRADA_JULGADA_SO_COM_PROVA_LOCAL
+                                                                           or bool(cap and cap.local_proof)))
+                            if isinstance(r, StepOutcome):
+                                return r
+                            if r:
+                                pelo_atalho = "o verificador já tem o veredito da tela lida"
+                    if pelo_atalho is not None:
+                        rr.sem_ator = decisions == 0 and not (rr.replayer is not None and rr.replayer.done_actions)
+                        repo.decision(f"{iid} · {step.title}: {pelo_atalho}; segue para a comprovação sem chamar o ator",
+                                      run_id=run_id, instance_id=iid, step_id=step.id)
+                        break
                 trouble = errors_in_row >= 1 or same_count >= 1
                 piso_forcou = forcar_tier_1    # captura ANTES de zerar: o motivo do escalonamento lê daqui embaixo
                 forcar_tier_1 = False          # consumido: só a decisão SEGUINTE ao descarte sobe de tier, não todas
@@ -2146,6 +2246,17 @@ class StepExecutor:
                                    + ", ".join(faltam_saidas()) + ".")
                     continue
                 history.append("(executor) a pós-condição ainda NÃO vale depois desta ação; continue.")
+            elif getattr(args, "expect_done", False) and not faltam_saidas() and not step.side_effect:
+                # LT-2: o ator previu que esta ação conclui uma etapa JULGADA. Em vez de devolvê-la ao ator só para dizer
+                # "pronto" (um decide a mais), o juiz de sempre confere a tela agora e o veredito é reusado no fim do
+                # laço. "Não"/"incerto": entra no `history` e o laço segue NESTA tentativa (sem retry, sem falha).
+                # NUNCA em etapa com efeito (como o LT-1): o commit sai do laço sozinho logo acima, e antes dele um "sim"
+                # do juiz (o texto digitado no campo lido como já publicado) fecharia a etapa como sucesso sem o efeito.
+                r = await julgar_antes_do_ator("depois desta ação (expect_done)")
+                if isinstance(r, StepOutcome):
+                    return r
+                if r:
+                    break
         else:
             return await fail_or_retry(f"Limite de {max_actions} ações por etapa atingido sem concluir.", last_obs)
 
@@ -2173,15 +2284,19 @@ class StepExecutor:
                              message=f"Etapa '{step.title}': verificando a pós-condição"
                              + (" (reconciliação após resultado desconhecido)" if unknown else ""))
         try:
-            ok, text, level, obs, unprovable = await self._verify(rt, step, ctx_for, run_id, oid, deadline, call_timeout,
-                                                                  patient=bool(need) or fired, facts=history[-12:],
-                                                                  failure_marks=(tuple(cap.failure_marks)
-                                                                                 if cap and fired else ()),
-                                                                  local_proof=(cap.local_proof if cap else None),
-                                                                  capability=(CapabilityRef(app.package, cap.key)
-                                                                              if cap and app.package else None),
-                                                                  attempt_id=attempt_id, cartao=cartao,
-                                                                  pacote=app.package, imagem_forcada=bool(visuais))
+            if veredito_antecipado is not None:          # LT-1/LT-2: o juiz já conferiu esta tela; não paga outro
+                ok, text, level, obs, unprovable = veredito_antecipado
+            else:
+                ok, text, level, obs, unprovable = await self._verify(rt, step, ctx_for, run_id, oid, deadline,
+                                                                      call_timeout, patient=bool(need) or fired,
+                                                                      facts=history[-12:],
+                                                                      failure_marks=(tuple(cap.failure_marks)
+                                                                                     if cap and fired else ()),
+                                                                      local_proof=(cap.local_proof if cap else None),
+                                                                      capability=(CapabilityRef(app.package, cap.key)
+                                                                                  if cap and app.package else None),
+                                                                      attempt_id=attempt_id, cartao=cartao,
+                                                                      pacote=app.package, imagem_forcada=bool(visuais))
         except DriverTimeout as exc:
             return await self._stuck(rt, step, fired, str(exc))
         except AIError as exc:
@@ -2315,9 +2430,20 @@ class StepExecutor:
                       facts: list[str] | None = None, failure_marks: tuple[str, ...] = (),
                       local_proof: str | None = None, capability: CapabilityRef | None = None,
                       attempt_id: str | None = None, cartao: tuple[str, ...] = (), pacote: str | None,
-                      imagem_forcada: bool = False, proposito: MotivoDaChamada = "julgamento"
+                      imagem_forcada: bool = False, uma_rodada: bool = False, so_prova_local: bool = False,
+                      proposito: MotivoDaChamada = "julgamento"
                       ) -> tuple[bool, str, DeliveryLevel | None, Observation | None, bool]:
-        """`proposito` (RA-10): para que este julgamento existe — o de sempre ou a prova de vazio da coleta (12.4) —,
+        """`uma_rodada`: uma só leitura e, se a pós-condição a exigir, um só julgamento — devolve o veredito mesmo
+        negativo, sem esperar a tela mudar até o fim do orçamento. É o modo dos atalhos que conferem ANTES do ator
+        (LT-1/LT-2): ali um "não" devolve a etapa ao ator na mesma tentativa, e esperar o orçamento inteiro custaria
+        mais do que o decide poupado. A prova é a mesma; só a insistência muda.
+
+        `so_prova_local`: a pós-condição julgada só pode ser aprovada pela prova local do catálogo; sem ela (ou com ela
+        negativa) NÃO chama o modelo e devolve "não comprovada". É o que a conferência na ENTRADA da etapa usa quando o
+        catálogo declara prova local: a maioria das telas de entrada ainda não é a final, e um julgamento pago ali, sem
+        o ator ter feito nada, custaria mais verificações do que o atalho poupa decisões.
+
+        `proposito` (RA-10): para que este julgamento existe — o de sempre ou a prova de vazio da coleta (12.4) —,
         gravado em `ai_calls.motivo`; o rejulgamento escalado sobre a mesma tela é `rejulgamento` em qualquer caso."""
         post = step.postcondition
         need = post.required_delivery_level
@@ -2407,6 +2533,10 @@ class StepExecutor:
                 text = "; ".join(t for t in (text, f"{motivo}; com legenda de cartão só a prova local vale e o modelo "
                                              "não é consultado (ele julgaria outra publicação da tela, como o coração "
                                              "marcado de outro cartão)") if t)
+            if judged and so_prova_local:
+                ok, judged = False, False
+                text = "; ".join(t for t in (text, "a prova local do catálogo não confirmou e o modelo não foi consultado "
+                                             "antes do ator") if t)
             if judged:
                 sig = obs.tree.signature()
                 if judged_polls and sig == judged_sig:
@@ -2507,7 +2637,7 @@ class StepExecutor:
                     text = "; ".join(x for x in (text, "depois de assentar, a tela mostra "
                                                  + ", ".join(f'"{m}"' for m in pendentes)
                                                  + ": envio pendente, não conta como feito") if x)
-            if ok or time.monotonic() >= t_end or judged_polls >= max_calls:
+            if ok or uma_rodada or time.monotonic() >= t_end or judged_polls >= max_calls:
                 return ok, text, level, obs, False
             await asyncio.sleep(float(self.cfg.file.ai.judge_wait_s))
 
@@ -2705,6 +2835,9 @@ class _RecipeRun:
     diverged: str | None = None
     retorno_contado: bool = False      # `receita.retorno_ia` já contado nesta tentativa
     completed_by_recipe: bool = False
+    #: A etapa fechou por um atalho do executor (LT-1) SEM o ator decidir nada e sem ação de receita: `driven_by` grava
+    #: `sem_ator`, nunca `ai` (nem nulo, que pareceria legado).
+    sem_ator: bool = False
     settle: int = 0
     #: Etapa de leitura (item 24.3): as receitas estão ligadas, mas esta etapa não usa nem aprende nenhuma.
     leitura: bool = False

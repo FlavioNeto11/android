@@ -288,7 +288,11 @@ class FlowStore:
                 continue
             plan = Plan.model_validate_json(row["plan"])
             plan.parameters = {k: (values.get(k, v) if v == "{" + k + "}" else v) for k, v in plan.parameters.items()}
-            if any(v == "{" + k + "}" for k, v in plan.parameters.items()):
+            # RESERVED (`account_label`, `instance_id`, `run_id`) nunca é capturado por `_extract` — o valor é do APARELHO
+            # e entra na materialização (`Repository.materialize`, `resolve_templates` sobre a base por aparelho). Exigir
+            # valor aqui recusava todo fluxo com `{account_label}` pelo molde (LT-3): o molde fica como está e a
+            # materialização o resolve; os parâmetros de verdade (os capturados) seguem exigindo valor.
+            if any(v == "{" + k + "}" for k, v in plan.parameters.items() if k not in RESERVED):
                 continue                              # faltou valor para algum parâmetro: não é este fluxo
             # Os critérios são do plano, não da etapa: nenhum `_insert_steps` os resolve. Com o valor novo aqui, o
             # critério do fluxo reaproveitado fala do alvo DESTA execução, não do `{nome}` nem do alvo da fonte.

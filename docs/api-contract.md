@@ -4275,3 +4275,11 @@ curador não leva `etapa`.
 
 Prova `simulated`: `tests/test_learning_capability_na_linha.py`, `frontend/src/features/aprendizado/model.test.ts`,
 `AprendizadoPage.test.tsx`, `SaudeDoApp.test.tsx` e `falhasTexto.test.ts`.
+
+## Adendo v0.81 (03/10/2026) — `steps.driven_by` ganha `sem_ator` (caminho rápido 1)
+
+Sem rota nova. O campo `driven_by` do `Step` (e a chave `steps_driven_by` de `GET /api/profiles/{id}/capacidades`, os
+contadores por origem de `apps_overview` e do `aproveitamento` de fluxos) passa a poder ser `sem_ator`, além de `ai`,
+`recipe` e `recipe+ai`: a etapa sem efeito cuja pós-condição já valia na tela lida fechou sem o ator decidir nenhuma ação
+(a prova é a mesma, feita pelo `_verify`). `aproveitamento` ganha o contador `sem_ator` por fluxo e app e não a conta como
+elegível a receita. Quem lê `driven_by` com união fechada precisa do valor novo; o painel mostra "Sem o ator".
