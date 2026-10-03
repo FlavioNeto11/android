@@ -637,46 +637,42 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
     `remover_entidades`) e `app` (id do app da execução, quando há). R2 `intencao_catalogo`: `choice` sobre o catálogo inteiro,
     habilidades publicadas (se `skills.enabled`) e fluxos ativos (se `ai.flows`), como ids opacos (`opt:` + sha1 do id da
     habilidade, 12 hex) com descrição C2 (nome e descrição do dono; fluxo legado só o nome) mais `nenhuma`. A descrição passa
-    por `mascarar_catalogo` ANTES do corte em 200 caracteres: as mesmas máscaras de forma e a regra da maiúscula, sem recusa
-    (a opção precisa existir) e sem lista de permissão (o nome de fluxo legado é o resumo de um comando antigo, com o destino
-    dentro; o nome em minúsculas que sobra ali é risco residual aceito pelo dono). Só vai com 1 a 254
+    por `mascarar_catalogo` ANTES do corte em 200 caracteres: as mesmas máscaras de forma da C3, sem recusa (a opção precisa
+    existir); nome passa (ADR-069 item 10). Só vai com 1 a 254
     entradas: truncar mediria o que o Jev não viu; acima do teto, um WARNING por processo diz que a R2 saiu da medição. R3
     `intencao_desempate`: `choice` entre as habilidades que a cadeia registrou como empatadas (2 ou mais).
-  - **C3 por lista de permissão** (`entidades.py`, função pura `remover_entidades(texto, *, vocabulario=()) -> str | None`;
-    corrigida na reverificação de 03/10, que achou 6 causas de vazamento na primeira versão). Passos:
+  - **C3 pelo filtro SENSATO** (`entidades.py`, função pura `remover_entidades(texto) -> str | None`; ADR-069 item 10, dono
+    em 03/10 ~00:15Z: dado pessoal pode ir "desde que faça sentido no filtro"). Lista de BLOQUEIO sobre o piso: o que não
+    ajuda a escolher a habilidade vira marcador, o que esconde e-mail, telefone ou documento recusa, e o resto passa. Passos:
     0. `normalizar`: NFKC, sem marca combinante nem caractere invisível, todo traço como `-` (letra de largura cheia,
-       circulada ou matemática vira a comum; `a<ZWSP>na` vira `ana`). Palavra que mistura alfabetos recusa.
-    1. Forma conhecida vira marcador: `[texto]` (entre aspas; aspa que sobra recusa), `[link]` (link e domínio), `[email]`,
-       `[usuario]` (`@handle`), `[telefone]` e `[numero]` (todo número). Símbolo (emoji, braille...) vira `[texto]`; colado
-       entre letras, recusa.
-    2. Recusa (`None`) o que não se mascara com segurança: endereço (rua, avenida, calle, quadra...), documento (CPF, RG,
-       CNH, passaporte, SSN...), e-mail por extenso ou ofuscado (`arroba`, `(at)`, `{dot}`, `ponto com`), sobra de `@` ou
-       `://` e dois ou mais numerais por extenso, também ligados por "e", "y" ou "and" (um só vira `[numero]`).
-    3. Só fica palavra do vocabulário PERMITIDO: `_COMUNS` (funcionais e de comando, PT e EN, sem palavra que também seja
-       nome de pessoa e sem nome de app, ADR-052) e os nomes de app que o chamador passa (`nomes_de_app`: o id do app da
-       execução e os rótulos e nomes do registro de apps). **Nunca o texto do catálogo**: o nome de fluxo legado é o resumo
-       de um comando antigo e liberava nome e handle de terceiro. O resto, em qualquer caixa, vira `[termo]`; palavra com
-       dígito ou `_` também. A palavra com maiúscula fora do início da frase vira `[termo]` mesmo permitida (o "Uma" de
-       "send a message to Uma"), salvo nome de app.
-    4. Mais de 6 palavras trocadas, ou mais da metade do texto, recusa.
+       circulada ou matemática vira a comum; `s<ZWSP>enha` vira `senha`, que a C7 pega). Palavra que mistura alfabetos
+       recusa: é o jeito de esconder C7.
+    1. Forma conhecida vira marcador: `[texto]` (entre aspas; a aspa que abre e não fecha leva o resto do texto),
+       `[link]` (link e domínio), `[email]`, `[usuario]` (`@handle`), `[telefone]`, `[numero]` (todo número) e `[termo]`
+       (palavra com `_`: handle sem `@`, identificador). Símbolo (emoji, braille...) vira `[texto]`; colado entre letras,
+       recusa ("s★enha" passaria pela conferência da C7).
+    2. Recusa (`None`) o que esconde e-mail, telefone ou documento: endereço (rua, avenida, calle, quadra...), documento
+       (CPF, RG, CNH, passaporte, SSN...), e-mail por extenso ou ofuscado (`arroba`, `(at)`, `{dot}`, `ponto com`), sobra de
+       `@` ou `://` e dois ou mais numerais por extenso, também ligados por "e", "y" ou "and" (um só vira `[numero]`).
+    3. O resto passa como está: palavra comum, nome de pessoa (nossa ou de terceiro), nome de app.
 
     Com `None`, o estado vai vazio, a porta recusa e a sombra grava `fallback_reason='privacidade'`: o pedido não sai. **A
-    sombra não reduz o risco**: em `shadow` o corpo sai para o decisor igual ao de `on`, e a única proteção da C3 é esta
-    remoção. A conferência é a própria lista (o que não é conhecido não sai), não um detector "mais largo" depois da troca.
-    Nome de persona NOSSA e nome ou pacote de app podem sair sem máscara (dono, 03/10 00:15Z, ADR-069 item 10): não há
-    lista de bloqueio do banco, e o nome de persona fora do vocabulário vira `[termo]` como qualquer outro. **Riscos
-    residuais**, todos de nome que coincide com palavra comum: palavras de `_COMUNS` que também são nomes em alguma língua
-    (an, close, do, durante, edit, ela, em, la, le, lo, mas, novo, post, read, segundo, sim, uma) saem quando escritas em
-    minúsculas ou no início da frase, e o nome em minúsculas dentro da descrição de uma opção da R2 (C2). Ensaio
-    (`simulated`, 03/10): `ataque.py` da reverificação, 109 casos, zero vazamento; 53 comandos benignos, 3 recusas.
+    sombra não reduz o risco**: em `shadow` o corpo sai para o decisor igual ao de `on`; a proteção é o filtro. Até a
+    emenda, o passo 3 era uma lista de PERMISSÃO com recusa por proporção de palavras desconhecidas (a remoção que falha
+    fechada do item 4). Medido em 03/10 sobre os 90 comandos reais de 7 dias (só leitura, contagens): as 17 recusas que não
+    eram C7 vinham todas da proporção, e a lista apagava cerca de 8 palavras por comando no qa-messenger. Com o filtro
+    sensato, 89 dos 90 sairiam (a recusa que sobra é C7), nenhum com e-mail ou telefone.
+    Portão (`simulated`, 03/10): `ataque.py` da reverificação, 109 casos, zero vazamento de C7, e-mail completo ou ofuscado
+    e telefone. Nome e handle de terceiro deixam de contar (item 10). O caso "escreva para ali no gmail" sai com o nome e o
+    nome do provedor, sem endereço: barrar "nome no provedor" barraria também "mande para a Ali no Outlook".
   - **C7 nunca sai, em prosa ou não**: comando que fala de senha, código, 2FA, PIN, OTP, token, captcha, verificação, chave,
     segredo ou desafio, em PT, EN ou ES (`menciona_c7`: `mentions_credential`, `looks_secret` e o assunto no texto
     normalizado, também com homóglifo, letra de largura cheia, uma letra por vez separada por ponto ou espaço, e palavra de
     alfabetos misturados) vai com estado vazio e marcador `credencial`; a porta recusa o pedido inteiro (zero chamadas) e
     grava `privacidade`.
-  - **Comando social**: o catálogo social é C2 e entra (a exclusão social/persona proposta na revisão foi refutada: D-J5 veta o
-    Jev decidir conteúdo social ou de persona, não ler o catálogo de habilidades). O nome de terceiro dentro do comando é que
-    não sai: vira `[termo]` pela lista.
+  - **Comando social**: o catálogo social é C2 e entra (a exclusão social/persona proposta na revisão foi refutada), e,
+    desde o ADR-069 item 10, o nome no comando social também sai: o D-J5 veta o Jev DECIDIR por persona (origem
+    `social_persona` recusada na porta), não o dado.
   - **Casamento**: a porta chama `ao_registrar` na mesma thread, logo depois de gravar a linha (também na recusa por
     privacidade); sem polling e sem espera fixa. `casar_decisao_real` recebe o que a cadeia real resolveu (a RESOLVE refeita sem
     efeito, `resolve_intent`, com o catálogo de agora). R2: a habilidade resolvida (ou a única de que fala, quando falta

@@ -65,14 +65,21 @@ item nem aceita parecer (ADR-069 item 2).
 **Estratos (RA-2; execuções de 7 dias até 03/10 no central):** qa-messenger 58 (+3), instagram 15, outlook 5.
 
 - **1º estrato: qa-messenger.** É o volume que chega ao mínimo de rótulos abaixo.
-- **Instagram: GO sem data.** O relatório conta os rótulos do estrato e não projeta data. Na reavaliação, 13 de 15
-  comandos tinham `@` e 11 de 15, número de 3 ou mais dígitos: a remoção anterior recusava esses comandos inteiros por
-  construção. A corrigida (31.9, 03/10) mascara o `@` e o número em vez de recusar; a fração recusada passa a ser medida.
+- **Instagram: GO sem data.** O relatório conta os rótulos do estrato e não projeta data; o GO do Instagram se decide
+  no relatório do 1º estrato. Na reavaliação, 13 de 15 comandos tinham `@` e 11 de 15, número de 3 ou mais dígitos, e a
+  remoção da primeira redação recusava esses comandos inteiros por construção.
+  - *Registro de 03/10 (~02:45Z), a pedido da orquestradora:* a base "13/15 recusados por construção" caiu.
+  - Com o filtro corrigido ainda em lista de permissão, 15 de 20 comandos de 7 dias sairiam mascarados.
+  - Com o filtro sensato do ADR-069 item 10 (`@` e número viram marcador, nome passa), saem 19 de 20; a recusa que sobra
+    é C7.
+  - Medição só leitura, por contagem. Nenhum limiar muda.
 - **Outlook e os demais:** data pelo ritmo medido, como no §1.
 
 **Rótulos:** o desfecho da execução (`casar_desfecho`, 31.10: a habilidade resolvida que terminou em sucesso comprovado) e,
 no empate, a escolha da pessoa. Numa execução SEM fluxo, o rótulo é o **fluxo que o desfecho confirma**: o fluxo ativo que
-faz o que a execução fez com sucesso comprovado, apontado pela pessoa ou pela revisão do relatório, com o id da execução.
+faz o que a execução fez com sucesso comprovado, apontado pela pessoa no parecer do 30.17 (`learning_reviews`, o único
+produtor de rótulo humano, da frente Aprendizado; o campo se combina com ela), com o id da execução, sem caminho paralelo
+(orquestradora, 03/10).
 Nunca é a escolha do Jev nem a concordância com a cadeia; sem esse rótulo, a execução fica só na cobertura. A decisão real
 que a sombra casa hoje (o que a cadeia resolveu) é acompanhamento.
 
@@ -84,8 +91,9 @@ onde o casador determinístico erra; concordar com a cadeia onde ela já casou n
 **Teto de cobertura da R2 (RA-2):** uma `choice` só resolve SEM pergunta um fluxo ou habilidade sem `{parâmetro}`: a etapa
 semântica exige `achado.complete` (`intent_resolver.py:214`), e com parâmetro vira `needs_input`. No central em 03/10, 4 de
 31 fluxos cadastrados não tinham parâmetro; entre os 25 ativos, que são os que a cadeia vê, eram 3 (GET local de
-`/api/flows`, ~01:40Z). A cobertura da R2 usa esse denominador, e o relatório traz o teto do dia (fluxos ativos sem
-parâmetro sobre fluxos ativos). Um acerto num fluxo com parâmetro conta à parte, porque ainda pede o parâmetro à pessoa.
+`/api/flows`, ~01:40Z). O relatório traz os dois denominadores do dia, e o PRINCIPAL é o dos ativos (fluxos ativos sem
+parâmetro sobre fluxos ativos; 3/25 em 03/10), confirmado pela orquestradora. Um acerto num fluxo com parâmetro conta à
+parte, porque ainda pede o parâmetro à pessoa.
 
 **Ambiguidade da cadeia (RA-2):** cada linha da intenção grava quantas etapas da RESOLVE terminaram em
 `StageOutcome.AMBIGUOUS` (`decisao_fechada_sombra.ambiguos`, migração 079). A coluna fica NULA nas linhas de outra origem e

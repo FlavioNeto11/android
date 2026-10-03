@@ -11,14 +11,13 @@ linhas gravadas, o que a cadeia REAL resolveu. Nada do que o Jev responde volta 
   quando nada casou. Empate sem desfecho: fica vazio (ninguém decidiu ainda).
 - **R3** (`intencao_desempate`): `choice` entre os candidatos que a cadeia registrou como empatados (2 ou mais). Sem decisão
   real aqui: a cadeia em empate não escolhe; o rótulo é a escolha da pessoa ou o desfecho (31.10).
-- **C3**: o comando passa por `redact` e pela LISTA DE PERMISSÃO de `remover_entidades` (palavra fora do vocabulário vira
-  `[termo]`; endereço, documento, e-mail ofuscado, numeral ditado e excesso de desconhecidas recusam). O vocabulário extra
-  são só NOMES DE APP (o id do app da execução e os rótulos e nomes do registro, `nomes_de_app`): nunca o texto do
-  catálogo, que traz destinos de comandos antigos (reverificação de 03/10). Recusa = estado VAZIO, e a porta grava
+- **C3**: o comando passa por `redact` e pelo filtro SENSATO de `remover_entidades` (ADR-069 item 10: dado pessoal pode ir;
+  e-mail, telefone, link, `@handle`, número e o que está entre aspas viram marcador; endereço, documento, e-mail ofuscado
+  e numeral ditado recusam; nome e palavra comum passam). Não depende do catálogo. Recusa = estado VAZIO, e a porta grava
   `privacidade`: a linha da sombra existe, com o motivo, e nada sai. A sombra NÃO reduz o risco: em `shadow` o corpo sai
-  igual para o decisor; a única proteção é a remoção.
+  igual para o decisor; a única proteção é o filtro.
 - **C2** (as opções da R2): nome e descrição do catálogo passam por `mascarar_catalogo` ANTES do corte em
-  `_DESCRICAO_MAX` (handle, aspas, número e nome de terceiro escrito com maiúscula viram marcador).
+  `_DESCRICAO_MAX` (as mesmas máscaras de forma da C3: handle, aspas, e-mail, telefone e número).
 - **C7** (senha, código, 2FA, captcha, chave, PIN, em prosa ou não, também com homóglifo, letra de largura cheia ou
   separada por ponto): marcador `credencial`, e a porta recusa o pedido inteiro.
 - **Desligado** (padrão: `enabled=false`, consumidor `off`; ou envio não aprovado; ou C3 fora das classes): `ativo()` é falso
@@ -32,7 +31,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final
 
@@ -40,7 +39,7 @@ from ...security.redaction import looks_secret, mentions_credential, redact
 from . import privacidade
 from .contrato import ID_NENHUMA, MAX_OPCOES, PedidoDeDecisao, Pergunta, pergunta_choice
 from .entidades import (
-    mascarar_catalogo, mistura_alfabetos, normalizar, remover_entidades, sem_acento, vocabulario_de,
+    mascarar_catalogo, mistura_alfabetos, normalizar, remover_entidades, sem_acento,
 )
 from .porta import Porta, modo_efetivo
 from .sombra import RepositorioDeSombra
@@ -102,16 +101,16 @@ def id_opaco(skill_id: str) -> str:
     return "opt:" + hashlib.sha1(skill_id.encode("utf-8")).hexdigest()[:12]
 
 
-def _descricao(e: EntradaDeCatalogo, isentas: Iterable[str]) -> str:
+def _descricao(e: EntradaDeCatalogo) -> str:
     # C2 é o catálogo do dono, liberado, mas o nome de fluxo legado é o resumo de um comando antigo, com o destino dentro
     # (reverificação de 03/10): `mascarar_catalogo` ANTES do corte, para o corte não deixar meia aspa nem meio handle. O
     # `redact` é a rede para um segredo que tenha ido parar numa descrição.
     texto = " ".join(f"{e.nome}: {e.descricao}".split() if e.descricao else e.nome.split())
-    return mascarar_catalogo(redact(texto) or "", isentas=isentas)[:_DESCRICAO_MAX] or "(sem nome)"
+    return mascarar_catalogo(redact(texto) or "")[:_DESCRICAO_MAX] or "(sem nome)"
 
 
-def _opcoes(entradas: Sequence[EntradaDeCatalogo], isentas: Iterable[str]) -> dict[str, str]:
-    return {id_opaco(e.skill_id): _descricao(e, isentas) for e in sorted(entradas, key=lambda e: e.skill_id)}
+def _opcoes(entradas: Sequence[EntradaDeCatalogo]) -> dict[str, str]:
+    return {id_opaco(e.skill_id): _descricao(e) for e in sorted(entradas, key=lambda e: e.skill_id)}
 
 
 def menciona_c7(comando: str) -> bool:
@@ -123,18 +122,10 @@ def menciona_c7(comando: str) -> bool:
             or looks_secret(normal) or mistura_alfabetos(normal) or bool(_ASSUNTO_C7.search(sem_acento(normal))))
 
 
-def _nenhum_nome() -> tuple[str, ...]:
-    return ()
-
-
 class ConsumidorDeIntencao:
-    def __init__(self, porta: Porta, repositorio: RepositorioDeSombra, *,
-                 nomes_de_app: Callable[[], Iterable[str]] = _nenhum_nome) -> None:
-        """`nomes_de_app`: os rótulos e nomes dos apps do registro (ADR-052), lidos a cada pedido; somam-se ao id do app
-        da execução no vocabulário permitido da C3 e isentam a palavra da regra da maiúscula ("abra o Outlook")."""
+    def __init__(self, porta: Porta, repositorio: RepositorioDeSombra) -> None:
         self._porta = porta
         self._repositorio = repositorio
-        self._nomes_de_app = nomes_de_app
         self._avisou_teto = False
 
     def ativo(self) -> bool:
@@ -155,18 +146,12 @@ class ConsumidorDeIntencao:
                cadeia: CadeiaObservada) -> PedidoDeDecisao | None:
         """O pedido de sombra, ou `None` se não há pergunta a fazer.
 
-        Sanitiza o comando (C3) pela lista de permissão (`remover_entidades`, com os nomes de app como vocabulário extra).
-        C7 no texto (senha, código, 2FA, captcha, em prosa ou não) marca `credencial`: a porta recusa o pedido INTEIRO e
-        grava `privacidade`. Sobra de entidade = estado vazio, que a porta também recusa."""
-        try:
-            nomes = list(self._nomes_de_app())
-        except Exception:  # noqa: BLE001 - sem os nomes de app só se mascara mais (falha fechada)
-            log.warning("decisao_fechada: nomes de app indisponíveis para a intenção; seguem só o id do app")
-            nomes = []
-        vocabulario = vocabulario_de([*nomes, app or ""])
+        Sanitiza o comando (C3) pelo filtro sensato (`remover_entidades`). C7 no texto (senha, código, 2FA, captcha, em
+        prosa ou não) marca `credencial`: a porta recusa o pedido INTEIRO e grava `privacidade`. O que esconde e-mail,
+        telefone ou documento = estado vazio, que a porta também recusa."""
         perguntas: list[Pergunta] = []
         if 0 < len(catalogo) <= MAX_CATALOGO:
-            perguntas.append(pergunta_choice(PERGUNTA_CATALOGO, _INSTRUCOES_CATALOGO, _opcoes(catalogo, vocabulario)))
+            perguntas.append(pergunta_choice(PERGUNTA_CATALOGO, _INSTRUCOES_CATALOGO, _opcoes(catalogo)))
         elif catalogo and not self._avisou_teto:
             self._avisou_teto = True             # uma vez por processo: a R2 some da medição enquanto o catálogo não cabe
             log.warning("decisao_fechada: catálogo de %d entradas acima do teto (%d); a R2 da intenção não vai",
@@ -174,15 +159,15 @@ class ConsumidorDeIntencao:
         por_id = {e.skill_id: e for e in catalogo}
         empatados = [por_id[s] for s in dict.fromkeys(cadeia.empatados) if s in por_id]
         if len(empatados) >= 2:
-            perguntas.append(pergunta_choice(PERGUNTA_DESEMPATE, _INSTRUCOES_DESEMPATE, _opcoes(empatados, vocabulario)))
+            perguntas.append(pergunta_choice(PERGUNTA_DESEMPATE, _INSTRUCOES_DESEMPATE, _opcoes(empatados)))
         if not perguntas:
             return None
         if menciona_c7(comando):
             return PedidoDeDecisao(origem="intencao", classe="C3", estado={}, perguntas=tuple(perguntas), modo="shadow",
                                    run_id=run_id, ref=run_id, marcadores=frozenset({"credencial"}))
-        limpo = remover_entidades(redact(comando) or "", vocabulario=vocabulario) if comando.strip() else None
+        limpo = remover_entidades(redact(comando) or "") if comando.strip() else None
         estado: dict[str, str] = {}
-        if limpo:                                    # `None` (sobrou entidade) ou vazio: estado vazio, a porta recusa
+        if limpo:                                    # `None` (forma do piso) ou vazio: estado vazio, a porta recusa
             estado["comando"] = limpo
             if app and _APP.fullmatch(app):
                 estado["app"] = app

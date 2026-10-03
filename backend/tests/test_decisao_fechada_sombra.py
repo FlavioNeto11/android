@@ -378,5 +378,5 @@ def test_aviso_diz_o_que_de_fato_sai_por_combinacao_de_classes(consumidores: dic
     aviso = transparencia.aviso(cfg, chave_configurada=True)
     assert aviso is not None and "ids e categorias" in aviso
     assert ("nomes e descrições do catálogo" in aviso) is catalogo
-    assert ("o comando do dono com nome de pessoa, @handle e número mascarados" in aviso) is comando
+    assert ("o comando do dono filtrado (e-mail, telefone, @handle, link e número mascarados; nome fica)" in aviso) is comando
     assert transparencia.o_que_sai(cfg)[0] == "ids e categorias"

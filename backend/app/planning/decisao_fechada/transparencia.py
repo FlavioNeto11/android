@@ -41,15 +41,15 @@ def classes_que_podem_sair(cfg: DecisaoFechadaCfg | None) -> list[str]:
 def o_que_sai(cfg: DecisaoFechadaCfg | None) -> list[str]:
     """O que de fato sai, em palavras, para os consumidores LIGADOS: sempre "ids e categorias" (C0 e C1) e, quando as classes
     efetivas (teto ∩ YAML) incluem C2 ou C3 e um consumidor ligado as manda, o catálogo do dono (C2) e o comando
-    com nome de pessoa, @handle e número mascarados (C3; o nome de app vai, ADR-069 item 10). O aviso não promete
-    menos do que sai."""
+    filtrado (C3: e-mail, telefone, @handle, link e número mascarados; o nome fica, ADR-069 item 10). O aviso não
+    promete menos do que sai."""
     ativos = consumidores_ativos(cfg)
     classes = set(classes_que_podem_sair(cfg))
     saidas = ["ids e categorias"]
     if "C2" in classes and any(o in _ORIGENS_C2 for o in ativos):
         saidas.append("nomes e descrições do catálogo do dono")
     if "C3" in classes and any(o in privacidade.C3_ORIGENS and m in privacidade.C3_MODOS for o, m in ativos.items()):
-        saidas.append("o comando do dono com nome de pessoa, @handle e número mascarados (nome de app vai)")
+        saidas.append("o comando do dono filtrado (e-mail, telefone, @handle, link e número mascarados; nome fica)")
     return saidas
 
 

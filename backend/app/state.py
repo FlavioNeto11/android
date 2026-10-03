@@ -38,7 +38,6 @@ from .devices.sdk import SdkTools
 from .events import EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
-from .modules.applications.infrastructure import registry as registro_de_apps
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos
 from .modules.identity.application.ports import SessionProvider
@@ -478,11 +477,8 @@ class AppState:
         self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social,
                                secrets=self.secrets, skills=self.skill_planner)
         # Sombra da intenção (31.9, ADR-069): R2 e R3 fora da cadeia, depois do `_plan`. Com a config padrão é inerte.
-        # Os nomes de app do registro (rótulo e nome, ADR-052) são o vocabulário extra da C3: nunca o texto do catálogo.
         self.runs.sombra_intencao = SombraDaIntencao(
-            ConsumidorDeIntencao(self.decisao_fechada, self.decisao_sombra,
-                                 nomes_de_app=lambda: [n for a in registro_de_apps.registered() for n in (a.label, a.name)]),
-            resolver=self.skill_planner.resolve_intent,
+            ConsumidorDeIntencao(self.decisao_fechada, self.decisao_sombra), resolver=self.skill_planner.resolve_intent,
             catalogo=lambda: catalogo_de(
                 lambda estado: self.skill_registry.list(state=estado), self.skill_registry.definition,
                 skills_ligadas=self.cfg.file.skills.enabled, fluxos_ligados=self.cfg.file.ai.flows))
