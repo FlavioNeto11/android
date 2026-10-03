@@ -77,6 +77,7 @@ beforeEach(() => {
   backend.install();
   backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => json({ itens: [RECEITA, LICAO, HABILIDADE], total: 3 }));
   backend.on('GET', /^\/api\/aprendizado\/revisar$/, () => json({ itens: [LEGADO], total: 1 }));
+  backend.on('GET', /^\/api\/aprendizado\/intencao$/, () => json({ itens: [], total: 0 }));        // 30.25, vazia
   backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [PUBLICADO, MEMORIA, RECEITA], total: 3,
                                                           contagem: { fluxo: { published: 1 }, memoria: { '-': 12 }, receita: { validated: 1 } } }));
   backend.on('GET', /^\/api\/aprendizado\/falhas$/, () => json(FALHAS));

@@ -812,6 +812,8 @@ export interface Sinal {
   capability_nome: string | null;
   failure_kind: string | null;
   simulated: boolean;
+  /** `data.template_id` do `parecer_decidido`: `curador` (parecer da IA) ou `intencao` (o rótulo do 30.25). */
+  template: string | null;
 }
 
 export const SINAL_LABEL: Record<string, string> = {
@@ -830,6 +832,11 @@ export function rotuloDoSinal(k: string): string {
   return SINAL_LABEL[k] ?? k;
 }
 
+/** O rótulo de UMA linha: a resposta a "Qual era o pedido?" (30.25) também é um `parecer_decidido`, sem IA nenhuma. */
+export function rotuloDaLinhaDeSinal(s: Pick<Sinal, 'kind' | 'template'>): string {
+  return s.kind === 'parecer_decidido' && s.template === 'intencao' ? 'Disse qual era o pedido' : rotuloDoSinal(s.kind);
+}
+
 function isPolaridade(v: unknown): v is Polaridade {
   return v === 'positive' || v === 'negative' || v === 'neutral';
 }
@@ -845,6 +852,7 @@ function lerSinal(v: unknown): Sinal | null {
     run_id: str(v.run_id), objective_id: str(v.objective_id), app_package: str(v.app_package) ?? '',
     capability: str(v.capability) ?? '', app_nome: str(v.app_nome), capability_nome: str(v.capability_nome),
     failure_kind: str(v.failure_kind), simulated: bool(v.simulated),
+    template: isRecord(v.data) ? str(v.data.template_id) : null,
   };
 }
 

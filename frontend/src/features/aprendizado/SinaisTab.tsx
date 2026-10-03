@@ -11,7 +11,9 @@ import { formatDateTime, formatQuando } from '../../lib/time';
 import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
 import { ETAPA_LIVRE } from './atencao';
-import { type Polaridade, SINAL_KINDS, type Sinal, rotuloDaFalha, rotuloDoMotivo, rotuloDoSinal } from './model';
+import {
+  type Polaridade, SINAL_KINDS, type Sinal, rotuloDaFalha, rotuloDaLinhaDeSinal, rotuloDoMotivo, rotuloDoSinal,
+} from './model';
 import styles from './Aprendizado.module.css';
 
 const JANELAS = [7, 14, 30] as const;
@@ -65,7 +67,7 @@ function LinhaDeSinal({ s }: { s: Sinal }) {
   return (
     <li className={styles.item} data-item={`sinal:${s.id ?? s.source_ref}`}>
       <div className={styles.itemHead}>
-        <span className={styles.itemTitulo}>{rotuloDoSinal(s.kind)}</span>
+        <span className={styles.itemTitulo}>{rotuloDaLinhaDeSinal(s)}</span>
         {pol ? <Badge tone={pol.tone} size="sm">{pol.label}</Badge> : null}
         {s.verdict ? <Badge tone={s.verdict === 'certo' ? 'success' : 'danger'} size="sm">deu {s.verdict}</Badge> : null}
         {s.simulated ? <Badge tone="warning" size="sm" icon={FlaskConical} title="Execução simulada: nunca desliga nem promove nada real">simulado</Badge> : null}

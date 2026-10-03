@@ -12,6 +12,7 @@ import { toast } from '../../store/toasts';
 import { usePendenciasStore } from '../pendencias/store';
 import { apiAprendizado } from './api';
 import { useContagemDoAprendizado } from './contagem';
+import { IntencaoSecao } from './IntencaoSecao';
 import { AvisoDaHabilidade, DecisaoInline, ItemDoLivro, aplicarTransicao, chaveDoItem } from './ItemDoLivro';
 import { ResumoParaDecidir } from './ResumoParaDecidir';
 import {
@@ -57,7 +58,7 @@ function AceitarPareceres({ modo, itens, escolhidos, onAbrir }: {
  * dono, com a evidência ao lado e a aprovação em lote. A habilidade validada também espera aqui (publicar é sempre
  * de uma pessoa) e se decide pela rota das habilidades (`acoesNaFila`, `aplicarTransicao`). Embaixo, "Revisar":
  * receitas e fluxos já ativos com efeito, anteriores ao D1, que continuam valendo até o dono decidir (desvio
- * consciente do ADR-054).
+ * consciente do ADR-054). Por último, "Qual era o pedido?" (30.25), que carrega à parte e é opcional.
  */
 export function ParaAprovarTab() {
   const [fila, setFila] = useState<Leitura>(VAZIA);
@@ -316,6 +317,8 @@ export function ParaAprovarTab() {
           </ul>
         )}
       </section>
+
+      <IntencaoSecao />
     </>
   );
 }
