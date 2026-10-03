@@ -48,6 +48,7 @@ from app.modules.learning.domain.parecer import RevisaoGravada
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.saude import Saude
 from app.modules.learning.domain.vocabulario import LivroKind, Origem
+from app.modules.learning.presentation.nomes import nomear_apps
 from app.modules.skills.domain.document import JsonObject, JsonValue
 from app.shared.costuras import autor_do_gesto
 
@@ -134,7 +135,7 @@ def _entrada(e: EntradaDoLivro, servico: LearningService | None = None, saude: S
         modo_publica, veto = servico.contexto_de_publicacao(e)
         motivo = por_que_o_sistema_nao_publica(e, modo_publica=modo_publica, veto=veto)
     return {"kind": e.kind.value, "ref": e.ref, "state": e.state.value if e.state else None,
-            "native_status": e.native_status, "title": e.title, "app": e.app, "app_ref": e.app_ref,
+            "native_status": e.native_status, "title": e.title, "etapa": e.etapa, "app": e.app, "app_ref": e.app_ref,
             "capability": capability, "capability_nome": capability_nome,
             "origin": e.origin.value,
             "side_effect": e.side_effect, "human_origin": e.human_origin, "requires_owner": e.requires_owner,
@@ -229,7 +230,7 @@ def _detalhe(d: DetalheDoLivro, servico: LearningService) -> JsonObject:
     invalidas = frozenset(r for t in d.trilha if (r := run_invalidada(t.reason)) is not None)
     a_invalidar = evidencia_a_invalidar(d.entrada, d.trilha)
     saida: JsonObject = {
-        "item": _entrada(d.entrada, servico, d.saude, capability, nome, servico.legado_decidido()),
+        "item": _nomeada(_entrada(d.entrada, servico, d.saude, capability, nome, servico.legado_decidido()), servico),
         "evidencias": [_evidencia(e, invalidas) for e in d.evidencias],
         "trilha": [_transicao(t) for t in d.trilha], "exposicoes": list(d.exposicoes),
         "conteudo": d.conteudo, "versao": d.versao, "relacoes": list(d.relacoes),
@@ -244,6 +245,12 @@ def _detalhe(d: DetalheDoLivro, servico: LearningService) -> JsonObject:
     return saida
 
 
+def _nomeada(entrada: JsonObject, servico: LearningService) -> JsonObject:
+    """A entrada com `app_nome` (o nome do app no lugar do pacote; validação do deploy 4)."""
+    nomear_apps([entrada], servico)
+    return entrada
+
+
 def _lista(entradas: tuple[EntradaDoLivro, ...], servico: LearningService) -> JsonObject:
     saudes = servico.saudes(entradas)
     capabilities = servico.capabilities(entradas)
@@ -251,9 +258,11 @@ def _lista(entradas: tuple[EntradaDoLivro, ...], servico: LearningService) -> Js
     pareceres = _pareceres(servico)
     na_fila = pareceres.na_fila(entradas) if pareceres is not None else {}
     legado = servico.legado_decidido()
-    return {"itens": [{**_entrada(e, servico, saudes.get(e.trail_ref), capabilities.get(e.trail_ref),
-                                  nomes.get(e.trail_ref), legado),
-                       "parecer": _parecer_na_fila(na_fila.get(e.trail_ref))} for e in entradas],
+    itens: list[JsonValue] = [{**_entrada(e, servico, saudes.get(e.trail_ref), capabilities.get(e.trail_ref),
+                                           nomes.get(e.trail_ref), legado),
+                                "parecer": _parecer_na_fila(na_fila.get(e.trail_ref))} for e in entradas]
+    nomear_apps(itens, servico)
+    return {"itens": itens,
             "total": len(entradas), "curador": None if pareceres is None else {"modo": pareceres.modo.value}}
 
 
@@ -302,9 +311,10 @@ async def ler_livro(request: Request, kind: LivroKind | None = None, state: Skil
     capabilities = servico.capabilities(livro.itens)
     nomes = servico.nomes_das_capabilities(livro.itens, capabilities)
     legado = servico.legado_decidido()
-    return {"itens": [_entrada(e, servico, livro.saudes.get(e.trail_ref), capabilities.get(e.trail_ref),
-                               nomes.get(e.trail_ref), legado) for e in livro.itens],
-            "total": len(livro.itens), "contagem": contagem}
+    itens: list[JsonValue] = [_entrada(e, servico, livro.saudes.get(e.trail_ref), capabilities.get(e.trail_ref),
+                                       nomes.get(e.trail_ref), legado) for e in livro.itens]
+    nomear_apps(itens, servico)
+    return {"itens": itens, "total": len(livro.itens), "contagem": contagem}
 
 
 @router.get("/pendentes", response_model=None)

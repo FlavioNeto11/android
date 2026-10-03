@@ -146,6 +146,20 @@ describe('página Aprendizado', () => {
     expect(backend.callsTo('GET', /^\/api\/aprendizado\/sinais$/)[0]?.query.get('dias')).toBe('14');
   });
 
+  it('Para aprovar diz o nome do app (o pacote no title) e dá nome à receita de app sem catálogo (deploy 4)', async () => {
+    const qa = entrada({ ref: '70', title: 'fill_message (v1)', app: 'com.pocqa.messenger', app_nome: 'QA Messenger',
+                         etapa: 'Digitar a mensagem', capability: null, capability_nome: null });
+    const semNome = entrada({ ref: '71', title: 'open_app (v1)', app: 'com.exemplo.sem.nome', app_nome: null });
+    backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => json({ itens: [qa, semNome], total: 2 }));
+    await montar();
+    await waitFor(() => expect(item('receita:70')).toBeTruthy());
+    expect(text(item('receita:70'))).toContain('Digitar a mensagem · etapa fill_message (v1)');
+    expect(text(item('receita:70'))).toContain('App: QA Messenger');
+    expect(text(item('receita:70'))).not.toContain('com.pocqa.messenger');
+    expect(byRole('button', /^QA Messenger$/, item('receita:70')).getAttribute('title')).toContain('com.pocqa.messenger');
+    expect(text(item('receita:71'))).toContain('App: com.exemplo.sem.nome');   // sem nome, o pacote
+  });
+
   it('aprovar exige motivo e chama POST status com o próximo estado', async () => {
     await montar();
     await waitFor(() => expect(item('receita:12')).toBeTruthy());

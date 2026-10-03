@@ -226,7 +226,7 @@ describe('falhas e capability no detalhe do app', () => {
     const secao = container.querySelector('[aria-label="O que falha neste app"]') as HTMLElement;
     expect(text(secao)).toContain('O que falha (4)');
     const subtitulos = Array.from(secao.querySelectorAll('h4')).map((h) => h.textContent);
-    expect(subtitulos).toEqual(['abrir_conversa (1)', 'enviar_mensagem (2)', 'Etapa livre (sem capability) (1)']);
+    expect(subtitulos).toEqual(['abrir_conversa (1)', 'enviar_mensagem (2)', 'Etapa livre (fora do catálogo) (1)']);
     // Dentro do grupo vale a ordem do custo (a do backend): o de custo 5 antes do de custo 2.
     const enviar = secao.querySelector('ol[aria-label="Falhas de enviar_mensagem"]') as HTMLElement;
     expect(Array.from(enviar.querySelectorAll('li[data-item]')).map((li) => li.getAttribute('data-item'))).toEqual(['fk-enviar-a', 'fk-enviar-b']);

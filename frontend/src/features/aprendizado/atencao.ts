@@ -62,7 +62,7 @@ export const ETAPA_LIVRE = '*';
 
 /** O nome do grupo: o nome em português do catálogo (`capability_nome`) quando o backend o manda; senão o código. */
 export function rotuloDaCapability(c: string, nome?: string | null): string {
-  return c === ETAPA_LIVRE ? 'Etapa livre (sem capability)' : nome || c;
+  return c === ETAPA_LIVRE ? 'Etapa livre (fora do catálogo)' : nome || c;
 }
 
 /** Primeiro `capability_nome` não vazio da lista (todos do grupo têm a mesma capability e o mesmo app). */
@@ -162,7 +162,7 @@ export function gruposDoAprendido<T extends Pick<EntradaDoLivro, 'kind'>>(
       const nome = ehCap ? nomeDoGrupo(lista) : null;
       return {
         chave,
-        titulo: chave === FLUXOS ? 'Fluxos (o comando inteiro)' : chave === SEM_CAPABILITY ? 'Sem capability conhecida'
+        titulo: chave === FLUXOS ? 'Fluxos (o comando inteiro)' : chave === SEM_CAPABILITY ? 'Fora do catálogo'
           : chave.startsWith('tipo:') && lista[0] ? rotuloDoTipo(lista[0].kind) : nome ?? chave,
         ehCapability: ehCap && nome === null,
         codigo: ehCap && nome !== null ? chave : null,
