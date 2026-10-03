@@ -2181,7 +2181,7 @@
   "31.11": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1443839f93c2a1eaf8dff",
    "url": "https://trello.com/c/yTO4tL0h",
-   "lista": "em_execucao",
+   "lista": "em_validacao",
    "lote": "lote_A8_atuais_pendentes"
   },
   "31.12": {
@@ -2193,7 +2193,7 @@
   "31.13": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1443f3fd2dab6dc4dc73e",
    "url": "https://trello.com/c/BBitk6ED",
-   "lista": "em_execucao",
+   "lista": "em_validacao",
    "lote": "lote_A8_atuais_pendentes"
   },
   "📖 Como ler o Programa": {
@@ -2537,7 +2537,7 @@
    "url": "https://trello.com/c/cS8Yi3nL",
    "lista": "em_validacao",
    "lote": "lote_A8_atuais_pendentes",
-   "nome": "28.15 · Telegram como canal de entrada (responder e comandar a Central pelo Telegram)"
+   "nome": "28.15 · Telegram como canal de entrada (no servidor desde o deploy 14, desligado até a última revisão)"
   },
   "30.37": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1414c6599c75f6bdf20dc",
@@ -2744,7 +2744,7 @@
   "29.54": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac15b648374e3546fb52ab2",
    "url": "https://trello.com/c/jIWTRcsM",
-   "lista": "em_execucao",
+   "lista": "em_validacao",
    "lote": "fatos-1940"
   },
   "30.39": {
@@ -2777,6 +2777,20 @@
    "lista": "decisoes",
    "lote": "lote_A9_programa",
    "nome": "⚖️ Convidados no Trello e no bot do Telegram: pergunta se responde; pedido passa pelo dono (03/10 ~20:15Z e 20:51Z)"
+  },
+  "suite:15": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac16c2afdeb1c4e0359847e",
+   "url": "https://trello.com/c/ajdDDjrR",
+   "lista": "em_execucao",
+   "lote": "canais",
+   "nome": "Suíte 15 → deploy 15 (03/10): portal público (29.54) + 30.39 + 31.11 + 31.13"
+  },
+  "30.40": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac16c2e8db615383c900b44",
+   "url": "https://trello.com/c/r5ezb0Lo",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "30.40 · Pedido antigo herda o teto da configuração; curador não pede evidência de receita sem caminho"
   }
  },
  "falhas": [],
