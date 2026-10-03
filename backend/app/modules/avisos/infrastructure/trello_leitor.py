@@ -59,6 +59,8 @@ log = logging.getLogger("poc.avisos.trello")
 #: O fato do cartão vai em `responde_a`, com este prefixo: não é um reply (o Trello não tem), e o prefixo impede a regra do
 #: Telegram ("reply a mensagem que a Central não mandou é da orquestradora") de se aplicar por engano.
 PREFIXO_DO_FATO = "fato:"
+#: Comentário que começa com isto é de uma IA (a Central ou uma sessão), nunca um pedido do dono, que não usa 🤖.
+MARCA_DE_IA = "🤖"
 #: O `since` de um quadro que ainda não tem action nenhuma.
 SEM_HISTORICO = "1970-01-01T00:00:00.000Z"
 #: A leitura que não anda há mais que isto vezes `reconciliar_s` vira `trello_leitor_atrasado`.
@@ -167,7 +169,9 @@ def recebida_da_action(action: Mapping[str, object], cfg: TrelloCfg, *,
     tipo_da_action = action.get("type")
     if tipo_da_action == "commentCard":
         texto = str(dados.get("text") or "")
-        if texto.lstrip().startswith(PREFIXO_DA_IA) or (da_central is not None and da_central(ident)):
+        # Qualquer 🤖 no começo é de IA, não do dono: a Central, a sessão Canais, a orquestradora (`🤖 ORQ`) e os comentários
+        # antigos (`🤖 HH:MMZ ·`) escrevem todos com o token dele. Regra C-07 de docs/dominios/canais.md.
+        if texto.lstrip().startswith((PREFIXO_DA_IA, MARCA_DE_IA)) or (da_central is not None and da_central(ident)):
             return outro()                    # o que a própria Central escreveu volta como action do dono (o token é o dele)
         return Recebida(id_externo=ident, ordem=None, tipo="mensagem", do_dono=do_dono, texto=texto,
                         ref_mensagem=ref, responde_a=fato, escrita_em=escrita)

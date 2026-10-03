@@ -517,6 +517,15 @@ async def test_o_que_a_propria_central_escreveu_volta_como_action_do_dono_e_e_ig
     c.trello.comenta(DONO, C_APR, PREFIXO + "resolvido: a aprovação foi decidida")
     await c.volta()
     assert len(c.trello.textos()) == 1 and c.acoes_da_central()[-1][0] == "status"
+    # O comentário de outra IA com a conta do dono (a orquestradora, ou o formato antigo da Canais) também não é pedido.
+    antes = len(c.acoes_da_central())
+    for texto in ("🤖 ORQ · 10:00Z · /status", "🤖 10:00Z · /pendencias"):
+        acao = c.trello.comenta(DONO, C_MANUAL, texto)
+        await c.volta()
+        linha = c.db.query("SELECT estado, texto FROM canal_entradas WHERE canal='trello' AND id_externo=?",
+                           (acao["id"],))
+        assert [(x["estado"], x["texto"]) for x in linha] == [("ignorada", None)]
+    assert len(c.trello.textos()) == 1 and len(c.acoes_da_central()) == antes
 
 
 async def test_toda_escrita_comeca_com_o_prefixo_da_ia_e_nada_do_convidado_vai_ao_trello(tmp_path: Path) -> None:
