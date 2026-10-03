@@ -2,10 +2,11 @@
 import { act } from 'react';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { WATCH_RENEW_MS, WATCH_TTL_S } from '../api/ws';
-import { makeSnapshot } from '../test/fixtures';
+import { makeRun, makeRunDetail, makeSnapshot } from '../test/fixtures';
 import { FakeBackend, FakeWebSocket, flush, installBrowserStubs, json, waitFor } from '../test/harness';
+import { useAppStore } from './app';
 import { useControlStore } from './control';
-import { WATCH_COALESCE_MS, startLive, stopLive } from './live';
+import { WATCH_COALESCE_MS, loadRunDetail, startLive, stopLive, summaryOf } from './live';
 import { usePreviewStore } from './preview';
 import { useUiStore } from './ui';
 
@@ -177,5 +178,32 @@ describe('live — aba oculta com o controle manual (lease) do aparelho em foco'
     // soltou o controle com a aba ainda oculta: volta ao vazio na hora
     await act(async () => useControlStore.setState({ leases: {} }));
     expect(lastWatch(ws)).toEqual(vazio);
+  });
+});
+
+describe('live — abrir o detalhe não tira campos do cartão da lista', () => {
+  // Validação do deploy 14 (importante 2): o detalhe trocava a entrada da lista por um resumo sem `prova_fluxo_id`, e
+  // o selo "Prova de fluxo (validação)" sumia do cartão da execução que a pessoa acabou de abrir.
+  it('o selo da prova, o pedido de origem e os apps continuam na lista depois de carregar o detalhe', async () => {
+    const run = makeRun({ id: 'r-prova', short_id: 'prova', status: 'completed', prova_fluxo_id: 'fluxo-1',
+      pedido_id: 'p-1', ocorrencia_id: 'o-1', app_ids: ['qa-messenger'] });
+    backend.on('GET', /^\/api\/runs\/r-prova$/, () => json(makeRunDetail({ ...run })));
+    backend.on('GET', /^\/api\/runs\/r-prova\/events$/, () => json([]));
+    act(() => { useAppStore.getState().upsertRun(run); });
+    await act(async () => { await loadRunDetail('r-prova'); });
+    const naLista = useAppStore.getState().runs.find((r) => r.id === 'r-prova');
+    expect(naLista?.prova_fluxo_id).toBe('fluxo-1');
+    expect(naLista?.pedido_id).toBe('p-1');
+    expect(naLista?.ocorrencia_id).toBe('o-1');
+    expect(naLista?.app_ids).toEqual(['qa-messenger']);
+  });
+
+  it('campo ausente no detalhe (backend antigo) continua ausente no resumo', () => {
+    const { prova_fluxo_id: _p, pedido_id: _q, ocorrencia_id: _o, app_ids: _a, ...antigo } = makeRun();
+    const resumo = summaryOf(antigo);
+    expect('prova_fluxo_id' in resumo).toBe(false);
+    expect('pedido_id' in resumo).toBe(false);
+    expect('app_ids' in resumo).toBe(false);
+    expect(summaryOf({ ...antigo, prova_fluxo_id: null }).prova_fluxo_id).toBeNull();
   });
 });
