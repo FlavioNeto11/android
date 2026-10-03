@@ -259,6 +259,23 @@ diária.
     - Uma específica mal classificada custa só uma divergência em sombra.
     - Ensaio na cópia do central (03/10), depois da regra do título (o alvo escrito só no título da etapa conta
       como literal): 6 específicas, 9 chaves, 9 candidatas semeadas e nenhuma ativa tocada.
+- **O contêiner sem identidade vira receita pelo filho rotulado (29.40 item 2; revisão da Android em 03/10).**
+  - O caso: a linha clicável de uma lista (a conversa, o contato) não tem `resource-id` nem texto, e o nome mora num
+    filho NÃO clicável. Antes, o toque nela não virava receita.
+  - Na gravação, `_safe_target` guarda até 3 filhos rotulados (`filhos_rotulados`). O filho só entra se, pelo hit-test,
+    o próprio alvo for o menor clicável no centro dele, e só até o primeiro nó fora dos bounds (a janela da
+    pré-ordem).
+  - Na reprodução, o seletor `via: filho` (com a classe do `conteiner`) toca o CENTRO do filho. O driver toca por
+    coordenada, e o Android sobe o toque ao contêiner. Antes do toque, o clicável sob o centro tem de conter o filho,
+    não pode ser ele e tem de ter a classe gravada; outro clicável por cima faz divergir.
+  - `_rotulo_estavel` recusa rótulo que muda com o estado (tempo, "Following", "Active now", online/offline,
+    digitando, o selo "novo") e qualquer @ literal; o nome de pessoa só vale templatizado. O efeito externo pelo
+    filho é recusado em `distill` e em `distill_training`.
+  - Com a chave genérica: o seletor `via: filho` mora em `selectors`, então `_literais` o lê como os outros. O filho
+    com o literal do valor da etapa ("nasa") deixa a receita na chave específica.
+  - Os textos dos filhos ficam no `target` da ação, no banco local, como o texto do alvo já ficava. Nenhum leitor de
+    saída lê a chave `filhos`: as lições leem só `resource_id`, `text` e `desc` do alvo.
+  - Prova `simulated` (`tests/test_receita_filho_rotulado.py`, árvores sintéticas).
 - **Habilidade.** O primeiro escritor real de `skill_validation_results`: cada execução de versão grava a observação
   (`proof=real` só de execução real). Execução com etapa confirmada à mão vira `uncertain`, nunca `passed`. O sistema
   pode validar; publicar é sempre de pessoa.

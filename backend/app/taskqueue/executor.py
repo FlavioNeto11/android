@@ -61,7 +61,7 @@ from .foreach import sanitize_item, teto_de_chamadas
 from .proofs import marcas_pendentes_na_tela, variantes_de_arroba
 from .projecao import HistoricoDeAcoes, app_da_etapa
 from .recipes import (READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, eh_generica,
-                      hash_generico_da_linha, unique_selectors)
+                      filhos_rotulados, hash_generico_da_linha, unique_selectors)
 from .repository import Repository
 from .saidas import (ChaveDeTentativa, LeituraInvalida, LeituraSemTexto, LeituraVisualRecusada,
                      args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor, ler_valor_visual, nomes_citados,
@@ -2959,6 +2959,8 @@ def _safe_target(el: Any, tree: UiTree | None = None) -> dict[str, Any] | None:
     d.pop("id", None)                      # "e7" só vale naquela observação
     if tree is not None:
         d["unique"] = unique_selectors(tree, el)
+        if not d["unique"] and (filhos := filhos_rotulados(tree, el)):
+            d["filhos"] = filhos         # 29.40 item 2: o contêiner sem identidade, pelo filho rotulado
     return d
 
 
