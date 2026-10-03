@@ -5701,6 +5701,21 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T04:04:33+00:00"
+  },
+  "30.23": {
+   "id": "30.23",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #121 (feat/30-23-evidencia-invalida @ 4ec4eb42) na main pelo merge 63a81cab da suíte 6 (rodada 2 em cc73e6a8: backend 6275 passed, 7 skipped; frontend 109 arquivos e 1311 testes; scripts 427). Desligamento por evidencia_invalida:<run> com ação própria no livro; o veto barra só renascer da mesma execução; outra execução real reaprende (receita: item novo; fluxo: a mesma linha) com relação reaprende e classe B forçada; contrato com taskqueue/recipes.py combinado com a Android. Prova simulated: tests/test_learning_evidencia_invalida.py, DetalheRico.test.tsx. As transições corretivas da receita 109 e do fluxo do Outlook no central ficam not_run até o deploy 4.",
+   "arquivos": "backend/app/modules/learning/domain/evidencia_invalida.py, domain/ciclo.py, domain/livro.py, domain/politica_de_risco.py, infrastructure/sql_repository.py, presentation/livro.py, backend/app/taskqueue/recipes.py, frontend/src/features/aprendizado/DetalheRico.tsx",
+   "testes": "backend/tests/test_learning_evidencia_invalida.py, frontend/src/features/aprendizado/DetalheRico.test.tsx",
+   "blocker": "",
+   "esforco": "",
+   "grupo": "30-aprendizado-vivo",
+   "modelo": "opus (sessão Aprendizado) + worker-impl",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T04:05:47+00:00"
   }
  },
  "rodadas": [
@@ -6922,6 +6937,15 @@
     "11-usabilidade",
     "14-desempenho",
     "29-pendencias-evolucao3"
+   ]
+  },
+  {
+   "quando": "2026-10-03T04:05:47+00:00",
+   "itens": [
+    "30.23"
+   ],
+   "grupos": [
+    "30-aprendizado-vivo"
    ]
   }
  ]
