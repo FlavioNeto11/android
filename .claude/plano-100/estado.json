@@ -5108,18 +5108,18 @@
   },
   "30.15": {
    "id": "30.15",
-   "status": "partial",
+   "status": "implemented",
    "proof": "simulated",
-   "evidence": "PR #82 merge 312808d1: 1ª fatia, aba Aplicativos (Global → App) como visão inicial, detalhe por app, filtro de app (frontend/src/features/aprendizado/AplicativosTab.tsx, apps.ts); falta saúde, falhas no detalhe do app, capability e fila Atenção",
+   "evidence": "PR #82 merge 312808d1 (1ª fatia: aba Aplicativos Global → App, detalhe por app, filtro de app) e PR #103 merge 9e3398d9 (resto: saúde e falhas no app, fila Atenção, memória fora do eixo de app; saude nas linhas de /apps/{pacote}); vitest 1196, backend 578. Navegador (ensaio com cópia do banco): Global → app, Atenção → item, 375 px; falta percorrer filtros do Aprendido, balde não resolvido e os estados vazio/carregando/erro (vai junto do 30.17). Implantado no central (01351e66).",
    "arquivos": "frontend/src/features/aprendizado/",
-   "testes": "",
-   "blocker": "resto depende do 30.4 (PR #88) e do 30.13",
+   "testes": "frontend/src/features/aprendizado/*.test.tsx",
+   "blocker": "",
    "grupo": "30-aprendizado-vivo",
    "modelo": "sonnet/opus (worker-impl, worker-arquitetura) + coordenação",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-02T20:40:34+00:00"
+   "quando": "2026-10-03T00:43:12+00:00"
   },
   "31.3": {
    "id": "31.3",
@@ -5491,6 +5491,96 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T00:28:47+00:00"
+  },
+  "30.4": {
+   "id": "30.4",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #88 merge 9af6c7d3 depois da suíte 3 verde (a08298fb; 609 testes do módulo na integração): saúde do item (domain/saude.py: dimensões, rótulo e motivos de vocabulário fechado; limiares D-5 aprovados pelo dono, no config), na lista e no detalhe. Implantado no central (01351e66, conferido no /api/health em 03/10 00:28Z); a Atenção do central lida pela API em 02/10 (4 degradando + 7 sem evidência).",
+   "arquivos": "backend/app/modules/learning/domain/saude.py, application/servico.py, presentation/livro.py",
+   "testes": "tests/test_learning_saude.py",
+   "blocker": "",
+   "grupo": "30-aprendizado-vivo",
+   "modelo": "sonnet/opus (worker-impl, worker-arquitetura) + coordenação",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T00:43:12+00:00"
+  },
+  "30.10": {
+   "id": "30.10",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #98 merge 24b8397d (523 testes do módulo sobre a main): curador, domínio — dossiê, contrato de saída em rótulos fechados, validação de citações, política de risco por classe (domain/curador.py, domain/politica_de_risco.py); faixa A só opina com sobra e só de registro; desenho §8.4/§8.7 e ADR-067 alinhados. Efeito medido: a receita 100 do Outlook sobe de B para C no evento. Implantado no central (01351e66).",
+   "arquivos": "backend/app/modules/learning/domain/curador.py, domain/politica_de_risco.py",
+   "testes": "tests/test_learning_curador_dominio.py, tests/test_learning_politica_de_risco.py",
+   "blocker": "",
+   "grupo": "30-aprendizado-vivo",
+   "modelo": "sonnet/opus (worker-impl, worker-arquitetura) + coordenação",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T00:43:12+00:00"
+  },
+  "30.13": {
+   "id": "30.13",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #108 merge 55a62098 (626 testes do módulo): diagnóstico determinístico das falhas (domain/diagnostico.py, infrastructure/contexto_sql.py, application/falhas.py, presentation/falhas.py): conhecimento envolvido, causa provável, proposta estruturada no backlog; teto pelo AIError.kind. A revisão por IA quando a causa é indeterminada NÃO está feita (espera o curador/hub). Implantado no central (01351e66).",
+   "arquivos": "backend/app/modules/learning/domain/diagnostico.py, infrastructure/contexto_sql.py, application/falhas.py",
+   "testes": "tests/test_learning_diagnostico.py",
+   "blocker": "",
+   "grupo": "30-aprendizado-vivo",
+   "modelo": "sonnet/opus (worker-impl, worker-arquitetura) + coordenação",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T00:43:12+00:00"
+  },
+  "30.14": {
+   "id": "30.14",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #99 merge 6e388e0c (578 testes do módulo): obsolescência — rótulo obsoleto_provavel com os sinais do §9.2 e o rebaixamento determinístico catalogo_sem_efeito (destino sempre disabled, reativável por pessoa). Implantado no central (01351e66).",
+   "arquivos": "backend/app/modules/learning/domain/saude.py, application/obsolescencia.py",
+   "testes": "tests/test_learning_obsolescencia.py",
+   "blocker": "",
+   "grupo": "30-aprendizado-vivo",
+   "modelo": "sonnet/opus (worker-impl, worker-arquitetura) + coordenação",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T00:43:12+00:00"
+  },
+  "30.16": {
+   "id": "30.16",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #97 merge 5b7fa342 (vitest 1181): detalhe rico do item (seções do §11.2: conteúdo, saúde, versão, relações, trilha, evidências, ações). Navegador (ensaio com cópia do banco): detalhe rico, desligar → reativar, 375 px; falta Aprovar/Rejeitar (um e em lote) e Desligar em lote no navegador (vai junto do 30.17). Implantado no central (01351e66).",
+   "arquivos": "frontend/src/features/aprendizado/DetalheRico.tsx, ItemDoLivro.tsx",
+   "testes": "frontend/src/features/aprendizado/DetalheRico.test.tsx",
+   "blocker": "",
+   "grupo": "30-aprendizado-vivo",
+   "modelo": "sonnet/opus (worker-impl, worker-arquitetura) + coordenação",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T00:43:12+00:00"
+  },
+  "30.17": {
+   "id": "30.17",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #124 merge 546bc676 (bateria afetada: 53 arquivos que citam aprendizado/learning = 919 passed; frontend inteiro 1298; docs-check 0/0): o parecer da IA diante da pessoa. Rótulo humano em learning_reviews (visto por review_id ou modo on: aceitou/recusou pelo lado; às cegas: o rótulo da ação e o override pelo lado), sempre depois da transição e sem travá-la; POST .../parecer/{review_id} (aceite de um passo, recusa como override, CAS antes da transição na mesma transação, classe mais restritiva); POST .../revisao (202/200/409) e o gatilho pedido_da_pessoa; sinais parecer_decidido e pediu_revisao; painel (seção Parecer da IA, linha da fila, aceite em lote só da B). Correção do 30.11 achada no ensaio: a variante da receita fazia a triagem recusar 24 de 26 receitas. Navegador na cópia do banco do central com provedor de ensaio e hub simulated (modos on e shadow, fluxos pendentes do 30.15/30.16, 375 px). Adendo v0.72 provisório. Não implantado; parecer real not_run (curador off no central até o deploy 4).",
+   "arquivos": "backend/app/modules/learning/domain/parecer.py, application/pareceres.py, infrastructure/revisoes_sql.py, presentation/livro.py, frontend/src/features/aprendizado/ParecerDaIA.tsx, parecer.ts",
+   "testes": "tests/test_learning_pareceres.py, frontend/src/features/aprendizado/ParecerDaIA.test.tsx",
+   "blocker": "",
+   "grupo": "30-aprendizado-vivo",
+   "modelo": "opus (sessão Aprendizado) + coordenação",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T02:52:52+00:00"
   }
  },
  "rodadas": [
@@ -6669,6 +6759,29 @@
    "quando": "2026-10-03T00:28:47+00:00",
    "itens": [
     "30.11"
+   ],
+   "grupos": [
+    "30-aprendizado-vivo"
+   ]
+  },
+  {
+   "quando": "2026-10-03T00:43:12+00:00",
+   "itens": [
+    "30.4",
+    "30.10",
+    "30.13",
+    "30.14",
+    "30.15",
+    "30.16"
+   ],
+   "grupos": [
+    "30-aprendizado-vivo"
+   ]
+  },
+  {
+   "quando": "2026-10-03T02:52:52+00:00",
+   "itens": [
+    "30.17"
    ],
    "grupos": [
     "30-aprendizado-vivo"

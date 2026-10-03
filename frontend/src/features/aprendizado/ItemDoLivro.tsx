@@ -4,70 +4,32 @@ import { api, hintForError, toApiError } from '../../api/client';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
-import { Checkbox, Field, TextInput } from '../../components/Field';
+import { Checkbox } from '../../components/Field';
 import { StatusBadge } from '../../components/StatusBadge';
 import { cx, formatInt } from '../../lib/format';
 import { saveJson } from '../../lib/storage';
 import { formatDateTime, formatQuando } from '../../lib/time';
 import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
+import { DecisaoInline } from './DecisaoInline';
 import { DetalheRico } from './DetalheRico';
 import { metaDeSaude } from './detalhe';
 import { abrirApp } from './apps';
 import {
-  type AcaoDoItem, type DetalheDoLivro, type EntradaDoLivro, ESTADO_META, MOTIVO_MAX, ONDE_FICAM_AS_HABILIDADES,
-  ORIGEM_LABEL, erroDoMotivo, porQueOSistemaNaoPublica, refDaHabilidade, rotuloDoDetalhe, rotuloDoKind,
+  type AcaoDoItem, type DetalheDoLivro, type EntradaDoLivro, ESTADO_META, ONDE_FICAM_AS_HABILIDADES,
+  ORIGEM_LABEL, porQueOSistemaNaoPublica, refDaHabilidade, rotuloDoDetalhe, rotuloDoKind,
 } from './model';
+import { ParecerNaLinha } from './ParecerDaIA';
 import styles from './Aprendizado.module.css';
+
+export { DecisaoInline };
 
 export const chaveDoItem = (e: Pick<EntradaDoLivro, 'kind' | 'ref'>) => `${e.kind}:${e.ref}`;
 
 /**
- * O motivo que toda decisão sobre o livro exige (fica na trilha, `learning_transitions.reason`). Em linha, nunca
- * modal: quem decide vê o item ao lado do que está escrevendo.
- */
-export function DecisaoInline({ acao, rotulo = 'Motivo', onConfirmar, onCancelar }: {
-  acao: Pick<AcaoDoItem, 'confirmar' | 'perigo'>;
-  rotulo?: string;
-  /** Devolve a mensagem de erro, ou `null` quando deu certo. */
-  onConfirmar: (motivo: string) => Promise<string | null>;
-  onCancelar: () => void;
-}) {
-  const [motivo, setMotivo] = useState('');
-  const [enviando, setEnviando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-  const invalido = erroDoMotivo(motivo);
-
-  const enviar = async () => {
-    if (invalido || enviando) return;
-    setEnviando(true);
-    setErro(null);
-    const falha = await onConfirmar(motivo.trim());
-    setEnviando(false);
-    if (falha) setErro(falha);
-  };
-
-  return (
-    <form className={styles.decisao} onSubmit={(e) => { e.preventDefault(); void enviar(); }}>
-      <Field label={rotulo} hint="Fica na trilha do item, com o seu nome." error={erro} className={styles.decisaoCampo}>
-        {({ id, describedBy, invalid }) => (
-          <TextInput id={id} aria-describedby={describedBy} invalid={invalid} value={motivo} maxLength={MOTIVO_MAX}
-                     autoFocus placeholder="Ex.: conferi a evidência e o alvo está certo"
-                     onChange={(e) => setMotivo(e.target.value)} />
-        )}
-      </Field>
-      <div className={styles.decisaoAcoes}>
-        <Button type="submit" size="sm" variant={acao.perigo ? 'danger' : 'primary'} loading={enviando} disabledReason={invalido}>
-          {acao.confirmar}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onCancelar} disabled={enviando}>Cancelar</Button>
-      </div>
-    </form>
-  );
-}
-
-/**
- * Aplica UMA transição e devolve o erro legível (ou `null`). O motivo nunca sai daqui para um toast ou log.
+ * Aplica UMA transição e devolve o erro legível (ou `null`). O motivo nunca sai daqui para um toast ou log. Com um
+ * parecer da IA pendente na linha (30.17), a decisão vai com o `review_id`: fica registrada contra o parecer que a
+ * pessoa via (aceitou, se foi para o lado dele; recusou, se não).
  *
  * Habilidade vai direto pela rota das habilidades (`POST /api/skills/{id}/versions/{n}/status`): a do livro a recusa
  * com 409 `use_skills_route`, e mandar lá primeiro só gastaria uma ida. Quem decide continua sendo a pessoa da sessão
@@ -81,7 +43,7 @@ export async function aplicarTransicao(e: EntradaDoLivro, acao: Pick<AcaoDoItem,
       if (!ref) return `A referência "${e.ref}" não diz a versão: decida em ${ONDE_FICAM_AS_HABILIDADES}.`;
       await api.transitionSkill(ref.skillId, ref.version, { to: acao.to, reason: motivo });
     } else {
-      await apiAprendizado.mudarEstado(e.kind, e.ref, acao.to, motivo);
+      await apiAprendizado.mudarEstado(e.kind, e.ref, acao.to, motivo, e.parecer?.id);
     }
     return null;
   } catch (err) {
@@ -120,7 +82,8 @@ export function AvisoDaHabilidade({ naFila }: { naFila: boolean }) {
 function DetalheDoItem({ entrada, onMudou }: { entrada: EntradaDoLivro; onMudou?: () => void }) {
   const [detalhe, setDetalhe] = useState<DetalheDoLivro | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  // Uma ação do próprio detalhe (a evidência inválida, 30.23) relê o detalhe e avisa a lista.
+  // Um gesto no próprio detalhe (a evidência inválida, 30.23; o parecer da IA, 30.17) relê o detalhe e avisa a lista,
+  // que pode tirar o item da fila.
   const [leitura, setLeitura] = useState(0);
   useEffect(() => {
     const ctl = new AbortController();
@@ -209,6 +172,7 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
         </p>
       ) : null}
       {naoPublica ? <p className={styles.notaDoItem}>O sistema não publica sozinho: {naoPublica}</p> : null}
+      {e.parecer ? <ParecerNaLinha p={e.parecer} /> : null}
       {extra}
       {acoes.length > 0 && !aberta ? (
         <div className={styles.itemAcoes}>

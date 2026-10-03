@@ -127,6 +127,8 @@ simulada não promove nada. Nota com cara de credencial não é gravada (`note_r
 | `cancelou_execucao` | `POST /api/runs/{id}/cancel` (`RunService.cancel` com `por`); a sucessora que cancela a execução respondida não conta | neutro antes de rodar (`planning`, `needs_input`, `planned`); negativo depois (`running`, `paused`, `completed_with_issues`) |
 | `comando_incerto_resolvido` | `POST /api/commands/{id}/resolve` | `succeeded` neutro (é confirmar à mão: nunca evidência a favor); `failed` negativo; `cancelled` neutro |
 | `correcao_de_ensino` | `TeachingService.add_correction` (`POST /api/teaching-sessions/{id}/corrections`) | negativo, ligado à etapa corrigida |
+| `parecer_decidido` | a decisão da pessoa sobre um parecer do curador (30.17): o gesto ou o rótulo de uma transição | neutro; o `created_at` é o instante da decisão |
+| `pediu_revisao` | `POST /api/aprendizado/{kind}/{ref}/revisao` (30.17) | neutro; vira o gatilho `pedido_da_pessoa` |
 
 `tomou_controle`, `confirmou_a_mao` e `tela_desconhecida_chamou_pessoa` contam como intervenção humana na régua
 diária.
@@ -540,16 +542,19 @@ sem adaptador (testes) usa o SIMULADO.
   `PassoDeCuradoria` e sob a trava de líder `curadoria` (ADR-064; a tomada é idempotente por dono). O `AppState` sobe os laços de
   `LearningService.lacos` (uma linha em `state.py`). Modo e intervalo são lidos a cada volta.
 - **Modos**: `off` (padrão) não roda; `shadow` revisa, grava em `learning_reviews` e publica `learning.needs_person` com
-  `motivo = parecer_da_ia` quando um parecer B ou C novo e válido fica pronto para item que JÁ espera o dono; `on` é igual a `shadow`
-  nesta fatia (a fila com parecer e o aceite em lote são itens seguintes). A IA nunca decide: nada transiciona aqui
-  (`conferir_aceite`).
+  `motivo = parecer_da_ia` quando um parecer B ou C novo e válido fica pronto para item que JÁ espera o dono; `on` revisa igual e,
+  desde o 30.17, mostra o parecer na fila e no detalhe e abre o aceite da pessoa (seção abaixo). A IA nunca decide: nada
+  transiciona no curador (`conferir_aceite`).
 - **Gatilhos ligados**: `nova_pendencia_do_dono` (fila "Para aprovar"), `a_revisar`, `degradando` e `obsoleto_provavel` (saúde do
-  publicado) e `conflito` (publicado com relação `contradiz`). `versao_nova`, `grupo_de_falha_acima_do_minimo` e `pedido_da_pessoa`
-  existem no vocabulário e ainda não têm fonte. Dossiê (`infrastructure/dossies.py`) do detalhe do Livro, com a evidência lida pelo id;
+  publicado), `conflito` (publicado com relação `contradiz`) e, desde o 30.17, `pedido_da_pessoa`. `versao_nova` e
+  `grupo_de_falha_acima_do_minimo` existem no vocabulário e ainda não têm fonte. Dossiê (`infrastructure/dossies.py`) do detalhe do Livro, com a evidência lida pelo id;
   sem grupos do backlog, votos e intervenções nesta fatia.
 - **Filtros**, em ordem: modo → (item, `dossie_hash`) já revisado → cooldown (`cooldown_h`) → orçamento → prioridade. A triagem de
   credencial corre nas folhas de TEXTO do conteúdo do dossiê (o JSON inteiro não: a regra recusa hash longo, data ISO e `receita:12`);
-  recusa = linha `recusada:triagem` sem o dossiê. A `conclusao` com cara de credencial é gravada como `null` (o parecer segue válido).
+  recusa = linha `recusada:triagem` sem o dossiê. Chaves de identificador, hash, data ou rótulo fechado ficam fora da triagem
+  (`_CHAVES_ESTRUTURAIS`), entre elas a `variante` da receita (`en-US/xhdpi`): sem ela na lista, 24 de 26 receitas da cópia do
+  central saíam `recusada:triagem` e o curador nunca revisava receita (achado no ensaio do 30.17, 03/10). A `conclusao` com cara
+  de credencial é gravada como `null` (o parecer segue válido).
 - **Orçamento** (`domain/orcamento_do_curador.py`): `B_W = min(alfa·G_W, k·N_W·c̄)`, `G_W` = `SUM(learning_daily.usd)` na janela (sem
   filtro de falha); `N_W` = revisões da janela + elegíveis da volta; `c̄` = média do `usd` MEDIDO ou, sem medida, da estimativa
   (`tamanho_em_bytes`/3 tokens × o preço de entrada mais caro de `ai.prices` + 400 tokens de saída). A estimativa só decide; o gasto
@@ -566,6 +571,33 @@ sem adaptador (testes) usa o SIMULADO.
   decide se o parecer avisa o dono.
 - Fica para depois: o alerta do pico como evento + Problem em `/api/health` (hoje só log), o aviso a 80 % de `B_W`, as fontes dos três
   gatilhos sem fonte, e o `resultado_posterior`.
+
+## O parecer diante da pessoa (30.17)
+
+Desenho em `design/aprendizado-vivo.md` §8.8, §11.2 e §11.3; contrato no adendo v0.72 do `api-contract.md`. Domínio em
+`domain/parecer.py`; aplicação em `application/pareceres.py` (`ServicoDePareceres`, pendurado no Livro por `ligar_curador`
+com o MESMO registro e a mesma fonte de dossiês do curador); leitura e gravação em `infrastructure/revisoes_sql.py`.
+
+- **Visibilidade** (`parecer_visivel`): em `on`, sempre; fora dele, só o parecer já decidido. A sombra mede a IA contra a
+  decisão da pessoa sem que ela veja a sugestão (D-3); o detalhe só avisa que há um parecer escondido.
+- **Rótulo.** É o único produtor de rótulo humano de `learning_reviews` (decisão da orquestradora, 03/10: sem caminho
+  paralelo). Toda transição de pessoa pelo Livro (`/status`, os `PUT` legados) rotula o parecer pendente do estado de antes,
+  DEPOIS da transição e sem nunca travá-la (uma falha do rótulo só vai ao log). Vista (`review_id` ou modo `on`):
+  `aceitou` ou `recusou`, pelo lado da sugestão (`Direcao`: sobe, desce, espera). Às cegas: o rótulo da própria ação, com
+  `override` pelo lado. O instante da decisão é o `created_at` do sinal `parecer_decidido` (a 069 não tem coluna).
+- **Gesto** (`responder`): aceitar dá UM passo do lado sugerido (`acao_do_aceite`); descer é desligar ou rejeitar, nunca
+  aposentar; `substituir`, `fundir` e os lados de espera são concordar, sem transição. `conferir_gesto` recusa, nesta
+  ordem: inválido, já decidido, oculto, simulado, desatualizado e a classe (`conferir_aceite`, com a mais restritiva entre a
+  classe gravada e a do dossiê de agora). O CAS da decisão vem antes da transição, na mesma transação.
+- **Pedido de revisão**: sinal `pediu_revisao` com o `dossie_hash`; o curador o lê como o gatilho `pedido_da_pessoa`
+  (`JANELA_DO_PEDIDO_DIAS` = 7; atendido = revisão do item depois do pedido), que só pula o cooldown. Só em `on`; o dossiê
+  já revisado responde com a revisão que existe.
+- **Painel** (`features/aprendizado/ParecerDaIA.tsx`, `parecer.ts`): a seção "Parecer da IA" no detalhe (sugestão, classe,
+  conclusão, o que a IA citou, com link, aceitar ou recusar com motivo, pedir revisão, histórico), a frase "Parecer da IA:
+  …" na linha da fila e "Aceitar pareceres da IA" em lote, só na classe B. O painel não decide regra: mostra a `acao` e a
+  `recusa` que o backend manda.
+- **Lacuna conhecida** (a pendência A6): aceitar "manter" num item de "Revisar" grava a concordância, mas o item continua
+  lá, porque manter o legado pede um verbo novo no backend.
 
 ## Obsolescência (30.14)
 

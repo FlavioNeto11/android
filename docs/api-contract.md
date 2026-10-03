@@ -3974,3 +3974,83 @@ Uma rota e campos novos; nada muda de tipo. A regra é a emenda de 03/10 ao ADR-
 
 Não há migração: o tipo mora no `reason` de `learning_transitions`, com gramática fechada
 (`evidencia_invalida:r-AAAAMMDDhhmmss-xxxxxx`).
+
+## Adendo v0.72 (03/10/2026, provisório: quem mergear depois renumera) — o parecer da IA diante da pessoa: rótulo, aceite e pedido de revisão (item 30.17)
+
+Aditivo. O curador (30.11) grava pareceres em `learning_reviews`; agora a pessoa os vê, aceita ou recusa, e cada decisão
+dela sobre o item vira o rótulo humano do parecer (`decisao_final`, `decidido_por`, `override`, `override_motivo`,
+`transicao_id`, colunas da 069). Nenhuma migração. Campos e rotas só existem com o curador composto (`ligar_curador`, que o
+`AppState` sempre chama); sem ele, o Livro de antes (`curador: null`, `pareceres: []`).
+
+**Quando o parecer aparece** (`aprendizado.curador.modo`). Em `on`, sempre. Em `shadow` e `off`, só DEPOIS da decisão da
+pessoa: a escolha dela mede se a IA acerta, sem a influência dela (D-3). O parecer pendente escondido só se conta
+(`pendentes_ocultos`).
+
+**Leitura.**
+- `GET /api/aprendizado/pendentes` e `/revisar` → `{itens, total, curador}`; `curador: {modo} | null`. Cada item ganha
+  `parecer: ParecerNaFila | null`, preenchido só em `on` e só com parecer válido, sem decisão e sobre o estado de agora:
+  `{id, criado_em, decisao, confianca, classe, simulated, acao, recusa, recusa_no_lote}`. `acao: {to, rotulo} | null` é o
+  passo que aceitar dá (`null` = aceitar é concordar, sem transição); `recusa` e `recusa_no_lote` dizem por que aceitar
+  sozinho ou em lote não vale agora (`null` = vale; os códigos são os do gesto, abaixo).
+- `GET /api/aprendizado/{kind}/{ref}` ganha `pareceres: [Revisao]` (das 5 revisões mais novas, as que o modo deixa ver) e
+  `curador: {modo, pendentes_ocultos, pode_pedir_revisao} | null`. `Revisao`: `{id, criado_em, gatilho, validade, classe,
+  simulated, modelo, estado_no_parecer, parecer, atual, acao, recusa, decisao_final, decidido_por, override,
+  override_motivo, transicao_id}`. `parecer` é a saída validada (`decisao`, `alvo`, `faixa`, `causa`, `confianca`,
+  `probabilidade`, `evidencias_citadas`, `riscos`, `inconsistencias`, `falta` e `conclusao`, o único texto livre), `null`
+  quando a `validade` não é `ok` (`invalida:<motivo>`, `recusada:custo`, `recusada:triagem`). `atual`: é o parecer que uma
+  decisão de agora responde (só ele traz `acao` e `recusa`). `classe`: a efetiva, a da política endurecida pela `faixa`
+  que a IA declarou.
+
+**O rótulo: toda decisão da pessoa sobre o item.**
+- `POST /api/aprendizado/{kind}/{ref}/status {to, reason, review_id?}`. `review_id` (1 a 64 caracteres) é o parecer que a
+  pessoa viu ao decidir; nunca trava a decisão. A transição é a de antes; depois dela, o parecer pendente do estado de antes
+  recebe o rótulo. O rótulo é acessório: uma falha dele só vai ao log, a decisão fica.
+- A pessoa VIU o parecer quando mandou `review_id` OU quando o curador está em `on` (o painel mostra o parecer na fila).
+  Vista, `decisao_final` é `aceitou` quando a decisão vai para o mesmo lado da sugestão e `recusou` quando não vai (override;
+  o `reason` vira `override_motivo`, salvo cara de credencial). Lados: sobe = `aprovar`; desce = `rebaixar`, `desativar`,
+  `possivelmente_obsoleto`, `substituir`, `fundir`; espera = `observar`, `pedir_evidencia`, `manter`.
+- Às cegas (`shadow` ou `off` sem `review_id`), `decisao_final` é o rótulo da própria ação (`validar`, `aprovar`, `rejeitar`,
+  `desligar`, `aposentar`, `reativar`), com `override` pelo lado e sem motivo.
+- `review_id` que não responde ao estado de agora (já decidido, outro estado): a decisão fica, sem rótulo.
+- `PUT /api/flows/{id}` e `PUT /api/recipes/{id}` rotulam sempre às cegas (a página delas não mostra parecer), com o rótulo
+  do primeiro passo. Decisão do ator `sistema` nunca rotula.
+
+**O gesto sobre o parecer.** `POST /api/aprendizado/{kind}/{ref}/parecer/{review_id} {resposta: "aceitar"|"recusar",
+motivo (1 a 500), em_lote?: false}` → o corpo do detalhe.
+- Aceitar dá o passo do lado sugerido que a pessoa pode dar agora. Sobe: o primeiro disponível de `aprovar`, `validar`,
+  `reativar`. Desce (`rebaixar`, `desativar`, `possivelmente_obsoleto`): `desligar` ou `rejeitar`, nunca `aposentar`.
+  `substituir`, `fundir`, `observar`, `pedir_evidencia` e `manter`: concordar, sem transição. O motivo vai à trilha do item
+  quando há transição, e o parecer fica `aceitou`. Um passo por gesto: aceitar "aprovar" num candidato o valida.
+- Recusar não mexe no item: `decisao_final = recusou`, `override = true`, `override_motivo` = o motivo. Motivo com cara de
+  credencial: 409 `note_looks_secret`, nada gravado.
+- A decisão do parecer é gravada ANTES da transição, na mesma transação, com CAS (`decisao_final IS NULL`): o segundo gesto
+  perde (409 `parecer_ja_decidido`) e uma transição recusada desfaz o rótulo.
+- A classe que vale é a mais restritiva entre a gravada e a do dossiê de agora (sem dossiê, C): um catálogo que mudou
+  endurece, nunca afrouxa.
+- O lote do painel é um gesto por item, em sequência, com `em_lote: true`; só a classe B entra.
+- Erros `{code, message}`: 404 `review_not_found` (a revisão não existe ou é de outro item) e `not_found`; 422 `invalid`
+  (motivo em branco); 409 `parecer_invalido` (sem parecer válido), `parecer_ja_decidido`, `parecer_oculto` (curador fora do
+  `on`), `parecer_simulado` (provedor falso não move item real), `parecer_desatualizado` (o item mudou de estado depois do
+  parecer), `so_registro_na_classe_a` (na A quem decide é a regra), `lote_na_classe_c` (a C só item a item),
+  `note_looks_secret` e os da transição (`transition_forbidden`, `owner_required`, `state_conflict`, `vetoed`); 503
+  `not_ready` sem curador composto.
+
+**Pedido de revisão.** `POST /api/aprendizado/{kind}/{ref}/revisao`, sem corpo:
+- 202 `{pedido: true, revisao: null}`: o pedido entrou (sinal `pediu_revisao`). O curador o atende numa volta seguinte,
+  dentro do orçamento, pelo gatilho `pedido_da_pessoa`: pedidos dos últimos 7 dias sem revisão posterior. O pedido só pula o
+  cooldown; a prioridade é a dos outros gatilhos do item.
+- 200 `{pedido: false, revisao: Revisao}`: o dossiê de agora já foi revisado (a chave (item, dossiê) da 069). O dossiê muda
+  com evidência nova, outro estado ou outra saúde.
+- 409 `curador_fora_do_on` (em `shadow` o curador já revisa sozinho); 422 `invalid` para tipo que o curador não revisa
+  (revisa `receita`, `fluxo`, `licao`, `tela`, `voz`, `preferencia`); 409 `state_conflict` quando não há como montar o dossiê.
+
+**Sinais novos** (`learning_signals`, polaridade neutra, `created_by` = quem decidiu ou pediu):
+
+| `kind` | `source_ref` | `data` |
+|---|---|---|
+| `parecer_decidido` | `parecer:<review_id>` | `{review_id, item_ref, decisao_final, override, viu}`; o `created_at` é QUANDO a pessoa decidiu (a 069 não tem coluna para isso) |
+| `pediu_revisao` | `pedido_de_revisao:<item_ref>@<dossie_hash>` | `{kind, ref, item_ref, dossie_hash}` |
+
+Prova `simulated`: `tests/test_learning_pareceres.py` e `frontend/src/features/aprendizado/ParecerDaIA.test.tsx`;
+navegador na cópia do banco do central com um provedor de ensaio e o hub `simulated` (03/10). `not_run` no central: o
+curador fica `off` até o deploy 4, que o liga em `shadow`.

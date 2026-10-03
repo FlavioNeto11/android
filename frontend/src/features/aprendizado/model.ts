@@ -14,6 +14,7 @@ import { Archive, CircleCheck, CircleDashed, CircleOff, FilePen, ShieldCheck } f
 import type { SkillState } from '../../api/types';
 import { isRecord } from '../../lib/format';
 import type { StatusMeta } from '../../lib/status';
+import type { BlocoDoCurador, ModoDoCurador, ParecerDaIA, ParecerNaFila } from './parecer';
 
 // ---------------------------------------------------------------- vocabulário do livro
 
@@ -71,6 +72,8 @@ export interface EntradaDoLivro {
   nasceu_de?: string | null;
   /** (Re)nasceu no escopo de uma evidência inválida (30.23): espera o dono. Derivado no backend. */
   reaprendido?: Reaprendido | null;
+  /** O parecer pendente da IA (30.17): só nas listas Para aprovar e Revisar, e só com o curador em `on`. */
+  parecer?: ParecerNaFila | null;
 }
 
 /** 30.23: a execução do sucesso falso e o item que ela ensinou (no fluxo, a própria linha, que renasce nela). */
@@ -103,6 +106,8 @@ export interface ListaDoLivro {
   total: number;
   /** Só em `GET /api/aprendizado`: {tipo: {estado: n}}. */
   contagem?: Record<string, Record<string, number>>;
+  /** Nas listas Para aprovar e Revisar (30.17): o modo do curador; `null` sem curador composto. */
+  curador?: { modo: ModoDoCurador } | null;
 }
 
 export interface EvidenciaDoLivro {
@@ -142,6 +147,10 @@ export interface DetalheDoLivro {
   relacoes?: RelacaoDoItem[];
   /** 30.23: a execução de origem que a pessoa pode marcar como evidência inválida agora; `null` quando não cabe. */
   invalidar_evidencia?: { run_id: string } | null;
+  /** 30.17: as revisões do curador que o modo deixa aparecer (a mais recente primeiro) e o bloco do curador.
+   *  Ausentes em backend antigo; `curador: null` sem curador composto. */
+  pareceres?: ParecerDaIA[];
+  curador?: BlocoDoCurador | null;
 }
 
 // ---------------------------------------------------------------- o detalhe rico (30.16): o que o backend manda
@@ -777,6 +786,7 @@ export const SINAL_LABEL: Record<string, string> = {
   escolheu_habilidade: 'Escolheu a habilidade', aprovacao_decidida: 'Decidiu uma aprovação',
   comando_incerto_resolvido: 'Resolveu um comando incerto', correcao_de_ensino: 'Corrigiu no ensino',
   tela_vista: 'Tela vista', tela_desconhecida_chamou_pessoa: 'Tela desconhecida chamou uma pessoa',
+  pediu_revisao: 'Pediu revisão à IA', parecer_decidido: 'Decidiu um parecer da IA',
 };
 
 export const SINAL_KINDS: readonly string[] = Object.keys(SINAL_LABEL);

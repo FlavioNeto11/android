@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: o parecer da IA diante da pessoa (30.17, branch feat/30-17-parecer-no-painel)
+
+- Painel: a seção "Parecer da IA" no detalhe do Livro (sugestão, classe, conclusão, o que a IA citou, aceitar ou recusar
+  com motivo, pedir revisão, histórico) e, com o curador em `on`, a frase "Parecer da IA: …" na linha da fila e o aceite em
+  lote só da classe B. Em `shadow`, o parecer só aparece depois da decisão da pessoa; o detalhe avisa que há um.
+- Backend: toda decisão de pessoa pelo Livro rotula o parecer pendente (`aceitou`/`recusou` quando vista; às cegas, o
+  rótulo da ação), sem nunca travar a transição; `POST /{kind}/{ref}/parecer/{review_id}`, `POST /{kind}/{ref}/revisao`,
+  `review_id` opcional no `/status`; gatilho `pedido_da_pessoa`; sinais `parecer_decidido` e `pediu_revisao`. Adendo
+  v0.72 (provisório: quem mergear depois renumera). Nenhuma migração.
+- Correção do 30.11: a `variante` da receita (`en-US/xhdpi`) fazia a triagem de credencial recusar 24 de 26 receitas da
+  cópia do central (`recusada:triagem`), e o curador nunca revisava receita; agora é chave estrutural.
+- O quadro por versão do detalhe cabe em 375 px.
+- Prova `simulated`: `tests/test_learning_pareceres.py`, `ParecerDaIA.test.tsx`; bateria afetada (53 arquivos, 919) e
+  frontend inteiro (1298); navegador na cópia do banco do central com provedor de ensaio e hub `simulated`, nos modos `on`
+  e `shadow`, e os fluxos pendentes do 30.15/30.16. `not_run` no central (curador `off` até o deploy 4).
+
 ## 2026-10-03 — Aprendizado: evidência inválida como tipo próprio de desligamento (30.23, branch feat/30-23-evidencia-invalida)
 
 - Ação nova `POST /api/aprendizado/{kind}/{ref}/evidencia-invalida {run_id}`. Desliga a receita ou o fluxo aprendido de

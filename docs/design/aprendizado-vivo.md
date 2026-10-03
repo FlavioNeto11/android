@@ -430,6 +430,11 @@ Aviso a 80% de `B_W`, como os tetos de IA atuais.
 `aprendizado.curador.modo`: `off` (padrão de fábrica) | `shadow` (revisa e grava; o parecer não aparece na fila; mede a concordância
 com as decisões humanas) | `on` (o parecer aparece na fila e no detalhe, e a classe B ganha a aprovação em lote).
 
+**No painel (30.17, adendo v0.72).** Em `shadow` e `off`, o parecer pendente não aparece nem na fila nem no detalhe: o detalhe só avisa
+que há um, e ele aparece depois da decisão da pessoa, que o rotula às cegas (o rótulo da ação e o `override` pelo lado). Em `on`, aparece
+na fila e no detalhe, e toda decisão conta como vista (`aceitou`/`recusou`). O pedido de revisão (§11.3) só vale em `on`: em `shadow`, o
+curador já revisa sozinho.
+
 Porta `CuradorDeIA.revisar(dossie, template) -> (saida_bruta, uso)` em `modules/learning/application/ports.py`. Adaptadores: simulado
 (testes, determinístico) e hub de IA. O hub hoje só tem os papéis `plan|decide|verify|escalation|social` (`config.py:28`) e métodos fixos no
 `AIProvider`. Ligar o curador a ele (papel novo ou chamada genérica) toca `config.py`/`planning/routing.py`, área da Jev (17.x): é item próprio,
@@ -495,6 +500,9 @@ da espera, por qualquer transição. Idempotente por (`kind:ref`, `aguardando`):
 escuta `approval.pending`, `run.updated` em `needs_input`, `session.needs_person`, `pedido.aviso` e, desde o 28.14, este evento: só a entrada na
 faixa C por padrão, chave `learning:{kind}:{ref}:{desde}`, nenhum identificador do item na mensagem) e a caixa de Pendências (ADR-062).
 Item 30.21. A linha entra na tabela de eventos do `api-contract.md` no adendo da implementação.
+
+Em `shadow`, o aviso com `motivo = parecer_da_ia` leva a pessoa ao item, mas o detalhe não mostra o parecer antes da decisão dela
+(30.17): diz só que há um. O aviso não carrega a conclusão (regra acima), então não contamina o rótulo às cegas.
 
 ---
 
@@ -624,8 +632,8 @@ Global ── App ── Capability/processo ── Item de conhecimento ── 
 | Versão | quadro do §7 | `versao` |
 | Histórico | trilha com quem e por quê | `trilha[]` (já vem) |
 | Lineage | relações do §6 | `relacoes[]` |
-| IA | última revisão: decisão, confiança, conclusão, evidências citadas (links), riscos, faltas, modelo, custo, data; histórico de revisões | `revisoes[]` |
-| Ações | as permitidas pelo backend (§5.4), aceitar/recusar parecer com motivo, pedir revisão | `acoes[]` |
+| IA | última revisão: decisão, confiança, conclusão, evidências citadas (links), riscos, faltas, modelo, data; histórico de revisões (30.17; o custo espera o `usd` medido na rubrica) | `pareceres[]` + `curador` |
+| Ações | as permitidas pelo backend (§5.4), aceitar/recusar parecer com motivo, pedir revisão | `acoes[]`; o parecer traz `acao` e `recusa` |
 
 Progressive disclosure: a lista mostra 1 linha por item (título legível, app › capability, rótulo de saúde, camada de uso, selo de efeito e
 "por que precisa de você"). O resto só abre no detalhe. Paginação no backend (a lista hoje não tem limite).
@@ -636,9 +644,10 @@ Progressive disclosure: a lista mostra 1 linha por item (título legível, app �
 - `GET /api/aprendizado/apps/{pacote}` → declarado (nomes de telas, capabilities com `risk`, `side_effect.external`, `saidas`), grupos por capability, falhas do app.
 - `GET /api/aprendizado?app=&capability=&kind=&state=&origem=&saude=&atencao=&limite=&cursor=` → como hoje, mais `saude`, `camada_de_uso`, `acoes`; `app_nao_resolvido` explícito.
 - `GET /api/aprendizado/{kind}/{ref}` → hoje + `conteudo`, `saude`, `versao`, `relacoes`, `revisoes`, `acoes`.
-- `POST /api/aprendizado/{kind}/{ref}/status` → igual, com `review_id` opcional (registra aceite ou override).
-- `POST /api/aprendizado/{kind}/{ref}/revisao` → pede revisão (gatilho `pedido_da_pessoa`; respeita orçamento e modo).
-- `GET /api/aprendizado/revisoes?app=&decisao=&desde=` e `GET /api/aprendizado/metricas?app=&dias=`.
+- `POST /api/aprendizado/{kind}/{ref}/status` → igual, com `review_id` opcional (registra aceite ou override). Feito no 30.17.
+- `POST /api/aprendizado/{kind}/{ref}/parecer/{review_id}` → aceitar (o passo do lado sugerido) ou recusar com motivo. Feito no 30.17.
+- `POST /api/aprendizado/{kind}/{ref}/revisao` → pede revisão (gatilho `pedido_da_pessoa`; respeita orçamento e modo). Feito no 30.17.
+- `GET /api/aprendizado/revisoes?app=&decisao=&desde=` e `GET /api/aprendizado/metricas?app=&dias=` (30.8; ainda não).
 
 ---
 
@@ -682,7 +691,7 @@ a partir de `modules/learning/infrastructure/`). Testes de backend no harness (`
 | 30.14 | Obsolescência: rótulo `obsoleto_provavel` com os sinais do §9.2; gatilho do curador; rebaixamento determinístico `catalogo_sem_efeito` (receita 100 do Outlook) | M | `domain/saude.py`, `application/curador.py`, testes | Aprendizado | 30.4, 30.6, 30.11 | `simulated` |
 | 30.15 | Painel: Global → App → Capability → Item, filtro de app, fila Atenção, memória fora do eixo de app | G | `features/aprendizado/*` (página e abas novas), `api.ts`, testes vitest | Aprendizado | 30.1, 30.2, 30.4 | `simulated` (vitest); `real` = inspeção no central após deploy |
 | 30.16 | Painel: detalhe rico (seções do §11.2) | M | `features/aprendizado/ItemDoLivro.tsx` (ou drawer novo), `model.ts`, testes | Aprendizado | 30.3-30.7 | `simulated` (vitest) |
-| 30.17 | Painel: parecer da IA na fila e no detalhe; aceitar ou recusar com motivo (override); pedir revisão | M | `features/aprendizado/*`, testes | Aprendizado | 30.11, 30.16 | `simulated` |
+| 30.17 | Painel: parecer da IA na fila e no detalhe; aceitar ou recusar com motivo (override); pedir revisão | M | `domain/parecer.py`, `application/pareceres.py` (novos), `infrastructure/revisoes_sql.py`, `presentation/livro.py`, `features/aprendizado/*` (`ParecerDaIA.tsx`, `parecer.ts`), testes | Aprendizado | 30.11, 30.16 | `simulated` |
 | 30.18 | Prova da Fase H: Instagram, QAMessenger e Outlook (só leitura, android-01 primeiro) na visão nova, curador em `shadow` com orçamento proporcional | M | `docs/relatorio-validacao.md` | Aprendizado (+ Android para a execução do Outlook) | deploy de 30.1-30.17; D-1, D-3 | `real` (data, máquina, commit, ids); sem efeito em conta de terceiros |
 | 30.19 | Docs: ADR-067 em `decisoes.md`, `docs/dominios/aprendizado.md`, adendo do contrato, CHANGELOG, estado pelo mecanismo | P | `docs/*` | Aprendizado | depois do PR do índice de ADRs | `python scripts/docs-check.py` |
 | 30.20 | Modo por app para lições e telas (§8.10): `por_app` com padrão = global, `modo_efetivo(tipo, pacote)` na coleta, no D1, nos fornecedores e na camada de uso | M | `config.py` (só `LearningCfg`), `config/config.example.yaml`, `application/licoes.py`, `application/telas.py`, `infrastructure/ligar_telas.py`, `ligar_licoes.py`, `domain/camada.py`, testes | Aprendizado | — (ligar de fato: lições no QAMessenger e telas no Outlook, depois da leitura real no android-01) | `simulated` (dois pacotes, modos diferentes; sem override = global); ligar no central = `real` |
