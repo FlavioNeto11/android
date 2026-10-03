@@ -2635,12 +2635,12 @@
    "url": "https://trello.com/c/o5Kxnu6A",
    "lista": "em_execucao",
    "lote": "lote_A8_atuais_pendentes",
-   "nome": "32.2 · Integração da Central com o Trello (em código: passo 2 de 6)"
+   "nome": "32.2 · Integração da Central com o Trello (em código: passo 4 de 6)"
   },
   "pendencia:chave-api-trello": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac142200275ff1e8499b35d",
    "url": "https://trello.com/c/DazOUPxI",
-   "lista": "em_execucao",
+   "lista": "concluido_hoje",
    "lote": "lote_A8_atuais_pendentes",
    "nome": "🙋 Chave, token e segredo da API do Trello para a Central (o dono gera e grava no .env; pode ser já)"
   },
@@ -2781,7 +2781,7 @@
   "suite:15": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac16c2afdeb1c4e0359847e",
    "url": "https://trello.com/c/ajdDDjrR",
-   "lista": "em_execucao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "Suíte 15 → deploy 15 (03/10): portal público (29.54) + 30.39 + 31.11 + 31.13"
   },
@@ -2791,6 +2791,34 @@
    "lista": "proximas",
    "lote": "canais",
    "nome": "30.40 · Pedido antigo herda o teto da configuração; curador não pede evidência de receita sem caminho"
+  },
+  "decisao:ia-ana": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac17045814f524fb9b3c611",
+   "url": "https://trello.com/c/4d2HMyDP",
+   "lista": "decisoes",
+   "lote": "lote_A9_programa",
+   "nome": "⚖️ A IA da Central é a ANA, a IA Gerente de Operações da Central (03/10 21:14Z e 21:16Z)"
+  },
+  "28.17": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac170e3d399a256f48a3cf3",
+   "url": "https://trello.com/c/vMpRwu4h",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "28.17 · Os canais se identificam como ANA (Telegram e Trello)"
+  },
+  "29.57": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac170e70c386021a6386f78",
+   "url": "https://trello.com/c/FLOtosDi",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "29.57 · Painel e falas da IA à pessoa como ANA"
+  },
+  "marco:deploy-15": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac17567df59cea002a54f55",
+   "url": "https://trello.com/c/JehcHYNX",
+   "lista": "marcos",
+   "lote": "canais",
+   "nome": "📅 Deploy 15 · 03/10 21:29Z (2264843e) · sem migração nova · suíte 15: 4 entregas"
   }
  },
  "falhas": [],

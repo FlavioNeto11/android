@@ -20,8 +20,15 @@ def contra_efetivo(alias: str) -> str:
     menos o `against` que tem uma `forma` da mesma origem no mesmo item (a linha que a reclassificação corrigiu). Os
     leitores em SQL usam esta, para não divergir do domínio."""
     a = alias
-    return (f"({a}.stance = 'conflict' OR ({a}.stance = 'against' AND NOT EXISTS (SELECT 1 FROM learning_evidence f"
-            f" WHERE f.item_ref = {a}.item_ref AND f.origin_ref = {a}.origin_ref AND f.stance = 'forma')))")
+    return (f"({fora_da_reproducao(a)} AND ({a}.stance = 'conflict' OR ({a}.stance = 'against' AND NOT EXISTS (SELECT 1"
+            f" FROM learning_evidence f WHERE f.item_ref = {a}.item_ref AND f.origin_ref = {a}.origin_ref"
+            f" AND f.stance = 'forma'))))")
+
+
+def fora_da_reproducao(alias: str) -> str:
+    """A condição SQL de `promocao.efetivas` para a reprodução da receita (30.39): a linha `reproducao:<run_id>` é o
+    registro datado dos contadores e não conta de novo. Os leitores em SQL que contam a favor usam esta também."""
+    return f"{alias}.origin_ref NOT LIKE 'reproducao:%'"
 
 
 def lotes[T](itens: Sequence[T]) -> Iterator[Sequence[T]]:

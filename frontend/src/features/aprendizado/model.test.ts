@@ -4,7 +4,7 @@ import {
   acoesDoItem, acoesNaFila, refDaHabilidade,
   desfazerDoEfeito, estadoDoLivro, lerFeedbackDaExecucao, lerRelatorioDeFalhas, lerRespostaDoVoto, lerSinais, mdDoItem,
   ordenarFalhas, ordenarPendentes, porQueOSistemaNaoPublica, rotuloDaCamada, rotuloDaFalha, rotuloDoEstado,
-  rotuloDoKind, textoDoEfeito, textoDosOcultos, votoDoItem, capabilityComNome, nomearCapabilityNoTexto, semLacunas, tituloDoItem,
+  rotuloDoKind, textoDaEvidencia, textoDoEfeito, textoDosOcultos, votoDoItem, capabilityComNome, nomearCapabilityNoTexto, semLacunas, tituloDoItem,
   titulosDaLista,
 } from './model';
 
@@ -418,5 +418,27 @@ describe('textoDosOcultos (RA-19)', () => {
     expect(textoDosOcultos('todos', 5)).toBe('');
     expect(textoDosOcultos('produto', 0)).toBe('');
     expect(textoDosOcultos('produto', undefined)).toBe('');
+  });
+});
+
+describe('textoDaEvidencia (polimento da validação do deploy 13)', () => {
+  it('a linha de forma sai sem a marca, com o rótulo da pós-condição e o corte por extenso', () => {
+    expect(textoDaEvidencia('[686ac998656d] etapa 2: pós-condição reescrita (app_foreground × element_present); '
+      + 'etapa 3: pós-condição reescrita (text_visible × element_present) (+1)')).toBe(
+      'etapa 2: pós-condição reescrita (nesta execução: app em primeiro plano; no fluxo: elemento presente); '
+      + 'etapa 3: pós-condição reescrita (nesta execução: texto visível na tela; no fluxo: elemento presente) (e mais 1)');
+  });
+  it('a reclassificação e a pós-condição de efeito também', () => {
+    expect(textoDaEvidencia('[abc123def456] reclassificada: etapa 1: pós-condição reescrita (model_judged × app_foreground)'))
+      .toBe('reclassificada: etapa 1: pós-condição reescrita (nesta execução: avaliado pela IA; no fluxo: app em primeiro plano)');
+    expect(textoDaEvidencia('[abc123def456] etapa 4: outra pós-condição (text_visible × element_present)'))
+      .toBe('etapa 4: outra pós-condição (nesta execução: texto visível na tela; no fluxo: elemento presente)');
+  });
+  it('tipo desconhecido passa cru; texto sem os padrões fica como está; só a marca vira vazio', () => {
+    expect(textoDaEvidencia('[abc123def456] etapa 1: pós-condição reescrita (novo_tipo × element_present)'))
+      .toBe('etapa 1: pós-condição reescrita (nesta execução: novo_tipo; no fluxo: elemento presente)');
+    expect(textoDaEvidencia('prova: 3/3 etapas comprovadas')).toBe('prova: 3/3 etapas comprovadas');
+    expect(textoDaEvidencia('Receita × só IA (+2) no meio')).toBe('Receita × só IA (+2) no meio');
+    expect(textoDaEvidencia('[abc123def456] ')).toBe('');
   });
 });

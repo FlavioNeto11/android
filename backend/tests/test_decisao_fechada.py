@@ -131,11 +131,12 @@ def test_classe_nao_liberada_recusa(aberta: None, monkeypatch: pytest.MonkeyPatc
     assert privacidade.validar(_pedido(classe="C4")).motivo == "classe_desconhecida"  # type: ignore[arg-type]
 
 
-def test_c3_so_na_intencao_e_so_em_shadow(aberta: None) -> None:
-    ok = privacidade.validar(_pedido(origem="intencao", classe="C3", modo="shadow"))
-    assert ok.permitido
-    assert privacidade.validar(_pedido(origem="intencao", classe="C3", modo="on")).motivo == "c3_so_intencao_em_shadow"
-    for outra in ("curador", "desempate", "apps"):
+def test_c3_so_na_intencao_e_nos_apps_e_so_em_shadow(aberta: None) -> None:
+    # 31.13: os apps do comando (R5) entram na C3, em sombra (ADR-069 item 21); o runtime segue travado por `R5_LIBERADA`
+    for c3 in ("intencao", "apps"):
+        assert privacidade.validar(_pedido(origem=c3, classe="C3", modo="shadow")).permitido
+        assert privacidade.validar(_pedido(origem=c3, classe="C3", modo="on")).motivo == "c3_so_intencao_em_shadow"
+    for outra in ("curador", "desempate"):
         assert privacidade.validar(_pedido(origem=outra, classe="C3", modo="shadow")).motivo == "c3_so_intencao_em_shadow"
     # C0, C1 e C2 valem para todos os consumidores
     for c in ("C0", "C1", "C2"):

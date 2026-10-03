@@ -34,11 +34,13 @@ AGORA = datetime(2026, 10, 10, 12, tzinfo=UTC)
 SEGREDO = "girassol-do-dossie"          # texto do item que NUNCA pode aparecer na saída
 
 
-def _dossie(kind: str, *, contra: int = 0, a_favor: int = 1, estado: str = "published") -> dict[str, Any]:
+def _dossie(kind: str, *, contra: int = 0, a_favor: int = 1, estado: str = "published",
+            saude: str | None = None) -> dict[str, Any]:
     lista = [{"posicao": "for"}] * a_favor + [{"posicao": "against"}] * contra
     return {"item": {"kind": kind, "estado": estado, "origem": "aprendido", "nome": SEGREDO},
             "risco": {"classe": "A", "politica": "auto"},
-            "evidencias": {"total": len(lista), "lista": lista}, "licao": SEGREDO}
+            "evidencias": {"total": len(lista), "lista": lista}, "licao": SEGREDO,
+            **({"saude": {"rotulo": saude, "motivos": []}} if saude else {})}
 
 
 class Banco:
@@ -50,13 +52,14 @@ class Banco:
         self._n = 0
 
     def revisao(self, *, kind: str = "receita", contra: int = 0, a_favor: int = 1, decisao: str = "observar",
+                saude: str | None = None,
                 validade: str = "ok", simulated: int = 0, criado: str = "2026-10-05T09:00:00Z") -> str:
         self._n += 1
         self.db.execute(
             "INSERT INTO learning_reviews(id, created_at, item_ref, item_kind, gatilho, dossie_hash, dossie, template_id,"
             " template_versao, simulated, saida, validade) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (f"lr-{self._n}", criado, f"{kind}:item-{self._n}-{SEGREDO}", kind, "teste", f"h{self._n:03d}",
-             json.dumps(_dossie(kind, contra=contra, a_favor=a_favor)), "curador", "v1", simulated,
+             json.dumps(_dossie(kind, contra=contra, a_favor=a_favor, saude=saude)), "curador", "v1", simulated,
              json.dumps({"decisao": decisao}), validade))
         return f"h{self._n:03d}"
 
@@ -213,6 +216,26 @@ def test_aviso_sem_amostra_e_rotulo_do_dono(banco: Banco) -> None:
     assert r["aviso"] == "acompanhamento; nenhum número aqui vale para GO (rótulos 1 e 2 = 1)"
     assert r["estratos"]["receita"]["veredito"] == "sem amostra"
     assert r["estratos"]["receita"]["modo"].startswith("off")
+
+
+def test_regra_da_saude_e_um_segundo_controle_so_de_acompanhamento(banco: Banco, tmp_path: Path) -> None:
+    """2º controle (orquestradora, 03/10 ~19:40Z): o rótulo de saúde do C0 pelo `CONTROLE_DA_SAUDE`. Não muda o controle
+    pré-registrado (contagens de evidência) nem o veredito; rótulo fora do mapa fica sem resposta."""
+    banco.revisao(saude="pouca_amostra", decisao="pedir_evidencia")
+    banco.revisao(saude="saudavel", decisao="manter")
+    banco.revisao(saude="parado", decisao="manter")
+    banco.revisao(saude="indeterminado", decisao="observar")
+    banco.revisao(decisao="observar")                                       # sem saúde no dossiê
+    casos, fora = _casos(banco)
+    assert [c.controle_saude for c in casos] == ["opt:revisar", "opt:manter", "opt:revisar", None, None]
+    assert all(c.controle == "opt:manter" for c in casos)                 # o pré-registrado não mudou
+    r = braco.montar(casos, [None] * len(casos), fora=fora, agora=AGORA, enviado=False, interrompido=None, teto=None,
+                     pedidos_secos=0)
+    m = r["estratos"]["receita"]["medidas"]
+    assert m["concordancia_do_controle_da_saude_com_o_curador"] == braco.rel._taxa(2, 3)   # 2 de 3 com resposta
+    assert m["controle_da_saude_sem_resposta"] == 2
+    assert [l["controle_saude"] for l in r["linhas"]][:2] == ["opt:revisar", "opt:manter"]
+    assert "regra da saúde" in braco.em_markdown(r)
 
 
 def test_a_saida_nao_leva_dossie_nem_item_ref(banco: Banco, tmp_path: Path) -> None:

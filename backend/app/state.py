@@ -83,6 +83,7 @@ from .modules.identity.infrastructure.persona_images import (compor_servico_de_i
 from .releases.catalog import ReleaseValidationError
 from .releases.inspector import ApkInspector
 from .security import local_secret
+from .security.access import publicos_de
 from .security.secret_store import SecretStore, build_key_provider
 from .security.sessions import PanelSessions, PortaoDeLogin
 from .releases.repository import ReleaseRepository
@@ -512,6 +513,7 @@ class AppState:
         self.runs.sombra_intencao = SombraDaIntencao(
             ConsumidorDeIntencao(self.decisao_fechada, self.decisao_sombra), resolver=self.skill_planner.resolve_intent,
             catalogo=self.catalogo_da_cadeia)
+        self.runs.sombra_intencao.ligar_apps(self.decisao_fechada, self.decisao_sombra, self.apps.listar)  # R5 (31.13), travada
         # Rótulo de intenção (30.25): um minerador no digest da execução assentada, sem gancho novo e sem IA.
         ligar_intencao.ligar(self.learning, self.db, dados=self.runs.dados_da_intencao,
                              resolver=self.skill_planner.resolve_intent, catalogo=self.catalogo_da_cadeia)
@@ -3072,6 +3074,35 @@ class AppState:
             log.exception("não foi possível ler os fallbacks recentes de IA")
             return []
 
+    def _problema_de_exposicao_publica(self) -> Problem | None:
+        """29.54 / ADR-073: com um nome em `server.public_hosts`, a exposição só está de pé inteira com TRÊS coisas —
+        `API_TOKEN` (sem ele ninguém entra pelo endereço público), TLS declarado (`tls_behind_proxy`: o cookie de
+        sessão só ganha `Secure` assim) e a origem `https://<host>` em `allowed_origins` (sem ela o POST do login
+        leva 403 `forbidden_origin`). Faltando qualquer uma o portão continua fechando, mas o dono veria um login
+        que não entra sem saber por quê. Só nomes de configuração e o fato de faltar; nenhum valor de segredo."""
+        server = self.cfg.file.server
+        publicos = sorted(publicos_de(self.cfg))
+        if not publicos:
+            return None
+        origens = {o.strip().lower().rstrip("/") for o in server.allowed_origins}
+        faltas: list[str] = []
+        if not self.cfg.api_token:
+            faltas.append("API_TOKEN no .env")
+        if not self.cfg.tls_ativo:
+            faltas.append("server.tls_behind_proxy: true")
+        sem_origem = [h for h in publicos if f"https://{h}" not in origens]
+        if sem_origem:
+            faltas.append("server.allowed_origins com " + ", ".join(f"https://{h}" for h in sem_origem))
+        if not faltas:
+            return None
+        return Problem(
+            code="exposicao_publica_incompleta",
+            message=("Há host público declarado (server.public_hosts: " + ", ".join(publicos) + ") e falta: "
+                     + "; ".join(faltas) + "."),
+            hint="Complete em config/config.yaml e .env e reinicie o central; sem isso o login pelo endereço público "
+                 "não entra. Para recuar, tire o nome de server.public_hosts (tudo de fora volta a 403). "
+                 "Procedimento em docs/operacao.md, \"Portal público pelo túnel da Cloudflare\".")
+
     def health(self) -> Health:
         problems: list[Problem] = []
         banco, problemas_do_banco = self._saude_do_banco()
@@ -3140,6 +3171,9 @@ class AppState:
                          "está desligado (server.worker_port: 0)."),
                 hint="Ligue server.worker_port (ex.: 8010) em config/config.yaml e reinicie; aponte o -R do túnel "
                      "para ela. Com o canal na porta principal, o túnel deixa a API REST ao alcance do worker."))
+        problema_exposicao = self._problema_de_exposicao_publica()
+        if problema_exposicao is not None:
+            problems.append(problema_exposicao)
         appium_up = self.appium.is_up(timeout=1.0)
         if not appium_up:
             problems.append(Problem(code="appium_down", message=self.appium.detail or "Servidor Appium não está respondendo.",

@@ -1071,7 +1071,9 @@ novo em memória. Cada bloco da resposta é uma linha da tabela do §10 do desen
   não tem rótulo próprio. A economia é a do `taskqueue/aproveitamento.py`, injetada pela montagem (só leitura);
 - ausente é `null`, com o `n` ao lado; simulado fica fora, e a revisão simulada é contada à parte;
 - "falhas evitadas" é um PROXY rotulado: taxa de falha com receita × só IA nas etapas que tiveram as duas conduções;
-- a receita não tem evidência datada, então o "sucesso depois de promovido" é de fluxo e lição;
+- a receita tem evidência datada desde o 30.39 (seção abaixo), mas ela é o registro dos contadores e fica FORA das
+  métricas (`linhas.fora_da_reproducao`): o "sucesso depois de promovido" segue sendo de fluxo e lição;
+  os contadores `replay_ok/replay_fail` seguem sem data;
 - o orçamento do curador usa a conta da volta (`janela_do_orcamento`, extraída de `curador.py` para as duas servirem)
   com as revisões já gravadas: o B_W é um piso da próxima volta, o `uso` é um teto e o aviso, a 80 %, sai cedo. O
   B_W é o menor de dois ramos, α·G_W (`teto_alfa`) e k·N_W·c̄ (`pelas_revisoes`); `ramo` diz qual manda (30.33-C).
@@ -1268,6 +1270,42 @@ re-execução.
 
 **Prova:** `simulated` em `backend/tests/test_learning_prova.py`. `real`: `not_run` até a 1ª validação de fluxo depois
 do deploy que levar o 30.37; o P4 fica pausado (`validacao.modo: off`) até lá.
+
+## A evidência datada da receita (30.39)
+
+A lacuna ("a receita não tem evidência datada") tinha um custo medido em 03/10: o curador pedia `execucao_real` em 23 de
+29 pareceres de receita, com até 33 replays ok, porque a eficácia da receita vivia só nos contadores `replay_ok/replay_fail`
+(sem data, aparelho, versão nem real/simulado) e a lista do dossiê vinha vazia.
+
+- **Minerador** `EvidenciaDaReceita` (`application/evidencia_da_receita.py`, leitura em `infrastructure/reproducao_sql.py`),
+  no digest de toda execução assentada. Uma linha de `learning_evidence` de `receita:<id>` por (receita, execução,
+  posição), `origin_ref = reproducao:<run_id>` (origem própria, `promocao.ORIGEM_DA_REPRODUCAO`; não colide com o
+  `run:<id>` de outras fontes), com `run_id`, o aparelho da primeira etapa, a versão do app da receita,
+  `simulated` da execução e a data do fim da etapa. A favor: a etapa com `steps.driven_by = 'recipe'` e `succeeded`. Contra:
+  `recipe+ai` ou `sem_ator`. Em ambos, a ÚLTIMA tentativa da etapa é a que carrega `attempts.recipe_id` (é ela que escreve
+  `driven_by`). Etapas da mesma receita na mesma execução (`for_each`) viram uma linha, com a contagem no `detail`.
+- **Não decide nada.** Só grava evidência; o D1, a quarentena e os contadores seguem donos do estado da receita.
+- **Retrocarga** `RetrocargaDaReceita`, passo da curadoria (e não função única na montagem): a cada volta completa as
+  reproduções de execuções já terminadas que ainda não têm linha (as de antes do 30.39, um digest que falhou), datadas
+  pela etapa e das mais novas para as mais antigas. Idempotente pela chave única. Respeita `retencao.evidencias_por_item`:
+  não enche uma receita além dele, senão a purga e o passo se desfariam um ao outro. Só existe o que as tentativas
+  guardam hoje.
+- **Dossiê da receita** (só `kind == "receita"`): `evidencias.contadores_e` (`replay_*` são acumulados sem data, incluem a
+  lista; a citável é a `lista`) e, só com `conteudo.sombra.shadow_total == 0`, `evidencias.sombra_e` (a sombra corre só com a
+  receita candidata ou com `ai.recipes: shadow`; em `replay` a ativa não volta à sombra, então `sombra` não é falta que a
+  validação produza). `VERSAO_DO_DOSSIE` fica em 1 (como no 30.36): as chaves só existem na receita, e o `dossie_hash` da
+  receita muda sozinho com a lista nova, o que devolve as receitas ao curador.
+- **Onde a regra por etapa e o contador divergem.** O contador soma por tentativa com veredito; a linha vê a etapa pela
+  última tentativa. O `for_each` soma N no contador e 1 na linha. Uma tentativa que consultou a receita e fechou por atalho
+  sem agir nem divergir é `sem_ator` com `recipe_id`: contra na linha, fora de `replay_fail`. A evidência é a verdade datada;
+  o contador, o histórico.
+- **Não conta de novo (a saúde não muda).** A linha de reprodução é o registro datado do que `replay_ok/replay_fail` já
+  somam. Contá-la seria contar duas vezes: um `against` dentro dos `contestacao_dias` levava a receita publicada a
+  `degradando` (`CONTESTADO_RECENTEMENTE`), medido no teste antes da correção. Por isso `promocao.efetivas` (por onde passa
+  todo leitor que conta: `contrarias`, a saúde, a fila "Revisar", `veredito_de_repeticao`) tira a origem `reproducao:`, e os
+  leitores em SQL fazem o mesmo (`linhas.contra_efetivo` e `linhas.fora_da_reproducao` em `metricas_sql` e
+  `aprendido_sql`). Só o dossiê a mostra (ele não passa por `efetivas`): é para o curador citar a execução real.
+  `test_o_contra_da_reproducao_dentro_da_janela_nao_contesta_a_receita` guarda isso (falha sem o filtro).
 
 ## Pendências conhecidas
 

@@ -41,7 +41,7 @@ from typing import Final, Literal
 
 from ...security.redaction import looks_secret, mentions_credential, redact
 from . import privacidade
-from .contrato import ID_NENHUMA, MAX_OPCOES, PedidoDeDecisao, Pergunta, pergunta_choice
+from .contrato import ID_NENHUMA, MAX_OPCOES, Origem, PedidoDeDecisao, Pergunta, pergunta_choice
 from .entidades import (
     escrita_nao_latina, mascarar_catalogo, nomes_dos_apps, normalizar, remover_entidades_com_motivo, sem_acento, sem_leet,
 )
@@ -1340,6 +1340,33 @@ def motivo_c7(comando: str, *, sem_destinos: str | None = None, intencao: bool =
     return None
 
 
+def pedido_c3(origem: Origem, *, run_id: str, perguntas: Sequence[Pergunta], comando: str, app: str | None,
+              original: str | None = None, destinos: Iterable[str] = ()) -> PedidoDeDecisao:
+    """O pedido C3 em sombra sobre o comando do dono: o estado {comando filtrado, app} e as perguntas de quem pede.
+
+    É o MESMO estado para a intenção (R2 e R3) e para os apps do comando (R5, 31.13): mesma conferência de C7, mesmo filtro
+    sensato, e por isso o mesmo `estado_hash` (31.22). C7 no texto (inclusive no `original`, ver `pedido`) marca
+    `credencial` e a porta recusa o pedido INTEIRO; o que o filtro esvazia vira estado vazio, que a porta também recusa."""
+    nomes = nomes_de_destino(destinos)
+    com_original = bool(original) and original != comando
+    motivo = motivo_c7(comando, intencao=not com_original, destinos=nomes)
+    if motivo is None and com_original:
+        motivo = motivo_c7(str(original), sem_destinos=comando, destinos=nomes)
+    if motivo is not None:
+        return PedidoDeDecisao(origem=origem, classe="C3", estado={}, perguntas=tuple(perguntas), modo="shadow",
+                               run_id=run_id, ref=run_id, marcadores=frozenset({"credencial"}),
+                               motivo_privacidade=motivo)
+    limpo, motivo_filtro = (remover_entidades_com_motivo(redact(comando) or "") if comando.strip()
+                            else (None, "vazio"))
+    estado: dict[str, str] = {}
+    if limpo:                                    # `None` (forma do piso) ou vazio: estado vazio, a porta recusa
+        estado["comando"] = limpo
+        if app and _APP.fullmatch(app):
+            estado["app"] = app
+    return PedidoDeDecisao(origem=origem, classe="C3", estado=estado, perguntas=tuple(perguntas), modo="shadow",
+                           run_id=run_id, ref=run_id, motivo_privacidade=None if limpo else motivo_filtro)
+
+
 class ConsumidorDeIntencao:
     def __init__(self, porta: Porta, repositorio: RepositorioDeSombra) -> None:
         self._porta = porta
@@ -1387,24 +1414,8 @@ class ConsumidorDeIntencao:
             perguntas.append(pergunta_choice(PERGUNTA_DESEMPATE, _INSTRUCOES_DESEMPATE, _opcoes(empatados)))
         if not perguntas:
             return None
-        nomes = nomes_de_destino(destinos)
-        com_original = bool(original) and original != comando
-        motivo = motivo_c7(comando, intencao=not com_original, destinos=nomes)
-        if motivo is None and com_original:
-            motivo = motivo_c7(str(original), sem_destinos=comando, destinos=nomes)
-        if motivo is not None:
-            return PedidoDeDecisao(origem="intencao", classe="C3", estado={}, perguntas=tuple(perguntas), modo="shadow",
-                                   run_id=run_id, ref=run_id, marcadores=frozenset({"credencial"}),
-                                   motivo_privacidade=motivo)
-        limpo, motivo_filtro = (remover_entidades_com_motivo(redact(comando) or "") if comando.strip()
-                                else (None, "vazio"))
-        estado: dict[str, str] = {}
-        if limpo:                                    # `None` (forma do piso) ou vazio: estado vazio, a porta recusa
-            estado["comando"] = limpo
-            if app and _APP.fullmatch(app):
-                estado["app"] = app
-        return PedidoDeDecisao(origem="intencao", classe="C3", estado=estado, perguntas=tuple(perguntas), modo="shadow",
-                               run_id=run_id, ref=run_id, motivo_privacidade=None if limpo else motivo_filtro)
+        return pedido_c3("intencao", run_id=run_id, perguntas=perguntas, comando=comando, app=app, original=original,
+                         destinos=destinos)
 
     def observar(self, *, run_id: str, comando: str, app: str | None, catalogo: Sequence[EntradaDeCatalogo],
                  cadeia: CadeiaObservada, original: str | None = None, destinos: Iterable[str] = ()) -> None:
@@ -1447,4 +1458,4 @@ class ConsumidorDeIntencao:
 
 
 __all__ = ["CadeiaObservada", "ConsumidorDeIntencao", "EntradaDeCatalogo", "MAX_CATALOGO", "PERGUNTA_CATALOGO",
-           "PERGUNTA_DESEMPATE", "id_opaco", "nomes_de_destino"]
+           "PERGUNTA_DESEMPATE", "id_opaco", "nomes_de_destino", "pedido_c3"]

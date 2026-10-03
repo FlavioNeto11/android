@@ -52,11 +52,18 @@ class Limiares:
     contra_max: int = 0
 
 
+#: 30.39: a origem da evidência de REPRODUÇÃO da receita (`reproducao:<run_id>`). É o registro datado do que os
+#: contadores `replay_ok`/`replay_fail` da receita já somam: o dossiê a mostra (o curador cita a execução real), mas ela
+#: não conta de novo — nem contra na saúde (`contestado_recentemente`) e na fila "Revisar", nem a favor na promoção.
+ORIGEM_DA_REPRODUCAO = "reproducao:"
+
+
 def efetivas(evidencias: Iterable[Evidencia]) -> list[Evidencia]:
     """As evidências que valem, na ordem recebida (30.36): o `against` que tem uma `forma` da MESMA origem no mesmo item
     sai — é a linha que a reclassificação corrigiu sem apagar (o log só cresce). A `forma` fica: não conta a favor nem
-    contra, mas a trilha a mostra. Todo leitor que conta contra passa por aqui, para nenhum deles divergir."""
-    lista = list(evidencias)
+    contra, mas a trilha a mostra. A reprodução da receita (30.39, `ORIGEM_DA_REPRODUCAO`) sai inteira: os contadores
+    já a contam. Todo leitor que conta passa por aqui, para nenhum deles divergir."""
+    lista = [e for e in evidencias if not e.origin_ref.startswith(ORIGEM_DA_REPRODUCAO)]
     formas = {(e.item_ref, e.origin_ref) for e in lista if e.stance is Posicao.FORMA}
     if not formas:
         return lista
