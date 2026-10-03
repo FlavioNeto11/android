@@ -1866,3 +1866,22 @@ do 30.6 nunca casava. Os testes usavam versões sintéticas sem código (`"447"`
 
 **Aplicabilidade.** Toda comparação de versão de app entre fontes do projeto. Antes de comparar, meça o formato real das
 duas colunas; dado sintético sem o formato real esconde o erro. Aceite visual com cópia do banco pega o que o teste não pega.
+
+### K-077 — Compose sem semântica: a linha da caixa do Outlook é cega na árvore (01 e 03), e a causa não é a profundidade
+
+**Sintoma.** O `read_value` do remetente e do assunto da caixa do Outlook nunca achava texto, e a r-…-178742 gastou 14 chamadas
+tentando. Era natural suspeitar do corte de profundidade (`snapshotMaxDepth` 70) ou de elementos invisíveis.
+
+**Causa (medida, `real`, 02/10/2026, android-01).** A lista é um `ComposeView` (`conversation_list`) cujas linhas clicáveis têm 4
+filhos sem `text`, sem `content-desc`, sem `hint`, `state-description` ou `tooltip-text` em toda a subárvore (profundidade 21, 77 a 79
+nós). Nada muda com `snapshotMaxDepth` 200 nem com `allowInvisibleElements`: o app simplesmente não publica a semântica. O texto só
+existe na imagem.
+
+**O que funcionou.** Medir ANTES de implementar (passo 0, sem IA, só `GET /source`): ele descartou o "nível 0" (árvore mais funda).
+A saída é a leitura visual conferida às cegas por um segundo leitor, atrás de opção desligada e de região declarada pelo app
+(ADR-070). O que NÃO funcionou como atalho: deixar o juiz conferir o valor (viés ao "sim", ADR-024) e devolver ao ator a
+transcrição do leitor numa recusa (dois leitores viram um).
+
+**Aplicabilidade.** Vigente. Todo Compose que não publica semântica (`ComposeView` sem `contentDescription`) é cego para
+`read_value`, `collect_list`, a triagem de segredo e a detecção de tela sensível: o que a árvore não vê, o executor também não vê.
+Antes de aumentar profundidade ou tempo de espera, rode o `source` e conte o texto da subárvore da linha.

@@ -19,6 +19,36 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-02 — 12.5 nível 1: leitura visual de saída de etapa conferida às cegas (ADR-070, branch feat/12-5-leitura-visual)
+
+- **Por quê.** O passo 0 (`real`, android-01) provou que a linha da caixa do Outlook é cega na árvore (ComposeView sem texto em
+  toda a subárvore); sem leitura da imagem o `read_value` não tinha de onde tirar remetente e assunto.
+- **O que entra, DESLIGADO (`ai.leitura_visual.enabled: false`).** `read_value(source="visual")` na região que o app declara
+  (`leitura_visual.regioes` no `telas.yaml` do Outlook), com 13 barreiras e conferência cega por um segundo leitor: papel novo
+  `ai.roles.leitura` (sem herança, outro modelo que `decide`/`escalation`, com visão, sem fallback) e `transcribe(LeituraRequest)
+  -> Transcricao` nos três provedores. O recorte vira evidência; `step_outputs` ganha `origem`, `leitor`, `frame_sha256`,
+  `evidence_id` (migração 078); valor visual em etapa com efeito espera a pessoa; o juiz recebe a imagem à força.
+- **Junto.** `step_blocked.reason` redigido nos quatro destinos; conta própria das recusas da barreira de saídas (4 → `fail_or_retry`).
+- **Hub de IA.** `origem='leitura'`, fatia opcional `ai.limits.leitura_max_usd_per_day`, parse estrito da transcrição, teto do
+  recorte (nunca a tela inteira), aviso de `/api/ai` com provedor, modelo e apps que declaram a região.
+- **Ajustes da revisão (mesmo lote).** Privacidade: a `ValidationError` do parse não encadeia mais (`from None`; o texto do modelo
+  não chega ao log com traceback); triagem acusa e-mail de código por forma (número de 4 a 8 dígitos e palavra de código em
+  en/pt/es na mesma linha, valor E linha de origem), e na leitura visual o valor com forma de código é recusado sem contexto; a
+  triagem visual leva a etapa a `waiting_user` sem nova tentativa do ator; saídas visuais fora das variáveis de receita; o valor
+  gravado é o do leitor; `fora_do_app` recebe o valor real; recorte até 0,2 da altura e 320 px. Contrato: o leitor exige modelo
+  DECLARADO com visão em `ai.models` e comparado pelo nome normalizado (caixa, `vendor/`, `-AAAAMMDD`); a leitura nunca cai no
+  modelo do ator (`modelo_do_papel_leitura`); campo repetido com valores diferentes é `invalid_output`; orçamento, prazo e crédito
+  do leitor seguem o desfecho do ator (`desfecho_de_ia`); o aviso de `/api/ai` usa o rótulo do dado do app.
+- **Segunda rodada da revisão (D1 a D5).** A forma de código passa a ser lida em NFKC e com dígitos de outros alfabetos
+  convertidos, com os separadores `[\s.,·_/-]` e os de largura zero ignorados (`saidas.forma_de_codigo`, `_canonico`); na leitura
+  visual, token alfanumérico curto ("G-482913", "ABC123") também é código; o teste de forma vale para o valor e para CADA linha do
+  recorte, e a triagem do recorte roda ANTES da conferência. **A triagem da árvore ficou mais restritiva, de propósito:**
+  "Your code is 482.913" (ponto ou vírgula no número, dígitos de largura total ou árabes) e código alfanumérico ao lado de
+  palavra de código passam a ser recusados. O `AIError` do parse é levantado fora do `except` (sem `__context__`).
+- **Docs.** ADR-070, `ia.md` §17, `dominios/execution.md`, `api-contract.md` (adendo), `banco.md` (078), aprendizado K-077, item 12.5.
+- Prova `simulated`: `tests/test_leitura_visual.py`, `tests/test_leitura_visual_papel.py`. `real`: `not_run` (bancada do leitor e
+  execução no android-01 dependem de ligar a opção e do provedor escolhido).
+
 ## 2026-10-03 — 29.31: app de prova no tier 0 do `side_effect_tier` (branch feat/29-31-qa-tier0)
 
 - **Custo (RA-8 da reavaliação de 03/10):** etapa com `side_effect` e SEM capability em app sem catálogo caía no tier 1 ("risco

@@ -50,8 +50,9 @@ from .curador import (CURADOR_SYSTEM, ParecerBruto, ParecerIlegivel, PedidoDePar
                       parecer_from_json)
 from .parsing import (_CapPlanOut, _MultiPlanOut, _PlanOut, catalog_plan_from_json, plan_from_json, social_from_json,
                       verdict_from_json)
-from .provider import (AVISO_TELA_SENSIVEL, AIError, Decision, DecisionRequest, PlanRequest, ScreenInput, SocialRequest, Usage,
-                       Verdict, VerifyRequest, persona_draft_from_json)
+from .provider import (AVISO_TELA_SENSIVEL, AIError, Decision, DecisionRequest, LeituraRequest, PlanRequest, ScreenInput,
+                       SocialRequest, Transcricao, TranscricaoWire, Usage, Verdict, VerifyRequest,
+                       modelo_do_papel_leitura, persona_draft_from_json, transcricao_from_json)
 
 if TYPE_CHECKING:
     from ..config import ResolvedRole
@@ -392,6 +393,20 @@ class OpenAICompatProvider:
                                         content=self._screen_content(s, texto), max_tokens=3000,
                                         schema=esquema, schema_name="veredito", with_image=with_image)
         return verdict_from_json(self._texto(msg)), usage
+
+    # ------------------------------------------------------------------ leitura visual (item 12.5)
+    async def transcribe(self, req: LeituraRequest) -> tuple[Transcricao, Usage]:
+        """Papel `leitura` (de outra família que o ator, por escolha do dono): transcreve o RECORTE às cegas — só a
+        imagem e os nomes das saídas pedidas, nunca o valor do ator, o comando ou a conta. OpenAI e Gemini (pelo endpoint
+        compatível) entram por aqui; o recorte é o que sai desta máquina para o provedor escolhido em `ai.roles.leitura`."""
+        modelo = modelo_do_papel_leitura(self.cfg, self.role)    # nunca o do ator: sem o papel `leitura`, recusa
+        b64 = base64.standard_b64encode(req.recorte).decode()
+        esquema = strict_schema(TranscricaoWire)
+        content = [{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                   {"type": "text", "text": prompts.leitura_user_text(req.saidas) + self._json_hint(modelo, esquema)}]
+        msg, usage = await self._create(role="leitura", model=modelo, system=prompts.LEITURA_SYSTEM, content=content,
+                                        max_tokens=1200, schema=esquema, schema_name="transcricao", with_image=True)
+        return transcricao_from_json(self._texto(msg), list(req.saidas)), usage
 
     # ------------------------------------------------------------------ geração social
     async def generate_social_response(self, req: SocialRequest) -> tuple[SocialDraftDTO, Usage]:

@@ -4,9 +4,10 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ..config import Config
 from ..models import AiStatus, DeliveryLevel, PersonaDraft, Plan, SocialDraftDTO
@@ -16,6 +17,7 @@ from ..modules.identity.domain.persona_generation import PersonaGenerationReques
 from ..modules.identity.domain.available_data import AvailableDatum
 
 if TYPE_CHECKING:
+    from ..config import ResolvedRole
     from .capabilities import CapabilityCatalog
 
 
@@ -30,15 +32,16 @@ AVISO_TELA_SENSIVEL = ("Telas sensíveis nunca são enviadas: campo de senha, de
 #: alimenta a fatia do teto do dia (`_budget`) e o relatório do Livro, então uma grafia solta viraria gasto sem dono.
 #: `execucao` = o laço da execução (há `run_id`); as demais nascem do portal ou de uma rotina e não têm `run_id`.
 OrigemDeIA = Literal["execucao", "ensino", "orquestracao", "assistente", "social", "persona", "curador",
-                     "decisao_fechada"]
+                     "decisao_fechada", "leitura"]
 ORIGENS_DE_IA: tuple[str, ...] = ("execucao", "ensino", "orquestracao", "assistente", "social", "persona",
-                                  "curador", "decisao_fechada")
+                                  "curador", "decisao_fechada", "leitura")
 
 #: Qual régua de gasto barrou (item 31.6, decisão P6): o painel, o aviso e a 30.13 leem o MOTIVO, nunca a frase.
 #: Só existe quando `kind="budget"`. `saldo` é o saldo da conta (ADR-051) e `kind="balance"` continua sendo o que o
 #: `_saldo` levanta hoje; o valor fica no vocabulário para a etapa que o unificar, sem mudar o contrato de novo.
-MotivoDeOrcamento = Literal["saldo", "dia", "fatia_curador", "fatia_jev", "execucao", "pedido"]
-MOTIVOS_DE_ORCAMENTO: tuple[str, ...] = ("saldo", "dia", "fatia_curador", "fatia_jev", "execucao", "pedido")
+MotivoDeOrcamento = Literal["saldo", "dia", "fatia_curador", "fatia_jev", "fatia_leitura", "execucao", "pedido"]
+MOTIVOS_DE_ORCAMENTO: tuple[str, ...] = ("saldo", "dia", "fatia_curador", "fatia_jev", "fatia_leitura", "execucao",
+                                         "pedido")
 
 
 class AIError(RuntimeError):
@@ -190,6 +193,79 @@ class VerifyRequest:
     escalate: bool = False
 
 
+#: Teto do que um leitor devolve (item 12.5): uma linha de lista de e-mail tem poucas linhas curtas; passar disto é
+#: o modelo narrando em vez de transcrever, e vira recusa em vez de ser cortado calado.
+TRANSCRICAO_LINHAS_MAX = 12
+TRANSCRICAO_TEXTO_MAX = 400
+#: Quantas saídas um pedido de leitura pode ter e o alfabeto do nome (o mesmo de `models.SAIDA_NOME_RE`).
+LEITURA_SAIDAS_MAX = 20
+_NOME_DE_SAIDA = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
+
+
+class Transcricao(BaseModel):
+    """A leitura cega de um recorte (item 12.5, ADR-070): o que o segundo leitor VIU, sem conhecer o valor do ator.
+
+    - `linhas`: o texto do recorte, linha a linha, como está escrito;
+    - `campos`: para cada saída pedida, o trecho que a responde (`None` = não achei);
+    - `legivel`: `False` quando não deu para ler (nada mais vale);
+    - `truncado`: `True` quando o texto aparece cortado ("…", reticências, palavra pela metade na borda).
+    O executor confere o valor do ator contra isto; quem transcreve nunca recebe o valor, o comando nem os fatos."""
+
+    linhas: list[str] = []
+    campos: dict[str, str | None] = {}
+    legivel: bool = True
+    truncado: bool = False
+
+    def __repr__(self) -> str:
+        """O texto transcrito é DADO DE TERCEIRO (o corpo de um e-mail pode trazer injeção de prompt ou um código): nunca
+        entra num log, num evento nem numa mensagem de erro por acidente."""
+        return f"Transcricao(linhas={len(self.linhas)}, legivel={self.legivel}, truncado={self.truncado}, conteudo=oculto)"
+
+    __str__ = __repr__
+
+
+class _CampoLido(BaseModel):
+    model_config = ConfigDict(extra="forbid")      # chave fora do esquema recusa a resposta inteira
+
+    nome: str
+    valor: str | None = None
+
+
+class TranscricaoWire(BaseModel):
+    """O formato PEDIDO ao modelo: `campos` como lista de pares, porque um mapa de chaves livres não cabe na gramática
+    estrita (`additionalProperties: false`). `para_transcricao` o converte no que o executor consome."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    linhas: list[str]
+    campos: list[_CampoLido]
+    legivel: bool
+    truncado: bool
+
+    def para_transcricao(self) -> Transcricao:
+        return Transcricao(linhas=self.linhas, campos={c.nome: c.valor for c in self.campos},
+                           legivel=self.legivel, truncado=self.truncado)
+
+
+@dataclass(slots=True)
+class LeituraRequest:
+    """Pedido ao papel `leitura`: SÓ o recorte (JPEG) e os nomes e descrições das saídas pedidas.
+
+    De propósito não há valor do ator, comando, fatos, histórico nem `run_id` de conteúdo: o `run_id` existe só para o
+    teto e a contabilidade do hub (`ai_calls`), e o provedor não o põe no prompt."""
+
+    recorte: bytes
+    saidas: dict[str, str]                    # nome → descrição ("remetente" → "quem enviou a mensagem")
+    run_id: str | None = None
+
+    def __post_init__(self) -> None:
+        """Os nomes pedidos vêm do plano e vão ao prompt: só o alfabeto de saída e no máximo `LEITURA_SAIDAS_MAX`."""
+        if not self.saidas or len(self.saidas) > LEITURA_SAIDAS_MAX or not all(
+                _NOME_DE_SAIDA.fullmatch(n) for n in self.saidas):
+            raise ValueError("saídas do pedido de leitura inválidas (nomes a-z0-9_ e no máximo "
+                             f"{LEITURA_SAIDAS_MAX})")
+
+
 @dataclass(slots=True)
 class SocialRequest:
     """Geração social: papel próprio, separado do planejador e do ator.
@@ -235,6 +311,63 @@ class AIProvider(Protocol):
     async def verify(self, req: VerifyRequest) -> tuple[Verdict, Usage]: ...
     async def generate_social_response(self, req: SocialRequest) -> tuple[SocialDraftDTO, Usage]: ...
     async def generate_persona(self, req: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]: ...
+    async def transcribe(self, req: LeituraRequest) -> tuple[Transcricao, Usage]: ...
+
+
+def modelo_do_papel_leitura(cfg: Config, role: ResolvedRole | None) -> str:
+    """O modelo do papel `leitura` (item 12.5), SEM fallback para o do ator: `AIError(not_configured)` quando a instância
+    não é a do papel (o executor recusa com `sem_leitor`). Com `role` (dentro do hub), é o da instância e ela precisa ser
+    do papel `leitura`; sem `role` (provedor único), é o de `ai.roles.leitura`. O recorte é um dado de terceiros que só o
+    segundo leitor, de modelo declarado e independente do ator, pode receber (ADR-070)."""
+    escolhido = role if role is not None else cfg.ai_leitura()
+    if escolhido is None or escolhido.role != "leitura" or not escolhido.model:
+        raise AIError("Não há modelo declarado para o papel leitura (ai.roles.leitura): a leitura visual não cai no "
+                      "modelo do ator.", kind="not_configured")
+    return escolhido.model
+
+
+def transcricao_from_json(raw: str, pedidas: Sequence[str]) -> Transcricao:
+    """JSON do modelo → `Transcricao`, com parse ESTRITO (item 12.5; requisitos do hub de IA).
+
+    - JSON inválido, chave fora do esquema (`extra="forbid"`), tipo errado ou campo pedido repetido com valores diferentes →
+      `AIError(kind="invalid_output")` (sem encadear a exceção do pydantic: ela traz o texto do modelo): nunca
+      `legivel=False` (isso é o MODELO afirmando que não leu) e nunca sucesso;
+    - só os campos PEDIDOS entram em `campos`; o pedido que não veio fica `None`;
+    - teto de linhas e de caracteres: o excesso é CORTADO e marca `truncado=True` (nunca passa calado, e um valor cortado
+      não concorda com o do ator)."""
+    texto = (raw or "").strip()
+    if texto.startswith("```"):
+        texto = re.sub(r"^```[a-zA-Z]*\s*", "", texto)
+        texto = re.sub(r"\s*```$", "", texto).strip()
+    fio: TranscricaoWire | None = None
+    try:
+        fio = TranscricaoWire.model_validate(json.loads(texto))
+    except (ValueError, ValidationError):
+        pass
+    if fio is None:
+        # Levantado FORA do `except`, de propósito: a `ValidationError` do pydantic carrega `input_value=` com o texto que o
+        # MODELO devolveu (o corpo de um e-mail, um código) e o executor loga esta falha com `exc_info=True`. Dentro do
+        # `except`, mesmo `from None` deixa a falha em `__context__` (um serializador que o percorra vazaria o valor); aqui
+        # `__cause__` e `__context__` ficam `None`.
+        raise AIError("A transcrição devolvida pelo leitor não tem o formato pedido.", kind="invalid_output")
+    # Um nome pedido que vem duas vezes com valores diferentes é resposta incoerente: o mapa guardaria só a última e a
+    # conferência passaria a depender da ordem. A mensagem não cita nome nem valor.
+    vistos: dict[str, str | None] = {}
+    for c in fio.campos:
+        if c.nome in pedidas and c.nome in vistos and vistos[c.nome] != c.valor:
+            raise AIError("A transcrição devolvida pelo leitor repete um campo pedido com valores diferentes.",
+                          kind="invalid_output")
+        vistos[c.nome] = c.valor
+    t = fio.para_transcricao()
+    cortou = len(t.linhas) > TRANSCRICAO_LINHAS_MAX or any(len(x) > TRANSCRICAO_TEXTO_MAX for x in t.linhas)
+    linhas = [x[:TRANSCRICAO_TEXTO_MAX] for x in t.linhas[:TRANSCRICAO_LINHAS_MAX]]
+    campos: dict[str, str | None] = {}
+    for n in pedidas:
+        valor = (t.campos.get(n) or None) if n in t.campos else None
+        if valor is not None and len(valor) > TRANSCRICAO_TEXTO_MAX:
+            valor, cortou = valor[:TRANSCRICAO_TEXTO_MAX], True
+        campos[n] = valor
+    return Transcricao(linhas=linhas, campos=campos, legivel=t.legivel, truncado=t.truncado or cortou)
 
 
 def persona_draft_from_json(raw: str) -> PersonaDraft:

@@ -236,6 +236,11 @@ ai:
     consumidores: {}              # curador | intencao | desempate | apps: off | shadow | on (ausente = off)
     retencao_dias: 180            # (180) linhas da sombra (`decisao_fechada_sombra`); o agregado diário fica
     # classes_permitidas: [C0, C1]  # opcional: estreita o teto de código (C0..C3); nunca libera classe que o código fechou
+  # Leitura visual de uma saída de etapa (item 12.5, ADR-070). DESLIGADA. Só vale na tela cega que o app declara
+  # (`leitura_visual.regioes` no `telas.yaml` dele) e só com o papel `ai.roles.leitura` escrito (exemplo mais abaixo). Ligar manda
+  # o RECORTE de uma linha de tela ao provedor do leitor, que pode ser outro que o do ator.
+  leitura_visual:
+    enabled: false                # (false) um valor lido da imagem só conta como saída com a conferência às cegas do leitor
   # Página de faturamento de cada conta de IA (ADR-051), a que o painel linka em "Abrir console". Sem o parâmetro
   # `billing`, o AI Studio abre a PRIMEIRA conta de faturamento, que pode não ser a pré-paga.
   # balance_consoles:
@@ -387,6 +392,17 @@ ai:
   # NÃO vaza para a persona com bloco próprio: escreva aqui o `model` (declarado em ai.models) e o que mais precisar.
   # roles:
   #   persona: {provider: openai-flex, model: gpt-6-luna, timeout_s: 900, max_retries: 5}
+  #
+  # Leitor da leitura visual (item 12.5, ADR-070): papel OPCIONAL `leitura`, SEM herança (escreva `provider` e `model`; não
+  # aceita `fallback_provider` nem perfil). O backend recusa subir se o modelo for igual ao do `decide` ou ao do
+  # `escalation`, ou se for declarado sem visão em ai.models. De preferência de OUTRA família que o ator (reduz o erro
+  # correlacionado); o provedor passa a receber o recorte de uma linha de tela. Exemplo com a OpenAI (declare o modelo em
+  # `ai.models` e o provedor em `ai.providers`, como acima):
+  # roles:
+  #   leitura: {provider: openai, model: gpt-6-luna, timeout_s: 30}
+  # Alternativa na Anthropic (mesmo destino das capturas que o ator já envia; é da mesma família do ator, então o erro
+  # pode andar junto): {provider: anthropic, model: claude-haiku-4-5}. Gemini: provedor `kind: openai` apontando para a
+  # camada compatível, como em `providers.gemini` acima.
 
 releases:                         # entrega e conferência de versão no parque
   verify_max_age_h: 24            # validade do "está instalado aqui"; passado isso, relê do aparelho. 0 desliga

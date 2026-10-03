@@ -34,7 +34,9 @@ from .curador import (CURADOR_SYSTEM, ParecerBruto, ParecerIlegivel, PedidoDePar
                       parecer_from_json)
 from .parsing import (_CapPlanOut, _MultiPlanOut, _PlanOut, catalog_plan_from_json, plan_from_json, social_from_json,
                       verdict_from_json)
-from .provider import (AVISO_TELA_SENSIVEL, AIError, Decision, DecisionRequest, PlanRequest, ScreenInput, SocialRequest, Usage,
+from .provider import (AVISO_TELA_SENSIVEL, AIError, Decision, DecisionRequest, LeituraRequest, PlanRequest, ScreenInput,
+                       SocialRequest, Transcricao, TranscricaoWire, modelo_do_papel_leitura,
+                       transcricao_from_json, Usage,
                        Verdict, VerifyRequest, persona_draft_from_json)
 
 if TYPE_CHECKING:
@@ -433,6 +435,25 @@ class AnthropicProvider:
         self._check_stop(resp, self.models["social"])
         raw = next((b.text for b in resp.content if b.type == "text"), "")
         return social_from_json(raw, req.max_length), usage
+
+    # ------------------------------------------------------------------ leitura visual (item 12.5)
+    async def transcribe(self, req: LeituraRequest) -> tuple[Transcricao, Usage]:
+        """Papel `leitura`: transcreve o RECORTE de uma linha de tela, às cegas. Recebe a imagem e os nomes das saídas
+        pedidas — nunca o valor do ator, o comando ou a conta. O recorte já passou pelas barreiras do executor (tela não
+        sensível, região declarada), então não há segundo filtro de sensibilidade aqui."""
+        imagem = {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                              "data": base64.standard_b64encode(req.recorte).decode()}}
+        # O modelo é SEMPRE o declarado para o papel `leitura`, nunca o do ator: dentro do hub, a instância tem de ser a do
+        # papel `leitura` (o hub compartilha instâncias por chave de provedor, modelo e prazo, e uma que serve o ator
+        # entregaria o recorte ao modelo do ator); fora dele, o de `ai.roles.leitura`. Sem isso, recusa.
+        modelo = modelo_do_papel_leitura(self.cfg, self.role)
+        resp, usage = await self._create(role="leitura", model=modelo, system=prompts.LEITURA_SYSTEM,
+                                         content=[imagem, {"type": "text", "text": prompts.leitura_user_text(req.saidas)}],
+                                         effort="low", max_tokens=1200, schema=strict_schema(TranscricaoWire),
+                                         with_image=True)
+        self._check_stop(resp, modelo)
+        raw = next((b.text for b in resp.content if b.type == "text"), "")
+        return transcricao_from_json(raw, list(req.saidas)), usage
 
     # ------------------------------------------------------------------ geração de persona
     async def generate_persona(self, req: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]:

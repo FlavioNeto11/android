@@ -158,6 +158,10 @@ DELIVERY_ORDER = {DeliveryLevel.none: 0, DeliveryLevel.appeared: 1, DeliveryLeve
 SAIDA_NOME_RE = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
 SAIDA_VALOR_MAX = 2000
 SAIDA_VALUE_KINDS = ("text", "number", "url", "list")
+#: Origem de um valor gravado (item 12.5, ADR-070; migração 078): `arvore` = o texto do elemento na árvore do app;
+#: `visual` = leitura da imagem conferida às cegas por um segundo leitor, só na tela cega que o app declara. NÃO é nível
+#: de prova (`real`/`simulated`/`not_run`): é atributo de cada valor.
+SAIDA_ORIGENS = ("arvore", "visual")
 
 
 class Postcondition(BaseModel):
