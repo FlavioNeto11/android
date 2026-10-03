@@ -341,6 +341,16 @@ com o banco aberto só para leitura.
   - O `title` gravado não muda, e o dossiê do curador não leva `etapa`, porque o título de uma etapa pode citar um @
     ou um contato.
   - A ocorrência de falha diz "android-05 · etapa open_app · tentativa 1".
+- **O app de teste fora da lista padrão (RA-19, fatia A).**
+  - O Aprendido abre em **Produto**: `GET /api/aprendizado` sem `rotulo` esconde os apps de `apps.category='qa'` (o QA
+    embutido, 041), que eram 94 das 164 entradas do central em 03/10.
+  - O filtro é um seletor segmentado "Produto · QA · Todos", com o número de ocultos ao lado ("94 do QA ocultos").
+  - Com um app escolhido (`app=`), o padrão é `todos`: escolher o QA Messenger mostra o que ele tem.
+  - O acervo de teste NÃO é descartado (o fluxo de 17 usos serviu 16 execuções reais). Só sai da lista padrão; a
+    visão por app, as filas Para aprovar e Revisar, a contagem da barra e a saúde continuam lendo tudo
+    (`LearningService.livro` sem `rotulo`).
+  - Não há `papel` no YAML: o app de teste é o que a loja já marca (`apps.category`).
+  - A fatia B, depois do RA-22: a trava "origem simulada nunca passa de candidate" no D1.
 - **Execução:** o botão "Deu certo / Deu errado" em cada objetivo (aba "Por aparelho") e na execução inteira (aba
   "Relatório"). O motivo abre em linha, e "Reativar" aparece quando a resposta traz `desfazer`. A seção "Aprendizado
   desta execução" mostra o bloco `aprendizado`, os votos e os sinais. O cartão "Custo de IA desta execução" mostra
