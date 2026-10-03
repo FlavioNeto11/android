@@ -4315,7 +4315,7 @@ arquivo de versão nova lido por código velho seria entendido pela metade, sem 
 Prova `simulated`: `tests/test_prova_do_conhecimento.py`, com `git_blob` comparado a `git hash-object` de cada YAML
 do repositório e a recusa de `versao` 2, 0, 1.0, `true` e `"1"`.
 
-## Adendo (29.42, 03/10/2026) — `GET /api/flows` devolve `required_apps` na ordem do plano
+## Adendo v0.85 (03/10/2026; número da orquestradora, `.claude/reservas.md`; item 29.42) — `GET /api/flows` devolve `required_apps` na ordem do plano
 
 - Cada fluxo de `GET /api/flows` (e a resposta de `PUT /api/flows/{id}`) ganha `required_apps: string[]`: os ids dos apps
   que o fluxo exige, **na ordem em que o plano gravado os usa** (primeira aparição em `steps[].app_id`; a etapa sem app
