@@ -199,7 +199,7 @@ class AndroidCfg(BaseModel):
     #: nenhum nome resolvia. É POR MÁQUINA (central e cada worker têm a sua rede): use DNS que respondem ali.
     dns_servers: list[str] = []
     hibernation: bool = False                   # rodízio desliga salvando snapshot; acordar leva segundos (medido: ~7 s)
-    wake_timeout_s: int = 90                    # acordar que não chega à interface nesse tempo → descarta snapshot, boot a frio
+    wake_timeout_s: int = 90                    # acordar que não chega à interface nesse tempo, CONTADO DO SNAPSHOT CARREGADO (RA-15) → descarta, boot a frio
     # Sobe o emulador COM janela. Existe para o aparelho-loja: a conta Google é digitada direto na janela do
     # emulador, e assim nenhuma tecla passa pelo backend, pelo Appium ou pelo adb. O parque segue sem janela.
     window: bool = False
