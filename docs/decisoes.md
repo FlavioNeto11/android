@@ -4342,14 +4342,15 @@ catálogo, comando), que o ADR-063 não cobre.
    `JEV_RUNTIME_SEND_APPROVED` e `JEV_ALLOWED_CLASSES`. O YAML só restringe, nunca libera. Cada classe liberada tem linha aqui,
    com data.
 4. **Classes de dado liberadas pelo dono em 02/10/2026:** *(Emendado em 03/10/2026, ~00:15Z: C3 com filtro sensato em vez de
-   remoção que falha fechada, e D-J5 só de decisão; ver o item 10.)*
+   remoção que falha fechada, e D-J5 só de decisão; ver o item 10.) *(Emendado de novo em 03/10/2026, ~18:39Z: a C3 em mais dois usos, com
+   condições; ver o item 21.)*
 
    | Classe | O que | Liberada para |
    |---|---|---|
    | C0 | categorias e metadados (`failure_kind`, risco, `side_effect`, tier, contagens, status) | F1: todos os consumidores da porta |
    | C1 estrito | Livro sanitizado por campos nomeados de lista fechada (lição de texto fechado, metadados de receita sem rótulo de seletor) | F1 |
    | C2 | catálogo próprio do dono (nome, descrição e modelo de habilidade, fluxo, capability, app declarado) | F2 |
-   | C3 | comando do dono, depois de `sem_destinos`, `redact` e remoção de entidades ~~que FALHA FECHADA~~ com filtro sensato (item 10) | F3: só a sombra da intenção (31.9) |
+   | C3 | comando do dono, depois de `sem_destinos`, `redact` e remoção de entidades ~~que FALHA FECHADA~~ com filtro sensato (item 10) | F3: ~~só~~ a sombra da intenção (31.9); desde o item 21, também a R5 em sombra (31.13) e o lote offline do 31.11, com as condições de lá |
 
    Fora: C4 (cartão e texto da persona) e todo o pipeline social e de persona (D-J5; AUP 1.3, 1.6 e 3.3; desde o item 10, D-J5
    veta só a DECISÃO por persona, não o dado); C5 (árvore de UI);
@@ -4815,6 +4816,20 @@ catálogo, comando), que o ADR-063 não cobre.
         `scripts/tests/test_jev_relatorio_31_10.py`, na main pela suíte 11 (442a9249);
       - `real`: o relatório no banco do central, só leitura, às 15:08Z, com 1 estado C0, cobertura 1,0 em 0,50 e 0 em
         0,85.
+
+21. **Emenda de 03/10/2026 ao item 4 (decisão do dono, ~18:39Z, no chat da orquestradora, relatada à frente Jev): a C3
+    sai em mais dois usos.** O comando do dono, já filtrado (o filtro sensato e o piso do item 10, os mesmos da sombra da
+    intenção), pode ir ao Jev também:
+    - **na sugestão de apps do comando** (R5, item 31.13), em sombra. Condição: ela só liga depois de o filtro estar
+      provado com 10 comandos reais, isto é, depois do GO do 31.10;
+    - **no reprocessamento em lote de comandos antigos** (o braço offline do 31.11, partes R2, R3 e R5). Condição: o
+      lote usa só comandos que já foram enviados ao Jev pela sombra da intenção depois de 15:29:51Z (o T_on do
+      deploy 11), de modo que nenhum comando sai pela primeira vez por ele.
+
+    Seguem valendo: C7 nunca, em modo nenhum; o filtro sensato do item 10; a fatia e os tetos do item 7, com teto de
+    US$ 0,05 no braço offline e a janela dada pela orquestradora; nada liga em runtime sem suíte e deploy. A pergunta
+    foi levada ao dono pela orquestradora, a pedido da frente Jev, depois da contagem de rótulos do curador
+    ([golden set](design/jev-golden-set.md) §2, registro de 03/10 ~18:45Z).
 
 **Consequências.** A plataforma ganha um motor barato (US$ 0,042/M de entrada, saída grátis) para decisões fechadas que hoje não
 acontecem ou vão ao Opus, medido em sombra contra o caminho atual antes de qualquer `on`. O ADR-063 continua valendo para código.

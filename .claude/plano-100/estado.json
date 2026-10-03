@@ -5414,25 +5414,26 @@
   },
   "31.8": {
    "id": "31.8",
-   "status": "partial",
-   "proof": "simulated",
-   "evidence": "Branch feat/31-8-curador-sombra (b18476e1, ae2e5370, 59ac9706) + ligacao no AppState (5e8bb8a5: CuradorComTriagemEmSombra embrulha o CuradorDoHub; simulado por resposta), na main pelo merge 8413ddc9 da integ jev/integ-suite-5 @ 1cb9bb4a (suites 5 e 5b verdes nessa parte). Triagem do curador em sombra C0/F1, campos fechados (privacidade.CAMPOS_POR_ORIGEM['curador']). Desligada por padrao e envio fechado (JEV_RUNTIME_SEND_APPROVED=False). Chamada real: not_run.",
-   "blocker": "Revisao adversarial da suite 5: I1 (stop() nao espera o pool sombra-curador antes do db.close) e I2 (decisao real casada = parecer bruto, mesmo invalido ou simulado; contamina a concordancia do GO) precisam de correcao antes de ligar shadow (31.10).",
-   "files": [
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "real (critério da linha: a triagem do curador em sombra com dado F1): deploy 9 (main 3dcfc9ac, T_on 2026-10-03T11:04:15Z, consumidores {curador: shadow}, classes [C0, C1]); a prova do 31.17 (03/10/2026 13:14:50Z, WIN-7S2UASNLFOP, banco do central só leitura, scripts/jev-prova-31-17.py @81c1f471) achou 4 linhas curador/shadow/C0 em 4 chamadas, 0 violações, cruzamento 4 × 4 com as ai_calls do Jev. Releitura só de contagem (2026-10-03T18:27:56Z, mesma máquina, deploy 12 d5a1c3a9, mode=ro): as mesmas 4 linhas (a última às 13:11:08Z) e 4 ai_calls ok do Jev fora da intenção; nenhuma triagem nova porque o curador não teve chamada depois de 13:11:08Z (ai_calls de origem curador; a espera é a do K-087). simulated (correções da revisão adversarial da suíte 5, as duas no deploy 9): I1, o desligamento espera o pool que grava a sombra (d19187bf, backend/tests/test_desligamento_sombras.py); I2, a decisão real casada só vem de parecer válido, real e da régua (d09d147e, backend/tests/test_decisao_fechada_curador.py). Os dois arquivos: 56 passed em 331dd9df (03/10 ~18:30Z). not_run: o desligamento limpo medido no central, que não é critério da linha.",
+   "blocker": "",
+   "arquivos": [
     "backend/app/planning/decisao_fechada/curador.py",
     "backend/app/planning/decisao_fechada/privacidade.py",
     "backend/app/modules/learning/infrastructure/curador_do_hub.py",
-    "backend/app/state.py"
+    "backend/app/state.py",
+    "backend/tests/test_decisao_fechada_curador.py",
+    "backend/tests/test_desligamento_sombras.py",
+    "scripts/jev-prova-31-17.py"
    ],
-   "testes": [
-    "backend/tests/test_decisao_fechada_curador.py"
-   ],
-   "grupo": "sessao:jev-31-x",
-   "modelo": "sessao",
-   "esforco": "",
+   "testes": "tests/test_decisao_fechada_curador.py + tests/test_desligamento_sombras.py: 56 passed (331dd9df). Prova real pelo 31.17 e releitura só de contagem no central.",
+   "grupo": "31-8-estado-jev",
+   "modelo": "opus (sessão jev, executora da orquestradora)",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T00:13:49+00:00"
+   "quando": "2026-10-03T18:29:36+00:00"
   },
   "31.9": {
    "id": "31.9",
@@ -7916,6 +7917,15 @@
    ],
    "grupos": [
     "29-50-real"
+   ]
+  },
+  {
+   "quando": "2026-10-03T18:29:36+00:00",
+   "itens": [
+    "31.8"
+   ],
+   "grupos": [
+    "31-8-estado-jev"
    ]
   }
  ]

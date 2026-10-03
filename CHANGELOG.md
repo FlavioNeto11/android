@@ -19,6 +19,26 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Golden set: o rótulo "2v" (validação automática) pré-registrado como proposta, não vigente
+
+- Nota datada em `docs/design/jev-golden-set.md` §2. O GO não muda; a orquestradora reavalia depois do deploy 14.
+
+## 2026-10-03 — ADR-069, item 21: a C3 em mais dois usos (decisão do dono, ~18:39Z)
+
+- Emenda ao item 4 em `docs/decisoes.md`: o comando já filtrado pode ir ao Jev também na R5 em sombra (31.13) e no
+  lote offline do 31.11.
+  - A R5 só liga depois do GO do 31.10.
+  - O lote usa só comandos já enviados pela sombra da intenção depois de 15:29:51Z.
+  - C7 segue nunca; o filtro do item 10 e os tetos do item 7 seguem valendo.
+
+## 2026-10-03 — Jev: registro do braço offline (31.11) e contagem de rótulos do curador no golden set
+
+- `docs/design/jev-golden-set.md` §2 ganhou um registro datado.
+  - O braço offline usa o `DecisorJev` pela `Porta`, sem o adaptador MIT.
+  - A "pergunta 4" já está respondida pelos itens 7 e 9 do ADR-069.
+  - A contagem real de hoje (18:33:11Z, central em `mode=ro`, deploy 12 `d5a1c3a9`) deu 0 rótulos 1 e 2 nas 28 revisões
+    de receita do escopo da R1. Nenhum limiar mudou.
+
 ## 2026-10-03 — Android: seis polimentos do Chrome do deploy 12 (branch feat/polimentos-rede-deploy12, sem migração)
 
 - (1) Títulos sem as lacunas de parâmetro em claro. Métricas, Para aprovar e Fluxos e receitas mostravam

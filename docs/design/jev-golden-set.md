@@ -83,6 +83,42 @@ item nem aceita parecer (ADR-069 item 2).
   maior probabilidade foi 0,60–0,62. A `confianca` segue gravada na sombra, e o relatório mostra as duas colunas
   (`cobertura_por_limiar`). `noul` e `score`, sem produtor, seguem na `confianca`.
 
+*Registro de 03/10 (~18:45Z), 31.11, a pedido da orquestradora.* Nenhum limiar da tabela mudou.
+- **O braço offline (31.11) usa o `DecisorJev` pela `Porta`**, o mesmo caminho do runtime, sem o adaptador MIT e sem
+  dependência nova de terceiro (decisão da orquestradora, ~18:40Z).
+- **A "pergunta 4" do roteiro já está respondida** pelos itens 7 e 9 do ADR-069: a prova real paga em sombra (31.10
+  e 31.11) está autorizada com a fatia do Jev e o teto registrado, sem troca de chave. A dependência do 31.11 é o
+  31.7, que está feito. A C3 da R2, da R3 e da R5 espera o sim do dono à emenda do item 4.
+- **Contagem de rótulos do curador, real, só de contagem:** 03/10 18:33:11Z, WIN-7S2UASNLFOP, banco do central em
+  `mode=ro`, deploy 12 (`d5a1c3a9`).
+  - São 57 revisões (`learning_reviews`, template `curador`), todas válidas e reais: 29 de `fluxo`, 28 de `receita`
+    e nenhuma de `licao`.
+  - O escopo da R1 (`KINDS_F1`) são as 28 de `receita`, com 9 estados C0 distintos. O fluxo é C2 e fica fora.
+  - Rótulo 1: 0. Não há transição do dono.
+  - Rótulo 2: 0. O gravador do 30.35 usa uma janela de 14 dias, então o primeiro rótulo possível é de 17/10 (INFERRED).
+  - Concordância com o curador principal, só acompanhamento: 28 de 28 (25 `revisar`, 2 `manter`, 1 `rebaixar`).
+  - Conclusão: nenhum `kind` tem amostra para GO. A rodada offline da R1 (teto US$ 0,05) é acompanhamento: ela diz se
+    a entrada carrega sinal e dá a grade de sensibilidade.
+
+*Nota de 03/10 (~18:55Z), PROPOSTA, NÃO VIGENTE: a validação automática como rótulo "2v".* Fica pré-registrada
+antes de existir qualquer rótulo e não muda o GO da tabela. A orquestradora reavalia depois do deploy 14, com o P4
+de volta e volume real, e só então decide o contrato com a Aprendizado.
+- **Condições duras.** Só conta a validação `feita` (`learning_validations`) cuja execução deixou uma DIREÇÃO legível
+  pelo `run_id`, com `simulated = 0` e noutro aparelho que o de origem.
+  - `for` vira `manter`; `against` de etapa reprovada vira `rebaixar`. Uma execução só nunca rotula `descartar`.
+  - Não rotulam: `sem_evidencia`, `forma` (30.36), `recusada`, `expirada` e falha de infraestrutura.
+  - Na receita, a direção por execução ainda não existe: a evidência vai aos contadores. No central, a única
+    validação `feita` de receita não tinha linha em `learning_evidence` com o `run_id` dela (03/10 18:40Z, só leitura).
+    Isso pede o contrato "direção por execução na receita (stance + `run_id`)" com a Aprendizado.
+- **O resultado posterior vence o 2v** quando os dois existem para o mesmo item.
+- **Corte:** com 10 ou mais pares 2v × posterior, a fonte 2v sai do GO se a concordância entre os dois ficar
+  abaixo de 80 %.
+- **Fonte separada:** o relatório mostra `fonte=validacao` à parte das fontes 1 e 2. Os rótulos 2v contariam para os
+  30 por `kind`; os demais limiares não mudam.
+- **Viés conhecido:** só ganha validação o item em que o curador principal pediu evidência (`opt:revisar`).
+- **Pergunta futura, sem ação:** incluir o fluxo na triagem (C2 na R1). A prova de fluxo do 30.37 seria o rótulo
+  mais limpo, e 29 das 57 revisões de 03/10 são de fluxo.
+
 ## 3. Intenção (R2 e R3, 31.9)
 
 **Estratos (RA-2; execuções de 7 dias até 03/10 no central):** qa-messenger 58 (+3), instagram 15, outlook 5.

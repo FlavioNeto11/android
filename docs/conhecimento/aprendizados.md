@@ -2319,3 +2319,28 @@ Nenhum intervalo entre elas chegou a 1 h, então o curador não pôde rodar de ~
 
 **Aplicabilidade.** Vigente até a suíte 13 levar o #163. A regra vale para todo laço periódico que dorme antes da 1ª
 volta: num ambiente com restarts frequentes, ancorar a espera no último registro gravado, não na subida.
+
+### K-088 — O `httpx` loga em INFO a URL com o token do bot do Telegram: fora do backend, nada a redige
+
+**Sintoma.** No 28.15 (03/10), o teste da credencial recusada capturava o log em DEBUG (`caplog.set_level(DEBUG)`) e
+encontrava o token do bot no texto capturado. A linha era do `httpx`, não do código da Central:
+`HTTP Request: POST https://api.telegram.org/bot<token>/getUpdates "HTTP/1.1 200 OK"`.
+
+**Causa.**
+- A Bot API põe o token NA URL (`/bot<token>/<método>`).
+- O `httpx` registra cada requisição em INFO, com a URL inteira.
+- O backend se protege em duas camadas:
+  - `setup_logging` (`backend/app/main.py`) põe `httpx` e `httpcore` em WARNING;
+  - o `RedactingFilter` fica no handler.
+- Fora dele não há proteção. Um teste com `caplog` em DEBUG ou INFO, um script que chame `logging.basicConfig(level=INFO)`
+  e um REPL de diagnóstico expõem o token. O `CanalTelegram` já monta os erros sem a URL (`_limpar`, nome da exceção e
+  código HTTP), mas esse log não passa por ele.
+
+**O que funcionou.**
+- No teste, afirmar só sobre os loggers da Central, deixando `httpx` e `httpcore` de fora
+  (`test_telegram_entrada.py::test_credencial_ou_codigo_e_recusado_e_nao_gravado`), com um comentário dizendo por quê.
+- Em script ou diagnóstico que fale com o Telegram, nunca subir o nível do `httpx` acima de WARNING. Se precisar ver as
+  chamadas, logar o método e o status montados à mão.
+
+**Aplicabilidade.** Vigente. Vale para toda API que leva o segredo na URL (o Telegram hoje). Antes de afirmar "o token
+não aparece no log", conferir em que nível o logger do cliente HTTP está NAQUELE processo.

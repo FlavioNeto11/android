@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-329 de 380 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+330 de 380 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -366,7 +366,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.5 | implemented | simulated | sessao | — | Branch feat/31-5-sombra-registro (5a29096c, 5ad49126, dda637ad, 0b0d7102), na main pelo merge 8413ddc9 da integ jev/integ-suite-5 @ 1cb9bb4a (suites 5 e 5b: bb8bfc1q2, bvqmppz9x). Migracao 074 (decisao_fechada_sombra e… |  |
 | 31.6 | implemented | simulated | sessao | — | PR #112 (merge b5baf3e5 na main, commit a6cfa0fd, sessao jev, 02/10/2026): rubrica unica de gasto com fatias por origem, fatia_jev (ai.limits.jev_max_usd_per_day, US$ 0,50/dia, D-J3) e AIError.motivo fechado (P6). backe… |  |
 | 31.7 | implemented | not_run | sessao | — | Golden set e limiares PRE-REGISTRADOS em docs/design/jev-golden-set.md (commit ae2e5370, 02/10/2026 UTC, branch feat/31-8-curador-sombra; data corrigida em 59ac9706), com a frente Aprendizado (mapeamento de rotulos). It… |  |
-| 31.8 | partial | simulated | sessao | — | Branch feat/31-8-curador-sombra (b18476e1, ae2e5370, 59ac9706) + ligacao no AppState (5e8bb8a5: CuradorComTriagemEmSombra embrulha o CuradorDoHub; simulado por resposta), na main pelo merge 8413ddc9 da integ jev/integ-s… | Revisao adversarial da suite 5: I1 (stop() nao espera o pool sombra-curador antes do db.close) e I2 (decisao real casada = parecer bruto, mesmo invalido ou sim… |
+| 31.8 | implemented | real | opus (sessão jev, executora da orquestradora) | — | real (critério da linha: a triagem do curador em sombra com dado F1): deploy 9 (main 3dcfc9ac, T_on 2026-10-03T11:04:15Z, consumidores {curador: shadow}, classes [C0, C1]); a prova do 31.17 (03/10/2026 13:14:50Z, WIN-7S… |  |
 | 31.9 | implemented | simulated | opus (sessão jev, executora da orquestradora) | — | A intenção em sombra fora da cadeia, com o filtro C7 completo: rodadas E a H (suítes 7 a 10), forma A (31.18 @b7c05558) e lacunas + A-média (31.20 @ea1df281), na main pela suíte 11 (97425d5f). Portão passado em ea1df281… |  |
 | 31.10 | partial | real | opus (sessão jev, executora da orquestradora) | — | Curador em sombra real desde o deploy 9 (T_on 2026-10-03T11:04:15Z): 4 linhas às 13:10Z, conferidas pela prova do 31.17 (13:14:50Z). Relatório scripts/jev-relatorio-31-10.py com o 31.19 (@442a9249, na main pela suíte 11… | Fecha (implemented) com a leitura de ≥ 10 linhas de intenção (critério da orquestradora). O P4 foi pausado às 17:18Z (K-086; religa com o 30.37): linhas novas… |
 | 31.11 | pendente | — | — | — |  |  |
@@ -387,7 +387,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (51): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 30.18, 30.31, 30.34, 30.36, 30.37, 30.38, 31.8, 31.10, 31.11, 31.12, 31.13, 31.21, 32.2, T.2
+Pendentes (50): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 30.18, 30.31, 30.34, 30.36, 30.37, 30.38, 31.10, 31.11, 31.12, 31.13, 31.21, 32.2, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

@@ -1,4 +1,4 @@
-"""Funde os mapas dos lotes (`<pasta>/mapa/*.json`) em `.claude/trello/mapa.json` (id do plano → cartão).
+"""Funde os mapas dos lotes (`<pasta>/mapa/lote_*.json`) em `.claude/trello/mapa.json` (id do plano → cartão).
 
 Uso: python .claude/trello/mapa.py <pasta com mapa/*.json>
 Idempotente: o que já está no mapa.json é mantido; entradas novas entram; conflitos ficam com a mais recente.
@@ -18,7 +18,7 @@ def main() -> int:
     pasta = Path(sys.argv[1]) / "mapa" if len(sys.argv) > 1 else None
     atual = json.load(io.open(DESTINO, encoding="utf-8")) if DESTINO.exists() else {"cartoes": {}, "falhas": [], "atualizado_em": None}
     novos = 0
-    for arq in sorted(pasta.glob("*.json")) if pasta and pasta.exists() else []:
+    for arq in sorted(pasta.glob("lote_*.json")) if pasta and pasta.exists() else []:
         dados = json.load(io.open(arq, encoding="utf-8"))
         for ident, c in (dados.get("criados") or {}).items():
             if ident not in atual["cartoes"]:

@@ -1,13 +1,15 @@
 ---
 name: trello
-description: Manter o Trello do dono (workspace Central de Aparelhos) como espelho legível do plano-100 e do estado das frentes. Use ao receber qualquer mudança de estado de uma executora, ao fechar um deploy, nas rotinas diária e semanal, ou para carregar cartões em lote a partir do plano.
+description: Manter o Trello do dono (workspace Central de Aparelhos) como espelho legível do plano-100 e do estado das frentes. É da sessão Canais (Trello e Telegram); a orquestradora só repassa os fatos. Use ao receber qualquer mudança de estado de uma frente, ao fechar um deploy, nas rotinas diária e semanal, ou para carregar cartões em lote a partir do plano.
 ---
 
-# Trello — manutenção pela orquestradora
+# Trello — manutenção pela sessão Canais
 
 O dono decidiu em 03/10/2026: **todas** as tarefas (concluídas, em execução e futuras) ficam no Trello com descrição
 técnica **e** para quem não é técnico; objetivos, métricas, maturidade, custos, marcos e decisões também. A
-manutenção é da orquestradora. A Central passará a espelhar/aceitar comandos por lá (itens 32.1/32.2). **O
+manutenção nasceu com a orquestradora e, por decisão do dono no mesmo dia (18:15Z), passou à sessão **Canais**
+(handoff `.claude/handoffs/canais.md`), que também faz a integração com a Central (32.2). A orquestradora escreve os
+fatos em `.claude/handoffs/canais/eventos.md` e a Canais atualiza os cartões. **O
 repositório e o banco continuam sendo a verdade**; o Trello é espelho + canal: divergência corrige o espelho.
 
 ## Estrutura (fonte única: `.claude/trello/estrutura.json`)
@@ -27,8 +29,9 @@ laranja custo pago · vermelho bloqueado/urgente. ARIs por quadro no JSON.
   desc, due ISO UTC, pos); etiqueta `attach_label`; mover `move` (listId; `boardId` só se for outro quadro); concluir
   `mark_done`; comentar `add_comment`; checklist `trelloWriteChecklist create/add_item/update_item`; ler
   `trelloReadCard list_by_list|get`.
-- **Sem chave no repositório.** A Central terá credencial própria no `.env` (32.2); a orquestradora usa o MCP.
-- `mapa.json` (`.claude/trello/mapa.json`): `id do plano → {card, url, lista}`. Atualize ao criar/mover.
+- **Sem chave no repositório.** A Central terá credencial própria no `.env` (32.2); a sessão usa o MCP.
+- `mapa.json` (`.claude/trello/mapa.json`): `id do plano → {card, url, lista}`. Atualize ao criar/mover. Leia e grave
+  sempre no checkout central (`C:/git/android`), nunca na cópia de um worktree.
 
 ## Modelo de cartão
 
@@ -59,7 +62,8 @@ Validação no navegador → Prova real.
 - **A cada deploy:** marco + métricas tocadas (M8 aparelhos, M9 testes).
 - **Semanal (segunda):** revisar **Métricas** (meta × atual com data e fonte), **Maturidade** e **Riscos**; nada estimado
   sem dizer que é estimado.
-- **Ao trocar de sessão:** o handoff aponta para esta skill; a sessão nova lê `estrutura.json` e `mapa.json`.
+- **Ao trocar de sessão:** o handoff `.claude/handoffs/canais.md` aponta para esta skill; a sessão nova lê
+  `estrutura.json`, `mapa.json` e as linhas novas de `.claude/handoffs/canais/eventos.md`.
 
 ## Carga em lote (plano → cartões)
 
@@ -69,11 +73,14 @@ python .claude/trello/gerar.py --destino <pasta> --so hoje|historico|pendentes|t
 
 Gera lotes JSON (parte técnica pronta; marcadores `{{NAO_TECNICO}}` e `{{POR_QUE}}`). Agentes Sonnet
 (`general-purpose`, prompt padrão em `.claude/trello/prompt-lote.md`) escrevem a parte para leigos e criam os cartões
-pelo MCP, devolvendo `mapa/<lote>.json`; depois `python .claude/trello/mapa.py` funde os mapas em `mapa.json`.
+pelo MCP, devolvendo `mapa/lote_<nome>.json`; depois `python .claude/trello/mapa.py <pasta>` funde os mapas em
+`mapa.json`. O gerador passa o texto inteiro por `redacao.redigir`; mesmo assim, confira nome de pessoa que não está
+no banco (persona de teste, autor em flag de comando) antes de gravar.
 
 ## Regras duras
 
-- Nunca: segredo, nome de pessoa real, e-mail, telefone, senha, texto de comando de execução, dado de terceiro.
+- Nunca: segredo, nome de pessoa real ou de persona, @conta, e-mail, telefone, IP, senha, texto de comando de
+  execução, dado de terceiro.
 - Nunca inventar funcionalidade: só o que a linha do plano, a evidência e o CHANGELOG dizem.
 - Horas só por `date -u` (Z) + Brasília (UTC-3). Prazos são compromissos: ao perder um, comentar o porquê e o novo.
 - Não apagar cartões: arquivar (`archive`) e registrar no handoff.
