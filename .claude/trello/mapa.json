@@ -1710,12 +1710,6 @@
    "lista": null,
    "lote": "lote_A7_hoje"
   },
-  "29.50": {
-   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac140b47c94d9584a3dc72e",
-   "url": "https://trello.com/c/rZpSkMHN",
-   "lista": null,
-   "lote": "lote_A7_hoje"
-  },
   "29.44": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac140ba8ea0847dc0c68557",
    "url": "https://trello.com/c/Uyg2gtDB",
@@ -1854,12 +1848,6 @@
    "lista": null,
    "lote": "lote_A7_hoje"
   },
-  "30.35": {
-   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac142ea6509e002c1fc7f5f",
-   "url": "https://trello.com/c/JF6exxlz",
-   "lista": null,
-   "lote": "lote_A7_hoje"
-  },
   "31.1": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac142ee4b0d22e9338bb717",
    "url": "https://trello.com/c/IV0e2O4A",
@@ -1932,12 +1920,6 @@
    "lista": null,
    "lote": "lote_A7_hoje"
   },
-  "31.19": {
-   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1439a31c781b6e1b102c9",
-   "url": "https://trello.com/c/Jm8mFmEv",
-   "lista": null,
-   "lote": "lote_A7_hoje"
-  },
   "31.20": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac143a052ba40d72fbd701c",
    "url": "https://trello.com/c/RfY1Hd5x",
@@ -1960,108 +1942,6 @@
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1414279c4f8c29b17e66e",
    "url": "https://trello.com/c/ttZkyu8x",
    "lista": "como_ler",
-   "lote": "lote_A8_atuais_pendentes"
-  },
-  "28.15 · Telegram como canal de entrada (responder e comandar a Central pelo Telegram)": {
-   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141473d1fd9e0fd328111",
-   "url": "https://trello.com/c/cS8Yi3nL",
-   "lista": "em_execucao",
-   "lote": "lote_A8_atuais_pendentes"
-  },
-  "30.37 · Validação de um fluxo pelo próprio fluxo (prova de fluxo)": {
-   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1414c6599c75f6bdf20dc",
-   "url": "https://trello.com/c/VUzkM2jb",
-   "lista": "em_execucao",
-   "lote": "lote_A8_atuais_pendentes"
-  },
-  "Polimentos da tela Rede após o deploy 12 (lista “Saída pela casa” e carga dupla)": {
-   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1414fc1828905aa2c4add",
-   "url": "https://trello.com/c/gwOQbAs2",
-   "lista": "em_execucao",
-   "lote": "lote_A8_atuais_pendentes"
-  },
-  "Validação no navegador do deploy 12 (13 itens, só leitura)": {
-   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1415304a25b203572df82",
-   "url": "https://trello.com/c/dQTgwn9F",
-   "lista": "em_execucao",
-   "lote": "lote_A8_atuais_pendentes"
-  },
-  "32.1 · Estudo: a Central acessa e orquestra pelo Trello, ligada ao conhecimento da plataforma": {
-   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141569a084e95c08e5954",
-   "url": "https://trello.com/c/mGCJB1og",
-   "lista": "em_execucao",
-   "lote": "lote_A8_atuais_pendentes"
-  },
-  "#162 · 31.21 Origem exata do fallback “rede” na sombra do Jev (migração 083)": {
-   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141d370d344b661ab8aaf",
-   "url": "https://trello.com/c/dKKCpVst",
-   "lista": "em_validacao",
-   "lote": "lote_A8_atuais_pendentes"
-  },
-  "#163 · 30.36 Posição “forma”, evidência contra e “sem caminho” na validação do aprendizado": {
-   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141d7f4b33c20b15c05e5",
-   "url": "https://trello.com/c/kL7u7HK1",
-   "lista": "em_validacao",
-   "lote": "lote_A8_atuais_pendentes"
-  },
-  "31.10 · Sombra de intenção da C3 (o Jev classifica cada comando, sem decidir)": {
-   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141dbf065d35d70728692",
-   "url": "https://trello.com/c/SoG7QPZL",
-   "lista": "em_validacao",
-   "lote": "lote_A8_atuais_pendentes"
-  },
-  "29.50 · Pergunta sem resposta por 24 h é encerrada pelo sistema": {
-   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141df1b2a40845aa1284d",
-   "url": "https://trello.com/c/FrKAksd7",
-   "lista": "em_validacao",
-   "lote": "lote_A8_atuais_pendentes"
-  },
-  "30.31 · P4: validação dos itens aprendidos no QA (pausada até o 30.37)": {
-   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141e2d8402040e0b08976",
-   "url": "https://trello.com/c/LrWebgp8",
-   "lista": "em_validacao",
-   "lote": "lote_A8_atuais_pendentes"
-  },
-  "30.34-A · Autopublicação de fluxos de risco B em sombra": {
-   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141e71675f2e1e7a24a01",
-   "url": "https://trello.com/c/GmYxOgNq",
-   "lista": "em_validacao",
-   "lote": "lote_A8_atuais_pendentes"
-  },
-  "30.35 · Desfecho posterior: o fluxo é rebaixado se falhar depois de publicado": {
-   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141e867cb69f4e53652fa",
-   "url": "https://trello.com/c/jmcDPWqD",
-   "lista": "em_validacao",
-   "lote": "lote_A8_atuais_pendentes"
-  },
-  "31.19 · Calibração do curador (30 rótulos do dono)": {
-   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141eb90524f4f79035048",
-   "url": "https://trello.com/c/lf8oc5UB",
-   "lista": "em_validacao",
-   "lote": "lote_A8_atuais_pendentes"
-  },
-  "Suíte 13 → deploy 13 (04/10): #162 (migração 083), #163 (30.36), polimentos da Rede": {
-   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac14217053c0a18b14c2a89",
-   "url": "https://trello.com/c/A0csZ0Xp",
-   "lista": "proximas",
-   "lote": "lote_A8_atuais_pendentes"
-  },
-  "Suíte 14 → deploy 14 (05/10): 28.15 (Telegram) + 30.37 (prova de fluxo) + migrações 084/085": {
-   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1421a17324fc5a6802ef4",
-   "url": "https://trello.com/c/EbM7rZt3",
-   "lista": "proximas",
-   "lote": "lote_A8_atuais_pendentes"
-  },
-  "32.2 · Integração da Central com o Trello (implementação, após o estudo 32.1)": {
-   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1421d1f7a755c5515af01",
-   "url": "https://trello.com/c/o5Kxnu6A",
-   "lista": "proximas",
-   "lote": "lote_A8_atuais_pendentes"
-  },
-  "Pendência futura do dono: criar a chave e o token da API do Trello para a Central (depois do 32.1)": {
-   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac142200275ff1e8499b35d",
-   "url": "https://trello.com/c/DazOUPxI",
-   "lista": "proximas",
    "lote": "lote_A8_atuais_pendentes"
   },
   "8.3": {
@@ -2295,13 +2175,13 @@
   "31.8": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac14435d409d34460c8c6f4",
    "url": "https://trello.com/c/QEF65ipx",
-   "lista": "proximas",
+   "lista": "concluido_hoje",
    "lote": "lote_A8_atuais_pendentes"
   },
   "31.11": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1443839f93c2a1eaf8dff",
    "url": "https://trello.com/c/yTO4tL0h",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": "lote_A8_atuais_pendentes"
   },
   "31.12": {
@@ -2639,8 +2519,180 @@
    "url": "https://trello.com/c/d9xaTRmB",
    "lista": "riscos",
    "lote": "lote_A9_programa"
+  },
+  "pendencia:jev-comando-filtrado-31.13-31.11": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac14b4ece98f5ca10b43492",
+   "url": "https://trello.com/c/zqrGhn7F",
+   "lista": "concluido_hoje",
+   "lote": "canais"
+  },
+  "decisao:frente-canais-2026-10-03": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac14b536d4d4ec360c4e5c1",
+   "url": "https://trello.com/c/pfBwOk9e",
+   "lista": "decisoes",
+   "lote": "canais"
+  },
+  "28.15": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141473d1fd9e0fd328111",
+   "url": "https://trello.com/c/cS8Yi3nL",
+   "lista": "em_validacao",
+   "lote": "lote_A8_atuais_pendentes",
+   "nome": "28.15 · Telegram como canal de entrada (responder e comandar a Central pelo Telegram)"
+  },
+  "30.37": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1414c6599c75f6bdf20dc",
+   "url": "https://trello.com/c/VUzkM2jb",
+   "lista": "em_execucao",
+   "lote": "lote_A8_atuais_pendentes",
+   "nome": "30.37 · Validação de um fluxo pelo próprio fluxo (prova de fluxo)"
+  },
+  "polimentos:rede-deploy12": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1414fc1828905aa2c4add",
+   "url": "https://trello.com/c/gwOQbAs2",
+   "lista": "em_execucao",
+   "lote": "lote_A8_atuais_pendentes",
+   "nome": "Polimentos da tela Rede após o deploy 12 (lista “Saída pela casa” e carga dupla)"
+  },
+  "validacao:deploy-12": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1415304a25b203572df82",
+   "url": "https://trello.com/c/dQTgwn9F",
+   "lista": "em_execucao",
+   "lote": "lote_A8_atuais_pendentes",
+   "nome": "Validação no navegador do deploy 12 (13 itens, só leitura)"
+  },
+  "32.1": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141569a084e95c08e5954",
+   "url": "https://trello.com/c/mGCJB1og",
+   "lista": "em_execucao",
+   "lote": "lote_A8_atuais_pendentes",
+   "nome": "32.1 · Estudo: a Central acessa e orquestra pelo Trello, ligada ao conhecimento da plataforma"
+  },
+  "31.21": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141d370d344b661ab8aaf",
+   "url": "https://trello.com/c/dKKCpVst",
+   "lista": "em_validacao",
+   "lote": "lote_A8_atuais_pendentes",
+   "nome": "#162 · 31.21 Origem exata do fallback “rede” na sombra do Jev (migração 083)"
+  },
+  "30.36": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141d7f4b33c20b15c05e5",
+   "url": "https://trello.com/c/kL7u7HK1",
+   "lista": "em_validacao",
+   "lote": "lote_A8_atuais_pendentes",
+   "nome": "#163 · 30.36 Posição “forma”, evidência contra e “sem caminho” na validação do aprendizado"
+  },
+  "31.10": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141dbf065d35d70728692",
+   "url": "https://trello.com/c/SoG7QPZL",
+   "lista": "em_validacao",
+   "lote": "lote_A8_atuais_pendentes",
+   "nome": "31.10 · Sombra de intenção da C3 (o Jev classifica cada comando, sem decidir)"
+  },
+  "29.50": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141df1b2a40845aa1284d",
+   "url": "https://trello.com/c/FrKAksd7",
+   "lista": "em_validacao",
+   "lote": "lote_A8_atuais_pendentes",
+   "nome": "29.50 · Pergunta sem resposta por 24 h é encerrada pelo sistema"
+  },
+  "30.31": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141e2d8402040e0b08976",
+   "url": "https://trello.com/c/LrWebgp8",
+   "lista": "em_validacao",
+   "lote": "lote_A8_atuais_pendentes",
+   "nome": "30.31 · P4: validação dos itens aprendidos no QA (pausada até o 30.37)"
+  },
+  "30.34-A": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141e71675f2e1e7a24a01",
+   "url": "https://trello.com/c/GmYxOgNq",
+   "lista": "em_validacao",
+   "lote": "lote_A8_atuais_pendentes",
+   "nome": "30.34-A · Autopublicação de fluxos de risco B em sombra"
+  },
+  "30.35": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141e867cb69f4e53652fa",
+   "url": "https://trello.com/c/jmcDPWqD",
+   "lista": "em_validacao",
+   "lote": "lote_A8_atuais_pendentes",
+   "nome": "30.35 · Desfecho posterior: o fluxo é rebaixado se falhar depois de publicado"
+  },
+  "31.19": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141eb90524f4f79035048",
+   "url": "https://trello.com/c/lf8oc5UB",
+   "lista": "em_validacao",
+   "lote": "lote_A8_atuais_pendentes",
+   "nome": "31.19 · Calibração do curador (30 rótulos do dono)"
+  },
+  "suite:13": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac14217053c0a18b14c2a89",
+   "url": "https://trello.com/c/A0csZ0Xp",
+   "lista": "em_execucao",
+   "lote": "lote_A8_atuais_pendentes",
+   "nome": "Suíte 13 → deploy 13 (04/10): #162 (migração 083), #163 (30.36), polimentos da Rede"
+  },
+  "suite:14": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1421a17324fc5a6802ef4",
+   "url": "https://trello.com/c/EbM7rZt3",
+   "lista": "proximas",
+   "lote": "lote_A8_atuais_pendentes",
+   "nome": "Suíte 14 → deploy 14 (05/10): 28.15 (Telegram) + 30.37 (prova de fluxo) + migrações 084/085"
+  },
+  "32.2": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1421d1f7a755c5515af01",
+   "url": "https://trello.com/c/o5Kxnu6A",
+   "lista": "proximas",
+   "lote": "lote_A8_atuais_pendentes",
+   "nome": "32.2 · Integração da Central com o Trello (implementação, após o estudo 32.1)"
+  },
+  "pendencia:chave-api-trello": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac142200275ff1e8499b35d",
+   "url": "https://trello.com/c/DazOUPxI",
+   "lista": "em_execucao",
+   "lote": "lote_A8_atuais_pendentes",
+   "nome": "Pendência futura do dono: criar a chave e o token da API do Trello para a Central (depois do 32.1)"
+  },
+  "30.38": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac14e62f6d19dbb5d12ecee",
+   "url": "https://trello.com/c/uxzHd11C",
+   "lista": "proximas",
+   "lote": "canais"
+  },
+  "avulsa:29.47-ambiente-filhos": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac14d12b13017ef2d58009b",
+   "url": "https://trello.com/c/HFGg2i5U",
+   "lista": "em_validacao",
+   "lote": "canais"
+  },
+  "decisao:adr-069-item-21": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac14c6c540f43211de349a3",
+   "url": "https://trello.com/c/eajEHo1h",
+   "lista": "decisoes",
+   "lote": "canais"
   }
  },
  "falhas": [],
- "atualizado_em": "2026-10-03T18:24:35Z"
+ "atualizado_em": "2026-10-03T18:56Z",
+ "arquivados": {
+  "29.50": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac140b47c94d9584a3dc72e",
+   "url": "https://trello.com/c/rZpSkMHN",
+   "lista": null,
+   "lote": "lote_A7_hoje",
+   "motivo": "duplicado do lote do plano, arquivado 03/10 18:36Z; vale o cartão escrito à mão"
+  },
+  "30.35": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac142ea6509e002c1fc7f5f",
+   "url": "https://trello.com/c/JF6exxlz",
+   "lista": null,
+   "lote": "lote_A7_hoje",
+   "motivo": "duplicado do lote do plano, arquivado 03/10 18:36Z; vale o cartão escrito à mão"
+  },
+  "31.19": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1439a31c781b6e1b102c9",
+   "url": "https://trello.com/c/Jm8mFmEv",
+   "lista": null,
+   "lote": "lote_A7_hoje",
+   "motivo": "duplicado do lote do plano, arquivado 03/10 18:36Z; vale o cartão escrito à mão"
+  }
+ }
 }

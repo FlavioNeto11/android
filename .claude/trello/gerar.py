@@ -36,13 +36,35 @@ def titulo_curto(oque: str, limite: int = 80) -> str:
     palavra inteira. Nunca corta no meio de um identificador."""
     m = re.match(r"\s*\*\*(.+?)\*\*", oque or "")
     base = m.group(1) if m else re.split(r"[.:;(]\s", (oque or "").strip(), maxsplit=1)[0]
-    base = re.sub(r"[`*_]", "", base).strip()
+    # só crase e asterisco saem: o sublinhado é parte de identificador (needs_input, side_effect_tier)
+    base = re.sub(r"[`*]", "", base).strip()
     if len(base) < 16:  # 'Persona N', 'Fatia 1': nome genérico demais; usa o começo da frase inteira
-        base = re.sub(r"[`*_]", "", (oque or "").strip())
+        base = re.sub(r"[`*]", "", (oque or "").strip())
     if len(base) <= limite:
         return base
     corte = base[:limite].rsplit(" ", 1)[0]
     return corte + "…"
+
+
+_CONTROLE = {"\x07": "\\a", "\x08": "\\b", "\x0b": "\\v", "\x0c": "\\f"}
+
+
+def limpo(texto: str) -> str:
+    """Caractere de controle volta a ser barra invertida + letra (um caminho do Windows com a barra virando escape
+    pôs um BEL no 29.17); o resto do controle some."""
+    t = "".join(_CONTROLE.get(c, c) for c in (texto or ""))
+    return re.sub(r"[\x00-\x08\x0b-\x1f]", "", t)
+
+
+def cortar(texto: str, limite: int) -> str:
+    """Corta em palavra inteira e fecha a crase que ficou aberta: nunca termina no meio de uma palavra."""
+    t = re.sub(r"\s+", " ", texto or "").strip()
+    if len(t) <= limite:
+        return t
+    t = t[:limite].rsplit(" ", 1)[0].rstrip(",;:·(—-")
+    if t.count("`") % 2:
+        t += "`"
+    return t + "…"
 
 
 def grupo_fase(n: int) -> str:
@@ -84,21 +106,38 @@ def registro_changelog(ident: str, changelog: list[str]) -> str:
     pad = re.compile(r"(?<![\d.])" + re.escape(ident) + r"(?![\d])")
     todos = re.compile(r"(?<![\d.])\d{1,2}\.\d{1,2}(?![\d])")
     melhor, menor = "", 10**6
-    for l in changelog:
+    for i, l in enumerate(changelog):
         if not pad.search(l):
             continue
         n = len(set(todos.findall(l)))
         if n < menor:
-            melhor, menor = re.sub(r"\s+", " ", l.strip("-* ")).strip()[:300], n
+            melhor, menor = _item_do_changelog(changelog, i), n
         if menor == 1:
             break
     return melhor
 
+
+_MARCADOR = re.compile(r"\s*(?:[-*#]|\d+\.)\s")
+
+
+def _item_do_changelog(changelog: list[str], i: int) -> str:
+    """A linha achada pode ser continuação de um item (29.4 e 29.10 começavam no meio da frase): junta o item inteiro,
+    do marcador até o próximo item ou linha vazia, e tira o negrito que ficou desequilibrado."""
+    ini = i
+    while ini > 0 and not _MARCADOR.match(changelog[ini]) and changelog[ini - 1].strip():
+        ini -= 1
+    fim = i + 1
+    while fim < len(changelog) and changelog[fim].strip() and not _MARCADOR.match(changelog[fim]):
+        fim += 1
+    t = re.sub(r"^\s*(?:[-*]|\d+\.)\s+", "", " ".join(x.strip() for x in changelog[ini:fim]))
+    t = cortar(t, 300)
+    return t.replace("**", "") if t.count("**") % 2 else t
+
 def desc_tecnica(it: dict, fase: str, registro: str) -> str:
     arquivos = ", ".join(f"`{a}`" for a in (it.get("arquivos") or [])[:6]) or "—"
-    testes = ", ".join(f"`{t}`" for t in (it.get("testes") or [])[:4]) or "—"
+    testes = ", ".join(f"`{t}`" if " " not in t else cortar(t, 300) for t in (it.get("testes") or [])[:4]) or "—"
     prova = it.get("proof") or "not_run"
-    evid = (it.get("evidence") or "").replace("\n", " ")[:500]
+    evid = cortar(it.get("evidence") or "", 500)
     return redigir("\n".join([
         "**Para quem não é técnico:** {{NAO_TECNICO}}",
         "**Por que importa:** {{POR_QUE}}",
@@ -138,14 +177,14 @@ def main() -> int:
             continue
         cols = [c.strip() for c in m.group(2).split("|")]
         e = estado.get(m.group(1), {})
-        oque = redigir(cols[0] if cols else "")
+        oque = redigir(limpo(cols[0] if cols else ""))
         it = {
             "id": m.group(1), "fase": fase, "linha": i + 1, "oque": oque,
             "titulo": titulo_curto(oque),
             "achados": redigir(cols[1] if len(cols) > 1 else ""), "tam": cols[2] if len(cols) > 2 else "",
-            "status": e.get("status", "pendente"), "proof": e.get("proof"), "evidence": redigir((e.get("evidence") or "")[:500]),
+            "status": e.get("status", "pendente"), "proof": e.get("proof"), "evidence": redigir(limpo(e.get("evidence") or "")),
             "grupo": e.get("grupo"), "modelo": e.get("modelo"), "esforco": e.get("esforco"), "quando": e.get("quando"),
-            "blocker": redigir((e.get("blocker") or "")[:300]) if isinstance(e.get("blocker"), str) else "",
+            "blocker": cortar(redigir(limpo(e.get("blocker"))), 300) if isinstance(e.get("blocker"), str) else "",
             "arquivos": _lista(e.get("arquivos") or e.get("files"), 6), "testes": _lista(e.get("testes"), 4),
         }
         it["frente"] = frente(it)

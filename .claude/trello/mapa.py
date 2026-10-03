@@ -20,6 +20,8 @@ def main() -> int:
     novos = 0
     for arq in sorted(pasta.glob("lote_*.json")) if pasta and pasta.exists() else []:
         dados = json.load(io.open(arq, encoding="utf-8"))
+        if not isinstance(dados, dict) or "criados" not in dados:
+            continue  # resultado de regravação/limpeza (sem cartão novo) não é lote de criação nem falha
         for ident, c in (dados.get("criados") or {}).items():
             if ident not in atual["cartoes"]:
                 novos += 1
