@@ -341,12 +341,22 @@ export async function loadRunDetail(runId: string | null, opts: { silent?: boole
   await Promise.all([detailPromise, eventsPromise]);
 }
 
-function summaryOf(detail: RunSummary): RunSummary {
+/** Campos opcionais do resumo que o detalhe também traz: a linha da lista é TROCADA pelo resumo quando o detalhe
+ *  chega, e sem eles abrir uma execução apagava o selo de origem (30.38) e a prova de fluxo da linha. */
+const OPCIONAIS_DO_RESUMO: readonly (keyof RunSummary)[] = [
+  'app_ids', 'pedido_id', 'ocorrencia_id', 'prova_fluxo_id', 'origem', 'origem_ref',
+];
+
+export function summaryOf(detail: RunSummary): RunSummary {
+  const opcionais = Object.fromEntries(
+    OPCIONAIS_DO_RESUMO.filter((k) => k in detail).map((k) => [k, detail[k]]),
+  ) as Partial<RunSummary>;
   return {
     id: detail.id, short_id: detail.short_id, command: detail.command, status: detail.status,
     simulated: detail.simulated, instance_ids: detail.instance_ids, instances_requested: detail.instances_requested,
     instances_used: detail.instances_used, created_at: detail.created_at, started_at: detail.started_at,
     finished_at: detail.finished_at, counts: detail.counts, progress: detail.progress, status_detail: detail.status_detail,
+    ...opcionais,
   };
 }
 

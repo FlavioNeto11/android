@@ -2,10 +2,10 @@
 import { act } from 'react';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { WATCH_RENEW_MS, WATCH_TTL_S } from '../api/ws';
-import { makeSnapshot } from '../test/fixtures';
+import { makeRunDetail, makeSnapshot } from '../test/fixtures';
 import { FakeBackend, FakeWebSocket, flush, installBrowserStubs, json, waitFor } from '../test/harness';
 import { useControlStore } from './control';
-import { WATCH_COALESCE_MS, startLive, stopLive } from './live';
+import { WATCH_COALESCE_MS, startLive, stopLive, summaryOf } from './live';
 import { usePreviewStore } from './preview';
 import { useUiStore } from './ui';
 
@@ -177,5 +177,28 @@ describe('live — aba oculta com o controle manual (lease) do aparelho em foco'
     // soltou o controle com a aba ainda oculta: volta ao vazio na hora
     await act(async () => useControlStore.setState({ leases: {} }));
     expect(lastWatch(ws)).toEqual(vazio);
+  });
+});
+
+describe('live — resumo que volta à lista quando o detalhe chega (30.38)', () => {
+  it('mantém a origem, a prova de fluxo, o pedido e os apps: abrir a execução não apaga o selo da linha', () => {
+    const detalhe = makeRunDetail({
+      origem: 'validacao_qa', origem_ref: 'lv-1', prova_fluxo_id: null, pedido_id: 'p-1', ocorrencia_id: null,
+      app_ids: ['com.qa.messenger'],
+    });
+    const resumo = summaryOf(detalhe);
+    expect(resumo).toMatchObject({
+      id: detalhe.id, origem: 'validacao_qa', origem_ref: 'lv-1', prova_fluxo_id: null, pedido_id: 'p-1',
+      app_ids: ['com.qa.messenger'],
+    });
+    // o resumo não carrega o detalhe inteiro para a lista
+    expect(resumo).not.toHaveProperty('steps');
+    expect(resumo).not.toHaveProperty('plan');
+  });
+
+  it('backend anterior sem os campos opcionais: o resumo não inventa chaves', () => {
+    const resumo = summaryOf(makeRunDetail());
+    expect(resumo).not.toHaveProperty('origem');
+    expect(resumo).not.toHaveProperty('origem_ref');
   });
 });

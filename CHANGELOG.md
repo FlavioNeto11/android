@@ -32,6 +32,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - Agora: `GET /api/aprendizado/validacoes` (só leitura: estado, motivo em texto, app, aparelho, custo e teto, comando
     cortado em 200, contagem por estado e o modo do despachante) e a aba Validação, com fichas por estado, cartões e o
     vazio que explica a validação e a pausa. O comando é só para o painel: a rota não é fonte para Trello nem Telegram.
+- **O selo sumia ao abrir a execução.** Achado no percurso do navegador: o resumo que volta à lista quando o detalhe
+  chega (`store/live.ts` `summaryOf`) copiava só os campos antigos e trocava a linha sem `origem`, `origem_ref`,
+  `prova_fluxo_id`, `pedido_id` e `app_ids`. Agora copia os opcionais que o detalhe traz (teste em `live.test.ts`).
 - Contrato: adendo v1.02. Prova `simulated` (backend e frontend); `not_run` no central até o deploy da suíte 15.
 
 ## 2026-10-03 — Aprendizado: a validação do fluxo roda o próprio fluxo, e a evidência vem das etapas da prova (30.37; branch feat/30-37-prova)
