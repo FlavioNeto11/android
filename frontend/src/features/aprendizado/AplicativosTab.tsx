@@ -274,7 +274,7 @@ function AprendidoPorCapability({ itens, onMudou }: { itens: DetalheDoApp['apren
     <section className={styles.secao} aria-label="Aprendido">
       <h3 className={styles.secaoTitulo}>Aprendido ({formatInt(itens.length)})</h3>
       <p className={styles.secaoLead}>
-        O que o sistema aprendeu deste app, por capability, com o estado, a saúde e a decisão da pessoa.
+        O que o sistema aprendeu deste app, por capacidade, com o estado, a saúde e a decisão da pessoa.
       </p>
       {itens.length === 0 ? <EmptyState icon={AppWindow} compact title="Nada aprendido para este app" /> : (
         <div className={styles.grupos} data-grupos>

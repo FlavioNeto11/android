@@ -83,6 +83,15 @@ describe('o título que a pessoa lê (validação do deploy 3, P3 e P4)', () => 
     expect(tituloDoItem({ ...r, kind: 'fluxo', title: 'Enviar oi' })).toBe('Enviar oi');
   });
 
+  it('app sem catálogo: a receita usa o título da etapa de origem, com a chave; o nome do catálogo vence (deploy 4)', () => {
+    const r = entrada({ ...ENVIAR, capability: null, capability_nome: null, etapa: 'Digitar a mensagem' });
+    expect(tituloDoItem(r)).toBe('Digitar a mensagem · etapa send_message_i1 (v1)');
+    expect(tituloDoItem({ ...r, title: 'sem versão' })).toBe('Digitar a mensagem · etapa sem versão');
+    expect(tituloDoItem({ ...r, capability: 'SEND_MESSAGE', capability_nome: 'Enviar a mensagem' })).toBe('Enviar a mensagem (v1)');
+    expect(tituloDoItem({ ...r, etapa: null })).toBe('send_message_i1 (v1)');
+    expect(tituloDoItem({ ...r, kind: 'licao', title: 'Em X: tocou' })).toBe('Em X: tocou');      // só a receita
+  });
+
   it('a lição nomeia a capability uma vez, só a palavra inteira, e nomear de novo não dobra', () => {
     const texto = 'Em OPEN_PROFILE: a tentativa que comprovou tocou em "Perfil"; OPEN_PROFILE_X é outra';
     const l = entrada({ kind: 'licao', ref: 'li-1', title: texto, capability: 'OPEN_PROFILE', capability_nome: 'Abrir o perfil' });

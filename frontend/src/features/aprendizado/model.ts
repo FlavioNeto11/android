@@ -52,6 +52,12 @@ export interface EntradaDoLivro {
   native_status: string | null;
   title: string;
   app: string | null;
+  /** O nome do app (declarado, da loja ou o próprio pacote), para o painel não mostrar o pacote onde já sabe o nome
+   *  (validação do deploy 4). Ausente no backend anterior. */
+  app_nome?: string | null;
+  /** Receita: o título da etapa de que foi aprendida ("Digitar a mensagem"), o nome legível quando o app não tem
+   *  catálogo. Ausente no backend anterior. */
+  etapa?: string | null;
   /** A capability da linha (hierarquia App → Capability → Item) e o nome dela em português, do catálogo do app
    *  (`OPEN_PROFILE` → "Abrir o perfil"). Ausentes no backend anterior; `null` quando não se sabe. */
   capability?: string | null;
@@ -390,11 +396,18 @@ const RE_VERSAO = /^(.*) \(v(\d+)\)$/;
  * ("send_message_i1 (v1)" → "Enviar a mensagem (v1)"); a lição nomeia a capability no texto; o resto vem como o backend
  * manda. O título cru continua no `title` da linha, para quem desenvolve.
  */
-export function tituloDoItem(e: Pick<EntradaDoLivro, 'kind' | 'ref' | 'title' | 'capability' | 'capability_nome'>): string {
+export function tituloDoItem(
+  e: Pick<EntradaDoLivro, 'kind' | 'ref' | 'title' | 'capability' | 'capability_nome' | 'etapa'>,
+): string {
   const t = e.title || e.ref;
   if (e.kind === 'receita' && e.capability && e.capability_nome) {
     const m = RE_VERSAO.exec(t);
     return m ? `${e.capability_nome} (v${m[2]})` : t;
+  }
+  // App sem catálogo (validação do deploy 4): o título da etapa de origem, com a chave para distinguir as do mesmo nome.
+  if (e.kind === 'receita' && e.etapa) {
+    const m = RE_VERSAO.exec(t);
+    return m ? `${e.etapa} · etapa ${m[1]} (v${m[2]})` : `${e.etapa} · etapa ${t}`;
   }
   return e.kind === 'licao' ? nomearCapabilityNoTexto(t, e.capability, e.capability_nome) : t;
 }

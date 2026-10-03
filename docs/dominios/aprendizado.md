@@ -332,6 +332,15 @@ com o banco aberto só para leitura.
   foram aprendidos (`model.ts::titulosDaLista`). O texto da lição nomeia a capability SÓ NA TELA
   (`nomearCapabilityNoTexto`): o texto gravado vai ao prompt, onde o código é o que serve. Sem resposta HTTP, o estado
   de erro diz "Sem resposta do servidor." (`lib/loadError.tsx`, todas as telas).
+- **Nomes também nas listas (validação do deploy 4).**
+  - A tela diz "capacidade", "Etapa livre (fora do catálogo)" e "Fora do catálogo" no lugar de "capability".
+  - As entradas do livro (listas, filas e detalhe) ganham `app_nome` (`presentation/nomes.py::nomear_apps`). "App:", a
+    Identidade e a Versão dizem o nome, com o pacote no `title`.
+  - A receita ganha `etapa`, o `steps.title` da etapa de origem. No app sem catálogo, ela vira o nome:
+    "Digitar a mensagem · etapa fill_message (v1)". O nome do catálogo vence; sem os dois, fica a chave.
+  - O `title` gravado não muda, e o dossiê do curador não leva `etapa`, porque o título de uma etapa pode citar um @
+    ou um contato.
+  - A ocorrência de falha diz "android-05 · etapa open_app · tentativa 1".
 - **Execução:** o botão "Deu certo / Deu errado" em cada objetivo (aba "Por aparelho") e na execução inteira (aba
   "Relatório"). O motivo abre em linha, e "Reativar" aparece quando a resposta traz `desfazer`. A seção "Aprendizado
   desta execução" mostra o bloco `aprendizado`, os votos e os sinais. O cartão "Custo de IA desta execução" mostra

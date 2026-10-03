@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: nomes também nas listas (validação do deploy 4, branch fix/aprendizado-ux-deploy4)
+
+- "capability" sai da tela: "capacidade", "Etapa livre (fora do catálogo)" e "Fora do catálogo".
+- As entradas do livro ganham `app_nome` e `etapa` (adendo v0.80). "App:", a Identidade e a Versão dizem o nome do app,
+  com o pacote no `title`.
+- A receita de app sem catálogo ganha nome pelo título da etapa de origem: "Digitar a mensagem · etapa fill_message
+  (v1)" no lugar de "fill_message (v1)".
+- A ocorrência de falha diz "android-05 · etapa open_app · tentativa 1".
+- Prova `simulated`: `tests/test_learning_capability_na_linha.py` e os testes do painel do aprendizado.
+
 ## 2026-10-03 — Aprendizado: decisões do dono de 03/10 no desenho (docs)
 
 - Documentação e processo: `docs/design/aprendizado-vivo.md` registra que quem valida fluxo é a IA (curador; A pela regra, B

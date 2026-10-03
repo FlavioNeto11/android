@@ -15,8 +15,9 @@ export function rotuloDoBacklog(estado: string): string {
 }
 
 /**
- * A tentativa como a pessoa a lê: `r-…:android-05:v1:open_app:a1` → "android-05 · open_app · tentativa 1". Fora desse
- * formato devolve `null` (quem chama mostra só a execução).
+ * A tentativa como a pessoa a lê: `r-…:android-05:v1:open_app:a1` → "android-05 · etapa open_app · tentativa 1" (a
+ * palavra diz que o código é a chave da etapa no plano, não um nome; validação do deploy 4). Fora desse formato devolve
+ * `null` (quem chama mostra só a execução).
  */
 export function descreverTentativa(attemptId: string | null | undefined): string | null {
   if (!attemptId) return null;
@@ -25,7 +26,7 @@ export function descreverTentativa(attemptId: string | null | undefined): string
   const [, aparelho, , etapa, tentativa] = partes;
   const n = /^a(\d+)$/.exec(tentativa ?? '');
   if (!aparelho || !etapa || !n) return null;
-  return `${aparelho} · ${etapa} · tentativa ${n[1]}`;
+  return `${aparelho} · etapa ${etapa} · tentativa ${n[1]}`;
 }
 
 /** Os erros do provedor de IA que já apareceram na tela do dono, do mais específico ao mais geral. */

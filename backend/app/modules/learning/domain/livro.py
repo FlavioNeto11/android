@@ -230,6 +230,11 @@ class EntradaDoLivro:
     #: Derivado da trilha pelo serviço (`evidencia_invalida.reaprendizado`), nunca gravado: o item (re)nasceu no escopo
     #: de uma evidência inválida e espera o dono (classe B forçada).
     reaprendido: Reaprendizado | None = None
+    #: Receita: o título da etapa de que ela foi aprendida (`steps.title`, em português, do planejador). É o nome
+    #: legível quando o app não tem catálogo (validação do deploy 4: "send_message_i1 (v1)" no lugar de um nome). Pode
+    #: citar parâmetro da execução de origem (um @, um contato): o painel só o usa sem `capability_nome`, e o dossiê do
+    #: curador não o leva. `None` no treino e nos outros tipos.
+    etapa: str | None = None
 
     @property
     def requires_owner(self) -> bool:

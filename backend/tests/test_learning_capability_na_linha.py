@@ -290,6 +290,27 @@ async def test_linhas_e_grupos_trazem_o_nome_da_capability(mundo: Mundo, cliente
     assert linhas[("licao", "li-licao")] == "Enviar a mensagem" and linhas[("tela", "li-tela-abs")] is None
 
 
+async def test_linhas_trazem_o_nome_do_app_e_a_etapa_de_origem_da_receita(mundo: Mundo,
+                                                                         cliente: httpx.AsyncClient) -> None:
+    """Validação do deploy 4: as listas e a Identidade diziam o pacote onde o resto do painel já dizia o nome, e a
+    receita de app sem catálogo ficava com a chave crua. `app_nome` em toda linha; `etapa` (o título da etapa de
+    origem) só na receita que tem origem de execução."""
+    itens = (await cliente.get("/api/aprendizado")).json()["itens"]
+    por = {(str(i["kind"]), str(i["ref"])): i for i in itens}
+    assert por[("receita", mundo.com_origem)]["app_nome"] == "Exemplo"
+    assert por[("receita", mundo.com_origem)]["etapa"] == "curtir"                 # o `steps.title` da origem
+    assert por[("receita", mundo.sem_fonte)]["etapa"] is None
+    assert por[("receita", mundo.de_treino)]["etapa"] is None                      # treino não casa com `steps`
+    assert por[("licao", "li-licao")]["etapa"] is None
+    d = (await cliente.get(f"/api/aprendizado/receita/{mundo.com_origem}")).json()["item"]
+    assert (d["app_nome"], d["etapa"], d["capability_nome"]) == ("Exemplo", "curtir", "Curtir a publicação")
+    # As filas ("Para aprovar"): a lição de pessoa espera o dono e vem com o nome do app.
+    _item(mundo.db, "li-da-pessoa", "licao", capacidade="SEND_MESSAGE", state="validated")
+    mundo.db.execute("UPDATE learning_items SET human_origin=1 WHERE id='li-da-pessoa'")
+    fila = (await cliente.get("/api/aprendizado/pendentes")).json()["itens"]
+    assert [(i["ref"], i["app_nome"]) for i in fila] == [("li-da-pessoa", "Exemplo")]
+
+
 def test_nomes_sao_lidos_uma_vez_por_par_app_e_capability(mundo: Mundo) -> None:
     contagem: dict[tuple[str, str], int] = {}
 

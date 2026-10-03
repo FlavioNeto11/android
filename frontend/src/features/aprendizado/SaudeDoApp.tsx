@@ -150,7 +150,7 @@ export function FalhasDoApp({ pacote }: { pacote: string }) {
     <section className={styles.secao} aria-label="O que falha neste app">
       <h3 className={styles.secaoTitulo}>O que falha{rel ? ` (${formatInt(rel.grupos.length)})` : ''}</h3>
       <p className={styles.secaoLead}>
-        Os grupos de falha deste app nos últimos {DIAS_DAS_FALHAS} dias, por capability (etapa livre = sem capability). Um grupo só
+        Os grupos de falha deste app nos últimos {DIAS_DAS_FALHAS} dias, por capacidade (etapa livre = fora do catálogo). Um grupo só
         entra com pelo menos 3 ocorrências; execuções simuladas ficam fora.
       </p>
       {erro && rel ? <LoadErrorBanner error={erro} onRetry={() => void carregar()} /> : null}
