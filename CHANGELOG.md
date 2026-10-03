@@ -35,9 +35,10 @@ Só frontend; nada de backend.
     não são "o último comando". A sonda pede um a cada poucos minutos e enterrava o que a pessoa quer ver; ela fica na
     tela de Rede. Cartão sem comando de pessoa fica sem a linha, como antes. (Ajuste da orquestradora.)
   - O concluído também aparece; antes ele era escondido de propósito, e a orquestradora pediu o contrário.
-  - Os `uncertain` sem desfecho, de qualquer autor, seguem numa linha discreta: "Anterior sem resposta: <verbo> · há N
+  - Os `uncertain` sem desfecho de pessoa ou execução seguem numa linha discreta: "Anterior sem resposta: <verbo> · há N
     dias", ou "Sem resposta: <verbo>" quando são mais novos que o principal. Ficam até serem verificados ou decididos
-    (`comandoSemDesfecho`).
+    (`comandoSemDesfecho`). O de pedido automático (a sonda incerta) também fica só na tela de Rede (ajuste da
+    orquestradora).
   - O Foco lê do mesmo jeito (`useComandosDoAparelho`). A Lista divide a coluna com a etapa em curso: comando aberto ou
     `uncertain` atual, depois a etapa, depois o anterior sem resposta.
   - Custo: 1 leitura curta por aparelho, mais 1 funda nos que têm sonda, a cada hidratação (carga e ressincronização).
@@ -51,12 +52,12 @@ Só frontend; nada de backend.
 - Aplicativos › Rede: a lista por app diz o nome do registro de aplicativos ("Outlook: sem tráfego na janela") e
   "shell do Android (a sonda)", com o pacote na dica. Fora do registro, sai o pacote.
 - Prova:
-  - `simulated`: `npm run typecheck` e `npm test` com 1396 de 1396. Testes novos em `store/reducer.test.ts`,
+  - `simulated`: `npm run typecheck` e `npm test` com 1398 de 1398. Testes novos em `store/reducer.test.ts`,
     `devices/DeviceCard.test.tsx` (com a Lista), `focus/FocusPanel.test.tsx`, `infra/infraState.test.ts`,
     `infra/InfraPage.test.tsx` e `rede/RedePage.test.tsx`.
   - Navegador (03/10, Vite do worktree na 5173 contra a API do central, só leitura):
-    - Painel: os 15 cartões com o último comando de pessoa (o 03 e o 06 com "Verificação da sessão", não a sonda); 11
-      com "Anterior sem resposta" (no 03, uma sonda sem desfecho de 19 h); 15 leituras curtas e 2 fundas, sem repetir;
+    - Painel: os 15 cartões com o último comando de pessoa (o 03 e o 06 com "Verificação da sessão", não a sonda); 10
+      com "Anterior sem resposta"; nenhum "Rede do aparelho" na página; 15 leituras curtas e 2 fundas, sem repetir;
     - Infraestrutura: "loja" com a dica, 8 "renderizador configurado", nenhum "store" nem "renderizador pedido";
     - Rede: Instagram, Outlook e shell do Android pelo nome;
     - Foco do android-06: "Concluído · Rede do aparelho" no topo e "Anterior sem resposta: Abrir app · há 8 dias";

@@ -113,8 +113,9 @@ type ComandosDoStore = Pick<DataState, 'lastCommand' | 'comandoSemDesfecho' | 'u
 
 /**
  * `cmd` no lugar de `lastCommand[cmd.instance_id]`, quando `aceitaComando` deixa, e no de `ultimoDePessoa` quando é de
- * uma pessoa. O `uncertain` que sai por um comando mais novo vai para `comandoSemDesfecho`, e sai de lá quando o próprio
- * comando chega com outro estado (verificado ou decidido por uma pessoa).
+ * uma pessoa. O `uncertain` de pessoa que sai por um comando mais novo vai para `comandoSemDesfecho`, e sai de lá quando o
+ * próprio comando chega com outro estado (verificado ou decidido por uma pessoa). O de pedido automático (a sonda incerta)
+ * não entra: ele só existe na tela de Rede (ajuste da orquestradora, 03/10).
  */
 function comTrocaDeComando<S extends ComandosDoStore>(state: S, cmd: Command): S {
   const iid = cmd.instance_id;
@@ -131,7 +132,7 @@ function comTrocaDeComando<S extends ComandosDoStore>(state: S, cmd: Command): S
   if (!aceitaComando(anterior, cmd)) {
     return semDesfecho === next.comandoSemDesfecho ? next : { ...next, comandoSemDesfecho: semDesfecho };
   }
-  if (anterior && anterior.id !== cmd.id && anterior.state === 'uncertain') {
+  if (anterior && anterior.id !== cmd.id && anterior.state === 'uncertain' && deUmaPessoa(anterior)) {
     semDesfecho = { ...semDesfecho, [iid]: anterior };
   }
   return { ...next, lastCommand: { ...next.lastCommand, [iid]: cmd }, comandoSemDesfecho: semDesfecho };
@@ -142,9 +143,9 @@ function comTrocaDeComando<S extends ComandosDoStore>(state: S, cmd: Command): S
  * traz os em voo e os `uncertain`: sem esta leitura, o cartão mostrava como "o comando" um `uncertain` de dias atrás,
  * com comandos concluídos depois dele (deploys 9 a 11, 11 de 14 cartões).
  *
- * Por aparelho: o mais novo vai para `lastCommand`, o mais novo de pessoa para `ultimoDePessoa`, e o `uncertain` mais
- * novo que não é o último vai para `comandoSemDesfecho`. Na lista, o estado é o ATUAL de cada comando: um `uncertain`
- * nela ainda não foi resolvido.
+ * Por aparelho: o mais novo vai para `lastCommand`, o mais novo de pessoa para `ultimoDePessoa`, e o `uncertain` de
+ * pessoa mais novo que não é o último vai para `comandoSemDesfecho`. Na lista, o estado é o ATUAL de cada comando: um
+ * `uncertain` nela ainda não foi resolvido.
  */
 export function mergeLastCommands(state: DataState, cmds: readonly Command[]): DataState {
   const porAparelho = new Map<string, Command[]>();
@@ -157,7 +158,7 @@ export function mergeLastCommands(state: DataState, cmds: readonly Command[]): D
     const dePessoa = ordenada.find(deUmaPessoa);
     if (dePessoa && dePessoa !== maisNovo) next = comTrocaDeComando(next, dePessoa);
     next = comTrocaDeComando(next, maisNovo);
-    const incerto = ordenada.find((c) => c.state === 'uncertain' && c.id !== next.lastCommand[iid]?.id);
+    const incerto = ordenada.find((c) => c.state === 'uncertain' && deUmaPessoa(c) && c.id !== next.lastCommand[iid]?.id);
     const guardado = next.comandoSemDesfecho[iid];
     if (incerto && (!guardado || guardado.created_at < incerto.created_at)) {
       next = { ...next, comandoSemDesfecho: { ...next.comandoSemDesfecho, [iid]: incerto } };

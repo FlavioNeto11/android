@@ -9,6 +9,7 @@ import { cx } from '../../lib/format';
 import { evidenciaLegivel } from '../../lib/rotulos';
 import { metaOf, STEP_STATUS } from '../../lib/status';
 import { useAppStore } from '../../store/app';
+import { deUmaPessoa } from '../../store/reducer';
 import { ACTION_META, comandoAbertoDe, motivoDoComando, runInstanceAction, useBusyStore } from './actions';
 import { ComandoAnteriorSemResposta, CommandSummary } from './CommandTrail';
 import { personasDoCartao, rotuloDaPersona } from './DeviceCard';
@@ -39,7 +40,8 @@ const DeviceRow = memo(function DeviceRow({ instance, appName, personas: vincula
   const busyAction = useBusyStore((s) => s.busy[id]);
   const comandoAberto = useAppStore((s) => comandoAbertoDe(s.lastCommand[id]));
   const ultimo = useAppStore((s) => s.lastCommand[id]);
-  const comando = comandoAberto ?? (ultimo?.state === 'uncertain' ? ultimo : undefined);
+  // O `uncertain` de pedido automático (a sonda incerta) fica só na tela de Rede, como no cartão.
+  const comando = comandoAberto ?? (ultimo?.state === 'uncertain' && deUmaPessoa(ultimo) ? ultimo : undefined);
   // A coluna é dividida com a etapa em curso: o `uncertain` que um comando mais novo deixou para trás (o cartão o mostra
   // como anterior) aparece aqui quando não há etapa, para a incerteza não sumir da lista.
   const anteriorSemResposta = useAppStore((s) => s.comandoSemDesfecho[id]);

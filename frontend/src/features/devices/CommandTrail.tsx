@@ -12,6 +12,7 @@ import { metaOf, type StatusMeta } from '../../lib/status';
 import { rotuloDoComando } from '../../lib/rotulos';
 import { tempoRelativo, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
+import { deUmaPessoa } from '../../store/reducer';
 import { toast, toastError } from '../../store/toasts';
 import { ACTION_META, cancelarComando, comandoAbertoDe } from './actions';
 import styles from './Devices.module.css';
@@ -147,7 +148,8 @@ export function CommandSummary({ cmd }: { cmd: Command }) {
  * - `principal`: o que está em voo, de quem for, porque é ele que explica os verbos bloqueados. Sem nada em voo, o
  *   último de uma PESSOA ou execução (`ultimoDePessoa`). A sonda de rede e os outros pedidos automáticos não são "o
  *   último comando": a sonda aparece a cada poucos minutos e enterrava o que a pessoa quer ver. Ela fica na tela de Rede.
- * - `incertos`: os `uncertain` ainda sem desfecho que não são o principal, de qualquer autor. A incerteza não some.
+ * - `incertos`: os `uncertain` de pessoa ou execução ainda sem desfecho que não são o principal. A incerteza não some;
+ *   a de pedido automático (a sonda incerta) fica só na tela de Rede, como a sonda concluída.
  */
 export function useComandosDoAparelho(id: string): { principal: Command | undefined; incertos: Command[] } {
   const ultimo = useAppStore((s) => s.lastCommand[id]);
@@ -158,7 +160,7 @@ export function useComandosDoAparelho(id: string): { principal: Command | undefi
     const vistos = new Set<string>(principal ? [principal.id] : []);
     const incertos: Command[] = [];
     for (const c of [ultimo, semDesfecho]) {
-      if (c?.state === 'uncertain' && !vistos.has(c.id)) {
+      if (c?.state === 'uncertain' && deUmaPessoa(c) && !vistos.has(c.id)) {
         vistos.add(c.id);
         incertos.push(c);
       }
@@ -170,7 +172,7 @@ export function useComandosDoAparelho(id: string): { principal: Command | undefi
 /**
  * Um `uncertain` sem desfecho que não é o comando principal do aparelho. Ele continua aberto no banco, então fica no
  * cartão, discreto: "Anterior sem resposta" quando é mais velho que o principal, "Sem resposta" quando não há principal
- * ou ele é mais novo (um pedido automático depois do último de pessoa). Verificar ou decidir é nos "Comandos recentes".
+ * ou ele é mais novo. Verificar ou decidir é nos "Comandos recentes".
  */
 export function ComandoAnteriorSemResposta({ cmd, principal }: { cmd: Command; principal?: Command }) {
   const desde = cmd.finished_at ?? cmd.started_at ?? cmd.dispatched_at ?? cmd.created_at;

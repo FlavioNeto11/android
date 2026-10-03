@@ -483,10 +483,22 @@ describe('ultimoDePessoa — a sonda de rede não é o último comando do cartã
     expect(s.ultimoDePessoa['android-01']?.id).toBe('c-p');
   });
 
-  it('o incerto mais novo da lista que não é o último vai para comandoSemDesfecho, de qualquer autor', () => {
+  it('o incerto de pessoa mais novo da lista que não é o último vai para comandoSemDesfecho; o da sonda não', () => {
+    const incertoDePessoa = comando({ id: 'c-p', state: 'uncertain', created_at: '2026-10-01T09:00:00.000Z' });
     const s = mergeLastCommands(hydrated(), [sonda('c-s2', '2026-10-03T15:58:00.000Z'),
-                                             sonda('c-s1', '2026-10-02T21:00:00.000Z', 'uncertain')]);
-    expect(s.comandoSemDesfecho['android-01']?.id).toBe('c-s1');
+                                             sonda('c-s1', '2026-10-02T21:00:00.000Z', 'uncertain'), incertoDePessoa]);
+    expect(s.comandoSemDesfecho['android-01']?.id).toBe('c-p');
+    const soSonda = mergeLastCommands(hydrated(), [sonda('c-s2', '2026-10-03T15:58:00.000Z'),
+                                                   sonda('c-s1', '2026-10-02T21:00:00.000Z', 'uncertain')]);
+    expect(soSonda.comandoSemDesfecho).toEqual({});
+  });
+
+  it('pelo WebSocket, a sonda incerta deixada para trás não vai para comandoSemDesfecho', () => {
+    const s0 = applyEvent(hydrated(), event(510, 'command.updated',
+                                            { command: sonda('c-s1', '2026-10-03T15:43:00.000Z', 'uncertain') }));
+    const s1 = applyEvent(s0, event(511, 'command.updated', { command: sonda('c-s2', '2026-10-03T15:58:00.000Z') }));
+    expect(s1.lastCommand['android-01']?.id).toBe('c-s2');
+    expect(s1.comandoSemDesfecho).toEqual({});
   });
 
   it('pelo WebSocket, a sonda nova não troca o último de pessoa; o comando de pessoa troca', () => {

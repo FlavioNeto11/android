@@ -348,7 +348,7 @@ describe('DeviceCard — o comando fica visível, inclusive o que ficou sem desf
     expect(text(el)).not.toContain('Concluído');
   });
 
-  it('a sonda EM VOO aparece, porque é ela que bloqueia os verbos; e a sonda sem desfecho segue visível', async () => {
+  it('a sonda EM VOO aparece, porque é ela que bloqueia os verbos; a sonda sem desfecho fica só na tela de Rede', async () => {
     const emVooDaSonda = comando({ id: 'c-sonda', verb: 'device.network', requested_by: 'rede', state: 'running',
                                    reason: null, finished_at: null, created_at: '2026-10-03T15:58:25.000Z' }) as never;
     useAppStore.setState({ lastCommand: { 'android-07': emVooDaSonda } });
@@ -361,8 +361,19 @@ describe('DeviceCard — o comando fica visível, inclusive o que ficou sem desf
     useAppStore.setState({ lastCommand: { 'android-07': incerta }, ultimoDePessoa: { 'android-07': pessoa } });
     el = await renderCard(makeInstance(7, { state: 'online' }));
     expect(text(el)).toContain('Parar');
-    // mais nova que o último de pessoa: "Sem resposta", não "Anterior"
-    expect(text(el)).toContain('Sem resposta: Rede do aparelho');
+    expect(text(el)).not.toContain('Rede do aparelho');
+    expect(text(el)).not.toContain('Sem resposta');
+  });
+
+  it('o incerto de pessoa mais novo que o principal sai como "Sem resposta", não como anterior', async () => {
+    const pessoa = comando({ id: 'c-pessoa', verb: 'stop', state: 'succeeded', reason: null,
+                             created_at: '2026-10-01T09:00:00.000Z' }) as never;
+    const incertoDePessoa = comando({ id: 'c-novo', created_at: '2026-10-02T09:00:00.000Z' }) as never;
+    useAppStore.setState({ lastCommand: { 'android-07': incertoDePessoa }, ultimoDePessoa: { 'android-07': pessoa },
+                           comandoSemDesfecho: {} });
+    const el = await renderCard(makeInstance(7, { state: 'online' }));
+    expect(text(el)).toContain('Parar');
+    expect(text(el)).toContain('Sem resposta: Iniciar');
     expect(text(el)).not.toContain('Anterior sem resposta');
   });
 
