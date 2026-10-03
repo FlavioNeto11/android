@@ -349,6 +349,13 @@ hoje: **a conferir** em `catalogo.yaml`.
 `reaprendido_de_evidencia_invalida`, motivo do evento `reaprendido`. Ele vem antes das outras razões B (é o motivo mais
 específico para o dono olhar o item de novo) e depois das C, que continuam vencendo.
 
+**Decisão do dono (03/10, relatada pela orquestradora).** Quem valida fluxo é a IA, não o dono à mão: "esses fluxos você
+precisa aprender a validar com a IA, foi o que eu pedi". O curador revisa os fluxos candidatos com o modo `on` para fluxo e
+com usos reais. A classe A publica pela regra determinística (o parecer é registro); a B vai para o lote do dono com o
+parecer; a C segue item a item. O dono não abre um fluxo candidato para julgá-lo sozinho. Primeira rodada: os 5 fluxos
+candidatos, depois do reinício do deploy da suíte 7 e do LT-3 da Android (usos reais), com teto de US$ 2 e o custo
+registrado; o dossiê leva os apps de cada etapa (#133), para que um fluxo entre apps não pareça incoerente.
+
 ### 8.5 Registro auditável: `learning_reviews` (migração 069, provisória: confirmar com o orquestrador no commit)
 
 Precisa ser tabela própria porque `ai_calls` é purgada pela retenção e a auditoria não pode sumir.
@@ -769,6 +776,13 @@ Decididas pelo dono em 02/10 (via orquestrador), depois do desenho:
 | Faixa C | Confirmada: a IA dá parecer (prioridade 2 do orçamento), mas a decisão é **sempre do dono, item a item, nunca em lote** |
 | D-5 | Limiares da saúde **aprovados como propostos** (§5.3): 2 falhas seguidas, eficácia 0,8 com 5 usos, 14 dias, contra em 7 dias; rótulo só de leitura, no painel, sem Telegram |
 | 30.9 | Migração `learning_reviews` = **069, provisória**: confirmar com o orquestrador no commit; quem mergear depois renumera para ficar acima de todas da `main` |
+
+Decididas pelo dono em 03/10 (via orquestradora):
+
+| # | Decisão do dono |
+|---|---|
+| B confirmada | `commit` em app sem catálogo fica na **classe B** (a emenda para C da madrugada foi revertida; §8.4 e §14) |
+| Fluxos pela IA | O dono **não valida fluxo à mão**: o curador valida (A publica pela regra, B no lote do dono, C item a item); nota no §8.4 |
 
 Em aberto:
 
