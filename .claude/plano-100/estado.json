@@ -5899,23 +5899,15 @@
   },
   "29.40": {
    "id": "29.40",
-   "status": "partial",
+   "status": "implemented",
    "proof": "simulated",
-   "evidence": "Fatia A: PR #131 (feat/ra-20-causa-do-ausente @ ffb2d2f0) na main pelo merge 752dca53 da suíte 7 (123650cc). Causa do ausente medida; herança da receita como candidata (RecipeStore(herdar=), só com recipes_heranca e promote_after > 0); _aposentar_legadas (a herdeira ativa marca superseded a legada da mesma etapa e versão); adendo v0.77. simulated: bateria de 95 arquivos, 1768 passed; depois da main, os 8 afetados: 118 passed. Fatia B: PR #145 (feat/ra-20-chave-generica @bd2a2d93; 3a90f383 chave genérica da receita pela linha de steps no executor, no backfill e no scheduler; da0de919 o título resolvido entra no teste de literal) na main pelo merge da suíte 9; simulated: test_receita_chave_generica.py (24; o de ponta a ponta falha com a consulta genérica desligada) e test_equivalencia_fluxo_skill.py. Item 2 (filho rotulado do alvo sem seletor) em feat/29-40-filho-rotulado, para a suíte 10. Real: not_run.",
-   "blocker": "",
-   "arquivos": [
-    "backend/app/taskqueue/recipes.py",
-    "backend/app/taskqueue/receitas_genericas.py",
-    "backend/app/taskqueue/executor.py",
-    "backend/app/taskqueue/scheduler.py"
-   ],
-   "testes": "suíte 9 inteira em integ/suite-9 @2c078dd1 (-n 8, Idle, 10:37–10:46Z): backend 7244 passed, 7 skipped, 1 failed (test_revisao_receitas::test_aparelho_do_lider_que_cai_libera_quem_espera: race do teste exposto pelo #145, registrado; não bloqueia, regra da orquestradora); scripts 463; frontend 1351 (112 arquivos) e typecheck; docs-check 0/0.",
-   "grupo": "suite-9-android",
-   "modelo": "opus (sessão Android, integradora)",
-   "esforco": "high",
+   "evidence": "Fatia A: PR #131 na main pelo merge 752dca53 da suíte 7. Fatia B: PR #145 (chave genérica da receita) na main pelo merge da suíte 9. Item 2: PR #152 (feat/29-40-filho-rotulado @ f0434fb7), o filho rotulado do alvo sem seletor, na main pela suíte 10 (16fd1127). Com ele, as partes do item fecham: a causa do ausente rotulada, a herança como candidata, as legadas aposentadas e a chave normalizada. simulated: 849 testes afetados no PR; suíte 10 inteira: SQLite @008b9df2 7513 passed; PG @618ba43a -n 8 7494 passed, 8 failed (7 pré-existentes, K-084; 1 do 30.31, corrigida em df0bf82d). Real: not_run (o código está no central desde o deploy 10, 2432046f; falta medir a taxa de ausente depois dele).",
+   "grupo": "aprendizado-suite-10",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T11:02:10+00:00"
+   "quando": "2026-10-03T15:02:10+00:00"
   },
   "30.27": {
    "id": "30.27",
@@ -5978,14 +5970,14 @@
   "30.8": {
    "id": "30.8",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #146 (feat/30-8-metricas @ 159244ab) na main pelo merge dd2c7fad (regra de módulo). GET /api/aprendizado/metricas?app=&dias= (um bloco por linha do §10: composição, aprovações sistema/pessoa, curador, refutados, sucesso depois de promovido, churn, tempos com n, saúde, economia do aproveitamento, proxy de falhas rotulado, orçamento do curador B_W/C_W/uso/aviso 80 %) e GET /api/aprendizado/revisoes (paginada, sem dossiê); adendo v0.89; curador.py: janela_do_orcamento compartilhada. tests/test_learning_metricas.py (11); bateria afetada 1153 passed; arquitetura/curador/pareceres/apps 100 passed. Ensaio só leitura numa cópia do banco do central (03/10 ~09:30Z): 142 ms global, ~55 ms por app; B_W 1,76 × C_W 0,29; proxy em 38 etapas; pegou 2 defeitos corrigidos antes do PR. Real: not_run (chega ao central com o deploy 9).",
-   "grupo": "aprendizado-30-8",
+   "proof": "real",
+   "evidence": "PR #146 na main pelo merge dd2c7fad e no central desde o deploy 9 (3dcfc9ac, 11:04Z). Real em 03/10, no WIN-7S2UASNLFOP: GET /api/aprendizado/metricas e /revisoes lidos às 11:37:26Z (junto do 30.18), e de novo às 13:07Z e 13:16Z (orcamento_do_curador: uso 0,916 e depois 0,902, aviso true; curador 57 revisões, validade ok 57; dias=1 e 7). A tela que lê essas rotas é o 30.33 (A no deploy 10).",
+   "grupo": "aprendizado-suite-10",
    "modelo": "claude-opus-5-5",
    "esforco": "medio",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T09:32:50+00:00"
+   "quando": "2026-10-03T15:02:10+00:00"
   },
   "30.19": {
    "id": "30.19",
@@ -6180,6 +6172,42 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T14:57:55+00:00"
+  },
+  "30.31": {
+   "id": "30.31",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "PR #149 (feat/30-31-validacao @ 3a662764, migração 082) mais a correção df0bf82d (ai_calls.tier inteiro no teste, achada pela PG da suíte 10), na main pela suíte 10 (16fd1127) e no central pelo deploy 10 (2432046f; migração 082 aplicada; aprendizado.validacao.modo off). Entraram o item 0 (devolver à prova, adendo v0.91) e a fatia 1: o pedido a partir do parecer pedir_evidencia, o despachante sob a trava, o fechamento no digest e o gatilho evidencia_chegou. simulated: 1868 testes afetados no PR; PG direcionada (test_learning_validacao_sql e test_learning_validacao) 13 passed depois do df0bf82d; suíte 10 inteira como no 29.40. Falta: a fatia 2 (o ensaio só de leitura do Instagram em perfil de terceiro; a conferência pelo ContentProvider) e o real. O P4 (semeadura de 23 pedidos do QA pelo ao_parecer implantado, extra_usd 2,5) está preparado e espera o 'vai' da orquestradora; ensaio numa cópia às 13:45Z, sem custo.",
+   "grupo": "aprendizado-suite-10",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T15:02:10+00:00"
+  },
+  "30.32": {
+   "id": "30.32",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #150 (feat/30-32-classe-do-fluxo @ 148de71c) na main pela suíte 10 (16fd1127) e no central pelo deploy 10 (2432046f). As etapas do fluxo entram na classe de risco, cada uma com os fatos do catálogo do app dela; vale a etapa mais restritiva. simulated: test_learning_classe_do_fluxo.py; suíte 10 inteira como no 29.40. Ensaio numa cópia do banco do central (03/10): 9 fluxos do Instagram passam de B a C (comentar, responder, mandar mensagem, seguir) e os outros 24 ficam iguais. Real: not_run (aparece na próxima revisão desses fluxos pelo curador). O aviso needs_person com a mesma classe é a 30.33-B (#156, suíte 11).",
+   "grupo": "aprendizado-suite-10",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T15:02:10+00:00"
+  },
+  "30.33": {
+   "id": "30.33",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "Fatia A: PR #153 (feat/30-33-metricas-no-painel @ 882046db), a aba Métricas e as revisões do curador no painel, na main pela suíte 10 (16fd1127) e no central pelo deploy 10. simulated: 12 testes; vitest 1363 passed; autovalidada no preview sobre uma cópia do backup das 12:08 (backend simulado na 8765; banco vazio e backend parado também). O passe no Chrome do deploy 10 é da orquestradora. Fatia B: PR #156 (feat/30-33-aviso-do-fluxo @ c9f1c18a, suíte 11): o aviso learning.needs_person da receita e do fluxo com a classe do dossiê, pelo leitor comum RiscoDoConteudo; bateria de 60 arquivos depois do rebase, 1897 passed.",
+   "grupo": "aprendizado-suite-10",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T15:02:10+00:00"
   }
  },
  "rodadas": [
@@ -7570,6 +7598,19 @@
    ],
    "grupos": [
     "deploy-10-android"
+   ]
+  },
+  {
+   "quando": "2026-10-03T15:02:10+00:00",
+   "itens": [
+    "29.40",
+    "30.8",
+    "30.31",
+    "30.32",
+    "30.33"
+   ],
+   "grupos": [
+    "aprendizado-suite-10"
    ]
   }
  ]
