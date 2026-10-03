@@ -74,6 +74,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-064](#adr-064--trava-de-líder-dos-laços-periódicos-cas-no-relógio-do-banco-cerca-por-token-e-renovação-no-appstate) | Trava de líder dos laços periódicos: CAS no relógio do banco, cerca por token e renovação no `AppState` | aceito (Fase 28, 28.1) | 02/10 |
 | [ADR-065](#adr-065--ação-de-catálogo-entrega-valor-lido-a-outra-etapa-saidas-declaradas-no-catalogoyaml) | Ação de catálogo entrega valor lido a outra etapa: `saidas` declaradas no `catalogo.yaml` | vigente (12.3) | 02/10 |
 | [ADR-066](#adr-066--laço-de-pedidos-desligado-por-padrão-origem-interna-na-criação-da-execução-e-edição-por-gatilho-novo) | Laço de pedidos: desligado por padrão, origem interna na criação da execução e edição por gatilho novo | aceito (Fase 28, 28.4) | 02/10 |
+| [ADR-067](#adr-067--aprendizado-vivo-eixo-de-app-saúde-derivada-e-curador-por-ia-auditável) | Aprendizado vivo: eixo de app, saúde derivada e curador por IA auditável; revê em parte a decisão 9 do ADR-054 (Fase 30) | aceito (dono, 02/10; fase implementada 03/10; prova real 30.18 pendente); emendado 03/10 (revisões da Android e da Jev) | 03/10 |
 | [ADR-068](#adr-068--conta-bloqueada-sai-na-hora-e-a-persona-fica-lápide-só-com-o-hash-do-arroba) | Conta bloqueada sai na hora e a persona fica; lápide só com o hash do @ (item 29.23) |
 | [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro; item 11: regras do filtro do 31.9; item 12: C7 sem palavra-chave e e-mail em peças, rodada E; item 13: barrar pela intenção de entrar, rodada F; item 14: o usuário como @handle ou e-mail, o catálogo só no destino e a preposição só com faixa, rodada G; item 15: envio aberto no código para a sombra C0–C1 do 31.10, 31.17) | 03/10 |
 | [ADR-070](#adr-070--valor-visto-na-imagem-conta-como-saída-de-etapa-sob-conferência-cega-de-um-segundo-leitor) | Valor visto na imagem conta como saída de etapa, sob conferência cega de um segundo leitor; substitui em parte o ADR-065 §3 (item 12.5) | vigente (dono, 02/10; opção desligada) | 02/10 |
@@ -3962,6 +3963,183 @@ real e PostgreSQL: `not_run` (28.12).
 `backend/app/config.py` (`PedidosCfg`).
 
 ---
+
+## ADR-067 — Aprendizado vivo: eixo de app, saúde derivada e curador por IA auditável
+
+**Data:** proposto em 02/10/2026 (desenho da Fase 30) e aceito em 03/10/2026, com a fase implementada.
+**Estado:** aceito. A prova real da fase (30.18) segue pendente.
+**Decisões do dono:**
+- 02/10: a política de risco (a)/(b)/(c), o orçamento proporcional e D-1 a D-5;
+- 03/10: o `commit` em app sem catálogo fica na faixa (b).
+
+O ADR revê **em parte** a decisão 9 do [ADR-054](#adr-054--aprendizado-contínuo-livro-de-aprendizado-com-ciclo-de-vida-publicação-sozinha-só-sem-efeito-externo-d1-feedback-implícito-com-botão-opcional-d2-lições-medidas-e-backlog-do-que-mais-falha).
+O pipeline continua sem IA, e a curadoria ganha um intérprete por IA, auditável. Mantém D1–D8 e a tabela de `ciclo.py`.
+Completa o ADR-052 (app como dado) no lado da leitura.
+
+O desenho completo está em [`design/aprendizado-vivo.md`](design/aprendizado-vivo.md), e a operação, em
+[`dominios/aprendizado.md`](dominios/aprendizado.md).
+
+**Contexto.** O diagnóstico de 02/10 mostrou um aprendizado sem eixo de app, com cinco problemas:
+- o declarado não aparecia, e o absorvido sumia;
+- a receita não era legível onde se decidia sobre ela;
+- versão, lineage e saúde não existiam como leitura;
+- toda decisão sem regra caía no dono (1 pendente e 39 a revisar);
+- o Outlook "sumia" por seis causas somadas, nenhuma delas um filtro.
+
+**Decisão.**
+
+1. **Visão por app, como composição de leitura** (30.1, 30.2 e 30.20).
+   - A lista de apps é o registro ∪ a loja ∪ os pacotes do Livro.
+   - Cada linha traz a origem (`declarado`, `aprendido` ou `absorvido`) e a camada de uso em runtime. O que não resolve
+     vai ao balde `nao_resolvido`, visível.
+   - Não há tabela de conhecimento nova, nem cópia de YAML, de receita ou de fluxo.
+   - O livro filtra por rótulo Produto/QA/Todos e mostra Produto por padrão (30.28, RA-19 A).
+2. **Saúde derivada, não estado** (30.4, D-5).
+   - Uma função só no backend calcula as dimensões medidas e um rótulo por regra, com motivos; a lista, o detalhe, o
+     curador e as métricas usam a mesma.
+   - A dimensão sem dado é `desconhecida`, nunca zero. Não há nota numérica.
+   - Nada é desligado pela saúde. `obsoleto_provavel` é só rótulo (30.14).
+3. **Versão e lineage derivados** (30.6 e 30.7), a partir das versões vivas no parque, das chaves de receita, de
+   `parent_id`, `absorvida:`, da evidência e do `content_hash`. Não há tabela de arestas.
+4. **Ações permitidas calculadas no backend.** O front não espelha `ciclo.py`.
+   - O conteúdo é legível no detalhe (30.3).
+   - "Confirmar que fica" é uma decisão de pessoa, e a evidência real contrária a reabre (30.24).
+5. **Curador por IA como intérprete** (30.10 a 30.12, 30.17 e 30.30).
+   - O fluxo é: dossiê determinístico → parecer estruturado com citações validadas → política de risco → `ciclo.py`.
+     A IA nunca transiciona.
+   - Modos: `off` (fábrica), `shadow` e `on`. O laço roda sob a trava de líder (ADR-064). O central está em `on`
+     desde o deploy 7 (03/10).
+   - **Política de risco.** Vale a mais restritiva entre o catálogo e o `commit`:
+     - (a) navegação e leitura publicam pela regra determinística, e a IA só registra opinião se sobrar orçamento;
+     - (b) efeito médio, ou `commit` em app sem catálogo: a IA recomenda e o dono aprova em lote;
+     - (c) alto risco, `manual_only`, sessão, autenticação, envio, publicação ou exclusão: sempre o dono, item a item.
+     - A política (a) rege a **curadoria**, não a geração de conhecimento (ver a resposta à D0, abaixo).
+   - **Orçamento proporcional.** `B_W = min(α·G_W, k·N_W·c̄)`, com α = 10 %, k = 1,5, W = 7 dias e
+     `c_max = 4 × mediana`.
+     - As salvaguardas são relativas: uma revisão por (item, dossiê), o teto da hora e o pico.
+     - Prioridade: o pedido da pessoa (30.30, na suíte 9) > conflito > (c) > falha recorrente > (b). A faixa (a)
+       nunca entra.
+   - **Hub.** O curador chama `review_knowledge` (30.12), com o papel `plan` emprestado, origem `curador` em
+     `ai_calls` e a fatia própria do teto do dia (`ai.limits.curador_*`). Não tem prompt, modelo nem orçamento
+     paralelos.
+   - **D-1 não está implementada.** A decisão era um modelo barato na triagem e Opus só na faixa (c) ou em conflito,
+     mas hoje o modelo do curador é o do papel `plan`. A triagem do Jev em sombra (31.8) é medida, não decide.
+   - **D-2.** Origem humana sem efeito cai na faixa (b).
+   - **D-3** (critério de `shadow` para `on`): ≥ 30 revisões válidas e ≥ 90 % de acordo na faixa (b). A faixa (c) é
+     sempre item a item.
+6. **Trilha própria `learning_reviews`** (069), nunca purgada.
+   - Guarda modelo, template, custo, decisão, `override` e `ai_call_id` (075).
+   - O `usd` medido passa a ser gravado com o 30.30 (suíte 9); até lá, o gasto entra pela estimativa do dossiê.
+   - O rótulo de intenção mora na mesma tabela e se distingue por `template_id` (30.25). Todo leitor do curador o
+     deixa de fora.
+   - `resultado_posterior` (14 e 30 dias) ainda não é gravado.
+7. **Falha → proposta, pelo backlog existente** (30.13).
+   - O conhecimento envolvido e a causa provável são determinísticos, e a IA entra só no indeterminado.
+   - O tipo gravado da falha vem de `attempts.error_kind` (081, 30.26). A prova da correção é medida como antes.
+8. **Modo por app** para lições e telas (30.20): override por pacote; o padrão é o global.
+9. **Rebaixamento determinístico** de receita ou fluxo com efeito num app cujo catálogo atual não tem ação de efeito
+   para a etapa (30.14).
+10. **Evento `learning.needs_person`** na entrada e na saída da espera humana, nas faixas B e C (30.21), sem conteúdo.
+11. **Backfill único das lições**, nas 12 execuções reais com contraste aprovável anteriores à 055 (sem IA).
+12. **Evidência inválida.** A execução marcada não mede nada, e o sucesso seguinte nasce como item reaprendido
+    (30.23).
+13. **O que uma execução simulada ensina não publica** (30.28, RA-19 B): a receita e o fluxo nascem candidatos, e só
+    a concordância real promove.
+14. **Métricas** (30.8, adendo v0.89): `GET /api/aprendizado/metricas` e `/revisoes`, calculadas na leitura, com as
+    mesmas funções da visão por app.
+
+**Resposta à D0 ("Jev para o fluxo de navegação").** "Jev" é o provedor TypeSafe System One, e em runtime ele só entra
+pela porta `DecisaoFechada` ([ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe)):
+uma `choice` sobre um conjunto fechado.
+- No aprendizado, ele faz a triagem do curador em sombra (31.8). Não gera fluxo nem passo.
+- O rótulo de intenção (30.25) é dado pela pessoa, às cegas e sem IA. É o gabarito contra o qual se mede a
+  sombra da intenção do Jev (31.9), no relatório do 31.10.
+- O fluxo de navegação segue gerado pelo hub e pela execução: o `generalize` do ensino (M2), a receita destilada da
+  execução real (M3) e o planejador com lições (M4).
+- A política (a), "navegação e leitura nunca gasta IA", vale para a curadoria. Não proíbe gerar.
+
+**Dependências entre frentes** (o mapa de amarração de 03/10; detalhe em `.claude/handoffs/mapa-de-amarracao.md`, local):
+
+| # | Consumidor → provedor | O quê |
+|---|---|---|
+| M1 | curador do Livro → hub de IA (frente Jev) | chamada de modelo, papel, custo em `learning_reviews` |
+| M2 | Livro (fluxo e habilidade) → ensino (frente Jev, 13.2) | fluxo de navegação gerado por IA a partir de demonstração |
+| M3 | Livro (receitas) → execução (Android) | receita destilada da execução real; reprodução sem IA |
+| M4 | planejador e ator → Livro (lições) | bloco de lições no prompt |
+| M5 | Livro → `planning/costs.py` e `ai_calls` | custo por exposição e régua diária |
+| M6 | taskqueue → Livro (domínio) | classificação de falha, `FailureKind`, efeito da receita |
+| M7 | Livro → executor (costuras) | fechamento de tentativa, árvore, sinais de gesto |
+| M8 | Livro (telas) → `app_declarado/sessao.py` (Android) | conferência da sessão |
+| M9 | avisos (frente Jev) → Livro | `learning.needs_person` |
+| M10 | Livro (`esquecer_conta`) → `social/` (Android) | esquecer o que é da conta sem apagar a persona |
+| M11 | pedidos (frente Jev) → taskqueue | ocorrência, prioridade, `step_outputs`, travas |
+| M12 | pedidos → `planning/saldos` (ADR-051) | adiar por saldo |
+| M13 | social e persona (Android) → hub e 17.7 | rascunho, catálogo por app, perfil de IA |
+| M14 | Livro (voz e preferência) → skills e social | `SkillRunPlanner`, `SocialContextBuilder` |
+| M15 | avaliação do curador (30.18) → 7.4 (`eval_run`, frente Jev) | concordância e custo; ainda sem ligação declarada |
+| M16 | Livro e 28.7 → retenção | ler antes de purgar (`runs`, `ai_calls`, `step_outputs`) |
+
+Mudar `FechamentoDeTentativa`, `ConferenciaDaSessao`, `profile.status` ou as colunas de `ai_calls` exige teste de
+costura e aviso às três frentes, porque essas falhas são silenciosas (M5, M7 e M8).
+
+**Alternativas recusadas.**
+- Copiar o declarado para `learning_items`: seria uma segunda verdade.
+- Nota de saúde de 0 a 100: não tem origem explicável.
+- Grafo de conhecimento: custo sem uso medido.
+- IA aprovando direto: perde o D1 e a auditoria.
+- Reaproveitar `ia_resumos_por_dia` ou `PassoDeCuradoria`: os dois prometem "sem IA".
+- Acoplar o aprendizado ao `context_retrieval`, ou usar o Jev para gerar passos: fere o ADR-069 (itens 1 e 2) e a
+  matriz do ADR-063, que ele emenda. A porta do Jev usa, sim, o transporte do adaptador de retrieval como cliente
+  único (31.14).
+
+**Consequências.**
+- Migrações:
+  - do aprendizado: 069 (`learning_reviews`), 075 (`ai_call_id`) e 081 (`attempts.error_kind`);
+  - da frente Jev: 073 (`ai_calls.origem`) e 080 (31.15, colunas novas em `ai_calls`, uma tabela que o M5 lê).
+- Config:
+  - `aprendizado.curador` (`modo`, `intervalo_s`, `cooldown_h`, `alfa`, `k`, `janela_dias`, `m_cmax`);
+  - `aprendizado.saude`;
+  - `por_app` em lições e telas;
+  - `ai.limits.curador_*`;
+  - `aprendizado.simulada_publica`, só na suíte.
+- Cada item da fase registra o seu adendo no contrato (`grep -n "Adendo v0" docs/api-contract.md`).
+- O gasto pago é proporcional ao uso e para quando a operação para.
+- O painel de Aprendizado foi refeito sobre os contratos novos. A atribuição de app por etapa (`app_da_etapa`) já
+  existia e não foi pré-requisito.
+- Pendências:
+  - D-1 (o modelo por faixa);
+  - `resultado_posterior`;
+  - M15 (o curador no `eval_run`);
+  - a prova real (30.18).
+
+**Emenda de 03/10/2026, ~09:45Z (revisão da Android, a posteriori; aprovada sem bloqueio).**
+
+1. **A regra das costuras inclui `steps.driven_by` e `attempts.strategy`.**
+   - Os valores mudaram duas vezes sem aviso a quem lê: `sem_ator` (v0.81) e `deterministic` /
+     `deterministic>ai_actor` (v0.86, LT-6).
+   - O Livro já registrou duas quebras de série por isso: a do `pct_por_receita` no deploy 7 e a do LT-6 no deploy 8.
+   - É a mesma família de falha silenciosa de M5, M7 e M8. Mudar um valor exige aviso às três frentes e uma nota
+     de série no domínio.
+2. **M3 ganha uma dependência do executor.**
+   - Desde o deploy 8 (03/10 09:06:28Z, 29.45), a etapa `app_foreground` aberta pelo executor sem IA fecha
+     `sem_ator` e não gera comparação de sombra (adendo v0.86).
+   - Uma candidata de `open_app` não promove por sombra; quem decide é uma pessoa no livro.
+3. **D-1, na prática: o curador trocou de modelo sem decisão própria.**
+   - Herdando o papel `plan`, ele passou a usar o `claude-sonnet-5-5` com effort `low` desde o deploy 8 (antes,
+     o Opus do `plan`).
+   - O critério D-3 (≥ 90 % de acordo na faixa b) pode mudar com isso. A concordância do parecer se mede dos dois
+     lados de 09:06:28Z, sem misturar as janelas.
+4. **Item 3 (lineage), com o RA-20 B (#145, suíte 9):** a receita passa a ter duas chaves, a específica e a
+   genérica. A genérica entra na mesma conta das chaves, como os consumidores do #145 já fazem (capacidades,
+   aproveitamento e o `_caminho_ja_aberto` do scheduler).
+
+**Correção de 03/10/2026, ~09:55Z (revisão da Jev, a posteriori).**
+
+- A resposta à D0 atribuía ao Jev o rótulo de intenção. Errado: o 30.25 é da pessoa, sem IA, e é o gabarito da
+  sombra da intenção do Jev (31.9 e 31.10). O texto acima já está corrigido.
+- As alternativas recusadas citam o ADR-069 (itens 1 e 2) junto do ADR-063.
+- A tabela M1–M16 diz "frente Jev" onde fala da frente, para não confundir com o provedor.
+- As consequências incluem a 080, que também mexe em `ai_calls`.
 
 ## ADR-068 — Conta bloqueada sai na hora e a persona fica: lápide só com o hash do arroba
 

@@ -727,7 +727,7 @@ mecanismo quando a prova deles existir, não por fecharem aqui.
 aparelho durante 6 h reais que incluam a remedição; o Outlook abre e chega ao login pelo serviço num aparelho do
 parque; e cada pendência restante tem o que ficou pronto e a ação exata que falta.
 
-### Fase 30 — Aprendizado vivo · 22 itens (desenho de 02/10/2026; ADR-067 proposto)
+### Fase 30 — Aprendizado vivo · 22 itens (desenho de 02/10/2026; ADR-067 aceito em 03/10)
 
 Origem: o pedido do dono de 02/10 para a frente Aprendizado (conhecimento, receitas, validação, curadoria, falhas e ciclo de vida). Diagnóstico em
 [design/aprendizado-vivo-diagnostico.md](design/aprendizado-vivo-diagnostico.md) e desenho em [design/aprendizado-vivo.md](design/aprendizado-vivo.md) (§13 traz arquivos, dono, dependências e

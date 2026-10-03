@@ -19,6 +19,30 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Documentação e processo: ADR-067, o aprendizado vivo aceito (30.19; branch docs/30-19-adr-067)
+
+- `docs/decisoes.md`: ADR-067 (índice e seção), com a Fase 30 como foi implementada.
+  - Eixo de app, saúde derivada, versão e lineage, curador com política de risco e orçamento proporcional, trilha
+    `learning_reviews`, evidência inválida, origem simulada e métricas.
+  - O que ficou pendente: D-1 (modelo por faixa), `resultado_posterior`, o curador no `eval_run` (M15) e a prova
+    real (30.18).
+  - A resposta à D0: o Jev só escolhe em conjunto fechado (ADR-069); o fluxo de navegação segue com o hub e a
+    execução; a política (a) rege a curadoria, não a geração.
+  - As dependências M1–M16 entre frentes.
+- `design/aprendizado-vivo.md`: o §14 aponta para o ADR aceito; o §8.8 corrige os papéis do hub (6 em `AI_ROLES`,
+  mais `leitura`, e o `review_knowledge` do 30.12).
+- `dominios/aprendizado.md` e a linha da Fase 30 no plano citam o ADR-067.
+- Emenda datada do ADR-067 (revisão da Android):
+  - as costuras incluem `steps.driven_by` e `attempts.strategy`;
+  - M3 depende do LT-6 (a `app_foreground` sem IA não gera sombra);
+  - o curador herdou o Sonnet 5.5 low do `plan` no deploy 8, e a concordância (D-3) se mede dos dois lados;
+  - o lineage conta a chave genérica do RA-20 B.
+- Correção do ADR-067 (revisão da Jev):
+  - o rótulo de intenção (30.25) é da pessoa, sem IA, e serve de gabarito da sombra do Jev; não é feito pelo Jev;
+  - as alternativas citam o ADR-069;
+  - a tabela diz "frente Jev";
+  - a 080 entra nas consequências.
+
 ## 2026-10-03 — 29.44: app sem tráfego na janela não segura o `parcial` (branch `feat/29-44-sem-trafego`)
 
 - **Antes.** `nao_medido` juntava o app não instalado e o instalado parado na janela, e cada app exigido tinha de

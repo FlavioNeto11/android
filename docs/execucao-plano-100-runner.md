@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-309 de 359 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+310 de 359 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -333,7 +333,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.16 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #97 merge 5b7fa342 (vitest 1181): detalhe rico do item (seções do §11.2: conteúdo, saúde, versão, relações, trilha, evidências, ações). Navegador (ensaio com cópia do banco): detalhe rico, desligar → reativar, 375 px… |  |
 | 30.17 | implemented | simulated | opus (sessão Aprendizado) + coordenação | — | PR #124 merge 546bc676 (bateria afetada: 53 arquivos que citam aprendizado/learning = 919 passed; frontend inteiro 1298; docs-check 0/0): o parecer da IA diante da pessoa. Rótulo humano em learning_reviews (visto por re… |  |
 | 30.18 | pendente | — | — | — |  |  |
-| 30.19 | pendente | — | — | — |  |  |
+| 30.19 | implemented | simulated | claude-opus-5-5 | — | PR #147 (docs/30-19-adr-067 @ b240d4a9) na main pelo merge 4b979466 (só docs, liberado pela orquestradora; Jev e Android revisam a posteriori, discordância vira emenda datada). decisoes.md: ADR-067 aceito (índice e seçã… |  |
 | 30.20 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #75 merge af208f07 e PR #79 merge e86b4a33: modo por app (domain/modo_por_app.py, modo_efetivo; aprendizado.licoes.por_app / telas.por_app), D1 do modo por app; prova simulated; not_run no central (nada implantado) |  |
 | 30.21 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #83 merge f0f02125: evento learning.needs_person (domain/espera.py, application/espera.py, infrastructure/eventos.py, state.py eventos=self.bus), adendo v0.49; suíte combinada verde (efd39d3e); prova simulated; not_r… |  |
 | 30.22 | implemented | real | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #69 merge 657c5f85: scripts/aprendizado-backfill-licoes.py + infrastructure/backfill_licoes.py; aplicado no central em 02/10 sobre as 12 execuções aprováveis (10 lições nascidas, em shadow); saídas em .claude/handoff… |  |
@@ -366,7 +366,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (50): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.40, 29.41, 29.47, 29.44, 30.18, 30.19, 30.30, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, 31.17, T.2
+Pendentes (49): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.40, 29.41, 29.47, 29.44, 30.18, 30.30, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, 31.17, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

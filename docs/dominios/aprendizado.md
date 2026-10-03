@@ -5,7 +5,8 @@ conhecimento fica num **livro** com ciclo de vida, e publicar sozinho só vale p
 repetiu (D1). A decisão e as alternativas estão no
 [ADR-054](../decisoes.md#adr-054--aprendizado-contínuo-livro-de-aprendizado-com-ciclo-de-vida-publicação-sozinha-só-sem-efeito-externo-d1-feedback-implícito-com-botão-opcional-d2-lições-medidas-e-backlog-do-que-mais-falha);
 o contrato HTTP, nos adendos [v0.37 e v0.38](../api-contract.md); as tabelas (migração 055), em
-[banco.md](../banco.md); a lição no prompt, em [ia.md §15](../ia.md).
+[banco.md](../banco.md); a lição no prompt, em [ia.md §15](../ia.md). O aprendizado vivo (Fase 30: eixo de app, saúde,
+curador por IA, métricas) é o [ADR-067](../decisoes.md#adr-067--aprendizado-vivo-eixo-de-app-saúde-derivada-e-curador-por-ia-auditável).
 
 Caminhos relativos a `backend/app/`, salvo indicação. O código mora em `modules/learning/` (domínio, aplicação,
 infraestrutura e apresentação, com a catraca de camadas do ADR-030 e zero `Any`); as costuras nos arquivos quentes, em

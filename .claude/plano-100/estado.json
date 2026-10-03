@@ -5984,6 +5984,18 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T09:32:50+00:00"
+  },
+  "30.19": {
+   "id": "30.19",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #147 (docs/30-19-adr-067 @ b240d4a9) na main pelo merge 4b979466 (só docs, liberado pela orquestradora; Jev e Android revisam a posteriori, discordância vira emenda datada). decisoes.md: ADR-067 aceito (índice e seção) com a Fase 30 como implementada, pendências (D-1 modelo por faixa, resultado_posterior, M15, 30.18), resposta à D0 (Jev só escolhe em conjunto fechado, ADR-069; fluxo de navegação com hub e execução; política (a) rege a curadoria) e dependências M1–M16; design §14 aponta o ADR aceito e §8.8 corrige os papéis (6 em AI_ROLES, config.py:30, mais leitura); domínio e plano citam o ADR; CHANGELOG. docs-check 0/0. Item de documentação: sem prova de ambiente.",
+   "grupo": "aprendizado-30-19",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T09:43:46+00:00"
   }
  },
  "rodadas": [
@@ -7291,6 +7303,15 @@
    ],
    "grupos": [
     "aprendizado-30-8"
+   ]
+  },
+  {
+   "quando": "2026-10-03T09:43:46+00:00",
+   "itens": [
+    "30.19"
+   ],
+   "grupos": [
+    "aprendizado-30-19"
    ]
   }
  ]
