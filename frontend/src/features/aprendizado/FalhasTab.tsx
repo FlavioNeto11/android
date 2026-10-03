@@ -14,7 +14,7 @@ import { toast } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
 import { ETAPA_LIVRE, rotuloDaCapability } from './atencao';
-import { descreverTentativa, rotuloDoBacklog, traduzirErro } from './falhasTexto';
+import { descreverTentativa, etapaDaTentativa, rotuloDaTela, rotuloDoBacklog, traduzirErro } from './falhasTexto';
 import {
   CAMADAS, type GrupoDeFalha, type RelatorioDeFalhas, mdDoItem, ordenarFalhas, rotuloDaCamada, rotuloDaFalha,
 } from './model';
@@ -84,7 +84,7 @@ export function LinhaDeFalha({ g, posicao, dentroDoApp = false }: { g: GrupoDeFa
       </div>
       {g.failure_screen ? (
         <div className={styles.itemMeta}>
-          <span>Tela <span className={styles.mono}>{g.failure_screen}</span></span>
+          <span title={`Tela ${g.failure_screen} do catálogo do app`}>Tela: {rotuloDaTela(g.failure_screen)}</span>
         </div>
       ) : null}
       <div className={styles.numeros}>
@@ -99,8 +99,9 @@ export function LinhaDeFalha({ g, posicao, dentroDoApp = false }: { g: GrupoDeFa
         <ul className={styles.exemplos} aria-label="Exemplos">
           {g.exemplos.map((x) => {
             const tentativa = descreverTentativa(x.attempt_id);
+            const etapa = etapaDaTentativa(x.attempt_id);
             return (
-              <li key={`${x.run_id}-${x.attempt_id ?? ''}`}>
+              <li key={`${x.run_id}-${x.attempt_id ?? ''}`} title={etapa ? `etapa ${etapa} do plano` : undefined}>
                 {tentativa ?? 'Execução'}{' '}
                 <button type="button" className={styles.linkBtn} title={x.run_id} onClick={() => abrirExecucao(x.run_id)}>abrir a execução</button>
                 {x.erro ? <> — {traduzirErro(x.erro)}</> : null}

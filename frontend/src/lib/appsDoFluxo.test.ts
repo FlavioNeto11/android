@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { textoDosApps } from './appsDoFluxo';
+import { appsDoFluxo, textoDosApps } from './appsDoFluxo';
 
 const APPS = [{ id: 'qa-messenger', name: 'QA Messenger' }, { id: 'chrome', name: 'Chrome' }];
 
@@ -24,5 +24,15 @@ describe('textoDosApps', () => {
 
   it('aceita o mapa id → nome que as telas já montam', () => {
     expect(textoDosApps(['qa-messenger', 'chrome'], new Map([['qa-messenger', 'QA Messenger']]))).toBe('QA Messenger → chrome');
+  });
+});
+
+describe('appsDoFluxo', () => {
+  it('usa required_apps quando vem preenchido; senão cai no app_id do fluxo', () => {
+    expect(appsDoFluxo({ app_id: 'qa-messenger', required_apps: ['qa-messenger', 'chrome'] })).toEqual(['qa-messenger', 'chrome']);
+    expect(appsDoFluxo({ app_id: 'qa-messenger', required_apps: [] })).toEqual(['qa-messenger']);
+    expect(appsDoFluxo({ app_id: 'qa-messenger' })).toEqual(['qa-messenger']);
+    expect(appsDoFluxo({ app_id: null, required_apps: [] })).toEqual([]);
+    expect(textoDosApps(appsDoFluxo({ app_id: 'qa-messenger', required_apps: [] }), APPS)).toBe('QA Messenger');
   });
 });

@@ -234,7 +234,7 @@ describe('falhas e capability no detalhe do app', () => {
     const titulo = enviar.querySelector('li[data-item="fk-enviar-a"] span[class*="itemTitulo"]');
     expect(titulo?.textContent).toBe(rotuloDaFalha('elemento_nao_encontrado'));
     expect(text(secao)).not.toContain('Falha fk-enviar-a');
-    expect(text(secao)).toContain('Tela inicio');
+    expect(text(secao)).toContain('Tela: inicio');
   });
 
   it('sem falha no app diz que não há grupo; "Ver todas as falhas" abre a aba de falhas', async () => {

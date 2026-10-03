@@ -7,7 +7,7 @@ import { useAppStore } from '../../store/app';
 import { useUiStore } from '../../store/ui';
 import { AprendizadoPage } from './AprendizadoPage';
 import { DetalheRico, hrefDoItem, passoDaTransicao } from './DetalheRico';
-import { destinoDaRelacao, metaDeSaude, textoDoMotivo, valorDaDimensao } from './detalhe';
+import { alvoLegivel, destinoDaRelacao, metaDeSaude, rotuloDaExecucao, textoDaVariante, textoDoMotivo, valorDaDimensao } from './detalhe';
 import { itemDoLink } from './AprendidoTab';
 import type {
   ConteudoDaReceita, ConteudoDoItem, DetalheDoLivro, DimensaoDeSaude, EntradaDoLivro, SaudeDoItem, VersaoDoItem,
@@ -108,6 +108,11 @@ describe('detalhe rico: receita', () => {
     expect(text(passos)).toContain('{mensagem}');            // o nome, entre chaves
     expect(text(passos)).toContain('com.whatsapp:id/contato');
     expect(text(passos)).toContain('Marina');                 // o texto do seletor é da tela, não de parâmetro
+    // UX do deploy 8: o alvo em palavras na linha; os seletores crus ficam recolhidos em "como o encontra".
+    const primeiro = passos.querySelector(':scope > li') as HTMLElement;
+    expect(text(primeiro)).toContain('Alvo: “Marina”');
+    expect(primeiro.querySelector('details:not([open])')?.textContent).toContain('com.whatsapp:id/contato');
+    expect(text(passos.querySelectorAll(':scope > li')[1] as HTMLElement)).toContain('Alvo: o elemento entry');
     // O selo "faz o efeito" só na terceira ação, e o resumo diz qual é.
     const selos = Array.from(passos.querySelectorAll(':scope > li')).map((li) => /faz o efeito/.test(li.textContent ?? ''));
     expect(selos).toEqual([false, false, true, false]);
@@ -121,7 +126,8 @@ describe('detalhe rico: receita', () => {
     expect(t).toContain('enviar_mensagem, responder');
     expect(t).toContain('ambígua');
     const run = container.querySelector('a[href="#/execucoes/r-20261001-abc"]');
-    expect(run?.textContent).toBe('r-20261001-abc');
+    expect(run?.textContent).toBe('execução r-20261001-abc');      // fora do formato do id: o id, com a palavra
+    expect(run?.getAttribute('title')).toBe('r-20261001-abc');
     const subst = container.querySelector(`a[href="${hrefDoItem('receita', '9')}"]`);
     expect(subst?.textContent).toContain('versão 2');
     expect(t).toContain('concordou com a IA em 4 de 5');     // sombra
@@ -419,5 +425,20 @@ describe('no catálogo Aprendido', () => {
     await waitFor(() => expect(container.querySelector('[aria-label="Item aberto pelo link"] [data-item="receita:9"]')).not.toBeNull());
     await waitFor(() => expect(container.querySelector('[aria-label="Item aberto pelo link"] h4')).not.toBeNull());
     expect(text(container.querySelector('[aria-label="Item aberto pelo link"]')!)).toContain('Receita antiga');
+  });
+});
+
+describe('os códigos do detalhe em palavras (UX do deploy 8)', () => {
+  it('a execução pela data do id, a variante da tela e o alvo da ação', () => {
+    const agora = Date.parse('2026-12-01T12:00:00Z');
+    expect(rotuloDaExecucao('r-20260924114815-c14258', agora)).toMatch(/^execução de \d{2}\/\d{2} \d{2}:\d{2}$/);
+    expect(rotuloDaExecucao('r-20261001-abc')).toBe('execução r-20261001-abc');
+    expect(textoDaVariante('en-US/xhdpi')).toBe('idioma en-US, tela xhdpi');
+    expect(textoDaVariante('outra')).toBe('outra');
+    expect(textoDaVariante(null)).toBeNull();
+    expect(alvoLegivel([{ tipo: 'rid+text', rid: 'com.x:id/send', texto: 'Enviar' }])).toBe('“Enviar”');
+    expect(alvoLegivel([{ tipo: 'rid', rid: 'com.x:id/send' }, { tipo: 'desc', desc: 'Enviar' }])).toBe('“Enviar”');
+    expect(alvoLegivel([{ tipo: 'rid', rid: 'com.x:id/send' }])).toBe('o elemento send');
+    expect(alvoLegivel([])).toBeNull();
   });
 });

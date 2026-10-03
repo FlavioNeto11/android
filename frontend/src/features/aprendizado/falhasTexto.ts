@@ -14,19 +14,34 @@ export function rotuloDoBacklog(estado: string): string {
   return BACKLOG[estado] ?? estado;
 }
 
-/**
- * A tentativa como a pessoa a lê: `r-…:android-05:v1:open_app:a1` → "android-05 · etapa open_app · tentativa 1" (a
- * palavra diz que o código é a chave da etapa no plano, não um nome; validação do deploy 4). Fora desse formato devolve
- * `null` (quem chama mostra só a execução).
- */
-export function descreverTentativa(attemptId: string | null | undefined): string | null {
+function partesDaTentativa(attemptId: string | null | undefined): { aparelho: string; etapa: string; n: string } | null {
   if (!attemptId) return null;
   const partes = attemptId.split(':');
   if (partes.length < 5) return null;
   const [, aparelho, , etapa, tentativa] = partes;
   const n = /^a(\d+)$/.exec(tentativa ?? '');
-  if (!aparelho || !etapa || !n) return null;
-  return `${aparelho} · etapa ${etapa} · tentativa ${n[1]}`;
+  return aparelho && etapa && n?.[1] ? { aparelho, etapa, n: n[1] } : null;
+}
+
+/**
+ * A tentativa como a pessoa a lê: `r-…:android-05:v1:open_app:a1` → "android-05 · tentativa 1". A chave da etapa no
+ * plano ("open_app") é código: saiu do texto (UX dos deploys 7 e 8) e vai no `title` (`etapaDaTentativa`). Fora
+ * desse formato devolve `null` (quem chama mostra só a execução).
+ */
+export function descreverTentativa(attemptId: string | null | undefined): string | null {
+  const p = partesDaTentativa(attemptId);
+  return p ? `${p.aparelho} · tentativa ${p.n}` : null;
+}
+
+/** A chave da etapa no plano, para o `title` da ocorrência ("etapa open_app do plano"); nula fora do formato. */
+export function etapaDaTentativa(attemptId: string | null | undefined): string | null {
+  return partesDaTentativa(attemptId)?.etapa ?? null;
+}
+
+/** O id da tela aprendida ("caixa_de_entrada", do catálogo do app, em português) como texto: "caixa de entrada". O
+ *  id cru fica no `title`. */
+export function rotuloDaTela(id: string): string {
+  return id.replace(/[_-]+/g, ' ').trim() || id;
 }
 
 /** Os erros do provedor de IA que já apareceram na tela do dono, do mais específico ao mais geral. */
