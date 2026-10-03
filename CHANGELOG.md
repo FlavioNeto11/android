@@ -37,6 +37,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - M3 depende do LT-6 (a `app_foreground` sem IA não gera sombra);
   - o curador herdou o Sonnet 5.5 low do `plan` no deploy 8, e a concordância (D-3) se mede dos dois lados;
   - o lineage conta a chave genérica do RA-20 B.
+- Correção do ADR-067 (revisão da Jev):
+  - o rótulo de intenção (30.25) é da pessoa, sem IA, e serve de gabarito da sombra do Jev; não é feito pelo Jev;
+  - as alternativas citam o ADR-069;
+  - a tabela diz "frente Jev";
+  - a 080 entra nas consequências.
 
 ## 2026-10-03 — Aprendizado: métricas e lista de revisões (30.8; branch feat/30-8-metricas)
 

@@ -74,7 +74,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-064](#adr-064--trava-de-líder-dos-laços-periódicos-cas-no-relógio-do-banco-cerca-por-token-e-renovação-no-appstate) | Trava de líder dos laços periódicos: CAS no relógio do banco, cerca por token e renovação no `AppState` | aceito (Fase 28, 28.1) | 02/10 |
 | [ADR-065](#adr-065--ação-de-catálogo-entrega-valor-lido-a-outra-etapa-saidas-declaradas-no-catalogoyaml) | Ação de catálogo entrega valor lido a outra etapa: `saidas` declaradas no `catalogo.yaml` | vigente (12.3) | 02/10 |
 | [ADR-066](#adr-066--laço-de-pedidos-desligado-por-padrão-origem-interna-na-criação-da-execução-e-edição-por-gatilho-novo) | Laço de pedidos: desligado por padrão, origem interna na criação da execução e edição por gatilho novo | aceito (Fase 28, 28.4) | 02/10 |
-| [ADR-067](#adr-067--aprendizado-vivo-eixo-de-app-saúde-derivada-e-curador-por-ia-auditável) | Aprendizado vivo: eixo de app, saúde derivada e curador por IA auditável; revê em parte a decisão 9 do ADR-054 (Fase 30) | aceito (dono, 02/10; fase implementada 03/10; prova real 30.18 pendente); emendado 03/10 (revisão da Android) | 03/10 |
+| [ADR-067](#adr-067--aprendizado-vivo-eixo-de-app-saúde-derivada-e-curador-por-ia-auditável) | Aprendizado vivo: eixo de app, saúde derivada e curador por IA auditável; revê em parte a decisão 9 do ADR-054 (Fase 30) | aceito (dono, 02/10; fase implementada 03/10; prova real 30.18 pendente); emendado 03/10 (revisões da Android e da Jev) | 03/10 |
 | [ADR-068](#adr-068--conta-bloqueada-sai-na-hora-e-a-persona-fica-lápide-só-com-o-hash-do-arroba) | Conta bloqueada sai na hora e a persona fica; lápide só com o hash do @ (item 29.23) |
 | [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro; item 11: regras do filtro do 31.9) | 03/10 |
 | [ADR-070](#adr-070--valor-visto-na-imagem-conta-como-saída-de-etapa-sob-conferência-cega-de-um-segundo-leitor) | Valor visto na imagem conta como saída de etapa, sob conferência cega de um segundo leitor; substitui em parte o ADR-065 §3 (item 12.5) | vigente (dono, 02/10; opção desligada) | 02/10 |
@@ -4051,8 +4051,9 @@ O desenho completo está em [`design/aprendizado-vivo.md`](design/aprendizado-vi
 **Resposta à D0 ("Jev para o fluxo de navegação").** "Jev" é o provedor TypeSafe System One, e em runtime ele só entra
 pela porta `DecisaoFechada` ([ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe)):
 uma `choice` sobre um conjunto fechado.
-- No aprendizado, ele faz a triagem do curador em sombra (31.8) e o rótulo de intenção (30.25 e 31.10). Não gera
-  fluxo nem passo.
+- No aprendizado, ele faz a triagem do curador em sombra (31.8). Não gera fluxo nem passo.
+- O rótulo de intenção (30.25) é dado pela pessoa, às cegas e sem IA. É o gabarito contra o qual se mede a
+  sombra da intenção do Jev (31.9), no relatório do 31.10.
 - O fluxo de navegação segue gerado pelo hub e pela execução: o `generalize` do ensino (M2), a receita destilada da
   execução real (M3) e o planejador com lições (M4).
 - A política (a), "navegação e leitura nunca gasta IA", vale para a curadoria. Não proíbe gerar.
@@ -4061,21 +4062,21 @@ uma `choice` sobre um conjunto fechado.
 
 | # | Consumidor → provedor | O quê |
 |---|---|---|
-| M1 | curador do Livro → hub de IA (Jev) | chamada de modelo, papel, custo em `learning_reviews` |
-| M2 | Livro (fluxo e habilidade) → ensino (Jev, 13.2) | fluxo de navegação gerado por IA a partir de demonstração |
+| M1 | curador do Livro → hub de IA (frente Jev) | chamada de modelo, papel, custo em `learning_reviews` |
+| M2 | Livro (fluxo e habilidade) → ensino (frente Jev, 13.2) | fluxo de navegação gerado por IA a partir de demonstração |
 | M3 | Livro (receitas) → execução (Android) | receita destilada da execução real; reprodução sem IA |
 | M4 | planejador e ator → Livro (lições) | bloco de lições no prompt |
 | M5 | Livro → `planning/costs.py` e `ai_calls` | custo por exposição e régua diária |
 | M6 | taskqueue → Livro (domínio) | classificação de falha, `FailureKind`, efeito da receita |
 | M7 | Livro → executor (costuras) | fechamento de tentativa, árvore, sinais de gesto |
 | M8 | Livro (telas) → `app_declarado/sessao.py` (Android) | conferência da sessão |
-| M9 | avisos (Jev) → Livro | `learning.needs_person` |
+| M9 | avisos (frente Jev) → Livro | `learning.needs_person` |
 | M10 | Livro (`esquecer_conta`) → `social/` (Android) | esquecer o que é da conta sem apagar a persona |
-| M11 | pedidos (Jev) → taskqueue | ocorrência, prioridade, `step_outputs`, travas |
+| M11 | pedidos (frente Jev) → taskqueue | ocorrência, prioridade, `step_outputs`, travas |
 | M12 | pedidos → `planning/saldos` (ADR-051) | adiar por saldo |
 | M13 | social e persona (Android) → hub e 17.7 | rascunho, catálogo por app, perfil de IA |
 | M14 | Livro (voz e preferência) → skills e social | `SkillRunPlanner`, `SocialContextBuilder` |
-| M15 | avaliação do curador (30.18) → 7.4 (`eval_run`, Jev) | concordância e custo; ainda sem ligação declarada |
+| M15 | avaliação do curador (30.18) → 7.4 (`eval_run`, frente Jev) | concordância e custo; ainda sem ligação declarada |
 | M16 | Livro e 28.7 → retenção | ler antes de purgar (`runs`, `ai_calls`, `step_outputs`) |
 
 Mudar `FechamentoDeTentativa`, `ConferenciaDaSessao`, `profile.status` ou as colunas de `ai_calls` exige teste de
@@ -4087,12 +4088,14 @@ costura e aviso às três frentes, porque essas falhas são silenciosas (M5, M7 
 - Grafo de conhecimento: custo sem uso medido.
 - IA aprovando direto: perde o D1 e a auditoria.
 - Reaproveitar `ia_resumos_por_dia` ou `PassoDeCuradoria`: os dois prometem "sem IA".
-- Acoplar ao `context_retrieval`, ou usar o Jev para gerar passos: fere a matriz do ADR-063.
+- Acoplar o aprendizado ao `context_retrieval`, ou usar o Jev para gerar passos: fere o ADR-069 (itens 1 e 2) e a
+  matriz do ADR-063, que ele emenda. A porta do Jev usa, sim, o transporte do adaptador de retrieval como cliente
+  único (31.14).
 
 **Consequências.**
 - Migrações:
   - do aprendizado: 069 (`learning_reviews`), 075 (`ai_call_id`) e 081 (`attempts.error_kind`);
-  - da frente Jev: 073 (`ai_calls.origem`).
+  - da frente Jev: 073 (`ai_calls.origem`) e 080 (31.15, colunas novas em `ai_calls`, uma tabela que o M5 lê).
 - Config:
   - `aprendizado.curador` (`modo`, `intervalo_s`, `cooldown_h`, `alfa`, `k`, `janela_dias`, `m_cmax`);
   - `aprendizado.saude`;
@@ -4129,6 +4132,14 @@ costura e aviso às três frentes, porque essas falhas são silenciosas (M5, M7 
 4. **Item 3 (lineage), com o RA-20 B (#145, suíte 9):** a receita passa a ter duas chaves, a específica e a
    genérica. A genérica entra na mesma conta das chaves, como os consumidores do #145 já fazem (capacidades,
    aproveitamento e o `_caminho_ja_aberto` do scheduler).
+
+**Correção de 03/10/2026, ~09:55Z (revisão da Jev, a posteriori).**
+
+- A resposta à D0 atribuía ao Jev o rótulo de intenção. Errado: o 30.25 é da pessoa, sem IA, e é o gabarito da
+  sombra da intenção do Jev (31.9 e 31.10). O texto acima já está corrigido.
+- As alternativas recusadas citam o ADR-069 (itens 1 e 2) junto do ADR-063.
+- A tabela M1–M16 diz "frente Jev" onde fala da frente, para não confundir com o provedor.
+- As consequências incluem a 080, que também mexe em `ai_calls`.
 
 ## ADR-068 — Conta bloqueada sai na hora e a persona fica: lápide só com o hash do arroba
 
