@@ -2288,8 +2288,8 @@ class StepExecutor:
                 # Recusado ANTES de agir; o motivo diz ao ator o que fazer.
                 motivo_fora = (f"{REJEICAO_EFEITO_FORA_DA_ETAPA} ({fora}). Não toque nele: termine esta etapa quando o "
                                "objetivo DELA estiver cumprido e deixe o efeito para a etapa que o declara.")
-                aid = repo.log_intent(attempt_id, decision.tool, args.model_dump(mode="json"), rationale,
-                                      side_effect=True, source="recipe" if from_recipe else "ai")
+                aid = intencao(decision.tool, args.model_dump(mode="json"), rationale,
+                               side_effect=True, source="recipe" if from_recipe else "ai")
                 repo.finish_action(aid, ActionStatus.rejected, error=motivo_fora)
                 metricas.contar("executor.efeito_fora_da_etapa", origem="recipe" if from_recipe else "ai",
                                 ferramenta=decision.tool)
@@ -2706,7 +2706,8 @@ class StepExecutor:
                                          patient=patient, facts=facts, failure_marks=failure_marks,
                                          local_proof=local_proof, capability=capability, attempt_id=attempt_id,
                                          cartao=cartao, pacote=pacote, imagem_forcada=imagem_forcada,
-                                         uma_rodada=uma_rodada, so_prova_local=so_prova_local, proposito=proposito)
+                                         uma_rodada=uma_rodada, so_prova_local=so_prova_local, proposito=proposito,
+                                         copias_vistas=copias_vistas)
         finally:
             if (tempos := self._tempos(attempt_id)) is not None:
                 tempos.verificacao_ms += ms_desde(inicio)
@@ -2717,7 +2718,7 @@ class StepExecutor:
                          local_proof: str | None = None, capability: CapabilityRef | None = None,
                          attempt_id: str | None = None, cartao: tuple[str, ...] = (), pacote: str | None,
                          imagem_forcada: bool = False, uma_rodada: bool = False, so_prova_local: bool = False,
-                         proposito: MotivoDaChamada = "julgamento"
+                         proposito: MotivoDaChamada = "julgamento", copias_vistas: list[int] | None = None
                          ) -> tuple[bool, str, DeliveryLevel | None, Observation | None, bool]:
         """`uma_rodada`: uma só leitura e, se a pós-condição a exigir, um só julgamento — devolve o veredito mesmo
         negativo, sem esperar a tela mudar até o fim do orçamento. É o modo dos atalhos que conferem ANTES do ator
