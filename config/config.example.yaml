@@ -538,6 +538,9 @@ aprendizado:                      # aprendizado contínuo (ADR-054): livro, D1, 
   # `concordancias` execuções concordantes além da que o gerou, e o com efeito para em validated (o dono aprova).
   # com_prova: false = o modo anterior (nasce ativo, sem D1): só para a suíte que prova o reaproveitamento.
   fluxo: {concordancias: 1, com_prova: true}
+  # RA-19 B: o que uma execução simulada ensina nunca nasce ativo, e a concordância dela não promove receita (só
+  # evidência real publica). true = o modo anterior: só para a suíte, que é toda simulada.
+  simulada_publica: false
   voz: {modo: "off"}              # a voz é sempre publicada pelo dono
   preferencias: {modo: "off"}
   backlog: {minimo_ocorrencias: 3, pessoa_usd: 0.25, aparelho_usd_min: 0, prova_minimo: 10, prova_fator: 0.5}

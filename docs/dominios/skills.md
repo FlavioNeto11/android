@@ -225,6 +225,11 @@ o `AppState.skill_planner` (`infrastructure/run_planning.py::SkillRunPlanner`), 
   a próxima: executar outra coisa em silêncio seria pior. A que perderia pela força nem é lida.
 - Com conteúdo legado (`schema_version` 0), o comando precisa dar valor a todo parâmetro-modelo do plano
   (`matching.py::bind_template_parameters`); senão, não é esta versão.
+  - Os RESERVED (`account_label`, `instance_id`, `run_id`) não contam: o valor é do aparelho e entra na
+    materialização. É a regra do `FlowStore.match` desde o LT-3.
+  - Até o 30.29 a cópia daqui ficou sem ela: o `LegacyFlowAdapter` resolvia o fluxo, mas o `legacy_plan` não
+    compilava. 5 fluxos ativos do QA estavam mortos (0 usos), e o comando que casava com um deles ia a
+    `needs_input` sem o planejador.
 - **Casamento de comando:** `domain/matching.py` é a cópia pura de `taskqueue/flows.py` (`_norm`, `_extract`,
   `_squash`, `RESERVED` e o teto de 500 caracteres). Um fluxo adotado continua casando os mesmos comandos. Proposto:
   `FlowStore` passar a delegar para cá, e a cópia sumir. A fase I não fez isso; só acrescentou

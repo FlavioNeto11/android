@@ -173,7 +173,8 @@ class D1Nativo:
     se o caminho está vetado. Leitura pura da trilha; nada aqui escreve."""
 
     def __init__(self, repo: RepositorioDeAprendizado, *, com_prova: Callable[[], bool],
-                 relogio: Callable[[], datetime], execucao_real: Callable[[str], bool] = lambda _run: False) -> None:
+                 relogio: Callable[[], datetime], execucao_real: Callable[[str], bool] = lambda _run: False,
+                 simulada_publica: Callable[[], bool] = lambda: False) -> None:
         """`com_prova`: `aprendizado.fluxo.com_prova` VIGENTE (lido a cada nascimento; `False` = o modo anterior).
         `execucao_real(run_id)`: a execução existe e não é simulada (`runs.simulated=0`). Sem o leitor, nenhuma é real,
         e o que a evidência inválida desligou não renasce (o lado seguro)."""
@@ -181,6 +182,8 @@ class D1Nativo:
         self._com_prova = com_prova
         self._relogio = relogio
         self._execucao_real = execucao_real
+        #: RA-19 B: `aprendizado.simulada_publica` VIGENTE (`True` = o modo anterior, só da suíte).
+        self._simulada_publica = simulada_publica
 
     def _renascimento(self, run_id: str | None) -> Renascimento | None:
         return Renascimento(run_id=run_id, real=bool(self._execucao_real(run_id))) if run_id else None
@@ -205,7 +208,12 @@ class D1Nativo:
                 app_version=None, renascimento=renasce) is not None:
             return None
         if not self._com_prova():
-            return None if reaproveita is not None else "active"
+            if reaproveita is not None:
+                return None
+            # RA-19 B: sem a prova, o comando novo nasce ativo, menos o que uma execução simulada ensinou: esse nasce
+            # candidato e só sobe com evidência real (a sombra só conta execução real). Sem `run_id`, o modo anterior.
+            simulada = run_id is not None and not self._execucao_real(run_id) and not self._simulada_publica()
+            return "candidate" if simulada else "active"
         return "candidate"
 
     def receita_vetada(self, content_hash: str, scope_key: str, app_version: str | None,
