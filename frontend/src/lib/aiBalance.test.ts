@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { AiBalance } from '../api/types';
 import {
-  balanceAge, balanceAlerts, balanceBrief, balanceOfRole, balanceTone, balanceUsage, balancesByUrgency, headerBalances, money,
+  balanceAge, balanceAlerts, balanceBrief, balanceOfRole, balanceShortName, balanceTone, balanceUsage, balancesByUrgency,
+  consumptionUsd, headerBalances, money,
 } from './aiBalance';
 
 function conta(p: Partial<AiBalance>): AiBalance {
@@ -23,6 +24,15 @@ describe('saldo das contas de IA', () => {
     expect(money(null, 'USD')).toBe('—');
   });
 
+  it('consumo abaixo de um centavo (o Jev) não vira "US$ 0,00"', () => {
+    expect(consumptionUsd(0.003)).toBe('US$ 0,003');
+    expect(consumptionUsd(0.0042)).toBe('US$ 0,0042');
+    expect(consumptionUsd(0.00001)).toBe('menos de US$ 0,0001');
+    expect(consumptionUsd(0)).toBe('US$ 0,00');
+    expect(consumptionUsd(1.2345)).toBe('US$ 1,23');
+    expect(balanceShortName('typesafe')).toBe('TypeSafe');
+  });
+
   it('tom: bloqueio e crédito esgotado em perigo; baixo, sem leitura ou velho em aviso', () => {
     expect(balanceTone(conta({ state: 'ok' }))).toBe('success');
     expect(balanceTone(conta({ state: 'ok', stale: true }))).toBe('warning');
@@ -36,6 +46,11 @@ describe('saldo das contas de IA', () => {
     expect(balanceUsage(conta({ roles: ['decide', 'verify'], image: true }))).toBe('Decidir, Verificar e imagem da persona');
     expect(balanceUsage(conta({}))).toBe('Nenhuma função usa esta conta');
     expect(balanceUsage(conta({ roles: ['plan', 'escalation'] }))).toBe('Planejar e Escalonamento');
+    // a decisão fechada (Fase 31) usa a TypeSafe fora de `roles`: o cartão diz o modo (sombra ou ligada)
+    expect(balanceUsage(conta({ account: 'typesafe', closed_decision: 'shadow' }))).toBe('decisão fechada (sombra)');
+    expect(balanceUsage(conta({ account: 'typesafe', closed_decision: 'on' }))).toBe('decisão fechada');
+    expect(balanceUsage(conta({ account: 'typesafe', closed_decision: null }))).toBe('Nenhuma função usa esta conta');
+    expect(balanceUsage(conta({ roles: ['decide'], closed_decision: 'shadow' }))).toBe('Decidir e decisão fechada (sombra)');
     const lista = [conta({ account: 'openai', in_use: true }), conta({ account: 'gemini' }),
       conta({ account: 'anthropic', state: 'exhausted' })];
     expect(headerBalances(lista).map((b) => b.account)).toEqual(['openai', 'anthropic']);

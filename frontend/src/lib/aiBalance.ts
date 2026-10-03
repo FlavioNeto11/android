@@ -30,6 +30,16 @@ export function money(value: number | null | undefined, currency: string): strin
   return `${value < 0 ? '−' : ''}${symbol} ${txt}`;
 }
 
+/** Consumo em US$: abaixo de um centavo mostra até 4 casas, porque o Jev custa frações de centavo por chamada e o consumo
+ *  dele virava "US$ 0,00" no cartão. Do centavo para cima, igual a `money`. */
+export function consumptionUsd(value: number): string {
+  if (value > 0 && value < 0.0001) return 'menos de US$ 0,0001';
+  if (value > 0 && value < 0.01) {
+    return `US$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 4 })}`;
+  }
+  return money(value, 'USD');
+}
+
 /** Saldo sempre em US$ (a moeda do cabeçalho): a conta em outra moeda entra convertida pelo câmbio que o backend já
  *  informa. `null` quando não há leitura. */
 export function balanceUsd(b: AiBalance): number | null {
@@ -45,14 +55,17 @@ export function balanceUsdLabel(b: AiBalance): string {
 
 /** Nome curto para o chip do cabeçalho. */
 export function balanceShortName(account: string): string {
-  return account === 'anthropic' ? 'Anthropic' : account === 'openai' ? 'OpenAI' : account === 'gemini' ? 'Gemini' : account;
+  return account === 'anthropic' ? 'Anthropic' : account === 'openai' ? 'OpenAI' : account === 'gemini' ? 'Gemini'
+    : account === 'typesafe' ? 'TypeSafe' : account;
 }
 
-/** O que esta conta paga hoje, em pt-BR: "Decidir, Verificar e imagem". */
-export function balanceUsage(b: Pick<AiBalance, 'roles' | 'image'>): string {
+/** O que esta conta paga hoje, em pt-BR: "Decidir, Verificar e imagem", "decisão fechada (sombra)". */
+export function balanceUsage(b: Pick<AiBalance, 'roles' | 'image' | 'closed_decision'>): string {
   // `escalation` não está no rótulo das tabelas de custo (lá ele entra como tier): traduzido aqui.
   const rotulo = (r: string) => (r === 'escalation' ? 'Escalonamento' : aiRoleLabel(r));
-  const partes = [...b.roles.map(rotulo), ...(b.image ? ['imagem da persona'] : [])];
+  const fechada = b.closed_decision === 'shadow' ? ['decisão fechada (sombra)']
+    : b.closed_decision === 'on' ? ['decisão fechada'] : [];
+  const partes = [...b.roles.map(rotulo), ...(b.image ? ['imagem da persona'] : []), ...fechada];
   if (partes.length === 0) return 'Nenhuma função usa esta conta';
   if (partes.length === 1) return partes[0] as string;
   return `${partes.slice(0, -1).join(', ')} e ${partes[partes.length - 1]}`;

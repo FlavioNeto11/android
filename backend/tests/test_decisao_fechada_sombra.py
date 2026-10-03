@@ -17,6 +17,7 @@ from pydantic import SecretStr
 from app.config import DecisaoFechadaCfg
 from app.db import Database
 from app.main import create_app
+from app.modules.pedidos.infrastructure.saldo import motivo_de_adiamento
 from app.planning import costs, saldos
 from app.planning import decisao_fechada as df
 from app.planning.decisao_fechada import privacidade, transparencia
@@ -294,6 +295,48 @@ def test_conta_typesafe_nasce_sem_ancora_e_o_gasto_do_jev_cai_nela(tmp_path: Pat
     saldos.registrar_recarga(db, cfg, "typesafe", 5.0)
     c = saldos.de_uma(db, cfg, "typesafe")
     assert c is not None and c.anchor_balance == 5.0 and c.anchor_source == "recarga"
+    db.close()
+
+
+def test_a_typesafe_diz_que_a_decisao_fechada_a_usa_e_mostra_o_consumo_do_jev(tmp_path: Path,
+                                                                             monkeypatch: pytest.MonkeyPatch) -> None:
+    """I1 (suíte 10): o cartão da TypeSafe dizia "Nenhuma função usa esta conta" com a sombra do curador ligada. A decisão
+    fechada entra em `closed_decision` (com o modo), FORA de `roles`: o laço de pedidos adia o despacho pelo saldo das
+    contas de `roles`, e o saldo do Jev não segura execução. O consumo é o das linhas que a sombra grava (`jev`)."""
+    cfg = _cfg(tmp_path)
+    db = _db(tmp_path)
+    for dfc, esperado in ((DecisaoFechadaCfg(), None),
+                          (DecisaoFechadaCfg(enabled=True, consumidores={"curador": "shadow"}), None),    # decisor nulo
+                          (DecisaoFechadaCfg(enabled=False, consumidores={"curador": "shadow"}, decisor="jev"), None),
+                          (DecisaoFechadaCfg(enabled=True, consumidores={"curador": "shadow", "intencao": "off"},
+                                             decisor="jev"), "shadow"),
+                          (DecisaoFechadaCfg(enabled=True, consumidores={"curador": "on", "intencao": "shadow"},
+                                             decisor="jev"), "on")):
+        monkeypatch.setattr(cfg.file.ai, "decisao_fechada", dfc)
+        contas = {s.account: s for s in saldos.estado(db, cfg)}
+        assert contas["typesafe"].closed_decision == esperado, dfc
+        assert contas["typesafe"].em_uso is (esperado is not None) and contas["typesafe"].roles == []
+        assert all(s.closed_decision is None for c, s in contas.items() if c != "typesafe")
+    assert saldos.de_uma(db, cfg, "typesafe").as_dict()["closed_decision"] == "on"            # type: ignore[union-attr]
+    monkeypatch.setattr(cfg.file.ai, "decisao_fechada",
+                        DecisaoFechadaCfg(enabled=True, consumidores={"curador": "shadow"}, decisor="jev"))
+    saldos.registrar_recarga(db, cfg, "typesafe", 0.5)
+    ancora = saldos.de_uma(db, cfg, "typesafe")
+    assert ancora is not None and ancora.anchor_at is not None
+    # as chamadas como a sombra as grava (provedor `jev`, US$ declarado), depois da âncora
+    depois = (datetime.fromisoformat(ancora.anchor_at.replace("Z", "+00:00")) + timedelta(seconds=1))
+    repo = RepositorioDeSombra(db, relogio=lambda: depois)
+    for usd, ok in ((0.0021, True), (0.0009, False)):
+        repo.registrar_chamada(df.ChamadaAoJev(modelo="jev-1.13.0", origem="curador", run_id=None, step_id=None,
+                                               ref="licao-1", tokens_entrada=50_000, tokens_saida=10, usd=usd, ms=120.0,
+                                               ok=ok, motivo=None if ok else "timeout"))
+    c = saldos.de_uma(db, cfg, "typesafe")
+    assert c is not None and c.closed_decision == "shadow" and c.spent_since_usd == pytest.approx(0.003)
+    assert c.estimated_balance == pytest.approx(0.497)
+    d = c.as_dict()
+    assert d["in_use"] is True and d["roles"] == [] and d["spent_since_usd"] == pytest.approx(0.003)
+    # o saldo do Jev abaixo do mínimo dos pedidos não adia o despacho: a TypeSafe não está em `roles`
+    assert motivo_de_adiamento(db, cfg, minimo_usd=1.0) is None
     db.close()
 
 
