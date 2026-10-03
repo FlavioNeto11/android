@@ -74,6 +74,12 @@ android:
   # Redundante com o perfil (que já põe `-lowram` em google_apis e AOSP), mas necessário se você declarar
   # `ram_mb` acima: com número explícito, só valem as flags daqui.
   extra_emulator_args: ["-lowram"]
+  # Janela (29.48, 03/10/2026): com `true`, o emulador sobe como `qemu-system-x86_64`, não como o `-headless`. O backend
+  # lançado como serviço (tarefa agendada, sessão 0, sem área de trabalho) faz o `-headless` girar uma thread a ~100 %
+  # de um núcleo por aparelho, mesmo ocioso (K-078); com janela, isso some. Na sessão 0 a janela não aparece para
+  # ninguém. Rodando numa sessão interativa (`start.ps1 -Dev`), as janelas aparecem na área de trabalho. `window` não
+  # entra na assinatura do snapshot: trocar não invalida a hibernação. `false` = o comportamento antigo.
+  window: true
   # Hibernação por snapshot: ceder a vaga salva o estado (≈1 s) e acordar leva ≈16 s até a automação ficar
   # pronta, contra 73–105 s de boot a frio. O padrão do CÓDIGO é `false` (quem não declara não hiberna); aqui é
   # `true` por escolha medida. Cada snapshot ocupa ~1,5 GB de disco por instância.
