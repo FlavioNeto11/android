@@ -45,7 +45,7 @@ export function ParecerNaLinha({ p }: { p: ParecerNaFila }) {
   return (
     <p className={styles.parecerNaLinha} data-parecer-na-linha={p.id}>
       <Bot size={14} aria-hidden />
-      <span>Parecer da IA: <strong>{textoDaDecisao(p.decisao).toLowerCase()}</strong> · {textoDaConfianca(p.confianca)}</span>
+      <span>Parecer do curador: <strong>{textoDaDecisao(p.decisao).toLowerCase()}</strong> · {textoDaConfianca(p.confianca)}</span>
       {classe && p.classe ? <Badge tone={p.recusa ? 'muted' : TOM_DA_CLASSE[p.classe]} size="sm" title={classe.explica}>{classe.selo}</Badge> : null}
       {classe?.registro ? <Badge tone="muted" size="sm" title={textoDaRecusa(p.recusa) ?? undefined}>{classe.registro}</Badge> : null}
       <span className={styles.parecerDica}>O parecer completo fica em “Detalhes”.</span>
@@ -73,10 +73,10 @@ function CartaoDoParecer({ p, item, onMudou }: { p: ParecerDaIA; item: EntradaDo
   return (
     <div className={styles.parecer} data-parecer={p.id}>
       <div className={styles.parecerCabeca}>
-        <span className={styles.parecerSugestao}>A IA sugere: <strong>{textoDaDecisao(s.decisao)}</strong></span>
+        <span className={styles.parecerSugestao}>O curador sugere: <strong>{textoDaDecisao(s.decisao)}</strong></span>
         <Badge tone={TOM_DO_LADO[ladoDaDecisao(s.decisao)]} size="sm">{textoDaConfianca(s.confianca)}</Badge>
         {classe && p.classe ? <Badge tone={p.recusa ? 'muted' : TOM_DA_CLASSE[p.classe]} size="sm" title={classe.explica}>{classe.selo}</Badge> : null}
-        {p.simulated ? <Badge tone="muted" size="sm" title="Provedor de teste: não é opinião de IA real">simulado</Badge> : null}
+        {p.simulated ? <Badge tone="muted" size="sm" title="Provedor de teste: não é um parecer real do curador">simulado</Badge> : null}
       </div>
       {s.conclusao ? <p className={styles.citacao}>{s.conclusao}</p> : null}
       <dl className={styles.fatos}>
@@ -126,7 +126,7 @@ function PedirRevisao({ item, onMudou }: { item: EntradaDoLivro; onMudou?: () =>
     try {
       const r = await apiAprendizado.pedirRevisao(item.kind, item.ref);
       if (r.pedido) {
-        setAviso({ erro: false, texto: 'Pedido registrado: a IA revisa este item na próxima volta do curador, dentro do orçamento.' });
+        setAviso({ erro: false, texto: 'Pedido registrado: o curador revisa este item na próxima volta, dentro do orçamento.' });
       } else {
         const quando = r.revisao ? ` (${formatQuando(r.revisao.criado_em)})` : '';
         setAviso({ erro: false, texto: `O item já foi revisado como está agora${quando}. Um pedido novo vale quando ele mudar (evidência nova, outro estado).` });
@@ -140,7 +140,7 @@ function PedirRevisao({ item, onMudou }: { item: EntradaDoLivro; onMudou?: () =>
   };
   return (
     <div className={styles.pedirRevisao}>
-      <Button size="sm" variant="ghost" icon={RefreshCw} loading={enviando} onClick={() => void pedir()}>Pedir revisão à IA</Button>
+      <Button size="sm" variant="ghost" icon={RefreshCw} loading={enviando} onClick={() => void pedir()}>Pedir revisão ao curador</Button>
       {aviso ? <p role="status" className={aviso.erro ? styles.erroInline : styles.secaoLead}>{aviso.texto}</p> : null}
     </div>
   );
@@ -177,22 +177,22 @@ export function SecaoDoParecer({ item, pareceres, curador, onMudou }: {
   if (!pendente && anteriores.length === 0 && !oculto && !curador.pode_pedir_revisao) return null;
   return (
     <section className={styles.detalheSecao} aria-labelledby={id} data-secao-parecer>
-      <h4 className={styles.detalheTitulo} id={id}>Parecer da IA</h4>
+      <h4 className={styles.detalheTitulo} id={id}>Parecer do curador</h4>
       {oculto ? (
         <p className={styles.notaDoItem}>
-          Há um parecer da IA sobre este item. Ele aparece depois da sua decisão: com o curador em sombra, a sua escolha
-          mede se a IA acerta, sem a influência dela.
+          Há um parecer do curador sobre este item. Ele aparece depois da sua decisão: com o curador em sombra, a sua
+          escolha mede se ele acerta, sem a influência dele.
         </p>
       ) : null}
       {pendente ? <CartaoDoParecer p={pendente} item={item} onMudou={onMudou} /> : null}
       {!pendente && curador.modo === 'on' && anteriores.length === 0 ? (
-        <p className={styles.secaoLead}>A IA ainda não revisou este item.</p>
+        <p className={styles.secaoLead}>O curador ainda não revisou este item.</p>
       ) : null}
       {curador.pode_pedir_revisao ? <PedirRevisao item={item} onMudou={onMudou} /> : null}
       {anteriores.length > 0 ? (
         <>
           <h5 className={styles.detalheSub}>{pendente ? 'Pareceres anteriores' : 'Pareceres'}</h5>
-          <ul className={styles.motivos} aria-label="Pareceres da IA">
+          <ul className={styles.motivos} aria-label="Pareceres do curador">
             {anteriores.map((p) => <Anterior key={p.id} p={p} />)}
           </ul>
         </>

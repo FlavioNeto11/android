@@ -213,6 +213,54 @@ export function rotuloDoArquivo(tipo: string): string {
   return ARQUIVO_LABEL[tipo] ?? tipo;
 }
 
+/** RA-24 (`GET /api/apps/{pacote}/conhecimento`): um arquivo de conhecimento como o processo o carregou. */
+export interface ArquivoProvado {
+  nome: string;
+  sha256: string;
+  git_blob: string;
+  modificado_em: string | null;
+  /** Gravado depois que o servidor subiu: o que está no ar pode ser a versão anterior (ou falso positivo do
+   *  arquivo lido sob demanda; um reinício tira a dúvida). */
+  mudou_depois_do_inicio: boolean;
+}
+
+export interface ProvaDoConhecimento {
+  app: string;
+  processo_iniciado_em: string | null;
+  arquivos: ArquivoProvado[];
+}
+
+/** Leitura tolerante da prova: o arquivo sem nome ou sem sha256 não entra (não há o que mostrar dele). */
+export function lerProvaDoConhecimento(raw: unknown): ProvaDoConhecimento {
+  const r = obj(raw);
+  const arquivos = (Array.isArray(r.arquivos) ? r.arquivos : []).flatMap((x): ArquivoProvado[] => {
+    const a = obj(x);
+    const nome = str(a.nome);
+    const sha256 = str(a.sha256);
+    if (!nome || !sha256) return [];
+    return [{ nome, sha256, git_blob: str(a.git_blob) ?? '', modificado_em: str(a.modificado_em),
+      mudou_depois_do_inicio: a.mudou_depois_do_inicio === true }];
+  });
+  return { app: str(r.app) ?? '', processo_iniciado_em: str(r.processo_iniciado_em), arquivos };
+}
+
+/** Os 7 primeiros do sha256: o bastante para comparar de relance; o inteiro vai no `title`. */
+export const shaCurto = (sha: string): string => sha.slice(0, 7);
+
+/** O arquivo provado de um item declarado: o `tipo` (app, catalogo, telas, sessao) é o nome do arquivo. */
+export function provaDoArquivo(prova: ProvaDoConhecimento | null | undefined, tipo: string): ArquivoProvado | undefined {
+  return prova?.arquivos.find((a) => a.nome === `${tipo}.yaml`);
+}
+
+/** A linha do resumo: quantos arquivos o processo carregou e se algum mudou depois que o servidor subiu. */
+export function resumoDaProva(prova: ProvaDoConhecimento): { texto: string; mudaram: number } {
+  const n = prova.arquivos.length;
+  const mudaram = prova.arquivos.filter((a) => a.mudou_depois_do_inicio).length;
+  const conferidos = `${n} ${n === 1 ? 'arquivo conferido' : 'arquivos conferidos'}`;
+  if (mudaram === 0) return { texto: `${conferidos} · sem mudança desde que o servidor subiu`, mudaram };
+  return { texto: `${conferidos} · ${mudaram} ${mudaram === 1 ? 'mudou' : 'mudaram'} depois que o servidor subiu`, mudaram };
+}
+
 /** A camada de uso, em linguagem de gente (`domain/camada.py`). */
 export const CAMADA_DE_USO: Record<string, string> = {
   decide_sem_ia: 'decide sem a IA',

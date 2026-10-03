@@ -905,7 +905,7 @@ export const SINAL_LABEL: Record<string, string> = {
   escolheu_habilidade: 'Escolheu a habilidade', aprovacao_decidida: 'Decidiu uma aprovação',
   comando_incerto_resolvido: 'Resolveu um comando incerto', correcao_de_ensino: 'Corrigiu no ensino',
   tela_vista: 'Tela vista', tela_desconhecida_chamou_pessoa: 'Tela desconhecida chamou uma pessoa',
-  pediu_revisao: 'Pediu revisão à IA', parecer_decidido: 'Decidiu um parecer da IA',
+  pediu_revisao: 'Pediu revisão ao curador', parecer_decidido: 'Decidiu um parecer do curador',
 };
 
 export const SINAL_KINDS: readonly string[] = Object.keys(SINAL_LABEL);

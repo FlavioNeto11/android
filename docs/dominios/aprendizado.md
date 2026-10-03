@@ -650,10 +650,15 @@ com o MESMO registro e a mesma fonte de dossiês do curador); leitura e gravaç�
 - **Pedido de revisão**: sinal `pediu_revisao` com o `dossie_hash`; o curador o lê como o gatilho `pedido_da_pessoa`
   (`JANELA_DO_PEDIDO_DIAS` = 7; atendido = revisão do item depois do pedido), que só pula o cooldown. Só em `on`; o dossiê
   já revisado responde com a revisão que existe.
-- **Painel** (`features/aprendizado/ParecerDaIA.tsx`, `parecer.ts`): a seção "Parecer da IA" no detalhe (sugestão, classe,
-  conclusão, o que a IA citou, com link, aceitar ou recusar com motivo, pedir revisão, histórico), a frase "Parecer da IA:
-  …" na linha da fila e "Aceitar pareceres da IA" em lote, só na classe B. O painel não decide regra: mostra a `acao` e a
-  `recusa` que o backend manda.
+- **Painel** (`features/aprendizado/ParecerDaIA.tsx`, `parecer.ts`):
+  - a seção "Parecer do curador" no detalhe: sugestão, classe, conclusão, o que o curador citou (com link), aceitar ou
+    recusar com motivo, pedir revisão e histórico;
+  - a frase "Parecer do curador: …" na linha da fila;
+  - "Aceitar pareceres do curador" em lote, só na classe B.
+  O painel não decide regra: mostra a `acao` e a `recusa` que o backend manda.
+  - Até o deploy 7 o rótulo era "da IA". A validação do deploy 7 (B1) pediu "do curador", coerente com o resto do
+    painel; os sinais também passaram a "Pediu revisão ao curador" e "Decidiu um parecer do curador".
+  - O que fala do ATOR continua "IA": "na sombra, concordou com a IA", "decide sem a IA" e "pedir a IA nesses passos".
 - **A pendência A6, fechada pelo 30.24:** aceitar "manter" num item de "Revisar" é "Confirmar que fica" (abaixo), na
   mesma transação do CAS do parecer; a linha da trilha fica ligada à revisão (`transicao_id`). Fora de "Revisar",
   aceitar "manter" continua só concordando.

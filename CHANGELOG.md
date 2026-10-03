@@ -19,6 +19,23 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: polimentos da validação do deploy 7 (B1 e I5; branch fix/aprendizado-ux-deploy7)
+
+- B1: o parecer do curador deixa de sair como "da IA" no painel.
+  - "Parecer do curador: …", "Aceitar pareceres do curador (n)" e "Pedir revisão ao curador";
+  - "O curador sugere", "O curador ainda não revisou este item" e os sinais "Pediu revisão ao curador" /
+    "Decidiu um parecer do curador";
+  - o que fala do ator continua "IA".
+- I5 (RA-24 com tela): Aprendizado › Aplicativos › (o app) › Declarado mostra "Conhecimento em uso" (arquivos
+  conferidos e desde quando nada mudou), o sha curto de cada arquivo (o inteiro e o blob do git no `title`) e o selo
+  do arquivo gravado depois de o servidor subir. Lê `GET /api/apps/{pacote}/conhecimento`; o 404 (app sem conhecimento
+  declarado) vira "sem linha".
+- Prova:
+  - `simulated`: `AplicativosTab.test.tsx` (+2), `ParecerDaIA.test.tsx` (as negativas olham o rótulo novo) e
+    `IntencaoSecao.test.tsx`; 131 testes do aprendizado e 1339 do painel; typecheck;
+  - percorrido no navegador numa cópia do banco (8766, IA simulada): Instagram com 4 arquivos, o estado "mudou" (mtime
+    tocado), QA Messenger sem linha, Para aprovar, o detalhe com "Pedir revisão ao curador", Sinais e 375 px.
+
 ## 2026-10-03 — Rodada QA pareada: a pré-checagem também olha a habilidade (branch main)
 
 - A 1ª rodada (03/10 07:37Z, `qa-par-202610030737`) foi parada pela sessão do aprendizado:
