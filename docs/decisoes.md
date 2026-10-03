@@ -3256,6 +3256,29 @@ Prova `simulated`: `backend/tests/test_learning_autopublicacao.py` (a regra pura
 `test_learning_autopublicacao_sombra.py` (a sombra com o banco migrado). `not_run`: a sombra no central. Domínio:
 [dominios/aprendizado.md](dominios/aprendizado.md), seção "Autopublicação do fluxo B em sombra (30.34)".
 
+**Emenda (03/10/2026, desenho aprovado pela orquestradora, ~16:30Z; Fase 30, item 30.36): a divergência de FORMA não
+é discordância.**
+
+A sombra do D1 comparava a etapa livre pela identidade da etapa-modelo, que inclui a pós-condição. O planejador
+reescreve a pós-condição a cada plano (o RA-20 mediu isso nas receitas). Na 1ª validação do P4 (03/10, r-20261003160725-213aae,
+android-09), a execução comprovou 2/2 etapas e a sombra gravou `against` "etapa 1: outra ação". Com duas dessas, a regra
+"duas discordâncias reais desligam" apagaria um fluxo que funciona.
+
+- **O caminho é a ação.** A etapa se compara pela ação (a capability, ou a chave da etapa-modelo com o efeito, as
+  guardas e o nível de entrega), pelo app e pelo efeito. A pós-condição de uma etapa SEM efeito externo, e o parâmetro
+  que nenhuma etapa usa para agir, são forma.
+- **Na etapa de efeito, a pós-condição é a prova de entrega** e segue sendo caminho.
+- **A forma é uma posição à parte** (`learning_evidence.stance = 'forma'`): não conta contra nem a favor. Fica fora da
+  regra das duas discordâncias e não valida o fluxo, porque a execução não fez o plano dele.
+- **O que era o mesmo plano continua sendo.** A forma só tira linhas do contra, nunca do a favor.
+- **O contra antigo de forma é reclassificado, sem apagar nada.** A linha `forma` da mesma origem tira o `against` do
+  contra (`promocao.efetivas`), nos fluxos ainda em prova. Todo leitor que conta contra usa a mesma regra: o veredito,
+  a saúde, as métricas, a regressão da autopublicação (30.34) e o dossiê do curador.
+- Sem migração.
+
+Prova `simulated`: `backend/tests/test_learning_forma.py`. `not_run`: a reclassificação no central depois do deploy.
+Domínio: [dominios/aprendizado.md](dominios/aprendizado.md), seção "A divergência de forma (30.36)".
+
 ## ADR-055 — Proteção de contas: a conta travada para sem ser tocada, o aparelho entra em quarentena, uma conta por alvo e nenhum reset com conta
 
 **Data:** 29/09/2026 · **Estado:** vigente; `e9da86e` implantado em 28/09; `c359f65` (+ `2511b12`) implantado em 29/09

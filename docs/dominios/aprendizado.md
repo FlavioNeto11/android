@@ -1172,6 +1172,52 @@ Na mesma fatia, os polimentos das validações dos deploys 10 e 11:
 - o orçamento mostra os dois ramos e qual manda; o rótulo "piso" lia ao contrário;
 - a sombra da autopublicação (30.34) e o desfecho em 14 dias (30.35) aparecem na tela, não só na API.
 
+## A divergência de forma (30.36)
+
+A sombra do fluxo em prova compara o plano da execução nova com o do candidato. Desde o 30.36 ela separa CAMINHO de
+FORMA:
+- **caminho**: a ação da etapa (capability, ou a chave da etapa-modelo com o efeito, as guardas e o nível de entrega),
+  o app, o efeito e o número de etapas; e a pós-condição da etapa de efeito, que é a prova de entrega;
+- **forma**: a pós-condição de uma etapa sem efeito, e o parâmetro que nenhuma etapa usa para agir (fora do objetivo,
+  da pré-condição, dos argumentos e das guardas).
+
+Os desfechos:
+- só a forma mudou → `learning_evidence.stance = 'forma'`, que não conta contra nem a favor;
+- algo do caminho mudou → `against`, como antes.
+- Duas formas não desligam o fluxo. O detalhe da linha leva os tipos e os NOMES, nunca o valor nem o texto da tela.
+
+**Contra efetivo.** O `against` que tem uma `forma` da mesma origem ao lado não conta (`promocao.efetivas`, e
+`linhas.contra_efetivo` nos leitores em SQL). Valem a mesma regra:
+- o veredito do D1, a saúde, as Métricas e a regressão da autopublicação (30.34);
+- o dossiê do curador, a seção Evidência do item e o bloco "o que a execução ensinou".
+
+**Reclassificação** (passo da curadoria `forma_dos_fluxos`, sem IA):
+- recompara o `against` dos fluxos AINDA em prova, da encarnação atual (a marca do conteúdo), cuja execução ainda é
+  legível como comparação;
+- se só a forma mudou, acrescenta a linha `forma` e anuncia isso na linha do tempo da execução;
+- é idempotente e não apaga nada.
+
+**O pedido da validação (30.31)** fecha pela evidência que a execução deixou:
+- a favor → `feita`;
+- contra → `recusada/evidencia_contra`, e o curador volta ao item;
+- só forma → `recusada/divergencia_de_forma`;
+- nada → `sem_evidencia`.
+O passo da curadoria do pedido remotiva o `sem_evidencia` quando a evidência chega depois.
+
+**Receita sem caminho:**
+- o pedido da receita cujo `step_hash` o plano do fluxo ativo do comando não alcança, pela chave específica nem pela
+  genérica (a mesma conta de `cobertura_do_fluxo`), fecha `recusada/sem_caminho`, sem execução. Vale ao nascer, ao
+  despachar e no `sem_evidencia` de antes;
+- o dossiê da receita ganha `item.sem_caminho` ("sugerir aposentar"), e o curador volta a ela;
+- ninguém aposenta sozinho: o parecer é registro.
+- Medido no P4: 5 das 11 receitas pendentes eram variantes antigas da mesma etapa.
+
+**Limite conhecido** (para decisão do dono):
+- a validação por re-execução compara com o planejador LIVRE: o fluxo candidato é inerte e não roda nela;
+- o que ela mede é se o planejador refaz o mesmo plano, não se o fluxo funciona;
+- por isso, com o 30.36, os candidatos tendem a `forma` e não se validam sozinhos;
+- a alternativa é executar o PRÓPRIO fluxo (como se publicado) no outro aparelho e checar as pós-condições dele.
+
 ## Pendências conhecidas
 
 Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.

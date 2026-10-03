@@ -19,6 +19,34 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: a divergência de forma não é evidência contra o fluxo, e a receita sem caminho não gasta execução (30.36; branch feat/30-36-forma)
+
+- **A sombra do fluxo separa caminho de forma.**
+  - Antes: a 1ª validação do P4 (r-20261003160725-213aae, android-09) comprovou 2/2 etapas, e a sombra gravou `against`
+    "etapa 1: outra ação" só porque o planejador reescreveu as pós-condições. Duas dessas desligariam um fluxo que
+    funciona.
+  - Agora são `forma`: a pós-condição de etapa sem efeito, ou o parâmetro que nenhuma etapa usa para agir. A forma não
+    conta contra nem a favor.
+  - Na etapa de efeito, a pós-condição segue sendo caminho.
+  - Emenda datada à D1 do ADR-054.
+- **Contra efetivo num ponto só** (`promocao.efetivas` e `linhas.contra_efetivo`). Vale para o veredito, a saúde, as
+  Métricas, a regressão da autopublicação, o dossiê, a seção Evidência e o bloco da execução.
+- **Reclassificação.** O `against` antigo de forma, nos fluxos ainda em prova, ganha a linha `forma` ao lado, sem apagar
+  nada. É idempotente e é um passo da curadoria.
+- **O pedido da validação fecha pela evidência.**
+  - Motivos novos: `evidencia_contra`, que leva o curador ao item; `divergencia_de_forma`; e `sem_caminho`.
+  - O `sem_caminho` vale para a receita cujo plano do fluxo ativo não chega à etapa. Fecha sem execução, ao nascer, ao
+    despachar e no `sem_evidencia` de antes, e o dossiê ganha a marca "sugerir aposentar".
+  - Medido no P4: 5 das 11 receitas pendentes eram variantes inalcançáveis, ~US$ 0,35 de execuções poupadas.
+- **Na cópia do banco do central, a 1ª curadoria depois do deploy:**
+  - 1 linha `forma`;
+  - 2 pedidos remotivados;
+  - 5 pendentes fechados `sem_caminho`;
+  - 6 revisões novas do curador, ~US$ 0,06.
+- Limite conhecido, para decisão do dono: a validação por re-execução mede o planejador livre, não o fluxo candidato.
+- Contrato: adendo v0.96.
+- Prova `simulated`: `tests/test_learning_forma.py` e `DetalheRico.test.tsx`. `not_run`: o central.
+
 ## 2026-10-03 — Suíte 12 na main (5428abdb): SQLite inteira verde; sem PostgreSQL (sem migração nova)
 
 - A suíte 12 entrou na main por commit-tree (5428abdb), na ordem da orquestradora:
