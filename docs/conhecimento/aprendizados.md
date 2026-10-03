@@ -2253,8 +2253,12 @@ passava só no SQLite.
   30 s, e não bloquearam o merge, porque o central roda SQLite.
 - A PG inteira com `-n 8`: em série, eram ~2,7 s por teste, com o schema migrado por teste, ~5,5 h projetadas; com
   `-n 8`, 1 h 50. Os schemas são por uuid, e cada sessão apaga só os seus.
-- Correção dos 7: pendente, na suíte 11. Usar o dialeto do `Database`, `ON CONFLICT`, ou o repositório, em vez de SQL
-  cru, e comparar a versão como texto.
+- Correção dos 7 (branch `fix/k-084-sql-so-de-sqlite`, para a suíte 12):
+  - `version LIKE '078%'`. Cuidado: no SQLite, `version=78` nunca casava, e a asserção passava VAZIA; agora ela exige o
+    sha256 da 078.
+  - `flows` com `id` explícito.
+  - `ON CONFLICT DO NOTHING` no lugar de `INSERT OR IGNORE`, que vale nos dois dialetos.
+  - Na PG: os 7 passaram, e os 3 arquivos deram 95 passed. No SQLite, os mesmos 95.
 
 **Aplicabilidade.** Vigente para todo teste que escreve SQL direto no banco. O SQL que roda nos dois dialetos passa
 pelo `Database` (`_sql`) ou usa só o comum. Antes de um merge com migração ou repositório novo, rodar ao menos os

@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — K-084: os 7 testes com SQL só de SQLite passam na PostgreSQL (branch fix/k-084-sql-so-de-sqlite)
+
+- `tests/test_leitura_visual_papel.py::test_078_as_linhas_ficam_arvore_e_o_check_recusa_outra_origem`: a versão
+  comparada como texto (`version LIKE '078%'`). No SQLite, `version=78` nunca casava, e a asserção do sha256 da 078
+  passava vazia; agora ela exige a linha.
+- `tests/test_learning_esquecer_conta.py::test_nao_toca_receitas_fluxos_nem_memoria`: `flows` com `id` explícito
+  (TEXT PRIMARY KEY sem padrão: o SQLite aceitava o id nulo).
+- `tests/test_rede_aplicacao.py::_objetivo_parado`: `ON CONFLICT DO NOTHING` no lugar do `INSERT OR IGNORE`. Afeta os 4
+  parâmetros de `test_reinicio_com_objetivo_esperando_a_rede` e `test_reinicio_que_nao_sai_diz_qual_termo_segurou`.
+- Prova `simulated`: os 7 casos passam na PostgreSQL (farm-pg, 03/10). Os 3 arquivos deram 95 passed na PG e 95 no SQLite.
+  Só testes mudaram; nada no app.
 ## 2026-10-03 — Jev: polimentos de UX do deploy 10 (branch feat/ux-jev-polimento, para a suíte 12)
 
 - O aviso do Jev em `/api/ai` (`transparencia.aviso`) fala o modo em palavras: "decisões por conjunto fechado (curador
