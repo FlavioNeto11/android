@@ -53,6 +53,9 @@ PRINCIPAL_DO_ITEM = "o app das etapas sem app próprio (conteudo.etapas[].app nu
 #: 30.36: as duas notas só entram quando valem (o dossiê do resto mantém as chaves e o `dossie_hash`).
 FORMA_DA_EVIDENCIA = ("posicao `forma`: a execução fez o caminho do item e só reescreveu a forma (a pós-condição de "
                       "uma etapa sem efeito, ou um parâmetro fora da ação); não conta contra nem a favor")
+INVALIDA_DA_EVIDENCIA = ("posicao `invalida`: a execução de prova não vale como evidência do item (efeito repetido, ponto "
+                         "de partida que falhou, ou o ator que não agiu); não conta contra nem a favor, e o `for` ou "
+                         "`against` da mesma execução que ela corrigiu não vem na lista")
 #: 30.39: só no dossiê da receita. O contador acumulado não é evidência citável; a lista datada é.
 CONTADORES_DA_RECEITA = ("`conteudo.uso` (`replay_ok`, `replay_fail`) são contadores acumulados SEM data, aparelho, versão "
                          "do app nem marca de real ou simulado; incluem o histórico de antes da evidência datada e também "
@@ -102,7 +105,7 @@ class Evidencia:
     """Uma linha de `learning_evidence`, sem o `detail` (texto livre)."""
 
     id: int
-    posicao: str                            # for | against | conflict | forma (30.36)
+    posicao: str                            # for | against | conflict | forma (30.36) | invalida (30.42)
     origin_ref: str                         # 'attempt:<id>' | 'step:<id>' | 'signal:<id>' | 'run:<id>'
     em: str                                 # `observed_at`, ISO
     run_id: str | None = None
@@ -316,6 +319,8 @@ class Dossie:
                                              "simulated": e.simulated, "em": e.em} for e in self.evidencias]}
         if any(e.posicao == "forma" for e in self.evidencias):
             evidencias["forma_e"] = FORMA_DA_EVIDENCIA
+        if any(e.posicao == "invalida" for e in self.evidencias):
+            evidencias["invalida_e"] = INVALIDA_DA_EVIDENCIA
         if i.kind == "receita":
             evidencias["contadores_e"] = CONTADORES_DA_RECEITA
             if (self.conteudo.get("sombra") or {}).get("shadow_total") == 0:

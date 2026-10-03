@@ -116,7 +116,8 @@ def parecer_simulado(req: PedidoDeParecer) -> ParecerBruto:
     evidencias = req.dossie.get("evidencias")
     lista = evidencias.get("lista") if isinstance(evidencias, dict) else None
     lista = [e for e in lista if isinstance(e, dict)] if isinstance(lista, list) else []
-    contra = sum(1 for e in lista if e.get("posicao") in ("against", "conflict"))     # a `forma` não é contra (30.36)
+    # a `forma` (30.36) e a `invalida` (30.42) não são contra nem a favor: só `against` e `conflict` contam contra
+    contra = sum(1 for e in lista if e.get("posicao") in ("against", "conflict"))
     citaveis = set(req.opcoes.get("evidencias_citadas", []))
     item = req.dossie.get("item")
     item_id = item.get("id") if isinstance(item, dict) else None

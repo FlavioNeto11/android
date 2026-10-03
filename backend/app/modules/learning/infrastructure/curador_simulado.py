@@ -36,7 +36,7 @@ class CuradorSimulado:
         evidencias = d.get("evidencias")
         lista = evidencias.get("lista") if isinstance(evidencias, dict) else None
         lista = lista if isinstance(lista, list) else []
-        # a `forma` (30.36) não é contra nem a favor
+        # a `forma` (30.36) e a `invalida` (30.42) não são contra nem a favor
         contra = sum(1 for e in lista if isinstance(e, dict) and e.get("posicao") in ("against", "conflict"))
         favor = sum(1 for e in lista if isinstance(e, dict) and e.get("posicao") == "for")
         citadas = [str(item_id)] if isinstance(item_id, str) else []

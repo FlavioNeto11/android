@@ -32,6 +32,7 @@ from enum import StrEnum
 
 from app.modules.learning.domain.ciclo import SYSTEM_ACTOR, SkillState
 from app.modules.learning.domain.falhas import classificar_falha
+from app.modules.learning.domain.prova import ROTULO_DO_MOTIVO, motivo_da_invalida
 from app.modules.learning.domain.vocabulario import KINDS_DE_ITEM, KINDS_NATIVOS, Braco, LivroKind, Papel, Posicao
 from app.modules.learning.domain.voto import veio_do_voto
 
@@ -76,6 +77,8 @@ class EvidenciaDaExecucao:
     item_kind: str | None
     posicao: str
     n: int
+    #: O `detail` de uma das linhas (só serve à `invalida`, que traz o motivo no começo: `domain.prova`).
+    detalhe: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,7 +142,10 @@ _ROTULO_DO_BRACO: Mapping[str, str] = {Braco.WITH.value: "exposta ao prompt", Br
 
 _POSICAO: Mapping[str, str] = {Posicao.FOR.value: "a favor", Posicao.AGAINST.value: "contra",
                                Posicao.CONFLICT.value: "em conflito",
-                               Posicao.FORMA.value: "de forma (não conta)"}   # 30.36
+                               Posicao.FORMA.value: "de forma (não conta)",   # 30.36
+                               Posicao.INVALIDA.value: "inválida (não conta)"}   # 30.42
+
+_MOTIVO_DA_INVALIDA: Mapping[str, str] = {m.value: r for m, r in ROTULO_DO_MOTIVO.items()}
 
 #: Quem fez a transição, no fim do verbo: só a do sistema é da execução.
 _DA_EXECUCAO = "nesta execução"
@@ -218,7 +224,10 @@ class _Marcas:
                 blocos.append((autoria, [_verbo(self.kind, para)]))
         partes.extend(f"{' e '.join(verbos)} {autoria}" for autoria, verbos in blocos)
         for posicao, n in self.evidencias.items():
-            rotulo = _POSICAO.get(posicao, posicao)
+            base, _, motivo = posicao.partition(":")
+            rotulo = _POSICAO.get(base, base)
+            if motivo and (m := _MOTIVO_DA_INVALIDA.get(motivo)):
+                rotulo = f"inválida ({m}; não conta)"
             partes.append(f"evidência {rotulo}" if n == 1 else f"{n} evidências {rotulo}")
         return ", ".join(partes) or None
 
@@ -315,7 +324,10 @@ def aprendido_na_execucao(fatos: FatosDaExecucao) -> tuple[ItemAprendido, ...]:
         if alvo is None:
             continue
         m = c.de(*alvo)
-        m.evidencias[e.posicao] = m.evidencias.get(e.posicao, 0) + max(0, e.n)
+        chave = e.posicao
+        if chave == Posicao.INVALIDA.value and (motivo := motivo_da_invalida(e.detalhe)) is not None:
+            chave = f"{chave}:{motivo.value}"                # 30.42: a `invalida` diz o porquê
+        m.evidencias[chave] = m.evidencias.get(chave, 0) + max(0, e.n)
 
     por_grupo: dict[Grupo, list[ItemAprendido]] = {g: [] for g in Grupo}
     for m in c.marcas.values():

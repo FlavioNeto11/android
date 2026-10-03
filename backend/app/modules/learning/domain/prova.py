@@ -15,7 +15,11 @@ com o motivo de mesmo nome (`domain/validacao.Motivo`), e o painel o mostra. Pur
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from enum import StrEnum
+
+from app.modules.learning.domain.vocabulario import Posicao
 
 
 class MotivoDaInvalida(StrEnum):
@@ -38,6 +42,12 @@ def detalhe_da_invalida(motivo: MotivoDaInvalida, texto: str, *, marca: str | No
     return f"[{marca}] {base}" if marca else base
 
 
+#: O motivo como o painel e o resumo da execução o dizem.
+ROTULO_DO_MOTIVO: Mapping[MotivoDaInvalida, str] = {
+    MotivoDaInvalida.EFEITO_REPETIDO: "efeito repetido", MotivoDaInvalida.PONTO_DE_PARTIDA: "ponto de partida",
+    MotivoDaInvalida.ATOR_SEM_ACAO: "o ator não agiu"}
+
+
 def motivo_da_invalida(detalhe: str | None) -> MotivoDaInvalida | None:
     """O motivo de um `detail` de linha `invalida`, ou `None` (outro texto, ou motivo fora do vocabulário)."""
     m = _MOTIVO.match(detalhe or "")
@@ -49,4 +59,141 @@ def motivo_da_invalida(detalhe: str | None) -> MotivoDaInvalida | None:
         return None
 
 
-__all__ = ["PREFIXO", "MotivoDaInvalida", "detalhe_da_invalida", "motivo_da_invalida"]
+# ------------------------------------------------------------------ o veredito da prova (a regra, só sobre dados)
+#: Ferramentas que não mexem no aparelho: quem só as usou não agiu (o ator observou e declarou pronto).
+SEM_ACAO = frozenset({"step_done", "step_blocked", "observe_screen", "find_element", "wait_for", "verify_state"})
+#: Ferramentas que podem disparar um efeito externo (`automation.tools.EFFECT_CAPABLE`).
+COM_EFEITO = frozenset({"tap", "long_press", "drag", "type_text"})
+
+
+@dataclass(frozen=True, slots=True)
+class AcaoDaProva:
+    """Uma ação do diário (`actions`) de uma etapa da prova. `parece_commit`: o alvo resolvido tem cara de envio
+    (`automation.tools.looks_like_commit`, calculado por quem lê o banco, que tem o alvo)."""
+
+    tool: str
+    status: str
+    is_commit_action: bool = False
+    parece_commit: bool = False
+
+    @property
+    def agiu(self) -> bool:
+        """Mexeu no aparelho: leitura e controle (`step_done`) não são ação, e a recusada pelo executor nem saiu."""
+        return self.tool not in SEM_ACAO and self.status != "rejected"
+
+    @property
+    def efeito(self) -> bool:
+        """Disparou (ou pode ter disparado) um efeito externo: ferramenta de efeito, concluída, declarada commit ou com
+        alvo de cara de envio."""
+        return self.tool in COM_EFEITO and self.status == "done" and (self.is_commit_action or self.parece_commit)
+
+
+@dataclass(frozen=True, slots=True)
+class TentativaDaProva:
+    """A ÚLTIMA tentativa de uma etapa: o erro de infra (`error_kind`, RA-22), o tipo da falha e o que o ator fez."""
+
+    error_kind: str | None
+    failure_kind: str | None
+    acoes: tuple[AcaoDaProva, ...] = ()
+
+    @property
+    def agiu(self) -> bool:
+        return any(a.agiu for a in self.acoes)
+
+
+@dataclass(frozen=True, slots=True)
+class EtapaDaProva:
+    """Uma etapa executada da prova (a etapa-modelo do `for_each` nunca chega aqui). `acoes`: as de TODAS as tentativas;
+    `efeito_do_resultado`: o que `steps.result["efeito_repetido"]` traz (contrato com o 29.58), `None` se ausente."""
+
+    seq: int
+    key: str
+    status: str
+    plan_version: int
+    side_effect: bool
+    driven_by: str | None = None
+    detalhe: str | None = None
+    ultima: TentativaDaProva | None = None
+    acoes: tuple[AcaoDaProva, ...] = ()
+    efeito_do_resultado: object = None
+
+
+@dataclass(frozen=True, slots=True)
+class VereditoDaProva:
+    """O desfecho da prova: `posicao` `FOR`, `AGAINST`, `INVALIDA` (com `motivo`) ou `None` (sem evidência)."""
+
+    posicao: Posicao | None
+    motivo: MotivoDaInvalida | None
+    texto: str
+
+
+def _copias_do_resultado(valor: object) -> int | None:
+    """`{"copias": int >= 2, "fonte": "verificador" | "acoes"}`; qualquer outra forma é ignorada (a regra própria vale)."""
+    if not isinstance(valor, Mapping):
+        return None
+    copias = valor.get("copias")
+    if isinstance(copias, bool) or not isinstance(copias, int) or copias < 2:
+        return None
+    return copias
+
+
+def efeito_repetido(etapas: Sequence[EtapaDaProva]) -> int | None:
+    """A ÚNICA fonte do "o efeito saiu mais de uma vez" (AJUSTE 6: trocar a fonte é trocar esta função). Devolve as
+    cópias, ou `None` quando não houve repetição.
+
+    1. `steps.result["efeito_repetido"]` (29.58, o verificador ou o diário): vence, e a chave ausente é "sem repetição".
+    2. A regra própria, sobre o diário: mais de uma ação de efeito concluída numa etapa com efeito externo, ou uma ação
+       de efeito concluída numa etapa SEM efeito (o toque no botão de enviar durante a abertura do app). Conta as
+       tentativas todas da etapa: o efeito da primeira que "falhou" já saiu."""
+    do_resultado = [c for e in etapas if (c := _copias_do_resultado(e.efeito_do_resultado)) is not None]
+    if do_resultado:
+        return max(do_resultado)
+    total, repetido = 0, False
+    for e in etapas:
+        n = sum(1 for a in e.acoes if a.efeito)
+        total += n
+        repetido = repetido or n > (1 if e.side_effect else 0)
+    return max(total, 2) if repetido else None
+
+
+def veredito_da_prova(etapas: Sequence[EtapaDaProva], *, status: str) -> VereditoDaProva:
+    """A regra única do veredito da execução de prova (30.42), só sobre dados.
+
+    Ordem: o efeito repetido (vale mesmo com a execução completa); plano acima de v1 (um plano novo não é mais o fluxo:
+    sem evidência, e as versões nunca se misturam); infra (`error_kind`: orçamento, IA, aparelho, cancelamento pelo
+    sistema) é sem evidência; a falha da ABERTURA é do ponto de partida; etapa reprovada sem ação do ator é do ator;
+    CONTRA só quando a etapa agiu e a pós-condição do fluxo não veio; A FAVOR com todas as etapas comprovadas."""
+    nada = VereditoDaProva(None, None, f"prova sem desfecho de tarefa ({status})")
+    if not etapas:
+        return nada
+    copias = efeito_repetido(etapas)
+    if copias is not None:
+        onde = (next((e for e in etapas if _copias_do_resultado(e.efeito_do_resultado)), None)
+                or next((e for e in etapas if sum(1 for a in e.acoes if a.efeito) > (1 if e.side_effect else 0)), None))
+        quando = f" (etapa {onde.seq}, {onde.key})" if onde is not None else ""
+        return VereditoDaProva(Posicao.INVALIDA, MotivoDaInvalida.EFEITO_REPETIDO,
+                               f"o efeito saiu {copias} vezes{quando}")
+    if any(e.plan_version > 1 for e in etapas):
+        return VereditoDaProva(None, None, "prova com plano revisado: um plano novo não é mais o fluxo")
+    ordem = sorted(etapas, key=lambda e: e.seq)
+    reprovadas = [e for e in ordem if e.status == "failed"]
+    if reprovadas:
+        if any(e.ultima is None or e.ultima.error_kind for e in reprovadas):
+            return nada                                    # infra (ou sem tentativa): nem a favor nem contra
+        r = reprovadas[0]
+        assert r.ultima is not None
+        if r.seq == ordem[0].seq:
+            return VereditoDaProva(Posicao.INVALIDA, MotivoDaInvalida.PONTO_DE_PARTIDA,
+                                   f"a etapa de abertura ({r.key}) não chegou ao ponto de partida do fluxo")
+        if not r.ultima.agiu:
+            return VereditoDaProva(Posicao.INVALIDA, MotivoDaInvalida.ATOR_SEM_ACAO,
+                                   f"o ator não agiu na etapa {r.seq} ({r.key}): só observou e declarou pronto")
+        motivo = (r.detalhe or "sem detalhe")[:160]
+        return VereditoDaProva(Posicao.AGAINST, None, f"prova: etapa {r.seq} ({r.key}) reprovada: {motivo}")
+    if status == "completed" and all(e.status == "succeeded" for e in ordem):
+        return VereditoDaProva(Posicao.FOR, None, f"prova: {len(ordem)}/{len(ordem)} etapas comprovadas")
+    return nada
+
+
+__all__ = ["COM_EFEITO", "PREFIXO", "ROTULO_DO_MOTIVO", "SEM_ACAO", "AcaoDaProva", "EtapaDaProva", "MotivoDaInvalida", "TentativaDaProva",
+           "VereditoDaProva", "detalhe_da_invalida", "efeito_repetido", "motivo_da_invalida", "veredito_da_prova"]

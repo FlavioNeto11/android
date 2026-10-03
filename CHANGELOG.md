@@ -89,6 +89,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Golden set: §8 (pré-registro do lote) e §2 (o `v2` medido antes e depois do 30.39; a regra da saúde).
 - Testes: `backend/tests/test_lote_intencao.py`, `scripts/tests/test_jev_braco_offline_intencao.py` e
   `scripts/tests/test_jev_braco_offline.py`.
+## 2026-10-03 — 30.42: a prova de fluxo parte de um estado conhecido (branch feat/30-42-prova-estado-conhecido)
+
+- A execução de prova encerra todos os apps do plano e abre o principal antes da 1ª etapa (nunca `pm clear`), e não
+  replaneja.
+- Veredito por uma regra única (`domain/prova.veredito_da_prova`): efeito repetido, abertura que falhou e ator que não
+  agiu viram a posição nova `invalida` (nem a favor nem contra, tira das contagens o `for`/`against` da mesma
+  execução); plano revisado não conta; contra só quando a etapa agiu e a pós-condição não veio.
+- Passo de curadoria `ReclassificacaoDoEfeitoDuplicado` (corrige a ev:48 sem UPDATE). Pedido de validação: fecha pelo
+  motivo da `invalida`; no máximo 2 provas por item e versão em 7 dias (`limite_de_provas`); `sem_aparelho_novo`.
+- Sem migração. Adendo de contrato v1.07. Rollback: apagar as linhas `invalida` antes de voltar o código.
+- Testes: `test_learning_prova_veredito.py`, `test_learning_reclassificacao_efeito.py`,
+  `test_learning_prova_ponto_de_partida.py`, `test_learning_prova_limites.py`.
+
 ## 2026-10-03 — 30.40: o teto do pedido legado e a receita sem caminho (branch feat/30-40-teto-e-sem-caminho)
 
 - O pedido de validação sem `teto_usd` (o legado, de antes do 30.37) herda `teto_por_pedido_usd` no despacho, no mesmo

@@ -1306,6 +1306,7 @@ A lacuna ("a receita não tem evidência datada") tinha um custo medido em 03/10
   leitores em SQL fazem o mesmo (`linhas.contra_efetivo` e `linhas.fora_da_reproducao` em `metricas_sql` e
   `aprendido_sql`). Só o dossiê a mostra (ele não passa por `efetivas`): é para o curador citar a execução real.
   `test_o_contra_da_reproducao_dentro_da_janela_nao_contesta_a_receita` guarda isso (falha sem o filtro).
+
 ## O teto do legado e a receita sem caminho (30.40)
 
 Duas correções do que o P4 mostrou no central em 03/10, sem migração e sem mudar o dossiê:
@@ -1327,6 +1328,85 @@ Duas correções do que o P4 mostrou no central em 03/10, sem migração e sem m
 `backend/tests/test_learning_curador_dominio.py` (as opções, o esquema do hub e o parecer inválido). `real`: `not_run`
 até a primeira revisão de receita sem caminho depois do deploy que o levar. O esperado é nenhum `pedir_evidencia` e
 nenhum pedido `recusada/sem_caminho` novo para ela.
+
+## A prova parte de um estado conhecido (30.42)
+
+O que o P4 mostrou no central em 03/10: a `5f2de5` mandou a mensagem duas vezes e virou evidência A FAVOR (ev:48); a
+`e1b7d0` herdou a tela da execução anterior (o app dentro de uma conversa) e virou CONTRA; o `_prova` misturava as
+etapas `failed` da v1 com as `succeeded` da v2 (ev:49). Desenho aprovado pela orquestradora em 03/10 22:01Z, sem
+migração. Adendo de contrato v1.07.
+
+**A execução de prova** (`Scheduler`, só com `runs.prova_fluxo_id`):
+- **ponto de partida** (`_partir_da_prova`): antes da 1ª etapa, `force-stop` de TODOS os apps do plano do fluxo e
+  abertura do app da 1ª etapa. Uma vez por execução, e nunca na retomada (já houve tentativa). Nunca `pm clear`: o
+  rascunho que sobrevive ao force-stop é resultado da prova real. Falha aqui não derruba a prova; a decisão na linha do
+  tempo diz o que aconteceu, e a etapa de abertura comprova (ou reprova) o ponto de partida;
+- **não replaneja** (`_try_recover`): um plano novo não é mais o fluxo. O fechamento diz por quê ("a prova não
+  replaneja").
+
+**O veredito** (`domain/prova.veredito_da_prova`, a regra única; quem lê o banco é `LeituraSql._prova`), nesta ordem:
+1. efeito que saiu mais de uma vez → `invalida`, motivo `efeito_repetido` (vale mesmo com a execução completa);
+2. alguma etapa de plano acima da v1 → sem evidência;
+3. etapa reprovada com `error_kind` (infra) ou sem tentativa → sem evidência;
+4. a etapa reprovada é a de abertura → `invalida`, `ponto_de_partida`;
+5. a última tentativa da etapa reprovada não agiu (só leitura, `step_done` ou `step_blocked`) → `invalida`,
+   `ator_sem_acao`;
+6. CONTRA só quando a etapa agiu e a pós-condição do próprio fluxo não veio;
+7. A FAVOR com a execução `completed` e todas as etapas comprovadas.
+
+**O efeito repetido** fica atrás de UMA função (`domain/prova.efeito_repetido`), para trocar a fonte sem mexer no
+resto. Vence o `steps.result.efeito_repetido` do 29.58 (contrato com a Android: chave AUSENTE sem repetição;
+`{"copias": int >= 2, "fonte": "verificador" | "acoes"}` na etapa onde foi vista; outra forma é ignorada). Sem ele, a
+regra própria, sobre o diário de TODAS as tentativas: mais de uma ação de efeito concluída (`tap`, `long_press`,
+`drag`, `type_text` com `args.is_commit_action` ou, no toque, alvo com cara de envio por `COMMIT_VOCAB`) numa etapa com
+efeito externo, ou uma numa etapa sem efeito.
+
+**A posição `invalida`** (`Posicao.INVALIDA`): uma linha de `learning_evidence` com a MESMA origem (`run:<id>`) que a
+prova teria, e `detail = [marca] invalida:<motivo> — texto` (`detalhe_da_invalida`; o motivo é de vocabulário
+fechado, `MotivoDaInvalida`). Não conta a favor nem contra. Ao lado de um `for` ou `against` da mesma origem, tira essa
+linha das contagens, como a `forma` faz com o `against`: `promocao.efetivas`, `linhas.contra_efetivo` e o novo
+`linhas.favor_efetivo`. Não confundir com a "evidência inválida" do 30.23 (motivo `evidencia_invalida:<run>` na
+trilha, que desliga o item); nem com o `invalida:decisao_indevida` da validade de um parecer (30.40), que é outra
+coluna.
+- Leitores que tratam a `invalida` de propósito: `promocao` (`efetivas`, `contrarias`, `veredito_de_repeticao`),
+  `aprendido` (rótulo "inválida (<motivo>; não conta)"), `curador` (nota `evidencias.invalida_e` do dossiê, só quando há
+  uma), `servico` (o `a_favor` do fluxo), `metricas_sql`, `aprendido_sql`, `dossies` (a lista mostra a `invalida` e
+  tira a linha corrigida), `ligar_nativos.contra_de_fluxos` (o `against` corrigido não é recomparado pela forma) e o
+  painel (`model.motivoDaInvalida`, `DetalheRico`).
+- Já contavam só `against`/`conflict` como contra e não mudam: `curador_simulado`, `planning/curador.py`,
+  `metricas.py`. Não recebem `invalida`: `ligar_telas`, `reproducao_sql` e os contadores de `li-` em `sql_repository`.
+- **Fora daqui:** `planning/decisao_fechada/curador.py:160` (Jev, 31.23) soma como contra toda posição diferente de
+  `for`, e já soma a `forma`. Com a `invalida`, o efeito é só na sombra do Jev; a correção é o 31.25, da Jev.
+- **Rollback:** o código anterior faz `Posicao(stance)` (`sql_repository`) e quebra ao ler uma linha `invalida`.
+  Voltar o código exige apagar antes as linhas `stance = 'invalida'`.
+- **Painel:** `MIN(detail)` dá o motivo do grupo em `aprendido_sql`; um item com `invalida` de dois motivos mostra um
+  só.
+
+**O passo `ReclassificacaoDoEfeitoDuplicado`** (curadoria, `nativos.py`): recompara com a mesma `efeito_repetido` os
+`for` de execuções de prova que ainda não têm `invalida` irmã, e grava a irmã quando o efeito se repetiu. É o que
+corrige a ev:48. A marca vem do próprio `for`. Sem UPDATE, sem transição de estado, idempotente pelo índice único,
+nunca chama IA.
+
+**O pedido de validação** (`application/validacao.py`, `validacoes_sql.py`, regras puras em `domain/validacao.py`):
+- a `invalida` da execução VENCE no fechamento (antes do `for`): o pedido fecha `recusada` com o motivo dela
+  (`efeito_repetido`, `ponto_de_partida`, `ator_sem_acao`). Não devolve o item ao curador nem reabre. Um pedido já
+  fechado `sem_evidencia` cuja execução ganha depois a `invalida` passa ao motivo dela (o mesmo molde do 30.36);
+- **limite de provas:** no máximo 2 provas por item e versão do conteúdo em 7 dias (`MAXIMO_DE_PROVAS`,
+  `JANELA_DE_PROVAS_DIAS`). A 3ª fecha `recusada/limite_de_provas` ao despachar, sem gastar. A versão é a marca
+  `[xxxxxxxxxxxx]` (`content_hash` do plano); prova anterior com outra marca não conta, e prova sem marca conta (lado
+  seguro). É aproximado, sem migração;
+- **aparelho novo:** com `reproducao_em_outro_aparelho` na falta, o excluído é o CONJUNTO da origem e dos aparelhos das
+  provas anteriores do item. Nenhum aparelho que sirva fora desse conjunto (mesmo desligado) → `recusada/sem_aparelho_novo`
+  sem gastar; sobra, mas ocupado → espera. Nenhum aparelho que sirva em absoluto → espera, como antes (fechar quebrava
+  o pedido de mais de um app).
+
+**Prova:** `simulated` em `backend/tests/test_learning_prova_veredito.py`,
+`test_learning_reclassificacao_efeito.py`, `test_learning_prova_ponto_de_partida.py`,
+`test_learning_prova_limites.py`, `test_learning_prova.py` e o contrato do dossiê com `invalida` em
+`test_learning_curador_dominio.py`; painel em `frontend/src/features/aprendizado/{model,DetalheRico}.test.*`. `real`:
+`not_run` até o deploy que o levar. O esperado: a ev:48 ganha a `invalida` irmã na primeira volta da curadoria, e a
+próxima prova do P4 mostra a decisão "ponto de partida" na linha do tempo. Sem rodada paga extra: vem do despacho
+normal do P4.
 
 ## Pendências conhecidas
 

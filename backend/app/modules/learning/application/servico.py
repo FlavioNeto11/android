@@ -36,7 +36,7 @@ from app.modules.learning.domain.livro import (ESTADOS_DA_EVIDENCIA_INVALIDA, En
                                                entrada_do_item, estado_nativo, motivo_da_confirmacao, para_aprovar,
                                                status_nativo)
 from app.modules.learning.domain.modo_por_app import modo_efetivo
-from app.modules.learning.domain.promocao import Evidencia, contrarias
+from app.modules.learning.domain.promocao import Evidencia, contrarias, efetivas
 from app.modules.learning.domain.saude import Saude, SinaisDeSaude, calcular
 from app.modules.learning.domain.versao import quadro_da_tela, quadro_independente
 from app.modules.learning.domain.vocabulario import (KINDS_DE_ITEM, LivroKind, Modo, ModoDeTelas, Origem, Posicao,
@@ -370,7 +370,7 @@ class LearningService:
         if e.kind in (LivroKind.RECEITA, *KINDS_DE_ITEM):
             a_favor, contra = e.a_favor, e.contra          # contadores da própria fonte (sobrevivem à retenção)
         elif e.kind is LivroKind.FLUXO:                    # o fluxo não tem contador de acerto: só as evidências
-            a_favor = sum(1 for x in evidencias if x.stance is Posicao.FOR)
+            a_favor = sum(1 for x in efetivas(evidencias) if x.stance is Posicao.FOR)   # 30.42: sem o `for` invalidado
             contra = len(contrarias(evidencias))          # 30.36: a forma não é contra, nem o `against` que ela tirou
         else:
             a_favor = contra = None

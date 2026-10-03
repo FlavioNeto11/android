@@ -313,6 +313,7 @@ class ServicoDeMetricas:
             e = publicados.get(x.item_ref)
             if e is None or (e.state_at is not None and x.observed_at < e.state_at):
                 continue
+            # 30.42: a leitura já tirou o `for`/`against` que uma `invalida` corrigiu; a `forma` e a `invalida` não contam
             a_favor += x.stance == "for"
             if x.stance in ("against", "conflict"):
                 contra += 1

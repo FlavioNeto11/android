@@ -59,23 +59,30 @@ ORIGEM_DA_REPRODUCAO = "reproducao:"
 
 
 def efetivas(evidencias: Iterable[Evidencia]) -> list[Evidencia]:
-    """As evidências que valem, na ordem recebida (30.36): o `against` que tem uma `forma` da MESMA origem no mesmo item
-    sai — é a linha que a reclassificação corrigiu sem apagar (o log só cresce). A `forma` fica: não conta a favor nem
-    contra, mas a trilha a mostra. A reprodução da receita (30.39, `ORIGEM_DA_REPRODUCAO`) sai inteira: os contadores
-    já a contam. Todo leitor que conta passa por aqui, para nenhum deles divergir."""
+    """As evidências que valem, na ordem recebida (30.36, 30.42): o `against` que tem uma `forma` da MESMA origem no mesmo
+    item sai, e o `for` ou `against` que tem uma `invalida` da mesma origem no mesmo item também. São as linhas que a
+    reclassificação corrigiu sem apagar (o log só cresce). A `forma` e a `invalida` ficam na lista (a trilha as mostra),
+    mas nenhuma conta a favor nem contra: quem conta olha `FOR`, `AGAINST` e `CONFLICT`. A reprodução da receita (30.39,
+    `ORIGEM_DA_REPRODUCAO`) sai inteira: os contadores já a contam. Todo leitor que conta passa por aqui, para nenhum
+    deles divergir."""
     lista = [e for e in evidencias if not e.origin_ref.startswith(ORIGEM_DA_REPRODUCAO)]
     formas = {(e.item_ref, e.origin_ref) for e in lista if e.stance is Posicao.FORMA}
-    if not formas:
+    invalidas = {(e.item_ref, e.origin_ref) for e in lista if e.stance is Posicao.INVALIDA}
+    if not formas and not invalidas:
         return lista
-    return [e for e in lista if not (e.stance is Posicao.AGAINST and (e.item_ref, e.origin_ref) in formas)]
+    return [e for e in lista
+            if not (e.stance is Posicao.AGAINST and (e.item_ref, e.origin_ref) in formas)
+            and not (e.stance in (Posicao.FOR, Posicao.AGAINST) and (e.item_ref, e.origin_ref) in invalidas)]
 
 
 def contrarias(evidencias: Iterable[Evidencia]) -> list[Evidencia]:
-    """As que contam contra: `against` ou `conflict` efetivos (a `forma` nunca)."""
+    """As que contam contra: `against` ou `conflict` efetivos (a `forma` e a `invalida` nunca)."""
     return [e for e in efetivas(evidencias) if e.stance in (Posicao.AGAINST, Posicao.CONFLICT)]
 
 
 def veredito_de_repeticao(evidencias: Iterable[Evidencia], limiares: Limiares = Limiares()) -> VereditoDeRepeticao:
+    """Só `FOR` conta a favor e só `AGAINST`/`CONFLICT` contam contra; `forma` e `invalida` não são nenhum dos dois, e a
+    `efetivas` já tirou o `for`/`against` que elas corrigiram."""
     reais = [e for e in efetivas(evidencias) if not e.simulated]
     favor = [e for e in reais if e.stance is Posicao.FOR]
     contra = sum(1 for e in reais if e.stance in (Posicao.AGAINST, Posicao.CONFLICT))
