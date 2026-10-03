@@ -42,12 +42,15 @@ FAXINA_S = 3600.0
 
 class ServicoDeAvisos:
     def __init__(self, cfg: Config, bus: EventBus, fila: FilaDeAvisos, lideranca: Lideranca, *,
-                 canal: Canal | None = None, lider: Callable[[str], int | None] | None = None):
+                 canal: Canal | None = None, lider: Callable[[str], int | None] | None = None,
+                 redigir: Callable[[str], str] | None = None):
         self.cfg = cfg
         self.bus = bus
         self.fila = fila
         self.lideranca = lideranca
         self._canal = canal
+        #: O redator do conteúdo do aviso (28.15, decisão (d)): só vale com a conversa de volta ligada.
+        self._redigir = redigir
         #: Quem diz se sou o líder: o `AppState._lider` (que tolera banco fora do ar). Injetável nos testes.
         self._lider = lider or self._tomar
         self._esperar_ate = 0.0
@@ -95,7 +98,10 @@ class ServicoDeAvisos:
         if kind not in KINDS_QUE_AVISAM or not self.ligado or self.canal() is None:
             return False
         cfg = self.cfg.file.avisos
-        aviso = aviso_de_evento(kind, data, evento_id, cfg.url_painel, frozenset(cfg.aprendizado_faixas))
+        # Com a conversa de volta ligada, a aprovação e a pergunta levam o conteúdo redigido (decisão (d) do ADR-071):
+        # o dono responde ali mesmo. Desligada, a mensagem segue a menor possível (28.11).
+        redigir = self._redigir if cfg.entrada.enabled else None
+        aviso = aviso_de_evento(kind, data, evento_id, cfg.url_painel, frozenset(cfg.aprendizado_faixas), redigir)
         if aviso is None:
             return False
         try:

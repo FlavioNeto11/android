@@ -1,10 +1,16 @@
-"""A conversa de volta pelo Telegram (item 28.15, ADR-071): o chat do dono fala com a Central como no painel.
+"""A conversa de volta pelos canais externos (item 28.15, ADR-071): o dono fala com a Central como no painel.
 
-O laço:
+O contrato comum dos canais (`docs/design/canais-externos.md`) separa duas metades:
+- a TRADUÇÃO, própria de cada canal, do que chegou numa `Recebida` (aqui, a update do Telegram: `_ler_update`; o
+  Trello do 32.2 traduz a action dele) e a `SaidaDaConversa` dele (responder, apagar, botões);
+- a parte COMUM (`registrar` e `tratar_pendentes`): identidade, dedupe, credencial, limite, gramática e as portas do
+  painel. Ela não conhece Telegram: o mesmo comando vindo de outro canal passa pelas mesmas políticas.
+
+O laço do Telegram:
 1. só no líder da trava `avisos`, e só com `avisos.enabled` + `avisos.entrada.enabled`;
-2. `getUpdates` com o offset do banco (`MAX(update_id) + 1`), em long-poll;
+2. `getUpdates` com o offset do banco (`MAX(ordem) + 1`), em long-poll;
 3. grava cada update ANTES de tratar. A de outro chat, a longa demais e a que parece credencial são gravadas SEM o
-   texto e não são tratadas;
+   texto e não são tratadas; a com cara de credencial ainda é apagada do chat quando o Telegram deixa;
 4. trata as `recebida` por regra fixa (`application/entrada.rotear`), com o operador `telegram:dono` no ContextVar
    da sessão. `quem()` e `autor_do_gesto()` o leem, então a auditoria e o sinal contam como gesto de PESSOA;
 5. conta na thread o desfecho das execuções que a conversa criou.
@@ -38,7 +44,7 @@ from app.modules.avisos.application.entrada import (
     texto_para_o_extrator,
 )
 from app.modules.avisos.application.entrega import FalhaDeEnvio
-from app.modules.avisos.infrastructure.entrada_sql import MensagensDoTelegram
+from app.modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
 from app.security.sessions import OPERADOR
 from app.taskqueue.travas import AVISOS
 
@@ -46,8 +52,12 @@ log = logging.getLogger("poc.avisos.entrada")
 
 #: Quem age pela conversa, na auditoria (decisão (b)): legível e sem o chat_id.
 OPERADOR_DO_TELEGRAM = "telegram:dono"
-RESPOSTA_CREDENCIAL = ("Isso parece senha ou código: não guardei e não repassei. Senha fica na conta da persona; "
-                       "grave pelo painel.")
+#: A credencial é recusada sem guardar e apagada do canal quando ele deixa (contrato dos canais, §7); a resposta nunca
+#: ecoa o texto.
+RESPOSTA_CREDENCIAL = ("Isso parece senha ou código: não guardei, não repassei e apaguei a mensagem do chat. Senha "
+                       "fica na conta da persona; grave pelo painel.")
+RESPOSTA_CREDENCIAL_SEM_APAGAR = ("Isso parece senha ou código: não guardei e não repassei, mas não consegui apagar a "
+                                  "mensagem daqui. Apague-a do chat. Senha fica na conta da persona; grave pelo painel.")
 RESPOSTA_LONGA = "Mensagem longa demais para a conversa (limite de {n} caracteres): não guardei. Use o painel."
 #: Só dígitos (com espaço ou hífen entre eles), de 4 a 8: o formato de um código de verificação.
 _CODIGO = re.compile(r"[\s-]*(?:\d[\s-]?){4,8}[\s-]*")
@@ -93,12 +103,74 @@ class PortasDaCentral(Protocol):
     def desfecho(self, run_id: str) -> str | None: ...
 
 
+@dataclass(frozen=True)
+class Recebida:
+    """O que chegou por um canal, já traduzido e ANTES da gramática (o contrato comum, §1). As referências são texto:
+    o Telegram numera, o Trello não. `do_dono` é a identidade conferida pela tradução (o chat configurado; o membro
+    dono do quadro); quem não é o dono é gravado sem texto e não é tratado."""
+
+    id_externo: str                    # a chave do dedupe no canal: o `update_id`; o id da action
+    ordem: int | None                  # a ordem da fonte quando ela numera (o offset do Telegram); senão None
+    tipo: str                          # 'mensagem' | 'botao' | 'outro' (o Trello traz os dele)
+    do_dono: bool
+    texto: str
+    ref_mensagem: str | None = None    # a mensagem da pessoa (no botão, a do bot que levava o teclado)
+    responde_a: str | None = None      # a mensagem do canal a que ela responde (o fato do aviso)
+    botao_id: str | None = None        # o toque num botão, para o canal tirar o relógio (`answerCallbackQuery`)
+
+
+class SaidaDaConversa(Protocol):
+    """O que a parte comum pede ao canal para responder. Cada canal cumpre a sua: `SaidaDoTelegram` aqui; o Trello
+    comenta no cartão e não apaga conteúdo do dono (`apagar` devolve False e a resposta pede que ele apague)."""
+
+    async def responder(self, texto: str, *, responde_a: str | None = None,
+                        botoes: list[tuple[str, str]] | None = None) -> str | None: ...
+    async def confirmar_botao(self, botao_id: str) -> None: ...
+    async def tirar_botoes(self, ref_mensagem: str) -> None: ...
+    async def apagar(self, ref_mensagem: str) -> bool: ...
+
+
+class SaidaDoTelegram:
+    """`SaidaDaConversa` sobre o `CanalTelegram`: só converte as referências (texto na parte comum, inteiro na Bot API)."""
+
+    def __init__(self, canal: CanalTelegram):
+        self.canal = canal
+
+    async def responder(self, texto: str, *, responde_a: str | None = None,
+                        botoes: list[tuple[str, str]] | None = None) -> str | None:
+        mid = await self.canal.responder(texto, responde_a=_num(responde_a), botoes=botoes)
+        return str(mid) if mid is not None else None
+
+    async def confirmar_botao(self, botao_id: str) -> None:
+        await self.canal.confirmar_botao(botao_id)
+
+    async def tirar_botoes(self, ref_mensagem: str) -> None:
+        mid = _num(ref_mensagem)
+        if mid is not None:
+            await self.canal.tirar_botoes(mid)
+
+    async def apagar(self, ref_mensagem: str) -> bool:
+        mid = _num(ref_mensagem)
+        return mid is not None and await self.canal.apagar(mid)
+
+
 def parece_codigo(texto: str) -> bool:
     return bool(_CODIGO.fullmatch(texto))
 
 
 def _int(v: object) -> int | None:
     return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+
+def _num(v: object) -> int | None:
+    """A referência em texto do canal de volta a inteiro (o `message_id` da Bot API)."""
+    if isinstance(v, str) and v.lstrip("-").isdigit():
+        return int(v)
+    return _int(v)
+
+
+def _texto(v: object) -> str | None:
+    return str(v) if v is not None else None
 
 
 def _mapa(v: object) -> Mapping[str, object] | None:
@@ -115,18 +187,8 @@ def _json(bruto: object) -> dict[str, object]:
     return v if isinstance(v, dict) else {}
 
 
-@dataclass(frozen=True)
-class _Update:
-    update_id: int
-    tipo: str                          # 'mensagem' | 'botao' | 'outro'
-    chat: str
-    texto: str
-    message_id: int | None
-    responde_a: int | None
-    callback_id: str | None
-
-
-def _ler_update(u: Mapping[str, object]) -> _Update | None:
+def _ler_update(u: Mapping[str, object], chat_do_dono: str) -> Recebida | None:
+    """A TRADUÇÃO do Telegram: uma update vira `Recebida`. A identidade é o chat (só o configurado é o dono)."""
     update_id = _int(u.get("update_id"))
     if update_id is None:
         return None
@@ -135,16 +197,18 @@ def _ler_update(u: Mapping[str, object]) -> _Update | None:
     if cb is not None:
         msg = _mapa(cb.get("message"))      # no botão, a mensagem do bot que levava o teclado
     chat = _mapa(msg.get("chat")) if msg is not None else None
+    chat_id = str(chat.get("id")) if chat and chat.get("id") is not None else ""
     texto = (cb.get("data") if cb is not None else msg.get("text") if msg is not None else None) or ""
     responde = _mapa(msg.get("reply_to_message")) if msg is not None and cb is None else None
-    return _Update(update_id=update_id, tipo=tipo, chat=str(chat.get("id")) if chat and chat.get("id") is not None else "",
-                   texto=str(texto), message_id=_int(msg.get("message_id")) if msg is not None else None,
-                   responde_a=_int(responde.get("message_id")) if responde is not None else None,
-                   callback_id=str(cb.get("id")) if cb is not None and cb.get("id") is not None else None)
+    return Recebida(id_externo=str(update_id), ordem=update_id, tipo=tipo,
+                    do_dono=bool(chat_do_dono) and chat_id == chat_do_dono, texto=str(texto),
+                    ref_mensagem=_texto(_int(msg.get("message_id"))) if msg is not None else None,
+                    responde_a=_texto(_int(responde.get("message_id"))) if responde is not None else None,
+                    botao_id=str(cb.get("id")) if cb is not None and cb.get("id") is not None else None)
 
 
 class ServicoDeEntrada:
-    def __init__(self, cfg: Config, repo: MensagensDoTelegram, portas: PortasDaCentral, *,
+    def __init__(self, cfg: Config, repo: EntradasDoCanal, portas: PortasDaCentral, *,
                  lider: Callable[[str], int | None], recusa: Callable[[str], bool], redigir: Callable[[str], str],
                  canal: CanalTelegram | None = None, chat_id: str | None = None,
                  dormir: Callable[[float], Awaitable[None]] | None = None, operador: str = OPERADOR_DO_TELEGRAM):
@@ -211,43 +275,62 @@ class ServicoDeEntrada:
         self._conflito_desde = None
         if self._lider(AVISOS) is None:
             return 0        # perdeu a liderança no long-poll: nada gravado = nada confirmado; o novo líder relê
+        saida = SaidaDoTelegram(canal)
         if not self.repo.ajuda_ja_enviada():
-            await self._enviar(canal, "A Central agora atende por aqui.\n" + AJUDA, origem="ajuda")
+            await self._enviar(saida, "A Central agora atende por aqui.\n" + AJUDA, origem="ajuda")
         chat = self._segredos()[1]
         for bruta in brutas:
-            u = _ler_update(bruta)
-            if u is not None:
-                await self._gravar(canal, u, chat)
-        for linha in self.repo.a_tratar():
-            await self._tratar(canal, linha)
-        await self._contar_desfechos(canal)
+            r = _ler_update(bruta, chat)
+            if r is not None:
+                await self.registrar(saida, r)
+        await self.tratar_pendentes(saida)
         return len(brutas)
 
-    def _linha(self, u: _Update, do_chat: bool, texto: str | None, estado: str = "recebida",
-               erro: str | None = None) -> bool:
-        return self.repo.gravar(update_id=u.update_id, tipo=u.tipo, do_chat=do_chat, message_id=u.message_id,
-                                responde_a=u.responde_a, texto=texto, tamanho=len(u.texto), estado=estado, erro=erro)
+    # ------------------------------------------------------------------ a parte comum aos canais
+    async def tratar_pendentes(self, saida: SaidaDaConversa) -> None:
+        """Trata as `recebida` do canal e conta na conversa o desfecho das execuções que ela criou."""
+        for linha in self.repo.a_tratar():
+            await self._tratar(saida, linha)
+        await self._contar_desfechos(saida)
 
-    async def _gravar(self, canal: CanalTelegram, u: _Update, chat: str) -> None:
-        do_chat = bool(chat) and u.chat == chat
-        if not do_chat or u.tipo == "outro":
-            self._linha(u, do_chat, None, "ignorada")
+    def _linha(self, r: Recebida, texto: str | None, estado: str = "recebida", erro: str | None = None) -> bool:
+        return self.repo.gravar(id_externo=r.id_externo, ordem=r.ordem, tipo=r.tipo, do_dono=r.do_dono,
+                                ref_mensagem=r.ref_mensagem, responde_a=r.responde_a, texto=texto,
+                                tamanho=len(r.texto), estado=estado, erro=erro)
+
+    async def registrar(self, saida: SaidaDaConversa, r: Recebida) -> None:
+        """Grava o que chegou, já com as políticas que não esperam a gramática: quem não é o dono, o longo demais e o
+        que parece credencial ficam SEM o texto e não são tratados. Releitura (mesmo `id_externo`) não faz nada."""
+        if not r.do_dono or r.tipo == "outro":
+            self._linha(r, None, "ignorada")
             return
-        if u.callback_id is not None:
+        if r.botao_id is not None:
             try:
-                await canal.confirmar_botao(u.callback_id)              # tira o relógio do botão; não decide nada
+                await saida.confirmar_botao(r.botao_id)                 # tira o relógio do botão; não decide nada
             except FalhaDeEnvio:
                 pass
         limite = self.cfg.file.avisos.entrada.max_chars
-        if len(u.texto) > limite:
-            if self._linha(u, True, None, "recusada", "mensagem longa demais"):
-                await self._enviar(canal, RESPOSTA_LONGA.format(n=limite), origem="resposta", responde_a=u.message_id)
+        if len(r.texto) > limite:
+            if self._linha(r, None, "recusada", "mensagem longa demais"):
+                await self._enviar(saida, RESPOSTA_LONGA.format(n=limite), origem="resposta", responde_a=r.ref_mensagem)
             return
-        if u.tipo == "mensagem" and self._parece_segredo(u.texto):
-            if self._linha(u, True, None, "recusada", "parece credencial ou código"):
-                await self._enviar(canal, RESPOSTA_CREDENCIAL, origem="resposta", responde_a=u.message_id)
+        if r.tipo == "mensagem" and self._parece_segredo(r.texto):
+            if not self._linha(r, None, "recusada", "parece credencial ou código"):
+                return                                                  # releitura: já recusada (e apagada) antes
+            apagou = False
+            if r.ref_mensagem is not None:
+                try:
+                    apagou = await saida.apagar(r.ref_mensagem)
+                except FalhaDeEnvio:
+                    apagou = False
+            ident = self.repo.id_de(r.id_externo)
+            if ident is not None:
+                self.repo.marcar(ident, "recusada", erro="parece credencial ou código; "
+                                 + ("apagada do chat" if apagou else "não apagada do chat"))
+            await self._enviar(saida, RESPOSTA_CREDENCIAL if apagou else RESPOSTA_CREDENCIAL_SEM_APAGAR,
+                               origem="resposta", responde_a=None if apagou else r.ref_mensagem, entrada_id=ident)
             return
-        self._linha(u, True, u.texto)
+        self._linha(r, r.texto)
 
     def _parece_segredo(self, texto: str) -> bool:
         if self._recusa(texto) or parece_codigo(texto):
@@ -256,26 +339,26 @@ class ServicoDeEntrada:
         return len(partes) == 3 and partes[0].lower().startswith("/responder") and parece_codigo(partes[2])
 
     # ------------------------------------------------------------------ tratar
-    async def _tratar(self, canal: CanalTelegram, linha: Linha) -> None:
+    async def _tratar(self, saida: SaidaDaConversa, linha: Linha) -> None:
         token = OPERADOR.set(self.operador)
         try:
             if linha["tipo"] == "botao":
-                await self._botao(canal, linha)
+                await self._botao(saida, linha)
                 return
             cfg = self.cfg.file.avisos.entrada
-            if self.repo.do_chat_na_janela(60, ate_id=self._id(linha)) > cfg.limite_por_min:
+            if self.repo.do_dono_na_janela(60, ate_id=self._id(linha)) > cfg.limite_por_min:
                 self.repo.marcar(self._id(linha), "limitada", de=("recebida",))
                 if time.monotonic() - self._limitada_avisada > 60:
                     self._limitada_avisada = time.monotonic()
-                    await self._responder(canal, linha, f"Mais de {cfg.limite_por_min} mensagens por minuto: esta não "
+                    await self._responder(saida, linha, f"Mais de {cfg.limite_por_min} mensagens por minuto: esta não "
                                                         "foi tratada. Espere um pouco e mande de novo.")
                 return
-            await self._agir(canal, linha, self._intencao(linha))
+            await self._agir(saida, linha, self._intencao(linha))
         except RecusaDaCentral as recusa:
             texto = self._redigir(str(recusa))[:500]
             self.repo.marcar(self._id(linha), "falhou", erro="recusada pela Central", resposta=texto,
                              de=("recebida", "pergunta"))
-            await self._responder(canal, linha, texto)
+            await self._responder(saida, linha, texto)
         except Exception as exc:  # uma mensagem ruim não para a conversa
             log.exception("telegram: mensagem %s", linha.get("id"))
             self.repo.marcar(self._id(linha), "falhou", erro=type(exc).__name__, de=("recebida",))
@@ -288,7 +371,7 @@ class ServicoDeEntrada:
 
     def _intencao(self, linha: Linha) -> Intencao:
         texto = str(linha.get("texto") or "")
-        responde_a = _int(linha.get("responde_a"))
+        responde_a = _texto(linha.get("responde_a"))
         enviada = self.repo.enviada(responde_a) if responde_a is not None else None
         # Regra do CANAL (decisão (e)): reply a uma mensagem do bot que a Central não mandou é da orquestradora; reply
         # a uma mensagem da própria pessoa não é reply ao bot. A gramática comum só conhece o `/orq`.
@@ -297,34 +380,34 @@ class ServicoDeEntrada:
         fato = enviada.get("fato") if enviada is not None else None
         return rotear(texto, fato=str(fato) if fato else None)
 
-    async def _agir(self, canal: CanalTelegram, linha: Linha, i: Intencao) -> None:
+    async def _agir(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
         if i.tipo == "vazia":
             self.repo.marcar(self._id(linha), "ignorada", intencao=i.tipo, de=("recebida",))
         elif i.tipo == "orquestradora":
             self.repo.marcar(self._id(linha), "orquestradora", intencao=i.tipo, destino="orquestradora",
                              de=("recebida",))
-            await self._responder(canal, linha, "Recado guardado para a orquestradora (não executado).")
+            await self._responder(saida, linha, "Recado guardado para a orquestradora (não executado).")
         elif i.tipo == "ajuda":
-            await self._feita(canal, linha, i, AJUDA)
+            await self._feita(saida, linha, i, AJUDA)
         elif i.tipo == "desconhecida":
-            await self._feita(canal, linha, i, f"{i.motivo or 'Não entendi.'} /ajuda mostra os comandos.")
+            await self._feita(saida, linha, i, f"{i.motivo or 'Não entendi.'} /ajuda mostra os comandos.")
         elif i.tipo == "status":
-            await self._feita(canal, linha, i, self.portas.status())
+            await self._feita(saida, linha, i, self.portas.status())
         elif i.tipo == "pendencias":
-            await self._feita(canal, linha, i, self._texto_pendencias())
+            await self._feita(saida, linha, i, self._texto_pendencias())
         elif i.tipo in ("aprovar", "vetar"):
-            await self._decidir(canal, linha, i)
+            await self._decidir(saida, linha, i)
         elif i.tipo == "responder":
-            await self._responder_pergunta(canal, linha, i)
+            await self._responder_pergunta(saida, linha, i)
         elif i.tipo in ("para", "livre"):
             texto = texto_para_o_extrator(i.alvo or "", i.texto) if i.tipo == "para" else i.texto
-            await self._previa(canal, linha, i, texto, None)
+            await self._previa(saida, linha, i, texto, None)
 
-    async def _feita(self, canal: CanalTelegram, linha: Linha, i: Intencao, texto: str, *, alvo: str | None = None,
+    async def _feita(self, saida: SaidaDaConversa, linha: Linha, i: Intencao, texto: str, *, alvo: str | None = None,
                      run_id: str | None = None) -> None:
         self.repo.marcar(self._id(linha), "feita", intencao=i.tipo, destino="central", alvo=alvo, run_id=run_id,
                          resposta=self._redigir(texto), de=("recebida", "pergunta", "executando"))
-        await self._responder(canal, linha, texto)
+        await self._responder(saida, linha, texto)
 
     def _texto_pendencias(self) -> str:
         itens = self.portas.pendencias()
@@ -348,25 +431,25 @@ class ServicoDeEntrada:
             return None, f"O id {ref} serve para mais de um ({', '.join(a[-8:] for a in achados)}): use mais caracteres."
         return achados[0], ""
 
-    async def _decidir(self, canal: CanalTelegram, linha: Linha, i: Intencao) -> None:
+    async def _decidir(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
         aid, erro = self._um_id(i.ref or "", self.portas.aprovacoes_pendentes(), "aprovação pendente")
         if aid is None:
-            await self._feita(canal, linha, i, erro)
+            await self._feita(saida, linha, i, erro)
             return
         texto = self.portas.decidir(aid, "approve" if i.tipo == "aprovar" else "reject", i.texto or None)
-        await self._feita(canal, linha, i, texto, alvo=f"approval:{aid}")
+        await self._feita(saida, linha, i, texto, alvo=f"approval:{aid}")
 
-    async def _responder_pergunta(self, canal: CanalTelegram, linha: Linha, i: Intencao) -> None:
+    async def _responder_pergunta(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
         rid, erro = self._um_id(i.ref or "", self.portas.execucoes_esperando(), "execução esperando resposta")
         if rid is None:
-            await self._feita(canal, linha, i, erro)
+            await self._feita(saida, linha, i, erro)
             return
         nova, curta = self.portas.responder(rid, i.texto)
-        await self._feita(canal, linha, i, f"Respondida: a execução segue em {curta}. Conto aqui quando terminar.",
+        await self._feita(saida, linha, i, f"Respondida: a execução segue em {curta}. Conto aqui quando terminar.",
                           alvo=f"run:{rid}", run_id=nova)
 
     # ------------------------------------------------------------------ prévia e botões
-    async def _previa(self, canal: CanalTelegram, linha: Linha, i: Intencao, texto: str,
+    async def _previa(self, saida: SaidaDaConversa, linha: Linha, i: Intencao, texto: str,
                       instance_ids: list[str] | None) -> None:
         ident = self._id(linha)
         p = self.portas.previa(texto, instance_ids)
@@ -374,11 +457,11 @@ class ServicoDeEntrada:
             online = self.portas.online()[:8]
             pergunta = " ".join(p.perguntas) or "Para qual aparelho?"
             if not online:
-                await self._feita(canal, linha, i, f"{pergunta} Nenhum aparelho online agora; tente pelo painel.")
+                await self._feita(saida, linha, i, f"{pergunta} Nenhum aparelho online agora; tente pelo painel.")
                 return
             self.repo.marcar(ident, "pergunta", intencao=i.tipo, destino="central", previa={"texto": texto},
                              de=("recebida", "pergunta"))
-            await self._responder(canal, linha, pergunta, origem="previa",
+            await self._responder(saida, linha, pergunta, origem="previa",
                                   botoes=[(a, f"a:{ident}:{a}") for a in online])
             return
         resumo = ", ".join(str(a.get("instance_id") or "a escolher")
@@ -386,10 +469,10 @@ class ServicoDeEntrada:
         avisos = f"\n{' '.join(p.avisos)}" if p.avisos else ""
         self.repo.marcar(ident, "pergunta", intencao=i.tipo, destino="central",
                          previa={"texto": texto, "alvos": p.alvos}, de=("recebida", "pergunta"))
-        await self._responder(canal, linha, f"Prévia: {resumo}\nPedido: {self._redigir(p.comando)[:300]}{avisos}",
+        await self._responder(saida, linha, f"Prévia: {resumo}\nPedido: {self._redigir(p.comando)[:300]}{avisos}",
                               origem="previa", botoes=[("Executar", f"x:{ident}"), ("Cancelar", f"c:{ident}")])
 
-    async def _botao(self, canal: CanalTelegram, linha: Linha) -> None:
+    async def _botao(self, saida: SaidaDaConversa, linha: Linha) -> None:
         """O toque num botão da prévia. A linha do botão só registra; quem muda é a linha da mensagem original, e só
         a partir de `pergunta` (o segundo toque perde no `UPDATE ... WHERE estado='pergunta'`)."""
         acao, _, resto = str(linha.get("texto") or "").partition(":")
@@ -397,65 +480,65 @@ class ServicoDeEntrada:
         original = self.repo.linha(int(alvo_id)) if alvo_id.isdigit() else None
         self.repo.marcar(self._id(linha), "feita", intencao=f"botao:{acao}", destino="central",
                          alvo=f"mensagem:{alvo_id}", de=("recebida",))
-        mid = _int(linha.get("message_id"))
+        mid = _texto(linha.get("ref_mensagem"))
         if mid is not None:
             try:
-                await canal.tirar_botoes(mid)             # só a tela: a garantia é o estado da linha original
+                await saida.tirar_botoes(mid)             # só a tela: a garantia é o estado da linha original
             except FalhaDeEnvio:
                 pass
         if original is None or original.get("estado") != "pergunta":
-            await self._responder(canal, linha, "Esta prévia já foi tratada.")
+            await self._responder(saida, linha, "Esta prévia já foi tratada.")
             return
         previa = _json(original.get("previa"))
         i = Intencao(str(original.get("intencao") or "livre"))
         oid = self._id(original)
         if acao == "c":
             if self.repo.marcar(oid, "cancelada", de=("pergunta",)):
-                await self._responder(canal, original, "Cancelado: nada foi executado.")
+                await self._responder(saida, original, "Cancelado: nada foi executado.")
         elif acao == "a" and extra:
-            await self._previa(canal, original, i, str(previa.get("texto") or ""), [extra])
+            await self._previa(saida, original, i, str(previa.get("texto") or ""), [extra])
         elif acao == "x" and isinstance(previa.get("alvos"), list):
             if not self.repo.marcar(oid, "executando", de=("pergunta",)):
                 return
             alvos = [a for a in previa["alvos"] if isinstance(a, dict)]  # type: ignore[union-attr]
             try:
                 run_id, curta = self.portas.criar(str(previa.get("texto") or ""), alvos,
-                                                  f"telegram:{original['update_id']}")
+                                                  f"{self.repo.canal}:{original['id_externo']}")
             except RecusaDaCentral as recusa:
                 self.repo.marcar(oid, "falhou", erro="recusada pela Central", de=("executando",))
-                await self._responder(canal, original, f"Não criei a execução: {self._redigir(str(recusa))[:300]}")
+                await self._responder(saida, original, f"Não criei a execução: {self._redigir(str(recusa))[:300]}")
                 return
             except Exception:
                 log.exception("telegram: criar a execução da mensagem %s", oid)
                 self.repo.marcar(oid, "falhou", erro="erro interno ao criar", de=("executando",))
-                await self._responder(canal, original, "Não criei a execução: erro interno (está no log da Central).")
+                await self._responder(saida, original, "Não criei a execução: erro interno (está no log da Central).")
                 return
-            await self._feita(canal, original, i, f"Execução {curta} criada. Conto aqui quando terminar.",
+            await self._feita(saida, original, i, f"Execução {curta} criada. Conto aqui quando terminar.",
                               run_id=run_id)
 
     # ------------------------------------------------------------------ desfecho na thread
-    async def _contar_desfechos(self, canal: CanalTelegram) -> None:
+    async def _contar_desfechos(self, saida: SaidaDaConversa) -> None:
         for linha in self.repo.esperando_desfecho():
             texto = self.portas.desfecho(str(linha["run_id"]))
             if texto is None:
                 continue
-            await self._responder(canal, linha, self._redigir(texto), origem="resultado")
+            await self._responder(saida, linha, self._redigir(texto), origem="resultado")
             self.repo.marcar_desfecho(self._id(linha))
 
     # ------------------------------------------------------------------ saída
-    async def _responder(self, canal: CanalTelegram, linha: Mapping[str, object], texto: str, *,
+    async def _responder(self, saida: SaidaDaConversa, linha: Mapping[str, object], texto: str, *,
                          origem: str = "resposta", botoes: list[tuple[str, str]] | None = None) -> None:
-        await self._enviar(canal, texto, origem=origem, responde_a=_int(linha.get("message_id")), botoes=botoes,
-                           mensagem_id=self._id(linha))
+        await self._enviar(saida, texto, origem=origem, responde_a=_texto(linha.get("ref_mensagem")), botoes=botoes,
+                           entrada_id=self._id(linha))
 
-    async def _enviar(self, canal: CanalTelegram, texto: str, *, origem: str, responde_a: int | None = None,
-                      botoes: list[tuple[str, str]] | None = None, mensagem_id: int | None = None) -> None:
+    async def _enviar(self, saida: SaidaDaConversa, texto: str, *, origem: str, responde_a: str | None = None,
+                      botoes: list[tuple[str, str]] | None = None, entrada_id: int | None = None) -> None:
         try:
-            enviada = await canal.responder(texto, responde_a=responde_a, botoes=botoes)
+            enviada = await saida.responder(texto, responde_a=responde_a, botoes=botoes)
         except FalhaDeEnvio as falha:
             log.warning("telegram: resposta não saiu (%s)", falha.motivo)
             return
-        self.repo.registrar_enviada(enviada, origem, mensagem_id=mensagem_id)
+        self.repo.registrar_enviada(enviada, origem, entrada_id=entrada_id)
 
     # ------------------------------------------------------------------ laço
     async def laco(self) -> None:

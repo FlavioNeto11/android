@@ -21,12 +21,15 @@ from app.modules.avisos.adapters.telegram import CanalTelegram
 from app.modules.avisos.infrastructure.entrada import (
     OPERADOR_DO_TELEGRAM,
     RESPOSTA_CREDENCIAL,
+    RESPOSTA_CREDENCIAL_SEM_APAGAR,
     Pendencia,
     Previa,
+    Recebida,
     RecusaDaCentral,
+    SaidaDoTelegram,
     ServicoDeEntrada,
 )
-from app.modules.avisos.infrastructure.entrada_sql import MensagensDoTelegram
+from app.modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
 from app.security.sessions import operador_atual
 
@@ -46,6 +49,7 @@ class BotFalso:
         self.chamadas: list[tuple[str, dict[str, str], dict[str, object]]] = []
         self.mid = 1000
         self.conflito = False
+        self.apagar_falha = False
 
     def handler(self, req: httpx.Request) -> httpx.Response:
         metodo = req.url.path.rsplit("/", 1)[-1]
@@ -60,6 +64,8 @@ class BotFalso:
         if metodo == "sendMessage":
             self.mid += 1
             return httpx.Response(200, json={"ok": True, "result": {"message_id": self.mid}})
+        if metodo == "deleteMessage" and self.apagar_falha:
+            return httpx.Response(400, json={"ok": False, "description": "Bad Request: message can't be deleted"})
         return httpx.Response(200, json={"ok": True, "result": True})
 
     def mensagens(self) -> list[dict[str, object]]:
@@ -152,7 +158,7 @@ class Cenario:
         self.db.migrate()
         self.bot = BotFalso()
         self.portas = PortasFalsas()
-        self.repo = MensagensDoTelegram(self.db)
+        self.repo = EntradasDoCanal(self.db)
         self.dormidas: list[float] = []
         self.lider = lider
         self.servico = self.novo_servico()
@@ -172,7 +178,7 @@ class Cenario:
         return await self.servico.uma_volta()
 
     def linha(self, update_id: int) -> dict[str, object]:
-        r = self.db.one("SELECT * FROM telegram_mensagens WHERE update_id=?", (update_id,))
+        r = self.db.one("SELECT * FROM canal_entradas WHERE canal='telegram' AND id_externo=?", (str(update_id),))
         assert r is not None
         return dict(r)
 
@@ -200,17 +206,17 @@ async def test_offset_do_banco_ajuda_uma_vez_e_reinicio_sem_repetir(c: Cenario) 
 async def test_update_relida_nao_duplica(c: Cenario) -> None:
     await c.volta(msg(5, "/status"))
     # A mesma update chega de novo (queda antes de confirmar): o UNIQUE a engole e nada se repete.
-    c.repo.gravar(update_id=5, tipo="mensagem", do_chat=True, message_id=50, responde_a=None, texto="/status",
-                  tamanho=7)
+    c.repo.gravar(id_externo="5", ordem=5, tipo="mensagem", do_dono=True, ref_mensagem="50", responde_a=None,
+                  texto="/status", tamanho=7)
     await c.volta()
-    assert c.db.scalar("SELECT COUNT(*) FROM telegram_mensagens WHERE update_id=5") == 1
+    assert c.db.scalar("SELECT COUNT(*) FROM canal_entradas WHERE canal='telegram' AND id_externo='5'") == 1
     assert c.portas.nomes() == ["status"]
 
 
 async def test_outro_chat_fica_sem_texto_e_sem_resposta(c: Cenario) -> None:
     await c.volta(msg(5, "/status", chat=999))
     linha = c.linha(5)
-    assert (linha["do_chat"], linha["texto"], linha["estado"]) == (0, None, "ignorada")
+    assert (linha["do_dono"], linha["texto"], linha["estado"]) == (0, None, "ignorada")
     assert c.portas.nomes() == []
     assert len(c.bot.mensagens()) == 1                                          # só a /ajuda
 
@@ -225,10 +231,32 @@ async def test_credencial_ou_codigo_e_recusado_e_nao_gravado(c: Cenario, texto: 
     assert (linha["estado"], linha["texto"], linha["tamanho"]) == ("recusada", None, len(texto))
     assert RESPOSTA_CREDENCIAL in c.bot.textos()
     assert c.portas.nomes() == []
+    # O contrato dos canais (§7): a mensagem some do chat, e a resposta não responde à mensagem apagada.
+    apagadas = [b for m, _, b in c.bot.chamadas if m == "deleteMessage"]
+    assert apagadas == [{"chat_id": str(CHAT), "message_id": 50}]
+    assert linha["erro"] == "parece credencial ou código; apagada do chat"
+    assert "reply_parameters" not in c.bot.mensagens()[-1]
     # Os logs da Central não levam o texto nem o token. (A linha INFO do `httpx` traz a URL com o token: em produção
     # `setup_logging` põe o `httpx` em WARNING e o `RedactingFilter` no handler; aqui ela é deixada de fora.)
     nossos = " | ".join(r.getMessage() for r in caplog.records if not r.name.startswith(("httpx", "httpcore")))
     assert texto not in nossos and TOKEN not in nossos
+
+
+async def test_credencial_que_nao_se_apaga_pede_ao_dono_que_apague(c: Cenario) -> None:
+    c.bot.apagar_falha = True
+    await c.volta(msg(5, "minha senha é Abc!2345xyz"))
+    linha = c.linha(5)
+    assert (linha["estado"], linha["texto"], linha["erro"]) == ("recusada", None,
+                                                               "parece credencial ou código; não apagada do chat")
+    assert RESPOSTA_CREDENCIAL_SEM_APAGAR in c.bot.textos() and RESPOSTA_CREDENCIAL not in c.bot.textos()
+    assert c.bot.mensagens()[-1]["reply_parameters"] == {"message_id": 50, "allow_sending_without_reply": True}
+    # A releitura da mesma update (queda antes de confirmar) não tenta apagar nem responde de novo.
+    canal = c.servico.canal()
+    assert canal is not None
+    enviadas = len(c.bot.mensagens())
+    await c.servico.registrar(SaidaDoTelegram(canal), Recebida(id_externo="5", ordem=5, tipo="mensagem", do_dono=True,
+                                                               texto="minha senha é Abc!2345xyz", ref_mensagem="50"))
+    assert c.bot.chamou("deleteMessage") == 1 and len(c.bot.mensagens()) == enviadas
 
 
 async def test_mensagem_longa_demais_nao_e_gravada(c: Cenario) -> None:
@@ -291,7 +319,7 @@ async def test_recusa_do_pre_voo_volta_como_texto(c: Cenario) -> None:
 
 
 async def test_reply_ao_aviso_de_aprovacao_decide_como_pessoa(c: Cenario) -> None:
-    c.repo.registrar_enviada(555, "aviso", fato="approval:apr-0000aa11")
+    c.repo.registrar_enviada("555", "aviso", fato="approval:apr-0000aa11")
     await c.volta(msg(5, "sim", reply_to=555))
     assert c.portas.chamadas[-1] == ("decidir", ("apr-0000aa11", "approve"), OPERADOR_DO_TELEGRAM)
     assert c.linha(5)["alvo"] == "approval:apr-0000aa11"
@@ -308,7 +336,7 @@ async def test_responder_cria_a_sucessora_e_reply_a_pergunta_tambem(c: Cenario) 
     await c.volta(msg(5, "/responder 4985a1 Para o QA-001, texto oi"))
     assert c.portas.chamadas[-1][:2] == ("responder", ("r-20261002181523-4985a1", "Para o QA-001, texto oi"))
     assert c.linha(5)["run_id"] == "r-nova-000001"
-    c.repo.registrar_enviada(777, "aviso", fato="run:r-20261002181523-4985a1:needs_input")
+    c.repo.registrar_enviada("777", "aviso", fato="run:r-20261002181523-4985a1:needs_input")
     await c.volta(msg(6, "QA-002", reply_to=777))
     assert c.portas.chamadas[-1][:2] == ("responder", ("r-20261002181523-4985a1", "QA-002"))
 
@@ -337,7 +365,7 @@ async def test_409_vira_problema_e_espera_sem_disputar(c: Cenario) -> None:
     assert await c.volta(msg(5, "/status")) == 0
     assert [p.code for p in c.servico.problemas()] == ["telegram_entrada_conflito"]
     assert c.dormidas == [c.cfg.file.avisos.entrada.espera_conflito_s]
-    assert c.db.scalar("SELECT COUNT(*) FROM telegram_mensagens") == 0
+    assert c.db.scalar("SELECT COUNT(*) FROM canal_entradas") == 0
     c.bot.conflito = False
     await c.volta()
     assert c.servico.problemas() == []
@@ -371,6 +399,6 @@ async def test_pendencias_lista_o_fim_do_id(c: Cenario) -> None:
 async def test_operador_e_valor_e_o_veto_leva_a_nota(c: Cenario) -> None:
     # A identidade é um VALOR do serviço (o 32.2 põe `trello:<id>`), e o veto com nota chega ao serviço do painel.
     c.servico.operador = "trello:abc123"
-    c.repo.registrar_enviada(556, "aviso", fato="approval:apr-0000aa11")
+    c.repo.registrar_enviada("556", "aviso", fato="approval:apr-0000aa11")
     await c.volta(msg(5, "/vetar o tom ficou agressivo", reply_to=556))
     assert c.portas.chamadas[-1] == ("decidir", ("apr-0000aa11", "reject", "o tom ficou agressivo"), "trello:abc123")

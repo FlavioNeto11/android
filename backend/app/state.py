@@ -40,7 +40,7 @@ from .events import TELEMETRIA_KINDS, TELEMETRIA_RETENCAO_H, EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
 from .modules.avisos.infrastructure.entrada import ServicoDeEntrada
-from .modules.avisos.infrastructure.entrada_sql import MensagensDoTelegram
+from .modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from .modules.avisos.infrastructure.portas_da_central import PortasReais
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos
@@ -263,7 +263,8 @@ class AppState:
         # saldos, curadoria e retenção; os outros pulam a volta sem erro.
         self.lideranca = Lideranca(self.db, dono=cfg.owner_id)
         # Aviso fora do painel (28.11): espelho da caixa de Pendências no Telegram. Desligado de fábrica.
-        self.avisos = ServicoDeAvisos(cfg, self.bus, FilaDeAvisos(self.db), self.lideranca, lider=self._lider)
+        self.avisos = ServicoDeAvisos(cfg, self.bus, FilaDeAvisos(self.db), self.lideranca, lider=self._lider,
+                                      redigir=TriagemDeCredencial().redigir)
         self.transport = build_transport(cfg.env.command_transport, owner_id=cfg.owner_id or "local",
                                          url=cfg.env.nats_url)
         self.commands = CommandStore(self.db, owner_id=cfg.owner_id, outbox=self.outbox)
@@ -496,7 +497,7 @@ class AppState:
         # (`avisos.entrada.enabled`). As portas chamam os MESMOS serviços das rotas do painel.
         triagem = TriagemDeCredencial()
         self.telegram_entrada = ServicoDeEntrada(
-            cfg, MensagensDoTelegram(self.db),
+            cfg, EntradasDoCanal(self.db, canal="telegram"),
             PortasReais(db=self.db, runs=self.runs, aprovacoes=self.approval_service, saude=self.health,
                         online=lambda: [d.id for d in self.devices.list_dtos()
                                         if str(d.state) == "online" and d.kind != "store"]),

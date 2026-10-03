@@ -15,10 +15,15 @@ por receita; ligá-la é `avisos.aprendizado_faixas`.
 Chave de deduplicação comum (28.14): `<família>:<identidade do fato>`, montada só por `chave_do_fato`. Famílias:
 `approval`, `run`, `session`, `pedido` e `learning`. A identidade é a do FATO, nunca a do evento quando o fato se
 repete em eventos.
+
+Com a conversa de volta ligada (28.15, decisão (d) do ADR-071), a aprovação e a pergunta levam o CONTEÚDO, para o
+dono responder ali mesmo: o resumo, o alvo e o texto da aprovação, e a pergunta da execução. Passam pelo redator
+injetado (`TriagemDeCredencial.redigir`), com corte em 500 caracteres, sem captura de tela; o link segue. Sem o
+redator (a conversa desligada), a mensagem continua a menor possível.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 #: A caixa que o aviso espelha. O caminho é o da rota do painel (`frontend/src/lib/rotas.ts`).
@@ -47,6 +52,10 @@ FAIXAS_DO_APRENDIZADO_PADRAO: frozenset[str] = frozenset({"C"})
 ROTULO_GENERICO_DE_PEDIDO = "Um pedido tem novidade"
 #: O que cada aviso diz depois do título: uma instrução, nunca um dado.
 CORPO_PADRAO = "Abra a caixa de Pendências do painel para ver."
+#: O teto do conteúdo do fato na mensagem (decisão (d)): o resto fica no painel.
+CONTEUDO_MAX = 500
+COMO_DECIDIR = "Responda a esta mensagem com sim ou não (ou /vetar <motivo>)."
+COMO_RESPONDER = "Responda a esta mensagem com a resposta."
 
 
 @dataclass(frozen=True)
@@ -91,17 +100,32 @@ def _filho(dados: Mapping[str, object] | None, nome: str) -> Mapping[str, object
     return valor if isinstance(valor, Mapping) else {}
 
 
+def _conteudo(partes: list[str | None], redigir: Callable[[str], str], instrucao: str) -> str | None:
+    texto = "\n".join(p for p in partes if p)
+    if not texto:
+        return None
+    limpo = redigir(texto).strip()
+    if len(limpo) > CONTEUDO_MAX:
+        limpo = limpo[:CONTEUDO_MAX - 1].rstrip() + "…"
+    return f"{limpo}\n{instrucao}"
+
+
 def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: int | None,
                     url_painel: str | None = None,
-                    faixas_do_aprendizado: frozenset[str] = FAIXAS_DO_APRENDIZADO_PADRAO) -> Aviso | None:
+                    faixas_do_aprendizado: frozenset[str] = FAIXAS_DO_APRENDIZADO_PADRAO,
+                    redigir: Callable[[str], str] | None = None) -> Aviso | None:
     """O aviso que o evento merece, ou `None` quando ele não é espelho da caixa de Pendências.
 
     A chave é por FATO e não por evento, onde o fato se repete em eventos (`run.updated` sai a cada mudança da
     execução; uma só vez ela PAROU pedindo informação). Onde o evento é o próprio fato (`session.needs_person` já só
     sai na transição), a chave é o id do evento, que é o mesmo nas duas réplicas.
+
+    `redigir` (só com a conversa de volta ligada) põe no corpo o conteúdo da aprovação e da pergunta, redigido e
+    cortado; sem ele, o corpo é a instrução de sempre.
     """
     link = link_da_caixa(url_painel)
     pendencia = True
+    corpo: str | None = None
     tipo: str
     chave: str
     if kind == "approval.pending":
@@ -109,12 +133,19 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
         if ident is None:
             return None
         tipo, chave = "approval.pending", chave_do_fato("approval", ident)
+        if redigir is not None:
+            a = _filho(dados, "approval")
+            alvo, texto = _texto(a.get("target")), _texto(a.get("content"))
+            corpo = _conteudo([_texto(a.get("summary")), f"Alvo: {alvo}" if alvo else None,
+                               f"Texto: “{texto}”" if texto else None], redigir, COMO_DECIDIR)
     elif kind == "run.updated":
         run = _filho(dados, "run")
         ident = _texto(run.get("id"))
         if run.get("status") != "needs_input" or ident is None:
             return None
         tipo, chave = "run.needs_input", chave_do_fato("run", ident, "needs_input")
+        if redigir is not None:
+            corpo = _conteudo([_texto(run.get("status_detail"))], redigir, COMO_RESPONDER)
     elif kind == "session.needs_person":
         # `active` falso é o "deixou de precisar": não é pendência nova.
         if not (dados or {}).get("active") or not evento_id:
@@ -142,7 +173,7 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
     else:
         return None
     return Aviso(chave=chave, tipo=tipo, titulo="Central de Aparelhos: " + ROTULOS.get(tipo, ROTULO_GENERICO_DE_PEDIDO),
-                 corpo=CORPO_PADRAO if pendencia else "", link=link)
+                 corpo=corpo or (CORPO_PADRAO if pendencia else ""), link=link)
 
 
 def texto_da_mensagem(titulo: str, corpo: str, link: str | None) -> str:

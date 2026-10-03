@@ -2,7 +2,8 @@
 Bot API.
 
 Chamadas: `sendMessage` (o aviso, a resposta, a prévia com botões), `getUpdates` (a descoberta do `chat_id` e, no
-28.15, o long-poll da entrada com offset), `answerCallbackQuery` e `editMessageReplyMarkup` (o toque num botão).
+28.15, o long-poll da entrada com offset), `answerCallbackQuery` e `editMessageReplyMarkup` (o toque num botão) e
+`deleteMessage` (a mensagem da pessoa com cara de credencial).
 Sem webhook e sem rota de entrada: o central PERGUNTA ao Telegram, nunca é chamado por ele.
 
 O token é o segredo: ele vai NA URL (`/bot<token>/…`, é o formato da Bot API), e por isso a URL nunca é registrada,
@@ -170,6 +171,13 @@ class CanalTelegram:
             "chat_id": self._chat_id, "message_id": message_id, "reply_markup": {"inline_keyboard": []}})
         if resposta.status_code != 200 or _json(resposta).get("ok") is not True:
             raise self._falha(resposta)
+
+    async def apagar(self, message_id: int) -> bool:
+        """`deleteMessage` da mensagem da pessoa que tinha cara de credencial (contrato dos canais, §7). Em chat privado
+        o bot apaga a mensagem recebida (até 48 h). Devolve se apagou: o Telegram recusa com 400 o que não pode apagar,
+        e aí quem responde pede ao dono que apague."""
+        resposta = await self._chamar("deleteMessage", json={"chat_id": self._chat_id, "message_id": message_id})
+        return resposta.status_code == 200 and _json(resposta).get("ok") is True
 
     async def descobrir_chats(self) -> list[ChatEncontrado]:
         """Os chats que escreveram ao bot. `getUpdates` SEM `offset`: nada é confirmado, então rodar isto de novo

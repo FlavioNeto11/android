@@ -81,16 +81,18 @@ class FilaDeAvisos:
                        corpo=str(r["corpo"] or ""), link=cast("str | None", r["link"]), tentativas=int(r["tentativas"]))
 
     def marcar_enviado(self, entrega_id: int, *, message_id: int | None = None) -> None:
-        """Com o `message_id`, a mensagem entra no registro do que a Central enviou (085, item 28.15): é o que liga o
-        reply da pessoa ao fato do aviso, e o que separa o reply à Central do reply à orquestradora."""
+        """Com o `message_id`, a mensagem entra no registro do que a Central enviou pelo canal (`canal_enviadas` da
+        085, item 28.15): é o que liga o reply da pessoa ao fato do aviso, e o que separa o reply à Central do reply à
+        orquestradora."""
         agora = self._agora()
         self.db.execute("UPDATE avisos_entregas SET estado='enviado', enviado_em=?, proximo_envio_em=NULL,"
                         " ultimo_erro=NULL WHERE id=? AND estado='enviando'", (agora, entrega_id))
         if message_id is not None:
             self.db.execute(
-                "INSERT INTO telegram_enviadas(message_id, origem, fato, aviso_id, enviada_em)"
-                " SELECT ?, 'aviso', chave, id, ? FROM avisos_entregas WHERE id=? ON CONFLICT (message_id) DO NOTHING",
-                (int(message_id), agora, entrega_id))
+                "INSERT INTO canal_enviadas(canal, ref_mensagem, origem, fato, aviso_id, enviada_em)"
+                " SELECT canal, ?, 'aviso', chave, id, ? FROM avisos_entregas WHERE id=?"
+                " ON CONFLICT (canal, ref_mensagem) DO NOTHING",
+                (str(int(message_id)), agora, entrega_id))
 
     def marcar_retentar(self, entrega_id: int, *, ate: datetime, erro: str) -> None:
         self.db.execute("UPDATE avisos_entregas SET estado='pendente', proximo_envio_em=?, ultimo_erro=?"
