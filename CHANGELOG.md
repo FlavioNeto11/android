@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — ADR-069 item 20: o limiar da porta sobre a probabilidade devolvida e o rótulo 1 do curador só do dono (branch docs/adr-069-item-20, para a suíte 12)
+
+- Documentação e processo: registra as duas decisões da orquestradora do 31.19 (03/10 ~15:15Z), que já estão no
+  código da suíte 11 (442a9249). A porta mede o limiar na probabilidade devolvida da escolha, que precisa ser a maior;
+  o rótulo 1 do curador só vale do autor dono declarado (`--autor-dono`, `Flavio`). Inclui as ressalvas do nome do
+  painel. Nenhum código muda.
+
 ## 2026-10-03 — Deploy 11 no central (c8304e85; decisão fechada em sombra na intenção; autopublicação em sombra; 25.13 real)
 
 - Implantado no central (`real`, 03/10, WIN-7S2UASNLFOP): commit c8304e85 = suíte 11 (97425d5f) + os estados da Android.

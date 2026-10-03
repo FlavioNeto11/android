@@ -76,7 +76,7 @@ item nem aceita parecer (ADR-069 item 2).
   O nome do dono é `Flavio`, confirmado pela orquestradora em `panel_sessions` (operador `Flavio`, leitura em modo só
   leitura, 03/10). Ressalvas: o nome é declarado atrás de um token compartilhado, e um agente de validação que use o Chrome do
   dono também aparece como `Flavio`. Por regra, esses agentes só leem e não geram transição.
-- **A porta passa a seguir o contrato** (decisão da orquestradora, 03/10 ~15:15Z). A `Pergunta` diz que o limiar vale
+- **A porta passa a seguir o contrato** (decisão da orquestradora, 03/10 ~15:15Z; ADR-069 item 20, com o rótulo 1). A `Pergunta` diz que o limiar vale
   sobre a probabilidade devolvida, mas a porta comparava a `confianca`. Agora, no `choice`, o limiar vale sobre a
   probabilidade da opção escolhida, que precisa ser a maior (com o Jev coerente, é a maior probabilidade). A escolha
   sem probabilidade, ou que não é a maior, falha fechado. O limiar segue em 0,85 e nada muda hoje: nas 4 respostas, a
