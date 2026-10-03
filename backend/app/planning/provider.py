@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, get_args
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ..config import Config
 from ..models import AiStatus, DeliveryLevel, PersonaDraft, Plan, SocialDraftDTO
@@ -235,6 +235,9 @@ class Verdict(BaseModel):
     satisfied: Literal["yes", "no", "uncertain", "unprovable"]   # unprovable = defeito do plano (não é estado de tela)
     evidence: str
     delivery_level: DeliveryLevel | None = None
+    #: 29.58 (C): quantas cópias do efeito DESTA execução a tela mostra (a mesma mensagem enviada duas vezes agora → 2).
+    #: Interno: decide o fechamento `uncertain` "efeito repetido"; fora da serialização quando nulo.
+    copias: int | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 @dataclass(slots=True)

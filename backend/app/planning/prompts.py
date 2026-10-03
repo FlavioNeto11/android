@@ -277,6 +277,9 @@ tela (imagem + hierarquia). Julgue APENAS o que é observável agora:
   none (não aparece ou falhou). Quando a pós-condição EXIGIR um nível, só considere satisfeito se o observado
   for igual ou superior. Quando ela não exigir, informe o nível e julgue a pós-condição pelo que ela descreve:
   há app que nunca mostra "enviada", e ali o nível `appeared` não é motivo para reprovar.
+- `copias`: numa etapa que dispara um efeito externo (enviar, comentar, publicar), quantas cópias do efeito DESTA
+  execução aparecem na tela — a mesma mensagem ou o mesmo comentário saindo duas vezes agora vale 2. Itens iguais de
+  antes (horário anterior, mais acima na conversa) não contam. null quando não se aplica ou não dá para contar.
 - `evidence` cita, em português, o texto/elemento que fundamenta o julgamento.
 
 {UNTRUSTED_RULE}"""

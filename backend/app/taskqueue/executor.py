@@ -33,8 +33,8 @@ from ..devices.adb import AVISO_DE_ANR, MorteDoApp, motivo_de_anr
 from ..devices.conta_observada import evidencia_legivel
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter, Observation, dimensoes_do_modelo
 from ..metricas import metricas
-from ..models import (DELIVERY_ORDER, ActionStatus, AttemptStatus, DeliveryLevel, Plan, Postcondition, StepDTO,
-                      StepResult, StepStatus)
+from ..models import (DELIVERY_ORDER, ActionStatus, AttemptStatus, DeliveryLevel, EfeitoRepetido, Plan, Postcondition,
+                      StepDTO, StepResult, StepStatus)
 from ..modules.capabilities.domain.definition import CapabilityRef
 from ..modules.capabilities.domain.strategy import StrategyKind
 from ..modules.capabilities.domain.verification import Observation as Leitura
@@ -45,7 +45,8 @@ from ..modules.identity.application.available_data import (account_hosts, availa
                                                             typable_secret_for)
 from ..modules.identity.domain.available_data import ResolvedSecret, SecretResolution
 from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
-from ..planning.capabilities import CONHECIMENTO_DE_APPS, Capability, capability_of, contraparte, guardas_do_cartao
+from ..planning.capabilities import (CONHECIMENTO_DE_APPS, Capability, capability_of, contraparte, guardas_do_cartao,
+                                     load_catalog)
 from ..planning.catalog import session_provider_of
 from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, LeituraRequest,
                                  MarcaDaChamada, MotivoDaChamada, MotivoDaImagem, MotivoDeEscalonamento, ScreenInput,
@@ -235,6 +236,9 @@ class StepOutcome:
     #: RA-22: o `AIError.kind` que encerrou a etapa (o desfecho saiu de um erro de IA), que vai para
     #: `attempts.error_kind` e decide o tipo da falha antes do texto (`classificar_falha`). `None` = não foi erro de IA.
     ai_error_kind: str | None = None
+    #: 29.58 (C): o resultado a gravar na etapa quando o desfecho NÃO é sucesso (hoje: `uncertain` por efeito repetido,
+    #: com `efeito_repetido`). O sucesso grava o dele no próprio executor.
+    result: StepResult | None = None
 
 
 # kinds de AIError que são problema de CONTA (crédito ou credencial), não da etapa: nenhuma tentativa nova
@@ -1551,6 +1555,7 @@ class StepExecutor:
         # depois do laço) já aprova antes do ator, o veredito fica aqui e o fim do laço o REUSA: a etapa paga uma
         # verificação, não duas. Quando não aprova, o laço segue na mesma tentativa, com o veredito no `history`.
         veredito_antecipado: tuple[bool, str, DeliveryLevel | None, Observation | None, bool] | None = None
+        copias_vistas: list[int] = []        # 29.58 (C): `Verdict.copias` de cada julgamento desta tentativa
         julgamentos_antes_do_ator = 0
         sig_julgada_antes_do_ator: str | None = None
 
@@ -1568,7 +1573,8 @@ class StepExecutor:
                                        local_proof=(cap.local_proof if cap else None),
                                        capability=(CapabilityRef(app.package, cap.key) if cap and app.package else None),
                                        attempt_id=attempt_id, cartao=cartao, pacote=app.package,
-                                       imagem_forcada=bool(visuais), uma_rodada=True, so_prova_local=so_prova_local)
+                                       imagem_forcada=bool(visuais), uma_rodada=True, so_prova_local=so_prova_local,
+                                       copias_vistas=copias_vistas)
             except DriverTimeout as exc:
                 return await self._stuck(rt, step, fired, str(exc))
             except AIError as exc:
@@ -2219,6 +2225,26 @@ class StepExecutor:
                         continue
                 else:
                     is_commit = alegado
+            elif decision.tool in EFFECT_CAPABLE and (
+                    fora := efeito_fora_da_etapa(decision.tool, args, tool_ctx, obs.tree, app.package)) is not None:
+                # 29.58 (A): o efeito é marcado pela AÇÃO, não pela etapa. Na 5f2de5 a IA, dentro de `open_app` (sem
+                # efeito declarado), digitou e tocou em enviar: o toque saiu gravado sem efeito, sem a trava de não
+                # repetir, sem a guarda e sem a aprovação da etapa que declara o envio — que enviou de novo depois.
+                # Recusado ANTES de agir; o motivo diz ao ator o que fazer.
+                motivo_fora = (f"{REJEICAO_EFEITO_FORA_DA_ETAPA} ({fora}). Não toque nele: termine esta etapa quando o "
+                               "objetivo DELA estiver cumprido e deixe o efeito para a etapa que o declara.")
+                aid = repo.log_intent(attempt_id, decision.tool, args.model_dump(mode="json"), rationale,
+                                      side_effect=True, source="recipe" if from_recipe else "ai")
+                repo.finish_action(aid, ActionStatus.rejected, error=motivo_fora)
+                metricas.contar("executor.efeito_fora_da_etapa", origem="recipe" if from_recipe else "ai",
+                                ferramenta=decision.tool)
+                if from_recipe:
+                    rr.diverged = f"efeito externo numa etapa sem efeito: {fora}"
+                history.append(f"{decision.tool} REJEITADA pelo executor: {motivo_fora}")
+                errors_in_row += 1
+                if errors_in_row >= 4:
+                    return await fail_or_retry("Um efeito externo foi tentado numa etapa que não o declara.", obs)
+                continue
             # ---------- LT-12: na nova tentativa, o modelo barato não repete onde a anterior parou nem dispara o efeito
             if retentativa and not retentativa_subiu and not from_recipe and tier == 0:
                 repete = acao_onde_parou == (obs.tree.signature(estrutural=True), f"{decision.tool}:{_target_key(args)}")
@@ -2450,7 +2476,8 @@ class StepExecutor:
                                                                       capability=(CapabilityRef(app.package, cap.key)
                                                                                   if cap and app.package else None),
                                                                       attempt_id=attempt_id, cartao=cartao,
-                                                                      pacote=app.package, imagem_forcada=bool(visuais))
+                                                                      pacote=app.package, imagem_forcada=bool(visuais),
+                                                                      copias_vistas=copias_vistas)
         except DriverTimeout as exc:
             return await self._stuck(rt, step, fired, str(exc))
         except AIError as exc:
@@ -2484,6 +2511,15 @@ class StepExecutor:
         # o nível de entrega declarado pela IA em step_done não vale como prova; só o observado na verificação
         note = f"Pós-condição {'comprovada' if ok else 'NÃO comprovada'}: {text}"
         await evidence(obs, note, kind="verifier" if obs is None else "screenshot")
+        if step.side_effect and fired and (repetido := self._efeito_repetido(step, copias_vistas)) is not None:
+            # 29.58 (C): o efeito saiu mais de uma vez. Nunca "sucesso comprovado" — nem falha: o efeito existe. A
+            # pessoa confere e decide; `steps.result.efeito_repetido` diz quantas cópias e quem as viu.
+            motivo = (f"efeito repetido ({repetido.copias}): o efeito externo desta etapa saiu mais de uma vez "
+                      f"(visto {'pelo verificador na tela' if repetido.fonte == 'verificador' else 'nas ações gravadas'})"
+                      f"; {text}")
+            return StepOutcome(Outcome.uncertain, motivo, delivery_level=level,
+                               result=StepResult(verified=False, evidence_text=text, delivery_level=level,
+                                                 efeito_repetido=repetido))
         if ok and faltam_saidas():
             # Comprovada, mas sem o valor que as seguintes usam: nunca é sucesso — a próxima etapa pararia sem ele, e
             # com o efeito disparado repetir a etapa é o que não se faz.
@@ -2513,6 +2549,17 @@ class StepExecutor:
                                f"processo/histórico); repetir não resolve: {text}", plan_defect=True)
         return StepOutcome(Outcome.retry if step.attempts < step.max_attempts else Outcome.failed,
                            f"Pós-condição não comprovada: {text}")
+
+    def _efeito_repetido(self, step: StepDTO, copias_vistas: list[int]) -> EfeitoRepetido | None:
+        """29.58 (C): o efeito desta etapa saiu repetido? O maior entre o que o verificador contou na tela e o que as
+        ações gravadas mostram; empate fica com as ações (determinístico). `None` com menos de 2 cópias."""
+        pelo_verificador = max(copias_vistas, default=0)
+        pelas_acoes = self.repo.copias_pelas_acoes(step.id)
+        if max(pelo_verificador, pelas_acoes) < 2:
+            return None
+        if pelas_acoes >= pelo_verificador:
+            return EfeitoRepetido(copias=pelas_acoes, fonte="acoes")
+        return EfeitoRepetido(copias=pelo_verificador, fonte="verificador")
 
     # ------------------------------------------------------------------ verificação
     @staticmethod
@@ -2588,7 +2635,7 @@ class StepExecutor:
                       local_proof: str | None = None, capability: CapabilityRef | None = None,
                       attempt_id: str | None = None, cartao: tuple[str, ...] = (), pacote: str | None,
                       imagem_forcada: bool = False, uma_rodada: bool = False, so_prova_local: bool = False,
-                      proposito: MotivoDaChamada = "julgamento"
+                      proposito: MotivoDaChamada = "julgamento", copias_vistas: list[int] | None = None
                       ) -> tuple[bool, str, DeliveryLevel | None, Observation | None, bool]:
         """`uma_rodada`: uma só leitura e, se a pós-condição a exigir, um só julgamento — devolve o veredito mesmo
         negativo, sem esperar a tela mudar até o fim do orçamento. É o modo dos atalhos que conferem ANTES do ator
@@ -2763,6 +2810,8 @@ class StepExecutor:
                             marca=MarcaDaChamada(motivo="rejulgamento", escalate="sim_com_efeito",
                                                  image_reason=motivo_imagem))
                         level = verdict.delivery_level
+                    if copias_vistas is not None and verdict.copias is not None:
+                        copias_vistas.append(verdict.copias)
                     ok = verdict.satisfied == "yes"
                     if ok and need and DELIVERY_ORDER[level or DeliveryLevel.none] < DELIVERY_ORDER[need]:
                         ok = False
@@ -3038,6 +3087,65 @@ def _saidas_do_desfecho(lidos: dict[str, tuple[str, str]]) -> dict[str, str] | N
 
 def _safe_args(raw: Any) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {"raw": str(raw)[:300]}
+
+
+#: 29.58 (A): o motivo da recusa de uma ação com cara de efeito externo numa etapa que não declara efeito.
+REJEICAO_EFEITO_FORA_DA_ETAPA = "o efeito só sai na etapa que o declara: esta etapa não declara efeito externo"
+
+#: Campo de composição (mensagem, comentário, resposta, legenda): Enter nele envia. Campo de busca fica de fora.
+_CAMPO_DE_COMPOSICAO = re.compile(r"(mensag|message|coment|comment|reply|respo|legenda|caption|escrev|write)",
+                                  re.IGNORECASE)
+
+
+def efeito_fora_da_etapa(tool: str, args: Any, ctx: ToolContext, tree: Any, package: str | None) -> str | None:
+    """29.58 (A): esta ação PARECE disparar um efeito externo? Devolve o porquê, ou `None`. Só é perguntado numa etapa
+    sem efeito declarado. Mesma regra do caminho com efeito: com catálogo, o gatilho é ESTRUTURAL (o `commit_selector`
+    das capacidades com efeito do app; o "New post" que só abre a criação não é envio); sem catálogo, o vocabulário de
+    verbos (`looks_like_commit`). A decisão que se declara commit (`is_commit_action`) conta sempre."""
+    if bool(getattr(args, "is_commit_action", False)):
+        return "a própria decisão declarou este gesto como o efeito externo"
+    alvo = None
+    try:
+        if tool in ("tap", "long_press"):
+            alvo = resolve_point(ctx, getattr(args, "element_id", None), getattr(args, "x", None),
+                                 getattr(args, "y", None))[2]
+        elif tool == "type_text" and bool(getattr(args, "press_enter", False)):
+            eid = getattr(args, "element_id", None)
+            alvo = (tree.by_id(eid) if eid else
+                    next((e for e in tree.elements if e.focused and e.editable), None))
+    except DriverError:
+        return None                    # o alvo nem existe: a ferramenta falha adiante, sem chegar ao aparelho
+    if alvo is None:
+        return None
+    rotulo = (alvo.text or alvo.desc or alvo.resource_id.rsplit("/", 1)[-1] or alvo.class_name)[:60]
+    if tool == "type_text":
+        campo = " ".join((alvo.text, alvo.desc, alvo.resource_id.rsplit("/", 1)[-1].replace("_", " ")))
+        return f"Enter no campo '{rotulo}' envia" if _CAMPO_DE_COMPOSICAO.search(campo) else None
+    catalogo = load_catalog(package)
+    gatilhos = [c for c in catalogo.capabilities if c.side_effect and c.commit_selector] if catalogo is not None else []
+    if gatilhos:
+        # Catálogo sem nenhum gatilho declarado (o Outlook, hoje) cai no vocabulário, como a etapa sem seletor.
+        for cap in gatilhos:
+            if _gatilho_exato(alvo, cap.commit_selector or ""):
+                return f"'{rotulo}' é o gatilho do efeito '{cap.key}' deste app"
+        return None
+    return f"'{rotulo}' parece disparar um efeito externo (enviar, publicar, confirmar)" if looks_like_commit(alvo) else None
+
+
+def _gatilho_exato(alvo: Any, seletor: str) -> bool:
+    """O `commit_selector` casa com `alvo` EXATAMENTE? Na etapa com efeito o seletor vale só para a capacidade da
+    própria etapa; aqui ele é conferido contra TODAS as capacidades com efeito do app, e a substring sem caixa daria
+    recusa falsa: `text=Follow` casa "Followers" e `text=Following` casa o rótulo "following" do perfil — abrir a lista
+    de seguidores numa leitura seria recusado. Por isso texto e descrição casam o texto CRU inteiro; o `id` casa como
+    sempre (é estrutural)."""
+    for campo, valor, _ in UiTree._partes_do_seletor(seletor):
+        if campo == "resource_id":
+            rid = alvo.resource_id
+            if not (rid == valor or rid.endswith("/" + valor) or rid.endswith(":id/" + valor)):
+                return False
+        elif (alvo.text if campo == "text" else alvo.desc).strip() != valor:
+            return False
+    return True
 
 
 #: `apps.category` do app de prova (o QA Messenger embutido). A regra lê o DADO do app, nunca o nome (ADR-052), e exige

@@ -1048,6 +1048,50 @@ Tudo `simulated`.
 - rever cada aresta de reabertura, para que reabrir execução terminal em `recompute_run` seja uma aresta decidida, e
   não efeito colateral.
 
+## Efeito marcado pela ação e efeito repetido (29.58, 03/10/2026)
+
+Na execução 5f2de5 a IA, numa etapa SEM efeito declarado, digitou e tocou em enviar. O toque foi gravado sem efeito,
+sem a trava de não repetir, sem a guarda e sem a aprovação da etapa que declara o envio, e essa etapa enviou de novo.
+
+- **Recusa antes de agir** (`StepExecutor`, `efeito_fora_da_etapa`). Numa etapa sem efeito, toda ação de
+  `EFFECT_CAPABLE` é perguntada: ela parece disparar um efeito externo? Se sim, é recusada sem tocar o aparelho:
+  - grava `actions.side_effect=1` com `status=rejected`;
+  - o motivo manda o ator terminar a etapa e deixar o efeito para a etapa que o declara;
+  - conta em `errors_in_row` (4 → `fail_or_retry`), e a receita diverge;
+  - conta na métrica `executor.efeito_fora_da_etapa` (`origem`, `ferramenta`), que serve para vigiar falso positivo.
+
+  Como a recusa decide se a ação "parece efeito":
+  - `is_commit_action=true` conta sempre;
+  - **com catálogo**, o gatilho é o `commit_selector` das capacidades com efeito do app, casado **EXATO** no texto
+    cru em `text=` e `desc=` (o `id=` casa como sempre). Por substring sem caixa, `text=Follow` casaria "followers" e
+    `text=Following` o rótulo "following" do perfil, e abrir a lista de seguidores numa leitura seria recusado.
+    "New post", que só abre a criação, não é gatilho;
+  - **sem catálogo**, ou com um catálogo que não declara nenhum gatilho (o do Outlook, hoje), o vocabulário de
+    `looks_like_commit`, como na etapa com efeito sem seletor;
+  - `type_text` com Enter conta só num campo de composição (mensagem, comentário, resposta, legenda); num campo de
+    busca, não.
+
+  A aprovação (`_approval_gate`) continua por etapa: com a recusa, o efeito só sai na etapa que o declara e passa
+  pela política da capacidade dela.
+- **Efeito repetido fecha `uncertain`** (`_efeito_repetido`), como defesa em profundidade para o que a recusa não
+  pegar. Vale para uma etapa com efeito que disparou, com duas fontes:
+  - `Verdict.copias`: o verificador conta as cópias do efeito DESTA execução na tela;
+  - `Repository.copias_pelas_acoes`: as etapas da mesma etapa-modelo e do mesmo `item` que dispararam o efeito
+    (`done`/`unknown`) no mesmo objetivo e na mesma versão do plano. Outra versão fica de fora, porque "repetir" é
+    gesto da pessoa e revisa o plano.
+
+  Com 2 ou mais cópias, a etapa e o objetivo fecham `uncertain` "efeito repetido (N)", nunca "sucesso comprovado" e
+  nunca falha (o efeito existe). Nada é reenviado. A etapa grava
+  `steps.result.efeito_repetido = {"copias": N, "fonte": "verificador"|"acoes"}`, ausente sem repetição. A prova de
+  fluxo do aprendizado (30.42) lê esse campo; o contrato está no api-contract.
+
+  A contagem pelo texto na tela foi descartada: mensagens iguais de execuções anteriores dariam falso positivo.
+- **Testes** (`simulated`): `backend/tests/test_efeito_pela_acao.py`. Cobrem a função pura, a 5f2de5 com aparelho
+  falso (uma mensagem só), o "Post" do Instagram numa etapa sem efeito (sem toque e sem aprovação aberta), as duas
+  cópias vistas pelo verificador e a contagem pelas ações.
+- **Prova real**: `not_run`. A reprodução no QA Messenger (android-10, sem conta), com IA pontual, fica para a vez da
+  orquestradora.
+
 ## O que falta
 
 - **Recursos:** ligar o `apply` e o `reconcile` no `_tick` (decisão do dono: muda quem dispara); a refoto de

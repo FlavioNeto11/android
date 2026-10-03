@@ -35,6 +35,21 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_relatorio_de_falha_do_emulador.py` (14) e 2 casos em `test_worker_executor.py`.
   A `real` é `not_run`: subida de um aparelho sem conta com o dump de volta, na vez da orquestradora.
 
+## 2026-10-03 — 29.58: efeito marcado pela ação e efeito repetido incerto (branch fix/29-58-efeito-pela-acao, sem migração)
+
+- Numa etapa sem efeito declarado, a ação com cara de efeito externo é recusada antes de tocar:
+  - grava `actions.side_effect=1`, `rejected`, e conta na métrica `executor.efeito_fora_da_etapa`;
+  - com catálogo, o gatilho é o `commit_selector` casado exato; sem catálogo, o vocabulário; Enter conta só em campo
+    de composição.
+
+  Era o caso da 5f2de5: o envio dentro de uma etapa sem efeito e o reenvio na etapa de envio.
+- Efeito que saiu 2 ou mais vezes fecha `uncertain` "efeito repetido (N)" e grava
+  `steps.result.efeito_repetido = {copias, fonte}`. A contagem vem do verificador (`Verdict.copias`, prompt
+  atualizado) ou das ações gravadas da mesma etapa-modelo e item.
+- Validação `simulated`: `backend/tests/test_efeito_pela_acao.py`, 11 testes. A prova real no QA Messenger é
+  `not_run`.
+- Doc: `docs/dominios/execution.md`, seção nova.
+
 ## 2026-10-03 — Portal público no ar em `https://dev.nvit.com.br/central` (29.54, ADR-073; prova real)
 
 - O hostname entrou em `server.public_hosts` do `config.yaml` do central (21:35:02Z, com cópia em `data/backups/`),

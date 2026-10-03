@@ -779,6 +779,23 @@ class Repository:
                          int(effect_possible), dumps(target) if target is not None else None, action_id))
         self.emit_action(action_id)
 
+    def copias_pelas_acoes(self, step_id: str) -> int:
+        """29.58 (C): quantas etapas da MESMA etapa-modelo e alvo (mesma chave-modelo e mesmo `item`), no mesmo
+        objetivo e na mesma versão do plano, dispararam o efeito (ação de efeito `done`/`unknown`). A trava de não
+        repetir segura a etapa; isto pega a repetição entre etapas. Outra versão do plano fica de fora: "repetir" é
+        gesto da pessoa e revisa o plano."""
+        alvo = self.db.one("SELECT objective_id, plan_version, COALESCE(template_key, key) AS modelo, variables"
+                           " FROM steps WHERE id=?", (step_id,))
+        if alvo is None:
+            return 0
+        item = (loads(alvo["variables"], {}) or {}).get("item")
+        rows = self.db.query(
+            "SELECT DISTINCT s.id, s.variables FROM steps s JOIN attempts t ON t.step_id=s.id"
+            " JOIN actions a ON a.attempt_id=t.id WHERE s.objective_id=? AND s.plan_version=?"
+            " AND COALESCE(s.template_key, s.key)=? AND a.side_effect=1 AND a.status IN ('done','unknown')"
+            " ORDER BY s.id", (alvo["objective_id"], alvo["plan_version"], alvo["modelo"]))
+        return sum(1 for r in rows if (loads(r["variables"], {}) or {}).get("item") == item)
+
     def commit_state(self, step_id: str) -> tuple[bool, bool]:
         """(efeito_disparado, resultado_desconhecido) considerando TODAS as tentativas da etapa."""
         rows = self.db.query(
