@@ -347,8 +347,8 @@ async def test_em_on_o_detalhe_e_a_fila_mostram_o_parecer_e_o_passo(mundo: Mundo
     mundo.volta()
     d = (await cliente.get(f"/api/aprendizado/licao/{b}")).json()
     [p] = d["pareceres"]
-    assert (p["atual"], p["acao"], p["recusa"], p["classe"], p["simulated"]) == (
-        True, {"to": "validated", "rotulo": "validar"}, None, "B", False)
+    assert (p["atual"], p["acao"], p["recusa"], p["classe"], p["classe_no_parecer"], p["simulated"]) == (
+        True, {"to": "validated", "rotulo": "validar"}, None, "B", None, False)
     assert p["parecer"]["decisao"] == "aprovar" and p["parecer"]["confianca"] == "alta"
     assert d["curador"] == {"modo": "on", "pendentes_ocultos": 0, "pode_pedir_revisao": True}
     fila = {i["ref"]: i["parecer"] for i in (await cliente.get("/api/aprendizado/pendentes")).json()["itens"]}
@@ -446,6 +446,13 @@ async def test_a_classe_de_agora_endurece_o_aceite(mundo: Mundo, cliente: httpx.
     assert mundo.revisao(ref)["classe_de_risco"] == "B"
     # O catálogo mudou depois do parecer: a capability da lição agora é de alto risco.
     mundo.catalogo.fatos["OPEN_POST"] = FatosDoCatalogo(risco="high", efeito_externo=True)
+    # 30.38-c: o detalhe e a fila mostram a classe do gesto (C), não a gravada, e dizem que o parecer era B; a fila
+    # não oferece o aceite em lote que o gesto recusaria.
+    [p] = (await cliente.get(f"/api/aprendizado/licao/{ref}")).json()["pareceres"]
+    assert (p["classe"], p["classe_no_parecer"], p["recusa"]) == ("C", "B", None)
+    fila = {i["ref"]: i["parecer"] for i in (await cliente.get("/api/aprendizado/pendentes")).json()["itens"]}
+    assert (fila[ref]["classe"], fila[ref]["classe_no_parecer"], fila[ref]["recusa_no_lote"]) == (
+        "C", "B", "lote_na_classe_c")
     rid = mundo.revisao(ref)["id"]
     r = await cliente.post(f"/api/aprendizado/licao/{ref}/parecer/{rid}",
                            json={"resposta": "aceitar", "motivo": "lote", "em_lote": True})

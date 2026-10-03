@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: o painel mostra a classe do gesto, não a gravada (30.38-c; branch fix/30-38c-classe-de-agora)
+
+- No parecer pendente do detalhe e da fila, `classe` passa a ser a de AGORA, a mesma do aceite. `classe_no_parecer`
+  traz a gravada quando difere, e o selo diz "(era B no parecer)".
+- Antes, os 9 fluxos do Instagram com parecer anterior ao 30.32 apareciam como "Classe B · aceite em lote", e o clique
+  voltava 409. Nada era aceito em lote por engano: o gesto já usava a classe de agora.
+- Contrato: adendo v1.00, parcial (a (a) e a (b) do 30.38 vão para a suíte 14).
+- Prova `simulated`: `tests/test_learning_pareceres.py` e `ParecerDaIA.test.tsx`. `not_run`: o central.
+
 ## 2026-10-03 — Canais externos: o contrato comum do Telegram (28.15) e do Trello (32.2)
 
 - `docs/design/canais-externos.md`, aprovado pela orquestradora (~18:15Z) e citado pelos ADR-071 e ADR-072. Define:

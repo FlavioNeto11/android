@@ -65,7 +65,8 @@ class LivroDosPareceres(Protocol):
 class PareceresDoItem:
     """O bloco "IA" do detalhe. `pendente`: o parecer que uma decisão de agora responde, só quando aparece (`on`);
     `acao`: o passo que aceitá-lo dá (`None` = aceitar é concordar); `recusa`: por que o gesto não vale (simulado,
-    classe A...), `None` quando vale. `ocultos`: os pendentes que o modo esconde (aparecem depois da decisão)."""
+    classe A...), `None` quando vale. `ocultos`: os pendentes que o modo esconde (aparecem depois da decisão).
+    `classe`: a classe de AGORA do pendente, a mesma do gesto (30.38-c)."""
 
     modo: Modo
     revisoes: tuple[RevisaoGravada, ...]
@@ -74,16 +75,19 @@ class PareceresDoItem:
     recusa: str | None = None
     ocultos: int = 0
     pode_pedir: bool = False
+    classe: ClasseDeRisco | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class ParecerNaFila:
-    """O parecer pendente de um item da fila (`on`). `recusa_no_lote`: por que ele não entra no aceite em lote."""
+    """O parecer pendente de um item da fila (`on`). `recusa_no_lote`: por que ele não entra no aceite em lote.
+    `classe`: a de AGORA, a mesma do gesto (30.38-c)."""
 
     revisao: RevisaoGravada
     acao: AcaoPermitida | None
     recusa: str | None
     recusa_no_lote: str | None
+    classe: ClasseDeRisco = ClasseDeRisco.C
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,13 +120,15 @@ class ServicoDePareceres:
         visiveis = tuple(r for r in todas if parecer_visivel(modo, decidido=r.decidida))
         ocultos = sum(1 for r in todas if not parecer_visivel(modo, decidido=r.decidida) and r.pendente_em(estado))
         pendente = next((r for r in visiveis if r.pendente_em(estado)), None)
-        acao, recusa = (None, None)
+        acao, recusa, classe = (None, None, None)
         if pendente is not None and pendente.parecer is not None:
             acao = acao_do_aceite(pendente.parecer.decisao, acoes_da_pessoa(e))
-            recusa = conferir_gesto(pendente, estado_atual=estado, modo=modo,
-                                    classe=pendente.classe_efetiva or ClasseDeRisco.C, em_lote=False)
+            # 30.38-c: a classe que o painel mostra e confere é a do gesto (`_classe_de_agora`), não a gravada: o
+            # parecer de antes do 30.32 dizia B onde o dossiê de agora diz C, e o aceite em lote voltava 409.
+            classe = self._classe_de_agora(pendente, e)
+            recusa = conferir_gesto(pendente, estado_atual=estado, modo=modo, classe=classe, em_lote=False)
         return PareceresDoItem(modo=modo, revisoes=visiveis, pendente=pendente, acao=acao, recusa=recusa,
-                               ocultos=ocultos, pode_pedir=modo is Modo.ON and e.kind in KINDS_REVISADOS)
+                               ocultos=ocultos, pode_pedir=modo is Modo.ON and e.kind in KINDS_REVISADOS, classe=classe)
 
     def na_fila(self, entradas: Sequence[EntradaDoLivro]) -> dict[str, ParecerNaFila]:
         """O parecer pendente de cada item da fila, pela ref da trilha. Fora do `on`, nada (e nada é lido)."""
@@ -138,11 +144,12 @@ class ServicoDePareceres:
             r = next((x for x in revisoes if x.pendente_em(e.state.value)), None)
             if r is None or r.parecer is None:
                 continue
-            classe = r.classe_efetiva or ClasseDeRisco.C
+            classe = self._classe_de_agora(r, e)          # 30.38-c: a do gesto, um dossiê por parecer pendente
             saida[ref] = ParecerNaFila(
                 revisao=r, acao=acao_do_aceite(r.parecer.decisao, acoes_da_pessoa(e)),
                 recusa=conferir_gesto(r, estado_atual=e.state.value, modo=modo, classe=classe, em_lote=False),
-                recusa_no_lote=conferir_gesto(r, estado_atual=e.state.value, modo=modo, classe=classe, em_lote=True))
+                recusa_no_lote=conferir_gesto(r, estado_atual=e.state.value, modo=modo, classe=classe, em_lote=True),
+                classe=classe)
         return saida
 
     # ================================================================== a pessoa decide pelo item (o rótulo)
@@ -266,7 +273,10 @@ class ServicoDePareceres:
 
     def _classe_de_agora(self, r: RevisaoGravada, e: EntradaDoLivro) -> ClasseDeRisco:
         """A mais restritiva entre a do registro (endurecida pela IA) e a do dossiê de agora: um catálogo que mudou
-        depois do parecer endurece, nunca afrouxa. Sem dossiê de agora, C (sem saber, item a item)."""
+        depois do parecer endurece, nunca afrouxa. Sem dossiê de agora, C (sem saber, item a item). A gravada C já é a
+        mais restritiva: não monta o dossiê (30.38-c, a fila monta um por parecer pendente)."""
+        if r.classe_efetiva is ClasseDeRisco.C:
+            return ClasseDeRisco.C
         d = self._dossies.dossie(e)
         return mais_restritiva(r.classe_efetiva, d.classe if d is not None else ClasseDeRisco.C)
 

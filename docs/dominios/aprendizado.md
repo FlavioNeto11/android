@@ -817,6 +817,13 @@ com o MESMO registro e a mesma fonte de dossiês do curador); leitura e gravaç�
   - a frase "Parecer do curador: …" na linha da fila;
   - "Aceitar pareceres do curador" em lote, só na classe B.
   O painel não decide regra: mostra a `acao` e a `recusa` que o backend manda.
+  - **A classe que o painel mostra é a do gesto (30.38-c).** No parecer pendente do detalhe e da fila, `classe` é a de
+    AGORA (`_classe_de_agora`), e a `recusa` e a `recusa_no_lote` saem dela. `classe_no_parecer` traz a gravada, só
+    quando diferem, e o selo diz "(era B no parecer)".
+    - Antes, o painel mostrava a classe gravada. Os 9 fluxos do Instagram revisados antes do deploy 10 apareciam como
+      "Classe B · aceite em lote", e o clique voltava 409, porque o gesto já usava a classe de agora (C). A validação
+      do deploy 12 achou o caso.
+    - Os pareceres anteriores (não pendentes) seguem com a classe gravada: é o que o curador viu naquela revisão.
   - Até o deploy 7 o rótulo era "da IA". A validação do deploy 7 (B1) pediu "do curador", coerente com o resto do
     painel; os sinais também passaram a "Pediu revisão ao curador" e "Decidiu um parecer do curador".
   - O que fala do ATOR continua "IA": "na sombra, concordou com a IA", "decide sem a IA" e "pedir a IA nesses passos".

@@ -4727,3 +4727,30 @@ transição que `needs_input` já permitia.
 Prova:
 - `simulated`: `tests/test_needs_input_expira.py`.
 - `not_run`: a varredura no central depois do deploy.
+
+## Adendo v1.00 (03/10/2026; número da orquestradora; item 30.38) — validação e pareceres com a verdade no painel
+
+**Parcial:** só a (c) está aqui; a (a), a origem nas execuções de validação, e a (b), a rota de leitura dos pedidos
+(`learning_validations`), entram na suíte 14. Aditivo ao v0.47 (30.17). Nenhuma rota nova nem migração na (c).
+
+**(c) A classe do parecer pendente é a de AGORA, a do gesto.** Vale no detalhe (`GET /api/aprendizado/{kind}/{ref}`,
+`pareceres[]` com `atual: true`) e na fila (`GET /api/aprendizado/pendentes`, `itens[].parecer`):
+
+- `classe` é a mais restritiva entre a gravada e a do dossiê de agora, a mesma que `conferir_gesto` usa no aceite.
+  `recusa` e `recusa_no_lote` saem dela.
+- `classe_no_parecer` (novo, `"A" | "B" | "C" | null`) é a classe gravada no parecer, só quando difere de `classe`.
+  Nos outros casos é `null`.
+- Os pareceres que não são o atual seguem com `classe` = a gravada e `classe_no_parecer: null`.
+
+```json
+{"id": "lr-…", "decisao": "aprovar", "classe": "C", "classe_no_parecer": "B", "recusa": null,
+ "recusa_no_lote": "lote_na_classe_c"}
+```
+
+Origem: a validação do deploy 12 no navegador. Os 9 fluxos do Instagram com parecer de antes do 30.32 (deploy 10)
+apareciam "Classe B · aceite em lote", e o clique voltava 409 `lote_na_classe_c`.
+
+Prova:
+- `simulated`: `tests/test_learning_pareceres.py` (`test_a_classe_de_agora_endurece_o_aceite`) e `ParecerDaIA.test.tsx`
+  (o selo "era B no parecer" e a linha da fila fora do lote);
+- `not_run`: o painel do central depois do deploy.

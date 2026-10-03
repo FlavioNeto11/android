@@ -42,7 +42,7 @@ function Fato({ rotulo, children }: { rotulo: string; children: ReactNode }) {
 
 /** O selo compacto do parecer na linha da fila: o que a IA sugere, com que confiança e em que classe. */
 export function ParecerNaLinha({ p }: { p: ParecerNaFila }) {
-  const classe = seloDaClasse(p.classe, p.recusa);
+  const classe = seloDaClasse(p.classe, p.recusa, p.classe_no_parecer);
   return (
     <p className={styles.parecerNaLinha} data-parecer-na-linha={p.id}>
       <Bot size={14} aria-hidden />
@@ -58,7 +58,7 @@ function CartaoDoParecer({ p, item, onMudou }: { p: ParecerDaIA; item: EntradaDo
   const [gesto, setGesto] = useState<'aceitar' | 'recusar' | null>(null);
   const s = p.parecer;
   if (!s) return null;
-  const classe = seloDaClasse(p.classe, p.recusa);
+  const classe = seloDaClasse(p.classe, p.recusa, p.classe_no_parecer);
   const aceite = rotuloDoAceite(p.acao);
   const responder = async (resposta: 'aceitar' | 'recusar', motivo: string): Promise<string | null> => {
     try {
