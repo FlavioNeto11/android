@@ -563,7 +563,7 @@ class AiCfg(BaseModel):
     # Quando a etapa com efeito externo decide no modelo de escalonamento: `true` = sempre (era o único modo: em
     # 19-23/09, 39 % das decisões foram ao Opus, inclusive curtir com seletor de commit declarado); `false` = nunca
     # por efeito; `by_risk` = só risco alto do catálogo, risco médio SEM seletor de commit, ou app sem catálogo
-    # (exceto o app de prova, `apps.category='qa'`, na etapa sem capability: item 29.31).
+    # (exceto o app de prova, `builtin` e `apps.category='qa'`, na etapa sem capability: item 29.31).
     # Retentativa, erros seguidos e ciclo continuam escalando em qualquer modo. Receita divergida NÃO escala sozinha
     # (conferido em 26/09, frente F3: a fórmula do tier nunca leu a divergência): a IA assume a etapa no modelo de
     # ação e só sobe pelos controles acima. Escalar na divergência é decisão do dono pendente, com o custo medido

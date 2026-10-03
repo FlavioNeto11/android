@@ -24,12 +24,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Custo (RA-8 da reavaliação de 03/10):** etapa com `side_effect` e SEM capability em app sem catálogo caía no tier 1 ("risco
   desconhecido") e escalava ao modelo forte; em 7 dias, 64 a 66 desses escalonamentos eram do QA Messenger (43 % das chamadas do Opus
   no tier 1, cerca de US$ 0,20 por dia) e distorciam a bateria de prova. Agora `side_effect_tier(step, cap, modo, app_de_prova)` devolve
-  tier 0 e motivo vazio quando o app da etapa tem `apps.category='qa'`, só no `by_risk` e só sem capability. `true` (todo efeito sobe),
+  tier 0 e motivo vazio quando o app da etapa é `builtin` e tem `apps.category='qa'`, só no `by_risk` e só sem capability. `true` (todo efeito sobe),
   `false`, etapa com capability e app real sem catálogo ficam como estavam; `strong_model_for_side_effect` segue global.
   `AppContext` ganhou `category` (padrão `None`), preenchida em `Scheduler._app_context`.
 - **Furo achado no caminho:** `_seed_apps` criava o app `builtin` SEM categoria (só a migração 041 a punha, nas linhas que já
   existiam), então uma instalação nova nunca teria o app de prova como `qa`. O seed agora grava `category='qa'` para `builtin: true`
-  (sem migração). Critério por dado: no backup de 02/10, só `qa-messenger` tem `builtin=1` (e `category='qa'`); `builtin` não foi usado como critério.
+  (sem migração). Critério por dado: no backup de 02/10, só `qa-messenger` tem `builtin=1` (e `category='qa'`). Revisão adversarial: `category='qa'` sozinho não vale (a API o aceita em qualquer app), o critério é `builtin` E `category='qa'`.
 - `simulated`: `tests/test_cost_levers.py` (função pura e caminho real do executor, nos dois sentidos). `not_run` no central; aceite real:
   `decision` "sem catálogo" = 0 no app de prova em 7 dias depois do deploy. Sem migração.
 

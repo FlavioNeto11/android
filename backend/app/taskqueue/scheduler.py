@@ -1408,7 +1408,7 @@ class Scheduler:
             return AppContext(None, None, plan.app_package if plan else None, None, None, None), rotulo
         do_aparelho = step_app_id is None or (inst is not None and inst["app_id"] == row["id"])
         return (AppContext(row["id"], row["name"], row["package"], row["activity"], row["nav_hints"],
-                           loads(row["known_selectors"]), row["category"]),
+                           loads(row["known_selectors"]), row["category"], bool(row["builtin"])),
                 self.repo.conta_esperada(profile_id, str(row["id"]), rotulo, do_aparelho=do_aparelho))
 
     def _app_da_linha(self, run: Row, rt: DeviceRuntime, srow: Row) -> tuple[str | None, str | None]:

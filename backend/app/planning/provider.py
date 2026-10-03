@@ -93,6 +93,8 @@ class AppContext:
     known_selectors: dict[str, str] | None
     #: `apps.category`. Só o executor lê (app de prova, item 29.31); o planejador monta o seu sem ela, e `None` = sem categoria.
     category: str | None = None
+    #: `apps.builtin` (o app embutido da instalação). Junto com `category='qa'` define o app de prova (item 29.31).
+    builtin: bool = False
 
 
 @dataclass(slots=True)

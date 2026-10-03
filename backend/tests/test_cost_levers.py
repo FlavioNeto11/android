@@ -314,6 +314,17 @@ async def test_executor_app_real_sem_catalogo_no_by_risk_segue_no_tier_1(harness
     assert len(linhas) == 1 and _SEM_CATALOGO in linhas[0]
 
 
+async def test_executor_category_qa_sem_builtin_segue_no_tier_1(harness: Harness) -> None:
+    """`POST/PUT /apps` aceitam `category='qa'` em qualquer app: só o embutido (`builtin`) é app de prova."""
+    harness.state.db.execute("UPDATE apps SET builtin=0 WHERE id='qa-messenger'")
+    assert harness.state.db.scalar("SELECT category FROM apps WHERE id='qa-messenger'") == "qa"
+    run = harness.run(["android-01"])
+    assert (await harness.wait_run(run.id)).status == "completed"
+    assert harness.ai.count("decide", step="send_message", tier=1) == 1
+    linhas = _eventos_de_escalonamento(harness, run.id)
+    assert len(linhas) == 1 and _SEM_CATALOGO in linhas[0]
+
+
 async def test_executor_app_de_prova_com_modo_true_continua_no_tier_1(harness: Harness) -> None:
     harness.cfg.file.ai.strong_model_for_side_effect = True
     run = harness.run(["android-01"])
