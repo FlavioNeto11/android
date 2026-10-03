@@ -38,7 +38,8 @@ from app.modules.learning.domain.validacao import (VALIDADE_DO_PEDIDO_H, Ambient
                                                    FatosDoParecer, Folego, Grupo, Motivo, ProvaAnterior,
                                                    escolher_aparelho, excluidos_da_validacao,
                                                    limite_de_provas_atingido, motivo_da_prova_invalida,
-                                                   pedido_do_parecer, pode_despachar, sobra_aparelho_novo)
+                                                   pedido_do_parecer, pode_despachar, sobra_aparelho_novo,
+                                                   teto_da_prova)
 from app.modules.learning.domain.vocabulario import LivroKind, Modo, Posicao
 from app.util import parse_iso, to_iso
 
@@ -140,7 +141,7 @@ class RegistroDeValidacoes(Protocol):
     def por_execucao(self, run_id: str) -> PedidoVivo | None: ...
     #: 30.40: `teto_usd` só preenche o pedido que não tem (o legado); o teto gravado não muda.
     def comecar(self, pedido_id: str, run_id: str, aparelho: str, agora: datetime,
-                teto_usd: float | None = None) -> bool: ...
+                teto_usd: float | None = None, teto_da_prova: float | None = None) -> bool: ...
     def fechar(self, pedido_id: str, estado: EstadoDoPedido, motivo: Motivo | None, usd: float,
                agora: datetime) -> bool: ...
     def recusar(self, pedido_id: str, motivo: Motivo, agora: datetime) -> bool: ...  # `pendente` → `recusada`, sem execução
@@ -189,6 +190,11 @@ class FontesDaValidacao(Protocol):
     #: 30.42: as execuções de PROVA que o item já teve (pedido com `run_id` cuja execução tem `prova_fluxo_id`), com o
     #: aparelho e a marca de cada linha de evidência que deixaram. Só do fluxo; nos outros tipos, vazio.
     def provas_do_item(self, item_ref: str) -> list[ProvaAnterior]: ...
+    #: 30.41: as etapas que a execução de validação rodaria, com o `for_each` expandido pelo tamanho da lista que a
+    #: execução de origem do fluxo coletou. Fluxo: o plano do próprio fluxo com o comando (a prova); receita: o fluxo
+    #: ATIVO do comando. `None`: sem plano (quem responde é o `sem_caminho` ou o `sem_fluxo_ativo`) ou `for_each` de
+    #: tamanho desconhecido.
+    def etapas_da_execucao(self, item_ref: str, comando: str) -> int | None: ...
     def desfecho(self, run_id: str) -> tuple[str, float] | None: ...    # (status, usd) quando assentou
 
 
@@ -298,7 +304,11 @@ class ServicoDeValidacao:
             run_id = (self._despacho.enfileirar(p.comando, aparelho, chave, prova=prova) if prova
                       else self._despacho.enfileirar(p.comando, aparelho, chave))
             # 30.40: o pedido sem teto (legado) herda o da config aqui, sem depender de UPDATE à mão.
-            if self._registro.comecar(p.id, run_id, aparelho, agora, teto_usd=aj.teto_por_pedido_usd):
+            # 30.41: a prova de fluxo leva o teto proporcional ao plano (vence o gravado); a receita, o fixo do 30.40.
+            proporcional = (teto_da_prova(self._fontes.etapas_da_execucao(p.item_ref, p.comando)) if prova
+                            else None)
+            if self._registro.comecar(p.id, run_id, aparelho, agora, teto_usd=aj.teto_por_pedido_usd,
+                                      teto_da_prova=proporcional):
                 log.info("aprendizado: validação %s de %s em %s (execução %s)", p.id, p.item_ref, aparelho, run_id)
                 return run_id
         log.info("aprendizado: validação espera (%s; %d pedido(s) pendente(s))", Motivo.SEM_APARELHO.value,
@@ -377,6 +387,12 @@ class ServicoDeValidacao:
         teve `MAXIMO_DE_PROVAS` provas da mesma versão do conteúdo na janela; (2) `sem_aparelho_novo`: a falta pede
         OUTRO aparelho e nenhum que serve (tem os apps, sem conta real, ligado ou não, ocupado ou não) ficou fora dos já
         usados. Se sobra um ocupado ou fora do ar, o pedido espera (`sem_aparelho`), como sempre."""
+        if p.item_kind in (LivroKind.FLUXO.value, LivroKind.RECEITA.value) and p.comando:
+            # 30.41: o plano que a execução rodaria passa do teto máximo (ou o tamanho não se sabe). Na receita, só
+            # quando o comando resolve num fluxo ativo (sem ele, o `sem_fluxo_ativo`/`sem_caminho` já responde).
+            etapas = self._fontes.etapas_da_execucao(p.item_ref, p.comando)
+            if (etapas is not None or p.item_kind == LivroKind.FLUXO.value) and teto_da_prova(etapas) is None:
+                return Motivo.PLANO_ACIMA_DO_TETO
         if p.item_kind != LivroKind.FLUXO.value:
             return None
         provas = self._fontes.provas_do_item(p.item_ref)

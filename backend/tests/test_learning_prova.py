@@ -424,3 +424,45 @@ def test_prova_nunca_e_comparavel_e_nao_grava_sombra_em_outros_fluxos(mundo: Mun
     assert _evidencias(mundo, flow_b) == antes_b                          # nada de sombra, nem de forma, no outro fluxo
     assert not mundo.db.query("SELECT 1 FROM learning_evidence WHERE stance='forma' AND run_id='p-1'")
     assert [e[1] for e in _evidencias(mundo, flow_id, "p-1")] == ["run:p-1"]       # só a linha da própria prova
+
+
+# ------------------------------------------------------------------ 30.42: a expansão do `for_each` não é replanejamento
+def _versao_2(mundo: Mundo, run_id: str, motivo: str, chaves: list[str]) -> None:
+    """Uma 2ª versão do plano na prova `run_id`, com o `motivo` de `plan_versions.reason`, e as etapas `chaves` nela
+    (comprovadas, com um toque no diário). A etapa `pendente` da v1 vira `skipped` como o `revise_plan` a deixa."""
+    db = mundo.db
+    db.execute("INSERT INTO plan_versions(objective_id, version, reason, steps, created_at) VALUES (?,?,?,?,?)",
+               (f"{run_id}:o1", 2, motivo, "[]", now_iso()))
+    db.execute("UPDATE steps SET status='skipped', status_detail='plano revisado (v2)' WHERE run_id=? AND status='pending'",
+               (run_id,))
+    for seq, chave in enumerate(chaves, start=1):                      # a `seq` recomeça na versão nova
+        sid = f"{run_id}:v2:{chave}"
+        db.execute(
+            "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
+            " postcondition, timeout_s, max_attempts, status, result) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (sid, run_id, f"{run_id}:o1", "android-01", 2, seq, chave, chave, chave,
+             Postcondition(kind="text_visible", value="x", description="x").model_dump_json(), 60, 3, "succeeded",
+             StepResult(verified=True, evidence_text="visto na tela").model_dump_json()))
+        db.execute("INSERT INTO attempts(id, step_id, number, status, started_at) VALUES (?,?,?,?,?)",
+                   (f"{sid}:a1", sid, 1, "succeeded", now_iso()))
+        db.execute("INSERT INTO actions(attempt_id, seq, tool, args, status, intent_at) VALUES (?,?,?,?,?,?)",
+                   (f"{sid}:a1", 1, "tap", "{}", "done", now_iso()))
+
+
+def test_prova_com_for_each_expandido_conta_a_favor(mundo: Mundo) -> None:
+    """A expansão do `for_each` sobe a versão do plano (`_expand_for_each` → `revise_plan`); sem distinguir, toda prova
+    de fluxo com `for_each` caía em "plano revisado" e nunca dava evidência (o 0f0d85 do P4 tinha v2 assim)."""
+    flow_id = _candidato(mundo, concordancias=5)
+    _prova(mundo, "p-1", flow_id, [("abrir_perfil", "succeeded"), ("seguir", "pending")])
+    _versao_2(mundo, "p-1", "Expandido para 2 item(ns) lidos em 'coletar'", ["seguir_i1", "seguir_i2"])
+    _digerir(mundo, "p-1")
+    [(stance, _, detalhe)] = _evidencias(mundo, flow_id, "p-1")
+    assert stance == "for" and "3/3 etapas comprovadas" in detalhe
+
+
+def test_prova_replanejada_segue_sem_evidencia(mundo: Mundo) -> None:
+    flow_id = _candidato(mundo, concordancias=5)
+    _prova(mundo, "p-1", flow_id, [("abrir_perfil", "succeeded"), ("seguir", "pending")])
+    _versao_2(mundo, "p-1", "Recuperação: a etapa 2 falhou", ["seguir"])
+    _digerir(mundo, "p-1")
+    assert _evidencias(mundo, flow_id, "p-1") == []

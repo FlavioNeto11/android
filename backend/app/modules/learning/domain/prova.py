@@ -156,7 +156,19 @@ def efeito_repetido(etapas: Sequence[EtapaDaProva]) -> int | None:
     return max(total, 2) if repetido else None
 
 
-def veredito_da_prova(etapas: Sequence[EtapaDaProva], *, status: str) -> VereditoDaProva:
+#: O começo do motivo da versão do plano que a EXPANSÃO do `for_each` cria (`Scheduler._expand_for_each`, gravado em
+#: `plan_versions.reason`). A expansão não é replanejamento: as cópias por item SÃO o plano do fluxo.
+PREFIXO_DA_EXPANSAO = "Expandido para "
+
+
+def _da_expansao(e: EtapaDaProva, expansoes: frozenset[int]) -> bool:
+    """A etapa aberta que a expansão do `for_each` pulou (`plano revisado (vN)`, com N uma versão de expansão): o
+    lugar dela é a cópia da versão nova, e ela não conta no veredito."""
+    return e.status == "skipped" and any(e.detalhe == f"plano revisado (v{v})" for v in expansoes)
+
+
+def veredito_da_prova(etapas: Sequence[EtapaDaProva], *, status: str,
+                      expansoes: frozenset[int] = frozenset()) -> VereditoDaProva:
     """A regra única do veredito da execução de prova (30.42), só sobre dados.
 
     Ordem: o efeito repetido (vale mesmo com a execução completa); plano acima de v1 (um plano novo não é mais o fluxo:
@@ -173,16 +185,19 @@ def veredito_da_prova(etapas: Sequence[EtapaDaProva], *, status: str) -> Veredit
         quando = f" (etapa {onde.seq}, {onde.key})" if onde is not None else ""
         return VereditoDaProva(Posicao.INVALIDA, MotivoDaInvalida.EFEITO_REPETIDO,
                                f"o efeito saiu {copias} vezes{quando}")
-    if any(e.plan_version > 1 for e in etapas):
+    # `expansoes`: as versões do plano que só expandiram o `for_each` (não são replanejamento; `PREFIXO_DA_EXPANSAO`).
+    # Sem isto, toda prova de fluxo com `for_each` caía em "plano revisado" (a expansão sobe a versão).
+    etapas = [e for e in etapas if not _da_expansao(e, expansoes)]
+    if any(e.plan_version > 1 and e.plan_version not in expansoes for e in etapas):
         return VereditoDaProva(None, None, "prova com plano revisado: um plano novo não é mais o fluxo")
-    ordem = sorted(etapas, key=lambda e: e.seq)
+    ordem = sorted(etapas, key=lambda e: (e.plan_version, e.seq))   # a `seq` recomeça em cada versão
     reprovadas = [e for e in ordem if e.status == "failed"]
     if reprovadas:
         if any(e.ultima is None or e.ultima.error_kind for e in reprovadas):
             return nada                                    # infra (ou sem tentativa): nem a favor nem contra
         r = reprovadas[0]
         assert r.ultima is not None
-        if r.seq == ordem[0].seq:
+        if r is ordem[0]:
             return VereditoDaProva(Posicao.INVALIDA, MotivoDaInvalida.PONTO_DE_PARTIDA,
                                    f"a etapa de abertura ({r.key}) não chegou ao ponto de partida do fluxo")
         if not r.ultima.agiu:
@@ -195,5 +210,5 @@ def veredito_da_prova(etapas: Sequence[EtapaDaProva], *, status: str) -> Veredit
     return nada
 
 
-__all__ = ["COM_EFEITO", "PREFIXO", "ROTULO_DO_MOTIVO", "SEM_ACAO", "AcaoDaProva", "EtapaDaProva", "MotivoDaInvalida", "TentativaDaProva",
+__all__ = ["COM_EFEITO", "PREFIXO", "PREFIXO_DA_EXPANSAO", "ROTULO_DO_MOTIVO", "SEM_ACAO", "AcaoDaProva", "EtapaDaProva", "MotivoDaInvalida", "TentativaDaProva",
            "VereditoDaProva", "detalhe_da_invalida", "efeito_repetido", "motivo_da_invalida", "veredito_da_prova"]

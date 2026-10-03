@@ -40,8 +40,8 @@ from app.modules.learning.application.nativos import (AssinaturaDoPlano, ContraG
 from app.modules.learning.application.ports import RepositorioDeAprendizado
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.evidencia_invalida import run_da_etapa
-from app.modules.learning.domain.prova import (AcaoDaProva, EtapaDaProva, TentativaDaProva, detalhe_da_invalida,
-                                               efeito_repetido, veredito_da_prova)
+from app.modules.learning.domain.prova import (PREFIXO_DA_EXPANSAO, AcaoDaProva, EtapaDaProva, TentativaDaProva,
+                                               detalhe_da_invalida, efeito_repetido, veredito_da_prova)
 from app.modules.learning.domain.livro import (escopo_da_receita, estado_nativo, fluxo_tem_efeito, hash_da_receita,
                                                ref_da_trilha)
 from app.modules.learning.domain.vocabulario import LivroKind, Posicao
@@ -163,7 +163,7 @@ class LeituraSql:
         conteudo = linhas.json_legado(linhas.texto_ou_nulo(linha, "plan")) if linha is not None else None
         if conteudo is None:
             return None
-        v = veredito_da_prova(self._etapas_da_prova(run_id), status=status)
+        v = veredito_da_prova(self._etapas_da_prova(run_id), status=status, expansoes=self._expansoes(run_id))
         texto = detalhe_da_invalida(v.motivo, v.texto) if v.motivo is not None else v.texto
         return ProvaDaExecucao(fluxo_id, content_hash(conteudo), v.posicao, texto)
 
@@ -171,6 +171,14 @@ class LeituraSql:
         """30.42: as cópias do efeito da execução (`domain.prova.efeito_repetido`), ou `None`. O passo da curadoria
         aplica a MESMA regra do veredito às provas que já deixaram o `for`."""
         return efeito_repetido(self._etapas_da_prova(run_id))
+
+    def _expansoes(self, run_id: str) -> frozenset[int]:
+        """As versões do plano da execução que a expansão do `for_each` criou (`plan_versions.reason`), que o veredito não
+        trata como replanejamento."""
+        return frozenset(linhas.inteiro(r, "version") for r in self._db.query(
+            "SELECT v.version FROM plan_versions v JOIN objectives o ON o.id = v.objective_id"
+            " WHERE o.run_id=? AND v.version > 1 AND v.reason LIKE ? ORDER BY v.version",
+            (run_id, PREFIXO_DA_EXPANSAO + "%")))
 
     def _etapas_da_prova(self, run_id: str) -> list[EtapaDaProva]:
         """As etapas executadas da prova, com o diário de ações (`actions`, todas as tentativas) e a última tentativa."""

@@ -5138,3 +5138,20 @@ Prova `simulated`: `backend/tests/test_trello_webhook.py`, `test_trello_leitor.p
 `test_trello_cliente.py` e `test_trello_config.py`. `not_run`: o HEAD do Trello na URL pública, o primeiro cadastro e um
 comentário real chegando pelo webhook.
 
+## Adendo v1.09 (03/10/2026; número da orquestradora; item 30.41) — o teto da prova proporcional ao plano
+
+Aditivo ao v1.07. Nenhuma rota nova e nenhuma migração.
+
+- **`learning_validations.teto_usd`** da prova de fluxo passa a ser `min(0,40; 0,05 + 0,02 × etapas)`, gravado no
+  despacho. Ele vence o teto que o pedido tinha ao nascer. A receita segue com o teto fixo (v0.96 e 30.40).
+- **`learning_validations.motivo`** ganha `plano_acima_do_teto` (`estado = recusada`). O plano que a execução
+  rodaria passa de 0,40 ou tem `for_each` de tamanho desconhecido, e o pedido fecha ao despachar, sem execução.
+  - Vale para o fluxo e para a receita cujo comando resolve num fluxo ativo grande.
+  - Não devolve o item ao curador nem reabre.
+  - O valor já existia no banco do central, gravado à mão em 03/10 (lv-f544, a receita:135).
+- **As etapas** contam o `for_each` pelo tamanho da lista que a execução de origem do fluxo coletou. É aproximado.
+
+Prova:
+- `simulated`: `backend/tests/test_learning_prova_teto.py`.
+- `not_run`: o primeiro despacho do P4 depois do deploy.
+
