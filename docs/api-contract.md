@@ -4373,3 +4373,85 @@ Sem rota nova e sem migração.
   ela encerra sem esperar o fim do orçamento (LT-5).
 - Série da Aprendizado: a partir do deploy 8, etapas `app_foreground` abertas sem IA não geram comparação de sombra. A
   candidata v4 de `open_app` do QA não promove por sombra.
+
+## Adendo v0.89 (03/10/2026; número da orquestradora, `.claude/reservas.md`; item 30.8) — `GET /api/aprendizado/metricas` e `GET /api/aprendizado/revisoes`
+
+Duas rotas novas, só de leitura e sem efeito. O cálculo é feito na leitura, a partir das tabelas, sem contador novo em memória
+(§10 do [desenho](design/aprendizado-vivo.md)). Sem o serviço composto, as duas respondem 503 `not_ready`.
+
+`GET /api/aprendizado/metricas?app=&dias=14` (`dias` vai de 1 a 90). Cada bloco corresponde a uma linha da tabela do §10.
+Ausente é `null`, nunca zero: uma taxa sem amostra ou um tempo sem par saem `null`, sempre com o `n` ao lado.
+
+```json
+{"app": "com.instagram.android", "janela_dias": 14, "desde": "…Z", "ate": "…Z",
+ "itens": {"receita": {"published": 19, "candidate": 1}}, "por_origem": {"execucao": 44, "pessoa": 1}, "pendentes": 0,
+ "aprovacoes": {"sistema": {"validated": 1}, "pessoa": {"published": 1}},
+ "curador": {"revisoes": 7, "simuladas": 0, "validade": {"ok": 7, "invalida": 0, "recusada": 0},
+             "decisoes": {"manter": 1, "pedir_evidencia": 6}, "aplicadas": 0, "overrides": 0, "usd": 0.0},
+ "refutados_depois_de_promovidos": {"desligados_pelo_sistema": 0, "desligados_por_pessoa": 0,
+                                    "publicados_com_evidencia_contra": 0},
+ "sucesso_depois_de_promovido": {"a_favor": 0, "contra": 0, "taxa": null},
+ "churn": {"transicoes": 12, "itens_com_transicao": 10, "criados": 36, "desligados": 1},
+ "tempos": {"candidate_validated": {"mediana_h": 0.0, "p90_h": 0.0, "n": 1},
+            "validated_published": {"mediana_h": null, "p90_h": null, "n": 0}},
+ "saude": {"saudavel": 3, "pouca_amostra": 20, "sem_evidencia": 4, "obsoleto_provavel": 0, "…": 0},
+ "economia": {"etapas": 186, "por_receita": 33, "so_ia": 123, "chamadas_evitadas_estimadas": 79.0, "…": 0},
+ "falhas_evitadas_proxy": {"rotulo": "proxy", "etapas_comparadas": 9,
+                           "com_receita": {"etapas": 37, "falhas": 6, "taxa_de_falha": 0.162},
+                           "so_ia": {"etapas": 28, "falhas": 1, "taxa_de_falha": 0.036}},
+ "orcamento_do_curador": {"modo": "on", "janela_dias": 7, "gasto_da_operacao": 11.48, "gasto_da_curadoria": 0.29,
+                          "orcamento": 1.76, "teto_alfa": 8.04, "revisoes_na_janela": 21, "uso": 0.167, "aviso": false},
+ "sem_item": {}}
+```
+
+- `itens`, `por_origem` e `pendentes` são a contagem do livro no recorte, a mesma composição da visão por app. A memória
+  conta lembranças.
+- `aprovacoes` conta as transições da janela por `to_state`. `sistema` é `decided_by = sistema`; qualquer outro autor é
+  `pessoa`. A transição que não muda o estado (o "confirmar que fica" do 30.24) fica fora.
+- `curador` conta as linhas do curador em `learning_reviews` (o rótulo de intenção do 30.25 fica fora). A revisão simulada
+  vai só para `simuladas` e não entra em `decisoes` nem em `usd`. `decisoes` é a sugestão da IA nas revisões válidas, e
+  `aplicadas` são as revisões com `decisao_final`.
+- `refutados_depois_de_promovidos`: as transições `published → disabled` da janela, separadas pelo autor, mais os
+  publicados com evidência contrária na janela. O `deprecated` fica fora, porque é absorção ou versão aposentada, não
+  refutação.
+- `sucesso_depois_de_promovido` usa só a evidência REAL datada depois do `state_at` do publicado. A evidência da execução
+  marcada como inválida (30.23) também fica fora. A receita não tem evidência datada (a eficácia dela são contadores
+  acumulados) e aparece pelo proxy e pela economia.
+- `tempos`: para cada chegada a `validated` (ou `published`) dentro da janela, conta desde a última chegada a `candidate`
+  (ou `validated`) no mesmo item. O item sem essa chegada na trilha, como a receita de antes da trilha, fica fora, e o
+  `n` diz quantos pares entraram. O percentil é por posição mais próxima.
+- `saude` traz todos os rótulos do §5.3, inclusive os zerados, e sai da mesma função da lista e do detalhe.
+  `sem_evidencia` é o "nunca usado".
+- `economia` é a de `taskqueue/aproveitamento.py`, com os totais ou a soma dos fluxos do pacote, reaproveitada e não
+  recalculada.
+- `falhas_evitadas_proxy` NÃO mede falha evitada, porque não há contrafactual. Compara a taxa de falha (`failed` ou
+  `uncertain`) com receita (`recipe`, `recipe+ai`) e só com IA (`ai`), apenas nas etapas (app e `template_hash`) que
+  tiveram as duas conduções na janela. Execução simulada e `sem_ator` ficam fora.
+- `orcamento_do_curador` é global e usa a janela do curador (`janela_dias` do config), não a do pedido.
+  - `orcamento` é o B_W com as revisões já gravadas. A volta soma os elegíveis dela, então este valor é um piso, o `uso`
+    (C_W / B_W) é um teto e o `aviso` (a 80 %) sai cedo, nunca tarde.
+  - Sem custo medido, o c̄ é a média das estimativas das revisões gravadas.
+  - `teto_alfa` é α·G_W.
+- `sem_item`: transições e evidências de itens que não estão mais no livro. Não têm app conhecido e ficam contadas à parte.
+- Quebra de série: desde o deploy 8 (03/10 09:06:28Z), `app_foreground` aberta sem IA fecha `sem_ator`. Por isso
+  `so_ia`, as elegíveis da economia e o proxy mudam de regime nessa data. Compare só janelas do mesmo lado.
+
+`GET /api/aprendizado/revisoes?app=&decisao=&desde=&limite=50&cursor=` (`limite` vai de 1 a 200) lista as revisões do
+curador, da mais nova para a mais velha, sem o dossiê nem a saída inteira (o detalhe do item entrega os dois).
+
+```json
+{"revisoes": [{"id": "lr-…", "criado_em": "…Z", "item_ref": "fluxo:12", "item_kind": "fluxo", "app": "com.pocqa.messenger",
+               "gatilho": "pedido_da_pessoa", "validade": "ok", "simulado": false, "provedor": "…", "modelo": "…",
+               "usd": 0.0, "classe": "B", "decisao": "manter", "confianca": "alta", "decisao_final": null,
+               "decidido_por": null, "override": false}],
+ "proximo": "2026-10-03T08:29:40.302Z|lr-…"}
+```
+
+- `decisao` filtra pela sugestão da IA, e `desde` aceita data ISO (sem fuso vale UTC).
+- `proximo` é o cursor (`criada|id`) da página seguinte, ou `null`. Um cursor malformado dá 422 `cursor_invalido`.
+
+Prova:
+- `simulated`: `tests/test_learning_metricas.py` (11 testes).
+- Ensaio só de leitura numa cópia do banco do central em 03/10 ~09:30Z (backup do SQLite, origem em `mode=ro`, código
+  57d82a5a mais o branch): 142 ms no global e ~55 ms por app. Os números do exemplo acima saíram desse ensaio.
+- `real` = a leitura no central depois de implantado.

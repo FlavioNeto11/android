@@ -840,6 +840,22 @@ O gabarito humano do decisor fechado da intenção (31.x, da Jev). Sem IA e sem 
   e nomes de até 120 caracteres: cada nome ocupa no máximo duas linhas (inteiro no `title`), e dois fluxos com o mesmo
   nome mostram o id. Nos Sinais, a resposta aparece como "Disse qual era o pedido", não como parecer da IA.
 
+## Métricas (30.8)
+
+`GET /api/aprendizado/metricas?app=&dias=` e `GET /api/aprendizado/revisoes` (adendo v0.89 do contrato). A aplicação é
+`application/metricas.py`: contas puras sobre uma porta de leitura (`infrastructure/metricas_sql.py`), sem contador
+novo em memória. Cada bloco da resposta é uma linha da tabela do §10 do desenho. O que vale para quem lê:
+
+- a composição e a saúde saem das mesmas funções da visão por app (`servico.livro`, `servico.publicados`); a métrica
+  não tem rótulo próprio. A economia é a do `taskqueue/aproveitamento.py`, injetada pela montagem (só leitura);
+- ausente é `null`, com o `n` ao lado; simulado fica fora, e a revisão simulada é contada à parte;
+- "falhas evitadas" é um PROXY rotulado: taxa de falha com receita × só IA nas etapas que tiveram as duas conduções;
+- a receita não tem evidência datada, então o "sucesso depois de promovido" é de fluxo e lição;
+- o orçamento do curador usa a conta da volta (`janela_do_orcamento`, extraída de `curador.py` para as duas servirem)
+  com as revisões já gravadas: o B_W é um piso, o `uso` é um teto e o aviso, a 80 %, sai cedo. Sem `usd` medido
+  (antes do #144-B no central), o c̄ é a média das estimativas; sem ela o B_W cairia a zero, defeito que o ensaio pegou;
+- a série quebra no deploy 8 (LT-6, acima): compare janelas do mesmo lado de 03/10 09:06:28Z.
+
 ## Pendências conhecidas
 
 Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.
