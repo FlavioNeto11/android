@@ -9,8 +9,8 @@ import { AprendizadoPage } from './AprendizadoPage';
 import { DetalheRico } from './DetalheRico';
 import type { AcaoPermitida, DetalheDoLivro, EntradaDoLivro, EstadoDoLivro, RotuloDaAcao } from './model';
 import {
-  type BlocoDoCurador, type ParecerDaIA, type ParecerNaFila, ladoDaDecisao, rotuloDoAceite, textoDaDecisaoFinal,
-  textoDaRecusa, textoDaValidade,
+  type BlocoDoCurador, type ParecerDaIA, type ParecerNaFila, ladoDaDecisao, rotuloDoAceite, seloDaClasse,
+  textoDaDecisaoFinal, textoDaRecusa, textoDaValidade,
 } from './parecer';
 
 /**
@@ -135,6 +135,15 @@ describe('parecer da IA na fila', () => {
     expect(chamadas(/\/status$/)).toHaveLength(0);                       // aceitar o parecer não é o /status
   });
 
+  it('30.38-c: o parecer gravado como B que hoje é C mostra C, diz que era B e não entra no lote', async () => {
+    const era = entrada({ ref: 'li-era', parecer: { ...NA_FILA_C, id: 'lr-era', classe_no_parecer: 'B' } });
+    backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => json({ itens: [era], total: 1, curador: { modo: 'on' } }));
+    await montar(<AprendizadoPage />);
+    await waitFor(() => expect(item('licao:li-era')).toBeTruthy());
+    expect(text(item('licao:li-era'))).toContain('Classe C · item a item (era B no parecer)');
+    expect(text(item('licao:li-era'))).not.toContain('aceite em lote');
+  });
+
   it('fora do modo ligado não há selo nem aceite em lote', async () => {
     backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => json({ itens: [entrada({})], total: 1, curador: { modo: 'shadow' } }));
     await montar(<AprendizadoPage />);
@@ -248,6 +257,14 @@ describe('parecer da IA no detalhe', () => {
 });
 
 describe('textos do parecer', () => {
+  it('30.38-c: a classe é a de agora; se o parecer foi gravado com outra, o selo diz', () => {
+    expect(seloDaClasse('C', null, 'B')).toMatchObject({ selo: 'Classe C · item a item (era B no parecer)', registro: null });
+    expect(seloDaClasse('C', null, 'B')?.explica).toContain('gravado como classe B; vale a de agora');
+    expect(seloDaClasse('B', null, null)?.selo).toBe('Classe B · aceite em lote');
+    expect(seloDaClasse('B', null, 'B')?.selo).toBe('Classe B · aceite em lote');
+    expect(seloDaClasse('A', 'so_registro_na_classe_a', 'B')?.selo).toBe('Classe A (era B no parecer)');
+  });
+
   it('o botão do aceite diz o passo; sem passo, é concordar', () => {
     expect(rotuloDoAceite({ to: 'validated', rotulo: 'validar' }).label).toBe('Aceitar e validar');
     expect(rotuloDoAceite({ to: 'disabled', rotulo: 'desligar' })).toMatchObject({ label: 'Aceitar e desligar', perigo: true });

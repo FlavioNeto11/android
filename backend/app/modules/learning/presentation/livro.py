@@ -45,6 +45,7 @@ from app.modules.learning.domain.livro import (AcaoPermitida, EntradaDoLivro, Tr
                                                a_revisar, e_confirmacao, evidencia_a_invalidar,
                                                motivo_na_confirmacao, por_que_o_sistema_nao_publica)
 from app.modules.learning.domain.parecer import RevisaoGravada
+from app.modules.learning.domain.politica_de_risco import ClasseDeRisco
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.saude import Saude
 from app.modules.learning.domain.vocabulario import LivroKind, Origem, Rotulo
@@ -195,14 +196,21 @@ def _acao(a: AcaoPermitida | None) -> JsonObject | None:
     return None if a is None else {"to": a.to.value, "rotulo": a.rotulo}
 
 
+def _classes(gravada: ClasseDeRisco | None, agora: ClasseDeRisco | None) -> JsonObject:
+    """30.38-c: `classe` é a de agora quando há (a do gesto); `classe_no_parecer`, a gravada, só quando diferem."""
+    classe = agora or gravada
+    return {"classe": classe.value if classe is not None else None,
+            "classe_no_parecer": gravada.value if gravada is not None and gravada is not classe else None}
+
+
 def _revisao(r: RevisaoGravada, *, atual: bool = False, acao: AcaoPermitida | None = None,
-             recusa: str | None = None) -> JsonObject:
+             recusa: str | None = None, classe: ClasseDeRisco | None = None) -> JsonObject:
     """Uma revisão do curador como o painel a lê (30.17). `parecer`: a saída validada (rótulos fechados e a
     `conclusao`, o único texto da IA), `None` quando inválida ou recusada; `atual`: é a que uma decisão de agora
-    responde; `acao`: o passo que aceitá-la dá (`None` = aceitar é concordar); `recusa`: por que o gesto não vale."""
-    classe = r.classe_efetiva
+    responde; `acao`: o passo que aceitá-la dá (`None` = aceitar é concordar); `recusa`: por que o gesto não vale;
+    `classe`: a de agora, só na atual (30.38-c); nas outras vale a gravada."""
     return {"id": r.id, "criado_em": r.criado_em, "gatilho": r.gatilho, "validade": r.validade,
-            "classe": classe.value if classe is not None else None, "simulated": r.simulated,
+            **_classes(r.classe_efetiva, classe), "simulated": r.simulated,
             "modelo": r.modelo or None, "estado_no_parecer": r.estado_no_parecer,
             "parecer": r.parecer.como_dados() if r.parecer is not None else None,
             "atual": atual, "acao": _acao(acao), "recusa": recusa,
@@ -219,10 +227,9 @@ def _parecer_na_fila(x: ParecerNaFila | None) -> JsonObject | None:
     if x is None or x.revisao.parecer is None:
         return None
     r, p = x.revisao, x.revisao.parecer
-    classe = r.classe_efetiva
     return {"id": r.id, "criado_em": r.criado_em, "decisao": p.decisao.value,
             "confianca": p.confianca.value if p.confianca is not None else None,
-            "classe": classe.value if classe is not None else None, "simulated": r.simulated,
+            **_classes(r.classe_efetiva, x.classe), "simulated": r.simulated,
             "acao": _acao(x.acao), "recusa": x.recusa, "recusa_no_lote": x.recusa_no_lote}
 
 
@@ -242,7 +249,8 @@ def _detalhe(d: DetalheDoLivro, servico: LearningService) -> JsonObject:
     if pareceres is not None:
         p = pareceres.do_item(d.entrada)
         saida["pareceres"] = [_revisao(r, atual=r is p.pendente, acao=p.acao if r is p.pendente else None,
-                                       recusa=p.recusa if r is p.pendente else None) for r in p.revisoes]
+                                       recusa=p.recusa if r is p.pendente else None,
+                                       classe=p.classe if r is p.pendente else None) for r in p.revisoes]
         saida["curador"] = _bloco_da_ia(p)
     return saida
 

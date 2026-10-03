@@ -39,7 +39,10 @@ export interface ParecerDaIA {
   gatilho: string;
   /** `ok`, `invalida:<motivo>` ou `recusada:<motivo>`. */
   validade: string;
+  /** No parecer atual, a classe de AGORA, a do gesto (30.38-c); nos anteriores, a gravada. */
   classe: ClasseDeRisco | null;
+  /** A classe gravada no parecer, só quando difere da de agora ("era B no parecer"); ausente no backend anterior. */
+  classe_no_parecer?: ClasseDeRisco | null;
   simulated: boolean;
   modelo: string | null;
   estado_no_parecer: string | null;
@@ -66,7 +69,10 @@ export interface ParecerNaFila {
   criado_em: string;
   decisao: DecisaoDaIA;
   confianca: 'baixa' | 'media' | 'alta' | null;
+  /** A classe de AGORA, a do gesto e a do aceite em lote (30.38-c). */
   classe: ClasseDeRisco | null;
+  /** A classe gravada no parecer, só quando difere da de agora; ausente no backend anterior. */
+  classe_no_parecer?: ClasseDeRisco | null;
   simulated: boolean;
   acao: PassoDoAceite | null;
   recusa: string | null;
@@ -129,13 +135,17 @@ const CLASSE: Record<ClasseDeRisco, { politica: string; sentido: string; gesto: 
  * se decide (simulado, classe A), só a classe, e `registro` e a dica dizem por quê: nem o selo nem a dica prometem um
  * aceite que não há.
  */
-export function seloDaClasse(c: ClasseDeRisco | null | undefined, recusa: string | null = null):
-  { selo: string; explica: string; registro: string | null } | null {
+export function seloDaClasse(c: ClasseDeRisco | null | undefined, recusa: string | null = null,
+  noParecer: ClasseDeRisco | null | undefined = null): { selo: string; explica: string; registro: string | null } | null {
   const k = c ? CLASSE[c] : undefined;
   if (!c || !k) return null;
-  if (!recusa) return { selo: `Classe ${c} · ${k.politica}`, explica: `${k.sentido} ${k.gesto}`, registro: null };
+  // 30.38-c: a classe é a de agora (a do gesto); se o parecer foi gravado com outra, o selo diz, para não prometer o
+  // aceite que a classe gravada prometia.
+  const era = noParecer && noParecer !== c ? ` (era ${noParecer} no parecer)` : '';
+  const porque = era ? ` O parecer foi gravado como classe ${noParecer}; vale a de agora, a mais restritiva.` : '';
+  if (!recusa) return { selo: `Classe ${c} · ${k.politica}${era}`, explica: `${k.sentido} ${k.gesto}${porque}`, registro: null };
   const registro = recusa === 'parecer_simulado' ? 'simulado · só registro' : recusa === 'so_registro_na_classe_a' ? 'só registro' : null;
-  return { selo: `Classe ${c}`, explica: `${k.sentido} ${textoDaRecusa(recusa) ?? ''}`.trim(), registro };
+  return { selo: `Classe ${c}${era}`, explica: `${k.sentido} ${textoDaRecusa(recusa) ?? ''}${porque}`.trim(), registro };
 }
 
 const CAUSA: Record<string, string> = {
