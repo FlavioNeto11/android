@@ -36,6 +36,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (03/10, ~04:31–04:39Z, 14 casos QA, 42 chamadas, US$ 1,36). No Opus, o curto tem p50 13,3 s contra 15,9 s,
   2,75 s a menos por plano (pareado), a mesma forma em 14/14 e US$ 0,0359 contra 0,0428 por plano. O Sonnet 5.5
   curto ficou em 7,8 s, mas só com a forma das etapas com efeito igual (`docs/ia.md` §12). Rodada QA: `not_run`.
+- Deploy 7: o Sonnet 5.5 entra como perfil 17.7 (`planejador-sonnet`, só o modelo do `plan`; o esforço e o esquema
+  seguem os globais). O preço `[2.0, 0.2, 2.5, 10.0]` e o cache mínimo de 512 dele entram no padrão e no exemplo
+  (páginas da Anthropic, 03/10; antes, ele casava o prefixo do Sonnet 5). No central, as linhas vão DENTRO dos blocos
+  `ai.prices` e `ai.models` que já existem: o YAML troca a tabela inteira. Prova: simulated (`test_perfil_de_ia.py`).
 
 ## 2026-10-03 — Aprendizado: o parecer da IA diante da pessoa (30.17, branch feat/30-17-parecer-no-painel)
 

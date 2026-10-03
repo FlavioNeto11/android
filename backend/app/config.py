@@ -617,6 +617,9 @@ class AiCfg(BaseModel):
         "claude-opus-5-5": [4.0, 0.2, 5.0, 20.0],
         "claude-opus-5": [5.0, 0.5, 6.25, 25.0],
         "claude-sonnet-5": [2.0, 0.2, 2.5, 10.0],
+        # Sonnet 5.5 (página de preços, 03/10/2026): o mesmo do Sonnet 5. Antes saía certo só por casar o prefixo
+        # "claude-sonnet-5" em `price_for`; declarado, não depende disso (17.13, perfil planejador-sonnet).
+        "claude-sonnet-5-5": [2.0, 0.2, 2.5, 10.0],
         "claude-haiku-4-5": [1.0, 0.1, 1.25, 5.0],
         # Destino documentado do fallback de recusa (achado #92): custava o mesmo do Opus 5 e não estava cadastrado,
         # então toda chamada que caísse nele virava "Total parcial" no painel de uso.
@@ -636,6 +639,8 @@ class AiCfg(BaseModel):
         "claude-opus-5-5": ModelCaps(min_cache_tokens=512),
         "claude-opus-5": ModelCaps(min_cache_tokens=512),
         "claude-sonnet-5": ModelCaps(min_cache_tokens=1024),
+        # Sonnet 5.5: 512 (doc de prompt caching, 03/10/2026). Sem a linha, herdava os 1024 do Sonnet 5 pelo prefixo.
+        "claude-sonnet-5-5": ModelCaps(min_cache_tokens=512),
         "claude-opus-4-8": ModelCaps(min_cache_tokens=1024),
         "claude-haiku-4-5": ModelCaps(thinking=False, effort=False, min_cache_tokens=4096),
     }

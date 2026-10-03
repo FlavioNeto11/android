@@ -396,6 +396,23 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
     - Recomendação (03/10): ligar `curto` com o Opus. O Sonnet no planejador troca o modelo da função (ADR-005:
       planejador Opus) e passa antes por rodada QA ou perfil canário (17.7); este A/B mede forma, não sucesso.
   - Sucesso de execução com o formato curto (rodada QA): `not_run`.
+  - **Deploy 7 (decisão da orquestradora, 03/10):** `curto` passa a valer no central, e o Sonnet 5.5 entra como PERFIL
+    (17.7), não como padrão. O perfil `planejador-sonnet` troca só o modelo do `plan` para `claude-sonnet-5-5`: o
+    esforço segue o global (`AI_EFFORT_PLANNER`, `low` no central, lido em `GET /api/ai` em 03/10) e o esquema segue
+    `ai.esquema_do_plano`. Uma execução o escolhe com `POST /api/runs {"ai_profile": "planejador-sonnet"}` ou
+    `scripts/eval_run.py --profile planejador-sonnet`, e ele fica em `runs.ai_profile`. A rodada QA pareada é da
+    Aprendizado (teto US$ 10). O aceite para trocar o padrão é sucesso ≥ Opus e p50 ≤ 11 s, com emenda datada do
+    ADR-005.
+    - Preço e capacidade do Sonnet 5.5 (páginas de preço e de prompt caching, 03/10): `[2.0, 0.2, 2.5, 10.0]`, igual
+      ao Sonnet 5, e cache mínimo de 512 tokens, contra 1024 no Sonnet 5. As duas linhas entram no padrão do código e
+      no exemplo. Antes, o modelo casava o prefixo `claude-sonnet-5`: o preço saía igual por acaso e o cache mínimo
+      herdava 1024.
+    - **No `config.yaml` do central, a Android acrescenta as linhas DENTRO dos blocos `ai.prices` e `ai.models` que já
+      existem lá.** O YAML troca a tabela padrão inteira, não soma (medido em 03/10), e o central declara os dois
+      blocos sem o Sonnet 5.5. As linhas são as do exemplo (`claude-sonnet-5-5` nos dois), mais
+      `ai.esquema_do_plano: curto` e o bloco
+      `ai.profiles: {planejador-sonnet: {note: ..., roles: {plan: {model: claude-sonnet-5-5}}}}`. Prova `simulated`:
+      `test_perfil_de_ia.py::test_planejador_sonnet_so_troca_o_modelo_do_planejador`.
 
 - `docs/relatorio-validacao.md §5` — validação com o provedor real (`claude-opus-5`): mensagem em 1 e 3
   aparelhos, formulário, app nunca visto, falhas injetadas, controle manual + retomada, `kill` do backend em
