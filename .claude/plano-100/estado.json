@@ -5929,15 +5929,15 @@
   },
   "30.28": {
    "id": "30.28",
-   "status": "partial",
+   "status": "implemented",
    "proof": "simulated",
-   "evidence": "RA-19. Fatia A: PR #139 (feat/ra-19-visao-do-livro @ 725aeaf2) na main pelo merge b1e0be7d da suíte 7 (123650cc): o livro por rótulo Produto/QA/Todos (apps.category='qa'), Produto por padrão, com os ocultos; adendo v0.83; tests/test_learning_rotulo_do_livro.py (8), 119 testes de painel; ensaio no navegador numa cópia do banco (simulado): 70 de 164 por padrão (94 do QA ocultos), QA 94, Todos 164, app de QA → Todos, 375 px. Fatia B: PR #141 (feat/ra-19-origem-simulada @ b680bb10) na suíte 8: a origem simulada nunca nasce ativa nem promove pela sombra (aprendizado.simulada_publica só na suíte); tests/test_origem_simulada.py (6, o join = 0); bateria de 32 arquivos, 657 passed; ensaio sobre a suíte 7: 515 passed. Fica partial até o #141 entrar. Real: not_run.",
-   "grupo": "aprendizado-suite-7",
+   "evidence": "RA-19. Fatia A: PR #139 (feat/ra-19-visao-do-livro @ 725aeaf2) na main pelo merge b1e0be7d da suíte 7 (123650cc): o livro por rótulo Produto/QA/Todos (apps.category='qa'), Produto por padrão, com os ocultos; adendo v0.83; tests/test_learning_rotulo_do_livro.py (8), 119 testes de painel; ensaio no navegador numa cópia do banco (simulado): 70 de 164 por padrão (94 do QA ocultos), QA 94, Todos 164, app de QA → Todos, 375 px. Fatia B: PR #141 (feat/ra-19-origem-simulada @ b680bb10) na main pelo merge 27bfc577 da suíte 8 (83f9f606): a origem simulada nunca nasce ativa nem promove pela sombra (aprendizado.simulada_publica só na suíte); tests/test_origem_simulada.py (6, o join = 0); bateria de 32 arquivos, 657 passed; suíte 8 inteira: backend 6797 sem falha, front 1339, scripts 463. Real: not_run (chega ao central com o deploy 8).",
+   "grupo": "aprendizado-suite-8",
    "modelo": "claude-opus-5-5",
    "esforco": "medio",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T07:34:22+00:00"
+   "quando": "2026-10-03T09:06:05+00:00"
   },
   "29.45": {
    "id": "29.45",
@@ -5960,6 +5960,18 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T09:04:32+00:00"
+  },
+  "30.29": {
+   "id": "30.29",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #142 (feat/30-29-fluxos-com-variaveis-de-execucao @ 0f6f99c7) na main pelo merge 4f5a4f66 da suíte 8 (83f9f606). bind_template_parameters (skills/domain/matching.py) com a regra dos RESERVED do LT-3 (instance_id, run_id, account_label nunca exigidos), a mesma do FlowStore.match; o aprendizado do fluxo nunca os templatiza. Os 5 fluxos do QA Messenger que o bind matava (uses 0) voltam a casar; foram desligados por pessoa às 08:45:08Z antes do deploy 8 (decisão da orquestradora: só valem depois do parecer do curador). simulated: tests/test_flows_account_label.py (os 2 testes novos de bind/compilação falham com o matching.py antigo); bateria de 32 arquivos, 735 passed; suíte 8 inteira: backend 6797 sem falha. Real: not_run.",
+   "grupo": "aprendizado-suite-8",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T09:06:05+00:00"
   }
  },
  "rodadas": [
@@ -7248,6 +7260,16 @@
    ],
    "grupos": [
     "suite-8-android"
+   ]
+  },
+  {
+   "quando": "2026-10-03T09:06:05+00:00",
+   "itens": [
+    "30.28",
+    "30.29"
+   ],
+   "grupos": [
+    "aprendizado-suite-8"
    ]
   }
  ]
