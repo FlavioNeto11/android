@@ -1,11 +1,11 @@
 """`RegistroDeRevisoes` sobre `learning_reviews` (069) e a leitura da janela do orçamento do curador (30.11, §8.7).
 
 Custo: a 069 tem `usd REAL NOT NULL DEFAULT 0`; a 075 acrescenta `ai_call_id`, a linha de `ai_calls` que o hub mediu
-(30.12). O `usd` medido NÃO é gravado ainda: a pendência registrada em `design/hub-de-ia-fora-de-execucao.md` (unificar
-o saldo na rubrica ANTES de o curador gravar `learning_reviews.usd`) segura. Então `usd = 0` continua querendo dizer NÃO
-MEDIDO, nunca "de graça": só `usd > 0` entra como custo medido (c̄ e mediana), e a revisão sem medida entra no gasto da
-curadoria pela ESTIMATIVA do tamanho do dossiê gravado (a aplicação a calcula; aqui só se lê o tamanho). O
-`ai_call_id` já liga a revisão à chamada paga, para a auditoria e para a gravação do `usd` depois da unificação.
+(30.12). Desde o 30.30 o `usd` medido pelo hub é gravado (a orquestradora derrubou a pendência da rubrica em 03/10: nada
+soma `learning_reviews.usd` no `/api/usage` nem no teto do dia, que leem `ai_calls`, então não há dupla contagem). `usd = 0`
+continua querendo dizer NÃO MEDIDO (as linhas de antes, a resposta simulada), nunca "de graça": só `usd > 0` entra como
+custo medido (c̄ e mediana), e a revisão sem medida entra no gasto da curadoria pela ESTIMATIVA do tamanho do dossiê
+gravado (a aplicação a calcula; aqui só se lê o tamanho). O `ai_call_id` liga a revisão à chamada paga, para a auditoria.
 
 `G_W` é o gasto de IA da operação: `SUM(learning_daily.usd)` na janela, sem filtro de falha (o relatório filtra
 `failure_kind <> ''` porque fala de falhas; o orçamento fala do gasto todo). A curadoria não entra nele: a régua
@@ -90,7 +90,7 @@ class RegistroDeRevisoesSql:
             " ON CONFLICT (item_ref, dossie_hash) DO NOTHING",
             (rid, to_iso(agora), nova.item_ref, nova.item_kind, nova.scope_app, nova.gatilho, nova.dossie_hash,
              json.dumps(nova.dossie, ensure_ascii=False, sort_keys=True), nova.template_id, nova.template_versao,
-             nova.provedor, nova.modelo, int(nova.simulated), 0.0,
+             nova.provedor, nova.modelo, int(nova.simulated), float(nova.usd or 0.0),
              None if nova.saida is None else json.dumps(nova.saida, ensure_ascii=False, sort_keys=True),
              nova.validade, nova.classe_de_risco, nova.politica, nova.ai_call_id))
         return rid if (cur.rowcount or 0) == 1 else None

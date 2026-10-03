@@ -29,7 +29,9 @@ Jev em sombra (31.8). Prova `simulated` (`backend/tests/test_curador_do_hub.py`)
 
 **PENDÊNCIA registrada (orquestradora, 02/10):** a ordem das réguas ficou a existente (pedido > execução > dia > fatia) e o saldo
 da conta continua em `_saldo` (`kind="balance"`). UNIFICAR o saldo na rubrica (o `motivo="saldo"` e a fatia `α × min(saldo, teto)`) é o
-passo seguinte, a fazer antes do 30.11 gravar `learning_reviews.usd` e antes do 31.10.
+passo seguinte, a fazer antes do 31.10. A condição sobre `learning_reviews.usd` CAIU (orquestradora, 03/10, 30.30): o
+curador grava o `usd` medido porque nada o soma no `/api/usage` nem no teto do dia (estes leem `ai_calls`); gravá-lo só
+troca a estimativa do orçamento do PRÓPRIO curador pela medida.
 
 ## 1. O que já existe (PROVED no código)
 

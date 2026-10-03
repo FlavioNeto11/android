@@ -201,7 +201,8 @@ class CuradorPorIA:
             simulado = self._curador.simulado if resposta.simulado is None else resposta.simulado
             provedor = self._curador.provedor if resposta.provedor is None else resposta.provedor
             if not self._gravar(x, validacao.validade, saida, agora, provedor=provedor,
-                                modelo=resposta.modelo, simulado=simulado, ai_call_id=resposta.ai_call_id):
+                                modelo=resposta.modelo, simulado=simulado, ai_call_id=resposta.ai_call_id,
+                                usd=0.0 if simulado else (resposta.usd or 0.0)):
                 continue                                # outra réplica gravou o mesmo (item, dossiê) primeiro
             if validacao.parecer is None:
                 invalidas.append(ref)
@@ -333,14 +334,14 @@ class CuradorPorIA:
 
     def _gravar(self, x: _Elegivel, validade: str, saida: dict[str, object] | None, agora: datetime, *,
                 provedor: str, modelo: str, simulado: bool, guardar_dossie: bool = True,
-                ai_call_id: int | None = None) -> bool:
+                ai_call_id: int | None = None, usd: float = 0.0) -> bool:
         d = x.dossie
         nova = NovaRevisao(item_ref=x.entrada.trail_ref, item_kind=x.entrada.kind.value, scope_app=x.entrada.app or "",
                            gatilho=x.gatilho.value, dossie_hash=d.dossie_hash,
                            dossie=d.como_dados() if guardar_dossie else {}, template_id=TEMPLATE_ID,
                            template_versao=TEMPLATE_VERSAO, provedor=provedor, modelo=modelo, simulated=simulado,
                            validade=validade, saida=saida, classe_de_risco=d.classe.value,
-                           politica=d.risco.politica.value, ai_call_id=ai_call_id)
+                           politica=d.risco.politica.value, ai_call_id=ai_call_id, usd=usd)
         return self._registro.gravar(nova, agora) is not None
 
 

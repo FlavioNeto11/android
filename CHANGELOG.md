@@ -30,6 +30,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   central (decisão da orquestradora). Dá B ≈ US$ 7,3 e teto ≈ US$ 0,52 por hora; 2 voltas drenam ~40 itens.
   - Com G_W = US$ 11,48, o padrão dava B = 1,15 e teto ≈ US$ 0,08 por hora. O `k·n·c̄` (≈ 1,8) travava, mesmo subindo só o alfa.
   - VOLTA a 0.10 e 1.5 no deploy 9.
+- `learning_reviews.usd` passa a gravar o custo que o hub mediu. Antes saía 0.0: nas 6 revisões das 08:29Z, contra
+  +US$ 0,1182 no `/api/usage`.
+  - A resposta simulada grava 0.
+  - O orçamento do curador passa de estimado pelo dossiê a medido (c̄, mediana e gasto da janela).
+  - A pendência da rubrica (`design/hub-de-ia-fora-de-execucao.md`) caiu por decisão da orquestradora: nada soma essa
+    coluna no `/api/usage` nem no teto do dia.
 - Prova `simulated`:
   - `test_learning_curador.py::test_pedido_da_pessoa_vai_na_frente_menos_na_classe_a_e_sob_o_teto`;
   - `test_learning_pareceres.py::test_o_pedido_da_pessoa_fura_a_fila`: com o teto deixando UMA revisão na volta, ela é a

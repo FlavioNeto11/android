@@ -312,10 +312,10 @@ class CuradorMedido(CuradorSimulado):
         return replace(super().revisar(pedido), usd=usd, ai_call_id=ai_call_id, simulado=simulado)
 
 
-def test_chamada_medida_pelo_hub_fica_ligada_a_revisao_sem_gravar_o_usd_ainda(db: Database) -> None:
-    """075: a revisão guarda o `ai_call_id` da chamada medida; o `usd` só é gravado depois de unificar o saldo na rubrica
-    (pendência do hub), então segue 0 = não medido e entra pela estimativa. O simulado do adaptador (True) perde para o
-    da RESPOSTA (False): o parecer avisa o dono como o de um provedor real."""
+def test_chamada_medida_pelo_hub_grava_o_usd_e_fica_ligada_a_revisao(db: Database) -> None:
+    """075 e 30.30: a revisão guarda o `ai_call_id` e o `usd` da chamada medida, e o custo entra como MEDIDO no orçamento
+    do curador (não mais pela estimativa do dossiê). O simulado do adaptador (True) perde para o da RESPOSTA (False): o
+    parecer avisa o dono como o de um provedor real."""
     m = Mundo(db)
     m.ia = CuradorMedido(usd=0.0031, ai_call_id=42, simulado_da_resposta=False)
     m.curador = ligar_curador.ligar(m.servico, m.repo, db, TriagemDeCredencial(), config=lambda: m.cfg,
@@ -325,14 +325,14 @@ def test_chamada_medida_pelo_hub_fica_ligada_a_revisao_sem_gravar_o_usd_ainda(db
     r = m.volta()
     assert r.revisadas == (ref,) and r.avisos == 1
     [linha] = m.revisoes()
-    assert (linha["usd"], linha["ai_call_id"], linha["simulated"]) == (0, 42, 0)
+    assert (linha["usd"], linha["ai_call_id"], linha["simulated"]) == (0.0031, 42, 0)
     j = RegistroDeRevisoesSql(db).janela(m.agora, 7)
-    assert j.custos_medidos == () and len(j.tamanhos_sem_medida) == 1
+    assert j.custos_medidos == (0.0031,) and j.tamanhos_sem_medida == ()
 
 
 def test_resposta_simulada_nunca_avisa_mesmo_com_adaptador_real(db: Database) -> None:
     """A resposta que se diz simulada não avisa o dono, mesmo com o adaptador declarando provedor real; sem chamada,
-    nada de `ai_call_id`."""
+    nada de `ai_call_id`, e o `usd` que ela traga não vira custo (30.30: simulada grava 0)."""
     m = Mundo(db)
     m.ia = CuradorMedido(usd=0.5, ai_call_id=None, simulado_da_resposta=True)
     m.ia.simulado = False
