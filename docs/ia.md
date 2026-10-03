@@ -730,7 +730,8 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
     no corpus de 267, mas o cético construiu 25 variações que chegavam em claro. A causa de fundo: a C7 era uma lista
     fechada, e a senha só de letras dita sem a palavra passava. As correções:
     - **E-A(1), "senha" em outras línguas de escrita latina** (catalão, estoniano, indonésio, vietnamita, suaíli, lituano,
-      galês, islandês e outras, pelo Wiktionary): entram na lista na MESMA normalização do texto. "mật khẩu", pré-composto
+      galês, islandês e outras; 56 traduções, 40 novas, as da especificação e outras de memória, não conferidas uma a uma
+      no Wiktionary): entram na lista na MESMA normalização do texto. "mật khẩu", pré-composto
       ou decomposto, vira "matkhau"; as longas casam também coladas a outra palavra.
     - **E-A(2), eufemismos**: palavra secreta ou mágica, "magic word", lema e "a de acesso", credencial pelo nome, "pswd",
       "a mesma de ontem", "os números que chegaram", "o que combinamos pelo telefone", "embaixo do usuário" e "a

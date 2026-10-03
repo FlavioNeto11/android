@@ -75,8 +75,9 @@ _PALAVRAS_C7: Final = (
     "pw", "psw", "haslo", "hasło", "parola", "losenord", "sifre", "heslo", "jelszo", "salasana", "lozinka", "adgangskode",
     # rodada E (03/10): abreviação, a flexão de "secreto" e a credencial pelo nome
     "pswd", "pword", "passw", "secreta", "credencial", "credenciais", "credential", "credenciales")
-#: "Senha" em línguas de escrita latina (rodada E do 31.9, E-A(1): a regra do dono é "em qualquer idioma"; traduções do
-#: Wiktionary). Entram pela MESMA normalização do texto (sem acento, casefold, sem espaço nem hífen): "mật khẩu" pré-composto
+#: "Senha" em línguas de escrita latina (rodada E do 31.9, E-A(1): a regra do dono é "em qualquer idioma"). São 56: as da
+#: especificação da orquestradora e traduções de memória, NÃO conferidas uma a uma no Wiktionary (40 fora da lista
+#: anterior). Entram pela MESMA normalização do texto (sem acento, casefold, sem espaço nem hífen): "mật khẩu" pré-composto
 #: ou decomposto vira "matkhau", e "kata sandi" casa com um separador entre as letras. "passe" sozinho continua fora (é o
 #: imperativo de passar): só conta com verbo de entrar na frase (`_EUFEMISMO_COM_ENTRAR`).
 _SENHA_TRADUCOES: Final = (
