@@ -5438,20 +5438,20 @@
    "id": "31.9",
    "status": "partial",
    "proof": "simulated",
-   "evidence": "Branch feat/31-9-intencao-sombra (e1f7ee53, 1d867449, 106ecd67, a8072fb9, 8e7315ba, 6bb5261e, cd74d897), na main pelo merge 8413ddc9 da integ jev/integ-suite-5 @ 1cb9bb4a (suite 5b bvqmppz9x: a catraca do ADR-052 passou depois do cd74d897). Sombra da intencao R2/R3 fora da cadeia, depois do _plan; C3 por lista de permissao (entidades.py), C7 em prosa recusa o pedido inteiro; desligado nao le, nao resolve e nao grava. test_decisao_fechada_intencao.py (DecisorFalso). Envio fechado: JEV_RUNTIME_SEND_APPROVED=False. Chamada real: not_run. Rodadas E, F e G (fix/31-9-rodada-e @5f020598: C7 pela intenção de entrar, 'senha' em outras línguas, e-mail em peças; F: barrar pela intenção e desfazer o 'com X' pelo catálogo real; G: @handle ou e-mail, catálogo só no destino; 5f020598: nomes de app por gancho registrado pela fila, sem import tardio) na main pelo merge da suíte 9; simulated: test_decisao_fechada_reverificacao_f.py e _g.py, corpus G 492 com 0 vazamentos, test_arquitetura 9/9.",
-   "blocker": "Rodada H (fix/31-9-rodada-h, código @54f71853) na suíte 10. Correcao de privacidade antes de qualquer R2/C3: itens 1-6 da reverificacao (.claude/handoffs/reverificacao-31-9.md: vocabulario do catalogo com @handles, opcoes da R2, lista de bloqueio do banco, palavras comuns que sao nomes, C7 multilingue, aspas e simbolos) e I3/I4 da revisao da suite 5; portao: ataque.py com zero vazamento e varredura do catalogo real limpa.",
+   "evidence": "Na main pela suíte 10 (16fd1127): a rodada H sem a H-3 e com o refinamento dos anos (fix/31-9-rodada-h, código 136f80ff e 2be39d4c; 616b59fc): (a) C7 com dígito recusa (c7_valor_com_digito), (b) a quebra de linha separa o par, (c) objetos do app de e-mail não são dono de endereço, o token só de dígitos conta perto do campo ou do conector; harness de 579 com 0 vazamentos e 0 passagens indevidas nos dois catálogos; real (mode=ro) 1 de 125 comandos recusados. Também pela suíte 10, o I1 da revisão da suíte 5 (feat/i1-cartao-typesafe @ccaa3684 + adendo v0.92 @86fe344a: cartão TypeSafe em Configuração › IA, closed_decision em /api/ai/balances fora de roles, \"Usada por: decisão fechada (sombra)\"), implemented simulated. Antes: rodadas E, F e G pela suíte 9; a sombra R2/R3 desde a suíte 5.",
+   "blocker": "A forma A (31.18 @b7c05558) e as lacunas da rodada I com a A-média aprovada pelo dono (31.20 @ea1df281, feat/31-18-forma-a) entram na suíte 11: portão passou (harness 785 nos dois catálogos, simulated: 0 vazamentos, 0 passagens indevidas, só as 4 recusas indevidas conhecidas; reverificação independente da orquestradora igual) e custo real mode=ro 14 de 126 comandos (11,1 %). Depois da suíte 11 vira implemented; a intenção liga em sombra no deploy 11.",
    "arquivos": [
     "backend/app/planning/decisao_fechada/intencao.py",
     "backend/app/planning/decisao_fechada/entidades.py",
-    "backend/app/taskqueue/service.py"
+    "backend/tests/test_decisao_fechada_reverificacao_h.py"
    ],
-   "testes": "suíte 9 inteira em integ/suite-9 @2c078dd1 (-n 8, Idle, 10:37–10:46Z): backend 7244 passed, 7 skipped, 1 failed (test_revisao_receitas::test_aparelho_do_lider_que_cai_libera_quem_espera: race do teste exposto pelo #145, registrado; não bloqueia, regra da orquestradora); scripts 463; frontend 1351 (112 arquivos) e typecheck; docs-check 0/0.",
-   "grupo": "suite-9-android",
-   "modelo": "opus (sessão Android, integradora)",
+   "testes": "simulated: test_decisao_fechada_* (filtro e sombras: 999 no 136f80ff; 1059 + 284 no 2be39d4c), harness ataque_b.py de 579; real: medição mode=ro dos comandos de 7 dias (só contagens).",
+   "grupo": "suite-10-jev",
+   "modelo": "opus (sessão jev, executora da orquestradora)",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T11:02:10+00:00"
+   "quando": "2026-10-03T14:57:55+00:00"
   },
   "30.11": {
    "id": "30.11",
@@ -6067,21 +6067,22 @@
   "31.17": {
    "id": "31.17",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "feat/31-17-sombra-curador @c645d4e9 (ede4a82e: privacidade.JEV_RUNTIME_SEND_APPROVED = True, ADR-069 item 15; de fábrica nada sai: enabled false e decisor nulo; o aviso diz o decisor e só afirma envio de verdade; os testes do interruptor fechado o fecham por monkeypatch; c645d4e9: K-081, off/on sem aspas no YAML viram booleano). Na main pelo merge da suíte 9. Real: a sombra C0–C1 do curador liga no deploy 9 (ai.decisao_fechada) e o T_on do 31.10 é registrado lá.",
+   "proof": "real",
+   "evidence": "Código: feat/31-17-sombra-curador @c645d4e9 (JEV_RUNTIME_SEND_APPROVED = True, ADR-069 item 15; K-081), na main pela suíte 9; deploy 9 no ar com ai.decisao_fechada {enabled: true, decisor: jev, consumidores: {curador: shadow}, classes_permitidas: [C0, C1]}, T_on 2026-10-03T11:04:15Z. Prova real (03/10/2026 13:14:50Z, WIN-7S2UASNLFOP, banco do central em modo só leitura; script scripts/jev-prova-31-17.py @81c1f471, na main pela suíte 10): veredito OK, 0 problemas; sombra PROVED 4 linhas em 4 chamadas, curador/shadow/C0, 4 abaixo_do_limiar, 0 violações; corpo INFERRED, 4 dossiês com hash conferido e remontados (até 1012 B), 0 violações; gasto PROVED pelas ai_calls do Jev: 4 chamadas ok, US$ 0,000106, tokens 2516 + 308, p50 510 ms e p95 553 ms (posto do script; o método se unifica no 31.19), modelo jev-1.13.0; cruzamento 4 × 4 bate.",
    "blocker": "",
    "arquivos": [
     "backend/app/planning/decisao_fechada/privacidade.py",
     "backend/app/config.py",
-    "docs/conhecimento/aprendizados.md"
+    "scripts/jev-prova-31-17.py",
+    "scripts/tests/test_jev_prova_31_17.py"
    ],
-   "testes": "suíte 9 inteira em integ/suite-9 @2c078dd1 (-n 8, Idle, 10:37–10:46Z): backend 7244 passed, 7 skipped, 1 failed (test_revisao_receitas::test_aparelho_do_lider_que_cai_libera_quem_espera: race do teste exposto pelo #145, registrado; não bloqueia, regra da orquestradora); scripts 463; frontend 1351 (112 arquivos) e typecheck; docs-check 0/0.",
-   "grupo": "suite-9-android",
-   "modelo": "opus (sessão Android, integradora)",
+   "testes": "real: scripts/jev-prova-31-17.py contra o central às 13:14:50Z (saída OK); simulated: scripts/tests/test_jev_prova_31_17.py (8) e a suíte 10 da Android (SQLite @008b9df2: 7513 passed; PG @618ba43a -n 8: 7494 passed, 8 failed, 7 pré-existentes da K-084 e 1 do 30.31 corrigida em df0bf82d; nenhuma nos arquivos da jev).",
+   "grupo": "suite-10-jev",
+   "modelo": "opus (sessão jev, executora da orquestradora)",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T11:02:10+00:00"
+   "quando": "2026-10-03T14:57:55+00:00"
   },
   "29.46": {
    "id": "29.46",
@@ -6139,6 +6140,46 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T14:54:09+00:00"
+  },
+  "31.16": {
+   "id": "31.16",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "feat/31-16-telas-ra10 @d5942edf (10d63168: seção \"Modelo forte e conferência\" em Diagnóstico › Custo de IA, com escalations por motivo, rejulgamento, cascata, recolhidos por app e imagem e o aviso do driven_by nulo, sem API nova; adendo v0.90 do api-contract, bloco decisao_fechada de /api/ai com decider e sending; 666d80bc: merge da main 3dcfc9ac), na main pela suíte 10 (16fd1127). Simulated: typecheck e 1358 testes do frontend no merge; navegador contra backend simulado do worktree (banco temporário com linhas sintéticas), desktop e 375 px. Real: not_run aqui; vem da validação no Chrome do deploy 10.",
+   "blocker": "",
+   "arquivos": [
+    "frontend/src/features/usage/UsageView.tsx",
+    "frontend/src/features/usage/usage.ts",
+    "frontend/src/features/diagnostics/UsageWeekCard.tsx",
+    "frontend/src/api/types.ts",
+    "docs/api-contract.md",
+    "docs/produto.md"
+   ],
+   "testes": "frontend: typecheck + 1358 testes (simulated); suíte 10 da Android (SQLite @008b9df2: 7513 passed; PG @618ba43a: 7494 passed, 8 failed fora dos arquivos da jev).",
+   "grupo": "suite-10-jev",
+   "modelo": "opus (sessão jev, executora da orquestradora)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T14:57:55+00:00"
+  },
+  "31.10": {
+   "id": "31.10",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Curador em sombra real desde o deploy 9 (T_on 2026-10-03T11:04:15Z, WIN-7S2UASNLFOP): 4 linhas às 13:10Z (curador/shadow/C0, 4 abaixo_do_limiar, US$ 0,000106), conferidas pela prova do 31.17 às 13:14:50Z. Relatório scripts/jev-relatorio-31-10.py (na main) rodado no central em modo só leitura às 13:14Z: curador, estrato receita, 4 pedidos, 0 respondidos, 0 rótulos, veredito \"sem amostra\" (rótulos 0 < 30); intenção sem linhas.",
+   "blocker": "A intenção liga em sombra no deploy 11 (31.18/31.20 na suíte 11). O GO do curador espera 30 rótulos por kind; o 31.19 analisa o limiar × as 4 respostas, restringe o rótulo tipo 1 ao dono e unifica o percentil dos dois scripts.",
+   "arquivos": [
+    "scripts/jev-relatorio-31-10.py",
+    "docs/design/jev-golden-set.md"
+   ],
+   "testes": "real: relatório mode=ro no central (13:14Z); simulated: scripts/tests/test_jev_relatorio_31_10.py.",
+   "grupo": "suite-10-jev",
+   "modelo": "opus (sessão jev, executora da orquestradora)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T14:57:55+00:00"
   }
  },
  "rodadas": [
@@ -7508,6 +7549,18 @@
    ],
    "grupos": [
     "suite-10-android"
+   ]
+  },
+  {
+   "quando": "2026-10-03T14:57:55+00:00",
+   "itens": [
+    "31.17",
+    "31.16",
+    "31.9",
+    "31.10"
+   ],
+   "grupos": [
+    "suite-10-jev"
    ]
   }
  ]
