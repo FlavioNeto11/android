@@ -380,7 +380,8 @@ class OpenAICompatProvider:
     # ------------------------------------------------------------------ verificação
     async def verify(self, req: VerifyRequest) -> tuple[Verdict, Usage]:
         s = req.screen
-        modelo = self.models.get("escalation" if getattr(req, "escalate", False) else "verify", self.model)
+        escalado = bool(getattr(req, "escalate", False))
+        modelo = self.models.get("escalation" if escalado else "verify", self.model)
         with_image = bool(s.jpeg) and not s.sensitive
         desc = ("tela sensível (imagem omitida)" if s.sensitive
                 else f"app em primeiro plano: {s.package or 'desconhecido'}; "
@@ -391,7 +392,8 @@ class OpenAICompatProvider:
                                            req.facts) + self._json_hint(modelo, esquema)
         msg, usage = await self._create(role="verify", model=modelo, system=prompts.VERIFIER_SYSTEM,
                                         content=self._screen_content(s, texto), max_tokens=3000,
-                                        schema=esquema, schema_name="veredito", with_image=with_image)
+                                        schema=esquema, schema_name="veredito", tier=int(escalado),
+                                        with_image=with_image)     # RA-10: rejulgamento escalado é tier 1
         return verdict_from_json(self._texto(msg)), usage
 
     # ------------------------------------------------------------------ leitura visual (item 12.5)

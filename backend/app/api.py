@@ -88,6 +88,7 @@ from .planning.catalog import registered
 from .releases.catalog import ReleaseValidationError
 from .social.persona_batch import PersonaBatchAccepted, PersonaBatchDTO
 from .social.service import SocialError
+from .taskqueue import observabilidade
 from .taskqueue.repository import CONTENT_TYPES
 from .models import RunSummary
 from .modules.execution.domain.command_refinement import CommandRefinement
@@ -700,7 +701,12 @@ async def usage(request: Request, run_id: str | None = None, days: int = Query(7
             # decisões no Sonnet sem uma leitura de cache e ninguém viu, porque o relatório só somava.
             "cache_inativo": [{"model": r["model"], "calls": r["calls"]} for r in rows
                               if r["role"] == "decide" and (r["model"] or "").startswith("claude-")
-                              and r["calls"] >= 10 and not (r["cache_read"] or 0) and not (r["cache_write"] or 0)]}
+                              and r["calls"] >= 10 and not (r["cache_read"] or 0) and not (r["cache_write"] or 0)],
+            # RA-10 (migração 080): custo por origem, rejulgamento (com a discordância por app), cascata do bloqueio,
+            # motivos do modelo forte e da imagem, e as etapas com decisão de IA ainda sem `driven_by`. Só chaves NOVAS:
+            # as de cima não mudam de sentido.
+            **observabilidade.grupos(s.db, prices, run_id=run_id,
+                                     desde=None if run_id else iso_in(-days * 86400))}
 
 
 @router.get("/flows")
