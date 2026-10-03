@@ -15,7 +15,7 @@ import {
   type AcaoDaReceita, type ConteudoDaHabilidade, type ConteudoDaLicao, type ConteudoDaReceita, type ConteudoDaTela,
   type ConteudoDoFluxo, type ConteudoDoItem, type DetalheDoLivro, type EntradaDoLivro, type EvidenciaDoLivro,
   type LivroKind, type OrigemDaReceita, type RelacaoDoItem, type SaudeDoItem, type VersaoDoItem, type VizinhaDaReceita,
-  ORIGEM_LABEL, acoesDoItem, porQueOSistemaNaoPublica, rotuloDoEstado, rotuloDoKind,
+  ORIGEM_LABEL, acoesDoItem, nomearCapabilityNoTexto, porQueOSistemaNaoPublica, rotuloDoEstado, rotuloDoKind,
 } from './model';
 import styles from './Aprendizado.module.css';
 
@@ -49,6 +49,16 @@ function Fato({ rotulo, children }: { rotulo: string; children: ReactNode }) {
 }
 
 const Mono = ({ children }: { children: ReactNode }) => <code>{children}</code>;
+
+/** O nome em português da capability DO ITEM (P3 do deploy 3); outra capability, ou sem catálogo, `null`. */
+type NomeDaCapability = (codigo: string) => string | null;
+const nomeDaCapabilityDo = (item: EntradaDoLivro): NomeDaCapability =>
+  (codigo) => (codigo === item.capability ? item.capability_nome ?? null : null);
+
+/** "Abrir a conversa (`OPEN_THREAD`)": o nome do catálogo e o código ao lado; sem nome, só o código. */
+function CapabilityNomeada({ codigo, nome }: { codigo: string; nome: string | null }) {
+  return nome ? <>{nome} (<Mono>{codigo}</Mono>)</> : <Mono>{codigo}</Mono>;
+}
 const nomesDeParametro = (nomes: readonly string[]) => nomes.map((n, i) => (
   <span key={n}>{i > 0 ? ', ' : ''}<Mono>{`{${n}}`}</Mono></span>
 ));
@@ -71,7 +81,7 @@ function Identidade({ item, conteudo }: { item: EntradaDoLivro; conteudo: Conteu
             </button>
           </Fato>
         ) : null}
-        {capability ? <Fato rotulo="Capability"><Mono>{capability}</Mono></Fato> : null}
+        {capability ? <Fato rotulo="Capability"><CapabilityNomeada codigo={capability} nome={nomeDaCapabilityDo(item)(capability)} /></Fato> : null}
         {versao ? <Fato rotulo="Versão">{versao}</Fato> : null}
         <Fato rotulo="Estado">{rotuloDoEstado(item.state)}</Fato>
         <Fato rotulo="Origem">{ORIGEM_LABEL[item.origin] ?? item.origin}</Fato>
@@ -153,8 +163,9 @@ function OrigemDaReceitaTexto({ o }: { o: OrigemDaReceita }) {
   return <span className={styles.semDado}>origem desconhecida</span>;
 }
 
-function ConteudoReceita({ c }: { c: ConteudoDaReceita }) {
+function ConteudoReceita({ c, nomeDe }: { c: ConteudoDaReceita; nomeDe: NomeDaCapability }) {
   const commits = c.efeito.acoes_commit.map((i) => i + 1);
+  const unica = c.capability?.nomes.length === 1 ? c.capability.nomes[0] : undefined;
   const { uso, sombra } = c;
   return (
     <>
@@ -169,10 +180,11 @@ function ConteudoReceita({ c }: { c: ConteudoDaReceita }) {
       <dl className={styles.fatos}>
         {c.capability ? (
           <Fato rotulo="Capability">
-            <Mono>{c.capability.nomes.join(', ')}</Mono>
+            {unica ? <CapabilityNomeada codigo={unica} nome={nomeDe(unica)} /> : <Mono>{c.capability.nomes.join(', ')}</Mono>}
             {c.capability.ambigua ? <> <Badge tone="warning" size="sm" title="Etapas com a mesma forma servem a mais de uma capability: o sistema não sabe qual é a certa.">ambígua</Badge></> : null}
+            {/* Travessão, não parênteses: o nome já leva o código entre parênteses. */}
             {' '}<span className={styles.passoLinha}>
-              ({c.capability.fonte === 'origem' ? 'a da etapa onde foi aprendida' : 'deduzida das etapas com a mesma forma'})
+              — {c.capability.fonte === 'origem' ? 'a da etapa onde foi aprendida' : 'deduzida das etapas com a mesma forma'}
             </span>
           </Fato>
         ) : null}
@@ -235,15 +247,18 @@ function ConteudoHabilidade({ c }: { c: ConteudoDaHabilidade }) {
   );
 }
 
-function ConteudoLicao({ c }: { c: ConteudoDaLicao }) {
+function ConteudoLicao({ c, nomeDe }: { c: ConteudoDaLicao; nomeDe: NomeDaCapability }) {
   const esc = c.escopo;
+  const nome = esc.capability ? nomeDe(esc.capability) : null;
   return (
     <>
-      {c.texto ? <blockquote className={styles.citacao}>{c.texto}</blockquote> : <p className={styles.semDado}>texto indisponível</p>}
+      {/* Na tela, "Em Abrir o perfil (OPEN_PROFILE):"; o texto gravado, que vai ao prompt, segue com o código. */}
+      {c.texto ? <blockquote className={styles.citacao}>{nomearCapabilityNoTexto(c.texto, esc.capability, nome)}</blockquote>
+        : <p className={styles.semDado}>texto indisponível</p>}
       <dl className={styles.fatos}>
         {c.acao ? <Fato rotulo="Orienta a ação">{c.acao}</Fato> : null}
         {c.alvo?.valor ? <Fato rotulo="Sobre">{rotuloDoAlvoDaLicao(c.alvo.tipo)} <Mono>{c.alvo.valor}</Mono></Fato> : null}
-        {esc.capability ? <Fato rotulo="Capability"><Mono>{esc.capability}</Mono></Fato> : null}
+        {esc.capability ? <Fato rotulo="Capability"><CapabilityNomeada codigo={esc.capability} nome={nome} /></Fato> : null}
         {esc.role ? <Fato rotulo="Papel">{esc.role}</Fato> : null}
         {c.modelo ? <Fato rotulo="Modelo">{c.modelo}</Fato> : null}
         {typeof c.tokens === 'number' ? <Fato rotulo="Tamanho">{formatInt(c.tokens)} tokens no prompt</Fato> : null}
@@ -268,12 +283,12 @@ function ConteudoTela({ c }: { c: ConteudoDaTela }) {
   );
 }
 
-function Conteudo({ c }: { c: ConteudoDoItem }) {
+function Conteudo({ c, nomeDe }: { c: ConteudoDoItem; nomeDe: NomeDaCapability }) {
   switch (c.tipo) {
-    case 'receita': return <ConteudoReceita c={c} />;
+    case 'receita': return <ConteudoReceita c={c} nomeDe={nomeDe} />;
     case 'fluxo': return <ConteudoFluxo c={c} />;
     case 'habilidade': return <ConteudoHabilidade c={c} />;
-    case 'licao': return <ConteudoLicao c={c} />;
+    case 'licao': return <ConteudoLicao c={c} nomeDe={nomeDe} />;
     case 'tela': return <ConteudoTela c={c} />;
     default: return null;
   }
@@ -460,7 +475,7 @@ export function DetalheRico({ detalhe, onMudou }: { detalhe: DetalheDoLivro; onM
       <div className={styles.detalhe}>
         <Identidade item={item} conteudo={conteudo} />
         {conteudo ? (
-          <Secao slug="conteudo" titulo="Conteúdo"><Conteudo c={conteudo} /></Secao>
+          <Secao slug="conteudo" titulo="Conteúdo"><Conteudo c={conteudo} nomeDe={nomeDaCapabilityDo(item)} /></Secao>
         ) : null}
         {saude ? <Saude s={saude} comVersao={!!versao} /> : null}
         {versao ? <Versao v={versao} /> : null}

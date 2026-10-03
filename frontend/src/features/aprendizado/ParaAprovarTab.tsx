@@ -16,6 +16,7 @@ import { AvisoDaHabilidade, DecisaoInline, ItemDoLivro, aplicarTransicao, chaveD
 import { ResumoParaDecidir } from './ResumoParaDecidir';
 import {
   type AcaoDoItem, type EntradaDoLivro, ONDE_FICAM_AS_HABILIDADES, acaoDeAprovarNaFila, acoesNaFila, ordenarPendentes,
+  tituloDoItem, titulosDaLista,
 } from './model';
 import { type ModoDoCurador, efeitoDoAceite, textoDaRecusa } from './parecer';
 import styles from './Aprendizado.module.css';
@@ -88,6 +89,10 @@ export function ParaAprovarTab() {
   const itensLegado = useMemo(() => legado.itens ?? [], [legado.itens]);
   const escolhidosFila = itensFila.filter((e) => selFila.has(chaveDoItem(e)));
   const escolhidosLegado = itensLegado.filter((e) => selLegado.has(chaveDoItem(e)));
+  // Os títulos sem repetição de cada lista (P4 do deploy 3); os avisos do lote usam os mesmos, para achar o item.
+  const titulos = useMemo(() => new Map([...titulosDaLista(itensFila), ...titulosDaLista(itensLegado)]),
+                          [itensFila, itensLegado]);
+  const tituloDe = (e: EntradaDoLivro) => titulos.get(e) ?? tituloDoItem(e);
 
   const alternar = (set: typeof setSelFila) => (e: EntradaDoLivro, sim: boolean) =>
     set((antes) => {
@@ -106,12 +111,12 @@ export function ParaAprovarTab() {
       const acao = acaoDe(e);
       if (!acao) {
         falhas.push(e.kind === 'habilidade'
-          ? `${e.title}: decida em ${ONDE_FICAM_AS_HABILIDADES}`
-          : `${e.title}: não há o que aprovar neste estado`);
+          ? `${tituloDe(e)}: decida em ${ONDE_FICAM_AS_HABILIDADES}`
+          : `${tituloDe(e)}: não há o que aprovar neste estado`);
         continue;
       }
       const falha = await aplicarTransicao(e, acao, motivo);
-      if (falha) falhas.push(`${e.title}: ${falha}`);
+      if (falha) falhas.push(`${tituloDe(e)}: ${falha}`);
       else ok += 1;
     }
     toast({
@@ -138,16 +143,16 @@ export function ParaAprovarTab() {
     for (const e of itens) {
       const p = e.parecer;
       if (!p || p.recusa_no_lote) {
-        falhas.push(`${e.title}: ${textoDaRecusa(p?.recusa_no_lote) ?? 'sem parecer da IA'}`);
+        falhas.push(`${tituloDe(e)}: ${textoDaRecusa(p?.recusa_no_lote) ?? 'sem parecer da IA'}`);
         continue;
       }
       try {
         await apiAprendizado.responderParecer(e.kind, e.ref, p.id, { resposta: 'aceitar', motivo, em_lote: true });
         ok += 1;
-        feitos.push(`${e.title}: ${efeitoDoAceite(p.acao)}`);
+        feitos.push(`${tituloDe(e)}: ${efeitoDoAceite(p.acao)}`);
       } catch (err) {
         const x = toApiError(err);
-        falhas.push(`${e.title}: ${textoDaRecusa(x.code) === x.code ? x.message : textoDaRecusa(x.code)}`);
+        falhas.push(`${tituloDe(e)}: ${textoDaRecusa(x.code) === x.code ? toLoadError(err).message : textoDaRecusa(x.code)}`);
       }
     }
     toast({
@@ -236,6 +241,7 @@ export function ParaAprovarTab() {
               <ItemDoLivro
                 key={chaveDoItem(e)}
                 entrada={e}
+                titulo={titulos.get(e)}
                 acoes={acoesNaFila(e)}
                 selecionado={selFila.has(chaveDoItem(e))}
                 onSelecionar={(sim) => alternar(setSelFila)(e, sim)}
@@ -300,6 +306,7 @@ export function ParaAprovarTab() {
               <ItemDoLivro
                 key={chaveDoItem(e)}
                 entrada={e}
+                titulo={titulos.get(e)}
                 acoes={[REBAIXAR]}
                 selecionado={selLegado.has(chaveDoItem(e))}
                 onSelecionar={(sim) => alternar(setSelLegado)(e, sim)}

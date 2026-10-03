@@ -10,6 +10,7 @@ import type { Tone } from '../../lib/status';
 import { formatDateTime, formatQuando } from '../../lib/time';
 import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
+import { ETAPA_LIVRE } from './atencao';
 import { type Polaridade, SINAL_KINDS, type Sinal, rotuloDaFalha, rotuloDoMotivo, rotuloDoSinal } from './model';
 import styles from './Aprendizado.module.css';
 
@@ -37,9 +38,26 @@ export function quemRegistrou(por: string): string {
   return `por ${por}`;
 }
 
+/** Um nome do catálogo com o código no `title`; sem nome, o código como código (P3 do deploy 3). */
+function Nomeado({ codigo, nome }: { codigo: string; nome: string | null }) {
+  return nome ? <span title={codigo}>{nome}</span> : <span className={styles.mono}>{codigo}</span>;
+}
+
+/** Onde o sinal aconteceu: "Instagram › Abrir o perfil", com os nomes do Aprendido. */
+function OndeDoSinal({ s }: { s: Sinal }) {
+  const cap = s.capability && s.capability !== ETAPA_LIVRE ? s.capability : null;
+  if (!s.app_package && !cap) return null;
+  return (
+    <span>
+      {s.app_package ? <Nomeado codigo={s.app_package} nome={s.app_nome} /> : null}
+      {s.app_package && cap ? ' › ' : null}
+      {cap ? <Nomeado codigo={cap} nome={s.capability_nome} /> : null}
+    </span>
+  );
+}
+
 function LinhaDeSinal({ s }: { s: Sinal }) {
   const pol = s.polarity ? POLARIDADE[s.polarity] : null;
-  const onde = [s.app_package, s.capability].filter(Boolean).join(' › ');
   const abrirExecucao = (runId: string) => {
     useUiStore.getState().selectRun(runId);
     useUiStore.getState().setView('execucoes');
@@ -55,7 +73,7 @@ function LinhaDeSinal({ s }: { s: Sinal }) {
       <div className={styles.itemMeta}>
         {s.created_at ? <span title={formatDateTime(s.created_at)}>{formatQuando(s.created_at)}</span> : null}
         <span>{quemRegistrou(s.created_by)}</span>
-        {onde ? <span className={styles.mono}>{onde}</span> : null}
+        <OndeDoSinal s={s} />
         {s.reason ? <span>Motivo: {rotuloDoMotivo(s.reason)}</span> : null}
         {s.failure_kind ? <span>Falha: {rotuloDaFalha(s.failure_kind)}</span> : null}
         {s.run_id ? (
