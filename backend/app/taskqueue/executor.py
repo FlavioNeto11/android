@@ -765,7 +765,8 @@ class StepExecutor:
                 rr.variables = {**loads(objective["parameters"], {}), "instance_id": rt.id, "run_id": run["id"],
                                 "account_label": account_label or "",
                                 **variaveis_da_receita(self.repo.saidas_com_tipo(objective["id"]),
-                                                       step.variables.get("item_index")),
+                                                       step.variables.get("item_index"),
+                                                       self.repo.saidas_visuais(objective["id"])),
                                 **step.variables}
                 rr.signature = self._installed_signature(rt.id, app.package)
                 rr.variant = await self.devices.variant_of(rt)
@@ -1579,6 +1580,7 @@ class StepExecutor:
                 valor, partes, alvo = "", [], None
                 visual = False                     # a árvore não tem texto e o ator pediu a leitura visual
                 lido_da_imagem = None
+                motivo_visual: str | None = None   # a triagem recusou o que o leitor viu: segue o caminho da árvore
                 if not saidas_declaradas:
                     erro = "esta etapa não entrega valor às seguintes; read_value não se aplica aqui"
                 elif args.name not in saidas_declaradas:
@@ -1637,14 +1639,23 @@ class StepExecutor:
                         lido_da_imagem = await ler_valor_visual(
                             habilitado=ai_cfg.leitura_visual.enabled, arvore=obs.tree, element_id=args.element_id,
                             nome=args.name, valor_do_ator=args.value or "", conhecimento=conhecimento,
-                            tela=tela_conhecida, image_policy=ai_cfg.image_policy, fora_do_app=None,
+                            tela=tela_conhecida, image_policy=ai_cfg.image_policy,
+                            # defesa em profundidade: o `elif` acima já recusa a tela de outro app antes de chegar aqui,
+                            # mas a barreira vale por si (a observação pode mudar entre uma checagem e outra).
+                            fora_do_app=self._tela_fora_do_app(step, obs, app.package),
                             largura=obs.width, altura=obs.height, obter_imagem=obter_imagem,
                             tentativas=tentativas_visuais, tipo_da_tela=reconhecida.tipo if reconhecida else None,
                             transcrever=transcrever if self._tem_leitor() else None)
                     except LeituraVisualRecusada as rec:
-                        # Barreira fechada: o ator recebe SÓ o código — nem a transcrição, nem o valor dele. O recorte
-                        # recusado não é guardado, e nada é gravado.
-                        erro = rec.rotulo
+                        if rec.codigo == "triagem":
+                            # O leitor viu código de verificação, senha ou token (ADR-009): NÃO é erro de chamada. Segue o
+                            # caminho da árvore (a etapa para em `waiting_user`), sem nova tentativa do ator e sem lhe
+                            # dizer que a linha tem código — com eco, ele leria o código em outro recorte.
+                            motivo_visual = rec.motivo or "código de verificação"
+                        else:
+                            # Barreira fechada: o ator recebe SÓ o código — nem a transcrição, nem o valor dele. O
+                            # recorte recusado não é guardado, e nada é gravado.
+                            erro = rec.rotulo
                     else:
                         valor, partes, alvo = lido_da_imagem.valor, [lido_da_imagem.valor], lido_da_imagem.alvo
                 if erro is not None:
@@ -1665,12 +1676,13 @@ class StepExecutor:
                     if errors_in_row >= 4 or recusas_de_saida >= 4:
                         return await fail_or_retry(f"O valor da etapa não foi lido na tela: {erro}", obs)
                     continue
-                assert alvo is not None
-                tela = texto_da_tela(obs.tree)
-                # A leitura visual já passou pela triagem (barreira 12) sobre a transcrição e o valor.
-                motivo = None if lido_da_imagem is not None else next(
-                    (m for p in partes if (m := triagem(p, do_elemento=texto_do_elemento(alvo), da_tela=tela,
-                                                        campo_de_senha=alvo.password)) is not None), None)
+                motivo = motivo_visual
+                if motivo is None and lido_da_imagem is None:
+                    assert alvo is not None
+                    tela = texto_da_tela(obs.tree)
+                    # A leitura visual já passou pela triagem (barreira 12) sobre a transcrição e o valor.
+                    motivo = next((m for p in partes if (m := triagem(p, do_elemento=texto_do_elemento(alvo), da_tela=tela,
+                                                                      campo_de_senha=alvo.password)) is not None), None)
                 if motivo is not None:
                     # D3 (ADR-009, ADR-022, ADR-058): a etapa PARA. O valor não vai para a tabela de saídas, nem para os
                     # argumentos da ação, nem para evento ou evidência — que sai em texto, sem captura da tela que o
@@ -1686,6 +1698,7 @@ class StepExecutor:
                     return StepOutcome(Outcome.waiting_user, texto,
                                        needs="Este valor é da pessoa (ADR-009): faça esta parte manualmente, ou refaça "
                                              "o comando sem depender dele, e retome o item.")
+                assert alvo is not None
                 lidos[args.name] = (valor, args.value_kind)
                 if lido_da_imagem is not None:
                     # O recorte vira evidência SÓ agora, com a leitura válida; a nota não traz o valor. A ação não leva o

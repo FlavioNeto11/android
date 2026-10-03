@@ -17,6 +17,7 @@ from ..modules.identity.domain.persona_generation import PersonaGenerationReques
 from ..modules.identity.domain.available_data import AvailableDatum
 
 if TYPE_CHECKING:
+    from ..config import ResolvedRole
     from .capabilities import CapabilityCatalog
 
 
@@ -309,10 +310,23 @@ class AIProvider(Protocol):
     async def transcribe(self, req: LeituraRequest) -> tuple[Transcricao, Usage]: ...
 
 
+def modelo_do_papel_leitura(cfg: Config, role: ResolvedRole | None) -> str:
+    """O modelo do papel `leitura` (item 12.5), SEM fallback para o do ator: `AIError(not_configured)` quando a instância
+    não é a do papel (o executor recusa com `sem_leitor`). Com `role` (dentro do hub), é o da instância e ela precisa ser
+    do papel `leitura`; sem `role` (provedor único), é o de `ai.roles.leitura`. O recorte é um dado de terceiros que só o
+    segundo leitor, de modelo declarado e independente do ator, pode receber (ADR-070)."""
+    escolhido = role if role is not None else cfg.ai_leitura()
+    if escolhido is None or escolhido.role != "leitura" or not escolhido.model:
+        raise AIError("Não há modelo declarado para o papel leitura (ai.roles.leitura): a leitura visual não cai no "
+                      "modelo do ator.", kind="not_configured")
+    return escolhido.model
+
+
 def transcricao_from_json(raw: str, pedidas: Sequence[str]) -> Transcricao:
     """JSON do modelo → `Transcricao`, com parse ESTRITO (item 12.5; requisitos do hub de IA).
 
-    - JSON inválido, chave fora do esquema (`extra="forbid"`) ou tipo errado → `AIError(kind="invalid_output")`: nunca
+    - JSON inválido, chave fora do esquema (`extra="forbid"`), tipo errado ou campo pedido repetido com valores diferentes →
+      `AIError(kind="invalid_output")` (sem encadear a exceção do pydantic: ela traz o texto do modelo): nunca
       `legivel=False` (isso é o MODELO afirmando que não leu) e nunca sucesso;
     - só os campos PEDIDOS entram em `campos`; o pedido que não veio fica `None`;
     - teto de linhas e de caracteres: o excesso é CORTADO e marca `truncado=True` (nunca passa calado, e um valor cortado
@@ -322,9 +336,21 @@ def transcricao_from_json(raw: str, pedidas: Sequence[str]) -> Transcricao:
         texto = re.sub(r"^```[a-zA-Z]*\s*", "", texto)
         texto = re.sub(r"\s*```$", "", texto).strip()
     try:
-        t = TranscricaoWire.model_validate(json.loads(texto)).para_transcricao()
-    except (ValueError, ValidationError) as exc:
-        raise AIError("A transcrição devolvida pelo leitor não tem o formato pedido.", kind="invalid_output") from exc
+        fio = TranscricaoWire.model_validate(json.loads(texto))
+    except (ValueError, ValidationError):
+        # `from None`, de propósito: a `ValidationError` do pydantic carrega `input_value=` com o texto que o MODELO
+        # devolveu (o corpo de um e-mail, um código), e o executor loga esta falha com `exc_info=True`: a cadeia
+        # (`__cause__` ou `__context__`) levaria o texto transcrito ao log.
+        raise AIError("A transcrição devolvida pelo leitor não tem o formato pedido.", kind="invalid_output") from None
+    # Um nome pedido que vem duas vezes com valores diferentes é resposta incoerente: o mapa guardaria só a última e a
+    # conferência passaria a depender da ordem. A mensagem não cita nome nem valor.
+    vistos: dict[str, str | None] = {}
+    for c in fio.campos:
+        if c.nome in pedidas and c.nome in vistos and vistos[c.nome] != c.valor:
+            raise AIError("A transcrição devolvida pelo leitor repete um campo pedido com valores diferentes.",
+                          kind="invalid_output")
+        vistos[c.nome] = c.valor
+    t = fio.para_transcricao()
     cortou = len(t.linhas) > TRANSCRICAO_LINHAS_MAX or any(len(x) > TRANSCRICAO_TEXTO_MAX for x in t.linhas)
     linhas = [x[:TRANSCRICAO_TEXTO_MAX] for x in t.linhas[:TRANSCRICAO_LINHAS_MAX]]
     campos: dict[str, str | None] = {}

@@ -50,7 +50,7 @@ from .parsing import (_CapPlanOut, _MultiPlanOut, _PlanOut, catalog_plan_from_js
                       verdict_from_json)
 from .provider import (AVISO_TELA_SENSIVEL, AIError, Decision, DecisionRequest, LeituraRequest, PlanRequest, ScreenInput,
                        SocialRequest, Transcricao, TranscricaoWire, Usage, Verdict, VerifyRequest,
-                       persona_draft_from_json, transcricao_from_json)
+                       modelo_do_papel_leitura, persona_draft_from_json, transcricao_from_json)
 
 if TYPE_CHECKING:
     from ..config import ResolvedRole
@@ -385,7 +385,7 @@ class OpenAICompatProvider:
         """Papel `leitura` (de outra família que o ator, por escolha do dono): transcreve o RECORTE às cegas — só a
         imagem e os nomes das saídas pedidas, nunca o valor do ator, o comando ou a conta. OpenAI e Gemini (pelo endpoint
         compatível) entram por aqui; o recorte é o que sai desta máquina para o provedor escolhido em `ai.roles.leitura`."""
-        modelo = self.models.get("leitura", self.model)
+        modelo = modelo_do_papel_leitura(self.cfg, self.role)    # nunca o do ator: sem o papel `leitura`, recusa
         b64 = base64.standard_b64encode(req.recorte).decode()
         esquema = strict_schema(TranscricaoWire)
         content = [{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},

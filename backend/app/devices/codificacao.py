@@ -81,10 +81,18 @@ def tamanho_png(png: bytes) -> tuple[int, int]:
         return img.size
 
 
-#: Teto do recorte (item 12.5): é uma LINHA de tela, nunca o print inteiro. Lado maior em pixels da imagem enviada, fração
-#: da altura da imagem e bytes do JPEG. Passar de qualquer um é `ValueError` (a âncora não é uma linha).
+#: Teto do recorte (item 12.5): é uma LINHA de tela (no máximo duas), nunca o print inteiro. Lado maior em pixels da imagem
+#: enviada, fração da altura da imagem, altura absoluta em pixels e bytes do JPEG. Passar de qualquer um é `ValueError`
+#: (a âncora não é uma linha). O que sai é dado de TERCEIROS (a caixa de entrada de uma conta): metade da tela seriam várias
+#: mensagens, e não a que a etapa precisa.
+#:
+#: Medida: a linha da caixa de entrada do teste tem 162 px no aparelho de 720x1280, que é 130 px na imagem de 576x1024 e 162
+#: px na de 720x1280 (`ai.screenshot_max_side` 1280, o padrão): uma linha cabe com folga em 0,2 da altura (205 a 256 px), duas
+#: não (324 px). O teto absoluto de 320 px (duas linhas dessa medida) vale para a imagem maior que o padrão, onde a fração
+#: sozinha deixaria passar mais.
 RECORTE_LADO_MAX = 1600
-RECORTE_ALTURA_MAX_FRACAO = 0.5
+RECORTE_ALTURA_MAX_FRACAO = 0.2
+RECORTE_ALTURA_MAX_PX = 320
 RECORTE_BYTES_MAX = 400_000
 
 
@@ -105,7 +113,7 @@ def recortar_jpeg(jpeg: bytes, largura: int, altura: int, limites: tuple[int, in
             if caixa[2] <= caixa[0] or caixa[3] <= caixa[1]:
                 raise ValueError("o recorte ficou sem área")
             if (max(caixa[2] - caixa[0], caixa[3] - caixa[1]) > RECORTE_LADO_MAX
-                    or caixa[3] - caixa[1] > img.height * RECORTE_ALTURA_MAX_FRACAO):
+                    or caixa[3] - caixa[1] > min(img.height * RECORTE_ALTURA_MAX_FRACAO, RECORTE_ALTURA_MAX_PX)):
                 raise ValueError("o recorte é grande demais para ser uma linha (nunca a tela inteira)")
             corte = img.convert("RGB").crop(caixa)
     except OSError as exc:

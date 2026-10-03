@@ -33,7 +33,8 @@ from . import prompts
 from .parsing import (_CapPlanOut, _MultiPlanOut, _PlanOut, catalog_plan_from_json, plan_from_json, social_from_json,
                       verdict_from_json)
 from .provider import (AVISO_TELA_SENSIVEL, AIError, Decision, DecisionRequest, LeituraRequest, PlanRequest, ScreenInput,
-                       SocialRequest, Transcricao, TranscricaoWire, transcricao_from_json, Usage,
+                       SocialRequest, Transcricao, TranscricaoWire, modelo_do_papel_leitura,
+                       transcricao_from_json, Usage,
                        Verdict, VerifyRequest, persona_draft_from_json)
 
 if TYPE_CHECKING:
@@ -426,9 +427,10 @@ class AnthropicProvider:
         sensível, região declarada), então não há segundo filtro de sensibilidade aqui."""
         imagem = {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
                                               "data": base64.standard_b64encode(req.recorte).decode()}}
-        # Com `role` (dentro do hub) o modelo é o da instância, como na persona: ela é compartilhada por quem tem a mesma
-        # chave (provedor, modelo, prazo…), e `self.models` só vale para o provedor único de sempre.
-        modelo = self.model if self.role is not None else self.models.get("leitura", self.model)
+        # O modelo é SEMPRE o declarado para o papel `leitura`, nunca o do ator: dentro do hub, a instância tem de ser a do
+        # papel `leitura` (o hub compartilha instâncias por chave de provedor, modelo e prazo, e uma que serve o ator
+        # entregaria o recorte ao modelo do ator); fora dele, o de `ai.roles.leitura`. Sem isso, recusa.
+        modelo = modelo_do_papel_leitura(self.cfg, self.role)
         resp, usage = await self._create(role="leitura", model=modelo, system=prompts.LEITURA_SYSTEM,
                                          content=[imagem, {"type": "text", "text": prompts.leitura_user_text(req.saidas)}],
                                          effort="low", max_tokens=1200, schema=strict_schema(TranscricaoWire),

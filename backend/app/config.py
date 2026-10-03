@@ -1526,25 +1526,41 @@ class Config:
         """O leitor da leitura visual (item 12.5), ou `None` quando `ai.roles.leitura` não está escrito."""
         return self.ai_role("leitura") if "leitura" in self.file.ai.roles else None
 
+    @staticmethod
+    def _nome_de_modelo(model: str | None) -> str:
+        """O nome do modelo na forma de comparar: sem caixa, sem prefixo de gateway (`openai/gpt-x` -> `gpt-x`) e sem
+        sufixo de data (`-20261001`), como o `model_caps` já faz. O mesmo modelo escrito de duas formas é UM modelo."""
+        return re.sub(r"-\d{8}$", "", (model or "").strip().casefold().rsplit("/", 1)[-1])
+
     def validar_leitura(self) -> None:
-        """O leitor tem de ser independente do ator e ver imagem (ADR-070): modelo igual ao do `decide` ou ao do
-        `escalation` é recusado (os dois erram juntos), e modelo declarado sem visão também. Compara o modelo, e não só
-        o provedor: o mesmo provedor com outro modelo é aceito, a Anthropic com Haiku é a alternativa documentada."""
+        """O leitor tem de ser independente do ator e ver imagem (ADR-070). O código exige modelo DIFERENTE do `decide` e do
+        `escalation` (base e perfis; comparados pelo nome normalizado) e COM VISÃO DECLARADA em `ai.models`: modelo ausente
+        da tabela é recusado, porque o `ModelCaps()` padrão presume visão. Compara o modelo, e não só o provedor.
+
+        O que o código NÃO exige é a família: o padrão decidido pelo dono é a OpenAI (gpt-6-luna), com o Gemini
+        (gemini-3.1-flash-lite) de reserva. O Haiku é da mesma família do ator e só entra com nova decisão do dono."""
         r = self.ai_leitura()
         if r is None:
             return
+        nome = self._nome_de_modelo(r.model)
         # Contra o `decide` e o `escalation` de BASE e de CADA perfil: o canário que troca o ator para o modelo do leitor
         # tiraria a independência da conferência só naquelas execuções.
         for perfil in (None, *self.file.ai.profiles):
             for papel in ("decide", "escalation"):
                 outro = self.ai_role(papel, perfil)
-                if r.model == outro.model and r.kind != "simulated":
+                if nome == self._nome_de_modelo(outro.model) and r.kind != "simulated":
                     onde = f"ai.profiles.{perfil}.roles.{papel}" if perfil else papel
                     raise ValueError(f"ai.roles.leitura.model: '{r.model}' é o mesmo modelo de {onde}; o segundo leitor "
-                                     "precisa ser outro modelo (de preferência de outra família: OpenAI ou Gemini)")
-        if r.kind != "simulated" and not self.model_caps(r.model).vision:
+                                     "precisa ser outro modelo (o padrão do dono é de outra família: OpenAI ou Gemini)")
+        if r.kind == "simulated":
+            return
+        declarado = next((v for k, v in self.file.ai.models.items() if self._nome_de_modelo(k) == nome), None)
+        if declarado is None:
+            raise ValueError(f"ai.roles.leitura.model: '{r.model}' não está declarado em ai.models; escreva a linha "
+                             f"`ai.models.{r.model}` com `vision: true` (a visão do leitor não se presume)")
+        if not declarado.vision:
             raise ValueError(f"ai.roles.leitura.model: '{r.model}' está declarado sem visão em ai.models; o leitor "
-                             "transcreve uma imagem")
+                             "transcreve uma imagem (corrija `vision` na linha `ai.models." + r.model + "`)")
 
     def model_caps(self, model: str) -> ModelCaps:
         """Capacidade DECLARADA do modelo. Sem declaração, o conservador: nada de strict, nada de thinking/effort.

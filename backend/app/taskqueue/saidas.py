@@ -17,7 +17,7 @@ import hashlib
 import json
 import re
 import unicodedata
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -233,6 +233,66 @@ _DIGITOS_DE_CODIGO = re.compile(r"[0-9]{4,8}")
 #: de uma senha — `Joao_Silva2024` e `fulano@outlook.com` passam; `Xk9#pq2L` não.
 _SIMBOLO_DE_SENHA = re.compile(r"[^\w\s.@+\-:/]")
 
+#: Palavras que falam de código de verificação, em inglês, português e espanhol (já SEM acento e em minúsculas: o texto
+#: passa por `normalizar_texto_de_tela`). Genéricas de propósito: nenhum nome de app, porque o que identifica o código é a
+#: FORMA ("123456 is your … code", "use 482913 to confirm your identity", "é seu código"), não quem o mandou. As frases
+#: "is your … code", "é seu código" e "es tu código" se reduzem à palavra `code`/`codigo`.
+_PALAVRAS_DE_CODIGO = re.compile(
+    r"\b(?:codes?|codigos?|codice|verification|verificacion|verificacao|verify|verifying|verificar|confirm|confirmar|"
+    r"confirmacao|confirmacion|identity|identidad|identidade|security|seguridad|seguranca|login|log in|sign.?in|"
+    r"entrar|iniciar sesion|ingresar|otp|2fa|passcode|one.?time|pin)\b")
+#: Uma sequência de dígitos que pode ser um código: sem dígito, `.`, `,`, `:` ou `/` colado (decimal, hora, data, versão).
+_SEQUENCIA_NUMERICA = re.compile(r"(?<![\d.,:/])\d(?:[ \-]?\d)*(?!\d|[.,:/]\d)")
+#: Quantos caracteres separam o número da palavra de código quando o texto é a TELA inteira (várias linhas coladas): a
+#: mesma linha, e não o resto da tela. No texto de UM elemento ou de uma linha, vale o texto todo.
+_JANELA_DA_TELA = 48
+#: Dígitos de um código: 4 a 8 (os de 2FA, e-mail e SMS vão de 4 a 8). Abaixo disso é contagem pequena ou ano; acima, é
+#: telefone, cartão, id. É o mesmo limiar de `_DIGITOS_DE_CODIGO`.
+_CODIGO_MIN, _CODIGO_MAX = 4, 8
+
+
+def _numeros_de_codigo(texto: str) -> list[tuple[int, int, str]]:
+    """Posição e dígitos de cada número de 4 a 8 dígitos do texto já normalizado, com espaço ou hífen entre grupos iguais
+    ("123 456", "1234-5678"). Data ("2026-10-02"), telefone ("555-1234") e hora ficam de fora: os grupos de um código
+    têm o mesmo tamanho; os de uma data, não."""
+    achados: list[tuple[int, int, str]] = []
+    for m in _SEQUENCIA_NUMERICA.finditer(texto):
+        bruto = m.group(0)
+        grupos = re.split(r"[ \-]", bruto)
+        if len(grupos) == 1 or (len({len(g) for g in grupos}) == 1 and 2 <= len(grupos[0]) <= 4):
+            digitos = "".join(grupos)
+            if _CODIGO_MIN <= len(digitos) <= _CODIGO_MAX:
+                achados.append((m.start(), m.end(), digitos))
+            continue
+        if "-" in bruto:
+            continue                                    # hífen com grupos desiguais: data, telefone, número de série
+        pos = m.start()
+        for g in bruto.split(" "):                      # "123456 2 minutos": o código vem antes do resto
+            if _CODIGO_MIN <= len(g) <= _CODIGO_MAX:
+                achados.append((pos, pos + len(g), g))
+            pos += len(g) + 1
+    return achados
+
+
+def codigo_na_linha(texto: str | None, *, so_digitos: str | None = None, janela: int | None = None) -> bool:
+    """O texto (um elemento, uma linha, um valor) tem um número de 4 a 8 dígitos E fala de código ou verificação?
+
+    Generoso de propósito (ADR-009: levar um código de um app a outro é o que se veda; recusar um dado comum custa uma
+    parada com o motivo). Sem palavra de código, "Reunião às 14h do dia 12345" passa; com a palavra e um número fora de
+    4 a 8 dígitos ("login 123 vezes", "verificação de 123456789 itens") também. `so_digitos` restringe ao número que for
+    exatamente este (o valor que o ator leu); `janela` (caracteres) pede a palavra PERTO do número: é o texto da tela
+    inteira, onde um menu "Entrar" não torna código a contagem de seguidores do outro lado."""
+    t = normalizar_texto_de_tela(texto)
+    palavras = [m.span() for m in _PALAVRAS_DE_CODIGO.finditer(t)]
+    if not palavras:
+        return False
+    for ini, fim, digitos in _numeros_de_codigo(t):
+        if so_digitos is not None and digitos != so_digitos:
+            continue
+        if janela is None or any(a - fim <= janela and ini - b <= janela for a, b in palavras):
+            return True
+    return False
+
 
 def triagem(valor: str, *, do_elemento: str = "", da_tela: str = "", campo_de_senha: bool = False) -> str | None:
     """Por que o valor NÃO pode ser saída: "senha", "código de verificação" ou "token ou segredo"; `None` = dado comum.
@@ -248,7 +308,10 @@ def triagem(valor: str, *, do_elemento: str = "", da_tela: str = "", campo_de_se
     - formato de segredo (`looks_secret`: JWT, chave, blob base64, "code: 1234", par chave=valor) → token. Vale para
       endereço: um link com trecho aleatório de 32+ caracteres (link mágico de entrada, id opaco) é recusado — o
       link que entra numa conta é credencial;
-    - só dígitos (4 a 8) num elemento ou tela que fala de código ou credencial → código;
+    - o valor tem um número de 4 a 8 dígitos e fala de código ou verificação na mesma linha (`codigo_na_linha`: "123456 is
+      your … code", "use 482913 to confirm your identity") → código;
+    - só dígitos (4 a 8) num elemento ou tela que fala de código ou credencial, ou cujo número aparece com a palavra de
+      código na linha de origem (o elemento inteiro; na tela, a palavra a até `_JANELA_DA_TELA` caracteres) → código;
     - palavra única com cara de senha (`parece_senha_ou_codigo`) com símbolo, ou num contexto que fala de credencial
       → senha.
     """
@@ -261,11 +324,16 @@ def triagem(valor: str, *, do_elemento: str = "", da_tela: str = "", campo_de_se
         return "código de verificação" if trava.subtipo == SUBTIPO_CODIGO else "verificação da conta"
     if looks_secret(v):
         return "token ou segredo"
+    # O valor que traz o número E a palavra de código na mesma linha ("123456 is your … code"): é o código.
+    if codigo_na_linha(v):
+        return "código de verificação"
     contexto_da_tela = normalizar_texto_de_tela(f"{do_elemento} {da_tela}")
     fala_de_codigo = (detectar_trava_generica(contexto_da_tela, tem_onde_digitar=True) is not None
                       or mentions_credential(do_elemento))
     compacto = re.sub(r"[\s.\-]", "", v)
-    if _DIGITOS_DE_CODIGO.fullmatch(compacto) and fala_de_codigo:
+    if _DIGITOS_DE_CODIGO.fullmatch(compacto) and (
+            fala_de_codigo or codigo_na_linha(do_elemento, so_digitos=compacto)
+            or codigo_na_linha(da_tela, so_digitos=compacto, janela=_JANELA_DA_TELA)):
         return "código de verificação"
     # Só dígitos já foram decididos acima (o contexto de TELA inteira não basta para chamar um número de senha: o
     # menu "Senha" de uma tela qualquer recusaria toda contagem de seguidores). Endereço também não é senha — `?`, `=`
@@ -281,13 +349,19 @@ def texto_da_tela(arvore: UiTree) -> str:
     return " ".join(arvore.texts())
 
 
-def variaveis_da_receita(saidas: dict[str, tuple[str, str]], item_index: str | None) -> dict[str, str]:
+def variaveis_da_receita(saidas: dict[str, tuple[str, str]], item_index: str | None,
+                         visuais: Collection[str] = ()) -> dict[str, str]:
     """As saídas do objetivo como variáveis de receita (`saida_<nome>`). A do item desta cópia de `for_each` perde o
     sufixo (`x_i2` → `saida_x`): a receita aprendida no item 1 reproduz no item 2 com o valor do item 2. As saídas de
-    OUTROS itens ficam de fora — com o mesmo nome base, trocariam o valor certo pelo de outro item."""
+    OUTROS itens ficam de fora — com o mesmo nome base, trocariam o valor certo pelo de outro item.
+
+    `visuais` são os nomes lidos da IMAGEM (`origem='visual'`, item 12.5): ficam de fora. O valor que só um segundo leitor
+    confirmou não pode chegar a uma reprodução COM efeito sem passar pela pessoa, e a receita reproduz sem perguntar."""
     out: dict[str, str] = {}
     sufixo = f"_i{item_index}" if item_index else None
     for nome, (valor, tipo) in saidas.items():
+        if nome in visuais:
+            continue
         base = nome
         if sufixo is not None and nome.endswith(sufixo):
             base = nome[:-len(sufixo)]
@@ -479,6 +553,10 @@ async def ler_valor_visual(*, habilitado: bool, arvore: UiTree, element_id: str,
     # quando esta função devolve).
     texto = " ".join(t.linhas)
     motivo = triagem(valor, do_elemento=texto, da_tela=texto)
+    # Linha a linha: o código pode estar numa linha que NÃO é a do valor (o assunto do e-mail traz o código, o ator leu o
+    # remetente), e o recorte inteiro é o que o leitor viu.
+    if motivo is None and any(codigo_na_linha(linha) for linha in t.linhas):
+        motivo = "código de verificação"
     if motivo is None and (trava := detectar_trava_generica(normalizar_texto_de_tela(texto), tem_onde_digitar=True)):
         motivo = "código de verificação" if trava.subtipo == SUBTIPO_CODIGO else "verificação da conta"
     if motivo is not None:
