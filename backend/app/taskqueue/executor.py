@@ -45,7 +45,8 @@ from ..modules.identity.application.available_data import (account_hosts, availa
                                                             typable_secret_for)
 from ..modules.identity.domain.available_data import ResolvedSecret, SecretResolution
 from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
-from ..planning.capabilities import CONHECIMENTO_DE_APPS, Capability, capability_of, contraparte, guardas_do_cartao
+from ..planning.capabilities import (CONHECIMENTO_DE_APPS, Capability, capability_of, contraparte, guardas_do_cartao,
+                                     load_catalog)
 from ..planning.catalog import session_provider_of
 from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, LeituraRequest,
                                  MarcaDaChamada, MotivoDaChamada, MotivoDaImagem, MotivoDeEscalonamento, ScreenInput,
@@ -2219,6 +2220,26 @@ class StepExecutor:
                         continue
                 else:
                     is_commit = alegado
+            elif decision.tool in EFFECT_CAPABLE and (
+                    fora := efeito_fora_da_etapa(decision.tool, args, tool_ctx, obs.tree, app.package)) is not None:
+                # 29.58 (A): o efeito é marcado pela AÇÃO, não pela etapa. Na 5f2de5 a IA, dentro de `open_app` (sem
+                # efeito declarado), digitou e tocou em enviar: o toque saiu gravado sem efeito, sem a trava de não
+                # repetir, sem a guarda e sem a aprovação da etapa que declara o envio — que enviou de novo depois.
+                # Recusado ANTES de agir; o motivo diz ao ator o que fazer.
+                motivo_fora = (f"{REJEICAO_EFEITO_FORA_DA_ETAPA} ({fora}). Não toque nele: termine esta etapa quando o "
+                               "objetivo DELA estiver cumprido e deixe o efeito para a etapa que o declara.")
+                aid = repo.log_intent(attempt_id, decision.tool, args.model_dump(mode="json"), rationale,
+                                      side_effect=True, source="recipe" if from_recipe else "ai")
+                repo.finish_action(aid, ActionStatus.rejected, error=motivo_fora)
+                metricas.contar("executor.efeito_fora_da_etapa", origem="recipe" if from_recipe else "ai",
+                                ferramenta=decision.tool)
+                if from_recipe:
+                    rr.diverged = f"efeito externo numa etapa sem efeito: {fora}"
+                history.append(f"{decision.tool} REJEITADA pelo executor: {motivo_fora}")
+                errors_in_row += 1
+                if errors_in_row >= 4:
+                    return await fail_or_retry("Um efeito externo foi tentado numa etapa que não o declara.", obs)
+                continue
             # ---------- LT-12: na nova tentativa, o modelo barato não repete onde a anterior parou nem dispara o efeito
             if retentativa and not retentativa_subiu and not from_recipe and tier == 0:
                 repete = acao_onde_parou == (obs.tree.signature(estrutural=True), f"{decision.tool}:{_target_key(args)}")
@@ -3038,6 +3059,63 @@ def _saidas_do_desfecho(lidos: dict[str, tuple[str, str]]) -> dict[str, str] | N
 
 def _safe_args(raw: Any) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {"raw": str(raw)[:300]}
+
+
+#: 29.58 (A): o motivo da recusa de uma ação com cara de efeito externo numa etapa que não declara efeito.
+REJEICAO_EFEITO_FORA_DA_ETAPA = "o efeito só sai na etapa que o declara: esta etapa não declara efeito externo"
+
+#: Campo de composição (mensagem, comentário, resposta, legenda): Enter nele envia. Campo de busca fica de fora.
+_CAMPO_DE_COMPOSICAO = re.compile(r"(mensag|message|coment|comment|reply|respo|legenda|caption|escrev|write)",
+                                  re.IGNORECASE)
+
+
+def efeito_fora_da_etapa(tool: str, args: Any, ctx: ToolContext, tree: Any, package: str | None) -> str | None:
+    """29.58 (A): esta ação PARECE disparar um efeito externo? Devolve o porquê, ou `None`. Só é perguntado numa etapa
+    sem efeito declarado. Mesma regra do caminho com efeito: com catálogo, o gatilho é ESTRUTURAL (o `commit_selector`
+    das capacidades com efeito do app; o "New post" que só abre a criação não é envio); sem catálogo, o vocabulário de
+    verbos (`looks_like_commit`). A decisão que se declara commit (`is_commit_action`) conta sempre."""
+    if bool(getattr(args, "is_commit_action", False)):
+        return "a própria decisão declarou este gesto como o efeito externo"
+    alvo = None
+    try:
+        if tool in ("tap", "long_press"):
+            alvo = resolve_point(ctx, getattr(args, "element_id", None), getattr(args, "x", None),
+                                 getattr(args, "y", None))[2]
+        elif tool == "type_text" and bool(getattr(args, "press_enter", False)):
+            eid = getattr(args, "element_id", None)
+            alvo = (tree.by_id(eid) if eid else
+                    next((e for e in tree.elements if e.focused and e.editable), None))
+    except DriverError:
+        return None                    # o alvo nem existe: a ferramenta falha adiante, sem chegar ao aparelho
+    if alvo is None:
+        return None
+    rotulo = (alvo.text or alvo.desc or alvo.resource_id.rsplit("/", 1)[-1] or alvo.class_name)[:60]
+    if tool == "type_text":
+        campo = " ".join((alvo.text, alvo.desc, alvo.resource_id.rsplit("/", 1)[-1].replace("_", " ")))
+        return f"Enter no campo '{rotulo}' envia" if _CAMPO_DE_COMPOSICAO.search(campo) else None
+    catalogo = load_catalog(package)
+    if catalogo is not None:
+        for cap in catalogo.capabilities:
+            if cap.side_effect and cap.commit_selector and _gatilho_exato(alvo, cap.commit_selector):
+                return f"'{rotulo}' é o gatilho do efeito '{cap.key}' deste app"
+        return None
+    return f"'{rotulo}' parece disparar um efeito externo (enviar, publicar, confirmar)" if looks_like_commit(alvo) else None
+
+
+def _gatilho_exato(alvo: Any, seletor: str) -> bool:
+    """O `commit_selector` casa com `alvo` EXATAMENTE? Na etapa com efeito o seletor vale só para a capacidade da
+    própria etapa; aqui ele é conferido contra TODAS as capacidades com efeito do app, e a substring sem caixa daria
+    recusa falsa: `text=Follow` casa "Followers" e `text=Following` casa o rótulo "following" do perfil — abrir a lista
+    de seguidores numa leitura seria recusado. Por isso texto e descrição casam o texto CRU inteiro; o `id` casa como
+    sempre (é estrutural)."""
+    for campo, valor, _ in UiTree._partes_do_seletor(seletor):
+        if campo == "resource_id":
+            rid = alvo.resource_id
+            if not (rid == valor or rid.endswith("/" + valor) or rid.endswith(":id/" + valor)):
+                return False
+        elif (alvo.text if campo == "text" else alvo.desc).strip() != valor:
+            return False
+    return True
 
 
 #: `apps.category` do app de prova (o QA Messenger embutido). A regra lê o DADO do app, nunca o nome (ADR-052), e exige
