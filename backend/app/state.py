@@ -137,9 +137,9 @@ METRICAS_JANELA_S = 900.0
 #: está parado aqui é um comando que uma pessoa já pediu e o painel já mostra como aceito.
 OUTBOX_RETRY_S = 15.0
 
-#: Prazo TOTAL do desligamento para o que ainda pode gravar no banco (31.9): a volta do curador, as sombras da intenção, as da
-#: porta `DecisaoFechada` e o casamento da triagem. Estourou, o `stop()` segue e fecha o banco (a escrita tardia falha e é
-#: logada, nunca trava o encerramento); `AppState.stop` o lê na hora, para o teste encolhê-lo.
+#: Prazo TOTAL do desligamento para o que ainda pode gravar no banco (31.9): a volta do curador, as sombras da intenção e as
+#: da porta `DecisaoFechada`. Estourou, o `stop()` segue e fecha o banco (a escrita tardia falha e é logada, nunca trava o
+#: encerramento); `AppState.stop` o lê na hora, para o teste encolhê-lo.
 ESPERA_DE_SOMBRAS_S = 6.0
 
 
@@ -457,7 +457,7 @@ class AppState:
         self._curador_do_hub = CuradorDoHub(self.provider, self.db,
                                             registrar_uso=lambda u: self.repo.add_usage(None, None, u),
                                             precos=lambda: self.cfg.file.ai.prices)
-        self._triagem_do_curador = TriagemDoCurador(self.decisao_fechada, self.decisao_sombra)
+        self._triagem_do_curador = TriagemDoCurador(self.decisao_fechada)
         self.learning = montar_aprendizado(
             self.db, config=lambda: self.cfg.file.aprendizado,
             retencao_de_logs_dias=lambda: int(self.settings.get().log_retention_days),
@@ -2487,8 +2487,8 @@ class AppState:
 
     async def _esperar_o_que_grava_sombra(self, sombra_intencao: SombraDaIntencao | None) -> None:
         """Antes do `db.close`, com UM prazo (`ESPERA_DE_SOMBRAS_S`) para tudo, nesta ordem (cada passo pode alimentar o
-        seguinte): a volta do curador (para entre itens), as threads da sombra da intenção (que chamam a porta), as sombras
-        da porta, o casamento da triagem (precisa da linha que a porta gravou) e uma última rodada da porta."""
+        seguinte): a volta do curador (para entre itens; a triagem dele só chama a porta), as threads da sombra da intenção
+        (que chamam a porta e casam a decisão real ao gravar), as sombras da porta e uma última rodada da porta."""
         prazo = time.monotonic() + ESPERA_DE_SOMBRAS_S
 
         def restante() -> float:
@@ -2502,7 +2502,6 @@ class AppState:
             await sombra_intencao.aguardar(restante())
             sombra_intencao.cancelar()                  # o que passou do prazo: solta o `Task`, como o `_bg`
         await asyncio.to_thread(self.decisao_fechada.aguardar_sombras, restante())
-        await asyncio.to_thread(self._triagem_do_curador.encerrar, restante())
         self.decisao_fechada.encerrar()                 # nada novo a partir daqui; o que escapou entre os passos roda e é esperado
         await asyncio.to_thread(self.decisao_fechada.aguardar_sombras, restante())
 

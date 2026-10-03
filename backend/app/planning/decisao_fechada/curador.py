@@ -9,27 +9,23 @@
   o rótulo de saúde quando é um rótulo. Nada de conteúdo (nem a lição "de texto fechado": fica para quando houver a lista
   dos campos fechados da lição), de app, de capability, de id ou de data. Só `licao` e `receita` (memória fora; fluxo é
   C2, F2).
-- **Decisão real = o parecer do curador principal**, mapeado (`TRIAGEM_DO_PARECER`). Sem voto da pessoa, isto mede
-  CONCORDÂNCIA com o curador, não acerto (roteiro R1); o rótulo de acerto é o desfecho posterior do item.
-- O casamento espera a linha da sombra existir numa thread própria: a volta do curador não espera nada.
+- **Decisão real = o parecer do curador principal que VALEU**, mapeado (`TRIAGEM_DO_PARECER`), lido do registro
+  (`learning_reviews` do mesmo `dossie_hash`, `validade = 'ok'`, `simulated = 0`) pelo relatório do 31.10, com
+  `decisao_real_da_triagem`: a validade só existe depois do `revisar` (I2 da revisão do 31.9). Sem voto da pessoa, isto
+  mede CONCORDÂNCIA com o curador, não acerto (roteiro R1); o rótulo de acerto é o desfecho posterior do item.
 
-O módulo não importa o aprendizado: o pedido e a resposta do curador são lidos por forma (`PedidoDoCurador`,
-`RespostaDoCurador`), e o decorador cumpre a porta `CuradorDeIA` por estrutura.
+O módulo não importa o aprendizado: o pedido do curador é lido por forma (`PedidoDoCurador`), a resposta passa intacta,
+e o decorador cumpre a porta `CuradorDeIA` por estrutura.
 """
 from __future__ import annotations
 
 import logging
-import time
 from collections.abc import Mapping
-from concurrent.futures import Future, ThreadPoolExecutor
-from concurrent.futures import wait as esperar
-from threading import Event, Lock
 from typing import Final, Generic, Protocol, TypeVar
 
 from . import privacidade
 from .contrato import PedidoDeDecisao, pergunta_choice
-from .porta import TIMEOUT_SHADOW_S, Porta, modo_efetivo
-from .sombra import RepositorioDeSombra
+from .porta import Porta, modo_efetivo
 
 log = logging.getLogger("poc.ai")
 
@@ -68,18 +64,10 @@ class PedidoDoCurador(Protocol):
     def dossie_hash(self) -> str: ...
 
 
-class RespostaDoCurador(Protocol):
-    @property
-    def bruto(self) -> Mapping[str, object]: ...
-    @property
-    def simulado(self) -> bool | None:
-        """Se ESTA resposta veio de provedor simulado; `None` = o adaptador não diz e vale o `simulado` dele."""
-
-
 # O pedido e a resposta são genéricos para o embrulho devolver EXATAMENTE o tipo do curador que ele decora (a porta
 # `CuradorDeIA` do aprendizado pede `RespostaDeRevisao`, não a forma mais larga lida aqui).
 Pedido = TypeVar("Pedido", bound=PedidoDoCurador, contravariant=True)
-Resposta = TypeVar("Resposta", bound=RespostaDoCurador, covariant=True)
+Resposta = TypeVar("Resposta", covariant=True)
 
 
 class CuradorInterno(Protocol[Pedido, Resposta]):
@@ -144,22 +132,20 @@ def estado_do_dossie(dossie: Mapping[str, object]) -> dict[str, str]:
 
 
 class TriagemDoCurador:
-    """O consumidor: monta o pedido C0 e casa a decisão real. Inerte com a config padrão (`ativo()` falso)."""
+    """O consumidor: monta o pedido C0 e o entrega à porta em sombra. Inerte com a config padrão (`ativo()` falso).
 
-    def __init__(self, porta: Porta, repositorio: RepositorioDeSombra, *,
-                 espera_s: float = TIMEOUT_SHADOW_S + 2.0) -> None:
+    NÃO casa a decisão real (I2 da revisão do 31.9): o parecer do curador principal só vale depois de `validar_saida`, que
+    o aprendizado roda DEPOIS do `revisar`, e pode ser simulado. A decisão real sai do registro no relatório do 31.10:
+    `learning_reviews` do mesmo `dossie_hash` (o `ref` da linha da sombra), por `decisao_real_da_triagem`. Sem casamento,
+    não há thread nem espera própria: no desligamento basta a porta (`Porta.encerrar` e `aguardar_sombras`)."""
+
+    def __init__(self, porta: Porta) -> None:
         self._porta = porta
-        self._repositorio = repositorio
-        self._espera_s = espera_s
-        self._pool: ThreadPoolExecutor | None = None
-        self._casamentos: list[Future[None]] = []
-        self._trava = Lock()
-        self._encerrado = Event()          # desligamento: nada novo, e quem espera a linha da sombra desiste após a tentativa
 
     def ativo(self) -> bool:
-        """Como `ConsumidorDeIntencao.ativo`: com o envio fechado no código, NADA é feito (nem recusa gravada, nem pool). A
-        porta recusaria por privacidade e mediria a recusa, mas o que se mede aqui é o Jev respondendo, e ele não pode
-        responder enquanto o dono não aprovar."""
+        """Como `ConsumidorDeIntencao.ativo`: com o envio fechado no código, NADA é feito (nem recusa gravada). A porta
+        recusaria por privacidade e mediria a recusa, mas o que se mede aqui é o Jev respondendo, e ele não pode responder
+        enquanto o dono não aprovar."""
         return privacidade.JEV_RUNTIME_SEND_APPROVED and modo_efetivo("shadow", self._porta.cfg, "curador") == "shadow"
 
     @staticmethod
@@ -173,66 +159,27 @@ class TriagemDoCurador:
                                perguntas=(pergunta_choice(PERGUNTA_TRIAGEM, _INSTRUCOES, OPCOES),), modo="shadow",
                                ref=dossie_hash)
 
-    def observar(self, dossie: Mapping[str, object], dossie_hash: str, decisao_do_parecer: object) -> None:
-        """Agenda a sombra e o casamento. Nunca levanta: medir nunca derruba o curador."""
+    def observar(self, dossie: Mapping[str, object], dossie_hash: str) -> None:
+        """Entrega a sombra à porta (em `shadow` ela agenda e volta na hora). Nunca levanta: medir nunca derruba o curador."""
         try:
-            if self._encerrado.is_set() or not self.ativo():
+            if not self.ativo():
                 return
             pedido = self.pedido(dossie, dossie_hash)
-            if pedido is None:
-                return
-            self._porta.consultar(pedido)            # shadow: a porta agenda e volta na hora
-            # Só um id FECHADO da pergunta (`OPCOES`) é decisão real: o parecer fora do vocabulário não casa.
-            real = TRIAGEM_DO_PARECER.get(decisao_do_parecer) if isinstance(decisao_do_parecer, str) else None
-            if real is not None and real in OPCOES:
-                self._agendar_casamento(dossie_hash, real)
+            if pedido is not None:
+                self._porta.consultar(pedido)
         except Exception:  # noqa: BLE001
             log.warning("decisao_fechada: falha na sombra da triagem do curador")
 
-    def aguardar(self, timeout_s: float | None = None) -> None:
-        """Testes: espera os casamentos pendentes (sem `timeout_s`, todos) e libera o pool. Com prazo, o que não terminou
-        fica rodando e o pool fica de pé."""
-        with self._trava:
-            futuros = list(self._casamentos)
-        if futuros:
-            esperar(futuros, timeout=timeout_s)
-        with self._trava:
-            self._casamentos = [f for f in self._casamentos if not f.done()]
-            if not self._casamentos and self._pool is not None:
-                self._pool.shutdown(wait=False)       # ocioso: os workers saem sozinhos
-                self._pool = None
 
-    def encerrar(self, timeout_s: float) -> None:
-        """Desligamento: não aceita casamento novo e manda os pendentes desistirem depois da próxima tentativa (sem isto, um
-        casamento sem linha esperaria até `espera_s`, mais que o prazo do desligamento), espera até `timeout_s` e solta o
-        pool sem aguardar. Chamar DEPOIS de `Porta.aguardar_sombras`: as linhas já existem e o casamento acerta de primeira."""
-        self._encerrado.set()
-        self.aguardar(timeout_s)
-        with self._trava:
-            pool, self._pool = self._pool, None
-        if pool is not None:
-            pool.shutdown(wait=False)
-
-    def _agendar_casamento(self, ref: str, real: str) -> None:
-        with self._trava:
-            if self._pool is None:
-                self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sombra-curador")
-            f = self._pool.submit(self._casar, ref, real)
-            self._casamentos = [c for c in self._casamentos if not c.done()] + [f]
-
-    def _casar(self, ref: str, real: str) -> None:
-        limite = time.monotonic() + self._espera_s
-        while True:
-            desistir = self._encerrado.is_set()         # lido ANTES da tentativa: o desligamento sempre dá uma tentativa inteira
-            try:
-                if self._repositorio.casar_decisao_real({PERGUNTA_TRIAGEM: real}, ref=ref):
-                    return
-            except Exception:  # noqa: BLE001
-                log.warning("decisao_fechada: não foi possível casar a triagem do curador")
-                return
-            if desistir or time.monotonic() >= limite:
-                return                                  # recusa por privacidade, sombra perdida ou desligamento: nada a casar
-            time.sleep(0.05)
+def decisao_real_da_triagem(decisao: object, *, validade: object, simulado: object) -> str | None:
+    """A decisão real da R1, para o relatório do 31.10 sobre a linha de `learning_reviews` do mesmo `dossie_hash`: o
+    parecer do curador principal que VALEU (`validade == 'ok'`) e não veio de provedor simulado, na régua da triagem
+    (`TRIAGEM_DO_PARECER`). Parecer inválido ou recusado, simulado, ou sem par na régua grossa: `None` (a sombra só
+    registrou a escolha do Jev; não há com o que comparar)."""
+    if validade != "ok" or simulado or not isinstance(decisao, str):
+        return None
+    real = TRIAGEM_DO_PARECER.get(decisao)
+    return real if real in OPCOES else None
 
 
 class CuradorComTriagemEmSombra(Generic[Pedido, Resposta]):
@@ -253,15 +200,9 @@ class CuradorComTriagemEmSombra(Generic[Pedido, Resposta]):
 
     def revisar(self, pedido: Pedido) -> Resposta:
         resposta = self._interno.revisar(pedido)
-        bruto = resposta.bruto
-        # A "decisão real" que a concordância do GO do 31.7 mede é o parecer do curador, nunca o de provedor SIMULADO
-        # (`None` = o adaptador não diz por resposta, vale o dele, como na gravação do aprendizado). Parecer simulado é só
-        # observado: a sombra grava a escolha do Jev e fica sem decisão real.
-        simulado = self._interno.simulado if resposta.simulado is None else resposta.simulado
-        self._triagem.observar(pedido.dossie, pedido.dossie_hash,
-                               None if simulado or not isinstance(bruto, Mapping) else bruto.get("decisao"))
+        self._triagem.observar(pedido.dossie, pedido.dossie_hash)
         return resposta
 
 
 __all__ = ["CAMPOS", "KINDS_F1", "OPCOES", "PERGUNTA_TRIAGEM", "TRIAGEM_DO_PARECER", "CuradorComTriagemEmSombra",
-           "TriagemDoCurador", "estado_do_dossie"]
+           "TriagemDoCurador", "decisao_real_da_triagem", "estado_do_dossie"]

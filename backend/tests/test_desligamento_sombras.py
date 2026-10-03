@@ -110,18 +110,17 @@ def _espiar_o_close(st: Any, ao_fechar: Any) -> None:
     st.db.close = close
 
 
-async def test_stop_espera_a_intencao_a_porta_e_o_casamento_antes_de_fechar_o_banco(
+async def test_stop_espera_a_intencao_e_a_porta_antes_de_fechar_o_banco(
         harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
     st = harness.state
     assert st is not None
     monkeypatch.setattr(privacidade, "JEV_RUNTIME_SEND_APPROVED", True)
-    # A triagem do curador com uma sombra em curso na porta (o decisor está no portão) e o casamento esperando a linha.
+    # A triagem do curador com uma sombra em curso na porta (o decisor está no portão).
     decisor = _DecisorComPortao({PERGUNTA_TRIAGEM: RespostaDeDecisao(escolha="opt:manter",
                                                                      probabilidades={"opt:manter": 0.9}, confianca=0.9)})
     st.decisao_fechada.decisor = decisor
     st.decisao_fechada.cfg = DecisaoFechadaCfg(enabled=True, consumidores={"curador": "shadow"})
     triagem = st._triagem_do_curador                                         # noqa: SLF001
-    triagem._espera_s = 30.0                                                 # noqa: SLF001 - o casamento só desiste no stop
     CuradorComTriagemEmSombra(CuradorFalso(decisao="rebaixar"), triagem).revisar(Pedido(_dossie()))
     await asyncio.to_thread(decisor.iniciou.wait, 5.0)
     # E uma thread da sombra da intenção que ainda não terminou (e grava ao terminar).
@@ -141,7 +140,8 @@ async def test_stop_espera_a_intencao_a_porta_e_o_casamento_antes_de_fechar_o_ba
     threading.Timer(0.2, lambda: (decisor.portao.set(), intencao.portao.set())).start()
     await harness.crash()                                                    # `stop()` e solta o estado
     assert no_close["intencao"] == ["intencao"]                              # a thread terminou ANTES do close
-    assert no_close["linhas"] == [{"escolha": "opt:manter", "decisao_real": "opt:rebaixar"}]   # sombra gravada e casada
+    # a sombra foi gravada antes do close; a decisão real não casa na hora (I2: vem de `learning_reviews` no 31.10)
+    assert no_close["linhas"] == [{"escolha": "opt:manter", "decisao_real": None}]
 
 
 async def test_stop_tem_um_prazo_total_e_nao_trava_no_que_nao_termina(harness: Harness,
@@ -219,13 +219,11 @@ def test_triagem_do_curador_com_o_envio_fechado_nao_faz_nada(tmp_path: Any, monk
     decisor = DecisorFalso()
     cfg = DecisaoFechadaCfg(enabled=True, consumidores={"curador": "shadow"})
     porta = Porta(decisor, cfg=cfg, observador=observador_de_sombra(repo))
-    triagem = TriagemDoCurador(porta, repo)
+    triagem = TriagemDoCurador(porta)
     assert privacidade.JEV_RUNTIME_SEND_APPROVED is False and not triagem.ativo()
     CuradorComTriagemEmSombra(CuradorFalso(), triagem).revisar(Pedido(_dossie()))
     porta.aguardar_sombras()
-    triagem.aguardar()
     assert decisor.chamadas == [] and db.query("SELECT id FROM decisao_fechada_sombra") == []   # nem recusa gravada
-    assert triagem._pool is None                                                              # noqa: SLF001 - nem pool
     monkeypatch.setattr(privacidade, "JEV_RUNTIME_SEND_APPROVED", True)
     assert triagem.ativo()                                                    # aprovado o envio, volta a valer a config
     db.close()
