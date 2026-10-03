@@ -1,8 +1,9 @@
 """Porta `DecisaoFechada` (item 31.4, ADR-069): contrato, privacidade que falha fechada, modos e recurso ao caminho atual.
 
 Prova `simulated`: só `DecisorNulo` e `DecisorFalso`. Nada aqui toca rede, chave ou a TypeSafe; o teste de cliente único
-prova por varredura que SÓ o adaptador de retrieval conhece o host. As constantes de código ficam fechadas por padrão
-(`JEV_RUNTIME_SEND_APPROVED = False`) e cada teste que precisa de uma porta aberta a abre com `monkeypatch`, só nele.
+prova por varredura que SÓ o adaptador de retrieval conhece o host. O interruptor do envio está aberto desde o 31.17
+(`JEV_RUNTIME_SEND_APPROVED = True`); o que nasce fechado é o YAML (`enabled: false`, decisor nulo). Cada teste fixa o
+interruptor de que precisa com `monkeypatch`, só nele, e o fechado continua provado (é o que desliga tudo).
 """
 from __future__ import annotations
 
@@ -50,10 +51,15 @@ def _resp(escolha: str | None = "a", conf: float | None = 0.95, **kw: object) ->
 
 
 # ---------------------------------------------------------------- contrato
-def test_constantes_de_codigo_nascem_fechadas_para_envio_e_o_teto_segue_o_adr_069() -> None:
-    assert privacidade.JEV_RUNTIME_SEND_APPROVED is False  # só vira True no 31.10 (ADR-069 item 9: a chave não muda)
+def test_envio_aberto_no_codigo_desde_o_31_17_e_o_yaml_de_fabrica_nao_chama_ninguem() -> None:
+    assert privacidade.JEV_RUNTIME_SEND_APPROVED is True   # 31.17, a sombra do 31.10 (ADR-069 itens 9 e 15)
+    assert df.JEV_RUNTIME_SEND_APPROVED is True
     assert privacidade.JEV_ALLOWED_CLASSES == frozenset({"C0", "C1", "C2", "C3"})  # ADR-069 item 4
-    assert df.JEV_RUNTIME_SEND_APPROVED is False
+    fabrica = DecisaoFechadaCfg()
+    assert (fabrica.enabled, fabrica.consumidores, fabrica.decisor) == (False, {}, "nulo")
+    falso = df.DecisorFalso({"q1": _resp()})
+    res = Porta(falso, cfg=fabrica).consultar(_pedido())
+    assert falso.chamadas == [] and res.fallback_reason == "desligado"   # aberto no código, desligado no YAML: nada sai
 
 
 def test_choice_sempre_leva_a_nenhuma_e_respeita_o_teto_de_255() -> None:
@@ -76,7 +82,8 @@ def test_fallback_nunca_conta_como_acerto() -> None:
 
 
 # ---------------------------------------------------------------- privacidade (simulated)
-def test_envio_fechado_recusa_tudo_e_o_decisor_nunca_e_chamado() -> None:
+def test_envio_fechado_recusa_tudo_e_o_decisor_nunca_e_chamado(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(privacidade, "JEV_RUNTIME_SEND_APPROVED", False)   # o interruptor de código vence o YAML
     falso = df.DecisorFalso({"q1": _resp()})
     res = Porta(falso, cfg=_cfg(curador="on")).consultar(_pedido())
     assert falso.chamadas == []

@@ -453,7 +453,7 @@ class AppState:
         # Aprendizado contínuo (ADR-054): o livro de aprendizado, o D1 e a régua durável. Nenhuma IA no pipeline: digest
         # quando a execução assenta, curadoria a cada `aprendizado.curadoria_s`, retenção junto da do resto.
         # As lojas do scheduler ganham o D1 (fluxo nasce candidato; receita com efeito para em `validated`) e a trilha.
-        # Porta `DecisaoFechada` (Fase 31, ADR-069): desligada por padrão e com decisor NULO até o 31.10. Nasce antes do
+        # Porta `DecisaoFechada` (Fase 31, ADR-069): desligada por padrão e com decisor NULO de fábrica. Nasce antes do
         # aprendizado porque a triagem do curador em sombra (31.8) embrulha o curador do hub. A sombra grava só ids e
         # categorias (migração 074); a retenção dela corre junto da do resto (`_purgar_demais_tabelas`).
         self.decisao_sombra = RepositorioDeSombra(self.db)
@@ -543,7 +543,7 @@ class AppState:
         Com `ai.decisao_fechada.decisor: jev`, o `DecisorJev` usa o transporte do adaptador de retrieval (cliente único; a
         chave é lida do ambiente na hora do POST, nunca aqui), confere o gasto no HUB antes do POST (a mesma rubrica de
         toda chamada, com a fatia do Jev e o saldo da conta dele) e registra cada chamada em `ai_calls` pela sombra. Hub sem
-        `conferir_gasto` (provedor que não roteia) = nada sai. O envio continua fechado por `JEV_RUNTIME_SEND_APPROVED`."""
+        `conferir_gasto` (provedor que não roteia) = nada sai. Acima de tudo, `JEV_RUNTIME_SEND_APPROVED` (aberto no 31.17)."""
         if cfg.file.ai.decisao_fechada.decisor != "jev":
             return None
         conferir = getattr(self.provider, "conferir_gasto", None)

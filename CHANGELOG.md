@@ -19,6 +19,25 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 31.17: envio do Jev aberto no código para a sombra C0–C1 do 31.10; o aviso diz o decisor e só afirma envio de verdade (branch feat/31-17-sombra-curador)
+
+- `JEV_RUNTIME_SEND_APPROVED = True` (ADR-069 item 15). De fábrica nada sai: `enabled: false` e decisor `nulo`.
+- `config.example.yaml`:
+  - `consumidores: {curador: shadow, intencao: "off"}` e `classes_permitidas: [C0, C1]`, ainda com `enabled: false`;
+  - o central liga no deploy 9 (`enabled: true`, `decisor: jev`);
+  - o `"off"` entre aspas, porque sem elas o YAML lê um booleano e a configuração não carrega.
+- `GET /api/ai`:
+  - o aviso diz "Decisor na porta: nulo|jev";
+  - "Envio ATIVO" só com código aberto, decisor `jev`, consumidor em `shadow` ou `on` e chave configurada;
+  - senão, "Nada sai agora: …" com o motivo;
+  - o bloco `decisao_fechada` ganha `sending`.
+- Prova `simulated`:
+  - `tests/test_decisao_fechada_payload.py`: os bytes que o `DecisorJev` posta são só `{state, model, questions}`. Na
+    intenção vão o comando redigido, o app e as opções; no curador, só os campos C0. Nunca `run_id`, `ref`, o original,
+    os destinos, os ids crus nem o hash do dossiê.
+  - Os testes do interruptor fechado o fecham por `monkeypatch`.
+  - O transporte é `httpx.MockTransport`, e a chamada real ao Jev é `not_run` (deploy 9, 31.10).
+
 ## 2026-10-03 — Correção do 31.9, rodada G (NO-GO da fase 2 da rodada F em 7c8f58c8): o usuário como @handle ou e-mail, o catálogo só no destino e a preposição só com faixa (branch fix/31-9-rodada-e)
 
 - G-1: "entre com @zilda.prado e girassol" e "entre com lucas@outlook.com e girassol" recusam como par; o "@" solto não é

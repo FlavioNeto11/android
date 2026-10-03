@@ -75,7 +75,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-065](#adr-065--ação-de-catálogo-entrega-valor-lido-a-outra-etapa-saidas-declaradas-no-catalogoyaml) | Ação de catálogo entrega valor lido a outra etapa: `saidas` declaradas no `catalogo.yaml` | vigente (12.3) | 02/10 |
 | [ADR-066](#adr-066--laço-de-pedidos-desligado-por-padrão-origem-interna-na-criação-da-execução-e-edição-por-gatilho-novo) | Laço de pedidos: desligado por padrão, origem interna na criação da execução e edição por gatilho novo | aceito (Fase 28, 28.4) | 02/10 |
 | [ADR-068](#adr-068--conta-bloqueada-sai-na-hora-e-a-persona-fica-lápide-só-com-o-hash-do-arroba) | Conta bloqueada sai na hora e a persona fica; lápide só com o hash do @ (item 29.23) |
-| [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro; item 11: regras do filtro do 31.9; item 12: C7 sem palavra-chave e e-mail em peças, rodada E; item 13: barrar pela intenção de entrar, rodada F; item 14: o usuário como @handle ou e-mail, o catálogo só no destino e a preposição só com faixa, rodada G) | 03/10 |
+| [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro; item 11: regras do filtro do 31.9; item 12: C7 sem palavra-chave e e-mail em peças, rodada E; item 13: barrar pela intenção de entrar, rodada F; item 14: o usuário como @handle ou e-mail, o catálogo só no destino e a preposição só com faixa, rodada G; item 15: envio aberto no código para a sombra C0–C1 do 31.10, 31.17) | 03/10 |
 | [ADR-070](#adr-070--valor-visto-na-imagem-conta-como-saída-de-etapa-sob-conferência-cega-de-um-segundo-leitor) | Valor visto na imagem conta como saída de etapa, sob conferência cega de um segundo leitor; substitui em parte o ADR-065 §3 (item 12.5) | vigente (dono, 02/10; opção desligada) | 02/10 |
 
 ---
@@ -4287,6 +4287,23 @@ catálogo, comando), que o ADR-063 não cobre.
         antigas, 0 vazamentos de portão, 0 C7 mascarada e 0 passagens indevidas;
       - 1 recusa nos 122 comandos reais, a mesma.
       Detalhes em [ia.md](ia.md), no bloco "Rodada G" da intenção.
+15. **Emenda de 03/10/2026 (31.17, a sombra C0–C1 do 31.10; desenho aceito pela orquestradora, ~09:17Z, na ordem do item 9):
+    o envio abre no código.**
+    - `JEV_RUNTIME_SEND_APPROVED = True`. O YAML de fábrica continua sem ligar nada (`enabled: false`, decisor `nulo`, que
+      nunca toca rede): sai só o que o YAML do ambiente liga. O interruptor fechado segue valendo e testado.
+    - O YAML do deploy 9 liga só o curador (C0): `enabled: true`, `decisor: jev`, `consumidores: {curador: shadow,
+      intencao: "off"}`. O exemplo traz também `classes_permitidas: [C0, C1]`, que estreita por cima. A intenção (C3) fica
+      `off` até o GO do portão do 31.9 e o sim do dono.
+    - Transparência (item 8): o aviso de `GET /api/ai` diz o decisor da porta e só afirma que algo sai com as quatro
+      condições juntas: código aberto, decisor `jev`, um consumidor em `shadow` ou `on` e a chave configurada. Faltando uma,
+      diz que nada sai e por quê. O bloco `decisao_fechada` ganha `sending`.
+    - A chave não foi lida nem tocada; a presença dela se confere só por `GET /api/ai`.
+    - Prova `simulated`:
+      - `backend/tests/test_decisao_fechada_payload.py`: o corpo no fio é só `{state, model, questions}`. Na intenção vão
+        o comando redigido, o app e as opções; no curador, só os `CAMPOS`. Nunca `run_id`, `ref`, o original, os destinos,
+        o id cru da habilidade nem o hash do dossiê.
+      - Os testes do interruptor fechado agora o fecham por `monkeypatch`.
+      - A chamada real fica para o deploy 9 (31.10): `not_run`.
 
 **Consequências.** A plataforma ganha um motor barato (US$ 0,042/M de entrada, saída grátis) para decisões fechadas que hoje não
 acontecem ou vão ao Opus, medido em sombra contra o caminho atual antes de qualquer `on`. O ADR-063 continua valendo para código.

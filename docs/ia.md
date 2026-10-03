@@ -773,12 +773,20 @@ continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). D
   - **Transparência** (`transparencia.py`). Com `ai.decisao_fechada.enabled` e algum consumidor em `shadow` ou `on`, o `notice`
     de `GET /api/ai` nomeia a TypeSafe, os consumidores e as classes que podem sair, e `/api/ai` ganha o bloco
     `decisao_fechada` (consumidores, classes, `send_approved`, `key` e, desde o 31.14, `decider`: `nulo` ou `jev`). A chave é só "configurada" ou "não configurada", pela
-    PRESENÇA (`typesafe_api_key is not None`); o valor nunca é lido para isso. Enquanto `JEV_RUNTIME_SEND_APPROVED` é `False`, o
-    aviso diz que o envio está FECHADO e que nada sai.
+    PRESENÇA (`typesafe_api_key is not None`); o valor nunca é lido para isso. Desde o 31.17 o aviso diz o decisor da porta
+    ("Decisor na porta: nulo|jev") e só afirma "Envio ATIVO" com as quatro condições juntas: `JEV_RUNTIME_SEND_APPROVED`
+    aberto, decisor `jev`, um consumidor em `shadow` ou `on` e a chave configurada. Faltando uma, diz "Nada sai agora: …" com
+    o primeiro motivo (envio fechado no código, decisor nulo ou chave ausente). O bloco ganha `sending` (as quatro juntas).
+  - **Envio aberto no código (31.17, ADR-069 item 15).** `JEV_RUNTIME_SEND_APPROVED = True`, a sombra C0–C1 do 31.10. De
+    fábrica nada sai (`enabled: false`, decisor `nulo`). O YAML do deploy 9 liga só o curador: `enabled: true`,
+    `decisor: jev`, `consumidores: {curador: shadow, intencao: "off"}`; o exemplo traz também `classes_permitidas: [C0, C1]`.
+    O `"off"` vai entre aspas: sem elas, o YAML lê `off` e `on` como booleanos e a configuração não carrega. A intenção (C3)
+    só liga com o GO do portão do 31.9 e o sim do dono. O teste de payload (`test_decisao_fechada_payload.py`) prova o que
+    vai no fio: `{state, model, questions}` e nada do lado de cá (`run_id`, `ref`, original, destinos, ids crus, hash).
 
 Prova: `simulated` (`backend/tests/test_decisao_fechada.py`, `test_decisao_fechada_sombra.py`, `test_decisao_fechada_jev.py`,
-`test_context_retrieval_semantic.py`:
-decisores nulo e falso, banco de teste e relógio falso). Chamada real ao Jev: `not_run`.
+`test_decisao_fechada_payload.py`, `test_context_retrieval_semantic.py`:
+decisores nulo e falso, o real sobre `httpx.MockTransport`, banco de teste e relógio falso). Chamada real ao Jev: `not_run`.
 
 ### Triagem do curador em sombra (31.8, R1)
 
@@ -796,7 +804,8 @@ ao Jev em `shadow` uma `choice` entre `manter`, `revisar`, `rebaixar`, `descarta
   31.9, 03/10): a validade do parecer só existe depois do `revisar`, e o relatório do 31.10 lê a linha de `learning_reviews`
   do mesmo `dossie_hash` (= `ref` da sombra) e aplica `decisao_real_da_triagem`, que só devolve decisão com `validade = 'ok'`
   e `simulated = 0`. Sem voto da pessoa, mede CONCORDÂNCIA com o curador, não acerto. A triagem respeita
-  `JEV_RUNTIME_SEND_APPROVED` (M2): com o envio fechado, nem monta o pedido.
+  `JEV_RUNTIME_SEND_APPROVED` (M2): com o envio fechado, nem monta o pedido (aberto desde o 31.17; o teste fecha por
+  `monkeypatch`).
 - **Sem GO:** os limiares de `on` são os pré-registrados no 31.7 ([design/jev-golden-set.md](design/jev-golden-set.md):
   rótulo da pessoa ou desfecho medido, 30 ou mais por `kind`, 90 % de acordo e vantagem sobre a regra local); até lá a
   sombra só registra. A falha do curador principal sobe como antes, sem sombra.
