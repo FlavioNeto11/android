@@ -7,11 +7,11 @@ As três classes:
 - **A** (navegação e leitura, sem `commit`, sem origem humana): o sistema decide pela regra determinística de hoje, e
   a IA nunca muda esse resultado. A IA PODE opinar, mas só com sobra de orçamento na janela, depois das prioridades
   1 a 4 (decisão do dono, 02/10; o corte é do 30.11): o parecer da A é só registro.
-- **B** (efeito médio; `commit` em app sem catálogo; origem humana sem efeito, D-2): a IA recomenda, o dono aprova EM
-  LOTE.
+- **B** (efeito médio; origem humana sem efeito, D-2): a IA recomenda, o dono aprova EM LOTE.
 - **C** (alto risco: `risk=high`, `manual_only`, sessão e autenticação, família de envio, publicação ou exclusão,
-  texto escrito para outra pessoa (`needs_draft`), e o `commit` que o catálogo não declara): sempre o dono, ITEM A
-  ITEM; a IA só monta parecer, nunca decide.
+  texto escrito para outra pessoa (`needs_draft`), o `commit` que o catálogo não declara e, desde a emenda de 03/10, o
+  `commit` em app sem catálogo, que é efeito desconhecido): sempre o dono, ITEM A ITEM; a IA só monta parecer, nunca
+  decide.
 
 **Vale a mais restritiva** entre o catálogo (a capability da etapa) e o conteúdo (o `commit` da receita, a etapa de
 efeito do fluxo). É o que pega a anomalia da receita 100 do Outlook: `commit` numa capability que o catálogo (só de
