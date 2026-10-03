@@ -100,6 +100,25 @@ item nem aceita parecer (ADR-069 item 2).
   - Conclusão: nenhum `kind` tem amostra para GO. A rodada offline da R1 (teto US$ 0,05) é acompanhamento: ela diz se
     a entrada carrega sinal e dá a grade de sensibilidade.
 
+*Nota de 03/10 (~18:55Z), PROPOSTA, NÃO VIGENTE: a validação automática como rótulo "2v".* Fica pré-registrada
+antes de existir qualquer rótulo e não muda o GO da tabela. A orquestradora reavalia depois do deploy 14, com o P4
+de volta e volume real, e só então decide o contrato com a Aprendizado.
+- **Condições duras.** Só conta a validação `feita` (`learning_validations`) cuja execução deixou uma DIREÇÃO legível
+  pelo `run_id`, com `simulated = 0` e noutro aparelho que o de origem.
+  - `for` vira `manter`; `against` de etapa reprovada vira `rebaixar`. Uma execução só nunca rotula `descartar`.
+  - Não rotulam: `sem_evidencia`, `forma` (30.36), `recusada`, `expirada` e falha de infraestrutura.
+  - Na receita, a direção por execução ainda não existe: a evidência vai aos contadores. No central, a única
+    validação `feita` de receita não tinha linha em `learning_evidence` com o `run_id` dela (03/10 18:40Z, só leitura).
+    Isso pede o contrato "direção por execução na receita (stance + `run_id`)" com a Aprendizado.
+- **O resultado posterior vence o 2v** quando os dois existem para o mesmo item.
+- **Corte:** com 10 ou mais pares 2v × posterior, a fonte 2v sai do GO se a concordância entre os dois ficar
+  abaixo de 80 %.
+- **Fonte separada:** o relatório mostra `fonte=validacao` à parte das fontes 1 e 2. Os rótulos 2v contariam para os
+  30 por `kind`; os demais limiares não mudam.
+- **Viés conhecido:** só ganha validação o item em que o curador principal pediu evidência (`opt:revisar`).
+- **Pergunta futura, sem ação:** incluir o fluxo na triagem (C2 na R1). A prova de fluxo do 30.37 seria o rótulo
+  mais limpo, e 29 das 57 revisões de 03/10 são de fluxo.
+
 ## 3. Intenção (R2 e R3, 31.9)
 
 **Estratos (RA-2; execuções de 7 dias até 03/10 no central):** qa-messenger 58 (+3), instagram 15, outlook 5.

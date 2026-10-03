@@ -19,6 +19,10 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Golden set: o rótulo "2v" (validação automática) pré-registrado como proposta, não vigente
+
+- Nota datada em `docs/design/jev-golden-set.md` §2. O GO não muda; a orquestradora reavalia depois do deploy 14.
+
 ## 2026-10-03 — ADR-069, item 21: a C3 em mais dois usos (decisão do dono, ~18:39Z)
 
 - Emenda ao item 4 em `docs/decisoes.md`: o comando já filtrado pode ir ao Jev também na R5 em sombra (31.13) e no
