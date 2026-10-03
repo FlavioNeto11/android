@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Android: dois polimentos da Rede dos relatórios do Chrome dos deploys 10/11 (branch feat/polimentos-rede-deploy12)
+
+- "Saída pela casa" cita no máximo 3 ids. Acima disso, mostra os 3 primeiros e "e mais N", com a lista inteira na dica.
+  No central eram 14 ids seguidos, e a tabela logo abaixo já diz aparelho por aparelho.
+- A carga da Rede lê `/api/network/profiles` e `/api/network/devices` uma vez só (eram 2× por carga).
+  - Causa: o `carregar` dependia do estado `temDados`, e a 1ª carga trocava a identidade dele e refazia o efeito de
+    montagem.
+  - Agora é uma ref, e o aviso de falha ao recarregar segue igual.
+- Simulado: `frontend/src/features/rede/RedePage.test.tsx`, com 2 testes novos que falhavam antes da correção (5
+  ids → "e mais 2" com a dica; 1 chamada de cada lista). O arquivo passou 29/29 e o typecheck, ok.
+
 ## 2026-10-03 — Deploy 12 no central (d5a1c3a9; P4 religado; expiração do needs_input no ar)
 
 - Implantado no central (`real`, 03/10, WIN-7S2UASNLFOP): o commit d5a1c3a9 = a suíte 12 (5428abdb) mais os estados

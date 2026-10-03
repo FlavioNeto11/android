@@ -690,3 +690,28 @@ it('aparelho sem rede pedida aparece como "sai pela casa (presumido)" e, medido,
   expect(celula('android-03').textContent).toContain('198.51.100.9');
   expect(celula('android-03').textContent).toContain('não sai pela casa');
 });
+
+it('com mais de 3 saindo pela casa, o resumo cita 3 e conta o resto; a lista inteira fica na dica (deploy 10/11)', async () => {
+  // No central eram 14 ids na mesma linha: a tabela logo abaixo já diz aparelho por aparelho.
+  const ids = ['android-01', 'android-02', 'android-03', 'android-05', 'android-07'];
+  backend.on('GET', /\/network\/devices/, () => json({
+    central_egress: { ipv4: '177.10.20.30', ipv6: null, measured_at: '2026-10-02T12:00:00+00:00', reason: '' },
+    devices: ids.map((id) => linha({ instance_id: id, egress_home: {
+      ipv4: true, ipv6: null, ipv6_outside_profile: null, leaves_by_home: true, basis: 'measured', measured: null,
+      reason: 'medido: igual ao central' } })),
+  }));
+  await render(<RedePage />);
+  await waitFor(() => text().includes('android-07'));
+  expect(text()).toContain('5 aparelhos ainda saem pela casa (android-01, android-02, android-03 e mais 2) · 0 sem medida.');
+  const resto = Array.from(container.querySelectorAll('[title]')).find((el) => el.textContent === 'e mais 2')!;
+  expect(resto.getAttribute('title')).toBe(ids.join(', '));
+});
+
+it('a carga da Rede lê perfis e aparelhos uma vez só (deploy 10: eram 2× por carga)', async () => {
+  await render(<RedePage />);
+  await waitFor(() => text().includes('android-02'));
+  await flush();
+  await flush();
+  expect(backend.callsTo('GET', /\/network\/profiles/)).toHaveLength(1);
+  expect(backend.callsTo('GET', /\/network\/devices/)).toHaveLength(1);
+});
