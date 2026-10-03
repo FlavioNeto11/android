@@ -5,9 +5,11 @@ aplicação (`application/pareceres.py`).
 
 Três regras mandam aqui:
 - **A decisão da pessoa é o rótulo.** Toda transição de pessoa num item com parecer válido ainda sem decisão, tomada no
-  MESMO estado que o parecer viu, grava `decisao_final`. Com o `review_id` (a pessoa VIU o parecer): `aceitou` quando
-  ela foi para o lado que ele sugeria, `recusou` quando não. Sem ele (o parecer estava oculto): o rótulo da própria
-  ação (`aprovar`, `rejeitar`...), às cegas. É a concordância do §8.9, que decide a saída do `shadow` (D-3).
+  MESMO estado que o parecer viu, grava `decisao_final`. Com o parecer À VISTA (o `review_id` veio, ou o curador está em
+  `on`, quando o painel o mostra): `aceitou` quando a pessoa foi para o lado que ele sugeria, `recusou` quando não. Com
+  ele oculto (`shadow`, `off`, ou a página legada que não o mostra): o rótulo da própria ação (`aprovar`,
+  `rejeitar`...), às cegas. É a concordância do §8.9, que decide a saída do `shadow` (D-3), e por isso o painel nunca
+  pode gravar como cega uma decisão que viu o parecer.
 - **Em `shadow` e em `off` o parecer pendente não aparece**; só depois da decisão. Mostrá-lo antes ancoraria a pessoa,
   e a concordância deixaria de medir a IA. Em `on`, ele aparece na fila e no detalhe.
 - **Aceitar é gesto da pessoa e respeita a classe** (`politica_de_risco.conferir_aceite`): na A o parecer é só
@@ -99,7 +101,7 @@ class DecisaoDaPessoa:
 
 
 def decisao_pela_transicao(sugerida: Decisao, rotulo: str, *, viu: bool) -> DecisaoDaPessoa:
-    """O rótulo de uma transição que a pessoa deu num item com parecer pendente. `viu`: ela mandou o `review_id`."""
+    """O rótulo de uma transição que a pessoa deu num item com parecer pendente. `viu`: o parecer estava à vista."""
     concorda = direcao_da_acao(rotulo) is direcao(sugerida)
     if viu:
         return DecisaoDaPessoa(DecisaoFinal.ACEITOU.value if concorda else DecisaoFinal.RECUSOU.value, not concorda)

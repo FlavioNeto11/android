@@ -5,6 +5,7 @@ import {
   type RelatorioDeFalhas, type RespostaDoVoto, type Sinal, type CorpoDoVoto, lerFeedbackDaExecucao,
   lerRelatorioDeFalhas, lerRespostaDoVoto, lerSinais,
 } from './model';
+import type { RespostaDoPedido } from './parecer';
 
 /**
  * As rotas do aprendizado (ADR-054). Ficam aqui, e não no objeto `api` do cliente, porque são de UM contexto e
@@ -36,9 +37,22 @@ export const apiAprendizado = {
   revisar: (signal?: AbortSignal) => apiRequest<ListaDoLivro>('GET', '/aprendizado/revisar', { signal }),
   detalhe: (kind: LivroKind, ref: string, signal?: AbortSignal) =>
     apiRequest<DetalheDoLivro>('GET', `/aprendizado/${kind}/${enc(ref)}`, { signal }),
-  /** Move o item com a trilha; o motivo é obrigatório. Habilidade devolve 409 com o endereço da rota dela. */
-  mudarEstado: (kind: LivroKind, ref: string, to: EstadoDoLivro, reason: string) =>
-    apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/status`, { body: { to, reason: reason.trim() } }),
+  /** Move o item com a trilha; o motivo é obrigatório. Habilidade devolve 409 com o endereço da rota dela.
+   *  `reviewId`: o parecer da IA que a pessoa via ao decidir (30.17); a decisão fica registrada contra ele. */
+  mudarEstado: (kind: LivroKind, ref: string, to: EstadoDoLivro, reason: string, reviewId?: string | null) =>
+    apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/status`, {
+      body: { to, reason: reason.trim(), ...(reviewId ? { review_id: reviewId } : {}) },
+    }),
+  /** Aceitar ou recusar o parecer da IA (30.17). 409 com o `code` quando o gesto não vale (classe A, C em lote,
+   *  simulado, já decidido, item mudou); devolve o detalhe atualizado. */
+  responderParecer: (kind: LivroKind, ref: string, reviewId: string,
+                     corpo: { resposta: 'aceitar' | 'recusar'; motivo: string; em_lote?: boolean }) =>
+    apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/parecer/${enc(reviewId)}`, {
+      body: { resposta: corpo.resposta, motivo: corpo.motivo.trim(), em_lote: !!corpo.em_lote },
+    }),
+  /** Pede revisão ao curador (só com ele ligado). `pedido: false` = o estado de agora do item já tem revisão. */
+  pedirRevisao: (kind: LivroKind, ref: string) =>
+    apiRequest<RespostaDoPedido>('POST', `/aprendizado/${kind}/${enc(ref)}/revisao`),
 
   /** "O que mais falha" (A3). Sem IA; o simulado fica fora por padrão. */
   falhas: async (q: { dias: number; app?: string; camada?: string; limite?: number }, signal?: AbortSignal): Promise<RelatorioDeFalhas> =>

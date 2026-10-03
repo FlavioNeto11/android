@@ -370,6 +370,14 @@ async def test_status_com_review_id_vira_aceitou_ou_recusou(mundo: Mundo, client
     assert [json.loads(str(s["data"]))["viu"] for s in mundo.sinais(SignalKind.PARECER_DECIDIDO)] == [True, True]
 
 
+async def test_em_on_a_decisao_sem_review_id_conta_como_vista(mundo: Mundo, cliente: httpx.AsyncClient) -> None:
+    """Em `on` o painel mostra o parecer em toda parte: gravar a decisão como cega inflaria a concordância."""
+    ref = mundo.licao_b()
+    mundo.volta()
+    await cliente.post(f"/api/aprendizado/licao/{ref}/status", json={"to": "validated", "reason": "ok"})
+    assert (mundo.revisao(ref)["decisao_final"], mundo.revisao(ref)["override"]) == ("aceitou", 0)
+
+
 async def test_review_id_que_nao_vale_mais_nao_trava_a_pessoa_nem_rotula(mundo: Mundo,
                                                                           cliente: httpx.AsyncClient) -> None:
     ref = mundo.licao_b()

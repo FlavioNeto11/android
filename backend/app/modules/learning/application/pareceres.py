@@ -5,8 +5,11 @@ Quem transiciona continua sendo o Livro (`LearningService.mudar_estado`, com o D
 o parecer pode fazer (`domain/parecer.py`) e se grava a decisão:
 
 - **Pelo `/status` (e pelas rotas legadas)**, a pessoa decide sozinha e o parecer nunca a trava. Depois da transição, a
-  revisão válida e sem decisão sobre o estado de antes recebe o rótulo: com o `review_id`, `aceitou`/`recusou`; sem ele,
-  o rótulo da própria ação, às cegas. É ACESSÓRIO: falhar aqui não desfaz a decisão da pessoa (fica no log).
+  revisão válida e sem decisão sobre o estado de antes recebe o rótulo: com o parecer à vista (o `review_id` veio, ou o
+  curador está em `on`), `aceitou`/`recusou`; oculto (`shadow`, `off`, rota legada), o rótulo da própria ação, às
+  cegas. O modo decide, e não só o `review_id`: em `on` o painel mostra o parecer em toda parte, e uma decisão que o viu
+  gravada como cega inflaria a concordância que tira o curador do `shadow`. É ACESSÓRIO: falhar aqui não desfaz a
+  decisão da pessoa (fica no log).
 - **O gesto sobre o parecer** (`responder`: aceitar ou recusar, um ou em lote) confere a classe mais restritiva entre a
   do registro e a de agora (`conferir_gesto`) e grava a decisão ANTES da transição, na mesma transação: o CAS de
   `decisao_final` recusa o segundo gesto antes de qualquer coisa mudar, e a transição recusada desfaz a decisão.
@@ -145,7 +148,7 @@ class ServicoDePareceres:
         depois = self._livro.mudar_estado(kind, ref, para, by=by, reason=reason)
         if antes.state is not None:
             self._rotular(antes, rotulo_do_passo(antes.state, para), by=by, reason=reason, review_id=review_id,
-                          marca=marca)
+                          marca=marca, viu=review_id is not None or self._modo() is Modo.ON)
         return depois
 
     def mudar_status_nativo(self, kind: LivroKind, ref: str, status: str, *, by: str, reason: str) -> EntradaDoLivro:
@@ -158,11 +161,11 @@ class ServicoDePareceres:
             passos = caminho_da_pessoa(antes.state, depois.state)
             if passos:
                 self._rotular(antes, rotulo_do_passo(antes.state, passos[0]), by=by, reason=reason, review_id=None,
-                              marca=marca)
+                              marca=marca, viu=False)
         return depois
 
     def _rotular(self, antes: EntradaDoLivro, rotulo: str | None, *, by: str, reason: str, review_id: str | None,
-                 marca: int) -> None:
+                 marca: int, viu: bool) -> None:
         if rotulo is None or antes.state is None or by == SYSTEM_ACTOR:
             return
         try:
@@ -181,7 +184,6 @@ class ServicoDePareceres:
                     return
             if r.parecer is None:
                 return
-            viu = review_id is not None
             d = decisao_pela_transicao(r.parecer.decisao, rotulo, viu=viu)
             motivo = self._motivo_ou_nulo(reason) if d.override and viu else None
             with self._registro.transacao():
