@@ -29,8 +29,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   vai ao prompt, não muda.
 - P4: a receita troca a chave da etapa pelo nome da capability ("Enviar a mensagem (v1)"), e dois itens iguais numa
   lista ganham quando foram aprendidos ou o número (Para aprovar, Revisar, Aprendido, página do app e avisos do lote).
-- P5: sem resposta HTTP, o estado de erro de todas as telas diz "Sem resposta do servidor." no lugar de "Failed to
-  fetch" (`lib/loadError.tsx`; o texto original fica no `title`). Adendo v0.74 (provisório) no contrato.
+- P5 (mudança GLOBAL, fora do módulo, decidida pela orquestradora): sem resposta HTTP, o estado de erro de todas as
+  telas do painel diz "Sem resposta do servidor." no lugar de "Failed to fetch" (`lib/loadError.tsx`; o texto original
+  fica no `title`). Adendo v0.74 (provisório) no contrato.
 
 ## 2026-10-03 — Aprendizado: o parecer da IA diante da pessoa (30.17, branch feat/30-17-parecer-no-painel)
 
