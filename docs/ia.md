@@ -350,6 +350,7 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
 | `ai.recipes` | `replay` | `off` (`config.py`) |
 | `ai.image.provider` / `model` / `per_persona` / `on_create` | `simulated` / `gpt-image-2` / 1 / `true` | os mesmos (`config.py::ImageCfg`); `quality: medium`, `price_per_image` (estimativa) low 0,02 / medium 0,06 / high 0,2 US$, `price_per_mtok` 5 / 8 / 30 US$ |
 | `ai.limits` (fatias por origem, 31.6) | comentado, com os padrões | `curador_max_usd_per_day` vazio (= 0,10 × teto do dia), `curador_fracao_do_dia` 0,10, `jev_max_usd_per_day` 0,50 (`config.py::AiLimitsCfg`) |
+| `ai.esquema_do_plano` (LT-4b) | `longo` | `longo` (`config.py`); `curto` = etapa livre sem `description`, `precondition` e `max_attempts` (o backend preenche), com título e objetivo curtos |
 | `ai.flows` | `true` | `false` (`config.py`) |
 | `ai.pathfinder_wait_s` | 240 | 0 (`config.py`) |
 | `android.auto_start_devices` | `true` | `false` (`config.py`) |
@@ -360,6 +361,23 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
 - **Bateria de 25/09/2026** (`relatorio-validacao.md` §11.1): 16/17 casos corretos, US$ 0,084 por caso; rejulgamento
   Opus 5.5 × Haiku em 41/56 (73 %). **O ator estava no fallback** (Sonnet 5), porque o Ollama não estava no ar, e a
   saúde não acusou. Cache do verificador em Haiku: zero em 49 chamadas.
+
+- **Latência do planejador (LT-4 e LT-4b, 03/10/2026).** O plano é a espera inicial inteira. Nas 89 chamadas `plan`
+  medidas, o tempo segue a saída: ms ≈ 5.173 + 6,6 × tokens de saída (correlação 0,91).
+  - LT-4, A/B REAL do esforço: 03/10, 02:44–02:54Z, claude-opus-5-5, os 14 casos QA pelo caminho entre apps, 28
+    chamadas, US$ 1,39.
+    - Resultado: `low` p50 15,7 s contra `medium` 18,5 s; saída −13 %; forma do plano igual em 13/14.
+    - O pensamento do planejador é ≈ 0 (2 tokens): quase toda a saída é o JSON do plano, ≈ 350 tokens por etapa.
+  - LT-4b, `ai.esquema_do_plano: curto`: estimativa GRÁTIS por count_tokens em 2 planos reais do QA (6 e 8 etapas,
+    formato entre apps). O modelo escreve JSON compacto (93–102 % da saída real), então espaço em branco não é
+    alavanca.
+    - −13 % sem `description` e `precondition`;
+    - −20 % com a brevidade de título e objetivo (simulada por corte);
+    - −22 a −24 % sem `max_attempts`, que é o formato curto.
+  - Metade da saída é prosa, e o formato não a encolhe: o p50 esperado é ≈ 13 s, não os ≤ 11 s do aceite do LT-4.
+  - No `model_judged` curto, o verificador lê o `value`. É o critério que o planejador escreve para ele; antes, ele
+    lia a descrição curta.
+  - A/B pago do formato curto e sucesso na rodada QA: `not_run`.
 
 - `docs/relatorio-validacao.md §5` — validação com o provedor real (`claude-opus-5`): mensagem em 1 e 3
   aparelhos, formulário, app nunca visto, falhas injetadas, controle manual + retomada, `kill` do backend em

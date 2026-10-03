@@ -123,6 +123,89 @@ class _MultiPlanOut(BaseModel):
     missing: list[MissingInfo]
 
 
+# Formato CURTO da etapa livre (LT-4b, `ai.esquema_do_plano: curto`): o plano custa ~6,6 ms por token de saída, e
+# metade da saída era estrutura. Saem os campos que o backend sabe preencher (`description` vem do `value`;
+# `precondition` fica nula; `max_attempts` é 1 no efeito e 3 nas demais). Classes à parte, e não herança: a ordem dos
+# campos é a do esquema estrito, e o formato longo tem de seguir idêntico.
+class _PostCurtoOut(BaseModel):
+    kind: Literal["text_visible", "app_foreground", "element_present", "model_judged", "items_collected"]
+    value: str
+    required_delivery_level: DeliveryLevel | None
+
+
+class _StepCurtoOut(BaseModel):
+    key: str
+    title: str
+    goal: str
+    depends_on: list[str]
+    side_effect: bool
+    commit_guard: list[str]
+    postcondition: _PostCurtoOut
+    timeout_s: int
+    for_each: str | None
+    app_id: str | None = None
+    saidas: list[str] = []
+
+
+class _PlanCurtoOut(BaseModel):
+    summary: str
+    app_id: str | None
+    parameters: list[_ParamOut]
+    success_criteria: list[str]
+    steps: list[_StepCurtoOut]
+    missing: list[MissingInfo]
+
+
+class _LivreCurtoOut(BaseModel):
+    title: str
+    goal: str
+    side_effect: bool
+    commit_guard: list[str]
+    postcondition: _PostCurtoOut
+    timeout_s: int
+    saidas: list[str] = []
+
+
+class _MultiStepCurtoOut(BaseModel):
+    key: str
+    app_id: str
+    capability: str | None
+    bindings: list[_BindingOut]
+    livre: _LivreCurtoOut | None
+    depends_on: list[str]
+    for_each: str | None
+    saidas: list[str] = []
+
+
+class _MultiPlanCurtoOut(BaseModel):
+    summary: str
+    app_id: str | None
+    parameters: list[_ParamOut]
+    success_criteria: list[str]
+    steps: list[_MultiStepCurtoOut]
+    missing: list[MissingInfo]
+
+
+#: Tentativas da etapa livre sem efeito no formato curto: o padrão de `PlanStep`. No formato longo o modelo escolhia
+#: 2 ou 3 sem regra (na última semana do QA, metade de cada), e a etapa com efeito já era forçada a 1.
+TENTATIVAS_DO_FORMATO_CURTO = 3
+
+
+def _descricao_derivada(kind: str, value: str) -> str:
+    """A `description` que o formato curto não pede. É o que o ator e o verificador leem como "pós-condição a
+    comprovar": no `model_judged`, o próprio `value` (que o planejador escreve para o verificador com visão); nos
+    demais, uma frase com o `value`, que é o que a conferência local confere."""
+    if kind == "model_judged":
+        return value
+    if kind == "text_visible":
+        return f'O texto "{value}" está visível na tela.'
+    if kind == "element_present":
+        return f"A tela mostra o elemento {value}."
+    if kind == "app_foreground":
+        return f"O app {value} está em primeiro plano."
+    return f"A lista está visível e foi lida até o fim (item: {value})."
+
+
 def norm_key(key: str) -> str:
     """O schema estrito não carrega o `pattern` da chave; normaliza 'Open-App' → 'open_app' em vez de rejeitar o plano."""
     k = re.sub(r"[^a-z0-9_]+", "_", key.strip().lower()).strip("_")[:40]
@@ -165,15 +248,23 @@ def _norm_saida(nome: str) -> str:
     return re.sub(r"[^a-z0-9_]+", "_", nome.strip().lower()).strip("_")[:40]
 
 
-def _etapa_livre(key: str, e: _StepOut | _LivreOut, *, depends_on: list[str], for_each: str | None,
-                 app_id: str | None) -> PlanStep:
+def _etapa_livre(key: str, e: _StepOut | _LivreOut | _StepCurtoOut | _LivreCurtoOut, *, depends_on: list[str],
+                 for_each: str | None, app_id: str | None) -> PlanStep:
     """A etapa escrita pelo modelo, com os limites do backend (prazo, uma tentativa no efeito externo). A mesma no
-    plano livre e na parte livre do plano entre apps."""
+    plano livre e na parte livre do plano entre apps. No formato curto (LT-4b), o que ele não pede vem daqui: a
+    descrição derivada do `value`, nenhuma pré-condição e as tentativas pelo padrão."""
+    if isinstance(e, (_StepCurtoOut, _LivreCurtoOut)):
+        pos = e.postcondition
+        postcondicao = Postcondition(kind=pos.kind, value=pos.value, description=_descricao_derivada(pos.kind, pos.value),
+                                     required_delivery_level=pos.required_delivery_level)
+        precondicao, tentativas = None, TENTATIVAS_DO_FORMATO_CURTO
+    else:
+        postcondicao = Postcondition(**e.postcondition.model_dump())
+        precondicao, tentativas = e.precondition, e.max_attempts
     return PlanStep(key=norm_key(key), title=e.title, goal=e.goal, depends_on=[norm_key(d) for d in depends_on],
-                    side_effect=e.side_effect, commit_guard=e.commit_guard, precondition=e.precondition,
-                    postcondition=Postcondition(**e.postcondition.model_dump()),
-                    timeout_s=max(30, min(e.timeout_s, 600)),
-                    max_attempts=1 if e.side_effect else max(1, min(e.max_attempts, 5)),
+                    side_effect=e.side_effect, commit_guard=e.commit_guard, precondition=precondicao,
+                    postcondition=postcondicao, timeout_s=max(30, min(e.timeout_s, 600)),
+                    max_attempts=1 if e.side_effect else max(1, min(tentativas, 5)),
                     for_each=norm_key(for_each) if for_each else None, app_id=app_id,
                     saidas=list(dict.fromkeys(n for n in map(_norm_saida, e.saidas) if n)))
 
@@ -194,17 +285,18 @@ def saidas_sem_leitura(steps: Iterable[PlanStep]) -> list[MissingInfo]:
     return faltas
 
 
-def plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: str, max_steps: int) -> Plan:
-    """Planejamento LIVRE (app sem catálogo)."""
+def plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: str, max_steps: int,
+                   curto: bool = False) -> Plan:
+    """Planejamento LIVRE (app sem catálogo). `curto` = o formato do LT-4b (`ai.esquema_do_plano`)."""
     try:
-        out = _PlanOut.model_validate(loads_json(raw, "Plano"))
+        out = (_PlanCurtoOut if curto else _PlanOut).model_validate(loads_json(raw, "Plano"))
     except ValidationError as exc:
         raise AIError(f"Plano inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
     app = next((a for a in req.apps if a.id == out.app_id), None)
     conhecidos = {a.id for a in req.apps}
     desconhecidos = sorted({s.app_id for s in out.steps if s.app_id and s.app_id not in conhecidos})
 
-    def app_da_etapa(s: _StepOut) -> str | None:
+    def app_da_etapa(s: _StepOut | _StepCurtoOut) -> str | None:
         # Só vale guardar quando DIFERE do app do plano: etapa sem app é "a do plano", e isso mantém os planos
         # de um app só idênticos aos de antes (e as receitas com a mesma identidade).
         return s.app_id if s.app_id in conhecidos and s.app_id != (app.id if app else None) else None
@@ -231,11 +323,13 @@ def plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: str, max
     return plan
 
 
-def catalog_plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: str, max_steps: int) -> Plan:
+def catalog_plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: str, max_steps: int,
+                           curto: bool = False) -> Plan:
     """Planejamento COM catálogo: o modelo escolhe ações e argumentos; o backend monta as etapas. Com
-    `req.catalogs` (entre apps, item 24.1), cada etapa é montada pelo catálogo do app DELA."""
+    `req.catalogs` (entre apps, item 24.1), cada etapa é montada pelo catálogo do app DELA. `curto` (LT-4b) só muda
+    a etapa LIVRE do plano entre apps: a de catálogo já é curta."""
     if getattr(req, "catalogs", None):
-        return _plano_entre_apps(raw, req, provider=provider, model=model, max_steps=max_steps)
+        return _plano_entre_apps(raw, req, provider=provider, model=model, max_steps=max_steps, curto=curto)
     try:
         out = _CapPlanOut.model_validate(loads_json(raw, "Plano"))
     except ValidationError as exc:
@@ -257,7 +351,8 @@ def catalog_plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: 
     return plan
 
 
-def _plano_entre_apps(raw: str, req: PlanRequest, *, provider: str, model: str, max_steps: int) -> Plan:
+def _plano_entre_apps(raw: str, req: PlanRequest, *, provider: str, model: str, max_steps: int,
+                      curto: bool = False) -> Plan:
     """Item 24.1 (ADR-058, decisão 1): o plano de um comando que atravessa apps, etapa por etapa pelo app dela.
 
     Etapa num app com catálogo é AÇÃO dele, montada pelo catálogo desse app (texto, guardas, política e limite são do
@@ -267,7 +362,7 @@ def _plano_entre_apps(raw: str, req: PlanRequest, *, provider: str, model: str, 
     montado seria pior que nenhum (a mesma regra do `compose`).
     """
     try:
-        out = _MultiPlanOut.model_validate(loads_json(raw, "Plano"))
+        out = (_MultiPlanCurtoOut if curto else _MultiPlanOut).model_validate(loads_json(raw, "Plano"))
     except ValidationError as exc:
         raise AIError(f"Plano inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
     conhecidos = {a.id: a for a in req.apps if a.id}

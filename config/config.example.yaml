@@ -218,6 +218,8 @@ ai:
   rejudge_yes_on_side_effect: true  # (true) 17.10: o "sim" do verificador barato em etapa com efeito externo (ou que confirma o
                                     # nível de entrega) é conferido UMA vez pelo modelo de escalonamento; só age se os modelos diferem
   verify_max_model_calls: 2       # (5) verificação por visão só rejulga quando a tela muda
+  esquema_do_plano: longo         # (longo) LT-4b: curto = a etapa livre do plano sem description/precondition/max_attempts
+                                  # (o backend preenche) e com título e objetivo curtos; ~−23 % de saída do planejador
   recipes: replay                 # (off) aprende a etapa uma vez e repete por seletores; shadow = só compara
   recipes_promote_after: 2        # receita aprendida nasce candidata (a IA decide, ela só é comparada) e vira ativa
                                   # depois de N execuções seguidas em que a IA fez o caminho dela; 0 = nasce ativa

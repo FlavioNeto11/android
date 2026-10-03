@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Jev: formato curto do plano atrás de chave (LT-4b, branch feat/lt-4b-esquema-curto)
+
+- `ai.esquema_do_plano: curto` (de fábrica, `longo`, o formato de sempre byte a byte). A etapa livre (plano livre e
+  parte livre do plano entre apps) não pede mais `postcondition.description`, `precondition` nem `max_attempts`, e o
+  backend os preenche:
+  - a descrição vem do `value` (no `model_judged`, o próprio critério);
+  - a pré-condição fica nula;
+  - a etapa com efeito tem 1 tentativa, e as demais têm 3.
+- O prompt pede título e objetivo curtos. Os planejadores curtos são os de sempre com dois trechos trocados, e
+  `_trocar` falha na importação se um marcador sumir.
+- A identidade da receita é a mesma nos dois formatos. Anthropic e OpenAI mandam o formato curto só com a chave.
+- Estimativa grátis (count_tokens em 2 planos reais do QA): −22 a −24 % de saída, ≈ −2,5 s por plano. Não alcança
+  os ≤ 11 s do aceite do LT-4 (`docs/ia.md` §12).
+- Prova: simulated (`test_esquema_curto_do_plano.py`, mais os afetados). A/B pago e rodada QA: `not_run`.
+
 ## 2026-10-03 — Aprendizado: o parecer da IA diante da pessoa (30.17, branch feat/30-17-parecer-no-painel)
 
 - Painel: a seção "Parecer da IA" no detalhe do Livro (sugestão, classe, conclusão, o que a IA citou, aceitar ou recusar

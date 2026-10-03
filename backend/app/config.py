@@ -548,6 +548,13 @@ class AiCfg(BaseModel):
     step_budget: StepBudgetCfg = StepBudgetCfg()
     screenshot_max_side: int = 1280             # lado maior da imagem enviada ao modelo (tokens ∝ área)
     max_hierarchy_elements: int = 140           # linhas da hierarquia no prompt (priorizadas; a árvore completa fica local)
+    # LT-4b (latência do planejador, 03/10): o plano custa ~6,6 ms por token de SAÍDA, e o esforço `low` só tirou 13 %.
+    # `curto` tira do formato da etapa livre (plano livre e parte livre do plano entre apps) o que o backend sabe
+    # preencher, e pede título e objetivo curtos. Saem `postcondition.description` (derivada do `value`: no
+    # `model_judged`, o verificador lê o próprio critério), `precondition` e `max_attempts` (1 no efeito, 3 nas
+    # demais). `timeout_s` fica, porque é o modelo que sabe qual etapa é lenta. Estimado com count_tokens em 2 planos
+    # reais do QA (a brevidade simulada por corte): −22 a −24 % de saída. `longo` é o formato de sempre, byte a byte.
+    esquema_do_plano: Literal["longo", "curto"] = "longo"
     # Item 7.6 (dieta do contexto do ator): histórico da tentativa que vai ao ator, comprimido sem chamar o
     # modelo — linhas REJEITADA/FALHOU/(executor) (sempre relevantes: dizem o que NÃO fazer de novo) mais as
     # últimas N em ordem. O verificador continua recebendo o histórico completo que o executor lhe passa.
