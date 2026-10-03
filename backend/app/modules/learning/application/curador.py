@@ -18,6 +18,7 @@ e `pedido_da_pessoa` existem no vocabulário e ainda não têm fonte (backlog e 
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
@@ -114,6 +115,13 @@ class CuradorPorIA:
         self._ajustes = ajustes
         self._precos = precos
         self._relogio = relogio
+        self._parando = threading.Event()
+
+    def parar(self) -> None:
+        """Desligamento: a volta em curso termina o item que já está no provedor e não pede o seguinte (o lote vira
+        `lote_interrompido`); volta nova nem começa. Sem isto, a thread da volta seguiria chamando o hub, e gravando em
+        `learning_reviews`, com o `AppState` já fechando o banco."""
+        self._parando.set()
 
     # ------------------------------------------------------------------ uma volta (o laço assíncrono é da composição)
     @property
@@ -122,7 +130,7 @@ class CuradorPorIA:
 
     def uma_volta(self, lider: Callable[[], int | None]) -> ResultadoDaVolta:
         aj = self._ajustes()
-        if aj.modo is Modo.OFF:
+        if aj.modo is Modo.OFF or self._parando.is_set():
             return ResultadoDaVolta(rodou=False)
         if lider() is None:                     # outro backend é o líder: a volta é pulada, sem erro
             return ResultadoDaVolta(rodou=False)
@@ -150,6 +158,9 @@ class CuradorPorIA:
         cortados = dict(partilha.cortados)
         avisos = 0
         for i, ref in enumerate(partilha.aprovados):
+            if self._parando.is_set():
+                cortados.update({r: MotivoDoCorte.LOTE_INTERROMPIDO for r in partilha.aprovados[i:]})
+                break
             x = por_ref[ref]
             try:
                 resposta = self._curador.revisar(self._pedido(x.dossie))
@@ -172,7 +183,8 @@ class CuradorPorIA:
                     parecer = replace(parecer, conclusao=None)
                 saida = parecer.como_dados()
             simulado = self._curador.simulado if resposta.simulado is None else resposta.simulado
-            if not self._gravar(x, validacao.validade, saida, agora, provedor=self._curador.provedor,
+            provedor = self._curador.provedor if resposta.provedor is None else resposta.provedor
+            if not self._gravar(x, validacao.validade, saida, agora, provedor=provedor,
                                 modelo=resposta.modelo, simulado=simulado, ai_call_id=resposta.ai_call_id):
                 continue                                # outra réplica gravou o mesmo (item, dossiê) primeiro
             if validacao.parecer is None:

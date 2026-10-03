@@ -21,6 +21,7 @@ import logging
 import time
 from collections.abc import Callable, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import wait as esperar
 from concurrent.futures import TimeoutError as FuturoExpirou
 from dataclasses import dataclass, replace
 from threading import Lock
@@ -79,6 +80,7 @@ class Porta:
         self._pool: ThreadPoolExecutor | None = None
         self._pendentes: list[Future[None]] = []
         self._trava = Lock()
+        self._encerrada = False
 
     # ------------------------------------------------------------------ API
     def consultar(self, pedido: PedidoDeDecisao, *,
@@ -86,7 +88,7 @@ class Porta:
         """`ao_registrar` (opcional) roda logo DEPOIS de o observador gravar a linha, na mesma thread: na sombra, na thread
         da porta; na recusa e no `on`, aqui mesmo. É onde quem chama casa a decisão real sem esperar a linha aparecer."""
         modo = modo_efetivo(pedido.modo, self.cfg, pedido.origem)
-        if modo == "off":
+        if modo == "off" or self._encerrada:             # encerrada (desligamento): nada novo, nem recusa gravada
             return resultado_de_fallback(pedido, "desligado")
         recusa = privacidade.validar(replace(pedido, modo=modo), classes_yaml=self._classes_yaml())
         if not recusa.permitido:
@@ -102,14 +104,29 @@ class Porta:
         return res
 
     def aguardar_sombras(self, timeout_s: float = 10.0) -> None:
-        """Espera as sombras pendentes terminarem (testes e desligamento limpo)."""
+        """Espera as sombras pendentes terminarem (testes e desligamento limpo), com UM prazo para o conjunto.
+
+        Não tira uma foto só: uma sombra agendada enquanto se espera (a thread da intenção ou do curador ainda chamando a
+        porta) entra na rodada seguinte, até a lista esvaziar ou o prazo acabar. Os futuros ficam em `_pendentes` até
+        terminarem, então uma espera que estourou o prazo não os esquece para a próxima."""
+        prazo = time.monotonic() + timeout_s
+        while (restante := prazo - time.monotonic()) > 0:
+            with self._trava:
+                self._pendentes = [p for p in self._pendentes if not p.done()]
+                futuros = list(self._pendentes)
+            if not futuros:
+                return
+            esperar(futuros, timeout=restante)            # a sombra já engoliu e registrou o próprio erro
+
+    def encerrar(self) -> None:
+        """Desligamento: não aceita sombra nova e solta o pool sem esperar (o que já está na fila ainda roda; quem precisa
+        dela pronta chama `aguardar_sombras` antes de fechar o banco). Idempotente. Depois disto, `consultar` devolve o
+        resultado neutro e nada é gravado."""
         with self._trava:
-            futuros, self._pendentes = self._pendentes, []
-        for f in futuros:
-            try:
-                f.result(timeout=timeout_s)
-            except Exception:  # a sombra já engoliu e registrou o próprio erro
-                pass
+            self._encerrada = True
+            pool, self._pool = self._pool, None
+        if pool is not None:
+            pool.shutdown(wait=False)
 
     # ------------------------------------------------------------------ internos
     def _classes_yaml(self) -> frozenset[str] | None:
@@ -123,8 +140,12 @@ class Porta:
             return self._pool
 
     def _agendar(self, pedido: PedidoDeDecisao, ao_registrar: Callable[[], object] | None = None) -> None:
-        f = self._executor().submit(self._sombra, pedido, ao_registrar)
         with self._trava:
+            if self._encerrada:                          # `encerrar` e `_agendar` não se cruzam: sem submit após o shutdown
+                return
+            if self._pool is None:
+                self._pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="decisao-fechada")
+            f = self._pool.submit(self._sombra, pedido, ao_registrar)
             self._pendentes = [p for p in self._pendentes if not p.done()] + [f]
 
     def _sombra(self, pedido: PedidoDeDecisao, ao_registrar: Callable[[], object] | None = None) -> None:

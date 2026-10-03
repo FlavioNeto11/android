@@ -840,7 +840,15 @@ class RunService:
         pelo provedor (o comando que o provedor recusou por conteúdo não vai a outro provedor) não observa nada."""
         recusado = run_id in self._sem_sombra
         self._sem_sombra.discard(run_id)
-        if tarefa.cancelled() or tarefa.exception() is not None or recusado:
+        if tarefa.cancelled():
+            return
+        erro = tarefa.exception()
+        if erro is not None:
+            # Ler `exception()` marca a exceção como recuperada: o asyncio não loga mais "Task exception was never
+            # retrieved". Quem a lê aqui passa a ser o único a registrá-la.
+            log.error("plano da execução %s falhou", run_id, exc_info=erro)
+            return
+        if recusado:
             return
         self._intencao_em_sombra(run_id)
 

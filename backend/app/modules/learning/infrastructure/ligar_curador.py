@@ -7,12 +7,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from collections.abc import Callable
 from datetime import datetime
 
 from app.config import CuradorCfg
 from app.db import Database
-from app.modules.learning.application.curador import CuradorPorIA
+from app.modules.learning.application.curador import CuradorPorIA, ResultadoDaVolta
 from app.modules.learning.application.ports import (AjustesDoCurador, CatalogoDeRisco, CuradorDeIA,
                                                     RepositorioDeAprendizado, TriagemDeTexto)
 from app.modules.learning.application.servico import LearningService
@@ -32,12 +33,36 @@ class LacoDoCurador:
 
     def __init__(self, curador: CuradorPorIA) -> None:
         self.curador = curador
+        # Cancelar a tarefa do laço (o `stop()` do `AppState`) solta o `await` mas NÃO a thread da volta, que segue no hub e
+        # grava em `learning_reviews`: o desligamento espera por este evento, não pela tarefa.
+        self._trava = threading.Lock()
+        self._parado = False
+        self._ociosa = threading.Event()
+        self._ociosa.set()
+
+    def _volta(self, lider: Callable[[], int | None]) -> ResultadoDaVolta | None:
+        with self._trava:                       # checar `_parado` e marcar a volta são um passo só: `parar` não os separa
+            if self._parado:
+                return None
+            self._ociosa.clear()
+        try:
+            return self.curador.uma_volta(lider)
+        finally:
+            self._ociosa.set()
+
+    def parar(self, timeout_s: float) -> bool:
+        """Desligamento: nenhuma volta nova, a em curso para entre itens (`CuradorPorIA.parar`) e espera até `timeout_s` que
+        ela acabe. `True` se a thread já está ociosa; `False` = estourou o prazo (a chamada ao hub ainda não voltou)."""
+        with self._trava:
+            self._parado = True
+        self.curador.parar()
+        return self._ociosa.wait(max(0.0, timeout_s))
 
     async def laco(self, lider: Callable[[], int | None]) -> None:
         while True:
             await asyncio.sleep(self.curador.intervalo_s)
             try:
-                await asyncio.to_thread(self.curador.uma_volta, lider)
+                await asyncio.to_thread(self._volta, lider)
             except Exception:  # noqa: BLE001 - o curador nunca derruba o processo
                 log.exception("aprendizado: curador por IA")
 

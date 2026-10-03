@@ -94,10 +94,18 @@ class SombraDaIntencao:
         for tarefa in list(self._soltas):
             tarefa.cancel()
 
-    async def aguardar(self) -> None:
-        """Espera as sombras soltas terminarem (testes e desligamento limpo)."""
-        if self._soltas:
-            await asyncio.gather(*list(self._soltas), return_exceptions=True)
+    async def aguardar(self, timeout_s: float | None = None) -> None:
+        """Espera as sombras soltas terminarem (testes e desligamento limpo). No desligamento isto vem ANTES do `cancelar`:
+        cancelar só solta o `Task` que embrulha a thread, que segue lendo o banco e chamando a porta; esperar é o que garante
+        que ela terminou antes do `db.close`. `timeout_s` é o que sobra do prazo do desligamento: estourou, as que restam
+        ficam para o `cancelar` e não seguram o encerramento (`asyncio.wait`, diferente do `gather`, não cancela no prazo)."""
+        soltas = list(self._soltas)
+        if not soltas:
+            return
+        prontas, _ = await asyncio.wait(soltas, timeout=timeout_s)
+        for t in prontas:                                # recolhe a exceção: ninguém mais a lê
+            if not t.cancelled():
+                t.exception()
 
 
 __all__ = ["DadosDaExecucao", "SombraDaIntencao", "cadeia_de", "catalogo_de"]
