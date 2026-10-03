@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: o aviso `learning.needs_person` do fluxo pela etapa mais restritiva (30.33-B; branch feat/30-33-aviso-do-fluxo)
+
+- A faixa do aviso de um fluxo passa a ser a classe do dossiê do curador (30.32). As etapas vêm do mesmo leitor
+  (`EtapasDoFluxo`, tirado de `DossiesSql`). Comentar, responder, mandar mensagem e seguir avisam C (`alto_risco`) em
+  vez de B.
+- O payload não muda.
+- A receita segue sem a capability no aviso da transição nativa. É uma divergência à parte, que já existia.
+- Prova `simulated`: `test_learning_classe_do_fluxo.py` (3 testes novos: o serviço, sem o leitor, e a montagem com o
+  catálogo do repositório).
+
 ## 2026-10-03 — Suíte 10 na main (16fd1127): SQLite e PostgreSQL inteiras
 
 - A suíte 10 entrou na main por commit-tree (16fd1127), com 12 hashes:

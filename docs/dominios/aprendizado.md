@@ -569,6 +569,13 @@ faixa e o motivo saem de `domain/espera.py::classificar_espera`, tradução da p
 Um gesto da pessoa que passa por dois estados (`mudar_status_nativo`: candidata, validada, publicada) pode publicar entrada e saída
 na mesma ação. `state.py` passa `eventos=self.bus`.
 
+**O fluxo pela etapa mais restritiva (30.33).** A faixa do aviso de um FLUXO é a classe do dossiê do curador (30.32):
+cada etapa com os fatos do catálogo do app dela. Os dois leem as etapas pelo mesmo leitor,
+`infrastructure/etapas_do_fluxo.py::EtapasDoFluxo`. A montagem o entrega ao `LearningService` (`etapas_do_fluxo`), que o
+passa ao `AvisadorDeEspera`. Antes, o aviso não via as etapas, e comentar, responder, mandar mensagem e seguir saíam B
+(`efeito_externo`, a lacuna), enquanto o parecer dizia C. Agora saem C (`alto_risco`). O payload não muda; só a
+`faixa` e o `motivo` desses fluxos.
+
 ## Conteúdo legível no detalhe (30.3)
 
 O detalhe do Livro (`GET /api/aprendizado/{kind}/{ref}`) devolve `conteudo`: o que o item FAZ, em estrutura legível, montado só do que
@@ -668,9 +675,9 @@ Só domínio puro (desenho em `design/aprendizado-vivo.md` §8.2-8.4); a porta, 
   mensagem e seguir. Todos têm uma etapa `risk: high` no catálogo; o curador os revê com o dossiê novo. Os outros 24
   ficam na classe de antes.
 
-  Divergência conhecida, que já existia para a receita: o aviso `learning.needs_person` da transição nativa
-  (`application/espera.py`) não recebe a capability nem as etapas e segue dizendo B para esses fluxos. O parecer, o
-  Revisar e o gesto usam o dossiê (C).
+  O aviso `learning.needs_person` do fluxo usa as mesmas etapas desde o 30.33 (ver a seção do evento). Segue a
+  divergência que já existia para a receita: o aviso da transição nativa não recebe a capability dela, e a faixa
+  pode ser mais branda que a do dossiê. O parecer, o Revisar e o gesto usam o dossiê.
 - **Dossiê** (`domain/curador.py::montar_dossie`): fatos já lidos (identidade sem título nem resumo, conteúdo legível do §4 por
   lista branca, até 30 evidências mais recentes com o total, trilha sem o motivo livre, relações, grupos de falha, votos sem nota,
   intervenções, e saúde, versão e política vigente quando fornecidas). Cada fato tem id citável (`ev:`, `run:`, `tr:`, `voto:`,
