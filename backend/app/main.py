@@ -183,7 +183,12 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
         finally:
             await poc.stop()
 
-    app = FastAPI(title="Central de Aparelhos — POC", version=VERSION, lifespan=lifespan)
+    # Os docs da API moram sob `/api/` (29.54): o portão só exige credencial de `/api/*`, e `/docs`, `/redoc` e
+    # `/openapi.json` (o mapa inteiro da API) abriam sem credencial pelo Host público. Sob `/api/` valem a regra
+    # de sempre: 401 de fora, livres no loopback.
+    app = FastAPI(title="Central de Aparelhos — POC", version=VERSION, lifespan=lifespan,
+                  docs_url="/api/docs", redoc_url="/api/redoc", openapi_url="/api/openapi.json",
+                  swagger_ui_oauth2_redirect_url="/api/docs/oauth2-redirect")
 
     @app.exception_handler(RequestValidationError)
     async def validacao_sem_segredo(_request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -348,6 +353,7 @@ def create_worker_app(state: AppState) -> FastAPI:
     app = FastAPI(title="Central de Aparelhos — canal do worker", version=VERSION,
                   docs_url=None, redoc_url=None, openapi_url=None)
     app.state.poc = state
+    app.state.canal_dedicado = True      # `_host_do_worker_permitido`: aqui o Host público não é recusado por porta
     app.include_router(worker_router)
     return app
 

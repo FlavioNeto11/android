@@ -4834,12 +4834,20 @@ saúde ganha um problema.
   `/api/` (agora `/central/` e o redirecionamento da raiz) e `/api/login`, `/api/logout`, `/api/session`; o resto de
   `/api` responde 401 e `Host` não declarado responde 403 `forbidden_host`. O POST do login de uma origem fora de
   `server.allowed_origins` responde 403 `forbidden_origin`.
+- **Docs da API sob `/api/`.** `/docs`, `/redoc`, `/openapi.json` e `/docs/oauth2-redirect` (que o portão tratava como
+  estático e abriam sem credencial pelo Host público) agora são `/api/docs`, `/api/redoc`, `/api/openapi.json` e
+  `/api/docs/oauth2-redirect`: 401 de fora sem credencial, livres no loopback; os caminhos antigos dão 404.
+- **WebSocket do worker pela porta do painel.** Com `server.worker_port != 0`, `/api/worker/ws` e `/api/worker/midia`
+  nessa porta recusam (4403) `Host` público e aceitam só loopback; com `worker_port: 0` nada muda. O listener dedicado
+  não muda.
+- **`Cache-Control` do ícone de release** (`GET /api/releases/{id}/icon`) passa de `public` para `private`.
 - **`GET /api/health`: problema novo `exposicao_publica_incompleta`.** Aparece quando há nome em `server.public_hosts` e
   falta qualquer uma de: `API_TOKEN`, `server.tls_behind_proxy` (ou TLS direto) e a origem `https://<host>` em
   `server.allowed_origins`. O `message` lista só o que falta, pelo nome da chave de configuração; nunca valor de segredo.
 
 Prova `simulated`:
 - `tests/test_painel_estatico.py` (redirecionamentos, cache, nada estático na raiz);
+- `tests/test_canal_do_worker.py` (listener dedicado, sem mudança);
 - `tests/test_portal_publico_central.py` (portão com o painel em `/central`, login e origem, problema da saúde);
 - `tests/test_autenticacao.py`, `tests/test_sessao_do_painel.py` e `tests/test_tls.py` (portão e sessão, sem mudança).
 

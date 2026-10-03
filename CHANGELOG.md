@@ -25,6 +25,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Portão (`main.guarda`, `security/access.py`) sem mudança de lógica, fixado por `tests/test_portal_publico_central.py` (Host declarado sem credencial, Host não declarado, loopback, login com `Origin` fora e dentro de `allowed_origins`).
 - Saúde: problema novo `exposicao_publica_incompleta` (falta `API_TOKEN`, `tls_behind_proxy` ou `https://<host>` em `allowed_origins` com `public_hosts` declarado).
 - Docs: ADR-073, adendo v1.05 do contrato da API, seção "Portal público pelo túnel da Cloudflare" em `operacao.md` (procedimento `not_run`; ingress `^/api/worker/` com a barra final), `config.example.yaml`.
+- Correções da revisão de risco: docs da API (`/docs`, `/redoc`, `/openapi.json`) movidos para `/api/` (abriam sem credencial pelo Host público); WebSocket do worker recusa Host público na porta do painel quando há listener dedicado; `Cache-Control` do ícone de release `private`; ADR-073 e `operacao.md` com HTTPS obrigatório, `API_TOKEN` longo, tranca global e limite de taxa recomendado.
 - `not_run`: túnel no ar e conferências de fora (da orquestradora com o dono); sem script do túnel, webhook ou mudança de cookie neste item.
 
 ## 2026-10-03 — Suíte 13 na main e deploy 13 no central (1c54a7bb; migração 083; config inalterada)

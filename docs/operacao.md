@@ -292,7 +292,15 @@ executado** (`not_run`): é o procedimento do dono e da orquestradora, nesta ord
   local, sem credencial.
 - **O canal do worker não vai ao hostname.** A regra `path: ^/api/worker/` devolve 404 antes da regra geral, e o destino
   nunca é a porta `server.worker_port`. A barra final é de propósito: sem ela a regra casaria também `/api/workers`, a
-  rota REST da tela de workers do painel, e a quebraria de fora.
+  rota REST da tela de workers do painel, e a quebraria de fora. O código também recusa (4403) o WebSocket do worker com
+  Host público na porta do painel quando `server.worker_port != 0`: a regra do ingress deixou de ser a única barreira.
+- **Sem credencial só abrem** `/central/`, os dois redirecionamentos (`/` e `/central`) e `/api/login|logout|session`.
+  Os docs da API agora moram em `/api/docs`, `/api/redoc` e `/api/openapi.json` e exigem credencial (loopback livre).
+- **"Always Use HTTPS" ligado na zona** é pré-requisito (sem ele o login por http levaria o token em claro até a borda);
+  HSTS é opcional, decisão do dono. O `API_TOKEN` tem de ser aleatório e longo (`gerar-senha-do-portal.ps1`: 24 bytes
+  do gerador criptográfico, 32 caracteres).
+- **A tranca de login é GLOBAL (não por IP)** e o `Bearer` em `/api/*` não tem limite: crie na Cloudflare uma regra de
+  limite de taxa para `/api/` antes do uso de fora (a tranca por cliente é item futuro).
 - **Sem `API_TOKEN` ninguém entra pelo endereço público** (o login é por token). Quem grava o token no `.env` é o dono;
   o procedimento nunca o lê nem o imprime. `GET /api/health` mostra `exposicao_publica_incompleta` enquanto faltar
   qualquer peça.
@@ -336,15 +344,26 @@ executado** (`not_run`): é o procedimento do dono e da orquestradora, nesta ord
 | Pedido | Esperado |
 |---|---|
 | `https://dev.nvit.com.br/central/` | 200, tela de login |
+| `http://dev.nvit.com.br/` | 301 para https (Always Use HTTPS) |
 | `https://dev.nvit.com.br/` | 307 para `/central/` |
+| `https://dev.nvit.com.br/docs` e `/openapi.json` | 404 |
+| `https://dev.nvit.com.br/api/docs` | 401 |
 | `https://dev.nvit.com.br/api/instances` | **401**, nunca 200 |
 | `https://dev.nvit.com.br/api/health` | 401 |
 | `https://dev.nvit.com.br/api/worker/ws` | 404 (regra do túnel) |
 | login com o `API_TOKEN` no painel | entra; sem o token, não |
 | `GET /api/health` por dentro | sem `exposicao_publica_incompleta` |
 
-Antes do passo 7 o esperado em `/api/instances` é 403. Se algum pedido sem credencial a `/api/*` der 200, **pare o
-serviço** (`Stop-Service Cloudflared`) e investigue.
+Antes do passo 7 o esperado em `/api/instances` é 403 e depois dele 401. **Essa é a prova de que o `Host` chega
+preservado:** 403 antes de declarar o hostname e 401 depois. 200 em qualquer momento = **pare o serviço**
+(`Stop-Service Cloudflared`) e investigue.
+
+**O serviço do Windows.** O `cloudflared service install` sobe um processo sem argumentos que não atende à parada:
+encerre esse processo e inicie o serviço, nunca `Restart-Service`.
+
+**Já feito no `real` (03/10/2026, máquina central):** túnel `central-farm` criado e no ar (19:45Z), DNS apontado, prova
+de fora 403/404 (19:47Z), "Always Use HTTPS" ligado e provado com 301 (19:54Z). **Pendentes:** a declaração do hostname
+no `config.yaml` (passo 7) e a senha (`API_TOKEN`).
 
 **Recuo.** Tire `dev.nvit.com.br` de `server.public_hosts` e reinicie `farm-central`: tudo volta a 403, painel incluído.
 Para tirar o hostname do ar, `Stop-Service Cloudflared` (e, se for o caso, `cloudflared service uninstall`).

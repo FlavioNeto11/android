@@ -4941,10 +4941,18 @@ saúde dizer quando a exposição está pela metade.
 3. **O canal do worker nunca vai ao hostname público.** `/api/worker/*` e a porta `server.worker_port` ficam fora do túnel:
    a regra de ingress `^/api/worker/` devolve 404 **antes** da regra geral. A barra final é de propósito: sem ela a regra
    casaria também `/api/workers`, que é rota REST da tela de workers do painel, e a quebraria de fora. O destino do túnel
-   nunca é a porta do canal do worker.
-4. **Sem credencial, de fora, só abrem quatro coisas:** o estático em `/central/`, o redirecionamento de `/` (307 para
-   `/central/`) e de `/central` (307 para `/central/`), e as três rotas de sessão (`/api/login`, `/api/logout`,
-   `/api/session`). Todo o resto de `/api` responde 401. Nenhuma isenção nova: a lógica do portão não mudou.
+   nunca é a porta do canal do worker. **A regra do ingress não é a única barreira:** o handshake WebSocket não passa
+   pelo middleware HTTP e, pelo túnel, todo par é `127.0.0.1`; por isso, com `server.worker_port != 0` (listener
+   dedicado), o app da porta do painel recusa (4403) o WebSocket do worker com nome de Host público e aceita só
+   loopback (`api.py::_host_do_worker_permitido`). Sem isso um `hello` errado vindo da internet bloquearia o worker
+   legítimo por 60 s e ocuparia as vagas dele. Com `worker_port: 0` (canal na porta principal) o comportamento antigo
+   fica. O listener dedicado não muda.
+4. **Sem credencial, de fora, só abrem estas coisas:** o estático em `/central/`, os dois redirecionamentos (`/` e
+   `/central`, 307 para `/central/`) e as três rotas de sessão (`/api/login`, `/api/logout`, `/api/session`). Todo o
+   resto de `/api` responde 401. Os **docs da API** (`/docs`, `/redoc`, `/openapi.json` e o redirect do OAuth) não
+   começavam com `/api/` e abriam como "estático" com o mapa inteiro da API; agora moram em `/api/docs`, `/api/redoc`,
+   `/api/openapi.json` e `/api/docs/oauth2-redirect`: exigem credencial de fora e seguem livres no loopback, e os
+   caminhos antigos são 404. Nenhuma isenção nova: a lógica do portão não mudou.
 5. **Painel em `/central`.** O Vite constrói com `base: '/central/'`; o backend monta o `PainelEstatico` em `/central` e a
    raiz só redireciona (Location relativo: o redirecionamento automático do Starlette montaria URL `http` absoluta atrás
    do túnel TLS). Nenhum outro caminho fora de `/api` e `/central` serve arquivo. A API não ganha prefixo. O roteador do
@@ -4960,6 +4968,15 @@ saúde dizer quando a exposição está pela metade.
    só os nomes das chaves de configuração, nunca valor de segredo.
 9. **Recuo** em uma linha: tirar o hostname de `server.public_hosts` e reiniciar o central; tudo volta a 403, painel
    incluído. Parar o serviço `Cloudflared` tira o hostname do ar de vez.
+
+**Pré-requisitos e limites conhecidos.**
+- **"Always Use HTTPS" LIGADO na zona da Cloudflare** é pré-requisito: sem ele o login por `http://` mandaria o token em
+  claro até a borda. HSTS é opcional e decisão do dono.
+- **`API_TOKEN` aleatório e longo** (o `gerar-senha-do-portal.ps1` gera 24 bytes do gerador criptográfico, 32
+  caracteres). Token curto ou de dicionário anula o resto.
+- **A tranca de login é GLOBAL (não por IP)** e o `Bearer` em `/api/*` não tem limite de tentativas. Por isso uma regra de
+  limite de taxa da Cloudflare para `/api/` é **recomendada antes do uso de fora**; a tranca por cliente fica como item
+  futuro.
 
 **Fica de fora (de propósito).**
 - O **webhook do Trello**: será decisão do ADR-072, com rota e assinatura próprias; não ganha isenção aqui.

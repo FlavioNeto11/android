@@ -69,12 +69,60 @@ async def test_host_publico_sem_credencial_abre_so_o_painel_e_a_sessao(harness: 
             assert SEGREDO not in r.text
 
 
-async def test_o_canal_do_worker_nao_ganha_isencao_pelo_host_publico(harness: Harness) -> None:
-    """`/api/worker/*` começa com `/api/` e não é rota de sessão: sem credencial, 401 — o 404 do túnel na frente é
-    reforço, não substituto."""
+async def test_o_canal_do_worker_http_nao_ganha_isencao_pelo_host_publico(harness: Harness) -> None:
+    """Só a parte HTTP: `/api/worker/*` começa com `/api/` e não é rota de sessão, então 401 do portão. NÃO prova o
+    WebSocket (o handshake não passa pelo middleware); isso é o teste logo abaixo."""
     _publicar(harness)
     async with _cliente(harness, host=PUBLICO) as c:
         assert (await c.get("/api/worker/ws")).status_code == 401
+
+
+def _ws_worker(h: Harness, *, host: str) -> int:
+    """Código de fechamento do `/api/worker/ws` pelo app PRINCIPAL com esse Host, ou 0 se foi aceito."""
+    from starlette.testclient import TestClient
+    from starlette.websockets import WebSocketDisconnect
+
+    app = create_app(h.cfg, state=h.state)
+    app.state.poc = h.state
+    try:
+        with TestClient(app, client=PAR_DO_TUNEL).websocket_connect("/api/worker/ws", headers={"host": host}) as ws:
+            ws.close()
+            return 0
+    except WebSocketDisconnect as e:
+        return e.code
+
+
+def test_websocket_do_worker_recusa_host_publico_com_o_listener_dedicado(harness: Harness) -> None:
+    """O handshake WebSocket não passa pelo middleware HTTP. Pelo túnel todo par é 127.0.0.1, então sem esta recusa um
+    `hello` errado vindo da internet bloquearia o worker legítimo: com `worker_port != 0`, o nome público é recusado
+    (4403) na porta do painel e o loopback segue valendo."""
+    _publicar(harness)
+    harness.cfg.file.server.worker_port = 8010
+    assert _ws_worker(harness, host=PUBLICO) == 4403
+    assert _ws_worker(harness, host="atacante.example") == 4403
+    assert _ws_worker(harness, host="127.0.0.1:8000") == 0
+
+
+def test_websocket_do_worker_com_worker_port_zero_mantem_o_modo_de_porta_de_rede(harness: Harness) -> None:
+    _publicar(harness)
+    harness.cfg.file.server.worker_port = 0
+    assert _ws_worker(harness, host=PUBLICO) == 0
+    assert _ws_worker(harness, host="atacante.example") == 4403
+
+
+async def test_docs_da_api_nao_abrem_sem_credencial_pelo_host_publico(harness: Harness) -> None:
+    """`/docs`, `/redoc` e `/openapi.json` não começavam com `/api/` e abriam como "estático" (o mapa inteiro da API).
+    Agora moram sob `/api/`: o portão exige credencial; os caminhos antigos não existem."""
+    _publicar(harness)
+    async with _cliente(harness, host=PUBLICO) as c:
+        for rota in ("/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"):
+            assert (await c.get(rota)).status_code == 404, rota
+        for rota in ("/api/docs", "/api/redoc", "/api/openapi.json"):
+            assert (await c.get(rota)).status_code == 401, rota
+        com_token = await c.get("/api/openapi.json", headers={"Authorization": f"Bearer {SEGREDO}"})
+        assert com_token.status_code == 200
+    async with _cliente(harness, host="127.0.0.1") as c:
+        assert (await c.get("/api/openapi.json")).status_code == 200
 
 
 async def test_host_publico_com_o_token_certo_abre_a_api(harness: Harness) -> None:
