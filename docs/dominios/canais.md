@@ -161,6 +161,17 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   avisado a cada mensagem. De vez em quando, o resumo traz o teor das conversas com convidados, sem nome.
 - **Hoje:** `telegram_inbox.py`, com `my_chat_member` e o arquivo de chats vistos.
 
+**C-21 · Conversa com convidado vira conhecimento.**
+- **Origem:** dono, Telegram 03/10 23:10Z ("esse tipo de conversa e a informação gerada é construtiva como base de
+  conhecimento, aproveite esse contexto e pode interagir").
+- **Regra:**
+  - A ANA conversa com o convidado autorizado e aproveita o contexto dele: necessidade, ramo, perguntas.
+  - O que se aprende é registrado por assunto como base de conhecimento.
+  - Interesse comercial vai ao dono, sem promessa: preço, prazo e contrato são sempre dele.
+  - Nada disso relaxa a C-02 nem a C-09.
+- **Hoje:** `.claude/handoffs/canais/conhecimento-convidados.md`, fora do Git e do Trello, mais o histórico da C-08.
+- **No produto:** junto do 28.18, no banco, com a retenção do 28.16; a forma fica a numerar pela orquestradora.
+
 ## 4. Pedidos, autorizações e decisões
 
 **C-12 · Comentário do dono é pedido, não autorização de ação real.**
