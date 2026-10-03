@@ -43,7 +43,8 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
 - **Origem:** dono, 03/10 18:15Z.
 - **Regra:** no Trello e no Telegram nunca entra segredo, nome de pessoa ou de persona, @conta, e-mail, telefone, IP,
   texto de comando de execução ou dado de terceiro. Isso vale também para este repositório quando o assunto é quem
-  fala com os canais (veja C-09).
+  fala com os canais (veja C-09). Exceção única (dono, 03/10 22:41Z): o nome que uma pessoa nova der pode ir ao
+  chat do próprio dono, no aviso da C-10.
 - **Hoje:** tudo o que sai do banco ou do estado passa por `redigir` (`.claude/trello/redacao.py`), e o que um
   agente escreve passa por conferência.
 - **No produto:** canais-externos §8; o espelho do 32.2 redige antes de enviar, e o desfecho de execução volta ao
@@ -100,12 +101,30 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   - **ANA**: o id do dono com o prefixo 🤖, porque hoje escreve com a conta dele;
   - **convidado**: qualquer outro id.
 
-  Grupos e canais do Telegram são ignorados. O nome de quem fala nunca entra no Trello, no Telegram nem no Git; o
-  vínculo entre id e pessoa fica só no arquivo local da seção 7.
+  Grupos e canais do Telegram são ignorados. O nome de quem fala nunca entra no Trello nem no Git, e no Telegram
+  só no chat do dono (C-10). O vínculo entre id e pessoa fica só no arquivo local da seção 7.
+- **Histórico de quem fala (dono, Telegram 03/10 22:44Z):** "o nome, o código do chat e o máximo de informações que
+  puder, precisamos desse histórico". Para cada chat que fala com o bot fica gravado:
+  - a identidade como o Telegram a dá (id, nome, sobrenome, @, idioma, se é bot);
+  - o nome que a pessoa informou e o estado (`aguardando_nome`, `aguardando_dono`, `autorizado`);
+  - a primeira e a última vez;
+  - o histórico de eventos: mensagem, pergunta do nome, bot posto ou tirado.
+  O segredo retido entra só como o aviso de retenção. Hoje o registro fica em `contatos-telegram.json` (seção 7);
+  no produto, no banco da Central (28.18). Nunca no Trello nem no Git. No produto, o registro entra na faxina por retenção do 28.16.
 - **Hoje:** `telegram_inbox.py` e a leitura dos quadros por `list_activity`.
 - **No produto:** `trello.membro_dono` e `TELEGRAM_CHAT_ID` (canais-externos §4).
 
 **C-09 · Convidado: a pergunta é respondida, o pedido passa pelo dono.**
+- **Confirmado pelo dono (Telegram 03/10 22:52Z):** "vc responde pra todo mundo eu so autorizo". A ANA responde a
+  todos, e o dono só autoriza: quem passa a ser atendido (C-10) e os pedidos (abaixo). A leitura restritiva das
+  22:50Z, de não responder a ninguém além do dono, foi descartada.
+- **O que responder a todos não muda (orquestradora, 03/10 22:55Z):**
+  - convidado não executa nada;
+  - a quem não é o dono não vai nenhum dado de persona, conta, e-mail, telefone, IP ou segredo;
+  - nenhum nome de pessoa vai ao chat do convidado: lá, o dono é "o dono";
+  - autorização que o CLAUDE.md pede "em chat" não vale pelo Telegram.
+  Hoje, `telegram_status.py --chat` recusa o texto que tiver um nome do arquivo local. O modelo das boas-vindas
+  (`BOAS_VINDAS`) já vem sem nomes.
 - **Origem:** dono 03/10 ~20:15Z (Trello) e Telegram 20:51Z ("mantenha o mesmo comportamento do Trello com eles
   aqui também").
 - **Regra:**
@@ -132,8 +151,9 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   ADR-071. Até lá, o que responde a quem é desconhecido é ferramenta da sessão: uma saudação fixa, nenhum dado e
   nenhum comando aceito.
 - **Prova:** `simulated` (caixa com chat falso).
-- **Pendente do dono (sim ou não, perguntado 21:47Z):** se o nome que a pessoa der pode ser escrito no chat do
-  próprio dono. Até a resposta, o aviso diz só "chat novo" e o número do convidado.
+- **Nome no aviso ao dono:** SIM (dono, Telegram 03/10 22:41Z). O nome que a pessoa der vai no aviso, mas só no
+  chat do próprio dono. Nunca vai ao chat de outra pessoa, ao Trello ou ao Git: o vínculo id↔nome fica no arquivo
+  local da seção 7.
 
 **C-11 · Avisos sobre chats.**
 - **Origem:** dono, Telegram 03/10 ~20:55Z.
@@ -249,18 +269,24 @@ operação. Aqui só se descreve a forma deles.
 |---|---|
 | `.claude/handoffs/canais.md` | O handoff da frente: estado agora, fila, log datado. As regras ficam aqui neste documento. |
 | `.claude/handoffs/canais/membros-trello.json` | `convidados[]`: `n`, nome, `trello_id`, `telegram_chat_id` (vazio até o dono autorizar, C-10) e `autorizado_a_pedir`; as chaves `_regra*` repetem C-08 a C-11. |
+| `.claude/handoffs/canais/contatos-telegram.json` | Por id de chat: `chat`, `pessoa` (campos do Telegram), `primeira_vez`, `ultima_vez`, `estado`, `nome_informado` e `historico[]` (`quando`, `evento`, `message_id`, `texto`). Escrito por `telegram_inbox.py` (C-08). |
 | `.claude/handoffs/canais/situacao.json` | Curadoria do resumo: `deploy_no_ar`, `frentes`, `mudou_extra` (no máximo 5 linhas de até 140 caracteres) e `pendencias`. |
 | `.claude/handoffs/canais/eventos.md` | Uma linha por fato, escrita pela orquestradora (`HH:MMZ \| frente \| item \| o que mudou \| lista sugerida`). Nunca vai ao dono. |
 | `.claude/handoffs/telegram/telegram_offset.txt`, `telegram_inbox.jsonl`, `telegram_chats_vistos.json`, `resumo_cursor.json` | Offset do getUpdates, mensagens recebidas (com segredo já retido), ids de chat já vistos e cursor do resumo. |
 
-Os scripts da operação provisória (`telegram_inbox.py`, `telegram_status.py`, `resumo_laco.py` e
-`canais/url_painel.py`) estão hoje na mesma pasta. A próxima etapa os traz para o Git, ao lado de `.claude/trello/`,
-com os dados ainda na pasta excluída.
+Os scripts da operação provisória ficam versionados em `.claude/canais/`, e os dados deles ficam na pasta excluída:
+
+- `telegram_inbox.py`: lê as mensagens do bot;
+- `telegram_status.py`: envia uma mensagem, com `--reply-to` e `--chat`;
+- `resumo_laco.py`: o resumo de hora em hora, com `--carimbar` e `--ensaio`;
+- `url_painel.py`: grava ou recua o `avisos.url_painel` do `config.yaml`, com backup.
+
+As ferramentas do Trello ficam em `.claude/trello/`.
 
 ## 8. Como uma sessão nova assume o papel
 
 1. Ler este documento, depois o handoff local `.claude/handoffs/canais.md` e a skill `trello`.
-2. Religar os processos em segundo plano, a partir de `C:/git/android`, com `PYTHONIOENCODING=utf-8
+2. Religar os processos em segundo plano (os scripts de `.claude/canais/`), a partir de `C:/git/android`, com `PYTHONIOENCODING=utf-8
    PYTHONUNBUFFERED=1` e a saída anexada aos `.log`:
    - `telegram_inbox.py`, um consumidor só;
    - `resumo_laco.py --intervalo 3600`;

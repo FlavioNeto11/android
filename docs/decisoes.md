@@ -5107,7 +5107,10 @@ depois`, 19 de 19): `/api/instances`, `/api/health` e `/api/workers` 401; `/api/
 `/redoc` e `/openapi.json` 404; `/api/docs` e `/api/openapi.json` 401; `/api/ws` sem credencial 403; `/api/worker/ws` e
 `/api/worker/midia` 404 no túnel; `http` 301. Antes do reinício os mesmos pedidos davam 403 (21:32Z): o `Host` chega
 preservado. Travessia de caminho em `/central/` dá 400 na borda e 404 no app. O painel local segue sem login.
-**Não provado (`not_run`):** o login pelo endereço público, que é do dono, e o cookie `Secure` no navegador dele.
+O login pelo endereço público foi feito pelo dono e funcionou (dito por ele no chat, 03/10 ~22:39Z). Na Cloudflare, com o
+sim dele (03/10 ~22:47Z): regra de limite de taxa só para `/api/login` (por IP, mais de 1 pedido em 10 s bloqueia 10 s) e
+HSTS de um mês sem subdomínios; conferidos de fora às 22:49:15Z (`max-age=2592000`; `GET /api/login` seguido dá 405 e 429).
+Cloudflare Access ficou de fora por decisão dele.
 
 **Relação.** ADR-025/ADR-040 (credencial e cofre, não alterados), ADR-009, ADR-056 (rede por aparelho, não alterado),
 [operacao.md](operacao.md) §11 e "Portal público pelo túnel da Cloudflare", [api-contract.md](api-contract.md) adendo
