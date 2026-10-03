@@ -26,8 +26,9 @@ describe('observedMatchOf', () => {
     expect(observedMatchOf({ account_label: 'qa-user-01', account_evidence: 'Conta: qa-user-02' })).toBe('diverge');
   });
 
-  it('diverge quando há evidência mas nenhum rótulo configurado — nada afirma que é a conta certa', () => {
-    expect(observedMatchOf({ account_label: null, account_evidence: 'Conta: qa-user-02' })).toBe('diverge');
+  it('sem rótulo configurado não há divergência: não há conta esperada (validação do deploy 4)', () => {
+    expect(observedMatchOf({ account_label: null, account_evidence: 'Conta: qa-user-02' })).toBe('none');
+    expect(observedMatchOf({ account_label: '  ', account_evidence: 'Conta: qa-user-02' })).toBe('none');
   });
 });
 

@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Validação do deploy 4: I1 (sem rótulo não há "diverge") e a CPU do emulador com referência
+
+- **I1:** `observedMatchOf` (`frontend/src/features/settings/instancesView.ts`) devolve `none` sem rótulo configurado. Sem
+  conta esperada não há do que divergir: o android-04, hoje de Instagram e sem rótulo, aparecia "diverge" por uma
+  observação antiga do QA Messenger. A linha "observado" sai do cartão de Configuração › Aparelhos e contas e do Foco
+  quando não há rótulo.
+- **Polimento do Foco:** "CPU 108%" passa a "CPU 108% (≈1,1 núcleo)" (`cpuDoEmulador`): o % do processo é de um núcleo
+  do host.
+- **K-080:** um toque por id de elemento velho abre a tela errada. **K-078:** adendo do braço D, em que o snapshot
+  também não é a causa.
+- `simulated`: `instancesView.test.ts`, `cpuDoEmulador.test.ts`; typecheck limpo; 139 aprovados em settings e focus.
+
 ## 2026-10-03 — 12.5 nível 1.1: o "truncado" vale para o valor, não para a linha vizinha (emenda do ADR-070 §4)
 
 - `conferir_transcricao` (`backend/app/taskqueue/saidas.py`): "truncado" é o do valor do ator, do campo do leitor e da
