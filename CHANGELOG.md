@@ -40,6 +40,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (decisão (d)).
 - Documentado no ADR-071, no adendo v0.98 do api-contract, em `operacao.md` §15.1, em `banco.md` (085) e em
   `config.example.yaml`.
+- Correções da revisão do PR #166 (`test_telegram_correcoes.py`, `simulated`):
+  - B1: na 1ª subida o histórico do chat é descartado (`getUpdates` com `offset=-1` e uma linha-marco), não executado;
+  - B2: a resposta a uma pergunta que pede senha, código, 2FA ou token é recusada pelo contexto (vocabulário da triagem de
+    credencial), apagada do chat e nunca gravada; o 409 `credencial_na_resposta` do caminho comum é final;
+  - I3: a update que não grava vira `falhou` sem texto e o offset anda; I4: a prévia vence em `ttl_previa_s` (900 s);
+  - I5: o dono é `chat.type = private` com `from.id` igual ao chat, na mensagem e no botão;
+  - I7: o 429 honra o `Retry-After`; o 401/403 vira o problema `telegram_entrada_recusada` e espera como o 409;
+  - menores: linha presa em `executando` reparada, texto longo com cara de senha também apagado, dica do 409 com webhook
+    e o script `avisos-telegram.py descobrir`, nota de troca de chat ou bot no `operacao.md`.
 - Prova:
   - `simulated`: `test_telegram_entrada.py`, `test_canais_contrato.py` (o mesmo comando por `telegram` e `trello`
     passa pelas mesmas políticas), `test_avisos_servico.py` e `test_telegram_portas.py`;

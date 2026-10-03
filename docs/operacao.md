@@ -563,6 +563,20 @@ A Central trata isso como o painel trata. A gramática fechada está em [design/
   vão redigidos e cortados em 500 caracteres, para o dono responder ali mesmo (decisão (d)).
 - A mensagem com cara de senha ou código não é guardada: a Central a apaga do chat e responde sem ecoar nada. Se o
   Telegram não deixar apagar, a resposta pede ao dono que apague.
+- A resposta a uma execução que pergunta por senha, código, 2FA ou token também é recusada, qualquer que seja a forma do
+  texto (decide pelo contexto, com o vocabulário da triagem de credencial): não é guardada, é apagada do chat, e a
+  resposta manda o dono ao painel. Vale para o reply ao aviso e para `/responder <id> <texto>`.
+- Só vale o dono em conversa PRIVADA: `chat.type = private` e `from.id` igual ao `TELEGRAM_CHAT_ID`. Grupo, canal ou
+  outro membro ficam gravados sem texto e sem resposta.
+- Na primeira subida (canal sem nenhuma linha) o que o Telegram guardou antes (até 24 h) é descartado, não tratado: um
+  "/aprovar" ou um "sim" antigo não executa. Mande o primeiro comando depois de ver a `/ajuda`.
+- O botão Executar vale por `avisos.entrada.ttl_previa_s` (900 s); passado o prazo a Central pede o pedido de novo. Uma
+  linha presa em `executando` sem execução (queda no meio) vira `falhou` depois de 5 min, e o dono é avisado.
+- O 429 do `getUpdates` espera o `Retry-After`. O 401/403 vira o problema `telegram_entrada_recusada` na saúde e espera
+  `espera_conflito_s`, como o 409; corrigido o token, o problema some sozinho.
+- **Trocar de chat ou de bot** pede limpar o registro do canal antes: `DELETE FROM canal_entradas WHERE canal='telegram'`
+  e `DELETE FROM canal_enviadas WHERE canal='telegram'`. Sem isso o offset antigo (de outro bot) e os `message_id` de
+  outro chat ficam valendo; com a limpeza, a próxima subida descarta o histórico de novo.
 - O registro fica em `canal_entradas` e `canal_enviadas` (migração 085), com o texto só do que veio do dono e foi aceito.
   Contagem por estado: `SELECT estado, COUNT(*) FROM canal_entradas WHERE canal='telegram' GROUP BY estado`.
 
