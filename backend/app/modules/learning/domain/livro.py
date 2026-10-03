@@ -80,6 +80,24 @@ def fluxo_tem_efeito(plano: JsonValue) -> bool:
     return any(isinstance(p, dict) and p.get("side_effect") is True for p in _lista(passos))
 
 
+def apps_na_ordem_do_plano(plano: JsonValue, tabela: Iterable[str] = ()) -> list[str]:
+    """Os apps que o fluxo exige, NA ORDEM EM QUE O PLANO OS USA (29.42): "QA Messenger → Chrome", não a alfabética.
+
+    `flow_required_apps` guarda só o conjunto (sem ordem); a ordem vem da primeira aparição de cada app nas etapas
+    (`step.app_id`, ou o `app_id` do plano quando a etapa não diz). O conjunto é o da tabela; sem linhas nela vale o
+    `required_apps` congelado no plano (como `FlowStore.match`). Exigido que nenhuma etapa cita vai ao fim, em ordem
+    alfabética (estável); app usado pelo plano e fora do conjunto não entra: quem manda no que é exigido é a tabela."""
+    dados = plano if isinstance(plano, dict) else {}
+    exigidos = list(dict.fromkeys(a for a in tabela if a))
+    if not exigidos:
+        congelado = dados.get("required_apps")
+        exigidos = list(dict.fromkeys(a for a in _lista(congelado) if isinstance(a, str) and a))
+    ancora = dados.get("app_id")
+    usados = [p.get("app_id") or ancora for p in _lista(dados.get("steps")) if isinstance(p, dict)] or [ancora]
+    ordem = {a: i for i, a in enumerate(dict.fromkeys(u for u in usados if isinstance(u, str) and u))}
+    return sorted(exigidos, key=lambda a: (ordem.get(a, len(ordem)), a))
+
+
 def hash_da_receita(acoes: JsonValue) -> str:
     """O conteúdo da receita para o veto: o CAMINHO, sem o `why` da IA (que muda a cada execução)."""
     return content_hash([{k: v for k, v in a.items() if k != "why"} if isinstance(a, dict) else a

@@ -271,6 +271,8 @@ export interface EtapaDoFluxo {
 export interface ConteudoDoFluxo {
   tipo: 'fluxo';
   nome: string | null;
+  /** Os apps exigidos na ordem do plano (29.42); o principal do plano vem em `app`. Ausente em backend antigo. */
+  apps?: string[];
   comando_modelo: string | null;
   origem: { tipo: 'execucao' | 'treino'; fonte: string | null; source_run_id: string | null };
   etapas: EtapaDoFluxo[];

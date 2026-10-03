@@ -91,6 +91,16 @@ it('desligado: um fluxo ativo não ganha "converter em habilidade" nem ação de
   expect(backend.callsTo('GET', /\/skills$/)).toHaveLength(0);
 });
 
+it('29.42: o fluxo entre apps mostra "QA Messenger → Chrome" na ordem do plano; sem apps, nada', async () => {
+  comHabilidades(false);
+  useAppStore.setState({ apps: [{ ...APPS[0]!, id: 'qa-messenger', name: 'QA Messenger', package: 'com.pocqa.messenger' },
+                                { ...APPS[0]!, id: 'chrome', name: 'Chrome', package: 'com.android.chrome' }] });
+  backend.on('GET', /\/flows$/, () => json([{ ...fluxo(), required_apps: ['qa-messenger', 'chrome'] }, { ...fluxo(), id: 'outro', name: 'Outro', required_apps: [] }]));
+  await renderComDialogo();
+  await waitFor(() => expect(text()).toContain('QA Messenger → Chrome'));
+  expect(document.querySelectorAll('[aria-label="Apps do fluxo"]')).toHaveLength(1);
+});
+
 it('ligado: converter o fluxo ativo pede confirmação, chama a rota e recarrega as duas listas', async () => {
   comHabilidades(true);
   backend.on('GET', /\/flows$/, () => json([fluxo()]));

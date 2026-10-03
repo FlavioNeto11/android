@@ -377,7 +377,8 @@ interface UsageReport { scope: { run_id: string | null; days: number | null }; g
   objectives_with_ai: number; calls_per_objective: number; usd_per_objective: number;
   steps_driven_by: Record<string, number>; unpriced_models: string[] }
 interface Flow { id: string; name: string; command_template: string; app_id: string | null; source_run_id: string | null;
-  status: 'active' | 'disabled'; uses: number; created_at: string; last_used_at: string | null }
+  status: 'active' | 'disabled'; uses: number; created_at: string; last_used_at: string | null;
+  required_apps: string[] /* adendo (29.42, 03/10): ids dos apps, na ordem em que o plano os usa */ }
 interface Recipe { id: number; app_package: string; app_version: string; step_key: string; step_hash: string;
   version: number; status: 'active' | 'quarantined' | 'superseded';
   actions: { tool: string; args: Record<string, unknown>; commit: boolean; why: string;
@@ -4313,3 +4314,18 @@ arquivo de versão nova lido por código velho seria entendido pela metade, sem 
 
 Prova `simulated`: `tests/test_prova_do_conhecimento.py`, com `git_blob` comparado a `git hash-object` de cada YAML
 do repositório e a recusa de `versao` 2, 0, 1.0, `true` e `"1"`.
+
+## Adendo (29.42, 03/10/2026) — `GET /api/flows` devolve `required_apps` na ordem do plano
+
+- Cada fluxo de `GET /api/flows` (e a resposta de `PUT /api/flows/{id}`) ganha `required_apps: string[]`: os ids dos apps
+  que o fluxo exige, **na ordem em que o plano gravado os usa** (primeira aparição em `steps[].app_id`; a etapa sem app
+  roda no `app_id` do plano). Um comando entre apps ("mande no QA Messenger e abra no Chrome") volta como
+  `["qa-messenger", "chrome"]`, não na ordem alfabética de `flow_required_apps`, que guarda só o conjunto.
+- O conjunto é o da tabela `flow_required_apps`; sem linhas nela vale o `required_apps` congelado no plano (a mesma regra
+  de `FlowStore.match`). Exigido que nenhuma etapa cita vai ao fim, em ordem alfabética; app citado pelo plano e fora do
+  conjunto não entra. Fluxo sem apps: `[]`. Plano ilegível não derruba a lista (a ordem cai para a da tabela).
+- Sem migração e sem N+1: a lista lê `flows` e `flow_required_apps` em duas consultas. `plan` segue `null` na lista.
+- O dossiê do curador (`conteudo.apps` do `GET /api/aprendizado/{kind}/{ref}`) passa a usar a mesma ordem (antes, alfabética).
+- O painel (Configurações, Fluxos) e a aba do curador mostram "QA Messenger → Chrome" com o nome de cada app.
+
+Prova `simulated`: `backend/tests/test_flows_required_apps.py`; `real`: `not_run`.

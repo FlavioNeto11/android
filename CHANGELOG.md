@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 29.42: o fluxo entre apps diz de que apps precisa (branch feat/29-42-required-apps)
+
+- `GET /api/flows` devolve `required_apps` em cada fluxo, na ordem em que o plano usa os apps (sem migração: a ordem vem
+  das etapas do plano gravado; `flow_required_apps` segue sendo só o conjunto). Duas consultas para todos os fluxos.
+- O painel (Configurações, Fluxos) e o detalhe do fluxo na aba do curador mostram "QA Messenger → Chrome" com o nome de
+  cada app (o id quando o app não está cadastrado). O dossiê do curador (`conteudo.apps`) passa à mesma ordem (antes,
+  alfabética); por isso dois testes de domínio mudaram a ordem esperada (outlook, instagram: a do plano).
+- Adendo (29.42, 03/10) em `docs/api-contract.md`. Prova `simulated`: `tests/test_flows_required_apps.py`,
+  `frontend/src/lib/appsDoFluxo.test.ts`, `DetalheRico.test.tsx`, `FlowsRecipesSection.test.tsx`; `real`: `not_run`.
+
 ## 2026-10-03 — Conhecimento de app: versão conferida e prova do que está no ar (RA-24, parte YAML; branch feat/ra-24-versao-e-prova-do-conhecimento)
 
 - `telas.yaml` e `sessao.yaml` só aceitam `versao: 1` na carga, como a `contract_version` do catálogo. Antes,
