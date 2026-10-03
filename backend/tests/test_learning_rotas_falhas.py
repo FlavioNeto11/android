@@ -21,6 +21,9 @@ import pytest
 from fastapi import FastAPI
 
 from app.db import Database
+from app.modules.learning.application.ports import NovoSinal
+from app.modules.learning.domain.ciclo import SYSTEM_ACTOR
+from app.modules.learning.domain.vocabulario import Polaridade, SignalKind
 from app.modules.learning.presentation.router import router as learning_router
 
 from .fake_skills import banco as banco_migrado
@@ -49,6 +52,24 @@ async def cliente(mundo: Mundo) -> AsyncIterator[httpx.AsyncClient]:
         yield c
 
 
+async def test_os_sinais_levam_os_nomes_do_painel(mundo: Mundo) -> None:
+    """P3 do deploy 3: a aba Sinais mostra "Instagram › Abrir a publicação", não o pacote e o código. Pacote sem nome
+    declarado nem na loja sai com o próprio pacote; capability fora do catálogo, nula (o painel cai no código)."""
+    mundo.livro.registrar_sinal(NovoSinal(kind=SignalKind.TOMOU_CONTROLE, source_ref="takeover:n:a1",
+                                          created_by=SYSTEM_ACTOR, polarity=Polaridade.NEGATIVE, app_package=PACOTE,
+                                          capability="OPEN_POST"))
+    mundo.livro.registrar_sinal(NovoSinal(kind=SignalKind.REPETIU_ITEM, source_ref="retry:n", created_by="panel",
+                                          app_package="pkg.sem.nome", capability="ABRIR_ALGO"))
+    app = FastAPI()
+    app.include_router(learning_router)
+    app.state.poc = SimpleNamespace(learning=mundo.livro, db=mundo.db)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/aprendizado/sinais")
+    assert r.status_code == 200, r.text
+    nomes = {s["source_ref"]: (s["app_nome"], s["capability_nome"]) for s in r.json()["sinais"]}
+    assert nomes == {"takeover:n:a1": ("Instagram", "Abrir a publicação"), "retry:n": ("pkg.sem.nome", None)}
+
+
 async def test_relatorio_em_json_com_chave_estavel(mundo: Mundo, cliente: httpx.AsyncClient) -> None:
     r = await cliente.get("/api/aprendizado/falhas?dias=14")
     assert r.status_code == 200, r.text
@@ -59,6 +80,7 @@ async def test_relatorio_em_json_com_chave_estavel(mundo: Mundo, cliente: httpx.
     assert anr["id"].startswith("fk-") and len(anr["id"]) == 13
     assert anr["app"] == PACOTE and anr["capability"] == "OPEN_POST" and anr["camada"] == "aparelho"
     assert anr["capability_nome"] == "Abrir a publicação"              # o nome do catálogo, para o grupo do painel
+    assert anr["app_nome"] == "Instagram"                              # o do agrupamento do Aprendido (P2, deploy 3)
     assert anr["ocorrencias"] == 3 and anr["retroativas"] == 3 and anr["estado"] == "open"
     assert abs(anr["usd_perdido"] - 0.06) < 1e-9 and anr["onde_alterar"]["arquivos"]
     assert anr["onde_alterar"]["prova"] and anr["exemplos"][0]["run_id"].startswith("r-anr")

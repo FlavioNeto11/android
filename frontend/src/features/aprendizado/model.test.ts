@@ -4,7 +4,7 @@ import {
   acoesDoItem, acoesNaFila, refDaHabilidade,
   desfazerDoEfeito, estadoDoLivro, lerFeedbackDaExecucao, lerRelatorioDeFalhas, lerRespostaDoVoto, lerSinais, mdDoItem,
   ordenarFalhas, ordenarPendentes, porQueOSistemaNaoPublica, rotuloDaCamada, rotuloDaFalha, rotuloDoEstado,
-  rotuloDoKind, textoDoEfeito, votoDoItem,
+  rotuloDoKind, textoDoEfeito, votoDoItem, capabilityComNome, nomearCapabilityNoTexto, tituloDoItem, titulosDaLista,
 } from './model';
 
 /** Pacote A6 do ADR-054: rótulos de estado e camada, a ordenação do "o que mais falha" e da fila do D1, as ações que
@@ -68,6 +68,46 @@ describe('rótulos', () => {
     expect(porQueOSistemaNaoPublica(entrada({ por_que_nao_publica: { codigo: 'vetado', espera_o_dono: false, detalhe: 'desligado por uma pessoa' } })))
       .toBe('desligado por uma pessoa');
     expect(porQueOSistemaNaoPublica(entrada({ por_que_nao_publica: null }))).toBeNull();
+  });
+});
+
+describe('o título que a pessoa lê (validação do deploy 3, P3 e P4)', () => {
+  const ENVIAR = { title: 'send_message_i1 (v1)', capability: 'SEND_MESSAGE', capability_nome: 'Enviar a mensagem' };
+
+  it('a receita troca a chave da etapa pelo nome da capability; sem nome, ou ambígua, fica a chave', () => {
+    const r = entrada(ENVIAR);
+    expect(tituloDoItem(r)).toBe('Enviar a mensagem (v1)');
+    expect(tituloDoItem({ ...r, capability_nome: null })).toBe('send_message_i1 (v1)');
+    expect(tituloDoItem({ ...r, capability: null })).toBe('send_message_i1 (v1)');
+    expect(tituloDoItem({ ...r, title: 'sem versão' })).toBe('sem versão');
+    expect(tituloDoItem({ ...r, kind: 'fluxo', title: 'Enviar oi' })).toBe('Enviar oi');
+  });
+
+  it('a lição nomeia a capability uma vez, só a palavra inteira, e nomear de novo não dobra', () => {
+    const texto = 'Em OPEN_PROFILE: a tentativa que comprovou tocou em "Perfil"; OPEN_PROFILE_X é outra';
+    const l = entrada({ kind: 'licao', ref: 'li-1', title: texto, capability: 'OPEN_PROFILE', capability_nome: 'Abrir o perfil' });
+    const nomeado = 'Em Abrir o perfil (OPEN_PROFILE): a tentativa que comprovou tocou em "Perfil"; OPEN_PROFILE_X é outra';
+    expect(tituloDoItem(l)).toBe(nomeado);
+    expect(nomearCapabilityNoTexto(nomeado, 'OPEN_PROFILE', 'Abrir o perfil')).toBe(nomeado);
+    expect(nomearCapabilityNoTexto('Nesta etapa: role', '*', 'Etapa livre')).toBe('Nesta etapa: role');
+    expect(nomearCapabilityNoTexto(texto, 'OPEN_PROFILE', null)).toBe(texto);
+    expect(capabilityComNome('OPEN_FEED', 'Abrir o feed')).toBe('Abrir o feed (OPEN_FEED)');
+    expect(capabilityComNome('OPEN_FEED', null)).toBe('OPEN_FEED');
+  });
+
+  it('na lista, quem empata ganha quando foi aprendido; se ainda empata, o número da receita', () => {
+    const a = entrada({ ...ENVIAR, ref: '40', created_at: '2026-10-02T17:22:00Z' });
+    const b = entrada({ ...ENVIAR, ref: '41', created_at: '2026-09-20T15:18:00Z' });
+    const c = entrada({ ...ENVIAR, ref: '42', created_at: '2026-09-20T15:18:00Z' });
+    const d = entrada({ ref: '7', title: 'Outra (v2)' });
+    const t = titulosDaLista([a, b, c, d]);
+    expect(t.get(d)).toBe('Outra (v2)');
+    expect(t.get(a)).toMatch(/^Enviar a mensagem \(v1\) · de \S/);
+    expect(t.get(a)).not.toContain('nº');
+    expect(t.get(b)).toMatch(/^Enviar a mensagem \(v1\) · de .+ · nº 41$/);
+    expect(t.get(c)).toMatch(/ · nº 42$/);
+    expect(new Set(t.values()).size).toBe(4);
+    expect(titulosDaLista([a]).get(a)).toBe('Enviar a mensagem (v1)');
   });
 });
 

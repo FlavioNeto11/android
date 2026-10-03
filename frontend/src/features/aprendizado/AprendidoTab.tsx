@@ -1,6 +1,5 @@
 import { BookOpen, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { toApiError } from '../../api/client';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { Field, Select } from '../../components/Field';
@@ -14,7 +13,7 @@ import type { VisaoDeApps } from './apps';
 import { AvisoDaHabilidade, ItemDoLivro, chaveDoItem } from './ItemDoLivro';
 import {
   ESTADOS_DO_LIVRO, LIVRO_KINDS, ORIGENS, ORIGEM_LABEL, type EntradaDoLivro, type ListaDoLivro, type LivroKind, acoesDoItem, isEstadoDoLivro, isLivroKind,
-  rotuloDoEstado, rotuloDoKind,
+  rotuloDoEstado, rotuloDoKind, titulosDaLista,
 } from './model';
 import styles from './Aprendizado.module.css';
 
@@ -63,7 +62,7 @@ function ItemDoLink({ kind, refDoItem, onMudou }: { kind: LivroKind; refDoItem: 
     apiAprendizado.detalhe(kind, refDoItem, ctl.signal)
       .then((d) => setEntrada(d.item))
       .catch((e: unknown) => {
-        if (!ctl.signal.aborted) setErro(toApiError(e).message);
+        if (!ctl.signal.aborted) setErro(toLoadError(e).message);
       });
     return () => ctl.abort();
   }, [kind, refDoItem, vez]);
@@ -136,6 +135,7 @@ export function AprendidoTab() {
     if (app && !o.some((x) => x.pacote === app)) o.push({ pacote: app, nome: app });
     return o;
   }, [visao, app]);
+  const titulos = useMemo(() => titulosDaLista(lista?.itens ?? []), [lista]);
 
   return (
     <section className={styles.secao} aria-label="Aprendido">
@@ -200,6 +200,7 @@ export function AprendidoTab() {
                 <ItemDoLivro
                   key={chaveDoItem(e)}
                   entrada={e}
+                  titulo={titulos.get(e)}
                   acoes={acoesDoItem(e)}
                   onMudou={() => void carregar(filtro)}
                   extra={e.kind === 'habilidade' ? <AvisoDaHabilidade naFila={false} /> : null}

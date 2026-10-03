@@ -249,6 +249,25 @@ describe('detalhe rico: outros tipos de conteúdo', () => {
   });
 });
 
+describe('detalhe rico: a capability com o nome do catálogo (validação do deploy 3, P3)', () => {
+  it('Identidade e lição: "Abrir o perfil (OPEN_PROFILE)"; o texto da lição nomeia a capability só na tela', async () => {
+    const licao: ConteudoDoItem = { tipo: 'licao', texto: 'Em OPEN_PROFILE: a tentativa que comprovou tocou em "Perfil"', modelo: null,
+                                    acao: null, alvo: null, escopo: { app: 'com.instagram.android', capability: 'OPEN_PROFILE', step_hash: null, role: null }, tokens: 9 };
+    const t = await mostrar(detalhe({ conteudo: licao, item: { kind: 'licao', capability: 'OPEN_PROFILE', capability_nome: 'Abrir o perfil' } }));
+    expect(container.querySelector('blockquote')?.textContent).toBe('Em Abrir o perfil (OPEN_PROFILE): a tentativa que comprovou tocou em "Perfil"');
+    expect(t.split('Abrir o perfil (OPEN_PROFILE)').length - 1).toBe(3);  // a citação, a Identidade e o escopo
+  });
+
+  it('receita de capability única ganha o nome; a ambígua e a de outra capability seguem com o código', async () => {
+    const unica = { ...RECEITA, capability: { nomes: ['SEND_MESSAGE'], ambigua: false, fonte: 'origem' as const } };
+    let t = await mostrar(detalhe({ conteudo: unica, item: { capability: 'SEND_MESSAGE', capability_nome: 'Enviar a mensagem' } }));
+    expect(t.split('Enviar a mensagem (SEND_MESSAGE)').length - 1).toBe(2);  // a Identidade e o conteúdo
+    t = await mostrar(detalhe({ item: { capability: null, capability_nome: null } }));
+    expect(t).toContain('enviar_mensagem, responder');
+    expect(t).not.toContain('(enviar_mensagem');
+  });
+});
+
 describe('itemDoLink', () => {
   it('lê kind:ref (o ref pode ter @) e recusa o que não é do Livro', () => {
     expect(itemDoLink('habilidade:instagram.abrir@2')).toEqual({ kind: 'habilidade', ref: 'instagram.abrir@2' });

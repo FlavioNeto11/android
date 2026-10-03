@@ -27,7 +27,8 @@ from app.modules.learning.domain.diagnostico import Diagnostico
 from app.modules.learning.domain.falhas import Camada
 from app.modules.learning.domain.vocabulario import EstadoDoBacklog
 from app.modules.learning.presentation.livro import _chamar, _quem, _servico
-from app.modules.skills.domain.document import JsonObject
+from app.modules.learning.presentation.nomes import nomear
+from app.modules.skills.domain.document import JsonObject, JsonValue
 
 router = APIRouter(prefix="/api/aprendizado")
 
@@ -282,17 +283,15 @@ async def o_que_mais_falha(request: Request, dias: int = Query(14, ge=1, le=90),
 
 
 def _com_nomes(corpo: JsonObject, servico: LearningService) -> JsonObject:
-    """`capability_nome` em cada grupo (o nome em português do catálogo, para o painel não mostrar `OPEN_PROFILE`),
-    só no JSON do painel: o Markdown e o `grupo_json` dos scripts seguem com o código."""
-    vistos: dict[tuple[str, str], str | None] = {}
+    """`app_nome` e `capability_nome` em cada grupo (`presentation/nomes.py`), para o painel não mostrar
+    `com.instagram.android · OPEN_PROFILE`; só no JSON do painel: o Markdown e o `grupo_json` dos scripts seguem com o
+    código."""
+    grupos: list[JsonValue] = []
     for chave in ("itens", "verificacao"):
-        for g in corpo.get(chave) or []:
-            if isinstance(g, dict):
-                app, cap = g.get("app"), g.get("capability")
-                par = (app, cap) if isinstance(app, str) and isinstance(cap, str) else None
-                if par is not None and par not in vistos:
-                    vistos[par] = servico.nome_da_capability(*par)
-                g["capability_nome"] = vistos.get(par) if par is not None else None
+        lista = corpo.get(chave)
+        if isinstance(lista, list):
+            grupos.extend(lista)
+    nomear(grupos, servico)
     return corpo
 
 

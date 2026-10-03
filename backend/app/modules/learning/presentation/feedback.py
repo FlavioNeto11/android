@@ -8,7 +8,8 @@
   que ela ensinou ao livro e o que usou dele, em cinco listas (`receitas`, `fluxos`, `falhas`, `candidatas`, `licoes`;
   o formato que o painel lê em `model.ts::lerAprendizado`), vazias quando nada mudou; `null` só quando a leitura dele
   falhou (os votos e os sinais saem mesmo assim);
-- `GET /api/aprendizado/sinais?dias=&kind=&app=`: a aba Sinais.
+- `GET /api/aprendizado/sinais?dias=&kind=&app=`: a aba Sinais, com `app_nome` e `capability_nome` em cada sinal
+  (`presentation/nomes.py`; nulos quando não se sabe).
 
 Cada efeito diz o que mudou (`de` → `para`) e, quando o voto desligou algo que ESTAVA publicado, o `desfazer`: a
 chamada exata do `POST /api/aprendizado/{kind}/{ref}/status` que o reativa (a única volta da tabela do D1 é
@@ -34,6 +35,7 @@ from app.modules.learning.domain.vocabulario import MotivoDoVoto, SignalKind, Ve
 from app.modules.learning.infrastructure.aprendido_sql import montar_aprendizado
 from app.modules.learning.infrastructure.feedback_sql import montar_feedback
 from app.modules.learning.presentation.livro import _chamar, _quem
+from app.modules.learning.presentation.nomes import nomear
 from app.modules.skills.domain.document import JsonObject, JsonValue
 
 router = APIRouter(prefix="/api")
@@ -140,4 +142,10 @@ async def sinais(request: Request, dias: int = Query(14, ge=1, le=400), kind: Si
     for s in lista:
         por_tipo[s.kind.value] = por_tipo.get(s.kind.value, 0) + 1
     contagem: JsonObject = {k: n for k, n in por_tipo.items()}
-    return {"sinais": [_sinal(s) for s in lista], "total": len(lista), "contagem": contagem, "dias": dias}
+    linhas = [_sinal(s) for s in lista]
+    # Só na aba Sinais (P3 do deploy 3): os votos de uma execução seguem com o pacote e o código.
+    poc: object = getattr(request.app.state, "poc", None)
+    servico: object = getattr(poc, "learning", None)
+    nomear(linhas, servico if isinstance(servico, LearningService) else None, app="app_package")
+    sinais: list[JsonValue] = list(linhas)
+    return {"sinais": sinais, "total": len(lista), "contagem": contagem, "dias": dias}

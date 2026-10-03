@@ -14,6 +14,7 @@ import { Archive, CircleCheck, CircleDashed, CircleOff, FilePen, ShieldCheck } f
 import type { SkillState } from '../../api/types';
 import { isRecord } from '../../lib/format';
 import type { StatusMeta } from '../../lib/status';
+import { formatQuando } from '../../lib/time';
 import type { BlocoDoCurador, ModoDoCurador, ParecerDaIA, ParecerNaFila } from './parecer';
 
 // ---------------------------------------------------------------- vocabulário do livro
@@ -328,6 +329,60 @@ export function rotuloDoKind(k: string | null | undefined): string {
   return k && isLivroKind(k) ? KIND_LABEL[k] : k ?? '—';
 }
 
+// ---------------------------------------------------------------- o título que a pessoa lê (deploy 3, P3 e P4)
+
+/** A capability com o nome do catálogo na frente, "Abrir o perfil (OPEN_PROFILE)"; sem nome, só o código. */
+export function capabilityComNome(codigo: string, nome?: string | null): string {
+  return nome ? `${nome} (${codigo})` : codigo;
+}
+
+/**
+ * O texto com a capability nomeada na primeira vez que aparece: "Em OPEN_PROFILE: …" → "Em Abrir o perfil
+ * (OPEN_PROFILE): …". Só na tela: o texto gravado da lição é o que vai ao prompt, e lá o código é o que serve.
+ */
+export function nomearCapabilityNoTexto(texto: string, codigo?: string | null, nome?: string | null): string {
+  if (!codigo || !nome || codigo === '*') return texto;
+  const nomeada = capabilityComNome(codigo, nome);
+  if (texto.includes(nomeada)) return texto;
+  const re = new RegExp(`\\b${codigo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+  return texto.replace(re, nomeada);
+}
+
+const RE_VERSAO = /^(.*) \(v(\d+)\)$/;
+
+/**
+ * O título de uma linha do livro para a pessoa. A receita troca a chave da etapa pelo nome da capability
+ * ("send_message_i1 (v1)" → "Enviar a mensagem (v1)"); a lição nomeia a capability no texto; o resto vem como o backend
+ * manda. O título cru continua no `title` da linha, para quem desenvolve.
+ */
+export function tituloDoItem(e: Pick<EntradaDoLivro, 'kind' | 'ref' | 'title' | 'capability' | 'capability_nome'>): string {
+  const t = e.title || e.ref;
+  if (e.kind === 'receita' && e.capability && e.capability_nome) {
+    const m = RE_VERSAO.exec(t);
+    return m ? `${e.capability_nome} (v${m[2]})` : t;
+  }
+  return e.kind === 'licao' ? nomearCapabilityNoTexto(t, e.capability, e.capability_nome) : t;
+}
+
+function repetidos(titulos: Iterable<string>): Set<string> {
+  const vistos = new Set<string>();
+  const dobrados = new Set<string>();
+  for (const t of titulos) (vistos.has(t) ? dobrados : vistos).add(t);
+  return dobrados;
+}
+
+/**
+ * Os títulos de uma lista sem repetição (P4: duas receitas da mesma etapa saíam iguais). Quem empata ganha quando foi
+ * aprendido ("· de hoje, 17:22"); se ainda empata, a referência ("· nº 40"). A chave é a própria entrada da lista.
+ */
+export function titulosDaLista(itens: readonly EntradaDoLivro[]): Map<EntradaDoLivro, string> {
+  const base = new Map(itens.map((e) => [e, tituloDoItem(e)] as const));
+  const dobrados = repetidos(base.values());
+  const comData = new Map([...base].map(([e, t]) => [e, dobrados.has(t) && e.created_at ? `${t} · de ${formatQuando(e.created_at)}` : t] as const));
+  const ainda = repetidos(comData.values());
+  return new Map([...comData].map(([e, t]) => [e, ainda.has(t) ? `${t} · ${e.kind === 'receita' ? `nº ${e.ref}` : e.ref}` : t] as const));
+}
+
 export const ORIGEM_LABEL: Record<Origem, string> = {
   execucao: 'Aprendido de execução', treino: 'Demonstrado no treino', pessoa: 'Texto ou decisão de pessoa',
   ensino: 'Ensino de habilidade', sistema: 'Observação automática',
@@ -544,8 +599,11 @@ export interface GrupoDeFalha {
   capability: string;
   /** O nome em português, do catálogo do app; `null` sem catálogo (o painel mostra o código). */
   capability_nome: string | null;
+  /** O nome do app como o agrupamento do Aprendido o mostra; ausente em backend antigo, `null` no app `*`. */
+  app_nome?: string | null;
   failure_kind: string;
   failure_screen: string | null;
+  /** O título de quem desenvolve (`pacote · CÓDIGO: motivo`): vai na cópia para a sessão, não na linha do painel. */
   titulo: string | null;
   camada: string | null;
   onde_alterar: string[];
@@ -639,6 +697,7 @@ function lerGrupo(linha: unknown): GrupoDeFalha | null {
     app,
     capability,
     capability_nome: str(v.capability_nome),
+    app_nome: str(v.app_nome),
     failure_kind: tipo,
     failure_screen: tela,
     titulo: str(campo(v, 'title', 'titulo')),
@@ -748,6 +807,9 @@ export interface Sinal {
   objective_id: string | null;
   app_package: string;
   capability: string;
+  /** Os nomes em português do app e da capability (os do Aprendido); `null` quando não se sabe. */
+  app_nome: string | null;
+  capability_nome: string | null;
   failure_kind: string | null;
   simulated: boolean;
 }
@@ -781,7 +843,8 @@ function lerSinal(v: unknown): Sinal | null {
     verdict: isVeredito(v.verdict) ? v.verdict : null, reason: str(v.reason), note: str(v.note),
     source_ref: str(v.source_ref) ?? '', created_by: str(v.created_by) ?? '', created_at: str(v.created_at),
     run_id: str(v.run_id), objective_id: str(v.objective_id), app_package: str(v.app_package) ?? '',
-    capability: str(v.capability) ?? '', failure_kind: str(v.failure_kind), simulated: bool(v.simulated),
+    capability: str(v.capability) ?? '', app_nome: str(v.app_nome), capability_nome: str(v.capability_nome),
+    failure_kind: str(v.failure_kind), simulated: bool(v.simulated),
   };
 }
 
