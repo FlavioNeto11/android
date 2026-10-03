@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-331 de 383 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+331 de 385 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -383,6 +383,8 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.19 | implemented | simulated | opus (sessão jev, executora da orquestradora) | — | feat/31-19-curador-limiar @442a9249, na main pela suíte 11 (35e3b0f6). (1) As 4 respostas reais do curador (03/10 13:10Z) ficaram abaixo do limiar com confiança 0,50–0,52 e maior probabilidade 0,60–0,62 sobre UM estado… |  |
 | 31.20 | implemented | simulated | opus (sessão jev, executora da orquestradora) | — | Lacunas da rodada I e a A-média aprovada pelo dono (ADR-069 item 19): feat/31-18-forma-a @ea1df281 (parte de lista f2f49a08: E1/E2 com mascaramento de fragmento em entidades.py; A-média: o verbo de entrar recusa em qual… |  |
 | 31.21 | pendente | — | — | — |  |  |
+| 31.22 | pendente | — | — | — |  |  |
+| 31.23 | pendente | — | — | — |  |  |
 | 32.1 | implemented | not_run | opus (sessão jev, executora da orquestradora) | — | Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env,… |  |
 | 32.2 | pendente | — | — | — |  |  |
 | T.1 | implemented | not_run | opus | ok | docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, rea… | Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de produca… |
@@ -390,7 +392,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (52): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 29.52, 30.18, 30.31, 30.34, 30.36, 30.37, 30.38, 30.39, 31.10, 31.11, 31.12, 31.13, 31.21, 32.2, T.2
+Pendentes (54): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 29.52, 30.18, 30.31, 30.34, 30.36, 30.37, 30.38, 30.39, 31.10, 31.11, 31.12, 31.13, 31.21, 31.22, 31.23, 32.2, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

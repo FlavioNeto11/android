@@ -114,6 +114,20 @@ GO (rótulos 1 e 2 = 0). Nenhum limiar mudou.
 - **Proposta enviada à orquestradora:** campos fechados do dossiê que podem dar sinal (versão viva testada, uso,
   idade da evidência, motivos de saúde e de risco, trilha).
 
+*Registro de 03/10 (~19:10Z), 31.23, pré-registro do estado `v2` antes de qualquer resultado dele.* Nenhum limiar
+da tabela mudou.
+- **O que muda:** só a entrada. O `v2` soma ao `v1` campos fechados de sinal (`curador.CAMPOS_DE_SINAL`). A sombra
+  do runtime segue no `v1`.
+- **Medição:** o braço offline com `--estado v2`, nos MESMOS 29 casos de receita da rodada de 18:53Z, com teto de
+  US$ 0,05, na janela da orquestradora, depois do deploy.
+- **Critério para o `v2` virar o estado da sombra:** os estados `v2` com resposta precisam dar 2 ou mais respostas
+  distintas de maior probabilidade, e os estados instáveis (respostas diferentes no MESMO estado) não podem passar de
+  10 % dos estados com resposta. Sem isso, o `v2` não entra, e a próxima tentativa é a pergunta com o `noul` (31.13).
+- **Seco de 03/10 (19:02Z, central em `mode=ro`, nada enviado):** os 29 casos dão 19 estados `v2` distintos (eram 9 no
+  `v1`), e a privacidade aceitou os 29 pedidos.
+  - Nenhum dossiê de receita traz evidência na lista. A evidência da receita vai aos contadores, e por isso a idade da
+    evidência a favor é `nunca` nos 29.
+
 *Nota de 03/10 (~18:55Z), PROPOSTA, NÃO VIGENTE: a validação automática como rótulo "2v".* Fica pré-registrada
 antes de existir qualquer rótulo e não muda o GO da tabela. A orquestradora reavalia depois do deploy 14, com o P4
 de volta e volume real, e só então decide o contrato com a Aprendizado.

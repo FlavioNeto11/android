@@ -19,6 +19,23 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 31.22: a sombra guarda o hash do estado redigido (migração 086; branch feat/31-22-estado-hash)
+
+- `decisao_fechada_sombra.estado_hash`: o sha256 do estado DEPOIS do `privacidade.redigir`, em todas as linhas da
+  chamada; NULO na recusa de privacidade e no legado (`porta.hash_do_estado`).
+- Serve ao lote offline do 31.11, que só reenvia o comando cujo estado remontado bate com o hash (ADR-069 item 21).
+- Sem rota nova: nenhuma rota expõe as linhas da sombra, então não há adendo de contrato.
+- Teste: `backend/tests/test_decisao_fechada_estado_hash.py`.
+
+## 2026-10-03 — 31.23: estado `v2` da triagem do curador, com sinal (branch feat/31-8-sinal-curador-v2)
+
+- `curador.estado_do_dossie_v2` soma ao `v1` os campos fechados de sinal: versão viva, uso, idade da evidência a
+  favor, códigos de saúde e de risco, trilha.
+- A privacidade aceita a lista nova; a sombra do runtime segue no `v1` (`ESTADO_DA_SOMBRA`).
+- O braço offline ganha `--estado v2`; o critério para o `v2` virar o estado da sombra está pré-registrado no golden
+  set §2.
+- Testes: `backend/tests/test_decisao_fechada_curador_v2.py` e `scripts/tests/test_jev_braco_offline.py`.
+
 ## 2026-10-03 — 29.47, varredura: os outros filhos também não herdam os segredos (branch `fix/ambiente-filhos-varredura`)
 
 - **Antes.** Depois do 29.47, nove lançamentos do `backend/app` ainda herdavam o `os.environ` inteiro, com as chaves

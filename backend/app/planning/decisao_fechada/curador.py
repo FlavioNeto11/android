@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import Final, Generic, Protocol, TypeVar
 
 from . import privacidade
@@ -55,6 +56,44 @@ CAMPOS: Final[frozenset[str]] = frozenset({
     "evidencias_total", "evidencias_a_favor", "evidencias_contra", "evidencias_simuladas",
     "falhas", "falhas_ocorrencias", "votos", "intervencoes", "execucoes", "saude"})
 _ROTULO_MAX: Final = 40
+
+#: A versão do estado que a SOMBRA do runtime manda. O `v2` (os campos de sinal abaixo) só vira o da sombra depois de o
+#: braço offline (31.11) medir, nos mesmos casos, respostas distintas entre estados distintos; sem sinal, ele não entra
+#: (decisão da orquestradora, 03/10). Até lá, só o braço pede o `v2` (`TriagemDoCurador.pedido(..., versao_do_estado=)`).
+ESTADO_DA_SOMBRA: Final = "v1"
+VERSOES_DO_ESTADO: Final = ("v1", "v2")
+#: Os campos de SINAL do `v2`. Na rodada real da R1 (31.11, 03/10 18:53Z), os 9 estados `v1` distintos deram a MESMA
+#: resposta (`revisar`), e a regra de controle disse `manter` nos 29 casos: as contagens de evidência não explicam o
+#: parecer do curador. Estes vêm de outras seções do dossiê (versão viva, uso, idade da evidência, saúde, risco, trilha).
+#: Todo valor é contagem, `sim`/`nao`, faixa de idade ou código de vocabulário fechado: nunca texto, nome, id, data ou
+#: número de versão.
+CAMPOS_DE_SINAL: Final[frozenset[str]] = frozenset({
+    "versao_estado", "versao_vivas", "versao_nao_testadas", "versao_viva_comprovada",
+    "uso_ok", "uso_falhas", "uso_falhas_seguidas", "uso_idade", "evidencia_a_favor_idade",
+    "saude_motivos", "risco_razoes", "trilha_transicoes", "trilha_por_pessoa", "trilha_ultimo_destino"})
+#: Os vocabulários fechados do aprendizado que podem sair, repetidos aqui de propósito: o módulo não importa o
+#: aprendizado, e o que sai é decidido neste arquivo. O teste confere que cada conjunto é EXATAMENTE o enum de lá
+#: (`EstadoDeVersao`, `CodigoDoMotivo`, `Razao`, `SkillState`): um código novo lá não sai aqui sem um diff que se veja.
+ESTADOS_DE_VERSAO: Final[frozenset[str]] = frozenset({
+    "comprovado", "desconhecido", "em_prova", "falhando", "incompativel", "independente", "nao_testado", "superseded",
+    "versao_aposentada"})
+MOTIVOS_DE_SAUDE: Final[frozenset[str]] = frozenset({
+    "absorvida", "aguarda_o_dono", "aguarda_repeticao", "amostra_pequena", "amostra_suficiente", "aposentado",
+    "contestacao_desconhecida", "contestado_recentemente", "desligado", "efeito_sem_respaldo_no_catalogo",
+    "eficacia_abaixo_do_minimo", "eficacia_acima_do_minimo", "eficacia_desconhecida", "estado_desconhecido",
+    "falhas_seguidas", "idade_desconhecida", "nunca_usado", "sem_contestacao_recente", "sem_uso_recente",
+    "substituta_viva", "usado_recentemente", "uso_desconhecido", "validado_aguarda_publicacao", "versao_fora_do_parque",
+    "versao_viva_sem_reproducao"})
+RAZOES_DE_RISCO: Final[frozenset[str]] = frozenset({
+    "commit_fora_do_catalogo", "commit_sem_catalogo", "commit_sem_fatos_da_etapa", "efeito_declarado",
+    "familia_de_alto_risco", "politica_manual", "reaprendido_de_evidencia_invalida", "risco_alto", "risco_medio",
+    "sessao_ou_autenticacao", "texto_de_pessoa", "texto_para_outra_pessoa"})
+ESTADOS_DO_ITEM: Final[frozenset[str]] = frozenset({"draft", "candidate", "validated", "published", "deprecated",
+                                                    "disabled"})
+#: As faixas de idade, em dias contra `agora`; `nunca` é "não há".
+FAIXAS_DE_IDADE: Final = ("hoje", "ate_7d", "ate_30d", "mais_30d", "nunca")
+#: Um conjunto de códigos vira UM valor (`a+b`); o conjunto vazio é `nenhum`.
+NENHUM_CODIGO: Final = "nenhum"
 
 
 class PedidoDoCurador(Protocol):
@@ -131,6 +170,92 @@ def estado_do_dossie(dossie: Mapping[str, object]) -> dict[str, str]:
     return estado
 
 
+#: Os campos que a privacidade aceita do curador: os do `v1` e os de sinal do `v2` (31.11).
+CAMPOS_V2: Final[frozenset[str]] = CAMPOS | CAMPOS_DE_SINAL
+
+
+def _contagem(valor: object) -> str | None:
+    return str(valor) if isinstance(valor, int) and not isinstance(valor, bool) and valor >= 0 else None
+
+
+def _quando(valor: object) -> datetime | None:
+    if not isinstance(valor, str) or not valor:
+        return None
+    try:
+        quando = datetime.fromisoformat(valor.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return quando if quando.tzinfo is not None else quando.replace(tzinfo=UTC)
+
+
+def _faixa(quando: datetime | None, agora: datetime) -> str:
+    if quando is None:
+        return "nunca"
+    dias = (agora - quando).total_seconds() / 86400
+    return "hoje" if dias < 1 else "ate_7d" if dias <= 7 else "ate_30d" if dias <= 30 else "mais_30d"
+
+
+def _conjunto(codigos: list[object], vocabulario: frozenset[str]) -> str:
+    """Os códigos do vocabulário, sem repetição e em ordem, num valor só. Código fora do vocabulário some: não sai."""
+    dentro = sorted({c for c in codigos if isinstance(c, str) and c in vocabulario})
+    return "+".join(dentro) if dentro else NENHUM_CODIGO
+
+
+def estado_do_dossie_v2(dossie: Mapping[str, object], *, agora: datetime) -> dict[str, str]:
+    """O `v1` mais os `CAMPOS_DE_SINAL`. `agora` é a referência das faixas de idade: no braço offline, a hora da revisão
+    (o caso fica reprodutível); no runtime, a hora do pedido. Campo sem valor confiável fica de fora, como no `v1`."""
+    estado = estado_do_dossie(dossie)
+    versao = dossie.get("versao")
+    if isinstance(versao, Mapping):
+        if versao.get("estado") in ESTADOS_DE_VERSAO:
+            estado["versao_estado"] = str(versao["estado"])
+        for campo, chave in (("versao_vivas", "vivas"), ("versao_nao_testadas", "nao_testada_em")):
+            valor = versao.get(chave)
+            if isinstance(valor, list):
+                estado[campo] = str(len(valor))
+        por_versao = versao.get("por_versao")
+        if isinstance(por_versao, list):
+            comprovada = any(isinstance(p, Mapping) and p.get("viva") is True and p.get("estado") == "comprovado"
+                             for p in por_versao)
+            estado["versao_viva_comprovada"] = "sim" if comprovada else "nao"
+    conteudo = dossie.get("conteudo")
+    uso = conteudo.get("uso") if isinstance(conteudo, Mapping) else None
+    if isinstance(uso, Mapping):
+        for campo, chave in (("uso_ok", "replay_ok"), ("uso_falhas", "replay_fail"),
+                             ("uso_falhas_seguidas", "consecutive_fail")):
+            if (n := _contagem(uso.get(chave))) is not None:
+                estado[campo] = n
+        ultimo_uso = uso.get("last_used_at")
+        if ultimo_uso is None or _quando(ultimo_uso) is not None:      # data ilegível: o campo fica de fora
+            estado["uso_idade"] = _faixa(_quando(ultimo_uso), agora)
+    evid = dossie.get("evidencias")
+    lista = evid.get("lista") if isinstance(evid, Mapping) else None
+    if isinstance(lista, list):
+        a_favor = [q for e in lista if isinstance(e, Mapping) and e.get("posicao") == "for"
+                   and (q := _quando(e.get("em"))) is not None]
+        estado["evidencia_a_favor_idade"] = _faixa(max(a_favor) if a_favor else None, agora)
+    saude = dossie.get("saude")
+    motivos = saude.get("motivos") if isinstance(saude, Mapping) else None
+    if isinstance(motivos, list):
+        estado["saude_motivos"] = _conjunto([m.get("codigo") for m in motivos if isinstance(m, Mapping)],
+                                            MOTIVOS_DE_SAUDE)
+    risco = dossie.get("risco")
+    razoes = risco.get("razoes") if isinstance(risco, Mapping) else None
+    if isinstance(razoes, list):
+        estado["risco_razoes"] = _conjunto(list(razoes), RAZOES_DE_RISCO)
+    trilha = dossie.get("trilha")
+    if isinstance(trilha, list):
+        passos = [p for p in trilha if isinstance(p, Mapping)]
+        estado["trilha_transicoes"] = str(len(passos))
+        estado["trilha_por_pessoa"] = "sim" if any(p.get("por_pessoa") is True for p in passos) else "nao"
+        datados = [(q, p) for p in passos if (q := _quando(p.get("em"))) is not None]
+        if datados:
+            ultimo = max(datados, key=lambda x: x[0])[1].get("para")
+            if ultimo in ESTADOS_DO_ITEM:
+                estado["trilha_ultimo_destino"] = str(ultimo)
+    return estado
+
+
 class TriagemDoCurador:
     """O consumidor: monta o pedido C0 e o entrega à porta em sombra. Inerte com a config padrão (`ativo()` falso).
 
@@ -149,13 +274,18 @@ class TriagemDoCurador:
         return privacidade.JEV_RUNTIME_SEND_APPROVED and modo_efetivo("shadow", self._porta.cfg, "curador") == "shadow"
 
     @staticmethod
-    def pedido(dossie: Mapping[str, object], dossie_hash: str) -> PedidoDeDecisao | None:
+    def pedido(dossie: Mapping[str, object], dossie_hash: str, *, versao_do_estado: str = ESTADO_DA_SOMBRA,
+               agora: datetime | None = None) -> PedidoDeDecisao | None:
         """O pedido de sombra do item, ou `None` fora de F1 (memória, fluxo, tela, voz, preferência)."""
         item = dossie.get("item")
         kind = item.get("kind") if isinstance(item, Mapping) else None
         if kind not in KINDS_F1:
             return None
-        return PedidoDeDecisao(origem="curador", classe="C0", estado=estado_do_dossie(dossie),
+        if versao_do_estado not in VERSOES_DO_ESTADO:
+            raise ValueError(f"versão do estado desconhecida: {versao_do_estado}")
+        estado = (estado_do_dossie(dossie) if versao_do_estado == "v1"
+                  else estado_do_dossie_v2(dossie, agora=agora or datetime.now(UTC)))
+        return PedidoDeDecisao(origem="curador", classe="C0", estado=estado,
                                perguntas=(pergunta_choice(PERGUNTA_TRIAGEM, _INSTRUCOES, OPCOES),), modo="shadow",
                                ref=dossie_hash)
 
@@ -204,5 +334,6 @@ class CuradorComTriagemEmSombra(Generic[Pedido, Resposta]):
         return resposta
 
 
-__all__ = ["CAMPOS", "KINDS_F1", "OPCOES", "PERGUNTA_TRIAGEM", "TRIAGEM_DO_PARECER", "CuradorComTriagemEmSombra",
-           "TriagemDoCurador", "decisao_real_da_triagem", "estado_do_dossie"]
+__all__ = ["CAMPOS", "CAMPOS_DE_SINAL", "CAMPOS_V2", "ESTADO_DA_SOMBRA", "KINDS_F1", "OPCOES", "PERGUNTA_TRIAGEM",
+           "TRIAGEM_DO_PARECER", "VERSOES_DO_ESTADO", "CuradorComTriagemEmSombra", "TriagemDoCurador",
+           "decisao_real_da_triagem", "estado_do_dossie", "estado_do_dossie_v2"]

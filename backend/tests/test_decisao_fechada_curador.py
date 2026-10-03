@@ -23,7 +23,7 @@ from app.config import DecisaoFechadaCfg
 from app.db import Database
 from app.planning.decisao_fechada import privacidade
 from app.planning.decisao_fechada.contrato import ID_NENHUMA, RespostaDeDecisao
-from app.planning.decisao_fechada.curador import (CAMPOS, OPCOES, PERGUNTA_TRIAGEM, TRIAGEM_DO_PARECER,
+from app.planning.decisao_fechada.curador import (CAMPOS, CAMPOS_V2, OPCOES, PERGUNTA_TRIAGEM, TRIAGEM_DO_PARECER,
                                                   CuradorComTriagemEmSombra, TriagemDoCurador, decisao_real_da_triagem,
                                                   estado_do_dossie)
 from app.planning.decisao_fechada.decisores import DecisorFalso
@@ -132,7 +132,7 @@ def test_rotulo_que_nao_e_vocabulario_nao_sai() -> None:
 
 
 def test_a_lista_do_consumidor_e_a_da_privacidade() -> None:
-    assert privacidade.CAMPOS_POR_ORIGEM["curador"] == CAMPOS
+    assert privacidade.CAMPOS_POR_ORIGEM["curador"] == CAMPOS_V2      # 31.11: v1 + os campos de sinal do v2
 
 
 @pytest.mark.parametrize("kind", ["memoria", "fluxo", "tela", "voz", "preferencia", "habilidade"])

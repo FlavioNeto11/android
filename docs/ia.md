@@ -767,6 +767,11 @@ continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). D
 
     A `rede` da sombra acima do prazo guarda a marca do decisor: o POST aconteceu. Com isso, a `rede` antes do POST deixa
     de se confundir com a de depois. O cruzamento sombra × `ai_calls` passa a ser exato por linha nas linhas marcadas.
+  - **O hash do que saiu (31.22, migração 086).** `estado_hash` é o sha256 do JSON canônico do estado DEPOIS do
+    `privacidade.redigir` (`porta.hash_do_estado`: chaves em ordem, sem espaços, UTF-8). Vai em todas as linhas da
+    chamada, na sombra e no `on`, e fica NULO na recusa de privacidade e no legado. O lote offline do 31.11 recalcula
+    o hash do estado remontado e redigido e só reenvia o caso que bate (ADR-069 item 21: nenhum comando sai pela
+    primeira vez pelo lote). As linhas anteriores à 086 seguem pela salvaguarda do código do filtro.
 - **Cliente único.** `backend/tests/test_decisao_fechada.py::test_cliente_unico_so_o_adaptador_de_retrieval_conhece_o_host_da_typesafe`
   varre `backend/app` e prova que só `modules/context_retrieval/adapters/jev.py` contém o host.
 
@@ -823,6 +828,18 @@ ao Jev em `shadow` uma `choice` entre `manter`, `revisar`, `rebaixar`, `descarta
   efeito, origem humana, classe e política de risco, rótulo de saúde e contagens (evidência a favor, contra e simulada,
   falhas e ocorrências, votos, intervenções, execuções). Cada valor é rótulo de vocabulário ou número; conteúdo (inclusive
   o da lição), app, capability, ids e datas não saem. Memória, fluxo (C2), tela, voz e preferência não vão.
+- **Estado `v2`, com sinal (31.23):** na rodada real da R1 do braço offline (31.11, 03/10 18:53Z), os 9 estados `v1`
+  distintos deram a mesma resposta (`revisar`). O `estado_do_dossie_v2` soma ao `v1` os `CAMPOS_DE_SINAL`:
+  - estado da versão, versões vivas, versões não testadas e se há versão viva comprovada;
+  - uso (sucessos, falhas, falhas seguidas e a faixa de idade do último uso);
+  - a faixa de idade da última evidência a favor;
+  - os códigos de saúde e as razões de risco, como conjuntos de vocabulário fechado (`a+b`);
+  - a trilha: quantas transições, se houve pessoa e o último destino.
+
+  Os vocabulários (`ESTADOS_DE_VERSAO`, `MOTIVOS_DE_SAUDE`, `RAZOES_DE_RISCO`, `ESTADOS_DO_ITEM`) são repetidos no
+  arquivo de propósito, e o teste confere que são os enums do aprendizado. A privacidade aceita a lista nova; aceitar não
+  é mandar. A sombra do runtime segue no `v1` (`ESTADO_DA_SOMBRA`), e só o braço offline pede o `v2` (`--estado v2`).
+  Ele vira o estado da sombra só se a medição nos mesmos casos der sinal (golden set §2).
 - **Decisão real = o parecer do curador principal** (`TRIAGEM_DO_PARECER`, combinado com a frente Aprendizado: `manter` →
   manter; `observar`/`pedir_evidencia` → revisar; `rebaixar` → rebaixar; `desativar` → descartar; `aprovar`,
   `possivelmente_obsoleto`, `substituir` e `fundir` ficam fora da comparação). **Nada se casa na hora** (I2 da revisão do

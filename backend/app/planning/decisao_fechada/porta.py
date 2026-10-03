@@ -18,6 +18,8 @@ Quem chama em código assíncrono usa `asyncio.to_thread(porta.consultar, pedido
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import time
 from collections.abc import Callable, Mapping
@@ -60,6 +62,9 @@ class RegistroDeDecisao:
     resultado: ResultadoDeDecisao
     #: Por que o chamador recusou por privacidade (`PedidoDeDecisao.motivo_privacidade`); só código, nunca o estado.
     motivo_privacidade: str | None = None
+    #: 31.22 (086): o sha256 do estado REDIGIDO que foi ao decisor (`hash_do_estado`); `None` quando o pedido não passou
+    #: da privacidade. É o que o lote offline do 31.11 compara para reenviar só o que já saiu igual (ADR-069 item 21).
+    estado_hash: str | None = None
 
 
 Observador = Callable[[RegistroDeDecisao], None]
@@ -100,10 +105,10 @@ class Porta:
             return res
         pronto = privacidade.redigir(pedido)
         if modo == "shadow":
-            self._agendar(pronto, ao_registrar)
+            self._agendar(pronto, ao_registrar, estado_hash=hash_do_estado(pronto.estado))
             return resultado_de_fallback(pedido, "desligado")  # nada do caminho de trabalho usa a sombra
         res = self._chamar_com_timeout(pronto, TIMEOUT_ON_S)
-        self._observar(pedido, modo, res, ao_registrar)
+        self._observar(pedido, modo, res, ao_registrar, estado_hash=hash_do_estado(pronto.estado))
         return res
 
     def aguardar_sombras(self, timeout_s: float = 10.0) -> None:
@@ -142,16 +147,18 @@ class Porta:
                 self._pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="decisao-fechada")
             return self._pool
 
-    def _agendar(self, pedido: PedidoDeDecisao, ao_registrar: Callable[[], object] | None = None) -> None:
+    def _agendar(self, pedido: PedidoDeDecisao, ao_registrar: Callable[[], object] | None = None, *,
+                 estado_hash: str | None = None) -> None:
         with self._trava:
             if self._encerrada:                          # `encerrar` e `_agendar` não se cruzam: sem submit após o shutdown
                 return
             if self._pool is None:
                 self._pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="decisao-fechada")
-            f = self._pool.submit(self._sombra, pedido, ao_registrar)
+            f = self._pool.submit(self._sombra, pedido, ao_registrar, estado_hash)
             self._pendentes = [p for p in self._pendentes if not p.done()] + [f]
 
-    def _sombra(self, pedido: PedidoDeDecisao, ao_registrar: Callable[[], object] | None = None) -> None:
+    def _sombra(self, pedido: PedidoDeDecisao, ao_registrar: Callable[[], object] | None = None,
+                estado_hash: str | None = None) -> None:
         t0 = time.perf_counter()
         try:
             bruto = self.decisor.decidir(pedido, TIMEOUT_SHADOW_S)
@@ -165,7 +172,7 @@ class Porta:
         except Exception:
             log.warning("decisao_fechada: falha inesperada do decisor na sombra")
             res = resultado_de_fallback(pedido, "rede", ms=(time.perf_counter() - t0) * 1000)  # postado: não se sabe
-        self._observar(pedido, "shadow", res, ao_registrar)
+        self._observar(pedido, "shadow", res, ao_registrar, estado_hash=estado_hash)
 
     def _chamar_com_timeout(self, pedido: PedidoDeDecisao, timeout_s: float) -> ResultadoDeDecisao:
         t0 = time.perf_counter()
@@ -184,12 +191,12 @@ class Porta:
             return resultado_de_fallback(pedido, "rede", ms=(time.perf_counter() - t0) * 1000)
 
     def _observar(self, pedido: PedidoDeDecisao, modo: Modo, res: ResultadoDeDecisao,
-                  ao_registrar: Callable[[], object] | None = None) -> None:
+                  ao_registrar: Callable[[], object] | None = None, *, estado_hash: str | None = None) -> None:
         if self.observador is None:
             return
         try:
             self.observador(RegistroDeDecisao(pedido.origem, pedido.classe, modo, pedido.run_id, pedido.step_id,
-                                              pedido.ref, res, pedido.motivo_privacidade))
+                                              pedido.ref, res, pedido.motivo_privacidade, estado_hash))
         except Exception:  # medir nunca derruba o trabalho
             log.warning("decisao_fechada: observador falhou")
             return
@@ -240,6 +247,13 @@ def _valor_do_limiar(p: Pergunta, r: RespostaDeDecisao) -> float:
     return valor
 
 
+def hash_do_estado(estado: Mapping[str, str]) -> str:
+    """O sha256 (hex) do JSON canônico do estado: chaves em ordem, sem espaços, UTF-8 (31.22). A porta o calcula sobre o
+    estado JÁ redigido, o que sai; o lote offline do 31.11 recalcula sobre o estado remontado e redigido e compara."""
+    canonico = json.dumps(dict(estado), sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(canonico.encode("utf-8")).hexdigest()
+
+
 def construir_porta(cfg: DecisaoFechadaCfg | None = None, *, observador: Observador | None = None,
                     decisor: Decisor | None = None) -> Porta:
     """Porta com o decisor que a composição montou; sem ele, o NULO. O real (`DecisorJev`, 31.14) só vem com
@@ -247,5 +261,5 @@ def construir_porta(cfg: DecisaoFechadaCfg | None = None, *, observador: Observa
     return Porta(decisor or DecisorNulo(), cfg=cfg, observador=observador)
 
 
-__all__ = ["Porta", "RegistroDeDecisao", "TIMEOUT_ON_S", "TIMEOUT_SHADOW_S", "construir_porta",
+__all__ = ["Porta", "RegistroDeDecisao", "TIMEOUT_ON_S", "TIMEOUT_SHADOW_S", "construir_porta", "hash_do_estado",
            "modo_efetivo"]
