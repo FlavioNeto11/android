@@ -988,6 +988,18 @@ it('o mapa de habilidades desenha a trilha de etapas e a fração sem IA', async
   expect(valores).toEqual(expect.arrayContaining(['100', '50']));
 });
 
+it('o mapa de habilidades conta a etapa que fechou sem o ator (`sem_ator`) numa linha própria', async () => {
+  backend.on('GET', /capacidades/, () => json({
+    profile_id: 'ig-1', flows: [], steps_driven_by: { recipe: 3, ai: 1, sem_ator: 2 }, recipe_share: 0.5,
+    interactions: {},
+  }));
+  await abrir();
+  await irParaGuia(/Habilidades/i);
+  await waitFor(() => text().includes('Sem o ator'));
+  const linha = [...container.querySelectorAll('dt')].find((d) => d.textContent === 'Sem o ator');
+  expect(linha?.nextElementSibling?.textContent).toBe('2');
+});
+
 it('a visão geral mostra o cartão de identidade com números e uma mini linha do tempo de até 8 interações', async () => {
   backend.on('GET', /capacidades/, () => json({
     profile_id: 'ig-1', flows: [], steps_driven_by: { recipe: 6, ai: 2 }, recipe_share: 0.75,
