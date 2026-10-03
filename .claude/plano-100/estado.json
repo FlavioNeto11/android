@@ -6348,6 +6348,26 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T17:11:59+00:00"
+  },
+  "32.1": {
+   "id": "32.1",
+   "status": "implemented",
+   "proof": "not_run",
+   "evidence": "Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env, passo a passo do dono, 100 req/10 s por token, polling das actions porque o webhook exige URL pública); o espelho (um cartão por fato); os comandos de volta (cartão movido para Aprovado/Vetado; /aprovar, /vetar, /responder, /para, /estado com a identidade do membro do dono e dedupe pela action id); os vínculos ao conhecimento (GET /api/conhecimento/resumo proposto); o que não fazer; o desenho do 32.2 em 10 linhas. As decisões da orquestradora de ~18:05Z estão registradas no estudo. Fatos do Trello conferidos na documentação pública; nenhuma chamada à API (not_run).",
+   "blocker": "",
+   "arquivos": [
+    "docs/design/trello-integracao.md",
+    "docs/plano-100.md",
+    ".claude/plano-100.json",
+    "docs/README.md"
+   ],
+   "testes": "docs-check 0/0; claude-plan-100.py check ok. Não há teste: é documento.",
+   "grupo": "32-estudo-trello-jev",
+   "modelo": "opus (sessão jev, executora da orquestradora)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T17:43:32+00:00"
   }
  },
  "rodadas": [
@@ -7857,6 +7877,15 @@
    ],
    "grupos": [
     "leitura-intencao-preliminar-jev"
+   ]
+  },
+  {
+   "quando": "2026-10-03T17:43:32+00:00",
+   "itens": [
+    "32.1"
+   ],
+   "grupos": [
+    "32-estudo-trello-jev"
    ]
   }
  ]
