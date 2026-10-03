@@ -2171,7 +2171,9 @@ em memória. O restart do backend (a tarefa `farm-central`) recria os runtimes s
 - Não houve incidente: os três ficaram online o tempo todo, mas a escada de reparo esteve armada durante o experimento.
 
 **O que fazer.** Em todo procedimento com restart do backend (deploy, braços, troca de config), renove a pausa DEPOIS de
-o health voltar, além de antes. A persistência da pausa é o 25.13.
+o health voltar, além de antes. A persistência da pausa é o 25.13 (feito em `feat/suite10-android`, para a suíte 10):
+depois do deploy dele, a pausa volta sozinha com o mesmo prazo, mas conferir `features.repair_pause` depois do restart
+continua sendo o gesto.
 
 **Aplicabilidade.** O central. INFERRED: vale também para os aparelhos do notebook, cuja pausa mora no mesmo
 `DeviceRuntime` do central. A atualização do agente não reinicia o central, então não a perde.

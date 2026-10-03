@@ -33,7 +33,7 @@ from ..models import (AutomationInfo, ConnectivityInfo, ControlOwner, ReadinessI
                       RepairPauseInfo)
 # A porta do aprendizado (ADR-054): só o contrato, do kernel — `devices` não conhece a fila nem o livro.
 from ..shared.costuras import SEM_COSTURAS_DE_GESTO, CosturaDeControle, TomadaDeControle, avisar
-from ..util import new_token, now, now_iso, to_iso
+from ..util import new_token, now, now_iso, parse_iso, to_iso
 from . import emulator as emu
 from .adb import Adb, AdbError, AdbTimeout
 from .apps_de_fundo import AjusteDosApps
@@ -51,6 +51,7 @@ from .sdk import SdkTools
 # chama pelo global do módulo, e os testes que simulam uma codificação lenta trocam `manager._codificar`.
 from .codificacao import (THUMB_WIDTH, Codificado as _Codificado, codificar as _codificar,  # noqa: F401
                           dimensoes_do_modelo, tamanho_png as _tamanho_png)
+from .conta_observada import evidencia_legivel
 
 log = logging.getLogger("poc.devices")
 #: Idade máxima da última classificação de tela para a imagem TARDIA de evidência dispensar uma nova leitura da
@@ -412,8 +413,9 @@ class DeviceRuntime:
         # virar um laço de reinício em cima de um aparelho que não volta.
         self.restart_attempts = 0
         self.restart_backoff_until: float = 0.0
-        #: Pausa do reparo AUTOMÁTICO deste aparelho (`PausaDeReparo`): só em memória e sempre com prazo. Reiniciar o central
-        #: a apaga, e o efeito é o de sempre (a escada volta); quem precisa dela confere o `repair_pause` no status.
+        #: Pausa do reparo AUTOMÁTICO deste aparelho (`PausaDeReparo`), sempre com prazo. Gravada em `settings`
+        #: (`repair_pauses`) e relida em `DeviceManager._runtime` (25.13): antes ficava só aqui, e o restart do backend no
+        #: meio de um experimento a apagava antes do prazo (K-082).
         self.repair_pause: PausaDeReparo | None = None
         # controle
         self.control = ControlOwner.none
@@ -619,6 +621,7 @@ class DeviceManager:
     def _runtime(self, row: Any) -> DeviceRuntime:
         rt = DeviceRuntime(self.cfg, self.tools, row, self.io_factory)
         rt.foco_por_interesse = functools.partial(self._foco_por_interesse, rt)
+        rt.repair_pause = self._pausa_gravada(rt.id)
         return rt
 
     def seed(self) -> None:
@@ -735,6 +738,7 @@ class DeviceManager:
                           " (SELECT d.handle FROM device_locked_accounts d WHERE d.instance_id = instances.id"
                           " AND d.resolved_at IS NULL ORDER BY d.id LIMIT 1) AS locked_account"
                           " FROM instances WHERE id=?", (rt.id,))
+        conta_vista = evidencia_legivel(row["account_label"], row["account_evidence"])
         s = self.get_settings()
         frame = None
         # O prazo do frame acompanha o ritmo da captura: foco (inclusive controle manual) captura mais rápido.
@@ -761,8 +765,10 @@ class DeviceManager:
         return InstanceDTO(
             id=rt.id, index=rt.index, avd_name=rt.avd_name, serial=rt.serial, console_port=rt.console_port,
             ports=rt.ports, state=rt.state, state_detail=rt.state_detail, pid=rt.pid, boot_seconds=rt.boot_seconds,
-            app_id=row["app_id"], account_label=row["account_label"], account_evidence=row["account_evidence"],
-            account_evidence_ts=row["account_evidence_ts"], locked_account=row["locked_account"],
+            # A evidência sai legível (I2 do deploy 9): prova por seletor nunca chega crua ao painel, e a que não observa
+            # conta nenhuma (só o seletor, sem o rótulo) vale como "não observada", com o carimbo junto.
+            app_id=row["app_id"], account_label=row["account_label"], account_evidence=conta_vista,
+            account_evidence_ts=row["account_evidence_ts"] if conta_vista else None, locked_account=row["locked_account"],
             control=rt.control, control_since=rt.control_since,
             control_pending=rt.takeover_requested, automation=rt.automation, frame=frame, stream=stream,
             # Fora do ar a última sonda é história: "healthy" num aparelho hibernado seria afirmação sem prova.
@@ -1302,6 +1308,7 @@ class DeviceManager:
             raise ValueError("a pausa do reparo precisa de prazo (ttl_s > 0)")
         agora = now()
         rt.repair_pause = PausaDeReparo(until=agora + timedelta(seconds=ttl_s), since=agora, reason=motivo, by=quem)
+        self._gravar_pausa(rt.id, rt.repair_pause)
         self.bus.emit("instance.repair_pause", f"{rt.id}: reparo automático PAUSADO por {ttl_s} s — {motivo} ({quem})",
                       level="warn", instance_id=rt.id,
                       data={"paused": True, "until": to_iso(rt.repair_pause.until), "reason": motivo, "by": quem})
@@ -1313,10 +1320,48 @@ class DeviceManager:
         if rt.repair_pause is None:
             return False
         rt.repair_pause = None
+        self._gravar_pausa(rt.id, None)
         self.bus.emit("instance.repair_pause", f"{rt.id}: reparo automático RETOMADO — {motivo} ({quem})", level="info",
                       instance_id=rt.id, data={"paused": False, "reason": motivo, "by": quem})
         self.publish(rt)
         return True
+
+    #: Chave de `settings` com as pausas em vigor, por aparelho (25.13). Sem migração: `settings` é o lugar de estado
+    #: pequeno e global do backend (como `limits`).
+    CHAVE_DAS_PAUSAS = "repair_pauses"
+
+    def _pausas_gravadas(self) -> dict[str, Any]:
+        mapa = loads(self.db.scalar("SELECT value FROM settings WHERE key=?", (self.CHAVE_DAS_PAUSAS,)), {})
+        return mapa if isinstance(mapa, dict) else {}
+
+    def _gravar_pausa(self, instance_id: str, pausa: PausaDeReparo | None) -> None:
+        """Lê, muda só a linha deste aparelho e regrava: os aparelhos de outro backend no mesmo banco ficam como estão.
+        A gravação nunca derruba a pausa em memória: falhar aqui só volta ao comportamento antigo (some no restart)."""
+        try:
+            mapa = self._pausas_gravadas()
+            if pausa is None:
+                mapa.pop(instance_id, None)
+            else:
+                mapa[instance_id] = {"until": to_iso(pausa.until), "since": to_iso(pausa.since), "reason": pausa.reason,
+                                     "by": pausa.by}
+            self.db.execute("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET"
+                            " value=excluded.value", (self.CHAVE_DAS_PAUSAS, dumps(mapa)))
+        except Exception:  # noqa: BLE001 — persistência da pausa é proteção extra, nunca motivo para falhar o pedido
+            log.exception("%s: a pausa do reparo não foi gravada (vale até o próximo restart)", instance_id)
+
+    def _pausa_gravada(self, instance_id: str) -> PausaDeReparo | None:
+        """A pausa gravada deste aparelho, se ainda vale. A vencida não volta (o monitor a limparia na hora)."""
+        try:
+            p = self._pausas_gravadas().get(instance_id)
+            if not isinstance(p, dict):
+                return None
+            until, since = parse_iso(p.get("until")), parse_iso(p.get("since"))
+            if until is None or since is None or now() >= until:
+                return None
+            return PausaDeReparo(until=until, since=since, reason=str(p.get("reason") or ""), by=str(p.get("by") or ""))
+        except Exception:  # noqa: BLE001 — gravação ilegível vale como "sem pausa": é o comportamento de antes
+            log.exception("%s: pausa do reparo gravada ilegível; ignorada", instance_id)
+            return None
 
     def _expirar_pausa_de_reparo(self, rt: DeviceRuntime) -> None:
         """O monitor limpa a pausa vencida e diz, uma vez, que o reparo volta ao normal."""

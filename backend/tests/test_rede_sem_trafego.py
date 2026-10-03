@@ -40,6 +40,19 @@ def test_a_ressalva_diz_o_app_e_que_nao_segura() -> None:
     assert rede.ressalva_sem_trafego([OUT]) == f"{OUT} sem tráfego na janela: não provado, não segura o estado"
 
 
+def test_a_ressalva_usa_o_nome_do_app_e_o_pacote_sem_cadastro() -> None:
+    """Validação do deploy 9: o `detail` dizia "com.microsoft.office.outlook"; a pessoa conhece "Outlook"."""
+    class _Db:
+        def one(self, sql: str, args: tuple[str, ...]) -> dict[str, str] | None:
+            assert "FROM apps WHERE package=?" in sql
+            return {"name": "Outlook"} if args[0] == OUT else None
+
+    class _St:
+        db = _Db()
+
+    assert rede.nomes_dos_apps(_St(), [OUT, "com.exemplo.sem_cadastro"]) == ["Outlook", "com.exemplo.sem_cadastro"]  # type: ignore[arg-type]
+
+
 def test_o_valor_novo_e_aceito_no_contrato_da_medicao() -> None:
     m = rede.NetworkMeasurementInput(method="x", per_app={IG: "sem_trafego"})
     assert m.per_app[IG] == "sem_trafego"
