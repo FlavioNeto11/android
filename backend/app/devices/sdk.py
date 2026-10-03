@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
+from collections.abc import Mapping
 from pathlib import Path
 
 from ..config import Config
@@ -10,6 +12,43 @@ from ..config import Config
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 NEW_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 IS_WINDOWS = os.name == "nt"
+
+#: 29.47 (03/10/2026): o que passa do ambiente do backend (ou do agente) aos processos filhos — adb, emulador,
+#: avdmanager, Appium, o sing-box da rede e as sondas do Diagnóstico. Lista de PERMISSÃO, não de proibição: o processo
+#: carrega os segredos do `.env` (chaves das IAs, do cofre, do worker) e nenhum filho usa algum deles; o qemu herdava
+#: `TYPESAFE_API_KEY` (K-078, rodada por adição). Variável nova de que um filho precise entra aqui, pelo nome.
+AMBIENTE_PERMITIDO = frozenset({
+    # Windows: achar o sistema, o perfil do usuário, as pastas temporárias e o processador
+    "PATH", "PATHEXT", "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "TEMP", "TMP", "USERPROFILE", "USERNAME",
+    "USERDOMAIN", "COMPUTERNAME", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "ALLUSERSPROFILE",
+    "PUBLIC", "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432", "COMMONPROGRAMFILES", "COMMONPROGRAMFILES(X86)",
+    "COMMONPROGRAMW6432", "OS", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "PROCESSOR_IDENTIFIER",
+    "PROCESSOR_LEVEL", "PROCESSOR_REVISION", "PSMODULEPATH",
+    # o driver de GPU do host, carregado dentro do qemu com `-gpu host`, pode procurar a pasta dele por aqui
+    "DRIVERDATA",
+    # POSIX: o agente pode rodar fora do Windows
+    "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TZ",
+    # o Java do avdmanager, do sdkmanager, do apksigner e do driver do Appium
+    "JAVA_HOME",
+})
+#: `ANDROID_*` (SDK, AVD, `ANDROID_USER_HOME`, `ANDROID_EMULATOR_*`, a porta do servidor adb) e `ADB_*`, do adb.
+PREFIXOS_PERMITIDOS = ("ANDROID_", "ADB_")
+#: A segunda trava: nem pela lista passa um nome de segredo nosso, ou com cara de segredo (um `ANDROID_X_TOKEN` futuro).
+PREFIXOS_PROIBIDOS = ("TYPESAFE_", "OPENAI_", "ANTHROPIC_", "GEMINI_", "FARM_")
+_CARA_DE_SEGREDO = re.compile(r"(^|_)(TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|PRIVATE_?KEY|CREDENTIALS?)(_|$)")
+
+
+def ambiente_dos_filhos(origem: Mapping[str, str] | None = None) -> dict[str, str]:
+    """O ambiente de um processo filho: só o que a lista de permissão deixa e nada com nome de segredo. O valor de
+    uma variável nunca é olhado; a decisão é pelo nome (no Windows sem diferença de caixa, como o próprio sistema)."""
+    env: dict[str, str] = {}
+    for nome, valor in (os.environ if origem is None else origem).items():
+        chave = nome.upper()
+        if chave.startswith(PREFIXOS_PROIBIDOS) or _CARA_DE_SEGREDO.search(chave):
+            continue
+        if chave in AMBIENTE_PERMITIDO or chave.startswith(PREFIXOS_PERMITIDOS):
+            env[nome] = valor
+    return env
 
 
 class SdkTools:
@@ -54,7 +93,7 @@ class SdkTools:
         return self.aapt2.exists() and self.apksigner.exists()
 
     def env(self) -> dict[str, str]:
-        env = dict(os.environ)
+        env = ambiente_dos_filhos()
         env["ANDROID_HOME"] = str(self.root)
         env["ANDROID_SDK_ROOT"] = str(self.root)
         env["ANDROID_AVD_HOME"] = str(self.cfg.avd_home)

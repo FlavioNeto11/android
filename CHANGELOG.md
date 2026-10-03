@@ -19,6 +19,28 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 29.47: os processos filhos não herdam mais os segredos do backend (branch `feat/29-47-ambiente-dos-filhos`)
+
+- **Antes.** O ambiente dos filhos era o do backend inteiro (`dict(os.environ)`), com os segredos do `.env`:
+  - `SdkTools.env()`: adb, emulador, avdmanager e Appium;
+  - o sing-box da rede (`rede_servidor.ProcessosReais.lancar`), processo longo de terceiro;
+  - as sondas do Diagnóstico (`diagnostics._run`).
+
+  Na rodada por adição do K-078, o qemu tinha `TYPESAFE_API_KEY` (só o nome foi lido).
+- **Agora.** `devices/sdk.py` ganha `ambiente_dos_filhos()`, uma lista de PERMISSÃO usada pelos três caminhos:
+  - passam as variáveis do sistema e do perfil, `JAVA_HOME`, `ANDROID_*` e `ADB_*`;
+  - a 2ª trava recusa `TYPESAFE_*`, `OPENAI_*`, `ANTHROPIC_*`, `GEMINI_*`, `FARM_*` e nome com cara de segredo, mesmo
+    que um prefixo deixasse passar;
+  - a decisão é pelo nome, sem olhar o valor. O agente do notebook recebe o mesmo, porque `devices/sdk.py` está no
+    manifesto.
+- **Prova `simulated`**: `tests/test_ambiente_dos_filhos.py` (5).
+  - Os filhos são reais (o Python do venv imprime os NOMES do próprio ambiente), com variáveis sentinela de nome de
+    segredo no pai.
+  - Os 3 testes de filho falham com o código anterior.
+- **Fumaça local** (03/10, central, sessão 1, código do branch): com o ambiente filtrado (38 de 98 nomes),
+  `adb version`, `emulator -accel-check` e `avdmanager list avd` dão rc 0, e o Appium 3.7.0 também (`--version` e
+  `driver list --installed`).
+- **`not_run`**: aparelho ligando e Appium subindo pelo backend com o código novo, depois do deploy.
 ## 2026-10-03 — Aprendizado: métricas e lista de revisões (30.8; branch feat/30-8-metricas)
 
 - `GET /api/aprendizado/metricas?app=&dias=` (adendo v0.89): um bloco por linha da tabela do §10 do desenho.
