@@ -558,6 +558,10 @@ pendente da orquestradora (gravar o `config.yaml` ou levar o override para o ban
 `maximo_por_hora`, `janela_dias`, `extra_usd` com `extra_ate` (ISO; sem fuso = UTC; data inválida recusa o config) e
 `custo_estimado_usd`. Ver a seção da 30.31 abaixo.
 
+**Autopublicação do fluxo B (30.34).** `aprendizado.autopublicacao.modo: "off" | "shadow"` (`off` de fábrica) e
+`intervalo_s` (3600). `shadow` só marca o que publicaria; `on` é recusado até a 30.34-B. Os limiares são da regra, não do
+config: ver "Autopublicação do fluxo B em sombra (30.34)".
+
 ## Evento `learning.needs_person` (30.21)
 
 Quando um item entra na fila "Para aprovar" (ou sai dela) o Livro publica o evento, no padrão de `session.needs_person`. Quem
@@ -1017,6 +1021,34 @@ novo em memória. Cada bloco da resposta é uma linha da tabela do §10 do desen
   com as revisões já gravadas: o B_W é um piso, o `uso` é um teto e o aviso, a 80 %, sai cedo. Sem `usd` medido
   (antes do #144-B no central), o c̄ é a média das estimativas; sem ela o B_W cairia a zero, defeito que o ensaio pegou;
 - a série quebra no deploy 8 (LT-6, acima): compare janelas do mesmo lado de 03/10 09:06:28Z.
+
+## Autopublicação do fluxo B em sombra (30.34)
+
+A emenda de 03/10 à D1 ([ADR-054](../decisoes.md)): o FLUXO de classe B pode publicar sozinho, mas só depois de provado
+em sombra. Nesta fatia (30.34-A) a regra vai até `shadow`; publicar de verdade é a 30.34-B.
+
+- **A regra** (`domain/autopublicacao.py`, pura) é a de um fluxo em `validated` segurado pela D1, não reaprendido, de
+  classe B. Precisa de três coisas juntas:
+  - o parecer ATUAL do curador sugerindo `aprovar` com confiança `alta`, real, não decidido e sobre o estado de agora;
+  - ≥ 2 execuções reais;
+  - em ≥ 2 aparelhos, e nenhuma evidência real contra.
+  - `avaliar` devolve TODOS os motivos de fora (`MotivoDeFora`), para o relatório dizer o que falta a cada item.
+- **Os fatos** (`application/autopublicacao.py`) são os do resto do módulo:
+  - a classe é a mais restritiva entre o dossiê de agora e o parecer, a regra do aceite; sem dossiê, C;
+  - a evidência é só a real do conteúdo atual (a marca do conteúdo), sem as execuções invalidadas (30.23).
+- **O livro da sombra** (`infrastructure/autopublicacao_sql.py`), sem migração:
+  - o caso é o sinal `autopublicaria` (`source_ref = autopublicaria:<item>`, `created_by = sistema`), um por item pelo
+    índice único, com `data` = modo, `review_id`, execuções, aparelhos, `content_hash` e título;
+  - fica fora da aba Sinais, porque não é gesto.
+- **Regressão em 7 dias:** evidência real contra ou conflito; o item desligado (`learning_transitions`); uma pessoa
+  recusando o parecer (o sinal `parecer_decidido` com `recusou`, que guarda a data da decisão).
+  - `balanco` conta casos, abertos, limpos e regredidos, e a taxa sobre os FECHADOS (`null` sem nenhum).
+  - Ela libera o `on` só com ≥ 30 fechados e ≥ 90 % limpos.
+- **O laço** (`LacoDaAutopublicacao`) roda sob a trava de líder, de `intervalo_s` em `intervalo_s` (3600 de fábrica),
+  numa thread: só lê o livro e grava sinais. Sem IA, sem aparelho.
+- **Nas métricas** (`/api/aprendizado/metricas`), o bloco `curador` ganha a chave `autopublicacao`. É o balanço, global,
+  com o modo e os limiares; a chave é aditiva e só aparece com o serviço composto.
+- **Config:** `aprendizado.autopublicacao.modo: "off" | "shadow"` e `intervalo_s`. `on` é recusado até a 30.34-B.
 
 ## Pendências conhecidas
 

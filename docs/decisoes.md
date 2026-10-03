@@ -3224,6 +3224,38 @@ Prova `simulated`: `backend/tests/test_learning_evidencia_invalida.py` e o vites
 `not_run`: a marca no central (109 e o fluxo, depois do deploy) e um renascimento real. Contrato: adendo v0.70 de
 [api-contract.md](api-contract.md). Domínio: [dominios/aprendizado.md](dominios/aprendizado.md), seção "Evidência inválida".
 
+**Emenda (03/10/2026, decisão do dono no chat, ~12:20Z, relatada pela orquestradora: "sim" à P2; Fase 30, item 30.34):
+o FLUXO de classe B publica sozinho, depois de provado em sombra.**
+
+A D1 dizia: com efeito externo, só o dono publica. Para o fluxo de classe B, isso passa a ter uma saída automática,
+quando as três condições valem juntas:
+- o parecer ATUAL do curador sugere `aprovar` com confiança `alta`, é real e ninguém o decidiu;
+- há ≥ 2 execuções reais distintas a favor;
+- em ≥ 2 aparelhos distintos, sem nenhuma evidência real contra.
+
+A classe C segue item a item com o dono, e a A segue pela D1 de sempre. O fluxo reaprendido depois de uma evidência
+inválida (a emenda acima) continua com o dono. A classe é a de agora: a mais restritiva entre o dossiê e o parecer, a
+mesma regra do aceite.
+
+- **Sombra antes do `on`.** A regra nasce desligada (`aprendizado.autopublicacao.modo: "off"`). Em `shadow`, só marca o
+  que publicaria: um caso por item, contado uma vez.
+- **O que conta como regressão.** O caso fecha em 7 dias e regride se, nesse prazo, aparece evidência real contra ou
+  conflito, o item é desligado (pelo sistema ou por uma pessoa) ou uma pessoa recusa o parecer. Definições da
+  orquestradora, 03/10.
+- **Quando o `on` pode ligar.** Só com ≥ 30 casos FECHADOS e ≥ 90 % deles sem regressão. O relatório da sombra vai à
+  orquestradora antes de virar `on`.
+- **Os limiares são da regra, não do config.** O config só diz o modo; `on` sem o balanço liberado se comporta como
+  `shadow`.
+- **Duas fatias.** Esta (30.34-A) vai até `shadow`, e o config recusa `on`. Publicar de verdade exige um caminho próprio
+  pela trava da D1: `conferir_transicao` e `_mover_fluxo` recusam o sistema publicando fluxo com efeito. Esse caminho
+  vem à parte (30.34-B), com `decided_by = sistema` e o motivo da emenda na trilha, para as métricas o separarem da D1.
+- **Sem migração.** O livro da sombra é o sinal `autopublicaria` (um por item, pelo índice único de `learning_signals`).
+  Os eventos vêm da evidência, da trilha e do sinal `parecer_decidido`.
+
+Prova `simulated`: `backend/tests/test_learning_autopublicacao.py` (a regra pura) e
+`test_learning_autopublicacao_sombra.py` (a sombra com o banco migrado). `not_run`: a sombra no central. Domínio:
+[dominios/aprendizado.md](dominios/aprendizado.md), seção "Autopublicação do fluxo B em sombra (30.34)".
+
 ## ADR-055 — Proteção de contas: a conta travada para sem ser tocada, o aparelho entra em quarentena, uma conta por alvo e nenhum reset com conta
 
 **Data:** 29/09/2026 · **Estado:** vigente; `e9da86e` implantado em 28/09; `c359f65` (+ `2511b12`) implantado em 29/09
