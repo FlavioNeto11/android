@@ -733,6 +733,14 @@ sem adaptador (testes) usa o SIMULADO.
   chamada paga), e a gravação do `usd` espera a unificação do saldo na rubrica (`design/hub-de-ia-fora-de-execucao.md`, PENDÊNCIA).
   A `RespostaDeRevisao.simulado` (opcional) diz se AQUELA resposta foi simulada e vale sobre o `simulado` do adaptador: é ela que
   decide se o parecer avisa o dono.
+- **Custo pela chamada ligada (I3, 03/10).** A revisão gravada com `usd = 0` e com `ai_call_id` tem o custo MEDIDO na
+  chamada ligada (`revisoes_sql.custos_das_chamadas`). A regra é a do `/api/usage`: custo declarado onde há, tokens ×
+  preço do modelo onde não, provedor simulado a US$ 0. Vale na janela do orçamento, nas métricas e na lista
+  `/revisoes`; o registro só a aplica quando recebe `precos` (o curador e as métricas recebem).
+  - Na cópia do banco do central de 03/10, as 46 revisões anteriores ao 30.30 somam US$ 0,6717, o mesmo do
+    `/api/usage` do curador.
+  - Antes, `metricas.curador.usd` dava 0,0 enquanto o orçamento, no mesmo payload, estimava 0,6418.
+  - Sem backfill e sem migração.
 - Fica para depois: o alerta do pico como evento + Problem em `/api/health` (hoje só log), o aviso a 80 % de `B_W`, as fontes dos três
   gatilhos sem fonte, e o `resultado_posterior`.
 

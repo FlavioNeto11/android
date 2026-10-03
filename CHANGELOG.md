@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: o custo da revisão pela chamada ligada (I3; branch fix/aprendizado-usd-por-parecer)
+
+- A revisão gravada com `usd = 0` e com `ai_call_id` (as 46 de antes do 30.30 no central) passa a ter o custo MEDIDO na
+  chamada ligada, pela regra do `/api/usage`. Vale na janela do orçamento, nas métricas e na lista `/revisoes`.
+- Na cópia do banco do central: US$ 0,6717, o mesmo do `/api/usage` do curador. Antes, `metricas.curador.usd` dava 0,0
+  e o orçamento estimava 0,6418.
+- Sem backfill e sem migração. Prova `simulated` em `test_learning_curador.py`; o recálculo na cópia do banco é a
+  prova `real` da leitura.
 ## 2026-10-03 — Aprendizado: a classe do fluxo pela etapa mais restritiva (30.32; branch feat/30-32-classe-do-fluxo)
 
 - O dossiê do curador classifica o fluxo pelas etapas dele, cada uma com os fatos do catálogo do app dela
