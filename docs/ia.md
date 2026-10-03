@@ -1233,8 +1233,13 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
         - Gatilho: verbo de entrar no presente ou no passado, salvo com objeto pessoa ou conversa; o `_CAMPO_FORTE`; ou o
           `_DIGITAR_VALOR` (digite, tecle, insira, type, soletre…).
         - Cara de segredo (`_cara_de_valor`): letra e dígito, ou 4 ou mais dígitos.
-        - Passam "entre no insta e curta as 3 fotos" e "entre no chat com qa-002".
-        - Custo aceito: o ano num comando de entrar ("entre no insta e veja o post de 2024").
+        - O token SÓ de dígitos (sem letra) conta só perto do campo (`_perto_do_campo`: até 3 tokens antes ou depois de
+          campo forte, verbo de digitar ou palavra C7) ou logo depois do conector do verbo de entrar
+          (`_depois_do_conector`: até 3 tokens). É o refinamento dos anos (orquestradora, ~12:00Z), porque nos comandos
+          reais o número de 4 dígitos é o ano.
+        - Passam "entre no insta e curta as 3 fotos", "entre no chat com qa-002" e "entre no insta e veja o post de 2024".
+          "entre com 1987" e "digite 4821" recusam.
+        - Custo aceito: "entre no insta e use 1987" sai mascarado.
       - **(b) A quebra de linha é token**: o `_tokens_de` tokeniza linha a linha e põe a quebra entre elas, e ela vale
         como o ";" no imperativo e no par. Antes, o texto era achatado e "usuario lucas" + "girassol" em duas linhas
         passava.
@@ -1253,6 +1258,10 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
         1.
       - Gatilhos no comando sem destinos: verbo de entrar 35, campo forte 8, digitar 2, palavra C7 1; algum deles, 42.
       - Dos 122 que passam, 39 têm gatilho forte: é o custo da opção A.
+      - Com o refinamento dos anos: 1 recusa (a da `c7_palavra`), como na base.
+      - A-ESTREITA (verbo de entrar + com/with/usando/con/mit até 3 tokens, campo forte, digitar, palavra C7 ou soletrado):
+        - como pedida, 35 dos 124 que passam; 28 deles são "entre na conversa com …" (QA Messenger);
+        - com a exceção de pessoa ou conversa da H-1 (a), 7: "conta", "usuario" e "digitar".
     - Portão local (`simulated`, 136f80ff), corpus de 579 com o 538 reetiquetado para recusa:
       - 0 vazamentos e 0 passagens indevidas;
       - recusas indevidas: 134, 135, 348, 427, 572 e 573. O 572 e o 573 são o custo da reversão;

@@ -144,6 +144,9 @@ Os itens de polimento da frente do Aprendizado em `.claude/handoffs/ux-deploy7-2
   - recusam 3, contra 1 na base com os nomes dos apps registrados como na subida. O custo da (a) é de 2 comandos, e
     os dois têm só números com cara de ano;
   - correção: as medições das rodadas F a H não registravam os nomes, e a base recusava "2" em vez de 1;
+  - refinamento dos anos (orquestradora): o token só de dígitos conta só perto do campo ou logo depois do conector do
+    verbo de entrar. Os 125 voltam a 1 recusa, como na base, e o harness não muda;
+  - opção A-ESTREITA: 35 dos 124 que passam, sendo 28 "entre na conversa com …"; com a exceção de pessoa ou conversa, 7;
   - 39 dos 122 que passam têm gatilho forte: é o custo da opção A.
 
 ## 2026-10-03 — Correção do 31.9, rodada H (47 vazamentos na fase 2 da rodada G em 9a99a8d8): a camada estrutural, o nome do catálogo como destino e os controles operacionais (branch fix/31-9-rodada-h)
