@@ -229,6 +229,28 @@ async def test_10_truncado_pela_marca_do_leitor_ou_pelas_reticencias() -> None:
     await _recusa("truncado", valor="Perfil para conferir...", leitor=_Leitor())     # o valor do ator já vem cortado
 
 
+async def test_10_nivel_1_1_previa_cortada_com_o_valor_inteiro_concorda() -> None:
+    # A linha da caixa do Outlook traz a prévia do corpo, que SEMPRE termina em "…" (K-079); o leitor marca `truncado`.
+    # O valor pedido está inteiro noutra linha: a prévia alheia não derruba a leitura (emenda de 03/10 ao ADR-070 §4).
+    previa = Transcricao(linhas=[REMETENTE, ASSUNTO, "Oi, segue o perfil que eu comentei ontem…"],
+                         campos={"remetente": REMETENTE, "assunto": ASSUNTO}, truncado=True)
+    assert (await _ler(leitor=_Leitor(previa))).valor == ASSUNTO
+    assert (await _ler(valor=REMETENTE, nome="remetente", leitor=_Leitor(previa))).valor == REMETENTE
+
+
+async def test_10_nivel_1_1_o_valor_cortado_continua_recusando() -> None:
+    # o campo do leitor cortado (o ator leu o valor inteiro da árvore, a tela mostra só o começo)
+    cortado = Transcricao(linhas=[REMETENTE, "Perfil para conferir: nat…", "Oi, segue…"],
+                          campos={"assunto": "Perfil para conferir: nat…"}, truncado=True)
+    await _recusa("truncado", leitor=_Leitor(cortado))
+    # o campo veio inteiro, mas a LINHA que contém o valor termina cortada: não dá para saber onde o valor acaba
+    linha_cortada = Transcricao(linhas=[REMETENTE, ASSUNTO + " e mais um pouco…"], campos={"assunto": ASSUNTO})
+    await _recusa("truncado", leitor=_Leitor(linha_cortada))
+    # a marca sem nenhuma linha cortada visível: o corte pode ser o do campo (palavra pela metade na borda)
+    marca = Transcricao(linhas=[REMETENTE, ASSUNTO], campos={"assunto": ASSUNTO}, truncado=True)
+    await _recusa("truncado", leitor=_Leitor(marca))
+
+
 async def test_11_o_valor_nao_confere_com_o_do_leitor() -> None:
     # campos trocados: o remetente com o valor do assunto
     trocados = Transcricao(linhas=[REMETENTE, ASSUNTO], campos={"remetente": ASSUNTO, "assunto": REMETENTE})
@@ -395,7 +417,10 @@ def caixa_cega(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
                    max_attempts=2),
         Capability(key="QA_IR_PARA_CAIXA", title="Ir para a caixa", goal="Ir para a caixa de entrada.",
                    post_kind="model_judged", post_value="caixa de entrada aberta",
-                   post_description="A tela mostra a caixa de entrada.", max_attempts=2)]))
+                   post_description="A tela mostra a caixa de entrada.", max_attempts=2),
+        # Com efeito: desde o RA-7 o planejamento recusa etapa com efeito fora do catálogo de um app que tem catálogo.
+        Capability(key="QA_ESCREVER_AO_REMETENTE", title="Escrever ao remetente", goal="Escrever para o remetente lido.",
+                   post_kind="model_judged", post_value="v", post_description="d", side_effect=True, max_attempts=1)]))
     try:
         yield
     finally:
@@ -598,6 +623,7 @@ async def test_valor_visual_numa_etapa_com_efeito_espera_a_pessoa_e_navegacao_se
     inner.leitura = Transcricao(linhas=[REMETENTE], campos={"remetente": REMETENTE})
     efeito = PlanStep(key="agir", title="Agir com o valor", goal="Escrever para {{saida:remetente}}.",
                       depends_on=["listar"], side_effect=True, commit_guard=["{{saida:remetente}}"],
+                      capability="QA_ESCREVER_AO_REMETENTE",
                       postcondition=Postcondition(kind="model_judged", value="v", description="d"), max_attempts=1)
     _plano(inner, _etapa(saidas=["remetente"]), efeito)
     _ator(inner, [_le_visual("remetente", REMETENTE), _concluir()], vistos)

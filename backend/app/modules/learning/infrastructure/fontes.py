@@ -69,6 +69,10 @@ class FontesSql:
         self._db = db
         self._registro = pacotes_do_registro
 
+    def pacotes_de_teste(self) -> frozenset[str]:
+        return frozenset(p for r in self._db.query("SELECT package FROM apps WHERE category='qa'")
+                         if (p := linhas.texto_ou_nulo(r, "package")))
+
     def _resolvedor(self) -> ResolvedorDeApp:
         por_id = {linhas.texto(r, "id"): linhas.texto_ou_nulo(r, "package") or linhas.texto(r, "id")
                   for r in self._db.query("SELECT id, package FROM apps")}

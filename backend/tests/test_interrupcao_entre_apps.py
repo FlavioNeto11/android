@@ -35,6 +35,7 @@ from app.modules.applications.domain.definition import AppDefinition
 from app.planning.catalog import register, unregister
 from app.planning.provider import Decision, Usage
 from app.taskqueue.assistente import ComandoAssistido, RunSuccessorBody
+from app.taskqueue import executor as executor_mod
 from app.taskqueue.service import RunError
 
 from .conftest import Harness
@@ -48,6 +49,13 @@ PKG_CONTAS = "com.pocqa.contas"          # o segundo app com pacote próprio (du
 
 def _post(kind: str, value: str, description: str = "d") -> Postcondition:
     return Postcondition(kind=kind, value=value, description=description)  # type: ignore[arg-type]
+
+
+@pytest.fixture
+def sem_atalho_lt1(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Os testes que interrompem na DECISÃO do ator na confirmação da conta do 2º app: com o atalho LT-1 (caminho
+    rápido 1) essa etapa, com a conta já na tela, fecha sem o ator e o gancho nunca dispara."""
+    monkeypatch.setattr(executor_mod, "ATALHO_ANTES_DO_ATOR", False)
 
 
 def _plano_que_troca_de_app(inner: Any) -> Any:
@@ -108,7 +116,7 @@ def _concluido_sem_reler(h: Harness, objective_id: str) -> None:
 
 
 # ================================================================== reinício do backend no meio da troca
-async def test_reinicio_com_a_etapa_do_segundo_app_em_curso_retoma_sem_reler(harness: Harness) -> None:
+async def test_reinicio_com_a_etapa_do_segundo_app_em_curso_retoma_sem_reler(harness: Harness, sem_atalho_lt1: None) -> None:
     inner, ler = _preparar(harness)
     na_troca = asyncio.Event()
 
@@ -292,7 +300,7 @@ async def test_etapa_de_outro_app_nao_conclui_com_o_primeiro_app_na_frente(harne
 
 
 # ================================================================== pausa no meio da troca
-async def test_pausar_com_a_etapa_do_segundo_app_em_curso_e_retomar_nao_rele(harness: Harness) -> None:
+async def test_pausar_com_a_etapa_do_segundo_app_em_curso_e_retomar_nao_rele(harness: Harness, sem_atalho_lt1: None) -> None:
     """A pausa é a interrupção que volta sozinha: a etapa do 2º app cede no ponto seguro (`yielded`, tentativa
     devolvida) e, retomada, segue do 2º app com o valor gravado."""
     inner, ler = _preparar(harness)
@@ -344,7 +352,7 @@ def _cancelado_sem_efeito(h: Harness, run_id: str, objective_id: str) -> None:
     assert "## Valores lidos entre etapas" in rel["markdown"]
 
 
-async def test_cancelar_com_a_etapa_do_segundo_app_em_curso_para_no_ponto_seguro(harness: Harness) -> None:
+async def test_cancelar_com_a_etapa_do_segundo_app_em_curso_para_no_ponto_seguro(harness: Harness, sem_atalho_lt1: None) -> None:
     inner, ler = _preparar(harness)
     st = harness.state
     assert st is not None

@@ -39,7 +39,7 @@ from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.saude import Saude, SinaisDeSaude, calcular
 from app.modules.learning.domain.versao import quadro_da_tela, quadro_independente
 from app.modules.learning.domain.vocabulario import (KINDS_DE_ITEM, LivroKind, Modo, ModoDeTelas, Origem, Posicao,
-                                                     SourceKind)
+                                                     Rotulo, SourceKind)
 from app.modules.skills.domain.document import JsonObject, JsonValue
 from app.util import parse_iso
 
@@ -65,6 +65,8 @@ class Livro:
     #: A saúde de cada item (30.4), pela ref da trilha (`EntradaDoLivro.trail_ref`); a memória não tem. É a MESMA
     #: função do detalhe, então a lista e o detalhe nunca discordam do rótulo.
     saudes: dict[str, Saude] = field(default_factory=dict)
+    #: Quantos itens os outros filtros deixavam e o `rotulo` escondeu (RA-19): o painel diz "N do app de teste".
+    ocultos: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -188,11 +190,17 @@ class LearningService:
 
     # ================================================================== leitura única
     def livro(self, *, kind: LivroKind | None = None, state: SkillState | None = None, app: str | None = None,
-              origem: Origem | None = None) -> Livro:
+              origem: Origem | None = None, rotulo: Rotulo | None = None) -> Livro:
+        """`rotulo` `None` é o livro inteiro (a visão por app, a contagem da barra e a saúde leem assim); a lista
+        padrão da rota passa `PRODUTO`."""
         todas = self._todas(kind)
         filtradas = tuple(e for e in todas if (state is None or e.state is state) and (app is None or e.app == app)
                           and (origem is None or e.origin is origem))
-        return Livro(filtradas, contagem(filtradas), self.saudes(filtradas))
+        mostradas = filtradas
+        if rotulo in (Rotulo.PRODUTO, Rotulo.QA):
+            teste = self._fontes.pacotes_de_teste()
+            mostradas = tuple(e for e in filtradas if (e.app in teste) is (rotulo is Rotulo.QA))
+        return Livro(mostradas, contagem(mostradas), self.saudes(mostradas), ocultos=len(filtradas) - len(mostradas))
 
     def _todas(self, kind: LivroKind | None) -> list[EntradaDoLivro]:
         fontes: dict[LivroKind, Callable[[], list[EntradaDoLivro]]] = {

@@ -109,6 +109,7 @@ export function AbaHabilidades({ profile }: { profile: Pessoa }) {
             <Linha rotulo="Por receita (sem IA)">{dados.steps_driven_by.recipe ?? 0}</Linha>
             <Linha rotulo="Receita + IA">{dados.steps_driven_by['recipe+ai'] ?? 0}</Linha>
             <Linha rotulo="Só IA">{dados.steps_driven_by.ai ?? 0}</Linha>
+            <Linha rotulo="Sem o ator">{dados.steps_driven_by.sem_ator ?? 0}</Linha>
           </dl>
         </CardBody>
       </Card>

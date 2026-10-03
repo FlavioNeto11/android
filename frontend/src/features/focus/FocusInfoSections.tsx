@@ -155,7 +155,7 @@ export function HealthSection({ instance, selo, desconhecido = false }: {
           ) : instance.inventory_state ?? 'sem divergência'}
         </KvRow>
         <KvRow label="Recursos">
-          {resources ? `${formatMb(resources.rss_mb)} · CPU ${formatPercent(resources.cpu_percent)}` : '—'}
+          {resources ? `${formatMb(resources.rss_mb)} · CPU ${cpuDoEmulador(resources.cpu_percent)}` : '—'}
         </KvRow>
       </KvList>
     </FocusSection>
@@ -446,8 +446,9 @@ export function AccountsSection({ contexto, instance }: { contexto: ContextoLido
       {/* O rótulo configurado e a última evidência observada no app eram a antiga linha "App · Conta · observado"
           das ações rápidas: continuam aqui, junto das contas que eles tentam descrever. */}
       <p className={styles.groupHint}>
-        Rótulo configurado no aparelho: {instance.account_label ?? '—'}
-        {instance.account_evidence ? ` · observado: ${instance.account_evidence}` : ''}
+        Rótulo configurado no aparelho: {instance.account_label || '—'}
+        {/* Sem rótulo, a observação não tem com o que ser comparada (e pode ser de outro app): fica de fora. */}
+        {instance.account_label && instance.account_evidence ? ` · observado: ${instance.account_evidence}` : ''}
       </p>
     </FocusSection>
   );
@@ -456,6 +457,14 @@ export function AccountsSection({ contexto, instance }: { contexto: ContextoLido
 // ---------------------------------------------------------------- Apps
 
 /** Relê do aparelho o que está instalado (`POST /app/verify`, o mesmo das telas de Loja e Releases). */
+/** O % do processo do emulador é de UM núcleo do host (psutil): "108%" lia como "acima do máximo". Com a referência,
+ *  "108% (≈1,1 núcleo)" diz quanto do host ele ocupa (validação do deploy 4, 03/10). */
+export function cpuDoEmulador(pct: number | null | undefined): string {
+  if (typeof pct !== 'number' || !Number.isFinite(pct)) return '—';
+  const nucleos = (pct / 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return `${formatPercent(pct)} (≈${nucleos} ${pct / 100 >= 1.95 ? 'núcleos' : 'núcleo'})`;
+}
+
 export async function verificarApp(instanceId: string, pkg: string, nome: string): Promise<void> {
   try {
     await api.verifyApp(instanceId, pkg);

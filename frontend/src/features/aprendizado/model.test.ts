@@ -4,7 +4,8 @@ import {
   acoesDoItem, acoesNaFila, refDaHabilidade,
   desfazerDoEfeito, estadoDoLivro, lerFeedbackDaExecucao, lerRelatorioDeFalhas, lerRespostaDoVoto, lerSinais, mdDoItem,
   ordenarFalhas, ordenarPendentes, porQueOSistemaNaoPublica, rotuloDaCamada, rotuloDaFalha, rotuloDoEstado,
-  rotuloDoKind, textoDoEfeito, votoDoItem, capabilityComNome, nomearCapabilityNoTexto, tituloDoItem, titulosDaLista,
+  rotuloDoKind, textoDoEfeito, textoDosOcultos, votoDoItem, capabilityComNome, nomearCapabilityNoTexto, tituloDoItem,
+  titulosDaLista,
 } from './model';
 
 /** Pacote A6 do ADR-054: rótulos de estado e camada, a ordenação do "o que mais falha" e da fila do D1, as ações que
@@ -391,5 +392,16 @@ describe('motivos do "Deu errado"', () => {
     expect(MOTIVOS.map((m) => m.id)).toEqual(['fez_outra_coisa', 'alvo_errado', 'nao_terminou', 'texto_ruim',
                                               'demorou_ou_gastou', 'pediu_ajuda_a_toa', 'outro']);
     expect(MOTIVOS.filter((m) => m.navegacao).map((m) => m.id)).toEqual(['fez_outra_coisa', 'alvo_errado', 'nao_terminou']);
+  });
+});
+
+describe('textoDosOcultos (RA-19)', () => {
+  it('diz quantos o filtro de apps escondeu, no singular e no plural, e nada em "Todos" ou sem ocultos', () => {
+    expect(textoDosOcultos('produto', 94)).toBe('94 do QA ocultos');
+    expect(textoDosOcultos('produto', 1)).toBe('1 do QA oculto');
+    expect(textoDosOcultos('qa', 1234)).toBe('1.234 de produto ocultos');
+    expect(textoDosOcultos('todos', 5)).toBe('');
+    expect(textoDosOcultos('produto', 0)).toBe('');
+    expect(textoDosOcultos('produto', undefined)).toBe('');
   });
 });

@@ -98,6 +98,15 @@ gerenciador de aparelhos, de um lado, e o livro, do outro. Sem o livro ligado (`
 da etapa. O vocabulário é fechado (`domain/falhas.py::FailureKind`), e uma catraca por AST exige que todo motivo do
 executor caia fora de `outro`. A camada e o "onde alterar" saem do tipo na hora da leitura.
 
+Quando a etapa termina por erro de IA, o tipo vem dele e não do texto (RA-22, migração 081). O executor põe o
+`AIError.kind` no `StepOutcome.ai_error_kind` (o `desfecho_de_ia`, a verificação, e o `_run_guarded` do scheduler para o
+erro que escapou), e o scheduler o passa ao `finish_attempt` (que grava `attempts.error_kind`) e ao `transition_step`.
+Os dois classificam por `classificar_falha(texto, status, error_kind)`, o mesmo classificador puro da releitura:
+`budget` → `ia_orcamento`, `billing`/`balance` → `ia_saldo`, `refusal` → `ia_recusa`, `not_configured`, `error` e
+`invalid_output` → `ia_indisponivel` (`pelo_erro_que_encerrou`). `step_deadline` não decide: o ANR anotado no texto
+continua ganhando do prazo. O status vem antes (`interrupted` segue `interrompida`). Com isso a mensagem de IA do
+executor deixa de ser contrato; as REGRAS de texto ficam para o legado sem `error_kind`.
+
 **Dívida paga (29/09, `2b0e5db`).** O contrato de gesto mora em `app/shared/costuras.py`: `TomadaDeControle`,
 `CosturaDeControle`, `avisar`, as portas de comando e de ensino e `autor_do_gesto`. `taskqueue/costuras.py` o reexporta,
 e `test_aparelhos_nao_conhecem_a_fila` (em `test_arquitetura.py`) impede a volta do import `devices` → `taskqueue`.
@@ -173,6 +182,16 @@ diária.
   reais desligam.
 - **Receita.** A promoção em sombra (item 21.14) para em `validated` quando há ação `commit`. O livro guarda o veto e a
   trilha.
+- **A causa do "ausente" e a herança da receita (RA-20, item 29.40, 03/10).** O vocabulário e a regra são do Aprendizado
+  (`domain/causa_do_ausente.py`); quem consulta é a loja (`taskqueue/recipes.py::RecipeStore.find`, da Android), com
+  UMA consulta a mais, só no "ausente". A causa é `espera_o_dono`, `desligada`, `variante`, `legada` (assinatura e
+  variante vazias, as 19 de 17/09), `versao`, `assinatura` ou `sem_receita`, contada em `receita.ausente{causa}`. A chave
+  sem receita herda, como CANDIDATA, a receita `active` da mesma etapa (`step_hash`) mais próxima, noutra variante, na
+  legada ou noutra versão; assinatura diferente nunca doa, e a chave esperando o dono ou posta de lado não herda. A
+  herdeira passa pelo veto de `save`, guarda a origem da doadora (`learned_from_step`) e só age depois de concordar em
+  sombra (`recipes_promote_after`); com `commit`, para em `validated`. `ai.recipes_heranca: false` só mede a causa, e
+  com `recipes_promote_after: 0` não há herança (a aprendida já nasce ativa). Quando a herdeira vira `active`, a legada
+  ativa da mesma etapa e versão sai (`superseded`, "provou-se na chave completa").
 - **Habilidade.** O primeiro escritor real de `skill_validation_results`: cada execução de versão grava a observação
   (`proof=real` só de execução real). Execução com etapa confirmada à mão vira `uncertain`, nunca `passed`. O sistema
   pode validar; publicar é sempre de pessoa.
@@ -341,6 +360,16 @@ com o banco aberto só para leitura.
   - O `title` gravado não muda, e o dossiê do curador não leva `etapa`, porque o título de uma etapa pode citar um @
     ou um contato.
   - A ocorrência de falha diz "android-05 · etapa open_app · tentativa 1".
+- **O app de teste fora da lista padrão (RA-19, fatia A).**
+  - O Aprendido abre em **Produto**: `GET /api/aprendizado` sem `rotulo` esconde os apps de `apps.category='qa'` (o QA
+    embutido, 041), que eram 94 das 164 entradas do central em 03/10.
+  - O filtro é um seletor segmentado "Produto · QA · Todos", com o número de ocultos ao lado ("94 do QA ocultos").
+  - Com um app escolhido (`app=`), o padrão é `todos`: escolher o QA Messenger mostra o que ele tem.
+  - O acervo de teste NÃO é descartado (o fluxo de 17 usos serviu 16 execuções reais). Só sai da lista padrão; a
+    visão por app, as filas Para aprovar e Revisar, a contagem da barra e a saúde continuam lendo tudo
+    (`LearningService.livro` sem `rotulo`).
+  - Não há `papel` no YAML: o app de teste é o que a loja já marca (`apps.category`).
+  - A fatia B, depois do RA-22: a trava "origem simulada nunca passa de candidate" no D1.
 - **Execução:** o botão "Deu certo / Deu errado" em cada objetivo (aba "Por aparelho") e na execução inteira (aba
   "Relatório"). O motivo abre em linha, e "Reativar" aparece quando a resposta traz `desfazer`. A seção "Aprendizado
   desta execução" mostra o bloco `aprendizado`, os votos e os sinais. O cartão "Custo de IA desta execução" mostra
@@ -686,9 +715,9 @@ hub de IA e o curador, 30.11): a causa `indeterminada` sai como dado, sem chamad
 - **Teto atingido pelo tipo** (`AIError.kind == 'budget'` em `ai_calls.error_kind`, `classificar_pelo_tipo_da_ia`), não pelo texto: o teto do pedido
   ("Orçamento do pedido atingido…") nunca casou com a regra por trecho e caía em `outro`. O tipo vence o texto, inclusive o `failure_kind` gravado (também
   derivado de texto em `repository.finish_attempt`), só na leitura retroativa; o texto fica como `# legado` para a tentativa sem `ai_calls`.
-- **Limites conhecidos:** `attempts.error_kind` não existe: o tipo do erro chega só por `ai_calls`, que a purga apaga. Gravar o `AIError.kind` na tentativa
-  (`failure_kind` em `repository.finish_attempt`, a partir do `StepOutcome` do `executor.py`) é do taskqueue e fica para a frente dele. `steps` não guarda a versão do
-  app: `versao_nova` só vem do estado de versão da receita. A comparação entre aparelhos exige a mesma execução.
+- **Limites conhecidos:** `steps` não guarda a versão do app: `versao_nova` só vem do estado de versão da receita. A comparação entre aparelhos exige a
+  mesma execução. (O tipo do erro na tentativa, que só chegava por `ai_calls` e a purga apagava, é `attempts.error_kind` desde o RA-22; com ele, a
+  releitura por `ai_calls` não desmente o gravado, e ela segue só para o legado.)
 - Prova `simulated`: `tests/test_learning_diagnostico.py`. `not_run` no central.
 
 ## Evidência inválida e o reaprendido (30.23)
@@ -743,6 +772,31 @@ aprendidos da `r-20261002204347-8c3f6e`, que terminou como sucesso sem comprovar
   - o ensaio no navegador sobre uma cópia do banco do central, com IA simulada (03/10).
 
   `not_run`: a marca no central (109 e o fluxo, depois do deploy da suíte 6) e um renascimento real.
+
+## Rótulo de intenção (30.25)
+
+O gabarito humano do decisor fechado da intenção (31.x, da Jev). Sem IA e sem custo; a pergunta é CEGA.
+
+- **Quem vira pergunta.** Um minerador no digest da execução assentada (`application/intencao.py`, ligado por
+  `infrastructure/ligar_intencao.py`; nenhum gancho novo no taskqueue). Só execução real (`simulated=0`), `completed`,
+  com pelo menos uma etapa e TODAS `succeeded` com `result.verified`, sem habilidade casada no plano (`runs.skill_id`),
+  e com a cadeia de agora (a RESOLVE da sombra do 31.9, refeita sem efeito) em `sem_casamento` ou num empate sem
+  resolvida. Falha provada, etapa incerta, pulada ou confirmada à mão ficam fora. Catálogo vazio não pergunta.
+- **O que se grava.** Uma linha por execução em `learning_reviews`: `template_id='intencao'`, `item_kind='execucao'`,
+  `item_ref='run:<id>'`, `scope_app` = o app principal, provedor vazio, `usd` 0, sem `saida`, `gatilho`
+  `execucao_sem_intencao`. O dossiê guarda só ids: os `skill_id` do catálogo inteiro que a cadeia enxergava (em ordem
+  canônica, mesmo num empate), os empatados à parte e a cadeia. O comando nunca entra: o painel o lê da execução.
+- **Fora do curador.** Todo leitor do curador (`revisoes_sql.py`) filtra `template_id='curador'`: o rótulo não entra na
+  janela do orçamento (C_W), no Revisar, nem na salvaguarda (item, dossiê).
+- **A resposta.** `POST /api/aprendizado/execucao/{run_id}/intencao` com um candidato do dossiê GRAVADO ou `nenhum`
+  (422 fora disso; 404 sem pergunta; 409 já respondida, por CAS). A decisão deixa o sinal `parecer_decidido` com
+  `template_id='intencao'`, `viu` e `override` falsos, que dá a data da decisão. Quem consome é a Jev (`id_opaco`,
+  `nenhum` ↔ `ID_NENHUMA`).
+- **No painel.** "Qual era o pedido?", no fim de Para aprovar, à parte e fora da contagem (é opcional): uma pergunta por
+  vez ("1 de N", com "Pular", que só muda a da vez), o comando inteiro, onde e quando, as opções em ordem alfabética,
+  sem o palpite do sistema, e "Nenhuma destas"; com mais de 8, um filtro sem acento. O catálogo de 03/10 tem 26 opções
+  e nomes de até 120 caracteres: cada nome ocupa no máximo duas linhas (inteiro no `title`), e dois fluxos com o mesmo
+  nome mostram o id. Nos Sinais, a resposta aparece como "Disse qual era o pedido", não como parecer da IA.
 
 ## Pendências conhecidas
 

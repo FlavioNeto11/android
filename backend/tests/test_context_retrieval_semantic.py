@@ -21,7 +21,7 @@ from app.modules.context_retrieval.application.semantic import SemanticRetriever
 from app.modules.context_retrieval.domain import policy as policy_mod
 from app.modules.context_retrieval.domain.errors import (
     ProviderError, ProviderInvalidResponse, ProviderOffline, ProviderOptionLimit, ProviderOverloaded, ProviderRateLimited,
-    ProviderTimeout, ProviderUnavailable,
+    ProviderRejected, ProviderTimeout, ProviderUnavailable,
 )
 from app.modules.context_retrieval.domain.model import (
     Budget, Chunk, FallbackReason, MapEntry, PayloadLimits, ProviderUsage, RepoMap, RetrievalRequest,
@@ -684,7 +684,9 @@ CENARIOS_JEV = [
     ("401", _erro(401), ProviderUnavailable, FallbackReason.PROVIDER_UNAVAILABLE),
     ("403", _erro(403), ProviderUnavailable, FallbackReason.PROVIDER_UNAVAILABLE),
     ("500", _erro(500), ProviderError, FallbackReason.PROVIDER_ERROR),
-    ("422", _erro(422), ProviderError, FallbackReason.PROVIDER_ERROR),
+    # 31.14: o 422 ganhou classe própria (a porta DecisaoFechada separa o motivo `422`); para o retrieval segue a mesma
+    # falha de provedor, com a mesma razão.
+    ("422", _erro(422), ProviderRejected, FallbackReason.PROVIDER_ERROR),
     ("nao_json", lambda r: httpx.Response(200, text="<html>" + CORPO_SENSIVEL_DO_SERVIDOR), ProviderInvalidResponse,
      FallbackReason.INVALID_RESPONSE),
     ("sem_answers", lambda r: httpx.Response(200, json={"model": "m"}), ProviderInvalidResponse,

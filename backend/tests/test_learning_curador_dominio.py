@@ -299,6 +299,6 @@ def test_dossie_do_fluxo_leva_os_apps_sem_o_comando() -> None:
         nome="ler no Outlook e achar no Instagram", comando_modelo="ler no Outlook e achar no Instagram", fonte=None,
         source_run_id="r-1", apps=["outlook", "instagram"])
     d = conteudo_do_dossie(legivel)
-    assert (d["app"], d["apps"]) == ("instagram", ["instagram", "outlook"])
+    assert (d["app"], d["apps"]) == ("instagram", ["outlook", "instagram"])      # ordem do plano (29.42)
     assert [e["app"] for e in d["etapas"]] == ["outlook", None]
     assert "achar no Instagram" not in json.dumps(d, ensure_ascii=False)

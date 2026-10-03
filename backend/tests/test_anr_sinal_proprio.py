@@ -272,8 +272,9 @@ async def test_morte_por_anr_reabre_uma_vez_sem_chamar_a_ia(harness: Harness, es
     detail = await harness.wait_run(run.id)
     assert detail.status == "completed", [(s.key, s.status, s.status_detail) for s in detail.steps]
     assert fake.calls.count("open_app") == 2                  # a da IA, e a reabertura do executor
-    # a IA decidiu abrir e, depois, "pronto"; a reabertura não passou por ela
-    assert harness.ai.count("decide", step="open_app", instance="android-01") == 2
+    # a IA decidiu abrir; depois da reabertura o app já está à frente e a pós-condição vale na tela lida, então o
+    # "pronto" também não passa por ela (caminho rápido 1, LT-1): a reabertura nunca passou
+    assert harness.ai.count("decide", step="open_app", instance="android-01") == 1
     linhas = [r["message"] for r in harness.state.db.query(          # type: ignore[union-attr]
         "SELECT message FROM events WHERE kind='decision' AND run_id=? ORDER BY id", (run.id,))]
     assert any("parou de responder (ANR)" in m and "reaberto uma vez, sem IA" in m for m in linhas), linhas

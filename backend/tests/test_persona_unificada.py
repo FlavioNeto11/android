@@ -19,6 +19,7 @@ O que se prova aqui, tudo `simulated`:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import date
 from pathlib import Path
@@ -291,7 +292,13 @@ async def test_rotas_canonicas_e_apelidos_da_persona(tmp_path: Path) -> None:
             # Lista de pessoas × lista de perfis (contas).
             assert [p["id"] for p in (await c.get("/api/personas")).json()] == [pessoa["id"]]
             assert (await c.get("/api/instagram/profiles")).json() == []
-            # O mesmo objeto pelas duas rotas.
+            # O mesmo objeto pelas duas rotas. A criação dispara a imagem gerada em segundo plano: compara depois que
+            # ela assenta, senão as duas leituras pegam o antes e o depois (pending → ready; suíte 7, 03/10).
+            for _ in range(100):
+                imagens = (await c.get(f"/api/personas/{pessoa['id']}")).json().get("images") or []
+                if all(i.get("status") != "pending" for i in imagens):
+                    break
+                await asyncio.sleep(0.05)
             pela_persona = (await c.get(f"/api/personas/{pessoa['id']}")).json()
             pelo_perfil = (await c.get(f"/api/instagram/profiles/{pessoa['id']}")).json()
             assert pela_persona == pelo_perfil

@@ -223,6 +223,7 @@ def test_hub_real_grava_parecer_valido_com_custo_medido_e_avisa(db: Database, la
     ultima = db.one("SELECT * FROM ai_calls ORDER BY id DESC LIMIT 1")
     assert resposta.ai_call_id == ultima["id"] and resposta.usd == pytest.approx(costs.row_usd(PRECOS, ultima))
     assert resposta.usd and resposta.usd > 0
+    assert resposta.provedor == "anthropic"                                   # por resposta, não do estado do adaptador
 
 
 def test_hub_simulado_grava_simulado_sem_custo_e_sem_aviso(db: Database, laco: Any,  # noqa: F811

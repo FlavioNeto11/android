@@ -613,6 +613,11 @@ def _conta(valor: object, telas: ConhecimentoDeTelas) -> Conta:
                  espera_s=_real(c["espera_s"], "conta.espera_s"), ler_ao_entrar=ler)
 
 
+#: As versões do formato de `sessao.yaml` que este código entende (RA-24, como `VERSOES_DE_TELAS`): um arquivo de
+#: versão nova lido por código velho seria entendido pela metade. Subir a versão exige o código que a lê.
+VERSOES_DE_SESSAO = (1,)
+
+
 def de_dados(dados: object, telas: ConhecimentoDeTelas) -> ConhecimentoDeSessao:
     """Valida e monta o conhecimento de sessão sobre o conhecimento de telas do MESMO app."""
     topo = frozenset({"app", "versao", "rotulo", "ajustes", "formulario", "dispensa", "conta", "depois_do_envio",
@@ -622,6 +627,9 @@ def de_dados(dados: object, telas: ConhecimentoDeTelas) -> ConhecimentoDeSessao:
     if app != telas.app:
         raise SessaoInvalida(f"`app` ({app!r}) difere do `telas.yaml` ({telas.app!r})")
     versao = _inteiro(raiz.get("versao", 1), "versao", minimo=1)
+    if versao not in VERSOES_DE_SESSAO:
+        raise SessaoInvalida(f"`versao` {versao} não é entendida (aceitas: {', '.join(map(str, VERSOES_DE_SESSAO))});"
+                             " subir a versão exige o código que a lê")
 
     f = _mapa(raiz["formulario"], "formulario",
               permitidos=frozenset({"sinal_do_botao", "sinal_de_exclusao", "etapa_do_usuario"}),

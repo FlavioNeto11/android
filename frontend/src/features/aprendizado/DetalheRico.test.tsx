@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FakeBackend, apiError, click, installBrowserStubs, json, openDetails, text, waitFor } from '../../test/harness';
+import { useAppStore } from '../../store/app';
 import { useUiStore } from '../../store/ui';
 import { AprendizadoPage } from './AprendizadoPage';
 import { DetalheRico, hrefDoItem, passoDaTransicao } from './DetalheRico';
@@ -342,6 +343,14 @@ describe('detalhe rico: outros tipos de conteúdo', () => {
                                             efeito: { externo: false, etapas_com_efeito: [] } }, item: { kind: 'fluxo' } }));
     expect(t).toContain('Confere: perfil aberto');
     expect(t).toContain('{nome}');
+    expect(t).not.toContain('→');                                     // sem `apps` no conteúdo (backend antigo), nada novo na tela
+
+    // 29.42: o fluxo entre apps diz os dois, na ordem do plano, pelo nome do app (sem cadastro, o id).
+    useAppStore.setState({ apps: [{ id: 'qa-messenger', name: 'QA Messenger' }] as never });
+    t = await mostrar(detalhe({ conteudo: { tipo: 'fluxo', nome: 'Mandar e abrir', comando_modelo: 'mande {x}', origem: { tipo: 'execucao', fonte: null, source_run_id: null },
+                                            apps: ['qa-messenger', 'chrome'], etapas: [], efeito: { externo: false, etapas_com_efeito: [] } }, item: { kind: 'fluxo' } }));
+    expect(t).toContain('QA Messenger → chrome');
+    useAppStore.setState({ apps: [] });
   });
 });
 
