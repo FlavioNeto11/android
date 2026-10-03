@@ -2626,7 +2626,7 @@
   "suite:14": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1421a17324fc5a6802ef4",
    "url": "https://trello.com/c/EbM7rZt3",
-   "lista": "em_execucao",
+   "lista": "concluido_hoje",
    "lote": "lote_A8_atuais_pendentes",
    "nome": "Suíte 14 → deploy 14 (05/10): 28.15 (Telegram) + 30.37 (prova de fluxo) + migrações 084/085"
   },
@@ -2764,6 +2764,12 @@
    "url": "https://trello.com/c/ORCuKE7V",
    "lista": "proximas",
    "lote": "canais"
+  },
+  "marco:deploy-14": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1686c4cbdb3949a775570",
+   "url": "https://trello.com/c/Zfppy7Yp",
+   "lista": "marcos",
+   "lote": "fatos-2038"
   }
  },
  "falhas": [],
