@@ -37,12 +37,13 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.learning.application.pareceres import ParecerNaFila, PareceresDoItem, ServicoDePareceres
-from app.modules.learning.application.servico import DetalheDoLivro, LearningService
+from app.modules.learning.application.servico import DetalheDoLivro, LearningService, LegadoDecidido
 from app.modules.learning.domain.ciclo import (EntradaInvalida, ErroDeAprendizado, NaoEncontrado, SkillState,
                                                UseARotaDasHabilidades)
 from app.modules.learning.domain.evidencia_invalida import Reaprendizado, run_invalidada
 from app.modules.learning.domain.livro import (AcaoPermitida, EntradaDoLivro, Transicao, acoes_da_pessoa,
-                                               evidencia_a_invalidar, por_que_o_sistema_nao_publica)
+                                               a_revisar, e_confirmacao, evidencia_a_invalidar,
+                                               motivo_na_confirmacao, por_que_o_sistema_nao_publica)
 from app.modules.learning.domain.parecer import RevisaoGravada
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.saude import Saude
@@ -120,7 +121,8 @@ def _saude(s: Saude | None) -> JsonObject | None:
 
 
 def _entrada(e: EntradaDoLivro, servico: LearningService | None = None, saude: Saude | None = None,
-             capability: str | None = None, capability_nome: str | None = None) -> JsonObject:
+             capability: str | None = None, capability_nome: str | None = None,
+             legado: LegadoDecidido | None = None) -> JsonObject:
     """`acoes` e `por_que_nao_publica` vêm do domínio (§5.4 do aprendizado vivo): o painel não espelha o `ciclo.py`.
     Com o `servico`, o motivo conhece o modo do tipo e do pacote e o veto (`vetado`, `modo_desligado`); sem ele, só o
     que o próprio item diz (efeito externo, texto de pessoa, habilidade). `capability`: a da hierarquia App → Capability
@@ -142,7 +144,22 @@ def _entrada(e: EntradaDoLivro, servico: LearningService | None = None, saude: S
                       for a in acoes_da_pessoa(e)],
             "por_que_nao_publica": None if motivo is None else {
                 "codigo": motivo.codigo, "espera_o_dono": motivo.espera_o_dono, "detalhe": motivo.detalhe},
-            "saude": _saude(saude), "nasceu_de": e.nasceu_de, "reaprendido": _reaprendido(e.reaprendido)}
+            "saude": _saude(saude), "nasceu_de": e.nasceu_de, "reaprendido": _reaprendido(e.reaprendido),
+            **_do_legado(e, legado)}
+
+
+def _do_legado(e: EntradaDoLivro, legado: LegadoDecidido | None) -> JsonObject:
+    """30.24, só em receita e fluxo: `em_revisar` (está na fila agora), `confirmado` (a confirmação que vale: quem,
+    quando e o motivo da pessoa) e `confirmacao_contestada` (a que a evidência contrária derrubou: por que o item
+    voltou). O aviso "vale revisar" do painel some quando uma pessoa já decidiu o item."""
+    if legado is None or e.kind not in (LivroKind.RECEITA, LivroKind.FLUXO):
+        return {}
+
+    def lida(t: Transicao | None) -> JsonObject | None:
+        return None if t is None else {"por": t.decided_by, "em": t.decided_at, "motivo": motivo_na_confirmacao(t)}
+
+    return {"em_revisar": a_revisar(e, legado.decididos), "confirmado": lida(legado.confirmacoes.get(e.trail_ref)),
+            "confirmacao_contestada": lida(legado.contestadas.get(e.trail_ref))}
 
 
 def _reaprendido(r: Reaprendizado | None) -> JsonObject | None:
@@ -163,11 +180,13 @@ def _evidencia(e: Evidencia, invalidas: frozenset[str] = frozenset()) -> JsonObj
 
 def _transicao(t: Transicao) -> JsonObject:
     """`tipo` e `run_invalidada` (30.23): o desligamento por evidência inválida já vem lido; o painel nunca interpreta
-    o formato do motivo."""
+    o formato do motivo. `tipo: confirmacao` (30.24) é a linha `published → published` de "Confirmar que fica", e
+    `motivo_da_pessoa` o motivo livre dela (sem o prefixo; nulo quando ela não deu motivo)."""
     run = run_invalidada(t.reason)
+    tipo = "evidencia_invalida" if run is not None else "confirmacao" if e_confirmacao(t) else None
     return {"id": t.id, "from": t.from_state.value if t.from_state else None, "to": t.to_state.value,
             "reason": t.reason, "decided_by": t.decided_by, "decided_at": t.decided_at, "run_id": t.run_id,
-            "tipo": "evidencia_invalida" if run is not None else None, "run_invalidada": run}
+            "tipo": tipo, "run_invalidada": run, "motivo_da_pessoa": motivo_na_confirmacao(t)}
 
 
 def _acao(a: AcaoPermitida | None) -> JsonObject | None:
@@ -210,7 +229,7 @@ def _detalhe(d: DetalheDoLivro, servico: LearningService) -> JsonObject:
     invalidas = frozenset(r for t in d.trilha if (r := run_invalidada(t.reason)) is not None)
     a_invalidar = evidencia_a_invalidar(d.entrada, d.trilha)
     saida: JsonObject = {
-        "item": _entrada(d.entrada, servico, d.saude, capability, nome),
+        "item": _entrada(d.entrada, servico, d.saude, capability, nome, servico.legado_decidido()),
         "evidencias": [_evidencia(e, invalidas) for e in d.evidencias],
         "trilha": [_transicao(t) for t in d.trilha], "exposicoes": list(d.exposicoes),
         "conteudo": d.conteudo, "versao": d.versao, "relacoes": list(d.relacoes),
@@ -231,8 +250,9 @@ def _lista(entradas: tuple[EntradaDoLivro, ...], servico: LearningService) -> Js
     nomes = servico.nomes_das_capabilities(entradas, capabilities)
     pareceres = _pareceres(servico)
     na_fila = pareceres.na_fila(entradas) if pareceres is not None else {}
+    legado = servico.legado_decidido()
     return {"itens": [{**_entrada(e, servico, saudes.get(e.trail_ref), capabilities.get(e.trail_ref),
-                                  nomes.get(e.trail_ref)),
+                                  nomes.get(e.trail_ref), legado),
                        "parecer": _parecer_na_fila(na_fila.get(e.trail_ref))} for e in entradas],
             "total": len(entradas), "curador": None if pareceres is None else {"modo": pareceres.modo.value}}
 
@@ -262,6 +282,16 @@ class CorpoDeEvidenciaInvalida(BaseModel):
     run_id: str = Field(min_length=1, max_length=64)
 
 
+class CorpoDaConfirmacao(BaseModel):
+    """"Confirmar que fica" (30.24): o motivo é opcional; com ele, a trilha leva "confirmado que fica: <motivo>"."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    motivo: str | None = Field(default=None, max_length=500)
+    #: O parecer que a pessoa viu ao confirmar (como no `/status`): a decisão vira `aceitou`/`recusou` dele.
+    review_id: str | None = Field(default=None, min_length=1, max_length=64)
+
+
 # ------------------------------------------------------------------ rotas
 @router.get("", response_model=None)
 async def ler_livro(request: Request, kind: LivroKind | None = None, state: SkillState | None = None,
@@ -271,8 +301,9 @@ async def ler_livro(request: Request, kind: LivroKind | None = None, state: Skil
     contagem: JsonObject = {k: {estado: n for estado, n in v.items()} for k, v in livro.contagem.items()}
     capabilities = servico.capabilities(livro.itens)
     nomes = servico.nomes_das_capabilities(livro.itens, capabilities)
+    legado = servico.legado_decidido()
     return {"itens": [_entrada(e, servico, livro.saudes.get(e.trail_ref), capabilities.get(e.trail_ref),
-                               nomes.get(e.trail_ref)) for e in livro.itens],
+                               nomes.get(e.trail_ref), legado) for e in livro.itens],
             "total": len(livro.itens), "contagem": contagem}
 
 
@@ -316,6 +347,19 @@ async def invalidar_evidencia(request: Request, kind: LivroKind, ref: str, corpo
         entrada = _chamar(lambda: pareceres.invalidar_evidencia(kind, ref, corpo.run_id, by=quem))
     else:
         entrada = _chamar(lambda: servico.invalidar_evidencia(kind, ref, corpo.run_id, by=quem))
+    return _detalhe(_chamar(lambda: servico.detalhe(entrada.kind, entrada.ref)), servico)
+
+
+@router.post("/{kind}/{ref}/confirmar", response_model=None)
+async def confirmar_que_fica(request: Request, kind: LivroKind, ref: str, corpo: CorpoDaConfirmacao) -> JsonObject:
+    servico = _servico(request)
+    quem = _quem(request)
+    pareceres = _pareceres(servico)
+    if pareceres is not None:
+        entrada = _chamar(lambda: pareceres.confirmar_que_fica(kind, ref, by=quem, motivo=corpo.motivo,
+                                                               review_id=corpo.review_id))
+    else:
+        entrada = _chamar(lambda: servico.confirmar_que_fica(kind, ref, by=quem, motivo=corpo.motivo))
     return _detalhe(_chamar(lambda: servico.detalhe(entrada.kind, entrada.ref)), servico)
 
 

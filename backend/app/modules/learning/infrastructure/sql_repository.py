@@ -189,11 +189,21 @@ class SqlLearningRepository:
         """A linha `disabled → disabled` da trilha: o item JÁ desligado ganha o tipo do desligamento (30.23, a evidência
         inválida). O status nativo não muda; o CAS confere que ele ainda está desligado (ninguém o religou no meio) e a
         linha entra na mesma transação da leitura."""
-        m = mudanca
+        self._no_mesmo_estado(mudanca, SkillState.DISABLED, by=by, reason=reason,
+                              fora="Só o item desligado tem o desligamento reclassificado.")
+
+    def confirmar_que_fica(self, mudanca: MudancaNativa, *, by: str, reason: str) -> None:
+        """A linha `published → published` da trilha (30.24): a PESSOA confirma que o legado publicado de "Revisar"
+        fica. O status nativo não muda; o CAS confere que ele ainda está ativo (ninguém o desligou no meio)."""
+        self._no_mesmo_estado(mudanca, SkillState.PUBLISHED, by=by, reason=reason,
+                              fora="Só o item publicado tem a confirmação de que fica.")
+
+    def _no_mesmo_estado(self, m: MudancaNativa, estado: SkillState, *, by: str, reason: str, fora: str) -> None:
+        """Uma linha da trilha que não muda o estado (`de == para`), na mesma transação da leitura do status nativo."""
         if not by.strip() or not reason.strip():
             raise EntradaInvalida("Transição sem quem decidiu ou sem motivo não entra na trilha.")
-        if m.de_estado is not SkillState.DISABLED or m.para_estado is not SkillState.DISABLED:
-            raise EntradaInvalida("Só o item desligado tem o desligamento reclassificado.")
+        if m.de_estado is not estado or m.para_estado is not estado:
+            raise EntradaInvalida(fora)
         with self._db.tx():
             if m.kind is LivroKind.RECEITA:
                 try:
@@ -209,7 +219,7 @@ class SqlLearningRepository:
             if linhas.texto(row, "status") != m.de_status:
                 raise ConflitoDeEstado(f"{m.kind.value} {m.ref} mudou de status; releia e tente de novo.")
             self._registrar(ref_da_trilha(m.kind, m.ref), m.kind, m.content_hash, m.scope_key, m.app_version,
-                            SkillState.DISABLED, SkillState.DISABLED, reason, by, self._clock(), None)
+                            estado, estado, reason, by, self._clock(), None)
 
     def _reaprendido(self, m: MudancaNativa) -> bool:
         return reaprendizado(self.trilha_do_escopo(m.scope_key), ref_da_trilha(m.kind, m.ref)) is not None
@@ -310,6 +320,17 @@ class SqlLearningRepository:
         return frozenset(linhas.texto(r, "item_ref") for r in self._db.query(
             f"SELECT DISTINCT item_ref FROM learning_transitions WHERE item_kind IN ({marcas}) AND decided_by<>?",
             (*(k.value for k in kinds), SYSTEM_ACTOR)))
+
+    def ultimas_decisoes_da_pessoa(self, kinds: Sequence[LivroKind]) -> dict[str, Transicao]:
+        """A última linha de PESSOA de cada item dos tipos: "Revisar" precisa saber se ela é uma confirmação (30.24)."""
+        if not kinds:
+            return {}
+        marcas = ",".join("?" for _ in kinds)
+        linhas_ = self._db.query(
+            "SELECT t.* FROM learning_transitions t JOIN (SELECT item_ref, MAX(id) AS id FROM learning_transitions"
+            f" WHERE item_kind IN ({marcas}) AND decided_by<>? GROUP BY item_ref) u ON u.id = t.id",
+            (*(k.value for k in kinds), SYSTEM_ACTOR))
+        return {t.item_ref: t for t in map(_transicao, linhas_)}
 
     # ================================================================== evidência
     def evidencias(self, item_ref: str, *, limite: int = 200) -> list[Evidencia]:
