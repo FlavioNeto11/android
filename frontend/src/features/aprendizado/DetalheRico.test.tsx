@@ -263,7 +263,7 @@ describe('evidência inválida e reaprendido (30.23)', () => {
       item: { ref: '120', state: 'validated', side_effect: false, requires_owner: true,
               reaprendido: { run_invalidada: RUN, item: { kind: 'receita', ref: '109' } },
               por_que_nao_publica: { codigo: 'reaprendido', espera_o_dono: true, detalhe: RUN } },
-      relacoes: [{ tipo: 'reaprende', kind: 'receita', ref: '109', rotulo: `desligado por evidência inválida (execução ${RUN})`,
+      relacoes: [{ tipo: 'reaprende', kind: 'receita', ref: '109', rotulo: `109 (evidência inválida da execução ${RUN})`,
                    fonte: 'learning_transitions' }],
     }));
     expect(secoes()).toContain('Reaprendido depois de uma evidência inválida');
@@ -271,7 +271,7 @@ describe('evidência inválida e reaprendido (30.23)', () => {
     expect(text(aviso)).toContain('Reaprende o item Receita 109, aprendido da execução');
     expect(aviso.querySelector(`a[href="${hrefDoItem('receita', '109')}"]`)).not.toBeNull();
     expect(text(aviso)).toContain('a aprovação é sua');
-    expect(t).toContain('Reaprende Receita desligado por evidência inválida');
+    expect(t).toContain(`Reaprende Receita 109 (evidência inválida da execução ${RUN})`);
     expect(t).toContain(`O sistema não publica sozinho: foi reaprendido depois de uma evidência inválida (a execução ${RUN}`);
   });
 

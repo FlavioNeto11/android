@@ -117,14 +117,17 @@ export function ParaAprovarTab() {
       <section className={styles.secao} aria-labelledby="aprendizado-fila">
         <h2 id="aprendizado-fila" className={styles.secaoTitulo}><Inbox size={16} aria-hidden /> Para aprovar</h2>
         <p className={styles.secaoLead}>
-          Itens com efeito fora do sistema (mensagem, publicação) ou com texto de pessoa esperam a sua aprovação.{' '}
+          Itens com efeito fora do sistema (mensagem, publicação), com texto de pessoa ou reaprendidos depois de uma
+          evidência inválida esperam a sua aprovação.{' '}
           <a className={styles.linkAlvo} href={hashDe('pendencias')}>Ver todas as suas pendências</a>
         </p>
         <Disclosure summary="Saiba mais" bare>
           <p className={styles.secaoLead}>
             O sistema publica sozinho só o que não tem efeito externo e já se repetiu com sucesso. O que tem efeito ou
-            texto escrito por uma pessoa para aqui, já validado, aguardando você. Quando um item publicado passa a
-            falhar, o sistema o desliga sozinho.
+            texto escrito por uma pessoa para aqui, já validado, aguardando você. O mesmo vale para o que foi
+            reaprendido depois de uma evidência inválida (uma execução que terminou como sucesso sem comprovar o que
+            fez): outra execução real ensinou de novo, e a decisão de voltar a usar é sua. Quando um item publicado
+            passa a falhar, o sistema o desliga sozinho.
           </p>
         </Disclosure>
         {fila.erro ? <LoadErrorBanner error={fila.erro} onRetry={() => void carregar()} /> : null}

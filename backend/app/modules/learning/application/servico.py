@@ -26,7 +26,7 @@ from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, EntradaInval
                                                UseARotaDasHabilidades, Vetado, caminho_da_pessoa, conferir_transicao,
                                                motivo_do_veto)
 from app.modules.learning.domain.evidencia_invalida import (ja_invalidada, motivo_de_evidencia_invalida,
-                                                            reaprendizado, reservado, run_valida)
+                                                            reaprendizado, reservado, run_invalidada, run_valida)
 from app.modules.learning.domain.conteudo import capability_unica, licao_legivel, nome_da_capability, tela_legivel
 from app.modules.learning.domain.efeito import exposicao_json
 from app.modules.learning.domain.livro import (ESTADOS_DA_EVIDENCIA_INVALIDA, EntradaDoLivro, ItemDeAprendizado,
@@ -235,8 +235,11 @@ class LearningService:
         evidencias = tuple(self._repo.evidencias(e.trail_ref))
         trilha = tuple(self._repo.trilha(e.trail_ref))
         conteudo = self._conteudo(kind, e.ref)
-        return DetalheDoLivro(e, evidencias, trilha, exposicoes, conteudo, saude=self.saude_de(e, evidencias, trilha),
-                              versao=self._versao(e, evidencias), relacoes=self._relacoes(e, conteudo))
+        # 30.23: a evidência da execução marcada como inválida fica à vista (o painel a marca), mas não mede nada
+        invalidas = frozenset(r for t in trilha if (r := run_invalidada(t.reason)) is not None)
+        validas = tuple(x for x in evidencias if x.run_id not in invalidas) if invalidas else evidencias
+        return DetalheDoLivro(e, evidencias, trilha, exposicoes, conteudo, saude=self.saude_de(e, validas, trilha),
+                              versao=self._versao(e, validas), relacoes=self._relacoes(e, conteudo))
 
     # ================================================================== saúde (30.4)
     def saudes(self, entradas: Sequence[EntradaDoLivro]) -> dict[str, Saude]:
@@ -244,12 +247,25 @@ class LearningService:
         o rótulo pelo estado), com o mesmo limite do detalhe: o rótulo é o mesmo nos dois."""
         saida: dict[str, Saude] = {}
         contexto = self._contexto_de_obsolescencia()             # os lotes são lidos uma vez para a lista inteira
+        invalidas = self._runs_invalidadas() if any(e.state is SkillState.PUBLISHED for e in entradas) else {}
         for e in entradas:
             evidencias = self._repo.evidencias(e.trail_ref) if e.state is SkillState.PUBLISHED else ()
+            fora = invalidas.get(e.trail_ref)
+            if fora:                                            # 30.23: a mesma regra do detalhe
+                evidencias = [x for x in evidencias if x.run_id not in fora]
             saude = self.saude_de(e, tuple(evidencias), contexto=contexto)
             if saude is not None:
                 saida[e.trail_ref] = saude
         return saida
+
+    def _runs_invalidadas(self) -> dict[str, frozenset[str]]:
+        """As execuções marcadas como evidência inválida, por ref da trilha do item (30.23), numa leitura só."""
+        saida: dict[str, set[str]] = {}
+        for linhas_do_escopo in self._repo.trilhas_com_evidencia_invalida().values():
+            for t in linhas_do_escopo:
+                if (r := run_invalidada(t.reason)) is not None:
+                    saida.setdefault(t.item_ref, set()).add(r)
+        return {k: frozenset(v) for k, v in saida.items()}
 
     def capabilities(self, entradas: Sequence[EntradaDoLivro]) -> dict[str, str | None]:
         """A capability de cada entrada, pela ref da trilha, para a hierarquia App → Capability → Item do painel. Em

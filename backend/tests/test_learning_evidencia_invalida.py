@@ -374,6 +374,11 @@ class Fluxos:
         return str(self.db.scalar("SELECT status FROM flows WHERE id=?", (flow_id,)))
 
 
+def _eficacia(saude: Any) -> float | None:
+    [d] = [d for d in saude.dimensoes if d.nome.value == "eficacia"]
+    return None if d.desconhecida else d.valor
+
+
 @pytest.fixture
 def fluxos(tmp_path: Path) -> Iterator[Fluxos]:
     db = banco_migrado(tmp_path, "evidencia-invalida-fluxos.sqlite3")
@@ -390,8 +395,13 @@ def test_o_fluxo_do_outlook_reclassificado_renasce_na_mesma_linha_e_espera_o_don
     assert falsa is not None
     m.servico.mudar_estado(LivroKind.FLUXO, fid, S.DISABLED, by=DONO, reason="Invalidado à mão (texto livre)")
     assert m.roda(OUTRA, "Bia") is None                    # desligado por pessoa: não renasce
+    antes = m.servico.detalhe(LivroKind.FLUXO, fid).saude
+    assert antes is not None and _eficacia(antes) == 1.0                  # a evidência da falsa media a eficácia
     m.servico.invalidar_evidencia(LivroKind.FLUXO, fid, FALSA, by=DONO)
     assert m.status(fid) == "disabled"
+    depois = m.servico.detalhe(LivroKind.FLUXO, fid)
+    assert depois.saude is not None and _eficacia(depois.saude) is None   # ...e deixa de medir: "sem dado", nunca zero
+    assert [x.run_id for x in depois.evidencias] == [FALSA]               # mas fica à vista (o painel a marca)
     # a mesma execução não o traz de volta; a simulada também não
     assert m.flows.learn_from_run(dict(falsa)) is None
     assert m.roda(SIMULADA, "Caio", simulada=True) is None

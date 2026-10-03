@@ -161,7 +161,7 @@ def de_reaprendizado(entrada: EntradaDoLivro, mesmo_escopo: Iterable[EntradaDoLi
         kind, sep, ref = r.item_invalidado.partition(":")
         if sep and ref:
             saida.append(relacao(TipoDeRelacao.REAPRENDE, kind, ref,
-                                 rotulo=f"desligado por evidência inválida (execução {r.run_invalidada})",
+                                 rotulo=f"{ref} (evidência inválida da execução {r.run_invalidada})",
                                  fonte=_FONTE_DO_REAPRENDIZADO))
     for o in mesmo_escopo:
         if (o.reaprendido is not None and o.reaprendido.item_invalidado == entrada.trail_ref
