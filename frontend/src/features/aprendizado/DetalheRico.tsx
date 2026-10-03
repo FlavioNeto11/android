@@ -230,8 +230,8 @@ function ConteudoFluxo({ c }: { c: ConteudoDoFluxo }) {
         {exigidos ? <Fato rotulo="Apps">{exigidos}</Fato> : null}
         {c.comando_modelo ? <Fato rotulo="Comando modelo">{c.comando_modelo}</Fato> : null}
         <Fato rotulo="Origem">
-          {c.origem.tipo === 'treino' ? 'Demonstrado no treino' : 'Aprendido de execução'}
-          {c.origem.source_run_id ? <>{' · '}<a className={styles.linkAlvo} href={hrefDaExecucao(c.origem.source_run_id)} title={c.origem.source_run_id}>{rotuloDaExecucao(c.origem.source_run_id)}</a></> : null}
+          {c.origem.tipo === 'treino' ? 'Demonstrado no treino' : c.origem.source_run_id ? 'Aprendido na' : 'Aprendido de execução'}
+          {c.origem.source_run_id ? <>{c.origem.tipo === 'treino' ? ' · ' : ' '}<a className={styles.linkAlvo} href={hrefDaExecucao(c.origem.source_run_id)} title={c.origem.source_run_id}>{rotuloDaExecucao(c.origem.source_run_id)}</a></> : null}
         </Fato>
         <Fato rotulo="Efeito">{c.efeito.externo ? 'tem efeito fora do sistema' : 'sem efeito fora do sistema'}</Fato>
       </dl>

@@ -357,6 +357,12 @@ describe('detalhe rico: outros tipos de conteúdo', () => {
                                             apps: ['qa-messenger', 'chrome'], etapas: [], efeito: { externo: false, etapas_com_efeito: [] } }, item: { kind: 'fluxo' } }));
     expect(t).toContain('QA Messenger → chrome');
     useAppStore.setState({ apps: [] });
+    // UX do deploy 8: a origem diz a execução pela data, com o id no title (e sem repetir "execução").
+    t = await mostrar(detalhe({ conteudo: { tipo: 'fluxo', nome: 'Abrir', comando_modelo: 'abra', origem: { tipo: 'execucao', fonte: null, source_run_id: 'r-20260924114815-c14258' },
+                                            apps: [], etapas: [], efeito: { externo: false, etapas_com_efeito: [] } }, item: { kind: 'fluxo' } }));
+    expect(t).toMatch(/Aprendido na execução de \S/);
+    expect(t).not.toContain('execução · execução');
+    expect(container.querySelector('a[title="r-20260924114815-c14258"]')).not.toBeNull();
   });
 });
 
