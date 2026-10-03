@@ -19,6 +19,25 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: evidência inválida como tipo próprio de desligamento (30.23, branch feat/30-23-evidencia-invalida)
+
+- Ação nova `POST /api/aprendizado/{kind}/{ref}/evidencia-invalida {run_id}`. Desliga a receita ou o fluxo aprendido de
+  um sucesso falso, com o motivo estruturado `evidencia_invalida:<run>`; o já desligado ganha a linha que reclassifica o
+  motivo. O motivo livre nesse formato é recusado (422).
+- O veto desse tipo barra só a mesma execução. Outra execução real que ensine o mesmo faz o item renascer "reaprendido",
+  em classe B: espera o dono em "Para aprovar", e o sistema para em `validated` (sombra da receita e do fluxo, e o
+  repositório). Relações `reaprende` e `reaprendida_por`.
+- A evidência da execução marcada fica à vista (`invalidada`) e sai da saúde, da versão e da sombra do fluxo.
+- O dossiê do curador (30.11, que entrou na main pela suíte 5) segue a mesma regra: o reaprendido é B nos fatos de
+  risco, e a evidência marcada fica de fora do que a IA pode citar.
+- Painel: selo na trilha, aviso na evidência, seção do reaprendido, botão "Marcar evidência inválida" com confirmação no
+  lugar, e o motivo em "Para aprovar".
+- Gancho em `taskqueue/recipes.py` (`exige_o_dono` na sombra): entra pela suíte 6. Se a leitura do livro falha, a
+  candidata não sobe nem ganha motivo na trilha; a próxima concordância pergunta de novo.
+- `test_learning_backlog` e `test_learning_repositorio` passam a usar meio-dia fixo. A suíte 5b falhou perto da meia-noite
+  UTC porque a semente cruzava o dia.
+- Adendo v0.70; emenda ao ADR-054. Prova `simulated`; a marca da 109 e do fluxo no central é `not_run` até o deploy.
+
 ## 2026-10-02 — 29.29: D2-a também ao ganhar a conta, com vínculo sem app (branch feat/29-29-d2a, commit cdcb3fe6)
 
 - **Furo (revisão adversarial do 29.27):** pessoa sem conta, vinculada SEM app a aparelho que já tinha o Instagram de outra persona, passava a servir o
@@ -43,7 +62,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   aparelho por vez, onde a conta estava logada (marcadores abertos + vínculo, capturados antes de a retirada mascarar o @; a sessão NÃO é pista): acorda se
   hibernado/parado, captura de tela, `pm clear` SÓ do pacote declarado (comando `session.logout` em `run_device_job`), captura de tela, resolve a
   quarentena com a nota "limpeza automática autorizada pelo dono em 02/10" e devolve a energia. Falha: quarentena aberta e evento `device.account_cleanup`
-  em erro, sem repetir. Sem retroativo na subida; sem o @ em evento ou log. Resposta de `retire` ganha `limpeza_dos_aparelhos` (adendo v0.68, número provisório).
+  em erro, sem repetir. Sem retroativo na subida; sem o @ em evento ou log. Resposta de `retire` ganha `limpeza_dos_aparelhos` (adendo v0.68).
   `resolver_conta_travada` aceita `marcadores`. Sem migração. `simulated`: `tests/test_limpeza_ao_retirar.py` (19); `not_run` no central.
 - **Correção da revisão adversarial (defeitos que bloqueavam o merge):** o `pm clear` podia apagar o Instagram de OUTRA persona viva. (1) A sessão
   deixa de ser fonte de aparelho (`unbind` não a apaga; `wrong_account`/`needs_person` não dizem "esta conta está aqui"). (2) Trava `outra_conta`

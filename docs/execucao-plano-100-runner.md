@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-276 de 325 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+277 de 326 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -302,7 +302,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.8 | pendente | — | — | — |  |  |
 | 30.9 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #78 merge 70e03cb2: migração 069_revisoes_do_aprendizado (learning_reviews, único (item_ref, dossie_hash)); suíte combinada verde 5414 passed na árvore efd39d3e; migração não aplicada no central (sem deploy) |  |
 | 30.10 | pendente | — | — | — |  |  |
-| 30.11 | pendente | — | — | — |  |  |
+| 30.11 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | Suíte 5 merge 8413ddc9 (PR #107 765a1b2b; 075 pelo PR #114 465c9c43): curador, aplicação com adaptador simulado (application/curador.py, domain/orcamento_do_curador.py, infrastructure/ligar_curador.py, curador_simulado.… |  |
 | 30.12 | implemented | simulated | sessao | — | Branch feat/30-12-curador-hub (4edecb8d + f0372b63, sobre o 30.11 8bbe35ff e o 31.2/31.6), 02/10/2026, sessao jev. AIRouter.review_knowledge(PedidoDeParecer): papel plan emprestado, run_id None, origem curador, ref = do… |  |
 | 30.13 | pendente | — | — | — |  |  |
 | 30.14 | pendente | — | — | — |  |  |
@@ -314,6 +314,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.20 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #75 merge af208f07 e PR #79 merge e86b4a33: modo por app (domain/modo_por_app.py, modo_efetivo; aprendizado.licoes.por_app / telas.por_app), D1 do modo por app; prova simulated; not_run no central (nada implantado) |  |
 | 30.21 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #83 merge f0f02125: evento learning.needs_person (domain/espera.py, application/espera.py, infrastructure/eventos.py, state.py eventos=self.bus), adendo v0.49; suíte combinada verde (efd39d3e); prova simulated; not_r… |  |
 | 30.22 | implemented | real | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #69 merge 657c5f85: scripts/aprendizado-backfill-licoes.py + infrastructure/backfill_licoes.py; aplicado no central em 02/10 sobre as 12 execuções aprováveis (10 lições nascidas, em shadow); saídas em .claude/handoff… |  |
+| 30.23 | pendente | — | — | — |  |  |
 | 31.1 | implemented | simulated | sessao | — | Commit b5a40c98 (na main desde o PR #110, sessao jev, 02/10/2026): trava de 255 opcoes e opcao nenhuma no adaptador do Jev (choice). backend/tests/test_context_retrieval_semantic.py com provedor falso. Chamada real: not… |  |
 | 31.2 | implemented | simulated | sessao | — | PR #112 (merge b5baf3e5 na main, commits 89a92b03 + a6cfa0fd, sessao jev, 02/10/2026): migracao 073 (ai_calls.origem e ref, TEXT sem CHECK), Usage.origem, filtro por origem no gasto (costs.spent_usd). backend/tests/test… |  |
 | 31.3 | implemented | not_run | sessao | — | Item de decisao (texto do ADR): ADR-069 escrito e aprovado pelo dono (02/10/2026 ~21:35Z, 'sim para todos' no chat da orquestradora), PR #102, merge fd59fbd7. Emenda o ADR-063; D-J1 (porta unica, constantes fechadas, Te… |  |
@@ -332,7 +333,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (49): 8.3, 8.4, 12.3, 14.11, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.27, 29.28, 29.29, 29.30, 29.31, 29.32, 30.4, 30.8, 30.10, 30.11, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
+Pendentes (49): 8.3, 8.4, 12.3, 14.11, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.27, 29.28, 29.29, 29.30, 29.31, 29.32, 30.4, 30.8, 30.10, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 30.23, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

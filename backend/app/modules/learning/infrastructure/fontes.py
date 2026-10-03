@@ -17,6 +17,7 @@ from app.db import Database, Row
 from app.modules.learning.domain.conteudo import (PREFIXO_DE_TREINO, EtapaDeOrigem, ReceitaLida, Vizinha,
                                                   capability_da_linha_da_receita, capability_da_receita,
                                                   fluxo_legivel, habilidade_legivel, receita_legivel)
+from app.modules.learning.domain.evidencia_invalida import run_da_etapa, run_valida
 from app.modules.learning.domain.livro import (EntradaDoLivro, escopo_da_receita, escopo_do_fluxo, estado_nativo,
                                                fluxo_tem_efeito, hash_da_receita, receita_tem_efeito)
 from app.modules.learning.domain.relacoes import Sucessora
@@ -327,7 +328,8 @@ def _receita(r: Row) -> EntradaDoLivro:
         scope_key=escopo_da_receita(linhas.texto(r, "app_package"), linhas.texto(r, "app_version"),
                                     linhas.texto(r, "app_signature"), linhas.texto(r, "variant"),
                                     linhas.texto(r, "step_hash")),
-        app_version=linhas.texto(r, "app_version"), falhas_seguidas=linhas.inteiro(r, "consecutive_fail"))
+        app_version=linhas.texto(r, "app_version"), falhas_seguidas=linhas.inteiro(r, "consecutive_fail"),
+        nasceu_de=run_da_etapa(aprendida))
 
 
 def _receita_lida(r: Row) -> ReceitaLida:
@@ -373,7 +375,13 @@ def _fluxo(r: Row, resolvedor: ResolvedorDeApp, exigidos: list[str]) -> EntradaD
         side_effect=fluxo_tem_efeito(plano), created_at=linhas.texto(r, "created_at"),
         last_used_at=linhas.texto_ou_nulo(r, "last_used_at"), uses=linhas.inteiro(r, "uses"),
         detail=linhas.texto(r, "name"), content_hash=content_hash(plano) if plano is not None else None,
-        scope_key=escopo_do_fluxo(linhas.texto(r, "match_key")))
+        scope_key=escopo_do_fluxo(linhas.texto(r, "match_key")), nasceu_de=_run_de_origem(r, fonte))
+
+
+def _run_de_origem(r: Row, fonte: str) -> str | None:
+    """A execução de que o fluxo foi aprendido; o treino é da pessoa (sem execução de origem para invalidar)."""
+    run = linhas.texto_ou_nulo(r, "source_run_id")
+    return run if run is not None and run_valida(run) and not fonte.startswith("training") else None
 
 
 def _habilidade(r: Row, resolvedor: ResolvedorDeApp, exigidos: list[str]) -> EntradaDoLivro:

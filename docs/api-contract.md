@@ -3928,7 +3928,7 @@ Códigos novos (em `previa`, viram `bloqueios[]`):
   `requer_pessoa=false`. O fato também fica na memória do pedido (`evento.buraco.<gatilho>`, `pendencia`;
   `condicao.<gatilho>`, `descoberta`).
 
-## Adendo v0.68 (02/10/2026, número PROVISÓRIO) — retirada de conta limpa o app nos aparelhos; evento `device.account_cleanup` (item 29.27, emenda do ADR-068)
+## Adendo v0.68 (02/10/2026) — retirada de conta limpa o app nos aparelhos; evento `device.account_cleanup` (item 29.27, emenda do ADR-068)
 
 `POST /api/instagram/profiles/{id}/accounts/{conta}/retire` (adendo v0.55) e o gatilho automático da retirada passam a **limpar os dados do app**
 (`pm clear` só do pacote da conta) nos aparelhos onde a conta estava logada, quando o `app.yaml` do app declara `limpar_ao_retirar: true`
@@ -3947,7 +3947,7 @@ conta e do vínculo (não da sessão); `passo: outra_conta` (em `falhou`) é a r
 app, ou que tem quarentena aberta de outra conta (sem acordá-lo). O evento e o log não carregam o @ da conta. Nada
 roda retroativamente na subida. Nenhuma migração. Prova `simulated` (`tests/test_limpeza_ao_retirar.py`); `not_run` no central.
 
-## Adendo v0.69 (02/10/2026, número PROVISÓRIO) — D2-a também ao ganhar a conta (item 29.29, emenda do ADR da 051)
+## Adendo v0.69 (02/10/2026) — D2-a também ao ganhar a conta (item 29.29, emenda do ADR da 051)
 
 Sem rota nova nem campo novo: dois 409 `conta_do_app_ja_no_aparelho` em rotas que já existiam, sempre ANTES de criar qualquer linha.
 
@@ -3959,3 +3959,50 @@ Sem rota nova nem campo novo: dois 409 `conta_do_app_ja_no_aparelho` em rotas qu
 - Ressalvas (revisão adversarial de 03/10): a conferência só roda com o app âncora registrado em `apps` (sem ele, nada é conferido, como antes);
   `conta_ancora(criar=True)` em dado legado cria a conta sem conferir (0 casos no central em 03/10); conferência e criação não estão numa transação
   (janela de corrida, no backlog).
+
+## Adendo v0.70 (03/10/2026) — evidência inválida: ação própria, trilha com tipo e o item reaprendido (item 30.23)
+
+Uma rota e campos novos; nada muda de tipo. A regra é a emenda de 03/10 ao ADR-054; o desenho, o §9.3 de
+`design/aprendizado-vivo.md`.
+
+- **`POST /api/aprendizado/{kind}/{ref}/evidencia-invalida`**, corpo `{run_id}` (só esse campo). Serve para quando a receita
+  ou o fluxo foi aprendido de uma execução que terminou como sucesso sem comprovar o que fez. Quem decide é o operador da
+  sessão do painel, como em `/status`. O motivo não vem do cliente: o backend grava `evidencia_invalida:<run_id>` na trilha.
+  - O item vivo (`candidate`, `validated`, `published`) vai para `disabled`, com CAS no status nativo.
+  - O já desligado ganha a linha `disabled → disabled`, que reclassifica o desligamento sem mudar o status nativo.
+  - A mesma marca de novo não grava outra linha.
+  - Devolve o detalhe, como `GET /api/aprendizado/{kind}/{ref}`.
+  - Recusas:
+    - 422 `invalid`: o tipo não é `receita` nem `fluxo`, ou o `run_id` está fora do formato `r-AAAAMMDDhhmmss-xxxxxx`;
+    - 409 `transition_forbidden`: o item não nasceu de uma execução (treino ou origem ilegível), o `run_id` não é a execução
+      de origem dele (`nasceu_de`), ou ele está aposentado (`deprecated`);
+    - 409 `state_conflict`: o status nativo mudou entre a leitura e a escrita;
+    - 404 `not_found`.
+- **O motivo reservado é recusado em `POST …/status`** com 422 `invalid`. Vale para o `reason` que começa por
+  `evidencia_invalida`, sem diferenciar maiúsculas e ignorando espaços nas pontas, e a mensagem aponta a ação própria.
+  `PUT /api/flows/{id}` e `PUT /api/recipes/{id}` passam pelo mesmo serviço e recusam igual.
+- **Linha da trilha** (`trilha[]` do detalhe): ganha `tipo` (`"evidencia_invalida"` ou `null`) e `run_invalidada` (o id da
+  execução ou `null`), lidos do `reason` pelo backend. O cliente não interpreta o formato do motivo.
+- **Evidência** (`evidencias[]`): ganha `invalidada` (booleano). É `true` quando a execução dela foi marcada como evidência
+  inválida neste item. A evidência continua listada, mas não entra na saúde, na versão nem na sombra do fluxo.
+- **Item** (linha de `GET /api/aprendizado`, `/pendentes` e `/revisar`, e `item` do detalhe):
+  - `nasceu_de`: a execução de que a receita ou o fluxo foi aprendido; `null` no treino e nos outros tipos.
+  - `reaprendido: {run_invalidada, item: {kind, ref}} | null`: o item (re)nasceu, por outra execução real, no escopo
+    (`scope_key`) de uma evidência inválida, sem publicação de pessoa no escopo entre a marca e esse nascimento. `item` é o
+    que foi desligado; no fluxo é a própria linha, que renasce nela. Com `reaprendido`, `requires_owner` é `true` e o item
+    espera o dono em "Para aprovar". O item que o dono aprova continua com o campo, porque é a origem dele; o que nascer
+    no escopo depois dessa aprovação já não é reaprendido.
+- **`por_que_nao_publica.codigo`** ganha `reaprendido`, logo depois de `texto_de_pessoa`: `espera_o_dono` vem `true` e
+  `detalhe` traz a execução invalidada. O código não aparece no item já publicado.
+- **Detalhe** ganha `invalidar_evidencia: {run_id} | null`: a execução que a pessoa pode marcar agora (a de origem). Vem
+  `null` quando a ação não cabe: outro tipo, item sem origem, aposentado ou já marcado.
+- **`relacoes[].tipo`** ganha dois valores, ambos com `fonte` `learning_transitions: evidencia_invalida:<run>, mesmo scope_key`:
+  - `reaprende`: da receita reaprendida para a desligada, com `rotulo` "<ref> (evidência inválida da execução <run>)";
+  - `reaprendida_por`: o inverso.
+
+  O fluxo renasce na mesma linha e não ganha relação consigo.
+- **Evento `learning.needs_person`**: o `motivo` da entrada ganha `reaprendido`, na faixa B. Ele vem antes das outras
+  razões B; as da faixa C continuam vencendo.
+
+Não há migração: o tipo mora no `reason` de `learning_transitions`, com gramática fechada
+(`evidencia_invalida:r-AAAAMMDDhhmmss-xxxxxx`).

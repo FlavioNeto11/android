@@ -119,7 +119,8 @@ class AvisadorDeEspera:
         if tem and self._catalogo is not None and capability and capability != "*":
             fatos = self._catalogo.da_capability(app, capability)
         return classificar_espera(side_effect=e.side_effect, human_origin=e.human_origin, tem_catalogo=tem,
-                                  catalogo=fatos, sessao_ou_autenticacao=sessao)
+                                  catalogo=fatos, sessao_ou_autenticacao=sessao,
+                                  reaprendido=e.reaprendido is not None)
 
 
 __all__ = ["AvisadorDeEspera", "aguarda_a_pessoa"]

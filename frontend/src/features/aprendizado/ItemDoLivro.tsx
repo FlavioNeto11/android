@@ -117,9 +117,11 @@ export function AvisoDaHabilidade({ naFila }: { naFila: boolean }) {
   );
 }
 
-function DetalheDoItem({ entrada }: { entrada: EntradaDoLivro }) {
+function DetalheDoItem({ entrada, onMudou }: { entrada: EntradaDoLivro; onMudou?: () => void }) {
   const [detalhe, setDetalhe] = useState<DetalheDoLivro | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  // Uma ação do próprio detalhe (a evidência inválida, 30.23) relê o detalhe e avisa a lista.
+  const [leitura, setLeitura] = useState(0);
   useEffect(() => {
     const ctl = new AbortController();
     apiAprendizado.detalhe(entrada.kind, entrada.ref, ctl.signal)
@@ -128,10 +130,10 @@ function DetalheDoItem({ entrada }: { entrada: EntradaDoLivro }) {
         if (!ctl.signal.aborted) setErro(toApiError(e).message);
       });
     return () => ctl.abort();
-  }, [entrada.kind, entrada.ref]);
+  }, [entrada.kind, entrada.ref, leitura]);
   if (erro) return <p className={styles.erroInline}>{erro}</p>;
   if (!detalhe) return <p className={styles.secaoLead}>Carregando o detalhe do item…</p>;
-  return <DetalheRico detalhe={detalhe} />;
+  return <DetalheRico detalhe={detalhe} onMudou={() => { setLeitura((n) => n + 1); onMudou?.(); }} />;
 }
 
 interface ItemDoLivroProps {
@@ -172,6 +174,11 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
         <Badge tone="neutral" size="sm">{rotuloDoKind(e.kind)}</Badge>
         <span className={styles.itemTitulo} title={e.title || e.ref}>{e.title || e.ref}</span>
         {e.side_effect ? <Badge tone="warning" size="sm" icon={Zap} title="Tem efeito externo (mensagem, publicação, envio…)">efeito externo</Badge> : null}
+        {e.reaprendido ? (
+          <Badge tone="warning" size="sm" title={`Reaprendido depois de uma evidência inválida (execução ${e.reaprendido.run_invalidada}): a aprovação é sua`}>
+            reaprendido
+          </Badge>
+        ) : null}
         {e.state ? <StatusBadge meta={ESTADO_META[e.state]} size="sm" /> : null}
         {saude ? <Badge tone={saude.tone} size="sm" icon={saude.icon} title={saude.description} className={styles.seloDeSaude}><span className="sr-only">Saúde: </span>{saude.label}</Badge> : null}
       </div>
@@ -229,7 +236,7 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
       ) : null}
       {!memoria ? (
         <Disclosure bare summary="Detalhes, evidência e trilha" defaultOpen={abrirDetalhe}>
-          {() => <DetalheDoItem entrada={e} />}
+          {() => <DetalheDoItem entrada={e} onMudou={onMudou} />}
         </Disclosure>
       ) : null}
     </li>

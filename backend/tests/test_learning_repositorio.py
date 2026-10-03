@@ -53,7 +53,9 @@ INDICES = ("ix_attempts_failure_kind", "ux_learning_items_vivo", "ix_learning_it
            "ix_learning_transitions_item", "ix_learning_transitions_hash", "ux_learning_signals",
            "ix_learning_signals_grupo", "ix_learning_signals_run", "ux_learning_evidence", "ix_learning_evidence_item",
            "ix_learning_exposures_run", "ix_learning_backlog_estado")
-AGORA = datetime.now(UTC).replace(microsecond=0)
+# Meio-dia fixo: a semente anda minutos a partir de AGORA e o diário corta por dia; com o relógio real, uma suíte
+# perto da meia-noite UTC (suíte 5b, 03/10) punha parte das chamadas no dia seguinte e o teste falhava.
+AGORA = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
 PRECOS = {"modelo-x": [1.0, 0.1, 1.25, 5.0]}
 
 

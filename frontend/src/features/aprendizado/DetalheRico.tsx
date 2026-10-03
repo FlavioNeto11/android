@@ -1,9 +1,12 @@
 import { Zap } from 'lucide-react';
-import { createContext, useContext, useId, type ReactNode } from 'react';
+import { createContext, useContext, useId, useState, type ReactNode } from 'react';
+import { hintForError, toApiError } from '../../api/client';
 import { Badge } from '../../components/Badge';
+import { Button } from '../../components/Button';
 import { formatInt } from '../../lib/format';
 import { hashDe } from '../../lib/rotas';
 import { formatDateTime, formatQuando } from '../../lib/time';
+import { apiAprendizado } from './api';
 import { abrirApp } from './apps';
 import {
   SEM_DADO, destinoDaRelacao, metaDeSaude, metaDeVersao, rotuloDaDimensao, rotuloDaFerramenta, rotuloDaRelacao,
@@ -13,8 +16,8 @@ import {
 import {
   type AcaoDaReceita, type ConteudoDaHabilidade, type ConteudoDaLicao, type ConteudoDaReceita, type ConteudoDaTela,
   type ConteudoDoFluxo, type ConteudoDoItem, type DetalheDoLivro, type EntradaDoLivro, type EvidenciaDoLivro,
-  type LivroKind, type OrigemDaReceita, type RelacaoDoItem, type SaudeDoItem, type VersaoDoItem, type VizinhaDaReceita,
-  ORIGEM_LABEL, acoesDoItem, porQueOSistemaNaoPublica, rotuloDoEstado, rotuloDoKind,
+  type LivroKind, type OrigemDaReceita, type RelacaoDoItem, type SaudeDoItem, type TransicaoDoLivro, type VersaoDoItem,
+  type VizinhaDaReceita, ORIGEM_LABEL, acoesDoItem, porQueOSistemaNaoPublica, rotuloDoEstado, rotuloDoKind,
 } from './model';
 import styles from './Aprendizado.module.css';
 
@@ -375,6 +378,9 @@ function Evidencia({ evid }: { evid: readonly EvidenciaDoLivro[] }) {
               {` · ${formatDateTime(x.observed_at)}`}
               {x.simulated ? ' · simulada' : ''}
               {x.detail ? ` · ${x.detail}` : ''}
+              {x.invalidada ? (
+                <>{' · '}<Badge tone="danger" size="sm">execução invalidada</Badge> não conta como prova</>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -383,15 +389,27 @@ function Evidencia({ evid }: { evid: readonly EvidenciaDoLivro[] }) {
   );
 }
 
+/** O passo da trilha em palavras. `disabled → disabled` é a marca que muda só o tipo do desligamento (30.23). */
+export function passoDaTransicao(t: Pick<TransicaoDoLivro, 'from' | 'to'>): string {
+  if (t.from && t.from === t.to) return `${rotuloDoEstado(t.to)} (motivo reclassificado)`;
+  return `${t.from ? `${rotuloDoEstado(t.from)} → ` : ''}${rotuloDoEstado(t.to)}`;
+}
+
 function Historico({ trilha }: { trilha: DetalheDoLivro['trilha'] }) {
   return (
     <Secao slug="historico" titulo="Histórico">
       {trilha.length > 0 ? (
         <ol className={styles.trilha} aria-label="Trilha">
           {trilha.map((t) => (
-            <li key={t.id}>
-              {formatQuando(t.decided_at)} · {t.from ? `${rotuloDoEstado(t.from)} → ` : ''}{rotuloDoEstado(t.to)} por{' '}
-              <strong>{t.decided_by}</strong>: {t.reason}
+            <li key={t.id} data-tipo={t.tipo ?? undefined}>
+              {formatQuando(t.decided_at)} · {passoDaTransicao(t)} por <strong>{t.decided_by}</strong>:{' '}
+              {t.tipo === 'evidencia_invalida' && t.run_invalidada ? (
+                <>
+                  <Badge tone="danger" size="sm">evidência inválida</Badge>{' '}
+                  a execução <a className={styles.linkAlvo} href={hrefDaExecucao(t.run_invalidada)}>{t.run_invalidada}</a>{' '}
+                  terminou como sucesso sem comprovar o que fez
+                </>
+              ) : t.reason}
             </li>
           ))}
         </ol>
@@ -422,10 +440,90 @@ function Relacoes({ relacoes }: { relacoes: readonly RelacaoDoItem[] }) {
   );
 }
 
-function Acoes({ item }: { item: EntradaDoLivro }) {
+/** 30.23: por que o item espera o dono depois de uma evidência inválida, com o caminho até o item desligado. */
+function Reaprendimento({ item }: { item: EntradaDoLivro }) {
+  const r = item.reaprendido;
+  if (!r) return null;
+  const propria = r.item.kind === item.kind && r.item.ref === item.ref;
+  const destino = propria ? null : destinoDaRelacao(r.item);
+  const execucao = <a className={styles.linkAlvo} href={hrefDaExecucao(r.run_invalidada)}>{r.run_invalidada}</a>;
+  return (
+    <Secao slug="reaprendido" titulo="Reaprendido depois de uma evidência inválida">
+      <p className={styles.avisoDoItem} data-reaprendido>
+        {propria ? (
+          <>Esta linha tinha sido aprendida da execução {execucao}, que terminou como sucesso sem comprovar o que fez, e
+            foi desligada por isso. Outra execução real a ensinou de novo, na mesma linha.</>
+        ) : (
+          <>Reaprende o item{' '}
+            {destino ? (
+              <a className={styles.linkAlvo} href={hrefDoItem(destino.kind, destino.ref)}>
+                {rotuloDoKind(destino.kind)} {destino.ref}
+              </a>
+            ) : `${r.item.kind} ${r.item.ref}`}
+            , aprendido da execução {execucao}, que terminou como sucesso sem comprovar o que fez. Outra execução real
+            ensinou o mesmo de novo.</>
+        )}{' '}
+        O sistema não publica sozinho o que é reaprendido assim: a aprovação é sua.
+      </p>
+    </Secao>
+  );
+}
+
+/**
+ * 30.23: marcar a execução de origem como evidência inválida. Sem motivo livre (o backend grava o tipo estruturado) e
+ * sem modal: a confirmação abre no lugar do botão e diz o que acontece com o item.
+ */
+function MarcarEvidenciaInvalida({ item, runId, onFeito }: { item: EntradaDoLivro; runId: string; onFeito?: () => void }) {
+  const [aberta, setAberta] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const confirmar = async () => {
+    setEnviando(true);
+    setErro(null);
+    try {
+      await apiAprendizado.invalidarEvidencia(item.kind, item.ref, runId);
+      setAberta(false);
+      onFeito?.();
+    } catch (err) {
+      const recusa = toApiError(err);
+      setErro(`${recusa.message} ${hintForError(recusa)}`.trim());
+    } finally {
+      setEnviando(false);
+    }
+  };
+  if (!aberta) {
+    return (
+      <div className={styles.itemAcoes}>
+        <Button size="sm" variant="dangerGhost" onClick={() => setAberta(true)}>Marcar evidência inválida</Button>
+      </div>
+    );
+  }
+  return (
+    <div className={styles.confirmacao} data-evidencia-invalida>
+      <p className={styles.secaoLead}>
+        A execução <a className={styles.linkAlvo} href={hrefDaExecucao(runId)}>{runId}</a>, de onde este item foi
+        aprendido, terminou como sucesso sem comprovar o que fez?{' '}
+        {item.state === 'disabled'
+          ? 'O item já está desligado: a marca só registra este motivo na trilha.'
+          : 'O item é desligado agora.'}{' '}
+        Ele não volta por essa execução. Se outra execução real ensinar o mesmo, ele renasce como candidato e espera a
+        sua aprovação.
+      </p>
+      {erro ? <p className={styles.erroInline} role="alert">{erro}</p> : null}
+      <div className={styles.decisaoAcoes}>
+        <Button size="sm" variant="danger" loading={enviando} onClick={() => void confirmar()}>
+          Confirmar evidência inválida
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setAberta(false)} disabled={enviando}>Cancelar</Button>
+      </div>
+    </div>
+  );
+}
+
+function Acoes({ item, invalidar, onMudou }: { item: EntradaDoLivro; invalidar: string | null; onMudou?: () => void }) {
   const acoes = acoesDoItem(item);
   const porQue = porQueOSistemaNaoPublica(item);
-  if (acoes.length === 0 && !porQue) return null;
+  if (acoes.length === 0 && !porQue && !invalidar) return null;
   return (
     <Secao slug="acoes" titulo="O que você pode fazer">
       {acoes.length > 0 ? (
@@ -434,6 +532,7 @@ function Acoes({ item }: { item: EntradaDoLivro }) {
         </p>
       ) : null}
       {porQue ? <p className={styles.secaoLead}>O sistema não publica sozinho: {porQue}.</p> : null}
+      {invalidar ? <MarcarEvidenciaInvalida item={item} runId={invalidar} onFeito={onMudou} /> : null}
     </Secao>
   );
 }
@@ -444,7 +543,7 @@ function Acoes({ item }: { item: EntradaDoLivro }) {
  * As seções do §11.2 do desenho, só as aplicáveis: o que o backend não mandou (campo ausente ou `null`) não ganha
  * seção, e o que ele mandou como "sem dado" aparece assim, nunca como zero.
  */
-export function DetalheRico({ detalhe }: { detalhe: DetalheDoLivro }) {
+export function DetalheRico({ detalhe, onMudou }: { detalhe: DetalheDoLivro; onMudou?: () => void }) {
   const item = detalhe.item;
   const conteudo = detalhe.conteudo ?? null;
   const saude = item.saude ?? null;
@@ -457,6 +556,7 @@ export function DetalheRico({ detalhe }: { detalhe: DetalheDoLivro }) {
     <PrefixoDeIds.Provider value={prefixo}>
       <div className={styles.detalhe}>
         <Identidade item={item} conteudo={conteudo} />
+        <Reaprendimento item={item} />
         {conteudo ? (
           <Secao slug="conteudo" titulo="Conteúdo"><Conteudo c={conteudo} /></Secao>
         ) : null}
@@ -465,7 +565,7 @@ export function DetalheRico({ detalhe }: { detalhe: DetalheDoLivro }) {
         <Evidencia evid={evid} />
         <Historico trilha={trilha} />
         {relacoes.length > 0 ? <Relacoes relacoes={relacoes} /> : null}
-        <Acoes item={item} />
+        <Acoes item={item} invalidar={detalhe.invalidar_evidencia?.run_id ?? null} onMudou={onMudou} />
       </div>
     </PrefixoDeIds.Provider>
   );
