@@ -6,23 +6,29 @@ from __future__ import annotations
 import json
 import secrets
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from app.db import Database, Row
 from app.models import Plan
 from app.modules.learning.application.validacao import NovoPedido, Origem, PedidoVivo
-from app.modules.learning.domain.validacao import EstadoDoPedido, Grupo, Motivo
+from app.modules.learning.domain.validacao import EstadoDoPedido, Grupo, Motivo, ProvaAnterior, marca_da_evidencia
 from app.modules.learning.domain.vocabulario import LivroKind, Posicao
 from app.modules.learning.infrastructure import linhas
 from app.planning import costs
+from app.modules.skills.domain.document import content_hash
 from app.taskqueue.flows import FlowStore
 from app.taskqueue.recipes import hash_generico_da_etapa, para_hash, step_template_hash
-from app.util import to_iso
+from app.util import parse_iso, to_iso
 
 #: O pedido `rodando` cuja execução não assentou neste prazo (ficou em `needs_input`, o digest não passou) expira.
 RODANDO_NO_MAXIMO_H = 6
 #: A execução que já assentou (o digest roda depois disso; `needs_input` também encerra a execução).
 ASSENTADAS = frozenset({"completed", "completed_with_issues", "failed", "cancelled", "needs_input"})
+
+
+def _falta(r: Row) -> tuple[str, ...]:
+    bruto = linhas.json_legado(linhas.texto_ou_nulo(r, "falta") or "[]")
+    return tuple(str(f) for f in bruto) if isinstance(bruto, list) else ()
 
 
 def _pedido(r: Row) -> PedidoVivo:
@@ -31,7 +37,7 @@ def _pedido(r: Row) -> PedidoVivo:
                       grupo=Grupo(linhas.texto(r, "grupo")), comando=linhas.texto(r, "comando"),
                       aparelho_excluido=linhas.texto_ou_nulo(r, "aparelho_excluido"),
                       estado=EstadoDoPedido(linhas.texto(r, "estado")), run_id=linhas.texto_ou_nulo(r, "run_id"),
-                      created_at=linhas.texto(r, "created_at"))
+                      created_at=linhas.texto(r, "created_at"), falta=_falta(r))
 
 
 class RegistroDeValidacoesSql:
@@ -114,7 +120,9 @@ class RegistroDeValidacoesSql:
         """Os pedidos que voltaram com resposta para o curador: a favor (`feita`) e, desde o 30.36, contra
         (`evidencia_contra`) e a variante sem caminho (`sem_caminho`, SÓ da receita: a marca "variante sem caminho" do
         dossiê só existe para ela; o fluxo sem caminho voltaria ao curador sem marca, ele pediria evidência de novo e o
-        laço seria pago). A forma e o "sem evidência" não respondem nada."""
+        laço seria pago). A forma e o "sem evidência" não respondem nada, nem os motivos da prova que não vale (30.42:
+        `efeito_repetido`, `ponto_de_partida`, `ator_sem_acao`) e as recusas ao despachar (`limite_de_provas`,
+        `sem_aparelho_novo`): nenhuma evidência chegou."""
         return [_pedido(r) for r in self._db.query(
             "SELECT * FROM learning_validations WHERE revisao_nova_id IS NULL AND (estado='feita'"
             " OR (estado='recusada' AND (motivo=? OR (motivo=? AND item_kind=?)))) ORDER BY feito_em, id",
@@ -147,11 +155,10 @@ class RegistroDeValidacoesSql:
                 " AND NOT EXISTS (SELECT 1 FROM learning_validations n WHERE n.item_ref = v.item_ref"
                 " AND n.created_at > v.created_at) ORDER BY v.created_at, v.id",
                 (LivroKind.FLUXO.value, Motivo.SEM_EVIDENCIA.value, Motivo.DIVERGENCIA_DE_FORMA.value)):
-            falta = linhas.json_legado(linhas.texto_ou_nulo(r, "falta") or "[]")
             saida.append(NovoPedido(
                 review_id=linhas.texto(r, "review_id"), item_ref=linhas.texto(r, "item_ref"),
                 item_kind=linhas.texto(r, "item_kind"), scope_app=linhas.texto(r, "scope_app"),
-                grupo=linhas.texto(r, "grupo"), falta=tuple(str(f) for f in falta) if isinstance(falta, list) else (),
+                grupo=linhas.texto(r, "grupo"), falta=_falta(r),
                 run_origem=linhas.texto_ou_nulo(r, "run_origem"), comando=linhas.texto(r, "comando"),
                 aparelho_excluido=linhas.texto_ou_nulo(r, "aparelho_excluido"), estado=EstadoDoPedido.PENDENTE.value,
                 motivo=None, expira_em=""))
@@ -226,6 +233,42 @@ class FontesDaValidacaoSql:
                 " WHERE s.run_id=? AND a.recipe_id=? AND a.status='succeeded'", (run_id, int(ref))) is not None
             return Posicao.FOR if feita else None
         return None
+
+    def invalida_da_execucao(self, item_ref: str, run_id: str) -> str | None:
+        """30.42: o `detail` da linha `invalida` que a execução de prova deixou no item (o veredito grava UMA por
+        execução). `""` quando a linha não tem detalhe; `None` sem a linha. Mais de uma (a reclassificação do 30.42 grava
+        a irmã com a mesma origem) lê a mais antiga, com desempate pelo id."""
+        r = self._db.one("SELECT detail FROM learning_evidence WHERE item_ref=? AND run_id=? AND stance='invalida'"
+                         " ORDER BY id LIMIT 1", (item_ref, run_id))
+        return None if r is None else (linhas.texto_ou_nulo(r, "detail") or "")
+
+    def versao_do_conteudo(self, item_ref: str) -> str | None:
+        """30.42: `content_hash(plano do fluxo)[:12]`, a marca que o veredito põe na frente do `detail` da evidência (o
+        mesmo caminho de `FontesSql._fluxo`: o mesmo hash). `None` fora do fluxo, sem o fluxo ou com plano ilegível."""
+        kind, _, ref = item_ref.partition(":")
+        if kind != "fluxo" or not ref:
+            return None
+        r = self._db.one("SELECT plan FROM flows WHERE id=?", (ref,))
+        plano = linhas.json_legado(linhas.texto(r, "plan")) if r is not None else None
+        return content_hash(plano)[:12] if plano is not None else None
+
+    def provas_do_item(self, item_ref: str) -> list[ProvaAnterior]:
+        """30.42: as execuções de prova do fluxo (pedido com execução cuja `runs.prova_fluxo_id` está preenchido, de
+        qualquer estado: a que expirou rodando também gastou), da mais antiga à mais nova, com o aparelho e a marca de
+        cada linha de evidência que a execução deixou no item (nenhuma linha = sem marcas)."""
+        if not item_ref.startswith("fluxo:"):
+            return []
+        saida: list[ProvaAnterior] = []
+        for v in self._db.query(
+                "SELECT v.run_id, v.aparelho, COALESCE(v.feito_em, v.updated_at) AS quando FROM learning_validations v"
+                " JOIN runs r ON r.id = v.run_id WHERE v.item_ref=? AND v.run_id IS NOT NULL"
+                " AND r.prova_fluxo_id IS NOT NULL ORDER BY v.created_at, v.id", (item_ref,)):
+            marcas = tuple(marca_da_evidencia(linhas.texto_ou_nulo(e, "detail")) for e in self._db.query(
+                "SELECT detail FROM learning_evidence WHERE item_ref=? AND run_id=? ORDER BY id",
+                (item_ref, linhas.texto(v, "run_id"))))
+            quando = parse_iso(linhas.texto(v, "quando")) or datetime.now(UTC)
+            saida.append(ProvaAnterior(aparelho=linhas.texto_ou_nulo(v, "aparelho"), quando=quando, marcas=marcas))
+        return saida
 
     def caminho_da_receita(self, item_ref: str, comando: str) -> bool:
         """O plano do fluxo ativo do comando chega à etapa da receita: o `step_hash` dela é a identidade de alguma etapa
