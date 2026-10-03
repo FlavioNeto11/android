@@ -11,6 +11,7 @@ Os ajustes chegam como dado (`Ajustes`), não como o `Config` do central: a apli
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal, Protocol
@@ -20,6 +21,7 @@ from app.modules.learning.domain.curador import Dossie
 from app.modules.learning.domain.efeito import Exposicao
 from app.modules.learning.domain.espera import AvisoDeEspera, FatosDoCatalogo
 from app.modules.learning.domain.livro import EntradaDoLivro, ItemDeAprendizado, NovoItem, Transicao
+from app.modules.learning.domain.parecer import RevisaoGravada
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.saude import LimiaresDeSaude
 from app.modules.learning.domain.relacoes import Sucessora
@@ -320,6 +322,16 @@ class LeituraDaJanela:
     revisoes_de_hoje: int
 
 
+@dataclass(frozen=True, slots=True)
+class PedidoGravado:
+    """Um pedido de revisão de pessoa (sinal `pediu_revisao`, 30.17): o item e quando."""
+
+    item_ref: str
+    kind: str
+    ref: str
+    em: str
+
+
 class RegistroDeRevisoes(Protocol):
     """`learning_reviews` (069): uma linha por revisão, nunca purgada."""
 
@@ -333,6 +345,25 @@ class RegistroDeRevisoes(Protocol):
         ...
 
     def janela(self, agora: datetime, dias: int) -> LeituraDaJanela: ...
+    def pedidos(self, desde: datetime) -> list[PedidoGravado]:
+        """Os pedidos de revisão de pessoa desde a data (a fonte do gatilho `pedido_da_pessoa`)."""
+        ...
+
+
+class RegistroDePareceres(Protocol):
+    """O lado de `learning_reviews` que a pessoa vê e decide (30.17). A transição e a decisão andam juntas
+    (`transacao`); a decisão é CAS."""
+
+    def transacao(self) -> AbstractContextManager[None]: ...
+    def uma(self, review_id: str) -> RevisaoGravada | None: ...
+    def do_item(self, item_ref: str, limite: int) -> list[RevisaoGravada]: ...
+    def sem_decisao(self, item_refs: Sequence[str]) -> dict[str, list[RevisaoGravada]]: ...
+    def do_dossie(self, item_ref: str, dossie_hash: str) -> RevisaoGravada | None: ...
+    def decidir(self, review_id: str, *, decisao_final: str, decidido_por: str, transicao_id: int | None,
+                override: bool, override_motivo: str | None) -> bool: ...
+    def decidir_transicao(self, review_id: str, transicao_id: int | None) -> None: ...
+    def ultima_transicao(self, item_ref: str) -> int: ...
+    def transicao_depois(self, item_ref: str, depois_de: int) -> int | None: ...
 
 
 class FonteDeDossies(Protocol):
