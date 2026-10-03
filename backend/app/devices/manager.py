@@ -1330,7 +1330,7 @@ class DeviceManager:
     #: pequeno e global do backend (como `limits`).
     CHAVE_DAS_PAUSAS = "repair_pauses"
 
-    def _pausas_gravadas(self) -> dict[str, Any]:
+    def _pausas_gravadas(self) -> dict[str, object]:
         mapa = loads(self.db.scalar("SELECT value FROM settings WHERE key=?", (self.CHAVE_DAS_PAUSAS,)), {})
         return mapa if isinstance(mapa, dict) else {}
 
