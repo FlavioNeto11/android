@@ -4178,3 +4178,32 @@ curador não leva `etapa`.
 
 Prova `simulated`: `tests/test_learning_capability_na_linha.py`, `frontend/src/features/aprendizado/model.test.ts`,
 `AprendizadoPage.test.tsx`, `SaudeDoApp.test.tsx` e `falhasTexto.test.ts`.
+
+## Adendo v0.82 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — `GET /api/apps/{pacote}/conhecimento`: a prova do conhecimento de app no ar (RA-24)
+
+Rota nova, só leitura, sem efeito. O parâmetro é o **pacote** Android (`com.instagram.android`), e não o `app_id`.
+
+```json
+{"app": "com.instagram.android", "processo_iniciado_em": "2026-10-03T05:00:00.000Z",
+ "arquivos": [{"nome": "telas.yaml", "caminho": "backend/app/conhecimento/apps/com.instagram.android/telas.yaml",
+               "bytes": 21345, "fim_de_linha": "crlf", "sha256": "…", "git_blob": "…",
+               "modificado_em": "2026-10-03T04:58:12.000Z", "mudou_depois_do_inicio": false}]}
+```
+
+- `arquivos`: cada `*.yaml` da pasta `app/conhecimento/apps/<pacote>/`, em ordem de nome.
+- `sha256` e `git_blob` são do texto que o carregador lê (CRLF e CR solto viram LF, como no `read_text`), e não dos
+  bytes do disco. O checkout do central tem `core.autocrlf=true` (CRLF no disco, LF no Git). Assim `git_blob` é o de
+  `git hash-object <arquivo>` no checkout e o de `git rev-parse <commit>:<caminho>`, e confere com o `commit` de
+  `GET /api/health` sem abrir a máquina.
+- `bytes` e `fim_de_linha` (`crlf`, `lf` ou `misto`) são do disco, como está.
+- `mudou_depois_do_inicio`: o arquivo foi gravado depois de o processo subir (`processo_iniciado_em`). Os carregadores
+  leem cada arquivo uma vez por processo, então o disco pode não ser o que está em memória; só um reinício alinha.
+- 404 `not_found` quando o pacote não tem a forma de pacote (o nome vira caminho) ou a pasta não tem YAML.
+
+Junto, a versão do formato passa a ser conferida na carga, como a `contract_version` do catálogo. `telas.yaml` e
+`sessao.yaml` só aceitam `versao: 1` (`VERSOES_DE_TELAS`, `VERSOES_DE_SESSAO`). Ausente, vale 1. Antes, `telas.yaml`
+trocava qualquer não inteiro por 1 e aceitava qualquer inteiro, e `sessao.yaml` aceitava qualquer inteiro ≥ 1. Um
+arquivo de versão nova lido por código velho seria entendido pela metade, sem aviso.
+
+Prova `simulated`: `tests/test_prova_do_conhecimento.py`, com `git_blob` comparado a `git hash-object` de cada YAML
+do repositório e a recusa de `versao` 2, 0, 1.0, `true` e `"1"`.
