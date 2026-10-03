@@ -160,9 +160,13 @@ def test_evidencia_contraria_real_depois_devolve_e_confirmar_de_novo_tira(mundo:
     assert ref not in _fila(mundo)
     _contra(mundo, ref, "signal:4")
     assert ref in _fila(mundo)
+    legado = mundo.servico.legado_decidido()
+    assert ref in legado.contestadas and ref not in legado.confirmacoes        # o painel diz por que voltou
     mundo.agora += timedelta(minutes=5)
     mundo.servico.confirmar_que_fica(R, rid, by=PESSOA, motivo="vi a evidência e fica")
     assert ref not in _fila(mundo)
+    legado = mundo.servico.legado_decidido()
+    assert ref in legado.confirmacoes and ref not in legado.contestadas
     assert [t.reason for t in mundo.repo.trilha(ref)] == [CONFIRMADO_QUE_FICA, "confirmado que fica: vi a evidência e fica"]
 
 
@@ -249,6 +253,10 @@ async def test_rota_confirmar(cliente: httpx.AsyncClient, mundo: Mundo) -> None:
     assert com_motivo.json()["trilha"][-1]["motivo_da_pessoa"] == "conferi o alvo"
     fila = await cliente.get("/api/aprendizado/revisar")
     assert rid not in {i["ref"] for i in fila.json()["itens"]}
+    assert all(i["em_revisar"] and i["confirmado"] is None for i in fila.json()["itens"])
+    [no_livro] = [i for i in (await cliente.get("/api/aprendizado?kind=receita")).json()["itens"] if i["ref"] == rid]
+    assert no_livro["em_revisar"] is False
+    assert no_livro["confirmado"] == {"por": t["decided_by"], "em": t["decided_at"], "motivo": None}
     de_novo = await cliente.post(f"/api/aprendizado/receita/{rid}/confirmar", json={"motivo": "outra vez"})
     assert de_novo.status_code == 409 and de_novo.json()["detail"]["code"] == "state_conflict"
     licao = await cliente.post(f"/api/aprendizado/licao/{mundo.licao_a()}/confirmar", json={})

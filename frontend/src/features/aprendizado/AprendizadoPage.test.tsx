@@ -247,6 +247,31 @@ describe('página Aprendizado', () => {
     expect(loadJson('settings.section.habilidades', isBoolean)).toBe(true);
   });
 
+  it('no Aprendido, o legado confirmado perde o "vale revisar" e diz quem confirmou (30.24)', async () => {
+    const confirmado = { ...LEGADO, em_revisar: false,
+                         confirmado: { por: 'Ana Ribeiro', em: '2026-10-03T05:00:00Z', motivo: 'conferi o alvo' } };
+    const naFila = { ...LEGADO, ref: '41', em_revisar: true, confirmado: null };
+    backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [confirmado, naFila], total: 2,
+                                                            contagem: { receita: { published: 2 } } }));
+    await montar();
+    await click(byRole('tab', /^Aprendido/, container));
+    await waitFor(() => expect(item('receita:40')).toBeTruthy());
+    expect(text(item('receita:40'))).not.toContain('vale revisar');
+    expect(text(item('receita:40'))).toContain('Confirmado que fica por Ana Ribeiro');
+    expect(text(item('receita:40'))).toContain('conferi o alvo');
+    expect(text(item('receita:41'))).toContain('vale revisar');
+    expect(text(item('receita:41'))).not.toContain('Confirmado que fica');
+  });
+
+  it('"Revisar" diz por que o item confirmado voltou: chegou evidência contrária (30.24)', async () => {
+    backend.on('GET', /^\/api\/aprendizado\/revisar$/, () => json({ itens: [{ ...LEGADO, em_revisar: true, confirmado: null,
+      confirmacao_contestada: { por: 'Ana Ribeiro', em: '2026-10-03T05:00:00Z', motivo: null } }], total: 1 }));
+    await montar();
+    await waitFor(() => expect(item('receita:40')).toBeTruthy());
+    expect(text(item('receita:40'))).toContain('Voltou para revisar: confirmado que fica por Ana Ribeiro');
+    expect(text(item('receita:40'))).toContain('chegou evidência contrária');
+  });
+
   it('no Aprendido, a habilidade aponta para onde o ciclo dela fica, sem botão do livro', async () => {
     backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [{ ...HABILIDADE, state: 'published', native_status: 'published' }],
                                                             total: 1, contagem: { habilidade: { published: 1 } } }));

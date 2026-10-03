@@ -631,7 +631,8 @@ O gesto da pessoa que mantém o legado de "Revisar" (receita ou fluxo publicado,
   manter, observar e pedir evidência; recusa desativar e rebaixar.
 - **No painel.** Em "Revisar", "Confirmar que fica" ao lado de "Desligar", com o motivo opcional, e "Confirmar
   selecionados" em lote. No histórico do item, a linha aparece como "Confirmado que fica" com o motivo da pessoa
-  (`motivo_da_pessoa`, já sem o prefixo).
+  (`motivo_da_pessoa`, já sem o prefixo). Fora de "Revisar" (`em_revisar` falso) o aviso "vale revisar" sai e o item
+  diz quem confirmou (`confirmado`); o que voltou diz por quê (`confirmacao_contestada`).
 
 ## Obsolescência (30.14)
 

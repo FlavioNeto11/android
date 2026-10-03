@@ -122,6 +122,17 @@ def dias_intactos(corte: datetime, agora: datetime) -> tuple[str, str] | None:
     return inicio.strftime("%Y-%m-%d"), fim.strftime("%Y-%m-%d")
 
 
+@dataclass(frozen=True, slots=True)
+class LegadoDecidido:
+    """Para "Revisar" e para o painel (30.24): os itens que uma pessoa já decidiu (`decididos_para_revisar`), as
+    confirmações que valem (a última decisão de pessoa é a confirmação, e nada a contestou depois) e as contestadas
+    (a evidência contrária chegou depois: o item voltou para a fila e o painel diz por quê)."""
+
+    decididos: frozenset[str]
+    confirmacoes: Mapping[str, Transicao]
+    contestadas: Mapping[str, Transicao] = field(default_factory=dict)
+
+
 class LearningService:
     def __init__(self, repo: RepositorioDeAprendizado, fontes: FontesDoLivro, triagem: TriagemDeTexto, *,
                  ajustes: Callable[[], Ajustes], relogio: Callable[[], datetime],
@@ -438,17 +449,20 @@ class LearningService:
     def revisar(self) -> tuple[EntradaDoLivro, ...]:
         """"Revisar": o legado ativo com efeito anterior ao D1, que nenhuma pessoa decidiu pelo livro ainda, ou que ela
         confirmou e uma evidência contrária real contestou depois (30.24)."""
-        decididos = self._decididos_para_revisar()
+        decididos = self.legado_decidido().decididos
         return tuple(e for e in self._fontes.receitas() + self._fontes.fluxos() if a_revisar(e, decididos))
 
     def em_revisar(self, e: EntradaDoLivro) -> bool:
-        return a_revisar(e, self._decididos_para_revisar())
+        return a_revisar(e, self.legado_decidido().decididos)
 
-    def _decididos_para_revisar(self) -> frozenset[str]:
+    def legado_decidido(self) -> LegadoDecidido:
         ultimas = self._repo.ultimas_decisoes_da_pessoa((LivroKind.RECEITA, LivroKind.FLUXO))
         # Só as confirmações precisam da evidência (a regra do retorno é delas): poucas, uma leitura por item.
         evidencias = {ref: self._repo.evidencias(ref) for ref, t in ultimas.items() if e_confirmacao(t)}
-        return decididos_para_revisar(ultimas, evidencias)
+        decididos = decididos_para_revisar(ultimas, evidencias)
+        confirmacoes = {ref: t for ref, t in ultimas.items() if e_confirmacao(t)}
+        return LegadoDecidido(decididos, {r: t for r, t in confirmacoes.items() if r in decididos},
+                              {r: t for r, t in confirmacoes.items() if r not in decididos})
 
     # ================================================================== transições
     def _modo_publica(self, kind: LivroKind, app: str = "") -> bool:

@@ -127,8 +127,10 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
   const titulo = tituloDaLista ?? tituloDoItem(e);
   const porQue = porQueOSistemaNaoPublica(e);
   // Publicado e ainda "espera o dono": é item anterior à regra de aprovação (efeito externo publicado antes do D1).
-  const anterior = e.state === 'published' && !!e.por_que_nao_publica?.espera_o_dono;
-  const espera = e.por_que_nao_publica?.espera_o_dono ? porQue : null;
+  // Já decidido por uma pessoa (confirmou que fica, religou: `em_revisar` falso, 30.24), o aviso sai.
+  const publicadoAntes = e.state === 'published' && !!e.por_que_nao_publica?.espera_o_dono;
+  const anterior = publicadoAntes && e.em_revisar !== false;
+  const espera = e.por_que_nao_publica?.espera_o_dono && !(publicadoAntes && e.em_revisar === false) ? porQue : null;
   const naoPublica = e.por_que_nao_publica?.espera_o_dono ? null : porQue;
   const detalhe = rotuloDoDetalhe(e.detail);
   const memoria = e.kind === 'memoria';
@@ -180,6 +182,20 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
         </p>
       ) : null}
       {naoPublica ? <p className={styles.notaDoItem}>O sistema não publica sozinho: {naoPublica}</p> : null}
+      {e.confirmado ? (
+        <p className={styles.notaDoItem}>
+          Confirmado que fica por {e.confirmado.por},{' '}
+          <span title={formatDateTime(e.confirmado.em)}>{formatQuando(e.confirmado.em)}</span>
+          {e.confirmado.motivo ? `: ${e.confirmado.motivo}` : ''}. Volta para Revisar se aparecer evidência contrária.
+        </p>
+      ) : null}
+      {e.confirmacao_contestada && e.em_revisar ? (
+        <p className={styles.notaDoItem}>
+          Voltou para revisar: confirmado que fica por {e.confirmacao_contestada.por},{' '}
+          <span title={formatDateTime(e.confirmacao_contestada.em)}>{formatQuando(e.confirmacao_contestada.em)}</span>,
+          e depois chegou evidência contrária (veja em Detalhes, evidência e trilha).
+        </p>
+      ) : null}
       {e.parecer ? <ParecerNaLinha p={e.parecer} /> : null}
       {extra}
       {acoes.length > 0 && !aberta ? (

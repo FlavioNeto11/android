@@ -37,6 +37,13 @@ export function isEstadoDoLivro(v: unknown): v is EstadoDoLivro {
 }
 
 /** Uma linha do livro, como `presentation/livro.py::_entrada` devolve. */
+/** 30.24: "Confirmar que fica" lido pelo backend (quem, quando e o motivo livre, sem o prefixo da trilha). */
+export interface Confirmacao {
+  por: string;
+  em: string;
+  motivo: string | null;
+}
+
 export interface EntradaDoLivro {
   kind: LivroKind;
   /** Id na fonte: receita = número, habilidade = `id@versão`, memória = perfil, item = `li-…`. */
@@ -73,6 +80,12 @@ export interface EntradaDoLivro {
   nasceu_de?: string | null;
   /** (Re)nasceu no escopo de uma evidência inválida (30.23): espera o dono. Derivado no backend. */
   reaprendido?: Reaprendido | null;
+  /** 30.24, receita e fluxo: está em "Revisar" agora (`false`: uma pessoa já decidiu o legado). */
+  em_revisar?: boolean;
+  /** 30.24: a confirmação que vale ("Confirmar que fica"), com o motivo livre de quem confirmou. */
+  confirmado?: Confirmacao | null;
+  /** 30.24: a confirmação que a evidência contrária derrubou (o item voltou para "Revisar" por isso). */
+  confirmacao_contestada?: Confirmacao | null;
   /** O parecer pendente da IA (30.17): só nas listas Para aprovar e Revisar, e só com o curador em `on`. */
   parecer?: ParecerNaFila | null;
 }
