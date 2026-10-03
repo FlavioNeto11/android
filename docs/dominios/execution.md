@@ -412,6 +412,42 @@ com `attempts == 1`, `sem_ator`), `tests/test_flows_account_label.py::test_fluxo
 `tests/test_aproveitamento.py`. `not_run`: o efeito de latência no ambiente real (`decide` por etapa julgada em
 `/api/usage` antes e depois, `uses` dos fluxos com `{account_label}`, `verify` por etapa).
 
+## Caminho rápido 2: falha que sai cedo, abrir o app sem IA e retentativa no barato (LT-5, LT-6, LT-12; item 29.45, 03/10/2026)
+
+Do mesmo relatório de latência. Nenhum dos três converte falha em sucesso nem pula a prova.
+
+- **LT-5, "não" em tela parada sai cedo.** No `_verify`, depois de um "não" do juiz, 3 sondagens seguidas na mesma
+  assinatura de árvore (`SONDAGENS_DA_TELA_PARADA`, ~4,5 s com `judge_wait_s` de 1,5) encerram a verificação com o mesmo
+  veredito e o motivo na evidência. Antes ela esperava o orçamento inteiro (15 s; 60 s `patient`), mas a 2ª chamada só
+  vem com a tela mudada; em 7 d as "NÃO comprovada" tinham parede mediana de 16,9 s. Assinatura nova reabre a contagem.
+  Não sai cedo onde a mudança tem dono fora da tela: `patient` com `pending_marks` declaradas no catálogo (ADR-055) e
+  nível de entrega acima de `sent` (entregue/lida chega sem a árvore mudar antes). Efeito disparado segue `uncertain`.
+- **LT-6, `open_app` sem IA.** A etapa cuja pós-condição é `app_foreground` abre o app pelo executor antes de consultar o
+  ator, pelo caminho da reabertura pós-ANR (`open_app` + foco lido), como estratégia `deterministic` em
+  `attempts.strategy`. Uma vez por tentativa, só sem efeito, sem receita conduzindo e com o pacote entre os configurados.
+  A linha "aberto pelo executor, sem IA" diz o tempo e o foco; a etapa fecha pelo atalho do LT-1 como `sem_ator`. Pedido
+  que falha ou foco que não chega: a volta seguinte não comprova e o ator assume na mesma tentativa. A abertura entra na
+  regra do ANR como a da IA entrava (uma reabertura; a 2ª morte para a etapa). `esperar_foco` sonda a 0,5 s nos primeiros
+  5 s (`INTERVALO_INICIAL_DO_FOCO_S`, `JANELA_INICIAL_DO_FOCO_S`), depois volta aos 2 s.
+  - Em modo sombra essas etapas não alimentam o `_veredito_da_sombra`, porque a IA não decide nelas. Uma candidata de
+    `open_app` não promove por sombra.
+  - O `open_app` do comando do painel (`manager.open_app`, com HOME e foco pelo adb) não mudou: está fora do caminho da
+    etapa.
+- **LT-12, retentativa no tier 0.** A nova tentativa inteira subia ao modelo de escalonamento. Agora ela começa no tier 0
+  e sobe, até o fim da tentativa, na 1ª decisão do barato que:
+  - repetir, na mesma tela estrutural, a última ação da tentativa anterior (onde ela parou); ou
+  - dispararia o efeito.
+
+  Essa decisão é descartada antes de agir (não vira linha em `actions`) e refeita no tier 1, com
+  `ai_calls.escalate` = `nova_tentativa`. A última ação de cada etapa fica na memória do processo
+  (`_ultima_acao_da_etapa`) e some no desfecho final. Depois de reiniciado o backend, a retentativa começa no tier 0 sem
+  esse gatilho; os outros (erros seguidos, ciclo, efeito por risco) seguem valendo.
+
+Prova `simulated`: `tests/test_caminho_rapido_2.py` (LT-5 com o `_verify` direto; LT-6 e LT-12 no Harness). Os testes de
+`test_anr_sinal_proprio.py` e `test_estados_de_ia.py::test_recusa_na_decisao...`, cujo gancho é a decisão da IA que abre o
+app, desligam `OPEN_APP_SEM_IA`. `not_run`, que é o aceite: "NÃO comprovada" mediana 16,9 → ≤ 7 s; `open_app` mediana
+2,2 → ≤ 1,5 s; etapa `app_foreground` com decide = 0; motivo "nova tentativa" < 10/semana.
+
 ## VERIFY pela porta de capability
 
 - `StepExecutor.__init__` cria `self.capabilities = CatalogCapabilityProvider(CatalogCapabilityRegistry(...))`.

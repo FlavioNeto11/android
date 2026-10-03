@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — caminho rápido 2: LT-5, LT-6 e LT-12 (item 29.45, branch `feat/lt-5-6-12-caminho-rapido-2`)
+
+- **LT-5.** O "não" em tela parada encerra a verificação em 3 sondagens (`SONDAGENS_DA_TELA_PARADA`), sem esperar o
+  orçamento. Não vale para `patient` com `pending_marks` declaradas nem para nível de entrega acima de `sent`.
+- **LT-6.**
+  - O executor abre o app da etapa `app_foreground` sem IA, como estratégia `deterministic` (`OPEN_APP_SEM_IA`): uma vez
+    por tentativa e sem receita conduzindo. Se não comprovar, o ator assume na mesma tentativa.
+  - `esperar_foco` sonda a 0,5 s nos primeiros 5 s.
+  - A partir do deploy 8, essas etapas não alimentam o `_veredito_da_sombra`. A candidata v4 de `open_app` do QA não
+    promove por sombra.
+- **LT-12.** A nova tentativa começa no tier 0 e sobe na 1ª decisão que repete, na mesma tela estrutural, onde a anterior
+  parou, ou que dispararia o efeito. Essa decisão é descartada antes de agir. A memória fica no processo: depois de um
+  restart, tier 0 sem esse gatilho.
+- **Contrato**: adendo v0.86 (`attempts.strategy` com `deterministic`; `escalate` = `nova_tentativa` mais estreito).
+- **Prova `simulated`**: `tests/test_caminho_rapido_2.py`. Os testes de ANR e de recusa, cujo gancho é a decisão da IA
+  que abre o app, desligam `OPEN_APP_SEM_IA`. `not_run`: o aceite de latência no real.
 ## 2026-10-03 — 30.29: o fluxo com variável de execução no plano casa também pela habilidade (branch feat/30-29-fluxos-com-variaveis-de-execucao)
 
 - `skills/domain/matching.py::bind_template_parameters` deixa de exigir do comando os RESERVED (`account_label`,

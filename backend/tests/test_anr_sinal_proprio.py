@@ -38,6 +38,7 @@ from app.integrations.app_declarado.sessao import Outcome as SessaoOutcome
 from app.models import Plan
 from app.planning.provider import AIError, PlanRequest, Usage
 from app.planning.simulated_provider import SimulatedProvider
+from app.taskqueue import executor as executor_mod
 
 from .conftest import CountingProvider, Harness
 from .fake_device import FakeQaDevice
@@ -259,6 +260,14 @@ async def test_espera_do_foco_nao_passa_do_prazo_da_etapa(monkeypatch: pytest.Mo
 
 
 # ---------------------------------------------------------------- executor: uma reabertura, e só uma
+@pytest.fixture(autouse=True)
+def abertura_pela_ia(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Os cenários deste arquivo têm como gancho a decisão da IA que abre o app ("uma decisão da IA, a que abriu"). O
+    LT-6 (29.45) abre o app da etapa `app_foreground` sem IA; a regra do ANR com essa abertura está provada em
+    `test_caminho_rapido_2.py`."""
+    monkeypatch.setattr(executor_mod, "OPEN_APP_SEM_IA", False)
+
+
 @pytest.fixture
 def espera_curta(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(tools, "ESPERA_DO_FOCO_S", 0.3)

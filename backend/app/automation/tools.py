@@ -21,6 +21,11 @@ from .hierarchy import ContaTravada, UiElement, UiTree
 #: `INTERVALO_DO_FOCO_S`. Lidos na hora da chamada (os testes os encurtam).
 ESPERA_DO_FOCO_S = 60.0
 INTERVALO_DO_FOCO_S = 2.0
+#: LT-6 (caminho rápido 2): nos primeiros segundos a sondagem é mais fina. Em 7 d o `open_app` mediu 2,2 s de mediana —
+#: exatamente um ciclo de 2 s: a 1ª leitura logo após o `am start` ainda não vê o app, e a 2ª só vinha 2 s depois. A
+#: partida quente chega em < 1 s; a fria (28–51 s) volta ao intervalo largo depois desta janela.
+INTERVALO_INICIAL_DO_FOCO_S = 0.5
+JANELA_INICIAL_DO_FOCO_S = 5.0
 
 
 async def esperar_foco(ler: Callable[[], Awaitable[tuple[str | None, str | None]]], pacote: str, *,
@@ -31,7 +36,8 @@ async def esperar_foco(ler: Callable[[], Awaitable[tuple[str | None, str | None]
     foco é só leitura: erro de leitura é "ainda não"; tempo esgotado na fila do aparelho encerra a espera (a próxima
     leitura ficaria atrás da que não voltou).
     """
-    limite = time.monotonic() + ESPERA_DO_FOCO_S
+    inicio = time.monotonic()
+    limite = inicio + ESPERA_DO_FOCO_S
     if ate is not None:
         limite = min(limite, ate)
     while True:
@@ -46,7 +52,10 @@ async def esperar_foco(ler: Callable[[], Awaitable[tuple[str | None, str | None]
         agora = time.monotonic()
         if agora >= limite:
             return False
-        await asyncio.sleep(min(INTERVALO_DO_FOCO_S, limite - agora))
+        # `min` com o intervalo largo: os testes encurtam `INTERVALO_DO_FOCO_S`, e a janela fina não pode deixá-los lentos.
+        intervalo = (min(INTERVALO_INICIAL_DO_FOCO_S, INTERVALO_DO_FOCO_S)
+                     if agora - inicio < JANELA_INICIAL_DO_FOCO_S else INTERVALO_DO_FOCO_S)
+        await asyncio.sleep(min(intervalo, limite - agora))
 
 
 COMMIT_VOCAB = re.compile(

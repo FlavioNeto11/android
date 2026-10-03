@@ -17,7 +17,8 @@ from enum import StrEnum
 class StrategyKind(StrEnum):
     """Vocabulário fechado de estratégias (§5). A ordem de uso vem do nó (`origin.strategies`), não daqui."""
 
-    deterministic = "deterministic"   # código que resolve sozinho (hoje só capability `internal`, fora do laço da etapa)
+    deterministic = "deterministic"   # código que resolve sozinho: capability `internal` (fora do laço da etapa) e, desde
+                                      # o LT-6 (29.45), o `open_app` do executor na etapa `app_foreground`, antes do ator
     recipe = "recipe"                 # receita gravada, reproduzida pelo `Replayer`
     app_provider = "app_provider"     # provider de sessão do app (`SessaoDeclarada`, ADR-052; fora da v1alpha1)
     ui_generic = "ui_generic"         # heurística de UI sem IA (reservado)
@@ -25,8 +26,9 @@ class StrategyKind(StrEnum):
     human = "human"                   # desfecho `waiting_user`: só uma pessoa resolve (desafio, 2FA, CAPTCHA — ADR-009)
 
 
-#: O que existe de verdade como estratégia de nó na v1alpha1. `deterministic` e `app_provider` não têm provider que
-#: rode dentro da etapa; `ui_generic` é só reserva (§14.3). Pedir um deles num nó é `E_STRATEGY_UNAVAILABLE`.
+#: O que existe de verdade como estratégia de nó na v1alpha1. `app_provider` não tem provider que rode dentro da etapa;
+#: `deterministic` roda nela só por decisão do executor (o `open_app` do LT-6), não por pedido do nó; `ui_generic` é só
+#: reserva (§14.3). Pedir um deles num nó é `E_STRATEGY_UNAVAILABLE`.
 STRATEGIES_OF_A_NODE: tuple[StrategyKind, ...] = (StrategyKind.recipe, StrategyKind.ai_actor, StrategyKind.human)
 
 #: Padrão quando o nó não diz: receita primeiro (sem custo de IA), depois o ator — a ordem fixa de hoje
