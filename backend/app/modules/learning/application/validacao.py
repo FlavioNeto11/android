@@ -30,6 +30,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Protocol
 
+from app.contracts.origem import PREFIXO_VALIDACAO
 from app.modules.learning.domain.curador import Parecer
 from app.modules.learning.domain.livro import EntradaDoLivro, apps_do_item
 from app.modules.learning.domain.politica_de_risco import Classificacao, Razao
@@ -243,7 +244,7 @@ class ServicoDeValidacao:
             if aparelho is None:
                 continue
             prova = p.item_ref.partition(":")[2] if p.item_kind == LivroKind.FLUXO.value else None
-            chave = f"validacao:{p.id}"
+            chave = f"{PREFIXO_VALIDACAO}{p.id}"
             # `prova` só vai quando há (a receita segue com a chamada de antes).
             run_id = (self._despacho.enfileirar(p.comando, aparelho, chave, prova=prova) if prova
                       else self._despacho.enfileirar(p.comando, aparelho, chave))

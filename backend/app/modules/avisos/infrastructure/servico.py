@@ -23,6 +23,7 @@ import time
 from collections.abc import Callable
 
 from app.config import Config
+from app.contracts.origem import PREFIXO_VALIDACAO
 from app.events import EventBus
 from app.models import Problem
 from app.modules.avisos.adapters.telegram import CanalTelegram
@@ -120,8 +121,8 @@ class ServicoDeAvisos:
             return False
         try:
             return self.fila.db.one(
-                "SELECT 1 FROM runs WHERE id=? AND (prova_fluxo_id IS NOT NULL OR idempotency_key LIKE 'validacao:%')",
-                (run_id,)) is not None
+                "SELECT 1 FROM runs WHERE id=? AND (prova_fluxo_id IS NOT NULL OR idempotency_key LIKE ?)",
+                (run_id, f"{PREFIXO_VALIDACAO}%")) is not None
         except Exception:  # noqa: BLE001 - ver a docstring: na dúvida, avisa
             log.exception("avisos: não foi possível conferir se a execução %s é de prova", run_id)
             return False
