@@ -61,6 +61,8 @@ def status(cfg: DecisaoFechadaCfg | None, *, chave_configurada: bool) -> dict[st
     return {"provider": "typesafe", "name": NOME, "consumers": ativos, "classes": classes_que_podem_sair(cfg),
             "send_approved": privacidade.JEV_RUNTIME_SEND_APPROVED,
             "key": "configurada" if chave_configurada else "não configurada",
+            # 31.14: qual decisor está montado (`nulo` nunca chama; `jev` é o real), para o 31.10 ver sem ler a config
+            "decider": "nulo" if cfg is None else cfg.decisor,
             "retention_days": None if cfg is None else cfg.retencao_dias}
 
 

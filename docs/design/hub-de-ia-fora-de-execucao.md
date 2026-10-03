@@ -7,7 +7,8 @@ seguravam o desenho foram tratadas: o roteiro do Jev-retrieval (`choice`) virou 
 C0–C3). A D0 do dono (o sentido de "Jev para o fluxo de navegação") segue com ele.
 
 **Porta do Jev (31.4, 02/10): IMPLEMENTADA** em `backend/app/planning/decisao_fechada/` (contrato, privacidade que falha
-fechada, `DecisorNulo` e `DecisorFalso`, modos e timeouts; o decisor real é o 31.8). Decisão: ADR-069. Resumo em
+fechada, `DecisorNulo` e `DecisorFalso`, modos e timeouts). O decisor real é o `DecisorJev` (31.14): confere o gasto por
+`RoutingProvider.conferir_gasto` antes do POST e grava cada chamada em `ai_calls`; liga só por `decisor: jev`. Decisão: ADR-069. Resumo em
 [ia.md §16](../ia.md#16-decisão-por-conjunto-fechado-fase-31). Não muda o desenho do curador (30.12) nem a rubrica de gasto.
 
 Vocabulário: **hub de IA** = `planning/routing.py`, `config.ai`, `ai_calls`; **Jev-retrieval** = o provedor remoto de

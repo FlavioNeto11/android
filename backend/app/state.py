@@ -41,6 +41,7 @@ from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos
+from .modules.context_retrieval.adapters.jev import JevSemanticProvider
 from .modules.identity.application.ports import SessionProvider
 from .modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, aplicar_desafio, conta_para_conferir,
                                                          emit_needs_person_change, motivo_do_login_parado)
@@ -63,7 +64,9 @@ from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAp
                      OFFLINE_POLICY_PADRAO, PersonaCreate, PersonaDTO, Problem, SdkStatus, SessionStatus)
 from .devices.installer import AppInstaller
 from .planning import conciliacao, costs, saldos
-from .planning.decisao_fechada import RepositorioDeSombra, construir_porta, observador_de_sombra, transparencia
+from .planning.decisao_fechada import (DecisorJev, RepositorioDeSombra, construir_porta, observador_de_sombra,
+                                       transparencia)
+from .planning.decisao_fechada.sombra import ORIGEM_NO_GASTO
 from .planning.decisao_fechada.curador import CuradorComTriagemEmSombra, TriagemDoCurador
 from .planning.decisao_fechada.intencao import ConsumidorDeIntencao
 from .planning.capabilities import (Capability, alvo_da_acao, capability_of, contraparte, load_catalog,
@@ -454,7 +457,8 @@ class AppState:
         # aprendizado porque a triagem do curador em sombra (31.8) embrulha o curador do hub. A sombra grava só ids e
         # categorias (migração 074); a retenção dela corre junto da do resto (`_purgar_demais_tabelas`).
         self.decisao_sombra = RepositorioDeSombra(self.db)
-        self.decisao_fechada = construir_porta(cfg.file.ai.decisao_fechada, observador=observador_de_sombra(self.decisao_sombra))
+        self.decisao_fechada = construir_porta(cfg.file.ai.decisao_fechada, observador=observador_de_sombra(self.decisao_sombra),
+                                               decisor=self._decisor_da_porta(cfg))
         # 30.12: o curador por IA passa pelo hub (papel `plan`, origem `curador`, fatia do 31.6); `off` de fábrica.
         # 31.8: a triagem do Jev observa cada parecer em sombra (consumidor `curador`, inerte de fábrica) e devolve o
         # parecer do curador intacto: nada do Jev volta ao Livro.
@@ -532,6 +536,21 @@ class AppState:
         self._transport_cache: dict[str, str] = {}
         self.devices.transport_state_of = self._transport_state_of
         self.devices.worker_process_of = self._worker_process_of
+
+    def _decisor_da_porta(self, cfg: Config) -> DecisorJev | None:
+        """O decisor da porta `DecisaoFechada` (31.14). `nulo` de fábrica (devolve None: a porta usa o `DecisorNulo`).
+
+        Com `ai.decisao_fechada.decisor: jev`, o `DecisorJev` usa o transporte do adaptador de retrieval (cliente único; a
+        chave é lida do ambiente na hora do POST, nunca aqui), confere o gasto no HUB antes do POST (a mesma rubrica de
+        toda chamada, com a fatia do Jev e o saldo da conta dele) e registra cada chamada em `ai_calls` pela sombra. Hub sem
+        `conferir_gasto` (provedor que não roteia) = nada sai. O envio continua fechado por `JEV_RUNTIME_SEND_APPROVED`."""
+        if cfg.file.ai.decisao_fechada.decisor != "jev":
+            return None
+        conferir = getattr(self.provider, "conferir_gasto", None)
+        return DecisorJev(JevSemanticProvider(),
+                          conferir_gasto=None if conferir is None else (
+                              lambda pedido: conferir(run_id=pedido.run_id, origem=ORIGEM_NO_GASTO, conta="typesafe")),
+                          registrar=self.decisao_sombra.registrar_chamada)
 
     def _publish_worker(self, worker_id: str) -> None:
         """Qualquer mudança observável de worker vira evento. A tela de infraestrutura vive disto."""

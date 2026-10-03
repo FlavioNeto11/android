@@ -255,6 +255,19 @@ class RoutingProvider:
                 self.repo.bus.emit("log", f"Gasto de IA {rotulo} em US$ {gasto:.2f} de US$ {limite:.2f} "
                                           f"({gasto / limite:.0%} do teto).", level="warn", run_id=run_id)
 
+    def conferir_gasto(self, *, run_id: str | None, origem: str, conta: str) -> None:
+        """A MESMA rubrica de `_budget` (pedido, execução, dia, fatia da origem) e o bloqueio de saldo de uma CONTA, para
+        quem chama um provedor fora do hub: o `DecisorJev` (31.14) confere aqui ANTES do POST (`origem='decisao_fechada'`,
+        conta `typesafe`). Barrado = `AIError` (`kind` `budget` ou `balance`); sem repositório ligado é barrado também,
+        porque o gasto que ninguém confere não acontece."""
+        if self.repo is None or self.get_settings is None:
+            raise AIError("Teto de gasto sem como conferir (hub sem repositório).", kind="not_configured")
+        self._budget(run_id, origem)
+        motivo = saldos.motivo_de_bloqueio(self.repo.db, self.cfg, conta)
+        if motivo:
+            raise AIError(f"{motivo} Recarregue no console e registre a recarga em Configuração › IA para retomar.",
+                          kind="balance")
+
     def _fatia_da_origem(self, origem: str | None, teto_dia: float, prices: dict[str, list[float]]
                          ) -> tuple[tuple[str, float, Callable[[], float], str, str], ...]:
         """A régua da fatia desta origem, no mesmo formato das de `_budget` (vazia quando não há fatia).
