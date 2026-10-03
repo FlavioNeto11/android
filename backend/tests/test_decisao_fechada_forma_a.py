@@ -209,10 +209,11 @@ def test_os_gatilhos_da_forma_a_recusam_com_motivo_proprio(comando: str) -> None
 @pytest.mark.parametrize("comando", [
     # a exceção: o objeto pessoa ou conversa
     "entre na conversa com o contato", "entre na conversa com a Marina e mande oi",
-    # o verbo de entrar sem conector e os dígitos fora do campo (a regra dos anos da H)
-    "entre no insta", "entre no insta e curta as 3 fotos", "entre no insta e veja o post de 2024", "entre no insta e use 1987",
+    # os dígitos fora do campo (a regra dos anos da H); o verbo de entrar sem conector recusa sozinho desde a A-média
+    # (31.20): os controles que o tinham estão em `CUSTO_DA_A_MEDIA` (test_decisao_fechada_reverificacao_i.py)
+    "abra o insta e curta as 3 fotos", "abra o insta e veja o post de 2024", "abra o insta e use 1987",
     # a sintaxe de destino sem gatilho ("pela", "como")
-    "entre pela Lucas e curta a foto da Marina", "entre como @lucas.almeida9484 e curta o post",
+    "curta a foto da Marina pela Lucas", "curta o post como @lucas.almeida9484",
     # a vírgula da lista com verbo e o e-mail seguido de número
     "veja o perfil Marina, Zilda e Ana", "curta o post de Maria Silva @maria.s fulano@exemplo.com 987654321",
 ])

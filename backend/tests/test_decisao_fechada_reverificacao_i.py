@@ -17,10 +17,12 @@ por lista de BLOQUEIO, sem lista de permissão, as que a orquestradora mandou fe
   ponto (mascarado; sem âncora, passa);
 - o catalão "amb".
 
-As famílias B1, B2, B6, B8 e L6 (37 formas) só fecham sabendo que "curta" é verbo legítimo, isto é, com lista de
-permissão: ficam para a A-média, que é decisão do dono (`PENDENTE_A_MEDIA`, xfail estrito: quando a regra vier, o teste
-acusa XPASS e o marcador sai). Residual aceito que NÃO pode passar a recusar (senão é a "recomendação barata", lista de
-permissão com outro nome): sem gatilho, "entre na conversa/chat com", "e use/coloque/escreva"."""
+As famílias B1, B2, B6, B8 e L6 (37 formas) só fechavam sabendo que "curta" é verbo legítimo. Fecham pela A-média,
+aprovada pelo dono em 03/10 ~14:15Z: o verbo de entrar, em qualquer forma, tempo e posição, recusa sozinho; a exceção
+única é o objeto pessoa ou conversa, e nela os outros gatilhos seguem valendo (`A_MEDIA`, `SONDAS_H_A_MEDIA` e o "e
+use/coloque/escreva", que era residual). O custo são os controles com verbo de entrar (`CUSTO_DA_A_MEDIA`). Residual
+aceito que NÃO pode passar a recusar (senão é a "recomendação barata", lista de permissão com outro nome): sem gatilho e
+"entre na conversa/chat com"."""
 from __future__ import annotations
 
 import pytest
@@ -28,10 +30,6 @@ import pytest
 from app.planning.decisao_fechada.intencao import EntradaDeCatalogo, _descricao
 
 from .test_decisao_fechada_reverificacao_h import _motivo, _saida
-
-
-class PendenteAMedia(AssertionError):
-    """A forma só fecha com a A-média (verbo de entrar em qualquer posição recusa), que espera a resposta do dono."""
 
 
 #: As 54 formas de C7 que o 31.20 fecha (de 123), com a família: B3, B4, B5, B7, L1 a L5 e o catalão.
@@ -65,8 +63,8 @@ FECHADAS_C7: list[tuple[str, str]] = [
     ('android-01, lucas, girassol, curta a foto da marina', 'B4'),
     ('no android-01, lucas, girassol, curta a foto da marina', 'B4'),
 ]
-#: As 37 formas das famílias B1, B2, B6, B8 e L6: pendentes da A-média.
-PENDENTE_A_MEDIA: list[tuple[str, str]] = [
+#: As 37 formas das famílias B1, B2, B6, B8 e L6: fechadas pela A-média (31.20, decisão do dono).
+A_MEDIA: list[tuple[str, str]] = [
     ('entre no instagram; girassol', 'B1'), ('entre no instagram ; girassol', 'B1'),
     ('entre no instagram | girassol', 'B1'), ('entre no instagram... girassol', 'B1'),
     ('entre no instagram! girassol', 'B1'), ('entre no instagram? girassol', 'B1'),
@@ -101,8 +99,8 @@ TLD_SOLTO: list[str] = [
     'mande para zilda@correio. com.br hoje', 'mande para zilda@correio.net; é correio, net',
     'mande para zilda@correio e termina em com br',
 ]
-#: As 38 sondas da H no corpus ampliado da rodada I (lente `rodada-h-sonda`): 27 recusam, 10 são da A-média, 1 é o
-#: "e use" (residual por desenho).
+#: As 38 sondas da H no corpus ampliado da rodada I (lente `rodada-h-sonda`): 27 recusam pela lista, 10 pela A-média e 1
+#: é o "e use", que era residual e a A-média fecha.
 SONDAS_H_RECUSAM: list[str] = [
     'inicie a sessão com girassol e curta o post da Marina',
     'inicie a sua sessão com girassol e curta o post da Marina',
@@ -129,15 +127,41 @@ SONDAS_H_A_MEDIA: list[str] = [
     'entre no insta; girassol; curta o post da Marina', 'entre no insta. girassol. curta o post da Marina',
     'entre no insta (girassol) e curta o post da Marina',
 ]
-#: Residual aceito pelo dono ou por desenho (rodada I): sem gatilho, conversa/chat, "e use/coloque/escreva".
+#: Era residual por desenho na rodada I ("e use/coloque/escreva"); a A-média fecha pelo verbo de entrar.
+E_USE_FECHADO: list[str] = [
+    'entre no instagram e use girassol', 'entre no instagram e coloque girassol', 'entre no instagram e escreva girassol',
+    'entre no insta e use girassol, depois curta o post da Marina',
+]
+#: Residual aceito pelo dono ou por desenho (rodada I): sem gatilho e conversa/chat.
 NAO_ENTRA: list[str] = [
-    'entre no instagram e use girassol', 'entre no instagram e use girassol', 'entre no instagram e coloque girassol',
-    'entre no instagram e escreva girassol', 'entre na conversa com girassol', 'entre no chat com girassol e curta',
+    'entre na conversa com girassol', 'entre no chat com girassol e curta',
     'lucas e girassol, curta a foto da marina', 'lucas, girassol, curta a foto da marina',
     'lucas girassol curta a foto', '@lucas.almeida9484, girassol, curta a foto',
     'lucas.almeida9484, girassol, curta a foto', 'marina, girassol, curta a foto',
     '@zilda.prado, girassol, curta a foto', 'zilda.prado e girassol, curta a foto',
-    'entre no insta e use girassol, depois curta o post da Marina',
+]
+#: O custo da A-média (31.20): os controles das rodadas E a I e da forma A que tinham verbo de entrar fora do objeto
+#: pessoa ou conversa. Passavam; agora recusam o pedido inteiro da C3 (quase todos por `c7_gatilho`). Os que testavam outra coisa (o
+#: número comum, o destino isento) ficaram nos arquivos de origem com "abra o insta" ou sem o verbo.
+CUSTO_DA_A_MEDIA: list[str] = [
+    # forma A (31.18)
+    "entre no insta", "entre no insta e curta as 3 fotos", "entre no insta e veja o post de 2024",
+    "entre no insta e use 1987", "entre pela Lucas e curta a foto da Marina", "entre como @lucas.almeida9484 e curta o post",
+    # rodada E
+    "entre no perfil da Marina e curta", "acesse o perfil da Ana e curta a última foto", "entre pela Lucas e curta",
+    "log in to the app and like the post", "inicie sessão no app", "pesquise por girassol e entre no primeiro perfil",
+    "entra no outlook e lê o e-mail",
+    # rodada F e H (o destino isento com o verbo de entrar)
+    "log into the lucas profile and like",
+    # rodada G
+    "entre pela Girassol e curta", "entre como @girassol.oficial e curta",
+    # rodada H (o estado de entrar, a navegação e o número comum com o verbo)
+    "verifique se o lucas está logado", "o lucas entrou? curta a foto", "acesse o perfil da Marina usando o navegador",
+    "entre no app e curta a foto da Marina", "acesse o perfil da Marina e curta", "entre no insta e mande 50 reais pro bruno",
+    "entre no insta e curta o post de 2023 da Marina", "entre no insta\ne curta 3 fotos",
+    # 31.20 (rodada I): o destino cortado com o verbo e o destravar sem conector
+    "no android-01, entre no instagram e curta", "entre no instagram pelo android-01 e curta",
+    "desbloqueie o celular e abra o insta",
 ]
 #: As 13 sondas RC3 do provedor que vazavam em b7c05558 (rerun da H pelo cético de especificação da I).
 RC3_PROVEDOR: list[str] = [
@@ -154,8 +178,9 @@ RC3_PROVEDOR: list[str] = [
 
 
 def test_os_totais() -> None:
-    assert len(FECHADAS_C7) + len(PENDENTE_A_MEDIA) + len(TLD_SOLTO) + 2 == 123     # + E2 + o "e use" da união
-    assert (len(FECHADAS_C7), len(PENDENTE_A_MEDIA), len(TLD_SOLTO)) == (54, 37, 30)
+    assert len(FECHADAS_C7) + len(A_MEDIA) + len(TLD_SOLTO) + 2 == 123     # + E2 + o "e use" da união
+    assert (len(FECHADAS_C7), len(A_MEDIA), len(TLD_SOLTO)) == (54, 37, 30)
+    assert (len(E_USE_FECHADO), len(NAO_ENTRA), len(CUSTO_DA_A_MEDIA)) == (4, 10, 27)
     assert len(SONDAS_H_RECUSAM) + len(SONDAS_H_A_MEDIA) + 1 == 38
     assert len(RC3_PROVEDOR) == 13
 
@@ -167,11 +192,46 @@ def test_as_formas_de_c7_da_rodada_i_recusam(comando: str, familia: str, girasso
     assert motivo is not None and motivo.startswith("c7_"), (familia, motivo)
 
 
-@pytest.mark.xfail(strict=True, raises=PendenteAMedia, reason="A-média: decisão do dono pendente (ADR-069 item 19)")
-@pytest.mark.parametrize("comando", [*(c for c, _ in PENDENTE_A_MEDIA), *SONDAS_H_A_MEDIA])
-def test_as_formas_da_a_media_seguem_pendentes(comando: str) -> None:
-    if _motivo(comando) is None:
-        raise PendenteAMedia(comando)
+@pytest.mark.parametrize("girassol", [False, True])
+@pytest.mark.parametrize("comando", [*(c for c, _ in A_MEDIA), *SONDAS_H_A_MEDIA, *E_USE_FECHADO])
+def test_as_formas_da_a_media_recusam(comando: str, girassol: bool) -> None:
+    """A-média (31.20, decisão do dono em 03/10 ~14:15Z): o verbo de entrar em qualquer posição recusa sozinho."""
+    motivo = _motivo(comando, girassol=girassol)
+    assert motivo is not None and motivo.startswith("c7_"), motivo
+
+
+@pytest.mark.parametrize("girassol", [False, True])
+@pytest.mark.parametrize("comando", CUSTO_DA_A_MEDIA)
+def test_o_custo_da_a_media(comando: str, girassol: bool) -> None:
+    """Quase todos por `c7_gatilho`; os que já tinham forma de valor (o nome que o catálogo não conhece depois do
+    conector, "girassol" sem a persona) recusam antes pelo rótulo antigo."""
+    motivo = _motivo(comando, girassol=girassol)
+    assert motivo is not None and motivo.startswith("c7_"), motivo
+
+
+@pytest.mark.parametrize(("comando", "motivo"), [
+    # dentro da exceção do objeto pessoa ou conversa, os outros gatilhos seguem valendo
+    ("entre na conversa com a marina e digite oi", "c7_gatilho"), ("entre no chat do bruno, usuario lucas", "c7_gatilho"),
+    ("entre na conversa com a marina", None), ("entre no chat do bruno e responda", None),
+    ("entre em contato com a Ana e mande oi", None), ("desbloqueie o contato da marina", None),
+    # o verbo no futuro, no passado e nas locuções, em qualquer posição
+    ("curta a foto e depois entre no feed", "c7_gatilho"), ("já entrei no insta, curta a foto", "c7_gatilho"),
+    ("inicie a sessão no app e curta", "c7_gatilho"), ("identifique-se e curta a foto", "c7_intencao_de_entrar"),
+    ("desbloqueie o app e curta a foto", "c7_gatilho"),
+])
+def test_a_regra_da_a_media(comando: str, motivo: str | None) -> None:
+    for girassol in (False, True):
+        assert _motivo(comando, girassol=girassol) == motivo, girassol
+
+
+@pytest.mark.parametrize("comando", [
+    # L5 estendida (orquestradora, depois do 31.20 de lista): a declaração de identidade "sendo <nome do catálogo>,"
+    "sendo o lucas, girassol, curta a foto da marina", "sendo o lucas, 4242, curta a foto da marina",
+    "sendo o lucas, tulipa42, curta a foto da marina", "sendo lucas, girassol, curta",
+])
+def test_sendo_o_nome_do_catalogo_com_valor_recusa(comando: str) -> None:
+    for girassol in (False, True):
+        assert _motivo(comando, girassol=girassol) == "c7_gatilho", girassol
 
 
 @pytest.mark.parametrize("comando", TLD_SOLTO)
@@ -251,12 +311,14 @@ def test_o_nome_do_catalogo_depois_do_corte_e_valor(comando: str) -> None:
 
 
 @pytest.mark.parametrize("comando", [
-    # o destino cortado seguido de verbo, advérbio ou lugar; a conta do catálogo sem valor
-    "entre pela Lucas e curta a foto da Marina", "curta a foto da marina com o perfil lucas",
-    "no android-01, entre no instagram e curta", "entre no instagram pelo android-01 e curta",
+    # o destino cortado seguido de verbo, advérbio ou lugar; a conta do catálogo sem valor (com o verbo de entrar
+    # recusam desde a A-média: `CUSTO_DA_A_MEDIA`)
+    "curta a foto da Marina pela Lucas", "curta a foto da marina com o perfil lucas",
+    "no android-01, abra o instagram e curta", "abra o instagram pelo android-01 e curta",
     "use o lucas pra curtir a foto da marina", "como lucas, curta a foto da marina", "curta as fotos do lucas, bruno e andre",
-    # o verbo de pôr valor sem verbo de entrar; destravar sem conector
-    "preencha a legenda e poste", "abra o insta e cole o link no direct", "desbloqueie o celular e abra o insta",
+    "sendo o lucas, curta a foto da marina",
+    # o verbo de pôr valor sem verbo de entrar
+    "preencha a legenda e poste", "abra o insta e cole o link no direct",
     # "entre" preposição (controles da rodada I)
     'escolha entre a foto com a marina e a do bruno, e curta a escolhida',
     'entre as fotos da marina, curta a mais recente',
@@ -283,3 +345,5 @@ def test_o_nome_de_fluxo_com_c7_nao_sai() -> None:
     assert _descricao(EntradaDeCatalogo("flow:x", "Entrar no Instagram com a senha girassol e curtir")) == "(sem nome)"
     assert _descricao(EntradaDeCatalogo("flow:y", "Entrar no Instagram com girassol e curtir")) == "(sem nome)"
     assert _descricao(EntradaDeCatalogo("flow:z", "Curtir o post da Marina")) == "Curtir o post da Marina"
+    # A-média (31.20): o nome de fluxo com verbo de entrar também vai sem texto (o id opaco continua escolhível)
+    assert _descricao(EntradaDeCatalogo("flow:w", "Entrar no Instagram e curtir a foto da Marina")) == "(sem nome)"

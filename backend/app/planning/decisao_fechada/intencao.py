@@ -305,7 +305,11 @@ def _e_preposicao(toks: list[str], i: int) -> bool:
     if i > 0 and toks[i - 1] in _REGE_ENTRE:
         return True
     if i == 0 or toks[i - 1] in _ANTES_DO_IMPERATIVO:
-        return _coordenacao_depois_de_entre(toks, i)
+        # A-média (31.20): com o verbo recusando sozinho, "entre os seguidores novos, siga" e "entre as fotos da marina,
+        # curta" pagariam à toa; o verbo pede "em" ("entre NOS seguidores"), e o artigo plural solto é a preposição. O
+        # conector de gatilho perto ("entre as fotos com girassol") deixa verbo, como na coordenação.
+        return _coordenacao_depois_de_entre(toks, i) or (
+            seguinte in _DEPOIS_DA_PREPOSICAO and not any(t in _CONECTORES_DE_GATILHO for t in toks[i + 1:i + 4]))
     return seguinte in _DEPOIS_DA_PREPOSICAO
 
 
@@ -664,18 +668,17 @@ def _depois_do_conector(toks: list[str], i: int) -> bool:
 _CONECTORES_DE_GATILHO: Final[frozenset[str]] = frozenset((
     "com", "with", "using", "usando", "utilizando", "con", "mit", "avec", "met", "med", "cu", "dengan", "tunnuksella",
     "amb"))
-#: 31.20 (L1 da rodada I): o verbo de PÔR um valor que fora de `_DIGITAR_VALOR` é comando comum ("preencha a legenda" está
-#: em 16 dos 126 comandos reais de 7 dias, 03/10). É gatilho só num comando que também tem verbo de entrar ("entre no insta
-#: e informe x", "entre no insta e preencha com x"); nos reais, custa 0 a mais.
-_POR_VALOR_COM_ENTRAR: Final[frozenset[str]] = frozenset((
-    "informe", "informa", "informar", "informando", "cole", "cola", "colar", "colando", "bote", "bota", "botar",
-    "botando", "preencha", "preenche", "preencher", "preenchendo"))
-#: 31.20 (L3): destravar o app com o valor ("desbloqueie o instagram usando x"). É gatilho só com o conector logo depois,
-#: como o verbo de entrar na forma A; fora da F-A, porque "desbloqueie o celular e abra o insta" é navegação.
+#: 31.20 (L3): destravar o app com o valor ("desbloqueie o instagram usando x"). Desde a A-média recusa sozinho, como o
+#: verbo de entrar, salvo diante de pessoa ou conversa ("desbloqueie o contato da marina"); "desbloqueie o celular e abra
+#: o insta" é custo declarado.
 _DESTRAVAR: Final[frozenset[str]] = frozenset((
     "desbloqueie", "desbloqueia", "desbloquear", "desbloqueiem", "desbloqueando", "destrave", "destrava", "destravem"))
 #: 31.20 (L5): usar a conta do catálogo ("use o lucas com x", "o lucas usa x").
 _USAR: Final[frozenset[str]] = frozenset(("use", "usa", "usar", "usem", "utilize", "utiliza", "utilizar"))
+#: 31.20 (L5, estendida pela orquestradora depois do achado "sendo o lucas, girassol, curta"): a declaração de identidade
+#: diante do nome do catálogo ("como lucas, x", "sendo o lucas, x"). "Logado como" já é verbo de entrar (A-média), e "na
+#: conta de" já é campo forte.
+_DECLARA_IDENTIDADE: Final[frozenset[str]] = frozenset(("como", "sendo"))
 #: 31.20 (B4 e L5): o que separa o destino do valor seguinte ("pelo lucas, x", "com o perfil lucas e x", "como lucas, x").
 _SEPARA_DO_DESTINO: Final[frozenset[str]] = _SEPARADORES_NAO_ALFABETICOS | {"e", "and", "y", ">", "="}
 
@@ -777,16 +780,17 @@ def _usa_conta_do_catalogo(toks: list[str], d: _Destinos) -> bool:
     """31.20 (L5 da rodada I): a conta do catálogo tomada como identidade, com o valor ligado a ela:
     - "use (o) <nome do catálogo> com <valor>" (o conector até três tokens depois do nome);
     - "<nome do catálogo> usa <valor>" ("o lucas usa girassol");
-    - "como (o) <nome do catálogo>, <valor>" ("como lucas, girassol, curta"), que o extrator não corta.
-    "use o lucas pra curtir a foto da marina" e "como lucas, curta" passam."""
+    - "como (o) <nome do catálogo>, <valor>" ("como lucas, girassol, curta"), que o extrator não corta, e "sendo (o)
+      <nome do catálogo>, <valor>" (`_DECLARA_IDENTIDADE`).
+    "use o lucas pra curtir a foto da marina", "como lucas, curta" e "sendo o lucas, curta" passam."""
     n = len(toks)
     for i, t in enumerate(toks):
-        if t in _USAR or t == "como":
+        if t in _USAR or t in _DECLARA_IDENTIDADE:
             k = _pula(toks, i + 1, _ARTIGOS)
             if k >= n or k not in d.catalogo:
                 continue
             fim = d.fim(k)
-            if t == "como":
+            if t in _DECLARA_IDENTIDADE:
                 if _valor_depois(toks, fim, d):
                     return True
             elif any(toks[m] in _CONECTORES_DE_GATILHO for m in range(fim, min(fim + 3, n))):
@@ -810,27 +814,26 @@ def _gatilho_de_credencial(toks: list[str], d: _Destinos, normal: str) -> bool:
     - o campo forte (`_CAMPO_FORTE`: usuário, login, conta…), também dentro do destino ("na conta Lucas");
     - o verbo de digitar valor (`_DIGITAR_VALOR`);
     - o par sem campo forte (`_par_sem_campo_forte`).
-    "entre no insta" sozinho passa; o token só de dígitos segue a regra dos anos (`_valor_com_digito`).
+    Até a A-média, "entre no insta" sozinho passava; o token só de dígitos segue a regra dos anos (`_valor_com_digito`).
 
     31.20 (lacunas de LISTA da rodada I, todas de bloqueio):
-    - o verbo de pôr valor fora de `_DIGITAR_VALOR` ("informe", "cole", "bote", "preencha") num comando com verbo de
-      entrar (`_POR_VALOR_COM_ENTRAR`);
-    - destravar com conector até três tokens depois (`_DESTRAVAR`: "desbloqueie o app com x");
     - o valor depois do destino cortado pelo extrator (`_valor_depois_do_corte`, B4);
-    - a conta do catálogo tomada como identidade com o valor (`_usa_conta_do_catalogo`, L5)."""
-    n = len(toks)
+    - a conta do catálogo tomada como identidade com o valor (`_usa_conta_do_catalogo`, L5).
+
+    A-média (31.20, aprovada pelo dono em 03/10 ~14:15Z; ADR-069 item 19): o verbo de entrar, em qualquer forma e tempo
+    (`_ENTRAR`, `_ENTRAR_PASSADO`, as locuções e `_DESTRAVAR`) e em qualquer posição, recusa sozinho, sem depender de
+    conector: "entre no insta girassol e curta" e "girassol, entre no insta" não têm onde separar o valor do comando. A
+    exceção continua a única: o objeto pessoa ou conversa ("entre na conversa com a marina"), e nela os outros gatilhos
+    seguem valendo. O "entre" preposição não é verbo (`_e_preposicao`). Com isso, o conector deixa de ser condição, e o
+    verbo de pôr valor fora de `_DIGITAR_VALOR` ("informe", "cole", "preencha"; L1), que a parte de lista do 31.20 só
+    contava junto do verbo de entrar, não precisa de lista: "preencha a legenda e poste" passa."""
     if any(t in _CAMPO_FORTE or t in _DIGITAR_VALOR for t in toks):
         return True
-    verbos = [(ini, fim) for ini, fim in _verbos_de_entrar(toks, passado=True)
-              if not _objeto_e_pessoa(toks, _pula(toks, fim + 1, _ADVERBIOS))]
-    for _, fim in verbos:
-        if any(toks[m] in _CONECTORES_DE_GATILHO for m in range(fim + 1, min(fim + 4, n))):
-            return True
-    if verbos and any(t in _POR_VALOR_COM_ENTRAR for t in toks):
+    if any(not _objeto_e_pessoa(toks, _pula(toks, fim + 1, _ADVERBIOS))
+           for _, fim in _verbos_de_entrar(toks, passado=True)):
         return True
-    for i, t in enumerate(toks):
-        if t in _DESTRAVAR and any(toks[m] in _CONECTORES_DE_GATILHO for m in range(i + 1, min(i + 4, n))):
-            return True
+    if any(t in _DESTRAVAR and not _objeto_e_pessoa(toks, _pula(toks, i + 1, _ADVERBIOS)) for i, t in enumerate(toks)):
+        return True
     return (_par_sem_campo_forte(toks, d, normal) or _valor_depois_do_corte(toks, d)
             or _usa_conta_do_catalogo(toks, d))
 

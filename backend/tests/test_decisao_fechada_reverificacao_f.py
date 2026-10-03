@@ -105,7 +105,8 @@ def test_o_par_com_destino_real_recusa(comando: str) -> None:
 @pytest.mark.parametrize("comando", [
     # contrastes da rodada F (casos 422 a 427): entrar com objeto de navegação ou com destino (a conta e "entre com o
     # Google" recusam desde a forma A, 31.18: test_decisao_fechada_forma_a.py)
-    "log into the lucas profile and like", "entre no chat com a Marina e responda",
+    # ("log into the lucas profile and like" recusa desde a A-média, 31.20: `CUSTO_DA_A_MEDIA`)
+    "like the post on the lucas profile", "entre no chat com a Marina e responda",
     "entre na conversa com qa-001 e envie oi",
     # "entre" preposição
     "curta as fotos postadas entre 10/05 e 12/05", "fotos postadas entre 10-05 e 12-05", "a diferença entre os dois posts",
@@ -138,12 +139,14 @@ def test_entrar_sem_objeto_pula_a_sombra(comando: str) -> None:
 
 def test_a_intencao_de_entrar_so_vale_no_original() -> None:
     """Tirar "pela Lucas" deixa "entre e curta": no texto sem destinos a F-A fica desligada, e o original mostra o
-    destino. Com "com a conta Lucas", a forma A (31.18) recusa pelo original: a conta conta mesmo no destino."""
+    destino. Com "com a conta Lucas", a forma A (31.18) recusa pelo original: a conta conta mesmo no destino. Desde a
+    A-média (31.20), o verbo de entrar recusa sozinho, com ou sem a F-A, nos dois textos."""
     original = "entre pela Lucas e curta a foto da Marina"
     assert _sem_destinos(original) == "entre e curta a foto da Marina"
-    assert motivo_c7("entre e curta a foto da Marina", intencao=False) is None
-    assert motivo_c7(original, sem_destinos="entre e curta a foto da Marina") is None
-    assert _motivo(original) is None
+    assert motivo_c7("entre e curta a foto da Marina", intencao=False) == "c7_gatilho"
+    assert motivo_c7(original, sem_destinos="entre e curta a foto da Marina") == "c7_gatilho"
+    assert _motivo(original) == "c7_gatilho"
+    assert _motivo("curta a foto da Marina pela Lucas") is None
     assert _motivo("entre com a conta Lucas e curta a foto da Marina") == "c7_gatilho"
 
 

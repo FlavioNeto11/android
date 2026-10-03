@@ -19,30 +19,31 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
-## 2026-10-03 — 31.20: as lacunas da rodada I fechadas só por lista de bloqueio (branch feat/31-18-forma-a)
+## 2026-10-03 — 31.20: as lacunas da rodada I e a A-média aprovada pelo dono (branch feat/31-18-forma-a)
 
-- A rodada I deu NO-GO no b7c05558, e o 31.20 é a ordem da orquestradora (ADR-069 item 19). Fecha:
-  - a locução e os verbos de credencial ("inicie a sessão com", "identifique-se", "desbloqueie … com");
+- A rodada I deu NO-GO no b7c05558, e o 31.20 é a ordem da orquestradora (ADR-069 item 19).
+- Parte de lista (f2f49a08, aceita). Fecha:
+  - a locução e os verbos de credencial ("inicie a sessão com", "identifique-se");
   - o valor depois do destino cortado e a vírgula no par;
   - o conector com hífen e "amb";
-  - "informe/cole/bote/preencha" com verbo de entrar;
   - o futuro e o "já tinha entrado";
   - os eufemismos novos;
-  - a conta do catálogo como identidade ("use o lucas com x");
+  - a conta do catálogo como identidade ("use o lucas com x", "como lucas, x", "sendo o lucas, x");
   - o domínio de topo solto depois do e-mail, o e-mail em peças e o fragmento de provedor ao lado de `[email]`;
   - o C2: nome de fluxo com C7 vai como "(sem nome)";
   - "entre" preposição deixa de recusar.
-- Pendente do dono: a A-média (47 formas, xfail estrito). Não entram: sem gatilho, "entre na conversa/chat com" e
-  "e use/coloque/escreva".
+- A-média, aprovada pelo dono em 03/10 ~14:15Z: o verbo de entrar recusa sozinho, em qualquer forma, tempo e posição.
+  A exceção única é o objeto pessoa ou conversa, onde os outros gatilhos seguem valendo. "Entre os/as" no começo da
+  oração, sem conector perto, é preposição. Residual: sem gatilho e "entre na conversa/chat com".
 - Custo:
-  - 126 comandos reais: as mesmas 8 recusas e 0 saídas diferentes do b7c05558;
-  - HM3: 35 → 31 recusas, sem nenhuma nova;
-  - C2: 3 dos 20 fluxos ativos vão sem nome.
+  - 126 comandos reais: 14 recusas (11,1 %), 6 a mais que a parte de lista; as que passam têm a mesma saída do b7c05558;
+  - HM3: 31 → 48 recusas, todas as novas por verbo de entrar;
+  - C2: 4 dos 20 fluxos ativos vão sem nome;
+  - 27 controles de teste viraram recusa (`CUSTO_DA_A_MEDIA`).
 - Prova `simulated`:
   - `backend/tests/test_decisao_fechada_reverificacao_i.py`;
-  - harness de 785 casos: os antigos têm só as 4 recusas indevidas conhecidas, e os novos têm 49 vazamentos (47 da
-    A-média, o residual 715 e o artefato 780);
-  - contra o b7c05558, 0 casos pioram, e 110 melhoram.
+  - harness de 785 casos (corpus de 14:29Z): 0 vazamentos nos dois catálogos e só as 4 recusas indevidas conhecidas;
+  - filtro e sombras: 1889 passaram.
 
 ## 2026-10-03 — 31.18: forma A (A-ESTREITA), a C3 fecha por gatilho de credencial (branch feat/31-18-forma-a)
 

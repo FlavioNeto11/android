@@ -142,8 +142,9 @@ def test_o_par_com_handle_e_par_e_nao_mascara(comando: str) -> None:
 
 def test_o_handle_do_catalogo_sem_valor_passa() -> None:
     """"entre como @<handle do catálogo>" é destino; o mesmo com um handle que o catálogo não conhece é intenção de entrar.
-    Com "com", a forma A (31.18) recusa pelo conector do verbo de entrar."""
-    assert _motivo("entre como @lucas.almeida9484 e curta o post") is None
+    Com "com", a forma A (31.18) recusa pelo conector do verbo de entrar; desde a A-média (31.20), o verbo sozinho."""
+    assert _motivo("curta o post como @lucas.almeida9484") is None
+    assert _motivo("entre como @lucas.almeida9484 e curta o post") == "c7_gatilho"
     assert _motivo("entre com @lucas.almeida9484 e curta o post") == "c7_gatilho"
     assert _motivo("entre com @zilda.prado e curta o post") == "c7_intencao_de_entrar"
 
@@ -203,8 +204,9 @@ def test_o_nome_do_catalogo_nao_isenta_o_valor(comando: str) -> None:
 
 
 def test_a_persona_girassol_e_o_par() -> None:
-    """O teste pedido na G-4: a persona "Girassol" existe, e "entre com a conta Lucas e girassol" recusa como par."""
-    assert _motivo("entre com a conta Lucas e girassol") == "c7_par_credencial"
+    """O teste pedido na G-4: a persona "Girassol" existe, e "entre com a conta Lucas e girassol" recusa como par. Desde a
+    A-média (31.20), o verbo de entrar recusa já no texto sem destinos ("entre e girassol"), antes do par no original."""
+    assert _motivo("entre com a conta Lucas e girassol") == "c7_gatilho"
 
 
 def test_o_nome_inteiro_e_nao_a_palavra() -> None:
@@ -220,7 +222,8 @@ def test_o_nome_inteiro_e_nao_a_palavra() -> None:
 @pytest.mark.parametrize("comando", [
     # o nome do catálogo na posição de destino continua isento
     # (com "conta" recusam desde a forma A, 31.18: test_decisao_fechada_forma_a.py)
-    "siga a Girassol e curta a última foto", "entre pela Girassol e curta", "entre como @girassol.oficial e curta",
+    # (com o verbo de entrar recusam desde a A-média, 31.20: `CUSTO_DA_A_MEDIA` em test_decisao_fechada_reverificacao_i.py)
+    "siga a Girassol e curta a última foto", "curta pela Girassol a foto", "curta a foto como @girassol.oficial",
 ])
 def test_o_nome_do_catalogo_no_destino_passa(comando: str) -> None:
     assert _motivo(comando) is None
@@ -270,7 +273,7 @@ def test_entre_sem_faixa_e_verbo(comando: str, motivo: str) -> None:
     ("use g, i, r, a, s, s, o, l", "c7_ofuscado"), ("g/i/r/a/s/s/o/l", "c7_ofuscado"),
     ("ge, i, erre, a, esse, esse, o, ele", "c7_ofuscado"), ("be-a-ene-a-ene-a", "c7_ofuscado"),
     ("log-in with girassol", "c7_login_valor"), ("sign-in using tulipa", "c7_login_valor"),
-    ("log-into the app and like", None),
+    ("log-into the app and like", "c7_gatilho"),                    # A-média (31.20): o verbo recusa sozinho
     ("lo de siempre es girassol", "c7_eufemismo"), ("a palavrinha mágica é girassol", "c7_eufemismo"),
     ("acesso = girassol", "c7_eufemismo"), ("para acesso digite girassol", "c7_eufemismo"),
     ("user lucas, girassol", "c7_par_credencial"), ("login zilda, tulipa e curta", "c7_par_credencial"),

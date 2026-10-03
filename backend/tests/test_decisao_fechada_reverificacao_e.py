@@ -111,35 +111,35 @@ def test_o_consumidor_confere_o_original_e_nao_o_envia(tmp_path: Path, porta_abe
     decisor = DecisorFalso()
     w = Mundo2(tmp_path, decisor)
     cadeia = CadeiaObservada(sem_casamento=True)
-    # o par atravessando o destino: tirar "com a conta Lucas" deixa "entre e girassol", e só o original mostra o par
+    # o par atravessando o destino: tirar "com a conta Lucas" deixa "entre e girassol"; até o 31.20 só o original mostrava
+    # o par, e desde a A-média (31.20) o verbo de entrar já recusa no texto sem destinos (`c7_gatilho`)
     par = "entre com a conta Lucas e girassol, curta a foto da Marina"
     assert _sem_destinos(par) == "entre e girassol, curta a foto da Marina"
     w.consumidor.observar(run_id="r-par", comando=_sem_destinos(par), app=None, catalogo=w.catalogo(), cadeia=cadeia,
                           original=par, destinos=sorted(NOMES))
     # o original com o destino não recusa, e o que vai ao decisor é o texto sem destinos, nunca o original ("pela Lucas":
-    # "com a conta Lucas" recusa desde a forma A, 31.18)
-    destino = "entre pela Lucas e curta a foto da Marina"
+    # "com a conta Lucas" recusa desde a forma A, 31.18, e o verbo de entrar desde a A-média, 31.20)
+    destino = "curta a foto da Marina pela Lucas"
     w.consumidor.observar(run_id="r-destino", comando=_sem_destinos(destino), app=None, catalogo=w.catalogo(),
                           cadeia=cadeia, original=destino, destinos=sorted(NOMES))
     w.porta.aguardar_sombras()
     por_run = {r["ref"]: (r["fallback_reason"], r["motivo_privacidade"]) for r in w.linhas()}
-    assert por_run["r-par"] == ("privacidade", "c7_par_credencial")
-    assert [c.estado for c in decisor.chamadas] == [{"comando": "entre e curta a foto da Marina"}]
+    assert por_run["r-par"] == ("privacidade", "c7_gatilho")
+    assert [c.estado for c in decisor.chamadas] == [{"comando": "curta a foto da Marina"}]
     w.fechar()
 
 
 # ------------------------------------------------------------------ controles: o que as regras novas NÃO podem recusar
 @pytest.mark.parametrize("comando", [
-    # verbo de entrar com objeto de navegação, ou "com" que é a pessoa, o modo ou o provedor de entrada
-    "entre no perfil da Marina e curta", "acesse o perfil da Ana e curta a última foto",
-    # (a conta, o login e o verbo de entrar com "com" recusam desde a forma A, 31.18: test_decisao_fechada_forma_a.py)
-    "entre na conversa com qa-001 e mande oi", "entre no chat com a Marina", "entre pela Lucas e curta",
-    "log in to the app and like the post", "inicie sessão no app", "use o lucas pra curtir a foto da marina",
-    "pesquise por girassol e entre no primeiro perfil", "curta as fotos postadas entre 10/05 e 12/05",
+    # verbo de entrar com "com" que é a pessoa (a conta, o login e o verbo de entrar com "com" recusam desde a forma A,
+    # 31.18: test_decisao_fechada_forma_a.py; o verbo de entrar com objeto de navegação, desde a A-média, 31.20:
+    # `CUSTO_DA_A_MEDIA` em test_decisao_fechada_reverificacao_i.py)
+    "entre na conversa com qa-001 e mande oi", "entre no chat com a Marina", "curta a foto pela Lucas",
+    "use o lucas pra curtir a foto da marina", "curta as fotos postadas entre 10/05 e 12/05",
     # eufemismo que só é C7 com verbo de entrar sem navegação
     "a combinação de cores ficou boa", "passe para o próximo post",
     # provedor de e-mail que também é app, live do Instagram ou palavra comum
-    "entra no outlook e lê o e-mail", "comenta no live da Marina", "abra o instagram e entre no live da marina",
+    "abra o outlook e leia o e-mail", "comenta no live da Marina", "abra o instagram e entre no live da marina",
     "mande um e-mail no outlook para a equipe", "abra a caixa de entrada do outlook e leia o último e-mail",
     "vai no outlook e responde", "a foto da terra vista do espaço", "o post do girassol",
 ])
@@ -155,7 +155,9 @@ def test_o_nome_do_catalogo_desfaz_o_com() -> None:
     rodada H (H-3) chegou a fazer do nome solto um destino; foi revertida depois do NO-GO da fase 2 (03/10)."""
     assert _motivo("entre com lucas e curta") == "c7_login_valor"
     assert _motivo("entre com girassol e curta") == "c7_login_valor"
-    assert _motivo("entre pela Lucas e curta") is None
+    assert _motivo("curta a foto pela Lucas") is None
+    # A-média (31.20): o verbo de entrar recusa sozinho, também com o destino
+    assert _motivo("entre pela Lucas e curta") == "c7_gatilho"
     # forma A (31.18): a conta recusa mesmo como destino (fecha a família 3 da fase 2 da H)
     assert _motivo("entre com a conta Lucas e curta") == "c7_gatilho"
 

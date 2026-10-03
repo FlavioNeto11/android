@@ -4468,9 +4468,11 @@ catálogo, comando), que o ADR-063 não cobre.
         - os 6 fragmentos de domínio de topo seguem como antes: 5 mascarados e 1 recusado.
     - Próximo: a rodada I (fase 2) da orquestradora, no hash deste item. O GO é zero casos contados pelo discriminador
       (bug ou lacuna-pt) com a forma A. Depois do GO, o deploy 11 liga `intencao: shadow`.
-19. **Emenda de 03/10/2026 (31.20: o NO-GO da rodada I e as lacunas fechadas só por lista de bloqueio; ordem da
-    orquestradora).** A rodada I (fase 2, no b7c05558) deu NO-GO: 123 textos únicos (`sintese_I_uniao.json`) em 18
-    famílias. O 31.20 fecha o que cabe sem mudar a definição do gatilho e sem lista de permissão.
+19. **Emenda de 03/10/2026 (31.20: o NO-GO da rodada I, as lacunas fechadas por lista de bloqueio e a A-média aprovada
+    pelo dono; ordem da orquestradora).** A rodada I (fase 2, no b7c05558) deu NO-GO: 123 textos únicos
+    (`sintese_I_uniao.json`) em 18 famílias. O 31.20 fechou primeiro o que cabia sem mudar a definição do gatilho
+    (f2f49a08, aceito pela orquestradora). Depois, a A-média aprovada pelo dono mudou a definição: o verbo de entrar
+    recusa sozinho.
     - Correções, por família (todas recusam pelo motivo de antes ou por `c7_gatilho`):
       - B3/L3: a locução de entrar com até 2 tokens no meio (`_LOCUCAO_DE_ENTRAR`: "inicie a sessão com", "abra a sessão
         com", "faça seu acesso com", "efetue/realize o acesso com", "log yourself in with"), "identifique-se" e
@@ -4496,44 +4498,61 @@ catálogo, comando), que o ADR-063 não cobre.
       - "entre" preposição: faixa ("entre 8 e 12"), regente antes (escolha, compare, conversa, diferença… entre),
         começo de oração "entre <det> A e <det> B" sem conector perto, ou seguido de os, as, eles e elas. Antes de lugar
         ou conector, "entre" segue verbo.
+      - L5 estendida pela orquestradora depois do achado "sendo o lucas, girassol, curta a foto da marina":
+        "sendo (o) <nome do catálogo>, <valor>" (`_DECLARA_IDENTIDADE`). "Logado como" já é verbo de entrar, e "na conta
+        de" já é campo forte.
+    - **A-média, aprovada pelo dono em 03/10 ~14:15Z (repassada pela orquestradora).** O verbo de entrar recusa sozinho
+      o pedido inteiro da C3, em qualquer forma, tempo e posição e sem depender de conector. Valem as listas `_ENTRAR` e
+      `_ENTRAR_PASSADO`, as locuções ("inicie a sessão", "faça acesso", "identifique-se") e `_DESTRAVAR`.
+      - A exceção é única: o objeto do verbo é pessoa ou conversa (`_objeto_e_pessoa`: "entre na conversa com a
+        marina", "entre no chat do bruno"). Dentro dela os outros gatilhos seguem valendo: campo forte, digitar, palavra
+        C7, soletrado, par e dígitos ("entre na conversa com a marina e digite oi" recusa).
+      - O "entre" preposição não é verbo. Além das formas acima, no começo da oração "entre" seguido de os ou as, sem
+        conector de gatilho até 3 tokens depois, é preposição ("entre os seguidores novos, siga os três primeiros").
+        "Entre as fotos com girassol" segue verbo.
+      - Fecham pela própria regra B1, B2, B3, B6, B8, L2, L3 e L6, e também o "e use, coloque ou escreva <valor>", que era
+        residual. O conector deixa de ser condição, e a lista do verbo de pôr valor da L1 saiu do código.
+      - O C2 acompanha: o nome de fluxo com verbo de entrar vai como "(sem nome)".
     - Desvios declarados:
-      - L1 só com verbo de entrar que não é o de pessoa ("preencha a legenda e poste" passa);
-      - "desbloqueie" só como gatilho, com conector até 3 tokens;
       - o fragmento se mascara pela frase inteira para âncora forte, e não por janela;
       - o handle com ponto vira `[usuario]` quando há `[email]` ou outra máscara na frase;
       - o C2 lê "recusa" como "(sem nome)", porque a opção não sai do catálogo;
       - G-2 revertido por ordem: "escolha entre a Marina e a Ana" passa; "escolha entre com girassol" segue
-        `c7_login_valor`.
+        `c7_login_valor`;
+      - com a A-média, o rótulo de alguns exemplos antigos muda para `c7_gatilho`, porque o verbo já recusa no texto sem
+        destinos, antes do par no original ("entre com a conta Lucas e girassol" era `c7_par_credencial`).
     - **Fica como está:** as 10 recusas do RC3-prov da H (8 `email_ofuscado`, 1 `c7_gatilho` com "usuário" e 1
       `c7_intencao_de_entrar` com "login"). São as mesmas do b7c05558 e são mais restritivas que a máscara.
-    - **Não entram** (residual por ordem): sem gatilho (8), "entre na conversa/chat com <valor>" (2) e "e use, coloque
-      ou escreva <valor>" (4). A "recomendação barata" não entra.
-    - **Pendente do dono, a A-média:** 37 formas da rodada I (B1 27, B2 6, B6 1, B8 1, L6 2) e 10 sondas da H (708 a 714
-      e 717 a 719). Só fecham sabendo que "curta" é verbo legítimo, ou seja, com lista de permissão. No teste são xfail
-      estrito (`PendenteAMedia`). Quando o dono decidir, a orquestradora emenda este item.
-    - Custo, medido no código deste item:
-      - Comandos reais: 126 de 7 dias, às 14:08Z e às 14:19Z, no banco do central só para leitura, com o catálogo real e
-        só contagens. Recusam 8 (6,3 %), os mesmos índices do item 18: 1 `c7_palavra` e 7 `c7_gatilho`. Nenhum recusa
-        pelas entidades. As 126 saídas da C3 têm o mesmo hash no b7c05558 e aqui: 0 mudam.
-      - HM3, os 70 comandos operacionais da sonda do cético I: 35 → 31 recusas. Saíram as 4 de "entre" preposição, e não
-        há recusa nova (diferença de conjunto).
-      - C2 no catálogo vivo, às 14:12Z, por `GET /api/flows`: 3 dos 20 fluxos ativos vão como "(sem nome)". As palavras
-        do próprio filtro são "digitar" com conector e valor com dígito, "verificacao" e "conta". A skill publicada não
-        muda. Se carregam credencial é UNKNOWN, porque o texto real não se lê.
+    - **Não entram** (residual por ordem): sem gatilho (8) e "entre na conversa/chat com <valor>" (2). A "recomendação
+      barata" não entra.
+    - Custo, só contagens, no banco do central só para leitura e com o catálogo real:
+      - Parte de lista (f2f49a08, aceita pela orquestradora). Nos 126 comandos reais de 7 dias (14:08Z e 14:19Z), 8
+        recusas (6,3 %), os mesmos índices do item 18, e as 126 saídas da C3 com o mesmo hash do b7c05558. Na HM3 (os 70
+        comandos operacionais da sonda do cético I), 35 → 31 recusas, sem nenhuma nova. No C2, 3 dos 20 fluxos ativos.
+      - Com a A-média, às 14:26Z e às 14:34Z: 14 de 126 recusam (11,1 %): 1 `c7_palavra` e 13 `c7_gatilho`. São 6 a
+        mais (índices 15, 20, 32, 47, 51 e 74; 5 por "entre" verbo e 1 por "acessar"). As 112 que passam têm a mesma
+        saída do b7c05558.
+      - HM3: 31 → 48 recusas. As 17 novas têm todas verbo de entrar fora da exceção (entre, acesse, logue, conecte,
+        logado, entrou, entrar).
+      - C2 no catálogo vivo (`GET /api/flows`, 14:12Z e 14:26Z): 4 dos 20 fluxos ativos vão como "(sem nome)", 1 a mais
+        por "entrar". A skill publicada não muda. Se os nomes carregam credencial é UNKNOWN, porque o texto real não se
+        lê.
+      - Testes: 27 controles das rodadas E a I e da forma A tinham verbo de entrar e foram para `CUSTO_DA_A_MEDIA` como
+        recusa. Os que testavam outra coisa (o número comum, o destino isento) ficaram com "abra o insta" ou sem o verbo.
     - Prova `simulated`, no código deste item:
-      - `backend/tests/test_decisao_fechada_reverificacao_i.py`. Os 54 fechados recusam nos dois catálogos, os 30 de
-        domínio de topo saem mascarados, as 13 RC3-prov saem sem o provedor e as 27 sondas da H recusam. O residual e os
-        controles passam, e as 37 + 10 da A-média ficam xfail estrito;
-      - harness `ataque_b.py`, corpus de 785 (579 + 206), sem-girassol. Os antigos têm só as 4 recusas indevidas
-        conhecidas (134, 135, 348, 427). Os novos têm 49 vazamentos: 47 da A-média, o 715 (residual "e use") e o 780,
-        que é artefato do casador (a cauda "mail" casa a palavra "e-mail"; a saída não tem "gmail"). Recusa indevida
-        nova, só o 779 ("três" vira `[numero]`, questão de rótulo). Com a "Girassol", 45 vazamentos, e os 4 que mudam
-        (635, 638, 708 e 711) são efeito do stub;
-      - contra o b7c05558 no mesmo corpus: 0 casos pioram, e 110 (sem) e 108 (com) melhoram;
-      - os 14 arquivos do filtro e das sombras: 1739 passaram, mais 47 xfail (a A-média). Os vizinhos e a arquitetura:
-        74.
-    - Achado fora da ordem, que fica com a orquestradora: "sendo o lucas, girassol, curta a foto da marina" vaza. É uma
-      forma de identidade vizinha da L5 ("como lucas,") e não está no corpus nem na síntese I.
+      - `backend/tests/test_decisao_fechada_reverificacao_i.py`:
+        - recusam nos dois catálogos os 54 fechados por lista, as 37 + 10 da A-média, os 4 "e use" e as 27 sondas da H;
+        - os 30 de domínio de topo saem mascarados, e as 13 RC3-prov saem sem o provedor;
+        - os 10 residuais e os controles passam;
+        - cobre ainda o custo (27), a regra da A-média com a exceção, a L5 com "sendo" e o C2;
+      - harness `ataque_b.py`, no corpus de 785 que a orquestradora regenerou às 14:29Z (sha256 `54e2fc1da645…`):
+        - 0 vazamentos e 0 passagens indevidas nos dois catálogos;
+        - recusas indevidas, só as 4 conhecidas (134, 135, 348 e 427);
+        - 0 casos que mudam entre os catálogos;
+      - antes da A-média, no f2f49a08 e no corpus anterior, 0 casos pioravam contra o b7c05558, e melhoravam 110 (sem)
+        e 108 (com);
+      - os 14 arquivos do filtro e das sombras: 1889 passaram. Os vizinhos e a arquitetura: 74. O recorte `-k "sombra or
+        intencao or decisao"`: 2114.
 
 **Consequências.** A plataforma ganha um motor barato (US$ 0,042/M de entrada, saída grátis) para decisões fechadas que hoje não
 acontecem ou vão ao Opus, medido em sombra contra o caminho atual antes de qualquer `on`. O ADR-063 continua valendo para código.
