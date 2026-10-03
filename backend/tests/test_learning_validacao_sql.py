@@ -140,7 +140,7 @@ def test_o_laco_inteiro_do_pedido_ao_fechamento(mundo: tuple[Database, ServicoDe
                                            to_iso(datetime.now())))
     db.execute("INSERT INTO ai_calls(ts, run_id, role, model, tier, input_tokens, cache_read, cache_write, output_tokens,"
                " with_image, ms, ok) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-               (to_iso(datetime.now()), run_id, "plan", "m", "t", 10_000, 0, 0, 1_000, 0, 100, 1))
+               (to_iso(datetime.now()), run_id, "plan", "m", 0, 10_000, 0, 0, 1_000, 0, 100, 1))
     assert servico.minerar(run_id) == 1
     fechado = _linha(db, pid)
     assert fechado["estado"] == "feita" and fechado["motivo"] is None
