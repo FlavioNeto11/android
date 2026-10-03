@@ -5,7 +5,7 @@ import { toLoadError } from '../../lib/loadError';
 import { hashDe } from '../../lib/rotas';
 import { formatDateTime, formatQuando } from '../../lib/time';
 import { apiAprendizado } from './api';
-import { rotuloDaFerramenta } from './detalhe';
+import { rotuloDaExecucao, rotuloDaFerramenta, textoDaVariante } from './detalhe';
 import type { AcaoDaReceita, ConteudoDoItem, DetalheDoLivro, EntradaDoLivro } from './model';
 import styles from './Aprendizado.module.css';
 
@@ -52,7 +52,7 @@ function Corpo({ c, item }: { c: ConteudoDoItem; item: EntradaDoLivro }) {
           {origem.tipo === 'execucao' ? (
             <>
               {aparelho ? `no ${aparelho}, ` : ''}
-              {origem.run_id ? <a className={styles.linkAlvo} href={hashDe('execucoes', { segmentos: [origem.run_id] })}>na execução {origem.run_id}</a>
+              {origem.run_id ? <a className={styles.linkAlvo} href={hashDe('execucoes', { segmentos: [origem.run_id] })} title={origem.run_id}>na {rotuloDaExecucao(origem.run_id)}</a>
                 : 'numa execução que não existe mais'}
             </>
           ) : origem.tipo === 'treino' ? 'no treino' : 'origem desconhecida'}
@@ -60,7 +60,7 @@ function Corpo({ c, item }: { c: ConteudoDoItem; item: EntradaDoLivro }) {
         </span>
         <span>
           <strong>Versão do app:</strong> {c.identidade.app_version ?? 'sem dado'}
-          {c.identidade.variante ? ` · ${c.identidade.variante}` : ''}
+          {c.identidade.variante ? <span title={c.identidade.variante}> · {textoDaVariante(c.identidade.variante)}</span> : ''}
         </span>
       </>
     );

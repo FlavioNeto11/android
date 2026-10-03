@@ -144,8 +144,9 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
           <Checkbox aria-label={`Selecionar ${titulo}`} checked={!!selecionado} onChange={(ev) => onSelecionar(ev.target.checked)} />
         ) : null}
         <Badge tone="neutral" size="sm">{rotuloDoKind(e.kind)}</Badge>
-        {/* O título cru (a chave da etapa, o texto com o código) fica no `title`: é o que quem desenvolve procura. */}
-        <span className={styles.itemTitulo} title={e.title || e.ref}>{titulo}</span>
+        {/* O título cru (a chave da etapa, o texto com o código) e a referência no Livro ("receita:108") ficam no `title`:
+            é o que quem desenvolve procura (UX dos deploys 7 e 8: a referência ficava à mostra no canto do cartão). */}
+        <span className={styles.itemTitulo} title={`${e.title || e.ref} · ${chaveDoItem(e)}`}>{titulo}</span>
         {e.side_effect ? <Badge tone="warning" size="sm" icon={Zap} title="Tem efeito externo (mensagem, publicação, envio…)">efeito externo</Badge> : null}
         {e.reaprendido ? (
           <Badge tone="warning" size="sm" title={`Reaprendido depois de uma evidência inválida (execução ${e.reaprendido.run_invalidada}): a aprovação é sua`}>
@@ -174,7 +175,6 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
           : e.uses === 0 && !memoria ? <span>Nunca usado</span> : null}
         {detalhe ? <span>{detalhe}</span> : null}
         {uso ? <span title={uso.porque ?? undefined}>Uso: {uso.rotulo}</span> : null}
-        <span className={styles.refDoItem} title="A referência do item no Livro">{chaveDoItem(e)}</span>
       </div>
       {espera ? (
         <p className={styles.avisoDoItem}>

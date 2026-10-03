@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { descreverTentativa, rotuloDoBacklog, traduzirErro } from './falhasTexto';
+import { descreverTentativa, etapaDaTentativa, rotuloDaTela, rotuloDoBacklog, traduzirErro } from './falhasTexto';
 import { aparelhoDaEtapa, frasesDaReceita } from './ResumoParaDecidir';
 import { diaDoSinal, quemRegistrou } from './SinaisTab';
 
@@ -14,10 +14,20 @@ describe('texto de "O que mais falha" para quem opera', () => {
     expect(traduzirErro(null)).toBeNull();
   });
 
-  it('a tentativa vira "aparelho · etapa · tentativa N"; fora do formato, nulo', () => {
-    expect(descreverTentativa('r-20261002175257-0e9362:android-05:v1:open_app:a1')).toBe('android-05 · etapa open_app · tentativa 1');
+  it('a tentativa vira "aparelho · tentativa N", com a chave da etapa à parte (para o title); fora do formato, nulo', () => {
+    const id = 'r-20261002175257-0e9362:android-05:v1:open_app:a1';
+    expect(descreverTentativa(id)).toBe('android-05 · tentativa 1');
+    expect(etapaDaTentativa(id)).toBe('open_app');
     expect(descreverTentativa('r-x')).toBeNull();
+    expect(etapaDaTentativa('r-x')).toBeNull();
     expect(descreverTentativa(null)).toBeNull();
+  });
+
+  it('o id da tela do catálogo vira texto; o que não tem separador passa como veio', () => {
+    expect(rotuloDaTela('caixa_de_entrada')).toBe('caixa de entrada');
+    expect(rotuloDaTela('perfil-proprio')).toBe('perfil proprio');
+    expect(rotuloDaTela('feed')).toBe('feed');
+    expect(rotuloDaTela('__')).toBe('__');
   });
 
   it('o estado do backlog em português; estado novo passa como veio', () => {

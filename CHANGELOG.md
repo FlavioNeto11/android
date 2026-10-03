@@ -19,6 +19,35 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: polimentos de texto dos deploys 7 e 8 (branch feat/aprendizado-ux-deploy8; suíte 10)
+
+Os itens de polimento da frente do Aprendizado em `.claude/handoffs/ux-deploy7-2026-10-03.md` e
+`ux-deploy8-2026-10-03.md` que não entraram no #143. Só painel e texto; nenhuma rota nem migração.
+
+- **Veto** (`domain/ciclo.py::motivo_do_veto`):
+  - a frase traz a data em dd/mm/aaaa e o motivo de quem desligou:
+    "desligado por uma pessoa (orquestradora) em 03/10/2026 (validar pela IA antes de valer): só uma pessoa o reativa";
+  - o motivo vai numa linha só e é cortado em 120 caracteres;
+  - as frases do sistema e da evidência inválida também usam a data em dd/mm/aaaa.
+- **Configuração › Fluxos e receitas:** o selo do app cai no `app_id` quando o fluxo chega com `required_apps` vazio.
+  Eram 5 fluxos do QA no central, 2 deles desligados (`lib/appsDoFluxo.ts::appsDoFluxo`).
+- **Cartão do Livro:**
+  - a referência ("receita:108") saiu do canto e foi para o `title` do título;
+  - a receita de app sem catálogo se chama pela etapa ("Digitar a mensagem (v1)"), sem a chave crua.
+- **Detalhe e "Para aprovar":**
+  - o alvo da ação vem em palavras ("Alvo: “Enviar”"), com os seletores recolhidos em "como o encontra";
+  - a execução de origem aparece como "execução de 24/09 08:48", com o id no `title`;
+  - a variante da tela aparece como "idioma en-US, tela xhdpi".
+- **O que falha:**
+  - a ocorrência mostra "android-05 · tentativa 1", com a chave da etapa no `title`;
+  - a tela mostra "Tela: caixa de entrada", com o id do catálogo no `title`.
+- Prova `simulated`:
+  - `tests/test_learning_ciclo.py::test_a_frase_do_veto_fala_a_data_do_painel_e_o_motivo_de_quem_desligou`;
+  - vitest de `aprendizado`, `settings` e `lib/appsDoFluxo` (236 passaram);
+  - typecheck limpo.
+- Navegador: `not_run` (fica para a validação da orquestradora no deploy que levar a suíte 10).
+- Pendente com a Android: o motivo do desligamento no `title` do interruptor de Configuração › Fluxos e receitas
+  pede que `/api/flows` traga o motivo (backend de skills).
 ## 2026-10-03 — Prova real do 31.17: o script que confere a sombra C0–C1 do curador no central (branch feat/31-17-prova-real)
 
 - `scripts/jev-prova-31-17.py`, só leitura (`mode=ro` mais `query_only`), sem IA, desde o T_on do deploy 9:

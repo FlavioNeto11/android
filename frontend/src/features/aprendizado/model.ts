@@ -428,10 +428,11 @@ export function tituloDoItem(
     const m = RE_VERSAO.exec(t);
     return m ? `${e.capability_nome} (v${m[2]})` : t;
   }
-  // App sem catálogo (validação do deploy 4): o título da etapa de origem, com a chave para distinguir as do mesmo nome.
+  // App sem catálogo (validação do deploy 4): o título da etapa de origem. A chave crua ("fill_message") saiu do texto
+  // (UX do deploy 8) e fica no `title` da linha; duas do mesmo nome se distinguem em `titulosDaLista`.
   if (e.kind === 'receita' && e.etapa) {
     const m = RE_VERSAO.exec(t);
-    return m ? `${e.etapa} · etapa ${m[1]} (v${m[2]})` : `${e.etapa} · etapa ${t}`;
+    return m ? `${e.etapa} (v${m[2]})` : e.etapa;
   }
   return e.kind === 'licao' ? nomearCapabilityNoTexto(t, e.capability, e.capability_nome) : t;
 }

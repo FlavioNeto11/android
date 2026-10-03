@@ -12,3 +12,13 @@ export function textoDosApps(ids: readonly string[] | null | undefined, apps: re
   const nomes = apps instanceof Map ? apps : new Map((apps as readonly AppComNome[]).map((a) => [a.id, a.name] as const));
   return ids.map((id) => nomes.get(id)?.trim() || id).join(SEPARADOR_DE_APPS);
 }
+
+/**
+ * Os ids dos apps de um fluxo: `required_apps` quando o servidor o preencheu; senão o `app_id` do fluxo (o fluxo
+ * aprendido de plano antigo, ou de um app só, chega com `required_apps` vazio; deploy 8 da UX: sem isto a linha
+ * saía sem o selo do app).
+ */
+export function appsDoFluxo(flow: { app_id?: string | null; required_apps?: readonly string[] | null }): string[] {
+  if (Array.isArray(flow.required_apps) && flow.required_apps.length > 0) return [...flow.required_apps];
+  return flow.app_id ? [flow.app_id] : [];
+}

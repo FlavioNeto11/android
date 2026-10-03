@@ -434,10 +434,12 @@ com o banco aberto só para leitura.
   - As entradas do livro (listas, filas e detalhe) ganham `app_nome` (`presentation/nomes.py::nomear_apps`). "App:", a
     Identidade e a Versão dizem o nome, com o pacote no `title`.
   - A receita ganha `etapa`, o `steps.title` da etapa de origem. No app sem catálogo, ela vira o nome:
-    "Digitar a mensagem · etapa fill_message (v1)". O nome do catálogo vence; sem os dois, fica a chave.
+    "Digitar a mensagem (v1)" (até o deploy 8 levava a chave, "· etapa fill_message", que agora fica no `title`). O nome
+    do catálogo vence; sem os dois, fica a chave.
   - O `title` gravado não muda, e o dossiê do curador não leva `etapa`, porque o título de uma etapa pode citar um @
     ou um contato.
-  - A ocorrência de falha diz "android-05 · etapa open_app · tentativa 1".
+  - A ocorrência de falha diz "android-05 · tentativa 1"; a chave da etapa ("etapa open_app do plano") fica no `title`,
+    e a tela da falha, "Tela: caixa de entrada", com o id do catálogo no `title` (UX dos deploys 7 e 8).
 - **O app de teste fora da lista padrão (RA-19, fatia A).**
   - O Aprendido abre em **Produto**: `GET /api/aprendizado` sem `rotulo` esconde os apps de `apps.category='qa'` (o QA
     embutido, 041), que eram 94 das 164 entradas do central em 03/10.

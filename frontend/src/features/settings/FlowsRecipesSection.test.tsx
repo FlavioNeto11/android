@@ -91,14 +91,18 @@ it('desligado: um fluxo ativo não ganha "converter em habilidade" nem ação de
   expect(backend.callsTo('GET', /\/skills$/)).toHaveLength(0);
 });
 
-it('29.42: o fluxo entre apps mostra "QA Messenger → Chrome" na ordem do plano; sem apps, nada', async () => {
+it('29.42: o fluxo entre apps mostra "QA Messenger → Chrome" na ordem do plano; sem required_apps, o app do fluxo; sem nenhum, nada', async () => {
   comHabilidades(false);
   useAppStore.setState({ apps: [{ ...APPS[0]!, id: 'qa-messenger', name: 'QA Messenger', package: 'com.pocqa.messenger' },
                                 { ...APPS[0]!, id: 'chrome', name: 'Chrome', package: 'com.android.chrome' }] });
-  backend.on('GET', /\/flows$/, () => json([{ ...fluxo(), required_apps: ['qa-messenger', 'chrome'] }, { ...fluxo(), id: 'outro', name: 'Outro', required_apps: [] }]));
+  backend.on('GET', /\/flows$/, () => json([{ ...fluxo(), required_apps: ['qa-messenger', 'chrome'] },
+    // UX do deploy 8: o fluxo aprendido de plano antigo chega com required_apps vazio e o app em app_id.
+    { ...fluxo(), id: 'do-qa', name: 'Do QA', app_id: 'qa-messenger', required_apps: [] },
+    { ...fluxo(), id: 'outro', name: 'Outro', app_id: null, required_apps: [] }]));
   await renderComDialogo();
   await waitFor(() => expect(text()).toContain('QA Messenger → Chrome'));
-  expect(document.querySelectorAll('[aria-label="Apps do fluxo"]')).toHaveLength(1);
+  expect(Array.from(document.querySelectorAll('[aria-label="Apps do fluxo"]')).map((s) => s.textContent))
+    .toEqual(['QA Messenger → Chrome', 'QA Messenger']);
 });
 
 it('ligado: converter o fluxo ativo pede confirmação, chama a rota e recarrega as duas listas', async () => {

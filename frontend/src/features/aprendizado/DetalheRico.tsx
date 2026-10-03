@@ -3,6 +3,7 @@ import { createContext, useContext, useId, useState, type ReactNode } from 'reac
 import { hintForError, toApiError } from '../../api/client';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
+import { Disclosure } from '../../components/Disclosure';
 import { textoDosApps } from '../../lib/appsDoFluxo';
 import { formatInt } from '../../lib/format';
 import { hashDe } from '../../lib/rotas';
@@ -13,7 +14,7 @@ import { abrirApp } from './apps';
 import { SecaoDoParecer } from './ParecerDaIA';
 import {
   SEM_DADO, destinoDaRelacao, metaDeSaude, metaDeVersao, rotuloDaDimensao, rotuloDaFerramenta, rotuloDaRelacao,
-  rotuloDoAlvoDaLicao, rotuloDoCampoDoSeletor, rotuloDoSeletor, rotuloDoStatusDaReceita, textoDeAparelhos, textoDoAlvoSemItem, textoDoMotivo,
+  alvoLegivel, rotuloDaExecucao, rotuloDoAlvoDaLicao, rotuloDoCampoDoSeletor, rotuloDoSeletor, rotuloDoStatusDaReceita, textoDeAparelhos, textoDoAlvoSemItem, textoDoMotivo,
   valorDaDimensao,
 } from './detalhe';
 import {
@@ -109,9 +110,10 @@ function Vizinha({ rotulo, v }: { rotulo: string; v: VizinhaDaReceita | null }) 
 
 function Seletor({ a }: { a: AcaoDaReceita }) {
   if (a.alvo.length === 0) return null;
-  return (
+  const legivel = alvoLegivel(a.alvo);
+  const seletores = (
     <span className={styles.passoLinha}>
-      Alvo:{' '}
+      {legivel ? null : <>Alvo:{' '}</>}
       {a.alvo.map((s, i) => (
         <span key={`${i}-${s.tipo}`}>
           {i > 0 ? ' · ou ' : ''}
@@ -122,6 +124,14 @@ function Seletor({ a }: { a: AcaoDaReceita }) {
         </span>
       ))}
     </span>
+  );
+  // UX do deploy 8: o alvo em palavras na linha; os seletores crus (id, texto, descrição) ficam um clique abaixo.
+  if (!legivel) return seletores;
+  return (
+    <>
+      <span className={styles.passoLinha}>Alvo: {legivel}</span>
+      <Disclosure bare summary="como o encontra">{seletores}</Disclosure>
+    </>
   );
 }
 
@@ -162,7 +172,7 @@ function Acao({ a }: { a: AcaoDaReceita }) {
 function OrigemDaReceitaTexto({ o }: { o: OrigemDaReceita }) {
   if (o.tipo === 'execucao') {
     return o.run_id
-      ? <>Aprendida na execução <a className={styles.linkAlvo} href={hrefDaExecucao(o.run_id)}>{o.run_id}</a></>
+      ? <>Aprendida na <a className={styles.linkAlvo} href={hrefDaExecucao(o.run_id)} title={o.run_id}>{rotuloDaExecucao(o.run_id)}</a></>
       : <>Aprendida numa execução que não existe mais ({o.step_id})</>;
   }
   if (o.tipo === 'treino') return <>Demonstrada no treino <Mono>{o.ref}</Mono></>;
@@ -220,8 +230,8 @@ function ConteudoFluxo({ c }: { c: ConteudoDoFluxo }) {
         {exigidos ? <Fato rotulo="Apps">{exigidos}</Fato> : null}
         {c.comando_modelo ? <Fato rotulo="Comando modelo">{c.comando_modelo}</Fato> : null}
         <Fato rotulo="Origem">
-          {c.origem.tipo === 'treino' ? 'Demonstrado no treino' : 'Aprendido de execução'}
-          {c.origem.source_run_id ? <>{' '}<a className={styles.linkAlvo} href={hrefDaExecucao(c.origem.source_run_id)}>{c.origem.source_run_id}</a></> : null}
+          {c.origem.tipo === 'treino' ? 'Demonstrado no treino' : c.origem.source_run_id ? 'Aprendido na' : 'Aprendido de execução'}
+          {c.origem.source_run_id ? <>{c.origem.tipo === 'treino' ? ' · ' : ' '}<a className={styles.linkAlvo} href={hrefDaExecucao(c.origem.source_run_id)} title={c.origem.source_run_id}>{rotuloDaExecucao(c.origem.source_run_id)}</a></> : null}
         </Fato>
         <Fato rotulo="Efeito">{c.efeito.externo ? 'tem efeito fora do sistema' : 'sem efeito fora do sistema'}</Fato>
       </dl>
@@ -400,7 +410,7 @@ function Evidencia({ evid }: { evid: readonly EvidenciaDoLivro[] }) {
           {evid.map((x, i) => (
             <li key={`${x.origin_ref}-${i}`}>
               {POSTURA[x.stance] ?? x.stance}
-              {x.run_id ? <>{' · execução '}<a className={styles.linkAlvo} href={hrefDaExecucao(x.run_id)}>{x.run_id}</a></> : ''}
+              {x.run_id ? <>{' · '}<a className={styles.linkAlvo} href={hrefDaExecucao(x.run_id)} title={x.run_id}>{rotuloDaExecucao(x.run_id)}</a></> : ''}
               {x.instance_id ? ` · aparelho ${x.instance_id}` : ''}
               {x.app_version ? ` · app ${x.app_version}` : ''}
               {` · ${formatDateTime(x.observed_at)}`}
