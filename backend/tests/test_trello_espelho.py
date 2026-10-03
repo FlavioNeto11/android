@@ -147,6 +147,8 @@ async def test_fato_novo_cria_o_cartao_na_lista_certa_e_grava_a_linha(cen: Cenar
     desc = next(c["desc"] for c in corpos if str(c["name"]).startswith("Aprovação"))
     assert "**Para quem não é técnico:**" in desc and "**Técnico:**" in desc
     assert "tipo `approval.pending`" in desc and f"{PAINEL}/#/pendencias" in desc
+    livro = next(c["desc"] for c in corpos if str(c["name"]).startswith("Conhecimento"))
+    assert f"{PAINEL}/#/aprendizado?aba=aprendido&item=fluxo:f1" in livro
 
 
 async def test_segunda_volta_sem_mudanca_nao_escreve_nada(cen: Cenario) -> None:

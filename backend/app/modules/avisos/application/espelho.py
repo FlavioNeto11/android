@@ -35,7 +35,8 @@ _PEDIDO = {"ativo": ("Pedido ativo", "Um pedido persistente está ativo e a Cent
 _LIVRO = {"pendente": ("Conhecimento na fila de validação",
                        "Um conhecimento aprendido espera a execução que vai validá-lo."),
           "rodando": ("Conhecimento em validação", "Uma execução está validando um conhecimento aprendido.")}
-_SEGURO = re.compile(r"[^A-Za-z0-9._-]")
+#: O `:` fica: o item do Aprendizado é `<kind>:<ref>` (`#/aprendizado?...&item=fluxo:f1`).
+_SEGURO = re.compile(r"[^A-Za-z0-9._:-]")
 
 
 @dataclass(frozen=True)
