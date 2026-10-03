@@ -417,7 +417,10 @@ def caixa_cega(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
                    max_attempts=2),
         Capability(key="QA_IR_PARA_CAIXA", title="Ir para a caixa", goal="Ir para a caixa de entrada.",
                    post_kind="model_judged", post_value="caixa de entrada aberta",
-                   post_description="A tela mostra a caixa de entrada.", max_attempts=2)]))
+                   post_description="A tela mostra a caixa de entrada.", max_attempts=2),
+        # Com efeito: desde o RA-7 o planejamento recusa etapa com efeito fora do catálogo de um app que tem catálogo.
+        Capability(key="QA_ESCREVER_AO_REMETENTE", title="Escrever ao remetente", goal="Escrever para o remetente lido.",
+                   post_kind="model_judged", post_value="v", post_description="d", side_effect=True, max_attempts=1)]))
     try:
         yield
     finally:
@@ -620,6 +623,7 @@ async def test_valor_visual_numa_etapa_com_efeito_espera_a_pessoa_e_navegacao_se
     inner.leitura = Transcricao(linhas=[REMETENTE], campos={"remetente": REMETENTE})
     efeito = PlanStep(key="agir", title="Agir com o valor", goal="Escrever para {{saida:remetente}}.",
                       depends_on=["listar"], side_effect=True, commit_guard=["{{saida:remetente}}"],
+                      capability="QA_ESCREVER_AO_REMETENTE",
                       postcondition=Postcondition(kind="model_judged", value="v", description="d"), max_attempts=1)
     _plano(inner, _etapa(saidas=["remetente"]), efeito)
     _ator(inner, [_le_visual("remetente", REMETENTE), _concluir()], vistos)

@@ -207,7 +207,10 @@ def test_sonda_vazia_em_provedor_sem_thinking(tmp_path: Path) -> None:
 
 # ====================================================================== executor: o bloco `ai` da execução
 def _exec(cfg: Any, db: Any) -> SimpleNamespace:
-    return SimpleNamespace(cfg=cfg, repo=SimpleNamespace(db=db))
+    ex = SimpleNamespace(cfg=cfg, repo=SimpleNamespace(db=db))
+    # `_want_image` deriva de `_motivo_da_imagem` (RA-10, suíte 7): o dublê leva os dois.
+    ex._motivo_da_imagem = lambda *a, **k: Executor._motivo_da_imagem(ex, *a, **k)  # type: ignore[arg-type]
+    return ex
 
 
 def test_executor_le_o_perfil_da_execucao(tmp_path: Path) -> None:

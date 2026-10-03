@@ -314,11 +314,11 @@ class AnthropicProvider:
                           model=model or getattr(resp, "model", ""))
 
     @staticmethod
-    def _conteudo_da_etapa(screen: ScreenInput, estavel: str, volatil: str) -> list[dict[str, Any]]:
+    def _conteudo_da_etapa(screen: ScreenInput, estavel: str, volatil: str) -> list[dict[str, object]]:
         """RA-17 (dieta do contexto 2, `cache_da_etapa`): o bloco estável da etapa (passo e lições) primeiro, com o 2º
         ponto de cache; a imagem e a observação depois. Com a imagem primeiro, nada depois do system podia ser
         cacheado: a imagem muda a cada decisão, e o prefixo cacheável termina no primeiro byte que muda."""
-        content: list[dict[str, Any]] = [{"type": "text", "text": estavel, "cache_control": {"type": "ephemeral"}}]
+        content: list[dict[str, object]] = [{"type": "text", "text": estavel, "cache_control": {"type": "ephemeral"}}]
         if screen.jpeg and not screen.sensitive:
             content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
                                                          "data": base64.standard_b64encode(screen.jpeg).decode()}})

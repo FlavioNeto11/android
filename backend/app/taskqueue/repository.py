@@ -241,7 +241,7 @@ class Repository:
         return False
 
     def set_run_status(self, run_id: str, status: RunStatus, detail: str | None = None, *, message: str | None = None,
-                       level: str = "info", dados: dict[str, Any] | None = None) -> None:
+                       level: str = "info", dados: dict[str, object] | None = None) -> None:
         """`dados`: campos a mais no `data` do `run.updated` desta transição (o autor do início, P12)."""
         anterior = self.db.scalar("SELECT status FROM runs WHERE id=?", (run_id,))
         fields, params = ["status=?", "status_detail=?"], [status.value, detail]
@@ -1326,7 +1326,7 @@ class Repository:
                          plan_versions=versions, decisions=decisions)
 
     def emit_run(self, run_id: str, message: str | None, *, level: str = "info",
-                 dados: dict[str, Any] | None = None) -> None:
+                 dados: dict[str, object] | None = None) -> None:
         row = self.run_row(run_id)
         if row is None:
             return

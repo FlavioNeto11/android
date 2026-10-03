@@ -481,7 +481,7 @@ def _estado_do_thinking(provedor: AIProvider, papel: str, model: str) -> str | N
     return sonda(papel, model) if callable(sonda) else None
 
 
-def _chave_da_instancia(r: ResolvedRole) -> tuple[Any, ...]:
+def _chave_da_instancia(r: ResolvedRole) -> tuple[object, ...]:
     """Uma instância de provedor por combinação (provedor, modelo, prazo, tentativas, fallback de recusa).
 
     Os campos do 17.14 entram quando escritos: um perfil que só troca o esforço, o thinking ou o cache da etapa precisa
@@ -489,7 +489,7 @@ def _chave_da_instancia(r: ResolvedRole) -> tuple[Any, ...]:
     a função também entra: o provedor aplica o ajuste só às chamadas da função dona da instância (`_da_funcao`), e
     `decide` e `escalation` com o mesmo ajuste dividindo uma instância perderiam o da segunda. Sem nada escrito, a
     chave é a de sempre."""
-    chave: tuple[Any, ...] = (r.provider, r.kind, r.model, r.timeout_s, r.max_retries, r.refusal_fallback)
+    chave: tuple[object, ...] = (r.provider, r.kind, r.model, r.timeout_s, r.max_retries, r.refusal_fallback)
     ajustes = (r.effort_declarado, r.thinking, r.cache_da_etapa)
     return chave + (r.role, *ajustes) if ajustes != (None, None, False) else chave
 
