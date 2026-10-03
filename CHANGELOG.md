@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Canais externos: o contrato comum do Telegram (28.15) e do Trello (32.2)
+
+- `docs/design/canais-externos.md`, aprovado pela orquestradora (~18:15Z) e citado pelos ADR-071 e ADR-072. Define:
+  - a entrada comum `Comando(canal, autor, id_externo, alvo, verbo, argumento)`;
+  - a gramática fechada, alinhada ao cf7303ba da Android: `/ajuda`, `/status` (`/estado`), `/pendencias`,
+    `/aprovar` e `/vetar <id> [nota]`, `/responder <id> <texto>`, `/para <aparelho|persona> <objetivo>`, o texto
+    livre e `/orq`; com fato, "sim" e "não";
+  - o fato pelo reply ou pelo cartão;
+  - a identidade conferida na entrada, com o operador `telegram:dono`;
+  - as políticas do painel;
+  - o dedupe pela 085 genérica `canal_entradas`, com a 086 do 32.2 reduzida a cartões e cursor;
+  - a credencial por formato, que apaga quando pode e não ecoa;
+  - a redação na saída e os testes de contrato.
+- `trello-integracao.md` §3 alinhado: o `/para` é pedido com destino (não há verbo de parar), e o comando livre fica
+  desligado de fábrica no Trello.
+
 ## 2026-10-03 — 32.1: estudo da integração da Central com o Trello do dono (branch docs/32-1-estudo-trello)
 
 - `docs/design/trello-integracao.md` (até 2 páginas; sem código; nenhuma chamada ao Trello, `not_run`). Cobre:

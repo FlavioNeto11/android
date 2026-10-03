@@ -48,16 +48,15 @@ As listas atuais do Execução são do programa de desenvolvimento (`.claude/tre
 
 - **Mover o cartão** de aprovação para **✅ Aprovado** ou **⛔ Vetado** (listas novas) vira
   `POST /api/approvals/{id}/decide` com `verb` `approve` ou `reject`. O `edit` fica no painel.
-- **Comentário com comando:**
-  - `/aprovar`;
-  - `/vetar [nota]`;
-  - `/responder <texto>`, que vira a sucessora do `needs_input` por `POST /api/runs/{id}/successor`; o 28.15 confirma
-    a rota (INFERRED);
-  - `/para`, que cancela a execução ou pausa o pedido;
-  - `/estado`, que responde com o resumo do §4.
+- **Comentário com comando:** a gramática comum de `canais-externos.md`, a mesma do Telegram. O fato é o cartão.
+  - Num cartão de aprovação, "sim" ou `/aprovar [nota]` aprova, e "não" ou `/vetar [nota]` veta.
+  - Num cartão de `needs_input`, o texto ou `/responder <texto>` é a resposta.
+  - `/status` (`/estado`), `/pendencias` e `/ajuda` valem em qualquer cartão.
+  - O `/para <aparelho|persona> <objetivo>` e o texto livre ficam desligados de fábrica no Trello
+    (`trello.comando_livre`).
 
-  O alvo é o cartão. O roteamento é por regra fixa, sem IA. O 28.15 ainda não tem gramática em branch nenhum: a
-  proposta é um parser comum aos dois canais.
+  O roteamento é por regra fixa, sem IA. Desde 03/10 (~18:15Z), este item foi alinhado ao contrato aprovado: o `/para`
+  é pedido com destino, e não há verbo de parar.
 - **Identidade:** só vale a ação com `idMemberCreator` igual a `trello.membro_dono` (no `config.yaml`; é id, não
   segredo). As demais são ignoradas, registradas só pelo id. O operador é `trello:<idMember>`, passado em `decided_by`
   (`social/approvals.py:162`).
