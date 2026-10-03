@@ -482,6 +482,16 @@ teste novo provar o bloqueio a tarefa com rede exigida espera. Sem bloqueio, um 
 memória, e a readoção (`ligou`) mede de novo quem ainda não está verificado. Loja, quarentena e aparelho sem rede pedida
 (`nothing_requested`) são recusados.
 
+**Ao subir o backend (25.12).** Todo reinício do backend refaz o servidor do túnel e derruba os túneis dos aparelhos, e
+o `conferir` só vê `tun0` e `CONNECTED`. No `start` do scheduler, `ConvergenciaDeRede.verificar_ao_subir` marca a
+verificação do tráfego de todo aparelho com política `exigida` ou `exigida_com_bloqueio` e rede conectada
+(`conectado`, `parcial`, `trafego_verificado`): a medição sai no próximo ponto seguro de cada um (readoção ao ligar ou
+varredura de 60 s, com o aparelho livre), e a sem IP é o túnel morto (acima). **Escolha:** NÃO é o `POST …/verify`.
+Aquele pedido, com bloqueio, apaga a prova de vazamento e refaz o teste (para o cliente VPN e reinicia o aparelho), e o
+reinício do backend não mudou o cliente do aparelho nem o bloqueio: a prova segue valendo, o que caiu foi o túnel. Ao
+subir só se pede a MEDIÇÃO (a mesma marca de memória do verify); a prova de vazamento, o `detail` e os eventos da linha
+ficam como estavam. Quem precisa de teste novo continua pedindo `verify`.
+
 **Visão por aparelho.** `GET /api/network/devices`: por aparelho do parque (a loja fica de fora), `network`
 (`DeviceNetworkDTO` ou `null`), `effective_state`, `legacy_proxy`, `restriction` (a frase da quarentena),
 `real_account`, `required_apps`, `pending` (`aplicar`|`verificar`), `last_measurement` (a última medição, mais

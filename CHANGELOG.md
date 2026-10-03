@@ -36,6 +36,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   trava da interface conta como tentativa (caso do android-06, 03/10). O teste do portão
   `test_remedicao_sem_ip_espera_antes_de_repetir` mudou: afirmava o comportamento que o item corrige (o estado não saía de
   `trafego_verificado`). Prova `simulated`: `tests/test_rede_sonda.py::test_tunel_morto_*`.
+- **Backend ao subir (metade B).** `ConvergenciaDeRede.verificar_ao_subir`, chamado no `start` do scheduler, marca a
+  medição do tráfego dos aparelhos com política exigida e rede conectada: todo reinício do backend derruba os túneis.
+  Não usa o `verify` (com bloqueio ele apaga a prova de vazamento e reinicia o aparelho): a prova segue valendo.
+  Prova `simulated`: `tests/test_rede_sonda.py::test_backend_ao_subir_*`.
 
 ## 2026-10-03 — Aprendizado: nomes também nas listas (validação do deploy 4, branch fix/aprendizado-ux-deploy4)
 

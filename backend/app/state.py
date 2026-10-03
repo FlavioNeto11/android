@@ -2339,6 +2339,9 @@ class AppState:
             self._bg.append(asyncio.create_task(laco_de_convergencia(self), name="loja-convergencia"))
             # O servidor sing-box do central acompanha o banco (sobe com o primeiro aparelho que o pede; ADR-056).
             self._bg.append(asyncio.create_task(self.rede_convergencia.laco(), name="rede-servidor"))
+            # Todo reinício do backend derruba os túneis (25.12): a medição do tráfego dos aparelhos com rede exigida é
+            # pedida já, sem apagar a prova de vazamento (ver `verificar_ao_subir`).
+            self.rede_convergencia.verificar_ao_subir()
             # A saída do central, medida em segundo plano (29.20); desligada com `rede.sonda.medir_central: false`.
             self._bg.append(asyncio.create_task(self.rede_saida_central.laco(), name="rede-saida-central"))
         else:

@@ -768,6 +768,31 @@ class ConvergenciaDeRede:
                                               "espera."}
         return resposta
 
+    def verificar_ao_subir(self) -> list[str]:
+        """O backend acabou de subir (25.12): marca a verificação do tráfego de todo aparelho com política exigida
+        (`exigida` e `exigida_com_bloqueio`) e rede já conectada (`conectado`, `parcial`, `trafego_verificado`) para o
+        próximo ponto seguro de cada um (readoção ao ligar ou varredura de 60 s, com o aparelho livre). Todo reinício
+        do backend refaz o servidor do túnel e derruba os túneis; sem isto, o `trafego_verificado` seguia valendo até a
+        medição vencer (6 h) e o `conferir` só vê `tun0`/`CONNECTED`, que o cliente morto ainda mostra (android-03, 03/10).
+
+        NÃO usa `pedir_verificacao`/`POST …/verify`: com `exigida_com_bloqueio` aquele pedido APAGA a prova de vazamento
+        da linha e refaz o teste, que para o cliente VPN e reinicia o aparelho — e o reinício do backend não mudou o
+        cliente do aparelho nem o bloqueio (a prova segue valendo; o que caiu foi o túnel). Aqui só se marca a MEDIÇÃO
+        de tráfego (a marca de memória que o `verify` também deixa): a prova fica, o `detail` não é reescrito, nenhum
+        evento é emitido. A medição sem IP é o túnel morto (`_tunel_morto`). Devolve os aparelhos marcados."""
+        marcados: list[str] = []
+        for row in self.st.db.query(
+                "SELECT instance_id FROM device_network WHERE policy IN ('exigida','exigida_com_bloqueio')"
+                " AND state IN ('conectado','parcial','trafego_verificado')"):
+            iid = str(row["instance_id"])
+            mem = self.memoria(iid)
+            mem.verificacao_pedida = True
+            mem.espera_ate = 0.0
+            marcados.append(iid)
+        if marcados:
+            log.info("rede: verificação do tráfego marcada ao subir para %s", ", ".join(sorted(marcados)))
+        return marcados
+
     async def _guardar_linha_de_base(self, ap: AparelhoDaRede, instance_id: str, rev: int) -> None:
         """A contabilidade por UID de quando o túnel conectou: a janela da primeira medição dos apps começa aqui (o
         tráfego desde a conexão conta, o de antes não). Sem ela (leitura que falhou), a janela é só a da medição."""

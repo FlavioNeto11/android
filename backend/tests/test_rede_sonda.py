@@ -1596,3 +1596,51 @@ async def test_tunel_morto_start_da_interface_que_falha_ou_trava_conta_como_tent
     await asyncio.sleep(0.2)
     assert len(reinicios.pedidos) == pedidos + 1
     assert not any("wipe" in c or "pm clear" in c for c in ap.comandos)
+
+
+# ============================================================================ o backend ao subir (item 25.12, B)
+async def test_backend_ao_subir_mede_o_trafego_sem_apagar_a_prova_de_vazamento(parque: Harness,
+                                                                               monkeypatch: pytest.MonkeyPatch) -> None:
+    """Todo reinício do backend derruba os túneis; o `trafego_verificado` não pode seguir valendo até a medição vencer.
+    A medição é pedida SEM o `verify` (que apagaria a prova de vazamento e reiniciaria o aparelho com bloqueio)."""
+    st = parque.state
+    assert st is not None
+    ap, reinicios = _preparar_sonda(parque, monkeypatch)
+    await _ate_verificado(parque, ap)
+    antes = _linha(parque)
+    medicoes, paradas, pedidos = st.db.scalar("SELECT COUNT(*) FROM network_measurements"), ap.paradas, len(reinicios.pedidos)
+    _reiniciar_o_backend(parque)                                                    # a memória some, o banco fica
+    conv = st.rede_convergencia
+    assert conv.verificar_ao_subir() == ["android-01"]
+    # Sem a marca, `ligou` só CONFERIA (validade em dia): com ela, mede.
+    assert await _passo(parque, "ligou")
+    linha = _linha(parque)
+    assert st.db.scalar("SELECT COUNT(*) FROM network_measurements") == medicoes + 1
+    assert linha["state"] == "trafego_verificado"
+    assert ap.paradas == paradas and len(reinicios.pedidos) == pedidos              # nada de teste de vazamento nem reinício
+    assert all(linha[c] == antes[c] for c in ("leak_rev", "leak_client", "leak_result", "leak_at", "leak_detail"))
+    assert "verificação pedida" not in str(linha["detail"])                         # o `detail` não é reescrito como no verify
+    # Dessa vez o túnel morreu com o backend: a medição sem IP é o túnel morto, e a prova também fica.
+    _reiniciar_o_backend(parque)
+    conv.verificar_ao_subir()
+    ap.ip4 = None
+    conv.pausa_do_force_stop_s = conv.espera_do_religar_s = 0.0
+    assert await _passo(parque, "ligou")
+    assert _linha(parque)["state"] == "configurado" and "túnel morto" in str(_linha(parque)["detail"])
+    assert _linha(parque)["leak_result"] == antes["leak_result"] and ap.paradas == paradas
+
+
+async def test_backend_ao_subir_so_marca_politica_exigida_com_a_rede_conectada(parque: Harness,
+                                                                                monkeypatch: pytest.MonkeyPatch) -> None:
+    st = parque.state
+    assert st is not None
+    _preparar_sonda(parque, monkeypatch, policy="livre")
+    assert st.rede_convergencia.verificar_ao_subir() == []                           # `livre` nunca; `pendente` ainda não
+    st.db.execute("UPDATE device_network SET state='conectado', applied_rev=1 WHERE instance_id='android-01'")
+    assert st.rede_convergencia.verificar_ao_subir() == []                           # livre mesmo conectado
+    st.db.execute("UPDATE device_network SET policy='exigida' WHERE instance_id='android-01'")
+    assert st.rede_convergencia.verificar_ao_subir() == ["android-01"]
+    assert st.rede_convergencia.memoria("android-01").verificacao_pedida is True
+    st.db.execute("UPDATE device_network SET state='pendente' WHERE instance_id='android-01'")
+    st.rede_convergencia._mem.clear()
+    assert st.rede_convergencia.verificar_ao_subir() == []                           # ainda sem rede aplicada: nada a medir
