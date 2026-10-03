@@ -136,6 +136,7 @@ def _entrada(e: EntradaDoLivro, servico: LearningService | None = None, saude: S
         motivo = por_que_o_sistema_nao_publica(e, modo_publica=modo_publica, veto=veto)
     return {"kind": e.kind.value, "ref": e.ref, "state": e.state.value if e.state else None,
             "native_status": e.native_status, "title": e.title, "etapa": e.etapa, "app": e.app, "app_ref": e.app_ref,
+            "apps": list(e.apps),
             "capability": capability, "capability_nome": capability_nome,
             "origin": e.origin.value,
             "side_effect": e.side_effect, "human_origin": e.human_origin, "requires_owner": e.requires_owner,
@@ -206,7 +207,8 @@ def _revisao(r: RevisaoGravada, *, atual: bool = False, acao: AcaoPermitida | No
             "parecer": r.parecer.como_dados() if r.parecer is not None else None,
             "atual": atual, "acao": _acao(acao), "recusa": recusa,
             "decisao_final": r.decisao_final, "decidido_por": r.decidido_por, "override": r.override,
-            "override_motivo": r.override_motivo, "transicao_id": r.transicao_id}
+            "override_motivo": r.override_motivo, "transicao_id": r.transicao_id,
+            "resultado_posterior": r.resultado_posterior, "resultado_em": r.resultado_em}
 
 
 def _bloco_da_ia(p: PareceresDoItem) -> JsonObject:

@@ -20,8 +20,9 @@ from app.modules.learning.domain.livro import EntradaDoLivro
 from app.modules.learning.domain.politica_de_risco import ClasseDeRisco, Classificacao, MotivoDeEntrada, Razao
 from app.modules.learning.domain.validacao import Ambiente, AparelhoCandidato, EstadoDoPedido
 from app.modules.learning.domain.vocabulario import LivroKind, Modo, Origem
-from app.modules.learning.infrastructure.ligar_validacao import LacoDaValidacao
+from app.modules.learning.infrastructure.ligar_validacao import DespachoDoParque, LacoDaValidacao
 from app.modules.learning.infrastructure.validacoes_sql import FontesDaValidacaoSql, RegistroDeValidacoesSql
+from app.taskqueue.balanceamento import Candidato
 from app.util import to_iso
 
 from .fake_skills import banco as banco_migrado
@@ -48,13 +49,16 @@ class Parque:
         self.db = db
         self.ambiente_ = Ambiente(saudavel=True, execucoes_em_curso=0)
         self.lista: list[AparelhoCandidato] = []
+        self.prontos: set[str] = {QA}                    # os pacotes prontos nos aparelhos de `lista`
+        self.pedidos_de_aparelho: list[tuple[str, ...]] = []
         self.enfileiradas: list[tuple[str, str, str]] = []
 
     def ambiente(self) -> Ambiente:
         return self.ambiente_
 
-    def aparelhos(self, pacote: str | None) -> Sequence[AparelhoCandidato]:
-        return self.lista if pacote == QA else []
+    def aparelhos(self, pacotes: Sequence[str]) -> Sequence[AparelhoCandidato]:
+        self.pedidos_de_aparelho.append(tuple(pacotes))
+        return self.lista if pacotes and set(pacotes) <= self.prontos else []
 
     def gasto_da_operacao(self, agora: datetime, dias: int) -> float:
         return 18.0
@@ -237,3 +241,55 @@ def test_o_despachante_roda_a_volta_na_thread_do_loop() -> None:
     laco = LacoDaValidacao(Servico())  # type: ignore[arg-type]
     asyncio.run(asyncio.wait_for(laco.laco(lambda: 1), timeout=5))
     assert no_loop == [True]
+
+
+# ------------------------------------------------------------------ 30.33-C: o item de mais de um app
+QA2, FORA = "com.pocqa.segundo", "com.exemplo.fora"
+
+
+def _fluxo_multi(db: Database, fid: str, apps: tuple[str, ...]) -> EntradaDoLivro:
+    db.execute("INSERT INTO flows(id, name, match_key, command_template, plan, app_id, status, created_at)"
+               " VALUES (?,?,?,?,?,?,?,?)", (fid, fid, f"cmd {fid}", COMANDO, "{}", "qa-messenger", "active",
+                                             to_iso(datetime.now())))
+    for a in apps:
+        db.execute("INSERT INTO flow_required_apps(flow_id, app_id) VALUES (?,?)", (fid, a))
+    return _receita(kind=LivroKind.FLUXO, ref=fid, apps=tuple(
+        {"qa-messenger": QA, "qa-2": QA2, "fora": FORA}[a] for a in apps))
+
+
+def test_o_multi_app_so_e_qa_com_todos_os_apps_de_qa_e_pede_aparelho_com_todos(
+        mundo: tuple[Database, ServicoDeValidacao, Parque, Relogio, dict[str, object]]) -> None:
+    """Mais restritivo (regra do dono): o fluxo que passa pelo QA e por um app de fora não é QA (com efeito, é
+    efeito_real, recusado); o de dois apps de QA é QA, e o aparelho precisa dos DOIS prontos, não só do principal."""
+    db, servico, parque, _relogio, _ = mundo
+    db.execute("INSERT INTO apps(id, name, package, builtin, category) VALUES ('qa-2','QA Dois',?,1,'qa')", (QA2,))
+    db.execute("INSERT INTO apps(id, name, package, builtin, category) VALUES ('fora','Fora',?,1,NULL)", (FORA,))
+    misto = servico.ao_parecer(_fluxo_multi(db, "f-misto", ("qa-messenger", "fora")), "lr-1", PEDE, B)
+    assert misto is not None and (_linha(db, misto)["estado"], _linha(db, misto)["motivo"]) == ("recusada",
+                                                                                                "efeito_real")
+    pid = servico.ao_parecer(_fluxo_multi(db, "f-qa", ("qa-messenger", "qa-2")), "lr-2", PEDE, B)
+    assert pid is not None and (_linha(db, pid)["grupo"], _linha(db, pid)["estado"]) == ("qa", "pendente")
+    parque.lista = [_ap("android-10")]
+    assert servico.uma_volta(lambda: 1) is None                          # só o QA pronto: espera
+    assert set(parque.pedidos_de_aparelho[-1]) == {QA, QA2}
+    parque.prontos = {QA, QA2}
+    assert servico.uma_volta(lambda: 1) is not None and _linha(db, pid)["aparelho"] == "android-10"
+
+
+def test_o_parque_so_oferece_aparelho_com_todos_os_apps_prontos(tmp_path: Path) -> None:
+    db = banco_migrado(tmp_path, "parque.sqlite3")
+    for instancia, pacote, estado in (("android-09", QA, "ready"), ("android-09", QA2, "ready"),
+                                      ("android-10", QA, "ready"), ("android-10", QA2, "missing")):
+        db.execute("INSERT INTO device_app_state(instance_id, package_name, state) VALUES (?,?,?)",
+                   (instancia, pacote, estado))
+
+    class ParqueDeCandidatos:
+        def candidatos_de(self, ids: Sequence[str]) -> list[Candidato]:
+            return [Candidato(instance_id=i, servidor="central", ligado=True, acordavel=False, ocupado=False)
+                    for i in ids]
+
+    despacho = DespachoDoParque(db, None, ParqueDeCandidatos(), saudavel=lambda: True)  # type: ignore[arg-type]
+    assert [a.id for a in despacho.aparelhos((QA, QA2))] == ["android-09"]
+    assert [a.id for a in despacho.aparelhos((QA,))] == ["android-09", "android-10"]
+    assert despacho.aparelhos(()) == [] and despacho.aparelhos(("",)) == []
+    db.close()

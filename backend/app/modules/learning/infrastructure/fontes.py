@@ -18,14 +18,15 @@ from app.modules.learning.domain.conteudo import (PREFIXO_DE_TREINO, EtapaDeOrig
                                                   capability_da_linha_da_receita, capability_da_receita,
                                                   fluxo_legivel, habilidade_legivel, receita_legivel)
 from app.modules.learning.domain.evidencia_invalida import run_da_etapa, run_valida
-from app.modules.learning.domain.livro import (EntradaDoLivro, escopo_da_receita, escopo_do_fluxo, estado_nativo,
-                                               fluxo_tem_efeito, hash_da_receita, receita_tem_efeito)
+from app.modules.learning.domain.livro import (EntradaDoLivro, apps_na_ordem_do_plano, escopo_da_receita,
+                                               escopo_do_fluxo, estado_nativo, fluxo_tem_efeito, hash_da_receita,
+                                               receita_tem_efeito)
 from app.modules.learning.domain.relacoes import Sucessora
 from app.modules.learning.domain.versao import (ReceitaDaChave, VersaoViva, agrupar_vivas, quadro_da_receita,
                                                 versao_canonica)
 from app.modules.learning.domain.vocabulario import APP_NAO_RESOLVIDO, LivroKind, Origem
 from app.modules.learning.infrastructure import linhas
-from app.modules.skills.domain.document import JsonObject, content_hash
+from app.modules.skills.domain.document import JsonObject, JsonValue, content_hash
 
 _ORIGEM_DA_HABILIDADE = {"teaching": Origem.ENSINO, "legacy_flow": Origem.EXECUCAO, "run": Origem.EXECUCAO,
                          "manual": Origem.PESSOA, "import": Origem.PESSOA}
@@ -380,11 +381,25 @@ def _fluxo(r: Row, resolvedor: ResolvedorDeApp, exigidos: list[str]) -> EntradaD
         kind=LivroKind.FLUXO, ref=linhas.texto(r, "id"), state=estado_nativo(LivroKind.FLUXO, status),
         native_status=status, title=linhas.texto(r, "command_template"),
         app=app, app_ref=app_ref,
+        apps=_apps_do_fluxo(plano, exigidos, app_id, resolvedor) if app != APP_NAO_RESOLVIDO else (),
         origin=Origem.TREINO if fonte.startswith("training") else Origem.EXECUCAO,
         side_effect=fluxo_tem_efeito(plano), created_at=linhas.texto(r, "created_at"),
         last_used_at=linhas.texto_ou_nulo(r, "last_used_at"), uses=linhas.inteiro(r, "uses"),
         detail=linhas.texto(r, "name"), content_hash=content_hash(plano) if plano is not None else None,
         scope_key=escopo_do_fluxo(linhas.texto(r, "match_key")), nasceu_de=_run_de_origem(r, fonte))
+
+
+def _apps_do_fluxo(plano: JsonValue, exigidos: list[str], principal: str | None,
+                    resolvedor: ResolvedorDeApp) -> tuple[str, ...]:
+    """30.33-C: os pacotes dos apps do fluxo (os exigidos e o principal, mesmo que a tabela não o cite), na ordem do
+    plano, só quando são mais de um; o id que não resolve fica de fora. Só com o principal resolvido: o fluxo no balde
+    (30.2: dois exigidos de pacotes diferentes e nenhum principal) fica só no balde, porque adivinhar o principal é
+    pior que mostrá-lo sem app."""
+    ids = apps_na_ordem_do_plano(plano, exigidos)
+    if principal and principal not in ids:
+        ids = apps_na_ordem_do_plano(plano, [*ids, principal])
+    pacotes = tuple(dict.fromkeys(p for p in (resolvedor.pacote(a) for a in ids) if p is not None))
+    return pacotes if len(pacotes) > 1 else ()
 
 
 def _run_de_origem(r: Row, fonte: str) -> str | None:

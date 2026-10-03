@@ -31,9 +31,10 @@ from app.modules.learning.domain.conteudo import capability_unica, licao_legivel
 from app.modules.learning.domain.efeito import exposicao_json
 from app.modules.learning.domain.espera import Faixa
 from app.modules.learning.domain.livro import (ESTADOS_DA_EVIDENCIA_INVALIDA, EntradaDoLivro, ItemDeAprendizado,
-                                               NovoItem, Transicao, a_revisar, contagem, decididos_para_revisar,
-                                               devolve_a_prova, e_confirmacao, entrada_do_item, estado_nativo,
-                                               motivo_da_confirmacao, para_aprovar, status_nativo)
+                                               NovoItem, Transicao, a_revisar, apps_do_item, contagem,
+                                               decididos_para_revisar, devolve_a_prova, e_confirmacao,
+                                               entrada_do_item, estado_nativo, motivo_da_confirmacao, para_aprovar,
+                                               status_nativo)
 from app.modules.learning.domain.modo_por_app import modo_efetivo
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.saude import Saude, SinaisDeSaude, calcular
@@ -196,8 +197,10 @@ class LearningService:
         """`rotulo` `None` é o livro inteiro (a visão por app, a contagem da barra e a saúde leem assim); a lista
         padrão da rota passa `PRODUTO`."""
         todas = self._todas(kind)
-        filtradas = tuple(e for e in todas if (state is None or e.state is state) and (app is None or e.app == app)
-                          and (origem is None or e.origin is origem))
+        # 30.33-C: o fluxo multi-app entra no filtro de cada app dele (`apps_do_item`); o rótulo QA/PRODUTO, abaixo,
+        # continua pelo principal: ele decide a etiqueta da linha, não a quem ela pertence.
+        filtradas = tuple(e for e in todas if (state is None or e.state is state)
+                          and (app is None or app in apps_do_item(e)) and (origem is None or e.origin is origem))
         mostradas = filtradas
         if rotulo in (Rotulo.PRODUTO, Rotulo.QA):
             teste = self._fontes.pacotes_de_teste()

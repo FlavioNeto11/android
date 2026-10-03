@@ -25,7 +25,7 @@ from app.modules.learning.domain.camada import (ArquivoDeclarado, Existencia, Mo
                                                 OrigemNaVisao, Uso, origem_do_aprendido, uso_do_declarado,
                                                 uso_do_item)
 from app.modules.learning.domain.ciclo import NaoEncontrado
-from app.modules.learning.domain.livro import EntradaDoLivro, contagem
+from app.modules.learning.domain.livro import EntradaDoLivro, apps_do_item, contagem
 from app.modules.learning.domain.vocabulario import APP_NAO_RESOLVIDO, absorvida_em
 
 
@@ -170,8 +170,10 @@ class VisaoPorApp:
         for e in self._servico.livro().itens:
             if e.app is None:
                 fora.append(e)
-            else:
-                por_app.setdefault(e.app, []).append(e)
+            # 30.33-C: o fluxo multi-app (ler no Outlook, abrir o perfil no Instagram) entra em cada app dele; antes
+            # ficava só no principal e sumia do outro (validação do deploy 10).
+            for pacote in apps_do_item(e):
+                por_app.setdefault(pacote, []).append(e)
         return declarados, loja, por_app, fora
 
     def _resumo(self, pacote: str, d: Declarado | None, lj: AppDaLoja | None, entradas: Sequence[EntradaDoLivro],
