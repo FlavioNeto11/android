@@ -255,3 +255,39 @@ async def test_trava_de_avisos_so_com_o_aviso_ligado(tmp_path: Path, ligado: boo
             assert trava is None or trava["dono"] is None, "desligado: não segura a trava"
     finally:
         await hh.state.stop()
+
+
+def _run(banco: Database, run_id: str, *, chave: str, prova: str | None = None) -> None:
+    banco.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, instance_ids, created_at, prova_fluxo_id)"
+                  " VALUES (?,?,?,?,?,?,?,?)", (run_id, chave, "abrir o app", "single", "planning", "[]", now().isoformat(), prova))
+
+
+def test_execucao_de_prova_nunca_vira_aviso_ao_dono(tmp_path: Path) -> None:
+    """30.37: a prova de fluxo é do sistema. Nem a pergunta (`needs_input`) nem a aprovação dela avisam; o mesmo evento
+    de uma execução comum avisa. Reconhece pelo campo no evento, pelo banco (`prova_fluxo_id`) e pela chave `validacao:`."""
+    servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
+    _run(banco, "rp", chave="k-prova", prova="fluxo-1")
+    _run(banco, "rv", chave="validacao:p9")
+    _run(banco, "rc", chave="k-comum")
+    needs = lambda rid, extra=None: servico.enfileirar_evento(  # noqa: E731
+        "run.updated", {"run": {"id": rid, "status": "needs_input", **(extra or {})}}, 1)
+    assert needs("rp", {"prova_fluxo_id": "fluxo-1"}) is False, "o campo do evento já a denuncia"
+    assert needs("rp") is False, "evento sem o campo: o banco diz que é prova"
+    assert needs("rv") is False, "a validação do curador pela chave de idempotência"
+    assert servico.enfileirar_evento("approval.pending", {"approval": {"id": "ap-p", "run_id": "rp"}}, 2) is False
+    assert servico.enfileirar_evento("approval.pending", {"approval": {"id": "ap-v", "run_id": "rv"}}, 3) is False
+    assert banco.scalar("SELECT COUNT(*) FROM avisos_entregas") == 0
+    assert needs("rc") is True, "a execução comum continua avisando"
+    assert servico.enfileirar_evento("approval.pending", {"approval": {"id": "ap-c", "run_id": "rc"}}, 4) is True
+    assert banco.scalar("SELECT COUNT(*) FROM avisos_entregas") == 2
+
+
+def test_run_summary_expoe_o_fluxo_provado_so_na_execucao_de_prova(tmp_path: Path) -> None:
+    """30.37: `RunSummary.prova_fluxo_id` vem de `runs.prova_fluxo_id` (o painel rotula a prova com ele)."""
+    from app.taskqueue.repository import Repository
+    _, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio())
+    _run(banco, "rp", chave="k-prova", prova="fluxo-1")
+    _run(banco, "rc", chave="k-comum")
+    repo = Repository(banco, EventBus(banco), tmp_path / "ev")
+    assert repo.run_summary(repo.run_row("rp")).prova_fluxo_id == "fluxo-1"
+    assert repo.run_summary(repo.run_row("rc")).prova_fluxo_id is None

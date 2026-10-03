@@ -235,6 +235,9 @@ interface RunSummary {
    *  execução anterior ou avulsa. Aditivo e opcional: backend antigo não manda. */
   pedido_id?: string | null;
   ocorrencia_id?: string | null;
+  /** v0.97 (30.37): o fluxo que esta execução PROVA (validação do curador); `null` ou ausente em toda execução comum.
+   *  Não é pedido de pessoa: o painel a rotula "Prova de fluxo (validação)". Aditivo e opcional. */
+  prova_fluxo_id?: string | null;
 }
 
 interface Step {

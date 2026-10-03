@@ -19,6 +19,29 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: a validação do fluxo roda o próprio fluxo, e a evidência vem das etapas da prova (30.37; branch feat/30-37-prova)
+
+- **A execução de prova.**
+  - Antes: a validação por re-execução rodava o planejador livre; o candidato ficava inerte e o fluxo ativo não ganhava
+    evidência (K-086: nenhuma das 13 evidências de fluxo vinha de execução que usava o próprio fluxo).
+  - Agora o pedido de validação de FLUXO roda o plano do próprio fluxo com os parâmetros do comando de origem
+    (`runs.prova_fluxo_id`, migração 084), sem planejador, sem RESOLVE, sem `flow_id`, `used` nem `skill_hash`, fora da
+    sombra da intenção, e sem ensinar fluxo novo.
+  - Emenda datada à D1 do ADR-054: validação de fluxo pelo próprio fluxo; a receita segue por re-execução.
+- **A evidência vem das etapas.** A favor: `completed` com todas comprovadas. Contra: etapa reprovada na própria
+  pós-condição. Infra (erro de IA, teto, aparelho, etapa que pediria pessoa) não conta. Vale também para o fluxo ativo;
+  o D1 só avalia o que ainda está em prova.
+- **A prova nunca espera pessoa.** `needs_input`, `approval_required` ou incerteza encerra a execução pelo sistema, na
+  hora (sem `cancelou_execucao`, sem pergunta, sem aviso), e o pedido fecha `sem_evidencia`.
+- **No painel e na API.** "Prova de fluxo (validação)" (`RunSummary.prova_fluxo_id`), nunca comando de pessoa nem aviso.
+- **Teto por pedido** `aprendizado.validacao.teto_por_pedido_usd` (US$ 0,10), aplicado pelo roteador como o teto do
+  28.6 (o menor), também nas reaberturas. O teto total do P4 segue US$ 3,09.
+- **`sem_caminho` do fluxo** (comando fora do molde); só a receita `sem_caminho` volta ao curador.
+- **Reabertura:** o pedido de fluxo fechado `sem_evidencia` ou `divergencia_de_forma` ganha um pedido novo, uma vez,
+  que roda como prova (3 esperados no central).
+- Contrato: adendo v0.97. Banco: migração 084 (só `ADD COLUMN`).
+- Prova `simulated`: `tests/test_learning_prova.py`. `real`: `not_run` até a 1ª validação de fluxo depois do deploy que
+  levar o 30.37; o P4 fica pausado (`validacao.modo: off`) até lá.
 ## 2026-10-03 — Suíte 13 na main e deploy 13 no central (1c54a7bb; migração 083; config inalterada)
 
 - A suíte 13 foi integrada em `integ/suite-13` na ordem da orquestradora:

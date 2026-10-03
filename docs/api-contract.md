@@ -4762,6 +4762,43 @@ caminho.
 Prova:
 - `simulated`: `tests/test_learning_forma.py` e `DetalheRico.test.tsx`;
 - `not_run`: o central (a reclassificação das linhas do P4 de 03/10).
+
+## Adendo v0.97 (03/10/2026; número da orquestradora; item 30.37) — a execução de prova de fluxo: `RunSummary.prova_fluxo_id`
+
+Aditivo aos v0.47, v0.89 e v0.96. Nenhuma rota nova; migração 084 (`runs.prova_fluxo_id`,
+`learning_validations.teto_usd`). Origem: o K-086 (a validação por re-execução não deixava evidência para o fluxo ativo
+e media o planejador livre no candidato).
+
+**`RunSummary.prova_fluxo_id`** (`string | null`, também no `RunDetail`):
+- o id do fluxo que a execução PROVA, ou `null` numa execução comum;
+- a execução de prova roda o plano do próprio fluxo com os parâmetros do comando de origem, sem planejador;
+- aparece como "Prova de fluxo (validação)": nunca como comando de pessoa, nunca aviso, nunca o último comando do
+  cartão;
+- sem `flow_id` nem `skill_hash` nela, e a sombra da intenção não a vê;
+- se a prova precisaria de uma pessoa (`needs_input`, `approval_required`, incerteza), o SISTEMA a encerra na hora
+  (`cancelled`, sem `cancelou_execucao`, sem pergunta pendente).
+
+**Config** `aprendizado.validacao.teto_por_pedido_usd` (padrão `0.10`, `0..10`):
+- o teto de IA de UM pedido de validação, gravado em `learning_validations.teto_usd`;
+- o roteador o aplica como o teto do pedido do 28.6 (`teto_usd_da_execucao`: o menor dos dois);
+- vale também para a reabertura;
+- o teto total do P4 não muda (US$ 3,09).
+
+**`learning_validations.motivo`** (sem CHECK; os valores do v0.96 seguem):
+- `sem_caminho` passa a valer também para o FLUXO cujo comando de origem não cabe mais no molde (ao nascer ou ao
+  despachar); só a receita `sem_caminho` volta ao curador (`chegadas`);
+- `sem_evidencia` (já existia) é também o fechamento da prova que não deixou evidência (infra: erro de IA, teto, aparelho, etapa que pediria pessoa);
+- o pedido de FLUXO fechado `sem_evidencia` ou `divergencia_de_forma` numa execução comum ganha UM pedido novo (a
+  reabertura), que roda como prova.
+
+**Evidência** (`evidencias[]` do detalhe `GET /api/aprendizado/{kind}/{ref}`):
+- a linha da prova tem `origin_ref = "run:<id da execução de prova>"`, e o `detail` abre com a marca do conteúdo do fluxo;
+- `for`: execução `completed` com todas as etapas comprovadas; `against`: uma etapa `failed` na própria pós-condição;
+- vale também para o fluxo ativo; o veredito do D1 só avalia o que ainda está em prova.
+
+Prova:
+- `simulated`: `tests/test_learning_prova.py`;
+- `not_run`: o central (a 1ª validação de fluxo depois do deploy que levar o 30.37).
 ## Adendo v1.00 (03/10/2026; número da orquestradora; item 30.38) — validação e pareceres com a verdade no painel
 
 **Parcial:** só a (c) está aqui; a (a), a origem nas execuções de validação, e a (b), a rota de leitura dos pedidos

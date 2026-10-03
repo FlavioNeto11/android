@@ -33,7 +33,8 @@ EM_CURSO = ("planning", "planned", "running", "paused", "cancelling")
 
 
 class Fila(Protocol):
-    def create(self, req: RunCreate, *, origem: tuple[str, str] | None = None, prioridade: int = 0) -> object: ...
+    def create(self, req: RunCreate, *, origem: tuple[str, str] | None = None, prioridade: int = 0,
+               prova: str | None = None) -> object: ...
 
 
 class Parque(Protocol):
@@ -43,7 +44,8 @@ class Parque(Protocol):
 def ajustes_da_validacao(cfg: ValidacaoCfg) -> AjustesDaValidacao:
     return AjustesDaValidacao(modo=Modo(cfg.modo), beta=cfg.beta, maximo_por_hora=cfg.maximo_por_hora,
                               intervalo_s=cfg.intervalo_s, janela_dias=cfg.janela_dias, extra_usd=cfg.extra_usd,
-                              extra_ate=cfg.extra_ate, custo_estimado_usd=cfg.custo_estimado_usd)
+                              extra_ate=cfg.extra_ate, custo_estimado_usd=cfg.custo_estimado_usd,
+                              teto_por_pedido_usd=cfg.teto_por_pedido_usd)
 
 
 class DespachoDoParque:
@@ -81,8 +83,10 @@ class DespachoDoParque:
     def gasto_da_operacao(self, agora: datetime, dias: int) -> float:
         return RegistroDeRevisoesSql(self._db).janela(agora, dias).gasto_da_operacao
 
-    def enfileirar(self, comando: str, aparelho: str, chave: str) -> str:
-        resumo = self._fila.create(RunCreate(command=comando, instance_ids=[aparelho], idempotency_key=chave))
+    def enfileirar(self, comando: str, aparelho: str, chave: str, prova: str | None = None) -> str:
+        """`prova` (30.37): o id do fluxo que a execução prova; só então passa o argumento à fila."""
+        req = RunCreate(command=comando, instance_ids=[aparelho], idempotency_key=chave)
+        resumo = self._fila.create(req, prova=prova) if prova else self._fila.create(req)
         return str(getattr(resumo, "id"))
 
 

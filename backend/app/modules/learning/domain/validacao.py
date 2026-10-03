@@ -75,7 +75,8 @@ class Motivo(StrEnum):
     EFEITO_REAL = "efeito_real"                       # efeito em app real: o ensaio de leitura é a fatia 2
     SEM_FLUXO_ATIVO = "sem_fluxo_ativo"               # receita sem fluxo ativo para o comando: a chave pode mudar
     #: 30.36: o plano do fluxo ativo do comando não chega à etapa desta receita (outra variante dela é a que roda: a
-    #: pós-condição reescrita do RA-20). Recusa também AO DESPACHAR, sem execução, porque o fluxo pode mudar.
+    #: pós-condição reescrita do RA-20). 30.37: no fluxo, o comando de origem não cabe mais no molde dele (a execução de
+    #: prova não teria os parâmetros). Recusa também AO DESPACHAR, sem execução, porque o fluxo pode mudar.
     SEM_CAMINHO = "sem_caminho"
     # ao despachar (o pedido fica `pendente` e tenta na volta seguinte)
     AMBIENTE_OCUPADO = "ambiente_ocupado"             # health com problema, execução em curso (restart/suíte/deploy)
@@ -94,7 +95,8 @@ class Motivo(StrEnum):
 class FatosDoParecer:
     """O que decide se um parecer vira pedido. `efeito`: o item tem ação ou etapa de efeito externo; `app_qa`: o app
     é da categoria QA (`apps.category='qa'`); `fluxo_ativo`: há fluxo ativo cujo modelo casa o comando de origem (só
-    importa para a receita); `caminho` (30.36): o plano desse fluxo chega à etapa da receita (fora da receita, sim)."""
+    importa para a receita); `caminho` (30.36/30.37): o plano desse fluxo chega à etapa da receita, ou, no fluxo, o comando
+    de origem cabe no molde dele (nos outros tipos, sim)."""
 
     decisao: Decisao
     falta: tuple[Falta, ...]
@@ -163,7 +165,7 @@ def _recusa(f: FatosDoParecer, grupo: Grupo) -> Motivo | None:
         return Motivo.EFEITO_REAL
     if f.kind is LivroKind.RECEITA and not f.fluxo_ativo:
         return Motivo.SEM_FLUXO_ATIVO
-    if f.kind is LivroKind.RECEITA and not f.caminho:
+    if not f.caminho:                       # receita: a variante de outra etapa; fluxo: o comando não cabe no molde (30.37)
         return Motivo.SEM_CAMINHO
     return None
 

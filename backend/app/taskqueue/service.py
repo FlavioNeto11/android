@@ -178,10 +178,12 @@ class RunService:
             return canario.profile, "canary"
         return None
 
-    def create(self, req: RunCreate, *, origem: tuple[str, str] | None = None, prioridade: int = 0) -> RunSummary:
+    def create(self, req: RunCreate, *, origem: tuple[str, str] | None = None, prioridade: int = 0,
+               prova: str | None = None) -> RunSummary:
         """Cria a execução. `origem` = `(pedido_id, ocorrencia_id)` é só do laço de pedidos (28.4, D3): vai no mesmo
         `INSERT` de `runs` e não existe na API pública (`RunCreate` recusa campo extra). `prioridade` (28.6) idem:
-        interna, 0 por padrão; maior passa na frente no despacho do escalonador."""
+        interna, 0 por padrão; maior passa na frente no despacho do escalonador. `prova` (30.37) idem: o fluxo que esta
+        EXECUÇÃO DE PROVA prova, do despachante da validação; o plano é o do fluxo, não o do planejador."""
         self._recusar_credencial(req.command)
         perfil_de_ia = self._perfil_de_ia(req)
         pedido = {"instance_ids": list(req.instance_ids), "profile_ids": list(req.profile_ids),
@@ -238,7 +240,7 @@ class RunService:
         # são NOMES, montados no planejamento, e o consentimento já foi dado na conta.
         row, created = self.repo.create_run(req, simulated=self.provider.simulated,
                                             targets=self._foto(req, resolucao, comando, pedido),
-                                            ai_profile=perfil_de_ia, origem=origem, prioridade=prioridade)
+                                            ai_profile=perfil_de_ia, origem=origem, prioridade=prioridade, prova=prova)
         if created:
             self._spawn_planning(row["id"])
         return self.repo.run_summary(self.repo.run_row(row["id"]), deduplicated=not created)
@@ -994,14 +996,26 @@ class RunService:
                               # "android-09" que ninguém consegue reencontrar. Re-fotografado no despacho.
                               **self.scheduler.onde_roda(rt)})
         apps = self._apps_configurados()
+        prova: str | None = run["prova_fluxo_id"]
         try:
-            # RESOLVE + COMPILE (design §14.1): skill publicada → fluxo ativo → nada, cada backend atrás do seu
-            # interruptor (`skills.enabled`, `ai.flows`). Casou: o plano já existe e o planejador não é chamado.
-            known = self.skills.for_command(comando, [i.get("profile_id") for i in instances])
-            if known is not None and known.plan is None:
+            # 30.37: a EXECUÇÃO DE PROVA roda o plano do próprio fluxo, sem RESOLVE e sem planejador. Não é reuso: nada
+            # de `runs.flow_id`, `flows.used` nem `skill_hash` (`_registrar_resolucao`), e a sombra da intenção não a vê.
+            known = None if prova else self.skills.for_command(comando, [i.get("profile_id") for i in instances])
+            if prova:
+                self._sem_sombra.add(run_id)
+                da_prova = self.flows.plano_em_prova(prova, comando)
+                if da_prova is None:
+                    repo.set_run_status(run_id, RunStatus.failed,
+                                        f"Prova de fluxo (validação): o fluxo {prova} foi desligado ou o comando de origem "
+                                        "não cabe mais no molde dele.", level="warn")
+                    return
+                plan = da_prova
+                repo.decision(f"Prova de fluxo (validação): o plano é o do fluxo {prova}, com os parâmetros do comando "
+                              "de origem; o planejador não é chamado.", run_id=run_id)
+            elif known is not None and known.plan is None:
                 self._skill_sem_plano(run_id, known)
                 return
-            if known is not None and known.plan is not None:
+            elif known is not None and known.plan is not None:
                 plan = known.plan
                 self._registrar_resolucao(run_id, known)
             else:

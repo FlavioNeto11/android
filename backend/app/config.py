@@ -1052,6 +1052,9 @@ class ValidacaoCfg(BaseModel):
     extra_usd: float = Field(0.0, ge=0, le=100)
     extra_ate: str = ""
     custo_estimado_usd: float = Field(0.07, ge=0, le=10)    # antes de medir: a mediana das execuções reais do QA
+    #: 30.37: o teto de gasto de IA de UM pedido (a execução de prova); o roteador barra a chamada seguinte quando a
+    #: execução já gastou isto. Vai à coluna `learning_validations.teto_usd` na hora do nascimento do pedido.
+    teto_por_pedido_usd: float = Field(0.10, ge=0, le=10)
 
     @field_validator("extra_ate")
     @classmethod

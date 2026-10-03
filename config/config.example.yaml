@@ -581,6 +581,7 @@ aprendizado:                      # aprendizado contínuo (ADR-054): livro, D1, 
     extra_usd: 0                  # verba única somada ao beta até extra_ate (ISO, ex.: 2026-10-10T00:00:00.000Z)
     extra_ate: ""
     custo_estimado_usd: 0.07
+    teto_por_pedido_usd: 0.10     # 30.37: teto de gasto de IA de UM pedido (a execução de prova); acima, o roteador barra
   # Autopublicação do fluxo de classe B (30.34): parecer "aprovar" com confiança alta + ≥ 2 execuções reais em ≥ 2
   # aparelhos. "off" (padrão) não roda · "shadow" só marca o que publicaria (o livro da sombra). "on" ainda não é aceito:
   # vem depois do relatório da sombra (≥ 30 casos fechados com ≥ 90 % sem regressão).

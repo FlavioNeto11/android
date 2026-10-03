@@ -147,8 +147,22 @@ class ExecucaoAssentada:
     simulada: bool
     aparelho: str | None
     #: `None` quando a execução não serve de comparação: não terminou `completed`, reaproveitou fluxo ou habilidade
-    #: (o planejador não foi chamado), tem etapa confirmada à mão, ou o plano não é legível.
+    #: (o planejador não foi chamado), tem etapa confirmada à mão, o plano não é legível, ou é uma prova (30.37).
     assinatura: AssinaturaDoPlano | None
+    #: 30.37: a EXECUÇÃO DE PROVA de um fluxo (a validação pelo próprio fluxo); `None` em toda execução comum.
+    prova: ProvaDaExecucao | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ProvaDaExecucao:
+    """O desfecho da execução de prova, lido das etapas dela (30.37). `posicao`: `FOR` com todas as etapas comprovadas
+    (`succeeded`, nenhuma pulada); `AGAINST` com uma etapa reprovada na própria pós-condição (`failed` sem erro de IA);
+    `None` para infra (aparelho, teto, cancelamento pelo sistema, erro de IA): não conta nem a favor nem contra."""
+
+    fluxo_id: str
+    content_hash: str                       # o do fluxo de agora: a marca da evidência (`marca_do_conteudo`)
+    posicao: Posicao | None
+    detalhe: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -318,6 +332,8 @@ class SombraDosFluxos:
         execucao = self._leitura.execucao(run_id)
         if execucao is None:
             return 0
+        if execucao.prova is not None:
+            return self._minerar_prova(execucao, execucao.prova)
         gravadas = 0
         for fluxo in self._leitura.fluxos_em_prova():
             posicao = self._posicao(fluxo, execucao)
@@ -338,6 +354,26 @@ class SombraDosFluxos:
             except ErroDeAprendizado as exc:            # veto, conflito, D1: um fluxo não para os outros
                 log.info("aprendizado: fluxo %s segue como está: %s", fluxo.id, exc)
         return gravadas
+
+    def _minerar_prova(self, execucao: ExecucaoAssentada, prova: ProvaDaExecucao) -> int:
+        """30.37: a evidência da prova é UMA linha, do fluxo provado, pelas etapas dela; nenhuma sombra (o plano é o do
+        próprio fluxo, não o do planejador). Vale para o candidato e para o ativo (K-086: a execução que usava o fluxo
+        ativo não deixava evidência). O D1 (`_avaliar`) só para quem ainda está em prova no livro."""
+        if prova.posicao is None:
+            return 0
+        nova = self._repo.registrar_evidencia(NovaEvidencia(
+            item_ref=ref_da_trilha(LivroKind.FLUXO, prova.fluxo_id), stance=prova.posicao,
+            origin_ref=f"run:{execucao.run_id}", simulated=execucao.simulada, run_id=execucao.run_id,
+            instance_id=execucao.aparelho, detail=f"{marca_do_conteudo(prova.content_hash)} {prova.detalhe}"))
+        if not nova:
+            return 0                                      # o digest desta execução já passou por aqui
+        em_prova = next((f for f in self._leitura.fluxos_em_prova() if f.id == prova.fluxo_id), None)
+        if em_prova is not None:
+            try:
+                self._avaliar(em_prova, execucao.run_id)
+            except ErroDeAprendizado as exc:            # veto, conflito, D1
+                log.info("aprendizado: fluxo %s segue como está: %s", prova.fluxo_id, exc)
+        return 1
 
     def _posicao(self, fluxo: FluxoEmProva, execucao: ExecucaoAssentada) -> tuple[Posicao, str] | None:
         if fluxo.nasceu_de == execucao.run_id:
@@ -534,5 +570,5 @@ class ValidacaoPorExecucao:
 
 __all__ = ["AssinaturaDoPlano", "D1Nativo", "DISCORDANCIAS_QUE_DESLIGAM", "Decidir", "Divergencia", "ExecucaoAssentada",
            "ExecucaoDeHabilidade", "FluxoEmProva", "LeituraNativa", "ObservacaoDeHabilidade", "PassoAssinado",
-           "PortaDeValidacao", "ReclassificacaoDaForma", "SombraDosFluxos", "ValidacaoPorExecucao", "comparar",
-           "marca_do_conteudo"]
+           "PortaDeValidacao", "ProvaDaExecucao", "ReclassificacaoDaForma", "SombraDosFluxos", "ValidacaoPorExecucao",
+           "comparar", "marca_do_conteudo"]
