@@ -750,5 +750,24 @@ desligada) nomeando o provedor, o endpoint, o modelo e os apps que declaram a re
 dado do app, `AppDefinition.label`, e não pelo pacote cru); a chave
 aparece só como "configurada". Telas sensíveis e de verificação nunca são recortadas.
 
-Prova: `simulated` (`tests/test_leitura_visual.py`, `tests/test_leitura_visual_papel.py`). Real: `not_run` (a bancada com capturas
-guardadas é o portão para ligar a opção no central).
+Prova: `simulated` (`tests/test_leitura_visual.py`, `tests/test_leitura_visual_papel.py`).
+
+**Bancada do leitor (`real`, 03/10/2026, ~04:20Z, central 1ab8e767, `scripts/bancada-leitor.py`).** É o portão para ligar a
+opção, e ela REPROVOU. A opção segue desligada.
+- Material: 16 recortes da linha do e-mail de teste em capturas guardadas (01 e 03), com o gabarito pelo lado de quem enviou,
+  guardado em `data/bancada-12-5/`, fora do Git.
+- Cada recorte foi lido 2 vezes, uma por campo (remetente e assunto), como faz o `ler_valor_visual`, e cada leitura foi
+  conferida contra 4 valores do ator: 1 verdadeiro e 3 controles (linha errada, letra trocada, campos invertidos). São 128
+  pares por leitor.
+
+| Leitor | `ai_calls` | Custo estimado | Concordância nos verdadeiros | Concordância falsa nos controles | Sem o truncado da prévia (diagnóstico) |
+|---|---|---|---|---|---|
+| openai/gpt-6-luna | 2944–2975 | US$ 0,0032 | 0/32 (todas `truncado`) | 0/96 | 30/32 (2 com o campo `assunto` vazio) |
+| gemini/gemini-3.1-flash-lite | 2976–3007 | US$ 0,017 | 0/32 (todas `truncado`) | 0/96 | 32/32 |
+
+- Causa: a 3ª linha da linha da caixa (a prévia do corpo) SEMPRE termina em "…". O `conferir_transcricao` recusa quando
+  QUALQUER linha transcrita, ou o `truncado` do leitor, indica corte. Os dois leitores marcaram `truncado`, corretamente.
+  Como está, a leitura visual nunca concorda numa linha da caixa do Outlook.
+- Nenhuma concordância falsa nos 192 controles.
+- A correção (escopo do "truncado": o campo, o valor e a linha que o contém, não a linha vizinha) muda a regra do ADR-070
+  §4 e precisa de decisão antes de entrar.

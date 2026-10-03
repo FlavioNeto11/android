@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 12.5: bancada do leitor, o portão que reprovou (`scripts/bancada-leitor.py`)
+
+- **`real`.** Foram 16 recortes guardados e 2 leitores reais (gpt-6-luna e gemini-3.1-flash-lite), com 128 pares cada e zero
+  concordância falsa. Mesmo assim houve 0/32 concordâncias nos verdadeiros: a prévia do corpo, sempre cortada em "…", leva
+  todo par a `truncado`.
+- Sem o truncado da linha alheia (só diagnóstico), seriam 30/32 e 32/32. O custo total estimado foi de US$ 0,02
+  (`ai_calls` 2944–3007).
+- `ai.leitura_visual.enabled` fica false. A correção do escopo do "truncado" espera decisão. Detalhe em `docs/ia.md` §17.
 ## 2026-10-03 — 30.25: o rótulo de intenção, "Qual era o pedido?" (branch feat/30-25-rotulo-de-intencao)
 
 - A execução real e comprovada que a cadeia de resolução não casou com nenhuma habilidade (ou deixou num empate) vira
