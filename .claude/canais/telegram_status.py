@@ -20,6 +20,7 @@ import logging
 import html
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(r"C:\git\android")
@@ -76,6 +77,22 @@ def _nomes_proibidos() -> list[str]:
     return sorted({p for n in nomes for p in re.findall(r"\w{3,}", n.lower())})
 
 
+#: O histórico de quem fala com o bot (dono, 03/10 22:44Z) leva também o que a ANA respondeu ao convidado.
+CONTATOS = ROOT / ".claude" / "handoffs" / "canais" / "contatos-telegram.json"
+
+
+def _historico_de_saida(chat: str, message_id: object, texto: str) -> None:
+    try:
+        contatos = json.loads(CONTATOS.read_text(encoding="utf-8"))
+        entrada = contatos[str(chat)]
+    except (OSError, ValueError, KeyError):
+        return                                         # sem registro do chat: a caixa ainda não o viu; nada a anexar
+    quando = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    entrada.setdefault("historico", []).append({"quando": quando, "evento": "resposta_da_ana",
+                                                "message_id": message_id, "texto": texto[:2000]})
+    CONTATOS.write_text(json.dumps(contatos, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
 def _sem_acento(t: str) -> str:
     return "".join(ch for ch in unicodedata.normalize("NFD", t) if unicodedata.category(ch) != "Mn")
 
@@ -121,6 +138,8 @@ async def _enviar(texto: str, reply_to: int | None, chat: str | None = None) -> 
             raise canal._falha(resposta)
         mid = (_json(resposta).get("result") or {}).get("message_id")
         print(f"enviado {modo} ({len(texto)} chars) message_id={mid}")
+        if chat:
+            _historico_de_saida(chat, mid, _sem_tags(texto))
         return 0
     except FalhaDeEnvio as exc:
         print(f"Falhou: {exc.motivo}")
