@@ -737,7 +737,9 @@ continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). D
 - **Recurso ao caminho atual.** Timeout de 1 s no `on` e 5 s na sombra, sem retentativa. Falha vira `RespostaDeDecisao` com
   `fallback_reason` fechado (`401`, `422`, `429`, `529`, `rede`, `parse`, `unknown_choice`, `abaixo_do_limiar`,
   `privacidade`, `desligado`, `orcamento`), sempre com `escolha=None`: **um fallback nunca conta como acerto**. A porta reconfere cada
-  resposta contra a pergunta enviada (opção desconhecida, limiar) em vez de confiar no decisor.
+  resposta contra a pergunta enviada (opção desconhecida, limiar) em vez de confiar no decisor. No `choice`, o limiar vale
+  sobre a probabilidade devolvida da opção escolhida, que precisa ser a maior; sem ela, `abaixo_do_limiar` (31.19,
+  como diz o contrato; até ali media a `confianca`, que segue gravada na sombra).
 - **Decisor real (31.14, `decisores.py::DecisorJev`).** Fala pelo transporte do adaptador de retrieval
   (`JevSemanticProvider.consultar`: `{state, model, questions}`, a chave lida do ambiente na hora do POST). Ordem:
   - só `choice` vai ao fio (`criteria` = as opções enviadas); `noul` e `score` respondem `desligado` sem sair, até o

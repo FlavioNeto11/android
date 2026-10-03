@@ -160,9 +160,10 @@ def _rotulo_do_curador(db: Any, revisao: Mapping[str, Any], desde_ts: str,
     31.19: o rótulo 1 só vale com `decided_by` entre os `autores_dono` declarados (`--autor-dono`). Até aqui valia todo
     autor diferente de `sistema`, e no central as 11 transições assim eram de sessões Claude (`orquestradora`,
     "Aprendizado (sessão Claude)") ou `panel` (o último recurso de `api.quem`: "ninguém se identificou"). O dono entra no
-    painel com o nome que ele escolhe, e nenhuma configuração o declara; por isso o nome vem de quem roda o relatório.
-    Sem autor declarado, o rótulo 1 fica desligado (falha fechada). O nome é declarado atrás de um token compartilhado:
-    uma sessão pode entrar com qualquer nome, e esse é o resíduo."""
+    painel com o nome que ele escolhe (`Flavio`, confirmado em `panel_sessions` em 03/10), e nenhuma configuração o declara;
+    por isso o nome vem de quem roda o relatório. Sem autor declarado, o rótulo 1 fica desligado (falha fechada). O nome é
+    declarado atrás de um token compartilhado: uma sessão pode entrar com qualquer nome, e esse é o resíduo. Um agente de
+    validação no Chrome do dono também aparece como `Flavio`; por regra ele só lê e não gera transição."""
     if autores_dono:
         marcas = ",".join("?" for _ in autores_dono)
         transicao = db.one(f"SELECT from_state, to_state FROM learning_transitions WHERE item_ref=? AND decided_by IN"
@@ -267,7 +268,8 @@ def _estrato_do_curador(itens: Sequence[dict[str, Any]], agora: datetime) -> dic
                                             len(com_real)),
         "com_parecer_valido": len(com_real),
         # 31.19: os 4 primeiros pedidos reais (03/10) levaram o MESMO estado C0 e voltaram com a mesma distribuição; o
-        # limiar não separa o que a entrada não distingue. Estes dois campos mostram isso antes de qualquer GO.
+        # limiar não separa o que a entrada não distingue. Estes dois campos mostram isso antes de qualquer GO. A porta
+        # mede o limiar na probabilidade da escolha (31.19); a coluna da `confianca` fica para comparar.
         "estados_distintos": len({i["estado"] for i in itens if i["estado"] is not None}),
         "cobertura_por_limiar": {
             f"{limiar:.2f}": {

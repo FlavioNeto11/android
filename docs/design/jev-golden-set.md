@@ -73,10 +73,15 @@ item nem aceita parecer (ADR-069 item 2).
   `api.quem`: ninguém se identificou. Nenhuma era do dono, e todas são anteriores à sombra. Uma decisão de sessão Claude
   não é rótulo independente do Jev. Nenhuma configuração declara o dono, por isso o nome vem de quem roda o relatório
   (`--autor-dono`, repetível), e `panel` só conta se declarado. Sem nome, o rótulo 1 fica desligado (falha fechada).
-  Resíduo: o nome do painel é declarado atrás de um token compartilhado.
-- **Em aberto, para a orquestradora:** a documentação da `Pergunta` (contrato) diz que o limiar se aplica à probabilidade
-  devolvida, mas a porta compara a `confianca`. Nas 4 respostas, a diferença foi de 0,10 (0,50 × 0,60). O relatório
-  mostra as duas colunas (`cobertura_por_limiar`), e o código da porta não mudou.
+  O nome do dono é `Flavio`, confirmado pela orquestradora em `panel_sessions` (operador `Flavio`, leitura em modo só
+  leitura, 03/10). Ressalvas: o nome é declarado atrás de um token compartilhado, e um agente de validação que use o Chrome do
+  dono também aparece como `Flavio`. Por regra, esses agentes só leem e não geram transição.
+- **A porta passa a seguir o contrato** (decisão da orquestradora, 03/10 ~15:15Z). A `Pergunta` diz que o limiar vale
+  sobre a probabilidade devolvida, mas a porta comparava a `confianca`. Agora, no `choice`, o limiar vale sobre a
+  probabilidade da opção escolhida, que precisa ser a maior (com o Jev coerente, é a maior probabilidade). A escolha
+  sem probabilidade, ou que não é a maior, falha fechado. O limiar segue em 0,85 e nada muda hoje: nas 4 respostas, a
+  maior probabilidade foi 0,60–0,62. A `confianca` segue gravada na sombra, e o relatório mostra as duas colunas
+  (`cobertura_por_limiar`). `noul` e `score`, sem produtor, seguem na `confianca`.
 
 ## 3. Intenção (R2 e R3, 31.9)
 

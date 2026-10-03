@@ -24,16 +24,21 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **O limiar fica em 0,85; nada liga.** As 4 respostas reais de 03/10 (13:10Z) voltaram `abaixo_do_limiar`, com
   confiança 0,50–0,52 e maior probabilidade 0,60–0,62, todas sobre o mesmo estado C0. O limiar não separa o que a
   entrada não distingue. O registro datado está em `docs/design/jev-golden-set.md` §2.
+- **A porta segue o contrato** (decisão da orquestradora): no `choice`, o limiar vale sobre a probabilidade devolvida
+  da opção escolhida, que precisa ser a maior (`porta._valor_do_limiar`). Antes, ele valia sobre a `confianca`. A
+  escolha sem probabilidade, ou que não é a maior, falha fechado. A `confianca` segue gravada na sombra. Nada muda nas 4
+  linhas reais (0,60–0,62 < 0,85). Prova `simulated`: `tests/test_decisao_fechada*.py`, 1044 passed.
 - `scripts/jev-relatorio-31-10.py`:
   - o rótulo 1 do curador só vale com `decided_by` entre os `--autor-dono` (sem nome, fica desligado; `panel` e sessões
-    Claude não rotulam);
+    Claude não rotulam). O dono é `Flavio` (`panel_sessions`, confirmado pela orquestradora); um agente de validação
+    no Chrome do dono também aparece assim, mas só lê;
   - novos campos: `rotulo_1` (autores e transições de pessoa fora do dono), `estados_distintos` e `cobertura_por_limiar`
     (contrafactual por `confianca` e por maior probabilidade).
 - Percentil unificado pelo posto mais próximo em aritmética inteira, o método do `sombra._p95`, no relatório e na
   `scripts/jev-prova-31-17.py`. Com as 4 chamadas de 03/10, p50 437,3 ms e p95 552,8 ms nos dois (antes, 473,8 e 510,2
   para o mesmo p50).
-- Prova `simulated`: `scripts/tests/test_jev_relatorio_31_10.py` e `test_jev_prova_31_17.py`. Nenhum código de runtime
-  mudou.
+- Prova `simulated`: `scripts/tests/test_jev_relatorio_31_10.py` e `test_jev_prova_31_17.py`. Fora a porta, nenhum
+  código de runtime mudou.
 
 ## 2026-10-03 — Deploy 10 no central (2432046f; migração 082; curador com alfa 0,3 temporário)
 
