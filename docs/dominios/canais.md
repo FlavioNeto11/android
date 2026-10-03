@@ -117,7 +117,7 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
 - **No produto:**
   - 32.2: `trello.membros_autorizados` é vazia de fábrica e `trello.responder_convidados` fica `false`. O pedido do
     convidado vira aviso ao dono, com o Trello em silêncio, e há um teto de reações por hora.
-  - 28.15: aceita só o chat do dono. Convidado no Telegram pela Central é item ainda não numerado.
+  - 28.15: aceita só o chat do dono. Convidado no Telegram pela Central é o item 28.18.
 - **Prova:** `simulated` (`test_trello_leitor.py` no branch do 32.2).
 
 **C-10 · Quem fala pela primeira vez: o nome primeiro, e o dono autoriza.**
@@ -128,7 +128,9 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   3. Só com o "autorizo" dele o id fica vinculado à pessoa, e ela passa a ser atendida pela C-09.
   4. Até lá, nada além da pergunta do nome.
 - **Hoje:** `telegram_inbox.py::_pedir_nome`, uma vez por chat novo.
-- **No produto:** ainda sem item; a orquestradora numera.
+- **No produto:** item 28.18 (dona: frente Canais). Se mudar o modelo de autorização do 28.15, entra como emenda do
+  ADR-071. Até lá, o que responde a quem é desconhecido é ferramenta da sessão: uma saudação fixa, nenhum dado e
+  nenhum comando aceito.
 - **Prova:** `simulated` (caixa com chat falso).
 - **Pendente do dono (sim ou não, perguntado 21:47Z):** se o nome que a pessoa der pode ser escrito no chat do
   próprio dono. Até a resposta, o aviso diz só "chat novo" e o número do convidado.
