@@ -349,6 +349,40 @@ Prova (`simulated`), em `backend/tests/test_fatia_abrir_conversa.py::test_abrir_
 - na segunda execução, as receitas aprendidas reproduzem: `attempts.strategy == "recipe"`, `recipe_id` da receita e
   zero `decide`.
 
+## Caminho rápido 1: pular o ator, nunca a prova (LT-1, LT-2, LT-3; 03/10/2026)
+
+Os três atalhos tiram uma chamada de IA do caminho quando a prova já existe; nenhum converte incerteza em sucesso. Quem
+confere é sempre o mesmo `_verify` (ou a prova local de `_postcondition_holds`), e o fim do laço reusa o veredito em vez
+de pagar outro.
+
+- **LT-1, pós-condição na entrada.** No laço de `_run_step`, depois de observar e antes de o ator decidir (uma decisão de
+  receita que ainda reproduz vem antes): etapa SEM efeito (`side_effect == 0`, a UI otimista de uma etapa com efeito
+  mostra o "feito" antes de ele valer), tela não sensível e nenhuma saída por ler (`faltam_saidas()`). Etapa
+  determinística com `_postcondition_holds` verdadeira sai do laço para o `_verify` de sempre, com custo zero (a árvore já
+  foi lida), em qualquer volta. Etapa julgada sem nível de entrega confere só na ENTRADA (`decisions == 0`, uma vez por
+  tentativa, `JULGAMENTOS_ANTES_DO_ATOR`), e por padrão só pela prova local do catálogo
+  (`ENTRADA_JULGADA_SO_COM_PROVA_LOCAL`): sem ela, a tela de entrada quase nunca é a final e o julgamento pago subiria
+  `verify` por etapa. Com a constante em `False` o juiz barato confere na entrada, como o handoff de latência descreve.
+  "Não" ou "incerto" devolve a etapa ao ator na mesma tentativa, com o motivo no `history`.
+- **LT-2, `expect_done` em etapa julgada.** O ator marcou que a ação conclui a etapa julgada: em vez de voltar a ele só
+  para dizer "pronto", o `_verify` confere a tela agora (`uma_rodada=True`: um só julgamento, sem esperar a tela mudar
+  até o fim do orçamento). "Sim" guarda o veredito e sai do laço (uma verificação por etapa, não duas); "não"/"incerto"
+  entra no `history` e o laço continua NA MESMA tentativa, como na divergência de receita. Nunca `retry` nem `failed`
+  por causa dele: uma tentativa nova custa mais que o decide poupado. Não há guarda de `side_effect` aqui (a
+  especificação não pede): a ação com efeito que dispara `is_commit_action` já sai do laço antes.
+- **`steps.driven_by = 'sem_ator'`.** A etapa que fecha pelo LT-1 sem o ator decidir nada (e sem ação de receita) grava
+  `sem_ator`, nunca `ai` e nunca nulo. `aproveitamento.py` a conta à parte (`sem_ator`) e não a considera "elegível a
+  receita" (não há caminho a aprender); o painel a mostra como "Sem o ator". Quem fecha por `expect_done` (LT-2) teve
+  o ator agindo e segue `ai`.
+- **LT-3, `flows.match` com parâmetro RESERVED.** `account_label`, `instance_id` e `run_id` nunca são capturados do
+  comando; o valor é do aparelho e entra na materialização. O fluxo que os carrega deixou de ser recusado pelo molde
+  sem valor; um parâmetro NÃO reservado sem valor continua recusando. `_learn_flow` não mudou.
+
+Prova `simulated`: `tests/test_caminho_rapido_executor.py` (LT-1 e LT-2: contagem de `decide`/`verify`, "não" volta ao ator
+com `attempts == 1`, `sem_ator`), `tests/test_flows_account_label.py::test_fluxo_com_account_label_casa` (LT-3) e
+`tests/test_aproveitamento.py`. `not_run`: o efeito de latência no ambiente real (`decide` por etapa julgada em
+`/api/usage` antes e depois, `uses` dos fluxos com `{account_label}`, `verify` por etapa).
+
 ## VERIFY pela porta de capability
 
 - `StepExecutor.__init__` cria `self.capabilities = CatalogCapabilityProvider(CatalogCapabilityRegistry(...))`.

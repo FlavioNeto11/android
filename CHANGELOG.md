@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — caminho rápido 1: LT-1, LT-2 e LT-3 (pular o ator, nunca a prova)
+
+- **LT-1.** A pós-condição conferida na entrada da volta, antes de o ator decidir: etapa sem efeito, tela não sensível e
+  sem saída por ler. Determinística: prova local, custo zero. Julgada: só na entrada e só pela prova local do catálogo
+  (`ENTRADA_JULGADA_SO_COM_PROVA_LOCAL`), porque o juiz na entrada subia `verify` por etapa nos testes de custo.
+- **LT-2.** `expect_done` em etapa julgada vai direto ao `_verify` (uma rodada) e o veredito é reusado no fim do laço;
+  "não" volta ao ator na mesma tentativa (`attempts` continua 1).
+- **LT-3.** `flows.match` não exige valor para `account_label`, `instance_id` e `run_id`.
+- **`steps.driven_by='sem_ator'`** para a etapa que fecha sem o ator (modelos, `aproveitamento`, painel "Sem o ator").
+- **Prova `simulated`**: `tests/test_caminho_rapido_executor.py`, `tests/test_flows_account_label.py`,
+  `tests/test_aproveitamento.py`, `frontend/src/lib/status.test.ts` e `ProfileDetail.test.tsx`; três testes de custo
+  antigos mudaram de número por causa do atalho (ANR, hub de IA, política de imagem). `not_run`: latência no real.
+
 ## 2026-10-03 — 12.5: bancada do leitor, o portão que reprovou (`scripts/bancada-leitor.py`)
 
 - **`real`.** Foram 16 recortes guardados e 2 leitores reais (gpt-6-luna e gemini-3.1-flash-lite), com 128 pares cada e zero
