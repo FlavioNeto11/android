@@ -19,6 +19,28 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: o item de mais de um app na leitura por app e os polimentos das Métricas (30.33-C; branch feat/30-33-multi-app)
+
+- O fluxo que atravessa apps aparece em cada app dele: na visão por app, no filtro `?app=` do livro e nas Métricas
+  (recorte, saúde, revisões e economia). Antes ficava só no app principal (validação do deploy 10: o fluxo do Outlook
+  sob o Instagram).
+  - O dado não estava errado e não mudou.
+  - O balde `nao_resolvido` não muda.
+- O dossiê do curador ganha `item.apps` (id, pacote e principal) só no multi-app. No item de um app só, o
+  `dossie_hash` fica igual.
+- 30.31: o item multi-app é QA só com todos os apps de QA, e o aparelho precisa de todos eles prontos.
+- Painel:
+  - "Microsoft Outlook → Instagram" na linha do item e nos pareceres;
+  - os pareceres mostram o título do item e o nome do app;
+  - o orçamento mostra os dois ramos e qual manda (sai o "piso");
+  - a sombra da autopublicação e o desfecho em 14 dias aparecem na tela.
+- Contrato: adendo v0.94.
+- Prova `simulated`:
+  - `test_learning_multi_app.py`;
+  - dois casos em `test_learning_validacao_sql.py`;
+  - `MetricasTab.test.tsx` e `AplicativosTab.test.tsx`;
+  - percurso no navegador sobre uma cópia do banco do central.
+
 ## 2026-10-03 — ADR-069 item 20: o limiar da porta sobre a probabilidade devolvida e o rótulo 1 do curador só do dono (branch docs/adr-069-item-20, para a suíte 12)
 
 - Documentação e processo: registra as duas decisões da orquestradora do 31.19 (03/10 ~15:15Z), que já estão no

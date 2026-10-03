@@ -16,6 +16,7 @@ import { DecisaoInline } from './DecisaoInline';
 import { DetalheRico } from './DetalheRico';
 import { metaDeSaude } from './detalhe';
 import { abrirApp } from './apps';
+import { AppsDoItem, eMultiApp } from './AppsDoItem';
 import {
   type AcaoDoItem, type DetalheDoLivro, type EntradaDoLivro, ESTADO_META, ONDE_FICAM_AS_HABILIDADES,
   ORIGEM_LABEL, porQueOSistemaNaoPublica, refDaHabilidade, rotuloDoDetalhe, rotuloDoKind, tituloDoItem,
@@ -158,7 +159,10 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
       </div>
       <div className={styles.itemMeta}>
         {memoria ? <span><strong>{formatInt(e.count ?? 0)} lembranças</strong> (o conteúdo fica com a persona)</span> : null}
-        {e.app && !ocultarApp ? (
+        {/* O fluxo que atravessa apps mostra todos, também dentro da aba do app (30.33-C). */}
+        {eMultiApp(e.apps) ? (
+          <span>Apps: <AppsDoItem apps={e.apps} nomes={e.apps_nomes} principal={e.app} /></span>
+        ) : e.app && !ocultarApp ? (
           <span>App:{' '}
             <button type="button" className={styles.linkBtn} title={`Abrir este aplicativo (${e.app})`} onClick={() => abrirApp(e.app as string)}>
               {e.app_nome && e.app_nome !== e.app ? e.app_nome : <span className={styles.mono}>{e.app}</span>}

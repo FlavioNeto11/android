@@ -7,7 +7,7 @@ detalhe e da saúde (`run_invalidada`, casamento exato do motivo).
 """
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from datetime import datetime
 
 from app.db import Database, Row
@@ -76,7 +76,7 @@ class FontesDeMetricasSql:
             saida.append(RevisaoLida(scope_app=linhas.texto(r, "scope_app"), validade=x.validade,
                                      simulated=x.simulated, usd=self._registro.usd(r, custos),
                                      decisao=x.parecer.decisao.value if x.parecer is not None else None,
-                                     decisao_final=x.decisao_final, override=x.override))
+                                     decisao_final=x.decisao_final, override=x.override, item_ref=x.item_ref))
         return saida
 
     def conducao(self, desde: str, ate: str) -> list[ConducaoDaEtapa]:
@@ -101,13 +101,15 @@ class FontesDeMetricasSql:
         return self._registro.janela(agora, dias)
 
     def lista_de_revisoes(self, *, app: str | None, decisao: str | None, desde: str | None, limite: int,
-                          cursor: tuple[str, str] | None) -> PaginaDeRevisoes:
+                          cursor: tuple[str, str] | None, tambem: Sequence[str] = ()) -> PaginaDeRevisoes:
         """As revisões do curador, da mais nova para a mais velha, `limite` por página. O cursor é (criada, id) da
-        última linha devolvida."""
+        última linha devolvida. `tambem`: os itens multi-app que usam `app` sem ser o principal (30.33-C)."""
         filtros, args = [_DO_CURADOR], []
         if app is not None:
-            filtros.append("scope_app = ?")
-            args.append(app)
+            extras = sorted(set(tambem))
+            filtros.append(f"(scope_app = ? OR item_ref IN ({linhas.marcas(len(extras))}))" if extras
+                           else "scope_app = ?")
+            args += [app, *extras]
         if desde is not None:
             filtros.append("created_at >= ?")
             args.append(desde)

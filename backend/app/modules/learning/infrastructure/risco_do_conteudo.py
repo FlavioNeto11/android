@@ -40,7 +40,7 @@ class RiscoDoConteudo:
             return tem, None
         return tem, self._catalogo.da_capability(app, capability)
 
-    def _pacote(self, app_id: str) -> str:
+    def pacote(self, app_id: str) -> str:
         """O `app_id` da etapa (12.1: `instagram`, `outlook`) é o id de `apps`; o catálogo é pelo pacote. Sem linha,
         nada: a etapa fica sem fatos (e, se for de efeito, o fluxo fica na lacuna de sempre)."""
         r = self._db.one("SELECT package FROM apps WHERE id=?", (app_id,))
@@ -60,7 +60,7 @@ class RiscoDoConteudo:
             capability = etapa.get("capability")
             capability = capability if isinstance(capability, str) else ""
             app = etapa.get("app")
-            pacote = self._pacote(app) if isinstance(app, str) and app else e.app or ""
+            pacote = self.pacote(app) if isinstance(app, str) and app else e.app or ""
             _, fatos = self.fatos_do_catalogo(pacote, capability)
             saida.append(EtapaDeRisco(capability=capability, efeito=etapa.get("efeito") is True, catalogo=fatos))
         return tuple(saida)

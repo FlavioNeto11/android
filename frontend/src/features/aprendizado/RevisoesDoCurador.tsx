@@ -9,9 +9,11 @@ import { LoadErrorBanner, LoadErrorState, toLoadError, type LoadError } from '..
 import { formatDateTime } from '../../lib/time';
 import { apiAprendizado } from './api';
 import { formatUsd, hrefDoItemDaRevisao, type RevisaoDoCurador } from './metricas';
-import { rotuloDoKind } from './model';
+import { AppsDoItem, eMultiApp } from './AppsDoItem';
+import { rotuloDoKind, tituloDoItem, type LivroKind } from './model';
 import {
-  ladoDaDecisao, textoDaConfianca, textoDaDecisao, textoDaDecisaoFinal, textoDaValidade, textoDoGatilho, type DecisaoDaIA,
+  ladoDaDecisao, textoDaConfianca, textoDaDecisao, textoDaDecisaoFinal, textoDaValidade, textoDoGatilho,
+  textoDoResultadoPosterior, type DecisaoDaIA,
 } from './parecer';
 import styles from './Aprendizado.module.css';
 
@@ -24,14 +26,24 @@ function LinhaDaRevisao({ r }: { r: RevisaoDoCurador }) {
   const href = hrefDoItemDaRevisao(r);
   const kind = r.item_ref.includes(':') ? r.item_ref.slice(0, r.item_ref.indexOf(':')) : r.item_kind;
   const ref = r.item_ref.includes(':') ? r.item_ref.slice(r.item_ref.indexOf(':') + 1) : r.item_ref;
-  const nome = `${rotuloDoKind(kind)} ${kind === 'receita' ? `nº ${ref}` : ref}`;
+  // O título do item como no catálogo (validação do deploy 10: o fluxo saía pelo id cortado); a referência fica no
+  // `title`, e é ela que aparece quando o item já saiu do livro.
+  const referencia = `${rotuloDoKind(kind)} ${kind === 'receita' ? `nº ${ref}` : ref}`;
+  const nome = r.titulo
+    ? `${rotuloDoKind(kind)}: ${tituloDoItem({ kind: kind as LivroKind, ref, title: r.titulo, capability: r.capability,
+                                              capability_nome: r.capability_nome, etapa: r.etapa })}`
+    : referencia;
   const semParecer = textoDaValidade(r.validade);
   const final = textoDaDecisaoFinal({ ...r, override_motivo: null });
+  const desfecho = textoDoResultadoPosterior(r.resultado_posterior);
   return (
     <li className={styles.item} data-revisao={r.id}>
       <div className={styles.itemHead}>
         <span className={styles.itemTitulo}>
-          {href ? <a className={styles.linkAlvo} href={href}>{nome}</a> : nome}
+          {/* O corte em duas linhas fica no texto: o link é inline-flex (área de clique) e anularia o do título. */}
+          {href
+            ? <a className={styles.linkAlvo} href={href} title={referencia}><span className={styles.tituloDaRevisao}>{nome}</span></a>
+            : <span className={styles.tituloDaRevisao} title={referencia}>{nome}</span>}
         </span>
         {r.decisao ? (
           <Badge tone={TOM_DO_LADO[ladoDaDecisao(r.decisao)]} size="sm" title="O que a IA sugeriu">{textoDaDecisao(r.decisao)}</Badge>
@@ -41,13 +53,16 @@ function LinhaDaRevisao({ r }: { r: RevisaoDoCurador }) {
       </div>
       <div className={styles.itemMeta}>
         <span>{formatDateTime(r.criado_em)}</span>
-        {r.app ? <span className={styles.mono}>{r.app}</span> : null}
+        {eMultiApp(r.apps) ? <AppsDoItem apps={r.apps} nomes={r.apps_nomes} principal={r.app} />
+          : r.app ? <span title={r.app}>{r.app_nome ?? r.app}</span> : null}
         {r.gatilho ? <span>por {textoDoGatilho(r.gatilho)}</span> : null}
         {r.decisao ? <span>{textoDaConfianca(r.confianca)}</span> : null}
         <span title={[r.provedor, r.modelo].filter(Boolean).join(' · ') || undefined}>{formatUsd(r.usd)}</span>
       </div>
       {semParecer ? <p className={styles.notaDoItem}>{semParecer}</p> : null}
       {final ? <p className={styles.notaDoItem}>{final}</p> : null}
+      {/* 30.35: o que aconteceu com o item 14 dias depois (o rótulo 2 do golden set), agora também na tela. */}
+      {desfecho ? <p className={styles.notaDoItem} title={r.resultado_em ? `Medido em ${formatDateTime(r.resultado_em)}` : undefined}>Em 14 dias, o item {desfecho}.</p> : null}
     </li>
   );
 }

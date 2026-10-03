@@ -11,6 +11,7 @@ import type { EntradaDoLivro } from './model';
 import {
   type BlocoDoCurador, type ParecerDaIA, type ParecerNaFila, ladoDaDecisao, rotuloDoAceite, seloDaClasse,
   textoDaCausa, textoDaConfianca, textoDaDecisao, textoDaDecisaoFinal, textoDaFalta, textoDaInconsistencia,
+  textoDoResultadoPosterior,
   textoDaRecusa, textoDaValidade, textoDoGatilho, textoDoRisco,
 } from './parecer';
 import styles from './Aprendizado.module.css';
@@ -94,6 +95,9 @@ function CartaoDoParecer({ p, item, onMudou }: { p: ParecerDaIA; item: EntradaDo
           <span title={formatDateTime(p.criado_em)}>{formatQuando(p.criado_em)}</span>
           {` · motivo: ${textoDoGatilho(p.gatilho)}`}{p.modelo ? ` · ${p.modelo}` : ''}
         </Fato>
+        {textoDoResultadoPosterior(p.resultado_posterior) ? (
+          <Fato rotulo="Em 14 dias">{textoDoResultadoPosterior(p.resultado_posterior)}</Fato>
+        ) : null}
       </dl>
       {p.recusa ? <p className={styles.notaDoItem}>{textoDaRecusa(p.recusa)}</p>
         : gesto ? (
@@ -154,6 +158,7 @@ function Anterior({ p }: { p: ParecerDaIA }) {
       <span title={formatDateTime(p.criado_em)}>{formatQuando(p.criado_em)}</span> · {sugestao}
       {p.parecer && p.simulated ? ' (simulado)' : ''}
       {decidiu ? ` — ${decidiu}` : p.parecer ? ' — sem decisão' : ''}
+      {textoDoResultadoPosterior(p.resultado_posterior) ? ` · em 14 dias, ${textoDoResultadoPosterior(p.resultado_posterior)}` : ''}
     </li>
   );
 }

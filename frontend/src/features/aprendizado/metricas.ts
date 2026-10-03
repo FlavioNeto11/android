@@ -29,6 +29,20 @@ export interface ResumoDoCurador {
   aplicadas: number;
   overrides: number;
   usd: number | null;
+  /** O balanço da sombra da autopublicação (30.34, adendo v0.93): global; `null` sem ela composta. */
+  autopublicacao: SombraDaAutopublicacao | null;
+}
+
+export interface SombraDaAutopublicacao {
+  modo: string | null;
+  casos: number;
+  abertos: number;
+  limpos: number;
+  regrediram: number;
+  /** Limpos ÷ fechados; `null` sem caso fechado. */
+  taxa_sem_regressao: number | null;
+  libera: boolean;
+  limiares: { casos_fechados: number | null; taxa_sem_regressao: number | null; janela_dias: number | null };
 }
 
 /** Global, na janela DO CURADOR (`janela_dias` do config), não na do pedido. */
@@ -37,9 +51,14 @@ export interface OrcamentoDoCurador {
   janela_dias: number | null;
   gasto_da_operacao: number | null;
   gasto_da_curadoria: number | null;
-  /** O B_W com as revisões já gravadas: um piso. */
+  /** O B_W com as revisões já gravadas, o menor dos dois ramos; a próxima volta só pode aumentá-lo. */
   orcamento: number | null;
+  /** O ramo α·G_W (a fração da operação). */
   teto_alfa: number | null;
+  /** O ramo k·N_W·c̄ (pelas revisões) e qual dos dois manda (30.33-C). Ausentes no backend anterior. */
+  pelas_revisoes: number | null;
+  ramo: 'operacao' | 'revisoes' | null;
+  k: number | null;
   revisoes_na_janela: number | null;
   /** C_W / B_W: um teto; `null` sem orçamento. */
   uso: number | null;
@@ -78,7 +97,17 @@ export interface RevisaoDoCurador {
   criado_em: string | null;
   item_ref: string;
   item_kind: string | null;
+  /** O app principal do item (o `scope_app` da revisão) e o nome dele. */
   app: string | null;
+  app_nome: string | null;
+  /** O título do item no livro (com `etapa` e a capability para nomear a receita como no catálogo); `null` quando o
+   *  item saiu do livro. E, no fluxo que atravessa apps, os apps dele e os nomes (30.33-C). */
+  titulo: string | null;
+  etapa: string | null;
+  capability: string | null;
+  capability_nome: string | null;
+  apps: string[];
+  apps_nomes: string[];
   gatilho: string | null;
   validade: string;
   simulado: boolean;
@@ -91,6 +120,9 @@ export interface RevisaoDoCurador {
   decisao_final: string | null;
   decidido_por: string | null;
   override: boolean;
+  /** O desfecho medido 14 dias depois (30.35); `null` antes disso ou no backend anterior. */
+  resultado_posterior: string | null;
+  resultado_em: string | null;
 }
 
 export interface PaginaDeRevisoes {
@@ -105,6 +137,7 @@ const obj = (v: unknown): Record<string, unknown> | null =>
   v !== null && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : null;
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
+const textos = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x !== '') : []);
 const int0 = (v: unknown): number => num(v) ?? 0;
 
 /** `{chave: n}` só com os números; o resto some (nunca vira zero). */
@@ -137,6 +170,18 @@ function curador(v: unknown): ResumoDoCurador | null {
     revisoes: int0(o.revisoes), simuladas: int0(o.simuladas),
     validade: { ok: int0(val.ok), invalida: int0(val.invalida), recusada: int0(val.recusada) },
     decisoes: contagem(o.decisoes), aplicadas: int0(o.aplicadas), overrides: int0(o.overrides), usd: num(o.usd),
+    autopublicacao: sombra(o.autopublicacao),
+  };
+}
+
+function sombra(v: unknown): SombraDaAutopublicacao | null {
+  const o = obj(v);
+  if (!o) return null;
+  const l = obj(o.limiares) ?? {};
+  return {
+    modo: str(o.modo), casos: int0(o.casos), abertos: int0(o.abertos), limpos: int0(o.limpos),
+    regrediram: int0(o.regrediram), taxa_sem_regressao: num(o.taxa_sem_regressao), libera: o.libera === true,
+    limiares: { casos_fechados: num(l.casos_fechados), taxa_sem_regressao: num(l.taxa_sem_regressao), janela_dias: num(l.janela_dias) },
   };
 }
 
@@ -146,7 +191,8 @@ function orcamento(v: unknown): OrcamentoDoCurador | null {
   return {
     modo: str(o.modo), janela_dias: num(o.janela_dias), gasto_da_operacao: num(o.gasto_da_operacao),
     gasto_da_curadoria: num(o.gasto_da_curadoria), orcamento: num(o.orcamento), teto_alfa: num(o.teto_alfa),
-    revisoes_na_janela: num(o.revisoes_na_janela), uso: num(o.uso), aviso: o.aviso === true,
+    pelas_revisoes: num(o.pelas_revisoes), ramo: o.ramo === 'operacao' || o.ramo === 'revisoes' ? o.ramo : null,
+    k: num(o.k), revisoes_na_janela: num(o.revisoes_na_janela), uso: num(o.uso), aviso: o.aviso === true,
   };
 }
 
@@ -193,9 +239,12 @@ export function lerPaginaDeRevisoes(raw: unknown): PaginaDeRevisoes {
     if (!r || !id) continue;
     revisoes.push({
       id, criado_em: str(r.criado_em), item_ref: str(r.item_ref) ?? '', item_kind: str(r.item_kind), app: str(r.app),
+      app_nome: str(r.app_nome), titulo: str(r.titulo), etapa: str(r.etapa), capability: str(r.capability),
+      capability_nome: str(r.capability_nome), apps: textos(r.apps), apps_nomes: textos(r.apps_nomes),
       gatilho: str(r.gatilho), validade: str(r.validade) ?? 'ok', simulado: r.simulado === true, provedor: str(r.provedor),
       modelo: str(r.modelo), usd: num(r.usd), classe: str(r.classe), decisao: str(r.decisao), confianca: str(r.confianca),
       decisao_final: str(r.decisao_final), decidido_por: str(r.decidido_por), override: r.override === true,
+      resultado_posterior: str(r.resultado_posterior), resultado_em: str(r.resultado_em),
     });
   }
   return { revisoes, proximo: str(o.proximo) };

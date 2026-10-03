@@ -39,6 +39,20 @@ MAX_EVIDENCIAS = 30
 
 # ------------------------------------------------------------------ os fatos (já lidos pela infraestrutura)
 @dataclass(frozen=True, slots=True)
+class AppDoItem:
+    """Um app do fluxo multi-app (30.33-C), pelo id do registro (o vocabulário de `conteudo.etapas[].app` e de
+    `conteudo.apps`) e pelo pacote (o de `item.app`). `principal`: o app onde rodam as etapas sem app próprio."""
+
+    id: str
+    pacote: str
+    principal: bool = False
+
+
+#: O que o `principal` quer dizer, no próprio dossiê do item multi-app (o curador leu o principal como divergência).
+PRINCIPAL_DO_ITEM = "o app das etapas sem app próprio (conteudo.etapas[].app nulo); item.app é o pacote dele"
+
+
+@dataclass(frozen=True, slots=True)
 class IdentidadeDoItem:
     """O item analisado. Sem `title`/`summary`: podem ser texto de pessoa."""
 
@@ -52,6 +66,9 @@ class IdentidadeDoItem:
     side_effect: bool = False
     human_origin: bool = False
     criado_em: str | None = None
+    #: Só no fluxo de MAIS DE UM app (30.33-C), na ordem do plano; vazio no resto. Vazio, o dossiê sai com as mesmas
+    #: chaves de antes e o mesmo `dossie_hash` (nenhuma revisão nova por esta mudança fora dos multi-app).
+    apps: tuple[AppDoItem, ...] = ()
 
     @property
     def id_citavel(self) -> str:
@@ -263,11 +280,15 @@ class Dossie:
 
     def como_dados(self) -> JsonObject:
         i = self.item
+        item: JsonObject = {"id": i.id_citavel, "kind": i.kind, "ref": i.ref, "app": i.app, "capability": i.capability,
+                            "app_version": i.app_version, "estado": i.estado, "origem": i.origem,
+                            "side_effect": i.side_effect, "human_origin": i.human_origin, "criado_em": i.criado_em}
+        if i.apps:
+            item["apps"] = [{"id": a.id, "pacote": a.pacote, "principal": a.principal} for a in i.apps]
+            item["principal_e"] = PRINCIPAL_DO_ITEM
         return {
             "versao_do_dossie": VERSAO_DO_DOSSIE,
-            "item": {"id": i.id_citavel, "kind": i.kind, "ref": i.ref, "app": i.app, "capability": i.capability,
-                     "app_version": i.app_version, "estado": i.estado, "origem": i.origem,
-                     "side_effect": i.side_effect, "human_origin": i.human_origin, "criado_em": i.criado_em},
+            "item": item,
             "risco": {**self.risco.como_dados(), "fatos": self.fatos_de_risco.como_dados()},
             "conteudo": self.conteudo,
             "evidencias": {"total": self.evidencias_total, "incluidas": len(self.evidencias),
@@ -612,7 +633,8 @@ def _parecer(bruto: str | Mapping[str, object], dossie: Dossie, probabilidade: f
 
 
 __all__ = ["CAMPOS_DA_SAIDA", "CAMPOS_OBRIGATORIOS", "DECISOES_COM_ALVO", "LIMIARES_DE_CONFIANCA",
-           "LIMITE_DA_CONCLUSAO", "MAX_EVIDENCIAS", "OPCOES_FECHADAS", "SECOES_CITAVEIS", "VERSAO_DO_DOSSIE", "Causa",
+           "LIMITE_DA_CONCLUSAO", "MAX_EVIDENCIAS", "OPCOES_FECHADAS", "PRINCIPAL_DO_ITEM", "SECOES_CITAVEIS",
+           "VERSAO_DO_DOSSIE", "AppDoItem", "Causa",
            "Confianca", "Decisao",
            "Dossie", "Evidencia", "Falta", "GrupoDeFalha", "IdentidadeDoItem", "Inconsistencia", "Intervencao",
            "MotivoDeInvalidade", "Parecer", "PassoDaTrilha", "Relacao", "RiscoApontado", "Validacao", "Voto",

@@ -1061,7 +1061,9 @@ novo em memória. Cada bloco da resposta é uma linha da tabela do §10 do desen
 - "falhas evitadas" é um PROXY rotulado: taxa de falha com receita × só IA nas etapas que tiveram as duas conduções;
 - a receita não tem evidência datada, então o "sucesso depois de promovido" é de fluxo e lição;
 - o orçamento do curador usa a conta da volta (`janela_do_orcamento`, extraída de `curador.py` para as duas servirem)
-  com as revisões já gravadas: o B_W é um piso, o `uso` é um teto e o aviso, a 80 %, sai cedo. Sem `usd` medido
+  com as revisões já gravadas: o B_W é um piso da próxima volta, o `uso` é um teto e o aviso, a 80 %, sai cedo. O
+  B_W é o menor de dois ramos, α·G_W (`teto_alfa`) e k·N_W·c̄ (`pelas_revisoes`); `ramo` diz qual manda (30.33-C).
+  Enquanto manda o das revisões, o `uso` fica perto de 1/k por construção. Sem `usd` medido
   (antes do #144-B no central), o c̄ é a média das estimativas; sem ela o B_W cairia a zero, defeito que o ensaio pegou;
 - a série quebra no deploy 8 (LT-6, acima): compare janelas do mesmo lado de 03/10 09:06:28Z.
 
@@ -1146,6 +1148,29 @@ e `created_by = sistema`. O `data` traz `modo`, `review_id`, `execucoes`, `apare
 de fluxos B com efeito que cheguem a `validated` com o parecer `aprovar` de confiança alta e ≥ 2 execuções em ≥ 2
 aparelhos. O alimentador realista é o QA, pelas execuções de validação do P4 (30.31). Desde a 30.32, os fluxos de
 comentar, responder, mandar mensagem e seguir do Instagram são C e não entram.
+
+## O item de mais de um app (30.33-C)
+
+Um fluxo pode atravessar apps: o C1 lê no Outlook e abre o perfil no Instagram. O `app_id` dele é o app PRINCIPAL,
+onde rodam as etapas sem app próprio, e não pode virar o outro app: a etapa que roda no principal mudaria de app.
+`flow_required_apps` guarda todos.
+
+A leitura por app (validação do deploy 10) usa `apps_do_item`: os apps do fluxo, na ordem do plano, mais o principal.
+- **Livro:** `EntradaDoLivro.apps` só vem preenchido com mais de um app. O `app` segue o principal, e por ele se leem o
+  modo do pacote, o rótulo QA/PRODUTO e o `scope_app` da revisão.
+- **Visão por app, filtro `?app=` do livro e Métricas:** o item multi-app entra em cada app dele. Nas Métricas isso vale
+  para o recorte, a saúde, as revisões e a economia.
+- **Balde:** o fluxo sem principal resolvido continua só no `nao_resolvido` (30.2).
+- **Dossiê:** ganha `item.apps` (id, pacote e principal) só com mais de um app. O item de um app só mantém o mesmo
+  `dossie_hash`, e por isso a mudança não dispara revisão fora dos multi-app.
+- **Validação (30.31):** o item é QA só com todos os apps de QA, e o aparelho precisa de todos eles prontos.
+- **Painel:** a linha diz "Microsoft Outlook → Instagram", e cada nome leva ao app; o `title` explica o principal. No
+  detalhe, a Identidade mostra os apps, e o Conteúdo não os repete.
+
+Na mesma fatia, os polimentos das validações dos deploys 10 e 11:
+- os pareceres das Métricas mostram o título do item e o nome do app, não o pacote e o id cortado;
+- o orçamento mostra os dois ramos e qual manda; o rótulo "piso" lia ao contrário;
+- a sombra da autopublicação (30.34) e o desfecho em 14 dias (30.35) aparecem na tela, não só na API.
 
 ## Pendências conhecidas
 
