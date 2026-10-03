@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Conhecimento de app: versão conferida e prova do que está no ar (RA-24, parte YAML; branch feat/ra-24-versao-e-prova-do-conhecimento)
+
+- `telas.yaml` e `sessao.yaml` só aceitam `versao: 1` na carga, como a `contract_version` do catálogo. Antes,
+  `telas.yaml` trocava qualquer não inteiro por 1 e aceitava qualquer inteiro.
+- `GET /api/apps/{pacote}/conhecimento` (adendo v0.82): cada YAML com `sha256` e `git_blob` do texto lido. Com CRLF→LF,
+  o `git_blob` bate com `git hash-object` no checkout com autocrlf. A resposta aponta o arquivo que mudou depois de o
+  processo subir.
+- Prova `simulated`: `tests/test_prova_do_conhecimento.py` (20 testes; 79 com os de telas e sessão). Sem migração.
+  Núcleo (`api.py`, `automation/`, `app_declarado/`): revisão da Android e suíte 7.
+
 ## 2026-10-03 — 30.26 (RA-22): o tipo da falha sai do erro de IA, não do texto (branch feat/ra-22-error-kind-em-attempts)
 
 - Migração 081: `attempts.error_kind`, o `AIError.kind` que encerrou a tentativa. O executor o põe no desfecho

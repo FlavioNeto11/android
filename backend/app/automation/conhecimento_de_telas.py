@@ -61,6 +61,12 @@ class ConhecimentoInvalido(ValueError):
     """O arquivo de conhecimento não se sustenta: recusa na carga, antes de classificar a primeira tela."""
 
 
+#: As versões do formato de `telas.yaml` que este código entende (RA-24, como `capabilities.VERSOES_DE_CONTRATO` no
+#: catálogo): um arquivo de versão nova lido por código velho seria entendido pela metade, sem aviso. Subir a versão
+#: exige o código que a lê, no mesmo commit.
+VERSOES_DE_TELAS = (1,)
+
+
 @dataclass(frozen=True, slots=True)
 class RegraDeTela:
     tela: str
@@ -407,6 +413,11 @@ def de_dados(dados: object) -> ConhecimentoDeTelas:
     app = str(raiz.get("app") or "").strip()
     if not app:
         raise ConhecimentoInvalido("falta `app` (o pacote Android)")
+    versao = raiz.get("versao", 1)
+    # `bool` é `int` em Python, e `1.0 in (1,)` é verdadeiro: os dois passariam calados sem a conferência do tipo.
+    if isinstance(versao, bool) or not isinstance(versao, int) or versao not in VERSOES_DE_TELAS:
+        raise ConhecimentoInvalido(f"`versao` {versao!r} não é entendida (aceitas: "
+                                   f"{', '.join(map(str, VERSOES_DE_TELAS))}); subir a versão exige o código que a lê")
     sinais = {idioma: {nome: _regex(v, f"sinais.{idioma}.{nome}")
                        for nome, v in _mapa(tabela, f"sinais.{idioma}").items()}
               for idioma, tabela in _mapa(raiz.get("sinais"), "sinais").items()}
@@ -453,8 +464,7 @@ def de_dados(dados: object) -> ConhecimentoDeTelas:
     if not isinstance(voltar_max, int) or not 0 <= voltar_max <= 10:
         raise ConhecimentoInvalido("`estado_conhecido.voltar_max` precisa ser um inteiro de 0 a 10")
     regioes = _regioes_visuais(raiz.get("leitura_visual"), nomes)
-    versao = raiz.get("versao", 1)
-    return ConhecimentoDeTelas(app=app, versao=versao if isinstance(versao, int) else 1, idioma_padrao=idioma_padrao,
+    return ConhecimentoDeTelas(app=app, versao=versao, idioma_padrao=idioma_padrao,
                                sinais=sinais, telas=tuple(regras), extracoes=extracoes,
                                estado_conhecido=EstadoConhecido(telas=casa, voltar_max=voltar_max,
                                                                 reabrir=bool(ec.get("reabrir", True))),
