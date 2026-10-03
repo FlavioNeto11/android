@@ -731,7 +731,7 @@ lições e telas. Nenhum item edita `taskqueue/repository.py`, `service.py`, `tr
 **Fecha quando:** a visão por app mostra Instagram, QAMessenger e Outlook com origem, conteúdo, saúde e versão de cada conhecimento;
 o curador grava pareceres auditáveis dentro do orçamento proporcional; e a prova real (30.18) está registrada.
 
-### Fase 31 — Jev na plataforma: decisão por conjunto fechado · 13 itens (roteiro de 02/10/2026; ADR-069 proposto)
+### Fase 31 — Jev na plataforma: decisão por conjunto fechado · 14 itens (roteiro de 02/10/2026; ADR-069 proposto)
 
 Origem: a direção do dono de 02/10 ("analise tudo em que ele pode funcionar na plataforma e acelerar") e o roteiro com verificação adversarial em
 `.claude/handoffs/roteiro-jev.md`. Peça comum da frente Jev no hub de IA: a porta `DecisaoFechada`. Nada envia dado antes do ADR-069 e das respostas
@@ -752,6 +752,7 @@ do dono (31.8 em diante); Jev fora do social e da persona (D-J5); a D-J3 (girar 
 | 31.11 | **Jev como braço offline na bateria** (M2) [A], com o adaptador MIT | roteiro-jev §5 | M |
 | 31.12 | **`on` por consumidor aprovado**, A/B por perfil 17.7; na intenção, só sugere até o GO de "aceite errado" (D-J7: medição de português antes) | roteiro-jev §5 | G |
 | 31.13 | **Apps candidatos do comando em sombra** (R5), dado F2+F3 | roteiro-jev §2 R5 | M |
+| 31.14 | **Decisor real `DecisorJev`** pelo transporte do adaptador de retrieval (cliente único), só `choice`: gasto conferido ANTES do POST (a rubrica do hub, com a fatia do Jev e o saldo da conta; barrado = `orcamento`, nada sai) e cada chamada tentada em `ai_calls` (provedor `jev`, origem `decisao_fechada`, `usd` declarado), o que tira a fatia de US$ 0,50 da cegueira; ligado só por `ai.decisao_fechada.decisor: jev`, com o envio fechado até o 31.10 | reavaliação 03/10, RA-6 (era o 31.8b) | M |
 
 **Fecha quando:** a porta existe com provedor nulo e privacidade fechada por padrão, a sombra do curador mediu concordância, aceite errado, latência e
 custo contra limiares pré-registrados, e o GO/NO-GO por consumidor está registrado.

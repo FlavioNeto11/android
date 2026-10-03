@@ -230,6 +230,8 @@ ai:
     enabled: false                # (false) vence tudo, inclusive um consumidor em `on`
     consumidores: {}              # curador | intencao | desempate | apps: off | shadow | on (ausente = off)
     retencao_dias: 180            # (180) linhas da sombra (`decisao_fechada_sombra`); o agregado diário fica
+    decisor: nulo                 # (nulo) jev = o decisor real (31.14): gasto conferido antes do POST, chamada em ai_calls;
+                                  # NÃO abre o envio, que segue fechado no código até o 31.10
     # classes_permitidas: [C0, C1]  # opcional: estreita o teto de código (C0..C3); nunca libera classe que o código fechou
   # Página de faturamento de cada conta de IA (ADR-051), a que o painel linka em "Abrir console". Sem o parâmetro
   # `billing`, o AI Studio abre a PRIMEIRA conta de faturamento, que pode não ser a pré-paga.

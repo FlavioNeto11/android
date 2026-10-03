@@ -198,9 +198,11 @@ def _conferir_resposta(p: Pergunta, r: RespostaDeDecisao | None) -> RespostaDeDe
     return RespostaDeDecisao(escolha=r.escolha, probabilidades=r.probabilidades, confianca=r.confianca)
 
 
-def construir_porta(cfg: DecisaoFechadaCfg | None = None, *, observador: Observador | None = None) -> Porta:
-    """Porta padrão: decisor NULO. O 31.10 troca o decisor pelo real (ADR-069 item 9: sem troca de chave)."""
-    return Porta(DecisorNulo(), cfg=cfg, observador=observador)
+def construir_porta(cfg: DecisaoFechadaCfg | None = None, *, observador: Observador | None = None,
+                    decisor: Decisor | None = None) -> Porta:
+    """Porta com o decisor que a composição montou; sem ele, o NULO. O real (`DecisorJev`, 31.14) só vem com
+    `ai.decisao_fechada.decisor: jev`, e mesmo assim nada sai enquanto `JEV_RUNTIME_SEND_APPROVED` for falso (31.10)."""
+    return Porta(decisor or DecisorNulo(), cfg=cfg, observador=observador)
 
 
 __all__ = ["Porta", "RegistroDeDecisao", "TIMEOUT_ON_S", "TIMEOUT_SHADOW_S", "construir_porta",

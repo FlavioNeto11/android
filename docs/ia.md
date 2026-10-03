@@ -532,8 +532,8 @@ exposição real e veredito: `not_run` ([relatório §23](relatorio-validacao.md
 ## 16. Decisão por conjunto fechado (Fase 31)
 
 A porta `DecisaoFechada` (`backend/app/planning/decisao_fechada/`, item 31.4) é o ÚNICO caminho do hub para o Jev (TypeSafe
-System One) em runtime, e só para escolher entre opções fechadas (`choice`, `noul`, `score`). **Está desligada e sem decisor
-real**: o decisor padrão é o `DecisorNulo`, o provedor que fala com a TypeSafe vem no 31.8 e `JEV_RUNTIME_SEND_APPROVED`
+System One) em runtime, e só para escolher entre opções fechadas (`choice`, `noul`, `score`). **Está desligada**: o decisor
+padrão é o `DecisorNulo`; o real (`DecisorJev`, 31.14) existe e só entra com `ai.decisao_fechada.decisor: jev`; e `JEV_RUNTIME_SEND_APPROVED`
 continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). Decisão e classes de dado: ADR-069.
 
 - **Contrato** (`contrato.py`, tipos puros): `PedidoDeDecisao(origem, classe, estado, perguntas, modo, marcadores, run_id,
@@ -557,8 +557,23 @@ continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). D
   ids e categorias, nunca o estado); `on` só por consumidor, com GO pré-registrado.
 - **Recurso ao caminho atual.** Timeout de 1 s no `on` e 5 s na sombra, sem retentativa. Falha vira `RespostaDeDecisao` com
   `fallback_reason` fechado (`401`, `422`, `429`, `529`, `rede`, `parse`, `unknown_choice`, `abaixo_do_limiar`,
-  `privacidade`, `desligado`), sempre com `escolha=None`: **um fallback nunca conta como acerto**. A porta reconfere cada
+  `privacidade`, `desligado`, `orcamento`), sempre com `escolha=None`: **um fallback nunca conta como acerto**. A porta reconfere cada
   resposta contra a pergunta enviada (opção desconhecida, limiar) em vez de confiar no decisor.
+- **Decisor real (31.14, `decisores.py::DecisorJev`).** Fala pelo transporte do adaptador de retrieval
+  (`JevSemanticProvider.consultar`: `{state, model, questions}`, a chave lida do ambiente na hora do POST). Ordem:
+  - só `choice` vai ao fio (`criteria` = as opções enviadas); `noul` e `score` respondem `desligado` sem sair, até o
+    primeiro consumidor deles;
+  - **gasto conferido ANTES do POST** por `RoutingProvider.conferir_gasto` (a mesma rubrica de `_budget`: pedido,
+    execução, dia e a fatia `jev_max_usd_per_day`, mais o bloqueio de saldo da conta `typesafe`). Barrado, sem hub que
+    confira ou com a leitura quebrada: `orcamento`, e nada sai;
+  - o POST usa o prazo que sobra da conferência; erro do transporte vira o motivo fechado (`401` para 401/403, `422`,
+    `429`, `529` para 503/529, `parse`, `rede`); a resposta só tem o FORMATO conferido ali (a porta reconfere opção e
+    limiar);
+  - **toda chamada tentada vira linha em `ai_calls`** (`RepositorioDeSombra.registrar_chamada`): provedor `jev` (conta
+    `typesafe` no livro-caixa), origem `decisao_fechada` (a fatia soma por ela), papel `decisao_fechada`, `usd` declarado,
+    `ref` = `<consumidor>:<ref>`, `step_id` NULL (a sombra não é chamada de IA da etapa) e sem somar em
+    `runs.ai_input_tokens`; a falha também (`ok=0`, `error_kind` = o motivo). Chave ausente não é chamada: `desligado`,
+    sem linha. É esta linha que tira a fatia de US$ 0,50 da cegueira e que move o saldo estimado da TypeSafe.
 - **Cliente único.** `backend/tests/test_decisao_fechada.py::test_cliente_unico_so_o_adaptador_de_retrieval_conhece_o_host_da_typesafe`
   varre `backend/app` e prova que só `modules/context_retrieval/adapters/jev.py` contém o host.
 
@@ -586,7 +601,8 @@ continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). D
     PRESENÇA (`typesafe_api_key is not None`); o valor nunca é lido para isso. Enquanto `JEV_RUNTIME_SEND_APPROVED` é `False`, o
     aviso diz que o envio está FECHADO e que nada sai.
 
-Prova: `simulated` (`backend/tests/test_decisao_fechada.py`, `test_decisao_fechada_sombra.py`, `test_context_retrieval_semantic.py`:
+Prova: `simulated` (`backend/tests/test_decisao_fechada.py`, `test_decisao_fechada_sombra.py`, `test_decisao_fechada_jev.py`,
+`test_context_retrieval_semantic.py`:
 decisores nulo e falso, banco de teste e relógio falso). Chamada real ao Jev: `not_run`.
 
 ### Triagem do curador em sombra (31.8, R1)

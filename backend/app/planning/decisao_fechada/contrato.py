@@ -21,9 +21,11 @@ TipoDePergunta = Literal["choice", "noul", "score"]
 #: Por que o caminho do Jev não valeu e o trabalho voltou ao caminho de hoje. 401/422/429/529 são o status HTTP; `rede` cobre
 #: timeout, erro de transporte e qualquer falha inesperada do decisor (não houve resposta utilizável); `parse` é resposta que
 #: não é JSON no formato; `unknown_choice` é escolha fora das opções enviadas; `abaixo_do_limiar` é confiança insuficiente;
-#: `privacidade` é recusa local ANTES de montar o corpo; `desligado` é modo off, config desligada ou decisor nulo.
+#: `privacidade` é recusa local ANTES de montar o corpo; `desligado` é modo off, config desligada ou decisor nulo;
+#: `orcamento` é a régua de gasto (teto do dia, fatia do Jev, execução, pedido) ou o saldo da conta barrando ANTES do POST
+#: (31.14): nada saiu.
 FallbackReason = Literal["401", "422", "429", "529", "rede", "parse", "unknown_choice", "abaixo_do_limiar",
-                         "privacidade", "desligado"]
+                         "privacidade", "desligado", "orcamento"]
 #: Marcadores de C7 que o CHAMADOR declara no pedido (ADR-069 item 4: C7 nunca, em modo nenhum, sombra inclusa), mais
 #: `social_persona`, que é a exclusão D-J5 (pipeline social e de persona fora da porta, AUP 1.3, 1.6 e 3.3).
 Marcador = Literal["tela_sensivel", "tela_protegida", "aparelho_loja", "segredo", "credencial", "desafio",

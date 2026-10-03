@@ -536,6 +536,10 @@ class DecisaoFechadaCfg(BaseModel):
     consumidores: dict[Literal["curador", "intencao", "desempate", "apps"], Literal["off", "shadow", "on"]] = {}
     #: Estreita o teto de código (interseção). None = não estreita além do código.
     classes_permitidas: list[Literal["C0", "C1", "C2", "C3"]] | None = None
+    #: Quem decide (31.14): `nulo` (de fábrica: nunca decide, nunca toca rede) ou `jev` (o `DecisorJev`, pelo adaptador de
+    #: retrieval, com o gasto conferido antes do POST e a chamada em `ai_calls`). Escolher `jev` NÃO abre o envio: ele segue
+    #: fechado por `JEV_RUNTIME_SEND_APPROVED` (código) até o 31.10.
+    decisor: Literal["nulo", "jev"] = "nulo"
     #: Retenção das linhas da sombra (`decisao_fechada_sombra`, migração 074): dias inteiros; o agregado diário é calculado
     #: ANTES de purgar e fica. Prazo próprio porque `ai_calls` morre em `log_retention_days` e a sombra precisa de mais.
     retencao_dias: int = Field(180, ge=1, le=3650)

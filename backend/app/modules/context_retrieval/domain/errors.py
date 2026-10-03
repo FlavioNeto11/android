@@ -43,6 +43,11 @@ class ProviderInvalidResponse(ProviderError):
     reason = FallbackReason.INVALID_RESPONSE
 
 
+class ProviderRejected(ProviderError):
+    """HTTP 422: o provedor recusou o PEDIDO (formato, opção, tamanho). Para o retrieval é falha como outra qualquer; a porta
+    `DecisaoFechada` (31.14) precisa separá-la, porque o motivo `422` é do vocabulário fechado dela."""
+
+
 class ProviderOptionLimit(ProviderError):
     """Pergunta com mais opções do que o provedor aceita: recusada localmente, sem montar corpo nem tocar a rede."""
 

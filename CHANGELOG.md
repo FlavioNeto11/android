@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Jev: o decisor real da porta `DecisaoFechada` (31.14, branch feat/31-14-decisor-jev)
+
+- `DecisorJev` (`planning/decisao_fechada/decisores.py`): uma chamada ao Jev por pedido, pelo transporte do adaptador de
+  retrieval (`JevSemanticProvider.consultar`, cliente único). Só `choice` vai ao fio; `noul` e `score` respondem `desligado`.
+- Gasto conferido ANTES do POST: `RoutingProvider.conferir_gasto` aplica a rubrica de `_budget` (pedido, execução, dia, fatia
+  do Jev) e o bloqueio de saldo da conta `typesafe`. Barrado, sem hub ou com a leitura quebrada = motivo novo `orcamento`, e
+  nada sai.
+- Cada chamada tentada vira linha em `ai_calls` (`RepositorioDeSombra.registrar_chamada`): provedor `jev`, origem
+  `decisao_fechada`, papel `decisao_fechada`, `usd` declarado e `step_id` NULL; a falha também (`ok=0`, motivo fechado).
+  A fatia de US$ 0,50 deixa de ser cega e o saldo estimado da TypeSafe passa a andar.
+- O 422 do adaptador ganhou classe própria (`ProviderRejected`); para o retrieval segue a mesma falha.
+- Ligado só por `ai.decisao_fechada.decisor: jev` (de fábrica, `nulo`). O envio continua fechado por
+  `JEV_RUNTIME_SEND_APPROVED` até o 31.10.
+- Prova: `simulated` (`backend/tests/test_decisao_fechada_jev.py`: MockTransport, socket proibido, hub falso e banco de
+  teste). Chamada real ao Jev: `not_run`.
+
 ## 2026-10-03 — Aprendizado: o parecer da IA diante da pessoa (30.17, branch feat/30-17-parecer-no-painel)
 
 - Painel: a seção "Parecer da IA" no detalhe do Livro (sugestão, classe, conclusão, o que a IA citou, aceitar ou recusar
