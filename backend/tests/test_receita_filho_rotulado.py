@@ -6,6 +6,11 @@ desde 26/09. Agora a gravação (`_safe_target`) guarda até 3 filhos não clic�
 na tela; a destilação usa o primeiro cujo texto vire seletor, e a reprodução toca o centro dele, que fica dentro do
 contêiner. Ação de efeito pelo filho é recusada.
 
+Revisão da Android (03/10), incorporada:
+- trava de hit-test: o menor clicável no centro do filho tem de ser o contêiner, na gravação e na reprodução;
+- a janela da ordem do dump (os descendentes vêm logo depois do alvo);
+- a recusa de rótulo que muda com o estado (tempo, "Following", "Active now") e de @ literal.
+
 Nível de prova: `simulated` (árvores sintéticas).
 """
 from __future__ import annotations
@@ -52,7 +57,8 @@ def test_o_conteiner_vira_receita_pelo_filho_e_reproduz_para_outro_valor() -> No
     linha = next(e for e in tree.elements if e.class_name.endswith("LinearLayout"))
     acoes, motivo = distill([_linha_do_toque(_safe_target(linha, tree) or {})], VARIAVEIS)   # type: ignore[list-item]
     assert motivo == "ok" and acoes is not None
-    assert acoes[0]["selectors"][0] == {"kind": "rid+text", "rid": "app:id/name", "text": "{recipient}", "via": "filho"}
+    assert acoes[0]["selectors"][0] == {"kind": "rid+text", "rid": "app:id/name", "text": "{recipient}", "via": "filho",
+                                         "conteiner": "android.widget.LinearLayout"}
     # Outro aparelho, outro destinatário: o toque cai no nome da 2ª linha, dentro do contêiner dela.
     decisao = Replayer(recipe_id=1, version=1, actions=acoes, variables={**VARIAVEIS, "recipient": "QA-002"}).next(tree)
     assert decisao is not None
@@ -83,3 +89,46 @@ def test_efeito_pelo_filho_e_filho_ambiguo_continuam_recusados() -> None:
     assert acoes2 is None and "seletor estável e único" in motivo2
     # O alvo antigo (gravado antes, sem `filhos`) segue como antes.
     assert build_selectors({**alvo, "filhos": []}, VARIAVEIS) == []
+
+def _linha(tree):
+    return next(e for e in tree.elements if e.class_name.endswith("LinearLayout"))
+
+
+def test_hit_test_e_janela_do_dump_deixam_de_fora_sobreposicao_e_outra_camada() -> None:
+    # Um botao clicavel cobre o nome (o toque no centro do nome iria para ele): o nome nao vira filho.
+    coberto = parse_hierarchy(XML.replace(
+        '<node class="android.widget.ImageButton" content-desc="Mais" clickable="true" bounds="[620,110][690,150]"/>',
+        '<node class="android.widget.Button" text="Enviar" clickable="true" bounds="[10,105][410,155]"/>'))
+    assert filhos_rotulados(coberto, _linha(coberto)) == []
+    # Um rotulo de outra camada (o FAB, no fim do dump) dentro dos bounds da linha: fora da janela, nao entra.
+    fab = parse_hierarchy(XML.replace('</hierarchy>',
+                                      '<node class="android.widget.TextView" text="Nova conversa" bounds="[450,115][600,145]"/>'
+                                      '</hierarchy>'))
+    assert [f["text"] for f in filhos_rotulados(fab, _linha(fab))] == ["QA-001"]
+
+
+def test_rotulo_que_muda_com_o_estado_ou_arroba_literal_nao_vira_seletor() -> None:
+    for rotulo in ("Active now", "2h", "Following", "10:42", "Yesterday", "@lucas"):
+        tree = parse_hierarchy(XML.replace('text="QA-001"', f'text="{rotulo}"'))
+        alvo = _safe_target(_linha(tree), tree) or {}
+        assert alvo.get("filhos"), rotulo                                    # gravado (a gravacao nao conhece as variaveis)
+        assert build_selectors(alvo, {"recipient": "QA-009"}) == [], rotulo  # mas nao vira seletor
+    # O nome de pessoa templatizado vale (o literal e so o parametro).
+    tree = parse_hierarchy(XML.replace('text="QA-001"', 'text="@qa001"'))
+    sels = build_selectors(_safe_target(_linha(tree), tree) or {}, {"usuario": "@qa001"})
+    assert sels and sels[0]["text"] == "{usuario}"
+
+
+def test_na_reproducao_um_clicavel_por_cima_do_rotulo_faz_divergir_antes_do_toque() -> None:
+    tree = parse_hierarchy(XML)
+    acoes, _ = distill([_linha_do_toque(_safe_target(_linha(tree), tree) or {})], VARIAVEIS)  # type: ignore[list-item]
+    assert acoes is not None
+    # Outra tela: na linha do QA-002 apareceu um botao "Seguir" exatamente sobre o nome.
+    outra = parse_hierarchy(XML.replace('</hierarchy>',
+                                        '<node class="android.widget.Button" text="Seguir" clickable="true"'
+                                        ' bounds="[10,205][410,255]"/></hierarchy>'))
+    try:
+        Replayer(recipe_id=1, version=1, actions=acoes, variables={**VARIAVEIS, "recipient": "QA-002"}).next(outra)
+        raise AssertionError("deveria divergir")
+    except RecipeDiverged as exc:
+        assert "contêiner" in str(exc)
