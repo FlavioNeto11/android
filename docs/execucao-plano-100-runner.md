@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-276 de 317 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+277 de 317 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -294,7 +294,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.8 | pendente | — | — | — |  |  |
 | 30.9 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #78 merge 70e03cb2: migração 069_revisoes_do_aprendizado (learning_reviews, único (item_ref, dossie_hash)); suíte combinada verde 5414 passed na árvore efd39d3e; migração não aplicada no central (sem deploy) |  |
 | 30.10 | pendente | — | — | — |  |  |
-| 30.11 | pendente | — | — | — |  |  |
+| 30.11 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | Suíte 5 merge 8413ddc9 (PR #107 765a1b2b; 075 pelo PR #114 465c9c43): curador, aplicação com adaptador simulado (application/curador.py, domain/orcamento_do_curador.py, infrastructure/ligar_curador.py, curador_simulado.… |  |
 | 30.12 | implemented | simulated | sessao | — | Branch feat/30-12-curador-hub (4edecb8d + f0372b63, sobre o 30.11 8bbe35ff e o 31.2/31.6), 02/10/2026, sessao jev. AIRouter.review_knowledge(PedidoDeParecer): papel plan emprestado, run_id None, origem curador, ref = do… |  |
 | 30.13 | pendente | — | — | — |  |  |
 | 30.14 | pendente | — | — | — |  |  |
@@ -324,7 +324,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (41): 8.3, 8.4, 12.3, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 30.4, 30.8, 30.10, 30.11, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
+Pendentes (40): 8.3, 8.4, 12.3, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 30.4, 30.8, 30.10, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
