@@ -17,10 +17,12 @@ fecha `sem_ator` (LT-6) e sai do proxy e de `so_ia`; compare só janelas do mesm
 """
 from __future__ import annotations
 
+import math
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from fractions import Fraction
 from typing import Protocol
 
 from app.modules.learning.application.curador import janela_do_orcamento
@@ -189,10 +191,13 @@ def _tempo(amostra: list[float]) -> Tempo:
 
 
 def _percentil(ordenada: list[float], p: float) -> float | None:
-    """A posição mais próxima, a mesma regra de `app/metricas.py` (que a camada de aplicação não importa)."""
+    """O posto mais próximo, `ceil(p·n/100)`, a mesma regra de `app/metricas.percentil` depois do K-085 — a camada de
+    aplicação não importa `app.metricas` (`tests/test_arquitetura.py`), então a fórmula é a mesma e um teste de
+    igualdade as prende (`test_learning_metricas.py`). Em aritmética exata: `0.9 * n` em ponto flutuante cai logo
+    abaixo do inteiro, e o `round` antigo levava o ,5 ao par (n=2 no p50 dava o maior dos dois)."""
     if not ordenada:
         return None
-    k = max(0, min(len(ordenada) - 1, round(p / 100 * len(ordenada) + 0.5) - 1))
+    k = max(0, min(len(ordenada) - 1, math.ceil(Fraction(str(p)) * len(ordenada) / 100) - 1))
     return round(ordenada[k], 3)
 
 
