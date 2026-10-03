@@ -7,7 +7,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { balanceShortName } from '../../lib/aiBalance';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import usageStyles from '../usage/Usage.module.css';
-import { formatUsd, isUsageEmpty, usageTotals } from '../usage/usage';
+import { byOriginText, formatUsd, isUsageEmpty, usageTotals } from '../usage/usage';
 import { ErrorsByKindNotice, UnpricedNotice, UsageTable, UsageTiles } from '../usage/UsageView';
 import type { UsageState } from '../usage/useUsage';
 import styles from './Diagnostics.module.css';
@@ -91,6 +91,8 @@ export function UsageWeekCard({ state }: { state: UsageState }) {
                     : 'Nenhum aparelho-comando usou IA no período'}
                   {' '}· etapas concluídas: {totals.drivenBy}
                 </p>
+                {/* RA-10: de onde veio o custo (execução, curador, leitura…), na mesma base do total. */}
+                {byOriginText(report) ? <p className={styles.meta}>Por origem: {byOriginText(report)}</p> : null}
                 <Disclosure bare summary="Ver por função e modelo">
                   {() => <UsageTable report={report} caption={`Custo de IA dos últimos ${USAGE_DAYS} dias, por função e modelo`} />}
                 </Disclosure>
