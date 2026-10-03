@@ -46,6 +46,34 @@ async def test_aprende_num_aparelho_e_repete_no_outro_sem_decisoes_de_ia(harness
     assert ai.count("decide") < 4                                                   # antes: ≥ 8 decisões por aparelho
 
 
+async def test_herda_da_versao_anterior(harness: Harness) -> None:
+    """RA-20: o app atualizou e a etapa não tem receita na versão nova. A receita PROVADA da versão anterior é herdada
+    como candidata (a IA segue decidindo e ela só é comparada); depois de concordar `recipes_promote_after` vezes,
+    volta a agir: 0 decisões do ator nas etapas sem efeito. A de envio (`commit`) para em `validated` (D1)."""
+    _replay(harness)
+    assert (await harness.wait_run(harness.run(["android-01"]).id)).status == "completed"
+    db = harness.state.db                                # type: ignore[union-attr]
+    doadoras = {r["step_key"]: r for r in db.query("SELECT * FROM recipes WHERE app_version='1.0(1)' AND status='active'")}
+    harness.cfg.file.ai.recipes_promote_after = 2
+    fake = harness._factory(type("RT", (), {"id": "android-02", "index": 2})())
+    fake.version = "2.0(7)"
+    for _ in range(2):                                    # duas execuções em sombra, a IA decidindo
+        harness.ai.calls.clear()
+        assert (await harness.wait_run(harness.run(["android-02"]).id)).status == "completed"
+        assert harness.ai.count("decide", step="open_conversation") >= 1
+    herdeiras = {r["step_key"]: r for r in db.query("SELECT * FROM recipes WHERE app_version='2.0(7)'")}
+    assert herdeiras["open_conversation"]["status"] == "active"
+    assert herdeiras["compose_message"]["status"] == "active"
+    assert herdeiras["send_message"]["status"] == "validated"                       # efeito externo: espera o dono
+    for key in ("open_conversation", "compose_message", "send_message"):          # a origem é a da doadora
+        assert herdeiras[key]["learned_from_step"] == doadoras[key]["learned_from_step"], key
+        assert loads(herdeiras[key]["actions"]) == loads(doadoras[key]["actions"]), key
+    harness.ai.calls.clear()
+    assert (await harness.wait_run(harness.run(["android-02"]).id)).status == "completed"
+    assert harness.ai.count("decide", step="open_conversation") == 0
+    assert harness.ai.count("decide", step="compose_message") == 0
+
+
 async def test_divergencia_devolve_so_aquela_etapa_a_ia(harness: Harness) -> None:
     _replay(harness)
     assert (await harness.wait_run(harness.run(["android-01"]).id)).status == "completed"

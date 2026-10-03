@@ -224,6 +224,8 @@ ai:
                                     # nível de entrega) é conferido UMA vez pelo modelo de escalonamento; só age se os modelos diferem
   verify_max_model_calls: 2       # (5) verificação por visão só rejulga quando a tela muda
   recipes: replay                 # (off) aprende a etapa uma vez e repete por seletores; shadow = só compara
+  recipes_heranca: true           # RA-20: sem receita na chave, herda da mesma etapa noutra versão/variante, como
+                                  # candidata (só com recipes_promote_after > 0)
   recipes_promote_after: 2        # receita aprendida nasce candidata (a IA decide, ela só é comparada) e vira ativa
                                   # depois de N execuções seguidas em que a IA fez o caminho dela; 0 = nasce ativa
   flows: true                     # (false) comando repetido reaproveita o plano, sem chamar o planejador
