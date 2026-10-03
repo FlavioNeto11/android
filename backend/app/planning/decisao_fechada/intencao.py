@@ -42,7 +42,7 @@ from ...security.redaction import looks_secret, mentions_credential, redact
 from . import privacidade
 from .contrato import ID_NENHUMA, MAX_OPCOES, PedidoDeDecisao, Pergunta, pergunta_choice
 from .entidades import (
-    mascarar_catalogo, mistura_alfabetos, normalizar, remover_entidades_com_motivo, sem_acento, sem_leet,
+    escrita_nao_latina, mascarar_catalogo, normalizar, remover_entidades_com_motivo, sem_acento, sem_leet,
 )
 from .porta import Porta, modo_efetivo
 from .sombra import RepositorioDeSombra
@@ -69,7 +69,9 @@ _PALAVRAS_C7: Final = (
     "contrasena", "clave", "chave", "key", "pin", "otp", "2fa", "mfa", "twofactor", "token", "segredo", "secret",
     "secreto",
     # reverificação B (03/10): outros idiomas ("mot de passe" e "parola d'ordine" casam pelos separadores entre letras)
-    "passwort", "kennwort", "wachtwoord", "motdepasse", "paroladordine")
+    "passwort", "kennwort", "wachtwoord", "motdepasse", "paroladordine",
+    # rodada C (03/10): abreviação e outras línguas de escrita latina ("hasło" fica com o "ł", que não se decompõe)
+    "pw", "psw", "haslo", "hasło", "parola", "losenord", "sifre", "heslo", "jelszo", "salasana", "lozinka", "adgangskode")
 #: A palavra-chave com até UM separador qualquer entre as letras ("p.i.n", "palavra-passe", "s/enha"), ou com um a três
 #: separadores entre TODAS as letras ("s/e/n/h/a", "s  e  n  h  a", "s,e,n,h,a"): reverificação B do 31.9.
 _ASSUNTO_C7: Final = re.compile(
@@ -78,6 +80,17 @@ _ASSUNTO_C7: Final = re.compile(
         for alt in (r"[\W_]?".join(map(re.escape, p)), r"[\W_]{1,3}".join(map(re.escape, p)))) + r")s?(?![^\W_])")
 #: As palavras-chave de uma palavra só, para a conferência da palavra INVERTIDA ("ahnes", "drowssap").
 _C7_INVERTIDAS: Final[frozenset[str]] = frozenset(p[::-1] for p in _PALAVRAS_C7 if len(p) >= 3)
+#: A palavra-chave DENTRO de outra palavra ("novasenha", "senhanova", "senha123", "mypassword") e a de escrita sem espaço
+#: entre palavras ("密码是"), que a fronteira de `_ASSUNTO_C7` não acha (rodada C do 31.9). "resenha" e "desenha(r)" não
+#: entram. A escrita não latina já recusa por `escrita_nao_latina`; a lista dá o motivo certo (`c7_palavra`). Cada palavra
+#: passa pela MESMA normalização do texto: o NFKD separa o sinal do katakana ("パ") e a sílaba do hangul em letras, e o
+#: casefold troca o "ς" final por "σ".
+_C7_DENTRO_PALAVRAS: Final = (
+    "password", "passwd", "passwort", "contrasena", "kennwort", "wachtwoord", "losenord", "motdepasse",
+    "пароль", "密码", "密碼", "口令", "パスワード", "暗証番号", "비밀번호", "암호", "κωδικός", "συνθηματικό", "סיסמה",
+    "كلمة المرور", "كلمة السر", "पासवर्ड")
+_C7_DENTRO: Final = re.compile(
+    r"(?<!re)(?<!de)senha|" + "|".join(re.escape(sem_acento(normalizar(p))) for p in _C7_DENTRO_PALAVRAS))
 #: Eufemismo de credencial, pergunta de segurança, frase de recuperação e código pedido sem a palavra-chave (reverificação B
 #: do 31.9, §7.2 e §7.5; decisão (a) da orquestradora: C7 é RECUSA do pedido inteiro, a máscara não basta). Casa no texto
 #: sem acento, em casefold, com espaços colapsados.
@@ -98,15 +111,34 @@ _EUFEMISMO_C7: Final = re.compile("|".join((
     r"\bpregunta de seguridad\b",
     # usuário e senha separados por barra: "entra com admin / admin1234", "log in with x / y"
     r"\b(?:entr\w*|log\s*in|login|sign\s*in)\s+(?:com|with|con)\s+\S+\s*/\s*\S+",
+    # o par com rótulo e sem verbo de entrar (rodada C): "login: lucas / girassol", "usuário lucas, acesso girassol"
+    r"\b(?:login|acesso|usuario|user|conta|username)\s*[:=]\s*\S+\s*/\s*\S+",
+    r"\b(?:usuario|user|login|username)\s*:?\s*\S+\s*[,;]\s*(?:acesso|senha|pass|password)\s*:?\s*\S+",
 )))
 #: O código pedido pela quantidade de dígitos ("os seis dígitos", "aquela de quatro dígitos", "the six digits", "los seis
 #: números") ou o verbo de destravar: código de verificação ou PIN sem a palavra-chave (decisão (a)).
 _DIGITOS_C7: Final = re.compile(
     r"\b(?:\d|tres|quatro|cinco|seis|sete|oito|three|four|five|six|seven|eight|cuatro|siete|ocho)\s+"
     r"(?:digitos|digits|numeros|numbers|numerinhos)\b|\b(?:destravar|desbloquear|unlock)\b")
+#: Um algarismo, escrito ou por extenso, para o PIN tecla a tecla.
+_ALGARISMO: Final = (r"(?:\d|zero|um|dois|tres|quatro|cinco|seis|sete|oito|nove|one|two|three|four|five|six|seven|eight"
+                     r"|nine|uno|dos|cuatro|siete|ocho|nueve)")
+#: O PIN digitado tecla a tecla ("toque 4, depois 8, depois 2, depois 1": três ou mais algarismos depois do verbo de
+#: tocar) ou fechado por "#" ("abre com 2580#"; a hashtag "#2024" passa). Rodada C do 31.9: saíam como `[numero]`.
+_PIN_C7: Final = re.compile(
+    rf"\b(?:toque|toca|aperte|aperta|pressione|pressiona|digite|digita|tecle|tap|press|type|pulsa|presiona|teclea)\s+"
+    rf"(?:(?:no|na|o|a|em|on|the|el|en)\s+)?{_ALGARISMO}\b"
+    rf"(?:\s*[,;]?\s*(?:(?:e|depois|entao|then|and|y|luego|despues)\s+)*"
+    rf"(?:(?:toque|toca|aperte|tap|press|pulsa|no|na|o|on|the|el)\s+)*{_ALGARISMO}\b){{2,}}"
+    r"|(?<![\w#])\d{3,8}\s?#(?![\w#])")
 #: Prefixo de token de acesso, de qualquer tamanho (o `looks_secret` só pega o longo): GitHub, Slack, chave de API, JWT.
 _PREFIXO_DE_TOKEN: Final = re.compile(
     r"(?<![A-Za-z0-9])(?:gh[pousr]_|github_pat_|sk-|sk_live_|pk_live_|xox[abprs]-|AKIA|ASIA|eyJ)[A-Za-z0-9]")
+#: As mesmas formas sem depender da caixa (o texto que chega em minúsculas não perde a chave: rodada C do 31.9), com o
+#: comprimento de verdade onde o prefixo é palavra ("asia" + 16, nunca "asiático"; "eyj" + 10).
+_TOKEN_SEM_CAIXA: Final = re.compile(
+    r"(?i)(?<![a-z0-9])(?:(?:akia|asia)[a-z0-9]{16}(?![a-z0-9])|eyj[a-z0-9_\-]{10,}"
+    r"|(?:gh[pousr]_|github_pat_|sk_live_|pk_live_|xox[abprs]-)[a-z0-9])")
 #: Controle de direção do texto (override e isolate): o jeito de escrever "senha" ao contrário na tela.
 _BIDI: Final = re.compile("[‪-‮⁦-⁩]")
 
@@ -167,29 +199,37 @@ def motivo_c7(comando: str) -> MotivoC7 | None:
     """Por que o comando é C7, ou `None`. Confere o texto como veio e normalizado (NFKC, sem caractere invisível):
 
     - `c7_bidi`: controle de direção no texto CRU (a normalização o apaga, e com ele "ahnes" se lê "senha" na tela);
-    - `c7_palavra`: a palavra-chave, inclusive separada ("s/e/n/h/a") e em outro idioma (`mentions_credential`, `_ASSUNTO_C7`);
+    - `c7_palavra`: a palavra-chave, inclusive separada ("s/e/n/h/a"), colada em outra ("novasenha"), abreviada ("pw") e
+      em outro idioma ou escrita (`mentions_credential`, `_ASSUNTO_C7`, `_C7_DENTRO`);
     - `c7_formato`: cara de segredo (`looks_secret`: "código 123456", chave de API, base64 longo) ou prefixo de token de
-      acesso de qualquer tamanho (`ghp_`, `sk-`, `AKIA`, `eyJ`);
-    - `c7_alfabetos`: palavra com alfabetos misturados (o homóglifo "senhа" com "а" cirílico);
-    - `c7_ofuscado`: a palavra-chave em leet ("s3nh4", "pa$$word") ou invertida ("drowssap");
-    - `c7_eufemismo`: "a de sempre", "o que você digita", "segundo campo", pergunta de segurança, frase de recuperação;
-    - `c7_digitos`: o código pedido pela quantidade de dígitos ("os seis dígitos") ou "destravar".
+      acesso de qualquer tamanho (`ghp_`, `sk-`, `AKIA`, `eyJ`), também em minúsculas (`_TOKEN_SEM_CAIXA`);
+    - `c7_alfabetos`: letra fora do alfabeto latino em qualquer palavra (`escrita_nao_latina`: "пароль", o homóglifo "senhа"
+      com "а" cirílico);
+    - `c7_ofuscado`: a palavra-chave em leet ("s3nh4", "pa$$word", "pa55word") ou invertida ("drowssap");
+    - `c7_eufemismo`: "a de sempre", "o que você digita", "segundo campo", pergunta de segurança, frase de recuperação, o
+      par de usuário e senha ("login: x / y", "usuário x, acesso y");
+    - `c7_digitos`: o código pedido pela quantidade de dígitos ("os seis dígitos"), "destravar" ou o PIN tecla a tecla
+      ("toque 4, depois 8, depois 2", "2580#").
     """
     if _BIDI.search(comando):
         return "c7_bidi"
     normal = normalizar(comando)
     plano = " ".join(sem_acento(normal).split())
-    if mentions_credential(comando) or mentions_credential(normal) or _ASSUNTO_C7.search(plano):
+    if (mentions_credential(comando) or mentions_credential(normal) or _ASSUNTO_C7.search(plano)
+            or _C7_DENTRO.search(plano)):
         return "c7_palavra"
-    if looks_secret(comando) or looks_secret(normal) or _PREFIXO_DE_TOKEN.search(normal):
+    if (looks_secret(comando) or looks_secret(normal) or _PREFIXO_DE_TOKEN.search(normal)
+            or _TOKEN_SEM_CAIXA.search(normal)):
         return "c7_formato"
-    if mistura_alfabetos(normal):
+    if escrita_nao_latina(normal):
         return "c7_alfabetos"
-    if _ASSUNTO_C7.search(sem_leet(plano)) or any(m.group() in _C7_INVERTIDAS for m in _LETRAS.finditer(plano)):
+    leet = sem_leet(plano)
+    if (_ASSUNTO_C7.search(leet) or _C7_DENTRO.search(leet)
+            or any(m.group() in _C7_INVERTIDAS for m in _LETRAS.finditer(plano))):
         return "c7_ofuscado"
     if _EUFEMISMO_C7.search(plano):
         return "c7_eufemismo"
-    if _DIGITOS_C7.search(plano):
+    if _DIGITOS_C7.search(plano) or _PIN_C7.search(plano):
         return "c7_digitos"
     return None
 

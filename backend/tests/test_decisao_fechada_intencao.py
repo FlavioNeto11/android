@@ -21,7 +21,9 @@ from app.planning.decisao_fechada.contrato import (
     ID_NENHUMA, PedidoDeDecisao, RespostaDeDecisao, ResultadoDeDecisao, pergunta_choice,
 )
 from app.planning.decisao_fechada.decisores import DecisorFalso
-from app.planning.decisao_fechada.entidades import mascarar_catalogo, normalizar, remover_entidades
+from app.planning.decisao_fechada.entidades import (
+    mascarar_catalogo, normalizar, remover_entidades, remover_entidades_com_motivo,
+)
 from app.planning.decisao_fechada.intencao import (
     PERGUNTA_CATALOGO, PERGUNTA_DESEMPATE, CadeiaObservada, ConsumidorDeIntencao, EntradaDeCatalogo, id_opaco,
     menciona_c7,
@@ -162,7 +164,6 @@ _NOMES_PASSAM = [
     "send a message to john",
     "Mande para o Dr. Silva o relatório",
     "mande para Łukasz",
-    "mande para Иван agora",
     "envie para jOANA",
     "comente ❤ no post da joana silva",
     "distribua: curta o post com a persona lucas",
@@ -195,7 +196,17 @@ def test_sem_lista_de_permissao_nem_recusa_por_proporcao() -> None:
     assert remover_entidades("ABRA O APP E CURTA O POST DA JOANA") == "ABRA O APP E CURTA O POST DA JOANA"
     longo = "abra o app e mande para joana pedro marcos ana bruno carla diego elisa fabio gina"
     assert remover_entidades(longo) == longo
-    assert remover_entidades("curta dois posts e comente três") is None   # dois numerais: telefone ou PIN ditado
+    # rodada C do 31.9 (decisão da orquestradora, 03/10): numeral solto vira `[numero]`; só a SEQUÊNCIA recusa
+    assert remover_entidades("curta dois posts e comente três") == "curta [numero] posts e comente [numero]"
+    assert remover_entidades("anota aí: nove oito, depois sete") is None   # dois seguidos: telefone ou PIN ditado
+
+
+def test_nome_em_outra_escrita_recusa_na_frase() -> None:
+    """Rodada C do 31.9 (decisão da orquestradora, 03/10): "alfabetos misturados" vale para a FRASE. O comando é em
+    português, e a palavra-chave da credencial em outra escrita ("a пароль do insta") não cabe numa lista; até então só a
+    palavra que misturava alfabetos recusava, e "Иван" passava."""
+    assert remover_entidades_com_motivo("mande para Иван agora") == (None, "alfabetos")
+    assert remover_entidades_com_motivo("mande para Łukasz") == ("mande para Łukasz", None)     # latino com diacrítico
 
 
 def test_normalizar_e_idempotente_e_tira_o_invisivel() -> None:

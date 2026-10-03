@@ -19,6 +19,25 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Correção do 31.9, rodada C (NO-GO em 8e1d7a9c): `sem_destinos` sem normalizar, C7 em qualquer escrita e e-mail soletrado (branch fix/31-9-privacidade)
+
+- A rodada C (`.claude/handoffs/reverificacao-31-9c.md` §7) achou 27 vazamentos fora da suíte de 240, pelo caminho de
+  produção. Uma correção por causa:
+  - `TargetExtractor.extrair` recorta sempre do original: com "ﬁ", "ß" ou acento decomposto, devolvia o texto em
+    minúsculas e sem acento, e a chave `AKIA…` e o endereço em inglês passavam. O prefixo de token também é conferido sem
+    caixa, com o comprimento de verdade;
+  - letra fora do alfabeto latino em qualquer palavra recusa (decisão da orquestradora: a regra vale para a frase), com a
+    lista de palavras-chave em outras escritas e idiomas;
+  - palavra-chave colada ("novasenha"), abreviada (`pw`, `psw`) e em leet com 5, 7 e 8;
+  - o par "login: x / y" e "usuário x, acesso y" sem verbo de entrar;
+  - e-mail soletrado com "at", "chez" ou "bei", o ponto por extenso em outras línguas, qualquer domínio de topo com o
+    ponto e o provedor conhecido sem domínio.
+- Importantes na mesma entrega (decisões da orquestradora): numerais por extenso só recusam seguidos; `@handle` com hífen
+  vira `[usuario]` inteiro; PIN tecla a tecla e "2580#" são C7.
+- Prova `simulated`: `tests/test_decisao_fechada_reverificacao_c.py`; harness da rodada D (267 casos, por `sem_destinos`):
+  0 vazamentos (eram 27), 0 C7 ou e-mail sem recusa (eram 27). Comandos reais de 7 dias (92, só leitura): 1 recusa, a
+  mesma C7 de antes.
+
 ## 2026-10-03 — Correção do 31.9, reverificação B (NO-GO em 97f35fac): C7 recusa o pedido inteiro, duas passadas no filtro e o motivo da recusa na sombra (branch fix/31-9-privacidade)
 
 - A reverificação B da orquestradora (240 casos novos, 3 céticos; `.claude/handoffs/reverificacao-31-9b.md`) achou 47
