@@ -122,3 +122,40 @@ ambígua: só ali a R3 (desempate) tem o que medir.
 - Memória (conteúdo nunca sai), fluxo (C2, F2) e a DECISÃO por persona (D-J5; desde o ADR-069 item 10, o dado pessoal pode
   ir com filtro sensato, C7 nunca).
 - Qualquer chamada: o 31.7 não chama nada. A primeira medição real é o 31.10, nos tetos do ADR-069 (sem troca de chave: item 9).
+
+## 5. O relatório do 31.10
+
+`scripts/jev-relatorio-31-10.py` mede a sombra contra os limiares acima. É só leitura e não chama IA:
+- o banco abre em modo só leitura (`PRAGMA query_only` ou `READ ONLY`), também na reconexão;
+- fora do banco, só faz o GET local de `/api/flows`, para o teto da R2.
+
+Uso, a partir da raiz do checkout:
+
+    backend/.venv/Scripts/python.exe scripts/jev-relatorio-31-10.py [--db data/poc.sqlite3 | --dsn postgresql://...] \
+        [--desde <ISO-8601 UTC>] [--sem-flows] [--json saida.json] [--md saida.md]
+
+- **Curador, por `kind`** (o `item_kind` da revisão do mesmo dossiê):
+  - rótulo 1: a primeira transição de PESSOA no item depois da linha da sombra. `validated` ou `published` dão `manter`;
+    `candidate` ou `deprecated` dão `rebaixar`; `disabled` dá `descartar`.
+  - rótulo 2: o `resultado_posterior`.
+  - controle: a regra do adaptador simulado sobre o mesmo dossiê (mais evidência contra que a favor dá `revisar`).
+- **Intenção, por app** (o primeiro de `runs.app_ids`):
+  - rótulo: a escolha da pessoa no rótulo do 30.25 (`learning_reviews`, `decidido_por` diferente de `sistema`) ou o
+    desfecho, isto é, a habilidade que a cadeia resolveu numa execução de sucesso comprovado (`sucesso_comprovado`, o
+    `casar_desfecho` feito na leitura). O rótulo pelo desfecho é INFERRED;
+  - medidas: precisão, aceite errado, a métrica principal, os ambíguos, a privacidade por motivo (fora do acerto) e os
+    acertos em fluxo com parâmetro;
+  - controle: a cadeia, medida só contra o rótulo da pessoa (pelo desfecho, o rótulo É a decisão da cadeia).
+- Abaixo do mínimo do estrato, o relatório diz "sem amostra" e a data prevista do GO, nunca uma taxa.
+- Custo: chamadas, US$, tokens, latência p50 e p95 e o maior dia contra a fatia de US$ 0,50.
+- Níveis: contagens `PROVED`; taxas, rótulo pelo desfecho e controle `INFERRED`. O relatório nunca liga nada: `on` é
+  decisão registrada (ADR-069 item 6).
+
+**Limites conhecidos** (03/10):
+- O rótulo 2 do curador ainda não tem produtor: nenhum código grava `resultado_posterior`.
+- A métrica principal só se mede com rótulo da pessoa. A execução sem fluxo não tem habilidade resolvida que o desfecho
+  confirme.
+- O "aceite errado" é a escolha diferente de `nenhuma` que o rótulo desmente, sobre os comandos rotulados.
+
+Prova: `simulated` (`scripts/tests/test_jev_relatorio_31_10.py`). Execução no banco do central: `not_run` (roda depois
+do merge da suíte 7 e do deploy).
