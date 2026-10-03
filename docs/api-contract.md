@@ -4118,3 +4118,24 @@ motivo (1 a 500), em_lote?: false}` → o corpo do detalhe.
 Prova `simulated`: `tests/test_learning_pareceres.py` e `frontend/src/features/aprendizado/ParecerDaIA.test.tsx`;
 navegador na cópia do banco do central com um provedor de ensaio e o hub `simulated` (03/10). `not_run` no central: o
 curador fica `off` até o deploy 4, que o liga em `shadow`.
+
+## Adendo v0.74 (03/10/2026, provisório: quem mergear depois renumera) — os nomes do painel no "o que mais falha" e nos sinais (validação do deploy 3, P2 e P3)
+
+Só campos novos, aditivos; o painel lê os dois com fallback para o código.
+
+- `GET /api/aprendizado/falhas` (JSON): cada grupo de `itens` e `verificacao` ganha `app_nome`, ao lado do
+  `capability_nome` que já existia. É o nome do agrupamento do Aprendido (`VisaoPorApp.nomes`: o declarado, depois o da
+  loja, depois o próprio pacote); nulo no app `*`. O `titulo` (`pacote · CÓDIGO: motivo`) continua e segue sendo o de
+  quem desenvolve; o Markdown (`formato=md`) não muda.
+- `GET /api/aprendizado/sinais`: cada sinal ganha `app_nome` e `capability_nome` (o mesmo ajudante,
+  `presentation/nomes.py`), nulos quando não se sabe. Os votos e sinais de `GET /api/runs/{id}/feedback` não mudam.
+
+O painel passa a mostrar "Pós-condição não comprovada — Instagram · Abrir o feed" no lugar do título com o pacote e o
+código, e "Instagram › Abrir o perfil" nos sinais. Também só na tela: a receita troca a chave da etapa pelo nome da
+capability ("send_message_i1 (v1)" → "Enviar a mensagem (v1)"), dois itens iguais numa lista ganham quando foram
+aprendidos (ou o número), e o texto da lição nomeia a capability ("Em Abrir o perfil (OPEN_PROFILE): …"). O texto
+gravado da lição, que vai ao prompt, não muda. Sem resposta HTTP, o estado de erro diz "Sem resposta do servidor." no
+lugar do texto do navegador (`lib/loadError.tsx`, todas as telas).
+
+Prova `simulated`: `tests/test_learning_rotas_falhas.py`, `frontend/src/features/aprendizado/model.test.ts`,
+`DetalheRico.test.tsx`, `SaudeDoApp.test.tsx`, `AprendizadoPage.test.tsx` e `frontend/src/lib/loadError.test.ts`.

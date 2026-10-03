@@ -16,7 +16,7 @@ registro importado.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -146,6 +146,13 @@ class VisaoPorApp:
             aprendido=tuple(x for x in linhas if x.origem is OrigemNaVisao.APRENDIDO),
             absorvido=tuple(x for x in linhas if x.origem is OrigemNaVisao.ABSORVIDO), modos=modos)
 
+    def nomes(self, pacotes: Iterable[str]) -> dict[str, str]:
+        """O nome de cada pacote como esta visão o mostra (o declarado, depois o da loja, depois o pacote), para quem
+        nomeia o app fora daqui (o título do "o que mais falha", os sinais). Lê as duas fontes, não o livro."""
+        declarados = {d.package: d for d in self._declarados.declarados()}
+        loja = {a.package: a for a in self._loja.apps()}
+        return {p: _nome(p, declarados, loja) for p in pacotes}
+
     # ------------------------------------------------------------------ montagem
     def _modos(self, runtime: ModosDeRuntime | None) -> ModosDeUso:
         r = runtime or ModosDeRuntime()
@@ -197,7 +204,8 @@ def _nome(pacote: str, declarados: dict[str, Declarado] | dict[str, Declarado | 
 
 def _linha(e: EntradaDoLivro, modos: ModosDeUso) -> LinhaDoAprendido:
     origem = origem_do_aprendido(e.kind, e.detail)
-    return LinhaDoAprendido(e, origem, uso_do_item(e.kind, e.state, modos.do_pacote(e.app), detalhe=e.detail),
+    # Só linhas com app chegam aqui (`_ler` separa as sem eixo); o '' é o modo global, e só satisfaz o tipo.
+    return LinhaDoAprendido(e, origem, uso_do_item(e.kind, e.state, modos.do_pacote(e.app or ""), detalhe=e.detail),
                             absorvida_em(e.detail) if origem is OrigemNaVisao.ABSORVIDO else None)
 
 

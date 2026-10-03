@@ -207,7 +207,9 @@ verificador** (ADR-024); como entram no prompt, em [ia.md §15](../ia.md).
    sistema publica na `fila_de_prova`, e a curadoria abre uma prova por (app, ação, papel).
 5. **Medida.** Em prova, 50% das unidades com a lição e 50% sem (unidade = etapa no ator, planejamento no planejador;
    braço por `sha1(item|unidade)`). O desfecho de cada exposição é gravado antes da purga de `ai_calls`, só em
-   execução real; a etapa confirmada à mão entra como `unverified`, nunca como sucesso. O veredito exige 8 unidades por
+   execução real; a etapa confirmada à mão entra como `unverified`, nunca como sucesso. O custo é o da execução: no
+   planejador entram só as chamadas com `origem` `execucao` ou nula (anteriores à 073), e a decisão fechada do Jev
+   (31.14), que leva o `run_id`, fica fora. O veredito exige 8 unidades por
    braço: "ajuda" fica (com 10% de controle), "atrapalha" desliga, "neutra" aposenta aos 20. Sem exposição por 60
    dias, aposenta; versão nova do app, volta à prova.
 6. **Teto.** Ator: 120 tokens e 3 lições; planejador: 150 e 3. O teto vale para todas as elegíveis antes do braço, e o
@@ -323,6 +325,13 @@ com o banco aberto só para leitura.
   - **Aprendido:** o catálogo unificado por tipo e estado, com desligar, aposentar e reativar, sempre com motivo;
   - **O que mais falha:** o relatório do A3, com as três colunas de custo e o falso positivo no topo;
   - **Sinais:** os votos e os gestos.
+- **Nomes, não códigos (validação do deploy 3, P2 a P5).** O painel mostra o app e a capability pelos nomes do
+  agrupamento do Aprendido ("Pós-condição não comprovada — Instagram · Abrir o feed", "Instagram › Abrir o perfil";
+  `app_nome` e `capability_nome` de `presentation/nomes.py`). O pacote e o código ficam no `title` e em "Para quem
+  desenvolve". A receita troca a chave da etapa pelo nome da capability, e dois itens iguais numa lista ganham quando
+  foram aprendidos (`model.ts::titulosDaLista`). O texto da lição nomeia a capability SÓ NA TELA
+  (`nomearCapabilityNoTexto`): o texto gravado vai ao prompt, onde o código é o que serve. Sem resposta HTTP, o estado
+  de erro diz "Sem resposta do servidor." (`lib/loadError.tsx`, todas as telas).
 - **Execução:** o botão "Deu certo / Deu errado" em cada objetivo (aba "Por aparelho") e na execução inteira (aba
   "Relatório"). O motivo abre em linha, e "Reativar" aparece quando a resposta traz `desfazer`. A seção "Aprendizado
   desta execução" mostra o bloco `aprendizado`, os votos e os sinais. O cartão "Custo de IA desta execução" mostra
@@ -482,7 +491,10 @@ Só domínio puro (desenho em `design/aprendizado-vivo.md` §8.2-8.4); a porta, 
 - **Política de risco** (`domain/politica_de_risco.py::classificar`, fonte única): recebe `FatosDeRisco` (o `commit` do conteúdo,
   `human_origin`, se o app tem catálogo, os `FatosDoCatalogo` da etapa e sessão/autenticação) e devolve a classe, as razões em ordem
   e o motivo do evento. Vale a mais restritiva: `commit` com fatos da etapa que dizem "sem efeito" é C (`commit_fora_do_catalogo`);
-  sem fatos da etapa (capability não derivável) o `commit` é B, como na 30.21. A família envio/publicação/exclusão entra por
+  sem fatos da etapa (capability não derivável) o `commit` é B, como na 30.21. **Emenda de 03/10** (orquestradora, pela
+  regra do dono "o mais restritivo"): `commit` em app SEM catálogo (`commit_sem_catalogo`) passou de B para **C**. É efeito
+  desconhecido, que pode ter alcance em massa ("todos os contatos"): decide-se item a item, nunca em lote, e o aviso de
+  espera sai na faixa C. A família envio/publicação/exclusão entra por
   `familia_do_efeito`, dado que os catálogos ainda não declaram. `conferir_aceite`: a IA nunca decide; aceitar parecer é da pessoa,
   em lote só na B; na A o parecer é só registro e `conferir_aceite` recusa qualquer efeito dele. `ia_permitida`: A
   `so_com_sobra` (depois das prioridades 1 a 4; o corte é do 30.11), B e C `sim`. `classificar_espera` (30.21) só traduz a classe para a faixa do evento.

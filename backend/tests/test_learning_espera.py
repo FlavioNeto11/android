@@ -117,14 +117,18 @@ def test_faixa_c_alto_risco_sessao_e_envio() -> None:
                               sessao_ou_autenticacao=True) == (Faixa.C, MotivoDeEntrada.SESSAO_OU_AUTENTICACAO)
 
 
-def test_faixa_b_efeito_medio_commit_sem_catalogo_e_origem_humana() -> None:
+def test_commit_sem_catalogo_e_faixa_c() -> None:
+    """Emenda de 03/10: efeito num app sem catálogo é efeito desconhecido, decidido item a item."""
+    assert classificar_espera(side_effect=True, human_origin=False, tem_catalogo=False) == (
+        Faixa.C, MotivoDeEntrada.COMMIT_SEM_CATALOGO)
+
+
+def test_faixa_b_efeito_medio_e_origem_humana() -> None:
     assert classificar_espera(side_effect=True, human_origin=False, tem_catalogo=True,
                               catalogo=FatosDoCatalogo(risco="medium", efeito_externo=True)
                               ) == (Faixa.B, MotivoDeEntrada.EFEITO_EXTERNO)
     assert classificar_espera(side_effect=True, human_origin=False, tem_catalogo=True) == (
         Faixa.B, MotivoDeEntrada.EFEITO_EXTERNO)                    # commit com catálogo e sem fatos da etapa
-    assert classificar_espera(side_effect=True, human_origin=False, tem_catalogo=False) == (
-        Faixa.B, MotivoDeEntrada.COMMIT_SEM_CATALOGO)
     assert classificar_espera(side_effect=False, human_origin=True, tem_catalogo=True) == (
         Faixa.B, MotivoDeEntrada.TEXTO_DE_PESSOA)                   # D-2: origem humana sem efeito
     assert classificar_espera(side_effect=False, human_origin=False, tem_catalogo=True) is None   # não espera ninguém
@@ -239,7 +243,7 @@ def test_receita_com_commit_entra_pela_transicao_do_livro_e_sai_pela_pessoa(db: 
     m = Mundo(db, CatalogoFalso(tem=False))
     rid = _receita(db, status="candidate", commit=True, passo="curtir")
     m.servico.mudar_estado(LivroKind.RECEITA, str(rid), S.VALIDATED, by=SYSTEM_ACTOR, reason="prova")
-    assert m.barramento.dados == [{"kind": "receita", "ref": str(rid), "app": PACOTE, "faixa": "B", "aguardando": True,
+    assert m.barramento.dados == [{"kind": "receita", "ref": str(rid), "app": PACOTE, "faixa": "C", "aguardando": True,
                                    "motivo": "commit_sem_catalogo", "href": f"#/aprendizado?aba=aprendido&item=receita:{rid}",
                                    "desde": "2026-10-02T12:00:00.000Z"}]
     m.servico.mudar_estado(LivroKind.RECEITA, str(rid), S.PUBLISHED, by=PESSOA, reason="aprovo")

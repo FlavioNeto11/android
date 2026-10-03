@@ -7,11 +7,12 @@ As três classes:
 - **A** (navegação e leitura, sem `commit`, sem origem humana): o sistema decide pela regra determinística de hoje, e
   a IA nunca muda esse resultado. A IA PODE opinar, mas só com sobra de orçamento na janela, depois das prioridades
   1 a 4 (decisão do dono, 02/10; o corte é do 30.11): o parecer da A é só registro.
-- **B** (efeito médio; `commit` em app sem catálogo; origem humana sem efeito, D-2; o reaprendido depois de uma
-  evidência inválida, 30.23): a IA recomenda, o dono aprova EM LOTE.
+- **B** (efeito médio; origem humana sem efeito, D-2; o reaprendido depois de uma evidência inválida, 30.23): a IA
+  recomenda, o dono aprova EM LOTE.
 - **C** (alto risco: `risk=high`, `manual_only`, sessão e autenticação, família de envio, publicação ou exclusão,
-  texto escrito para outra pessoa (`needs_draft`), e o `commit` que o catálogo não declara): sempre o dono, ITEM A
-  ITEM; a IA só monta parecer, nunca decide.
+  texto escrito para outra pessoa (`needs_draft`), o `commit` que o catálogo não declara e, desde a emenda de 03/10, o
+  `commit` em app sem catálogo, que é efeito desconhecido): sempre o dono, ITEM A ITEM; a IA só monta parecer, nunca
+  decide.
 
 **Vale a mais restritiva** entre o catálogo (a capability da etapa) e o conteúdo (o `commit` da receita, a etapa de
 efeito do fluxo). É o que pega a anomalia da receita 100 do Outlook: `commit` numa capability que o catálogo (só de
@@ -133,11 +134,13 @@ _REGRAS: tuple[tuple[Razao, ClasseDeRisco, MotivoDeEntrada | None], ...] = (
     (Razao.TEXTO_PARA_OUTRA_PESSOA, ClasseDeRisco.C, MotivoDeEntrada.ALTO_RISCO),
     (Razao.FAMILIA_DE_ALTO_RISCO, ClasseDeRisco.C, MotivoDeEntrada.ALTO_RISCO),
     (Razao.COMMIT_FORA_DO_CATALOGO, ClasseDeRisco.C, MotivoDeEntrada.EFEITO_EXTERNO),
+    # Emenda de 03/10 (orquestradora, pela regra do dono "A/B/C, o mais restritivo"): efeito num app sem catálogo é
+    # efeito DESCONHECIDO, que pode ter alcance em massa ("todos os contatos"); decide-se item a item, nunca em lote.
+    (Razao.COMMIT_SEM_CATALOGO, ClasseDeRisco.C, MotivoDeEntrada.COMMIT_SEM_CATALOGO),
     (Razao.REAPRENDIDO_DE_EVIDENCIA_INVALIDA, ClasseDeRisco.B, MotivoDeEntrada.REAPRENDIDO),
     (Razao.RISCO_MEDIO, ClasseDeRisco.B, MotivoDeEntrada.EFEITO_EXTERNO),
     (Razao.EFEITO_DECLARADO, ClasseDeRisco.B, MotivoDeEntrada.EFEITO_EXTERNO),
     (Razao.COMMIT_SEM_FATOS_DA_ETAPA, ClasseDeRisco.B, MotivoDeEntrada.EFEITO_EXTERNO),
-    (Razao.COMMIT_SEM_CATALOGO, ClasseDeRisco.B, MotivoDeEntrada.COMMIT_SEM_CATALOGO),
     (Razao.TEXTO_DE_PESSOA, ClasseDeRisco.B, MotivoDeEntrada.TEXTO_DE_PESSOA),
 )
 _CLASSE_DA_RAZAO = {r: c for r, c, _ in _REGRAS}
