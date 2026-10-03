@@ -1923,3 +1923,33 @@ sondas de rede), um por vez. O aceite do 14.12 (≤ 0,3 núcleo ocioso) o emulad
 
 **Aplicabilidade.** Medido no central (Windows Server 2025, WHPX). O notebook (Hyper-V com escalonador Classic) não foi
 medido.
+
+**Adendo (03/10, o android-01 com 4 vCPU e o diferencial por gesto; `real`, central WIN-7S2UASNLFOP, main 01351e66).**
+Saída bruta em `data/diag-ra3b/`: `repouso-cores4-01-600s.json`, `dif-*.json` e `dif-dumpsys-*.txt`.
+
+- **4 vCPU não resolvem.** Logo depois do boot a frio, a mesma thread estava a 99,7 %. Em repouso, de 02:52:43 a
+  03:02:43Z, o processo gastou 125,8 % no total, com uma thread a 99,5 %. O aceite (≤ 0,3 núcleo) não foi cumprido. Como
+  há uma thread quente só, o 01 fica com 4 vCPU: a regra manda voltar a 2 apenas com duas ou mais.
+- **Diferencial no 01, um gesto por vez e cumulativo.** CPU por thread do qemu (pid 42348, thread quente 36288):
+
+| Braço | Gesto | Janela (UTC) | Host total | Thread 36288 (kernel) | load1 do convidado |
+|---|---|---|---|---|---|
+| b0 | base: lease ativo, stream de frames ligado, rascunho do post na tela | 03:12:17–03:13:17 (60 s) | 118,8 % | 99,6 % (90,9) | 0,15 |
+| b1 | force-stop do Outlook | 03:13:27–03:15:27 | 122,3 % | 99,8 % (91,8) | 0,74 |
+| b2 | mais o force-stop do Instagram; o lease expirou às ~03:17:39Z e o stream parou dali em diante | 03:17:28–03:19:28 | 128,9 % | 99,5 % (91,3) | 2,03 |
+| b3 | VPN: o 01 não tem cliente (`dumpsys connectivity` mostra `VpnNetworkProvider:0`) | — | — | — | — |
+| b4 | mais a ausência de lease (controle `none`, stream desligado) | 03:20:05–03:22:06 | 107,7 % | 92,9 % (85,5) | 0,15 |
+
+- **Nenhum gesto derrubou o spin.** A queda de 99,5 % para 92,9 % em b4 é pequena e não foi repetida (INFERRED: ruído,
+  ou uma parcela pequena do stream). O convidado estava ocioso (load 0,15) com a thread girando, então o laço está no
+  lado do host e não acompanha a carga dos apps.
+- **`dumpsys sensorservice` e `dumpsys gfxinfo`.** O acelerômetro (Goldfish) está ativo, com duas conexões do sistema:
+  `FaceDownDetector` e `WindowOrientationListener`. O Play Services registra o acelerômetro a 50 Hz (`droidguard.events`)
+  e o barômetro a 10 Hz (`PressureProvider`) a cada minuto: são cerca de 200 registros no histórico. Quase nada é
+  renderizado: o launcher, com 22 quadros.
+- **A tela do 01 nunca desliga.** `stay_on_while_plugged_in=15`, `screen_off_timeout=2147483647`, `mWakefulness=Awake` e
+  `mScreenState=ON`. O estado da tela do AVD temporário dos braços A, B e C não foi registrado.
+  - INFERRED, próxima suspeita: a tela sempre ligada, que mantém o acelerômetro e a cadeia de exibição ativos.
+  - Teste proposto: 2 min com a tela desligada (`KEYCODE_SLEEP`) num aparelho do parque e, ao contrário, o AVD
+    temporário com a tela fixa ligada.
+  - Seguem UNKNOWN: a sessão do Appium/UiAutomator2 e os encaminhamentos do adb.
