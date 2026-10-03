@@ -1,7 +1,7 @@
-"""29.55: relatório de falha pendente do emulador não prende mais a subida sem janela.
+"""29.55: relatório de falha pendente do emulador não prende mais a subida.
 
 Incidente de 03/10/2026 19:00Z: o reinício por IRQ derrubou o emulador na saída, o crashpad deixou um dump em
-`%TEMP%/AndroidEmulator/emu-crash-<versão>.db/reports/`, e toda subida sem janela passou a parar no diálogo que pede
+`%TEMP%/AndroidEmulator/emu-crash-<versão>.db/reports/`, e toda subida passou a parar no diálogo que pede
 consentimento para enviá-lo ("Showing crashdialog to get consent"). Ninguém responde: a espera ia até o prazo do boot e
 a escada de reparo chegou ao terceiro degrau num aparelho com conta.
 

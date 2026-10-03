@@ -484,8 +484,8 @@ class WorkerExecutor:
         await asyncio.to_thread(emu.stop_process, self.adb_for(spec), self.pids.get(spec.avd_name), spec.avd_name)
         self.pids.pop(spec.avd_name, None)
         dados = {**(await asyncio.to_thread(self.cauda_do_log, spec)), "motivo": emu.MOTIVO_DIALOGO_DE_CRASH}
-        raise VerbFailed("o emulador parou no diálogo de consentimento de um relatório de falha pendente (sem janela, "
-                         "ninguém responde); o processo foi encerrado, e a próxima subida tira o relatório do caminho",
+        raise VerbFailed("o emulador parou no diálogo de consentimento de um relatório de falha pendente (ninguém está "
+                         "ali para responder); o processo foi encerrado, e a próxima subida tira o relatório do caminho",
                          dados=dados)
 
     async def _espera_boot(self, spec: DeviceSpec, *, deadline_s: float, log_offset: int | None = None) -> None:

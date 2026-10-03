@@ -2806,7 +2806,7 @@ class DeviceManager:
         self._save_pid(rt, None)
         self._set_state(rt, InstanceState.error, "O emulador parou no diálogo de relatório de falha.", level="error",
                         attention="A subida parou no diálogo de consentimento de um relatório de falha pendente do "
-                                  "emulador, e sem janela ninguém responde. O processo foi encerrado, e o reparo "
+                                  "emulador, e ninguém está ali para responder. O processo foi encerrado, e o reparo "
                                   "automático não sobe degrau por isso. Ligue de novo: a próxima subida tira o "
                                   f"relatório do caminho. Log: data/logs/emulator-{rt.avd_name}.log")
 
@@ -2814,7 +2814,7 @@ class DeviceManager:
         """Inicia o emulador e grava o PID na MESMA seção crítica: um cancelamento nunca deixa processo órfão."""
         rt.bloqueio_de_crash = False
         def ao_quarentenar(movidos: list[Path]) -> None:
-            # 29.55 (b): relatório de falha pendente faria a subida sem janela parar no diálogo de consentimento.
+            # 29.55 (b): relatório de falha pendente faria a subida parar no diálogo de consentimento.
             self.bus.emit("log", f"{rt.id}: {len(movidos)} relatório(s) de falha pendente(s) do emulador foram para a "
                           f"quarentena antes da subida ({', '.join(p.name for p in movidos)})", level="warn",
                           instance_id=rt.id, data={"quarentena": [str(p) for p in movidos]})

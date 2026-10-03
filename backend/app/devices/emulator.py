@@ -149,8 +149,8 @@ def start_process(cfg: Config, tools: SdkTools, avd_name: str, console_port: int
                   ao_quarentenar: Callable[[list[Path]], None] | None = None) -> int:
     if not tools.emulator.exists():
         raise EmulatorError(f"emulator não encontrado em {tools.emulator}")
-    # 29.55 (b): um relatório de falha pendente faz o emulador perguntar se pode enviá-lo, e a subida sem janela para
-    # no diálogo. Mesmo com `-crash-report-mode never` (a), o dump sai do caminho antes de cada subida.
+    # 29.55 (b): um relatório de falha pendente faz o emulador perguntar se pode enviá-lo, e a subida para no
+    # diálogo (na sessão do serviço, ninguém vê a janela para responder). Mesmo com `-crash-report-mode never` (a), o dump sai do caminho antes de cada subida.
     try:
         env = tools.env()
         movidos = (quarentenar_relatorios(env, Path(cfg.data_dir) / PASTA_DA_QUARENTENA)

@@ -70,6 +70,10 @@ android:
   # Por aparelho: `instances.overrides.<id>.gpu_mode` (exemplo abaixo). Mudar exige reiniciar o backend e o
   # aparelho, e o boot seguinte é a frio (o snapshot da hibernação é do hardware de antes).
   gpu_mode: swiftshader_indirect
+  # Relatório de falha pendente do emulador (29.55): com o padrão do emulador ("ask"), um dump deixado por um emulador
+  # que caiu faz toda subida parar no diálogo de consentimento. `never` não pergunta nem envia; "" volta ao
+  # padrão do emulador. Antes de cada subida o dump vai para data/quarentena-crash/ (mover, nunca apagar).
+  crash_report_mode: never
   boot_timeout_s: 480
   # Guarda de capacidade: um boot só é aceito se, descontado o que os boots em andamento ainda vão alocar,
   # couber esta instância (custo no HOST) e sobrar min_free_ram_mb_after_boot para o host. O custo no host vem
