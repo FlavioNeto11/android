@@ -103,7 +103,9 @@ class RegistroDeValidacoes(Protocol):
     def criar(self, novo: NovoPedido, agora: datetime) -> str | None: ...     # None = já há pedido vivo do item
     def pendentes(self) -> list[PedidoVivo]: ...
     def por_execucao(self, run_id: str) -> PedidoVivo | None: ...
-    def comecar(self, pedido_id: str, run_id: str, aparelho: str, agora: datetime) -> bool: ...
+    #: 30.40: `teto_usd` só preenche o pedido que não tem (o legado); o teto gravado não muda.
+    def comecar(self, pedido_id: str, run_id: str, aparelho: str, agora: datetime,
+                teto_usd: float | None = None) -> bool: ...
     def fechar(self, pedido_id: str, estado: EstadoDoPedido, motivo: Motivo | None, usd: float,
                agora: datetime) -> bool: ...
     def recusar(self, pedido_id: str, motivo: Motivo, agora: datetime) -> bool: ...  # `pendente` → `recusada`, sem execução
@@ -247,7 +249,8 @@ class ServicoDeValidacao:
             # `prova` só vai quando há (a receita segue com a chamada de antes).
             run_id = (self._despacho.enfileirar(p.comando, aparelho, chave, prova=prova) if prova
                       else self._despacho.enfileirar(p.comando, aparelho, chave))
-            if self._registro.comecar(p.id, run_id, aparelho, agora):
+            # 30.40: o pedido sem teto (legado) herda o da config aqui, sem depender de UPDATE à mão.
+            if self._registro.comecar(p.id, run_id, aparelho, agora, teto_usd=aj.teto_por_pedido_usd):
                 log.info("aprendizado: validação %s de %s em %s (execução %s)", p.id, p.item_ref, aparelho, run_id)
                 return run_id
         log.info("aprendizado: validação espera (%s; %d pedido(s) pendente(s))", Motivo.SEM_APARELHO.value,

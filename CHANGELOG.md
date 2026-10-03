@@ -89,6 +89,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Golden set: §8 (pré-registro do lote) e §2 (o `v2` medido antes e depois do 30.39; a regra da saúde).
 - Testes: `backend/tests/test_lote_intencao.py`, `scripts/tests/test_jev_braco_offline_intencao.py` e
   `scripts/tests/test_jev_braco_offline.py`.
+## 2026-10-03 — 30.40: o teto do pedido legado e a receita sem caminho (branch feat/30-40-teto-e-sem-caminho)
+
+- O pedido de validação sem `teto_usd` (o legado, de antes do 30.37) herda `teto_por_pedido_usd` no despacho, no mesmo
+  UPDATE que liga a execução; o teto já gravado não muda. Assim o legado não depende de UPDATE à mão.
+- A receita marcada "variante sem caminho" não recebe `pedir_evidencia` nas opções do curador (`decisoes_do_item`), e
+  o esquema estrito do hub só aceita o que foi oferecido. O parecer que a escolher assim mesmo grava
+  `invalida:decisao_indevida`, sem pedido. Medido no central às 20:51Z: 5 das 6 marcadas tinham pedido de novo.
+- Sem migração, sem rota nova, mesmo `dossie_hash`.
+- Testes: `backend/tests/test_learning_prova_validacao.py` e `backend/tests/test_learning_curador_dominio.py`.
 
 ## 2026-10-03 — Suíte 14 na main e deploy 14 no central (51270b9c; migrações 084, 085 e 086; config inalterada)
 

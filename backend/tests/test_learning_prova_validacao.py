@@ -118,6 +118,32 @@ def test_o_teto_da_execucao_e_o_menor_entre_o_da_validacao_e_o_do_pedido(mundo: 
     assert repo.teto_usd_da_execucao(run_id) == pytest.approx(0.90)
 
 
+def test_o_pedido_legado_sem_teto_herda_o_da_config_ao_despachar(mundo: Mundo, tmp_path: Path) -> None:
+    """30.40: o pedido de antes do 30.37 (`teto_usd` NULL) ganha o teto da config no despacho, no mesmo UPDATE que liga
+    a execução; a execução nunca fica ligada sem teto e o legado não depende de UPDATE à mão."""
+    db, servico, _parque, _relogio, ajustes = mundo
+    repo = Repository(db, EventBus(db), tmp_path / "evidencias")
+    pid = servico.ao_parecer(_fluxo(db), "lr-1", PEDE, B)
+    assert pid is not None
+    db.execute("UPDATE learning_validations SET teto_usd=NULL WHERE id=?", (pid,))         # o legado
+    ajustes["teto_por_pedido_usd"] = 0.15
+    run_id = servico.uma_volta(lambda: 1)
+    assert run_id is not None
+    linha = _linha(db, pid)
+    assert linha["estado"] == "rodando" and linha["run_id"] == run_id
+    assert float(str(linha["teto_usd"])) == pytest.approx(0.15)
+    assert repo.teto_usd_da_execucao(run_id) == pytest.approx(0.15)
+
+
+def test_o_teto_ja_gravado_nao_muda_no_despacho(mundo: Mundo) -> None:
+    """30.40: só o NULL herda; o pedido que nasceu com teto despacha com o dele, mesmo que a config tenha mudado."""
+    db, servico, _parque, _relogio, ajustes = mundo
+    pid = servico.ao_parecer(_fluxo(db), "lr-1", PEDE, B)                                   # nasce com 0,10
+    ajustes["teto_por_pedido_usd"] = 0.15
+    assert pid is not None and servico.uma_volta(lambda: 1) is not None
+    assert float(str(_linha(db, pid)["teto_usd"])) == pytest.approx(0.10)
+
+
 # ------------------------------------------------------------------ o fluxo vira prova
 def test_o_pedido_de_fluxo_enfileira_a_execucao_de_prova_e_o_de_receita_nao(mundo: Mundo) -> None:
     db, servico, parque, _relogio, _ = mundo

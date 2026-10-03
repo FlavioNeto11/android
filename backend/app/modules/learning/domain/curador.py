@@ -478,6 +478,7 @@ class MotivoDeInvalidade(StrEnum):
     ALVO_AUSENTE = "alvo_ausente"
     ALVO_DESCONHECIDO = "alvo_desconhecido"
     ALVO_INDEVIDO = "alvo_indevido"
+    DECISAO_INDEVIDA = "decisao_indevida"               # 30.40: fora das decisões do item (`decisoes_do_item`)
 
 
 #: Os rótulos permitidos de cada campo fechado: o que um adaptador de `choice` oferece. `riscos`, `inconsistencias` e
@@ -502,9 +503,22 @@ LIMIARES_DE_CONFIANCA = (0.60, 0.85)
 _ORDEM_DA_CLASSE = {ClasseDeRisco.A: 0, ClasseDeRisco.B: 1, ClasseDeRisco.C: 2}
 
 
+def decisoes_do_item(item: IdentidadeDoItem) -> tuple[str, ...]:
+    """30.40: as decisões que cabem a ESTE item. A receita marcada "variante sem caminho" (30.36) não tem execução de
+    validação que a alcance: `pedir_evidencia` sai das opções dela (o esquema estrito dos provedores só aceita o que
+    está nas opções), e o parecer que a escolher assim mesmo é inválido (`decisao_indevida`): fica o registro, nenhum
+    pedido nasce, e o item só volta ao curador com dossiê novo. Medido no central em 03/10 20:51Z: com a marca no
+    dossiê, 5 das 6 receitas sem caminho pediram evidência de novo."""
+    if item.sem_caminho:
+        return tuple(d.value for d in Decisao if d is not Decisao.PEDIR_EVIDENCIA)
+    return OPCOES_FECHADAS["decisao"]
+
+
 def opcoes_do_dossie(dossie: Dossie) -> dict[str, tuple[str, ...]]:
-    """As opções que dependem do item: os ids citáveis e os alvos possíveis, em ordem estável."""
-    return {"evidencias_citadas": tuple(sorted(dossie.citaveis)), "alvo": tuple(sorted(dossie.alvos_possiveis))}
+    """As opções que dependem do item: as decisões que cabem a ele, os ids citáveis e os alvos possíveis, em ordem
+    estável."""
+    return {"decisao": decisoes_do_item(dossie.item), "evidencias_citadas": tuple(sorted(dossie.citaveis)),
+            "alvo": tuple(sorted(dossie.alvos_possiveis))}
 
 
 def confianca_da_probabilidade(probabilidade: float) -> Confianca:
@@ -630,6 +644,8 @@ def _parecer(bruto: str | Mapping[str, object], dossie: Dossie, probabilidade: f
     decisao = _rotulo(Decisao, dados["decisao"], MotivoDeInvalidade.DECISAO_FORA_DO_VOCABULARIO)
     if decisao is None:
         raise _Invalida(MotivoDeInvalidade.DECISAO_FORA_DO_VOCABULARIO)
+    if decisao.value not in decisoes_do_item(dossie.item):
+        raise _Invalida(MotivoDeInvalidade.DECISAO_INDEVIDA)
     faixa = _rotulo(ClasseDeRisco, dados.get("faixa"), MotivoDeInvalidade.ROTULO_FORA_DO_VOCABULARIO)
     causa = _rotulo(Causa, dados.get("causa"), MotivoDeInvalidade.ROTULO_FORA_DO_VOCABULARIO)
     riscos = _rotulos(RiscoApontado, dados.get("riscos"))
@@ -670,4 +686,5 @@ __all__ = ["CAMPOS_DA_SAIDA", "CAMPOS_OBRIGATORIOS", "DECISOES_COM_ALVO", "LIMIA
            "Confianca", "Decisao",
            "Dossie", "Evidencia", "Falta", "GrupoDeFalha", "IdentidadeDoItem", "Inconsistencia", "Intervencao",
            "MotivoDeInvalidade", "Parecer", "PassoDaTrilha", "Relacao", "RiscoApontado", "Validacao", "Voto",
-           "confianca_da_probabilidade", "conteudo_do_dossie", "montar_dossie", "opcoes_do_dossie", "validar_saida"]
+           "confianca_da_probabilidade", "conteudo_do_dossie", "decisoes_do_item", "montar_dossie", "opcoes_do_dossie",
+           "validar_saida"]
