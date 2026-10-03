@@ -13,7 +13,10 @@ Regras do desenho que moram aqui:
 - efeito em app real (Instagram, Outlook) não roda sozinho: o ensaio só de leitura até antes do commit é a fatia 2, e
   o commit só em post nosso (decisão do dono de 02/10);
 - receita só se valida com fluxo ATIVO para o comando: sem ele o planejador replaneja, a chave da etapa pode mudar e a
-  execução gasta sem provar nada;
+  execução gasta sem provar nada; e só se o plano desse fluxo CHEGA à etapa dela (30.36, `sem_caminho`: a variante
+  antiga da mesma etapa, de outra redação da pós-condição, nunca é a que roda);
+- o fechamento segue a evidência que a execução deixou (30.36): a favor fecha `feita`; contra, `evidencia_contra`, e
+  o curador volta ao item; só a forma reescrita, `divergencia_de_forma`; nada, `sem_evidencia`;
 - desligado não se valida: a pessoa o devolve à prova antes (item 0);
 - o despachante só roda em aparelho ocioso, com o central saudável e sem execução em curso (restart, suíte e deploy
   derrubam isso), dentro do orçamento β = 5 % do gasto de IA da operação na janela e no máximo 4 execuções por hora.
@@ -71,6 +74,9 @@ class Motivo(StrEnum):
     CREDENCIAL = "credencial"                         # o comando parece ter credencial (triagem de sempre)
     EFEITO_REAL = "efeito_real"                       # efeito em app real: o ensaio de leitura é a fatia 2
     SEM_FLUXO_ATIVO = "sem_fluxo_ativo"               # receita sem fluxo ativo para o comando: a chave pode mudar
+    #: 30.36: o plano do fluxo ativo do comando não chega à etapa desta receita (outra variante dela é a que roda: a
+    #: pós-condição reescrita do RA-20). Recusa também AO DESPACHAR, sem execução, porque o fluxo pode mudar.
+    SEM_CAMINHO = "sem_caminho"
     # ao despachar (o pedido fica `pendente` e tenta na volta seguinte)
     AMBIENTE_OCUPADO = "ambiente_ocupado"             # health com problema, execução em curso (restart/suíte/deploy)
     SEM_APARELHO = "sem_aparelho"                     # nenhum aparelho ocioso que sirva
@@ -78,6 +84,8 @@ class Motivo(StrEnum):
     RITMO = "ritmo"                                   # já rodaram MAXIMO_POR_HORA na última hora
     # ao fechar
     SEM_EVIDENCIA = "sem_evidencia"                   # a execução assentou e não deixou evidência no item
+    EVIDENCIA_CONTRA = "evidencia_contra"             # 30.36: deixou evidência CONTRA (o curador volta ao item)
+    DIVERGENCIA_DE_FORMA = "divergencia_de_forma"     # 30.36: fez o caminho e só reescreveu a forma (nem a favor)
     EXECUCAO_FALHOU = "execucao_falhou"
     EXPIROU = "expirou"
 
@@ -86,7 +94,7 @@ class Motivo(StrEnum):
 class FatosDoParecer:
     """O que decide se um parecer vira pedido. `efeito`: o item tem ação ou etapa de efeito externo; `app_qa`: o app
     é da categoria QA (`apps.category='qa'`); `fluxo_ativo`: há fluxo ativo cujo modelo casa o comando de origem (só
-    importa para a receita)."""
+    importa para a receita); `caminho` (30.36): o plano desse fluxo chega à etapa da receita (fora da receita, sim)."""
 
     decisao: Decisao
     falta: tuple[Falta, ...]
@@ -99,6 +107,7 @@ class FatosDoParecer:
     comando: str | None
     comando_com_credencial: bool
     fluxo_ativo: bool
+    caminho: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,6 +163,8 @@ def _recusa(f: FatosDoParecer, grupo: Grupo) -> Motivo | None:
         return Motivo.EFEITO_REAL
     if f.kind is LivroKind.RECEITA and not f.fluxo_ativo:
         return Motivo.SEM_FLUXO_ATIVO
+    if f.kind is LivroKind.RECEITA and not f.caminho:
+        return Motivo.SEM_CAMINHO
     return None
 
 

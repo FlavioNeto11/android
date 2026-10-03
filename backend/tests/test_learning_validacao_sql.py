@@ -112,7 +112,7 @@ def _linha(db: Database, pid: str) -> dict[str, object]:
 
 def test_o_laco_inteiro_do_pedido_ao_fechamento(mundo: tuple[Database, ServicoDeValidacao, Parque, Relogio,
                                                                dict[str, object]]) -> None:
-    db, servico, parque, _relogio, _ = mundo
+    db, servico, parque, _relogio, ajustes = mundo
     pid = servico.ao_parecer(_receita(), "lr-1", PEDE, B)
     assert pid is not None
     linha = _linha(db, pid)
@@ -149,8 +149,11 @@ def test_o_laco_inteiro_do_pedido_ao_fechamento(mundo: tuple[Database, ServicoDe
     fechado = _linha(db, pid)
     assert fechado["estado"] == "feita" and fechado["motivo"] is None
     assert abs(float(str(fechado["usd"])) - (10_000 * 3.0 + 1_000 * 15.0) / 1_000_000) < 1e-9
-    # A chegada volta ao curador (gatilho `evidencia_chegou`) até ele revisar.
+    # A chegada volta ao curador (gatilho `evidencia_chegou`) até ele revisar. Com o despachante pausado (`modo` off,
+    # a pausa do P4 de 03/10) também: a evidência já foi paga, e o gasto da revisão é do curador.
+    ajustes["modo"] = Modo.OFF
     assert [c.id for c in servico.chegadas()] == [pid]
+    ajustes["modo"] = Modo.ON
     servico.revisado(pid, "lr-3")
     assert servico.chegadas() == [] and _linha(db, pid)["revisao_nova_id"] == "lr-3"
     # Fechado o pedido, o item pode pedir de novo.

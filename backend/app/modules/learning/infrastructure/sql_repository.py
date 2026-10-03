@@ -360,11 +360,13 @@ class SqlLearningRepository:
             if inserida is None:
                 return False
             if conta:
+                # 30.36: a `forma` não é contra (hoje só o fluxo a recebe; a guarda é para não virar armadilha)
                 favor = int(nova.stance is Posicao.FOR)
+                contra = int(nova.stance in (Posicao.AGAINST, Posicao.CONFLICT))
                 self._db.execute(
                     "UPDATE learning_items SET evidence_for=evidence_for+?, evidence_against=evidence_against+?,"
                     " distinct_runs=distinct_runs+?, distinct_devices=distinct_devices+?, updated_at=? WHERE id=?",
-                    (favor, 1 - favor, int(novo_run), int(novo_aparelho), agora, nova.item_ref))
+                    (favor, contra, int(novo_run), int(novo_aparelho), agora, nova.item_ref))
         return True
 
     # ================================================================== exposições (lições, A7)

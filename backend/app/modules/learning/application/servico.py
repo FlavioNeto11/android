@@ -36,7 +36,7 @@ from app.modules.learning.domain.livro import (ESTADOS_DA_EVIDENCIA_INVALIDA, En
                                                entrada_do_item, estado_nativo, motivo_da_confirmacao, para_aprovar,
                                                status_nativo)
 from app.modules.learning.domain.modo_por_app import modo_efetivo
-from app.modules.learning.domain.promocao import Evidencia
+from app.modules.learning.domain.promocao import Evidencia, contrarias
 from app.modules.learning.domain.saude import Saude, SinaisDeSaude, calcular
 from app.modules.learning.domain.versao import quadro_da_tela, quadro_independente
 from app.modules.learning.domain.vocabulario import (KINDS_DE_ITEM, LivroKind, Modo, ModoDeTelas, Origem, Posicao,
@@ -364,14 +364,14 @@ class LearningService:
             a_favor, contra = e.a_favor, e.contra          # contadores da própria fonte (sobrevivem à retenção)
         elif e.kind is LivroKind.FLUXO:                    # o fluxo não tem contador de acerto: só as evidências
             a_favor = sum(1 for x in evidencias if x.stance is Posicao.FOR)
-            contra = sum(1 for x in evidencias if x.stance is not Posicao.FOR)
+            contra = len(contrarias(evidencias))          # 30.36: a forma não é contra, nem o `against` que ela tirou
         else:
             a_favor = contra = None
         recentes: int | None = None
         if e.kind is not LivroKind.HABILIDADE and e.state is SkillState.PUBLISHED:
             corte = agora - timedelta(days=self.ajustes.saude.contestacao_dias)
-            recentes = sum(1 for x in evidencias
-                           if x.stance is not Posicao.FOR and (q := _quando(x.observed_at)) is not None and q >= corte)
+            recentes = sum(1 for x in contrarias(evidencias)
+                           if (q := _quando(x.observed_at)) is not None and q >= corte)
         motivo = trilha[-1].reason if trilha and e.state in (SkillState.DEPRECATED, SkillState.DISABLED) else None
         return calcular(SinaisDeSaude(
             kind=e.kind, estado=e.state, agora=agora, criado_em=e.created_at, estado_desde=e.state_at,

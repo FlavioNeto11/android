@@ -36,14 +36,16 @@ class CuradorSimulado:
         evidencias = d.get("evidencias")
         lista = evidencias.get("lista") if isinstance(evidencias, dict) else None
         lista = lista if isinstance(lista, list) else []
-        contra = sum(1 for e in lista if isinstance(e, dict) and e.get("posicao") != "for")
+        # a `forma` (30.36) não é contra nem a favor
+        contra = sum(1 for e in lista if isinstance(e, dict) and e.get("posicao") in ("against", "conflict"))
+        favor = sum(1 for e in lista if isinstance(e, dict) and e.get("posicao") == "for")
         citadas = [str(item_id)] if isinstance(item_id, str) else []
         citadas += [str(e["id"]) for e in lista[:3] if isinstance(e, dict) and isinstance(e.get("id"), str)]
         if self.inventar_citacao:
             citadas.append("ev:999999999")
-        bruto: JsonObject = {"decisao": "observar" if contra > len(lista) - contra else "manter",
+        bruto: JsonObject = {"decisao": "observar" if contra > favor else "manter",
                              "evidencias_citadas": list(citadas), "faixa": pedido.classe,
-                             "causa": "evidencia_contraditoria" if contra > len(lista) - contra else "reproduz_bem"}
+                             "causa": "evidencia_contraditoria" if contra > favor else "reproduz_bem"}
         if self.conclusao is not None:
             bruto["conclusao"] = self.conclusao
         # Sem probabilidade medida: o simulado não é um `choice`; a confiança fica sem medida.

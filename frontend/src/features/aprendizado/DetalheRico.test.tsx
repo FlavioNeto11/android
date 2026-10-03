@@ -10,7 +10,8 @@ import { DetalheRico, hrefDoItem, passoDaTransicao } from './DetalheRico';
 import { alvoLegivel, destinoDaRelacao, metaDeSaude, rotuloDaExecucao, textoDaVariante, textoDoMotivo, valorDaDimensao } from './detalhe';
 import { itemDoLink } from './AprendidoTab';
 import type {
-  ConteudoDaReceita, ConteudoDoItem, DetalheDoLivro, DimensaoDeSaude, EntradaDoLivro, SaudeDoItem, VersaoDoItem,
+  ConteudoDaReceita, ConteudoDoItem, DetalheDoLivro, DimensaoDeSaude, EntradaDoLivro, EvidenciaDoLivro, SaudeDoItem,
+  VersaoDoItem,
 } from './model';
 
 /**
@@ -234,6 +235,20 @@ describe('detalhe rico: relações e seções ausentes', () => {
     expect(text(container)).toContain('simulada');
     const ids = Array.from(container.querySelectorAll('h4')).map((h) => h.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('30.36: a divergência de forma aparece à parte, e o contra que ela reclassificou sai da conta', async () => {
+    const ev = (stance: EvidenciaDoLivro['stance'], run: string, minuto: string) => ({
+      stance, origin_ref: `run:${run}`, run_id: run, instance_id: 'android-09', app_version: null, simulated: false,
+      detail: null, observed_at: `2026-10-03T16:${minuto}:00Z` });
+    await mostrar(detalhe({
+      evidencias: [ev('for', 'r-1', '00'), ev('against', 'r-2', '07'), ev('forma', 'r-2', '30'), ev('against', 'r-3', '40')],
+    }));
+    const secao = text(container.querySelector('[aria-label="Evidências"]')!.parentElement!);
+    expect(secao).toContain('1 a favor · 1 contra · 0 em conflito · 1 de forma (só a redação do plano mudou; não contam)');
+    const linhas = Array.from(container.querySelectorAll('[aria-label="Evidências"] li')).map((li) => text(li));
+    expect(linhas.filter((l) => l.startsWith('contra (reclassificada como forma; não conta)'))).toHaveLength(1);
+    expect(linhas.filter((l) => l.startsWith('divergência de forma'))).toHaveLength(1);
   });
 });
 

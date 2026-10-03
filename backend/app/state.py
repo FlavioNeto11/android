@@ -507,7 +507,10 @@ class AppState:
                               fluxo_ativo_para=lambda comando: self.scheduler.flows.match(comando) is not None,
                               saudavel=lambda: not self.health().problems,
                               config=lambda: self.cfg.file.aprendizado.validacao,
-                              precos=lambda: self.cfg.file.ai.prices, relogio=now)
+                              precos=lambda: self.cfg.file.ai.prices, relogio=now,
+                              # 30.36: o plano do fluxo ativo, para a receita sem caminho não gastar uma execução
+                              plano_ativo_para=lambda comando: (m[1] if (m := self.scheduler.flows.match(comando))
+                                                                else None))
         # Laço de pedidos persistentes (28.4). O objeto existe sempre (o gancho de fim de execução e a API do 28.9 o
         # chamam sem conferir); a TAREFA só sobe com `pedidos.enabled` e `roda_scheduler` (ver `start`).
         self.pedidos = LacoDePedidos(

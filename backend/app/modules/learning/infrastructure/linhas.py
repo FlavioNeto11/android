@@ -15,6 +15,15 @@ from app.modules.skills.domain.document import JsonObject, JsonValue, NotJson, a
 LOTE = 400
 
 
+def contra_efetivo(alias: str) -> str:
+    """A condição SQL de `promocao.contrarias` sobre `learning_evidence AS <alias>` (30.36): `against` ou `conflict`,
+    menos o `against` que tem uma `forma` da mesma origem no mesmo item (a linha que a reclassificação corrigiu). Os
+    leitores em SQL usam esta, para não divergir do domínio."""
+    a = alias
+    return (f"({a}.stance = 'conflict' OR ({a}.stance = 'against' AND NOT EXISTS (SELECT 1 FROM learning_evidence f"
+            f" WHERE f.item_ref = {a}.item_ref AND f.origin_ref = {a}.origin_ref AND f.stance = 'forma')))")
+
+
 def lotes[T](itens: Sequence[T]) -> Iterator[Sequence[T]]:
     for i in range(0, len(itens), LOTE):
         yield itens[i:i + LOTE]

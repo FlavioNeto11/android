@@ -4727,3 +4727,38 @@ transição que `needs_input` já permitia.
 Prova:
 - `simulated`: `tests/test_needs_input_expira.py`.
 - `not_run`: a varredura no central depois do deploy.
+
+## Adendo v0.96 (03/10/2026; número da orquestradora; item 30.36) — a divergência de forma e a receita sem caminho
+
+Aditivo aos v0.47, v0.70 e v0.89. Nenhuma rota nova e nenhuma migração. Origem: a 1ª validação do P4 (03/10,
+r-20261003160725-213aae) comprovou 2/2 etapas, e a sombra do fluxo gravou `against` só porque o planejador reescreveu
+as pós-condições.
+
+**Evidência** (`evidencias[].stance` do detalhe `GET /api/aprendizado/{kind}/{ref}`):
+- ganha o valor `forma`: a execução fez o caminho do fluxo e só reescreveu a forma, isto é, a pós-condição de uma etapa
+  sem efeito ou um parâmetro que nenhuma etapa usa para agir;
+- `forma` não conta contra nem a favor;
+- o `detail` leva os tipos e os nomes: `"[marca] etapa 1: pós-condição reescrita (app_foreground × element_present)"`;
+- a reclassificação de uma linha antiga leva `"[marca] reclassificada: …"`;
+- um `against` com uma `forma` da MESMA `origin_ref` continua na lista, mas sai de toda contagem de contra: a saúde, as
+  Métricas, a regressão da autopublicação (v0.93) e o dossiê do curador.
+
+**O que a execução ensinou** (o bloco da execução): o papel do item diz "evidência de forma (não conta)", e o `against`
+que a forma corrigiu some.
+
+**Dossiê do curador** (só quando vale; nos outros, as mesmas chaves e o mesmo `dossie_hash`):
+- `evidencias.forma_e`, a nota do que é a posição `forma`, quando alguma evidência incluída é `forma`;
+- `item.sem_caminho`, a nota "variante sem caminho; sugerir aposentar", na receita cuja validação fechou `sem_caminho`.
+
+**`learning_validations.motivo`** (sem CHECK, vocabulário do domínio) ganha:
+- `evidencia_contra`: a execução deixou evidência contra. Dispara o curador com o gatilho `evidencia_chegou`;
+- `divergencia_de_forma`: a execução só reescreveu a forma;
+- `sem_caminho`: o plano do fluxo ativo do comando não alcança a etapa da receita. O pedido fecha sem execução, ao
+  nascer ou ao despachar, e o curador volta ao item.
+
+O pedido fechado `sem_evidencia` passa a um desses motivos quando a evidência chega depois, ou quando a receita não tem
+caminho.
+
+Prova:
+- `simulated`: `tests/test_learning_forma.py` e `DetalheRico.test.tsx`;
+- `not_run`: o central (a reclassificação das linhas do P4 de 03/10).

@@ -21,9 +21,8 @@ from dataclasses import dataclass, field
 
 from app.modules.learning.domain.ciclo import SYSTEM_ACTOR, TRANSICOES, Actor, SkillState, exige_o_dono, permitido
 from app.modules.learning.domain.evidencia_invalida import Reaprendizado, ja_invalidada
-from app.modules.learning.domain.promocao import Evidencia
-from app.modules.learning.domain.vocabulario import (FONTES_HUMANAS, KINDS_DE_ITEM, LivroKind, Origem, Posicao,
-                                                     SourceKind)
+from app.modules.learning.domain.promocao import Evidencia, contrarias
+from app.modules.learning.domain.vocabulario import FONTES_HUMANAS, KINDS_DE_ITEM, LivroKind, Origem, SourceKind
 from app.modules.skills.domain.document import JsonObject, JsonValue, content_hash
 
 _S = SkillState
@@ -435,8 +434,7 @@ def motivo_na_confirmacao(t: Transicao) -> str | None:
 def contestada(confirmacao: Transicao, evidencias: Iterable[Evidencia]) -> bool:
     """Chegou evidência contrária REAL (contra ou em conflito, nunca simulada) depois da confirmação. Parecer da IA não
     é evidência: é opinião, e não devolve nada à fila."""
-    return any(not ev.simulated and ev.stance in (Posicao.AGAINST, Posicao.CONFLICT)
-               and ev.observed_at > confirmacao.decided_at for ev in evidencias)
+    return any(not ev.simulated and ev.observed_at > confirmacao.decided_at for ev in contrarias(evidencias))
 
 
 def decididos_para_revisar(ultimas: Mapping[str, Transicao],

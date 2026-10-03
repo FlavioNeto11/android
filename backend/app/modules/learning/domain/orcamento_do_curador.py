@@ -39,7 +39,7 @@ class Gatilho(StrEnum):
     CONFLITO = "conflito"
     GRUPO_DE_FALHA_ACIMA_DO_MINIMO = "grupo_de_falha_acima_do_minimo"
     PEDIDO_DA_PESSOA = "pedido_da_pessoa"
-    EVIDENCIA_CHEGOU = "evidencia_chegou"  # 30.31: a execução de validação que o curador pediu deixou evidência
+    EVIDENCIA_CHEGOU = "evidencia_chegou"  # 30.31: o pedido de evidência voltou (a favor; 30.36: contra ou sem caminho)
 
 
 #: Os gatilhos que, num item PUBLICADO, são "conflito ou evidência contra" (prioridade 1).

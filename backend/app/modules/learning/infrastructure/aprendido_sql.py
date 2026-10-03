@@ -63,6 +63,8 @@ class LeituraDoAprendidoSql:
                 for r in self._db.query(
                     "SELECT e.item_ref, e.stance, i.kind AS item_kind, COUNT(*) AS n, MIN(e.id) AS primeira"
                     " FROM learning_evidence e LEFT JOIN learning_items i ON i.id = e.item_ref WHERE e.run_id=?"
+                    # 30.36: o `against` que a forma corrigiu sai; a forma aparece com o rótulo dela
+                    f" AND (e.stance <> 'against' OR {linhas.contra_efetivo('e')})"
                     " GROUP BY e.item_ref, e.stance, i.kind ORDER BY primeira", (run_id,))),
             exposicoes=tuple(ExposicaoDaExecucao(
                 item_id=linhas.texto(r, "item_id"), papel=linhas.texto(r, "role"), braco=linhas.texto(r, "arm"))

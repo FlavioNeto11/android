@@ -116,12 +116,12 @@ def parecer_simulado(req: PedidoDeParecer) -> ParecerBruto:
     evidencias = req.dossie.get("evidencias")
     lista = evidencias.get("lista") if isinstance(evidencias, dict) else None
     lista = [e for e in lista if isinstance(e, dict)] if isinstance(lista, list) else []
-    contra = sum(1 for e in lista if e.get("posicao") != "for")
+    contra = sum(1 for e in lista if e.get("posicao") in ("against", "conflict"))     # a `forma` não é contra (30.36)
     citaveis = set(req.opcoes.get("evidencias_citadas", []))
     item = req.dossie.get("item")
     item_id = item.get("id") if isinstance(item, dict) else None
     citadas = [i for i in [item_id, *(e.get("id") for e in lista[:3])] if isinstance(i, str) and i in citaveis]
-    observar = contra > len(lista) - contra and bool(citadas)
+    observar = contra > sum(1 for e in lista if e.get("posicao") == "for") and bool(citadas)
     bruto: JsonObject = {"decisao": "observar" if observar else "manter", "evidencias_citadas": citadas,
                          "faixa": req.classe if req.classe in req.opcoes.get("faixa", [req.classe]) else None,
                          "causa": "evidencia_contraditoria" if observar else "reproduz_bem"}

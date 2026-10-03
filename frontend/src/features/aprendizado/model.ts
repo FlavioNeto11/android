@@ -157,7 +157,8 @@ export interface ListaDoLivro {
 }
 
 export interface EvidenciaDoLivro {
-  stance: 'for' | 'against' | 'conflict';
+  /** `forma` (30.36): a execução fez o caminho do item e só reescreveu a forma; não conta contra nem a favor. */
+  stance: 'for' | 'against' | 'conflict' | 'forma';
   origin_ref: string;
   run_id: string | null;
   instance_id: string | null;

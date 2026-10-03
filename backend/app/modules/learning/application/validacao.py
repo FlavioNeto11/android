@@ -6,8 +6,14 @@ execução comum, e o custo dela é o da operação):
   pedido (ou o registro de por que não nasceu);
 - `uma_volta`: o despachante, sob a trava de líder, expira os pedidos velhos e, se o central está quieto, há fôlego
   na janela e um aparelho ocioso serve, enfileira UMA execução de validação (o comando de origem, noutro aparelho);
-- `minerar` (minerador do digest): quando a execução de validação assenta, o pedido fecha — `feita` se o item ganhou
-  evidência dela, `recusada` com o motivo se não — e o curador revê o item com o gatilho `evidencia_chegou`.
+- `minerar` (minerador do digest): quando a execução de validação assenta, o pedido fecha pela evidência que ela
+  deixou — `feita` (a favor), `recusada/evidencia_contra`, `recusada/divergencia_de_forma` (30.36) ou
+  `recusada/sem_evidencia` — e o curador revê o item com o gatilho `evidencia_chegou` (a favor e contra);
+- `executar` (passo da curadoria, 30.36): o pedido fechado `sem_evidencia` cuja execução ganhou evidência depois (a
+  reclassificação da sombra) passa ao motivo dela. Sem IA e idempotente.
+
+Receita sem caminho (30.36): o pedido da receita cujo plano do fluxo ativo não chega à etapa dela nasce, ou fecha ao
+despachar, `recusada/sem_caminho`, sem execução; o curador volta ao item com a marca "variante sem caminho".
 
 Nada daqui transiciona o item: a evidência entra pelos caminhos de sempre (a sombra do fluxo, os contadores da
 receita) e quem decide continua sendo o ciclo do livro. `modo=off` de fábrica: nada nasce, nada roda.
@@ -26,7 +32,7 @@ from app.modules.learning.domain.politica_de_risco import Classificacao, Razao
 from app.modules.learning.domain.validacao import (VALIDADE_DO_PEDIDO_H, Ambiente, AparelhoCandidato, EstadoDoPedido,
                                                    FatosDoParecer, Folego, Grupo, Motivo, escolher_aparelho,
                                                    pedido_do_parecer, pode_despachar)
-from app.modules.learning.domain.vocabulario import LivroKind, Modo
+from app.modules.learning.domain.vocabulario import LivroKind, Modo, Posicao
 from app.util import parse_iso, to_iso
 
 log = logging.getLogger(__name__)
@@ -93,11 +99,15 @@ class RegistroDeValidacoes(Protocol):
     def comecar(self, pedido_id: str, run_id: str, aparelho: str, agora: datetime) -> bool: ...
     def fechar(self, pedido_id: str, estado: EstadoDoPedido, motivo: Motivo | None, usd: float,
                agora: datetime) -> bool: ...
+    def recusar(self, pedido_id: str, motivo: Motivo, agora: datetime) -> bool: ...  # `pendente` → `recusada`, sem execução
     def expirar(self, agora: datetime) -> int: ...
     def gasto_desde(self, desde: datetime) -> float: ...
     def comecados_desde(self, desde: datetime) -> int: ...
-    def chegadas(self) -> list[PedidoVivo]: ...          # `feita` sem a revisão nova
+    #: `feita`, `recusada/evidencia_contra` e `recusada/sem_caminho` sem a revisão nova (30.36: as três respondem)
+    def chegadas(self) -> list[PedidoVivo]: ...
     def revisado(self, pedido_id: str, review_id: str) -> None: ...
+    def sem_evidencia(self) -> list[PedidoVivo]: ...    # `recusada/sem_evidencia` com execução (30.36)
+    def remotivar(self, pedido_id: str, motivo: Motivo, agora: datetime) -> bool: ...  # só de `sem_evidencia`
 
 
 class FontesDaValidacao(Protocol):
@@ -108,7 +118,12 @@ class FontesDaValidacao(Protocol):
     def apps_do_item(self, item_ref: str) -> tuple[str, ...]: ...     # os pacotes exigidos (fluxo; 30.33-C)
     def fluxo_ativo_para(self, comando: str) -> bool: ...
     def vetado(self, e: EntradaDoLivro) -> bool: ...
-    def evidencia_da_execucao(self, item_ref: str, run_id: str) -> bool: ...
+    #: 30.36: o plano do fluxo ATIVO do comando chega à etapa da receita? Sem fluxo ativo, `True` (quem recusa é o
+    #: `sem_fluxo_ativo`); fora da receita, `True`.
+    def caminho_da_receita(self, item_ref: str, comando: str) -> bool: ...
+    #: A posição da evidência que DESTA execução ficou no item (30.36): a favor vence; depois a forma; depois o contra
+    #: efetivo; `None` sem evidência dela. A receita só tem a favor (a tentativa conduzida por ela que deu certo).
+    def posicao_da_execucao(self, item_ref: str, run_id: str) -> Posicao | None: ...
     def desfecho(self, run_id: str) -> tuple[str, float] | None: ...    # (status, usd) quando assentou
 
 
@@ -147,7 +162,9 @@ class ServicoDeValidacao:
             vetado=self._fontes.vetado(e), toca_sessao=Razao.SESSAO_OU_AUTENTICACAO in risco.razoes,
             efeito=e.side_effect, app_qa=self._todos_de_qa(e), comando=comando,
             comando_com_credencial=bool(comando) and self._triagem(comando or ""),
-            fluxo_ativo=bool(comando) and e.kind is LivroKind.RECEITA and self._fontes.fluxo_ativo_para(comando or ""))
+            fluxo_ativo=bool(comando) and e.kind is LivroKind.RECEITA and self._fontes.fluxo_ativo_para(comando or ""),
+            caminho=not (comando and e.kind is LivroKind.RECEITA)
+            or self._fontes.caminho_da_receita(e.trail_ref, comando))
         pedido = pedido_do_parecer(fatos)
         if pedido is None:
             return None
@@ -178,7 +195,7 @@ class ServicoDeValidacao:
             return None
         agora = self._relogio()
         self._registro.expirar(agora)
-        pendentes = self._registro.pendentes()
+        pendentes = self._sem_os_sem_caminho(self._registro.pendentes(), agora)
         if not pendentes:
             return None
         ate = parse_iso(aj.extra_ate)                           # sem fuso = UTC (`parse_iso`)
@@ -215,19 +232,63 @@ class ServicoDeValidacao:
         if desfecho is None:
             return 0                                             # ainda não assentou de verdade
         status, usd = desfecho
-        if self._fontes.evidencia_da_execucao(p.item_ref, run_id):
+        # A sombra do fluxo (`fluxos_d1`) é registrada antes deste minerador e o digest roda em ordem: a evidência
+        # desta execução já está no item quando o pedido fecha.
+        posicao = self._fontes.posicao_da_execucao(p.item_ref, run_id)
+        if posicao is Posicao.FOR:
             estado, motivo = EstadoDoPedido.FEITA, None
         else:
             estado = EstadoDoPedido.RECUSADA
-            motivo = Motivo.SEM_EVIDENCIA if status.startswith("completed") else Motivo.EXECUCAO_FALHOU
+            motivo = (_MOTIVO_DA_POSICAO[posicao] if posicao is not None
+                      else Motivo.SEM_EVIDENCIA if status.startswith("completed") else Motivo.EXECUCAO_FALHOU)
         return int(self._registro.fechar(p.id, estado, motivo, usd, self._relogio()))
+
+    def _sem_os_sem_caminho(self, pendentes: list[PedidoVivo], agora: datetime) -> list[PedidoVivo]:
+        """30.36: o pedido de receita que o plano do fluxo ativo não alcança mais fecha `sem_caminho` antes de gastar
+        uma execução (o fluxo pode ter mudado depois do nascimento). Roda em toda volta, antes do fôlego: não custa."""
+        vivos: list[PedidoVivo] = []
+        for p in pendentes:
+            if (p.item_kind == LivroKind.RECEITA.value and p.comando
+                    and not self._fontes.caminho_da_receita(p.item_ref, p.comando)):
+                if self._registro.recusar(p.id, Motivo.SEM_CAMINHO, agora):
+                    log.info("aprendizado: validação %s de %s sem caminho (o fluxo ativo não chega à etapa)",
+                             p.id, p.item_ref)
+                continue
+            vivos.append(p)
+        return vivos
+
+    # ------------------------------------------------------------------ 3b. o motivo segue a evidência (30.36)
+    def executar(self, agora: datetime) -> int:
+        """Passo da curadoria: o pedido fechado `sem_evidencia` passa ao motivo que hoje se sabe — o da evidência que a
+        execução ganhou depois (a reclassificação da sombra acrescenta a `forma` ao lado do `against` antigo) ou, na
+        receita que o plano do fluxo ativo não alcança, `sem_caminho` (o que rodou antes do 30.36 também ganha a marca
+        para o curador). Nunca vira `feita` (a favor que chega depois não é desta validação) e nunca sai de outro
+        motivo."""
+        n = 0
+        for p in self._registro.sem_evidencia():
+            posicao = self._fontes.posicao_da_execucao(p.item_ref, p.run_id) if p.run_id else None
+            motivo = _MOTIVO_DA_POSICAO.get(posicao) if posicao is not None else None
+            if (motivo is None and p.item_kind == LivroKind.RECEITA.value and p.comando
+                    and not self._fontes.caminho_da_receita(p.item_ref, p.comando)):
+                motivo = Motivo.SEM_CAMINHO
+            if motivo is not None and self._registro.remotivar(p.id, motivo, agora):
+                n += 1
+        return n
 
     # ------------------------------------------------------------------ 4. o gatilho `evidencia_chegou` do curador
     def chegadas(self) -> list[PedidoVivo]:
-        return self._registro.chegadas() if self._ajustes().modo is not Modo.OFF else []
+        """Independe do `modo` da validação, que é do DESPACHANTE: a evidência já foi paga, e o gasto da revisão é do modo
+        e do orçamento do curador. Antes, a pausa do P4 (03/10 17:18Z, `modo: "off"`) prendia o `feita` das 16:37:59Z."""
+        return self._registro.chegadas()
 
     def revisado(self, pedido_id: str, review_id: str) -> None:
         self._registro.revisado(pedido_id, review_id)
+
+
+#: A evidência que não é a favor, e o motivo do pedido que ela fecha (30.36).
+_MOTIVO_DA_POSICAO: dict[Posicao, Motivo] = {Posicao.AGAINST: Motivo.EVIDENCIA_CONTRA,
+                                             Posicao.CONFLICT: Motivo.EVIDENCIA_CONTRA,
+                                             Posicao.FORMA: Motivo.DIVERGENCIA_DE_FORMA}
 
 
 __all__ = ["AjustesDaValidacao", "DespachoDeValidacao", "FontesDaValidacao", "NovoPedido", "Origem", "PedidoVivo",

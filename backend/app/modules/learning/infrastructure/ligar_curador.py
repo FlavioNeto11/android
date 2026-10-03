@@ -36,8 +36,10 @@ class LacoDoCurador:
 
     nome = "curador"
 
-    def __init__(self, curador: CuradorPorIA) -> None:
+    def __init__(self, curador: CuradorPorIA, *, ultima: Callable[[], datetime | None] = lambda: None,
+                 relogio: Callable[[], datetime] | None = None) -> None:
         self.curador = curador
+        self._ultima, self._relogio = ultima, relogio
         # Cancelar a tarefa do laço (o `stop()` do `AppState`) solta o `await` mas NÃO a thread da volta, que segue no hub e
         # grava em `learning_reviews`: o desligamento espera por este evento, não pela tarefa.
         self._trava = threading.Lock()
@@ -63,9 +65,21 @@ class LacoDoCurador:
         self.curador.parar()
         return self._ociosa.wait(max(0.0, timeout_s))
 
+    def espera_inicial(self) -> float:
+        """K-087: a 1ª espera conta da última revisão gravada, não da subida. Cada restart zerava a hora: com 6 subidas na
+        tarde de 03/10 (~15:05Z a 17:18Z), nenhuma a 1 h da seguinte, o curador não pôde rodar até ~18:18Z. Piso de 60 s
+        para o processo assentar."""
+        intervalo = float(self.curador.intervalo_s)
+        ultima = self._ultima() if self._relogio is not None else None
+        if ultima is None or self._relogio is None:
+            return intervalo
+        return min(intervalo, max(60.0, intervalo - (self._relogio() - ultima).total_seconds()))
+
     async def laco(self, lider: Callable[[], int | None]) -> None:
+        espera = self.espera_inicial()
         while True:
-            await asyncio.sleep(self.curador.intervalo_s)
+            await asyncio.sleep(espera)
+            espera = self.curador.intervalo_s
             try:
                 await asyncio.to_thread(self._volta, lider)
             except Exception:  # noqa: BLE001 - o curador nunca derruba o processo
@@ -87,7 +101,7 @@ def ligar(servico: LearningService, repo: RepositorioDeAprendizado, db: Database
                            ajustes=lambda: ajustes_do_curador(config()), precos=precos, relogio=relogio)
     servico.anexar(curador)
     servico.anexar(ServicoDePareceres(servico, registro, dossies, triagem, modo=lambda: Modo(config().modo)))
-    servico.registrar_laco(LacoDoCurador(curador))
+    servico.registrar_laco(LacoDoCurador(curador, ultima=registro.mais_recente, relogio=relogio))
     return curador
 
 

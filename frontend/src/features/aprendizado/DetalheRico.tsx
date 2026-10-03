@@ -397,16 +397,22 @@ function Versao({ v, appNome }: { v: VersaoDoItem; appNome: string | null }) {
 
 // ---------------------------------------------------------------- evidência, histórico, relações, ações
 
-const POSTURA: Record<EvidenciaDoLivro['stance'], string> = { for: 'a favor', against: 'contra', conflict: 'em conflito' };
+const POSTURA: Record<EvidenciaDoLivro['stance'], string> = {
+  for: 'a favor', against: 'contra', conflict: 'em conflito', forma: 'divergência de forma',
+};
 
 function Evidencia({ evid }: { evid: readonly EvidenciaDoLivro[] }) {
-  const n = (s: EvidenciaDoLivro['stance']) => evid.filter((x) => x.stance === s).length;
+  // 30.36: o "contra" que tem a forma da mesma execução ao lado foi reclassificado: fica na lista, fora da conta.
+  const formas = new Set(evid.filter((x) => x.stance === 'forma').map((x) => x.origin_ref));
+  const corrigida = (x: EvidenciaDoLivro) => x.stance === 'against' && formas.has(x.origin_ref);
+  const n = (s: EvidenciaDoLivro['stance']) => evid.filter((x) => x.stance === s && !corrigida(x)).length;
   return (
     <Secao slug="evidencia" titulo="Evidência registrada">
       <p className={styles.secaoLead}>
         As evidências que o Livro guardou (execução, aparelho e versão de cada uma); os usos da linha do item contam as
         reproduções.{' '}
         {n('for')} a favor · {n('against')} contra · {n('conflict')} em conflito
+        {n('forma') > 0 ? ` · ${n('forma')} de forma (só a redação do plano mudou; não contam)` : ''}
         {evid.some((x) => x.simulated) ? ' (as simuladas nunca contam para publicar)' : ''}.
       </p>
       {evid.length > 0 ? (
@@ -414,6 +420,7 @@ function Evidencia({ evid }: { evid: readonly EvidenciaDoLivro[] }) {
           {evid.map((x, i) => (
             <li key={`${x.origin_ref}-${i}`}>
               {POSTURA[x.stance] ?? x.stance}
+              {corrigida(x) ? ' (reclassificada como forma; não conta)' : ''}
               {x.run_id ? <>{' · '}<a className={styles.linkAlvo} href={hrefDaExecucao(x.run_id)} title={x.run_id}>{rotuloDaExecucao(x.run_id)}</a></> : ''}
               {x.instance_id ? ` · aparelho ${x.instance_id}` : ''}
               {x.app_version ? ` · app ${x.app_version}` : ''}
