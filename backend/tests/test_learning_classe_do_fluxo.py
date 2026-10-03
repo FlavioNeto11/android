@@ -13,6 +13,7 @@ Nível de prova: `simulated` (domínio puro, o YAML real do catálogo e o banco 
 """
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -28,15 +29,15 @@ from app.modules.learning.domain.politica_de_risco import (ClasseDeRisco, EtapaD
                                                            Razao, classificar)
 from app.modules.learning.domain.vocabulario import LivroKind
 from app.modules.learning.infrastructure.dossies import DossiesSql
-from app.modules.learning.infrastructure.etapas_do_fluxo import EtapasDoFluxo
 from app.modules.learning.infrastructure.eventos import EventosNoBarramento, RiscoDoRegistro
 from app.modules.learning.infrastructure.fontes import FontesSql
 from app.modules.learning.infrastructure.montagem import GuardaDoFluxo
+from app.modules.learning.infrastructure.risco_do_conteudo import RiscoDoConteudo
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
 from app.modules.learning.infrastructure.sql_repository import SqlLearningRepository
 from app.modules.skills.infrastructure.sql_repository import SqlSkillRepository
 
-from .fake_skills import ValidadorFalso
+from .fake_skills import TS, ValidadorFalso
 from .fake_skills import banco as banco_migrado
 from .fake_skills import fluxo
 
@@ -186,12 +187,12 @@ def _servico(db: Database, catalogo: CatalogoPorApp, bus: BarramentoFalso, *,
              com_etapas: bool) -> tuple[LearningService, SqlLearningRepository]:
     repo = SqlLearningRepository(db, guarda_do_fluxo=GuardaDoFluxo(db, SqlSkillRepository(db, ValidadorFalso())),
                                  precos=dict)
-    fontes, etapas = FontesSql(db), EtapasDoFluxo(db, catalogo)
+    fontes, lido = FontesSql(db), RiscoDoConteudo(db, catalogo)
     servico = LearningService(repo, fontes, TriagemDeCredencial(), ajustes=Ajustes,
                               relogio=lambda: datetime(2026, 10, 3, 12, 0, tzinfo=UTC),
                               retencao_de_logs_dias=lambda: 14, eventos=EventosNoBarramento(bus),
                               catalogo_de_risco=catalogo,
-                              etapas_do_fluxo=((lambda e: etapas.de(e, fontes.conteudo(LivroKind.FLUXO, e.ref)))
+                              risco_do_nativo=((lambda e: lido.do_nativo(e, fontes.conteudo(e.kind, e.ref)))
                                                if com_etapas else None))
     return servico, repo
 
@@ -233,3 +234,37 @@ def test_a_montagem_liga_o_leitor_e_a_mudanca_da_loja_avisa_pela_etapa(db: Datab
                                eventos=bus)
     livro.avisar_mudanca_nativa(LivroKind.FLUXO, "comentar-1", "candidate", "validated", by=SYSTEM_ACTOR)
     assert [(x["kind"], x["faixa"], x["aguardando"]) for x in bus.dados] == [("fluxo", "C", True)]
+
+
+def _receita_de_comentar(db: Database) -> int:
+    """Uma receita com `commit` aprendida da etapa CREATE_COMMENT de uma execução: a capability é a da etapa de
+    origem (`learned_from_step`), como `FontesSql.conteudo` a deriva."""
+    db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, instance_ids, app_ids, created_at)"
+               " VALUES (?,?,?,?,?,?,?,?)", ("r1", "k-r1", "cmd", "execute", "completed", json.dumps(["android-01"]),
+                                             json.dumps(["instagram"]), TS))
+    db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version) VALUES (?,?,?,?,?)",
+               ("r1:o1", "r1", "android-01", "succeeded", 1))
+    passo = "r1:android-01:v1:comentar"
+    db.execute("INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
+               " postcondition, timeout_s, max_attempts, status, capability, template_hash, app_id)"
+               " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+               (passo, "r1", "r1:o1", "android-01", 1, 1, "comentar", "comentar", "comentar", "{}", 180, 3,
+                "succeeded", "CREATE_COMMENT", "h-comentar", "instagram"))
+    acoes = [{"tool": "tap", "args": {}, "selectors": [{"rid": "publicar"}], "commit": True, "why": "publicar"}]
+    return int(db.inserted_id(
+        "INSERT INTO recipes(app_package, app_version, app_signature, variant, step_hash, step_key, version, status,"
+        " actions, learned_from_step, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (INSTAGRAM, "447", "sig", "pt/420", "h-comentar", "comentar", 1, "candidate", json.dumps(acoes), passo, TS)))
+
+
+@pytest.mark.parametrize(("com_leitor", "esperado"), [(True, ("C", "alto_risco")), (False, ("B", "efeito_externo"))])
+def test_a_faixa_do_aviso_da_receita_e_a_classe_do_dossie(db: Database, com_leitor: bool,
+                                                           esperado: tuple[str, str]) -> None:
+    """A mesma divergência, que já existia na receita: o aviso nativo não recebia a capability derivada dela."""
+    rid = str(_receita_de_comentar(db))
+    catalogo, bus = CatalogoPorApp(CATALOGO_DO_PLANO), BarramentoFalso()
+    servico, repo = _servico(db, catalogo, bus, com_etapas=com_leitor)
+    servico.mudar_estado(LivroKind.RECEITA, rid, SkillState.VALIDATED, by=SYSTEM_ACTOR, reason="prova")
+    assert [(x["kind"], x["faixa"], x["motivo"]) for x in bus.dados] == [("receita", *esperado)]
+    d = DossiesSql(db, servico, repo, catalogo).dossie(servico.entrada(LivroKind.RECEITA, rid))
+    assert d is not None and d.risco.classe is C

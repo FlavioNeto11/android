@@ -23,7 +23,7 @@ from app.modules.learning.domain.livro import EntradaDoLivro
 from app.modules.learning.domain.saude import Saude
 from app.modules.learning.domain.vocabulario import KINDS_DE_ITEM, LivroKind
 from app.modules.learning.infrastructure import linhas
-from app.modules.learning.infrastructure.etapas_do_fluxo import EtapasDoFluxo
+from app.modules.learning.infrastructure.risco_do_conteudo import RiscoDoConteudo, capability_do_item
 from app.modules.skills.domain.document import JsonObject
 
 
@@ -37,25 +37,15 @@ def _saude(s: Saude | None) -> JsonObject | None:
                         for m in s.motivos]}
 
 
-def _capability(e: EntradaDoLivro, conteudo: JsonObject | None, item_capability: str) -> str:
-    if e.kind in KINDS_DE_ITEM:
-        return item_capability
-    cap = (conteudo or {}).get("capability")
-    if isinstance(cap, dict) and cap.get("ambigua") is not True:
-        nomes = cap.get("nomes")
-        if isinstance(nomes, list) and len(nomes) == 1 and isinstance(nomes[0], str):
-            return nomes[0]
-    return ""
-
-
 class DossiesSql:
     def __init__(self, db: Database, servico: LearningService, repo: RepositorioDeAprendizado,
                  catalogo: CatalogoDeRisco | None) -> None:
         self._db = db
         self._servico = servico
         self._repo = repo
-        # 30.33: as etapas do fluxo e os fatos do catálogo vêm do mesmo leitor do aviso `learning.needs_person`.
-        self._etapas = EtapasDoFluxo(db, catalogo)
+        # 30.33: a capability, as etapas do fluxo e os fatos do catálogo vêm do mesmo leitor do aviso
+        # `learning.needs_person`.
+        self._risco = RiscoDoConteudo(db, catalogo)
 
     def _evidencias(self, item_ref: str) -> list[Evidencia]:
         return [Evidencia(id=linhas.inteiro(r, "id"), posicao=linhas.texto(r, "stance"),
@@ -75,14 +65,14 @@ class DossiesSql:
             return None
         e = d.entrada
         item = self._repo.item(e.ref) if e.kind in KINDS_DE_ITEM else None
-        capability = _capability(e, d.conteudo, item.escopo.capability if item is not None else "")
+        capability = capability_do_item(e, d.conteudo, item.escopo.capability if item is not None else "")
         tela_autenticada = e.kind is LivroKind.TELA and (d.conteudo or {}).get("autenticada") is True
         source_kind = item.source_kind.value if item is not None else None
-        tem, fatos = self._etapas.fatos_do_catalogo(e.app or "", capability)
+        tem, fatos = self._risco.fatos_do_catalogo(e.app or "", capability)
         risco = FatosDeRisco(side_effect=e.side_effect, human_origin=e.human_origin, tem_catalogo=tem, catalogo=fatos,
                              sessao_ou_autenticacao=toca_sessao_ou_autenticacao(source_kind=source_kind,
                                                                                 tela_autenticada=tela_autenticada),
-                             reaprendido=e.reaprendido is not None, etapas=self._etapas.de(e, d.conteudo))
+                             reaprendido=e.reaprendido is not None, etapas=self._risco.etapas(e, d.conteudo))
         identidade = IdentidadeDoItem(kind=e.kind.value, ref=e.ref, app=e.app or "", capability=capability,
                                       app_version=e.app_version, estado=None if e.state is None else e.state.value,
                                       origem=e.origin.value, side_effect=e.side_effect, human_origin=e.human_origin,

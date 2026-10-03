@@ -569,12 +569,15 @@ faixa e o motivo saem de `domain/espera.py::classificar_espera`, tradução da p
 Um gesto da pessoa que passa por dois estados (`mudar_status_nativo`: candidata, validada, publicada) pode publicar entrada e saída
 na mesma ação. `state.py` passa `eventos=self.bus`.
 
-**O fluxo pela etapa mais restritiva (30.33).** A faixa do aviso de um FLUXO é a classe do dossiê do curador (30.32):
-cada etapa com os fatos do catálogo do app dela. Os dois leem as etapas pelo mesmo leitor,
-`infrastructure/etapas_do_fluxo.py::EtapasDoFluxo`. A montagem o entrega ao `LearningService` (`etapas_do_fluxo`), que o
-passa ao `AvisadorDeEspera`. Antes, o aviso não via as etapas, e comentar, responder, mandar mensagem e seguir saíam B
-(`efeito_externo`, a lacuna), enquanto o parecer dizia C. Agora saem C (`alto_risco`). O payload não muda; só a
-`faixa` e o `motivo` desses fluxos.
+**A receita e o fluxo como o dossiê os lê (30.33).** A faixa do aviso de uma fonte nativa é a classe do dossiê do
+curador. Na receita, a capability é derivada do conteúdo (a etapa de origem, única e não ambígua). No fluxo, cada etapa
+leva os fatos do catálogo do app dela, e vale a mais restritiva (30.32).
+
+- **O leitor comum.** Os dois leem por `infrastructure/risco_do_conteudo.py` (`RiscoDoConteudo`, `capability_do_item`).
+  A montagem o entrega ao `LearningService` (`risco_do_nativo`), que o passa ao `AvisadorDeEspera`.
+- **Antes.** O aviso da transição nativa não via nem a capability nem as etapas. Comentar, responder, mandar mensagem
+  e seguir saíam B (`efeito_externo`, a lacuna), enquanto o parecer dizia C.
+- **Agora.** Esses itens saem C (`alto_risco`). O payload não muda; só a `faixa` e o `motivo`.
 
 ## Conteúdo legível no detalhe (30.3)
 
@@ -675,9 +678,8 @@ Só domínio puro (desenho em `design/aprendizado-vivo.md` §8.2-8.4); a porta, 
   mensagem e seguir. Todos têm uma etapa `risk: high` no catálogo; o curador os revê com o dossiê novo. Os outros 24
   ficam na classe de antes.
 
-  O aviso `learning.needs_person` do fluxo usa as mesmas etapas desde o 30.33 (ver a seção do evento). Segue a
-  divergência que já existia para a receita: o aviso da transição nativa não recebe a capability dela, e a faixa
-  pode ser mais branda que a do dossiê. O parecer, o Revisar e o gesto usam o dossiê.
+  O aviso `learning.needs_person` usa a mesma leitura desde o 30.33: as etapas do fluxo e a capability da receita
+  (ver a seção do evento).
 - **Dossiê** (`domain/curador.py::montar_dossie`): fatos já lidos (identidade sem título nem resumo, conteúdo legível do §4 por
   lista branca, até 30 evidências mais recentes com o total, trilha sem o motivo livre, relações, grupos de falha, votos sem nota,
   intervenções, e saúde, versão e política vigente quando fornecidas). Cada fato tem id citável (`ev:`, `run:`, `tr:`, `voto:`,
