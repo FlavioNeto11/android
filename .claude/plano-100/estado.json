@@ -5436,22 +5436,22 @@
   },
   "31.9": {
    "id": "31.9",
-   "status": "partial",
+   "status": "implemented",
    "proof": "simulated",
-   "evidence": "Na main pela suíte 10 (16fd1127): a rodada H sem a H-3 e com o refinamento dos anos (fix/31-9-rodada-h, código 136f80ff e 2be39d4c; 616b59fc): (a) C7 com dígito recusa (c7_valor_com_digito), (b) a quebra de linha separa o par, (c) objetos do app de e-mail não são dono de endereço, o token só de dígitos conta perto do campo ou do conector; harness de 579 com 0 vazamentos e 0 passagens indevidas nos dois catálogos; real (mode=ro) 1 de 125 comandos recusados. Também pela suíte 10, o I1 da revisão da suíte 5 (feat/i1-cartao-typesafe @ccaa3684 + adendo v0.92 @86fe344a: cartão TypeSafe em Configuração › IA, closed_decision em /api/ai/balances fora de roles, \"Usada por: decisão fechada (sombra)\"), implemented simulated. Antes: rodadas E, F e G pela suíte 9; a sombra R2/R3 desde a suíte 5.",
-   "blocker": "A forma A (31.18 @b7c05558) e as lacunas da rodada I com a A-média aprovada pelo dono (31.20 @ea1df281, feat/31-18-forma-a) entram na suíte 11: portão passou (harness 785 nos dois catálogos, simulated: 0 vazamentos, 0 passagens indevidas, só as 4 recusas indevidas conhecidas; reverificação independente da orquestradora igual) e custo real mode=ro 14 de 126 comandos (11,1 %). Depois da suíte 11 vira implemented; a intenção liga em sombra no deploy 11.",
+   "evidence": "A intenção em sombra fora da cadeia, com o filtro C7 completo: rodadas E a H (suítes 7 a 10), forma A (31.18 @b7c05558) e lacunas + A-média (31.20 @ea1df281), na main pela suíte 11 (97425d5f). Portão passado em ea1df281 (harness 785 nos dois catálogos, 0 vazamentos, 0 passagens indevidas; reverificação independente da orquestradora igual; relatório local .claude/handoffs/reverificacao-31-9i.md). Deploy 11 no ar (c8304e85, restart ~15:30Z) com decisao_fechada {curador: shadow, intencao: shadow}, classes [C0, C1, C3] e sending true: a sombra da intenção está ligada; as primeiras linhas reais vêm com os comandos pós-T_on (leitura no 31.10).",
+   "blocker": "",
    "arquivos": [
     "backend/app/planning/decisao_fechada/intencao.py",
     "backend/app/planning/decisao_fechada/entidades.py",
-    "backend/tests/test_decisao_fechada_reverificacao_h.py"
+    "backend/tests/test_decisao_fechada_reverificacao_i.py"
    ],
-   "testes": "simulated: test_decisao_fechada_* (filtro e sombras: 999 no 136f80ff; 1059 + 284 no 2be39d4c), harness ataque_b.py de 579; real: medição mode=ro dos comandos de 7 dias (só contagens).",
-   "grupo": "suite-10-jev",
+   "testes": "simulated: test_decisao_fechada_*.py e o harness ataque_b.py (785); suíte 11 SQLite -n 8 @35e3b0f6 8441/0, scripts 474, docs-check 0/0, frontend 1374; PG não rodou (K-084); real: medição mode=ro 14/126 (31.20).",
+   "grupo": "suite-11-jev",
    "modelo": "opus (sessão jev, executora da orquestradora)",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T14:57:55+00:00"
+   "quando": "2026-10-03T15:33:30+00:00"
   },
   "30.11": {
    "id": "30.11",
@@ -6159,19 +6159,19 @@
    "id": "31.10",
    "status": "partial",
    "proof": "real",
-   "evidence": "Curador em sombra real desde o deploy 9 (T_on 2026-10-03T11:04:15Z, WIN-7S2UASNLFOP): 4 linhas às 13:10Z (curador/shadow/C0, 4 abaixo_do_limiar, US$ 0,000106), conferidas pela prova do 31.17 às 13:14:50Z. Relatório scripts/jev-relatorio-31-10.py (na main) rodado no central em modo só leitura às 13:14Z: curador, estrato receita, 4 pedidos, 0 respondidos, 0 rótulos, veredito \"sem amostra\" (rótulos 0 < 30); intenção sem linhas.",
-   "blocker": "A intenção liga em sombra no deploy 11 (31.18/31.20 na suíte 11). O GO do curador espera 30 rótulos por kind; o 31.19 analisa o limiar × as 4 respostas, restringe o rótulo tipo 1 ao dono e unifica o percentil dos dois scripts.",
+   "evidence": "Curador em sombra real desde o deploy 9 (T_on 2026-10-03T11:04:15Z): 4 linhas às 13:10Z, conferidas pela prova do 31.17 (13:14:50Z). Relatório scripts/jev-relatorio-31-10.py com o 31.19 (@442a9249, na main pela suíte 11): rótulo 1 só do dono, estados_distintos, cobertura_por_limiar e percentil unificado; rodado no central em modo só leitura às 15:08Z (WIN-7S2UASNLFOP): curador, estrato receita, 4 pedidos, 0 respondidos, 0 rótulos, 1 estado C0, veredito 'sem amostra'. Deploy 11 (c8304e85, ~15:30Z) liga a intenção em sombra com C3.",
+   "blocker": "Vira implemented quando a leitura só leitura da sombra de intenção pós-deploy 11 mostrar linhas com 0 texto (a orquestradora avisa com ≥ 10 comandos pós-T_on, ~18:00Z). O GO do curador espera 30 rótulos por kind.",
    "arquivos": [
     "scripts/jev-relatorio-31-10.py",
     "docs/design/jev-golden-set.md"
    ],
-   "testes": "real: relatório mode=ro no central (13:14Z); simulated: scripts/tests/test_jev_relatorio_31_10.py.",
-   "grupo": "suite-10-jev",
+   "testes": "real: relatório mode=ro no central (13:14Z e 15:08Z); simulated: scripts/tests/test_jev_relatorio_31_10.py.",
+   "grupo": "suite-11-jev",
    "modelo": "opus (sessão jev, executora da orquestradora)",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T14:57:55+00:00"
+   "quando": "2026-10-03T15:33:30+00:00"
   },
   "30.31": {
    "id": "30.31",
@@ -6231,6 +6231,67 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T15:28:41+00:00"
+  },
+  "31.18": {
+   "id": "31.18",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Forma A do filtro C7 da intenção na versão A-ESTREITA (ADR-069 item 18): feat/31-18-forma-a @b7c05558, na main pela suíte 11 (97425d5f). O pedido de entrar com credencial recusa o comando inteiro antes do corpo (motivos c7_*). Simulated: harness da orquestradora com 785 casos nos dois catálogos, 0 vazamentos e 0 passagens indevidas; suíte 11 SQLite -n 8 @35e3b0f6: 8441 passed, 0 failed. Histórico: a medição real mode=ro de 122 comandos dava 6 recusas na A-estreita (substituída pela A-média do 31.20).",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/planning/decisao_fechada/intencao.py",
+    "backend/tests/test_decisao_fechada_forma_a.py",
+    "docs/decisoes.md"
+   ],
+   "testes": "simulated: test_decisao_fechada_forma_a.py e test_decisao_fechada_reverificacao_*.py; harness ataque_b.py (785, dois catálogos); suíte 11 SQLite -n 8 @35e3b0f6 8441/0, scripts 474, docs-check 0/0, frontend 1374; PG não rodou (K-084).",
+   "grupo": "suite-11-jev",
+   "modelo": "opus (sessão jev, executora da orquestradora)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T15:33:30+00:00"
+  },
+  "31.20": {
+   "id": "31.20",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Lacunas da rodada I e a A-média aprovada pelo dono (ADR-069 item 19): feat/31-18-forma-a @ea1df281 (parte de lista f2f49a08: E1/E2 com mascaramento de fragmento em entidades.py; A-média: o verbo de entrar recusa em qualquer posição e tempo, exceção objeto conversa/chat/pessoa; 'entre' como preposição; L5 'sendo/como <nome>'), na main pela suíte 11 (97425d5f). Simulated: harness 785 nos dois catálogos (corpus regenerado pela orquestradora, 14:29:31Z), 0 vazamentos, 0 passagens indevidas, só as 4 recusas indevidas conhecidas (134, 135, 348, 427); reverificação independente da orquestradora igual (portão passou). Medição real dentro do item: mode=ro dos comandos de 7 dias no banco do central (03/10, 14:26Z a 14:43Z, WIN-7S2UASNLFOP), 14 recusas em 126 (11,1 %), as 112 que passam com o mesmo hash de saída do b7c05558; só contagens, nenhum texto.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/planning/decisao_fechada/intencao.py",
+    "backend/app/planning/decisao_fechada/entidades.py",
+    "backend/tests/test_decisao_fechada_reverificacao_i.py",
+    "docs/decisoes.md",
+    "docs/ia.md"
+   ],
+   "testes": "simulated: test_decisao_fechada_reverificacao_i.py (A-média, sem xfail) e E/F/G/H/forma A; harness 785; suíte 11 SQLite -n 8 @35e3b0f6 8441/0; real: medição mode=ro 14/126 (só contagens).",
+   "grupo": "suite-11-jev",
+   "modelo": "opus (sessão jev, executora da orquestradora)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T15:33:30+00:00"
+  },
+  "31.19": {
+   "id": "31.19",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "feat/31-19-curador-limiar @442a9249, na main pela suíte 11 (35e3b0f6). (1) As 4 respostas reais do curador (03/10 13:10Z) ficaram abaixo do limiar com confiança 0,50–0,52 e maior probabilidade 0,60–0,62 sobre UM estado C0: o limiar fica 0,85 (registro datado no golden set §2). (2) A porta segue o contrato (decisão da orquestradora): no choice, o limiar mede a probabilidade devolvida da escolha, que precisa ser a maior; sem ela, abaixo_do_limiar (porta._valor_do_limiar, 69d24301). (3) Rótulo 1 do curador só do dono (--autor-dono; 'Flavio' confirmado em panel_sessions pela orquestradora). (4) Percentil pelo posto mais próximo no relatório do 31.10 e na prova do 31.17 (p50 437,3 e p95 552,8 ms nas 4 chamadas). Leitura real mode=ro do relatório (03/10 15:08Z, WIN-7S2UASNLFOP): estados_distintos 1, cobertura 0,50 → 1,0, 0,85 → 0, 11 transições de pessoa fora do dono.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/planning/decisao_fechada/porta.py",
+    "backend/app/planning/decisao_fechada/contrato.py",
+    "scripts/jev-relatorio-31-10.py",
+    "scripts/jev-prova-31-17.py",
+    "docs/design/jev-golden-set.md"
+   ],
+   "testes": "simulated: tests/test_decisao_fechada*.py 1044 passed (69d24301); scripts/tests 474; suíte 11 SQLite -n 8 @35e3b0f6 8441/0, docs-check 0/0, frontend 1374; real: relatório mode=ro às 15:08Z (só contagens).",
+   "grupo": "suite-11-jev",
+   "modelo": "opus (sessão jev, executora da orquestradora)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T15:33:30+00:00"
   }
  },
  "rodadas": [
@@ -7652,6 +7713,19 @@
    ],
    "grupos": [
     "deploy-11-android"
+   ]
+  },
+  {
+   "quando": "2026-10-03T15:33:30+00:00",
+   "itens": [
+    "31.18",
+    "31.20",
+    "31.19",
+    "31.9",
+    "31.10"
+   ],
+   "grupos": [
+    "suite-11-jev"
    ]
   }
  ]
