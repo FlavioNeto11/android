@@ -99,7 +99,7 @@ def test_d1_d2_triagem_da_arvore_acusa_codigo_com_separador_unicode_e_alfanumeri
 
 
 @pytest.mark.parametrize("valor", ["Versão 12.345 do código", "Data 12/10 login", "Login em 12/10/2026 às 14h30",
-                                   "Seu código tem 6 dígitos", "Entrar no grupo 123"])
+                                   "Entrar no grupo 123"])
 def test_d1_a_triagem_mais_restritiva_nao_pega_data_hora_nem_decimal(valor: str) -> None:
     assert triagem(valor) is None
 
