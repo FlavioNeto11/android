@@ -629,6 +629,23 @@ Só domínio puro (desenho em `design/aprendizado-vivo.md` §8.2-8.4); a porta, 
   `familia_do_efeito`, dado que os catálogos ainda não declaram. `conferir_aceite`: a IA nunca decide; aceitar parecer é da pessoa,
   em lote só na B; na A o parecer é só registro e `conferir_aceite` recusa qualquer efeito dele. `ia_permitida`: A
   `so_com_sobra` (depois das prioridades 1 a 4; o corte é do 30.11), B e C `sim`. `classificar_espera` (30.21) só traduz a classe para a faixa do evento.
+- **A classe do fluxo pela etapa mais restritiva (30.32).** O fluxo não tem UMA capability, então o dossiê o
+  classificava sem fatos do catálogo: todo fluxo com efeito caía em `commit_sem_fatos_da_etapa` (B). Agora
+  `FatosDeRisco.etapas` leva cada etapa do fluxo (`EtapaDeRisco`: a capability, se é de efeito e os `FatosDoCatalogo` do
+  app DELA). O `app_id` da etapa (12.1) vira pacote pela tabela `apps`, e o nulo é o app do fluxo.
+  - As razões do catálogo são a união das etapas: os fatos de uma etapa só acrescentam razão, e a classe nunca desce.
+  - Etapa de efeito sem fatos mantém `commit_sem_fatos_da_etapa`.
+  - Etapa de efeito que o catálogo diz sem efeito é `commit_fora_do_catalogo` (C).
+  - As etapas entram em `FatosDeRisco.como_dados` só quando alguma tem fatos (como o `reaprendido`). O dossiê de
+    receita, lição, tela e fluxo sem catálogo não muda de hash.
+
+  Na cópia do banco do central de 03/10 (deploy 9), 9 fluxos do Instagram passam de B a C: comentar, responder, mandar
+  mensagem e seguir. Todos têm uma etapa `risk: high` no catálogo; o curador os revê com o dossiê novo. Os outros 24
+  ficam na classe de antes.
+
+  Divergência conhecida, que já existia para a receita: o aviso `learning.needs_person` da transição nativa
+  (`application/espera.py`) não recebe a capability nem as etapas e segue dizendo B para esses fluxos. O parecer, o
+  Revisar e o gesto usam o dossiê (C).
 - **Dossiê** (`domain/curador.py::montar_dossie`): fatos já lidos (identidade sem título nem resumo, conteúdo legível do §4 por
   lista branca, até 30 evidências mais recentes com o total, trilha sem o motivo livre, relações, grupos de falha, votos sem nota,
   intervenções, e saúde, versão e política vigente quando fornecidas). Cada fato tem id citável (`ev:`, `run:`, `tr:`, `voto:`,
