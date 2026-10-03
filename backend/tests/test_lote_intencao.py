@@ -371,3 +371,20 @@ async def test_o_lote_remonta_a_r5_que_a_sombra_do_runtime_mandaria(harness: Har
     assert [(q.id, dict(q.opcoes), q.instrucoes) for q in caso.r5.pedido.perguntas] == [
         (q.id, dict(q.opcoes), q.instrucoes) for q in enviado.perguntas]
     assert caso.r5.citados == frozenset({"instagram"})
+
+
+# ------------------------------------------------------------------ origem do caso (pessoa × validação)
+def _de_validacao(db: Any, run_id: str) -> None:
+    """A execução vira re-execução da validação do Aprendizado (30.31): a linha de `learning_validations` aponta para ela."""
+    db.execute("INSERT INTO learning_validations(id, created_at, updated_at, review_id, item_ref, item_kind, grupo,"
+               " run_id, expira_em) VALUES (?,?,?,?,?,?,?,?,?)",
+               (f"lv-{run_id}", ANTES, ANTES, "rv-1", "receita:1", "receita", "qa", run_id, "2099-01-01T00:00:00Z"))
+
+
+def test_origem_do_caso_separa_a_validacao_da_pessoa(w: Mundo3) -> None:
+    w.viva("run-1", EMPATE)
+    w.viva("run-2", EMPATE)                                       # a validação repete o comando da execução de origem
+    _de_validacao(w.db, "run-2")
+    casos = {c.run_id: c for c in w.ler().casos}
+    assert {r: c.origem for r, c in casos.items()} == {"run-1": "pessoa", "run-2": "validacao"}
+    assert casos["run-1"].estado_hash == casos["run-2"].estado_hash          # o mesmo comando: um distinto só

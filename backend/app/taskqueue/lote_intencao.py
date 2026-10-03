@@ -77,6 +77,11 @@ INSTRUCOES_PT: Final[Mapping[str, str]] = MappingProxyType({
 })
 #: As mensagens persistidas (`events`, kind `log`) de quem tira um nome do catálogo de destinos. Fixadas aqui e conferidas
 #: por teste contra o serviço social: mudar a mensagem lá sem mexer aqui quebra o teste em vez de abrir a salvaguarda.
+#: De onde veio a execução do caso (orquestradora, 03/10: o resultado total e por origem, para ninguém discutir
+#: representatividade depois). `validacao`: a re-execução da validação do Aprendizado (30.31,
+#: `learning_validations.run_id`), que repete o comando da execução de origem; `pessoa`: o resto (o dono pelo painel,
+#: pela API ou por um canal).
+ORIGENS_DO_CASO: Final = ("pessoa", "validacao")
 MENSAGEM_PERFIL_REMOVIDO: Final = "Perfil removido"
 MENSAGEM_CONTA_REMOVIDA: Final = "Conta removida do perfil"
 
@@ -184,6 +189,7 @@ class CasoDaIntencao:
     estado_hash: str                  # o hash do estado redigido remontado
     salvaguarda: str                  # "c": bateu com o hash da linha (só este vai); "b": sem hash, passaria na "b"
     r5: PedidoDaR5 | None = None      # só com `r5=True` e só no caso `c`
+    origem: str = "pessoa"            # `ORIGENS_DO_CASO`
 
 
 @dataclass(frozen=True)
@@ -209,6 +215,11 @@ def ultima_remocao(db: Database, desde: str) -> str | None:
     ]
     validas = [str(m) for m in marcas if m]
     return max(validas) if validas else None
+
+
+def origem_da_execucao(db: Database, run_id: str) -> str:
+    """`validacao` quando a execução é uma re-execução da validação do Aprendizado; senão `pessoa`."""
+    return "validacao" if db.one("SELECT 1 FROM learning_validations WHERE run_id=?", (run_id,)) else "pessoa"
 
 
 def _tem_foto(run: Mapping[str, object]) -> bool:
@@ -317,7 +328,8 @@ def _caso(lote: LoteOffline, consumidor: ConsumidorDeIntencao, run_id: str, linh
     else:
         salvaguarda = "b"
     return "", CasoDaIntencao(run_id=run_id, app=str(app or "sem_app"), ts=ts, linhas=tuple(linhas), pedido=pedido,
-                              estado_hash=estado_hash, salvaguarda=salvaguarda)
+                              estado_hash=estado_hash, salvaguarda=salvaguarda,
+                              origem=origem_da_execucao(lote.db, run_id))
 
 
 def consumidor_do_lote(porta: Porta, db: Database) -> ConsumidorDeIntencao:
@@ -326,5 +338,5 @@ def consumidor_do_lote(porta: Porta, db: Database) -> ConsumidorDeIntencao:
 
 
 __all__ = ["DESDE_ITEM_21", "FALLBACKS_DEPOIS_DO_POST", "INSTRUCOES_PT", "MENSAGEM_CONTA_REMOVIDA",
-           "MENSAGEM_PERFIL_REMOVIDO", "CasoDaIntencao", "LeituraDoLote", "LoteOffline", "PedidoDaR5", "SalvaguardaB",
+           "MENSAGEM_PERFIL_REMOVIDO", "ORIGENS_DO_CASO", "origem_da_execucao", "CasoDaIntencao", "LeituraDoLote", "LoteOffline", "PedidoDaR5", "SalvaguardaB",
            "consumidor_do_lote", "em_portugues", "enviada", "ler_lote", "ultima_remocao"]

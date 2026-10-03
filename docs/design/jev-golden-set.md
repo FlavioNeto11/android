@@ -430,6 +430,9 @@ vale para GO. O código é `scripts/jev-braco-offline-intencao.py`, com `backend
   - Por idioma e app, as medidas da §3, com as mesmas contas e os rótulos do relatório do 31.10.
   - Inglês × português: mesma escolha e mesma maior probabilidade.
   - O lote em inglês × a linha viva da mesma execução (estabilidade).
+  - **Total e por origem do caso** (pedido da orquestradora, 03/10): `pessoa` ou `validacao` (a re-execução da
+    validação do Aprendizado, `learning_validations.run_id`, que repete o comando da execução de origem). Cada origem
+    traz casos, comandos distintos (por `estado_hash`) e as mesmas medidas; o `--r5` também.
 
   O idioma que perder sai antes de qualquer `on` (§1). "Perder" se decide sobre rótulos, com amostra, e não neste
   lote de acompanhamento.

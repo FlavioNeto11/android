@@ -307,3 +307,27 @@ def test_r5_hash_do_envio_diferente_interrompe(mundo: Mundo) -> None:
     seco = lote.braco.DecisorSeco()
     registros, interrompido = lote.rodar([replace(caso, r5=replace(caso.r5, estado_hash="0" * 64))], seco, r5=True)
     assert interrompido == "hash_no_envio" and set(registros) == {("run-1", "en"), ("run-1", "r5:en")}
+
+
+# ------------------------------------------------------------------ origem do caso (pessoa × validação)
+def _de_validacao(db: Any, run_id: str) -> None:
+    """A execução vira re-execução da validação do Aprendizado (30.31): a linha de `learning_validations` aponta para ela."""
+    db.execute("INSERT INTO learning_validations(id, created_at, updated_at, review_id, item_ref, item_kind, grupo,"
+               " run_id, expira_em) VALUES (?,?,?,?,?,?,?,?,?)",
+               (f"lv-{run_id}", TS, TS, "rv-1", "receita:1", "receita", "qa", run_id, "2099-01-01T00:00:00Z"))
+
+
+def test_relatorio_total_e_por_origem_com_os_distintos(mundo: Mundo, tmp_path: Path) -> None:
+    mundo.viva("run-3", f"abra o feed do instagram e curta o post da {SEGREDO}")      # a validação do run-1
+    _de_validacao(mundo.db, "run-3")
+    assert lote.main(mundo.argv(tmp_path, "--r5")) == 0
+    r = _saida(tmp_path)
+    assert r["casos"]["enviaveis"] == 2 and r["casos"]["por_origem"] == {"pessoa": 1, "validacao": 1}
+    assert r["casos"]["distintos"] == 1                                      # o mesmo comando duas vezes
+    assert set(r["por_origem"]) == {"pessoa", "validacao"}
+    for origem in ("pessoa", "validacao"):
+        o = r["por_origem"][origem]
+        assert (o["casos"], o["distintos"]) == (1, 1) and set(o["idiomas"]) == {"en", "pt"}
+        assert o["r5"]["casos_com_r5"] == 1 and set(o["r5"]["medidas"]) == {"en", "pt"}
+    texto = (tmp_path / "saida.md").read_text(encoding="utf-8")
+    assert "## Origem: validacao" in texto and SEGREDO not in texto

@@ -364,7 +364,9 @@ def montar(leitura: LeituraDoLote, enviaveis: Sequence[CasoDaIntencao],
         "aviso": AVISO.format(n=n_rotulos), "consumidor": "intencao", "classe": "C3", "enviado": enviado,
         "interrompido": interrompido,
         "casos": {"lidos": len(leitura.casos), "por_salvaguarda": dict(Counter(c.salvaguarda for c in leitura.casos)),
-                  "enviaveis": len(enviaveis), "fora": dict(leitura.fora)},
+                  "enviaveis": len(enviaveis), "fora": dict(leitura.fora),
+                  "por_origem": dict(Counter(c.origem for c in enviaveis)),
+                  "distintos": len({c.estado_hash for c in enviaveis})},
         "salvaguarda_b": {**salvaguarda_b, "libera_envio": False, "ultima_remocao": leitura.ultima_remocao,
                           "horizonte_dos_eventos": leitura.horizonte_dos_eventos},
         "pedidos_secos": pedidos_secos,
@@ -380,12 +382,28 @@ def montar(leitura: LeituraDoLote, enviaveis: Sequence[CasoDaIntencao],
     }
 
 
+def por_origem(enviaveis: Sequence[CasoDaIntencao], montar_sub: Any, montar_r5_sub: Any | None) -> dict[str, Any]:
+    """O mesmo relatório por origem do caso (`ORIGENS_DO_CASO`: pessoa, validação), ao lado do total: casos, comandos
+    distintos (por `estado_hash`: a validação repete o comando da execução de origem) e as medidas."""
+    saida: dict[str, Any] = {}
+    for origem in sorted({c.origem for c in enviaveis}):
+        sub = [c for c in enviaveis if c.origem == origem]
+        m = montar_sub(sub)
+        saida[origem] = {"casos": len(sub), "distintos": len({c.estado_hash for c in sub}), "idiomas": m["idiomas"],
+                         "en_x_pt": m["en_x_pt"], "lote_x_sombra": m["lote_x_sombra"]}
+        if montar_r5_sub is not None:
+            r5 = montar_r5_sub(sub)
+            saida[origem]["r5"] = {k: r5[k] for k in ("casos_com_r5", "medidas", "en_x_pt", "custo")}
+    return saida
+
+
 def em_markdown(r: Mapping[str, Any]) -> str:
     c, b = r["casos"], r["salvaguarda_b"]
     linhas = [f"# Braço offline do Jev — intenção ({r['classe']}), R2 e R3", "", f"**{r['aviso']}**", "",
               f"- Enviado: {'sim' if r['enviado'] else 'não (--seco)'}; interrompido: {r['interrompido'] or 'não'}.",
               f"- Casos lidos {c['lidos']} {c['por_salvaguarda'] or ''}; enviáveis {c['enviaveis']} (só `c`, o hash);"
               f" fora {c['fora'] or '—'}.",
+              f"- Enviáveis por origem {c['por_origem'] or '—'}; comandos distintos {c['distintos']}.",
               f"- Salvaguarda b: código igual {b['codigo_igual']} {b['commits'] or '(sem commits)'}; última remoção"
               f" {b['ultima_remocao'] or '—'}; eventos desde {b['horizonte_dos_eventos'] or '—'}; só relatada,"
               f" não libera envio.",
@@ -411,6 +429,10 @@ def em_markdown(r: Mapping[str, Any]) -> str:
             linhas.append(f"- {idioma}: perguntas {m['perguntas']}, rotuladas {m['rotuladas']}, `sim` {m['respondidas']};"
                           f" precisão do sim {m['precisao_do_sim']}; paráfrases pegas {m['parafrases_pegas']};"
                           f" controle {m['controle']}.")
+    for origem, o in r.get("por_origem", {}).items():
+        linhas += ["", f"## Origem: {origem}", "",
+                   f"- Casos {o['casos']}, distintos {o['distintos']}; inglês × português {o['en_x_pt']['escolha']};"
+                   f" lote × sombra {o['lote_x_sombra']['escolha']}."]
     custo = r["custo"]
     linhas += ["", "## Custo", "", f"- {custo['nivel']}"
                + (f": US$ {custo['usd']} de {custo['teto_usd']}, {custo['chamadas']} chamadas ({custo['ok']} ok),"
@@ -468,10 +490,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     secos = (sum(1 for q in seco.pedidos if q.origem == "intencao"), sum(1 for q in seco.pedidos if q.origem == "apps"))
     r5 = montar_r5(leitura, enviaveis, registros, rotulos_da_r5, pedidos_secos=secos[1] if teto is None else None
                    ) if args.r5 else None
-    rel_ = montar(leitura, enviaveis, registros, rotulos_, agora=datetime.now(UTC), enviado=teto is not None,
+    agora = datetime.now(UTC)
+    salvaguarda_b = {"codigo_igual": igual, "commits": detalhe, "arquivos": list(ARQUIVOS_DO_FILTRO)}
+
+    def montar_sub(sub: Sequence[CasoDaIntencao]) -> dict[str, Any]:
+        return montar(leitura, sub, registros, rotulos_, agora=agora, enviado=teto is not None,
+                      interrompido=interrompido, teto=None, pedidos_secos=None, com_parametro=com_parametro,
+                      salvaguarda_b=salvaguarda_b)
+
+    def montar_r5_sub(sub: Sequence[CasoDaIntencao]) -> dict[str, Any]:
+        return montar_r5(leitura, sub, registros, rotulos_da_r5, pedidos_secos=None)
+
+    rel_ = montar(leitura, enviaveis, registros, rotulos_, agora=agora, enviado=teto is not None,
                   interrompido=interrompido, teto=teto, pedidos_secos=secos[0] if teto is None else None,
-                  com_parametro=com_parametro,
-                  salvaguarda_b={"codigo_igual": igual, "commits": detalhe, "arquivos": list(ARQUIVOS_DO_FILTRO)}, r5=r5)
+                  com_parametro=com_parametro, salvaguarda_b=salvaguarda_b, r5=r5)
+    rel_["por_origem"] = por_origem(enviaveis, montar_sub, montar_r5_sub if args.r5 else None)
     texto = json.dumps(rel_, ensure_ascii=False, indent=1, default=str)
     if args.json:
         Path(args.json).write_text(texto, encoding="utf-8")
