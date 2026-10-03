@@ -51,7 +51,6 @@ def _linhas(h: Harness, run_id: str, role: str) -> list[dict[str, Any]]:
 def test_migracao_080_cria_as_colunas(tmp_path: Path) -> None:
     db = _db(tmp_path)
     assert {"verdict", "escalate", "motivo", "image_reason"} <= db.columns("ai_calls")
-    assert "motivo_privacidade" in db.columns("decisao_fechada_sombra")
 
 
 async def test_add_usage_grava_as_quatro_colunas(harness: Harness) -> None:

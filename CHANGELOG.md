@@ -22,7 +22,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-03 — RA-10: o porquê de cada chamada de IA em `ai_calls` e os grupos de `/api/usage` (branch feat/ra-10-observabilidade, migração 080)
 
 - `ai_calls` ganha `verdict`, `escalate`, `motivo` e `image_reason` (vocabulários fechados em `planning/provider.py`,
-  `MarcaDaChamada`), e `decisao_fechada_sombra` ganha `motivo_privacidade`. O executor marca toda chamada que passa por
+  `MarcaDaChamada`). O executor marca toda chamada que passa por
   `_ai` (plano, decisão, cascata, julgamento, vazio, rejulgamento, leitura) e o assistente marca o refinamento; o motivo
   do escalonamento sai do código, e a frase da linha do tempo continua a mesma.
 - O rejulgamento (7.10 e 17.10) era gravado como `verify` tier 0: agora é tier 1 com motivo. A linha de erro e a de

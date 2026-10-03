@@ -12,22 +12,15 @@
 --     image_reason  por que a imagem foi, ou não, junto, na ordem em que o executor decide: sensivel | politica_nunca |
 --                   politica_sempre | pedida | problema | primeira_julgada | arvore_pobre | arvore_rica.
 --
--- E uma coluna na sombra da decisão fechada:
---
---     motivo_privacidade  o código FECHADO da recusa por privacidade (o porquê de `fallback_reason='privacidade'`),
---                         que hoje se perde; NULO nas demais linhas e nas anteriores.
---
 -- Discordância do rejulgamento sem coluna própria: (escalate=nivel e verdict=yes) ou (escalate=sim_com_efeito e
 -- verdict<>yes) — o modelo forte desfez o veredito do barato.
 --
 -- NULO nas linhas antigas, que ninguém reclassifica. Sem CHECK (o vocabulário muda sem migração; quem confere é o
 -- código), sem índice (os grupos leem o recorte de `ts` que `/api/usage` já filtra). `ADD COLUMN` só: vale igual no
--- SQLite e no PostgreSQL. Aplica depois da 079 (a coluna `ambiguos` da mesma sombra), que também é só `ADD COLUMN`.
+-- SQLite e no PostgreSQL. Independe da 079 (`sombra_ambiguos`, do 31.9), que só mexe em `decisao_fechada_sombra`.
 -- Sem BEGIN/COMMIT (o executor de migrações já abre a transação).
 
 ALTER TABLE ai_calls ADD COLUMN verdict TEXT;
 ALTER TABLE ai_calls ADD COLUMN escalate TEXT;
 ALTER TABLE ai_calls ADD COLUMN motivo TEXT;
 ALTER TABLE ai_calls ADD COLUMN image_reason TEXT;
-
-ALTER TABLE decisao_fechada_sombra ADD COLUMN motivo_privacidade TEXT;
