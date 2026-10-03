@@ -4140,7 +4140,7 @@ lugar do texto do navegador (`lib/loadError.tsx`, todas as telas).
 Prova `simulated`: `tests/test_learning_rotas_falhas.py`, `frontend/src/features/aprendizado/model.test.ts`,
 `DetalheRico.test.tsx`, `SaudeDoApp.test.tsx`, `AprendizadoPage.test.tsx` e `frontend/src/lib/loadError.test.ts`.
 
-## Adendo v0.76 (03/10/2026, provisório: quem mergear depois renumera) — o rótulo de intenção (item 30.25)
+## Adendo v0.76 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — o rótulo de intenção (item 30.25)
 
 Duas rotas novas, sem IA e sem custo. As duas entram antes da rota genérica do livro (`{kind}/{ref}`).
 
@@ -4160,7 +4160,7 @@ Prova `simulated`: `tests/test_learning_rotulo_de_intencao.py` e
 `frontend/src/features/aprendizado/IntencaoSecao.test.tsx`. Ensaio no navegador (03/10, cópia do banco, provedor
 simulado): responder, "Nenhuma destas", filtro, 409, 422, erro de carga e Sinais.
 
-## Adendo v0.78 (03/10/2026, provisório até a orquestradora numerar) — "Confirmar que fica" (item 30.24)
+## Adendo v0.78 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — "Confirmar que fica" (item 30.24)
 
 - `POST /api/aprendizado/{kind}/{ref}/confirmar` com `{"motivo"?: string (até 500), "review_id"?: string}`: a pessoa
   da sessão mantém o legado de "Revisar". Devolve o detalhe do item, como o `/status`. 404 sem o item; 422 para

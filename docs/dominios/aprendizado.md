@@ -501,7 +501,9 @@ Só domínio puro (desenho em `design/aprendizado-vivo.md` §8.2-8.4); a porta, 
   lista branca, até 30 evidências mais recentes com o total, trilha sem o motivo livre, relações, grupos de falha, votos sem nota,
   intervenções, e saúde, versão e política vigente quando fornecidas). Cada fato tem id citável (`ev:`, `run:`, `tr:`, `voto:`,
   `sinal:`, `fk-`, `<kind>:<ref>`, e as seções `item`, `risco`, `conteudo`, `saude`, `versao`, `politica`). `dossie_hash` = sha256
-  do JSON canônico, com as listas em ordem canônica e sem relógio (a idade sai de `criado_em`).
+  do JSON canônico, com as listas em ordem canônica e sem relógio (a idade sai de `criado_em`). O conteúdo do fluxo leva o
+  `app` principal do plano, os `apps` exigidos (`flow_required_apps`) e o `app` de cada etapa (nulo = o principal): sem eles,
+  o fluxo que atravessa apps (12.1, ler no Outlook e procurar no Instagram) parecia rodar todo no app principal.
 - **Contrato de saída** (`validar_saida`): escolha entre RÓTULOS FECHADOS, pensada para um adaptador de `choice` (provedor Jev):
   `decisao` (obrigatória), `faixa`, `causa`, `riscos`, `inconsistencias`, `falta`, com as opções em `OPCOES_FECHADAS`; `alvo` e
   `evidencias_citadas` escolhem entre os ids do dossiê (`opcoes_do_dossie`). Citação inventada, rótulo fora do conjunto ou campo extra
