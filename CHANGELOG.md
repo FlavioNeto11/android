@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 12.5: bancada do leitor, o portão que reprovou (`scripts/bancada-leitor.py`)
+
+- **`real`.** Foram 16 recortes guardados e 2 leitores reais (gpt-6-luna e gemini-3.1-flash-lite), com 128 pares cada e zero
+  concordância falsa. Mesmo assim houve 0/32 concordâncias nos verdadeiros: a prévia do corpo, sempre cortada em "…", leva
+  todo par a `truncado`.
+- Sem o truncado da linha alheia (só diagnóstico), seriam 30/32 e 32/32. O custo total estimado foi de US$ 0,02
+  (`ai_calls` 2944–3007).
+- `ai.leitura_visual.enabled` fica false. A correção do escopo do "truncado" espera decisão. Detalhe em `docs/ia.md` §17.
+
+## 2026-10-03 — Aprendizado: `commit` sem catálogo volta para a classe B (branch fix/commit-sem-catalogo-b)
+
+- O dono confirmou em 03/10 a decisão de 02/10: receita ou fluxo com `commit` num app SEM catálogo
+  (`commit_sem_catalogo`) é classe **B**, aprovado em lote. A emenda para C da mesma madrugada (PR #127) foi revertida
+  no código (`domain/politica_de_risco.py`), no doc do domínio e no §8.4 do desenho. O aviso de espera volta à faixa B.
+- Prova `simulated`: `test_learning_politica_de_risco.py` e `test_learning_espera.py`.
 ## 2026-10-03 — RA-20 (29.40), fatia A: a causa do "ausente" medida e a herança da receita provada (branch feat/ra-20-causa-do-ausente)
 
 - 52 % das consultas de receita davam "ausente" (reavaliação de 03/10), quase nenhuma por falta de receita: a chave

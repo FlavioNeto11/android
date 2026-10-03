@@ -49,6 +49,7 @@ def test_classe_a_navegacao_e_leitura_decide_pela_regra_e_ia_so_com_sobra() -> N
 @pytest.mark.parametrize(("fatos", "razao"), [
     ({"catalogo": FatosDoCatalogo(risco="medium")}, Razao.RISCO_MEDIO),
     ({"catalogo": FatosDoCatalogo(efeito_externo=True)}, Razao.EFEITO_DECLARADO),
+    ({"side_effect": True, "tem_catalogo": False}, Razao.COMMIT_SEM_CATALOGO),   # B, confirmado pelo dono em 03/10
     ({"side_effect": True}, Razao.COMMIT_SEM_FATOS_DA_ETAPA),      # catálogo existe, capability não derivável
     ({"human_origin": True}, Razao.TEXTO_DE_PESSOA),               # D-2: origem humana sem efeito
 ])
@@ -73,8 +74,6 @@ def test_classe_b_recomendacao_e_lote(fatos: dict[str, object], razao: Razao) ->
     ({"catalogo": FatosDoCatalogo(efeito_externo=True, familia_do_efeito="exclusao")}, Razao.FAMILIA_DE_ALTO_RISCO,
      MotivoDeEntrada.ALTO_RISCO),
     ({"sessao_ou_autenticacao": True}, Razao.SESSAO_OU_AUTENTICACAO, MotivoDeEntrada.SESSAO_OU_AUTENTICACAO),
-    # emenda de 03/10: efeito num app sem catálogo é desconhecido; era B
-    ({"side_effect": True, "tem_catalogo": False}, Razao.COMMIT_SEM_CATALOGO, MotivoDeEntrada.COMMIT_SEM_CATALOGO),
 ])
 def test_classe_c_sempre_o_dono_item_a_item(fatos: dict[str, object], razao: Razao,
                                             motivo: MotivoDeEntrada) -> None:
@@ -127,8 +126,8 @@ def test_varias_razoes_em_ordem_e_motivo_da_mais_restritiva() -> None:
 
 def test_como_dados_cabe_em_learning_reviews() -> None:
     c = classificar(FatosDeRisco(side_effect=True, human_origin=False, tem_catalogo=False))
-    assert c.como_dados() == {"classe": "C", "politica": "dono_item_a_item", "motivo": "commit_sem_catalogo",
-                              "razoes": ["commit_sem_catalogo"]}            # emenda de 03/10: era B
+    assert c.como_dados() == {"classe": "B", "politica": "dono_em_lote", "motivo": "commit_sem_catalogo",
+                              "razoes": ["commit_sem_catalogo"]}
 
 
 # ------------------------------------------------------------------ a espera (30.21) é tradução da política
