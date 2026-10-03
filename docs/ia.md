@@ -726,6 +726,62 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
       escrita NÃO fica isento ('comente "ありがとう"' recusa: só a sombra perde o comando, a execução não muda, 0 dos 92
       reais); a C2 segue a regra por palavra (escopo); os falsos positivos "at" + provedor ou arquivo ("check the inbox at
       outlook", "look at photo.jpg") e "pw" isolado são aceitos (só recusa, só sombra).
+  - **Rodada E (03/10, NO-GO em 963f9d7b; `.claude/handoffs/reverificacao-31-9d.md`, § Decisões da orquestradora).** Zero
+    no corpus de 267, mas o cético construiu 25 variações que chegavam em claro. A causa de fundo: a C7 era uma lista
+    fechada, e a senha só de letras dita sem a palavra passava. As correções:
+    - **E-A(1), "senha" em outras línguas de escrita latina** (catalão, estoniano, indonésio, vietnamita, suaíli, lituano,
+      galês, islandês e outras, pelo Wiktionary): entram na lista na MESMA normalização do texto. "mật khẩu", pré-composto
+      ou decomposto, vira "matkhau"; as longas casam também coladas a outra palavra.
+    - **E-A(2), eufemismos**: palavra secreta ou mágica, "magic word", lema e "a de acesso", credencial pelo nome, "pswd",
+      "a mesma de ontem", "os números que chegaram", "o que combinamos pelo telefone", "embaixo do usuário" e "a
+      combinação é X". "Combinação" e "passe" sozinhos são palavra comum ("a combinação de cores", "passe para o próximo
+      post"): só contam com verbo de entrar sem objeto de navegação na frase. Desvio declarado: a especificação punha
+      "passe" na lista sem condição.
+    - **E-A(3), a regra ESTRUTURAL** (`intencao._login_valor`, `_par_credencial`), independente da lista:
+      - `c7_login_valor`: verbo de entrar (entrar, logar, login, log in, sign in, acessar, autenticar, iniciar sessão e
+        os de outras línguas) ligado a um valor por conector, até três tokens depois do verbo ("entre com girassol", "faça
+        login usando x", "entra no insta com x"), por ":", "/" ou "=" ("pra entrar: girassol") ou antes ("use girassol pra
+        entrar").
+      - Depois de um objeto de navegação, o conector só liga valor se o objeto é onde se entra com credencial (app, conta,
+        site, insta). Na conversa ou no chat, o "com" é a pessoa: "entre na conversa com qa-001" eram 12 dos 92 comandos
+        reais.
+      - Depois do conector, artigo, pronome, objeto, provedor de entrada ("com o Google") e modo ("com calma") não são
+        valor. A busca para em vírgula e conjunção ("entre e comente com parabéns" passa).
+      - `c7_par_credencial`: o par com barra até quatro tokens depois do verbo ("entre com a conta Lucas / girassol"); o
+        campo de usuário com dois valores (com barra, sempre; com "e" ou vírgula, só com verbo de entrar na frase:
+        "usuário lucas e girassol, entra"; "siga o usuário marina e curta" passa); e "lucas, girassol, entra" no começo da
+        oração.
+      - Desvio declarado: o filtro não conhece o catálogo de personas, então a regra "nome do catálogo, valor, entra" vale
+        para quaisquer dois tokens. E "entre com lucas" (nome sem artigo) recusa como "entre com girassol"; "entre com o
+        lucas" passa.
+    - **E-A(4), o texto ORIGINAL**: a sombra recebe também o comando com destinos (`RunService.dados_da_sombra`, 4º item;
+      `dados_da_intencao`, que o 30.25 lê, segue com 3) e a C7 é conferida nos dois. O `sem_destinos` parte o par: "entre
+      com a conta Lucas / girassol" vira "entre / girassol". No original, a forma "com <valor>" fica de fora, porque o que
+      vem depois de "com" pode ser o destino. Nada do original entra no estado.
+    - **E-B, e-mail ditado em peças em português** (`email_ofuscado`):
+      - "zilda no gmail", "zilda, no icloud", "zilda no live", "mande para zilda do outlook", "mande para zilda em
+        correio.net" e "o usuário é zilda e o domínio é correio.net".
+      - O nome antes do provedor não pode ser verbo, objeto ou pasta: "entra no outlook", "comenta no live", "a caixa de
+        entrada do outlook" e "a foto da terra" passam.
+      - "correio" só conta com pista de destinatário ("para", "usuário", "e-mail").
+    - **E-C, a máscara inteira**:
+      - a parte local do e-mail é a corrida sem espaço antes do "@" ("abcdef#zilda@", "o'brien@"), sem o que abre ou separa
+        trecho;
+      - `mailto:`, `?subject=…` e o domínio de topo solto ("zilda@correio .net") entram no `[email]`;
+      - `tel:+55…` vira `[telefone]` inteiro.
+    - **E-D**: os conflitos de rótulo (n=45, 151, 155, 183, 223, 226) recusam, como a orquestradora relabelou, e a C7 que
+      ia mascarada (limao77, 7319, 7730, abc123) agora recusa pelos eufemismos e pelo par.
+    - **Portão local** (`simulated`; harness e corpus de 360 casos da orquestradora em `reverificacao-31-9e/`, rodado
+      sobre o worktree sem commit):
+      - 0 vazamentos de C7 (eram 47 no baseline em 963f9d7b), 0 C7 mascarada (eram 7) e 0 passagens indevidas (eram 66);
+        nenhum dos contrastes que devem passar recusou.
+      - Sobram os residuais de nome já aceitos ("nome passa"): n=192, 236 e 238, o nome da pessoa ao lado do `[email]`.
+        Sobram também "Ze Sete", que é utilidade, e o `)` do link em markdown (n=100, classe link).
+      - As 28 mutações e as 20 sondas da rodada D: 0 vazamentos.
+      - Os 92 comandos reais de 7 dias (03/10, só leitura): 1 recusa, a mesma C7 de antes.
+    - Prova: `backend/tests/test_decisao_fechada_reverificacao_e.py`, com os 25 vazamentos da rodada D, as 4 C7 que iam
+      mascaradas, 28 controles que não podem recusar, as formas novas, o e-mail em peças, a máscara inteira e o original
+      chegando à sombra.
   - **C7 nunca sai, em prosa ou não**: comando que fala de senha, código, 2FA, PIN, OTP, token, captcha, verificação, chave,
     segredo ou desafio, em PT, EN ou ES (`menciona_c7`: `mentions_credential`, `looks_secret` e o assunto no texto
     normalizado, também com homóglifo, letra de largura cheia, uma letra por vez separada por ponto ou espaço, e letra de

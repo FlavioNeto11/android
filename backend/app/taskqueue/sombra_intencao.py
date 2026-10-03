@@ -22,8 +22,9 @@ from ..planning.decisao_fechada.intencao import CadeiaObservada, ConsumidorDeInt
 
 log = logging.getLogger("poc.ai")
 
-#: O que a sombra precisa da execução: o comando SEM destinos, as personas por aparelho e o app principal.
-DadosDaExecucao = tuple[str, Sequence[str | None], str | None]
+#: O que a sombra precisa da execução: o comando SEM destinos, as personas por aparelho e o app principal; e, desde a
+#: rodada E do 31.9, opcionalmente o comando ORIGINAL (com destinos), em que a C7 também é conferida.
+DadosDaExecucao = tuple[str, Sequence[str | None], str | None] | tuple[str, Sequence[str | None], str | None, str]
 
 
 def cadeia_de(resolucao: IntentResolution) -> CadeiaObservada:
@@ -82,13 +83,15 @@ class SombraDaIntencao:
             dados = ler()
             if dados is None:
                 return
-            comando, profile_ids, app = dados
+            comando, profile_ids, app = dados[:3]
+            original = dados[3] if len(dados) > 3 else None
             cadeia = cadeia_de(self._resolver(comando, profile_ids))
             catalogo = tuple(self._catalogo())
         except Exception:  # noqa: BLE001
             log.warning("decisao_fechada: não foi possível ler a execução para a sombra da intenção")
             return
-        self._consumidor.observar(run_id=run_id, comando=comando, app=app, catalogo=catalogo, cadeia=cadeia)
+        self._consumidor.observar(run_id=run_id, comando=comando, app=app, catalogo=catalogo, cadeia=cadeia,
+                                  original=original)
 
     def cancelar(self) -> None:
         """Desligamento: cancela as sombras soltas (o `stop()` do `AppState`, como o `_bg`). A thread que já chamou a porta

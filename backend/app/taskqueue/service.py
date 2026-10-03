@@ -858,13 +858,20 @@ class RunService:
         sombra = self.sombra_intencao
         if sombra is None or not sombra.ativo():
             return
-        sombra.agendar(run_id, lambda: self.dados_da_intencao(run_id))
+        sombra.agendar(run_id, lambda: self.dados_da_sombra(run_id))
 
     def dados_da_intencao(self, run_id: str) -> tuple[str, list[str | None], str | None] | None:
+        """Os dados da execução para a intenção: comando sem destinos, personas por aparelho e app (ver `dados_da_sombra`).
+
+        A assinatura é a de sempre: o rótulo de intenção do Aprendizado (30.25) lê a execução por aqui."""
+        dados = self.dados_da_sombra(run_id)
+        return None if dados is None else dados[:3]
+
+    def dados_da_sombra(self, run_id: str) -> tuple[str, list[str | None], str | None, str] | None:
         """Roda na THREAD da sombra. `None` = não observar: execução sumida, que falhou ou foi cancelada, ou com pergunta.
 
-        Público desde a reverificação B do 31.9 (03/10; era `_dados_da_sombra`): o rótulo de intenção do Aprendizado (30.25)
-        lê a execução por aqui, com a MESMA assinatura, para os dois medirem o mesmo comando sem destinos."""
+        `dados_da_intencao` (público desde a reverificação B do 31.9; o rótulo de intenção do Aprendizado, 30.25, lê a
+        execução por ele) é este sem o 4º item, para os dois medirem o mesmo comando sem destinos."""
         run = self.repo.run_row(run_id)
         if run is None or run["status"] in (RunStatus.failed.value, RunStatus.cancelled.value):
             return None
@@ -874,8 +881,10 @@ class RunService:
         apps = loads(str(run["app_ids"] or "[]"), [])
         # C3 (ADR-069): sem os destinos ANTES do `redact` e da remoção de entidades. A foto já traz o comando sem destinos;
         # os outros caminhos de `_perfis_da_execucao` devolvem o cru, e reaplicar é idempotente.
+        # O 4º item é o comando ORIGINAL (rodada E do 31.9): a C7 é conferida também nele, porque tirar o destino pode partir
+        # o par de usuário e senha. Só a conferência o lê; nada dele vai ao pedido.
         return (self.sem_destinos(comando), [perfis.get(str(i)) for i in loads(str(run["instance_ids"]), [])],
-                str(apps[0]) if apps else None)
+                str(apps[0]) if apps else None, str(run["command"] or ""))
 
     def resume_planning_after_restart(self) -> None:
         """Retoma o planejamento que EU deixei pela metade — nunca o que outro backend está planejando agora.

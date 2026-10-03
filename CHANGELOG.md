@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Correção do 31.9, rodada E (NO-GO em 963f9d7b): C7 pela intenção de entrar, "senha" em outras línguas e e-mail em peças em português (branch fix/31-9-rodada-e)
+
+- C7 sem palavra-chave:
+  - traduções de "senha" em escrita latina e eufemismos novos;
+  - a regra estrutural `c7_login_valor` ("entre com girassol", "pra entrar: girassol");
+  - a regra estrutural `c7_par_credencial` ("usuário lucas e girassol, entra", "entre com a conta Lucas / girassol").
+- A C7 é conferida também no comando original: `RunService.dados_da_sombra`. `dados_da_intencao` segue igual.
+- E-mail ditado em peças em português recusa.
+- A máscara do e-mail engole a parte local inteira, o `mailto:`, o `?subject=` e o domínio de topo solto. A do telefone
+  engole o `tel:`.
+- Prova `simulated`:
+  - `tests/test_decisao_fechada_reverificacao_e.py`;
+  - corpus E da orquestradora (360 casos): 0 vazamentos de C7, 0 C7 mascarada, 0 passagens indevidas;
+  - 92 comandos reais: 1 recusa, a mesma.
+
 ## 2026-10-03 — Correção do 31.9, rodada C (NO-GO em 8e1d7a9c): `sem_destinos` sem normalizar, C7 em qualquer escrita e e-mail soletrado (branch fix/31-9-privacidade)
 
 - A rodada C (`.claude/handoffs/reverificacao-31-9c.md` §7) achou 27 vazamentos fora da suíte de 240, pelo caminho de

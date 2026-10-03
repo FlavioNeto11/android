@@ -57,7 +57,8 @@ MAX_CATALOGO: Final = MAX_OPCOES - 1
 _DESCRICAO_MAX: Final = 200
 _APP: Final = re.compile(r"^[A-Za-z0-9_.\-]{1,120}$")
 #: Por que o comando é C7 (`motivo_c7`), gravado na linha da sombra (`motivo_privacidade`, migração 079).
-MotivoC7 = Literal["c7_bidi", "c7_palavra", "c7_formato", "c7_alfabetos", "c7_ofuscado", "c7_eufemismo", "c7_digitos"]
+MotivoC7 = Literal["c7_bidi", "c7_palavra", "c7_formato", "c7_alfabetos", "c7_ofuscado", "c7_eufemismo", "c7_digitos",
+                   "c7_login_valor", "c7_par_credencial"]
 _LETRAS: Final = re.compile(r"[^\W\d_]+")
 #: Assunto de C7 em qualquer formato, além do que `mentions_credential` já pega: na dúvida, o pedido inteiro é recusado
 #: (ADR-069: C7 nunca sai, nem em sombra). Casa no texto normalizado, sem acento e em minúsculas, com até um separador
@@ -71,15 +72,32 @@ _PALAVRAS_C7: Final = (
     # reverificação B (03/10): outros idiomas ("mot de passe" e "parola d'ordine" casam pelos separadores entre letras)
     "passwort", "kennwort", "wachtwoord", "motdepasse", "paroladordine",
     # rodada C (03/10): abreviação e outras línguas de escrita latina ("hasło" fica com o "ł", que não se decompõe)
-    "pw", "psw", "haslo", "hasło", "parola", "losenord", "sifre", "heslo", "jelszo", "salasana", "lozinka", "adgangskode")
+    "pw", "psw", "haslo", "hasło", "parola", "losenord", "sifre", "heslo", "jelszo", "salasana", "lozinka", "adgangskode",
+    # rodada E (03/10): abreviação, a flexão de "secreto" e a credencial pelo nome
+    "pswd", "pword", "passw", "secreta", "credencial", "credenciais", "credential", "credenciales")
+#: "Senha" em línguas de escrita latina (rodada E do 31.9, E-A(1): a regra do dono é "em qualquer idioma"; traduções do
+#: Wiktionary). Entram pela MESMA normalização do texto (sem acento, casefold, sem espaço nem hífen): "mật khẩu" pré-composto
+#: ou decomposto vira "matkhau", e "kata sandi" casa com um separador entre as letras. "passe" sozinho continua fora (é o
+#: imperativo de passar): só conta com verbo de entrar na frase (`_EUFEMISMO_COM_ENTRAR`).
+_SENHA_TRADUCOES: Final = (
+    "wagwoord", "fjalëkalim", "şifrə", "parol", "pasahitza", "pasahitz", "šifra", "contrasenya", "kodeord", "paswoord",
+    "pasvorto", "parool", "salasõna", "loyniorð", "contrasinal", "modpas", "kalmar sirri", "lykilorð", "kata sandi",
+    "sandi lewat", "pasfhocal", "parole", "slaptažodis", "passwuert", "tenimiafina", "kata laluan", "kupuhipa", "passord",
+    "parolă", "facal-faire", "geslo", "nenosiri", "neno la siri", "açarsöz", "mật khẩu", "cyfrinair", "iphasiwedi",
+    "okwuntughe", "contraseña", "lösenord", "jelszó", "hasło", "mot de passe", "palavra-passe", "salasana", "heslo",
+    "lozinka", "adgangskode", "wachtwoord", "kennwort", "passwort", "passcode", "passphrase", "codice di accesso",
+    "senha de acesso", "clave de acceso")
 #: A palavra-chave com até UM separador qualquer entre as letras ("p.i.n", "palavra-passe", "s/enha"), ou com um a três
 #: separadores entre TODAS as letras ("s/e/n/h/a", "s  e  n  h  a", "s,e,n,h,a"): reverificação B do 31.9.
+#: A lista inteira na forma de comparação: sem acento, em casefold, sem espaço, hífen nem apóstrofo.
+_PALAVRAS_C7_TODAS: Final = tuple(dict.fromkeys(
+    re.sub(r"[\s\-'’]", "", sem_acento(normalizar(p))) for p in (*_PALAVRAS_C7, *_SENHA_TRADUCOES)))
 _ASSUNTO_C7: Final = re.compile(
     r"(?<![^\W_])(?:" + "|".join(
-        alt for p in _PALAVRAS_C7
+        alt for p in _PALAVRAS_C7_TODAS
         for alt in (r"[\W_]?".join(map(re.escape, p)), r"[\W_]{1,3}".join(map(re.escape, p)))) + r")s?(?![^\W_])")
 #: As palavras-chave de uma palavra só, para a conferência da palavra INVERTIDA ("ahnes", "drowssap").
-_C7_INVERTIDAS: Final[frozenset[str]] = frozenset(p[::-1] for p in _PALAVRAS_C7 if len(p) >= 3)
+_C7_INVERTIDAS: Final[frozenset[str]] = frozenset(p[::-1] for p in _PALAVRAS_C7_TODAS if len(p) >= 3)
 #: A palavra-chave DENTRO de outra palavra ("novasenha", "senhanova", "senha123", "mypassword") e a de escrita sem espaço
 #: entre palavras ("密码是"), que a fronteira de `_ASSUNTO_C7` não acha (rodada C do 31.9). "resenha" e "desenha(r)" não
 #: entram. A escrita não latina já recusa por `escrita_nao_latina`; a lista dá o motivo certo (`c7_palavra`). Cada palavra
@@ -87,6 +105,9 @@ _C7_INVERTIDAS: Final[frozenset[str]] = frozenset(p[::-1] for p in _PALAVRAS_C7 
 #: casefold troca o "ς" final por "σ".
 _C7_DENTRO_PALAVRAS: Final = (
     "password", "passwd", "passwort", "contrasena", "kennwort", "wachtwoord", "losenord", "motdepasse",
+    # rodada E: as traduções longas e sem palavra comum dentro ("novacontrasenya", "slaptazodis123")
+    "contrasenya", "slaptazodis", "adgangskode", "salasana", "paswoord", "wagwoord", "pasahitza", "contrasinal",
+    "fjalekalim", "katalaluan", "katasandi", "nenosiri", "cyfrinair", "pasfhocal", "passwuert", "iphasiwedi",
     "пароль", "密码", "密碼", "口令", "パスワード", "暗証番号", "비밀번호", "암호", "κωδικός", "συνθηματικό", "סיסמה",
     "كلمة المرور", "كلمة السر", "पासवर्ड")
 _C7_DENTRO: Final = re.compile(
@@ -96,25 +117,170 @@ _C7_DENTRO: Final = re.compile(
 #: sem acento, em casefold, com espaços colapsados.
 _EUFEMISMO_C7: Final = re.compile("|".join((
     # português
-    r"\ba de sempre\b", r"\b(?:aquela|a) mesma de (?:sempre|antes)\b", r"\bo que (?:voce|vc) digita\b",
+    r"\ba de sempre\b", r"\b(?:aquela|a|essa) mesma de (?:sempre|antes|ontem|hoje|semana passada)\b",
+    r"\bo que (?:voce|vc) digita\b",
     r"\ba outra parte e\b", r"\bsegundo campo\b", r"\b(?:tela|campo) de (?:acesso|entrada)\b", r"\bcampo de baixo\b",
     r"\bnao (?:conte|conta) (?:pra|para) ninguem\b", r"\ba minha nova e\b", r"\bde recuperacao\b",
     r"\bpergunta de seguranca\b", r"\banimal de estimacao\b", r"\bnome de solteira\b",
     r"\b(?:pra|para) (?:liberar|recuperar|destravar) a conta\b", r"\bque chegou (?:agora )?(?:no celular|por sms|por mensagem)\b",
     r"\bo que apareceu no (?:app|celular)\b",
+    # rodada E (E-A(2)): palavra secreta ou mágica, lema e "a de acesso", o que chegou, o que se combinou por telefone,
+    # e o campo de baixo do usuário
+    r"\bpalavra[\s\-]+(?:secreta|magica|chave|de acesso|de entrada)\b", r"\blema de (?:acesso|entrada)\b",
+    r"\b(?:a|o|as|os|dados|codigo|chave|numero) de (?:acesso|login|entrada)(?:\s+(?:e|eh|sao)\b|\s*[:=])",
+    r"\b(?:os|as|o|a) (?:numeros|numerinhos|digitos|codigos|letras|numero|codigo) que (?:chegaram|chegou|vieram|veio"
+    r"|mandaram|mandou|enviaram|enviou|recebi|apareceram|apareceu)\b",
+    r"\b(?:o que|aquilo que|isso que|que) (?:a gente )?combinamos (?:pelo|por|no|na|via) (?:telefone|celular|whats\w*|zap"
+    r"|sms|mensagem|ligacao)\b",
+    r"\b(?:embaixo|abaixo|debaixo|em baixo|logo abaixo|depois) d[oa]s? (?:campo (?:d[oa] )?)?(?:usuario|user|login"
+    r"|e-?mail|nome de usuario)\b",
     # inglês
     r"\bthe one i always use\b", r"\bwhat you type to (?:get in|log in|sign in)\b", r"\bthe access one\b",
     r"\bthe thing only you and i know\b", r"\bsecond field\b", r"\brecovery (?:phrase|codes?)\b", r"\bseed(?: phrase)?\b",
     r"\bsecurity question\b", r"\bmaiden name\b", r"\barrived by (?:text|sms)\b",
+    r"\b(?:a|essa|minha|sua|the|la) (?:combinacao|combination|combinacion) (?:e|eh|is|es|:|=) \w",
+    r"\b(?:magic|secret) word\b", r"\bbelow the (?:username|user|login|email)\b",
+    r"\bthe (?:numbers|digits|code) (?:that|which) (?:came|arrived)\b",
     # espanhol
     r"\blo de siempre\b", r"\blo que tecleas\b", r"\bcampo de abajo\b", r"\bfrase de recuperacion\b",
-    r"\bpregunta de seguridad\b",
+    r"\bpregunta de seguridad\b", r"\bpalabra (?:secreta|magica|clave)\b",
+    r"\blos (?:numeros|digitos|codigos) que (?:llegaron|vinieron|mandaron)\b", r"\bdebajo del (?:usuario|login)\b",
     # usuário e senha separados por barra: "entra com admin / admin1234", "log in with x / y"
     r"\b(?:entr\w*|log\s*in|login|sign\s*in)\s+(?:com|with|con)\s+\S+\s*/\s*\S+",
     # o par com rótulo e sem verbo de entrar (rodada C): "login: lucas / girassol", "usuário lucas, acesso girassol"
     r"\b(?:login|acesso|usuario|user|conta|username)\s*[:=]\s*\S+\s*/\s*\S+",
     r"\b(?:usuario|user|login|username)\s*:?\s*\S+\s*[,;]\s*(?:acesso|senha|pass|password)\s*:?\s*\S+",
 )))
+#: Eufemismo que só é C7 na frase com verbo de ENTRAR sem objeto de navegação (rodada E): "a combinação é girassol, entra",
+#: "passe girassol e entra". Sozinhos são palavra comum ("a combinação de cores", "passe para o próximo post").
+_EUFEMISMO_COM_ENTRAR: Final = re.compile(r"\b(?:combinacao|combination|combinacion|passe|passes)\b")
+
+# ------------------------------------------------------------------ regra ESTRUTURAL de intenção de entrar (rodada E, E-A(3))
+# Independe da lista: o verbo de entrar e um valor ligado a ele é a credencial, com ou sem a palavra. Roda sobre os tokens do
+# texto sem acento (palavra, número ou um sinal de pontuação por token).
+_TOKEN: Final = re.compile(r"[^\W_]+(?:['\-][^\W_]+)*|[^\w\s]")
+_ENTRAR: Final[frozenset[str]] = frozenset((
+    "entrar", "entre", "entra", "entrem", "entrando", "entro", "logar", "loga", "logue", "logando", "logue-se", "login",
+    "logon", "signin", "acessar", "acesse", "acessa", "acessem", "acessando", "autenticar", "autentique", "autentica",
+    "anmelden", "einloggen", "connecter", "connectez", "connecte", "accedi", "accedere", "inloggen", "conectar",
+    "conecte", "conecta", "ingresar", "ingresa", "ingrese"))
+#: O verbo de entrar de duas palavras ("log in", "sign in", "inicia sessão").
+_ENTRAR_2: Final[frozenset[tuple[str, str]]] = frozenset((
+    ("log", "in"), ("log", "on"), ("sign", "in"), ("inicia", "sessao"), ("iniciar", "sessao"), ("inicie", "sessao"),
+    ("inicia", "sesion"), ("iniciar", "sesion"), ("inicie", "sesion")))
+#: Logo depois do verbo, o que faz dele navegação ("entre NO perfil", "acesse O app") e não a entrada com um valor.
+_NAVEGACAO: Final[frozenset[str]] = frozenset((
+    "no", "na", "nos", "nas", "em", "num", "numa", "ao", "aos", "pelo", "pela", "pelos", "pelas", "a", "o", "os", "as",
+    "in", "into", "on", "to", "the", "en", "el", "la", "al", "los", "las", "nel", "nella", "sul", "dans", "le", "im", "auf",
+    "seu", "sua", "meu", "minha", "perfil", "conta", "app", "aplicativo", "insta", "instagram", "feed", "site", "pagina"))
+#: Depois do objeto de navegação, o conector só liga um valor se o objeto é onde se entra com credencial ("entra no insta
+#: com girassol"). Na conversa, no chat ou no perfil, o "com" é a pessoa ("entre na conversa com qa-001": 12 dos 92
+#: comandos reais de 7 dias, medidos em 03/10).
+_ONDE_SE_ENTRA: Final[frozenset[str]] = frozenset((
+    "insta", "instagram", "app", "aplicativo", "conta", "site", "sistema", "painel", "portal", "outlook", "gmail",
+    "email", "e-mail", "facebook", "tiktok", "whatsapp", "twitter", "banco", "account", "cuenta"))
+#: Quem liga o verbo ao valor ("entre COM girassol", "login USANDO x").
+_CONECTORES: Final[frozenset[str]] = frozenset((
+    "com", "usando", "use", "usa", "utilizando", "with", "using", "con", "mit", "avec"))
+#: O que, depois do conector, NÃO é valor: artigo, pronome, conjunção, o objeto de navegação, o provedor de entrada
+#: ("entre com o Google") e o modo ("com calma"). Tudo o mais conta: na dúvida, C7 é recusa.
+_NAO_VALOR: Final[frozenset[str]] = frozenset((
+    "a", "o", "as", "os", "um", "uma", "uns", "umas", "e", "ou", "de", "do", "da", "dos", "das", "que", "pra", "para",
+    "the", "an", "my", "your", "and", "or", "el", "la", "los", "las", "un", "una", "y", "mi", "tu", "su", "le", "les",
+    "meu", "minha", "seu", "sua", "nosso", "nossa", "ele", "ela", "eles", "elas", "voce", "vc", "mim", "isso", "isto",
+    "esse", "essa", "este", "esta", "aquele", "aquela", "dele", "dela", "it", "this", "that", "me", "him", "her",
+    "conta", "contas", "perfil", "perfis", "persona", "personas", "usuario", "user", "app", "aplicativo", "insta",
+    "instagram", "aparelho", "celular", "telefone", "google", "facebook", "apple", "microsoft", "outlook", "gmail",
+    "email", "e-mail", "sms", "biometria", "digital", "face", "rosto", "calma", "cuidado", "carinho", "pressa", "atencao",
+    "jeito", "emoji", "emojis", "foto", "fotos", "video", "imagem", "texto", "legenda", "comentario", "mensagem", "link",
+    "voz", "audio", "account", "profile", "phone", "cuenta", "todos", "todas", "tudo"))
+#: Fim de oração: o valor e o verbo não se ligam através dele.
+_FIM_DE_ORACAO: Final[frozenset[str]] = frozenset((".", ";", "!", "?", "\n"))
+#: Onde a busca do conector para: fim de oração, vírgula e conjunção ("entre e comente COM parabéns" é outro verbo).
+_PARA_A_BUSCA: Final[frozenset[str]] = _FIM_DE_ORACAO | frozenset((",", "e", "and", "y", "ou", "or", "depois", "entao",
+                                                                   "then"))
+#: O campo de usuário ("usuário lucas e girassol"): o par de valores depois dele é usuário e senha.
+_CAMPO_DE_USUARIO: Final[frozenset[str]] = frozenset(("usuario", "usuaria", "user", "username", "login"))
+_SEPARADORES_DO_PAR: Final[frozenset[str]] = frozenset(("e", ",", "/", ";", "and", "y"))
+_ANTES_DE_PRA_ENTRAR: Final[frozenset[str]] = frozenset((
+    "use", "usa", "usar", "digite", "digita", "coloque", "coloca", "bota", "poe", "ponha", "insira", "informe", "type",
+    "enter"))
+
+
+def _tokens(plano: str) -> list[str]:
+    return _TOKEN.findall(plano)
+
+
+def _verbos_de_entrar(toks: list[str]) -> list[tuple[int, int]]:
+    """(início, fim) de cada verbo de entrar, de uma ou duas palavras."""
+    achados: list[tuple[int, int]] = []
+    for i, tok in enumerate(toks):
+        if tok in _ENTRAR:
+            achados.append((i, i))
+        elif i + 1 < len(toks) and (tok, toks[i + 1]) in _ENTRAR_2:
+            achados.append((i, i + 1))
+    return achados
+
+
+def _e_valor(tok: str) -> bool:
+    return bool(_TOKEN.fullmatch(tok)) and tok[0].isalnum() and tok not in _NAO_VALOR
+
+
+def _entrar_sem_navegacao(toks: list[str]) -> bool:
+    """Há verbo de entrar sem objeto de navegação logo depois ("entra e curte", "girassol, entra")?"""
+    return any(fim + 1 >= len(toks) or toks[fim + 1] not in _NAVEGACAO for _, fim in _verbos_de_entrar(toks))
+
+
+def _login_valor(toks: list[str], *, valor_apos_conector: bool = True) -> bool:
+    """O verbo de entrar ligado a um valor: "entre com girassol", "faça login usando x", "entra no insta com x" (até três
+    tokens entre o verbo e o conector), "pra entrar: girassol", "entre / girassol" e "use girassol pra entrar".
+
+    `valor_apos_conector=False` deixa de fora a forma com conector: no texto ORIGINAL, o que vem depois de "com" pode ser
+    o destino ("entre com a conta do Lucas") que o `sem_destinos` tira; a forma é conferida no texto sem destinos."""
+    n = len(toks)
+    for ini, fim in _verbos_de_entrar(toks):
+        navega = fim + 1 < n and toks[fim + 1] in _NAVEGACAO
+        if fim + 2 < n and toks[fim + 1] in (":", "/", "=") and _e_valor(toks[fim + 2]):
+            return True
+        if (ini >= 3 and toks[ini - 1] in ("pra", "para", "to") and _e_valor(toks[ini - 2])
+                and toks[ini - 3] in _ANTES_DE_PRA_ENTRAR):
+            return True
+        if not valor_apos_conector:
+            continue
+        for j in range(fim + 1, min(fim + 5, n - 1)):
+            if toks[j] in _PARA_A_BUSCA:
+                break
+            if (toks[j] in _CONECTORES and _e_valor(toks[j + 1])
+                    and (not navega or any(t in _ONDE_SE_ENTRA for t in toks[fim + 1:j]))):
+                return True
+    return False
+
+
+def _par_credencial(toks: list[str]) -> bool:
+    """Usuário e senha juntos: o par com barra depois do verbo de entrar (até quatro tokens antes da barra: "entre com a
+    conta Lucas / girassol"), o campo de usuário com dois valores ("usuário admin / abc123"; com "e" ou vírgula, só com
+    verbo de entrar na frase) e "lucas, girassol, entra" no começo da oração."""
+    n = len(toks)
+    for _, fim in _verbos_de_entrar(toks):
+        for j in range(fim + 1, min(fim + 6, n - 1)):
+            if toks[j] in _FIM_DE_ORACAO:
+                break
+            if (toks[j] == "/" and _TOKEN.fullmatch(toks[j + 1]) and toks[j + 1][0].isalnum()
+                    and not (toks[j - 1].isdigit() and toks[j + 1].isdigit())):    # "entre 10/05 e 12/05" é data
+                return True
+    com_entrar = _entrar_sem_navegacao(toks)
+    for k, tok in enumerate(toks):
+        if tok in _CAMPO_DE_USUARIO or (tok == "conta" and "/" in toks[k:k + 5]):
+            x = k + 2 if k + 1 < n and toks[k + 1] in (":", "=") else k + 1
+            if x + 2 < n and _TOKEN.fullmatch(toks[x]) and toks[x + 1] in _SEPARADORES_DO_PAR and _e_valor(toks[x + 2]):
+                if toks[x + 1] == "/" or (com_entrar and _e_valor(toks[x])):
+                    return True
+        inicio = k == 0 or toks[k - 1] in _FIM_DE_ORACAO
+        if (inicio and k + 4 < n and _e_valor(tok) and toks[k + 1] == "," and _e_valor(toks[k + 2])
+                and toks[k + 3] == "," and toks[k + 4] in _ENTRAR
+                and (k + 5 >= n or toks[k + 5] not in _NAVEGACAO)):
+            return True
+    return False
 #: O código pedido pela quantidade de dígitos ("os seis dígitos", "aquela de quatro dígitos", "the six digits", "los seis
 #: números") ou o verbo de destravar: código de verificação ou PIN sem a palavra-chave (decisão (a)).
 _DIGITOS_C7: Final = re.compile(
@@ -195,7 +361,7 @@ def menciona_c7(comando: str) -> bool:
     return motivo_c7(comando) is not None
 
 
-def motivo_c7(comando: str) -> MotivoC7 | None:
+def motivo_c7(comando: str, *, valor_apos_conector: bool = True) -> MotivoC7 | None:
     """Por que o comando é C7, ou `None`. Confere o texto como veio e normalizado (NFKC, sem caractere invisível):
 
     - `c7_bidi`: controle de direção no texto CRU (a normalização o apaga, e com ele "ahnes" se lê "senha" na tela);
@@ -209,7 +375,13 @@ def motivo_c7(comando: str) -> MotivoC7 | None:
     - `c7_eufemismo`: "a de sempre", "o que você digita", "segundo campo", pergunta de segurança, frase de recuperação, o
       par de usuário e senha ("login: x / y", "usuário x, acesso y");
     - `c7_digitos`: o código pedido pela quantidade de dígitos ("os seis dígitos"), "destravar" ou o PIN tecla a tecla
-      ("toque 4, depois 8, depois 2", "2580#").
+      ("toque 4, depois 8, depois 2", "2580#");
+    - `c7_login_valor` (rodada E): o verbo de entrar ligado a um valor, sem a palavra-chave ("entre com girassol", "pra
+      entrar: girassol", "entre / girassol");
+    - `c7_par_credencial` (rodada E): usuário e senha juntos ("entre com a conta Lucas / girassol", "usuário lucas e
+      girassol, entra", "lucas, girassol, entra").
+
+    `valor_apos_conector=False`: para o texto ORIGINAL, com os destinos (ver `_login_valor`).
     """
     if _BIDI.search(comando):
         return "c7_bidi"
@@ -227,10 +399,15 @@ def motivo_c7(comando: str) -> MotivoC7 | None:
     if (_ASSUNTO_C7.search(leet) or _C7_DENTRO.search(leet)
             or any(m.group() in _C7_INVERTIDAS for m in _LETRAS.finditer(plano))):
         return "c7_ofuscado"
-    if _EUFEMISMO_C7.search(plano):
+    toks = _tokens(plano)
+    if _EUFEMISMO_C7.search(plano) or (_EUFEMISMO_COM_ENTRAR.search(plano) and _entrar_sem_navegacao(toks)):
         return "c7_eufemismo"
     if _DIGITOS_C7.search(plano) or _PIN_C7.search(plano):
         return "c7_digitos"
+    if _par_credencial(toks):
+        return "c7_par_credencial"
+    if _login_valor(toks, valor_apos_conector=valor_apos_conector):
+        return "c7_login_valor"
     return None
 
 
@@ -255,8 +432,12 @@ class ConsumidorDeIntencao:
         return "C3" in classes
 
     def pedido(self, *, run_id: str, comando: str, app: str | None, catalogo: Sequence[EntradaDeCatalogo],
-               cadeia: CadeiaObservada) -> PedidoDeDecisao | None:
+               cadeia: CadeiaObservada, original: str | None = None) -> PedidoDeDecisao | None:
         """O pedido de sombra, ou `None` se não há pergunta a fazer.
+
+        `original` (rodada E do 31.9): o comando COM os destinos. A C7 é conferida nele também, porque o `sem_destinos`
+        pode partir o par ("entre com a conta Lucas / girassol" vira "entre / girassol"). Nada dele sai: o estado é
+        montado só de `comando`.
 
         Sanitiza o comando (C3) pelo filtro sensato (`remover_entidades`). C7 no texto (senha, código, 2FA, captcha, em
         prosa ou não) marca `credencial`: a porta recusa o pedido INTEIRO e grava `privacidade`. O que esconde e-mail,
@@ -274,7 +455,10 @@ class ConsumidorDeIntencao:
             perguntas.append(pergunta_choice(PERGUNTA_DESEMPATE, _INSTRUCOES_DESEMPATE, _opcoes(empatados)))
         if not perguntas:
             return None
-        if (motivo := motivo_c7(comando)) is not None:
+        motivo = motivo_c7(comando)
+        if motivo is None and original and original != comando:
+            motivo = motivo_c7(original, valor_apos_conector=False)
+        if motivo is not None:
             return PedidoDeDecisao(origem="intencao", classe="C3", estado={}, perguntas=tuple(perguntas), modo="shadow",
                                    run_id=run_id, ref=run_id, marcadores=frozenset({"credencial"}),
                                    motivo_privacidade=motivo)
@@ -289,7 +473,7 @@ class ConsumidorDeIntencao:
                                run_id=run_id, ref=run_id, motivo_privacidade=None if limpo else motivo_filtro)
 
     def observar(self, *, run_id: str, comando: str, app: str | None, catalogo: Sequence[EntradaDeCatalogo],
-                 cadeia: CadeiaObservada) -> None:
+                 cadeia: CadeiaObservada, original: str | None = None) -> None:
         """Bloqueante (roda numa thread, nunca no laço): consulta a porta em shadow e casa a decisão real.
 
         O casamento vai como `ao_registrar`: a porta o chama na MESMA thread, logo depois de gravar a linha (também na
@@ -297,7 +481,8 @@ class ConsumidorDeIntencao:
         try:
             if not self.ativo():
                 return
-            pedido = self.pedido(run_id=run_id, comando=comando, app=app, catalogo=catalogo, cadeia=cadeia)
+            pedido = self.pedido(run_id=run_id, comando=comando, app=app, catalogo=catalogo, cadeia=cadeia,
+                                 original=original)
             if pedido is None:
                 return
             reais = self.decisoes_reais(cadeia, {p.id for p in pedido.perguntas})
