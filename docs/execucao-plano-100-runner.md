@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-276 de 317 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+276 de 325 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -106,6 +106,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 14.8 | implemented | simulated | opus | — | 7946bff, 4f5dd19, 662dee3: deploy/central.Dockerfile, deploy/compose.yaml, deploy/saude.py, deploy/iniciar.py, CONTAINER_LISTEN_HOST em main.py (recusado no Windows), docs/operacao.md §14. Testes estáticos: scripts/test… |  |
 | 14.9 | implemented | not_run | opus | — | ADR-028 e docs/relatorio-desempenho.md §6 (texto da F7): matriz de executor por operação, decisões por alternativa com gatilho de reabertura e protocolo de comparação de runtime. Decisão documental; nenhum piloto execut… |  |
 | 14.10 | implemented | real | opus | — | 27/09/2026, central WIN-7S2UASNLFOP, commit a90a6e1 (deploy.ps1; agente worker-lan-01 0.1.0+a90a6e1). Prévia sob demanda: sem painel 0 capturas e 72 evitadas em 144 s; painel aberto 9 capturas (2 visíveis) e 6 evitadas… |  |
+| 14.11 | pendente | — | — | — |  |  |
 | 15.1 | implemented | simulated | opus | — | fc5f1eb, 6b6dbbd e merges da fase A (cf08b7b): backend/tests/test_arquitetura.py (8 regras; catracas 78→61 imports tardios, 894→875 Any, ciclos em execução 2→1), backend/mypy.ini, backend/requirements-dev.txt, job backe… |  |
 | 15.2 | implemented | real | opus | — | a4a5e84, 4a9c794: commands/despacho.py, modules/applications/infrastructure/app_repository.py; testes test_app_repository.py e o de resposta HTTP idêntica. Real (27/09, central WIN-7S2UASNLFOP, 5c98735): start c-2026092… |  |
 | 15.3 | implemented | real | opus | — | 916f358, a863e60, 6448a96, 8fe244d: app/contracts/worker, backend/worker-manifest.txt, devices/sonda_rede.py; testes test_contratos_do_worker.py, test_pacote_do_agente.py, test_instalacao_do_worker.py. Real (27/09): wor… |  |
@@ -244,6 +245,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 27.1 | implemented | not_run |  | — | docs/relatorio-validacao.md §26.3 (revisão adversarial por frente com os achados graves corrigidos, correção da integração eb38139 e das regressões 99abe23) e §26.4 (cenários do aceite integrado no mesmo aparelho); crit… |  |
 | 27.2 | partial | real | opus | — | Real: android-03 e 06 com rede trafego_verificado (prova de vazamento preservada), Instagram e Outlook logados na conta certa; C1 provado no android-01 (r-20260930230500-f52eec). Em 01/10, no android-03, três tentativas… | Limitação da plataforma, medida: read_value só aceita valor lido de texto da árvore, e a lista do Outlook no android-03 não o expõe (no android-01, em 30/09, e… |
 | 27.3 | implemented | not_run |  | — | docs/relatorio-validacao.md §26 (implantações, provas reais, matriz de rede por aparelho, comando entre apps, revisão, cenários), CHANGELOG 2026-09-30, docs/estado-atual.md, docs/handoffs/terceira-evolucao.md (estado po… |  |
+| 27.4 | pendente | — | — | — |  |  |
 | 28.1 | implemented | simulated | sessao | — | PR #56 via #61 (merge c82a5210, 02/10). Trava de lider dos lacos periodicos: migracao 066_travas, taskqueue/travas.py (Lideranca: CAS no relogio do banco, cerca por token, renovacao em laco proprio do AppState), saldos/… | Prova real com DOIS backends no mesmo banco: not_run (o central roda um so). |
 | 28.2 | implemented | simulated | sessao | — | PR #55 via #61 (merge c82a5210). Migracao 067_pedidos (pedidos, gatilhos, ocorrencias; runs.pedido_id/ocorrencia_id), modules/pedidos/domain/estados.py e chave.py (chave deterministica, formatar_instante). Implantado no… | Uso real dos dados so com o laco ligado (28.6/28.12). |
 | 28.3 | implemented | simulated | sessao | — | PR #54 (d372a4c7). modules/pedidos/domain/recorrencia.py puro (RRULE parcial, zoneinfo, tzdata declarado em requirements.in). |  |
@@ -284,6 +286,12 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.24 | pendente | — | — | — |  |  |
 | 29.25 | pendente | — | — | — |  |  |
 | 29.26 | pendente | — | — | — |  |  |
+| 29.27 | pendente | — | — | — |  |  |
+| 29.28 | pendente | — | — | — |  |  |
+| 29.29 | pendente | — | — | — |  |  |
+| 29.30 | pendente | — | — | — |  |  |
+| 29.31 | pendente | — | — | — |  |  |
+| 29.32 | pendente | — | — | — |  |  |
 | 30.1 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #76 merge 6e103d73: GET /api/aprendizado/apps e /apps/{pacote} (application/apps.py, domain/camada.py, infrastructure/declarados.py), adendo v0.47; prova simulated; not_run no central (nada implantado) |  |
 | 30.2 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #76 merge 6e103d73: chave canônica de app (pacote) no Livro; prova simulated; not_run no central (nada implantado) |  |
 | 30.3 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #86 merge 14ec911c: conteudo legível no detalhe (domain/conteudo.py, fontes.py), nenhum valor de parâmetro; adendo v0.50; 432 testes do módulo; prova simulated; not_run no central (nada implantado) |  |
@@ -324,7 +332,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (41): 8.3, 8.4, 12.3, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 30.4, 30.8, 30.10, 30.11, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
+Pendentes (49): 8.3, 8.4, 12.3, 14.11, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.27, 29.28, 29.29, 29.30, 29.31, 29.32, 30.4, 30.8, 30.10, 30.11, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
