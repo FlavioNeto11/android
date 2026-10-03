@@ -8,7 +8,8 @@ O real fala com a TypeSafe pelo transporte e pela chave do adaptador de retrieva
 - `Porta` ainda reconfere cada resposta (opção conhecida, limiar) e aplica o timeout por fora: o decisor não é confiado.
 
 Existir não é enviar: com `JEV_RUNTIME_SEND_APPROVED` falso a porta recusa todo pedido ANTES de chegar a um decisor, e o
-`DecisorJev` só é ligado por `ai.decisao_fechada.decisor: jev` (de fábrica, `nulo`).
+`DecisorJev` só é ligado por `ai.decisao_fechada.decisor: jev` (de fábrica, `nulo`). Desde o 31.17 a constante é verdadeira:
+o que sai é o que o YAML liga (porta, consumidor em `shadow`, decisor `jev`) e a chave permite.
 """
 from __future__ import annotations
 

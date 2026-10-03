@@ -220,7 +220,8 @@ def test_triagem_do_curador_com_o_envio_fechado_nao_faz_nada(tmp_path: Any, monk
     cfg = DecisaoFechadaCfg(enabled=True, consumidores={"curador": "shadow"})
     porta = Porta(decisor, cfg=cfg, observador=observador_de_sombra(repo))
     triagem = TriagemDoCurador(porta)
-    assert privacidade.JEV_RUNTIME_SEND_APPROVED is False and not triagem.ativo()
+    monkeypatch.setattr(privacidade, "JEV_RUNTIME_SEND_APPROVED", False)    # o interruptor fechado (aberto desde o 31.17)
+    assert not triagem.ativo()
     CuradorComTriagemEmSombra(CuradorFalso(), triagem).revisar(Pedido(_dossie()))
     porta.aguardar_sombras()
     assert decisor.chamadas == [] and db.query("SELECT id FROM decisao_fechada_sombra") == []   # nem recusa gravada

@@ -1,6 +1,7 @@
 """31.8: triagem do curador do Livro em SOMBRA (R1, ADR-069; `planning/decisao_fechada/curador.py`).
 
-O que se prova, tudo `simulated` (DecisorFalso, banco de teste; `JEV_RUNTIME_SEND_APPROVED` só abre por `monkeypatch`):
+O que se prova, tudo `simulated` (DecisorFalso, banco de teste; `JEV_RUNTIME_SEND_APPROVED`, aberto desde o 31.17, é
+fixado por `monkeypatch` em cada teste que depende dele):
 
 - o estado é C0: só os campos nomeados, cada um rótulo fechado ou contagem; conteúdo, app, capability, ids, datas e
   texto de pessoa nunca saem, e a lista do consumidor é a MESMA da privacidade;
@@ -214,8 +215,9 @@ def test_config_padrao_ou_desligada_nao_chama_ninguem(db: Database, porta_aberta
     assert decisor.chamadas == [] and db.query("SELECT id FROM decisao_fechada_sombra") == []
 
 
-def test_com_o_envio_fechado_no_codigo_o_decisor_nao_e_chamado(db: Database) -> None:
-    """Sem `porta_aberta`: `JEV_RUNTIME_SEND_APPROVED` é False e a porta recusa por privacidade (a recusa é medida)."""
+def test_com_o_envio_fechado_no_codigo_o_decisor_nao_e_chamado(db: Database, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`JEV_RUNTIME_SEND_APPROVED` fechado (aberto de fábrica desde o 31.17): a triagem nem monta o pedido."""
+    monkeypatch.setattr(privacidade, "JEV_RUNTIME_SEND_APPROVED", False)
     decisor = DecisorFalso()
     triagem, porta, _ = _montar(db, decisor)
     CuradorComTriagemEmSombra(CuradorFalso(), triagem).revisar(Pedido(_dossie()))

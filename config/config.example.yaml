@@ -232,16 +232,20 @@ ai:
                                   # depois de N execuções seguidas em que a IA fez o caminho dela; 0 = nasce ativa
   flows: true                     # (false) comando repetido reaproveita o plano, sem chamar o planejador
   pathfinder_wait_s: 240          # (0) com vários aparelhos, o 1º aprende e os demais esperam por ele
-  # Porta `DecisaoFechada` (Fase 31, ADR-069): decisão por conjunto fechado no Jev (TypeSafe System One). DESLIGADA: o envio e
-  # as classes que podem sair são constantes de código (`planning/decisao_fechada/privacidade.py`) e este bloco só RESTRINGE.
-  # `shadow` roda fora do caminho crítico e nada usa a resposta; `on` só por consumidor, com GO pré-registrado.
+  # Porta `DecisaoFechada` (Fase 31, ADR-069): decisão por conjunto fechado no Jev (TypeSafe System One). DESLIGADA: as classes
+  # que podem sair e o interruptor do envio são constantes de código (`planning/decisao_fechada/privacidade.py`; o envio está
+  # aberto desde o 31.17) e este bloco só RESTRINGE. Sai algo só com `enabled: true`, um consumidor em `shadow`, `decisor: jev`
+  # e a chave configurada (`GET /api/ai` diz `sending`). `shadow` roda fora do caminho crítico e nada usa a resposta; `on` só
+  # por consumidor, com GO pré-registrado. A sombra do 31.10 (31.17) liga o curador em C0–C1; a intenção (C3) fica `off` até
+  # o GO do portão do 31.9 e o sim do dono.
   decisao_fechada:
     enabled: false                # (false) vence tudo, inclusive um consumidor em `on`
-    consumidores: {}              # curador | intencao | desempate | apps: off | shadow | on (ausente = off)
+    consumidores: {curador: shadow, intencao: "off"}  # curador | intencao | desempate | apps: "off" | shadow | "on" (ausente =
+                                  # off); sem aspas, o YAML lê off/on como booleano e a configuração não carrega
     retencao_dias: 180            # (180) linhas da sombra (`decisao_fechada_sombra`); o agregado diário fica
-    decisor: nulo                 # (nulo) jev = o decisor real (31.14): gasto conferido antes do POST, chamada em ai_calls;
-                                  # NÃO abre o envio, que segue fechado no código até o 31.10
-    # classes_permitidas: [C0, C1]  # opcional: estreita o teto de código (C0..C3); nunca libera classe que o código fechou
+    decisor: nulo                 # (nulo, nunca toca rede) jev = o decisor real (31.14): gasto conferido antes do POST,
+                                  # chamada em ai_calls; com `enabled` e um consumidor em `shadow`, é envio de verdade
+    classes_permitidas: [C0, C1]  # (sem estreitar: C0..C3) estreita o teto de código; nunca libera classe que o código fechou
   # Leitura visual de uma saída de etapa (item 12.5, ADR-070). DESLIGADA. Só vale na tela cega que o app declara
   # (`leitura_visual.regioes` no `telas.yaml` dele) e só com o papel `ai.roles.leitura` escrito (exemplo mais abaixo). Ligar manda
   # o RECORTE de uma linha de tela ao provedor do leitor, que pode ser outro que o do ator.

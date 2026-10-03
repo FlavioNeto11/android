@@ -87,9 +87,9 @@ def test_contabilidade_por_uid_com_os_numeros_medidos() -> None:
     raiz = cobertura(a, d, 0)
     assert (raiz.vpn, raiz.fisica, raiz.resultado) == (52, 868, "fora_da_rede")
     assert cobertura(a, d, 10198).resultado == "fora_da_rede"           # o túnel cifrado sai pela física, por definição
-    assert cobertura(a, d, 10196).resultado == "nao_medido"             # sem tráfego na janela: não dá para saber
+    assert cobertura(a, d, 10196).resultado == "sem_trafego"            # sem tráfego na janela: não dá para saber
     # Contador que voltou (reinício): nunca vira "coberto" por delta negativo.
-    assert cobertura(d, a, 10150).resultado == "nao_medido"
+    assert cobertura(d, a, 10150).resultado == "sem_trafego"
     with pytest.raises(ValueError):
         ler_netstats("U=2000\nUID stats:\n")                            # truncada (sem o FIM)
 
@@ -330,7 +330,7 @@ async def test_sonda_mede_saida_dns_udp_e_cobertura_por_uid_dos_apps_exigidos() 
     assert r2.medicao.leak_blocked is True
     # Sem base (backend reiniciado depois da conexão), a janela começa na passada: o que veio antes não conta.
     r3 = await medir(ap, CFG, exigidos=[INSTAGRAM], linha_de_base=None, bloqueio=False, vazamento=None, abrir=False)
-    assert r3.medicao.per_app[INSTAGRAM] == "nao_medido" and r3.medicao.leak_blocked is None
+    assert r3.medicao.per_app[INSTAGRAM] == "sem_trafego" and r3.medicao.leak_blocked is None
     # Com bloqueio e sem o teste da revisão, o vazamento fica sem medição — nunca presumido.
     r4 = await medir(ap, CFG, exigidos=[], linha_de_base=None, bloqueio=True, vazamento=None, abrir=False)
     assert r4.medicao.leak_blocked is None and "vazamento não medido" in (r4.medicao.detail or "")
@@ -425,7 +425,7 @@ async def test_always_on_que_religa_na_hora_nao_esconde_o_bloqueio() -> None:
 async def test_abrir_app_so_quando_pedido() -> None:
     ap = SondaFalsa(tun=True, vpn=True, ao_abrir={INSTAGRAM: (4000, 4000)})
     r = await medir(ap, CFG, exigidos=[INSTAGRAM], linha_de_base=None, bloqueio=False, vazamento=None, abrir=False)
-    assert ap.abertos == [] and r.medicao.per_app[INSTAGRAM] == "nao_medido"
+    assert ap.abertos == [] and r.medicao.per_app[INSTAGRAM] == "sem_trafego"
     r = await medir(ap, RedeSondaCfg(espera_app_s=3), exigidos=[INSTAGRAM], linha_de_base=None, bloqueio=False,
                     vazamento=None, abrir=True)
     assert ap.abertos == [INSTAGRAM] and r.medicao.per_app[INSTAGRAM] == "ok" and r.abertos == (INSTAGRAM,)
@@ -704,8 +704,11 @@ async def test_convergencia_verifica_com_vazamento_e_libera_a_tarefa(parque: Har
     assert st.db.scalar("SELECT COUNT(*) FROM network_measurements WHERE instance_id='android-01'") == 1
 
 
-async def test_app_parado_fica_parcial_e_a_tarefa_segurada_abre_o_app(parque: Harness,
-                                                                      monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_app_parado_nao_segura_o_parcial_e_o_trafego_seguinte_tira_a_ressalva(
+        parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """29.44: o app exigido parado na janela fica `sem_trafego` e não segura o `parcial`, porque a sonda do shell passou
+    pelo túnel e nada saiu por fora. O estado é `trafego_verificado` com a ressalva no `detail`, e a porta libera a
+    tarefa. Quando o app trafega numa janela seguinte, a medição o reavalia e a ressalva sai sozinha."""
     st = parque.state
     assert st is not None
     st.social.create_profile(ProfileCreate(username="lucas.teste", instance_id="android-01"))
@@ -714,29 +717,55 @@ async def test_app_parado_fica_parcial_e_a_tarefa_segurada_abre_o_app(parque: Ha
     for i, pkg in enumerate(exigidos):
         ap.uids.setdefault(pkg, 10300 + i)
     await _ate_conectado(parque, ap)
-    # Sem tarefa esperando (`ligou`), a sonda não abre app de conta real: o app parado fica `nao_medido`.
+    # Sem tarefa esperando (`ligou`), a sonda não abre app de conta real: o app parado fica `sem_trafego`.
     assert await _passo(parque, "ligou")
     linha = _linha(parque)
-    assert linha["state"] == "parcial" and INSTAGRAM in str(linha["detail"]) and ap.abertos == []
-    # A tarefa que espera diz POR QUÊ (o app sem tráfego medido), não só "aguardando".
+    assert linha["state"] == "trafego_verificado" and ap.abertos == []
+    assert INSTAGRAM in str(linha["detail"]) and "sem tráfego na janela: não provado, não segura o estado" in str(
+        linha["detail"])
+    [m] = st.db.query("SELECT per_app FROM network_measurements WHERE instance_id='android-01'")
+    assert json.loads(m["per_app"])[INSTAGRAM] == "sem_trafego"
     _liberar_a_porta(parque)
-    assert f"{INSTAGRAM}=nao_medido" in (st.rede_convergencia.motivo_de_espera("android-01") or "")
-    # Com a tarefa segurada, a porta mede de novo JÁ (sem esperar `reverificar_s`) e abre os apps parados: é o que a
-    # tarefa faria, e sem isso ela esperaria para sempre. Este app não gerou tráfego aberto: segue `parcial`.
-    await parque.wait(lambda: sorted(ap.abertos) == sorted(exigidos), what="apps abertos pela porta")
-    await parque.wait(lambda: st.db.scalar("SELECT COUNT(*) FROM network_measurements") == 2, what="segunda medição")
-    assert _linha(parque)["state"] == "parcial"
-    # Medida assim, a espera volta a valer: nem a porta insiste a cada volta.
-    _liberar_a_porta(parque)
-    assert await _passo(parque, "tarefa") is False and await _passo(parque, "varredura") is False
+    assert st.rede_convergencia.motivo_de_espera("android-01") is None          # a porta não segura a tarefa
     # O app usou a rede (a pessoa o abriu pelo painel, uma sincronização): a janela desde a conexão o vê.
     for pkg in exigidos:
         ap.usar(pkg, 2000, 2000)
-    st.rede_convergencia.memoria("android-01").espera_ate = 0.0
-    st.rede_convergencia.memoria("android-01").ultima_verificacao = -1e9
+    mem = st.rede_convergencia.memoria("android-01")
+    mem.verificacao_pedida, mem.espera_ate = True, 0.0     # o "Verificar" do painel
     assert await _passo(parque, "varredura")
-    assert _linha(parque)["state"] == "trafego_verificado"
+    linha = _linha(parque)
+    assert linha["state"] == "trafego_verificado" and "sem tráfego" not in str(linha["detail"])
     assert ap.paradas == 0                                   # sem bloqueio pedido, nada de teste de vazamento
+
+
+async def test_nenhum_app_trafegou_segura_o_parcial_e_a_tarefa_segurada_abre_o_app(
+        parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """O app parado só segura quando NADA trafegou (nem a sonda do shell): aí a tarefa segurada abre os apps parados,
+    como antes do 29.44."""
+    st = parque.state
+    assert st is not None
+    st.social.create_profile(ProfileCreate(username="lucas.teste", instance_id="android-01"))
+    exigidos = rede.apps_exigidos(st, "android-01")
+    ap, _ = _preparar_sonda(parque, monkeypatch, policy="exigida")
+    for i, pkg in enumerate(exigidos):
+        ap.uids.setdefault(pkg, 10300 + i)
+    ap.ao_abrir = {pkg: (3000, 3000) for pkg in exigidos}            # aberto, o app usa a rede pelo túnel
+    original = ap.usar
+
+    def usar(pkg: str, vpn: int, fisica: int) -> None:
+        if pkg != "com.android.shell":                           # a sonda sai, mas a contabilidade dela não anda
+            original(pkg, vpn, fisica)
+    ap.usar = usar  # type: ignore[method-assign]
+    await _ate_conectado(parque, ap)
+    assert await _passo(parque, "ligou")
+    linha = _linha(parque)
+    assert linha["state"] == "parcial" and "nenhum app trafegou na janela" in str(linha["detail"])
+    assert ap.abertos == []
+    _liberar_a_porta(parque)
+    assert "nenhum app trafegou" in (st.rede_convergencia.motivo_de_espera("android-01") or "")
+    # Com a tarefa segurada, a porta mede de novo JÁ e abre os apps parados; aberto, o app trafega pelo túnel.
+    await parque.wait(lambda: sorted(ap.abertos) == sorted(exigidos), what="apps abertos pela porta")
+    await parque.wait(lambda: _linha(parque)["state"] == "trafego_verificado", what="verificado depois de abrir")
 
 
 async def test_deriva_na_verificacao_regride_sem_medir_e_cliente_parado_religa(parque: Harness,
@@ -858,6 +887,43 @@ async def test_vazamento_em_cache_so_vale_para_a_mesma_revisao(parque: Harness,
     _liberar_a_porta(parque)
     assert await _passo(parque, "tarefa") and _linha(parque)["state"] == "trafego_verificado"
     assert ap.paradas == 2 and (_linha(parque)["leak_rev"], _linha(parque)["leak_result"]) == (2, 1)
+
+
+async def test_parcial_so_de_app_parado_nao_dispensa_a_medicao(parque: Harness,
+                                                              monkeypatch: pytest.MonkeyPatch) -> None:
+    """29.44 (c1): com o teste de vazamento adiado (objetivo esperando a pessoa), a medição seguinte é dispensada
+    quando o `parcial` segue sem prova do bloqueio (o teste abaixo). Mas, se o `parcial` veio SÓ de app parado (nada
+    trafegou, nem a sonda do shell), a passada mede de novo: o app pode ter trafegado, e é isso que a medição relê."""
+    from app.models import ObjectiveStatus
+
+    st = parque.state
+    assert st is not None
+    st.social.create_profile(ProfileCreate(username="lucas.teste", instance_id="android-01"))
+    ap, _ = _preparar_sonda(parque, monkeypatch)
+    for i, pkg in enumerate(rede.apps_exigidos(st, "android-01")):
+        ap.uids.setdefault(pkg, 10300 + i)
+    original = ap.usar
+
+    def usar(pkg: str, vpn: int, fisica: int) -> None:
+        if pkg != "com.android.shell":                           # a sonda sai, mas a contabilidade dela não anda
+            original(pkg, vpn, fisica)
+    ap.usar = usar  # type: ignore[method-assign]
+    await _ate_conectado(parque, ap)
+    porta = st.scheduler.rede_gate
+    st.scheduler.rede_gate = lambda _iid: "segura (teste)"
+    run = parque.run(["android-01"])
+    oid = f"{run.id}:android-01"
+    await parque.wait(lambda: st.db.one("SELECT 1 FROM objectives WHERE id=?", (oid,)) is not None, what="objetivo")
+    st.repo.set_objective(oid, ObjectiveStatus.waiting_user, detail="esperando a pessoa (teste)")
+    st.scheduler.rede_gate = porta
+    assert await _passo(parque, "ligou")
+    assert _linha(parque)["state"] == "parcial" and "nenhum app trafegou" in str(_linha(parque)["detail"])
+    assert rede.parcial_so_de_app_parado(st, "android-01")
+    st.rede_convergencia.memoria("android-01").espera_ate = 0.0
+    st.rede_convergencia.memoria("android-01").ultima_verificacao = -1e9
+    assert await _passo(parque, "varredura")
+    assert st.db.scalar("SELECT COUNT(*) FROM network_measurements") == 2 and ap.paradas == 0   # mediu, não dispensou
+    st.repo.set_objective(oid, ObjectiveStatus.cancelled, detail="encerrado pela pessoa (teste)")
 
 
 async def test_vazamento_adiado_com_objetivo_no_meio_e_no_celular_sem_worker(parque: Harness,

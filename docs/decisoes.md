@@ -76,7 +76,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-066](#adr-066--laço-de-pedidos-desligado-por-padrão-origem-interna-na-criação-da-execução-e-edição-por-gatilho-novo) | Laço de pedidos: desligado por padrão, origem interna na criação da execução e edição por gatilho novo | aceito (Fase 28, 28.4) | 02/10 |
 | [ADR-067](#adr-067--aprendizado-vivo-eixo-de-app-saúde-derivada-e-curador-por-ia-auditável) | Aprendizado vivo: eixo de app, saúde derivada e curador por IA auditável; revê em parte a decisão 9 do ADR-054 (Fase 30) | aceito (dono, 02/10; fase implementada 03/10; prova real 30.18 pendente); emendado 03/10 (revisões da Android e da Jev) | 03/10 |
 | [ADR-068](#adr-068--conta-bloqueada-sai-na-hora-e-a-persona-fica-lápide-só-com-o-hash-do-arroba) | Conta bloqueada sai na hora e a persona fica; lápide só com o hash do @ (item 29.23) |
-| [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro; item 11: regras do filtro do 31.9) | 03/10 |
+| [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro; item 11: regras do filtro do 31.9; item 12: C7 sem palavra-chave e e-mail em peças, rodada E; item 13: barrar pela intenção de entrar, rodada F; item 14: o usuário como @handle ou e-mail, o catálogo só no destino e a preposição só com faixa, rodada G; item 15: envio aberto no código para a sombra C0–C1 do 31.10, 31.17) | 03/10 |
 | [ADR-070](#adr-070--valor-visto-na-imagem-conta-como-saída-de-etapa-sob-conferência-cega-de-um-segundo-leitor) | Valor visto na imagem conta como saída de etapa, sob conferência cega de um segundo leitor; substitui em parte o ADR-065 §3 (item 12.5) | vigente (dono, 02/10; opção desligada) | 02/10 |
 
 ---
@@ -4363,6 +4363,125 @@ catálogo, comando), que o ADR-063 não cobre.
       outlook", "look at photo.jpg") lido como e-mail, e "pw" isolado lido como credencial.
     - Prova `simulated`: `backend/tests/test_decisao_fechada_reverificacao_c.py` e o harness da rodada D (267 casos pelo
       caminho de produção, 0 vazamentos em 963f9d7b); detalhes em [ia.md](ia.md) (bloco "Rodada C" da intenção).
+12. **Emenda de 03/10/2026 (decisões da orquestradora na rodada E do 31.9, dentro do piso do item 10; registrada
+    ~07:00Z).** A rodada D deu NO-GO em 963f9d7b: 25 variações construídas pelo cético chegavam em claro, porque a C7 era
+    uma lista fechada e a senha só de letras, dita sem a palavra, passava. As regras ficam assim:
+    - **E-A, C7 sem palavra-chave**:
+      - "senha" em línguas de escrita latina, na mesma normalização do texto (56 traduções; as da especificação e outras
+        de memória, não conferidas uma a uma no Wiktionary);
+      - os eufemismos: palavra secreta ou mágica, "magic word", lema e "a de acesso", credencial, "pswd", "a mesma de
+        ontem", "os números que chegaram", "o que combinamos pelo telefone", "embaixo do usuário" e "a combinação é X";
+      - a regra ESTRUTURAL de intenção de entrar, independente da lista: o verbo de entrar ligado a um valor
+        (`c7_login_valor`: "entre com girassol", "pra entrar: girassol") e o par de usuário e senha
+        (`c7_par_credencial`: "usuário lucas e girassol, entra", "entre com a conta Lucas / girassol", "lucas,
+        girassol, entra");
+      - a C7 é conferida também no comando ORIGINAL, com os destinos: o `sem_destinos` parte o par.
+    - **E-B, e-mail ditado em peças em português recusa** ("zilda no gmail", "mande para zilda do outlook", "o usuário é
+      zilda e o domínio é correio.net").
+    - **E-C, a máscara engole o endereço inteiro**: a parte local até o espaço ("abcdef#zilda@", "o'brien@"), o
+      `mailto:`, o `?subject=`, o domínio de topo solto e o `tel:`.
+    - **E-D, os conflitos de rótulo recusam**: o domínio cirílico, o controle de direção, o base64 com "campo de acesso",
+      o "2580#", o PIN tecla a tecla e "o usuário é zilda e o domínio é correio.net". A C7 que ia mascarada também recusa.
+    - **Desvios da especificação, aceitos pela orquestradora**:
+      - (a) "passe" e "combinação" sozinhos só recusam com verbo de entrar sem objeto de navegação; "a combinação é
+        X" recusa sempre.
+      - (b) Depois de um objeto de navegação, "com X" só conta se o objeto é app, conta, site ou insta. "Entre na
+        conversa com qa-001" passa: eram 12 dos 92 comandos reais.
+      - (c) A regra "nome do catálogo, valor, entra" vale para quaisquer dois tokens no começo da oração: o filtro não
+        conhece o catálogo.
+      - (d) Limite conhecido: "entre com lucas", nome sem artigo, recusa a sombra (não o comando), como "entre com
+        girassol"; "entre com o lucas" passa.
+      - (e) O provedor que também é app ou palavra (outlook, live, terra) vale sem pista atrás de uma lista de verbos,
+        objetos e pastas: "comenta no live" e "a caixa de entrada do outlook" passam (eram 2 dos 92 reais).
+        "correio" só vale com pista de destinatário.
+    - **Residual documentado** (opção (2) da orquestradora): quando a parte local é o nome da pessoa, o nome em claro
+      revela a parte local ("Zilda Prado <[email]>"). Vale a regra "nome passa" do item 10. O harness isenta o
+      fragmento que é nome com maiúscula em claro fora do endereço; o filtro não muda.
+    - Prova `simulated`:
+      - `backend/tests/test_decisao_fechada_reverificacao_e.py`;
+      - harness da orquestradora com o corpus de 360 casos em db45d4fd: 0 C7 em claro (eram 47 no baseline), 0 C7
+        mascarada, 0 passagens indevidas;
+      - 1 recusa nos 92 comandos reais, a mesma de antes.
+      Detalhes em [ia.md](ia.md), no bloco "Rodada E" da intenção.
+13. **Emenda de 03/10/2026 (decisões da orquestradora na rodada F do 31.9, dentro do piso do item 10; registrada
+    ~08:10Z).** A fase 2 da rodada E deu NO-GO em db45d4fd: 49 variações novas chegavam em claro. A estratégia muda de
+    barrar o VALOR para barrar a INTENÇÃO de entrar.
+    - **F-A**: o verbo de entrar sem objeto de navegação faz a sombra pular o comando (`c7_intencao_de_entrar`), conferido
+      no comando original. Custo medido: 0 dos 122 comandos reais de 7 dias (o limiar da orquestradora é 10 %).
+    - **F-B**: o original é conferido com o conector, e o "com X" é desfeito pelo catálogo de destinos REAL. Os nomes
+      chegam ao filtro pelo 5º item de `RunService.dados_da_sombra`. O artigo não isenta, e ",", "-", ":", "=" e "/" valem
+      igual. Cai o desvio (d) do item 12.
+    - **F-C a F-H**:
+      - o campo de usuário fica mais largo;
+      - entram os diminutivos e o "codigo" colado;
+      - entra a pergunta de segurança;
+      - cinco letras ou mais soltas são barradas;
+      - nome + provedor sem preposição e "point" recusam;
+      - o CPF nu recusa como `documento`.
+    - **Desvios declarados**:
+      - o soletrado recusa na C7, mais estrito que a especificação;
+      - o provedor antes do nome só conta com pista e só se não é app;
+      - "point" só vale diante de domínio de topo que não é palavra inglesa;
+      - "com a conta do X" é navegação;
+      - "entre" depois de palavra de conteúdo é preposição quando o que vem depois não é do verbo (diante de número, só em
+        data ou faixa);
+      - "entre 3 e 5 fotos", no começo da oração, pula a sombra.
+    - Prova `simulated`:
+      - `backend/tests/test_decisao_fechada_reverificacao_f.py`;
+      - harness da orquestradora com o corpus de 427 casos, com catálogo stub e real: 0 vazamentos de portão, 0 C7
+        mascarada, 0 passagens indevidas e 5 recusas indevidas (2 delas são rótulo do corpus a atualizar);
+      - 1 recusa nos 122 comandos reais, a mesma de antes.
+      Detalhes em [ia.md](ia.md), no bloco "Rodada F" da intenção.
+14. **Emenda de 03/10/2026 (decisões da orquestradora na rodada G do 31.9, dentro do piso do item 10; registrada
+    ~09:05Z).** A fase 2 da rodada F deu NO-GO em 7c8f58c8: 30 achados contam (bug e lacuna em português) e 7 são residual
+    de outro idioma. As causas são de forma; a estratégia da F fica.
+    - **G-1**: o par com @handle ou e-mail no lugar do usuário recusa (`c7_par_credencial`). O "@" solto deixou de ser
+      destino. Com dígito no valor, o par recusa, nunca `[termo]`.
+    - **G-2**:
+      - soletração com vírgula, barra e pelo nome das letras;
+      - verbo de entrar com hífen;
+      - "entre" preposição só diante de faixa (número, hora, data, mês ou dia da semana dos dois lados) ou de "os"/"as";
+      - os eufemismos "la de siempre", "a palavrinha é", "a de todo dia é", "acesso: X" e "para acesso use X";
+      - "usuário X, Y." sem verbo, depois de usuário, user ou login.
+    - **G-3**: e-mail em peças com hífen, parêntese e "lá"; "at" e "dot" entre hífens ou sublinhados, só com provedor ou
+      domínio de topo depois; provedores novos.
+    - **G-4**: o nome do catálogo real vale INTEIRO e só na posição de destino (depois da palavra de conta ou do "@", ou
+      pela sintaxe que o extrator tira), nunca na de valor. A persona "Girassol" não isenta a senha "girassol".
+      - Desvio declarado: "entre com o Lucas e curta" volta a pular a sombra (cai o "entre com lucas passa" da F-B).
+      - Custo medido: 0 dos 122 comandos reais de 7 dias.
+    - **G-5**: o "é" verbo não vira a conjunção "e"; "é entre 8 e 12", "entre 08:00 e 12:00" e "é entre os melhores"
+      passam.
+    - **G-6 (decisão)**: a palavra-chave da C7 sem valor continua recusando (lado seguro; custo de utilidade aceito).
+      - Revê-se se as recusas nos comandos reais passarem de 5 %.
+      - Hoje: 1 em 122, com valor aparente; por palavra sem valor, 0.
+    - Feito também o residual de outro idioma (síntese da F, item 11): sueco, catalão, "the usual is" e algarismos ditados
+      em alemão, italiano e francês.
+    - Custos declarados:
+      - "entre com @<handle fora do catálogo> e curta" e "escolha entre a Marina e a Ana" pulam a sombra;
+      - o dois-pontos entre nome e provedor não conta, porque é o do rótulo ("site: outlook" num comando real).
+    - Prova `simulated`:
+      - `backend/tests/test_decisao_fechada_reverificacao_g.py`;
+      - harness da orquestradora com o corpus de 492 casos e a persona "Girassol" no stub: ok 488, 4 recusas indevidas
+        antigas, 0 vazamentos de portão, 0 C7 mascarada e 0 passagens indevidas;
+      - 1 recusa nos 122 comandos reais, a mesma.
+      Detalhes em [ia.md](ia.md), no bloco "Rodada G" da intenção.
+15. **Emenda de 03/10/2026 (31.17, a sombra C0–C1 do 31.10; desenho aceito pela orquestradora, ~09:17Z, na ordem do item 9):
+    o envio abre no código.**
+    - `JEV_RUNTIME_SEND_APPROVED = True`. O YAML de fábrica continua sem ligar nada (`enabled: false`, decisor `nulo`, que
+      nunca toca rede): sai só o que o YAML do ambiente liga. O interruptor fechado segue valendo e testado.
+    - O YAML do deploy 9 liga só o curador (C0): `enabled: true`, `decisor: jev`, `consumidores: {curador: shadow,
+      intencao: "off"}`. O exemplo traz também `classes_permitidas: [C0, C1]`, que estreita por cima. A intenção (C3) fica
+      `off` até o GO do portão do 31.9 e o sim do dono.
+    - Transparência (item 8): o aviso de `GET /api/ai` diz o decisor da porta e só afirma que algo sai com as quatro
+      condições juntas: código aberto, decisor `jev`, um consumidor em `shadow` ou `on` e a chave configurada. Faltando uma,
+      diz que nada sai e por quê. O bloco `decisao_fechada` ganha `sending`.
+    - A chave não foi lida nem tocada; a presença dela se confere só por `GET /api/ai`.
+    - Prova `simulated`:
+      - `backend/tests/test_decisao_fechada_payload.py`: o corpo no fio é só `{state, model, questions}`. Na intenção vão
+        o comando redigido, o app e as opções; no curador, só os `CAMPOS`. Nunca `run_id`, `ref`, o original, os destinos,
+        o id cru da habilidade nem o hash do dossiê.
+      - Os testes do interruptor fechado agora o fecham por `monkeypatch`.
+      - A chamada real fica para o deploy 9 (31.10): `not_run`.
 
 **Consequências.** A plataforma ganha um motor barato (US$ 0,042/M de entrada, saída grátis) para decisões fechadas que hoje não
 acontecem ou vão ao Opus, medido em sombra contra o caminho atual antes de qualquer `on`. O ADR-063 continua valendo para código.

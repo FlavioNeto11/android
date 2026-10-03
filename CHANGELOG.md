@@ -19,6 +19,38 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Deploy 9 no central (suíte 9; sombra C0–C1 do curador ligada, T_on do 31.10; curador volta ao padrão)
+
+- Código: main `3dcfc9ac` (suíte 9), sem migração nova (segue a 081):
+  - 29.47 (ambiente dos filhos);
+  - 31.9 rodadas E–G, mais a correção da catraca;
+  - UX do deploy 7 da Jev;
+  - 30.30 (#144) e RA-20 B (#145);
+  - 31.17 (envio aberto no código para a sombra);
+  - 29.44 (`sem_trafego`), mais a conta observada sem seletor cru.
+- Backup do deploy: `data/backups/20261003-080304` (integridade ok). Agente do notebook em `0.1.0+3dcfc9a`, com o
+  reparo dos aparelhos dele pausado durante a troca. A pausa do 01/03/06 foi renovada depois do restart (K-082).
+- `config/config.yaml` do central (backup `config-antes-deploy9-20261003-110326.yaml`; fora do Git):
+  - `aprendizado.curador`: alfa e k voltam ao padrão (0.10 / 1.5); saem as linhas do deploy 8.
+  - `ai.decisao_fechada: {enabled: true, decisor: jev, consumidores: {curador: shadow}, classes_permitidas: [C0, C1]}`.
+    A `intencao` fica ausente, ou seja `off`. Não se escreve `off`/`on` sem aspas (K-081).
+  - Conferido pelo `load_config` do código novo antes do `deploy.ps1`.
+- **T_on do 31.10 = 11:04:15Z**, a partida do backend. `GET /api/ai` às 11:05:04Z: `decisao_fechada.sending: true`,
+  `decider: jev`, `key: configurada`, `consumers: {curador: shadow}`, `classes: [C0, C1]`.
+- Quebras de série a partir deste deploy:
+  - a fatia do curador volta ao ritmo padrão;
+  - a sombra do Jev começa a gravar em `decisao_fechada_sombra`, e as chamadas aparecem em `ai_calls`
+    (`origem='decisao_fechada'`);
+  - em `network_measurements.per_app`, o app parado passa de `nao_medido` a `sem_trafego`.
+- Prova `real`:
+  - `/api/health` ok, commit 3dcfc9ac, migração 081, `problems: []`;
+  - 29.47: os 18 filhos do backend novo e o qemu do temporário `android-20` (ligado às 11:08:15Z, automação ready) com 0
+    nomes de segredo no ambiente;
+  - 29.44: o 03 e o 06 em `trafego_verificado`, com o Outlook `sem_trafego` (medições #465/#466).
+- Suíte 9: 1 teste intermitente, `test_revisao_receitas::test_aparelho_do_lider_que_cai_libera_quem_espera`. É race do
+  teste, exposto pelo #145; a correção vai para a suíte 10.
+- Pendente: validação do painel no Chrome (orquestradora); 29.48 (janela oculta, depois do 30.18).
+
 ## 2026-10-03 — Documentação e processo: ADR-067, o aprendizado vivo aceito (30.19; branch docs/30-19-adr-067)
 
 - `docs/decisoes.md`: ADR-067 (índice e seção), com a Fase 30 como foi implementada.
@@ -43,6 +75,220 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - a tabela diz "frente Jev";
   - a 080 entra nas consequências.
 
+## 2026-10-03 — 29.44: app sem tráfego na janela não segura o `parcial` (branch `feat/29-44-sem-trafego`)
+
+- **Antes.** `nao_medido` juntava o app não instalado e o instalado parado na janela, e cada app exigido tinha de
+  estar `ok`. No deploy 7, o 03 e o 06 ficaram em `parcial` só porque o Outlook estava parado.
+- **Agora** (decisão da orquestradora, 03/10):
+  - `per_app` ganha `sem_trafego` (`sonda_rede.Cobertura`).
+  - Com outro app `ok` (a sonda do shell conta) e nenhum `fora_da_rede`, o aparelho fica `trafego_verificado` com a
+    ressalva no `detail` ("… sem tráfego na janela: não provado, não segura o estado"). A porta da tarefa
+    (`apps_sem_prova`) o aceita.
+  - "Verificado" = tudo o que trafegou passou pelo túnel. Quando o app trafegar, a medição seguinte o reavalia.
+  - Seguem segurando: `nao_medido` (não instalado), `fora_da_rede` e nada ter trafegado.
+  - O `_verificar` não dispensa a medição quando o `parcial` veio só de app parado.
+  - O painel (Rede) mostra "sem tráfego na janela", com a explicação no título, e "não medido (não instalado ou não
+    lido)".
+- **Contrato**: adendo v0.88.
+- **Prova `simulated`**:
+  - `tests/test_rede_sem_trafego.py` (regra e contrato);
+  - `tests/test_rede_sonda.py`: o app parado não segura e o tráfego seguinte tira a ressalva; nada trafegou segura
+    e a tarefa abre o app; o `parcial` só de app parado não dispensa a medição (falha sem a mudança);
+  - `tests/test_rede_portao.py` reescrito para a regra nova;
+  - `RedePage.test.tsx`.
+- **`not_run`**: o 03 e o 06 saindo de `parcial` no real, depois do deploy.
+- **Junto (achado do Chrome no deploy 8, commit próprio).** Em Configuração › Aparelhos e contas, o android-06
+  aparecia "diverge · …sem IA (selector:id=action_bar_title|text=={username})" com o aparelho conectado.
+  - Causa: o executor gravava em `account_evidence` o texto da prova quando o rótulo aparecia na pós-condição, e a
+    prova pela árvore local é um seletor cru, sem o nome.
+  - Agora `evidencia_da_conta` grava a frase que nomeia a conta (a prova, se a nomeia; senão a pós-condição).
+  - O painel diz "conta diferente do rótulo" com o que fazer no título, e tira o seletor cru das evidências antigas.
+  - Prova `simulated`: `tests/test_evidencia_da_conta.py` (3) e `InstancesSection.test.tsx` (2).
+## 2026-10-03 — 31.17: envio do Jev aberto no código para a sombra C0–C1 do 31.10; o aviso diz o decisor e só afirma envio de verdade (branch feat/31-17-sombra-curador)
+
+- `JEV_RUNTIME_SEND_APPROVED = True` (ADR-069 item 15). De fábrica nada sai: `enabled: false` e decisor `nulo`.
+- `config.example.yaml`:
+  - `consumidores: {curador: shadow, intencao: "off"}` e `classes_permitidas: [C0, C1]`, ainda com `enabled: false`;
+  - o central liga no deploy 9 (`enabled: true`, `decisor: jev`);
+  - o `"off"` entre aspas, porque sem elas o YAML lê um booleano e a configuração não carrega.
+- `GET /api/ai`:
+  - o aviso diz "Decisor na porta: nulo|jev";
+  - "Envio ATIVO" só com código aberto, decisor `jev`, consumidor em `shadow` ou `on` e chave configurada;
+  - senão, "Nada sai agora: …" com o motivo;
+  - o bloco `decisao_fechada` ganha `sending`.
+- Prova `simulated`:
+  - `tests/test_decisao_fechada_payload.py`: os bytes que o `DecisorJev` posta são só `{state, model, questions}`. Na
+    intenção vão o comando redigido, o app e as opções; no curador, só os campos C0. Nunca `run_id`, `ref`, o original,
+    os destinos, os ids crus nem o hash do dossiê.
+  - Os testes do interruptor fechado o fecham por `monkeypatch`.
+  - O transporte é `httpx.MockTransport`, e a chamada real ao Jev é `not_run` (deploy 9, 31.10).
+
+## 2026-10-03 — Receitas: a chave genérica (RA-20 fatia B, item 29.40; branch feat/ra-20-chave-generica)
+
+- A receita da etapa julgada pelo modelo, sem efeito e sem `commit_guard`, cujo caminho não traz o literal do valor,
+  mora na chave genérica (sem o texto da pós-condição). Assim casa com outra redação e outro valor.
+  - `hash_generico`, `eh_generica` e a consulta em duas chaves no `RecipeStore.find` (a específica vence).
+  - Os consumidores leem as duas chaves: capacidades, aproveitamento e o `_caminho_ja_aberto` do scheduler.
+- Backfill não destrutivo: `scripts/ra20b-receitas-genericas.py` (ensaio por padrão; `--aplicar` com backup e o OK da
+  Android e da orquestradora).
+  - Ensaio na cópia do central, depois da regra do título (da0de919): 9 candidatas semeadas em 9 chaves; 6 específicas.
+  - Nenhuma receita atual muda.
+- Prova:
+  - `simulated`: `test_receita_chave_generica.py` (24 testes), com o classificador nas ações reais das receitas 25, 73,
+    38 e 40 (@ fictícios), a paridade linha × etapa, a ordem da consulta, a troca entre chaves, o passe e uma execução
+    de ponta a ponta: outra redação e outro valor reproduzem pela genérica, com 0 decisões de IA;
+  - o teste de ponta a ponta FALHA com a consulta genérica desligada;
+  - `test_equivalencia_fluxo_skill.py` passa a esperar a chave genérica.
+  - `real`: `not_run`. O efeito aparece depois do backfill e de `recipes_promote_after` concordâncias.
+
+## 2026-10-03 — Aprendizado: o pedido de pessoa fura a fila do curador e o parecer grava o custo (30.30; branch fix/30-30-pedido-fura-a-fila)
+
+- O pedido de revisão (`POST /api/aprendizado/{kind}/{ref}/revisao`) ganha a prioridade `PEDIDO_DA_PESSOA` (0).
+  - Vai na frente de todos os itens, também no pico, sob o teto da hora e o orçamento da janela.
+  - A classe A segue só com sobra.
+  - Antes ele só pulava o cooldown. Em 03/10, 12 pedidos esperavam atrás de ~40 itens, a ~6 por volta; o laço das 08:29Z
+    revisou 6 outros e adiou 36 por `gasto_da_hora`.
+- Deploy 8, só para drenar o acúmulo: `aprendizado.curador.alfa: 0.7` e `aprendizado.curador.k: 6` no `config.yaml` do
+  central (decisão da orquestradora). Dá B ≈ US$ 7,3 e teto ≈ US$ 0,52 por hora; 2 voltas drenam ~40 itens.
+  - Com G_W = US$ 11,48, o padrão dava B = 1,15 e teto ≈ US$ 0,08 por hora. O `k·n·c̄` (≈ 1,8) travava, mesmo subindo só o alfa.
+  - VOLTA a 0.10 e 1.5 no deploy 9.
+- `learning_reviews.usd` passa a gravar o custo que o hub mediu. Antes saía 0.0: nas 6 revisões das 08:29Z, contra
+  +US$ 0,1182 no `/api/usage`.
+  - A resposta simulada grava 0.
+  - O orçamento do curador passa de estimado pelo dossiê a medido (c̄, mediana e gasto da janela).
+  - A pendência da rubrica (`design/hub-de-ia-fora-de-execucao.md`) caiu por decisão da orquestradora: nada soma essa
+    coluna no `/api/usage` nem no teto do dia.
+- O `c_max` (recusa por custo) passa a comparar estimativa com estimativa: `m_cmax × mediana` das estimativas da volta.
+  O custo medido entra só no c̄.
+  - A estimativa usa o preço do modelo mais caro da tabela. Com o custo medido gravado e o curador num modelo barato (o
+    Haiku da D-1), o c_max cairia para ~0,012 e toda estimativa (~0,014 nas 21 revisões reais) viraria `recusada:custo`,
+    em silêncio.
+  - Com o deploy 8, o curador roda no Sonnet 5.5 (papel `plan`). O c_max medido seria ~0,023 e não recusaria hoje, mas
+    o risco ficava armado.
+  - O B do deploy 9 (alfa 0.10, k 1.5, c̄ medido ~0,009) volta a ~6 itens por volta.
+  - Prova `simulated`: `test_learning_curador.py::test_modelo_barato_nao_recusa_as_estimativas_em_silencio`, que FALHA
+    com a regra antiga (conferido).
+- Prova `simulated`:
+  - `test_learning_curador.py::test_pedido_da_pessoa_vai_na_frente_menos_na_classe_a_e_sob_o_teto`;
+  - `test_learning_pareceres.py::test_o_pedido_da_pessoa_fura_a_fila`: com o teto deixando UMA revisão na volta, ela é a
+    do pedido (classe B), e não a da classe C.
+
+## 2026-10-03 — O total do custo de IA bate com as contas, e o needs_input da habilidade fala português (I1 e I4 da validação do deploy 7; branch feat/ux-deploy7-jev)
+
+- I1, `GET /api/usage`: o total e os grupos contam o custo declarado (a imagem da persona), na mesma base de `by_account` e
+  `by_origin`. No central, as contas somavam US$ 0,27 a mais que o total.
+- I1, Diagnóstico › Custo de IA:
+  - "prazo da etapa esgotado" e "saldo da conta abaixo do bloqueio" saem com rótulo;
+  - entra a linha "Por origem" (RA-10).
+- I4: a habilidade que casou e não compilou vira `needs_input` com o nome dela e o motivo em português ("faltam valores
+  para os parâmetros do plano"). O id e o código ficam no evento; o código também num campo próprio do `run.updated`,
+  `issue_codes` (a suíte 8 pegou o teste da fatia que lia o código no texto).
+- Prova `simulated`:
+  - `tests/test_uso_total_com_custo_declarado.py`, `tests/test_needs_input_da_habilidade.py` e `usage.test.ts`;
+  - o cartão de custo percorrido no navegador contra um backend simulado.
+
+## 2026-10-03 — Configuração › IA mostra o esquema do plano, os perfis e o esforço por função (I2 da validação do deploy 7; branch feat/ux-deploy7-jev)
+
+- `GET /api/ai` ganha `esquema_do_plano`, `profiles[]` e `leitura_visual` (adendo v0.87).
+- Configuração › IA:
+  - a Situação ganha "Esquema do plano", "Perfis de IA" e "Leitura visual";
+  - o esforço sai em português;
+  - a tabela Por função ganha "Esforço" e "Raciocínio";
+  - a linha `leitura` vira "Ler a tela (leitura visual)";
+  - um cartão novo, "Perfis de IA".
+- O aviso ("Modelos por função — plano: …") passa a dizer o modelo que cada função usa de fato, a mesma resolução de
+  `roles[]` e `models`. Na validação do deploy 8 ele dizia `claude-opus-5-5` no plano, que a instância do ator lê do
+  `.env`, enquanto a Situação e a tabela diziam o `claude-sonnet-5-5` de `ai.roles.plan`. A frase sai de
+  `provider.frase_dos_modelos`, e o hub a refaz com `ai.roles`.
+- Prova `simulated`:
+  - `tests/test_aba_ia_esquema_e_perfis.py` (inclusive `test_o_aviso_diz_os_modelos_que_as_funcoes_usam_de_fato`),
+    `aiLabels.test.ts` e `AiSection.test.tsx`;
+  - tela percorrida no navegador contra um backend simulado do worktree.
+## 2026-10-03 — Correção do 31.9, rodada G (NO-GO da fase 2 da rodada F em 7c8f58c8): o usuário como @handle ou e-mail, o catálogo só no destino e a preposição só com faixa (branch fix/31-9-rodada-e)
+
+- G-1: "entre com @zilda.prado e girassol" e "entre com lucas@outlook.com e girassol" recusam como par; o "@" solto não é
+  destino.
+- G-2:
+  - soletração com vírgula, barra e pelo nome das letras;
+  - "log-in with";
+  - "entre" preposição só com faixa ou "os"/"as";
+  - eufemismos novos;
+  - "usuário X, Y." sem verbo.
+- G-3: e-mail com hífen, parêntese, "lá", "-at-", "_at_" e "-dot-"; provedores fastmail, laposte, web.de, mail.ru e me.com.
+- G-4: o nome do catálogo vale inteiro e só na posição de destino, nunca na de valor (a persona "Girassol" não isenta a
+  senha). "Entre com o Lucas e curta" volta a pular a sombra.
+- G-5: "é entre 8 e 12" e "é entre os melhores" passam.
+- G-6: a palavra C7 sem valor continua recusando.
+- Residual de outro idioma: sueco, catalão, "the usual is", e algarismos ditados em alemão, italiano e francês.
+- ADR-069, item 14.
+- Catraca do ADR-052: os nomes dos apps saem das listas do filtro e vêm do `app.yaml` (nome, rótulo e o campo novo
+  `apelidos`; o Instagram declara `[insta]`). Os serviços de terceiros sem pacote ficam numa lista à parte.
+- Prova `simulated`:
+  - `tests/test_decisao_fechada_reverificacao_g.py`;
+  - corpus G da orquestradora (492 casos, com a persona "Girassol"): ok 488, 0 vazamentos de portão, 0 C7 mascarada, 0
+    passagens indevidas;
+  - 122 comandos reais: 1 recusa, a mesma.
+- Suíte 9: o nome dos apps chega ao filtro por GANCHO, sem import tardio. A fila registra
+  `registry.nomes_e_apelidos` na subida; sem registro, nenhum nome. O import dentro de `nomes_dos_apps` furava
+  `test_arquitetura::test_imports_tardios_so_diminuem`. Prova `simulated`: o teste de arquitetura, os do filtro (B a G)
+  e o harness da orquestradora, com 0 diferenças contra 2560756d nos 492 casos.
+
+## 2026-10-03 — Correção do 31.9, rodada F (NO-GO da fase 2 da rodada E em db45d4fd): barrar pela intenção de entrar, "com X" pelo catálogo real (branch fix/31-9-rodada-e)
+
+- F-A: o verbo de entrar sem objeto de navegação faz a sombra pular o comando (`c7_intencao_de_entrar`), no original.
+- F-B: os nomes do catálogo de destinos real chegam ao filtro (`RunService.dados_da_sombra`, 5º item;
+  `intencao.nomes_de_destino`). O "com X" é destino só quando X é do catálogo ou foi tirado pelo extrator.
+- "entre" preposição ("as fotos postadas entre 10/05 e 12/05") deixa de ser verbo.
+- F-C a F-H:
+  - campo de usuário mais largo;
+  - diminutivos;
+  - pergunta de segurança;
+  - letras soltas;
+  - nome + provedor sem preposição e "point";
+  - CPF nu.
+- ADR-069, item 13.
+- Prova `simulated`:
+  - `tests/test_decisao_fechada_reverificacao_f.py`;
+  - corpus F da orquestradora (427 casos, catálogo stub e real): 0 vazamentos de portão, 0 C7 mascarada, 0 passagens
+    indevidas;
+  - 122 comandos reais: 1 recusa, a mesma.
+
+## 2026-10-03 — Correção do 31.9, rodada E (NO-GO em 963f9d7b): C7 pela intenção de entrar, "senha" em outras línguas e e-mail em peças em português (branch fix/31-9-rodada-e)
+
+- C7 sem palavra-chave:
+  - traduções de "senha" em escrita latina e eufemismos novos;
+  - a regra estrutural `c7_login_valor` ("entre com girassol", "pra entrar: girassol");
+  - a regra estrutural `c7_par_credencial` ("usuário lucas e girassol, entra", "entre com a conta Lucas / girassol").
+- A C7 é conferida também no comando original: `RunService.dados_da_sombra`. `dados_da_intencao` segue igual.
+- E-mail ditado em peças em português recusa.
+- A máscara do e-mail engole a parte local inteira, o `mailto:`, o `?subject=` e o domínio de topo solto. A do telefone
+  engole o `tel:`.
+- Prova `simulated`:
+  - `tests/test_decisao_fechada_reverificacao_e.py`;
+  - corpus E da orquestradora (360 casos): 0 vazamentos de C7, 0 C7 mascarada, 0 passagens indevidas;
+  - 92 comandos reais: 1 recusa, a mesma.
+## 2026-10-03 — 29.47: os processos filhos não herdam mais os segredos do backend (branch `feat/29-47-ambiente-dos-filhos`)
+
+- **Antes.** O ambiente dos filhos era o do backend inteiro (`dict(os.environ)`), com os segredos do `.env`:
+  - `SdkTools.env()`: adb, emulador, avdmanager e Appium;
+  - o sing-box da rede (`rede_servidor.ProcessosReais.lancar`), processo longo de terceiro;
+  - as sondas do Diagnóstico (`diagnostics._run`).
+
+  Na rodada por adição do K-078, o qemu tinha `TYPESAFE_API_KEY` (só o nome foi lido).
+- **Agora.** `devices/sdk.py` ganha `ambiente_dos_filhos()`, uma lista de PERMISSÃO usada pelos três caminhos:
+  - passam as variáveis do sistema e do perfil, `JAVA_HOME`, `ANDROID_*` e `ADB_*`;
+  - a 2ª trava recusa `TYPESAFE_*`, `OPENAI_*`, `ANTHROPIC_*`, `GEMINI_*`, `FARM_*` e nome com cara de segredo, mesmo
+    que um prefixo deixasse passar;
+  - a decisão é pelo nome, sem olhar o valor. O agente do notebook recebe o mesmo, porque `devices/sdk.py` está no
+    manifesto.
+- **Prova `simulated`**: `tests/test_ambiente_dos_filhos.py` (5).
+  - Os filhos são reais (o Python do venv imprime os NOMES do próprio ambiente), com variáveis sentinela de nome de
+    segredo no pai.
+  - Os 3 testes de filho falham com o código anterior.
+- **Fumaça local** (03/10, central, sessão 1, código do branch): com o ambiente filtrado (38 de 98 nomes),
+  `adb version`, `emulator -accel-check` e `avdmanager list avd` dão rc 0, e o Appium 3.7.0 também (`--version` e
+  `driver list --installed`).
+- **`not_run`**: aparelho ligando e Appium subindo pelo backend com o código novo, depois do deploy.
 ## 2026-10-03 — Aprendizado: métricas e lista de revisões (30.8; branch feat/30-8-metricas)
 
 - `GET /api/aprendizado/metricas?app=&dias=` (adendo v0.89): um bloco por linha da tabela do §10 do desenho.

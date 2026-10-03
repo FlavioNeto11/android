@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-310 de 355 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+315 de 362 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -243,6 +243,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 25.10 | implemented | real |  | — | 29/09, central: sing-box 1.14.2 (io.nekohasekai.sfa-739-5535a350073a) e WireGuard 1.0.20260315 instalados pela IDE na Play Store do android-11 com a conta do dono (autorização P3), importados por store/sync (c-202609291… |  |
 | 25.11 | pendente | — | — | — |  |  |
 | 25.12 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/25-12-tunel-morto @22467c70 (A 59587920: túnel morto age — sonda sem IP em trafego_verificado com política exigida religa o cliente VPN até 2 vezes, a falha/trava do Start da interface conta como tentativa com teto… |  |
+| 25.13 | pendente | — | — | — |  |  |
 | 26.1 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §4 (cerca de 50 fontes primárias, acesso em 29/09/2026); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09) |  |
 | 26.2 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §6 (modelo: pedido, gatilho, ocorrência, execução; estados; autonomia em três graus); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09) |  |
 | 26.3 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §7 (três alternativas; recomendação: laço próprio no backend com chave única e trava de líder no relógio do banco); pesquisa e desenho (sem código de produto); docs-check 0 erros; cla… |  |
@@ -308,9 +309,13 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.37 | pendente | — | — | — |  |  |
 | 29.38 | pendente | — | — | — |  |  |
 | 29.39 | pendente | — | — | — |  |  |
-| 29.40 | partial | simulated | claude-opus-5-5 | — | Fatia A: PR #131 (feat/ra-20-causa-do-ausente @ ffb2d2f0) na main pelo merge 752dca53 da suíte 7 (123650cc). Causa do ausente medida; herança da receita como candidata (RecipeStore(herdar=), só com recipes_heranca e pro… |  |
+| 29.40 | partial | simulated | opus (sessão Android, integradora) | — | Fatia A: PR #131 (feat/ra-20-causa-do-ausente @ ffb2d2f0) na main pelo merge 752dca53 da suíte 7 (123650cc). Causa do ausente medida; herança da receita como candidata (RecipeStore(herdar=), só com recipes_heranca e pro… |  |
 | 29.41 | pendente | — | — | — |  |  |
 | 29.42 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/29-42-required-apps @295c3989: FlowStore.list devolve required_apps na ordem em que o plano gravado usa os apps (apps_na_ordem_do_plano em modules/learning/domain/livro.py, a mesma função do dossiê do curador; sem… |  |
+| 29.46 | implemented | real | opus (sessão Android, integradora) | — | Braços por flag (real, 03/10, 10:10–10:34Z, central WIN-7S2UASNLFOP, backend 57d82a5a, emulador 37.1.11; android-19 temporário pela API, lançado pelo backend na sessão 0; config.yaml trocado por braço com backup, restau… |  |
+| 29.47 | implemented | real | opus (sessão Android) | — | feat/29-47-ambiente-dos-filhos @520e1af2 (4e998ff9 código: sdk.ambiente_dos_filhos por lista de permissão em SdkTools.env(), rede_servidor.ProcessosReais.lancar e diagnostics._run; 520e1af2 docs: operacao.md §11, linha… |  |
+| 29.48 | pendente | — | — | — |  |  |
+| 29.44 | implemented | real | opus (sessão Android) | — | feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a med… |  |
 | 29.45 | implemented | simulated | opus (sessão Android) | — | feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entr… |  |
 | 29.43 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/caminho-rapido-1 @60e7962e: LT-1 (atalho de entrada sem o ator, ATALHO_ANTES_DO_ATOR, nunca em etapa com efeito, driven_by='sem_ator'), LT-2 (expect_done em etapa julgada → _verify(uma_rodada=True), nunca em etapa… |  |
 | 30.1 | implemented | simulated | sonnet/opus (worker-impl, worker-arquitetura) + coordenação | — | PR #76 merge 6e103d73: GET /api/aprendizado/apps e /apps/{pacote} (application/apps.py, domain/camada.py, infrastructure/declarados.py), adendo v0.47; prova simulated; not_run no central (nada implantado) |  |
@@ -342,6 +347,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.27 | implemented | simulated | claude-opus-5-5 | — | RA-24: PR #138 (feat/ra-24-versao-e-prova-do-conhecimento @ a8b5fe9d) na main pelo merge 6ad6c5f3 da suíte 7 (123650cc). VERSOES_DE_TELAS e VERSOES_DE_SESSAO conferidas (booleano recusado); integrations/app_declarado/pr… |  |
 | 30.28 | implemented | simulated | claude-opus-5-5 | — | RA-19. Fatia A: PR #139 (feat/ra-19-visao-do-livro @ 725aeaf2) na main pelo merge b1e0be7d da suíte 7 (123650cc): o livro por rótulo Produto/QA/Todos (apps.category='qa'), Produto por padrão, com os ocultos; adendo v0.8… |  |
 | 30.29 | implemented | simulated | claude-opus-5-5 | — | PR #142 (feat/30-29-fluxos-com-variaveis-de-execucao @ 0f6f99c7) na main pelo merge 4f5a4f66 da suíte 8 (83f9f606). bind_template_parameters (skills/domain/matching.py) com a regra dos RESERVED do LT-3 (instance_id, run… |  |
+| 30.30 | implemented | simulated | opus (sessão Android, integradora) | — | PR #144 @58609226 (bb35ca16: prioridade PEDIDO_DA_PESSOA fura a fila do curador, também no pico, sob o teto; fa921c02: learning_reviews.usd grava o custo medido do parecer; 82dac0cb: o c_max compara estimativa com estim… |  |
 | 31.1 | implemented | simulated | sessao | — | Commit b5a40c98 (na main desde o PR #110, sessao jev, 02/10/2026): trava de 255 opcoes e opcao nenhuma no adaptador do Jev (choice). backend/tests/test_context_retrieval_semantic.py com provedor falso. Chamada real: not… |  |
 | 31.2 | implemented | simulated | sessao | — | PR #112 (merge b5baf3e5 na main, commits 89a92b03 + a6cfa0fd, sessao jev, 02/10/2026): migracao 073 (ai_calls.origem e ref, TEXT sem CHECK), Usage.origem, filtro por origem no gasto (costs.spent_usd). backend/tests/test… |  |
 | 31.3 | implemented | not_run | sessao | — | Item de decisao (texto do ADR): ADR-069 escrito e aprovado pelo dono (02/10/2026 ~21:35Z, 'sim para todos' no chat da orquestradora), PR #102, merge fd59fbd7. Emenda o ADR-063; D-J1 (porta unica, constantes fechadas, Te… |  |
@@ -350,19 +356,20 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.6 | implemented | simulated | sessao | — | PR #112 (merge b5baf3e5 na main, commit a6cfa0fd, sessao jev, 02/10/2026): rubrica unica de gasto com fatias por origem, fatia_jev (ai.limits.jev_max_usd_per_day, US$ 0,50/dia, D-J3) e AIError.motivo fechado (P6). backe… |  |
 | 31.7 | implemented | not_run | sessao | — | Golden set e limiares PRE-REGISTRADOS em docs/design/jev-golden-set.md (commit ae2e5370, 02/10/2026 UTC, branch feat/31-8-curador-sombra; data corrigida em 59ac9706), com a frente Aprendizado (mapeamento de rotulos). It… |  |
 | 31.8 | partial | simulated | sessao | — | Branch feat/31-8-curador-sombra (b18476e1, ae2e5370, 59ac9706) + ligacao no AppState (5e8bb8a5: CuradorComTriagemEmSombra embrulha o CuradorDoHub; simulado por resposta), na main pelo merge 8413ddc9 da integ jev/integ-s… | Revisao adversarial da suite 5: I1 (stop() nao espera o pool sombra-curador antes do db.close) e I2 (decisao real casada = parecer bruto, mesmo invalido ou sim… |
-| 31.9 | partial | simulated | sessao | — | Branch feat/31-9-intencao-sombra (e1f7ee53, 1d867449, 106ecd67, a8072fb9, 8e7315ba, 6bb5261e, cd74d897), na main pelo merge 8413ddc9 da integ jev/integ-suite-5 @ 1cb9bb4a (suite 5b bvqmppz9x: a catraca do ADR-052 passou… | Correcao de privacidade antes de qualquer R2/C3: itens 1-6 da reverificacao (.claude/handoffs/reverificacao-31-9.md: vocabulario do catalogo com @handles, opco… |
+| 31.9 | partial | simulated | opus (sessão Android, integradora) | — | Branch feat/31-9-intencao-sombra (e1f7ee53, 1d867449, 106ecd67, a8072fb9, 8e7315ba, 6bb5261e, cd74d897), na main pelo merge 8413ddc9 da integ jev/integ-suite-5 @ 1cb9bb4a (suite 5b bvqmppz9x: a catraca do ADR-052 passou… | Rodada H (fix/31-9-rodada-h, código @54f71853) na suíte 10. Correcao de privacidade antes de qualquer R2/C3: itens 1-6 da reverificacao (.claude/handoffs/rever… |
 | 31.10 | pendente | — | — | — |  |  |
 | 31.11 | pendente | — | — | — |  |  |
 | 31.12 | pendente | — | — | — |  |  |
 | 31.13 | pendente | — | — | — |  |  |
 | 31.14 | implemented | simulated | claude-opus-5-5 (sessão Jev) | — | feat/31-14-decisor-jev @ 555543fd (a9166bcb o item, 555543fd a revisão), na main pelo merge 712aaea5 da suíte 7 (123650cc). DecisorJev real: só choice vai ao fio; gasto conferido ANTES do POST (RoutingProvider.conferir_… |  |
 | 31.15 | implemented | simulated | claude-opus-5-5 (sessão Jev) | — | feat/ra-10-observabilidade @ f94022c3 (88936fea, 935bb3f5, 57dd17b8, 483635fe, f94022c3), na main pela suíte 7 (123650cc). Migração 080: verdict, escalate, motivo e image_reason em ai_calls, em vocabulário fechado no có… |  |
+| 31.17 | implemented | simulated | opus (sessão Android, integradora) | — | feat/31-17-sombra-curador @c645d4e9 (ede4a82e: privacidade.JEV_RUNTIME_SEND_APPROVED = True, ADR-069 item 15; de fábrica nada sai: enabled false e decisor nulo; o aviso diz o decisor e só afirma envio de verdade; os tes… |  |
 | T.1 | implemented | not_run | opus | ok | docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, rea… | Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de produca… |
 | T.2 | partial | simulated | sessao | — | backend/app/devices/manager.py:1558 (desvio io_factory de stop_instance removido; caminho real com backend.save_snapshot em :1603 e process_alive em :852 exercitado pelo aparelho falso); manager.py:1345-1368 (_boot fals… | Continuam de fora do achado #165: o veredito do snapshot durante o boot (_snapshot_verdict) sem teste proprio; worker/executor.py nao unificado com EmulatorBac… |
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (45): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.40, 29.41, 30.18, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
+Pendentes (47): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 25.13, 27.2, 27.4, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.40, 29.41, 29.48, 30.18, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

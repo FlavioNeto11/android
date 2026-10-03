@@ -19,7 +19,7 @@ import json
 
 from app.automation.hierarchy import parse_hierarchy
 from app.taskqueue.executor import _safe_target
-from app.taskqueue.recipes import RecipeDiverged, Replayer, build_selectors, distill, filhos_rotulados
+from app.taskqueue.recipes import RecipeDiverged, Replayer, build_selectors, distill, eh_generica, filhos_rotulados
 
 #: Duas linhas de conversa: o contêiner clicável não tem identidade; dentro, o nome (não clicável) e, na 1ª, um botão
 #: "Mais" clicável (que faria outra coisa).
@@ -108,7 +108,8 @@ def test_hit_test_e_janela_do_dump_deixam_de_fora_sobreposicao_e_outra_camada() 
 
 
 def test_rotulo_que_muda_com_o_estado_ou_arroba_literal_nao_vira_seletor() -> None:
-    for rotulo in ("Active now", "2h", "Following", "10:42", "Yesterday", "@lucas"):
+    for rotulo in ("Active now", "2h", "Following", "10:42", "Yesterday", "@lucas", "por @lucas", "Foto de @lucas",
+                   "Online", "offline", "typing…", "digitando...", "New", "Nova"):
         tree = parse_hierarchy(XML.replace('text="QA-001"', f'text="{rotulo}"'))
         alvo = _safe_target(_linha(tree), tree) or {}
         assert alvo.get("filhos"), rotulo                                    # gravado (a gravacao nao conhece as variaveis)
@@ -117,6 +118,23 @@ def test_rotulo_que_muda_com_o_estado_ou_arroba_literal_nao_vira_seletor() -> No
     tree = parse_hierarchy(XML.replace('text="QA-001"', 'text="@qa001"'))
     sels = build_selectors(_safe_target(_linha(tree), tree) or {}, {"usuario": "@qa001"})
     assert sels and sels[0]["text"] == "{usuario}"
+
+
+def test_filho_com_o_literal_do_valor_da_etapa_deixa_a_receita_na_chave_especifica() -> None:
+    """Com a chave genérica (RA-20 B): o seletor `via: filho` mora em `selectors`, e `_literais` o lê como os outros. O
+    filho cujo literal é o valor da etapa ("nasa", sem parâmetro que o templatize) deixa a receita ESPECÍFICA; o mesmo
+    filho templatizado é genérico (revisão da Android)."""
+    tree = parse_hierarchy(XML.replace('text="QA-001"', 'text="nasa"'))
+    alvo = _safe_target(_linha(tree), tree) or {}
+    acoes, motivo = distill([_linha_do_toque(alvo)], {"instance_id": "android-01", "run_id": "r-1"})  # type: ignore[list-item]
+    assert motivo == "ok" and acoes is not None
+    assert acoes[0]["selectors"][0]["via"] == "filho" and acoes[0]["selectors"][0]["text"] == "nasa"
+    assert eh_generica(acoes, "o perfil de nasa aberto", {"username": "nasa"}) is False
+    assert eh_generica(acoes, "o perfil aberto", None, titulo="Abrir o perfil de nasa") is False
+    templatizadas, _ = distill([_linha_do_toque(alvo)], {"username": "nasa", "instance_id": "android-01",  # type: ignore[list-item]
+                                                         "run_id": "r-1"})
+    assert templatizadas is not None and templatizadas[0]["selectors"][0]["text"] == "{username}"
+    assert eh_generica(templatizadas, "o perfil de {username} aberto", {"username": "nasa"}) is True
 
 
 def test_na_reproducao_um_clicavel_por_cima_do_rotulo_faz_divergir_antes_do_toque() -> None:

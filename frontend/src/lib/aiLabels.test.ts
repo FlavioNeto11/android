@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { aiFeatureRows, aiModelRows, aiRoleLabel, flowsLabel, imagePolicyLabel, recipesModeLabel } from './aiLabels';
+import {
+  aiFeatureRows, aiModelRows, aiProfileRows, aiRoleLabel, aiRoleRows, effortLabel, esquemaDoPlanoLabel, flowsLabel, hubRoleLabel,
+  imagePolicyLabel, leituraVisualLabel, recipesModeLabel, thinkingLabel,
+} from './aiLabels';
 
 describe('chip da IA — modelos por função', () => {
   it('lista Planejar / Decidir / Verificar / Escalonamento a partir de AiStatus.models', () => {
@@ -50,5 +53,56 @@ describe('receitas / fluxos / imagens', () => {
   it('sem nenhuma das fontes (backend pré-v0.2) não inventa estado', () => {
     expect(aiFeatureRows({})).toEqual([]);
     expect(aiFeatureRows({ recipes: null, flows: null, image_policy: null }, null)).toEqual([]);
+  });
+});
+
+describe('I2 da validação do deploy 7 (v0.87): a aba IA em português', () => {
+  it('esforço e raciocínio traduzidos; valor fora do contrato passa cru; vazio é —', () => {
+    expect(effortLabel('low')).toBe('baixo');
+    expect(effortLabel('xhigh')).toBe('muito alto');
+    expect(effortLabel('turbo')).toBe('turbo');
+    expect(effortLabel(null)).toBe('—');
+    expect(thinkingLabel('adaptive')).toBe('adaptativo');
+    expect(thinkingLabel('nao_declarado')).toBe('o modelo não declara');
+    expect(thinkingLabel(null)).toBe('—');
+  });
+
+  it('o esquema do plano e a função de leitura têm nome', () => {
+    expect(esquemaDoPlanoLabel('curto')).toContain('curto');
+    expect(esquemaDoPlanoLabel(undefined)).toBe('—');
+    expect(hubRoleLabel('leitura')).toBe('Ler a tela (leitura visual)');
+  });
+
+  it('a leitura visual diz ligada com o leitor, desligada, ou nada em backend anterior', () => {
+    const leitor = {
+      role: 'leitura', provider: 'gemini', kind: 'openai', model: 'gemini-3.1-flash-lite', endpoint: 'g', sends_data_externally: true,
+      configured: true, priced: true, vision: true, tools: true, refusal_fallback: false,
+    };
+    expect(leituraVisualLabel({ leitura_visual: true, roles: [leitor] })).toBe('ligada · gemini-3.1-flash-lite (gemini)');
+    expect(leituraVisualLabel({ leitura_visual: true, roles: [] })).toContain('sem leitor');
+    expect(leituraVisualLabel({ leitura_visual: false, roles: [leitor] })).toBe('desligada');
+    expect(leituraVisualLabel({ roles: [leitor] })).toBeNull();
+  });
+
+  it('a linha da função leva esforço e raciocínio', () => {
+    const [linha] = aiRoleRows({ roles: [{
+      role: 'plan', provider: 'anthropic', kind: 'anthropic', model: 'claude-opus-5-5', endpoint: 'api.anthropic.com',
+      sends_data_externally: true, configured: true, priced: true, vision: true, tools: true, refusal_fallback: false,
+      effort: 'low', thinking: 'adaptive',
+    }] });
+    expect([linha?.effort, linha?.thinking]).toEqual(['baixo', 'adaptativo']);
+  });
+
+  it('perfis: o que muda, os ajustes, o canário e se os dados saem', () => {
+    const [sonnet, dieta] = aiProfileRows({ profiles: [
+      { name: 'planejador-sonnet', note: 'plano no Sonnet', canary_fraction: 0.25, screenshot_max_side: null, rich_tree_min_elements: null,
+        roles: [{ role: 'plan', provider: 'anthropic', model: 'claude-sonnet-5-5', effort: 'low', sends_data_externally: true }] },
+      { name: 'img-768', note: '', canary_fraction: null, screenshot_max_side: 768, rich_tree_min_elements: 0, roles: [] },
+    ] });
+    expect(sonnet?.changes).toEqual(['Planejar: claude-sonnet-5-5 (anthropic, esforço baixo)']);
+    expect([sonnet?.canary, sonnet?.external]).toEqual(['25 % das execuções sem perfil', true]);
+    expect(dieta?.adjustments).toEqual(['imagem até 768 px', 'árvore rica a partir de 0 elementos']);
+    expect([dieta?.canary, dieta?.external]).toEqual([null, false]);
+    expect(aiProfileRows({})).toEqual([]);
   });
 });

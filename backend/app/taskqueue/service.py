@@ -17,6 +17,7 @@ from ..modules.execution.application.alvos import (AlvoPedido, DicasDoTexto, Mun
 from ..modules.execution.application.resources import ResourceConvergence
 from ..modules.execution.application.target_extractor import (CatalogoDeDestinos, DestinosNoTexto, PersonaNomeavel,
                                                               TargetExtractor)
+from ..modules.applications.infrastructure.registry import nomes_e_apelidos
 from ..modules.execution.domain.plan_report import spec_from_decl
 from ..modules.execution.infrastructure.providers import resource_providers
 from ..modules.identity.application.available_data import common_data, missing_secrets, profile_variables
@@ -28,6 +29,7 @@ from ..models import (RUN_TERMINAL, DistributeSpec, DistributionPick, Distributi
                       StepStatus)
 from ..planning.apps_do_comando import apps_citados, pede_site
 from ..planning.capabilities import CapabilityCatalog, efeito_fora_do_catalogo, load_catalog
+from ..planning.decisao_fechada.entidades import registrar_fonte_dos_apps
 from ..planning.catalog import capabilities_of, session_provider_of
 from ..planning.parsing import apps_do_plano
 from ..planning.provider import AIError, AIProvider, AppContext, MarcaDaChamada, PlanRequest
@@ -44,6 +46,11 @@ from .scheduler import WAKEABLE, Scheduler
 from .sombra_intencao import SombraDaIntencao
 
 log = logging.getLogger("poc.runs")
+
+# O filtro da sombra da intenção conhece os apps da plataforma pelo `app.yaml` (nome, rótulo e apelidos; ADR-052) sem
+# importar a camada de módulos: a fila, que já monta os nomes do catálogo de destinos para a sombra (`dados_da_sombra`),
+# registra a fonte na subida. Inversão de dependência no lugar do import tardio (catraca de `test_arquitetura`, suíte 9).
+registrar_fonte_dos_apps(nomes_e_apelidos)
 
 #: Estados de onde, com o rodízio LIGADO, o aparelho volta ao ar sozinho: os que ele acorda (`WAKEABLE`) mais o
 #: desligamento em voo, que termina num deles. Com o rodízio desligado, nenhum destes volta sem uma pessoa.
@@ -86,6 +93,21 @@ def _onde(o: ObjectiveDTO) -> str:
     if o.hosted_by and o.worker_id and o.hosted_by != o.worker_id:
         partes.append(f"despachado por {o.hosted_by}")
     return " · ".join(partes)
+
+
+#: Os motivos do compilador que têm frase própria para o dono (o resto vai como o compilador escreveu, sem o id).
+_MOTIVO_PARA_O_DONO = (("não dá valor a todos os parâmetros do plano", "faltam valores para os parâmetros do plano"),)
+
+
+def _motivo_para_o_dono(mensagem: str, ref: str) -> str:
+    """A mensagem do compilador sem o id da habilidade na frente (que podia vir repetido) e sem o ponto final."""
+    texto = mensagem.strip()
+    while ref and texto.startswith(ref + ":"):
+        texto = texto[len(ref) + 1:].strip()
+    for trecho, frase in _MOTIVO_PARA_O_DONO:
+        if trecho in texto:
+            return frase
+    return texto.rstrip(".")
 
 
 class RunService:
@@ -859,13 +881,20 @@ class RunService:
         sombra = self.sombra_intencao
         if sombra is None or not sombra.ativo():
             return
-        sombra.agendar(run_id, lambda: self.dados_da_intencao(run_id))
+        sombra.agendar(run_id, lambda: self.dados_da_sombra(run_id))
 
     def dados_da_intencao(self, run_id: str) -> tuple[str, list[str | None], str | None] | None:
+        """Os dados da execução para a intenção: comando sem destinos, personas por aparelho e app (ver `dados_da_sombra`).
+
+        A assinatura é a de sempre: o rótulo de intenção do Aprendizado (30.25) lê a execução por aqui."""
+        dados = self.dados_da_sombra(run_id)
+        return None if dados is None else dados[:3]
+
+    def dados_da_sombra(self, run_id: str) -> tuple[str, list[str | None], str | None, str, tuple[str, ...]] | None:
         """Roda na THREAD da sombra. `None` = não observar: execução sumida, que falhou ou foi cancelada, ou com pergunta.
 
-        Público desde a reverificação B do 31.9 (03/10; era `_dados_da_sombra`): o rótulo de intenção do Aprendizado (30.25)
-        lê a execução por aqui, com a MESMA assinatura, para os dois medirem o mesmo comando sem destinos."""
+        `dados_da_intencao` (público desde a reverificação B do 31.9; o rótulo de intenção do Aprendizado, 30.25, lê a
+        execução por ele) é este sem o 4º item, para os dois medirem o mesmo comando sem destinos."""
         run = self.repo.run_row(run_id)
         if run is None or run["status"] in (RunStatus.failed.value, RunStatus.cancelled.value):
             return None
@@ -875,8 +904,14 @@ class RunService:
         apps = loads(str(run["app_ids"] or "[]"), [])
         # C3 (ADR-069): sem os destinos ANTES do `redact` e da remoção de entidades. A foto já traz o comando sem destinos;
         # os outros caminhos de `_perfis_da_execucao` devolvem o cru, e reaplicar é idempotente.
+        # O 4º item é o comando ORIGINAL (rodada E do 31.9): a C7 é conferida também nele, porque tirar o destino pode partir
+        # o par de usuário e senha. O 5º, os nomes do catálogo de destinos REAL (rodada F, F-B): "entre com o Lucas" é
+        # destino, "entre com a girassol" não. Só a conferência os lê; nada deles vai ao pedido.
+        catalogo = self._catalogo()
+        nomes = tuple(dict.fromkeys([*(n for p in catalogo.personas for n in (*p.nomes, *p.handles)),
+                                     *catalogo.aparelhos]))
         return (self.sem_destinos(comando), [perfis.get(str(i)) for i in loads(str(run["instance_ids"]), [])],
-                str(apps[0]) if apps else None)
+                str(apps[0]) if apps else None, str(run["command"] or ""), nomes)
 
     def resume_planning_after_restart(self) -> None:
         """Retoma o planejamento que EU deixei pela metade — nunca o que outro backend está planejando agora.
@@ -1138,13 +1173,19 @@ class RunService:
                                 message=f"Execução {run_id}: faltam informações — {texto}")
             return
         problemas = [i.as_dict() for i in resolvida.issues]
-        texto = "; ".join(f"{p['code']}: {p['message']}" for p in problemas) or "sem detalhe"
+        # I4 da validação do deploy 7: o texto da execução é para o dono, com o NOME da habilidade e o motivo sem o id
+        # nem o código (`E_PLAN_INVALID: flow:…@1: …` saía cru, duas vezes). Quem desenvolve acha os dois no evento abaixo.
+        motivos = "; ".join(dict.fromkeys(_motivo_para_o_dono(i.message, str(resolvida.ref)) for i in resolvida.issues))
+        nome = f"“{resolvida.name}”" if resolvida.name else "casada"
         repo.bus.emit("log", f"Execução {run_id}: a habilidade {resolvida.ref} casou com o comando e não compilou",
                       level="warn", run_id=run_id, data={"skill": str(resolvida.ref), "issues": problemas})
+        # o código de cada problema vai num campo próprio do `run.updated` (`issue_codes`), não no texto da tela
         repo.set_run_status(run_id, RunStatus.needs_input,
-                            f"A habilidade {resolvida.ref} não compilou para este comando: {texto}", level="warn",
+                            f"A habilidade {nome} não serve para este comando: {motivos or 'ela não compilou'}. Corrija "
+                            "o comando ou a habilidade.", level="warn",
                             message=f"Execução {run_id}: a habilidade {resolvida.ref} não compilou — corrija o comando "
-                                    "ou a habilidade e tente de novo.")
+                                    "ou a habilidade e tente de novo.",
+                            dados={"issue_codes": list(dict.fromkeys(str(p["code"]) for p in problemas))})
 
     # ------------------------------------------------------------------ recursos declarativos (fase H)
     def _recursos(self) -> ResourceConvergence:
