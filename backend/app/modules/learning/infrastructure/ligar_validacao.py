@@ -12,7 +12,7 @@ from typing import Protocol
 
 from app.config import ValidacaoCfg
 from app.db import Database
-from app.models import RunCreate
+from app.models import Plan, RunCreate
 from app.modules.learning.application.curador import CuradorPorIA
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.application.validacao import AjustesDaValidacao, ServicoDeValidacao
@@ -126,16 +126,20 @@ class _Veto:
 
 def ligar(servico: LearningService, db: Database, *, fila: Fila, parque: Parque, fluxo_ativo_para: Callable[[str], bool],
           saudavel: Callable[[], bool], config: Callable[[], ValidacaoCfg],
-          precos: Callable[[], dict[str, list[float]]], relogio: Callable[[], datetime]) -> ServicoDeValidacao:
+          precos: Callable[[], dict[str, list[float]]], relogio: Callable[[], datetime],
+          plano_ativo_para: Callable[[str], Plan | None] | None = None) -> ServicoDeValidacao:
     fontes = FontesDaValidacaoSql(db, precos=precos, fluxo_ativo_para=fluxo_ativo_para,
-                                  vetado=_Veto(servico))
+                                  vetado=_Veto(servico), plano_ativo_para=plano_ativo_para)
     triagem = TriagemDeCredencial()
     validacao = ServicoDeValidacao(RegistroDeValidacoesSql(db), fontes,
                                    DespachoDoParque(db, fila, parque, saudavel=saudavel),
                                    triagem=triagem.recusa, ajustes=lambda: ajustes_da_validacao(config()),
                                    relogio=relogio)
     servico.anexar(validacao)
+    # Depois da sombra dos fluxos (`fluxos_d1`, ligada antes): o digest roda os mineradores em ordem, e o pedido fecha
+    # pela evidência que a sombra acabou de gravar. Trocar a ordem fecharia toda validação de fluxo `sem_evidencia`.
     servico.registrar_minerador(validacao)
+    servico.registrar_passo(validacao)               # 30.36: o motivo do pedido segue a evidência que chega depois
     servico.registrar_laco(LacoDaValidacao(validacao))
     curador = servico.extensao(CuradorPorIA)
     if curador is not None:

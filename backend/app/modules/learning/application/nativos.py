@@ -37,7 +37,7 @@ from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, ErroDeAprend
                                                motivo_do_veto)
 from app.modules.learning.domain.evidencia_invalida import Renascimento, reaprendizado, run_invalidada
 from app.modules.learning.domain.livro import escopo_do_fluxo, ref_da_trilha
-from app.modules.learning.domain.promocao import Decisao, Evidencia, Limiares, veredito_de_repeticao
+from app.modules.learning.domain.promocao import Decisao, Evidencia, Limiares, contrarias, veredito_de_repeticao
 from app.modules.learning.domain.vocabulario import LivroKind, Posicao
 from app.modules.skills.domain.matching import bind_template_parameters, extract_parameters
 from app.modules.skills.domain.refs import is_legacy_skill_id
@@ -56,11 +56,17 @@ DISCORDANCIAS_QUE_DESLIGAM = 2
 @dataclass(frozen=True, slots=True)
 class PassoAssinado:
     """Uma etapa reduzida ao que decide se dois planos fazem o mesmo caminho (título e objetivo ficam de fora: o
-    planejador os reescreve a cada vez)."""
+    planejador os reescreve a cada vez).
 
-    acao: str            # a capability do catálogo, ou `etapa:<identidade da etapa-modelo>` na etapa livre
+    30.36: o CAMINHO é a ação, o app e o efeito; a pós-condição (`pos`, `pos_valor`) é a FORMA, que o planejador
+    reescreve a cada plano ("app em primeiro plano" × "lista de conversas visível", medido no P4 de 03/10). Na etapa de
+    efeito externo ela é a prova de entrega e volta a ser caminho."""
+
+    acao: str            # a capability do catálogo, ou `etapa:<identidade da etapa-modelo sem a pós-condição>`
     side_effect: bool
     pos: str             # o tipo da pós-condição
+    pos_valor: str = ""  # na etapa livre, o valor da pós-condição com os nomes no lugar dos valores (na capability, "")
+    app: str | None = None   # o app em que a etapa roda (o dela ou o do plano); `None`: não se sabe, não compara
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,26 +75,61 @@ class AssinaturaDoPlano:
     #: Os parâmetros do plano, sem os reservados (`instance_id`, `run_id`...). No plano-modelo, `{nome}` é o valor que
     #: vem do comando; o resto é valor fixo, que a execução comparada precisa repetir.
     parametros: Mapping[str, str]
+    #: 30.36: os parâmetros que alguma etapa usa para AGIR (objetivo, pré-condição, argumentos e guardas do efeito). O
+    #: que só aparece na pós-condição, ou em lugar nenhum, é forma. `None`: não se sabe, e todos contam.
+    na_acao: frozenset[str] | None = None
 
 
-def comparar(candidato: AssinaturaDoPlano, execucao: AssinaturaDoPlano) -> str | None:
-    """`None` quando a execução fez o plano do candidato; senão, o porquê (sem valor de parâmetro nem texto de tela:
-    vai para `learning_evidence.detail`)."""
+@dataclass(frozen=True, slots=True)
+class Divergencia:
+    """Por que a execução não fez o plano do candidato, sem valor de parâmetro nem texto de tela (vai para
+    `learning_evidence.detail`). `forma` (30.36): o caminho é o mesmo e só a redação mudou — a pós-condição de uma etapa
+    sem efeito externo, ou um parâmetro que nenhuma etapa usa para agir. Não é evidência contra nem a favor do fluxo."""
+
+    detalhe: str
+    forma: bool = False
+
+    def __str__(self) -> str:
+        return self.detalhe
+
+
+def comparar(candidato: AssinaturaDoPlano, execucao: AssinaturaDoPlano) -> Divergencia | None:
+    """`None` quando a execução fez o plano do candidato; senão, o porquê. Qualquer diferença de caminho vence as de
+    forma: só sai `forma` quando nada além dela mudou. O que era o mesmo plano antes do 30.36 continua sendo (a forma só
+    tira linhas do "contra", nunca do "a favor")."""
     if len(candidato.passos) != len(execucao.passos):
-        return f"{len(execucao.passos)} etapa(s) no plano, {len(candidato.passos)} no candidato"
+        return Divergencia(f"{len(execucao.passos)} etapa(s) no plano, {len(candidato.passos)} no candidato")
+    formas: list[str] = []
     for i, (esperado, feito) in enumerate(zip(candidato.passos, execucao.passos), start=1):
-        if esperado.acao != feito.acao:
-            return f"etapa {i}: outra ação"
+        if esperado.acao != feito.acao or (esperado.app and feito.app and esperado.app != feito.app):
+            return Divergencia(f"etapa {i}: outra ação")
         if esperado.side_effect != feito.side_effect:
-            return f"etapa {i}: efeito externo diferente"
-        if esperado.pos != feito.pos:
-            return f"etapa {i}: outra pós-condição ({feito.pos} × {esperado.pos})"
-    if set(candidato.parametros) != set(execucao.parametros):
-        return "outros parâmetros"
+            return Divergencia(f"etapa {i}: efeito externo diferente")
+        if (esperado.pos, esperado.pos_valor) == (feito.pos, feito.pos_valor):
+            continue
+        if esperado.side_effect:                       # a prova de entrega do efeito é caminho, não redação
+            return Divergencia(f"etapa {i}: outra pós-condição ({feito.pos} × {esperado.pos})")
+        formas.append(f"etapa {i}: pós-condição reescrita ({feito.pos} × {esperado.pos})")
+    so_num_lado = set(candidato.parametros) ^ set(execucao.parametros)
+    if so_num_lado:
+        if any(_na_acao(nome, candidato, execucao) for nome in so_num_lado):
+            return Divergencia("outros parâmetros")
+        formas.append("parâmetro fora da ação: " + ", ".join(sorted(so_num_lado)))
     for nome, valor in candidato.parametros.items():
-        if valor != "{" + nome + "}" and execucao.parametros.get(nome) != valor:
-            return f"valor fixo de '{nome}' diferente"
-    return None
+        if nome in so_num_lado or valor == "{" + nome + "}" or execucao.parametros.get(nome) == valor:
+            continue
+        if _na_acao(nome, candidato, execucao):
+            return Divergencia(f"valor fixo de '{nome}' diferente")
+        formas.append(f"valor fixo de '{nome}' fora da ação")
+    if not formas:
+        return None
+    # o detalhe cabe nos 200 caracteres da coluna, com a marca do conteúdo na frente
+    return Divergencia("; ".join(formas[:2]) + (f" (+{len(formas) - 2})" if len(formas) > 2 else ""), forma=True)
+
+
+def _na_acao(nome: str, *assinaturas: AssinaturaDoPlano) -> bool:
+    """O parâmetro serve para agir em algum dos dois planos? Na dúvida (`na_acao` desconhecido), serve."""
+    return any(a.na_acao is None or nome in a.na_acao for a in assinaturas)
 
 
 def marca_do_conteudo(content_hash: str) -> str:
@@ -149,10 +190,21 @@ class ObservacaoDeHabilidade:
 
 
 # ------------------------------------------------------------------ portas
+@dataclass(frozen=True, slots=True)
+class ContraGravado:
+    """Uma linha `against` de fluxo, de uma execução, que ainda não tem a `forma` da mesma origem ao lado (30.36)."""
+
+    item_ref: str
+    origin_ref: str
+    run_id: str
+    detail: str | None
+
+
 class LeituraNativa(Protocol):
     def execucao(self, run_id: str) -> ExecucaoAssentada | None: ...
     def fluxos_em_prova(self) -> list[FluxoEmProva]: ...
     def execucao_de_habilidade(self, run_id: str) -> ExecucaoDeHabilidade | None: ...
+    def contra_de_fluxos(self) -> list[ContraGravado]: ...
 
 
 class PortaDeValidacao(Protocol):
@@ -292,8 +344,11 @@ class SombraDosFluxos:
             return Posicao.FOR, "a execução que o gerou"
         if execucao.assinatura is None or not _casa(fluxo, execucao.comando):
             return None
-        motivo = comparar(fluxo.assinatura, execucao.assinatura)
-        return (Posicao.FOR, "mesmo plano") if motivo is None else (Posicao.AGAINST, motivo)
+        divergencia = comparar(fluxo.assinatura, execucao.assinatura)
+        if divergencia is None:
+            return Posicao.FOR, "mesmo plano"
+        # 30.36: só a forma mudou — fica na trilha, fora do "duas discordâncias desligam" e sem validar o fluxo
+        return (Posicao.FORMA if divergencia.forma else Posicao.AGAINST), str(divergencia)
 
     def _avaliar(self, fluxo: FluxoEmProva, run_id: str) -> None:
         marca = marca_do_conteudo(fluxo.content_hash)
@@ -365,6 +420,59 @@ class SombraDosFluxos:
                 log.exception("aprendizado: decisão na execução %s", run_id)
 
 
+# ------------------------------------------------------------------ a reclassificação da forma (passo da curadoria)
+class ReclassificacaoDaForma:
+    """30.36: o `against` que a sombra gravou ANTES da regra da forma, num fluxo ainda em prova, é recomparado com o
+    comparador de hoje; se só a forma mudou, ganha ao lado a linha `forma` da MESMA origem, que o tira do contra
+    (`promocao.efetivas`). O log só cresce: nada se apaga nem se reescreve. Cada reclassificação vira uma decisão na
+    linha do tempo da execução reclassificada.
+
+    Só o que dá para recomparar com honestidade: o fluxo ainda em prova (candidate ou validated), a linha da encarnação
+    atual (a marca do conteúdo) e a execução ainda legível como comparação (`LeituraNativa.execucao`, a mesma régua do
+    digest). Sem transição: um `against` só não desliga nem segura a promoção (o limite é `DISCORDANCIAS_QUE_DESLIGAM`);
+    quem chega a dois já saiu da prova. Idempotente pelo índice único (item, origem, posição). Nunca chama IA."""
+
+    nome = "forma_dos_fluxos"
+
+    def __init__(self, repo: RepositorioDeAprendizado, leitura: LeituraNativa, *, decidir: Decidir | None = None) -> None:
+        self._repo = repo
+        self._leitura = leitura
+        self._decidir = decidir
+
+    def executar(self, agora: datetime) -> int:
+        contras = self._leitura.contra_de_fluxos()
+        if not contras:
+            return 0
+        em_prova = {ref_da_trilha(LivroKind.FLUXO, f.id): f for f in self._leitura.fluxos_em_prova()}
+        n = 0
+        for c in contras:
+            fluxo = em_prova.get(c.item_ref)
+            marca = marca_do_conteudo(fluxo.content_hash) if fluxo is not None else ""
+            if fluxo is None or not (c.detail or "").startswith(marca):
+                continue                              # saiu da prova, ou a linha é de outra encarnação
+            execucao = self._leitura.execucao(c.run_id)
+            if execucao is None or execucao.assinatura is None:
+                continue
+            divergencia = comparar(fluxo.assinatura, execucao.assinatura)
+            if divergencia is None or not divergencia.forma:
+                continue
+            if not self._repo.registrar_evidencia(NovaEvidencia(
+                    item_ref=c.item_ref, stance=Posicao.FORMA, origin_ref=c.origin_ref, simulated=execucao.simulada,
+                    run_id=c.run_id, instance_id=execucao.aparelho, detail=f"{marca} reclassificada: {divergencia}")):
+                continue
+            n += 1
+            self._anunciar(c.run_id, f"Fluxo “{fluxo.id}”: a divergência desta execução era só de forma ({divergencia})"
+                                     " e deixou de contar contra ele (30.36)")
+        return n
+
+    def _anunciar(self, run_id: str, texto: str) -> None:
+        if self._decidir is not None:
+            try:
+                self._decidir(texto, run_id)
+            except Exception:  # noqa: BLE001 - a linha do tempo informa; a evidência já foi gravada
+                log.exception("aprendizado: decisão na execução %s", run_id)
+
+
 def _casa(fluxo: FluxoEmProva, comando: str) -> bool:
     """A mesma regra de `FlowStore.match`: o comando casa o modelo e dá valor a todo `{nome}` do plano."""
     valores = extract_parameters(fluxo.comando_modelo, comando)
@@ -373,7 +481,7 @@ def _casa(fluxo: FluxoEmProva, comando: str) -> bool:
 
 def _ultimo_motivo(evidencias: Sequence[Evidencia]) -> str:
     """O porquê da divergência mais recente (as evidências vêm da mais nova para a mais antiga), sem a marca."""
-    for e in evidencias:
+    for e in contrarias(evidencias):
         if e.stance is Posicao.AGAINST and not e.simulated and e.detail:
             return e.detail.split(" ", 1)[-1]
     return "planos diferentes"
@@ -424,6 +532,7 @@ class ValidacaoPorExecucao:
         return 1
 
 
-__all__ = ["AssinaturaDoPlano", "D1Nativo", "DISCORDANCIAS_QUE_DESLIGAM", "Decidir", "ExecucaoAssentada",
+__all__ = ["AssinaturaDoPlano", "D1Nativo", "DISCORDANCIAS_QUE_DESLIGAM", "Decidir", "Divergencia", "ExecucaoAssentada",
            "ExecucaoDeHabilidade", "FluxoEmProva", "LeituraNativa", "ObservacaoDeHabilidade", "PassoAssinado",
-           "PortaDeValidacao", "SombraDosFluxos", "ValidacaoPorExecucao", "comparar", "marca_do_conteudo"]
+           "PortaDeValidacao", "ReclassificacaoDaForma", "SombraDosFluxos", "ValidacaoPorExecucao", "comparar",
+           "marca_do_conteudo"]

@@ -52,8 +52,8 @@ class LivroDaSombraSql:
             if em is not None:
                 eventos.append(EventoDoCaso(tipo, em))
 
-        for r in self._db.query("SELECT observed_at FROM learning_evidence WHERE item_ref=? AND simulated=0"
-                                " AND stance IN ('against', 'conflict') AND observed_at >= ?", (item_ref, quando)):
+        for r in self._db.query("SELECT e.observed_at FROM learning_evidence e WHERE e.item_ref=? AND e.simulated=0"
+                                f" AND {linhas.contra_efetivo('e')} AND e.observed_at >= ?", (item_ref, quando)):
             somar(Regressao.EVIDENCIA_CONTRA, linhas.texto_ou_nulo(r, "observed_at"))
         for r in self._db.query("SELECT decided_at FROM learning_transitions WHERE item_ref=? AND to_state='disabled'"
                                 " AND (from_state IS NULL OR from_state <> 'disabled') AND decided_at >= ?",

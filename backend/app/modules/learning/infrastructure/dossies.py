@@ -21,6 +21,7 @@ from app.modules.learning.domain.evidencia_invalida import run_invalidada
 from app.modules.learning.domain.politica_de_risco import FatosDeRisco, toca_sessao_ou_autenticacao
 from app.modules.learning.domain.livro import EntradaDoLivro
 from app.modules.learning.domain.saude import Saude
+from app.modules.learning.domain.validacao import Motivo
 from app.modules.learning.domain.vocabulario import KINDS_DE_ITEM, LivroKind
 from app.modules.learning.infrastructure import linhas
 from app.modules.learning.infrastructure.risco_do_conteudo import RiscoDoConteudo, capability_do_item
@@ -68,6 +69,12 @@ class DossiesSql:
                      for a in dict.fromkeys(x for x in todos if isinstance(x, str) and x))
         return apps if len(apps) > 1 else ()
 
+    def _sem_caminho(self, e: EntradaDoLivro) -> bool:
+        """30.36: a validação da receita fechou `sem_caminho` (o fluxo ativo do comando não chega à etapa dela)."""
+        return e.kind is LivroKind.RECEITA and self._db.one(
+            "SELECT 1 AS x FROM learning_validations WHERE item_ref=? AND motivo=?",
+            (e.trail_ref, Motivo.SEM_CAMINHO.value)) is not None
+
     def dossie(self, entrada: EntradaDoLivro, *, max_evidencias: int | None = None) -> Dossie | None:
         if entrada.kind in (LivroKind.MEMORIA, LivroKind.HABILIDADE):
             return None
@@ -88,14 +95,19 @@ class DossiesSql:
         identidade = IdentidadeDoItem(kind=e.kind.value, ref=e.ref, app=e.app or "", capability=capability,
                                       app_version=e.app_version, estado=None if e.state is None else e.state.value,
                                       origem=e.origin.value, side_effect=e.side_effect, human_origin=e.human_origin,
-                                      criado_em=e.created_at, apps=self._apps(e, d.conteudo))
+                                      criado_em=e.created_at, apps=self._apps(e, d.conteudo),
+                                      sem_caminho=self._sem_caminho(e))
         trilha = [PassoDaTrilha(id=t.id, para=t.to_state.value, em=t.decided_at,
                                 de=None if t.from_state is None else t.from_state.value,
                                 por_pessoa=t.decided_by != SYSTEM_ACTOR, run_id=t.run_id) for t in d.trilha]
         relacoes = [Relacao(tipo=str(r.get("tipo")), kind=str(r.get("kind")), ref=str(r.get("ref")))
                     for r in d.relacoes if isinstance(r, dict) and r.get("kind") and r.get("ref")]
         invalidas = frozenset(r for t in d.trilha if (r := run_invalidada(t.reason)) is not None)
-        evidencias = [x for x in self._evidencias(e.trail_ref) if x.run_id is None or x.run_id not in invalidas]
+        todas = self._evidencias(e.trail_ref)
+        # 30.36: o `against` que tem a `forma` da mesma origem saiu do contra (`promocao.efetivas`): o curador não o vê
+        formas = {x.origin_ref for x in todas if x.posicao == "forma"}
+        evidencias = [x for x in todas if (x.run_id is None or x.run_id not in invalidas)
+                      and not (x.posicao == "against" and x.origin_ref in formas)]
         return montar_dossie(identidade, risco, d.conteudo, evidencias=evidencias, trilha=trilha,
                              relacoes=relacoes, saude=_saude(d.saude), versao=d.versao,
                              max_evidencias=MAX_EVIDENCIAS if max_evidencias is None else max_evidencias)

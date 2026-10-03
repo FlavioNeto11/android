@@ -121,6 +121,10 @@ class Posicao(StrEnum):
     FOR = "for"
     AGAINST = "against"
     CONFLICT = "conflict"
+    #: 30.36: a execução fez o caminho do fluxo e só reescreveu a forma (a pós-condição de uma etapa sem efeito, um
+    #: parâmetro fora da ação). Nem a favor nem contra: fica à vista na trilha e fora das contagens. Ao lado de um
+    #: `against` da MESMA origem, tira esse `against` do contra (`promocao.efetivas`).
+    FORMA = "forma"
 
 
 class Braco(StrEnum):

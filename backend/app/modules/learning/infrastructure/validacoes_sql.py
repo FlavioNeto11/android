@@ -9,10 +9,13 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 
 from app.db import Database, Row
+from app.models import Plan
 from app.modules.learning.application.validacao import NovoPedido, Origem, PedidoVivo
 from app.modules.learning.domain.validacao import EstadoDoPedido, Grupo, Motivo
+from app.modules.learning.domain.vocabulario import Posicao
 from app.modules.learning.infrastructure import linhas
 from app.planning import costs
+from app.taskqueue.recipes import hash_generico_da_etapa, para_hash, step_template_hash
 from app.util import to_iso
 
 #: O pedido `rodando` cuja execução não assentou neste prazo (ficou em `needs_input`, o digest não passou) expira.
@@ -62,6 +65,14 @@ class RegistroDeValidacoesSql:
             " WHERE id=? AND estado='pendente'", (run_id, aparelho, to_iso(agora), pedido_id))
         return (cur.rowcount or 0) == 1
 
+    def recusar(self, pedido_id: str, motivo: Motivo, agora: datetime) -> bool:
+        """O pedido ainda `pendente` fecha `recusada` sem execução (30.36, `sem_caminho` ao despachar)."""
+        em = to_iso(agora)
+        cur = self._db.execute(
+            "UPDATE learning_validations SET estado='recusada', motivo=?, feito_em=?, updated_at=?"
+            " WHERE id=? AND estado='pendente'", (motivo.value, em, em, pedido_id))
+        return (cur.rowcount or 0) == 1
+
     def fechar(self, pedido_id: str, estado: EstadoDoPedido, motivo: Motivo | None, usd: float,
                agora: datetime) -> bool:
         em = to_iso(agora)
@@ -94,9 +105,25 @@ class RegistroDeValidacoesSql:
         return linhas.inteiro(r, "n") if r is not None else 0
 
     def chegadas(self) -> list[PedidoVivo]:
+        """Os pedidos que voltaram com resposta para o curador: a favor (`feita`) e, desde o 30.36, contra
+        (`evidencia_contra`) e a variante sem caminho (`sem_caminho`). A forma e o "sem evidência" não respondem nada."""
         return [_pedido(r) for r in self._db.query(
-            "SELECT * FROM learning_validations WHERE estado='feita' AND revisao_nova_id IS NULL"
-            " ORDER BY feito_em, id")]
+            "SELECT * FROM learning_validations WHERE revisao_nova_id IS NULL AND (estado='feita'"
+            " OR (estado='recusada' AND motivo IN (?, ?))) ORDER BY feito_em, id",
+            (Motivo.EVIDENCIA_CONTRA.value, Motivo.SEM_CAMINHO.value))]
+
+    def sem_evidencia(self) -> list[PedidoVivo]:
+        return [_pedido(r) for r in self._db.query(
+            "SELECT * FROM learning_validations WHERE estado='recusada' AND motivo=? AND run_id IS NOT NULL"
+            " ORDER BY feito_em, id", (Motivo.SEM_EVIDENCIA.value,))]
+
+    def remotivar(self, pedido_id: str, motivo: Motivo, agora: datetime) -> bool:
+        """Só de `sem_evidencia` (30.36): o motivo passa ao da evidência que a execução ganhou depois. O CAS no motivo
+        de antes torna o passo idempotente."""
+        cur = self._db.execute(
+            "UPDATE learning_validations SET motivo=?, updated_at=? WHERE id=? AND estado='recusada' AND motivo=?",
+            (motivo.value, to_iso(agora), pedido_id, Motivo.SEM_EVIDENCIA.value))
+        return (cur.rowcount or 0) == 1
 
     def revisado(self, pedido_id: str, review_id: str) -> None:
         self._db.execute("UPDATE learning_validations SET revisao_nova_id=? WHERE id=? AND revisao_nova_id IS NULL",
@@ -108,11 +135,15 @@ class FontesDaValidacaoSql:
     e o veto do livro), para esta classe só falar SQL."""
 
     def __init__(self, db: Database, *, precos: Callable[[], dict[str, list[float]]],
-                 fluxo_ativo_para: Callable[[str], bool], vetado: Callable[[object], bool]) -> None:
+                 fluxo_ativo_para: Callable[[str], bool], vetado: Callable[[object], bool],
+                 plano_ativo_para: Callable[[str], Plan | None] | None = None) -> None:
         self._db = db
         self._precos = precos
         self._fluxo_ativo_para = fluxo_ativo_para
         self._vetado = vetado
+        #: 30.36: o plano do fluxo ATIVO que casa o comando (o `FlowStore.match` do scheduler). Sem ele (os testes de
+        #: antes), toda receita tem caminho, como até o 30.35.
+        self._plano_ativo_para = plano_ativo_para
 
     def origem(self, run_id: str) -> Origem | None:
         r = self._db.one("SELECT command, instance_ids FROM runs WHERE id=?", (run_id,))
@@ -144,18 +175,43 @@ class FontesDaValidacaoSql:
     def vetado(self, e: object) -> bool:
         return self._vetado(e)
 
-    def evidencia_da_execucao(self, item_ref: str, run_id: str) -> bool:
-        """O item ganhou evidência DESTA execução: o fluxo, uma linha a favor da sombra; a receita, uma tentativa
-        conduzida por ela que deu certo (é o que move `replay_ok`)."""
+    def posicao_da_execucao(self, item_ref: str, run_id: str) -> Posicao | None:
+        """A evidência que o item ganhou DESTA execução: o fluxo, pela linha da sombra (a favor vence; depois a forma;
+        depois o contra efetivo, `linhas.contra_efetivo`); a receita, a tentativa conduzida por ela que deu certo (é o
+        que move `replay_ok`) — a receita não tem contra nem forma por validação."""
         kind, _, ref = item_ref.partition(":")
         if kind == "fluxo":
-            return self._db.one("SELECT 1 AS x FROM learning_evidence WHERE item_ref=? AND run_id=? AND stance='for'",
-                                (item_ref, run_id)) is not None
+            posicoes = {linhas.texto(r, "stance") for r in self._db.query(
+                f"SELECT e.stance FROM learning_evidence e WHERE e.item_ref=? AND e.run_id=?"
+                f" AND (e.stance IN ('for', 'forma') OR {linhas.contra_efetivo('e')})", (item_ref, run_id))}
+            for p in (Posicao.FOR, Posicao.FORMA, Posicao.AGAINST, Posicao.CONFLICT):
+                if p.value in posicoes:
+                    return p
+            return None
         if kind == "receita" and ref.isdigit():
-            return self._db.one(
+            feita = self._db.one(
                 "SELECT 1 AS x FROM attempts a JOIN steps s ON s.id = a.step_id"
                 " WHERE s.run_id=? AND a.recipe_id=? AND a.status='succeeded'", (run_id, int(ref))) is not None
-        return False
+            return Posicao.FOR if feita else None
+        return None
+
+    def caminho_da_receita(self, item_ref: str, comando: str) -> bool:
+        """O plano do fluxo ativo do comando chega à etapa da receita: o `step_hash` dela é a identidade de alguma etapa
+        do plano, pela chave específica ou pela genérica — as duas que o executor consulta (`RecipeStore.find`), no
+        cálculo da cobertura dos fluxos (`capacidades.cobertura_do_fluxo`). Sem fluxo ativo ou fora da receita, `True`:
+        quem responde por isso é o `sem_fluxo_ativo`. Medido no P4 de 03/10: a receita 54 (send_message, 55f3aca9…)
+        nunca roda, porque o fluxo ativo chega à 78 (2ad58b2c…) pela mesma etapa."""
+        kind, _, ref = item_ref.partition(":")
+        if kind != "receita" or not ref.isdigit() or self._plano_ativo_para is None:
+            return True
+        plano = self._plano_ativo_para(comando)
+        r = self._db.one("SELECT step_hash FROM recipes WHERE id=?", (int(ref),))
+        if plano is None or r is None:
+            return True
+        parametros = dict(plano.parameters)
+        alcancados = {h for e in plano.steps
+                      for h in (step_template_hash(para_hash(e, parametros)), hash_generico_da_etapa(e)) if h}
+        return linhas.texto(r, "step_hash") in alcancados
 
     def desfecho(self, run_id: str) -> tuple[str, float] | None:
         r = self._db.one("SELECT status FROM runs WHERE id=?", (run_id,))

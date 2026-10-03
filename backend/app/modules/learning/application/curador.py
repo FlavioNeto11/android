@@ -273,7 +273,8 @@ class CuradorPorIA:
                 achar(e, Gatilho.OBSOLETO_PROVAVEL)
             if self._livro.contradicoes(e):
                 achar(e, Gatilho.CONFLITO)
-        # 30.31: a execução de validação que o curador pediu deixou evidência: o item volta, fora do cooldown.
+        # 30.31: o pedido de evidência do curador voltou com resposta (a favor; desde o 30.36 também contra, ou a receita
+        # sem caminho): o item volta, fora do cooldown.
         self._chegadas = {}
         for c in (self.validacao.chegadas() if self.validacao is not None else ()):
             try:

@@ -138,7 +138,8 @@ _ROTULO_DO_PAPEL: Mapping[str, str] = {Papel.ACTOR.value: "ator", Papel.PLANNER.
 _ROTULO_DO_BRACO: Mapping[str, str] = {Braco.WITH.value: "exposta ao prompt", Braco.HOLDOUT.value: "braço de controle"}
 
 _POSICAO: Mapping[str, str] = {Posicao.FOR.value: "a favor", Posicao.AGAINST.value: "contra",
-                               Posicao.CONFLICT.value: "em conflito"}
+                               Posicao.CONFLICT.value: "em conflito",
+                               Posicao.FORMA.value: "de forma (não conta)"}   # 30.36
 
 #: Quem fez a transição, no fim do verbo: só a do sistema é da execução.
 _DA_EXECUCAO = "nesta execução"

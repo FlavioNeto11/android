@@ -50,6 +50,11 @@ class AppDoItem:
 
 #: O que o `principal` quer dizer, no próprio dossiê do item multi-app (o curador leu o principal como divergência).
 PRINCIPAL_DO_ITEM = "o app das etapas sem app próprio (conteudo.etapas[].app nulo); item.app é o pacote dele"
+#: 30.36: as duas notas só entram quando valem (o dossiê do resto mantém as chaves e o `dossie_hash`).
+FORMA_DA_EVIDENCIA = ("posicao `forma`: a execução fez o caminho do item e só reescreveu a forma (a pós-condição de "
+                      "uma etapa sem efeito, ou um parâmetro fora da ação); não conta contra nem a favor")
+SEM_CAMINHO_DA_RECEITA = ("variante sem caminho: o plano do fluxo ativo do comando de origem não chega a esta etapa "
+                          "(outra variante dela é a que roda), e a validação não tem o que executar; sugerir aposentar")
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +74,9 @@ class IdentidadeDoItem:
     #: Só no fluxo de MAIS DE UM app (30.33-C), na ordem do plano; vazio no resto. Vazio, o dossiê sai com as mesmas
     #: chaves de antes e o mesmo `dossie_hash` (nenhuma revisão nova por esta mudança fora dos multi-app).
     apps: tuple[AppDoItem, ...] = ()
+    #: 30.36: a receita que a validação achou sem caminho (o plano do fluxo ativo não chega à etapa dela). A marca é
+    #: para o curador sugerir aposentar; ninguém aposenta sozinho (o parecer é registro, o aceite é da pessoa).
+    sem_caminho: bool = False
 
     @property
     def id_citavel(self) -> str:
@@ -80,7 +88,7 @@ class Evidencia:
     """Uma linha de `learning_evidence`, sem o `detail` (texto livre)."""
 
     id: int
-    posicao: str                            # for | against | conflict
+    posicao: str                            # for | against | conflict | forma (30.36)
     origin_ref: str                         # 'attempt:<id>' | 'step:<id>' | 'signal:<id>' | 'run:<id>'
     em: str                                 # `observed_at`, ISO
     run_id: str | None = None
@@ -286,15 +294,20 @@ class Dossie:
         if i.apps:
             item["apps"] = [{"id": a.id, "pacote": a.pacote, "principal": a.principal} for a in i.apps]
             item["principal_e"] = PRINCIPAL_DO_ITEM
+        if i.sem_caminho:
+            item["sem_caminho"] = SEM_CAMINHO_DA_RECEITA
+        evidencias: JsonObject = {"total": self.evidencias_total, "incluidas": len(self.evidencias),
+                                  "lista": [{"id": e.id_citavel, "posicao": e.posicao, "origin_ref": e.origin_ref,
+                                             "run_id": e.run_id, "aparelho": e.aparelho, "app_version": e.app_version,
+                                             "simulated": e.simulated, "em": e.em} for e in self.evidencias]}
+        if any(e.posicao == "forma" for e in self.evidencias):
+            evidencias["forma_e"] = FORMA_DA_EVIDENCIA
         return {
             "versao_do_dossie": VERSAO_DO_DOSSIE,
             "item": item,
             "risco": {**self.risco.como_dados(), "fatos": self.fatos_de_risco.como_dados()},
             "conteudo": self.conteudo,
-            "evidencias": {"total": self.evidencias_total, "incluidas": len(self.evidencias),
-                           "lista": [{"id": e.id_citavel, "posicao": e.posicao, "origin_ref": e.origin_ref,
-                                      "run_id": e.run_id, "aparelho": e.aparelho, "app_version": e.app_version,
-                                      "simulated": e.simulated, "em": e.em} for e in self.evidencias]},
+            "evidencias": evidencias,
             "trilha": [{"id": t.id_citavel, "de": t.de, "para": t.para, "por_pessoa": t.por_pessoa, "em": t.em,
                         "run_id": t.run_id} for t in self.trilha],
             "relacoes": [{"id": r.id_citavel, "tipo": r.tipo, "estado": r.estado} for r in self.relacoes],
@@ -633,7 +646,8 @@ def _parecer(bruto: str | Mapping[str, object], dossie: Dossie, probabilidade: f
 
 
 __all__ = ["CAMPOS_DA_SAIDA", "CAMPOS_OBRIGATORIOS", "DECISOES_COM_ALVO", "LIMIARES_DE_CONFIANCA",
-           "LIMITE_DA_CONCLUSAO", "MAX_EVIDENCIAS", "OPCOES_FECHADAS", "PRINCIPAL_DO_ITEM", "SECOES_CITAVEIS",
+           "FORMA_DA_EVIDENCIA", "LIMITE_DA_CONCLUSAO", "MAX_EVIDENCIAS", "OPCOES_FECHADAS", "PRINCIPAL_DO_ITEM",
+           "SECOES_CITAVEIS", "SEM_CAMINHO_DA_RECEITA",
            "VERSAO_DO_DOSSIE", "AppDoItem", "Causa",
            "Confianca", "Decisao",
            "Dossie", "Evidencia", "Falta", "GrupoDeFalha", "IdentidadeDoItem", "Inconsistencia", "Intervencao",

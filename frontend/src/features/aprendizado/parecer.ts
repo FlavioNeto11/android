@@ -163,7 +163,8 @@ const GATILHO: Record<string, string> = {
   nova_pendencia_do_dono: 'item novo à sua espera', a_revisar: 'legado a revisar', degradando: 'saúde caindo',
   obsoleto_provavel: 'provavelmente obsoleto', conflito: 'conflito com outro item', versao_nova: 'versão nova do app',
   grupo_de_falha_acima_do_minimo: 'falha recorrente', pedido_da_pessoa: 'pedido de uma pessoa',
-  evidencia_chegou: 'chegou a evidência que o curador pediu',
+  // 30.36: a resposta pode ser a favor, contra ou "a variante não tem caminho"
+  evidencia_chegou: 'voltou a evidência que o curador pediu',
 };
 
 const traduz = (mapa: Record<string, string>) => (k: string | null | undefined): string => (k ? mapa[k] ?? k : '');

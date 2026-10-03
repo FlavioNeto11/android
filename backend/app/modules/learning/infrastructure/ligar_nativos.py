@@ -20,17 +20,20 @@ então a falha dela desfaz a adoção inteira, como no interruptor antigo (`muda
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime
 
 from pydantic import ValidationError
 
 from app.db import Database
-from app.models import Plan
-from app.modules.learning.application.nativos import (AssinaturaDoPlano, D1Nativo, Decidir, ExecucaoAssentada,
-                                                      ExecucaoDeHabilidade, FluxoEmProva, PassoAssinado,
-                                                      SombraDosFluxos, ValidacaoPorExecucao)
+from app.models import Plan, PlanStep
+from app.modules.learning.application.nativos import (AssinaturaDoPlano, ContraGravado, D1Nativo, Decidir,
+                                                      ExecucaoAssentada, ExecucaoDeHabilidade, FluxoEmProva,
+                                                      PassoAssinado, ReclassificacaoDaForma, SombraDosFluxos,
+                                                      ValidacaoPorExecucao)
 from app.modules.learning.application.ports import RepositorioDeAprendizado
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.evidencia_invalida import run_da_etapa
@@ -43,7 +46,7 @@ from app.modules.learning.infrastructure.validacao_de_skills import ValidacaoDeH
 from app.modules.skills.domain.document import content_hash
 from app.modules.skills.infrastructure.sql_repository import SqlSkillRepository
 from app.taskqueue.flows import RESERVED, FlowStore, MudancaDoFluxo, NascimentoDoFluxo, confirmada_a_mao
-from app.taskqueue.recipes import MudancaDaReceita, ReceitaVista, RecipeStore, para_hash, step_template_hash
+from app.taskqueue.recipes import MudancaDaReceita, ReceitaVista, RecipeStore, para_hash
 from app.util import now, now_iso
 
 log = logging.getLogger("poc.aprendizado")
@@ -61,13 +64,43 @@ def _plano(bruto: str | None) -> Plan | None:
 
 def assinatura(plano: Plan, run_id: str | None = None) -> AssinaturaDoPlano:
     """O plano reduzido ao que a sombra compara. Etapa com capability é a ação do catálogo; etapa livre é a identidade
-    da etapa-modelo das receitas (`step_template_hash` depois de `para_hash`: o valor do comando volta a `{nome}`).
-    Parâmetro reservado ou com o id da execução não é do modelo (a mesma regra de `learn_from_run`)."""
+    da etapa-modelo SEM a pós-condição (a chave, o efeito, as guardas e o nível de entrega, depois de `para_hash`: o
+    valor do comando volta a `{nome}`), e a pós-condição vai à parte, como forma (30.36). Parâmetro reservado ou com o
+    id da execução não é do modelo (a mesma regra de `learn_from_run`)."""
     parametros = {k: v for k, v in plano.parameters.items()
                   if k not in RESERVED and (run_id is None or run_id not in v)}
-    passos = tuple(PassoAssinado(acao=p.capability or f"etapa:{step_template_hash(para_hash(p, parametros))}",
-                                 side_effect=p.side_effect, pos=p.postcondition.kind) for p in plano.steps)
-    return AssinaturaDoPlano(passos=passos, parametros=parametros)
+    passos = tuple(_passo(p, plano.app_id, parametros) for p in plano.steps)
+    return AssinaturaDoPlano(passos=passos, parametros=parametros, na_acao=_na_acao(plano, parametros))
+
+
+def _passo(p: PlanStep, app_do_plano: str | None, parametros: Mapping[str, str]) -> PassoAssinado:
+    app = p.app_id or app_do_plano
+    if p.capability:
+        # a capability compara como antes: a ação, o efeito e o TIPO da pós-condição (nunca o valor)
+        return PassoAssinado(acao=p.capability, side_effect=p.side_effect, pos=p.postcondition.kind, app=app)
+    t = para_hash(p, dict(parametros))
+    nivel = t.postcondition.required_delivery_level
+    # Sem a pós-condição, é o que `step_template_hash` (recipes) junta: o mesmo plano de antes segue o mesmo aqui.
+    bruto = json.dumps([t.template_key or t.key, t.side_effect, nivel.value if nivel else None, sorted(t.commit_guard)],
+                       ensure_ascii=False)
+    return PassoAssinado(acao=f"etapa:{hashlib.sha1(bruto.encode()).hexdigest()[:20]}", side_effect=t.side_effect,
+                         pos=t.postcondition.kind, pos_valor=t.postcondition.value, app=app)
+
+
+def _na_acao(plano: Plan, parametros: Mapping[str, str]) -> frozenset[str]:
+    """Os parâmetros que alguma etapa usa para AGIR: no objetivo, na pré-condição, nos argumentos da capability, nas
+    guardas e no seletor do efeito, por `{nome}` ou pelo valor escrito por extenso (≥ 3 caracteres, a regra de
+    `para_hash`). O título fica de fora (o planejador o reescreve) e a pós-condição é forma. Medido no P4 de 03/10: o
+    `expected_account` do fluxo do QA Messenger não aparecia em etapa nenhuma."""
+    textos = [t for p in plano.steps
+              for t in (p.goal, p.precondition, *p.bindings.values(), *p.commit_guard, p.commit_selector, *p.band_guard)
+              if t]
+
+    def usa(nome: str, valor: str) -> bool:
+        literal = len(valor) >= 3 and "{" not in valor
+        return any("{" + nome + "}" in t or (literal and valor in t) for t in textos)
+
+    return frozenset(nome for nome, valor in parametros.items() if usa(nome, valor))
 
 
 def _primeiro_aparelho(bruto: str | None) -> str | None:
@@ -112,6 +145,18 @@ class LeituraSql:
                                       efeito=fluxo_tem_efeito(conteudo), content_hash=content_hash(conteudo),
                                       nasceu_de=linhas.texto_ou_nulo(r, "source_run_id")))
         return saida
+
+    def contra_de_fluxos(self) -> list[ContraGravado]:
+        """As linhas `against` de fluxo, de execução, ainda sem a `forma` da mesma origem (30.36). De TODOS os fluxos (o
+        filtro "em prova" é do passo, em Python): poucas hoje (2 no central em 03/10), porque só a sombra grava contra
+        em fluxo e o fluxo sai da prova na segunda; se crescer, filtrar pelos em prova aqui."""
+        return [ContraGravado(item_ref=linhas.texto(r, "item_ref"), origin_ref=linhas.texto(r, "origin_ref"),
+                              run_id=linhas.texto(r, "run_id"), detail=linhas.texto_ou_nulo(r, "detail"))
+                for r in self._db.query(
+                    "SELECT e.item_ref, e.origin_ref, e.run_id, e.detail FROM learning_evidence e"
+                    " WHERE e.stance = 'against' AND e.item_ref LIKE 'fluxo:%' AND e.run_id IS NOT NULL"
+                    " AND NOT EXISTS (SELECT 1 FROM learning_evidence f WHERE f.item_ref = e.item_ref"
+                    " AND f.origin_ref = e.origin_ref AND f.stance = 'forma') ORDER BY e.id")]
 
     def execucao_real(self, run_id: str) -> bool:
         """A execução existe e não é simulada (`runs.simulated=0`): a única que ensina de novo o que a evidência
@@ -280,6 +325,7 @@ def ligar(servico: LearningService, repo: RepositorioDeAprendizado, db: Database
                   simulada_publica=simulada_publica)
     servico.registrar_minerador(SombraDosFluxos(servico, repo, leitura, concordancias=concordancias,
                                                 decidir=decidir))
+    servico.registrar_passo(ReclassificacaoDaForma(repo, leitura, decidir=decidir))   # 30.36
     if habilidades is not None:
         servico.registrar_minerador(ValidacaoPorExecucao(leitura, ValidacaoDeHabilidadesSql(habilidades),
                                                          decidir=decidir))
