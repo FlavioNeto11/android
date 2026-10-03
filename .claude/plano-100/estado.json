@@ -6040,21 +6040,14 @@
   "30.30": {
    "id": "30.30",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #144 @58609226 (bb35ca16: prioridade PEDIDO_DA_PESSOA fura a fila do curador, também no pico, sob o teto; fa921c02: learning_reviews.usd grava o custo medido do parecer; 82dac0cb: o c_max compara estimativa com estimativa). simulated: test_learning_curador.py (prioridade, pico, janela, hora gasta; test_chamada_medida_pelo_hub_grava_o_usd_e_fica_ligada_a_revisao; test_modelo_barato_nao_recusa_as_estimativas_em_silencio, que falha com a regra antiga) e test_learning_pareceres.py. Na main pelo merge da suíte 9. Real not_run.",
-   "blocker": "",
-   "arquivos": [
-    "backend/app/modules/learning/application/curador.py",
-    "backend/app/modules/learning/domain/orcamento_do_curador.py",
-    "backend/app/modules/learning/infrastructure/revisoes_sql.py"
-   ],
-   "testes": "suíte 9 inteira em integ/suite-9 @2c078dd1 (-n 8, Idle, 10:37–10:46Z): backend 7244 passed, 7 skipped, 1 failed (test_revisao_receitas::test_aparelho_do_lider_que_cai_libera_quem_espera: race do teste exposto pelo #145, registrado; não bloqueia, regra da orquestradora); scripts 463; frontend 1351 (112 arquivos) e typecheck; docs-check 0/0.",
-   "grupo": "suite-9-android",
-   "modelo": "opus (sessão Android, integradora)",
-   "esforco": "high",
+   "proof": "real",
+   "evidence": "PR #144 @58609226 (bb35ca16: prioridade PEDIDO_DA_PESSOA fura a fila do curador, também no pico, sob o teto; fa921c02: learning_reviews.usd grava o custo medido do parecer; 82dac0cb: o c_max compara estimativa com estimativa). simulated: test_learning_curador.py e test_learning_pareceres.py; na main pela suíte 9 e no central pelo deploy 9 (3dcfc9ac, partida 11:04:15Z). real (03/10, WIN-7S2UASNLFOP, leitura só leitura de learning_reviews): antes do deploy 9, a volta das 10:07Z gravou 25 revisões com usd 0.0 e ai_call_id; depois dele, a das 12:04Z revisou 7 pedidos da pessoa (gatilho pedido_da_pessoa, US$ 0,0682 somados) e a das 13:10Z 4 itens degradando (US$ 0,0385), todas com usd > 0 e ai_call_id (as últimas três ligam às ai_calls 3271/3273/3275, claude-sonnet-5-5, ~US$ 0,0096–0,0100 cada). A prioridade tem só o indício da volta das 12:04Z, que revisou os pedidos da pessoa e nada mais; a fila concorrente daquele instante não foi reconstruída.",
+   "grupo": "aprendizado-pr159",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T11:02:10+00:00"
+   "quando": "2026-10-03T16:10:44+00:00"
   },
   "31.17": {
    "id": "31.17",
@@ -6201,13 +6194,13 @@
    "id": "30.33",
    "status": "partial",
    "proof": "simulated",
-   "evidence": "Fatia A: PR #153 na main pela suíte 10 e no central pelo deploy 10; a orquestradora percorreu a aba Métricas no Chrome do deploy 10 (.claude/handoffs/ux-deploy10-2026-10-03.md, item 12b: ok, 375 px ok). Fatia B: PR #156 (feat/30-33-aviso-do-fluxo @ c9f1c18a) na main pela suíte 11 (97425d5f): o aviso learning.needs_person da receita e do fluxo com a classe do dossiê, pelo leitor comum RiscoDoConteudo. simulated: bateria de 60 arquivos 1897 passed; suíte 11 SQLite -n 8 @35e3b0f6 8441 passed, 0 failed (PG não rodou, sem migração). Real da B: not_run até o deploy 11 e um aviso de fluxo C. Fatia C aprovada em 03/10 (o item multi-app em cada app dele, item.apps no dossiê, aparelho do 30.31 com todos os apps; polimentos da Métricas do deploy 10): em curso no worktree apr-30-33c, para a suíte 12.",
-   "grupo": "aprendizado-suite-11",
+   "evidence": "Fatia A: PR #153 na main pela suíte 10 e no central pelo deploy 10; a orquestradora percorreu a aba Métricas no Chrome do deploy 10 (.claude/handoffs/ux-deploy10-2026-10-03.md, item 12b: ok, 375 px ok). Fatia B: PR #156 (feat/30-33-aviso-do-fluxo @ c9f1c18a) na main pela suíte 11 (97425d5f): o aviso learning.needs_person da receita e do fluxo com a classe do dossiê, pelo leitor comum RiscoDoConteudo. simulated: bateria de 60 arquivos 1897 passed; suíte 11 SQLite -n 8 @35e3b0f6 8441 passed, 0 failed (PG não rodou, sem migração). Real da B: not_run até um aviso de fluxo C no central. Fatia C: PR #159 (feat/30-33-multi-app @ 235e8451, base 4c34f943; adendo v0.94): o item multi-app em cada app dele (visão por app, ?app= do livro, Métricas), item.apps no dossiê só no multi-app (o item de um app mantém o dossie_hash), o 30.31 com todos os apps de QA e aparelho com todos prontos, e os polimentos das Métricas (título e nome do app nos pareceres, os dois ramos do orçamento, a sombra da autopublicação e o desfecho em 14 dias na tela). simulated: tests/test_learning_multi_app.py (11) e dois casos em test_learning_validacao_sql.py, MetricasTab.test.tsx e AplicativosTab.test.tsx, vitest do aprendizado 150 passed; percurso no navegador sobre uma cópia do banco do central. Pendentes da C: o percentil do K-085 (mesma fórmula com teste de igualdade, porque a camada de aplicação não importa app.metricas) quando o K-085 entrar na main, a bateria dos afetados e a suíte.",
+   "grupo": "aprendizado-pr159",
    "modelo": "claude-opus-5-5",
    "esforco": "medio",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T15:34:12+00:00"
+   "quando": "2026-10-03T16:10:44+00:00"
   },
   "29.49": {
    "id": "29.49",
@@ -7770,6 +7763,16 @@
    ],
    "grupos": [
     "29-49-real"
+   ]
+  },
+  {
+   "quando": "2026-10-03T16:10:44+00:00",
+   "itens": [
+    "30.30",
+    "30.33"
+   ],
+   "grupos": [
+    "aprendizado-pr159"
    ]
   }
  ]
