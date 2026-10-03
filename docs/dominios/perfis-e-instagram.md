@@ -637,7 +637,11 @@ receber contas novas.
 - **Gatilho:** ao fim de `marcar_conta_travada`, SÓ no Instagram (conta âncora) e SÓ com sinal forte: a `ChallengeActivity` em foco (lida por `DeviceManager.observe`) ou a declaração do dono. Só texto na tela, ou conta de outro app, fica `blocked`/marcada para a pessoa; a rota manual retira qualquer conta. Falha deixa a persona `blocked` e o erro no histórico; a rota refaz.
 - **Lápide:** `contas_retiradas` (071) guarda só o hash do @; `eh_conta_nossa()` (`social/contas_nossas.py`) é a consulta
   única de "é conta nossa?", usada pelo filtro de frota: conta RETIRADA nunca é alvo; conta nossa VIVA pode receber a interação de outra conta nossa, em ritmo baixo (emenda do ADR-050, 29.28, abaixo).
-- **Memória:** `memory_items` ficam, com o @ e o id da conta trocados por "[conta removida]". Gancho
+- **Memória (29.32):** `memory_items` ficam, de TODAS as personas, com o @, o id e o e-mail da conta trocados por "[conta removida]"
+  (`social/memory.py::reescrever_memoria`; casamento seguro em `contas_nossas.sem_o_rastro`: `ana` não casa em `banana`, `ana.silva` nem `ana@x.com`).
+  O e-mail só sai se identifica a conta e nenhuma outra conta VIVA o usa (`emails_so_desta_conta`): o Outlook vivo com o mesmo endereço o mantém.
+  Retroativo das retiradas anteriores: `scripts/memoria-conta-retirada.py` (`--ensaio`/`--aplicar`; lápide + eventos como fonte; e-mail só por
+  `--lista-stdin`), com backup no deploy. `runs.command` e `actions.args` ficam. Gancho
   `limpezas_ao_retirar` para outros módulos (Aprendizado), dentro da transação; erro desfaz a retirada.
 - **Histórico** (events, runs, steps, approvals, interactions, ai_calls) fica intacto (opção A do dono).
 - **Dívida:** `DELETE /api/instagram/profiles/{id}` ainda apaga a persona inteira (os dados da pessoa moram na linha do perfil).

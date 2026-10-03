@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 29.32: a conta retirada some de `memory_items` de todas as personas (branch feat/29-32-memoria-conta-retirada)
+
+- **P13 da reavaliação de 03/10 (opção A do dono):** a retirada reescrevia só a memória da persona que retirava. Agora o @, o id e o e-mail
+  da conta viram "[conta removida]" em `memory_items` de **todas** as personas. O e-mail só entra se identifica a conta (conta de e-mail, ou o login
+  dela) e nenhuma outra conta VIVA o usa (Outlook da mesma persona ou de outra: o endereço fica). `runs.command` e `actions.args` seguem como histórico.
+- `sem_o_rastro` ganhou a mesma fronteira de palavra do `esquecer_conta` do aprendizado (nem `foo@ana.com` nem a parte local `ana@x.com` casam com `ana`).
+  `limpezas` da retirada ganha `memory_items_de_outras_personas` (só contagem).
+- **Retroativo:** `scripts/memoria-conta-retirada.py` (`--ensaio` por padrão, `--aplicar`, `--lista-stdin` sem eco), fonte = lápides (hash) e ids dos
+  eventos `profile.account_retired`; o e-mail de conta já retirada não está no banco e só entra pela lista do operador. **Não rodado no banco real.**
+- Prova `simulated`: `test_memoria_conta_retirada.py` (15). Prova na cópia do backup `20261002-211739` (migrada na cópia, 2 linhas sintéticas plantadas):
+  ensaio 2, aplicar 2, repetir 0; a cópia foi apagada. Nas 116 linhas reais da cópia: 0 com rastro por hash ou id (os 37 do central não se reproduzem ali).
+
 ## 2026-10-02 — 29.29: D2-a também ao ganhar a conta, com vínculo sem app (branch feat/29-29-d2a, commit cdcb3fe6)
 
 - **Furo (revisão adversarial do 29.27):** pessoa sem conta, vinculada SEM app a aparelho que já tinha o Instagram de outra persona, passava a servir o

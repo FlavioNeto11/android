@@ -3959,3 +3959,8 @@ Sem rota nova nem campo novo: dois 409 `conta_do_app_ja_no_aparelho` em rotas qu
 - Ressalvas (revisão adversarial de 03/10): a conferência só roda com o app âncora registrado em `apps` (sem ele, nada é conferido, como antes);
   `conta_ancora(criar=True)` em dado legado cria a conta sem conferir (0 casos no central em 03/10); conferência e criação não estão numa transação
   (janela de corrida, no backlog).
+
+## Adendo v0.XX (número a definir na integração) — `retire`: `limpezas` ganha `memory_items_de_outras_personas` (item 29.32)
+
+`limpezas.memory_items` passa a contar as lembranças reescritas em TODAS as personas (não só na que retira), e a chave nova
+`memory_items_de_outras_personas` diz quantas dessas eram de outras personas. Só contagens, inteiros; o evento `profile.account_retired` leva as mesmas.
