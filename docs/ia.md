@@ -197,6 +197,9 @@ Ver [docs/produto.md §2](produto.md) para os conceitos. Mecanismo de custo, res
   concordar `recipes_promote_after` vezes; com `commit`, para em `validated`. Assinatura diferente nunca doa; com
   `recipes_promote_after: 0` não herda. A herdeira que passa a agir aposenta a legada ativa da mesma etapa e versão. A
   causa de cada "ausente" é medida em `receita.ausente{causa}` ([dominios/aprendizado.md](dominios/aprendizado.md)).
+- **Chave genérica da receita** (RA-20 fatia B): na etapa julgada pelo modelo, sem efeito, a receita cujo caminho não
+  traz o valor da etapa (tocar em "Message") vale para qualquer redação da pós-condição e qualquer valor. A específica
+  (o toque em "nasa") continua na chave com o texto e vence a genérica na consulta.
 - **Fluxos** (`ai.flows: true`): execução 100% comprovada vira plano congelado; comando repetido com outros
   parâmetros pula o planejador. Desde 29/09 o fluxo aprendido nasce `candidate`, inerte: o comando seguinte ainda chama
   o planejador, e o plano dele é comparado ao do candidato. Com `aprendizado.fluxo.concordancias` (1) concordância real
@@ -1116,7 +1119,9 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
       - Saíram de `_OBJETO_DE_NAVEGACAO`, `_ONDE_SE_ENTRA` e `_NAO_VALOR` em `intencao.py`, e do `_NAO_DONO` em
         `entidades.py`.
       - Agora vêm do `app.yaml`: nome, rótulo e o campo novo `apelidos` (o Instagram declara `[insta]`), lidos do
-        registro na consulta (`entidades.nomes_dos_apps`).
+        registro na consulta (`entidades.nomes_dos_apps`). O filtro não importa o registro: a fila registra a fonte na
+        subida (`registrar_fonte_dos_apps(registry.nomes_e_apelidos)` em `taskqueue/service.py`; sem registro, nenhum
+        nome). O import tardio que fazia isso furava a catraca de `test_arquitetura` (suíte 9).
       - A lista fixa guarda o vocabulário genérico ("app", "conta", "perfil", "feed", "site") e, à parte, os serviços
         de terceiros SEM pacote na plataforma (gmail, facebook, tiktok, whatsapp, twitter, chrome), em
         `_SERVICOS_SEM_PACOTE`. Desvio declarado da decisão "só termos genéricos": sem eles em `_ONDE_SE_ENTRA`,

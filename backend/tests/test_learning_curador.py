@@ -312,10 +312,10 @@ class CuradorMedido(CuradorSimulado):
         return replace(super().revisar(pedido), usd=usd, ai_call_id=ai_call_id, simulado=simulado)
 
 
-def test_chamada_medida_pelo_hub_fica_ligada_a_revisao_sem_gravar_o_usd_ainda(db: Database) -> None:
-    """075: a revisão guarda o `ai_call_id` da chamada medida; o `usd` só é gravado depois de unificar o saldo na rubrica
-    (pendência do hub), então segue 0 = não medido e entra pela estimativa. O simulado do adaptador (True) perde para o
-    da RESPOSTA (False): o parecer avisa o dono como o de um provedor real."""
+def test_chamada_medida_pelo_hub_grava_o_usd_e_fica_ligada_a_revisao(db: Database) -> None:
+    """075 e 30.30: a revisão guarda o `ai_call_id` e o `usd` da chamada medida, e o custo entra como MEDIDO no orçamento
+    do curador (não mais pela estimativa do dossiê). O simulado do adaptador (True) perde para o da RESPOSTA (False): o
+    parecer avisa o dono como o de um provedor real."""
     m = Mundo(db)
     m.ia = CuradorMedido(usd=0.0031, ai_call_id=42, simulado_da_resposta=False)
     m.curador = ligar_curador.ligar(m.servico, m.repo, db, TriagemDeCredencial(), config=lambda: m.cfg,
@@ -325,14 +325,14 @@ def test_chamada_medida_pelo_hub_fica_ligada_a_revisao_sem_gravar_o_usd_ainda(db
     r = m.volta()
     assert r.revisadas == (ref,) and r.avisos == 1
     [linha] = m.revisoes()
-    assert (linha["usd"], linha["ai_call_id"], linha["simulated"]) == (0, 42, 0)
+    assert (linha["usd"], linha["ai_call_id"], linha["simulated"]) == (0.0031, 42, 0)
     j = RegistroDeRevisoesSql(db).janela(m.agora, 7)
-    assert j.custos_medidos == () and len(j.tamanhos_sem_medida) == 1
+    assert j.custos_medidos == (0.0031,) and j.tamanhos_sem_medida == ()
 
 
 def test_resposta_simulada_nunca_avisa_mesmo_com_adaptador_real(db: Database) -> None:
     """A resposta que se diz simulada não avisa o dono, mesmo com o adaptador declarando provedor real; sem chamada,
-    nada de `ai_call_id`."""
+    nada de `ai_call_id`, e o `usd` que ela traga não vira custo (30.30: simulada grava 0)."""
     m = Mundo(db)
     m.ia = CuradorMedido(usd=0.5, ai_call_id=None, simulado_da_resposta=True)
     m.ia.simulado = False
@@ -408,6 +408,26 @@ def test_repartir_ordem_estrita_e_motivo_proprio() -> None:
     assert p.alfa == 0.10 and p.k == 1.5 and p.janela_dias == 7 and p.m_cmax == 4
 
 
+def test_pedido_da_pessoa_vai_na_frente_menos_na_classe_a_e_sob_o_teto() -> None:
+    """30.30: o pedido de pessoa é a prioridade máxima, também no pico; a classe A segue só com sobra (dono, 02/10), e o
+    teto da hora e o orçamento da janela continuam valendo para ele."""
+    for classe, gatilho in ((ClasseDeRisco.B, Gatilho.A_REVISAR), (ClasseDeRisco.C, Gatilho.NOVA_PENDENCIA_DO_DONO)):
+        assert prioridade(classe, gatilho, publicado=False, pedido=True) is Prioridade.PEDIDO_DA_PESSOA
+    assert prioridade(ClasseDeRisco.A, Gatilho.A_REVISAR, publicado=False, pedido=True) is Prioridade.CLASSE_A
+    assert prioridade(ClasseDeRisco.B, Gatilho.A_REVISAR, publicado=False) is Prioridade.CLASSE_B
+    janela = Janela(gasto_da_operacao=1000.0, revisoes_antes_de_hoje=6)   # pico: só as prioridades 0, 1 e 2
+    todos = [_p("x", Prioridade.CONTRA_EM_PUBLICADO), _p("c", Prioridade.CLASSE_C), _p("f", Prioridade.FALHA_RECORRENTE),
+             _p("b", Prioridade.CLASSE_B), _p("p", Prioridade.PEDIDO_DA_PESSOA)]
+    partilha = repartir(todos, janela, ParametrosDoOrcamento(k=100))
+    assert partilha.pico is True and partilha.aprovados == ("p", "x", "c")
+    # o orçamento da janela (α·G = 2,5 revisões) corta depois do pedido, na ordem estrita
+    curta = repartir(todos, Janela(gasto_da_operacao=25.0), ParametrosDoOrcamento(janela_dias=1))
+    assert curta.aprovados == ("p", "x")
+    # com a hora já gasta, nem o pedido passa: espera a volta seguinte
+    gasta = repartir(todos, Janela(gasto_da_operacao=1000.0, gasto_da_ultima_hora=999.0), ParametrosDoOrcamento(k=100))
+    assert gasta.aprovados == () and gasta.cortados["p"] is MotivoDoCorte.GASTO_DA_HORA
+
+
 def test_pico_de_entrada_deixa_so_as_prioridades_1_e_2() -> None:
     janela = Janela(gasto_da_operacao=1000.0, revisoes_antes_de_hoje=6)   # média de 1 por dia na janela
     todos = [_p("x", Prioridade.CONTRA_EM_PUBLICADO), _p("c", Prioridade.CLASSE_C),
@@ -427,6 +447,22 @@ def test_revisao_cara_demais_e_recusada_por_custo() -> None:
                          _p("c", Prioridade.CLASSE_B, 50.0)], Janela(gasto_da_operacao=1e6),
                         ParametrosDoOrcamento(janela_dias=1, k=100))
     assert partilha.recusados_por_custo == ("c",) and partilha.custo_maximo == 4.0
+
+
+def test_modelo_barato_nao_recusa_as_estimativas_em_silencio() -> None:
+    """30.30: com o curador num modelo barato (o Haiku da D-1), o custo MEDIDO por revisão (~0,003) fica bem abaixo da
+    estimativa, que usa o preço do modelo mais caro (~0,014 nas 21 revisões reais de 03/10). Comparar uma com a outra
+    dava c_max ≈ 0,012 e recusava tudo por custo; agora o c_max é das estimativas, e o medido só entra no c̄."""
+    medidos = (0.003, 0.0029, 0.0031, 0.003, 0.0032)
+    tipicos = [_p(f"r{i}", Prioridade.CLASSE_B, 0.014 + i / 10_000) for i in range(5)]
+    janela = Janela(gasto_da_operacao=1e6, custos_medidos=medidos)
+    partilha = repartir(tipicos, janela, ParametrosDoOrcamento(janela_dias=1, k=100))
+    assert partilha.recusados_por_custo == () and len(partilha.aprovados) == 5
+    assert partilha.custo_maximo == pytest.approx(4 * 0.0142)
+    assert partilha.custo_medio == pytest.approx(sum(medidos) / len(medidos))     # o medido segue no c̄
+    # o que destoa das outras estimativas continua recusado
+    caro = repartir([*tipicos, _p("caro", Prioridade.CLASSE_B, 0.5)], janela, ParametrosDoOrcamento(janela_dias=1, k=100))
+    assert caro.recusados_por_custo == ("caro",)
 
 
 def test_classe_a_nunca_passa_a_frente_nem_contestada() -> None:

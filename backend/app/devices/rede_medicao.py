@@ -13,7 +13,7 @@ estendido):
    por perna, parando no primeiro com resposta (item 29.5); `udp_ok` é o E das duas, e NÃO decide `trafego_verificado`;
 5. a contabilidade DEPOIS: por UID, o delta na VPN (tipo 17) × o delta na física. A janela dos apps vai de quando o
    túnel conectou nesta revisão até agora — acumulada: um vazamento visto uma vez não some na medição seguinte, e um
-   app que já usou a rede pelo túnel não vira `nao_medido` por estar parado desde a última sonda (o que derrubaria um
+   app que já usou a rede pelo túnel não vira `sem_trafego` por estar parado desde a última sonda (o que derrubaria um
    `trafego_verificado` a cada "Verificar"). A do shell é só esta passada (é o tráfego da própria sonda).
 
 O teste de VAZAMENTO (`sondar_vazamento`, só com a política `exigida_com_bloqueio`) é separado, porque desliga a VPN
@@ -203,7 +203,7 @@ async def medir(ap: AparelhoDaRede, cfg: RedeSondaCfg, *, exigidos: list[str], l
     if abrir:
         for pkg in exigidos:
             uid = uids.get(pkg)
-            if uid is not None and cobertura(base, antes, uid).resultado == "nao_medido":
+            if uid is not None and cobertura(base, antes, uid).resultado == "sem_trafego":
                 await _shell_2000(ap, comando_abrir_app(pkg, cfg.espera_app_s), timeout=cfg.espera_app_s + 45)
                 abertos.append(pkg)
 

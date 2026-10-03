@@ -462,10 +462,11 @@ class Cobertura:
 
     @property
     def resultado(self) -> str:
-        """`ok` / `fora_da_rede` / `nao_medido` (os valores de `rede.ResultadoPorApp`). Coberto = o que passou pela
-        física também passou pelo túnel (tipo 17 = tipo 1 na medição); sem tráfego na janela, não dá para saber."""
+        """`ok` / `fora_da_rede` / `sem_trafego` (os valores de `rede.ResultadoPorApp`). Coberto = o que passou pela
+        física também passou pelo túnel (tipo 17 = tipo 1 na medição). Sem tráfego na janela, não dá para saber:
+        `sem_trafego` (29.44), que não prova nem desprova — diferente de `nao_medido`, o app que nem se leu."""
         if self.vpn <= 0 and self.fisica <= 0:
-            return "nao_medido"
+            return "sem_trafego"
         if self.vpn <= 0 or self.fisica - self.vpn > max(FOLGA_MIN_BYTES, FOLGA_FRACAO * self.fisica):
             return "fora_da_rede"
         return "ok"
@@ -476,7 +477,7 @@ class Cobertura:
 
 def cobertura(antes: Contabilidade, depois: Contabilidade, uid: int) -> Cobertura:
     """O delta do uid na janela, separado em VPN e física. Contador que andou para trás (reinício do aparelho, o
-    netstats reescrito) conta como zero naquele tipo: melhor `nao_medido` que um delta negativo virar "coberto"."""
+    netstats reescrito) conta como zero naquele tipo: melhor `sem_trafego` que um delta negativo virar "coberto"."""
     vpn = fisica = 0
     for (tipo, u), (rx, tx) in depois.items():
         if u != uid:

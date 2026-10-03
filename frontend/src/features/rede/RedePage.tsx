@@ -355,8 +355,14 @@ function SaidaEsperada({ esperada, confere }: { esperada: NetworkExpectedEgress;
 }
 
 const RESULTADO_POR_APP: Record<string, string> = {
-  ok: 'pelo túnel', fora_da_rede: 'FORA da rede pedida', falhou: 'não conectou', nao_medido: 'sem tráfego medido',
+  ok: 'pelo túnel', fora_da_rede: 'FORA da rede pedida', falhou: 'não conectou',
+  nao_medido: 'não medido (não instalado ou não lido)', sem_trafego: 'sem tráfego na janela',
 };
+
+/** 29.44: o app parado não prova nem desprova, e não segura o estado quando outro app passou pelo túnel. */
+const SEM_TRAFEGO = 'O app não trafegou desde que o túnel conectou nesta revisão: não provado, e não segura o estado. '
+  + '"Tráfego verificado" quer dizer que tudo o que trafegou passou pelo túnel; quando este app trafegar, a próxima '
+  + 'medição o reavalia sozinha.';
 
 function simNao(v: boolean | null, sim: string, nao: string): string {
   return v === null ? 'não medido' : v ? sim : nao;
@@ -389,7 +395,8 @@ function ResumoDaMedicao({ m }: { m: NetworkMeasurement }) {
         </div>
       ) : null}
       {apps.map(([pkg, r]) => (
-        <div key={pkg} className={r === 'ok' ? undefined : s.dupe}>
+        <div key={pkg} className={r === 'ok' || r === 'sem_trafego' ? undefined : s.dupe}
+             title={r === 'sem_trafego' ? SEM_TRAFEGO : undefined}>
           {pkg}: {RESULTADO_POR_APP[String(r)] ?? String(r)}
         </div>
       ))}

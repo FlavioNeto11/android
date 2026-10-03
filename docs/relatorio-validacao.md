@@ -2274,3 +2274,56 @@ entram no critério, e por isso não seguram a fase; seguem como pendências com
 `python scripts/docs-check.py` e `python scripts/claude-plan-100.py check` rodados em 02/10 no worktree
 `29-18-fechamento` (central), além do `aplicar` e do `relatorio` do estado: resultado no commit de estado do 29.18.
 Nenhum teste de produto foi rodado, de propósito: o item é documental.
+
+## 29. Fase 30: prova do aprendizado vivo (30.18), em dois níveis (03/10/2026)
+
+A prova tem dois níveis, que não se misturam: o **real da visão**, só com leituras, já feito, e o **real da
+execução**, com execuções só de leitura nos aparelhos, ainda pendente. A decisão e o que ficou pendente na fase estão
+no [ADR-067](decisoes.md).
+
+### 29.1 Real da visão (03/10, 09:45:20Z)
+
+- **Onde:** máquina central, com o processo no commit `df860763` (deploy 8) e a migração `081_error_kind_em_attempts`.
+- **Como:** um coletor só de leitura, só com `GET` na API: `/api/health`, `/api/aprendizado/apps/{pacote}`, o detalhe
+  `/api/aprendizado/{kind}/{ref}` de cada receita, fluxo, lição e tela, e `/api/usage`. Nenhuma chamada paga, nenhum
+  aparelho.
+
+| App | Declarados | Aprendidos | Detalhes lidos | Sem origem | Publicado sem saúde | Sem conteúdo ou versão |
+|---|---:|---:|---:|---:|---:|---:|
+| Instagram (`com.instagram.android`) | 5 | 45 | 44 | 0 | 0 | 0 |
+| QA Messenger (`com.pocqa.messenger`) | 1 | 96 | 96 | 0 | 0 | 0 |
+| Outlook (`com.microsoft.office.outlook`) | 5 | 13 | 13 | 0 | 0 | 0 |
+
+- **Curador:** 21 chamadas desde o deploy 7, US$ 0,4237 no total (`/api/usage`, origem `curador`). Numa cópia do banco
+  das 09:28Z, as 21 revisões eram todas válidas: 18 `pedir_evidencia`, 2 `observar` e 1 `manter`. O `usd` por revisão
+  ainda não é gravado (30.30, suíte 9), e o orçamento entra pela estimativa do dossiê.
+- **Ressalvas** (registradas no ADR-067):
+  - o central está com o curador em `on` desde o deploy 7, e não em `shadow`, como dizia o pacote;
+  - D-1 (o modelo por faixa) está pendente;
+  - desde o deploy 8, o curador herda o Sonnet 5.5 com effort `low` do papel `plan`.
+
+### 29.2 Real da execução (pendente, `not_run`)
+
+Roda depois do deploy 9 e da validação da orquestradora no navegador, uma coisa pesada de cada vez, com estas regras:
+- teto de US$ 1 e os ids registrados;
+- `android-01` primeiro, e o Outlook com a Android.
+
+Antes de disparar:
+- `GET /api/health` ok;
+- a tela do Instagram no `android-01` NÃO pode ser a de verificação de humano (essa tela é conta bloqueada);
+- o curador no modo vigente.
+
+Os três objetivos, só de leitura, com o texto pronto:
+
+1. Instagram: "No Instagram, abra o seu próprio perfil e leia quantos seguidores ele tem. Não siga, não curta, não
+   comente e não envie nada."
+2. QA Messenger: "No QA Messenger, abra a lista de conversas e leia o nome do primeiro contato. Não abra conversas e
+   não envie nada."
+3. Outlook: "No Outlook, leia o assunto do e-mail mais recente da caixa de entrada. Não abra, não responda, não mova e
+   não apague nada."
+
+Na mesma passagem:
+- ler `GET /api/aprendizado/metricas?dias=7` e `GET /api/aprendizado/revisoes`, que são a prova real do 30.8;
+- conferir que o que as três execuções ensinaram aparece na visão por app, com origem, saúde e versão.
+
+Este relatório recebe a data, os ids das execuções, o commit e o custo.

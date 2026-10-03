@@ -392,7 +392,8 @@ it('a última medição da sonda mostra por app, DNS, UDP, vazamento e a saída 
         last_measurement: {
           id: 3, instance_id: 'android-01', measured_at: '2026-09-29T18:23:05Z', method: 'sonda nc http/1.0 + netstats por uid (uid 2000)',
           egress_ipv4: '198.51.100.7', egress_ipv6: null, dns_resolver: '172.19.0.2', udp_ok: false,
-          per_app: { 'com.instagram.android': 'ok', 'com.microsoft.office.outlook': 'nao_medido', 'com.android.shell': 'ok' },
+          per_app: { 'com.instagram.android': 'ok', 'com.microsoft.office.outlook': 'sem_trafego', 'com.android.shell': 'ok',
+                     'com.whatsapp': 'nao_medido' },
           leak_blocked: null, detail: 'IPv4 198.51.100.7 (api.ipify.org) | vazamento não medido: servidor externo',
         },
       }),
@@ -405,7 +406,8 @@ it('a última medição da sonda mostra por app, DNS, UDP, vazamento e a saída 
   expect(text()).toContain('UDP falhou');
   expect(text()).toContain('vazamento não medido');                          // null nunca vira "bloqueado"
   expect(text()).toContain('bloqueio fora da VPN: sem prova');                // com bloqueio pedido e sem prova na linha
-  expect(text()).toContain('com.microsoft.office.outlook: sem tráfego medido');
+  expect(text()).toContain('com.microsoft.office.outlook: sem tráfego na janela');      // 29.44: parado não segura
+  expect(text()).toContain('com.whatsapp: não medido (não instalado ou não lido)');
   expect(text()).toContain('com.instagram.android: pelo túnel');
   expect(container.querySelectorAll('[title="Outro aparelho mediu o mesmo IP agora."]').length).toBe(1);
 });

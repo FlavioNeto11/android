@@ -5,7 +5,8 @@ conhecimento fica num **livro** com ciclo de vida, e publicar sozinho só vale p
 repetiu (D1). A decisão e as alternativas estão no
 [ADR-054](../decisoes.md#adr-054--aprendizado-contínuo-livro-de-aprendizado-com-ciclo-de-vida-publicação-sozinha-só-sem-efeito-externo-d1-feedback-implícito-com-botão-opcional-d2-lições-medidas-e-backlog-do-que-mais-falha);
 o contrato HTTP, nos adendos [v0.37 e v0.38](../api-contract.md); as tabelas (migração 055), em
-[banco.md](../banco.md); a lição no prompt, em [ia.md §15](../ia.md).
+[banco.md](../banco.md); a lição no prompt, em [ia.md §15](../ia.md). O aprendizado vivo (Fase 30: eixo de app, saúde,
+curador por IA, métricas) é o [ADR-067](../decisoes.md#adr-067--aprendizado-vivo-eixo-de-app-saúde-derivada-e-curador-por-ia-auditável).
 
 Caminhos relativos a `backend/app/`, salvo indicação. O código mora em `modules/learning/` (domínio, aplicação,
 infraestrutura e apresentação, com a catraca de camadas do ADR-030 e zero `Any`); as costuras nos arquivos quentes, em
@@ -208,6 +209,46 @@ diária.
     simuladas.
   - O acervo antigo (14 receitas, 11 ativas ou validadas, e 3 fluxos ativos de origem simulada, todos do QA Messenger)
     não foi rebaixado: decisão da orquestradora, nada de app real. A fatia A já o tira da lista padrão do livro.
+- **A chave genérica da receita (RA-20 fatia B, 03/10; desenho aprovado pela Android).**
+  - O problema: o planejador reescreve a pós-condição julgada pelo modelo a cada plano ("conversa com @x aberta",
+    "perfil de @x aberto"), e cada redação era uma chave. Medido no central: 15 receitas ativas em 5 caminhos iguais.
+  - `hash_generico` (`taskqueue/recipes.py`) é a identidade da etapa SEM o texto da pós-condição. Só vale para a etapa
+    `model_judged`, sem efeito e sem `commit_guard`; um campo ausente devolve None (a receita fica na específica).
+  - Uma função só, chamada:
+    - pelo executor, pela linha de `steps`, porque o DTO não traz o `template_key` da cópia do for_each;
+    - pelo save;
+    - pelos consumidores (`social/capacidades.py`, `taskqueue/aproveitamento.py` e o `_caminho_ja_aberto` do scheduler);
+    - pelo backfill.
+  - `contexto_sql`/`diagnostico` não mudam: a busca aproximada é só da tentativa antiga sem `recipe_id`, anterior a
+    qualquer receita genérica.
+  - `eh_generica` decide no save onde a receita mora. É específica quando um literal do que ela procura ou digita
+    (`text`/`desc` dos seletores, argumentos de texto; o `{nome}` é o valor da vez e não conta) aparece, como palavra
+    normalizada (caixa, acento, @), na pós-condição escrita, ou quando o valor de um parâmetro da execução aparece num
+    literal.
+    - Os casos reais: o toque em "nasa" do `open_profile` (receitas 25 e 73) é específico; "Message", "Options" e
+      "Send message" (`open_thread`, 38/40/43/45) são genéricos.
+    - Na dúvida, específica: o rótulo do campo citado na pós-condição ("Nome", "Perfil") deixa 56, 57, 59 e 104
+      específicas, e isso só adia o ganho.
+  - `RecipeStore.find(..., step_hash_generico=)` consulta as duas chaves na MESMA chamada: ativa específica, ativa
+    genérica, candidata específica, candidata genérica.
+    - A quarentena vale em qualquer das duas.
+    - A herança tenta a específica e depois a genérica, e a causa do ausente é medida uma vez.
+    - A tentativa achada pela genérica conta em `receita.consulta{resultado, chave=generica}`; a específica fica na
+      série de antes.
+    - Na trilha: "reproduzida pela chave genérica".
+  - Troca entre chaves: a candidata ESPECÍFICA que divergiu sai (`superseded`) quando o caminho da IA vai para a
+    genérica, mesmo que a genérica já tenha a sua em prova.
+    - A genérica que divergiu num valor e um caminho específico ficam lado a lado: ela segue em prova para os outros
+      valores.
+    - O treino (`training/skills.py`) fica específico.
+  - Backfill NÃO destrutivo (`scripts/ra20b-receitas-genericas.py`, `taskqueue/receitas_genericas.py`; ensaio por
+    padrão, `--aplicar` com backup e o OK da Android e da orquestradora).
+    - As receitas atuais ficam onde estão.
+    - Por chave genérica entra UMA cópia candidata da ativa elegível com mais evidência, que se prova em sombra.
+    - Fica de fora `open_app`: desde o 29.45 a etapa de app em frente não gera comparação de sombra.
+    - Uma específica mal classificada custa só uma divergência em sombra.
+    - Ensaio na cópia do central (03/10), depois da regra do título (o alvo escrito só no título da etapa conta
+      como literal): 6 específicas, 9 chaves, 9 candidatas semeadas e nenhuma ativa tocada.
 - **Habilidade.** O primeiro escritor real de `skill_validation_results`: cada execução de versão grava a observação
   (`proof=real` só de execução real). Execução com etapa confirmada à mão vira `uncertain`, nunca `passed`. O sistema
   pode validar; publicar é sempre de pessoa.
@@ -650,7 +691,9 @@ sem adaptador (testes) usa o SIMULADO.
   3 falha recorrente, 4 classe B, 5 classe A (sempre por último, mesmo contestada: `so_com_sobra`). O corte é `orcamento_da_janela`
   (motivo próprio, não o `fatia_curador` do hub), `gasto_da_hora` (`B_W/W/2`, conferido sobre o já gasto), `pico_de_entrada`,
   `lote_interrompido` ou `erro_do_provedor`; o corte NÃO vira linha (não gasta a chave (item, dossiê)) e fica no resultado e no log.
-  Acima de `c_max = m_cmax × mediana`, o dossiê é refeito com 10 e depois 0 evidências; se ainda passar, `recusada:custo`. O item já
+  Acima de `c_max = m_cmax × mediana` das ESTIMATIVAS da volta (30.30: estimativa com estimativa; o custo medido entra só no
+  c̄, porque a estimativa usa o preço do modelo mais caro e, com o curador num modelo barato, a mediana medida recusaria
+  tudo), o dossiê é refeito com 10 e depois 0 evidências; se ainda passar, `recusada:custo`. O item já
   revisado com um dossiê cortado não volta à IA com o inteiro enquanto o estado for o mesmo (confere as variantes antes do pedido).
 - **Custo**: a 069 declara `usd REAL NOT NULL DEFAULT 0`; o curador grava `usd = 0` = NÃO MEDIDO (só `usd > 0` conta como medida).
   Desde o 30.12 a `RespostaDeRevisao` traz `usd` e `ai_call_id` medidos pelo hub; a 075 grava o `ai_call_id` (a revisão fica ligada à
@@ -679,8 +722,15 @@ com o MESMO registro e a mesma fonte de dossiês do curador); leitura e gravaç�
   ordem: inválido, já decidido, oculto, simulado, desatualizado e a classe (`conferir_aceite`, com a mais restritiva entre a
   classe gravada e a do dossiê de agora). O CAS da decisão vem antes da transição, na mesma transação.
 - **Pedido de revisão**: sinal `pediu_revisao` com o `dossie_hash`; o curador o lê como o gatilho `pedido_da_pessoa`
-  (`JANELA_DO_PEDIDO_DIAS` = 7; atendido = revisão do item depois do pedido), que só pula o cooldown. Só em `on`; o dossiê
-  já revisado responde com a revisão que existe.
+  (`JANELA_DO_PEDIDO_DIAS` = 7; atendido = revisão do item depois do pedido). Só em `on`; o dossiê já revisado responde com
+  a revisão que existe.
+  - O pedido pula o cooldown e, desde o 30.30, fura a fila: prioridade `PEDIDO_DA_PESSOA` (0), na frente de todos e
+    também no pico. Continua sob o teto da hora e o orçamento da janela: com a hora gasta, espera a volta seguinte.
+  - A classe A segue só com sobra, mesmo pedida (decisão do dono, 02/10).
+  - O motivo (03/10): 12 pedidos esperavam atrás de ~40 itens, a ~6 por volta, porque até então a prioridade era a dos
+    outros gatilhos do item.
+  - A revisão continua UMA por (item, hash do dossiê): o pedido sobre um dossiê já revisado não chama a IA. Uma
+    transição de estado (desligar, por exemplo) entra na trilha e muda o hash.
 - **Painel** (`features/aprendizado/ParecerDaIA.tsx`, `parecer.ts`):
   - a seção "Parecer do curador" no detalhe: sugestão, classe, conclusão, o que o curador citou (com link), aceitar ou
     recusar com motivo, pedir revisão e histórico;
@@ -839,6 +889,22 @@ O gabarito humano do decisor fechado da intenção (31.x, da Jev). Sem IA e sem 
   sem o palpite do sistema, e "Nenhuma destas"; com mais de 8, um filtro sem acento. O catálogo de 03/10 tem 26 opções
   e nomes de até 120 caracteres: cada nome ocupa no máximo duas linhas (inteiro no `title`), e dois fluxos com o mesmo
   nome mostram o id. Nos Sinais, a resposta aparece como "Disse qual era o pedido", não como parecer da IA.
+
+## Métricas (30.8)
+
+`GET /api/aprendizado/metricas?app=&dias=` e `GET /api/aprendizado/revisoes` (adendo v0.89 do contrato). A aplicação é
+`application/metricas.py`: contas puras sobre uma porta de leitura (`infrastructure/metricas_sql.py`), sem contador
+novo em memória. Cada bloco da resposta é uma linha da tabela do §10 do desenho. O que vale para quem lê:
+
+- a composição e a saúde saem das mesmas funções da visão por app (`servico.livro`, `servico.publicados`); a métrica
+  não tem rótulo próprio. A economia é a do `taskqueue/aproveitamento.py`, injetada pela montagem (só leitura);
+- ausente é `null`, com o `n` ao lado; simulado fica fora, e a revisão simulada é contada à parte;
+- "falhas evitadas" é um PROXY rotulado: taxa de falha com receita × só IA nas etapas que tiveram as duas conduções;
+- a receita não tem evidência datada, então o "sucesso depois de promovido" é de fluxo e lição;
+- o orçamento do curador usa a conta da volta (`janela_do_orcamento`, extraída de `curador.py` para as duas servirem)
+  com as revisões já gravadas: o B_W é um piso, o `uso` é um teto e o aviso, a 80 %, sai cedo. Sem `usd` medido
+  (antes do #144-B no central), o c̄ é a média das estimativas; sem ela o B_W cairia a zero, defeito que o ensaio pegou;
+- a série quebra no deploy 8 (LT-6, acima): compare janelas do mesmo lado de 03/10 09:06:28Z.
 
 ## Pendências conhecidas
 

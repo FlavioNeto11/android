@@ -2060,6 +2060,48 @@ Saída bruta em `data/diag-ra3b/`: `repouso-cores4-01-600s.json`, `dif-*.json` e
     quente não tem (PROVED).
   - INFERRED: a mesma causa nas duas máquinas, o lançamento na sessão 0. O logon S4U da tarefa do agente também não é
     interativo.
+- **Braços por flag (29.46): o binário COM janela (oculta) não gira na sessão 0; nenhuma flag do headless resolve**
+  (`real`, 03/10, 10:10–10:34Z, central WIN-7S2UASNLFOP, backend 57d82a5a = deploy 8 mais docs, emulador 37.1.11;
+  autorizado pela orquestradora). Montagem e saída:
+  - um aparelho temporário, `android-19`, provisionado pela API (sem persona) e ligado pelo backend, na sessão 0;
+  - `android.extra_emulator_args` (e, no b2, `window`) trocados no `config.yaml` do central a cada braço, sempre a partir
+    do backup, com a restauração conferida por sha;
+  - janelas de 20 s (30 s depois de o qemu aparecer) e de 60 s (60 s depois do online);
+  - saída em `data/diag-ra3b/2946-b*-android-19.json`, fora do Git.
+
+| Braço | Config do emulador | Binário | Aos 30 s: mais quente (kernel) | Depois do boot: mais quente (kernel) | Total do qemu depois do boot | Online |
+|---|---|---|---|---|---|---|
+| b0, 10:10:20Z | `["-lowram"]` (o de sempre) | `-headless` | 99,6 % (94,0) | 99,6 % (94,2) | 155,5 % | 105 s |
+| b1, 10:16:09Z | mais `-feature -NetsimWebUi,-NetsimCliUi,-WiFiPacketStream,-VirtioSndCard` e `-camera-back none -camera-front none` | `-headless` | 99,5 % (92,2) | 99,4 % (91,7) | 132,0 % | 65 s |
+| **b2, 10:20:15Z** | **`window: true` (sai o `-no-window`) e `-qt-hide-window`** | **`qemu-system-x86_64.exe`** | 29,8 % (13,8) | **2,9 % (1,2)** | **7,6 %** | 55 s |
+| **b2r, 10:24:07Z** | o b2 de novo, outra partida | idem | 24,9 % (9,7) | **5,3 % (1,5)** | **13,6 %** | 70 s |
+
+  - O b1 é a soma dos três candidatos a bissectar (netsim, câmeras, som). Sem efeito nele, a bissecção não se fez.
+  - **O aparelho funciona no b2** (PROVED). O `screencap` do adb (o mesmo da prévia) deu 720×1280, com desvio de 85,9
+    (não é tela preta). `GET /hierarchy` trouxe 23 elementos do launcher, e a automação ficou `ready` (systemPort 8218).
+  - **Sem custo de RAM** (mesmo AVD, 259 s depois da partida). b2r: working set 1702 MB e 3159 MB privados. Headless
+    (boot a frio, config original): 2125 MB e 3328 MB.
+  - **O `-no-window` é o que escolhe o binário headless** (`emulator.py::build_args`). A variável que importa é o
+    binário × a sessão 0.
+    - PROVED, em duas partidas: o binário com janela, na sessão 0, não gira.
+    - UNKNOWN: se basta `window: true` sem o `-qt-hide-window` (não bissectado).
+    - Na sessão 0 nenhuma janela aparece para ninguém. O `-qt-hide-window` só evita que surjam janelas se o backend um dia
+      rodar numa sessão interativa.
+  - **Hibernação.** O `_hw_signature` (`devices/manager.py`) inclui `extra_emulator_args`, mas não `window`. Por isso,
+    acrescentar o `-qt-hide-window` invalida os snapshots já salvos: o wake os descarta e sobe a frio, sem perder dados.
+    - PROVED no 19: hibernado no b2 às 10:28Z e acordado com o config original às 10:29Z. Subiu com
+      `-no-snapshot-load`, a frio, online em 63 s, e a thread voltou a 99,7 % com o headless.
+    - Na troca do padrão, cada hibernado (02/04/05/07/08) pagaria um boot a frio no próximo wake.
+  - O `Saving snapshot 'default_boot'` de 1 a 3 ms na saída aparece nos dois binários e já existia nos reais (33, 32 e
+    38 vezes nos logs do 01, do 03 e do 06). Não vem do binário com janela.
+  - A pausa do reparo pedida antes dos braços sumiu no primeiro restart do backend: K-082.
+  - Notebook: `C:\farm\worker.yaml` tem `extra_emulator_args: ["-lowram"]` e nenhum `window`, então é headless. O b2
+    lá é `not_run`.
+  - Desvios do pedido: um temporário só para todos os braços, em vez de um por braço; o b2 trocou `window`, não só os
+    args; acrescentei o teste de hibernar e acordar; foram 3 restarts dos 4 liberados.
+  - Correção: o 29.48 (decisão da orquestradora, 03/10). Depois do deploy 9 e do T_on do 31.10, em dois passos no
+    central. O 1º restart leva só o `window: true`, que preserva os snapshots, e mede. Se o giro persistir, o 2º leva o
+    `-qt-hide-window`. Com o central estável por 1 h ou mais, vem o notebook.
 
 ### K-079 — A prévia cortada da caixa do Outlook derruba a conferência visual
 
@@ -2117,3 +2159,20 @@ depois do `deploy.ps1`, e um `on` sem aspas também.
 
 **Aplicabilidade.** Vigente para todo campo de modo `off`/`shadow`/`on` do YAML (porta `DecisaoFechada`, aprendizado,
 telas, voz, preferências). Ao escrever um bloco desses à mão, use aspas ou omita.
+
+### K-082 — A pausa do reparo some no restart do backend: renovar depois de cada restart
+
+**Sintoma.** Nos braços do 29.46 (03/10, central), a pausa do reparo do 01, do 03 e do 06 foi pedida às 10:10Z com prazo
+até 10:40Z. Às 10:34Z, o `DELETE /api/instances/{id}/repair-pause` devolveu 404 (sem pausa) nos três, antes do prazo.
+
+**Causa (PROVED).** `PUT /repair-pause` grava em `DeviceRuntime.repair_pause` (`devices/manager.py::pausar_reparo`), só
+em memória. O restart do backend (a tarefa `farm-central`) recria os runtimes sem ela.
+- A pausa sumiu no primeiro restart (10:16Z), e os dois seguintes rodaram sem ela.
+- Não houve incidente: os três ficaram online o tempo todo, mas a escada de reparo esteve armada durante o experimento.
+
+**O que fazer.** Em todo procedimento com restart do backend (deploy, braços, troca de config), renove a pausa DEPOIS de
+o health voltar, além de antes. A persistência da pausa é o 25.13.
+
+**Aplicabilidade.** O central. INFERRED: vale também para os aparelhos do notebook, cuja pausa mora no mesmo
+`DeviceRuntime` do central. A atualização do agente não reinicia o central, então não a perde.
+
