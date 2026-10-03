@@ -9,7 +9,8 @@ domínio deixasse passar, o banco não publica o que só o dono publica.
 
 Receita e fluxo só têm o `status` tocado (o precedente é a adoção das habilidades), sempre com a trilha na mesma
 transação. As guardas que valiam na rota antiga continuam valendo aqui: nunca duas receitas ativas na mesma chave,
-e fluxo adotado por habilidade publicada (ou com o mesmo comando publicado) não se religa.
+e fluxo adotado por habilidade publicada (ou com o mesmo comando publicado) não se religa. O reaprendido depois de uma
+evidência inválida (30.23) também não é ativado pelo sistema: a segunda camada relê a trilha do escopo.
 
 Escritas idempotentes por chave única: sinal (`kind, source_ref, created_by`), evidência (`item_ref, origin_ref,
 stance`) e o agregado diário, recalculado por inteiro (DELETE do intervalo + INSERT) numa transação.
@@ -28,6 +29,7 @@ from app.modules.learning.application.ports import (MudancaNativa, NovaEvidencia
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, ConflitoDeEstado, Desligamento, EntradaInvalida,
                                                ExigeODono, NaoEncontrado, SkillState, conferir_nascimento)
 from app.modules.learning.domain.efeito import Exposicao
+from app.modules.learning.domain.evidencia_invalida import PREFIXO, reaprendizado
 from app.modules.learning.domain.falhas import classificar_falha
 from app.modules.learning.domain.livro import (Escopo, ItemDeAprendizado, NovoItem, Transicao, fluxo_tem_efeito,
                                                receita_tem_efeito, ref_da_trilha)
@@ -183,6 +185,45 @@ class SqlLearningRepository:
             self._registrar(ref_da_trilha(m.kind, m.ref), m.kind, m.content_hash, m.scope_key, m.app_version,
                             m.de_estado, m.para_estado, reason, by, agora, run_id)
 
+    def reclassificar_desligamento(self, mudanca: MudancaNativa, *, by: str, reason: str) -> None:
+        """A linha `disabled → disabled` da trilha: o item JÁ desligado ganha o tipo do desligamento (30.23, a evidência
+        inválida). O status nativo não muda; o CAS confere que ele ainda está desligado (ninguém o religou no meio) e a
+        linha entra na mesma transação da leitura."""
+        self._no_mesmo_estado(mudanca, SkillState.DISABLED, by=by, reason=reason,
+                              fora="Só o item desligado tem o desligamento reclassificado.")
+
+    def confirmar_que_fica(self, mudanca: MudancaNativa, *, by: str, reason: str) -> None:
+        """A linha `published → published` da trilha (30.24): a PESSOA confirma que o legado publicado de "Revisar"
+        fica. O status nativo não muda; o CAS confere que ele ainda está ativo (ninguém o desligou no meio)."""
+        self._no_mesmo_estado(mudanca, SkillState.PUBLISHED, by=by, reason=reason,
+                              fora="Só o item publicado tem a confirmação de que fica.")
+
+    def _no_mesmo_estado(self, m: MudancaNativa, estado: SkillState, *, by: str, reason: str, fora: str) -> None:
+        """Uma linha da trilha que não muda o estado (`de == para`), na mesma transação da leitura do status nativo."""
+        if not by.strip() or not reason.strip():
+            raise EntradaInvalida("Transição sem quem decidiu ou sem motivo não entra na trilha.")
+        if m.de_estado is not estado or m.para_estado is not estado:
+            raise EntradaInvalida(fora)
+        with self._db.tx():
+            if m.kind is LivroKind.RECEITA:
+                try:
+                    row = self._db.one("SELECT status FROM recipes WHERE id=?", (int(m.ref),))
+                except ValueError as exc:
+                    raise NaoEncontrado(f"Receita '{m.ref}' não existe.") from exc
+            elif m.kind is LivroKind.FLUXO:
+                row = self._db.one("SELECT status FROM flows WHERE id=?", (m.ref,))
+            else:
+                raise EntradaInvalida(f"{m.kind.value} não tem status movido pelo livro.")
+            if row is None:
+                raise NaoEncontrado(f"{m.kind.value} '{m.ref}' não existe.")
+            if linhas.texto(row, "status") != m.de_status:
+                raise ConflitoDeEstado(f"{m.kind.value} {m.ref} mudou de status; releia e tente de novo.")
+            self._registrar(ref_da_trilha(m.kind, m.ref), m.kind, m.content_hash, m.scope_key, m.app_version,
+                            estado, estado, reason, by, self._clock(), None)
+
+    def _reaprendido(self, m: MudancaNativa) -> bool:
+        return reaprendizado(self.trilha_do_escopo(m.scope_key), ref_da_trilha(m.kind, m.ref)) is not None
+
     def _mover_receita(self, m: MudancaNativa, *, by: str) -> None:
         try:
             recipe_id = int(m.ref)
@@ -194,6 +235,9 @@ class SqlLearningRepository:
         if m.para_status == "active":
             if by == SYSTEM_ACTOR and receita_tem_efeito(linhas.json_legado(linhas.texto(row, "actions"))):
                 raise ExigeODono(f"Receita {recipe_id} tem ação de efeito externo: ativar é decisão do dono (D1).")
+            if by == SYSTEM_ACTOR and self._reaprendido(m):
+                raise ExigeODono(f"Receita {recipe_id} foi reaprendida depois de uma evidência inválida: ativar é "
+                                 "decisão do dono (classe B).")
             outra = self._db.one(
                 "SELECT id FROM recipes WHERE app_package=? AND app_version=? AND app_signature=? AND variant=?"
                 " AND step_hash=? AND status='active' AND id<>?",
@@ -214,6 +258,9 @@ class SqlLearningRepository:
         if m.para_status == "active":
             if by == SYSTEM_ACTOR and fluxo_tem_efeito(linhas.json_legado(linhas.texto(row, "plan"))):
                 raise ExigeODono(f"Fluxo {m.ref} tem etapa de efeito externo: publicar é decisão do dono (D1).")
+            if by == SYSTEM_ACTOR and self._reaprendido(m):
+                raise ExigeODono(f"Fluxo {m.ref} foi reaprendido depois de uma evidência inválida: publicar é decisão "
+                                 "do dono (classe B).")
             if self._guarda_do_fluxo is not None and (motivo := self._guarda_do_fluxo(m.ref)) is not None:
                 raise ConflitoDeEstado(motivo)
         cur = self._db.execute("UPDATE flows SET status=? WHERE id=? AND status=?", (m.para_status, m.ref, m.de_status))
@@ -237,12 +284,34 @@ class SqlLearningRepository:
             "SELECT * FROM learning_transitions WHERE item_ref=? ORDER BY id", (item_ref,))]
 
     def desligamentos(self, content_hash: str, scope_key: str) -> list[Desligamento]:
-        """TODAS as decisões sobre o mesmo conteúdo no mesmo escopo: o veto olha a mais recente."""
-        return [Desligamento(to_state=SkillState(linhas.texto(r, "to_state")),
-                             decided_by=linhas.texto(r, "decided_by"), decided_at=linhas.texto(r, "decided_at"),
-                             app_version=linhas.texto_ou_nulo(r, "app_version"))
-                for r in self._db.query("SELECT to_state, decided_by, decided_at, app_version FROM learning_transitions"
-                                        " WHERE content_hash=? AND scope_key=? ORDER BY id", (content_hash, scope_key))]
+        """TODAS as decisões sobre o mesmo conteúdo no mesmo escopo: o veto olha a mais recente (com o motivo, que
+        diz o tipo do desligamento, e o estado de onde saiu, que separa a arrumação da loja)."""
+        saida: list[Desligamento] = []
+        for r in self._db.query("SELECT to_state, from_state, decided_by, decided_at, app_version, reason"
+                                " FROM learning_transitions WHERE content_hash=? AND scope_key=? ORDER BY id",
+                                (content_hash, scope_key)):
+            de = linhas.texto_ou_nulo(r, "from_state")
+            saida.append(Desligamento(to_state=SkillState(linhas.texto(r, "to_state")),
+                                      decided_by=linhas.texto(r, "decided_by"), decided_at=linhas.texto(r, "decided_at"),
+                                      app_version=linhas.texto_ou_nulo(r, "app_version"),
+                                      reason=linhas.texto(r, "reason"), from_state=SkillState(de) if de else None))
+        return saida
+
+    def trilha_do_escopo(self, scope_key: str) -> list[Transicao]:
+        """Todas as linhas do mesmo escopo, de todos os itens, na ordem do `id` (30.23: o reaprendido)."""
+        return [_transicao(r) for r in self._db.query(
+            "SELECT * FROM learning_transitions WHERE scope_key=? ORDER BY id", (scope_key,))]
+
+    def trilhas_com_evidencia_invalida(self) -> dict[str, list[Transicao]]:
+        """A trilha de cada escopo que tem evidência inválida (30.23), numa leitura só: a lista do livro marca o
+        reaprendido sem uma consulta por linha. O `LIKE` acha os candidatos; o domínio confere o motivo exato."""
+        saida: dict[str, list[Transicao]] = defaultdict(list)
+        for r in self._db.query(
+                "SELECT * FROM learning_transitions WHERE scope_key IN (SELECT scope_key FROM learning_transitions"
+                " WHERE reason LIKE ?) ORDER BY id", (PREFIXO + ":%",)):
+            t = _transicao(r)
+            saida[t.scope_key].append(t)
+        return dict(saida)
 
     def refs_decididas_por_pessoa(self, kinds: Sequence[LivroKind]) -> frozenset[str]:
         if not kinds:
@@ -251,6 +320,17 @@ class SqlLearningRepository:
         return frozenset(linhas.texto(r, "item_ref") for r in self._db.query(
             f"SELECT DISTINCT item_ref FROM learning_transitions WHERE item_kind IN ({marcas}) AND decided_by<>?",
             (*(k.value for k in kinds), SYSTEM_ACTOR)))
+
+    def ultimas_decisoes_da_pessoa(self, kinds: Sequence[LivroKind]) -> dict[str, Transicao]:
+        """A última linha de PESSOA de cada item dos tipos: "Revisar" precisa saber se ela é uma confirmação (30.24)."""
+        if not kinds:
+            return {}
+        marcas = ",".join("?" for _ in kinds)
+        linhas_ = self._db.query(
+            "SELECT t.* FROM learning_transitions t JOIN (SELECT item_ref, MAX(id) AS id FROM learning_transitions"
+            f" WHERE item_kind IN ({marcas}) AND decided_by<>? GROUP BY item_ref) u ON u.id = t.id",
+            (*(k.value for k in kinds), SYSTEM_ACTOR))
+        return {t.item_ref: t for t in map(_transicao, linhas_)}
 
     # ================================================================== evidência
     def evidencias(self, item_ref: str, *, limite: int = 200) -> list[Evidencia]:

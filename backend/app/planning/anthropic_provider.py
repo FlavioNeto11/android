@@ -32,9 +32,11 @@ from ..modules.identity.domain.persona_generation import (MAX_TOKENS_DO_RASCUNHO
 from . import prompts
 from .curador import (CURADOR_SYSTEM, ParecerBruto, ParecerIlegivel, PedidoDeParecer, curador_user, esquema_do_parecer,
                       parecer_from_json)
-from .parsing import (_CapPlanOut, _MultiPlanOut, _PlanOut, catalog_plan_from_json, plan_from_json, social_from_json,
-                      verdict_from_json)
-from .provider import (AVISO_TELA_SENSIVEL, AIError, Decision, DecisionRequest, PlanRequest, ScreenInput, SocialRequest, Usage,
+from .parsing import (_CapPlanOut, _MultiPlanCurtoOut, _MultiPlanOut, _PlanCurtoOut, _PlanOut, catalog_plan_from_json,
+                      plan_from_json, social_from_json, verdict_from_json)
+from .provider import (AVISO_TELA_SENSIVEL, AIError, Decision, DecisionRequest, LeituraRequest, PlanRequest, ScreenInput,
+                       SocialRequest, Transcricao, TranscricaoWire, modelo_do_papel_leitura,
+                       transcricao_from_json, Usage,
                        Verdict, VerifyRequest, persona_draft_from_json)
 
 if TYPE_CHECKING:
@@ -150,8 +152,9 @@ class AnthropicProvider:
 
     # ------------------------------------------------------------------ chamada base
     def _kwargs(self, *, model: str, system: str, content: list[dict[str, Any]], effort: str, max_tokens: int,
-                tools: bool, schema: dict[str, Any] | None) -> dict[str, Any]:
-        """Monta a requisição respeitando a capacidade DECLARADA deste modelo (`ai.models`) e o que ele já recusou."""
+                tools: bool, schema: dict[str, Any] | None, pensar: bool = True) -> dict[str, Any]:
+        """Monta a requisição respeitando a capacidade DECLARADA deste modelo (`ai.models`) e o que ele já recusou.
+        `pensar=False` (item 17.14, `thinking: false` da função) deixa de mandar `thinking`, como num modelo sem ele."""
         caps = self.cfg.model_caps(model)
         off = self._unsupported.setdefault(model, set())
         if tools and not caps.tools:
@@ -168,7 +171,7 @@ class AnthropicProvider:
         bloco: dict[str, Any] = {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
         kwargs: dict[str, Any] = dict(model=model, max_tokens=max_tokens, system=[bloco],
                                       messages=[{"role": "user", "content": content}])
-        if caps.thinking and "thinking" not in off:
+        if pensar and caps.thinking and "thinking" not in off:
             kwargs["thinking"] = {"type": "adaptive"}
         output_config: dict[str, Any] = {}
         if caps.effort and "effort" not in off:
@@ -203,15 +206,20 @@ class AnthropicProvider:
 
     async def _create(self, *, role: str, model: str, system: str, content: list[dict[str, Any]], effort: str,
                       max_tokens: int, tools: bool = False, schema: dict[str, Any] | None = None, tier: int = 0,
-                      with_image: bool = False) -> tuple[Any, Usage]:
+                      with_image: bool = False, funcao: str | None = None) -> tuple[Any, Usage]:
+        """`funcao`: a função do hub que a chamada serve, quando difere de `role` (a decisão escalada é `escalation`)."""
         if self._client is None:
             raise AIError("Provedor de IA sem chave configurada (ANTHROPIC_API_KEY).", kind="not_configured",
                           model=model)
+        f = self._da_funcao(funcao or role)
+        if f is not None and f.effort_declarado:
+            effort = f.effort_declarado                 # 17.14: o esforço que o YAML escreveu para esta função
+        pensar = not (f is not None and f.thinking is False)
         t0 = time.monotonic()
         try:
             for _ in range(len(_TUNABLE) + 2):
                 kwargs = self._kwargs(model=model, system=system, content=content, effort=effort,
-                                      max_tokens=max_tokens, tools=tools, schema=schema)
+                                      max_tokens=max_tokens, tools=tools, schema=schema, pensar=pensar)
                 try:
                     resp = await self._send(model, kwargs)
                     break
@@ -259,9 +267,31 @@ class AnthropicProvider:
             # O que o pedido exige e não existia: a troca deixa de ser "uma linha de um modelo estranho no painel".
             log.warning("Fallback de recusa: %s recusou; respondeu %s (cobrado na tarifa de %s).",
                         model, respondeu, respondeu)
-        log.info("uso[%s/%s]: entrada=%s cache_lido=%s cache_gravado=%s saida=%s imagem=%s %sms", role, usage.model,
-                 u.input_tokens, read, write, u.output_tokens, with_image, usage.ms)
+        # Sonda "o ator pensa?" (17.14): o provedor não guarda os blocos de pensamento, mas conta quantos vieram. Com
+        # `thinking` pedido e 0 blocos em toda chamada, o pensamento não está acontecendo.
+        pensou = sum(1 for b in (getattr(resp, "content", None) or ())
+                     if getattr(b, "type", "") in ("thinking", "redacted_thinking"))
+        log.info("uso[%s/%s]: entrada=%s cache_lido=%s cache_gravado=%s saida=%s imagem=%s pensou=%s %sms", role,
+                 usage.model, u.input_tokens, read, write, u.output_tokens, with_image, pensou, usage.ms)
         return resp, usage
+
+    def _da_funcao(self, papel: str) -> "ResolvedRole | None":
+        """A função resolvida desta instância, se a chamada é dela (17.14). A instância de uma função também atende as
+        outras (planejar sendo a do ator): nelas os ajustes da função não valem, e a chamada sai como sempre."""
+        return self.role if self.role is not None and self.role.role == papel else None
+
+    def estado_do_thinking(self, papel: str, model: str) -> str:
+        """A sonda "o ator pensa?" (17.14) para a aba IA: `adaptive` (vai em toda chamada), `desligado_na_funcao`
+        (`thinking: false`), `nao_declarado` (`ai.models.<m>.thinking` falso) ou `recusado_pelo_modelo` (um 400 o
+        desligou nesta instância; vale até reiniciar, e o aviso no log diz qual chave declarar)."""
+        f = self._da_funcao(papel)
+        if f is not None and f.thinking is False:
+            return "desligado_na_funcao"
+        if not self.cfg.model_caps(model).thinking:
+            return "nao_declarado"
+        if "thinking" in self._unsupported.get(model, set()):
+            return "recusado_pelo_modelo"
+        return "adaptive"
 
     async def _send(self, model: str, kwargs: dict[str, Any]) -> Any:
         assert self._client is not None
@@ -284,6 +314,18 @@ class AnthropicProvider:
                           model=model or getattr(resp, "model", ""))
 
     @staticmethod
+    def _conteudo_da_etapa(screen: ScreenInput, estavel: str, volatil: str) -> list[dict[str, object]]:
+        """RA-17 (dieta do contexto 2, `cache_da_etapa`): o bloco estável da etapa (passo e lições) primeiro, com o 2º
+        ponto de cache; a imagem e a observação depois. Com a imagem primeiro, nada depois do system podia ser
+        cacheado: a imagem muda a cada decisão, e o prefixo cacheável termina no primeiro byte que muda."""
+        content: list[dict[str, object]] = [{"type": "text", "text": estavel, "cache_control": {"type": "ephemeral"}}]
+        if screen.jpeg and not screen.sensitive:
+            content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                                         "data": base64.standard_b64encode(screen.jpeg).decode()}})
+        content.append({"type": "text", "text": volatil})
+        return content
+
+    @staticmethod
     def _screen_content(screen: ScreenInput, text: str) -> list[dict[str, Any]]:
         content: list[dict[str, Any]] = []
         if screen.jpeg and not screen.sensitive:
@@ -299,13 +341,15 @@ class AnthropicProvider:
         if req.catalog is not None:
             return await self._plan_with_catalog(req)
         max_steps = self.cfg.file.limits.max_steps_per_objective
-        resp, usage = await self._create(role="plan", model=self.models["plan"], system=prompts.PLANNER_SYSTEM,
+        curto = self.cfg.file.ai.esquema_do_plano == "curto"          # LT-4b
+        resp, usage = await self._create(role="plan", model=self.models["plan"],
+                                         system=prompts.PLANNER_SYSTEM_CURTO if curto else prompts.PLANNER_SYSTEM,
                                          content=[{"type": "text", "text": prompts.planner_user(req, max_steps)}],
                                          effort=self.cfg.env.ai_effort_planner, max_tokens=12000,
-                                         schema=strict_schema(_PlanOut))
+                                         schema=strict_schema(_PlanCurtoOut if curto else _PlanOut))
         self._check_stop(resp, self.models["plan"])
         raw = next((b.text for b in resp.content if b.type == "text"), "")
-        plan = plan_from_json(raw, req, provider=self.name, model=resp.model, max_steps=max_steps)
+        plan = plan_from_json(raw, req, provider=self.name, model=resp.model, max_steps=max_steps, curto=curto)
         return plan, usage
 
     async def _plan_with_catalog(self, req: PlanRequest) -> tuple[Plan, Usage]:
@@ -324,13 +368,16 @@ class AnthropicProvider:
         """Comando entre apps (item 24.1): ação do catálogo nos apps com catálogo, etapa livre nos demais. O teto de
         saída é o do plano livre: as etapas livres são as longas."""
         max_steps = self.cfg.file.limits.max_steps_per_objective
+        curto = self.cfg.file.ai.esquema_do_plano == "curto"          # LT-4b: só a etapa livre muda
         resp, usage = await self._create(
-            role="plan", model=self.models["plan"], system=prompts.PLANNER_MULTIAPP_SYSTEM,
+            role="plan", model=self.models["plan"],
+            system=prompts.PLANNER_MULTIAPP_SYSTEM_CURTO if curto else prompts.PLANNER_MULTIAPP_SYSTEM,
             content=[{"type": "text", "text": prompts.planner_multiapp_user(req, max_steps)}],
-            effort=self.cfg.env.ai_effort_planner, max_tokens=12000, schema=strict_schema(_MultiPlanOut))
+            effort=self.cfg.env.ai_effort_planner, max_tokens=12000,
+            schema=strict_schema(_MultiPlanCurtoOut if curto else _MultiPlanOut))
         self._check_stop(resp, self.models["plan"])
         raw = next((b.text for b in resp.content if b.type == "text"), "")
-        plan = catalog_plan_from_json(raw, req, provider=self.name, model=resp.model, max_steps=max_steps)
+        plan = catalog_plan_from_json(raw, req, provider=self.name, model=resp.model, max_steps=max_steps, curto=curto)
         return plan, usage
 
     # ------------------------------------------------------------------ treinamento (item 13.2)
@@ -391,12 +438,17 @@ class AnthropicProvider:
 
     # ------------------------------------------------------------------ decisão
     async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]:
-        model = self.models["escalation"] if req.tier > 0 else self.models["decide"]
+        funcao = "escalation" if req.tier > 0 else "decide"
+        model = self.models[funcao]
         with_image = bool(req.screen.jpeg) and not req.screen.sensitive
-        resp, usage = await self._create(role="decide", model=model, system=prompts.ACTOR_SYSTEM,
-                                         content=self._screen_content(req.screen, prompts.actor_user_text(req)),
+        f = self._da_funcao(funcao)
+        if f is not None and f.cache_da_etapa:
+            content = self._conteudo_da_etapa(req.screen, *prompts.actor_user_partes(req))
+        else:
+            content = self._screen_content(req.screen, prompts.actor_user_text(req))
+        resp, usage = await self._create(role="decide", model=model, system=prompts.ACTOR_SYSTEM, content=content,
                                          effort=self.cfg.env.ai_effort_actor, max_tokens=4000, tools=True,
-                                         tier=req.tier, with_image=with_image)
+                                         tier=req.tier, with_image=with_image, funcao=funcao)
         self._check_stop(resp, model)
         text = " ".join(b.text for b in resp.content if b.type == "text").strip() or None
         call = next((b for b in resp.content if b.type == "tool_use"), None)
@@ -414,11 +466,14 @@ class AnthropicProvider:
                 else f"app em primeiro plano: {s.package or 'desconhecido'}; "
                      + (f"imagem {s.width}x{s.height}" if with_image else "imagem não enviada (julgue pela lista de elementos)"))
         text = prompts.verifier_user_text(req.ctx, desc, s.elements, req.ctx.required_delivery_level, req.facts)
-        modelo = self.models["escalation"] if getattr(req, "escalate", False) else self.models["verify"]
+        escalado = bool(getattr(req, "escalate", False))
+        modelo = self.models["escalation"] if escalado else self.models["verify"]
+        # RA-10: o rejulgamento no modelo de escalonamento é tier 1, como a decisão escalada (era gravado tier 0)
         resp, usage = await self._create(role="verify", model=modelo, system=prompts.VERIFIER_SYSTEM,
                                          content=self._screen_content(s, text),
                                          effort=self.cfg.env.ai_effort_verifier or self.cfg.env.ai_effort_actor,
-                                         max_tokens=3000, schema=strict_schema(Verdict), with_image=with_image)
+                                         max_tokens=3000, schema=strict_schema(Verdict), tier=int(escalado),
+                                         with_image=with_image, funcao="escalation" if escalado else "verify")
         self._check_stop(resp, modelo)
         raw = next((b.text for b in resp.content if b.type == "text"), "")
         return verdict_from_json(raw), usage
@@ -433,6 +488,25 @@ class AnthropicProvider:
         self._check_stop(resp, self.models["social"])
         raw = next((b.text for b in resp.content if b.type == "text"), "")
         return social_from_json(raw, req.max_length), usage
+
+    # ------------------------------------------------------------------ leitura visual (item 12.5)
+    async def transcribe(self, req: LeituraRequest) -> tuple[Transcricao, Usage]:
+        """Papel `leitura`: transcreve o RECORTE de uma linha de tela, às cegas. Recebe a imagem e os nomes das saídas
+        pedidas — nunca o valor do ator, o comando ou a conta. O recorte já passou pelas barreiras do executor (tela não
+        sensível, região declarada), então não há segundo filtro de sensibilidade aqui."""
+        imagem = {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                              "data": base64.standard_b64encode(req.recorte).decode()}}
+        # O modelo é SEMPRE o declarado para o papel `leitura`, nunca o do ator: dentro do hub, a instância tem de ser a do
+        # papel `leitura` (o hub compartilha instâncias por chave de provedor, modelo e prazo, e uma que serve o ator
+        # entregaria o recorte ao modelo do ator); fora dele, o de `ai.roles.leitura`. Sem isso, recusa.
+        modelo = modelo_do_papel_leitura(self.cfg, self.role)
+        resp, usage = await self._create(role="leitura", model=modelo, system=prompts.LEITURA_SYSTEM,
+                                         content=[imagem, {"type": "text", "text": prompts.leitura_user_text(req.saidas)}],
+                                         effort="low", max_tokens=1200, schema=strict_schema(TranscricaoWire),
+                                         with_image=True)
+        self._check_stop(resp, modelo)
+        raw = next((b.text for b in resp.content if b.type == "text"), "")
+        return transcricao_from_json(raw, list(req.saidas)), usage
 
     # ------------------------------------------------------------------ geração de persona
     async def generate_persona(self, req: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]:

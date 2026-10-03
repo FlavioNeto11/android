@@ -18,6 +18,9 @@ ancora_do_perfil: true
 # A janela que, EM FOCO, prova a conta perdida ("Confirm you're human", ADR-055): sinal forte da retirada
 # automática da conta bloqueada (29.23, ADR-068). Texto parecido na tela, sem esta janela, não retira nada.
 atividades_de_conta_perdida: [com.instagram.android/com.instagram.challenge.activity.ChallengeActivity]
+# Retirada a conta bloqueada, a plataforma limpa os dados DESTE pacote (`pm clear`, nada mais) em cada aparelho onde ela
+# estava logada, e resolve a quarentena (29.27, emenda do ADR-068). Só limpa o app que declara isto.
+limpar_ao_retirar: true
 # Link de perfil para o parâmetro `handle` das skills: `instagram.com/<usuario>` é perfil; `/p/<código>` é post, e
 # `/reel/`, `/stories/`, `/explore/`... também não são perfil.
 links_de_perfil:

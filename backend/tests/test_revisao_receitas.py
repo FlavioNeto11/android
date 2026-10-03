@@ -18,6 +18,7 @@ import pytest
 from app.db import dumps, loads
 from app.metricas import metricas
 from app.models import ControlOwner, InstanceState
+from app.modules.learning.domain.causa_do_ausente import CausaDoAusente
 from app.planning.provider import Decision, Usage
 from app.taskqueue.aproveitamento import aproveitamento
 from app.taskqueue.recipes import _MOTIVOS_DO_RETORNO
@@ -38,7 +39,9 @@ def _defeito(condicao: bool, mensagem: str) -> None:
 # ------------------------------------------------------------------ privacidade dos rótulos (C5)
 _VOCABULARIO = {
     # `candidata`: a receita em prova (test_receita_candidata) — achada, mas a IA decide e ela só é comparada
-    "receita.consulta": {"resultado": {"encontrada", "candidata", "ausente", "quarentena"}},
+    # `herdada`: a chave sem receita herdou a provada de outra chave, como candidata (RA-20, test_receita_heranca)
+    "receita.consulta": {"resultado": {"encontrada", "candidata", "ausente", "quarentena", "herdada"}},
+    "receita.ausente": {"causa": {c.value for c in CausaDoAusente}},
     "receita.reproducao": {"resultado": {"ok", "divergiu"}},
     "receita.retorno_ia": {"motivo": {m for _, m in _MOTIVOS_DO_RETORNO} | {"outro"}},
     "pathfinder.desfecho": {"resultado": {"aprendeu", "falhou", "expirou", "liberado"}},

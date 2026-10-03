@@ -16,6 +16,7 @@ import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { Switch } from '../../components/Switch';
 import { flowsLabel, recipesModeLabel } from '../../lib/aiLabels';
+import { textoDosApps } from '../../lib/appsDoFluxo';
 import { cx, formatInt, plural } from '../../lib/format';
 import { jumpTo, useSectionOpen } from '../../lib/sections';
 import { metaOf, type StatusMeta } from '../../lib/status';
@@ -581,6 +582,9 @@ function FlowList({ state, onRetry, onChange, cobertura, conversao }: ListProps<
             <li key={flow.id} className={styles.learnItem}>
               <div className={styles.learnHead}>
                 <span className={`${styles.appName} truncate`} title={flow.name}>{flow.name}</span>
+                {textoDosApps(flow.required_apps, appNames) ? (
+                  <span className={styles.appMeta} aria-label="Apps do fluxo">{textoDosApps(flow.required_apps, appNames)}</span>
+                ) : null}
                 <span className={styles.learnSpacer} />
                 {publicada ? <Badge tone="accent" title="O comando deste fluxo é resolvido pela habilidade">habilidade {publicada.ref}</Badge> : null}
                 {conversao && publicada ? (

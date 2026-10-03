@@ -2,10 +2,11 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { FakeBackend, installBrowserStubs, json, openDetails, text, waitFor } from '../../test/harness';
+import { FakeBackend, apiError, click, installBrowserStubs, json, openDetails, text, waitFor } from '../../test/harness';
+import { useAppStore } from '../../store/app';
 import { useUiStore } from '../../store/ui';
 import { AprendizadoPage } from './AprendizadoPage';
-import { DetalheRico, hrefDoItem } from './DetalheRico';
+import { DetalheRico, hrefDoItem, passoDaTransicao } from './DetalheRico';
 import { destinoDaRelacao, metaDeSaude, textoDoMotivo, valorDaDimensao } from './detalhe';
 import { itemDoLink } from './AprendidoTab';
 import type {
@@ -230,6 +231,102 @@ describe('detalhe rico: relações e seções ausentes', () => {
   });
 });
 
+describe('evidência inválida e reaprendido (30.23)', () => {
+  const RUN = 'r-20261002204347-8c3f6e';
+  const botao = (el: ParentNode, rotulo: string) =>
+    Array.from(el.querySelectorAll('button')).find((b) => text(b).trim() === rotulo) as HTMLElement | undefined;
+
+  it('a trilha mostra o tipo com o link da execução, e a marca que reclassifica diz isso', async () => {
+    await mostrar(detalhe({
+      item: { state: 'disabled', native_status: 'quarantined' },
+      trilha: [
+        { id: 46, from: null, to: 'candidate', reason: 'aprendida da IA; em prova (sombra)', decided_by: 'sistema',
+          decided_at: '2026-10-02T20:46:54Z', run_id: RUN, tipo: null, run_invalidada: null },
+        { id: 60, from: 'disabled', to: 'disabled', reason: `evidencia_invalida:${RUN}`, decided_by: 'Ana Ribeiro',
+          decided_at: '2026-10-03T10:00:00Z', run_id: null, tipo: 'evidencia_invalida', run_invalidada: RUN },
+      ],
+      evidencias: [{ stance: 'for', origin_ref: `run:${RUN}`, run_id: RUN, instance_id: 'android-01', app_version: null,
+                     simulated: false, detail: 'a execução que o gerou', observed_at: '2026-10-02T20:47:00Z', invalidada: true }],
+    }));
+    const marca = container.querySelector('[aria-label="Trilha"] [data-tipo="evidencia_invalida"]') as HTMLElement;
+    expect(text(marca)).toContain('Desligado (motivo reclassificado) por Ana Ribeiro');
+    expect(text(marca)).toContain('evidência inválida');
+    expect(text(marca)).toContain('terminou como sucesso sem comprovar o que fez');
+    expect(text(marca)).not.toContain('evidencia_invalida:');                    // o formato nunca aparece cru
+    expect(marca.querySelector(`a[href="#/execucoes/${RUN}"]`)).not.toBeNull();
+    expect(text(container.querySelector('[aria-label="Evidências"]')!)).toContain('execução invalidada não conta como prova');
+    expect(passoDaTransicao({ from: 'candidate', to: 'disabled' })).toBe('Candidato → Desligado');
+    expect(passoDaTransicao({ from: null, to: 'candidate' })).toBe('Candidato');
+    expect(passoDaTransicao({ from: 'published', to: 'published', tipo: 'confirmacao' })).toBe('Confirmado que fica');
+  });
+
+  it('a receita reaprendida diz o que reaprende, com link, e por que espera o dono', async () => {
+    const t = await mostrar(detalhe({
+      item: { ref: '120', state: 'validated', side_effect: false, requires_owner: true,
+              reaprendido: { run_invalidada: RUN, item: { kind: 'receita', ref: '109' } },
+              por_que_nao_publica: { codigo: 'reaprendido', espera_o_dono: true, detalhe: RUN } },
+      relacoes: [{ tipo: 'reaprende', kind: 'receita', ref: '109', rotulo: `109 (evidência inválida da execução ${RUN})`,
+                   fonte: 'learning_transitions' }],
+    }));
+    expect(secoes()).toContain('Reaprendido depois de uma evidência inválida');
+    const aviso = container.querySelector('[data-reaprendido]') as HTMLElement;
+    expect(text(aviso)).toContain('Reaprende o item Receita 109, aprendido da execução');
+    expect(aviso.querySelector(`a[href="${hrefDoItem('receita', '109')}"]`)).not.toBeNull();
+    expect(text(aviso)).toContain('a aprovação é sua');
+    expect(t).toContain(`Reaprende Receita 109 (evidência inválida da execução ${RUN})`);
+    expect(t).toContain(`O sistema não publica sozinho: foi reaprendido depois de uma evidência inválida (a execução ${RUN}`);
+  });
+
+  it('o fluxo reaprendido na mesma linha não aponta para si mesmo', async () => {
+    await mostrar(detalhe({
+      conteudo: null, versao: undefined,
+      item: { kind: 'fluxo', ref: 'ler-a-caixa', state: 'candidate', saude: null,
+              reaprendido: { run_invalidada: RUN, item: { kind: 'fluxo', ref: 'ler-a-caixa' } } },
+    }));
+    const aviso = container.querySelector('[data-reaprendido]') as HTMLElement;
+    expect(text(aviso)).toContain('Esta linha tinha sido aprendida da execução');
+    expect(Array.from(aviso.querySelectorAll('a')).map((a) => a.getAttribute('href'))).toEqual([`#/execucoes/${RUN}`]);
+  });
+
+  it('marcar evidência inválida: confirma no lugar, manda só a execução e avisa quem relê', async () => {
+    const backend = new FakeBackend();
+    backend.install();
+    backend.on('POST', /^\/api\/aprendizado\/receita\/109\/evidencia-invalida$/, () => json(detalhe()));
+    let mudou = 0;
+    await act(async () => {
+      root.render(<DetalheRico detalhe={detalhe({ item: { ref: '109', state: 'candidate', native_status: 'candidate' },
+                                                  invalidar_evidencia: { run_id: RUN } })}
+                               onMudou={() => { mudou += 1; }} />);
+    });
+    await click(botao(container, 'Marcar evidência inválida')!);
+    const conf = container.querySelector('[data-evidencia-invalida]') as HTMLElement;
+    expect(text(conf)).toContain('O item é desligado agora.');
+    expect(text(conf)).toContain('renasce como candidato e espera a sua aprovação');
+    expect(conf.querySelector(`a[href="#/execucoes/${RUN}"]`)).not.toBeNull();
+    await click(botao(conf, 'Confirmar evidência inválida')!);
+    await waitFor(() => expect(mudou).toBe(1));
+    expect(backend.callsTo('POST', /evidencia-invalida$/).map((c) => c.body)).toEqual([{ run_id: RUN }]);
+    expect(container.querySelector('[data-evidencia-invalida]')).toBeNull();
+  });
+
+  it('a recusa do backend aparece na confirmação; já desligado, o texto diz que só muda o motivo', async () => {
+    const backend = new FakeBackend();
+    backend.install();
+    backend.on('POST', /evidencia-invalida$/, () => apiError(409, 'state_conflict', 'A receita mudou de status; releia.'));
+    await act(async () => {
+      root.render(<DetalheRico detalhe={detalhe({ item: { ref: '109', state: 'disabled', native_status: 'quarantined' },
+                                                  invalidar_evidencia: { run_id: RUN } })} />);
+    });
+    await click(botao(container, 'Marcar evidência inválida')!);
+    const conf = container.querySelector('[data-evidencia-invalida]') as HTMLElement;
+    expect(text(conf)).toContain('O item já está desligado: a marca só registra este motivo na trilha.');
+    await click(botao(conf, 'Confirmar evidência inválida')!);
+    await waitFor(() => expect(text(conf)).toContain('A receita mudou de status; releia.'));
+    await mostrar(detalhe({ item: { ref: '109', state: 'disabled' }, invalidar_evidencia: null }));
+    expect(botao(container, 'Marcar evidência inválida')).toBeUndefined();
+  });
+});
+
 describe('detalhe rico: outros tipos de conteúdo', () => {
   it('lição: o texto exato; tela: ids; fluxo: etapas', async () => {
     const licao: ConteudoDoItem = { tipo: 'licao', texto: 'Role a lista antes de procurar', modelo: null, acao: 'scroll',
@@ -246,6 +343,33 @@ describe('detalhe rico: outros tipos de conteúdo', () => {
                                             efeito: { externo: false, etapas_com_efeito: [] } }, item: { kind: 'fluxo' } }));
     expect(t).toContain('Confere: perfil aberto');
     expect(t).toContain('{nome}');
+    expect(t).not.toContain('→');                                     // sem `apps` no conteúdo (backend antigo), nada novo na tela
+
+    // 29.42: o fluxo entre apps diz os dois, na ordem do plano, pelo nome do app (sem cadastro, o id).
+    useAppStore.setState({ apps: [{ id: 'qa-messenger', name: 'QA Messenger' }] as never });
+    t = await mostrar(detalhe({ conteudo: { tipo: 'fluxo', nome: 'Mandar e abrir', comando_modelo: 'mande {x}', origem: { tipo: 'execucao', fonte: null, source_run_id: null },
+                                            apps: ['qa-messenger', 'chrome'], etapas: [], efeito: { externo: false, etapas_com_efeito: [] } }, item: { kind: 'fluxo' } }));
+    expect(t).toContain('QA Messenger → chrome');
+    useAppStore.setState({ apps: [] });
+  });
+});
+
+describe('detalhe rico: a capability com o nome do catálogo (validação do deploy 3, P3)', () => {
+  it('Identidade e lição: "Abrir o perfil (OPEN_PROFILE)"; o texto da lição nomeia a capability só na tela', async () => {
+    const licao: ConteudoDoItem = { tipo: 'licao', texto: 'Em OPEN_PROFILE: a tentativa que comprovou tocou em "Perfil"', modelo: null,
+                                    acao: null, alvo: null, escopo: { app: 'com.instagram.android', capability: 'OPEN_PROFILE', step_hash: null, role: null }, tokens: 9 };
+    const t = await mostrar(detalhe({ conteudo: licao, item: { kind: 'licao', capability: 'OPEN_PROFILE', capability_nome: 'Abrir o perfil' } }));
+    expect(container.querySelector('blockquote')?.textContent).toBe('Em Abrir o perfil (OPEN_PROFILE): a tentativa que comprovou tocou em "Perfil"');
+    expect(t.split('Abrir o perfil (OPEN_PROFILE)').length - 1).toBe(3);  // a citação, a Identidade e o escopo
+  });
+
+  it('receita de capability única ganha o nome; a ambígua e a de outra capability seguem com o código', async () => {
+    const unica = { ...RECEITA, capability: { nomes: ['SEND_MESSAGE'], ambigua: false, fonte: 'origem' as const } };
+    let t = await mostrar(detalhe({ conteudo: unica, item: { capability: 'SEND_MESSAGE', capability_nome: 'Enviar a mensagem' } }));
+    expect(t.split('Enviar a mensagem (SEND_MESSAGE)').length - 1).toBe(2);  // a Identidade e o conteúdo
+    t = await mostrar(detalhe({ item: { capability: null, capability_nome: null } }));
+    expect(t).toContain('enviar_mensagem, responder');
+    expect(t).not.toContain('(enviar_mensagem');
   });
 });
 

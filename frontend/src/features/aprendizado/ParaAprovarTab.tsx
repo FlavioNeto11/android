@@ -1,5 +1,6 @@
-import { CheckCheck, History, Inbox, ShieldAlert } from 'lucide-react';
+import { Bot, CheckCheck, History, Inbox, ShieldAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { toApiError } from '../../api/client';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
@@ -11,16 +12,24 @@ import { toast } from '../../store/toasts';
 import { usePendenciasStore } from '../pendencias/store';
 import { apiAprendizado } from './api';
 import { useContagemDoAprendizado } from './contagem';
+import { IntencaoSecao } from './IntencaoSecao';
 import { AvisoDaHabilidade, DecisaoInline, ItemDoLivro, aplicarTransicao, chaveDoItem } from './ItemDoLivro';
 import { ResumoParaDecidir } from './ResumoParaDecidir';
 import {
   type AcaoDoItem, type EntradaDoLivro, ONDE_FICAM_AS_HABILIDADES, acaoDeAprovarNaFila, acoesNaFila, ordenarPendentes,
+  tituloDoItem, titulosDaLista,
 } from './model';
+import { type ModoDoCurador, efeitoDoAceite, textoDaRecusa } from './parecer';
 import styles from './Aprendizado.module.css';
 
 /** "Revisar": o legado ativo com efeito só pode ser desligado pela pessoa (published → disabled). Na tela, "desligar";
  *  o nome interno da transição ("rebaixar") era jargão. */
 const REBAIXAR: AcaoDoItem = { to: 'disabled', label: 'Desligar', confirmar: 'Confirmar desligamento', perigo: true };
+/** "Confirmar que fica" (30.24): a pessoa mantém o legado como está; ele sai de "Revisar" até chegar evidência
+ *  contrária. Nada muda no item, e o motivo é opcional. */
+const CONFIRMAR: AcaoDoItem = {
+  to: 'published', label: 'Confirmar que fica', confirmar: 'Confirmar que fica', perigo: false, confirmaQueFica: true,
+};
 
 interface Leitura {
   itens: EntradaDoLivro[] | null;
@@ -29,25 +38,47 @@ interface Leitura {
 
 const VAZIA: Leitura = { itens: null, erro: null };
 
+type Lote = 'aprovar' | 'rebaixar' | 'confirmar' | 'pareceres-fila' | 'pareceres-legado';
+
+/** O parecer da linha entra no aceite em lote? O backend já disse (`recusa_no_lote` nulo: classe B, real, atual). */
+const entraNoLote = (e: EntradaDoLivro): boolean => !!e.parecer && !e.parecer.recusa_no_lote;
+
+/** O botão "Aceitar pareceres" de uma seção: só com o curador ligado e algum parecer à vista. */
+function AceitarPareceres({ modo, itens, escolhidos, onAbrir }: {
+  modo: ModoDoCurador | null; itens: readonly EntradaDoLivro[]; escolhidos: readonly EntradaDoLivro[]; onAbrir: () => void;
+}) {
+  if (modo !== 'on' || !itens.some((e) => e.parecer)) return null;
+  const n = escolhidos.filter(entraNoLote).length;
+  return (
+    <Button size="sm" variant="secondary" icon={Bot}
+            disabledReason={n === 0 ? 'Selecione itens com parecer do curador da classe B (a C se decide item a item).' : null}
+            onClick={onAbrir}>
+      Aceitar pareceres do curador ({n})
+    </Button>
+  );
+}
+
 /**
  * A fila do D1 (ADR-054): o que o sistema NÃO publica sozinho — tem efeito externo ou texto de pessoa — e espera o
  * dono, com a evidência ao lado e a aprovação em lote. A habilidade validada também espera aqui (publicar é sempre
  * de uma pessoa) e se decide pela rota das habilidades (`acoesNaFila`, `aplicarTransicao`). Embaixo, "Revisar":
  * receitas e fluxos já ativos com efeito, anteriores ao D1, que continuam valendo até o dono decidir (desvio
- * consciente do ADR-054).
+ * consciente do ADR-054). Por último, "Qual era o pedido?" (30.25), que carrega à parte e é opcional.
  */
 export function ParaAprovarTab() {
   const [fila, setFila] = useState<Leitura>(VAZIA);
   const [legado, setLegado] = useState<Leitura>(VAZIA);
   const [selFila, setSelFila] = useState<Set<string>>(() => new Set());
   const [selLegado, setSelLegado] = useState<Set<string>>(() => new Set());
-  const [lote, setLote] = useState<'aprovar' | 'rebaixar' | null>(null);
+  const [lote, setLote] = useState<Lote | null>(null);
+  const [modo, setModo] = useState<ModoDoCurador | null>(null);
 
   const carregar = useCallback(async () => {
     const [p, r] = await Promise.allSettled([apiAprendizado.pendentes(), apiAprendizado.revisar()]);
     setFila((antes) => (p.status === 'fulfilled'
       ? { itens: ordenarPendentes(Array.isArray(p.value?.itens) ? p.value.itens : []), erro: null }
       : { itens: antes.itens, erro: toLoadError(p.reason) }));
+    if (p.status === 'fulfilled') setModo(p.value?.curador?.modo ?? null);
     setLegado((antes) => (r.status === 'fulfilled'
       ? { itens: Array.isArray(r.value?.itens) ? r.value.itens : [], erro: null }
       : { itens: antes.itens, erro: toLoadError(r.reason) }));
@@ -64,6 +95,10 @@ export function ParaAprovarTab() {
   const itensLegado = useMemo(() => legado.itens ?? [], [legado.itens]);
   const escolhidosFila = itensFila.filter((e) => selFila.has(chaveDoItem(e)));
   const escolhidosLegado = itensLegado.filter((e) => selLegado.has(chaveDoItem(e)));
+  // Os títulos sem repetição de cada lista (P4 do deploy 3); os avisos do lote usam os mesmos, para achar o item.
+  const titulos = useMemo(() => new Map([...titulosDaLista(itensFila), ...titulosDaLista(itensLegado)]),
+                          [itensFila, itensLegado]);
+  const tituloDe = (e: EntradaDoLivro) => titulos.get(e) ?? tituloDoItem(e);
 
   const alternar = (set: typeof setSelFila) => (e: EntradaDoLivro, sim: boolean) =>
     set((antes) => {
@@ -82,18 +117,54 @@ export function ParaAprovarTab() {
       const acao = acaoDe(e);
       if (!acao) {
         falhas.push(e.kind === 'habilidade'
-          ? `${e.title}: decida em ${ONDE_FICAM_AS_HABILIDADES}`
-          : `${e.title}: não há o que aprovar neste estado`);
+          ? `${tituloDe(e)}: decida em ${ONDE_FICAM_AS_HABILIDADES}`
+          : `${tituloDe(e)}: não há o que aprovar neste estado`);
         continue;
       }
       const falha = await aplicarTransicao(e, acao, motivo);
-      if (falha) falhas.push(`${e.title}: ${falha}`);
+      if (falha) falhas.push(`${tituloDe(e)}: ${falha}`);
       else ok += 1;
     }
     toast({
       tone: falhas.length > 0 ? 'warning' : 'success',
       title: `${ok} de ${itens.length} item(ns) decidido(s)`,
       details: falhas.length > 0 ? falhas : null,
+    });
+    setSelFila(new Set());
+    setSelLegado(new Set());
+    setLote(null);
+    await carregar();
+    return null;
+  };
+
+  /**
+   * O aceite de pareceres em lote (30.17): um gesto por item, EM SEQUÊNCIA, com o mesmo motivo, só nos que o backend
+   * deixa entrar (classe B, parecer real e atual). Os selecionados que ficam fora vão no aviso, com a razão; o backend
+   * confere de novo cada um (a classe de agora pode ter endurecido).
+   */
+  const aceitarPareceres = async (itens: EntradaDoLivro[], motivo: string): Promise<string | null> => {
+    let ok = 0;
+    const falhas: string[] = [];
+    const feitos: string[] = [];
+    for (const e of itens) {
+      const p = e.parecer;
+      if (!p || p.recusa_no_lote) {
+        falhas.push(`${tituloDe(e)}: ${textoDaRecusa(p?.recusa_no_lote) ?? 'sem parecer do curador'}`);
+        continue;
+      }
+      try {
+        await apiAprendizado.responderParecer(e.kind, e.ref, p.id, { resposta: 'aceitar', motivo, em_lote: true });
+        ok += 1;
+        feitos.push(`${tituloDe(e)}: ${efeitoDoAceite(p.acao)}`);
+      } catch (err) {
+        const x = toApiError(err);
+        falhas.push(`${tituloDe(e)}: ${textoDaRecusa(x.code) === x.code ? toLoadError(err).message : textoDaRecusa(x.code)}`);
+      }
+    }
+    toast({
+      tone: falhas.length > 0 ? 'warning' : 'success',
+      title: `${ok} parecer(es) aceito(s) de ${itens.length} item(ns) selecionado(s)`,
+      details: falhas.length + feitos.length > 0 ? [...falhas, ...feitos] : null,
     });
     setSelFila(new Set());
     setSelLegado(new Set());
@@ -117,15 +188,24 @@ export function ParaAprovarTab() {
       <section className={styles.secao} aria-labelledby="aprendizado-fila">
         <h2 id="aprendizado-fila" className={styles.secaoTitulo}><Inbox size={16} aria-hidden /> Para aprovar</h2>
         <p className={styles.secaoLead}>
-          Itens com efeito fora do sistema (mensagem, publicação) ou com texto de pessoa esperam a sua aprovação.{' '}
+          Itens com efeito fora do sistema (mensagem, publicação), com texto de pessoa ou reaprendidos depois de uma
+          evidência inválida esperam a sua aprovação.{' '}
           <a className={styles.linkAlvo} href={hashDe('pendencias')}>Ver todas as suas pendências</a>
         </p>
         <Disclosure summary="Saiba mais" bare>
           <p className={styles.secaoLead}>
             O sistema publica sozinho só o que não tem efeito externo e já se repetiu com sucesso. O que tem efeito ou
-            texto escrito por uma pessoa para aqui, já validado, aguardando você. Quando um item publicado passa a
-            falhar, o sistema o desliga sozinho.
+            texto escrito por uma pessoa para aqui, já validado, aguardando você. O mesmo vale para o que foi
+            reaprendido depois de uma evidência inválida (uma execução que terminou como sucesso sem comprovar o que
+            fez): outra execução real ensinou de novo, e a decisão de voltar a usar é sua. Quando um item publicado
+            passa a falhar, o sistema o desliga sozinho.
           </p>
+          {modo === 'on' ? (
+            <p className={styles.secaoLead}>
+              Com o curador ligado, ele dá um parecer sobre cada item e nunca decide: na classe B você pode aceitar
+              vários pareceres de uma vez; na C (envio, conta, sessão), decida um item de cada vez, pelo detalhe.
+            </p>
+          ) : null}
         </Disclosure>
         {fila.erro ? <LoadErrorBanner error={fila.erro} onRetry={() => void carregar()} /> : null}
         {itensFila.length > 0 ? (
@@ -133,6 +213,8 @@ export function ParaAprovarTab() {
             <span className={styles.secaoLead}>{escolhidosFila.length} selecionado(s)</span>
             <div className={styles.toolbarFim}>
               <Button size="sm" variant="ghost" onClick={() => setSelFila(new Set(itensFila.map(chaveDoItem)))}>Selecionar todos</Button>
+              <AceitarPareceres modo={modo} itens={itensFila} escolhidos={escolhidosFila}
+                                onAbrir={() => setLote('pareceres-fila')} />
               <Button size="sm" variant="primary" icon={CheckCheck}
                       disabledReason={escolhidosFila.length === 0 ? 'Selecione ao menos um item.' : null}
                       onClick={() => setLote('aprovar')}>
@@ -140,6 +222,15 @@ export function ParaAprovarTab() {
               </Button>
             </div>
           </div>
+        ) : null}
+        {lote === 'pareceres-fila' && escolhidosFila.some(entraNoLote) ? (
+          <DecisaoInline
+            rotulo="Motivo do aceite em lote"
+            dica="Vale para cada parecer aceito: fica na trilha de cada item e no registro do parecer, com o seu nome."
+            acao={{ confirmar: `Aceitar ${escolhidosFila.filter(entraNoLote).length} parecer(es)`, perigo: false }}
+            onCancelar={() => setLote(null)}
+            onConfirmar={(motivo) => aceitarPareceres(escolhidosFila, motivo)}
+          />
         ) : null}
         {lote === 'aprovar' && escolhidosFila.length > 0 ? (
           <DecisaoInline
@@ -159,6 +250,7 @@ export function ParaAprovarTab() {
               <ItemDoLivro
                 key={chaveDoItem(e)}
                 entrada={e}
+                titulo={titulos.get(e)}
                 acoes={acoesNaFila(e)}
                 selecionado={selFila.has(chaveDoItem(e))}
                 onSelecionar={(sim) => alternar(setSelFila)(e, sim)}
@@ -178,8 +270,10 @@ export function ParaAprovarTab() {
         <Disclosure summary="Saiba mais" bare>
           <p className={styles.secaoLead}>
             São receitas e fluxos com efeito externo que já estavam ativos antes desta aprovação existir. Eles continuam
-            valendo como antes até você decidir. Desligar um item o tira de uso (a decisão fica registrada) e a automação
-            volta a pedir a IA nesses passos.
+            valendo como antes até você decidir. Confirmar que fica registra que você conferiu e quer manter o item como
+            está: ele sai desta lista e só volta se aparecer evidência contrária (um “deu errado” numa
+            execução, por exemplo). Desligar um item o tira de uso (a decisão fica registrada) e a automação volta a
+            pedir a IA nesses passos.
           </p>
         </Disclosure>
         {legado.erro ? <LoadErrorBanner error={legado.erro} onRetry={() => void carregar()} /> : null}
@@ -188,6 +282,13 @@ export function ParaAprovarTab() {
             <span className={styles.secaoLead}>{escolhidosLegado.length} selecionado(s)</span>
             <div className={styles.toolbarFim}>
               <Button size="sm" variant="ghost" onClick={() => setSelLegado(new Set(itensLegado.map(chaveDoItem)))}>Selecionar todos</Button>
+              <AceitarPareceres modo={modo} itens={itensLegado} escolhidos={escolhidosLegado}
+                                onAbrir={() => setLote('pareceres-legado')} />
+              <Button size="sm" variant="secondary"
+                      disabledReason={escolhidosLegado.length === 0 ? 'Selecione ao menos um item.' : null}
+                      onClick={() => setLote('confirmar')}>
+                Confirmar selecionados ({escolhidosLegado.length})
+              </Button>
               <Button size="sm" variant="dangerGhost"
                       disabledReason={escolhidosLegado.length === 0 ? 'Selecione ao menos um item.' : null}
                       onClick={() => setLote('rebaixar')}>
@@ -195,6 +296,25 @@ export function ParaAprovarTab() {
               </Button>
             </div>
           </div>
+        ) : null}
+        {lote === 'pareceres-legado' && escolhidosLegado.some(entraNoLote) ? (
+          <DecisaoInline
+            rotulo="Motivo do aceite em lote"
+            dica="Vale para cada parecer aceito: fica na trilha de cada item e no registro do parecer, com o seu nome."
+            acao={{ confirmar: `Aceitar ${escolhidosLegado.filter(entraNoLote).length} parecer(es)`, perigo: false }}
+            onCancelar={() => setLote(null)}
+            onConfirmar={(motivo) => aceitarPareceres(escolhidosLegado, motivo)}
+          />
+        ) : null}
+        {lote === 'confirmar' && escolhidosLegado.length > 0 ? (
+          <DecisaoInline
+            rotulo="Motivo da confirmação em lote (opcional)"
+            dica="Vale para cada item: fica na trilha de cada um, com o seu nome."
+            motivoOpcional
+            acao={{ confirmar: `Confirmar que ${escolhidosLegado.length === 1 ? 'fica' : `ficam os ${escolhidosLegado.length}`}`, perigo: false }}
+            onCancelar={() => setLote(null)}
+            onConfirmar={(motivo) => aplicarEmLote(escolhidosLegado, () => CONFIRMAR, motivo)}
+          />
         ) : null}
         {lote === 'rebaixar' && escolhidosLegado.length > 0 ? (
           <DecisaoInline
@@ -212,7 +332,8 @@ export function ParaAprovarTab() {
               <ItemDoLivro
                 key={chaveDoItem(e)}
                 entrada={e}
-                acoes={[REBAIXAR]}
+                titulo={titulos.get(e)}
+                acoes={[CONFIRMAR, REBAIXAR]}
                 selecionado={selLegado.has(chaveDoItem(e))}
                 onSelecionar={(sim) => alternar(setSelLegado)(e, sim)}
                 onMudou={() => void carregar()}
@@ -221,6 +342,8 @@ export function ParaAprovarTab() {
           </ul>
         )}
       </section>
+
+      <IntencaoSecao />
     </>
   );
 }

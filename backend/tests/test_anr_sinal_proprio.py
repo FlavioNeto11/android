@@ -38,6 +38,7 @@ from app.integrations.app_declarado.sessao import Outcome as SessaoOutcome
 from app.models import Plan
 from app.planning.provider import AIError, PlanRequest, Usage
 from app.planning.simulated_provider import SimulatedProvider
+from app.taskqueue import executor as executor_mod
 
 from .conftest import CountingProvider, Harness
 from .fake_device import FakeQaDevice
@@ -259,6 +260,14 @@ async def test_espera_do_foco_nao_passa_do_prazo_da_etapa(monkeypatch: pytest.Mo
 
 
 # ---------------------------------------------------------------- executor: uma reabertura, e só uma
+@pytest.fixture(autouse=True)
+def abertura_pela_ia(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Os cenários deste arquivo têm como gancho a decisão da IA que abre o app ("uma decisão da IA, a que abriu"). O
+    LT-6 (29.45) abre o app da etapa `app_foreground` sem IA; a regra do ANR com essa abertura está provada em
+    `test_caminho_rapido_2.py`."""
+    monkeypatch.setattr(executor_mod, "OPEN_APP_SEM_IA", False)
+
+
 @pytest.fixture
 def espera_curta(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(tools, "ESPERA_DO_FOCO_S", 0.3)
@@ -272,8 +281,9 @@ async def test_morte_por_anr_reabre_uma_vez_sem_chamar_a_ia(harness: Harness, es
     detail = await harness.wait_run(run.id)
     assert detail.status == "completed", [(s.key, s.status, s.status_detail) for s in detail.steps]
     assert fake.calls.count("open_app") == 2                  # a da IA, e a reabertura do executor
-    # a IA decidiu abrir e, depois, "pronto"; a reabertura não passou por ela
-    assert harness.ai.count("decide", step="open_app", instance="android-01") == 2
+    # a IA decidiu abrir; depois da reabertura o app já está à frente e a pós-condição vale na tela lida, então o
+    # "pronto" também não passa por ela (caminho rápido 1, LT-1): a reabertura nunca passou
+    assert harness.ai.count("decide", step="open_app", instance="android-01") == 1
     linhas = [r["message"] for r in harness.state.db.query(          # type: ignore[union-attr]
         "SELECT message FROM events WHERE kind='decision' AND run_id=? ORDER BY id", (run.id,))]
     assert any("parou de responder (ANR)" in m and "reaberto uma vez, sem IA" in m for m in linhas), linhas

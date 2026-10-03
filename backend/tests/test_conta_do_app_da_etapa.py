@@ -24,6 +24,7 @@ from typing import Any, Iterator
 import pytest
 
 from app.models import PlanStep, Postcondition, ProfileCreate
+from app.taskqueue import executor as executor_mod
 from app.modules.applications.domain.definition import AppDefinition
 from app.planning.catalog import register, unregister
 
@@ -116,7 +117,10 @@ def _etapas(h: Harness, objective_id: str) -> dict[str, Any]:
 
 
 # ================================================================== R4: conta esperada pelo app da etapa
-async def test_conta_esperada_e_a_da_persona_no_app_da_etapa(harness: Harness) -> None:
+async def test_conta_esperada_e_a_da_persona_no_app_da_etapa(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    # O teste confere a conta que o ATOR vê na confirmação; com o atalho LT-1 (caminho rápido 1) a etapa cuja conta já
+    # está na tela fecha sem ele. Desligado aqui, como em test_hub_de_ia e test_cost_levers.
+    monkeypatch.setattr(executor_mod, "ATALHO_ANTES_DO_ATOR", False)
     _segundo_app(harness)
     pid = _persona(harness, contas={"qa-contas": CONTA_NO_SEGUNDO_APP})
     inner = harness.ai.inner

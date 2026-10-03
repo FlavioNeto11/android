@@ -49,7 +49,7 @@ def test_classe_a_navegacao_e_leitura_decide_pela_regra_e_ia_so_com_sobra() -> N
 @pytest.mark.parametrize(("fatos", "razao"), [
     ({"catalogo": FatosDoCatalogo(risco="medium")}, Razao.RISCO_MEDIO),
     ({"catalogo": FatosDoCatalogo(efeito_externo=True)}, Razao.EFEITO_DECLARADO),
-    ({"side_effect": True, "tem_catalogo": False}, Razao.COMMIT_SEM_CATALOGO),
+    ({"side_effect": True, "tem_catalogo": False}, Razao.COMMIT_SEM_CATALOGO),   # B, confirmado pelo dono em 03/10
     ({"side_effect": True}, Razao.COMMIT_SEM_FATOS_DA_ETAPA),      # catálogo existe, capability não derivável
     ({"human_origin": True}, Razao.TEXTO_DE_PESSOA),               # D-2: origem humana sem efeito
 ])

@@ -19,6 +19,8 @@ provedor, modelo, prazo e concorrência próprios, roteados por `RoutingProvider
 | `social` | Escreve a mensagem na voz da persona; nunca recebe imagem nem credencial | 1 por interação social |
 | `persona` | Gera e completa a persona (rascunho em texto); sem `ai.roles.persona` é o `social` (item 17.8) | 1 por persona gerada ou completada |
 
+**Função opcional `leitura` (item 12.5, ADR-070)** fica FORA de `AI_ROLES`: só existe com `ai.roles.leitura` escrito, sem herança de nenhuma outra (§17).
+
 **`generalize` (modo treinamento, item 13.2) não é uma sexta função registrada** — despacha no provedor/modelo do
 papel `plan` (mesmo hub, sem `ai.roles.generalize` dedicado): `backend/app/planning/training.py` monta o pedido e
 chama o provedor resolvido para `plan`.
@@ -189,13 +191,19 @@ Ver [docs/produto.md §2](produto.md) para os conceitos. Mecanismo de custo, res
   3 falhas seguidas → quarentena. `shadow` aprende e compara sem agir. Desde 29/09 a receita da IA nasce `candidate` e
   sobe por `ai.recipes_promote_after` (2) concordâncias em sombra; com ação `commit`, para em `validated` e espera o
   dono (D1 do [ADR-054](decisoes.md#adr-054--aprendizado-contínuo-livro-de-aprendizado-com-ciclo-de-vida-publicação-sozinha-só-sem-efeito-externo-d1-feedback-implícito-com-botão-opcional-d2-lições-medidas-e-backlog-do-que-mais-falha)).
+- **Herança da receita** (`ai.recipes_heranca: true`, RA-20 / item 29.40): a etapa sem receita na chave atual (versão,
+  assinatura e variante) herda, como candidata, a receita provada da mesma etapa noutra versão do app, noutra variante
+  ou na legada de 17/09 (sem assinatura nem variante). A herdeira não age: a IA decide a etapa e ela só é comparada até
+  concordar `recipes_promote_after` vezes; com `commit`, para em `validated`. Assinatura diferente nunca doa; com
+  `recipes_promote_after: 0` não herda. A herdeira que passa a agir aposenta a legada ativa da mesma etapa e versão. A
+  causa de cada "ausente" é medida em `receita.ausente{causa}` ([dominios/aprendizado.md](dominios/aprendizado.md)).
 - **Fluxos** (`ai.flows: true`): execução 100% comprovada vira plano congelado; comando repetido com outros
   parâmetros pula o planejador. Desde 29/09 o fluxo aprendido nasce `candidate`, inerte: o comando seguinte ainda chama
   o planejador, e o plano dele é comparado ao do candidato. Com `aprendizado.fluxo.concordancias` (1) concordância real
   e sem etapa de efeito, o sistema o publica; com efeito, ele espera o dono. Ou seja, um comando novo sem efeito paga o
   planejador duas vezes antes de o fluxo valer ([dominios/aprendizado.md](dominios/aprendizado.md)).
-- **Funil medido** (evolução de desempenho, ADR-027): consulta de receita (`receita.consulta{encontrada|ausente|
-  quarentena}`), reprodução (`receita.reproducao{ok|divergiu}`) e retorno à IA (`receita.retorno_ia{motivo}`),
+- **Funil medido** (evolução de desempenho, ADR-027): consulta de receita (`receita.consulta{encontrada|candidata|
+  herdada|ausente|quarentena}`, com a causa do "ausente" em `receita.ausente{causa}`), reprodução (`receita.reproducao{ok|divergiu}`) e retorno à IA (`receita.retorno_ia{motivo}`),
   em `GET /api/desempenho`. `GET /api/flows/cobertura` traz `aproveitamento` por fluxo e app: etapas elegíveis, por
   receita, receita + IA e só IA, "sem cobertura" separado de "receita de outra chave ou em quarentena", e chamadas de
   IA evitadas estimadas (`taskqueue/aproveitamento.py`).
@@ -203,6 +211,14 @@ Ver [docs/produto.md §2](produto.md) para os conceitos. Mecanismo de custo, res
   controles de sempre (erros seguidos, repetição, efeito externo). O código nunca escalou; o comentário que
   prometia isso foi corrigido. Escalar na divergência é **decisão do dono pendente**, com o custo medido no
   [relatório](relatorio-desempenho.md): 22 etapas `recipe+ai` em 7 dias.
+- **App de prova no tier 0 do `by_risk`** (item 29.31, RA-8 da reavaliação de 03/10): a etapa SEM capability do app de prova
+  (`builtin` e `apps.category='qa'`: o QA Messenger embutido, que nasce `qa` no seed e na migração 041) não escala por efeito externo.
+  `category='qa'` sozinho não basta, porque `POST/PUT /apps` o aceitam em qualquer app.
+  Sem catálogo, "risco desconhecido" mandava toda etapa de envio ao modelo forte: 64 a 66 escalonamentos em 7 dias,
+  43 % das chamadas do Opus no tier 1, cerca de US$ 0,20 por dia, e uma bateria de prova distorcida. A regra lê o dado
+  do app, nunca o nome (ADR-052). `strong_model_for_side_effect: true` continua subindo tudo (escolha explícita), etapa com
+  capability segue o risco do catálogo, e app real sem catálogo continua no tier 1. Retentativa, erros seguidos e ciclo
+  escalam em qualquer app.
 - **Desbravador** (`ai.pathfinder_wait_s`): visível (`wait_reason: pathfinder`), medido, agrupado por
   compatibilidade do app e solto na hora quando o líder falha ou sai do ar
   ([`dominios/parque.md`](dominios/parque.md#escalonamento)).
@@ -249,15 +265,80 @@ achado não se confirmam nos dados.
 - `GET /api/usage` (`backend/app/api.py:414`) — custo por papel/modelo/tier dos últimos N dias (padrão 7),
   chamadas por execução/objetivo, erros por tipo, linhas de fallback. Não chama o provedor, só lê o já gasto —
   mesma fonte que `scripts/usage-report.ps1`.
+- **RA-10 (migração 080): o porquê de cada chamada.** `ai_calls` ganha quatro colunas, gravadas pelo executor a partir
+  da `MarcaDaChamada` que acompanha `_ai` (vocabulários fechados em `planning/provider.py`; sem CHECK no banco):
+  - `motivo` (para que a chamada foi feita): `plan` → `plano` ou `refinamento` (o assistente do comando, que grava
+    na execução respondida); `decide` → `decisao` ou `cascata` (a decisão no modelo
+    forte depois do bloqueio do barato, 17.10); `verify` → `julgamento`, `vazio` (a prova de coleta sem item, 12.4) ou
+    `rejulgamento` (7.10 e 17.10); `leitura` → `leitura` (12.5). Ficam com `motivo` nulo as chamadas fora de
+    execução (curador, persona, decisão fechada: quem as distingue é `origem`) e as dos papéis sem subdivisão, ainda
+    que dentro de uma execução: `social` (o texto que a etapa digita).
+  - `escalate` (por que subiu ao modelo de escalonamento; nulo = não subiu). No `decide`, na ordem do executor:
+    `efeito` (política do efeito externo, inclusive `by_risk`) · `nova_tentativa` · `erros_seguidos` · `piso` (alvo
+    inexistente, 7.8) · `bloqueio` (a cascata) · `ciclo`. No `verify`: `nivel` (7.10) e `sim_com_efeito` (17.10). A
+    linha com `escalate` é sempre tier ≥ 1: o rejulgamento era gravado como `verify` tier 0.
+  - `verdict` (o desfecho): `yes`/`no`/`uncertain`/`unprovable` no `verify`; o nome da ferramenta no `decide` (fora
+    da lista de ferramentas, `desconhecida`); `plano` ou `pergunta` no `plan`; nulo na leitura e na linha de erro.
+  - `image_reason` (por que a imagem foi junto, ou não), na ordem de `_motivo_da_imagem`. Sem imagem: `sensivel`,
+    `politica_nunca`, `arvore_rica`. Com imagem: `politica_sempre`, `pedida`, `problema`, `primeira_julgada`,
+    `arvore_pobre`. `with_image` continua dizendo se ela de fato foi.
+
+  A linha de erro e a de orçamento recusado passam a ter `provider` e modelo da função que a chamada usaria (a de
+  escalonamento quando a marca diz que subiu); a imagem da persona grava `origem='persona'`; a etapa que a IA conduziu
+  grava `driven_by='ai'` também com receitas desligadas e sem veredito sobre a receita. `GET /api/usage` agrupa por
+  isso (`by_origin`, `escalations`, `rejudges` com discordância por app, `cascades`, `image_reasons`,
+  `steps_driven_by_null`; adendo v0.75 de `api-contract.md`), no preço de `spent_usd` (`costs.usd_por`, que lê `usd`).
+
+  **Conferência depois do deploy** (prova real do RA-10; `:deploy` = o instante do deploy em ISO-8601 UTC). As três
+  devem dar zero linhas, ou só as explicadas:
+
+  ```sql
+  -- 1. linha nova de execução sem provedor ou sem origem; sem motivo nos papéis que o executor marca
+  SELECT role, ok, COUNT(*) n FROM ai_calls WHERE ts > :deploy AND run_id IS NOT NULL
+     AND (provider IS NULL OR origem IS NULL
+          OR (motivo IS NULL AND role IN ('plan','decide','verify','leitura'))) GROUP BY role, ok;
+  -- 2. etapa terminada com decisão de IA e sem condutor (o mesmo número de steps_driven_by_null)
+  SELECT COUNT(DISTINCT s.id) n FROM steps s JOIN ai_calls c ON c.step_id = s.id AND c.role = 'decide'
+   WHERE c.ts > :deploy AND s.driven_by IS NULL
+     AND s.status IN ('succeeded','failed','uncertain','waiting_user');
+  -- 3. rejulgamento fora do tier 1, ou chamada escalada sem motivo de escalonamento
+  SELECT role, tier, motivo, escalate, COUNT(*) n FROM ai_calls WHERE ts > :deploy
+     AND ((motivo = 'rejulgamento' AND (tier < 1 OR escalate IS NULL)) OR (role = 'decide' AND tier >= 1 AND escalate IS NULL))
+   GROUP BY role, tier, motivo, escalate;
+  ```
 - Aba IA do painel mostra o mesmo por execução, incluindo cache ativo/inativo por papel.
 - Estimativa por fluxo antes de rodar: `GET /api/flows/cobertura` ganhou `estimated_usd` (item 7.7) — etapas sem
   receita × custo mediano por etapa só-IA dos últimos 7 dias, por papel; sem histórico, `null` ("sem base").
+- **Antes × depois de um deploy** (03/10): `scripts/jev-leitura-cache-latencia.py --corte <instante do deploy, ISO UTC>`.
+  É a régua do RA-17 e do caminho rápido nas execuções reais, sem A/B pago.
+  - Lê `ai_calls` e `runs.ai_profile`. As quatro colunas do RA-10 (migração 080) entram quando existem; sem elas, a
+    quebra por motivo é `not_run`.
+  - Agrupa por função (`role`; o ator grava `decide`, e `tier` ≥ 1 vira `escalation`) e por perfil (NULO = `padrão`).
+  - Mede:
+    - o cache lido e escrito sobre a entrada TOTAL (`input_tokens` já é só a fresca);
+    - a entrada p50, total e fresca;
+    - a latência p50 e p95 das chamadas ok;
+    - o custo por etapa e por execução (o plano não tem `step_id`).
+  - O custo segue a regra de `planning/costs.py`: o `usd` declarado, senão tokens × `ai.prices` do `config.yaml`. Só
+    essa chave é lida; o `.env` não é aberto.
+  - Só leitura em toda conexão, sem IA. O hash de commit no lugar do instante vale a data do commit, não a do deploy.
+    A causa de uma diferença é INFERRED: antes × depois não é A/B.
+  - Por cima do deploy 7: o rejulgamento do `verify` passou a tier 1 na suíte 7 (`executor.py`, "tier 1 também
+    no `verify`"). Antes era `verify` tier 0, depois cai em `escalation`. Nesse corte, compare pelos totais `(todas)` ou
+    por `--por-motivo`; entre dois deploys posteriores, `verify` e `escalation` comparam direto.
+  - Prova `simulated`: `scripts/tests/test_jev_leitura_cache_latencia.py`.
+  - Leitura `real` no banco do central em 03/10 ~07:18Z (só leitura, esquema 078): roda, com o RA-10 `not_run`.
 
 ## 10. Modelo local — Ollama
 
 > **Desde 25/09/2026 o ator de produção é o Sonnet 5** ([ADR-023](decisoes.md)): o local economizava ~US$ 0,02 por
 > caso, com o dobro de escalonamento para o Opus e fragilidade operacional, e estava fora do ar sem aviso. O
 > provedor `local` continua definido no `config.yaml`; o texto abaixo é o registro de 24/09 e o caminho de volta.
+>
+> **Revisão de 03/10/2026 (RA-24).** O gatilho do ADR-023 para rever ("algumas centenas de casos" por dia) não foi
+> atingido: 90 execuções de 26/09 a 02/10, ≈ 13 por dia (central, banco em `mode=ro`). O Ollama teve 17 chamadas
+> em 24/09 e nenhuma desde então. O único uso candidato do modelo local hoje é uma triagem em SOMBRA, como a do
+> curador (31.8), e só depois de medida contra o golden set (`design/jev-golden-set.md`).
 
 **Estado em 24/09/2026 (fora do que está em `config.example.yaml`, que é o exemplo neutro — isto é produção; o
 `config.yaml` não é versionado, e o que roda de fato se confere em `GET /api/ai` e `GET /api/health` → `ai`):** o ator de produção (`decide`) foi ligado no Ollama nativo do
@@ -336,6 +417,46 @@ Trocar o modelo de uma função para **algumas** execuções, sem reiniciar o ce
 - **Prova:** `simulated`, `backend/tests/test_perfil_de_ia.py` (16) e `scripts/tests/test_eval_run.py`. **`real`:
   `not_run`** — o primeiro uso real é a bateria do 17.10 (`gpt-6-luna` como ator), que depende de saldo e autorização.
 
+### Esforço, thinking e dieta do contexto por função e por perfil (17.14 e RA-17)
+
+Para medir latência e custo sem mexer no padrão, a função (em `ai.roles` ou num perfil) e o perfil ganharam campos.
+**Nada escrito = a requisição de hoje, byte a byte** (imagem primeiro, um ponto de cache só no system, `thinking`
+quando o modelo declara, esforço do `.env`).
+
+- **`ai.roles.<f>.effort`** (`low`|`medium`|`high`|`xhigh`|`max`): o esforço DESTA função, no lugar do
+  `AI_EFFORT_PLANNER`/`ACTOR`/`VERIFIER` do `.env`. A aba IA mostra o efetivo.
+- **`ai.roles.<f>.thinking: false`**: não manda `thinking` (o ator sem pensamento adaptativo). `true` ou vazio = a
+  capacidade declarada do modelo decide, como hoje; não liga thinking num modelo declarado sem ele.
+- **`ai.roles.<f>.cache_da_etapa: true`** (RA-17, só na decisão do ator e na escalada): o bloco estável da etapa (o
+  passo e as lições, iguais em toda decisão da tentativa) vai ANTES da imagem e leva o 2º ponto de cache; a imagem, o
+  histórico e os elementos vêm depois. Com a imagem primeiro, nada depois do system podia ser cacheado: o prefixo
+  cacheável termina no primeiro byte que muda, e a imagem muda a cada decisão. Os dois textos juntos são exatamente o
+  texto de antes (`prompts.actor_user_partes`). O ponto é sempre marcado, como o do system: abaixo do mínimo do
+  modelo a API o ignora sem erro. No ator, tools e system já passam de 6 mil tokens (≈ 6 091 medidos em 24/09, §5), então o mínimo (512 no Opus 5.5 e
+  no Sonnet 5.5) está sempre alcançado e o ganho é o tamanho do bloco estável, lido a 0,1× a partir da 2ª decisão
+  da tentativa (a 1ª grava a 1,25×). São 2 dos 4 pontos que a API aceita.
+- **Perfil: `ai.profiles.<p>.screenshot_max_side` e `rich_tree_min_elements`** valem por cima dos globais só nas
+  execuções do perfil (`Config.ai_da_execucao`, lido de `runs.ai_profile` pelo executor). A imagem já é capturada nesse
+  lado (`observe(lado_max=…)`), e os limites e o x,y dos elementos seguem a mesma escala. Sem perfis na configuração, o
+  executor nem consulta o banco.
+- **Só a Anthropic** tem `thinking`, esforço e ponto de cache. No provedor OpenAI esses campos não mudam a requisição
+  (o esforço só aparece no registro).
+- **Instância própria:** uma função com ajuste ganha instância de provedor só dela (a chave inclui a função e os
+  ajustes). O provedor aplica o ajuste só às chamadas da função dona da instância; `decide` e `escalation` com o
+  mesmo ajuste numa instância só perderiam o da segunda. Sem ajuste, a chave e o compartilhamento são os de antes.
+- **Sonda "o ator pensa?":** `GET /api/ai` → `roles[].thinking` = `adaptive` (vai em toda chamada),
+  `desligado_na_funcao` (`thinking: false`), `nao_declarado` (`ai.models.<m>.thinking` falso), `recusado_pelo_modelo`
+  (um 400 desligou nesta instância, até reiniciar) ou vazio (provedor sem thinking). A linha `uso[...]` do log ganhou
+  `pensou=N`, o número de blocos de pensamento da resposta. O adaptativo pode não pensar num turno fácil; `pensou=0`
+  em TODAS as chamadas de uma função com `adaptive` é que diz que o pensamento não está acontecendo.
+- **Exemplo:** perfil `img-768` (RA-17), com `screenshot_max_side: 768`, `rich_tree_min_elements: 12` e
+  `roles.decide.cache_da_etapa: true`; perfil de ator sem pensamento, com `roles.decide: {thinking: false, effort:
+  low}`. Os dois estão comentados em `config/config.example.yaml`.
+- **Prova:** `simulated`, `backend/tests/test_perfil_esforco_e_dieta.py` (16 testes): padrão byte a byte, ordem e
+  ponto de cache, os dois textos iguais ao de antes, ajuste na escalada pelo despacho do hub e no rejulgamento,
+  instâncias, sonda, imagem e árvore do perfil no executor. **`real`: `not_run`.** Sem A/B pago, por decisão da
+  orquestradora. A medição é a bateria pareada com `--profile`, que depende de autorização e saldo.
+
 ## 11. Tabela: `config.example.yaml` × padrão do código
 
 O exemplo é a POC "neutra"; os valores entre parênteses no próprio arquivo já documentam o padrão de código.
@@ -348,8 +469,10 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
 | `ai.max_hierarchy_elements` | 60 | 140 (`config.py`) |
 | `ai.image_policy` | `auto` | `always` (`config.py`) |
 | `ai.recipes` | `replay` | `off` (`config.py`) |
+| `ai.recipes_heranca` (RA-20) | `true` | `true` (`config.py`) |
 | `ai.image.provider` / `model` / `per_persona` / `on_create` | `simulated` / `gpt-image-2` / 1 / `true` | os mesmos (`config.py::ImageCfg`); `quality: medium`, `price_per_image` (estimativa) low 0,02 / medium 0,06 / high 0,2 US$, `price_per_mtok` 5 / 8 / 30 US$ |
 | `ai.limits` (fatias por origem, 31.6) | comentado, com os padrões | `curador_max_usd_per_day` vazio (= 0,10 × teto do dia), `curador_fracao_do_dia` 0,10, `jev_max_usd_per_day` 0,50 (`config.py::AiLimitsCfg`) |
+| `ai.esquema_do_plano` (LT-4b, 17.13) | `longo` | `longo` (`config.py`); `curto` = etapa livre sem `description`, `precondition` e `max_attempts` (o backend preenche), com título e objetivo curtos |
 | `ai.flows` | `true` | `false` (`config.py`) |
 | `ai.pathfinder_wait_s` | 240 | 0 (`config.py`) |
 | `android.auto_start_devices` | `true` | `false` (`config.py`) |
@@ -360,6 +483,58 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
 - **Bateria de 25/09/2026** (`relatorio-validacao.md` §11.1): 16/17 casos corretos, US$ 0,084 por caso; rejulgamento
   Opus 5.5 × Haiku em 41/56 (73 %). **O ator estava no fallback** (Sonnet 5), porque o Ollama não estava no ar, e a
   saúde não acusou. Cache do verificador em Haiku: zero em 49 chamadas.
+
+- **Latência do planejador (LT-4 e LT-4b, 03/10/2026).** O plano é a espera inicial inteira. Nas 89 chamadas `plan`
+  medidas, o tempo segue a saída: ms ≈ 5.173 + 6,6 × tokens de saída (correlação 0,91).
+  - LT-4, A/B REAL do esforço: 03/10, 02:44–02:54Z, claude-opus-5-5, os 14 casos QA pelo caminho entre apps, 28
+    chamadas, US$ 1,39.
+    - Resultado: `low` p50 15,7 s contra `medium` 18,5 s; saída −13 %; forma do plano igual em 13/14.
+    - O pensamento do planejador é ≈ 0 (2 tokens): quase toda a saída é o JSON do plano, ≈ 350 tokens por etapa.
+  - Sonda REAL do texto bruto (03/10, 03:49:55–03:50:22Z, `low`, caso msg-todos-os-contatos, 8 etapas, formato de
+    hoje, US$ 0,09 da sobra do LT-4): 2.495 tokens de saída.
+    - O texto é JSON compacto (0 quebras de linha) e é 100 % da saída; pensamento ≈ 2 tokens.
+    - Espaço em branco não é alavanca.
+  - LT-4b, `ai.esquema_do_plano: curto`: estimativa GRÁTIS por count_tokens em 2 planos reais do QA (6 e 8 etapas,
+    formato entre apps), reconstruídos do plano guardado: 102 % e 83 % da saída real. O plano guardado não carrega
+    tudo o que o modelo escreveu, então as porcentagens abaixo valem sobre a reconstrução.
+    - −13 % sem `description` e `precondition`;
+    - −20 % com a brevidade de título e objetivo (simulada por corte);
+    - −22 a −24 % sem `max_attempts`, que é o formato curto.
+  - Metade da saída é prosa, e o formato não a encolhe: o p50 esperado é ≈ 13 s, não os ≤ 11 s do aceite do LT-4.
+  - No `model_judged` curto, o verificador lê o `value`. É o critério que o planejador escreve para ele; antes, ele
+    lia a descrição curta.
+  - LT-4b (17.13), A/B REAL de 3 braços: 03/10, ~04:31–04:39Z, central, código de `feat/lt-4b-esquema-curto` @
+    `2bed3d6c`. Só o planejador, offline (nenhum aparelho, nenhuma execução), esforço `low`, os 14 casos QA: 42
+    chamadas, 0 erros, US$ 1,36 (teto US$ 3,00; preço pela tabela `ai.prices` do central).
+    - longo, claude-opus-5-5: p50 15,9 s, p90 17,2 s, saída p50 1.806 tokens, US$ 0,0428 por plano;
+    - curto, claude-opus-5-5: p50 13,3 s, p90 15,9 s, saída p50 1.468, US$ 0,0359;
+    - curto, claude-sonnet-5-5: p50 7,8 s, p90 8,7 s, saída p50 1.389, US$ 0,0181 (preço INFERRED: o do Sonnet 5
+      na tabela).
+    - Curto × longo no Opus, pareado por caso: a saída fica em 0,79 da do longo (mediana) e o plano sai 2,75 s mais
+      cedo. A forma é igual em 14/14: nº de etapas, chaves, etapas com efeito e `missing`. Confirma a estimativa
+      grátis (≈ 13 s) e não alcança os ≤ 11 s.
+    - Sonnet 5.5 curto: 7,9 s mais cedo (pareado) e metade do custo. Etapas com efeito e `missing` iguais em 14/14,
+      nº de etapas em 12/14, chaves em 4/14 (os nomes das etapas mudam).
+    - Recomendação (03/10): ligar `curto` com o Opus. O Sonnet no planejador troca o modelo da função (ADR-005:
+      planejador Opus) e passa antes por rodada QA ou perfil canário (17.7); este A/B mede forma, não sucesso.
+  - Sucesso de execução com o formato curto (rodada QA): `not_run`.
+  - **Deploy 7 (decisão da orquestradora, 03/10):** `curto` passa a valer no central, e o Sonnet 5.5 entra como PERFIL
+    (17.7), não como padrão. O perfil `planejador-sonnet` troca só o modelo do `plan` para `claude-sonnet-5-5`: o
+    esforço segue o global (`AI_EFFORT_PLANNER`, `low` no central, lido em `GET /api/ai` em 03/10) e o esquema segue
+    `ai.esquema_do_plano`. Uma execução o escolhe com `POST /api/runs {"ai_profile": "planejador-sonnet"}` ou
+    `scripts/eval_run.py --profile planejador-sonnet`, e ele fica em `runs.ai_profile`. A rodada QA pareada é da
+    Aprendizado (teto US$ 10). O aceite para trocar o padrão é sucesso ≥ Opus e p50 ≤ 11 s, com emenda datada do
+    ADR-005.
+    - Preço e capacidade do Sonnet 5.5 (páginas de preço e de prompt caching, 03/10): `[2.0, 0.2, 2.5, 10.0]`, igual
+      ao Sonnet 5, e cache mínimo de 512 tokens, contra 1024 no Sonnet 5. As duas linhas entram no padrão do código e
+      no exemplo. Antes, o modelo casava o prefixo `claude-sonnet-5`: o preço saía igual por acaso e o cache mínimo
+      herdava 1024.
+    - **No `config.yaml` do central, a Android acrescenta as linhas DENTRO dos blocos `ai.prices` e `ai.models` que já
+      existem lá.** O YAML troca a tabela padrão inteira, não soma (medido em 03/10), e o central declara os dois
+      blocos sem o Sonnet 5.5. As linhas são as do exemplo (`claude-sonnet-5-5` nos dois), mais
+      `ai.esquema_do_plano: curto` e o bloco
+      `ai.profiles: {planejador-sonnet: {note: ..., roles: {plan: {model: claude-sonnet-5-5}}}}`. Prova `simulated`:
+      `test_perfil_de_ia.py::test_planejador_sonnet_so_troca_o_modelo_do_planejador`.
 
 - `docs/relatorio-validacao.md §5` — validação com o provedor real (`claude-opus-5`): mensagem em 1 e 3
   aparelhos, formulário, app nunca visto, falhas injetadas, controle manual + retomada, `kill` do backend em
@@ -532,8 +707,8 @@ exposição real e veredito: `not_run` ([relatório §23](relatorio-validacao.md
 ## 16. Decisão por conjunto fechado (Fase 31)
 
 A porta `DecisaoFechada` (`backend/app/planning/decisao_fechada/`, item 31.4) é o ÚNICO caminho do hub para o Jev (TypeSafe
-System One) em runtime, e só para escolher entre opções fechadas (`choice`, `noul`, `score`). **Está desligada e sem decisor
-real**: o decisor padrão é o `DecisorNulo`, o provedor que fala com a TypeSafe vem no 31.8 e `JEV_RUNTIME_SEND_APPROVED`
+System One) em runtime, e só para escolher entre opções fechadas (`choice`, `noul`, `score`). **Está desligada**: o decisor
+padrão é o `DecisorNulo`; o real (`DecisorJev`, 31.14) existe e só entra com `ai.decisao_fechada.decisor: jev`; e `JEV_RUNTIME_SEND_APPROVED`
 continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). Decisão e classes de dado: ADR-069.
 
 - **Contrato** (`contrato.py`, tipos puros): `PedidoDeDecisao(origem, classe, estado, perguntas, modo, marcadores, run_id,
@@ -557,8 +732,23 @@ continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). D
   ids e categorias, nunca o estado); `on` só por consumidor, com GO pré-registrado.
 - **Recurso ao caminho atual.** Timeout de 1 s no `on` e 5 s na sombra, sem retentativa. Falha vira `RespostaDeDecisao` com
   `fallback_reason` fechado (`401`, `422`, `429`, `529`, `rede`, `parse`, `unknown_choice`, `abaixo_do_limiar`,
-  `privacidade`, `desligado`), sempre com `escolha=None`: **um fallback nunca conta como acerto**. A porta reconfere cada
+  `privacidade`, `desligado`, `orcamento`), sempre com `escolha=None`: **um fallback nunca conta como acerto**. A porta reconfere cada
   resposta contra a pergunta enviada (opção desconhecida, limiar) em vez de confiar no decisor.
+- **Decisor real (31.14, `decisores.py::DecisorJev`).** Fala pelo transporte do adaptador de retrieval
+  (`JevSemanticProvider.consultar`: `{state, model, questions}`, a chave lida do ambiente na hora do POST). Ordem:
+  - só `choice` vai ao fio (`criteria` = as opções enviadas); `noul` e `score` respondem `desligado` sem sair, até o
+    primeiro consumidor deles;
+  - **gasto conferido ANTES do POST** por `RoutingProvider.conferir_gasto` (a mesma rubrica de `_budget`: pedido,
+    execução, dia e a fatia `jev_max_usd_per_day`, mais o bloqueio de saldo da conta `typesafe`). Barrado, sem hub que
+    confira ou com a leitura quebrada: `orcamento`, e nada sai;
+  - o POST usa o prazo que sobra da conferência; erro do transporte vira o motivo fechado (`401` para 401/403, `422`,
+    `429`, `529` para 503/529, `parse`, `rede`); a resposta só tem o FORMATO conferido ali (a porta reconfere opção e
+    limiar);
+  - **toda chamada tentada vira linha em `ai_calls`** (`RepositorioDeSombra.registrar_chamada`): provedor `jev` (conta
+    `typesafe` no livro-caixa), origem `decisao_fechada` (a fatia soma por ela), papel `decisao_fechada`, `usd` declarado,
+    `ref` = `<consumidor>:<ref>`, `step_id` NULL (a sombra não é chamada de IA da etapa) e sem somar em
+    `runs.ai_input_tokens`; a falha também (`ok=0`, `error_kind` = o motivo). Chave ausente não é chamada: `desligado`,
+    sem linha. É esta linha que tira a fatia de US$ 0,50 da cegueira e que move o saldo estimado da TypeSafe.
 - **Cliente único.** `backend/tests/test_decisao_fechada.py::test_cliente_unico_so_o_adaptador_de_retrieval_conhece_o_host_da_typesafe`
   varre `backend/app` e prova que só `modules/context_retrieval/adapters/jev.py` contém o host.
 
@@ -582,11 +772,12 @@ continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). D
     informa a página em `ai.balance_consoles.typesafe`.
   - **Transparência** (`transparencia.py`). Com `ai.decisao_fechada.enabled` e algum consumidor em `shadow` ou `on`, o `notice`
     de `GET /api/ai` nomeia a TypeSafe, os consumidores e as classes que podem sair, e `/api/ai` ganha o bloco
-    `decisao_fechada` (consumidores, classes, `send_approved`, `key`). A chave é só "configurada" ou "não configurada", pela
+    `decisao_fechada` (consumidores, classes, `send_approved`, `key` e, desde o 31.14, `decider`: `nulo` ou `jev`). A chave é só "configurada" ou "não configurada", pela
     PRESENÇA (`typesafe_api_key is not None`); o valor nunca é lido para isso. Enquanto `JEV_RUNTIME_SEND_APPROVED` é `False`, o
     aviso diz que o envio está FECHADO e que nada sai.
 
-Prova: `simulated` (`backend/tests/test_decisao_fechada.py`, `test_decisao_fechada_sombra.py`, `test_context_retrieval_semantic.py`:
+Prova: `simulated` (`backend/tests/test_decisao_fechada.py`, `test_decisao_fechada_sombra.py`, `test_decisao_fechada_jev.py`,
+`test_context_retrieval_semantic.py`:
 decisores nulo e falso, banco de teste e relógio falso). Chamada real ao Jev: `not_run`.
 
 ### Triagem do curador em sombra (31.8, R1)
@@ -934,8 +1125,130 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
     parâmetro) ou `opt:nenhuma` se nada casou; empate sem desfecho fica vazio. **R3 não tem decisão real na sombra**: a cadeia
     que termina em empate não escolhe (`AMBIGUOUS` volta para a pessoa), e a que desempata não devolve os candidatos. O rótulo
     da R3 é a escolha da pessoa ou o desfecho, casados no 31.10. **`casar_desfecho` não é chamado**: não há gancho de fim de
-    execução sem mexer no núcleo, e fica para o 31.10. No mesmo `ao_registrar`, `anotar_ambiguos` grava quantas etapas da
+    execução sem mexer no núcleo, e o relatório do 31.10 o faz na leitura ([design/jev-golden-set.md](design/jev-golden-set.md)
+    §5). No mesmo `ao_registrar`, `anotar_ambiguos` grava quantas etapas da
     RESOLVE terminaram em `StageOutcome.AMBIGUOUS` (`decisao_fechada_sombra.ambiguos`, migração 079, RA-2): é onde a R3 tem o
     que medir. A métrica principal do 31.10 e os estratos estão em [design/jev-golden-set.md](design/jev-golden-set.md) §3.
   - Prova `simulated`: `backend/tests/test_decisao_fechada_intencao.py` (`DecisorFalso`, banco de teste, RESOLVE de verdade sobre
     habilidades de teste, `_plan` pelo harness com decisor segurado por evento). Chamada real ao Jev: `not_run`.
+
+## 17. Leitura visual: o papel `leitura` (item 12.5, ADR-070)
+
+Quando a árvore do app não expõe o texto de uma linha (passo 0 do 12.5: a caixa do Outlook é um `ComposeView` cega), o valor lido
+na imagem conta como saída de etapa se um **segundo leitor**, que não vê o valor do ator, transcreve o mesmo no recorte da mesma
+captura. O papel `leitura` é esse leitor. É **roteamento comum do hub**, nunca a porta `DecisaoFechada` nem as sombras do Jev
+(ADR-069 §4).
+
+**`ai.roles.leitura` (contrato de configuração).**
+
+- Opcional e **sem herança**: sem o bloco com `provider` e `model` escritos o papel fica DESLIGADO (`Config.ai_leitura()` é
+  `None`, `Config.ai_role("leitura")` levanta `KeyError`), não entra em `AI_ROLES`, em `ai_roles()` nem em `ai.profiles.<p>.roles`
+  (escrever `leitura` num perfil recusa a partida). Sem o papel, a leitura visual recusa com `sem_leitor`.
+- Na partida (`Config.validar_leitura`, chamada por `Config.__init__` e por `RoutingProvider`): exige modelo **declarado em
+  `ai.models` com `vision: true`** (modelo ausente da tabela é recusado, porque o `ModelCaps()` padrão presume visão; a mensagem diz
+  a linha `ai.models.<modelo>` a escrever) e recusa o MESMO MODELO do `decide` e do `escalation` — o de base e o de cada perfil —,
+  dizendo a linha a corrigir; o provedor simulado passa direto. Compara o modelo, e não só o par (provedor, modelo): é mais estrito
+  que o par, de propósito (o mesmo modelo por dois endpoints erra junto). O nome é normalizado antes de comparar e de procurar em
+  `ai.models` (caixa, prefixo de gateway `vendor/` e sufixo `-AAAAMMDD` saem, como no `model_caps`): "openai/GPT-6-Luna-20261001" e
+  "gpt-6-luna" são o mesmo modelo. **O código exige modelo DIFERENTE e com visão declarada; a família não é checada.**
+- Não aceita `fallback_provider` nem `refusal_fallback`: o recorte vai exatamente para o provedor que o aviso de privacidade nomeia.
+- Padrões: prazo 30 s, 2 vagas (`ROLE_DEFAULTS["leitura"]`). Aceita provedor `anthropic`, `openai` ou compatível (Gemini pelo
+  endpoint OpenAI-compatível, como os outros papéis). O padrão decidido pelo dono é a OpenAI (`gpt-6-luna`), com o Gemini
+  (`gemini-3.1-flash-lite`) de reserva. O Haiku é da MESMA família do ator e só entra com nova decisão do dono.
+- **A leitura nunca cai no modelo do ator** (`provider.modelo_do_papel_leitura`): o `transcribe` de cada provedor usa o modelo
+  explícito do papel `leitura` (a instância do hub tem de ser a do papel; sem hub, o de `ai.roles.leitura`) e, sem ele, levanta
+  `AIError(kind="not_configured")` (o executor recusa com `sem_leitor`), em vez de usar `self.model`.
+- Opção `ai.leitura_visual.enabled` (padrão `false`) liga o uso; o exemplo está comentado em `config.example.yaml`.
+
+**`transcribe` (contrato de provedor).** `async transcribe(req: LeituraRequest) -> tuple[Transcricao, Usage]`, nos três
+provedores (Anthropic, `OpenAICompatProvider`, simulado) e no `RoutingProvider`.
+
+- `LeituraRequest(recorte: bytes, saidas: dict[str, str], run_id: str | None)`: SÓ o JPEG do recorte e os nomes e descrições das
+  saídas pedidas (nomes `^[a-z][a-z0-9_]{0,39}$`, no máximo 20). Nunca o valor do ator, o comando, os fatos ou a tela inteira; o
+  `run_id` serve ao teto e à contabilidade, e não vai ao prompt.
+- `Transcricao(linhas: list[str], campos: dict[str, str | None], legivel: bool, truncado: bool)`. No fio o modelo devolve
+  `campos` como lista de pares `{nome, valor}` (`TranscricaoWire`, gramática estrita).
+- **Parse estrito** (`provider.transcricao_from_json`): JSON inválido, chave fora do esquema, tipo errado ou **campo pedido
+  repetido com valores diferentes** é `AIError(kind="invalid_output")` — nunca `legivel=False` (isso é o MODELO dizendo que não
+  leu) e nunca sucesso. O erro é levantado com `from None`: a `ValidationError` do pydantic traz `input_value=` com o texto do
+  modelo, e o executor loga a falha com `exc_info=True`. Só os campos pedidos entram, e o pedido que não veio fica `None`. Passou de 12 linhas ou de 400 caracteres: o excesso é cortado e marca `truncado=True`.
+- `Transcricao` não se imprime (`__repr__` oculta o conteúdo): o texto transcrito é dado de terceiro, pode trazer injeção de prompt
+  ou um código, e nunca entra no `plan`, no `decide`, em log, evento ou mensagem de erro.
+- Contabilidade: `Usage.role="leitura"`, `ai_calls.origem="leitura"` (`ORIGENS_DE_IA`), `with_image=True`. A chamada passa pelo
+  `_budget` com o `run_id` da execução (valem os tetos do pedido, da execução e do dia), pelo `_saldo` da conta do provedor e
+  entra no teto de chamadas do objetivo (`Executor._ai`). Fatia opcional `ai.limits.leitura_max_usd_per_day` (0, padrão,
+  desliga; motivo `fatia_leitura`).
+- Imagem: só o recorte (`devices.codificacao.recortar_jpeg`): lado maior até 1600 px, no máximo **0,2 da altura da imagem e 320 px**
+  (a linha da caixa do teste mede 162 px: uma linha cabe, duas não) e até 400 KB; passou de qualquer um, a âncora não é uma linha
+  e a leitura recusa (`sem_ancora`). O recorte é dado de terceiros: metade da tela seriam várias mensagens.
+
+**Recusas da leitura visual (vocabulário fechado).** `desligado`, `elemento_com_texto`, `regiao_nao_declarada`, `arvore_truncada`,
+`tela_sensivel`, `fora_do_app`, `sem_ancora`, `captura_mudou`, `repetida`, `sem_leitor`, `leitor_falhou`, `ilegivel`, `truncado`,
+`nao_confere` e `triagem:<motivo>`. O ator recebe SÓ o código. Três regras do caminho visual:
+
+- **Triagem (ADR-009):** além da triagem da árvore, o valor com FORMA de código (4 a 8 dígitos, com ou sem espaço ou hífen) é recusado
+  mesmo sem palavra de contexto, e o recorte inteiro é triado linha a linha (`codigo_na_linha`: número de 4 a 8 dígitos E palavra de
+  código ou verificação em inglês, português ou espanhol na mesma linha; data, hora, decimal e telefone não contam). A triagem NÃO
+  é um erro de chamada: leva a etapa a `waiting_user`, como no caminho da árvore, sem nova tentativa do ator e sem lhe dizer que a
+  linha tem código.
+- **Forma de código, em qualquer grafia (limiar):** `forma_de_codigo` lê o texto em NFKC e com dígitos de outros alfabetos em ASCII,
+  ignora os separadores `espaço . , · _ / -` e os de largura zero, e recusa (a) só número de 4 a 8 dígitos, fora data plausível
+  ("12/10", "02/10/26"); número com separador de milhar ("1.234") também é recusado; (b) token de 4 a 10 caracteres sem espaço com
+  letra e ao menos 3 dígitos ("G-482913", "ABC123"), fora a hora ("14h30"). Vale para o valor e para CADA linha do recorte, e a
+  triagem do recorte roda ANTES da conferência (um recorte com código vai sempre para a pessoa). O mesmo conserto, com palavra de
+  código na linha, vale para a árvore (`codigo_na_linha`: "Your code is 482.913", "Your code is ABC123").
+- **Valor gravado é o do leitor**, limpo (`limpar`): a concordância é no normalizado, e o que está na imagem é o que se grava.
+- **Orçamento, prazo, crédito e recusa por política** na chamada do leitor NÃO viram `leitor_falhou`: seguem o desfecho do ator
+  (`desfecho_de_ia`). Só a falha do provedor e a saída inválida viram `leitor_falhou`.
+- **Receita:** as saídas de origem `visual` ficam fora das variáveis de receita (`variaveis_da_receita`): o valor lido da imagem não
+  chega a uma reprodução sem a pessoa.
+
+**Limites conhecidos da v1.** (a) A retomada de um `waiting_user` com valor visual não avança: não há confirmação do valor, isso é item
+posterior, e as saídas são abandonar ou refazer o comando. (b) Uma falha passageira do provedor gasta a tentativa daquele par: a chave
+`repetida` é gravada antes da chamada ao leitor. (c) Com `leitura_visual.enabled` desligado o ator ainda vê `source` no esquema da
+ferramenta (o esquema é estático) e pode gastar 1 das 4 recusas com `desligado`.
+
+**`/api/ai`.** Com o papel escrito aparece em `roles` e em `models`, e o `notice` ganha a frase da leitura visual (ligada ou
+desligada) nomeando o provedor, o endpoint, o modelo e os apps que declaram a região (`declaram_leitura_visual`, pelo rótulo do
+dado do app, `AppDefinition.label`, e não pelo pacote cru); a chave
+aparece só como "configurada". Telas sensíveis e de verificação nunca são recortadas.
+
+Prova: `simulated` (`tests/test_leitura_visual.py`, `tests/test_leitura_visual_papel.py`).
+
+**Bancada do leitor (`real`, 03/10/2026, ~04:20Z, central 1ab8e767, `scripts/bancada-leitor.py`).** É o portão para ligar a
+opção, e ela REPROVOU. A opção segue desligada.
+- Material: 16 recortes da linha do e-mail de teste em capturas guardadas (01 e 03), com o gabarito pelo lado de quem enviou,
+  guardado em `data/bancada-12-5/`, fora do Git.
+- Cada recorte foi lido 2 vezes, uma por campo (remetente e assunto), como faz o `ler_valor_visual`, e cada leitura foi
+  conferida contra 4 valores do ator: 1 verdadeiro e 3 controles (linha errada, letra trocada, campos invertidos). São 128
+  pares por leitor.
+
+| Leitor | `ai_calls` | Custo estimado | Concordância nos verdadeiros | Concordância falsa nos controles | Sem o truncado da prévia (diagnóstico) |
+|---|---|---|---|---|---|
+| openai/gpt-6-luna | 2944–2975 | US$ 0,0032 | 0/32 (todas `truncado`) | 0/96 | 30/32 (2 com o campo `assunto` vazio) |
+| gemini/gemini-3.1-flash-lite | 2976–3007 | US$ 0,017 | 0/32 (todas `truncado`) | 0/96 | 32/32 |
+
+- Causa: a 3ª linha da linha da caixa (a prévia do corpo) SEMPRE termina em "…". O `conferir_transcricao` recusa quando
+  QUALQUER linha transcrita, ou o `truncado` do leitor, indica corte. Os dois leitores marcaram `truncado`, corretamente.
+  Como está, a leitura visual nunca concorda numa linha da caixa do Outlook.
+- Nenhuma concordância falsa nos 192 controles.
+- A correção (escopo do "truncado": o campo, o valor e a linha que o contém, não a linha vizinha) muda a regra do ADR-070
+  §4 e precisa de decisão antes de entrar.
+
+**Bancada do nível 1.1 (`real`, 03/10/2026, 04:57–04:59Z, conferência do branch `feat/android-lote-0310` sobre o
+config, o gabarito e o banco do central).** Emenda do ADR-070 §4: "truncado" vale só para o valor, o campo e a linha que
+contém o valor; a marca global do leitor só cai quando uma linha alheia cortada a explica. Mesmo material (16 recortes, 128
+pares por leitor). APROVOU nos dois leitores.
+
+| Leitor | `ai_calls` | Custo estimado | Concordância nos verdadeiros | Concordância falsa nos controles |
+|---|---|---|---|---|
+| gemini/gemini-3.1-flash-lite | 3008–3039 | US$ 0,017 | 31/32 (1 `truncado`: o assunto do item 14) | 0/96 |
+| openai/gpt-6-luna | 3040–3071 | US$ 0,0032 | 29/32 (2 `nao_confere` no assunto, itens 6 e 8; 1 `truncado`, item 14) | 0/96 |
+
+- O item 14 é recusado pelos dois: o assunto aparece cortado na linha da tela, e recusar é o certo.
+- Leitor escolhido: gemini-3.1-flash-lite principal (mais acertos e mais rápido, ~1,2 s contra ~1,9 s), gpt-6-luna
+  alternativo. O custo é irrelevante nos dois.
+- A opção liga (`ai.leitura_visual.enabled: true` e `ai.roles.leitura` no gemini) no próximo reinício do central, o
+  deploy da suíte 7. Até lá segue desligada.
+- Armadilha da medição: rodar a bancada com o `app` de um worktree faz o `.env` ser procurado na raiz do worktree. As
+  chaves vêm vazias (401 da OpenAI, "Missing or invalid Authorization header" do Gemini) e parecem revogadas, mas não estão.

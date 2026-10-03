@@ -172,7 +172,7 @@ def _acao(a: JsonValue) -> JsonObject:
 
 
 def _etapa(e: JsonValue) -> JsonObject:
-    saida = _so(e, ("indice", "chave", "capability", "efeito", "parametros", "segredo"))
+    saida = _so(e, ("indice", "chave", "app", "capability", "efeito", "parametros", "segredo"))
     pos = e.get("pos_condicao") if isinstance(e, dict) else None
     saida["pos_condicao"] = _so(pos, ("tipo",)) if isinstance(pos, dict) else None
     return saida
@@ -201,7 +201,11 @@ def conteudo_do_dossie(legivel: JsonValue, *, sessao_ou_autenticacao: bool = Fal
                 "substituida_por": _so(legivel.get("substituida_por"), ("id", "versao", "estado")) or None}
     if tipo == "fluxo":
         # Sem `nome` nem `comando_modelo` (o pedido da pessoa), sem `alvo` (seletor) e sem a descrição da pós-condição.
+        # Os apps vão (ids do catálogo, não texto): sem eles, o comando que atravessa apps (12.1) parece rodar todo no
+        # app principal, e o curador julgaria "ler no Outlook" num fluxo do Instagram como incoerente.
         return {"tipo": tipo, "origem": _so(legivel.get("origem"), ("tipo", "source_run_id")),
+                "app": legivel.get("app") if isinstance(legivel.get("app"), str) else None,
+                "apps": [a for a in _lista_de(legivel.get("apps")) if isinstance(a, str)],
                 "etapas": [_etapa(e) for e in _lista_de(legivel.get("etapas"))],
                 "efeito": _so(legivel.get("efeito"), ("externo", "etapas_com_efeito"))}
     if tipo == "habilidade":

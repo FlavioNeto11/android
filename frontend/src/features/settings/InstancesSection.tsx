@@ -280,13 +280,17 @@ export function InstancesSection() {
                       <div className={styles.instanceCardLabel}>
                         {inst.account_label || <span className={styles.instanceCardNoLabel}>sem rótulo</span>}
                       </div>
-                      <div className={styles.instanceCardObserved} data-tone={om.tone} title={inst.account_evidence ?? undefined}>
-                        <om.icon size={12} aria-hidden />
-                        <span className={styles.instanceCardObservedText}>
-                          {om.label}
-                          {inst.account_evidence ? ` · ${inst.account_evidence}` : ''}
-                        </span>
-                      </div>
+                      {/* Sem rótulo não há conta esperada: a observação (às vezes de outro app, de antes) não entra
+                          na linha, senão parecia divergência (validação do deploy 4). */}
+                      {inst.account_label ? (
+                        <div className={styles.instanceCardObserved} data-tone={om.tone} title={inst.account_evidence ?? undefined}>
+                          <om.icon size={12} aria-hidden />
+                          <span className={styles.instanceCardObservedText}>
+                            {om.label}
+                            {inst.account_evidence ? ` · ${inst.account_evidence}` : ''}
+                          </span>
+                        </div>
+                      ) : null}
                       <div className={styles.instanceCardProfile}>
                         {profile ? (
                           <>

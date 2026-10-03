@@ -58,6 +58,10 @@ class AppDefinition:
     #: (`atividades_de_conta_perdida` no `app.yaml`, 29.23/ADR-068). É o sinal forte da retirada automática: app que não
     #: declara nenhuma não retira conta sozinho (a conta travada fica para a pessoa, e a retirada é só pela rota).
     lost_account_activities: tuple[str, ...] = ()
+    #: A conta retirada por bloqueio confirmado leva junto os dados DESTE app nos aparelhos onde estava logada
+    #: (`limpar_ao_retirar: true` no `app.yaml`, 29.27/emenda do ADR-068): `pm clear` só desse pacote, com captura de tela
+    #: antes e depois, sem toque na tela. Só limpa quem declara; o padrão (falso) deixa o app como estava.
+    clear_on_account_retire: bool = False
     #: Como o dono chama o app num comando, além do nome e do rótulo ("insta"; `apelidos` no `app.yaml`). É o que o filtro
     #: da sombra da intenção (31.9) reconhece como o app, sem lista de app em Python (ADR-052).
     aliases: tuple[str, ...] = ()

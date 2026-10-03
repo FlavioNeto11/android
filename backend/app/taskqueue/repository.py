@@ -17,7 +17,7 @@ from ..events import EventBus
 from ..models import (RUN_TERMINAL, ActionDTO, ActionStatus, AttemptDTO, AttemptStatus, DecisionDTO, DeliveryLevel,
                       EvidenceDTO, ObjectiveDTO, ObjectiveStatus, Plan, PlanStep, PlanVersionDTO, Postcondition,
                       RunCounts, RunCreate, RunDetail, RunStatus, RunSummary, SAIDA_NOME_RE, SAIDA_VALOR_MAX,
-                      SAIDA_VALUE_KINDS, StepDTO, StepResult, StepStatus)
+                      SAIDA_ORIGENS, SAIDA_VALUE_KINDS, StepDTO, StepResult, StepStatus)
 from ..modules.execution.domain.states import ATTEMPT, OBJECTIVE, RUN, STEP, MaquinaDeEstados
 from ..modules.identity.application.available_data import profile_variables
 from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
@@ -28,7 +28,7 @@ from ..security.redaction import redact
 from ..storage import DiskStorage, Storage, put_async
 from ..util import new_run_id, now_iso, truncate
 from .recipes import para_hash, step_template_hash
-from .saidas import como_texto, referencias, resolver, sem_sufixo_de_item
+from .saidas import como_texto, nomes_citados, referencias, resolver, sem_sufixo_de_item
 from .states import STEP_ACTIVE, STEP_OPEN, check_transition
 
 #: Tipo do conteúdo por extensão de evidência. O disco não guarda tipo (quem serve o decide pela extensão), mas
@@ -241,7 +241,8 @@ class Repository:
         return False
 
     def set_run_status(self, run_id: str, status: RunStatus, detail: str | None = None, *, message: str | None = None,
-                       level: str = "info") -> None:
+                       level: str = "info", dados: dict[str, object] | None = None) -> None:
+        """`dados`: campos a mais no `data` do `run.updated` desta transição (o autor do início, P12)."""
         anterior = self.db.scalar("SELECT status FROM runs WHERE id=?", (run_id,))
         fields, params = ["status=?", "status_detail=?"], [status.value, detail]
         if status == RunStatus.running:
@@ -252,7 +253,7 @@ class Repository:
             params.append(now_iso())
         self.db.execute(f"UPDATE runs SET {', '.join(fields)} WHERE id=?", (*params, run_id))
         self._conferir(RUN, anterior, status, entidade=run_id, run_id=run_id)
-        self.emit_run(run_id, message or f"Execução {run_id}: {status.value}", level=level)
+        self.emit_run(run_id, message or f"Execução {run_id}: {status.value}", level=level, dados=dados)
 
     def request_pause(self, run_id: str, reason: str) -> None:
         """Pausa automaticamente (disjuntor de conta de IA): idempotente e sem checar quem pediu — ao contrário
@@ -380,12 +381,18 @@ class Repository:
 
     # ================================================================== saídas de etapa (contrato C2, ADR-058)
     def save_step_output(self, step_id: str, name: str, value: str, *, value_kind: str = "text",
-                         app_id: str | None = None) -> None:
+                         app_id: str | None = None, origem: str = "arvore", leitor: str | None = None,
+                         frame_sha256: str | None = None, evidence_id: int | None = None) -> None:
         """Grava o valor `name` que a etapa leu, para as etapas seguintes do MESMO objetivo (migração 056).
 
         O nome é único no objetivo e a última escrita vence: a etapa repetida depois de uma falha reescreve. Nome fora
         de `SAIDA_NOME_RE`, valor acima de `SAIDA_VALOR_MAX` ou tipo fora do vocabulário é `ValueError` — o valor vem
         da tela, e cortar calado entregaria à etapa seguinte um código pela metade. Etapa inexistente: `KeyError`.
+
+        `origem` (item 12.5, migração 078): `arvore` (o texto do elemento) ou `visual` (leitura da imagem conferida às
+        cegas). O valor visual SEMPRE diz quem o leu (`leitor`) e de que recorte (`frame_sha256`); a evidência é
+        opcional porque a retenção pode apagá-la. Valor da árvore não carrega nenhum dos três: uma origem que não se
+        explica não é gravada.
         """
         if not SAIDA_NOME_RE.fullmatch(name or ""):
             raise ValueError(f"nome de saída inválido: {name!r}")
@@ -393,15 +400,23 @@ class Repository:
             raise ValueError(f"valor da saída '{name}' precisa ser texto de até {SAIDA_VALOR_MAX} caracteres")
         if value_kind not in SAIDA_VALUE_KINDS:
             raise ValueError(f"tipo de saída inválido: {value_kind!r}")
+        if origem not in SAIDA_ORIGENS:
+            raise ValueError(f"origem de saída inválida: {origem!r}")
+        if origem == "visual" and not (leitor and frame_sha256):
+            raise ValueError(f"o valor visual '{name}' precisa do leitor e do sha256 do recorte que ele viu")
+        if origem == "arvore" and (leitor or frame_sha256 or evidence_id is not None):
+            raise ValueError(f"o valor '{name}' vem da árvore: leitor, recorte e evidência são só da origem visual")
         step = self.step_row(step_id)
         oid = step["objective_id"]
         self.db.execute(
-            "INSERT INTO step_outputs(id, run_id, objective_id, step_id, name, value, value_kind, app_id, created_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?)"
+            "INSERT INTO step_outputs(id, run_id, objective_id, step_id, name, value, value_kind, app_id, created_at,"
+            " origem, leitor, frame_sha256, evidence_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT (objective_id, name) DO UPDATE SET run_id=excluded.run_id, step_id=excluded.step_id,"
             " value=excluded.value, value_kind=excluded.value_kind, app_id=excluded.app_id,"
-            " created_at=excluded.created_at",
-            (f"{oid}:{name}", step["run_id"], oid, step_id, name, value, value_kind, app_id, now_iso()))
+            " created_at=excluded.created_at, origem=excluded.origem, leitor=excluded.leitor,"
+            " frame_sha256=excluded.frame_sha256, evidence_id=excluded.evidence_id",
+            (f"{oid}:{name}", step["run_id"], oid, step_id, name, value, value_kind, app_id, now_iso(), origem, leitor,
+             frame_sha256, evidence_id))
 
     def step_outputs(self, objective_id: str) -> dict[str, str]:
         """As saídas já gravadas no objetivo, por nome (vazio quando nenhuma etapa produziu nada)."""
@@ -414,20 +429,39 @@ class Repository:
         return {str(r["name"]): (str(r["value"]), str(r["value_kind"])) for r in self.db.query(
             "SELECT name, value, value_kind FROM step_outputs WHERE objective_id=? ORDER BY name", (objective_id,))}
 
+    def saidas_visuais(self, objective_id: str) -> set[str]:
+        """Os nomes de saída do objetivo lidos da IMAGEM (`origem='visual'`, item 12.5): quem consome o valor decide,
+        com isto, se a etapa pode seguir sozinha ou espera a pessoa (efeito externo)."""
+        return {str(r["name"]) for r in self.db.query(
+            "SELECT name FROM step_outputs WHERE objective_id=? AND origem='visual'", (objective_id,))}
+
+    def saidas_visuais_citadas(self, row: Row) -> list[str]:
+        """Dos nomes que a etapa PRONTA cita (`{{saida:<nome>}}`), os que foram lidos da IMAGEM no objetivo (item 12.5). Lida
+        ANTES de `resolver_saidas`, que troca a referência pelo valor e apaga o rastro de quem a citou."""
+        post = Postcondition.model_validate_json(row["postcondition"])
+        textos = [row["title"], row["goal"], row["precondition"], post.value, post.description,
+                  *(loads(row["commit_guard"], []) or []), *(loads(row["band_guard"], []) or []),
+                  *(loads(row["bindings"], {}) or {}).values(), *(loads(row["variables"], {}) or {}).values()]
+        citados = {n for t in textos for n in nomes_citados(t)}
+        return sorted(citados & self.saidas_visuais(row["objective_id"]))
+
     def saidas_da_etapa(self, step_id: str) -> list[str]:
         """Os nomes que a etapa declara entregar (`steps.saidas`, migração 056); vazio no legado."""
         return [str(n) for n in (loads(_col(self.step_row(step_id), "saidas"), []) or [])]
 
-    def saidas_da_execucao(self, run_id: str) -> list[dict[str, str | None]]:
+    def saidas_da_execucao(self, run_id: str) -> list[dict[str, str | int | None]]:
         """Os valores lidos numa execução, com a ORIGEM — etapa e app — para o relatório (item 24.3). Um por nome e
-        objetivo (a última leitura vence, como na tabela)."""
+        objetivo (a última leitura vence, como na tabela). `origem` (`arvore`|`visual`), `leitor`, `frame_sha256` e
+        `evidence_id` (item 12.5) dizem de onde o valor veio; os três últimos só existem no visual."""
         return [{"instance_id": r["instance_id"], "objective_id": r["objective_id"], "name": r["name"],
                  "value": r["value"], "value_kind": r["value_kind"], "step_id": r["step_id"],
                  "step_title": r["title"], "app_id": r["app_id"], "app": r["app_name"] or r["app_id"],
-                 "read_at": r["created_at"]}
+                 "read_at": r["created_at"], "origem": r["origem"], "leitor": r["leitor"],
+                 "frame_sha256": r["frame_sha256"], "evidence_id": r["evidence_id"]}
                 for r in self.db.query(
                     "SELECT o.instance_id, so.objective_id, so.name, so.value, so.value_kind, so.step_id, s.title,"
-                    " so.app_id, a.name AS app_name, so.created_at FROM step_outputs so"
+                    " so.app_id, a.name AS app_name, so.created_at, so.origem, so.leitor, so.frame_sha256,"
+                    " so.evidence_id FROM step_outputs so"
                     " JOIN objectives o ON o.id = so.objective_id JOIN steps s ON s.id = so.step_id"
                     " LEFT JOIN apps a ON a.id = so.app_id WHERE so.run_id=? ORDER BY o.instance_id, s.seq, so.name",
                     (run_id,))]
@@ -517,7 +551,7 @@ class Repository:
 
     def transition_step(self, step_id: str, target: StepStatus, *, detail: str | None = None,
                         result: StepResult | None = None, next_retry_at: str | None = None,
-                        message: str | None = None, level: str = "info") -> None:
+                        message: str | None = None, level: str = "info", error_kind: str | None = None) -> None:
         with self.db.tx():
             row = self.step_row(step_id)
             check_transition(row["status"], target)
@@ -539,7 +573,8 @@ class Repository:
             # A falha classificada da ETAPA (ADR-054): o tipo do desfecho em que ela parou, pelo texto dele — o de
             # `waiting_user` diz "autenticação" enquanto a tentativa, devolvida sem consumir, diz só "interrompida".
             # Fora de um desfecho de falha o tipo não sobra (confirmada à mão, de volta à fila, comprovada depois).
-            tipo = classificar_falha(detail, target.value) if target in _ETAPA_EM_FALHA else None
+            # RA-22: o erro de IA que encerrou a etapa (`error_kind`) decide antes do texto, como na tentativa.
+            tipo = classificar_falha(detail, target.value, error_kind) if target in _ETAPA_EM_FALHA else None
             fields.append("failure_kind=?")
             params.append(tipo.value if tipo is not None else None)
             sql = f"UPDATE steps SET {', '.join(fields)} WHERE id=?"
@@ -679,29 +714,34 @@ class Repository:
 
     def finish_attempt(self, attempt_id: str, status: AttemptStatus, *, error: str | None = None,
                        recovery: str | None = None, observed: str | None = None,
-                       screen: str | None = None) -> None:
+                       screen: str | None = None, error_kind: str | None = None) -> None:
         """Fecha a tentativa. **Cercada pela posse da etapa** (item 5.3): no `_apply` do scheduler a tentativa é
         fechada ANTES da transição da etapa, então sem cerca aqui um dono que já perdeu a posse ainda gravaria o
         desfecho da tentativa por cima de quem agora executa — a cerca da etapa chegaria tarde demais.
 
         `screen`: a tela reconhecida na última observação da tentativa (`executor.tela_da_falha`, item 22.3) — um
-        nome do vocabulário declarado, nunca texto da tela."""
+        nome do vocabulário declarado, nunca texto da tela.
+
+        `error_kind` (RA-22): o `AIError.kind` que encerrou a tentativa (`StepOutcome.ai_error_kind`). Vai para
+        `attempts.error_kind` e decide o tipo antes do texto; sem ele (nenhum erro de IA), a coluna fica nula."""
         atual = self.db.one("SELECT status, error FROM attempts WHERE id=?", (attempt_id,))
         anterior = atual["status"] if atual else None
         erro = truncate(error, 800)
         # A falha classificada (ADR-054): o tipo do erro FINAL, o mesmo que o COALESCE abaixo deixa gravado — o texto
         # novo ou, sem ele, o que `note_attempt` já anotou nesta tentativa. Mesmo classificador puro da leitura do
         # legado: o gravado e o retroativo nunca discordam.
-        tipo = classificar_falha(erro if erro is not None else (atual["error"] if atual else None), status.value)
+        tipo = classificar_falha(erro if erro is not None else (atual["error"] if atual else None), status.value,
+                                 error_kind)
         # A tela só acompanha um tipo de falha: tentativa comprovada ou cancelada não tem "onde falhou", e a tela
         # sem tipo seria um grupo do backlog sem falha nenhuma.
         tela = (screen or None) if tipo is not None else None
         cur = self.db.execute(
             "UPDATE attempts SET status=?, finished_at=?, error=COALESCE(?, error), recovery=COALESCE(?, recovery),"
-            " observed_result=COALESCE(?, observed_result), failure_kind=?, failure_screen=? WHERE id=? AND EXISTS"
-            " (SELECT 1 FROM steps s WHERE s.id=attempts.step_id AND (s.claimed_by IS NULL OR s.claimed_by=?))",
+            " observed_result=COALESCE(?, observed_result), failure_kind=?, failure_screen=?, error_kind=? WHERE id=?"
+            " AND EXISTS (SELECT 1 FROM steps s WHERE s.id=attempts.step_id AND (s.claimed_by IS NULL OR"
+            " s.claimed_by=?))",
             (status.value, now_iso(), erro, truncate(recovery, 800), truncate(observed, 800),
-             tipo.value if tipo is not None else None, tela, attempt_id, self.owner_id))
+             tipo.value if tipo is not None else None, tela, truncate(error_kind, 40), attempt_id, self.owner_id))
         if (cur.rowcount or 0) != 1:
             linha = self.db.one("SELECT s.id, s.claimed_by FROM steps s JOIN attempts a ON a.step_id=s.id"
                                 " WHERE a.id=?", (attempt_id,))
@@ -826,8 +866,9 @@ class Repository:
             self.db.execute(
                 "INSERT INTO ai_calls(ts, run_id, objective_id, step_id, role, model, tier, input_tokens, cache_read,"
                 " cache_write, output_tokens, with_image, ms, ok, requested_model, fallback, provider,"
-                " error_kind, error_status, error_message, attempt_id, origem, ref)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " error_kind, error_status, error_message, attempt_id, origem, ref,"
+                " verdict, escalate, motivo, image_reason)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (now_iso(), run_id, objective_id, step_id, usage.role, usage.model, usage.tier, fresh,
                  usage.cache_read_tokens, usage.cache_write_tokens, usage.output_tokens, int(usage.with_image),
                  usage.ms, int(ok), usage.requested_model or usage.model, usage.fallback, usage.provider or None,
@@ -835,7 +876,9 @@ class Repository:
                  None if ok else truncate(error_message, 500), attempt_id,
                  # Item 31.2: quem pagou a chamada. O hub já preenche; a linha de execução que não passou por ele
                  # (erro do executor) ainda é `execucao` quando há `run_id`. Fora de execução sem origem fica NULL.
-                 usage.origem or ("execucao" if run_id else None), usage.ref))
+                 usage.origem or ("execucao" if run_id else None), usage.ref,
+                 # RA-10 (migração 080): o executor carimba; fora dele, NULO (a chamada não é de etapa).
+                 usage.verdict, usage.escalate, usage.motivo, usage.image_reason))
         self.db.execute("UPDATE runs SET ai_input_tokens=ai_input_tokens+?, ai_output_tokens=ai_output_tokens+? WHERE id=?",
                         (usage.input_tokens, usage.output_tokens, run_id))
         if objective_id:
@@ -1282,13 +1325,14 @@ class Repository:
                          objectives=objectives, steps=steps, attempts=attempts, evidence=evidence,
                          plan_versions=versions, decisions=decisions)
 
-    def emit_run(self, run_id: str, message: str | None, *, level: str = "info") -> None:
+    def emit_run(self, run_id: str, message: str | None, *, level: str = "info",
+                 dados: dict[str, object] | None = None) -> None:
         row = self.run_row(run_id)
         if row is None:
             return
         summary = self.run_summary(row)
         self.bus.emit("run.updated", message or f"Execução {run_id}: {summary.status.value}", level=level, run_id=run_id,
-                      data={"run": summary.model_dump(mode="json")})
+                      data={**(dados or {}), "run": summary.model_dump(mode="json")})
 
     def emit_step(self, step_id: str, message: str, *, level: str = "info") -> None:
         r = self.step_row(step_id)

@@ -79,6 +79,358 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - corpus E da orquestradora (360 casos): 0 vazamentos de C7, 0 C7 mascarada, 0 passagens indevidas;
   - 92 comandos reais: 1 recusa, a mesma.
 
+## 2026-10-03 — Aprendizado: quebra de série do LT-6 no deploy 8
+
+- `docs/dominios/aprendizado.md` (O que mais falha) registra o que muda desde 03/10 09:06:28Z (deploy 8, df860763).
+  - A etapa `app_foreground` aberta pelo executor sem IA fecha como `sem_ator`. Com isso `so_ia` cai, e as elegíveis
+    e `sem_cobertura` do aproveitamento caem.
+  - Não nasce receita de `app_foreground`, e a candidata `open_app` não recebe veredito de sombra.
+  - O `pct_por_receita` não quebra.
+  - Do lado da Jev, a amostra "sem casamento" do 31.10 quebra pelos fluxos que o 30.29 revive.
+  - Compare só janelas do mesmo lado.
+
+## 2026-10-03 — Deploy 8 no central (suíte 8: RA-19 B, 30.29 e 29.45; planejador no Sonnet 5.5; curador acelerado)
+
+- Código: main `df860763` (suíte 8: #141 RA-19 B, #142 30.29 e 29.45 caminho rápido 2), sem migração nova (segue a 081).
+  Backup do deploy `20261003-060610` (carimbo em hora local; o do ensaio é `20261003-060545`); o ensaio de migração na
+  cópia do banco não aplicou nada. Agente do notebook em `0.1.0+df86076` (reparo dos aparelhos dele pausado durante a
+  troca).
+- `config/config.yaml` do central (backup `config-antes-deploy8-20261003-090601.yaml`; fora do Git):
+  - `ai.roles.plan`: `claude-sonnet-5-5` com `effort: low` (rodada QA pareada passou: 35 % mais rápido, 43 % mais
+    barato, 12/12 nos dois braços). O perfil `planejador-sonnet` fica para A/B; `escalation` segue no Opus; a leitura
+    não mudou.
+  - `aprendizado.curador.alfa: 0.7` e `k: 6`, para drenar o backlog do curador. **Voltam a 0.10 / 1.5 (o padrão) no
+    deploy 9.**
+- Quebras de série a partir deste deploy:
+  - `ai_calls.escalate = nova_tentativa` passa a marcar só a subida do LT-12 (adendo v0.86).
+  - Etapas `app_foreground` abertas pelo executor sem IA (LT-6) não alimentam o `_veredito_da_sombra`.
+  - O custo e a latência do `plan` mudam de modelo (Opus → Sonnet 5.5 low).
+- Prova `real` (03/10, central):
+  - `/api/health` às 09:07Z: ok, `df860763`, migração 081, `problems: []`;
+  - `GET /api/ai`: `plan` = `claude-sonnet-5-5` / `low`, `escalation` = `claude-opus-5-5`, `leitura` =
+    `gemini-3.1-flash-lite`;
+  - agente `0.1.0+df86076` online às 09:08Z, com os 4 aparelhos do notebook `online/ready`.
+- `not_run`: o aceite de latência do 29.45 e a validação do painel no Chrome, até o tráfego medir.
+
+## 2026-10-03 — caminho rápido 2: LT-5, LT-6 e LT-12 (item 29.45, branch `feat/lt-5-6-12-caminho-rapido-2`)
+
+- **LT-5.** O "não" em tela parada encerra a verificação em 3 sondagens (`SONDAGENS_DA_TELA_PARADA`), sem esperar o
+  orçamento. Não vale para `patient` com `pending_marks` declaradas nem para nível de entrega acima de `sent`.
+- **LT-6.**
+  - O executor abre o app da etapa `app_foreground` sem IA, como estratégia `deterministic` (`OPEN_APP_SEM_IA`): uma vez
+    por tentativa e sem receita conduzindo. Se não comprovar, o ator assume na mesma tentativa.
+  - `esperar_foco` sonda a 0,5 s nos primeiros 5 s.
+  - A partir do deploy 8, essas etapas não alimentam o `_veredito_da_sombra`. A candidata v4 de `open_app` do QA não
+    promove por sombra.
+- **LT-12.** A nova tentativa começa no tier 0 e sobe na 1ª decisão que repete, na mesma tela estrutural, onde a anterior
+  parou, ou que dispararia o efeito. Essa decisão é descartada antes de agir. A memória fica no processo: depois de um
+  restart, tier 0 sem esse gatilho.
+- **Contrato**: adendo v0.86 (`attempts.strategy` com `deterministic`; `escalate` = `nova_tentativa` mais estreito).
+- **Prova `simulated`**: `tests/test_caminho_rapido_2.py`. Os testes de ANR e de recusa, cujo gancho é a decisão da IA
+  que abre o app, desligam `OPEN_APP_SEM_IA`. `not_run`: o aceite de latência no real.
+
+## 2026-10-03 — 30.29: o fluxo com variável de execução no plano casa também pela habilidade (branch feat/30-29-fluxos-com-variaveis-de-execucao)
+
+- `skills/domain/matching.py::bind_template_parameters` deixa de exigir do comando os RESERVED (`account_label`,
+  `instance_id`, `run_id`). O valor é do aparelho e entra na materialização, como no `FlowStore.match` desde o LT-3.
+- Antes: o `LegacyFlowAdapter` resolvia o fluxo pelo `FlowStore.match`, e o `legacy_plan` não compilava.
+  - O comando que casava ia a `needs_input` sem planejador. O abrir-tela da rodada QA de 03/10 caiu assim.
+  - 5 fluxos ativos do QA, com `{account_label}` (e às vezes `{instance_id}`/`{run_id}`) nos parâmetros, tinham
+    0 usos.
+- O aprendizado do fluxo já não templatizava os RESERVED; agora há um teste de regressão.
+- Núcleo (skills): revisão da Jev na parte do `matching.py`, e suíte 8.
+- Prova `simulated`: `tests/test_flows_account_label.py` (6; os 2 novos de bind/compilação falham sem a correção).
+
+## 2026-10-03 — Aprendizado: o que uma execução simulada ensina não publica (RA-19, fatia B; branch feat/ra-19-origem-simulada)
+
+- Origem simulada nunca nasce ativa: a receita nem com `ai.recipes_promote_after: 0`, o fluxo nem com
+  `aprendizado.fluxo.com_prova: false`.
+- A concordância de uma execução simulada não promove receita (`RecipeStore.shadow(simulada=True)`). A sombra segue
+  promovendo com evidência real, e a pessoa promove à mão.
+- Config nova: `aprendizado.simulada_publica` (padrão `false`; `true` só na suíte, que é toda simulada).
+- Sem migração. Prova `simulated`: `tests/test_origem_simulada.py` (6), com a consulta de join = 0.
+- Núcleo (`executor.py`, `recipes.py`, `config.py`): revisão da Android e suíte 8.
+
+## 2026-10-03 — Aprendizado: polimentos da validação do deploy 7 (B1 e I5; branch fix/aprendizado-ux-deploy7)
+
+- B1: o parecer do curador deixa de sair como "da IA" no painel.
+  - "Parecer do curador: …", "Aceitar pareceres do curador (n)" e "Pedir revisão ao curador";
+  - "O curador sugere", "O curador ainda não revisou este item" e os sinais "Pediu revisão ao curador" /
+    "Decidiu um parecer do curador";
+  - o que fala do ator continua "IA".
+- I5 (RA-24 com tela): Aprendizado › Aplicativos › (o app) › Declarado mostra "Conhecimento em uso" (arquivos
+  conferidos e desde quando nada mudou), o sha curto de cada arquivo (o inteiro e o blob do git no `title`) e o selo
+  do arquivo gravado depois de o servidor subir. Lê `GET /api/apps/{pacote}/conhecimento`; o 404 (app sem conhecimento
+  declarado) vira "sem linha".
+- Prova:
+  - `simulated`: `AplicativosTab.test.tsx` (+2), `ParecerDaIA.test.tsx` (as negativas olham o rótulo novo) e
+    `IntencaoSecao.test.tsx`; 131 testes do aprendizado e 1339 do painel; typecheck;
+  - percorrido no navegador numa cópia do banco (8766, IA simulada): Instagram com 4 arquivos, o estado "mudou" (mtime
+    tocado), QA Messenger sem linha, Para aprovar, o detalhe com "Pedir revisão ao curador", Sinais e 375 px.
+
+## 2026-10-03 — Rodada QA pareada: a pré-checagem também olha a habilidade (branch main)
+
+- A 1ª rodada (03/10 07:37Z, `qa-par-202610030737`) foi parada pela sessão do aprendizado:
+  - o abrir-tela casava com uma habilidade de fluxo que não compila para o próprio comando, e as 4 execuções foram
+    a `needs_input` sem planejador;
+  - o msg-todos-os-contatos também casa com habilidade;
+  - com 2 casos válidos, as 6 válidas por braço do aceite eram impossíveis.
+  Custo: US$ 0,2621, em 2 execuções do planejador; 0,1777 no Opus e 0,0844 no Sonnet.
+- `scripts/rodada_qa_pareada.py`:
+  - `fora_do_planejador` consulta `POST /api/flows/match` e `POST /api/skills/resolve` (no aparelho da rodada),
+    na pré-checagem e no pulo por caso;
+  - o `--checar` imprime "Pré-checagens ok" quando passa.
+- `--repeticoes N` repete o bloco ABBA de cada caso (ABBAABBA). Decisão da orquestradora para a 2ª rodada: os 3
+  casos que chegam ao planejador × 2 = 12 por braço.
+- Prova `simulated`: `scripts/tests/test_rodada_qa_pareada.py` (13).
+- No central, só leitura: os 4 casos padrão são recusados (2 por habilidade), e
+  `--casos perfil-campo-inexistente,comando-ambiguo,sessao-expirada` passa.
+
+## 2026-10-03 — Aprendizado: quebra de série do `pct_por_receita` no deploy 7
+
+- Documentação e processo: `docs/dominios/aprendizado.md` (O que mais falha) registra que, desde 03/10 07:28:40Z
+  (deploy 7, 49811568), a etapa da IA com as receitas desligadas (`ai`, RA-10) e a fechada sem o ator (`sem_ator`,
+  LT-1) entram no denominador; a série só se compara do mesmo lado.
+
+## 2026-10-03 — Script da rodada QA pareada (canário do planejador; branch chore/rodada-qa-pareada)
+
+- `scripts/rodada_qa_pareada.py`: Opus padrão × perfil `planejador-sonnet` em ABBA por caso, nos 4 casos do
+  `eval-set.yaml` que chamam o planejador (12 dos 17 casavam com fluxo ativo em 03/10, e aí o A/B não mede nada).
+- Sem opção, só o plano. `--checar` faz as pré-checagens de custo zero, `--yes` roda com teto e `--ler` dá o veredito
+  (sucesso B ≥ A e p50 do planejador no B ≤ 11 s, com 6 válidas por braço).
+- Prova `simulated`: `scripts/tests/test_rodada_qa_pareada.py` (10). `--checar` no central (03/10) só acusou o deploy 7
+  que falta; nada rodou nem gastou.
+
+## 2026-10-03 — Cache, entrada e latência antes × depois de um deploy (branch feat/jev-leitura-cache-latencia)
+
+- `scripts/jev-leitura-cache-latencia.py` compara, por função e por perfil, as chamadas de `ai_calls` antes e depois de
+  um corte (o instante do deploy). Mede:
+  - o cache lido e escrito sobre a entrada total;
+  - a entrada p50;
+  - a latência p50 e p95;
+  - o custo por etapa e por execução, pela regra de `planning/costs.py`.
+- As colunas do RA-10 entram quando a migração 080 existe; sem ela, a quebra por motivo é `not_run`.
+- Só leitura, sem IA. Descrição em [ia.md](docs/ia.md) (custo e uso).
+- Prova `simulated` (`scripts/tests/test_jev_leitura_cache_latencia.py`, 12 testes). Leitura `real` só leitura no banco do
+  central (esquema 078).
+
+## 2026-10-03 — 31.10: o script do relatório da sombra do Jev (branch feat/31-10-relatorio)
+
+- `scripts/jev-relatorio-31-10.py` mede a sombra do curador (por `kind`) e da intenção (por app) contra os limiares
+  pré-registrados do golden set (§1–§3). Para cada estrato dá:
+  - o veredito (GO, NO-GO ou "sem amostra") e a data prevista do GO;
+  - o custo e a latência;
+  - o teto de cobertura da R2.
+- O script é só leitura, também na reconexão, e não chama IA. Descrição e limites: [jev-golden-set.md](docs/design/jev-golden-set.md)
+  §5.
+- Prova: `simulated` (`scripts/tests/test_jev_relatorio_31_10.py`, 11 testes). No banco do central: `not_run` (depois do
+  merge da suíte 7).
+
+## 2026-10-03 — 29.34 (RA-15): o relógio do wake começa no snapshot carregado (branch feat/29-34-relogio-do-wake)
+
+- `DeviceManager._wait_boot`: o `wake_timeout_s` (90 s) deixa de contar do spawn. Antes do veredito do log vale
+  `boot_timeout_s`; com "Successfully loaded snapshot" o prazo de 90 s conta dali. `boot_seconds` continua
+  spawn→online. A medição `boot kind=warm` ganha `load_ms`. Testes: `test_wake_relogio_do_snapshot.py` (`simulated`).
+  Aceite real em 7 dias (wake > 90 s e "snapshot descartado" = 0): `not_run`.
+
+## 2026-10-03 — 25.12: túnel morto age e o backend verifica a rede ao subir (branch feat/25-12-tunel-morto)
+
+- Objetivo parado há horas não segura mais o aparelho (`vitrine.objetivo_que_segura`, metade C do 25.12; corrige
+  c185eda3, que tratava `completed_with_issues` como terminal e revertia a decisão do PR #13): `completed_with_issues` é
+  o rollup IMEDIATO de todo `waiting_user`/`uncertain` com nada rodando, então o objetivo de agora segura (a tela é a
+  evidência do operador), mas o de `OBJETIVO_PARADO_SEGURA_POR_S` (2 h, valor PROVISÓRIO: o orquestrador decide) atrás
+  solta. A idade é `objectives.finished_at` (sem ele, `runs.finished_at`/`created_at`). Execução viva segura sem limite;
+  `completed`, `cancelled` e `failed` soltam como sempre. Medido em 03/10: o objetivo de 02/10 adiou o teste de vazamento
+  do android-03 por ~1 h, e o android-01 tem 18 objetivos assim desde 28/09. Efeito nos chamadores em
+  `docs/dominios/parque.md`. Prova `simulated`:
+  `tests/test_sempre_na_promovida.py::test_objetivo_parado_so_segura_enquanto_recente_em_execucao_com_pendencias` (e o
+  teste do PR #13, restaurado), `tests/test_rede_sonda.py::test_objetivo_parado_ha_horas_nao_adia_o_teste_de_vazamento`.
+- **Túnel morto age (metade A).** A verificação de um `trafego_verificado` com política exigida cuja sonda não mede IP de
+  saída tira a linha do estado (→ `conectado`, motivo e evento `tunel_morto`), religa o cliente VPN no aparelho (até 2
+  vezes: `force-stop` e always-on, ou Start da interface com teto de 60 s) e, sem volta, reinicia sem wipe. Falha ou
+  trava da interface conta como tentativa (caso do android-06, 03/10). O teste do portão
+  `test_remedicao_sem_ip_espera_antes_de_repetir` mudou: afirmava o comportamento que o item corrige (o estado não saía de
+  `trafego_verificado`). Prova `simulated`: `tests/test_rede_sonda.py::test_tunel_morto_*`.
+- **Backend ao subir (metade B).** `ConvergenciaDeRede.verificar_ao_subir`, chamado no `start` do scheduler, marca a
+  medição do tráfego dos aparelhos com política exigida e rede conectada: todo reinício do backend derruba os túneis.
+  Não usa o `verify` (com bloqueio ele apaga a prova de vazamento e reinicia o aparelho): a prova segue valendo.
+  Prova `simulated`: `tests/test_rede_sonda.py::test_backend_ao_subir_*`.
+
+## 2026-10-03 — IA: esforço e thinking por função, sonda "o ator pensa?" e dieta do contexto 2 (17.14 e RA-17, branch feat/17-14-perfil-e-dieta)
+
+- `ai.roles.<f>` e os perfis ganham `effort`, `thinking: false` e `cache_da_etapa`; o perfil ganha
+  `screenshot_max_side` e `rich_tree_min_elements`, só nas execuções dele. Nada escrito = a requisição de antes, byte
+  a byte.
+- `cache_da_etapa` (RA-17): o passo e as lições vão antes da imagem, com o 2º ponto de cache.
+- Uma função com ajuste ganha instância de provedor própria.
+- `GET /api/ai`: `roles[].thinking` (a sonda) e `pensou=N` na linha de uso do log (adendo da API pedido à
+  orquestradora).
+- Prova `simulated`: `tests/test_perfil_esforco_e_dieta.py` (16). `real`: `not_run` (sem A/B pago).
+
+## 2026-10-03 — Aprendizado: o app de teste fora da lista padrão do livro (RA-19, fatia A; branch feat/ra-19-visao-do-livro)
+
+- `GET /api/aprendizado` ganha o filtro `rotulo` (`produto` | `qa` | `todos`, adendo v0.83). O padrão sem app é
+  `produto`, que esconde os apps de `apps.category='qa'`. A resposta traz `rotulo` e `ocultos`.
+- O Aprendido abre em "Produto", com o seletor segmentado "Produto · QA · Todos" e os ocultos ao lado. O acervo de teste
+  continua no livro, na visão por app e nas filas.
+- Prova `simulated`: `tests/test_learning_rotulo_do_livro.py` (8) e o painel (119). Sem migração.
+
+## 2026-10-03 — 29.42: o fluxo entre apps diz de que apps precisa (branch feat/29-42-required-apps)
+
+- `GET /api/flows` devolve `required_apps` em cada fluxo, na ordem em que o plano usa os apps (sem migração: a ordem vem
+  das etapas do plano gravado; `flow_required_apps` segue sendo só o conjunto). Duas consultas para todos os fluxos.
+- O painel (Configurações, Fluxos) e o detalhe do fluxo na aba do curador mostram "QA Messenger → Chrome" com o nome de
+  cada app (o id quando o app não está cadastrado). O dossiê do curador (`conteudo.apps`) passa à mesma ordem (antes,
+  alfabética); por isso dois testes de domínio mudaram a ordem esperada (outlook, instagram: a do plano).
+- Adendo v0.85 em `docs/api-contract.md`. Prova `simulated`: `tests/test_flows_required_apps.py`,
+  `frontend/src/lib/appsDoFluxo.test.ts`, `DetalheRico.test.tsx`, `FlowsRecipesSection.test.tsx`; `real`: `not_run`.
+
+## 2026-10-03 — Conhecimento de app: versão conferida e prova do que está no ar (RA-24, parte YAML; branch feat/ra-24-versao-e-prova-do-conhecimento)
+
+- `telas.yaml` e `sessao.yaml` só aceitam `versao: 1` na carga, como a `contract_version` do catálogo. Antes,
+  `telas.yaml` trocava qualquer não inteiro por 1 e aceitava qualquer inteiro.
+- `GET /api/apps/{pacote}/conhecimento` (adendo v0.82): cada YAML com `sha256` e `git_blob` do texto lido. Com CRLF→LF,
+  o `git_blob` bate com `git hash-object` no checkout com autocrlf. A resposta aponta o arquivo que mudou depois de o
+  processo subir.
+- Prova `simulated`: `tests/test_prova_do_conhecimento.py` (20 testes; 79 com os de telas e sessão). Sem migração.
+  Núcleo (`api.py`, `automation/`, `app_declarado/`): revisão da Android e suíte 7.
+
+## 2026-10-03 — 30.26 (RA-22): o tipo da falha sai do erro de IA, não do texto (branch feat/ra-22-error-kind-em-attempts)
+
+- Migração 081: `attempts.error_kind`, o `AIError.kind` que encerrou a tentativa. O executor o põe no desfecho
+  (`StepOutcome.ai_error_kind`) e o scheduler o grava na tentativa.
+- `classificar_falha(texto, status, error_kind)` decide pelo tipo antes do texto, para a tentativa e para a etapa. A
+  mensagem de IA do executor deixa de ser contrato. `step_deadline` segue pelo texto, e o ANR ganha do prazo.
+- Mudança pretendida: o teto do pedido ("Orçamento do pedido atingido…") sai de `outro` e vai para `ia_orcamento`. Na
+  releitura retroativa, uma chamada que o roteador contornou não desmente mais a tentativa que tem o tipo gravado.
+- Nenhum desfecho de etapa, retry ou campo da API muda. Prova `simulated`: `tests/test_falha_pelo_erro_de_ia.py` (13) e
+  bateria de 145 arquivos (2688 aprovados). PostgreSQL: `not_run` (só `ADD COLUMN TEXT`, sem dialeto).
+
+## 2026-10-03 — Validação do deploy 4: I1 (sem rótulo não há "diverge") e a CPU do emulador com referência
+
+- **I1:** `observedMatchOf` (`frontend/src/features/settings/instancesView.ts`) devolve `none` sem rótulo configurado. Sem
+  conta esperada não há do que divergir: o android-04, hoje de Instagram e sem rótulo, aparecia "diverge" por uma
+  observação antiga do QA Messenger. A linha "observado" sai do cartão de Configuração › Aparelhos e contas e do Foco
+  quando não há rótulo.
+- **Polimento do Foco:** "CPU 108%" passa a "CPU 108% (≈1,1 núcleo)" (`cpuDoEmulador`): o % do processo é de um núcleo
+  do host.
+- **K-080:** um toque por id de elemento velho abre a tela errada. **K-078:** adendo do braço D, em que o snapshot
+  também não é a causa.
+- `simulated`: `instancesView.test.ts`, `cpuDoEmulador.test.ts`; typecheck limpo; 139 aprovados em settings e focus.
+
+## 2026-10-03 — 12.5 nível 1.1: o "truncado" vale para o valor, não para a linha vizinha (emenda do ADR-070 §4)
+
+- `conferir_transcricao` (`backend/app/taskqueue/saidas.py`): "truncado" é o do valor do ator, do campo do leitor e da
+  linha que contém o valor. A marca global do leitor só cai quando uma linha alheia cortada a explica (K-079).
+- `simulated`: em `tests/test_leitura_visual.py`, a prévia cortada com o valor inteiro concorda; o valor cortado, a
+  linha do valor cortada e a marca sem linha cortada continuam recusando. 109 aprovados com o arquivo do papel.
+- `real` (bancada, 04:57–04:59Z, `ai_calls` 3008–3071, US$ 0,02): gemini-3.1-flash-lite 31/32 e gpt-6-luna 29/32, com
+  0/96 falsas. Gemini fica como principal e o luna como alternativo; a opção liga no próximo reinício do central.
+
+## 2026-10-03 — caminho rápido 1: LT-1, LT-2 e LT-3 (pular o ator, nunca a prova)
+
+- **LT-1.** A pós-condição conferida na entrada da volta, antes de o ator decidir: etapa sem efeito, tela não sensível e
+  sem saída por ler. Determinística: prova local, custo zero. Julgada: só na entrada e só pela prova local do catálogo
+  (`ENTRADA_JULGADA_SO_COM_PROVA_LOCAL`), porque o juiz na entrada subia `verify` por etapa nos testes de custo.
+- **LT-2.** `expect_done` em etapa julgada vai direto ao `_verify` (uma rodada) e o veredito é reusado no fim do laço;
+  "não" volta ao ator na mesma tentativa (`attempts` continua 1).
+- **LT-3.** `flows.match` não exige valor para `account_label`, `instance_id` e `run_id`.
+- **`steps.driven_by='sem_ator'`** para a etapa que fecha sem o ator (modelos, `aproveitamento`, painel "Sem o ator").
+- **Prova `simulated`**: `tests/test_caminho_rapido_executor.py`, `tests/test_flows_account_label.py`,
+  `tests/test_aproveitamento.py`, `frontend/src/lib/status.test.ts` e `ProfileDetail.test.tsx`; três testes de custo
+  antigos mudaram de número por causa do atalho (ANR, hub de IA, política de imagem). `not_run`: latência no real.
+
+## 2026-10-03 — Jev: RA-11 (parte Jev) — telemetria vence em 48 h, memória vencida sai do banco, purga em lotes
+
+- `instance.updated` sem execução vence em 48 h (`events.TELEMETRIA_KINDS`/`TELEMETRIA_RETENCAO_H`), antes dos 14 dias do
+  resto do log. A purga de `events` vai em lotes de 2.000 linhas. `memory_items` vencidos saem do banco
+  (`AppState._purgar_memorias_vencidas`). Ao fim da volta da retenção, `PRAGMA optimize` (SQLite).
+- Prova: simulated (`test_retencao_telemetria.py`, 4 testes; 625 afetados verdes). Na primeira volta depois do deploy,
+  saem ≈ 27 mil eventos do central (medido em 03/10, só leitura). Real: `not_run`.
+
+## 2026-10-03 — Jev: higiene de docs do RA-24 (parte Jev)
+
+- `docs/ia.md` §10: o gatilho do ADR-023 para voltar ao modelo local não foi atingido (≈ 13 execuções por dia na
+  semana de 26/09 a 02/10; Ollama sem chamada desde 24/09). O único uso candidato é uma triagem em sombra, medida
+  antes contra o golden set. O roteiro do Jev (local) passa a dizer que o verificador fica fora pela classe do dado
+  (C5/C6), e não pela imagem.
+
+## 2026-10-03 — Jev: prévia que executa não é defeito; o início diz quem iniciou (P12 da reavaliação)
+
+- Prévia passa a ser `mode='plan' AND started_at IS NULL`: as 11 execuções em `mode=plan` que gastaram decisões
+  tinham sido iniciadas de propósito (medido no central, 03/10). `RunService.start(por=...)` grava `iniciada_por`
+  no `run.updated` do início (a pessoa ou `panel` pela rota, `sistema` no `mode=execute`; adendo v0.79).
+- Prova: simulated (`test_inicio_com_autor.py`).
+
+## 2026-10-03 — Jev: retenção do histórico de execução registrada (P10 da reavaliação)
+
+- `runs`, `objectives`, `steps`, `attempts`, `actions` e `plan_versions` ficam "para sempre" por enquanto; o resto
+  vence como antes. Números de 03/10 (≈ 0,45 MiB/dia nessas tabelas) e os gatilhos para rever em `docs/banco.md`.
+
+## 2026-10-03 — Jev: a porta de política do item 13.2 também no planejamento (RA-7, branch feat/ra-7-recusa-no-planejamento)
+
+- `planning/capabilities.py::efeito_fora_do_catalogo` concentra a regra do item 13.2 (etapa com efeito, num app com
+  catálogo, sem ação daquele catálogo). A porta do despacho passa a usá-la, com a mesma frase.
+- `RunService._plan` aplica a regra a todo plano (planejador, fluxo, skill) antes de materializar. Uma etapa recusada
+  zera o plano, a execução vai a `needs_input` com uma pergunta por etapa, e o evento `plan.refused` leva o motivo
+  fechado (`sem_acao_do_catalogo` | `acao_de_outro_catalogo`). Nenhuma decisão é gasta nos preparativos.
+- O caso de 01/10 no Outlook (`fill_recipient` com 16 e 17 decisões) é anterior ao catálogo do Outlook no central;
+  desde que ele chegou, 5 de 5 planos ligam a capability (`docs/dominios/execution.md`).
+- Prova: simulated (`test_recusa_no_planejamento.py`, 12 testes; 616 afetados verdes). Real no android-01: `not_run`
+  (frente Android).
+
+## 2026-10-03 — Jev: formato curto do plano atrás de chave (LT-4b, item 17.13, branch feat/lt-4b-esquema-curto)
+
+- `ai.esquema_do_plano: curto` (de fábrica, `longo`, o formato de sempre byte a byte). A etapa livre (plano livre e
+  parte livre do plano entre apps) não pede mais `postcondition.description`, `precondition` nem `max_attempts`, e o
+  backend os preenche:
+  - a descrição vem do `value` (no `model_judged`, o próprio critério);
+  - a pré-condição fica nula;
+  - a etapa com efeito tem 1 tentativa, e as demais têm 3.
+- O prompt pede título e objetivo curtos. Os planejadores curtos são os de sempre com dois trechos trocados, e
+  `_trocar` falha na importação se um marcador sumir.
+- A identidade da receita é a mesma nos dois formatos. Anthropic e OpenAI mandam o formato curto só com a chave.
+- Estimativa grátis (count_tokens em 2 planos reais do QA): −22 a −24 % de saída, ≈ −2,5 s por plano. Não alcança
+  os ≤ 11 s do aceite do LT-4 (`docs/ia.md` §12).
+- Prova: simulated (`test_esquema_curto_do_plano.py`, mais os afetados). Real: A/B de 3 braços só do planejador
+  (03/10, ~04:31–04:39Z, 14 casos QA, 42 chamadas, US$ 1,36). No Opus, o curto tem p50 13,3 s contra 15,9 s,
+  2,75 s a menos por plano (pareado), a mesma forma em 14/14 e US$ 0,0359 contra 0,0428 por plano. O Sonnet 5.5
+  curto ficou em 7,8 s, mas só com a forma das etapas com efeito igual (`docs/ia.md` §12). Rodada QA: `not_run`.
+- Deploy 7: o Sonnet 5.5 entra como perfil 17.7 (`planejador-sonnet`, só o modelo do `plan`; o esforço e o esquema
+  seguem os globais). O preço `[2.0, 0.2, 2.5, 10.0]` e o cache mínimo de 512 dele entram no padrão e no exemplo
+  (páginas da Anthropic, 03/10; antes, ele casava o prefixo do Sonnet 5). No central, as linhas vão DENTRO dos blocos
+  `ai.prices` e `ai.models` que já existem: o YAML troca a tabela inteira. Prova: simulated (`test_perfil_de_ia.py`).
+
+## 2026-10-03 — RA-10: o porquê de cada chamada de IA em `ai_calls` e os grupos de `/api/usage` (branch feat/ra-10-observabilidade, migração 080)
+
+- `ai_calls` ganha `verdict`, `escalate`, `motivo` e `image_reason` (vocabulários fechados em `planning/provider.py`,
+  `MarcaDaChamada`). O executor marca toda chamada que passa por
+  `_ai` (plano, decisão, cascata, julgamento, vazio, rejulgamento, leitura) e o assistente marca o refinamento; o motivo
+  do escalonamento sai do código, e a frase da linha do tempo continua a mesma.
+- O rejulgamento (7.10 e 17.10) era gravado como `verify` tier 0: agora é tier 1 com motivo. A linha de erro e a de
+  orçamento recusado ganham `provider` e modelo da função; a imagem da persona grava `origem='persona'`; a etapa que a IA
+  conduziu grava `driven_by='ai'` também com receitas desligadas.
+- `GET /api/usage` ganha só chaves novas: `by_origin`, `escalations`, `rejudges` (com discordância por app),
+  `cascades`, `image_reasons` e `steps_driven_by_null`, no preço de `spent_usd` (`costs.usd_por`). Adendo v0.75 do
+  contrato; conferência pós-deploy em `docs/ia.md` §9.
+- Prova `simulated`: `test_observabilidade_das_chamadas.py` e `test_assistente_do_comando.py`. Prova real: `not_run`.
+
+## 2026-10-03 — Jev: o decisor real da porta `DecisaoFechada` (31.14, branch feat/31-14-decisor-jev)
+
+- `DecisorJev` (`planning/decisao_fechada/decisores.py`): uma chamada ao Jev por pedido, pelo transporte do adaptador de
+  retrieval (`JevSemanticProvider.consultar`, cliente único). Só `choice` vai ao fio; `noul` e `score` respondem `desligado`.
+- Gasto conferido ANTES do POST: `RoutingProvider.conferir_gasto` aplica a rubrica de `_budget` (pedido, execução, dia, fatia
+  do Jev) e o bloqueio de saldo da conta `typesafe`. Barrado, sem hub ou com a leitura quebrada = motivo novo `orcamento`, e
+  nada sai.
+- Cada chamada tentada vira linha em `ai_calls` (`RepositorioDeSombra.registrar_chamada`): provedor `jev`, origem
+  `decisao_fechada`, papel `decisao_fechada`, `usd` declarado e `step_id` NULL; a falha também (`ok=0`, motivo fechado).
+  A fatia de US$ 0,50 deixa de ser cega e o saldo estimado da TypeSafe passa a andar.
+- O 422 do adaptador ganhou classe própria (`ProviderRejected`); para o retrieval segue a mesma falha.
+- Ligado só por `ai.decisao_fechada.decisor: jev` (de fábrica, `nulo`). O envio continua fechado por
+  `JEV_RUNTIME_SEND_APPROVED` até o 31.10.
+- Prova: `simulated` (`backend/tests/test_decisao_fechada_jev.py`: MockTransport, socket proibido, hub falso e banco de
+  teste). Chamada real ao Jev: `not_run`.
+
 ## 2026-10-03 — Correção do 31.9, rodada C (NO-GO em 8e1d7a9c): `sem_destinos` sem normalizar, C7 em qualquer escrita e e-mail soletrado (branch fix/31-9-privacidade)
 
 - A rodada C (`.claude/handoffs/reverificacao-31-9c.md` §7) achou 27 vazamentos fora da suíte de 240, pelo caminho de
@@ -159,6 +511,256 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - rótulo humano só pelo parecer do 30.17;
   - métrica principal do 31.10: "execuções sem fluxo que o Jev teria casado ao fluxo que o desfecho confirma".
 - `JEV_RUNTIME_SEND_APPROVED` continua `False`. Nenhuma chamada real.
+
+## 2026-10-03 — Aprendizado: nomes também nas listas (validação do deploy 4, branch fix/aprendizado-ux-deploy4)
+
+- "capability" sai da tela: "capacidade", "Etapa livre (fora do catálogo)" e "Fora do catálogo".
+- As entradas do livro ganham `app_nome` e `etapa` (adendo v0.80). "App:", a Identidade e a Versão dizem o nome do app,
+  com o pacote no `title`.
+- A receita de app sem catálogo ganha nome pelo título da etapa de origem: "Digitar a mensagem · etapa fill_message
+  (v1)" no lugar de "fill_message (v1)".
+- A ocorrência de falha diz "android-05 · etapa open_app · tentativa 1".
+- Prova `simulated`: `tests/test_learning_capability_na_linha.py` e os testes do painel do aprendizado.
+
+## 2026-10-03 — Aprendizado: decisões do dono de 03/10 no desenho (docs)
+
+- Documentação e processo: `docs/design/aprendizado-vivo.md` registra que quem valida fluxo é a IA (curador; A pela regra, B
+  no lote do dono, C item a item) e não o dono à mão, e que o `commit` em app sem catálogo fica na classe B (§8.4 e §15).
+
+## 2026-10-03 — 30.24: "Confirmar que fica" para o legado de Revisar (branch feat/30-24-confirmar-que-fica)
+
+- O legado publicado com efeito de "Revisar" ganha o gesto da pessoa que o mantém. A trilha grava uma linha
+  `published → published` com quem, quando e o motivo, que é opcional. O item sai da fila até chegar evidência
+  contrária real depois da confirmação; confirmar de novo o tira outra vez. O item não muda e não há migração.
+- Fecha a pendência A6 do 30.17: aceitar o parecer "manter" num item de "Revisar" é a mesma confirmação, ligada à
+  revisão.
+- Rota `POST /api/aprendizado/{kind}/{ref}/confirmar` (adendo v0.78). No painel, "Confirmar que fica" e
+  "Confirmar selecionados" em "Revisar", e "Confirmado que fica" no histórico. O item já decidido por uma pessoa perde
+  o aviso "vale revisar" (antes ele ficava mesmo depois de religado), e o que voltou diz por quê. Percorrido no
+  navegador numa cópia do banco do central, inclusive a 375 px.
+- Prova `simulated`: `tests/test_learning_confirmar_que_fica.py` (10), `AprendizadoPage.test.tsx` e
+  `DetalheRico.test.tsx`. Real: `not_run`.
+
+## 2026-10-03 — Aprendizado: o dossiê do fluxo diz os apps (branch fix/dossie-do-fluxo-apps)
+
+- O conteúdo legível do fluxo (detalhe do Livro e dossiê do curador) ganha `app` (o principal do plano), `apps` (os
+  exigidos, de `flow_required_apps`) e o `app` de cada etapa. Antes, um fluxo que atravessa apps (12.1) parecia rodar
+  todo no app principal, e o curador podia julgar "ler no Outlook" num fluxo do Instagram como incoerente.
+- O `dossie_hash` dos fluxos muda: um fluxo já revisado volta a ser elegível para o curador uma vez. O `comando_modelo`
+  (texto da pessoa) segue fora do dossiê.
+- Prova `simulated`: `tests/test_learning_conteudo.py` e `tests/test_learning_curador_dominio.py`.
+
+## 2026-10-03 — 12.5: bancada do leitor, o portão que reprovou (`scripts/bancada-leitor.py`)
+
+- **`real`.** Foram 16 recortes guardados e 2 leitores reais (gpt-6-luna e gemini-3.1-flash-lite), com 128 pares cada e zero
+  concordância falsa. Mesmo assim houve 0/32 concordâncias nos verdadeiros: a prévia do corpo, sempre cortada em "…", leva
+  todo par a `truncado`.
+- Sem o truncado da linha alheia (só diagnóstico), seriam 30/32 e 32/32. O custo total estimado foi de US$ 0,02
+  (`ai_calls` 2944–3007).
+- `ai.leitura_visual.enabled` fica false. A correção do escopo do "truncado" espera decisão. Detalhe em `docs/ia.md` §17.
+
+## 2026-10-03 — 30.25: o rótulo de intenção, "Qual era o pedido?" (branch feat/30-25-rotulo-de-intencao)
+
+- A execução real e comprovada que a cadeia de resolução não casou com nenhuma habilidade (ou deixou num empate) vira
+  uma pergunta cega à pessoa: qual habilidade do catálogo era aquela intenção, ou nenhuma. É o gabarito do decisor
+  fechado da intenção (31.x, da Jev). Minerador no digest da execução assentada, sem gancho novo no taskqueue; uma
+  linha por execução em `learning_reviews` (`template_id='intencao'`, provedor vazio, só ids no dossiê).
+- Os leitores do curador filtram `template_id='curador'`: o rótulo, de custo zero, não entra no orçamento (C_W).
+- Rotas `GET /api/aprendizado/intencao` e `POST /api/aprendizado/execucao/{run_id}/intencao` (adendo v0.76).
+  No painel, "Qual era o pedido?" no fim de Para aprovar, opcional e fora da contagem: uma pergunta por
+  vez, com "Pular", e as opções em até duas linhas (percorrido no navegador numa cópia do banco, inclusive a 375 px).
+- Núcleo: `state.py` compõe o rótulo com o mesmo catálogo da sombra do 31.9 (`catalogo_da_cadeia`). Entra na suíte 7,
+  depois do `fix/31-9-privacidade`, que torna público o acessor `dados_da_intencao`.
+- Prova `simulated`: `tests/test_learning_rotulo_de_intencao.py` (28) e `IntencaoSecao.test.tsx` (10). Real: `not_run`.
+
+## 2026-10-03 — Aprendizado: `commit` sem catálogo volta para a classe B (branch fix/commit-sem-catalogo-b)
+
+- O dono confirmou em 03/10 a decisão de 02/10: receita ou fluxo com `commit` num app SEM catálogo
+  (`commit_sem_catalogo`) é classe **B**, aprovado em lote. A emenda para C da mesma madrugada (PR #127) foi revertida
+  no código (`domain/politica_de_risco.py`), no doc do domínio e no §8.4 do desenho. O aviso de espera volta à faixa B.
+- Prova `simulated`: `test_learning_politica_de_risco.py` e `test_learning_espera.py`.
+
+## 2026-10-03 — RA-20 (29.40), fatia A: a causa do "ausente" medida e a herança da receita provada (branch feat/ra-20-causa-do-ausente)
+
+- 52 % das consultas de receita davam "ausente" (reavaliação de 03/10), quase nenhuma por falta de receita: a chave
+  exige versão, assinatura e variante, e a receita viva noutra chave não casava. Agora a chave sem receita herda, como
+  CANDIDATA, a receita `active` da mesma etapa noutra variante, na legada (as 19 de 17/09, sem assinatura nem variante)
+  ou noutra versão do app. A herdeira só age depois de concordar em sombra (`recipes_promote_after`); com `commit`, para
+  em `validated` (D1). Assinatura diferente nunca doa; a chave esperando o dono ou posta de lado não herda; o veto da
+  pessoa vale (`save`). `ai.recipes_heranca: false` desliga a herança e mantém a medida. Só herda com a prova em
+  sombra (`recipes_promote_after > 0`): com 0, o modo anterior da suíte de reaproveitamento, a receita aprendida já nasce
+  ativa e uma herdeira só tomaria o lugar dela.
+- A herdeira que se prova na chave completa e passa a agir (`active`) aposenta a legada ativa da mesma etapa e versão
+  (cada parte da chave é a dela ou vazia), com a trilha "provou-se na chave completa": a legada não casava mais
+  consulta nenhuma. A ativa de outra assinatura ou de outra variante fica, mesmo com a outra parte vazia (revisão da
+  Android). A que espera o dono (`validated`) não aposenta nada.
+- A causa de cada "ausente" é contada em `receita.ausente{causa}` (vocabulário do Aprendizado,
+  `domain/causa_do_ausente.py`); a consulta que herdou conta `receita.consulta{resultado=herdada}`. Adendo v0.77
+  (provisório).
+- Fora desta fatia: o hash sem o `post.value` do `model_judged` (fatia B, PR à parte), o seletor do filho rotulado
+  (desenho de núcleo com a Android) e os literais do comando no `troca()`. As metas de fill_message e de 65 % dependem
+  sobretudo do seletor do filho.
+- Prova `simulated`: `test_recipes.py::test_herda_da_versao_anterior` (herda, concorda duas vezes e volta a agir com 0
+  decisões do ator), `test_receita_heranca.py` e `test_learning_causa_do_ausente.py`. Real: `not_run`.
+
+## 2026-10-03 — 29.32: a conta retirada some de `memory_items` de todas as personas (branch feat/29-32-memoria-conta-retirada)
+
+- **P13 da reavaliação de 03/10 (opção A do dono):** a retirada reescrevia só a memória da persona que retirava. Agora o @, o id e o e-mail
+  da conta viram "[conta removida]" em `memory_items` de **todas** as personas. O e-mail só entra se identifica a conta (conta de e-mail, ou o login
+  dela) e nenhuma outra conta VIVA o usa (Outlook da mesma persona ou de outra: o endereço fica). `runs.command` e `actions.args` seguem como histórico.
+- `sem_o_rastro` ganhou a mesma fronteira de palavra do `esquecer_conta` do aprendizado (nem `foo@ana.com` nem a parte local `ana@x.com` casam com `ana`).
+  `limpezas` da retirada ganha `memory_items_de_outras_personas` (só contagem).
+- **Retroativo:** `scripts/memoria-conta-retirada.py` (`--ensaio` por padrão, `--aplicar`, `--lista-stdin` sem eco), fonte = lápides (hash) e ids dos
+  eventos `profile.account_retired`; o e-mail de conta já retirada não está no banco e só entra pela lista do operador. **Não rodado no banco real.**
+- Revisão adversarial: handle em forma de e-mail só some se exclusivo da conta; @ de conta viva (outro app, outra persona) não se redige; lista do operador recusa item curto ou só de dígitos; `--aplicar` exige `--backup`; `--ensaio` avisa migração divergente.
+- Prova `simulated`: `test_memoria_conta_retirada.py` (15). Prova na cópia do backup `20261002-211739` (migrada na cópia, 2 linhas sintéticas plantadas):
+  ensaio 2, aplicar 2, repetir 0; a cópia foi apagada. Nas 116 linhas reais da cópia: 0 com rastro por hash ou id (os 37 do central não se reproduzem ali).
+
+## 2026-10-02 — 12.5 nível 1: leitura visual de saída de etapa conferida às cegas (ADR-070, branch feat/12-5-leitura-visual)
+
+- **Por quê.** O passo 0 (`real`, android-01) provou que a linha da caixa do Outlook é cega na árvore (ComposeView sem texto em
+  toda a subárvore); sem leitura da imagem o `read_value` não tinha de onde tirar remetente e assunto.
+- **O que entra, DESLIGADO (`ai.leitura_visual.enabled: false`).** `read_value(source="visual")` na região que o app declara
+  (`leitura_visual.regioes` no `telas.yaml` do Outlook), com 13 barreiras e conferência cega por um segundo leitor: papel novo
+  `ai.roles.leitura` (sem herança, outro modelo que `decide`/`escalation`, com visão, sem fallback) e `transcribe(LeituraRequest)
+  -> Transcricao` nos três provedores. O recorte vira evidência; `step_outputs` ganha `origem`, `leitor`, `frame_sha256`,
+  `evidence_id` (migração 078); valor visual em etapa com efeito espera a pessoa; o juiz recebe a imagem à força.
+- **Junto.** `step_blocked.reason` redigido nos quatro destinos; conta própria das recusas da barreira de saídas (4 → `fail_or_retry`).
+- **Hub de IA.** `origem='leitura'`, fatia opcional `ai.limits.leitura_max_usd_per_day`, parse estrito da transcrição, teto do
+  recorte (nunca a tela inteira), aviso de `/api/ai` com provedor, modelo e apps que declaram a região.
+- **Ajustes da revisão (mesmo lote).** Privacidade: a `ValidationError` do parse não encadeia mais (`from None`; o texto do modelo
+  não chega ao log com traceback); triagem acusa e-mail de código por forma (número de 4 a 8 dígitos e palavra de código em
+  en/pt/es na mesma linha, valor E linha de origem), e na leitura visual o valor com forma de código é recusado sem contexto; a
+  triagem visual leva a etapa a `waiting_user` sem nova tentativa do ator; saídas visuais fora das variáveis de receita; o valor
+  gravado é o do leitor; `fora_do_app` recebe o valor real; recorte até 0,2 da altura e 320 px. Contrato: o leitor exige modelo
+  DECLARADO com visão em `ai.models` e comparado pelo nome normalizado (caixa, `vendor/`, `-AAAAMMDD`); a leitura nunca cai no
+  modelo do ator (`modelo_do_papel_leitura`); campo repetido com valores diferentes é `invalid_output`; orçamento, prazo e crédito
+  do leitor seguem o desfecho do ator (`desfecho_de_ia`); o aviso de `/api/ai` usa o rótulo do dado do app.
+- **Segunda rodada da revisão (D1 a D5).** A forma de código passa a ser lida em NFKC e com dígitos de outros alfabetos
+  convertidos, com os separadores `[\s.,·_/-]` e os de largura zero ignorados (`saidas.forma_de_codigo`, `_canonico`); na leitura
+  visual, token alfanumérico curto ("G-482913", "ABC123") também é código; o teste de forma vale para o valor e para CADA linha do
+  recorte, e a triagem do recorte roda ANTES da conferência. **A triagem da árvore ficou mais restritiva, de propósito:**
+  "Your code is 482.913" (ponto ou vírgula no número, dígitos de largura total ou árabes) e código alfanumérico ao lado de
+  palavra de código passam a ser recusados. O `AIError` do parse é levantado fora do `except` (sem `__context__`).
+- **Docs.** ADR-070, `ia.md` §17, `dominios/execution.md`, `api-contract.md` (adendo), `banco.md` (078), aprendizado K-077, item 12.5.
+- Prova `simulated`: `tests/test_leitura_visual.py`, `tests/test_leitura_visual_papel.py`. `real`: `not_run` (bancada do leitor e
+  execução no android-01 dependem de ligar a opção e do provedor escolhido).
+
+## 2026-10-03 — 29.31: app de prova no tier 0 do `side_effect_tier` (branch feat/29-31-qa-tier0)
+
+- **Custo (RA-8 da reavaliação de 03/10):** etapa com `side_effect` e SEM capability em app sem catálogo caía no tier 1 ("risco
+  desconhecido") e escalava ao modelo forte; em 7 dias, 64 a 66 desses escalonamentos eram do QA Messenger (43 % das chamadas do Opus
+  no tier 1, cerca de US$ 0,20 por dia) e distorciam a bateria de prova. Agora `side_effect_tier(step, cap, modo, app_de_prova)` devolve
+  tier 0 e motivo vazio quando o app da etapa é `builtin` e tem `apps.category='qa'`, só no `by_risk` e só sem capability. `true` (todo efeito sobe),
+  `false`, etapa com capability e app real sem catálogo ficam como estavam; `strong_model_for_side_effect` segue global.
+  `AppContext` ganhou `category` (padrão `None`), preenchida em `Scheduler._app_context`.
+- **Furo achado no caminho:** `_seed_apps` criava o app `builtin` SEM categoria (só a migração 041 a punha, nas linhas que já
+  existiam), então uma instalação nova nunca teria o app de prova como `qa`. O seed agora grava `category='qa'` para `builtin: true`
+  (sem migração). Critério por dado: no backup de 02/10, só `qa-messenger` tem `builtin=1` (e `category='qa'`). Revisão adversarial: `category='qa'` sozinho não vale (a API o aceita em qualquer app), o critério é `builtin` E `category='qa'`.
+- `simulated`: `tests/test_cost_levers.py` (função pura e caminho real do executor, nos dois sentidos). `not_run` no central; aceite real:
+  `decision` "sem catálogo" = 0 no app de prova em 7 dias depois do deploy. Sem migração.
+
+## 2026-10-03 — 14.11: CPU por emulador medida de verdade (branch feat/14-11-cpu-por-emulador)
+
+- **Corrigido (RA-3a da reavaliação de 03/10):** `devices/emulator.py::process_usage` recriava o `psutil.Process` do lançador e dos filhos a cada leitura, e o `cpu_percent(interval=None)` da 1ª leitura de um objeto novo é sempre 0,0; `resources.cpu_percent` de `GET /api/instances` mostrava 0,0 com o emulador gastando 1,1 a 1,2 núcleo. `MedidorDeUso` guarda os objetos por pid do lançador (reaproveita o filho conhecido, acrescenta o novo, descarta o que sumiu; troca tudo se o `create_time` mudar; purga o que não é lido há 60 s; `threading.Lock`). Assinatura mantida: a 1ª leitura de um objeto soma 0,0, da 2ª em diante é o valor real. Prova `simulated`: `backend/tests/test_cpu_por_emulador.py` (9). Prova `real` (leitura, 03/10, central, qemu 524 + emulator 53204): 3 leituras de 10 s, diferença de 0,8, 1,1 e 0,3 ponto contra o Δ de CPU do `Get-Process`. Sem migração; só o central, o agente do notebook herda `devices/` mas não mede CPU por emulador.
+
+## 2026-10-03 — Aprendizado: a exposição da lição mede só o custo da execução (contrato com o 31.14 do Jev) e `commit` sem catálogo vai para a classe C (branch fix/exposicao-custo-da-execucao)
+
+- Emenda de 03/10 da política de risco (30.10, mostrada no painel pelo 30.16; decisão da orquestradora pela regra do
+  dono "o mais restritivo"): receita ou fluxo com `commit` num app SEM catálogo (`commit_sem_catalogo`) passa de B para
+  C. Efeito desconhecido, com alcance possível em massa: decide-se item a item, nunca em lote, e o aviso de espera
+  (`learning.needs_person`) sai na faixa C. Prova `simulated`: `test_learning_politica_de_risco.py` e
+  `test_learning_espera.py`.
+
+- `licoes_sql.py::_desfecho_do_plano` conta só as chamadas de `ai_calls` com `origem` `execucao` ou nula: a decisão
+  fechada do Jev (31.14) grava o `run_id` com `origem='decisao_fechada'` e não entra no `ai_calls` nem no `usd` da
+  exposição do planejador. O `_desfecho_da_etapa` já filtrava por etapa. Prova `simulated`:
+  `tests/test_learning_efeito.py::test_a_exposicao_do_planejador_mede_so_o_custo_da_execucao`.
+
+## 2026-10-03 — Aprendizado: nomes no lugar de códigos e o erro de rede traduzido (P2 a P5 da validação do deploy 3, branch fix/aprendizado-ux-deploy3)
+
+- P2: "O que mais falha" diz o motivo e onde, com os nomes do Aprendido ("Pós-condição não comprovada — Instagram ·
+  Abrir o feed"); dentro da página do app, só o motivo. O pacote e o código ficam em "Para quem desenvolve". Backend:
+  `app_nome` nos grupos (`presentation/nomes.py`, `VisaoPorApp.nomes`).
+- P3: a capability com o nome do catálogo na Identidade, no conteúdo da receita e da lição e nos Sinais (`app_nome` e
+  `capability_nome` em `GET /api/aprendizado/sinais`). O texto da lição nomeia a capability só na tela; o gravado, que
+  vai ao prompt, não muda.
+- P4: a receita troca a chave da etapa pelo nome da capability ("Enviar a mensagem (v1)"), e dois itens iguais numa
+  lista ganham quando foram aprendidos ou o número (Para aprovar, Revisar, Aprendido, página do app e avisos do lote).
+- P5 (mudança GLOBAL, fora do módulo, decidida pela orquestradora): sem resposta HTTP, o estado de erro de todas as
+  telas do painel diz "Sem resposta do servidor." no lugar de "Failed to fetch" (`lib/loadError.tsx`; o texto original
+  fica no `title`). Adendo v0.74 (provisório) no contrato.
+
+## 2026-10-03 — Aprendizado: o parecer da IA diante da pessoa (30.17, branch feat/30-17-parecer-no-painel)
+
+- Painel: a seção "Parecer da IA" no detalhe do Livro (sugestão, classe, conclusão, o que a IA citou, aceitar ou recusar
+  com motivo, pedir revisão, histórico) e, com o curador em `on`, a frase "Parecer da IA: …" na linha da fila e o aceite em
+  lote só da classe B. Em `shadow`, o parecer só aparece depois da decisão da pessoa; o detalhe avisa que há um.
+- Backend: toda decisão de pessoa pelo Livro rotula o parecer pendente (`aceitou`/`recusou` quando vista; às cegas, o
+  rótulo da ação), sem nunca travar a transição; `POST /{kind}/{ref}/parecer/{review_id}`, `POST /{kind}/{ref}/revisao`,
+  `review_id` opcional no `/status`; gatilho `pedido_da_pessoa`; sinais `parecer_decidido` e `pediu_revisao`. Adendo
+  v0.72 (provisório: quem mergear depois renumera). Nenhuma migração.
+- Correção do 30.11: a `variante` da receita (`en-US/xhdpi`) fazia a triagem de credencial recusar 24 de 26 receitas da
+  cópia do central (`recusada:triagem`), e o curador nunca revisava receita; agora é chave estrutural.
+- O quadro por versão do detalhe cabe em 375 px.
+- Prova `simulated`: `tests/test_learning_pareceres.py`, `ParecerDaIA.test.tsx`; bateria afetada (53 arquivos, 919) e
+  frontend inteiro (1298); navegador na cópia do banco do central com provedor de ensaio e hub `simulated`, nos modos `on`
+  e `shadow`, e os fluxos pendentes do 30.15/30.16. `not_run` no central (curador `off` até o deploy 4).
+
+## 2026-10-03 — Aprendizado: evidência inválida como tipo próprio de desligamento (30.23, branch feat/30-23-evidencia-invalida)
+
+- Ação nova `POST /api/aprendizado/{kind}/{ref}/evidencia-invalida {run_id}`. Desliga a receita ou o fluxo aprendido de
+  um sucesso falso, com o motivo estruturado `evidencia_invalida:<run>`; o já desligado ganha a linha que reclassifica o
+  motivo. O motivo livre nesse formato é recusado (422).
+- O veto desse tipo barra só a mesma execução. Outra execução real que ensine o mesmo faz o item renascer "reaprendido",
+  em classe B: espera o dono em "Para aprovar", e o sistema para em `validated` (sombra da receita e do fluxo, e o
+  repositório). Relações `reaprende` e `reaprendida_por`.
+- A evidência da execução marcada fica à vista (`invalidada`) e sai da saúde, da versão e da sombra do fluxo.
+- O dossiê do curador (30.11, que entrou na main pela suíte 5) segue a mesma regra: o reaprendido é B nos fatos de
+  risco, e a evidência marcada fica de fora do que a IA pode citar.
+- Painel: selo na trilha, aviso na evidência, seção do reaprendido, botão "Marcar evidência inválida" com confirmação no
+  lugar, e o motivo em "Para aprovar".
+- Gancho em `taskqueue/recipes.py` (`exige_o_dono` na sombra): entra pela suíte 6. Se a leitura do livro falha, a
+  candidata não sobe nem ganha motivo na trilha; a próxima concordância pergunta de novo.
+- `test_learning_backlog` e `test_learning_repositorio` passam a usar meio-dia fixo. A suíte 5b falhou perto da meia-noite
+  UTC porque a semente cruzava o dia.
+- Adendo v0.70; emenda ao ADR-054. Prova `simulated`; a marca da 109 e do fluxo no central é `not_run` até o deploy.
+- Com o 30.17 (merge da main no branch): a marca rotula o parecer pendente do curador como o `/status` (vista em `on`,
+  às cegas fora dele); reclassificar o já desligado não rotula (`tests/test_learning_evidencia_invalida.py`).
+
+## 2026-10-02 — 29.29: D2-a também ao ganhar a conta, com vínculo sem app (branch feat/29-29-d2a, commit cdcb3fe6)
+
+- **Furo (revisão adversarial do 29.27):** pessoa sem conta, vinculada SEM app a aparelho que já tinha o Instagram de outra persona, passava a servir o
+  mesmo app ao ganhar a conta (`create_profile` com `persona_id` e sem `instance_id`; `add_account` de outro app), porque `profiles_of_instance`
+  conta o vínculo sem app de quem tem conta no app e o vínculo, feito antes, não tinha app a conferir. Agora `SocialRepository.conflito_da_conta_nova`
+  confere o aparelho do cadastro e cada aparelho de vínculo sem app da pessoa ANTES de criar qualquer linha (409 `conta_do_app_ja_no_aparelho`,
+  "nada foi criado"). Portas mapeadas: `create_profile` e `add_account` tinham o furo; `bind_device`, `_rebind` e vínculo no cadastro já
+  passavam por `repo.bind`. `simulated`: `tests/test_d2a_conta_nova_com_vinculo_sem_app.py` (6). `not_run` no central. Sem migração.
+
+## 2026-10-02 — 29.28: contas nossas podem interagir entre si, em ritmo baixo (emenda do ADR-050, branch feat/29-27-limpeza-e-adr050)
+
+- **Decisão do dono de 02/10 (relatada às 23:10Z):** `PolicyEngine._fleet_gate` deixa de recusar todo alvo que é conta nossa. Conta RETIRADA (lápide) segue recusada,
+  sem `retry_at`; conta nossa VIVA passa pelas demais regras (política do perfil, aprovação, tetos, uma conta por alvo do ADR-055) e por um
+  espaçamento mínimo desde o último gesto com efeito DESTA conta (maior entre `limits.fleet_min_spacing_to_own_account_s`, padrão 600, e o
+  cooldown do perfil), com `retry_at`. Config nova em `LimitsCfg` e `config/config.example.yaml`. Nenhum outro ponto bloqueava (varredura).
+  `simulated`: `tests/test_interacao_entre_contas_nossas.py` (7); `test_conta_bloqueada_sai.py` atualizado (2 testes). `not_run` no central.
+
+## 2026-10-02 — 29.27: retirada de conta bloqueada limpa o app nos aparelhos (branch feat/29-27-limpeza-e-adr050)
+
+- **Retirada leva os dados do app embora (emenda do ADR-068, decisão do dono de 02/10, relatada às 23:10Z):** o `app.yaml` ganhou `limpar_ao_retirar` (verdadeiro no
+  Instagram; `AppDefinition.clear_on_account_retire`). Retirada de conta (gatilho ou rota `retire`) de app que declara isso faz, em tarefa de fundo, um
+  aparelho por vez, onde a conta estava logada (marcadores abertos + vínculo, capturados antes de a retirada mascarar o @; a sessão NÃO é pista): acorda se
+  hibernado/parado, captura de tela, `pm clear` SÓ do pacote declarado (comando `session.logout` em `run_device_job`), captura de tela, resolve a
+  quarentena com a nota "limpeza automática autorizada pelo dono em 02/10" e devolve a energia. Falha: quarentena aberta e evento `device.account_cleanup`
+  em erro, sem repetir. Sem retroativo na subida; sem o @ em evento ou log. Resposta de `retire` ganha `limpeza_dos_aparelhos` (adendo v0.68).
+  `resolver_conta_travada` aceita `marcadores`. Sem migração. `simulated`: `tests/test_limpeza_ao_retirar.py` (19); `not_run` no central.
+- **Correção da revisão adversarial (defeitos que bloqueavam o merge):** o `pm clear` podia apagar o Instagram de OUTRA persona viva. (1) A sessão
+  deixa de ser fonte de aparelho (`unbind` não a apaga; `wrong_account`/`needs_person` não dizem "esta conta está aqui"). (2) Trava `outra_conta`
+  dentro do trabalho do aparelho, logo antes do `clear_data`: recusa se há vínculo (inclusive o sem app de persona com conta do app, o furo da
+  D2-a), sessão em qualquer status ou marcador de outra conta do mesmo app (`SocialRepository.outra_conta_no_aparelho`); quarentena aberta e
+  evento de erro. (3) Trava de energia: só acorda com `confirm_locked_account` se todo marcador aberto do aparelho é do pedido. **Risco residual a
+  aceitar pelo dono:** conta logada no app fora da plataforma (seletor de contas do Instagram) seria apagada. O furo da D2-a em `create_profile`
+  segue como item separado.
 
 ## 2026-10-02 — Emenda do ADR-069: a chave TypeSafe não é trocada (decisão do dono, item 9)
 
@@ -439,6 +1041,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (`domain/versao.py::versao_canonica`) e a tela e a lição, que gravam só o nome, comparam pelo nome (`nome_da_versao`).
   Depois: 4 `obsoleto_provavel` (fluxos nunca casados). Achado no aceite visual com backend simulado sobre uma cópia do banco.
   Prova `simulated` (`tests/test_learning_versao.py`, 3 casos novos com os formatos medidos); `not_run` no central. K-076.
+
 ## 2026-10-02 — `learning.needs_person` no aviso fora do painel (28.14, branch feat/28-14-needs-person-aviso)
 
 - O aviso externo do 28.11 (Telegram) assina o evento do Livro (30.21), conforme o combinado com a frente Aprendizado em 02/10:

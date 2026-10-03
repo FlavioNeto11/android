@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 from .db import loads
@@ -29,6 +30,7 @@ from .models import AppDTO, InstanceState
 from .modules.applications.infrastructure.app_repository import AppRow
 from .planning.catalog import capabilities_of
 from .releases.catalog import ReleaseValidationError
+from .util import now, to_iso
 
 if TYPE_CHECKING:
     from .state import AppState
@@ -110,6 +112,14 @@ def previa_de_entrega(state: AppState, rt: Any, row: Any, *, eager: bool) -> dic
 
 
 # ============================================================================ entrega sem tarefa (ao ligar e na varredura)
+#: Quanto tempo um objetivo `waiting_user`/`uncertain` de uma execução em `completed_with_issues` continua segurando o
+#: aparelho. `completed_with_issues` é o rollup IMEDIATO de toda execução em que nada roda e sobra um objetivo desses
+#: ("em aberto para permitir retomada", `recompute_run`), então no começo a tela dele é a evidência de que o operador
+#: precisa; o que não se sustenta é segurar para sempre (03/10: o objetivo de 02/10 adiou o teste de vazamento do
+#: android-03 por ~1 h, e o android-01 tem 18 desde 28/09). VALOR PROVISÓRIO (item 25.12): o orquestrador decide o número.
+OBJETIVO_PARADO_SEGURA_POR_S = 2 * 3600
+
+
 def objetivo_em_andamento(state: AppState, instance_id: str, *, exceto_quem_espera_a_rede: bool = False) -> bool:
     """O aparelho tem um objetivo no meio (rodando, parado esperando uma pessoa ou com desfecho INCERTO) de uma
     execução não encerrada?
@@ -118,6 +128,11 @@ def objetivo_em_andamento(state: AppState, instance_id: str, *, exceto_quem_espe
     `dispatchable_objectives` não basta: ela não vê a etapa em `retry_wait` nem o objetivo em `waiting_user`. O
     `uncertain` entra pelo mesmo motivo (revisão do PR #13): a tela dele é a evidência de que o operador precisa para
     decidir se o efeito aconteceu, e instalar e abrir o app por cima a apagaria.
+
+    Idade (item 25.12): o objetivo `waiting_user`/`uncertain` de uma execução em `completed_with_issues` só segura por
+    `OBJETIVO_PARADO_SEGURA_POR_S` depois de ter parado (`objectives.finished_at`, que `set_objective` grava ao entrar
+    nesses estados; sem ele, `runs.finished_at` e `runs.created_at`). Execução VIVA (`running`, `paused`, `planned`,
+    `needs_input`, `cancelling`) segura sem limite de idade. A execução que a pessoa reabre volta a `running`.
 
     `exceto_quem_espera_a_rede`: o objetivo suspenso entre etapas pela porta da rede (`wait_reason='rede'`, item
     25.6) continua `running`, mas está esperando justamente o reinício que a convergência da rede pede — contá-lo como
@@ -130,12 +145,15 @@ def objetivo_em_andamento(state: AppState, instance_id: str, *, exceto_quem_espe
 def objetivo_que_segura(state: AppState, instance_id: str, *, exceto_quem_espera_a_rede: bool = False) -> str | None:
     """O id do objetivo que `objetivo_em_andamento` conta (o primeiro), para quem precisa DIZER quem segurou o
     aparelho (29.21: o reinício da rede que não saía não dizia por quê)."""
+    limite = to_iso(now() - timedelta(seconds=OBJETIVO_PARADO_SEGURA_POR_S))      # texto ISO: vale em SQLite e PostgreSQL
     row = state.db.one(
         "SELECT o.id FROM objectives o JOIN runs r ON r.id = o.run_id WHERE o.instance_id=?"
         " AND o.status IN ('running','waiting_user','uncertain') AND r.status NOT IN ('completed','cancelled','failed')"
+        " AND NOT (r.status='completed_with_issues' AND o.status IN ('waiting_user','uncertain')"
+        " AND COALESCE(o.finished_at, r.finished_at, r.created_at) < ?)"
         + (" AND NOT (o.status='running' AND COALESCE(o.wait_reason,'')='rede')" if exceto_quem_espera_a_rede else "")
         + " ORDER BY o.id LIMIT 1",
-        (instance_id,))
+        (instance_id, limite))
     return str(row["id"]) if row is not None else None
 
 

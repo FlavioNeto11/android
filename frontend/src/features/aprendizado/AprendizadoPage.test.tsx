@@ -49,7 +49,8 @@ const FALHAS = {
   dias: 14, outro_pct: 4,
   grupos: [
     { id: 'fk-a1b2c3d4e5', app_package: 'com.instagram.android', capability: 'abrir_perfil', failure_kind: 'app_anr',
-      camada: 'aparelho', onde_alterar: { arquivos: ['backend/app/devices/manager.py'], doc: 'docs/dominios/parque.md',
+      app_nome: 'Instagram', capability_nome: 'Abrir o perfil',
+      titulo: 'com.instagram.android · abrir_perfil: app sem resposta', camada: 'aparelho', onde_alterar: { arquivos: ['backend/app/devices/manager.py'], doc: 'docs/dominios/parque.md',
                                            prova: 'a mesma etapa no mesmo aparelho' },
       ocorrencias: 6, taxa: 0.25, execucoes: 4, aparelhos: 2, usd_perdido: 0.4, min_perdidos: 12, intervencoes: 1,
       custo_total: 0.65, exemplos: [{ run_id: 'r-20260928165254-e31953', attempt_id: 'a-7', erro: 'ANR' }] },
@@ -60,7 +61,8 @@ const FALHAS = {
 
 const SINAIS = [
   { id: 3, kind: 'tomou_controle', polarity: 'negative', source_ref: 'takeover:a-1', created_by: 'sistema',
-    created_at: '2026-09-28T10:00:00Z', run_id: 'r-1', app_package: 'com.instagram.android', capability: 'abrir_perfil', simulated: 0 },
+    created_at: '2026-09-28T10:00:00Z', run_id: 'r-1', app_package: 'com.instagram.android', capability: 'abrir_perfil',
+    app_nome: 'Instagram', capability_nome: 'Abrir o perfil', simulated: 0 },
 ];
 
 let backend: FakeBackend;
@@ -75,6 +77,7 @@ beforeEach(() => {
   backend.install();
   backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => json({ itens: [RECEITA, LICAO, HABILIDADE], total: 3 }));
   backend.on('GET', /^\/api\/aprendizado\/revisar$/, () => json({ itens: [LEGADO], total: 1 }));
+  backend.on('GET', /^\/api\/aprendizado\/intencao$/, () => json({ itens: [], total: 0 }));        // 30.25, vazia
   backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [PUBLICADO, MEMORIA, RECEITA], total: 3,
                                                           contagem: { fluxo: { published: 1 }, memoria: { '-': 12 }, receita: { validated: 1 } } }));
   backend.on('GET', /^\/api\/aprendizado\/falhas$/, () => json(FALHAS));
@@ -83,6 +86,8 @@ beforeEach(() => {
                                                                   contagem: { tomou_controle: 1 }, dias: Number(c.query.get('dias')) }));
   backend.on('POST', /^\/api\/aprendizado\/[a-z]+\/[^/]+\/status$/, (c) => json({ item: { ...RECEITA, state: (c.body as { to: string }).to },
                                                                               evidencias: [], trilha: [], exposicoes: [] }));
+  backend.on('POST', /^\/api\/aprendizado\/[a-z]+\/[^/]+\/confirmar$/, () => json({ item: LEGADO, evidencias: [],
+                                                                                 trilha: [], exposicoes: [] }));
   // A rota das habilidades (§10.3): o livro a recusa com 409 `use_skills_route`, então o painel nem tenta o livro.
   backend.on('POST', /^\/api\/aprendizado\/habilidade\//, () => json({ detail: {
     code: 'use_skills_route', message: 'use a rota das habilidades', href: '/api/skills/instagram.abrir-conversa/versions/2/status',
@@ -114,6 +119,7 @@ async function montar(): Promise<void> {
 
 const item = (ref: string) => container.querySelector(`[data-item="${ref}"]`) as HTMLElement;
 const statusCalls = () => backend.callsTo('POST', /\/status$/);
+const confirmarCalls = () => backend.callsTo('POST', /\/confirmar$/);
 const HAB = 'habilidade:instagram.abrir-conversa@2';
 const fila = () => container.querySelector('[aria-labelledby="aprendizado-fila"]') as HTMLElement;
 
@@ -130,10 +136,29 @@ describe('página Aprendizado', () => {
 
     await click(byRole('tab', /^O que mais falha/, container));
     await waitFor(() => expect(text(container)).toContain('App sem resposta (ANR)'));
+    // P2 do deploy 3: o motivo e onde, com os nomes; o título de quem desenvolve não aparece na linha.
+    expect(text(container)).toContain('App sem resposta (ANR) — Instagram · Abrir o perfil');
+    expect(text(container)).not.toContain('com.instagram.android · abrir_perfil: app sem resposta');
 
     await click(byRole('tab', /^Sinais/, container));
     await waitFor(() => expect(text(container)).toContain('Tomou o controle'));
+    expect(text(container)).toContain('Instagram › Abrir o perfil');    // P3: os nomes, com o código no `title`
+    expect(text(container)).not.toContain('com.instagram.android ›');
     expect(backend.callsTo('GET', /^\/api\/aprendizado\/sinais$/)[0]?.query.get('dias')).toBe('14');
+  });
+
+  it('Para aprovar diz o nome do app (o pacote no title) e dá nome à receita de app sem catálogo (deploy 4)', async () => {
+    const qa = entrada({ ref: '70', title: 'fill_message (v1)', app: 'com.pocqa.messenger', app_nome: 'QA Messenger',
+                         etapa: 'Digitar a mensagem', capability: null, capability_nome: null });
+    const semNome = entrada({ ref: '71', title: 'open_app (v1)', app: 'com.exemplo.sem.nome', app_nome: null });
+    backend.on('GET', /^\/api\/aprendizado\/pendentes$/, () => json({ itens: [qa, semNome], total: 2 }));
+    await montar();
+    await waitFor(() => expect(item('receita:70')).toBeTruthy());
+    expect(text(item('receita:70'))).toContain('Digitar a mensagem · etapa fill_message (v1)');
+    expect(text(item('receita:70'))).toContain('App: QA Messenger');
+    expect(text(item('receita:70'))).not.toContain('com.pocqa.messenger');
+    expect(byRole('button', /^QA Messenger$/, item('receita:70')).getAttribute('title')).toContain('com.pocqa.messenger');
+    expect(text(item('receita:71'))).toContain('App: com.exemplo.sem.nome');   // sem nome, o pacote
   });
 
   it('aprovar exige motivo e chama POST status com o próximo estado', async () => {
@@ -237,6 +262,67 @@ describe('página Aprendizado', () => {
     expect(loadJson('settings.section.habilidades', isBoolean)).toBe(true);
   });
 
+  it('no Aprendido, o legado confirmado perde o "vale revisar" e diz quem confirmou (30.24)', async () => {
+    const confirmado = { ...LEGADO, em_revisar: false,
+                         confirmado: { por: 'Ana Ribeiro', em: '2026-10-03T05:00:00Z', motivo: 'conferi o alvo' } };
+    const naFila = { ...LEGADO, ref: '41', em_revisar: true, confirmado: null };
+    backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [confirmado, naFila], total: 2,
+                                                            contagem: { receita: { published: 2 } } }));
+    await montar();
+    await click(byRole('tab', /^Aprendido/, container));
+    await waitFor(() => expect(item('receita:40')).toBeTruthy());
+    expect(text(item('receita:40'))).not.toContain('vale revisar');
+    expect(text(item('receita:40'))).toContain('Confirmado que fica por Ana Ribeiro');
+    expect(text(item('receita:40'))).toContain('conferi o alvo');
+    expect(text(item('receita:41'))).toContain('vale revisar');
+    expect(text(item('receita:41'))).not.toContain('Confirmado que fica');
+  });
+
+  it('"Revisar" diz por que o item confirmado voltou: chegou evidência contrária (30.24)', async () => {
+    backend.on('GET', /^\/api\/aprendizado\/revisar$/, () => json({ itens: [{ ...LEGADO, em_revisar: true, confirmado: null,
+      confirmacao_contestada: { por: 'Ana Ribeiro', em: '2026-10-03T05:00:00Z', motivo: null } }], total: 1 }));
+    await montar();
+    await waitFor(() => expect(item('receita:40')).toBeTruthy());
+    expect(text(item('receita:40'))).toContain('Voltou para revisar: confirmado que fica por Ana Ribeiro');
+    expect(text(item('receita:40'))).toContain('chegou evidência contrária');
+  });
+
+  it('no Aprendido, o filtro de apps é segmentado (Produto · QA · Todos), Produto por padrão, com os ocultos ao lado', async () => {
+    // RA-19: o servidor aplica `produto` quando o painel não pede; o painel mostra o que valeu e quantos ficaram fora.
+    backend.on('GET', /^\/api\/aprendizado$/, (c) => {
+      const r = c.query.get('rotulo');
+      if (r === 'todos') return json({ itens: [PUBLICADO, RECEITA], total: 2, contagem: {}, rotulo: 'todos', ocultos: 0 });
+      if (r === 'qa') return json({ itens: [RECEITA], total: 1, contagem: {}, rotulo: 'qa', ocultos: 1 });
+      return json({ itens: [PUBLICADO], total: 1, contagem: {}, rotulo: 'produto', ocultos: 94 });
+    });
+    await montar();
+    await click(byRole('tab', /^Aprendido/, container));
+    const grupo = await waitFor(() => byRole('radiogroup', /^Apps$/, container));
+    const marcado = () => allByRole('radio', /./, grupo).filter((b) => b.getAttribute('aria-checked') === 'true').map(text);
+    expect(allByRole('radio', /./, grupo).map(text)).toEqual(['Produto', 'QA', 'Todos']);
+    await waitFor(() => expect(text(container)).toContain('94 do QA ocultos'));
+    expect(marcado()).toEqual(['Produto']);
+    // a primeira leitura não pede rótulo: o padrão é do servidor (e com um app escolhido, ele vale "todos")
+    const [primeira] = backend.callsTo('GET', /^\/api\/aprendizado$/);
+    expect(primeira).toBeTruthy();
+    expect(primeira?.query.get('rotulo')).toBeNull();
+
+    await click(byRole('radio', /^Todos$/, grupo));
+    await waitFor(() => expect(item('receita:12')).toBeTruthy());
+    expect(marcado()).toEqual(['Todos']);
+    expect(text(container)).not.toContain('ocultos');
+
+    await click(byRole('radio', /^QA$/, grupo));
+    await waitFor(() => expect(text(container)).toContain('1 de produto oculto'));
+    expect(marcado()).toEqual(['QA']);
+
+    // a escolha vale para o app em que foi feita: escolher um app volta ao padrão do servidor (que mostra o que ele tem)
+    await act(async () => { useUiStore.getState().trocarQuery({ app: 'com.pocqa.messenger' }); });
+    await waitFor(() => expect(backend.callsTo('GET', /^\/api\/aprendizado$/).some((c) => c.query.get('app') === 'com.pocqa.messenger')).toBe(true));
+    const doApp = backend.callsTo('GET', /^\/api\/aprendizado$/).filter((c) => c.query.get('app') === 'com.pocqa.messenger');
+    expect(doApp.map((c) => c.query.get('rotulo'))).toEqual([null]);
+  });
+
   it('no Aprendido, a habilidade aponta para onde o ciclo dela fica, sem botão do livro', async () => {
     backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [{ ...HABILIDADE, state: 'published', native_status: 'published' }],
                                                             total: 1, contagem: { habilidade: { published: 1 } } }));
@@ -261,6 +347,31 @@ describe('página Aprendizado', () => {
     await click(byRole('button', /^Confirmar desligamento/, legado));
     await waitFor(() => expect(statusCalls()).toHaveLength(1));
     expect(statusCalls()[0]?.body).toEqual({ to: 'disabled', reason: 'comentário automático não' });
+  });
+
+  it('"Revisar": "Confirmar que fica" vale sem motivo e vai pela rota própria (30.24)', async () => {
+    await montar();
+    await waitFor(() => expect(item('receita:40')).toBeTruthy());
+    const legado = item('receita:40');
+    await click(byRole('button', /^Confirmar que fica$/, legado));
+    expect(byRole('textbox', /Motivo \(opcional\)/, legado)).toBeTruthy();
+    await click(byRole('button', /^Confirmar que fica$/, legado));
+    await waitFor(() => expect(confirmarCalls()).toHaveLength(1));
+    expect(confirmarCalls()[0]?.path).toBe('/api/aprendizado/receita/40/confirmar');
+    expect(confirmarCalls()[0]?.body).toEqual({});
+    expect(statusCalls()).toHaveLength(0);
+  });
+
+  it('"Revisar": confirmar em lote leva o mesmo motivo a cada item', async () => {
+    await montar();
+    await waitFor(() => expect(item('receita:40')).toBeTruthy());
+    const secao = container.querySelector('[aria-labelledby="aprendizado-revisar"]') as HTMLElement;
+    await click(byRole('button', /^Selecionar todos$/, secao));
+    await click(byRole('button', /^Confirmar selecionados \(1\)/, secao));
+    await setValue(byRole('textbox', /Motivo da confirmação em lote/, secao) as HTMLInputElement, 'conferi os dois prints');
+    await click(byRole('button', /^Confirmar que fica$/, secao));
+    await waitFor(() => expect(confirmarCalls()).toHaveLength(1));
+    expect(confirmarCalls()[0]?.body).toEqual({ motivo: 'conferi os dois prints' });
   });
 
   it('"Copiar para sessão" copia o md do item de falha', async () => {

@@ -1,10 +1,16 @@
 import { Zap } from 'lucide-react';
-import { createContext, useContext, useId, type ReactNode } from 'react';
+import { createContext, useContext, useId, useState, type ReactNode } from 'react';
+import { hintForError, toApiError } from '../../api/client';
 import { Badge } from '../../components/Badge';
+import { Button } from '../../components/Button';
+import { textoDosApps } from '../../lib/appsDoFluxo';
 import { formatInt } from '../../lib/format';
 import { hashDe } from '../../lib/rotas';
 import { formatDateTime, formatQuando } from '../../lib/time';
+import { useAppStore } from '../../store/app';
+import { apiAprendizado } from './api';
 import { abrirApp } from './apps';
+import { SecaoDoParecer } from './ParecerDaIA';
 import {
   SEM_DADO, destinoDaRelacao, metaDeSaude, metaDeVersao, rotuloDaDimensao, rotuloDaFerramenta, rotuloDaRelacao,
   rotuloDoAlvoDaLicao, rotuloDoCampoDoSeletor, rotuloDoSeletor, rotuloDoStatusDaReceita, textoDeAparelhos, textoDoAlvoSemItem, textoDoMotivo,
@@ -13,8 +19,9 @@ import {
 import {
   type AcaoDaReceita, type ConteudoDaHabilidade, type ConteudoDaLicao, type ConteudoDaReceita, type ConteudoDaTela,
   type ConteudoDoFluxo, type ConteudoDoItem, type DetalheDoLivro, type EntradaDoLivro, type EvidenciaDoLivro,
-  type LivroKind, type OrigemDaReceita, type RelacaoDoItem, type SaudeDoItem, type VersaoDoItem, type VizinhaDaReceita,
-  ORIGEM_LABEL, acoesDoItem, porQueOSistemaNaoPublica, rotuloDoEstado, rotuloDoKind,
+  type LivroKind, type OrigemDaReceita, type RelacaoDoItem, type SaudeDoItem, type TransicaoDoLivro, type VersaoDoItem,
+  type VizinhaDaReceita, ORIGEM_LABEL, acoesDoItem, nomearCapabilityNoTexto, porQueOSistemaNaoPublica, rotuloDoEstado,
+  rotuloDoKind,
 } from './model';
 import styles from './Aprendizado.module.css';
 
@@ -48,6 +55,16 @@ function Fato({ rotulo, children }: { rotulo: string; children: ReactNode }) {
 }
 
 const Mono = ({ children }: { children: ReactNode }) => <code>{children}</code>;
+
+/** O nome em português da capability DO ITEM (P3 do deploy 3); outra capability, ou sem catálogo, `null`. */
+type NomeDaCapability = (codigo: string) => string | null;
+const nomeDaCapabilityDo = (item: EntradaDoLivro): NomeDaCapability =>
+  (codigo) => (codigo === item.capability ? item.capability_nome ?? null : null);
+
+/** "Abrir a conversa (`OPEN_THREAD`)": o nome do catálogo e o código ao lado; sem nome, só o código. */
+function CapabilityNomeada({ codigo, nome }: { codigo: string; nome: string | null }) {
+  return nome ? <>{nome} (<Mono>{codigo}</Mono>)</> : <Mono>{codigo}</Mono>;
+}
 const nomesDeParametro = (nomes: readonly string[]) => nomes.map((n, i) => (
   <span key={n}>{i > 0 ? ', ' : ''}<Mono>{`{${n}}`}</Mono></span>
 ));
@@ -65,12 +82,12 @@ function Identidade({ item, conteudo }: { item: EntradaDoLivro; conteudo: Conteu
         <Fato rotulo="Tipo">{rotuloDoKind(item.kind)}</Fato>
         {item.app ? (
           <Fato rotulo="Aplicativo">
-            <button type="button" className={styles.linkBtn} title="Abrir este aplicativo" onClick={() => abrirApp(item.app as string)}>
-              <span className={styles.mono}>{item.app}</span>
+            <button type="button" className={styles.linkBtn} title={`Abrir este aplicativo (${item.app})`} onClick={() => abrirApp(item.app as string)}>
+              {item.app_nome && item.app_nome !== item.app ? item.app_nome : <span className={styles.mono}>{item.app}</span>}
             </button>
           </Fato>
         ) : null}
-        {capability ? <Fato rotulo="Capability"><Mono>{capability}</Mono></Fato> : null}
+        {capability ? <Fato rotulo="Capacidade"><CapabilityNomeada codigo={capability} nome={nomeDaCapabilityDo(item)(capability)} /></Fato> : null}
         {versao ? <Fato rotulo="Versão">{versao}</Fato> : null}
         <Fato rotulo="Estado">{rotuloDoEstado(item.state)}</Fato>
         <Fato rotulo="Origem">{ORIGEM_LABEL[item.origin] ?? item.origin}</Fato>
@@ -152,8 +169,9 @@ function OrigemDaReceitaTexto({ o }: { o: OrigemDaReceita }) {
   return <span className={styles.semDado}>origem desconhecida</span>;
 }
 
-function ConteudoReceita({ c }: { c: ConteudoDaReceita }) {
+function ConteudoReceita({ c, nomeDe }: { c: ConteudoDaReceita; nomeDe: NomeDaCapability }) {
   const commits = c.efeito.acoes_commit.map((i) => i + 1);
+  const unica = c.capability?.nomes.length === 1 ? c.capability.nomes[0] : undefined;
   const { uso, sombra } = c;
   return (
     <>
@@ -167,11 +185,12 @@ function ConteudoReceita({ c }: { c: ConteudoDaReceita }) {
       </ol>
       <dl className={styles.fatos}>
         {c.capability ? (
-          <Fato rotulo="Capability">
-            <Mono>{c.capability.nomes.join(', ')}</Mono>
-            {c.capability.ambigua ? <> <Badge tone="warning" size="sm" title="Etapas com a mesma forma servem a mais de uma capability: o sistema não sabe qual é a certa.">ambígua</Badge></> : null}
+          <Fato rotulo="Capacidade">
+            {unica ? <CapabilityNomeada codigo={unica} nome={nomeDe(unica)} /> : <Mono>{c.capability.nomes.join(', ')}</Mono>}
+            {c.capability.ambigua ? <> <Badge tone="warning" size="sm" title="Etapas com a mesma forma servem a mais de uma capacidade: o sistema não sabe qual é a certa.">ambígua</Badge></> : null}
+            {/* Travessão, não parênteses: o nome já leva o código entre parênteses. */}
             {' '}<span className={styles.passoLinha}>
-              ({c.capability.fonte === 'origem' ? 'a da etapa onde foi aprendida' : 'deduzida das etapas com a mesma forma'})
+              — {c.capability.fonte === 'origem' ? 'a da etapa onde foi aprendida' : 'deduzida das etapas com a mesma forma'}
             </span>
           </Fato>
         ) : null}
@@ -191,10 +210,14 @@ function ConteudoReceita({ c }: { c: ConteudoDaReceita }) {
 }
 
 function ConteudoFluxo({ c }: { c: ConteudoDoFluxo }) {
+  const apps = useAppStore((s) => s.apps);
+  // Os apps exigidos na ordem em que o plano os usa (29.42): "QA Messenger → Chrome".
+  const exigidos = textoDosApps(c.apps, apps);
   return (
     <>
       <dl className={styles.fatos}>
         {c.nome ? <Fato rotulo="Nome">{c.nome}</Fato> : null}
+        {exigidos ? <Fato rotulo="Apps">{exigidos}</Fato> : null}
         {c.comando_modelo ? <Fato rotulo="Comando modelo">{c.comando_modelo}</Fato> : null}
         <Fato rotulo="Origem">
           {c.origem.tipo === 'treino' ? 'Demonstrado no treino' : 'Aprendido de execução'}
@@ -209,7 +232,7 @@ function ConteudoFluxo({ c }: { c: ConteudoDoFluxo }) {
               <strong>{e.chave ?? `Etapa ${e.indice + 1}`}</strong>
               {e.efeito ? <Badge tone="warning" size="sm" icon={Zap} title="Esta etapa tem efeito externo">efeito</Badge> : null}
             </span>
-            {e.capability ? <span className={styles.passoLinha}>Capability <Mono>{e.capability}</Mono></span> : null}
+            {e.capability ? <span className={styles.passoLinha}>Capacidade <Mono>{e.capability}</Mono></span> : null}
             {e.alvo ? <span className={styles.passoLinha}>Alvo: <Mono>{e.alvo}</Mono></span> : null}
             {e.pos_condicao ? <span className={styles.passoLinha}>Confere: {e.pos_condicao.descricao ?? e.pos_condicao.tipo ?? SEM_DADO}</span> : null}
             {e.segredo ? <span className={styles.passoLinha}>Usa um dado sigiloso (nunca mostrado)</span> : null}
@@ -234,15 +257,18 @@ function ConteudoHabilidade({ c }: { c: ConteudoDaHabilidade }) {
   );
 }
 
-function ConteudoLicao({ c }: { c: ConteudoDaLicao }) {
+function ConteudoLicao({ c, nomeDe }: { c: ConteudoDaLicao; nomeDe: NomeDaCapability }) {
   const esc = c.escopo;
+  const nome = esc.capability ? nomeDe(esc.capability) : null;
   return (
     <>
-      {c.texto ? <blockquote className={styles.citacao}>{c.texto}</blockquote> : <p className={styles.semDado}>texto indisponível</p>}
+      {/* Na tela, "Em Abrir o perfil (OPEN_PROFILE):"; o texto gravado, que vai ao prompt, segue com o código. */}
+      {c.texto ? <blockquote className={styles.citacao}>{nomearCapabilityNoTexto(c.texto, esc.capability, nome)}</blockquote>
+        : <p className={styles.semDado}>texto indisponível</p>}
       <dl className={styles.fatos}>
         {c.acao ? <Fato rotulo="Orienta a ação">{c.acao}</Fato> : null}
         {c.alvo?.valor ? <Fato rotulo="Sobre">{rotuloDoAlvoDaLicao(c.alvo.tipo)} <Mono>{c.alvo.valor}</Mono></Fato> : null}
-        {esc.capability ? <Fato rotulo="Capability"><Mono>{esc.capability}</Mono></Fato> : null}
+        {esc.capability ? <Fato rotulo="Capacidade"><CapabilityNomeada codigo={esc.capability} nome={nome} /></Fato> : null}
         {esc.role ? <Fato rotulo="Papel">{esc.role}</Fato> : null}
         {c.modelo ? <Fato rotulo="Modelo">{c.modelo}</Fato> : null}
         {typeof c.tokens === 'number' ? <Fato rotulo="Tamanho">{formatInt(c.tokens)} tokens no prompt</Fato> : null}
@@ -267,12 +293,12 @@ function ConteudoTela({ c }: { c: ConteudoDaTela }) {
   );
 }
 
-function Conteudo({ c }: { c: ConteudoDoItem }) {
+function Conteudo({ c, nomeDe }: { c: ConteudoDoItem; nomeDe: NomeDaCapability }) {
   switch (c.tipo) {
-    case 'receita': return <ConteudoReceita c={c} />;
+    case 'receita': return <ConteudoReceita c={c} nomeDe={nomeDe} />;
     case 'fluxo': return <ConteudoFluxo c={c} />;
     case 'habilidade': return <ConteudoHabilidade c={c} />;
-    case 'licao': return <ConteudoLicao c={c} />;
+    case 'licao': return <ConteudoLicao c={c} nomeDe={nomeDe} />;
     case 'tela': return <ConteudoTela c={c} />;
     default: return null;
   }
@@ -314,7 +340,7 @@ function Saude({ s, comVersao = false }: { s: SaudeDoItem; comVersao?: boolean }
 
 // ---------------------------------------------------------------- versão
 
-function Versao({ v }: { v: VersaoDoItem }) {
+function Versao({ v, appNome }: { v: VersaoDoItem; appNome: string | null }) {
   const meta = metaDeVersao(v.estado);
   return (
     <Secao slug="versao" titulo="Versão do app">
@@ -323,7 +349,12 @@ function Versao({ v }: { v: VersaoDoItem }) {
         <span className={styles.secaoLead}>{meta.description}</span>
       </p>
       <dl className={styles.fatos}>
-        {v.app ? <Fato rotulo="Aplicativo"><Mono>{v.app}</Mono>{v.app_version ? ` · versão ${v.app_version}` : ''}</Fato> : null}
+        {v.app ? (
+          <Fato rotulo="Aplicativo">
+            {appNome && appNome !== v.app ? <span title={v.app}>{appNome}</span> : <Mono>{v.app}</Mono>}
+            {v.app_version ? ` · versão ${v.app_version}` : ''}
+          </Fato>
+        ) : null}
         <Fato rotulo="Vivas no parque">
           {v.vivas.length > 0 ? v.vivas.map((x) => `${x.versao} (${textoDeAparelhos(x.aparelhos)})`).join(' · ')
             : <span className={styles.semDado}>nenhuma versão observada</span>}
@@ -375,6 +406,9 @@ function Evidencia({ evid }: { evid: readonly EvidenciaDoLivro[] }) {
               {` · ${formatDateTime(x.observed_at)}`}
               {x.simulated ? ' · simulada' : ''}
               {x.detail ? ` · ${x.detail}` : ''}
+              {x.invalidada ? (
+                <>{' · '}<Badge tone="danger" size="sm">execução invalidada</Badge> não conta como prova</>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -383,15 +417,30 @@ function Evidencia({ evid }: { evid: readonly EvidenciaDoLivro[] }) {
   );
 }
 
+/** O passo da trilha em palavras. `disabled → disabled` é a marca que muda só o tipo do desligamento (30.23);
+ *  `published → published` com `tipo: confirmacao` é "Confirmar que fica" (30.24). */
+export function passoDaTransicao(t: Pick<TransicaoDoLivro, 'from' | 'to' | 'tipo'>): string {
+  if (t.tipo === 'confirmacao') return 'Confirmado que fica';
+  if (t.from && t.from === t.to) return `${rotuloDoEstado(t.to)} (motivo reclassificado)`;
+  return `${t.from ? `${rotuloDoEstado(t.from)} → ` : ''}${rotuloDoEstado(t.to)}`;
+}
+
 function Historico({ trilha }: { trilha: DetalheDoLivro['trilha'] }) {
   return (
     <Secao slug="historico" titulo="Histórico">
       {trilha.length > 0 ? (
         <ol className={styles.trilha} aria-label="Trilha">
           {trilha.map((t) => (
-            <li key={t.id}>
-              {formatQuando(t.decided_at)} · {t.from ? `${rotuloDoEstado(t.from)} → ` : ''}{rotuloDoEstado(t.to)} por{' '}
-              <strong>{t.decided_by}</strong>: {t.reason}
+            <li key={t.id} data-tipo={t.tipo ?? undefined}>
+              {formatQuando(t.decided_at)} · {passoDaTransicao(t)} por <strong>{t.decided_by}</strong>
+              {t.tipo === 'confirmacao' ? (t.motivo_da_pessoa ? `: ${t.motivo_da_pessoa}` : ' (sem motivo)') : ': '}
+              {t.tipo === 'confirmacao' ? null : t.tipo === 'evidencia_invalida' && t.run_invalidada ? (
+                <>
+                  <Badge tone="danger" size="sm">evidência inválida</Badge>{' '}
+                  a execução <a className={styles.linkAlvo} href={hrefDaExecucao(t.run_invalidada)}>{t.run_invalidada}</a>{' '}
+                  terminou como sucesso sem comprovar o que fez
+                </>
+              ) : t.reason}
             </li>
           ))}
         </ol>
@@ -422,10 +471,90 @@ function Relacoes({ relacoes }: { relacoes: readonly RelacaoDoItem[] }) {
   );
 }
 
-function Acoes({ item }: { item: EntradaDoLivro }) {
+/** 30.23: por que o item espera o dono depois de uma evidência inválida, com o caminho até o item desligado. */
+function Reaprendimento({ item }: { item: EntradaDoLivro }) {
+  const r = item.reaprendido;
+  if (!r) return null;
+  const propria = r.item.kind === item.kind && r.item.ref === item.ref;
+  const destino = propria ? null : destinoDaRelacao(r.item);
+  const execucao = <a className={styles.linkAlvo} href={hrefDaExecucao(r.run_invalidada)}>{r.run_invalidada}</a>;
+  return (
+    <Secao slug="reaprendido" titulo="Reaprendido depois de uma evidência inválida">
+      <p className={styles.avisoDoItem} data-reaprendido>
+        {propria ? (
+          <>Esta linha tinha sido aprendida da execução {execucao}, que terminou como sucesso sem comprovar o que fez, e
+            foi desligada por isso. Outra execução real a ensinou de novo, na mesma linha.</>
+        ) : (
+          <>Reaprende o item{' '}
+            {destino ? (
+              <a className={styles.linkAlvo} href={hrefDoItem(destino.kind, destino.ref)}>
+                {rotuloDoKind(destino.kind)} {destino.ref}
+              </a>
+            ) : `${r.item.kind} ${r.item.ref}`}
+            , aprendido da execução {execucao}, que terminou como sucesso sem comprovar o que fez. Outra execução real
+            ensinou o mesmo de novo.</>
+        )}{' '}
+        O sistema não publica sozinho o que é reaprendido assim: a aprovação é sua.
+      </p>
+    </Secao>
+  );
+}
+
+/**
+ * 30.23: marcar a execução de origem como evidência inválida. Sem motivo livre (o backend grava o tipo estruturado) e
+ * sem modal: a confirmação abre no lugar do botão e diz o que acontece com o item.
+ */
+function MarcarEvidenciaInvalida({ item, runId, onFeito }: { item: EntradaDoLivro; runId: string; onFeito?: () => void }) {
+  const [aberta, setAberta] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const confirmar = async () => {
+    setEnviando(true);
+    setErro(null);
+    try {
+      await apiAprendizado.invalidarEvidencia(item.kind, item.ref, runId);
+      setAberta(false);
+      onFeito?.();
+    } catch (err) {
+      const recusa = toApiError(err);
+      setErro(`${recusa.message} ${hintForError(recusa)}`.trim());
+    } finally {
+      setEnviando(false);
+    }
+  };
+  if (!aberta) {
+    return (
+      <div className={styles.itemAcoes}>
+        <Button size="sm" variant="dangerGhost" onClick={() => setAberta(true)}>Marcar evidência inválida</Button>
+      </div>
+    );
+  }
+  return (
+    <div className={styles.confirmacao} data-evidencia-invalida>
+      <p className={styles.secaoLead}>
+        A execução <a className={styles.linkAlvo} href={hrefDaExecucao(runId)}>{runId}</a>, de onde este item foi
+        aprendido, terminou como sucesso sem comprovar o que fez?{' '}
+        {item.state === 'disabled'
+          ? 'O item já está desligado: a marca só registra este motivo na trilha.'
+          : 'O item é desligado agora.'}{' '}
+        Ele não volta por essa execução. Se outra execução real ensinar o mesmo, ele renasce como candidato e espera a
+        sua aprovação.
+      </p>
+      {erro ? <p className={styles.erroInline} role="alert">{erro}</p> : null}
+      <div className={styles.decisaoAcoes}>
+        <Button size="sm" variant="danger" loading={enviando} onClick={() => void confirmar()}>
+          Confirmar evidência inválida
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setAberta(false)} disabled={enviando}>Cancelar</Button>
+      </div>
+    </div>
+  );
+}
+
+function Acoes({ item, invalidar, onMudou }: { item: EntradaDoLivro; invalidar: string | null; onMudou?: () => void }) {
   const acoes = acoesDoItem(item);
   const porQue = porQueOSistemaNaoPublica(item);
-  if (acoes.length === 0 && !porQue) return null;
+  if (acoes.length === 0 && !porQue && !invalidar) return null;
   return (
     <Secao slug="acoes" titulo="O que você pode fazer">
       {acoes.length > 0 ? (
@@ -434,6 +563,7 @@ function Acoes({ item }: { item: EntradaDoLivro }) {
         </p>
       ) : null}
       {porQue ? <p className={styles.secaoLead}>O sistema não publica sozinho: {porQue}.</p> : null}
+      {invalidar ? <MarcarEvidenciaInvalida item={item} runId={invalidar} onFeito={onMudou} /> : null}
     </Secao>
   );
 }
@@ -442,9 +572,10 @@ function Acoes({ item }: { item: EntradaDoLivro }) {
 
 /**
  * As seções do §11.2 do desenho, só as aplicáveis: o que o backend não mandou (campo ausente ou `null`) não ganha
- * seção, e o que ele mandou como "sem dado" aparece assim, nunca como zero.
+ * seção, e o que ele mandou como "sem dado" aparece assim, nunca como zero. `onMudou`: um gesto no detalhe (marcar a
+ * evidência inválida, aceitar ou recusar o parecer da IA, pedir revisão) mudou o item; quem mostra o detalhe o relê.
  */
-export function DetalheRico({ detalhe }: { detalhe: DetalheDoLivro }) {
+export function DetalheRico({ detalhe, onMudou }: { detalhe: DetalheDoLivro; onMudou?: () => void }) {
   const item = detalhe.item;
   const conteudo = detalhe.conteudo ?? null;
   const saude = item.saude ?? null;
@@ -457,15 +588,18 @@ export function DetalheRico({ detalhe }: { detalhe: DetalheDoLivro }) {
     <PrefixoDeIds.Provider value={prefixo}>
       <div className={styles.detalhe}>
         <Identidade item={item} conteudo={conteudo} />
+        <Reaprendimento item={item} />
         {conteudo ? (
-          <Secao slug="conteudo" titulo="Conteúdo"><Conteudo c={conteudo} /></Secao>
+          <Secao slug="conteudo" titulo="Conteúdo"><Conteudo c={conteudo} nomeDe={nomeDaCapabilityDo(item)} /></Secao>
         ) : null}
         {saude ? <Saude s={saude} comVersao={!!versao} /> : null}
-        {versao ? <Versao v={versao} /> : null}
+        {versao ? <Versao v={versao} appNome={versao.app === item.app ? item.app_nome ?? null : null} /> : null}
         <Evidencia evid={evid} />
         <Historico trilha={trilha} />
         {relacoes.length > 0 ? <Relacoes relacoes={relacoes} /> : null}
-        <Acoes item={item} />
+        <SecaoDoParecer item={item} pareceres={Array.isArray(detalhe.pareceres) ? detalhe.pareceres : []}
+                        curador={detalhe.curador} onMudou={onMudou} />
+        <Acoes item={item} invalidar={detalhe.invalidar_evidencia?.run_id ?? null} onMudou={onMudou} />
       </div>
     </PrefixoDeIds.Provider>
   );

@@ -62,6 +62,57 @@ def test_triagem_recusa_codigo_senha_e_token(valor: str, contexto: dict[str, Any
     assert triagem(valor, **contexto) == motivo
 
 
+@pytest.mark.parametrize(("valor", "contexto"), [
+    (f"{CODIGO} is your Instagram code", {}),                         # a linha do e-mail, como valor
+    (CODIGO, {"do_elemento": f"{CODIGO} is your Instagram code"}),      # o valor e a linha de origem
+    (CODIGO, {"da_tela": f"Remetente {CODIGO} is your Instagram code Hoje"}),
+    (f"Use {CODIGO} to confirm your identity", {}),
+    (f"Seu código é {CODIGO[:3]} {CODIGO[3:]}", {}),
+    (f"{CODIGO} es tu código de acceso", {}),
+    ("G-482913 is your Google verification code", {}),               # os formatos que já eram pegos continuam
+    ("Use o código 482913 para entrar", {}),
+])
+def test_triagem_acusa_email_de_codigo_pelo_valor_e_pela_linha_de_origem(valor: str, contexto: dict[str, Any]) -> None:
+    # qualquer recusa serve ao ADR-009; o motivo exato varia (a forma "<número> … código" também é de `looks_secret`)
+    assert triagem(valor, **contexto) in ("código de verificação", "token ou segredo")
+
+
+@pytest.mark.parametrize("valor", ["Reunião às 14h do dia 12345", "Entrar no grupo 123", "Login feito 123456789 vezes",
+                                   "Pedido 4821 confirmado", "Data 2026-10-02 login", "Versão 12.345 do código"])
+def test_triagem_nao_acusa_texto_comum_com_numero_nem_palavra_de_codigo_sem_numero_de_codigo(valor: str) -> None:
+    # limiar: número de 4 a 8 dígitos (grupos iguais com espaço ou hífen) E uma palavra de código/verificação na mesma
+    # linha. Sem a palavra, com 3 ou 9+ dígitos, ou data/hora/decimal, é dado comum.
+    assert triagem(valor) is None
+
+
+def test_triagem_o_numero_so_conta_com_a_palavra_de_codigo_perto_na_tela_inteira() -> None:
+    longe = "Entrar " + "x" * 120 + " 12345 seguidores"
+    assert triagem("12345", da_tela=longe) is None                    # o menu "Entrar" não faz da contagem um código
+    assert triagem("12345", da_tela="Código 12345 seguidores") == "código de verificação"
+
+
+@pytest.mark.parametrize("valor", ["Your code is 482.913", "Seu código é 482.913", "Your code is 482,913",
+                                   "Your code is ４８２９１３", "Seu código é ٤٨٢٩١٣", "Your code is 482\u200b913",
+                                   "Your code is G-482913", "Your code is ABC123", "Use 482 913 to log in"])
+def test_d1_d2_triagem_da_arvore_acusa_codigo_com_separador_unicode_e_alfanumerico(valor: str) -> None:
+    assert triagem(valor) in ("código de verificação", "token ou segredo")
+
+
+@pytest.mark.parametrize("valor", ["Versão 12.345 do código", "Data 12/10 login", "Login em 12/10/2026 às 14h30",
+                                   "Entrar no grupo 123"])
+def test_d1_a_triagem_mais_restritiva_nao_pega_data_hora_nem_decimal(valor: str) -> None:
+    assert triagem(valor) is None
+
+
+def test_receita_nao_recebe_saida_lida_da_imagem() -> None:
+    lidas = {"remetente": ("Maria", "text"), "assunto": ("Oi", "text"), "assunto_i2": ("Oi B", "text")}
+    assert variaveis_da_receita(lidas, None, {"remetente"}) == {"saida_assunto": "Oi", "saida_assunto_i2": "Oi B"}
+    # o nome é o gravado (a cópia do item leva o sufixo): a visual do item 2 sai, e a do item 1 já saía por ser de outro item
+    assert variaveis_da_receita(lidas, "2", {"assunto_i2"}) == {"saida_remetente": "Maria", "saida_assunto": "Oi"}
+    assert variaveis_da_receita(lidas, None) == {"saida_remetente": "Maria", "saida_assunto": "Oi",
+                                                 "saida_assunto_i2": "Oi B"}              # sem visuais, como antes
+
+
 @pytest.mark.parametrize("valor", ["@ciclano", "Joao_Silva2024", "fulano.silva@outlook.com", CODIGO, "1.234",
                                    "Reunião de sexta às 10h", "https://www.instagram.com/ciclano/",
                                    "https://www.instagram.com/reel/C1a2B3c4D5e/?igsh=MWQ1ZGUxMzBkMA=="])

@@ -1467,7 +1467,10 @@ a mediana era 6,1% contra 2,4%.
 - antes de mexer no aparelho, confira a tela e a conta (K-053).
 
 O gasto do emulador ocioso no host (1,2–1,5 CPU por aparelho com `swiftshader_indirect`) é da frente do renderizador
-([relatorio-desempenho.md](../relatorio-desempenho.md)), não do irq do convidado.
+([relatorio-desempenho.md](../relatorio-desempenho.md)), não do irq do convidado. A medida da própria plataforma
+(`resources.cpu_percent`) mostrava 0,0 nesse período porque `process_usage` recriava o `psutil.Process` a cada chamada
+(o `cpu_percent` da 1ª leitura de um objeto novo é sempre 0,0); o 14.11 passou a reaproveitar os objetos e a medida
+bate com o `Get-Process` (diferença < 2 pontos em 3 leituras). Para a CPU de um emulador, use `resources.cpu_percent`.
 
 ### K-061 — No PostgreSQL, erro engolido dentro de `tx()` aborta a transação e o COMMIT vira ROLLBACK calado
 
@@ -1863,3 +1866,237 @@ do 30.6 nunca casava. Os testes usavam versões sintéticas sem código (`"447"`
 
 **Aplicabilidade.** Toda comparação de versão de app entre fontes do projeto. Antes de comparar, meça o formato real das
 duas colunas; dado sintético sem o formato real esconde o erro. Aceite visual com cópia do banco pega o que o teste não pega.
+
+### K-077 — Compose sem semântica: a linha da caixa do Outlook é cega na árvore (01 e 03), e a causa não é a profundidade
+
+**Sintoma.** O `read_value` do remetente e do assunto da caixa do Outlook nunca achava texto, e a r-…-178742 gastou 14 chamadas
+tentando. Era natural suspeitar do corte de profundidade (`snapshotMaxDepth` 70) ou de elementos invisíveis.
+
+**Causa (medida, `real`, 02/10/2026, android-01).** A lista é um `ComposeView` (`conversation_list`) cujas linhas clicáveis têm 4
+filhos sem `text`, sem `content-desc`, sem `hint`, `state-description` ou `tooltip-text` em toda a subárvore (profundidade 21, 77 a 79
+nós). Nada muda com `snapshotMaxDepth` 200 nem com `allowInvisibleElements`: o app simplesmente não publica a semântica. O texto só
+existe na imagem.
+
+**O que funcionou.** Medir ANTES de implementar (passo 0, sem IA, só `GET /source`): ele descartou o "nível 0" (árvore mais funda).
+A saída é a leitura visual conferida às cegas por um segundo leitor, atrás de opção desligada e de região declarada pelo app
+(ADR-070). O que NÃO funcionou como atalho: deixar o juiz conferir o valor (viés ao "sim", ADR-024) e devolver ao ator a
+transcrição do leitor numa recusa (dois leitores viram um).
+
+**Aplicabilidade.** Vigente. Todo Compose que não publica semântica (`ComposeView` sem `contentDescription`) é cego para
+`read_value`, `collect_list`, a triagem de segredo e a detecção de tela sensível: o que a árvore não vê, o executor também não vê.
+Antes de aumentar profundidade ou tempo de espera, rode o `source` e conte o texto da subárvore da linha.
+
+### K-078 — O núcleo ocioso a mais do emulador não é da GPU: o mesmo AVD sem gerência fica em 0,075 núcleo
+
+**Sintoma.** Cada emulador ocioso do central gastava 1,1 a 1,3 núcleo do host (RA-3 da reavaliação de 03/10), quase todo
+numa thread do `qemu-system-x86_64-headless` a ~99 %. A suspeita natural era a GPU do host (`-gpu host`, gfxstream).
+
+**Medição (`real`, 03/10/2026, central WIN-7S2UASNLFOP, main 01351e66; emulador 37.1.11, WHPX 10.0.26100; imagem
+android-34 google_apis x86_64, 2 vCPU, 2 GB, `-lowram`).** CPU por thread com psutil numa janela de 10 min; `/proc/stat`
+e `/proc/interrupts` do convidado no começo e no fim. Saída bruta em `data/diag-ra3b/` (fora do Git).
+
+| Aparelho | GPU | Host (% de 1 núcleo) | Thread mais quente | Convidado ocupado |
+|---|---|---|---|---|
+| android-06, gerenciado, conta real | host | 126,8 | 99,0 (10,6 em modo usuário) | 20,7 % de 2 vCPU |
+| android-01, gerenciado, conta real | host | 111,0 | 99,0 (10,8 em modo usuário) | 13,9 % |
+| AVD temporário sem gerência, braço A | host | 7,5 | 3,5 | 2,8 % |
+| idem, braço B | swiftshader_indirect | 7,4 | 3,3 | 3,0 % |
+| idem, braço C | guest (a imagem não suporta: cai em lavapipe/swiftshader) | 7,8 | 3,7 | 3,5 % |
+
+- Nos gerenciados a thread quente consumiu 98 % do uptime do processo (06: 3,0 h; 01: 2,8 h): fica quente desde o boot,
+  não cresce com o tempo. Ela não tem nome (GetThreadDescription); as 32 a 33 `RenderThread` da GPU são leves.
+- No AVD temporário (`ra3b-medicao`, porta 5690, as flags do android-07 menos o snapshot), cada braço foi medido depois de
+  o convidado assentar (< 25 % ocupado em 2 amostras de 20 s). Nenhuma thread passou de 50 %. Os timers do convidado
+  ficaram em ~100/s por linha (LOC, CAL, virtio23) nos três braços.
+- A linha de comando do gerenciado e a do temporário só diferem no nome, na porta e em `-no-snapshot-load
+  -no-snapshot-save` × `-no-snapshot` (os dois são boot a frio sem salvar). Com o convidado ocupado (primeiro boot),
+  o tempo dos vCPU aparece como tempo de USUÁRIO da thread no WHPX; a thread quente dos gerenciados é ~90 % kernel.
+
+**Causa.** A GPU NÃO é a causa (`real` para esta imagem e estas flags): os três modos ficam iguais, e o emulador ocioso
+sem gerência gasta 0,075 núcleo. O núcleo a mais existe só nos aparelhos do parque, desde o boot. INFERRED: algo que só
+o aparelho do parque tem mantém uma thread do qemu em laço de kernel: a sessão do Appium/UiAutomator2, os encaminhamentos
+e fluxos do adb, as sondas, ou os apps e serviços instalados (Instagram, Outlook, cliente VPN). Qual deles é UNKNOWN.
+
+**O que fazer.** Não trocar o modo de GPU para baixar CPU ociosa. A próxima medição atribui por subtração, num aparelho de
+QA do parque (sem conta): 10 min com tudo ligado, depois 10 min sem cada componente (sessão do Appium, fluxo de frames,
+sondas de rede), um por vez. O aceite do 14.12 (≤ 0,3 núcleo ocioso) o emulador sem gerência já cumpre; falta o parque.
+
+**Aplicabilidade.** Medido no central (Windows Server 2025, WHPX). O notebook (Hyper-V com escalonador Classic) não foi
+medido.
+
+**Adendo (03/10, o android-01 com 4 vCPU e o diferencial por gesto; `real`, central WIN-7S2UASNLFOP, main 01351e66).**
+Saída bruta em `data/diag-ra3b/`: `repouso-cores4-01-600s.json`, `dif-*.json` e `dif-dumpsys-*.txt`.
+
+- **4 vCPU não resolvem.** Logo depois do boot a frio, a mesma thread estava a 99,7 %. Em repouso, de 02:52:43 a
+  03:02:43Z, o processo gastou 125,8 % no total, com uma thread a 99,5 %. O aceite (≤ 0,3 núcleo) não foi cumprido. Como
+  há uma thread quente só, o 01 fica com 4 vCPU: a regra manda voltar a 2 apenas com duas ou mais.
+- **Diferencial no 01, um gesto por vez e cumulativo.** CPU por thread do qemu (pid 42348, thread quente 36288):
+
+| Braço | Gesto | Janela (UTC) | Host total | Thread 36288 (kernel) | load1 do convidado |
+|---|---|---|---|---|---|
+| b0 | base: lease ativo, stream de frames ligado, rascunho do post na tela | 03:12:17–03:13:17 (60 s) | 118,8 % | 99,6 % (90,9) | 0,15 |
+| b1 | force-stop do Outlook | 03:13:27–03:15:27 | 122,3 % | 99,8 % (91,8) | 0,74 |
+| b2 | mais o force-stop do Instagram; o lease expirou às ~03:17:39Z e o stream parou dali em diante | 03:17:28–03:19:28 | 128,9 % | 99,5 % (91,3) | 2,03 |
+| b3 | VPN: o 01 não tem cliente (`dumpsys connectivity` mostra `VpnNetworkProvider:0`) | — | — | — | — |
+| b4 | mais a ausência de lease (controle `none`, stream desligado) | 03:20:05–03:22:06 | 107,7 % | 92,9 % (85,5) | 0,15 |
+
+- **Nenhum gesto derrubou o spin.** A queda de 99,5 % para 92,9 % em b4 é pequena e não foi repetida (INFERRED: ruído,
+  ou uma parcela pequena do stream). O convidado estava ocioso (load 0,15) com a thread girando, então o laço está no
+  lado do host e não acompanha a carga dos apps.
+- **`dumpsys sensorservice` e `dumpsys gfxinfo`.** O acelerômetro (Goldfish) está ativo, com duas conexões do sistema:
+  `FaceDownDetector` e `WindowOrientationListener`. O Play Services registra o acelerômetro a 50 Hz (`droidguard.events`)
+  e o barômetro a 10 Hz (`PressureProvider`) a cada minuto: são cerca de 200 registros no histórico. Quase nada é
+  renderizado: o launcher, com 22 quadros.
+- **A tela do 01 nunca desliga.** `stay_on_while_plugged_in=15`, `screen_off_timeout=2147483647`, `mWakefulness=Awake` e
+  `mScreenState=ON`. O estado da tela do AVD temporário dos braços A, B e C não foi registrado.
+  - INFERRED, próxima suspeita: a tela sempre ligada, que mantém o acelerômetro e a cadeia de exibição ativos.
+  - Teste proposto: 2 min com a tela desligada (`KEYCODE_SLEEP`) num aparelho do parque e, ao contrário, o AVD
+    temporário com a tela fixa ligada.
+  - Seguem UNKNOWN: a sessão do Appium/UiAutomator2 e os encaminhamentos do adb.
+- **A tela também não é a causa** (teste aprovado pelo orquestrador; `real`, sem lease, `tela-*.json`).
+  - Com a tela desligada (`KEYCODE_SLEEP`: `mWakefulness=Asleep`, foco nulo), de 03:39:59 a 03:42:01Z, o total foi
+    112,8 % e a thread 36288 ficou a 99,5 % (91,5 em kernel).
+  - Depois do `KEYCODE_WAKEUP`, de 03:42:15 a 03:43:16Z, foram 127,1 % e 99,4 %. O aparelho voltou sem keyguard.
+  - A suspeita da tela sempre ligada cai.
+  - Seguem UNKNOWN as conexões do lado do host que só o parque tem: a sessão do Appium/UiAutomator2, os
+    encaminhamentos e fluxos do adb e o console/gRPC do emulador.
+- **Braço D: o subsistema de snapshot também não é a causa** (`real`, 03/10, janela de 04:58:37 a 05:08:37Z; saída em
+  `data/diag-ra3b/bracoD-host-snapshot.json`). O AVD temporário recriado do mesmo jeito subiu com EXATAMENTE as flags
+  dos gerenciados, incluindo `-no-snapshot-load -no-snapshot-save` (a hibernação do central está ligada; o notebook e os
+  braços A a C usavam `-no-snapshot`). Resultado: 17,8 % no total, a thread mais quente em 5 % e nenhuma acima de 50 %,
+  com o convidado 5,6 % ocupado.
+  - A linha de comando do temporário agora é idêntica à dos gerenciados, salvo nome e porta.
+  - Antes, a ligação de cada qemu ao `netsimd` também caiu: os qemu do notebook, que ficam ociosos, também mantêm essa
+    ligação.
+  - Sobra o que só o aparelho do parque tem (sessão do UiAutomator2, encaminhamentos do adb, sondas), a medir no 01
+    por subtração.
+- **Rodada do Appium: nenhum dos três gestos derrubou o spin, que segue sem causa atribuída** (`real`, 03/10, android-01, pid 42348, thread
+  36288, sem lease; saída em `data/diag-ra3b/appium-*.json`). Um gesto por vez, cumulativo, 2 min cada:
+  - base (60 s, 06:24:06Z): 96,8 % (85,9 em kernel);
+  - g1, force-stop de `io.appium.uiautomator2.server` e `.test` (o processo saiu): 99,3 % (88,2);
+  - g2, mais `adb -s emulator-5554 forward --remove-all` (lista vazia depois): 99,1 % (88,0);
+  - g3b, mais `cmd sensorservice set-uid-state com.google.android.gms idle` e, no fim, `reset-uid-state`: 99,2 % (88,0).
+    O `cmd sensorservice restrict` pedido não existe no android-34 (só `get/set/reset-uid-state`), por isso a forma desta imagem.
+  - Ficam fora: a sessão do UiAutomator2, os encaminhamentos do adb e os sensores do Play Services. Seguem UNKNOWN o console
+    (5554) e o gRPC (8554) do emulador, e o lado do host que só o parque toca. O mesmo sintoma do UiAutomator2 apareceu no
+    android-06 às 06:09Z (`WebDriverException … root AccessibilityNodeInfo` ao religar o cliente VPN pela interface, OBSERVED),
+    e o 25.12 passou a contar essa falha como tentativa.
+- **O laço não está no convidado** (`real`, 03/10, 07:36:57–07:37:57Z, android-01 ocioso, sem lease, 4 vCPU; `data/diag-ra3b/guest-01.json`
+  e `guest-01-top.txt`). Janela de 60 s, com o convidado e o host medidos juntos:
+  - no convidado (`/proc/stat`): 92,6 % ocioso, 3,25 % irq, 0,15 % softirq; load 0,31. No `top -H` nenhuma thread passa de
+    5 % (o Instagram a 5,0; o próprio `top` a 2,6), e não aparecem `ksoftirqd` nem thread de irq;
+  - interrupções por segundo: CAL (IPI) 444,6, LOC 371,2, virtio23 87,7. No AVD sem gerência, com 2 vCPU (braços A e D),
+    cada linha ficava perto de 100/s com o host a ~7 %. Por vCPU, o 01 tem cerca do dobro de CAL e LOC, mas o convidado
+    continua quase todo ocioso: a taxa não explica um núcleo inteiro;
+  - no host, na mesma janela, a thread 36288 ficou a 99,0 % (88,5 em kernel). Ela não expõe endereço de início (`StartAddress`
+    0x0, enquanto as outras threads do qemu começam em `ntdll+0x8C510`), fica sempre em `Running` e acumulou 4 h 26 min de
+    kernel em 4 h 57 min de vida do processo.
+  - Conclusão (INFERRED, forte): o laço é do lado do host, numa thread que não é vCPU (o tempo de vCPU no WHPX aparece como
+    usuário). O próximo passo proposto é uma amostragem ETW de CPU com pilha (`wpr`, já instalado) de ~20 s no qemu do 01,
+    lida por módulo (ntoskrnl, winhvr, afd, …), sem símbolos de fora. Só leitura, mas mais pesada que as anteriores.
+- **ETW: a thread quente é um laço de `WaitForSingleObject` de um único ponto do qemu, e existe nos três aparelhos do
+  central** (`real`, 03/10, 07:57:43–07:58:50Z, android-01 ocioso e sem lease; emulador 37.1.11; liberada pela
+  orquestradora depois da rodada QA pareada). `wpr -start CPU -filemode` (~66 s, 1,55 GB, 17.110 eventos perdidos; leitura
+  com `-tle`), lido pelo xperf local sem nenhum símbolo: `-a profile -detail`, `-a stack -tid` e um `dumper` de 1 s com as
+  pilhas. Os endereços foram resolvidos pela lista de módulos do processo vivo e pela tabela de EXPORTAÇÕES dos DLLs do
+  sistema (nome = exportação mais próxima abaixo). Saída em `data/diag-ra3b/etw-01/` (`janela.json`, `profile-detail.txt`,
+  `stack-36288b.txt`, `pilhas-*.txt`), fora do Git.
+  - Processo do 01, por módulo (≈ 59,4 s de amostras): ntoskrnl 76,9 %, o próprio qemu 9,1 %, ntdll 7,5 %, KernelBase
+    2,5 %, WinHvPlatform + WinHvEmulation 1,5 %, `winhvr.sys` ~0. O tempo de kernel é do núcleo do Windows, não de driver.
+  - Thread 36288 (98,4 % na janela, 87,7 em kernel): a `WinHvPlatform.dll` não aparece em nenhuma pilha dela, então ela
+    NÃO é vCPU (PROVED). Das 992 amostras do segundo despejado, 95,4 % estão dentro de `ntdll!ZwWaitForSingleObject`, no
+    retorno do `syscall`, e 99,1 % têm como 1º frame do qemu o mesmo ponto, `qemu-system-x86_64-headless.exe+0x4c2c7e`.
+  - O mesmo nos outros dois: android-03 (thread 25680, 97,8 % em `ZwWaitForSingleObject`, 100 % do ponto `+0x4c2c7e`) e
+    android-06 (thread 14316, 96,8 % e 99,7 %). Cada qemu do central tem uma thread a ~100 % (88–95 % em kernel), que gira
+    desde a partida: o CPU dela é 98–99 % do tempo de vida do processo (01: 321 de 327 min; 03 e 06: ~30 min, religados
+    pouco antes). Nos três, a thread começa no mesmo endereço do qemu (`+0x25b4a68`).
+  - Conexões TCP dos três (OBSERVED): o adb, pares de loopback internos do qemu e uma ligação ao `netsimd`; nenhum
+    `CLOSE_WAIT` e nenhuma conexão aberta no console. O gerenciador só usa o console para `emu kill` e `snapshot save`
+    (`adb.py`), nunca na subida.
+  - Conclusão (INFERRED, forte): uma thread do qemu chama `WaitForSingleObject` num laço que volta na hora (prazo zero ou
+    objeto sempre sinalizado), e o custo é a própria chamada de sistema; são ~3 núcleos do host para 3 aparelhos ociosos.
+    Seguem UNKNOWN qual função do qemu está em `+0x4c2c7e` (sem símbolos) e qual objeto ela espera.
+  - Próximo passo proposto: atribuição por ADIÇÃO num AVD temporário sem conta, que não gira (braços A a D). A subtração
+    no 01 não serve, porque o laço, uma vez iniciado, não para (g1–g3b, tela, lease). No temporário, repetir um passo da
+    subida do parque por vez (ajustes de `settings`, instalação e sessão do UiAutomator2, `adb forward`/`reverse`, rede
+    declarada, fluxo de frames) e medir a thread após cada um: o passo que a leva a ~100 % é a causa.
+- **Rodada por adição: o laço vem do CONTEXTO DE LANÇAMENTO (sessão 0), não de um passo da gerência** (`real`, 03/10,
+  ~08:05–08:40Z, central; liberada pela orquestradora; saída em `data/diag-ra3b/adicao-*.json` e `sessao0-android-18.json`).
+  CPU por thread do qemu lida 30 s depois da partida (antes do `boot_completed`; a gerência só começa depois dele) e 60 s
+  depois do boot.
+
+| Braço | Como foi lançado | Sessão | Aos 30 s (thread mais quente) | Depois do boot |
+|---|---|---|---|---|
+| parque | AVD temporário `ra3b-adicao` (2 vCPU, 2 GB, gpu host); `stdin=DEVNULL` (NUL), `CREATE_NO_WINDOW\|NEW_GROUP`, stdout em arquivo, como o `emulator.py` | 1 | 25,5 % | 22,0 % |
+| sessao0 | o mesmo, criado pelo `Win32_Process.Create` do WMI (a chamada local herdou a sessão 1: braço inválido para a sessão) | 1 | 22,3 % | 22,0 % |
+| **(b)** | **`android-18`, aparelho temporário provisionado pela API (sem persona) e ligado pelo BACKEND** | **0** | **98,7 % (94,3 em kernel)** | **99,0 % (93,9)** |
+| avd18 | o MESMO AVD do 18 (`data/avd`), lançado da sessão 1 com o ambiente do backend (`ANDROID_HOME`, `ANDROID_SDK_ROOT`, `ANDROID_AVD_HOME`) | 1 | 21,8 % | 10,5 % |
+
+  - Excluídos (PROVED nesta rodada): o AVD (o mesmo nos braços b e avd18), as flags, o `stdin` NUL, as `creationflags`,
+    as variáveis ANDROID_* e qualquer passo da gerência (o 18 já girava antes do boot terminar). O usuário e o perfil são
+    os mesmos (`Administrator`, mesmo TEMP e APPDATA).
+  - Sobra o contexto da sessão 0: sem estação de janela interativa, com o processo filho do backend da tarefa
+    `farm-central` (e o job dela). INFERRED, forte: um subsistema do emulador que, sem desktop interativo, espera num
+    objeto sempre sinalizado. Qual subsistema e qual objeto seguem UNKNOWN (o ponto `+0x4c2c7e`, sem símbolos).
+  - O `android-18` foi aposentado (`DELETE`, `avd_removed: true`) e o `ra3b-adicao` apagado.
+  - Achado à parte (OBSERVED, só o NOME): o ambiente do qemu, herdado do backend, contém `TYPESAFE_API_KEY`. O segredo
+    do `.env` chega ao processo do emulador. O valor não foi lido nem impresso.
+  - Correção (item novo, candidato 29.46 pela orquestradora): lançar o emulador do central num contexto com desktop
+    interativo, ou descobrir a opção do emulador que evita o subsistema. Opções de desenho em aberto: um ajudante na
+    sessão do usuário que recebe o pedido de lançamento do backend; ou uma flag ou variável de ambiente, se o subsistema
+    for identificado. O notebook (agente `farm-agente`) não foi medido nesta rodada.
+- **O notebook gira igual** (29.46, `real`, 03/10, 09:10:37Z, depois do deploy 8; janela de 20 s, simultânea nas duas
+  máquinas; leitura por ssh com `Get-Process`/CIM, sem lançar nada; saída em `data/diag-ra3b/2946-*.json`, fora do Git):
+
+| Máquina | qemu | Sessão | Lançado por | Thread mais quente (kernel) | Total do qemu |
+|---|---|---|---|---|---|
+| notebook (12 núcleos) | 4 (android-09/10/12/13) | 0 | agente da tarefa `farm-agente` (Administrator, logon S4U) | 101,6–103,4 % (94,1–96,5) | 118–130 % |
+| central (22 núcleos) | 3 (android-01/03/06) | 0 | backend da tarefa `farm-central` | 100,6–106,2 % (89,5–93,6) | 121–133 % |
+
+  - Nas duas máquinas há sessão interativa no console (sessão 1, ativa). No notebook o desperdício é ~4 dos 12 núcleos.
+  - No 01, a thread quente é a mesma 36288 do ETW: o reinício do backend no deploy não para o laço, porque os
+    emuladores seguem ligados.
+  - O nome das threads (`GetThreadDescription`, lido no central) não ajuda: só a `RenderThread` tem nome, e a thread
+    quente não tem (PROVED).
+  - INFERRED: a mesma causa nas duas máquinas, o lançamento na sessão 0. O logon S4U da tarefa do agente também não é
+    interativo.
+
+### K-079 — A prévia cortada da caixa do Outlook derruba a conferência visual
+
+**Sintoma.** Na bancada do 12.5 (03/10/2026, ~04:20Z, `real`), os dois leitores (gpt-6-luna e gemini-3.1-flash-lite)
+concordaram com 0 dos 32 valores verdadeiros. Todos foram recusados como `truncado`, embora o remetente e o assunto
+estivessem inteiros no recorte.
+
+**Causa.** A linha da caixa do Outlook tem três linhas de texto: remetente, assunto e a prévia do corpo. A prévia SEMPRE
+termina em "…". A conferência recusava quando QUALQUER linha transcrita ou a marca global `truncado` do leitor indicava
+corte, e os leitores marcavam `truncado`, com razão, por causa da prévia. A regra estava certa no espírito (não aceitar
+valor cortado) e errada no escopo (a linha vizinha não é o valor).
+
+**O que funcionou.** Nível 1.1, emenda de 03/10 ao ADR-070 §4: "truncado" vale para o valor, o campo e a linha que contém
+o valor. A marca global só cai quando uma linha alheia cortada a explica; sem nenhuma, o corte pode ser o do campo e a
+leitura é recusada. Com a emenda, `real` às 04:58Z: 31/32 e 29/32, com 0/96 falsas nos dois. Medir com o MESMO
+material antes e depois (a bancada guarda os recortes e o gabarito) separou a regra errada do leitor fraco.
+
+**Aplicabilidade.** Vigente para toda leitura visual de linha de lista com prévia ou subtítulo cortado (caixas de e-mail,
+listas de conversa). Ao declarar a região de uma saída, conte com a linha vizinha cortada. A armadilha da medição está
+em `docs/ia.md` §17: com o `app` de um worktree, o `.env` é procurado na raiz do worktree e as chaves vêm vazias.
+
+### K-080 — Toque por id de elemento velho abre a tela errada: exigir resource_id ou rótulo do mesmo elemento
+
+**Sintoma.** No controle manual do post do lucas (03/10/2026, android-01, `real`), o toque mirando a aba Profile abriu a
+aba Search. Depois, um toque com o id `e34` da listagem anterior abriu um Reel do Explore, numa tela com botões de
+curtir e seguir. Nada foi curtido nem seguido.
+
+**Causa.** Os ids `eN` de `GET /instances/{id}/hierarchy` são a posição do elemento NA ÁRVORE DAQUELE MOMENTO. Quando a
+árvore muda (o feed ainda carregando acrescenta histórias e posts; outra tela), o mesmo id aponta para outro elemento. A
+ferramenta resolvia o id contra a árvore nova e só conferia rótulo proibido; uma célula de grade sem rótulo passava.
+
+**O que funcionou.** O toque passou a exigir o resource_id ou o rótulo esperado do elemento, conferido na árvore do
+momento do toque; sem bater, recusa e pede nova listagem. O interruptor sem rótulo nem id (o "Add AI label") ganhou
+comando próprio, que o acha pela linha do texto vizinho e recusa com mais de um candidato. O Share achou dois
+elementos "Share" (o botão e o texto dentro dele) e foi recusado antes de tocar; o alvo passou a ser o resource_id
+`share_footer_button`.
+
+**Aplicabilidade.** Vigente para todo controle manual por id de elemento (scripts de diagnóstico, prova manual). Nunca
+reaproveite um id de outra listagem; em conta real, a trava de rótulo proibido não basta, porque o perigo pode estar num
+elemento sem rótulo.

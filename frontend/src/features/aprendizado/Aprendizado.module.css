@@ -42,6 +42,34 @@
 
 .filtro { min-width: 150px; }
 
+/* RA-19: o filtro de apps é um seletor segmentado (Produto · QA · Todos), com os ocultos ao lado; o rótulo segue o
+   do `Field` (o `label` não serve a um radiogroup). */
+.filtroDeApps { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.filtroDeAppsNome { color: var(--text-2); font-size: var(--fs-sm); font-weight: 500; }
+.segmentado { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.segmentos {
+  display: inline-flex;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.segmento {
+  min-height: var(--hit-min);
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-left: 1px solid var(--control-border);
+  background: var(--surface-1);
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.segmento:first-child { border-left: 0; }
+.segmento:hover { background: var(--surface-2); }
+.segmento:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.segmentoOn { background: var(--accent-soft); color: var(--text-1); font-weight: 500; }
+.ocultos { color: var(--text-3); font-size: var(--fs-xs); }
+
 .lista {
   display: flex;
   flex-direction: column;
@@ -400,6 +428,10 @@
 .tabelaDetalhe caption { text-align: left; padding-bottom: var(--sp-1); color: var(--text-3); }
 .tabelaDetalhe th { text-align: left; font-weight: 500; color: var(--text-3); }
 .tabelaDetalhe th, .tabelaDetalhe td { padding: 3px var(--sp-3) 3px 0; vertical-align: top; }
+/* Em 375 px, a versão do app ("447.0.0.55.81(385311929)", o cabeçalho da linha) é um token só: quebra em qualquer ponto
+   em vez de alargar a tabela para fora do cartão (`anywhere`, e não `break-word`, porque só ele baixa a largura mínima
+   da célula). O cabeçalho das colunas quebra como sempre. */
+.tabelaDetalhe tbody th, .tabelaDetalhe td { overflow-wrap: anywhere; }
 
 .semDado { color: var(--text-3); font-style: italic; }
 
@@ -441,6 +473,35 @@
 }
 
 .avisoDoItem { border-left-color: var(--warning-text); background: var(--warning-soft); color: var(--warning-text); border-radius: 0 var(--radius-sm, 4px) var(--radius-sm, 4px) 0; }
+
+/* 30.17: o parecer da IA. No detalhe, um cartão com a sugestão e os botões; na linha da fila, uma frase com selos. */
+.parecer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--info-border);
+  border-radius: var(--radius-md);
+  background: var(--info-soft);
+}
+
+.parecerCabeca { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.parecerSugestao { color: var(--text-1); font-size: var(--fs-md); overflow-wrap: anywhere; }
+
+.parecerNaLinha {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.parecerNaLinha > svg { flex: none; color: var(--info-text); }
+.parecerDica { color: var(--text-3); font-size: var(--fs-xs); }
+.pedirRevisao { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 
 /* O nível Capability no detalhe do app: um bloco recolhível por capability, com contagem e saúde no resumo. */
 .grupos { display: flex; flex-direction: column; gap: var(--sp-2); }
@@ -520,3 +581,35 @@
 }
 .valoresDoModo { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: var(--sp-2); }
 .valoresDoModo ul { margin: 2px 0 0; padding-left: var(--sp-4); }
+
+/* 30.23: a confirmação da evidência inválida abre no lugar do botão (nunca modal), com o que acontece com o item. */
+.confirmacao {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px dashed var(--danger-text);
+  border-radius: var(--radius-md);
+}
+
+/* "Qual era o pedido?" (30.25): as opções de uma pergunta, em colunas que caem para uma no celular. */
+.intencaoOpcoes {
+  margin: 0; padding: var(--sp-3); min-width: 0;
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  border: 1px solid var(--border-1); border-radius: var(--radius-md); background: var(--surface-1);
+}
+.intencaoLegenda { padding: 0 var(--sp-1); font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); }
+.intencaoFiltro { max-width: 320px; }
+.intencaoLista { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: var(--sp-1) var(--sp-3); }
+.intencaoOpcao {
+  display: flex; align-items: flex-start; gap: var(--sp-2); min-width: 0; min-height: var(--hit-min);
+  font-size: var(--fs-sm); cursor: pointer; overflow-wrap: anywhere;
+}
+.intencaoOpcao input { margin-top: 3px; flex: 0 0 auto; accent-color: var(--accent); }
+.intencaoDica { color: var(--text-3); }
+/* Nome de fluxo chega a 120 caracteres: duas linhas, e o nome inteiro no `title` da opção. */
+/* O comando é o que a pessoa lê para responder: inteiro, sem o corte em duas linhas do título dos outros itens. */
+.intencaoComando { display: block; -webkit-line-clamp: unset; overflow: visible; }
+.intencaoTexto { display: flex; flex-direction: column; min-width: 0; }
+.intencaoNome { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.intencaoErro { margin: 0; color: var(--danger-text); font-size: var(--fs-sm); }

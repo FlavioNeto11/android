@@ -27,7 +27,7 @@ from __future__ import annotations
 import random
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, Callable
 
 from ..db import loads
@@ -35,7 +35,7 @@ from ..models import InteractionStatus, InteractionType
 from ..planning.capabilities import Capability, normalizar_alvo
 from ..planning.catalog import pacote_ancora
 from ..util import now, parse_iso, to_iso
-from .contas_nossas import eh_conta_nossa
+from .contas_nossas import eh_conta_nossa, foi_retirada
 from .repository import SocialRepository
 
 # Padrões conservadores. O perfil pode ENDURECER (nunca afrouxar sozinho os tetos de frota — esses moram em
@@ -275,11 +275,17 @@ class PolicyEngine:
                     "por alvo não tem como ser conferida", None,
                     f"Diga no comando quem recebe a ação (o @ em `{cap.counterparty}`, por exemplo o de quem publicou) "
                     "e refaça o plano.")
+        nossa_viva = False
         if eh_conta_nossa(self.repo.db, alvo):
-            # Conta NOSSA (viva ou aposentada por bloqueio, 29.23/ADR-068) nunca é alvo de ação com efeito: uma persona
-            # engajando com outra da frota é engajamento simulado (ADR-050).
-            return ("o alvo é uma conta da própria frota: nada se faz entre contas nossas (ADR-050)", None,
-                    "Escolha outro alvo: uma conta nossa não recebe curtida, comentário, seguir nem mensagem.")
+            if foi_retirada(self.repo.db, alvo):
+                # Conta nossa RETIRADA por bloqueio (29.23/ADR-068) segue recusada: o produto sabe que o @ foi nosso, mas a
+                # conta saiu da plataforma e ninguém interage com ela.
+                return ("o alvo é uma conta nossa que foi retirada da plataforma: nada se faz com ela (ADR-050)", None,
+                        "Escolha outro alvo: uma conta retirada não recebe curtida, comentário, seguir nem mensagem.")
+            # Conta nossa VIVA pode receber a interação de outra conta nossa (emenda do ADR-050, 29.28, decisão do dono de
+            # 02/10): passa pelas demais regras (política do perfil, aprovação, tetos, uma conta por alvo) e por um
+            # espaçamento maior entre gestos públicos desta conta, abaixo.
+            nossa_viva = True
         s = self._settings()
         dias = max(1, int(getattr(s, "fleet_target_window_days", 30) or 30))
         teto = self.teto_de_contas(cap, s)
@@ -301,7 +307,26 @@ class PolicyEngine:
             if livre > agora:
                 return (f"outra conta da frota mexeu com {alvo} há pouco; espaçando ações entre contas sobre o "
                         "mesmo alvo", to_iso(livre), "")
+        if nossa_viva:
+            return self._espaco_entre_contas_nossas(profile_id, s, agora)
         return None
+
+    def _espaco_entre_contas_nossas(self, profile_id: str, settings: object,
+                                    agora: datetime) -> tuple[str, str, str] | None:
+        """Interação entre contas NOSSAS vivas (29.28, emenda do ADR-050): ritmo baixo. O gesto com efeito desta conta tem de
+        estar a pelo menos `fleet_min_spacing_to_own_account_s` (padrão 600 s) do último gesto com efeito DELA — o maior entre
+        esse valor e `cooldown_between_external_actions_s` do perfil. `None` libera; senão `(motivo, retry_at, dica)`."""
+        espaco = int(getattr(settings, "fleet_min_spacing_to_own_account_s", 600) or 0)
+        espera = max(espaco, int(self.limits_for(profile_id).get("cooldown_between_external_actions_s", 0) or 0))
+        ultima = self.repo.last_external_interaction_at(profile_id, statuses=CONTAM)
+        if not espera or not ultima:
+            return None
+        livre = parse_iso(ultima) + timedelta(seconds=espera)
+        if livre <= agora:
+            return None
+        return (f"o alvo é uma conta nossa: ritmo baixo entre contas da frota, no mínimo {espera}s desde o último gesto com "
+                "efeito desta conta (ADR-050, emenda de 02/10)", to_iso(livre),
+                "Espere o horário indicado: uma interação por vez entre contas nossas, nada em lote nem em laço.")
 
     def tem_conversa(self, profile_id: str, counterparty: str | None, app_id: str | None = None) -> bool:
         """A pessoa já escreveu a ESTA conta por mensagem direta? É o que separa responder de puxar conversa (DM fria).

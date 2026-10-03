@@ -153,6 +153,39 @@ describe('Aprendizado por aplicativo', () => {
     await waitFor(() => expect(cartao('com.exemplo.vazio')).toBeTruthy());
   });
 
+  it('RA-24: o detalhe diz o conhecimento em uso, com o sha de cada arquivo e o que mudou depois de subir', async () => {
+    backend.on('GET', /^\/api\/apps\/com\.exemplo\.cheio\/conhecimento$/, () => json({
+      app: 'com.exemplo.cheio', processo_iniciado_em: '2026-10-03T07:28:40.351Z',
+      arquivos: [
+        { nome: 'catalogo.yaml', sha256: '8e5c975bfdeb8677aa', git_blob: 'e112eed', modificado_em: '2026-09-29T03:54:55Z', mudou_depois_do_inicio: false },
+        { nome: 'telas.yaml', sha256: '784252b0d243d768bb', git_blob: 'e277b97', modificado_em: '2026-10-03T09:00:00Z', mudou_depois_do_inicio: true },
+      ],
+    }));
+    await montar();
+    await waitFor(() => expect(cartao('com.exemplo.cheio')).toBeTruthy());
+    await click(byRole('button', /^Ver o app$/, cartao('com.exemplo.cheio')));
+    await waitFor(() => expect(container.querySelector('[data-conhecimento-em-uso]')).toBeTruthy());
+    const linha = text(container.querySelector('[data-conhecimento-em-uso]') as HTMLElement);
+    expect(linha).toContain('2 arquivos conferidos · 1 mudou depois que o servidor subiu');
+    expect(linha).toContain('reinicie para valer');
+    const sha = container.querySelector('[data-sha-do-arquivo="catalogo.yaml"]') as HTMLElement;
+    expect(text(sha)).toBe('sha 8e5c975');
+    expect(sha.title).toContain('sha256 8e5c975bfdeb8677aa');
+    expect(sha.title).toContain('blob do git e112eed');
+    expect(text(container)).toContain('mudou depois que o servidor subiu');   // o telas.yaml
+  });
+
+  it('RA-24: sem conhecimento declarado (404) a linha não aparece e nada vira erro', async () => {
+    await montar();
+    await waitFor(() => expect(cartao('com.exemplo.cheio')).toBeTruthy());
+    await click(byRole('button', /^Ver o app$/, cartao('com.exemplo.cheio')));
+    await waitFor(() => expect(text(container)).toContain('catalogo.yaml'));
+    await waitFor(() => expect(backend.callsTo('GET', /\/apps\/com\.exemplo\.cheio\/conhecimento$/).length).toBe(1));
+    expect(container.querySelector('[data-conhecimento-em-uso]')).toBeNull();
+    expect(container.querySelector('[data-sha-do-arquivo]')).toBeNull();
+    expect(text(container)).not.toContain('Não foi possível');
+  });
+
   it('de um item do Livro vai ao app, e do app ao Aprendido filtrado por ele', async () => {
     useUiStore.getState().navegar({ tela: 'aprendizado', query: { aba: 'aprendido' } }, 'replace');
     await montar();

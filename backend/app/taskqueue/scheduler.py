@@ -22,7 +22,7 @@ from ..models import (ActionStatus, AttemptStatus, ControlOwner, DeliveryLevel, 
 from ..planning.capabilities import capability_of
 from ..planning.catalog import capabilities_of
 from ..releases.service import InstalacaoIncerta
-from ..planning.provider import AIProvider, AppContext
+from ..planning.provider import AIError, AIProvider, AppContext
 from ..util import iso_in, now, now_iso, parse_iso
 from .ai_slots import VagasDeIA
 from .balanceamento import Candidato, Servidor
@@ -1226,6 +1226,8 @@ class Scheduler:
                 # Item 24.3: `{{saida:<nome>}}` vira o valor lido ANTES da porta de política — aprovação, limite por
                 # alvo, coordenação de frota e o ator veem o valor, não o molde. Sem o valor, a etapa não começa:
                 # nenhuma tentativa consumida, nada inventado.
+                if self._valor_visual_sem_a_pessoa(obj, srow):
+                    break
                 srow, faltam = repo.resolver_saidas(srow["id"])
                 if faltam:
                     self._saida_ausente(obj, srow, faltam)
@@ -1360,7 +1362,9 @@ class Scheduler:
             log.exception("etapa %s", step.id)
             fired, _ = self.repo.commit_state(step.id)
             out = StepOutcome(Outcome.uncertain if (step.side_effect and fired) else Outcome.failed,
-                              f"Erro interno ao executar a etapa: {type(exc).__name__}: {exc}")
+                              f"Erro interno ao executar a etapa: {type(exc).__name__}: {exc}",
+                              # RA-22: o erro de IA que escapou do executor também é a causa da falha.
+                              ai_error_kind=exc.kind if isinstance(exc, AIError) else None)
         if out.outcome in _SEM_TELA_DA_FALHA:
             return replace(out, tela_da_falha=None) if out.tela_da_falha else out
         if out.tela_da_falha:               # o executor já sabe (a trava achada dentro de uma ferramenta)
@@ -1408,7 +1412,7 @@ class Scheduler:
             return AppContext(None, None, plan.app_package if plan else None, None, None, None), rotulo
         do_aparelho = step_app_id is None or (inst is not None and inst["app_id"] == row["id"])
         return (AppContext(row["id"], row["name"], row["package"], row["activity"], row["nav_hints"],
-                           loads(row["known_selectors"])),
+                           loads(row["known_selectors"]), row["category"], bool(row["builtin"])),
                 self.repo.conta_esperada(profile_id, str(row["id"]), rotulo, do_aparelho=do_aparelho))
 
     def _app_da_linha(self, run: Row, rt: DeviceRuntime, srow: Row) -> tuple[str | None, str | None]:
@@ -1468,6 +1472,8 @@ class Scheduler:
         repo = self.repo
         oid, detail = obj["id"], out.detail
         o = out.outcome
+        # RA-22: o erro de IA que encerrou a etapa vai com o texto e decide o tipo da falha da tentativa e da etapa.
+        kind = out.ai_error_kind
         if o == Outcome.succeeded:
             if out.delivery_level:
                 repo.db.execute("UPDATE objectives SET delivery_level=? WHERE id=?", (out.delivery_level.value, oid))
@@ -1494,15 +1500,16 @@ class Scheduler:
             return False
         if o == Outcome.retry:
             repo.finish_attempt(attempt_id, AttemptStatus.failed, error=detail, screen=out.tela_da_falha,
-                                recovery=f"Nova tentativa automática (ação segura) em {self.get_settings().retry_backoff_s}s")
+                                recovery=f"Nova tentativa automática (ação segura) em {self.get_settings().retry_backoff_s}s",
+                                error_kind=kind)
             repo.transition_step(step.id, StepStatus.retry_wait, detail=detail,
                                  next_retry_at=iso_in(self.get_settings().retry_backoff_s), level="warn")
             return False
         if o == Outcome.waiting_user:
             repo.refund_attempt(step.id)
             repo.finish_attempt(attempt_id, AttemptStatus.interrupted, error=detail, recovery="Aguardando o usuário",
-                                screen=out.tela_da_falha)
-            repo.transition_step(step.id, StepStatus.waiting_user, detail=detail, level="warn")
+                                screen=out.tela_da_falha, error_kind=kind)
+            repo.transition_step(step.id, StepStatus.waiting_user, detail=detail, level="warn", error_kind=kind)
             # `blocked_kind='ai'` (achado #93, ponto 4): distingue, na tela, "a IA está travando este item"
             # (chave ausente, sem crédito, recusa por política) de política do perfil, limite ou aprovação.
             repo.set_objective(oid, ObjectiveStatus.waiting_user, detail=detail, blocked_reason=detail, needs=out.needs,
@@ -1512,8 +1519,9 @@ class Scheduler:
             return False
         if o == Outcome.uncertain:
             repo.finish_attempt(attempt_id, AttemptStatus.uncertain, error=detail, screen=out.tela_da_falha,
-                                recovery="Reconciliação pela tela não comprovou o resultado; sem reenvio automático")
-            repo.transition_step(step.id, StepStatus.uncertain, detail=detail, level="warn")
+                                recovery="Reconciliação pela tela não comprovou o resultado; sem reenvio automático",
+                                error_kind=kind)
+            repo.transition_step(step.id, StepStatus.uncertain, detail=detail, level="warn", error_kind=kind)
             repo.set_objective(oid, ObjectiveStatus.uncertain, detail=detail, blocked_reason=detail,
                                needs="Confira no aparelho se o efeito ocorreu e decida: confirmar, repetir ou abandonar. "
                                      "Nada será reenviado automaticamente.",
@@ -1531,8 +1539,8 @@ class Scheduler:
             rt.attention = "Aparelho retido: chamada anterior ainda não terminou"
             return False
         # failed
-        repo.finish_attempt(attempt_id, AttemptStatus.failed, error=detail, screen=out.tela_da_falha)
-        repo.transition_step(step.id, StepStatus.failed, detail=detail, level="error")
+        repo.finish_attempt(attempt_id, AttemptStatus.failed, error=detail, screen=out.tela_da_falha, error_kind=kind)
+        repo.transition_step(step.id, StepStatus.failed, detail=detail, level="error", error_kind=kind)
         if out.plan_defect:                  # refazer o MESMO plano falharia igual (e custaria igual) em todo aparelho
             self._fail_objective(obj, f"Etapa '{step.title}': {detail}")
             self._hold_siblings(obj, step)
@@ -1543,6 +1551,23 @@ class Scheduler:
         if not self._skip_failed_item(obj, step, detail or "falha"):
             self._fail_objective(obj, f"Etapa '{step.title}' falhou: {detail}" + (f" {rec.motivo}" if rec.motivo else ""))
         return False
+
+    def _valor_visual_sem_a_pessoa(self, obj: Row, srow: Row) -> bool:
+        """Item 12.5 (ADR-070): uma etapa com efeito (`side_effect` ou `commit_guard`) que consome um valor lido da IMAGEM
+        não anda sozinha: vai para `waiting_user`, com o motivo, sem gastar tentativa. Navegação e busca seguem. Confirmar
+        o valor na árvore do app consumidor não vale (é circular: a árvore é a que não tinha o texto). Devolve `True` quando
+        segurou a etapa."""
+        if not (srow["side_effect"] or loads(srow["commit_guard"], [])):
+            return False
+        visuais = self.repo.saidas_visuais_citadas(srow)
+        if not visuais:
+            return False
+        nomes = ", ".join(f"'{n}'" for n in visuais)
+        self._block(obj, f"A etapa '{srow['title']}' tem efeito e usa o valor {nomes}, lido da imagem: valor lido da "
+                         "imagem precisa da sua confirmação.",
+                    "Confira o valor na tela do aparelho e refaça o comando informando-o, ou abandone o item: um valor lido "
+                    "da imagem não alimenta uma ação com efeito sem a sua confirmação (ADR-070).")
+        return True
 
     def _saida_ausente(self, obj: Row, srow: Row, faltam: list[str]) -> None:
         """A etapa cita `{{saida:<nome>}}` e o valor não existe (item 24.3). Nada é inventado, e nenhuma tentativa

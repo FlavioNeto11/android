@@ -288,3 +288,17 @@ def test_classe_c_parecer_valido_mas_nunca_decisao_automatica() -> None:
     assert conferir_aceite(d.classe, por_pessoa=False, em_lote=False) is RecusaDoAceite.DECISAO_AUTOMATICA_EM_C
     assert conferir_aceite(d.classe, por_pessoa=True, em_lote=True) is RecusaDoAceite.LOTE_NA_CLASSE_C
     assert conferir_aceite(d.classe, por_pessoa=True, em_lote=False) is None
+
+
+def test_dossie_do_fluxo_leva_os_apps_sem_o_comando() -> None:
+    """O fluxo que atravessa apps (12.1) chega ao curador com o principal, os exigidos e o app de cada etapa; o comando
+    (texto da pessoa) continua fora."""
+    legivel = conteudo.fluxo_legivel({"app_id": "instagram", "steps": [
+        {"key": "ler", "app_id": "outlook", "capability": "READ_LATEST_SUBJECT", "side_effect": False},
+        {"key": "buscar", "capability": "OPEN_PROFILE", "side_effect": False}]},
+        nome="ler no Outlook e achar no Instagram", comando_modelo="ler no Outlook e achar no Instagram", fonte=None,
+        source_run_id="r-1", apps=["outlook", "instagram"])
+    d = conteudo_do_dossie(legivel)
+    assert (d["app"], d["apps"]) == ("instagram", ["outlook", "instagram"])      # ordem do plano (29.42)
+    assert [e["app"] for e in d["etapas"]] == ["outlook", None]
+    assert "achar no Instagram" not in json.dumps(d, ensure_ascii=False)

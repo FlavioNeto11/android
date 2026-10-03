@@ -8,7 +8,7 @@ import { AprendizadoPage } from './AprendizadoPage';
 import {
   agruparPorCapability, contarPorRotulo, falhasPorCapability, filaDeAtencao, gruposDoAprendido, motivoPrincipal, resumirTitulo,
 } from './atencao';
-import type { EntradaDoLivro, RotuloDeSaude, SaudeDoItem } from './model';
+import { type EntradaDoLivro, type RotuloDeSaude, type SaudeDoItem, rotuloDaFalha } from './model';
 
 /**
  * 30.15 (restante): saúde por app, fila Atenção, falhas e capability no detalhe do app, contra o contrato dos adendos
@@ -226,10 +226,15 @@ describe('falhas e capability no detalhe do app', () => {
     const secao = container.querySelector('[aria-label="O que falha neste app"]') as HTMLElement;
     expect(text(secao)).toContain('O que falha (4)');
     const subtitulos = Array.from(secao.querySelectorAll('h4')).map((h) => h.textContent);
-    expect(subtitulos).toEqual(['abrir_conversa (1)', 'enviar_mensagem (2)', 'Etapa livre (sem capability) (1)']);
+    expect(subtitulos).toEqual(['abrir_conversa (1)', 'enviar_mensagem (2)', 'Etapa livre (fora do catálogo) (1)']);
     // Dentro do grupo vale a ordem do custo (a do backend): o de custo 5 antes do de custo 2.
     const enviar = secao.querySelector('ol[aria-label="Falhas de enviar_mensagem"]') as HTMLElement;
     expect(Array.from(enviar.querySelectorAll('li[data-item]')).map((li) => li.getAttribute('data-item'))).toEqual(['fk-enviar-a', 'fk-enviar-b']);
+    // P2 do deploy 3: sob o app e a capability, a linha diz só o motivo; o título de quem desenvolve não aparece.
+    const titulo = enviar.querySelector('li[data-item="fk-enviar-a"] span[class*="itemTitulo"]');
+    expect(titulo?.textContent).toBe(rotuloDaFalha('elemento_nao_encontrado'));
+    expect(text(secao)).not.toContain('Falha fk-enviar-a');
+    expect(text(secao)).toContain('Tela inicio');
   });
 
   it('sem falha no app diz que não há grupo; "Ver todas as falhas" abre a aba de falhas', async () => {

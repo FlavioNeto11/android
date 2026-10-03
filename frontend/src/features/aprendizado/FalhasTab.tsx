@@ -13,6 +13,7 @@ import { LoadErrorBanner, LoadErrorState, toLoadError, type LoadError } from '..
 import { toast } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
+import { ETAPA_LIVRE, rotuloDaCapability } from './atencao';
 import { descreverTentativa, rotuloDoBacklog, traduzirErro } from './falhasTexto';
 import {
   CAMADAS, type GrupoDeFalha, type RelatorioDeFalhas, mdDoItem, ordenarFalhas, rotuloDaCamada, rotuloDaFalha,
@@ -44,7 +45,21 @@ function Tendencia({ t }: { t: GrupoDeFalha['tendencia'] }) {
   );
 }
 
-export function LinhaDeFalha({ g, posicao }: { g: GrupoDeFalha; posicao: number }) {
+/**
+ * O título que a pessoa lê (P2 do deploy 3): o motivo e, fora da página do app, onde ("Pós-condição não comprovada —
+ * Instagram · Abrir o feed"), com os nomes do agrupamento do Aprendido. O pacote e o código ficam no `title` e em "Para
+ * quem desenvolve"; o título de quem desenvolve (`g.titulo`) vai só na cópia para a sessão.
+ */
+function OndeFalha({ g }: { g: GrupoDeFalha }) {
+  const app = g.app !== ETAPA_LIVRE ? <span title={g.app}>{g.app_nome ?? g.app}</span> : null;
+  const cap = g.capability !== ETAPA_LIVRE
+    ? <span title={g.capability} data-capability={g.capability}>{rotuloDaCapability(g.capability, g.capability_nome)}</span>
+    : <span>{rotuloDaCapability(g.capability)}</span>;
+  return <>{app}{app ? ' · ' : null}{cap}</>;
+}
+
+/** `dentroDoApp`: na página do app as falhas já vêm sob o app e a capability, e o título fica só com o motivo. */
+export function LinhaDeFalha({ g, posicao, dentroDoApp = false }: { g: GrupoDeFalha; posicao: number; dentroDoApp?: boolean }) {
   const abrirExecucao = (runId: string) => {
     useUiStore.getState().selectRun(runId);
     useUiStore.getState().setView('execucoes');
@@ -59,7 +74,7 @@ export function LinhaDeFalha({ g, posicao }: { g: GrupoDeFalha; posicao: number 
     <li className={styles.item} data-item={g.id}>
       <div className={styles.itemHead}>
         <span className={styles.posicao} aria-label={`Posição ${posicao}`}>{posicao}</span>
-        <span className={styles.itemTitulo}>{rotuloDaFalha(g.failure_kind)}{g.titulo ? ` — ${g.titulo}` : ''}</span>
+        <span className={styles.itemTitulo}>{rotuloDaFalha(g.failure_kind)}{dentroDoApp ? null : <> — <OndeFalha g={g} /></>}</span>
         {g.falso_positivo ? <Badge tone="danger" size="sm" title="Sucesso mascarado: sempre no topo">falso positivo do verificador</Badge> : null}
         <Badge tone="neutral" size="sm">{rotuloDaCamada(g.camada)}</Badge>
         {g.retroativo ? <Badge tone="muted" size="sm" title="Legado classificado na leitura; nada foi gravado">retroativo</Badge> : null}
@@ -67,14 +82,11 @@ export function LinhaDeFalha({ g, posicao }: { g: GrupoDeFalha; posicao: number 
           Correção: {rotuloDoBacklog(g.estado_backlog)}</Badge> : null}
         <Tendencia t={g.tendencia} />
       </div>
-      <div className={styles.itemMeta}>
-        <span>
-          <span className={styles.mono}>{g.app}</span>
-          {g.capability !== '*' ? <> › {g.capability_nome
-            ? <span title={g.capability} data-capability={g.capability}>{g.capability_nome}</span>
-            : <span className={styles.mono}>{g.capability}</span>}</> : null}
-          {g.failure_screen ? <> · tela <span className={styles.mono}>{g.failure_screen}</span></> : null}</span>
-      </div>
+      {g.failure_screen ? (
+        <div className={styles.itemMeta}>
+          <span>Tela <span className={styles.mono}>{g.failure_screen}</span></span>
+        </div>
+      ) : null}
       <div className={styles.numeros}>
         <Numero valor={formatInt(g.ocorrencias)} rotulo={g.taxa !== null ? `ocorrências (${formatPercent(g.taxa * 100)})` : 'ocorrências'} />
         <Numero valor={money(g.usd_perdido, 'USD')} rotulo="US$ perdido" />
@@ -101,7 +113,10 @@ export function LinhaDeFalha({ g, posicao }: { g: GrupoDeFalha; posicao: number 
       <Disclosure bare summary="Para quem desenvolve">
         {() => (
           <div className={styles.secao}>
-            <p className={styles.secaoLead}>Grupo <span className={styles.mono}>{g.id}</span></p>
+            <p className={styles.secaoLead}>
+              Grupo <span className={styles.mono}>{g.id}</span> · <span className={styles.mono}>{g.app}</span>
+              {g.capability !== ETAPA_LIVRE ? <> › <span className={styles.mono}>{g.capability}</span></> : null}
+            </p>
             {g.onde_alterar.length > 0 ? (
               <p className={styles.secaoLead}>
                 Onde alterar: {g.onde_alterar.map((a, i) => <span key={a}>{i > 0 ? ', ' : ''}<span className={styles.mono}>{a}</span></span>)}

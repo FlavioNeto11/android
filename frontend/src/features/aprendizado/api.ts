@@ -1,10 +1,13 @@
-import { apiRequest } from '../../api/client';
-import { lerDetalheDoApp, lerVisaoDeApps, type DetalheDoApp, type VisaoDeApps } from './apps';
+import { ApiError, apiRequest } from '../../api/client';
 import {
-  type DetalheDoLivro, type EstadoDoLivro, type FeedbackDaExecucao, type ListaDoLivro, type LivroKind, type Origem,
+  lerDetalheDoApp, lerProvaDoConhecimento, lerVisaoDeApps, type DetalheDoApp, type ProvaDoConhecimento, type VisaoDeApps,
+} from './apps';
+import {
+  type DetalheDoLivro, type EstadoDoLivro, type FeedbackDaExecucao, type ListaDoLivro, type LivroKind, type Origem, type Rotulo,
   type RelatorioDeFalhas, type RespostaDoVoto, type Sinal, type CorpoDoVoto, lerFeedbackDaExecucao,
   lerRelatorioDeFalhas, lerRespostaDoVoto, lerSinais,
 } from './model';
+import type { RespostaDoPedido } from './parecer';
 
 /**
  * As rotas do aprendizado (ADR-054). Ficam aqui, e não no objeto `api` do cliente, porque são de UM contexto e
@@ -19,26 +22,58 @@ export interface FiltroDoLivro {
   state?: EstadoDoLivro;
   app?: string;
   origem?: Origem;
+  rotulo?: Rotulo;
 }
 
 export const apiAprendizado = {
   livro: (f: FiltroDoLivro = {}, signal?: AbortSignal) =>
-    apiRequest<ListaDoLivro>('GET', '/aprendizado', { query: { kind: f.kind, state: f.state, app: f.app || undefined, origem: f.origem }, signal }),
+    apiRequest<ListaDoLivro>('GET', '/aprendizado', { query: { kind: f.kind, state: f.state, app: f.app || undefined, origem: f.origem, rotulo: f.rotulo }, signal }),
   /** A visão por aplicativo (Global): um resumo por app, o balde `nao_resolvido` e o que não tem eixo de app. */
   apps: async (signal?: AbortSignal): Promise<VisaoDeApps> =>
     lerVisaoDeApps(await apiRequest<unknown>('GET', '/aprendizado/apps', { signal })),
   /** O detalhe de um app (também `nao_resolvido`): o declarado, o aprendido e o absorvido. 404 se nenhuma fonte o conhece. */
   app: async (pacote: string, signal?: AbortSignal): Promise<DetalheDoApp> =>
     lerDetalheDoApp(await apiRequest<unknown>('GET', `/aprendizado/apps/${enc(pacote)}`, { signal })),
+  /** RA-24: os arquivos de conhecimento que o processo carregou, com o sha256. `null` quando o app não tem
+   *  conhecimento declarado (404 `not_found`): não é erro, é o caso da maioria dos apps. */
+  conhecimento: async (pacote: string, signal?: AbortSignal): Promise<ProvaDoConhecimento | null> => {
+    try {
+      return lerProvaDoConhecimento(await apiRequest<unknown>('GET', `/apps/${enc(pacote)}/conhecimento`, { signal }));
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return null;
+      throw e;
+    }
+  },
   /** A fila do D1 ("Para aprovar") e a contagem da barra do topo. */
   pendentes: (signal?: AbortSignal) => apiRequest<ListaDoLivro>('GET', '/aprendizado/pendentes', { signal }),
   /** O legado ativo com efeito anterior ao D1, que nenhuma pessoa decidiu ainda. */
   revisar: (signal?: AbortSignal) => apiRequest<ListaDoLivro>('GET', '/aprendizado/revisar', { signal }),
   detalhe: (kind: LivroKind, ref: string, signal?: AbortSignal) =>
     apiRequest<DetalheDoLivro>('GET', `/aprendizado/${kind}/${enc(ref)}`, { signal }),
-  /** Move o item com a trilha; o motivo é obrigatório. Habilidade devolve 409 com o endereço da rota dela. */
-  mudarEstado: (kind: LivroKind, ref: string, to: EstadoDoLivro, reason: string) =>
-    apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/status`, { body: { to, reason: reason.trim() } }),
+  /** Move o item com a trilha; o motivo é obrigatório. Habilidade devolve 409 com o endereço da rota dela.
+   *  `reviewId`: o parecer da IA que a pessoa via ao decidir (30.17); a decisão fica registrada contra ele. */
+  mudarEstado: (kind: LivroKind, ref: string, to: EstadoDoLivro, reason: string, reviewId?: string | null) =>
+    apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/status`, {
+      body: { to, reason: reason.trim(), ...(reviewId ? { review_id: reviewId } : {}) },
+    }),
+  /** 30.24: "Confirmar que fica" o legado de Revisar. O motivo é opcional; 409 quando o item já não está em Revisar. */
+  confirmarQueFica: (kind: LivroKind, ref: string, motivo: string, reviewId?: string | null) =>
+    apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/confirmar`, {
+      body: { ...(motivo.trim() ? { motivo: motivo.trim() } : {}), ...(reviewId ? { review_id: reviewId } : {}) },
+    }),
+  /** 30.23: a execução de origem terminou como sucesso sem comprovar o que fez. O motivo é estruturado pelo backend. */
+  invalidarEvidencia: (kind: LivroKind, ref: string, runId: string) =>
+    apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/evidencia-invalida`, { body: { run_id: runId } }),
+  /** Aceitar ou recusar o parecer da IA (30.17). 409 com o `code` quando o gesto não vale (classe A, C em lote,
+   *  simulado, já decidido, item mudou); devolve o detalhe atualizado. */
+  responderParecer: (kind: LivroKind, ref: string, reviewId: string,
+                     corpo: { resposta: 'aceitar' | 'recusar'; motivo: string; em_lote?: boolean }) =>
+    apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/parecer/${enc(reviewId)}`, {
+      body: { resposta: corpo.resposta, motivo: corpo.motivo.trim(), em_lote: !!corpo.em_lote },
+    }),
+  /** Pede revisão ao curador (só com ele ligado). `pedido: false` = o estado de agora do item já tem revisão. */
+  pedirRevisao: (kind: LivroKind, ref: string) =>
+    apiRequest<RespostaDoPedido>('POST', `/aprendizado/${kind}/${enc(ref)}/revisao`),
 
   /** "O que mais falha" (A3). Sem IA; o simulado fica fora por padrão. */
   falhas: async (q: { dias: number; app?: string; camada?: string; limite?: number }, signal?: AbortSignal): Promise<RelatorioDeFalhas> =>

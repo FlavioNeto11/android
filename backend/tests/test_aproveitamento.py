@@ -31,9 +31,15 @@ async def test_aproveitamento_por_fluxo_separa_origem_cobertura_e_divergencia(ha
     assert r1.status == "completed"
     n_receitas = db.scalar("SELECT COUNT(*) FROM recipes WHERE status='active'")
     etapas_r1 = db.scalar("SELECT COUNT(*) FROM steps WHERE run_id=?", (r1.id,))
+    # Caminho rápido 1 (LT-1): a etapa que já abre no estado final fecha SEM o ator (`sem_ator`): sem ação, não há
+    # caminho a gravar, então não é "elegível a receita" nem conta como "só IA".
+    sem_ator_r1 = db.scalar("SELECT COUNT(*) FROM steps WHERE run_id=? AND driven_by='sem_ator'", (r1.id,))
+    assert sem_ator_r1 >= 1
+    com_ator_r1 = etapas_r1 - sem_ator_r1
     g = _grupo(db)
     assert g["package"] == PKG and g["flow_id"] == db.scalar("SELECT id FROM flows")   # a execução-fonte é do fluxo
-    assert g["etapas"] == g["elegiveis"] == g["so_ia"] == g["sem_cobertura"] == etapas_r1
+    assert g["etapas"] == etapas_r1 and g["sem_ator"] == sem_ator_r1
+    assert g["elegiveis"] == g["so_ia"] == g["sem_cobertura"] == com_ator_r1
     assert g["receitas_aprendidas"] == n_receitas >= 3
     assert g["por_receita"] == 0 and g["chamadas_evitadas_estimadas"] == 0
     assert g["chamadas_ia"]["decide"] > 0
@@ -44,7 +50,8 @@ async def test_aproveitamento_por_fluxo_separa_origem_cobertura_e_divergencia(ha
     por_receita = db.scalar("SELECT COUNT(*) FROM steps WHERE run_id=? AND driven_by='recipe'", (r2.id,))
     assert g["por_receita"] == por_receita == 2 * n_receitas
     # as etapas só de leitura nunca viram receita: continuam "sem cobertura" em qualquer aparelho
-    assert g["sem_cobertura"] == etapas_r1 + 2 * (etapas_r1 - n_receitas)
+    assert g["sem_cobertura"] == com_ator_r1 + 2 * (com_ator_r1 - n_receitas)
+    assert g["sem_ator"] == 3 * sem_ator_r1                                 # as mesmas etapas, nos três aparelhos
     assert g["outra_chave_ou_quarentena"] == 0
     # cada etapa reproduzida poupou a mediana de decisões que a IA gastou nela em r1 (≥ 1)
     assert g["chamadas_evitadas_estimadas"] >= por_receita and g["etapas_por_receita_sem_base"] == 0
@@ -70,7 +77,12 @@ async def test_aproveitamento_por_fluxo_separa_origem_cobertura_e_divergencia(ha
     r3 = await harness.wait_run(harness.run(["android-02"]).id)
     assert r3.status == "completed"
     g = _grupo(db)
-    assert g["outra_chave_ou_quarentena"] == n_receitas
+    # só as etapas que a IA conduziu em r3 e que têm receita de outra versão; a que já abriu no estado final (o app
+    # ficou aberto) fechou `sem_ator` e não tem caminho a reproduzir
+    com_receita_de_outra_chave = db.scalar(
+        "SELECT COUNT(*) FROM steps WHERE run_id=? AND driven_by='ai' AND key IN (SELECT step_key FROM recipes)",
+        (r3.id,))
+    assert g["outra_chave_ou_quarentena"] == com_receita_de_outra_chave >= 1
     assert {v["app_version"] for v in g["por_versao"]} == {"1.0(1)", "2.0(7)"}
 
     total = aproveitamento(db)["totais"]

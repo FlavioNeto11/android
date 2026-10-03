@@ -124,7 +124,7 @@ def test_faixa_b_efeito_medio_commit_sem_catalogo_e_origem_humana() -> None:
     assert classificar_espera(side_effect=True, human_origin=False, tem_catalogo=True) == (
         Faixa.B, MotivoDeEntrada.EFEITO_EXTERNO)                    # commit com catálogo e sem fatos da etapa
     assert classificar_espera(side_effect=True, human_origin=False, tem_catalogo=False) == (
-        Faixa.B, MotivoDeEntrada.COMMIT_SEM_CATALOGO)
+        Faixa.B, MotivoDeEntrada.COMMIT_SEM_CATALOGO)                # B, confirmado pelo dono em 03/10
     assert classificar_espera(side_effect=False, human_origin=True, tem_catalogo=True) == (
         Faixa.B, MotivoDeEntrada.TEXTO_DE_PESSOA)                   # D-2: origem humana sem efeito
     assert classificar_espera(side_effect=False, human_origin=False, tem_catalogo=True) is None   # não espera ninguém
@@ -138,7 +138,7 @@ def test_motivo_de_saida() -> None:
 
 def test_o_vocabulario_do_payload_e_o_da_especificacao() -> None:
     assert {m.value for m in MotivoDeEntrada} == {"efeito_externo", "texto_de_pessoa", "commit_sem_catalogo",
-                                                  "alto_risco", "sessao_ou_autenticacao", "parecer_da_ia"}
+                                                  "alto_risco", "sessao_ou_autenticacao", "parecer_da_ia", "reaprendido"}
     assert {m.value for m in MotivoDeSaida} == {"decidido_por_pessoa", "rebaixado_pelo_sistema", "substituido"}
     assert href_do_item("receita", "100") == "#/aprendizado?aba=aprendido&item=receita:100"
 

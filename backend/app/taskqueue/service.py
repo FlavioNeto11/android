@@ -22,16 +22,17 @@ from ..modules.execution.infrastructure.providers import resource_providers
 from ..modules.identity.application.available_data import common_data, missing_secrets, profile_variables
 from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
 from ..modules.skills.infrastructure.run_planning import RunPlan, SkillRunPlanner
-from ..models import (RUN_TERMINAL, DistributeSpec, DistributionPick, DistributionPreview, InstanceState,
+from ..models import (RUN_TERMINAL, DistributeSpec, DistributionPick, DistributionPreview, InstanceState, MissingInfo,
                       ObjectiveDTO, ObjectiveStatus, Plan, ResolveBody, ResolvedTargetDTO, RunCreate, RunStatus,
                       RunSummary, RunTarget, RunTargetsPreview, RunTargetsResolveBody, SessionStatus, StepResult,
                       StepStatus)
 from ..planning.apps_do_comando import apps_citados, pede_site
-from ..planning.capabilities import CapabilityCatalog, load_catalog
+from ..planning.capabilities import CapabilityCatalog, efeito_fora_do_catalogo, load_catalog
 from ..planning.catalog import capabilities_of, session_provider_of
 from ..planning.parsing import apps_do_plano
-from ..planning.provider import AIError, AIProvider, AppContext, PlanRequest
+from ..planning.provider import AIError, AIProvider, AppContext, MarcaDaChamada, PlanRequest
 from ..security.redaction import redact
+from ..shared.costuras import SISTEMA
 from ..shared.resources import Target
 from ..util import now_iso
 from .balanceamento import Candidato, distribuir
@@ -997,7 +998,7 @@ class RunService:
                         catalogs=catalogos,
                         available_data=list(common_data(self.dados, [i["profile_id"] for i in instances])),
                         lessons=list(licoes))),
-                    role="plan")
+                    role="plan", marca=MarcaDaChamada(motivo="plano"))
                 # R6: todo plano do planejador declara os apps em que roda — os parsers já preenchem; isto cobre o
                 # provedor que não preenche (um dublê, um provedor novo). Plano de skill traz os dele do compilador.
                 if not plan.required_apps:
@@ -1019,6 +1020,12 @@ class RunService:
             log.exception("planejamento %s", run_id)
             repo.set_run_status(run_id, RunStatus.failed, f"Erro interno no planejamento: {exc}", level="error")
             return
+        # RA-7: a porta do item 13.2 também no PLANEJAMENTO, para todo plano (planejador, fluxo, skill), antes de
+        # qualquer etapa existir. No despacho ela só recusava ao chegar na etapa com efeito, depois que os preparativos
+        # (abrir, preencher destinatário, assunto…) já tinham gastado decisões.
+        recusadas = self._efeitos_fora_do_catalogo(plan, instances, apps)
+        if recusadas:
+            self._recusar_no_planejamento(run_id, plan, recusadas)
         repo.save_plan(run_id, plan)
         repo.decision(f"Plano ({'SIMULADO' if plan.planner.simulated else plan.planner.model}): {plan.summary} — "
                       f"{len(plan.steps)} etapa(s): " + " → ".join(s.title for s in plan.steps), run_id=run_id)
@@ -1039,6 +1046,53 @@ class RunService:
         else:
             repo.set_run_status(run_id, RunStatus.planned, "Plano pronto para inspeção",
                                 message=f"Execução {run_id}: plano pronto; aguardando início")
+
+    @staticmethod
+    def _efeitos_fora_do_catalogo(plan: Plan, instances: Sequence[Mapping[str, object]],
+                                  apps: Sequence[AppContext]) -> list[dict[str, object]]:
+        """As etapas que a regra do item 13.2 recusaria no despacho, vistas no plano (RA-7).
+
+        O app da etapa é o do despacho (`Scheduler._app_context`): o dela, senão o do plano, senão o do aparelho —
+        por aparelho, porque dois aparelhos podem ter apps padrão diferentes e a etapa sem app roda no de cada um.
+        Basta um aparelho em que a etapa seria recusada: o plano é o mesmo para todos."""
+        por_id = {a.id: a for a in apps if a.id}
+        recusadas: dict[str, dict[str, object]] = {}
+        for passo in plan.steps:
+            if not passo.side_effect:
+                continue
+            for inst in instances or ({},):
+                app_id = passo.app_id or plan.app_id or inst.get("app_id")
+                app = por_id.get(str(app_id)) if app_id else None
+                pacote = app.package if app else plan.app_package
+                motivo = efeito_fora_do_catalogo(True, passo.capability, pacote)
+                if motivo:
+                    recusadas[passo.key] = {"key": passo.key, "title": passo.title, "app_id": app.id if app else None,
+                                            "app": (app.name or app.id) if app else pacote,
+                                            "capability": passo.capability, "motivo": motivo}
+                    break
+        return list(recusadas.values())
+
+    def _recusar_no_planejamento(self, run_id: str, plan: Plan, recusadas: list[dict[str, object]]) -> None:
+        """O plano inteiro sai sem etapas, com uma pergunta por etapa recusada: o caminho do `missing` (a execução
+        vai a `needs_input`, nada é materializado, nenhuma decisão é gasta). Recusar só a etapa com efeito deixaria os
+        preparativos rodarem à toa; um plano meio montado é pior que nenhum (a regra do `compose` e do 24.1).
+
+        O evento `plan.refused` leva o motivo FECHADO de cada etapa (`MotivoForaDoCatalogo`) para o painel e a
+        medição; a linha do tempo leva a mesma frase da porta do despacho."""
+        partes = []
+        for r in recusadas:
+            estranha = f" (a ação {r['capability']} não é do catálogo dele)" if r["capability"] else ""
+            frase = (f"a etapa '{r['title']}' tem efeito externo em {r['app']} sem a ação do catálogo{estranha} — ela "
+                     "passaria por fora da política e dos limites do perfil")
+            partes.append(frase)
+            plan.missing.append(MissingInfo(
+                field="policy", question=f"Recusado no planejamento: {frase}. Peça só o que o catálogo do app faz, ou "
+                                         "faça esta parte você mesmo."))
+        plan.steps = []
+        texto = "Porta de política no planejamento (item 13.2): " + "; ".join(partes) + "."
+        self.repo.decision(texto, run_id=run_id)
+        self.repo.bus.emit("plan.refused", texto, level="warn", run_id=run_id,
+                           data={"motivo": "efeito_fora_do_catalogo", "etapas": recusadas})
 
     def projecao(self, plan: Plan) -> dict[str, object]:
         """Item 18.3: o normal medido de cada etapa do plano (chamadas de IA, tempo, US$ — mediana e p90 por ação),
@@ -1172,13 +1226,18 @@ class RunService:
             raise RunError("not_found", "Execução não encontrada.", 404)
         return run
 
-    def start(self, run_id: str) -> RunSummary:
+    def start(self, run_id: str, *, por: str = SISTEMA) -> RunSummary:
+        """`por`: quem iniciou, no `data.iniciada_por` do `run.updated` (P12, 03/10). A rota passa a pessoa da sessão (ou
+        `panel`); o início automático do `mode=execute` depois do plano fica com `sistema`. A prévia (`mode=plan`) só
+        executa por esse início explícito: medido em 03/10, as 11 prévias que gastaram decisões tinham sido iniciadas 12 a
+        44 s depois de criadas, e sem o autor no evento não dava para separar isso de uma prévia que executasse sozinha."""
         run = self._run(run_id)
         if run["status"] not in (RunStatus.planned.value, RunStatus.planning.value):
             raise RunError("invalid_state", f"A execução está em '{run['status']}' e não pode ser iniciada.")
         if not self.repo.db.scalar("SELECT COUNT(*) FROM objectives WHERE run_id=?", (run_id,)):
             raise RunError("no_plan", "A execução ainda não tem plano materializado.")
-        self.repo.set_run_status(run_id, RunStatus.running, None, message=f"Execução {run_id} iniciada")
+        self.repo.set_run_status(run_id, RunStatus.running, None, message=f"Execução {run_id} iniciada",
+                                 dados={"iniciada_por": por})
         # O MESMO pré-voo da criação, agora item a item: um plano pronto pode ficar dias parado, e o que estava
         # apto na criação pode não estar mais. O motivo específico ("é de outra máquina e está stopped", "o
         # servidor está em manutenção", "a entrega do app falhou") substitui o antigo "Aparelho offline", que
@@ -1403,10 +1462,11 @@ class RunService:
         per_instance = []
         # Item 24.3: o valor que uma etapa leu e outra usou, com a ORIGEM (etapa e app) — é o que diz de onde veio o
         # alvo de uma ação. Só dado comum: código, senha e token nunca chegam à tabela (triagem do executor).
-        lidos: dict[str, list[dict[str, str | None]]] = {}
+        lidos: dict[str, list[dict[str, str | int | None]]] = {}
         for v in self.repo.saidas_da_execucao(run_id):
             lidos.setdefault(str(v["objective_id"]), []).append(
-                {k: v[k] for k in ("name", "value", "value_kind", "step_title", "app", "read_at")})
+                {k: v[k] for k in ("name", "value", "value_kind", "step_title", "app", "read_at", "origem", "leitor",
+                                   "frame_sha256", "evidence_id")})
         for o in detail.objectives:
             steps = [s for s in detail.steps if s.objective_id == o.id and s.plan_version == o.plan_version]
             manual = [s.title for s in detail.steps if s.objective_id == o.id and s.result and not s.result.verified]
@@ -1447,6 +1507,11 @@ class RunService:
             md += [f"| {p['instance_id']} | {v['name']} = {_celula(v['value'])} | {v['value_kind']} | "
                    f"{_celula(v['step_title'])} | {_celula(v['app'] or 'app do plano')} |"
                    for p in per_instance for v in p["values_read"]]
+            # Item 12.5: o valor lido da IMAGEM diz como foi conferido, em frase fixa (sem o texto do recorte).
+            visuais = [(p["instance_id"], v) for p in per_instance for v in p["values_read"] if v.get("origem") == "visual"]
+            if visuais:
+                md += [""] + [f"- {i} · {v['name']}: lido da imagem; conferido às cegas por {_celula(str(v['leitor']))} "
+                              f"no recorte da captura {str(v['frame_sha256'] or '')[:8]}" for i, v in visuais]
         md += ["", "Somente itens com SUCESSO comprovado contam como concluídos. Itens bloqueados, incertos, "
                    "cancelados ou não iniciados NÃO contam como sucesso."]
         return {"run": RunSummary(**detail.model_dump(include=set(RunSummary.model_fields))).model_dump(mode="json"),

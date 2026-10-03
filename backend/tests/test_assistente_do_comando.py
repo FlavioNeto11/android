@@ -100,6 +100,9 @@ async def test_com_run_id_as_perguntas_do_planejador_vao_ao_refinador(harness: H
     # o custo do refinamento fica na execução que está sendo respondida
     assert harness.state is not None
     assert harness.state.repo.db.scalar("SELECT COUNT(*) FROM ai_calls WHERE run_id=?", (run_id,)) >= 1
+    # RA-10: o refinamento é `plan` como o plano, e o motivo os separa
+    assert harness.state.repo.db.scalar("SELECT COUNT(*) FROM ai_calls WHERE run_id=? AND role='plan'"
+                                        " AND motivo='refinamento'", (run_id,)) == 1
 
 
 async def test_sucessora_leva_o_pedido_e_cancela_a_antiga(harness: Harness) -> None:

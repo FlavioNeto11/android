@@ -158,6 +158,10 @@ DELIVERY_ORDER = {DeliveryLevel.none: 0, DeliveryLevel.appeared: 1, DeliveryLeve
 SAIDA_NOME_RE = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
 SAIDA_VALOR_MAX = 2000
 SAIDA_VALUE_KINDS = ("text", "number", "url", "list")
+#: Origem de um valor gravado (item 12.5, ADR-070; migração 078): `arvore` = o texto do elemento na árvore do app;
+#: `visual` = leitura da imagem conferida às cegas por um segundo leitor, só na tela cega que o app declara. NÃO é nível
+#: de prova (`real`/`simulated`/`not_run`): é atributo de cada valor.
+SAIDA_ORIGENS = ("arvore", "visual")
 
 
 class Postcondition(BaseModel):
@@ -1789,7 +1793,7 @@ class StepResult(BaseModel):
     verified: bool
     evidence_text: str | None = None
     delivery_level: DeliveryLevel | None = None
-    driven_by: str | None = None              # ai | recipe | recipe+ai
+    driven_by: str | None = None              # ai | recipe | recipe+ai | sem_ator
     items: list[str] | None = None            # etapa de coleta: itens lidos da tela
     # 12.4: coleta sem item só vale com o vazio COMPROVADO pela tela (estado vazio explícito); o resultado diz isso
     vazio_comprovado: bool = Field(default=False, exclude_if=lambda v: not v)
@@ -1821,7 +1825,7 @@ class StepDTO(BaseModel):
     finished_at: str | None = None
     result: StepResult | None = None
     claimed_by: str | None = None             # backend que assumiu esta etapa (migração 016); nulo = nunca despachada
-    driven_by: str | None = None              # ai | recipe | recipe+ai (quem decidiu as ações desta etapa)
+    driven_by: str | None = None              # ai | recipe | recipe+ai | sem_ator (quem decidiu as ações desta etapa)
     capability: str | None = None
     commit_selector: str | None = None
     band_guard: list[str] = []
@@ -1966,6 +1970,9 @@ class AiRoleStatus(BaseModel):
     timeout_s: float = 0
     concurrency: int = 0
     effort: str | None = None
+    #: Sonda "o ator pensa?" (17.14): adaptive | desligado_na_funcao | nao_declarado | recusado_pelo_modelo (um 400
+    #: desligou nesta instância). Vazio = provedor sem thinking (OpenAI, simulado).
+    thinking: str | None = None
 
 
 class AiImageStatus(BaseModel):

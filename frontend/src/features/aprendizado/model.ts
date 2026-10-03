@@ -14,6 +14,8 @@ import { Archive, CircleCheck, CircleDashed, CircleOff, FilePen, ShieldCheck } f
 import type { SkillState } from '../../api/types';
 import { isRecord } from '../../lib/format';
 import type { StatusMeta } from '../../lib/status';
+import { formatQuando } from '../../lib/time';
+import type { BlocoDoCurador, ModoDoCurador, ParecerDaIA, ParecerNaFila } from './parecer';
 
 // ---------------------------------------------------------------- vocabulário do livro
 
@@ -25,6 +27,24 @@ export type EstadoDoLivro = Exclude<SkillState, 'draft'>;
 export const ESTADOS_DO_LIVRO: readonly EstadoDoLivro[] = ['candidate', 'validated', 'published', 'deprecated', 'disabled'];
 export type Origem = 'execucao' | 'treino' | 'pessoa' | 'ensino' | 'sistema';
 export const ORIGENS: readonly Origem[] = ['execucao', 'treino', 'pessoa', 'ensino', 'sistema'];
+/**
+ * Filtro `rotulo` do livro (RA-19): de que conjunto de apps. Os de teste são os de `apps.category='qa'` (o QA
+ * embutido); a lista padrão os esconde, e o acervo continua no livro (o detalhe do app e as filas leem tudo).
+ */
+export type Rotulo = 'produto' | 'qa' | 'todos';
+export const ROTULOS: readonly Rotulo[] = ['produto', 'qa', 'todos'];
+export const ROTULO_LABEL: Record<Rotulo, string> = { produto: 'Produto', qa: 'QA', todos: 'Todos' };
+export const ROTULO_DICA: Record<Rotulo, string> = {
+  produto: 'Os apps de verdade, sem o app de teste (QA)',
+  qa: 'Só o app de teste (QA)',
+  todos: 'Todos os apps, com o de teste',
+};
+
+/** O que o `rotulo` escondeu, em uma linha curta ao lado do seletor ("94 do QA ocultos"); vazio sem ocultos. */
+export function textoDosOcultos(rotulo: Rotulo, ocultos: number | undefined): string {
+  if (!ocultos || rotulo === 'todos') return '';
+  return `${ocultos.toLocaleString('pt-BR')} ${rotulo === 'produto' ? 'do QA' : 'de produto'} ${ocultos === 1 ? 'oculto' : 'ocultos'}`;
+}
 
 export function isLivroKind(v: unknown): v is LivroKind {
   return typeof v === 'string' && (LIVRO_KINDS as readonly string[]).includes(v);
@@ -35,6 +55,13 @@ export function isEstadoDoLivro(v: unknown): v is EstadoDoLivro {
 }
 
 /** Uma linha do livro, como `presentation/livro.py::_entrada` devolve. */
+/** 30.24: "Confirmar que fica" lido pelo backend (quem, quando e o motivo livre, sem o prefixo da trilha). */
+export interface Confirmacao {
+  por: string;
+  em: string;
+  motivo: string | null;
+}
+
 export interface EntradaDoLivro {
   kind: LivroKind;
   /** Id na fonte: receita = número, habilidade = `id@versão`, memória = perfil, item = `li-…`. */
@@ -43,6 +70,12 @@ export interface EntradaDoLivro {
   native_status: string | null;
   title: string;
   app: string | null;
+  /** O nome do app (declarado, da loja ou o próprio pacote), para o painel não mostrar o pacote onde já sabe o nome
+   *  (validação do deploy 4). Ausente no backend anterior. */
+  app_nome?: string | null;
+  /** Receita: o título da etapa de que foi aprendida ("Digitar a mensagem"), o nome legível quando o app não tem
+   *  catálogo. Ausente no backend anterior. */
+  etapa?: string | null;
   /** A capability da linha (hierarquia App → Capability → Item) e o nome dela em português, do catálogo do app
    *  (`OPEN_PROFILE` → "Abrir o perfil"). Ausentes no backend anterior; `null` quando não se sabe. */
   capability?: string | null;
@@ -67,6 +100,24 @@ export interface EntradaDoLivro {
   por_que_nao_publica: MotivoDeNaoPublicar | null;
   /** A saúde do item (30.4), do backend: o painel só a exibe. Ausente em backend antigo; `null` na memória. */
   saude?: SaudeDoItem | null;
+  /** A execução de que a receita ou o fluxo foi aprendido (30.23); `null` no treino e nos outros tipos. */
+  nasceu_de?: string | null;
+  /** (Re)nasceu no escopo de uma evidência inválida (30.23): espera o dono. Derivado no backend. */
+  reaprendido?: Reaprendido | null;
+  /** 30.24, receita e fluxo: está em "Revisar" agora (`false`: uma pessoa já decidiu o legado). */
+  em_revisar?: boolean;
+  /** 30.24: a confirmação que vale ("Confirmar que fica"), com o motivo livre de quem confirmou. */
+  confirmado?: Confirmacao | null;
+  /** 30.24: a confirmação que a evidência contrária derrubou (o item voltou para "Revisar" por isso). */
+  confirmacao_contestada?: Confirmacao | null;
+  /** O parecer pendente da IA (30.17): só nas listas Para aprovar e Revisar, e só com o curador em `on`. */
+  parecer?: ParecerNaFila | null;
+}
+
+/** 30.23: a execução do sucesso falso e o item que ela ensinou (no fluxo, a própria linha, que renasce nela). */
+export interface Reaprendido {
+  run_invalidada: string;
+  item: { kind: string; ref: string };
 }
 
 /** Chave estável do passo (`ItemDoLivro` mapeia para o texto em português). */
@@ -78,7 +129,8 @@ export interface AcaoPermitida {
   exige_motivo: boolean;
 }
 
-export type CodigoDeNaoPublicar = 'habilidade' | 'efeito_externo' | 'texto_de_pessoa' | 'vetado' | 'modo_desligado';
+export type CodigoDeNaoPublicar =
+  'habilidade' | 'efeito_externo' | 'texto_de_pessoa' | 'reaprendido' | 'vetado' | 'modo_desligado';
 
 export interface MotivoDeNaoPublicar {
   codigo: CodigoDeNaoPublicar;
@@ -92,6 +144,12 @@ export interface ListaDoLivro {
   total: number;
   /** Só em `GET /api/aprendizado`: {tipo: {estado: n}}. */
   contagem?: Record<string, Record<string, number>>;
+  /** Só em `GET /api/aprendizado` (RA-19): o conjunto que valeu (sem pedir: `produto`, ou `todos` com um app escolhido). */
+  rotulo?: Rotulo;
+  /** Quantos itens os outros filtros deixavam e o `rotulo` escondeu. */
+  ocultos?: number;
+  /** Nas listas Para aprovar e Revisar (30.17): o modo do curador; `null` sem curador composto. */
+  curador?: { modo: ModoDoCurador } | null;
 }
 
 export interface EvidenciaDoLivro {
@@ -103,6 +161,8 @@ export interface EvidenciaDoLivro {
   simulated: boolean;
   detail: string | null;
   observed_at: string;
+  /** 30.23: a execução desta evidência foi marcada como evidência inválida no item; não prova nada. */
+  invalidada?: boolean;
 }
 
 export interface TransicaoDoLivro {
@@ -113,6 +173,12 @@ export interface TransicaoDoLivro {
   decided_by: string;
   decided_at: string;
   run_id: string | null;
+  /** 30.23: o desligamento por evidência inválida já vem lido do motivo (o painel nunca interpreta o formato).
+   *  30.24: `confirmacao` é a linha published → published de "Confirmar que fica". */
+  tipo?: 'evidencia_invalida' | 'confirmacao' | null;
+  run_invalidada?: string | null;
+  /** 30.24: o motivo livre de quem confirmou, sem o prefixo (nulo: confirmou sem motivo). */
+  motivo_da_pessoa?: string | null;
 }
 
 export interface DetalheDoLivro {
@@ -124,6 +190,12 @@ export interface DetalheDoLivro {
   conteudo?: ConteudoDoItem | null;
   versao?: VersaoDoItem;
   relacoes?: RelacaoDoItem[];
+  /** 30.23: a execução de origem que a pessoa pode marcar como evidência inválida agora; `null` quando não cabe. */
+  invalidar_evidencia?: { run_id: string } | null;
+  /** 30.17: as revisões do curador que o modo deixa aparecer (a mais recente primeiro) e o bloco do curador.
+   *  Ausentes em backend antigo; `curador: null` sem curador composto. */
+  pareceres?: ParecerDaIA[];
+  curador?: BlocoDoCurador | null;
 }
 
 // ---------------------------------------------------------------- o detalhe rico (30.16): o que o backend manda
@@ -221,6 +293,8 @@ export interface EtapaDoFluxo {
 export interface ConteudoDoFluxo {
   tipo: 'fluxo';
   nome: string | null;
+  /** Os apps exigidos na ordem do plano (29.42); o principal do plano vem em `app`. Ausente em backend antigo. */
+  apps?: string[];
   comando_modelo: string | null;
   origem: { tipo: 'execucao' | 'treino'; fonte: string | null; source_run_id: string | null };
   etapas: EtapaDoFluxo[];
@@ -280,7 +354,8 @@ export interface VersaoDoItem {
   por_versao: { versao: string; viva: boolean; aparelhos: number; estado: EstadoDeVersao; receita_ref: string | null }[];
 }
 
-export type TipoDeRelacao = 'substitui' | 'substituida_por' | 'derivado_de' | 'absorvida' | 'contradiz';
+export type TipoDeRelacao =
+  'substitui' | 'substituida_por' | 'derivado_de' | 'reaprende' | 'reaprendida_por' | 'absorvida' | 'contradiz';
 
 /** `kind`/`ref` apontam para o detalhe do alvo; `regra_declarada` e `commit` (absorvida) não são itens do Livro. */
 export interface RelacaoDoItem {
@@ -317,6 +392,67 @@ const KIND_LABEL: Record<LivroKind, string> = {
 
 export function rotuloDoKind(k: string | null | undefined): string {
   return k && isLivroKind(k) ? KIND_LABEL[k] : k ?? '—';
+}
+
+// ---------------------------------------------------------------- o título que a pessoa lê (deploy 3, P3 e P4)
+
+/** A capability com o nome do catálogo na frente, "Abrir o perfil (OPEN_PROFILE)"; sem nome, só o código. */
+export function capabilityComNome(codigo: string, nome?: string | null): string {
+  return nome ? `${nome} (${codigo})` : codigo;
+}
+
+/**
+ * O texto com a capability nomeada na primeira vez que aparece: "Em OPEN_PROFILE: …" → "Em Abrir o perfil
+ * (OPEN_PROFILE): …". Só na tela: o texto gravado da lição é o que vai ao prompt, e lá o código é o que serve.
+ */
+export function nomearCapabilityNoTexto(texto: string, codigo?: string | null, nome?: string | null): string {
+  if (!codigo || !nome || codigo === '*') return texto;
+  const nomeada = capabilityComNome(codigo, nome);
+  if (texto.includes(nomeada)) return texto;
+  const re = new RegExp(`\\b${codigo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+  return texto.replace(re, nomeada);
+}
+
+const RE_VERSAO = /^(.*) \(v(\d+)\)$/;
+
+/**
+ * O título de uma linha do livro para a pessoa. A receita troca a chave da etapa pelo nome da capability
+ * ("send_message_i1 (v1)" → "Enviar a mensagem (v1)"); a lição nomeia a capability no texto; o resto vem como o backend
+ * manda. O título cru continua no `title` da linha, para quem desenvolve.
+ */
+export function tituloDoItem(
+  e: Pick<EntradaDoLivro, 'kind' | 'ref' | 'title' | 'capability' | 'capability_nome' | 'etapa'>,
+): string {
+  const t = e.title || e.ref;
+  if (e.kind === 'receita' && e.capability && e.capability_nome) {
+    const m = RE_VERSAO.exec(t);
+    return m ? `${e.capability_nome} (v${m[2]})` : t;
+  }
+  // App sem catálogo (validação do deploy 4): o título da etapa de origem, com a chave para distinguir as do mesmo nome.
+  if (e.kind === 'receita' && e.etapa) {
+    const m = RE_VERSAO.exec(t);
+    return m ? `${e.etapa} · etapa ${m[1]} (v${m[2]})` : `${e.etapa} · etapa ${t}`;
+  }
+  return e.kind === 'licao' ? nomearCapabilityNoTexto(t, e.capability, e.capability_nome) : t;
+}
+
+function repetidos(titulos: Iterable<string>): Set<string> {
+  const vistos = new Set<string>();
+  const dobrados = new Set<string>();
+  for (const t of titulos) (vistos.has(t) ? dobrados : vistos).add(t);
+  return dobrados;
+}
+
+/**
+ * Os títulos de uma lista sem repetição (P4: duas receitas da mesma etapa saíam iguais). Quem empata ganha quando foi
+ * aprendido ("· de hoje, 17:22"); se ainda empata, a referência ("· nº 40"). A chave é a própria entrada da lista.
+ */
+export function titulosDaLista(itens: readonly EntradaDoLivro[]): Map<EntradaDoLivro, string> {
+  const base = new Map(itens.map((e) => [e, tituloDoItem(e)] as const));
+  const dobrados = repetidos(base.values());
+  const comData = new Map([...base].map(([e, t]) => [e, dobrados.has(t) && e.created_at ? `${t} · de ${formatQuando(e.created_at)}` : t] as const));
+  const ainda = repetidos(comData.values());
+  return new Map([...comData].map(([e, t]) => [e, ainda.has(t) ? `${t} · ${e.kind === 'receita' ? `nº ${e.ref}` : e.ref}` : t] as const));
 }
 
 export const ORIGEM_LABEL: Record<Origem, string> = {
@@ -388,6 +524,13 @@ export function camadaDaFalha(k: string | null | undefined): Camada | null {
   return k ? FALHA[k]?.camada ?? null : null;
 }
 
+/** 30.23: por que o reaprendido espera o dono, com a execução do sucesso falso quando o backend a manda. */
+export function textoDoReaprendido(run: string | null | undefined): string {
+  return run
+    ? `foi reaprendido depois de uma evidência inválida (a execução ${run} terminou como sucesso sem comprovar o que fez)`
+    : 'foi reaprendido depois de uma evidência inválida';
+}
+
 /** O texto do motivo que o backend mandou (apresentação: a regra é do domínio). */
 export function porQueOSistemaNaoPublica(e: Pick<EntradaDoLivro, 'por_que_nao_publica'>): string | null {
   const m = e.por_que_nao_publica;
@@ -396,6 +539,7 @@ export function porQueOSistemaNaoPublica(e: Pick<EntradaDoLivro, 'por_que_nao_pu
     case 'habilidade': return 'habilidade: publicar é sempre de uma pessoa';
     case 'efeito_externo': return 'tem efeito externo';
     case 'texto_de_pessoa': return 'tem texto de pessoa';
+    case 'reaprendido': return textoDoReaprendido(m.detalhe);
     case 'vetado': return m.detalhe ?? 'vetado pelo sistema';
     case 'modo_desligado': return 'o modo deste tipo não está ligado';
     default: return m.codigo;
@@ -425,6 +569,8 @@ export interface AcaoDoItem {
   /** Rótulo do botão que confirma, depois do motivo. */
   confirmar: string;
   perigo: boolean;
+  /** 30.24: "Confirmar que fica" não muda o estado (rota própria) e o motivo é opcional. */
+  confirmaQueFica?: boolean;
 }
 
 const A = (to: EstadoDoLivro, label: string, confirmar: string, perigo = false): AcaoDoItem => ({ to, label, confirmar, perigo });
@@ -535,8 +681,11 @@ export interface GrupoDeFalha {
   capability: string;
   /** O nome em português, do catálogo do app; `null` sem catálogo (o painel mostra o código). */
   capability_nome: string | null;
+  /** O nome do app como o agrupamento do Aprendido o mostra; ausente em backend antigo, `null` no app `*`. */
+  app_nome?: string | null;
   failure_kind: string;
   failure_screen: string | null;
+  /** O título de quem desenvolve (`pacote · CÓDIGO: motivo`): vai na cópia para a sessão, não na linha do painel. */
   titulo: string | null;
   camada: string | null;
   onde_alterar: string[];
@@ -630,6 +779,7 @@ function lerGrupo(linha: unknown): GrupoDeFalha | null {
     app,
     capability,
     capability_nome: str(v.capability_nome),
+    app_nome: str(v.app_nome),
     failure_kind: tipo,
     failure_screen: tela,
     titulo: str(campo(v, 'title', 'titulo')),
@@ -739,8 +889,13 @@ export interface Sinal {
   objective_id: string | null;
   app_package: string;
   capability: string;
+  /** Os nomes em português do app e da capability (os do Aprendido); `null` quando não se sabe. */
+  app_nome: string | null;
+  capability_nome: string | null;
   failure_kind: string | null;
   simulated: boolean;
+  /** `data.template_id` do `parecer_decidido`: `curador` (parecer da IA) ou `intencao` (o rótulo do 30.25). */
+  template: string | null;
 }
 
 export const SINAL_LABEL: Record<string, string> = {
@@ -750,12 +905,18 @@ export const SINAL_LABEL: Record<string, string> = {
   escolheu_habilidade: 'Escolheu a habilidade', aprovacao_decidida: 'Decidiu uma aprovação',
   comando_incerto_resolvido: 'Resolveu um comando incerto', correcao_de_ensino: 'Corrigiu no ensino',
   tela_vista: 'Tela vista', tela_desconhecida_chamou_pessoa: 'Tela desconhecida chamou uma pessoa',
+  pediu_revisao: 'Pediu revisão ao curador', parecer_decidido: 'Decidiu um parecer do curador',
 };
 
 export const SINAL_KINDS: readonly string[] = Object.keys(SINAL_LABEL);
 
 export function rotuloDoSinal(k: string): string {
   return SINAL_LABEL[k] ?? k;
+}
+
+/** O rótulo de UMA linha: a resposta a "Qual era o pedido?" (30.25) também é um `parecer_decidido`, sem IA nenhuma. */
+export function rotuloDaLinhaDeSinal(s: Pick<Sinal, 'kind' | 'template'>): string {
+  return s.kind === 'parecer_decidido' && s.template === 'intencao' ? 'Disse qual era o pedido' : rotuloDoSinal(s.kind);
 }
 
 function isPolaridade(v: unknown): v is Polaridade {
@@ -771,7 +932,9 @@ function lerSinal(v: unknown): Sinal | null {
     verdict: isVeredito(v.verdict) ? v.verdict : null, reason: str(v.reason), note: str(v.note),
     source_ref: str(v.source_ref) ?? '', created_by: str(v.created_by) ?? '', created_at: str(v.created_at),
     run_id: str(v.run_id), objective_id: str(v.objective_id), app_package: str(v.app_package) ?? '',
-    capability: str(v.capability) ?? '', failure_kind: str(v.failure_kind), simulated: bool(v.simulated),
+    capability: str(v.capability) ?? '', app_nome: str(v.app_nome), capability_nome: str(v.capability_nome),
+    failure_kind: str(v.failure_kind), simulated: bool(v.simulated),
+    template: isRecord(v.data) ? str(v.data.template_id) : null,
   };
 }
 

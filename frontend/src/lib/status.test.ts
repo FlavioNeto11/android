@@ -37,15 +37,17 @@ describe('drivenByMeta — selo por etapa', () => {
     expect(drivenByMeta('recipe')?.label).toBe('Receita');
     expect(drivenByMeta('recipe+ai')?.label).toBe('Receita + IA');
     expect(drivenByMeta('ai')?.label).toBe('IA');
+    expect(drivenByMeta('sem_ator')?.label).toBe('Sem o ator');
   });
 
   it('só a receita pura diz "sem chamada de modelo"; cada selo tem ícone e tom distintos', () => {
     expect(DRIVEN_BY.recipe.description).toMatch(/nenhuma chamada de modelo/);
     expect(DRIVEN_BY['recipe+ai'].description).toMatch(/IA assumiu/);
-    const icons = new Set([DRIVEN_BY.recipe.icon, DRIVEN_BY['recipe+ai'].icon, DRIVEN_BY.ai.icon]);
-    const tones = new Set([DRIVEN_BY.recipe.tone, DRIVEN_BY['recipe+ai'].tone, DRIVEN_BY.ai.tone]);
-    expect(icons.size).toBe(3);
-    expect(tones.size).toBe(3);
+    expect(DRIVEN_BY.sem_ator.description).toMatch(/sem o ator decidir/);
+    const icons = new Set([DRIVEN_BY.recipe.icon, DRIVEN_BY['recipe+ai'].icon, DRIVEN_BY.ai.icon, DRIVEN_BY.sem_ator.icon]);
+    const tones = new Set([DRIVEN_BY.recipe.tone, DRIVEN_BY['recipe+ai'].tone, DRIVEN_BY.ai.tone, DRIVEN_BY.sem_ator.tone]);
+    expect(icons.size).toBe(4);
+    expect(tones.size).toBe(4);
   });
 
   it('não mostra selo enquanto driven_by é nulo/ausente e tolera valor fora do contrato', () => {

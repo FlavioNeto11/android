@@ -17,6 +17,7 @@ from .automation.appium_server import AppiumServer
 from .automation.driver import DeviceIO
 from .automation.hierarchy import SUBTIPO_CONTA_TRAVADA
 from .commands import despacho
+from .commands.limpeza_ao_retirar import LimpezaAoRetirar
 from .commands.reconciler import reconciliar_incertos
 from .commands.outbox import CommandOutbox
 from .commands.states import COMMAND_TERMINAL
@@ -35,18 +36,19 @@ from .devices.rede_convergencia import ConvergenciaDeRede
 from .devices.rede_saida_central import SaidaDoCentral
 from .devices.rede_servidor import ServidorDeRede
 from .devices.sdk import SdkTools
-from .events import EventBus
+from .events import TELEMETRIA_KINDS, TELEMETRIA_RETENCAO_H, EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos
+from .modules.context_retrieval.adapters.jev import JevSemanticProvider
 from .modules.identity.application.ports import SessionProvider
 from .modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, aplicar_desafio, conta_para_conferir,
                                                          emit_needs_person_change, motivo_do_login_parado)
 from .modules.identity.application.sessions import SessionProviders
 from .modules.identity.infrastructure.sessions import SessionDeps, SessionProviderFactory
 from .modules.learning import esquecer_conta
-from .modules.learning.infrastructure import ligar_voz
+from .modules.learning.infrastructure import ligar_intencao, ligar_voz
 from .modules.learning.infrastructure.curador_do_hub import CuradorDoHub
 from .modules.learning.infrastructure.ligar_costuras import costuras_do_livro
 from .modules.learning.infrastructure.montagem import montar_aprendizado
@@ -62,10 +64,12 @@ from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAp
                      OFFLINE_POLICY_PADRAO, PersonaCreate, PersonaDTO, Problem, SdkStatus, SessionStatus)
 from .devices.installer import AppInstaller
 from .planning import conciliacao, costs, saldos
-from .planning.decisao_fechada import RepositorioDeSombra, construir_porta, observador_de_sombra, transparencia
+from .planning.decisao_fechada import (DecisorJev, RepositorioDeSombra, construir_porta, observador_de_sombra,
+                                       transparencia)
+from .planning.decisao_fechada.sombra import ORIGEM_NO_GASTO
 from .planning.decisao_fechada.curador import CuradorComTriagemEmSombra, TriagemDoCurador
 from .planning.decisao_fechada.intencao import ConsumidorDeIntencao
-from .planning.capabilities import (Capability, alvo_da_acao, capability_of, contraparte, load_catalog,
+from .planning.capabilities import (Capability, alvo_da_acao, capability_of, contraparte, efeito_fora_do_catalogo,
                                     texto_a_gerar)
 from .planning.catalog import capabilities_of, pacote_ancora, screen_reader_of, session_factory_of
 from .planning.provider import AIProvider, build_provider
@@ -343,6 +347,10 @@ class AppState:
         # O rastro textual da conta no Livro (o @ e o id em texto) sai na MESMA transação da retirada (contrato combinado
         # com o Aprendizado, 29.23): uma falha ali desfaz a retirada inteira, nada pela metade.
         self.social.limpezas_ao_retirar.append(esquecer_conta)
+        # 29.27 (emenda do ADR-068): conta retirada de app que declara `limpar_ao_retirar` leva os dados do app embora dos
+        # aparelhos onde estava logada (`pm clear` só desse pacote), numa tarefa de fundo; a quarentena resolve ao fim.
+        self.limpeza_ao_retirar = LimpezaAoRetirar(self)
+        self.social.ao_limpar_aparelhos = self.limpeza_ao_retirar.agendar
         # A porta do app passa a se resolver sozinha quando há versão distribuída por instalar naquele aparelho.
         self.scheduler.app_resolver = self._app_resolver
         # A mesma verdade sobre o app, só que SEM efeito e ANTES de planejar: é o pedaço do pré-voo que conhece
@@ -449,7 +457,8 @@ class AppState:
         # aprendizado porque a triagem do curador em sombra (31.8) embrulha o curador do hub. A sombra grava só ids e
         # categorias (migração 074); a retenção dela corre junto da do resto (`_purgar_demais_tabelas`).
         self.decisao_sombra = RepositorioDeSombra(self.db)
-        self.decisao_fechada = construir_porta(cfg.file.ai.decisao_fechada, observador=observador_de_sombra(self.decisao_sombra))
+        self.decisao_fechada = construir_porta(cfg.file.ai.decisao_fechada, observador=observador_de_sombra(self.decisao_sombra),
+                                               decisor=self._decisor_da_porta(cfg))
         # 30.12: o curador por IA passa pelo hub (papel `plan`, origem `curador`, fatia do 31.6); `off` de fábrica.
         # 31.8: a triagem do Jev observa cada parecer em sombra (consumidor `curador`, inerte de fábrica) e devolve o
         # parecer do curador intacto: nada do Jev volta ao Livro.
@@ -486,6 +495,9 @@ class AppState:
         self.runs.sombra_intencao = SombraDaIntencao(
             ConsumidorDeIntencao(self.decisao_fechada, self.decisao_sombra), resolver=self.skill_planner.resolve_intent,
             catalogo=self.catalogo_da_cadeia)
+        # Rótulo de intenção (30.25): um minerador no digest da execução assentada, sem gancho novo e sem IA.
+        ligar_intencao.ligar(self.learning, self.db, dados=self.runs.dados_da_intencao,
+                             resolver=self.skill_planner.resolve_intent, catalogo=self.catalogo_da_cadeia)
         # Laço de pedidos persistentes (28.4). O objeto existe sempre (o gancho de fim de execução e a API do 28.9 o
         # chamam sem conferir); a TAREFA só sobe com `pedidos.enabled` e `roda_scheduler` (ver `start`).
         self.pedidos = LacoDePedidos(
@@ -524,6 +536,21 @@ class AppState:
         self._transport_cache: dict[str, str] = {}
         self.devices.transport_state_of = self._transport_state_of
         self.devices.worker_process_of = self._worker_process_of
+
+    def _decisor_da_porta(self, cfg: Config) -> DecisorJev | None:
+        """O decisor da porta `DecisaoFechada` (31.14). `nulo` de fábrica (devolve None: a porta usa o `DecisorNulo`).
+
+        Com `ai.decisao_fechada.decisor: jev`, o `DecisorJev` usa o transporte do adaptador de retrieval (cliente único; a
+        chave é lida do ambiente na hora do POST, nunca aqui), confere o gasto no HUB antes do POST (a mesma rubrica de
+        toda chamada, com a fatia do Jev e o saldo da conta dele) e registra cada chamada em `ai_calls` pela sombra. Hub sem
+        `conferir_gasto` (provedor que não roteia) = nada sai. O envio continua fechado por `JEV_RUNTIME_SEND_APPROVED`."""
+        if cfg.file.ai.decisao_fechada.decisor != "jev":
+            return None
+        conferir = getattr(self.provider, "conferir_gasto", None)
+        return DecisorJev(JevSemanticProvider(),
+                          conferir_gasto=None if conferir is None else (
+                              lambda pedido: conferir(run_id=pedido.run_id, origem=ORIGEM_NO_GASTO, conta="typesafe")),
+                          registrar=self.decisao_sombra.registrar_chamada)
 
     def _publish_worker(self, worker_id: str) -> None:
         """Qualquer mudança observável de worker vira evento. A tela de infraestrutura vive disto."""
@@ -1902,8 +1929,9 @@ class AppState:
         if cap is None:
             # Item 13.2: etapa com EFEITO externo sem ação do catálogo, num app que TEM catálogo, passaria por fora de
             # política, aprovação, limite e coordenação de frota (uma habilidade treinada, um plano livre que
-            # atravessa apps ou a ação de outro app). Não passa: pede a ação do catálogo.
-            if srow["side_effect"] and pacote and load_catalog(pacote) is not None:
+            # atravessa apps ou a ação de outro app). Não passa: pede a ação do catálogo. A mesma regra recusa o plano
+            # ANTES de ele virar etapa (RA-7, `RunService._plan`); aqui fica a trava do despacho.
+            if efeito_fora_do_catalogo(bool(srow["side_effect"]), capability, pacote):
                 nome = app_da_etapa.name if app_da_etapa and app_da_etapa.name else pacote
                 estranha = f" (a ação {capability} não é do catálogo dele)" if capability else ""
                 return Verdict(allowed=False, policy="manual_only",
@@ -2248,12 +2276,17 @@ class AppState:
                        hint="Abra Aprovações e escolha aprovar, editar ou rejeitar.")
 
     def _seed_apps(self) -> None:
-        """Os apps do `config.yaml` entram no registro na subida; o que já existe (mesmo id) fica como está."""
+        """Os apps do `config.yaml` entram no registro na subida; o que já existe (mesmo id) fica como está.
+
+        `builtin: true` é o app de prova embutido e nasce com `category='qa'`, como a migração 041 fez com as linhas que
+        já existiam (`UPDATE … WHERE builtin = 1`). Sem isto, uma instalação nova semeava o app de prova SEM categoria e
+        o tier 0 de `side_effect_tier` (item 29.31) nunca valia nela."""
         for a in self.cfg.file.apps:
             if self.apps.obter(a.id) is not None:
                 continue
             self.apps.criar(app_id=a.id, name=a.name, package=a.package, activity=a.activity, apk_path=a.apk_path,
-                            nav_hints=a.nav_hints, known_selectors=a.known_selectors, builtin=a.builtin)
+                            nav_hints=a.nav_hints, known_selectors=a.known_selectors, builtin=a.builtin,
+                            category="qa" if a.builtin else None)
 
     def _seed_builtin_release(self) -> None:
         """Garante, na subida, que todo app embutido com APK versionado já tenha release instalável e
@@ -2338,6 +2371,9 @@ class AppState:
             self._bg.append(asyncio.create_task(laco_de_convergencia(self), name="loja-convergencia"))
             # O servidor sing-box do central acompanha o banco (sobe com o primeiro aparelho que o pede; ADR-056).
             self._bg.append(asyncio.create_task(self.rede_convergencia.laco(), name="rede-servidor"))
+            # Todo reinício do backend derruba os túneis (25.12): a medição do tráfego dos aparelhos com rede exigida é
+            # pedida já, sem apagar a prova de vazamento (ver `verificar_ao_subir`).
+            self.rede_convergencia.verificar_ao_subir()
             # A saída do central, medida em segundo plano (29.20); desligada com `rede.sonda.medir_central: false`.
             self._bg.append(asyncio.create_task(self.rede_saida_central.laco(), name="rede-saida-central"))
         else:
@@ -2629,7 +2665,14 @@ class AppState:
         try:
             s = self.settings.get()
             cutoff = to_iso(now() - timedelta(days=s.log_retention_days))
-            removed = self.bus.purge_older_than(cutoff)
+            # Fora do laço de eventos, como a purga de evidências: sem o índice de `events(ts)`, cada lote varre a tabela
+            # (~80–100 ms com 82 mil linhas, 03/10), e a primeira volta depois do RA-11 leva ~14 lotes de telemetria.
+            removed = await asyncio.to_thread(self.bus.purge_older_than, cutoff)
+            # RA-11: a telemetria do parque (`instance.updated`, o DTO inteiro do aparelho) vence em 48 h, antes do
+            # resto do log; só a sem execução, para a linha do tempo de uma execução não perder nada.
+            telemetria = await asyncio.to_thread(
+                lambda: self.bus.purge_older_than(to_iso(now() - timedelta(hours=TELEMETRIA_RETENCAO_H)),
+                                                  kinds=TELEMETRIA_KINDS, so_sem_execucao=True))
             ev_cut = to_iso(now() - timedelta(days=s.evidence_retention_days))
             old = await asyncio.to_thread(self._apagar_evidencias_vencidas, ev_cut)
             # Entrega já feita de comando já fechado não é histórico — o histórico é `commands`. Sem esta
@@ -2643,9 +2686,13 @@ class AppState:
             # Achados #39/#143: até aqui só `events` e `evidence` venciam — commands, ai_calls e measurements
             # cresciam para sempre, e token de inscrição usado ficava eternamente na tabela.
             outras = self._purgar_demais_tabelas(cutoff)
-            if removed or old or outras or arquivos:
-                log.info("retenção: %s eventos, %s execuções com evidências, %s linhas de outras tabelas e "
-                         "%s arquivo(s) removidos", removed, len(old), outras, arquivos)
+            if removed or telemetria or old or outras or arquivos:
+                log.info("retenção: %s eventos (+%s de telemetria), %s execuções com evidências, %s linhas de outras "
+                         "tabelas e %s arquivo(s) removidos", removed, telemetria, len(old), outras, arquivos)
+            # RA-11: as estatísticas do planejador de consultas ao fim da volta (`sqlite_stat1` não existia em 03/10).
+            # `optimize` só refaz o que mudou e é barato; no PostgreSQL quem faz isso é o autovacuum.
+            if self.db.dialect == "sqlite":
+                await asyncio.to_thread(self.db.execute, "PRAGMA optimize")
         except Exception:  # noqa: BLE001
             log.exception("retenção")
         return True
@@ -2699,6 +2746,17 @@ class AppState:
                 total += self.decisao_sombra.aplicar_retencao(self.cfg.file.ai.decisao_fechada.retencao_dias)
         except Exception:  # noqa: BLE001 - idem
             log.exception("decisao_fechada: retenção da sombra")
+        total += self._purgar_memorias_vencidas()
+        return total
+
+    def _purgar_memorias_vencidas(self) -> int:
+        """RA-11: memória com prazo (`memory_items.expires_at`) que já venceu sai do banco. `purge_expired_memories`
+        existia e ninguém o chamava: a memória vencida só sumia da leitura (o filtro de `include_expired`)."""
+        agora = now_iso()
+        total = 0
+        for r in self.db.query("SELECT DISTINCT profile_id FROM memory_items WHERE expires_at IS NOT NULL"
+                               " AND expires_at <= ?", (agora,)):
+            total += self.social_repo.purge_expired_memories(str(r["profile_id"]), now=agora)
         return total
 
     def _purgar_arquivos_vencidos(self, retention_days: int) -> int:

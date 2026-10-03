@@ -13,13 +13,23 @@ Funções puras, usadas pelo executor, pelo repositório, pelo despacho e pela e
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import unicodedata
+from collections.abc import Awaitable, Callable, Collection
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
+from ..automation.conhecimento_de_telas import ConhecimentoDeTelas
 from ..automation.hierarchy import (SUBTIPO_CODIGO, UiElement, UiTree, detectar_trava_generica,
                                     normalizar_texto_de_tela)
+from ..devices.codificacao import recortar_jpeg
 from ..models import SAIDA_VALOR_MAX, SAIDA_VALUE_KINDS, PlanStep
-from ..security.redaction import looks_secret, mentions_credential, parece_senha_ou_codigo
+
+if TYPE_CHECKING:
+    from ..planning.provider import Transcricao
+from ..security.redaction import looks_secret, mentions_credential, parece_senha_ou_codigo, redact
 from ..util import url_abrivel
 
 #: `{{saida:<nome>}}`, o nome no alfabeto de `SAIDA_NOME_RE`. Espaço junto das chaves é tolerado (o planejador escreve
@@ -35,6 +45,11 @@ PREFIXO_DA_VARIAVEL = "saida_"
 class LeituraInvalida(ValueError):
     """A chamada de `read_value` não pôde ler o valor (elemento inexistente, trecho fora do texto, tipo que não casa).
     É erro de chamada: o ator tenta de novo, como numa ferramenta rejeitada. Nada disto é recusa da triagem."""
+
+
+class LeituraSemTexto(LeituraInvalida):
+    """O elemento existe e não tem texto nem descrição: a ÚNICA falha da árvore que abre o caminho da leitura visual
+    (item 12.5). Qualquer outra falha (id inexistente, trecho fora do texto, tipo errado) segue recusa comum."""
 
 
 # ------------------------------------------------------------------ referências
@@ -196,7 +211,7 @@ def ler_valor(arvore: UiTree, *, element_id: str, trecho: str | None, tipo: str)
         return valor, itens, el
     fonte = texto_do_elemento(el)
     if not fonte:
-        raise LeituraInvalida(f"o elemento {element_id} não tem texto nem descrição para ler")
+        raise LeituraSemTexto(f"o elemento {element_id} não tem texto nem descrição para ler")
     if trecho:
         pedaco = limpar(trecho)
         i = fonte.casefold().find(pedaco.casefold()) if pedaco else -1
@@ -218,6 +233,133 @@ _DIGITOS_DE_CODIGO = re.compile(r"[0-9]{4,8}")
 #: de uma senha — `Joao_Silva2024` e `fulano@outlook.com` passam; `Xk9#pq2L` não.
 _SIMBOLO_DE_SENHA = re.compile(r"[^\w\s.@+\-:/]")
 
+#: Palavras que falam de código de verificação, em inglês, português e espanhol (já SEM acento e em minúsculas: o texto
+#: passa por `normalizar_texto_de_tela`). Genéricas de propósito: nenhum nome de app, porque o que identifica o código é a
+#: FORMA ("123456 is your … code", "use 482913 to confirm your identity", "é seu código"), não quem o mandou. As frases
+#: "is your … code", "é seu código" e "es tu código" se reduzem à palavra `code`/`codigo`.
+_PALAVRAS_DE_CODIGO = re.compile(
+    r"\b(?:codes?|codigos?|codice|verification|verificacion|verificacao|verify|verifying|verificar|confirm|confirmar|"
+    r"confirmacao|confirmacion|identity|identidad|identidade|security|seguridad|seguranca|login|log in|sign.?in|"
+    r"entrar|iniciar sesion|ingresar|otp|2fa|passcode|one.?time|pin)\b")
+#: Uma sequência de dígitos que pode ser um código, com UM separador entre dígitos (espaço, hífen, ponto, vírgula, ponto médio,
+#: sublinhado, barra, espaço de largura zero). Sem dígito nem `:` colado antes (hora). O texto já vem canônico (`_canonico`).
+_SEP_DE_CODIGO = r"[\s.,·_/\-​-‍⁠﻿]"
+_SEQUENCIA_NUMERICA = re.compile(rf"(?<![\d:])\d(?:{_SEP_DE_CODIGO}?\d)*(?!\d)")
+_SEPARADOR = re.compile(_SEP_DE_CODIGO)
+#: Quantos caracteres separam o número da palavra de código quando o texto é a TELA inteira (várias linhas coladas): a
+#: mesma linha, e não o resto da tela. No texto de UM elemento ou de uma linha, vale o texto todo.
+_JANELA_DA_TELA = 48
+#: Dígitos de um código: 4 a 8 (os de 2FA, e-mail e SMS vão de 4 a 8). Abaixo disso é contagem pequena ou ano; acima, é
+#: telefone, cartão, id. É o mesmo limiar de `_DIGITOS_DE_CODIGO`.
+_CODIGO_MIN, _CODIGO_MAX = 4, 8
+#: Código alfanumérico curto ("G-482913", "ABC123"): sem espaço, de 4 a 10 caracteres, com letra e pelo menos 3 dígitos. É o
+#: limiar da leitura visual (`forma_de_codigo`): palavra sem dígito, data ("12/10") e hora ("14h30", "14:30") não casam.
+_TOKEN_CURTO = re.compile(r"\S{4,10}")
+_HORA = re.compile(r"[0-9]{1,2}[h:][0-9]{2}(?:min)?|[0-9]{1,2}h")
+_TOKEN_ALFANUMERICO_DIGITOS_MIN = 3
+
+
+def _canonico(texto: str | None) -> str:
+    """O texto como ele é LIDO: NFKC (largura total vira ASCII) e os dígitos de outros alfabetos ("٤٨٢٩١٣") em ASCII. Sem isto,
+    "４８２９１３" e "٤٨٢٩١٣" passariam por texto comum ao lado de um código."""
+    t = unicodedata.normalize("NFKC", texto or "")
+    return "".join(str(d) if not c.isascii() and c.isdigit() and (d := unicodedata.digit(c, None)) is not None else c
+                   for c in t)
+
+
+def _data_plausivel(a: int, b: int) -> bool:
+    return (1 <= a <= 31 and 1 <= b <= 12) or (1 <= a <= 12 and 1 <= b <= 31)
+
+
+def _eh_data(grupos: list[str]) -> bool:
+    """Os grupos de dígitos têm a forma de uma data ("12/10", "14.10.2026", "2026-10-02")? Dia e mês plausíveis."""
+    n, tam = [int(g) for g in grupos], [len(g) for g in grupos]
+    if len(grupos) == 2:
+        return max(tam) <= 2 and _data_plausivel(n[0], n[1])
+    if len(grupos) == 3:
+        if tam[0] == 4 and 1900 <= n[0] <= 2100 and tam[1] <= 2 and tam[2] <= 2:
+            return _data_plausivel(n[1], n[2])
+        if tam[0] <= 2 and tam[1] <= 2 and tam[2] in (2, 4):
+            return _data_plausivel(n[0], n[1])
+    return False
+
+
+def _numeros_de_codigo(texto: str) -> list[tuple[int, int, str]]:
+    """Posição e dígitos de cada número de 4 a 8 dígitos do texto já canônico e normalizado, com separador entre grupos IGUAIS
+    ("123 456", "1234-5678", "482.913"). Data ("2026-10-02", "12/10"), telefone ("555-1234"), decimal ("12.345") e hora ficam
+    de fora: os grupos de um código têm o mesmo tamanho; os dessas coisas, em geral, não."""
+    achados: list[tuple[int, int, str]] = []
+    for m in _SEQUENCIA_NUMERICA.finditer(texto):
+        bruto = m.group(0)
+        grupos = _SEPARADOR.split(bruto)
+        if len(grupos) == 1 or (len({len(g) for g in grupos}) == 1 and 2 <= len(grupos[0]) <= 4
+                                and not _eh_data(grupos)):
+            digitos = "".join(grupos)
+            if _CODIGO_MIN <= len(digitos) <= _CODIGO_MAX:
+                achados.append((m.start(), m.end(), digitos))
+            continue
+        if not re.fullmatch(r"[0-9 ]+", bruto):
+            continue                                    # outro separador com grupos desiguais: data, telefone, decimal
+        pos = m.start()
+        for g in bruto.split(" "):                      # "123456 2 minutos": o código vem antes do resto
+            if _CODIGO_MIN <= len(g) <= _CODIGO_MAX:
+                achados.append((pos, pos + len(g), g))
+            pos += len(g) + 1
+    return achados
+
+
+def forma_de_codigo(texto: str | None) -> bool:
+    """O texto INTEIRO (um valor, uma linha do recorte) tem FORMA de código, sem precisar de palavra de contexto?
+
+    1. só número, de 4 a 8 dígitos, com ou sem separadores ("482913", "482 913", "482.913", "482·913"), em qualquer alfabeto de
+       dígitos; fora as datas plausíveis ("12/10", "02/10/26") — um número com separador de milhar ("1.234") também é recusado;
+    2. token curto alfanumérico (4 a 10 caracteres, sem espaço, com letra e ao menos 3 dígitos: "G-482913", "ABC123"), fora a
+       hora ("14h30"). Username curto com ano ("joao2024") é recusado também: o limiar é conservador, de propósito.
+
+    É o teste da leitura visual, onde só se tem a linha (a árvore vê a tela inteira e acha o contexto)."""
+    t = _canonico(texto).strip()
+    if not t:
+        return False
+    if re.fullmatch(rf"\d(?:{_SEP_DE_CODIGO}?\d)*", t):
+        grupos = _SEPARADOR.split(t)
+        return _CODIGO_MIN <= len("".join(grupos)) <= _CODIGO_MAX and not _eh_data(grupos)
+    return _token_alfanumerico(t)
+
+
+def _token_alfanumerico(token: str) -> bool:
+    """Token curto (4 a 10 caracteres, sem espaço) com letra e ao menos 3 dígitos, fora a hora: "G-482913", "ABC123"."""
+    if not _TOKEN_CURTO.fullmatch(token) or not any(c.isalpha() for c in token) or _HORA.fullmatch(token.casefold()):
+        return False
+    return sum(c.isdigit() for c in token) >= _TOKEN_ALFANUMERICO_DIGITOS_MIN
+
+
+def codigo_na_linha(texto: str | None, *, so_digitos: str | None = None, janela: int | None = None) -> bool:
+    """O texto (um elemento, uma linha, um valor) tem um número de 4 a 8 dígitos (ou um código alfanumérico curto) E fala de
+    código ou verificação?
+
+    Generoso de propósito (ADR-009: levar um código de um app a outro é o que se veda; recusar um dado comum custa uma
+    parada com o motivo). Sem palavra de código, "Reunião às 14h do dia 12345" passa; com a palavra e um número fora de
+    4 a 8 dígitos ("login 123 vezes", "verificação de 123456789 itens") também. `so_digitos` restringe ao número que for
+    exatamente este (o valor que o ator leu); `janela` (caracteres) pede a palavra PERTO do número: é o texto da tela
+    inteira, onde um menu "Entrar" não torna código a contagem de seguidores do outro lado."""
+    t = normalizar_texto_de_tela(_canonico(texto))
+    palavras = [m.span() for m in _PALAVRAS_DE_CODIGO.finditer(t)]
+    if not palavras:
+        return False
+    for ini, fim, digitos in _numeros_de_codigo(t):
+        if so_digitos is not None and digitos != so_digitos:
+            continue
+        if janela is None or any(a - fim <= janela and ini - b <= janela for a, b in palavras):
+            return True
+    if so_digitos is not None:
+        return False
+    # Código alfanumérico curto na mesma linha da palavra de código ("Your code is ABC123", "G-482913 is your … code").
+    for m in re.finditer(r"\S+", t):
+        if _token_alfanumerico(m.group(0).strip(".,;:!?()[]\"'")) and (
+                janela is None or any(a - m.end() <= janela and m.start() - b <= janela for a, b in palavras)):
+            return True
+    return False
+
 
 def triagem(valor: str, *, do_elemento: str = "", da_tela: str = "", campo_de_senha: bool = False) -> str | None:
     """Por que o valor NÃO pode ser saída: "senha", "código de verificação" ou "token ou segredo"; `None` = dado comum.
@@ -233,7 +375,10 @@ def triagem(valor: str, *, do_elemento: str = "", da_tela: str = "", campo_de_se
     - formato de segredo (`looks_secret`: JWT, chave, blob base64, "code: 1234", par chave=valor) → token. Vale para
       endereço: um link com trecho aleatório de 32+ caracteres (link mágico de entrada, id opaco) é recusado — o
       link que entra numa conta é credencial;
-    - só dígitos (4 a 8) num elemento ou tela que fala de código ou credencial → código;
+    - o valor tem um número de 4 a 8 dígitos e fala de código ou verificação na mesma linha (`codigo_na_linha`: "123456 is
+      your … code", "use 482913 to confirm your identity") → código;
+    - só dígitos (4 a 8) num elemento ou tela que fala de código ou credencial, ou cujo número aparece com a palavra de
+      código na linha de origem (o elemento inteiro; na tela, a palavra a até `_JANELA_DA_TELA` caracteres) → código;
     - palavra única com cara de senha (`parece_senha_ou_codigo`) com símbolo, ou num contexto que fala de credencial
       → senha.
     """
@@ -246,11 +391,16 @@ def triagem(valor: str, *, do_elemento: str = "", da_tela: str = "", campo_de_se
         return "código de verificação" if trava.subtipo == SUBTIPO_CODIGO else "verificação da conta"
     if looks_secret(v):
         return "token ou segredo"
+    # O valor que traz o número E a palavra de código na mesma linha ("123456 is your … code"): é o código.
+    if codigo_na_linha(v):
+        return "código de verificação"
     contexto_da_tela = normalizar_texto_de_tela(f"{do_elemento} {da_tela}")
     fala_de_codigo = (detectar_trava_generica(contexto_da_tela, tem_onde_digitar=True) is not None
                       or mentions_credential(do_elemento))
-    compacto = re.sub(r"[\s.\-]", "", v)
-    if _DIGITOS_DE_CODIGO.fullmatch(compacto) and fala_de_codigo:
+    compacto = _SEPARADOR.sub("", _canonico(v))
+    if _DIGITOS_DE_CODIGO.fullmatch(compacto) and (
+            fala_de_codigo or codigo_na_linha(do_elemento, so_digitos=compacto)
+            or codigo_na_linha(da_tela, so_digitos=compacto, janela=_JANELA_DA_TELA)):
         return "código de verificação"
     # Só dígitos já foram decididos acima (o contexto de TELA inteira não basta para chamar um número de senha: o
     # menu "Senha" de uma tela qualquer recusaria toda contagem de seguidores). Endereço também não é senha — `?`, `=`
@@ -266,13 +416,19 @@ def texto_da_tela(arvore: UiTree) -> str:
     return " ".join(arvore.texts())
 
 
-def variaveis_da_receita(saidas: dict[str, tuple[str, str]], item_index: str | None) -> dict[str, str]:
+def variaveis_da_receita(saidas: dict[str, tuple[str, str]], item_index: str | None,
+                         visuais: Collection[str] = ()) -> dict[str, str]:
     """As saídas do objetivo como variáveis de receita (`saida_<nome>`). A do item desta cópia de `for_each` perde o
     sufixo (`x_i2` → `saida_x`): a receita aprendida no item 1 reproduz no item 2 com o valor do item 2. As saídas de
-    OUTROS itens ficam de fora — com o mesmo nome base, trocariam o valor certo pelo de outro item."""
+    OUTROS itens ficam de fora — com o mesmo nome base, trocariam o valor certo pelo de outro item.
+
+    `visuais` são os nomes lidos da IMAGEM (`origem='visual'`, item 12.5): ficam de fora. O valor que só um segundo leitor
+    confirmou não pode chegar a uma reprodução COM efeito sem passar pela pessoa, e a receita reproduz sem perguntar."""
     out: dict[str, str] = {}
     sufixo = f"_i{item_index}" if item_index else None
     for nome, (valor, tipo) in saidas.items():
+        if nome in visuais:
+            continue
         base = nome
         if sufixo is not None and nome.endswith(sufixo):
             base = nome[:-len(sufixo)]
@@ -304,3 +460,212 @@ def args_da_chamada_invalida(args: dict[str, object], arvore: UiTree) -> dict[st
     if args.get("value"):
         out["value"] = "**OMITIDO**"
     return out
+
+
+# ------------------------------------------------------------------ leitura visual (item 12.5, ADR-070)
+#: Vocabulário FECHADO das recusas da leitura visual, na ordem das barreiras (das baratas para a cara). O ator recebe
+#: SÓ o código: nem a transcrição do leitor, nem o motivo em texto livre — com eco, uma nova tentativa faria dos dois um
+#: leitor só. `triagem` sai como `triagem:<motivo>`, o motivo sendo o do vocabulário de `triagem()`. `leitor_falhou` é o
+#: leitor indisponível (erro do provedor), recusa como as outras.
+RECUSAS_VISUAIS = ("desligado", "elemento_com_texto", "regiao_nao_declarada", "arvore_truncada", "tela_sensivel",
+                   "fora_do_app", "sem_ancora", "captura_mudou", "repetida", "sem_leitor", "leitor_falhou", "ilegivel",
+                   "truncado", "nao_confere", "triagem")
+
+
+class LeituraVisualRecusada(Exception):
+    """A leitura visual foi recusada. NUNCA grava valor. `codigo` é de `RECUSAS_VISUAIS`; `motivo` só existe na triagem."""
+
+    def __init__(self, codigo: str, motivo: str | None = None):
+        if codigo not in RECUSAS_VISUAIS:
+            raise ValueError(f"código de recusa fora do vocabulário: {codigo!r}")
+        super().__init__(f"{codigo}:{motivo}" if motivo else codigo)
+        self.codigo = codigo
+        self.motivo = motivo
+
+    @property
+    def rotulo(self) -> str:
+        """O que vai ao ator, à ação e ao evento: o código, e na triagem `triagem:<motivo>`."""
+        return f"{self.codigo}:{self.motivo}" if self.motivo else self.codigo
+
+
+@dataclass(frozen=True, slots=True)
+class LeituraVisual:
+    """Uma leitura visual VÁLIDA: o valor (do ator, conferido), o recorte que o leitor viu e o sha256 dele."""
+
+    valor: str
+    recorte: bytes
+    sha256: str
+    alvo: UiElement
+
+
+#: A imagem para o recorte, buscada só na barreira 6: (árvore, JPEG, largura e altura do aparelho), ou `None` se não veio.
+ObterImagem = Callable[[], Awaitable[tuple[UiTree, bytes | None, int, int] | None]]
+Transcrever = Callable[[bytes, dict[str, str]], Awaitable["Transcricao"]]
+#: A chave de "já houve uma tentativa visual": (nome, assinatura da árvore, limites da âncora).
+ChaveDeTentativa = tuple[str, str, tuple[int, int, int, int]]
+
+
+def descendentes_com_texto(arvore: UiTree, ancora: UiElement) -> bool:
+    """Algum elemento DENTRO dos limites da âncora (ela mesma incluída) tem texto ou descrição? Se tem, a árvore não é
+    cega ali e a leitura vai pelo texto (ou recusa): a visual só existe onde a árvore provou não ter nada."""
+    return any((e.text or e.desc) for e in arvore.elements if e.id == ancora.id or _dentro(e.bounds, ancora.bounds))
+
+
+_PONTAS = " .,;:!?\"'“”‘’«»()[]"
+
+
+def _palavras(texto: str) -> list[str]:
+    """NFKC, caixa e espaços colapsados, pontuação e aspas das PONTAS fora, ACENTOS MANTIDOS ("mãe" ≠ "mae")."""
+    t = re.sub(r"\s+", " ", unicodedata.normalize("NFKC", texto or "").casefold()).strip().strip(_PONTAS)
+    return t.split(" ") if t else []
+
+
+def _termina_cortado(texto: str) -> bool:
+    return (texto or "").rstrip().endswith(("…", "..."))
+
+
+def conferir_transcricao(valor: str, nome: str, t: Transcricao) -> None:
+    """Barreiras 9 a 11: o leitor leu, não é truncado e CONCORDA com o ator. Levanta `LeituraVisualRecusada`.
+
+    A concordância exige as duas coisas: o valor do ator, normalizado, é igual ao `campos[nome]` do leitor, normalizado
+    (a regra da proposta verdade), E ele é uma sequência contígua de PALAVRAS INTEIRAS de uma das `linhas` (o acréscimo do
+    juiz: contra um campo que o leitor inventou sem estar escrito na imagem).
+
+    "Truncado" (nível 1.1, emenda de 03/10 ao ADR-070 §4): vale só para o valor do ator, o campo do leitor e a linha que
+    contém o valor. A prévia do corpo na linha da caixa do Outlook SEMPRE termina em "…" (K-079), e recusar por ela
+    derrubava toda leitura. A marca global `t.truncado` não diz QUAL texto está cortado: ela só é posta de lado quando
+    uma linha alheia cortada a explica; sem nenhuma, o corte pode ser o do campo e a leitura é recusada."""
+    if not t.legivel:
+        raise LeituraVisualRecusada("ilegivel")
+    campo = t.campos.get(nome)
+    do_ator = _palavras(valor)
+    n = len(do_ator)
+    com_valor = {i for i, p in enumerate(_palavras(linha) for linha in t.linhas)
+                 if n and any(p[j:j + n] == do_ator for j in range(len(p) - n + 1))}
+    alheia_cortada = any(_termina_cortado(x) for i, x in enumerate(t.linhas) if i not in com_valor)
+    if (_termina_cortado(valor) or _termina_cortado(campo or "")
+            or any(_termina_cortado(t.linhas[i]) for i in com_valor)
+            or (t.truncado and not alheia_cortada)):
+        raise LeituraVisualRecusada("truncado")
+    if not do_ator or campo is None or _palavras(campo) != do_ator:
+        raise LeituraVisualRecusada("nao_confere")
+    if not com_valor:
+        raise LeituraVisualRecusada("nao_confere")
+
+
+def recortar(jpeg: bytes, largura: int, altura: int, limites: tuple[int, int, int, int]) -> bytes:
+    """O recorte da âncora no JPEG da observação (`devices.codificacao.recortar_jpeg`: sem margem, a linha vizinha pode ser
+    sensível). Área vazia ou JPEG ilegível → `sem_ancora`."""
+    try:
+        return recortar_jpeg(jpeg, largura, altura, limites)
+    except ValueError as exc:
+        raise LeituraVisualRecusada("sem_ancora") from exc
+
+
+def ancora_sem_limites(arvore: UiTree, element_id: str, largura: int, altura: int) -> bool:
+    """A âncora existe mas não tem área positiva dentro da tela (barreira 5)?"""
+    a = arvore.by_id(element_id)
+    if a is None:
+        return True
+    x1, y1, x2, y2 = max(0, a.bounds[0]), max(0, a.bounds[1]), min(largura, a.bounds[2]), min(altura, a.bounds[3])
+    return x2 <= x1 or y2 <= y1
+
+
+async def ler_valor_visual(*, habilitado: bool, arvore: UiTree, element_id: str, nome: str, valor_do_ator: str,
+                           conhecimento: ConhecimentoDeTelas | None, tela: str | None, image_policy: str,
+                           fora_do_app: str | None, largura: int, altura: int, obter_imagem: ObterImagem,
+                           tentativas: set[ChaveDeTentativa], transcrever: Transcrever | None,
+                           tipo_da_tela: str | None = None) -> LeituraVisual:
+    """Leitura visual de UMA saída, conferida às cegas (item 12.5, ADR-070). Roda as barreiras na ordem, das baratas para a
+    cara, e levanta `LeituraVisualRecusada` na primeira que falhar — nunca devolve valor sem a concordância do leitor.
+
+    0 desligado · 1 elemento_com_texto · 2 regiao_nao_declarada · 3 arvore_truncada · 4 tela_sensivel/fora_do_app ·
+    5 sem_ancora · 6 captura_mudou · 7 repetida · 8 sem_leitor · 9 ilegivel · 10 truncado · 11 nao_confere · 12 triagem.
+
+    A barreira 1 da especificação ("a árvore tenta primeiro") é do executor: ele só chama aqui depois que `ler_valor`
+    falhou com `LeituraSemTexto`. `transcrever` recebe SÓ o recorte e os nomes e descrições das saídas pedidas — o valor do
+    ator, o comando e a tela inteira ficam de fora —, e a transcrição nunca sai desta função (só o valor conferido)."""
+    if not habilitado:
+        raise LeituraVisualRecusada("desligado")
+    ancora = arvore.by_id(element_id)
+    if ancora is None or descendentes_com_texto(arvore, ancora):
+        raise LeituraVisualRecusada("elemento_com_texto")
+    if conhecimento is None or conhecimento.regiao_visual(tela, arvore, ancora, nome) is None:
+        raise LeituraVisualRecusada("regiao_nao_declarada")
+    if arvore.truncada:
+        raise LeituraVisualRecusada("arvore_truncada")
+    # A leitura NÃO serve para ler código de 2FA nem de desafio (ADR-009): tela classificada como desafio ou código, ou com
+    # conta travada detectada, não chama o leitor.
+    if (arvore.sensitive or image_policy == "never" or arvore.conta_travada is not None
+            or tipo_da_tela in ("desafio", "dois_fatores")):
+        raise LeituraVisualRecusada("tela_sensivel")
+    if fora_do_app is not None:
+        raise LeituraVisualRecusada("fora_do_app")
+    if ancora_sem_limites(arvore, element_id, largura, altura):
+        raise LeituraVisualRecusada("sem_ancora")
+    # 6: a imagem e a árvore são da MESMA observação. Sem imagem na observação, uma nova é capturada e a árvore dela
+    # precisa ter a mesma assinatura e a âncora os mesmos limites, senão a tela mudou entre as duas leituras.
+    obtido = await obter_imagem()
+    if obtido is None:
+        raise LeituraVisualRecusada("captura_mudou")
+    arvore2, jpeg, largura2, altura2 = obtido
+    nova = arvore2.by_id(element_id)
+    if (jpeg is None or arvore2.sensitive or nova is None or nova.bounds != ancora.bounds
+            or arvore2.signature() != arvore.signature()):
+        raise LeituraVisualRecusada("captura_mudou")
+    # A chave não usa o sha do JPEG: o relógio da barra de status muda os bytes, e uma nova captura da mesma tela abriria
+    # outra tentativa. Tela e âncora iguais = o mesmo par.
+    chave = (nome, arvore.signature(), ancora.bounds)
+    if chave in tentativas:
+        raise LeituraVisualRecusada("repetida")
+    tentativas.add(chave)
+    if transcrever is None:
+        raise LeituraVisualRecusada("sem_leitor")
+    recorte = recortar(jpeg, largura2, altura2, ancora.bounds)
+    do_ator = limpar(valor_do_ator)
+    t = await transcrever(recorte, {nome: nome.replace("_", " ")})
+    texto = " ".join(t.linhas)
+    # 12 ANTES de 9 a 11: a triagem do RECORTE inteiro roda primeiro. Com código na imagem a leitura vai SEMPRE para a pessoa
+    # (como na árvore): se a conferência rodasse antes, o ator receberia `nao_confere` ou `truncado` e tentaria outra âncora
+    # sem que a triagem tivesse rodado. O recorte recusado não é guardado (quem chama só o grava quando esta função devolve).
+    motivo = _triagem_do_recorte(t.linhas, texto)
+    if motivo is not None:
+        raise LeituraVisualRecusada("triagem", motivo)
+    conferir_transcricao(do_ator, nome, t)
+    # Grava-se o valor do LEITOR (o que está na imagem), limpo do mesmo jeito: a concordância é no normalizado (caixa,
+    # pontuação das pontas), e gravar o do ator deixaria "FLAVIO PADILHA!" passar por "Flavio Padilha". O ator concordou
+    # (acima), então só a forma muda.
+    valor = limpar(t.campos[nome] or "")
+    motivo = triagem(valor, do_elemento=texto, da_tela=texto)
+    # Na leitura visual o valor com FORMA de código é recusado mesmo sem palavra de contexto: a árvore tem a tela inteira para
+    # ver que "482913" está sob "código de verificação"; o recorte de uma linha só tem a linha, e um código que o ator leu
+    # sozinho é exatamente o que o ADR-009 veda levar a outra etapa.
+    if motivo is None and forma_de_codigo(valor):
+        motivo = "código de verificação"
+    if motivo is not None:
+        raise LeituraVisualRecusada("triagem", motivo)
+    return LeituraVisual(valor=valor, recorte=recorte, sha256=hashlib.sha256(recorte).hexdigest(), alvo=ancora)
+
+
+def _triagem_do_recorte(linhas: list[str], texto: str) -> str | None:
+    """Por que o RECORTE inteiro não pode virar saída: qualquer LINHA com forma de código (`forma_de_codigo`: só número de 4 a 8
+    dígitos, com separador ou de outro alfabeto; token alfanumérico curto), com número de código e palavra de código
+    (`codigo_na_linha`) ou que a triagem comum recusa, ou a transcrição com sinal de desafio de conta. O código pode estar numa
+    linha que NÃO é a do valor (o ator leu o remetente, o código é o assunto), com ou sem palavra de contexto na imagem."""
+    for linha in linhas:
+        if forma_de_codigo(linha) or codigo_na_linha(linha):
+            return "código de verificação"
+        if (m := triagem(linha, do_elemento=linha, da_tela=texto)) is not None:
+            return m
+    if trava := detectar_trava_generica(normalizar_texto_de_tela(texto), tem_onde_digitar=True):
+        return "código de verificação" if trava.subtipo == SUBTIPO_CODIGO else "verificação da conta"
+    return None
+
+
+def razao_sem_segredo(texto: str | None) -> str:
+    """O motivo de um `step_blocked` (texto do MODELO, que pode citar o que viu: um código de verificação, um segredo), no
+    que se pode gravar em `steps.status_detail`, `attempts.error`, na nota da evidência e no evento (item 12.5). Redigido
+    (`security.redaction.redact`) e triado: se a triagem acusar, "motivo omitido (triagem: <motivo>)"."""
+    limpo = redact(texto or "") or ""
+    motivo = triagem(limpo, do_elemento=limpo, da_tela=limpo)
+    return limpo if motivo is None else f"motivo omitido (triagem: {motivo})"

@@ -72,6 +72,11 @@ class SignalKind(StrEnum):
     CORRECAO_DE_ENSINO = "correcao_de_ensino"
     TELA_VISTA = "tela_vista"
     TELA_DESCONHECIDA_CHAMOU_PESSOA = "tela_desconhecida_chamou_pessoa"
+    #: 30.17: a pessoa pediu ao curador a revisão de um item (`source_ref` = `pedido_de_revisao:<item>@<dossie_hash>`)
+    #: e a pessoa decidiu um parecer (`source_ref` = `parecer:<lr-id>`; a data da decisão, que `learning_reviews` não
+    #: tem coluna para guardar).
+    PEDIU_REVISAO = "pediu_revisao"
+    PARECER_DECIDIDO = "parecer_decidido"
 
 
 #: Sinais que contam como intervenção humana na régua diária (`learning_daily.interventions`).
@@ -223,3 +228,12 @@ class Origem(StrEnum):
     PESSOA = "pessoa"                # texto ou decisão de pessoa (nota, edição, manual)
     ENSINO = "ensino"                # ensino v2 / habilidade escrita
     SISTEMA = "sistema"              # observação automática (tela, memória)
+
+
+class Rotulo(StrEnum):
+    """Filtro `rotulo` do livro (RA-19): de que conjunto de apps. Os apps de teste são os de `apps.category='qa'` (o QA
+    embutido); o acervo deles não é descartado (o fluxo de 17 usos serviu 16 execuções reais), só sai da lista padrão."""
+
+    PRODUTO = "produto"              # sem os apps de teste (a lista padrão)
+    QA = "qa"                        # só os apps de teste
+    TODOS = "todos"

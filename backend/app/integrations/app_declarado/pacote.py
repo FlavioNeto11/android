@@ -20,6 +20,7 @@ from pathlib import Path
 
 import yaml
 
+from ...automation import conhecimento_de_telas as telas_do_app
 from ...automation import leitura_de_tela
 from ...devices.emulator import RENDERIZADORES, normalizar_renderizador
 from ...modules.applications.domain.definition import AppDefinition
@@ -36,7 +37,7 @@ PASTA_DOS_APPS = CONHECIMENTO_DE_APPS
 #: Os campos que o `app.yaml` aceita. Campo fora daqui é erro de digitação que seria ignorado em silêncio.
 _CAMPOS = frozenset({"app", "nome", "rotulo", "provedor_de_sessao", "precisa_de_perfil", "precisa_de_internet",
                      "ancora_do_perfil", "links_de_perfil", "tipos_de_texto", "leituras_de_conversa", "leitura",
-                     "renderizador_recusado", "atividades_de_conta_perdida", "apelidos"})
+                     "renderizador_recusado", "atividades_de_conta_perdida", "limpar_ao_retirar", "apelidos"})
 _PACOTE_ANDROID = re.compile(r"^[a-zA-Z][\w]*(\.[a-zA-Z][\w]*)+$")
 
 
@@ -144,6 +145,8 @@ def definicao_de_dados(dados: object, onde: str = "app.yaml") -> AppDefinition:
                                                            f"{onde}: renderizador_recusado"),
                          lost_account_activities=_textos(dados.get("atividades_de_conta_perdida"),
                                                          f"{onde}: atividades_de_conta_perdida"),
+                         clear_on_account_retire=_booleano(dados.get("limpar_ao_retirar"),
+                                                           f"{onde}: limpar_ao_retirar"),
                          aliases=_textos(dados.get("apelidos"), f"{onde}: apelidos"))
 
 
@@ -164,6 +167,26 @@ def _catalogo(pasta: Path, pacote: str, padrao: bool) -> CapabilityCatalog | Non
     if catalogo.package != pacote:
         raise PacoteInvalido(f"{caminho}: `app` é {catalogo.package!r}, mas o app.yaml diz {pacote!r}")
     return catalogo
+
+
+def _conferir_regioes_visuais(pasta: Path, catalogo: CapabilityCatalog | None) -> None:
+    """Item 12.5: toda `saida` de `leitura_visual.regioes` (`telas.yaml`) existe em alguma ação do catálogo. Uma região
+    que declara um valor que nenhuma ação entrega nunca seria usada — e é erro de digitação que o executor só
+    descobriria como `regiao_nao_declarada`. A forma do bloco já foi conferida pelo carregador de telas."""
+    if not (pasta / "telas.yaml").is_file():
+        return
+    try:
+        k = telas_do_app.carregar(pasta / "telas.yaml")
+    except telas_do_app.ConhecimentoInvalido as exc:
+        raise PacoteInvalido(f"{pasta / 'telas.yaml'}: {exc}") from exc
+    if not k.regioes_visuais:
+        return
+    declaradas = {s for c in (catalogo.capabilities if catalogo is not None else []) for s in c.saidas}
+    for r in k.regioes_visuais:
+        faltam = [s for s in r.saidas if s not in declaradas]
+        if faltam:
+            raise PacoteInvalido(f"{pasta / 'telas.yaml'}: leitura_visual.regioes[{r.tela}] declara a saída "
+                                 f"{', '.join(faltam)}, que nenhuma ação do catálogo entrega (`saidas`)")
 
 
 def _sessao(pasta: Path, pacote: str, padrao: bool) -> ConhecimentoDeSessao:
@@ -201,7 +224,9 @@ def manifesto_da_pasta(pasta: Path, *, raiz: Path | None = None) -> AppManifest:
         tela = leitura_de_tela.de_dados(leitura) if leitura is not None else None
     except leitura_de_tela.LeituraInvalida as exc:
         raise PacoteInvalido(f"{pasta / 'app.yaml'}: {exc}") from exc
-    return AppManifest(definition=definicao, catalog=_catalogo(pasta, pacote, padrao), screen=tela,
+    catalogo = _catalogo(pasta, pacote, padrao)
+    _conferir_regioes_visuais(pasta, catalogo)
+    return AppManifest(definition=definicao, catalog=catalogo, screen=tela,
                        session=fabrica_de_sessao(_sessao(pasta, pacote, padrao)) if tem_sessao else None)
 
 

@@ -23,6 +23,7 @@ from ..modules.identity.domain.persona import idade_em, nome_exibido, separar_vi
 from ..planning.catalog import pacote_ancora
 from ..util import new_token, now, now_iso, to_iso
 from .contas_nossas import hash_do_handle, citacao_da_conta, foi_retirada, registrar_lapide, rotulo_da_conta, MARCADOR
+from .limpeza_de_conta import AparelhoDaLimpeza
 from .sessao_gate import acoes_de_sessao, app_on_device
 
 #: As colunas de `account_sessions` com o apelido que os leitores antigos esperam: `observed_username` era o nome em
@@ -650,6 +651,31 @@ class SocialRepository:
                     return app, str(v["profile_id"])
         return None
 
+    def conflito_da_conta_nova(self, profile_id: str | None, app_id: str,
+                               instance_id: str | None = None) -> tuple[str, str | None, str] | None:
+        """`(aparelho, app, outra persona)` quando GANHAR uma conta em `app_id` faria a persona servir, num aparelho,
+        a um app que OUTRA persona já serve ali (D2-a); `None` quando a conta pode nascer. É o outro lado de
+        `quem_ja_serve`: aquele pergunta no vínculo, este na conta — a porta que o vínculo não vê.
+
+        O vínculo SEM app serve a todo app em que a persona tem conta (`profiles_of_instance`), então uma pessoa
+        vinculada sem app a um aparelho que já tem o Instagram de outra persona passa a servir o Instagram no
+        instante em que ganha a conta: o vínculo, feito antes, não tinha app nenhum para conferir (29.29).
+        Confere: o aparelho do cadastro (`instance_id`, que ainda vai ser vinculado) e cada aparelho de vínculo
+        sem app da persona. O vínculo COM app não entra: `bind` já o conferiu quando foi feito, e a conta nova não
+        muda o que ele serve. Persona que já tem conta no app também não: o vínculo sem app dela já o servia.
+        `profile_id=None`: pessoa ainda por nascer, sem vínculo nenhum (só o aparelho do cadastro conta).
+        Quem chama confere ANTES de criar qualquer linha: o 409 quer dizer "nada foi criado"."""
+        aparelhos: list[str] = [instance_id] if instance_id else []
+        if profile_id is not None and not self.db.one(
+                "SELECT 1 FROM profile_accounts WHERE profile_id=? AND app_id=?", (profile_id, app_id)):
+            aparelhos += [str(b["instance_id"]) for b in self.db.query(
+                "SELECT DISTINCT instance_id FROM device_profile_bindings WHERE profile_id=? AND active=1"
+                " AND app_id IS NULL ORDER BY instance_id", (profile_id,))]
+        for iid in dict.fromkeys(aparelhos):
+            if (conflito := self.quem_ja_serve(profile_id, iid, app_id)) is not None:
+                return iid, *conflito
+        return None
+
     def set_primary(self, profile_id: str, instance_id: str) -> None:
         """Marca o aparelho principal da persona (o par precisa estar vinculado; senão `KeyError`)."""
         if self.binding(profile_id, instance_id) is None:
@@ -854,14 +880,71 @@ class SocialRepository:
             self.on_conta_bloqueada(pid, app, conta, instance_id, texto, origem)
         return True
 
+    def aparelhos_da_conta(self, profile_id: str, conta: Row, handles: Sequence[str | None]) -> list[AparelhoDaLimpeza]:
+        """Os aparelhos onde a conta estava LOGADA, para a limpeza da retirada (29.27). Duas pistas, juntas:
+        - o marcador de quarentena ABERTO de um dos `handles` da conta (o @ da conta e o do cadastro, na âncora), do app
+          dela ou sem app: é o que prova a conta logada de verdade;
+        - o vínculo ativo da persona que serve ao app da conta (o do app, ou o sem app da âncora).
+        A SESSÃO não é pista: ela sobrevive ao desvínculo (`unbind` não a apaga) e `wrong_account`/`needs_person` dizem
+        "outra conta aberta" ou "pessoa precisa agir", não "esta conta está aqui"; o aparelho de uma sessão velha
+        podia ter passado a servir OUTRA persona viva, e o `pm clear` a apagaria. Perder um aparelho aqui é recuperável
+        (a rota manual do 29.24); apagar conta viva não é. A trava de quem executa (`limpeza_ao_retirar`) ainda confere
+        o aparelho, na hora, antes de limpar.
+        Chamar ANTES da retirada: ela troca o @ do marcador por `MARCADOR` e apaga sessão e vínculo. Ordem estável
+        (por aparelho). Só leitura."""
+        achados: dict[str, tuple[list[int], list[str]]] = {}
+
+        def _anotar(iid: str, origem: str, marcador: int | None = None) -> None:
+            ids, origens = achados.setdefault(iid, ([], []))
+            if marcador is not None:
+                ids.append(marcador)
+            if origem not in origens:
+                origens.append(origem)
+
+        alvos = sorted({normalizar_handle(h) for h in handles if h and normalizar_handle(h)})
+        for m in self.contas_travadas_abertas():
+            if m["handle"] in alvos and m["app_id"] in (None, conta["app_id"]):
+                _anotar(str(m["instance_id"]), "marcador", int(m["id"]))
+        for b in self.bindings_of_profile(profile_id):
+            if b["app_id"] is None or b["app_id"] == conta["app_id"]:
+                _anotar(str(b["instance_id"]), "vinculo")
+        return [AparelhoDaLimpeza(instance_id=iid, marcadores=tuple(ids), origens=tuple(origens))
+                for iid, (ids, origens) in sorted(achados.items())]
+
+    def outra_conta_no_aparelho(self, instance_id: str, *, account_id: str, app_id: str, package: str,
+                                marcadores_do_pedido: Sequence[int] = ()) -> str | None:
+        """O que, neste aparelho, mostra que o app serve a OUTRA conta que não a retirada (`account_id`)? É a trava de
+        quem vai dar `pm clear` (29.27): o `pm clear` apaga o app inteiro, e a plataforma só protege o que conhece.
+        Devolve a pista (`vinculo`, `sessao` ou `marcador`) ou `None`. Lê o banco DE AGORA, depois da retirada, que já
+        apagou as sessões e os vínculos da conta retirada em todos os aparelhos; o que sobra é de outra conta.
+        - vínculo ativo que serve ao app (o do app, ou o sem app de persona com conta nele: `profiles_of_instance`);
+        - sessão de outra conta do app, em QUALQUER status (até `unknown`: houve app aberto nela);
+        - marcador aberto de conta que não é a do pedido, do app ou sem app."""
+        apps = {app_id, package, *(str(x["id"]) for x in self.db.query("SELECT id FROM apps WHERE package=?", (package,)))}
+        for app in sorted(apps):
+            if self.profiles_of_instance(instance_id, app):
+                return "vinculo"
+        for app in sorted(apps):
+            if self.db.one("SELECT 1 FROM account_sessions s JOIN profile_accounts a ON a.id=s.account_id"
+                           " WHERE s.instance_id=? AND s.account_id<>? AND a.app_id=?",
+                           (instance_id, account_id, app)) is not None:
+                return "sessao"
+        if any(int(m["id"]) not in marcadores_do_pedido and m["app_id"] in (None, *apps)
+               for m in self.contas_travadas_abertas() if str(m["instance_id"]) == instance_id):
+            return "marcador"
+        return None
+
     def resolver_conta_travada(self, instance_id: str, *, por: str, nota: str | None = None,
-                               handle: str | None = None) -> int:
+                               handle: str | None = None, marcadores: Sequence[int] | None = None) -> int:
         """Uma pessoa decidiu o destino do aparelho (ou o disco foi apagado): o marcador aberto sai, e fica como
-        história. Com `handle`, só o daquela conta. Devolve quantos foram resolvidos. O PERFIL não é reativado aqui —
-        reativar é afirmar que a conta voltou a ser usável, e isso é decisão de pessoa na tela do perfil."""
+        história. Com `handle`, só o daquela conta; com `marcadores`, só os desses ids (a limpeza automática da
+        retirada, 29.27, que não pode citar o @: o marcador já está mascarado). Devolve quantos foram resolvidos. O
+        PERFIL não é reativado aqui — reativar é afirmar que a conta voltou a ser usável, e isso é decisão de pessoa na
+        tela do perfil."""
         abertos = [m for m in self.db.query("SELECT * FROM device_locked_accounts WHERE instance_id=?"
                                             " AND resolved_at IS NULL ORDER BY id", (instance_id,))
-                   if handle is None or m["handle"] == normalizar_handle(handle)]
+                   if (handle is None or m["handle"] == normalizar_handle(handle))
+                   and (marcadores is None or int(m["id"]) in marcadores)]
         for m in abertos:
             self.db.execute("UPDATE device_locked_accounts SET resolved_at=?, resolved_by=?, resolution=?"
                             " WHERE id=? AND resolved_at IS NULL", (now_iso(), por, (nota or "")[:500] or None,

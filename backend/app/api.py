@@ -9,6 +9,7 @@ import re
 import shutil
 import threading
 import time
+from dataclasses import asdict
 from time import monotonic
 from pathlib import PurePosixPath
 from typing import Any, Literal
@@ -43,6 +44,7 @@ from .devices.compatibilidade import (capacidades_de, motivo_do_renderizador, mo
                                       requisitos_de_release)
 from .devices.proxy import ProxyApplyBody, ProxyInput  # modelos da loja de apps fora de models.py (menos conflito)
 from .devices import rede  # rede por aparelho (ADR-056, 25.2): corpos e regras moram no módulo, como os do proxy
+from .integrations.app_declarado.prova import prova_do_pacote
 from .devices.verbs import PRAZO_POR_VERBO, prazo_de, verbos_suportados  # noqa: F401 - os testes ajustam o prazo por aqui
 from .models import (RUN_TERMINAL, RunStatus, DistributeSpec, Plan, ServerLimitsDTO, ServerLimitsPatch, ServerLimitValues,
                      AdoptDeviceBody, ApprovalBatchBody, ApprovalDecision, AppInput, AppPatch, BulkBody,
@@ -88,6 +90,7 @@ from .planning.catalog import registered
 from .releases.catalog import ReleaseValidationError
 from .social.persona_batch import PersonaBatchAccepted, PersonaBatchDTO
 from .social.service import SocialError
+from .taskqueue import observabilidade
 from .taskqueue.repository import CONTENT_TYPES
 from .models import RunSummary
 from .modules.execution.domain.command_refinement import CommandRefinement
@@ -528,6 +531,16 @@ async def app_overview_route(request: Request, app_id: str, days: int = Query(30
     return detalhe
 
 
+@router.get("/apps/{pacote}/conhecimento")
+async def app_conhecimento_route(pacote: str) -> dict[str, object]:
+    """RA-24: os YAML do conhecimento do app (`app/conhecimento/apps/<pacote>/`) com sha256 e o hash de blob do Git,
+    que confere com `git rev-parse <commit>:<caminho>` sem abrir a máquina. O parâmetro é o PACOTE, e não o id do app."""
+    prova = prova_do_pacote(pacote)
+    if prova is None:
+        raise err(404, "not_found", "Nenhum conhecimento declarado para este pacote.")
+    return asdict(prova)
+
+
 # ---------------------------------------------------------------- modo treinamento (itens 13.1–13.3)
 def _training_error(exc: Any) -> HTTPException:
     return err(exc.status, exc.code, exc.message)
@@ -700,7 +713,12 @@ async def usage(request: Request, run_id: str | None = None, days: int = Query(7
             # decisões no Sonnet sem uma leitura de cache e ninguém viu, porque o relatório só somava.
             "cache_inativo": [{"model": r["model"], "calls": r["calls"]} for r in rows
                               if r["role"] == "decide" and (r["model"] or "").startswith("claude-")
-                              and r["calls"] >= 10 and not (r["cache_read"] or 0) and not (r["cache_write"] or 0)]}
+                              and r["calls"] >= 10 and not (r["cache_read"] or 0) and not (r["cache_write"] or 0)],
+            # RA-10 (migração 080): custo por origem, rejulgamento (com a discordância por app), cascata do bloqueio,
+            # motivos do modelo forte e da imagem, e as etapas com decisão de IA ainda sem `driven_by`. Só chaves NOVAS:
+            # as de cima não mudam de sentido.
+            **observabilidade.grupos(s.db, prices, run_id=run_id,
+                                     desde=None if run_id else iso_in(-days * 86400))}
 
 
 @router.get("/flows")
@@ -3043,8 +3061,10 @@ async def run_successor(request: Request, run_id: str, body: RunSuccessorBody) -
 async def run_op(request: Request, run_id: str, op: str) -> Any:
     runs = st(request).runs
     # Cancelar pela rota é o GESTO de uma pessoa (sinal `cancelou_execucao`); o cancelamento que a sucessora faz não é.
-    # Repetir também é gesto (`repetiu_execucao`): os dois levam o operador da sessão ao sinal.
-    ops = {"start": runs.start, "pause": runs.pause, "resume": runs.resume,
+    # Repetir também é gesto (`repetiu_execucao`): os dois levam o operador da sessão ao sinal. Iniciar leva a pessoa ao
+    # evento (`iniciada_por`, P12): é o que separa a prévia iniciada de propósito do início automático do `mode=execute`.
+    ops = {"start": lambda rid: runs.start(rid, por=_autor_do_sinal(request)), "pause": runs.pause,
+           "resume": runs.resume,
            "cancel": lambda rid: runs.cancel(rid, por=_autor_do_sinal(request)),
            "retry_failed": lambda rid: runs.retry_failed(rid, por=_autor_do_sinal(request))}
     if op not in ops:

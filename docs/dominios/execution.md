@@ -188,13 +188,41 @@ do Instagram passam cada uma pela pergunta do seu app. A regra não muda (T19); 
 - **O que mudou no 24.2:** uma capability que o app da etapa não tem conta como nenhuma. Antes, `cap is None`
   liberava a etapa com o efeito que tivesse: uma chave inventada numa etapa do Instagram passava por fora da
   política. Agora cai na recusa do item 13.2, e o motivo cita a chave estranha.
-- A ação do Instagram numa etapa do Outlook não é julgada pelo catálogo do Instagram. No app da etapa ela não existe,
-  e o Outlook não tem catálogo: segue como etapa livre do Outlook.
+- A ação do Instagram numa etapa do Outlook não é julgada pelo catálogo do Instagram: no app da etapa ela não existe.
+  Desde o 12.3 o Outlook tem catálogo (só leitura), então a etapa com efeito cai na recusa do item 13.2 (antes, sem
+  catálogo, seguia como etapa livre do Outlook).
 - Etapa com efeito num app sem catálogo, dentro de um comando que também usa um app com catálogo, segue livre. É o
   decidido em `test_modo_treinamento.py::test_portao_recusa_efeito_sem_acao_num_app_com_catalogo`. Fechá-la exige
   decisão (ADR novo), não este item.
 - **Prova.** `tests/test_porta_de_politica_por_app.py` é `simulated` (harness, banco de teste, sem aparelho nem IA).
   Cobre a mistura Outlook (leitura) + Instagram (efeito sem capability), recusada na etapa de efeito.
+
+### A mesma porta no planejamento (RA-7, 03/10/2026)
+
+A regra da tabela acima mora em `planning/capabilities.py::efeito_fora_do_catalogo` e vale em dois lugares: no
+despacho (`_policy_gate`, a trava de sempre, com a mesma frase) e em `RunService._plan`, para TODO plano
+(planejador, fluxo e skill), antes de qualquer etapa existir.
+
+- O app da etapa é resolvido como no `_app_context`, por aparelho: o da etapa, senão o do plano, senão o do aparelho.
+- Basta uma etapa recusada para o plano inteiro sair sem etapas, com uma pergunta (`missing`, campo `policy`) por
+  etapa recusada. A execução vai a `needs_input`, nada é materializado e nenhuma decisão é gasta. Recusar só a
+  etapa com efeito deixaria os preparativos (abrir, preencher destinatário, assunto) rodarem à toa.
+- A linha do tempo recebe a frase; o evento `plan.refused` (persistido) leva `{motivo: "efeito_fora_do_catalogo",
+  etapas: [{key, title, app_id, app, capability, motivo}]}`, com o motivo de cada etapa no vocabulário fechado
+  `sem_acao_do_catalogo` | `acao_de_outro_catalogo`.
+- Num plano de FLUXO, a trilha da 045 (`_registrar_resolucao`) grava a resolução antes da porta. O fluxo casou de fato; o
+  que se recusou foi o plano dele.
+- App sem catálogo (o QA Messenger) segue livre com efeito. Os 12 fluxos ativos do central com `send_message` livre
+  são todos dele (medido em 03/10, só leitura).
+- **O caso que motivou** (r-20261001190557-e7bc42, 01/10 19:05Z: "enviar e-mail pelo Outlook", `fill_recipient`
+  com 16 e 17 decisões) rodou ANTES de o catálogo do Outlook existir no central: o runtime de 01/10 (`5d8b545`) e
+  o deploy de 02/10 ~16:20Z (`f9eed71`) não têm o `catalogo.yaml`. Sem catálogo, a porta não tinha o que recusar.
+  Depois que ele chegou, 5 de 5 planos com etapa no Outlook ligaram a capability (`OPEN_MAIL_INBOX`), contra 0 de
+  5 antes: o binding do planejador já está feito, e esta porta é a trava para fluxo, skill e provedor que não
+  passa pelo parser do 24.1.
+- **Prova.** `tests/test_recusa_no_planejamento.py` é `simulated` (harness, provedor por roteiro, sem aparelho nem
+  IA). Sem a porta, os 4 testes de execução falham. A prova real (5 leituras no android-01, decisões por etapa) é da
+  frente Android: `not_run`.
 
 ### Roteamento por conjunto de apps (item 24.5, ADR-058)
 
@@ -348,6 +376,77 @@ Prova (`simulated`), em `backend/tests/test_fatia_abrir_conversa.py::test_abrir_
 - toda chamada de IA da etapa aponta a tentativa, e nenhuma chamada da execução fica sem `attempt_id`;
 - na segunda execução, as receitas aprendidas reproduzem: `attempts.strategy == "recipe"`, `recipe_id` da receita e
   zero `decide`.
+
+## Caminho rápido 1: pular o ator, nunca a prova (LT-1, LT-2, LT-3; 03/10/2026)
+
+Os três atalhos tiram uma chamada de IA do caminho quando a prova já existe; nenhum converte incerteza em sucesso. Quem
+confere é sempre o mesmo `_verify` (ou a prova local de `_postcondition_holds`), e o fim do laço reusa o veredito em vez
+de pagar outro.
+
+- **LT-1, pós-condição na entrada.** No laço de `_run_step`, depois de observar e antes de o ator decidir (uma decisão de
+  receita que ainda reproduz vem antes): etapa SEM efeito (`side_effect == 0`, a UI otimista de uma etapa com efeito
+  mostra o "feito" antes de ele valer), tela não sensível e nenhuma saída por ler (`faltam_saidas()`). Etapa
+  determinística com `_postcondition_holds` verdadeira sai do laço para o `_verify` de sempre, com custo zero (a árvore já
+  foi lida), em qualquer volta. Etapa julgada sem nível de entrega confere só na ENTRADA (`decisions == 0`, uma vez por
+  tentativa, `JULGAMENTOS_ANTES_DO_ATOR`), e por padrão só pela prova local do catálogo
+  (`ENTRADA_JULGADA_SO_COM_PROVA_LOCAL`): sem ela, a tela de entrada quase nunca é a final e o julgamento pago subiria
+  `verify` por etapa. Com a constante em `False` o juiz barato confere na entrada, como o handoff de latência descreve.
+  "Não" ou "incerto" devolve a etapa ao ator na mesma tentativa, com o motivo no `history`.
+- **LT-2, `expect_done` em etapa julgada.** O ator marcou que a ação conclui a etapa julgada: em vez de voltar a ele só
+  para dizer "pronto", o `_verify` confere a tela agora (`uma_rodada=True`: um só julgamento, sem esperar a tela mudar
+  até o fim do orçamento). "Sim" guarda o veredito e sai do laço (uma verificação por etapa, não duas); "não"/"incerto"
+  entra no `history` e o laço continua NA MESMA tentativa, como na divergência de receita. Nunca `retry` nem `failed`
+  por causa dele: uma tentativa nova custa mais que o decide poupado. Não há guarda de `side_effect` aqui (a
+  especificação não pede): a ação com efeito que dispara `is_commit_action` já sai do laço antes.
+- **`steps.driven_by = 'sem_ator'`.** A etapa que fecha pelo LT-1 sem o ator decidir nada (e sem ação de receita) grava
+  `sem_ator`, nunca `ai` e nunca nulo. `aproveitamento.py` a conta à parte (`sem_ator`) e não a considera "elegível a
+  receita" (não há caminho a aprender); o painel a mostra como "Sem o ator". Quem fecha por `expect_done` (LT-2) teve
+  o ator agindo e segue `ai`.
+- **LT-3, `flows.match` com parâmetro RESERVED.** `account_label`, `instance_id` e `run_id` nunca são capturados do
+  comando; o valor é do aparelho e entra na materialização. O fluxo que os carrega deixou de ser recusado pelo molde
+  sem valor; um parâmetro NÃO reservado sem valor continua recusando. `_learn_flow` não mudou. O caminho da
+  habilidade (`skills/domain/matching.py::bind_template_parameters`) ficou de fora e seguiu recusando até o 30.29.
+
+Prova `simulated`: `tests/test_caminho_rapido_executor.py` (LT-1 e LT-2: contagem de `decide`/`verify`, "não" volta ao ator
+com `attempts == 1`, `sem_ator`), `tests/test_flows_account_label.py::test_fluxo_com_account_label_casa` (LT-3) e
+`tests/test_aproveitamento.py`. `not_run`: o efeito de latência no ambiente real (`decide` por etapa julgada em
+`/api/usage` antes e depois, `uses` dos fluxos com `{account_label}`, `verify` por etapa).
+
+## Caminho rápido 2: falha que sai cedo, abrir o app sem IA e retentativa no barato (LT-5, LT-6, LT-12; item 29.45, 03/10/2026)
+
+Do mesmo relatório de latência. Nenhum dos três converte falha em sucesso nem pula a prova.
+
+- **LT-5, "não" em tela parada sai cedo.** No `_verify`, depois de um "não" do juiz, 3 sondagens seguidas na mesma
+  assinatura de árvore (`SONDAGENS_DA_TELA_PARADA`, ~4,5 s com `judge_wait_s` de 1,5) encerram a verificação com o mesmo
+  veredito e o motivo na evidência. Antes ela esperava o orçamento inteiro (15 s; 60 s `patient`), mas a 2ª chamada só
+  vem com a tela mudada; em 7 d as "NÃO comprovada" tinham parede mediana de 16,9 s. Assinatura nova reabre a contagem.
+  Não sai cedo onde a mudança tem dono fora da tela: `patient` com `pending_marks` declaradas no catálogo (ADR-055) e
+  nível de entrega acima de `sent` (entregue/lida chega sem a árvore mudar antes). Efeito disparado segue `uncertain`.
+- **LT-6, `open_app` sem IA.** A etapa cuja pós-condição é `app_foreground` abre o app pelo executor antes de consultar o
+  ator, pelo caminho da reabertura pós-ANR (`open_app` + foco lido), como estratégia `deterministic` em
+  `attempts.strategy`. Uma vez por tentativa, só sem efeito, sem receita conduzindo e com o pacote entre os configurados.
+  A linha "aberto pelo executor, sem IA" diz o tempo e o foco; a etapa fecha pelo atalho do LT-1 como `sem_ator`. Pedido
+  que falha ou foco que não chega: a volta seguinte não comprova e o ator assume na mesma tentativa. A abertura entra na
+  regra do ANR como a da IA entrava (uma reabertura; a 2ª morte para a etapa). `esperar_foco` sonda a 0,5 s nos primeiros
+  5 s (`INTERVALO_INICIAL_DO_FOCO_S`, `JANELA_INICIAL_DO_FOCO_S`), depois volta aos 2 s.
+  - Em modo sombra essas etapas não alimentam o `_veredito_da_sombra`, porque a IA não decide nelas. Uma candidata de
+    `open_app` não promove por sombra.
+  - O `open_app` do comando do painel (`manager.open_app`, com HOME e foco pelo adb) não mudou: está fora do caminho da
+    etapa.
+- **LT-12, retentativa no tier 0.** A nova tentativa inteira subia ao modelo de escalonamento. Agora ela começa no tier 0
+  e sobe, até o fim da tentativa, na 1ª decisão do barato que:
+  - repetir, na mesma tela estrutural, a última ação da tentativa anterior (onde ela parou); ou
+  - dispararia o efeito.
+
+  Essa decisão é descartada antes de agir (não vira linha em `actions`) e refeita no tier 1, com
+  `ai_calls.escalate` = `nova_tentativa`. A última ação de cada etapa fica na memória do processo
+  (`_ultima_acao_da_etapa`) e some no desfecho final. Depois de reiniciado o backend, a retentativa começa no tier 0 sem
+  esse gatilho; os outros (erros seguidos, ciclo, efeito por risco) seguem valendo.
+
+Prova `simulated`: `tests/test_caminho_rapido_2.py` (LT-5 com o `_verify` direto; LT-6 e LT-12 no Harness). Os testes de
+`test_anr_sinal_proprio.py` e `test_estados_de_ia.py::test_recusa_na_decisao...`, cujo gancho é a decisão da IA que abre o
+app, desligam `OPEN_APP_SEM_IA`. `not_run`, que é o aceite: "NÃO comprovada" mediana 16,9 → ≤ 7 s; `open_app` mediana
+2,2 → ≤ 1,5 s; etapa `app_foreground` com decide = 0; motivo "nova tentativa" < 10/semana.
 
 ## VERIFY pela porta de capability
 
@@ -506,6 +605,48 @@ não escolheu nenhuma, e o produto deu "1 de 1 com sucesso comprovado" com a cai
 
 Prova: `simulated` (`tests/test_saidas_obrigatorias.py`, QA Messenger falso com catálogo de teste, o caso real reconstruído
 inclusive). Real: `not_run` (repetir a leitura do Outlook no android-01).
+
+### Leitura visual de saída de etapa (item 12.5, ADR-070)
+
+Na tela cega que o app declara, o valor que o ator leu NA IMAGEM conta como saída se um segundo leitor concordar às cegas. Liga só
+com `ai.leitura_visual.enabled` e com o papel `ai.roles.leitura` ([ia.md §17](../ia.md)). O dado do app é
+`leitura_visual.regioes` no `telas.yaml` (`tela`, `dentro_de` com o resource-id do contêiner, `saidas`): o carregador recusa
+`dentro_de` vazio, nome de saída fora do alfabeto e tela que o arquivo não declara; `app_declarado/pacote.py` recusa saída que
+nenhuma ação do catálogo entrega.
+
+- **Chamada:** `read_value(name, element_id, value=<o que o ator leu>, source="visual")`, só `value_kind=text`. O executor tenta a
+  ÁRVORE primeiro: se há texto, grava com `origem=arvore` (mesmo com `source=visual`); só a falha "sem texto nem descrição"
+  (`LeituraSemTexto`) abre o caminho visual, e qualquer outra falha é recusa comum.
+- **Barreiras** (`taskqueue/saidas.py::ler_valor_visual`, das baratas para a cara; a primeira que falha recusa e nada é gravado):
+  `desligado` · `elemento_com_texto` (âncora ou descendente com texto) · `regiao_nao_declarada` · `arvore_truncada` (`UiTree.truncada`)
+  · `tela_sensivel` (sensível, `image_policy=never`, conta travada, tela de desafio ou de código) · `fora_do_app` · `sem_ancora` ·
+  `captura_mudou` (sem imagem na observação, uma nova é capturada e exige a mesma assinatura de árvore e os mesmos limites) ·
+  `repetida` (chave nome + assinatura + limites, não o sha do JPEG) · `sem_leitor` · `leitor_falhou` · `ilegivel` · `truncado` ·
+  `nao_confere` · `triagem:<motivo>`. `fora_do_app` recebe o valor real (`_tela_fora_do_app`), como defesa em profundidade.
+- **Triagem visual:** valor com forma de código (4 a 8 dígitos) ou linha do recorte com número de código e palavra de código
+  (`saidas.codigo_na_linha`) é recusado, e a recusa leva a etapa a `waiting_user` (sem nova tentativa do ator e sem lhe dizer que a
+  linha tem código), como no caminho da árvore. Orçamento, prazo, crédito e recusa por política do leitor seguem o desfecho do ator
+  (`desfecho_de_ia`); só falha do provedor e saída inválida viram `leitor_falhou`.
+- **Receita:** `variaveis_da_receita` exclui as saídas `origem=visual`.
+- **Concordância:** valor do ator normalizado (NFKC, caixa, espaços, pontuação das pontas, acentos mantidos) igual ao campo do
+  leitor (grava-se o valor do LEITOR, limpo) E sequência contígua de palavras inteiras de uma das linhas. O leitor recebe só o recorte e os nomes das saídas.
+- **Sem eco:** na recusa o ator recebe só o código (histórico, `actions.error`, evento); a transcrição nunca sai de
+  `ler_valor_visual`, e o recorte recusado não é guardado.
+- **Sucesso:** `step_outputs` com `origem=visual`, `leitor`, `frame_sha256` e `evidence_id` (o recorte vira evidência); a ação não
+  leva o valor (`args.value` fica `**OMITIDO**`); o juiz da pós-condição recebe a imagem à força (`_verify(imagem_forcada=True)`).
+- **Consumidor** (`Scheduler._valor_visual_sem_a_pessoa`): etapa com `side_effect` ou `commit_guard` que cita valor visual vai para
+  `waiting_user` ("valor lido da imagem precisa da sua confirmação"), sem gastar tentativa; navegação e busca seguem. Confirmar na
+  árvore do app consumidor não vale (circular). **Limite da v1:** não há resolução própria para a pessoa confirmar o valor; ela
+  refaz o comando informando-o ou abandona o item.
+- **Junto:** o `step_blocked.reason` (texto do modelo) passa por `razao_sem_segredo` (redação + triagem) antes de
+  `steps.status_detail`, `attempts.error`, a nota da evidência e o evento `decision`; e as recusas da barreira de saídas
+  (`step_done` recusado e `read_value` rejeitado) têm conta própria que `observe_screen` e `find_element` não zeram: com 4, a etapa
+  vai para `fail_or_retry`.
+
+Limites da v1: a retomada de um `waiting_user` com valor visual não avança (não há confirmação do valor; as saídas são abandonar ou
+refazer), e uma falha passageira do provedor gasta a tentativa do par (a chave `repetida` é gravada antes da chamada).
+
+Prova: `simulated` (`tests/test_leitura_visual.py`, `tests/test_leitura_visual_papel.py`). Real: `not_run`.
 
 ## Conta e portas do app da etapa (item 24.4)
 
@@ -806,6 +947,13 @@ Com `mode=execute`, a resposta não muda.
   em `runs.plan`. Vazio no fluxo legado.
 - **A foto:** `RunService._fotografar_recursos` grava `objectives.resource_plan` logo depois do `materialize`, nos dois
   modos, quando `RunPlan.resources` não é vazio (ver [a trilha](#a-trilha-colunas-da-045)).
+- **Prévia é `mode='plan' AND started_at IS NULL`** (P12, 03/10/2026; decisão da orquestradora: não é defeito). A
+  execução em `mode=plan` para em `planned` e só executa pelo início explícito (`POST /api/runs/{id}/start`), e daí
+  em diante gasta decisões como qualquer outra. Contar como prévia toda linha com `mode='plan'` dava "12 de 25 prévias
+  executando, 211 decisões" na reavaliação; medido no central em 03/10 (só leitura), as 11 que executaram tinham sido
+  iniciadas 12 a 44 s depois de criadas. O `run.updated` do início leva `iniciada_por` (a pessoa da sessão ou `panel`
+  pela rota, `sistema` no `mode=execute`; [contrato, adendo v0.79](../api-contract.md)). Prova `simulated`:
+  `backend/tests/test_inicio_com_autor.py`.
 
 Provas (`simulated`), em `backend/tests/test_plan_report_na_execucao.py` (harness na porta 5640, `FakeInstagram`,
 `ig.abrir_conversa` publicada):

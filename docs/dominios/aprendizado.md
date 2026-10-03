@@ -98,6 +98,15 @@ gerenciador de aparelhos, de um lado, e o livro, do outro. Sem o livro ligado (`
 da etapa. O vocabulário é fechado (`domain/falhas.py::FailureKind`), e uma catraca por AST exige que todo motivo do
 executor caia fora de `outro`. A camada e o "onde alterar" saem do tipo na hora da leitura.
 
+Quando a etapa termina por erro de IA, o tipo vem dele e não do texto (RA-22, migração 081). O executor põe o
+`AIError.kind` no `StepOutcome.ai_error_kind` (o `desfecho_de_ia`, a verificação, e o `_run_guarded` do scheduler para o
+erro que escapou), e o scheduler o passa ao `finish_attempt` (que grava `attempts.error_kind`) e ao `transition_step`.
+Os dois classificam por `classificar_falha(texto, status, error_kind)`, o mesmo classificador puro da releitura:
+`budget` → `ia_orcamento`, `billing`/`balance` → `ia_saldo`, `refusal` → `ia_recusa`, `not_configured`, `error` e
+`invalid_output` → `ia_indisponivel` (`pelo_erro_que_encerrou`). `step_deadline` não decide: o ANR anotado no texto
+continua ganhando do prazo. O status vem antes (`interrupted` segue `interrompida`). Com isso a mensagem de IA do
+executor deixa de ser contrato; as REGRAS de texto ficam para o legado sem `error_kind`.
+
 **Dívida paga (29/09, `2b0e5db`).** O contrato de gesto mora em `app/shared/costuras.py`: `TomadaDeControle`,
 `CosturaDeControle`, `avisar`, as portas de comando e de ensino e `autor_do_gesto`. `taskqueue/costuras.py` o reexporta,
 e `test_aparelhos_nao_conhecem_a_fila` (em `test_arquitetura.py`) impede a volta do import `devices` → `taskqueue`.
@@ -127,6 +136,8 @@ simulada não promove nada. Nota com cara de credencial não é gravada (`note_r
 | `cancelou_execucao` | `POST /api/runs/{id}/cancel` (`RunService.cancel` com `por`); a sucessora que cancela a execução respondida não conta | neutro antes de rodar (`planning`, `needs_input`, `planned`); negativo depois (`running`, `paused`, `completed_with_issues`) |
 | `comando_incerto_resolvido` | `POST /api/commands/{id}/resolve` | `succeeded` neutro (é confirmar à mão: nunca evidência a favor); `failed` negativo; `cancelled` neutro |
 | `correcao_de_ensino` | `TeachingService.add_correction` (`POST /api/teaching-sessions/{id}/corrections`) | negativo, ligado à etapa corrigida |
+| `parecer_decidido` | a decisão da pessoa sobre um parecer do curador (30.17): o gesto ou o rótulo de uma transição | neutro; o `created_at` é o instante da decisão |
+| `pediu_revisao` | `POST /api/aprendizado/{kind}/{ref}/revisao` (30.17) | neutro; vira o gatilho `pedido_da_pessoa` |
 
 `tomou_controle`, `confirmou_a_mao` e `tela_desconhecida_chamou_pessoa` contam como intervenção humana na régua
 diária.
@@ -171,6 +182,32 @@ diária.
   reais desligam.
 - **Receita.** A promoção em sombra (item 21.14) para em `validated` quando há ação `commit`. O livro guarda o veto e a
   trilha.
+- **A causa do "ausente" e a herança da receita (RA-20, item 29.40, 03/10).** O vocabulário e a regra são do Aprendizado
+  (`domain/causa_do_ausente.py`); quem consulta é a loja (`taskqueue/recipes.py::RecipeStore.find`, da Android), com
+  UMA consulta a mais, só no "ausente". A causa é `espera_o_dono`, `desligada`, `variante`, `legada` (assinatura e
+  variante vazias, as 19 de 17/09), `versao`, `assinatura` ou `sem_receita`, contada em `receita.ausente{causa}`. A chave
+  sem receita herda, como CANDIDATA, a receita `active` da mesma etapa (`step_hash`) mais próxima, noutra variante, na
+  legada ou noutra versão; assinatura diferente nunca doa, e a chave esperando o dono ou posta de lado não herda. A
+  herdeira passa pelo veto de `save`, guarda a origem da doadora (`learned_from_step`) e só age depois de concordar em
+  sombra (`recipes_promote_after`); com `commit`, para em `validated`. `ai.recipes_heranca: false` só mede a causa, e
+  com `recipes_promote_after: 0` não há herança (a aprendida já nasce ativa). Quando a herdeira vira `active`, a legada
+  ativa da mesma etapa e versão sai (`superseded`, "provou-se na chave completa").
+- **O que uma execução simulada ensina não publica (RA-19, fatia B, 03/10; leitura 2, decidida pela orquestradora).**
+  - Origem simulada (`runs.simulated=1`) nunca NASCE ativa. A receita nasce candidata mesmo com
+    `ai.recipes_promote_after: 0` (`executor.py::_after_step`, `_origem_simulada`). O fluxo nasce candidato mesmo com
+    `aprendizado.fluxo.com_prova: false` (`nativos.py::fluxo_ao_nascer`).
+  - A concordância de uma execução simulada não promove receita: `RecipeStore.shadow(simulada=True)` não soma à
+    sequência da candidata, e a divergência dela zera, como qualquer outra.
+  - A sombra continua promovendo com evidência REAL (a do fluxo já só contava execução real), e a pessoa promove à mão.
+  - Sem a linha da execução, conta como simulada: nada se publica pelo que não se sabe de onde veio.
+  - `aprendizado.simulada_publica: true` é o modo anterior, só da suíte. O Harness é todo simulado e prova a reprodução
+    e o reaproveitamento, como `fluxo.com_prova: false` e `recipes_promote_after: 0`.
+  - Sem migração: o join `recipes.learned_from_step → steps.run_id` e `flows.source_run_id` → `runs.simulated` basta,
+    porque não há purga de `runs`.
+  - Prova `simulated`: `tests/test_origem_simulada.py`, com a consulta de join = 0 depois de duas execuções só
+    simuladas.
+  - O acervo antigo (14 receitas, 11 ativas ou validadas, e 3 fluxos ativos de origem simulada, todos do QA Messenger)
+    não foi rebaixado: decisão da orquestradora, nada de app real. A fatia A já o tira da lista padrão do livro.
 - **Habilidade.** O primeiro escritor real de `skill_validation_results`: cada execução de versão grava a observação
   (`proof=real` só de execução real). Execução com etapa confirmada à mão vira `uncertain`, nunca `passed`. O sistema
   pode validar; publicar é sempre de pessoa.
@@ -205,7 +242,9 @@ verificador** (ADR-024); como entram no prompt, em [ia.md §15](../ia.md).
    sistema publica na `fila_de_prova`, e a curadoria abre uma prova por (app, ação, papel).
 5. **Medida.** Em prova, 50% das unidades com a lição e 50% sem (unidade = etapa no ator, planejamento no planejador;
    braço por `sha1(item|unidade)`). O desfecho de cada exposição é gravado antes da purga de `ai_calls`, só em
-   execução real; a etapa confirmada à mão entra como `unverified`, nunca como sucesso. O veredito exige 8 unidades por
+   execução real; a etapa confirmada à mão entra como `unverified`, nunca como sucesso. O custo é o da execução: no
+   planejador entram só as chamadas com `origem` `execucao` ou nula (anteriores à 073), e a decisão fechada do Jev
+   (31.14), que leva o `run_id`, fica fora. O veredito exige 8 unidades por
    braço: "ajuda" fica (com 10% de controle), "atrapalha" desliga, "neutra" aposenta aos 20. Sem exposição por 60
    dias, aposenta; versão nova do app, volta à prova.
 6. **Teto.** Ator: 120 tokens e 3 lições; planejador: 150 e 3. O teto vale para todas as elegíveis antes do braço, e o
@@ -264,6 +303,27 @@ com o banco aberto só para leitura.
 - **Propostas** (sempre decisão de pessoa): `acao_de_catalogo` (ação nova não entra no catálogo pelo banco),
   `promover_licao` e `promover_tela`.
 - `scripts/aprendizado-backlog.py` grava o md em `data/aprendizado/` e imprime o topo.
+- **Quebra de série do `pct_por_receita`** (a parte das etapas conduzidas só por receita, em `Saude`): no deploy 7
+  (03/10/2026, processo do central de pé às 07:28:40Z; commit 49811568, migração 081) o denominador mudou. Antes,
+  a etapa conduzida pela IA com as receitas desligadas ficava com `driven_by` nulo (`-`, fora da conta). Desde então
+  ela é gravada `ai` (RA-10), e a etapa fechada pelo atalho do executor sem o ator entra como `sem_ator` (LT-1).
+  As duas contam no denominador e nenhuma conta como receita, então o número cai sem nenhuma receita ter piorado.
+  Compare só janelas do mesmo lado de 07:28:40Z.
+- **Quebra de série do LT-6** (29.45, caminho rápido 2): desde o deploy 8 (03/10/2026, processo do central de pé às
+  09:06:28Z, commit df860763), a etapa `app_foreground` sem efeito e sem receita conduzindo abre o app pelo executor
+  (`OPEN_APP_SEM_IA`), sem chamar o ator. Ela fecha pelo atalho com `driven_by = sem_ator` (antes, `ai`, com um
+  `decide`). O que muda nas séries do aprendizado:
+  - `so_ia` cai e `sem_ator` sobe sem nada ter mudado na tela. O `pct_por_receita` NÃO quebra: as duas origens já
+    contam no denominador desde o deploy 7. O aproveitamento tira `sem_ator` das elegíveis, então `elegiveis` e
+    `sem_cobertura` caem;
+  - a etapa não deixa ação do ator: não nasce receita nova de `app_foreground`, e a candidata dessas etapas não recebe
+    veredito de sombra (`_veredito_da_sombra` não tem caminho da IA para comparar). A `open_app` candidata do QA
+    (v4) não promove por sombra e fica candidata; quem a decide é uma pessoa no livro. A ativa continua reproduzindo,
+    porque o LT-6 só age com `rep is None`;
+  - por isso o backfill da chave genérica (RA-20 B) deixa `open_app` de fora;
+  - compare só janelas do mesmo lado de 09:06:28Z. Do lado da Jev, a amostra "sem casamento" da sombra do 31.10
+    também quebra nesta data: os fluxos revividos pelo 30.29 voltam a casar. Os 5 do QA Messenger foram desligados
+    por pessoa às 08:45Z, até o parecer do curador, e só entram quando forem religados.
 
 ## Fase 22 (29/09, noite): o que mudou nas regras
 
@@ -316,11 +376,37 @@ com o banco aberto só para leitura.
 
 - **Aprendizado** (oitava seção da barra; `features/aprendizado/`), com a contagem de "Para aprovar" no item da barra:
   - **Para aprovar:** a fila do D1, com a evidência, "Selecionar todos" e "Aprovar selecionados". A habilidade
-    validada se decide ali pela rota das habilidades. Embaixo, **Revisar**: o legado ativo com efeito, que só se
-    rebaixa ("Rebaixar selecionados");
+    validada se decide ali pela rota das habilidades. Embaixo, **Revisar**: o legado ativo com efeito, que a pessoa
+    mantém ("Confirmar que fica", 30.24) ou desliga, um a um ou em lote;
   - **Aprendido:** o catálogo unificado por tipo e estado, com desligar, aposentar e reativar, sempre com motivo;
   - **O que mais falha:** o relatório do A3, com as três colunas de custo e o falso positivo no topo;
   - **Sinais:** os votos e os gestos.
+- **Nomes, não códigos (validação do deploy 3, P2 a P5).** O painel mostra o app e a capability pelos nomes do
+  agrupamento do Aprendido ("Pós-condição não comprovada — Instagram · Abrir o feed", "Instagram › Abrir o perfil";
+  `app_nome` e `capability_nome` de `presentation/nomes.py`). O pacote e o código ficam no `title` e em "Para quem
+  desenvolve". A receita troca a chave da etapa pelo nome da capability, e dois itens iguais numa lista ganham quando
+  foram aprendidos (`model.ts::titulosDaLista`). O texto da lição nomeia a capability SÓ NA TELA
+  (`nomearCapabilityNoTexto`): o texto gravado vai ao prompt, onde o código é o que serve. Sem resposta HTTP, o estado
+  de erro diz "Sem resposta do servidor." (`lib/loadError.tsx`, todas as telas).
+- **Nomes também nas listas (validação do deploy 4).**
+  - A tela diz "capacidade", "Etapa livre (fora do catálogo)" e "Fora do catálogo" no lugar de "capability".
+  - As entradas do livro (listas, filas e detalhe) ganham `app_nome` (`presentation/nomes.py::nomear_apps`). "App:", a
+    Identidade e a Versão dizem o nome, com o pacote no `title`.
+  - A receita ganha `etapa`, o `steps.title` da etapa de origem. No app sem catálogo, ela vira o nome:
+    "Digitar a mensagem · etapa fill_message (v1)". O nome do catálogo vence; sem os dois, fica a chave.
+  - O `title` gravado não muda, e o dossiê do curador não leva `etapa`, porque o título de uma etapa pode citar um @
+    ou um contato.
+  - A ocorrência de falha diz "android-05 · etapa open_app · tentativa 1".
+- **O app de teste fora da lista padrão (RA-19, fatia A).**
+  - O Aprendido abre em **Produto**: `GET /api/aprendizado` sem `rotulo` esconde os apps de `apps.category='qa'` (o QA
+    embutido, 041), que eram 94 das 164 entradas do central em 03/10.
+  - O filtro é um seletor segmentado "Produto · QA · Todos", com o número de ocultos ao lado ("94 do QA ocultos").
+  - Com um app escolhido (`app=`), o padrão é `todos`: escolher o QA Messenger mostra o que ele tem.
+  - O acervo de teste NÃO é descartado (o fluxo de 17 usos serviu 16 execuções reais). Só sai da lista padrão; a
+    visão por app, as filas Para aprovar e Revisar, a contagem da barra e a saúde continuam lendo tudo
+    (`LearningService.livro` sem `rotulo`).
+  - Não há `papel` no YAML: o app de teste é o que a loja já marca (`apps.category`).
+  - A fatia B, depois do RA-22: a trava "origem simulada nunca passa de candidate" no D1.
 - **Execução:** o botão "Deu certo / Deu errado" em cada objetivo (aba "Por aparelho") e na execução inteira (aba
   "Relatório"). O motivo abre em linha, e "Reativar" aparece quando a resposta traz `desfazer`. A seção "Aprendizado
   desta execução" mostra o bloco `aprendizado`, os votos e os sinais. O cartão "Custo de IA desta execução" mostra
@@ -480,7 +566,9 @@ Só domínio puro (desenho em `design/aprendizado-vivo.md` §8.2-8.4); a porta, 
 - **Política de risco** (`domain/politica_de_risco.py::classificar`, fonte única): recebe `FatosDeRisco` (o `commit` do conteúdo,
   `human_origin`, se o app tem catálogo, os `FatosDoCatalogo` da etapa e sessão/autenticação) e devolve a classe, as razões em ordem
   e o motivo do evento. Vale a mais restritiva: `commit` com fatos da etapa que dizem "sem efeito" é C (`commit_fora_do_catalogo`);
-  sem fatos da etapa (capability não derivável) o `commit` é B, como na 30.21. A família envio/publicação/exclusão entra por
+  sem fatos da etapa (capability não derivável) o `commit` é B, como na 30.21. O `commit` em app SEM catálogo
+  (`commit_sem_catalogo`) é **B**, aprovado em lote: o dono confirmou em 03/10, e a emenda para C da mesma madrugada
+  (PR #127) foi revertida. A família envio/publicação/exclusão entra por
   `familia_do_efeito`, dado que os catálogos ainda não declaram. `conferir_aceite`: a IA nunca decide; aceitar parecer é da pessoa,
   em lote só na B; na A o parecer é só registro e `conferir_aceite` recusa qualquer efeito dele. `ia_permitida`: A
   `so_com_sobra` (depois das prioridades 1 a 4; o corte é do 30.11), B e C `sim`. `classificar_espera` (30.21) só traduz a classe para a faixa do evento.
@@ -488,7 +576,9 @@ Só domínio puro (desenho em `design/aprendizado-vivo.md` §8.2-8.4); a porta, 
   lista branca, até 30 evidências mais recentes com o total, trilha sem o motivo livre, relações, grupos de falha, votos sem nota,
   intervenções, e saúde, versão e política vigente quando fornecidas). Cada fato tem id citável (`ev:`, `run:`, `tr:`, `voto:`,
   `sinal:`, `fk-`, `<kind>:<ref>`, e as seções `item`, `risco`, `conteudo`, `saude`, `versao`, `politica`). `dossie_hash` = sha256
-  do JSON canônico, com as listas em ordem canônica e sem relógio (a idade sai de `criado_em`).
+  do JSON canônico, com as listas em ordem canônica e sem relógio (a idade sai de `criado_em`). O conteúdo do fluxo leva o
+  `app` principal do plano, os `apps` exigidos (`flow_required_apps`) e o `app` de cada etapa (nulo = o principal): sem eles,
+  o fluxo que atravessa apps (12.1, ler no Outlook e procurar no Instagram) parecia rodar todo no app principal.
 - **Contrato de saída** (`validar_saida`): escolha entre RÓTULOS FECHADOS, pensada para um adaptador de `choice` (provedor Jev):
   `decisao` (obrigatória), `faixa`, `causa`, `riscos`, `inconsistencias`, `falta`, com as opções em `OPCOES_FECHADAS`; `alvo` e
   `evidencias_citadas` escolhem entre os ids do dossiê (`opcoes_do_dossie`). Citação inventada, rótulo fora do conjunto ou campo extra
@@ -540,16 +630,19 @@ sem adaptador (testes) usa o SIMULADO.
   `PassoDeCuradoria` e sob a trava de líder `curadoria` (ADR-064; a tomada é idempotente por dono). O `AppState` sobe os laços de
   `LearningService.lacos` (uma linha em `state.py`). Modo e intervalo são lidos a cada volta.
 - **Modos**: `off` (padrão) não roda; `shadow` revisa, grava em `learning_reviews` e publica `learning.needs_person` com
-  `motivo = parecer_da_ia` quando um parecer B ou C novo e válido fica pronto para item que JÁ espera o dono; `on` é igual a `shadow`
-  nesta fatia (a fila com parecer e o aceite em lote são itens seguintes). A IA nunca decide: nada transiciona aqui
-  (`conferir_aceite`).
+  `motivo = parecer_da_ia` quando um parecer B ou C novo e válido fica pronto para item que JÁ espera o dono; `on` revisa igual e,
+  desde o 30.17, mostra o parecer na fila e no detalhe e abre o aceite da pessoa (seção abaixo). A IA nunca decide: nada
+  transiciona no curador (`conferir_aceite`).
 - **Gatilhos ligados**: `nova_pendencia_do_dono` (fila "Para aprovar"), `a_revisar`, `degradando` e `obsoleto_provavel` (saúde do
-  publicado) e `conflito` (publicado com relação `contradiz`). `versao_nova`, `grupo_de_falha_acima_do_minimo` e `pedido_da_pessoa`
-  existem no vocabulário e ainda não têm fonte. Dossiê (`infrastructure/dossies.py`) do detalhe do Livro, com a evidência lida pelo id;
+  publicado), `conflito` (publicado com relação `contradiz`) e, desde o 30.17, `pedido_da_pessoa`. `versao_nova` e
+  `grupo_de_falha_acima_do_minimo` existem no vocabulário e ainda não têm fonte. Dossiê (`infrastructure/dossies.py`) do detalhe do Livro, com a evidência lida pelo id;
   sem grupos do backlog, votos e intervenções nesta fatia.
 - **Filtros**, em ordem: modo → (item, `dossie_hash`) já revisado → cooldown (`cooldown_h`) → orçamento → prioridade. A triagem de
   credencial corre nas folhas de TEXTO do conteúdo do dossiê (o JSON inteiro não: a regra recusa hash longo, data ISO e `receita:12`);
-  recusa = linha `recusada:triagem` sem o dossiê. A `conclusao` com cara de credencial é gravada como `null` (o parecer segue válido).
+  recusa = linha `recusada:triagem` sem o dossiê. Chaves de identificador, hash, data ou rótulo fechado ficam fora da triagem
+  (`_CHAVES_ESTRUTURAIS`), entre elas a `variante` da receita (`en-US/xhdpi`): sem ela na lista, 24 de 26 receitas da cópia do
+  central saíam `recusada:triagem` e o curador nunca revisava receita (achado no ensaio do 30.17, 03/10). A `conclusao` com cara
+  de credencial é gravada como `null` (o parecer segue válido).
 - **Orçamento** (`domain/orcamento_do_curador.py`): `B_W = min(alfa·G_W, k·N_W·c̄)`, `G_W` = `SUM(learning_daily.usd)` na janela (sem
   filtro de falha); `N_W` = revisões da janela + elegíveis da volta; `c̄` = média do `usd` MEDIDO ou, sem medida, da estimativa
   (`tamanho_em_bytes`/3 tokens × o preço de entrada mais caro de `ai.prices` + 400 tokens de saída). A estimativa só decide; o gasto
@@ -566,6 +659,62 @@ sem adaptador (testes) usa o SIMULADO.
   decide se o parecer avisa o dono.
 - Fica para depois: o alerta do pico como evento + Problem em `/api/health` (hoje só log), o aviso a 80 % de `B_W`, as fontes dos três
   gatilhos sem fonte, e o `resultado_posterior`.
+
+## O parecer diante da pessoa (30.17)
+
+Desenho em `design/aprendizado-vivo.md` §8.8, §11.2 e §11.3; contrato no adendo v0.72 do `api-contract.md`. Domínio em
+`domain/parecer.py`; aplicação em `application/pareceres.py` (`ServicoDePareceres`, pendurado no Livro por `ligar_curador`
+com o MESMO registro e a mesma fonte de dossiês do curador); leitura e gravação em `infrastructure/revisoes_sql.py`.
+
+- **Visibilidade** (`parecer_visivel`): em `on`, sempre; fora dele, só o parecer já decidido. A sombra mede a IA contra a
+  decisão da pessoa sem que ela veja a sugestão (D-3); o detalhe só avisa que há um parecer escondido.
+- **Rótulo.** É o único produtor de rótulo humano de `learning_reviews` (decisão da orquestradora, 03/10: sem caminho
+  paralelo). Toda transição de pessoa pelo Livro (`/status`, os `PUT` legados e a evidência inválida do 30.23) rotula o
+  parecer pendente do estado de antes,
+  DEPOIS da transição e sem nunca travá-la (uma falha do rótulo só vai ao log). Vista (`review_id` ou modo `on`):
+  `aceitou` ou `recusou`, pelo lado da sugestão (`Direcao`: sobe, desce, espera). Às cegas: o rótulo da própria ação, com
+  `override` pelo lado. O instante da decisão é o `created_at` do sinal `parecer_decidido` (a 069 não tem coluna).
+- **Gesto** (`responder`): aceitar dá UM passo do lado sugerido (`acao_do_aceite`); descer é desligar ou rejeitar, nunca
+  aposentar; `substituir`, `fundir` e os lados de espera são concordar, sem transição. `conferir_gesto` recusa, nesta
+  ordem: inválido, já decidido, oculto, simulado, desatualizado e a classe (`conferir_aceite`, com a mais restritiva entre a
+  classe gravada e a do dossiê de agora). O CAS da decisão vem antes da transição, na mesma transação.
+- **Pedido de revisão**: sinal `pediu_revisao` com o `dossie_hash`; o curador o lê como o gatilho `pedido_da_pessoa`
+  (`JANELA_DO_PEDIDO_DIAS` = 7; atendido = revisão do item depois do pedido), que só pula o cooldown. Só em `on`; o dossiê
+  já revisado responde com a revisão que existe.
+- **Painel** (`features/aprendizado/ParecerDaIA.tsx`, `parecer.ts`):
+  - a seção "Parecer do curador" no detalhe: sugestão, classe, conclusão, o que o curador citou (com link), aceitar ou
+    recusar com motivo, pedir revisão e histórico;
+  - a frase "Parecer do curador: …" na linha da fila;
+  - "Aceitar pareceres do curador" em lote, só na classe B.
+  O painel não decide regra: mostra a `acao` e a `recusa` que o backend manda.
+  - Até o deploy 7 o rótulo era "da IA". A validação do deploy 7 (B1) pediu "do curador", coerente com o resto do
+    painel; os sinais também passaram a "Pediu revisão ao curador" e "Decidiu um parecer do curador".
+  - O que fala do ATOR continua "IA": "na sombra, concordou com a IA", "decide sem a IA" e "pedir a IA nesses passos".
+- **A pendência A6, fechada pelo 30.24:** aceitar "manter" num item de "Revisar" é "Confirmar que fica" (abaixo), na
+  mesma transação do CAS do parecer; a linha da trilha fica ligada à revisão (`transicao_id`). Fora de "Revisar",
+  aceitar "manter" continua só concordando.
+
+## Confirmar que fica (30.24)
+
+O gesto da pessoa que mantém o legado de "Revisar" (receita ou fluxo publicado, com efeito, de antes do D1).
+
+- **O que grava.** Uma linha `published → published` em `learning_transitions`, de quem decidiu, com o motivo
+  `confirmado que fica` ou `confirmado que fica: <motivo>` (o motivo é opcional e passa pela triagem de credencial). O
+  item não muda: o status nativo segue `active`, e o CAS confere isso na mesma transação (`_no_mesmo_estado`, o mesmo
+  caminho da reclassificação do 30.23). Sem migração.
+- **A fila.** `decididos_para_revisar` (`domain/livro.py`) lê a ÚLTIMA decisão de pessoa de cada item. Toda decisão de
+  pessoa tira o item de "Revisar", menos a confirmação contestada: chegou evidência contrária REAL (`against` ou
+  `conflict`, não simulada) depois dela. Aí o item volta, e confirmar de novo o tira outra vez. A regra do retorno é só da
+  confirmação: aprovar, reativar e desligar seguem como antes. Parecer da IA não é evidência e não devolve nada.
+- **Quem pode.** Só pessoa, só item em "Revisar": confirmar duas vezes, ou um item sem efeito, desligado ou de outro
+  tipo, é recusado (409 `state_conflict`, 422 para lição e tela; motivo com cara de credencial, 409
+  `note_looks_secret`).
+- **O parecer.** Confirmar com um parecer pendente à vista o rotula com `confirmar` (direção "espera"): concorda com
+  manter, observar e pedir evidência; recusa desativar e rebaixar.
+- **No painel.** Em "Revisar", "Confirmar que fica" ao lado de "Desligar", com o motivo opcional, e "Confirmar
+  selecionados" em lote. No histórico do item, a linha aparece como "Confirmado que fica" com o motivo da pessoa
+  (`motivo_da_pessoa`, já sem o prefixo). Fora de "Revisar" (`em_revisar` falso) o aviso "vale revisar" sai e o item
+  diz quem confirmou (`confirmado`); o que voltou diz por quê (`confirmacao_contestada`).
 
 ## Obsolescência (30.14)
 
@@ -608,10 +757,88 @@ hub de IA e o curador, 30.11): a causa `indeterminada` sai como dado, sem chamad
 - **Teto atingido pelo tipo** (`AIError.kind == 'budget'` em `ai_calls.error_kind`, `classificar_pelo_tipo_da_ia`), não pelo texto: o teto do pedido
   ("Orçamento do pedido atingido…") nunca casou com a regra por trecho e caía em `outro`. O tipo vence o texto, inclusive o `failure_kind` gravado (também
   derivado de texto em `repository.finish_attempt`), só na leitura retroativa; o texto fica como `# legado` para a tentativa sem `ai_calls`.
-- **Limites conhecidos:** `attempts.error_kind` não existe: o tipo do erro chega só por `ai_calls`, que a purga apaga. Gravar o `AIError.kind` na tentativa
-  (`failure_kind` em `repository.finish_attempt`, a partir do `StepOutcome` do `executor.py`) é do taskqueue e fica para a frente dele. `steps` não guarda a versão do
-  app: `versao_nova` só vem do estado de versão da receita. A comparação entre aparelhos exige a mesma execução.
+- **Limites conhecidos:** `steps` não guarda a versão do app: `versao_nova` só vem do estado de versão da receita. A comparação entre aparelhos exige a
+  mesma execução. (O tipo do erro na tentativa, que só chegava por `ai_calls` e a purga apagava, é `attempts.error_kind` desde o RA-22; com ele, a
+  releitura por `ai_calls` não desmente o gravado, e ela segue só para o legado.)
 - Prova `simulated`: `tests/test_learning_diagnostico.py`. `not_run` no central.
+
+## Evidência inválida e o reaprendido (30.23)
+
+Decisão da coordenação (03/10), registrada como emenda ao ADR-054. Desenho: `design/aprendizado-vivo.md` §9.3. Contrato:
+adendo v0.70 de `api-contract.md`. Caso que a motivou: a receita 109 e o fluxo `no-outlook-abrir-a-caixa-de-entrada-e-le`,
+aprendidos da `r-20261002204347-8c3f6e`, que terminou como sucesso sem comprovar o que fez.
+
+- **Gramática fechada, sem migração.** `domain/evidencia_invalida.py` define o motivo `evidencia_invalida:<run>` (execução
+  `r-AAAAMMDDhhmmss-xxxxxx`), a leitura de volta (`run_invalidada`) e o prefixo reservado.
+  - `mudar_estado` (rotas `/status` e as legadas) recusa o reservado; a marca só entra por `LearningService.invalidar_evidencia`.
+  - Ela aceita só a execução de origem do item (`EntradaDoLivro.nasceu_de`): na receita, a execução de `learned_from_step`;
+    no fluxo, o `source_run_id` fora do treino.
+  - O vivo vai a `disabled`; o já desligado ganha `disabled → disabled` (`reclassificar_desligamento`, CAS no status
+    nativo); o aposentado recusa. A operação é idempotente.
+- **Veto da mesma execução** (`ciclo.motivo_do_veto`): é conferido antes de quem decidiu e não tem prazo. Cai só com um
+  `Renascimento` de outra execução real (`runs.simulated = 0`, lido por `LeituraSql.execucao_real`). A linha de arrumação da
+  loja (`disabled → deprecated`, quando a versão nova aposenta a velha) não conta como decisão.
+- **Reaprendido** (`evidencia_invalida.reaprendizado`): derivado da trilha do `scope_key` e nunca gravado. O último
+  (re)nascimento do item vem depois da última marca do escopo, sem publicação de pessoa entre os dois.
+  - Na receita, renascer é versão nova, e a 109 vira `superseded`.
+  - No fluxo, a mesma linha volta de `disabled` a `candidate` (`D1Nativo._pode_reaproveitar`).
+  - O item força a classe B (`politica_de_risco`, razão `reaprendido_de_evidencia_invalida`), `requires_owner`,
+    "Para aprovar" e o motivo `reaprendido` no `learning.needs_person`.
+- **Duas camadas param o sistema.**
+  - Na loja: `RecipeStore.shadow` pergunta ao ouvinte (`exige_o_dono`) e para em `validated`; a sombra dos fluxos
+    (`SombraDosFluxos._avaliar`) também. Se a leitura do livro falha, o ouvinte não responde (`None`): a candidata não sobe
+    nem ganha motivo na trilha, e a próxima concordância pergunta de novo.
+  - No repositório: `_mover_receita` e `_mover_fluxo` recusam (`ExigeODono`) o sistema publicando o reaprendido.
+  - Depois que uma pessoa publica no escopo, o que nascer ali já segue o D1 de sempre. O aprovado guarda a marca:
+    `reaprendido` continua na leitura, sem `por_que_nao_publica`.
+- **A evidência da execução marcada fica à vista e não mede:** `invalidada: true` no detalhe; fora da sombra do fluxo, da
+  saúde (detalhe e lista) e da versão.
+- **Curador (30.11):** o dossiê (`infrastructure/dossies.py`) passa `FatosDeRisco.reaprendido`, então a IA nunca vê o
+  reaprendido como A, e deixa de fora a evidência da execução marcada. `FatosDeRisco.como_dados()` só leva a chave
+  `reaprendido` quando ela vale: os fatos entram no `dossie_hash`, e a chave sempre presente faria todo item já revisado
+  parecer dossiê novo.
+- **Relações:** `reaprende` e `reaprendida_por`, só entre receitas (`relacoes.de_reaprendizado`).
+- **Painel:**
+  - a trilha mostra o selo "evidência inválida" com o link da execução;
+  - a evidência mostra "execução invalidada", "não conta como prova";
+  - o detalhe tem a seção do reaprendido e o botão "Marcar evidência inválida", com confirmação no lugar;
+  - "Para aprovar" explica o motivo.
+- **Limites conhecidos:**
+  - o escopo da receita inclui a versão do app: numa versão nova a marca não pesa, como o veto de sempre;
+  - `ai.recipes_promote_after: 0` não passa pela sombra (pendência A5);
+  - os ganchos em `taskqueue/recipes.py` (`ReceitaVista.learned_from`, `OuvinteDasReceitas.exige_o_dono`) são exceção ao "só
+    leitura" do §13 do desenho, aceita pela coordenação.
+- **Prova `simulated`:**
+  - `tests/test_learning_evidencia_invalida.py`: domínio, cenário da 109, fluxo e rota;
+  - o vitest de `DetalheRico.test.tsx`;
+  - o ensaio no navegador sobre uma cópia do banco do central, com IA simulada (03/10).
+
+  `not_run`: a marca no central (109 e o fluxo, depois do deploy da suíte 6) e um renascimento real.
+
+## Rótulo de intenção (30.25)
+
+O gabarito humano do decisor fechado da intenção (31.x, da Jev). Sem IA e sem custo; a pergunta é CEGA.
+
+- **Quem vira pergunta.** Um minerador no digest da execução assentada (`application/intencao.py`, ligado por
+  `infrastructure/ligar_intencao.py`; nenhum gancho novo no taskqueue). Só execução real (`simulated=0`), `completed`,
+  com pelo menos uma etapa e TODAS `succeeded` com `result.verified`, sem habilidade casada no plano (`runs.skill_id`),
+  e com a cadeia de agora (a RESOLVE da sombra do 31.9, refeita sem efeito) em `sem_casamento` ou num empate sem
+  resolvida. Falha provada, etapa incerta, pulada ou confirmada à mão ficam fora. Catálogo vazio não pergunta.
+- **O que se grava.** Uma linha por execução em `learning_reviews`: `template_id='intencao'`, `item_kind='execucao'`,
+  `item_ref='run:<id>'`, `scope_app` = o app principal, provedor vazio, `usd` 0, sem `saida`, `gatilho`
+  `execucao_sem_intencao`. O dossiê guarda só ids: os `skill_id` do catálogo inteiro que a cadeia enxergava (em ordem
+  canônica, mesmo num empate), os empatados à parte e a cadeia. O comando nunca entra: o painel o lê da execução.
+- **Fora do curador.** Todo leitor do curador (`revisoes_sql.py`) filtra `template_id='curador'`: o rótulo não entra na
+  janela do orçamento (C_W), no Revisar, nem na salvaguarda (item, dossiê).
+- **A resposta.** `POST /api/aprendizado/execucao/{run_id}/intencao` com um candidato do dossiê GRAVADO ou `nenhum`
+  (422 fora disso; 404 sem pergunta; 409 já respondida, por CAS). A decisão deixa o sinal `parecer_decidido` com
+  `template_id='intencao'`, `viu` e `override` falsos, que dá a data da decisão. Quem consome é a Jev (`id_opaco`,
+  `nenhum` ↔ `ID_NENHUMA`).
+- **No painel.** "Qual era o pedido?", no fim de Para aprovar, à parte e fora da contagem (é opcional): uma pergunta por
+  vez ("1 de N", com "Pular", que só muda a da vez), o comando inteiro, onde e quando, as opções em ordem alfabética,
+  sem o palpite do sistema, e "Nenhuma destas"; com mais de 8, um filtro sem acento. O catálogo de 03/10 tem 26 opções
+  e nomes de até 120 caracteres: cada nome ocupa no máximo duas linhas (inteiro no `title`), e dois fluxos com o mesmo
+  nome mostram o id. Nos Sinais, a resposta aparece como "Disse qual era o pedido", não como parecer da IA.
 
 ## Pendências conhecidas
 
@@ -631,7 +858,7 @@ Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.
   efeito; o veto das receitas falha aberto. Fechados em 29/09: o interruptor antigo sem trilha, o texto do
   `_learn_flow` para o candidato e o `FLOW_STATUS` cru; na Fase 22, a adoção sem trilha (22.4) e a trilha que
   derrubaria o save no PostgreSQL (22.5).
-- **A6:** "Revisar" só rebaixa (manter o legado pede um verbo novo no backend); a página lê `/pendentes` duas vezes; o
+- **A6:** ~~"Revisar" só rebaixa~~ (fechado pelo 30.24, "Confirmar que fica"); a página lê `/pendentes` duas vezes; o
   limite de "outro" está fixo em 15% no painel. Do bloco da execução: a lição desligada por refutação (dois votos
   "deu errado") é gravada pelo sistema e aparece como "desligada nesta execução"; o LEFT JOIN novo da preferência só
   rodou em SQLite até a suíte em PostgreSQL da Fase 22. Fechados em 29/09: o bloco não

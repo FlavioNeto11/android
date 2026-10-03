@@ -17,6 +17,7 @@ from app.db import Database, Row
 from app.modules.learning.domain.conteudo import (PREFIXO_DE_TREINO, EtapaDeOrigem, ReceitaLida, Vizinha,
                                                   capability_da_linha_da_receita, capability_da_receita,
                                                   fluxo_legivel, habilidade_legivel, receita_legivel)
+from app.modules.learning.domain.evidencia_invalida import run_da_etapa, run_valida
 from app.modules.learning.domain.livro import (EntradaDoLivro, escopo_da_receita, escopo_do_fluxo, estado_nativo,
                                                fluxo_tem_efeito, hash_da_receita, receita_tem_efeito)
 from app.modules.learning.domain.relacoes import Sucessora
@@ -68,6 +69,10 @@ class FontesSql:
         self._db = db
         self._registro = pacotes_do_registro
 
+    def pacotes_de_teste(self) -> frozenset[str]:
+        return frozenset(p for r in self._db.query("SELECT package FROM apps WHERE category='qa'")
+                         if (p := linhas.texto_ou_nulo(r, "package")))
+
     def _resolvedor(self) -> ResolvedorDeApp:
         por_id = {linhas.texto(r, "id"): linhas.texto_ou_nulo(r, "package") or linhas.texto(r, "id")
                   for r in self._db.query("SELECT id, package FROM apps")}
@@ -82,14 +87,14 @@ class FontesSql:
 
     # ------------------------------------------------------------------ receita
     def receitas(self) -> list[EntradaDoLivro]:
-        return [_receita(r) for r in self._db.query("SELECT * FROM recipes ORDER BY app_package, step_key, version")]
+        return [_receita(r) for r in self._db.query(_RECEITAS + " ORDER BY r.app_package, r.step_key, r.version")]
 
     def receita(self, ref: str) -> EntradaDoLivro | None:
         try:
             recipe_id = int(ref)
         except ValueError:
             return None
-        row = self._db.one("SELECT * FROM recipes WHERE id=?", (recipe_id,))
+        row = self._db.one(_RECEITAS + " WHERE r.id=?", (recipe_id,))
         return _receita(row) if row else None
 
     # ------------------------------------------------------------------ conteúdo legível (30.3)
@@ -250,10 +255,11 @@ class FontesSql:
         row = self._db.one("SELECT * FROM flows WHERE id=?", (ref,))
         if row is None:
             return None
+        exigidos = self._exigidos("SELECT flow_id, app_id FROM flow_required_apps", "flow_id", ref)
         return fluxo_legivel(linhas.json_legado(linhas.texto(row, "plan")), nome=linhas.texto(row, "name"),
                              comando_modelo=linhas.texto(row, "command_template"),
                              fonte=linhas.texto_ou_nulo(row, "source"),
-                             source_run_id=linhas.texto_ou_nulo(row, "source_run_id"))
+                             source_run_id=linhas.texto_ou_nulo(row, "source_run_id"), apps=exigidos.get(ref, []))
 
     def _conteudo_da_habilidade(self, ref: str) -> JsonObject | None:
         row = self._db.one("SELECT skill_id, version, state, schema_version, content, content_hash, command_template,"
@@ -310,6 +316,10 @@ class FontesSql:
         return _memoria(row) if row else None
 
 
+#: A receita com o título da etapa de que foi aprendida (`EntradaDoLivro.etapa`); a de treino não casa com `steps`.
+_RECEITAS = "SELECT r.*, s.title AS etapa_titulo FROM recipes r LEFT JOIN steps s ON s.id = r.learned_from_step"
+
+
 def _receita(r: Row) -> EntradaDoLivro:
     status = linhas.texto(r, "status")
     acoes = linhas.json_legado(linhas.texto(r, "actions"))
@@ -327,7 +337,8 @@ def _receita(r: Row) -> EntradaDoLivro:
         scope_key=escopo_da_receita(linhas.texto(r, "app_package"), linhas.texto(r, "app_version"),
                                     linhas.texto(r, "app_signature"), linhas.texto(r, "variant"),
                                     linhas.texto(r, "step_hash")),
-        app_version=linhas.texto(r, "app_version"), falhas_seguidas=linhas.inteiro(r, "consecutive_fail"))
+        app_version=linhas.texto(r, "app_version"), falhas_seguidas=linhas.inteiro(r, "consecutive_fail"),
+        nasceu_de=run_da_etapa(aprendida), etapa=linhas.texto_ou_nulo(r, "etapa_titulo"))
 
 
 def _receita_lida(r: Row) -> ReceitaLida:
@@ -373,7 +384,13 @@ def _fluxo(r: Row, resolvedor: ResolvedorDeApp, exigidos: list[str]) -> EntradaD
         side_effect=fluxo_tem_efeito(plano), created_at=linhas.texto(r, "created_at"),
         last_used_at=linhas.texto_ou_nulo(r, "last_used_at"), uses=linhas.inteiro(r, "uses"),
         detail=linhas.texto(r, "name"), content_hash=content_hash(plano) if plano is not None else None,
-        scope_key=escopo_do_fluxo(linhas.texto(r, "match_key")))
+        scope_key=escopo_do_fluxo(linhas.texto(r, "match_key")), nasceu_de=_run_de_origem(r, fonte))
+
+
+def _run_de_origem(r: Row, fonte: str) -> str | None:
+    """A execução de que o fluxo foi aprendido; o treino é da pessoa (sem execução de origem para invalidar)."""
+    run = linhas.texto_ou_nulo(r, "source_run_id")
+    return run if run is not None and run_valida(run) and not fonte.startswith("training") else None
 
 
 def _habilidade(r: Row, resolvedor: ResolvedorDeApp, exigidos: list[str]) -> EntradaDoLivro:

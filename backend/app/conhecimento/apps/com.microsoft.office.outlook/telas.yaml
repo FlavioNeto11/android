@@ -156,3 +156,14 @@ estado_conhecido:
   telas: [caixa_de_entrada]
   voltar_max: 3
   reabrir: true
+
+# Leitura visual (item 12.5, ADR-070). OBSERVADO (passo 0, 02/10/2026, android-01, Outlook 5.2635.3): a lista da caixa é um
+# `ComposeView` (`conversation_list`, [0,160][720,1115]) e a linha clicável tem quatro filhos SEM texto nem descrição em
+# toda a subárvore, mesmo com `snapshotMaxDepth` 200 e `allowInvisibleElements`. A árvore é cega ali; esta região diz que
+# remetente e assunto de uma linha da caixa podem ser lidos da IMAGEM, conferidos às cegas por um segundo leitor. É uma
+# afirmação sobre ONDE se pode ler, não que a linha nunca será sensível: a triagem do executor continua valendo.
+leitura_visual:
+  regioes:
+    - tela: caixa_de_entrada
+      dentro_de: [com.microsoft.office.outlook:id/conversation_list]
+      saidas: [remetente, assunto]

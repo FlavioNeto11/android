@@ -9,6 +9,10 @@ conteúdo; o livro decide quando o sistema pode publicar e guarda a trilha.
   aprovar". Duas discordâncias reais desligam (rebaixar é automático).
 - **Receita.** A promoção em sombra do `RecipeStore` para em `validated` quando há ação `commit` (lá mesmo, na loja);
   aqui ficam o veto (o caminho que uma PESSOA desligou não volta pelo sistema) e a trilha das mudanças da loja.
+- **Evidência inválida (30.23).** O que foi desligado por ela só é barrado de renascer da MESMA execução: outra
+  execução real ensina de novo (o fluxo na mesma linha, a receita numa versão nova), e o reaprendido para em
+  `validated` (a loja da receita pergunta `receita_reaprendida`; a sombra do fluxo, a entrada do livro) e espera o dono.
+  A evidência da execução invalidada não conta na sombra.
 - **Habilidade.** O primeiro escritor real de `skill_validation_results` (043): toda execução de versão grava a
   observação — `proof=real` só de execução real — num caso `device` da própria versão, criado sozinho. A execução
   `completed` com etapa confirmada à mão (`verified=false`) vira `uncertain`, nunca `passed`. O sistema pode fazer
@@ -31,6 +35,7 @@ from app.modules.learning.application.ports import NovaEvidencia, RepositorioDeA
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, ErroDeAprendizado, SkillState, actor_of,
                                                motivo_do_veto)
+from app.modules.learning.domain.evidencia_invalida import Renascimento, reaprendizado, run_invalidada
 from app.modules.learning.domain.livro import escopo_do_fluxo, ref_da_trilha
 from app.modules.learning.domain.promocao import Decisao, Evidencia, Limiares, veredito_de_repeticao
 from app.modules.learning.domain.vocabulario import LivroKind, Posicao
@@ -168,47 +173,79 @@ class D1Nativo:
     se o caminho está vetado. Leitura pura da trilha; nada aqui escreve."""
 
     def __init__(self, repo: RepositorioDeAprendizado, *, com_prova: Callable[[], bool],
-                 relogio: Callable[[], datetime]) -> None:
-        """`com_prova`: `aprendizado.fluxo.com_prova` VIGENTE (lido a cada nascimento; `False` = o modo anterior)."""
+                 relogio: Callable[[], datetime], execucao_real: Callable[[str], bool] = lambda _run: False,
+                 simulada_publica: Callable[[], bool] = lambda: False) -> None:
+        """`com_prova`: `aprendizado.fluxo.com_prova` VIGENTE (lido a cada nascimento; `False` = o modo anterior).
+        `execucao_real(run_id)`: a execução existe e não é simulada (`runs.simulated=0`). Sem o leitor, nenhuma é real,
+        e o que a evidência inválida desligou não renasce (o lado seguro)."""
         self._repo = repo
         self._com_prova = com_prova
         self._relogio = relogio
+        self._execucao_real = execucao_real
+        #: RA-19 B: `aprendizado.simulada_publica` VIGENTE (`True` = o modo anterior, só da suíte).
+        self._simulada_publica = simulada_publica
 
-    def fluxo_ao_nascer(self, match_key: str, content_hash: str | None, reaproveita: str | None) -> str | None:
-        """O status do fluxo que nasce de uma execução, ou `None` (não aprende).
+    def _renascimento(self, run_id: str | None) -> Renascimento | None:
+        return Renascimento(run_id=run_id, real=bool(self._execucao_real(run_id))) if run_id else None
 
-        - reaproveitar a linha desligada só quando quem a desligou foi o SISTEMA (a sombra refutou): o que uma pessoa
-          desligou — pelo livro, pela rota antiga (`PUT /api/flows`, que também grava a trilha) ou numa linha de antes
-          da trilha, sem linha nenhuma — fica desligado;
-        - o conteúdo vetado (`motivo_do_veto`: desligado por pessoa, ou pelo sistema há menos de 90 dias) não volta;
+    def fluxo_ao_nascer(self, match_key: str, content_hash: str | None, reaproveita: str | None,
+                        run_id: str | None = None) -> str | None:
+        """O status do fluxo que nasce da execução `run_id`, ou `None` (não aprende).
+
+        - reaproveitar a linha desligada só quando quem a desligou foi o SISTEMA (a sombra refutou), ou quando ela foi
+          desligada por EVIDÊNCIA INVÁLIDA de outra execução e esta é real (30.23): o que uma pessoa desligou — pelo
+          livro, pela rota antiga (`PUT /api/flows`, que também grava a trilha) ou numa linha de antes da trilha, sem
+          linha nenhuma — fica desligado;
+        - o conteúdo vetado (`motivo_do_veto`: desligado por pessoa, pelo sistema há menos de 90 dias, ou por evidência
+          inválida da mesma execução) não volta;
         - `com_prova` desligado é o modo anterior: comando novo nasce ativo, e nada é reaprendido.
         """
-        if reaproveita is not None and not self._refutado_pelo_sistema(reaproveita):
+        renasce = self._renascimento(run_id)
+        if reaproveita is not None and not self._pode_reaproveitar(reaproveita, renasce):
             return None
         if content_hash is not None and motivo_do_veto(
                 self._repo.desligamentos(content_hash, escopo_do_fluxo(match_key)), agora=self._relogio(),
-                app_version=None) is not None:
+                app_version=None, renascimento=renasce) is not None:
             return None
         if not self._com_prova():
-            return None if reaproveita is not None else "active"
+            if reaproveita is not None:
+                return None
+            # RA-19 B: sem a prova, o comando novo nasce ativo, menos o que uma execução simulada ensinou: esse nasce
+            # candidato e só sobe com evidência real (a sombra só conta execução real). Sem `run_id`, o modo anterior.
+            simulada = run_id is not None and not self._execucao_real(run_id) and not self._simulada_publica()
+            return "candidate" if simulada else "active"
         return "candidate"
 
-    def receita_vetada(self, content_hash: str, scope_key: str, app_version: str | None) -> bool:
+    def receita_vetada(self, content_hash: str, scope_key: str, app_version: str | None,
+                       run_id: str | None = None) -> bool:
         """O caminho da receita que uma PESSOA desligou não volta pelo sistema (nem nascendo, nem pela sombra).
 
         Só a decisão de pessoa conta aqui: a quarentena do sistema (3 falhas seguidas) sempre deixou a etapa ser
-        reaprendida, e a receita nova volta a provar-se em sombra antes de agir.
+        reaprendida, e a receita nova volta a provar-se em sombra antes de agir. A evidência inválida (30.23) conta
+        venha de quem vier, e barra só a mesma execução (`run_id`, a da etapa de que a receita é aprendida).
         """
         historico = [d for d in self._repo.desligamentos(content_hash, scope_key)
-                     if actor_of(d.decided_by) is Actor.PERSON]
-        return motivo_do_veto(historico, agora=self._relogio(), app_version=app_version) is not None
+                     if actor_of(d.decided_by) is Actor.PERSON or run_invalidada(d.reason) is not None]
+        return motivo_do_veto(historico, agora=self._relogio(), app_version=app_version,
+                              renascimento=self._renascimento(run_id)) is not None
 
-    def _refutado_pelo_sistema(self, flow_id: str) -> bool:
+    def receita_reaprendida(self, scope_key: str, recipe_id: int) -> bool:
+        """30.23: a receita (re)nascida no escopo de uma evidência inválida espera o dono — a promoção em sombra da
+        loja para em `validated` (classe B forçada), mesmo sem ação de efeito externo."""
+        return reaprendizado(self._repo.trilha_do_escopo(scope_key),
+                             ref_da_trilha(LivroKind.RECEITA, str(recipe_id))) is not None
+
+    def _pode_reaproveitar(self, flow_id: str, renasce: Renascimento | None) -> bool:
         trilha = self._repo.trilha(ref_da_trilha(LivroKind.FLUXO, flow_id))
         if not trilha:
             return False
         ultima = trilha[-1]
-        return ultima.to_state is SkillState.DISABLED and actor_of(ultima.decided_by) is Actor.SYSTEM
+        if ultima.to_state is not SkillState.DISABLED:
+            return False
+        run = run_invalidada(ultima.reason)
+        if run is not None:
+            return renasce is not None and renasce.real and renasce.run_id != run
+        return actor_of(ultima.decided_by) is Actor.SYSTEM
 
 
 # ------------------------------------------------------------------ a sombra dos fluxos (minerador do digest)
@@ -260,8 +297,11 @@ class SombraDosFluxos:
 
     def _avaliar(self, fluxo: FluxoEmProva, run_id: str) -> None:
         marca = marca_do_conteudo(fluxo.content_hash)
-        evidencias = [e for e in self._repo.evidencias(ref_da_trilha(LivroKind.FLUXO, fluxo.id))
-                      if (e.detail or "").startswith(marca)]
+        ref = ref_da_trilha(LivroKind.FLUXO, fluxo.id)
+        # 30.23: a execução marcada como evidência inválida não prova nada, nem para a encarnação nova da mesma linha
+        invalidas = {r for t in self._repo.trilha(ref) if (r := run_invalidada(t.reason)) is not None}
+        evidencias = [e for e in self._repo.evidencias(ref)
+                      if (e.detail or "").startswith(marca) and e.run_id not in invalidas]
         exigidas = 1 + max(0, int(self._concordancias()))
         v = veredito_de_repeticao(evidencias, Limiares(n_min=exigidas, execucoes_min=exigidas, aparelhos_min=1,
                                                        contra_max=DISCORDANCIAS_QUE_DESLIGAM - 1))
@@ -282,6 +322,13 @@ class SombraDosFluxos:
             self._anunciar(run_id, f"Fluxo “{fluxo.id}” validado ({prova}), mas tem etapa de efeito externo: só o "
                                    "dono o publica (Aprendizado › Para aprovar). Até lá, a IA segue planejando")
             return
+        reaprendido = self._servico.entrada(LivroKind.FLUXO, fluxo.id).reaprendido
+        if reaprendido is not None:
+            self._anunciar(run_id, f"Fluxo “{fluxo.id}” validado ({prova}), mas foi reaprendido depois de uma "
+                                   f"evidência inválida (a execução {reaprendido.run_invalidada} terminou como sucesso "
+                                   "sem comprovar o que fez): só o dono o publica (Aprendizado › Para aprovar). Até "
+                                   "lá, a IA segue planejando")
+            return
         self._servico.mudar_estado(LivroKind.FLUXO, fluxo.id, SkillState.PUBLISHED, by=SYSTEM_ACTOR, run_id=run_id,
                                    reason=f"D1: sem efeito externo, {prova}")
         self._anunciar(run_id, f"Fluxo “{fluxo.id}” publicado pelo sistema (D1: sem efeito externo, {prova}): "
@@ -300,6 +347,9 @@ class SombraDosFluxos:
         quando = f"depois de mais {n} execução(ões) real(is) com o mesmo plano" if n else "já com esta execução"
         if fluxo.efeito:
             return inicio + f"; {quando} ele fica validado, e o dono o publica (tem etapa de efeito externo)"
+        if self._servico.entrada(LivroKind.FLUXO, fluxo.id).reaprendido is not None:
+            return inicio + (f"; {quando} ele fica validado, e o dono o publica (reaprendido depois de uma evidência "
+                             "inválida)")
         return inicio + f"; {quando} o sistema o publica (sem efeito externo)"
 
     def _anunciar(self, run_id: str, texto: str) -> None:

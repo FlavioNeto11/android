@@ -48,10 +48,11 @@ from ..modules.identity.domain.persona_generation import (MAX_TOKENS_DO_RASCUNHO
 from . import prompts
 from .curador import (CURADOR_SYSTEM, ParecerBruto, ParecerIlegivel, PedidoDeParecer, curador_user, esquema_do_parecer,
                       parecer_from_json)
-from .parsing import (_CapPlanOut, _MultiPlanOut, _PlanOut, catalog_plan_from_json, plan_from_json, social_from_json,
-                      verdict_from_json)
-from .provider import (AVISO_TELA_SENSIVEL, AIError, Decision, DecisionRequest, PlanRequest, ScreenInput, SocialRequest, Usage,
-                       Verdict, VerifyRequest, persona_draft_from_json)
+from .parsing import (_CapPlanOut, _MultiPlanCurtoOut, _MultiPlanOut, _PlanCurtoOut, _PlanOut, catalog_plan_from_json,
+                      plan_from_json, social_from_json, verdict_from_json)
+from .provider import (AVISO_TELA_SENSIVEL, AIError, Decision, DecisionRequest, LeituraRequest, PlanRequest, ScreenInput,
+                       SocialRequest, Transcricao, TranscricaoWire, Usage, Verdict, VerifyRequest,
+                       modelo_do_papel_leitura, persona_draft_from_json, transcricao_from_json)
 
 if TYPE_CHECKING:
     from ..config import ResolvedRole
@@ -289,15 +290,18 @@ class OpenAICompatProvider:
         # Três planejadores, na mesma ordem do Anthropic: entre apps (item 24.1) → por catálogo → livre.
         entre_apps = bool(req.catalogs)
         com_catalogo = entre_apps or req.catalog is not None
+        curto = self.cfg.file.ai.esquema_do_plano == "curto"          # LT-4b: só a etapa livre muda
         modelo = self.models.get("plan", self.model)
         if entre_apps:
-            esquema, sistema = strict_schema(_MultiPlanOut), prompts.PLANNER_MULTIAPP_SYSTEM
+            esquema = strict_schema(_MultiPlanCurtoOut if curto else _MultiPlanOut)
+            sistema = prompts.PLANNER_MULTIAPP_SYSTEM_CURTO if curto else prompts.PLANNER_MULTIAPP_SYSTEM
             texto = prompts.planner_multiapp_user(req, max_steps)
         elif com_catalogo:
             esquema, sistema = strict_schema(_CapPlanOut), prompts.PLANNER_CAPABILITY_SYSTEM
             texto = prompts.planner_capability_user(req, max_steps)
         else:
-            esquema, sistema = strict_schema(_PlanOut), prompts.PLANNER_SYSTEM
+            esquema = strict_schema(_PlanCurtoOut if curto else _PlanOut)
+            sistema = prompts.PLANNER_SYSTEM_CURTO if curto else prompts.PLANNER_SYSTEM
             texto = prompts.planner_user(req, max_steps)
         msg, usage = await self._create(
             role="plan", model=modelo, system=sistema,
@@ -307,7 +311,7 @@ class OpenAICompatProvider:
             schema=esquema, schema_name="plano")
         raw = self._texto(msg)
         converte = catalog_plan_from_json if com_catalogo else plan_from_json
-        return converte(raw, req, provider=self.name, model=usage.model, max_steps=max_steps), usage
+        return converte(raw, req, provider=self.name, model=usage.model, max_steps=max_steps, curto=curto), usage
 
     # ------------------------------------------------------------------ treinamento (item 13.2)
     async def generalize(self, req: Any) -> tuple[dict[str, Any], Usage]:
@@ -379,7 +383,8 @@ class OpenAICompatProvider:
     # ------------------------------------------------------------------ verificação
     async def verify(self, req: VerifyRequest) -> tuple[Verdict, Usage]:
         s = req.screen
-        modelo = self.models.get("escalation" if getattr(req, "escalate", False) else "verify", self.model)
+        escalado = bool(getattr(req, "escalate", False))
+        modelo = self.models.get("escalation" if escalado else "verify", self.model)
         with_image = bool(s.jpeg) and not s.sensitive
         desc = ("tela sensível (imagem omitida)" if s.sensitive
                 else f"app em primeiro plano: {s.package or 'desconhecido'}; "
@@ -390,8 +395,23 @@ class OpenAICompatProvider:
                                            req.facts) + self._json_hint(modelo, esquema)
         msg, usage = await self._create(role="verify", model=modelo, system=prompts.VERIFIER_SYSTEM,
                                         content=self._screen_content(s, texto), max_tokens=3000,
-                                        schema=esquema, schema_name="veredito", with_image=with_image)
+                                        schema=esquema, schema_name="veredito", tier=int(escalado),
+                                        with_image=with_image)     # RA-10: rejulgamento escalado é tier 1
         return verdict_from_json(self._texto(msg)), usage
+
+    # ------------------------------------------------------------------ leitura visual (item 12.5)
+    async def transcribe(self, req: LeituraRequest) -> tuple[Transcricao, Usage]:
+        """Papel `leitura` (de outra família que o ator, por escolha do dono): transcreve o RECORTE às cegas — só a
+        imagem e os nomes das saídas pedidas, nunca o valor do ator, o comando ou a conta. OpenAI e Gemini (pelo endpoint
+        compatível) entram por aqui; o recorte é o que sai desta máquina para o provedor escolhido em `ai.roles.leitura`."""
+        modelo = modelo_do_papel_leitura(self.cfg, self.role)    # nunca o do ator: sem o papel `leitura`, recusa
+        b64 = base64.standard_b64encode(req.recorte).decode()
+        esquema = strict_schema(TranscricaoWire)
+        content = [{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                   {"type": "text", "text": prompts.leitura_user_text(req.saidas) + self._json_hint(modelo, esquema)}]
+        msg, usage = await self._create(role="leitura", model=modelo, system=prompts.LEITURA_SYSTEM, content=content,
+                                        max_tokens=1200, schema=esquema, schema_name="transcricao", with_image=True)
+        return transcricao_from_json(self._texto(msg), list(req.saidas)), usage
 
     # ------------------------------------------------------------------ geração social
     async def generate_social_response(self, req: SocialRequest) -> tuple[SocialDraftDTO, Usage]:

@@ -222,6 +222,10 @@ class UiTree:
     #: que entram no corte). Quem decide com o conhecimento do app é `conhecimento_de_telas.detectar_conta_travada`,
     #: que parte daqui (ADR-055).
     conta_travada: ContaTravada | None = None
+    #: A árvore bateu no teto de elementos (`parse_hierarchy(max_elements)`) e há nós que ficaram de fora. Conservador: um
+    #: nó a mais depois do teto basta. A leitura visual (item 12.5) recusa com `arvore_truncada`, porque "esta linha não
+    #: tem texto" só vale se a subárvore inteira foi vista.
+    truncada: bool = False
 
     def at(self, x: int, y: int) -> UiElement | None:
         """O elemento sob o ponto (x, y) em pixels do aparelho: o MENOR que o contém — o mesmo critério do toque
@@ -440,6 +444,7 @@ def parse_hierarchy(xml_text: str, *, max_elements: int = 1500,
                       sensitive_reason=sempre_sensivel)
     elements: list[UiElement] = []
     packages: list[str] = []
+    truncada = False
     sensitive = bool(sempre_sensivel)
     motivo: str | None = sempre_sensivel
     # O pedido de CÓDIGO só conta quando há ONDE digitá-lo. Sem esta condição, a linha "Autenticação de dois fatores"
@@ -482,6 +487,7 @@ def parse_hierarchy(xml_text: str, *, max_elements: int = 1500,
             if casou and not sensitive:
                 sensitive, motivo = True, regra.motivo()
         if len(elements) >= max_elements:
+            truncada = True
             continue
         text = a.get("text", "") or ""
         desc = a.get("content-desc", "") or ""
@@ -511,4 +517,4 @@ def parse_hierarchy(xml_text: str, *, max_elements: int = 1500,
             if _SO_DIGITOS.match(e.text):
                 e.text = MASK
     return UiTree(elements=elements, packages=packages, sensitive=sensitive, sensitive_reason=motivo,
-                  conta_travada=trava)
+                  conta_travada=trava, truncada=truncada)

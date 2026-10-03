@@ -1,92 +1,58 @@
 import { Zap } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
-import { api, hintForError, toApiError } from '../../api/client';
+import { api } from '../../api/client';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
-import { Checkbox, Field, TextInput } from '../../components/Field';
+import { Checkbox } from '../../components/Field';
 import { StatusBadge } from '../../components/StatusBadge';
 import { cx, formatInt } from '../../lib/format';
 import { saveJson } from '../../lib/storage';
+import { toLoadError } from '../../lib/loadError';
 import { formatDateTime, formatQuando } from '../../lib/time';
 import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
+import { DecisaoInline } from './DecisaoInline';
 import { DetalheRico } from './DetalheRico';
 import { metaDeSaude } from './detalhe';
 import { abrirApp } from './apps';
 import {
-  type AcaoDoItem, type DetalheDoLivro, type EntradaDoLivro, ESTADO_META, MOTIVO_MAX, ONDE_FICAM_AS_HABILIDADES,
-  ORIGEM_LABEL, erroDoMotivo, porQueOSistemaNaoPublica, refDaHabilidade, rotuloDoDetalhe, rotuloDoKind,
+  type AcaoDoItem, type DetalheDoLivro, type EntradaDoLivro, ESTADO_META, ONDE_FICAM_AS_HABILIDADES,
+  ORIGEM_LABEL, porQueOSistemaNaoPublica, refDaHabilidade, rotuloDoDetalhe, rotuloDoKind, tituloDoItem,
 } from './model';
+import { ParecerNaLinha } from './ParecerDaIA';
 import styles from './Aprendizado.module.css';
+
+export { DecisaoInline };
 
 export const chaveDoItem = (e: Pick<EntradaDoLivro, 'kind' | 'ref'>) => `${e.kind}:${e.ref}`;
 
 /**
- * O motivo que toda decisão sobre o livro exige (fica na trilha, `learning_transitions.reason`). Em linha, nunca
- * modal: quem decide vê o item ao lado do que está escrevendo.
- */
-export function DecisaoInline({ acao, rotulo = 'Motivo', onConfirmar, onCancelar }: {
-  acao: Pick<AcaoDoItem, 'confirmar' | 'perigo'>;
-  rotulo?: string;
-  /** Devolve a mensagem de erro, ou `null` quando deu certo. */
-  onConfirmar: (motivo: string) => Promise<string | null>;
-  onCancelar: () => void;
-}) {
-  const [motivo, setMotivo] = useState('');
-  const [enviando, setEnviando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-  const invalido = erroDoMotivo(motivo);
-
-  const enviar = async () => {
-    if (invalido || enviando) return;
-    setEnviando(true);
-    setErro(null);
-    const falha = await onConfirmar(motivo.trim());
-    setEnviando(false);
-    if (falha) setErro(falha);
-  };
-
-  return (
-    <form className={styles.decisao} onSubmit={(e) => { e.preventDefault(); void enviar(); }}>
-      <Field label={rotulo} hint="Fica na trilha do item, com o seu nome." error={erro} className={styles.decisaoCampo}>
-        {({ id, describedBy, invalid }) => (
-          <TextInput id={id} aria-describedby={describedBy} invalid={invalid} value={motivo} maxLength={MOTIVO_MAX}
-                     autoFocus placeholder="Ex.: conferi a evidência e o alvo está certo"
-                     onChange={(e) => setMotivo(e.target.value)} />
-        )}
-      </Field>
-      <div className={styles.decisaoAcoes}>
-        <Button type="submit" size="sm" variant={acao.perigo ? 'danger' : 'primary'} loading={enviando} disabledReason={invalido}>
-          {acao.confirmar}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onCancelar} disabled={enviando}>Cancelar</Button>
-      </div>
-    </form>
-  );
-}
-
-/**
- * Aplica UMA transição e devolve o erro legível (ou `null`). O motivo nunca sai daqui para um toast ou log.
+ * Aplica UMA transição e devolve o erro legível (ou `null`). O motivo nunca sai daqui para um toast ou log. Com um
+ * parecer da IA pendente na linha (30.17), a decisão vai com o `review_id`: fica registrada contra o parecer que a
+ * pessoa via (aceitou, se foi para o lado dele; recusou, se não).
  *
  * Habilidade vai direto pela rota das habilidades (`POST /api/skills/{id}/versions/{n}/status`): a do livro a recusa
  * com 409 `use_skills_route`, e mandar lá primeiro só gastaria uma ida. Quem decide continua sendo a pessoa da sessão
  * (a rota registra o operador); a recusa do domínio dela (comando duplicado, transição proibida) volta como a de
  * qualquer item.
  */
-export async function aplicarTransicao(e: EntradaDoLivro, acao: Pick<AcaoDoItem, 'to'>, motivo: string): Promise<string | null> {
+export async function aplicarTransicao(e: EntradaDoLivro, acao: Pick<AcaoDoItem, 'to' | 'confirmaQueFica'>,
+                                       motivo: string): Promise<string | null> {
   try {
-    if (e.kind === 'habilidade') {
+    if (acao.confirmaQueFica) {
+      await apiAprendizado.confirmarQueFica(e.kind, e.ref, motivo, e.parecer?.id);
+    } else if (e.kind === 'habilidade') {
       const ref = refDaHabilidade(e.ref);
       if (!ref) return `A referência "${e.ref}" não diz a versão: decida em ${ONDE_FICAM_AS_HABILIDADES}.`;
       await api.transitionSkill(ref.skillId, ref.version, { to: acao.to, reason: motivo });
     } else {
-      await apiAprendizado.mudarEstado(e.kind, e.ref, acao.to, motivo);
+      await apiAprendizado.mudarEstado(e.kind, e.ref, acao.to, motivo, e.parecer?.id);
     }
     return null;
   } catch (err) {
-    const recusa = toApiError(err);
-    return `${recusa.message} ${hintForError(recusa)}`.trim();
+    const recusa = toLoadError(err);
+    return `${recusa.message} ${recusa.hint}`.trim();
   }
 }
 
@@ -117,21 +83,24 @@ export function AvisoDaHabilidade({ naFila }: { naFila: boolean }) {
   );
 }
 
-function DetalheDoItem({ entrada }: { entrada: EntradaDoLivro }) {
+function DetalheDoItem({ entrada, onMudou }: { entrada: EntradaDoLivro; onMudou?: () => void }) {
   const [detalhe, setDetalhe] = useState<DetalheDoLivro | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  // Um gesto no próprio detalhe (a evidência inválida, 30.23; o parecer da IA, 30.17) relê o detalhe e avisa a lista,
+  // que pode tirar o item da fila.
+  const [leitura, setLeitura] = useState(0);
   useEffect(() => {
     const ctl = new AbortController();
     apiAprendizado.detalhe(entrada.kind, entrada.ref, ctl.signal)
       .then((d) => setDetalhe(d))
       .catch((e: unknown) => {
-        if (!ctl.signal.aborted) setErro(toApiError(e).message);
+        if (!ctl.signal.aborted) setErro(toLoadError(e).message);
       });
     return () => ctl.abort();
-  }, [entrada.kind, entrada.ref]);
+  }, [entrada.kind, entrada.ref, leitura]);
   if (erro) return <p className={styles.erroInline}>{erro}</p>;
   if (!detalhe) return <p className={styles.secaoLead}>Carregando o detalhe do item…</p>;
-  return <DetalheRico detalhe={detalhe} />;
+  return <DetalheRico detalhe={detalhe} onMudou={() => { setLeitura((n) => n + 1); onMudou?.(); }} />;
 }
 
 interface ItemDoLivroProps {
@@ -148,15 +117,20 @@ interface ItemDoLivroProps {
   ocultarApp?: boolean;
   /** Como o item é usado hoje (camada de uso), quando a lista sabe. */
   uso?: { rotulo: string; porque?: string | null };
+  /** O título já sem repetição na lista (`titulosDaLista`); sem ele, o do item (`tituloDoItem`). */
+  titulo?: string;
 }
 
 /** Uma linha do livro: o que é, em que estado, por que espera o dono e o que a pessoa pode fazer. */
-export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMudou, extra, abrirDetalhe, ocultarApp, uso }: ItemDoLivroProps) {
+export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMudou, extra, abrirDetalhe, ocultarApp, uso, titulo: tituloDaLista }: ItemDoLivroProps) {
   const [aberta, setAberta] = useState<AcaoDoItem | null>(null);
+  const titulo = tituloDaLista ?? tituloDoItem(e);
   const porQue = porQueOSistemaNaoPublica(e);
   // Publicado e ainda "espera o dono": é item anterior à regra de aprovação (efeito externo publicado antes do D1).
-  const anterior = e.state === 'published' && !!e.por_que_nao_publica?.espera_o_dono;
-  const espera = e.por_que_nao_publica?.espera_o_dono ? porQue : null;
+  // Já decidido por uma pessoa (confirmou que fica, religou: `em_revisar` falso, 30.24), o aviso sai.
+  const publicadoAntes = e.state === 'published' && !!e.por_que_nao_publica?.espera_o_dono;
+  const anterior = publicadoAntes && e.em_revisar !== false;
+  const espera = e.por_que_nao_publica?.espera_o_dono && !(publicadoAntes && e.em_revisar === false) ? porQue : null;
   const naoPublica = e.por_que_nao_publica?.espera_o_dono ? null : porQue;
   const detalhe = rotuloDoDetalhe(e.detail);
   const memoria = e.kind === 'memoria';
@@ -167,11 +141,17 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
     <li className={cx(styles.item, selecionado && styles.itemSelecionado)} data-item={chaveDoItem(e)}>
       <div className={styles.itemHead}>
         {onSelecionar ? (
-          <Checkbox aria-label={`Selecionar ${e.title}`} checked={!!selecionado} onChange={(ev) => onSelecionar(ev.target.checked)} />
+          <Checkbox aria-label={`Selecionar ${titulo}`} checked={!!selecionado} onChange={(ev) => onSelecionar(ev.target.checked)} />
         ) : null}
         <Badge tone="neutral" size="sm">{rotuloDoKind(e.kind)}</Badge>
-        <span className={styles.itemTitulo} title={e.title || e.ref}>{e.title || e.ref}</span>
+        {/* O título cru (a chave da etapa, o texto com o código) fica no `title`: é o que quem desenvolve procura. */}
+        <span className={styles.itemTitulo} title={e.title || e.ref}>{titulo}</span>
         {e.side_effect ? <Badge tone="warning" size="sm" icon={Zap} title="Tem efeito externo (mensagem, publicação, envio…)">efeito externo</Badge> : null}
+        {e.reaprendido ? (
+          <Badge tone="warning" size="sm" title={`Reaprendido depois de uma evidência inválida (execução ${e.reaprendido.run_invalidada}): a aprovação é sua`}>
+            reaprendido
+          </Badge>
+        ) : null}
         {e.state ? <StatusBadge meta={ESTADO_META[e.state]} size="sm" /> : null}
         {saude ? <Badge tone={saude.tone} size="sm" icon={saude.icon} title={saude.description} className={styles.seloDeSaude}><span className="sr-only">Saúde: </span>{saude.label}</Badge> : null}
       </div>
@@ -179,8 +159,8 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
         {memoria ? <span><strong>{formatInt(e.count ?? 0)} lembranças</strong> (o conteúdo fica com a persona)</span> : null}
         {e.app && !ocultarApp ? (
           <span>App:{' '}
-            <button type="button" className={styles.linkBtn} title="Abrir este aplicativo" onClick={() => abrirApp(e.app as string)}>
-              <span className={styles.mono}>{e.app}</span>
+            <button type="button" className={styles.linkBtn} title={`Abrir este aplicativo (${e.app})`} onClick={() => abrirApp(e.app as string)}>
+              {e.app_nome && e.app_nome !== e.app ? e.app_nome : <span className={styles.mono}>{e.app}</span>}
             </button>
           </span>
         ) : null}
@@ -202,6 +182,21 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
         </p>
       ) : null}
       {naoPublica ? <p className={styles.notaDoItem}>O sistema não publica sozinho: {naoPublica}</p> : null}
+      {e.confirmado ? (
+        <p className={styles.notaDoItem}>
+          Confirmado que fica por {e.confirmado.por},{' '}
+          <span title={formatDateTime(e.confirmado.em)}>{formatQuando(e.confirmado.em)}</span>
+          {e.confirmado.motivo ? `: ${e.confirmado.motivo}` : ''}. Volta para Revisar se aparecer evidência contrária.
+        </p>
+      ) : null}
+      {e.confirmacao_contestada && e.em_revisar ? (
+        <p className={styles.notaDoItem}>
+          Voltou para revisar: confirmado que fica por {e.confirmacao_contestada.por},{' '}
+          <span title={formatDateTime(e.confirmacao_contestada.em)}>{formatQuando(e.confirmacao_contestada.em)}</span>,
+          e depois chegou evidência contrária (veja em Detalhes, evidência e trilha).
+        </p>
+      ) : null}
+      {e.parecer ? <ParecerNaLinha p={e.parecer} /> : null}
       {extra}
       {acoes.length > 0 && !aberta ? (
         <div className={styles.itemAcoes}>
@@ -216,6 +211,7 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
       {aberta ? (
         <DecisaoInline
           acao={aberta}
+          motivoOpcional={aberta.confirmaQueFica}
           onCancelar={() => setAberta(null)}
           onConfirmar={async (motivo) => {
             const falha = await aplicarTransicao(e, aberta, motivo);
@@ -229,7 +225,7 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
       ) : null}
       {!memoria ? (
         <Disclosure bare summary="Detalhes, evidência e trilha" defaultOpen={abrirDetalhe}>
-          {() => <DetalheDoItem entrada={e} />}
+          {() => <DetalheDoItem entrada={e} onMudou={onMudou} />}
         </Disclosure>
       ) : null}
     </li>

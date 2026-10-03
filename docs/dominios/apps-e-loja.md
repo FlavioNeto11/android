@@ -80,6 +80,26 @@ perfil vêm de `links_de_perfil` do `app.yaml`.
 Arquivo errado falha na carga, com o caminho do campo, e derruba a descoberta inteira: um pacote pela metade seria
 pior que nenhum. `register_manifest(manifesto)` continua valendo para teste e extensão (o QA, abaixo).
 
+A versão do formato também é conferida na carga (RA-24). `catalogo.yaml` (`contract_version`), `telas.yaml` e
+`sessao.yaml` (`versao`) só aceitam 1. Subir a versão exige, no mesmo commit, o código que a lê
+(`VERSOES_DE_CONTRATO`, `VERSOES_DE_TELAS`, `VERSOES_DE_SESSAO`).
+
+**O que está no ar** (RA-24): `GET /api/apps/{pacote}/conhecimento` devolve cada YAML da pasta com `sha256` e
+`git_blob` do texto lido, que é o de `git rev-parse <commit>:<caminho>`, e aponta o arquivo gravado depois de o processo
+subir (`mudou_depois_do_inicio`) ([adendo v0.82](../api-contract.md); `integrations/app_declarado/prova.py`).
+A carga é preguiçosa (na primeira consulta ao app), então um arquivo gravado entre o início do processo e essa carga
+aparece como `mudou_depois_do_inicio` mesmo batendo com a memória: é falso positivo conservador, e um reinício o limpa.
+Os YAML ficam em LF no índice do Git (`git ls-files --eol`; um teste segura): com CRLF no índice, o `git_blob` do texto
+lido não seria o do commit.
+
+No painel, a prova fica em Aprendizado › Aplicativos › (o app) › Declarado (`AplicativosTab.tsx::ConhecimentoEmUso`,
+polimento I5 da validação do deploy 7):
+- a linha "Conhecimento em uso: N arquivos conferidos · sem mudança desde que o servidor subiu (servidor de pé desde …)";
+- o sha curto em cada arquivo, com o sha256 inteiro, o blob do git e a data de gravação no `title`;
+- no arquivo gravado depois do início do processo, o selo "mudou depois que o servidor subiu", e "reinicie para valer"
+  na linha. A dica explica o falso positivo da carga preguiçosa.
+O app sem conhecimento declarado (404) não mostra a linha, e isso não é erro.
+
 O registro confere na entrada (`registry.py::register`):
 
 - fábrica de sessão sem `session_provider` declarado é recusada (`ValueError`): a porta de sessão e a invalidação

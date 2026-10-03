@@ -28,6 +28,12 @@ Effort = Literal["low", "medium", "high", "xhigh", "max"]
 #: SEM bloco próprio ela herda a configuração de `social` por inteiro (`Config.ai_role`), então existe para poder ir a
 #: outro provedor sem arrastar o `social` da execução (comentário, DM) junto.
 AI_ROLES = ("plan", "decide", "verify", "escalation", "social", "persona")
+#: Funções que SÓ existem quando escritas em `ai.roles` (item 12.5, ADR-070). `leitura` é o segundo leitor da leitura
+#: visual: transcreve o recorte de uma linha que a árvore não expõe, sem ver o valor do ator. NÃO herda nada de outra
+#: função (nem provedor, nem modelo, nem `fallback_provider`), porque a conferência vale pela independência dele, e não
+#: aparece em `ai.profiles` (o perfil troca o ator, não o conferente). Sem bloco, `Config.ai_leitura()` é `None` e a
+#: leitura visual recusa com `sem_leitor`.
+ROLES_OPCIONAIS = ("leitura",)
 
 
 class EnvSettings(BaseSettings):
@@ -193,7 +199,7 @@ class AndroidCfg(BaseModel):
     #: nenhum nome resolvia. É POR MÁQUINA (central e cada worker têm a sua rede): use DNS que respondem ali.
     dns_servers: list[str] = []
     hibernation: bool = False                   # rodízio desliga salvando snapshot; acordar leva segundos (medido: ~7 s)
-    wake_timeout_s: int = 90                    # acordar que não chega à interface nesse tempo → descarta snapshot, boot a frio
+    wake_timeout_s: int = 90                    # acordar que não chega à interface nesse tempo, CONTADO DO SNAPSHOT CARREGADO (RA-15) → descarta, boot a frio
     # Sobe o emulador COM janela. Existe para o aparelho-loja: a conta Google é digitada direto na janela do
     # emulador, e assim nenhuma tecla passa pelo backend, pelo Appium ou pelo adb. O parque segue sem janela.
     window: bool = False
@@ -337,6 +343,10 @@ class LimitsCfg(BaseModel):
     fleet_target_window_s: int = Field(3600, ge=60, le=86400)
     fleet_min_spacing_between_accounts_s: int = Field(120, ge=0, le=3600)
     fleet_spacing_jitter_s: int = Field(180, ge=0, le=3600)
+    # Interação entre contas NOSSAS vivas (29.28, emenda do ADR-050): quando o alvo da ação com efeito é outra conta da frota
+    # (viva), esta conta espera ao menos isto, em segundos, desde o último gesto com efeito DELA (vale o maior entre este valor e
+    # `cooldown_between_external_actions_s` do perfil). Ritmo baixo de propósito; conta retirada por bloqueio segue recusada.
+    fleet_min_spacing_to_own_account_s: int = Field(600, ge=0, le=86400)
     ai_max_calls_per_objective: int = Field(60, ge=1, le=1000)
     # Item 17.12: o teto acima é de UM objetivo sem repetição. Num `for_each`, cada item a mais soma `ai_max_calls_per_item`
     # (`teto = ai_max_calls_per_objective + por_item × (itens − 1)`), até `ai_max_calls_absolute`. 12 = ~8 chamadas medidas
@@ -436,6 +446,16 @@ class RoleCfg(BaseModel):
     timeout_s: float | None = None
     max_retries: int | None = None              # novas tentativas DENTRO do SDK; 0 = só o `_ai` repete
     concurrency: int | None = None              # vagas simultâneas desta função, sob o limite global
+    # --- item 17.14: o que um perfil (17.7) precisa trocar para medir latência sem mexer no padrão. Vazio = como hoje.
+    #: Esforço DESTA função (Anthropic: `output_config.effort`). Vazio = o do `.env` (AI_EFFORT_PLANNER/ACTOR/VERIFIER).
+    effort: Effort | None = None
+    #: `false` não manda `thinking` (o ator sem pensamento adaptativo, LT-10). Vazio ou `true` = a capacidade do modelo
+    #: decide (`ai.models.<m>.thinking`), como hoje. Não liga thinking num modelo declarado sem ele.
+    thinking: bool | None = None
+    #: RA-17 (dieta do contexto 2): na decisão do ator, o bloco estável da etapa (passo e lições) vai ANTES da imagem e
+    #: leva um 2º ponto de cache; a imagem e o resto da observação vêm depois. Vazio/`false` = imagem primeiro, um ponto
+    #: de cache só no system (byte a byte o de hoje). Só a Anthropic tem ponto de cache.
+    cache_da_etapa: bool | None = None
 
 
 #: Prazo e vagas por função quando o YAML não diz. Folgados diante do medido em 908 chamadas reais
@@ -448,6 +468,8 @@ ROLE_DEFAULTS: dict[str, dict[str, Any]] = {
     "social": {"timeout_s": 60.0, "concurrency": 4},
     # Mesmos números do social: sem `ai.roles.persona` a geração de persona se comporta como sempre.
     "persona": {"timeout_s": 60.0, "concurrency": 4},
+    # Recorte de ~720x150 px e saída curta: a chamada mais barata do hub (item 12.5).
+    "leitura": {"timeout_s": 30.0, "concurrency": 2},
 }
 
 
@@ -460,6 +482,10 @@ class AiProfileCfg(BaseModel):
 
     roles: dict[str, RoleCfg] = {}
     note: str = ""                              # para que serve: só documentação do YAML (nada o exibe ainda)
+    #: Item 17.14 (RA-17, perfil `img-768`): o lado maior da imagem e o mínimo de elementos da árvore "rica" das
+    #: execuções DESTE perfil, por cima de `ai.screenshot_max_side` e `ai.rich_tree_min_elements`. Vazio = os globais.
+    screenshot_max_side: int | None = Field(None, ge=320, le=2560)
+    rich_tree_min_elements: int | None = Field(None, ge=0, le=200)
 
 
 class AiCanaryCfg(BaseModel):
@@ -523,19 +549,34 @@ class AiLimitsCfg(BaseModel):
     #: Decisão por conjunto fechado (Jev-retrieval, `origem='decisao_fechada'`). US$ 0,50/dia é a D-J3, aprovada pelo
     #: dono no ADR-069; vale para as chamadas da porta `DecisaoFechada` (31.4).
     jev_max_usd_per_day: float = Field(0.50, ge=0, le=100_000)
+    #: Leitura visual (item 12.5, `origem='leitura'`): fatia opcional do dia para o leitor das saídas de etapa. `0`
+    #: (padrão) = sem fatia: valem só os tetos do pedido, da execução e do dia, que a chamada sempre confere.
+    leitura_max_usd_per_day: float = Field(0.0, ge=0, le=100_000)
+
+
+class LeituraVisualCfg(BaseModel):
+    """Leitura visual de uma saída de etapa (item 12.5, ADR-070). Desligada por padrão: ligar manda o RECORTE de uma linha
+    de tela para o provedor de `ai.roles.leitura` (outro destino das capturas quando ele não é o do ator)."""
+
+    enabled: bool = False
 
 
 class DecisaoFechadaCfg(BaseModel):
     """Porta `DecisaoFechada` (Fase 31, ADR-069): decisão por conjunto fechado no Jev, DESLIGADA por padrão.
 
-    O YAML só RESTRINGE: o envio e as classes que podem sair são constantes de código (`planning/decisao_fechada/
+    O YAML só RESTRINGE o que sai: o envio e as classes que podem sair são constantes de código (`planning/decisao_fechada/
     privacidade.py`: `JEV_RUNTIME_SEND_APPROVED`, `JEV_ALLOWED_CLASSES`) e nenhuma chave aqui abre o que o código fechou.
-    `enabled: false` vence tudo; sem consumidor listado, vale `off`. `on` só por consumidor e com GO pré-registrado."""
+    `enabled: false` vence tudo; sem consumidor listado, vale `off`. `on` só por consumidor e com GO pré-registrado.
+    `decisor` (31.14) escolhe QUEM decide quando um pedido passa; não abre o envio (a porta recusa antes do decisor)."""
 
     enabled: bool = False
     consumidores: dict[Literal["curador", "intencao", "desempate", "apps"], Literal["off", "shadow", "on"]] = {}
     #: Estreita o teto de código (interseção). None = não estreita além do código.
     classes_permitidas: list[Literal["C0", "C1", "C2", "C3"]] | None = None
+    #: Quem decide (31.14): `nulo` (de fábrica: nunca decide, nunca toca rede) ou `jev` (o `DecisorJev`, pelo adaptador de
+    #: retrieval, com o gasto conferido antes do POST e a chamada em `ai_calls`). Escolher `jev` NÃO abre o envio: ele segue
+    #: fechado por `JEV_RUNTIME_SEND_APPROVED` (código) até o 31.10.
+    decisor: Literal["nulo", "jev"] = "nulo"
     #: Retenção das linhas da sombra (`decisao_fechada_sombra`, migração 074): dias inteiros; o agregado diário é calculado
     #: ANTES de purgar e fica. Prazo próprio porque `ai_calls` morre em `log_retention_days` e a sombra precisa de mais.
     retencao_dias: int = Field(180, ge=1, le=3650)
@@ -548,6 +589,13 @@ class AiCfg(BaseModel):
     step_budget: StepBudgetCfg = StepBudgetCfg()
     screenshot_max_side: int = 1280             # lado maior da imagem enviada ao modelo (tokens ∝ área)
     max_hierarchy_elements: int = 140           # linhas da hierarquia no prompt (priorizadas; a árvore completa fica local)
+    # LT-4b (latência do planejador, 03/10): o plano custa ~6,6 ms por token de SAÍDA, e o esforço `low` só tirou 13 %.
+    # `curto` tira do formato da etapa livre (plano livre e parte livre do plano entre apps) o que o backend sabe
+    # preencher, e pede título e objetivo curtos. Saem `postcondition.description` (derivada do `value`: no
+    # `model_judged`, o verificador lê o próprio critério), `precondition` e `max_attempts` (1 no efeito, 3 nas
+    # demais). `timeout_s` fica, porque é o modelo que sabe qual etapa é lenta. Estimado com count_tokens em 2 planos
+    # reais do QA (a brevidade simulada por corte): −22 a −24 % de saída. `longo` é o formato de sempre, byte a byte.
+    esquema_do_plano: Literal["longo", "curto"] = "longo"
     # Item 7.6 (dieta do contexto do ator): histórico da tentativa que vai ao ator, comprimido sem chamar o
     # modelo — linhas REJEITADA/FALHOU/(executor) (sempre relevantes: dizem o que NÃO fazer de novo) mais as
     # últimas N em ordem. O verificador continua recebendo o histórico completo que o executor lhe passa.
@@ -558,7 +606,8 @@ class AiCfg(BaseModel):
     rich_tree_min_elements: int = 8
     # Quando a etapa com efeito externo decide no modelo de escalonamento: `true` = sempre (era o único modo: em
     # 19-23/09, 39 % das decisões foram ao Opus, inclusive curtir com seletor de commit declarado); `false` = nunca
-    # por efeito; `by_risk` = só risco alto do catálogo, risco médio SEM seletor de commit, ou app sem catálogo.
+    # por efeito; `by_risk` = só risco alto do catálogo, risco médio SEM seletor de commit, ou app sem catálogo
+    # (exceto o app de prova, `builtin` e `apps.category='qa'`, na etapa sem capability: item 29.31).
     # Retentativa, erros seguidos e ciclo continuam escalando em qualquer modo. Receita divergida NÃO escala sozinha
     # (conferido em 26/09, frente F3: a fórmula do tier nunca leu a divergência): a IA assume a etapa no modelo de
     # ação e só sobe pelos controles acima. Escalar na divergência é decisão do dono pendente, com o custo medido
@@ -600,6 +649,10 @@ class AiCfg(BaseModel):
     # caminho dela, vira ativa e passa a agir; uma divergência recomeça a contagem. Uma execução limpa só é um
     # caminho visto uma vez — aprender só com prova (pedido do dono). 0 = sem prova: nasce ativa (o modo anterior).
     recipes_promote_after: int = Field(2, ge=0, le=20)
+    # RA-20: a etapa sem receita na chave atual herda, como CANDIDATA (em prova, nunca agindo), a receita provada da
+    # mesma etapa noutra versão do app, noutra variante ou na legada. false = só mede a causa do "ausente". Só vale
+    # com a prova (`recipes_promote_after > 0`): sem ela a receita aprendida já nasce ativa e não há o que herdar.
+    recipes_heranca: bool = True
     flows: bool = False                          # reaproveita o plano de comandos repetidos (sem chamar o planejador)
     pathfinder_wait_s: int = Field(0, ge=0, le=3600)   # >0: numa execução sem receita, 1 aparelho aprende e os demais esperam
     # US$ por milhão de tokens [entrada, leitura de cache, gravação de cache, saída] — platform.claude.com/docs/en/about-claude/pricing
@@ -610,6 +663,9 @@ class AiCfg(BaseModel):
         "claude-opus-5-5": [4.0, 0.2, 5.0, 20.0],
         "claude-opus-5": [5.0, 0.5, 6.25, 25.0],
         "claude-sonnet-5": [2.0, 0.2, 2.5, 10.0],
+        # Sonnet 5.5 (página de preços, 03/10/2026): o mesmo do Sonnet 5. Antes saía certo só por casar o prefixo
+        # "claude-sonnet-5" em `price_for`; declarado, não depende disso (17.13, perfil planejador-sonnet).
+        "claude-sonnet-5-5": [2.0, 0.2, 2.5, 10.0],
         "claude-haiku-4-5": [1.0, 0.1, 1.25, 5.0],
         # Destino documentado do fallback de recusa (achado #92): custava o mesmo do Opus 5 e não estava cadastrado,
         # então toda chamada que caísse nele virava "Total parcial" no painel de uso.
@@ -629,6 +685,8 @@ class AiCfg(BaseModel):
         "claude-opus-5-5": ModelCaps(min_cache_tokens=512),
         "claude-opus-5": ModelCaps(min_cache_tokens=512),
         "claude-sonnet-5": ModelCaps(min_cache_tokens=1024),
+        # Sonnet 5.5: 512 (doc de prompt caching, 03/10/2026). Sem a linha, herdava os 1024 do Sonnet 5 pelo prefixo.
+        "claude-sonnet-5-5": ModelCaps(min_cache_tokens=512),
         "claude-opus-4-8": ModelCaps(min_cache_tokens=1024),
         "claude-haiku-4-5": ModelCaps(thinking=False, effort=False, min_cache_tokens=4096),
     }
@@ -647,6 +705,8 @@ class AiCfg(BaseModel):
     #: Fatias do teto do dia por origem de chamada (item 31.6). Vazio = os padrões da classe.
     limits: AiLimitsCfg = AiLimitsCfg()
     decisao_fechada: DecisaoFechadaCfg = DecisaoFechadaCfg()
+    #: Item 12.5 (ADR-070): a saída de etapa lida da imagem, conferida às cegas pelo papel `leitura`. Desligada.
+    leitura_visual: LeituraVisualCfg = LeituraVisualCfg()
 
 
 class AjustesDeSessaoCfg(BaseModel):
@@ -986,6 +1046,11 @@ class LearningCfg(BaseModel):
     licoes: LicoesCfg = LicoesCfg()
     telas: TelasAprendidasCfg = TelasAprendidasCfg()
     fluxo: FluxoAprendidoCfg = FluxoAprendidoCfg()
+    #: RA-19 B: o que uma execução SIMULADA ensina (`runs.simulated=1`) nunca nasce ativo, receita ou fluxo, nem com
+    #: `ai.recipes_promote_after: 0` ou `fluxo.com_prova: false`; e a concordância dela na sombra não promove receita.
+    #: Só evidência real publica (a sombra do fluxo já só conta execução real), e a pessoa promove à mão. `true` = o
+    #: modo anterior, só para a suíte: o Harness é todo simulado e prova a reprodução e o reaproveitamento.
+    simulada_publica: bool = False
     voz: ModoDoAprendizadoCfg = ModoDoAprendizadoCfg()
     preferencias: ModoDoAprendizadoCfg = ModoDoAprendizadoCfg()
     backlog: BacklogCfg = BacklogCfg()
@@ -1237,8 +1302,24 @@ class AppConfigFile(BaseModel):
         blocos = [("ai.roles", ai.roles)] + [(f"ai.profiles.{nome}.roles", p.roles) for nome, p in ai.profiles.items()]
         for onde, roles in blocos:
             for papel in roles:
+                if papel in ROLES_OPCIONAIS and onde == "ai.roles":
+                    continue
                 if papel not in AI_ROLES:
-                    raise ValueError(f"{onde}.{papel}: função desconhecida (use {', '.join(AI_ROLES)})")
+                    raise ValueError(f"{onde}.{papel}: função desconhecida (use {', '.join(AI_ROLES)}"
+                                     + (f"; `{papel}` só vale em ai.roles, não por perfil" if papel in ROLES_OPCIONAIS
+                                        else "") + ")")
+        leitura = ai.roles.get("leitura")
+        if leitura is not None:
+            # Sem herança (item 12.5): o conferente que herdasse o provedor ou o modelo do ator deixaria de ser outro.
+            # O fallback também não: ele mandaria o recorte de uma conta real para um destino que ninguém escolheu.
+            if not leitura.provider or not leitura.model:
+                raise ValueError("ai.roles.leitura: escreva `provider` e `model` (o papel não herda de outra função)")
+            if leitura.fallback_provider:
+                raise ValueError("ai.roles.leitura.fallback_provider: não existe fallback para o leitor; o recorte só "
+                                 "vai ao provedor escolhido aqui")
+            if leitura.refusal_fallback is not None:
+                raise ValueError("ai.roles.leitura.refusal_fallback: não existe para o leitor; a captura vai exatamente "
+                                 "para o provedor que o aviso de privacidade nomeia (remova a linha)")
         if ai.canary.profile and ai.canary.profile not in ai.profiles:
             raise ValueError(f"ai.canary.profile: perfil '{ai.canary.profile}' não está em ai.profiles")
         for nome, prov in ai.providers.items():
@@ -1276,6 +1357,10 @@ class ResolvedRole:
     concurrency: int
     effort: Effort
     extra_body: dict[str, Any] | None      # item 7.8: repassado tal qual ao corpo do POST (ex.: options do Ollama)
+    # Item 17.14: o que o YAML escreveu para ESTA função (padrão ou perfil). Vazio = o caminho de hoje, byte a byte.
+    effort_declarado: Effort | None = None
+    thinking: bool | None = None
+    cache_da_etapa: bool = False
 
     @property
     def endpoint(self) -> str:
@@ -1295,6 +1380,7 @@ class Config:
         self.root = root
         if env.android_sdk_root:
             self.file.android.sdk_root = env.android_sdk_root
+        self.validar_leitura()
 
     def path(self, rel: str) -> Path:
         p = Path(rel)
@@ -1469,6 +1555,11 @@ class Config:
         a campo; o que ele não escreve continua o do padrão. Perfil inexistente é `KeyError` — quem chama confere.
         """
         ai = self.file.ai
+        if role in ROLES_OPCIONAIS:
+            lido = ai.roles.get(role)
+            if lido is None:
+                raise KeyError(f"ai.roles.{role} não está configurado (função opcional, sem herança)")
+            profile = None                  # o perfil de execução não troca o leitor
         # `persona` (item 17.8) sem bloco em `ai.roles` É o `social`: lê o bloco dele e, em cada perfil, a camada dele
         # (depois a própria, por cima). Com bloco próprio, o `social` deixa de valer para ela — herdar só o modelo ou
         # o `fallback_provider` do social ao apontar a persona para outro provedor daria um modelo que o destino não tem.
@@ -1492,14 +1583,69 @@ class Config:
             base_url=prov.base_url, api_key_env=prov.api_key_env,
             sends_data_externally=prov.sends_data_externally and prov.kind != "simulated",
             fallback_provider=r.fallback_provider,
-            refusal_fallback=(self.env.ai_refusal_fallback if r.refusal_fallback is None else r.refusal_fallback),
+            # `leitura` nunca cai em fallback de recusa: o recorte vai para quem o aviso nomeia (item 12.5)
+            refusal_fallback=(False if role in ROLES_OPCIONAIS else
+                              self.env.ai_refusal_fallback if r.refusal_fallback is None else r.refusal_fallback),
             timeout_s=float(r.timeout_s if r.timeout_s is not None else padrao["timeout_s"]),
             max_retries=int(r.max_retries if r.max_retries is not None else 0),
             concurrency=int(r.concurrency if r.concurrency is not None else padrao["concurrency"]),
-            effort=self.ai_effort_for(role), extra_body=prov.extra_body)
+            effort=r.effort or self.ai_effort_for(role), extra_body=prov.extra_body,
+            effort_declarado=r.effort, thinking=r.thinking, cache_da_etapa=bool(r.cache_da_etapa))
 
     def ai_roles(self, profile: str | None = None) -> dict[str, ResolvedRole]:
         return {papel: self.ai_role(papel, profile) for papel in AI_ROLES}
+
+    def ai_da_execucao(self, profile: str | None) -> AiCfg:
+        """O bloco `ai` que vale para uma execução: o global com o que o perfil escreve de imagem e de árvore por cima
+        (item 17.14). Sem perfil, ou perfil sem esses campos (ou que sumiu da configuração: a chamada de IA da execução
+        já falha com o nome dele), é o MESMO objeto de sempre."""
+        ai = self.file.ai
+        perfil = ai.profiles.get(profile) if profile else None
+        if perfil is None:
+            return ai
+        troca = {campo: valor for campo in ("screenshot_max_side", "rich_tree_min_elements")
+                 if (valor := getattr(perfil, campo)) is not None}
+        return ai.model_copy(update=troca) if troca else ai
+
+    def ai_leitura(self) -> ResolvedRole | None:
+        """O leitor da leitura visual (item 12.5), ou `None` quando `ai.roles.leitura` não está escrito."""
+        return self.ai_role("leitura") if "leitura" in self.file.ai.roles else None
+
+    @staticmethod
+    def _nome_de_modelo(model: str | None) -> str:
+        """O nome do modelo na forma de comparar: sem caixa, sem prefixo de gateway (`openai/gpt-x` -> `gpt-x`) e sem
+        sufixo de data (`-20261001`), como o `model_caps` já faz. O mesmo modelo escrito de duas formas é UM modelo."""
+        return re.sub(r"-\d{8}$", "", (model or "").strip().casefold().rsplit("/", 1)[-1])
+
+    def validar_leitura(self) -> None:
+        """O leitor tem de ser independente do ator e ver imagem (ADR-070). O código exige modelo DIFERENTE do `decide` e do
+        `escalation` (base e perfis; comparados pelo nome normalizado) e COM VISÃO DECLARADA em `ai.models`: modelo ausente
+        da tabela é recusado, porque o `ModelCaps()` padrão presume visão. Compara o modelo, e não só o provedor.
+
+        O que o código NÃO exige é a família: o padrão decidido pelo dono é a OpenAI (gpt-6-luna), com o Gemini
+        (gemini-3.1-flash-lite) de reserva. O Haiku é da mesma família do ator e só entra com nova decisão do dono."""
+        r = self.ai_leitura()
+        if r is None:
+            return
+        nome = self._nome_de_modelo(r.model)
+        # Contra o `decide` e o `escalation` de BASE e de CADA perfil: o canário que troca o ator para o modelo do leitor
+        # tiraria a independência da conferência só naquelas execuções.
+        for perfil in (None, *self.file.ai.profiles):
+            for papel in ("decide", "escalation"):
+                outro = self.ai_role(papel, perfil)
+                if nome == self._nome_de_modelo(outro.model) and r.kind != "simulated":
+                    onde = f"ai.profiles.{perfil}.roles.{papel}" if perfil else papel
+                    raise ValueError(f"ai.roles.leitura.model: '{r.model}' é o mesmo modelo de {onde}; o segundo leitor "
+                                     "precisa ser outro modelo (o padrão do dono é de outra família: OpenAI ou Gemini)")
+        if r.kind == "simulated":
+            return
+        declarado = next((v for k, v in self.file.ai.models.items() if self._nome_de_modelo(k) == nome), None)
+        if declarado is None:
+            raise ValueError(f"ai.roles.leitura.model: '{r.model}' não está declarado em ai.models; escreva a linha "
+                             f"`ai.models.{r.model}` com `vision: true` (a visão do leitor não se presume)")
+        if not declarado.vision:
+            raise ValueError(f"ai.roles.leitura.model: '{r.model}' está declarado sem visão em ai.models; o leitor "
+                             "transcreve uma imagem (corrija `vision` na linha `ai.models." + r.model + "`)")
 
     def model_caps(self, model: str) -> ModelCaps:
         """Capacidade DECLARADA do modelo. Sem declaração, o conservador: nada de strict, nada de thinking/effort.

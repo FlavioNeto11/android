@@ -258,6 +258,7 @@ interface Snapshot {
 | `GET /api/settings` / `PUT /api/settings` | `Partial<Settings>` | `Settings` |
 | `GET /api/ai` | – | `AiStatus` |
 | `GET /api/usage` (v0.28) | – | `UsageReport.by_account`: US$ por conta de IA (`anthropic`, `openai`, `gemini`) na janela ou na execução (ADR-051) |
+| `GET /api/usage` (v0.75) | – | `UsageReport` ganha `by_origin`, `escalations`, `rejudges`, `cascades`, `image_reasons` e `steps_driven_by_null` (RA-10, migração 080; adendo v0.75) |
 | `GET /api/ai/balances` | – | `{accounts: AiBalance[], blocked, estimated: true, note}` (ADR-051) |
 | `POST /api/ai/balances/{conta}` | `{balance, source?: manual ou console, observed_at?, currency?, units_per_usd?, note?}` | 201, o mesmo relatório; 404 `unknown_account`, 400 `invalid_observed_at` |
 | `POST /api/ai/balances/{conta}/recharge` | `{amount > 0, currency?, note?}` | 201, o mesmo relatório (âncora nova = saldo de agora + valor); 409 `no_initial_balance`, 400 `invalid_recharge` |
@@ -376,7 +377,8 @@ interface UsageReport { scope: { run_id: string | null; days: number | null }; g
   objectives_with_ai: number; calls_per_objective: number; usd_per_objective: number;
   steps_driven_by: Record<string, number>; unpriced_models: string[] }
 interface Flow { id: string; name: string; command_template: string; app_id: string | null; source_run_id: string | null;
-  status: 'active' | 'disabled'; uses: number; created_at: string; last_used_at: string | null }
+  status: 'active' | 'disabled'; uses: number; created_at: string; last_used_at: string | null;
+  required_apps: string[] /* adendo (29.42, 03/10): ids dos apps, na ordem em que o plano os usa */ }
 interface Recipe { id: number; app_package: string; app_version: string; step_key: string; step_hash: string;
   version: number; status: 'active' | 'quarantined' | 'superseded';
   actions: { tool: string; args: Record<string, unknown>; commit: boolean; why: string;
@@ -2837,6 +2839,22 @@ com "credencial" é tratado como segredo pela redação.
     de DTO ou de migração.
 - **Relatório:** `per_instance[].values_read: [{name, value, value_kind, step_title, app, read_at}]` em
   `GET /api/runs/{id}/report`, e a seção "Valores lidos entre etapas" no markdown.
+- **Origem do valor (item 12.5, ADR-070; adendo provisório):** cada item de `values_read` ganha `origem` (`arvore`|`visual`),
+  `leitor` (`provedor/modelo`), `frame_sha256` e `evidence_id` (os três nulos quando `origem=arvore`). O markdown traz, para
+  cada valor visual, a linha "lido da imagem; conferido às cegas por <leitor> no recorte da captura <sha8>". A ferramenta
+  `read_value` ganha `source` (`tree` padrão | `visual`; `visual` exige `value` e só vale com `value_kind=text`). A ação
+  `read_value` visual registra `{name, value_kind, chars, origem, frame_id, evidence_id, leitor}` e `args.value` fica
+  `**OMITIDO**`; a recusa é uma ação `rejected` cujo `error` é só um código do vocabulário fechado (`desligado`,
+  `elemento_com_texto`, `regiao_nao_declarada`, `arvore_truncada`, `tela_sensivel`, `fora_do_app`, `sem_ancora`,
+  `captura_mudou`, `repetida`, `sem_leitor`, `leitor_falhou`, `ilegivel`, `truncado`, `nao_confere`, `triagem:<motivo>`; o
+  vocabulário é fechado e inclui `tela_sensivel` e `leitor_falhou`, que o orquestrador também aceita). A triagem (código de
+  verificação, senha, token) NÃO é erro de chamada: como no caminho da árvore, a ação fica `rejected` com
+  `valor recusado pela triagem: <motivo>` e a etapa vai para `waiting_user`, sem nova tentativa do ator. O valor gravado é o do
+  leitor (limpo); as saídas `origem=visual` não entram nas variáveis de receita; orçamento, prazo e crédito do leitor seguem o
+  desfecho do ator e não viram `leitor_falhou`.
+  `GET /api/ai` lista a função `leitura` em `roles` e `models` quando `ai.roles.leitura` está escrito, e o `notice` nomeia
+  provedor, modelo e os apps que declaram a região. `GET /api/usage` agrupa as chamadas pelo `role` `leitura`, e `ai_calls.origem`
+  é `leitura`. Sem rota nova; migração 078.
 
 ## Adendo v0.43 (30/09/2026) — Fase 29: prova de vazamento na linha do aparelho e leitura do firewall por interface (ADR-056, ADR-061)
 
@@ -3927,3 +3945,431 @@ Códigos novos (em `previa`, viram `bloqueios[]`):
   `dados`: `de_id`, `ate_id`) e `condicao_atendida` (warn; `dados`: `gatilho_id`, `observacao`, `op`). Os dois com
   `requer_pessoa=false`. O fato também fica na memória do pedido (`evento.buraco.<gatilho>`, `pendencia`;
   `condicao.<gatilho>`, `descoberta`).
+
+## Adendo v0.68 (02/10/2026) — retirada de conta limpa o app nos aparelhos; evento `device.account_cleanup` (item 29.27, emenda do ADR-068)
+
+`POST /api/instagram/profiles/{id}/accounts/{conta}/retire` (adendo v0.55) e o gatilho automático da retirada passam a **limpar os dados do app**
+(`pm clear` só do pacote da conta) nos aparelhos onde a conta estava logada, quando o `app.yaml` do app declara `limpar_ao_retirar: true`
+(hoje o Instagram). A resposta ganha o campo **`limpeza_dos_aparelhos`**: `{agendada: bool, aparelhos: n}` (com `motivo` quando `agendada` é
+falso por falha ao agendar ou por não haver executor). Sem a chave no app, ou sem aparelho onde a conta estava logada: `{agendada: false,
+aparelhos: 0}` e nada muda. A conta que já não existe (idempotente) não traz o campo.
+
+A limpeza roda em tarefa de fundo, um aparelho por vez, como o comando `session.logout` (aparece em `GET /api/commands` com
+`requested_by: sistema:limpeza-ao-retirar`): acorda o aparelho hibernado ou parado, captura a tela, `pm clear`, captura a tela, resolve a
+quarentena (`resolved_by: sistema:limpeza-ao-retirar`, `resolution: "limpeza automática autorizada pelo dono em 02/10"`) e devolve a energia.
+Evento novo **`device.account_cleanup`** por aparelho: `data` = `{profile_id, account_id, package, instance_id, resultado, passo, motivo, antes,
+depois, energia, resolvidos}`; `resultado` é `concluida` (nível `warn`), `dispensada` (a quarentena já tinha sido resolvida por uma pessoa, ou a
+retirada não valeu; `info`), `falhou` (`error`, o aviso de atenção: a quarentena segue aberta e nada é repetido) ou `nao_agendada` (`error`).
+`antes`/`depois` são chaves do armazém de evidências (`limpeza-de-conta/<aparelho>/…png`). Os aparelhos do pedido vêm dos marcadores abertos da
+conta e do vínculo (não da sessão); `passo: outra_conta` (em `falhou`) é a recusa de limpar um aparelho que também serve a outra conta do mesmo
+app, ou que tem quarentena aberta de outra conta (sem acordá-lo). O evento e o log não carregam o @ da conta. Nada
+roda retroativamente na subida. Nenhuma migração. Prova `simulated` (`tests/test_limpeza_ao_retirar.py`); `not_run` no central.
+
+## Adendo v0.69 (02/10/2026) — D2-a também ao ganhar a conta (item 29.29, emenda do ADR da 051)
+
+Sem rota nova nem campo novo: dois 409 `conta_do_app_ja_no_aparelho` em rotas que já existiam, sempre ANTES de criar qualquer linha.
+
+- `POST /api/instagram/profiles` com `persona_id` de pessoa sem conta: 409 quando algum vínculo SEM app da pessoa (ou o `instance_id` do corpo)
+  está num aparelho onde outra persona já serve o app da conta. Antes só o `instance_id` do corpo era conferido.
+- `POST /api/instagram/profiles/{id}/accounts` (conta de outro app): 409 quando um vínculo sem app da persona passaria a servir esse app num aparelho
+  onde outra persona já o serve. O vínculo COM app não é reconferido (já foi no vínculo) e quem já tem conta no app não muda de sentido.
+- A mensagem do 409 nomeia o aparelho e a outra persona. Nada é criado: nem perfil, nem conta, nem senha no cofre.
+- Ressalvas (revisão adversarial de 03/10): a conferência só roda com o app âncora registrado em `apps` (sem ele, nada é conferido, como antes);
+  `conta_ancora(criar=True)` em dado legado cria a conta sem conferir (0 casos no central em 03/10); conferência e criação não estão numa transação
+  (janela de corrida, no backlog).
+
+## Adendo v0.70 (03/10/2026) — evidência inválida: ação própria, trilha com tipo e o item reaprendido (item 30.23)
+
+Uma rota e campos novos; nada muda de tipo. A regra é a emenda de 03/10 ao ADR-054; o desenho, o §9.3 de
+`design/aprendizado-vivo.md`.
+
+- **`POST /api/aprendizado/{kind}/{ref}/evidencia-invalida`**, corpo `{run_id}` (só esse campo). Serve para quando a receita
+  ou o fluxo foi aprendido de uma execução que terminou como sucesso sem comprovar o que fez. Quem decide é o operador da
+  sessão do painel, como em `/status`. O motivo não vem do cliente: o backend grava `evidencia_invalida:<run_id>` na trilha.
+  - O item vivo (`candidate`, `validated`, `published`) vai para `disabled`, com CAS no status nativo.
+  - O já desligado ganha a linha `disabled → disabled`, que reclassifica o desligamento sem mudar o status nativo.
+  - A mesma marca de novo não grava outra linha.
+  - Devolve o detalhe, como `GET /api/aprendizado/{kind}/{ref}`.
+  - Recusas:
+    - 422 `invalid`: o tipo não é `receita` nem `fluxo`, ou o `run_id` está fora do formato `r-AAAAMMDDhhmmss-xxxxxx`;
+    - 409 `transition_forbidden`: o item não nasceu de uma execução (treino ou origem ilegível), o `run_id` não é a execução
+      de origem dele (`nasceu_de`), ou ele está aposentado (`deprecated`);
+    - 409 `state_conflict`: o status nativo mudou entre a leitura e a escrita;
+    - 404 `not_found`.
+- **O motivo reservado é recusado em `POST …/status`** com 422 `invalid`. Vale para o `reason` que começa por
+  `evidencia_invalida`, sem diferenciar maiúsculas e ignorando espaços nas pontas, e a mensagem aponta a ação própria.
+  `PUT /api/flows/{id}` e `PUT /api/recipes/{id}` passam pelo mesmo serviço e recusam igual.
+- **Linha da trilha** (`trilha[]` do detalhe): ganha `tipo` (`"evidencia_invalida"` ou `null`) e `run_invalidada` (o id da
+  execução ou `null`), lidos do `reason` pelo backend. O cliente não interpreta o formato do motivo.
+- **Evidência** (`evidencias[]`): ganha `invalidada` (booleano). É `true` quando a execução dela foi marcada como evidência
+  inválida neste item. A evidência continua listada, mas não entra na saúde, na versão nem na sombra do fluxo.
+- **Item** (linha de `GET /api/aprendizado`, `/pendentes` e `/revisar`, e `item` do detalhe):
+  - `nasceu_de`: a execução de que a receita ou o fluxo foi aprendido; `null` no treino e nos outros tipos.
+  - `reaprendido: {run_invalidada, item: {kind, ref}} | null`: o item (re)nasceu, por outra execução real, no escopo
+    (`scope_key`) de uma evidência inválida, sem publicação de pessoa no escopo entre a marca e esse nascimento. `item` é o
+    que foi desligado; no fluxo é a própria linha, que renasce nela. Com `reaprendido`, `requires_owner` é `true` e o item
+    espera o dono em "Para aprovar". O item que o dono aprova continua com o campo, porque é a origem dele; o que nascer
+    no escopo depois dessa aprovação já não é reaprendido.
+- **`por_que_nao_publica.codigo`** ganha `reaprendido`, logo depois de `texto_de_pessoa`: `espera_o_dono` vem `true` e
+  `detalhe` traz a execução invalidada. O código não aparece no item já publicado.
+- **Detalhe** ganha `invalidar_evidencia: {run_id} | null`: a execução que a pessoa pode marcar agora (a de origem). Vem
+  `null` quando a ação não cabe: outro tipo, item sem origem, aposentado ou já marcado.
+- **`relacoes[].tipo`** ganha dois valores, ambos com `fonte` `learning_transitions: evidencia_invalida:<run>, mesmo scope_key`:
+  - `reaprende`: da receita reaprendida para a desligada, com `rotulo` "<ref> (evidência inválida da execução <run>)";
+  - `reaprendida_por`: o inverso.
+
+  O fluxo renasce na mesma linha e não ganha relação consigo.
+- **Evento `learning.needs_person`**: o `motivo` da entrada ganha `reaprendido`, na faixa B. Ele vem antes das outras
+  razões B; as da faixa C continuam vencendo.
+
+Não há migração: o tipo mora no `reason` de `learning_transitions`, com gramática fechada
+(`evidencia_invalida:r-AAAAMMDDhhmmss-xxxxxx`).
+
+## Adendo v0.71 (03/10/2026) — leitura visual de saída de etapa (item 12.5, ADR-070)
+
+Sem rota nova. O contrato do 12.5 está no adendo "Origem do valor" do relatório de execução (acima): `values_read[].origem`, `read_value(source)`, o
+vocabulário fechado de recusas (`desligado` … `leitor_falhou`, `tela_sensivel`, `triagem:<motivo>`), `GET /api/ai` com a função `leitura` e `GET
+/api/usage` com o `role` `leitura`. Ajustes desta revisão: a triagem do valor visual leva a etapa a `waiting_user` (sem nova tentativa do ator);
+o valor gravado é o do leitor; as saídas `origem=visual` não entram nas variáveis de receita; orçamento, prazo e crédito do leitor não viram
+`leitor_falhou`; o aviso de `/api/ai` nomeia os apps pelo rótulo do dado. O número v0.71 é o final, confirmado pelo orquestrador na integração da suíte 6.
+
+## Adendo v0.73 (03/10/2026; número final, confirmado na integração da suíte 6) — `retire`: `limpezas` ganha `memory_items_de_outras_personas` (item 29.32)
+
+`limpezas.memory_items` passa a contar as lembranças reescritas em TODAS as personas (não só na que retira), e a chave nova
+`memory_items_de_outras_personas` diz quantas dessas eram de outras personas. Só contagens, inteiros; o evento `profile.account_retired` leva as mesmas.
+
+## Adendo v0.72 (03/10/2026, provisório: quem mergear depois renumera) — o parecer da IA diante da pessoa: rótulo, aceite e pedido de revisão (item 30.17)
+
+Aditivo. O curador (30.11) grava pareceres em `learning_reviews`; agora a pessoa os vê, aceita ou recusa, e cada decisão
+dela sobre o item vira o rótulo humano do parecer (`decisao_final`, `decidido_por`, `override`, `override_motivo`,
+`transicao_id`, colunas da 069). Nenhuma migração. Campos e rotas só existem com o curador composto (`ligar_curador`, que o
+`AppState` sempre chama); sem ele, o Livro de antes (`curador: null`, `pareceres: []`).
+
+**Quando o parecer aparece** (`aprendizado.curador.modo`). Em `on`, sempre. Em `shadow` e `off`, só DEPOIS da decisão da
+pessoa: a escolha dela mede se a IA acerta, sem a influência dela (D-3). O parecer pendente escondido só se conta
+(`pendentes_ocultos`).
+
+**Leitura.**
+- `GET /api/aprendizado/pendentes` e `/revisar` → `{itens, total, curador}`; `curador: {modo} | null`. Cada item ganha
+  `parecer: ParecerNaFila | null`, preenchido só em `on` e só com parecer válido, sem decisão e sobre o estado de agora:
+  `{id, criado_em, decisao, confianca, classe, simulated, acao, recusa, recusa_no_lote}`. `acao: {to, rotulo} | null` é o
+  passo que aceitar dá (`null` = aceitar é concordar, sem transição); `recusa` e `recusa_no_lote` dizem por que aceitar
+  sozinho ou em lote não vale agora (`null` = vale; os códigos são os do gesto, abaixo).
+- `GET /api/aprendizado/{kind}/{ref}` ganha `pareceres: [Revisao]` (das 5 revisões mais novas, as que o modo deixa ver) e
+  `curador: {modo, pendentes_ocultos, pode_pedir_revisao} | null`. `Revisao`: `{id, criado_em, gatilho, validade, classe,
+  simulated, modelo, estado_no_parecer, parecer, atual, acao, recusa, decisao_final, decidido_por, override,
+  override_motivo, transicao_id}`. `parecer` é a saída validada (`decisao`, `alvo`, `faixa`, `causa`, `confianca`,
+  `probabilidade`, `evidencias_citadas`, `riscos`, `inconsistencias`, `falta` e `conclusao`, o único texto livre), `null`
+  quando a `validade` não é `ok` (`invalida:<motivo>`, `recusada:custo`, `recusada:triagem`). `atual`: é o parecer que uma
+  decisão de agora responde (só ele traz `acao` e `recusa`). `classe`: a efetiva, a da política endurecida pela `faixa`
+  que a IA declarou.
+
+**O rótulo: toda decisão da pessoa sobre o item.**
+- `POST /api/aprendizado/{kind}/{ref}/status {to, reason, review_id?}`. `review_id` (1 a 64 caracteres) é o parecer que a
+  pessoa viu ao decidir; nunca trava a decisão. A transição é a de antes; depois dela, o parecer pendente do estado de antes
+  recebe o rótulo. O rótulo é acessório: uma falha dele só vai ao log, a decisão fica.
+- A pessoa VIU o parecer quando mandou `review_id` OU quando o curador está em `on` (o painel mostra o parecer na fila).
+  Vista, `decisao_final` é `aceitou` quando a decisão vai para o mesmo lado da sugestão e `recusou` quando não vai (override;
+  o `reason` vira `override_motivo`, salvo cara de credencial). Lados: sobe = `aprovar`; desce = `rebaixar`, `desativar`,
+  `possivelmente_obsoleto`, `substituir`, `fundir`; espera = `observar`, `pedir_evidencia`, `manter`.
+- Às cegas (`shadow` ou `off` sem `review_id`), `decisao_final` é o rótulo da própria ação (`validar`, `aprovar`, `rejeitar`,
+  `desligar`, `aposentar`, `reativar`), com `override` pelo lado e sem motivo.
+- `review_id` que não responde ao estado de agora (já decidido, outro estado): a decisão fica, sem rótulo.
+- `PUT /api/flows/{id}` e `PUT /api/recipes/{id}` rotulam sempre às cegas (a página delas não mostra parecer), com o rótulo
+  do primeiro passo. Decisão do ator `sistema` nunca rotula.
+- `POST /api/aprendizado/{kind}/{ref}/evidencia-invalida` (30.23, adendo v0.70) rotula como o `/status`: vista em `on` (o
+  detalhe mostra o parecer ao lado do botão), às cegas fora dele. Reclassificar o já desligado não muda o estado e não
+  rotula.
+
+**O gesto sobre o parecer.** `POST /api/aprendizado/{kind}/{ref}/parecer/{review_id} {resposta: "aceitar"|"recusar",
+motivo (1 a 500), em_lote?: false}` → o corpo do detalhe.
+- Aceitar dá o passo do lado sugerido que a pessoa pode dar agora. Sobe: o primeiro disponível de `aprovar`, `validar`,
+  `reativar`. Desce (`rebaixar`, `desativar`, `possivelmente_obsoleto`): `desligar` ou `rejeitar`, nunca `aposentar`.
+  `substituir`, `fundir`, `observar`, `pedir_evidencia` e `manter`: concordar, sem transição. O motivo vai à trilha do item
+  quando há transição, e o parecer fica `aceitou`. Um passo por gesto: aceitar "aprovar" num candidato o valida.
+- Recusar não mexe no item: `decisao_final = recusou`, `override = true`, `override_motivo` = o motivo. Motivo com cara de
+  credencial: 409 `note_looks_secret`, nada gravado.
+- A decisão do parecer é gravada ANTES da transição, na mesma transação, com CAS (`decisao_final IS NULL`): o segundo gesto
+  perde (409 `parecer_ja_decidido`) e uma transição recusada desfaz o rótulo.
+- A classe que vale é a mais restritiva entre a gravada e a do dossiê de agora (sem dossiê, C): um catálogo que mudou
+  endurece, nunca afrouxa.
+- O lote do painel é um gesto por item, em sequência, com `em_lote: true`; só a classe B entra.
+- Erros `{code, message}`: 404 `review_not_found` (a revisão não existe ou é de outro item) e `not_found`; 422 `invalid`
+  (motivo em branco); 409 `parecer_invalido` (sem parecer válido), `parecer_ja_decidido`, `parecer_oculto` (curador fora do
+  `on`), `parecer_simulado` (provedor falso não move item real), `parecer_desatualizado` (o item mudou de estado depois do
+  parecer), `so_registro_na_classe_a` (na A quem decide é a regra), `lote_na_classe_c` (a C só item a item),
+  `note_looks_secret` e os da transição (`transition_forbidden`, `owner_required`, `state_conflict`, `vetoed`); 503
+  `not_ready` sem curador composto.
+
+**Pedido de revisão.** `POST /api/aprendizado/{kind}/{ref}/revisao`, sem corpo:
+- 202 `{pedido: true, revisao: null}`: o pedido entrou (sinal `pediu_revisao`). O curador o atende numa volta seguinte,
+  dentro do orçamento, pelo gatilho `pedido_da_pessoa`: pedidos dos últimos 7 dias sem revisão posterior. O pedido só pula o
+  cooldown; a prioridade é a dos outros gatilhos do item.
+- 200 `{pedido: false, revisao: Revisao}`: o dossiê de agora já foi revisado (a chave (item, dossiê) da 069). O dossiê muda
+  com evidência nova, outro estado ou outra saúde.
+- 409 `curador_fora_do_on` (em `shadow` o curador já revisa sozinho); 422 `invalid` para tipo que o curador não revisa
+  (revisa `receita`, `fluxo`, `licao`, `tela`, `voz`, `preferencia`); 409 `state_conflict` quando não há como montar o dossiê.
+
+**Sinais novos** (`learning_signals`, polaridade neutra, `created_by` = quem decidiu ou pediu):
+
+| `kind` | `source_ref` | `data` |
+|---|---|---|
+| `parecer_decidido` | `parecer:<review_id>` | `{review_id, item_ref, decisao_final, override, viu}`; o `created_at` é QUANDO a pessoa decidiu (a 069 não tem coluna para isso) |
+| `pediu_revisao` | `pedido_de_revisao:<item_ref>@<dossie_hash>` | `{kind, ref, item_ref, dossie_hash}` |
+
+Prova `simulated`: `tests/test_learning_pareceres.py` e `frontend/src/features/aprendizado/ParecerDaIA.test.tsx`;
+navegador na cópia do banco do central com um provedor de ensaio e o hub `simulated` (03/10). `not_run` no central: o
+curador fica `off` até o deploy 4, que o liga em `shadow`.
+
+## Adendo v0.74 (03/10/2026, provisório: quem mergear depois renumera) — os nomes do painel no "o que mais falha" e nos sinais (validação do deploy 3, P2 e P3)
+
+Só campos novos, aditivos; o painel lê os dois com fallback para o código.
+
+- `GET /api/aprendizado/falhas` (JSON): cada grupo de `itens` e `verificacao` ganha `app_nome`, ao lado do
+  `capability_nome` que já existia. É o nome do agrupamento do Aprendido (`VisaoPorApp.nomes`: o declarado, depois o da
+  loja, depois o próprio pacote); nulo no app `*`. O `titulo` (`pacote · CÓDIGO: motivo`) continua e segue sendo o de
+  quem desenvolve; o Markdown (`formato=md`) não muda.
+- `GET /api/aprendizado/sinais`: cada sinal ganha `app_nome` e `capability_nome` (o mesmo ajudante,
+  `presentation/nomes.py`), nulos quando não se sabe. Os votos e sinais de `GET /api/runs/{id}/feedback` não mudam.
+
+O painel passa a mostrar "Pós-condição não comprovada — Instagram · Abrir o feed" no lugar do título com o pacote e o
+código, e "Instagram › Abrir o perfil" nos sinais. Também só na tela: a receita troca a chave da etapa pelo nome da
+capability ("send_message_i1 (v1)" → "Enviar a mensagem (v1)"), dois itens iguais numa lista ganham quando foram
+aprendidos (ou o número), e o texto da lição nomeia a capability ("Em Abrir o perfil (OPEN_PROFILE): …"). O texto
+gravado da lição, que vai ao prompt, não muda. Sem resposta HTTP, o estado de erro diz "Sem resposta do servidor." no
+lugar do texto do navegador (`lib/loadError.tsx`, todas as telas).
+
+Prova `simulated`: `tests/test_learning_rotas_falhas.py`, `frontend/src/features/aprendizado/model.test.ts`,
+`DetalheRico.test.tsx`, `SaudeDoApp.test.tsx`, `AprendizadoPage.test.tsx` e `frontend/src/lib/loadError.test.ts`.
+
+## Adendo v0.75 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — os grupos de observabilidade de `/api/usage` (RA-10, migração 080)
+
+Só chaves novas, aditivas; nenhuma existente muda. O preço de todo grupo é o de `spent_usd` (`usd` declarado onde
+existe, senão tokens × preço; `provider='simulated'` conta a chamada a US$ 0). As linhas anteriores à 080 têm as colunas
+nulas e não entram nos grupos que dependem delas: os números valem do deploy em diante.
+
+```ts
+interface UsageGrupo { calls: number; usd: number }
+interface UsageReport {                                   // … os campos de sempre, mais:
+  by_origin: Record<string, UsageGrupo>;                  // ai_calls.origem; nula vira "sem_origem"
+  escalations: Record<MotivoDeEscalonamento, UsageGrupo>; // ai_calls.escalate não nulo
+  rejudges: UsageGrupo & {                                // verify com motivo 'rejulgamento' (7.10 e 17.10)
+    by_kind: Record<'nivel' | 'sim_com_efeito', UsageGrupo>;
+    judged: number; disagreements: number; disagreement_rate: number | null;
+    by_app: Record<string, { judged: number; disagreements: number; disagreement_rate: number }>;
+  };
+  cascades: UsageGrupo & { unblocked: number; by_verdict: Record<string, number> };  // decide com motivo 'cascata'
+  image_reasons: Record<MotivoDaImagem, { calls: number; with_image: number }>;
+  steps_driven_by_null: number;                           // etapas terminadas com decide e driven_by nulo
+}
+```
+
+- **Discordância do rejulgamento**: o modelo forte desfez o veredito do barato. No `nivel` (7.10), o forte diz `yes`
+  onde o barato recusou; no `sim_com_efeito` (17.10), o forte não diz `yes` onde o barato disse. Só linhas `ok=1`.
+  `by_app` usa o app da etapa (`projecao.app_da_etapa`, o mesmo do histórico das ações).
+- **`cascades.unblocked`**: a decisão do modelo forte, depois do bloqueio do barato, não foi `step_blocked`; erro do
+  provedor aparece em `by_verdict` como `erro`.
+- **`steps_driven_by_null`**: o aceite do RA-10 é zero nas etapas novas. O total de `driven_by` de sempre ainda soma
+  nulo como `ai` (COALESCE), e este número mostra o que essa soma supõe.
+
+Os vocabulários (`MotivoDeEscalonamento`, `MotivoDaChamada`, `MotivoDaImagem`) estão em `docs/ia.md` §9 e em
+`backend/app/planning/provider.py`.
+
+Prova `simulated`: `backend/tests/test_observabilidade_das_chamadas.py`. Prova real: `not_run` (a consulta de
+conferência de `docs/ia.md` §9 roda um dia depois do deploy).
+
+## Adendo v0.76 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — o rótulo de intenção (item 30.25)
+
+Duas rotas novas, sem IA e sem custo. As duas entram antes da rota genérica do livro (`{kind}/{ref}`).
+
+- `GET /api/aprendizado/intencao?limite=` (1 a 200, padrão 50): `{itens, total}`, as perguntas abertas da mais
+  recente para a mais antiga. Cada item: `review_id`, `run_id`, `criado_em`, `terminou_em`, `app`, `app_nome`,
+  `comando` (lido da execução na hora; nunca gravado no rótulo), `cadeia` (`sem_casamento|empate`), `candidatos`
+  (`[{skill_id, nome}]`, o nome pelo catálogo de agora, o id quando a habilidade saiu dele), `empatados`,
+  `decisao_final` e `decidido_por` (nulos). 503 antes da composição.
+- `POST /api/aprendizado/execucao/{run_id}/intencao` com `{"escolha": "<skill_id>" | "nenhum"}`: grava a
+  resposta da pessoa (o operador da sessão) por CAS e devolve `{review_id, run_id, criado_em, app, decisao_final,
+  decidido_por}`. 404 `not_found` sem pergunta; 422 `invalid` fora do catálogo gravado; 409 `state_conflict` já
+  respondida.
+- `learning_reviews` ganha linhas com `template_id='intencao'` (sem migração: a 069 já tem as colunas). Os leitores
+  do curador filtram `template_id='curador'`. O sinal `parecer_decidido` ganha `data.template_id`.
+
+Prova `simulated`: `tests/test_learning_rotulo_de_intencao.py` e
+`frontend/src/features/aprendizado/IntencaoSecao.test.tsx`. Ensaio no navegador (03/10, cópia do banco, provedor
+simulado): responder, "Nenhuma destas", filtro, 409, 422, erro de carga e Sinais.
+
+## Adendo v0.77 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — a causa do "ausente" e a herança da receita (RA-20, item 29.40)
+
+Só nomes de métrica e uma chave de config, aditivos. Nenhuma rota muda.
+
+- `receita.consulta{resultado}` ganha o valor `herdada`: a chave não tinha receita e herdou, como candidata, a receita
+  provada da mesma etapa noutra chave. Como `candidata`, não termina em `receita.reproducao` (a IA decide a etapa).
+- Nome reservado novo: `receita.ausente{causa}`, uma contagem por consulta sem receita na chave (herdada ou não), com
+  `causa` ∈ `espera_o_dono`, `desligada`, `variante`, `legada`, `versao`, `assinatura`, `sem_receita`
+  (`modules/learning/domain/causa_do_ausente.py`). Os dois saem em `GET /api/desempenho` como os demais contadores.
+- `ai.recipes_heranca` (padrão `true`): `false` só mede a causa, sem herdar. Herda só com `ai.recipes_promote_after`
+  maior que 0.
+- Transição nova na trilha da receita (`active → superseded`, pelo sistema): a legada ativa da mesma etapa e versão sai
+  quando uma receita da chave completa se prova e passa a agir.
+
+Prova `simulated`: `tests/test_recipes.py::test_herda_da_versao_anterior`, `tests/test_receita_heranca.py` e
+`tests/test_learning_causa_do_ausente.py`.
+
+## Adendo v0.78 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — "Confirmar que fica" (item 30.24)
+
+- `POST /api/aprendizado/{kind}/{ref}/confirmar` com `{"motivo"?: string (até 500), "review_id"?: string}`: a pessoa
+  da sessão mantém o legado de "Revisar". Devolve o detalhe do item, como o `/status`. 404 sem o item; 422 para
+  tipo que não seja `receita` ou `fluxo`; 409 `note_looks_secret` para motivo com cara de credencial; 409
+  `state_conflict` fora de "Revisar" (inclusive a segunda confirmação). O estado e o status nativo não mudam.
+- A trilha ganha a linha `published → published` com `reason` = `confirmado que fica` ou `confirmado que fica:
+  <motivo>`. No JSON da trilha, `tipo: "confirmacao"` e `motivo_da_pessoa` (o motivo sem o prefixo, ou nulo).
+- `GET /api/aprendizado/revisar`: o item confirmado sai, e volta quando chega evidência contrária real
+  (`learning_evidence` `against`/`conflict`, `simulated=0`) depois da confirmação.
+- Aceitar um parecer `manter` (`POST .../parecer/{review_id}`) num item de "Revisar" faz a mesma confirmação, ligada
+  à revisão (`transicao_id`). Fora de "Revisar", aceitar "manter" segue só concordando.
+- `learning_reviews.decisao_final` às cegas ganha o rótulo `confirmar` (a confirmação sem o parecer à vista).
+- Receita e fluxo, nas listas do livro (`/aprendizado`, `/pendentes`, `/revisar`) e no detalhe, ganham `em_revisar`
+  (bool), `confirmado` (a confirmação que vale) e `confirmacao_contestada` (a que a evidência contrária derrubou), os
+  dois `{por, em, motivo}` ou nulos. Os outros tipos não têm as chaves.
+
+Prova `simulated`: `tests/test_learning_confirmar_que_fica.py`, `AprendizadoPage.test.tsx` e `DetalheRico.test.tsx`.
+Ensaio no navegador (03/10, cópia do banco do central, provedor simulado, 39 itens em "Revisar"): confirmar com e sem
+motivo, em lote, o histórico, o aviso no Aprendido, a evidência contrária que devolve o item, o 409 de quem chegou
+depois e 375 px.
+
+## Adendo v0.79 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — evento `plan.refused`: a porta de política no planejamento (RA-7); `run.updated.iniciada_por` (P12)
+
+Aditivo. Um kind novo de `EventRecord`, persistido, e um campo novo no `data` de um kind que já existe. Nenhuma rota
+muda.
+
+| kind | data | persistido |
+|---|---|---|
+| `plan.refused` | `{motivo: "efeito_fora_do_catalogo", etapas: [{key, title, app_id, app, capability, motivo}]}` | sim |
+
+- Sai quando `RunService._plan` recusa o plano pela regra do item 13.2: etapa com efeito externo, num app com catálogo,
+  sem uma ação daquele catálogo. Vale para todo plano (planejador, fluxo, skill), antes de materializar.
+- `etapas[].motivo` vem do vocabulário fechado `sem_acao_do_catalogo` | `acao_de_outro_catalogo`
+  (`planning/capabilities.py::MotivoForaDoCatalogo`). `app_id` é nulo quando o app só se sabe pelo pacote, e `app` é o
+  nome (ou o pacote). `capability` é a chave que veio no plano (nula = nenhuma).
+- A execução vai a `needs_input` com o plano zerado (`steps: []`) e uma pergunta por etapa recusada em `missing`
+  (`field: "policy"`). O `message` do evento é a frase da linha do tempo, igual à da porta do despacho.
+- O painel não precisa de mudança: `EventRecord.kind` é `string`, e a execução em `needs_input` já mostra as perguntas.
+
+**`run.updated` do início** (P12): o evento da transição para `running` por `RunService.start` passa a levar
+`{iniciada_por, run: RunSummary}`. `iniciada_por` é quem iniciou: o operador da sessão, ou `panel`, por
+`POST /api/runs/{id}/start` (nunca `sistema`: `painel:sistema` se a sessão se chamar assim); `sistema` no início
+automático do `mode=execute` depois do plano. Os outros `run.updated` não mudam (sem o campo). Uma execução em
+`mode=plan` só passa a `running` por esse início explícito: a prévia é `mode='plan' AND started_at IS NULL`.
+
+## Adendo v0.80 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — o nome do app e a etapa de origem nas entradas do livro (validação do deploy 4)
+
+Só campos novos, aditivos; o painel lê os dois com fallback para o que já mostrava.
+
+- `GET /api/aprendizado`, `/pendentes`, `/revisar` e o `item` de `GET /api/aprendizado/{kind}/{ref}`: cada entrada
+  ganha `app_nome` (texto ou `null`), o nome do app pelo mesmo ajudante do adendo v0.74 (`VisaoPorApp.nomes`: o
+  declarado, depois o da loja, depois o próprio pacote; nulo sem app).
+- As mesmas entradas ganham `etapa` (texto ou `null`): na receita, o `steps.title` da etapa de que ela foi aprendida
+  (`recipes.learned_from_step`); nulo no treino, na receita sem origem e nos outros tipos. O `title` não muda.
+
+O painel mostra o nome do app onde mostrava o pacote, com o pacote no `title`. Na receita de app sem catálogo (sem
+`capability_nome`), mostra o título da etapa com a chave: "Digitar a mensagem · etapa fill_message (v1)". O dossiê do
+curador não leva `etapa`.
+
+Prova `simulated`: `tests/test_learning_capability_na_linha.py`, `frontend/src/features/aprendizado/model.test.ts`,
+`AprendizadoPage.test.tsx`, `SaudeDoApp.test.tsx` e `falhasTexto.test.ts`.
+
+## Adendo v0.81 (03/10/2026) — `steps.driven_by` ganha `sem_ator` (caminho rápido 1)
+
+Sem rota nova. O campo `driven_by` do `Step` (e a chave `steps_driven_by` de `GET /api/profiles/{id}/capacidades`, os
+contadores por origem de `apps_overview` e do `aproveitamento` de fluxos) passa a poder ser `sem_ator`, além de `ai`,
+`recipe` e `recipe+ai`: a etapa sem efeito cuja pós-condição já valia na tela lida fechou sem o ator decidir nenhuma ação
+(a prova é a mesma, feita pelo `_verify`). `aproveitamento` ganha o contador `sem_ator` por fluxo e app e não a conta como
+elegível a receita. Quem lê `driven_by` com união fechada precisa do valor novo; o painel mostra "Sem o ator".
+
+## Adendo v0.82 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — `GET /api/apps/{pacote}/conhecimento`: a prova do conhecimento de app no ar (RA-24)
+
+Rota nova, só leitura, sem efeito. O parâmetro é o **pacote** Android (`com.instagram.android`), e não o `app_id`.
+
+```json
+{"app": "com.instagram.android", "processo_iniciado_em": "2026-10-03T05:00:00.000Z",
+ "arquivos": [{"nome": "telas.yaml", "caminho": "backend/app/conhecimento/apps/com.instagram.android/telas.yaml",
+               "bytes": 21345, "fim_de_linha": "crlf", "sha256": "…", "git_blob": "…",
+               "modificado_em": "2026-10-03T04:58:12.000Z", "mudou_depois_do_inicio": false}]}
+```
+
+- `arquivos`: cada `*.yaml` da pasta `app/conhecimento/apps/<pacote>/`, em ordem de nome.
+- `sha256` e `git_blob` são do texto que o carregador lê (CRLF e CR solto viram LF, como no `read_text`), e não dos
+  bytes do disco. O checkout do central tem `core.autocrlf=true` (CRLF no disco, LF no Git). Assim `git_blob` é o de
+  `git hash-object <arquivo>` no checkout e o de `git rev-parse <commit>:<caminho>`, e confere com o `commit` de
+  `GET /api/health` sem abrir a máquina.
+- `bytes` e `fim_de_linha` (`crlf`, `lf` ou `misto`) são do disco, como está.
+- `mudou_depois_do_inicio`: o arquivo foi gravado depois de o processo subir (`processo_iniciado_em`). Os carregadores
+  leem cada arquivo uma vez por processo, então o disco pode não ser o que está em memória; só um reinício alinha.
+- 404 `not_found` quando o pacote não tem a forma de pacote (o nome vira caminho) ou a pasta não tem YAML.
+
+Junto, a versão do formato passa a ser conferida na carga, como a `contract_version` do catálogo. `telas.yaml` e
+`sessao.yaml` só aceitam `versao: 1` (`VERSOES_DE_TELAS`, `VERSOES_DE_SESSAO`). Ausente, vale 1. Antes, `telas.yaml`
+trocava qualquer não inteiro por 1 e aceitava qualquer inteiro, e `sessao.yaml` aceitava qualquer inteiro ≥ 1. Um
+arquivo de versão nova lido por código velho seria entendido pela metade, sem aviso.
+
+Prova `simulated`: `tests/test_prova_do_conhecimento.py`, com `git_blob` comparado a `git hash-object` de cada YAML
+do repositório e a recusa de `versao` 2, 0, 1.0, `true` e `"1"`.
+
+## Adendo v0.85 (03/10/2026; número da orquestradora, `.claude/reservas.md`; item 29.42) — `GET /api/flows` devolve `required_apps` na ordem do plano
+
+- Cada fluxo de `GET /api/flows` (e a resposta de `PUT /api/flows/{id}`) ganha `required_apps: string[]`: os ids dos apps
+  que o fluxo exige, **na ordem em que o plano gravado os usa** (primeira aparição em `steps[].app_id`; a etapa sem app
+  roda no `app_id` do plano). Um comando entre apps ("mande no QA Messenger e abra no Chrome") volta como
+  `["qa-messenger", "chrome"]`, não na ordem alfabética de `flow_required_apps`, que guarda só o conjunto.
+- O conjunto é o da tabela `flow_required_apps`; sem linhas nela vale o `required_apps` congelado no plano (a mesma regra
+  de `FlowStore.match`). Exigido que nenhuma etapa cita vai ao fim, em ordem alfabética; app citado pelo plano e fora do
+  conjunto não entra. Fluxo sem apps: `[]`. Plano ilegível não derruba a lista (a ordem cai para a da tabela).
+- Sem migração e sem N+1: a lista lê `flows` e `flow_required_apps` em duas consultas. `plan` segue `null` na lista.
+- O dossiê do curador (`conteudo.apps` do `GET /api/aprendizado/{kind}/{ref}`) passa a usar a mesma ordem (antes, alfabética).
+- O painel (Configurações, Fluxos) e a aba do curador mostram "QA Messenger → Chrome" com o nome de cada app.
+
+Prova `simulated`: `backend/tests/test_flows_required_apps.py`; `real`: `not_run`.
+
+## Adendo v0.83 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — `rotulo` no livro: o app de teste fora da lista padrão (RA-19, fatia A)
+
+- `GET /api/aprendizado` aceita `rotulo` = `produto` | `qa` | `todos` (outro valor: 422). Os apps de teste são os de
+  `apps.category='qa'` (o QA embutido).
+  - Sem `rotulo` e sem `app`, vale `produto`: a lista esconde as entradas dos apps de teste.
+  - Sem `rotulo` e com `app`, vale `todos`: o app escolhido mostra o que tem, mesmo sendo de teste.
+- A resposta ganha `rotulo` (o que valeu) e `ocultos` (quantos itens os outros filtros deixavam e o `rotulo`
+  escondeu). A `contagem` e o `total` são do que é mostrado.
+- **Mudança visível:** a lista padrão encolhe. No central, em 03/10, eram 164 entradas, 94 do QA. Quem quer o livro
+  inteiro passa `rotulo=todos`.
+- `/pendentes`, `/revisar`, o detalhe e `/aprendizado/apps` não mudam: as filas de decisão e a visão por app leem tudo.
+
+Prova `simulated`: `tests/test_learning_rotulo_do_livro.py`, `AprendizadoPage.test.tsx` e `model.test.ts`.
+
+## Adendo v0.84 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — a sonda "o ator pensa?" no `GET /api/ai` (item 17.14)
+
+Só campo novo, aditivo.
+
+- `GET /api/ai` → cada item de `roles` ganha `thinking` (texto ou `null`): `adaptive` (o pedido leva `thinking` em toda
+  chamada da função), `desligado_na_funcao` (`ai.roles.<f>.thinking: false`), `nao_declarado` (o modelo está declarado
+  sem thinking em `ai.models`) ou `recusado_pelo_modelo` (um 400 desligou o thinking nesta instância, até reiniciar).
+  `null` = provedor sem thinking (OpenAI, simulado).
+- `effort` passa a ser o efetivo da função: o `ai.roles.<f>.effort` quando escrito, senão o do `.env`, como antes.
+
+Vale para o padrão (`ai.roles`); o perfil de uma execução não aparece aqui (como o modelo, adendo do 17.7). Prova
+`simulated`: `tests/test_perfil_esforco_e_dieta.py::test_sonda_do_thinking_na_aba_ia` e `::test_sonda_vazia_em_provedor_sem_thinking`.
+
+## Adendo v0.86 (03/10/2026; número da orquestradora, `.claude/reservas.md`; item 29.45) — caminho rápido 2: `strategy` `deterministic` e o motivo `nova_tentativa` mais estreito
+
+Sem rota nova e sem migração.
+
+- `attempts.strategy` (trilha da 045) passa a poder começar por `deterministic`: `deterministic` sozinho quando o executor
+  abriu o app da etapa `app_foreground` e ela se comprovou; `deterministic>ai_actor` quando o ator assumiu na mesma
+  tentativa. Quem lê com união fechada precisa do valor (`recipe`, `ai_actor` e as cadeias já existiam). A etapa assim
+  fechada segue `driven_by` = `sem_ator` (adendo v0.81). Na linha do tempo, um evento `decision` diz "aberto pelo
+  executor, sem IA", com o tempo e o foco.
+- `ai_calls.escalate` = `nova_tentativa` deixa de marcar toda decisão da 2ª tentativa em diante. Passa a marcar só as do
+  tier 1 a partir da decisão que repetiu onde a anterior parou ou que dispararia o efeito. A série desse rótulo em
+  `/api/usage` quebra no deploy que levar o 29.45.
+- A verificação que termina "não comprovada" pode trazer na evidência "a tela não mudou em 3 sondagens depois do não":
+  ela encerra sem esperar o fim do orçamento (LT-5).
+- Série da Aprendizado: a partir do deploy 8, etapas `app_foreground` abertas sem IA não geram comparação de sombra. A
+  candidata v4 de `open_app` do QA não promove por sombra.

@@ -1,7 +1,7 @@
 import { Zap } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Badge } from '../../components/Badge';
-import { toApiError } from '../../api/client';
+import { toLoadError } from '../../lib/loadError';
 import { hashDe } from '../../lib/rotas';
 import { formatDateTime, formatQuando } from '../../lib/time';
 import { apiAprendizado } from './api';
@@ -83,7 +83,7 @@ export function ResumoParaDecidir({ entrada }: { entrada: EntradaDoLivro }) {
     const ctl = new AbortController();
     apiAprendizado.detalhe(entrada.kind, entrada.ref, ctl.signal)
       .then((d: DetalheDoLivro) => setConteudo(d.conteudo ?? null))
-      .catch((e: unknown) => { if (!ctl.signal.aborted) setErro(toApiError(e).message); });
+      .catch((e: unknown) => { if (!ctl.signal.aborted) setErro(toLoadError(e).message); });
     return () => ctl.abort();
   }, [entrada.kind, entrada.ref]);
   if (erro) return <p className={styles.erroInline}>Não foi possível ler o que o item faz: {erro}</p>;

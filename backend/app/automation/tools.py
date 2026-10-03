@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from ..models import DeliveryLevel
 from ..util import norm_text, url_abrivel
@@ -21,6 +21,11 @@ from .hierarchy import ContaTravada, UiElement, UiTree
 #: `INTERVALO_DO_FOCO_S`. Lidos na hora da chamada (os testes os encurtam).
 ESPERA_DO_FOCO_S = 60.0
 INTERVALO_DO_FOCO_S = 2.0
+#: LT-6 (caminho rápido 2): nos primeiros segundos a sondagem é mais fina. Em 7 d o `open_app` mediu 2,2 s de mediana —
+#: exatamente um ciclo de 2 s: a 1ª leitura logo após o `am start` ainda não vê o app, e a 2ª só vinha 2 s depois. A
+#: partida quente chega em < 1 s; a fria (28–51 s) volta ao intervalo largo depois desta janela.
+INTERVALO_INICIAL_DO_FOCO_S = 0.5
+JANELA_INICIAL_DO_FOCO_S = 5.0
 
 
 async def esperar_foco(ler: Callable[[], Awaitable[tuple[str | None, str | None]]], pacote: str, *,
@@ -31,7 +36,8 @@ async def esperar_foco(ler: Callable[[], Awaitable[tuple[str | None, str | None]
     foco é só leitura: erro de leitura é "ainda não"; tempo esgotado na fila do aparelho encerra a espera (a próxima
     leitura ficaria atrás da que não voltou).
     """
-    limite = time.monotonic() + ESPERA_DO_FOCO_S
+    inicio = time.monotonic()
+    limite = inicio + ESPERA_DO_FOCO_S
     if ate is not None:
         limite = min(limite, ate)
     while True:
@@ -46,7 +52,10 @@ async def esperar_foco(ler: Callable[[], Awaitable[tuple[str | None, str | None]
         agora = time.monotonic()
         if agora >= limite:
             return False
-        await asyncio.sleep(min(INTERVALO_DO_FOCO_S, limite - agora))
+        # `min` com o intervalo largo: os testes encurtam `INTERVALO_DO_FOCO_S`, e a janela fina não pode deixá-los lentos.
+        intervalo = (min(INTERVALO_INICIAL_DO_FOCO_S, INTERVALO_DO_FOCO_S)
+                     if agora - inicio < JANELA_INICIAL_DO_FOCO_S else INTERVALO_DO_FOCO_S)
+        await asyncio.sleep(min(intervalo, limite - agora))
 
 
 COMMIT_VOCAB = re.compile(
@@ -177,6 +186,23 @@ class ReadValue(_Args):
                                                         "texto tem mais do que ele (ex.: o @nome dentro do assunto).")
     value_kind: Literal["text", "number", "url", "list"] = Field(
         default="text", description="text, number, url, ou list (os textos dentro do contêiner).")
+    # Item 12.5 (ADR-070): `visual` SÓ quando o executor disser, no histórico, que a linha desta tela não expõe texto na
+    # árvore e o app declarou que ela pode ser lida da imagem. O valor é o que VOCÊ leu na imagem; o executor o
+    # confere com a transcrição às cegas de outro leitor, sobre o recorte da linha. Sem concordância, recusa.
+    source: Literal["tree", "visual"] = Field(
+        default="tree", description="tree (padrão): o texto do elemento; visual: o valor que você leu na imagem, só "
+                                    "numa tela cega declarada (exige `value`; só value_kind=text).")
+
+    @model_validator(mode="after")
+    def _visual_exige_o_valor_e_so_texto(self) -> "ReadValue":
+        """Número, endereço e lista lidos da imagem são recusados na v1: número visto na imagem é justamente o formato
+        de um código. E sem o valor do ator não há o que conferir."""
+        if self.source == "visual":
+            if self.value_kind != "text":
+                raise ValueError("source=visual só vale com value_kind=text")
+            if not (self.value or "").strip():
+                raise ValueError("source=visual exige `value` (o que você leu na imagem)")
+        return self
 
 
 class VerifyState(_Args):

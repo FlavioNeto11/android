@@ -15,7 +15,7 @@ describe('texto de "O que mais falha" para quem opera', () => {
   });
 
   it('a tentativa vira "aparelho · etapa · tentativa N"; fora do formato, nulo', () => {
-    expect(descreverTentativa('r-20261002175257-0e9362:android-05:v1:open_app:a1')).toBe('android-05 · open_app · tentativa 1');
+    expect(descreverTentativa('r-20261002175257-0e9362:android-05:v1:open_app:a1')).toBe('android-05 · etapa open_app · tentativa 1');
     expect(descreverTentativa('r-x')).toBeNull();
     expect(descreverTentativa(null)).toBeNull();
   });
