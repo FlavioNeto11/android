@@ -980,3 +980,21 @@ opção, e ela REPROVOU. A opção segue desligada.
 - Nenhuma concordância falsa nos 192 controles.
 - A correção (escopo do "truncado": o campo, o valor e a linha que o contém, não a linha vizinha) muda a regra do ADR-070
   §4 e precisa de decisão antes de entrar.
+
+**Bancada do nível 1.1 (`real`, 03/10/2026, 04:57–04:59Z, conferência do branch `feat/android-lote-0310` sobre o
+config, o gabarito e o banco do central).** Emenda do ADR-070 §4: "truncado" vale só para o valor, o campo e a linha que
+contém o valor; a marca global do leitor só cai quando uma linha alheia cortada a explica. Mesmo material (16 recortes, 128
+pares por leitor). APROVOU nos dois leitores.
+
+| Leitor | `ai_calls` | Custo estimado | Concordância nos verdadeiros | Concordância falsa nos controles |
+|---|---|---|---|---|
+| gemini/gemini-3.1-flash-lite | 3008–3039 | US$ 0,017 | 31/32 (1 `truncado`: o assunto do item 14) | 0/96 |
+| openai/gpt-6-luna | 3040–3071 | US$ 0,0032 | 29/32 (2 `nao_confere` no assunto, itens 6 e 8; 1 `truncado`, item 14) | 0/96 |
+
+- O item 14 é recusado pelos dois: o assunto aparece cortado na linha da tela, e recusar é o certo.
+- Leitor escolhido: gemini-3.1-flash-lite principal (mais acertos e mais rápido, ~1,2 s contra ~1,9 s), gpt-6-luna
+  alternativo. O custo é irrelevante nos dois.
+- A opção liga (`ai.leitura_visual.enabled: true` e `ai.roles.leitura` no gemini) no próximo reinício do central, o
+  deploy da suíte 7. Até lá segue desligada.
+- Armadilha da medição: rodar a bancada com o `app` de um worktree faz o `.env` ser procurado na raiz do worktree. As
+  chaves vêm vazias (401 da OpenAI, "Missing or invalid Authorization header" do Gemini) e parecem revogadas, mas não estão.

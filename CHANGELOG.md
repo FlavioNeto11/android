@@ -19,6 +19,26 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Validação do deploy 4: I1 (sem rótulo não há "diverge") e a CPU do emulador com referência
+
+- **I1:** `observedMatchOf` (`frontend/src/features/settings/instancesView.ts`) devolve `none` sem rótulo configurado. Sem
+  conta esperada não há do que divergir: o android-04, hoje de Instagram e sem rótulo, aparecia "diverge" por uma
+  observação antiga do QA Messenger. A linha "observado" sai do cartão de Configuração › Aparelhos e contas e do Foco
+  quando não há rótulo.
+- **Polimento do Foco:** "CPU 108%" passa a "CPU 108% (≈1,1 núcleo)" (`cpuDoEmulador`): o % do processo é de um núcleo
+  do host.
+- **K-080:** um toque por id de elemento velho abre a tela errada. **K-078:** adendo do braço D, em que o snapshot
+  também não é a causa.
+- `simulated`: `instancesView.test.ts`, `cpuDoEmulador.test.ts`; typecheck limpo; 139 aprovados em settings e focus.
+
+## 2026-10-03 — 12.5 nível 1.1: o "truncado" vale para o valor, não para a linha vizinha (emenda do ADR-070 §4)
+
+- `conferir_transcricao` (`backend/app/taskqueue/saidas.py`): "truncado" é o do valor do ator, do campo do leitor e da
+  linha que contém o valor. A marca global do leitor só cai quando uma linha alheia cortada a explica (K-079).
+- `simulated`: em `tests/test_leitura_visual.py`, a prévia cortada com o valor inteiro concorda; o valor cortado, a
+  linha do valor cortada e a marca sem linha cortada continuam recusando. 109 aprovados com o arquivo do papel.
+- `real` (bancada, 04:57–04:59Z, `ai_calls` 3008–3071, US$ 0,02): gemini-3.1-flash-lite 31/32 e gpt-6-luna 29/32, com
+  0/96 falsas. Gemini fica como principal e o luna como alternativo; a opção liga no próximo reinício do central.
 ## 2026-10-03 — caminho rápido 1: LT-1, LT-2 e LT-3 (pular o ator, nunca a prova)
 
 - **LT-1.** A pós-condição conferida na entrada da volta, antes de o ator decidir: etapa sem efeito, tela não sensível e

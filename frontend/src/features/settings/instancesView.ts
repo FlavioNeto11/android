@@ -15,13 +15,14 @@ function normText(v: string | null | undefined): string {
  * Confere o rótulo configurado contra o que a IA observou no app, com a MESMA normalização usada por quem grava
  * a evidência (`norm_text` em `backend/app/util.py`: espaços colapsados, sem caixa) — a única gravação em
  * produção (`executor.py`) só grava quando o rótulo já batia na hora, então "diverge" aqui só acontece quando o
- * rótulo muda DEPOIS. `'none'` = nada observado ainda. Evidência sem rótulo configurado não tem o que bater —
- * conta como divergência: há uma conta logada e ninguém disse qual deveria ser.
+ * rótulo muda DEPOIS. `'none'` = nada observado ainda, ou nenhum rótulo configurado: sem conta esperada não há do que
+ * divergir (validação do deploy 4, 03/10: o android-04, hoje de Instagram e sem rótulo, aparecia "diverge" por uma
+ * observação antiga do QA Messenger).
  */
 export function observedMatchOf(inst: Pick<Instance, 'account_label' | 'account_evidence'>): ObservedMatch {
   if (!inst.account_evidence) return 'none';
   const label = normText(inst.account_label);
-  if (!label) return 'diverge';
+  if (!label) return 'none';
   return normText(inst.account_evidence).includes(label) ? 'match' : 'diverge';
 }
 
