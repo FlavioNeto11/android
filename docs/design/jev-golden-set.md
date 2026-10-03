@@ -222,3 +222,45 @@ do merge da suíte 7 e do deploy).
 
 Prova: `simulated` (`scripts/tests/test_jev_prova_31_17.py`). Execução no banco do central: `not_run` (roda depois da
 primeira volta do curador com o Jev em sombra, quando a orquestradora mandar, junto do relatório do 31.10).
+
+## 7. A leitura da sombra de intenção (R2 e R3) depois do deploy 11
+
+`scripts/jev-leitura-intencao.py` é irmão do §6 para a origem `intencao`. Ele lê a sombra desde a partida do deploy 11
+(`c8304e85`, intenção em sombra com C3). É só leitura e não chama IA (URI `mode=ro` e `PRAGMA query_only`). O corpo da
+intenção é o comando filtrado e não é guardado, por isso não se remonta: aqui o que se confere é a linha.
+
+    backend/.venv/Scripts/python.exe scripts/jev-leitura-intencao.py [--db data/poc.sqlite3] [--desde <ISO-8601 UTC>] \
+        [--json saida.json]
+
+O padrão de `--desde` é `2026-10-03T15:30:00Z`, a partida aproximada; passe o instante exato que a orquestradora der.
+
+Todas as medidas abaixo são PROVED:
+
+- **Contagens:** linhas por origem/classe/modo. Na intenção, por pergunta (R2 = `intencao_catalogo`, R3 =
+  `intencao_desempate`): pedidos, respondidas, abstenções (`nenhuma`), fallbacks e comandos (`run_id` distintos).
+- **Recusas:** por `fallback_reason` e, nas de privacidade, por `motivo_privacidade`. Só os motivos do vocabulário
+  fechado aparecem; um valor fora dele sai como `(fora do vocabulário)` e conta como violação.
+- **Contra o limiar:** o limiar é o padrão de `contrato.pergunta_choice`, lido do código. Há três distribuições, todas
+  com p50, p95, faixas fixas e a contagem acima do limiar:
+  - da `confianca`;
+  - de `probabilidades[escolha]` nas respondidas;
+  - da maior probabilidade em todas as linhas.
+
+  Resposta abaixo do limiar, ou sem a probabilidade da escolha, é defeito da porta (31.19, item 20).
+- **Custo e latência:** as linhas do Jev em `ai_calls` com `ref` `intencao:<run_id>` (chamadas, falhas por motivo, US$
+  total e por chamada, tokens, ms p50/p95 pelo posto mais próximo). O cruzamento com as chamadas da sombra que chegaram
+  ao POST deixa de fora as recusas por privacidade, orçamento e desligado, que não viram linha.
+- **Zero texto (falha fechado):** cada coluna só aceita o formato dela, e um valor fora do formato vira violação pelo
+  nome, nunca pelo conteúdo. O formato de cada coluna é:
+  - ids opacos `opt:<12 hex>` ou `opt:nenhuma`;
+  - `probabilidades` como JSON {id opaco: número em [0, 1]};
+  - vocabulário fechado;
+  - números;
+  - `ref` e `run_id` sem espaço.
+
+  Coluna fora do esquema de 074 e 079 também é violação.
+- Saída: dez linhas e, com `--json`, só contagens, motivos e números. Código 0 quando tudo confere, 1 com violação
+  (mesmo sem amostra), 2 sem linha da intenção no período.
+
+Prova: `simulated` (`scripts/tests/test_jev_leitura_intencao.py`, com linhas falsas). Execução no banco do central:
+`not_run` (roda quando a orquestradora avisar, com 10 ou mais comandos depois do T_on).
