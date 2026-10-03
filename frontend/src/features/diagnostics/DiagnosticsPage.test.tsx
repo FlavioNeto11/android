@@ -301,3 +301,26 @@ describe('Custo de IA: o RA-10 (31.16, adendo v0.75)', () => {
     expect(text(container)).not.toContain('Etapas sem registro de quem decidiu');
   });
 });
+
+describe('polimento do deploy 10: as chaves da aceleração e da máquina em português', () => {
+  it('Aceleração e Máquina com o formato real de /api/diagnostics: nada de "Usable", "Raw", "Guidance" cru', async () => {
+    backend.on('GET', /^\/api\/diagnostics$/, () => json({
+      ...DIAGNOSTICS,
+      host: { os: 'Windows 2025', cores_physical: 16, cores_logical: 22, swap_total_gb: 8, disk_project: 'C: — 400 GB livres' },
+      acceleration: { usable: true, detail: 'WHPX ok', hypervisor_present: true, raw: 'accel: 0', guidance: 'Use o WHPX.' },
+    }));
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Coletado em'));
+    for (const id of ['diag-aceleracao', 'diag-maquina']) {
+      await click(document.getElementById(id)?.querySelector('summary') as HTMLElement);
+    }
+    const corpo = text(container);
+    for (const rotulo of ['Utilizável', 'Saída bruta', 'Orientação', 'Hipervisor presente', 'Núcleos físicos', 'Núcleos lógicos',
+      'Memória virtual (GB)', 'Disco do projeto']) {
+      expect(corpo).toContain(rotulo);
+    }
+    for (const cru of ['Usable', 'Raw', 'Guidance', 'Hypervisor present', 'Cores physical', 'Swap total', 'Disk project']) {
+      expect(corpo).not.toContain(cru);
+    }
+  });
+});

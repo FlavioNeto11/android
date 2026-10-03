@@ -88,17 +88,22 @@ def status(cfg: DecisaoFechadaCfg | None, *, chave_configurada: bool) -> dict[st
             "retention_days": None if cfg is None else cfg.retencao_dias}
 
 
+#: Como o aviso nomeia a origem e o modo para quem lê o painel (o bloco `consumers` segue com os valores do YAML).
+_ORIGEM_LEGIVEL = {"curador": "curador", "intencao": "intenção", "desempate": "desempate", "apps": "apps"}
+_MODO_LEGIVEL = {"shadow": "em sombra", "on": "ligado"}
+
+
 def aviso(cfg: DecisaoFechadaCfg | None, *, chave_configurada: bool) -> str | None:
     """Frase que se soma ao `notice` de `/api/ai`; `None` sem consumidor em `shadow` ou `on`."""
     ativos = consumidores_ativos(cfg)
     if not ativos:
         return None
-    consumidores = ", ".join(f"{o} ({m})" for o, m in ativos.items())
+    consumidores = ", ".join(f"{_ORIGEM_LEGIVEL.get(o, o)} {_MODO_LEGIVEL.get(m, m)}" for o, m in ativos.items())
     classes = ", ".join(classes_que_podem_sair(cfg))
     chave = "configurada" if chave_configurada else "não configurada"
     saidas = ", ".join(o_que_sai(cfg))
     decisor = "nulo" if cfg is None else cfg.decisor
-    frase = (f"Provedor externo {NOME}: decisões por conjunto fechado dos consumidores {consumidores}; dados das classes "
+    frase = (f"Provedor externo {NOME}: decisões por conjunto fechado ({consumidores}); dados das classes "
              f"{classes} podem sair para a TypeSafe ({saidas}; nunca texto livre de persona nem tela sensível). "
              f"Chave da TypeSafe: {chave}. Decisor na porta: {decisor}.")
     motivo = por_que_nada_sai(cfg, chave_configurada=chave_configurada)

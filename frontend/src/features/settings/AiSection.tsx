@@ -11,7 +11,8 @@ import { PageSection, TableWrap } from '../../components/Page';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { balanceBrief, balanceOfRole, balanceStateLabel, balanceTone, balancesByUrgency } from '../../lib/aiBalance';
 import {
-  aiFeatureRows, aiModelRows, aiProfileRows, aiRoleRows, effortLabel, esquemaDoPlanoLabel, leituraVisualLabel, spendLabel,
+  aiFeatureRows, aiModelRows, aiProfileRows, aiRoleRows, decisaoFechadaConsumidoresLabel, effortLabel, esquemaDoPlanoLabel,
+  leituraVisualLabel, spendLabel,
 } from '../../lib/aiLabels';
 import { useAppStore } from '../../store/app';
 import { EXTERNAL_DATA_NOTICE } from '../topbar/TopBar';
@@ -67,6 +68,7 @@ export function AiSection() {
   const papeis = aiRoleRows(status);
   const perfis = aiProfileRows(status);
   const leituraVisual = leituraVisualLabel(status);
+  const decisaoFechada = decisaoFechadaConsumidoresLabel(status);
   const gastoHoje = spendLabel(status.spend_today_usd, status.spend_limit_day_usd);
   // O fallback de recusa é por função quando há funções (vai no cartão delas); sem o hub, fica na situação geral.
   const fallbackDeRecusa = status.refusal_fallback ? (
@@ -122,6 +124,14 @@ export function AiSection() {
               </KvRow>
             ) : null}
             {leituraVisual ? <KvRow label="Leitura visual">{leituraVisual}</KvRow> : null}
+            {decisaoFechada ? (
+              <KvRow label="Decisão fechada (Jev)">
+                {decisaoFechada}{' '}
+                <Badge tone={status.decisao_fechada?.sending ? 'warning' : 'muted'}>
+                  {status.decisao_fechada?.sending ? 'envio ativo' : 'nada sai agora'}
+                </Badge>
+              </KvRow>
+            ) : null}
             {aiFeatureRows(status, features).map((f) => <KvRow key={f.key} label={f.label}>{f.value}</KvRow>)}
             <KvRow label="Chave de API">{status.configured ? 'Presente no backend' : 'Ausente'}</KvRow>
             <KvRow label="Dados saem da máquina?">{status.sends_data_externally ? 'Sim' : 'Não'}</KvRow>

@@ -110,6 +110,21 @@ export function leituraVisualLabel(ai: Pick<AiStatus, 'leitura_visual' | 'roles'
   return leitor ? `ligada · ${leitor.model} (${leitor.provider})` : 'ligada, sem leitor configurado (recusa toda leitura)';
 }
 
+const ORIGEM_DA_DECISAO_FECHADA: Record<string, string> = {
+  curador: 'curador', intencao: 'intenção', desempate: 'desempate', apps: 'apps',
+};
+const MODO_DA_DECISAO_FECHADA: Record<string, string> = { shadow: 'em sombra', on: 'ligado' };
+
+/** "curador: em sombra · intenção: em sombra" a partir de `decisao_fechada.consumers` (v0.90). `null` sem o bloco ou
+ * sem consumidor ligado. O aviso do backend (`notice`) traz a mesma lista com o modo do YAML. */
+export function decisaoFechadaConsumidoresLabel(ai: Pick<AiStatus, 'decisao_fechada'>): string | null {
+  const consumidores = Object.entries(ai.decisao_fechada?.consumers ?? {});
+  if (consumidores.length === 0) return null;
+  return consumidores
+    .map(([origem, modo]) => `${lookup(ORIGEM_DA_DECISAO_FECHADA, origem)}: ${lookup(MODO_DA_DECISAO_FECHADA, modo)}`)
+    .join(' · ');
+}
+
 export function hubRoleLabel(role: string): string {
   return Object.prototype.hasOwnProperty.call(HUB_ROLE_LABEL, role) ? (HUB_ROLE_LABEL[role] as string) : role;
 }

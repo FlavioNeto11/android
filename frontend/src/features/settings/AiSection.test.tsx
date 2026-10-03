@@ -161,3 +161,30 @@ describe('AiSection — I2 da validação do deploy 7 (v0.87)', () => {
     expect(text(antigo)).not.toContain('Leitura visual');
   });
 });
+
+describe('AiSection — polimento do deploy 10: os consumidores da decisão fechada em palavras', () => {
+  const BLOCO = {
+    provider: 'typesafe', name: 'Jev (TypeSafe System One)', consumers: { curador: 'shadow', intencao: 'shadow' },
+    classes: ['C0', 'C1', 'C2', 'C3'], send_approved: true, key: 'configurada', decider: 'jev', sending: true,
+    retention_days: 180,
+  };
+
+  it('lista "curador: em sombra · intenção: em sombra" e diz se o envio está ativo', async () => {
+    const tela = await renderSection({ ...BASE, decisao_fechada: BLOCO });
+    await waitFor(() => expect(text(tela)).toContain('Decisão fechada (Jev)'));
+    expect(text(tela)).toContain('curador: em sombra · intenção: em sombra');
+    expect(text(tela)).toContain('envio ativo');
+    expect(text(tela)).not.toContain('intencao');
+  });
+
+  it('sem envio diz "nada sai agora"; sem o bloco (ou backend anterior) não inventa a linha', async () => {
+    const tela = await renderSection({ ...BASE, decisao_fechada: { ...BLOCO, consumers: { curador: 'on' }, sending: false } });
+    await waitFor(() => expect(text(tela)).toContain('curador: ligado'));
+    expect(text(tela)).toContain('nada sai agora');
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    backend.calls = [];
+    const sem = await renderSection({ ...BASE, decisao_fechada: null });
+    expect(text(sem)).not.toContain('Decisão fechada (Jev)');
+  });
+});

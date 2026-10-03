@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Jev: polimentos de UX do deploy 10 (branch feat/ux-jev-polimento, para a suíte 12)
+
+- O aviso do Jev em `/api/ai` (`transparencia.aviso`) fala o modo em palavras: "decisões por conjunto fechado (curador
+  em sombra, intenção em sombra)", e não mais "dos consumidores curador (shadow)". O bloco `decisao_fechada.consumers`
+  continua com os valores do YAML (adendo v0.90).
+- Configuração › IA ganha a linha "Decisão fechada (Jev)" (curador: em sombra · intenção: em sombra), com o selo
+  "envio ativo" ou "nada sai agora" vindo do `sending`. O frontend passa a tipar o bloco v0.90 (`AiDecisaoFechada`).
+- Diagnóstico › Detalhes técnicos: as chaves cruas (`usable`, `raw`, `guidance`, `hypervisor_present`, núcleos, memória
+  virtual e discos) ganham rótulo em português.
+- Prova `simulated`:
+  - backend: `tests/test_decisao_fechada_sombra.py` e os arquivos do `/api/ai`, 149 passed;
+  - frontend: typecheck, mais `aiLabels`, `AiSection` e `DiagnosticsPage`, com 37 passed;
+  - navegador: as duas telas percorridas contra um backend simulado do worktree (porta 8765, decisor nulo, nada sai),
+    no desktop e em 375 px, sem rolagem lateral.
+
 ## 2026-10-03 — Deploy 11 no central (c8304e85; decisão fechada em sombra na intenção; autopublicação em sombra; 25.13 real)
 
 - Implantado no central (`real`, 03/10, WIN-7S2UASNLFOP): commit c8304e85 = suíte 11 (97425d5f) + os estados da Android.
