@@ -107,8 +107,8 @@ def test_os_27_nao_chegam_ao_decisor_e_a_linha_grava_o_motivo(tmp_path: Path, po
     # verbo de tocar com um ou dois números, lista numerada, hashtag, prefixo de chave que é palavra
     "toque no botão de curtir 2 vezes", "aperte o 3 e depois volte", "curta os posts 1, 2 e 3", "poste com #2024 e #tbt",
     "siga o perfil asiatico de culinária", "poste à meia-noite",
-    # rótulo sem o par
-    "faça login no Instagram", "user lucas quer curtir o post", "conta: lucas", "passe para o próximo post",
+    # rótulo sem o par ("faça login", "user lucas", "conta: lucas" recusam desde a forma A, 31.18: test_decisao_fechada_forma_a.py)
+    "passe para o próximo post",
 ])
 def test_controles_passam(comando: str) -> None:
     assert _motivo(comando) is None

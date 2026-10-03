@@ -20,7 +20,8 @@ Modo = Literal["off", "shadow", "on"]
 TipoDePergunta = Literal["choice", "noul", "score"]
 #: Por que o caminho do Jev não valeu e o trabalho voltou ao caminho de hoje. 401/422/429/529 são o status HTTP; `rede` cobre
 #: timeout, erro de transporte e qualquer falha inesperada do decisor (não houve resposta utilizável); `parse` é resposta que
-#: não é JSON no formato; `unknown_choice` é escolha fora das opções enviadas; `abaixo_do_limiar` é confiança insuficiente;
+#: não é JSON no formato; `unknown_choice` é escolha fora das opções enviadas; `abaixo_do_limiar` é probabilidade devolvida
+#: insuficiente (no `choice`, a da opção escolhida, que precisa ser a maior; 31.19) ou confiança ausente;
 #: `privacidade` é recusa local ANTES de montar o corpo; `desligado` é modo off, config desligada ou decisor nulo;
 #: `orcamento` é a régua de gasto (teto do dia, fatia do Jev, execução, pedido) ou o saldo da conta barrando ANTES do POST
 #: (31.14): nada saiu.
@@ -35,7 +36,7 @@ Marcador = Literal["tela_sensivel", "tela_protegida", "aparelho_loja", "segredo"
 #: (`entidades.remover_entidades_com_motivo`). Fora daqui, a linha grava `outro`.
 MotivoDePrivacidade = Literal[
     "c7_bidi", "c7_palavra", "c7_formato", "c7_alfabetos", "c7_ofuscado", "c7_eufemismo", "c7_digitos",
-    "c7_login_valor", "c7_par_credencial", "c7_intencao_de_entrar", "c7_valor_com_digito",
+    "c7_login_valor", "c7_par_credencial", "c7_intencao_de_entrar", "c7_valor_com_digito", "c7_gatilho",
     "nao_texto", "vazio", "alfabetos", "simbolo_colado", "email_ofuscado", "endereco", "documento", "ditado", "numerais",
     "sobra_de_forma", "outro"]
 

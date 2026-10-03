@@ -9,7 +9,7 @@ Uso, a partir da raiz do checkout:
 
     backend/.venv/Scripts/python.exe scripts/jev-relatorio-31-10.py [--db data/poc.sqlite3 | --dsn postgresql://...]
         [--desde 2026-10-04T00:00:00Z] [--flows-url http://127.0.0.1:8000/api/flows | --sem-flows]
-        [--json saida.json] [--md saida.md]
+        [--json saida.json] [--md saida.md] [--autor-dono NOME ...]
 
 Níveis de cada número: `PROVED` é contagem no banco; `INFERRED` é derivado (taxa, rótulo pelo desfecho, braço de
 controle). Abaixo do mínimo de rótulos do estrato, o relatório diz "sem amostra", nunca uma taxa (§1).
@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import statistics
 import sys
 import urllib.request
 from collections import Counter, defaultdict
@@ -48,6 +47,9 @@ CURADOR = {"rotulos_min": 30, "acordo_min": 0.90, "erro_grave_max": 0.05, "cober
 INTENCAO = {"rotulos_min": 50, "aceite_errado_max": 0.02, "precisao_min": 0.95}
 #: §3: o Instagram não ganha data prevista; o GO dele se decide no relatório do 1º estrato.
 SEM_DATA = frozenset({"instagram"})
+#: 31.19: a grade da sensibilidade ao limiar (`cobertura_por_limiar`). Só mede: o limiar da porta continua o de
+#: `contrato.pergunta_choice` (0,85) até uma decisão registrada com rótulos.
+LIMIARES_DE_SENSIBILIDADE = (0.50, 0.60, 0.70, 0.85)
 #: A fatia diária do Jev no teto do dia (`limits.jev_max_usd_per_day`, 31.6).
 FATIA_DO_DIA_USD = 0.50
 TEMPLATE_DO_CURADOR = "curador"
@@ -66,8 +68,8 @@ def _rotulo_da_transicao(de: str | None, para: str) -> str | None:
     if para in ESCADA:
         return "rebaixar" if de in ESCADA and ESCADA[para] < ESCADA[de] else "manter"
     return None
-#: Rótulo 2 do curador: `resultado_posterior` (14 e 30 dias). Em 03/10 nenhum código o grava; quando gravar, só o que já
-#: está na régua da triagem conta.
+#: Rótulo 2 do curador: `resultado_posterior` (14 e 30 dias). Em 03/10 nenhum código da main o grava; o 30.35 gravará
+#: `manter`, `rebaixar`, `descartar` ou `sem_desfecho`. Só o que está na régua da triagem conta, e `sem_desfecho` não rotula.
 ROTULO_POSTERIOR = frozenset({"manter", "revisar", "rebaixar", "descartar"})
 
 
@@ -79,12 +81,19 @@ def _taxa(parte: int, todo: int) -> float | None:
     return round(parte / todo, 4) if todo else None
 
 
-def _percentis(valores: Sequence[float]) -> dict[str, float | None]:
+def percentil(valores: Sequence[float], pct: int) -> float | None:
+    """Posto mais próximo, o mesmo método do `sombra._p95` que grava `decisao_fechada_diario.ms_p95` (31.19): o valor é
+    uma latência que aconteceu, sem interpolação. O posto é `ceil(pct·n/100)` em aritmética INTEIRA: `0.95 * n` em ponto
+    flutuante pode cair logo abaixo do inteiro e trocar o posto. Até o 31.19 este relatório dava a mediana interpolada
+    no p50 e a prova do 31.17 arredondava `q·(n−1)`: com as 4 chamadas de 03/10, 473,8 e 510,2 ms para o mesmo p50."""
     if not valores:
-        return {"p50": None, "p95": None}
+        return None
     ordenados = sorted(valores)
-    p95 = ordenados[min(len(ordenados) - 1, max(0, round(0.95 * len(ordenados)) - 1))]
-    return {"p50": round(statistics.median(ordenados), 1), "p95": round(p95, 1)}
+    return round(ordenados[max(0, (pct * len(ordenados) + 99) // 100 - 1)], 1)
+
+
+def _percentis(valores: Sequence[float]) -> dict[str, float | None]:
+    return {"p50": percentil(valores, 50), "p95": percentil(valores, 95)}
 
 
 def _dia(ts: str) -> str:
@@ -144,37 +153,80 @@ def _revisao_do_curador(db: Any, dossie_hash: str) -> Mapping[str, Any] | None:
                   " LIMIT 1", (TEMPLATE_DO_CURADOR, dossie_hash))
 
 
-def _rotulo_do_curador(db: Any, revisao: Mapping[str, Any], desde_ts: str) -> tuple[str | None, str | None]:
-    """(rótulo na régua da triagem, fonte). 1: a decisão da PESSOA no item depois da sombra; 2: `resultado_posterior`."""
-    transicao = db.one("SELECT from_state, to_state FROM learning_transitions WHERE item_ref=? AND decided_by<>'sistema'"
-                       " AND decided_at>=? ORDER BY decided_at, id LIMIT 1", (revisao["item_ref"], desde_ts))
-    if transicao is not None and (rotulo := _rotulo_da_transicao(transicao["from_state"], str(transicao["to_state"]))):
-        return rotulo, "pessoa"
+def _rotulo_do_curador(db: Any, revisao: Mapping[str, Any], desde_ts: str,
+                       autores_dono: frozenset[str] = frozenset()) -> tuple[str | None, str | None]:
+    """(rótulo na régua da triagem, fonte). 1: a decisão do DONO no item depois da sombra; 2: `resultado_posterior`.
+
+    31.19: o rótulo 1 só vale com `decided_by` entre os `autores_dono` declarados (`--autor-dono`). Até aqui valia todo
+    autor diferente de `sistema`, e no central as 11 transições assim eram de sessões Claude (`orquestradora`,
+    "Aprendizado (sessão Claude)") ou `panel` (o último recurso de `api.quem`: "ninguém se identificou"). O dono entra no
+    painel com o nome que ele escolhe (`Flavio`, confirmado em `panel_sessions` em 03/10), e nenhuma configuração o declara;
+    por isso o nome vem de quem roda o relatório. Sem autor declarado, o rótulo 1 fica desligado (falha fechada). O nome é
+    declarado atrás de um token compartilhado: uma sessão pode entrar com qualquer nome, e esse é o resíduo. Um agente de
+    validação no Chrome do dono também aparece como `Flavio`; por regra ele só lê e não gera transição."""
+    if autores_dono:
+        marcas = ",".join("?" for _ in autores_dono)
+        transicao = db.one(f"SELECT from_state, to_state FROM learning_transitions WHERE item_ref=? AND decided_by IN"
+                           f" ({marcas}) AND decided_at>=? ORDER BY decided_at, id LIMIT 1",
+                           (revisao["item_ref"], *sorted(autores_dono), desde_ts))
+        if transicao is not None and (rotulo := _rotulo_da_transicao(transicao["from_state"],
+                                                                     str(transicao["to_state"]))):
+            return rotulo, "dono"
     posterior = revisao["resultado_posterior"]
     if isinstance(posterior, str) and posterior in ROTULO_POSTERIOR:
         return posterior, "posterior"
     return None, None
 
 
-def _controle_do_curador(revisao: Mapping[str, Any]) -> str:
-    """Braço de controle (§2): a regra do adaptador simulado sobre o mesmo C0. Mais evidência contra que a favor →
-    `revisar`; senão `manter`."""
+def _estado_c0(revisao: Mapping[str, Any]) -> dict[str, Any]:
+    """O estado C0 que a triagem mandou ao Jev, remontado do dossiê da revisão (`estado_do_dossie`)."""
     try:
         dossie = json.loads(revisao["dossie"] or "{}")
     except ValueError:
         dossie = {}
-    estado = estado_do_dossie(dossie) if isinstance(dossie, dict) else {}
+    return estado_do_dossie(dossie) if isinstance(dossie, dict) else {}
+
+
+def _controle_do_curador(revisao: Mapping[str, Any]) -> str:
+    """Braço de controle (§2): a regra do adaptador simulado sobre o mesmo C0. Mais evidência contra que a favor →
+    `revisar`; senão `manter`."""
+    estado = _estado_c0(revisao)
     contra, a_favor = int(estado.get("evidencias_contra") or 0), int(estado.get("evidencias_a_favor") or 0)
     return _opt("revisar") if contra > a_favor else _opt("manter")
 
 
-def relatorio_do_curador(db: Any, desde: str | None, agora: datetime) -> dict[str, Any]:
+def _maior_probabilidade(linha: Mapping[str, Any]) -> float | None:
+    try:
+        probs = json.loads(linha["probabilidades"] or "{}")
+    except (ValueError, TypeError):
+        return None
+    valores = [float(v) for v in probs.values() if isinstance(v, (int, float))] if isinstance(probs, dict) else []
+    return max(valores) if valores else None
+
+
+def _transicoes_fora_do_dono(db: Any, desde: str | None, autores_dono: frozenset[str]) -> int:
+    """Quantas transições de PESSOA (`decided_by` ≠ `sistema`) a regra do dono deixa de fora na janela (PROVED)."""
+    sql = "SELECT count(*) AS n FROM learning_transitions WHERE decided_by<>'sistema'"
+    args: list[Any] = []
+    if autores_dono:
+        sql += f" AND decided_by NOT IN ({','.join('?' for _ in autores_dono)})"
+        args += sorted(autores_dono)
+    if desde:
+        sql += " AND decided_at>=?"
+        args.append(desde)
+    linha = db.one(sql, tuple(args))
+    return int(linha["n"]) if linha is not None else 0
+
+
+def relatorio_do_curador(db: Any, desde: str | None, agora: datetime,
+                         autores_dono: frozenset[str] = frozenset()) -> dict[str, Any]:
     linhas = _linhas(db, "curador", (PERGUNTA_TRIAGEM,), desde)
     por_kind: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for linha in linhas:
         revisao = _revisao_do_curador(db, str(linha["ref"] or ""))
         kind = str(revisao["item_kind"]) if revisao is not None else "desconhecido"
-        rotulo, fonte = _rotulo_do_curador(db, revisao, str(linha["ts"])) if revisao is not None else (None, None)
+        rotulo, fonte = (_rotulo_do_curador(db, revisao, str(linha["ts"]), autores_dono) if revisao is not None
+                         else (None, None))
         parecer = None
         if revisao is not None and revisao["saida"]:
             try:
@@ -183,10 +235,15 @@ def relatorio_do_curador(db: Any, desde: str | None, agora: datetime) -> dict[st
                 parecer = None
         real = (decisao_real_da_triagem(parecer, validade=revisao["validade"], simulado=revisao["simulated"])
                 if revisao is not None else None)
-        por_kind[kind].append({"linha": linha, "rotulo": rotulo, "fonte": fonte, "real": real,
+        estado = json.dumps(_estado_c0(revisao), sort_keys=True, ensure_ascii=False) if revisao is not None else None
+        por_kind[kind].append({"linha": linha, "rotulo": rotulo, "fonte": fonte, "real": real, "estado": estado,
                                "controle": _controle_do_curador(revisao) if revisao is not None else None})
     estratos = {kind: _estrato_do_curador(itens, agora) for kind, itens in sorted(por_kind.items())}
-    return {"linhas": len(linhas), "estratos": estratos, "custo": _custo(linhas),
+    rotulo_1: dict[str, Any] = {"autores_dono": sorted(autores_dono), "nivel": "PROVED",
+                                "transicoes_fora_do_dono": _transicoes_fora_do_dono(db, desde, autores_dono)}
+    if not autores_dono:
+        rotulo_1["nota"] = "sem autor dono declarado (--autor-dono): o rótulo 1 está desligado"
+    return {"linhas": len(linhas), "estratos": estratos, "custo": _custo(linhas), "rotulo_1": rotulo_1,
             "nota": "concordância com o curador principal é acompanhamento, nunca GO sozinha (§2)"}
 
 
@@ -210,6 +267,16 @@ def _estrato_do_curador(itens: Sequence[dict[str, Any]], agora: datetime) -> dic
         "concordancia_com_o_curador": _taxa(sum(1 for i in com_real if i["linha"]["escolha"] == i["real"]),
                                             len(com_real)),
         "com_parecer_valido": len(com_real),
+        # 31.19: os 4 primeiros pedidos reais (03/10) levaram o MESMO estado C0 e voltaram com a mesma distribuição; o
+        # limiar não separa o que a entrada não distingue. Estes dois campos mostram isso antes de qualquer GO. A porta
+        # mede o limiar na probabilidade da escolha (31.19); a coluna da `confianca` fica para comparar.
+        "estados_distintos": len({i["estado"] for i in itens if i["estado"] is not None}),
+        "cobertura_por_limiar": {
+            f"{limiar:.2f}": {
+                "confianca": _taxa(sum(1 for i in itens if (i["linha"]["confianca"] or 0) >= limiar), total),
+                "maior_probabilidade": _taxa(sum(1 for i in itens
+                                                 if (_maior_probabilidade(i["linha"]) or 0) >= limiar), total)}
+            for limiar in LIMIARES_DE_SENSIBILIDADE},
     }
     if n < CURADOR["rotulos_min"]:
         veredito, falhou = "sem amostra", [f"rótulos {n} < {CURADOR['rotulos_min']}"]
@@ -226,7 +293,8 @@ def _estrato_do_curador(itens: Sequence[dict[str, Any]], agora: datetime) -> dic
         ) if not ok]
         veredito = "GO" if not falhou else "NO-GO"
     primeiro = str(itens[0]["linha"]["ts"]) if itens else None
-    return {"medidas": medidas, "nivel": {"contagens": "PROVED", "taxas": "INFERRED", "acordo_controle": "INFERRED"},
+    return {"medidas": medidas, "nivel": {"contagens": "PROVED", "taxas": "INFERRED", "acordo_controle": "INFERRED",
+                                          "cobertura_por_limiar": "INFERRED (contrafactual; o limiar da porta não muda)"},
             "veredito": veredito, "falhou": falhou, "modo": "on possível" if veredito == "GO" else "off",
             "data_prevista": _data_prevista(n, CURADOR["rotulos_min"], primeiro, agora, sem_data=False)}
 
@@ -340,10 +408,10 @@ def _teto_da_r2(flows: Sequence[Mapping[str, Any]] | None) -> dict[str, Any]:
 
 # ------------------------------------------------------------------ montagem e saída
 def montar(db: Any, *, desde: str | None, agora: datetime,
-           flows: Sequence[Mapping[str, Any]] | None) -> dict[str, Any]:
+           flows: Sequence[Mapping[str, Any]] | None, autores_dono: frozenset[str] = frozenset()) -> dict[str, Any]:
     return {"gerado_em": agora.isoformat().replace("+00:00", "Z"), "desde": desde,
             "limiares": {"curador": CURADOR, "intencao": INTENCAO, "fonte": "docs/design/jev-golden-set.md §1–§3"},
-            "curador": relatorio_do_curador(db, desde, agora),
+            "curador": relatorio_do_curador(db, desde, agora, autores_dono),
             "intencao": relatorio_da_intencao(db, desde, agora, flows),
             "regra": "o relatório nunca liga nada; `on` é decisão registrada (ADR-069 item 6)"}
 
@@ -356,6 +424,11 @@ def em_markdown(rel: Mapping[str, Any]) -> str:
     for nome, chave in (("Curador do Livro (R1), por kind", "curador"), ("Intenção (R2 e R3), por app", "intencao")):
         parte = rel[chave]
         linhas += [f"## {nome}", "", f"Linhas da sombra: {parte['linhas']}.", ""]
+        if "rotulo_1" in parte:
+            r1 = parte["rotulo_1"]
+            linhas += [f"Rótulo 1 (decisão do dono): autores {', '.join(r1['autores_dono']) or 'nenhum'}; "
+                       f"{r1['transicoes_fora_do_dono']} transições de pessoa fora do dono na janela."
+                       + (f" {r1['nota']}." if r1.get("nota") else ""), ""]
         for estrato, dados in parte["estratos"].items():
             m = dados["medidas"]
             linhas.append(f"### {estrato}: **{dados['veredito']}** ({dados['modo']})")
@@ -416,11 +489,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     p.add_argument("--sem-flows", action="store_true")
     p.add_argument("--json", help="arquivo do JSON; padrão: a tela")
     p.add_argument("--md", help="arquivo do Markdown")
+    p.add_argument("--autor-dono", action="append", default=[], metavar="NOME",
+                   help="o `decided_by` do dono no rótulo 1 do curador (repetível); sem ele, o rótulo 1 fica desligado")
     args = p.parse_args(argv)
     db = _abrir(args)
     try:
         rel = montar(db, desde=args.desde, agora=datetime.now(UTC),
-                     flows=None if args.sem_flows else _flows(args.flows_url))
+                     flows=None if args.sem_flows else _flows(args.flows_url),
+                     autores_dono=frozenset(n.strip() for n in args.autor_dono if n.strip()))
     finally:
         db.close()
     texto = json.dumps(rel, ensure_ascii=False, indent=1, default=str)

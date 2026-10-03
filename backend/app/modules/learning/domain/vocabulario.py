@@ -77,6 +77,9 @@ class SignalKind(StrEnum):
     #: tem coluna para guardar).
     PEDIU_REVISAO = "pediu_revisao"
     PARECER_DECIDIDO = "parecer_decidido"
+    #: 30.34: o caso da sombra da autopublicação, o fluxo B que publicaria (`source_ref` = `autopublicaria:<item>`,
+    #: `created_by` = sistema: um por item). Não é gesto de pessoa: fica fora da régua de intervenções.
+    AUTOPUBLICARIA = "autopublicaria"
 
 
 #: Sinais que contam como intervenção humana na régua diária (`learning_daily.interventions`).

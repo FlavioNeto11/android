@@ -24,10 +24,14 @@ from app.modules.learning.domain.ciclo import SkillState
 from app.modules.learning.domain.espera import (AvisoDeEspera, FatosDoCatalogo, Faixa,
                                                 MotivoDeEntrada, classificar_espera, motivo_de_saida)
 from app.modules.learning.domain.livro import EntradaDoLivro, para_aprovar
+from app.modules.learning.domain.politica_de_risco import EtapaDeRisco
 from app.modules.learning.domain.vocabulario import LivroKind
 from app.util import to_iso
 
 log = logging.getLogger("poc.aprendizado")
+
+#: A capability derivada e as etapas de uma fonte nativa (receita ou fluxo), lidas do conteúdo dela.
+RiscoDoNativo = Callable[[EntradaDoLivro], tuple[str, tuple[EtapaDeRisco, ...]]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,10 +48,15 @@ def aguarda_a_pessoa(e: EntradaDoLivro | None) -> bool:
 
 class AvisadorDeEspera:
     def __init__(self, porta: PortaDeEventos | None, catalogo: CatalogoDeRisco | None,
-                 relogio: Callable[[], datetime]) -> None:
+                 relogio: Callable[[], datetime],
+                 risco_do_nativo: RiscoDoNativo | None = None) -> None:
+        """`risco_do_nativo`: a capability derivada da receita ou do fluxo e as etapas do fluxo com os fatos do
+        catálogo de cada uma, a mesma leitura do dossiê do curador (30.33). Sem ele, a fonte nativa é classificada
+        sem nenhum dos dois: a lacuna de sempre (B)."""
         self._porta = porta
         self._catalogo = catalogo
         self._relogio = relogio
+        self._risco_do_nativo = risco_do_nativo
         self._ultimo: dict[str, _Ultimo] = {}
 
     def mudou(self, antes: EntradaDoLivro | None, depois: EntradaDoLivro, *, por_sistema: bool,
@@ -114,13 +123,19 @@ class AvisadorDeEspera:
 
     def _classificar(self, e: EntradaDoLivro, *, capability: str, sessao: bool) -> tuple[Faixa, MotivoDeEntrada] | None:
         app = e.app or ""
+        etapas: tuple[EtapaDeRisco, ...] = ()
+        if e.kind in (LivroKind.RECEITA, LivroKind.FLUXO) and self._risco_do_nativo is not None:
+            # 30.33: a receita e o fluxo lidos como o dossiê os lê (a capability derivada do conteúdo e, no fluxo,
+            # a etapa mais restritiva, 30.32): a faixa do aviso é a classe do parecer.
+            derivada, etapas = self._risco_do_nativo(e)
+            capability = capability or derivada
         tem = bool(app) and self._catalogo is not None and self._catalogo.tem_catalogo(app)
         fatos: FatosDoCatalogo | None = None
         if tem and self._catalogo is not None and capability and capability != "*":
             fatos = self._catalogo.da_capability(app, capability)
         return classificar_espera(side_effect=e.side_effect, human_origin=e.human_origin, tem_catalogo=tem,
                                   catalogo=fatos, sessao_ou_autenticacao=sessao,
-                                  reaprendido=e.reaprendido is not None)
+                                  reaprendido=e.reaprendido is not None, etapas=etapas)
 
 
-__all__ = ["AvisadorDeEspera", "aguarda_a_pessoa"]
+__all__ = ["AvisadorDeEspera", "RiscoDoNativo", "aguarda_a_pessoa"]

@@ -4603,3 +4603,33 @@ Prova:
 - `simulated`: `tests/test_decisao_fechada_sombra.py::test_a_typesafe_diz_que_a_decisao_fechada_a_usa_e_mostra_o_consumo_do_jev`;
   `frontend/src/lib/aiBalance.test.ts`; navegador contra o backend simulado do worktree.
 - `real`: `not_run`.
+
+## Adendo v0.93 (03/10/2026; número da orquestradora; item 30.34-A) — `curador.autopublicacao` nas métricas e o config da autopublicação
+
+Aditivo ao v0.89. Nenhuma rota nova e nenhuma migração. Com o serviço da autopublicação composto (o `AppState` sempre o
+compõe), o bloco `curador` de `GET /api/aprendizado/metricas` ganha a chave `autopublicacao`, que é o balanço da sombra
+(ADR-054, emenda de 03/10):
+
+```json
+"curador": {"revisoes": 7, "…": 0,
+            "autopublicacao": {"modo": "shadow", "casos": 3, "abertos": 3, "limpos": 0, "regrediram": 0,
+                               "taxa_sem_regressao": null, "libera": false,
+                               "limiares": {"casos_fechados": 30, "taxa_sem_regressao": 0.9, "janela_dias": 7}}}
+```
+
+- O balanço é global: não depende de `app` nem de `dias`. Cada caso tem a janela própria de 7 dias, contada da marca.
+- `casos` são os itens distintos que a regra publicaria, cada um marcado uma vez (o sinal `autopublicaria`).
+  - `abertos` ainda estão na janela.
+  - `limpos` fecharam sem regressão.
+  - `regrediram` tiveram, na janela, evidência real contra ou em conflito, o item desligado, ou o parecer recusado por
+    uma pessoa.
+- `taxa_sem_regressao` = limpos / (limpos + regrediram), ou `null` sem caso fechado. O aberto não entra.
+- `libera` = ≥ 30 casos fechados e taxa ≥ 0,9. É o que o relatório à orquestradora lê antes de virar `on`.
+- O sinal `autopublicaria` fica fora de `GET /api/aprendizado/sinais` sem `kind`, porque não é gesto de pessoa.
+
+Config (`aprendizado.autopublicacao`): `modo: "off" | "shadow"` (`off` de fábrica) e `intervalo_s` (3600). `on` é
+recusado na carga até a 30.34-B. O central liga `shadow` no deploy 11 (decisão da orquestradora, 03/10).
+
+Prova:
+- `simulated`: `tests/test_learning_autopublicacao.py` e `tests/test_learning_autopublicacao_sombra.py`.
+- `not_run`: a sombra no central (deploy 11).

@@ -472,20 +472,33 @@ RECUSAS_VISUAIS = ("desligado", "elemento_com_texto", "regiao_nao_declarada", "a
                    "truncado", "nao_confere", "triagem")
 
 
-class LeituraVisualRecusada(Exception):
-    """A leitura visual foi recusada. NUNCA grava valor. `codigo` é de `RECUSAS_VISUAIS`; `motivo` só existe na triagem."""
+#: As recusas da conferência (barreiras 9 a 11) que reler a MESMA âncora na MESMA tela não muda: o leitor já viu aquele
+#: recorte e disse não (29.49). `leitor_falhou` e `sem_leitor` ficam de fora: a falha é do provedor, não do recorte.
+RECUSAS_DETERMINISTICAS = frozenset({"ilegivel", "truncado", "nao_confere"})
 
-    def __init__(self, codigo: str, motivo: str | None = None):
+
+class LeituraVisualRecusada(Exception):
+    """A leitura visual foi recusada. NUNCA grava valor. `codigo` é de `RECUSAS_VISUAIS`; `motivo` só existe na triagem;
+    `anterior` só em `repetida`: a recusa da primeira leitura daquele par (tela, âncora), quando houve uma (29.49)."""
+
+    def __init__(self, codigo: str, motivo: str | None = None, *, anterior: str | None = None):
         if codigo not in RECUSAS_VISUAIS:
             raise ValueError(f"código de recusa fora do vocabulário: {codigo!r}")
         super().__init__(f"{codigo}:{motivo}" if motivo else codigo)
         self.codigo = codigo
         self.motivo = motivo
+        self.anterior = anterior
 
     @property
     def rotulo(self) -> str:
         """O que vai ao ator, à ação e ao evento: o código, e na triagem `triagem:<motivo>`."""
         return f"{self.codigo}:{self.motivo}" if self.motivo else self.codigo
+
+    @property
+    def definitiva(self) -> bool:
+        """`repetida` depois de uma recusa determinística (29.49): o ator insistiu na leitura que o leitor já recusou, na
+        mesma tela. Repetir de novo, ou numa nova tentativa da etapa, daria o mesmo não; a etapa termina como não lida."""
+        return self.codigo == "repetida" and self.anterior in RECUSAS_DETERMINISTICAS
 
 
 @dataclass(frozen=True, slots=True)
@@ -534,7 +547,12 @@ def conferir_transcricao(valor: str, nome: str, t: Transcricao) -> None:
     "Truncado" (nível 1.1, emenda de 03/10 ao ADR-070 §4): vale só para o valor do ator, o campo do leitor e a linha que
     contém o valor. A prévia do corpo na linha da caixa do Outlook SEMPRE termina em "…" (K-079), e recusar por ela
     derrubava toda leitura. A marca global `t.truncado` não diz QUAL texto está cortado: ela só é posta de lado quando
-    uma linha alheia cortada a explica; sem nenhuma, o corte pode ser o do campo e a leitura é recusada."""
+    uma linha alheia cortada a explica; sem nenhuma, o corte pode ser o do campo e a leitura é recusada.
+
+    29.49 (recaída do K-079): a prévia pode REPETIR o assunto ("Olá! <assunto> é…"), e o valor aparece em duas linhas, a
+    dele (inteira) e a prévia (cortada). Uma cópia numa linha INTEIRA prova que o valor não foi cortado: a linha do valor
+    só derruba a leitura quando TODAS as linhas que o contêm terminam cortadas, e as cópias cortadas contam como linha
+    alheia para explicar a marca global. O valor e o campo cortados continuam recusando."""
     if not t.legivel:
         raise LeituraVisualRecusada("ilegivel")
     campo = t.campos.get(nome)
@@ -542,9 +560,11 @@ def conferir_transcricao(valor: str, nome: str, t: Transcricao) -> None:
     n = len(do_ator)
     com_valor = {i for i, p in enumerate(_palavras(linha) for linha in t.linhas)
                  if n and any(p[j:j + n] == do_ator for j in range(len(p) - n + 1))}
-    alheia_cortada = any(_termina_cortado(x) for i, x in enumerate(t.linhas) if i not in com_valor)
+    cortadas = {i for i, x in enumerate(t.linhas) if _termina_cortado(x)}
+    inteiras_com_valor = com_valor - cortadas
+    alheia_cortada = bool(cortadas - inteiras_com_valor)
     if (_termina_cortado(valor) or _termina_cortado(campo or "")
-            or any(_termina_cortado(t.linhas[i]) for i in com_valor)
+            or (com_valor and not inteiras_com_valor)
             or (t.truncado and not alheia_cortada)):
         raise LeituraVisualRecusada("truncado")
     if not do_ator or campo is None or _palavras(campo) != do_ator:
@@ -575,7 +595,8 @@ async def ler_valor_visual(*, habilitado: bool, arvore: UiTree, element_id: str,
                            conhecimento: ConhecimentoDeTelas | None, tela: str | None, image_policy: str,
                            fora_do_app: str | None, largura: int, altura: int, obter_imagem: ObterImagem,
                            tentativas: set[ChaveDeTentativa], transcrever: Transcrever | None,
-                           tipo_da_tela: str | None = None) -> LeituraVisual:
+                           tipo_da_tela: str | None = None,
+                           recusas: dict[ChaveDeTentativa, str] | None = None) -> LeituraVisual:
     """Leitura visual de UMA saída, conferida às cegas (item 12.5, ADR-070). Roda as barreiras na ordem, das baratas para a
     cara, e levanta `LeituraVisualRecusada` na primeira que falhar — nunca devolve valor sem a concordância do leitor.
 
@@ -617,7 +638,7 @@ async def ler_valor_visual(*, habilitado: bool, arvore: UiTree, element_id: str,
     # outra tentativa. Tela e âncora iguais = o mesmo par.
     chave = (nome, arvore.signature(), ancora.bounds)
     if chave in tentativas:
-        raise LeituraVisualRecusada("repetida")
+        raise LeituraVisualRecusada("repetida", anterior=(recusas or {}).get(chave))
     tentativas.add(chave)
     if transcrever is None:
         raise LeituraVisualRecusada("sem_leitor")
@@ -631,7 +652,12 @@ async def ler_valor_visual(*, habilitado: bool, arvore: UiTree, element_id: str,
     motivo = _triagem_do_recorte(t.linhas, texto)
     if motivo is not None:
         raise LeituraVisualRecusada("triagem", motivo)
-    conferir_transcricao(do_ator, nome, t)
+    try:
+        conferir_transcricao(do_ator, nome, t)
+    except LeituraVisualRecusada as rec:
+        if recusas is not None:
+            recusas[chave] = rec.codigo     # 29.49: a releitura deste par vira `repetida` definitiva
+        raise
     # Grava-se o valor do LEITOR (o que está na imagem), limpo do mesmo jeito: a concordância é no normalizado (caixa,
     # pontuação das pontas), e gravar o do ator deixaria "FLAVIO PADILHA!" passar por "Flavio Padilha". O ator concordou
     # (acima), então só a forma muda.

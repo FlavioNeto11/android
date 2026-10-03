@@ -581,6 +581,12 @@ aprendizado:                      # aprendizado contínuo (ADR-054): livro, D1, 
     extra_usd: 0                  # verba única somada ao beta até extra_ate (ISO, ex.: 2026-10-10T00:00:00.000Z)
     extra_ate: ""
     custo_estimado_usd: 0.07
+  # Autopublicação do fluxo de classe B (30.34): parecer "aprovar" com confiança alta + ≥ 2 execuções reais em ≥ 2
+  # aparelhos. "off" (padrão) não roda · "shadow" só marca o que publicaria (o livro da sombra). "on" ainda não é aceito:
+  # vem depois do relatório da sombra (≥ 30 casos fechados com ≥ 90 % sem regressão).
+  autopublicacao:
+    modo: "off"
+    intervalo_s: 3600             # de quanto em quanto tempo o laço avalia os fluxos (sob a trava de líder)
   ia_resumos_por_dia: 0           # lição escrita por IA: desligada (gasta saldo e abre injeção); só 0 é aceito
   takeover_gravar: false          # gravar as entradas manuais da tomada de controle fora do treino
   retencao: {sinais_dias: 180, feedback_dias: 365, exposicoes_dias: 120, evidencias_por_item: 200, diario_dias: 400,

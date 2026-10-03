@@ -97,7 +97,8 @@ class _Leitor:
 async def _ler(*, arvore: UiTree | None = None, valor: str = ASSUNTO, nome: str = "assunto", leitor: Any = None,
                habilitado: bool = True, tela: str | None = "caixa_de_entrada", conhecimento: Any = "padrao",
                policy: str = "auto", fora: str | None = None, imagem: Any = "padrao",
-               tentativas: set[Any] | None = None, sem_leitor: bool = False, element_id: str = "e2") -> Any:
+               tentativas: set[Any] | None = None, sem_leitor: bool = False, element_id: str = "e2",
+               recusas: dict[Any, str] | None = None) -> Any:
     arvore = arvore or _arvore()
     leitor = leitor or _Leitor()
 
@@ -108,7 +109,8 @@ async def _ler(*, arvore: UiTree | None = None, valor: str = ASSUNTO, nome: str 
         habilitado=habilitado, arvore=arvore, element_id=element_id, nome=nome, valor_do_ator=valor,
         conhecimento=_conhecimento() if conhecimento == "padrao" else conhecimento, tela=tela, image_policy=policy,
         fora_do_app=fora, largura=720, altura=1280, obter_imagem=obter,
-        tentativas=set() if tentativas is None else tentativas, transcrever=None if sem_leitor else leitor)
+        tentativas=set() if tentativas is None else tentativas, transcrever=None if sem_leitor else leitor,
+        recusas=recusas)
 
 
 async def _recusa(codigo: str, **kw: Any) -> LeituraVisualRecusada:
@@ -249,6 +251,53 @@ async def test_10_nivel_1_1_o_valor_cortado_continua_recusando() -> None:
     # a marca sem nenhuma linha cortada visível: o corte pode ser o do campo (palavra pela metade na borda)
     marca = Transcricao(linhas=[REMETENTE, ASSUNTO], campos={"assunto": ASSUNTO}, truncado=True)
     await _recusa("truncado", leitor=_Leitor(marca))
+
+
+async def test_10_29_49_a_previa_que_repete_o_assunto_nao_corta_o_assunto_inteiro() -> None:
+    # 29.49 (run 89b814, 03/10): a prévia do corpo REPETE o assunto e termina em "…". O valor aparece em duas linhas, a do
+    # assunto (inteira) e a da prévia (cortada); a regra tratava qualquer linha com o valor como "a linha do valor" e
+    # recusava o assunto inteiro como `truncado`. A cópia na linha inteira prova que o valor não foi cortado.
+    remetente, assunto = "Remetente Exemplo", "Assunto de teste da caixa"
+    repete = Transcricao(linhas=[remetente, assunto, f"Olá! {assunto} é o que eu queria te…"],
+                         campos={"remetente": remetente, "assunto": assunto}, truncado=True)
+    assert (await _ler(valor=assunto, leitor=_Leitor(repete))).valor == assunto
+    sem_marca = Transcricao(linhas=repete.linhas, campos=repete.campos)
+    assert (await _ler(valor=assunto, leitor=_Leitor(sem_marca))).valor == assunto
+    # o valor SÓ em linhas cortadas (o assunto também cortado): continua recusado
+    so_cortadas = Transcricao(linhas=[remetente, f"{assunto} e mais…", f"Olá! {assunto} é o que eu queria te…"],
+                              campos={"assunto": assunto}, truncado=True)
+    await _recusa("truncado", valor=assunto, leitor=_Leitor(so_cortadas))
+    # o campo do leitor cortado continua recusando, mesmo com uma cópia inteira noutra linha
+    campo_cortado = Transcricao(linhas=[remetente, assunto, f"Olá! {assunto} é o que eu queria te…"],
+                                campos={"assunto": "Assunto de teste da…"}, truncado=True)
+    await _recusa("truncado", valor=assunto, leitor=_Leitor(campo_cortado))
+
+
+async def test_7_29_49_repetida_depois_de_recusa_deterministica_e_definitiva() -> None:
+    # A recusa da conferência fica anotada por par (tela, âncora); a releitura do par vira `repetida` com a anterior.
+    tentativas: set[Any] = set()
+    recusas: dict[Any, str] = {}
+    ruim = Transcricao(linhas=["outra coisa"], campos={"assunto": "outra coisa"})
+    await _recusa("nao_confere", tentativas=tentativas, recusas=recusas, leitor=_Leitor(ruim))
+    assert list(recusas.values()) == ["nao_confere"]
+    rep = await _recusa("repetida", tentativas=tentativas, recusas=recusas)
+    assert rep.anterior == "nao_confere" and rep.definitiva and rep.rotulo == "repetida"   # o ator recebe só o código
+    # a falha do PROVEDOR não é do recorte: a releitura é `repetida`, mas não definitiva
+    tentativas2: set[Any] = set()
+    recusas2: dict[Any, str] = {}
+
+    async def falha(recorte: bytes, pedidas: dict[str, str]) -> Any:
+        raise LeituraVisualRecusada("leitor_falhou")
+
+    await _recusa("leitor_falhou", tentativas=tentativas2, recusas=recusas2, leitor=falha)
+    assert recusas2 == {}
+    rep2 = await _recusa("repetida", tentativas=tentativas2, recusas=recusas2)
+    assert rep2.anterior is None and not rep2.definitiva
+    # sem o dicionário (quem chama não acompanha), `repetida` nunca é definitiva
+    tentativas3: set[Any] = set()
+    await _recusa("truncado", tentativas=tentativas3, leitor=_Leitor(Transcricao(linhas=[ASSUNTO], campos={"assunto": ASSUNTO},
+                                                                                 truncado=True)))
+    assert not (await _recusa("repetida", tentativas=tentativas3)).definitiva
 
 
 async def test_11_o_valor_nao_confere_com_o_do_leitor() -> None:
@@ -786,6 +835,35 @@ async def test_step_blocked_com_codigo_vai_redigido_aos_quatro_destinos(harness:
     #                                                                          evidência, nem no evento `decision`, nem na ação
     assert db.scalar("SELECT COUNT(*) FROM events WHERE run_id=? AND message LIKE '%motivo omitido%'", (run.id,)) >= 1
     assert db.scalar("SELECT COUNT(*) FROM evidence WHERE run_id=? AND note LIKE '%motivo omitido%'", (run.id,)) >= 1
+
+
+async def test_29_49_repetir_a_leitura_recusada_encerra_a_etapa_sem_nova_tentativa(
+        harness: Harness, caixa_cega: None) -> None:
+    """Run 89b814 (03/10): depois da recusa, o ator releu a mesma âncora na mesma tela; as releituras saíam `repetida` e
+    a etapa recomeçava numa nova tentativa, que repetia o caminho até o teto (13 chamadas). Agora a recusa vem explicada
+    ao ator, e a releitura do par encerra a etapa como não lida, sem nova tentativa e sem chamar o leitor de novo."""
+    harness.state.cfg.file.ai.leitura_visual.enabled = True                # type: ignore[union-attr]
+    inner, vistos = harness.ai.inner, []
+    inner.leitura = Transcricao(linhas=["Outra pessoa", "outra linha"], campos={"remetente": "Outra pessoa"})
+    _plano(inner, _etapa(max_attempts=2))
+    _ator(inner, [_le_visual("remetente", REMETENTE)], vistos)             # insiste na mesma leitura
+    _juiz(inner)
+    run = harness.run(["android-01"], command=COMANDO)
+    await _termina(harness, run.id)
+    linha = harness.state.db.one("SELECT status, status_detail, attempts FROM steps WHERE run_id=? AND key='listar'",  # type: ignore[union-attr]
+                                 (run.id,))
+    assert linha["status"] == "failed" and linha["attempts"] == 1           # sem a 2ª tentativa
+    assert "foi recusada (nao_confere) e repetida na mesma tela" in (linha["status_detail"] or "")
+    # sem recuperação automática: nenhum plano revisado refaz a navegação até a mesma tela
+    assert harness.state.db.scalar("SELECT COUNT(*) FROM steps WHERE run_id=? AND key='listar'", (run.id,)) == 1  # type: ignore[union-attr]
+    assert harness.state.db.scalar("SELECT status FROM objectives WHERE run_id=?", (run.id,)) == "failed"  # type: ignore[union-attr]
+    erros = [r["error"] for r in harness.state.db.query(                    # type: ignore[union-attr]
+        "SELECT error FROM actions WHERE tool='read_value' AND status='rejected' ORDER BY id")]
+    assert erros == ["nao_confere", "repetida"]
+    assert sum(1 for c in harness.ai.calls if c.get("role") == "leitura") == 1   # o leitor leu o recorte uma vez só
+    assert any("(executor) a leitura visual de 'remetente' foi recusada pelo leitor (nao_confere)" in v for v in vistos)
+    assert not any("Outra pessoa" in v for v in vistos)                     # a explicação não leva a transcrição
+    assert _saidas(harness, run.id) == []
 
 
 async def test_conta_propria_de_recusas_leva_a_fail_or_retry_mesmo_com_observe_e_find_no_meio(

@@ -268,6 +268,12 @@ class Mundo2:
         self.db.close()
 
 
+def _resposta(escolha: str, confianca: float) -> RespostaDeDecisao:
+    """Como o Jev devolve: com a probabilidade da escolha, que é o que a porta mede contra o limiar (31.19)."""
+    return RespostaDeDecisao(escolha=escolha, probabilidades={escolha: confianca, ID_NENHUMA: round(1 - confianca, 2)},
+                             confianca=confianca)
+
+
 @pytest.fixture
 def porta_aberta(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(privacidade, "JEV_RUNTIME_SEND_APPROVED", True)
@@ -291,8 +297,8 @@ def test_sombra_grava_as_duas_perguntas_e_casa_a_decisao_real_sem_inventar_a_do_
         tmp_path: Path, porta_aberta: None) -> None:
     ids = {e: id_opaco(e) for e in ("ig.abrir_conversa", "ig.abrir_numero")}
     falso = DecisorFalso({
-        PERGUNTA_CATALOGO: RespostaDeDecisao(escolha=ids["ig.abrir_conversa"], confianca=0.95),
-        PERGUNTA_DESEMPATE: RespostaDeDecisao(escolha=ids["ig.abrir_numero"], confianca=0.9)})
+        PERGUNTA_CATALOGO: _resposta(ids["ig.abrir_conversa"], 0.95),
+        PERGUNTA_DESEMPATE: _resposta(ids["ig.abrir_numero"], 0.9)})
     w = Mundo2(tmp_path, falso)
     cadeia = cadeia_de(w.m.planejador.resolve_intent("abra a conversa com 3 no instagram", None))
     w.consumidor.observar(run_id="run-1", comando="abra a conversa com 3 no instagram", app="instagram",
@@ -338,7 +344,7 @@ def test_ambiguos_da_resolve_ficam_contados_so_nas_linhas_da_intencao(tmp_path: 
 
 
 def test_sombra_casa_a_decisao_real_da_habilidade_resolvida_e_de_nenhuma(tmp_path: Path, porta_aberta: None) -> None:
-    falso = DecisorFalso({PERGUNTA_CATALOGO: RespostaDeDecisao(escolha=id_opaco("ig.abrir_conversa"), confianca=0.95)})
+    falso = DecisorFalso({PERGUNTA_CATALOGO: _resposta(id_opaco("ig.abrir_conversa"), 0.95)})
     w = Mundo2(tmp_path, falso)
     resolvida = cadeia_de(w.m.planejador.resolve_intent("abra a conversa com @ana no instagram", None))
     w.consumidor.observar(run_id="run-resolvida", comando="abra a conversa com @ana no instagram", app=None,
@@ -416,7 +422,7 @@ def test_c3_fora_da_intencao_ou_em_on_e_recusada_pela_porta(tmp_path: Path, port
 
 def test_consumidor_intencao_em_on_na_config_continua_em_shadow(tmp_path: Path, porta_aberta: None) -> None:
     cfg = DecisaoFechadaCfg(enabled=True, consumidores={"intencao": "on"})
-    falso = DecisorFalso({PERGUNTA_CATALOGO: RespostaDeDecisao(escolha=id_opaco("ig.abrir_conversa"), confianca=0.95)})
+    falso = DecisorFalso({PERGUNTA_CATALOGO: _resposta(id_opaco("ig.abrir_conversa"), 0.95)})
     w = Mundo2(tmp_path, falso, cfg)
     w.consumidor.observar(run_id="run-on", comando="abra a conversa com @ana", app=None, catalogo=w.catalogo(),
                           cadeia=CadeiaObservada(resolvida="ig.abrir_conversa"))
@@ -597,7 +603,7 @@ async def test_plan_termina_sem_esperar_o_decisor_lento_e_a_sombra_casa_depois(
     st = harness.state
     assert st is not None
     monkeypatch.setattr(privacidade, "JEV_RUNTIME_SEND_APPROVED", True)
-    decisor = DecisorQueEspera({PERGUNTA_CATALOGO: RespostaDeDecisao(escolha=id_opaco("ig.abrir_conversa"), confianca=0.95)})
+    decisor = DecisorQueEspera({PERGUNTA_CATALOGO: _resposta(id_opaco("ig.abrir_conversa"), 0.95)})
     st.decisao_fechada.decisor = decisor
     st.decisao_fechada.cfg = CFG_SHADOW
     catalogo = [EntradaDeCatalogo("ig.abrir_conversa", "Abrir conversa", "Abre a conversa com uma pessoa"),

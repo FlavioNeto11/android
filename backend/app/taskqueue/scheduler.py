@@ -1266,7 +1266,7 @@ class Scheduler:
                 # o plano revisado (r-20260928165254-e31953). Só quando ela pode acontecer: é uma leitura a mais no
                 # aparelho, e o convidado em questão é justamente o que está saturado.
                 vivo = (await self._app_vivo_na_frente(run, rt, step.app_id)
-                        if outcome.outcome == Outcome.failed and not outcome.plan_defect
+                        if outcome.outcome == Outcome.failed and not outcome.plan_defect and not outcome.sem_recuperacao
                         and self._pode_recuperar(objective_id, step.id, step.side_effect) else None)
                 da_tela_atual = self._apply(outcome, obj, step, attempt["id"], rt, app_vivo=vivo)
                 self._publish_current(rt, obj, step.id)
@@ -1549,6 +1549,10 @@ class Scheduler:
         if out.plan_defect:                  # refazer o MESMO plano falharia igual (e custaria igual) em todo aparelho
             self._fail_objective(obj, f"Etapa '{step.title}': {detail}")
             self._hold_siblings(obj, step)
+            return False
+        if out.sem_recuperacao:              # 29.49: a revisão voltaria à mesma tela e ao mesmo não do leitor
+            if not self._skip_failed_item(obj, step, detail or "falha"):
+                self._fail_objective(obj, f"Etapa '{step.title}' falhou: {detail}")
             return False
         rec = self._try_recover(obj, step, detail or "falha", app_vivo=app_vivo)
         if rec.revisou:

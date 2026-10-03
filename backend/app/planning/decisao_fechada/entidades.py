@@ -82,8 +82,18 @@ _TLD_PECA: Final = r"(?:com\s+(?:br|pt|ar|mx|uy|co|es|uk|au)|net|org|br|gov|edu|
 #: espaço ("zilda@correio .net"). Desde a rodada H (H-2) também com o espaço DEPOIS do ponto ("zilda@correio. net",
 #: "zilda@correio. com. br") e sem ponto ("zilda@correio net", "zilda@correio<quebra>net"; não "com", a preposição). Com
 #: o espaço só depois do ponto, só o domínio de topo que não é palavra: "zilda@correio.net. de manhã" e ". me avise" ficam.
-_EMAIL = re.compile(r"[^\s@<>()\[\]{}\"“”«»,;]+@[\w\-]+(?:\.[\w\-]+)*"
-                    rf"(?:\s+\.\s*{_TLD}\b|\.\s+{_TLD_SEM_PONTO}\b|\s+(?!com\b){_TLD_SEM_PONTO}\b)*(?:\?\S*)?")
+#: 31.20 (E1 da rodada I): o domínio de topo SOLTO depois do e-mail, com qualquer separador curto ("zilda@correio, net",
+#: "zilda@correio[.]net", "zilda@correio ·net", "zilda@correio (net)") ou dito por extenso ("zilda@correio e termina em
+#: com br"), e o domínio colado depois do ponto com espaço ("zilda@correio. com.br"). Só o domínio de topo que não é
+#: palavra; o "com" só diante de outro domínio de topo ou no fim da oração ("mande para x@y.com, com a foto" fica).
+_TLD_SOLTO: Final = (rf"(?:com\s*[^\w\s@]?\s*(?:br|pt|ar|mx|uy|co|es|uk|au)\b|com(?=\s*(?:[.!?;]|$))"
+                     rf"|(?!com\b){_TLD_SEM_PONTO}\b)")
+_SEPARADOR_DO_TLD: Final = r"(?:\s*[^\w\s@]{1,3}\s*|\s+(?:e\s+)?(?:termina|terminando|acaba|acabando)\s+(?:em|com)\s+\.?)"
+#: O "com" separado por espaço só vale como domínio de topo depois do domínio SEM ponto ("zilda@gmail com hoje"; 31.20):
+#: "zilda@correio.net com carinho" fica.
+_EMAIL = re.compile(r"[^\s@<>()\[\]{}\"“”«»,;]+@[\w\-]+(?:(?:\.[\w\-]+)+|\s+com\b)?"
+                    rf"(?:\s+\.\s*{_TLD}\b|\.\s+{_TLD_SEM_PONTO}\b|\s+(?!com\b){_TLD_SEM_PONTO}\b|\.{_TLD}\b"
+                    rf"|{_SEPARADOR_DO_TLD}{_TLD_SOLTO})*(?:\?\S*)?", re.IGNORECASE)
 #: Telefone com esquema de URI ("tel:+5511912345678"): o esquema e o "+" entram na máscara (saía "tel:+[telefone]").
 _TELEFONE_URI = re.compile(r"(?i)\b(?:tel|sms|callto|facetime|whatsapp):\s*\+?\d[\d\s().\-/]*\d")
 #: O `@handle` inteiro, também com hífen ("@cassia-brandao" saía `[usuario]-brandao`; decisão da orquestradora de 03/10).
@@ -158,11 +168,12 @@ _NAO_DOMINIO: Final = r"(?!(?:the|a|an|this|that|these|those|my|your|his|her|its
 #: rodada E, E-B). "outlook", "live" e "terra" também são o app, a live do Instagram e palavra comum: o que vem antes
 #: precisa ser nome, e não verbo nem objeto (`_NAO_DONO`: "entra no outlook", "comenta no live" e "a foto da terra"
 #: passam). "correio" só com a pista de destinatário (`_PISTA_DE_EMAIL`).
-_PROVEDOR_SO_DE_EMAIL: Final = (r"(?:gmail|googlemail|hotmail|outlook|yahoo|icloud|uol|bol|terra|msn|live|proton(?:mail)?"
-                                r"|gmx|aol|yandex|zoho|fastmail|laposte|web\.de|mail\.ru|me\.com)")
+_PROVEDOR_SO_DE_EMAIL: Final = (r"(?:g[\s\-]?mail|googlemail|hot[\s\-]?mail|outlook|yahoo|icloud|uol|bol|terra|msn|live"
+                                r"|proton(?:mail)?|gmx|aol|yandex|zoho|fastmail|laposte|web\.de|mail\.ru|me\.com|tutanota)")
 #: O provedor que é só de e-mail, sem ser também app ou palavra comum (fora outlook, live e terra).
-_PROVEDOR_SO_DE_EMAIL_E_NAO_APP: Final = (r"(?:gmail|googlemail|hotmail|yahoo|icloud|uol|bol|msn|proton(?:mail)?|gmx|aol"
-                                          r"|yandex|zoho|fastmail|laposte|web\.de|mail\.ru|me\.com)")
+_PROVEDOR_SO_DE_EMAIL_E_NAO_APP: Final = (r"(?:g[\s\-]?mail|googlemail|hot[\s\-]?mail|yahoo|icloud|uol|bol|msn"
+                                          r"|proton(?:mail)?|gmx|aol|yandex|zoho|fastmail|laposte|web\.de|mail\.ru"
+                                          r"|me\.com|tutanota)")
 #: O provedor que também é app ou palavra comum (o resto de `_PROVEDOR_SO_DE_EMAIL`).
 _PROVEDOR_QUE_E_APP: Final = r"(?:outlook|live|terra)"
 #: Rodada H (H-5): o nome logo depois de "e-mail da"/"e-mail do" é quem MANDOU a mensagem ("arquive o e-mail da newsletter
@@ -204,8 +215,8 @@ _NAO_DONO: Final = (r"(?:a|o|as|os|um|uma|e|que|mim|ele|ela|eles|elas|voce|vc|no
                     r"|account|accounts|preferences|signature|options|configuracion|contactos|tareas|reunion|reuniones"
                     r"|compartilhada|compartilhado|compartilhadas|compartilhados|rapida|rapidas|rapido|rapidos|nova|novo"
                     r"|novas|novos|antiga|antigo|padrao|geral|gerais|avancada|avancadas|avancado|avancados)")
-_PROVEDOR: Final = (r"(?:gmail|googlemail|hotmail|outlook|yahoo|correio|live|icloud|uol|bol|terra|msn|proton(?:mail)?|gmx"
-                    r"|aol|yandex|zoho|fastmail|laposte|web\.de|mail\.ru|me\.com)")
+_PROVEDOR: Final = (r"(?:g[\s\-]?mail|googlemail|hot[\s\-]?mail|outlook|yahoo|correio|live|icloud|uol|bol|terra|msn"
+                    r"|proton(?:mail)?|gmx|aol|yandex|zoho|fastmail|laposte|web\.de|mail\.ru|me\.com|tutanota)")
 #: Rodada F (F-G): o provedor COLADO ao nome, sem preposição ("zilda gmail", "zilda, hotmail", "to zilda hotmail"). Além do
 #: `_NAO_DONO`, o que vem antes do provedor não pode ser preposição nem verbo de usar o app ("entra no outlook", "a caixa
 #: de entrada do outlook", "use o gmail", "configure outlook").
@@ -299,6 +310,11 @@ _RECUSA_NO_ORIGINAL: Final[tuple[tuple[MotivoDoFiltro, re.Pattern[str]], ...]] =
         rf"|\b{_PISTA_DE_EMAIL}\s+(?:[^\W\d_]+\s+){{0,3}}?(?!{_NAO_DONO}\b)[^\W\d_]+\s+(?:em|no|na|do|da|de|pelo|pela|bij|at)"
         rf"\s+[^\W\d_]+\s*[,;:]?\s*(?:(?:terminacao|extensao|final|dominio)\s*[:=]?\s*)?{_TLD_PECA}\b"
         rf"|\b{_PISTA_DE_EMAIL}\s+(?!{_NAO_DONO}\b)[^\W\d_]+\s*,?\s*{_PROVEDOR}\s*[,.]?\s*{_TLD_PECA}\b"
+        # 31.20 (E2 e sondas da H na rodada I): sem provedor conhecido, a pista, o nome, o domínio e o domínio de topo
+        # ("mande para zilda exemplo net"); e o provedor com o rótulo ("para zilda, provedor gmail")
+        rf"|\b{_PISTA_DE_EMAIL}\s+(?!{_NAO_DONO}\b)[^\W\d_]+\s+(?!{_NAO_DONO}\b)[^\W\d_]+\s+(?!com\b){_TLD_SEM_PONTO}\b"
+        rf"|\b{_PISTA_DE_EMAIL}\s+(?!{_NAO_DONO}\b)[^\W\d_]+\s*,?\s*(?:provedor|dominio|servidor|domain|provider)\s*[:=]?"
+        rf"\s*{_PROVEDOR}\b"
         # rodada F (F-G): o nome colado ao provedor ("mande para zilda gmail", "send it to zilda hotmail", "zilda, gmail")
         rf"|(?<![\w\-])(?!(?:{_NAO_DONO}|{_ANTES_DO_PROVEDOR})\b)[^\W\d_]+{_ENTRE_NOME_E_PROVEDOR}{_PROVEDOR_SO_DE_EMAIL}\b"
         # rodada G (G-3): "at" ou "arroba" entre hífens ou sublinhados ("zilda-at-correio-net", "zilda_at_gmail_dot_com"),
@@ -511,6 +527,64 @@ def _limpar(texto: str) -> str:
     return re.sub(r"[ \t]{2,}", " ", texto).strip()
 
 
+# ------------------------------------------------------------------ o fragmento do endereço ao lado da máscara (31.20)
+#: Regra decidida pela orquestradora na rodada I (03/10; pendente desde a H): o fragmento de provedor ou de domínio de
+#: topo na MESMA frase de um e-mail mascarado, de um `@handle` ou de um handle com ponto reconstrói o endereço ("mande para
+#: [email], é o gmail dela", "mande para zilda.prado, ela usa gmail"): vira `[termo]`, e o handle com ponto da frase vira
+#: `[usuario]`. Perto da palavra "e-mail" (até cinco palavras), só o domínio de topo; e, com qualquer âncora, o valor
+#: rotulado ("o e-mail dela é zilda e o provedor é gmail"). Sem âncora, o provedor é nome de produto e passa ("a Zilda
+#: Prado está no gmail", "ela usa gmail"). Com o `@handle` e o handle com ponto, o provedor que também é app (outlook,
+#: live, terra) fica: "comente na live do @lucas" é a live do Instagram.
+_FRAG_PROVEDOR: Final = re.compile(
+    rf"(?i)(?<![\w\-]){_PROVEDOR_SO_DE_EMAIL_E_NAO_APP[:-1]}|correio)(?![\w\-])")
+_FRAG_PROVEDOR_APP: Final = re.compile(rf"(?i)(?<![\w\-]){_PROVEDOR_QUE_E_APP}(?![\w\-])")
+_FRAG_TLD: Final = re.compile(r"(?i)(?<![\w\-\[])(?:net|org|br|gov|edu|pt|nl|uk|xyz|tech)(?![\w\-\]])")
+_HANDLE_COM_PONTO: Final = re.compile(r"(?<![\w.@\[\-])[^\W\d_]{2,}(?:\.[^\W\d_]{2,})+(?![\w@\-])")
+_PALAVRA_EMAIL: Final = re.compile(r"(?i)(?<![\w\-])e-?mails?(?![\w\-])")
+#: O valor rotulado: "o provedor é gmail", "domínio: correio net", "a terminação é com br".
+_VALOR_ROTULADO: Final = re.compile(
+    r"(?i)\b((?:provedor|dom[ií]nio|servidor|termina[cç][aã]o|extens[aã]o|domain|provider|server)\s*(?:[ée]|eh|:|=)\s*"
+    r"(?:(?:o|a|do|da)\s+)?)([^\W\d_]+(?:\s+(?:net|org|br|com|pt))?)(?![\w\-])")
+#: A parte local dita por rótulo, mascarada só junto do valor rotulado: "o e-mail dela é zilda (e o provedor é gmail)".
+_LOCAL_ROTULADO: Final = re.compile(
+    r"(?i)(\be-?mail\s+(?:(?:dela|dele|da|do|de)\s+(?:[^\W\d_]+\s+)?)?(?:[ée]|eh|:|=)\s*)(?!\[)([^\W\d_]+)(?![\w\-])")
+_FIM_DA_FRASE: Final = re.compile(r"((?<=[.!?])\s+|\n)")
+
+
+def _mascarar_fragmentos(texto: str) -> str:
+    """O fragmento do endereço ao lado da máscara (31.20), frase a frase. Roda no texto JÁ marcado (`_formas`)."""
+    partes = _FIM_DA_FRASE.split(texto)
+    for i in range(0, len(partes), 2):
+        partes[i] = _mascarar_na_frase(partes[i])
+    return "".join(partes)
+
+
+def _mascarar_na_frase(frase: str) -> str:
+    tem_email = M_EMAIL in frase
+    tem_handle = M_HANDLE in frase or _HANDLE_COM_PONTO.search(frase) is not None
+    palavra = _PALAVRA_EMAIL.search(frase)
+    if not (tem_email or tem_handle or palavra):
+        return frase
+    antes = frase
+    frase = _VALOR_ROTULADO.sub(lambda m: m.group(1) + M_TERMO, frase)
+    if frase != antes:
+        frase = _LOCAL_ROTULADO.sub(lambda m: m.group(1) + M_TERMO, frase)
+    if tem_email or tem_handle:
+        frase = _FRAG_PROVEDOR.sub(M_TERMO, frase)
+        if tem_email:
+            frase = _FRAG_PROVEDOR_APP.sub(M_TERMO, frase)
+        frase = _FRAG_TLD.sub(M_TERMO, frase)
+        if tem_email or frase != antes:
+            frase = _HANDLE_COM_PONTO.sub(M_HANDLE, frase)
+    elif palavra:
+        # só a palavra "e-mail": o domínio de topo até cinco palavras dela
+        fim = palavra.end()
+        perto = re.match(r"(?:\W+\w+){0,5}", frase[fim:])
+        trecho = frase[fim:fim + (perto.end() if perto else 0)]
+        frase = frase[:fim] + _FRAG_TLD.sub(M_TERMO, trecho) + frase[fim + len(trecho):]
+    return frase
+
+
 #: O que pode ficar entre dois numerais SEGUIDOS: espaço, vírgula, ponto, barra e hífen ("e" não: `_DITADO` cuida).
 _ENTRE_NUMERAIS = re.compile(r"[\s,./\-]*")
 
@@ -564,6 +638,7 @@ def remover_entidades_com_motivo(texto: object) -> tuple[str | None, MotivoDoFil
     marcado = _simbolos(_formas(trocado), recusar_colado=True)
     if marcado is None:
         return None, "simbolo_colado"
+    marcado = _mascarar_fragmentos(marcado)
     if (motivo := _recusa(marcado)) is not None:
         return None, motivo
     marcado, seguidos = _numerais(marcado)
@@ -592,7 +667,7 @@ def mascarar_catalogo(texto: str) -> str:
         t = t[:corte]
     if _recusa_no_original(t) is not None:
         return ""
-    t = _simbolos(_formas(t), recusar_colado=False) or ""
+    t = _mascarar_fragmentos(_simbolos(_formas(t), recusar_colado=False) or "")
     if _recusa(t) is not None:
         return ""
     return _limpar(_numerais(t)[0])

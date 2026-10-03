@@ -19,6 +19,98 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Jev: o limiar do curador analisado, o rótulo 1 só do dono e o percentil unificado (31.19; branch feat/31-19-curador-limiar)
+
+- **O limiar fica em 0,85; nada liga.** As 4 respostas reais de 03/10 (13:10Z) voltaram `abaixo_do_limiar`, com
+  confiança 0,50–0,52 e maior probabilidade 0,60–0,62, todas sobre o mesmo estado C0. O limiar não separa o que a
+  entrada não distingue. O registro datado está em `docs/design/jev-golden-set.md` §2.
+- **A porta segue o contrato** (decisão da orquestradora): no `choice`, o limiar vale sobre a probabilidade devolvida
+  da opção escolhida, que precisa ser a maior (`porta._valor_do_limiar`). Antes, ele valia sobre a `confianca`. A
+  escolha sem probabilidade, ou que não é a maior, falha fechado. A `confianca` segue gravada na sombra. Nada muda nas 4
+  linhas reais (0,60–0,62 < 0,85). Prova `simulated`: `tests/test_decisao_fechada*.py`, 1044 passed.
+- `scripts/jev-relatorio-31-10.py`:
+  - o rótulo 1 do curador só vale com `decided_by` entre os `--autor-dono` (sem nome, fica desligado; `panel` e sessões
+    Claude não rotulam). O dono é `Flavio` (`panel_sessions`, confirmado pela orquestradora); um agente de validação
+    no Chrome do dono também aparece assim, mas só lê;
+  - novos campos: `rotulo_1` (autores e transições de pessoa fora do dono), `estados_distintos` e `cobertura_por_limiar`
+    (contrafactual por `confianca` e por maior probabilidade).
+- Percentil unificado pelo posto mais próximo em aritmética inteira, o método do `sombra._p95`, no relatório e na
+  `scripts/jev-prova-31-17.py`. Com as 4 chamadas de 03/10, p50 437,3 ms e p95 552,8 ms nos dois (antes, 473,8 e 510,2
+  para o mesmo p50).
+- Prova `simulated`: `scripts/tests/test_jev_relatorio_31_10.py` e `test_jev_prova_31_17.py`. Fora a porta, nenhum
+  código de runtime mudou.
+## 2026-10-03 — 29.49: o laço do assunto do Outlook (o assunto repetido na prévia cortada; a releitura recusada encerra)
+
+- `taskqueue/saidas.py::conferir_transcricao`: quando o valor aparece em mais de uma linha transcrita (a prévia que repete o
+  assunto e termina em "…"), uma cópia numa linha INTEIRA prova que ele não foi cortado. As cópias cortadas contam como
+  linha alheia para a marca global do leitor. O valor do ator e o campo do leitor cortados continuam recusando. Fica
+  registrado como precisão da emenda do ADR-070 §4 e como recaída do K-079.
+- A releitura recusada:
+  - `ler_valor_visual` guarda a recusa da conferência (`ilegivel`/`truncado`/`nao_confere`) por par (tela, âncora);
+  - a releitura do par sai `repetida` com `anterior` e vira definitiva: a etapa termina como não lida, sem nova tentativa
+    e sem recuperação automática (`StepOutcome.sem_recuperacao`, que o scheduler respeita sem reter os outros aparelhos);
+  - o ator recebe, junto do código, a frase do executor de que reler o mesmo elemento nesta tela não será aceito.
+- Prova:
+  - `simulated`: `tests/test_leitura_visual.py::test_10_29_49_a_previa_que_repete_o_assunto_nao_corta_o_assunto_inteiro`,
+    `::test_7_29_49_repetida_depois_de_recusa_deterministica_e_definitiva` e
+    `::test_29_49_repetir_a_leitura_recusada_encerra_a_etapa_sem_nova_tentativa`; 857 passed nos 33 arquivos afetados;
+  - bancada do 12.5 refeita offline sobre as transcrições guardadas: 31→32/32 e 29→30/32, 0/96 falsas;
+  - `real` no 01: `not_run` (só com a liberação da orquestradora).
+## 2026-10-03 — Aprendizado: o aviso `learning.needs_person` da receita e do fluxo com a classe do dossiê (30.33-B; branch feat/30-33-aviso-do-fluxo)
+
+- A faixa do aviso de uma fonte nativa passa a ser a classe do dossiê do curador:
+  - na receita, pela capability derivada;
+  - no fluxo, pela etapa mais restritiva (30.32).
+- O leitor é comum aos dois (`RiscoDoConteudo`, tirado de `DossiesSql`).
+- Comentar, responder, mandar mensagem e seguir avisam C (`alto_risco`) em vez de B (`efeito_externo`).
+- O payload não muda.
+- Prova `simulated`: `test_learning_classe_do_fluxo.py`, com 5 casos novos:
+  - o fluxo pelo serviço;
+  - o fluxo sem o leitor;
+  - a montagem com o catálogo do repositório;
+  - a receita com e sem o leitor.
+## 2026-10-03 — 31.20: as lacunas da rodada I e a A-média aprovada pelo dono (branch feat/31-18-forma-a)
+
+- A rodada I deu NO-GO no b7c05558, e o 31.20 é a ordem da orquestradora (ADR-069 item 19).
+- Parte de lista (f2f49a08, aceita). Fecha:
+  - a locução e os verbos de credencial ("inicie a sessão com", "identifique-se");
+  - o valor depois do destino cortado e a vírgula no par;
+  - o conector com hífen e "amb";
+  - o futuro e o "já tinha entrado";
+  - os eufemismos novos;
+  - a conta do catálogo como identidade ("use o lucas com x", "como lucas, x", "sendo o lucas, x");
+  - o domínio de topo solto depois do e-mail, o e-mail em peças e o fragmento de provedor ao lado de `[email]`;
+  - o C2: nome de fluxo com C7 vai como "(sem nome)";
+  - "entre" preposição deixa de recusar.
+- A-média, aprovada pelo dono em 03/10 ~14:15Z: o verbo de entrar recusa sozinho, em qualquer forma, tempo e posição.
+  A exceção única é o objeto pessoa ou conversa, onde os outros gatilhos seguem valendo. "Entre os/as" no começo da
+  oração, sem conector perto, é preposição. Residual: sem gatilho e "entre na conversa/chat com".
+- Custo:
+  - 126 comandos reais: 14 recusas (11,1 %), 6 a mais que a parte de lista; as que passam têm a mesma saída do b7c05558;
+  - HM3: 31 → 48 recusas, todas as novas por verbo de entrar;
+  - C2: 4 dos 20 fluxos ativos vão sem nome;
+  - 27 controles de teste viraram recusa (`CUSTO_DA_A_MEDIA`).
+- Prova `simulated`:
+  - `backend/tests/test_decisao_fechada_reverificacao_i.py`;
+  - harness de 785 casos (corpus de 14:29Z): 0 vazamentos nos dois catálogos e só as 4 recusas indevidas conhecidas;
+  - filtro e sombras: 1889 passaram.
+
+## 2026-10-03 — 31.18: forma A (A-ESTREITA), a C3 fecha por gatilho de credencial (branch feat/31-18-forma-a)
+
+- Decisão do dono depois do NO-GO da fase 2 da H (ADR-069 item 18): qualquer gatilho de credencial no comando sem
+  destinos E no original recusa o pedido inteiro da C3 (`c7_gatilho`, `intencao._gatilho_de_credencial`).
+  - Gatilhos: verbo de entrar, também no passado, com conector até 3 tokens depois; campo forte; verbo de digitar;
+    palavra C7; soletrado; e o par campo + separador + valor nas quatro formas.
+  - Leitura literal: a sintaxe de destino conta, e "entre com a conta Lucas e curta" recusa.
+  - Exceção única: objeto pessoa ou conversa.
+  - Residual aceito: senha sem gatilho e "entre na conversa com <senha>".
+- Custo: 8 de 126 comandos reais (1 `c7_palavra` e 7 `c7_gatilho`, todos com "conta"). Os 30 controles antigos foram
+  para `CUSTO_DA_FORMA_A` como recusa, e a orquestradora reetiquetou 9 casos do corpus.
+- Prova `simulated`: `backend/tests/test_decisao_fechada_forma_a.py` (445). Recusam as 86 da H e as 40 + 37 das
+  regressões G e F, nos dois catálogos; os 30 controles operacionais passam.
+  - Filtro e sombras: 1458 passaram.
+  - Harness de 579: 0 vazamentos, 0 passagens indevidas, as 6 recusas indevidas de antes.
+
 ## 2026-10-03 — Deploy 10 no central (2432046f; migração 082; curador com alfa 0,3 temporário)
 
 - Implantado no central (`real`, 03/10, WIN-7S2UASNLFOP): commit 2432046f = suíte 10 (16fd1127) + os estados da Android.
@@ -278,6 +370,30 @@ Os itens de polimento da frente do Aprendizado em `.claude/handoffs/ux-deploy7-2
   - harness da orquestradora, corpus de 579, catálogo sem a "Girassol": 0 vazamentos (eram 47), 0 passagens
     indevidas, 5 recusas indevidas (as 4 antigas e o caso 538, que a orquestradora reetiquetou para recusa);
   - 122 comandos reais: as mesmas 2 recusas da base.
+
+## 2026-10-03 — Aprendizado: o desfecho medido das revisões do curador (30.35; branch feat/30-35-resultado-posterior)
+
+- Catorze dias depois de uma revisão do curador sobre receita ou lição, a curadoria grava
+  `learning_reviews.resultado_posterior`, o rótulo 2 do golden set do Jev, e `resultado_em`.
+  - Valores: `descartar`, `rebaixar` (pela escada ou pelo degrau D-5 da saúde), `manter` e `sem_desfecho`.
+  - Sem IA, sem migração, uma gravação por revisão.
+- O relatório do 31.10 já lê o campo e não muda.
+- Prova `simulated`: `test_learning_resultado_posterior.py` (20 testes). Bateria dos afetados: 320 passed.
+- `real`: a partir de 17/10.
+## 2026-10-03 — Aprendizado: a autopublicação do fluxo B em sombra (30.34-A; branch feat/30-34-autopublicacao-sombra)
+
+- Emenda datada à D1 do ADR-054, decidida pelo dono ("sim" à P2): o fluxo de classe B pode publicar sozinho. Precisa do
+  parecer `aprovar` com confiança alta e de ≥ 2 execuções reais em ≥ 2 aparelhos, sem evidência contra. Só depois da
+  sombra: ≥ 30 casos fechados com ≥ 90 % sem regressão em 7 dias.
+- Esta fatia vai até `shadow`:
+  - a regra pura;
+  - o livro da sombra, como o sinal `autopublicaria`, sem migração;
+  - o laço sob a trava de líder;
+  - o balanço nas métricas (`curador.autopublicacao`);
+  - o config `aprendizado.autopublicacao.modo`, `off` de fábrica, com `on` recusado até a 30.34-B;
+  - o contrato no adendo v0.93 da API.
+- O central liga `shadow` no deploy 11 (orquestradora, 03/10). `on` só depois do relatório da sombra.
+- Prova `simulated`: `test_learning_autopublicacao.py` e `test_learning_autopublicacao_sombra.py`.
 
 ## 2026-10-03 — Deploy 9 no central (suíte 9; sombra C0–C1 do curador ligada, T_on do 31.10; curador volta ao padrão)
 

@@ -1061,6 +1061,16 @@ class ValidacaoCfg(BaseModel):
         return v.strip()
 
 
+class AutopublicacaoCfg(BaseModel):
+    """A autopublicação do fluxo de classe B (30.34; emenda de 03/10 à D1 do ADR-054). De fábrica `off` (nada roda);
+    `shadow` só marca, no livro da sombra, o que publicaria. `on` não é aceito nesta fatia: publicar de verdade exige o
+    caminho próprio pela trava da D1, que vem depois do relatório da sombra. Os limiares (≥ 2 execuções reais, ≥ 2
+    aparelhos, ≥ 30 casos fechados com ≥ 90 % sem regressão) são da regra (`domain/autopublicacao.py`), não daqui."""
+
+    modo: Literal["off", "shadow"] = "off"
+    intervalo_s: int = Field(3600, ge=60, le=86_400)        # de quanto em quanto tempo o laço avalia os fluxos
+
+
 class LearningCfg(BaseModel):
     """Aprendizado contínuo (ADR-054): o livro, o D1, a falha classificada e a régua durável. Nenhuma chamada de IA
     no pipeline: digest por execução e curadoria determinística. De fábrica, lições em `shadow` e telas em `observe`,
@@ -1088,6 +1098,7 @@ class LearningCfg(BaseModel):
     saude: SaudeCfg = SaudeCfg()
     curador: CuradorCfg = CuradorCfg()
     validacao: ValidacaoCfg = ValidacaoCfg()
+    autopublicacao: AutopublicacaoCfg = AutopublicacaoCfg()
 
 
 class AvisosCfg(BaseModel):
