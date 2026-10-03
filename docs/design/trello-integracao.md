@@ -157,6 +157,8 @@ coisas do §6:
      arquivar. Nada por evento, então não há ruído.
    - Os campos personalizados (o Power-Up Custom Fields foi aprovado pelo dono às ~19:05Z) recebem Frente e Prova pela
      API.
+     **Ficam para um passo seguinte** (o 3/6 não os escreve): o espelho cria e atualiza nome, descrição e lista; Frente e
+     Prova pelos campos personalizados entram depois, sem mudar o hash do cartão.
 5. **Marcos e custos:** o mesmo reconciliador mantém um cartão por deploy, quando `commit` e `migration` de
    `/api/health` mudam na partida, e um cartão de custo do dia, no máximo de hora em hora, em Programa.
 6. **`LeitorDoTrello`** (no líder), reconciliação do webhook do §8:

@@ -41,6 +41,9 @@ from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
 from .modules.avisos.infrastructure.entrada import ServicoDeEntrada
 from .modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
+from .modules.avisos.application.espelho import LinhaDeCusto
+from .modules.avisos.infrastructure.espelho import EspelhoDoTrello, FontesDaCentral
+from .modules.avisos.infrastructure.espelho_sql import CartoesDoTrello
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from .modules.avisos.infrastructure.portas_da_central import PortasReais
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos
@@ -106,7 +109,7 @@ from .taskqueue.sombra_intencao import SombraDaIntencao, catalogo_de
 from .taskqueue.travas import (AVISOS, CURADORIA, PEDIDOS, RENOVAR_TRAVA_S, RETENCAO, SALDOS, TRAVAS_DOS_LACOS, Lideranca,
                                TravaPerdida)
 from .training.generalizer import ProviderSkillGeneralizer
-from .util import now, now_iso, parse_iso, to_iso
+from .util import iso_in, now, now_iso, parse_iso, to_iso
 from .vitrine import (_apps_changed, alvos_da_distribuicao, laco_de_convergencia, previa_de_entrega,
                       trabalho_ao_ligar)
 
@@ -497,12 +500,18 @@ class AppState:
         # A conversa de volta pelo Telegram (28.15, ADR-071): o mesmo bot dos avisos recebe; desligada de fábrica
         # (`avisos.entrada.enabled`). As portas chamam os MESMOS serviços das rotas do painel.
         triagem = TriagemDeCredencial()
+        portas_da_central = PortasReais(db=self.db, runs=self.runs, aprovacoes=self.approval_service, saude=self.health,
+                                        online=lambda: [d.id for d in self.devices.list_dtos()
+                                                        if str(d.state) == "online" and d.kind != "store"])
         self.telegram_entrada = ServicoDeEntrada(
-            cfg, EntradasDoCanal(self.db, canal="telegram"),
-            PortasReais(db=self.db, runs=self.runs, aprovacoes=self.approval_service, saude=self.health,
-                        online=lambda: [d.id for d in self.devices.list_dtos()
-                                        if str(d.state) == "online" and d.kind != "store"]),
+            cfg, EntradasDoCanal(self.db, canal="telegram"), portas_da_central,
             lider=self._lider, recusa=triagem.recusa, redigir=triagem.redigir)
+        # O espelho do Trello (32.2, ADR-072): reconciliador no líder da trava `avisos`; desligado de fábrica
+        # (`trello.enabled`). Lê as MESMAS pendências do Telegram e do painel.
+        self.trello_espelho = EspelhoDoTrello(
+            cfg, CartoesDoTrello(self.db, self.db.agora),
+            FontesDaCentral(self.db, portas_da_central.pendencias, lambda: cfg.file.avisos.url_painel),
+            lider=self._lider, versao=self._versao_do_deploy, custos=self._linhas_de_custo, relogio=self.db.agora)
         # O catálogo da cadeia de intenção (habilidades publicadas e fluxos ativos, respeitando `skills.enabled` e
         # `ai.flows`), lido na hora. Compartilhado pela sombra da intenção (31.9) e pelo rótulo de intenção do Aprendizado
         # (30.25): os dois medem contra o MESMO catálogo.
@@ -2394,6 +2403,8 @@ class AppState:
             self._bg.append(asyncio.create_task(self.avisos.laco(), name="avisos-fora-do-painel"))
             # A conversa de volta (28.15): long-poll do getUpdates, só no líder da trava `avisos` (único consumidor).
             self._bg.append(asyncio.create_task(self.telegram_entrada.laco(), name="telegram-entrada"))
+            # O espelho do Trello (32.2): reconciliador no líder da trava `avisos`; sem `trello.enabled` não chama nada.
+            self._bg.append(asyncio.create_task(self.trello_espelho.laco(), name="trello-espelho"))
             # Mesmo critério de réplica da retenção: só quem roda o scheduler; idempotente (chaves únicas e CAS).
             self._bg.append(asyncio.create_task(self._curadoria_loop(), name="aprendizado-curadoria"))
             self._bg.extend(asyncio.create_task(laco.laco(lambda: self._lider(CURADORIA)), name=f"aprendizado-{laco.nome}") for laco in self.learning.lacos)  # noqa: E501 - 30.11: o curador por IA, sob a trava `curadoria`
@@ -2893,6 +2904,21 @@ class AppState:
     def saldos_de_ia(self) -> list[saldos.SaldoConta]:
         return saldos.estado(self.db, self.cfg)
 
+    def _versao_do_deploy(self) -> tuple[str | None, str | None]:
+        """(commit em execução, última migração): o que o cartão de marco do Trello compara entre partidas."""
+        return commit_em_execucao(self.cfg.root), self.ultima_migracao()
+
+    def _linhas_de_custo(self) -> list[LinhaDeCusto]:
+        """O custo de IA das últimas 24 h por conta (a fonte de `GET /api/usage?days=1`, `by_account`) e o saldo estimado
+        de cada uma (a de `GET /api/ai/balances`), lidos pelas funções Python, sem HTTP."""
+        gasto = saldos.gasto_usd_por_conta(self.db, self.cfg, iso_in(-86400))
+        contas = {c.account: c for c in saldos.estado(self.db, self.cfg)}
+        return [LinhaDeCusto(conta=nome, gasto_usd=round(gasto.get(nome, 0.0), 4),
+                             saldo=contas[nome].estimated_balance if nome in contas else None,
+                             moeda=contas[nome].currency if nome in contas else "USD",
+                             estado=contas[nome].state if nome in contas else "unknown")
+                for nome in sorted(set(gasto) | {n for n, c in contas.items() if c.em_uso})]
+
     async def _saldos_loop(self) -> None:
         """Livro-caixa das contas de IA (ADR-051): a cada `SALDOS_INTERVALO_S` concilia com o relatório oficial do
         provedor e fecha o dia das contas com âncora velha. Sem isto a conciliação só andava quando alguém abria o
@@ -3188,6 +3214,7 @@ class AppState:
         problems.extend(self._problemas_de_saldo())
         problems.extend(self.avisos.problemas())
         problems.extend(self.telegram_entrada.problemas())
+        problems.extend(self.trello_espelho.problemas())
         problems.extend(problemas_do_trello(self.cfg))
         # Backlog B15 (bateria de 25/09): o Ollama estava fora do ar, as 89 decisões foram para o fallback — e a saúde
         # dizia `ok`. O fallback continua sendo o comportamento certo; o que faltava era ele aparecer.

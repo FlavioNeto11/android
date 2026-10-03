@@ -1150,8 +1150,9 @@ class AvisosCfg(BaseModel):
     entrada: EntradaDoTelegramCfg = EntradaDoTelegramCfg()
 
 
-#: Os papéis que `trello.listas` aceita (32.2): onde a Central cria os cartões, e as listas cujo destino vale sim e não.
-PAPEIS_DE_LISTA_DO_TRELLO = frozenset({"central_automatico", "aprovado", "vetado"})
+#: Os papéis que `trello.listas` aceita (32.2): onde a Central cria os cartões, as listas cujo destino vale sim e não, e
+#: onde nascem os cartões de marco (um por deploy) e de custo (um por dia).
+PAPEIS_DE_LISTA_DO_TRELLO = frozenset({"central_automatico", "aprovado", "vetado", "marcos", "custos"})
 
 
 class TrelloWebhookCfg(BaseModel):

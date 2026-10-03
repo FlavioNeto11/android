@@ -53,6 +53,15 @@ def test_a_config_aceita_o_bloco_e_barra_o_absurdo() -> None:
             AppConfigFile.model_validate({"trello": ruim})
 
 
+def test_marcos_e_custos_sao_papeis_de_lista() -> None:
+    """32.2 (3/6): onde nascem o cartão de deploy e o cartão de custo do dia."""
+    from app.config import PAPEIS_DE_LISTA_DO_TRELLO
+
+    assert {"marcos", "custos"} <= PAPEIS_DE_LISTA_DO_TRELLO
+    ok = {"central_automatico": "l0", "marcos": "l3", "custos": "l4"}
+    assert AppConfigFile.model_validate({"trello": {"listas": ok}}).trello.listas == ok
+
+
 def test_listas_so_aceita_os_papeis_do_vocabulario() -> None:
     ok = {"central_automatico": "l0", "aprovado": "l1", "vetado": "l2"}
     assert AppConfigFile.model_validate({"trello": {"listas": ok}}).trello.listas == ok
