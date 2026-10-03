@@ -4478,7 +4478,7 @@ Ausente é `null`, nunca zero: uma taxa sem amostra ou um tempo sem par saem `nu
   acumulados) e aparece pelo proxy e pela economia.
 - `tempos`: para cada chegada a `validated` (ou `published`) dentro da janela, conta desde a última chegada a `candidate`
   (ou `validated`) no mesmo item. O item sem essa chegada na trilha, como a receita de antes da trilha, fica fora, e o
-  `n` diz quantos pares entraram. O percentil é por posição mais próxima.
+  `n` diz quantos pares entraram. O percentil é pelo posto mais próximo, `ceil(p·n/100)`, o do K-085 (ver o v0.94).
 - `saude` traz todos os rótulos do §5.3, inclusive os zerados, e sai da mesma função da lista e do detalhe.
   `sem_evidencia` é o "nunca usado".
 - `economia` é a de `taskqueue/aproveitamento.py`, com os totais ou a soma dos fluxos do pacote, reaproveitada e não
@@ -4687,10 +4687,15 @@ etapas sem app próprio. A leitura por app é que só olhava o principal.
 - o pedido de um item multi-app só nasce `qa` se TODOS os apps forem de QA (a regra "mais restritivo");
 - o despachante só oferece o aparelho que tem todos os apps do item prontos.
 
+**Percentil de `tempos`** (v0.89): segue o `app/metricas.percentil` do K-085, posto `ceil(p·n/100)` em aritmética
+exata. A mediana de dois valores passa a ser o MENOR (o `round` de antes levava o ,5 ao par e dava o maior). Um teste de
+igualdade prende as duas fórmulas, porque a camada de aplicação não importa `app.metricas`.
+
 Prova:
 - `simulated`:
   - `tests/test_learning_multi_app.py`;
   - `tests/test_learning_validacao_sql.py` (dois casos novos);
+  - `tests/test_learning_metricas.py` (o percentil igual ao do processo, n de 1 a 200);
   - `MetricasTab.test.tsx` e `AplicativosTab.test.tsx`;
 - percurso no navegador sobre uma CÓPIA do banco do central de 03/10, com o backend do worktree em provedor simulado;
 - `not_run`: o central.

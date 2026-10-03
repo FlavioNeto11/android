@@ -63,9 +63,10 @@ def test_tempos_pareiam_a_ultima_chegada_e_so_contam_a_chegada_na_janela() -> No
         "li-d": [_t(8, "li-d", "candidate", "2026-09-01T00:00"), _t(9, "li-d", "validated", "2026-09-02T00:00")],
     }
     t = tempos(trilhas, desde, ate)
-    # 24 h (li-a) e 6 h (li-b); o percentil é o de `app/metricas.py` (posição mais próxima).
+    # 24 h (li-a) e 6 h (li-b); o percentil é o de `app/metricas.py`, posto ceil(p·n/100) (K-085): a mediana de dois é
+    # o MENOR (o `round` antigo dava o maior) e o p90, o maior.
     assert (t["candidate_validated"].n, t["candidate_validated"].mediana_h, t["candidate_validated"].p90_h) == (
-        2, 24.0, 24.0)
+        2, 6.0, 24.0)
     assert t["validated_published"].n == 1 and t["validated_published"].mediana_h == 48.0
     vazio = tempos({}, desde, ate)["validated_published"]
     assert (vazio.mediana_h, vazio.p90_h, vazio.n) == (None, None, 0)      # ausente é None, nunca zero
@@ -342,3 +343,16 @@ def test_janela_vazia_sai_com_none_e_nao_com_zero(tmp_path: Path) -> None:
         assert m.desde == to_iso(AGORA - timedelta(days=14))
     finally:
         db.close()
+
+
+def test_o_percentil_das_metricas_e_o_do_processo() -> None:
+    """K-085 e 30.33-C: a camada de aplicação não importa `app.metricas`, então `_percentil` repete a fórmula; este
+    teste as prende uma à outra, de n = 1 a 200, nos percentis que o painel e o relatório usam."""
+    from app.metricas import percentil
+    from app.modules.learning.application.metricas import _percentil
+
+    for n in range(1, 201):
+        ordenada = [float(i) * 1.5 for i in range(n)]
+        for p in (1, 5, 10, 25, 50, 75, 90, 95, 99, 100):
+            assert _percentil(ordenada, p) == percentil(ordenada, p), (n, p)
+    assert _percentil([], 50) is None and percentil([], 50) is None
