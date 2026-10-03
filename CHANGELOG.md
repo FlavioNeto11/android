@@ -46,6 +46,78 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - `tests/test_aba_ia_esquema_e_perfis.py`, `aiLabels.test.ts` e `AiSection.test.tsx`;
   - tela percorrida no navegador contra um backend simulado do worktree.
 
+## 2026-10-03 — Aprendizado: quebra de série do LT-6 no deploy 8
+
+- `docs/dominios/aprendizado.md` (O que mais falha) registra o que muda desde 03/10 09:06:28Z (deploy 8, df860763).
+  - A etapa `app_foreground` aberta pelo executor sem IA fecha como `sem_ator`. Com isso `so_ia` cai, e as elegíveis
+    e `sem_cobertura` do aproveitamento caem.
+  - Não nasce receita de `app_foreground`, e a candidata `open_app` não recebe veredito de sombra.
+  - O `pct_por_receita` não quebra.
+  - Do lado da Jev, a amostra "sem casamento" do 31.10 quebra pelos fluxos que o 30.29 revive.
+  - Compare só janelas do mesmo lado.
+
+## 2026-10-03 — Deploy 8 no central (suíte 8: RA-19 B, 30.29 e 29.45; planejador no Sonnet 5.5; curador acelerado)
+
+- Código: main `df860763` (suíte 8: #141 RA-19 B, #142 30.29 e 29.45 caminho rápido 2), sem migração nova (segue a 081).
+  Backup do deploy `20261003-060610` (carimbo em hora local; o do ensaio é `20261003-060545`); o ensaio de migração na
+  cópia do banco não aplicou nada. Agente do notebook em `0.1.0+df86076` (reparo dos aparelhos dele pausado durante a
+  troca).
+- `config/config.yaml` do central (backup `config-antes-deploy8-20261003-090601.yaml`; fora do Git):
+  - `ai.roles.plan`: `claude-sonnet-5-5` com `effort: low` (rodada QA pareada passou: 35 % mais rápido, 43 % mais
+    barato, 12/12 nos dois braços). O perfil `planejador-sonnet` fica para A/B; `escalation` segue no Opus; a leitura
+    não mudou.
+  - `aprendizado.curador.alfa: 0.7` e `k: 6`, para drenar o backlog do curador. **Voltam a 0.10 / 1.5 (o padrão) no
+    deploy 9.**
+- Quebras de série a partir deste deploy:
+  - `ai_calls.escalate = nova_tentativa` passa a marcar só a subida do LT-12 (adendo v0.86).
+  - Etapas `app_foreground` abertas pelo executor sem IA (LT-6) não alimentam o `_veredito_da_sombra`.
+  - O custo e a latência do `plan` mudam de modelo (Opus → Sonnet 5.5 low).
+- Prova `real` (03/10, central):
+  - `/api/health` às 09:07Z: ok, `df860763`, migração 081, `problems: []`;
+  - `GET /api/ai`: `plan` = `claude-sonnet-5-5` / `low`, `escalation` = `claude-opus-5-5`, `leitura` =
+    `gemini-3.1-flash-lite`;
+  - agente `0.1.0+df86076` online às 09:08Z, com os 4 aparelhos do notebook `online/ready`.
+- `not_run`: o aceite de latência do 29.45 e a validação do painel no Chrome, até o tráfego medir.
+
+## 2026-10-03 — caminho rápido 2: LT-5, LT-6 e LT-12 (item 29.45, branch `feat/lt-5-6-12-caminho-rapido-2`)
+
+- **LT-5.** O "não" em tela parada encerra a verificação em 3 sondagens (`SONDAGENS_DA_TELA_PARADA`), sem esperar o
+  orçamento. Não vale para `patient` com `pending_marks` declaradas nem para nível de entrega acima de `sent`.
+- **LT-6.**
+  - O executor abre o app da etapa `app_foreground` sem IA, como estratégia `deterministic` (`OPEN_APP_SEM_IA`): uma vez
+    por tentativa e sem receita conduzindo. Se não comprovar, o ator assume na mesma tentativa.
+  - `esperar_foco` sonda a 0,5 s nos primeiros 5 s.
+  - A partir do deploy 8, essas etapas não alimentam o `_veredito_da_sombra`. A candidata v4 de `open_app` do QA não
+    promove por sombra.
+- **LT-12.** A nova tentativa começa no tier 0 e sobe na 1ª decisão que repete, na mesma tela estrutural, onde a anterior
+  parou, ou que dispararia o efeito. Essa decisão é descartada antes de agir. A memória fica no processo: depois de um
+  restart, tier 0 sem esse gatilho.
+- **Contrato**: adendo v0.86 (`attempts.strategy` com `deterministic`; `escalate` = `nova_tentativa` mais estreito).
+- **Prova `simulated`**: `tests/test_caminho_rapido_2.py`. Os testes de ANR e de recusa, cujo gancho é a decisão da IA
+  que abre o app, desligam `OPEN_APP_SEM_IA`. `not_run`: o aceite de latência no real.
+
+## 2026-10-03 — 30.29: o fluxo com variável de execução no plano casa também pela habilidade (branch feat/30-29-fluxos-com-variaveis-de-execucao)
+
+- `skills/domain/matching.py::bind_template_parameters` deixa de exigir do comando os RESERVED (`account_label`,
+  `instance_id`, `run_id`). O valor é do aparelho e entra na materialização, como no `FlowStore.match` desde o LT-3.
+- Antes: o `LegacyFlowAdapter` resolvia o fluxo pelo `FlowStore.match`, e o `legacy_plan` não compilava.
+  - O comando que casava ia a `needs_input` sem planejador. O abrir-tela da rodada QA de 03/10 caiu assim.
+  - 5 fluxos ativos do QA, com `{account_label}` (e às vezes `{instance_id}`/`{run_id}`) nos parâmetros, tinham
+    0 usos.
+- O aprendizado do fluxo já não templatizava os RESERVED; agora há um teste de regressão.
+- Núcleo (skills): revisão da Jev na parte do `matching.py`, e suíte 8.
+- Prova `simulated`: `tests/test_flows_account_label.py` (6; os 2 novos de bind/compilação falham sem a correção).
+
+## 2026-10-03 — Aprendizado: o que uma execução simulada ensina não publica (RA-19, fatia B; branch feat/ra-19-origem-simulada)
+
+- Origem simulada nunca nasce ativa: a receita nem com `ai.recipes_promote_after: 0`, o fluxo nem com
+  `aprendizado.fluxo.com_prova: false`.
+- A concordância de uma execução simulada não promove receita (`RecipeStore.shadow(simulada=True)`). A sombra segue
+  promovendo com evidência real, e a pessoa promove à mão.
+- Config nova: `aprendizado.simulada_publica` (padrão `false`; `true` só na suíte, que é toda simulada).
+- Sem migração. Prova `simulated`: `tests/test_origem_simulada.py` (6), com a consulta de join = 0.
+- Núcleo (`executor.py`, `recipes.py`, `config.py`): revisão da Android e suíte 8.
+
 ## 2026-10-03 — Aprendizado: polimentos da validação do deploy 7 (B1 e I5; branch fix/aprendizado-ux-deploy7)
 
 - B1: o parecer do curador deixa de sair como "da IA" no painel.
@@ -108,6 +180,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Só leitura, sem IA. Descrição em [ia.md](docs/ia.md) (custo e uso).
 - Prova `simulated` (`scripts/tests/test_jev_leitura_cache_latencia.py`, 12 testes). Leitura `real` só leitura no banco do
   central (esquema 078).
+
 ## 2026-10-03 — 31.10: o script do relatório da sombra do Jev (branch feat/31-10-relatorio)
 
 - `scripts/jev-relatorio-31-10.py` mede a sombra do curador (por `kind`) e da intenção (por app) contra os limiares
@@ -119,6 +192,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   §5.
 - Prova: `simulated` (`scripts/tests/test_jev_relatorio_31_10.py`, 11 testes). No banco do central: `not_run` (depois do
   merge da suíte 7).
+
 ## 2026-10-03 — 29.34 (RA-15): o relógio do wake começa no snapshot carregado (branch feat/29-34-relogio-do-wake)
 
 - `DeviceManager._wait_boot`: o `wake_timeout_s` (90 s) deixa de contar do spawn. Antes do veredito do log vale

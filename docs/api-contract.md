@@ -4357,6 +4357,23 @@ Só campo novo, aditivo.
 Vale para o padrão (`ai.roles`); o perfil de uma execução não aparece aqui (como o modelo, adendo do 17.7). Prova
 `simulated`: `tests/test_perfil_esforco_e_dieta.py::test_sonda_do_thinking_na_aba_ia` e `::test_sonda_vazia_em_provedor_sem_thinking`.
 
+## Adendo v0.86 (03/10/2026; número da orquestradora, `.claude/reservas.md`; item 29.45) — caminho rápido 2: `strategy` `deterministic` e o motivo `nova_tentativa` mais estreito
+
+Sem rota nova e sem migração.
+
+- `attempts.strategy` (trilha da 045) passa a poder começar por `deterministic`: `deterministic` sozinho quando o executor
+  abriu o app da etapa `app_foreground` e ela se comprovou; `deterministic>ai_actor` quando o ator assumiu na mesma
+  tentativa. Quem lê com união fechada precisa do valor (`recipe`, `ai_actor` e as cadeias já existiam). A etapa assim
+  fechada segue `driven_by` = `sem_ator` (adendo v0.81). Na linha do tempo, um evento `decision` diz "aberto pelo
+  executor, sem IA", com o tempo e o foco.
+- `ai_calls.escalate` = `nova_tentativa` deixa de marcar toda decisão da 2ª tentativa em diante. Passa a marcar só as do
+  tier 1 a partir da decisão que repetiu onde a anterior parou ou que dispararia o efeito. A série desse rótulo em
+  `/api/usage` quebra no deploy que levar o 29.45.
+- A verificação que termina "não comprovada" pode trazer na evidência "a tela não mudou em 3 sondagens depois do não":
+  ela encerra sem esperar o fim do orçamento (LT-5).
+- Série da Aprendizado: a partir do deploy 8, etapas `app_foreground` abertas sem IA não geram comparação de sombra. A
+  candidata v4 de `open_app` do QA não promove por sombra.
+
 ## Adendo v0.87 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — o `GET /api/ai` diz o esquema do plano, os perfis de IA e a leitura visual (I2 da validação do deploy 7)
 
 Só campos novos, aditivos.

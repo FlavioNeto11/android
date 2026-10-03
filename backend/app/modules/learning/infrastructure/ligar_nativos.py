@@ -268,6 +268,7 @@ class TrilhaDaAdocao:
 # ------------------------------------------------------------------ composição
 def ligar(servico: LearningService, repo: RepositorioDeAprendizado, db: Database, *,
           concordancias: Callable[[], int] = lambda: 1, com_prova: Callable[[], bool] = lambda: True,
+          simulada_publica: Callable[[], bool] = lambda: False,
           habilidades: SqlSkillRepository | None = None, fluxos: FlowStore | None = None,
           receitas: RecipeStore | None = None, decidir: Decidir | None = None,
           relogio: Callable[[], datetime] = now) -> D1Nativo:
@@ -275,7 +276,8 @@ def ligar(servico: LearningService, repo: RepositorioDeAprendizado, db: Database
     `aprendizado.fluxo` VIGENTE (lido a cada uso). `decidir(texto, run_id)`: a linha do tempo da execução."""
     leitura = LeituraSql(db)
     trilha = TrilhaDasLojas(db)
-    d1 = D1Nativo(repo, com_prova=com_prova, relogio=relogio, execucao_real=leitura.execucao_real)
+    d1 = D1Nativo(repo, com_prova=com_prova, relogio=relogio, execucao_real=leitura.execucao_real,
+                  simulada_publica=simulada_publica)
     servico.registrar_minerador(SombraDosFluxos(servico, repo, leitura, concordancias=concordancias,
                                                 decidir=decidir))
     if habilidades is not None:

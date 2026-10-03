@@ -90,6 +90,13 @@ ENTRADA_JULGADA_SO_COM_PROVA_LOCAL = True
 #: para os testes que provam regras do ator NUM CENÁRIO em que o atalho cortaria a decisão observada (o piso de tier, a
 #: política de imagem): eles desligam isto e reafirmam a prova antiga sem enfraquecê-la.
 ATALHO_ANTES_DO_ATOR = True
+#: LT-5 (caminho rápido 2): sondagens seguidas na mesma tela depois de um "não" para a verificação desistir com o mesmo
+#: veredito (~4,5 s com `judge_wait_s` de 1,5). Medido em 7 d: as "NÃO comprovada" pagavam o orçamento inteiro (mediana
+#: 16,9 s, p90 55,9 s) sem nenhuma 2ª chamada — a tela não mudou e o juiz não é consultado de novo na mesma tela.
+SONDAGENS_DA_TELA_PARADA = 3
+#: LT-6 (caminho rápido 2): a etapa `app_foreground` abre o app pelo executor antes de consultar o ator. Existe para os
+#: testes cujo gancho é a decisão do ator numa etapa dessas (como `ATALHO_ANTES_DO_ATOR`): eles desligam isto.
+OPEN_APP_SEM_IA = True
 
 
 async def reler_se_ocupada(ler: Callable[[], Awaitable[T]], *, prazo: float, quem: str) -> T:
@@ -385,6 +392,10 @@ class StepExecutor:
         # no desfecho final da etapa. Memória do processo: reiniciado o backend, a contagem de mortes (que vem do
         # aparelho, desde `steps.started_at`) continua valendo e o pior caso é UMA reabertura a mais.
         self._reabertas_por_anr: set[str] = set()
+        # LT-12: a última ação decidida em cada etapa, como (tela estrutural, ação) — a da tentativa anterior é o que a
+        # retentativa NÃO repete no modelo barato. Some no desfecho final. Memória do processo: reiniciado o backend, a
+        # retentativa começa no tier 0 sem este gatilho (os outros — erros seguidos, ciclo, efeito — seguem valendo).
+        self._ultima_acao_da_etapa: dict[str, tuple[str, str]] = {}
         # Disjuntor de conta de IA (achado #90): por execução, a PRIMEIRA falha de cobrança/credencial represa
         # as etapas seguintes sem gastar tentativa — os aparelhos seguintes nem chegam a chamar o provedor.
         self._tripped_runs: dict[str, AiBreakerTrip] = {}
@@ -896,6 +907,7 @@ class StepExecutor:
                 self._fechar_tentativa(run, objective, step, attempt_id, rt, app, rr, None)
         if outcome.outcome in (Outcome.succeeded, Outcome.failed, Outcome.uncertain, Outcome.cancelled):
             self._reabertas_por_anr.discard(step.id)     # desfecho final: a etapa não volta a rodar com este id
+            self._ultima_acao_da_etapa.pop(step.id, None)
         try:
             self._after_step(rr, outcome, run["id"], rt.id, step, attempt_id, app)
         except Exception:  # noqa: BLE001
@@ -1096,14 +1108,19 @@ class StepExecutor:
             log.info("%s: etapa %s não virou receita: %s", iid, step.key, why)
             return
         n = self.cfg.file.ai.recipes_promote_after
+        # RA-19 B: a execução simulada não publica. A receita que ela ensina nasce candidata mesmo com
+        # `recipes_promote_after: 0`, e só a concordância de uma execução real a promove (`RecipeStore.shadow`).
+        simulada = self._origem_simulada(run_id)
+        candidata = n > 0 or simulada
         rid = self.recipes.save(package=app.package, app_version=rr.app_version, step_hash=rr.step_hash,
                                 step_key=step.key, actions=actions, learned_from=step.id,
-                                signature=rr.signature, variant=rr.variant, candidate=n > 0, replaces=substitui)
-        if rid and n > 0:
+                                signature=rr.signature, variant=rr.variant, candidate=candidata, replaces=substitui)
+        if rid and candidata:
             no_lugar = f", no lugar da v{rr.row['version']}, que divergiu" if substitui else ""
             repo.decision(f"{iid} · {step.title}: receita aprendida como candidata ({len(actions)} ação(ões)){no_lugar}"
-                          f" — a IA segue conduzindo esta etapa e a receita só é comparada; vira ativa depois de {n} "
-                          "execução(ões) seguidas em que a IA fizer exatamente o caminho dela",
+                          f" — a IA segue conduzindo esta etapa e a receita só é comparada; vira ativa depois de "
+                          f"{max(1, n)} execução(ões) seguidas em que a IA fizer exatamente o caminho dela"
+                          + (" (execuções reais: esta foi simulada)" if simulada else ""),
                           run_id=run_id, instance_id=iid, step_id=step.id)
         elif rid:
             repo.decision(f"{iid} · {step.title}: receita aprendida ({len(actions)} ação(ões)) — as próximas execuções "
@@ -1111,6 +1128,15 @@ class StepExecutor:
         elif substitui:
             log.info("%s: etapa %s: candidata v%s não trocada (a IA comprovou o mesmo caminho, ou a chave já tem "
                      "ativa); segue em prova", iid, step.key, rr.row["version"])
+
+    def _origem_simulada(self, run_id: str) -> bool:
+        """RA-19 B: a execução é simulada (`runs.simulated=1`) e o que ela ensina não publica. `False` com
+        `aprendizado.simulada_publica` (o modo anterior, só da suíte). Sem a linha da execução, simulada: nada se
+        publica pelo que não se sabe de onde veio."""
+        if self.cfg.file.aprendizado.simulada_publica:
+            return False
+        valor = self.repo.db.scalar("SELECT simulated FROM runs WHERE id=?", (run_id,))
+        return valor is None or bool(valor)
 
     def _veredito_da_sombra(self, rr: "_RecipeRun", ok: bool, run_id: str, iid: str, step: StepDTO) -> None:
         """Uma execução da etapa, um veredito sobre a receita comparada. Concordar = a IA fez, uma a uma, todas as
@@ -1130,7 +1156,8 @@ class StepExecutor:
             concordou = True
         else:
             return
-        promovida = self.recipes.shadow(rr.row["id"], concordou, promote_after=self.cfg.file.ai.recipes_promote_after)
+        promovida = self.recipes.shadow(rr.row["id"], concordou, promote_after=self.cfg.file.ai.recipes_promote_after,
+                                        simulada=self._origem_simulada(run_id))
         if promovida:
             self.repo.decision(f"{iid} · {step.title}: receita v{rr.row['version']} promovida a ativa — a IA fez "
                                "exatamente o caminho dela em execuções seguidas; as próximas execuções desta etapa "
@@ -1389,11 +1416,18 @@ class StepExecutor:
         # seguintes. Preguiçoso de propósito — a tentativa que a receita leva até o fim nunca pede.
         licoes: list[str] | None = None
         # Modelo forte (escalonamento) onde errar custa caro ou o barato já tropeçou: etapa com efeito externo
-        # (conforme o risco, ver `side_effect_tier`), nova tentativa da mesma etapa, erros seguidos ou ação
-        # repetida na mesma tela.
+        # (conforme o risco, ver `side_effect_tier`), erros seguidos, ação repetida na mesma tela ou — na nova
+        # tentativa — a ação em que a anterior parou, e o efeito.
         tier_efeito, motivo_efeito = side_effect_tier(step, cap, ai_cfg.strong_model_for_side_effect,
                                                       app.builtin and app.category == CATEGORIA_APP_DE_PROVA)
-        base_tier = 1 if (tier_efeito or step.attempts > 1) else 0
+        base_tier = 1 if tier_efeito else 0
+        # LT-12: a nova tentativa inteira subia ao modelo forte (76 decides de tentativa 2 no tier 1 em 7 d, +1,9 s cada),
+        # mas ela recomeça quase sempre pelo prefixo que a anterior já acertou. Agora começa no tier 0 e sobe — até o fim
+        # da tentativa — na 1ª decisão que repetir, na mesma tela estrutural, a última ação da anterior (onde ela
+        # parou) ou que dispararia o efeito. Essa decisão é descartada e refeita no modelo forte.
+        retentativa = step.attempts > 1 and not tier_efeito
+        acao_onde_parou = self._ultima_acao_da_etapa.get(step.id) if retentativa else None
+        retentativa_subiu = False
         escalated = False                     # a linha do escalonamento sai UMA vez por etapa, não por decisão
         # Item 7.8 (piso de conteúdo): o provedor de `decide` É o do `.env`/YAML, não o desta instância de etapa —
         # ele não muda no meio de uma execução, então resolver uma vez aqui é o mesmo resultado de resolver a cada
@@ -1421,6 +1455,7 @@ class StepExecutor:
         mortes_por_anr: set[tuple[str, int]] = set()
         fora_anterior: str | None = None
         agiu = True
+        abriu_sem_ia = False                   # LT-6: o `open_app` determinístico já foi gasto nesta tentativa
 
         async def desfecho_de_ia(exc: AIError, obs: Observation, durante: str) -> StepOutcome:
             """O que a etapa faz quando uma chamada de IA (a decisão do ator, a leitura visual) falha por motivo que NÃO
@@ -1702,6 +1737,35 @@ class StepExecutor:
                         repo.decision(f"{iid} · {step.title}: {pelo_atalho}; segue para a comprovação sem chamar o ator",
                                       run_id=run_id, instance_id=iid, step_id=step.id)
                         break
+                # ---------- LT-6: "abrir o app" é código, não decisão. A etapa cuja pós-condição é `app_foreground` abre
+                # o app pelo mesmo caminho da reabertura pós-ANR (`open_app` + foco lido), UMA vez por tentativa, antes
+                # do ator — em 7 d, 48 dessas etapas pagaram um decide (p50 9,0 s) para pedir exatamente isso. Só quando
+                # a receita não conduz (ela também não chama a IA, e o funil dela fica intacto) e nunca em etapa com
+                # efeito. Interstitial ou foco que não chega: a volta seguinte não comprova e o ator assume, nesta tentativa.
+                alvo_do_foco = step.postcondition.value if step.postcondition.kind == "app_foreground" else ""
+                if (OPEN_APP_SEM_IA and alvo_do_foco and not abriu_sem_ia and rep is None and decisions == 0
+                        and not step.side_effect and not fired and alvo_do_foco in self._allowed_packages()
+                        and not self._postcondition_holds(step, obs, cartao, pacote=app.package)):
+                    abriu_sem_ia = True
+                    rr.exerceu(StrategyKind.deterministic)
+                    t_abrir = time.monotonic()
+                    try:
+                        await call(rt.io.open_app, alvo_do_foco, app.activity if alvo_do_foco == app.package else None)
+                        na_frente = await esperar_foco(lambda: call(rt.io.current_focus), alvo_do_foco, ate=deadline)
+                    except DriverTimeout as exc:
+                        return await self._stuck(rt, step, fired, str(exc))
+                    except DriverError as exc:
+                        log.info("%s: abrir %s sem IA falhou (%s); o ator assume", iid, alvo_do_foco, exc)
+                        na_frente = None
+                    gasto = time.monotonic() - t_abrir
+                    situacao = ("em primeiro plano" if na_frente else "ainda não está em primeiro plano"
+                                if na_frente is False else "o pedido de abertura falhou")
+                    repo.decision(f"{iid} · {step.title}: app {alvo_do_foco} aberto pelo executor, sem IA — {situacao} "
+                                  f"({gasto:.1f} s)", run_id=run_id, instance_id=iid, step_id=step.id)
+                    history.append(f"(executor) abriu o app {alvo_do_foco} sem IA: {situacao}. Se a tela não for a "
+                                   "dele, continue a partir dela.")
+                    agiu = True
+                    continue
                 trouble = errors_in_row >= 1 or same_count >= 1
                 piso_forcou = forcar_tier_1    # captura ANTES de zerar: o motivo do escalonamento lê daqui embaixo
                 forcar_tier_1 = False          # consumido: só a decisão SEGUINTE ao descarte sobe de tier, não todas
@@ -1713,11 +1777,11 @@ class StepExecutor:
                     # controles abaixo. Escalar aqui é decisão do dono, com o custo medido no relatório.
                     rr.retorno_contado = True
                     contar_retorno_ia(rr.diverged)
-                tier = 1 if (base_tier or errors_in_row >= 2 or same_count >= 1 or piso_forcou) else 0
+                tier = 1 if (base_tier or retentativa_subiu or errors_in_row >= 2 or same_count >= 1 or piso_forcou) else 0
                 # RA-10: o porquê do modelo forte NESTA decisão, em vocabulário fechado (`ai_calls.escalate`); a frase
                 # da linha do tempo sai dele, uma vez por etapa.
                 escalonamento: MotivoDeEscalonamento | None = (
-                    None if not tier else "efeito" if tier_efeito else "nova_tentativa" if step.attempts > 1
+                    None if not tier else "efeito" if tier_efeito else "nova_tentativa" if retentativa_subiu
                     else "erros_seguidos" if errors_in_row >= 2
                     else ("bloqueio" if cascata else "piso") if piso_forcou else "ciclo")
                 if tier and not escalated:
@@ -2093,6 +2157,15 @@ class StepExecutor:
                         continue
                 else:
                     is_commit = alegado
+            # ---------- LT-12: na nova tentativa, o modelo barato não repete onde a anterior parou nem dispara o efeito
+            if retentativa and not retentativa_subiu and not from_recipe and tier == 0:
+                repete = acao_onde_parou == (obs.tree.signature(estrutural=True), f"{decision.tool}:{_target_key(args)}")
+                if repete or is_commit:
+                    retentativa_subiu = True
+                    history.append(f"(executor) {decision.tool} " + ("é a ação em que a tentativa anterior parou, nesta "
+                                   "mesma tela" if repete else "dispararia o efeito desta etapa")
+                                   + ": a decisão sobe ao modelo de escalonamento antes de agir.")
+                    continue
             # ---------- guarda de cartão no toque SEM efeito (o balão que abre a folha "Comments")
             # r-20260928165254-e31953: com a folha aberta a legenda do fundo continua na árvore, então a pós-condição
             # não distingue o balão do cartão vizinho — e o comentário seguinte sairia no post errado. Vale para o
@@ -2141,6 +2214,7 @@ class StepExecutor:
             same_count = same_count + 1 if sig == last_sig else 0
             last_sig = sig
             sigs.append((sig[0], obs.tree.signature(estrutural=True), sig[1]))
+            self._ultima_acao_da_etapa[step.id] = (sigs[-1][1], sigs[-1][2])      # LT-12: onde esta tentativa parou
             ciclo = ciclo_sem_progresso(sigs, int(s.no_progress_limit))
             if ciclo:
                 return await fail_or_retry(ciclo, obs)
@@ -2475,9 +2549,15 @@ class StepExecutor:
         max_calls = int(self.cfg.file.ai.verify_max_model_calls)
         judged_polls = 0
         judged_sig: str | None = None
+        parada = 0                                 # LT-5: sondagens seguidas na MESMA tela depois do "não"
         verdict_text, level, obs = "", None, None
         escalou = False                            # no máximo UM rejulgamento escalado por verificação (item 7.10)
         marcas_pendentes = self._marcas_pendentes(capability)
+        # LT-5: o "não" numa tela parada só valia no fim do orçamento (15 s; 60 s `patient`) — a 2ª chamada só vem com a
+        # tela mudada, então esperar não muda o veredito. Sai cedo, exceto onde a mudança tem dono fora da tela: o
+        # "Sending…" declarado (ADR-055) e o nível que depende do outro lado (entregue/lida chega sem a árvore mudar antes).
+        sai_cedo = not (patient and marcas_pendentes) and (need is None
+                                                           or DELIVERY_ORDER[need] <= DELIVERY_ORDER[DeliveryLevel.sent])
         if patient and (post.kind == "model_judged" or need is not None):
             # o app costuma levar ~1–2 s para sair de "enviando": evita pagar 2 julgamentos
             await asyncio.sleep(float(self.cfg.file.ai.judge_wait_s))
@@ -2562,7 +2642,9 @@ class StepExecutor:
                 sig = obs.tree.signature()
                 if judged_polls and sig == judged_sig:
                     ok = False             # mesma tela que já foi julgada insuficiente: espera mudar, sem gastar chamada
+                    parada += 1
                 else:
+                    parada = 0
                     # 1º julgamento só pela hierarquia quando ela é rica; os seguintes levam a imagem
                     # Item 12.5: com saída lida da IMAGEM o juiz recebe a imagem à força. Ele julga a tela ("caixa
                     # aberta, aba, mais recente"), não o valor.
@@ -2658,6 +2740,10 @@ class StepExecutor:
                     text = "; ".join(x for x in (text, "depois de assentar, a tela mostra "
                                                  + ", ".join(f'"{m}"' for m in pendentes)
                                                  + ": envio pendente, não conta como feito") if x)
+            if not ok and sai_cedo and parada >= SONDAGENS_DA_TELA_PARADA:
+                return False, "; ".join(t for t in (text, f"a tela não mudou em {parada} sondagens depois do \"não\": a "
+                                                    "verificação encerra sem esperar o fim do orçamento") if t), \
+                    level, obs, False
             if ok or uma_rodada or time.monotonic() >= t_end or judged_polls >= max_calls:
                 return ok, text, level, obs, False
             await asyncio.sleep(float(self.cfg.file.ai.judge_wait_s))

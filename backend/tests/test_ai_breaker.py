@@ -8,6 +8,7 @@ import pytest
 
 from app.planning.provider import AIError
 from app.planning.simulated_provider import SimulatedProvider
+from app.taskqueue import executor as executor_mod
 
 from .conftest import Harness
 
@@ -40,7 +41,10 @@ class BillingFailProvider:
         raise NotImplementedError
 
 
-async def test_disjuntor_represa_sem_gastar_tentativa_pausa_e_acusa_na_saude(tmp_path: Path) -> None:
+async def test_disjuntor_represa_sem_gastar_tentativa_pausa_e_acusa_na_saude(tmp_path: Path,
+                                                                           monkeypatch: pytest.MonkeyPatch) -> None:
+    # O gancho é a decisão do ator na 1ª etapa (abrir o app), que o LT-6 (29.45) passou a fazer sem IA.
+    monkeypatch.setattr(executor_mod, "OPEN_APP_SEM_IA", False)
     h = Harness(tmp_path, 3)
     fail_provider = BillingFailProvider(SimulatedProvider())
     h.ai = fail_provider  # type: ignore[assignment]

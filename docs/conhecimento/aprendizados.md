@@ -2020,6 +2020,46 @@ Saída bruta em `data/diag-ra3b/`: `repouso-cores4-01-600s.json`, `dif-*.json` e
     no 01 não serve, porque o laço, uma vez iniciado, não para (g1–g3b, tela, lease). No temporário, repetir um passo da
     subida do parque por vez (ajustes de `settings`, instalação e sessão do UiAutomator2, `adb forward`/`reverse`, rede
     declarada, fluxo de frames) e medir a thread após cada um: o passo que a leva a ~100 % é a causa.
+- **Rodada por adição: o laço vem do CONTEXTO DE LANÇAMENTO (sessão 0), não de um passo da gerência** (`real`, 03/10,
+  ~08:05–08:40Z, central; liberada pela orquestradora; saída em `data/diag-ra3b/adicao-*.json` e `sessao0-android-18.json`).
+  CPU por thread do qemu lida 30 s depois da partida (antes do `boot_completed`; a gerência só começa depois dele) e 60 s
+  depois do boot.
+
+| Braço | Como foi lançado | Sessão | Aos 30 s (thread mais quente) | Depois do boot |
+|---|---|---|---|---|
+| parque | AVD temporário `ra3b-adicao` (2 vCPU, 2 GB, gpu host); `stdin=DEVNULL` (NUL), `CREATE_NO_WINDOW\|NEW_GROUP`, stdout em arquivo, como o `emulator.py` | 1 | 25,5 % | 22,0 % |
+| sessao0 | o mesmo, criado pelo `Win32_Process.Create` do WMI (a chamada local herdou a sessão 1: braço inválido para a sessão) | 1 | 22,3 % | 22,0 % |
+| **(b)** | **`android-18`, aparelho temporário provisionado pela API (sem persona) e ligado pelo BACKEND** | **0** | **98,7 % (94,3 em kernel)** | **99,0 % (93,9)** |
+| avd18 | o MESMO AVD do 18 (`data/avd`), lançado da sessão 1 com o ambiente do backend (`ANDROID_HOME`, `ANDROID_SDK_ROOT`, `ANDROID_AVD_HOME`) | 1 | 21,8 % | 10,5 % |
+
+  - Excluídos (PROVED nesta rodada): o AVD (o mesmo nos braços b e avd18), as flags, o `stdin` NUL, as `creationflags`,
+    as variáveis ANDROID_* e qualquer passo da gerência (o 18 já girava antes do boot terminar). O usuário e o perfil são
+    os mesmos (`Administrator`, mesmo TEMP e APPDATA).
+  - Sobra o contexto da sessão 0: sem estação de janela interativa, com o processo filho do backend da tarefa
+    `farm-central` (e o job dela). INFERRED, forte: um subsistema do emulador que, sem desktop interativo, espera num
+    objeto sempre sinalizado. Qual subsistema e qual objeto seguem UNKNOWN (o ponto `+0x4c2c7e`, sem símbolos).
+  - O `android-18` foi aposentado (`DELETE`, `avd_removed: true`) e o `ra3b-adicao` apagado.
+  - Achado à parte (OBSERVED, só o NOME): o ambiente do qemu, herdado do backend, contém `TYPESAFE_API_KEY`. O segredo
+    do `.env` chega ao processo do emulador. O valor não foi lido nem impresso.
+  - Correção (item novo, candidato 29.46 pela orquestradora): lançar o emulador do central num contexto com desktop
+    interativo, ou descobrir a opção do emulador que evita o subsistema. Opções de desenho em aberto: um ajudante na
+    sessão do usuário que recebe o pedido de lançamento do backend; ou uma flag ou variável de ambiente, se o subsistema
+    for identificado. O notebook (agente `farm-agente`) não foi medido nesta rodada.
+- **O notebook gira igual** (29.46, `real`, 03/10, 09:10:37Z, depois do deploy 8; janela de 20 s, simultânea nas duas
+  máquinas; leitura por ssh com `Get-Process`/CIM, sem lançar nada; saída em `data/diag-ra3b/2946-*.json`, fora do Git):
+
+| Máquina | qemu | Sessão | Lançado por | Thread mais quente (kernel) | Total do qemu |
+|---|---|---|---|---|---|
+| notebook (12 núcleos) | 4 (android-09/10/12/13) | 0 | agente da tarefa `farm-agente` (Administrator, logon S4U) | 101,6–103,4 % (94,1–96,5) | 118–130 % |
+| central (22 núcleos) | 3 (android-01/03/06) | 0 | backend da tarefa `farm-central` | 100,6–106,2 % (89,5–93,6) | 121–133 % |
+
+  - Nas duas máquinas há sessão interativa no console (sessão 1, ativa). No notebook o desperdício é ~4 dos 12 núcleos.
+  - No 01, a thread quente é a mesma 36288 do ETW: o reinício do backend no deploy não para o laço, porque os
+    emuladores seguem ligados.
+  - O nome das threads (`GetThreadDescription`, lido no central) não ajuda: só a `RenderThread` tem nome, e a thread
+    quente não tem (PROVED).
+  - INFERRED: a mesma causa nas duas máquinas, o lançamento na sessão 0. O logon S4U da tarefa do agente também não é
+    interativo.
 
 ### K-079 — A prévia cortada da caixa do Outlook derruba a conferência visual
 
