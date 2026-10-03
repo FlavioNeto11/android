@@ -1885,3 +1885,41 @@ transcrição do leitor numa recusa (dois leitores viram um).
 **Aplicabilidade.** Vigente. Todo Compose que não publica semântica (`ComposeView` sem `contentDescription`) é cego para
 `read_value`, `collect_list`, a triagem de segredo e a detecção de tela sensível: o que a árvore não vê, o executor também não vê.
 Antes de aumentar profundidade ou tempo de espera, rode o `source` e conte o texto da subárvore da linha.
+
+### K-078 — O núcleo ocioso a mais do emulador não é da GPU: o mesmo AVD sem gerência fica em 0,075 núcleo
+
+**Sintoma.** Cada emulador ocioso do central gastava 1,1 a 1,3 núcleo do host (RA-3 da reavaliação de 03/10), quase todo
+numa thread do `qemu-system-x86_64-headless` a ~99 %. A suspeita natural era a GPU do host (`-gpu host`, gfxstream).
+
+**Medição (`real`, 03/10/2026, central WIN-7S2UASNLFOP, main 01351e66; emulador 37.1.11, WHPX 10.0.26100; imagem
+android-34 google_apis x86_64, 2 vCPU, 2 GB, `-lowram`).** CPU por thread com psutil numa janela de 10 min; `/proc/stat`
+e `/proc/interrupts` do convidado no começo e no fim. Saída bruta em `data/diag-ra3b/` (fora do Git).
+
+| Aparelho | GPU | Host (% de 1 núcleo) | Thread mais quente | Convidado ocupado |
+|---|---|---|---|---|
+| android-06, gerenciado, conta real | host | 126,8 | 99,0 (10,6 em modo usuário) | 20,7 % de 2 vCPU |
+| android-01, gerenciado, conta real | host | 111,0 | 99,0 (10,8 em modo usuário) | 13,9 % |
+| AVD temporário sem gerência, braço A | host | 7,5 | 3,5 | 2,8 % |
+| idem, braço B | swiftshader_indirect | 7,4 | 3,3 | 3,0 % |
+| idem, braço C | guest (a imagem não suporta: cai em lavapipe/swiftshader) | 7,8 | 3,7 | 3,5 % |
+
+- Nos gerenciados a thread quente consumiu 98 % do uptime do processo (06: 3,0 h; 01: 2,8 h): fica quente desde o boot,
+  não cresce com o tempo. Ela não tem nome (GetThreadDescription); as 32 a 33 `RenderThread` da GPU são leves.
+- No AVD temporário (`ra3b-medicao`, porta 5690, as flags do android-07 menos o snapshot), cada braço foi medido depois de
+  o convidado assentar (< 25 % ocupado em 2 amostras de 20 s). Nenhuma thread passou de 50 %. Os timers do convidado
+  ficaram em ~100/s por linha (LOC, CAL, virtio23) nos três braços.
+- A linha de comando do gerenciado e a do temporário só diferem no nome, na porta e em `-no-snapshot-load
+  -no-snapshot-save` × `-no-snapshot` (os dois são boot a frio sem salvar). Com o convidado ocupado (primeiro boot),
+  o tempo dos vCPU aparece como tempo de USUÁRIO da thread no WHPX; a thread quente dos gerenciados é ~90 % kernel.
+
+**Causa.** A GPU NÃO é a causa (`real` para esta imagem e estas flags): os três modos ficam iguais, e o emulador ocioso
+sem gerência gasta 0,075 núcleo. O núcleo a mais existe só nos aparelhos do parque, desde o boot. INFERRED: algo que só
+o aparelho do parque tem mantém uma thread do qemu em laço de kernel: a sessão do Appium/UiAutomator2, os encaminhamentos
+e fluxos do adb, as sondas, ou os apps e serviços instalados (Instagram, Outlook, cliente VPN). Qual deles é UNKNOWN.
+
+**O que fazer.** Não trocar o modo de GPU para baixar CPU ociosa. A próxima medição atribui por subtração, num aparelho de
+QA do parque (sem conta): 10 min com tudo ligado, depois 10 min sem cada componente (sessão do Appium, fluxo de frames,
+sondas de rede), um por vez. O aceite do 14.12 (≤ 0,3 núcleo ocioso) o emulador sem gerência já cumpre; falta o parque.
+
+**Aplicabilidade.** Medido no central (Windows Server 2025, WHPX). O notebook (Hyper-V com escalonador Classic) não foi
+medido.
