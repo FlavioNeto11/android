@@ -341,22 +341,12 @@ export async function loadRunDetail(runId: string | null, opts: { silent?: boole
   await Promise.all([detailPromise, eventsPromise]);
 }
 
-/**
- * O resumo que o detalhe devolve à lista. O `upsertRun` TROCA a entrada da lista por este objeto, então os campos
- * opcionais do resumo vão junto quando o detalhe os traz: sem eles, o selo "Prova de fluxo (validação)" (30.37), o
- * pedido de origem (28.9) e os apps do cartão sumiam da lista ao abrir o detalhe (validação do deploy 14). Ausente no
- * detalhe (backend antigo), o campo continua ausente, como antes.
- */
-export function summaryOf(detail: RunSummary): RunSummary {
+function summaryOf(detail: RunSummary): RunSummary {
   return {
     id: detail.id, short_id: detail.short_id, command: detail.command, status: detail.status,
     simulated: detail.simulated, instance_ids: detail.instance_ids, instances_requested: detail.instances_requested,
     instances_used: detail.instances_used, created_at: detail.created_at, started_at: detail.started_at,
     finished_at: detail.finished_at, counts: detail.counts, progress: detail.progress, status_detail: detail.status_detail,
-    ...(detail.app_ids !== undefined ? { app_ids: detail.app_ids } : {}),
-    ...(detail.pedido_id !== undefined ? { pedido_id: detail.pedido_id } : {}),
-    ...(detail.ocorrencia_id !== undefined ? { ocorrencia_id: detail.ocorrencia_id } : {}),
-    ...(detail.prova_fluxo_id !== undefined ? { prova_fluxo_id: detail.prova_fluxo_id } : {}),
   };
 }
 

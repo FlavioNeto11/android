@@ -26,12 +26,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - A receita marcada "variante sem caminho" não recebe `pedir_evidencia` nas opções do curador (`decisoes_do_item`), e
   o esquema estrito do hub só aceita o que foi oferecido. O parecer que a escolher assim mesmo grava
   `invalida:decisao_indevida`, sem pedido. Medido no central às 20:51Z: 5 das 6 marcadas tinham pedido de novo.
-- Painel (c): abrir o detalhe de uma execução não tira mais o selo "Prova de fluxo (validação)" do cartão da lista. O
-  `summaryOf` de `frontend/src/store/live.ts` passa a levar `prova_fluxo_id`, `pedido_id`, `ocorrencia_id` e `app_ids`
-  quando o detalhe os traz (achado 2 da validação do deploy 14).
 - Sem migração, sem rota nova, mesmo `dossie_hash`.
-- Testes: `backend/tests/test_learning_prova_validacao.py`, `backend/tests/test_learning_curador_dominio.py` e
-  `frontend/src/store/live.test.ts`.
+- Testes: `backend/tests/test_learning_prova_validacao.py` e `backend/tests/test_learning_curador_dominio.py`.
 
 ## 2026-10-03 — Suíte 14 na main e deploy 14 no central (51270b9c; migrações 084, 085 e 086; config inalterada)
 
