@@ -1,8 +1,8 @@
 """Sombra da intenção (item 31.9, ADR-069): o filtro sensato da C3 (item 10), o consumidor R2/R3 e o enxerto no `_plan`.
 
 Prova `simulated`: `DecisorFalso`, banco de teste e a RESOLVE de verdade sobre habilidades de teste. Nada toca rede, chave ou a
-TypeSafe, e o envio continua fechado no código (`JEV_RUNTIME_SEND_APPROVED = False`): os testes que precisam de uma porta
-aberta a abrem com `monkeypatch`, e um deles prova que, fechada, o decisor não é chamado.
+TypeSafe. O interruptor do envio (`JEV_RUNTIME_SEND_APPROVED`) está aberto desde o 31.17; os testes que dependem dele o
+fixam com `monkeypatch`, e um deles prova que, fechado, o decisor não é chamado.
 """
 from __future__ import annotations
 
@@ -440,10 +440,10 @@ def test_padrao_desligado_zero_chamadas_e_zero_linhas(tmp_path: Path, porta_aber
     w.fechar()
 
 
-def test_com_o_envio_fechado_no_codigo_nada_e_feito(tmp_path: Path) -> None:
+def test_com_o_envio_fechado_no_codigo_nada_e_feito(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Desligado custa ZERO (revisão, núcleo): com `JEV_RUNTIME_SEND_APPROVED=False` o consumidor nem monta o pedido, e
     não sobra nem a linha de recusa (antes gravava `privacidade`)."""
-    assert privacidade.JEV_RUNTIME_SEND_APPROVED is False               # sem monkeypatch: o padrão do código
+    monkeypatch.setattr(privacidade, "JEV_RUNTIME_SEND_APPROVED", False)   # o interruptor (aberto de fábrica no 31.17)
     falso = DecisorFalso()
     w = Mundo2(tmp_path, falso)
     assert not w.consumidor.ativo()

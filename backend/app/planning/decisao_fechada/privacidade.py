@@ -4,9 +4,11 @@ Duas constantes de CÓDIGO, ao lado das do ADR-063 (`context_retrieval/domain/po
 `SYNTHETIC_REMOTE_SEND_APPROVED`, que continuam False). O YAML só restringe, nunca libera: nenhuma configuração lida aqui
 abre o que o código fechou, e cada classe liberada tem linha no ADR-069 com a data da decisão do dono.
 
-`JEV_RUNTIME_SEND_APPROVED` continua False: ele só vira True no item 31.10, depois da suíte, do deploy e da liberação por
-classe (ADR-069 itens 7 e 9; a troca da chave TypeSafe deixou de ser condição). Enquanto for False, `validar` recusa TODO
-pedido e o decisor nunca é chamado.
+`JEV_RUNTIME_SEND_APPROVED` virou True no 31.17, a sombra C0–C1 do 31.10 (ADR-069 itens 9 e 15), depois da suíte e com o
+deploy liberando por classe. Abrir o código não liga nada: de fábrica a porta está desligada (`enabled: false`) e o decisor
+é o nulo, que nunca toca rede. Só sai o que o YAML do ambiente liga, no consumidor que ele põe em `shadow`, com o decisor
+`jev` e a chave configurada. Volta a False = `validar` recusa TODO pedido e os consumidores nem montam o pedido (o
+interruptor de código segue valendo e tem teste).
 """
 from __future__ import annotations
 
@@ -17,13 +19,14 @@ from typing import Final
 from ...security.redaction import redact
 from .contrato import CLASSES, MARCADORES, MODOS, ORIGENS, PedidoDeDecisao
 
-#: O envio do Jev em runtime está aprovado? Falso até o 31.10 (ADR-069 item 9). Constante de código.
-JEV_RUNTIME_SEND_APPROVED: bool = False
+#: O envio do Jev em runtime está aprovado? Verdadeiro desde o 31.17 (ADR-069 item 15; era falso até a sombra do 31.10).
+#: Constante de código: é o interruptor que fecha tudo, acima do YAML.
+JEV_RUNTIME_SEND_APPROVED: bool = True
 
 #: Teto de código das classes que podem sair (ADR-069 item 4, dono, 02/10/2026): C0 e C1 em F1 para todos os consumidores,
 #: C2 em F2 e C3 em F3. A C3 só vale para a origem `intencao` e só em `shadow` (`CLASSES_POR_ORIGEM_E_MODO`). C4 em diante
-#: (persona, UI, conta real) nem existe no vocabulário e é recusada. A liberação acima não abre o envio sozinha:
-#: `JEV_RUNTIME_SEND_APPROVED` continua False.
+#: (persona, UI, conta real) nem existe no vocabulário e é recusada. O YAML estreita (`classes_permitidas`): a sombra do
+#: 31.10 liga só C0–C1 (31.17), e a C3 sai só com o GO do portão do 31.9 e o sim do dono.
 JEV_ALLOWED_CLASSES: frozenset[str] = frozenset({"C0", "C1", "C2", "C3"})
 
 #: Regra por origem e modo, em cima do teto: a C3 só na intenção (31.9) e só na sombra. Qualquer outra combinação com C3,

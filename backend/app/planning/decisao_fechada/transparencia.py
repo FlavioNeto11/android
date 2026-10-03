@@ -4,8 +4,10 @@ Com `ai.decisao_fechada.enabled` e algum consumidor em `shadow` ou `on`, o `noti
 dado que podem sair, e `/api/ai` lista o Jev. A chave aparece só como configurada ou não configurada, e quem chama passa um
 booleano de PRESENÇA (`typesafe_api_key is not None`): este módulo nunca vê o valor.
 
-Verdade antes de conforto: enquanto `JEV_RUNTIME_SEND_APPROVED` é falso no código, o aviso diz que o envio está fechado e que
-nada sai, em vez de prometer uma exposição que ainda não existe nem de esconder a que o YAML anuncia.
+Verdade antes de conforto (31.17): o aviso diz qual decisor está na porta (`nulo` ou `jev`) e só afirma que algo SAI quando
+as quatro condições valem juntas: o envio aprovado no código (`JEV_RUNTIME_SEND_APPROVED`), o decisor real (`jev`), um
+consumidor em `shadow` ou `on` e a chave configurada. Faltando uma, diz que nada sai e por quê, em vez de prometer uma
+exposição que não acontece ou de esconder a que o YAML anuncia.
 """
 from __future__ import annotations
 
@@ -53,6 +55,24 @@ def o_que_sai(cfg: DecisaoFechadaCfg | None) -> list[str]:
     return saidas
 
 
+def por_que_nada_sai(cfg: DecisaoFechadaCfg | None, *, chave_configurada: bool) -> str | None:
+    """O primeiro motivo de nada sair, em palavras; `None` quando sai (as quatro condições do aviso valem)."""
+    if not consumidores_ativos(cfg):
+        return "nenhum consumidor em shadow ou on"
+    if not privacidade.JEV_RUNTIME_SEND_APPROVED:
+        return "envio FECHADO no código (JEV_RUNTIME_SEND_APPROVED)"
+    if cfg is None or cfg.decisor != "jev":
+        return "o decisor da porta é o nulo, que nunca chama a TypeSafe (ai.decisao_fechada.decisor: nulo)"
+    if not chave_configurada:
+        return "a chave da TypeSafe não está configurada"
+    return None
+
+
+def enviando(cfg: DecisaoFechadaCfg | None, *, chave_configurada: bool) -> bool:
+    """Sai alguma coisa para a TypeSafe com esta configuração? Só com as quatro condições juntas (ADR-069 item 8, 31.17)."""
+    return por_que_nada_sai(cfg, chave_configurada=chave_configurada) is None
+
+
 def status(cfg: DecisaoFechadaCfg | None, *, chave_configurada: bool) -> dict[str, object] | None:
     """Bloco do Jev em `/api/ai`; `None` quando nenhum consumidor está em `shadow` ou `on` (nada a declarar)."""
     ativos = consumidores_ativos(cfg)
@@ -63,6 +83,8 @@ def status(cfg: DecisaoFechadaCfg | None, *, chave_configurada: bool) -> dict[st
             "key": "configurada" if chave_configurada else "não configurada",
             # 31.14: qual decisor está montado (`nulo` nunca chama; `jev` é o real), para o 31.10 ver sem ler a config
             "decider": "nulo" if cfg is None else cfg.decisor,
+            # 31.17: sai alguma coisa AGORA (código aberto, decisor `jev`, consumidor ligado e chave configurada)?
+            "sending": enviando(cfg, chave_configurada=chave_configurada),
             "retention_days": None if cfg is None else cfg.retencao_dias}
 
 
@@ -75,9 +97,13 @@ def aviso(cfg: DecisaoFechadaCfg | None, *, chave_configurada: bool) -> str | No
     classes = ", ".join(classes_que_podem_sair(cfg))
     chave = "configurada" if chave_configurada else "não configurada"
     saidas = ", ".join(o_que_sai(cfg))
+    decisor = "nulo" if cfg is None else cfg.decisor
     frase = (f"Provedor externo {NOME}: decisões por conjunto fechado dos consumidores {consumidores}; dados das classes "
              f"{classes} podem sair para a TypeSafe ({saidas}; nunca texto livre de persona nem tela sensível). "
-             f"Chave da TypeSafe: {chave}.")
-    if not privacidade.JEV_RUNTIME_SEND_APPROVED:
-        frase += " Envio ainda FECHADO no código (JEV_RUNTIME_SEND_APPROVED): nada sai enquanto o dono não aprovar."
+             f"Chave da TypeSafe: {chave}. Decisor na porta: {decisor}.")
+    motivo = por_que_nada_sai(cfg, chave_configurada=chave_configurada)
+    if motivo is None:
+        frase += " Envio ATIVO: cada pedido que passa pela privacidade sai para a TypeSafe."
+    else:
+        frase += f" Nada sai agora: {motivo}."
     return frase
