@@ -192,6 +192,22 @@ diária.
   sombra (`recipes_promote_after`); com `commit`, para em `validated`. `ai.recipes_heranca: false` só mede a causa, e
   com `recipes_promote_after: 0` não há herança (a aprendida já nasce ativa). Quando a herdeira vira `active`, a legada
   ativa da mesma etapa e versão sai (`superseded`, "provou-se na chave completa").
+- **O que uma execução simulada ensina não publica (RA-19, fatia B, 03/10; leitura 2, decidida pela orquestradora).**
+  - Origem simulada (`runs.simulated=1`) nunca NASCE ativa. A receita nasce candidata mesmo com
+    `ai.recipes_promote_after: 0` (`executor.py::_after_step`, `_origem_simulada`). O fluxo nasce candidato mesmo com
+    `aprendizado.fluxo.com_prova: false` (`nativos.py::fluxo_ao_nascer`).
+  - A concordância de uma execução simulada não promove receita: `RecipeStore.shadow(simulada=True)` não soma à
+    sequência da candidata, e a divergência dela zera, como qualquer outra.
+  - A sombra continua promovendo com evidência REAL (a do fluxo já só contava execução real), e a pessoa promove à mão.
+  - Sem a linha da execução, conta como simulada: nada se publica pelo que não se sabe de onde veio.
+  - `aprendizado.simulada_publica: true` é o modo anterior, só da suíte. O Harness é todo simulado e prova a reprodução
+    e o reaproveitamento, como `fluxo.com_prova: false` e `recipes_promote_after: 0`.
+  - Sem migração: o join `recipes.learned_from_step → steps.run_id` e `flows.source_run_id` → `runs.simulated` basta,
+    porque não há purga de `runs`.
+  - Prova `simulated`: `tests/test_origem_simulada.py`, com a consulta de join = 0 depois de duas execuções só
+    simuladas.
+  - O acervo antigo (14 receitas, 11 ativas ou validadas, e 3 fluxos ativos de origem simulada, todos do QA Messenger)
+    não foi rebaixado: decisão da orquestradora, nada de app real. A fatia A já o tira da lista padrão do livro.
 - **Habilidade.** O primeiro escritor real de `skill_validation_results`: cada execução de versão grava a observação
   (`proof=real` só de execução real). Execução com etapa confirmada à mão vira `uncertain`, nunca `passed`. O sistema
   pode validar; publicar é sempre de pessoa.

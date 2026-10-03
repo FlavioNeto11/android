@@ -133,7 +133,8 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
     for ligar in (ligar_costuras.ligar, ligar_voz.ligar):
         ligar(servico)
     ligar_nativos.ligar(servico, repo, db, concordancias=lambda: config().fluxo.concordancias,
-                        com_prova=lambda: config().fluxo.com_prova, habilidades=habilidades, fluxos=fluxos,
+                        com_prova=lambda: config().fluxo.com_prova, simulada_publica=lambda: config().simulada_publica,
+                        habilidades=habilidades, fluxos=fluxos,
                         receitas=receitas, decidir=decidir, relogio=relogio)
     # Pacote A7: as lições medidas (fornecedor da costura, mineradores do digest e passo da curadoria).
     ligar_licoes.ligar(servico, repo, db, config=lambda: config().licoes, precos=precos, relogio=relogio)
