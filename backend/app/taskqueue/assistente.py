@@ -29,12 +29,11 @@ from ..modules.execution.domain.command_refinement import (AppResumo, CommandRef
 from ..planning.provider import AIError
 from ..security.redaction import redact
 from .costuras import RespostaAPergunta, avisar
+from .perguntas import (CAMPOS_DE_DESTINO, TIPO_FORMATO, TRIAGEM, acrescimo, mensagem_da_recusa, perguntas_abertas,
+                        tipo_sensivel)
 from .service import RunError, RunService
 
 log = logging.getLogger(__name__)
-
-#: Perguntas que são escolha de alvo, não texto: o assistente não as responde (ver docstring do módulo).
-CAMPOS_DE_DESTINO = frozenset({"profile_id", "instance_id"})
 
 MENSAGEM_CREDENCIAL = ("O texto contém uma credencial (ex.: \"Senha: …\"). Ele iria ao provedor de IA e ficaria no "
                        "histórico: tire a senha. Ela fica guardada na conta da persona (aba Contas do perfil), com o "
@@ -66,18 +65,8 @@ class RunSuccessorBody(BaseModel):
 
 
 def perguntas_da_execucao(runs: RunService, run: Mapping[str, object]) -> list[dict[str, object]]:
-    """As perguntas abertas de uma execução em `needs_input`: as do plano (`missing`) ou, sem plano, as do evento
-    mais recente com `data.questions` — o mesmo critério do painel (`perguntasDosEventos`)."""
-    plano = loads(str(run["plan"]), None) if run["plan"] else None
-    if isinstance(plano, dict) and plano.get("missing"):
-        return [{"field": m.get("field") or "", "question": m.get("question") or "", "options": []}
-                for m in plano["missing"] if isinstance(m, dict)]
-    for ev in runs.repo.db.query("SELECT data FROM events WHERE run_id=? AND data IS NOT NULL ORDER BY id DESC",
-                                 (run["id"],)):
-        d = loads(str(ev["data"]), None)
-        if isinstance(d, dict) and isinstance(d.get("questions"), list) and d["questions"]:
-            return [q for q in d["questions"] if isinstance(q, dict)]
-    return []
+    """As perguntas abertas de uma execução em `needs_input` (`taskqueue/perguntas.py::perguntas_abertas`)."""
+    return perguntas_abertas(runs.repo.db, run)
 
 
 class ComandoAssistido:
@@ -90,6 +79,14 @@ class ComandoAssistido:
         # Segredo nunca vai ao modelo: nem no comando, nem numa resposta (a redação dos eventos é a mesma régua).
         if redact(body.command) != body.command or any(redact(a.answer) != a.answer for a in body.answers):
             raise RunError("credencial_no_comando", MENSAGEM_CREDENCIAL, 409)
+        # 29.52: a resposta a uma pergunta que pede senha ou código iria ao modelo AQUI, antes da sucessora; e uma
+        # resposta solta com cara de credencial ("884512", "Abc!2345xyz") não tem o formato que a redação pega.
+        for a in body.answers:
+            tipo = TRIAGEM.pergunta_sensivel(a.question, a.field)
+            if tipo is None and TRIAGEM.resposta_recusada(a.answer):
+                tipo = TIPO_FORMATO
+            if tipo is not None:
+                raise RunError("credencial_na_resposta", mensagem_da_recusa(tipo), 409, {"tipo": tipo})
         destino = sorted({a.field for a in body.answers if a.field in CAMPOS_DE_DESTINO})
         if destino:
             raise RunError("pergunta_de_destino",
@@ -166,10 +163,18 @@ class ComandoAssistido:
             if existente is not None:
                 return runs.repo.run_summary(runs.repo.run_row(existente["id"]), deduplicated=True), False
             raise RunError("invalid_state", "Só uma execução que espera resposta (needs_input) pode ser respondida.")
+        # 29.52: recusa ANTES de qualquer gravação e de a antiga sair do ar. A pergunta que pede senha ou código não
+        # se responde por texto, seja qual for a resposta; sem ela, o acréscimo da resposta com cara de credencial.
+        # O evento e o sinal não levam a resposta: o 409 também não a repete.
+        tipo = tipo_sensivel(perguntas_da_execucao(runs, run))
+        texto = runs.sem_destinos(body.command.strip()) or body.command.strip()
+        if tipo is None and TRIAGEM.resposta_recusada(acrescimo(str(run["command"]), texto)):
+            tipo = TIPO_FORMATO
+        if tipo is not None:
+            raise RunError("credencial_na_resposta", mensagem_da_recusa(tipo), 409, {"tipo": tipo})
         # O que foi perguntado, lido ANTES de a antiga sair do ar (sinal `respondeu_pergunta`, ADR-054).
         campos = self._campos_perguntados(run)
         # Os alvos vêm da foto; um destino que sobrou no texto seria lido de novo (e recusado sem confirmação).
-        texto = runs.sem_destinos(body.command.strip()) or body.command.strip()
         req = RunCreate(command=texto, instance_ids=instance_ids, profile_ids=profile_ids,
                         targets=targets, device_policy=politica, mode=body.mode, idempotency_key=chave)
         nova = runs.create(req)

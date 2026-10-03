@@ -7,7 +7,7 @@ import { initialDataState } from '../../store/reducer';
 import { useUiStore } from '../../store/ui';
 import { RUN_ID, makeEvent, makePersona, makeRun, makeRunDetail } from '../../test/fixtures';
 import { FakeBackend, installBrowserStubs, json, text, waitFor } from '../../test/harness';
-import { perguntasDosEventos } from './model';
+import { perguntaSensivelDosEventos, perguntasDosEventos } from './model';
 import { RunView } from './RunView';
 
 /**
@@ -74,4 +74,63 @@ it('perguntasDosEventos lê a pergunta mais recente e ignora eventos sem pergunt
   ];
   expect(perguntasDosEventos(eventos)).toEqual([{ field: 'profile_id', question: PERGUNTA.question, options: ['ig-1', 'ig-2'] }]);
   expect(perguntasDosEventos(null)).toEqual([]);
+});
+
+/**
+ * 29.52: a pergunta que pede senha ou código não tem caixa de resposta. O painel reconhece pelo evento
+ * `pergunta_sensivel` do backend (o vocabulário é um só, o da `TriagemDeCredencial`) e mostra o caminho certo.
+ */
+function comPerguntaDoPlano(question: string, field: string, tipo: string | null): void {
+  const run = makeRun({ status: 'needs_input', status_detail: question });
+  const eventos = tipo === null ? [] : [makeEvent(11, 'pergunta_sensivel', { tipo }, { run_id: RUN_ID, level: 'warn',
+    message: `Execução ${RUN_ID}: a pergunta pede credencial (${tipo}), que não se responde por texto` })];
+  useAppStore.setState({
+    detail: {
+      runId: RUN_ID, status: 'ready', error: null, eventsStatus: 'ready',
+      data: makeRunDetail({ ...run, plan: { ...makeRunDetail().plan!, missing: [{ field, question }] } }),
+      events: eventos,
+    },
+    runs: [run],
+  });
+}
+
+it('pergunta de senha: sem caixa de resposta, com o caminho da conta da persona', async () => {
+  comPerguntaDoPlano('Qual é a senha da conta do QA Messenger?', 'password', 'senha');
+  await act(async () => { root.render(<RunView />); });
+  await waitFor(() => expect(text(container)).toContain('A senha não se responde aqui.'));
+  expect(text(container)).toContain('Contas e acesso');
+  expect(text(container)).not.toContain('Responda aqui');
+  // o resumo diz o mesmo caminho, não "responder a pergunta da IA"
+  expect(text(container)).toContain('Guardar a senha na conta da persona e pedir de novo');
+  expect(text(container)).not.toContain('Responder a pergunta da IA');
+  expect(container.querySelector('input')).toBeNull();
+  const abrir = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Abrir Personas'));
+  expect(abrir).toBeTruthy();
+  await act(async () => { abrir!.click(); });
+  expect(useUiStore.getState().view).toBe('personas');
+});
+
+it('pergunta de código: sem caixa de resposta, com o controle do aparelho', async () => {
+  comPerguntaDoPlano('Qual o código que chegou por SMS?', 'code', 'codigo');
+  await act(async () => { root.render(<RunView />); });
+  await waitFor(() => expect(text(container)).toContain('O código não se responde aqui.'));
+  expect(text(container)).toContain('Digitar o código no aparelho e pedir de novo');
+  const abrir = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Abrir o aparelho'));
+  expect(abrir).toBeTruthy();
+  await act(async () => { abrir!.click(); });
+  expect(useUiStore.getState().focusInstanceId).toBe(makeRun().instance_ids[0]);
+});
+
+it('sem o evento (execução anterior ao 29.52), a caixa de resposta continua; a recusa vem do backend', async () => {
+  comPerguntaDoPlano('Qual é a senha da conta do QA Messenger?', 'password', null);
+  await act(async () => { root.render(<RunView />); });
+  await waitFor(() => expect(text(container)).toContain('Responda aqui'));
+  expect(text(container)).not.toContain('não se responde aqui');
+});
+
+it('perguntaSensivelDosEventos lê o tipo do evento e ignora o resto', () => {
+  expect(perguntaSensivelDosEventos([makeEvent(1, 'log', { questions: [] }), makeEvent(2, 'pergunta_sensivel', { tipo: 'codigo' })]))
+    .toBe('codigo');
+  expect(perguntaSensivelDosEventos([makeEvent(1, 'pergunta_sensivel', null)])).toBeNull();
+  expect(perguntaSensivelDosEventos(null)).toBeNull();
 });

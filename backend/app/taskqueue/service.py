@@ -41,6 +41,7 @@ from ..util import now_iso, to_iso
 from .balanceamento import Candidato, distribuir
 from .costuras import (SEM_COSTURAS, CancelamentoDeExecucao, CosturasDeAprendizado, PedidoDeLicoes,
                        RepeticaoDeExecucao, ResolucaoDeItem, avisar, pedir_licoes)
+from .perguntas import mensagem_da_palavra_solta, pergunta_sensivel_aberta, tipo_sensivel
 from .projecao import HistoricoDeAcoes, projetar, resumo
 from .repository import Repository
 from .scheduler import WAKEABLE, Scheduler
@@ -161,6 +162,18 @@ class RunService:
                            "Contas do perfil), com o seu consentimento, e a automação a digita de lá sem passar pela IA.",
                            409)
 
+    def _recusar_palavra_solta(self, req: RunCreate) -> None:
+        """29.52: com uma pergunta de senha ou código aberta para estes aparelhos, um pedido novo de UMA palavra é,
+        quase sempre, a resposta mandada no lugar errado (a senha não tem formato que a redação pegue). Sem aparelho
+        explícito no pedido (persona, distribuição), qualquer pergunta aberta conta: na dúvida, recusa. O laço de
+        pedidos (`origem`) não passa aqui: ninguém digitou aquele texto agora."""
+        palavra = req.command.strip()
+        if not palavra or any(c.isspace() for c in palavra):
+            return
+        tipo = pergunta_sensivel_aberta(self.repo.db, req.instance_ids)
+        if tipo is not None:
+            raise RunError("credencial_na_resposta", mensagem_da_palavra_solta(tipo), 409, {"tipo": tipo})
+
     def _perfil_de_ia(self, req: RunCreate) -> tuple[str, str] | None:
         """Perfil de IA da execução (item 17.7): o pedido manda; sem pedido, o canário sorteia; senão, o padrão.
 
@@ -185,6 +198,8 @@ class RunService:
         interna, 0 por padrão; maior passa na frente no despacho do escalonador. `prova` (30.37) idem: o fluxo que esta
         EXECUÇÃO DE PROVA prova, do despachante da validação; o plano é o do fluxo, não o do planejador."""
         self._recusar_credencial(req.command)
+        if origem is None:
+            self._recusar_palavra_solta(req)
         perfil_de_ia = self._perfil_de_ia(req)
         pedido = {"instance_ids": list(req.instance_ids), "profile_ids": list(req.profile_ids),
                   "targets": [t.model_dump() for t in req.targets]}
@@ -1073,6 +1088,7 @@ class RunService:
         self._anunciar_projecao(run_id, plan)
         if plan.missing or not plan.steps:
             questions = " | ".join(m.question for m in plan.missing) or "O plano veio sem etapas."
+            self._medir_pergunta_sensivel(run_id, [{"field": m.field, "question": m.question} for m in plan.missing])
             repo.set_run_status(run_id, RunStatus.needs_input, questions, level="warn",
                                 message=f"Execução {run_id}: faltam informações — {questions}")
             return
@@ -1171,6 +1187,15 @@ class RunService:
         repo.decision(f"Plano da habilidade {resolvida.ref} “{resolvida.name}” (sem chamada ao planejador)"
                       + avisos, run_id=run_id)
 
+    def _medir_pergunta_sensivel(self, run_id: str, perguntas: list[dict[str, object]]) -> None:
+        """29.52: o planejador que pede senha ou código erra (ADR-040: a senha mora na conta da persona); conta-se cada
+        vez. O evento leva só a execução e o tipo, nunca a pergunta. O painel o lê para trocar a caixa de resposta
+        pela orientação."""
+        tipo = tipo_sensivel(perguntas)
+        if tipo is not None:
+            self.repo.bus.emit("pergunta_sensivel", f"Execução {run_id}: a pergunta pede credencial ({tipo}), que não "
+                               "se responde por texto", level="warn", run_id=run_id, data={"tipo": tipo})
+
     def _skill_sem_plano(self, run_id: str, resolvida: RunPlan) -> None:
         """A skill casou e não virou plano para ESTE comando: a RESOLVE precisa de resposta (parâmetro vazio ou que
         não serve para o tipo, ou duas habilidades empatadas — fase I), ou a compilação falhou (filha desabilitada,
@@ -1188,6 +1213,7 @@ class RunService:
                           level="warn", run_id=run_id,
                           data={"skill": str(resolvida.ref) if resolvida.ref else None, "questions": perguntas,
                                 "candidates": [str(c.ref) for c in resolvida.resolution.candidates]})
+            self._medir_pergunta_sensivel(run_id, perguntas)
             repo.set_run_status(run_id, RunStatus.needs_input, texto, level="warn",
                                 message=f"Execução {run_id}: faltam informações — {texto}")
             return
