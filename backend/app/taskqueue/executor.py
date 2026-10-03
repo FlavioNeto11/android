@@ -338,7 +338,11 @@ class StepExecutor:
         #: T.2: como as ferramentas esperam o aparelho assentar (vai no `ToolContext`). Produção: `asyncio.sleep`; o
         #: teste que pula o tempo troca por um que avança o relógio do aparelho falso (`tests/relogio_virtual.py`).
         self.dormir: Callable[[float], Awaitable[None]] = asyncio.sleep
-        self.recipes = RecipeStore(repo.db)
+        # RA-20: herdar só com a prova em sombra. Com `recipes_promote_after: 0` (o modo anterior) a receita que a IA
+        # aprende já nasce ativa; uma herdeira candidata ocuparia a chave no lugar dela e, com efeito, ainda pararia
+        # esperando o dono depois da primeira concordância.
+        self.recipes = RecipeStore(repo.db, herdar=lambda: (self.cfg.file.ai.recipes_heranca
+                                                            and self.cfg.file.ai.recipes_promote_after > 0))
         # Normal medido por ação (item 18.3): aviso ao passar do p90 e parada conservadora de laço descontrolado.
         self.historico = HistoricoDeAcoes(repo.db, lambda: cfg.file.ai.prices,
                                           janela_dias=cfg.file.ai.step_budget.window_days,

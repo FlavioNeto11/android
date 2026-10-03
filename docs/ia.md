@@ -191,13 +191,19 @@ Ver [docs/produto.md §2](produto.md) para os conceitos. Mecanismo de custo, res
   3 falhas seguidas → quarentena. `shadow` aprende e compara sem agir. Desde 29/09 a receita da IA nasce `candidate` e
   sobe por `ai.recipes_promote_after` (2) concordâncias em sombra; com ação `commit`, para em `validated` e espera o
   dono (D1 do [ADR-054](decisoes.md#adr-054--aprendizado-contínuo-livro-de-aprendizado-com-ciclo-de-vida-publicação-sozinha-só-sem-efeito-externo-d1-feedback-implícito-com-botão-opcional-d2-lições-medidas-e-backlog-do-que-mais-falha)).
+- **Herança da receita** (`ai.recipes_heranca: true`, RA-20 / item 29.40): a etapa sem receita na chave atual (versão,
+  assinatura e variante) herda, como candidata, a receita provada da mesma etapa noutra versão do app, noutra variante
+  ou na legada de 17/09 (sem assinatura nem variante). A herdeira não age: a IA decide a etapa e ela só é comparada até
+  concordar `recipes_promote_after` vezes; com `commit`, para em `validated`. Assinatura diferente nunca doa; com
+  `recipes_promote_after: 0` não herda. A herdeira que passa a agir aposenta a legada ativa da mesma etapa e versão. A
+  causa de cada "ausente" é medida em `receita.ausente{causa}` ([dominios/aprendizado.md](dominios/aprendizado.md)).
 - **Fluxos** (`ai.flows: true`): execução 100% comprovada vira plano congelado; comando repetido com outros
   parâmetros pula o planejador. Desde 29/09 o fluxo aprendido nasce `candidate`, inerte: o comando seguinte ainda chama
   o planejador, e o plano dele é comparado ao do candidato. Com `aprendizado.fluxo.concordancias` (1) concordância real
   e sem etapa de efeito, o sistema o publica; com efeito, ele espera o dono. Ou seja, um comando novo sem efeito paga o
   planejador duas vezes antes de o fluxo valer ([dominios/aprendizado.md](dominios/aprendizado.md)).
-- **Funil medido** (evolução de desempenho, ADR-027): consulta de receita (`receita.consulta{encontrada|ausente|
-  quarentena}`), reprodução (`receita.reproducao{ok|divergiu}`) e retorno à IA (`receita.retorno_ia{motivo}`),
+- **Funil medido** (evolução de desempenho, ADR-027): consulta de receita (`receita.consulta{encontrada|candidata|
+  herdada|ausente|quarentena}`, com a causa do "ausente" em `receita.ausente{causa}`), reprodução (`receita.reproducao{ok|divergiu}`) e retorno à IA (`receita.retorno_ia{motivo}`),
   em `GET /api/desempenho`. `GET /api/flows/cobertura` traz `aproveitamento` por fluxo e app: etapas elegíveis, por
   receita, receita + IA e só IA, "sem cobertura" separado de "receita de outra chave ou em quarentena", e chamadas de
   IA evitadas estimadas (`taskqueue/aproveitamento.py`).
@@ -404,6 +410,7 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
 | `ai.max_hierarchy_elements` | 60 | 140 (`config.py`) |
 | `ai.image_policy` | `auto` | `always` (`config.py`) |
 | `ai.recipes` | `replay` | `off` (`config.py`) |
+| `ai.recipes_heranca` (RA-20) | `true` | `true` (`config.py`) |
 | `ai.image.provider` / `model` / `per_persona` / `on_create` | `simulated` / `gpt-image-2` / 1 / `true` | os mesmos (`config.py::ImageCfg`); `quality: medium`, `price_per_image` (estimativa) low 0,02 / medium 0,06 / high 0,2 US$, `price_per_mtok` 5 / 8 / 30 US$ |
 | `ai.limits` (fatias por origem, 31.6) | comentado, com os padrões | `curador_max_usd_per_day` vazio (= 0,10 × teto do dia), `curador_fracao_do_dia` 0,10, `jev_max_usd_per_day` 0,50 (`config.py::AiLimitsCfg`) |
 | `ai.esquema_do_plano` (LT-4b, 17.13) | `longo` | `longo` (`config.py`); `curto` = etapa livre sem `description`, `precondition` e `max_attempts` (o backend preenche), com título e objetivo curtos |

@@ -635,6 +635,10 @@ class AiCfg(BaseModel):
     # caminho dela, vira ativa e passa a agir; uma divergência recomeça a contagem. Uma execução limpa só é um
     # caminho visto uma vez — aprender só com prova (pedido do dono). 0 = sem prova: nasce ativa (o modo anterior).
     recipes_promote_after: int = Field(2, ge=0, le=20)
+    # RA-20: a etapa sem receita na chave atual herda, como CANDIDATA (em prova, nunca agindo), a receita provada da
+    # mesma etapa noutra versão do app, noutra variante ou na legada. false = só mede a causa do "ausente". Só vale
+    # com a prova (`recipes_promote_after > 0`): sem ela a receita aprendida já nasce ativa e não há o que herdar.
+    recipes_heranca: bool = True
     flows: bool = False                          # reaproveita o plano de comandos repetidos (sem chamar o planejador)
     pathfinder_wait_s: int = Field(0, ge=0, le=3600)   # >0: numa execução sem receita, 1 aparelho aprende e os demais esperam
     # US$ por milhão de tokens [entrada, leitura de cache, gravação de cache, saída] — platform.claude.com/docs/en/about-claude/pricing

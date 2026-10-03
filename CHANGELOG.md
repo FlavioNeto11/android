@@ -253,6 +253,28 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (`commit_sem_catalogo`) é classe **B**, aprovado em lote. A emenda para C da mesma madrugada (PR #127) foi revertida
   no código (`domain/politica_de_risco.py`), no doc do domínio e no §8.4 do desenho. O aviso de espera volta à faixa B.
 - Prova `simulated`: `test_learning_politica_de_risco.py` e `test_learning_espera.py`.
+## 2026-10-03 — RA-20 (29.40), fatia A: a causa do "ausente" medida e a herança da receita provada (branch feat/ra-20-causa-do-ausente)
+
+- 52 % das consultas de receita davam "ausente" (reavaliação de 03/10), quase nenhuma por falta de receita: a chave
+  exige versão, assinatura e variante, e a receita viva noutra chave não casava. Agora a chave sem receita herda, como
+  CANDIDATA, a receita `active` da mesma etapa noutra variante, na legada (as 19 de 17/09, sem assinatura nem variante)
+  ou noutra versão do app. A herdeira só age depois de concordar em sombra (`recipes_promote_after`); com `commit`, para
+  em `validated` (D1). Assinatura diferente nunca doa; a chave esperando o dono ou posta de lado não herda; o veto da
+  pessoa vale (`save`). `ai.recipes_heranca: false` desliga a herança e mantém a medida. Só herda com a prova em
+  sombra (`recipes_promote_after > 0`): com 0, o modo anterior da suíte de reaproveitamento, a receita aprendida já nasce
+  ativa e uma herdeira só tomaria o lugar dela.
+- A herdeira que se prova na chave completa e passa a agir (`active`) aposenta a legada ativa da mesma etapa e versão
+  (cada parte da chave é a dela ou vazia), com a trilha "provou-se na chave completa": a legada não casava mais
+  consulta nenhuma. A ativa de outra assinatura ou de outra variante fica, mesmo com a outra parte vazia (revisão da
+  Android). A que espera o dono (`validated`) não aposenta nada.
+- A causa de cada "ausente" é contada em `receita.ausente{causa}` (vocabulário do Aprendizado,
+  `domain/causa_do_ausente.py`); a consulta que herdou conta `receita.consulta{resultado=herdada}`. Adendo v0.77
+  (provisório).
+- Fora desta fatia: o hash sem o `post.value` do `model_judged` (fatia B, PR à parte), o seletor do filho rotulado
+  (desenho de núcleo com a Android) e os literais do comando no `troca()`. As metas de fill_message e de 65 % dependem
+  sobretudo do seletor do filho.
+- Prova `simulated`: `test_recipes.py::test_herda_da_versao_anterior` (herda, concorda duas vezes e volta a agir com 0
+  decisões do ator), `test_receita_heranca.py` e `test_learning_causa_do_ausente.py`. Real: `not_run`.
 
 ## 2026-10-03 — 29.32: a conta retirada some de `memory_items` de todas as personas (branch feat/29-32-memoria-conta-retirada)
 

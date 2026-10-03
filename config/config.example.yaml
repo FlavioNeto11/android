@@ -226,6 +226,8 @@ ai:
   esquema_do_plano: longo         # (longo) LT-4b: curto = a etapa livre do plano sem description/precondition/max_attempts
                                   # (o backend preenche) e com título e objetivo curtos; ~−23 % de saída do planejador
   recipes: replay                 # (off) aprende a etapa uma vez e repete por seletores; shadow = só compara
+  recipes_heranca: true           # RA-20: sem receita na chave, herda da mesma etapa noutra versão/variante, como
+                                  # candidata (só com recipes_promote_after > 0)
   recipes_promote_after: 2        # receita aprendida nasce candidata (a IA decide, ela só é comparada) e vira ativa
                                   # depois de N execuções seguidas em que a IA fez o caminho dela; 0 = nasce ativa
   flows: true                     # (false) comando repetido reaproveita o plano, sem chamar o planejador

@@ -173,6 +173,16 @@ diária.
   reais desligam.
 - **Receita.** A promoção em sombra (item 21.14) para em `validated` quando há ação `commit`. O livro guarda o veto e a
   trilha.
+- **A causa do "ausente" e a herança da receita (RA-20, item 29.40, 03/10).** O vocabulário e a regra são do Aprendizado
+  (`domain/causa_do_ausente.py`); quem consulta é a loja (`taskqueue/recipes.py::RecipeStore.find`, da Android), com
+  UMA consulta a mais, só no "ausente". A causa é `espera_o_dono`, `desligada`, `variante`, `legada` (assinatura e
+  variante vazias, as 19 de 17/09), `versao`, `assinatura` ou `sem_receita`, contada em `receita.ausente{causa}`. A chave
+  sem receita herda, como CANDIDATA, a receita `active` da mesma etapa (`step_hash`) mais próxima, noutra variante, na
+  legada ou noutra versão; assinatura diferente nunca doa, e a chave esperando o dono ou posta de lado não herda. A
+  herdeira passa pelo veto de `save`, guarda a origem da doadora (`learned_from_step`) e só age depois de concordar em
+  sombra (`recipes_promote_after`); com `commit`, para em `validated`. `ai.recipes_heranca: false` só mede a causa, e
+  com `recipes_promote_after: 0` não há herança (a aprendida já nasce ativa). Quando a herdeira vira `active`, a legada
+  ativa da mesma etapa e versão sai (`superseded`, "provou-se na chave completa").
 - **Habilidade.** O primeiro escritor real de `skill_validation_results`: cada execução de versão grava a observação
   (`proof=real` só de execução real). Execução com etapa confirmada à mão vira `uncertain`, nunca `passed`. O sistema
   pode validar; publicar é sempre de pessoa.

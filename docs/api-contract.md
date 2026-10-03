@@ -4196,6 +4196,23 @@ Prova `simulated`: `tests/test_learning_rotulo_de_intencao.py` e
 `frontend/src/features/aprendizado/IntencaoSecao.test.tsx`. Ensaio no navegador (03/10, cópia do banco, provedor
 simulado): responder, "Nenhuma destas", filtro, 409, 422, erro de carga e Sinais.
 
+## Adendo v0.77 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — a causa do "ausente" e a herança da receita (RA-20, item 29.40)
+
+Só nomes de métrica e uma chave de config, aditivos. Nenhuma rota muda.
+
+- `receita.consulta{resultado}` ganha o valor `herdada`: a chave não tinha receita e herdou, como candidata, a receita
+  provada da mesma etapa noutra chave. Como `candidata`, não termina em `receita.reproducao` (a IA decide a etapa).
+- Nome reservado novo: `receita.ausente{causa}`, uma contagem por consulta sem receita na chave (herdada ou não), com
+  `causa` ∈ `espera_o_dono`, `desligada`, `variante`, `legada`, `versao`, `assinatura`, `sem_receita`
+  (`modules/learning/domain/causa_do_ausente.py`). Os dois saem em `GET /api/desempenho` como os demais contadores.
+- `ai.recipes_heranca` (padrão `true`): `false` só mede a causa, sem herdar. Herda só com `ai.recipes_promote_after`
+  maior que 0.
+- Transição nova na trilha da receita (`active → superseded`, pelo sistema): a legada ativa da mesma etapa e versão sai
+  quando uma receita da chave completa se prova e passa a agir.
+
+Prova `simulated`: `tests/test_recipes.py::test_herda_da_versao_anterior`, `tests/test_receita_heranca.py` e
+`tests/test_learning_causa_do_ausente.py`.
+
 ## Adendo v0.78 (03/10/2026; número da orquestradora, `.claude/reservas.md`) — "Confirmar que fica" (item 30.24)
 
 - `POST /api/aprendizado/{kind}/{ref}/confirmar` com `{"motivo"?: string (até 500), "review_id"?: string}`: a pessoa
