@@ -136,13 +136,14 @@ class AiCallsAccounting:
 
     def record(self, *, provider: str, model: str, usd: float, ms: int, ok: bool, error: str | None) -> None:
         # `add_usage` (taskqueue) conta tokens; imagem não tem token — a linha nasce aqui, com `usd` declarado.
-        # `provider='simulated'` continua fora do gasto (`costs.spent_usd` já o exclui).
+        # `provider='simulated'` continua fora do gasto (`costs.spent_usd` já o exclui). RA-10: a imagem é da persona
+        # (`origem='persona'`); era a única linha nova que ainda nascia sem origem.
         self._db.execute(
             "INSERT INTO ai_calls(ts, role, model, tier, input_tokens, cache_read, cache_write, output_tokens,"
-            " with_image, ms, ok, requested_model, provider, error_kind, error_message, usd)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " with_image, ms, ok, requested_model, provider, error_kind, error_message, usd, origem)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (now_iso(), "image", model, 0, 0, 0, 0, 0, 0, int(ms), int(ok), model, provider,
-             None if ok else "image", None if ok else (error or "")[:500], float(usd)))
+             None if ok else "image", None if ok else (error or "")[:500], float(usd), "persona"))
 
 
 def construir_gerador(cfg: Config) -> ImageGenerator:

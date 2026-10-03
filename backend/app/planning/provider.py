@@ -5,7 +5,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, get_args
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -84,6 +84,45 @@ class Usage:
     # preenche é o hub (`AIRouter._call`); `add_usage` grava. `None` = chamada que não passou pelo hub.
     origem: str | None = None
     ref: str | None = None
+    # RA-10 (migração 080): o desfecho, por que subiu de modelo, para que foi feita e por que a imagem foi (ou não).
+    # Quem preenche é o executor (`_ai`, com a `MarcaDaChamada`); os vocabulários são os de baixo.
+    verdict: str | None = None
+    escalate: str | None = None
+    motivo: str | None = None
+    image_reason: str | None = None
+
+
+#: RA-10 (migração 080): POR QUE a chamada foi ao modelo de escalonamento (`ai_calls.escalate`; NULO = não foi).
+#: `decide`, na ordem do executor: efeito (política do efeito externo) · nova_tentativa · erros_seguidos ·
+#: piso (alvo inexistente, item 7.8) · bloqueio (o modelo de ação relatou bloqueio e a mesma tela sobe uma vez, 17.10) ·
+#: ciclo (ação repetida na mesma tela). `verify`: nivel (o barato recusou vendo um nível que já atende, 7.10) ·
+#: sim_com_efeito (o "sim" do barato em etapa com efeito é conferido, 17.10).
+MotivoDeEscalonamento = Literal["efeito", "nova_tentativa", "erros_seguidos", "piso", "bloqueio", "ciclo", "nivel",
+                                "sim_com_efeito"]
+#: RA-10: PARA QUE a chamada foi feita dentro do papel (`ai_calls.motivo`). São os grupos de `/api/usage`:
+#: `verify` julgamento · rejulgamento · vazio (a coleta sem item, 12.4); `decide` decisao · cascata (a decisão no
+#: modelo forte depois do bloqueio do barato); `plan` plano · refinamento (o assistente do comando, que também é `plan`
+#: e grava na execução respondida); `leitura` leitura (a transcrição do recorte, 12.5).
+MotivoDaChamada = Literal["julgamento", "rejulgamento", "vazio", "decisao", "cascata", "plano", "refinamento",
+                          "leitura"]
+#: RA-10: por que a imagem foi, ou não, junto (`ai_calls.image_reason`), na ordem de `StepExecutor._motivo_da_imagem`.
+#: Sem imagem: sensivel · politica_nunca · arvore_rica. Com imagem: politica_sempre · pedida · problema ·
+#: primeira_julgada · arvore_pobre. A coluna `with_image` diz se ela de fato foi (a captura pode falhar).
+MotivoDaImagem = Literal["sensivel", "politica_nunca", "politica_sempre", "pedida", "problema", "primeira_julgada",
+                         "arvore_pobre", "arvore_rica"]
+MOTIVOS_DE_ESCALONAMENTO: Final[tuple[str, ...]] = get_args(MotivoDeEscalonamento)
+MOTIVOS_DA_CHAMADA: Final[tuple[str, ...]] = get_args(MotivoDaChamada)
+MOTIVOS_DA_IMAGEM: Final[tuple[str, ...]] = get_args(MotivoDaImagem)
+
+
+@dataclass(frozen=True, slots=True)
+class MarcaDaChamada:
+    """RA-10: o que o EXECUTOR sabe de uma chamada e o provedor não — por que subiu de modelo, para que foi feita e por
+    que a imagem foi. `StepExecutor._ai` a carimba no `Usage` da chamada (e na linha de erro ou de orçamento recusado,
+    que também é desta chamada) antes de gravar; o veredito sai do resultado."""
+    motivo: MotivoDaChamada | None = None
+    escalate: MotivoDeEscalonamento | None = None
+    image_reason: MotivoDaImagem | None = None
 
 
 @dataclass(slots=True)

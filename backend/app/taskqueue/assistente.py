@@ -133,6 +133,8 @@ class ComandoAssistido:
             raise RunError("ai_error", f"O assistente devolveu um comando vazio: {exc}", 503,
                            {"kind": "invalid_output", "retryable": True}) from exc
         # Custo fora de execução (ou da execução que está sendo respondida): entra no teto do dia e no relatório.
+        # RA-10: o papel é `plan`, como o do plano; o motivo separa os dois na execução respondida.
+        usage.motivo = "refinamento"
         try:
             runs.repo.add_usage(run_id, None, usage)
         except Exception:  # noqa: BLE001 - contabilizar nunca derruba a resposta que já custou
