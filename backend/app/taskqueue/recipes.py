@@ -17,8 +17,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -26,6 +27,7 @@ from ..automation.hierarchy import UiElement, UiTree
 from ..db import Database, Row, dumps, loads
 from ..metricas import metricas
 from ..models import PlanStep
+from ..modules.learning.domain.causa_do_ausente import ChaveDaReceita, ReceitaVizinha, causa_do_ausente, doadora
 from ..modules.learning.domain.livro import receita_tem_efeito
 from ..planning.provider import Decision
 from ..util import norm_text, now_iso
@@ -41,6 +43,8 @@ SELECTOR_RANK = ("rid+text", "rid+desc", "rid", "desc", "text")
 QUARANTINE_AFTER = 3
 MAX_ACTIONS = 8
 TEMPLATE_RE = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
+
+log = logging.getLogger("poc.receitas")
 
 
 class RecipeDiverged(Exception):
@@ -472,10 +476,15 @@ class OuvinteDasReceitas(Protocol):
 
 
 class RecipeStore:
-    def __init__(self, db: Database, ouvinte: OuvinteDasReceitas | None = None):
+    def __init__(self, db: Database, ouvinte: OuvinteDasReceitas | None = None, *,
+                 herdar: Callable[[], bool] = lambda: False):
         self.db = db
         #: A trilha e o veto do livro de aprendizado (ADR-054); `None` = sem trilha (a loja crua dos testes).
         self.ouvinte = ouvinte
+        #: RA-20 (`ai.recipes_heranca`, lido a cada consulta): a chave sem receita herda, como CANDIDATA, a receita
+        #: provada da mesma etapa noutra versão, variante ou na legada (`find`). Desligado, só mede a causa. A loja
+        #: sozinha não herda: quem liga é o executor, e só com a prova em sombra (`recipes_promote_after > 0`).
+        self.herdar = herdar
 
     def _avisar(self, recipe_id: int, de: str | None, para: str, motivo: str, por: str = SISTEMA) -> None:
         if self.ouvinte is not None:
@@ -495,6 +504,10 @@ class RecipeStore:
         conhecido, efeito ainda não disparado), então a soma dos resultados é o total de TENTATIVAS elegíveis (o
         funil conta por tentativa — revisão F8: é a única unidade em que consulta, reprodução e retorno fecham). Chave
         incompleta não é "ausente": a etapa nem era elegível, e não entra na conta.
+
+        RA-20: no "ausente", a causa é medida (`receita.ausente`, rótulo `causa`) e a chave herda, como CANDIDATA, a
+        receita provada da mesma etapa noutra chave (`_herdar`). A herdeira volta como a candidata de sempre: a IA
+        decide a etapa e ela só é comparada. O resultado dessa consulta é `herdada`.
         """
         if not (package and app_version and step_hash):
             return None
@@ -512,9 +525,46 @@ class RecipeStore:
             quarentena = self.db.one("SELECT 1 FROM recipes WHERE app_package=? AND app_version=? AND app_signature=?"
                                      " AND variant=? AND step_hash=? AND status='quarantined' LIMIT 1",
                                      (package, app_version, signature, variant, step_hash))
-            resultado = "quarentena" if quarentena is not None else "ausente"
+            if quarentena is not None:
+                resultado = "quarentena"
+            else:
+                resultado, row = self._herdar(package, app_version, step_hash, signature=signature, variant=variant)
         metricas.contar("receita.consulta", resultado=resultado)
         return row
+
+    def _herdar(self, package: str, app_version: str, step_hash: str, *, signature: str,
+                variant: str) -> tuple[str, Row | None]:
+        """A causa do "ausente" (`modules/learning/domain/causa_do_ausente.py`) e a herança, numa consulta a mais.
+
+        A doadora é uma receita `active` da mesma etapa (`step_hash`) noutra versão, noutra variante ou na legada
+        (assinatura e variante vazias, de antes de a chave tê-las); assinatura diferente nunca doa. A herdeira nasce
+        `candidate` por `save` (que confere o veto da pessoa e "uma viva por chave") e guarda a origem da doadora
+        (`learned_from_step`). Dois aparelhos herdando juntos: o segundo `save` não grava e ele recebe a candidata
+        do primeiro. Qualquer falha aqui vira "ausente": a herança é otimização e nunca derruba a etapa.
+        """
+        alvo = ChaveDaReceita(app_version, signature, variant)
+        try:
+            vizinhas = [ReceitaVizinha(int(r["id"]), ChaveDaReceita(str(r["app_version"]), str(r["app_signature"] or ""),
+                                                                    str(r["variant"] or "")), str(r["status"]))
+                        for r in self.db.query("SELECT id, app_version, app_signature, variant, status FROM recipes"
+                                               " WHERE app_package=? AND step_hash=?", (package, step_hash))]
+            causa = causa_do_ausente(alvo, vizinhas)
+            metricas.contar("receita.ausente", causa=causa.value)
+            dona = doadora(alvo, vizinhas) if self.herdar() else None
+            if dona is None:
+                return "ausente", None
+            origem = self.db.one("SELECT step_key, actions, learned_from_step FROM recipes WHERE id=?", (dona.id,))
+            if origem is None:
+                return "ausente", None
+            self.save(package=package, app_version=app_version, step_hash=step_hash, step_key=str(origem["step_key"]),
+                      actions=loads(origem["actions"], []), learned_from=str(origem["learned_from_step"] or ""),
+                      signature=signature, variant=variant, candidate=True,
+                      heranca=f"herdada da receita {dona.id} ({causa.value}); em prova (sombra)")
+            herdeira = self._candidata(package, app_version, step_hash, signature=signature, variant=variant)
+            return ("herdada", herdeira) if herdeira is not None else ("ausente", None)
+        except Exception as exc:  # noqa: BLE001 - herdar é otimização: a etapa segue com a IA
+            log.warning("receitas: herança indisponível (%s %s): %s", package, step_hash, exc)
+            return "ausente", None
 
     def _ativa(self, package: str, app_version: str, step_hash: str, *, signature: str, variant: str) -> Row | None:
         """A receita ativa da chave, sem medir nada — `save` também pergunta isto, e não é consulta de etapa."""
@@ -532,7 +582,7 @@ class RecipeStore:
 
     def save(self, *, package: str, app_version: str, step_hash: str, step_key: str, actions: list[dict[str, Any]],
              learned_from: str, signature: str = "", variant: str = "", candidate: bool = False,
-             replaces: int | None = None) -> int | None:
+             replaces: int | None = None, heranca: str | None = None) -> int | None:
         """Grava uma versão nova SÓ se não houver receita ativa (a ativa só sai por quarentena).
 
         `candidate`: a receita nasce em prova (`recipes_promote_after`, o caminho que a IA aprendeu); sem ele nasce
@@ -546,9 +596,12 @@ class RecipeStore:
         D1: a `validated` (concordou, tem efeito externo, espera o dono) segura a chave como a ativa — senão cada
         execução da etapa deixaria mais uma validada na fila do dono. E o caminho que uma PESSOA desligou não volta
         pelo sistema (`ouvinte.vetada`); o treino é da pessoa e não passa pelo veto.
+
+        `heranca` (RA-20): o motivo da trilha da herdeira (`find`). Herdar é do SISTEMA, mesmo de uma receita ensinada
+        no treino (a origem fica em `learned_from`): passa pelo veto e a trilha é do sistema.
         """
         chave = (package, app_version, signature, variant, step_hash)
-        treino = learned_from.startswith("training:")
+        treino = learned_from.startswith("training:") and heranca is None
         with self.db.tx():
             if self._ativa(package, app_version, step_hash, signature=signature, variant=variant) is not None:
                 return None
@@ -587,7 +640,7 @@ class RecipeStore:
             for antiga in antigas:
                 self._avisar(int(antiga["id"]), str(antiga["status"]), "superseded", f"substituída pela v{ver}")
             if novo:
-                motivo = ("ensinada no modo treinamento" if treino else
+                motivo = (heranca if heranca is not None else "ensinada no modo treinamento" if treino else
                           "aprendida da IA; em prova (sombra)" if candidate else
                           "aprendida da IA já ativa (ai.recipes_promote_after: 0, o modo anterior)")
                 self._avisar(novo, None, status, motivo, por=learned_from if treino else SISTEMA)
@@ -669,7 +722,25 @@ class RecipeStore:
                          + ("; tem ação de efeito externo: publicar é do dono (D1)" if efeito else
                             "; reaprendida depois de uma evidência inválida: publicar é do dono (classe B)"
                             if reaprendida else "; sem efeito externo: publicada pelo sistema (D1)"))
+            if novo == "active":
+                self._aposentar_legadas(row)
             return novo == "active"
+
+    def _aposentar_legadas(self, provada: Row) -> None:
+        """RA-20: a receita que se provou na chave COMPLETA (assinatura e variante conhecidas) aposenta a legada ativa da
+        mesma etapa e da mesma versão (assinatura ou variante vazias, de antes de a chave tê-las). A legada não casava
+        mais nenhuma consulta com a chave completa; a trilha diz quem a substituiu. Só no `active`: a herdeira que
+        espera o dono (`validated`) ainda não age, e a legada fica até ele decidir."""
+        if not (provada["app_signature"] and provada["variant"]):
+            return
+        legadas = self.db.query(
+            "SELECT id FROM recipes WHERE app_package=? AND app_version=? AND step_hash=? AND status='active'"
+            " AND (app_signature='' OR variant='') AND id<>?",
+            (provada["app_package"], provada["app_version"], provada["step_hash"], provada["id"]))
+        for legada in legadas:
+            self.db.execute("UPDATE recipes SET status='superseded' WHERE id=? AND status='active'", (legada["id"],))
+            self._avisar(int(legada["id"]), "active", "superseded",
+                         f"legada sem assinatura ou variante: a receita {provada['id']} provou-se na chave completa")
 
     def replayer(self, row: Row, variables: dict[str, str]) -> Replayer:
         return Replayer(recipe_id=row["id"], version=row["version"], actions=loads(row["actions"], []), variables=variables)
