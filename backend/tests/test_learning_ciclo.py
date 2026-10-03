@@ -30,7 +30,8 @@ def _esperado(frm: SkillState, to: SkillState, actor: Actor, side_effect: bool, 
     """A regra do dono, reescrita sem olhar a implementação."""
     if S.DRAFT in (frm, to):
         return False
-    so_pessoa = {(S.DEPRECATED, S.PUBLISHED), (S.DISABLED, S.PUBLISHED)}
+    # 30.31: devolver à prova (o desligado volta a provar-se, inerte) também é só da pessoa.
+    so_pessoa = {(S.DEPRECATED, S.PUBLISHED), (S.DISABLED, S.PUBLISHED), (S.DISABLED, S.CANDIDATE)}
     os_dois = {(S.CANDIDATE, S.VALIDATED), (S.VALIDATED, S.PUBLISHED), (S.CANDIDATE, S.DISABLED),
                (S.VALIDATED, S.DISABLED), (S.PUBLISHED, S.DEPRECATED), (S.PUBLISHED, S.DISABLED)}
     if (frm, to) in so_pessoa:

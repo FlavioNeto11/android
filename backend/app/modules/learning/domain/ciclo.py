@@ -51,6 +51,11 @@ TRANSICOES: Mapping[tuple[SkillState, SkillState], frozenset[Actor]] = {
     (_S.PUBLISHED, _S.DISABLED): _PS,      # sistema: atrapalha, conflito, refutação
     (_S.DEPRECATED, _S.PUBLISHED): _P,     # reativar é sempre de pessoa
     (_S.DISABLED, _S.PUBLISHED): _P,
+    # 30.31, "devolver à prova": a pessoa tira o desligado de circulação SEM publicá-lo — o item fica inerte e volta
+    # a provar-se (a sombra do fluxo só olha `candidate`/`validated`), com a evidência contada de novo a partir da
+    # volta. Desligar "para validar pela IA" prendia o fluxo: de `disabled` só se saía publicando. Só fluxo
+    # (`livro.acoes_da_pessoa` e `LearningService.mudar_estado`).
+    (_S.DISABLED, _S.CANDIDATE): _P,
 }
 
 

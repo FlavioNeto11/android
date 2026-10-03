@@ -136,6 +136,10 @@ describe('ações da pessoa (as `acoes` do backend; o painel só põe o texto)',
     const pub = entrada({ state: 'published', acoes: [ACAO('deprecated', 'aposentar'), ACAO('disabled', 'desligar')] });
     expect(acoesDoItem(pub).map((a) => a.label)).toEqual(['Aposentar', 'Desligar']);
     expect(acoesDoItem(entrada({ state: 'disabled', acoes: [ACAO('published', 'reativar')] }))[0]?.label).toBe('Reativar');
+    // 30.31: o fluxo desligado também pode voltar à prova (inerte, sem publicar).
+    const fluxo = entrada({ kind: 'fluxo', state: 'disabled', acoes: [ACAO('published', 'reativar'), ACAO('candidate', 'devolver')] });
+    expect(acoesDoItem(fluxo).map((a) => [a.to, a.label, a.perigo])).toEqual([
+      ['published', 'Reativar', false], ['candidate', 'Devolver à prova', false]]);
   });
 
   it('chave que o painel não conhece (backend mais novo) aparece como veio, sem perigo', () => {

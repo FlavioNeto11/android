@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: "devolver à prova" (30.31, item 0; branch feat/30-31-validacao)
+
+- `ciclo.TRANSICOES` ganha `disabled → candidate`, só de pessoa e só para fluxo (adendo v0.91):
+  - no livro, a chave `devolver` em `acoes`; no painel, o botão "Devolver à prova";
+  - receita, lição e tela recusam com `transition_forbidden`.
+- Na concordância do parecer, "devolver" vale como esperar (`parecer._DIRECAO_DA_ACAO`).
+- A sombra do fluxo conta só a evidência a partir da volta (`SombraDosFluxos._avaliar`).
+- Motivo: os 5 fluxos desligados em 03/10 "para validar pela IA" nunca recebiam evidência. É o pré-requisito do
+  laço de validação automática (30.31, desenho aprovado pela orquestradora).
+- Prova `simulated`:
+  - `tests/test_d1_fluxos.py::test_devolver_a_prova_tira_o_veto_e_a_prova_recomeca_da_volta`;
+  - a paridade e o roteiro em `tests/test_learning_acoes.py`; a regra do dono em `tests/test_learning_ciclo.py`;
+  - 585 testes afetados passaram; vitest de `aprendizado` 131; typecheck limpo.
+- Real: `not_run`.
+
 ## 2026-10-03 — Documentação e processo: ADR-067, o aprendizado vivo aceito (30.19; branch docs/30-19-adr-067)
 
 - `docs/decisoes.md`: ADR-067 (índice e seção), com a Fase 30 como foi implementada.

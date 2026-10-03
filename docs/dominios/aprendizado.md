@@ -56,11 +56,21 @@ origem.
 | `candidate`/`validated` → `disabled` | sistema ou pessoa | contradição, refutação, rejeição |
 | `published` → `deprecated`/`disabled` | sistema ou pessoa | rebaixar é sempre automático |
 | `deprecated`/`disabled` → `published` | só pessoa | reativar é sempre de pessoa |
+| `disabled` → `candidate` | só pessoa, só fluxo | "devolver à prova" (30.31): inerte, sem publicar; a sombra conta de novo |
 
 - `requires_owner = side_effect OR human_origin` é derivado: nenhuma rota o edita. O repositório confere de novo no
   próprio `UPDATE` e, com `conferir_nascimento`, no item que o sistema já cria num estado (segunda camada).
 - **Veto.** O conteúdo desligado por uma pessoa não volta pelo sistema (mesmo `content_hash`, mesmo escopo). Desligado
   pelo sistema, fica vetado por 90 dias ou até a versão do app mudar.
+- **Devolver à prova (30.31, item 0).** Desligar "para validar pela IA" prendia o fluxo: a sombra só olha
+  `candidate`/`validated`, e de `disabled` só se saía publicando.
+  - A pessoa agora devolve o fluxo desligado à prova (`disabled → candidate`, chave `devolver` em `acoes`, botão
+    "Devolver à prova"). Ele fica inerte (`FlowStore.match` só casa o ativo) e sai do veto, porque a última decisão
+    da pessoa já não é desligar.
+  - A sombra (`SombraDosFluxos._avaliar`) só conta a evidência observada a partir da volta, a favor e contra: o
+    fluxo prova-se de novo, e com efeito para em `validated`, como sempre.
+  - O sistema não devolve nada. Receita, lição e tela recusam (`transition_forbidden`): a receita volta a
+    provar-se pela loja quando a etapa é aprendida de novo, e a lição e a tela, pela evidência.
 - **Só evidência real promove** (`runs.simulated=0`), contada por execução e por aparelho distintos. A execução
   simulada deixa a sua linha em `learning_evidence` e não muda nada.
 - **Quem decide pela rota** é o operador da sessão do painel (`panel` sem sessão), nunca `sistema`.
