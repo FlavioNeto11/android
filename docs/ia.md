@@ -1293,6 +1293,35 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
     - Prova `simulated`: `backend/tests/test_decisao_fechada_forma_a.py`. As 86 da fase 2 da H e as 40 + 37 das
       regressões G e F recusam nos dois catálogos, e os 30 controles operacionais passam. No harness de 579 há 0
       vazamentos, 0 passagens indevidas e as 6 recusas indevidas de antes.
+  - **Depois do NO-GO da rodada I (31.20; ADR-069 item 19).** As lacunas da rodada I fecham só por lista de bloqueio,
+    sem mudar a definição do gatilho.
+    - O que recusa:
+      - a locução de entrar com até 2 tokens no meio (`_LOCUCAO_DE_ENTRAR`, `_fim_da_locucao`), "identifique-se" e
+        `_DESTRAVAR` com conector;
+      - o futuro, o condicional e o "já tinha entrado" no `_ENTRAR`;
+      - o conector com hífen (`_separa_conector`) e "amb";
+      - o valor depois do destino cortado (`_valor_depois_do_corte`, estrito);
+      - a vírgula no par (`_par_sem_campo_forte`);
+      - `_POR_VALOR_COM_ENTRAR` com verbo de entrar que não é o de pessoa;
+      - a conta do catálogo como identidade (`_usa_conta_do_catalogo`);
+      - os eufemismos novos de `_EUFEMISMO_C7` e `_EUFEMISMO_EH`.
+    - E-mail (`entidades.py`):
+      - o `_EMAIL` engole o domínio de topo solto (`_SEPARADOR_DO_TLD`, `_TLD_SOLTO`);
+      - o e-mail em peças e o provedor rotulado recusam por `email_ofuscado`;
+      - `_mascarar_fragmentos` mascara, frase a frase, provedor, domínio de topo e valor rotulado ao lado de `[email]`,
+        `[usuario]` ou handle com ponto. Prosa sem âncora passa.
+    - C2: `_descricao` devolve "(sem nome)" quando o nome do fluxo cai no `motivo_c7`. No catálogo vivo, isso vale para 3
+      dos 20 fluxos ativos.
+    - "entre" preposição (`_e_preposicao`): faixa, regente antes, "entre <det> A e <det> B" no começo da oração, ou
+      seguido de os, as, eles e elas.
+    - Pendente do dono: a A-média (37 + 10 formas sem verbo de entrar, xfail estrito em
+      `test_decisao_fechada_reverificacao_i.py`). Residual que não entra: sem gatilho, "entre na conversa/chat com",
+      "e use/coloque/escreva".
+    - Custo, só contagens:
+      - nos 126 comandos reais, as mesmas 8 recusas e 0 saídas diferentes do b7c05558;
+      - na HM3, 35 → 31 recusas, sem nenhuma nova.
+    - Prova `simulated`: no harness de 785 casos, os antigos ficam com as 4 recusas indevidas conhecidas, e os novos
+      têm 49 vazamentos (47 da A-média, o residual 715 e o artefato 780). Contra o b7c05558, 0 casos pioram.
   - **C7 nunca sai, em prosa ou não**: comando que fala de senha, código, 2FA, PIN, OTP, token, captcha, verificação, chave,
     segredo ou desafio, em PT, EN ou ES (`menciona_c7`: `mentions_credential`, `looks_secret` e o assunto no texto
     normalizado, também com homóglifo, letra de largura cheia, uma letra por vez separada por ponto ou espaço, e letra de

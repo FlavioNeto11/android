@@ -141,6 +141,9 @@ _EUFEMISMO_C7: Final = re.compile("|".join((
     r"|sms|mensagem|ligacao)\b",
     r"\b(?:embaixo|abaixo|debaixo|em baixo|logo abaixo|depois) d[oa]s? (?:campo (?:d[oa] )?)?(?:usuario|user|login"
     r"|e-?mail|nome de usuario)\b",
+    # 31.20 (L4 e sondas da H na rodada I): a caixa do formulário e o primeiro campo ("na caixa de baixo x", "na segunda
+    # caixa x", "primeiro campo lucas, segundo x")
+    r"\bcaixa(?:inha)? de baixo\b", r"\bsegunda caixa(?:inha)?\b", r"\bprimeiro campo\b",
     # rodada F (F-E): a pergunta de segurança sem a palavra ("a palavra de sempre é", "aquela que só eu sei é", "o nome do
     # meu primeiro cachorro é"). O "é" sem acento é o "e" da conjunção: "o post de sempre e comente" também recusa.
     r"\b(?:a|o|aquela|aquele|essa|esse|minha|meu)\s+(?:\w+\s+){0,3}?(?:de sempre|que so eu sei|que eu sempre uso"
@@ -193,6 +196,12 @@ _EUFEMISMO_EH: Final = re.compile("|".join((
     # espanhol e inglês: "lo mismo de siempre es", "la misma de ayer es", "my usual (one) is", "same as always:"
     r"\bl[oa]s? mism[oa]s? de (?:siempre|ayer|antes|hoy|la semana pasada) (?:es|:|=)\s",
     r"\bmy usual(?: one)? (?:is|:|=)\s", r"\bsame (?:one )?as (?:always|usual|before|yesterday) (?:is |: |= )",
+    # 31.20 (L4 e sondas da H na rodada I): "o acesso (do insta) é x", "pra entrar (no insta) é x", "a do lucas é x", "a
+    # mesma do banco é x", "o lema é x", "as letras são …", e os espanhóis "la misma del banco es x", "lo que tecleo es x"
+    r"\bo acesso (?:d[oa]s? \S+ )?(?:eh|:|=)\s",
+    r"\b(?:pra|para) (?:entrar|logar|acessar)(?: (?:no|na|nos|nas|em) \S+)? eh\s",
+    r"\b[ao]s? (?:mesm[ao]s? )?d[oa]s? \S+ (?:eh|:|=)\s", r"\b(?:o )?lema (?:eh|:|=)\s", r"\bas letras (?:sao|:)\s",
+    r"\bl[ao]s? mism[ao]s? del? \S+ (?:es|:|=)\s", r"\blo que (?:yo )?(?:tecleo|escribo|pongo|uso|digito) (?:es|:|=)\s",
 )))
 
 # ------------------------------------------------------------------ regra ESTRUTURAL de intenção de entrar (rodadas E e F)
@@ -209,14 +218,20 @@ _ENTRAR: Final[frozenset[str]] = frozenset((
     # rodada F (F-A): a lista multilíngue da orquestradora
     "zaloguj", "acceder", "accede", "acceda", "entrer", "entrez",
     # rodada H (H-1): romeno e indonésio
-    "intra", "masuk"))
+    "intra", "masuk",
+    # 31.20 (L2 e L3 da rodada I): o futuro, o condicional e o plural de entrar, logar e acessar ("entrarei", "entrará",
+    # "logarei", "loguem"), e o reflexivo de identificar ("identifique-se com", "identifique-se: x")
+    *(f"{r}{s}" for r in ("entr", "log", "acess") for s in ("arei", "ara", "aremos", "arao", "aria", "ariam", "ariamos")),
+    "loguem", "identifique-se", "identifica-se", "identificar-se", "identifiquem-se", "identifica-te"))
 #: O verbo de entrar no passado e no particípio ("entrei com girassol", "loguei com x", "logado com"; rodada H, H-1 a). Só
 #: liga um VALOR (`_login_valor`): fora dele "o lucas já está logado" e "veja se ele entrou" são pergunta de estado, e a F-A
 #: (verbo sem objeto de navegação) os recusaria.
 _ENTRAR_PASSADO: Final[frozenset[str]] = frozenset((
     "entrei", "entrou", "entramos", "entraram", "loguei", "logou", "logamos", "logaram", "logado", "logada", "logados",
     "logadas", "acessei", "acessou", "acessamos", "acessaram", "autentiquei", "autenticou", "conectei", "conectou",
-    "logged", "signed"))
+    "logged", "signed",
+    # 31.20 (L2): o particípio de entrar ("já tinha entrado no insta com x"); "entrada" não, que é a caixa de entrada
+    "entrado", "entrados"))
 #: "entre" também é preposição ("as fotos postadas ENTRE 10/05 e 12/05", "a diferença entre os dois"): no começo da oração
 #: ou depois destas palavras é sempre verbo; depois de palavra de conteúdo, `_e_preposicao` decide pelo que vem depois.
 _ANTES_DO_IMPERATIVO: Final[frozenset[str]] = frozenset((
@@ -252,17 +267,59 @@ def _ponta_da_faixa(toks: list[str], k: int) -> int:
     return k
 
 
+#: 31.20 (rodada I, HM3): a palavra que REGE a preposição "entre" ("escolha entre a foto e o vídeo", "a conversa entre a
+#: marina e o lucas", "a diferença entre os dois"). Lista de ISENÇÃO: a palavra que falta aqui deixa o "entre" verbo
+#: (custo de utilidade), não vaza.
+_REGE_ENTRE: Final[frozenset[str]] = frozenset((
+    "escolha", "escolhe", "escolher", "escolham", "decida", "decide", "decidir", "sorteie", "sorteia", "sortear",
+    "alterne", "alterna", "alternar", "divida", "divide", "dividir", "compare", "compara", "comparar", "conversa",
+    "conversas", "chat", "chats", "mensagens", "diferenca", "diferencas", "comparacao", "relacao", "distancia", "meio",
+    "troca", "dialogo", "briga", "amizade", "disputa", "partida", "votacao"))
+#: O determinante que abre cada ponta de "entre A e B" no começo da oração ("entre a marina e o bruno, siga o bruno").
+_DETERMINANTE_DA_PONTA: Final[frozenset[str]] = frozenset((
+    "a", "o", "as", "os", "um", "uma", "uns", "umas", "meu", "minha", "meus", "minhas", "seu", "sua", "seus", "suas",
+    "esse", "essa", "este", "esta", "aquele", "aquela", "the"))
+
+
 def _e_preposicao(toks: list[str], i: int) -> bool:
-    """"entre" preposição: depois de palavra de conteúdo (o "é" verbo chega como "eh", `_tokens_de`), diante de faixa
-    ("entre 8 e 12", "entre 08:00 e 12:00", "entre 12/09 e 15/09", "entre março e abril") ou de "os"/"as" ("é entre os
-    melhores"). "no insta entre 4471 e curte" e "no insta entre girassol e curta" seguem verbo."""
+    """"entre" preposição:
+    - diante de faixa, em qualquer posição ("entre 8 e 12", "a entrega é com a marina, entre 8 e 12", "entre março e
+      abril"); o número sai mascarado de qualquer jeito;
+    - depois de palavra que a rege (`_REGE_ENTRE`: "escolha entre a foto com a marina e a do bruno", "a conversa entre a
+      marina e o lucas"; 31.20, rodada I), salvo diante de lugar, conector ou separador ("escolha entre com girassol");
+    - no começo da oração, em "entre <det> A e <det> B" sem conector até três tokens depois ("entre a marina e o bruno,
+      siga o bruno"): a leitura de preposição só deixa o resto sem o verbo, como "a marina e o bruno, siga";
+    - depois de palavra de conteúdo (o "é" verbo chega como "eh", `_tokens_de`), diante de "os"/"as" ("é entre os
+      melhores").
+    "no insta entre 4471 e curte", "no insta entre girassol e curta" e "entre a página com girassol e o post" seguem
+    verbo."""
     n = len(toks)
-    if toks[i] != "entre" or i == 0 or i + 1 >= n or toks[i - 1] in _ANTES_DO_IMPERATIVO:
+    if toks[i] != "entre" or i + 1 >= n:
         return False
-    if toks[i + 1] in _DEPOIS_DA_PREPOSICAO:
-        return True
     meio = _ponta_da_faixa(toks, i + 1)
-    return meio > i + 1 and meio + 1 < n and toks[meio] in _LIGA_FAIXA and _ponta_da_faixa(toks, meio + 1) > meio + 1
+    if meio > i + 1 and meio + 1 < n and toks[meio] in _LIGA_FAIXA and _ponta_da_faixa(toks, meio + 1) > meio + 1:
+        return True
+    seguinte = toks[i + 1]
+    if seguinte in _LUGAR or seguinte in _CONECTORES or not seguinte[:1].isalnum():
+        return False
+    if i > 0 and toks[i - 1] in _REGE_ENTRE:
+        return True
+    if i == 0 or toks[i - 1] in _ANTES_DO_IMPERATIVO:
+        return _coordenacao_depois_de_entre(toks, i)
+    return seguinte in _DEPOIS_DA_PREPOSICAO
+
+
+def _coordenacao_depois_de_entre(toks: list[str], i: int) -> bool:
+    """"entre <det> A e <det> B" logo depois de `i`, com cada ponta de até três tokens, sem conector de gatilho nem lugar."""
+    n = len(toks)
+    if toks[i + 1] not in _DETERMINANTE_DA_PONTA:
+        return False
+    for k in range(i + 3, min(i + 6, n - 2)):
+        if toks[k] in _CONECTORES_DE_GATILHO or toks[k] in _LUGAR or not toks[k][:1].isalnum():
+            return False
+        if toks[k] in ("e", "ou", "and", "or") and toks[k + 1] in _DETERMINANTE_DA_PONTA:
+            return not any(t in _CONECTORES_DE_GATILHO for t in toks[i + 1:i + 4])
+    return False
 
 
 #: O verbo de entrar de duas palavras ("log in", "log into", "sign in", "inicia sessão", "zaloguj się").
@@ -274,11 +331,26 @@ _ENTRAR_2: Final[frozenset[tuple[str, str]]] = frozenset((
     ("logga", "in"), ("inicia", "sessio"), ("iniciar", "sessio"),
     # rodada H (H-1): norueguês, dinamarquês, tcheco, finlandês, turco e húngaro
     ("logg", "inn"), ("log", "ind"), ("prihlas", "se"), ("prihlaste", "se"), ("kirjaudu", "sisaan"), ("giris", "yap"),
-    ("lepj", "be"), ("jelentkezz", "be")))
+    ("lepj", "be"), ("jelentkezz", "be"),
+    # 31.20: o reflexivo sem hífen e o alemão separável com o valor no meio ("logg dich mit x ein")
+    ("identifique", "se"), ("identifica", "se"), ("logg", "dich"), ("melde", "dich")))
 #: O de três ("faça o acesso", "melde dich an").
 _ENTRAR_3: Final[frozenset[tuple[str, str, str]]] = frozenset((
     ("faca", "o", "acesso"), ("faz", "o", "acesso"), ("fazer", "o", "acesso"), ("facam", "o", "acesso"),
     ("melde", "dich", "an"), ("meld", "dich", "an"), ("melden", "sie", "sich"), ("logg", "dich", "ein")))
+#: 31.20 (B3 e L3 da rodada I): a locução de entrar com até dois determinantes ou pronomes no meio, que `_ENTRAR_2` e
+#: `_ENTRAR_3` só achavam colados: "inicie A sessão", "inicie SUA sessão", "faça acesso", "faça SEU acesso", "abra A
+#: sessão", "efetue O acesso", "realize O acesso", "log ME in", "sign YOURSELF in". {primeira palavra: a palavra que fecha}.
+_LOCUCAO_DE_ENTRAR: Final[Mapping[str, frozenset[str]]] = {
+    **dict.fromkeys(("inicie", "inicia", "iniciar", "iniciem", "iniciando", "abra", "abre", "abrir", "abram"),
+                    frozenset(("sessao", "sesion", "sessio"))),
+    **dict.fromkeys(("faca", "faz", "fazer", "facam", "efetue", "efetua", "efetuar", "efetuem", "realize", "realiza",
+                     "realizar", "realizem"), frozenset(("acesso", "login", "logon"))),
+    **dict.fromkeys(("log", "sign", "logga"), frozenset(("in", "into", "on"))),
+}
+_DENTRO_DA_LOCUCAO: Final[frozenset[str]] = frozenset((
+    "a", "o", "um", "uma", "sua", "seu", "minha", "meu", "tua", "teu", "nova", "novo", "la", "el", "su", "tu", "me", "us",
+    "yourself", "myself", "ourselves", "him", "her", "them", "you"))
 #: Entre o verbo e o objeto, pulado: "entre AGORA no app", "entre POR FAVOR no insta", "entre DE NOVO no feed".
 _ADVERBIOS: Final[frozenset[str]] = frozenset((
     "agora", "ja", "logo", "rapidinho", "rapido", "novamente", "entao", "ai", "por", "favor", "pf", "pfv", "pls",
@@ -352,7 +424,9 @@ _CONECTORES: Final[frozenset[str]] = frozenset((
     "com", "usando", "use", "usa", "utilizando", "with", "using", "con", "mit", "avec", "met", "z", "via", "through",
     "como", "pelo", "pela", "pelos", "pelas",
     # rodada H (H-1): norueguês e dinamarquês, romeno, indonésio, tcheco e finlandês ("kirjaudu sisään TUNNUKSELLA x")
-    "med", "cu", "dengan", "s", "tunnuksella"))
+    "med", "cu", "dengan", "s", "tunnuksella",
+    # 31.20: o catalão ("entra a instagram AMB x"; lacuna de outro idioma da rodada I)
+    "amb"))
 #: A posposição que liga o valor ANTES do verbo ("girassol ILE giriş yap", turco) e o sufixo instrumental húngaro colado
 #: ao valor ("lépj be girassol-LAL"): rodada H, H-1 a.
 _POSPOSICOES: Final[frozenset[str]] = frozenset(("ile", "kanssa"))
@@ -503,14 +577,30 @@ def _tokens_de(normal: str) -> list[str]:
         com_acento = _tokens(" ".join(linha.casefold().split()))
         if len(com_acento) == len(toks):
             toks = ["eh" if a == "é" else t for t, a in zip(toks, com_acento, strict=True)]
-        saida.extend(toks)
+        saida.extend(_separa_conector(toks))
+    return saida
+
+
+def _separa_conector(toks: list[str]) -> list[str]:
+    """O conector colado ao valor por hífen vira dois tokens ("com-girassol" → "com", "girassol"; 31.20, B7 da rodada I):
+    o `_TOKEN` junta as partes ligadas por hífen, e o conector sumia dentro do valor. Só o conector da forma A; o verbo
+    com pronome ("logue-se", "connecte-toi") fica inteiro."""
+    saida: list[str] = []
+    for t in toks:
+        cabeca, _, resto = t.partition("-")
+        if resto and cabeca in _CONECTORES_DE_GATILHO:
+            saida.extend((cabeca, resto))
+        else:
+            saida.append(t)
     return saida
 
 
 #: O verbo de digitar que põe um VALOR num campo (o piso do 31.9, depois da fase 2 da H). Sem "use", "coloque" e "escreva",
 #: que no produto são o filtro, a música e o comentário.
 _DIGITAR_VALOR: Final[frozenset[str]] = frozenset((
-    "digite", "digita", "digitar", "tecle", "tecla", "insira", "insere", "type", "teclea", "soletro", "soletra", "soletre"))
+    "digite", "digita", "digitar", "tecle", "tecla", "insira", "insere", "type", "teclea", "soletro", "soletra", "soletre",
+    # 31.20 (L1 da rodada I): o gerúndio ("entre no insta digitando x")
+    "digitando", "teclando", "inserindo", "soletrando"))
 
 
 def _cara_de_valor(tok: str) -> bool:
@@ -572,7 +662,22 @@ def _depois_do_conector(toks: list[str], i: int) -> bool:
 #: produto), "como", "pelo"/"pela", "via" e os de uma letra. O custo que o dono aprovou (6 de 122 comandos reais) foi
 #: medido com com/with/usando/con/mit.
 _CONECTORES_DE_GATILHO: Final[frozenset[str]] = frozenset((
-    "com", "with", "using", "usando", "utilizando", "con", "mit", "avec", "met", "med", "cu", "dengan", "tunnuksella"))
+    "com", "with", "using", "usando", "utilizando", "con", "mit", "avec", "met", "med", "cu", "dengan", "tunnuksella",
+    "amb"))
+#: 31.20 (L1 da rodada I): o verbo de PÔR um valor que fora de `_DIGITAR_VALOR` é comando comum ("preencha a legenda" está
+#: em 16 dos 126 comandos reais de 7 dias, 03/10). É gatilho só num comando que também tem verbo de entrar ("entre no insta
+#: e informe x", "entre no insta e preencha com x"); nos reais, custa 0 a mais.
+_POR_VALOR_COM_ENTRAR: Final[frozenset[str]] = frozenset((
+    "informe", "informa", "informar", "informando", "cole", "cola", "colar", "colando", "bote", "bota", "botar",
+    "botando", "preencha", "preenche", "preencher", "preenchendo"))
+#: 31.20 (L3): destravar o app com o valor ("desbloqueie o instagram usando x"). É gatilho só com o conector logo depois,
+#: como o verbo de entrar na forma A; fora da F-A, porque "desbloqueie o celular e abra o insta" é navegação.
+_DESTRAVAR: Final[frozenset[str]] = frozenset((
+    "desbloqueie", "desbloqueia", "desbloquear", "desbloqueiem", "desbloqueando", "destrave", "destrava", "destravem"))
+#: 31.20 (L5): usar a conta do catálogo ("use o lucas com x", "o lucas usa x").
+_USAR: Final[frozenset[str]] = frozenset(("use", "usa", "usar", "usem", "utilize", "utiliza", "utilizar"))
+#: 31.20 (B4 e L5): o que separa o destino do valor seguinte ("pelo lucas, x", "com o perfil lucas e x", "como lucas, x").
+_SEPARA_DO_DESTINO: Final[frozenset[str]] = _SEPARADORES_NAO_ALFABETICOS | {"e", "and", "y", ">", "="}
 
 
 #: O separador que não é palavra no par sem campo forte da forma A, sem a vírgula, que lista nomes ("siga o lucas, a
@@ -617,6 +722,11 @@ def _par_sem_campo_forte(toks: list[str], d: _Destinos, normal: str) -> bool:
             k = _pula(toks, fim + 1, _ARTIGOS)
             if k < n and _valor_do_par(toks[k]):
                 return True
+        # 31.20 (B5): a vírgula no trio "<app>, <nome do catálogo>, <valor>" ("instagram, lucas, girassol"); a lista de
+        # nomes sem o app antes ("as fotos do lucas, bruno e andre") não é par
+        if (fim + 1 < n and toks[fim] == "," and ini >= 2 and toks[ini - 1] == "," and toks[ini - 2] in _ONDE_SE_ENTRA
+                and _valor_do_par(toks[fim + 1])):
+            return True
     for m in _EMAIL_DO_PAR.finditer(normal):
         resto = _tokens_de(normal[m.end():])
         if resto and resto[0] in _SEPARADORES_DO_PAR_A:
@@ -626,6 +736,65 @@ def _par_sem_campo_forte(toks: list[str], d: _Destinos, normal: str) -> bool:
         elif (resto and _valor_do_par(resto[0]) and any(c.isalpha() for c in resto[0])
               and (len(resto) == 1 or resto[1] in _FIM_DE_ORACAO or resto[1] == ",")):
             return True                                  # o número já sai mascarado ("[email] [numero]")
+        # 31.20 (B5): a vírgula e um valor que fecha a oração ("lucas@correio.net, girassol"); "mande para x@y.com, a
+        # Marina vai gostar" passa
+        elif (len(resto) >= 2 and resto[0] == "," and _valor_do_par(resto[1]) and any(c.isalpha() for c in resto[1])
+              and (len(resto) == 2 or resto[2] in _FIM_DE_ORACAO or resto[2] == ",")):
+            return True
+    return False
+
+
+def _valor_depois(toks: list[str], k: int, d: _Destinos) -> bool:
+    """Depois de um destino que termina em `k`: separador (`_SEPARA_DO_DESTINO`) e um valor; ou o valor colado que fecha a
+    oração ("pelo lucas girassol."). O nome do catálogo ali É valor (posição de valor, G-4): "pelo lucas, girassol"
+    recusa também com uma persona "Girassol", e "android-01, lucas, girassol" já no "lucas". Só o outro trecho cortado
+    pelo extrator é pulado ("pelo lucas e pela bruno"). O verbo de ação, o advérbio, o lugar e o artigo não são valor
+    ("pelo lucas, curta", "pelo android-01 hoje", "com o perfil lucas no feed")."""
+    n = len(toks)
+    separou = False
+    while k < n:
+        if toks[k] in _SEPARA_DO_DESTINO:
+            separou = True
+            k += 1
+        elif k in d.cortados:
+            k = d.cortados[k]
+        else:
+            break
+    if k >= n or not _valor_do_par(toks[k]):
+        return False
+    return separou or k + 1 >= n or toks[k + 1] in _FIM_DE_ORACAO or toks[k + 1] == ","
+
+
+def _valor_depois_do_corte(toks: list[str], d: _Destinos) -> bool:
+    """31.20 (B4 da rodada I): o destino que o extrator CORTOU ("com o perfil lucas", "pelo lucas", "no android-01")
+    seguido de um valor ("curta a foto da marina com o perfil lucas, girassol"; "android-01, lucas, girassol, curta").
+    Sem o destino, o valor ficava solto no texto que vai ao decisor."""
+    inicios = [i for i in d.cortados if i - 1 not in d.cortados]
+    return any(_valor_depois(toks, d.cortados[i], d) for i in inicios)
+
+
+def _usa_conta_do_catalogo(toks: list[str], d: _Destinos) -> bool:
+    """31.20 (L5 da rodada I): a conta do catálogo tomada como identidade, com o valor ligado a ela:
+    - "use (o) <nome do catálogo> com <valor>" (o conector até três tokens depois do nome);
+    - "<nome do catálogo> usa <valor>" ("o lucas usa girassol");
+    - "como (o) <nome do catálogo>, <valor>" ("como lucas, girassol, curta"), que o extrator não corta.
+    "use o lucas pra curtir a foto da marina" e "como lucas, curta" passam."""
+    n = len(toks)
+    for i, t in enumerate(toks):
+        if t in _USAR or t == "como":
+            k = _pula(toks, i + 1, _ARTIGOS)
+            if k >= n or k not in d.catalogo:
+                continue
+            fim = d.fim(k)
+            if t == "como":
+                if _valor_depois(toks, fim, d):
+                    return True
+            elif any(toks[m] in _CONECTORES_DE_GATILHO for m in range(fim, min(fim + 3, n))):
+                return True
+    for ini in d.catalogo:
+        fim = d.fim(ini)
+        if fim + 1 < n and toks[fim] in _USAR and _valor_do_par(toks[fim + 1]):
+            return True
     return False
 
 
@@ -641,15 +810,29 @@ def _gatilho_de_credencial(toks: list[str], d: _Destinos, normal: str) -> bool:
     - o campo forte (`_CAMPO_FORTE`: usuário, login, conta…), também dentro do destino ("na conta Lucas");
     - o verbo de digitar valor (`_DIGITAR_VALOR`);
     - o par sem campo forte (`_par_sem_campo_forte`).
-    "entre no insta" sozinho passa; o token só de dígitos segue a regra dos anos (`_valor_com_digito`)."""
+    "entre no insta" sozinho passa; o token só de dígitos segue a regra dos anos (`_valor_com_digito`).
+
+    31.20 (lacunas de LISTA da rodada I, todas de bloqueio):
+    - o verbo de pôr valor fora de `_DIGITAR_VALOR` ("informe", "cole", "bote", "preencha") num comando com verbo de
+      entrar (`_POR_VALOR_COM_ENTRAR`);
+    - destravar com conector até três tokens depois (`_DESTRAVAR`: "desbloqueie o app com x");
+    - o valor depois do destino cortado pelo extrator (`_valor_depois_do_corte`, B4);
+    - a conta do catálogo tomada como identidade com o valor (`_usa_conta_do_catalogo`, L5)."""
+    n = len(toks)
     if any(t in _CAMPO_FORTE or t in _DIGITAR_VALOR for t in toks):
         return True
-    for _, fim in _verbos_de_entrar(toks, passado=True):
-        if _objeto_e_pessoa(toks, _pula(toks, fim + 1, _ADVERBIOS)):
-            continue
-        if any(toks[m] in _CONECTORES_DE_GATILHO for m in range(fim + 1, min(fim + 4, len(toks)))):
+    verbos = [(ini, fim) for ini, fim in _verbos_de_entrar(toks, passado=True)
+              if not _objeto_e_pessoa(toks, _pula(toks, fim + 1, _ADVERBIOS))]
+    for _, fim in verbos:
+        if any(toks[m] in _CONECTORES_DE_GATILHO for m in range(fim + 1, min(fim + 4, n))):
             return True
-    return _par_sem_campo_forte(toks, d, normal)
+    if verbos and any(t in _POR_VALOR_COM_ENTRAR for t in toks):
+        return True
+    for i, t in enumerate(toks):
+        if t in _DESTRAVAR and any(toks[m] in _CONECTORES_DE_GATILHO for m in range(i + 1, min(i + 4, n))):
+            return True
+    return (_par_sem_campo_forte(toks, d, normal) or _valor_depois_do_corte(toks, d)
+            or _usa_conta_do_catalogo(toks, d))
 
 
 def _verbos_de_entrar(toks: list[str], *, passado: bool = False) -> list[tuple[int, int]]:
@@ -668,12 +851,30 @@ def _verbos_de_entrar(toks: list[str], *, passado: bool = False) -> list[tuple[i
             achados.append((i, i + 1))
             i += 2
             continue
-        partes = tuple(toks[i].split("-")) if "-" in toks[i] else ()
+        if (fim := _fim_da_locucao(toks, i)) is not None:
+            achados.append((i, fim))
+            i = fim + 1
+            continue
+        partes =tuple(toks[i].split("-")) if "-" in toks[i] else ()
         if not _e_preposicao(toks, i) and (toks[i] in entrar or (partes and (
                 partes[0] in entrar or partes[:2] in _ENTRAR_2 or partes[:3] in _ENTRAR_3))):
             achados.append((i, i))
         i += 1
     return achados
+
+
+def _fim_da_locucao(toks: list[str], i: int) -> int | None:
+    """Onde termina a locução de entrar que começa em `i` (`_LOCUCAO_DE_ENTRAR`), com até dois tokens de
+    `_DENTRO_DA_LOCUCAO` no meio, ou `None`."""
+    fecha = _LOCUCAO_DE_ENTRAR.get(toks[i])
+    if fecha is None:
+        return None
+    for j in range(i + 1, min(i + 4, len(toks))):
+        if toks[j] in fecha:
+            return j
+        if toks[j] not in _DENTRO_DA_LOCUCAO:
+            return None
+    return None
 
 
 def _pula(toks: list[str], i: int, conjunto: frozenset[str] | tuple[str, ...]) -> int:
@@ -1043,7 +1244,12 @@ def _descricao(e: EntradaDeCatalogo) -> str:
     # C2 é o catálogo do dono, liberado, mas o nome de fluxo legado é o resumo de um comando antigo, com o destino dentro
     # (reverificação de 03/10): `mascarar_catalogo` ANTES do corte, para o corte não deixar meia aspa nem meio handle. O
     # `redact` é a rede para um segredo que tenha ido parar numa descrição.
+    # 31.20 (C2, importante da lente método na rodada I): o nome de fluxo legado nasce de `plan.summary[:120]` e pode
+    # carregar a credencial do comando antigo ("Entrar no Instagram com a senha x e curtir"). A C7 vale também aqui: a
+    # opção continua (o id opaco), mas o texto dela não sai, como no que `mascarar_catalogo` não sabe mascarar.
     texto = " ".join(f"{e.nome}: {e.descricao}".split() if e.descricao else e.nome.split())
+    if motivo_c7(texto) is not None:
+        return "(sem nome)"
     return mascarar_catalogo(redact(texto) or "")[:_DESCRICAO_MAX] or "(sem nome)"
 
 

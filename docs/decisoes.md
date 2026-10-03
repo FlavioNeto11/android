@@ -4468,6 +4468,72 @@ catálogo, comando), que o ADR-063 não cobre.
         - os 6 fragmentos de domínio de topo seguem como antes: 5 mascarados e 1 recusado.
     - Próximo: a rodada I (fase 2) da orquestradora, no hash deste item. O GO é zero casos contados pelo discriminador
       (bug ou lacuna-pt) com a forma A. Depois do GO, o deploy 11 liga `intencao: shadow`.
+19. **Emenda de 03/10/2026 (31.20: o NO-GO da rodada I e as lacunas fechadas só por lista de bloqueio; ordem da
+    orquestradora).** A rodada I (fase 2, no b7c05558) deu NO-GO: 123 textos únicos (`sintese_I_uniao.json`) em 18
+    famílias. O 31.20 fecha o que cabe sem mudar a definição do gatilho e sem lista de permissão.
+    - Correções, por família (todas recusam pelo motivo de antes ou por `c7_gatilho`):
+      - B3/L3: a locução de entrar com até 2 tokens no meio (`_LOCUCAO_DE_ENTRAR`: "inicie a sessão com", "abra a sessão
+        com", "faça seu acesso com", "efetue/realize o acesso com", "log yourself in with"), "identifique-se" e
+        "desbloqueie/destrave … com";
+      - B4: o valor logo depois do destino cortado pelo extrator ("pelo lucas, girassol"). Pula só separador e região
+        cortada, e o nome do catálogo na posição de valor é valor (G-4);
+      - B5: a vírgula no par, no trio "<app>, <nome do catálogo>, <valor>" e no e-mail + vírgula + valor;
+      - B7: o conector colado por hífen ("com-girassol");
+      - L1: informe, cole, bote e preencha num comando com verbo de entrar; digitando, teclando, inserindo e soletrando
+        entram no verbo de digitar;
+      - L2: futuro e condicional (entrarei, entrará, logarei…), "loguem" e "já tinha entrado";
+      - L4: os eufemismos de campo e de valor ("na segunda caixa", "o acesso é", "pra entrar no insta é", "o mesmo do X
+        é", "o lema é", "as letras são", "lo que tecleo es");
+      - L5: a conta do catálogo como identidade ("use o lucas com x", "o lucas usa x", "como lucas, x");
+      - E1: o domínio de topo solto depois do e-mail, com qualquer separador ("zilda@correio, net"; "com" só depois de
+        domínio sem ponto). E2: o e-mail em peças sem arroba ("zilda exemplo net") e o provedor rotulado recusam por
+        `email_ofuscado`. O catalão "amb" entra nos conectores;
+      - o fragmento de provedor, domínio ou domínio de topo na mesma frase de `[email]`, `[usuario]` ou handle com ponto
+        é reconstrução e sai mascarado; só a palavra "e-mail" ancora o domínio de topo até 5 palavras. Prosa com provedor
+        e sem âncora passa ("o e-mail do provedor caiu");
+      - C2: `_descricao` aplica o `motivo_c7` ao nome e à descrição do fluxo. Se recusa, a opção vai como "(sem nome)":
+        o id opaco continua escolhível, o texto não sai;
+      - "entre" preposição: faixa ("entre 8 e 12"), regente antes (escolha, compare, conversa, diferença… entre),
+        começo de oração "entre <det> A e <det> B" sem conector perto, ou seguido de os, as, eles e elas. Antes de lugar
+        ou conector, "entre" segue verbo.
+    - Desvios declarados:
+      - L1 só com verbo de entrar que não é o de pessoa ("preencha a legenda e poste" passa);
+      - "desbloqueie" só como gatilho, com conector até 3 tokens;
+      - o fragmento se mascara pela frase inteira para âncora forte, e não por janela;
+      - o handle com ponto vira `[usuario]` quando há `[email]` ou outra máscara na frase;
+      - o C2 lê "recusa" como "(sem nome)", porque a opção não sai do catálogo;
+      - G-2 revertido por ordem: "escolha entre a Marina e a Ana" passa; "escolha entre com girassol" segue
+        `c7_login_valor`.
+    - **Fica como está:** as 10 recusas do RC3-prov da H (8 `email_ofuscado`, 1 `c7_gatilho` com "usuário" e 1
+      `c7_intencao_de_entrar` com "login"). São as mesmas do b7c05558 e são mais restritivas que a máscara.
+    - **Não entram** (residual por ordem): sem gatilho (8), "entre na conversa/chat com <valor>" (2) e "e use, coloque
+      ou escreva <valor>" (4). A "recomendação barata" não entra.
+    - **Pendente do dono, a A-média:** 37 formas da rodada I (B1 27, B2 6, B6 1, B8 1, L6 2) e 10 sondas da H (708 a 714
+      e 717 a 719). Só fecham sabendo que "curta" é verbo legítimo, ou seja, com lista de permissão. No teste são xfail
+      estrito (`PendenteAMedia`). Quando o dono decidir, a orquestradora emenda este item.
+    - Custo, medido no código deste item:
+      - Comandos reais: 126 de 7 dias, às 14:08Z e às 14:19Z, no banco do central só para leitura, com o catálogo real e
+        só contagens. Recusam 8 (6,3 %), os mesmos índices do item 18: 1 `c7_palavra` e 7 `c7_gatilho`. Nenhum recusa
+        pelas entidades. As 126 saídas da C3 têm o mesmo hash no b7c05558 e aqui: 0 mudam.
+      - HM3, os 70 comandos operacionais da sonda do cético I: 35 → 31 recusas. Saíram as 4 de "entre" preposição, e não
+        há recusa nova (diferença de conjunto).
+      - C2 no catálogo vivo, às 14:12Z, por `GET /api/flows`: 3 dos 20 fluxos ativos vão como "(sem nome)". As palavras
+        do próprio filtro são "digitar" com conector e valor com dígito, "verificacao" e "conta". A skill publicada não
+        muda. Se carregam credencial é UNKNOWN, porque o texto real não se lê.
+    - Prova `simulated`, no código deste item:
+      - `backend/tests/test_decisao_fechada_reverificacao_i.py`. Os 54 fechados recusam nos dois catálogos, os 30 de
+        domínio de topo saem mascarados, as 13 RC3-prov saem sem o provedor e as 27 sondas da H recusam. O residual e os
+        controles passam, e as 37 + 10 da A-média ficam xfail estrito;
+      - harness `ataque_b.py`, corpus de 785 (579 + 206), sem-girassol. Os antigos têm só as 4 recusas indevidas
+        conhecidas (134, 135, 348, 427). Os novos têm 49 vazamentos: 47 da A-média, o 715 (residual "e use") e o 780,
+        que é artefato do casador (a cauda "mail" casa a palavra "e-mail"; a saída não tem "gmail"). Recusa indevida
+        nova, só o 779 ("três" vira `[numero]`, questão de rótulo). Com a "Girassol", 45 vazamentos, e os 4 que mudam
+        (635, 638, 708 e 711) são efeito do stub;
+      - contra o b7c05558 no mesmo corpus: 0 casos pioram, e 110 (sem) e 108 (com) melhoram;
+      - os 14 arquivos do filtro e das sombras: 1739 passaram, mais 47 xfail (a A-média). Os vizinhos e a arquitetura:
+        74.
+    - Achado fora da ordem, que fica com a orquestradora: "sendo o lucas, girassol, curta a foto da marina" vaza. É uma
+      forma de identidade vizinha da L5 ("como lucas,") e não está no corpus nem na síntese I.
 
 **Consequências.** A plataforma ganha um motor barato (US$ 0,042/M de entrada, saída grátis) para decisões fechadas que hoje não
 acontecem ou vão ao Opus, medido em sombra contra o caminho atual antes de qualquer `on`. O ADR-063 continua valendo para código.

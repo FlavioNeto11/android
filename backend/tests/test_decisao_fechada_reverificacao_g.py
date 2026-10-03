@@ -257,8 +257,9 @@ def test_outras_faixas_passam(comando: str) -> None:
     ("no insta entre girassol", "c7_intencao_de_entrar"),
     # o "é" sem acento é a conjunção: "e entre" segue verbo
     ("abra o insta e entre girassol", "c7_intencao_de_entrar"),
-    # custo aceito: sem faixa nem "os"/"as", a preposição vira verbo e a sombra pula o comando
-    ("escolha entre a Marina e a Ana", "c7_intencao_de_entrar"),
+    # 31.20 (rodada I): depois de palavra que rege a preposição, "entre" é preposição e passa ("escolha entre a Marina e
+    # a Ana", custo aceito da G-2, foi revertido); diante de conector segue verbo
+    ("escolha entre a Marina e a Ana", None), ("escolha entre com girassol", "c7_login_valor"),
 ])
 def test_entre_sem_faixa_e_verbo(comando: str, motivo: str) -> None:
     assert _motivo(comando) == motivo

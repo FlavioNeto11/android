@@ -19,6 +19,31 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 31.20: as lacunas da rodada I fechadas só por lista de bloqueio (branch feat/31-18-forma-a)
+
+- A rodada I deu NO-GO no b7c05558, e o 31.20 é a ordem da orquestradora (ADR-069 item 19). Fecha:
+  - a locução e os verbos de credencial ("inicie a sessão com", "identifique-se", "desbloqueie … com");
+  - o valor depois do destino cortado e a vírgula no par;
+  - o conector com hífen e "amb";
+  - "informe/cole/bote/preencha" com verbo de entrar;
+  - o futuro e o "já tinha entrado";
+  - os eufemismos novos;
+  - a conta do catálogo como identidade ("use o lucas com x");
+  - o domínio de topo solto depois do e-mail, o e-mail em peças e o fragmento de provedor ao lado de `[email]`;
+  - o C2: nome de fluxo com C7 vai como "(sem nome)";
+  - "entre" preposição deixa de recusar.
+- Pendente do dono: a A-média (47 formas, xfail estrito). Não entram: sem gatilho, "entre na conversa/chat com" e
+  "e use/coloque/escreva".
+- Custo:
+  - 126 comandos reais: as mesmas 8 recusas e 0 saídas diferentes do b7c05558;
+  - HM3: 35 → 31 recusas, sem nenhuma nova;
+  - C2: 3 dos 20 fluxos ativos vão sem nome.
+- Prova `simulated`:
+  - `backend/tests/test_decisao_fechada_reverificacao_i.py`;
+  - harness de 785 casos: os antigos têm só as 4 recusas indevidas conhecidas, e os novos têm 49 vazamentos (47 da
+    A-média, o residual 715 e o artefato 780);
+  - contra o b7c05558, 0 casos pioram, e 110 melhoram.
+
 ## 2026-10-03 — 31.18: forma A (A-ESTREITA), a C3 fecha por gatilho de credencial (branch feat/31-18-forma-a)
 
 - Decisão do dono depois do NO-GO da fase 2 da H (ADR-069 item 18): qualquer gatilho de credencial no comando sem
