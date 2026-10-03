@@ -37,6 +37,7 @@ from ..modules.execution.domain.command_refinement import CommandRefinement, Ref
 from ..models import AiRoleStatus, AiStatus, PersonaDraft, Plan, SocialDraftDTO
 from . import costs, saldos
 from .capabilities import CONHECIMENTO_DE_APPS
+from .catalog import capabilities_of
 from .provider import (AIError, AIProvider, Decision, DecisionRequest, LeituraRequest, PersonaGenerationRequest,
                        PlanRequest, SocialRequest, Transcricao, Usage, Verdict, VerifyRequest, build_one)
 
@@ -195,7 +196,9 @@ class RoutingProvider:
             ligada = self.cfg.file.ai.leitura_visual.enabled
             destino = (f"o provedor “{r.provider}” ({r.endpoint or 'endpoint local'}, modelo {r.model})"
                        if r.sends_data_externally else "um endpoint que não sai desta máquina")
-            apps = ", ".join(declaram_leitura_visual(CONHECIMENTO_DE_APPS)) or "nenhum app"
+            # O rótulo do DADO do app (`AppDefinition.label`, que cai para o nome e depois para o pacote), e não o
+            # pacote cru: a pessoa reconhece "Outlook", não "com.microsoft.office.outlook".
+            apps = ", ".join(capabilities_of(p).label for p in declaram_leitura_visual(CONHECIMENTO_DE_APPS)) or "nenhum app"
             aviso += (f" Leitura visual ({'ligada' if ligada else 'desligada'}): quando ligada, o recorte de uma linha da "
                       f"tela que a árvore não expõe (apps que declaram a região: {apps}; remetente e assunto de mensagens "
                       f"de terceiros, por exemplo) é enviado a {destino} para uma segunda transcrição, às cegas. Telas "
@@ -438,7 +441,7 @@ class RoutingProvider:
 
     async def transcribe(self, req: LeituraRequest) -> tuple[Transcricao, Usage]:
         """Leitura visual (item 12.5, ADR-070): o segundo leitor transcreve o recorte, às cegas. Papel `leitura` sem
-        herança, contado em `ai_calls` com `role='leitura'` e a origem da chamada (`execucao`, pelo `run_id`). Sem o papel
+        herança, contado em `ai_calls` com `role='leitura'` e `origem='leitura'` (com o `run_id`, para os tetos). Sem o papel
         em `ai.roles`, `not_configured`: o executor recusa a leitura visual com `sem_leitor`."""
         if "leitura" not in self.roles:
             raise AIError("Não há leitor configurado (ai.roles.leitura): a leitura visual está indisponível.",

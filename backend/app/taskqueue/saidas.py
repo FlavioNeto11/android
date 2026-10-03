@@ -546,13 +546,22 @@ async def ler_valor_visual(*, habilitado: bool, arvore: UiTree, element_id: str,
     if transcrever is None:
         raise LeituraVisualRecusada("sem_leitor")
     recorte = recortar(jpeg, largura2, altura2, ancora.bounds)
-    valor = limpar(valor_do_ator)
+    do_ator = limpar(valor_do_ator)
     t = await transcrever(recorte, {nome: nome.replace("_", " ")})
-    conferir_transcricao(valor, nome, t)
+    conferir_transcricao(do_ator, nome, t)
+    # Grava-se o valor do LEITOR (o que está na imagem), limpo do mesmo jeito: a concordância é no normalizado (caixa,
+    # pontuação das pontas), e gravar o do ator deixaria "FLAVIO PADILHA!" passar por "Flavio Padilha". O ator concordou
+    # (acima), então só a forma muda.
+    valor = limpar(t.campos[nome] or "")
     # 12: a triagem roda sobre a transcrição e sobre o valor. O recorte recusado não é guardado (quem chama só o grava
     # quando esta função devolve).
     texto = " ".join(t.linhas)
     motivo = triagem(valor, do_elemento=texto, da_tela=texto)
+    # Na leitura visual o valor com FORMA de código (4 a 8 dígitos, com ou sem espaço ou hífen) é recusado mesmo sem palavra
+    # de contexto: a árvore tem a tela inteira para ver que "482913" está sob "código de verificação"; o recorte de uma
+    # linha só tem a linha, e um código que o ator leu sozinho é exatamente o que o ADR-009 veda levar a outra etapa.
+    if motivo is None and _DIGITOS_DE_CODIGO.fullmatch(re.sub(r"[\s\-]", "", valor)):
+        motivo = "código de verificação"
     # Linha a linha: o código pode estar numa linha que NÃO é a do valor (o assunto do e-mail traz o código, o ator leu o
     # remetente), e o recorte inteiro é o que o leitor viu.
     if motivo is None and any(codigo_na_linha(linha) for linha in t.linhas):

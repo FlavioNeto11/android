@@ -143,7 +143,8 @@ async def test_concordancia_devolve_o_valor_e_o_leitor_recebe_so_o_recorte_e_os_
 
 async def test_acentos_contam_e_caixa_pontuacao_das_pontas_e_espacos_nao() -> None:
     t = Transcricao(linhas=["  “Mãe   chegou! ”"], campos={"assunto": "MÃE chegou!"})
-    assert (await _ler(valor="mãe chegou", leitor=_Leitor(t))).valor == "mãe chegou"
+    # concorda no normalizado, mas grava a forma do LEITOR (a que está na imagem), não a do ator
+    assert (await _ler(valor="mãe chegou", leitor=_Leitor(t))).valor == "MÃE chegou!"
     com_acento = Transcricao(linhas=["mae chegou"], campos={"assunto": "mae chegou"})
     await _recusa("nao_confere", valor="mãe chegou", leitor=_Leitor(com_acento))
 
@@ -257,6 +258,33 @@ async def test_12_triagem_sobre_a_transcricao_e_o_valor() -> None:
     mista = Transcricao(linhas=[REMETENTE, f"Perfil para conferir: natgeo {codigo} is your verification code"],
                         campos={"assunto": "Perfil para conferir: natgeo"})
     erro = await _recusa("triagem", leitor=_Leitor(mista))
+    assert CODIGO not in erro.rotulo
+
+
+async def test_grava_o_valor_do_leitor_e_nao_o_do_ator() -> None:
+    t = Transcricao(linhas=["flavio padilha"], campos={"remetente": "flavio padilha"})
+    lido = await _ler(valor="FLAVIO PADILHA!", nome="remetente", leitor=_Leitor(t))
+    assert lido.valor == "flavio padilha"                        # o "!" a mais e a caixa do ator não são gravados
+    t2 = Transcricao(linhas=["  Flavio    Padilha "], campos={"remetente": "Flavio    Padilha"})
+    assert (await _ler(valor="flavio padilha", nome="remetente", leitor=_Leitor(t2))).valor == "Flavio Padilha"  # `limpar`
+
+
+async def test_valor_com_forma_de_codigo_e_recusado_na_leitura_visual_mesmo_sem_palavra_de_contexto() -> None:
+    sozinho = Transcricao(linhas=[CODIGO], campos={"assunto": CODIGO})
+    erro = await _recusa("triagem", valor=CODIGO, leitor=_Leitor(sozinho))
+    assert erro.motivo == "código de verificação" and CODIGO not in erro.rotulo
+    for forma in ("482 913", "4829-1357", "1234"):
+        t = Transcricao(linhas=[forma], campos={"assunto": forma})
+        await _recusa("triagem", valor=forma, leitor=_Leitor(t))
+    # texto comum, com número pequeno ou longo demais para ser código, passa
+    for comum in ("Reunião 14h", "Pedido 123", "Fatura 123456789012"):
+        t = Transcricao(linhas=[comum], campos={"assunto": comum})
+        assert (await _ler(valor=comum, leitor=_Leitor(t))).valor == comum
+
+
+async def test_codigo_numa_linha_do_recorte_que_nao_e_a_do_valor_tambem_recusa() -> None:
+    t = Transcricao(linhas=[REMETENTE, f"Use {CODIGO} to confirm your identity"], campos={"remetente": REMETENTE})
+    erro = await _recusa("triagem", valor=REMETENTE, nome="remetente", leitor=_Leitor(t))
     assert CODIGO not in erro.rotulo
 
 
@@ -559,6 +587,117 @@ async def test_navegacao_que_usa_valor_visual_segue_sem_esperar(harness: Harness
     assert harness.state.db.one("SELECT status FROM objectives WHERE id=?", (obj["id"],))["status"] != "waiting_user"  # type: ignore[union-attr]
     assert harness.state.db.scalar("SELECT COUNT(*) FROM steps WHERE run_id=? AND key='ir' AND status='succeeded'",   # type: ignore[union-attr]
                                    (run.id,)) == 1
+
+
+async def test_triagem_na_leitura_visual_para_a_etapa_sem_nova_tentativa_e_sem_dizer_ao_ator(
+        harness: Harness, caixa_cega: None) -> None:
+    """A3 (ADR-009): o leitor viu código de verificação na linha. Como no caminho da árvore, a etapa vai para
+    `waiting_user`, o ator NÃO tenta de novo e o histórico dele não diz que a linha tem código."""
+    harness.state.cfg.file.ai.leitura_visual.enabled = True                # type: ignore[union-attr]
+    inner, vistos = harness.ai.inner, []
+    linha = f"Use {CODIGO} to confirm your identity"
+    inner.leitura = Transcricao(linhas=[REMETENTE, linha], campos={"remetente": REMETENTE})
+    _plano(inner, _etapa(max_attempts=1))
+    _ator(inner, [_le_visual("remetente", REMETENTE)], vistos)           # tentaria de novo, sempre igual
+    _juiz(inner)
+    run = harness.run(["android-01"], command=COMANDO)
+    await _termina(harness, run.id)
+    db = harness.state.db                                                  # type: ignore[union-attr]
+    assert _saidas(harness, run.id) == []
+    assert harness.ai.count("leitura") == 1                                # uma leitura só: nada de nova tentativa
+    lidos = db.query("SELECT status, error FROM actions WHERE tool='read_value'")
+    assert len(lidos) == 1 and lidos[0]["status"] == "rejected"
+    assert lidos[0]["error"].startswith("valor recusado pela triagem")     # o mesmo texto do caminho da árvore
+    assert len(vistos) == 1                                                # o ator decidiu uma vez: não houve retorno a ele
+    # o histórico do ator só traz a orientação fixa do executor: nenhuma recusa, nenhum motivo, nenhum código
+    assert not any("REJEITADA" in v or "triagem" in v or CODIGO in v for v in vistos)
+    assert db.scalar("SELECT COUNT(*) FROM steps WHERE run_id=? AND key='listar' AND status='waiting_user'",
+                     (run.id,)) == 1
+    assert CODIGO not in _tudo_do_run(harness, run.id)
+
+
+async def test_a_barreira_fora_do_app_recebe_o_valor_real_do_executor(
+        harness: Harness, caixa_cega: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A7: o executor passava `fora_do_app=None` fixo. Aqui a primeira checagem (a do `elif`) diz "dentro" e a seguinte diz
+    outro app: só a barreira de `ler_valor_visual` pode recusar, e ela recusa com `fora_do_app`."""
+    from app.taskqueue import executor as ex
+
+    harness.state.cfg.file.ai.leitura_visual.enabled = True                # type: ignore[union-attr]
+    inner, vistos = harness.ai.inner, []
+    inner.leitura = Transcricao(linhas=[REMETENTE], campos={"remetente": REMETENTE})
+    estado = {"lendo": False, "depois": False}
+    real = ex.StepExecutor._tela_fora_do_app                                    # noqa: SLF001
+
+    def fora(step: Any, obs: Any, pacote: Any) -> Any:
+        if estado["depois"]:
+            return "com.outro.app"
+        if estado["lendo"]:
+            estado["lendo"], estado["depois"] = False, True                 # a checagem do `elif`: ainda dentro
+            return None
+        return real(step, obs, pacote)
+
+    monkeypatch.setattr(ex.StepExecutor, "_tela_fora_do_app", staticmethod(fora))
+    recebidos: list[Any] = []
+    de_verdade = ex.ler_valor_visual
+
+    async def espia(**kw: Any) -> Any:
+        recebidos.append(kw["fora_do_app"])
+        return await de_verdade(**kw)
+
+    monkeypatch.setattr(ex, "ler_valor_visual", espia)
+    ler = _le_visual("remetente", REMETENTE)
+
+    def armado(req: Any) -> Any:
+        estado["lendo"] = True
+        return ler(req)
+
+    _plano(inner, _etapa(max_attempts=1))
+    _ator(inner, [armado], vistos)
+    _juiz(inner)
+    run = harness.run(["android-01"], command=COMANDO)
+    await _termina(harness, run.id)
+    assert recebidos and recebidos[0] == "com.outro.app"
+    rejeitadas = harness.state.db.query("SELECT error FROM actions WHERE tool='read_value' AND status='rejected'")  # type: ignore[union-attr]
+    assert rejeitadas and rejeitadas[0]["error"] == "fora_do_app"
+    assert harness.ai.count("leitura") == 0                                 # a barreira barata fechou antes do leitor
+    assert _saidas(harness, run.id) == []
+
+
+async def test_orcamento_do_leitor_segue_o_desfecho_do_ator_e_so_a_falha_do_provedor_vira_leitor_falhou(
+        harness: Harness, caixa_cega: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    """C4: `kind=budget` na chamada do leitor propaga (etapa falha como no caminho do ator); `invalid_output` e erro de
+    provedor viram a recusa `leitor_falhou`, que o ator vê só como código."""
+    from app.planning.provider import AIError
+
+    harness.state.cfg.file.ai.leitura_visual.enabled = True                # type: ignore[union-attr]
+    inner, vistos = harness.ai.inner, []
+
+    def falha(kind: str) -> Any:
+        async def transcribe(req: Any) -> Any:
+            raise AIError("falha simulada do leitor", kind=kind)
+        return transcribe
+
+    for kind, esperado in (("invalid_output", "leitor_falhou"), ("error", "leitor_falhou")):
+        inner.transcribe = falha(kind)
+        vistos.clear()
+        _plano(inner, _etapa(max_attempts=1))
+        _ator(inner, [_le_visual("remetente", REMETENTE)], vistos)
+        _juiz(inner)
+        run = harness.run(["android-01"], command=COMANDO)
+        await _termina(harness, run.id)
+        assert any(f"read_value REJEITADA: {esperado}" in v for v in vistos), (kind, vistos)
+    # orçamento: NÃO é `leitor_falhou`; a etapa falha com o motivo do orçamento e o ator não recebe recusa nenhuma
+    inner.transcribe = falha("budget")
+    vistos.clear()
+    _plano(inner, _etapa(max_attempts=1))
+    _ator(inner, [_le_visual("remetente", REMETENTE)], vistos)
+    _juiz(inner)
+    run = harness.run(["android-01"], command=COMANDO)
+    await _termina(harness, run.id)
+    db = harness.state.db                                                  # type: ignore[union-attr]
+    assert not any("leitor_falhou" in v for v in vistos)
+    linha = db.one("SELECT status, status_detail FROM steps WHERE run_id=? AND key='listar'", (run.id,))
+    assert linha["status"] == "failed" and "falha simulada do leitor" in (linha["status_detail"] or "")
 
 
 # ================================================================== o que vai junto

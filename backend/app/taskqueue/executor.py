@@ -1297,6 +1297,35 @@ class StepExecutor:
         fora_anterior: str | None = None
         agiu = True
 
+        async def desfecho_de_ia(exc: AIError, obs: Observation, durante: str) -> StepOutcome:
+            """O que a etapa faz quando uma chamada de IA (a decisão do ator, a leitura visual) falha por motivo que NÃO
+            é da chamada em si: chave, crédito, prazo, orçamento, recusa por política. Um só lugar, para o leitor da
+            leitura visual não ter tratamento próprio e mais frouxo que o do ator."""
+            if exc.kind == "not_configured":
+                return StepOutcome(Outcome.waiting_user, str(exc), needs="Configure a chave do provedor no .env, "
+                                   "reinicie o backend e retome este item.", ai_blocked=True)
+            if exc.kind in ("billing", "balance"):
+                return StepOutcome(Outcome.waiting_user, str(exc),
+                                   needs="Recarregue o crédito do provedor de IA e retome a execução.",
+                                   ai_blocked=True)
+            if exc.kind == "step_deadline":
+                return await fail_or_retry(com_anr(f"Prazo da etapa ({step.timeout_s}s) esgotado durante {durante}: "
+                                                   f"{exc}"), obs)
+            if exc.kind == "budget":
+                return StepOutcome(Outcome.failed if not fired else Outcome.uncertain, str(exc))
+            if exc.kind == "refusal":
+                # Achado #93: recusa do provedor por política NÃO é "IA indisponível" — repetir a etapa
+                # tende a dar a mesma recusa, e `fail_or_retry` gastaria uma tentativa à toa. Efeito já
+                # disparado: `uncertain` (mesma regra de qualquer falha após o commit); senão, espera a
+                # pessoa decidir — reescrever a intenção ou replanejar — sem consumir tentativa.
+                return StepOutcome(Outcome.uncertain if (step.side_effect and fired) else Outcome.waiting_user,
+                                   f"O provedor de IA recusou esta requisição por política: {exc}",
+                                   needs=None if (step.side_effect and fired) else
+                                   "O provedor recusou por política — repetir tende a dar o mesmo resultado. "
+                                   "Reescreva a intenção desta etapa (ou o comando) e retome, ou replaneje.",
+                                   ai_blocked=True)
+            return await fail_or_retry(f"IA indisponível: {exc}", obs)
+
         def com_anr(detalhe: str) -> str:
             """O prazo que vence DEPOIS de um ANR contado nesta etapa diz o ANR: "tempo esgotado" sozinho, como na
             r-20260928195344-02ee9e, mandava procurar a lentidão em outro lugar. E o aviso vai para o aparelho."""
@@ -1519,30 +1548,7 @@ class StepExecutor:
                                         lessons=list(pedidas))),
                         step_id=step.id, role="decide", deadline=deadline, attempt_id=attempt_id)
                 except AIError as exc:
-                    if exc.kind == "not_configured":
-                        return StepOutcome(Outcome.waiting_user, str(exc), needs="Configure a chave do provedor no .env, "
-                                           "reinicie o backend e retome este item.", ai_blocked=True)
-                    if exc.kind in ("billing", "balance"):
-                        return StepOutcome(Outcome.waiting_user, str(exc),
-                                           needs="Recarregue o crédito do provedor de IA e retome a execução.",
-                                           ai_blocked=True)
-                    if exc.kind == "step_deadline":
-                        return await fail_or_retry(com_anr(f"Prazo da etapa ({step.timeout_s}s) esgotado durante a "
-                                                           f"decisão da IA: {exc}"), obs)
-                    if exc.kind == "budget":
-                        return StepOutcome(Outcome.failed if not fired else Outcome.uncertain, str(exc))
-                    if exc.kind == "refusal":
-                        # Achado #93: recusa do provedor por política NÃO é "IA indisponível" — repetir a etapa
-                        # tende a dar a mesma recusa, e `fail_or_retry` gastaria uma tentativa à toa. Efeito já
-                        # disparado: `uncertain` (mesma regra de qualquer falha após o commit); senão, espera a
-                        # pessoa decidir — reescrever a intenção ou replanejar — sem consumir tentativa.
-                        return StepOutcome(Outcome.uncertain if (step.side_effect and fired) else Outcome.waiting_user,
-                                           f"O provedor de IA recusou esta requisição por política: {exc}",
-                                           needs=None if (step.side_effect and fired) else
-                                           "O provedor recusou por política — repetir tende a dar o mesmo resultado. "
-                                           "Reescreva a intenção desta etapa (ou o comando) e retome, ou replaneje.",
-                                           ai_blocked=True)
-                    return await fail_or_retry(f"IA indisponível: {exc}", obs)
+                    return await desfecho_de_ia(exc, obs, "a decisão da IA")
                 if rr.mode == "shadow" and rr.replayer is not None and not rr.diverged:
                     self._shadow_compare(rr, obs, decision)     # aprende-se a confiar na receita antes de deixá-la agir
             # ---------- validar
@@ -1627,9 +1633,12 @@ class StepExecutor:
                                     LeituraRequest(recorte=recorte, saidas=pedidas, run_id=run_id)),
                                 step_id=step.id, role="leitura", deadline=deadline, attempt_id=attempt_id)
                         except AIError as exc:
-                            # Nunca o texto do erro ao ator: o leitor indisponível é uma recusa como as outras.
+                            if exc.kind in ("budget", "step_deadline", "billing", "balance", "refusal"):
+                                raise                   # o mesmo desfecho do ator (`desfecho_de_ia`), não uma recusa
+                            # Nunca o texto do erro ao ator: só a falha do provedor e a saída inválida do leitor viram
+                            # recusa como as outras. `from None`: a cadeia não leva o texto do leitor ao log.
                             raise LeituraVisualRecusada(
-                                "sem_leitor" if exc.kind == "not_configured" else "leitor_falhou") from exc
+                                "sem_leitor" if exc.kind == "not_configured" else "leitor_falhou") from None
 
                     conhecimento = telas_do_app.da_pasta(CONHECIMENTO_DE_APPS / (app.package or ""))
                     reconhecida = (telas_do_app.classificar(conhecimento, obs.tree, package=obs.package)
@@ -1646,6 +1655,8 @@ class StepExecutor:
                             largura=obs.width, altura=obs.height, obter_imagem=obter_imagem,
                             tentativas=tentativas_visuais, tipo_da_tela=reconhecida.tipo if reconhecida else None,
                             transcrever=transcrever if self._tem_leitor() else None)
+                    except AIError as exc:
+                        return await desfecho_de_ia(exc, obs, "a leitura visual")
                     except LeituraVisualRecusada as rec:
                         if rec.codigo == "triagem":
                             # O leitor viu código de verificação, senha ou token (ADR-009): NÃO é erro de chamada. Segue o

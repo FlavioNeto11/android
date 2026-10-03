@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -30,12 +31,15 @@ from pydantic import ValidationError
 from app.automation.conhecimento_de_telas import ConhecimentoInvalido, de_dados, declaram_leitura_visual
 from app.config import AI_ROLES, AiProfileCfg, AppConfigFile
 from app.db import Database
-from app.devices.codificacao import RECORTE_BYTES_MAX, recortar_jpeg
+from app.devices.codificacao import (RECORTE_ALTURA_MAX_FRACAO, RECORTE_ALTURA_MAX_PX, RECORTE_BYTES_MAX,
+                                     recortar_jpeg)
 from app.integrations.app_declarado import pacote as pacote_declarado
 from app.models import AiStatus
 from app.planning.capabilities import CONHECIMENTO_DE_APPS, Capability, CapabilityCatalog
+from app.planning.anthropic_provider import AnthropicProvider
+from app.planning.openai_provider import OpenAICompatProvider
 from app.planning.provider import (AIError, LeituraRequest, Transcricao, TRANSCRICAO_LINHAS_MAX, TRANSCRICAO_TEXTO_MAX,
-                                   Usage, transcricao_from_json)
+                                   Usage, modelo_do_papel_leitura, transcricao_from_json)
 from app.planning.routing import RoutingProvider
 from app.planning.simulated_provider import SimulatedProvider
 from app.taskqueue.repository import Repository
@@ -136,6 +140,25 @@ def test_recusa_modelo_sem_visao_e_o_simulado_passa(tmp_path: Path) -> None:
     assert RoutingProvider(sim).roles["leitura"].kind == "simulated"
 
 
+def test_recusa_modelo_nao_declarado_em_ai_models_e_a_mensagem_diz_a_linha(tmp_path: Path) -> None:
+    # sem a linha, `ModelCaps()` presumiria visão: o leitor exige modelo DECLARADO com `vision: true`
+    outro = {"outro-modelo": MODELOS["leitor-x"]}
+    with pytest.raises(ValueError, match=r"não está declarado em ai\.models.*ai\.models\.leitor-x.*vision: true"):
+        RoutingProvider(_hub(tmp_path, models=outro))
+    RoutingProvider(_hub(tmp_path))                                  # declarado com visão: passa
+
+
+def test_o_mesmo_modelo_escrito_de_duas_formas_e_um_so(tmp_path: Path) -> None:
+    # caixa, prefixo de gateway e sufixo de data não fazem outro modelo (como o `model_caps` já trata)
+    for escrito in ("OpenAI/Leitor-X-20261001", "leitor-x-20261001", "LEITOR-X", "vendor/leitor-x"):
+        cfg = _hub(tmp_path, roles={"leitura": {"provider": "oa", "model": escrito},
+                                    "escalation": {"provider": "oa", "model": "leitor-x"}})
+        with pytest.raises(ValueError, match=r"ai\.roles\.leitura\.model.*escalation"):
+            RoutingProvider(cfg)
+    # e a declaração em `ai.models` também se acha pelo nome normalizado
+    RoutingProvider(_hub(tmp_path, roles={"leitura": {"provider": "oa", "model": "OpenAI/Leitor-X-20261001"}}))
+
+
 def test_o_exemplo_de_configuracao_documenta_o_papel_comentado() -> None:
     exemplo = (Path(__file__).resolve().parents[2] / "config" / "config.example.yaml").read_text(encoding="utf-8")
     assert "leitura_visual:" in exemplo and "enabled: false" in exemplo
@@ -154,6 +177,39 @@ def test_chave_extra_ou_formato_errado_recusa_a_resposta_inteira() -> None:
         with pytest.raises(AIError) as e:
             transcricao_from_json(json.dumps(ruim), pedidas)
         assert e.value.kind == "invalid_output"
+
+
+def test_resposta_invalida_nao_leva_o_texto_do_modelo_ao_log_nem_com_traceback(caplog: pytest.LogCaptureFixture) -> None:
+    # a `ValidationError` do pydantic traz `input_value=` com o que o modelo escreveu; o executor loga com exc_info=True
+    segredo = "codigo 482913"
+    ruins = (json.dumps({**BRUTO, "extra": segredo}),
+             json.dumps({**BRUTO, "campos": [{"nome": "assunto", "valor": "b", "x": segredo}]}),
+             json.dumps({**BRUTO, "linhas": segredo}),
+             segredo)                                                # nem JSON é
+    log = logging.getLogger("teste.leitura")
+    with caplog.at_level(logging.DEBUG):
+        for bruto in ruins:
+            try:
+                transcricao_from_json(bruto, ["assunto"])
+            except AIError as exc:
+                assert exc.__cause__ is None and exc.__suppress_context__
+                log.warning("leitura falhou: %s", exc, exc_info=True)
+    assert len(caplog.records) == len(ruins) and "Traceback" in caplog.text
+    assert "482913" not in caplog.text and all("482913" not in (r.exc_text or "") for r in caplog.records)
+
+
+def test_campo_pedido_repetido_com_valores_diferentes_recusa_como_chave_extra() -> None:
+    def com(*pares: tuple[str, str | None]) -> str:
+        return json.dumps({**BRUTO, "campos": [{"nome": n, "valor": v} for n, v in pares]})
+
+    with pytest.raises(AIError) as e:
+        transcricao_from_json(com(("assunto", "b"), ("assunto", "outro")), ["assunto"])
+    assert e.value.kind == "invalid_output" and "outro" not in str(e.value)
+    with pytest.raises(AIError):
+        transcricao_from_json(com(("assunto", "b"), ("assunto", None)), ["assunto"])
+    # o mesmo valor repetido não contradiz; e repetir um nome que ninguém pediu é ruído que o filtro já descarta
+    assert transcricao_from_json(com(("assunto", "b"), ("assunto", "b")), ["assunto"]).campos == {"assunto": "b"}
+    assert transcricao_from_json(com(("assunto", "b"), ("x", "1"), ("x", "2")), ["assunto"]).campos == {"assunto": "b"}
 
 
 def test_json_invalido_e_erro_nunca_ilegivel_e_ilegivel_so_quando_o_modelo_diz() -> None:
@@ -280,7 +336,8 @@ def test_o_aviso_nomeia_provedor_modelo_e_os_apps_que_declaram_a_regiao(tmp_path
     assert (linha.provider, linha.model, linha.sends_data_externally, linha.vision) == ("oa", "leitor-x", True, True)
     assert st.models["leitura"] == "leitor-x"
     assert "Leitura visual (ligada)" in st.notice and "oa" in st.notice and "leitor-x" in st.notice
-    assert "com.microsoft.office.outlook" in st.notice and "terceiros" in st.notice
+    # o rótulo do DADO do app (`AppDefinition.label`), não o pacote cru
+    assert "Outlook" in st.notice and "com.microsoft.office.outlook" not in st.notice and "terceiros" in st.notice
     assert "chave-que-nunca-aparece" not in st.model_dump_json() and st.sends_data_externally
     assert declaram_leitura_visual(CONHECIMENTO_DE_APPS) == ["com.microsoft.office.outlook"]
 
@@ -295,6 +352,24 @@ def test_o_leitor_simulado_e_deterministico() -> None:
     assert asyncio.run(sim.transcribe(req))[0] == asyncio.run(sim.transcribe(req))[0] == sim.leitura
     sim.leitura = lambda r: Transcricao(linhas=list(r.saidas), campos={n: n for n in r.saidas})
     assert asyncio.run(sim.transcribe(req))[0].campos == {"assunto": "assunto"}
+
+
+# ====================================================================== A5: a leitura nunca cai no modelo do ator
+def test_a_leitura_exige_o_modelo_explicito_do_papel_em_todos_os_provedores(tmp_path: Path) -> None:
+    cfg = _hub(tmp_path)
+    assert modelo_do_papel_leitura(cfg, cfg.ai_role("leitura")) == "leitor-x"
+    assert modelo_do_papel_leitura(cfg, None) == "leitor-x"           # provedor único: o de `ai.roles.leitura`
+    req = LeituraRequest(recorte=b"x", saidas={"assunto": "a"})
+    # a instância é a do ATOR (o hub compartilha instâncias por chave): recusa, sem rede e sem cair em `self.model`
+    for prov in (AnthropicProvider(cfg, cfg.ai_role("decide")), OpenAICompatProvider(cfg, cfg.ai_role("decide"))):
+        with pytest.raises(AIError) as e:
+            asyncio.run(prov.transcribe(req))
+        assert e.value.kind == "not_configured"
+    # provedor único sem `ai.roles.leitura`: também recusa (antes caía no modelo do `.env`)
+    sem = com_hub(tmp_path, providers=PROVEDORES, models=MODELOS, roles={})
+    with pytest.raises(AIError) as e:
+        asyncio.run(AnthropicProvider(sem).transcribe(req))
+    assert e.value.kind == "not_configured"
 
 
 # ====================================================================== (g) o recorte tem teto
@@ -312,7 +387,8 @@ def _jpeg(tamanho: tuple[int, int] = (576, 1024), ruido: bool = False) -> bytes:
 
 def test_o_recorte_e_uma_linha_nunca_a_tela_inteira() -> None:
     assert Image.open(io.BytesIO(recortar_jpeg(_jpeg(), 720, 1280, (0, 323, 720, 485)))).size == (576, 130)
-    for limites in ((0, 0, 720, 1280), (0, 100, 720, 900)):          # a tela toda, e mais da metade da altura
+    # a tela toda, mais da metade, e DUAS linhas e meia (324 px = 259 na imagem > 0,2 da altura): é mais de uma linha
+    for limites in ((0, 0, 720, 1280), (0, 100, 720, 900), (0, 300, 720, 624)):
         with pytest.raises(ValueError):
             recortar_jpeg(_jpeg(), 720, 1280, limites)
     with pytest.raises(ValueError):
@@ -322,8 +398,17 @@ def test_o_recorte_e_uma_linha_nunca_a_tela_inteira() -> None:
 
 
 def test_o_recorte_respeita_o_teto_de_bytes() -> None:
-    saida = recortar_jpeg(_jpeg((1440, 2560), ruido=True), 1440, 2560, (0, 600, 1440, 1000))
+    saida = recortar_jpeg(_jpeg((1440, 2560), ruido=True), 1440, 2560, (0, 600, 1440, 880))
     assert len(saida) <= RECORTE_BYTES_MAX
+
+
+def test_o_teto_absoluto_em_pixels_vale_para_a_imagem_maior_que_o_padrao() -> None:
+    # 360 px de uma imagem de 2560 são 0,14 da altura (passaria pela fração), mas passam de 320 px: mais de duas linhas
+    with pytest.raises(ValueError, match="grande demais"):
+        recortar_jpeg(_jpeg((1440, 2560)), 1440, 2560, (0, 600, 1440, 960))
+    assert RECORTE_ALTURA_MAX_FRACAO <= 0.2 and RECORTE_ALTURA_MAX_PX == 320
+    # a linha do teste (162 px no aparelho) cabe em qualquer tamanho de imagem do padrão
+    assert Image.open(io.BytesIO(recortar_jpeg(_jpeg((720, 1280)), 720, 1280, (0, 323, 720, 485)))).size == (720, 162)
 
 
 # ====================================================================== o dado do app (`telas.yaml`)
