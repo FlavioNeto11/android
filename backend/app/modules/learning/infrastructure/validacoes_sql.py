@@ -186,14 +186,22 @@ class RegistroDeValidacoesSql:
         self._db.execute("UPDATE learning_validations SET revisao_nova_id=? WHERE id=? AND revisao_nova_id IS NULL",
                          (review_id, pedido_id))
 
-    def listar(self, estado: EstadoDoPedido | None, limite: int, antes: str | None) -> list[PedidoListado]:
+    def listar(self, estado: EstadoDoPedido | None, limite: int, antes: str | None, *, item: str | None = None,
+               run: str | None = None) -> list[PedidoListado]:
         """30.38 (b): as mais novas primeiro; `id` desempata o mesmo instante (a página seguinte usa só `created_at`,
         e o mesmo instante na fronteira de duas páginas é raro e só repete a linha). Pelo índice `(estado, created_at)`
-        com o filtro de estado."""
+        com o filtro de estado. 30.43: `item` (o `item_ref`, a seção "Validações" do item) e `run` (a execução: o
+        veredito da validação no Resumo dela)."""
         where, params = [], list[object]()
         if estado is not None:
             where.append("estado=?")
             params.append(estado.value)
+        if item is not None:
+            where.append("item_ref=?")
+            params.append(item)
+        if run is not None:
+            where.append("run_id=?")
+            params.append(run)
         if antes:
             where.append("created_at<?")
             params.append(antes)

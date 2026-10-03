@@ -159,7 +159,8 @@ class RegistroDeValidacoes(Protocol):
     def para_reabrir(self) -> list[NovoPedido]: ...
     #: 30.38 (b): a listagem, das mais novas para as mais antigas (`antes`: o `created_at` do último da página
     #: anterior), e a contagem por estado de TODOS os pedidos.
-    def listar(self, estado: EstadoDoPedido | None, limite: int, antes: str | None) -> list[PedidoListado]: ...
+    def listar(self, estado: EstadoDoPedido | None, limite: int, antes: str | None, *, item: str | None = None,
+               run: str | None = None) -> list[PedidoListado]: ...
     def contagens(self) -> dict[str, int]: ...
 
 
@@ -457,10 +458,11 @@ class ServicoDeValidacao:
         self._registro.revisado(pedido_id, review_id)
 
     # ------------------------------------------------------------------ 5. a leitura do painel (30.38 b)
-    def listar(self, estado: EstadoDoPedido | None = None, limite: int = 50,
-               antes: str | None = None) -> list[PedidoListado]:
-        """Só leitura e independente do `modo`: com a validação pausada, o painel ainda mostra o que já se pediu."""
-        return self._registro.listar(estado, max(1, min(limite, LISTA_MAX)), antes)
+    def listar(self, estado: EstadoDoPedido | None = None, limite: int = 50, antes: str | None = None, *,
+               item: str | None = None, run: str | None = None) -> list[PedidoListado]:
+        """Só leitura e independente do `modo`: com a validação pausada, o painel ainda mostra o que já se pediu.
+        30.43: `item` e `run` filtram (o rosto da validação no item e no Resumo da execução)."""
+        return self._registro.listar(estado, max(1, min(limite, LISTA_MAX)), antes, item=item, run=run)
 
     def contagens(self) -> dict[str, int]:
         """Um número por estado do vocabulário (zero quando não há), para os filtros do painel."""

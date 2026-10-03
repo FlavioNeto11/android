@@ -70,6 +70,11 @@ SOMBRA_DA_RECEITA = ("sem amostra de sombra (`shadow_total` 0): a comparação c
                      "conduz a etapa e a comparação com a IA não roda de novo para ela, e a concordância de execução "
                      "simulada não conta. A evidência é a `lista` datada; `sombra` não é falta que a validação "
                      "consiga produzir para esta receita")
+#: 30.43: a nota da receita aprendida dentro de uma validação (a `receita:135`, nascida numa prova de fluxo, levou as
+#: pendências do dono de 14 para 15 sem dizer de onde veio).
+NASCEU_EM_VALIDACAO = ("aprendida dentro de uma execução de validação ({origem}), não de um pedido de pessoa: ninguém "
+                       "pediu este conteúdo; a reprodução dele é o que diz se ele serve")
+
 SEM_CAMINHO_DA_RECEITA = ("variante sem caminho: o plano do fluxo ativo do comando de origem não chega a esta etapa "
                           "(outra variante dela é a que roda), e a validação não tem o que executar; sugerir aposentar")
 
@@ -94,6 +99,9 @@ class IdentidadeDoItem:
     #: 30.36: a receita que a validação achou sem caminho (o plano do fluxo ativo não chega à etapa dela). A marca é
     #: para o curador sugerir aposentar; ninguém aposenta sozinho (o parecer é registro, o aceite é da pessoa).
     sem_caminho: bool = False
+    #: 30.43: `prova_fluxo` ou `validacao_qa` quando a receita nasceu numa execução de validação; `None` no resto (as
+    #: mesmas chaves e o mesmo `dossie_hash` de antes).
+    nasceu_em: str | None = None
 
     @property
     def id_citavel(self) -> str:
@@ -313,6 +321,8 @@ class Dossie:
             item["principal_e"] = PRINCIPAL_DO_ITEM
         if i.sem_caminho:
             item["sem_caminho"] = SEM_CAMINHO_DA_RECEITA
+        if i.nasceu_em:
+            item["nasceu_em_validacao"] = NASCEU_EM_VALIDACAO.format(origem=i.nasceu_em)
         evidencias: JsonObject = {"total": self.evidencias_total, "incluidas": len(self.evidencias),
                                   "lista": [{"id": e.id_citavel, "posicao": e.posicao, "origin_ref": e.origin_ref,
                                              "run_id": e.run_id, "aparelho": e.aparelho, "app_version": e.app_version,

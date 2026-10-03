@@ -147,7 +147,7 @@ def _entrada(e: EntradaDoLivro, servico: LearningService | None = None, saude: S
                       for a in acoes_da_pessoa(e)],
             "por_que_nao_publica": None if motivo is None else {
                 "codigo": motivo.codigo, "espera_o_dono": motivo.espera_o_dono, "detalhe": motivo.detalhe},
-            "saude": _saude(saude), "nasceu_de": e.nasceu_de, "reaprendido": _reaprendido(e.reaprendido),
+            "saude": _saude(saude), "nasceu_de": e.nasceu_de, "nasceu_em": e.nasceu_em, "reaprendido": _reaprendido(e.reaprendido),
             **_do_legado(e, legado)}
 
 
