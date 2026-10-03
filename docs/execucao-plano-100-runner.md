@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-296 de 348 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+301 de 351 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -150,7 +150,8 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 17.10 | implemented | simulated | sessao | — | PR #40 (merge efab19d). Prova simulated: backend/tests/test_cascata_ator_barato.py (provedor falso) + os 3 testes de bloqueio forcado com a chave desligada no teste (b8d281e; decisao aceita pelo orquestrador em 02/10).… | Regra 1 (step_blocked do tier 0 sobe ao tier 1) real not_run: o gatilho deterministico do eval-set nao fez o tier 0 bloquear (02/10); nao se cacou gatilho com… |
 | 17.11 | implemented | simulated | sessao | — | PR #35 (cfe27fd, 02/10/2026, sessao jev). scripts/eval_run.py: RemoteProtocolError/ReadError do transporte repetem a leitura em vez de abandonar a execucao em curso (K-045, docs/conhecimento/aprendizados.md). Prova simu… |  |
 | 17.12 | implemented | real | sessao | — | Real 02/10/2026 ~20:48-20:57Z, central WIN-7S2UASNLFOP, main implantada c11f8217 (070). eval_run label 17-12-real-02-10-d, caso msg-todos-os-contatos (bateria congelada, 8 contatos do QA Messenger, app nosso) no android… |  |
-| 17.13 | pendente | — | — | — |  |  |
+| 17.13 | implemented | real | claude-opus-5-5 (sessão Jev) | — | feat/lt-4b-esquema-curto @ fc382619 (código 2bed3d6c) e o perfil planejador-sonnet (e4a597f8), na main pela suíte 7 (442d1efc, 123650cc). real: A/B de 3 braços em 03/10 ~04:31-04:39Z na máquina central, código 2bed3d6c,… |  |
+| 17.14 | implemented | simulated | claude-opus-5-5 (sessão Jev) | — | feat/17-14-perfil-e-dieta @ 1f0195df, na main pelo merge 7515b640 da suíte 7 (123650cc). RoleCfg.effort e thinking por função e por perfil; AiRoleStatus.thinking pela sonda estado_do_thinking em GET /api/ai (adendo v0.8… |  |
 | 17.9 | pendente | — | — | — |  |  |
 | 18.1 | implemented | simulated | opus | — | eafca07 (implantado 28/09): automation/tools.py::_conferir_digitacao relê o campo, completa só o sufixo cortado, não aperta Enter com texto incompleto e devolve typed_chars/verified; backend/tests/test_tools_and_api.py:… |  |
 | 18.2 | implemented | simulated | opus | — | eafca07 (implantado 28/09): automation/conhecimento_de_telas.py + app/conhecimento/apps/com.instagram.android/telas.yaml; backend/tests/test_conhecimento_de_telas.py (classificação idêntica, conversa/post/comentários/bu… |  |
@@ -220,6 +221,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 23.12 | implemented | real | opus | — | Real, 30/09: release promovida (21:42Z) e distribuída; 'ready' em android-01, 02, 03, 06, 07, 08, 10 e 12, com o renderizador host lido de cada aparelho. | None |
 | 23.13 | implemented | real | opus | — | Real, 30/09: as três contas Outlook com session_ready lida do aparelho (André 22:56Z em android-06, Bruno 23:01Z em android-03, Lucas 23:04Z em android-01), pela senha consentida no canal sensível; nenhum desafio da Mic… | None |
 | 23.14 | pendente | — | — | — |  |  |
+| 23.15 | implemented | simulated | claude-opus-5-5 (sessão Jev) | — | feat/ra-7-recusa-no-planejamento @ 0f72f7cb (867d3683 o item), na main pelo merge 2b42085d da suíte 7 (123650cc). A porta de política do item 13.2 também no planejamento: a etapa com efeito fora do catálogo do app recus… |  |
 | 24.1 | implemented | real |  | — | Real no central (6460baf), android-05 (QA, rede trafego_verificado), 30/09: planejador de verdade (Opus) montou planos com required_apps [qa-messenger, chrome], app por etapa e saídas declaradas (r-20260930023442-bd5c5a… |  |
 | 24.2 | implemented | simulated |  | — | No change since the previous declaration. state.py::_policy_gate judges each step by the step's own app (step app_id, else the plan's app, else the device's app, via Scheduler._app_context). A capability that the step's… |  |
 | 24.3 | implemented | real |  | — | Real no central (6460baf), android-05 (QA, rede trafego_verificado), 30/09: r-20260930023442-bd5c5a concluída 4/4: a etapa do QA Messenger gravou primeiro_contato="Suporte QA" (step_outputs, app qa-messenger), a do Chro… |  |
@@ -349,13 +351,14 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.11 | pendente | — | — | — |  |  |
 | 31.12 | pendente | — | — | — |  |  |
 | 31.13 | pendente | — | — | — |  |  |
-| 31.14 | pendente | — | — | — |  |  |
+| 31.14 | implemented | simulated | claude-opus-5-5 (sessão Jev) | — | feat/31-14-decisor-jev @ 555543fd (a9166bcb o item, 555543fd a revisão), na main pelo merge 712aaea5 da suíte 7 (123650cc). DecisorJev real: só choice vai ao fio; gasto conferido ANTES do POST (RoutingProvider.conferir_… |  |
+| 31.15 | implemented | simulated | claude-opus-5-5 (sessão Jev) | — | feat/ra-10-observabilidade @ f94022c3 (88936fea, 935bb3f5, 57dd17b8, 483635fe, f94022c3), na main pela suíte 7 (123650cc). Migração 080: verdict, escalate, motivo e image_reason em ai_calls, em vocabulário fechado no có… |  |
 | T.1 | implemented | not_run | opus | ok | docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, rea… | Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de produca… |
 | T.2 | partial | simulated | sessao | — | backend/app/devices/manager.py:1558 (desvio io_factory de stop_instance removido; caminho real com backend.save_snapshot em :1603 e process_alive em :852 exercitado pelo aparelho falso); manager.py:1345-1368 (_boot fals… | Continuam de fora do achado #165: o veredito do snapshot durante o boot (_snapshot_verdict) sem teste proprio; worker/executor.py nao unificado com EmulatorBac… |
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (52): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.13, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.40, 29.41, 30.8, 30.18, 30.19, 30.24, 30.25, 30.26, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, 31.14, T.2
+Pendentes (50): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.40, 29.41, 30.8, 30.18, 30.19, 30.24, 30.25, 30.26, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

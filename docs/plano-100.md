@@ -411,6 +411,7 @@ Pesquisa: [`pesquisa-provedores-ia-2026-09-28.md`](pesquisa-provedores-ia-2026-0
 | 17.11 | **`eval_run.py` resiste a queda transitória** (`RemoteProtocolError`/`ReadError`: repete a leitura em vez de abandonar a execução em curso; K-045) | bateria de 28/09 | P |
 | 17.12 | **Teto de chamadas proporcional ao for_each** (`teto = base + por_item × (itens − 1)`, limitado por um absoluto; o rejulgamento continua contando; tetos em US$ e de tokens intactos) | achado do 7.4 real (r-20261002181642-eff15b) | P |
 | 17.13 | **Formato curto do plano** (`ai.esquema_do_plano: curto`, LT-4b): a etapa livre sai sem `postcondition.description`, `precondition` e `max_attempts`, que o backend preenche; título e objetivo curtos; a identidade da receita é a mesma nos dois formatos. De fábrica, `longo` | LT-4 (latência do planejador, 03/10); A/B real de 3 braços em 03/10 | P |
+| 17.14 | **Esforço e thinking por função e por perfil** (`RoleCfg.effort` e `thinking`), com a sonda "o ator pensa?" em `GET /api/ai` (`roles[].thinking`, adendo v0.84) e a dieta do contexto 2 (RA-17); a função com ajuste ganha instância própria do provedor | LT-4 e RA-17 (03/10) | M |
 | 17.9 | **Trilhas paradas com gatilho**: Alibaba qwen3-vl-flash, DeepSeek (dados na China), GUI-Owl local em 8 GB, destilação por LoRA | gatilhos no plano | G |
 
 ### Fase 18 — Conhecimento de app como dado e execução medida · 8 itens (pedido do dono de 28/09/2026; ADR-052)
@@ -542,6 +543,7 @@ autorização do dono (o agente entrega código e procedimento e marca `not_run`
 | 23.12 | **Distribuição ao parque** [A]: um aparelho, depois lotes; locais e remotos; um trabalho pesado por vez no central (K-058); matriz de instalação por aparelho | pedido do dono | M |
 | 23.13 | **Login e persistência por perfil** [A]: caixa de entrada por prova local, conta lida igual à esperada, fechar e reabrir mantém a sessão; desafio vai à pessoa e os demais perfis seguem; instalação, vínculo e autenticação registrados separadamente. Só em aparelho com a rede validada (25.9) | pedido do dono | M |
 | 23.14 | **Recusa cedo no Outlook, parte Android (RA-7)** — planos tentam compor ou enviar e-mail no Outlook, cujo catálogo declara só leitura por decisão, e gastam 50+ decisões antes de falhar. A porta 13.2 no planejamento é da Jev; aqui, o caso e a prova real no android-01: US$/sucesso e decisões por etapa em 5 leituras. Não ensinar envio nem prova local de envio | reavaliação 03/10 (RA-7) | M |
+| 23.15 | **Recusa no planejamento, parte Jev (RA-7)**: a porta de política do item 13.2 também no planejamento; a etapa com efeito fora do catálogo do app recusa antes de executar, com o evento `plan.refused` (adendo v0.79). Sem DDL | reavaliação 03/10 (RA-7) | M |
 
 **Fecha quando:** Outlook promovido e distribuído com prova `install` e `launch` por aparelho; contas Outlook
 vinculadas às personas com o endereço confirmado; login e persistência provados por perfil com prova `real`, com
@@ -783,6 +785,7 @@ do dono (31.8 em diante); o Jev não decide por persona (D-J5, só de decisão d
 | 31.12 | **`on` por consumidor aprovado**, A/B por perfil 17.7; na intenção, só sugere até o GO de "aceite errado" (D-J7: medição de português antes) | roteiro-jev §5 | G |
 | 31.13 | **Apps candidatos do comando em sombra** (R5), dado F2+F3 | roteiro-jev §2 R5 | M |
 | 31.14 | **Decisor real `DecisorJev`** pelo transporte do adaptador de retrieval (cliente único), só `choice`: gasto conferido ANTES do POST (a rubrica do hub, com a fatia do Jev e o saldo da conta; barrado = `orcamento`, nada sai) e cada chamada tentada em `ai_calls` (provedor `jev`, origem `decisao_fechada`, `usd` declarado), o que tira a fatia de US$ 0,50 da cegueira; ligado só por `ai.decisao_fechada.decisor: jev`, com o envio fechado até o 31.10 | reavaliação 03/10, RA-6 (era o 31.8b) | M |
+| 31.15 | **Observabilidade das chamadas de IA (RA-10)**: `ai_calls` ganha `verdict`, `escalate`, `motivo` e `image_reason` (migração 080), carimbados pelo executor; `/api/usage` ganha os grupos de origem, escalonamento, rejulgamento, cascata, motivo da imagem e etapas sem `driven_by` (adendo v0.75). Pré-requisito do 31.10, do RA-16 e do LT-10 | reavaliação 03/10 (RA-10) | M |
 
 **Fecha quando:** a porta existe com provedor nulo e privacidade fechada por padrão, a sombra do curador mediu concordância, aceite errado, latência e
 custo contra limiares pré-registrados, e o GO/NO-GO por consumidor está registrado.

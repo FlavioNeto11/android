@@ -5780,6 +5780,92 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T07:24:43+00:00"
+  },
+  "31.14": {
+   "id": "31.14",
+   "status": "implemented",
+   "proof": "simulated",
+   "blocker": "",
+   "evidence": "feat/31-14-decisor-jev @ 555543fd (a9166bcb o item, 555543fd a revisão), na main pelo merge 712aaea5 da suíte 7 (123650cc). DecisorJev real: só choice vai ao fio; gasto conferido ANTES do POST (RoutingProvider.conferir_gasto: a rubrica de _budget e o saldo da conta typesafe; barrado = motivo orcamento, nada sai); linha em ai_calls (provedor jev, origem decisao_fechada, usd declarado, step_id NULL). Ligado só por ai.decisao_fechada.decisor: jev; /api/ai mostra decider. simulated: backend/tests/test_decisao_fechada_jev.py (MockTransport, socket proibido, hub falso). Chamada real ao Jev: not_run (JEV_RUNTIME_SEND_APPROVED=False).",
+   "arquivos": [
+    "backend/app/planning/decisao_fechada/decisores.py",
+    "backend/tests/test_decisao_fechada_jev.py"
+   ],
+   "grupo": "jev-ids-suite-7",
+   "modelo": "claude-opus-5-5 (sessão Jev)",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T07:32:33+00:00"
+  },
+  "31.15": {
+   "id": "31.15",
+   "status": "implemented",
+   "proof": "simulated",
+   "blocker": "",
+   "evidence": "feat/ra-10-observabilidade @ f94022c3 (88936fea, 935bb3f5, 57dd17b8, 483635fe, f94022c3), na main pela suíte 7 (123650cc). Migração 080: verdict, escalate, motivo e image_reason em ai_calls, em vocabulário fechado no código, carimbados pelo executor; /api/usage com os grupos do adendo v0.75. simulated: backend/tests/test_observabilidade_das_chamadas.py e o cruzamento da suíte 7 (22f66a6e). A leitura antes x depois de um deploy é scripts/jev-leitura-cache-latencia.py (main dde5b4ce). Conferência real depois do deploy 7 (docs/ia.md, RA-10): not_run.",
+   "arquivos": [
+    "backend/migrations/080_observabilidade_das_chamadas.sql",
+    "backend/app/planning/provider.py",
+    "backend/tests/test_observabilidade_das_chamadas.py"
+   ],
+   "grupo": "jev-ids-suite-7",
+   "modelo": "claude-opus-5-5 (sessão Jev)",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T07:32:33+00:00"
+  },
+  "23.15": {
+   "id": "23.15",
+   "status": "implemented",
+   "proof": "simulated",
+   "blocker": "",
+   "evidence": "feat/ra-7-recusa-no-planejamento @ 0f72f7cb (867d3683 o item), na main pelo merge 2b42085d da suíte 7 (123650cc). A porta de política do item 13.2 também no planejamento: a etapa com efeito fora do catálogo do app recusa antes de executar, com o evento plan.refused (adendo v0.79); sem DDL. simulated: backend/tests/test_recusa_no_planejamento.py e o cruzamento da suíte 7 (22f66a6e). A prova real no Outlook do android-01 é a parte Android (23.14): not_run aqui.",
+   "arquivos": [
+    "backend/tests/test_recusa_no_planejamento.py"
+   ],
+   "grupo": "jev-ids-suite-7",
+   "modelo": "claude-opus-5-5 (sessão Jev)",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T07:32:33+00:00"
+  },
+  "17.13": {
+   "id": "17.13",
+   "status": "implemented",
+   "proof": "real",
+   "blocker": "",
+   "evidence": "feat/lt-4b-esquema-curto @ fc382619 (código 2bed3d6c) e o perfil planejador-sonnet (e4a597f8), na main pela suíte 7 (442d1efc, 123650cc). real: A/B de 3 braços em 03/10 ~04:31-04:39Z na máquina central, código 2bed3d6c, só o planejador, offline, os 14 casos QA: 42 chamadas, 0 erros, US$ 1,36 (docs/ia.md, LT-4b). Opus longo p50 15,9 s; Opus curto 13,3 s, com a forma igual em 14/14; Sonnet 5.5 curto 7,8 s. simulated: backend/tests/test_esquema_curto_do_plano.py e test_perfil_de_ia.py. Ligar o curto no central é do deploy 7 (not_run aqui).",
+   "arquivos": [
+    "backend/tests/test_esquema_curto_do_plano.py",
+    "backend/tests/test_perfil_de_ia.py"
+   ],
+   "grupo": "jev-ids-suite-7",
+   "modelo": "claude-opus-5-5 (sessão Jev)",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T07:32:33+00:00"
+  },
+  "17.14": {
+   "id": "17.14",
+   "status": "implemented",
+   "proof": "simulated",
+   "blocker": "",
+   "evidence": "feat/17-14-perfil-e-dieta @ 1f0195df, na main pelo merge 7515b640 da suíte 7 (123650cc). RoleCfg.effort e thinking por função e por perfil; AiRoleStatus.thinking pela sonda estado_do_thinking em GET /api/ai (adendo v0.84); a função com ajuste ganha instância própria do provedor (a chave inclui a função); dieta do contexto 2 (RA-17). simulated: backend/tests/test_perfil_esforco_e_dieta.py (16). O effort low no YAML do central e a sonda no ar dependem do deploy 7: not_run.",
+   "arquivos": [
+    "backend/app/planning/routing.py",
+    "backend/app/models.py",
+    "backend/tests/test_perfil_esforco_e_dieta.py"
+   ],
+   "grupo": "jev-ids-suite-7",
+   "modelo": "claude-opus-5-5 (sessão Jev)",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T07:32:33+00:00"
   }
  },
  "rodadas": [
@@ -7032,6 +7118,19 @@
    ],
    "grupos": [
     "suite-7-android"
+   ]
+  },
+  {
+   "quando": "2026-10-03T07:32:33+00:00",
+   "itens": [
+    "31.14",
+    "31.15",
+    "23.15",
+    "17.13",
+    "17.14"
+   ],
+   "grupos": [
+    "jev-ids-suite-7"
    ]
   }
  ]
