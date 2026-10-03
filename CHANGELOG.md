@@ -127,6 +127,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   navegador numa cópia do banco do central, inclusive a 375 px.
 - Prova `simulated`: `tests/test_learning_confirmar_que_fica.py` (10), `AprendizadoPage.test.tsx` e
   `DetalheRico.test.tsx`. Real: `not_run`.
+
 ## 2026-10-03 — Aprendizado: o dossiê do fluxo diz os apps (branch fix/dossie-do-fluxo-apps)
 
 - O conteúdo legível do fluxo (detalhe do Livro e dossiê do curador) ganha `app` (o principal do plano), `apps` (os
@@ -144,6 +145,20 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Sem o truncado da linha alheia (só diagnóstico), seriam 30/32 e 32/32. O custo total estimado foi de US$ 0,02
   (`ai_calls` 2944–3007).
 - `ai.leitura_visual.enabled` fica false. A correção do escopo do "truncado" espera decisão. Detalhe em `docs/ia.md` §17.
+
+## 2026-10-03 — 30.25: o rótulo de intenção, "Qual era o pedido?" (branch feat/30-25-rotulo-de-intencao)
+
+- A execução real e comprovada que a cadeia de resolução não casou com nenhuma habilidade (ou deixou num empate) vira
+  uma pergunta cega à pessoa: qual habilidade do catálogo era aquela intenção, ou nenhuma. É o gabarito do decisor
+  fechado da intenção (31.x, da Jev). Minerador no digest da execução assentada, sem gancho novo no taskqueue; uma
+  linha por execução em `learning_reviews` (`template_id='intencao'`, provedor vazio, só ids no dossiê).
+- Os leitores do curador filtram `template_id='curador'`: o rótulo, de custo zero, não entra no orçamento (C_W).
+- Rotas `GET /api/aprendizado/intencao` e `POST /api/aprendizado/execucao/{run_id}/intencao` (adendo v0.76).
+  No painel, "Qual era o pedido?" no fim de Para aprovar, opcional e fora da contagem: uma pergunta por
+  vez, com "Pular", e as opções em até duas linhas (percorrido no navegador numa cópia do banco, inclusive a 375 px).
+- Núcleo: `state.py` compõe o rótulo com o mesmo catálogo da sombra do 31.9 (`catalogo_da_cadeia`). Entra na suíte 7,
+  depois do `fix/31-9-privacidade`, que torna público o acessor `dados_da_intencao`.
+- Prova `simulated`: `tests/test_learning_rotulo_de_intencao.py` (28) e `IntencaoSecao.test.tsx` (10). Real: `not_run`.
 
 ## 2026-10-03 — Aprendizado: `commit` sem catálogo volta para a classe B (branch fix/commit-sem-catalogo-b)
 
@@ -310,6 +325,68 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   evento de erro. (3) Trava de energia: só acorda com `confirm_locked_account` se todo marcador aberto do aparelho é do pedido. **Risco residual a
   aceitar pelo dono:** conta logada no app fora da plataforma (seletor de contas do Instagram) seria apagada. O furo da D2-a em `create_profile`
   segue como item separado.
+
+## 2026-10-03 — Correção do 31.9, reverificação B (NO-GO em 97f35fac): C7 recusa o pedido inteiro, duas passadas no filtro e o motivo da recusa na sombra (branch fix/31-9-privacidade)
+
+- A reverificação B da orquestradora (240 casos novos, 3 céticos; `.claude/handoffs/reverificacao-31-9b.md`) achou 47
+  vazamentos de portão em 97f35fac. Correções do §7:
+  - `_MISTO` antes de `_NUMERO`, com hífen;
+  - eufemismos, pergunta de segurança e frase de recuperação;
+  - leet, palavra invertida, separadores e bidi;
+  - mais idiomas;
+  - e-mail ofuscado, endereço em inglês, caixa postal, cartão e CVV com número.
+- Decisões da orquestradora:
+  - (a) C7 recusa o pedido inteiro, inclusive o código pedido pela quantidade de dígitos;
+  - (c) a regra dos dois numerais fica (0 recusas nos 90 comandos reais de 7 dias);
+  - (d) placa e nome com cidade passam.
+- `decisao_fechada_sombra.motivo_privacidade` (migração 079, trazida da 080 do RA-10): `c7_*` ou o motivo do filtro, por
+  `PedidoDeDecisao.motivo_privacidade` → `RegistroDeDecisao` → `RepositorioDeSombra.registrar`. O `fallback_reason` e
+  `validar` não mudam.
+- Contrato do 30.25: `RunService._dados_da_sombra` vira `dados_da_intencao` (mesma assinatura), e o catálogo da cadeia
+  vira `AppState.catalogo_da_cadeia`, compartilhado pela sombra e pelo rótulo de intenção.
+- Prova `simulated`:
+  - `test_decisao_fechada_reverificacao_b.py` (73 testes);
+  - portão local com o harness da orquestradora copiado: 260 casos, 0 vazamentos (eram 45), 0 passagens indevidas (eram 56).
+  - Real: not_run (o envio continua fechado no código).
+
+## 2026-10-03 — Correção do 31.9: filtro sensato da C3 (ADR-069 item 10), desligamento limpo e estratos do golden set (RA-2; branch fix/31-9-privacidade)
+
+- **ADR-069 item 10** (dono, 03/10 00:15Z, relatado pela orquestradora): dado pessoal pode ir ao Jev "desde que faça sentido
+  no filtro".
+  - A C3 e o nome ou `@handle` de pessoa podem sair; cai a remoção que falha fechada.
+  - O piso: C7 nunca; e-mail e telefone completos viram marcador; e-mail ofuscado, numeral ditado e documento recusam.
+  - O D-J5 vira só "o Jev não decide por persona".
+  - A primeira redação deste item, no mesmo branch, dizia que nome e handle de terceiro ficavam fora; foi corrigida.
+- **C3** (`decisao_fechada/entidades.py`): filtro SENSATO, uma lista de bloqueio sobre o piso.
+  - Normalização NFKC (homóglifo, largura cheia, invisível); alfabetos misturados recusam.
+  - Viram marcador: aspas (a que sobra leva o resto), link, e-mail, `@handle`, telefone, número, palavra com `_` e símbolo.
+  - Recusam: endereço, documento, e-mail ofuscado e numeral ditado, também em EN e ES.
+  - O resto passa, nome inclusive.
+  - A lista de permissão da primeira versão do branch caiu. Nos 90 comandos reais de 7 dias, as 17 recusas que não eram C7
+    vinham todas da regra de proporção, e a lista apagava cerca de 8 palavras por comando no qa-messenger.
+- **C2 e C7**: `mascarar_catalogo` nas opções da R2, antes do corte em 200, com as mesmas máscaras de forma. A C7 é
+  reconhecida em qualquer formato (`menciona_c7`).
+- **Portão** (`simulated`): no `ataque.py` da reverificação, zero vazamento de C7, e-mail e telefone em 109 casos. O
+  "escreva para ali no gmail" sai com nome e provedor, sem endereço.
+- **Real** (OBSERVED, só leitura, contagens, central 01351e66):
+  - nos 90 comandos de 7 dias, 89 sairiam; a recusa que sobra é C7, e nenhum comando que sairia tem e-mail ou telefone;
+  - as 26 opções do catálogo não têm `@`, dígito, e-mail nem telefone.
+- **Parte B** (I1, I4, M1 a M4, corrida do provedor):
+  - o `stop()` espera o que grava sombra antes do `db.close`, com prazo único de 6 s;
+  - o aviso de transparência diz o que sai: "o comando do dono filtrado (e-mail, telefone, @handle, link e número
+    mascarados; nome fica)";
+  - a triagem respeita o envio fechado;
+  - a retenção pula quando a porta está desligada;
+  - o curador lê o provedor por resposta.
+- **I2**: a triagem do curador não casa a decisão real na hora. O relatório do 31.10 lê `learning_reviews` (`validade='ok'`,
+  `simulated=0`) por `decisao_real_da_triagem`.
+- **RA-2**:
+  - migração 079 (`decisao_fechada_sombra.ambiguos`: etapas `AMBIGUOUS` da RESOLVE por execução);
+  - golden set com o 1º estrato da intenção em qa-messenger e o GO do Instagram sem data, decidido no relatório do 1º estrato;
+  - teto da R2 com dois denominadores: 4/31 cadastrados e 3/25 ativos, o principal;
+  - rótulo humano só pelo parecer do 30.17;
+  - métrica principal do 31.10: "execuções sem fluxo que o Jev teria casado ao fluxo que o desfecho confirma".
+- `JEV_RUNTIME_SEND_APPROVED` continua `False`. Nenhuma chamada real.
 
 ## 2026-10-02 — Emenda do ADR-069: a chave TypeSafe não é trocada (decisão do dono, item 9)
 
@@ -590,6 +667,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (`domain/versao.py::versao_canonica`) e a tela e a lição, que gravam só o nome, comparam pelo nome (`nome_da_versao`).
   Depois: 4 `obsoleto_provavel` (fluxos nunca casados). Achado no aceite visual com backend simulado sobre uma cópia do banco.
   Prova `simulated` (`tests/test_learning_versao.py`, 3 casos novos com os formatos medidos); `not_run` no central. K-076.
+
 ## 2026-10-02 — `learning.needs_person` no aviso fora do painel (28.14, branch feat/28-14-needs-person-aviso)
 
 - O aviso externo do 28.11 (Telegram) assina o evento do Livro (30.21), conforme o combinado com a frente Aprendizado em 02/10:

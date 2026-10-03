@@ -47,7 +47,7 @@ from .modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, 
 from .modules.identity.application.sessions import SessionProviders
 from .modules.identity.infrastructure.sessions import SessionDeps, SessionProviderFactory
 from .modules.learning import esquecer_conta
-from .modules.learning.infrastructure import ligar_voz
+from .modules.learning.infrastructure import ligar_intencao, ligar_voz
 from .modules.learning.infrastructure.curador_do_hub import CuradorDoHub
 from .modules.learning.infrastructure.ligar_costuras import costuras_do_livro
 from .modules.learning.infrastructure.montagem import montar_aprendizado
@@ -491,6 +491,9 @@ class AppState:
         self.runs.sombra_intencao = SombraDaIntencao(
             ConsumidorDeIntencao(self.decisao_fechada, self.decisao_sombra), resolver=self.skill_planner.resolve_intent,
             catalogo=self.catalogo_da_cadeia)
+        # Rótulo de intenção (30.25): um minerador no digest da execução assentada, sem gancho novo e sem IA.
+        ligar_intencao.ligar(self.learning, self.db, dados=self.runs.dados_da_intencao,
+                             resolver=self.skill_planner.resolve_intent, catalogo=self.catalogo_da_cadeia)
         # Laço de pedidos persistentes (28.4). O objeto existe sempre (o gancho de fim de execução e a API do 28.9 o
         # chamam sem conferir); a TAREFA só sobe com `pedidos.enabled` e `roda_scheduler` (ver `start`).
         self.pedidos = LacoDePedidos(

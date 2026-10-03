@@ -563,3 +563,25 @@
   border: 1px dashed var(--danger-text);
   border-radius: var(--radius-md);
 }
+
+/* "Qual era o pedido?" (30.25): as opções de uma pergunta, em colunas que caem para uma no celular. */
+.intencaoOpcoes {
+  margin: 0; padding: var(--sp-3); min-width: 0;
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  border: 1px solid var(--border-1); border-radius: var(--radius-md); background: var(--surface-1);
+}
+.intencaoLegenda { padding: 0 var(--sp-1); font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); }
+.intencaoFiltro { max-width: 320px; }
+.intencaoLista { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: var(--sp-1) var(--sp-3); }
+.intencaoOpcao {
+  display: flex; align-items: flex-start; gap: var(--sp-2); min-width: 0; min-height: var(--hit-min);
+  font-size: var(--fs-sm); cursor: pointer; overflow-wrap: anywhere;
+}
+.intencaoOpcao input { margin-top: 3px; flex: 0 0 auto; accent-color: var(--accent); }
+.intencaoDica { color: var(--text-3); }
+/* Nome de fluxo chega a 120 caracteres: duas linhas, e o nome inteiro no `title` da opção. */
+/* O comando é o que a pessoa lê para responder: inteiro, sem o corte em duas linhas do título dos outros itens. */
+.intencaoComando { display: block; -webkit-line-clamp: unset; overflow: visible; }
+.intencaoTexto { display: flex; flex-direction: column; min-width: 0; }
+.intencaoNome { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.intencaoErro { margin: 0; color: var(--danger-text); font-size: var(--fs-sm); }
