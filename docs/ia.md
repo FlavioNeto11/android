@@ -912,7 +912,8 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
     parâmetro) ou `opt:nenhuma` se nada casou; empate sem desfecho fica vazio. **R3 não tem decisão real na sombra**: a cadeia
     que termina em empate não escolhe (`AMBIGUOUS` volta para a pessoa), e a que desempata não devolve os candidatos. O rótulo
     da R3 é a escolha da pessoa ou o desfecho, casados no 31.10. **`casar_desfecho` não é chamado**: não há gancho de fim de
-    execução sem mexer no núcleo, e fica para o 31.10. No mesmo `ao_registrar`, `anotar_ambiguos` grava quantas etapas da
+    execução sem mexer no núcleo, e o relatório do 31.10 o faz na leitura ([design/jev-golden-set.md](design/jev-golden-set.md)
+    §5). No mesmo `ao_registrar`, `anotar_ambiguos` grava quantas etapas da
     RESOLVE terminaram em `StageOutcome.AMBIGUOUS` (`decisao_fechada_sombra.ambiguos`, migração 079, RA-2): é onde a R3 tem o
     que medir. A métrica principal do 31.10 e os estratos estão em [design/jev-golden-set.md](design/jev-golden-set.md) §3.
   - Prova `simulated`: `backend/tests/test_decisao_fechada_intencao.py` (`DecisorFalso`, banco de teste, RESOLVE de verdade sobre
