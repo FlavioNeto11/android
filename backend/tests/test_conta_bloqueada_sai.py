@@ -125,7 +125,7 @@ def test_retirada_apaga_credencial_conta_legada_e_o_ciphertext_e_a_persona_fica(
     assert mem["m-a"] == (MARCADOR, f"{MARCADOR} gosta de café; falou com a conta {MARCADOR}")
     assert mem["m-b"] == ("Ana", "treina para a maratona")
     ev = _eventos(db, "profile.account_retired")
-    assert len(ev) == 1 and ev[0]["data"]["limpezas"] == {"memory_items": 1}
+    assert len(ev) == 1 and ev[0]["data"]["limpezas"] == {"memory_items": 1, "memory_items_de_outras_personas": 0}
     assert FELIPE not in json.dumps(ev[0]).lower()                      # o @ não vai no evento
     assert ev[0]["data"]["account_id"] == conta                        # o id é a lápide, legível nas provas
 
@@ -213,7 +213,8 @@ def test_limpeza_registrada_e_chamada_com_os_argumentos_e_as_contagens_entram_no
     r = svc.retirar_conta_bloqueada(pid, conta)
     assert len(vistas) == 1 and set(vistas[0]) == {"profile_id", "account_id", "handle", "app_id"}
     assert vistas[0]["profile_id"] == pid and vistas[0]["account_id"] == conta and vistas[0]["handle"] == FELIPE
-    assert r["limpezas"] == {"rastro_do_aprendizado": 5, "outra": 1, "memory_items": 0}
+    assert r["limpezas"] == {"rastro_do_aprendizado": 5, "outra": 1, "memory_items": 0,
+                            "memory_items_de_outras_personas": 0}
     assert _eventos(db, "profile.account_retired")[0]["data"]["limpezas"] == r["limpezas"]
 
 

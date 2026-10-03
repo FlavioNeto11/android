@@ -38,7 +38,7 @@ from ..security.sessions import operador_atual
 from .context import SocialContextBuilder, interaction_dto
 from .conteudo import fala_atribuida_a_terceiro
 from ..modules.identity.application.session_rules import PRECISA_DE_PESSOA, emit_needs_person_change
-from .contas_nossas import sem_o_rastro
+from .contas_nossas import emails_so_desta_conta, handle_vivo, sem_o_rastro
 from .limpeza_de_conta import PedidoDeLimpeza
 from .memory import MemoryRefused, MemoryStore, reescrever_memoria
 from .policy import CONTAM, DEFAULT_LIMITS, PolicyEngine, com_politicas_do_app, politicas_do_app
@@ -1426,8 +1426,12 @@ class SocialService:
         handle = str(conta["handle"] or "")
         ancora = self.repo.eh_pacote_ancora(profile_id, self.repo.pacote_da_conta(profile_id, account_id))
         estava_bloqueada = ancora and self._status_do(profile_id) == "blocked"
-        # O evento da retirada não carrega o @ nem o id em texto: a evidência passa pelo mesmo corte da memória.
-        texto = sem_o_rastro((evidencia or "").strip()[:500], handle, account_id) or "bloqueio confirmado"
+        # Os e-mails que identificam SÓ esta conta, lidos antes de a linha e a credencial saírem: o que outra conta viva
+        # (o Outlook da mesma persona, por exemplo) ainda usa continua verdadeiro no produto e não entra (29.32).
+        emails = emails_so_desta_conta(self.repo.db, profile_id=profile_id, account_id=account_id, handle=handle,
+                                       ancora=ancora)
+        # O evento da retirada não carrega o @, o id nem o e-mail em texto: a evidência passa pelo mesmo corte da memória.
+        texto = sem_o_rastro((evidencia or "").strip()[:500], handle, account_id, emails) or "bloqueio confirmado"
         contagens: dict[str, int] = {}
         # Onde a conta estava logada, ANTES de a retirada mascarar o @ do marcador e apagar sessões e vínculos (29.27).
         pedido = self._pedido_de_limpeza(profile_id, conta, ancora)
@@ -1440,9 +1444,14 @@ class SocialService:
                 for nome, n in (limpeza(self.repo.db, profile_id=profile_id, account_id=account_id, handle=handle,
                                         app_id=app_id) or {}).items():
                     contagens[nome] = contagens.get(nome, 0) + int(n)
-            # A memória da persona FICA, sem o @ da conta nem o id dela em texto (a linha não se apaga).
-            contagens["memory_items"] = reescrever_memoria(self.repo.db, profile_id=profile_id, handle=handle,
-                                                           account_id=account_id)
+            # A memória FICA (a linha não se apaga), de TODAS as personas, sem o @ da conta, o id dela nem o e-mail que
+            # só ela usava (29.32).
+            # O @ que outra conta viva ainda tem (o mesmo @ em outro app, ou o de outra persona) não é rastro.
+            vivo = handle_vivo(self.repo.db, profile_id=profile_id, account_id=account_id, handle=handle,
+                               ancora=ancora)
+            contagens.update(reescrever_memoria(self.repo.db, profile_id=profile_id,
+                                                handle=None if vivo else handle, account_id=account_id,
+                                                emails=emails))
             refs = self.repo.retirar_conta_bloqueada(profile_id, account_id, ancora=ancora,
                                                      motivo="conta retirada por bloqueio")
             for ref in dict.fromkeys(refs):

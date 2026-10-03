@@ -4030,3 +4030,8 @@ vocabulário fechado de recusas (`desligado` … `leitor_falhou`, `tela_sensivel
 /api/usage` com o `role` `leitura`. Ajustes desta revisão: a triagem do valor visual leva a etapa a `waiting_user` (sem nova tentativa do ator);
 o valor gravado é o do leitor; as saídas `origem=visual` não entram nas variáveis de receita; orçamento, prazo e crédito do leitor não viram
 `leitor_falhou`; o aviso de `/api/ai` nomeia os apps pelo rótulo do dado. O número final do adendo sai na integração da suíte 6.
+
+## Adendo v0.72 (03/10/2026, número PROVISÓRIO; o final vem do orquestrador) — `retire`: `limpezas` ganha `memory_items_de_outras_personas` (item 29.32)
+
+`limpezas.memory_items` passa a contar as lembranças reescritas em TODAS as personas (não só na que retira), e a chave nova
+`memory_items_de_outras_personas` diz quantas dessas eram de outras personas. Só contagens, inteiros; o evento `profile.account_retired` leva as mesmas.
