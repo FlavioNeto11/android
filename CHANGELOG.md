@@ -27,10 +27,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   linha por execução em `learning_reviews` (`template_id='intencao'`, provedor vazio, só ids no dossiê).
 - Os leitores do curador filtram `template_id='curador'`: o rótulo, de custo zero, não entra no orçamento (C_W).
 - Rotas `GET /api/aprendizado/intencao` e `POST /api/aprendizado/execucao/{run_id}/intencao` (adendo v0.76,
-  provisório). No painel, "Qual era o pedido?" no fim de Para aprovar, opcional e fora da contagem.
+  provisório). No painel, "Qual era o pedido?" no fim de Para aprovar, opcional e fora da contagem: uma pergunta por
+  vez, com "Pular", e as opções em até duas linhas (percorrido no navegador numa cópia do banco, inclusive a 375 px).
 - Núcleo: `state.py` compõe o rótulo com o mesmo catálogo da sombra do 31.9 (`catalogo_da_cadeia`). Entra na suíte 7,
   depois do `fix/31-9-privacidade`, que torna público o acessor `dados_da_intencao`.
-- Prova `simulated`: `tests/test_learning_rotulo_de_intencao.py` (28) e `IntencaoSecao.test.tsx` (7). Real: `not_run`.
+- Prova `simulated`: `tests/test_learning_rotulo_de_intencao.py` (28) e `IntencaoSecao.test.tsx` (10). Real: `not_run`.
 
 ## 2026-10-03 — Aprendizado: `commit` sem catálogo volta para a classe B (branch fix/commit-sem-catalogo-b)
 

@@ -1,4 +1,4 @@
-import { MessageCircleQuestion } from 'lucide-react';
+import { MessageCircleQuestion, SkipForward } from 'lucide-react';
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { toApiError } from '../../api/client';
 import { Button } from '../../components/Button';
@@ -20,14 +20,23 @@ function abrirExecucao(runId: string) {
   useUiStore.getState().setView('execucoes');
 }
 
-/** Uma pergunta: o comando, onde e quando, e as opções (todas as do catálogo daquela hora, mais "Nenhuma destas"). */
-function Pergunta({ p, onRespondida }: { p: PerguntaDeIntencao; onRespondida: () => void }) {
+/** Uma pergunta: o comando, onde e quando, e as opções (todas as do catálogo daquela hora, mais "Nenhuma destas").
+ *  `posicao`: "1 de 4"; `onPular` só existe quando há outra pergunta para mostrar. */
+function Pergunta({ p, posicao, onRespondida, onPular }: {
+  p: PerguntaDeIntencao; posicao: string; onRespondida: () => void; onPular: (() => void) | null;
+}) {
   const [escolha, setEscolha] = useState<string | null>(null);
   const [termo, setTermo] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const id = useId();
   const visiveis = useMemo(() => filtrarCandidatos(p.candidatos, termo), [p.candidatos, termo]);
+  // Dois fluxos podem ter o mesmo nome (o catálogo de 03/10 tem): sem o id, a pessoa não teria como distingui-los.
+  const repetidos = useMemo(() => {
+    const vezes = new Map<string, number>();
+    for (const c of p.candidatos) vezes.set(c.nome, (vezes.get(c.nome) ?? 0) + 1);
+    return new Set([...vezes].filter(([, n]) => n > 1).map(([nome]) => nome));
+  }, [p.candidatos]);
   const nomeDaEscolha = escolha === NENHUM ? 'Nenhuma destas' : p.candidatos.find((c) => c.skill_id === escolha)?.nome;
 
   const responder = async () => {
@@ -43,6 +52,9 @@ function Pergunta({ p, onRespondida }: { p: PerguntaDeIntencao; onRespondida: ()
       if (x.status === 409 || x.status === 404) {
         toast({ tone: 'warning', title: 'Esta pergunta já foi respondida', details: ['A lista foi atualizada.'] });
         onRespondida();
+      } else if (x.status === 422) {
+        // O texto do servidor fala da cadeia de resolução; para a pessoa basta saber o que fazer.
+        setErro('Essa opção não está entre as desta pergunta. Escolha outra ou "Nenhuma destas".');
       } else {
         setErro(toLoadError(err).message);
       }
@@ -52,9 +64,12 @@ function Pergunta({ p, onRespondida }: { p: PerguntaDeIntencao; onRespondida: ()
   };
 
   return (
-    <li className={styles.item} data-item={`intencao:${p.run_id}`}>
+    <div className={styles.item} data-item={`intencao:${p.run_id}`}>
       <div className={styles.itemHead}>
-        <span className={styles.itemTitulo}>{p.comando ? `“${p.comando}”` : 'Comando indisponível'}</span>
+        <span className={`${styles.itemTitulo} ${styles.intencaoComando}`}>
+          {p.comando ? `“${p.comando}”` : 'Comando indisponível'}
+        </span>
+        <span className={styles.secaoLead}>{posicao}</span>
       </div>
       <div className={styles.itemMeta}>
         {p.app ? <span title={p.app}>{p.app_nome ?? p.app}</span> : null}
@@ -69,10 +84,14 @@ function Pergunta({ p, onRespondida }: { p: PerguntaDeIntencao; onRespondida: ()
         ) : null}
         <div className={styles.intencaoLista}>
           {visiveis.map((c) => (
-            <label key={c.skill_id} className={styles.intencaoOpcao} title={c.skill_id}>
+            <label key={c.skill_id} className={styles.intencaoOpcao}
+                   title={repetidos.has(c.nome) ? `${c.nome} (${c.skill_id})` : c.nome}>
               <input type="radio" name={`intencao-${p.run_id}`} value={c.skill_id} checked={escolha === c.skill_id}
                      onChange={() => setEscolha(c.skill_id)} />
-              <span>{c.nome}</span>
+              <span className={styles.intencaoTexto}>
+                <span className={styles.intencaoNome}>{c.nome}</span>
+                {repetidos.has(c.nome) ? <span className={styles.intencaoDica}>{c.skill_id}</span> : null}
+              </span>
             </label>
           ))}
           {visiveis.length === 0 ? <span className={styles.secaoLead}>Nenhuma opção com esse nome.</span> : null}
@@ -89,9 +108,12 @@ function Pergunta({ p, onRespondida }: { p: PerguntaDeIntencao; onRespondida: ()
                 disabledReason={escolha ? null : 'Escolha uma opção.'}>
           Responder
         </Button>
+        {onPular ? (
+          <Button size="sm" variant="ghost" icon={SkipForward} onClick={onPular} disabled={enviando}>Pular</Button>
+        ) : null}
         {escolha && nomeDaEscolha ? <span className={styles.secaoLead}>Escolhida: {nomeDaEscolha}</span> : null}
       </div>
-    </li>
+    </div>
   );
 }
 
@@ -103,6 +125,9 @@ function Pergunta({ p, onRespondida }: { p: PerguntaDeIntencao; onRespondida: ()
 export function IntencaoSecao() {
   const [dados, setDados] = useState<PerguntasDeIntencao | null>(null);
   const [erro, setErro] = useState<LoadError | null>(null);
+  // Uma pergunta por vez (o catálogo inteiro em cada uma deixaria a aba enorme). "Pular" só muda a da vez, aqui: a
+  // pulada continua aberta no servidor e volta depois das outras.
+  const [vez, setVez] = useState(0);
 
   const carregar = useCallback(async () => {
     try {
@@ -144,16 +169,17 @@ export function IntencaoSecao() {
           Quando uma execução der certo sem que o sistema reconheça o pedido, ela aparece aqui.
         </EmptyState>
       ) : null}
-      {dados !== null && dados.itens.length > 0 ? (
-        <>
-          <ul className={styles.lista} aria-label="Pedidos para identificar">
-            {dados.itens.map((p) => <Pergunta key={p.review_id} p={p} onRespondida={() => void carregar()} />)}
-          </ul>
-          {dados.total > dados.itens.length ? (
-            <p className={styles.secaoLead}>Mostrando {dados.itens.length} de {dados.total}. Responda estes para ver os próximos.</p>
-          ) : null}
-        </>
-      ) : null}
+      {dados !== null && dados.itens.length > 0 ? (() => {
+        const n = dados.itens.length;
+        const i = vez % n;
+        const p = dados.itens[i];
+        if (!p) return null;
+        const posicao = `${i + 1} de ${dados.total > n ? `${n} (${dados.total} no total)` : n}`;
+        return (
+          <Pergunta key={p.review_id} p={p} posicao={posicao} onRespondida={() => void carregar()}
+                    onPular={n > 1 ? () => setVez((v) => (v + 1) % n) : null} />
+        );
+      })() : null}
     </section>
   );
 }

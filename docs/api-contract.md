@@ -4157,4 +4157,5 @@ Duas rotas novas, sem IA e sem custo. As duas entram antes da rota genérica do 
   do curador filtram `template_id='curador'`. O sinal `parecer_decidido` ganha `data.template_id`.
 
 Prova `simulated`: `tests/test_learning_rotulo_de_intencao.py` e
-`frontend/src/features/aprendizado/IntencaoSecao.test.tsx`.
+`frontend/src/features/aprendizado/IntencaoSecao.test.tsx`. Ensaio no navegador (03/10, cópia do banco, provedor
+simulado): responder, "Nenhuma destas", filtro, 409, 422, erro de carga e Sinais.

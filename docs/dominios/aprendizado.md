@@ -729,9 +729,11 @@ O gabarito humano do decisor fechado da intenção (31.x, da Jev). Sem IA e sem 
   (422 fora disso; 404 sem pergunta; 409 já respondida, por CAS). A decisão deixa o sinal `parecer_decidido` com
   `template_id='intencao'`, `viu` e `override` falsos, que dá a data da decisão. Quem consome é a Jev (`id_opaco`,
   `nenhum` ↔ `ID_NENHUMA`).
-- **No painel.** "Qual era o pedido?", no fim de Para aprovar, à parte e fora da contagem (é opcional): o comando, onde e
-  quando, as opções em ordem alfabética, sem o palpite do sistema, e "Nenhuma destas"; com mais de 8, um filtro. Nos
-  Sinais, a resposta aparece como "Disse qual era o pedido", não como parecer da IA.
+- **No painel.** "Qual era o pedido?", no fim de Para aprovar, à parte e fora da contagem (é opcional): uma pergunta por
+  vez ("1 de N", com "Pular", que só muda a da vez), o comando inteiro, onde e quando, as opções em ordem alfabética,
+  sem o palpite do sistema, e "Nenhuma destas"; com mais de 8, um filtro sem acento. O catálogo de 03/10 tem 26 opções
+  e nomes de até 120 caracteres: cada nome ocupa no máximo duas linhas (inteiro no `title`), e dois fluxos com o mesmo
+  nome mostram o id. Nos Sinais, a resposta aparece como "Disse qual era o pedido", não como parecer da IA.
 
 ## Pendências conhecidas
 

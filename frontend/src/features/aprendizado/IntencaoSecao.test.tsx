@@ -111,7 +111,7 @@ describe('Qual era o pedido? (30.25)', () => {
     await waitFor(() => expect(opcoes()).toHaveLength(3));
     await click(opcao(0));
     await click(responder());
-    await waitFor(() => expect(container.querySelector('[role="alert"]')?.textContent).toContain('não é uma habilidade'));
+    await waitFor(() => expect(container.querySelector('[role="alert"]')?.textContent).toContain('não está entre as desta pergunta'));
     expect(text(container)).toContain('curta o último post');
   });
 
@@ -133,7 +133,53 @@ describe('Qual era o pedido? (30.25)', () => {
     await waitFor(() => expect(text(container)).toContain('falhou'));
     falhar = false;
     await click(byRole('button', /Tentar de novo/, container));
-    await waitFor(() => expect(text(container)).toContain('Mostrando 1 de 3'));
+    await waitFor(() => expect(text(container)).toContain('1 de 1 (3 no total)'));
+  });
+
+  it('uma pergunta por vez: "Pular" passa para a próxima e volta para a primeira; com uma só, não há "Pular"', async () => {
+    const segunda = { ...PERGUNTA, review_id: 'lr-2', run_id: 'r2', comando: 'siga @beltrano' };
+    backend.on('GET', /^\/api\/aprendizado\/intencao$/, () => json({ itens: [PERGUNTA, segunda], total: 2 }));
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('1 de 2'));
+    expect(text(container)).toContain('curta o último post');
+    expect(text(container)).not.toContain('siga @beltrano');
+    expect(opcoes()).toHaveLength(3);                       // só as opções da pergunta da vez
+    await click(byRole('button', /^Pular/, container));
+    expect(text(container)).toContain('2 de 2');
+    expect(text(container)).toContain('siga @beltrano');
+    expect(backend.callsTo('POST', /intencao$/)).toHaveLength(0);       // pular não responde nada
+    await click(byRole('button', /^Pular/, container));
+    expect(text(container)).toContain('curta o último post');
+
+    await act(async () => root.unmount());
+    container.remove();
+    backend.on('GET', /^\/api\/aprendizado\/intencao$/, () => json({ itens: [PERGUNTA], total: 1 }));
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('1 de 1'));
+    expect(container.querySelectorAll('button').length).toBeGreaterThan(0);
+    expect(Array.from(container.querySelectorAll('button')).some((b) => /^Pular/.test(b.textContent ?? ''))).toBe(false);
+  });
+
+  it('a opção mostra o nome inteiro no title (o texto é cortado em duas linhas)', async () => {
+    const longo = 'Abrir o Instagram, ir ao perfil da conta e conferir as três últimas publicações com legenda e data';
+    backend.on('GET', /^\/api\/aprendizado\/intencao$/, () => json({
+      itens: [{ ...PERGUNTA, candidatos: [{ skill_id: 'flow:9', nome: longo }] }], total: 1 }));
+    await montar();
+    await waitFor(() => expect(opcoes()).toHaveLength(2));
+    expect(opcao(0).closest('label')?.getAttribute('title')).toBe(longo);
+  });
+
+  it('dois fluxos com o mesmo nome mostram o id para a pessoa distingui-los', async () => {
+    const nome = 'Enviar mensagem para QA-001 pelo QA Messenger';
+    backend.on('GET', /^\/api\/aprendizado\/intencao$/, () => json({
+      itens: [{ ...PERGUNTA, candidatos: [{ skill_id: 'flow:3', nome }, { skill_id: 'flow:7', nome },
+                                          { skill_id: 'curtir_post', nome: 'Curtir o post' }] }], total: 1 }));
+    await montar();
+    await waitFor(() => expect(opcoes()).toHaveLength(4));
+    expect(text(container)).toContain('flow:3');
+    expect(text(container)).toContain('flow:7');
+    expect(text(container)).not.toContain('curtir_post');
+    expect(opcao(1).closest('label')?.getAttribute('title')).toBe(`${nome} (flow:3)`);   // 0 é "Curtir o post"
   });
 });
 
