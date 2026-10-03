@@ -14,7 +14,9 @@ NEW_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 IS_WINDOWS = os.name == "nt"
 
 #: 29.47 (03/10/2026): o que passa do ambiente do backend (ou do agente) aos processos filhos — adb, emulador,
-#: avdmanager, Appium, o sing-box da rede e as sondas do Diagnóstico. Lista de PERMISSÃO, não de proibição: o processo
+#: avdmanager, Appium, o sing-box da rede, as sondas do Diagnóstico, o PowerShell da leitura do firewall e o `icacls`
+#: das trancas de arquivo (o do agente inclusive). `tests/test_ambiente_dos_filhos.py` recusa lançamento novo no
+#: `backend/app` sem `env=` ou com cópia de `os.environ`. Lista de PERMISSÃO, não de proibição: o processo
 #: carrega os segredos do `.env` (chaves das IAs, do cofre, do worker) e nenhum filho usa algum deles; o qemu herdava
 #: `TYPESAFE_API_KEY` (K-078, rodada por adição). Variável nova de que um filho precise entra aqui, pelo nome.
 AMBIENTE_PERMITIDO = frozenset({
@@ -38,17 +40,29 @@ PREFIXOS_PROIBIDOS = ("TYPESAFE_", "OPENAI_", "ANTHROPIC_", "GEMINI_", "FARM_")
 _CARA_DE_SEGREDO = re.compile(r"(^|_)(TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|PRIVATE_?KEY|CREDENTIALS?)(_|$)")
 
 
+def _nome_de_segredo(chave: str) -> bool:
+    return chave.startswith(PREFIXOS_PROIBIDOS) or bool(_CARA_DE_SEGREDO.search(chave))
+
+
 def ambiente_dos_filhos(origem: Mapping[str, str] | None = None) -> dict[str, str]:
     """O ambiente de um processo filho: só o que a lista de permissão deixa e nada com nome de segredo. O valor de
     uma variável nunca é olhado; a decisão é pelo nome (no Windows sem diferença de caixa, como o próprio sistema)."""
     env: dict[str, str] = {}
     for nome, valor in (os.environ if origem is None else origem).items():
         chave = nome.upper()
-        if chave.startswith(PREFIXOS_PROIBIDOS) or _CARA_DE_SEGREDO.search(chave):
+        if _nome_de_segredo(chave):
             continue
         if chave in AMBIENTE_PERMITIDO or chave.startswith(PREFIXOS_PERMITIDOS):
             env[nome] = valor
     return env
+
+
+def sem_segredos(origem: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Só a segunda trava: o ambiente inteiro menos os nomes de segredo. Para o git e o ripgrep do Context Retrieval,
+    que dependem de `GIT_*`, `SSH_*` e da configuração do usuário, e que a lista de permissão quebraria sem ganho: o
+    que importa é que nenhuma chave do `.env` chegue a eles. Como em `ambiente_dos_filhos`, só o nome decide."""
+    return {nome: valor for nome, valor in (os.environ if origem is None else origem).items()
+            if not _nome_de_segredo(nome.upper())}
 
 
 class SdkTools:

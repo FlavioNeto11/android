@@ -55,6 +55,7 @@ from pathlib import Path, PureWindowsPath
 from typing import TYPE_CHECKING, Literal
 
 from ..util import now_iso
+from .sdk import ambiente_dos_filhos
 
 if TYPE_CHECKING:
     from ..config import RedeServidorCfg
@@ -648,7 +649,7 @@ def executar_powershell(script: str, *, timeout: float = 60.0) -> str:
     codificado = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
     res = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
                           "-EncodedCommand", codificado], capture_output=True, text=True, timeout=timeout,
-                         creationflags=NO_WINDOW)
+                         env=ambiente_dos_filhos(), creationflags=NO_WINDOW)   # 29.47: sem os segredos
     if res.returncode != 0:
         cauda = (res.stderr or res.stdout or "").strip().splitlines()[-1:] or [""]
         raise RuntimeError(f"a leitura do firewall saiu com {res.returncode}: {cauda[0][:200]}")

@@ -18,6 +18,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 
+from app.devices.sdk import sem_segredos
 from app.modules.context_retrieval.domain.sensitive import SensitivePathMatcher, default_matcher
 
 #: Pastas que nunca entram no universo quando não há git para dizer o que é do projeto.
@@ -86,8 +87,9 @@ class Workspace:
 
     # ------------------------------------------------------------------ git
     def _git_bytes(self, *args: str) -> bytes | None:
-        """Saída do git ou `None` (git ausente, erro, timeout). `GIT_OPTIONAL_LOCKS=0`: ler não pode travar o índice."""
-        env = dict(os.environ, GIT_OPTIONAL_LOCKS="0")
+        """Saída do git ou `None` (git ausente, erro, timeout). `GIT_OPTIONAL_LOCKS=0`: ler não pode travar o índice;
+        `sem_segredos`: o git não recebe as chaves do `.env` (29.47)."""
+        env = {**sem_segredos(), "GIT_OPTIONAL_LOCKS": "0"}
         flags = _CREATE_NO_WINDOW if sys.platform == "win32" else 0
         try:
             r = subprocess.run(["git", *args], cwd=self.root, capture_output=True, timeout=_TIMEOUT_GIT_S,

@@ -19,6 +19,37 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 29.47, varredura: os outros filhos também não herdam os segredos (branch `fix/ambiente-filhos-varredura`)
+
+- **Antes.** Depois do 29.47, nove lançamentos do `backend/app` ainda herdavam o `os.environ` inteiro, com as chaves
+  do `.env`:
+  - o PowerShell da leitura do firewall (`rede_firewall.executar_powershell`);
+  - o `icacls` de `rede_servidor.restringir_ao_usuario`, `security/local_secret.restringir_acesso` e
+    `worker/settings.restringir_acesso` (este também no agente do notebook);
+  - o git do Context Retrieval: `github_visibility` (2 chamadas) e `workspace._git_bytes`;
+  - o ripgrep do Context Retrieval (`lexical`, 2 chamadas).
+- **Agora.** O PowerShell e o `icacls` recebem `ambiente_dos_filhos()`. O git e o rg recebem `sdk.sem_segredos()`,
+  que é só a segunda trava: tudo menos os nomes de segredo. Mantêm `GIT_*`, `SSH_*` e `GIT_OPTIONAL_LOCKS=0`. A
+  decisão continua pelo nome; o valor não é olhado.
+- **Guarda.** Uma varredura por AST em `tests/test_ambiente_dos_filhos.py` recusa no `backend/app`:
+  - lançamento sem `env=`;
+  - `env=os.environ`;
+  - cópia de `os.environ`;
+  - `os.system`, `os.popen`, `os.spawn*` e `os.exec*`.
+
+  Exceção única: `supervisor.iniciar_backend`, que lança o próprio backend. Contra a árvore anterior, a guarda aponta
+  exatamente os 9 lançamentos; contra a nova, nenhum.
+- **Prova `simulated`**: `tests/test_ambiente_dos_filhos.py`, 14 testes.
+  - Os testes por chamada capturam o `env` e só olham NOMES, com variáveis sentinela de valor falso.
+  - Um teste usa filho real: o PowerShell do firewall lista os nomes que recebeu.
+  - Os 39 arquivos de teste que importam os módulos tocados: 1164 passed, 9 skipped.
+- **Fumaça local, nível `real` local** (03/10, central, sessão 1, código do branch): o script real de leitura do
+  firewall (só leitura) rodou com o ambiente filtrado, 36 de 96 nomes. Deu 3 perfis, 4 redes e 16 regras, uma saída
+  idêntica à do ambiente inteiro.
+- **`not_run`**: a observação, depois do deploy, dos filhos curtos (PowerShell, `icacls`) no central e no agente.
+  Os qemu do 01/03/06, lançados antes do deploy 9, seguem com o ambiente antigo até o próximo boot. Sem reinício nem
+  deploy nesta entrega.
+
 ## 2026-10-03 — 29.52: a resposta com credencial é recusada pelo contexto (painel e canais; branch, suíte 14)
 
 - Branch `fix/29-52-resposta-com-credencial`, ainda fora da main: entra na suíte 14. Adendo v1.03 e K-089, sem
