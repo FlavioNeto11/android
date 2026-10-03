@@ -484,7 +484,10 @@ Só domínio puro (desenho em `design/aprendizado-vivo.md` §8.2-8.4); a porta, 
 - **Política de risco** (`domain/politica_de_risco.py::classificar`, fonte única): recebe `FatosDeRisco` (o `commit` do conteúdo,
   `human_origin`, se o app tem catálogo, os `FatosDoCatalogo` da etapa e sessão/autenticação) e devolve a classe, as razões em ordem
   e o motivo do evento. Vale a mais restritiva: `commit` com fatos da etapa que dizem "sem efeito" é C (`commit_fora_do_catalogo`);
-  sem fatos da etapa (capability não derivável) o `commit` é B, como na 30.21. A família envio/publicação/exclusão entra por
+  sem fatos da etapa (capability não derivável) o `commit` é B, como na 30.21. **Emenda de 03/10** (orquestradora, pela
+  regra do dono "o mais restritivo"): `commit` em app SEM catálogo (`commit_sem_catalogo`) passou de B para **C**. É efeito
+  desconhecido, que pode ter alcance em massa ("todos os contatos"): decide-se item a item, nunca em lote, e o aviso de
+  espera sai na faixa C. A família envio/publicação/exclusão entra por
   `familia_do_efeito`, dado que os catálogos ainda não declaram. `conferir_aceite`: a IA nunca decide; aceitar parecer é da pessoa,
   em lote só na B; na A o parecer é só registro e `conferir_aceite` recusa qualquer efeito dele. `ia_permitida`: A
   `so_com_sobra` (depois das prioridades 1 a 4; o corte é do 30.11), B e C `sim`. `classificar_espera` (30.21) só traduz a classe para a faixa do evento.

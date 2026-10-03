@@ -122,10 +122,12 @@ _REGRAS: tuple[tuple[Razao, ClasseDeRisco, MotivoDeEntrada | None], ...] = (
     (Razao.TEXTO_PARA_OUTRA_PESSOA, ClasseDeRisco.C, MotivoDeEntrada.ALTO_RISCO),
     (Razao.FAMILIA_DE_ALTO_RISCO, ClasseDeRisco.C, MotivoDeEntrada.ALTO_RISCO),
     (Razao.COMMIT_FORA_DO_CATALOGO, ClasseDeRisco.C, MotivoDeEntrada.EFEITO_EXTERNO),
+    # Emenda de 03/10 (orquestradora, pela regra do dono "A/B/C, o mais restritivo"): efeito num app sem catálogo é
+    # efeito DESCONHECIDO, que pode ter alcance em massa ("todos os contatos"); decide-se item a item, nunca em lote.
+    (Razao.COMMIT_SEM_CATALOGO, ClasseDeRisco.C, MotivoDeEntrada.COMMIT_SEM_CATALOGO),
     (Razao.RISCO_MEDIO, ClasseDeRisco.B, MotivoDeEntrada.EFEITO_EXTERNO),
     (Razao.EFEITO_DECLARADO, ClasseDeRisco.B, MotivoDeEntrada.EFEITO_EXTERNO),
     (Razao.COMMIT_SEM_FATOS_DA_ETAPA, ClasseDeRisco.B, MotivoDeEntrada.EFEITO_EXTERNO),
-    (Razao.COMMIT_SEM_CATALOGO, ClasseDeRisco.B, MotivoDeEntrada.COMMIT_SEM_CATALOGO),
     (Razao.TEXTO_DE_PESSOA, ClasseDeRisco.B, MotivoDeEntrada.TEXTO_DE_PESSOA),
 )
 _CLASSE_DA_RAZAO = {r: c for r, c, _ in _REGRAS}
