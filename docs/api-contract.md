@@ -4633,3 +4633,64 @@ recusado na carga até a 30.34-B. O central liga `shadow` no deploy 11 (decisão
 Prova:
 - `simulated`: `tests/test_learning_autopublicacao.py` e `tests/test_learning_autopublicacao_sombra.py`.
 - `not_run`: a sombra no central (deploy 11).
+
+## Adendo v0.94 (03/10/2026; número da orquestradora; item 30.33-C) — o item de mais de um app na leitura por app; título e nomes nas revisões; os ramos do orçamento; o desfecho em 14 dias
+
+Aditivo aos v0.47, v0.89 e v0.93. Nenhuma rota nova e nenhuma migração. Origem: a validação do deploy 10 viu o fluxo
+que lê o Outlook arquivado sob o Instagram. Não era dado errado: o `app_id` do fluxo é o app PRINCIPAL, onde rodam as
+etapas sem app próprio. A leitura por app é que só olhava o principal.
+
+**Livro** (`GET /api/aprendizado`, o detalhe e as linhas de `GET /api/aprendizado/apps/{pacote}`):
+- cada entrada ganha `apps`, os pacotes do fluxo que atravessa apps na ordem em que o plano os usa. Só vem preenchido
+  com mais de um app; no resto é `[]`. Com `apps` preenchido, a linha leva também `apps_nomes`, na mesma ordem;
+- `app` continua o principal;
+- o filtro `?app=` e a visão por app põem o item em cada app de `apps`. O rótulo QA/PRODUTO continua pelo principal;
+- o fluxo sem principal resolvido continua só no balde `nao_resolvido` (30.2).
+
+**Métricas** (`GET /api/aprendizado/metricas?app=`):
+- com `app`, o recorte do livro, a saúde, as revisões do curador e a economia contam o fluxo multi-app em cada app
+  dele;
+- `orcamento_do_curador` ganha três chaves:
+  - `pelas_revisoes`: o ramo k·N_W·c̄;
+  - `ramo`: qual dos dois manda no mínimo, `"operacao"` ou `"revisoes"`;
+  - `k`;
+- `orcamento` continua o menor dos dois ramos, e `teto_alfa` continua o ramo da operação (α·G_W). Enquanto o ramo das
+  revisões manda, o `uso` fica perto de 1/k por construção.
+
+**Revisões** (`GET /api/aprendizado/revisoes?app=`):
+- com `app`, entram também as revisões dos itens multi-app que usam esse app sem ser o principal. O `scope_app` é o
+  gravado, o principal;
+- cada linha ganha:
+  - `app_nome`;
+  - `titulo`, o título do item no livro, ou `null` se o item saiu dele;
+  - `etapa`, `capability` e `capability_nome`, para nomear a receita como no catálogo;
+  - `apps` e, só no multi-app, `apps_nomes`;
+  - `resultado_posterior` e `resultado_em` (30.35), `null` enquanto a janela de 14 dias não fecha.
+
+**Pareceres do item** (`pareceres[]` do detalhe): ganham `resultado_posterior` e `resultado_em`.
+
+```json
+{"id": "lr-6a9d1102ca65ceec", "item_ref": "fluxo:ler-no-outlook-o-assunto-do-e-mail-mais-", "app": "com.instagram.android",
+ "app_nome": "Instagram", "titulo": "No Outlook, abra a caixa de entrada e leia o assunto…", "etapa": null,
+ "capability": null, "capability_nome": null, "apps": ["com.microsoft.office.outlook", "com.instagram.android"],
+ "apps_nomes": ["Microsoft Outlook", "Instagram"], "resultado_posterior": null, "resultado_em": null, "…": "…"}
+```
+
+**Dossiê do curador:**
+- no fluxo de mais de um app, `item.apps` vira `[{"id", "pacote", "principal"}]`, na ordem do plano, e
+  `item.principal_e` diz o que é o principal. O curador tinha lido `item.app` (pacote) contra `conteudo.apps` (ids)
+  como divergência;
+- no item de um app só nada muda: as mesmas chaves, o mesmo `dossie_hash` e `versao_do_dossie` 1;
+- no central, só os três fluxos multi-app ganham revisão nova, até ~US$ 0,03 (autorizado pela orquestradora).
+
+**Validação** (30.31):
+- o pedido de um item multi-app só nasce `qa` se TODOS os apps forem de QA (a regra "mais restritivo");
+- o despachante só oferece o aparelho que tem todos os apps do item prontos.
+
+Prova:
+- `simulated`:
+  - `tests/test_learning_multi_app.py`;
+  - `tests/test_learning_validacao_sql.py` (dois casos novos);
+  - `MetricasTab.test.tsx` e `AplicativosTab.test.tsx`;
+- percurso no navegador sobre uma CÓPIA do banco do central de 03/10, com o backend do worktree em provedor simulado;
+- `not_run`: o central.
