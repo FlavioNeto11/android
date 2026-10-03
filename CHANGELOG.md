@@ -19,6 +19,33 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 31.24: latência por etapa como métrica de primeira classe (branch feat/31-24-latencia-por-etapa)
+
+- O tempo dentro da tentativa passa a ter dono. Pedido do dono de 03/10; a leitura "antes" dividia a parede em IA 46 %,
+  ações no aparelho 5,5 % e 39 % sem atribuição. Só mede: nenhum comportamento muda.
+- A migração 088 (`latencia_por_etapa`) traz:
+  - em `ai_calls`, o início da chamada e a espera pela vaga de IA (C-3) e o preparo de cada decisão do ator (C-2);
+  - `actions.ai_call_id` (C-1);
+  - em `attempts`, o juiz, a verificação e a evidência (C-4);
+  - a tabela `esperas`, com o motivo de cada espera (C-5).
+- "Execução pendurada" é derivada pela leitura, sem gravação e sem laço de vigia (decisão da orquestradora, 03/10).
+- `scripts/latencia-por-etapa.py` é a leitura versionada, só leitura e só números e ids. A tabela "antes" (real,
+  03/10) está em `docs/ia.md` §18.
+- A correção da leitura de 03/10: as "4 execuções penduradas" eram espera de pessoa (`waiting_user` de 22:13Z a
+  05:25Z, até o cancelamento).
+- Sobrecarga (`simulated`):
+  - 0 instrução a mais ao banco por decisão, por ação e por tentativa;
+  - até 2 escritas por troca de motivo de espera, e 0 quando nada muda;
+  - cerca de 4,8 µs de CPU por decisão;
+  - nenhuma chamada a mais ao aparelho nem à IA.
+- Arquivos:
+  - `backend/migrations/088_latencia_por_etapa.sql`;
+  - `backend/app/taskqueue/latencia.py` (novo), `executor.py` e `repository.py`;
+  - `backend/app/planning/provider.py` (`PreparoDaDecisao` e os campos novos de `Usage`);
+  - `backend/app/devices/manager.py` (`Observation.ms_arvore` e `ms_imagem`).
+- Testes: `backend/tests/test_latencia_por_etapa.py` e `scripts/tests/test_latencia_por_etapa.py`.
+- Prova: `simulated`; o "depois" real é `not_run` até o deploy.
+
 ## 2026-10-03 — Suíte 15 na main e deploy 15 no central (2264843e; sem migração nova; config sem mudança do deploy)
 
 - A suíte 15 foi integrada em `integ/suite-15`, na ordem da orquestradora:
