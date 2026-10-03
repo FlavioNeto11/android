@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from ..config import AppConfigFile, Config, EnvSettings
 from ..contracts.worker.protocol import AppiumMode
+from ..devices.sdk import ambiente_dos_filhos
 
 log = logging.getLogger("poc.worker")
 
@@ -252,7 +253,8 @@ def restringir_acesso(caminho: Path) -> bool:
     for conta in contas:
         argumentos += ["/grant:r", conta]
     try:
-        r = subprocess.run(["icacls", *argumentos], capture_output=True, text=True, timeout=30)
+        r = subprocess.run(["icacls", *argumentos], capture_output=True, text=True, timeout=30,
+                           env=ambiente_dos_filhos())   # 29.47: o icacls não vê os segredos do processo
     except (OSError, subprocess.SubprocessError) as exc:
         log.error("não foi possível restringir a ACL de %s: %s", caminho.name, exc)
         return False

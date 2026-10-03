@@ -20,6 +20,7 @@ import time
 import unicodedata
 from collections.abc import Iterable, Sequence
 
+from app.devices.sdk import sem_segredos
 from app.modules.context_retrieval.domain.identifiers import explicit_identifiers
 from app.modules.context_retrieval.domain.model import ContextSelection, FileHit, Region, RetrievalRequest
 from app.modules.context_retrieval.infrastructure.workspace import Workspace, normalize_scope, path_in_scope
@@ -105,7 +106,7 @@ def localizar_ripgrep(configurado: str | None = None) -> str | None:
         if not achado:
             continue
         try:
-            r = subprocess.run([achado, "--version"], capture_output=True, timeout=5, check=False)
+            r = subprocess.run([achado, "--version"], capture_output=True, timeout=5, check=False, env=sem_segredos())
         except (OSError, subprocess.SubprocessError):
             continue
         if r.returncode == 0 and r.stdout.startswith(b"ripgrep"):
@@ -147,7 +148,7 @@ class LexicalRetriever:
                 continue
             try:
                 r = subprocess.run([*base, *lote], cwd=self._ws.root, capture_output=True, timeout=_TIMEOUT_RG_S,
-                                   creationflags=flags, check=False)
+                                   env=sem_segredos(), creationflags=flags, check=False)
             except (OSError, subprocess.SubprocessError):
                 return None
             if r.returncode not in (0, 1):  # 1 = nenhum casamento; 2 = erro (arquivo ilegível etc.): descarta o motor

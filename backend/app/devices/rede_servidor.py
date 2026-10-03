@@ -247,7 +247,8 @@ def restringir_ao_usuario(caminho: Path) -> None:
         conta = f"{dominio}\\{usuario}" if dominio else usuario
         direito = "(OI)(CI)(F)" if caminho.is_dir() else "(F)"
         res = subprocess.run(["icacls", str(caminho), "/inheritance:r", "/grant:r", f"{conta}:{direito}"],
-                             capture_output=True, text=True, timeout=30, creationflags=NO_WINDOW)
+                             capture_output=True, text=True, timeout=30, env=ambiente_dos_filhos(),
+                             creationflags=NO_WINDOW)
         if res.returncode != 0:
             raise OSError(f"icacls recusou restringir {caminho.name} ({res.returncode})")
         return

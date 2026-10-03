@@ -278,6 +278,15 @@ isso). Pontos que já causaram incidente:
   - Antes, eles herdavam o ambiente inteiro do backend, e o qemu tinha `TYPESAFE_API_KEY` (K-078).
   - Um filho que precise de uma variável nova a recebe pelo nome em `AMBIENTE_PERMITIDO`. Proxy (`HTTP_PROXY`) fica de
     fora de propósito, porque a URL pode levar senha.
+  - A mesma lista vale para o PowerShell da leitura do firewall (`rede_firewall.executar_powershell`) e para o
+    `icacls` das trancas de arquivo: o da rede, o do segredo local e o do agente (`worker/settings.py`). Desde
+    03/10/2026.
+  - O git e o ripgrep do Context Retrieval recebem `sem_segredos()`: o ambiente inteiro menos os nomes de segredo, só
+    com a segunda trava. Precisam de `GIT_*`, `SSH_*` e da configuração do usuário.
+  - A guarda é `tests/test_ambiente_dos_filhos.py::test_nenhum_lancamento_do_backend_herda_o_ambiente_inteiro`. Por
+    AST, ela recusa no `backend/app` todo `subprocess.*` e todo `create_subprocess_*` sem `env=`, qualquer `os.system`,
+    `os.popen`, `os.spawn*` ou `os.exec*`, e qualquer cópia de `os.environ`. Exceção única, pelo nome:
+    `supervisor.iniciar_backend`, cujo filho é o próprio backend.
 
 ## 12. Tabela de scripts por risco
 

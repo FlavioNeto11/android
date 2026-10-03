@@ -23,6 +23,8 @@ import secrets
 import subprocess
 from pathlib import Path
 
+from ..devices.sdk import ambiente_dos_filhos
+
 log = logging.getLogger("poc.security")
 
 ARQUIVO = "shutdown.token"
@@ -78,7 +80,8 @@ def restringir_acesso(caminho: Path) -> bool:
     for conta in contas:
         argumentos += ["/grant:r", conta]
     try:
-        r = subprocess.run(["icacls", *argumentos], capture_output=True, text=True, timeout=30)
+        r = subprocess.run(["icacls", *argumentos], capture_output=True, text=True, timeout=30,
+                           env=ambiente_dos_filhos())   # 29.47: o icacls não vê os segredos do processo
     except (OSError, subprocess.SubprocessError) as exc:
         log.error("não foi possível restringir a ACL de %s: %s", caminho.name, exc)
         return False
