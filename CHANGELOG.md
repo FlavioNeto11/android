@@ -19,6 +19,44 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Jev: RA-11 (parte Jev) — telemetria vence em 48 h, memória vencida sai do banco, purga em lotes
+
+- `instance.updated` sem execução vence em 48 h (`events.TELEMETRIA_KINDS`/`TELEMETRIA_RETENCAO_H`), antes dos 14 dias do
+  resto do log. A purga de `events` vai em lotes de 2.000 linhas. `memory_items` vencidos saem do banco
+  (`AppState._purgar_memorias_vencidas`). Ao fim da volta da retenção, `PRAGMA optimize` (SQLite).
+- Prova: simulated (`test_retencao_telemetria.py`, 4 testes; 625 afetados verdes). Na primeira volta depois do deploy,
+  saem ≈ 27 mil eventos do central (medido em 03/10, só leitura). Real: `not_run`.
+
+## 2026-10-03 — Jev: higiene de docs do RA-24 (parte Jev)
+
+- `docs/ia.md` §10: o gatilho do ADR-023 para voltar ao modelo local não foi atingido (≈ 13 execuções por dia na
+  semana de 26/09 a 02/10; Ollama sem chamada desde 24/09). O único uso candidato é uma triagem em sombra, medida
+  antes contra o golden set. O roteiro do Jev (local) passa a dizer que o verificador fica fora pela classe do dado
+  (C5/C6), e não pela imagem.
+
+## 2026-10-03 — Jev: prévia que executa não é defeito; o início diz quem iniciou (P12 da reavaliação)
+
+- Prévia passa a ser `mode='plan' AND started_at IS NULL`: as 11 execuções em `mode=plan` que gastaram decisões
+  tinham sido iniciadas de propósito (medido no central, 03/10). `RunService.start(por=...)` grava `iniciada_por`
+  no `run.updated` do início (a pessoa ou `panel` pela rota, `sistema` no `mode=execute`; adendo v0.79).
+- Prova: simulated (`test_inicio_com_autor.py`).
+
+## 2026-10-03 — Jev: retenção do histórico de execução registrada (P10 da reavaliação)
+
+- `runs`, `objectives`, `steps`, `attempts`, `actions` e `plan_versions` ficam "para sempre" por enquanto; o resto
+  vence como antes. Números de 03/10 (≈ 0,45 MiB/dia nessas tabelas) e os gatilhos para rever em `docs/banco.md`.
+
+## 2026-10-03 — Jev: a porta de política do item 13.2 também no planejamento (RA-7, branch feat/ra-7-recusa-no-planejamento)
+
+- `planning/capabilities.py::efeito_fora_do_catalogo` concentra a regra do item 13.2 (etapa com efeito, num app com
+  catálogo, sem ação daquele catálogo). A porta do despacho passa a usá-la, com a mesma frase.
+- `RunService._plan` aplica a regra a todo plano (planejador, fluxo, skill) antes de materializar. Uma etapa recusada
+  zera o plano, a execução vai a `needs_input` com uma pergunta por etapa, e o evento `plan.refused` leva o motivo
+  fechado (`sem_acao_do_catalogo` | `acao_de_outro_catalogo`). Nenhuma decisão é gasta nos preparativos.
+- O caso de 01/10 no Outlook (`fill_recipient` com 16 e 17 decisões) é anterior ao catálogo do Outlook no central;
+  desde que ele chegou, 5 de 5 planos ligam a capability (`docs/dominios/execution.md`).
+- Prova: simulated (`test_recusa_no_planejamento.py`, 12 testes; 616 afetados verdes). Real no android-01: `not_run`
+  (frente Android).
 ## 2026-10-03 — Jev: formato curto do plano atrás de chave (LT-4b, item 17.13, branch feat/lt-4b-esquema-curto)
 
 - `ai.esquema_do_plano: curto` (de fábrica, `longo`, o formato de sempre byte a byte). A etapa livre (plano livre e

@@ -36,7 +36,7 @@ from .devices.rede_convergencia import ConvergenciaDeRede
 from .devices.rede_saida_central import SaidaDoCentral
 from .devices.rede_servidor import ServidorDeRede
 from .devices.sdk import SdkTools
-from .events import EventBus
+from .events import TELEMETRIA_KINDS, TELEMETRIA_RETENCAO_H, EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
@@ -69,7 +69,7 @@ from .planning.decisao_fechada import (DecisorJev, RepositorioDeSombra, construi
 from .planning.decisao_fechada.sombra import ORIGEM_NO_GASTO
 from .planning.decisao_fechada.curador import CuradorComTriagemEmSombra, TriagemDoCurador
 from .planning.decisao_fechada.intencao import ConsumidorDeIntencao
-from .planning.capabilities import (Capability, alvo_da_acao, capability_of, contraparte, load_catalog,
+from .planning.capabilities import (Capability, alvo_da_acao, capability_of, contraparte, efeito_fora_do_catalogo,
                                     texto_a_gerar)
 from .planning.catalog import capabilities_of, pacote_ancora, screen_reader_of, session_factory_of
 from .planning.provider import AIProvider, build_provider
@@ -1929,8 +1929,9 @@ class AppState:
         if cap is None:
             # Item 13.2: etapa com EFEITO externo sem ação do catálogo, num app que TEM catálogo, passaria por fora de
             # política, aprovação, limite e coordenação de frota (uma habilidade treinada, um plano livre que
-            # atravessa apps ou a ação de outro app). Não passa: pede a ação do catálogo.
-            if srow["side_effect"] and pacote and load_catalog(pacote) is not None:
+            # atravessa apps ou a ação de outro app). Não passa: pede a ação do catálogo. A mesma regra recusa o plano
+            # ANTES de ele virar etapa (RA-7, `RunService._plan`); aqui fica a trava do despacho.
+            if efeito_fora_do_catalogo(bool(srow["side_effect"]), capability, pacote):
                 nome = app_da_etapa.name if app_da_etapa and app_da_etapa.name else pacote
                 estranha = f" (a ação {capability} não é do catálogo dele)" if capability else ""
                 return Verdict(allowed=False, policy="manual_only",
@@ -2661,7 +2662,14 @@ class AppState:
         try:
             s = self.settings.get()
             cutoff = to_iso(now() - timedelta(days=s.log_retention_days))
-            removed = self.bus.purge_older_than(cutoff)
+            # Fora do laço de eventos, como a purga de evidências: sem o índice de `events(ts)`, cada lote varre a tabela
+            # (~80–100 ms com 82 mil linhas, 03/10), e a primeira volta depois do RA-11 leva ~14 lotes de telemetria.
+            removed = await asyncio.to_thread(self.bus.purge_older_than, cutoff)
+            # RA-11: a telemetria do parque (`instance.updated`, o DTO inteiro do aparelho) vence em 48 h, antes do
+            # resto do log; só a sem execução, para a linha do tempo de uma execução não perder nada.
+            telemetria = await asyncio.to_thread(
+                lambda: self.bus.purge_older_than(to_iso(now() - timedelta(hours=TELEMETRIA_RETENCAO_H)),
+                                                  kinds=TELEMETRIA_KINDS, so_sem_execucao=True))
             ev_cut = to_iso(now() - timedelta(days=s.evidence_retention_days))
             old = await asyncio.to_thread(self._apagar_evidencias_vencidas, ev_cut)
             # Entrega já feita de comando já fechado não é histórico — o histórico é `commands`. Sem esta
@@ -2675,9 +2683,13 @@ class AppState:
             # Achados #39/#143: até aqui só `events` e `evidence` venciam — commands, ai_calls e measurements
             # cresciam para sempre, e token de inscrição usado ficava eternamente na tabela.
             outras = self._purgar_demais_tabelas(cutoff)
-            if removed or old or outras or arquivos:
-                log.info("retenção: %s eventos, %s execuções com evidências, %s linhas de outras tabelas e "
-                         "%s arquivo(s) removidos", removed, len(old), outras, arquivos)
+            if removed or telemetria or old or outras or arquivos:
+                log.info("retenção: %s eventos (+%s de telemetria), %s execuções com evidências, %s linhas de outras "
+                         "tabelas e %s arquivo(s) removidos", removed, telemetria, len(old), outras, arquivos)
+            # RA-11: as estatísticas do planejador de consultas ao fim da volta (`sqlite_stat1` não existia em 03/10).
+            # `optimize` só refaz o que mudou e é barato; no PostgreSQL quem faz isso é o autovacuum.
+            if self.db.dialect == "sqlite":
+                await asyncio.to_thread(self.db.execute, "PRAGMA optimize")
         except Exception:  # noqa: BLE001
             log.exception("retenção")
         return True
@@ -2731,6 +2743,17 @@ class AppState:
                 total += self.decisao_sombra.aplicar_retencao(self.cfg.file.ai.decisao_fechada.retencao_dias)
         except Exception:  # noqa: BLE001 - idem
             log.exception("decisao_fechada: retenção da sombra")
+        total += self._purgar_memorias_vencidas()
+        return total
+
+    def _purgar_memorias_vencidas(self) -> int:
+        """RA-11: memória com prazo (`memory_items.expires_at`) que já venceu sai do banco. `purge_expired_memories`
+        existia e ninguém o chamava: a memória vencida só sumia da leitura (o filtro de `include_expired`)."""
+        agora = now_iso()
+        total = 0
+        for r in self.db.query("SELECT DISTINCT profile_id FROM memory_items WHERE expires_at IS NOT NULL"
+                               " AND expires_at <= ?", (agora,)):
+            total += self.social_repo.purge_expired_memories(str(r["profile_id"]), now=agora)
         return total
 
     def _purgar_arquivos_vencidos(self, retention_days: int) -> int:

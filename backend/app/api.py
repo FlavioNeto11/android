@@ -3049,8 +3049,10 @@ async def run_successor(request: Request, run_id: str, body: RunSuccessorBody) -
 async def run_op(request: Request, run_id: str, op: str) -> Any:
     runs = st(request).runs
     # Cancelar pela rota é o GESTO de uma pessoa (sinal `cancelou_execucao`); o cancelamento que a sucessora faz não é.
-    # Repetir também é gesto (`repetiu_execucao`): os dois levam o operador da sessão ao sinal.
-    ops = {"start": runs.start, "pause": runs.pause, "resume": runs.resume,
+    # Repetir também é gesto (`repetiu_execucao`): os dois levam o operador da sessão ao sinal. Iniciar leva a pessoa ao
+    # evento (`iniciada_por`, P12): é o que separa a prévia iniciada de propósito do início automático do `mode=execute`.
+    ops = {"start": lambda rid: runs.start(rid, por=_autor_do_sinal(request)), "pause": runs.pause,
+           "resume": runs.resume,
            "cancel": lambda rid: runs.cancel(rid, por=_autor_do_sinal(request)),
            "retry_failed": lambda rid: runs.retry_failed(rid, por=_autor_do_sinal(request))}
     if op not in ops:
