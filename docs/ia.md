@@ -843,6 +843,8 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
       - cada regra de F-A a F-H;
       - a ligação dos nomes até o consumidor.
     - A coluna `motivo_privacidade` (migração 079) é texto sem CHECK: `c7_intencao_de_entrar` entra sem DDL.
+    - **Plano B descartado por ora** (decisão da orquestradora, 03/10): enviar só um esqueleto de vocabulário fechado.
+      Medido a olho em 20 dos 39 comandos reais distintos: 12 inteiros e 2 colisões danosas. Não é candidato hoje.
   - **C7 nunca sai, em prosa ou não**: comando que fala de senha, código, 2FA, PIN, OTP, token, captcha, verificação, chave,
     segredo ou desafio, em PT, EN ou ES (`menciona_c7`: `mentions_credential`, `looks_secret` e o assunto no texto
     normalizado, também com homóglifo, letra de largura cheia, uma letra por vez separada por ponto ou espaço, e letra de
