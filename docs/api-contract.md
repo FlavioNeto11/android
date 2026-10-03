@@ -4555,6 +4555,8 @@ e `sending` no 31.17, sem adendo próprio.
     "27 % (3)") e "Imagem: por que foi junto (ou não)" (os motivos que mandam a imagem primeiro; "6 de 6" com imagem);
     os dois cabem no celular sem rolar de lado;
   - o aviso "Etapas sem registro de quem decidiu" só quando `steps_driven_by_null` passa de 0;
+  - os dois motivos do rejulgamento (`nivel` e `sim_com_efeito`) aparecem também na lista de motivos, porque são
+    subidas ao modelo forte (`escalations` agrupa `escalate` não nulo): a lista não se soma à linha do rejulgamento;
   - com servidor anterior ao v0.75 (sem as chaves) ou período sem nada disso, a seção e o aviso não aparecem.
   - Prova `simulated`: `frontend/src/features/usage/usage.test.ts` (o bloco "RA-10") e
     `frontend/src/features/diagnostics/DiagnosticsPage.test.tsx` (o bloco "Custo de IA: o RA-10").
