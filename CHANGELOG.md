@@ -19,6 +19,32 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 28.15: a conversa de volta pelo Telegram (migração 085; branch feat/28-15-telegram-entrada; desligada de fábrica)
+
+- O mesmo bot do aviso agora também recebe, com o dono como único interlocutor (o `TELEGRAM_CHAT_ID`). Pelo chat ele
+  aprova, veta (com nota), responde à pergunta de uma execução, faz pedidos (`/para` e texto livre) e consulta
+  `/status` e `/pendencias`.
+  - Toda ação passa pelos serviços das rotas do painel: prévia de alvos obrigatória com os botões Executar e Cancelar,
+    approval_required, pré-voo e tetos.
+  - O operador é `telegram:dono`. O `/orq` e o reply a uma mensagem que a Central não mandou ficam guardados para a
+    orquestradora, sem execução.
+- Long-poll com o offset no banco. Um 409 vira `telegram_entrada_conflito` na saúde e uma espera, sem disputa. Os
+  limites são 10 mensagens por minuto e 1000 caracteres.
+- Migração 085 genérica (`canal_entradas` e `canal_enviadas`, com a chave `(canal, id_externo)`): o Trello do 32.2 usa
+  as mesmas tabelas.
+  - A gramática e a parte comum do serviço não conhecem canal. Cada canal traduz o que chegou numa `Recebida` e
+    responde por uma `SaidaDaConversa`.
+- Credencial ou código: a mensagem é recusada sem guardar e apagada do chat (`deleteMessage`). Se não der para apagar,
+  a resposta pede ao dono que apague.
+- Com a conversa ligada, o aviso de aprovação e o de pergunta levam o conteúdo, redigido e cortado em 500 caracteres
+  (decisão (d)).
+- Documentado no ADR-071, no adendo v0.98 do api-contract, em `operacao.md` §15.1, em `banco.md` (085) e em
+  `config.example.yaml`.
+- Prova:
+  - `simulated`: `test_telegram_entrada.py`, `test_canais_contrato.py` (o mesmo comando por `telegram` e `trello`
+    passa pelas mesmas políticas), `test_avisos_servico.py` e `test_telegram_portas.py`;
+  - `not_run`: a conversa real, que depende do "vai" da orquestradora para trocar a caixa provisória.
+
 ## 2026-10-03 — Canais externos: o contrato comum do Telegram (28.15) e do Trello (32.2)
 
 - `docs/design/canais-externos.md`, aprovado pela orquestradora (~18:15Z) e citado pelos ADR-071 e ADR-072. Define:

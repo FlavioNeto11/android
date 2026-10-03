@@ -546,3 +546,32 @@ Se o canal estiver ligado e faltar `TELEGRAM_BOT_TOKEN` ou `TELEGRAM_CHAT_ID`, a
 enviado. Estados da fila para diagnóstico: `SELECT estado, COUNT(*) FROM avisos_entregas GROUP BY estado` (`falhou` e
 `incerto` trazem o `ultimo_erro`, já sem segredo). O que o backend perde por estar parado não é reenviado na partida: a
 caixa do painel é a fonte da verdade.
+
+### 15.1 A conversa de volta (item 28.15, ADR-071)
+
+O mesmo bot também RECEBE: o chat do `TELEGRAM_CHAT_ID` aprova, veta, responde à pergunta de uma execução e faz pedidos.
+A Central trata isso como o painel trata. A gramática fechada está em [design/canais-externos.md](design/canais-externos.md)
+§2, e a `/ajuda` do bot a repete. O detalhe técnico está no ADR-071.
+
+- Vem **desligada** (`avisos.entrada.enabled: false`) e só liga com `avisos.enabled`. O token, o chat e a trava `avisos`
+  são os do aviso.
+- Ligar troca o consumidor do bot: só um processo pode ler o `getUpdates`. Enquanto outro lê (a caixa provisória da
+  orquestradora, uma segunda réplica), a Central recebe 409, espera `espera_conflito_s` e mostra o problema
+  `telegram_entrada_conflito` em `/api/health`. Ela não disputa. **Ligar só com o "vai" da orquestradora**, que para a
+  caixa dela no mesmo momento.
+- Com a entrada ligada, o aviso de aprovação leva o resumo, o alvo e o texto, e o de pergunta leva a pergunta. Os dois
+  vão redigidos e cortados em 500 caracteres, para o dono responder ali mesmo (decisão (d)).
+- A mensagem com cara de senha ou código não é guardada: a Central a apaga do chat e responde sem ecoar nada. Se o
+  Telegram não deixar apagar, a resposta pede ao dono que apague.
+- O registro fica em `canal_entradas` e `canal_enviadas` (migração 085), com o texto só do que veio do dono e foi aceito.
+  Contagem por estado: `SELECT estado, COUNT(*) FROM canal_entradas WHERE canal='telegram' GROUP BY estado`.
+
+Prova real (o dono faz com a sessão Canais; sem ela fica `not_run`):
+1. Ligar `avisos.entrada.enabled: true` no `config/config.yaml`, com backup antes, e reiniciar a tarefa `farm-central`.
+2. Mandar `/status` e depois `/pendencias` ao bot. Cada um tem de responder na thread, e a linha correspondente em
+   `canal_entradas` fica `feita`.
+3. Responder "não" a um aviso de aprovação de teste. Conferir no painel a aprovação vetada com `decided_by =
+   telegram:dono`.
+4. `/para android-09 abra o QA Messenger`: a prévia sai com os botões. Tocar Executar cria uma execução, e o desfecho
+   volta na thread.
+5. Mandar `123456`: a mensagem some do chat, a resposta não ecoa nada, e a linha fica `recusada`, com `texto` NULL.
