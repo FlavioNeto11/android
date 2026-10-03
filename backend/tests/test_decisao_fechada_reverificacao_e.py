@@ -20,7 +20,7 @@ import pytest
 from app.modules.execution.application.target_extractor import CatalogoDeDestinos, PersonaNomeavel, TargetExtractor
 from app.planning.decisao_fechada.decisores import DecisorFalso
 from app.planning.decisao_fechada.entidades import remover_entidades_com_motivo
-from app.planning.decisao_fechada.intencao import CadeiaObservada, motivo_c7
+from app.planning.decisao_fechada.intencao import CadeiaObservada, motivo_c7, nomes_de_destino
 from app.security.redaction import redact
 
 from .conftest import Harness
@@ -33,6 +33,8 @@ DESTINOS = CatalogoDeDestinos((
     PersonaNomeavel("p-andre", ("André", "André Carvalho", "André Carvalho"), ("andre.carvalho9543",)),
 ), tuple(f"android-{i:02d}" for i in range(1, 9)))
 EXTRATOR = TargetExtractor(DESTINOS)
+#: Os nomes do catálogo como chegam ao filtro (rodada F): o que `RunService.dados_da_sombra` passa no 5º item.
+NOMES = nomes_de_destino([*(n for p in DESTINOS.personas for n in (*p.nomes, *p.handles)), *DESTINOS.aparelhos])
 
 
 def _sem_destinos(cru: str) -> str:
@@ -40,9 +42,12 @@ def _sem_destinos(cru: str) -> str:
 
 
 def _motivo(cru: str) -> str | None:
-    """Como o consumidor decide: C7 no texto sem destinos e no original; depois `redact` e o filtro da C3."""
+    """Como o consumidor decide: C7 no texto sem destinos e no original (rodada F: a intenção de entrar só no original, que
+    mostra o destino, e os nomes do catálogo valem como destino); depois `redact` e o filtro da C3."""
     texto = _sem_destinos(cru)
-    if (c7 := motivo_c7(texto) or motivo_c7(cru, valor_apos_conector=False)) is not None:
+    com_original = texto != cru
+    if (c7 := motivo_c7(texto, intencao=not com_original, destinos=NOMES)
+            or (motivo_c7(cru, sem_destinos=texto, destinos=NOMES) if com_original else None)) is not None:
         return c7
     return remover_entidades_com_motivo(redact(texto) or "")[1]
 
@@ -98,7 +103,7 @@ def test_o_par_partido_pelo_sem_destinos_e_visto_no_original() -> None:
     """E-A(4): "entre com a conta Lucas / girassol" vira "entre / girassol" sem destinos; os dois recusam."""
     assert _sem_destinos("entre com a conta Lucas / girassol") == "entre / girassol"
     assert motivo_c7("entre / girassol") == "c7_par_credencial"
-    assert motivo_c7("entre com a conta Lucas / girassol", valor_apos_conector=False) == "c7_par_credencial"
+    assert motivo_c7("entre com a conta Lucas / girassol", sem_destinos="entre / girassol") == "c7_par_credencial"
 
 
 def test_o_consumidor_confere_o_original_e_nao_o_envia(tmp_path: Path, porta_aberta: None) -> None:
@@ -106,25 +111,28 @@ def test_o_consumidor_confere_o_original_e_nao_o_envia(tmp_path: Path, porta_abe
     decisor = DecisorFalso()
     w = Mundo2(tmp_path, decisor)
     cadeia = CadeiaObservada(sem_casamento=True)
-    # o par atravessando o destino: só o original o mostra (o texto sem destinos aqui é fabricado, sem o par)
-    w.consumidor.observar(run_id="r-par", comando="curta a foto da Marina", app=None, catalogo=w.catalogo(),
-                          cadeia=cadeia, original="usuario lucas / girassol, curta a foto da Marina")
-    # o original com "com <nome>" não recusa: no original, o que vem depois de "com" pode ser o destino
-    w.consumidor.observar(run_id="r-destino", comando="curta a foto da Marina", app=None, catalogo=w.catalogo(),
-                          cadeia=cadeia, original="entre com lucas e curta a foto da Marina")
+    # o par atravessando o destino: tirar "com a conta Lucas" deixa "entre e girassol", e só o original mostra o par
+    par = "entre com a conta Lucas e girassol, curta a foto da Marina"
+    assert _sem_destinos(par) == "entre e girassol, curta a foto da Marina"
+    w.consumidor.observar(run_id="r-par", comando=_sem_destinos(par), app=None, catalogo=w.catalogo(), cadeia=cadeia,
+                          original=par, destinos=sorted(NOMES))
+    # o original com "com <destino>" não recusa, e o que vai ao decisor é o texto sem destinos, nunca o original
+    destino = "entre com a conta Lucas e curta a foto da Marina"
+    w.consumidor.observar(run_id="r-destino", comando=_sem_destinos(destino), app=None, catalogo=w.catalogo(),
+                          cadeia=cadeia, original=destino, destinos=sorted(NOMES))
     w.porta.aguardar_sombras()
     por_run = {r["ref"]: (r["fallback_reason"], r["motivo_privacidade"]) for r in w.linhas()}
     assert por_run["r-par"] == ("privacidade", "c7_par_credencial")
-    assert [c.estado for c in decisor.chamadas] == [{"comando": "curta a foto da Marina"}]
+    assert [c.estado for c in decisor.chamadas] == [{"comando": "entre e curta a foto da Marina"}]
     w.fechar()
 
 
 # ------------------------------------------------------------------ controles: o que as regras novas NÃO podem recusar
 @pytest.mark.parametrize("comando", [
     # verbo de entrar com objeto de navegação, ou "com" que é a pessoa, o modo ou o provedor de entrada
-    "entre no perfil da Marina e curta", "abre o insta, entra e curte", "acesse o perfil da Ana e curta a última foto",
+    "entre no perfil da Marina e curta", "acesse o perfil da Ana e curta a última foto",
     "entre na conversa com qa-001 e mande oi", "entre no chat com a Marina", "entre com o lucas e curta",
-    "entre com o Google e abra o feed", "entre e comente com parabéns", "entre no perfil com calma e curta",
+    "entre com o Google e abra o feed", "entre no perfil com calma e curta", "entre com lucas e curta",
     "faça login no app e abra o feed", "log in to the app and like the post", "inicie sessão no app",
     "acesse a conta e curta", "entre na conta do lucas e curta a foto da marina", "use o lucas pra curtir a foto da marina",
     "pesquise por girassol e entre no primeiro perfil", "curta as fotos postadas entre 10/05 e 12/05",
@@ -139,11 +147,19 @@ def test_controles_passam(comando: str) -> None:
     assert _motivo(comando) is None
 
 
-def test_com_nome_sem_artigo_recusa_por_falta_do_catalogo() -> None:
-    """Desvio declarado: o filtro não conhece as personas. "entre com lucas" tem a forma de "entre com girassol" e recusa;
-    com artigo ("entre com o lucas") passa."""
-    assert _motivo("entre com lucas e curta") == "c7_login_valor"
-    assert _motivo("entre com o lucas e curta") is None
+def test_o_nome_do_catalogo_desfaz_o_com() -> None:
+    """Rodada F (F-B): o filtro recebe os nomes do catálogo real. "entre com lucas" é destino; "entre com girassol", que tem a
+    mesma forma, é valor. Sem o catálogo, os dois recusam (o desvio declarado da rodada E)."""
+    assert _motivo("entre com lucas e curta") is None
+    assert _motivo("entre com girassol e curta") == "c7_login_valor"
+    assert motivo_c7("entre com lucas e curta") == "c7_login_valor"
+
+
+@pytest.mark.parametrize("comando", ["abre o insta, entra e curte", "entre e comente com parabéns"])
+def test_entrar_sem_objeto_de_navegacao_pula_a_sombra(comando: str) -> None:
+    """Rodada F (F-A): eram controles da rodada E. O verbo de entrar sem objeto de navegação faz a sombra pular o comando; é
+    o custo de utilidade aceito (nos 98 comandos reais de 7 dias, a F-A sozinha pulou 0)."""
+    assert _motivo(comando) == "c7_intencao_de_entrar"
 
 
 @pytest.mark.parametrize(("comando", "motivo"), [

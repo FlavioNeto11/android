@@ -786,6 +786,63 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
     - **Decisões da orquestradora** (03/10, registradas no ADR-069 item 12): os cinco desvios aceitos; o limite (d) fica
       registrado ("entre com lucas" recusa a sombra, não o comando); o residual de nome vira classe documentada ("quando
       a parte local é o nome, o nome revela a parte local"), isenta no harness e sem mudança no filtro.
+  - **Rodada F (03/10; a fase 2 da rodada E deu NO-GO em db45d4fd; `.claude/handoffs/reverificacao-31-9e.md`, § Decisões
+    da orquestradora).** O cético construiu 49 variações novas que chegavam em claro: valor depois de separador, par com o
+    destino do catálogo, diminutivo, pergunta de segurança, letras soltas, e-mail sem preposição e CPF nu. A estratégia
+    muda: barrar pela INTENÇÃO de entrar, e não só pelo valor.
+    - **F-A, a intenção de entrar** (`c7_intencao_de_entrar`): o verbo de entrar (lista multilíngue de uma, duas ou três
+      palavras: "zaloguj się", "log into", "faça o acesso") SEM objeto de navegação faz a sombra pular o comando, haja
+      valor ou não. Vale no comando ORIGINAL; no texto sem destinos fica desligada, porque tirar "com a conta Lucas" deixa
+      "entre e curta".
+      - Custo: "abre o insta, entra e curte" e "entre e comente com parabéns", controles da rodada E, agora pulam a sombra.
+      - Nos 122 comandos reais de 7 dias, a F-A sozinha pulou 0: 35 têm verbo de entrar, todos com navegação.
+    - **F-B, o "com X" pelo catálogo real**: o original é conferido COM o conector, e `RunService.dados_da_sombra` passa,
+      no 5º item, os nomes do catálogo de destinos real: personas (também aposentadas e bloqueadas), handles e aparelhos
+      (`intencao.nomes_de_destino`).
+      - X é destino quando o extrator o tirou ou quando é nome do catálogo; senão é valor.
+      - O artigo não isenta ("entre com a girassol" recusa), e ",", "-", ":", "=" e "/" valem igual depois do verbo e do
+        conector. "Com a conta do X" é navegação.
+      - "Entre com lucas" passa (cai o desvio (d) da rodada E); sem o catálogo, recusaria.
+    - **"entre" preposição**: depois de palavra de conteúdo, "entre" é preposição quando o que vem depois não é do verbo
+      (conector, separador, lugar, objeto, advérbio, conjunção); diante de número, só em data ou faixa.
+      - "As fotos postadas entre 10/05 e 12/05" passa: era um falso positivo real da primeira versão.
+      - "No instagram entre com girassol" e "no insta entre 4471 e curte" recusam.
+      - No começo da oração é sempre verbo: "entre 3 e 5 fotos" pula a sombra.
+    - **F-C**: o campo de usuário ganhou conta, persona, nome, perfil, login e user, e o par vale com quaisquer dois tokens
+      ("conta zilda girassol", "persona zilda / girassol"). O primeiro precisa ser valor: "qual conta está conectada"
+      passa, outro falso positivo real da primeira versão.
+    - **F-D**: diminutivos de senha, chave, segredo, código e PIN (senhinha, chavinha, codiguinho, clavecita…) e "codigo"
+      colado a outra palavra.
+    - **F-E**: a pergunta de segurança ("a de sempre é X", "aquela que só eu sei é X", "o nome do meu primeiro cachorro é
+      X").
+    - **F-F**: cinco letras ou mais soltas ("g i r a s s o l", "z-i-l-d-a") viram `[termo]` na C3 e recusam como
+      `c7_ofuscado` na C7.
+      - Desvio: é mais estrito que a especificação, que pedia só `[termo]`.
+      - Limite: uma letra solta logo antes entra na máscara ("dela é z . i . l . d . a" vira "dela [termo]").
+    - **F-G**: nome + provedor só de e-mail sem preposição ("zilda gmail", "mande para a Ana gmail") e "point" antes de
+      domínio de topo recusam (`email_ofuscado`).
+      - Desvios: o provedor antes do nome só conta com pista de destinatário e só se não é app; "point" só diante de
+        domínio de topo que não é palavra inglesa.
+      - "Da" entrou na lista do que vem antes do provedor: "a foto da terra" passa.
+    - **F-H**: o CPF nu recusa como `documento`, formatado ou com 11 dígitos depois de documento, doc, identidade ou
+      cadastro.
+    - **Portão local** (`simulated`): harness e corpus de 427 casos da orquestradora, no worktree sem commit, com o
+      catálogo stub e com o REAL, com e sem os nomes no 5º item.
+      - Os quatro modos dão o mesmo resultado: ok 422, recusa indevida 5; 0 vazamentos de C7, e-mail e telefone; 0 C7
+        mascarada; 0 passagens indevidas; `erros` vazio. Com os nomes, só muda o motivo de n=392 (intenção → par).
+      - As 5 recusas indevidas:
+        - n=73 é a própria F-H (o corpus ainda espera máscara);
+        - n=427 é a máscara de sempre do token misto (qa-001 → `[termo]`);
+        - n=134, 135 e 348 são "Ze Sete", utilidade.
+      - A F-A é o único motivo de 5 recusas do corpus, 4 com os nomes do catálogo: é portão, não só custo.
+      - Os 122 comandos reais de 7 dias (03/10, só leitura, pelo caminho de produção com o catálogo real) dão 1 recusa, a
+        mesma C7 da rodada E.
+    - Prova: `backend/tests/test_decisao_fechada_reverificacao_f.py`, com:
+      - as 49 entradas da síntese e os pares com destino real;
+      - os contrastes e os controles;
+      - cada regra de F-A a F-H;
+      - a ligação dos nomes até o consumidor.
+    - A coluna `motivo_privacidade` (migração 079) é texto sem CHECK: `c7_intencao_de_entrar` entra sem DDL.
   - **C7 nunca sai, em prosa ou não**: comando que fala de senha, código, 2FA, PIN, OTP, token, captcha, verificação, chave,
     segredo ou desafio, em PT, EN ou ES (`menciona_c7`: `mentions_credential`, `looks_secret` e o assunto no texto
     normalizado, também com homóglifo, letra de largura cheia, uma letra por vez separada por ponto ou espaço, e letra de

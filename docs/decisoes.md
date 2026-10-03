@@ -75,7 +75,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-065](#adr-065--ação-de-catálogo-entrega-valor-lido-a-outra-etapa-saidas-declaradas-no-catalogoyaml) | Ação de catálogo entrega valor lido a outra etapa: `saidas` declaradas no `catalogo.yaml` | vigente (12.3) | 02/10 |
 | [ADR-066](#adr-066--laço-de-pedidos-desligado-por-padrão-origem-interna-na-criação-da-execução-e-edição-por-gatilho-novo) | Laço de pedidos: desligado por padrão, origem interna na criação da execução e edição por gatilho novo | aceito (Fase 28, 28.4) | 02/10 |
 | [ADR-068](#adr-068--conta-bloqueada-sai-na-hora-e-a-persona-fica-lápide-só-com-o-hash-do-arroba) | Conta bloqueada sai na hora e a persona fica; lápide só com o hash do @ (item 29.23) |
-| [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro; item 11: regras do filtro do 31.9; item 12: C7 sem palavra-chave e e-mail em peças, rodada E) | 03/10 |
+| [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro; item 11: regras do filtro do 31.9; item 12: C7 sem palavra-chave e e-mail em peças, rodada E; item 13: barrar pela intenção de entrar, rodada F) | 03/10 |
 
 ---
 
@@ -4131,6 +4131,35 @@ catálogo, comando), que o ADR-063 não cobre.
         mascarada, 0 passagens indevidas;
       - 1 recusa nos 92 comandos reais, a mesma de antes.
       Detalhes em [ia.md](ia.md), no bloco "Rodada E" da intenção.
+13. **Emenda de 03/10/2026 (decisões da orquestradora na rodada F do 31.9, dentro do piso do item 10; registrada
+    ~08:10Z).** A fase 2 da rodada E deu NO-GO em db45d4fd: 49 variações novas chegavam em claro. A estratégia muda de
+    barrar o VALOR para barrar a INTENÇÃO de entrar.
+    - **F-A**: o verbo de entrar sem objeto de navegação faz a sombra pular o comando (`c7_intencao_de_entrar`), conferido
+      no comando original. Custo medido: 0 dos 122 comandos reais de 7 dias (o limiar da orquestradora é 10 %).
+    - **F-B**: o original é conferido com o conector, e o "com X" é desfeito pelo catálogo de destinos REAL. Os nomes
+      chegam ao filtro pelo 5º item de `RunService.dados_da_sombra`. O artigo não isenta, e ",", "-", ":", "=" e "/" valem
+      igual. Cai o desvio (d) do item 12.
+    - **F-C a F-H**:
+      - o campo de usuário fica mais largo;
+      - entram os diminutivos e o "codigo" colado;
+      - entra a pergunta de segurança;
+      - cinco letras ou mais soltas são barradas;
+      - nome + provedor sem preposição e "point" recusam;
+      - o CPF nu recusa como `documento`.
+    - **Desvios declarados**:
+      - o soletrado recusa na C7, mais estrito que a especificação;
+      - o provedor antes do nome só conta com pista e só se não é app;
+      - "point" só vale diante de domínio de topo que não é palavra inglesa;
+      - "com a conta do X" é navegação;
+      - "entre" depois de palavra de conteúdo é preposição quando o que vem depois não é do verbo (diante de número, só em
+        data ou faixa);
+      - "entre 3 e 5 fotos", no começo da oração, pula a sombra.
+    - Prova `simulated`:
+      - `backend/tests/test_decisao_fechada_reverificacao_f.py`;
+      - harness da orquestradora com o corpus de 427 casos, com catálogo stub e real: 0 vazamentos de portão, 0 C7
+        mascarada, 0 passagens indevidas e 5 recusas indevidas (2 delas são rótulo do corpus a atualizar);
+      - 1 recusa nos 122 comandos reais, a mesma de antes.
+      Detalhes em [ia.md](ia.md), no bloco "Rodada F" da intenção.
 
 **Consequências.** A plataforma ganha um motor barato (US$ 0,042/M de entrada, saída grátis) para decisões fechadas que hoje não
 acontecem ou vão ao Opus, medido em sombra contra o caminho atual antes de qualquer `on`. O ADR-063 continua valendo para código.

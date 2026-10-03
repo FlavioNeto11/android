@@ -19,6 +19,26 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Correção do 31.9, rodada F (NO-GO da fase 2 da rodada E em db45d4fd): barrar pela intenção de entrar, "com X" pelo catálogo real (branch fix/31-9-rodada-e)
+
+- F-A: o verbo de entrar sem objeto de navegação faz a sombra pular o comando (`c7_intencao_de_entrar`), no original.
+- F-B: os nomes do catálogo de destinos real chegam ao filtro (`RunService.dados_da_sombra`, 5º item;
+  `intencao.nomes_de_destino`). O "com X" é destino só quando X é do catálogo ou foi tirado pelo extrator.
+- "entre" preposição ("as fotos postadas entre 10/05 e 12/05") deixa de ser verbo.
+- F-C a F-H:
+  - campo de usuário mais largo;
+  - diminutivos;
+  - pergunta de segurança;
+  - letras soltas;
+  - nome + provedor sem preposição e "point";
+  - CPF nu.
+- ADR-069, item 13.
+- Prova `simulated`:
+  - `tests/test_decisao_fechada_reverificacao_f.py`;
+  - corpus F da orquestradora (427 casos, catálogo stub e real): 0 vazamentos de portão, 0 C7 mascarada, 0 passagens
+    indevidas;
+  - 122 comandos reais: 1 recusa, a mesma.
+
 ## 2026-10-03 — Correção do 31.9, rodada E (NO-GO em 963f9d7b): C7 pela intenção de entrar, "senha" em outras línguas e e-mail em peças em português (branch fix/31-9-rodada-e)
 
 - C7 sem palavra-chave:
