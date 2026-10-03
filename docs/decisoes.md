@@ -75,7 +75,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-065](#adr-065--ação-de-catálogo-entrega-valor-lido-a-outra-etapa-saidas-declaradas-no-catalogoyaml) | Ação de catálogo entrega valor lido a outra etapa: `saidas` declaradas no `catalogo.yaml` | vigente (12.3) | 02/10 |
 | [ADR-066](#adr-066--laço-de-pedidos-desligado-por-padrão-origem-interna-na-criação-da-execução-e-edição-por-gatilho-novo) | Laço de pedidos: desligado por padrão, origem interna na criação da execução e edição por gatilho novo | aceito (Fase 28, 28.4) | 02/10 |
 | [ADR-068](#adr-068--conta-bloqueada-sai-na-hora-e-a-persona-fica-lápide-só-com-o-hash-do-arroba) | Conta bloqueada sai na hora e a persona fica; lápide só com o hash do @ (item 29.23) |
-| [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro; item 11: regras do filtro do 31.9) | 03/10 |
+| [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro; item 11: regras do filtro do 31.9; item 12: C7 sem palavra-chave e e-mail em peças, rodada E) | 03/10 |
 
 ---
 
@@ -4091,6 +4091,46 @@ catálogo, comando), que o ADR-063 não cobre.
       outlook", "look at photo.jpg") lido como e-mail, e "pw" isolado lido como credencial.
     - Prova `simulated`: `backend/tests/test_decisao_fechada_reverificacao_c.py` e o harness da rodada D (267 casos pelo
       caminho de produção, 0 vazamentos em 963f9d7b); detalhes em [ia.md](ia.md) (bloco "Rodada C" da intenção).
+12. **Emenda de 03/10/2026 (decisões da orquestradora na rodada E do 31.9, dentro do piso do item 10; registrada
+    ~07:00Z).** A rodada D deu NO-GO em 963f9d7b: 25 variações construídas pelo cético chegavam em claro, porque a C7 era
+    uma lista fechada e a senha só de letras, dita sem a palavra, passava. As regras ficam assim:
+    - **E-A, C7 sem palavra-chave**:
+      - "senha" em línguas de escrita latina, na mesma normalização do texto (56 traduções; as da especificação e outras
+        de memória, não conferidas uma a uma no Wiktionary);
+      - os eufemismos: palavra secreta ou mágica, "magic word", lema e "a de acesso", credencial, "pswd", "a mesma de
+        ontem", "os números que chegaram", "o que combinamos pelo telefone", "embaixo do usuário" e "a combinação é X";
+      - a regra ESTRUTURAL de intenção de entrar, independente da lista: o verbo de entrar ligado a um valor
+        (`c7_login_valor`: "entre com girassol", "pra entrar: girassol") e o par de usuário e senha
+        (`c7_par_credencial`: "usuário lucas e girassol, entra", "entre com a conta Lucas / girassol", "lucas,
+        girassol, entra");
+      - a C7 é conferida também no comando ORIGINAL, com os destinos: o `sem_destinos` parte o par.
+    - **E-B, e-mail ditado em peças em português recusa** ("zilda no gmail", "mande para zilda do outlook", "o usuário é
+      zilda e o domínio é correio.net").
+    - **E-C, a máscara engole o endereço inteiro**: a parte local até o espaço ("abcdef#zilda@", "o'brien@"), o
+      `mailto:`, o `?subject=`, o domínio de topo solto e o `tel:`.
+    - **E-D, os conflitos de rótulo recusam**: o domínio cirílico, o controle de direção, o base64 com "campo de acesso",
+      o "2580#", o PIN tecla a tecla e "o usuário é zilda e o domínio é correio.net". A C7 que ia mascarada também recusa.
+    - **Desvios da especificação, aceitos pela orquestradora**:
+      - (a) "passe" e "combinação" sozinhos só recusam com verbo de entrar sem objeto de navegação; "a combinação é
+        X" recusa sempre.
+      - (b) Depois de um objeto de navegação, "com X" só conta se o objeto é app, conta, site ou insta. "Entre na
+        conversa com qa-001" passa: eram 12 dos 92 comandos reais.
+      - (c) A regra "nome do catálogo, valor, entra" vale para quaisquer dois tokens no começo da oração: o filtro não
+        conhece o catálogo.
+      - (d) Limite conhecido: "entre com lucas", nome sem artigo, recusa a sombra (não o comando), como "entre com
+        girassol"; "entre com o lucas" passa.
+      - (e) O provedor que também é app ou palavra (outlook, live, terra) vale sem pista atrás de uma lista de verbos,
+        objetos e pastas: "comenta no live" e "a caixa de entrada do outlook" passam (eram 2 dos 92 reais).
+        "correio" só vale com pista de destinatário.
+    - **Residual documentado** (opção (2) da orquestradora): quando a parte local é o nome da pessoa, o nome em claro
+      revela a parte local ("Zilda Prado <[email]>"). Vale a regra "nome passa" do item 10. O harness isenta o
+      fragmento que é nome com maiúscula em claro fora do endereço; o filtro não muda.
+    - Prova `simulated`:
+      - `backend/tests/test_decisao_fechada_reverificacao_e.py`;
+      - harness da orquestradora com o corpus de 360 casos em db45d4fd: 0 C7 em claro (eram 47 no baseline), 0 C7
+        mascarada, 0 passagens indevidas;
+      - 1 recusa nos 92 comandos reais, a mesma de antes.
+      Detalhes em [ia.md](ia.md), no bloco "Rodada E" da intenção.
 
 **Consequências.** A plataforma ganha um motor barato (US$ 0,042/M de entrada, saída grátis) para decisões fechadas que hoje não
 acontecem ou vão ao Opus, medido em sombra contra o caminho atual antes de qualquer `on`. O ADR-063 continua valendo para código.

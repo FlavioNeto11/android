@@ -783,6 +783,9 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
     - Prova: `backend/tests/test_decisao_fechada_reverificacao_e.py`, com os 25 vazamentos da rodada D, as 4 C7 que iam
       mascaradas, 28 controles que não podem recusar, as formas novas, o e-mail em peças, a máscara inteira e o original
       chegando à sombra.
+    - **Decisões da orquestradora** (03/10, registradas no ADR-069 item 12): os cinco desvios aceitos; o limite (d) fica
+      registrado ("entre com lucas" recusa a sombra, não o comando); o residual de nome vira classe documentada ("quando
+      a parte local é o nome, o nome revela a parte local"), isenta no harness e sem mudança no filtro.
   - **C7 nunca sai, em prosa ou não**: comando que fala de senha, código, 2FA, PIN, OTP, token, captcha, verificação, chave,
     segredo ou desafio, em PT, EN ou ES (`menciona_c7`: `mentions_credential`, `looks_secret` e o assunto no texto
     normalizado, também com homóglifo, letra de largura cheia, uma letra por vez separada por ponto ou espaço, e letra de
