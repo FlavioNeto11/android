@@ -110,7 +110,7 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   - a primeira e a última vez;
   - o histórico de eventos: mensagem, pergunta do nome, bot posto ou tirado.
   O segredo retido entra só como o aviso de retenção. Hoje o registro fica em `contatos-telegram.json` (seção 7);
-  no produto, no banco da Central (28.18). Nunca no Trello nem no Git.
+  no produto, no banco da Central (28.18). Nunca no Trello nem no Git. No produto, o registro entra na faxina por retenção do 28.16.
 - **Hoje:** `telegram_inbox.py` e a leitura dos quadros por `list_activity`.
 - **No produto:** `trello.membro_dono` e `TELEGRAM_CHAT_ID` (canais-externos §4).
 
@@ -118,6 +118,13 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
 - **Confirmado pelo dono (Telegram 03/10 22:52Z):** "vc responde pra todo mundo eu so autorizo". A ANA responde a
   todos, e o dono só autoriza: quem passa a ser atendido (C-10) e os pedidos (abaixo). A leitura restritiva das
   22:50Z, de não responder a ninguém além do dono, foi descartada.
+- **O que responder a todos não muda (orquestradora, 03/10 22:55Z):**
+  - convidado não executa nada;
+  - a quem não é o dono não vai nenhum dado de persona, conta, e-mail, telefone, IP ou segredo;
+  - nenhum nome de pessoa vai ao chat do convidado: lá, o dono é "o dono";
+  - autorização que o CLAUDE.md pede "em chat" não vale pelo Telegram.
+  Hoje, `telegram_status.py --chat` recusa o texto que tiver um nome do arquivo local. O modelo das boas-vindas
+  (`BOAS_VINDAS`) já vem sem nomes.
 - **Origem:** dono 03/10 ~20:15Z (Trello) e Telegram 20:51Z ("mantenha o mesmo comportamento do Trello com eles
   aqui também").
 - **Regra:**

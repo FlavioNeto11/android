@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import unicodedata
 import asyncio
 import logging
 import html
@@ -57,6 +58,28 @@ def _chat_de_convidado(chat: str) -> bool:
     return any(str(c.get("telegram_chat_id")) == chat for c in dados.get("convidados") or [] if c.get("telegram_chat_id"))
 
 
+#: Modelo das boas-vindas a um convidado recém-autorizado (C-10). Sem nome de pessoa: no chat do convidado, o dono é
+#: "o dono" (C-02; as boas-vindas de 03/10 22:53Z saíram com nomes e tiveram de ser editadas).
+BOAS_VINDAS = ("Obrigada! O dono da Central confirmou que você é convidado dele, então pode falar comigo por aqui.\n\n"
+               "Eu sou a ANA, a IA Gerente de Operações da Central de Aparelhos. Você pode me perguntar como andam as "
+               "frentes, os prazos e o que mudou. Quando for um pedido, eu levo ao dono, e ele autoriza antes.")
+
+
+def _nomes_proibidos() -> list[str]:
+    """Nomes de pessoa que nunca vão ao chat de um convidado: os dos convidados e os do dono, do arquivo local
+    (`nome` de cada convidado e `_nomes_do_dono`). Cada parte do nome com 3+ letras conta."""
+    try:
+        dados = json.loads(MEMBROS.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    nomes = [str(c.get("nome") or "") for c in dados.get("convidados") or []] + list(dados.get("_nomes_do_dono") or [])
+    return sorted({p for n in nomes for p in re.findall(r"\w{3,}", n.lower())})
+
+
+def _sem_acento(t: str) -> str:
+    return "".join(ch for ch in unicodedata.normalize("NFD", t) if unicodedata.category(ch) != "Mn")
+
+
 async def _enviar(texto: str, reply_to: int | None, chat: str | None = None) -> int:
     env = EnvSettings()
     token = _segredo(env.telegram_bot_token)
@@ -64,6 +87,12 @@ async def _enviar(texto: str, reply_to: int | None, chat: str | None = None) -> 
     if chat:
         if not _chat_de_convidado(chat):
             print("chat não registrado como convidado em membros-trello.json; nada enviado")
+            return 2
+        palavras = set(re.findall(r"\w+", _sem_acento(_sem_tags(texto).lower())))
+        achados = [n for n in _nomes_proibidos() if _sem_acento(n) in palavras]
+        if achados:
+            # C-02: nome de pessoa só no chat do dono. Não imprime qual nome (o log fica no terminal da sessão).
+            print(f"recusado: o texto para o convidado tem {len(achados)} nome(s) de pessoa; use 'o dono' e nada enviado")
             return 2
         chat_id = chat
     try:
