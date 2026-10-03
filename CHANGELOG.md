@@ -19,6 +19,11 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Jev: retenção do histórico de execução registrada (P10 da reavaliação)
+
+- `runs`, `objectives`, `steps`, `attempts`, `actions` e `plan_versions` ficam "para sempre" por enquanto; o resto
+  vence como antes. Números de 03/10 (≈ 0,45 MiB/dia nessas tabelas) e os gatilhos para rever em `docs/banco.md`.
+
 ## 2026-10-03 — Jev: a porta de política do item 13.2 também no planejamento (RA-7, branch feat/ra-7-recusa-no-planejamento)
 
 - `planning/capabilities.py::efeito_fora_do_catalogo` concentra a regra do item 13.2 (etapa com efeito, num app com

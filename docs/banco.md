@@ -466,6 +466,44 @@ O que a ferramenta faz e um `INSERT … SELECT` não faria:
 
 As **senhas** não atravessam sozinhas: ver *A chave do cofre é DPAPI*, abaixo. A ferramenta termina dizendo isso.
 
+## Retenção: o que vence e o que fica (P10, 03/10/2026)
+
+**Decisão** (orquestradora, dentro das autorizações do dono; P10 da reavaliação de 03/10): o histórico de execução fica
+**para sempre**, por enquanto. Retenção de 90 dias foi a alternativa e não entrou.
+
+**O que vence.** A cada 6 h, só no líder (`state.py::_retencao_uma_vez`):
+
+- `events`, `commands` terminais, `ai_calls` e `measurements` vencem em `log_retention_days` (14 dias de fábrica). Uma
+  `ai_calls` de ocorrência de pedido ainda aberta fica até o fechamento (28.6).
+- Evidências vencem em `evidence_retention_days`. Os arquivos rotacionados (`*.log.1`, `data/logs/probe-*`,
+  `data/avd-probe`) seguem o prazo do log.
+- `worker_enrollments` vence em 7 dias.
+- A retenção do aprendizado (`aprendizado.retencao`, ADR-054) e a da sombra da decisão fechada
+  (`ai.decisao_fechada.retencao_dias`) têm prazo próprio, e o agregado diário é calculado antes de purgar.
+
+**O que fica.** `runs`, `objectives`, `steps`, `attempts`, `actions` e `plan_versions`. Leem esse histórico o
+aprendizado, a projeção pelo histórico (18.3), o "de novo" (11.5) e o relatório da execução. A redação de contas
+retiradas segue o P13: `memory_items` é redigido em `esquecer_conta`; `runs.command` e `actions.args` ficam como
+histórico.
+
+**Medido** (03/10/2026 05:15Z, central, banco em `mode=ro`, soma do tamanho das colunas):
+
+- 7,2 MiB de dado nessas seis tabelas em 16 dias (17/09 a 03/10), ≈ 0,45 MiB por dia;
+- 279 execuções, 2.623 etapas, 3.349 ações;
+- o banco tem 174,8 MiB, com 16,9 MiB livres. O grosso é `events` (82.649 linhas) e `measurements` (50.732), que
+  vencem;
+- na reavaliação, as consultas por execução levaram de 1,9 a 2,6 ms.
+
+**Gatilhos para rever.** Basta um deles:
+
+- o banco passa de 1 GB depois da retenção por classe (RA-11);
+- a lista de execuções ou a leitura de uma execução passa de 100 ms;
+- entra o segundo backend real ou o PostgreSQL no lugar do SQLite (ADR-003);
+- um pedido de privacidade exige apagar histórico de execução.
+
+Rever é decidir o prazo por tabela, com o mesmo cuidado do 28.6: nada de cortar a execução pela metade (apaga-se a
+execução inteira, terminal, com as filhas).
+
 ## Pendências honestas
 
 - **Credenciais não atravessam sozinhas.** O cofre guarda AES-256-GCM com a chave mestra fora do banco, e no
