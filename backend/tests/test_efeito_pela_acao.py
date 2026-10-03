@@ -117,6 +117,17 @@ def test_sem_catalogo_vale_o_vocabulario_do_efeito() -> None:
     assert efeito_fora_da_etapa("tap", _toque(tree, _por_rid(tree, "chat_title")), _ctx(tree), tree, QA) is None
 
 
+def test_catalogo_sem_gatilho_declarado_cai_no_vocabulario() -> None:
+    """O catálogo do Outlook não declara `commit_selector` (o botão de enviar não foi medido): sem gatilho estrutural,
+    vale o vocabulário, como numa etapa com efeito sem seletor. Sem isso, "Send" numa etapa sem efeito passaria."""
+    outlook = "com.microsoft.office.outlook"
+    tree = _arvore(f'<node class="{_BT}" content-desc="Send" resource-id="{outlook}:id/action_send" clickable="true"'
+                   ' bounds="[600,60][700,120]"/>',
+                   f'<node class="{_TV}" text="Inbox" resource-id="{outlook}:id/title" bounds="[100,60][400,120]"/>')
+    assert efeito_fora_da_etapa("tap", _toque(tree, _por_rid(tree, "action_send")), _ctx(tree), tree, outlook)
+    assert efeito_fora_da_etapa("tap", _toque(tree, _por_rid(tree, "title")), _ctx(tree), tree, outlook) is None
+
+
 def test_a_decisao_que_se_declara_efeito_conta_sempre() -> None:
     tree = _conversa_do_qa()
     toque = _toque(tree, _por_rid(tree, "chat_title"), is_commit_action=True)

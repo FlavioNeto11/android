@@ -4987,3 +4987,24 @@ no `notice`.
     perguntas) e o comando filtrado (o estado da R5 é SÓ o comando).
 - Prova `simulated`: `backend/tests/test_decisao_fechada_apps.py::test_transparencia_nao_anuncia_a_r5_travada` e
   `backend/tests/test_decisao_fechada_sombra.py::test_aviso_nomeia_a_typesafe_e_as_classes_so_com_consumidor_em_shadow_ou_on`.
+
+## Adendo v1.08 (03/10/2026; número da orquestradora; item 29.58) — efeito repetido em `steps.result` e a recusa gravada em `actions`
+
+Sem migração e sem rota nova. Mudam dois registros que o painel e o aprendizado já leem.
+
+- **`StepResult.efeito_repetido`** (o `result` das etapas em `GET /api/runs/{id}`, nos eventos de etapa e em
+  `steps.result`): `{"copias": N, "fonte": "verificador" | "acoes"}`, com N >= 2.
+  - Fica presente só quando o efeito externo da etapa saiu mais de uma vez, e só na etapa com efeito onde a repetição
+    foi vista. Sem repetição, a chave fica ausente: nunca `null` nem `copias: 1`.
+  - Com ela, a etapa e o objetivo fecham `uncertain`, com `status_detail` começando por "efeito repetido (N)", e o
+    resultado leva `verified: false`. Nunca é "sucesso comprovado" e nada é reenviado.
+  - `fonte`:
+    - `verificador`: o veredito (`Verdict.copias`, interno ao provedor) contou as cópias desta execução na tela;
+    - `acoes`: mais de uma etapa da mesma etapa-modelo e do mesmo `item` disparou o efeito no mesmo objetivo e na
+      mesma versão do plano.
+  - O leitor da prova de fluxo (30.42) é `learning/domain/prova.efeito_repetido`, pelo adendo v1.07. Quando a chave
+    existe, ela vence a regra própria do aprendizado; uma forma fora desta é ignorada.
+- **A recusa de efeito fora da etapa** (`actions`): numa etapa sem efeito declarado, a ação com cara de efeito externo
+  é gravada com `side_effect: true`, `status: "rejected"` e `error` começando por "o efeito só sai na etapa que o
+  declara". Antes, um toque assim saía gravado com `side_effect: false` e `done`.
+- Prova `simulated`: `backend/tests/test_efeito_pela_acao.py`. Prova real: `not_run`.

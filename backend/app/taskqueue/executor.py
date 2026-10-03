@@ -3122,9 +3122,11 @@ def efeito_fora_da_etapa(tool: str, args: Any, ctx: ToolContext, tree: Any, pack
         campo = " ".join((alvo.text, alvo.desc, alvo.resource_id.rsplit("/", 1)[-1].replace("_", " ")))
         return f"Enter no campo '{rotulo}' envia" if _CAMPO_DE_COMPOSICAO.search(campo) else None
     catalogo = load_catalog(package)
-    if catalogo is not None:
-        for cap in catalogo.capabilities:
-            if cap.side_effect and cap.commit_selector and _gatilho_exato(alvo, cap.commit_selector):
+    gatilhos = [c for c in catalogo.capabilities if c.side_effect and c.commit_selector] if catalogo is not None else []
+    if gatilhos:
+        # Catálogo sem nenhum gatilho declarado (o Outlook, hoje) cai no vocabulário, como a etapa sem seletor.
+        for cap in gatilhos:
+            if _gatilho_exato(alvo, cap.commit_selector or ""):
                 return f"'{rotulo}' é o gatilho do efeito '{cap.key}' deste app"
         return None
     return f"'{rotulo}' parece disparar um efeito externo (enviar, publicar, confirmar)" if looks_like_commit(alvo) else None

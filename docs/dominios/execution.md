@@ -1066,7 +1066,8 @@ sem a trava de não repetir, sem a guarda e sem a aprovação da etapa que decla
     cru em `text=` e `desc=` (o `id=` casa como sempre). Por substring sem caixa, `text=Follow` casaria "followers" e
     `text=Following` o rótulo "following" do perfil, e abrir a lista de seguidores numa leitura seria recusado.
     "New post", que só abre a criação, não é gatilho;
-  - **sem catálogo**, o vocabulário de `looks_like_commit`;
+  - **sem catálogo**, ou com um catálogo que não declara nenhum gatilho (o do Outlook, hoje), o vocabulário de
+    `looks_like_commit`, como na etapa com efeito sem seletor;
   - `type_text` com Enter conta só num campo de composição (mensagem, comentário, resposta, legenda); num campo de
     busca, não.
 
