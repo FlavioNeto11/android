@@ -30,6 +30,7 @@ from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, TOOLS, ReadValue,
                                 looks_like_commit, resolve_point, urls_do_texto, validate_call)
 from ..config import AiCfg, Config, LimitsCfg
 from ..devices.adb import AVISO_DE_ANR, MorteDoApp, motivo_de_anr
+from ..devices.conta_observada import evidencia_legivel
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter, Observation, dimensoes_do_modelo
 from ..metricas import metricas
 from ..models import (DELIVERY_ORDER, ActionStatus, AttemptStatus, DeliveryLevel, Plan, Postcondition, StepDTO,
@@ -356,10 +357,13 @@ def evidencia_da_conta(account_label: str | None, pos_condicao: str, texto: str 
 
     Só quando o rótulo aparece na pós-condição ou na prova; e a evidência é a frase que NOMEIA a conta. A prova pela
     árvore local é um seletor cru, sem o nome ("…sem IA (selector:id=…|text=={username})"), e o painel a lia como
-    conta diferente do rótulo (validação do deploy 8, android-06): sem o rótulo na prova, vale a pós-condição."""
+    conta diferente do rótulo (validação do deploy 8, android-06): sem o rótulo na prova, vale a pós-condição. A prova
+    por seletor com o rótulo dentro ("seletor id=…|text=qa-user-10: 1 elemento(s)") vira "qa-user-10 visto na tela"
+    (`conta_observada.evidencia_legivel`, validação do deploy 9)."""
     if not account_label or norm_text(account_label) not in norm_text(pos_condicao + " " + (texto or "")):
         return None
-    return texto if texto and norm_text(account_label) in norm_text(texto) else pos_condicao
+    bruta = texto if texto and norm_text(account_label) in norm_text(texto) else pos_condicao
+    return evidencia_legivel(account_label, bruta)
 
 
 class StepExecutor:

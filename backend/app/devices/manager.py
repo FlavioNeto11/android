@@ -51,6 +51,7 @@ from .sdk import SdkTools
 # chama pelo global do módulo, e os testes que simulam uma codificação lenta trocam `manager._codificar`.
 from .codificacao import (THUMB_WIDTH, Codificado as _Codificado, codificar as _codificar,  # noqa: F401
                           dimensoes_do_modelo, tamanho_png as _tamanho_png)
+from .conta_observada import evidencia_legivel
 
 log = logging.getLogger("poc.devices")
 #: Idade máxima da última classificação de tela para a imagem TARDIA de evidência dispensar uma nova leitura da
@@ -737,6 +738,7 @@ class DeviceManager:
                           " (SELECT d.handle FROM device_locked_accounts d WHERE d.instance_id = instances.id"
                           " AND d.resolved_at IS NULL ORDER BY d.id LIMIT 1) AS locked_account"
                           " FROM instances WHERE id=?", (rt.id,))
+        conta_vista = evidencia_legivel(row["account_label"], row["account_evidence"])
         s = self.get_settings()
         frame = None
         # O prazo do frame acompanha o ritmo da captura: foco (inclusive controle manual) captura mais rápido.
@@ -763,8 +765,10 @@ class DeviceManager:
         return InstanceDTO(
             id=rt.id, index=rt.index, avd_name=rt.avd_name, serial=rt.serial, console_port=rt.console_port,
             ports=rt.ports, state=rt.state, state_detail=rt.state_detail, pid=rt.pid, boot_seconds=rt.boot_seconds,
-            app_id=row["app_id"], account_label=row["account_label"], account_evidence=row["account_evidence"],
-            account_evidence_ts=row["account_evidence_ts"], locked_account=row["locked_account"],
+            # A evidência sai legível (I2 do deploy 9): prova por seletor nunca chega crua ao painel, e a que não observa
+            # conta nenhuma (só o seletor, sem o rótulo) vale como "não observada", com o carimbo junto.
+            app_id=row["app_id"], account_label=row["account_label"], account_evidence=conta_vista,
+            account_evidence_ts=row["account_evidence_ts"] if conta_vista else None, locked_account=row["locked_account"],
             control=rt.control, control_since=rt.control_since,
             control_pending=rt.takeover_requested, automation=rt.automation, frame=frame, stream=stream,
             # Fora do ar a última sonda é história: "healthy" num aparelho hibernado seria afirmação sem prova.
