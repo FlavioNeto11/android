@@ -625,6 +625,15 @@
     "31.19",
     "31.20"
    ]
+  },
+  {
+   "id": "32-canais-externos-trello",
+   "effort": "high",
+   "name": "32-canais-externos-trello",
+   "items": [
+    "32.1",
+    "32.2"
+   ]
   }
  ],
  "modelos": {

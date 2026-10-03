@@ -91,9 +91,9 @@ Cada cartão tem um bloco **Vínculos**. Os links usam `url_painel` (hoje só `a
 ## 5. O que não fazer
 
 - Segredo em cartão, comentário ou log, inclusive o token e a credencial que alguém colar.
-- Texto de terceiro em claro. A regra é a do aviso (`mensagem.py:3-9`): tipo, estado, ids opacos e links. O conteúdo só
-  vai **redigido** pelo filtro da C3 (`entidades.remover_entidades_com_motivo`), por opção
-  (`trello.conteudo: redigido`), desligada de fábrica.
+- Texto de terceiro em claro. A base é a regra do aviso (`mensagem.py:3-9`): tipo, estado, ids opacos e links. O conteúdo
+  só vai **redigido** pelo filtro da C3 (`entidades.remover_entidades_com_motivo`), com corte e sem captura (decidido,
+  abaixo).
 - Duas fontes de verdade. A edição manual fora do §3 é sobrescrita na próxima sincronização, e nada se lê do Trello como
   estado.
 - Cartão por evento, IA no roteamento, webhook ou túnel, polling em `/1/members/`.
@@ -101,7 +101,7 @@ Cada cartão tem um bloco **Vínculos**. Os links usam `url_painel` (hoje só `a
 
 ## 6. Desenho para o 32.2 (10 linhas)
 
-1. Bloco `trello:` no `config.yaml` (`enabled: false`, quadros, listas, `membro_dono`, intervalos, `conteudo: tipo`);
+1. Bloco `trello:` no `config.yaml` (`enabled: false`, quadros, listas, `membro_dono`, intervalos, `conteudo: redigido`);
    segredo só no `.env`; a saúde acusa `trello_sem_segredo`.
 2. Cliente `integrations/trello/` em httpx, com balde de 60 requisições por 10 s e backoff pelos cabeçalhos do 429.
 3. Migração 086: `trello_cartoes` (`chave` PK, `card_id`, `lista`, `hash`, `estado`), `trello_cursor` (`quadro` PK,
@@ -119,8 +119,10 @@ Cada cartão tem um bloco **Vínculos**. Os links usam `url_painel` (hoje só `a
 10. Rollout: lista de teste em sombra, depois as listas do dono. A prova `real` é um cartão espelhado e um `/aprovar`
     do dono.
 
-**Decisões do dono:**
-- o `expiration` do token (`never` com revogação, ou `30days`);
-- criar as listas 🤖 Central, ✅ Aprovado e ⛔ Vetado;
-- o conteúdo (`tipo` ou `redigido`);
-- se o link do painel só na LAN basta.
+**Decidido pela orquestradora (03/10, ~18:05Z):**
+- token sem expiração (`expiration=never`), com a revogação documentada; o dono pode vetar;
+- as listas 🤖 Central (automático), ✅ Aprovado e ⛔ Vetado criadas por ela no quadro Execução, com os ids gravados em
+  `.claude/trello/estrutura.json`;
+- conteúdo **redigido**, com a regra do Telegram: redação e corte, sem captura. O padrão do 32.2 passa a ser
+  `conteudo: redigido`;
+- link do painel só na LAN, por enquanto, registrado como limitação no ADR-072.

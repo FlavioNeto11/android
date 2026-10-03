@@ -31,7 +31,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     `GET /api/conhecimento/resumo`;
   - o que não fazer;
   - o desenho do 32.2 em 10 linhas.
-- Ficam com o dono: o `expiration` do token, as 3 listas novas, o nível de conteúdo e se o link só na LAN basta.
+- Decidido pela orquestradora (03/10, ~18:05Z): token sem expiração com revogação documentada, as 3 listas criadas
+  por ela no Execução, conteúdo redigido (a regra do Telegram) e link do painel só na LAN (limitação no ADR-072). Fase 32
+  no plano-100: 32.1 (este estudo) e 32.2 (implementação, Android, depois do 28.15).
 
 ## 2026-10-03 — Jev: leitura preliminar real da sombra de intenção (31.10 partial/real)
 
