@@ -2263,3 +2263,31 @@ passava só no SQLite.
 **Aplicabilidade.** Vigente para todo teste que escreve SQL direto no banco. O SQL que roda nos dois dialetos passa
 pelo `Database` (`_sql`) ou usa só o comum. Antes de um merge com migração ou repositório novo, rodar ao menos os
 arquivos tocados com `TEST_DATABASE_URL`.
+
+### K-086 — O minerador de fluxo só grava pela sombra: a execução que usa o próprio fluxo não gera evidência
+
+**Sintoma.** No P4 de 03/10 (30.31, validação automática do "pedir evidência"), o pedido de um fluxo ATIVO fechou
+`recusada/sem_evidencia` mesmo com o fluxo funcionando. A execução r-20261003171303-16f0e8 (android-09) casou com o
+próprio fluxo e teve 6 de 6 etapas `succeeded` ("1 de 1 com sucesso comprovado"); o pedido custou US$ 0,0681 e não
+deixou nada no livro. O pedido das 16:27Z, de outro fluxo ativo, teve o mesmo desfecho (US$ 0,0696).
+
+**Causa.** Uma linha de evidência de fluxo nasce só da sombra: a execução livre (planejador) cujo comando casa com um
+fluxo compara os dois planos. Quando a execução USA o fluxo (`runs.flow_id`), não há plano livre para comparar, e nada é
+gravado. A validação do 30.31 re-executa o comando de origem, e o comando de um fluxo ativo casa com ele mesmo: o pedido
+de fluxo ativo não tem como chegar a `feita`. Leitura no banco do central (03/10 17:16Z, `real`): das 13 evidências de
+fluxo de execução (11 `for`, 2 `against`), nenhuma veio de execução que usou o próprio fluxo. Dos 18 pendentes do P4,
+6 eram de fluxo ativo (e 5 eram receitas sem caminho, o caso do 30.36): ~US$ 0,75 sem informação nas 2 h seguintes.
+
+**O que funcionou.**
+- Olhar a execução de um pedido que fechou sem evidência antes de esperar o próximo: `runs.flow_id` igual ao item e
+  zero linhas em `learning_evidence` com aquele `run_id` explicaram o caso na hora.
+- Contar quantos pendentes caem no mesmo caso antes de decidir: a orquestradora pausou o P4 (`modo: "off"` e restart da
+  farm-central às 17:18Z), em vez de pagar pelos 6.
+- A correção é o 30.37: a validação de fluxo executa o próprio fluxo (candidato ou ativo) e minera o `for` ou o
+  `against` pelas etapas da própria execução de validação, não pela sombra.
+
+**O que não funcionou.** Recusar só os pendentes condenados pelo mecanismo: o código no ar não tinha rota nem método
+para isso (o `recusar` do registro de validações nasceu no 30.36), e escrita crua no banco não é caminho.
+
+**Aplicabilidade.** Vigente até o 30.37 (suíte 14). Todo pedido de validação de item `fluxo:` cujo comando de origem casa
+com um fluxo ativo fecha `sem_evidencia`, e a evidência de uso de fluxo ativo só vem da sombra de outras execuções.
