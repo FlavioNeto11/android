@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Script da rodada QA pareada (canário do planejador; branch chore/rodada-qa-pareada)
+
+- `scripts/rodada_qa_pareada.py`: Opus padrão × perfil `planejador-sonnet` em ABBA por caso, nos 4 casos do
+  `eval-set.yaml` que chamam o planejador (12 dos 17 casavam com fluxo ativo em 03/10, e aí o A/B não mede nada).
+- Sem opção, só o plano. `--checar` faz as pré-checagens de custo zero, `--yes` roda com teto e `--ler` dá o veredito
+  (sucesso B ≥ A e p50 do planejador no B ≤ 11 s, com 6 válidas por braço).
+- Prova `simulated`: `scripts/tests/test_rodada_qa_pareada.py` (10). `--checar` no central (03/10) só acusou o deploy 7
+  que falta; nada rodou nem gastou.
+
 ## 2026-10-03 — Cache, entrada e latência antes × depois de um deploy (branch feat/jev-leitura-cache-latencia)
 
 - `scripts/jev-leitura-cache-latencia.py` compara, por função e por perfil, as chamadas de `ai_calls` antes e depois de

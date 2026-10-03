@@ -286,6 +286,9 @@ isso). Pontos que já causaram incidente:
 | `deploy.ps1` | P | Para → copia banco → sobe → confere; mexe na tarefa `farm-central` |
 | `eval-run.ps1` (sem `-Yes`) | S | Só imprime o plano da bateria; nenhuma conexão, nenhum adb (26/09: antes, mesmo "simulado" fazia POST no backend vivo e rodava adb) |
 | `eval-run.ps1 -Yes` | P/T | POST no backend vivo e adb nos aparelhos, mesmo com provedor simulado; com provedor real gasta API |
+| `python scripts/rodada_qa_pareada.py` (sem opção) | S | Só o plano da rodada QA pareada (canário do planejador: Opus × perfil `planejador-sonnet`, ABBA por caso); nenhuma conexão |
+| `python scripts/rodada_qa_pareada.py --checar` / `--ler RODADA` | S | Custo zero: saúde, aparelho e `POST /api/flows/match` de cada caso; ou a leitura de `data/eval-results.jsonl` + `GET /api/usage?run_id` |
+| `python scripts/rodada_qa_pareada.py --yes` | P/T | Roda `eval_run.py` por caso e braço no aparelho de QA, com teto (`--teto-usd`, padrão 8) e o caso que passou a casar com fluxo pulado; só com a vez da orquestradora |
 | `bench.py` (`simulado`, padrão) | S | Harness: aparelho falso, provedor simulado, banco temporário. Contagens com prova `simulated` ([`relatorio-desempenho.md`](relatorio-desempenho.md)) |
 | `bench.py leitura` | S | Só GET em loopback. A primeira GET do Diagnóstico depois de reiniciar coleta as versões das ferramentas do host (`emulator -accel-check`, `adb version`) |
 | `bench.py comparar` | S | Antes × depois, com limite e amostra mínima declarados na linha de base; sem isso, o veredito é "exploratório" |
