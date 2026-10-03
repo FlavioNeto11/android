@@ -247,16 +247,18 @@ def _texto(valor: JsonValue) -> str | None:
 
 
 def etapa_de_fluxo(indice: int, passo: JsonValue) -> JsonObject:
-    """Uma etapa do plano do fluxo: chave, capability, alvo (o seletor que dispara o efeito), pós-condição e os NOMES
-    dos argumentos da capability (`bindings`; os valores são `{param}` ou texto do plano e não saem)."""
+    """Uma etapa do plano do fluxo: chave, app (o desta etapa, item 12.1; `None` = o do plano), capability, alvo (o
+    seletor que dispara o efeito), pós-condição e os NOMES dos argumentos da capability (`bindings`; os valores são
+    `{param}` ou texto do plano e não saem)."""
     if not isinstance(passo, dict):
-        return {"indice": indice, "chave": None, "capability": None, "alvo": None, "efeito": False,
+        return {"indice": indice, "chave": None, "app": None, "capability": None, "alvo": None, "efeito": False,
                 "pos_condicao": None, "parametros": [], "segredo": False}
     pos = passo.get("postcondition")
     bindings = passo.get("bindings")
     chaves = [k for k in bindings if isinstance(k, str)] if isinstance(bindings, dict) else []
     return {
-        "indice": indice, "chave": _texto(passo.get("key")), "capability": _texto(passo.get("capability")),
+        "indice": indice, "chave": _texto(passo.get("key")), "app": _texto(passo.get("app_id")),
+        "capability": _texto(passo.get("capability")),
         "alvo": _texto(passo.get("commit_selector")), "efeito": passo.get("side_effect") is True,
         "pos_condicao": ({"tipo": _texto(pos.get("kind")), "descricao": _texto(pos.get("description"))}
                          if isinstance(pos, dict) else None),
@@ -264,12 +266,16 @@ def etapa_de_fluxo(indice: int, passo: JsonValue) -> JsonObject:
 
 
 def fluxo_legivel(plano: JsonValue, *, nome: str, comando_modelo: str, fonte: str | None,
-                  source_run_id: str | None) -> JsonObject:
+                  source_run_id: str | None, apps: Iterable[str] = ()) -> JsonObject:
+    """`app`: o principal do plano, onde rodam as etapas sem app próprio; `apps`: os exigidos (`flow_required_apps`).
+    Um comando que atravessa apps (12.1: ler no Outlook, procurar no Instagram) tem o principal e os dois exigidos."""
     passos = plano.get("steps") if isinstance(plano, dict) else None
     etapas = [etapa_de_fluxo(i, p) for i, p in enumerate(passos if isinstance(passos, list) else [])]
     treino = bool(fonte and fonte.startswith("training"))
+    exigidos: list[JsonValue] = [*sorted(set(apps))]
     return {
         "tipo": "fluxo", "nome": nome, "comando_modelo": comando_modelo,
+        "app": _texto(plano.get("app_id")) if isinstance(plano, dict) else None, "apps": exigidos,
         "origem": {"tipo": "treino" if treino else "execucao", "fonte": fonte, "source_run_id": source_run_id},
         "etapas": etapas,
         "efeito": {"externo": fluxo_tem_efeito(plano),

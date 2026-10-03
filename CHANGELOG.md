@@ -26,12 +26,20 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   contrária real depois da confirmação; confirmar de novo o tira outra vez. O item não muda e não há migração.
 - Fecha a pendência A6 do 30.17: aceitar o parecer "manter" num item de "Revisar" é a mesma confirmação, ligada à
   revisão.
-- Rota `POST /api/aprendizado/{kind}/{ref}/confirmar` (adendo v0.78, provisório). No painel, "Confirmar que fica" e
+- Rota `POST /api/aprendizado/{kind}/{ref}/confirmar` (adendo v0.78). No painel, "Confirmar que fica" e
   "Confirmar selecionados" em "Revisar", e "Confirmado que fica" no histórico. O item já decidido por uma pessoa perde
   o aviso "vale revisar" (antes ele ficava mesmo depois de religado), e o que voltou diz por quê. Percorrido no
   navegador numa cópia do banco do central, inclusive a 375 px.
 - Prova `simulated`: `tests/test_learning_confirmar_que_fica.py` (10), `AprendizadoPage.test.tsx` e
   `DetalheRico.test.tsx`. Real: `not_run`.
+## 2026-10-03 — Aprendizado: o dossiê do fluxo diz os apps (branch fix/dossie-do-fluxo-apps)
+
+- O conteúdo legível do fluxo (detalhe do Livro e dossiê do curador) ganha `app` (o principal do plano), `apps` (os
+  exigidos, de `flow_required_apps`) e o `app` de cada etapa. Antes, um fluxo que atravessa apps (12.1) parecia rodar
+  todo no app principal, e o curador podia julgar "ler no Outlook" num fluxo do Instagram como incoerente.
+- O `dossie_hash` dos fluxos muda: um fluxo já revisado volta a ser elegível para o curador uma vez. O `comando_modelo`
+  (texto da pessoa) segue fora do dossiê.
+- Prova `simulated`: `tests/test_learning_conteudo.py` e `tests/test_learning_curador_dominio.py`.
 
 ## 2026-10-03 — 12.5: bancada do leitor, o portão que reprovou (`scripts/bancada-leitor.py`)
 

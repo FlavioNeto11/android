@@ -150,6 +150,18 @@ def test_fluxo_legivel_mostra_etapas_efeito_e_so_nomes_de_argumento() -> None:
     assert enviar["parametros"] == ["contato"] and enviar["segredo"] is True
     assert VALOR_PARAMETRO not in _json(c) and VALOR_SEGREDO not in _json(c) and "senha_da_conta" not in _json(c)
     assert c["etapas"][0]["pos_condicao"]["descricao"] == "o app abriu"
+    assert (c["app"], c["apps"], c["etapas"][0]["app"]) == (None, [], None)     # sem app no plano nem exigidos
+
+
+def test_fluxo_que_atravessa_apps_diz_o_principal_os_exigidos_e_o_de_cada_etapa() -> None:
+    """Item 12.1: ler no Outlook e procurar no Instagram. O `app_id` do fluxo é o principal; os dois são exigidos."""
+    plano = {"app_id": "instagram", "steps": [
+        {"key": "ler", "app_id": "outlook", "capability": "READ_LATEST_SUBJECT", "side_effect": False},
+        {"key": "buscar", "capability": "OPEN_PROFILE", "side_effect": False}]}
+    c = dominio.fluxo_legivel(plano, nome="n", comando_modelo="c", fonte=None, source_run_id="r",
+                              apps=["outlook", "instagram", "outlook"])
+    assert (c["app"], c["apps"]) == ("instagram", ["instagram", "outlook"])
+    assert [e["app"] for e in c["etapas"]] == ["outlook", None]
 
 
 def test_habilidade_legivel_resume_parametros_e_nos() -> None:
