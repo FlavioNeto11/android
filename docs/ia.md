@@ -1167,8 +1167,8 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
         "%40" de um link é o "@" codificado que a máscara de link apaga).
     - **H-2, o domínio de topo separado**: o `_EMAIL` leva o domínio de topo depois de ponto com espaço ("zilda@correio.
       net", "zilda@correio. com. br") e sem ponto ("zilda@correio net", com quebra de linha; não o "com", a preposição).
-      - Forma conhecida: com "me" minúsculo depois, "zilda@correio.net. me avise" perde o "me" para a máscara. Sobra
-        máscara, não vazamento.
+      - Com o espaço só depois do ponto, só o domínio de topo que não é palavra (`_TLD_SEM_PONTO`) entra no e-mail:
+        "zilda@correio.net. de manhã" e ". me avise" ficam como estão.
       - O `_SEP_DOMINIO` aceita ". net" diante de domínio de topo que não é palavra: "look at this. Me too" passa.
     - **H-3, o verbo central do produto (decisão)**: o nome INTEIRO do catálogo sozinho depois do conector do verbo de
       entrar é destino (`_destino`): "entre com o lucas", "entre como lucas", "entre no perfil com Lucas" passam. Cai o
@@ -1177,7 +1177,9 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
         - o segundo do par ("com a conta Lucas e girassol");
         - o colado ao usuário ("com o lucas girassol", `_colado`);
         - o conector depois de outro destino ("acesse como lucas com girassol", `catalogo=False`).
-      - O tempo e o reforço depois do nome ("hoje", "mesmo", "primeiro") entraram em `_ADVERBIOS`.
+      - O tempo e o reforço depois do nome ("hoje", "mesmo", "primeiro") entraram em `_ADVERBIOS`. O determinante da
+        conta (`_DETERMINANTES`: outra, a mesma, qualquer, a certa) não é valor ("veja se está logado com outra conta"
+        passa; "entre com outra conta" continua pela F-A), e no par é o rótulo do segundo ("a outra: girassol").
       - **Residual aceito** (orquestradora, 03/10): com uma persona "Girassol", "entre com girassol" passa como destino.
         O portão da fase 2 é o catálogo sem ela; com ela, contam só as lentes do par e da utilidade.
     - **H-5, os controles operacionais**:
@@ -1189,9 +1191,13 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
         outlook"). Pela G-3, "zilda no live" sem "e-mail da" continua recusando.
       - O domínio sem esquema só vale com domínio de topo conhecido (`_TLD_DE_LINK`) ou com caminho depois. "siga
         maria.clara" e "p.ex." não saem mais mutilados como `[link]` (casos 540 e 541).
-    - Custos declarados: "entre com a conta certa" e "entre no perfil com a Ana" (nome fora do catálogo depois de objeto
-      que não é pessoa) pulam a sombra.
-    - **Portão local** (`simulated`, worktree em d0a771a1 mais a H, antes do commit): `ataque_b.py` com o corpus de 579.
+    - Custos declarados (INFERRED: nenhum aparece nos 122 comandos reais). Pulam a sombra:
+      - "entre no perfil com a Ana": nome fora do catálogo depois de objeto que não é pessoa;
+      - "arquive o e-mail da Marina Prado no outlook": a isenção da H-5 vale para o nome de UMA palavra, porque o
+        lookbehind tem largura fixa;
+      - "responda para o e-mail da Marina no outlook": a pista "para" faz do nome o dono do endereço;
+      - "escreva a, b e c": duas letras com pontuação depois de verbo de digitar, como a H-1 (c) pede.
+    - **Portão local** (`simulated`, no hash da H): `ataque_b.py` com o corpus de 579.
       - Catálogo sem a "Girassol": 0 vazamentos (eram 47) e 0 passagens indevidas.
       - 5 recusas indevidas:
         - as 4 antigas de numeral e termo (n=134, 135, 348 e 427);

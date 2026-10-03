@@ -359,6 +359,11 @@ _POSPOSICOES: Final[frozenset[str]] = frozenset(("ile", "kanssa"))
 _SUFIXO_INSTRUMENTAL: Final = re.compile(r"[^\W\d_]+-[^\W\d_]?[ae]l")
 #: Logo depois do verbo, o separador que liga o valor ("pra entrar: girassol", "entre - girassol", "entre, girassol").
 _SEPARADORES_DE_VALOR: Final[frozenset[str]] = frozenset((":", "/", "=", ",", "-"))
+#: Rodada H: o determinante da conta ("outra", "a mesma", "qualquer", "a certa"). Não é valor; no par, é o rótulo do
+#: segundo ("usuario lucas; a OUTRA: girassol"), pulado como o artigo.
+_DETERMINANTES: Final[frozenset[str]] = frozenset((
+    "outra", "outro", "outras", "outros", "qualquer", "alguma", "algum", "nenhuma", "nenhum", "certa", "certo", "errada",
+    "errado", "correta", "correto", "nova", "novo", "antiga", "antigo", "principal", "another", "other"))
 #: O que, no lugar do valor, NÃO é valor: artigo, pronome, conjunção, o objeto de navegação, o provedor de entrada
 #: ("entre com o Google") e o modo ("com calma"). Tudo o mais conta: na dúvida, C7 é recusa.
 _NAO_VALOR: Final = _ComOsApps((
@@ -371,8 +376,10 @@ _NAO_VALOR: Final = _ComOsApps((
     "email", "e-mail", "sms", "biometria", "digital", "face", "rosto", "calma", "cuidado", "carinho", "pressa", "atencao",
     "jeito", "emoji", "emojis", "foto", "fotos", "video", "imagem", "texto", "legenda", "comentario", "mensagem", "link",
     "voz", "audio", "account", "profile", "phone", "cuenta", "todos", "todas", "tudo",
-    # rodada H: o resultado e a medida ("logado com sucesso", "entre no feed com mais calma")
-    "sucesso", "exito", "success", "mais", "menos", "maior", "menor", "melhor", "pior", "muito", "pouco"))
+    # rodada H: o resultado e a medida ("logado com sucesso", "entre no feed com mais calma") e o determinante da conta
+    # ("veja se está logado com OUTRA conta", "com a conta CERTA"); "entre com outra conta" continua pela F-A
+    "sucesso", "exito", "success", "mais", "menos", "maior", "menor", "melhor", "pior", "muito", "pouco",
+    *_DETERMINANTES))
 #: O verbo de ação que segue o destino ("com a conta Lucas e CURTA a foto"): não é o valor do par (F-C). Imperativo e
 #: infinitivo dos comandos do parque, em português, inglês e espanhol.
 _VERBOS_DE_ACAO: Final[frozenset[str]] = frozenset((
@@ -738,7 +745,7 @@ def _par_depois(toks: list[str], y0: int, d: _Destinos, *, com_entrar: bool, for
     if y0 >= n:
         return False
     if toks[y0] in _SEPARADORES_DO_PAR:
-        y = _pula(toks, y0 + 1, _ARTIGOS | _ADVERBIOS)
+        y = _pula(toks, y0 + 1, _ARTIGOS | _ADVERBIOS | _DETERMINANTES | {":", "="})
         if (y < n and y not in d.cortados and _e_valor(toks[y])
                 and not (toks[y0 - 1].isdigit() and toks[y].isdigit())):
             return toks[y0] == "/" or com_entrar

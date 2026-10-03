@@ -159,8 +159,9 @@ def test_os_campos_rotulados_recusam_mesmo_com_o_dominio_no_lugar_do_nome() -> N
 
 
 @pytest.mark.parametrize(("comando", "saida"), [
-    # a frase que segue o e-mail com "me" minúsculo perde o "me" para a máscara: sobra máscara, não vazamento
-    ("mande para zilda@correio.net. me avise", "mande para [email] avise"),
+    # com o espaço só depois do ponto, só o domínio de topo que não é palavra entra no e-mail
+    ("mande para zilda@correio.net. me avise", "mande para [email]. me avise"),
+    ("mande para zilda@correio.net. de manhã", "mande para [email]. de manhã"),
     ("mande para zilda@correio.net. Me avise", "mande para [email]. Me avise"),
     ("mande para zilda@correio.net com carinho", "mande para [email] com carinho"),
 ])
@@ -234,6 +235,9 @@ def test_o_piso_continua_recusando(comando: str, motivo: str) -> None:
     "poste a foto da cidade onde nasci e marque a Marina", "o nome do meu perfil é lucas, curta a foto",
     "o e-mail do provedor caiu, avise a Marina", "mande para zilda em casa com carinho",
     "ligue para a mãe e diga que estou bem",
+    # o determinante da conta depois do verbo no passado
+    "veja se está logado com outra conta", "confira se entrou com a mesma conta",
+    "veja se o lucas está logado com a conta certa",
     # o link e o que parece domínio (casos 99, 540 e 541)
     "siga maria.clara no instagram", "curta o post, p.ex. o da Marina",
     "abra https://exemplo.com/unsub?u=joao.silva%40exemplo.com",

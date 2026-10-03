@@ -4342,8 +4342,11 @@ catálogo, comando), que o ADR-063 não cobre.
       Também passam:
       - o domínio de topo desconhecido sem caminho ("maria.clara", "p.ex.");
       - o "%40" de um link, que é o "@" codificado dentro da URL.
-    - Custo declarado: "entre com a conta certa" e "entre no perfil com a Ana" (nome fora do catálogo depois de objeto que
-      não é pessoa) pulam a sombra.
+    - Custos declarados (fora dos 122 comandos reais). Pulam a sombra:
+      - "entre no perfil com a Ana": nome fora do catálogo depois de objeto que não é pessoa;
+      - "arquive o e-mail da Marina Prado no outlook": a isenção da H-5 vale só para nome de uma palavra;
+      - "responda para o e-mail da Marina no outlook": pista de destinatário;
+      - "escreva a, b e c": pela H-1 (c).
     - Prova `simulated`:
       - `backend/tests/test_decisao_fechada_reverificacao_h.py`, com os testes da G e da E ajustados à H-3;
       - harness da orquestradora no catálogo sem a "Girassol": 0 vazamentos (eram 47) e 5 recusas indevidas (4 antigas e o

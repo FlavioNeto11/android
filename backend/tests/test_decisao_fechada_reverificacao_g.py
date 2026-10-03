@@ -38,8 +38,10 @@ NOMES_G = nomes_de_destino([*(n for p in DESTINOS_G.personas for n in (*p.nomes,
 EXTRATOR_SEM_GIRASSOL = TargetExtractor(DESTINOS)
 NOMES_SEM_GIRASSOL = nomes_de_destino([*(n for p in DESTINOS.personas for n in (*p.nomes, *p.handles)), *DESTINOS.aparelhos])
 #: Rodada H (H-3, leitura aceita pela orquestradora em 03/10): o nome do catálogo SOZINHO depois do conector do verbo de
-#: entrar é destino. Com a persona "Girassol" no catálogo, estes casos da G (o valor sozinho, sem par) passam por desenho;
-#: sem ela, recusam como antes. O portão da H é o catálogo sem a "Girassol"; o com ela só conta o par e a utilidade (G-4).
+#: entrar é destino. Estes casos da G (o valor sozinho, sem par) não são conferidos com a persona "Girassol" no catálogo:
+#: com ela, o valor pode virar destino (alguns ainda recusam por outra regra; o residual exato está em
+#: `test_decisao_fechada_reverificacao_h.py`). Sem ela, recusam como antes. O portão da H é o catálogo sem a "Girassol"; o
+#: com ela só conta o par e a utilidade (G-4).
 H3_DESTINO_COM_GIRASSOL = frozenset((
     "entre usando girassol e curta a foto da Marina", "faca login com girassol e depois curta",
     "entre com girassol e curta a foto", "abra o instagram e entre com a girassol, depois curta o post da Marina",

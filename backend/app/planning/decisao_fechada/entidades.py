@@ -80,11 +80,10 @@ _TLD_PECA: Final = r"(?:com\s+(?:br|pt|ar|mx|uy|co|es|uk|au)|net|org|br|gov|edu|
 #: "'"...: "abcdef#zilda@" deixava "abcdef#" fora da máscara), sem o que abre ou separa trecho ("<", "(", vírgula); o
 #: "mailto:" vem junto por estar colado, o "?subject=..." que segue o endereço também, e o domínio de topo separado por
 #: espaço ("zilda@correio .net"). Desde a rodada H (H-2) também com o espaço DEPOIS do ponto ("zilda@correio. net",
-#: "zilda@correio. com. br") e sem ponto ("zilda@correio net", "zilda@correio<quebra>net"; não "com", a preposição). A
-#: frase que segue o e-mail com "me" minúsculo perde o "me" para a máscara ("zilda@correio.net. me avise"): sobra máscara,
-#: não vazamento.
+#: "zilda@correio. com. br") e sem ponto ("zilda@correio net", "zilda@correio<quebra>net"; não "com", a preposição). Com
+#: o espaço só depois do ponto, só o domínio de topo que não é palavra: "zilda@correio.net. de manhã" e ". me avise" ficam.
 _EMAIL = re.compile(r"[^\s@<>()\[\]{}\"“”«»,;]+@[\w\-]+(?:\.[\w\-]+)*"
-                    rf"(?:\s*\.\s*{_TLD}\b|\s+(?!com\b){_TLD_SEM_PONTO}\b)*(?:\?\S*)?")
+                    rf"(?:\s+\.\s*{_TLD}\b|\.\s+{_TLD_SEM_PONTO}\b|\s+(?!com\b){_TLD_SEM_PONTO}\b)*(?:\?\S*)?")
 #: Telefone com esquema de URI ("tel:+5511912345678"): o esquema e o "+" entram na máscara (saía "tel:+[telefone]").
 _TELEFONE_URI = re.compile(r"(?i)\b(?:tel|sms|callto|facetime|whatsapp):\s*\+?\d[\d\s().\-/]*\d")
 #: O `@handle` inteiro, também com hífen ("@cassia-brandao" saía `[usuario]-brandao`; decisão da orquestradora de 03/10).
