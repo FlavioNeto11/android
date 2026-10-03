@@ -74,7 +74,8 @@ def _nomes_proibidos() -> list[str]:
     except (OSError, ValueError):
         return []
     nomes = [str(c.get("nome") or "") for c in dados.get("convidados") or []] + list(dados.get("_nomes_do_dono") or [])
-    return sorted({p for n in nomes for p in re.findall(r"\w{3,}", n.lower())})
+    # O nome da própria IA (ANA) não conta, mesmo que coincida com o de uma pessoa: a ANA sempre se apresenta (C-06).
+    return sorted({p for n in nomes for p in re.findall(r"\w{3,}", n.lower())} - {"ana"})
 
 
 #: O histórico de quem fala com o bot (dono, 03/10 22:44Z) leva também o que a ANA respondeu ao convidado.
