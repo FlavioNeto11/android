@@ -1960,3 +1960,23 @@ Saída bruta em `data/diag-ra3b/`: `repouso-cores4-01-600s.json`, `dif-*.json` e
   - A suspeita da tela sempre ligada cai.
   - Seguem UNKNOWN as conexões do lado do host que só o parque tem: a sessão do Appium/UiAutomator2, os
     encaminhamentos e fluxos do adb e o console/gRPC do emulador.
+
+### K-079 — A prévia cortada da caixa do Outlook derruba a conferência visual
+
+**Sintoma.** Na bancada do 12.5 (03/10/2026, ~04:20Z, `real`), os dois leitores (gpt-6-luna e gemini-3.1-flash-lite)
+concordaram com 0 dos 32 valores verdadeiros. Todos foram recusados como `truncado`, embora o remetente e o assunto
+estivessem inteiros no recorte.
+
+**Causa.** A linha da caixa do Outlook tem três linhas de texto: remetente, assunto e a prévia do corpo. A prévia SEMPRE
+termina em "…". A conferência recusava quando QUALQUER linha transcrita ou a marca global `truncado` do leitor indicava
+corte, e os leitores marcavam `truncado`, com razão, por causa da prévia. A regra estava certa no espírito (não aceitar
+valor cortado) e errada no escopo (a linha vizinha não é o valor).
+
+**O que funcionou.** Nível 1.1, emenda de 03/10 ao ADR-070 §4: "truncado" vale para o valor, o campo e a linha que contém
+o valor. A marca global só cai quando uma linha alheia cortada a explica; sem nenhuma, o corte pode ser o do campo e a
+leitura é recusada. Com a emenda, `real` às 04:58Z: 31/32 e 29/32, com 0/96 falsas nos dois. Medir com o MESMO
+material antes e depois (a bancada guarda os recortes e o gabarito) separou a regra errada do leitor fraco.
+
+**Aplicabilidade.** Vigente para toda leitura visual de linha de lista com prévia ou subtítulo cortado (caixas de e-mail,
+listas de conversa). Ao declarar a região de uma saída, conte com a linha vizinha cortada. A armadilha da medição está
+em `docs/ia.md` §17: com o `app` de um worktree, o `.env` é procurado na raiz do worktree e as chaves vêm vazias.

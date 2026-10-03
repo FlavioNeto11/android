@@ -4202,6 +4202,14 @@ ganho de independência declarado.
 (`not_run`). Erro correlacionado entre ator e leitor reduzido pela outra família, não zerado; a bancada com controles é o
 portão para ligar a opção no central. O recorte prova "esta linha diz X", não "X é a mais recente".
 
+**Emenda (03/10/2026, nível 1.1; orquestrador, dentro do sim do dono ao ADR-070).** No item 4, "truncado" vale só para
+o valor do ator, o campo do leitor e a linha transcrita que contém o valor. A marca global `truncado` do leitor só é posta
+de lado quando uma linha ALHEIA cortada a explica; sem nenhuma, o corte pode ser o do campo, e a leitura é recusada.
+Motivo: a prévia do corpo na linha da caixa do Outlook sempre termina em "…" (K-079), e a bancada de 03/10 ~04:20Z
+reprovou por isso, com 0/32 nos dois leitores. Com a emenda, `real` às 04:58Z: gemini-3.1-flash-lite 31/32 e
+gpt-6-luna 29/32, com 0/96 de concordância falsa nos dois. Leitor: gemini-3.1-flash-lite principal e gpt-6-luna
+alternativo. A opção liga (`ai.leitura_visual.enabled`) no próximo reinício do central, não antes.
+
 **Relação.** ADR-065 §3 (substituído em parte), ADR-052, ADR-058, ADR-009, ADR-024, ADR-069 §4 (a transcrição é
 roteamento comum do hub, não o Jev); migração 078; `backend/app/taskqueue/saidas.py::ler_valor_visual`,
 `backend/app/planning/` (papel `leitura`, `transcribe`), [dominios/execution.md](dominios/execution.md),

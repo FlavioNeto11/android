@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 12.5 nível 1.1: o "truncado" vale para o valor, não para a linha vizinha (emenda do ADR-070 §4)
+
+- `conferir_transcricao` (`backend/app/taskqueue/saidas.py`): "truncado" é o do valor do ator, do campo do leitor e da
+  linha que contém o valor. A marca global do leitor só cai quando uma linha alheia cortada a explica (K-079).
+- `simulated`: em `tests/test_leitura_visual.py`, a prévia cortada com o valor inteiro concorda; o valor cortado, a
+  linha do valor cortada e a marca sem linha cortada continuam recusando. 109 aprovados com o arquivo do papel.
+- `real` (bancada, 04:57–04:59Z, `ai_calls` 3008–3071, US$ 0,02): gemini-3.1-flash-lite 31/32 e gpt-6-luna 29/32, com
+  0/96 falsas. Gemini fica como principal e o luna como alternativo; a opção liga no próximo reinício do central.
+
 ## 2026-10-03 — 12.5: bancada do leitor, o portão que reprovou (`scripts/bancada-leitor.py`)
 
 - **`real`.** Foram 16 recortes guardados e 2 leitores reais (gpt-6-luna e gemini-3.1-flash-lite), com 128 pares cada e zero

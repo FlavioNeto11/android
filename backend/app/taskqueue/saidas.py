@@ -529,18 +529,27 @@ def conferir_transcricao(valor: str, nome: str, t: Transcricao) -> None:
 
     A concordância exige as duas coisas: o valor do ator, normalizado, é igual ao `campos[nome]` do leitor, normalizado
     (a regra da proposta verdade), E ele é uma sequência contígua de PALAVRAS INTEIRAS de uma das `linhas` (o acréscimo do
-    juiz: contra um campo que o leitor inventou sem estar escrito na imagem)."""
+    juiz: contra um campo que o leitor inventou sem estar escrito na imagem).
+
+    "Truncado" (nível 1.1, emenda de 03/10 ao ADR-070 §4): vale só para o valor do ator, o campo do leitor e a linha que
+    contém o valor. A prévia do corpo na linha da caixa do Outlook SEMPRE termina em "…" (K-079), e recusar por ela
+    derrubava toda leitura. A marca global `t.truncado` não diz QUAL texto está cortado: ela só é posta de lado quando
+    uma linha alheia cortada a explica; sem nenhuma, o corte pode ser o do campo e a leitura é recusada."""
     if not t.legivel:
         raise LeituraVisualRecusada("ilegivel")
     campo = t.campos.get(nome)
-    if (t.truncado or _termina_cortado(valor) or _termina_cortado(campo or "")
-            or any(_termina_cortado(x) for x in t.linhas)):
-        raise LeituraVisualRecusada("truncado")
     do_ator = _palavras(valor)
+    n = len(do_ator)
+    com_valor = {i for i, p in enumerate(_palavras(linha) for linha in t.linhas)
+                 if n and any(p[j:j + n] == do_ator for j in range(len(p) - n + 1))}
+    alheia_cortada = any(_termina_cortado(x) for i, x in enumerate(t.linhas) if i not in com_valor)
+    if (_termina_cortado(valor) or _termina_cortado(campo or "")
+            or any(_termina_cortado(t.linhas[i]) for i in com_valor)
+            or (t.truncado and not alheia_cortada)):
+        raise LeituraVisualRecusada("truncado")
     if not do_ator or campo is None or _palavras(campo) != do_ator:
         raise LeituraVisualRecusada("nao_confere")
-    n = len(do_ator)
-    if not any(p[i:i + n] == do_ator for p in (_palavras(linha) for linha in t.linhas) for i in range(len(p) - n + 1)):
+    if not com_valor:
         raise LeituraVisualRecusada("nao_confere")
 
 
