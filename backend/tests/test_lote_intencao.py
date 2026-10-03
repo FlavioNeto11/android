@@ -110,6 +110,8 @@ def w(tmp_path: Path) -> Any:
     ({"postado": None, "escolha": None, "fallback_reason": "orcamento"}, False),
     ({"postado": None, "escolha": None, "fallback_reason": "rede"}, False),
     ({"escolha": None, "fallback_reason": "abaixo_do_limiar"}, True),               # banco sem a coluna
+    ({"postado": True, "escolha": None, "fallback_reason": "rede"}, True),          # um driver que devolva `bool`
+    ({"postado": False, "escolha": "opt:a", "fallback_reason": None}, False),
 ])
 def test_enviada_so_com_prova_de_post(linha: dict[str, Any], esperado: bool) -> None:
     assert enviada(linha) is esperado

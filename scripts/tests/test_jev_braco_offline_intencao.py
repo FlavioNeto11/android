@@ -144,6 +144,10 @@ def test_seco_so_o_hash_vai_e_a_linha_sem_hash_fica_contada(mundo: Mundo, tmp_pa
         assert SEGREDO not in texto and "curta o post" not in texto     # nem o comando nem o estado saem
 
 
+def test_desde_e_comparado_por_instante(mundo: Mundo, tmp_path: Path) -> None:
+    assert lote.main(mundo.argv(tmp_path, "--desde", "2026-10-03T15:29:51.000Z")) == 0        # o mesmo instante
+
+
 def test_enviar_abaixo_de_dez_comandos_nao_chama_ninguem(mundo: Mundo, tmp_path: Path,
                                                          monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(lote.braco, "decisor_real", lambda teto: pytest.fail("não podia montar o decisor"))
@@ -191,6 +195,9 @@ def test_codigo_igual_falha_fechada() -> None:
 
 @pytest.mark.parametrize("argv, msg", [
     (["--desde", "2026-10-03T15:00:00Z"], "antes do item 21"),
+    (["--desde", "2026-10-03T15:29:50.999Z"], "antes do item 21"),
+    (["--desde", "2026-10-03T15:29:51"], "antes do item 21"),          # sem fuso: não se sabe o instante
+    (["--desde", "ontem"], "fora do ISO-8601"),
     (["--enviar"], "exige --teto"),
     (["--enviar", "--teto", "0.5"], "exige --teto"),
 ])

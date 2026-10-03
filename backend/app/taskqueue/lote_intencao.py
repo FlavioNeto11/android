@@ -85,7 +85,7 @@ def enviada(linha: Mapping[str, object]) -> bool:
     resposta. `postado=0` é a prova do contrário."""
     postado = linha.get("postado")
     if postado is not None:
-        return str(postado) == "1"
+        return str(postado) in ("1", "True")             # INTEGER 0/1 nos dois dialetos; `bool` não engana
     return linha.get("escolha") is not None or linha.get("fallback_reason") in FALLBACKS_DEPOIS_DO_POST
 
 

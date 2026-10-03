@@ -270,7 +270,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     p.add_argument("--json", help="arquivo do JSON; padrão: a tela")
     p.add_argument("--md", help="arquivo do Markdown")
     args = p.parse_args(argv)
-    if args.desde < DESDE_ITEM_21:
+    try:
+        desde = rel._ts(args.desde)                     # por instante, não por texto: "...51.000Z" é o mesmo que "...51Z"
+    except ValueError:
+        raise SystemExit(f"--desde fora do ISO-8601: {args.desde}") from None
+    if desde.tzinfo is None or desde < rel._ts(DESDE_ITEM_21):
         raise SystemExit(f"--desde antes do item 21 do ADR-069 ({DESDE_ITEM_21}): o lote não reenvia o que é de antes")
     teto = None
     if args.enviar:
