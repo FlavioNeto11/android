@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-336 de 400 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+337 de 400 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -371,7 +371,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.36 | partial | simulated | claude-opus-5-5 | — | PR #163 (feat/30-36-forma @ 2a16417a; código 32d69b00, docs 2a16417a; base d5a1c3a9, a main da suíte 12), para a suíte 13. Comparador da sombra com caminho × forma (Posicao.FORMA, que não conta), contra efetivo num pont… |  |
 | 30.37 | partial | simulated | claude-opus-5-5 | — | PR #168 (feat/30-37-prova @ d067d904, base 177b18cd), para a suíte 14: migração 084 (runs.prova_fluxo_id, learning_validations.teto_usd); a execução de prova roda o plano do próprio fluxo (FlowStore.plano_em_prova, cand… |  |
 | 30.38 | partial | simulated | claude-opus-5-5 | — | (c) no PR #165 (fix/30-38c-classe-de-agora @ 657ab399, base cd71ac4e), para a suíte 13: ServicoDePareceres.do_item e na_fila usam _classe_de_agora (a gravada C não monta dossiê); a API dá classe = a de agora no parecer… |  |
-| 30.39 | partial | simulated | claude-opus-5-5 | — | PR #172 (feat/30-39-evidencia-receita @ 0c472832), para a suíte 15, sem migração e sem mudança de API: minerador EvidenciaDaReceita no digest (learning_evidence de receita:<id> por receita/execução/posição, origem repro… |  |
+| 30.39 | implemented | real | sonnet | — | Real em 03/10/2026, maquina central WIN-7S2UASNLFOP (porta 8000, SQLite), central em 4ad5f8b6 (codigo do 2264843e, deploy 15). Retrocarga as 21:45:10Z: 85 linhas reproducao: em 27 receitas (76 for, 9 against), todas rea… |  |
 | 30.40 | pendente | — | — | — |  |  |
 | 30.41 | pendente | — | — | — |  |  |
 | 30.42 | pendente | — | — | — |  |  |
@@ -407,7 +407,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (64): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 28.16, 28.17, 28.18, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 29.53, 29.55, 29.56, 29.57, 29.58, 29.59, 30.18, 30.31, 30.34, 30.36, 30.37, 30.38, 30.39, 30.40, 30.41, 30.42, 30.43, 31.10, 31.11, 31.12, 31.21, 31.24, 32.2, T.2
+Pendentes (63): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 28.16, 28.17, 28.18, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 29.53, 29.55, 29.56, 29.57, 29.58, 29.59, 30.18, 30.31, 30.34, 30.36, 30.37, 30.38, 30.40, 30.41, 30.42, 30.43, 31.10, 31.11, 31.12, 31.21, 31.24, 32.2, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

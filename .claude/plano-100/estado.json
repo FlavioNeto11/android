@@ -6445,15 +6445,16 @@
   },
   "30.39": {
    "id": "30.39",
-   "status": "partial",
-   "proof": "simulated",
-   "evidence": "PR #172 (feat/30-39-evidencia-receita @ 0c472832), para a suíte 15, sem migração e sem mudança de API: minerador EvidenciaDaReceita no digest (learning_evidence de receita:<id> por receita/execução/posição, origem reproducao:<run_id>; a favor driven_by='recipe' comprovada, contra recipe+ai/sem_ator), retrocarga RetrocargaDaReceita (passo idempotente, dentro da retenção, datada pela etapa), dossiê da receita com a lista e evidencias.contadores_e / evidencias.sombra_e (VERSAO_DO_DOSSIE 1); a reprodução não conta de novo (promocao.efetivas, linhas.contra_efetivo e linhas.fora_da_reproducao): saúde, fila Revisar, promoção e métricas inalteradas, guardado por teste que falha sem o filtro. simulated: test_learning_evidencia_receita 13; test_learning_* + test_metricas* + test_arquitetura 903 passed; receitas/D1/funil/aprendizado/executor 155 passed; docs-check 0/0. Falta: merge e deploy da suíte 15, e a volta das ~29 receitas ao curador (pago, teto US$ 0,50, custo registrado) com o parecer citando execução real.",
-   "grupo": "aprendizado-pr172",
-   "modelo": "claude-opus-5-5",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real em 03/10/2026, maquina central WIN-7S2UASNLFOP (porta 8000, SQLite), central em 4ad5f8b6 (codigo do 2264843e, deploy 15). Retrocarga as 21:45:10Z: 85 linhas reproducao: em 27 receitas (76 for, 9 against), todas reais, 0 duplicata, 85 datas distintas; 103 linhas as 22:53Z com as re-execucoes (94 for, 9 against). Volta do curador as 22:52:09Z (5 revisoes, US$ 0,0571; 3 de receita, US$ 0,0353): as revisoes lr-140f9d505d8504ce (receita:82, ai_call 3447) e lr-7bfc2f2f6ed870d2 (receita:89, ai_call 3453) citaram 4 de 6 linhas reproducao: e decidiram observar. Ressalva: a receita:87 (lr-efa37c46cadd1b2d) tinha as 4 linhas no dossie e voltou manter sem citar nada; domain/curador.py:651 so exige citacao quando a decisao nao e manter (comportamento de proposito, mantido). Simulado: os testes do PR #172. Fonte: .claude/handoffs/aprendizado-resultado-30-39-real.json.",
+   "blocker": "",
+   "grupo": "30.39",
+   "modelo": "sonnet",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T19:53:43+00:00"
+   "quando": "2026-10-03T22:55:53+00:00"
   },
   "29.52": {
    "id": "29.52",
@@ -8160,6 +8161,15 @@
    ],
    "grupos": [
     "29.54"
+   ]
+  },
+  {
+   "quando": "2026-10-03T22:55:53+00:00",
+   "itens": [
+    "30.39"
+   ],
+   "grupos": [
+    "30.39"
    ]
   }
  ]
