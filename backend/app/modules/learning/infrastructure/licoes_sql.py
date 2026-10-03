@@ -323,8 +323,11 @@ class SqlLicoesRepository:
         if status == "completed" and any(not _comprovada(s) for s in self._db.query(
                 "SELECT status, result FROM steps WHERE run_id=? AND status='succeeded'", (run_id,))):
             status = NAO_COMPROVADA
+        # Só o custo DA EXECUÇÃO: a lição muda o planejador e o ator, não o decisor. A decisão fechada do Jev (31.14)
+        # grava o `run_id` com `origem='decisao_fechada'` e fica fora; quem grava com `run_id` sem dizer a origem já
+        # leva 'execucao' (`taskqueue/repository.py`), e a linha anterior à 073 não tem origem e é da execução.
         n, usd = self._chamadas("SELECT model, input_tokens, cache_read, cache_write, output_tokens, usd FROM ai_calls"
-                                " WHERE run_id=?", (run_id,), precos)
+                                " WHERE run_id=? AND (origem IS NULL OR origem='execucao')", (run_id,), precos)
         falha = self._db.one("SELECT failure_kind, status_detail, status FROM steps WHERE run_id=? AND status IN"
                              " ('failed', 'uncertain') ORDER BY finished_at LIMIT 1", (run_id,))
         tipo = None

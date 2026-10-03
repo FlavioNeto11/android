@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: a exposição da lição mede só o custo da execução (contrato com o 31.14 do Jev, branch fix/exposicao-custo-da-execucao)
+
+- `licoes_sql.py::_desfecho_do_plano` conta só as chamadas de `ai_calls` com `origem` `execucao` ou nula: a decisão
+  fechada do Jev (31.14) grava o `run_id` com `origem='decisao_fechada'` e não entra no `ai_calls` nem no `usd` da
+  exposição do planejador. O `_desfecho_da_etapa` já filtrava por etapa. Prova `simulated`:
+  `tests/test_learning_efeito.py::test_a_exposicao_do_planejador_mede_so_o_custo_da_execucao`.
+
 ## 2026-10-03 — Aprendizado: o parecer da IA diante da pessoa (30.17, branch feat/30-17-parecer-no-painel)
 
 - Painel: a seção "Parecer da IA" no detalhe do Livro (sugestão, classe, conclusão, o que a IA citou, aceitar ou recusar

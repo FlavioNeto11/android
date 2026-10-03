@@ -207,7 +207,9 @@ verificador** (ADR-024); como entram no prompt, em [ia.md §15](../ia.md).
    sistema publica na `fila_de_prova`, e a curadoria abre uma prova por (app, ação, papel).
 5. **Medida.** Em prova, 50% das unidades com a lição e 50% sem (unidade = etapa no ator, planejamento no planejador;
    braço por `sha1(item|unidade)`). O desfecho de cada exposição é gravado antes da purga de `ai_calls`, só em
-   execução real; a etapa confirmada à mão entra como `unverified`, nunca como sucesso. O veredito exige 8 unidades por
+   execução real; a etapa confirmada à mão entra como `unverified`, nunca como sucesso. O custo é o da execução: no
+   planejador entram só as chamadas com `origem` `execucao` ou nula (anteriores à 073), e a decisão fechada do Jev
+   (31.14), que leva o `run_id`, fica fora. O veredito exige 8 unidades por
    braço: "ajuda" fica (com 10% de controle), "atrapalha" desliga, "neutra" aposenta aos 20. Sem exposição por 60
    dias, aposenta; versão nova do app, volta à prova.
 6. **Teto.** Ator: 120 tokens e 3 lições; planejador: 150 e 3. O teto vale para todas as elegíveis antes do braço, e o
