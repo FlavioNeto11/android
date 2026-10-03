@@ -575,6 +575,13 @@ class AiCfg(BaseModel):
     step_budget: StepBudgetCfg = StepBudgetCfg()
     screenshot_max_side: int = 1280             # lado maior da imagem enviada ao modelo (tokens ∝ área)
     max_hierarchy_elements: int = 140           # linhas da hierarquia no prompt (priorizadas; a árvore completa fica local)
+    # LT-4b (latência do planejador, 03/10): o plano custa ~6,6 ms por token de SAÍDA, e o esforço `low` só tirou 13 %.
+    # `curto` tira do formato da etapa livre (plano livre e parte livre do plano entre apps) o que o backend sabe
+    # preencher, e pede título e objetivo curtos. Saem `postcondition.description` (derivada do `value`: no
+    # `model_judged`, o verificador lê o próprio critério), `precondition` e `max_attempts` (1 no efeito, 3 nas
+    # demais). `timeout_s` fica, porque é o modelo que sabe qual etapa é lenta. Estimado com count_tokens em 2 planos
+    # reais do QA (a brevidade simulada por corte): −22 a −24 % de saída. `longo` é o formato de sempre, byte a byte.
+    esquema_do_plano: Literal["longo", "curto"] = "longo"
     # Item 7.6 (dieta do contexto do ator): histórico da tentativa que vai ao ator, comprimido sem chamar o
     # modelo — linhas REJEITADA/FALHOU/(executor) (sempre relevantes: dizem o que NÃO fazer de novo) mais as
     # últimas N em ordem. O verificador continua recebendo o histórico completo que o executor lhe passa.
@@ -638,6 +645,9 @@ class AiCfg(BaseModel):
         "claude-opus-5-5": [4.0, 0.2, 5.0, 20.0],
         "claude-opus-5": [5.0, 0.5, 6.25, 25.0],
         "claude-sonnet-5": [2.0, 0.2, 2.5, 10.0],
+        # Sonnet 5.5 (página de preços, 03/10/2026): o mesmo do Sonnet 5. Antes saía certo só por casar o prefixo
+        # "claude-sonnet-5" em `price_for`; declarado, não depende disso (17.13, perfil planejador-sonnet).
+        "claude-sonnet-5-5": [2.0, 0.2, 2.5, 10.0],
         "claude-haiku-4-5": [1.0, 0.1, 1.25, 5.0],
         # Destino documentado do fallback de recusa (achado #92): custava o mesmo do Opus 5 e não estava cadastrado,
         # então toda chamada que caísse nele virava "Total parcial" no painel de uso.
@@ -657,6 +667,8 @@ class AiCfg(BaseModel):
         "claude-opus-5-5": ModelCaps(min_cache_tokens=512),
         "claude-opus-5": ModelCaps(min_cache_tokens=512),
         "claude-sonnet-5": ModelCaps(min_cache_tokens=1024),
+        # Sonnet 5.5: 512 (doc de prompt caching, 03/10/2026). Sem a linha, herdava os 1024 do Sonnet 5 pelo prefixo.
+        "claude-sonnet-5-5": ModelCaps(min_cache_tokens=512),
         "claude-opus-4-8": ModelCaps(min_cache_tokens=1024),
         "claude-haiku-4-5": ModelCaps(thinking=False, effort=False, min_cache_tokens=4096),
     }

@@ -19,6 +19,27 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Jev: formato curto do plano atrás de chave (LT-4b, item 17.13, branch feat/lt-4b-esquema-curto)
+
+- `ai.esquema_do_plano: curto` (de fábrica, `longo`, o formato de sempre byte a byte). A etapa livre (plano livre e
+  parte livre do plano entre apps) não pede mais `postcondition.description`, `precondition` nem `max_attempts`, e o
+  backend os preenche:
+  - a descrição vem do `value` (no `model_judged`, o próprio critério);
+  - a pré-condição fica nula;
+  - a etapa com efeito tem 1 tentativa, e as demais têm 3.
+- O prompt pede título e objetivo curtos. Os planejadores curtos são os de sempre com dois trechos trocados, e
+  `_trocar` falha na importação se um marcador sumir.
+- A identidade da receita é a mesma nos dois formatos. Anthropic e OpenAI mandam o formato curto só com a chave.
+- Estimativa grátis (count_tokens em 2 planos reais do QA): −22 a −24 % de saída, ≈ −2,5 s por plano. Não alcança
+  os ≤ 11 s do aceite do LT-4 (`docs/ia.md` §12).
+- Prova: simulated (`test_esquema_curto_do_plano.py`, mais os afetados). Real: A/B de 3 braços só do planejador
+  (03/10, ~04:31–04:39Z, 14 casos QA, 42 chamadas, US$ 1,36). No Opus, o curto tem p50 13,3 s contra 15,9 s,
+  2,75 s a menos por plano (pareado), a mesma forma em 14/14 e US$ 0,0359 contra 0,0428 por plano. O Sonnet 5.5
+  curto ficou em 7,8 s, mas só com a forma das etapas com efeito igual (`docs/ia.md` §12). Rodada QA: `not_run`.
+- Deploy 7: o Sonnet 5.5 entra como perfil 17.7 (`planejador-sonnet`, só o modelo do `plan`; o esforço e o esquema
+  seguem os globais). O preço `[2.0, 0.2, 2.5, 10.0]` e o cache mínimo de 512 dele entram no padrão e no exemplo
+  (páginas da Anthropic, 03/10; antes, ele casava o prefixo do Sonnet 5). No central, as linhas vão DENTRO dos blocos
+  `ai.prices` e `ai.models` que já existem: o YAML troca a tabela inteira. Prova: simulated (`test_perfil_de_ia.py`).
 ## 2026-10-03 — RA-10: o porquê de cada chamada de IA em `ai_calls` e os grupos de `/api/usage` (branch feat/ra-10-observabilidade, migração 080)
 
 - `ai_calls` ganha `verdict`, `escalate`, `motivo` e `image_reason` (vocabulários fechados em `planning/provider.py`,

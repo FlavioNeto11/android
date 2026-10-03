@@ -32,8 +32,8 @@ from ..modules.identity.domain.persona_generation import (MAX_TOKENS_DO_RASCUNHO
 from . import prompts
 from .curador import (CURADOR_SYSTEM, ParecerBruto, ParecerIlegivel, PedidoDeParecer, curador_user, esquema_do_parecer,
                       parecer_from_json)
-from .parsing import (_CapPlanOut, _MultiPlanOut, _PlanOut, catalog_plan_from_json, plan_from_json, social_from_json,
-                      verdict_from_json)
+from .parsing import (_CapPlanOut, _MultiPlanCurtoOut, _MultiPlanOut, _PlanCurtoOut, _PlanOut, catalog_plan_from_json,
+                      plan_from_json, social_from_json, verdict_from_json)
 from .provider import (AVISO_TELA_SENSIVEL, AIError, Decision, DecisionRequest, LeituraRequest, PlanRequest, ScreenInput,
                        SocialRequest, Transcricao, TranscricaoWire, modelo_do_papel_leitura,
                        transcricao_from_json, Usage,
@@ -301,13 +301,15 @@ class AnthropicProvider:
         if req.catalog is not None:
             return await self._plan_with_catalog(req)
         max_steps = self.cfg.file.limits.max_steps_per_objective
-        resp, usage = await self._create(role="plan", model=self.models["plan"], system=prompts.PLANNER_SYSTEM,
+        curto = self.cfg.file.ai.esquema_do_plano == "curto"          # LT-4b
+        resp, usage = await self._create(role="plan", model=self.models["plan"],
+                                         system=prompts.PLANNER_SYSTEM_CURTO if curto else prompts.PLANNER_SYSTEM,
                                          content=[{"type": "text", "text": prompts.planner_user(req, max_steps)}],
                                          effort=self.cfg.env.ai_effort_planner, max_tokens=12000,
-                                         schema=strict_schema(_PlanOut))
+                                         schema=strict_schema(_PlanCurtoOut if curto else _PlanOut))
         self._check_stop(resp, self.models["plan"])
         raw = next((b.text for b in resp.content if b.type == "text"), "")
-        plan = plan_from_json(raw, req, provider=self.name, model=resp.model, max_steps=max_steps)
+        plan = plan_from_json(raw, req, provider=self.name, model=resp.model, max_steps=max_steps, curto=curto)
         return plan, usage
 
     async def _plan_with_catalog(self, req: PlanRequest) -> tuple[Plan, Usage]:
@@ -326,13 +328,16 @@ class AnthropicProvider:
         """Comando entre apps (item 24.1): ação do catálogo nos apps com catálogo, etapa livre nos demais. O teto de
         saída é o do plano livre: as etapas livres são as longas."""
         max_steps = self.cfg.file.limits.max_steps_per_objective
+        curto = self.cfg.file.ai.esquema_do_plano == "curto"          # LT-4b: só a etapa livre muda
         resp, usage = await self._create(
-            role="plan", model=self.models["plan"], system=prompts.PLANNER_MULTIAPP_SYSTEM,
+            role="plan", model=self.models["plan"],
+            system=prompts.PLANNER_MULTIAPP_SYSTEM_CURTO if curto else prompts.PLANNER_MULTIAPP_SYSTEM,
             content=[{"type": "text", "text": prompts.planner_multiapp_user(req, max_steps)}],
-            effort=self.cfg.env.ai_effort_planner, max_tokens=12000, schema=strict_schema(_MultiPlanOut))
+            effort=self.cfg.env.ai_effort_planner, max_tokens=12000,
+            schema=strict_schema(_MultiPlanCurtoOut if curto else _MultiPlanOut))
         self._check_stop(resp, self.models["plan"])
         raw = next((b.text for b in resp.content if b.type == "text"), "")
-        plan = catalog_plan_from_json(raw, req, provider=self.name, model=resp.model, max_steps=max_steps)
+        plan = catalog_plan_from_json(raw, req, provider=self.name, model=resp.model, max_steps=max_steps, curto=curto)
         return plan, usage
 
     # ------------------------------------------------------------------ treinamento (item 13.2)

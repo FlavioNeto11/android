@@ -401,6 +401,7 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
 | `ai.recipes` | `replay` | `off` (`config.py`) |
 | `ai.image.provider` / `model` / `per_persona` / `on_create` | `simulated` / `gpt-image-2` / 1 / `true` | os mesmos (`config.py::ImageCfg`); `quality: medium`, `price_per_image` (estimativa) low 0,02 / medium 0,06 / high 0,2 US$, `price_per_mtok` 5 / 8 / 30 US$ |
 | `ai.limits` (fatias por origem, 31.6) | comentado, com os padrões | `curador_max_usd_per_day` vazio (= 0,10 × teto do dia), `curador_fracao_do_dia` 0,10, `jev_max_usd_per_day` 0,50 (`config.py::AiLimitsCfg`) |
+| `ai.esquema_do_plano` (LT-4b, 17.13) | `longo` | `longo` (`config.py`); `curto` = etapa livre sem `description`, `precondition` e `max_attempts` (o backend preenche), com título e objetivo curtos |
 | `ai.flows` | `true` | `false` (`config.py`) |
 | `ai.pathfinder_wait_s` | 240 | 0 (`config.py`) |
 | `android.auto_start_devices` | `true` | `false` (`config.py`) |
@@ -411,6 +412,58 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
 - **Bateria de 25/09/2026** (`relatorio-validacao.md` §11.1): 16/17 casos corretos, US$ 0,084 por caso; rejulgamento
   Opus 5.5 × Haiku em 41/56 (73 %). **O ator estava no fallback** (Sonnet 5), porque o Ollama não estava no ar, e a
   saúde não acusou. Cache do verificador em Haiku: zero em 49 chamadas.
+
+- **Latência do planejador (LT-4 e LT-4b, 03/10/2026).** O plano é a espera inicial inteira. Nas 89 chamadas `plan`
+  medidas, o tempo segue a saída: ms ≈ 5.173 + 6,6 × tokens de saída (correlação 0,91).
+  - LT-4, A/B REAL do esforço: 03/10, 02:44–02:54Z, claude-opus-5-5, os 14 casos QA pelo caminho entre apps, 28
+    chamadas, US$ 1,39.
+    - Resultado: `low` p50 15,7 s contra `medium` 18,5 s; saída −13 %; forma do plano igual em 13/14.
+    - O pensamento do planejador é ≈ 0 (2 tokens): quase toda a saída é o JSON do plano, ≈ 350 tokens por etapa.
+  - Sonda REAL do texto bruto (03/10, 03:49:55–03:50:22Z, `low`, caso msg-todos-os-contatos, 8 etapas, formato de
+    hoje, US$ 0,09 da sobra do LT-4): 2.495 tokens de saída.
+    - O texto é JSON compacto (0 quebras de linha) e é 100 % da saída; pensamento ≈ 2 tokens.
+    - Espaço em branco não é alavanca.
+  - LT-4b, `ai.esquema_do_plano: curto`: estimativa GRÁTIS por count_tokens em 2 planos reais do QA (6 e 8 etapas,
+    formato entre apps), reconstruídos do plano guardado: 102 % e 83 % da saída real. O plano guardado não carrega
+    tudo o que o modelo escreveu, então as porcentagens abaixo valem sobre a reconstrução.
+    - −13 % sem `description` e `precondition`;
+    - −20 % com a brevidade de título e objetivo (simulada por corte);
+    - −22 a −24 % sem `max_attempts`, que é o formato curto.
+  - Metade da saída é prosa, e o formato não a encolhe: o p50 esperado é ≈ 13 s, não os ≤ 11 s do aceite do LT-4.
+  - No `model_judged` curto, o verificador lê o `value`. É o critério que o planejador escreve para ele; antes, ele
+    lia a descrição curta.
+  - LT-4b (17.13), A/B REAL de 3 braços: 03/10, ~04:31–04:39Z, central, código de `feat/lt-4b-esquema-curto` @
+    `2bed3d6c`. Só o planejador, offline (nenhum aparelho, nenhuma execução), esforço `low`, os 14 casos QA: 42
+    chamadas, 0 erros, US$ 1,36 (teto US$ 3,00; preço pela tabela `ai.prices` do central).
+    - longo, claude-opus-5-5: p50 15,9 s, p90 17,2 s, saída p50 1.806 tokens, US$ 0,0428 por plano;
+    - curto, claude-opus-5-5: p50 13,3 s, p90 15,9 s, saída p50 1.468, US$ 0,0359;
+    - curto, claude-sonnet-5-5: p50 7,8 s, p90 8,7 s, saída p50 1.389, US$ 0,0181 (preço INFERRED: o do Sonnet 5
+      na tabela).
+    - Curto × longo no Opus, pareado por caso: a saída fica em 0,79 da do longo (mediana) e o plano sai 2,75 s mais
+      cedo. A forma é igual em 14/14: nº de etapas, chaves, etapas com efeito e `missing`. Confirma a estimativa
+      grátis (≈ 13 s) e não alcança os ≤ 11 s.
+    - Sonnet 5.5 curto: 7,9 s mais cedo (pareado) e metade do custo. Etapas com efeito e `missing` iguais em 14/14,
+      nº de etapas em 12/14, chaves em 4/14 (os nomes das etapas mudam).
+    - Recomendação (03/10): ligar `curto` com o Opus. O Sonnet no planejador troca o modelo da função (ADR-005:
+      planejador Opus) e passa antes por rodada QA ou perfil canário (17.7); este A/B mede forma, não sucesso.
+  - Sucesso de execução com o formato curto (rodada QA): `not_run`.
+  - **Deploy 7 (decisão da orquestradora, 03/10):** `curto` passa a valer no central, e o Sonnet 5.5 entra como PERFIL
+    (17.7), não como padrão. O perfil `planejador-sonnet` troca só o modelo do `plan` para `claude-sonnet-5-5`: o
+    esforço segue o global (`AI_EFFORT_PLANNER`, `low` no central, lido em `GET /api/ai` em 03/10) e o esquema segue
+    `ai.esquema_do_plano`. Uma execução o escolhe com `POST /api/runs {"ai_profile": "planejador-sonnet"}` ou
+    `scripts/eval_run.py --profile planejador-sonnet`, e ele fica em `runs.ai_profile`. A rodada QA pareada é da
+    Aprendizado (teto US$ 10). O aceite para trocar o padrão é sucesso ≥ Opus e p50 ≤ 11 s, com emenda datada do
+    ADR-005.
+    - Preço e capacidade do Sonnet 5.5 (páginas de preço e de prompt caching, 03/10): `[2.0, 0.2, 2.5, 10.0]`, igual
+      ao Sonnet 5, e cache mínimo de 512 tokens, contra 1024 no Sonnet 5. As duas linhas entram no padrão do código e
+      no exemplo. Antes, o modelo casava o prefixo `claude-sonnet-5`: o preço saía igual por acaso e o cache mínimo
+      herdava 1024.
+    - **No `config.yaml` do central, a Android acrescenta as linhas DENTRO dos blocos `ai.prices` e `ai.models` que já
+      existem lá.** O YAML troca a tabela padrão inteira, não soma (medido em 03/10), e o central declara os dois
+      blocos sem o Sonnet 5.5. As linhas são as do exemplo (`claude-sonnet-5-5` nos dois), mais
+      `ai.esquema_do_plano: curto` e o bloco
+      `ai.profiles: {planejador-sonnet: {note: ..., roles: {plan: {model: claude-sonnet-5-5}}}}`. Prova `simulated`:
+      `test_perfil_de_ia.py::test_planejador_sonnet_so_troca_o_modelo_do_planejador`.
 
 - `docs/relatorio-validacao.md §5` — validação com o provedor real (`claude-opus-5`): mensagem em 1 e 3
   aparelhos, formulário, app nunca visto, falhas injetadas, controle manual + retomada, `kill` do backend em

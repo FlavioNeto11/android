@@ -230,3 +230,34 @@ async def test_perfil_desconhecido_e_recusado_antes_de_criar(harness: Harness) -
                                                    "idempotency_key": "perfil-desconhecido-2", "ai_profile": "a b"})
         assert invalido.status_code == 422
     assert harness.state.db.scalar("SELECT COUNT(*) FROM runs") == antes  # type: ignore[union-attr]
+
+# ====================================================================== 17.13: o perfil planejador-sonnet do deploy 7
+#: As linhas que a Android acrescenta no config.yaml do central (docs/ia.md, LT-4b): DENTRO dos blocos `ai.prices` e
+#: `ai.models` que já existem lá (o YAML troca a tabela padrão inteira, não soma), mais o perfil.
+SONNET_5_5_PRECO = [2.0, 0.2, 2.5, 10.0]
+SONNET_5_5_CAPS = {"vision": True, "tools": True, "strict_tools": False, "structured_output": "json_schema",
+                   "thinking": True, "effort": True, "min_cache_tokens": 512}
+PLANEJADOR_SONNET = {"note": "planejador no Sonnet 5.5", "roles": {"plan": {"model": "claude-sonnet-5-5"}}}
+
+
+def test_planejador_sonnet_so_troca_o_modelo_do_planejador(tmp_path: Path) -> None:
+    cfg = _com_perfil(tmp_path, {"planejador-sonnet": PLANEJADOR_SONNET})
+    cfg.file.ai.prices["claude-sonnet-5-5"] = SONNET_5_5_PRECO
+    cfg.file.ai.models["claude-sonnet-5-5"] = ModelCaps.model_validate(SONNET_5_5_CAPS)
+    RoutingProvider(cfg)                                                    # a partida confere o perfil
+    padrao, sonnet = cfg.ai_roles(), cfg.ai_roles("planejador-sonnet")
+    assert sonnet["plan"].model == "claude-sonnet-5-5" and padrao["plan"].model != "claude-sonnet-5-5"
+    assert sonnet["plan"].effort == padrao["plan"].effort                   # o esforço segue o global (AI_EFFORT_PLANNER)
+    assert sonnet["plan"].provider == padrao["plan"].provider
+    for papel in ("decide", "verify", "escalation", "social"):
+        assert sonnet[papel] == padrao[papel], papel
+    assert costs.price_for(cfg.file.ai.prices, "claude-sonnet-5-5") == SONNET_5_5_PRECO
+    assert cfg.model_caps("claude-sonnet-5-5").min_cache_tokens == 512
+
+
+def test_sonnet_5_5_tem_preco_e_capacidade_proprios_no_padrao() -> None:
+    """Sem as linhas, o Sonnet 5.5 casava o prefixo "claude-sonnet-5": o preço saía igual por acaso e o cache mínimo
+    herdava 1024 (o dele é 512, doc de 03/10/2026)."""
+    ai = AppConfigFile().ai
+    assert ai.prices["claude-sonnet-5-5"] == SONNET_5_5_PRECO
+    assert ai.models["claude-sonnet-5-5"].min_cache_tokens == 512
