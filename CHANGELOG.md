@@ -34,9 +34,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova: `simulated` (`backend/tests/test_decisao_fechada_postado.py`, 19 casos; mais 2.057 testes da porta, da sombra,
   das migrações e do banco). PostgreSQL `not_run`: o banco de teste da 55433 estava desligado. Central `not_run`: a 083
   ainda não está implantada.
-- Falta neste branch a parte da leitura (`scripts/jev-leitura-intencao.py`, PR #160, na suíte 12): ela entra depois do
-  merge da suíte 12. **A 083 não pode ser implantada antes dela**, porque o script atual falha fechado em coluna
-  desconhecida.
+- A leitura (`scripts/jev-leitura-intencao.py`, que entrou pelo PR #160) conhece as colunas da 083 e mede:
+  - as chamadas por marca;
+  - a `rede` antes do POST, depois dele e sem marca;
+  - a régua cega;
+  - o cruzamento por id, que reprova quando um `ai_call_id` não é linha do Jev da intenção em `ai_calls`.
+
+  Marca incoerente é violação. Um banco anterior à 083 é lido sem marca. Prova: `simulated` (5 testes novos em
+  `scripts/tests/test_jev_leitura_intencao.py`). **A 083 não pode ser implantada sem este commit**: o script anterior
+  falha fechado em coluna desconhecida. Golden set §7.
 
 ## 2026-10-03 — 32.1: estudo da integração da Central com o Trello do dono (branch docs/32-1-estudo-trello)
 
