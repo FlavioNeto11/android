@@ -4159,3 +4159,25 @@ Duas rotas novas, sem IA e sem custo. As duas entram antes da rota genérica do 
 Prova `simulated`: `tests/test_learning_rotulo_de_intencao.py` e
 `frontend/src/features/aprendizado/IntencaoSecao.test.tsx`. Ensaio no navegador (03/10, cópia do banco, provedor
 simulado): responder, "Nenhuma destas", filtro, 409, 422, erro de carga e Sinais.
+
+## Adendo v0.78 (03/10/2026, provisório até a orquestradora numerar) — "Confirmar que fica" (item 30.24)
+
+- `POST /api/aprendizado/{kind}/{ref}/confirmar` com `{"motivo"?: string (até 500), "review_id"?: string}`: a pessoa
+  da sessão mantém o legado de "Revisar". Devolve o detalhe do item, como o `/status`. 404 sem o item; 422 para
+  tipo que não seja `receita` ou `fluxo`; 409 `note_looks_secret` para motivo com cara de credencial; 409
+  `state_conflict` fora de "Revisar" (inclusive a segunda confirmação). O estado e o status nativo não mudam.
+- A trilha ganha a linha `published → published` com `reason` = `confirmado que fica` ou `confirmado que fica:
+  <motivo>`. No JSON da trilha, `tipo: "confirmacao"` e `motivo_da_pessoa` (o motivo sem o prefixo, ou nulo).
+- `GET /api/aprendizado/revisar`: o item confirmado sai, e volta quando chega evidência contrária real
+  (`learning_evidence` `against`/`conflict`, `simulated=0`) depois da confirmação.
+- Aceitar um parecer `manter` (`POST .../parecer/{review_id}`) num item de "Revisar" faz a mesma confirmação, ligada
+  à revisão (`transicao_id`). Fora de "Revisar", aceitar "manter" segue só concordando.
+- `learning_reviews.decisao_final` às cegas ganha o rótulo `confirmar` (a confirmação sem o parecer à vista).
+- Receita e fluxo, nas listas do livro (`/aprendizado`, `/pendentes`, `/revisar`) e no detalhe, ganham `em_revisar`
+  (bool), `confirmado` (a confirmação que vale) e `confirmacao_contestada` (a que a evidência contrária derrubou), os
+  dois `{por, em, motivo}` ou nulos. Os outros tipos não têm as chaves.
+
+Prova `simulated`: `tests/test_learning_confirmar_que_fica.py`, `AprendizadoPage.test.tsx` e `DetalheRico.test.tsx`.
+Ensaio no navegador (03/10, cópia do banco do central, provedor simulado, 39 itens em "Revisar"): confirmar com e sem
+motivo, em lote, o histórico, o aviso no Aprendido, a evidência contrária que devolve o item, o 409 de quem chegou
+depois e 375 px.

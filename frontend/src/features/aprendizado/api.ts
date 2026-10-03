@@ -43,6 +43,11 @@ export const apiAprendizado = {
     apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/status`, {
       body: { to, reason: reason.trim(), ...(reviewId ? { review_id: reviewId } : {}) },
     }),
+  /** 30.24: "Confirmar que fica" o legado de Revisar. O motivo é opcional; 409 quando o item já não está em Revisar. */
+  confirmarQueFica: (kind: LivroKind, ref: string, motivo: string, reviewId?: string | null) =>
+    apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/confirmar`, {
+      body: { ...(motivo.trim() ? { motivo: motivo.trim() } : {}), ...(reviewId ? { review_id: reviewId } : {}) },
+    }),
   /** 30.23: a execução de origem terminou como sucesso sem comprovar o que fez. O motivo é estruturado pelo backend. */
   invalidarEvidencia: (kind: LivroKind, ref: string, runId: string) =>
     apiRequest<DetalheDoLivro>('POST', `/aprendizado/${kind}/${enc(ref)}/evidencia-invalida`, { body: { run_id: runId } }),

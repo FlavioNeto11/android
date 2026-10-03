@@ -256,6 +256,7 @@ describe('evidência inválida e reaprendido (30.23)', () => {
     expect(text(container.querySelector('[aria-label="Evidências"]')!)).toContain('execução invalidada não conta como prova');
     expect(passoDaTransicao({ from: 'candidate', to: 'disabled' })).toBe('Candidato → Desligado');
     expect(passoDaTransicao({ from: null, to: 'candidate' })).toBe('Candidato');
+    expect(passoDaTransicao({ from: 'published', to: 'published', tipo: 'confirmacao' })).toBe('Confirmado que fica');
   });
 
   it('a receita reaprendida diz o que reaprende, com link, e por que espera o dono', async () => {

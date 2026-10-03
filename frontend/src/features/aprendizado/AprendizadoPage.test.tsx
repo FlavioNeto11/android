@@ -86,6 +86,8 @@ beforeEach(() => {
                                                                   contagem: { tomou_controle: 1 }, dias: Number(c.query.get('dias')) }));
   backend.on('POST', /^\/api\/aprendizado\/[a-z]+\/[^/]+\/status$/, (c) => json({ item: { ...RECEITA, state: (c.body as { to: string }).to },
                                                                               evidencias: [], trilha: [], exposicoes: [] }));
+  backend.on('POST', /^\/api\/aprendizado\/[a-z]+\/[^/]+\/confirmar$/, () => json({ item: LEGADO, evidencias: [],
+                                                                                 trilha: [], exposicoes: [] }));
   // A rota das habilidades (§10.3): o livro a recusa com 409 `use_skills_route`, então o painel nem tenta o livro.
   backend.on('POST', /^\/api\/aprendizado\/habilidade\//, () => json({ detail: {
     code: 'use_skills_route', message: 'use a rota das habilidades', href: '/api/skills/instagram.abrir-conversa/versions/2/status',
@@ -117,6 +119,7 @@ async function montar(): Promise<void> {
 
 const item = (ref: string) => container.querySelector(`[data-item="${ref}"]`) as HTMLElement;
 const statusCalls = () => backend.callsTo('POST', /\/status$/);
+const confirmarCalls = () => backend.callsTo('POST', /\/confirmar$/);
 const HAB = 'habilidade:instagram.abrir-conversa@2';
 const fila = () => container.querySelector('[aria-labelledby="aprendizado-fila"]') as HTMLElement;
 
@@ -245,6 +248,31 @@ describe('página Aprendizado', () => {
     expect(loadJson('settings.section.habilidades', isBoolean)).toBe(true);
   });
 
+  it('no Aprendido, o legado confirmado perde o "vale revisar" e diz quem confirmou (30.24)', async () => {
+    const confirmado = { ...LEGADO, em_revisar: false,
+                         confirmado: { por: 'Ana Ribeiro', em: '2026-10-03T05:00:00Z', motivo: 'conferi o alvo' } };
+    const naFila = { ...LEGADO, ref: '41', em_revisar: true, confirmado: null };
+    backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [confirmado, naFila], total: 2,
+                                                            contagem: { receita: { published: 2 } } }));
+    await montar();
+    await click(byRole('tab', /^Aprendido/, container));
+    await waitFor(() => expect(item('receita:40')).toBeTruthy());
+    expect(text(item('receita:40'))).not.toContain('vale revisar');
+    expect(text(item('receita:40'))).toContain('Confirmado que fica por Ana Ribeiro');
+    expect(text(item('receita:40'))).toContain('conferi o alvo');
+    expect(text(item('receita:41'))).toContain('vale revisar');
+    expect(text(item('receita:41'))).not.toContain('Confirmado que fica');
+  });
+
+  it('"Revisar" diz por que o item confirmado voltou: chegou evidência contrária (30.24)', async () => {
+    backend.on('GET', /^\/api\/aprendizado\/revisar$/, () => json({ itens: [{ ...LEGADO, em_revisar: true, confirmado: null,
+      confirmacao_contestada: { por: 'Ana Ribeiro', em: '2026-10-03T05:00:00Z', motivo: null } }], total: 1 }));
+    await montar();
+    await waitFor(() => expect(item('receita:40')).toBeTruthy());
+    expect(text(item('receita:40'))).toContain('Voltou para revisar: confirmado que fica por Ana Ribeiro');
+    expect(text(item('receita:40'))).toContain('chegou evidência contrária');
+  });
+
   it('no Aprendido, a habilidade aponta para onde o ciclo dela fica, sem botão do livro', async () => {
     backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [{ ...HABILIDADE, state: 'published', native_status: 'published' }],
                                                             total: 1, contagem: { habilidade: { published: 1 } } }));
@@ -269,6 +297,31 @@ describe('página Aprendizado', () => {
     await click(byRole('button', /^Confirmar desligamento/, legado));
     await waitFor(() => expect(statusCalls()).toHaveLength(1));
     expect(statusCalls()[0]?.body).toEqual({ to: 'disabled', reason: 'comentário automático não' });
+  });
+
+  it('"Revisar": "Confirmar que fica" vale sem motivo e vai pela rota própria (30.24)', async () => {
+    await montar();
+    await waitFor(() => expect(item('receita:40')).toBeTruthy());
+    const legado = item('receita:40');
+    await click(byRole('button', /^Confirmar que fica$/, legado));
+    expect(byRole('textbox', /Motivo \(opcional\)/, legado)).toBeTruthy();
+    await click(byRole('button', /^Confirmar que fica$/, legado));
+    await waitFor(() => expect(confirmarCalls()).toHaveLength(1));
+    expect(confirmarCalls()[0]?.path).toBe('/api/aprendizado/receita/40/confirmar');
+    expect(confirmarCalls()[0]?.body).toEqual({});
+    expect(statusCalls()).toHaveLength(0);
+  });
+
+  it('"Revisar": confirmar em lote leva o mesmo motivo a cada item', async () => {
+    await montar();
+    await waitFor(() => expect(item('receita:40')).toBeTruthy());
+    const secao = container.querySelector('[aria-labelledby="aprendizado-revisar"]') as HTMLElement;
+    await click(byRole('button', /^Selecionar todos$/, secao));
+    await click(byRole('button', /^Confirmar selecionados \(1\)/, secao));
+    await setValue(byRole('textbox', /Motivo da confirmação em lote/, secao) as HTMLInputElement, 'conferi os dois prints');
+    await click(byRole('button', /^Confirmar que fica$/, secao));
+    await waitFor(() => expect(confirmarCalls()).toHaveLength(1));
+    expect(confirmarCalls()[0]?.body).toEqual({ motivo: 'conferi os dois prints' });
   });
 
   it('"Copiar para sessão" copia o md do item de falha', async () => {

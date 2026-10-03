@@ -25,6 +25,11 @@ import styles from './Aprendizado.module.css';
 /** "Revisar": o legado ativo com efeito só pode ser desligado pela pessoa (published → disabled). Na tela, "desligar";
  *  o nome interno da transição ("rebaixar") era jargão. */
 const REBAIXAR: AcaoDoItem = { to: 'disabled', label: 'Desligar', confirmar: 'Confirmar desligamento', perigo: true };
+/** "Confirmar que fica" (30.24): a pessoa mantém o legado como está; ele sai de "Revisar" até chegar evidência
+ *  contrária. Nada muda no item, e o motivo é opcional. */
+const CONFIRMAR: AcaoDoItem = {
+  to: 'published', label: 'Confirmar que fica', confirmar: 'Confirmar que fica', perigo: false, confirmaQueFica: true,
+};
 
 interface Leitura {
   itens: EntradaDoLivro[] | null;
@@ -33,7 +38,7 @@ interface Leitura {
 
 const VAZIA: Leitura = { itens: null, erro: null };
 
-type Lote = 'aprovar' | 'rebaixar' | 'pareceres-fila' | 'pareceres-legado';
+type Lote = 'aprovar' | 'rebaixar' | 'confirmar' | 'pareceres-fila' | 'pareceres-legado';
 
 /** O parecer da linha entra no aceite em lote? O backend já disse (`recusa_no_lote` nulo: classe B, real, atual). */
 const entraNoLote = (e: EntradaDoLivro): boolean => !!e.parecer && !e.parecer.recusa_no_lote;
@@ -265,8 +270,10 @@ export function ParaAprovarTab() {
         <Disclosure summary="Saiba mais" bare>
           <p className={styles.secaoLead}>
             São receitas e fluxos com efeito externo que já estavam ativos antes desta aprovação existir. Eles continuam
-            valendo como antes até você decidir. Desligar um item o tira de uso (a decisão fica registrada) e a automação
-            volta a pedir a IA nesses passos.
+            valendo como antes até você decidir. Confirmar que fica registra que você conferiu e quer manter o item como
+            está: ele sai desta lista e só volta se aparecer evidência contrária (um “deu errado” numa
+            execução, por exemplo). Desligar um item o tira de uso (a decisão fica registrada) e a automação volta a
+            pedir a IA nesses passos.
           </p>
         </Disclosure>
         {legado.erro ? <LoadErrorBanner error={legado.erro} onRetry={() => void carregar()} /> : null}
@@ -277,6 +284,11 @@ export function ParaAprovarTab() {
               <Button size="sm" variant="ghost" onClick={() => setSelLegado(new Set(itensLegado.map(chaveDoItem)))}>Selecionar todos</Button>
               <AceitarPareceres modo={modo} itens={itensLegado} escolhidos={escolhidosLegado}
                                 onAbrir={() => setLote('pareceres-legado')} />
+              <Button size="sm" variant="secondary"
+                      disabledReason={escolhidosLegado.length === 0 ? 'Selecione ao menos um item.' : null}
+                      onClick={() => setLote('confirmar')}>
+                Confirmar selecionados ({escolhidosLegado.length})
+              </Button>
               <Button size="sm" variant="dangerGhost"
                       disabledReason={escolhidosLegado.length === 0 ? 'Selecione ao menos um item.' : null}
                       onClick={() => setLote('rebaixar')}>
@@ -292,6 +304,16 @@ export function ParaAprovarTab() {
             acao={{ confirmar: `Aceitar ${escolhidosLegado.filter(entraNoLote).length} parecer(es)`, perigo: false }}
             onCancelar={() => setLote(null)}
             onConfirmar={(motivo) => aceitarPareceres(escolhidosLegado, motivo)}
+          />
+        ) : null}
+        {lote === 'confirmar' && escolhidosLegado.length > 0 ? (
+          <DecisaoInline
+            rotulo="Motivo da confirmação em lote (opcional)"
+            dica="Vale para cada item: fica na trilha de cada um, com o seu nome."
+            motivoOpcional
+            acao={{ confirmar: `Confirmar que ${escolhidosLegado.length === 1 ? 'fica' : `ficam os ${escolhidosLegado.length}`}`, perigo: false }}
+            onCancelar={() => setLote(null)}
+            onConfirmar={(motivo) => aplicarEmLote(escolhidosLegado, () => CONFIRMAR, motivo)}
           />
         ) : null}
         {lote === 'rebaixar' && escolhidosLegado.length > 0 ? (
@@ -311,7 +333,7 @@ export function ParaAprovarTab() {
                 key={chaveDoItem(e)}
                 entrada={e}
                 titulo={titulos.get(e)}
-                acoes={[REBAIXAR]}
+                acoes={[CONFIRMAR, REBAIXAR]}
                 selecionado={selLegado.has(chaveDoItem(e))}
                 onSelecionar={(sim) => alternar(setSelLegado)(e, sim)}
                 onMudou={() => void carregar()}

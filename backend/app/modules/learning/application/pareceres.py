@@ -31,7 +31,9 @@ from app.modules.learning.application.ports import FonteDeDossies, NovoSinal, Re
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, ConflitoDeEstado, EntradaInvalida, NaoEncontrado,
                                                NotaComCaraDeSegredo, SkillState, caminho_da_pessoa)
 from app.modules.learning.domain.evidencia_invalida import motivo_de_evidencia_invalida
-from app.modules.learning.domain.livro import AcaoPermitida, EntradaDoLivro, acoes_da_pessoa, rotulo_do_passo
+from app.modules.learning.domain.curador import Decisao
+from app.modules.learning.domain.livro import (ROTULO_DA_CONFIRMACAO, AcaoPermitida, EntradaDoLivro, acoes_da_pessoa,
+                                               rotulo_do_passo)
 from app.modules.learning.domain.parecer import (DecisaoDaPessoa, DecisaoFinal, GestoRecusado, RecusaDoGesto,
                                                  RevisaoGravada, acao_do_aceite, conferir_gesto,
                                                  decisao_pela_transicao, mais_restritiva, parecer_visivel)
@@ -54,6 +56,8 @@ class LivroDosPareceres(Protocol):
     def mudar_status_nativo(self, kind: LivroKind, ref: str, status: str, *, by: str,
                             reason: str) -> EntradaDoLivro: ...
     def invalidar_evidencia(self, kind: LivroKind, ref: str, run_id: str, *, by: str) -> EntradaDoLivro: ...
+    def em_revisar(self, e: EntradaDoLivro) -> bool: ...
+    def confirmar_que_fica(self, kind: LivroKind, ref: str, *, by: str, motivo: str | None = None) -> EntradaDoLivro: ...
     def registrar_sinal(self, sinal: NovoSinal) -> int | None: ...
 
 
@@ -179,6 +183,17 @@ class ServicoDePareceres:
                           viu=self._modo() is Modo.ON)
         return depois
 
+    def confirmar_que_fica(self, kind: LivroKind, ref: str, *, by: str, motivo: str | None = None,
+                           review_id: str | None = None) -> EntradaDoLivro:
+        """"Confirmar que fica" (30.24) é decisão de pessoa como o `/status`: o parecer pendente do publicado ganha o
+        rótulo `confirmar`, que concorda com manter, observar e pedir evidência e recusa desativar e rebaixar."""
+        antes = self._livro.entrada(kind, ref)
+        marca = self._registro.ultima_transicao(antes.trail_ref)
+        depois = self._livro.confirmar_que_fica(kind, ref, by=by, motivo=motivo)
+        self._rotular(antes, ROTULO_DA_CONFIRMACAO, by=by, reason=motivo or "", review_id=review_id, marca=marca,
+                      viu=review_id is not None or self._modo() is Modo.ON)
+        return depois
+
     def _rotular(self, antes: EntradaDoLivro, rotulo: str | None, *, by: str, reason: str, review_id: str | None,
                  marca: int, viu: bool) -> None:
         if rotulo is None or antes.state is None or by == SYSTEM_ACTOR:
@@ -232,15 +247,18 @@ class ServicoDePareceres:
                 raise GestoRecusado(recusa)
             assert r.parecer is not None                    # `conferir_gesto` já recusou o inválido
             acao = acao_do_aceite(r.parecer.decisao, acoes_da_pessoa(e)) if aceitar else None
+            # A6 (30.24): aceitar "manter" num item de "Revisar" é confirmar que ele fica; fora dela, só concordar.
+            manter = aceitar and acao is None and r.parecer.decisao is Decisao.MANTER and self._livro.em_revisar(e)
             d = DecisaoDaPessoa(DecisaoFinal.ACEITOU.value if aceitar else DecisaoFinal.RECUSOU.value,
                                 override=not aceitar)
             # A decisão ANTES da transição: o segundo gesto perde aqui, antes de qualquer coisa mudar.
             if not self._registro.decidir(r.id, decisao_final=d.decisao_final, decidido_por=by, transicao_id=None,
                                           override=d.override, override_motivo=None if aceitar else texto[:MOTIVO_MAX]):
                 raise GestoRecusado(RecusaDoGesto.JA_DECIDIDO)
-            if acao is not None:
+            if acao is not None or manter:
                 marca = self._registro.ultima_transicao(e.trail_ref)
-                e = self._livro.mudar_estado(kind, ref, acao.to, by=by, reason=texto)
+                e = (self._livro.mudar_estado(kind, ref, acao.to, by=by, reason=texto) if acao is not None else
+                     self._livro.confirmar_que_fica(kind, ref, by=by, motivo=texto))
                 transicao = self._registro.transicao_depois(e.trail_ref, marca)
                 self._registro.decidir_transicao(r.id, transicao)
             self._sinal(r, d, by=by, viu=True, app=e.app)
