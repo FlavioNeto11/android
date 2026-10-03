@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-277 de 340 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+277 de 341 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -239,6 +239,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 25.9 | partial | real |  | — | docs/relatorio-validacao.md §26.2.1: ondas android-05 e android-02 (QA) e android-06 e android-03 (contas reais, autorização P7, conta conferida antes e depois), todos em trafego_verificado com vazamento bloqueado e a s… | aparelhos do notebook: falta a regra de firewall do dono (25.7); android-01 (Lucas) fora da autorização P7; IP distinto por aparelho depende de provedor (P1) |
 | 25.10 | implemented | real |  | — | 29/09, central: sing-box 1.14.2 (io.nekohasekai.sfa-739-5535a350073a) e WireGuard 1.0.20260315 instalados pela IDE na Play Store do android-11 com a conta do dono (autorização P3), importados por store/sync (c-202609291… |  |
 | 25.11 | pendente | — | — | — |  |  |
+| 25.12 | pendente | — | — | — |  |  |
 | 26.1 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §4 (cerca de 50 fontes primárias, acesso em 29/09/2026); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09) |  |
 | 26.2 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §6 (modelo: pedido, gatilho, ocorrência, execução; estados; autonomia em três graus); pesquisa e desenho (sem código de produto); docs-check 0 erros; claude/evolucao3 (29/09) |  |
 | 26.3 | implemented | not_run |  | — | docs/design/pedidos-persistentes.md §7 (três alternativas; recomendação: laço próprio no backend com chave única e trava de líder no relógio do banco); pesquisa e desenho (sem código de produto); docs-check 0 erros; cla… |  |
@@ -347,7 +348,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (63): 8.3, 8.4, 12.3, 12.5, 14.11, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.27, 29.28, 29.29, 29.30, 29.31, 29.32, 29.33, 29.34, 29.35, 29.36, 29.37, 29.38, 29.39, 29.40, 29.41, 30.4, 30.8, 30.10, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 30.23, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
+Pendentes (64): 8.3, 8.4, 12.3, 12.5, 14.11, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 25.12, 27.2, 27.4, 28.10, 28.12, 28.13, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.27, 29.28, 29.29, 29.30, 29.31, 29.32, 29.33, 29.34, 29.35, 29.36, 29.37, 29.38, 29.39, 29.40, 29.41, 30.4, 30.8, 30.10, 30.13, 30.14, 30.15, 30.16, 30.17, 30.18, 30.19, 30.23, 31.8, 31.9, 31.10, 31.11, 31.12, 31.13, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
