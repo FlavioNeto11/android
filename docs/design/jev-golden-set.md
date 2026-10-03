@@ -31,10 +31,11 @@ numérico mudou.
 
 **Rótulos, por prioridade:**
 
-1. **Decisão da pessoa** sobre o item, em `learning_transitions` (`decided_by` ≠ `sistema`, `decided_at`, `from_state` →
-   `to_state`), mapeada para a triagem: publicar ou manter → `manter`; rebaixar → `rebaixar`; desligar → `descartar`.
-   Medido em 02/10 no central (só leitura): 48 transições, 2 de pessoa. O golden por decisão humana é quase vazio e cresce
-   com a fila "Para aprovar" (30.17).
+1. **Decisão do dono** sobre o item, em `learning_transitions` (`decided_by` entre os autores declarados ao relatório
+   com `--autor-dono`, `decided_at`, `from_state` → `to_state`), mapeada para a triagem: publicar ou manter → `manter`;
+   rebaixar → `rebaixar`; desligar → `descartar`. Até o 31.19 valia toda pessoa (`decided_by` ≠ `sistema`); ver o registro
+   abaixo. Medido em 02/10 no central (só leitura): 48 transições, 2 de pessoa. O golden por decisão humana é quase vazio e
+   cresce com a fila "Para aprovar" (30.17).
 2. **Desfecho medido** depois da triagem (`learning_reviews.resultado_posterior`, 14 e 30 dias): receita reativada que
    reproduz bem → `manter` era certo; de volta à quarentena → `rebaixar`/`descartar` era certo; item rebaixado pelo sistema
    que a pessoa reativou → contra-exemplo.
@@ -59,6 +60,23 @@ estado C0.
 
 `on` no curador significa só ORDENAR a fila (o Claude vê primeiro o que a triagem sinalizou); a triagem nunca transiciona
 item nem aceita parecer (ADR-069 item 2).
+
+*Registro de 03/10 (~15:05Z), 31.19, a pedido da orquestradora.* Nenhum limiar da tabela mudou.
+- **O limiar da porta fica em 0,85** (`contrato.pergunta_choice`). As 4 primeiras respostas reais (13:10Z, deploy 9)
+  voltaram `abaixo_do_limiar`, com confiança 0,50–0,52 e maior probabilidade `revisar` 0,60–0,62. As 4 levaram o MESMO
+  estado C0 (1 estado distinto), e o curador principal decidiu 3× `revisar` e 1× `rebaixar` sobre ele. A entrada não
+  distingue os casos, e nenhum limiar separa o que a entrada não distingue. Contrafactual (INFERRED, só acompanhamento):
+  com limiar ≤ 0,50, as 4 passariam com `revisar` e concordância 3/4 com o curador principal. Isso não é GO: há 0 rótulos.
+  Mexer no limiar exige rótulos (≥ 30 no `kind`) e outro registro datado.
+- **O rótulo 1 passa a valer só do dono.** No central (só leitura, 03/10), as 11 transições com `decided_by` ≠ `sistema`
+  eram 7 da `orquestradora`, 2 de sessão Claude do Aprendizado e 2 `panel` de 29/09. `panel` é o último recurso de
+  `api.quem`: ninguém se identificou. Nenhuma era do dono, e todas são anteriores à sombra. Uma decisão de sessão Claude
+  não é rótulo independente do Jev. Nenhuma configuração declara o dono, por isso o nome vem de quem roda o relatório
+  (`--autor-dono`, repetível), e `panel` só conta se declarado. Sem nome, o rótulo 1 fica desligado (falha fechada).
+  Resíduo: o nome do painel é declarado atrás de um token compartilhado.
+- **Em aberto, para a orquestradora:** a documentação da `Pergunta` (contrato) diz que o limiar se aplica à probabilidade
+  devolvida, mas a porta compara a `confianca`. Nas 4 respostas, a diferença foi de 0,10 (0,50 × 0,60). O relatório
+  mostra as duas colunas (`cobertura_por_limiar`), e o código da porta não mudou.
 
 ## 3. Intenção (R2 e R3, 31.9)
 
@@ -132,14 +150,18 @@ ambígua: só ali a R3 (desempate) tem o que medir.
 Uso, a partir da raiz do checkout:
 
     backend/.venv/Scripts/python.exe scripts/jev-relatorio-31-10.py [--db data/poc.sqlite3 | --dsn postgresql://...] \
-        [--desde <ISO-8601 UTC>] [--sem-flows] [--json saida.json] [--md saida.md]
+        [--desde <ISO-8601 UTC>] [--sem-flows] [--json saida.json] [--md saida.md] [--autor-dono NOME ...]
 
 - **Curador, por `kind`** (o `item_kind` da revisão do mesmo dossiê):
-  - rótulo 1: a primeira transição de PESSOA no item depois da linha da sombra, pela direção (`from_state` e `to_state`):
-    `disabled` dá `descartar`; `deprecated` ou descer na escada (`draft` < `candidate` < `validated` < `published`) dá
-    `rebaixar`; subir, ficar ou reativar dá `manter`.
+  - rótulo 1: a primeira transição do DONO no item depois da linha da sombra (`decided_by` entre os `--autor-dono`; sem
+    eles, desligado), pela direção (`from_state` e `to_state`): `disabled` dá `descartar`; `deprecated` ou descer na
+    escada (`draft` < `candidate` < `validated` < `published`) dá `rebaixar`; subir, ficar ou reativar dá `manter`. A
+    fonte sai como `dono`, e `rotulo_1.transicoes_fora_do_dono` conta as de pessoa que ficaram de fora (31.19).
   - rótulo 2: o `resultado_posterior`.
   - controle: a regra do adaptador simulado sobre o mesmo dossiê (mais evidência contra que a favor dá `revisar`).
+  - `estados_distintos`: quantos estados C0 diferentes a triagem mandou. Com 1, nenhum limiar separa as respostas.
+  - `cobertura_por_limiar`: a fração dos pedidos que passaria em 0,50, 0,60, 0,70 e 0,85, pela `confianca` e pela maior
+    probabilidade. É contrafactual (INFERRED): o limiar da porta não muda.
 - **Intenção, por app** (o primeiro de `runs.app_ids`):
   - rótulo: a escolha da pessoa no rótulo do 30.25 (`learning_reviews`, `decidido_por` diferente de `sistema`) ou o
     desfecho, isto é, a habilidade que a cadeia resolveu numa execução de sucesso comprovado (`sucesso_comprovado`, o
@@ -148,12 +170,18 @@ Uso, a partir da raiz do checkout:
     acertos em fluxo com parâmetro;
   - controle: a cadeia, medida só contra o rótulo da pessoa (pelo desfecho, o rótulo É a decisão da cadeia).
 - Abaixo do mínimo do estrato, o relatório diz "sem amostra" e a data prevista do GO, nunca uma taxa.
-- Custo: chamadas, US$, tokens, latência p50 e p95 e o maior dia contra a fatia de US$ 0,50.
+- Custo: chamadas, US$, tokens, latência p50 e p95 e o maior dia contra a fatia de US$ 0,50. Os percentis são pelo posto
+  mais próximo (`ceil(pct·n/100)`, em aritmética inteira), o método do `sombra._p95` e da prova do 31.17 (31.19).
+  Antes, o relatório interpolava a mediana e a prova arredondava `q·(n−1)`: com as 4 chamadas de 03/10, o p50 dava
+  473,8 ms num e 510,2 ms no outro; agora dá 437,3 ms nos dois, e o p95, 552,8 ms.
 - Níveis: contagens `PROVED`; taxas, rótulo pelo desfecho e controle `INFERRED`. O relatório nunca liga nada: `on` é
   decisão registrada (ADR-069 item 6).
 
 **Limites conhecidos** (03/10):
-- O rótulo 2 do curador ainda não tem produtor: nenhum código grava `resultado_posterior`.
+- O rótulo 2 do curador ainda não tem produtor na main: nenhum código grava `resultado_posterior`. O 30.35
+  (`feat/30-35-resultado-posterior`) grava `manter`, `rebaixar`, `descartar` ou `sem_desfecho`; os três primeiros estão
+  na régua da triagem, e `sem_desfecho` não rotula.
+- O rótulo 1 do dono depende do nome declarado em `--autor-dono` (nenhuma configuração declara o dono).
 - A métrica principal só se mede com rótulo da pessoa. A execução sem fluxo não tem habilidade resolvida que o desfecho
   confirme.
 - O "aceite errado" é a escolha diferente de `nenhuma` que o rótulo desmente, sobre os comandos rotulados.
@@ -181,7 +209,8 @@ do merge da suíte 7 e do deploy).
   - nenhum texto do dossiê fora do vocabulário: conteúdo, motivo de voto, ids, execuções, app, capability, aparelho;
   - nem o `dossie_hash`, o `item_ref`, data, uuid ou hex longo.
 - **Custo e latência (PROVED):** as linhas do Jev em `ai_calls` (`provider='jev'`, `origem='decisao_fechada'`), com
-  US$, tokens e ms (p50, p95 e máximo), falhas por motivo. Cruza com as chamadas da sombra que chegaram ao POST (as
+  US$, tokens e ms (p50, p95 e máximo; os percentis pelo posto mais próximo, o mesmo método do relatório do 31.10 desde o
+  31.19), falhas por motivo. Cruza com as chamadas da sombra que chegaram ao POST (as
   recusas por privacidade, orçamento e desligado não viram linha).
 - Saída: um resumo curto e, com `--json`, só contagens, ids opacos e números. Código 0 quando tudo confere, 1 com
   violação, 2 sem linha no período.

@@ -93,11 +93,13 @@ def _desde(valor: str) -> str:
     return to_iso(dt)
 
 
-def _percentil(valores: Sequence[float], q: float) -> float | None:
+def _percentil(valores: Sequence[float], pct: int) -> float | None:
+    """Posto mais próximo, `ceil(pct·n/100)` em aritmética inteira: o método do `sombra._p95` e do relatório do 31.10
+    (31.19). Antes arredondava `q·(n−1)` e, com as 4 chamadas de 03/10, dava 510,2 ms de p50 onde o relatório dava 473,8."""
     if not valores:
         return None
     ordenados = sorted(valores)
-    return round(ordenados[min(len(ordenados) - 1, int(round(q * (len(ordenados) - 1))))], 1)
+    return round(ordenados[max(0, (pct * len(ordenados) + 99) // 100 - 1)], 1)
 
 
 # ------------------------------------------------------------------ 1. linhas da sombra
@@ -245,7 +247,7 @@ def conferir_gasto(chamadas: Sequence[Mapping[str, Any]], linhas: Sequence[Mappi
         "usd_na_sombra": round(usd_sombra, 6),
         "tokens_entrada": sum(int(c["input_tokens"] or 0) for c in chamadas),
         "tokens_saida": sum(int(c["output_tokens"] or 0) for c in chamadas),
-        "ms_p50": _percentil(ms, 0.5), "ms_p95": _percentil(ms, 0.95), "ms_max": round(max(ms), 1) if ms else None,
+        "ms_p50": _percentil(ms, 50), "ms_p95": _percentil(ms, 95), "ms_max": round(max(ms), 1) if ms else None,
         "ms_media": round(statistics.fmean(ms), 1) if ms else None,
         "modelos": sorted({str(c["model"]) for c in chamadas}),
         "ref_fora_do_curador": fora_do_curador, "com_step_id": com_etapa,
