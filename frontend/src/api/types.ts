@@ -391,6 +391,21 @@ interface AiStatus {
   esquema_do_plano?: 'longo' | 'curto' | string | null;
   profiles?: AiProfileStatus[];
   leitura_visual?: boolean | null;
+  // v0.90 — a porta da decisão fechada (Jev); null sem consumidor em sombra ou ligado. Ausente em backend anterior.
+  decisao_fechada?: AiDecisaoFechada | null;
+}
+
+/** O bloco `decisao_fechada` de `GET /api/ai` (adendo v0.90; `transparencia.py::status`). */
+interface AiDecisaoFechada {
+  provider: 'typesafe' | string;
+  name: string;
+  consumers: Record<string, 'shadow' | 'on' | string>;  // só os ligados, por origem (curador, intencao…)
+  classes: string[];
+  send_approved: boolean;
+  key: 'configurada' | 'não configurada' | string;
+  decider: 'nulo' | 'jev' | string;
+  sending: boolean;                      // sai algo AGORA (as quatro condições juntas)
+  retention_days: number | null;
 }
 
 /** Um perfil de IA (v0.87): só as funções que ele muda; as outras são as do padrão. */

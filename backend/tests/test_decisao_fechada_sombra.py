@@ -377,7 +377,11 @@ def test_aviso_nomeia_a_typesafe_e_as_classes_so_com_consumidor_em_shadow_ou_on(
                             classes_permitidas=["C0", "C1"])
     aviso = transparencia.aviso(cfg, chave_configurada=True)
     assert aviso is not None and "TypeSafe" in aviso and "C0, C1" in aviso and "C3" not in aviso
-    assert "curador (shadow)" in aviso and "apps (on)" in aviso and "configurada" in aviso
+    # polimento do deploy 10: o modo em palavras, não o valor do YAML
+    assert "conjunto fechado (apps ligado, curador em sombra)" in aviso and "configurada" in aviso
+    assert "(shadow)" not in aviso and "(on)" not in aviso
+    intencao = DecisaoFechadaCfg(enabled=True, consumidores={"curador": "shadow", "intencao": "shadow"})
+    assert "(curador em sombra, intenção em sombra)" in str(transparencia.aviso(intencao, chave_configurada=True))
     assert "Decisor na porta: nulo." in aviso and "Nada sai agora: o decisor da porta é o nulo" in aviso
     assert "não configurada" in transparencia.aviso(cfg, chave_configurada=False)  # type: ignore[operator]
     bloco = transparencia.status(cfg, chave_configurada=False)
