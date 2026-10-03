@@ -6451,6 +6451,31 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T19:53:43+00:00"
+  },
+  "29.52": {
+   "id": "29.52",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "fix/29-52-resposta-com-credencial @ 16174425 (→ 90c058e2 no integ), porta única pergunta_sensivel(ref|None) no commit de integração 7fd72929; na main pela suíte 14 (integ 51270b9c, fast-forward) e implantado no deploy 14 (03/10 restart 20:35:29Z, WIN-7S2UASNLFOP, migração 086, problems []). Simulado: tests/test_resposta_com_credencial.py (8) + afetados e arquitetura; telegram 153; RunView.test.tsx (4 novos); suíte 14 SQLite 8716 passed, 7 skipped, 0 failed (9c9fe676); frontend 1422/1422; PG dirigido do test_resposta_com_credencial verde.",
+   "blocker": "Prova real not_run: itens 4 e 5 do roteiro do Chrome da orquestradora pós-deploy 14 (pergunta sensível aberta no painel e o evento pergunta_sensivel); sem pergunta sensível depois do restart, fica não exercitado.",
+   "arquivos": [
+    "backend/app/security/redaction.py",
+    "backend/app/modules/learning/infrastructure/segredo.py",
+    "backend/app/taskqueue/perguntas.py",
+    "backend/app/taskqueue/assistente.py",
+    "backend/app/taskqueue/service.py",
+    "frontend/src/features/runs/RespostaSensivel.tsx",
+    "frontend/src/features/runs/RunView.tsx",
+    "frontend/src/features/runs/resumo.ts",
+    "docs/api-contract.md"
+   ],
+   "testes": "test_resposta_com_credencial 8; afetados 772; frontend 1422; suíte 14 SQLite 8716/7/0; PG dirigido 436+1 (a falha era de outro teste, corrigida).",
+   "grupo": "suite-14-android",
+   "modelo": "opus (sessão Android)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T20:39:39+00:00"
   }
  },
  "rodadas": [
@@ -8032,6 +8057,15 @@
    ],
    "grupos": [
     "aprendizado-pr172"
+   ]
+  },
+  {
+   "quando": "2026-10-03T20:39:39+00:00",
+   "itens": [
+    "29.52"
+   ],
+   "grupos": [
+    "suite-14-android"
    ]
   }
  ]
