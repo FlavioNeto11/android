@@ -176,3 +176,37 @@ async def test_repetir_o_put_renova_o_prazo(h: Harness) -> None:
         await c.put("/api/instances/android-01/repair-pause", json={"ttl_s": 120, "reason": "primeira"})
         r = await c.put("/api/instances/android-01/repair-pause", json={"ttl_s": 3600, "reason": "segunda"})
         assert r.json()["reason"] == "segunda" and r.json()["remaining_s"] > 3500
+
+
+async def test_a_pausa_sobrevive_ao_restart_do_backend(h: Harness) -> None:
+    """25.13 (K-082): nos braços do 29.46 a pausa pedida às 10:10Z sumiu no primeiro restart da `farm-central`, e os
+    restarts seguintes rodaram com a escada armada. Gravada em `settings`, ela volta com o mesmo prazo e segura a escada."""
+    _pausar(h, ttl=900)
+    antes = h.state.devices.pausa_dto(h.state.devices.get("android-01"))
+    assert antes is not None
+    await h.crash()
+    await h.boot()
+    s = h.state
+    rt = s.devices.get("android-01")
+    depois = s.devices.pausa_dto(rt)
+    assert depois is not None
+    assert (depois.until, depois.since, depois.reason, depois.by) == (antes.until, antes.since, antes.reason, antes.by)
+    assert s.devices.pausa_de_reparo(s.devices.get("android-02")) is None                # só o pausado
+    assert remediar(s, "android-01", "o system_server caiu") is None                     # a escada segue segurada
+    assert _comandos(h, "android-01") == []
+
+
+async def test_a_pausa_retomada_ou_vencida_nao_volta_no_restart(h: Harness) -> None:
+    s = h.state
+    _pausar(h, "android-01")
+    _pausar(h, "android-02")
+    assert s.devices.retomar_reparo(s.devices.get("android-01"), "teste")                # retomada: sai da gravação
+    rt2 = s.devices.get("android-02")
+    vencida = dataclasses.replace(rt2.repair_pause, until=now() - timedelta(seconds=1))
+    s.devices._gravar_pausa("android-02", vencida)                                       # o prazo venceu com o backend fora
+    await h.crash()
+    await h.boot()
+    assert h.state.devices.pausa_de_reparo(h.state.devices.get("android-01")) is None
+    assert h.state.devices.pausa_de_reparo(h.state.devices.get("android-02")) is None
+    cid = remediar(h.state, "android-01", "o system_server caiu")
+    assert cid is not None and h.state.commands.get(cid)["verb"] == "restart"            # a escada volta ao normal
