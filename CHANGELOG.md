@@ -19,6 +19,29 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Deploy 11 no central (c8304e85; decisão fechada em sombra na intenção; autopublicação em sombra; 25.13 real)
+
+- Implantado no central (`real`, 03/10, WIN-7S2UASNLFOP): commit c8304e85 = suíte 11 (97425d5f) + os estados da Android.
+  Sem migração nova; health ok, `migration 082_learning_validations`, `problems []`.
+- Antes do restart:
+  - pausa do reparo no 01/03/06, já pelo código novo; nenhuma execução nem comando em voo;
+  - backup do banco `data/backups/20261003-122915`;
+  - checkout em fast-forward.
+- Restart às ~15:30Z (`deploy.ps1 -PularBackup`, rc 0). O relógio do curador recomeça do restart.
+- `config/config.yaml` (fora do Git; backup `config-antes-deploy11-20261003-152926.yaml`, sha f82c6df4 → e98f5626),
+  conferido antes com o `load_config()` do código novo:
+  - `ai.decisao_fechada`: `consumidores {curador: shadow, intencao: shadow}`, `classes_permitidas [C0, C1, C3]`,
+    `retencao_dias 180`, decisor jev;
+  - `aprendizado.autopublicacao.modo: shadow` (30.34: só marca no livro da sombra, nada publica);
+  - o curador com alfa de volta ao padrão 0.10 (sai o 0.3 temporário do deploy 10).
+- `GET /api/ai`: decisão fechada com `consumers {curador: shadow, intencao: shadow}`, classes C0/C1/C3, decisor jev,
+  `sending true`.
+- **25.13 com prova `real`:** a pausa do reparo posta às 15:29:07Z (01/03/06, até 15:59:08Z) estava em
+  `settings.repair_pauses` antes do restart e voltou depois dele com os MESMOS três prazos, sem renovar. Conferido na
+  API e no banco, lido em modo só leitura.
+- Agente do notebook atualizado para `0.1.0+c8304e8`, com pausa nos 09/10/12/13 durante; os dois workers com
+  `agent_outdated false`. Os 7 aparelhos ligados ficaram online e prontos.
+
 ## 2026-10-03 — Suíte 11 na main (97425d5f): SQLite inteira; PostgreSQL e K-084 pendentes
 
 - A suíte 11 entrou na main por commit-tree (97425d5f), com 6 hashes:

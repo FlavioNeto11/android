@@ -6116,22 +6116,22 @@
   "25.13": {
    "id": "25.13",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "feat/suite10-android 5492bcb3 + b7b4fbf3, na main pela suíte 10 (16fd1127) e implantado no deploy 10 (2432046f, 03/10/2026 ~14:56Z). A pausa do reparo é gravada em settings.repair_pauses e relida em DeviceManager._runtime na subida; DELETE apaga; a vencida não volta. Simulado: tests/test_pausa_de_reparo.py::test_a_pausa_sobrevive_ao_restart_do_backend e ::test_a_pausa_retomada_ou_vencida_nao_volta_no_restart. Real parcial (03/10, central, depois do deploy 10): PUT /repair-pause de 01/03/06 às 14:57:05Z gravou settings.repair_pauses com os três prazos (15:27:05Z), lido no banco do central em modo só leitura. Suíte 10: SQLite 7513 passed; PostgreSQL 7494 passed, 8 failed (7 pré-existentes = K-084, 1 do 30.31 corrigida; nenhuma do 25.13).",
-   "blocker": "Prova real da sobrevivência not_run: a pausa anterior ao restart do deploy 10 foi posta pelo backend velho (7f551053, sem persistência) e não voltou, como esperado. No próximo restart (deploy 11): pausar antes e conferir que a pausa volta sem renovar.",
+   "proof": "real",
+   "evidence": "feat/suite10-android 5492bcb3 + b7b4fbf3, na main pela suíte 10 (16fd1127), implantado no deploy 10 (2432046f). Prova real (03/10/2026, WIN-7S2UASNLFOP, restart do deploy 11, commit c8304e85): PUT /repair-pause de 01/03/06 às 15:29:07Z pelo código novo; settings.repair_pauses e /api/instances antes do restart com os prazos 15:59:08.033Z / .057Z / .075Z; depois do restart (~15:30Z, deploy.ps1), sem renovar, os mesmos três prazos idênticos na API e no banco (lido em modo só leitura). No deploy 10 a pausa anterior ao restart veio do backend velho (sem persistência) e não voltou, como esperado; a das 14:57:05Z venceu às 15:27:05Z e a vencida não volta, como projetado. Simulado: tests/test_pausa_de_reparo.py::test_a_pausa_sobrevive_ao_restart_do_backend e ::test_a_pausa_retomada_ou_vencida_nao_volta_no_restart.",
+   "blocker": "",
    "arquivos": [
     "backend/app/devices/manager.py",
     "backend/tests/test_pausa_de_reparo.py",
     "docs/dominios/parque.md",
     "docs/conhecimento/aprendizados.md"
    ],
-   "testes": "test_pausa_de_reparo.py (2 novos); suíte 10 SQLite e PostgreSQL.",
-   "grupo": "deploy-10-android",
+   "testes": "test_pausa_de_reparo.py; suítes 10 e 11; restart real do deploy 11.",
+   "grupo": "deploy-11-android",
    "modelo": "opus (sessão Android)",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T14:59:14+00:00"
+   "quando": "2026-10-03T15:31:52+00:00"
   },
   "31.16": {
    "id": "31.16",
@@ -7643,6 +7643,15 @@
    ],
    "grupos": [
     "suite-11-android"
+   ]
+  },
+  {
+   "quando": "2026-10-03T15:31:52+00:00",
+   "itens": [
+    "25.13"
+   ],
+   "grupos": [
+    "deploy-11-android"
    ]
   }
  ]
