@@ -191,15 +191,19 @@ def _literais(actions: Sequence[Mapping[str, object]]) -> list[str]:
 
 
 def eh_generica(actions: Sequence[Mapping[str, object]], post_value: str | None,
-                variables: Mapping[str, str] | None) -> bool:
+                variables: Mapping[str, str] | None, titulo: str | None = None) -> bool:
     """A receita serve a QUALQUER valor da etapa? Não, se o que ela procura ou digita traz o literal do valor dela.
 
     O caso medido: `open_profile` grava o toque em `text: 'nasa'` (o Instagram mostra o @ sem arroba). Na chave
     genérica, "perfil de @bia" tocaria em "nasa". Específica quando um literal da receita aparece, como palavra, na
     pós-condição escrita (normalizada) ou quando o valor de um parâmetro da execução aparece num literal. Na dúvida,
     específica: errar para cá só adia o ganho. "Message", "Options" e "Send message" (`open_thread`) são genéricos.
+
+    `titulo`: o título RESOLVIDO da etapa entra junto da pós-condição (revisão da Android no #145). O planejador às vezes
+    escreve o alvo só no título ("Abrir a conversa com Lucas"), sem parâmetro; sem isso, o toque em "Lucas" passaria
+    como genérico e só a sombra com outro valor o pegaria.
     """
-    post = _normal(post_value or "")
+    post = _normal(f"{post_value or ''} {titulo or ''}")
     valores = [_normal(v) for k, v in (variables or {}).items()
                if k not in _NAO_TEMPLATIZA and isinstance(v, str) and len(_normal(v)) >= 3 and "{" not in v]
     for literal in map(_normal, _literais(actions)):

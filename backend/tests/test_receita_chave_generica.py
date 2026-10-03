@@ -72,6 +72,14 @@ def test_classificador_ignora_o_valor_da_vez_e_o_que_nao_identifica_o_alvo() -> 
     assert eh_generica(conta, "tela inicial", {"account_label": "qa-user-09", "instance_id": "android-09"})
 
 
+def test_o_literal_so_no_titulo_resolvido_deixa_a_receita_especifica() -> None:
+    """Revisão da Android no #145: o planejador escreveu o alvo só no título, sem parâmetro e fora da pós-condição."""
+    lucas = [_toque({"kind": "text", "text": "Lucas"})]
+    assert eh_generica(lucas, "conversa aberta", {})
+    assert not eh_generica(lucas, "conversa aberta", {}, titulo="Abrir a conversa com Lucas")
+    assert eh_generica(MESSAGE_40, "conversa aberta", {}, titulo="Abrir a conversa com @perfil_dois")
+
+
 def test_classificador_conservador_com_rotulo_na_pos_condicao() -> None:
     """O rótulo do campo citado na pós-condição ("Nome") deixa a receita específica: errar para cá só adia o ganho."""
     nome = [{"tool": "type_text", "commit": False, "why": "nome", "args": {"text": "{nome}"},

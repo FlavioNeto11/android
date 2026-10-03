@@ -50,7 +50,7 @@ def semear(db: Database, store: RecipeStore, *, gravar: bool) -> Relatorio:
     grupos: dict[tuple[str, str, str, str, str], Grupo] = {}
     for r in db.query(
             "SELECT r.id, r.app_package, r.app_version, r.app_signature, r.variant, r.step_hash, r.step_key, r.actions,"
-            " r.learned_from_step, r.replay_ok, r.replay_fail, r.last_used_at, s.key, s.template_key, s.side_effect,"
+            " r.learned_from_step, r.replay_ok, r.replay_fail, r.last_used_at, s.key, s.template_key, s.side_effect, s.title,"
             " s.postcondition, s.commit_guard, o.parameters FROM recipes r JOIN steps s ON s.id = r.learned_from_step"
             " LEFT JOIN objectives o ON o.id = s.objective_id WHERE r.status='active' ORDER BY r.id"):
         contagem["ativas"] += 1
@@ -65,7 +65,8 @@ def semear(db: Database, store: RecipeStore, *, gravar: bool) -> Relatorio:
             contagem["ja_na_generica"] += 1
             continue
         post = loads(r["postcondition"], {}) or {}
-        if not eh_generica(loads(r["actions"], []) or [], post.get("value"), loads(r["parameters"], {}) or {}):
+        if not eh_generica(loads(r["actions"], []) or [], post.get("value"), loads(r["parameters"], {}) or {},
+                           titulo=r["title"]):
             contagem["especificas"] += 1
             continue
         chave = (str(r["app_package"]), str(r["app_version"]), str(r["app_signature"] or ""), str(r["variant"] or ""),

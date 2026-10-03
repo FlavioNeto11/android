@@ -1107,7 +1107,8 @@ class StepExecutor:
         # genérica; o que traz (o toque em "nasa") fica na específica. A genérica que divergiu num valor e um caminho
         # específico: ela segue em prova para os outros valores (a divergência já foi contada) e a específica nasce
         # ao lado — sem `replaces`, que a trocaria.
-        generica = bool(rr.step_hash_generico) and eh_generica(actions, step.postcondition.value, rr.variables)
+        generica = bool(rr.step_hash_generico) and eh_generica(actions, step.postcondition.value, rr.variables,
+                                                               titulo=step.title)
         chave = rr.step_hash_generico if generica else rr.step_hash
         if substitui is not None and not generica and rr.row["step_hash"] != rr.step_hash:
             substitui = None
