@@ -34,37 +34,16 @@ DESTINOS_G = CatalogoDeDestinos(
     (*DESTINOS.personas, PersonaNomeavel("p-girassol", ("Girassol",), ("girassol.oficial",))), DESTINOS.aparelhos)
 EXTRATOR_G = TargetExtractor(DESTINOS_G)
 NOMES_G = nomes_de_destino([*(n for p in DESTINOS_G.personas for n in (*p.nomes, *p.handles)), *DESTINOS_G.aparelhos])
-#: O catálogo SEM a persona "Girassol" (as três contas vivas e os aparelhos): o portão da fase 2 da rodada H.
-EXTRATOR_SEM_GIRASSOL = TargetExtractor(DESTINOS)
-NOMES_SEM_GIRASSOL = nomes_de_destino([*(n for p in DESTINOS.personas for n in (*p.nomes, *p.handles)), *DESTINOS.aparelhos])
-#: Rodada H (H-3, leitura aceita pela orquestradora em 03/10): o nome do catálogo SOZINHO depois do conector do verbo de
-#: entrar é destino. Estes casos da G (o valor sozinho, sem par) não são conferidos com a persona "Girassol" no catálogo:
-#: com ela, o valor pode virar destino (alguns ainda recusam por outra regra; o residual exato está em
-#: `test_decisao_fechada_reverificacao_h.py`). Sem ela, recusam como antes. O portão da H é o catálogo sem a "Girassol"; o
-#: com ela só conta o par e a utilidade (G-4).
-H3_DESTINO_COM_GIRASSOL = frozenset((
-    "entre usando girassol e curta a foto da Marina", "faca login com girassol e depois curta",
-    "entre com girassol e curta a foto", "abra o instagram e entre com a girassol, depois curta o post da Marina",
-    "entre com o girassol e curta a foto", "entre usando a girassol e curta a foto da Marina",
-    "entre no app do insta agora com girassol e curta o post", "log into the app with girassol and like Marina's post",
-    "faça o acesso com girassol e curta o post da Marina", "inloggen met girassol en like de post van Marina",
-    "log-in with girassol and like Marina's post", "log-in with girassol"))
 
 
-def _motivo(cru: str, *, girassol: bool = True) -> str | None:
-    """Como o consumidor decide (`ConsumidorDeIntencao.pedido`), com o catálogo da rodada G (ou sem a "Girassol")."""
-    extrator, nomes = (EXTRATOR_G, NOMES_G) if girassol else (EXTRATOR_SEM_GIRASSOL, NOMES_SEM_GIRASSOL)
-    texto = extrator.extrair(cru).command_sem_destinos
+def _motivo(cru: str) -> str | None:
+    """Como o consumidor decide (`ConsumidorDeIntencao.pedido`), com o catálogo da rodada G."""
+    texto = EXTRATOR_G.extrair(cru).command_sem_destinos
     com_original = texto != cru
-    if (c7 := motivo_c7(texto, intencao=not com_original, destinos=nomes)
-            or (motivo_c7(cru, sem_destinos=texto, destinos=nomes) if com_original else None)) is not None:
+    if (c7 := motivo_c7(texto, intencao=not com_original, destinos=NOMES_G)
+            or (motivo_c7(cru, sem_destinos=texto, destinos=NOMES_G) if com_original else None)) is not None:
         return c7
     return remover_entidades_com_motivo(redact(texto) or "")[1]
-
-
-def _catalogos(comando: str) -> tuple[bool, ...]:
-    """Em que catálogos o caso conta: sempre sem a "Girassol"; com ela, salvo o valor sozinho que a H-3 faz destino."""
-    return (False,) if comando in H3_DESTINO_COM_GIRASSOL else (False, True)
 
 
 def _saida(cru: str) -> str | None:
@@ -128,14 +107,13 @@ def test_as_37_entradas_e_as_contagens() -> None:
 
 @pytest.mark.parametrize(("comando", "classe", "tipo"), VAZAMENTOS_DA_RODADA_F)
 def test_os_vazamentos_da_rodada_f_recusam(comando: str, classe: str, tipo: str) -> None:
-    for girassol in _catalogos(comando):
-        motivo = _motivo(comando, girassol=girassol)
-        if classe == "C7":
-            assert motivo is not None and motivo.startswith("c7_"), (tipo, girassol, motivo)
-        elif classe == "email":
-            assert motivo == "email_ofuscado", (tipo, girassol, motivo)
-        else:
-            assert motivo == "ditado", (tipo, girassol, motivo)
+    motivo = _motivo(comando)
+    if classe == "C7":
+        assert motivo is not None and motivo.startswith("c7_"), (tipo, motivo)
+    elif classe == "email":
+        assert motivo == "email_ofuscado", (tipo, motivo)
+    else:
+        assert motivo == "ditado", (tipo, motivo)
 
 
 # ------------------------------------------------------------------ G-1: o usuário como @handle ou e-mail
@@ -218,11 +196,8 @@ def test_controles_do_email_passam(comando: str) -> None:
     "e pra entrar - girassol", "digita girassol e entra, depois curte o post da Marina",
 ])
 def test_o_nome_do_catalogo_nao_isenta_o_valor(comando: str) -> None:
-    """Com a "Girassol" no catálogo, o valor sozinho depois do conector é destino desde a H-3 (`H3_DESTINO_COM_GIRASSOL`);
-    o par, o colado e o separador continuam recusando nos dois catálogos."""
-    for girassol in _catalogos(comando):
-        motivo = _motivo(comando, girassol=girassol)
-        assert motivo is not None and motivo.startswith("c7_"), (girassol, motivo)
+    motivo = _motivo(comando)
+    assert motivo is not None and motivo.startswith("c7_")
 
 
 def test_a_persona_girassol_e_o_par() -> None:
@@ -297,8 +272,7 @@ def test_entre_sem_faixa_e_verbo(comando: str, motivo: str) -> None:
     ("user lucas, girassol", "c7_par_credencial"), ("login zilda, tulipa e curta", "c7_par_credencial"),
 ])
 def test_as_regras_da_rodada_g(comando: str, motivo: str | None) -> None:
-    for girassol in _catalogos(comando):
-        assert _motivo(comando, girassol=girassol) == motivo
+    assert _motivo(comando) == motivo
 
 
 @pytest.mark.parametrize("comando", [
@@ -331,6 +305,6 @@ def test_os_nomes_dos_apps_vem_do_gancho_que_a_fila_registra(monkeypatch: pytest
     `registry.nomes_e_apelidos` na subida, e o filtro só conhece o gancho. Sem registro, nenhum nome de app."""
     assert entidades._fonte_dos_apps is nomes_e_apelidos                     # noqa: SLF001
     assert {"instagram", "insta", "outlook"} <= nomes_dos_apps()
-    assert _motivo("entra no insta com girassol e curta o post da Marina", girassol=False) is not None
+    assert _motivo("entra no insta com girassol e curta o post da Marina") is not None
     monkeypatch.setattr(entidades, "_fonte_dos_apps", tuple)
     assert nomes_dos_apps() == frozenset()

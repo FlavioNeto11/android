@@ -13,13 +13,14 @@ orquestradora, `.claude/handoffs/reverificacao-31-9g.md`).
 - H-1 (e): o e-mail em peças com rótulo e sem ponto ("e-mail: X, provedor: Y", "zilda em correio, net", "zilda bij correio
   punt nl").
 - H-2: o domínio de topo separado do e-mail ("zilda@correio. net" saía "[email]. net").
-- H-3: o nome do catálogo sozinho depois do verbo de entrar é DESTINO ("entre com o lucas", "entre como lucas"); o nome na
-  posição de valor do par, colado ao usuário ou depois de outro destino continua recusando (G-4).
+- H-3 (REVERTIDA em 03/10, depois do NO-GO da fase 2): fazia do nome do catálogo sozinho depois do verbo de entrar um
+  DESTINO ("entre com o lucas"); preenchida a vaga, a busca do valor relaxava ("entre com o lucas hoje girassol" passava,
+  1758/4779 sintéticas). Volta a postura da G: "entre com o lucas" recusa, nos dois catálogos.
 - H-5: "a padaria do bairro" não é endereço (só logradouro, número e CEP) e "o e-mail da newsletter no outlook" é a mensagem.
 
-O portão da fase 2 é o catálogo SEM a persona "Girassol" (as três contas vivas e android-01..08); com ela, o valor sozinho
-depois do conector vira destino pela H-3, e isso é residual aceito pela orquestradora (03/10). Prova `simulated`: funções
-puras e o extrator real com catálogo de mentira. Os valores são de mentira.
+O portão da fase 2 foi o catálogo SEM a persona "Girassol" (as três contas vivas e android-01..08); sem a H-3, os casos
+recusam também com ela. Prova `simulated`: funções puras e o extrator real com catálogo de mentira. Os valores são de
+mentira.
 """
 from __future__ import annotations
 
@@ -95,17 +96,6 @@ VAZAMENTOS_DA_RODADA_G = [
     ("bel haar op nul zes een twee drie vier vijf zes zeven acht", "telefone"),
     ("ring henne på noll sju ett två tre fyra fem sex sju åtta", "telefone"),
 ]
-#: O valor SOZINHO depois do conector: com a persona "Girassol" no catálogo é destino pela H-3 (residual aceito). Os outros
-#: de valor sozinho continuam recusando com ela por outra regra (a palavra seguinte lida como segundo valor: "loguei com
-#: girassol e DEU certo", "logg inn med girassol OG lik"): o residual é no máximo esta lista.
-H3_DESTINO_COM_GIRASSOL = frozenset((
-    "entra aqui com girassol e curta o post da Marina", "entra ali com girassol e curta o post da Marina",
-    "entre no feed com girassol e curta o post da Marina", "entrei com girassol, agora curta o post da Marina",
-    "přihlas se s girassol a dej like na Marinin příspěvek",
-    "kirjaudu sisään tunnuksella girassol ja tykkää Marinan julkaisusta", "entre no perfil com girassol e curta",
-))
-
-
 def test_as_40_entradas() -> None:
     classes = [c for _, c in VAZAMENTOS_DA_RODADA_G]
     assert len(VAZAMENTOS_DA_RODADA_G) == 40
@@ -123,20 +113,12 @@ def test_os_vazamentos_da_rodada_g_recusam(comando: str, classe: str) -> None:
         assert motivo == "ditado", motivo
 
 
-@pytest.mark.parametrize(("comando", "classe"), [(c, k) for c, k in VAZAMENTOS_DA_RODADA_G
-                                                 if c not in H3_DESTINO_COM_GIRASSOL])
-def test_com_a_persona_girassol_so_o_valor_sozinho_muda(comando: str, classe: str) -> None:
-    """Com a "Girassol" no catálogo, todo o resto continua recusando: só o valor sozinho depois do conector é destino."""
+@pytest.mark.parametrize(("comando", "classe"), VAZAMENTOS_DA_RODADA_G)
+def test_com_a_persona_girassol_tudo_continua_recusando(comando: str, classe: str) -> None:
+    """Sem a H-3 (revertida, 03/10), a persona com o nome da própria senha não isenta mais o valor sozinho depois do
+    conector ("entre no feed com girassol", "entrei com girassol"): o residual aceito da H deixou de existir."""
     motivo = _motivo(comando, girassol=True)
     assert motivo is not None and (motivo.startswith("c7_") or classe != "C7"), motivo
-
-
-@pytest.mark.parametrize("comando", sorted(H3_DESTINO_COM_GIRASSOL))
-def test_o_residual_aceito_da_h3(comando: str) -> None:
-    """A persona com o nome da própria senha (decisão da orquestradora, 03/10): sem ela no catálogo o comando recusa, com
-    ela passa como destino. Fica documentado aqui para a mudança não passar despercebida."""
-    assert _motivo(comando) is not None
-    assert _motivo(comando, girassol=True) is None
 
 
 #: Os 6 fragmentos de domínio de topo (casos 533 a 538): o "[email]" não deixa sobrar ". net", ". com", "\nnet".
@@ -170,16 +152,29 @@ def test_a_forma_conhecida_do_dominio_de_topo(comando: str, saida: str) -> None:
     assert _saida(comando) == saida
 
 
-# ------------------------------------------------------------------ H-3: o verbo central do produto
+# ------------------------------------------------------------------ H-3 revertida: o nome solto volta a ser valor
 @pytest.mark.parametrize("comando", [
-    "entre com o lucas e curta a foto da marina", "entre como lucas", "entre pela conta do bruno",
-    "entre com a conta do lucas", "entre com o lucas", "entre no perfil com Lucas e curta a foto",
-    "abra o insta e entre com o lucas", "entre com o lucas hoje e curta", "entre com o lucas no perfil da Marina e curta",
-    "entre com o lucas mesmo", "log into the lucas profile and like",
+    "entre pela conta do bruno", "entre com a conta do lucas", "log into the lucas profile and like",
 ])
-def test_o_nome_do_catalogo_depois_do_verbo_de_entrar_e_destino(comando: str) -> None:
+def test_a_sintaxe_de_destino_continua_isenta(comando: str) -> None:
     for girassol in (False, True):
         assert _motivo(comando, girassol=girassol) is None, girassol
+
+
+@pytest.mark.parametrize("comando", [
+    "entre com o lucas e curta a foto da marina", "entre como lucas", "entre com o lucas",
+    "entre no perfil com Lucas e curta a foto", "abra o insta e entre com o lucas", "entre com o lucas hoje e curta",
+    "entre com o lucas no perfil da Marina e curta", "entre com o lucas mesmo",
+    # a família 1 da fase 2 da H: com a H-3, tudo depois do nome passava
+    "entre com o lucas hoje girassol", "entre com o lucas (girassol)", "entre com o lucas do girassol",
+    "entre como lucas hoje girassol", "log in with lucas today girassol", "entra con lucas hoy girassol",
+])
+def test_sem_a_h3_o_nome_solto_depois_do_verbo_de_entrar_recusa(comando: str) -> None:
+    """A H-3 foi revertida (NO-GO da fase 2 da rodada H, 03/10): o nome do catálogo sozinho depois do conector volta a ser a
+    posição de valor, como na G. Recusa nos dois catálogos; o custo é a sombra não ver "entre com o lucas"."""
+    for girassol in (False, True):
+        motivo = _motivo(comando, girassol=girassol)
+        assert motivo is not None and motivo.startswith("c7_"), (girassol, motivo)
 
 
 @pytest.mark.parametrize("comando", [

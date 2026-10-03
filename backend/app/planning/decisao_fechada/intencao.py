@@ -343,7 +343,7 @@ _ONDE_SE_ENTRA: Final = _ComOsApps((
 #: Rodada H (H-1 a): o objeto da navegação que é PESSOA ou conversa. Só depois dele o conector é a pessoa e não o valor
 #: ("entre na conversa com qa-001", "entre no chat com a Marina", "entre em contato com a Ana"). Depois de qualquer outro
 #: objeto ("entra AQUI com", "entre no FEED com", "entre no PERFIL com"), o conector seguido de valor desconhecido é a
-#: credencial; o nome do catálogo ali é destino (H-3: "entre no perfil com Lucas").
+#: credencial (o nome do catálogo ali também: a H-3, que o fazia destino, foi revertida em 03/10).
 _OBJETO_PESSOA: Final[frozenset[str]] = frozenset((
     "conversa", "conversas", "chat", "chats", "dm", "dms", "direct", "grupo", "grupos", "live", "lives", "chamada",
     "chamadas", "ligacao", "videochamada", "call", "sala", "reuniao", "contato", "contatos", "papo", "thread"))
@@ -538,13 +538,11 @@ class _Destinos:
 
     - `cortados`: o que o extrator tirou (`sem_destinos`), a SINTAXE de destino ("com a conta Lucas", "pela Lucas", "como
       @lucas"). Vale como destino onde estiver.
-    - `catalogo`: o nome INTEIRO do catálogo real solto no texto (`nomes_de_destino`). É destino depois da palavra de conta
-      ou do "@" ("na conta Lucas", "com @lucas.almeida9484") e, desde a rodada H (H-3), sozinho logo depois do conector do
-      verbo de entrar ("entre com o lucas", "entre como lucas", "entre no perfil com Lucas"): é o verbo central do produto.
-      Nunca na posição de VALOR (G-4): o segundo do par ("entre com a conta Lucas e girassol"), o colado ao nome do usuário
-      ("entre com o lucas girassol") e o conector depois de um destino ("acesse como lucas com girassol") recusam mesmo com
-      uma persona "Girassol". A persona com o nome da própria senha ("entre com girassol") é residual aceito pela
-      orquestradora (03/10).
+    - `catalogo`: o nome INTEIRO do catálogo real solto no texto (`nomes_de_destino`). Só é destino depois da palavra de
+      conta ou do "@" ("na conta Lucas", "com @lucas.almeida9484"); nunca na posição de VALOR (G-4). A H-3 (o nome sozinho
+      depois do conector do verbo de entrar, "entre com o lucas", como destino) foi REVERTIDA depois do NO-GO da fase 2 da
+      rodada H (03/10): preenchida a vaga do destino, a busca do valor relaxava e tudo depois passava ("entre com o lucas
+      hoje girassol"). "Entre com o lucas" volta a recusar, como na rodada G.
     - O fim da menção faz do nome de duas palavras UMA menção ("Lucas Almeida") e de "André girassol", duas."""
 
     cortados: Mapping[int, int] = field(default_factory=dict)
@@ -605,18 +603,17 @@ def _no_catalogo(toks: list[str], nomes: frozenset[str]) -> dict[int, int]:
     return achados
 
 
-def _destino(toks: list[str], k: int, d: _Destinos, *, catalogo: bool = True) -> bool:
+def _destino(toks: list[str], k: int, d: _Destinos) -> bool:
     """Em `k` (depois do conector, sem artigo) está QUAL conta usar, e não um valor: o destino que o extrator tirou, o "@"
     diante de handle do catálogo, o provedor de login ou o lugar onde se entra; ou a palavra de conta seguida do dono ("a
     conta DO lucas"), de um nome do catálogo ou de "@". "A conta girassol", com um nome que o catálogo não conhece, é valor
-    (F-B). Desde a rodada G (G-1), o "@" solto não é destino: "com @zilda.prado e girassol" é o usuário de um par. Desde a
-    rodada H (H-3), o nome INTEIRO do catálogo sozinho também é destino ("entre com o lucas"), salvo com `catalogo=False`:
-    depois de um destino já dito, o conector seguinte é a posição de valor ("acesse como lucas com girassol", G-4)."""
+    (F-B). Desde a rodada G (G-1), o "@" solto não é destino: "com @zilda.prado e girassol" é o usuário de um par. O nome
+    do catálogo sozinho depois do conector NÃO é destino (a H-3 foi revertida, 03/10)."""
     n = len(toks)
     if k >= n:
         return False
     if (k in d.cortados or (toks[k] == "@" and d.citado(k + 1)) or toks[k] in _PROVEDOR_DE_ENTRADA
-            or (toks[k] in _ONDE_SE_ENTRA and toks[k] not in _DESTINO_PALAVRA) or (catalogo and k in d.catalogo)):
+            or (toks[k] in _ONDE_SE_ENTRA and toks[k] not in _DESTINO_PALAVRA)):
         return True
     # a palavra de conta antes do lugar onde se entra: "conta" é dos dois, e "com a conta girassol" é valor (F-B; até a
     # rodada H o lugar vinha primeiro e o deixava passar)
@@ -632,9 +629,9 @@ def _destino(toks: list[str], k: int, d: _Destinos, *, catalogo: bool = True) ->
 def _navega(toks: list[str], fim: int, d: _Destinos, *, por_conector: bool = True) -> bool:
     """O verbo de entrar que termina em `fim` tem objeto de navegação (F-A)? Lugar ("no", "nessa", "into"), artigo
     diante de objeto ("acesse o app"), o objeto direto, o destino que o extrator tirou e, com `por_conector`, o conector
-    seguido de destino ("com a conta do lucas", "como @lucas", "com o Google" e, desde a H-3, "com o lucas"). O nome do
-    catálogo como objeto DIRETO, sem conector, não é destino (G-4): "acesse girassol e curta" recusa mesmo com uma persona
-    "Girassol"."""
+    seguido de destino ("com a conta do lucas", "como @lucas", "com o Google"). O nome do catálogo sozinho não é destino,
+    nem como objeto direto nem depois do conector (G-4; a H-3 foi revertida): "acesse girassol e curta" e "entre com o
+    lucas e curta" recusam."""
     n = len(toks)
     j = _pula(toks, fim + 1, _ADVERBIOS)
     if j >= n:
@@ -680,9 +677,9 @@ def _login_valor(toks: list[str], d: _Destinos = _SEM_DESTINOS) -> bool:
     Rodada H (H-1 a): o conector liga o valor com ou sem objeto de navegação, salvo depois de pessoa ou conversa ("entra
     AQUI com girassol", "entre no FEED com girassol", "entre no PERFIL com girassol" recusam; "entre na conversa com
     qa-001" passa); também no passado ("entrei com girassol", "loguei com x"), com a posposição turca ("girassol ile giriş
-    yap") e com o sufixo húngaro ("lépj be girassol-lal"). O nome do catálogo sozinho depois do conector é destino (H-3),
-    mas não depois de outro destino ("acesse como lucas com girassol", G-4). A palavra de conta com um nome que o catálogo
-    não conhece é valor ("entre no feed com a conta girassol"); o objeto de navegação não ("usando o navegador")."""
+    yap") e com o sufixo húngaro ("lépj be girassol-lal"). O nome do catálogo sozinho depois do conector é valor, não
+    destino (a H-3 foi revertida, 03/10). A palavra de conta com um nome que o catálogo não conhece é valor ("entre no feed
+    com a conta girassol"); o objeto de navegação não ("usando o navegador")."""
     n = len(toks)
     for ini, fim in _verbos_de_entrar(toks, passado=True):
         j = _pula(toks, fim + 1, _ADVERBIOS)
@@ -698,7 +695,6 @@ def _login_valor(toks: list[str], d: _Destinos = _SEM_DESTINOS) -> bool:
         if j < n and _SUFIXO_INSTRUMENTAL.fullmatch(toks[j]) and _e_valor(toks[j].split("-", 1)[0]):
             return True
         pessoa = _objeto_e_pessoa(toks, j)
-        destino_dito = False
         for m in range(fim + 1, min(fim + 9, n)):
             if (toks[m] in _SEPARADORES_DE_VALOR and m > fim + 1 and toks[m - 1] in _ONDE_SE_ENTRA):
                 k = _pula(toks, m + 1, _ARTIGOS | _ADVERBIOS)
@@ -710,9 +706,9 @@ def _login_valor(toks: list[str], d: _Destinos = _SEM_DESTINOS) -> bool:
                 k = _pula(toks, m + 1, _ARTIGOS | _SEPARADORES_DE_VALOR)          # "com: girassol" vale como "com girassol"
                 if k >= n:
                     continue
-                if _destino(toks, k, d, catalogo=not destino_dito):
-                    destino_dito = True
-                elif toks[k] in _DESTINO_PALAVRA or (_e_valor(toks[k]) and toks[k] not in _OBJETO_DE_NAVEGACAO):
+                if _destino(toks, k, d):
+                    continue
+                if toks[k] in _DESTINO_PALAVRA or (_e_valor(toks[k]) and toks[k] not in _OBJETO_DE_NAVEGACAO):
                     return True
     return False
 
@@ -756,7 +752,7 @@ def _par_depois(toks: list[str], y0: int, d: _Destinos, *, com_entrar: bool, for
 
 def _colado(toks: list[str], u: int, d: _Destinos) -> bool:
     """Depois do usuário dito pelo conector (nome do catálogo, @handle, e-mail), um valor colado: "entre com o lucas
-    girassol" (rodada H; o nome do catálogo virou destino na H-3, e o que vem colado a ele é a posição de valor, G-4)."""
+    girassol" (rodada H; o que vem colado ao usuário é a posição de valor, G-4)."""
     return (u < len(toks) and u not in d.cortados and _e_valor(toks[u]) and toks[u] not in _LUGAR
             and toks[u] not in _CONECTORES and toks[u] not in _ARTIGOS and toks[u] not in _OBJETO_DE_NAVEGACAO
             and toks[u] not in _ENTRAR)
