@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Aprendizado: métricas e lista de revisões (30.8; branch feat/30-8-metricas)
+
+- `GET /api/aprendizado/metricas?app=&dias=` (adendo v0.89): um bloco por linha da tabela do §10 do desenho.
+  - Composição do livro, aprovações automáticas × de pessoa, pareceres do curador e custo.
+  - Refutados depois de promovidos, sucesso depois de promovido, churn, tempos (mediana, p90 e `n`) e saúde.
+  - Economia (o aproveitamento, reaproveitado) e o proxy de falhas, rotulado como proxy.
+  - Orçamento do curador (B_W, C_W, uso e aviso a 80 %).
+  - Ausente é `null`, e o simulado fica fora.
+- `GET /api/aprendizado/revisoes?app=&decisao=&desde=&limite=&cursor=`: os pareceres do curador paginados, sem o dossiê.
+- `curador.py`: a conta de C_W virou `janela_do_orcamento`, a mesma na volta e na métrica.
+- Ensaio só de leitura na cópia do banco do central: 142 ms no global e ~55 ms por app.
+  - Pegou 2 defeitos, corrigidos antes do PR: o B_W caía a zero sem `usd` medido, e `criados` contava lembranças.
+- Prova: `simulated` (`tests/test_learning_metricas.py`, 11). O `real` vem com a leitura no central depois do deploy 9.
+
 ## 2026-10-03 — Aprendizado: quebra de série do LT-6 no deploy 8
 
 - `docs/dominios/aprendizado.md` (O que mais falha) registra o que muda desde 03/10 09:06:28Z (deploy 8, df860763).

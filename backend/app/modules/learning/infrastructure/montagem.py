@@ -19,6 +19,7 @@ from app.db import Database
 from app.modules.applications.infrastructure import registry
 from app.modules.learning.application.apps import VisaoPorApp
 from app.modules.learning.application.falhas import ServicoDeFalhas
+from app.modules.learning.application.metricas import ServicoDeMetricas
 from app.modules.learning.application.nativos import Decidir
 from app.modules.learning.application.ports import Ajustes, CuradorDeIA, Retencao
 from app.modules.learning.application.servico import LearningService
@@ -32,10 +33,12 @@ from app.modules.learning.infrastructure.declarados import DeclaradosDoRegistro,
 from app.modules.learning.infrastructure.eventos import (Barramento, EventosNoBarramento, RiscoDoRegistro,
                                                          TitulosDoRegistro)
 from app.modules.learning.infrastructure.fontes import FontesSql
+from app.modules.learning.infrastructure.metricas_sql import FontesDeMetricasSql
 from app.modules.learning.infrastructure.relatorio_sql import FontesDeFalhaSql, SqlBacklogRepository
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
 from app.modules.learning.infrastructure.sql_repository import SqlLearningRepository
 from app.modules.skills.infrastructure.sql_repository import SqlSkillRepository
+from app.taskqueue.aproveitamento import aproveitamento
 from app.taskqueue.flows import FlowStore
 from app.taskqueue.recipes import RecipeStore
 from app.util import now
@@ -145,4 +148,12 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
     # 30.11: o curador por IA (laço próprio sob a trava de líder; `off` de fábrica; adaptador simulado até o 30.12).
     ligar_curador.ligar(servico, repo, db, TriagemDeCredencial(), config=lambda: config().curador, precos=precos,
                         relogio=relogio, catalogo=risco, curador_de_ia=curador_de_ia)
+    # 30.8: as métricas (só leitura); a economia é a do aproveitamento, reaproveitada, e o orçamento, o do curador.
+    servico.anexar(ServicoDeMetricas(servico, FontesDeMetricasSql(db), aproveitamento=partial(_aproveitamento, db),
+                                     curador=lambda: ligar_curador.ajustes_do_curador(config().curador),
+                                     precos=precos, relogio=relogio))
     return servico
+
+
+def _aproveitamento(db: Database, dias: int, agora: datetime) -> dict[str, object]:
+    return aproveitamento(db, dias=dias, agora=agora)

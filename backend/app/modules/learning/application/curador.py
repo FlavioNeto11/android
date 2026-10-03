@@ -27,9 +27,9 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Protocol
 
-from app.modules.learning.application.ports import (AjustesDoCurador, CuradorDeIA, FonteDeDossies, NovaRevisao,
-                                                    PedidoDeRevisao, RecusaDoProvedor, RegistroDeRevisoes,
-                                                    TriagemDeTexto)
+from app.modules.learning.application.ports import (AjustesDoCurador, CuradorDeIA, FonteDeDossies, LeituraDaJanela,
+                                                    NovaRevisao, PedidoDeRevisao, RecusaDoProvedor,
+                                                    RegistroDeRevisoes, TriagemDeTexto)
 from app.modules.learning.domain.ciclo import ErroDeAprendizado, SkillState
 from app.modules.learning.domain.curador import (OPCOES_FECHADAS, VERSAO_DO_DOSSIE, Dossie, opcoes_do_dossie,
                                                  validar_saida)
@@ -100,6 +100,17 @@ def _textos_livres(valor: object, chave: str = "") -> list[str]:
     if isinstance(valor, list):
         return [t for v in valor for t in _textos_livres(v, chave)]
     return []
+
+
+def janela_do_orcamento(j: LeituraDaJanela, precos: dict[str, list[float]]) -> Janela:
+    """C_W e o gasto da última hora (§8.7): o medido mais a estimativa, pelo dossiê gravado, das revisões sem
+    medida. A mesma conta serve à volta do curador e à métrica do aprendizado (30.8)."""
+    estimado = sum(estimar_custo(t, precos) for t in j.tamanhos_sem_medida)
+    estimado_na_hora = sum(estimar_custo(t, precos) for t in j.tamanhos_sem_medida_na_hora)
+    return Janela(gasto_da_operacao=j.gasto_da_operacao, custos_medidos=j.custos_medidos,
+                  gasto_da_curadoria=j.gasto_medido + estimado,
+                  gasto_da_ultima_hora=j.gasto_medido_na_hora + estimado_na_hora,
+                  revisoes_antes_de_hoje=j.revisoes_antes_de_hoje, revisoes_de_hoje=j.revisoes_de_hoje)
 
 
 class LeitorDoLivro(Protocol):
@@ -311,13 +322,7 @@ class CuradorPorIA:
                 x.dossie, x.custo = menor, estimar_custo(menor.tamanho_em_bytes(), precos)
 
     def _janela(self, agora: datetime, dias: int, precos: dict[str, list[float]]) -> Janela:
-        j = self._registro.janela(agora, dias)
-        estimado = sum(estimar_custo(t, precos) for t in j.tamanhos_sem_medida)
-        estimado_na_hora = sum(estimar_custo(t, precos) for t in j.tamanhos_sem_medida_na_hora)
-        return Janela(gasto_da_operacao=j.gasto_da_operacao, custos_medidos=j.custos_medidos,
-                      gasto_da_curadoria=j.gasto_medido + estimado,
-                      gasto_da_ultima_hora=j.gasto_medido_na_hora + estimado_na_hora,
-                      revisoes_antes_de_hoje=j.revisoes_antes_de_hoje, revisoes_de_hoje=j.revisoes_de_hoje)
+        return janela_do_orcamento(self._registro.janela(agora, dias), precos)
 
     # ------------------------------------------------------------------ o pedido e o registro
     @staticmethod
