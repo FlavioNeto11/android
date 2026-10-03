@@ -75,7 +75,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-065](#adr-065--ação-de-catálogo-entrega-valor-lido-a-outra-etapa-saidas-declaradas-no-catalogoyaml) | Ação de catálogo entrega valor lido a outra etapa: `saidas` declaradas no `catalogo.yaml` | vigente (12.3) | 02/10 |
 | [ADR-066](#adr-066--laço-de-pedidos-desligado-por-padrão-origem-interna-na-criação-da-execução-e-edição-por-gatilho-novo) | Laço de pedidos: desligado por padrão, origem interna na criação da execução e edição por gatilho novo | aceito (Fase 28, 28.4) | 02/10 |
 | [ADR-068](#adr-068--conta-bloqueada-sai-na-hora-e-a-persona-fica-lápide-só-com-o-hash-do-arroba) | Conta bloqueada sai na hora e a persona fica; lápide só com o hash do @ (item 29.23) |
-| [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) | 02/10 |
+| [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro; item 11: regras do filtro do 31.9) | 03/10 |
 | [ADR-070](#adr-070--valor-visto-na-imagem-conta-como-saída-de-etapa-sob-conferência-cega-de-um-segundo-leitor) | Valor visto na imagem conta como saída de etapa, sob conferência cega de um segundo leitor; substitui em parte o ADR-065 §3 (item 12.5) | vigente (dono, 02/10; opção desligada) | 02/10 |
 
 ---
@@ -4108,16 +4108,18 @@ catálogo, comando), que o ADR-063 não cobre.
 3. **Constantes de código fechadas por padrão**, ao lado das do ADR-063 (que continuam: código privado e sintético NEGADOS):
    `JEV_RUNTIME_SEND_APPROVED` e `JEV_ALLOWED_CLASSES`. O YAML só restringe, nunca libera. Cada classe liberada tem linha aqui,
    com data.
-4. **Classes de dado liberadas pelo dono em 02/10/2026:**
+4. **Classes de dado liberadas pelo dono em 02/10/2026:** *(Emendado em 03/10/2026, ~00:15Z: C3 com filtro sensato em vez de
+   remoção que falha fechada, e D-J5 só de decisão; ver o item 10.)*
 
    | Classe | O que | Liberada para |
    |---|---|---|
    | C0 | categorias e metadados (`failure_kind`, risco, `side_effect`, tier, contagens, status) | F1: todos os consumidores da porta |
    | C1 estrito | Livro sanitizado por campos nomeados de lista fechada (lição de texto fechado, metadados de receita sem rótulo de seletor) | F1 |
    | C2 | catálogo próprio do dono (nome, descrição e modelo de habilidade, fluxo, capability, app declarado) | F2 |
-   | C3 | comando do dono, depois de `sem_destinos`, `redact` e remoção de entidades que FALHA FECHADA | F3: só a sombra da intenção (31.9) |
+   | C3 | comando do dono, depois de `sem_destinos`, `redact` e remoção de entidades ~~que FALHA FECHADA~~ com filtro sensato (item 10) | F3: só a sombra da intenção (31.9) |
 
-   Fora: C4 (cartão e texto da persona) e todo o pipeline social e de persona (D-J5; AUP 1.3, 1.6 e 3.3); C5 (árvore de UI);
+   Fora: C4 (cartão e texto da persona) e todo o pipeline social e de persona (D-J5; AUP 1.3, 1.6 e 3.3; desde o item 10, D-J5
+   veta só a DECISÃO por persona, não o dado); C5 (árvore de UI);
    C6 (tela e texto de conta real) até pedido de privacidade/ZDR e ADR próprio; **C7 nunca**, em modo nenhum, sombra inclusa
    (tela sensível, aparelho-loja, segredo, credencial, desafio, 2FA, CAPTCHA: o pedido INTEIRO é recusado); C8 segue o ADR-063.
 5. **Telemetria do MCA aceita por escrito.** O dono aceita que a TypeSafe processe logs, estatísticas, classificações e
@@ -4139,6 +4141,50 @@ catálogo, comando), que o ADR-063 não cobre.
    mergeado) e, por fim, a sombra real numa janela combinada, sem suíte rodando junto. O resto não muda: ninguém lê nem
    imprime a chave (ela aparece só como "configurada" ou "não configurada", item 8), e `JEV_RUNTIME_SEND_APPROVED` só vira
    `True` no 31.10.
+10. **Emenda de 03/10/2026 (decisão do dono, ~00:15Z, no chat da orquestradora, relatada à frente Jev): dado pessoal pode ir
+    ao Jev, com filtro SENSATO.** Nas palavras relatadas: "mandar informação pessoal pro Jev não tem problema, desde que faça
+    sentido no filtro". *(Texto corrigido em 03/10 ~02:20Z: a primeira redação deste item dizia que `@handle` e nome de
+    terceiro continuavam fora, o que contradiz a decisão relatada.)*
+    - A C3 (comando do dono) e os nomes e `@handles` de pessoas, nossas ou de terceiros, PODEM sair. Cai a exigência de
+      remoção que FALHA FECHADA (item 4): o filtro mascara o que não ajuda a decisão e mantém o que ajuda.
+    - Piso mantido pela orquestradora, sem nova pergunta ao dono:
+      - **C7 nunca sai** (segredo, credencial, código de verificação, 2FA, PIN, OTP, tela sensível: o pedido inteiro é
+        recusado);
+      - e-mail e telefone completos viram `[email]` e `[telefone]`;
+      - o que esconde e-mail, telefone ou documento recusa o pedido: e-mail ofuscado, numerais por extenso (telefone, CPF) e
+        documento.
+    - O filtro do 31.9 corrigido (`planning/decisao_fechada/entidades.py`) é uma lista de BLOQUEIO sobre esse piso, sem lista
+      de permissão e sem recusa por proporção de palavras desconhecidas. Link, `@handle`, número e token de código também
+      viram marcador, porque não ajudam a escolher a habilidade. As opções da R2 (C2) passam pelas mesmas máscaras de forma.
+    - Portão do 31.9: só C7, e-mail e telefone contam como vazamento; nome e handle deixam de contar.
+    - **D-J5 deixa de ser exclusão de DADO e vira só de decisão:**
+      - o Jev não decide por persona, e a origem `social_persona` continua recusada na porta;
+      - nome de persona pode aparecer no que já sai (C3, C2);
+      - C4, como classe própria, continua sem consumidor.
+    - Os portões de envio não mudam:
+      - `JEV_RUNTIME_SEND_APPROVED` só vira `True` no 31.10;
+      - a C3 só sai depois do 31.9 corrigido e mergeado;
+      - o curador (C0 e C1) vai primeiro, e a intenção (C3) fica liberada para o 31.10 assim que a correção passar no portão
+        novo.
+    - Código-fonte segue o ADR-063 (C8).
+11. **Emenda de 03/10/2026 (decisões da orquestradora nas reverificações B e C do 31.9, dentro do piso do item 10;
+    registrada ~05:56Z).** O item 10 fala em "numerais por extenso" e no filtro de forma geral; as reverificações
+    mostraram onde a regra geral vazava ou cegava a sombra, e as regras ficam assim:
+    - **C7 é recusa do pedido INTEIRO**: a máscara não basta. Vale também para o eufemismo ("a de sempre", "o que você
+      digita"), o par de usuário e senha ("login: x / y", "usuário x, acesso y"), o PIN tecla a tecla ("toque 4, depois 8,
+      depois 2") ou fechado por "#", e a palavra-chave em outra escrita, colada, abreviada ou em leet.
+    - **Numerais por extenso recusam só SEGUIDOS**: dois ou mais com só espaço, vírgula, ponto, barra ou hífen entre eles
+      ("nove oito", "dez, dez", "sete-sete"), ou três ou mais ligados por "e", "y" ou "and". O numeral solto vira `[numero]`
+      ("Ze Sete e Maria Onze" e "duas fotos e três pessoas" saem mascarados). Até a rodada C, dois no texto recusavam.
+    - **"Alfabetos misturados" vale para a FRASE**: letra fora do alfabeto latino em qualquer palavra do comando recusa,
+      INCLUSIVE o texto entre aspas, que de outro jeito sairia como `[texto]`. Só a sombra perde o comando: a execução não
+      muda, e nenhum dos 92 comandos reais de 7 dias foi afetado (03/10, só leitura). O texto do catálogo (C2) segue a regra
+      por palavra (escopo; a medição com o catálogo real do central fica para a próxima rodada).
+    - **`@handle` com hífen vira `[usuario]` inteiro** ("@cassia-brandao" saía `[usuario]-brandao`).
+    - **Falsos positivos aceitos**, todos só de recusa e só na sombra: "at" + provedor ou nome de arquivo ("check the inbox at
+      outlook", "look at photo.jpg") lido como e-mail, e "pw" isolado lido como credencial.
+    - Prova `simulated`: `backend/tests/test_decisao_fechada_reverificacao_c.py` e o harness da rodada D (267 casos pelo
+      caminho de produção, 0 vazamentos em 963f9d7b); detalhes em [ia.md](ia.md) (bloco "Rodada C" da intenção).
 
 **Consequências.** A plataforma ganha um motor barato (US$ 0,042/M de entrada, saída grátis) para decisões fechadas que hoje não
 acontecem ou vão ao Opus, medido em sombra contra o caminho atual antes de qualquer `on`. O ADR-063 continua valendo para código.

@@ -25,7 +25,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Final
 
 from ...util import now, to_iso
-from .contrato import FALLBACKS, ID_NENHUMA, ORIGENS
+from .contrato import FALLBACKS, ID_NENHUMA, MOTIVOS_DE_PRIVACIDADE, ORIGENS
 from .porta import Observador, RegistroDeDecisao
 
 if TYPE_CHECKING:
@@ -82,6 +82,10 @@ class RepositorioDeSombra:
         ts = to_iso(self._relogio())
         chamada = uuid.uuid4().hex[:16]
         run_id, step_id, ref = _ref(registro.run_id), _ref(registro.step_id), _ref(registro.ref)
+        # Reverificação B do 31.9 (migração 079): só código de vocabulário fechado; o que vier fora dele vira `outro`.
+        privacidade = registro.motivo_privacidade
+        if privacidade is not None and privacidade not in MOTIVOS_DE_PRIVACIDADE:
+            privacidade = "outro"
         with self._db.tx():
             for i, (pergunta_id, r) in enumerate(res.respostas.items()):
                 escolha = None if r.escolha is None else _id(r.escolha)
@@ -94,13 +98,13 @@ class RepositorioDeSombra:
                     escolha = None
                 self._db.execute(
                     "INSERT INTO decisao_fechada_sombra(ts, chamada, origem, classe, modo, pergunta_id, escolha,"
-                    " probabilidades, confianca, usd, tokens, ms, fallback_reason, run_id, step_id, ref)"
-                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " probabilidades, confianca, usd, tokens, ms, fallback_reason, run_id, step_id, ref,"
+                    " motivo_privacidade) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (ts, chamada, registro.origem, registro.classe, registro.modo,
                      _id(pergunta_id) or "invalido", escolha, _probabilidades(r.probabilidades),
                      None if r.confianca is None else round(float(r.confianca), 6),
                      float(res.usd) if i == 0 else 0.0, int(res.tokens) if i == 0 else 0, float(res.ms),
-                     motivo, run_id, step_id, ref))
+                     motivo, run_id, step_id, ref, privacidade if motivo == "privacidade" else None))
         return len(res.respostas)
 
     # ------------------------------------------------------------------ preenchimentos posteriores (31.8 e 31.9)
@@ -118,6 +122,16 @@ class RepositorioDeSombra:
                     f"UPDATE decisao_fechada_sombra SET decisao_real=? WHERE {chave}=? AND pergunta_id=?"
                     " AND decisao_real IS NULL", (decisao, valor, pergunta_id)).rowcount or 0)
         return casadas
+
+    def anotar_ambiguos(self, ambiguos: int, *, ref: str) -> int:
+        """Preenche `ambiguos` (etapas da RESOLVE que terminaram em AMBIGUOUS, RA-2) nas linhas da INTENÇÃO do `ref` que
+        ainda não têm. Só número: nada do comando. Devolve quantas linhas anotou."""
+        if isinstance(ambiguos, bool) or not isinstance(ambiguos, int) or ambiguos < 0:
+            raise ValueError("ambiguos deve ser um inteiro >= 0")
+        with self._db.tx():
+            return int(self._db.execute(
+                "UPDATE decisao_fechada_sombra SET ambiguos=? WHERE ref=? AND origem='intencao' AND ambiguos IS NULL",
+                (ambiguos, ref)).rowcount or 0)
 
     def casar_desfecho(self, desfecho: str, *, ref: str | None = None, step_id: str | None = None,
                        pergunta_id: str | None = None) -> int:

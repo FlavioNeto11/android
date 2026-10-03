@@ -360,3 +360,23 @@ async def test_api_ai_lista_o_jev_e_mostra_a_chave_so_como_configurada(harness: 
         assert valor_falso not in r.text                                       # a chave nunca vai na resposta
         monkeypatch.setattr(st.cfg.env, "typesafe_api_key", None)
         assert (await c.get("/api/ai")).json()["decisao_fechada"]["key"] == "não configurada"
+
+
+@pytest.mark.parametrize(("consumidores", "classes", "catalogo", "comando"), [
+    ({"curador": "shadow"}, None, False, False),                       # o curador manda C0, mesmo com o teto em C3
+    ({"curador": "shadow", "apps": "on"}, ["C0", "C1"], False, False),
+    ({"intencao": "shadow"}, None, True, True),                        # intenção em shadow: C2 (catálogo) e C3 (comando)
+    ({"intencao": "shadow"}, ["C0", "C1", "C2"], True, False),
+    ({"intencao": "shadow"}, ["C0", "C1", "C3"], False, True),
+    ({"intencao": "shadow"}, ["C0", "C1"], False, False),
+    ({"intencao": "on"}, None, True, False),                           # C3 só em shadow (privacidade.C3_MODOS)
+    ({"curador": "shadow", "intencao": "shadow"}, None, True, True),
+])
+def test_aviso_diz_o_que_de_fato_sai_por_combinacao_de_classes(consumidores: dict[str, str], classes: list[str] | None,
+                                                               catalogo: bool, comando: bool) -> None:
+    cfg = DecisaoFechadaCfg(enabled=True, consumidores=consumidores, classes_permitidas=classes)  # type: ignore[arg-type]
+    aviso = transparencia.aviso(cfg, chave_configurada=True)
+    assert aviso is not None and "ids e categorias" in aviso
+    assert ("nomes e descrições do catálogo" in aviso) is catalogo
+    assert ("o comando do dono filtrado (e-mail, telefone, @handle, link e número mascarados; nome fica)" in aviso) is comando
+    assert transparencia.o_que_sai(cfg)[0] == "ids e categorias"

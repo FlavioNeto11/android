@@ -150,6 +150,8 @@ _SECRET_SHAPES: tuple[re.Pattern[str], ...] = (
 # só porque X não tem cara de segredo.
 _CREDENCIAL = re.compile(
     r"\b(senha|password|passwd|credencial|credential|token|api[ _-]?key|otp|2fa|pin|"
+    # outros idiomas (reverificação B do 31.9, 03/10): só AMPLIA o que se recusa guardar
+    r"passwort|kennwort|wachtwoord|mot de passe|parola d['’]ordine|contrase[nñ]a|"
     r"c[oó]digo de (?:verifica[çc][aã]o|acesso|seguran[çc]a|confirma[çc][aã]o))\b", re.IGNORECASE)
 
 

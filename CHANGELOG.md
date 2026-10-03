@@ -19,6 +19,86 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Correção do 31.9, rodada C (NO-GO em 8e1d7a9c): `sem_destinos` sem normalizar, C7 em qualquer escrita e e-mail soletrado (branch fix/31-9-privacidade)
+
+- A rodada C (`.claude/handoffs/reverificacao-31-9c.md` §7) achou 27 vazamentos fora da suíte de 240, pelo caminho de
+  produção. Uma correção por causa:
+  - `TargetExtractor.extrair` recorta sempre do original: com "ﬁ", "ß" ou acento decomposto, devolvia o texto em
+    minúsculas e sem acento, e a chave `AKIA…` e o endereço em inglês passavam. O prefixo de token também é conferido sem
+    caixa, com o comprimento de verdade;
+  - letra fora do alfabeto latino em qualquer palavra recusa (decisão da orquestradora: a regra vale para a frase), com a
+    lista de palavras-chave em outras escritas e idiomas;
+  - palavra-chave colada ("novasenha"), abreviada (`pw`, `psw`) e em leet com 5, 7 e 8;
+  - o par "login: x / y" e "usuário x, acesso y" sem verbo de entrar;
+  - e-mail soletrado com "at", "chez" ou "bei", o ponto por extenso em outras línguas, qualquer domínio de topo com o
+    ponto e o provedor conhecido sem domínio.
+- Importantes na mesma entrega (decisões da orquestradora): numerais por extenso só recusam seguidos; `@handle` com hífen
+  vira `[usuario]` inteiro; PIN tecla a tecla e "2580#" são C7.
+- Prova `simulated`: `tests/test_decisao_fechada_reverificacao_c.py`; harness da rodada D (267 casos, por `sem_destinos`):
+  0 vazamentos (eram 27), 0 C7 ou e-mail sem recusa (eram 27). Comandos reais de 7 dias (92, só leitura): 1 recusa, a
+  mesma C7 de antes.
+
+## 2026-10-03 — Correção do 31.9, reverificação B (NO-GO em 97f35fac): C7 recusa o pedido inteiro, duas passadas no filtro e o motivo da recusa na sombra (branch fix/31-9-privacidade)
+
+- A reverificação B da orquestradora (240 casos novos, 3 céticos; `.claude/handoffs/reverificacao-31-9b.md`) achou 47
+  vazamentos de portão em 97f35fac. Correções do §7:
+  - `_MISTO` antes de `_NUMERO`, com hífen;
+  - eufemismos, pergunta de segurança e frase de recuperação;
+  - leet, palavra invertida, separadores e bidi;
+  - mais idiomas;
+  - e-mail ofuscado, endereço em inglês, caixa postal, cartão e CVV com número.
+- Decisões da orquestradora:
+  - (a) C7 recusa o pedido inteiro, inclusive o código pedido pela quantidade de dígitos;
+  - (c) a regra dos dois numerais fica (0 recusas nos 90 comandos reais de 7 dias);
+  - (d) placa e nome com cidade passam.
+- `decisao_fechada_sombra.motivo_privacidade` (migração 079, trazida da 080 do RA-10): `c7_*` ou o motivo do filtro, por
+  `PedidoDeDecisao.motivo_privacidade` → `RegistroDeDecisao` → `RepositorioDeSombra.registrar`. O `fallback_reason` e
+  `validar` não mudam.
+- Contrato do 30.25: `RunService._dados_da_sombra` vira `dados_da_intencao` (mesma assinatura), e o catálogo da cadeia
+  vira `AppState.catalogo_da_cadeia`, compartilhado pela sombra e pelo rótulo de intenção.
+- Prova `simulated`:
+  - `test_decisao_fechada_reverificacao_b.py` (73 testes);
+  - portão local com o harness da orquestradora copiado: 260 casos, 0 vazamentos (eram 45), 0 passagens indevidas (eram 56).
+  - Real: not_run (o envio continua fechado no código).
+
+## 2026-10-03 — Correção do 31.9: filtro sensato da C3 (ADR-069 item 10), desligamento limpo e estratos do golden set (RA-2; branch fix/31-9-privacidade)
+
+- **ADR-069 item 10** (dono, 03/10 00:15Z, relatado pela orquestradora): dado pessoal pode ir ao Jev "desde que faça sentido
+  no filtro".
+  - A C3 e o nome ou `@handle` de pessoa podem sair; cai a remoção que falha fechada.
+  - O piso: C7 nunca; e-mail e telefone completos viram marcador; e-mail ofuscado, numeral ditado e documento recusam.
+  - O D-J5 vira só "o Jev não decide por persona".
+  - A primeira redação deste item, no mesmo branch, dizia que nome e handle de terceiro ficavam fora; foi corrigida.
+- **C3** (`decisao_fechada/entidades.py`): filtro SENSATO, uma lista de bloqueio sobre o piso.
+  - Normalização NFKC (homóglifo, largura cheia, invisível); alfabetos misturados recusam.
+  - Viram marcador: aspas (a que sobra leva o resto), link, e-mail, `@handle`, telefone, número, palavra com `_` e símbolo.
+  - Recusam: endereço, documento, e-mail ofuscado e numeral ditado, também em EN e ES.
+  - O resto passa, nome inclusive.
+  - A lista de permissão da primeira versão do branch caiu. Nos 90 comandos reais de 7 dias, as 17 recusas que não eram C7
+    vinham todas da regra de proporção, e a lista apagava cerca de 8 palavras por comando no qa-messenger.
+- **C2 e C7**: `mascarar_catalogo` nas opções da R2, antes do corte em 200, com as mesmas máscaras de forma. A C7 é
+  reconhecida em qualquer formato (`menciona_c7`).
+- **Portão** (`simulated`): no `ataque.py` da reverificação, zero vazamento de C7, e-mail e telefone em 109 casos. O
+  "escreva para ali no gmail" sai com nome e provedor, sem endereço.
+- **Real** (OBSERVED, só leitura, contagens, central 01351e66):
+  - nos 90 comandos de 7 dias, 89 sairiam; a recusa que sobra é C7, e nenhum comando que sairia tem e-mail ou telefone;
+  - as 26 opções do catálogo não têm `@`, dígito, e-mail nem telefone.
+- **Parte B** (I1, I4, M1 a M4, corrida do provedor):
+  - o `stop()` espera o que grava sombra antes do `db.close`, com prazo único de 6 s;
+  - o aviso de transparência diz o que sai: "o comando do dono filtrado (e-mail, telefone, @handle, link e número
+    mascarados; nome fica)";
+  - a triagem respeita o envio fechado;
+  - a retenção pula quando a porta está desligada;
+  - o curador lê o provedor por resposta.
+- **I2**: a triagem do curador não casa a decisão real na hora. O relatório do 31.10 lê `learning_reviews` (`validade='ok'`,
+  `simulated=0`) por `decisao_real_da_triagem`.
+- **RA-2**:
+  - migração 079 (`decisao_fechada_sombra.ambiguos`: etapas `AMBIGUOUS` da RESOLVE por execução);
+  - golden set com o 1º estrato da intenção em qa-messenger e o GO do Instagram sem data, decidido no relatório do 1º estrato;
+  - teto da R2 com dois denominadores: 4/31 cadastrados e 3/25 ativos, o principal;
+  - rótulo humano só pelo parecer do 30.17;
+  - métrica principal do 31.10: "execuções sem fluxo que o Jev teria casado ao fluxo que o desfecho confirma".
+- `JEV_RUNTIME_SEND_APPROVED` continua `False`. Nenhuma chamada real.
 ## 2026-10-03 — Aprendizado: nomes também nas listas (validação do deploy 4, branch fix/aprendizado-ux-deploy4)
 
 - "capability" sai da tela: "capacidade", "Etapa livre (fora do catálogo)" e "Fora do catálogo".

@@ -28,12 +28,20 @@ FallbackReason = Literal["401", "422", "429", "529", "rede", "parse", "unknown_c
 #: `social_persona`, que é a exclusão D-J5 (pipeline social e de persona fora da porta, AUP 1.3, 1.6 e 3.3).
 Marcador = Literal["tela_sensivel", "tela_protegida", "aparelho_loja", "segredo", "credencial", "desafio",
                    "social_persona"]
+#: Por que o chamador recusou o pedido por privacidade (`decisao_fechada_sombra.motivo_privacidade`, migração 079;
+#: reverificação B do 31.9). `c7_*`: o comando é C7 (`intencao.motivo_c7`); os demais: o filtro da C3 esvaziou o estado
+#: (`entidades.remover_entidades_com_motivo`). Fora daqui, a linha grava `outro`.
+MotivoDePrivacidade = Literal[
+    "c7_bidi", "c7_palavra", "c7_formato", "c7_alfabetos", "c7_ofuscado", "c7_eufemismo", "c7_digitos",
+    "nao_texto", "vazio", "alfabetos", "simbolo_colado", "email_ofuscado", "endereco", "documento", "ditado", "numerais",
+    "sobra_de_forma", "outro"]
 
 ORIGENS: Final[tuple[str, ...]] = get_args(Origem)
 CLASSES: Final[tuple[str, ...]] = get_args(Classe)
 MODOS: Final[tuple[str, ...]] = get_args(Modo)
 FALLBACKS: Final[tuple[str, ...]] = get_args(FallbackReason)
 MARCADORES: Final[tuple[str, ...]] = get_args(Marcador)
+MOTIVOS_DE_PRIVACIDADE: Final[tuple[str, ...]] = get_args(MotivoDePrivacidade)
 
 #: Teto de opções de uma pergunta, CONTANDO a `nenhuma` (o mesmo do adaptador, `adapters/jev.py::MAX_OPCOES`).
 MAX_OPCOES: Final = 255
@@ -82,7 +90,11 @@ class PedidoDeDecisao:
 
     `marcadores` é o que o chamador SABE sobre o dado (tela sensível, aparelho-loja, credencial...): a porta não adivinha
     C7 olhando texto, ela recusa o pedido inteiro quando qualquer marcador está presente. `run_id`, `step_id` e `ref` só
-    identificam o pedido para o registro; nunca vão no corpo."""
+    identificam o pedido para o registro; nunca vão no corpo.
+
+    `motivo_privacidade` (reverificação B do 31.9, migração 079): POR QUE o chamador marcou credencial ou esvaziou o estado,
+    em vocabulário fechado (`MOTIVOS_DE_PRIVACIDADE`). Vai só para a linha da sombra, nunca no corpo; o veredito de
+    `privacidade.validar` e o `fallback_reason` não mudam."""
 
     origem: Origem
     classe: Classe
@@ -93,6 +105,7 @@ class PedidoDeDecisao:
     run_id: str | None = None
     step_id: str | None = None
     ref: str | None = None
+    motivo_privacidade: str | None = None
 
 
 @dataclass(frozen=True)
