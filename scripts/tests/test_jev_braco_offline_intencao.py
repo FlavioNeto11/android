@@ -5,6 +5,8 @@ Prova `simulated`: banco SQLite temporário migrado, fluxos ativos como catálog
 com um `DecisorFalso` e um transporte FALSO no lugar do Jev (nada de rede). Confere: só o caso com hash vai (decisão da
 orquestradora, 03/10 19:33Z); a linha sem hash fica contada; inglês e português saem com o mesmo estado; o `--enviar`
 recusa abaixo de 10 comandos e antes do item 21; o hash registrado no envio é o do caso; a saída não leva o comando.
+Com `--r5` (31.13): os apps do comando vão nos mesmos casos, com o estado só do comando, e as medidas pré-registradas
+(precisão do `sim`, paráfrases que o controle perde) saem do rótulo do plano.
 """
 from __future__ import annotations
 
@@ -24,6 +26,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 from app.config import DecisaoFechadaCfg  # noqa: E402
 from app.db import Database  # noqa: E402
 from app.modules.context_retrieval.domain.model import ProviderUsage  # noqa: E402
+from app.planning.decisao_fechada.apps import id_da_pergunta  # noqa: E402
 from app.planning.decisao_fechada.contrato import ID_NENHUMA, RespostaDeDecisao  # noqa: E402
 from app.planning.decisao_fechada.decisores import DecisorFalso, DecisorJev  # noqa: E402
 from app.planning.decisao_fechada.intencao import PERGUNTA_CATALOGO, ConsumidorDeIntencao, id_opaco  # noqa: E402
@@ -108,8 +111,10 @@ class TransporteFalso:
 
     model = "jev-falso"
 
-    def __init__(self) -> None:
+    def __init__(self, noul: float = 0.92) -> None:
         self.envios: list[tuple[dict[str, object], dict[str, str]]] = []
+        self.tipos: list[dict[str, str]] = []
+        self.noul = noul
 
     def available(self) -> tuple[bool, str]:
         return True, "ok"
@@ -117,9 +122,12 @@ class TransporteFalso:
     def consultar(self, estado: Mapping[str, object], perguntas: Mapping[str, Mapping[str, object]], *,
                   timeout_s: float) -> tuple[Mapping[str, object], ProviderUsage]:
         self.envios.append((dict(estado), {pid: str(p["instructions"]) for pid, p in perguntas.items()}))
+        self.tipos.append({pid: str(p["type"]) for pid, p in perguntas.items()})
         escolha = id_opaco("flow:f-feed")
-        resposta = {pid: {"type": "choice", "choice": escolha, "probabilities": {escolha: 0.9, ID_NENHUMA: 0.1},
-                          "confidence": 0.9} for pid in perguntas}
+        resposta: dict[str, object] = {
+            pid: {"type": "noul", "noul": self.noul} if p["type"] == "noul" else
+            {"type": "choice", "choice": escolha, "probabilities": {escolha: 0.9, ID_NENHUMA: 0.1}, "confidence": 0.9}
+            for pid, p in perguntas.items()}
         return resposta, ProviderUsage(input_tokens=100, output_tokens=5, cost_usd=0.00005, latency_ms=400.0)
 
 
@@ -204,3 +212,137 @@ def test_codigo_igual_falha_fechada() -> None:
 def test_recusas_do_main(argv: list[str], msg: str) -> None:
     with pytest.raises(SystemExit, match=msg):
         lote.main(argv)
+
+
+# ------------------------------------------------------------------ R5 (31.13)
+def _com_outlook(mundo: Mundo) -> None:
+    """O Outlook no cadastro: o comando do run-1 não o cita, e o plano dele o exige (a paráfrase que a regex perde)."""
+    mundo.db.execute("INSERT INTO apps(id, name, package, builtin) VALUES ('outlook','Microsoft Outlook',"
+                     "'com.microsoft.office.outlook',0)")
+    mundo.db.execute("UPDATE runs SET plan=? WHERE id='run-1'",
+                     (json.dumps({**PLANO, "required_apps": ["instagram", "outlook"]}),))
+
+
+class _FatosFalsos:
+    """O sucesso comprovado (a regra do 30.25) sem montar a execução inteira: só o run-1 tem fatos."""
+
+    def __init__(self, db: Any) -> None:
+        pass
+
+    def fatos(self, run_id: str) -> object | None:
+        return object() if run_id == "run-1" else None
+
+
+def test_r5_seco_conta_os_apps_sem_vazar_o_comando(mundo: Mundo, tmp_path: Path) -> None:
+    _com_outlook(mundo)
+    assert lote.main(mundo.argv(tmp_path, "--r5")) == 0
+    r = _saida(tmp_path)
+    assert r["pedidos_secos"] == 2 and r["r5"]["pedidos_secos"] == 2         # intenção e R5, inglês e português
+    r5 = r["r5"]
+    assert r5["casos_com_r5"] == 1 and r5["fora_r5"] == {} and r5["limiar"] == 0.85
+    assert {(l["app_da_pergunta"], l["controle"]) for l in r5["linhas"]} == {("instagram", "sim"), ("outlook", "nao")}
+    assert all(l["rotulo"] is None for l in r5["linhas"])                     # sem sucesso comprovado, sem rótulo
+    assert r5["medidas"]["en"]["rotuladas"] == 0 and r5["medidas"]["en"]["fallbacks"] == {"desligado": 2}
+    assert r5["custo"]["total"]["comandos"] == 0 and r5["custo"]["total"]["por_app"]["usd"] is None   # seco: sem POST
+    for arquivo in ("saida.json", "saida.md"):
+        texto = (tmp_path / arquivo).read_text(encoding="utf-8")
+        assert SEGREDO not in texto and "curta o post" not in texto and "Microsoft Outlook" not in texto
+    assert "## R5" in (tmp_path / "saida.md").read_text(encoding="utf-8")
+
+
+def test_r5_enviar_mede_precisao_e_parafrase_com_o_estado_so_do_comando(mundo: Mundo, tmp_path: Path,
+                                                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    _com_outlook(mundo)
+    transporte = TransporteFalso(noul=0.92)
+
+    def real(teto: Any) -> DecisorJev:
+        return DecisorJev(transporte, conferir_gasto=teto.conferir, registrar=teto.registrar)
+
+    monkeypatch.setattr(lote, "MIN_COMANDOS_REAIS", 1)
+    monkeypatch.setattr(lote.braco, "decisor_real", real)
+    monkeypatch.setattr(lote.rel, "RotulosSql", _FatosFalsos)
+    monkeypatch.setattr(lote.rel, "sucesso_comprovado", lambda fatos: True)
+    assert lote.main(mundo.argv(tmp_path, "--r5", "--enviar", "--teto", "0.05")) == 0
+    # caso a caso: intenção e R5 em inglês, depois as duas em português
+    assert [set(tipos.values()) for tipos in transporte.tipos] == [{"choice"}, {"noul"}, {"choice"}, {"noul"}]
+    (int_en, _), (r5_en, instr_en), (_, _), (r5_pt, instr_pt) = transporte.envios
+    assert set(int_en) == {"comando", "app"} and r5_en == r5_pt == {"comando": int_en["comando"]}
+    assert set(instr_en) == {id_da_pergunta("instagram"), id_da_pergunta("outlook")}
+    assert all(v.startswith("O estado é um comando") for v in instr_pt.values()) and instr_en != instr_pt
+    r = _saida(tmp_path)
+    assert r["enviado"] is True and r["interrompido"] is None and r["custo"]["chamadas"] == 4
+    m = r["r5"]["medidas"]["en"]
+    # o plano exigiu os dois; a regex só cita o Instagram; o Jev disse `sim` para os dois (0,92 acima do limiar)
+    assert m["rotuladas"] == 2 and m["respondidas"] == 2
+    assert m["precisao_do_sim"] == {"n": 2, "de": 2, "taxa": 1.0}
+    assert m["parafrases_pegas"] == {"n": 1, "de": 1, "taxa": 1.0}
+    assert m["controle"] == {"precisao": {"n": 1, "de": 1, "taxa": 1.0}, "cobertura": {"n": 1, "de": 2, "taxa": 0.5}}
+    assert r["r5"]["en_x_pt"]["iguais"] == 2
+    # o custo por comando e por app (a chamada rateada pelas perguntas): 2 chamadas da R5 de 105 tokens e US$ 0,00005
+    custo = r["r5"]["custo"]["total"]
+    assert (custo["comandos"], custo["perguntas"], custo["tokens"]) == (2, 4, 210) and custo["usd"] == pytest.approx(0.0001)
+    assert custo["por_comando"]["perguntas"] == 2.0 and custo["por_comando"]["tokens"] == 105.0
+    assert custo["por_comando"]["usd"] == pytest.approx(0.00005) and custo["por_app"]["usd"] == pytest.approx(0.000025)
+    assert r["r5"]["custo"]["idiomas"]["pt"]["comandos"] == 1
+
+
+def test_r5_abaixo_do_limiar_e_sem_resposta_nunca_nao(mundo: Mundo, tmp_path: Path,
+                                                       monkeypatch: pytest.MonkeyPatch) -> None:
+    _com_outlook(mundo)
+    transporte = TransporteFalso(noul=0.3)
+    monkeypatch.setattr(lote, "MIN_COMANDOS_REAIS", 1)
+    monkeypatch.setattr(lote.braco, "decisor_real",
+                        lambda teto: DecisorJev(transporte, conferir_gasto=teto.conferir, registrar=teto.registrar))
+    assert lote.main(mundo.argv(tmp_path, "--r5", "--enviar", "--teto", "0.05")) == 0
+    linhas = [l for l in _saida(tmp_path)["r5"]["linhas"] if l["idioma"] == "en"]
+    assert {(l["escolha"], l["fallback"], l["p_sim"]) for l in linhas} == {(None, "abaixo_do_limiar", 0.3)}
+
+
+def test_r5_hash_do_envio_diferente_interrompe(mundo: Mundo) -> None:
+    from app.taskqueue.lote_intencao import consumidor_do_lote, ler_lote  # noqa: PLC0415
+
+    _com_outlook(mundo)
+    [caso] = ler_lote(mundo.lote, consumidor_do_lote(mundo.porta, mundo.db), r5=True).casos
+    assert caso.r5 is not None
+    seco = lote.braco.DecisorSeco()
+    registros, interrompido = lote.rodar([replace(caso, r5=replace(caso.r5, estado_hash="0" * 64))], seco, r5=True)
+    assert interrompido == "hash_no_envio" and set(registros) == {("run-1", "en"), ("run-1", "r5:en")}
+
+
+# ------------------------------------------------------------------ origem do caso (pessoa × validação)
+def _de_validacao(db: Any, run_id: str) -> None:
+    """A execução vira re-execução da validação do Aprendizado (30.31): a linha de `learning_validations` aponta para ela."""
+    db.execute("INSERT INTO learning_validations(id, created_at, updated_at, review_id, item_ref, item_kind, grupo,"
+               " run_id, expira_em) VALUES (?,?,?,?,?,?,?,?,?)",
+               (f"lv-{run_id}", TS, TS, "rv-1", "receita:1", "receita", "qa", run_id, "2099-01-01T00:00:00Z"))
+
+
+def test_relatorio_total_e_por_origem_com_os_distintos(mundo: Mundo, tmp_path: Path) -> None:
+    mundo.viva("run-3", f"abra o feed do instagram e curta o post da {SEGREDO}")      # a validação do run-1
+    _de_validacao(mundo.db, "run-3")
+    assert lote.main(mundo.argv(tmp_path, "--r5")) == 0
+    r = _saida(tmp_path)
+    assert r["casos"]["enviaveis"] == 2 and r["casos"]["por_origem"] == {"pessoa": 1, "validacao": 1}
+    assert r["casos"]["distintos"] == 1                                      # o mesmo comando duas vezes
+    assert set(r["por_origem"]) == {"pessoa", "validacao"}
+    for origem in ("pessoa", "validacao"):
+        o = r["por_origem"][origem]
+        assert (o["casos"], o["distintos"]) == (1, 1) and set(o["idiomas"]) == {"en", "pt"}
+        assert o["r5"]["casos_com_r5"] == 1 and set(o["r5"]["medidas"]) == {"en", "pt"}
+    texto = (tmp_path / "saida.md").read_text(encoding="utf-8")
+    assert "## Origem: validacao" in texto and SEGREDO not in texto
+
+
+def test_piso_conta_comandos_distintos_e_nao_execucoes(mundo: Mundo, tmp_path: Path,
+                                                        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Golden set §8, "Origem do caso" (aprovado em 03/10): a validação repete o comando do dono; dois casos com o mesmo
+    `estado_hash` são UM comando para o piso."""
+    mundo.viva("run-3", f"abra o feed do instagram e curta o post da {SEGREDO}")      # a validação do run-1
+    _de_validacao(mundo.db, "run-3")
+    monkeypatch.setattr(lote, "MIN_COMANDOS_REAIS", 2)
+    monkeypatch.setattr(lote.braco, "decisor_real", lambda teto: pytest.fail("não podia montar o decisor"))
+    with pytest.raises(SystemExit, match=r"1 comandos distintos enviáveis \(2 casos\), menos que 2"):
+        lote.main(mundo.argv(tmp_path, "--enviar", "--teto", "0.05"))
+    assert lote.main(mundo.argv(tmp_path)) == 0                                      # o seco segue: só relata
+    c = _saida(tmp_path)["casos"]
+    assert (c["enviaveis"], c["distintos"], c["distintos_do_piso"], c["piso"]) == (2, 1, 1, 2)

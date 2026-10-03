@@ -742,8 +742,10 @@ continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). D
   como diz o contrato; até ali media a `confianca`, que segue gravada na sombra).
 - **Decisor real (31.14, `decisores.py::DecisorJev`).** Fala pelo transporte do adaptador de retrieval
   (`JevSemanticProvider.consultar`: `{state, model, questions}`, a chave lida do ambiente na hora do POST). Ordem:
-  - só `choice` vai ao fio (`criteria` = as opções enviadas); `noul` e `score` respondem `desligado` sem sair, até o
-    primeiro consumidor deles;
+  - `choice` e `noul` vão ao fio (`TIPOS_NO_FIO`). No `choice`, `criteria` = as opções enviadas. O `noul` (desde o
+    31.13, com a R5) leva os critérios `true`/`false` quando há, e a resposta `{"type": "noul", "noul": p}` vira
+    escolha `sim` com confiança `p`: a porta aplica o limiar, e abaixo dele é sem resposta, nunca `nao`. O `score`
+    responde `desligado` sem sair, até o primeiro consumidor dele;
   - **gasto conferido ANTES do POST** por `RoutingProvider.conferir_gasto` (a mesma rubrica de `_budget`: pedido,
     execução, dia e a fatia `jev_max_usd_per_day`, mais o bloqueio de saldo da conta `typesafe`). Barrado, sem hub que
     confira ou com a leitura quebrada: `orcamento`, e nada sai;
@@ -760,7 +762,7 @@ continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). D
 
     | Caso | `postado` | `ai_call_id` |
     |---|---|---|
-    | Parou antes do POST: privacidade, `DecisorNulo`, só `noul`/`score`, orçamento, prazo esgotado, chave ausente | 0 | NULO |
+    | Parou antes do POST: privacidade, `DecisorNulo`, só `score`, orçamento, prazo esgotado, chave ausente | 0 | NULO |
     | O transporte foi chamado (resposta ou erro dele) | 1 | o id da linha |
     | Linha de gasto que não gravou ("régua cega") | 1 | NULO |
     | Exceção inesperada, ou futuro em voo quando o prazo do `on` estoura | NULO | NULO |
@@ -779,6 +781,14 @@ continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). D
     cujo hash do estado redigido bate com o `estado_hash` da linha vai ao Jev, em inglês e em português (D-J7,
     `INSTRUCOES_PT`); o resto fica contado por motivo. O script é `scripts/jev-braco-offline-intencao.py` (golden set
     §8).
+  - **Os apps do comando (R5, 31.13), em sombra e travados.** `decisao_fechada/apps.py` faz um `noul` por app do cadastro
+    ("cumprir este comando exige o app X?"), com id opaco por app e o nome (C2) mascarado e sem C7.
+    - O estado é só o `comando` da intenção, sem o `app`: depois do `_plan`, o app da execução é o principal do plano,
+      que é o rótulo.
+    - A decisão real casada na sombra é a regex do caminho atual (`apps_citados`) sobre o comando original.
+    - Liga pelo mesmo gancho da intenção (`SombraDaIntencao.ligar_apps`). Fica travada no código
+      (`privacidade.R5_LIBERADA = False`) até o GO do 31.10: travada, não lê o cadastro e `/api/ai` não a anuncia.
+    - O lote offline a mede nos mesmos casos com `--r5`. Rótulo, limiar e métricas: golden set §9.
 - **Cliente único.** `backend/tests/test_decisao_fechada.py::test_cliente_unico_so_o_adaptador_de_retrieval_conhece_o_host_da_typesafe`
   varre `backend/app` e prova que só `modules/context_retrieval/adapters/jev.py` contém o host.
 

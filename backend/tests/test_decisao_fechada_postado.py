@@ -83,13 +83,14 @@ def _barrado(p: PedidoDeDecisao) -> None:
 
 
 @pytest.mark.parametrize(("caso", "motivo"), [
-    ("so_noul", "desligado"), ("orcamento", "orcamento"), ("prazo_esgotado", "rede"), ("sem_chave", "desligado"),
+    ("so_score", "desligado"), ("orcamento", "orcamento"), ("prazo_esgotado", "rede"), ("sem_chave", "desligado"),
 ])
 def test_o_que_para_antes_do_post_e_postado_0_sem_linha_de_gasto(caso: str, motivo: str) -> None:
     servidor = Servidor(_ok())
     decisor, anotadas = _decisor(servidor, gasto=_barrado if caso == "orcamento" else (lambda p: None),
                                  env={} if caso == "sem_chave" else None)
-    pedido = _pedido(Pergunta("q2", "noul", "Is it?")) if caso == "so_noul" else _pedido()
+    # o `noul` vai ao fio desde o 31.13 (R5); o `score` segue sem consumidor e para antes do POST
+    pedido = _pedido(Pergunta("q2", "score", "How much?")) if caso == "so_score" else _pedido()
     prazo = 0.0 if caso == "prazo_esgotado" else 5.0
     assert _marca(lambda: decisor.decidir(pedido, prazo)) == (False, None, motivo)
     assert servidor.corpos == [] and anotadas == []

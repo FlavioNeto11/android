@@ -373,12 +373,13 @@ def test_aviso_nomeia_a_typesafe_e_as_classes_so_com_consumidor_em_shadow_ou_on(
                                chave_configurada=True) is None                 # enabled falso vence tudo
     assert transparencia.aviso(DecisaoFechadaCfg(enabled=True, consumidores={"curador": "off"}),
                                chave_configurada=True) is None
-    cfg = DecisaoFechadaCfg(enabled=True, consumidores={"curador": "shadow", "apps": "on"},
+    # `desempate` faz o papel do consumidor ligado: os apps (R5) ficam fora do aviso enquanto travados (31.13)
+    cfg = DecisaoFechadaCfg(enabled=True, consumidores={"curador": "shadow", "desempate": "on"},
                             classes_permitidas=["C0", "C1"])
     aviso = transparencia.aviso(cfg, chave_configurada=True)
     assert aviso is not None and "TypeSafe" in aviso and "C0, C1" in aviso and "C3" not in aviso
     # polimento do deploy 10: o modo em palavras, não o valor do YAML
-    assert "conjunto fechado (apps ligado, curador em sombra)" in aviso and "configurada" in aviso
+    assert "conjunto fechado (curador em sombra, desempate ligado)" in aviso and "configurada" in aviso
     assert "(shadow)" not in aviso and "(on)" not in aviso
     intencao = DecisaoFechadaCfg(enabled=True, consumidores={"curador": "shadow", "intencao": "shadow"})
     assert "(curador em sombra, intenção em sombra)" in str(transparencia.aviso(intencao, chave_configurada=True))

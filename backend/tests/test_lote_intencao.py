@@ -16,7 +16,9 @@ import pytest
 
 from app.config import DecisaoFechadaCfg
 from app.events import EventBus
+from app.modules.applications.infrastructure.app_repository import AppRepository
 from app.planning.decisao_fechada import privacidade
+from app.planning.decisao_fechada.apps import id_da_pergunta
 from app.planning.decisao_fechada.contrato import ID_NENHUMA, RespostaDeDecisao, pergunta_choice
 from app.planning.decisao_fechada.decisores import DecisorFalso
 from app.planning.decisao_fechada.intencao import PERGUNTA_CATALOGO, PERGUNTA_DESEMPATE, ConsumidorDeIntencao, id_opaco
@@ -300,3 +302,89 @@ async def test_o_lote_remonta_o_estado_que_a_sombra_do_runtime_mandou(harness: H
     assert caso.pedido.estado == enviado.estado and caso.run_id == run.id
     assert [(p.id, dict(p.opcoes), p.instrucoes) for p in caso.pedido.perguntas] == [
         (p.id, dict(p.opcoes), p.instrucoes) for p in enviado.perguntas]
+
+
+# ------------------------------------------------------------------ R5 (31.13): os apps do comando nos mesmos casos
+def _com_apps(w: Mundo3) -> None:
+    """O Instagram já está no cadastro do `Mundo`; entra o Outlook, que o comando não cita."""
+    AppRepository(w.db).criar(app_id="outlook", name="Microsoft Outlook", package="com.microsoft.office.outlook")
+
+
+def test_r5_monta_os_apps_no_caso_c_com_o_estado_contido_no_da_intencao(w: Mundo3) -> None:
+    _com_apps(w)
+    w.viva("run-1", EMPATE)
+    assert w.ler().casos[0].r5 is None                                  # sem `r5=True`, nada muda
+    leitura = w.ler(r5=True)
+    [caso] = leitura.casos
+    r5 = caso.r5
+    assert r5 is not None and not leitura.fora_r5
+    # opção A: a intenção leva o app (o hash provado é o dela); a R5, só o MESMO comando
+    assert set(caso.pedido.estado) == {"comando", "app"}
+    assert dict(r5.pedido.estado) == {"comando": caso.pedido.estado["comando"]} and r5.pedido.origem == "apps"
+    assert r5.estado_hash == hash_do_estado(privacidade.redigir(r5.pedido).estado) != caso.estado_hash
+    assert dict(r5.apps) == {id_da_pergunta("instagram"): "instagram", id_da_pergunta("outlook"): "outlook"}
+    assert r5.citados == frozenset({"instagram"})                        # a regex do caminho atual, no comando original
+    assert [q.id for q in r5.pt.perguntas] == [q.id for q in r5.pedido.perguntas] and r5.pt.estado == r5.pedido.estado
+    assert r5.pt.perguntas[0].instrucoes.startswith("O estado é um comando")
+
+
+def test_r5_sem_apps_no_cadastro_fica_fora_pelo_motivo(w: Mundo3) -> None:
+    w.viva("run-1", EMPATE)
+    w.lote.listar_apps = list                                           # o cadastro vazio, só para a R5
+    leitura = w.ler(r5=True)
+    assert [c.r5 for c in leitura.casos] == [None] and leitura.fora_r5 == {"sem_apps": 1}
+
+
+def test_r5_so_no_caso_c(w: Mundo3) -> None:
+    _com_apps(w)
+    w.viva("run-1", EMPATE)
+    _sem_hash(w)
+    leitura = w.ler(r5=True, salvaguarda_b=SalvaguardaB(codigo_igual=True))
+    assert [(c.salvaguarda, c.r5) for c in leitura.casos] == [("b", None)] and not leitura.fora_r5
+
+
+async def test_o_lote_remonta_a_r5_que_a_sombra_do_runtime_mandaria(harness: Harness,
+                                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    """Com a R5 destravada SÓ no teste: o `AppState` de verdade manda a intenção e os apps do comando; o lote remonta o
+    mesmo pedido da R5 (estado e perguntas) e prova o hash pelo da intenção."""
+    st = harness.state
+    assert st is not None
+    monkeypatch.setattr(privacidade, "R5_LIBERADA", True)
+    monkeypatch.setattr(st.cfg.file.skills, "enabled", True)
+    Mundo(st.db).publicar(ABRIR)
+    decisor = DecisorFalso({PERGUNTA_CATALOGO: _resposta(IDS["ig.abrir_conversa"], 0.95)}, postado=True)
+    st.decisao_fechada.decisor = decisor
+    st.decisao_fechada.cfg = DecisaoFechadaCfg(enabled=True, consumidores={"intencao": "shadow", "apps": "shadow"})
+    run = harness.run(["android-01"], command="abra o Instagram e o aplicativo de configuracoes", mode="plan")
+    await harness.wait_run(run.id, statuses=("planned", "needs_input", "failed"), timeout=20.0)
+    assert st.runs.sombra_intencao is not None
+    await st.runs.sombra_intencao.aguardar()
+    st.decisao_fechada.aguardar_sombras()
+    por_origem = {q.origem: q for q in decisor.chamadas}
+    assert set(por_origem) == {"intencao", "apps"}
+    lote = LoteOffline(st.db, skills_ligadas=st.cfg.file.skills.enabled, fluxos_ligados=st.cfg.file.ai.flows)
+    leitura = ler_lote(lote, consumidor_do_lote(st.decisao_fechada, st.db), desde=DESDE, r5=True)
+    [caso] = leitura.casos
+    assert caso.salvaguarda == "c" and caso.r5 is not None
+    enviado = por_origem["apps"]
+    assert caso.r5.pedido.estado == enviado.estado and set(enviado.estado) == {"comando"}
+    assert [(q.id, dict(q.opcoes), q.instrucoes) for q in caso.r5.pedido.perguntas] == [
+        (q.id, dict(q.opcoes), q.instrucoes) for q in enviado.perguntas]
+    assert caso.r5.citados == frozenset({"instagram"})
+
+
+# ------------------------------------------------------------------ origem do caso (pessoa × validação)
+def _de_validacao(db: Any, run_id: str) -> None:
+    """A execução vira re-execução da validação do Aprendizado (30.31): a linha de `learning_validations` aponta para ela."""
+    db.execute("INSERT INTO learning_validations(id, created_at, updated_at, review_id, item_ref, item_kind, grupo,"
+               " run_id, expira_em) VALUES (?,?,?,?,?,?,?,?,?)",
+               (f"lv-{run_id}", ANTES, ANTES, "rv-1", "receita:1", "receita", "qa", run_id, "2099-01-01T00:00:00Z"))
+
+
+def test_origem_do_caso_separa_a_validacao_da_pessoa(w: Mundo3) -> None:
+    w.viva("run-1", EMPATE)
+    w.viva("run-2", EMPATE)                                       # a validação repete o comando da execução de origem
+    _de_validacao(w.db, "run-2")
+    casos = {c.run_id: c for c in w.ler().casos}
+    assert {r: c.origem for r, c in casos.items()} == {"run-1": "pessoa", "run-2": "validacao"}
+    assert casos["run-1"].estado_hash == casos["run-2"].estado_hash          # o mesmo comando: um distinto só

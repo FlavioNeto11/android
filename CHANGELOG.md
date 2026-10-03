@@ -19,6 +19,25 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 31.13, R5: os apps do comando em sombra, travados no código (branch feat/31-13-r5-apps)
+
+- `planning/decisao_fechada/apps.py`: um `noul` por app do cadastro sobre o comando da intenção. O estado é SÓ o
+  `comando` (opção A da orquestradora: o `app` da execução é o app principal do plano, o rótulo). O nome do app (C2) vai
+  mascarado e sem C7, e a decisão real é a regex do caminho atual sobre o comando original.
+- Travada: `privacidade.R5_LIBERADA = False` até o GO do 31.10. `consumidores.apps` no YAML não liga nada, e `/api/ai`
+  não anuncia a R5 enquanto travada.
+- `decisores.py`: o `noul` vai ao fio (`TIPOS_NO_FIO`), e abaixo do limiar é sem resposta, nunca `nao`.
+- `intencao.pedido_c3` é o estado C3 comum à intenção e aos apps.
+- A ligação é uma linha no `state.py` (`ligar_apps`).
+- O lote offline do 31.11 ganha `--r5`, nos mesmos casos `c`. O hash é provado pelo da intenção, e o estado da R5 está
+  contido nele.
+- Golden set: §9 (pré-registro da R5) e o viés conhecido do `app` no estado da R2 (§3).
+- Testes:
+  - `backend/tests/test_decisao_fechada_apps.py`;
+  - o fio `noul` em `test_decisao_fechada_jev.py`;
+  - R5 em `test_lote_intencao.py` e `scripts/tests/test_jev_braco_offline_intencao.py`;
+  - três testes ajustados à mudança intencional (C3 dos apps, `noul` no fio, aviso sem a R5 travada).
+
 ## 2026-10-03 — 31.11, R2 e R3 offline: o lote da intenção, só com o hash (branch feat/31-11-r2-r3-offline)
 
 - `taskqueue/lote_intencao.py`: remonta, só para leitura e pelo código do runtime, os comandos que a sombra da intenção

@@ -157,6 +157,22 @@ def test_estado_hash_da_086_e_conferido_pelo_formato(banco: Banco, tmp_path: Pat
     assert "abra o feed" not in json.dumps(rel, ensure_ascii=False)
 
 
+@pytest.mark.parametrize("escolha, real, violacoes", [
+    ("sim", "nao", set()),                              # o `noul` da R5: `sim` ou vazio; a decisão real, `sim`/`nao`
+    (None, "sim", set()),
+    ("opt:0123456789ab", None, {"formato:escolha", "formato:probabilidades"}),
+    ("nao", "talvez", {"formato:decisao_real"}),
+])
+def test_linha_dos_apps_do_comando_e_conferida_pelo_vocabulario_do_noul(banco: Banco, tmp_path: Path,
+                                                                          escolha: str | None, real: str | None,
+                                                                          violacoes: set[str]) -> None:
+    _sombra_limpa(banco)
+    banco.sombra("r-9", "ch9", origem="apps", pergunta="app:0123456789ab", escolha=escolha, probs={escolha or "sim": 0.9})
+    banco.db.execute("UPDATE decisao_fechada_sombra SET decisao_real=? WHERE origem='apps'", (real,))
+    _, rel = banco.rodar(tmp_path)
+    assert set(rel["sombra"]["violacoes"]) == violacoes
+
+
 def test_coluna_nova_sem_conferencia_falha_fechado(banco: Banco, tmp_path: Path) -> None:
     banco.db.execute("ALTER TABLE decisao_fechada_sombra ADD COLUMN comando TEXT")
     banco.sombra("r-1", "ch1")

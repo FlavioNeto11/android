@@ -216,6 +216,14 @@ ambígua: só ali a R3 (desempate) tem o que medir.
 
 **Controle:** a própria cadeia de hoje (`intent_resolver`), que é gratuita e já roda.
 
+**Viés conhecido do estado (registrado em 03/10 20:17:10Z, a pedido da orquestradora, no commit 85777835, que era
+42a63c5b antes do rebase sobre a suíte 14; a pesar no GO do 31.10).**
+- O que acontece: o estado da intenção leva o `app` da execução. A sombra roda depois do `_plan`, e nessa hora o `app` é
+  o app PRINCIPAL do plano (`save_plan` grava `runs.app_ids`).
+- Efeito na R2: é uma dica para a escolha do catálogo (as entradas daquele app). INFERRED: o viés é menor que na R5,
+  porque o rótulo da R2 é o desfecho da cadeia, que resolve antes do plano.
+- A R2 não muda agora. Na R5 o mesmo campo seria o próprio rótulo, e por isso a R5 manda só o comando (§9).
+
 **GO para `on` (só sugerir, D-J7), por app:**
 
 | Critério | Limiar | Origem |
@@ -422,13 +430,31 @@ vale para GO. O código é `scripts/jev-braco-offline-intencao.py`, com `backend
   - Por idioma e app, as medidas da §3, com as mesmas contas e os rótulos do relatório do 31.10.
   - Inglês × português: mesma escolha e mesma maior probabilidade.
   - O lote em inglês × a linha viva da mesma execução (estabilidade).
+  - **Total e por origem do caso** (pedido da orquestradora, 03/10): `pessoa` ou `validacao` (a re-execução da
+    validação do Aprendizado, `learning_validations.run_id`, que repete o comando da execução de origem). Cada origem
+    traz casos, comandos distintos (por `estado_hash`) e as mesmas medidas; o `--r5` também.
 
   O idioma que perder sai antes de qualquer `on` (§1). "Perder" se decide sobre rótulos, com amostra, e não neste
   lote de acompanhamento.
 - **Portões da rodada paga.**
   - `--enviar --teto` de no máximo US$ 0,05, numa rodada só, sem repetição.
-  - Ao menos 10 casos enviáveis (`MIN_COMANDOS_REAIS`); abaixo disso, a recusa vem antes de qualquer chamada.
+  - Ao menos 10 COMANDOS DISTINTOS enviáveis (`MIN_COMANDOS_REAIS`, por `estado_hash`, das origens do piso; ver
+    "Origem do caso" abaixo). Abaixo disso, a recusa vem antes de qualquer chamada.
   - O custo fica no JSON e no registro do estado, não em `ai_calls`.
+
+**Origem do caso** (texto aprovado pela orquestradora às 20:28Z de 03/10, com 0 casos `c` existentes: é pré-registro;
+gravado no commit que traz esta seção).
+- Conta como `c` toda execução que a sombra da intenção mandou com hash, seja do dono (`pessoa`), seja re-execução da
+  validação do Aprendizado (`validacao`, `learning_validations.run_id`), que repete o comando do dono.
+- O piso de 10 (`MIN_COMANDOS_REAIS`) conta COMANDOS DISTINTOS por `estado_hash`, não execuções: a validação repete o
+  texto, e repetir não prova o filtro de novo.
+- Uma bateria neutra, se houver, é origem própria (`bateria`): entra no lote e no relatório separado, mas fica FORA do
+  piso e do GO do 31.10, porque não é comando do dono.
+- Comando resolvido por fluxo, com POST e hash, é `c` válido: a §8 não depende de o planejador ter decidido. Ele
+  conta para o piso e para a precisão da R2 (rótulo = o fluxo que terminou em sucesso comprovado). Pela §3, NÃO
+  entra na métrica principal do 31.10 (RA-2: só execuções sem fluxo, `sem_casamento`).
+- A origem vem hoje de `lote_intencao.origem_da_execucao`. Passa a vir do contrato do 32.3 (`app/contracts/origem.py`)
+  quando ele estiver na main, com um mapa para este vocabulário.
 
 Prova `simulated`:
 - `backend/tests/test_lote_intencao.py`, inclusive o `AppState` do harness: a sombra do runtime manda, e o lote remonta
@@ -441,3 +467,71 @@ Prova `simulated`:
 - **Salvaguarda b:** daria `diferente` nos três commits. O `privacidade.py` mudou com o 31.23 e o `service.py` depois
   do deploy 11. Nenhuma remoção desde 15:29:51Z; eventos desde 19/09.
 - A rodada espera 10 comandos reais depois do deploy 14, que passa a gravar o hash.
+
+## 9. Apps do comando (R5, 31.13)
+
+*Pré-registro gravado em 03/10 20:17:10Z (commit 85777835, que era 42a63c5b antes do rebase sobre a suíte 14),
+antes de qualquer rodada, com o sim da orquestradora ao desenho (19:48Z) e à opção A (resposta dela à inconsistência
+do `app` no estado).* Nenhuma chamada paga foi feita para isto. O código é
+`backend/app/planning/decisao_fechada/apps.py`, ligado pela sombra da intenção
+(`taskqueue/sombra_intencao.py::ligar_apps`).
+
+- **A pergunta.** É um `noul` por app do cadastro (`apps`): "cumprir este comando no aparelho exige o app X?". Os
+  critérios são `true`/`false`, cada um nomeando o app.
+  - O id é opaco por app (`app:` + sha1 do id do cadastro, 12 hex), e o nome nunca vai no id.
+  - O nome (C2, o cadastro do dono) é o do cadastro mais o rótulo do manifesto quando difere ("Microsoft Outlook /
+    Outlook"). São os mesmos nomes que a regex do caminho atual casa (`apps_do_comando.nomes_do_app`).
+  - O nome passa por `motivo_c7` e por `mascarar_catalogo(redact(...))` antes do corte em 200 caracteres, como a
+    descrição da R2. Nome C7, ou que o filtro esvazia, deixa o app fora do pedido.
+  - Teto: 16 apps (`apps.MAX_APPS`). Acima dele, a R5 não vai, para não medir o que o Jev não viu; o central tem 7.
+    O valor foi aceito pela orquestradora (03/10) e é revisável pelo custo medido: o relatório do `--r5` traz o custo
+    por comando (uma chamada com N perguntas) e por app (a chamada rateada pelas N). Não muda sem avisá-la.
+- **O estado é só o `comando`** (`CAMPOS_POR_ORIGEM["apps"] = {comando}`; opção A da orquestradora, 03/10). É o mesmo
+  comando da intenção, com a mesma C7 e o mesmo filtro (`intencao.pedido_c3`). O `app` fica de fora porque, na hora da
+  sombra, é o app PRINCIPAL do plano (`save_plan` → `runs.app_ids[0]`), que é o rótulo abaixo: com ele no estado, a
+  métrica mediria um eco. O estado da R5 está contido no da intenção.
+- **Limiar: 0,85 sobre a probabilidade devolvida do "verdadeiro".** Abaixo dele, a resposta conta como SEM resposta. O
+  complemento nunca vira `nao` (B7 do roteiro: P(noul) ≠ 1 − P(não-noul)). Na linha da sombra, a escolha só pode ser
+  `sim` ou vazia, e a probabilidade fica gravada mesmo abaixo do limiar.
+- **Decisão real na sombra (acompanhamento):** a regex do caminho atual (`apps_citados`) sobre o comando ORIGINAL, o
+  texto que o roteamento real lê (`RunService._app_do_comando`). Dá `sim` para o app citado e `nao` para os demais. O
+  Jev vê o comando sem destinos e filtrado. Essa decisão real é o CONTROLE, não o rótulo.
+- **Rótulo:** os `required_apps` do plano gravado (`parsing.apps_do_plano`: os apps em que as etapas rodam). Vale só em
+  execução de sucesso comprovado, pela regra do 30.25 (`sucesso_comprovado`). É `sim` para os apps exigidos e `nao`
+  para os demais. Sem plano, com a lista vazia ou sem sucesso comprovado, não há rótulo e a pergunta fica só na
+  cobertura.
+- **Métricas (por idioma, no lote; por estrato, na sombra):**
+  - **precisão do `sim`:** dos `sim` do Jev com rótulo, quantos o rótulo confirma (na sombra, as colunas `acima` e
+    `errado` do resumo);
+  - **paráfrases pegas:** das perguntas com rótulo `sim` e controle `nao` (o que a regex perde, como "meu e-mail" →
+    Outlook), quantas o Jev respondeu `sim`;
+  - para comparar, a precisão e a cobertura do controle e a cobertura do Jev.
+
+  A concordância (`escolha = decisao_real`) não se aplica ao `noul`: uma linha com real `nao` nunca casa.
+- **Sem GO pré-registrado para `on`.** A R5 é candidatura (`Plan.required_apps` segue do planejador), e um `on` pediria
+  decisão própria. O 31.13 só mede em sombra.
+- **Travada no código:** `privacidade.R5_LIBERADA = False` até o GO do 31.10 (ADR-069 item 21: o filtro provado com 10
+  comandos reais).
+  - Virar é um commit, com suíte e deploy. O YAML `consumidores.apps` sozinho não liga nada.
+  - Travada, a sombra não lê o cadastro nem monta pedido, e `/api/ai` não anuncia a R5.
+  - O relatório do 31.10 ainda não lê a origem `apps`; ele passa a lê-la quando a R5 for destravada.
+- **No lote offline (`--r5` do 31.11).**
+  - Entram os mesmos casos `c` da §8. O hash provado é o da INTENÇÃO, igual ao `estado_hash` da linha.
+  - O pedido da R5 só sai se o estado dele estiver contido no da intenção, com o MESMO comando: nada novo sai. O que
+    não fecha fica em `fora_r5`.
+  - O hash que a porta registra no envio da R5 é conferido contra o do pedido dela.
+  - Ordem por caso: intenção e R5 em inglês, depois as duas em português.
+  - As frases em português, fixadas antes de qualquer rodada em `apps.py`, são a tradução literal das inglesas:
+    - instrução: "O estado é um comando escrito pelo dono de um parque de aparelhos, em português, com nomes e números
+      mascarados. Responda verdadeiro se cumprir este comando no aparelho exige o app {nome}, e falso caso
+      contrário.";
+    - verdadeiro: "Cumprir o comando exige o app {nome}: abri-lo, agir nele ou ler algo nele.";
+    - falso: "O comando pode ser cumprido sem o app {nome}.".
+
+Prova `simulated`:
+- `backend/tests/test_decisao_fechada_apps.py`, inclusive o `AppState` do harness, travado e destravado só no teste;
+- `backend/tests/test_decisao_fechada_jev.py`: o `noul` no fio e o limiar na porta;
+- `backend/tests/test_lote_intencao.py`: a sombra do runtime manda, e o lote remonta o mesmo pedido da R5;
+- `scripts/tests/test_jev_braco_offline_intencao.py`.
+
+Chamada real: `not_run` (incidente do parque desde ~19:00Z: nada pago nem real até a orquestradora liberar).

@@ -29,10 +29,16 @@ JEV_RUNTIME_SEND_APPROVED: bool = True
 #: 31.10 liga só C0–C1 (31.17), e a C3 sai só com o GO do portão do 31.9 e o sim do dono.
 JEV_ALLOWED_CLASSES: frozenset[str] = frozenset({"C0", "C1", "C2", "C3"})
 
-#: Regra por origem e modo, em cima do teto: a C3 só na intenção (31.9) e só na sombra. Qualquer outra combinação com C3,
-#: inclusive `on`, é recusada.
-C3_ORIGENS: Final[frozenset[str]] = frozenset({"intencao"})
+#: Regra por origem e modo, em cima do teto: a C3 só na intenção (31.9) e nos apps do comando (R5, 31.13; ADR-069 item 21),
+#: e só na sombra. Qualquer outra combinação com C3, inclusive `on`, é recusada.
+C3_ORIGENS: Final[frozenset[str]] = frozenset({"intencao", "apps"})
 C3_MODOS: Final[frozenset[str]] = frozenset({"shadow"})
+
+#: A sombra da R5 (apps do comando, 31.13) pode ligar em runtime? Falso até o GO do 31.10 (ADR-069 item 21: o filtro
+#: provado com 10 comandos reais). Constante de código, como a de cima: virar é commit, com suíte e deploy; o YAML
+#: (`consumidores.apps`) sozinho não liga nada. O lote offline do 31.11 não depende dela (o item 21 o limita aos comandos
+#: que a sombra da intenção já mandou).
+R5_LIBERADA: bool = False
 
 #: Campos nomeados que cada origem pode mandar em `estado` (jaggedness: só o que importa). Vazio de propósito: cada consumidor
 #: (31.5 em diante) registra os seus no próprio item, num diff que o revisor veja. Campo fora da lista recusa o pedido.
@@ -52,6 +58,11 @@ CAMPOS_POR_ORIGEM["curador"] = frozenset({
 #: Intenção (31.9): `comando` (C3, já sem destinos, sem segredo e sem entidades: `entidades.remover_entidades`) e `app` (id do
 #: app do comando, quando há). O consumidor é `intencao.py`.
 CAMPOS_POR_ORIGEM["intencao"] = frozenset({"comando", "app"})
+#: Apps do comando (R5, 31.13): SÓ o `comando`, o mesmo da intenção (`intencao.pedido_c3`). O `app` fica de fora (opção A da
+#: orquestradora, 03/10): depois do `_plan` ele é o app PRINCIPAL do plano (`save_plan` → `runs.app_ids[0]`), que é o
+#: próprio rótulo da R5, e a métrica mediria um eco. O estado é subconjunto estrito do da intenção. O nome de cada app vai
+#: nas perguntas (C2, o cadastro do dono), não no estado.
+CAMPOS_POR_ORIGEM["apps"] = frozenset({"comando"})
 
 
 @dataclass(frozen=True)

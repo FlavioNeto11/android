@@ -2,7 +2,7 @@
 
 O que cada bloco prova:
 
-- **Fio:** só `choice` vai ao Jev, no formato oficial (`{state, model, questions}`, `criteria` = as opções enviadas), pelo
+- **Fio:** `choice` e `noul` (este desde o 31.13, a R5) vão ao Jev, no formato oficial (`{state, model, questions}`, `criteria` = as opções enviadas), pelo
   transporte do adaptador de retrieval; a resposta volta com o FORMATO conferido (o resto vira `parse`) e o custo da chamada.
 - **Gasto antes do POST:** régua estourada, conferência ausente ou quebrada = `orcamento`, e nada sai nem vira linha.
 - **Falha do transporte:** cada erro vira o motivo fechado da porta, a chamada tentada vira linha `ok=0`, e a chave ausente
@@ -161,17 +161,60 @@ def test_resposta_fora_do_formato_vira_parse_e_a_chamada_conta(resposta: Any) ->
     assert [l.ok for l in linhas] == [True]                     # o POST aconteceu e foi cobrado: vira linha
 
 
-def test_noul_e_score_nao_saem_e_so_a_choice_vai_ao_fio() -> None:
-    noul = Pergunta("q2", "noul", "Is it?")
-    so_noul = Servidor(_ok())
-    decisor, linhas = _decisor(so_noul)
-    res = decisor.decidir(_pedido(noul), 5.0)
-    assert so_noul.corpos == [] and linhas == [] and res.fallback_reason == "desligado"
-    misto = Servidor(_ok())
+def test_score_nao_sai_e_choice_e_noul_vao_ao_fio() -> None:
+    score = Pergunta("q3", "score", "How much?")
+    so_score = Servidor(_ok())
+    decisor, linhas = _decisor(so_score)
+    res = decisor.decidir(_pedido(score), 5.0)
+    assert so_score.corpos == [] and linhas == [] and res.fallback_reason == "desligado"
+    noul = Pergunta("q2", "noul", "Is it?", {"true": "It is.", "false": "It is not."})
+    resposta = _ok()
+    resposta["answers"]["q2"] = {"type": "noul", "noul": 0.91}
+    misto = Servidor(resposta)
     decisor, _ = _decisor(misto)
-    res = decisor.decidir(_pedido(pergunta_choice("q1", "Pick one.", OPCOES), noul), 5.0)
-    assert list(misto.corpos[0]["questions"]) == ["q1"]
-    assert res.respostas["q1"].escolha == "opt:a" and res.respostas["q2"].fallback_reason == "desligado"
+    res = decisor.decidir(_pedido(pergunta_choice("q1", "Pick one.", OPCOES), noul, score), 5.0)
+    perguntas = misto.corpos[0]["questions"]
+    assert list(perguntas) == ["q1", "q2"]
+    assert perguntas["q2"] == {"type": "noul", "instructions": "Is it?",
+                               "criteria": {"true": "It is.", "false": "It is not."}}
+    assert res.respostas["q1"].escolha == "opt:a" and res.respostas["q3"].fallback_reason == "desligado"
+    r = res.respostas["q2"]
+    assert (r.escolha, r.confianca, dict(r.probabilidades), r.fallback_reason) == ("sim", 0.91, {"sim": 0.91}, None)
+
+
+def test_noul_sem_criterios_vai_sem_criteria() -> None:
+    servidor = Servidor({"answers": {"q2": {"type": "noul", "noul": 0.5}}, "usage": USO})
+    decisor, _ = _decisor(servidor)
+    decisor.decidir(_pedido(Pergunta("q2", "noul", "Is it?")), 5.0)
+    assert servidor.corpos[0]["questions"]["q2"] == {"type": "noul", "instructions": "Is it?"}
+
+
+@pytest.mark.parametrize("resposta", [
+    {"type": "noul", "noul": 1.3}, {"type": "noul", "noul": -0.1}, {"type": "noul", "noul": True}, {"type": "noul"},
+    {"type": "choice", "choice": "opt:a", "confidence": 0.9, "probabilities": {"opt:a": 0.9}},   # tipo errado
+    "nao-e-objeto",
+])
+def test_noul_fora_do_formato_vira_parse(resposta: Any) -> None:
+    servidor = Servidor({"answers": {"q2": resposta}, "usage": USO})
+    decisor, linhas = _decisor(servidor)
+    res = decisor.decidir(_pedido(Pergunta("q2", "noul", "Is it?")), 5.0)
+    assert res.respostas["q2"].fallback_reason == "parse" and res.respostas["q2"].escolha is None
+    assert [l.ok for l in linhas] == [True]
+
+
+def test_porta_mede_o_limiar_do_noul_e_abaixo_dele_e_sem_resposta(monkeypatch: pytest.MonkeyPatch,
+                                                                   tmp_path: Path) -> None:
+    """B7 do roteiro: abaixo do limiar o `noul` conta como SEM resposta; o complemento nunca vira `nao`."""
+    monkeypatch.setattr(privacidade, "JEV_RUNTIME_SEND_APPROVED", True)
+    db = _banco(tmp_path)
+    cfg = DecisaoFechadaCfg(enabled=True, consumidores={"curador": "on"})  # type: ignore[arg-type]
+    for p, escolha, motivo in ((0.9, "sim", None), (0.85, "sim", None), (0.84, None, "abaixo_do_limiar"),
+                               (0.05, None, "abaixo_do_limiar")):
+        decisor, _ = _decisor(Servidor({"answers": {"q2": {"type": "noul", "noul": p}}, "usage": USO}))
+        r = Porta(decisor, cfg=cfg, observador=observador_de_sombra(RepositorioDeSombra(db))).consultar(
+            _pedido(Pergunta("q2", "noul", "Is it?"), modo="on")).respostas["q2"]
+        assert (r.escolha, r.fallback_reason) == (escolha, motivo)
+    db.close()
 
 
 # ---------------------------------------------------------------- gasto antes do POST

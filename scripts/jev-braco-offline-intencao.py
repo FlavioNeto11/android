@@ -18,6 +18,12 @@ intenção JÁ mandou ao Jev (ADR-069 item 21), com a mesma amostra em inglês e
 - **`--seco` é o padrão:** passa cada pedido pela porta com um decisor que não toca rede e conta o que sairia. Enviar
   exige `--enviar --teto USD` (no máximo `TETO_MAX_USD`) e ao menos `MIN_COMANDOS_REAIS` casos enviáveis.
 - **O custo fica no JSON.** O banco abre só para leitura: as chamadas NÃO viram linha em `ai_calls` (ADR-051).
+- **`--r5` (31.13):** nos MESMOS casos `c`, os apps do comando (um `noul` por app do cadastro), também em inglês e em
+  português. O hash provado é o da intenção; o estado da R5 está contido nele, sem o `app` (opção A da orquestradora,
+  03/10). Rótulo: os `required_apps` do plano gravado, só em execução de sucesso comprovado (`sucesso_comprovado`, a regra
+  do 30.25); controle: a regex do caminho atual (`apps_citados`) sobre o comando original. Métrica pré-registrada
+  (`docs/design/jev-golden-set.md` §9): precisão do `sim` e cobertura das paráfrases que o controle perde; a
+  concordância não se aplica ao `noul` (abaixo do limiar é sem resposta, nunca `nao`).
 
 Cada linha da saída leva `run_id`, app, pergunta, idioma, salvaguarda, a escolha opaca, a maior probabilidade, o
 fallback, a decisão real e a escolha da sombra viva, o rótulo e a fonte. Nunca o comando nem o estado.
@@ -26,7 +32,7 @@ Uso, a partir da raiz do checkout (o `--enviar`, do checkout central, que tem a 
 
     backend/.venv/Scripts/python.exe scripts/jev-braco-offline-intencao.py [--db data/poc.sqlite3 | --dsn ...]
         [--desde 2026-10-03T15:29:51Z] [--commits-da-janela c8304e85,d5a1c3a9,1c54a7bb] [--config config/config.yaml]
-        [--json saida.json] [--md saida.md] [--enviar --teto 0.05]
+        [--json saida.json] [--md saida.md] [--r5] [--enviar --teto 0.05]
 """
 from __future__ import annotations
 
@@ -45,11 +51,12 @@ RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ / "backend"))
 
 from app.config import DecisaoFechadaCfg, load_config  # noqa: E402
+from app.planning.decisao_fechada.apps import NAO, SIM  # noqa: E402
 from app.planning.decisao_fechada.decisores import Decisor  # noqa: E402
 from app.planning.decisao_fechada.intencao import PERGUNTA_CATALOGO, id_opaco  # noqa: E402
 from app.planning.decisao_fechada.porta import TIMEOUT_SHADOW_S, Porta, RegistroDeDecisao  # noqa: E402
-from app.taskqueue.lote_intencao import (DESDE_ITEM_21, CasoDaIntencao, LeituraDoLote, LoteOffline,  # noqa: E402
-                                         SalvaguardaB, consumidor_do_lote, em_portugues, ler_lote)
+from app.taskqueue.lote_intencao import (DESDE_ITEM_21, ORIGENS_DO_PISO, CasoDaIntencao, LeituraDoLote,  # noqa: E402
+                                         LoteOffline, SalvaguardaB, consumidor_do_lote, em_portugues, ler_lote)
 
 _spec = importlib.util.spec_from_file_location("jev_braco_offline", RAIZ / "scripts" / "jev-braco-offline.py")
 braco = importlib.util.module_from_spec(_spec)
@@ -57,7 +64,9 @@ sys.modules[_spec.name] = braco
 _spec.loader.exec_module(braco)  # type: ignore[union-attr]
 rel = braco.rel
 
-#: O mínimo de comandos reais enviáveis para a rodada paga (orquestradora, 03/10): abaixo disto, só o seco.
+#: O mínimo de comandos reais enviáveis para a rodada paga (orquestradora, 03/10): abaixo disto, só o seco. Conta
+#: comandos DISTINTOS por `estado_hash`, das origens do piso (golden set §8, "Origem do caso", aprovado em 03/10): a
+#: validação repete o comando do dono, e repetir não prova o filtro de novo.
 MIN_COMANDOS_REAIS: Final = 10
 #: Só o caso `c` vai ao Jev (orquestradora, 03/10 19:33Z): toda linha que sai tem a igualdade do texto provada pelo
 #: hash. O `b` é calculado e relatado (quantas passariam), sem liberar envio.
@@ -79,6 +88,9 @@ ARQUIVOS_DO_FILTRO: Final = (
 #: A porta do lote: só a intenção, em sombra, só C3 (o item 21 do ADR-069). O YAML só estreita o código.
 CFG_DA_INTENCAO: Final = DecisaoFechadaCfg(enabled=True, consumidores={"intencao": "shadow"}, classes_permitidas=["C3"],
                                            decisor="jev")
+#: Com `--r5`: a mesma porta, com os apps do comando também em sombra e só C3.
+CFG_COM_A_R5: Final = DecisaoFechadaCfg(enabled=True, consumidores={"intencao": "shadow", "apps": "shadow"},
+                                        classes_permitidas=["C3"], decisor="jev")
 IDIOMAS: Final = ("en", "pt")
 AVISO: Final = "acompanhamento; nenhum número aqui vale para GO (rótulos = {n})"
 
@@ -98,6 +110,11 @@ def codigo_igual(raiz: Path, commits: Sequence[str]) -> tuple[bool, dict[str, st
 
 
 # ------------------------------------------------------------------ casos, rótulos e rodada
+def distintos_do_piso(casos: Sequence[CasoDaIntencao]) -> int:
+    """Os comandos distintos (por `estado_hash`) das origens que contam para o piso."""
+    return len({c.estado_hash for c in casos if c.origem in ORIGENS_DO_PISO})
+
+
 def _com_parametro(db: Any) -> set[str]:
     """Os fluxos com `{parâmetro}` (golden set §3: um acerto neles ainda pede o parâmetro), pelo id opaco da opção."""
     return {id_opaco(f"flow:{r['id']}") for r in db.query("SELECT id, command_template FROM flows")
@@ -117,31 +134,171 @@ def rotulos(db: Any, casos: Sequence[CasoDaIntencao]) -> dict[tuple[str, str], t
     return saida
 
 
-def rodar(casos: Sequence[CasoDaIntencao], decisor: Decisor
+def _envios(caso: CasoDaIntencao, idioma: str, r5: bool) -> list[tuple[str, Any, str]]:
+    """(chave, pedido, hash esperado) do caso num idioma: a intenção e, com `--r5`, os apps do comando."""
+    envios = [(idioma, caso.pedido if idioma == "en" else em_portugues(caso.pedido), caso.estado_hash)]
+    if r5 and caso.r5 is not None:
+        envios.append((f"r5:{idioma}", caso.r5.pedido if idioma == "en" else caso.r5.pt, caso.r5.estado_hash))
+    return envios
+
+
+def rodar(casos: Sequence[CasoDaIntencao], decisor: Decisor, *, r5: bool = False
           ) -> tuple[dict[tuple[str, str], RegistroDeDecisao | None], str | None]:
     """Caso a caso, inglês e depois português, pela porta em `shadow`, esperando cada sombra. Para no primeiro `orcamento`
-    (teto) e no primeiro hash registrado diferente do do caso (o texto que saiu não seria o da sombra)."""
+    (teto) e no primeiro hash registrado diferente do do caso (o texto que saiu não seria o da sombra). Com `r5`, cada
+    idioma leva a intenção e depois os apps do comando, cada um conferido pelo próprio hash."""
     registros: list[RegistroDeDecisao] = []
-    porta = Porta(decisor, cfg=CFG_DA_INTENCAO, observador=registros.append)
+    porta = Porta(decisor, cfg=CFG_COM_A_R5 if r5 else CFG_DA_INTENCAO, observador=registros.append)
     saida: dict[tuple[str, str], RegistroDeDecisao | None] = {}
     interrompido = None
     try:
         for caso in casos:
             for idioma in IDIOMAS:
-                antes = len(registros)
-                porta.consultar(caso.pedido if idioma == "en" else em_portugues(caso.pedido))
-                porta.aguardar_sombras(timeout_s=TIMEOUT_SHADOW_S + 5.0)
-                novo = registros[antes:]
-                saida[(caso.run_id, idioma)] = novo[0] if novo else None
-                if novo and novo[0].estado_hash != caso.estado_hash:
-                    interrompido = "hash_no_envio"
-                elif novo and novo[0].resultado.fallback_reason == "orcamento":
-                    interrompido = "teto"
-                if interrompido:
-                    return saida, interrompido
+                for chave, pedido, esperado in _envios(caso, idioma, r5):
+                    antes = len(registros)
+                    porta.consultar(pedido)
+                    porta.aguardar_sombras(timeout_s=TIMEOUT_SHADOW_S + 5.0)
+                    novo = registros[antes:]
+                    saida[(caso.run_id, chave)] = novo[0] if novo else None
+                    if novo and novo[0].estado_hash != esperado:
+                        interrompido = "hash_no_envio"
+                    elif novo and novo[0].resultado.fallback_reason == "orcamento":
+                        interrompido = "teto"
+                    if interrompido:
+                        return saida, interrompido
     finally:
         porta.encerrar()
     return saida, interrompido
+
+
+# ------------------------------------------------------------------ R5: rótulo e medidas
+def _apps_exigidos(db: Any, run_id: str) -> frozenset[str] | None:
+    """Os `required_apps` do plano gravado (os apps em que as etapas rodam, `parsing.apps_do_plano`); `None` sem plano
+    ou com a lista vazia (não se sabe: falha fechada, sem rótulo)."""
+    run = db.one("SELECT plan FROM runs WHERE id=?", (run_id,))
+    try:
+        plano = json.loads(run["plan"]) if run is not None and run["plan"] else None
+    except ValueError:
+        return None
+    exigidos = plano.get("required_apps") if isinstance(plano, dict) else None
+    if not isinstance(exigidos, list) or not exigidos:
+        return None
+    return frozenset(str(a) for a in exigidos if a)
+
+
+def rotulos_r5(db: Any, casos: Sequence[CasoDaIntencao]) -> dict[tuple[str, str], tuple[str | None, str | None]]:
+    """{(run_id, pergunta): (`sim` | `nao` | None, fonte)}: com sucesso comprovado (a regra do 30.25), `sim` para os apps
+    que o plano exigiu e `nao` para os demais; sem sucesso comprovado ou sem a lista, sem rótulo."""
+    fonte = rel.RotulosSql(db)
+    saida: dict[tuple[str, str], tuple[str | None, str | None]] = {}
+    for caso in casos:
+        if caso.r5 is None:
+            continue
+        fatos = fonte.fatos(caso.run_id)
+        exigidos = _apps_exigidos(db, caso.run_id) if fatos is not None and rel.sucesso_comprovado(fatos) else None
+        for pergunta, app_id in caso.r5.apps.items():
+            saida[(caso.run_id, pergunta)] = ((SIM if app_id in exigidos else NAO), "desfecho") if exigidos else (None, None)
+    return saida
+
+
+def _resposta_r5(registro: RegistroDeDecisao | None, pergunta: str) -> tuple[str | None, float | None, str | None]:
+    """(escolha, probabilidade do `sim`, fallback) de uma pergunta da R5."""
+    if registro is None:
+        return None, None, "sem_registro"
+    resposta = registro.resultado.respostas.get(pergunta)
+    motivo = registro.resultado.fallback_reason or (resposta.fallback_reason if resposta else "parse")
+    p = resposta.probabilidades.get(SIM) if resposta else None
+    return (resposta.escolha if resposta else None), p, motivo
+
+
+def _fracao(n: int, d: int) -> dict[str, Any]:
+    return {"n": n, "de": d, "taxa": rel._taxa(n, d)}
+
+
+def custo_r5(enviaveis: Sequence[CasoDaIntencao],
+             registros: Mapping[tuple[str, str], RegistroDeDecisao | None]) -> dict[str, Any]:
+    """O custo da R5 por comando (uma chamada por caso e idioma, com N perguntas, uma por app) e por app (a chamada
+    rateada pelas N perguntas: o Jev cobra a chamada, não a pergunta). Pedido da orquestradora (03/10): `MAX_APPS` é
+    revisável com este número."""
+    def bloco(chamadas: Sequence[tuple[int, float, int, float]]) -> dict[str, Any]:
+        perguntas = sum(n for n, _, _, _ in chamadas)
+        usd = sum(u for _, u, _, _ in chamadas)
+        tokens = sum(t for _, _, t, _ in chamadas)
+        return {
+            "comandos": len(chamadas), "perguntas": perguntas, "usd": round(usd, 6), "tokens": tokens,
+            "por_comando": {"usd": round(usd / len(chamadas), 7) if chamadas else None,
+                            "tokens": round(tokens / len(chamadas), 1) if chamadas else None,
+                            "perguntas": round(perguntas / len(chamadas), 2) if chamadas else None,
+                            "ms": rel._percentis([ms for _, _, _, ms in chamadas])},
+            "por_app": {"usd": round(usd / perguntas, 8) if perguntas else None,
+                        "tokens": round(tokens / perguntas, 1) if perguntas else None},
+        }
+
+    por_idioma: dict[str, list[tuple[int, float, int, float]]] = {i: [] for i in IDIOMAS}
+    for caso in enviaveis:
+        if caso.r5 is None:
+            continue
+        for idioma in IDIOMAS:
+            registro = registros.get((caso.run_id, f"r5:{idioma}"))
+            if registro is not None and registro.resultado.postado:
+                r = registro.resultado
+                por_idioma[idioma].append((len(caso.r5.apps), r.usd, r.tokens, r.ms))
+    return {"total": bloco([c for chamadas in por_idioma.values() for c in chamadas]),
+            "idiomas": {i: bloco(c) for i, c in por_idioma.items()},
+            "nota": "só chamadas com POST; por app = a chamada rateada pelas perguntas (INFERRED: o Jev cobra a chamada)"}
+
+
+def montar_r5(leitura: LeituraDoLote, enviaveis: Sequence[CasoDaIntencao],
+              registros: Mapping[tuple[str, str], RegistroDeDecisao | None],
+              rotulos_: Mapping[tuple[str, str], tuple[str | None, str | None]], *, pedidos_secos: int | None
+              ) -> dict[str, Any]:
+    """As medidas pré-registradas da R5 (golden set §9), por idioma: precisão do `sim` do Jev, cobertura das paráfrases
+    que o controle perde (rótulo `sim`, controle `nao`) e, para comparar, precisão e cobertura do controle."""
+    linhas: list[dict[str, Any]] = []
+    por_idioma: dict[str, list[dict[str, Any]]] = {i: [] for i in IDIOMAS}
+    for caso in enviaveis:
+        if caso.r5 is None:
+            continue
+        for pergunta, app_id in sorted(caso.r5.apps.items()):
+            rotulo, fonte = rotulos_.get((caso.run_id, pergunta), (None, None))
+            controle = SIM if app_id in caso.r5.citados else NAO
+            for idioma in IDIOMAS:
+                escolha, p, fallback = _resposta_r5(registros.get((caso.run_id, f"r5:{idioma}")), pergunta)
+                item = {"run_id": caso.run_id, "app": caso.app, "pergunta": pergunta, "app_da_pergunta": app_id,
+                        "idioma": idioma, "escolha": escolha, "p_sim": p, "fallback": fallback, "controle": controle,
+                        "rotulo": rotulo, "fonte": fonte}
+                linhas.append(item)
+                por_idioma[idioma].append(item)
+    medidas: dict[str, Any] = {}
+    for idioma, itens in por_idioma.items():
+        rotulados = [i for i in itens if i["rotulo"] is not None]
+        jev_sim = [i for i in rotulados if i["escolha"] == SIM]
+        controle_sim = [i for i in rotulados if i["controle"] == SIM]
+        exigidos = [i for i in rotulados if i["rotulo"] == SIM]
+        parafrases = [i for i in exigidos if i["controle"] == NAO]
+        medidas[idioma] = {
+            "perguntas": len(itens), "rotuladas": len(rotulados),
+            "respondidas": sum(1 for i in itens if i["escolha"] == SIM),
+            "fallbacks": dict(Counter(str(i["fallback"]) for i in itens if i["fallback"])),
+            "precisao_do_sim": _fracao(sum(1 for i in jev_sim if i["rotulo"] == SIM), len(jev_sim)),
+            "parafrases_pegas": _fracao(sum(1 for i in parafrases if i["escolha"] == SIM), len(parafrases)),
+            "cobertura_do_jev": _fracao(sum(1 for i in exigidos if i["escolha"] == SIM), len(exigidos)),
+            "controle": {"precisao": _fracao(sum(1 for i in controle_sim if i["rotulo"] == SIM), len(controle_sim)),
+                         "cobertura": _fracao(sum(1 for i in exigidos if i["controle"] == SIM), len(exigidos))},
+        }
+    pares = [(i["escolha"] or "sem_resposta", j["escolha"] or "sem_resposta")
+             for i, j in zip(por_idioma["en"], por_idioma["pt"], strict=True) if i["fallback"] != "sem_registro"
+             and j["fallback"] != "sem_registro"]
+    return {
+        "casos_com_r5": sum(1 for c in enviaveis if c.r5 is not None), "fora_r5": dict(leitura.fora_r5),
+        "pedidos_secos": pedidos_secos, "limiar": 0.85, "medidas": medidas, "custo": custo_r5(enviaveis, registros),
+        "en_x_pt": {"comparaveis": len(pares), "iguais": sum(1 for a, b in pares if a == b),
+                    "taxa": rel._taxa(sum(1 for a, b in pares if a == b), len(pares)),
+                    "nota": "sem resposta (abaixo do limiar) conta como valor: `sim` × sem resposta é diferença"},
+        "linhas": linhas,
+        "nota": ("concordância não se aplica ao noul (abaixo do limiar é sem resposta, nunca `nao`); "
+                 "acompanhamento, nunca GO"),
+    }
 
 
 # ------------------------------------------------------------------ relatório
@@ -169,7 +326,8 @@ def _iguais(pares: Sequence[tuple[Any, Any]]) -> dict[str, Any]:
 def montar(leitura: LeituraDoLote, enviaveis: Sequence[CasoDaIntencao],
            registros: Mapping[tuple[str, str], RegistroDeDecisao | None], rotulos_: Mapping[tuple[str, str], Any], *,
            agora: datetime, enviado: bool, interrompido: str | None, teto: Any, pedidos_secos: int | None,
-           com_parametro: set[str], salvaguarda_b: Mapping[str, Any]) -> dict[str, Any]:
+           com_parametro: set[str], salvaguarda_b: Mapping[str, Any], r5: Mapping[str, Any] | None = None
+           ) -> dict[str, Any]:
     por_idioma: dict[str, dict[str, list[dict[str, Any]]]] = {i: defaultdict(list) for i in IDIOMAS}
     linhas_saida: list[dict[str, Any]] = []
     en_pt: list[tuple[Any, Any]] = []
@@ -213,7 +371,10 @@ def montar(leitura: LeituraDoLote, enviaveis: Sequence[CasoDaIntencao],
         "aviso": AVISO.format(n=n_rotulos), "consumidor": "intencao", "classe": "C3", "enviado": enviado,
         "interrompido": interrompido,
         "casos": {"lidos": len(leitura.casos), "por_salvaguarda": dict(Counter(c.salvaguarda for c in leitura.casos)),
-                  "enviaveis": len(enviaveis), "fora": dict(leitura.fora)},
+                  "enviaveis": len(enviaveis), "fora": dict(leitura.fora),
+                  "por_origem": dict(Counter(c.origem for c in enviaveis)),
+                  "distintos": len({c.estado_hash for c in enviaveis}), "distintos_do_piso": distintos_do_piso(enviaveis),
+                  "piso": MIN_COMANDOS_REAIS},
         "salvaguarda_b": {**salvaguarda_b, "libera_envio": False, "ultima_remocao": leitura.ultima_remocao,
                           "horizonte_dos_eventos": leitura.horizonte_dos_eventos},
         "pedidos_secos": pedidos_secos,
@@ -225,7 +386,23 @@ def montar(leitura: LeituraDoLote, enviaveis: Sequence[CasoDaIntencao],
         "custo": custo, "linhas": linhas_saida,
         "nota": ("a R3 do lote é a RESOLVE de hoje sobre o catálogo de hoje (o empate não é gravado na sombra); "
                  "concordância com a sombra é acompanhamento, nunca GO"),
+        **({"r5": dict(r5)} if r5 is not None else {}),
     }
+
+
+def por_origem(enviaveis: Sequence[CasoDaIntencao], montar_sub: Any, montar_r5_sub: Any | None) -> dict[str, Any]:
+    """O mesmo relatório por origem do caso (`ORIGENS_DO_CASO`: pessoa, validação), ao lado do total: casos, comandos
+    distintos (por `estado_hash`: a validação repete o comando da execução de origem) e as medidas."""
+    saida: dict[str, Any] = {}
+    for origem in sorted({c.origem for c in enviaveis}):
+        sub = [c for c in enviaveis if c.origem == origem]
+        m = montar_sub(sub)
+        saida[origem] = {"casos": len(sub), "distintos": len({c.estado_hash for c in sub}), "idiomas": m["idiomas"],
+                         "en_x_pt": m["en_x_pt"], "lote_x_sombra": m["lote_x_sombra"]}
+        if montar_r5_sub is not None:
+            r5 = montar_r5_sub(sub)
+            saida[origem]["r5"] = {k: r5[k] for k in ("casos_com_r5", "medidas", "en_x_pt", "custo")}
+    return saida
 
 
 def em_markdown(r: Mapping[str, Any]) -> str:
@@ -234,6 +411,8 @@ def em_markdown(r: Mapping[str, Any]) -> str:
               f"- Enviado: {'sim' if r['enviado'] else 'não (--seco)'}; interrompido: {r['interrompido'] or 'não'}.",
               f"- Casos lidos {c['lidos']} {c['por_salvaguarda'] or ''}; enviáveis {c['enviaveis']} (só `c`, o hash);"
               f" fora {c['fora'] or '—'}.",
+              f"- Enviáveis por origem {c['por_origem'] or '—'}; comandos distintos {c['distintos']}"
+              f" ({c['distintos_do_piso']} no piso de {c['piso']}).",
               f"- Salvaguarda b: código igual {b['codigo_igual']} {b['commits'] or '(sem commits)'}; última remoção"
               f" {b['ultima_remocao'] or '—'}; eventos desde {b['horizonte_dos_eventos'] or '—'}; só relatada,"
               f" não libera envio.",
@@ -247,6 +426,22 @@ def em_markdown(r: Mapping[str, Any]) -> str:
                        f"- R2 {m['pedidos_r2']}, R3 {m['pedidos_r3']}, respondidos {m['respondidos']}, cobertura"
                        f" {m['cobertura']}; fallbacks {m['fallbacks'] or '—'}.",
                        f"- Rótulos {m['rotulos']} → {e['veredito']} ({'; '.join(e['falhou']) or 'todos os critérios'})."]
+    if "r5" in r:
+        r5 = r["r5"]
+        linhas += ["", "## R5 — apps do comando (31.13)", "",
+                   f"- Casos com R5 {r5['casos_com_r5']}; fora {r5['fora_r5'] or '—'}; limiar {r5['limiar']}.",
+                   f"- Inglês × português: {r5['en_x_pt']['iguais']} de {r5['en_x_pt']['comparaveis']}.",
+                   f"- Custo (com POST): {r5['custo']['total']['comandos']} comandos, {r5['custo']['total']['perguntas']}"
+                   f" perguntas, US$ {r5['custo']['total']['usd']}; por comando {r5['custo']['total']['por_comando']};"
+                   f" por app {r5['custo']['total']['por_app']}."]
+        for idioma, m in r5["medidas"].items():
+            linhas.append(f"- {idioma}: perguntas {m['perguntas']}, rotuladas {m['rotuladas']}, `sim` {m['respondidas']};"
+                          f" precisão do sim {m['precisao_do_sim']}; paráfrases pegas {m['parafrases_pegas']};"
+                          f" controle {m['controle']}.")
+    for origem, o in r.get("por_origem", {}).items():
+        linhas += ["", f"## Origem: {origem}", "",
+                   f"- Casos {o['casos']}, distintos {o['distintos']}; inglês × português {o['en_x_pt']['escolha']};"
+                   f" lote × sombra {o['lote_x_sombra']['escolha']}."]
     custo = r["custo"]
     linhas += ["", "## Custo", "", f"- {custo['nivel']}"
                + (f": US$ {custo['usd']} de {custo['teto_usd']}, {custo['chamadas']} chamadas ({custo['ok']} ok),"
@@ -269,6 +464,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     p.add_argument("--teto", type=float, help=f"teto da rodada em US$ (no máximo {braco.TETO_MAX_USD})")
     p.add_argument("--json", help="arquivo do JSON; padrão: a tela")
     p.add_argument("--md", help="arquivo do Markdown")
+    p.add_argument("--r5", action="store_true", help="os apps do comando (31.13) nos mesmos casos")
     args = p.parse_args(argv)
     try:
         desde = rel._ts(args.desde)                     # por instante, não por texto: "...51.000Z" é o mesmo que "...51Z"
@@ -289,20 +485,36 @@ def main(argv: Sequence[str] | None = None) -> int:
         lote = LoteOffline(db, skills_ligadas=arquivo.skills.enabled, fluxos_ligados=arquivo.ai.flows)
         seco = braco.DecisorSeco()
         leitura = ler_lote(lote, consumidor_do_lote(Porta(seco, cfg=CFG_DA_INTENCAO), db), desde=args.desde,
-                           salvaguarda_b=SalvaguardaB(codigo_igual=igual))
+                           salvaguarda_b=SalvaguardaB(codigo_igual=igual), r5=args.r5)
         enviaveis = [c for c in leitura.casos if c.salvaguarda == SALVAGUARDA_QUE_ENVIA]
         rotulos_ = rotulos(db, enviaveis)
+        rotulos_da_r5 = rotulos_r5(db, enviaveis) if args.r5 else {}
         com_parametro = _com_parametro(db)
     finally:
         db.close()
-    if teto is not None and len(enviaveis) < MIN_COMANDOS_REAIS:
-        raise SystemExit(f"{len(enviaveis)} casos enviáveis, menos que {MIN_COMANDOS_REAIS}: nada foi enviado")
+    if teto is not None and distintos_do_piso(enviaveis) < MIN_COMANDOS_REAIS:
+        raise SystemExit(f"{distintos_do_piso(enviaveis)} comandos distintos enviáveis ({len(enviaveis)} casos), menos que"
+                         f" {MIN_COMANDOS_REAIS}: nada foi enviado")
     decisor = braco.decisor_real(teto) if teto is not None else seco
-    registros, interrompido = rodar(enviaveis, decisor)
-    rel_ = montar(leitura, enviaveis, registros, rotulos_, agora=datetime.now(UTC), enviado=teto is not None,
-                  interrompido=interrompido, teto=teto, pedidos_secos=len(seco.pedidos) if teto is None else None,
-                  com_parametro=com_parametro,
-                  salvaguarda_b={"codigo_igual": igual, "commits": detalhe, "arquivos": list(ARQUIVOS_DO_FILTRO)})
+    registros, interrompido = rodar(enviaveis, decisor, r5=args.r5)
+    secos = (sum(1 for q in seco.pedidos if q.origem == "intencao"), sum(1 for q in seco.pedidos if q.origem == "apps"))
+    r5 = montar_r5(leitura, enviaveis, registros, rotulos_da_r5, pedidos_secos=secos[1] if teto is None else None
+                   ) if args.r5 else None
+    agora = datetime.now(UTC)
+    salvaguarda_b = {"codigo_igual": igual, "commits": detalhe, "arquivos": list(ARQUIVOS_DO_FILTRO)}
+
+    def montar_sub(sub: Sequence[CasoDaIntencao]) -> dict[str, Any]:
+        return montar(leitura, sub, registros, rotulos_, agora=agora, enviado=teto is not None,
+                      interrompido=interrompido, teto=None, pedidos_secos=None, com_parametro=com_parametro,
+                      salvaguarda_b=salvaguarda_b)
+
+    def montar_r5_sub(sub: Sequence[CasoDaIntencao]) -> dict[str, Any]:
+        return montar_r5(leitura, sub, registros, rotulos_da_r5, pedidos_secos=None)
+
+    rel_ = montar(leitura, enviaveis, registros, rotulos_, agora=agora, enviado=teto is not None,
+                  interrompido=interrompido, teto=teto, pedidos_secos=secos[0] if teto is None else None,
+                  com_parametro=com_parametro, salvaguarda_b=salvaguarda_b, r5=r5)
+    rel_["por_origem"] = por_origem(enviaveis, montar_sub, montar_r5_sub if args.r5 else None)
     texto = json.dumps(rel_, ensure_ascii=False, indent=1, default=str)
     if args.json:
         Path(args.json).write_text(texto, encoding="utf-8")
