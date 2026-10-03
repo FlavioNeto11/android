@@ -67,14 +67,14 @@ class RegistroDeValidacoesSql:
         return _pedido(r) if r is not None else None
 
     def comecar(self, pedido_id: str, run_id: str, aparelho: str, agora: datetime,
-                teto_usd: float | None = None) -> bool:
+                teto_usd: float | None = None, teto_da_prova: float | None = None) -> bool:
         """30.40: o pedido sem teto (o legado, de antes do 30.37) herda `teto_usd` no MESMO UPDATE que liga a execução:
         o roteador só acha o pedido pelo `run_id`, então não há janela em que a execução ligada fique sem teto. O teto
-        já gravado não muda."""
+        já gravado não muda. 30.41: `teto_da_prova` (o proporcional ao plano da prova de fluxo) VENCE o gravado."""
         cur = self._db.execute(
             "UPDATE learning_validations SET estado='rodando', run_id=?, aparelho=?, updated_at=?,"
-            " teto_usd=COALESCE(teto_usd, ?) WHERE id=? AND estado='pendente'",
-            (run_id, aparelho, to_iso(agora), teto_usd, pedido_id))
+            " teto_usd=COALESCE(?, teto_usd, ?) WHERE id=? AND estado='pendente'",
+            (run_id, aparelho, to_iso(agora), teto_da_prova, teto_usd, pedido_id))
         return (cur.rowcount or 0) == 1
 
     def recusar(self, pedido_id: str, motivo: Motivo, agora: datetime) -> bool:
@@ -299,6 +299,49 @@ class FontesDaValidacaoSql:
             return FlowStore(self._db).plano_em_prova(ref, comando) is not None
         except ValueError:                       # `pydantic.ValidationError` é `ValueError`
             return False
+
+    def etapas_da_execucao(self, item_ref: str, comando: str) -> int | None:
+        """30.41: as etapas que a validação rodaria (o port). O fluxo pelo próprio plano com o comando
+        (`FlowStore.plano_em_prova`); a receita pelo fluxo ATIVO do comando (`plano_ativo_para`, o `FlowStore.match`)."""
+        kind, _, ref = item_ref.partition(":")
+        try:
+            if kind == "fluxo":
+                plano = FlowStore(self._db).plano_em_prova(ref, comando)
+            elif kind == "receita" and self._plano_ativo_para is not None:
+                plano = self._plano_ativo_para(comando)
+            else:
+                return None
+        except ValueError:                       # plano ilegível: `pydantic.ValidationError` é `ValueError`
+            return None
+        if plano is None:
+            return None
+        # O id do fluxo vem do `planner.model` que `FlowStore._plano_com_valores` grava (`fluxo:<id>`, `fluxo-prova:<id>`).
+        fluxo_id = ref if kind == "fluxo" else plano.planner.model.partition(":")[2]
+        return self._etapas_do_plano(plano, fluxo_id)
+
+    def _etapas_do_plano(self, plano: Plan, fluxo_id: str) -> int | None:
+        """As etapas fixas mais as etapas-modelo do `for_each` vezes o tamanho da lista que a execução de ORIGEM do fluxo
+        coletou (`objectives.collected`, o maior entre os objetivos dela). É aproximado: a próxima lista pode ter outro
+        tamanho, e o roteador segue barrando a chamada além do teto. Lista que não se sabe: `None` (não despacha)."""
+        fixas = sum(1 for e in plano.steps if not e.for_each)
+        modelos: dict[str, int] = {}
+        for e in plano.steps:
+            if e.for_each:
+                modelos[e.for_each] = modelos.get(e.for_each, 0) + 1
+        if not modelos:
+            return fixas
+        tamanhos: dict[str, int] = {}
+        for r in self._db.query(
+                "SELECT o.collected FROM objectives o JOIN flows f ON f.source_run_id = o.run_id WHERE f.id=?"
+                " ORDER BY o.id", (fluxo_id,)):
+            coletado = linhas.json_legado(linhas.texto_ou_nulo(r, "collected"))
+            if isinstance(coletado, dict):
+                for chave, itens in coletado.items():
+                    if isinstance(itens, list):
+                        tamanhos[chave] = max(tamanhos.get(chave, 0), len(itens))
+        if any(chave not in tamanhos for chave in modelos):
+            return None
+        return fixas + sum(n * tamanhos[chave] for chave, n in modelos.items())
 
     def desfecho(self, run_id: str) -> tuple[str, float] | None:
         r = self._db.one("SELECT status FROM runs WHERE id=?", (run_id,))

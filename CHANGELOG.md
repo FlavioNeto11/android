@@ -89,6 +89,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Golden set: §8 (pré-registro do lote) e §2 (o `v2` medido antes e depois do 30.39; a regra da saúde).
 - Testes: `backend/tests/test_lote_intencao.py`, `scripts/tests/test_jev_braco_offline_intencao.py` e
   `scripts/tests/test_jev_braco_offline.py`.
+## 2026-10-03 — 30.41: o teto da prova proporcional ao plano (branch feat/30-41-teto-proporcional)
+
+- A prova de fluxo leva o teto `min(0,40; 0,05 + 0,02 × etapas)` no despacho, e ele vence o gravado. Com 18 etapas
+  ou mais, ou com `for_each` de tamanho desconhecido, o pedido fecha `recusada/plano_acima_do_teto` sem executar.
+  O mesmo vale para a receita cujo comando resolve num fluxo ativo grande; fora disso, a receita segue com o teto fixo.
+- O `for_each` conta pelo tamanho da lista que a origem do fluxo coletou. Medido no P4: o de 8 contatos (35 etapas)
+  fecha; antes, gastava 0,157 e enviava 3 mensagens sem evidência.
+- Sem migração. Adendo de contrato v1.09. Teste: `backend/tests/test_learning_prova_teto.py`.
+
 ## 2026-10-03 — 30.42: a prova de fluxo parte de um estado conhecido (branch feat/30-42-prova-estado-conhecido)
 
 - A execução de prova encerra todos os apps do plano e abre o principal antes da 1ª etapa (nunca `pm clear`), e não

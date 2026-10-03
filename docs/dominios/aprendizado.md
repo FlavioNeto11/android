@@ -1408,6 +1408,34 @@ nunca chama IA.
 próxima prova do P4 mostra a decisão "ponto de partida" na linha do tempo. Sem rodada paga extra: vem do despacho
 normal do P4.
 
+## O teto da prova proporcional ao plano (30.41)
+
+No P4 de 03/10, a prova do fluxo com `for_each` sobre 8 contatos gastou US$ 0,157 contra o teto fixo de 0,15. Ela
+enviou 3 mensagens e fechou `sem_evidencia`; inteira, custaria de 0,33 a 0,36. Decisão da orquestradora (03/10 21:44Z),
+sem migração:
+
+- **O teto da prova de fluxo** é `min(0,40; 0,05 + 0,02 × etapas)` (`domain/validacao.teto_da_prova`,
+  `TETO_DA_PROVA_*`). Ele vai ao pedido no despacho, no mesmo UPDATE que liga a execução (`comecar(...,
+  teto_da_prova=)`), e VENCE o teto gravado: o fixo de quando o pedido nasceu, ou o 0,15 gravado à mão em 03/10 20:56Z.
+- **O plano acima do máximo não despacha.** Com 18 etapas ou mais, ou de tamanho desconhecido, o pedido fecha
+  `recusada/plano_acima_do_teto` ao despachar. Não há execução, gasto nem envio pela metade.
+- **As etapas** (`FontesDaValidacao.etapas_da_execucao`) são as fixas mais as etapas-modelo do `for_each` vezes o tamanho
+  da lista que a execução de ORIGEM do fluxo coletou (`objectives.collected`, `flows.source_run_id`). O número é
+  aproximado: a próxima lista pode ter outro tamanho. O roteador segue barrando a chamada além do teto.
+  - Sem a lista da origem (execução purgada), o tamanho não se sabe, e o pedido não despacha (o lado seguro).
+  - O 8 contatos dá 3 + 4 × 8 = 35 etapas, teto 0,75: fecha. O QA-001 (6 etapas) leva 0,17, e o "bom dia" (11 etapas)
+    leva 0,27.
+- **A receita** segue com o teto fixo do 30.40: o legado sem teto herda o da config, e o teto gravado não muda.
+  - Ela fecha `plano_acima_do_teto` só quando o comando resolve num fluxo ATIVO acima do máximo (`plano_ativo_para`,
+    o `FlowStore.match`).
+  - Sem fluxo ativo, quem responde é o `sem_fluxo_ativo` ou o `sem_caminho`.
+- **O fôlego do despacho** (`pode_despachar`) segue com o custo estimado fixo (`custo_estimado_usd`, 0,07). O teto total
+  do P4 não muda.
+
+**Prova:** `simulated` em `backend/tests/test_learning_prova_teto.py` e `test_learning_prova_validacao.py`. `real`:
+`not_run` até o deploy que o levar. O esperado é que a próxima prova do P4 grave em `learning_validations.teto_usd` o
+proporcional ao plano dela.
+
 ## Pendências conhecidas
 
 Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.

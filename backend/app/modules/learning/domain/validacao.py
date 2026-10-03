@@ -44,6 +44,12 @@ MAXIMO_POR_HORA = 4
 #: 30.42: provas da MESMA versão do conteúdo do fluxo que o item aceita na janela; a 3ª fecha `limite_de_provas`.
 MAXIMO_DE_PROVAS = 2
 JANELA_DE_PROVAS_DIAS = 7
+#: 30.41 (orquestradora, 03/10): o teto de IA da prova de fluxo é proporcional ao plano, `min(0,40; 0,05 + 0,02 ×
+#: etapas)`; o plano cujo teto passaria do máximo não despacha. Medido no P4: o `for_each` de 8 contatos gastou US$ 0,157
+#: contra o teto fixo de 0,15 depois de 3 envios (inteiro custaria 0,33 a 0,36); as provas de 6 e 11 etapas, 0,07 a 0,12.
+TETO_DA_PROVA_PISO_USD = 0.05
+TETO_DA_PROVA_POR_ETAPA_USD = 0.02
+TETO_DA_PROVA_MAXIMO_USD = 0.40
 #: O pedido que não rodou em 72 h expira (o item muda, a volta seguinte pede de novo se ainda faltar).
 VALIDADE_DO_PEDIDO_H = 72
 
@@ -88,6 +94,9 @@ class Motivo(StrEnum):
     #: dias; ou a falta pede outro aparelho e nenhum aparelho que serve ficou fora dos já usados (origem e provas).
     LIMITE_DE_PROVAS = "limite_de_provas"
     SEM_APARELHO_NOVO = "sem_aparelho_novo"
+    #: 30.41: o plano que a execução rodaria (o do fluxo em prova, ou o fluxo ativo do comando da receita) passa do teto
+    #: máximo (`teto_da_prova`), ou o tamanho dele não se sabe. Fecha AO DESPACHAR: sem gasto e sem envio pela metade.
+    PLANO_ACIMA_DO_TETO = "plano_acima_do_teto"
     # ao despachar (o pedido fica `pendente` e tenta na volta seguinte)
     AMBIENTE_OCUPADO = "ambiente_ocupado"             # health com problema, execução em curso (restart/suíte/deploy)
     SEM_APARELHO = "sem_aparelho"                     # nenhum aparelho ocioso que sirva
@@ -312,6 +321,15 @@ def limite_de_provas_atingido(provas: Iterable[ProvaAnterior], marca_atual: str 
     return n >= MAXIMO_DE_PROVAS
 
 
+def teto_da_prova(etapas: int | None) -> float | None:
+    """30.41: o teto de IA de UMA execução de `etapas` etapas (`TETO_DA_PROVA_*`), ou `None` quando passa do máximo ou o
+    tamanho não se sabe (`etapas is None`: o lado seguro, não despacha)."""
+    if etapas is None or etapas < 0:
+        return None
+    teto = round(TETO_DA_PROVA_PISO_USD + TETO_DA_PROVA_POR_ETAPA_USD * etapas, 4)
+    return teto if teto <= TETO_DA_PROVA_MAXIMO_USD else None
+
+
 def motivo_da_prova_invalida(detalhe: str | None) -> Motivo:
     """O motivo do pedido cuja execução deixou a linha `invalida` (30.42): o dela (`domain/prova.py`); a linha cujo
     detalhe não se lê não prova nada nem aponta o porquê, e fecha `sem_evidencia` (o lado seguro)."""
@@ -320,6 +338,7 @@ def motivo_da_prova_invalida(detalhe: str | None) -> Motivo:
 
 
 __all__ = ["BETA_PADRAO", "FALTA_AUTOMATIZAVEL", "JANELA_DE_PROVAS_DIAS", "MAXIMO_DE_PROVAS", "MAXIMO_POR_HORA",
+           "TETO_DA_PROVA_MAXIMO_USD", "TETO_DA_PROVA_PISO_USD", "TETO_DA_PROVA_POR_ETAPA_USD", "teto_da_prova",
            "VALIDADE_DO_PEDIDO_H", "VIVOS", "Ambiente", "AparelhoCandidato", "EstadoDoPedido", "FatosDoParecer", "Folego",
            "Grupo", "Motivo", "Pedido", "ProvaAnterior", "conta_para_o_limite", "escolher_aparelho",
            "excluidos_da_validacao", "falta_automatizavel", "grupo_de", "limite_de_provas_atingido",
