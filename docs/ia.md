@@ -1575,8 +1575,9 @@ r-20261002221213-8d1c0a ficou em `waiting_user` das 22:13Z às 05:25Z, até o ca
   - 0 a mais por tentativa, porque os tempos vão no mesmo UPDATE;
   - 0 por anotação que não muda o motivo, incluindo as duas de cada chamada de IA;
   - até 2 escritas em `esperas` por troca de motivo.
-- **CPU**: cerca de 4,8 µs por decisão (`time.monotonic`, `now_iso`, um `PreparoDaDecisao`), ou 0,0002 % do p50 do
-  decide.
+- **CPU**: cerca de 4,8 µs por decisão, ou 0,0002 % do p50 do decide (2,2 s). A conta é 8 × `time.monotonic`
+  (0,04 µs) + 6 × `ms_desde` (0,12) + 1 `now_iso` (3,41) + 1 `PreparoDaDecisao` (0,36), medidos com `timeit`
+  (200.000 repetições) na máquina central. Cada anotação de espera custa mais 0,06 µs (`motivo_da_espera`).
 - Nenhuma chamada a mais ao aparelho nem à IA: árvore e imagem usam os números que `observe` já media para
   `observacao.ms`.
 
