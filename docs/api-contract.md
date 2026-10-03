@@ -4416,6 +4416,23 @@ Só campos novos, aditivos.
   - prova `simulated`: `tests/test_needs_input_da_habilidade.py` e
     `tests/test_fatia_abrir_conversa.py::test_filha_desabilitada_poe_a_composta_em_needs_input_sem_plano`.
 
+## Adendo v0.88 (03/10/2026; número da orquestradora; item 29.44) — `per_app` ganha `sem_trafego`
+
+Sem rota nova e sem migração.
+
+- `network_measurements.per_app` (e `last_measurement.per_app` em `GET /api/network/devices`) ganha o valor
+  `sem_trafego`: o app instalado com 0 byte na janela, na VPN e na física.
+  - `nao_medido` passa a querer dizer só "não instalado ou não lido"; antes juntava os dois casos.
+  - Quem lê com união fechada precisa do valor novo. As medições gravadas antes seguem com `nao_medido` para o app
+    parado.
+- `trafego_verificado` passa a valer com app `sem_trafego` quando outro app (a sonda do shell conta) está `ok` e
+  nenhum está `fora_da_rede`.
+  - O `detail` da linha traz a ressalva: "`<app>` sem tráfego na janela: não provado, não segura o estado".
+  - Nenhum app trafegou: segue `parcial`, com "nenhum app trafegou na janela" no `detail`.
+  - A porta da tarefa (`apps_sem_prova`) aceita o `sem_trafego` como medido.
+- A verificação que acharia o `parcial` sem prova do bloqueio não dispensa a medição quando o `parcial` veio só de
+  app parado: o app pode ter trafegado desde então.
+
 ## Adendo v0.89 (03/10/2026; número da orquestradora, `.claude/reservas.md`; item 30.8) — `GET /api/aprendizado/metricas` e `GET /api/aprendizado/revisoes`
 
 Duas rotas novas, só de leitura e sem efeito. O cálculo é feito na leitura, a partir das tabelas, sem contador novo em memória

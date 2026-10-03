@@ -19,6 +19,35 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 29.44: app sem tráfego na janela não segura o `parcial` (branch `feat/29-44-sem-trafego`)
+
+- **Antes.** `nao_medido` juntava o app não instalado e o instalado parado na janela, e cada app exigido tinha de
+  estar `ok`. No deploy 7, o 03 e o 06 ficaram em `parcial` só porque o Outlook estava parado.
+- **Agora** (decisão da orquestradora, 03/10):
+  - `per_app` ganha `sem_trafego` (`sonda_rede.Cobertura`).
+  - Com outro app `ok` (a sonda do shell conta) e nenhum `fora_da_rede`, o aparelho fica `trafego_verificado` com a
+    ressalva no `detail` ("… sem tráfego na janela: não provado, não segura o estado"). A porta da tarefa
+    (`apps_sem_prova`) o aceita.
+  - "Verificado" = tudo o que trafegou passou pelo túnel. Quando o app trafegar, a medição seguinte o reavalia.
+  - Seguem segurando: `nao_medido` (não instalado), `fora_da_rede` e nada ter trafegado.
+  - O `_verificar` não dispensa a medição quando o `parcial` veio só de app parado.
+  - O painel (Rede) mostra "sem tráfego na janela", com a explicação no título, e "não medido (não instalado ou não
+    lido)".
+- **Contrato**: adendo v0.88.
+- **Prova `simulated`**:
+  - `tests/test_rede_sem_trafego.py` (regra e contrato);
+  - `tests/test_rede_sonda.py`: o app parado não segura e o tráfego seguinte tira a ressalva; nada trafegou segura
+    e a tarefa abre o app; o `parcial` só de app parado não dispensa a medição (falha sem a mudança);
+  - `tests/test_rede_portao.py` reescrito para a regra nova;
+  - `RedePage.test.tsx`.
+- **`not_run`**: o 03 e o 06 saindo de `parcial` no real, depois do deploy.
+- **Junto (achado do Chrome no deploy 8, commit próprio).** Em Configuração › Aparelhos e contas, o android-06
+  aparecia "diverge · …sem IA (selector:id=action_bar_title|text=={username})" com o aparelho conectado.
+  - Causa: o executor gravava em `account_evidence` o texto da prova quando o rótulo aparecia na pós-condição, e a
+    prova pela árvore local é um seletor cru, sem o nome.
+  - Agora `evidencia_da_conta` grava a frase que nomeia a conta (a prova, se a nomeia; senão a pós-condição).
+  - O painel diz "conta diferente do rótulo" com o que fazer no título, e tira o seletor cru das evidências antigas.
+  - Prova `simulated`: `tests/test_evidencia_da_conta.py` (3) e `InstancesSection.test.tsx` (2).
 ## 2026-10-03 — 31.17: envio do Jev aberto no código para a sombra C0–C1 do 31.10; o aviso diz o decisor e só afirma envio de verdade (branch feat/31-17-sombra-curador)
 
 - `JEV_RUNTIME_SEND_APPROVED = True` (ADR-069 item 15). De fábrica nada sai: `enabled: false` e decisor `nulo`.

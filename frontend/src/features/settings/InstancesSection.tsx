@@ -54,9 +54,18 @@ function toPatch(inst: Instance, d: Draft, centralId: string | null = null): Ins
   return patch;
 }
 
+/** O que fazer quando a conta observada não é a do rótulo (validação do deploy 8: o selo dizia só "diverge"). */
+const DIVERGE_DICA = 'A última conta vista no aparelho não é a do rótulo. Se a conta do aparelho mudou, atualize o '
+  + 'rótulo; se não, confira a sessão no aparelho (Foco › Tela).';
+
+/** A evidência como frase: o seletor cru de uma prova antiga (`(selector:id=…)`) não é texto para a pessoa. */
+export function evidenciaLegivel(evidencia: string): string {
+  return evidencia.replace(/\s*\((?:selector|xpath|id):[^)]*\)/g, '').trim();
+}
+
 const OBSERVED_META: Record<'match' | 'diverge' | 'none', { icon: typeof Check; tone: 'success' | 'warning' | 'neutral'; label: string }> = {
   match: { icon: Check, tone: 'success', label: 'bate' },
-  diverge: { icon: TriangleAlert, tone: 'warning', label: 'diverge' },
+  diverge: { icon: TriangleAlert, tone: 'warning', label: 'conta diferente do rótulo' },
   none: { icon: Eye, tone: 'neutral', label: 'não observada' },
 };
 
@@ -283,11 +292,13 @@ export function InstancesSection() {
                       {/* Sem rótulo não há conta esperada: a observação (às vezes de outro app, de antes) não entra
                           na linha, senão parecia divergência (validação do deploy 4). */}
                       {inst.account_label ? (
-                        <div className={styles.instanceCardObserved} data-tone={om.tone} title={inst.account_evidence ?? undefined}>
+                        <div className={styles.instanceCardObserved} data-tone={om.tone}
+                             title={observed === 'diverge' ? DIVERGE_DICA
+                               : inst.account_evidence ? evidenciaLegivel(inst.account_evidence) : undefined}>
                           <om.icon size={12} aria-hidden />
                           <span className={styles.instanceCardObservedText}>
                             {om.label}
-                            {inst.account_evidence ? ` · ${inst.account_evidence}` : ''}
+                            {inst.account_evidence ? ` · ${evidenciaLegivel(inst.account_evidence)}` : ''}
                           </span>
                         </div>
                       ) : null}

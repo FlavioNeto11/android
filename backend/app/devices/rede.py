@@ -55,8 +55,13 @@ _APLICADOS: tuple[str, ...] = ("configurado", "conectado", "trafego_verificado",
 _MEDIDOS: tuple[str, ...] = ("trafego_verificado", "parcial")
 #: Resultado de uma medição por app (`network_measurements.per_app`): `ok` = o app saiu pela rede pedida;
 #: `fora_da_rede` = saiu por outro caminho (vazamento); `falhou` = não conectou; `nao_medido` = a sonda não conseguiu
-#: medir aquele app. Só `ok` conta para `trafego_verificado`: o navegador não prova os outros apps (ADR-056 §3).
-ResultadoPorApp = Literal["ok", "fora_da_rede", "falhou", "nao_medido"]
+#: medir aquele app (não instalado, não lido); `sem_trafego` = instalado e com 0 byte na janela, na VPN e na física
+#: (29.44): não prova nem desprova. Só `ok` prova; o navegador não prova os outros apps (ADR-056 §3).
+ResultadoPorApp = Literal["ok", "fora_da_rede", "falhou", "nao_medido", "sem_trafego"]
+#: 29.44: o app parado na janela não segura o `parcial` quando outro app (a sonda do shell conta) passou pelo túnel e
+#: nenhum saiu por fora. "Verificado" = tudo o que trafegou passou pelo túnel; quando o app parado trafegar numa janela
+#: seguinte, a medição o reavalia e o estado muda sozinho.
+SEM_TRAFEGO = "sem_trafego"
 #: Teto do JSON de `params`: é configuração (MTU, DNS, lista de apps), não arquivo.
 _PARAMS_MAX = 4000
 #: Teto do segredo: uma configuração do sing-box com certificado cabe com folga; mais que isso não é segredo.
@@ -552,7 +557,8 @@ def boot_depois_da_medicao(st: AppState, row: Row) -> bool:
 
 
 def apps_sem_prova(st: AppState, row: Row) -> list[str]:
-    """Apps exigidos HOJE (`apps_exigidos`) que a medição que verificou o aparelho não provou (`ok` no `per_app`).
+    """Apps exigidos HOJE (`apps_exigidos`) que a medição que verificou o aparelho não mediu (`ok`, ou `sem_trafego`,
+    que não segura desde o 29.44, no `per_app`).
     É o vínculo feito depois da verificação: uma conta nova no aparelho não desfaz o `trafego_verificado` (o estado
     é da medição), mas a porta da tarefa não o aceita para aquele app sem medir de novo (item 25.6).
 
@@ -566,7 +572,7 @@ def apps_sem_prova(st: AppState, row: Row) -> list[str]:
     m = st.db.one("SELECT per_app FROM network_measurements WHERE instance_id=? AND measured_at=?"
                   " ORDER BY id DESC LIMIT 1", (row["instance_id"], row["verified_at"])) if row["verified_at"] else None
     por_app = (loads(m["per_app"], {}) or {}) if m is not None else {}
-    return [app for app in exigidos if por_app.get(app) != "ok"]
+    return [app for app in exigidos if por_app.get(app) not in ("ok", SEM_TRAFEGO)]
 
 
 def verificacao_invalida(st: AppState, row: Row) -> str | None:
@@ -1347,7 +1353,8 @@ def adotar_prova_de_vazamento(st: AppState, instance_id: str, *, rev: int, clien
 
 def _falta_para_verificar(medicao: NetworkMeasurementInput, policy: str, exigidos: list[str], *,
                           provado: bool) -> list[str]:
-    """O que impede `trafego_verificado`. `exigidos` vem de `apps_exigidos`: cada um tem de estar medido e `ok`.
+    """O que impede `trafego_verificado`. `exigidos` vem de `apps_exigidos`: cada um tem de estar medido e `ok`, ou
+    `sem_trafego` quando outro app passou pelo túnel (29.44, `apps_sem_trafego`: a ressalva vai no `detail`).
     Sem app exigido (aparelho sem conta vinculada), vale o mínimo: pelo menos um app medido. `provado` = a prova de
     vazamento da LINHA vale para a revisão (`bloqueio_provado`): com bloqueio, é ela que decide — o `leak_blocked` da
     medição é o registro do que a sonda levou, não uma segunda fonte da verdade (uma medição não "declara" o bloqueio)."""
@@ -1359,12 +1366,39 @@ def _falta_para_verificar(medicao: NetworkMeasurementInput, policy: str, exigido
         falta.append("apps do aparelho não medidos: " + ", ".join(sem_medida))
     elif not medicao.per_app:
         falta.append("nenhum app medido (o navegador não prova os outros apps)")
-    ruins = sorted(f"{app}={r}" for app, r in medicao.per_app.items() if r != "ok")
+    ruins = sorted(f"{app}={r}" for app, r in medicao.per_app.items() if r not in ("ok", SEM_TRAFEGO))
     if ruins:
         falta.append("apps fora da rede pedida: " + ", ".join(ruins))
+    parados = apps_sem_trafego(medicao)
+    if parados and not any(r == "ok" for r in medicao.per_app.values()):
+        falta.append("nenhum app trafegou na janela (sem tráfego: " + ", ".join(parados) + ")")
     if policy == "exigida_com_bloqueio" and (not provado or medicao.leak_blocked is False):
         falta.append("o bloqueio fora da VPN não foi provado")
     return falta
+
+
+def apps_sem_trafego(medicao: NetworkMeasurementInput) -> list[str]:
+    """Os apps com `sem_trafego` na medição (29.44), na ordem do nome."""
+    return sorted(app for app, r in medicao.per_app.items() if r == SEM_TRAFEGO)
+
+
+def parcial_so_de_app_parado(st: AppState, instance_id: str) -> bool:
+    """29.44 (c1): o `parcial` da linha veio só de app parado na janela. A última medição tem IP de saída, todo app
+    exigido medido, algum `sem_trafego`, nenhum `ok` e nada fora da rede. Medir de novo pode mudar o estado (o app pode
+    ter trafegado desde então), então a verificação não dispensa a medição por falta da prova do bloqueio."""
+    m = st.db.one("SELECT egress_ipv4, egress_ipv6, per_app FROM network_measurements WHERE instance_id=?"
+                  " ORDER BY id DESC LIMIT 1", (instance_id,))
+    if m is None or not (m["egress_ipv4"] or m["egress_ipv6"]):
+        return False
+    per_app = loads(m["per_app"], {}) or {}
+    if not per_app or any(r != SEM_TRAFEGO for r in per_app.values()):
+        return False
+    return all(app in per_app for app in apps_exigidos(st, instance_id))
+
+
+def ressalva_sem_trafego(parados: list[str]) -> str:
+    """A ressalva do `trafego_verificado` com app parado: o que a pessoa lê no painel e na tarefa que espera."""
+    return ", ".join(parados) + " sem tráfego na janela: não provado, não segura o estado"
 
 
 def registrar_medicao(st: AppState, instance_id: str, medicao: NetworkMeasurementInput, *,
@@ -1374,7 +1408,8 @@ def registrar_medicao(st: AppState, instance_id: str, medicao: NetworkMeasuremen
     `trafego_verificado` só com tudo: a revisão pedida aplicada (`rev` = `desired_rev` = `applied_rev`), IP de saída
     PÚBLICO medido (o modelo recusa endereço de interface), cada app de `apps_exigidos` medido `ok` (ou, sem app
     exigido, ao menos um app, todos `ok`) e, na política com bloqueio, a prova de vazamento da linha valendo para a
-    revisão (`bloqueio_provado`, item 29.2). IP medido com algo
+    revisão (`bloqueio_provado`, item 29.2). O app `sem_trafego` não segura quando outro passou pelo túnel e nenhum
+    saiu por fora (29.44): o estado é `trafego_verificado` com a ressalva no `detail`. IP medido com algo
     faltando é `parcial`, com o que falta no `detail`. Sem IP medido, o estado não sai do lugar. `rev=None` = medição
     de base (sem rede aplicada): entra no histórico e não mexe em nada.
 
@@ -1466,6 +1501,8 @@ def _registrar_medicao(st: AppState, instance_id: str, medicao: NetworkMeasureme
                                          medicao.egress_ipv4, medicao.egress_ipv6)
         if not falta:
             estado, detalhe = "trafego_verificado", f"medição #{mid} ({medicao.method}): saída e apps provados"
+            if parados := apps_sem_trafego(medicao):
+                detalhe += f"; {ressalva_sem_trafego(parados)}"
         elif mediu_ip:
             estado, detalhe = "parcial", f"medição #{mid} ({medicao.method}): " + "; ".join(falta)
         else:
