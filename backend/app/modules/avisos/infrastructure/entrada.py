@@ -85,7 +85,7 @@ class PortasDaCentral(Protocol):
     def pendencias(self) -> list[Pendencia]: ...
     def aprovacoes_pendentes(self) -> list[str]: ...
     def execucoes_esperando(self) -> list[str]: ...
-    def decidir(self, approval_id: str, verbo: str) -> str: ...
+    def decidir(self, approval_id: str, verbo: str, nota: str | None = None) -> str: ...
     def responder(self, run_id: str, texto: str) -> tuple[str, str]: ...
     def previa(self, texto: str, instance_ids: list[str] | None = None) -> Previa: ...
     def criar(self, texto: str, alvos: list[dict[str, object]], chave: str) -> tuple[str, str]: ...
@@ -147,7 +147,7 @@ class ServicoDeEntrada:
     def __init__(self, cfg: Config, repo: MensagensDoTelegram, portas: PortasDaCentral, *,
                  lider: Callable[[str], int | None], recusa: Callable[[str], bool], redigir: Callable[[str], str],
                  canal: CanalTelegram | None = None, chat_id: str | None = None,
-                 dormir: Callable[[float], Awaitable[None]] | None = None):
+                 dormir: Callable[[float], Awaitable[None]] | None = None, operador: str = OPERADOR_DO_TELEGRAM):
         self.cfg = cfg
         self.repo = repo
         self.portas = portas
@@ -157,6 +157,8 @@ class ServicoDeEntrada:
         self._canal = canal
         self._chat_injetado = chat_id
         self._dormir = dormir or asyncio.sleep
+        #: Quem age, como VALOR (`telegram:dono` hoje; `trello:<id>` no 32.2): vai ao ContextVar da sessão.
+        self.operador = operador
         self._conflito_desde: float | None = None
         self._limitada_avisada = 0.0
 
@@ -255,7 +257,7 @@ class ServicoDeEntrada:
 
     # ------------------------------------------------------------------ tratar
     async def _tratar(self, canal: CanalTelegram, linha: Linha) -> None:
-        token = OPERADOR.set(OPERADOR_DO_TELEGRAM)
+        token = OPERADOR.set(self.operador)
         try:
             if linha["tipo"] == "botao":
                 await self._botao(canal, linha)
@@ -285,14 +287,15 @@ class ServicoDeEntrada:
         return int(str(linha["id"]))
 
     def _intencao(self, linha: Linha) -> Intencao:
+        texto = str(linha.get("texto") or "")
         responde_a = _int(linha.get("responde_a"))
         enviada = self.repo.enviada(responde_a) if responde_a is not None else None
-        # Reply a mensagem do bot que a Central não registrou é da orquestradora (decisão (e)); reply a uma mensagem
-        # da própria pessoa não é reply ao bot.
-        ao_bot = responde_a is not None and not self.repo.da_pessoa(responde_a)
+        # Regra do CANAL (decisão (e)): reply a uma mensagem do bot que a Central não mandou é da orquestradora; reply
+        # a uma mensagem da própria pessoa não é reply ao bot. A gramática comum só conhece o `/orq`.
+        if responde_a is not None and enviada is None and not self.repo.da_pessoa(responde_a) and texto.strip():
+            return Intencao("orquestradora", texto=texto.strip())
         fato = enviada.get("fato") if enviada is not None else None
-        return rotear(str(linha.get("texto") or ""), responde_ao_bot=ao_bot, registrada=enviada is not None,
-                      fato=str(fato) if fato else None)
+        return rotear(texto, fato=str(fato) if fato else None)
 
     async def _agir(self, canal: CanalTelegram, linha: Linha, i: Intencao) -> None:
         if i.tipo == "vazia":
@@ -350,7 +353,7 @@ class ServicoDeEntrada:
         if aid is None:
             await self._feita(canal, linha, i, erro)
             return
-        texto = self.portas.decidir(aid, "approve" if i.tipo == "aprovar" else "reject")
+        texto = self.portas.decidir(aid, "approve" if i.tipo == "aprovar" else "reject", i.texto or None)
         await self._feita(canal, linha, i, texto, alvo=f"approval:{aid}")
 
     async def _responder_pergunta(self, canal: CanalTelegram, linha: Linha, i: Intencao) -> None:

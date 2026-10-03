@@ -112,8 +112,8 @@ class PortasFalsas:
     def execucoes_esperando(self) -> list[str]:
         return ["r-20261002181523-4985a1"]
 
-    def decidir(self, approval_id: str, verbo: str) -> str:
-        self._anota("decidir", approval_id, verbo)
+    def decidir(self, approval_id: str, verbo: str, nota: str | None = None) -> str:
+        self._anota("decidir", approval_id, verbo) if nota is None else self._anota("decidir", approval_id, verbo, nota)
         return "Aprovado: a execução segue." if verbo == "approve" else "Vetado: nada é enviado."
 
     def responder(self, run_id: str, texto: str) -> tuple[str, str]:
@@ -366,3 +366,11 @@ async def test_pendencias_lista_o_fim_do_id(c: Cenario) -> None:
     await c.volta(msg(5, "/pendencias"))
     texto = c.bot.textos()[-1]
     assert "- 00aa11 (aprovar)" in texto and "- 4985a1 (responder)" in texto
+
+
+async def test_operador_e_valor_e_o_veto_leva_a_nota(c: Cenario) -> None:
+    # A identidade é um VALOR do serviço (o 32.2 põe `trello:<id>`), e o veto com nota chega ao serviço do painel.
+    c.servico.operador = "trello:abc123"
+    c.repo.registrar_enviada(556, "aviso", fato="approval:apr-0000aa11")
+    await c.volta(msg(5, "/vetar o tom ficou agressivo", reply_to=556))
+    assert c.portas.chamadas[-1] == ("decidir", ("apr-0000aa11", "reject", "o tom ficou agressivo"), "trello:abc123")

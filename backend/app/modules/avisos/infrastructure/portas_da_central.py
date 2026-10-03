@@ -110,6 +110,9 @@ class PortasReais:
                              app_id=str(a["app_id"]) if a.get("app_id") else None)
                    for a in alvos if a.get("profile_id")]
         aparelhos = [str(a["instance_id"]) for a in alvos if not a.get("profile_id") and a.get("instance_id")]
+        if not (targets or aparelhos):
+            # O `RunCreate` exige uma seleção; sem alvo confirmado, a prévia é que deveria ter perguntado.
+            raise RecusaDaCentral("Sem aparelho nem persona confirmados: mande o pedido de novo com o destino.")
         try:
             run = self.runs.create(RunCreate(command=texto, targets=targets, instance_ids=aparelhos,
                                              idempotency_key=chave, mode="execute"))
@@ -117,9 +120,9 @@ class PortasReais:
             raise RecusaDaCentral(exc.message) from None
         return run.id, run.short_id
 
-    def decidir(self, approval_id: str, verbo: str) -> str:
+    def decidir(self, approval_id: str, verbo: str, nota: str | None = None) -> str:
         try:
-            self.aprovacoes.decide(approval_id, verbo)
+            self.aprovacoes.decide(approval_id, verbo, note=(nota or None) and nota[:400])
         except SocialError as exc:
             raise RecusaDaCentral(exc.message) from None
         return "Aprovado: a execução segue." if verbo == "approve" else "Vetado: nada é enviado."

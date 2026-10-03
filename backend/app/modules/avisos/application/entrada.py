@@ -1,25 +1,28 @@
-"""O roteador da conversa do Telegram (item 28.15, ADR-071): texto → intenção, por regra fixa e sem IA.
+"""A gramática dos comandos que chegam por um canal de conversa (item 28.15, ADR-071): texto → intenção, por regra
+fixa e sem IA.
 
-O roteador não executa nada; ele só diz o que a mensagem pede. Quem age é o serviço de entrada, chamando os MESMOS
-serviços das rotas do painel. Por isso approval_required, a prévia de alvos, o pré-voo e os tetos valem iguais.
+É pura e comum aos canais: hoje o Telegram (28.15), depois o Trello (32.2). Nada de canal mora aqui. O adaptador de
+cada canal traduz o que chegou (update, comentário) em texto + o FATO a que ele se refere (o aviso respondido, o
+cartão comentado), e a resposta de volta. Quem decide se a mensagem é para a orquestradora pelo jeito do canal (o
+reply a uma mensagem que a Central não mandou) também é o canal; aqui só existe o `/orq`.
 
-O que a mensagem pode pedir:
-- `/ajuda` (e `/start`): a lista curta dos comandos;
-- `/status` e `/pendencias`: leitura;
-- `/aprovar <id>`, `/vetar <id>` e `/responder <id> <texto>`: o `<id>` é o id inteiro ou o fim dele, como a
-  `/pendencias` mostra;
-- `/para <aparelho|persona> <objetivo>`, ou "para o X: <objetivo>": um objetivo com destino;
-- texto livre: um objetivo. O destino vem do próprio texto, pelo extrator do painel ("no android-09", "como
-  @fulano"); sem destino, a Central pergunta;
+O roteador não executa nada; ele só diz o que a mensagem pede. Quem age é o serviço de entrada, pelos MESMOS
+serviços das rotas do painel.
+
+Sem fato (a mensagem solta):
+- `/ajuda` (e `/start`), `/status` (e `/estado`), `/pendencias`;
+- `/aprovar <id> [nota]`, `/vetar <id> [nota]`, `/responder <id> <texto>`. O `<id>` é o id inteiro ou o fim dele,
+  como a `/pendencias` mostra;
+- `/para <aparelho|persona> <objetivo>`, ou "para o X: <objetivo>";
+- texto livre: um objetivo, com o destino tirado do texto pelo extrator do painel;
 - `/orq <texto>`: recado para a orquestradora, guardado e não executado.
 
-Uma RESPOSTA (reply) muda a leitura:
-- reply a uma mensagem do bot que a Central não registrou: é da orquestradora (regra (e) do desenho);
-- reply a um aviso de aprovação: "sim" aprova e "não" veta;
-- reply a um aviso de `needs_input`: o texto é a resposta.
+Com fato (a resposta a um aviso, o comentário num cartão), o id é o do fato e não se escreve:
+- aprovação: "sim" ou `/aprovar [nota]` aprova; "não" ou `/vetar [nota]` veta;
+- execução que espera resposta: o texto, ou `/responder <texto>`, é a resposta.
 
-A triagem de credencial NÃO mora aqui: o domínio e a aplicação não enxergam `app.security`. O serviço a faz antes de
-gravar o texto.
+A triagem de credencial também não mora aqui: o domínio e a aplicação não enxergam `app.security`. O serviço a faz
+antes de gravar o texto.
 """
 from __future__ import annotations
 
@@ -35,11 +38,11 @@ AJUDA = (
     "Comandos da Central:\n"
     "/status: o parque e o que está rodando\n"
     "/pendencias: o que espera você (aprovações e perguntas)\n"
-    "/aprovar <id> e /vetar <id>: decide uma aprovação\n"
+    "/aprovar <id> e /vetar <id> [nota]: decide uma aprovação\n"
     "/responder <id> <texto>: responde à pergunta de uma execução\n"
     "/para <aparelho ou persona> <objetivo>: um pedido com destino\n"
     "Texto livre também é um pedido; antes de rodar, a Central mostra a prévia e espera Executar.\n"
-    "Responder a um aviso também vale: \"sim\" aprova, \"não\" veta, e o texto responde a uma pergunta.\n"
+    "Respondendo a um aviso, o id é o dele: \"sim\" aprova, \"não\" veta, e o texto responde a uma pergunta.\n"
     "Senha e código não passam por aqui: grave no painel.")
 
 _SIM = frozenset({"sim", "s", "aprovar", "aprova", "aprovo", "ok", "pode", "confirmo", "\U0001f44d"})
@@ -53,9 +56,9 @@ _PARA_LIVRE = re.compile(r"^\s*para\s+(?:o\s+|a\s+)?(?P<alvo>[^:\n]{1,60}?)\s*:\
 @dataclass(frozen=True, slots=True)
 class Intencao:
     tipo: str
-    #: O id (inteiro ou o fim dele) da aprovação ou da execução.
+    #: O id (inteiro ou o fim dele) da aprovação ou da execução. Com fato, o id do fato.
     ref: str | None = None
-    #: O objetivo, a resposta, o recado ou o texto livre.
+    #: O objetivo, a resposta, a nota do veto/aprovação, o recado ou o texto livre.
     texto: str = ""
     #: O destino do `/para`, como a pessoa escreveu.
     alvo: str | None = None
@@ -63,12 +66,37 @@ class Intencao:
     motivo: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class Fato:
+    """A que a mensagem se refere: `approval:<id>` ou `run:<id>:needs_input` (a chave do aviso, `avisos_entregas`)."""
+
+    tipo: str
+    ident: str
+    detalhe: str = ""
+
+    @classmethod
+    def de(cls, chave: str | None) -> Fato | None:
+        if not chave:
+            return None
+        tipo, _, resto = chave.partition(":")
+        ident, _, detalhe = resto.partition(":")
+        return cls(tipo, ident, detalhe) if tipo and ident else None
+
+    @property
+    def aprovacao(self) -> bool:
+        return self.tipo == "approval"
+
+    @property
+    def pergunta(self) -> bool:
+        return self.tipo == "run" and self.detalhe == "needs_input"
+
+
 def _sem_acento(s: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c)).lower()
 
 
 def _comando(texto: str) -> tuple[str, str]:
-    """`/cmd@NomeDoBot resto` → (`cmd`, `resto`). O `@NomeDoBot` é o que o Telegram põe nos grupos."""
+    """`/cmd@NomeDoBot resto` → (`cmd`, `resto`). O `@Nome` é o que o Telegram põe nos grupos."""
     cabeca, _, resto = texto.strip().partition(" ")
     return _sem_acento(cabeca[1:].split("@", 1)[0]), resto.strip()
 
@@ -77,21 +105,16 @@ def _palavra(texto: str) -> str:
     return _sem_acento(texto.strip().strip(".!").strip())
 
 
-def rotear(texto: str | None, *, responde_ao_bot: bool = False, registrada: bool = False,
-           fato: str | None = None) -> Intencao:
-    """A intenção de uma mensagem do chat configurado.
-
-    `responde_ao_bot`: a mensagem é reply a uma mensagem do bot. `registrada`: a Central enviou aquela mensagem
-    (está em `telegram_enviadas`). `fato`: a chave do fato do aviso respondido (`approval:<id>`, `run:<id>:...`)."""
+def rotear(texto: str | None, *, fato: str | Fato | None = None) -> Intencao:
+    """A intenção de uma mensagem do operador. `fato`: a chave do aviso respondido ou do cartão comentado."""
     t = (texto or "").strip()
     if not t:
         return Intencao("vazia")
-    if responde_ao_bot and not registrada:
-        return Intencao("orquestradora", texto=t)
+    f = fato if isinstance(fato, Fato) else Fato.de(fato)
     if t.startswith("/"):
-        return _rotear_comando(t)
-    if fato:
-        por_fato = _rotear_resposta(t, fato)
+        return _rotear_comando(t, f)
+    if f is not None:
+        por_fato = _rotear_resposta(t, f)
         if por_fato is not None:
             return por_fato
     m = _PARA_LIVRE.match(t)
@@ -100,22 +123,28 @@ def rotear(texto: str | None, *, responde_ao_bot: bool = False, registrada: bool
     return Intencao("livre", texto=t)
 
 
-def _rotear_comando(t: str) -> Intencao:
+def _rotear_comando(t: str, f: Fato | None) -> Intencao:
     cmd, resto = _comando(t)
     if cmd in ("ajuda", "start", "help"):
         return Intencao("ajuda")
-    if cmd == "status":
+    if cmd in ("status", "estado"):
         return Intencao("status")
     if cmd == "pendencias":
         return Intencao("pendencias")
     if cmd == "orq":
         return Intencao("orquestradora", texto=resto)
     if cmd in ("aprovar", "vetar"):
-        ref = resto.split()[0] if resto else ""
+        if f is not None and f.aprovacao:
+            return Intencao(cmd, ref=f.ident, texto=resto)
+        ref, _, nota = resto.partition(" ")
         if not ref:
             return Intencao("desconhecida", motivo=f"Falta o id: /{cmd} <id> (a /pendencias mostra os ids).")
-        return Intencao(cmd, ref=ref)
+        return Intencao(cmd, ref=ref, texto=nota.strip())
     if cmd == "responder":
+        if f is not None and f.pergunta:
+            if not resto:
+                return Intencao("desconhecida", motivo="Formato: /responder <texto>.")
+            return Intencao("responder", ref=f.ident, texto=resto)
         ref, _, resposta = resto.partition(" ")
         if not ref or not resposta.strip():
             return Intencao("desconhecida", motivo="Formato: /responder <id> <texto>.")
@@ -128,20 +157,16 @@ def _rotear_comando(t: str) -> Intencao:
     return Intencao("desconhecida", motivo=f"Não conheço /{cmd}.")
 
 
-def _rotear_resposta(t: str, fato: str) -> Intencao | None:
-    tipo, _, resto = fato.partition(":")
-    ident = resto.split(":", 1)[0]
-    if not ident:
-        return None
-    if tipo == "approval":
+def _rotear_resposta(t: str, f: Fato) -> Intencao | None:
+    if f.aprovacao:
         palavra = _palavra(t)
         if palavra in _SIM:
-            return Intencao("aprovar", ref=ident)
+            return Intencao("aprovar", ref=f.ident)
         if palavra in _NAO:
-            return Intencao("vetar", ref=ident)
+            return Intencao("vetar", ref=f.ident)
         return Intencao("desconhecida", motivo="Para decidir esta aprovação, responda \"sim\" ou \"não\".")
-    if tipo == "run" and resto.endswith(":needs_input"):
-        return Intencao("responder", ref=ident, texto=t)
+    if f.pergunta:
+        return Intencao("responder", ref=f.ident, texto=t)
     return None
 
 
