@@ -192,6 +192,46 @@ diária.
   sombra (`recipes_promote_after`); com `commit`, para em `validated`. `ai.recipes_heranca: false` só mede a causa, e
   com `recipes_promote_after: 0` não há herança (a aprendida já nasce ativa). Quando a herdeira vira `active`, a legada
   ativa da mesma etapa e versão sai (`superseded`, "provou-se na chave completa").
+- **A chave genérica da receita (RA-20 fatia B, 03/10; desenho aprovado pela Android).**
+  - O problema: o planejador reescreve a pós-condição julgada pelo modelo a cada plano ("conversa com @x aberta",
+    "perfil de @x aberto"), e cada redação era uma chave. Medido no central: 15 receitas ativas em 5 caminhos iguais.
+  - `hash_generico` (`taskqueue/recipes.py`) é a identidade da etapa SEM o texto da pós-condição. Só vale para a etapa
+    `model_judged`, sem efeito e sem `commit_guard`; um campo ausente devolve None (a receita fica na específica).
+  - Uma função só, chamada:
+    - pelo executor, pela linha de `steps`, porque o DTO não traz o `template_key` da cópia do for_each;
+    - pelo save;
+    - pelos consumidores (`social/capacidades.py`, `taskqueue/aproveitamento.py` e o `_caminho_ja_aberto` do scheduler);
+    - pelo backfill.
+  - `contexto_sql`/`diagnostico` não mudam: a busca aproximada é só da tentativa antiga sem `recipe_id`, anterior a
+    qualquer receita genérica.
+  - `eh_generica` decide no save onde a receita mora. É específica quando um literal do que ela procura ou digita
+    (`text`/`desc` dos seletores, argumentos de texto; o `{nome}` é o valor da vez e não conta) aparece, como palavra
+    normalizada (caixa, acento, @), na pós-condição escrita, ou quando o valor de um parâmetro da execução aparece num
+    literal.
+    - Os casos reais: o toque em "nasa" do `open_profile` (receitas 25 e 73) é específico; "Message", "Options" e
+      "Send message" (`open_thread`, 38/40/43/45) são genéricos.
+    - Na dúvida, específica: o rótulo do campo citado na pós-condição ("Nome", "Perfil") deixa 56, 57, 59 e 104
+      específicas, e isso só adia o ganho.
+  - `RecipeStore.find(..., step_hash_generico=)` consulta as duas chaves na MESMA chamada: ativa específica, ativa
+    genérica, candidata específica, candidata genérica.
+    - A quarentena vale em qualquer das duas.
+    - A herança tenta a específica e depois a genérica, e a causa do ausente é medida uma vez.
+    - A tentativa achada pela genérica conta em `receita.consulta{resultado, chave=generica}`; a específica fica na
+      série de antes.
+    - Na trilha: "reproduzida pela chave genérica".
+  - Troca entre chaves: a candidata ESPECÍFICA que divergiu sai (`superseded`) quando o caminho da IA vai para a
+    genérica, mesmo que a genérica já tenha a sua em prova.
+    - A genérica que divergiu num valor e um caminho específico ficam lado a lado: ela segue em prova para os outros
+      valores.
+    - O treino (`training/skills.py`) fica específico.
+  - Backfill NÃO destrutivo (`scripts/ra20b-receitas-genericas.py`, `taskqueue/receitas_genericas.py`; ensaio por
+    padrão, `--aplicar` com backup e o OK da Android e da orquestradora).
+    - As receitas atuais ficam onde estão.
+    - Por chave genérica entra UMA cópia candidata da ativa elegível com mais evidência, que se prova em sombra.
+    - Fica de fora `open_app`: desde o 29.45 a etapa de app em frente não gera comparação de sombra.
+    - Uma específica mal classificada custa só uma divergência em sombra.
+    - Ensaio na cópia do central (03/10): 80 ativas, 17 genéricas em 10 chaves, 10 candidatas semeadas, 5
+      específicas e nenhuma ativa tocada.
 - **Habilidade.** O primeiro escritor real de `skill_validation_results`: cada execução de versão grava a observação
   (`proof=real` só de execução real). Execução com etapa confirmada à mão vira `uncertain`, nunca `passed`. O sistema
   pode validar; publicar é sempre de pessoa.

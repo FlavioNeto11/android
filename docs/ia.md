@@ -197,6 +197,9 @@ Ver [docs/produto.md §2](produto.md) para os conceitos. Mecanismo de custo, res
   concordar `recipes_promote_after` vezes; com `commit`, para em `validated`. Assinatura diferente nunca doa; com
   `recipes_promote_after: 0` não herda. A herdeira que passa a agir aposenta a legada ativa da mesma etapa e versão. A
   causa de cada "ausente" é medida em `receita.ausente{causa}` ([dominios/aprendizado.md](dominios/aprendizado.md)).
+- **Chave genérica da receita** (RA-20 fatia B): na etapa julgada pelo modelo, sem efeito, a receita cujo caminho não
+  traz o valor da etapa (tocar em "Message") vale para qualquer redação da pós-condição e qualquer valor. A específica
+  (o toque em "nasa") continua na chave com o texto e vence a genérica na consulta.
 - **Fluxos** (`ai.flows: true`): execução 100% comprovada vira plano congelado; comando repetido com outros
   parâmetros pula o planejador. Desde 29/09 o fluxo aprendido nasce `candidate`, inerte: o comando seguinte ainda chama
   o planejador, e o plano dele é comparado ao do candidato. Com `aprendizado.fluxo.concordancias` (1) concordância real

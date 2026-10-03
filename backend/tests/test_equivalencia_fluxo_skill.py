@@ -4,7 +4,7 @@ O mesmo comando, no mesmo Instagram falso, pelo fluxo legado (`flow:<id>@1`) e p
 descompilada, publicada — o caminho novo inteiro: descompilador → compilador → `Plan` → `materialize`), dá:
 
 - o MESMO plano: mesmas chaves, capabilities, pós-condições, argumentos e parâmetros;
-- as MESMAS receitas: mesmo `step_key` e mesmo `step_hash` (a identidade de `recipes.step_template_hash`);
+- as MESMAS receitas: mesmo `step_key` e mesmo `step_hash` (a identidade de `recipes.step_template_hash`, ou a genérica do RA-20 B);
 - a MESMA conta de IA no provedor (`plan`, `decide`, `verify`), e, na 2ª execução, receita sem decisão de IA nos dois.
 
 As duas pontas são conferidas contra os MESMOS valores literais — o que o plano congelado do fluxo diz, e a conta
@@ -32,7 +32,7 @@ from app.modules.skills.infrastructure.decompiler import PlanDecompiler
 from app.modules.skills.infrastructure.flow_conversion import FlowConverter
 from app.social.capacidades import capacidades_do_perfil
 from app.state import AppState
-from app.taskqueue.recipes import para_hash, step_template_hash
+from app.taskqueue.recipes import hash_generico_da_etapa, para_hash, step_template_hash
 
 from .conftest import CountingProvider, Harness
 from .fake_instagram import PKG, AtorDoInstagram, FakeInstagram
@@ -149,7 +149,9 @@ async def test_mesmo_plano_mesmas_receitas_e_mesma_conta_de_ia(parque: Harness, 
     assert [(e["key"], e["template_hash"]) for e in etapas] == identidade
     receitas = {(r["step_key"], r["step_hash"]) for r in s.db.query(
         "SELECT step_key, step_hash FROM recipes WHERE app_package=? AND status='active'", (PKG,))}
-    assert receitas == set(identidade)
+    # RA-20 B: a etapa julgada pelo modelo, sem efeito, cujo caminho não traz o valor (tocar em "Message", abrir a
+    # caixa de entrada) grava a receita na chave genérica — a mesma nos dois caminhos.
+    assert receitas == {(p.key, hash_generico_da_etapa(p) or h) for p, (_, h) in zip(esperado.steps, identidade)}
 
     # a trilha de cada caminho
     if caminho == "legado":
