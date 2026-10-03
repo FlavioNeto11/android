@@ -183,10 +183,12 @@ def conferir_corpo(corpo: bytes, dossie: Mapping[str, object], *, dossie_hash: s
     for nome, padrao in (("data_iso", _DATA_ISO), ("uuid", _UUID), ("hex_longo", _HEX_LONGO)):
         if padrao.search(texto):
             violacoes.append(f"{nome}_no_corpo")
-    # Uma folha igual a um rótulo do `state` (ex.: "published" no conteúdo e no estado do item) sai pelo campo nomeado, não
-    # como vazamento do conteúdo.
+    # Texto do dossiê só pode chegar pelo `state` (as perguntas são texto fixo do código): a busca é nele, para uma folha
+    # que por acaso seja trecho da instrução não acusar. Uma folha igual a um rótulo do `state` (ex.: "published" no
+    # conteúdo e no estado do item) sai pelo campo nomeado, não como vazamento do conteúdo.
     rotulos = set(estado.values()) if isinstance(estado, dict) else set()
-    if any(len(f) >= TEXTO_MIN and f not in rotulos and f in texto for f in _folhas(dossie)):
+    texto_do_estado = json.dumps(estado, ensure_ascii=False)
+    if any(len(f) >= TEXTO_MIN and f not in rotulos and f in texto_do_estado for f in _folhas(dossie)):
         violacoes.append("texto_do_dossie_no_corpo")
     return violacoes
 
