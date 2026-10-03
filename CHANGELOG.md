@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Prova real do 31.17: o script que confere a sombra C0–C1 do curador no central (branch feat/31-17-prova-real)
+
+- `scripts/jev-prova-31-17.py`, só leitura (`mode=ro` mais `query_only`), sem IA, desde o T_on do deploy 9:
+  - as linhas da sombra só do curador, em `shadow`, nas classes C0/C1, com o que guardam em formato opaco;
+  - o corpo de cada chamada remontado do dossiê guardado, quando o `content_hash` bate com o `ref`, sem texto, id nem
+    hash do dossiê;
+  - US$, tokens e latência das linhas do Jev em `ai_calls`, cruzadas com a sombra.
+- `docs/design/jev-golden-set.md` §6.
+- Prova `simulated`: `scripts/tests/test_jev_prova_31_17.py` (8 testes). No central: `not_run` até a ordem da orquestradora.
 ## 2026-10-03 — 31.16: telas do RA-10 no Custo de IA e o adendo v0.90 (branch feat/31-16-telas-ra10)
 
 - Diagnóstico › Custo de IA, sem API nova (lê o adendo v0.75):
