@@ -5866,6 +5866,78 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T07:32:33+00:00"
+  },
+  "30.24": {
+   "id": "30.24",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #132 (feat/30-24-confirmar-que-fica @ 4b58f547) na main pelo merge 6d454107 (regra de módulo), também na suíte 7 (123650cc). \"Confirmar que fica\" published→published por pessoa, com trilha \"confirmado que fica[: motivo]\"; \"Revisar\" pela última decisão de pessoa; a confirmação cai com evidência real against/conflict posterior; A6 (aceitar o parecer \"manter\" confirma, pelo transicao_id); POST /api/aprendizado/{kind}/{ref}/confirmar. simulated: bateria de 94 arquivos, 1748 passed; 115 testes de painel do aprendizado e typecheck; docs-check 0/0. Ensaio no navegador numa cópia do banco (porta 8766, simulado): com e sem motivo, lote, trilha, evidência contrária que devolve o item, 409, 375 px. Real: not_run.",
+   "grupo": "aprendizado-suite-7",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T07:34:22+00:00"
+  },
+  "30.25": {
+   "id": "30.25",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #130 (feat/30-25-rotulo-de-intencao @ f6b8b702, com o 31.9 @ 963f9d7b) na main pelo merge dd4e6df2 da suíte 7 (123650cc). Rótulo de intenção do golden set do 31.10 na execução real sem casamento na RESOLVE e com sucesso comprovado; lê dados_da_intencao e o catálogo da cadeia do 31.9; adendo v0.76. simulated: bateria de 21 arquivos, 798 passed (antes, 108 arquivos: 2263 passed, 3 skipped); painel percorrido no navegador numa cópia do banco (responder, nenhum, filtro, Pular, 409, 422, erro+retry, vazio, Sinais, 375 px). Real: not_run.",
+   "grupo": "aprendizado-suite-7",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T07:34:22+00:00"
+  },
+  "30.26": {
+   "id": "30.26",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #135 (feat/ra-22-error-kind-em-attempts @ 44f628f4, RA-22) na main pelo merge 59309594 da suíte 7 (123650cc). attempts.error_kind (migração 081), StepOutcome.ai_error_kind do executor ao fim da tentativa. simulated: bateria de 145 arquivos, 2688 passed; revisão da Android. Real: not_run (a migração 081 chega ao central com o deploy 7).",
+   "grupo": "aprendizado-suite-7",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T07:34:22+00:00"
+  },
+  "29.40": {
+   "id": "29.40",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "Fatia A: PR #131 (feat/ra-20-causa-do-ausente @ ffb2d2f0) na main pelo merge 752dca53 da suíte 7 (123650cc). Causa do ausente medida; herança da receita como candidata (RecipeStore(herdar=), só com recipes_heranca e promote_after > 0); _aposentar_legadas (a herdeira ativa marca superseded a legada da mesma etapa e versão); adendo v0.77. simulated: bateria de 95 arquivos, 1768 passed; depois da main, os 8 afetados: 118 passed. Fatia B pendente: hash sem post.value e backfill em Python. Real: not_run.",
+   "grupo": "aprendizado-suite-7",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T07:34:22+00:00"
+  },
+  "30.27": {
+   "id": "30.27",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "RA-24: PR #138 (feat/ra-24-versao-e-prova-do-conhecimento @ a8b5fe9d) na main pelo merge 6ad6c5f3 da suíte 7 (123650cc). VERSOES_DE_TELAS e VERSOES_DE_SESSAO conferidas (booleano recusado); integrations/app_declarado/prova.py e GET /api/apps/{pacote}/conhecimento (sha256, git_blob do texto lido CRLF→LF, fim de linha, modificado_em, mudou_depois_do_inicio); adendo v0.82. simulated: tests/test_prova_do_conhecimento.py (21, inclui a igualdade com git hash-object); bateria de 123 arquivos, 2461 passed; catraca de test_arquitetura sem crescimento. Real: not_run (a rota chega ao central com o deploy 7).",
+   "grupo": "aprendizado-suite-7",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T07:34:22+00:00"
+  },
+  "30.28": {
+   "id": "30.28",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "RA-19. Fatia A: PR #139 (feat/ra-19-visao-do-livro @ 725aeaf2) na main pelo merge b1e0be7d da suíte 7 (123650cc): o livro por rótulo Produto/QA/Todos (apps.category='qa'), Produto por padrão, com os ocultos; adendo v0.83; tests/test_learning_rotulo_do_livro.py (8), 119 testes de painel; ensaio no navegador numa cópia do banco (simulado): 70 de 164 por padrão (94 do QA ocultos), QA 94, Todos 164, app de QA → Todos, 375 px. Fatia B: PR #141 (feat/ra-19-origem-simulada @ b680bb10) na suíte 8: a origem simulada nunca nasce ativa nem promove pela sombra (aprendizado.simulada_publica só na suíte); tests/test_origem_simulada.py (6, o join = 0); bateria de 32 arquivos, 657 passed; ensaio sobre a suíte 7: 515 passed. Fica partial até o #141 entrar. Real: not_run.",
+   "grupo": "aprendizado-suite-7",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T07:34:22+00:00"
   }
  },
  "rodadas": [
@@ -7131,6 +7203,20 @@
    ],
    "grupos": [
     "jev-ids-suite-7"
+   ]
+  },
+  {
+   "quando": "2026-10-03T07:34:22+00:00",
+   "itens": [
+    "30.24",
+    "30.25",
+    "30.26",
+    "29.40",
+    "30.27",
+    "30.28"
+   ],
+   "grupos": [
+    "aprendizado-suite-7"
    ]
   }
  ]
