@@ -156,8 +156,9 @@ class FontesDaValidacaoSql:
             return None
         precos = self._precos()
         usd = 0.0
+        # A regra do `/api/usage` (`costs.spent_usd`): declarado onde há, tokens × preço onde não, simulado fora.
         for c in self._db.query("SELECT model, input_tokens, cache_read, cache_write, output_tokens, usd FROM ai_calls"
-                                " WHERE run_id=?", (run_id,)):
+                                " WHERE run_id=? AND COALESCE(provider,'') <> 'simulated'", (run_id,)):
             usd += linhas.real(c, "usd") if c["usd"] is not None else costs.usd(
                 precos, linhas.texto(c, "model"),
                 [linhas.real(c, k) for k in ("input_tokens", "cache_read", "cache_write", "output_tokens")])
