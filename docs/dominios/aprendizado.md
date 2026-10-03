@@ -1346,7 +1346,9 @@ migração. Adendo de contrato v1.07.
 
 **O veredito** (`domain/prova.veredito_da_prova`, a regra única; quem lê o banco é `LeituraSql._prova`), nesta ordem:
 1. efeito que saiu mais de uma vez → `invalida`, motivo `efeito_repetido` (vale mesmo com a execução completa);
-2. alguma etapa de plano acima da v1 → sem evidência;
+2. alguma etapa de plano acima da v1 → sem evidência. A versão que só expande o `for_each` (`plan_versions.reason`
+   começando por `PREFIXO_DA_EXPANSAO`, "Expandido para ") não é replanejamento: as cópias por item SÃO o plano do
+   fluxo, a etapa que a expansão pulou fica fora, e a ordem é (versão, seq), porque a seq recomeça em cada versão;
 3. etapa reprovada com `error_kind` (infra) ou sem tentativa → sem evidência;
 4. a etapa reprovada é a de abertura → `invalida`, `ponto_de_partida`;
 5. a última tentativa da etapa reprovada não agiu (só leitura, `step_done` ou `step_blocked`) → `invalida`,
