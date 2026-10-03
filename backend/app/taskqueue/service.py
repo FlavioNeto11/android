@@ -30,7 +30,7 @@ from ..planning.apps_do_comando import apps_citados, pede_site
 from ..planning.capabilities import CapabilityCatalog, load_catalog
 from ..planning.catalog import capabilities_of, session_provider_of
 from ..planning.parsing import apps_do_plano
-from ..planning.provider import AIError, AIProvider, AppContext, PlanRequest
+from ..planning.provider import AIError, AIProvider, AppContext, MarcaDaChamada, PlanRequest
 from ..security.redaction import redact
 from ..shared.resources import Target
 from ..util import now_iso
@@ -973,7 +973,7 @@ class RunService:
                         catalogs=catalogos,
                         available_data=list(common_data(self.dados, [i["profile_id"] for i in instances])),
                         lessons=list(licoes))),
-                    role="plan")
+                    role="plan", marca=MarcaDaChamada(motivo="plano"))
                 # R6: todo plano do planejador declara os apps em que roda — os parsers já preenchem; isto cobre o
                 # provedor que não preenche (um dublê, um provedor novo). Plano de skill traz os dele do compilador.
                 if not plan.required_apps:
