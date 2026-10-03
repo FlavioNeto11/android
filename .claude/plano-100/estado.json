@@ -6335,6 +6335,18 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T16:59:17+00:00"
+  },
+  "30.36": {
+   "id": "30.36",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "PR #163 (feat/30-36-forma @ 2a16417a; código 32d69b00, docs 2a16417a; base d5a1c3a9, a main da suíte 12), para a suíte 13. Comparador da sombra com caminho × forma (Posicao.FORMA, que não conta), contra efetivo num ponto só (promocao.efetivas/contrarias, linhas.contra_efetivo), passo forma_dos_fluxos (reclassificação idempotente), motivos evidencia_contra/divergencia_de_forma/sem_caminho no pedido do 30.31 com remotivação do sem_evidencia, caminho_da_receita pelo plano do fluxo ativo, notas do dossiê só quando valem, painel com a forma à parte; emenda à D1 do ADR-054; adendo v0.96; sem migração. simulated: tests/test_learning_forma.py (20); bateria dos afetados depois do rebase 146 arquivos 2449 passed 0 failed; vitest do aprendizado 151 passed; typecheck ok; docs-check 0/0. Cópia do banco do central (17:04Z, depois do deploy 12): 1 linha forma, 2 remotivados, 5 pendentes sem_caminho (19→14), 6 revisões novas do curador ~US$ 0,06. Falta: o merge na suíte 13, a PG (55433 desligada; SQL NOT EXISTS puro) e o real (a reclassificação no central depois do deploy 13).",
+   "grupo": "aprendizado-pr163",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-03T17:11:59+00:00"
   }
  },
  "rodadas": [
@@ -7826,6 +7838,15 @@
    ],
    "grupos": [
     "aprendizado-suite12"
+   ]
+  },
+  {
+   "quando": "2026-10-03T17:11:59+00:00",
+   "itens": [
+    "30.36"
+   ],
+   "grupos": [
+    "aprendizado-pr163"
    ]
   }
  ]
