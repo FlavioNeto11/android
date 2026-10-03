@@ -68,9 +68,8 @@ def _rotulo_da_transicao(de: str | None, para: str) -> str | None:
     if para in ESCADA:
         return "rebaixar" if de in ESCADA and ESCADA[para] < ESCADA[de] else "manter"
     return None
-#: Rótulo 2 do curador: `resultado_posterior` (14 e 30 dias). Em 03/10 nenhum código da main o grava; o 30.35
-#: (`feat/30-35-resultado-posterior`) gravará `manter`, `rebaixar`, `descartar` ou `sem_desfecho`. Só o que está na régua
-#: da triagem conta, e `sem_desfecho` não rotula.
+#: Rótulo 2 do curador: `resultado_posterior` (14 e 30 dias). Em 03/10 nenhum código da main o grava; o 30.35 gravará
+#: `manter`, `rebaixar`, `descartar` ou `sem_desfecho`. Só o que está na régua da triagem conta, e `sem_desfecho` não rotula.
 ROTULO_POSTERIOR = frozenset({"manter", "revisar", "rebaixar", "descartar"})
 
 

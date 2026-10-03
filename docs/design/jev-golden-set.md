@@ -178,9 +178,9 @@ Uso, a partir da raiz do checkout:
   decisão registrada (ADR-069 item 6).
 
 **Limites conhecidos** (03/10):
-- O rótulo 2 do curador ainda não tem produtor na main: nenhum código grava `resultado_posterior`. O 30.35
-  (`feat/30-35-resultado-posterior`) grava `manter`, `rebaixar`, `descartar` ou `sem_desfecho`; os três primeiros estão
-  na régua da triagem, e `sem_desfecho` não rotula.
+- O rótulo 2 do curador ainda não tem produtor na main: nenhum código grava `resultado_posterior`. O 30.35 gravará
+  `manter`, `rebaixar`, `descartar` ou `sem_desfecho`; os três primeiros estão na régua da triagem, e `sem_desfecho` não
+  rotula.
 - O rótulo 1 do dono depende do nome declarado em `--autor-dono` (nenhuma configuração declara o dono).
 - A métrica principal só se mede com rótulo da pessoa. A execução sem fluxo não tem habilidade resolvida que o desfecho
   confirme.
