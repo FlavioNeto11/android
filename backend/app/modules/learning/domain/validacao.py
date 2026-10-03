@@ -78,6 +78,10 @@ class Motivo(StrEnum):
     #: pós-condição reescrita do RA-20). 30.37: no fluxo, o comando de origem não cabe mais no molde dele (a execução de
     #: prova não teria os parâmetros). Recusa também AO DESPACHAR, sem execução, porque o fluxo pode mudar.
     SEM_CAMINHO = "sem_caminho"
+    #: 30.42: recusas AO DESPACHAR, sem execução nem gasto: o item já teve 2 provas da mesma versão do conteúdo em 7
+    #: dias; ou a falta pede outro aparelho e nenhum aparelho que serve ficou fora dos já usados (origem e provas).
+    LIMITE_DE_PROVAS = "limite_de_provas"
+    SEM_APARELHO_NOVO = "sem_aparelho_novo"
     # ao despachar (o pedido fica `pendente` e tenta na volta seguinte)
     AMBIENTE_OCUPADO = "ambiente_ocupado"             # health com problema, execução em curso (restart/suíte/deploy)
     SEM_APARELHO = "sem_aparelho"                     # nenhum aparelho ocioso que sirva
@@ -87,6 +91,10 @@ class Motivo(StrEnum):
     SEM_EVIDENCIA = "sem_evidencia"                   # a execução assentou e não deixou evidência no item
     EVIDENCIA_CONTRA = "evidencia_contra"             # 30.36: deixou evidência CONTRA (o curador volta ao item)
     DIVERGENCIA_DE_FORMA = "divergencia_de_forma"     # 30.36: fez o caminho e só reescreveu a forma (nem a favor)
+    #: 30.42: a prova deixou a linha `invalida` (nem a favor nem contra); o motivo é o dela (`domain/prova.py`)
+    EFEITO_REPETIDO = "efeito_repetido"
+    PONTO_DE_PARTIDA = "ponto_de_partida"
+    ATOR_SEM_ACAO = "ator_sem_acao"
     EXECUCAO_FALHOU = "execucao_falhou"
     EXPIROU = "expirou"
 
