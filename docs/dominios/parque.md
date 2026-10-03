@@ -39,6 +39,15 @@ ver [`../api-contract.md`](../api-contract.md); para os estados de comando e o r
   desligamento não conseguiu salvar snapshot ("o próximo boot será a frio"); `RealEmulatorBackend.discard_snapshot`
   apaga o snapshot do AVD sem falhar por ausência. `DeviceManager.snapshot_failures` conta falhas consecutivas
   por instância.
+- **Relógio do wake (RA-15, item 29.34)** — `_wait_boot` separa dois relógios: `t0` (o spawn) segue valendo para
+  `boot_seconds`; o prazo tem início próprio. Ao acordar, ANTES do veredito do log o prazo é `boot_timeout_s` desde o
+  spawn (carregar 2 GB devagar sob CPU alta ainda é mais rápido que descartar e bootar a frio; medido 03/10/2026: 4 de
+  23 wakes passavam de 90 s só carregando). Com "Successfully loaded snapshot" (`_snapshot_verdict` True) o
+  `wake_timeout_s` passa a contar DESSE instante — a hora em que o log foi lido, na resolução de `boot_poll_s`, não o
+  carimbo do emulador. Veredito False: boot a frio com `boot_timeout_s` desde o spawn, como antes. A medição `boot`
+  `kind=warm` traz `load_ms` (spawn → veredito lido; `null` se o log não disse). O wake do worker remoto não tem
+  prazo próprio de 90 s (`worker/executor.py::_v_start` usa `boot_timeout_s`): sem mudança. Aceite real em 7 dias: wake
+  > 90 s e "snapshot descartado" = 0 (`not_run`).
 
 ## Renderizador do emulador (item 29.11)
 

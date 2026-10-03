@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 29.34 (RA-15): o relógio do wake começa no snapshot carregado (branch feat/29-34-relogio-do-wake)
+
+- `DeviceManager._wait_boot`: o `wake_timeout_s` (90 s) deixa de contar do spawn. Antes do veredito do log vale
+  `boot_timeout_s`; com "Successfully loaded snapshot" o prazo de 90 s conta dali. `boot_seconds` continua
+  spawn→online. A medição `boot kind=warm` ganha `load_ms`. Testes: `test_wake_relogio_do_snapshot.py` (`simulated`).
+  Aceite real em 7 dias (wake > 90 s e "snapshot descartado" = 0): `not_run`.
+
 ## 2026-10-03 — 25.12: túnel morto age e o backend verifica a rede ao subir (branch feat/25-12-tunel-morto)
 
 - Objetivo parado há horas não segura mais o aparelho (`vitrine.objetivo_que_segura`, metade C do 25.12; corrige

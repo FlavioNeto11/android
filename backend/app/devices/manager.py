@@ -2534,12 +2534,20 @@ class DeviceManager:
             await asyncio.sleep(espera_inicial_s)
             t0 = time.monotonic()
         a_cfg = self.android_de(rt)
-        timeout = a_cfg.wake_timeout_s if warm else a_cfg.boot_timeout_s
+        # RA-15 (29.34, 03/10/2026): dois relógios. `t0` (o spawn) segue valendo para `boot_seconds` — spawn→online, comparável
+        # com o histórico. O PRAZO tem início próprio (`inicio_prazo`). Wake: ANTES do veredito do log o prazo é o de boot
+        # a frio, contado do spawn — carregar 2 GB devagar sob CPU alta ainda é mais rápido que descartar o snapshot e
+        # bootar a frio (medido: 4 de 23 wakes passavam de 90 s só carregando, e o relógio de 90 s desde o spawn os
+        # derrubava para o boot a frio de minutos). Só com o snapshot CARREGADO começa o `wake_timeout_s`, contado dali.
+        timeout = a_cfg.boot_timeout_s
+        inicio_prazo = t0
+        load_s: float | None = None                # spawn → snapshot carregado (só wake que chegou ao veredito True)
         phase = "aguardando o Android iniciar"
         booted_at: float | None = None
         checked_load = False
         while True:
-            elapsed = time.monotonic() - t0
+            agora = time.monotonic()
+            elapsed = agora - t0
             if warm and not checked_load:
                 # O emulador decide sozinho se carrega o snapshot e, se não carregar, segue em boot a frio (medido:
                 # hardware diferente do salvo → "cannot load snapshot"). Só o LOG diz qual dos dois aconteceu; com a
@@ -2548,6 +2556,10 @@ class DeviceManager:
                 if verdict is True:
                     checked_load = True
                     rt.snapshot_failures = 0
+                    # É a hora em que o log foi LIDO (resolução de `boot_poll_s`), não o carimbo do emulador: o erro
+                    # é de até um poll para mais, e favorece quem carregou.
+                    load_s = agora - t0
+                    inicio_prazo, timeout = agora, a_cfg.wake_timeout_s
                 elif verdict is False:
                     checked_load = True
                     warm, timeout = False, a_cfg.boot_timeout_s
@@ -2557,7 +2569,7 @@ class DeviceManager:
                     self.bus.emit("log", f"{rt.id}: o emulador recusou o snapshot; seguindo em boot a frio"
                                   + (" — este AVD deixa de hibernar" if rt.snapshot_unsupported else ""),
                                   level="warn", instance_id=rt.id)
-            if elapsed > timeout:
+            if agora - inicio_prazo > timeout:
                 if warm:
                     return False                   # quem chamou descarta o snapshot e tenta a frio
                 self._set_state(rt, InstanceState.error, f"Boot excedeu {timeout}s", level="error",
@@ -2591,7 +2603,7 @@ class DeviceManager:
         # Orçamento dentro do prazo de boot/wake que já corre (piso RESPOSTA_MIN_S, teto RESPOSTA_POS_BOOT_S): três
         # sondas lentas não transformam um wake de 90 s em minutos.
         def fim_do_prazo() -> float:               # o prazo de boot/wake que já corre, com o mesmo piso da escada
-            return time.monotonic() + max(RESPOSTA_MIN_S, timeout - (time.monotonic() - t0))
+            return time.monotonic() + max(RESPOSTA_MIN_S, timeout - (time.monotonic() - inicio_prazo))
         p: prontidao.Prontidao | None = None
         rt.adb.apps_de_fundo = self.apps_de_fundo_de(rt)
         try:
@@ -2606,7 +2618,7 @@ class DeviceManager:
         else:
             self._registrar_apps_de_fundo(rt, ajuste)
         # Calculado DEPOIS do preparo: o que ele (e a espera pelo zumbi) gastou sai do orçamento da escada.
-        orcamento = max(RESPOSTA_MIN_S, min(RESPOSTA_POS_BOOT_S, timeout - (time.monotonic() - t0)))
+        orcamento = max(RESPOSTA_MIN_S, min(RESPOSTA_POS_BOOT_S, timeout - (time.monotonic() - inicio_prazo)))
         if p is None:
             p = await self._esperar_prontidao(rt, orcamento)
         # O relógio NÃO entra aqui (K-031). O `cmd alarm set-time` leva um instante absoluto: estourado, cai atrasado
@@ -2632,10 +2644,14 @@ class DeviceManager:
         if not adopted:
             self.db.execute("UPDATE instances SET boot_seconds=? WHERE id=?", (rt.boot_seconds, rt.id))
             vm = psutil.virtual_memory()
-            self.db.execute("INSERT INTO measurements(ts, kind, data) VALUES (?,?,?)", (now_iso(), "boot", dumps({
+            medida = {
                 "instance_id": rt.id, "boot_seconds": rt.boot_seconds, "kind": "warm" if warm else "cold",
                 "online_after": sum(1 for d in self.devices.values() if d.state == InstanceState.online) + 1,
-                "mem_available_gb": round(vm.available / 2**30, 1), "image": self.android_de(rt).system_image})))
+                "mem_available_gb": round(vm.available / 2**30, 1), "image": self.android_de(rt).system_image}
+            if warm:                               # RA-15: quanto levou carregar o snapshot (None = o log não disse)
+                medida["load_ms"] = None if load_s is None else int(round(load_s * 1000))
+            self.db.execute("INSERT INTO measurements(ts, kind, data) VALUES (?,?,?)",
+                            (now_iso(), "boot", dumps(medida)))
         # Antes de declarar `online`: o DTO que anuncia a entrada no ar já sai com o renderizador (e com o aviso).
         await self._registrar_renderizador(rt)
         self._set_state(rt, InstanceState.online, f"{'acordou' if warm else 'pronto'} em {rt.boot_seconds:.0f}s")
