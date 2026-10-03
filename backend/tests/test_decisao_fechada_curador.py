@@ -124,6 +124,17 @@ def test_estado_e_c0_por_campos_nomeados_sem_conteudo_nem_identificador() -> Non
         assert proibido not in texto
 
 
+def test_contra_conta_so_against_e_conflict_31_25() -> None:
+    """31.25: a `forma` (30.36) e a `invalida` (30.42) continuam no total, mas não são contra; `conflict` é."""
+    d = _dossie()
+    lista = d["evidencias"]["lista"]                                   # type: ignore[index]
+    extra = [{"id": f"ev:{n}", "posicao": p, "origin_ref": f"run:x{n}", "run_id": f"x{n}", "simulated": False}
+             for n, p in ((4, "forma"), (5, "invalida"), (6, "conflict"))]
+    d["evidencias"] = {"total": 6, "incluidas": 6, "lista": [*lista, *extra]}   # type: ignore[list-item]
+    e = estado_do_dossie(d)
+    assert (e["evidencias_total"], e["evidencias_a_favor"], e["evidencias_contra"]) == ("6", "2", "2")
+
+
 def test_rotulo_que_nao_e_vocabulario_nao_sai() -> None:
     d = _dossie()
     d["item"] = {**d["item"], "estado": "Texto Livre De Alguém", "origem": "x" * 60}   # type: ignore[dict-item]

@@ -56,6 +56,8 @@ CAMPOS: Final[frozenset[str]] = frozenset({
     "evidencias_total", "evidencias_a_favor", "evidencias_contra", "evidencias_simuladas",
     "falhas", "falhas_ocorrencias", "votos", "intervencoes", "execucoes", "saude"})
 _ROTULO_MAX: Final = 40
+#: As posições da evidência que contam como contra no estado (31.25); as outras (`for`, `forma`, `invalida`) não.
+POSICOES_CONTRA: Final[frozenset[str]] = frozenset({"against", "conflict"})
 
 #: A versão do estado que a SOMBRA do runtime manda. O `v2` (os campos de sinal abaixo) só vira o da sombra depois de o
 #: braço offline (31.11) medir, nos mesmos casos, respostas distintas entre estados distintos; sem sinal, ele não entra
@@ -157,7 +159,9 @@ def estado_do_dossie(dossie: Mapping[str, object]) -> dict[str, str]:
     contagens = {
         "evidencias_total": total if isinstance(total, int) and not isinstance(total, bool) else len(lista),
         "evidencias_a_favor": sum(1 for e in lista if e.get("posicao") == "for"),
-        "evidencias_contra": sum(1 for e in lista if e.get("posicao") not in (None, "for")),
+        # 31.25: contra é só `against` e `conflict`. A `forma` (30.36) e a `invalida` (30.42) ficam na lista e no total,
+        # mas não dizem nada contra o item; contá-las aqui mandava ao Jev um contra que o Livro não conta.
+        "evidencias_contra": sum(1 for e in lista if e.get("posicao") in POSICOES_CONTRA),
         "evidencias_simuladas": sum(1 for e in lista if e.get("simulated") is True),
         "falhas": len(falhas),
         "falhas_ocorrencias": sum(o for f in falhas if isinstance(o := f.get("ocorrencias"), int)
@@ -335,5 +339,6 @@ class CuradorComTriagemEmSombra(Generic[Pedido, Resposta]):
 
 
 __all__ = ["CAMPOS", "CAMPOS_DE_SINAL", "CAMPOS_V2", "ESTADO_DA_SOMBRA", "KINDS_F1", "OPCOES", "PERGUNTA_TRIAGEM",
+           "POSICOES_CONTRA",
            "TRIAGEM_DO_PARECER", "VERSOES_DO_ESTADO", "CuradorComTriagemEmSombra", "TriagemDoCurador",
            "decisao_real_da_triagem", "estado_do_dossie", "estado_do_dossie_v2"]
