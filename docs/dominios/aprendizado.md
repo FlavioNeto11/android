@@ -98,6 +98,15 @@ gerenciador de aparelhos, de um lado, e o livro, do outro. Sem o livro ligado (`
 da etapa. O vocabulário é fechado (`domain/falhas.py::FailureKind`), e uma catraca por AST exige que todo motivo do
 executor caia fora de `outro`. A camada e o "onde alterar" saem do tipo na hora da leitura.
 
+Quando a etapa termina por erro de IA, o tipo vem dele e não do texto (RA-22, migração 081). O executor põe o
+`AIError.kind` no `StepOutcome.ai_error_kind` (o `desfecho_de_ia`, a verificação, e o `_run_guarded` do scheduler para o
+erro que escapou), e o scheduler o passa ao `finish_attempt` (que grava `attempts.error_kind`) e ao `transition_step`.
+Os dois classificam por `classificar_falha(texto, status, error_kind)`, o mesmo classificador puro da releitura:
+`budget` → `ia_orcamento`, `billing`/`balance` → `ia_saldo`, `refusal` → `ia_recusa`, `not_configured`, `error` e
+`invalid_output` → `ia_indisponivel` (`pelo_erro_que_encerrou`). `step_deadline` não decide: o ANR anotado no texto
+continua ganhando do prazo. O status vem antes (`interrupted` segue `interrompida`). Com isso a mensagem de IA do
+executor deixa de ser contrato; as REGRAS de texto ficam para o legado sem `error_kind`.
+
 **Dívida paga (29/09, `2b0e5db`).** O contrato de gesto mora em `app/shared/costuras.py`: `TomadaDeControle`,
 `CosturaDeControle`, `avisar`, as portas de comando e de ensino e `autor_do_gesto`. `taskqueue/costuras.py` o reexporta,
 e `test_aparelhos_nao_conhecem_a_fila` (em `test_arquitetura.py`) impede a volta do import `devices` → `taskqueue`.
@@ -677,9 +686,9 @@ hub de IA e o curador, 30.11): a causa `indeterminada` sai como dado, sem chamad
 - **Teto atingido pelo tipo** (`AIError.kind == 'budget'` em `ai_calls.error_kind`, `classificar_pelo_tipo_da_ia`), não pelo texto: o teto do pedido
   ("Orçamento do pedido atingido…") nunca casou com a regra por trecho e caía em `outro`. O tipo vence o texto, inclusive o `failure_kind` gravado (também
   derivado de texto em `repository.finish_attempt`), só na leitura retroativa; o texto fica como `# legado` para a tentativa sem `ai_calls`.
-- **Limites conhecidos:** `attempts.error_kind` não existe: o tipo do erro chega só por `ai_calls`, que a purga apaga. Gravar o `AIError.kind` na tentativa
-  (`failure_kind` em `repository.finish_attempt`, a partir do `StepOutcome` do `executor.py`) é do taskqueue e fica para a frente dele. `steps` não guarda a versão do
-  app: `versao_nova` só vem do estado de versão da receita. A comparação entre aparelhos exige a mesma execução.
+- **Limites conhecidos:** `steps` não guarda a versão do app: `versao_nova` só vem do estado de versão da receita. A comparação entre aparelhos exige a
+  mesma execução. (O tipo do erro na tentativa, que só chegava por `ai_calls` e a purga apagava, é `attempts.error_kind` desde o RA-22; com ele, a
+  releitura por `ai_calls` não desmente o gravado, e ela segue só para o legado.)
 - Prova `simulated`: `tests/test_learning_diagnostico.py`. `not_run` no central.
 
 ## Evidência inválida e o reaprendido (30.23)

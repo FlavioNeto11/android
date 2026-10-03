@@ -117,7 +117,8 @@ class FontesDeFalhaSql:
         pacotes = self._pacotes()
         marcas = ",".join("?" for _ in _FALHAS)
         tentativas = self._db.query(
-            "SELECT a.id, a.step_id, a.number, a.status, a.error, a.failure_kind, a.failure_screen, a.started_at,"
+            "SELECT a.id, a.step_id, a.number, a.status, a.error, a.failure_kind, a.failure_screen, a.error_kind,"
+            " a.started_at,"
             " a.finished_at, s.capability, s.app_id, s.status AS step_status, s.run_id, s.instance_id, r.app_ids,"
             " r.simulated, (SELECT MAX(x.number) FROM attempts x WHERE x.step_id = a.step_id) AS ultima"
             " FROM attempts a JOIN steps s ON s.id = a.step_id JOIN runs r ON r.id = s.run_id"
@@ -129,7 +130,8 @@ class FontesDeFalhaSql:
             gravado = linhas.texto_ou_nulo(t, "failure_kind")
             if gravado is None and not retroativo:
                 continue
-            tipo = gravado or classificar_falha(linhas.texto_ou_nulo(t, "error"), linhas.texto_ou_nulo(t, "status"))
+            tipo = gravado or classificar_falha(linhas.texto_ou_nulo(t, "error"), linhas.texto_ou_nulo(t, "status"),
+                                                linhas.texto_ou_nulo(t, "error_kind"))
             if tipo:
                 escolhidas.append((t, str(tipo), gravado is None))
         recentes = [t for t, _, _ in escolhidas if _inicio(t) >= corte]
@@ -144,9 +146,12 @@ class FontesDeFalhaSql:
             aid, sid = linhas.texto(t, "id"), linhas.texto(t, "step_id")
             # O TIPO do erro do provedor (`ai_calls.error_kind`, o `AIError.kind`) vence o texto: o gravado em
             # `attempts.failure_kind` também sai de texto (`repository.finish_attempt`), e o teto do pedido, por
-            # exemplo, ficava em `outro`. Só na leitura retroativa: `retroativo=0` conta o que a execução gravou.
+            # exemplo, ficava em `outro`. Só na leitura retroativa: `retroativo=0` conta o que a execução gravou. E só
+            # sem `attempts.error_kind` (RA-22): com ele, o gravado já saiu do tipo do erro que ENCERROU a tentativa,
+            # e uma chamada anterior que o roteador contornou não o desmente.
             pelo_tipo = classificar_pelo_tipo_da_ia(erros_de_ia.get(aid, ()))
             if (retroativo and pelo_tipo is not None and pelo_tipo.value != tipo
+                    and linhas.texto_ou_nulo(t, "error_kind") is None
                     and linhas.texto_ou_nulo(t, "status") != "interrupted"):
                 tipo, retro = pelo_tipo.value, True
             fim = linhas.texto(t, "finished_at")

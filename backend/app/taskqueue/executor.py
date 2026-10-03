@@ -204,6 +204,9 @@ class StepOutcome:
     #: Contrato C2 (ADR-058): os valores que a etapa leu, por nome (`PlanStep.saidas`), para as etapas seguintes do
     #: objetivo (`Repository.save_step_output`). `None` = a etapa não produziu saída; quem preenche é a Fase 24.
     outputs: dict[str, str] | None = None
+    #: RA-22: o `AIError.kind` que encerrou a etapa (o desfecho saiu de um erro de IA), que vai para
+    #: `attempts.error_kind` e decide o tipo da falha antes do texto (`classificar_falha`). `None` = não foi erro de IA.
+    ai_error_kind: str | None = None
 
 
 # kinds de AIError que são problema de CONTA (crédito ou credencial), não da etapa: nenhuma tentativa nova
@@ -1301,7 +1304,11 @@ class StepExecutor:
         async def desfecho_de_ia(exc: AIError, obs: Observation, durante: str) -> StepOutcome:
             """O que a etapa faz quando uma chamada de IA (a decisão do ator, a leitura visual) falha por motivo que NÃO
             é da chamada em si: chave, crédito, prazo, orçamento, recusa por política. Um só lugar, para o leitor da
-            leitura visual não ter tratamento próprio e mais frouxo que o do ator."""
+            leitura visual não ter tratamento próprio e mais frouxo que o do ator. O `kind` vai no desfecho (RA-22): é
+            ele, e não o texto abaixo, que classifica a falha."""
+            return dataclasses.replace(await desfecho_pelo_tipo(exc, obs, durante), ai_error_kind=exc.kind)
+
+        async def desfecho_pelo_tipo(exc: AIError, obs: Observation, durante: str) -> StepOutcome:
             if exc.kind == "not_configured":
                 return StepOutcome(Outcome.waiting_user, str(exc), needs="Configure a chave do provedor no .env, "
                                    "reinicie o backend e retome este item.", ai_blocked=True)
@@ -2091,27 +2098,30 @@ class StepExecutor:
             return await self._stuck(rt, step, fired, str(exc))
         except AIError as exc:
             if exc.kind == "not_configured":
-                return StepOutcome(Outcome.waiting_user, str(exc), needs="Configure a chave do provedor no .env, "
-                                   "reinicie o backend e retome este item.", ai_blocked=True)
-            if exc.kind in ("billing", "balance"):
-                return StepOutcome(Outcome.waiting_user, str(exc),
-                                   needs="Recarregue o crédito do provedor de IA e retome a execução.",
-                                   ai_blocked=True)
-            if exc.kind == "step_deadline":
-                return await fail_or_retry(com_anr(f"Prazo da etapa ({step.timeout_s}s) esgotado durante a "
-                                                   f"verificação: {exc}"), last_obs)
-            if exc.kind == "budget":
-                return StepOutcome(Outcome.failed if not fired else Outcome.uncertain, str(exc))
-            if exc.kind == "refusal":
+                desfecho = StepOutcome(Outcome.waiting_user, str(exc), needs="Configure a chave do provedor no .env, "
+                                       "reinicie o backend e retome este item.", ai_blocked=True)
+            elif exc.kind in ("billing", "balance"):
+                desfecho = StepOutcome(Outcome.waiting_user, str(exc),
+                                       needs="Recarregue o crédito do provedor de IA e retome a execução.",
+                                       ai_blocked=True)
+            elif exc.kind == "step_deadline":
+                desfecho = await fail_or_retry(com_anr(f"Prazo da etapa ({step.timeout_s}s) esgotado durante a "
+                                                       f"verificação: {exc}"), last_obs)
+            elif exc.kind == "budget":
+                desfecho = StepOutcome(Outcome.failed if not fired else Outcome.uncertain, str(exc))
+            elif exc.kind == "refusal":
                 # Mesma regra do achado #93 do lado da decisão: recusa por política não é "não pôde ser feita" —
                 # repetir a verificação tende a dar a mesma recusa, sem gastar tentativa à toa.
-                return StepOutcome(Outcome.uncertain if fired else Outcome.waiting_user,
-                                   f"O provedor de IA recusou verificar esta etapa por política: {exc}",
-                                   needs=None if fired else
-                                   "O provedor recusou por política — repetir tende a dar o mesmo resultado. "
-                                   "Reescreva a intenção desta etapa (ou o comando) e retome, ou replaneje.",
-                                   ai_blocked=True)
-            return await fail_or_retry(f"Verificação não pôde ser feita: {exc}", last_obs)
+                desfecho = StepOutcome(Outcome.uncertain if fired else Outcome.waiting_user,
+                                       f"O provedor de IA recusou verificar esta etapa por política: {exc}",
+                                       needs=None if fired else
+                                       "O provedor recusou por política — repetir tende a dar o mesmo resultado. "
+                                       "Reescreva a intenção desta etapa (ou o comando) e retome, ou replaneje.",
+                                       ai_blocked=True)
+            else:
+                desfecho = await fail_or_retry(f"Verificação não pôde ser feita: {exc}", last_obs)
+            # RA-22: o kind vai no desfecho; é ele, e não o texto, que classifica a falha.
+            return dataclasses.replace(desfecho, ai_error_kind=exc.kind)
         except DriverError as exc:
             return await fail_or_retry(f"Verificação não pôde ser feita: {exc}", last_obs)
         # o nível de entrega declarado pela IA em step_done não vale como prova; só o observado na verificação

@@ -550,7 +550,7 @@ class Repository:
 
     def transition_step(self, step_id: str, target: StepStatus, *, detail: str | None = None,
                         result: StepResult | None = None, next_retry_at: str | None = None,
-                        message: str | None = None, level: str = "info") -> None:
+                        message: str | None = None, level: str = "info", error_kind: str | None = None) -> None:
         with self.db.tx():
             row = self.step_row(step_id)
             check_transition(row["status"], target)
@@ -572,7 +572,8 @@ class Repository:
             # A falha classificada da ETAPA (ADR-054): o tipo do desfecho em que ela parou, pelo texto dele — o de
             # `waiting_user` diz "autenticação" enquanto a tentativa, devolvida sem consumir, diz só "interrompida".
             # Fora de um desfecho de falha o tipo não sobra (confirmada à mão, de volta à fila, comprovada depois).
-            tipo = classificar_falha(detail, target.value) if target in _ETAPA_EM_FALHA else None
+            # RA-22: o erro de IA que encerrou a etapa (`error_kind`) decide antes do texto, como na tentativa.
+            tipo = classificar_falha(detail, target.value, error_kind) if target in _ETAPA_EM_FALHA else None
             fields.append("failure_kind=?")
             params.append(tipo.value if tipo is not None else None)
             sql = f"UPDATE steps SET {', '.join(fields)} WHERE id=?"
@@ -712,29 +713,34 @@ class Repository:
 
     def finish_attempt(self, attempt_id: str, status: AttemptStatus, *, error: str | None = None,
                        recovery: str | None = None, observed: str | None = None,
-                       screen: str | None = None) -> None:
+                       screen: str | None = None, error_kind: str | None = None) -> None:
         """Fecha a tentativa. **Cercada pela posse da etapa** (item 5.3): no `_apply` do scheduler a tentativa é
         fechada ANTES da transição da etapa, então sem cerca aqui um dono que já perdeu a posse ainda gravaria o
         desfecho da tentativa por cima de quem agora executa — a cerca da etapa chegaria tarde demais.
 
         `screen`: a tela reconhecida na última observação da tentativa (`executor.tela_da_falha`, item 22.3) — um
-        nome do vocabulário declarado, nunca texto da tela."""
+        nome do vocabulário declarado, nunca texto da tela.
+
+        `error_kind` (RA-22): o `AIError.kind` que encerrou a tentativa (`StepOutcome.ai_error_kind`). Vai para
+        `attempts.error_kind` e decide o tipo antes do texto; sem ele (nenhum erro de IA), a coluna fica nula."""
         atual = self.db.one("SELECT status, error FROM attempts WHERE id=?", (attempt_id,))
         anterior = atual["status"] if atual else None
         erro = truncate(error, 800)
         # A falha classificada (ADR-054): o tipo do erro FINAL, o mesmo que o COALESCE abaixo deixa gravado — o texto
         # novo ou, sem ele, o que `note_attempt` já anotou nesta tentativa. Mesmo classificador puro da leitura do
         # legado: o gravado e o retroativo nunca discordam.
-        tipo = classificar_falha(erro if erro is not None else (atual["error"] if atual else None), status.value)
+        tipo = classificar_falha(erro if erro is not None else (atual["error"] if atual else None), status.value,
+                                 error_kind)
         # A tela só acompanha um tipo de falha: tentativa comprovada ou cancelada não tem "onde falhou", e a tela
         # sem tipo seria um grupo do backlog sem falha nenhuma.
         tela = (screen or None) if tipo is not None else None
         cur = self.db.execute(
             "UPDATE attempts SET status=?, finished_at=?, error=COALESCE(?, error), recovery=COALESCE(?, recovery),"
-            " observed_result=COALESCE(?, observed_result), failure_kind=?, failure_screen=? WHERE id=? AND EXISTS"
-            " (SELECT 1 FROM steps s WHERE s.id=attempts.step_id AND (s.claimed_by IS NULL OR s.claimed_by=?))",
+            " observed_result=COALESCE(?, observed_result), failure_kind=?, failure_screen=?, error_kind=? WHERE id=?"
+            " AND EXISTS (SELECT 1 FROM steps s WHERE s.id=attempts.step_id AND (s.claimed_by IS NULL OR"
+            " s.claimed_by=?))",
             (status.value, now_iso(), erro, truncate(recovery, 800), truncate(observed, 800),
-             tipo.value if tipo is not None else None, tela, attempt_id, self.owner_id))
+             tipo.value if tipo is not None else None, tela, truncate(error_kind, 40), attempt_id, self.owner_id))
         if (cur.rowcount or 0) != 1:
             linha = self.db.one("SELECT s.id, s.claimed_by FROM steps s JOIN attempts a ON a.step_id=s.id"
                                 " WHERE a.id=?", (attempt_id,))

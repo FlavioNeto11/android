@@ -32,7 +32,7 @@ Erros de driver também são neutros: `INTEGRITY_ERRORS` e `OPERATIONAL_ERRORS` 
 Importa porque a **idempotência** do projeto é chave `UNIQUE` + captura da violação — capturar a exceção errada
 transformaria "já existe, devolva o original" em erro 500.
 
-## Migrações (001–076 e 078)
+## Migrações (001–076, 078 e 081)
 
 Cada migração é um arquivo em `backend/migrations/`, aplicado uma vez e nunca editado depois
 (`app/db.py::migrate`): quem precisa mudar o que uma migração já aplicada fez cria a PRÓXIMA migração. A tabela
@@ -116,6 +116,7 @@ chamadas para não custar a cada `/api/health`.
 | 075 | revisoes_ai_call_id | `learning_reviews.ai_call_id INTEGER` nulável (frente Aprendizado; número PRÉ-reservado pela coordenação; a 074 é a da sombra da decisão fechada, 31.5, em outro branch). Liga a revisão do curador à linha de `ai_calls` que o hub mediu (30.12); sem chave estrangeira (`ai_calls` é purgada pela retenção, a revisão não). `usd` continua `NOT NULL DEFAULT 0` = não medido: recriar a tabela no SQLite para torná-lo nulável não compensa, e o `usd` medido só passa a ser gravado depois de unificar o saldo na rubrica (pendência em `design/hub-de-ia-fora-de-execucao.md`). Simulado no SQLite (`test_migracao_075_revisoes_ai_call_id.py`); PostgreSQL pela mesma fábrica quando `TEST_DATABASE_URL` existe |
 | 076 | pedido_avisos_gatilhos | Avisos dos gatilhos do pedido (item 28.8; `pedidos-laco.md` §14.5). O CHECK de `pedido_avisos.tipo` ganha `eventos_perdidos` (a retenção apagou eventos que um gatilho `evento` não tinha lido; nada foi disparado) e `condicao_atendida` (a condição passou de falsa a verdadeira); os dois `warn`, sem `requer_pessoa`. **SQLite:** `pedido_avisos` é RECONSTRUÍDA (CHECK de coluna não se altera), com colunas nomeadas, FK `ON DELETE CASCADE`, `chave_dedupe` UNIQUE e o índice `ix_pedido_avisos_pedido`; nada aponta para ela, sem `@foreign_keys:off`. **PostgreSQL:** DROP/ADD de `pedido_avisos_tipo_check`. Prova em `tests/test_pedidos_avisos.py` (SQLite; PostgreSQL `not_run`). **Número 076 dado pela coordenação (02/10);** 074 e 075 são de outras frentes e entram antes |
 | 078 | origem_das_saidas | Origem do valor lido entre etapas (item 12.5, ADR-070). Quatro colunas em `step_outputs`: `origem` (`arvore`|`visual`, `NOT NULL DEFAULT 'arvore'` com CHECK: o legado e todo valor lido do texto do elemento ficam `arvore`), `leitor` (`provedor/modelo`), `frame_sha256` e `evidence_id`, estas três nulas fora do visual (sem chave estrangeira: a retenção apaga a evidência, não o valor). As numerações 074 a 077 são de outras frentes. |
+| 081 | error_kind_em_attempts | O tipo do erro de IA que encerrou a tentativa (RA-22): `attempts.error_kind TEXT` nulável, o `AIError.kind` (`budget`, `billing`, `balance`, `refusal`, `not_configured`, `step_deadline`, `invalid_output`, `error`); nulo = a tentativa não terminou por erro de IA, ou é anterior. Sem CHECK (o vocabulário é do provedor) e sem backfill. Com ele, `classificar_falha` decide pelo tipo antes do texto (`failure_kind` da tentativa e da etapa). As numerações 079 e 080 são de outras frentes. |
 
 As oito tabelas novas de 031–039 estão em quatro migrações: `panel_sessions` (035), `policy_groups` (036),
 `profile_accounts` e `account_credentials` (037), `training_sessions`, `training_inputs` e `flow_scope` (038),

@@ -22,7 +22,7 @@ from ..models import (ActionStatus, AttemptStatus, ControlOwner, DeliveryLevel, 
 from ..planning.capabilities import capability_of
 from ..planning.catalog import capabilities_of
 from ..releases.service import InstalacaoIncerta
-from ..planning.provider import AIProvider, AppContext
+from ..planning.provider import AIError, AIProvider, AppContext
 from ..util import iso_in, now, now_iso, parse_iso
 from .ai_slots import VagasDeIA
 from .balanceamento import Candidato, Servidor
@@ -1362,7 +1362,9 @@ class Scheduler:
             log.exception("etapa %s", step.id)
             fired, _ = self.repo.commit_state(step.id)
             out = StepOutcome(Outcome.uncertain if (step.side_effect and fired) else Outcome.failed,
-                              f"Erro interno ao executar a etapa: {type(exc).__name__}: {exc}")
+                              f"Erro interno ao executar a etapa: {type(exc).__name__}: {exc}",
+                              # RA-22: o erro de IA que escapou do executor também é a causa da falha.
+                              ai_error_kind=exc.kind if isinstance(exc, AIError) else None)
         if out.outcome in _SEM_TELA_DA_FALHA:
             return replace(out, tela_da_falha=None) if out.tela_da_falha else out
         if out.tela_da_falha:               # o executor já sabe (a trava achada dentro de uma ferramenta)
@@ -1470,6 +1472,8 @@ class Scheduler:
         repo = self.repo
         oid, detail = obj["id"], out.detail
         o = out.outcome
+        # RA-22: o erro de IA que encerrou a etapa vai com o texto e decide o tipo da falha da tentativa e da etapa.
+        kind = out.ai_error_kind
         if o == Outcome.succeeded:
             if out.delivery_level:
                 repo.db.execute("UPDATE objectives SET delivery_level=? WHERE id=?", (out.delivery_level.value, oid))
@@ -1496,15 +1500,16 @@ class Scheduler:
             return False
         if o == Outcome.retry:
             repo.finish_attempt(attempt_id, AttemptStatus.failed, error=detail, screen=out.tela_da_falha,
-                                recovery=f"Nova tentativa automática (ação segura) em {self.get_settings().retry_backoff_s}s")
+                                recovery=f"Nova tentativa automática (ação segura) em {self.get_settings().retry_backoff_s}s",
+                                error_kind=kind)
             repo.transition_step(step.id, StepStatus.retry_wait, detail=detail,
                                  next_retry_at=iso_in(self.get_settings().retry_backoff_s), level="warn")
             return False
         if o == Outcome.waiting_user:
             repo.refund_attempt(step.id)
             repo.finish_attempt(attempt_id, AttemptStatus.interrupted, error=detail, recovery="Aguardando o usuário",
-                                screen=out.tela_da_falha)
-            repo.transition_step(step.id, StepStatus.waiting_user, detail=detail, level="warn")
+                                screen=out.tela_da_falha, error_kind=kind)
+            repo.transition_step(step.id, StepStatus.waiting_user, detail=detail, level="warn", error_kind=kind)
             # `blocked_kind='ai'` (achado #93, ponto 4): distingue, na tela, "a IA está travando este item"
             # (chave ausente, sem crédito, recusa por política) de política do perfil, limite ou aprovação.
             repo.set_objective(oid, ObjectiveStatus.waiting_user, detail=detail, blocked_reason=detail, needs=out.needs,
@@ -1514,8 +1519,9 @@ class Scheduler:
             return False
         if o == Outcome.uncertain:
             repo.finish_attempt(attempt_id, AttemptStatus.uncertain, error=detail, screen=out.tela_da_falha,
-                                recovery="Reconciliação pela tela não comprovou o resultado; sem reenvio automático")
-            repo.transition_step(step.id, StepStatus.uncertain, detail=detail, level="warn")
+                                recovery="Reconciliação pela tela não comprovou o resultado; sem reenvio automático",
+                                error_kind=kind)
+            repo.transition_step(step.id, StepStatus.uncertain, detail=detail, level="warn", error_kind=kind)
             repo.set_objective(oid, ObjectiveStatus.uncertain, detail=detail, blocked_reason=detail,
                                needs="Confira no aparelho se o efeito ocorreu e decida: confirmar, repetir ou abandonar. "
                                      "Nada será reenviado automaticamente.",
@@ -1533,8 +1539,8 @@ class Scheduler:
             rt.attention = "Aparelho retido: chamada anterior ainda não terminou"
             return False
         # failed
-        repo.finish_attempt(attempt_id, AttemptStatus.failed, error=detail, screen=out.tela_da_falha)
-        repo.transition_step(step.id, StepStatus.failed, detail=detail, level="error")
+        repo.finish_attempt(attempt_id, AttemptStatus.failed, error=detail, screen=out.tela_da_falha, error_kind=kind)
+        repo.transition_step(step.id, StepStatus.failed, detail=detail, level="error", error_kind=kind)
         if out.plan_defect:                  # refazer o MESMO plano falharia igual (e custaria igual) em todo aparelho
             self._fail_objective(obj, f"Etapa '{step.title}': {detail}")
             self._hold_siblings(obj, step)
