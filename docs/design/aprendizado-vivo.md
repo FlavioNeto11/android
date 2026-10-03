@@ -443,7 +443,11 @@ na fila e no detalhe, e toda decisão conta como vista (`aceitou`/`recusou`). O 
 curador já revisa sozinho.
 
 Porta `CuradorDeIA.revisar(dossie, template) -> (saida_bruta, uso)` em `modules/learning/application/ports.py`. Adaptadores: simulado
-(testes, determinístico) e hub de IA. O hub hoje só tem os papéis `plan|decide|verify|escalation|social` (`config.py:28`) e métodos fixos no
+(testes, determinístico) e hub de IA. *Correção de 03/10 (30.19): o hub tem 6 papéis de texto em `AI_ROLES` (`config.py:30`:
+`plan|decide|verify|escalation|social|persona`), mais o `leitura` fora da lista (12.5), e os métodos fora do ciclo de execução
+`generalize`, `orchestrate_targets`, `refine_command`, `generate_social_response`, `generate_persona` e `review_knowledge`. O curador
+entrou pelo 30.12 como `review_knowledge`, no papel `plan` emprestado, com origem `curador` e fatia própria do dia, sem papel novo.*
+Texto de 02/10: o hub hoje só tem os papéis `plan|decide|verify|escalation|social` (`config.py:28`) e métodos fixos no
 `AIProvider`. Ligar o curador a ele (papel novo ou chamada genérica) toca `config.py`/`planning/routing.py`, área da Jev (17.x): é item próprio,
 combinado (30.12). **Nada de `modules/context_retrieval/`** no caminho; se um dia o dossiê precisar de contexto de código, entra por outra porta.
 
@@ -715,6 +719,9 @@ Os IDs entram num bloco de `.claude/plano-100.json` e no `docs/plano-100.md` pel
 ---
 
 ## 14. ADR-067 (proposto): aprendizado vivo com eixo de app, saúde derivada e curador por IA auditável
+
+> **Aceito em 03/10/2026** (30.19): o texto vigente, com o que foi implementado e o que ficou pendente, está em
+> [`decisoes.md`](../decisoes.md#adr-067--aprendizado-vivo-eixo-de-app-saúde-derivada-e-curador-por-ia-auditável). Esta seção fica como a proposta de 02/10.
 
 **Estado:** proposto (Fase B da frente Aprendizado, 02/10). Revê **em parte** a decisão 9 do ADR-054; mantém D1–D8 e a tabela de `ciclo.py`.
 Completa o ADR-052 (app como dado) no lado da leitura.
