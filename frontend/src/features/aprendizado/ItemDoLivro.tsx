@@ -37,9 +37,12 @@ export const chaveDoItem = (e: Pick<EntradaDoLivro, 'kind' | 'ref'>) => `${e.kin
  * (a rota registra o operador); a recusa do domínio dela (comando duplicado, transição proibida) volta como a de
  * qualquer item.
  */
-export async function aplicarTransicao(e: EntradaDoLivro, acao: Pick<AcaoDoItem, 'to'>, motivo: string): Promise<string | null> {
+export async function aplicarTransicao(e: EntradaDoLivro, acao: Pick<AcaoDoItem, 'to' | 'confirmaQueFica'>,
+                                       motivo: string): Promise<string | null> {
   try {
-    if (e.kind === 'habilidade') {
+    if (acao.confirmaQueFica) {
+      await apiAprendizado.confirmarQueFica(e.kind, e.ref, motivo, e.parecer?.id);
+    } else if (e.kind === 'habilidade') {
       const ref = refDaHabilidade(e.ref);
       if (!ref) return `A referência "${e.ref}" não diz a versão: decida em ${ONDE_FICAM_AS_HABILIDADES}.`;
       await api.transitionSkill(ref.skillId, ref.version, { to: acao.to, reason: motivo });
@@ -192,6 +195,7 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
       {aberta ? (
         <DecisaoInline
           acao={aberta}
+          motivoOpcional={aberta.confirmaQueFica}
           onCancelar={() => setAberta(null)}
           onConfirmar={async (motivo) => {
             const falha = await aplicarTransicao(e, aberta, motivo);

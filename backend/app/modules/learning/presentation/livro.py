@@ -42,7 +42,8 @@ from app.modules.learning.domain.ciclo import (EntradaInvalida, ErroDeAprendizad
                                                UseARotaDasHabilidades)
 from app.modules.learning.domain.evidencia_invalida import Reaprendizado, run_invalidada
 from app.modules.learning.domain.livro import (AcaoPermitida, EntradaDoLivro, Transicao, acoes_da_pessoa,
-                                               evidencia_a_invalidar, por_que_o_sistema_nao_publica)
+                                               e_confirmacao, evidencia_a_invalidar, motivo_na_confirmacao,
+                                               por_que_o_sistema_nao_publica)
 from app.modules.learning.domain.parecer import RevisaoGravada
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.saude import Saude
@@ -163,11 +164,13 @@ def _evidencia(e: Evidencia, invalidas: frozenset[str] = frozenset()) -> JsonObj
 
 def _transicao(t: Transicao) -> JsonObject:
     """`tipo` e `run_invalidada` (30.23): o desligamento por evidência inválida já vem lido; o painel nunca interpreta
-    o formato do motivo."""
+    o formato do motivo. `tipo: confirmacao` (30.24) é a linha `published → published` de "Confirmar que fica", e
+    `motivo_da_pessoa` o motivo livre dela (sem o prefixo; nulo quando ela não deu motivo)."""
     run = run_invalidada(t.reason)
+    tipo = "evidencia_invalida" if run is not None else "confirmacao" if e_confirmacao(t) else None
     return {"id": t.id, "from": t.from_state.value if t.from_state else None, "to": t.to_state.value,
             "reason": t.reason, "decided_by": t.decided_by, "decided_at": t.decided_at, "run_id": t.run_id,
-            "tipo": "evidencia_invalida" if run is not None else None, "run_invalidada": run}
+            "tipo": tipo, "run_invalidada": run, "motivo_da_pessoa": motivo_na_confirmacao(t)}
 
 
 def _acao(a: AcaoPermitida | None) -> JsonObject | None:
@@ -262,6 +265,16 @@ class CorpoDeEvidenciaInvalida(BaseModel):
     run_id: str = Field(min_length=1, max_length=64)
 
 
+class CorpoDaConfirmacao(BaseModel):
+    """"Confirmar que fica" (30.24): o motivo é opcional; com ele, a trilha leva "confirmado que fica: <motivo>"."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    motivo: str | None = Field(default=None, max_length=500)
+    #: O parecer que a pessoa viu ao confirmar (como no `/status`): a decisão vira `aceitou`/`recusou` dele.
+    review_id: str | None = Field(default=None, min_length=1, max_length=64)
+
+
 # ------------------------------------------------------------------ rotas
 @router.get("", response_model=None)
 async def ler_livro(request: Request, kind: LivroKind | None = None, state: SkillState | None = None,
@@ -316,6 +329,19 @@ async def invalidar_evidencia(request: Request, kind: LivroKind, ref: str, corpo
         entrada = _chamar(lambda: pareceres.invalidar_evidencia(kind, ref, corpo.run_id, by=quem))
     else:
         entrada = _chamar(lambda: servico.invalidar_evidencia(kind, ref, corpo.run_id, by=quem))
+    return _detalhe(_chamar(lambda: servico.detalhe(entrada.kind, entrada.ref)), servico)
+
+
+@router.post("/{kind}/{ref}/confirmar", response_model=None)
+async def confirmar_que_fica(request: Request, kind: LivroKind, ref: str, corpo: CorpoDaConfirmacao) -> JsonObject:
+    servico = _servico(request)
+    quem = _quem(request)
+    pareceres = _pareceres(servico)
+    if pareceres is not None:
+        entrada = _chamar(lambda: pareceres.confirmar_que_fica(kind, ref, by=quem, motivo=corpo.motivo,
+                                                               review_id=corpo.review_id))
+    else:
+        entrada = _chamar(lambda: servico.confirmar_que_fica(kind, ref, by=quem, motivo=corpo.motivo))
     return _detalhe(_chamar(lambda: servico.detalhe(entrada.kind, entrada.ref)), servico)
 
 

@@ -132,9 +132,12 @@ export interface TransicaoDoLivro {
   decided_by: string;
   decided_at: string;
   run_id: string | null;
-  /** 30.23: o desligamento por evidência inválida já vem lido do motivo (o painel nunca interpreta o formato). */
-  tipo?: 'evidencia_invalida' | null;
+  /** 30.23: o desligamento por evidência inválida já vem lido do motivo (o painel nunca interpreta o formato).
+   *  30.24: `confirmacao` é a linha published → published de "Confirmar que fica". */
+  tipo?: 'evidencia_invalida' | 'confirmacao' | null;
   run_invalidada?: string | null;
+  /** 30.24: o motivo livre de quem confirmou, sem o prefixo (nulo: confirmou sem motivo). */
+  motivo_da_pessoa?: string | null;
 }
 
 export interface DetalheDoLivro {
@@ -516,6 +519,8 @@ export interface AcaoDoItem {
   /** Rótulo do botão que confirma, depois do motivo. */
   confirmar: string;
   perigo: boolean;
+  /** 30.24: "Confirmar que fica" não muda o estado (rota própria) e o motivo é opcional. */
+  confirmaQueFica?: boolean;
 }
 
 const A = (to: EstadoDoLivro, label: string, confirmar: string, perigo = false): AcaoDoItem => ({ to, label, confirmar, perigo });

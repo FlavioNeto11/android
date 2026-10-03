@@ -21,7 +21,7 @@ from app.modules.learning.application.ports import (Ajustes, CatalogoDeRisco, Fo
                                                     LacoPeriodico, NovoSinal, PassoDeCuradoria, PortaDeEventos,
                                                     RepositorioDeAprendizado, TitulosDoCatalogo, TriagemDeTexto)
 from app.modules.learning.domain import relacoes as rel
-from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, EntradaInvalida, NaoEncontrado,
+from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, ConflitoDeEstado, EntradaInvalida, NaoEncontrado,
                                                NotaComCaraDeSegredo, SkillState, TransicaoProibida,
                                                UseARotaDasHabilidades, Vetado, caminho_da_pessoa, conferir_transicao,
                                                motivo_do_veto)
@@ -31,8 +31,9 @@ from app.modules.learning.domain.conteudo import capability_unica, licao_legivel
 from app.modules.learning.domain.efeito import exposicao_json
 from app.modules.learning.domain.espera import Faixa
 from app.modules.learning.domain.livro import (ESTADOS_DA_EVIDENCIA_INVALIDA, EntradaDoLivro, ItemDeAprendizado,
-                                               NovoItem, Transicao, a_revisar, contagem, entrada_do_item,
-                                               estado_nativo, para_aprovar, status_nativo)
+                                               NovoItem, Transicao, a_revisar, contagem, decididos_para_revisar,
+                                               e_confirmacao, entrada_do_item, estado_nativo, motivo_da_confirmacao,
+                                               para_aprovar, status_nativo)
 from app.modules.learning.domain.modo_por_app import modo_efetivo
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.saude import Saude, SinaisDeSaude, calcular
@@ -435,9 +436,19 @@ class LearningService:
         return self._espera.parecer_disponivel(e, faixa)
 
     def revisar(self) -> tuple[EntradaDoLivro, ...]:
-        """"Revisar": o legado ativo com efeito anterior ao D1, que nenhuma pessoa decidiu pelo livro ainda."""
-        decididos = self._repo.refs_decididas_por_pessoa((LivroKind.RECEITA, LivroKind.FLUXO))
+        """"Revisar": o legado ativo com efeito anterior ao D1, que nenhuma pessoa decidiu pelo livro ainda, ou que ela
+        confirmou e uma evidência contrária real contestou depois (30.24)."""
+        decididos = self._decididos_para_revisar()
         return tuple(e for e in self._fontes.receitas() + self._fontes.fluxos() if a_revisar(e, decididos))
+
+    def em_revisar(self, e: EntradaDoLivro) -> bool:
+        return a_revisar(e, self._decididos_para_revisar())
+
+    def _decididos_para_revisar(self) -> frozenset[str]:
+        ultimas = self._repo.ultimas_decisoes_da_pessoa((LivroKind.RECEITA, LivroKind.FLUXO))
+        # Só as confirmações precisam da evidência (a regra do retorno é delas): poucas, uma leitura por item.
+        evidencias = {ref: self._repo.evidencias(ref) for ref, t in ultimas.items() if e_confirmacao(t)}
+        return decididos_para_revisar(ultimas, evidencias)
 
     # ================================================================== transições
     def _modo_publica(self, kind: LivroKind, app: str = "") -> bool:
@@ -581,6 +592,29 @@ class LearningService:
                               scope_key=e.scope_key, app_version=e.app_version), by=by, reason=motivo)
         else:
             self._mover_nativo(e, SkillState.DISABLED, by=by, reason=motivo, run_id=None)
+        return self.entrada(kind, ref)
+
+    def confirmar_que_fica(self, kind: LivroKind, ref: str, *, by: str, motivo: str | None = None) -> EntradaDoLivro:
+        """30.24, "Confirmar que fica": a pessoa mantém o legado de "Revisar" (receita ou fluxo publicado, com efeito,
+        que nenhuma pessoa decidiu ou cuja confirmação foi contestada). Grava a linha `published → published` com o
+        motivo opcional, e o item sai da fila até chegar evidência contrária real (`decididos_para_revisar`). O item
+        não muda: ele já vale. Fora de "Revisar", 409 (inclusive confirmar duas vezes)."""
+        if kind not in (LivroKind.RECEITA, LivroKind.FLUXO):
+            raise EntradaInvalida(f"Confirmar que fica vale para receita e fluxo de \"Revisar\", não para {kind.value}.")
+        if by == SYSTEM_ACTOR:
+            raise TransicaoProibida("Confirmar que fica é gesto de pessoa: o sistema não confirma o que publicou.")
+        texto = (motivo or "").strip()
+        if texto and self._recusa(texto):
+            raise NotaComCaraDeSegredo("O motivo tem formato ou assunto de credencial e não foi gravado.")
+        e = self.entrada(kind, ref)
+        if not self.em_revisar(e) or e.native_status is None:
+            raise ConflitoDeEstado(f"{kind.value} {ref} não está em \"Revisar\" (já confirmado, decidido por uma pessoa, "
+                                   "sem efeito externo ou fora de circulação): não há o que confirmar.")
+        self._repo.confirmar_que_fica(
+            MudancaNativa(kind=e.kind, ref=e.ref, de_status=e.native_status, para_status=e.native_status,
+                          de_estado=SkillState.PUBLISHED, para_estado=SkillState.PUBLISHED,
+                          content_hash=e.content_hash, scope_key=e.scope_key, app_version=e.app_version),
+            by=by, reason=motivo_da_confirmacao(texto))
         return self.entrada(kind, ref)
 
     def _conferir_veto(self, content_hash: str, scope_key: str, app_version: str | None) -> None:
