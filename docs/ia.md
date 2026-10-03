@@ -722,6 +722,10 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
       comandos reais de 7 dias (03/10, só leitura, contagens), a recusa ficou igual: 1, a mesma C7.
     - Prova: `backend/tests/test_decisao_fechada_reverificacao_c.py` (os 27 pelo caminho de produção até o decisor falso,
       e 23 controles que não podem recusar).
+    - **Decisões da orquestradora sobre os efeitos** (03/10, registradas no ADR-069 item 11): o texto entre aspas em outra
+      escrita NÃO fica isento ('comente "ありがとう"' recusa: só a sombra perde o comando, a execução não muda, 0 dos 92
+      reais); a C2 segue a regra por palavra (escopo); os falsos positivos "at" + provedor ou arquivo ("check the inbox at
+      outlook", "look at photo.jpg") e "pw" isolado são aceitos (só recusa, só sombra).
   - **C7 nunca sai, em prosa ou não**: comando que fala de senha, código, 2FA, PIN, OTP, token, captcha, verificação, chave,
     segredo ou desafio, em PT, EN ou ES (`menciona_c7`: `mentions_credential`, `looks_secret` e o assunto no texto
     normalizado, também com homóglifo, letra de largura cheia, uma letra por vez separada por ponto ou espaço, e letra de

@@ -152,6 +152,7 @@ def test_chave_em_minusculas_e_c7_e_asiatico_nao() -> None:
 @pytest.mark.parametrize(("comando", "motivo"), [
     ("escreva para marina@почта.рф sobre o post", "c7_alfabetos"),   # n=45: antes `[email]`; agora a frase recusa
     ("mande oi para Олег", "c7_alfabetos"),
+    ('comente "ありがとう" no post da Ana', "c7_alfabetos"),           # entre aspas também (ADR-069 item 11)
     ("zilda arroba hotmail", "email_ofuscado"),
     ("manda para zilda at correio . net", "email_ofuscado"),
 ])

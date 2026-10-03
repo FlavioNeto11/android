@@ -75,7 +75,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-065](#adr-065--ação-de-catálogo-entrega-valor-lido-a-outra-etapa-saidas-declaradas-no-catalogoyaml) | Ação de catálogo entrega valor lido a outra etapa: `saidas` declaradas no `catalogo.yaml` | vigente (12.3) | 02/10 |
 | [ADR-066](#adr-066--laço-de-pedidos-desligado-por-padrão-origem-interna-na-criação-da-execução-e-edição-por-gatilho-novo) | Laço de pedidos: desligado por padrão, origem interna na criação da execução e edição por gatilho novo | aceito (Fase 28, 28.4) | 02/10 |
 | [ADR-068](#adr-068--conta-bloqueada-sai-na-hora-e-a-persona-fica-lápide-só-com-o-hash-do-arroba) | Conta bloqueada sai na hora e a persona fica; lápide só com o hash do @ (item 29.23) |
-| [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro) | 03/10 |
+| [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro; item 11: regras do filtro do 31.9) | 03/10 |
 
 ---
 
@@ -4073,6 +4073,24 @@ catálogo, comando), que o ADR-063 não cobre.
       - o curador (C0 e C1) vai primeiro, e a intenção (C3) fica liberada para o 31.10 assim que a correção passar no portão
         novo.
     - Código-fonte segue o ADR-063 (C8).
+11. **Emenda de 03/10/2026 (decisões da orquestradora nas reverificações B e C do 31.9, dentro do piso do item 10;
+    registrada ~05:56Z).** O item 10 fala em "numerais por extenso" e no filtro de forma geral; as reverificações
+    mostraram onde a regra geral vazava ou cegava a sombra, e as regras ficam assim:
+    - **C7 é recusa do pedido INTEIRO**: a máscara não basta. Vale também para o eufemismo ("a de sempre", "o que você
+      digita"), o par de usuário e senha ("login: x / y", "usuário x, acesso y"), o PIN tecla a tecla ("toque 4, depois 8,
+      depois 2") ou fechado por "#", e a palavra-chave em outra escrita, colada, abreviada ou em leet.
+    - **Numerais por extenso recusam só SEGUIDOS**: dois ou mais com só espaço, vírgula, ponto, barra ou hífen entre eles
+      ("nove oito", "dez, dez", "sete-sete"), ou três ou mais ligados por "e", "y" ou "and". O numeral solto vira `[numero]`
+      ("Ze Sete e Maria Onze" e "duas fotos e três pessoas" saem mascarados). Até a rodada C, dois no texto recusavam.
+    - **"Alfabetos misturados" vale para a FRASE**: letra fora do alfabeto latino em qualquer palavra do comando recusa,
+      INCLUSIVE o texto entre aspas, que de outro jeito sairia como `[texto]`. Só a sombra perde o comando: a execução não
+      muda, e nenhum dos 92 comandos reais de 7 dias foi afetado (03/10, só leitura). O texto do catálogo (C2) segue a regra
+      por palavra (escopo; a medição com o catálogo real do central fica para a próxima rodada).
+    - **`@handle` com hífen vira `[usuario]` inteiro** ("@cassia-brandao" saía `[usuario]-brandao`).
+    - **Falsos positivos aceitos**, todos só de recusa e só na sombra: "at" + provedor ou nome de arquivo ("check the inbox at
+      outlook", "look at photo.jpg") lido como e-mail, e "pw" isolado lido como credencial.
+    - Prova `simulated`: `backend/tests/test_decisao_fechada_reverificacao_c.py` e o harness da rodada D (267 casos pelo
+      caminho de produção, 0 vazamentos em 963f9d7b); detalhes em [ia.md](ia.md) (bloco "Rodada C" da intenção).
 
 **Consequências.** A plataforma ganha um motor barato (US$ 0,042/M de entrada, saída grátis) para decisões fechadas que hoje não
 acontecem ou vão ao Opus, medido em sombra contra o caminho atual antes de qualquer `on`. O ADR-063 continua valendo para código.
