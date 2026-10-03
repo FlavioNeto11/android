@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 25.12: túnel morto age e o backend verifica a rede ao subir (branch feat/25-12-tunel-morto)
+
+- Objetivo de execução ENCERRADA não segura mais o aparelho (`vitrine.objetivo_que_segura`, a terceira metade do 25.12,
+  feita primeiro): `waiting_user`/`uncertain` de uma execução em estado terminal (`completed_with_issues` é o rollup
+  de todo objetivo que espera uma pessoa sem nada rodando) contava como "objetivo no meio" para sempre. Medido em 03/10:
+  o teste de vazamento do android-03 ficou adiado por ~1 h por um objetivo de 02/10, e o android-01 tem 18 objetivos
+  assim desde 28/09. A execução viva (`running`, `paused`, `planned`, `needs_input`, `cancelling`) continua segurando.
+  Efeito nos chamadores: entrega do app principal ao ligar, teste de vazamento e reinício da rede (detalhe em
+  `docs/dominios/parque.md`). O teste do PR #13 (`uncertain` segura a troca do app) passa a provar as duas faces.
+  Prova `simulated`: `tests/test_sempre_na_promovida.py::test_objetivo_incerto_segura_a_troca_do_app_principal`,
+  `tests/test_rede_sonda.py::test_objetivo_de_execucao_encerrada_nao_adia_o_teste_de_vazamento`.
+
 ## 2026-10-03 — Aprendizado: nomes também nas listas (validação do deploy 4, branch fix/aprendizado-ux-deploy4)
 
 - "capability" sai da tela: "capacidade", "Etapa livre (fora do catálogo)" e "Fora do catálogo".

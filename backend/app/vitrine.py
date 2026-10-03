@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 from .db import loads
 from .devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
-from .models import AppDTO, InstanceState
+from .models import RUN_TERMINAL, AppDTO, InstanceState
 from .modules.applications.infrastructure.app_repository import AppRow
 from .planning.catalog import capabilities_of
 from .releases.catalog import ReleaseValidationError
@@ -110,6 +110,14 @@ def previa_de_entrega(state: AppState, rt: Any, row: Any, *, eager: bool) -> dic
 
 
 # ============================================================================ entrega sem tarefa (ao ligar e na varredura)
+#: Execução em estado terminal (`RUN_TERMINAL`): inclui `completed_with_issues`, o rollup em que TODO objetivo
+#: `waiting_user`/`uncertain` termina quando já nada roda (`recompute_run`: "execução em aberto para permitir retomada").
+#: Antes só `completed`, `cancelled` e `failed` soltavam o aparelho, e o objetivo parado de uma execução assim o segurava
+#: para sempre (03/10: o teste de vazamento do android-03 adiado por ~1 h por um objetivo de 02/10; android-01 com 18
+#: desde 28/09).
+_EXECUCAO_ENCERRADA = tuple(sorted(s.value for s in RUN_TERMINAL))
+
+
 def objetivo_em_andamento(state: AppState, instance_id: str, *, exceto_quem_espera_a_rede: bool = False) -> bool:
     """O aparelho tem um objetivo no meio (rodando, parado esperando uma pessoa ou com desfecho INCERTO) de uma
     execução não encerrada?
@@ -118,6 +126,11 @@ def objetivo_em_andamento(state: AppState, instance_id: str, *, exceto_quem_espe
     `dispatchable_objectives` não basta: ela não vê a etapa em `retry_wait` nem o objetivo em `waiting_user`. O
     `uncertain` entra pelo mesmo motivo (revisão do PR #13): a tela dele é a evidência de que o operador precisa para
     decidir se o efeito aconteceu, e instalar e abrir o app por cima a apagaria.
+
+    Execução EM ESTADO TERMINAL (`completed`, `completed_with_issues`, `cancelled`, `failed`) não segura: o rollup põe
+    `completed_with_issues` justamente quando sobra `waiting_user`/`uncertain` sem nada rodando, e contá-lo prendia o
+    aparelho (entrega do app, teste de vazamento e reinício da rede) até alguém fechar o objetivo à mão (item 25.12).
+    A execução que a pessoa reabre (retomada) volta a `running`, e aí o objetivo volta a segurar.
 
     `exceto_quem_espera_a_rede`: o objetivo suspenso entre etapas pela porta da rede (`wait_reason='rede'`, item
     25.6) continua `running`, mas está esperando justamente o reinício que a convergência da rede pede — contá-lo como
@@ -132,10 +145,11 @@ def objetivo_que_segura(state: AppState, instance_id: str, *, exceto_quem_espera
     aparelho (29.21: o reinício da rede que não saía não dizia por quê)."""
     row = state.db.one(
         "SELECT o.id FROM objectives o JOIN runs r ON r.id = o.run_id WHERE o.instance_id=?"
-        " AND o.status IN ('running','waiting_user','uncertain') AND r.status NOT IN ('completed','cancelled','failed')"
+        " AND o.status IN ('running','waiting_user','uncertain') AND r.status NOT IN ("
+        + ",".join("?" * len(_EXECUCAO_ENCERRADA)) + ")"
         + (" AND NOT (o.status='running' AND COALESCE(o.wait_reason,'')='rede')" if exceto_quem_espera_a_rede else "")
         + " ORDER BY o.id LIMIT 1",
-        (instance_id,))
+        (instance_id, *_EXECUCAO_ENCERRADA))
     return str(row["id"]) if row is not None else None
 
 

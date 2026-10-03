@@ -911,6 +911,28 @@ async def test_vazamento_adiado_com_objetivo_no_meio_e_no_celular_sem_worker(par
     assert conv._vazamento_adiado(notebook) is None                                          # type: ignore[arg-type]
 
 
+async def test_objetivo_de_execucao_encerrada_nao_adia_o_teste_de_vazamento(parque: Harness) -> None:
+    """Item 25.12 (achado real do 03/10, android-03): o objetivo `waiting_user` de 02/10 estava numa execução
+    `completed_with_issues` (o rollup de quem espera uma pessoa sem nada rodando), e o teste de vazamento ficou adiado
+    por ~1 h ("há um objetivo no meio"). Execução em estado terminal não segura; a viva (`running`) segura."""
+    from app.util import now_iso
+
+    st = parque.state
+    assert st is not None
+    conv, rt = st.rede_convergencia, st.devices.devices["android-01"]
+    assert conv._vazamento_adiado(rt) is None                                                  # type: ignore[arg-type]
+    st.db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, instance_ids, created_at)"
+                  " VALUES ('r-teste-25-12','k-teste-25-12','abrir','execute','running','[\"android-01\"]',?)",
+                  (now_iso(),))
+    st.db.execute("INSERT INTO objectives(id, run_id, instance_id, status) VALUES ('o-teste-25-12','r-teste-25-12',"
+                  "'android-01','waiting_user')")
+    assert "há um objetivo no meio" in (conv._vazamento_adiado(rt) or "")                      # type: ignore[arg-type]
+    assert conv._quem_segura_o_reinicio(rt) == "objetivo o-teste-25-12 em andamento"           # type: ignore[arg-type]
+    st.db.execute("UPDATE runs SET status='completed_with_issues' WHERE id='r-teste-25-12'")
+    assert conv._vazamento_adiado(rt) is None                                                  # type: ignore[arg-type]
+    assert conv._quem_segura_o_reinicio(rt) is None                                            # type: ignore[arg-type]
+
+
 # ============================================================================ prova durável de vazamento (item 29.2)
 # O defeito (P16, medido em 30/09): a prova do teste de vazamento vivia só na memória da convergência. Um reinício do
 # backend a perdia, e a remedição seguinte (a 90% da validade) parava o cliente VPN de novo em todo aparelho com

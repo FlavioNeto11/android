@@ -555,19 +555,37 @@ async def test_versao_voltada_com_prova_de_abertura_falha_tambem_volta(parque: H
 
 async def test_objetivo_incerto_segura_a_troca_do_app_principal(parque: Harness) -> None:
     """Revisão do PR #13: objetivo `uncertain` soltou o trabalhador e não é despachável, mas a tela dele é a evidência
-    que o operador precisa ver para decidir se o efeito aconteceu. A troca automática do app principal espera."""
+    que o operador precisa ver para decidir se o efeito aconteceu. A troca automática do app principal espera enquanto
+    a execução está viva. Item 25.12: a execução em estado TERMINAL (`completed_with_issues` é o rollup de todo
+    `waiting_user`/`uncertain` sem nada rodando) já não segura o aparelho: antes, o objetivo de 02/10 o prendia por
+    horas (e o android-01 tinha 18 deles desde 28/09)."""
     from app.util import now_iso
-    from app.vitrine import objetivo_em_andamento
+    from app.vitrine import objetivo_em_andamento, objetivo_que_segura
 
     st = parque.state
     assert st is not None
     assert not objetivo_em_andamento(st, "android-01")
     st.db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, instance_ids, created_at)"
-                  " VALUES ('r-teste-incerto','k-teste-incerto','abrir','execute','completed_with_issues','[\"android-01\"]',?)",
+                  " VALUES ('r-teste-incerto','k-teste-incerto','abrir','execute','running','[\"android-01\"]',?)",
                   (now_iso(),))
     st.db.execute("INSERT INTO objectives(id, run_id, instance_id, status) VALUES ('o-teste-incerto','r-teste-incerto',"
                   "'android-01','uncertain')")
+    for objetivo in ("uncertain", "waiting_user", "running"):
+        st.db.execute("UPDATE objectives SET status=? WHERE id='o-teste-incerto'", (objetivo,))
+        for vivo in ("running", "paused", "cancelling", "planned", "needs_input"):
+            st.db.execute("UPDATE runs SET status=? WHERE id='r-teste-incerto'", (vivo,))
+            assert objetivo_em_andamento(st, "android-01"), (objetivo, vivo)
+            assert objetivo_que_segura(st, "android-01") == "o-teste-incerto"
+        for terminal in ("completed_with_issues", "completed", "cancelled", "failed"):
+            st.db.execute("UPDATE runs SET status=? WHERE id='r-teste-incerto'", (terminal,))
+            assert not objetivo_em_andamento(st, "android-01"), (objetivo, terminal)
+            assert objetivo_que_segura(st, "android-01") is None, (objetivo, terminal)
+    # A execução que a pessoa reabre (retomada) volta a segurar o aparelho.
+    st.db.execute("UPDATE runs SET status='running' WHERE id='r-teste-incerto'")
     assert objetivo_em_andamento(st, "android-01")
+    # Só `running`/`waiting_user`/`uncertain` seguram: o objetivo já resolvido numa execução viva não.
+    st.db.execute("UPDATE objectives SET status='succeeded' WHERE run_id='r-teste-incerto'")
+    assert not objetivo_em_andamento(st, "android-01")
 
 
 async def test_relogio_da_tentativa_diaria_conta_so_este_app_e_so_o_que_saiu(parque: Harness) -> None:
