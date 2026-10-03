@@ -357,7 +357,19 @@ ai:
   #     note: candidato a ator barato (bateria 17.10)
   #     roles:
   #       decide: {provider: openai, model: gpt-6-luna, fallback_provider: anthropic}
+  #   img-768:
+  #     note: dieta do contexto 2 (RA-17)
+  #     screenshot_max_side: 768        # (o global) item 17.14: lado da imagem SÓ nas execuções deste perfil
+  #     rich_tree_min_elements: 12      # (o global) item 17.14: árvore rica só com 12 elementos informativos
+  #     roles:
+  #       decide: {cache_da_etapa: true}  # (false) passo e lições antes da imagem, com o 2º ponto de cache
+  #   ator-sem-thinking:
+  #     roles:
+  #       decide: {thinking: false, effort: low}   # (vazio) item 17.14: sem thinking; esforço desta função, não do .env
   # canary: {profile: luna-ator, fraction: 0.1}   # (sem canário) 10 % das execuções sem perfil vão para o candidato
+  # `effort`, `thinking` e `cache_da_etapa` também valem em `roles` (sem perfil) e só mudam a requisição na Anthropic:
+  # no provedor OpenAI não há thinking, esforço nem ponto de cache (docs/ia.md §10c, 17.14). A aba IA mostra, por
+  # função, se o thinking vai (`thinking` no GET /api/ai).
   #
   # Item 31.6 — fatias do teto de gasto DO DIA para usos fora de execução (docs/ia.md §6). São PARTES do teto do dia
   # (`ai_max_usd_per_day`, em Configuração › Limites), nunca somas por fora: uma fatia estourada barra só a origem dela

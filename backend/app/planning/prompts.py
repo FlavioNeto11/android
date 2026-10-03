@@ -473,6 +473,13 @@ def step_block(ctx: StepContext, *, for_actor: bool = False) -> str:
 
 
 def actor_user_text(req: DecisionRequest) -> str:
+    return "".join(actor_user_partes(req))
+
+
+def actor_user_partes(req: DecisionRequest) -> tuple[str, str]:
+    """O texto do ator em duas partes que, juntas, são EXATAMENTE `actor_user_text` (RA-17): a estável da etapa (o passo e
+    as lições, iguais em toda decisão da tentativa) e a da observação (histórico, tela, elementos), que muda a cada uma.
+    O `cache_da_etapa` põe o 2º ponto de cache no fim da primeira."""
     hist = "\n".join(f"  {i + 1}. {h}" for i, h in enumerate(req.history)) or "  (nenhuma ação ainda)"
     s = req.screen
     if s.sensitive:
@@ -485,7 +492,7 @@ def actor_user_text(req: DecisionRequest) -> str:
                   f"Imagem NÃO enviada nesta observação (tela de {space}); use os elementos abaixo ou "
                   "peça a imagem com observe_screen(need_image=true).")
     elements = "\n".join(s.elements) or "(hierarquia vazia)"
-    return (f"{step_block(req.ctx, for_actor=True)}\n\n{licoes_block(req.lessons)}"
+    return (f"{step_block(req.ctx, for_actor=True)}\n\n{licoes_block(req.lessons)}",
             f"Histórico desta tentativa:\n{hist}\n\n"
             f"OBSERVAÇÃO ATUAL — app em primeiro plano: {s.package or 'desconhecido'}. {screen}\n"
             f"<elementos_da_tela>\n{elements}\n</elementos_da_tela>\n\nEscolha UMA ferramenta.")

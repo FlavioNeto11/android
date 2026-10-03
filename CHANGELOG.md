@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — IA: esforço e thinking por função, sonda "o ator pensa?" e dieta do contexto 2 (17.14 e RA-17, branch feat/17-14-perfil-e-dieta)
+
+- `ai.roles.<f>` e os perfis ganham `effort`, `thinking: false` e `cache_da_etapa`; o perfil ganha
+  `screenshot_max_side` e `rich_tree_min_elements`, só nas execuções dele. Nada escrito = a requisição de antes, byte
+  a byte.
+- `cache_da_etapa` (RA-17): o passo e as lições vão antes da imagem, com o 2º ponto de cache.
+- Uma função com ajuste ganha instância de provedor própria.
+- `GET /api/ai`: `roles[].thinking` (a sonda) e `pensou=N` na linha de uso do log (adendo da API pedido à
+  orquestradora).
+- Prova `simulated`: `tests/test_perfil_esforco_e_dieta.py` (16). `real`: `not_run` (sem A/B pago).
+
 ## 2026-10-03 — Aprendizado: nomes também nas listas (validação do deploy 4, branch fix/aprendizado-ux-deploy4)
 
 - "capability" sai da tela: "capacidade", "Etapa livre (fora do catálogo)" e "Fora do catálogo".

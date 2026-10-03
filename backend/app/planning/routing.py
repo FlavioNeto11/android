@@ -90,7 +90,7 @@ class RoutingProvider:
         self._por_chave: dict[tuple[Any, ...], AIProvider] = {}
         self.providers: dict[str, AIProvider] = {}
         for papel, r in self.roles.items():
-            chave = (r.provider, r.kind, r.model, r.timeout_s, r.max_retries, r.refusal_fallback)
+            chave = _chave_da_instancia(r)
             if chave not in self._por_chave:
                 self._por_chave[chave] = build_one(cfg, r)
             self.providers[papel] = self._por_chave[chave]
@@ -158,7 +158,7 @@ class RoutingProvider:
                 vision=caps.vision, tools=caps.tools,
                 refusal_fallback=r.refusal_fallback and r.kind == "anthropic",
                 fallback_provider=r.fallback_provider, timeout_s=r.timeout_s, concurrency=r.concurrency,
-                effort=r.effort))
+                effort=r.effort, thinking=_estado_do_thinking(self.providers[papel], papel, r.model)))
         if "leitura" in self.roles:
             r = self.roles["leitura"]
             caps = self.cfg.model_caps(r.model)
@@ -375,7 +375,7 @@ class RoutingProvider:
             return resultado, usage
 
     def _instance(self, papel: str, r: ResolvedRole) -> AIProvider:
-        chave = (r.provider, r.kind, r.model, r.timeout_s, r.max_retries, r.refusal_fallback)
+        chave = _chave_da_instancia(r)
         if chave not in self._por_chave:
             self._por_chave[chave] = build_one(self.cfg, r)
         return self._por_chave[chave]
@@ -462,6 +462,25 @@ class RoutingProvider:
         return await self._call("persona", None, lambda p: p.generate_persona(req), origem="persona")
 
 
+def _estado_do_thinking(provedor: AIProvider, papel: str, model: str) -> str | None:
+    """A sonda "o ator pensa?" (17.14) da instância que atende a função, ou `None` se o provedor não tem thinking."""
+    sonda = getattr(provedor, "estado_do_thinking", None)
+    return sonda(papel, model) if callable(sonda) else None
+
+
+def _chave_da_instancia(r: ResolvedRole) -> tuple[Any, ...]:
+    """Uma instância de provedor por combinação (provedor, modelo, prazo, tentativas, fallback de recusa).
+
+    Os campos do 17.14 entram quando escritos: um perfil que só troca o esforço, o thinking ou o cache da etapa precisa
+    de instância própria, senão a do padrão (criada antes) o atenderia e o A/B mediria o padrão duas vezes. Com ajuste,
+    a função também entra: o provedor aplica o ajuste só às chamadas da função dona da instância (`_da_funcao`), e
+    `decide` e `escalation` com o mesmo ajuste dividindo uma instância perderiam o da segunda. Sem nada escrito, a
+    chave é a de sempre."""
+    chave: tuple[Any, ...] = (r.provider, r.kind, r.model, r.timeout_s, r.max_retries, r.refusal_fallback)
+    ajustes = (r.effort_declarado, r.thinking, r.cache_da_etapa)
+    return chave + (r.role, *ajustes) if ajustes != (None, None, False) else chave
+
+
 def _com_provedor(cfg: Config, papel: str, provedor: str, perfil: str | None = None) -> ResolvedRole:
     """A mesma função, resolvida contra OUTRO provedor — o declarado em `ai.roles.<papel>.fallback_provider`.
 
@@ -478,7 +497,8 @@ def _com_provedor(cfg: Config, papel: str, provedor: str, perfil: str | None = N
         sends_data_externally=bool(outro.sends_data_externally) if outro else True,
         fallback_provider=None,                     # o destino do fallback não cai de novo: uma queda, não uma cadeia
         refusal_fallback=r.refusal_fallback, timeout_s=r.timeout_s, max_retries=r.max_retries,
-        concurrency=r.concurrency, effort=r.effort, extra_body=outro.extra_body if outro else None)
+        concurrency=r.concurrency, effort=r.effort, extra_body=outro.extra_body if outro else None,
+        effort_declarado=r.effort_declarado, thinking=r.thinking, cache_da_etapa=r.cache_da_etapa)   # 17.14: a mesma função
 
 
 def _valida_capacidade(cfg: Config, roles: dict[str, ResolvedRole], onde: str = "ai.roles") -> None:

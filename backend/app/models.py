@@ -1970,6 +1970,9 @@ class AiRoleStatus(BaseModel):
     timeout_s: float = 0
     concurrency: int = 0
     effort: str | None = None
+    #: Sonda "o ator pensa?" (17.14): adaptive | desligado_na_funcao | nao_declarado | recusado_pelo_modelo (um 400
+    #: desligou nesta instância). Vazio = provedor sem thinking (OpenAI, simulado).
+    thinking: str | None = None
 
 
 class AiImageStatus(BaseModel):
