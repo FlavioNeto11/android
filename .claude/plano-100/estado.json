@@ -6522,15 +6522,15 @@
   "29.54": {
    "id": "29.54",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "feat/29-54-portal-central: tests/test_painel_estatico.py (6) e tests/test_portal_publico_central.py (12) passed; afetados do portao, sessao, TLS, canal do worker, saude e arquitetura 99 passed e 32 arquivos de saude/health 592 passed 1 skipped; frontend typecheck, 1415 testes e build com /central/assets/ no dist/index.html. Tunel no ar e conferencias de fora: not_run (orquestradora).",
+   "proof": "real",
+   "evidence": "Real em 03/10/2026, maquina central WIN-7S2UASNLFOP, checkout 4ad5f8b6 (codigo do 2264843e, deploy 15): hostname em server.public_hosts as 21:35:02Z, central reiniciado as 21:46:56Z, /api/health local ok sem exposicao_publica_incompleta. Prova de fora sem credencial as 21:47:28Z com `bash .claude/handoffs/portal/prova-de-fora.sh depois`, saida 0, 19 de 19: /api/instances, /api/health e /api/workers 401; /api/session 200 com token_required true e operator null; /central/ 200 com js, css e icone em /central/; / e /central 307; /docs, /redoc e /openapi.json 404; /api/docs e /api/openapi.json 401; /api/ws 403; /api/worker/ws e /api/worker/midia 404 no tunel; http 301. Antes do reinicio os mesmos pedidos davam 403 (21:32Z). Travessia de caminho: 400 na borda e 404 no app. Painel local sem login. Simulado: tests/test_painel_estatico.py e tests/test_portal_publico_central.py. Nao executado: o primeiro login pelo endereco publico, que e do dono.",
    "blocker": "",
    "grupo": "29.54",
    "modelo": "sonnet",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T20:44:14+00:00"
+   "quando": "2026-10-03T21:53:39+00:00"
   }
  },
  "rodadas": [
@@ -8151,6 +8151,15 @@
    ],
    "grupos": [
     "jev-31-22-real"
+   ]
+  },
+  {
+   "quando": "2026-10-03T21:53:39+00:00",
+   "itens": [
+    "29.54"
+   ],
+   "grupos": [
+    "29.54"
    ]
   }
  ]

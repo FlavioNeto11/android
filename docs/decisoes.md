@@ -79,7 +79,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-069](#adr-069--jev-typesafe-system-one-em-runtime-só-a-porta-decisaofechada-só-conjunto-fechado-dado-por-classe) | Jev em runtime: só a porta `DecisaoFechada`, só conjunto fechado, dado liberado por classe; emenda o ADR-063 | aceito (dono, 02/10; Fase 31); emendado 02/10 (item 9: chave mantida) e 03/10 (item 10: dado pessoal com filtro; item 11: regras do filtro do 31.9; item 12: C7 sem palavra-chave e e-mail em peças, rodada E; item 13: barrar pela intenção de entrar, rodada F; item 14: o usuário como @handle ou e-mail, o catálogo só no destino e a preposição só com faixa, rodada G; item 15: envio aberto no código para a sombra C0–C1 do 31.10, 31.17; item 16: a camada estrutural da rodada H; item 17: NO-GO da fase 2 da H e a forma seguinte com o dono; item 18: forma A na versão A-estreita, 31.18; item 19: lacunas da rodada I e a A-média aprovada pelo dono, 31.20; item 20: o limiar da porta sobre a probabilidade devolvida e o rótulo 1 do curador só do dono, 31.19) | 03/10 |
 | [ADR-070](#adr-070--valor-visto-na-imagem-conta-como-saída-de-etapa-sob-conferência-cega-de-um-segundo-leitor) | Valor visto na imagem conta como saída de etapa, sob conferência cega de um segundo leitor; substitui em parte o ADR-065 §3 (item 12.5) | vigente (dono, 02/10; opção desligada) | 02/10 |
 | [ADR-071](#adr-071--a-conversa-de-volta-pelo-telegram-o-dono-fala-com-a-central-como-no-painel) | A conversa de volta pelo Telegram: o dono fala com a Central como no painel (item 28.15) | vigente (orquestradora, 03/10; entrada desligada) | 03/10 |
-| [ADR-073](#adr-073--portal-na-internet-por-túnel-de-saída-da-cloudflare-o-host-separa-o-público-do-local-o-painel-mora-em-central) | Portal na internet por túnel de saída da Cloudflare: o `Host` separa o público do local, o painel mora em `/central` (item 29.54) | aceito (dono, 03/10; túnel `not_run`) | 03/10 |
+| [ADR-073](#adr-073--portal-na-internet-por-túnel-de-saída-da-cloudflare-o-host-separa-o-público-do-local-o-painel-mora-em-central) | Portal na internet por túnel de saída da Cloudflare: o `Host` separa o público do local, o painel mora em `/central` (item 29.54) | aceito (dono, 03/10; túnel `real` desde 03/10 21:47Z) | 03/10 |
 
 ---
 
@@ -5031,7 +5031,7 @@ uma execução e pedir coisas, sem abrir o painel e sem atalho de política.
 ## ADR-073 — Portal na internet por túnel de saída da Cloudflare: o `Host` separa o público do local, o painel mora em `/central`
 
 **Data:** 03/10/2026 · **Estado:** aceito (decisão do dono, chat de 03/10 ~19:20Z; item 29.54). Código e testes
-`simulated`; o túnel no ar é `not_run` até a orquestradora provar de fora (procedimento em
+`simulated`; o túnel no ar é `real` desde 03/10/2026 21:47Z (prova de fora no fim deste ADR; procedimento em
 [operacao.md](operacao.md), "Portal público pelo túnel da Cloudflare").
 
 **Contexto.** O dono quer o portal acessível em `https://dev.nvit.com.br/central` sem abrir porta nesta máquina. O
@@ -5098,6 +5098,16 @@ saúde dizer quando a exposição está pela metade.
 **Consequências.** O endereço do painel local muda de `http://127.0.0.1:8000/` para `.../central/` (a raiz redireciona,
 então o favorito antigo segue funcionando). O dev do frontend abre em `http://127.0.0.1:5173/central/`. Atrás do túnel,
 o central acredita ser `http` (não lê `X-Forwarded-Proto`); por isso `tls_behind_proxy` é declaração, não detecção.
+
+**Prova real (03/10/2026, máquina central `WIN-7S2UASNLFOP`, checkout `4ad5f8b6` = código do `2264843e`).** Hostname
+declarado no `config.yaml` às 21:35:02Z, central reiniciado às 21:46:56Z, `GET /api/health` local sem
+`exposicao_publica_incompleta`. Prova de fora sem credencial às 21:47:28Z (`bash .claude/handoffs/portal/prova-de-fora.sh
+depois`, 19 de 19): `/api/instances`, `/api/health` e `/api/workers` 401; `/api/session` 200 com `token_required: true` e
+`operator: null`; `/central/` 200 com o js, o css e o ícone servidos de `/central/…`; `/` e `/central` 307; `/docs`,
+`/redoc` e `/openapi.json` 404; `/api/docs` e `/api/openapi.json` 401; `/api/ws` sem credencial 403; `/api/worker/ws` e
+`/api/worker/midia` 404 no túnel; `http` 301. Antes do reinício os mesmos pedidos davam 403 (21:32Z): o `Host` chega
+preservado. Travessia de caminho em `/central/` dá 400 na borda e 404 no app. O painel local segue sem login.
+**Não provado (`not_run`):** o login pelo endereço público, que é do dono, e o cookie `Secure` no navegador dele.
 
 **Relação.** ADR-025/ADR-040 (credencial e cofre, não alterados), ADR-009, ADR-056 (rede por aparelho, não alterado),
 [operacao.md](operacao.md) §11 e "Portal público pelo túnel da Cloudflare", [api-contract.md](api-contract.md) adendo

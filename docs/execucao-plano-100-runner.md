@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-336 de 394 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+336 de 399 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -323,10 +323,12 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.51 | implemented | simulated | opus (sessão Android) | — | feat/polimentos-rede-deploy12 @ a742f75f (722e0664 Rede; 591c8d84 títulos sem lacunas e candidato x desligado; 41950d20 pendentes uma vez; 4773d997 os 3 do backend; a742f75f adendo v1.01), na main pela suíte 13 (integ 7… | Prova real not_run: o relatório do Chrome da orquestradora pós-deploy 13 (itens 6 a 11). |
 | 29.52 | implemented | simulated | opus (sessão Android) | — | fix/29-52-resposta-com-credencial @ 16174425 (→ 90c058e2 no integ), porta única pergunta_sensivel(ref\|None) no commit de integração 7fd72929; na main pela suíte 14 (integ 51270b9c, fast-forward) e implantado no deploy… | Prova real not_run: itens 4 e 5 do roteiro do Chrome da orquestradora pós-deploy 14 (pergunta sensível aberta no painel e o evento pergunta_sensivel); sem perg… |
 | 29.53 | pendente | — | — | — |  |  |
-| 29.54 | implemented | simulated | sonnet | — | feat/29-54-portal-central: tests/test_painel_estatico.py (6) e tests/test_portal_publico_central.py (12) passed; afetados do portao, sessao, TLS, canal do worker, saude e arquitetura 99 passed e 32 arquivos de saude/hea… |  |
+| 29.54 | implemented | real | sonnet | — | Real em 03/10/2026, maquina central WIN-7S2UASNLFOP, checkout 4ad5f8b6 (codigo do 2264843e, deploy 15): hostname em server.public_hosts as 21:35:02Z, central reiniciado as 21:46:56Z, /api/health local ok sem exposicao_p… |  |
 | 29.55 | pendente | — | — | — |  |  |
 | 29.56 | pendente | — | — | — |  |  |
 | 29.57 | pendente | — | — | — |  |  |
+| 29.58 | pendente | — | — | — |  |  |
+| 29.59 | pendente | — | — | — |  |  |
 | 29.44 | implemented | real | opus (sessão Android) | — | feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a med… |  |
 | 29.45 | implemented | simulated | opus (sessão Android) | — | feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entr… |  |
 | 29.43 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/caminho-rapido-1 @60e7962e: LT-1 (atalho de entrada sem o ator, ATALHO_ANTES_DO_ATOR, nunca em etapa com efeito, driven_by='sem_ator'), LT-2 (expect_done em etapa julgada → _verify(uma_rodada=True), nunca em etapa… |  |
@@ -370,6 +372,9 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.38 | partial | simulated | claude-opus-5-5 | — | (c) no PR #165 (fix/30-38c-classe-de-agora @ 657ab399, base cd71ac4e), para a suíte 13: ServicoDePareceres.do_item e na_fila usam _classe_de_agora (a gravada C não monta dossiê); a API dá classe = a de agora no parecer… |  |
 | 30.39 | partial | simulated | claude-opus-5-5 | — | PR #172 (feat/30-39-evidencia-receita @ 0c472832), para a suíte 15, sem migração e sem mudança de API: minerador EvidenciaDaReceita no digest (learning_evidence de receita:<id> por receita/execução/posição, origem repro… |  |
 | 30.40 | pendente | — | — | — |  |  |
+| 30.41 | pendente | — | — | — |  |  |
+| 30.42 | pendente | — | — | — |  |  |
+| 30.43 | pendente | — | — | — |  |  |
 | 31.1 | implemented | simulated | sessao | — | Commit b5a40c98 (na main desde o PR #110, sessao jev, 02/10/2026): trava de 255 opcoes e opcao nenhuma no adaptador do Jev (choice). backend/tests/test_context_retrieval_semantic.py com provedor falso. Chamada real: not… |  |
 | 31.2 | implemented | simulated | sessao | — | PR #112 (merge b5baf3e5 na main, commits 89a92b03 + a6cfa0fd, sessao jev, 02/10/2026): migracao 073 (ai_calls.origem e ref, TEXT sem CHECK), Usage.origem, filtro por origem no gasto (costs.spent_usd). backend/tests/test… |  |
 | 31.3 | implemented | not_run | sessao | — | Item de decisao (texto do ADR): ADR-069 escrito e aprovado pelo dono (02/10/2026 ~21:35Z, 'sim para todos' no chat da orquestradora), PR #102, merge fd59fbd7. Emenda o ADR-063; D-J1 (porta unica, constantes fechadas, Te… |  |
@@ -401,7 +406,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (58): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 28.16, 28.17, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 29.53, 29.55, 29.56, 29.57, 30.18, 30.31, 30.34, 30.36, 30.37, 30.38, 30.39, 30.40, 31.10, 31.11, 31.12, 31.21, 31.24, 32.2, T.2
+Pendentes (63): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 28.16, 28.17, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 29.53, 29.55, 29.56, 29.57, 29.58, 29.59, 30.18, 30.31, 30.34, 30.36, 30.37, 30.38, 30.39, 30.40, 30.41, 30.42, 30.43, 31.10, 31.11, 31.12, 31.21, 31.24, 32.2, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
