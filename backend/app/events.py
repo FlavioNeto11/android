@@ -26,6 +26,17 @@ EPHEMERAL_KINDS = {"frame", "metrics", "worker.metrics", "health.updated", "apps
                    # persistir encheria o log com três eventos por aparelho a cada aplicação.
                    "proxy.updated"}
 
+#: RA-11 (reavaliação de 03/10): a telemetria do parque mora no mesmo balde da auditoria. `instance.updated` leva o DTO
+#: inteiro do aparelho a cada mudança (32 mil linhas e 48 MiB em 14 dias, 03/10) e empurrava para fora da janela de
+#: replay do painel o que importa. Ela vence em `TELEMETRIA_RETENCAO_H`, e o resto do log segue em
+#: `log_retention_days`. Só sem execução (`run_id` nulo, que é o caso de todas, medido em 03/10): a linha do tempo de uma
+#: execução não perde nada.
+TELEMETRIA_KINDS = ("instance.updated",)
+TELEMETRIA_RETENCAO_H = 48
+#: Linhas por DELETE da purga. A de 02/10 levou 41 mil eventos num comando só, e no SQLite um DELETE desse tamanho segura
+#: a escrita do banco inteiro enquanto roda; em lotes, cada comando é curto e os outros escritores passam entre eles.
+PURGA_LOTE = 2000
+
 
 #: De quanto em quanto tempo uma réplica olha o banco atrás do que as OUTRAS publicaram.
 REPLICA_POLL_S = 1.0
@@ -172,11 +183,26 @@ class EventBus:
     def count_since(self, after_id: int) -> int:
         return int(self.db.scalar("SELECT COUNT(*) FROM events WHERE id > ?", (after_id,)) or 0)
 
-    def purge_older_than(self, iso_ts: str) -> int:
-        cur = self.db.execute(
-            "DELETE FROM events WHERE ts < ? AND (run_id IS NULL OR run_id NOT IN "
-            "(SELECT id FROM runs WHERE finished_at IS NULL))", (iso_ts,))
-        return cur.rowcount
+    def purge_older_than(self, iso_ts: str, *, kinds: tuple[str, ...] = (), so_sem_execucao: bool = False,
+                         lote: int = PURGA_LOTE) -> int:
+        """Apaga os eventos anteriores a `iso_ts`, menos os de execução ainda aberta, em lotes de `lote` linhas.
+
+        `kinds` restringe a purga a esses tipos (a classe de telemetria do RA-11); `so_sem_execucao` poupa todo evento
+        com `run_id`, aberto ou fechado."""
+        filtro = "ts < ? AND (run_id IS NULL OR run_id NOT IN (SELECT id FROM runs WHERE finished_at IS NULL))"
+        args: list[object] = [iso_ts]
+        if kinds:
+            filtro += f" AND kind IN ({','.join('?' for _ in kinds)})"
+            args += list(kinds)
+        if so_sem_execucao:
+            filtro += " AND run_id IS NULL"
+        total = 0
+        while True:
+            n = int(self.db.execute(f"DELETE FROM events WHERE id IN (SELECT id FROM events WHERE {filtro} ORDER BY id"
+                                    " LIMIT ?)", (*args, lote)).rowcount or 0)
+            total += n
+            if n < lote:
+                return total
 
 
 def row_to_event(r: Any) -> EventRecord:

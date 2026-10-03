@@ -36,7 +36,7 @@ from .devices.rede_convergencia import ConvergenciaDeRede
 from .devices.rede_saida_central import SaidaDoCentral
 from .devices.rede_servidor import ServidorDeRede
 from .devices.sdk import SdkTools
-from .events import EventBus
+from .events import TELEMETRIA_KINDS, TELEMETRIA_RETENCAO_H, EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
@@ -2613,6 +2613,10 @@ class AppState:
             s = self.settings.get()
             cutoff = to_iso(now() - timedelta(days=s.log_retention_days))
             removed = self.bus.purge_older_than(cutoff)
+            # RA-11: a telemetria do parque (`instance.updated`, o DTO inteiro do aparelho) vence em 48 h, antes do
+            # resto do log; só a sem execução, para a linha do tempo de uma execução não perder nada.
+            telemetria = self.bus.purge_older_than(to_iso(now() - timedelta(hours=TELEMETRIA_RETENCAO_H)),
+                                                   kinds=TELEMETRIA_KINDS, so_sem_execucao=True)
             ev_cut = to_iso(now() - timedelta(days=s.evidence_retention_days))
             old = await asyncio.to_thread(self._apagar_evidencias_vencidas, ev_cut)
             # Entrega já feita de comando já fechado não é histórico — o histórico é `commands`. Sem esta
@@ -2626,9 +2630,13 @@ class AppState:
             # Achados #39/#143: até aqui só `events` e `evidence` venciam — commands, ai_calls e measurements
             # cresciam para sempre, e token de inscrição usado ficava eternamente na tabela.
             outras = self._purgar_demais_tabelas(cutoff)
-            if removed or old or outras or arquivos:
-                log.info("retenção: %s eventos, %s execuções com evidências, %s linhas de outras tabelas e "
-                         "%s arquivo(s) removidos", removed, len(old), outras, arquivos)
+            if removed or telemetria or old or outras or arquivos:
+                log.info("retenção: %s eventos (+%s de telemetria), %s execuções com evidências, %s linhas de outras "
+                         "tabelas e %s arquivo(s) removidos", removed, telemetria, len(old), outras, arquivos)
+            # RA-11: as estatísticas do planejador de consultas ao fim da volta (`sqlite_stat1` não existia em 03/10).
+            # `optimize` só refaz o que mudou e é barato; no PostgreSQL quem faz isso é o autovacuum.
+            if self.db.dialect == "sqlite":
+                await asyncio.to_thread(self.db.execute, "PRAGMA optimize")
         except Exception:  # noqa: BLE001
             log.exception("retenção")
         return True
@@ -2678,6 +2686,17 @@ class AppState:
             total += self.decisao_sombra.aplicar_retencao(self.cfg.file.ai.decisao_fechada.retencao_dias)
         except Exception:  # noqa: BLE001 - idem
             log.exception("decisao_fechada: retenção da sombra")
+        total += self._purgar_memorias_vencidas()
+        return total
+
+    def _purgar_memorias_vencidas(self) -> int:
+        """RA-11: memória com prazo (`memory_items.expires_at`) que já venceu sai do banco. `purge_expired_memories`
+        existia e ninguém o chamava: a memória vencida só sumia da leitura (o filtro de `include_expired`)."""
+        agora = now_iso()
+        total = 0
+        for r in self.db.query("SELECT DISTINCT profile_id FROM memory_items WHERE expires_at IS NOT NULL"
+                               " AND expires_at <= ?", (agora,)):
+            total += self.social_repo.purge_expired_memories(str(r["profile_id"]), now=agora)
         return total
 
     def _purgar_arquivos_vencidos(self, retention_days: int) -> int:

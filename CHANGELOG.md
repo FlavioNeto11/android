@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Jev: RA-11 (parte Jev) — telemetria vence em 48 h, memória vencida sai do banco, purga em lotes
+
+- `instance.updated` sem execução vence em 48 h (`events.TELEMETRIA_KINDS`/`TELEMETRIA_RETENCAO_H`), antes dos 14 dias do
+  resto do log. A purga de `events` vai em lotes de 2.000 linhas. `memory_items` vencidos saem do banco
+  (`AppState._purgar_memorias_vencidas`). Ao fim da volta da retenção, `PRAGMA optimize` (SQLite).
+- Prova: simulated (`test_retencao_telemetria.py`, 4 testes; 625 afetados verdes). Na primeira volta depois do deploy,
+  saem ≈ 27 mil eventos do central (medido em 03/10, só leitura). Real: `not_run`.
+
 ## 2026-10-03 — Jev: higiene de docs do RA-24 (parte Jev)
 
 - `docs/ia.md` §10: o gatilho do ADR-023 para voltar ao modelo local não foi atingido (≈ 13 execuções por dia na

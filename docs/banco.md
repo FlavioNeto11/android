@@ -478,6 +478,15 @@ As **senhas** não atravessam sozinhas: ver *A chave do cofre é DPAPI*, abaixo.
 - Evidências vencem em `evidence_retention_days`. Os arquivos rotacionados (`*.log.1`, `data/logs/probe-*`,
   `data/avd-probe`) seguem o prazo do log.
 - `worker_enrollments` vence em 7 dias.
+- **Telemetria do parque (RA-11):** `instance.updated` sem execução vence em 48 h (`events.TELEMETRIA_RETENCAO_H`). Ela leva
+  o DTO inteiro do aparelho a cada mudança. Em 03/10 eram 32 mil linhas e 48 MiB em 14 dias, todas sem execução. A
+  testemunha da purga do relatório do Aprendizado (o evento sem execução mais antigo) não muda, porque há eventos sem
+  execução de outros tipos todo dia (`control.changed`, `command.updated`, `log`).
+- **Memória vencida (RA-11):** `memory_items` com `expires_at` vencido sai do banco. Antes saía só da leitura: a purga
+  existia e ninguém a chamava.
+- A purga de `events` vai em lotes de 2.000 linhas (`events.PURGA_LOTE`). A de 02/10 levou 41 mil linhas num comando
+  só. Ao fim da volta, `PRAGMA optimize` atualiza as estatísticas do SQLite (`sqlite_stat1` não existia); no PostgreSQL,
+  quem faz isso é o autovacuum. Os índices novos de `events` e `measurements` são a parte da Android no RA-11.
 - A retenção do aprendizado (`aprendizado.retencao`, ADR-054) e a da sombra da decisão fechada
   (`ai.decisao_fechada.retencao_dias`) têm prazo próprio, e o agregado diário é calculado antes de purgar.
 
