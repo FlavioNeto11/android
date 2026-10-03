@@ -51,12 +51,22 @@ async def receber_webhook_do_trello(request: Request) -> Response:
     if porta is None or not porta.ligada:
         return Response(status_code=404)               # como se a rota não existisse
     if not porta.pronta():
-        log.warning("trello: webhook ligado, mas sem segredo ou sem URL: recusado (veredito=sem_config)")
+        _recusa(porta, "sem_config", "trello: webhook ligado, mas sem segredo ou sem URL: recusado")
         return Response(status_code=401)
     corpo = await _corpo_limitado(request, porta.max_bytes)
     if corpo is None:
-        log.warning("trello: webhook com corpo acima do teto (veredito=grande)")
+        _recusa(porta, "grande", "trello: webhook com corpo acima do teto")
         return Response(status_code=413)
     veredito = porta.receber(corpo, request.headers.get(CABECALHO))
-    log.info("trello: webhook veredito=%s", veredito.motivo)       # nada do corpo: nem autor, nem texto, nem id
+    if veredito.status >= 400:
+        _recusa(porta, veredito.motivo, "trello: webhook recusado")
+    else:
+        log.info("trello: webhook veredito=%s", veredito.motivo)   # nada do corpo: nem autor, nem texto, nem id
     return Response(status_code=veredito.status)
+
+
+def _recusa(porta: PortaDoWebhook, motivo: str, frase: str) -> None:
+    """Uma linha por motivo por minuto, no máximo: a rota é pública e recusa em massa não pode inundar o log."""
+    calados = porta.amostra_de_log(motivo)
+    if calados is not None:
+        log.warning("%s (veredito=%s; %d recusa(s) igual(is) sem log desde a última linha)", frase, motivo, calados)

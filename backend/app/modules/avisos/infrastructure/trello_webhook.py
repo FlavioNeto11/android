@@ -49,6 +49,11 @@ MAX_AVISOS = 500
 #: Assinaturas inválidas por janela que viram problema na saúde.
 LIMITE_INVALIDAS = 5
 JANELA_INVALIDAS_S = 600.0
+#: Teto da memória das recusadas: a rota é pública e a regra da Cloudflare só cobre o login, então assinatura inválida
+#: em massa não pode crescer a memória (revisão da Android do #177). Basta para contar até LIMITE_INVALIDAS na janela.
+MAX_INVALIDAS_GUARDADAS = 1000
+#: Log de recusa por amostragem: no máximo uma linha por motivo a cada tantos segundos, com quantas ficaram de fora.
+LOG_DE_RECUSA_A_CADA_S = 60.0
 #: O que o cadastro escreve na descrição do webhook: é como a Central reconhece os DELA (e só esses).
 DESCRICAO = "central-de-aparelhos:"
 
@@ -80,7 +85,9 @@ class PortaDoWebhook:
         self.repo = repo
         self._acordar = acordar
         self._relogio = relogio
-        self._invalidas: deque[float] = deque()
+        self._invalidas: deque[float] = deque(maxlen=MAX_INVALIDAS_GUARDADAS)
+        self._ultimo_log: dict[str, float] = {}
+        self._calados: dict[str, int] = {}
 
     # ------------------------------------------------------------------ configuração
     @property
@@ -113,6 +120,7 @@ class PortaDoWebhook:
         esperada = assinatura_do_corpo(_segredo(self.cfg.env.trello_api_secret), corpo, self._callback())
         if not assinatura or not hmac.compare_digest(assinatura.strip().encode("utf-8"), esperada.encode("ascii")):
             self._invalidas.append(self._relogio())
+            self._podar()
             return Veredito(401, "assinatura")
         return self._anotar(corpo)
 
@@ -139,11 +147,25 @@ class PortaDoWebhook:
         return Veredito(200, "ok")
 
     # ------------------------------------------------------------------ saúde
-    def invalidas_na_janela(self) -> int:
+    def _podar(self) -> None:
         agora = self._relogio()
         while self._invalidas and agora - self._invalidas[0] > JANELA_INVALIDAS_S:
             self._invalidas.popleft()
+
+    def invalidas_na_janela(self) -> int:
+        self._podar()
         return len(self._invalidas)
+
+    def amostra_de_log(self, motivo: str) -> int | None:
+        """Recusa em massa não vira uma linha de log por pedido: devolve None (calar) ou quantas recusas do mesmo motivo
+        ficaram de fora desde a última linha (0 na primeira)."""
+        agora = self._relogio()
+        ultimo = self._ultimo_log.get(motivo)
+        if ultimo is not None and agora - ultimo < LOG_DE_RECUSA_A_CADA_S:
+            self._calados[motivo] = self._calados.get(motivo, 0) + 1
+            return None
+        self._ultimo_log[motivo] = agora
+        return self._calados.pop(motivo, 0)
 
     def problemas(self) -> list[Problem]:
         if not self.ligada or self.invalidas_na_janela() < LIMITE_INVALIDAS:

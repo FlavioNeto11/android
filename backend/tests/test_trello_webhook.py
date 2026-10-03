@@ -23,7 +23,10 @@ from app.main import create_app
 from app.modules.avisos.adapters.trello import ClienteTrello
 from app.modules.avisos.infrastructure.trello_webhook import (
     DESCRICAO,
+    JANELA_INVALIDAS_S,
     LIMITE_INVALIDAS,
+    LOG_DE_RECUSA_A_CADA_S,
+    MAX_INVALIDAS_GUARDADAS,
     CadastroDoWebhook,
     PortaDoWebhook,
 )
@@ -223,6 +226,26 @@ async def test_assinaturas_invalidas_em_serie_viram_problema_e_a_janela_expira(t
     for _ in range(10):
         porta.receber(b"{}", "ruim")
     assert porta.problemas() == []                                       # desligado: a rota nem existe
+
+
+async def test_assinatura_invalida_em_massa_nao_cresce_a_memoria_e_o_log_sai_por_amostra(tmp_path: Path) -> None:
+    """Revisão da Android do #177: a rota é pública e a Cloudflare só limita o login. Recusa em massa não pode crescer a
+    memória nem virar uma linha de log por pedido."""
+    cen = Cenario(tmp_path)
+    _ligar(cen.cfg)
+    tempo = [0.0]
+    porta = PortaDoWebhook(cen.cfg, cen.repo, relogio=lambda: tempo[0])
+    for _ in range(MAX_INVALIDAS_GUARDADAS * 5):
+        porta.receber(b"{}", "ruim")
+    assert len(porta._invalidas) == MAX_INVALIDAS_GUARDADAS          # noqa: SLF001 - o teto é o que se prova
+    assert porta.problemas()                                          # e o alarme continua acendendo
+    assert porta.amostra_de_log("assinatura") == 0                    # a 1ª linha sai
+    assert [porta.amostra_de_log("assinatura") for _ in range(50)] == [None] * 50
+    tempo[0] += LOG_DE_RECUSA_A_CADA_S
+    assert porta.amostra_de_log("assinatura") == 50                   # a próxima diz quantas ficaram de fora
+    tempo[0] += JANELA_INVALIDAS_S + 1
+    porta.receber(b"{}", "ruim")
+    assert len(porta._invalidas) == 1                                 # noqa: SLF001 - a poda roda no append
 
 
 # ---------------------------------------------------------------------------------------------- a releitura pela API (líder)
