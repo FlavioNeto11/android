@@ -90,6 +90,10 @@ ENTRADA_JULGADA_SO_COM_PROVA_LOCAL = True
 #: para os testes que provam regras do ator NUM CENÁRIO em que o atalho cortaria a decisão observada (o piso de tier, a
 #: política de imagem): eles desligam isto e reafirmam a prova antiga sem enfraquecê-la.
 ATALHO_ANTES_DO_ATOR = True
+#: LT-5 (caminho rápido 2): sondagens seguidas na mesma tela depois de um "não" para a verificação desistir com o mesmo
+#: veredito (~4,5 s com `judge_wait_s` de 1,5). Medido em 7 d: as "NÃO comprovada" pagavam o orçamento inteiro (mediana
+#: 16,9 s, p90 55,9 s) sem nenhuma 2ª chamada — a tela não mudou e o juiz não é consultado de novo na mesma tela.
+SONDAGENS_DA_TELA_PARADA = 3
 
 
 async def reler_se_ocupada(ler: Callable[[], Awaitable[T]], *, prazo: float, quem: str) -> T:
@@ -2475,9 +2479,15 @@ class StepExecutor:
         max_calls = int(self.cfg.file.ai.verify_max_model_calls)
         judged_polls = 0
         judged_sig: str | None = None
+        parada = 0                                 # LT-5: sondagens seguidas na MESMA tela depois do "não"
         verdict_text, level, obs = "", None, None
         escalou = False                            # no máximo UM rejulgamento escalado por verificação (item 7.10)
         marcas_pendentes = self._marcas_pendentes(capability)
+        # LT-5: o "não" numa tela parada só valia no fim do orçamento (15 s; 60 s `patient`) — a 2ª chamada só vem com a
+        # tela mudada, então esperar não muda o veredito. Sai cedo, exceto onde a mudança tem dono fora da tela: o
+        # "Sending…" declarado (ADR-055) e o nível que depende do outro lado (entregue/lida chega sem a árvore mudar antes).
+        sai_cedo = not (patient and marcas_pendentes) and (need is None
+                                                           or DELIVERY_ORDER[need] <= DELIVERY_ORDER[DeliveryLevel.sent])
         if patient and (post.kind == "model_judged" or need is not None):
             # o app costuma levar ~1–2 s para sair de "enviando": evita pagar 2 julgamentos
             await asyncio.sleep(float(self.cfg.file.ai.judge_wait_s))
@@ -2562,7 +2572,9 @@ class StepExecutor:
                 sig = obs.tree.signature()
                 if judged_polls and sig == judged_sig:
                     ok = False             # mesma tela que já foi julgada insuficiente: espera mudar, sem gastar chamada
+                    parada += 1
                 else:
+                    parada = 0
                     # 1º julgamento só pela hierarquia quando ela é rica; os seguintes levam a imagem
                     # Item 12.5: com saída lida da IMAGEM o juiz recebe a imagem à força. Ele julga a tela ("caixa
                     # aberta, aba, mais recente"), não o valor.
@@ -2658,6 +2670,10 @@ class StepExecutor:
                     text = "; ".join(x for x in (text, "depois de assentar, a tela mostra "
                                                  + ", ".join(f'"{m}"' for m in pendentes)
                                                  + ": envio pendente, não conta como feito") if x)
+            if not ok and sai_cedo and parada >= SONDAGENS_DA_TELA_PARADA:
+                return False, "; ".join(t for t in (text, f"a tela não mudou em {parada} sondagens depois do \"não\": a "
+                                                    "verificação encerra sem esperar o fim do orçamento") if t), \
+                    level, obs, False
             if ok or uma_rodada or time.monotonic() >= t_end or judged_polls >= max_calls:
                 return ok, text, level, obs, False
             await asyncio.sleep(float(self.cfg.file.ai.judge_wait_s))
