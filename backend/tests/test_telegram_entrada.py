@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -50,15 +52,21 @@ class BotFalso:
         self.mid = 1000
         self.conflito = False
         self.apagar_falha = False
+        self.falha: tuple[int, dict[str, object]] | None = None     # a resposta de erro do getUpdates (401, 429...)
 
     def handler(self, req: httpx.Request) -> httpx.Response:
         metodo = req.url.path.rsplit("/", 1)[-1]
         corpo = json.loads(req.content) if req.content else {}
         self.chamadas.append((metodo, dict(req.url.params), corpo))
         if metodo == "getUpdates":
+            if self.falha is not None:
+                return httpx.Response(self.falha[0], json=self.falha[1])
             if self.conflito:
                 return httpx.Response(409, json={"ok": False, "description": "Conflict: terminated by other getUpdates"})
             offset = int(req.url.params.get("offset", "0"))
+            if offset < 0:      # como o Telegram: devolve só as últimas e ESQUECE as anteriores
+                self.guardadas = self.guardadas[offset:]
+                return httpx.Response(200, json={"ok": True, "result": list(self.guardadas)})
             self.guardadas = [u for u in self.guardadas if int(str(u["update_id"])) >= offset]
             return httpx.Response(200, json={"ok": True, "result": self.guardadas[:50]})
         if metodo == "sendMessage":
@@ -78,16 +86,20 @@ class BotFalso:
         return sum(1 for c in self.chamadas if c[0] == metodo)
 
 
-def msg(uid: int, texto: str, *, chat: int = CHAT, mid: int | None = None, reply_to: int | None = None) -> dict[str, object]:
-    m: dict[str, object] = {"message_id": mid or uid * 10, "chat": {"id": chat, "type": "private"}, "text": texto}
+def msg(uid: int, texto: str, *, chat: int = CHAT, mid: int | None = None, reply_to: int | None = None,
+        tipo: str = "private", autor: int | None = None) -> dict[str, object]:
+    m: dict[str, object] = {"message_id": mid or uid * 10, "chat": {"id": chat, "type": tipo}, "text": texto,
+                            "from": {"id": chat if autor is None else autor}}
     if reply_to is not None:
         m["reply_to_message"] = {"message_id": reply_to}
     return {"update_id": uid, "message": m}
 
 
-def botao(uid: int, data: str, *, mid: int, chat: int = CHAT) -> dict[str, object]:
+def botao(uid: int, data: str, *, mid: int, chat: int = CHAT, autor: int | None = None,
+          tipo: str = "private") -> dict[str, object]:
     return {"update_id": uid, "callback_query": {"id": f"cb{uid}", "data": data,
-                                                 "message": {"message_id": mid, "chat": {"id": chat}}}}
+                                                 "from": {"id": chat if autor is None else autor},
+                                                 "message": {"message_id": mid, "chat": {"id": chat, "type": tipo}}}}
 
 
 class PortasFalsas:
@@ -97,6 +109,7 @@ class PortasFalsas:
         self.perguntas: list[str] = []
         self.recusar_criar = False
         self.desfechos: dict[str, str] = {}
+        self.pergunta = "Para qual contato?"        # o que a execução em needs_input pergunta (B2)
 
     def _anota(self, nome: str, *args: object) -> None:
         self.chamadas.append((nome, args, operador_atual()))
@@ -145,9 +158,14 @@ class PortasFalsas:
     def desfecho(self, run_id: str) -> str | None:
         return self.desfechos.get(run_id)
 
+    def pergunta_de(self, ref: str) -> str:
+        self._anota("pergunta_de", ref)
+        return self.pergunta
+
 
 class Cenario:
-    def __init__(self, tmp_path: Path, *, entrada: bool = True, lider: bool = True) -> None:
+    def __init__(self, tmp_path: Path, *, entrada: bool = True, lider: bool = True, base: bool = True,
+                 relogio: Callable[[], datetime] | None = None) -> None:
         self.cfg: Config = make_config(tmp_path)
         self.cfg.ensure_dirs()
         self.cfg.file.avisos.enabled = True
@@ -158,7 +176,11 @@ class Cenario:
         self.db.migrate()
         self.bot = BotFalso()
         self.portas = PortasFalsas()
-        self.repo = EntradasDoCanal(self.db)
+        self.repo = EntradasDoCanal(self.db, relogio=relogio)
+        if base:
+            # Canal já em uso: a 1ª subida (que descarta o histórico do Telegram) já passou. Os testes de B1 passam
+            # `base=False` para ver essa subida.
+            self.repo.gravar_inicio(None)
         self.dormidas: list[float] = []
         self.lider = lider
         self.servico = self.novo_servico()
@@ -260,7 +282,7 @@ async def test_credencial_que_nao_se_apaga_pede_ao_dono_que_apague(c: Cenario) -
 
 
 async def test_mensagem_longa_demais_nao_e_gravada(c: Cenario) -> None:
-    await c.volta(msg(5, "abrir " + "x" * 1200))
+    await c.volta(msg(5, "abrir " + "o QA Messenger " * 80))      # longo, mas com cara de texto
     assert (c.linha(5)["estado"], c.linha(5)["texto"]) == ("recusada", None)
     assert any("longa demais" in t for t in c.bot.textos())
 
@@ -365,7 +387,7 @@ async def test_409_vira_problema_e_espera_sem_disputar(c: Cenario) -> None:
     assert await c.volta(msg(5, "/status")) == 0
     assert [p.code for p in c.servico.problemas()] == ["telegram_entrada_conflito"]
     assert c.dormidas == [c.cfg.file.avisos.entrada.espera_conflito_s]
-    assert c.db.scalar("SELECT COUNT(*) FROM canal_entradas") == 0
+    assert c.db.scalar("SELECT COUNT(*) FROM canal_entradas WHERE id_externo<>'inicio'") == 0
     c.bot.conflito = False
     await c.volta()
     assert c.servico.problemas() == []

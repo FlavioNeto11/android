@@ -16,12 +16,13 @@ from collections.abc import Callable
 
 from app.db import Database
 from app.models import Health, RunCreate, RunStatus, RunTarget, RunTargetsResolveBody
+from app.modules.avisos.application.entrada import casar_ref
 from app.modules.avisos.infrastructure.entrada import Pendencia, Previa, RecusaDaCentral
 from app.security.sessions import operador_atual
 from app.shared.costuras import autor_do_gesto
 from app.social.approvals import ApprovalService
 from app.social.service import SocialError
-from app.taskqueue.assistente import ComandoAssistido, RunSuccessorBody
+from app.taskqueue.assistente import ComandoAssistido, RunSuccessorBody, perguntas_da_execucao
 from app.taskqueue.service import RunError, RunService
 
 #: Como o status de uma execução terminada se lê na conversa.
@@ -72,6 +73,23 @@ class PortasReais:
 
     def online(self) -> list[str]:
         return self._online()
+
+    def pergunta_de(self, ref: str) -> str:
+        """O que a(s) execução(ões) de `ref` pergunta(m): `status_detail`, as perguntas e o nome dos campos (um campo
+        `password` pede senha mesmo com a frase neutra). `ref` é o id inteiro (em qualquer estado) ou o fim dele entre as
+        que esperam resposta. Erro de leitura sobe: quem chama recusa na dúvida."""
+        ids = set(casar_ref(ref, self.execucoes_esperando()))
+        if self.runs.repo.run_row(ref) is not None:
+            ids.add(ref)
+        partes: list[str] = []
+        for rid in sorted(ids):
+            row = self.runs.repo.run_row(rid)
+            if row is None:
+                continue
+            partes.append(str(row["status_detail"] or ""))
+            for q in perguntas_da_execucao(self.runs, row):
+                partes += [str(q.get("question") or ""), str(q.get("field") or "")]
+        return "\n".join(p for p in partes if p)
 
     def desfecho(self, run_id: str) -> str | None:
         row = self.runs.repo.run_row(run_id)
@@ -137,7 +155,7 @@ class PortasReais:
             nova, _ = ComandoAssistido(self.runs).sucessora(
                 run_id, RunSuccessorBody(command=comando[:4000], mode=modo), por=autor_do_gesto(operador_atual()))
         except RunError as exc:
-            raise RecusaDaCentral(exc.message) from None
+            raise RecusaDaCentral(exc.message, exc.code) from None
         return nova.id, nova.short_id
 
 

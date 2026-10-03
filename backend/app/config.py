@@ -1111,6 +1111,7 @@ class EntradaDoTelegramCfg(BaseModel):
     max_chars: int = Field(1000, ge=50, le=4000)            # maior que isto é recusada (o comando do painel vai a 4000)
     long_poll_s: int = Field(50, ge=1, le=60)               # quanto o `getUpdates` segura a conexão esperando
     espera_conflito_s: float = Field(60.0, ge=5, le=3600)   # 409 (outro consumidor do bot): espera, não disputa
+    ttl_previa_s: float = Field(900.0, ge=30, le=86400)     # a prévia mais velha que isto não executa (manda de novo)
 
 
 class AvisosCfg(BaseModel):

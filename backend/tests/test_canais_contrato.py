@@ -150,3 +150,16 @@ async def test_fora_da_gramatica_recebe_a_ajuda_e_nada_executa(tmp_path: Path, c
     await c.chega("a1", "/apagartudo agora")
     assert c.portas.nomes() == []
     assert c.linha("a1")["estado"] == "feita" and "/ajuda" in c.saida.textos()[-1]
+
+
+@pytest.mark.parametrize("canal", CANAIS)
+async def test_resposta_a_pergunta_de_senha_e_credencial_em_qualquer_canal(tmp_path: Path, canal: str) -> None:
+    """Pelo CONTEXTO, e não pela forma do texto: "kiwi2024!" não tem cara de segredo, mas responde a "qual a senha?"."""
+    c = Canal(tmp_path, canal)
+    c.portas.pergunta = "Qual é a senha da conta?"
+    c.repo.registrar_enviada("aviso-1", "aviso", fato="run:r-20261002181523-4985a1:needs_input")
+    await c.chega("a1", "kiwi2024!", responde_a="aviso-1")
+    linha = c.linha("a1")
+    assert (linha["estado"], linha["texto"]) == ("recusada", None)
+    assert "responder" not in c.portas.nomes() and c.saida.apagadas == ["m-a1"]
+    assert "kiwi2024" not in " ".join(c.saida.textos())

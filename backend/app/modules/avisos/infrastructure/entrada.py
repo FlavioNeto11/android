@@ -8,9 +8,11 @@ O contrato comum dos canais (`docs/design/canais-externos.md`) separa duas metad
 
 O laço do Telegram:
 1. só no líder da trava `avisos`, e só com `avisos.enabled` + `avisos.entrada.enabled`;
-2. `getUpdates` com o offset do banco (`MAX(ordem) + 1`), em long-poll;
-3. grava cada update ANTES de tratar. A de outro chat, a longa demais e a que parece credencial são gravadas SEM o
-   texto e não são tratadas; a com cara de credencial ainda é apagada do chat quando o Telegram deixa;
+2. `getUpdates` com o offset do banco (`MAX(ordem) + 1`), em long-poll. Na 1ª subida (canal sem nenhuma linha) o que o
+   Telegram guardou antes é DESCARTADO, não tratado: um "/aprovar" ou um "sim" de ontem não pode executar;
+3. grava cada update ANTES de tratar (uma que não grava vira `falhou` sem texto, para o offset andar). A de outro chat
+   ou outra pessoa, a longa demais, a que parece credencial e a resposta a uma pergunta que pede credencial são gravadas
+   SEM o texto e não são tratadas; as com cara de credencial ainda são apagadas do chat quando o Telegram deixa;
 4. trata as `recebida` por regra fixa (`application/entrada.rotear`), com o operador `telegram:dono` no ContextVar
    da sessão. `quem()` e `autor_do_gesto()` o leem, então a auditoria e o sinal contam como gesto de PESSOA;
 5. conta na thread o desfecho das execuções que a conversa criou.
@@ -58,17 +60,40 @@ RESPOSTA_CREDENCIAL = ("Isso parece senha ou código: não guardei, não repasse
                        "fica na conta da persona; grave pelo painel.")
 RESPOSTA_CREDENCIAL_SEM_APAGAR = ("Isso parece senha ou código: não guardei e não repassei, mas não consegui apagar a "
                                   "mensagem daqui. Apague-a do chat. Senha fica na conta da persona; grave pelo painel.")
+#: A resposta a uma execução que pergunta por senha, código, 2FA ou token é credencial qualquer que seja a forma do texto
+#: (ADR-040: credencial só pelo canal sensível). Decide pelo contexto, então "kiwi2024!" também cai aqui.
+_ORIENTACAO = "A senha fica guardada na conta da persona; o código de verificação se digita no aparelho."
+RESPOSTA_PERGUNTA_CREDENCIAL = ("Essa execução pergunta por senha, código ou verificação: não guardei, não repassei e "
+                                "apaguei a mensagem do chat. " + _ORIENTACAO)
+RESPOSTA_PERGUNTA_CREDENCIAL_SEM_APAGAR = ("Essa execução pergunta por senha, código ou verificação: não guardei e não "
+                                           "repassei, mas não consegui apagar a mensagem daqui. Apague-a do chat. "
+                                           + _ORIENTACAO)
+RESPOSTA_VENCIDA = "Esta prévia venceu; mande o pedido de novo."
+RESPOSTA_PRESA = ("A criação deste pedido foi interrompida antes de terminar. Confira no painel se a execução existe e, "
+                  "se não, mande o pedido de novo.")
 RESPOSTA_LONGA = "Mensagem longa demais para a conversa (limite de {n} caracteres): não guardei. Use o painel."
 #: Só dígitos (com espaço ou hífen entre eles), de 4 a 8: o formato de um código de verificação.
 _CODIGO = re.compile(r"[\s-]*(?:\d[\s-]?){4,8}[\s-]*")
 #: Pausa entre voltas quando a entrada está desligada ou sem liderança (o long-poll é a espera de verdade).
 OCIOSO_S = 15.0
+#: Quanto tempo uma linha pode ficar em `executando` sem execução criada antes de ser dada como interrompida.
+PRESA_S = 300.0
+#: Espera padrão depois de uma falha de rede ou 5xx na leitura (o 429 manda a dele; o definitivo, `espera_conflito_s`).
+ESPERA_FALHA_S = 5.0
 Linha = dict[str, object]
+
+
+#: O código do erro do caminho comum (`RunError`, 409) quando a resposta a uma pergunta é credencial. É final.
+CREDENCIAL_NA_RESPOSTA = "credencial_na_resposta"
 
 
 class RecusaDaCentral(Exception):
     """O serviço do painel recusou (o pré-voo, a aprovação já decidida, a execução que não espera mais resposta). A
-    mensagem é a mesma que o painel mostraria, e volta à conversa como texto."""
+    mensagem é a mesma que o painel mostraria, e volta à conversa como texto. `codigo` é o do erro do serviço, quando há."""
+
+    def __init__(self, mensagem: str, codigo: str | None = None):
+        super().__init__(mensagem)
+        self.codigo = codigo
 
 
 @dataclass(frozen=True)
@@ -101,6 +126,10 @@ class PortasDaCentral(Protocol):
     def criar(self, texto: str, alvos: list[dict[str, object]], chave: str) -> tuple[str, str]: ...
     def online(self) -> list[str]: ...
     def desfecho(self, run_id: str) -> str | None: ...
+    def pergunta_de(self, ref: str) -> str:
+        """O que a(s) execução(ões) indicada(s) por `ref` (id inteiro ou o fim dele) pergunta(m): o `status_detail` e as
+        perguntas, em texto. Vazio quando não há. Serve só para a triagem de credencial; nada daqui volta ao chat."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -188,20 +217,27 @@ def _json(bruto: object) -> dict[str, object]:
 
 
 def _ler_update(u: Mapping[str, object], chat_do_dono: str) -> Recebida | None:
-    """A TRADUÇÃO do Telegram: uma update vira `Recebida`. A identidade é o chat (só o configurado é o dono)."""
+    """A TRADUÇÃO do Telegram: uma update vira `Recebida`. A identidade é o chat privado configurado, com o mesmo
+    `from.id` (só o dono; qualquer outro é gravado sem texto e sem resposta)."""
     update_id = _int(u.get("update_id"))
     if update_id is None:
         return None
     msg, cb = _mapa(u.get("message")), _mapa(u.get("callback_query"))
     tipo = "mensagem" if msg is not None else "botao" if cb is not None else "outro"
+    de = _mapa((cb if cb is not None else msg or {}).get("from"))     # quem apertou o botão / escreveu
     if cb is not None:
         msg = _mapa(cb.get("message"))      # no botão, a mensagem do bot que levava o teclado
     chat = _mapa(msg.get("chat")) if msg is not None else None
     chat_id = str(chat.get("id")) if chat and chat.get("id") is not None else ""
+    autor = str(de.get("id")) if de and de.get("id") is not None else ""
+    # Dono = conversa PRIVADA com o chat configurado E o autor é esse mesmo id. Num grupo ou canal o chat.id configurado
+    # pode até coincidir, mas qualquer membro escreve nele: só o `from.id` identifica a pessoa.
+    privado = chat is not None and chat.get("type") == "private"
     texto = (cb.get("data") if cb is not None else msg.get("text") if msg is not None else None) or ""
     responde = _mapa(msg.get("reply_to_message")) if msg is not None and cb is None else None
     return Recebida(id_externo=str(update_id), ordem=update_id, tipo=tipo,
-                    do_dono=bool(chat_do_dono) and chat_id == chat_do_dono, texto=str(texto),
+                    do_dono=bool(chat_do_dono) and privado and chat_id == chat_do_dono and autor == chat_do_dono,
+                    texto=str(texto),
                     ref_mensagem=_texto(_int(msg.get("message_id"))) if msg is not None else None,
                     responde_a=_texto(_int(responde.get("message_id"))) if responde is not None else None,
                     botao_id=str(cb.get("id")) if cb is not None and cb.get("id") is not None else None)
@@ -224,6 +260,8 @@ class ServicoDeEntrada:
         #: Quem age, como VALOR (`telegram:dono` hoje; `trello:<id>` no 32.2): vai ao ContextVar da sessão.
         self.operador = operador
         self._conflito_desde: float | None = None
+        #: O Telegram recusou a leitura de vez (401/403: token revogado, bot removido): o motivo, já redigido.
+        self._recusada: str | None = None
         self._limitada_avisada = 0.0
 
     # ------------------------------------------------------------------ configuração e saúde
@@ -249,13 +287,26 @@ class ServicoDeEntrada:
         return CanalTelegram(token, chat, timeout_s=self.cfg.file.avisos.timeout_s)
 
     def problemas(self) -> list[Problem]:
-        if not self.ligada or self._conflito_desde is None:
+        if not self.ligada:
             return []
-        return [Problem(
-            code="telegram_entrada_conflito",
-            message="A conversa pelo Telegram está parada: outro processo lê o mesmo bot (409 no getUpdates).",
-            hint="Só um consumidor por bot. Pare a outra leitura (a caixa provisória da orquestradora, outra réplica) "
-                 "ou desligue avisos.entrada.enabled; a Central tenta de novo sozinha a cada minuto.")]
+        achados: list[Problem] = []
+        if self._conflito_desde is not None:
+            achados.append(Problem(
+                code="telegram_entrada_conflito",
+                message="A conversa pelo Telegram está parada: outro processo lê o mesmo bot (409 no getUpdates).",
+                hint="Só um consumidor por bot, e um webhook ativo no bot também dá 409 (confira com getWebhookInfo; "
+                     "deleteWebhook o desfaz). Pare a outra leitura (a caixa provisória da orquestradora, outra réplica) "
+                     "ou desligue avisos.entrada.enabled; a Central tenta de novo sozinha a cada minuto. "
+                     "`python scripts/avisos-telegram.py descobrir` mostra o que o bot enxerga (rode-o com a entrada "
+                     "desligada: ele também lê o getUpdates)."))
+        if self._recusada is not None:
+            achados.append(Problem(
+                code="telegram_entrada_recusada",
+                message=f"A conversa pelo Telegram está parada: o Telegram recusou a leitura do bot ({self._recusada}).",
+                hint="Token revogado, bot removido ou sem acesso ao chat. Confira TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID no "
+                     ".env (docs/operacao.md §15) ou desligue avisos.entrada.enabled; a Central tenta de novo sozinha "
+                     "a cada minuto."))
+        return achados
 
     # ------------------------------------------------------------------ uma volta
     async def uma_volta(self) -> int:
@@ -265,6 +316,8 @@ class ServicoDeEntrada:
             return 0
         cfg = self.cfg.file.avisos.entrada
         try:
+            if self.repo.canal_vazio():
+                await self._descartar_historico(canal)
             brutas = await canal.receber(self.repo.proximo_offset(), espera_s=cfg.long_poll_s)
         except ConflitoDeConsumidor:
             if self._conflito_desde is None:
@@ -273,6 +326,7 @@ class ServicoDeEntrada:
             await self._dormir(cfg.espera_conflito_s)
             return 0
         self._conflito_desde = None
+        self._recusada = None
         if self._lider(AVISOS) is None:
             return 0        # perdeu a liderança no long-poll: nada gravado = nada confirmado; o novo líder relê
         saida = SaidaDoTelegram(canal)
@@ -281,17 +335,45 @@ class ServicoDeEntrada:
         chat = self._segredos()[1]
         for bruta in brutas:
             r = _ler_update(bruta, chat)
-            if r is not None:
+            if r is None:
+                continue
+            try:
                 await self.registrar(saida, r)
+            except Exception as exc:  # noqa: BLE001 - uma update ruim não pode travar a conversa (o offset teria de andar)
+                # Sem a linha o offset não anda e a MESMA update voltaria a cada volta, para sempre. Registra o mínimo
+                # (sem texto) como `falhou`; só o id vai ao log, porque a exceção do banco pode trazer o texto.
+                log.error("telegram: update %s não pôde ser registrada (%s)", r.id_externo, type(exc).__name__)
+                self._linha(r, None, "falhou", f"erro ao registrar ({type(exc).__name__})")
         await self.tratar_pendentes(saida)
         return len(brutas)
+
+    async def _descartar_historico(self, canal: CanalTelegram) -> None:
+        """A 1ª subida do canal (nenhuma linha): o que o Telegram guardou (até 24 h) é histórico, e um "/aprovar" ou um
+        "sim" antigo não pode executar. `offset=-1` devolve só a última update e faz o Telegram esquecer as anteriores; a
+        linha-marco grava a ordem dela, então o offset passa dela, e tira o canal de "vazio" para a 1ª mensagem de
+        verdade não ser descartada por engano."""
+        velhas = await canal.receber(-1, espera_s=0)
+        ordens = [o for o in (_int(u.get("update_id")) for u in velhas) if o is not None]
+        self.repo.gravar_inicio(max(ordens) if ordens else None)
+        log.info("telegram: 1ª subida do canal; o histórico do chat foi descartado (%s)",
+                 f"até a update {max(ordens)}" if ordens else "fila vazia")
 
     # ------------------------------------------------------------------ a parte comum aos canais
     async def tratar_pendentes(self, saida: SaidaDaConversa) -> None:
         """Trata as `recebida` do canal e conta na conversa o desfecho das execuções que ela criou."""
+        await self._reparar_presas(saida)
         for linha in self.repo.a_tratar():
             await self._tratar(saida, linha)
         await self._contar_desfechos(saida)
+
+    async def _reparar_presas(self, saida: SaidaDaConversa) -> None:
+        """Uma queda entre marcar `executando` e criar a execução deixaria a linha ali para sempre (o botão já foi
+        consumido). Passada a idade, vira `falhou` e o dono é avisado de que o pedido não se completou."""
+        for linha in self.repo.presas_em_execucao(PRESA_S):
+            if self.repo.marcar(self._id(linha), "falhou", erro="interrompida antes de criar a execução",
+                                de=("executando",)):
+                log.warning("telegram: mensagem %s presa em executando; marcada como falhou", linha.get("id"))
+                await self._responder(saida, linha, RESPOSTA_PRESA)
 
     def _linha(self, r: Recebida, texto: str | None, estado: str = "recebida", erro: str | None = None) -> bool:
         return self.repo.gravar(id_externo=r.id_externo, ordem=r.ordem, tipo=r.tipo, do_dono=r.do_dono,
@@ -311,26 +393,72 @@ class ServicoDeEntrada:
                 pass
         limite = self.cfg.file.avisos.entrada.max_chars
         if len(r.texto) > limite:
-            if self._linha(r, None, "recusada", "mensagem longa demais"):
+            if r.tipo == "mensagem" and self._parece_segredo(r.texto):
+                # Longa e com cara de senha (uma chave, um bloco): além de recusada, sai do chat como a curta.
+                await self._recusar_credencial(saida, r, "parece credencial ou código", RESPOSTA_CREDENCIAL,
+                                               RESPOSTA_CREDENCIAL_SEM_APAGAR)
+            elif self._linha(r, None, "recusada", "mensagem longa demais"):
                 await self._enviar(saida, RESPOSTA_LONGA.format(n=limite), origem="resposta", responde_a=r.ref_mensagem)
             return
         if r.tipo == "mensagem" and self._parece_segredo(r.texto):
-            if not self._linha(r, None, "recusada", "parece credencial ou código"):
-                return                                                  # releitura: já recusada (e apagada) antes
-            apagou = False
-            if r.ref_mensagem is not None:
-                try:
-                    apagou = await saida.apagar(r.ref_mensagem)
-                except FalhaDeEnvio:
-                    apagou = False
-            ident = self.repo.id_de(r.id_externo)
-            if ident is not None:
-                self.repo.marcar(ident, "recusada", erro="parece credencial ou código; "
-                                 + ("apagada do chat" if apagou else "não apagada do chat"))
-            await self._enviar(saida, RESPOSTA_CREDENCIAL if apagou else RESPOSTA_CREDENCIAL_SEM_APAGAR,
-                               origem="resposta", responde_a=None if apagou else r.ref_mensagem, entrada_id=ident)
+            await self._recusar_credencial(saida, r, "parece credencial ou código", RESPOSTA_CREDENCIAL,
+                                           RESPOSTA_CREDENCIAL_SEM_APAGAR)
+            return
+        if r.tipo == "mensagem" and self._responde_a_pergunta_de_credencial(r):
+            await self._recusar_credencial(saida, r, "a pergunta da execução pede credencial",
+                                           RESPOSTA_PERGUNTA_CREDENCIAL, RESPOSTA_PERGUNTA_CREDENCIAL_SEM_APAGAR)
             return
         self._linha(r, r.texto)
+
+    async def _recusar_credencial(self, saida: SaidaDaConversa, r: Recebida, motivo: str, ok: str,
+                                  sem_apagar: str) -> None:
+        """Grava SEM o texto (só o tamanho), apaga a mensagem do chat quando o canal deixa e responde sem ecoar nada."""
+        if not self._linha(r, None, "recusada", motivo):
+            return                                                      # releitura: já recusada (e apagada) antes
+        apagou = False
+        if r.ref_mensagem is not None:
+            try:
+                apagou = await saida.apagar(r.ref_mensagem)
+            except FalhaDeEnvio:
+                apagou = False
+        ident = self.repo.id_de(r.id_externo)
+        if ident is not None:
+            self.repo.marcar(ident, "recusada",
+                             erro=f"{motivo}; " + ("apagada do chat" if apagou else "não apagada do chat"))
+        await self._enviar(saida, ok if apagou else sem_apagar, origem="resposta",
+                           responde_a=None if apagou else r.ref_mensagem, entrada_id=ident)
+
+    async def _recusar_ja_gravada(self, saida: SaidaDaConversa, linha: Linha) -> None:
+        """A linha já estava gravada com o texto (a triagem do canal não pegou, o serviço comum pegou): tira o texto,
+        apaga a mensagem do chat quando dá, marca `recusada` e responde sem ecoar nada."""
+        ident = self._id(linha)
+        self.repo.apagar_texto(ident)
+        apagou = False
+        mid = _texto(linha.get("ref_mensagem"))
+        if mid is not None:
+            try:
+                apagou = await saida.apagar(mid)
+            except FalhaDeEnvio:
+                apagou = False
+        self.repo.marcar(ident, "recusada", erro="a Central recusou a resposta como credencial; "
+                         + ("apagada do chat" if apagou else "não apagada do chat"), de=("recebida", "pergunta"))
+        await self._enviar(saida, RESPOSTA_PERGUNTA_CREDENCIAL if apagou else RESPOSTA_PERGUNTA_CREDENCIAL_SEM_APAGAR,
+                           origem="resposta", responde_a=None if apagou else mid, entrada_id=ident)
+
+    def _responde_a_pergunta_de_credencial(self, r: Recebida) -> bool:
+        """É uma RESPOSTA (reply ao aviso de pergunta ou `/responder <id> <texto>`) a uma execução cuja pergunta pede
+        senha, código, 2FA, token ou verificação? Decide pelo contexto, não pela forma do texto. Na dúvida (a pergunta não
+        pôde ser lida), recusa: o dono responde pelo painel."""
+        i = self._intencao({"texto": r.texto, "responde_a": r.responde_a})
+        if i.tipo != "responder" or not i.ref:
+            return False
+        try:
+            # O vocabulário é o da triagem de credencial (o mesmo do caminho comum), não uma lista do canal.
+            return self._recusa(self.portas.pergunta_de(i.ref))
+        except Exception as exc:  # noqa: BLE001 - sem ler a pergunta não há como afirmar que a resposta é inofensiva
+            log.warning("telegram: pergunta da execução não lida (%s); a resposta é recusada por precaução",
+                        type(exc).__name__)
+            return True
 
     def _parece_segredo(self, texto: str) -> bool:
         if self._recusa(texto) or parece_codigo(texto):
@@ -444,7 +572,14 @@ class ServicoDeEntrada:
         if rid is None:
             await self._feita(saida, linha, i, erro)
             return
-        nova, curta = self.portas.responder(rid, i.texto)
+        try:
+            nova, curta = self.portas.responder(rid, i.texto)
+        except RecusaDaCentral as recusa:
+            if recusa.codigo != CREDENCIAL_NA_RESPOSTA:
+                raise
+            # O caminho comum viu credencial onde o canal não viu (a forma do texto, p. ex.): final, sem nova tentativa.
+            await self._recusar_ja_gravada(saida, linha)
+            return
         await self._feita(saida, linha, i, f"Respondida: a execução segue em {curta}. Conto aqui quando terminar.",
                           alvo=f"run:{rid}", run_id=nova)
 
@@ -498,6 +633,11 @@ class ServicoDeEntrada:
         elif acao == "a" and extra:
             await self._previa(saida, original, i, str(previa.get("texto") or ""), [extra])
         elif acao == "x" and isinstance(previa.get("alvos"), list):
+            if self.repo.idade_s(original) > self.cfg.file.avisos.entrada.ttl_previa_s:
+                # O pedido pode já não valer (o aparelho mudou, a aprovação passou): quem manda de novo vê a prévia atual.
+                if self.repo.marcar(oid, "cancelada", erro="prévia venceu", de=("pergunta",)):
+                    await self._responder(saida, original, RESPOSTA_VENCIDA)
+                return
             if not self.repo.marcar(oid, "executando", de=("pergunta",)):
                 return
             alvos = [a for a in previa["alvos"] if isinstance(a, dict)]  # type: ignore[union-attr]
@@ -541,6 +681,18 @@ class ServicoDeEntrada:
         self.repo.registrar_enviada(enviada, origem, entrada_id=entrada_id)
 
     # ------------------------------------------------------------------ laço
+    def _esperar_apos(self, falha: FalhaDeEnvio) -> float:
+        """Quanto esperar depois que a LEITURA falhou. 429: o que o Telegram pediu. Definitiva (401/403/404: token
+        revogado, bot removido): vira problema na saúde e espera como o 409, sem martelar a Bot API a cada 5 s. O resto
+        (rede, 5xx) tenta de novo logo."""
+        if falha.definitiva:
+            if self._recusada is None:
+                log.error("telegram: o Telegram recusou a leitura do bot (%s)", falha.motivo)
+            self._recusada = falha.motivo
+            return max(self.cfg.file.avisos.entrada.espera_conflito_s, ESPERA_FALHA_S)
+        log.warning("telegram: entrada (%s)", falha.motivo)
+        return max(falha.espera_s, 1.0) if falha.espera_s is not None else ESPERA_FALHA_S
+
     async def laco(self) -> None:
         while True:
             try:
@@ -551,8 +703,7 @@ class ServicoDeEntrada:
             except asyncio.CancelledError:
                 raise
             except FalhaDeEnvio as falha:
-                log.warning("telegram: entrada (%s)", falha.motivo)
-                await self._dormir(5)
+                await self._dormir(self._esperar_apos(falha))
             except Exception:  # a conversa nunca derruba o processo
                 log.exception("telegram: laço da entrada")
                 await self._dormir(5)

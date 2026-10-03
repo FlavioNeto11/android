@@ -101,3 +101,21 @@ async def test_responder_e_a_sucessora_do_painel(harness: Harness, como_telegram
 async def test_status_resume_o_parque(harness: Harness) -> None:
     texto = _portas(harness).status()
     assert texto.startswith("Central:") and "Aparelhos online:" in texto and "Esperando você:" in texto
+
+
+async def test_pergunta_de_le_a_pergunta_da_execucao_e_o_codigo_da_recusa_sobe(harness: Harness,
+                                                                              como_telegram: None) -> None:
+    st = harness.state
+    assert st is not None
+    portas = _portas(harness)
+    run = st.runs.create(RunCreate(command="abrir o QA Messenger no android-02", instance_ids=["android-03"],
+                                   idempotency_key="telegram:ni-2"))
+    await harness.wait_run(run.id, ("needs_input",))
+    inteiro, fim = portas.pergunta_de(run.id), portas.pergunta_de(run.id[-6:])
+    assert inteiro and inteiro == fim                                           # o id inteiro e o fim dele
+    assert portas.pergunta_de("r-nao-existe-000000") == ""
+    # O código do erro do caminho comum sobe junto da frase (o serviço de entrada trata `credencial_na_resposta`).
+    st.runs.cancel(run.id)
+    with pytest.raises(RecusaDaCentral) as exc:
+        portas.responder(run.id, "pode ser")
+    assert exc.value.codigo == "invalid_state"

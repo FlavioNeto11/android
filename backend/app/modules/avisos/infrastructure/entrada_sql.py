@@ -21,10 +21,12 @@ from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
 
 from app.db import Database
-from app.util import to_iso
+from app.util import parse_iso, to_iso
 
 MAX_CURTO = 1000
 MAX_ERRO = 300
+#: A linha-marco da 1ª subida (B1): o `id_externo` não colide com um `update_id` (só dígitos).
+INICIO = "inicio"
 
 
 def _curto(texto: str | None, n: int = MAX_CURTO) -> str | None:
@@ -42,10 +44,21 @@ class EntradasDoCanal:
 
     # ------------------------------------------------------------------ entrada
     def proximo_offset(self) -> int:
-        """O `offset` do próximo `getUpdates`: tudo abaixo dele já está gravado. Canal vazio: 0 (o que o Telegram
-        tiver guardado, que ninguém confirmou)."""
+        """O `offset` do próximo `getUpdates`: tudo abaixo dele já está gravado. Sem nenhuma `ordem` gravada: 0. Quem
+        sobe com o canal vazio descarta antes o histórico do Telegram (`gravar_inicio`), então o 0 não o traz de volta."""
         ultimo = self.db.scalar("SELECT MAX(ordem) FROM canal_entradas WHERE canal=?", (self.canal,))
         return int(ultimo) + 1 if ultimo is not None else 0
+
+    def canal_vazio(self) -> bool:
+        """Nenhuma linha do canal: é a 1ª subida. O que o Telegram guardou até aqui (até 24 h) é histórico, não pedido."""
+        return self.db.one("SELECT 1 AS x FROM canal_entradas WHERE canal=? LIMIT 1", (self.canal,)) is None
+
+    def gravar_inicio(self, ultima_ordem: int | None) -> None:
+        """Marca a 1ª subida e fixa o offset logo depois da última update descartada (`ultima_ordem`; `None` = fila
+        vazia, e o offset segue 0). É a linha que tira o canal de "vazio": sem ela, a 1ª mensagem de verdade, chegando
+        entre duas voltas com a fila ainda vazia, seria descartada como histórico."""
+        self.gravar(id_externo=INICIO, ordem=ultima_ordem, tipo="outro", do_dono=False, ref_mensagem=None,
+                    responde_a=None, texto=None, tamanho=0, estado="ignorada", erro="descartada na 1ª subida do canal")
 
     def gravar(self, *, id_externo: str, ordem: int | None, tipo: str, do_dono: bool, ref_mensagem: str | None,
                responde_a: str | None, texto: str | None, tamanho: int, estado: str = "recebida",
@@ -96,6 +109,23 @@ class EntradasDoCanal:
             sql += f" AND estado IN ({','.join('?' * len(de))})"
             args.extend(de)
         return (self.db.execute(sql, tuple(args)).rowcount or 0) == 1
+
+    def idade_s(self, linha: Mapping[str, object]) -> float:
+        """Há quantos segundos a linha mudou de estado pela última vez (`tratada_em`; sem ele, desde que chegou)."""
+        desde = parse_iso(str(linha.get("tratada_em") or linha.get("recebida_em") or ""))
+        return (self.relogio() - desde).total_seconds() if desde is not None else 0.0
+
+    def presas_em_execucao(self, idade_s: float) -> list[dict[str, object]]:
+        """Linhas que ficaram em `executando` sem `run_id`: a queda foi entre marcar o Executar e criar a execução. Nada
+        as destrava sozinho (o botão já perdeu o `WHERE estado='pergunta'`)."""
+        limite = to_iso(self.relogio() - timedelta(seconds=idade_s))
+        return [dict(r) for r in self.db.query(
+            "SELECT * FROM canal_entradas WHERE canal=? AND estado='executando' AND run_id IS NULL AND tratada_em < ?"
+            " ORDER BY id LIMIT 20", (self.canal, limite))]
+
+    def apagar_texto(self, ident: int) -> None:
+        """Tira o texto de uma linha (a credencial que só foi reconhecida depois de gravada). Fica o `tamanho`."""
+        self.db.execute("UPDATE canal_entradas SET texto=NULL, previa=NULL WHERE id=? AND canal=?", (int(ident), self.canal))
 
     def do_dono_na_janela(self, segundos: float, *, ate_id: int) -> int:
         """Mensagens do dono nos últimos `segundos`, até a linha `ate_id` inclusive (o limite de taxa). O lote inteiro
