@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Portal público no ar em `https://dev.nvit.com.br/central` (29.54, ADR-073; prova real)
+
+- O hostname entrou em `server.public_hosts` do `config.yaml` do central (21:35:02Z, com cópia em `data/backups/`),
+  junto de `tls_behind_proxy: true` e da origem `https`. O `avisos.url_painel` passou a apontar para o endereço público.
+- O central foi reiniciado às 21:46:56Z (checkout `4ad5f8b6`, código do `2264843e`; migração `086`; `problems: []`).
+- Prova de fora, sem credencial, às 21:47:28Z: 19 de 19 (`.claude/handoffs/portal/prova-de-fora.sh depois`). A API
+  responde 401, o painel abre em `/central/`, a documentação da API fica atrás do login e o canal do worker não sai
+  pelo túnel. O painel local segue sem login.
+- Não provado (`not_run`): o primeiro login pelo endereço público, que é do dono.
+- Itens novos no plano, da validação do deploy 14 no navegador (0 bloqueante): 29.58, 29.59, 30.41, 30.42 e 30.43.
+
 ## 2026-10-03 — 31.24: latência por etapa como métrica de primeira classe (branch feat/31-24-latencia-por-etapa)
 
 - O tempo dentro da tentativa passa a ter dono. Pedido do dono de 03/10; a leitura "antes" dividia a parede em IA 46 %,
