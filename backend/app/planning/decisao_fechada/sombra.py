@@ -20,13 +20,13 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import re
 import uuid
 from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Final
 
+from ...metricas import percentil
 from ...util import now, to_iso
 from .contrato import FALLBACKS, ID_NENHUMA, MOTIVOS_DE_PRIVACIDADE, ORIGENS
 from .decisores import ChamadaAoJev
@@ -69,11 +69,9 @@ def _probabilidades(bruto: Mapping[str, float]) -> str | None:
 
 
 def _p95(valores: list[float]) -> float | None:
-    """Posto mais próximo (p95): sem interpolação, o valor é uma latência que aconteceu de fato."""
-    if not valores:
-        return None
-    ordem = sorted(valores)
-    return round(ordem[max(0, math.ceil(0.95 * len(ordem)) - 1)], 3)
+    """Posto mais próximo (p95): sem interpolação, o valor é uma latência que aconteceu de fato. Um percentil só no
+    processo (K-085): o de `app/metricas.py`, em aritmética exata."""
+    return percentil(sorted(valores), 95)
 
 
 class RepositorioDeSombra:

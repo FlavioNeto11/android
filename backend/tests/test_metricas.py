@@ -36,6 +36,35 @@ def test_sem_amostra_e_desconhecido_nao_zero() -> None:
     assert Metricas().snapshot()["distribuicoes"] == []
 
 
+#: K-085: os (n, p) com n ≤ 40 e p em {50, 90, 95, 99} em que o `round(p/100·n + 0,5)` antigo (arredondamento de
+#: banqueiro no ,5) subia o posto um acima do mais próximo. Posto 1-based certo = ceil(p·n/100).
+DESLOCADOS = ((2, 50), (6, 50), (10, 50), (10, 90), (14, 50), (18, 50), (20, 95), (22, 50), (26, 50), (30, 50),
+              (30, 90), (34, 50), (38, 50))
+
+
+def test_percentil_pelo_posto_mais_proximo_sem_o_arredondamento_de_banqueiro() -> None:
+    for n, p in DESLOCADOS:
+        valores = [float(i) for i in range(1, n + 1)]                  # o valor é o próprio posto 1-based
+        assert percentil(valores, p) == p * n // 100, (n, p)            # p·n/100 inteiro: o posto é ele mesmo
+        assert percentil(valores, p) != round(p / 100 * n + 0.5), (n, p)  # o antigo dava o posto seguinte
+    assert percentil([10.0, 20.0], 50) == 10.0                           # a mediana de 2 é o menor, não o maior
+
+
+def test_percentil_e_o_mesmo_da_sombra_da_decisao_fechada() -> None:
+    """Um percentil só no processo: `sombra._p95` (que grava `decisao_fechada_diario.ms_p95`) delega a este."""
+    import math
+
+    from app.planning.decisao_fechada.sombra import _p95
+
+    for n in range(1, 201):
+        valores = [float((i * 37) % 211) for i in range(n)]            # fora de ordem, sem repetição
+        ordenada = sorted(valores)
+        assert _p95(valores) == percentil(ordenada, 95) == round(ordenada[math.ceil(95 * n / 100) - 1], 3)
+        for p in (50, 90, 99):
+            assert percentil(ordenada, p) == ordenada[math.ceil(p * n / 100) - 1]
+    assert _p95([]) is None
+
+
 def test_teto_de_series_vai_para_excedente_e_conta_o_descarte() -> None:
     """Rótulo com valor livre (o erro que o teto existe para barrar) não faz o registro crescer sem limite, e a
     contagem não se perde: vai para `_excedente`."""
