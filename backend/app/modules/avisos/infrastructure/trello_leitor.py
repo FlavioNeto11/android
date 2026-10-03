@@ -488,9 +488,10 @@ class LeitorDoTrello:
         return tratadas
 
     async def _cadastro_se_devido(self) -> None:
-        """O webhook de cada quadro (§8.7): na partida e a cada hora, só no líder e só com `webhook.enabled`."""
+        """O recadastro do webhook de cada quadro (§8.7): na partida e a cada hora, só no líder e só com a chave PRÓPRIA
+        `webhook.cadastro_automatico` (o primeiro cadastro é manual; `webhook.enabled` só liga a rota)."""
         cad, cliente = self._cadastro, self.cliente()
-        if cad is None or cliente is None or not cad.pode_agir() or self._lider(AVISOS) is None:
+        if cad is None or cliente is None or not cad.pode_agir_sozinho() or self._lider(AVISOS) is None:
             return
         agora = time.monotonic()
         if self._cadastro_em is not None and agora - self._cadastro_em < CADASTRO_A_CADA_S:

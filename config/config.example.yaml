@@ -515,7 +515,9 @@ trello:                           # Trello do dono (item 32.2, ADR-072): espelho
   # membros_autorizados: []       # quem o dono autorizou a PEDIR além dele; vazia = o pedido de convidado vira aviso ao dono
   # responder_convidados: false   # responde a pergunta de convidado no cartão, só com o que o quadro já mostra
   # webhook:                      # caminho principal da entrada (§8 do desenho); exige TRELLO_API_SECRET no .env e o portal público
-  #   enabled: false              # (false) separado de trello.enabled
+  #   enabled: false              # (false) separado de trello.enabled; só faz a ROTA responder, NUNCA cadastra nada no Trello
+  #   cadastro_automatico: false  # (false) recadastro de hora em hora no líder; só se liga depois da prova real. O 1º cadastro é
+  #                               # manual: scripts/trello-webhook.py --ensaio e depois --aplicar, com o "vai" da orquestradora
   #   callback_url: ""            # a URL pública inteira (sem parâmetro e sem segredo); entra no HMAC tal como escrita
   #   max_bytes: 262144           # corpo acima disso: 413
 

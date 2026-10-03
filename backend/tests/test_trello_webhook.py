@@ -367,9 +367,12 @@ async def test_cadastro_corrige_url_diferente_apaga_duplicado_e_sobra_ao_desliga
                        {"id": "b", "description": DESCRICAO + "quadro-que-saiu", "callbackURL": CALLBACK, "active": True}]
     assert [(p.acao, p.id_webhook) for p in await cad.planejar(cliente)] == [
         ("recriar", "a"), ("apagar", "b")]
-    cfg.file.trello.webhook.enabled = False                              # desligado: apaga os da Central, e só eles
+    cfg.file.trello.webhook.enabled = False
     falso.webhooks.append({"id": "c", "description": "alheio", "active": True})
-    assert sorted(p.id_webhook or "" for p in await cad.planejar(cliente)) == ["a", "b"]
+    with pytest.raises(ValueError):                                      # desligar a flag NÃO é pedir para apagar
+        await cad.planejar(cliente)
+    # O pedido explícito (`desligar`) apaga os da Central, e só eles.
+    assert sorted(p.id_webhook or "" for p in await cad.planejar(cliente, desligar=True)) == ["a", "b"]
 
 
 @pytest.mark.parametrize("url", ["http://dev.exemplo.test/x", "https://dev.exemplo.test/x?token=abc", "https://u:p@dev.exemplo.test/x",
@@ -377,6 +380,7 @@ async def test_cadastro_corrige_url_diferente_apaga_duplicado_e_sobra_ao_desliga
 async def test_cadastro_recusa_url_que_poderia_levar_segredo(tmp_path: Path, url: str) -> None:
     falso = TrelloDosWebhooks()
     cad, cliente = _wh(_config(tmp_path), falso)
+    cad.cfg.file.trello.webhook.cadastro_automatico = True           # a saúde do cadastro só fala com o recadastro ligado
     cad.cfg.file.trello.webhook.callback_url = url
     await cad.reconciliar(cliente)
     assert falso.escritas() == [] and [p.code for p in cad.problemas()] == ["trello_webhook_inativo"]
@@ -385,6 +389,7 @@ async def test_cadastro_recusa_url_que_poderia_levar_segredo(tmp_path: Path, url
 async def test_cadastro_que_falha_vira_problema_e_o_401_sobe_para_o_leitor(tmp_path: Path) -> None:
     falso = TrelloDosWebhooks()
     cad, cliente = _wh(_config(tmp_path), falso)
+    cad.cfg.file.trello.webhook.cadastro_automatico = True
     falso.falhar_criar = 400                                             # o HEAD do Trello na URL falhou
     await cad.reconciliar(cliente)
     [p] = cad.problemas()
@@ -399,18 +404,40 @@ async def test_cadastro_que_falha_vira_problema_e_o_401_sobe_para_o_leitor(tmp_p
     assert getattr(exc.value, "status", None) == 401
 
 
-async def test_o_lider_cadastra_uma_vez_por_hora_e_so_com_o_webhook_ligado(tmp_path: Path) -> None:
+async def test_o_lider_so_recadastra_com_a_chave_propria_uma_vez_por_hora(tmp_path: Path) -> None:
     cen = Cenario(tmp_path)
     falso = TrelloDosWebhooks()
     cad, cliente = _wh(cen.cfg, falso)
     cen.leitor._cadastro, cen.leitor._cliente = cad, cliente         # noqa: SLF001 - o Trello falso dos webhooks
+    # `enabled` ligado, `cadastro_automatico` desligado (o padrão): o líder NUNCA chama /1/webhooks, nem para ler.
+    assert cen.cfg.file.trello.webhook.enabled and cen.cfg.file.trello.webhook.cadastro_automatico is False
+    for _ in range(3):
+        await cen.leitor._cadastro_se_devido()                       # noqa: SLF001
+    cen.leitor._cadastro_em = None                                   # noqa: SLF001 - passou uma hora
+    await cen.leitor._cadastro_se_devido()                           # noqa: SLF001
+    assert falso.pedidos == [] and cad.problemas() == []
+    assert not [p for p in falso.pedidos if p.method in ("POST", "PUT", "DELETE")]
+    # Com a chave própria ligada, cadastra uma vez por hora.
+    cen.cfg.file.trello.webhook.cadastro_automatico = True
     await cen.leitor._cadastro_se_devido()                           # noqa: SLF001
     await cen.leitor._cadastro_se_devido()                           # noqa: SLF001
     assert falso.escritas() == [("POST", "/1/webhooks")]
-    cen.leitor._cadastro_em = None                                   # noqa: SLF001 - passou uma hora
+    # Sem `enabled`, nem a chave própria faz o líder agir.
+    cen.leitor._cadastro_em = None                                   # noqa: SLF001
     cen.cfg.file.trello.webhook.enabled = False
     await cen.leitor._cadastro_se_devido()                           # noqa: SLF001
-    assert falso.escritas() == [("POST", "/1/webhooks")]            # desligado: nem lê
+    assert falso.escritas() == [("POST", "/1/webhooks")]
+
+
+async def test_ligar_a_flag_nao_cadastra_a_volta_inteira_do_lider_nunca_escreve_em_webhooks(tmp_path: Path) -> None:
+    cen = Cenario(tmp_path)
+    falso = TrelloDosWebhooks()
+    cad, cliente = _wh(cen.cfg, falso)
+    cen.leitor._cadastro, cen.leitor._cliente = cad, cliente         # noqa: SLF001
+    await cen.sobe()
+    await cen.volta()
+    await cen.leitor._cadastro_se_devido()                           # noqa: SLF001
+    assert [p for p in falso.pedidos if p.url.path.startswith("/1/webhooks")] == []
 
 
 # ---------------------------------------------------------------------------------------------- o script
@@ -435,6 +462,18 @@ async def test_script_ensaio_nao_escreve_e_aplicar_cadastra_sem_imprimir_segredo
     assert await script.executar(["--aplicar"], cfg, saida, http) == 0
     assert falso.escritas() == [("POST", "/1/webhooks")]
     assert all(v not in saida.getvalue() for v in (TOKEN, CHAVE, SEGREDO_APP))
+    # Flag desligada: --aplicar recusa e não toca em nada (nem apaga o que já existe).
+    cfg.file.trello.webhook.enabled = False
+    antes = list(falso.webhooks)
+    recusa = io.StringIO()
+    assert await script.executar(["--aplicar"], cfg, recusa, http) == 2
+    assert "enabled é false" in recusa.getvalue() and falso.webhooks == antes
+    # Só o pedido explícito remove, e só os da Central.
+    falso.webhooks.append({"id": "alheio", "description": "outro", "active": True})
+    final = io.StringIO()
+    assert await script.executar(["--desligar"], cfg, final, http) == 0
+    assert [w["id"] for w in falso.webhooks] == ["alheio"] and "Removido" in final.getvalue()
+    cfg.file.trello.webhook.enabled = True
     cfg.env.trello_api_secret = None
     assert await script.executar(["--aplicar"], cfg, io.StringIO(), http) == 2          # sem o segredo do app, não nasce
     cfg.env.trello_token = None

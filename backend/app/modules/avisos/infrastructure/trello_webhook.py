@@ -13,8 +13,10 @@ verdade. A reconciliação do `LeitorDoTrello` (§7.6) segue lendo as actions pe
 5. nada do corpo vai a log, evento ou resposta: só o id da action, o tipo e o veredito.
 
 `CadastroDoWebhook` mantém UM webhook por quadro no Trello (`POST /1/webhooks`, com o token só no cabeçalho): cria o que
-falta, recria o desativado ou com URL diferente, apaga os da Central quando o webhook é desligado. Tem modo ensaio
-(`planejar` não escreve nada), e o `scripts/trello-webhook.py` o usa. Só age com `trello.webhook.enabled` e os três segredos.
+falta e recria o desativado ou com URL diferente. Tem modo ensaio (`planejar` não escreve nada), e o
+`scripts/trello-webhook.py` o usa. O cadastro é SEPARADO da flag de receber: `trello.webhook.enabled` só faz a rota
+responder; o primeiro cadastro é manual (`--aplicar`, com o "vai" da orquestradora) e o recadastro de hora em hora no líder
+só roda com `trello.webhook.cadastro_automatico` (desligada de fábrica). Ligar uma flag nunca vale como "vai".
 """
 from __future__ import annotations
 
@@ -187,19 +189,28 @@ class CadastroDoWebhook:
     def ligado(self) -> bool:
         return bool(self.cfg.file.trello.webhook.enabled)
 
-    def pode_agir(self) -> bool:
+    def pode_agir_sozinho(self) -> bool:
+        """O líder só recadastra sozinho com a chave PRÓPRIA (`cadastro_automatico`), além de `enabled` e dos três segredos.
+        Sem ela, nenhuma chamada a `/1/webhooks` (nem a leitura) parte do líder."""
         env = self.cfg.env
-        return self.ligado and all(_segredo(v) for v in (env.trello_api_key, env.trello_token, env.trello_api_secret))
+        w = self.cfg.file.trello.webhook
+        return bool(w.enabled and w.cadastro_automatico
+                    and all(_segredo(v) for v in (env.trello_api_key, env.trello_token, env.trello_api_secret)))
 
-    async def planejar(self, cliente: ClienteTrello) -> list[Passo]:
-        """Compara o que o Trello tem com o que a configuração pede. SÓ LÊ (`GET /1/members/me/tokens`): é o ensaio."""
+    async def planejar(self, cliente: ClienteTrello, *, desligar: bool = False) -> list[Passo]:
+        """Compara o que o Trello tem com o que a configuração pede. SÓ LÊ (`GET /1/members/me/tokens`): é o ensaio.
+        `desligar`: o pedido explícito de REMOVER os webhooks da Central (só os da descrição `central-de-aparelhos:`); sem
+        ele, a flag desligada não apaga nada, é erro (`ValueError`): quem desliga a rota não está pedindo para apagar."""
         trello = self.cfg.file.trello
         callback = (trello.webhook.callback_url or "").strip()
         nossos = [w for w in await cliente.webhooks_do_membro() if str(w.get("description") or "").startswith(DESCRICAO)]
-        passos: list[Passo] = []
-        if not self.ligado:
-            return [Passo("apagar", str(w["description"])[len(DESCRICAO):], _id(w), "webhook desligado na configuração")
+        if desligar:
+            return [Passo("apagar", str(w["description"])[len(DESCRICAO):], _id(w), "remoção pedida (--desligar)")
                     for w in nossos]
+        if not self.ligado:
+            raise ValueError("trello.webhook.enabled é false: ligue a flag antes de cadastrar "
+                             "(para REMOVER os webhooks da Central, peça --desligar)")
+        passos: list[Passo] = []
         erro = callback_valida(callback) if callback else "trello.webhook.callback_url não configurada"
         if erro is not None:
             raise ValueError(erro)
@@ -252,7 +263,7 @@ class CadastroDoWebhook:
         return passos
 
     def problemas(self) -> list[Problem]:
-        if not self.ligado or (not self._sem_webhook and self._motivo is None):
+        if not self.pode_agir_sozinho() or (not self._sem_webhook and self._motivo is None):
             return []
         return [Problem(
             code="trello_webhook_inativo",
@@ -261,7 +272,7 @@ class CadastroDoWebhook:
             hint="O Trello faz um HEAD na URL antes de criar o webhook: ela precisa estar no ar (túnel, ADR-073) e "
                  "trello.webhook.callback_url tem de ser a pública, com https. Enquanto isso a reconciliação por leitura "
                  "cobre, a cada trello.reconciliar_s; nada se perde. `python scripts/trello-webhook.py --ensaio` mostra "
-                 "o que seria feito.")]
+                 "o que seria feito; desligue trello.webhook.cadastro_automatico para a Central parar de tentar.")]
 
 
 def _id(w: dict[str, object]) -> str | None:

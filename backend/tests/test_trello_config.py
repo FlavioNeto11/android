@@ -32,7 +32,7 @@ def test_tudo_desligado_e_vazio_de_fabrica() -> None:
     assert t.enabled is False and t.comando_livre is False and t.responder_convidados is False
     assert t.quadros == [] and t.listas == {} and t.membros_autorizados == [] and t.membro_dono == ""
     assert (t.espelho_s, t.reconciliar_s, t.idade_max_s) == (60.0, 60.0, 900.0)
-    assert t.webhook.enabled is False and t.webhook.callback_url is None and t.webhook.max_bytes == 262144
+    assert t.webhook.enabled is False and t.webhook.cadastro_automatico is False and t.webhook.callback_url is None and t.webhook.max_bytes == 262144
 
 
 def test_os_padroes_nao_sao_compartilhados_entre_instancias() -> None:
@@ -79,7 +79,7 @@ def test_o_exemplo_traz_o_bloco_desligado_e_carrega() -> None:
     assert load_config(EXEMPLO).file.trello.enabled is False
     texto = EXEMPLO.read_text(encoding="utf-8")
     for chave in ("quadros", "listas", "central_automatico", "membro_dono", "espelho_s", "reconciliar_s", "comando_livre",
-                  "idade_max_s", "membros_autorizados", "responder_convidados", "webhook", "callback_url", "max_bytes"):
+                  "idade_max_s", "membros_autorizados", "responder_convidados", "webhook", "callback_url", "max_bytes", "cadastro_automatico"):
         assert chave in texto.split("trello:", 1)[1].split("provisioning:", 1)[0], chave
 
 

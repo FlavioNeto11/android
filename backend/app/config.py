@@ -1161,7 +1161,12 @@ class TrelloWebhookCfg(BaseModel):
     aplicativo que assina o corpo é `TRELLO_API_SECRET`, só no `.env`; aqui mora só a URL pública (sem parâmetro e sem
     segredo)."""
 
+    #: Só a ROTA responde (HEAD 200, POST verifica a assinatura). Ligar isto NUNCA cadastra nada no Trello: o primeiro
+    #: cadastro é manual (`scripts/trello-webhook.py --aplicar`, com o "vai" da orquestradora).
     enabled: bool = False
+    #: O recadastro de hora em hora no líder (cria o que falta, recria o desativado). Chave SEPARADA, desligada de fábrica:
+    #: só se liga depois da prova real. Sem ela o líder nunca chama `/1/webhooks`.
+    cadastro_automatico: bool = False
     callback_url: str | None = None                          # a URL pública inteira; entra no HMAC tal como escrita
     max_bytes: int = Field(262144, ge=1024, le=4_194_304)    # acima disso, 413 sem ler o resto
 
