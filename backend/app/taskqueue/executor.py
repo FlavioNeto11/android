@@ -28,7 +28,7 @@ from ..automation.hierarchy import (MOTIVO_DESAFIO, MOTIVO_SENHA, SUBTIPO_CODIGO
 from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, TOOLS, ReadValue, StepBlocked, StepDone,
                                 TelaDeContaTravada, ToolContext, ToolValidationError, esperar_foco, execute_tool,
                                 looks_like_commit, resolve_point, urls_do_texto, validate_call)
-from ..config import Config, LimitsCfg
+from ..config import AiCfg, Config, LimitsCfg
 from ..devices.adb import AVISO_DE_ANR, MorteDoApp, motivo_de_anr
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter, Observation, dimensoes_do_modelo
 from ..metricas import metricas
@@ -756,21 +756,23 @@ class StepExecutor:
             return models[role] or ""
         return getattr(self.provider, "model", "") or ""
 
-    def _want_image(self, tree: UiTree, *, judged_step: bool, first: bool, trouble: bool, requested: bool) -> bool:
+    def _want_image(self, tree: UiTree, *, judged_step: bool, first: bool, trouble: bool, requested: bool,
+                    ai: AiCfg | None = None) -> bool:
         """Política `ai.image_policy`: se a imagem vai junto. O porquê é `_motivo_da_imagem`, a única régua."""
         return self._motivo_da_imagem(tree, judged_step=judged_step, first=first, trouble=trouble,
-                                      requested=requested) in _IMAGEM_VAI
+                                      requested=requested, ai=ai) in _IMAGEM_VAI
 
     def _motivo_da_imagem(self, tree: UiTree, *, judged_step: bool, first: bool, trouble: bool,
-                          requested: bool) -> MotivoDaImagem:
+                          requested: bool, ai: AiCfg | None = None) -> MotivoDaImagem:
         """Política `ai.image_policy`. A imagem custa ~1/3 dos tokens novos de cada chamada; a hierarquia quase sempre
         basta. Em `auto` a imagem vai quando a árvore é pobre (WebView/canvas), na 1ª decisão de etapa julgada por
         visão, depois de erro/ciclo, ou quando o próprio modelo pede (observe_screen.need_image).
 
         Decide pela ÁRVORE, antes de a imagem existir (adendo v0.20, C1): o resto do que pesa aqui já se sabe antes
         de observar, então a imagem só é adquirida quando vai ser mandada. RA-10: devolve o MOTIVO (`ai_calls.
-        image_reason`), na ordem em que a regra decide; vai junto quando ele está em `_IMAGEM_VAI`."""
-        ai = self.cfg.file.ai
+        image_reason`), na ordem em que a regra decide; vai junto quando ele está em `_IMAGEM_VAI`.
+        `ai`: o bloco da execução (17.14, `_ai_da_execucao`); vazio = o global."""
+        ai = ai or self.cfg.file.ai
         if tree.sensitive:
             return "sensivel"
         if ai.image_policy == "never":
@@ -786,9 +788,17 @@ class StepExecutor:
         informative = sum(1 for e in tree.elements if e.text or e.desc or e.clickable or e.editable)
         return "arvore_pobre" if informative < ai.rich_tree_min_elements else "arvore_rica"
 
-    def _image_scale(self, obs: Observation) -> float:
+    def _image_scale(self, obs: Observation, ai: AiCfg | None = None) -> float:
         """Pixels do aparelho por pixel do espaço de coordenadas que o modelo enxerga."""
-        return max(1.0, max(obs.width, obs.height) / self.cfg.file.ai.screenshot_max_side)
+        return max(1.0, max(obs.width, obs.height) / (ai or self.cfg.file.ai).screenshot_max_side)
+
+    def _ai_da_execucao(self, run_id: str) -> AiCfg:
+        """O bloco `ai` desta execução (17.14): o global com o lado da imagem e o mínimo da árvore rica do perfil dela
+        por cima (`Config.ai_da_execucao`). Sem perfis na configuração, nem lê o banco: é o objeto de sempre."""
+        if not self.cfg.file.ai.profiles:
+            return self.cfg.file.ai
+        perfil = self.repo.db.scalar("SELECT ai_profile FROM runs WHERE id=?", (run_id,))
+        return self.cfg.ai_da_execucao(perfil or None)
 
     def _shadow_compare(self, rr: "_RecipeRun", obs: Observation, decision: Decision) -> None:
         """Modo sombra: a receita diz o que FARIA; só a IA age. O veredito é da EXECUÇÃO da etapa (`_after_step`).
@@ -818,10 +828,10 @@ class StepExecutor:
             rr.diverged = "a IA escolheu outra ação"
 
     def _screen(self, obs: Observation, *, with_image: bool = True, protect: tuple[str, ...] = (),
-               boost: tuple[str, ...] = ()) -> tuple[ScreenInput, float]:
+               boost: tuple[str, ...] = (), ai: AiCfg | None = None) -> tuple[ScreenInput, float]:
         jpeg = obs.jpeg if with_image else None
         # com ou sem imagem, x,y do modelo vivem no mesmo espaço reduzido — a MESMA conta de quem codificou a imagem
-        w, h, scale = dimensoes_do_modelo(obs.width, obs.height, self.cfg.file.ai.screenshot_max_side)
+        w, h, scale = dimensoes_do_modelo(obs.width, obs.height, (ai or self.cfg.file.ai).screenshot_max_side)
         if jpeg:
             with Image.open(io.BytesIO(jpeg)) as img:     # só o cabeçalho: a observação já pode vir no tamanho certo
                 pronta = img.size == (w, h)
@@ -1371,7 +1381,7 @@ class StepExecutor:
         errors_in_row = 0
         declared: StepDone | None = None
         max_actions = int(s.max_actions_per_step)
-        ai_cfg = self.cfg.file.ai
+        ai_cfg = self._ai_da_execucao(str(run["id"]))      # 17.14: o perfil da execução pode trocar imagem e árvore
         judged_step = step.postcondition.kind == "model_judged" or need is not None
         decisions = 0
         image_requested = False
@@ -1512,7 +1522,7 @@ class StepExecutor:
             # a imagem só vem se ela divergir e a IA precisar (`completar_imagem`, mais abaixo).
             receita_decide = rr.mode == "replay" and not rr.diverged and not fired and rr.replayer is not None
             pede = dict(judged_step=judged_step, first=decisions == 0, trouble=errors_in_row >= 1 or same_count >= 1,
-                        requested=image_requested)
+                        requested=image_requested, ai=ai_cfg)
             try:
                 obs = last_obs = await reler_se_ocupada(
                     lambda: self.devices.observe(rt, timeout=call_timeout, lado_max=ai_cfg.screenshot_max_side,
@@ -1659,7 +1669,7 @@ class StepExecutor:
                     history.append(f"(executor) a receita desta etapa divergiu: {exc}. Continue a partir da tela atual.")
                     repo.decision(f"{iid} · {step.title}: receita divergiu — {exc}; a IA assume esta etapa",
                                   run_id=run_id, instance_id=iid, step_id=step.id)
-            scale = self._image_scale(obs)
+            scale = self._image_scale(obs, ai_cfg)
             if decision is None:
                 # ---------- LT-1: a pós-condição já vale na tela que acabou de ser lida? Pular o ator, nunca a prova.
                 # Só etapa SEM efeito (a UI otimista de uma etapa com efeito mostra o "feito" antes de ele valer),
@@ -1720,7 +1730,7 @@ class StepExecutor:
                     repo.decision(f"{iid} · {step.title}: decisão escalonada para o modelo de escalonamento "
                                   f"({motivo})", run_id=run_id, instance_id=iid, step_id=step.id)
                 motivo_imagem = self._motivo_da_imagem(obs.tree, judged_step=judged_step, first=decisions == 0,
-                                                       trouble=trouble, requested=image_requested)
+                                                       trouble=trouble, requested=image_requested, ai=ai_cfg)
                 quer_imagem = motivo_imagem in _IMAGEM_VAI
                 if quer_imagem and obs.jpeg is None and obs.image_omitted == "policy":
                     # A receita divergiu depois da observação só de árvore: a imagem vem agora, da mesma árvore,
@@ -1733,7 +1743,8 @@ class StepExecutor:
                     except DriverError as exc:
                         log.info("%s: imagem para a decisão indisponível (%s); decide pela árvore", iid, exc)
                 screen, scale = self._screen(obs, with_image=quer_imagem,
-                                             protect=tuple(step.commit_guard), boost=_boost_terms(step, app))
+                                             protect=tuple(step.commit_guard), boost=_boost_terms(step, app),
+                                             ai=ai_cfg)
                 image_requested = False
                 decisions += 1
                 actor_history = compress_history(history, ai_cfg.actor_history_lines)
@@ -2457,7 +2468,7 @@ class StepExecutor:
         gravado em `ai_calls.motivo`; o rejulgamento escalado sobre a mesma tela é `rejulgamento` em qualquer caso."""
         post = step.postcondition
         need = post.required_delivery_level
-        ai_cfg = self.cfg.file.ai
+        ai_cfg = self._ai_da_execucao(run_id)              # 17.14: o perfil da execução pode trocar imagem e árvore
         budget = min(max(deadline - time.monotonic(), float(ai_cfg.verify_budget_min_s)),
                      float(ai_cfg.verify_budget_patient_s if patient else ai_cfg.verify_budget_s))
         t_end = time.monotonic() + budget
@@ -2470,7 +2481,7 @@ class StepExecutor:
         if patient and (post.kind == "model_judged" or need is not None):
             # o app costuma levar ~1–2 s para sair de "enviando": evita pagar 2 julgamentos
             await asyncio.sleep(float(self.cfg.file.ai.judge_wait_s))
-        lado_max = self.cfg.file.ai.screenshot_max_side
+        lado_max = ai_cfg.screenshot_max_side
         while True:
             # Só a árvore: a maioria das conferências é determinística. A imagem vem logo antes do julgamento que a
             # usa (`completar_imagem`), e a evidência final adquire a sua se a observação não tiver (C1). UI ocupada
@@ -2556,11 +2567,11 @@ class StepExecutor:
                     # Item 12.5: com saída lida da IMAGEM o juiz recebe a imagem à força. Ele julga a tela ("caixa
                     # aberta, aba, mais recente"), não o valor.
                     motivo_imagem = self._motivo_da_imagem(obs.tree, judged_step=False, first=False,
-                                                           trouble=judged_polls >= 1, requested=imagem_forcada)
+                                                           trouble=judged_polls >= 1, requested=imagem_forcada, ai=ai_cfg)
                     quer_imagem = motivo_imagem in _IMAGEM_VAI
                     if quer_imagem:
                         obs = await self.devices.completar_imagem(rt, obs, timeout=call_timeout, lado_max=lado_max)
-                    screen, _ = self._screen(obs, with_image=quer_imagem, protect=tuple(step.commit_guard))
+                    screen, _ = self._screen(obs, with_image=quer_imagem, protect=tuple(step.commit_guard), ai=ai_cfg)
                     # `t_end` é o orçamento DESTA verificação (nunca além do prazo da etapa): a chamada de
                     # verificação passa a ter limite próprio, que era o que faltava (achado #96).
                     verdict = await self._ai(run_id, objective_id,

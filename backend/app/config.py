@@ -446,6 +446,16 @@ class RoleCfg(BaseModel):
     timeout_s: float | None = None
     max_retries: int | None = None              # novas tentativas DENTRO do SDK; 0 = só o `_ai` repete
     concurrency: int | None = None              # vagas simultâneas desta função, sob o limite global
+    # --- item 17.14: o que um perfil (17.7) precisa trocar para medir latência sem mexer no padrão. Vazio = como hoje.
+    #: Esforço DESTA função (Anthropic: `output_config.effort`). Vazio = o do `.env` (AI_EFFORT_PLANNER/ACTOR/VERIFIER).
+    effort: Effort | None = None
+    #: `false` não manda `thinking` (o ator sem pensamento adaptativo, LT-10). Vazio ou `true` = a capacidade do modelo
+    #: decide (`ai.models.<m>.thinking`), como hoje. Não liga thinking num modelo declarado sem ele.
+    thinking: bool | None = None
+    #: RA-17 (dieta do contexto 2): na decisão do ator, o bloco estável da etapa (passo e lições) vai ANTES da imagem e
+    #: leva um 2º ponto de cache; a imagem e o resto da observação vêm depois. Vazio/`false` = imagem primeiro, um ponto
+    #: de cache só no system (byte a byte o de hoje). Só a Anthropic tem ponto de cache.
+    cache_da_etapa: bool | None = None
 
 
 #: Prazo e vagas por função quando o YAML não diz. Folgados diante do medido em 908 chamadas reais
@@ -472,6 +482,10 @@ class AiProfileCfg(BaseModel):
 
     roles: dict[str, RoleCfg] = {}
     note: str = ""                              # para que serve: só documentação do YAML (nada o exibe ainda)
+    #: Item 17.14 (RA-17, perfil `img-768`): o lado maior da imagem e o mínimo de elementos da árvore "rica" das
+    #: execuções DESTE perfil, por cima de `ai.screenshot_max_side` e `ai.rich_tree_min_elements`. Vazio = os globais.
+    screenshot_max_side: int | None = Field(None, ge=320, le=2560)
+    rich_tree_min_elements: int | None = Field(None, ge=0, le=200)
 
 
 class AiCanaryCfg(BaseModel):
@@ -1338,6 +1352,10 @@ class ResolvedRole:
     concurrency: int
     effort: Effort
     extra_body: dict[str, Any] | None      # item 7.8: repassado tal qual ao corpo do POST (ex.: options do Ollama)
+    # Item 17.14: o que o YAML escreveu para ESTA função (padrão ou perfil). Vazio = o caminho de hoje, byte a byte.
+    effort_declarado: Effort | None = None
+    thinking: bool | None = None
+    cache_da_etapa: bool = False
 
     @property
     def endpoint(self) -> str:
@@ -1566,10 +1584,23 @@ class Config:
             timeout_s=float(r.timeout_s if r.timeout_s is not None else padrao["timeout_s"]),
             max_retries=int(r.max_retries if r.max_retries is not None else 0),
             concurrency=int(r.concurrency if r.concurrency is not None else padrao["concurrency"]),
-            effort=self.ai_effort_for(role), extra_body=prov.extra_body)
+            effort=r.effort or self.ai_effort_for(role), extra_body=prov.extra_body,
+            effort_declarado=r.effort, thinking=r.thinking, cache_da_etapa=bool(r.cache_da_etapa))
 
     def ai_roles(self, profile: str | None = None) -> dict[str, ResolvedRole]:
         return {papel: self.ai_role(papel, profile) for papel in AI_ROLES}
+
+    def ai_da_execucao(self, profile: str | None) -> AiCfg:
+        """O bloco `ai` que vale para uma execução: o global com o que o perfil escreve de imagem e de árvore por cima
+        (item 17.14). Sem perfil, ou perfil sem esses campos (ou que sumiu da configuração: a chamada de IA da execução
+        já falha com o nome dele), é o MESMO objeto de sempre."""
+        ai = self.file.ai
+        perfil = ai.profiles.get(profile) if profile else None
+        if perfil is None:
+            return ai
+        troca = {campo: valor for campo in ("screenshot_max_side", "rich_tree_min_elements")
+                 if (valor := getattr(perfil, campo)) is not None}
+        return ai.model_copy(update=troca) if troca else ai
 
     def ai_leitura(self) -> ResolvedRole | None:
         """O leitor da leitura visual (item 12.5), ou `None` quando `ai.roles.leitura` não está escrito."""

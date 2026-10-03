@@ -398,6 +398,46 @@ Trocar o modelo de uma função para **algumas** execuções, sem reiniciar o ce
 - **Prova:** `simulated`, `backend/tests/test_perfil_de_ia.py` (16) e `scripts/tests/test_eval_run.py`. **`real`:
   `not_run`** — o primeiro uso real é a bateria do 17.10 (`gpt-6-luna` como ator), que depende de saldo e autorização.
 
+### Esforço, thinking e dieta do contexto por função e por perfil (17.14 e RA-17)
+
+Para medir latência e custo sem mexer no padrão, a função (em `ai.roles` ou num perfil) e o perfil ganharam campos.
+**Nada escrito = a requisição de hoje, byte a byte** (imagem primeiro, um ponto de cache só no system, `thinking`
+quando o modelo declara, esforço do `.env`).
+
+- **`ai.roles.<f>.effort`** (`low`|`medium`|`high`|`xhigh`|`max`): o esforço DESTA função, no lugar do
+  `AI_EFFORT_PLANNER`/`ACTOR`/`VERIFIER` do `.env`. A aba IA mostra o efetivo.
+- **`ai.roles.<f>.thinking: false`**: não manda `thinking` (o ator sem pensamento adaptativo). `true` ou vazio = a
+  capacidade declarada do modelo decide, como hoje; não liga thinking num modelo declarado sem ele.
+- **`ai.roles.<f>.cache_da_etapa: true`** (RA-17, só na decisão do ator e na escalada): o bloco estável da etapa (o
+  passo e as lições, iguais em toda decisão da tentativa) vai ANTES da imagem e leva o 2º ponto de cache; a imagem, o
+  histórico e os elementos vêm depois. Com a imagem primeiro, nada depois do system podia ser cacheado: o prefixo
+  cacheável termina no primeiro byte que muda, e a imagem muda a cada decisão. Os dois textos juntos são exatamente o
+  texto de antes (`prompts.actor_user_partes`). O ponto é sempre marcado, como o do system: abaixo do mínimo do
+  modelo a API o ignora sem erro. No ator, tools e system já passam de 6 mil tokens (≈ 6 091 medidos em 24/09, §5), então o mínimo (512 no Opus 5.5 e
+  no Sonnet 5.5) está sempre alcançado e o ganho é o tamanho do bloco estável, lido a 0,1× a partir da 2ª decisão
+  da tentativa (a 1ª grava a 1,25×). São 2 dos 4 pontos que a API aceita.
+- **Perfil: `ai.profiles.<p>.screenshot_max_side` e `rich_tree_min_elements`** valem por cima dos globais só nas
+  execuções do perfil (`Config.ai_da_execucao`, lido de `runs.ai_profile` pelo executor). A imagem já é capturada nesse
+  lado (`observe(lado_max=…)`), e os limites e o x,y dos elementos seguem a mesma escala. Sem perfis na configuração, o
+  executor nem consulta o banco.
+- **Só a Anthropic** tem `thinking`, esforço e ponto de cache. No provedor OpenAI esses campos não mudam a requisição
+  (o esforço só aparece no registro).
+- **Instância própria:** uma função com ajuste ganha instância de provedor só dela (a chave inclui a função e os
+  ajustes). O provedor aplica o ajuste só às chamadas da função dona da instância; `decide` e `escalation` com o
+  mesmo ajuste numa instância só perderiam o da segunda. Sem ajuste, a chave e o compartilhamento são os de antes.
+- **Sonda "o ator pensa?":** `GET /api/ai` → `roles[].thinking` = `adaptive` (vai em toda chamada),
+  `desligado_na_funcao` (`thinking: false`), `nao_declarado` (`ai.models.<m>.thinking` falso), `recusado_pelo_modelo`
+  (um 400 desligou nesta instância, até reiniciar) ou vazio (provedor sem thinking). A linha `uso[...]` do log ganhou
+  `pensou=N`, o número de blocos de pensamento da resposta. O adaptativo pode não pensar num turno fácil; `pensou=0`
+  em TODAS as chamadas de uma função com `adaptive` é que diz que o pensamento não está acontecendo.
+- **Exemplo:** perfil `img-768` (RA-17), com `screenshot_max_side: 768`, `rich_tree_min_elements: 12` e
+  `roles.decide.cache_da_etapa: true`; perfil de ator sem pensamento, com `roles.decide: {thinking: false, effort:
+  low}`. Os dois estão comentados em `config/config.example.yaml`.
+- **Prova:** `simulated`, `backend/tests/test_perfil_esforco_e_dieta.py` (16 testes): padrão byte a byte, ordem e
+  ponto de cache, os dois textos iguais ao de antes, ajuste na escalada pelo despacho do hub e no rejulgamento,
+  instâncias, sonda, imagem e árvore do perfil no executor. **`real`: `not_run`.** Sem A/B pago, por decisão da
+  orquestradora. A medição é a bateria pareada com `--profile`, que depende de autorização e saldo.
+
 ## 11. Tabela: `config.example.yaml` × padrão do código
 
 O exemplo é a POC "neutra"; os valores entre parênteses no próprio arquivo já documentam o padrão de código.

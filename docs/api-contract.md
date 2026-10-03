@@ -4343,3 +4343,16 @@ Prova `simulated`: `backend/tests/test_flows_required_apps.py`; `real`: `not_run
 - `/pendentes`, `/revisar`, o detalhe e `/aprendizado/apps` não mudam: as filas de decisão e a visão por app leem tudo.
 
 Prova `simulated`: `tests/test_learning_rotulo_do_livro.py`, `AprendizadoPage.test.tsx` e `model.test.ts`.
+
+## Adendo v0.84 (03/10/2026, provisório: número pedido à orquestradora, `.claude/reservas.md`) — a sonda "o ator pensa?" no `GET /api/ai` (item 17.14)
+
+Só campo novo, aditivo.
+
+- `GET /api/ai` → cada item de `roles` ganha `thinking` (texto ou `null`): `adaptive` (o pedido leva `thinking` em toda
+  chamada da função), `desligado_na_funcao` (`ai.roles.<f>.thinking: false`), `nao_declarado` (o modelo está declarado
+  sem thinking em `ai.models`) ou `recusado_pelo_modelo` (um 400 desligou o thinking nesta instância, até reiniciar).
+  `null` = provedor sem thinking (OpenAI, simulado).
+- `effort` passa a ser o efetivo da função: o `ai.roles.<f>.effort` quando escrito, senão o do `.env`, como antes.
+
+Vale para o padrão (`ai.roles`); o perfil de uma execução não aparece aqui (como o modelo, adendo do 17.7). Prova
+`simulated`: `tests/test_perfil_esforco_e_dieta.py::test_sonda_do_thinking_na_aba_ia` e `::test_sonda_vazia_em_provedor_sem_thinking`.
