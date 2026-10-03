@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — Receitas: o contêiner sem identidade pelo filho rotulado (29.40 item 2; branch feat/29-40-filho-rotulado)
+
+- O toque numa linha clicável sem `resource-id` nem texto (a conversa, o contato) vira receita pelo filho rotulado não
+  clicável. O filho é gravado com hit-test e janela da pré-ordem; na reprodução, o toque vai ao centro do filho,
+  depois de conferir o clicável que o contém.
+- Rótulo que muda com o estado e qualquer @ literal não viram seletor. O efeito externo pelo filho é recusado.
+- A mescla com a chave genérica (RA-20 B) trouxe um defeito: o `_contem` de bounds do 29.40 sobrescrevia o `_contem`
+  de texto do `eh_generica`. O teste pedido pela Android o pegou, e o de bounds virou `_dentro_de`.
+- Prova `simulated` (`tests/test_receita_filho_rotulado.py`); afetados (receitas, executor, chave genérica): 849 passed.
+
 ## 2026-10-03 — Deploy 9 no central (suíte 9; sombra C0–C1 do curador ligada, T_on do 31.10; curador volta ao padrão)
 
 - Código: main `3dcfc9ac` (suíte 9), sem migração nova (segue a 081):
