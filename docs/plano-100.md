@@ -815,6 +815,21 @@ do dono (31.8 em diante); o Jev não decide por persona (D-J5, só de decisão d
 **Fecha quando:** a porta existe com provedor nulo e privacidade fechada por padrão, a sombra do curador mediu concordância, aceite errado, latência e
 custo contra limiares pré-registrados, e o GO/NO-GO por consumidor está registrado.
 
+### Fase 32 — Canais externos: Trello · 2 itens (pedido do dono de 03/10/2026; ADR-072 reservado)
+
+Origem: o pedido do dono de 03/10 (~17:40Z), "a Central acessa e orquestra pelo Trello, vinculando a todo o conhecimento que existe na
+plataforma". O estudo está em `design/trello-integracao.md`: o Trello é espelho e canal, e a verdade continua no repositório e no banco.
+Decisões da orquestradora (03/10, ~18:05Z): token sem expiração com revogação documentada; as 3 listas do quadro Execução criadas por ela;
+conteúdo redigido (a regra do Telegram: redação e corte, sem captura); link do painel só na LAN, por enquanto.
+
+| Item | O que | Achados | Tam. |
+|---|---|---|---|
+| 32.1 | **Estudo da integração com o Trello do dono** (só documento): acesso por chave e token no `.env` e polling das actions, porque o webhook exige URL pública; um cartão por fato no espelho; comandos de volta por cartão movido e comentário (`/aprovar`, `/vetar`, `/responder`, `/para`, `/estado`) com a identidade do membro do dono e dedupe pela action id; vínculos ao conhecimento (`GET /api/conhecimento/resumo` proposto); o que não fazer; o desenho do 32.2 | `design/trello-integracao.md` | P |
+| 32.2 | **Implementação do espelho e do canal do Trello**, depois do 28.15: segundo `Canal` do módulo `avisos`, cliente com limite de taxa, migração 086 (cartões, cursor e ações), laços de espelho e de entrada só no líder, parser de comandos comum ao 28.15, rota `GET /api/conhecimento/resumo` (o dossiê e `learning_validations` hoje não têm rota), ADR-072 (com a limitação do link só na LAN), adendo v0.99 | `design/trello-integracao.md` §6 | G |
+
+**Fecha quando:** um cartão real espelhado e um `/aprovar` do dono, feito num cartão de aprovação, decidiram a aprovação na Central, com o operador
+`trello:` na auditoria.
+
 ### Transversal — prova, testes e documentação · 3 itens (17 achados: 7 P, 9 M, 1 G)
 
 | Item | O que | Achados | Tam. |
