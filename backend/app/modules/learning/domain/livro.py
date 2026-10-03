@@ -19,9 +19,11 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
-from app.modules.learning.domain.ciclo import TRANSICOES, Actor, SkillState, exige_o_dono, permitido
+from app.modules.learning.domain.ciclo import SYSTEM_ACTOR, TRANSICOES, Actor, SkillState, exige_o_dono, permitido
 from app.modules.learning.domain.evidencia_invalida import Reaprendizado, ja_invalidada
-from app.modules.learning.domain.vocabulario import (FONTES_HUMANAS, KINDS_DE_ITEM, LivroKind, Origem, SourceKind)
+from app.modules.learning.domain.promocao import Evidencia
+from app.modules.learning.domain.vocabulario import (FONTES_HUMANAS, KINDS_DE_ITEM, LivroKind, Origem, Posicao,
+                                                     SourceKind)
 from app.modules.skills.domain.document import JsonObject, JsonValue, content_hash
 
 _S = SkillState
@@ -354,9 +356,51 @@ def evidencia_a_invalidar(e: EntradaDoLivro, trilha: Sequence[Transicao]) -> str
 
 def a_revisar(e: EntradaDoLivro, decididos_por_pessoa: frozenset[str]) -> bool:
     """"Revisar": receita ou fluxo ATIVO com efeito externo que nenhuma pessoa decidiu pelo livro — o legado de
-    antes do D1, que continua valendo (desvio consciente, ADR-054) até o dono aprovar ou rebaixar."""
+    antes do D1, que continua valendo (desvio consciente, ADR-054) até o dono confirmar que fica ou desligar.
+    `decididos_por_pessoa` vem de `decididos_para_revisar` (a confirmação vale até nova evidência contrária)."""
     return (e.kind in (LivroKind.RECEITA, LivroKind.FLUXO) and e.state is SkillState.PUBLISHED and e.side_effect
             and e.trail_ref not in decididos_por_pessoa)
+
+
+#: "Confirmar que fica" (30.24): o motivo da linha `published → published` da PESSOA que mantém o legado de "Revisar".
+#: O motivo dela, opcional, vem depois de ": ". `confirmar` é o rótulo do gesto (o do parecer pendente, 30.17).
+CONFIRMADO_QUE_FICA = "confirmado que fica"
+ROTULO_DA_CONFIRMACAO = "confirmar"
+
+
+def motivo_da_confirmacao(motivo: str | None) -> str:
+    texto = (motivo or "").strip()
+    return f"{CONFIRMADO_QUE_FICA}: {texto}" if texto else CONFIRMADO_QUE_FICA
+
+
+def e_confirmacao(t: Transicao) -> bool:
+    """A linha de "Confirmar que fica": de uma pessoa, sem mudar o estado (`published → published`)."""
+    return (t.from_state is SkillState.PUBLISHED and t.to_state is SkillState.PUBLISHED
+            and t.decided_by != SYSTEM_ACTOR and t.reason.startswith(CONFIRMADO_QUE_FICA))
+
+
+def motivo_na_confirmacao(t: Transicao) -> str | None:
+    """O motivo livre da pessoa numa confirmação (o que vem depois do prefixo), ou `None`: o painel não lê o formato."""
+    if not e_confirmacao(t):
+        return None
+    return t.reason[len(CONFIRMADO_QUE_FICA):].removeprefix(":").strip() or None
+
+
+def contestada(confirmacao: Transicao, evidencias: Iterable[Evidencia]) -> bool:
+    """Chegou evidência contrária REAL (contra ou em conflito, nunca simulada) depois da confirmação. Parecer da IA não
+    é evidência: é opinião, e não devolve nada à fila."""
+    return any(not ev.simulated and ev.stance in (Posicao.AGAINST, Posicao.CONFLICT)
+               and ev.observed_at > confirmacao.decided_at for ev in evidencias)
+
+
+def decididos_para_revisar(ultimas: Mapping[str, Transicao],
+                           evidencias: Mapping[str, Sequence[Evidencia]]) -> frozenset[str]:
+    """Os itens que uma pessoa já decidiu, para "Revisar". `ultimas`: a ÚLTIMA linha de pessoa de cada item. Toda
+    decisão de pessoa tira o item da fila, MENOS a confirmação contestada: "Confirmar que fica" vale até chegar
+    evidência contrária real depois dela, e confirmar de novo tira o item outra vez. Aprovar, reativar e desligar
+    seguem como antes: a regra da evidência contrária é só da confirmação (30.24)."""
+    return frozenset(ref for ref, t in ultimas.items()
+                     if not (e_confirmacao(t) and contestada(t, evidencias.get(ref, ()))))
 
 
 def contagem(entradas: Iterable[EntradaDoLivro]) -> dict[str, dict[str, int]]:

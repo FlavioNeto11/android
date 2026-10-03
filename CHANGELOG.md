@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03 — 30.24: "Confirmar que fica" para o legado de Revisar (branch feat/30-24-confirmar-que-fica)
+
+- O legado publicado com efeito de "Revisar" ganha o gesto da pessoa que o mantém. A trilha grava uma linha
+  `published → published` com quem, quando e o motivo, que é opcional. O item sai da fila até chegar evidência
+  contrária real depois da confirmação; confirmar de novo o tira outra vez. O item não muda e não há migração.
+- Fecha a pendência A6 do 30.17: aceitar o parecer "manter" num item de "Revisar" é a mesma confirmação, ligada à
+  revisão.
+- Rota `POST /api/aprendizado/{kind}/{ref}/confirmar` (adendo v0.78, provisório). No painel, "Confirmar que fica" e
+  "Confirmar selecionados" em "Revisar", e "Confirmado que fica" no histórico. O item já decidido por uma pessoa perde
+  o aviso "vale revisar" (antes ele ficava mesmo depois de religado), e o que voltou diz por quê. Percorrido no
+  navegador numa cópia do banco do central, inclusive a 375 px.
+- Prova `simulated`: `tests/test_learning_confirmar_que_fica.py` (10), `AprendizadoPage.test.tsx` e
+  `DetalheRico.test.tsx`. Real: `not_run`.
+
 ## 2026-10-03 — 12.5: bancada do leitor, o portão que reprovou (`scripts/bancada-leitor.py`)
 
 - **`real`.** Foram 16 recortes guardados e 2 leitores reais (gpt-6-luna e gemini-3.1-flash-lite), com 128 pares cada e zero
@@ -49,7 +63,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   consulta nenhuma. A ativa de outra assinatura ou de outra variante fica, mesmo com a outra parte vazia (revisão da
   Android). A que espera o dono (`validated`) não aposenta nada.
 - A causa de cada "ausente" é contada em `receita.ausente{causa}` (vocabulário do Aprendizado,
-  `domain/causa_do_ausente.py`); a consulta que herdou conta `receita.consulta{resultado=herdada}`. Adendo v0.75
+  `domain/causa_do_ausente.py`); a consulta que herdou conta `receita.consulta{resultado=herdada}`. Adendo v0.77
   (provisório).
 - Fora desta fatia: o hash sem o `post.value` do `model_judged` (fatia B, PR à parte), o seletor do filho rotulado
   (desenho de núcleo com a Android) e os literais do comando no `troca()`. As metas de fill_message e de 65 % dependem
