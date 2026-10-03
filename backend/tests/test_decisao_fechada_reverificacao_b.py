@@ -1,7 +1,7 @@
 """Reverificação B do 31.9 (03/10, NO-GO em 97f35fac): as 7 correções do §7 de `.claude/handoffs/reverificacao-31-9b.md`
 e as decisões da orquestradora: (a) C7 é RECUSA do pedido inteiro, a máscara não basta; (b) os eufemismos do §7.2 recusam;
-(c) "dois numerais por extenso recusam" fica (medido nos 90 comandos reais de 7 dias: 0 recusas por ela); (d) placa e nome
-com cidade PASSAM.
+(c) "dois numerais por extenso recusam" fica (medido nos 90 comandos reais de 7 dias: 0 recusas por ela; na rodada C a
+orquestradora trocou pela SEQUÊNCIA, ver `test_decisao_fechada_reverificacao_c.py`); (d) placa e nome com cidade PASSAM.
 
 Prova `simulated`: funções puras e a sombra com `DecisorFalso` e banco de teste. Os segredos daqui são de mentira e sem a
 forma de um token real (nada de prefixo de chave de provedor com o tamanho de verdade).
@@ -112,8 +112,8 @@ def test_idiomas_tambem_contam_como_credencial_para_memoria_e_historico() -> Non
     ("pague com o cartão 4111 1111 1111 1111 validade 12/29", "documento"),
     ("o cartao do Teodoro e 4111 1111 1111 1111", "documento"),
     ("o título de eleitor é 1234 5678 9012", "documento"),
-    # (c) dois numerais por extenso
-    ("publique duas fotos do almoço e marque três pessoas", "numerais"),
+    # (c) numerais por extenso SEGUIDOS (rodada C: "duas fotos ... três pessoas" passa, mascarado; ver reverificacao_c)
+    ("anota o número: nove oito", "numerais"),
 ])
 def test_filtro_recusa_com_o_motivo(comando: str, motivo: str) -> None:
     assert remover_entidades_com_motivo(comando) == (None, motivo)

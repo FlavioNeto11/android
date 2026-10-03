@@ -6,15 +6,18 @@ O filtro mascara o que não ajuda a escolher a habilidade e deixa o resto (`remo
 
 0. o texto é normalizado (`normalizar`: NFKC, sem marca combinante nem caractere invisível, todo traço como "-"): letra
    circulada, de largura cheia ou matemática vira a letra comum, e "s<ZWSP>enha" vira "senha", que a conferência da C7 do
-   consumidor pega. Palavra que mistura alfabetos (o "а" cirílico em "senhа") RECUSA o texto: é o jeito de esconder C7;
+   consumidor pega. Letra fora do alfabeto latino em QUALQUER palavra (o "а" cirílico em "senhа", "пароль", "密码") RECUSA
+   o texto: o comando é em português, e é o jeito de esconder C7 (rodada C do 31.9: a regra vale para a frase, não mais
+   só para a palavra que mistura alfabetos; decisão da orquestradora de 03/10);
 1. o que tem forma conhecida vira marcador fixo: o que está entre aspas (`[texto]`: o que a pessoa manda escrever), link
    e domínio, e-mail, `@handle`, telefone, número e token de letras com `_` (`[termo]`: handle sem `@`, identificador).
    A aspa que abre e não fecha leva o resto do texto para `[texto]`. Símbolo (emoji, braille, letra em quadrado negativo)
    vira `[texto]`; colado entre duas letras, recusa ("s★enha" passaria pela conferência da C7);
 2. o que esconde e-mail, telefone ou documento RECUSA o texto inteiro (`None`): endereço, documento (CPF, RG, cartão...),
    e-mail por extenso ou ofuscado (`arroba`, `(at)`, `(a)`, `{dot}`, `ponto com`, `correio ponto net`, `arr0ba`,
-   `a r r o b a`), sobra de `@` ou `://` e DOIS ou mais numerais por extenso (telefone, documento ou PIN ditado). UM numeral
-   vira `[numero]`;
+   `a r r o b a`, `zilda at correio net`, `zilda at gmail`), sobra de `@` ou `://` e dois ou mais numerais por extenso
+   SEGUIDOS (telefone, documento ou PIN ditado: "nove oito", "dez, dez"). Numeral solto vira `[numero]` ("Ze Sete e Maria
+   Onze", "duas fotos e três pessoas" passam);
 3. o resto passa como está: palavra comum, nome de pessoa, nome de app.
 
 Desde a reverificação B do 31.9 (03/10, NO-GO em 97f35fac) são DUAS passadas. A recusa por forma escondida roda primeiro,
@@ -64,7 +67,9 @@ _ASPAS = re.compile(r'"[^"]*"|“[^”]*”|„[^“”]*[“”]|«[^»]*»|‹
 _CARACTERES_DE_ASPA: Final = frozenset("\"'`′″‴‵‶‷„‚“”‘’«»‹›「」『』〝〞〟❛❜❝❞")
 _URL = re.compile(r"(?i)\b(?:[a-z][a-z0-9+.\-]*://|www\.)\S+")
 _EMAIL = re.compile(r"[\w.+\-]+@[\w\-]+(?:\.[\w\-]+)*")
-_HANDLE = re.compile(r"@\w[\w.]*")
+#: O `@handle` inteiro, também com hífen ("@cassia-brandao" saía `[usuario]-brandao`; decisão da orquestradora de 03/10).
+#: Não termina em ponto nem hífen: o "." que fecha a frase fica.
+_HANDLE = re.compile(r"@\w(?:[\w.\-]*\w)?")
 _DOMINIO = re.compile(r"(?i)\b[\w\-]+(?:\.[\w\-]+)*\.[a-z]{2,}(?:/\S*)?\b")
 _TELEFONE = re.compile(r"(?:\+?\d{1,3}[\s.\-])?\(?\d{2}\)?[\s.\-]?\d{4,5}[\s.\-]?\d{4}")
 #: Qualquer número (também quebrado por UM separador entre dígitos: "12 34 56", "1.234", "11-98"). Até "pedido 12" é
@@ -92,6 +97,20 @@ _SOBRA_DIGITOS = re.compile(r"\d\D{0,2}\d\D{0,2}\d")
 #: Domínio de topo do e-mail soletrado ou ofuscado ("correio ponto net", "dot co", "punto org").
 _TLD: Final = (r"(?:com|net|org|br|io|co|gov|edu|info|biz|me|app|dev|test|pt|es|uk|us|de|fr|it|mx|ar|cl|uy|rf|online"
                r"|site)")
+# E-mail soletrado (rodada C do 31.9, 7 vazamentos): o "at" em outras línguas, a palavra do ponto em outras línguas, o
+# domínio de topo fora da lista e o provedor sem domínio de topo.
+_AT: Final = r"(?:at|chez|bei)"
+#: O ponto do domínio: colado ("correio.net"), com espaço ANTES ("correio . net") ou por extenso. O ponto que fecha a
+#: frase ("look at this. It's") tem espaço só depois, e não conta.
+_SEP_DOMINIO: Final = r"(?:\.(?=\w)|\s+\.\s*|\s+(?:ponto|dot|punto|punkt|point)\s+)"
+#: Artigo ou determinante logo depois do "at": "look at the dot on the map" e "look at my point" não são e-mail.
+_NAO_DOMINIO: Final = r"(?!(?:the|a|an|this|that|these|those|my|your|his|her|its|our|their)\b)"
+#: Domínio de topo que vale SEM a palavra do ponto ("zilda at correio net"): só os que não são palavra comum em inglês
+#: ("look at this app", "look at the site", "look at them online", "look at the info" passam).
+_TLD_SEM_PONTO: Final = r"(?:com|net|org|br|gov|edu|pt|fr|mx|uy|ru|uk|jp|cn|xyz|tech)"
+#: Provedor de e-mail depois de "at" ou "arroba": é e-mail mesmo sem o domínio de topo ("zilda at gmail").
+_PROVEDOR: Final = (r"(?:gmail|googlemail|hotmail|outlook|yahoo|correio|live|icloud|uol|bol|terra|msn|proton(?:mail)?|gmx"
+                    r"|aol|yandex|zoho)")
 #: A recusa que roda ANTES das máscaras (passada 1), sobre o texto sem acento, em casefold e com o algarismo trocado pela
 #: letra parecida dentro de palavra (`arr0ba`). (motivo, padrão), na ordem do diagnóstico.
 _RECUSA_NO_ORIGINAL: Final[tuple[tuple[MotivoDoFiltro, re.Pattern[str]], ...]] = (
@@ -99,10 +118,17 @@ _RECUSA_NO_ORIGINAL: Final[tuple[tuple[MotivoDoFiltro, re.Pattern[str]], ...]] =
         # arroba por extenso, soletrada ou hifenizada ("a r r o b a", "a-r-r-o-b-a"); "(a)", "(a t)", "at-sign"
         r"(?<![^\W\d_])a[\W_]{0,2}r[\W_]{0,2}r[\W_]{0,2}o[\W_]{0,2}b[\W_]{0,2}a(?![^\W\d_])"
         r"|[(\[{<]\s*a\s*t?\s*[)\]}>]|\bat[\s\-]?sign\b"
-        # domínio de topo depois de "ponto", "dot" ou "punto": "correio ponto net", "dot co"
-        rf"|\b(?:ponto|dot|punto)\s*{_TLD}\b"
-        # "marina at correio.net", "zilda at correio dot org"
-        rf"|\b\w+\s+at\s+\w+(?:\s*(?:\.|ponto|dot|punto)\s*\w+)*\s*(?:\.|ponto|dot|punto)\s*{_TLD}\b"
+        # domínio de topo depois de "ponto", "dot", "punto" ou "punkt": "correio ponto net", "dot co"
+        rf"|\b(?:ponto|dot|punto|punkt)\s*{_TLD}\b"
+        # "marina at correio.net", "zilda at correio dot org", "zilda chez correio point net", "zilda at correio punkt de"
+        rf"|\b\w+\s+{_AT}\s+\w+(?:{_SEP_DOMINIO}\w+)*{_SEP_DOMINIO}{_TLD}\b"
+        # qualquer domínio de topo de 2 a 6 letras com o ponto colado ou por extenso: "zilda at correio dot tech"
+        rf"|\b\w+\s+{_AT}\s+{_NAO_DOMINIO}\w+(?:{_SEP_DOMINIO}\w+)*"
+        rf"(?:\.(?=\w)|\s+\.\s*|\s+(?:ponto|dot|punto)\s+)[a-z]{{2,6}}\b"
+        # sem a palavra do ponto: "zilda at correio net", "ZILDA AT CORREIO NET"
+        rf"|\b\w+\s+{_AT}\s+{_NAO_DOMINIO}\w+\s+{_TLD_SEM_PONTO}\b"
+        # provedor conhecido: "zilda at gmail", "zilda arroba hotmail"
+        rf"|\b\w+\s+(?:{_AT}|arroba)\s+{_PROVEDOR}\b"
         # `@` sem a parte local colada (separada por espaço ou tabulação), seguido de domínio com topo
         rf"|(?<![\w.+\-])@[\w\-]+(?:\.[\w\-]+)*\.{_TLD}\b")),
     ("endereco", re.compile(r"\bcaixa\s+postal\b|\bp\.?\s*o\.?\s+box\b|\bapartado\s+postal\b")),
@@ -114,8 +140,9 @@ _RECUSA_NO_ORIGINAL: Final[tuple[tuple[MotivoDoFiltro, re.Pattern[str]], ...]] =
 _ENDERECO_EN: Final = re.compile(
     r"\b\d{1,5}\s+(?:[A-Z][\w'\-]*\s+){1,3}(?:Terrace|Drive|Court|Place|Way|Circle|Parkway|Highway|Square|Lane|Road"
     r"|Street|Avenue|Boulevard|Blvd|Ave|St|Rd|Dr|Ct|Pl|Ln)\b")
-#: O algarismo que faz as vezes de letra dentro de uma palavra (leet). Só na passada 1 e na conferência da C7.
-_LEET: Final = str.maketrans({"0": "o", "1": "i", "3": "e", "4": "a", "$": "s"})
+#: O algarismo que faz as vezes de letra dentro de uma palavra (leet). Só na passada 1 e na conferência da C7. O 5, o 7
+#: e o 8 entraram na rodada C do 31.9 ("pa55word", "53nh4").
+_LEET: Final = str.maketrans({"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "8": "b", "$": "s"})
 _TOKEN_COM_LETRA: Final = re.compile(r"[\w$]*[^\W\d_][\w$]*")
 
 
@@ -124,10 +151,12 @@ def sem_leet(texto: str) -> str:
     return _TOKEN_COM_LETRA.sub(lambda m: m.group().translate(_LEET), texto)
 _PARENTESES_COM_DIGITO = re.compile(r"\(\s*\d")
 
-#: Numerais por extenso (normalizados, sem acento). UM só vira `[numero]`; DOIS ou mais no texto, ligados por qualquer coisa
-#: ("nove e oito", "nove oito, depois sete seis", "dez dez"), recusam: é telefone, documento ou PIN ditado
-#: (reverificação do 31.9, 03/10). "um", "uma", "one", "uno" e "una" ficam de fora porque são artigo, e "dos" (espanhol)
-#: porque em português é "de + os"; o `_DITADO` ainda pega "um um um" e "dos dos dos".
+#: Numerais por extenso (normalizados, sem acento). Cada um vira `[numero]`; dois ou mais SEGUIDOS, só com espaço, vírgula,
+#: ponto, barra ou hífen entre eles ("nove oito", "dez, dez", "sete-sete"), recusam: é telefone, documento ou PIN ditado.
+#: Até a rodada C do 31.9 (03/10) bastavam dois no texto, ligados por qualquer coisa, e "Ze Sete e Maria Onze" e "duas fotos
+#: e três pessoas" recusavam (14 de 25 comandos comuns na sonda); a orquestradora trocou pela sequência. Ligados por "e",
+#: três ou mais ainda recusam pelo `_DITADO` ("nove e oito e sete"). "um", "uma", "one", "uno" e "una" ficam de fora porque
+#: são artigo, e "dos" (espanhol) porque em português é "de + os"; o `_DITADO` ainda pega "um um um" e "dos dos dos".
 _NUMERAIS: Final[frozenset[str]] = frozenset("""
 zero dois duas tres quatro cinco seis meia sete oito nove dez onze doze treze catorze quatorze quinze dezesseis dezasseis
 dezessete dezassete dezoito dezenove dezanove vinte trinta quarenta cinquenta sessenta setenta oitenta noventa cem cento
@@ -190,8 +219,17 @@ def _alfabeto(c: str) -> str:
 
 def mistura_alfabetos(texto: str) -> bool:
     """Alguma palavra mistura sistemas de escrita (o "а" cirílico em "senhа", "Јoana")? Homóglifo é o jeito de uma palavra
-    passar por outra, e não há tabela de confusíveis na biblioteca padrão: quem chama RECUSA."""
+    passar por outra, e não há tabela de confusíveis na biblioteca padrão: quem chama RECUSA. Vale para o texto do catálogo
+    (C2); o comando (C3) usa a regra mais estrita, `escrita_nao_latina`."""
     return any(len({_alfabeto(c) for c in m.group()}) > 1 for m in _LETRAS.finditer(texto))
+
+
+def escrita_nao_latina(texto: str) -> bool:
+    """Alguma letra do texto JÁ NORMALIZADO está fora do alfabeto latino ("a пароль do insta", "密码是", "κωδικός")? O comando
+    é em português; a palavra-chave da credencial em outra escrita não cabe numa lista, e o homóglifo é o mesmo caso numa
+    palavra só. Quem chama RECUSA. A letra modificadora sem equivalente ("ʼ") também conta: dentro de uma palavra, ela a
+    esconde da conferência da C7. "ª" e "º" já saem do NFKC como "a" e "o"."""
+    return any(_alfabeto(c) != "LATIN" for m in _LETRAS.finditer(texto) for c in m.group())
 
 
 # ------------------------------------------------------------------ peças das duas passadas
@@ -278,18 +316,28 @@ def _limpar(texto: str) -> str:
     return re.sub(r"[ \t]{2,}", " ", texto).strip()
 
 
+#: O que pode ficar entre dois numerais SEGUIDOS: espaço, vírgula, ponto, barra e hífen ("e" não: `_DITADO` cuida).
+_ENTRE_NUMERAIS = re.compile(r"[\s,./\-]*")
+
+
 def _numerais(texto: str) -> tuple[str, int]:
-    """Cada numeral por extenso vira `[numero]`; devolve o texto e quantos eram."""
-    quantos = 0
+    """Cada numeral por extenso vira `[numero]`; devolve o texto e a maior sequência de numerais seguidos. A palavra com
+    hífen só de numerais ("sete-sete") conta cada parte; com outra palavra no meio ("meia-noite") fica como está."""
+    maior = seguidos = 0
+    fim_anterior: int | None = None
 
     def _troca(m: re.Match[str]) -> str:
-        nonlocal quantos
-        if _chave(m.group()) not in _NUMERAIS:
+        nonlocal maior, seguidos, fim_anterior
+        partes = m.group().split("-")
+        if not all(_chave(p) in _NUMERAIS for p in partes):
             return m.group()
-        quantos += 1
+        colado = fim_anterior is not None and _ENTRE_NUMERAIS.fullmatch(texto, fim_anterior, m.start()) is not None
+        seguidos = (seguidos if colado else 0) + len(partes)
+        maior = max(maior, seguidos)
+        fim_anterior = m.end()
         return M_NUMERO
 
-    return _PALAVRA.sub(_troca, texto), quantos
+    return _PALAVRA.sub(_troca, texto), maior
 
 
 # ------------------------------------------------------------------ a C3: o comando
@@ -297,10 +345,10 @@ def remover_entidades(texto: str) -> str | None:
     """O comando com o piso aplicado: forma conhecida vira marcador, e o que esconde e-mail, telefone ou documento recusa
     (`None`). Nome e palavra comum passam como estão (ADR-069 item 10). O motivo da recusa: `remover_entidades_com_motivo`.
 
-    Devolve `None` quando: a entrada não é texto; alguma palavra mistura alfabetos; há forma escondida no texto ainda sem
-    máscara (e-mail ofuscado, caixa postal, cartão, endereço em inglês); sobra símbolo colado entre letras; sobra forma que
-    não se mascara com segurança (endereço, documento, e-mail por extenso, `@`, `://`); ou há dois ou mais numerais por
-    extenso. Idempotente."""
+    Devolve `None` quando: a entrada não é texto; alguma letra está fora do alfabeto latino; há forma escondida no texto
+    ainda sem máscara (e-mail ofuscado ou soletrado, caixa postal, cartão, endereço em inglês); sobra símbolo colado entre
+    letras; sobra forma que não se mascara com segurança (endereço, documento, e-mail por extenso, `@`, `://`); ou há dois
+    ou mais numerais por extenso seguidos. Idempotente."""
     return remover_entidades_com_motivo(texto)[0]
 
 
@@ -309,7 +357,7 @@ def remover_entidades_com_motivo(texto: object) -> tuple[str | None, MotivoDoFil
     if not isinstance(texto, str):
         return None, "nao_texto"
     texto = normalizar(texto)
-    if mistura_alfabetos(texto):
+    if escrita_nao_latina(texto):
         return None, "alfabetos"
     trocado = _ASPAS.sub(M_TEXTO, texto)
     sobra = _primeira_aspa_sobrando(trocado)
@@ -323,8 +371,8 @@ def remover_entidades_com_motivo(texto: object) -> tuple[str | None, MotivoDoFil
         return None, "simbolo_colado"
     if (motivo := _recusa(_sem_marcadores(marcado))) is not None:
         return None, motivo
-    marcado, numerais = _numerais(marcado)
-    if numerais >= 2:
+    marcado, seguidos = _numerais(marcado)
+    if seguidos >= 2:
         return None, "numerais"
     limpo = _limpar(marcado)
     return (limpo, None) if limpo else (None, "vazio")
@@ -356,5 +404,5 @@ def mascarar_catalogo(texto: str) -> str:
 
 
 __all__ = ["M_EMAIL", "M_HANDLE", "M_NUMERO", "M_TELEFONE", "M_TERMO", "M_TEXTO", "M_URL", "MotivoDoFiltro",
-           "mascarar_catalogo", "mistura_alfabetos", "normalizar", "remover_entidades", "remover_entidades_com_motivo",
+           "escrita_nao_latina", "mascarar_catalogo", "mistura_alfabetos", "normalizar", "remover_entidades", "remover_entidades_com_motivo",
            "sem_acento", "sem_leet"]

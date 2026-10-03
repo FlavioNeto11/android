@@ -655,15 +655,17 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
     em 03/10 ~00:15Z: dado pessoal pode ir "desde que faça sentido no filtro"). Lista de BLOQUEIO sobre o piso: o que não
     ajuda a escolher a habilidade vira marcador, o que esconde e-mail, telefone ou documento recusa, e o resto passa. Passos:
     0. `normalizar`: NFKC, sem marca combinante nem caractere invisível, todo traço como `-` (letra de largura cheia,
-       circulada ou matemática vira a comum; `s<ZWSP>enha` vira `senha`, que a C7 pega). Palavra que mistura alfabetos
-       recusa: é o jeito de esconder C7.
+       circulada ou matemática vira a comum; `s<ZWSP>enha` vira `senha`, que a C7 pega). Letra fora do alfabeto latino em
+       qualquer palavra recusa (`escrita_nao_latina`; até a rodada C, só a palavra que misturava alfabetos): é o jeito de
+       esconder C7.
     1. Forma conhecida vira marcador: `[texto]` (entre aspas; a aspa que abre e não fecha leva o resto do texto),
        `[link]` (link e domínio), `[email]`, `[usuario]` (`@handle`), `[telefone]`, `[numero]` (todo número) e `[termo]`
        (palavra com `_`: handle sem `@`, identificador). Símbolo (emoji, braille...) vira `[texto]`; colado entre letras,
        recusa ("s★enha" passaria pela conferência da C7).
     2. Recusa (`None`) o que esconde e-mail, telefone ou documento: endereço (rua, avenida, calle, quadra...), documento
        (CPF, RG, CNH, passaporte, SSN...), e-mail por extenso ou ofuscado (`arroba`, `(at)`, `{dot}`, `ponto com`), sobra de
-       `@` ou `://` e dois ou mais numerais por extenso, também ligados por "e", "y" ou "and" (um só vira `[numero]`).
+       `@` ou `://`, dois ou mais numerais por extenso SEGUIDOS ("nove oito", "dez, dez", "sete-sete") e três ou mais
+       ligados por "e", "y" ou "and" (numeral solto vira `[numero]`).
     3. O resto passa como está: palavra comum, nome de pessoa (nossa ou de terceiro), nome de app.
 
     Com `None`, o estado vai vazio, a porta recusa e a sombra grava `fallback_reason='privacidade'`: o pedido não sai. **A
@@ -696,18 +698,45 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
       O `fallback_reason` continua `privacidade`, e `validar` continua devolvendo `c7` ou `pedido_vazio`.
     - **Placa e nome com cidade passam** (decisão (d)). "Dois numerais por extenso recusam" fica (decisão (c)): nos 90
       comandos reais de 7 dias (só leitura, contagens) essa regra não recusou nenhum, e a recusa total ficou em 1/90 (a
-      mesma C7 de antes).
+      mesma C7 de antes). Na rodada C ela virou a regra da SEQUÊNCIA (abaixo).
     - **Portão local** (`simulated`, 260 casos: os 240 e as 20 sondas, harness da orquestradora copiado): 0 vazamentos
       (eram 45), 0 passagens indevidas (eram 56) e todo C7 recusado (eram 85 sem recusa).
       - As recusas que contrariam o rótulo do harness são as C7 rotuladas "máscara", que a decisão (a) manda recusar, e
         mais 3 casos: dois numerais em nomes ("Ze Sete e Maria Onze"), "duas fotos … três pessoas" e um telefone ditado
         misto que já recusava antes.
       - Prova: `backend/tests/test_decisao_fechada_reverificacao_b.py`.
+  - **Rodada C (03/10, NO-GO em 8e1d7a9c; `.claude/handoffs/reverificacao-31-9c.md` §7).** A suíte de 240 deu 0
+    vazamentos, mas 27 casos fora dela vazaram pelo caminho de produção (20 de C7, 7 de e-mail). As correções, uma por
+    causa:
+    - **`sem_destinos` recorta sempre do original** (`target_extractor.py`, mapa de posições do texto normalizado para o
+      original). Quando o `_normal` mudava o comprimento ("ﬁ", "ß", acento decomposto), o comando saía em minúsculas e sem
+      acento, e o que depende da caixa passava: a chave `AKIA…`, o endereço em inglês. O prefixo de token também é
+      conferido sem caixa, com o comprimento de verdade (`akia`/`asia` + 16, `eyj` + 10; "asiático" passa).
+    - **Outra escrita** (decisão da orquestradora: "alfabetos misturados" vale para a FRASE): letra não latina em qualquer
+      palavra recusa (`c7_alfabetos` na C7, `alfabetos` no filtro), e a lista de palavras-chave ganhou пароль, 密码,
+      パスワード, 비밀번호, κωδικός, סיסמה, hasło, parola, lösenord, şifre e outras. A lista de outras escritas casa como
+      substring, depois da mesma normalização do texto.
+    - **Palavra colada, abreviada ou em leet**: "senha" dentro de outra palavra (menos "resenha" e "desenha"), "password" e
+      afins idem; `pw` e `psw`; leet com `5→s 7→t 8→b`.
+    - **O par sem verbo de entrar**: "login: x / y", "usuário x, acesso y" (`c7_eufemismo`).
+    - **E-mail soletrado**: "at", "chez" ou "bei"; o ponto colado, com espaço antes ou por extenso (ponto, dot, punto,
+      punkt, point); qualquer domínio de topo de 2 a 6 letras com o ponto; sem o ponto, só domínio que não é palavra comum
+      em inglês ("look at this app" passa); e o provedor conhecido sem domínio ("zilda at gmail", "arroba hotmail").
+    - **Importantes**: numerais por extenso só recusam SEGUIDOS (decisão da orquestradora; "Ze Sete e Maria Onze" e "duas
+      fotos … três pessoas" passam mascarados); `@handle` com hífen vira `[usuario]` inteiro; PIN tecla a tecla ("toque 4,
+      depois 8, depois 2") e fechado por `#` ("2580#") são `c7_digitos`.
+    - **Portão local** (`simulated`, 267 casos: os 240 e as 27 sondas da rodada C, harness da orquestradora passando por
+      `sem_destinos`): 0 vazamentos (eram 27 em 8e1d7a9c), 0 C7 ou e-mail sem recusa (eram 27) e 0 passagens indevidas.
+      As recusas contra o rótulo do harness são as C7 rotuladas "máscara" (decisão (a)), o PIN dos n=183 e n=223, o
+      e-mail com domínio cirílico (n=45, agora pela regra da frase) e o base64 com "campo de acesso" (n=155). Nos 92
+      comandos reais de 7 dias (03/10, só leitura, contagens), a recusa ficou igual: 1, a mesma C7.
+    - Prova: `backend/tests/test_decisao_fechada_reverificacao_c.py` (os 27 pelo caminho de produção até o decisor falso,
+      e 23 controles que não podem recusar).
   - **C7 nunca sai, em prosa ou não**: comando que fala de senha, código, 2FA, PIN, OTP, token, captcha, verificação, chave,
     segredo ou desafio, em PT, EN ou ES (`menciona_c7`: `mentions_credential`, `looks_secret` e o assunto no texto
-    normalizado, também com homóglifo, letra de largura cheia, uma letra por vez separada por ponto ou espaço, e palavra de
-    alfabetos misturados) vai com estado vazio e marcador `credencial`; a porta recusa o pedido inteiro (zero chamadas) e
-    grava `privacidade`.
+    normalizado, também com homóglifo, letra de largura cheia, uma letra por vez separada por ponto ou espaço, e letra de
+    outra escrita) vai com estado vazio e marcador `credencial`; a porta recusa o pedido inteiro (zero chamadas) e grava
+    `privacidade`.
   - **Comando social**: o catálogo social é C2 e entra (a exclusão social/persona proposta na revisão foi refutada), e,
     desde o ADR-069 item 10, o nome no comando social também sai: o D-J5 veta o Jev DECIDIR por persona (origem
     `social_persona` recusada na porta), não o dado.
