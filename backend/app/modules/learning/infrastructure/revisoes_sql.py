@@ -41,7 +41,7 @@ from app.modules.learning.domain.politica_de_risco import ClasseDeRisco
 from app.modules.learning.domain.vocabulario import SignalKind
 from app.modules.learning.infrastructure import linhas
 from app.planning import costs
-from app.util import to_iso
+from app.util import parse_iso, to_iso
 
 _COLUNAS = ("id, created_at, item_ref, item_kind, gatilho, validade, classe_de_risco, politica, simulated, provedor,"
             " modelo, dossie, saida, decisao_final, decidido_por, transicao_id, override, override_motivo,"
@@ -113,6 +113,11 @@ class RegistroDeRevisoesSql:
     def existe(self, item_ref: str, dossie_hash: str) -> bool:
         return self._db.one(f"SELECT 1 AS x FROM learning_reviews WHERE item_ref=? AND dossie_hash=?"
                             f" AND {_DO_CURADOR}", (item_ref, dossie_hash)) is not None
+
+    def mais_recente(self) -> datetime | None:
+        """A revisão do curador mais recente, de qualquer item: a âncora da 1ª espera do laço (K-087)."""
+        r = self._db.one(f"SELECT MAX(created_at) AS em FROM learning_reviews WHERE {_DO_CURADOR}")
+        return parse_iso(linhas.texto_ou_nulo(r, "em") if r is not None else None)
 
     def ultima(self, item_ref: str) -> str | None:
         r = self._db.one(f"SELECT MAX(created_at) AS em FROM learning_reviews WHERE item_ref=? AND {_DO_CURADOR}",

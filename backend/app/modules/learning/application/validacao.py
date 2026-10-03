@@ -277,7 +277,9 @@ class ServicoDeValidacao:
 
     # ------------------------------------------------------------------ 4. o gatilho `evidencia_chegou` do curador
     def chegadas(self) -> list[PedidoVivo]:
-        return self._registro.chegadas() if self._ajustes().modo is not Modo.OFF else []
+        """Independe do `modo` da validação, que é do DESPACHANTE: a evidência já foi paga, e o gasto da revisão é do modo
+        e do orçamento do curador. Antes, a pausa do P4 (03/10 17:18Z, `modo: "off"`) prendia o `feita` das 16:37:59Z."""
+        return self._registro.chegadas()
 
     def revisado(self, pedido_id: str, review_id: str) -> None:
         self._registro.revisado(pedido_id, review_id)

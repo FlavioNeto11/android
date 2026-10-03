@@ -159,6 +159,22 @@ def test_o_laco_e_registrado_a_parte_da_curadoria(tmp_path: Path) -> None:
         db.close()
 
 
+def test_a_primeira_espera_do_laco_conta_da_ultima_revisao_gravada(db: Database) -> None:
+    """K-087: o restart não zera a hora do curador (03/10: 4 restarts entre 16:46Z e 17:18Z, 2 h sem volta)."""
+    m = Mundo(db)
+    intervalo = float(m.curador.intervalo_s)
+    registro = RegistroDeRevisoesSql(db)
+    laco = ligar_curador.LacoDoCurador(m.curador, ultima=registro.mais_recente, relogio=lambda: m.agora)
+    assert laco.espera_inicial() == intervalo                                # nenhuma revisão: a hora inteira
+    m.licao(efeito=False, fonte=SourceKind.MANUAL)
+    assert m.volta().revisadas and registro.mais_recente() == m.agora
+    m.agora += timedelta(minutes=20)
+    assert laco.espera_inicial() == intervalo - 20 * 60                      # o resto da hora
+    m.agora += timedelta(hours=2)
+    assert laco.espera_inicial() == 60.0                                     # passou da hora: logo, com o piso
+    assert ligar_curador.LacoDoCurador(m.curador).espera_inicial() == intervalo   # sem relógio: como antes
+
+
 # ------------------------------------------------------------------ shadow: registro, idempotência, aviso
 def test_shadow_grava_revisao_valida_e_avisa_o_dono_sem_transicionar(db: Database) -> None:
     m = Mundo(db)

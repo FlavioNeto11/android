@@ -44,6 +44,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - 5 pendentes fechados `sem_caminho`;
   - 6 revisões novas do curador, ~US$ 0,06.
 - Limite conhecido, para decisão do dono: a validação por re-execução mede o planejador livre, não o fluxo candidato.
+- **Dois achados do P4, pedidos pela orquestradora no mesmo PR.**
+  - A chegada da validação ao curador (`evidencia_chegou`) não depende mais do `modo` do despachante. Com o P4 pausado,
+    o `feita` das 16:37:59Z ficava preso.
+  - A 1ª espera do laço do curador conta da última revisão gravada, com piso de 60 s (K-087). Antes, cada restart
+    zerava a hora.
 - Contrato: adendo v0.96.
 - Prova `simulated`: `tests/test_learning_forma.py` e `DetalheRico.test.tsx`. `not_run`: o central.
 

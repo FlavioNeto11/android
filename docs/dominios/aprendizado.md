@@ -741,7 +741,9 @@ sem adaptador (testes) usa o SIMULADO.
   chamada (hub simulado) os dois ficam `None`. `provedor` é o do `Usage` (ex.: `anthropic`) e `simulado` acompanha o hub.
 - **Laço** (`infrastructure/ligar_curador.py::LacoDoCurador`, a cada `aprendizado.curador.intervalo_s`), separado do
   `PassoDeCuradoria` e sob a trava de líder `curadoria` (ADR-064; a tomada é idempotente por dono). O `AppState` sobe os laços de
-  `LearningService.lacos` (uma linha em `state.py`). Modo e intervalo são lidos a cada volta.
+  `LearningService.lacos` (uma linha em `state.py`). Modo e intervalo são lidos a cada volta. A 1ª espera depois da subida
+  conta da última revisão gravada (`RegistroDeRevisoesSql.mais_recente`), com piso de 60 s (K-087): antes, cada restart
+  zerava a hora, e os 4 restarts de 03/10 (16:46Z a 17:18Z) deixaram o curador 2 h sem volta.
 - **Modos**: `off` (padrão) não roda; `shadow` revisa, grava em `learning_reviews` e publica `learning.needs_person` com
   `motivo = parecer_da_ia` quando um parecer B ou C novo e válido fica pronto para item que JÁ espera o dono; `on` revisa igual e,
   desde o 30.17, mostra o parecer na fila e no detalhe e abre o aceite da pessoa (seção abaixo). A IA nunca decide: nada
@@ -1001,7 +1003,9 @@ caminhos de sempre (a sombra do fluxo, os contadores da receita) e quem decide s
   (`sem_evidencia` ou `execucao_falhou`). Grava o `usd` medido nas `ai_calls` da execução.
 - **A volta ao curador.** O pedido `feita` é o gatilho `evidencia_chegou`, o segundo em força depois de
   `pedido_da_pessoa`, e pula o cooldown. A regra "uma revisão por (item, dossiê)" continua: a evidência nova muda o
-  dossiê. A revisão nova fecha a chegada (`revisao_nova_id`) e pode pedir de novo.
+  dossiê. A revisão nova fecha a chegada (`revisao_nova_id`) e pode pedir de novo. A chegada NÃO depende do `modo` da
+  validação, que é do despachante: a evidência já foi paga, e o gasto da revisão é do modo e do orçamento do curador.
+  Antes, a pausa do P4 (03/10 17:18Z) prendia o `feita` das 16:37:59Z.
 - **Onde.** Tabela `learning_validations` (082, [`docs/banco.md`](../banco.md)); `application/validacao.py`,
   `infrastructure/validacoes_sql.py`, e `infrastructure/ligar_validacao.py`, ligado em `state.py` depois do `RunService`.
   A execução de validação se liga ao pedido por `learning_validations.run_id` (`runs.pedido_id` é do módulo de pedidos).
