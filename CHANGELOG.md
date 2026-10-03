@@ -252,6 +252,16 @@ Os itens de polimento da frente do Aprendizado em `.claude/handoffs/ux-deploy7-2
     indevidas, 5 recusas indevidas (as 4 antigas e o caso 538, que a orquestradora reetiquetou para recusa);
   - 122 comandos reais: as mesmas 2 recusas da base.
 
+## 2026-10-03 — Aprendizado: o desfecho medido das revisões do curador (30.35; branch feat/30-35-resultado-posterior)
+
+- Catorze dias depois de uma revisão do curador sobre receita ou lição, a curadoria grava
+  `learning_reviews.resultado_posterior`, o rótulo 2 do golden set do Jev, e `resultado_em`.
+  - Valores: `descartar`, `rebaixar` (pela escada ou pelo degrau D-5 da saúde), `manter` e `sem_desfecho`.
+  - Sem IA, sem migração, uma gravação por revisão.
+- O relatório do 31.10 já lê o campo e não muda.
+- Prova `simulated`: `test_learning_resultado_posterior.py` (20 testes). Bateria dos afetados: 320 passed.
+- `real`: a partir de 17/10.
+
 ## 2026-10-03 — Deploy 9 no central (suíte 9; sombra C0–C1 do curador ligada, T_on do 31.10; curador volta ao padrão)
 
 - Código: main `3dcfc9ac` (suíte 9), sem migração nova (segue a 081):

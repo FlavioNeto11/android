@@ -767,7 +767,7 @@ sem adaptador (testes) usa o SIMULADO.
   - Antes, `metricas.curador.usd` dava 0,0 enquanto o orçamento, no mesmo payload, estimava 0,6418.
   - Sem backfill e sem migração.
 - Fica para depois: o alerta do pico como evento + Problem em `/api/health` (hoje só log), o aviso a 80 % de `B_W`, as fontes dos três
-  gatilhos sem fonte, e o `resultado_posterior`.
+  gatilhos sem fonte. O `resultado_posterior` veio com a 30.35 (seção "O desfecho medido da revisão").
 
 ## O parecer diante da pessoa (30.17)
 
@@ -1001,6 +1001,39 @@ caminhos de sempre (a sombra do fluxo, os contadores da receita) e quem decide s
 - **Prova** `simulated`: `tests/test_learning_validacao.py`, `tests/test_learning_validacao_sql.py`,
   `tests/test_learning_curador.py` (`*validacao*`, `evidencia_chegou`). Ligar no central é `modo: "on"` depois do
   deploy que a levar (P4 do desenho: verba única de US$ 2,5 para os 15 itens do QA).
+
+## O desfecho medido da revisão (30.35)
+
+Catorze dias depois de uma revisão do curador, a curadoria grava o que aconteceu com o item. Vai em
+`learning_reviews.resultado_posterior` (coluna da 069, sem migração) e em `resultado_em`. É o rótulo 2 do golden set
+do Jev ([design/jev-golden-set.md](../design/jev-golden-set.md) §2), e o relatório do 31.10 o lê sem mudança. Contrato
+com a orquestradora de 03/10, com a emenda do degrau D-5.
+
+- **Quem ganha o campo.** As revisões do curador (`template_id = curador`), válidas e reais, de receita e de lição,
+  cuja janela de 14 dias já fechou. Grava uma vez só: o `UPDATE` exige `resultado_posterior IS NULL` e nunca
+  sobrescreve. A janela de 30 dias do golden set fica fora, porque o campo é um só.
+- **A regra** (`domain/resultado_posterior.py`, pura; vale o mais grave):
+  1. desligado na janela → `descartar`;
+  2. desceu na escada → `rebaixar`;
+  3. o uso da janela reprova no degrau D-5 da saúde (os limiares de `aprendizado.saude`: 2 falhas seguidas, ou sucesso
+     abaixo de 0,8 com ≥ 5 usos) → `rebaixar`;
+  4. ≥ 1 uso e sucesso ≥ 0,8 → `manter`;
+  5. o resto → `sem_desfecho`.
+- **O que não conta.**
+  - `deprecated` é absorção (a receita substituída por versão nova), não desfecho.
+  - A linha `disabled → disabled` só reclassifica um desligamento antigo (30.23).
+  - `sem_desfecho` fica fora da régua da triagem: o relatório o ignora, e a linha não volta a ser avaliada.
+- **O uso** (`infrastructure/resultado_posterior_sql.py`).
+  - Na receita, a tentativa que ela conduziu (`attempts.recipe_id`, `succeeded` ou `failed`), datada por `finished_at`.
+    `interrupted` e `uncertain` ficam fora.
+  - Na lição, a exposição no braço `with`, com o desfecho preenchido.
+  - Nos dois, ficam fora a execução simulada e a marcada como inválida no item.
+- **Onde roda.** `GravadorDoResultadoPosterior` (`application/resultado_posterior.py`) é um passo da curadoria periódica,
+  sob a trava de líder, sem IA. Grava até 500 revisões por passo.
+- **Prova.**
+  - `simulated`: `tests/test_learning_resultado_posterior.py` (cada regra, o mais grave, a janela, o uso fora dela, o
+    simulado, o invalidado e a idempotência).
+  - `real`: a partir de 17/10, quando fecha a janela das primeiras revisões, de 03/10.
 
 ## Métricas (30.8)
 

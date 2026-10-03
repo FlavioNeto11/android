@@ -22,6 +22,7 @@ from app.modules.learning.application.falhas import ServicoDeFalhas
 from app.modules.learning.application.metricas import ServicoDeMetricas
 from app.modules.learning.application.nativos import Decidir
 from app.modules.learning.application.ports import Ajustes, CuradorDeIA, Retencao
+from app.modules.learning.application.resultado_posterior import GravadorDoResultadoPosterior
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.backlog import RegrasDoBacklog
 from app.modules.learning.domain.camada import ModosDeRuntime
@@ -35,6 +36,7 @@ from app.modules.learning.infrastructure.eventos import (Barramento, EventosNoBa
 from app.modules.learning.infrastructure.fontes import FontesSql
 from app.modules.learning.infrastructure.metricas_sql import FontesDeMetricasSql
 from app.modules.learning.infrastructure.relatorio_sql import FontesDeFalhaSql, SqlBacklogRepository
+from app.modules.learning.infrastructure.resultado_posterior_sql import ResultadoPosteriorSql
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
 from app.modules.learning.infrastructure.sql_repository import SqlLearningRepository
 from app.modules.skills.infrastructure.sql_repository import SqlSkillRepository
@@ -145,6 +147,8 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
     ligar_telas.ligar(servico, repo, db, config=lambda: config().telas, relogio=relogio)
     # 30.14: o rótulo `obsoleto_provavel` e o rebaixamento `catalogo_sem_efeito` (passo da curadoria, sem IA).
     ligar_obsolescencia.ligar(servico, repo, db, fontes=FontesSql(db, pacotes_do_registro=pacotes_do_registro))
+    # 30.35: o desfecho medido das revisões do curador 14 dias depois (o rótulo 2 do Jev; passo da curadoria, sem IA).
+    servico.registrar_passo(GravadorDoResultadoPosterior(ResultadoPosteriorSql(db), lambda: servico.ajustes.saude))
     # 30.11: o curador por IA (laço próprio sob a trava de líder; `off` de fábrica; adaptador simulado até o 30.12).
     ligar_curador.ligar(servico, repo, db, TriagemDeCredencial(), config=lambda: config().curador, precos=precos,
                         relogio=relogio, catalogo=risco, curador_de_ia=curador_de_ia)
