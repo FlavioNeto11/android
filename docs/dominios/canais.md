@@ -253,14 +253,19 @@ operação. Aqui só se descreve a forma deles.
 | `.claude/handoffs/canais/eventos.md` | Uma linha por fato, escrita pela orquestradora (`HH:MMZ \| frente \| item \| o que mudou \| lista sugerida`). Nunca vai ao dono. |
 | `.claude/handoffs/telegram/telegram_offset.txt`, `telegram_inbox.jsonl`, `telegram_chats_vistos.json`, `resumo_cursor.json` | Offset do getUpdates, mensagens recebidas (com segredo já retido), ids de chat já vistos e cursor do resumo. |
 
-Os scripts da operação provisória (`telegram_inbox.py`, `telegram_status.py`, `resumo_laco.py` e
-`canais/url_painel.py`) estão hoje na mesma pasta. A próxima etapa os traz para o Git, ao lado de `.claude/trello/`,
-com os dados ainda na pasta excluída.
+Os scripts da operação provisória ficam versionados em `.claude/canais/`, e os dados deles ficam na pasta excluída:
+
+- `telegram_inbox.py`: lê as mensagens do bot;
+- `telegram_status.py`: envia uma mensagem, com `--reply-to` e `--chat`;
+- `resumo_laco.py`: o resumo de hora em hora, com `--carimbar` e `--ensaio`;
+- `url_painel.py`: grava ou recua o `avisos.url_painel` do `config.yaml`, com backup.
+
+As ferramentas do Trello ficam em `.claude/trello/`.
 
 ## 8. Como uma sessão nova assume o papel
 
 1. Ler este documento, depois o handoff local `.claude/handoffs/canais.md` e a skill `trello`.
-2. Religar os processos em segundo plano, a partir de `C:/git/android`, com `PYTHONIOENCODING=utf-8
+2. Religar os processos em segundo plano (os scripts de `.claude/canais/`), a partir de `C:/git/android`, com `PYTHONIOENCODING=utf-8
    PYTHONUNBUFFERED=1` e a saída anexada aos `.log`:
    - `telegram_inbox.py`, um consumidor só;
    - `resumo_laco.py --intervalo 3600`;
