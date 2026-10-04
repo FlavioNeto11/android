@@ -5419,3 +5419,36 @@ nem contestação, e não pesa contra o item. Quem recusou vai ao log do backend
 - **404** `pedido_desconhecido`: não há o pedido.
 - **409** `pedido_nao_pendente`: o pedido já saiu de `pendente` (despachou, fechou ou expirou).
 - **503:** a validação não foi composta.
+
+## Adendo v1.22 (04/10/2026; número da orquestradora; item 28.25) — o que a plataforma decidiu sozinha, com o desfazer
+
+Registro único `decisoes_automaticas` (migração 102) das decisões que a plataforma toma no lugar do dono (pedido 30.55) e
+duas rotas, atrás do mesmo login do painel. O resumo no Telegram não é rota: ver `docs/dominios/canais.md` (C-21).
+
+`GET /api/decisoes-automaticas?regra=&fila=&desde=&ate=&desfeitas=todas|sim|nao&limite=` (as mais novas primeiro;
+`desde` inclusivo e `ate` exclusivo, datas ISO em UTC; `limite` 1 a 500, padrão 200).
+- **200:** `{itens, total, regras, desfazer_dias}`. Cada item: `id`, `fila` (`pergunta`, `objetivo`, `aprendizado` ou
+  `pedido`), `item_ref`, `regra`, `efeito` (frase curta em português), `fatos` (objeto plano e curto, sem dado pessoal),
+  `decidida_em`, `resumida_em`, `desfeita`, `desfeita_em`, `desfeita_por`, `motivo_do_desfazer`, `pode_desfazer`,
+  `acao_do_desfazer` (`Desligar` para o aprendizado, `Desfazer` nas outras), `por_que_nao` (em português; é o que o painel
+  mostra no lugar do botão) e `prazo_ate`.
+- **400:** `fila` fora do vocabulário ou data inválida. **422:** `desfeitas` ou `limite` fora do contrato.
+
+`POST /api/decisoes-automaticas/{id}/desfazer` com `{confirmar: true, motivo?}` (`motivo` até 300 caracteres; campo
+desconhecido é 422: quem desfez é o operador da SESSÃO, nunca o corpo).
+- **200:** o item no formato acima, mais `desfeita_agora` (falso quando já estava desfeita). **Idempotente:** desfazer
+  duas vezes não chama a fila dona de novo nem muda `desfeita_por` e o motivo.
+- **400** `confirmation_required`: sem `confirmar: true`. **404** `not_found`. **409** `prazo_vencido`: passaram os
+  `avisos.decisoes_automaticas.desfazer_dias` (7) desde `decidida_em`.
+- **409** `sem_inversa_segura`: a fila dona não tem volta segura; a mensagem começa com "não dá para desfazer
+  automaticamente: " e traz o porquê. Nada é marcado como desfeito.
+- **503** `not_ready`: o registro não foi composto.
+
+Inversa por fila (hoje): `aprendizado` DESLIGA o item (`published → disabled`, pelo mesmo caminho de
+`POST /api/aprendizado/{kind}/{ref}/status`; vale como veto, a plataforma não decide de novo), nunca `published →
+validated`, que o ciclo do livro não tem; `pergunta`, `objetivo` e `pedido` respondem `sem_inversa_segura`.
+
+Entradas do registro (o adaptador do 28.25, idempotente pela `origem_ref`): os eventos `run.updated` e `objective.updated`
+com `dados.vencimento = {regra, horas, desde}` (31.43; a forma antiga `dados.expirada` do 29.50 não é lida) e as linhas de
+`learning_transitions` com `decided_by = 'plataforma'` e motivo `auto:<regra> v<n> — <fatos>`, também depois do prefixo
+`confirmado que fica: ` (30.55). Quem decide registra direto por `app/shared/decisoes.py::registrar_decisao`.
