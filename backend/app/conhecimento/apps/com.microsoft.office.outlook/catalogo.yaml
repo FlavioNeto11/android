@@ -44,7 +44,9 @@ acoes:
     post_kind: model_judged
     post_value: Caixa de Entrada do Outlook aberta
     post_description: A pasta aberta é a Caixa de Entrada (título "Inbox" ou "Caixa de Entrada" na barra), com a lista.
-    local_proof: selector:id=conversation_list & text==Inbox
+    # O título vale só DENTRO da `toolbar` (revisão do #313): o item "Inbox" do menu lateral, aberto sobre outra pasta,
+    # não prova a caixa. Só "Inbox": os aparelhos estão em inglês (OBSERVADO no android-01); em outro idioma, o juiz.
+    local_proof: selector:id=conversation_list & text==Inbox|dentro=toolbar
 
   - key: COLLECT_MAIL_HEADERS
     title: Levantar remetente e assunto das mensagens recentes

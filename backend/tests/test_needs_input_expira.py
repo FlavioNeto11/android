@@ -29,6 +29,7 @@ def ligado_ha_muito(h: Harness) -> None:
     assert h.state is not None
     h.state.db.execute("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET "
                        "value=excluded.value", (CHAVE_LIGADO_DESDE, "2000-01-01T00:00:00.000Z"))
+    h.state.runs._marca_lida = None                        # o serviço relê a marca gravada aqui
 
 
 async def _pergunta(h: Harness) -> tuple[str, Any]:

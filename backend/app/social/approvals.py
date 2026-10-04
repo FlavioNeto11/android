@@ -300,16 +300,13 @@ class ApprovalService:
 
     def list(self, *, status: str | None = "pending", profile_id: str | None = None, run_id: str | None = None,
              limit: int = 50) -> list[dict[str, Any]]:
-        return [{**a.to_dict(), "vence_em": self._vence_em(a)}
-                for a in self.store.list(status=status, profile_id=profile_id, run_id=run_id, limit=limit)]
-
-    def _vence_em(self, a: Approval) -> str | None:
-        """31.50: a aprovação pendente vence junto com o objetivo que ela bloqueia (`_expirar_aprovacoes`): o mesmo
-        `vence_em` do DTO dele. Decidida, sem objetivo ou com o vencimento desligado, `None`."""
-        if a.status != "pending" or not a.objective_id or not hasattr(self.repo, "objective_row"):
-            return None
-        row = self.repo.objective_row(a.objective_id)
-        return self.repo.objective_dto(row).vence_em if row is not None else None
+        itens = self.store.list(status=status, profile_id=profile_id, run_id=run_id, limit=limit)
+        # 31.50: a aprovação pendente vence junto com o objetivo que ela bloqueia (`_expirar_aprovacoes`). Uma consulta
+        # para a lista inteira. Decidida, sem objetivo ou com o vencimento desligado: `None`.
+        pendentes = [a.objective_id for a in itens if a.status == "pending" and a.objective_id]
+        prazos = self.repo.vence_em_dos_objetivos(pendentes) if hasattr(self.repo, "vence_em_dos_objetivos") else {}
+        return [{**a.to_dict(), "vence_em": prazos.get(a.objective_id) if a.status == "pending" and a.objective_id
+                 else None} for a in itens]
 
     def decide_many(self, decisoes: list[Any]) -> dict[str, Any]:
         """Decide várias de uma vez — é como se lê uma execução: os N textos juntos, um por perfil.

@@ -34,6 +34,7 @@ def ligado_ha_muito(h: Harness) -> None:
     assert h.state is not None
     h.state.db.execute("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET "
                        "value=excluded.value", (CHAVE_LIGADO_DESDE, "2000-01-01T00:00:00.000Z"))
+    h.state.runs._marca_lida = None                        # o serviço relê a marca gravada aqui
 
 
 async def _pergunta(h: Harness) -> tuple[str, Any]:
@@ -306,11 +307,12 @@ async def test_31_50_lembrete_uma_vez_nas_duas_horas_antes_com_dados_sem_texto_d
     run_id, oid = await _parado(harness, espera_h=20, fim_h=20)
     assert st.runs.lembrar_antes_de_vencer(now()) == []                       # faltam 4 h: cedo
     agora = now() + timedelta(hours=3)                                         # faltam ~1 h
-    assert st.runs.lembrar_antes_de_vencer(agora) == [f"vencimento:lembrete:{oid}"]
-    assert st.runs.lembrar_antes_de_vencer(agora) == []                       # uma vez só
+    [chave] = st.runs.lembrar_antes_de_vencer(agora)
+    assert chave.startswith(f"vencimento:lembrete:{oid}:")                    # a chave leva a entrada na espera
+    assert st.runs.lembrar_antes_de_vencer(agora) == []                       # uma vez só por espera
     dados = _ultimo_evento(harness, "pendencia.vence_em", objective_id=oid)
     assert (dados["o_que"], dados["aparelho"], dados["regra"]) == ("objetivo", "android-01", "31.50")
-    assert dados["vence_em"] > to_iso(agora) and dados["chave"] == f"vencimento:lembrete:{oid}"
+    assert dados["vence_em"] > to_iso(agora) and dados["chave"] == chave
     comando = str(st.db.scalar("SELECT command FROM runs WHERE id=?", (run_id,)))
     assert comando not in json.dumps(dados, ensure_ascii=False)
     assert _status(harness, run_id, oid)[0] == "waiting_user"                  # o lembrete não muda estado
@@ -327,6 +329,12 @@ async def test_31_50_vence_em_no_dto_do_objetivo_parado_e_da_pergunta(harness: H
     assert st.repo.run_summary(st.repo.run_row(run_id)).vence_em is None      # a execução terminal não vence
     run_pergunta, entrada = await _pergunta(harness)
     assert st.repo.run_summary(st.repo.run_row(run_pergunta)).vence_em == to_iso(entrada + timedelta(hours=24))
+    # Revisão do #313: sem a marca gravada, não dá para dizer quando vence; o DTO não anda com o relógio.
+    st.db.execute("DELETE FROM settings WHERE key=?", (CHAVE_LIGADO_DESDE,))
+    st.runs._marca_lida = None
+    assert st.repo.objective_dto(st.repo.objective_row(oid)).vence_em is None
+    ligado_ha_muito(harness)
+    assert st.repo.objective_dto(st.repo.objective_row(oid)).vence_em == dto.vence_em
     harness.cfg.file.execucao.vencimento_ligado = False
     assert st.repo.objective_dto(st.repo.objective_row(oid)).vence_em is None
 
@@ -342,7 +350,53 @@ def test_31_50_a_aprovacao_pendente_traz_o_vence_em_do_objetivo() -> None:
                         created_at="2026-10-04T00:00:00.000Z")
     decidida = replace(pendente, id="a2", status="approved")
     loja = SimpleNamespace(list=lambda **_k: [pendente, decidida])
-    repo = SimpleNamespace(objective_row=lambda oid: {"id": oid},
-                           objective_dto=lambda row: SimpleNamespace(vence_em="2026-10-05T00:00:00.000Z"))
+    pedidos: list[list[str]] = []
+    repo = SimpleNamespace(vence_em_dos_objetivos=lambda ids: (pedidos.append(list(ids)),
+                                                               {"o": "2026-10-05T00:00:00.000Z"})[1])
     itens = ApprovalService(loja, repo).list(status=None)  # type: ignore[arg-type]
     assert [i["vence_em"] for i in itens] == ["2026-10-05T00:00:00.000Z", None]
+    assert pedidos == [["o"]]                                   # uma consulta para a lista inteira, só as pendentes
+
+
+async def test_31_50_o_objetivo_que_volta_a_esperar_ganha_outro_lembrete(harness: Harness) -> None:
+    """31.50: respondido e de novo em espera (outra entrada), o item tem outro prazo e outro lembrete, com outra chave."""
+    st = harness.state
+    assert st is not None
+    _run_id, oid = await _parado(harness, espera_h=23, fim_h=23)
+    [primeira] = st.runs.lembrar_antes_de_vencer(now())
+    # Retomado e parado de novo: nova entrada na espera, agora (a execução terminou de novo também).
+    agora = to_iso(now() + timedelta(seconds=1))         # a nova espera começa depois do 1º lembrete
+    st.db.execute("UPDATE objectives SET finished_at=? WHERE id=?", (agora, oid))
+    st.db.execute("UPDATE runs SET finished_at=? WHERE id=(SELECT run_id FROM objectives WHERE id=?)", (agora, oid))
+    assert st.runs.lembrar_antes_de_vencer(now()) == []                       # novo prazo: ainda cedo
+    [segunda] = st.runs.lembrar_antes_de_vencer(now() + timedelta(hours=23))
+    assert segunda != primeira and segunda.startswith(f"vencimento:lembrete:{oid}:")
+
+
+async def test_31_50_a_lista_le_as_entradas_numa_consulta_so(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """31.50: com N execuções em `needs_input`, a lista faz UMA consulta de entradas (não N) e dá o mesmo `vence_em`."""
+    st = harness.state
+    assert st is not None
+    r1, _ = await _pergunta(harness)
+    r2, _ = await _pergunta(harness)
+    linhas = [st.repo.run_row(r1), st.repo.run_row(r2)]
+    um_a_um = [st.repo.run_summary(r).vence_em for r in linhas]
+    consultas: list[str] = []
+    for nome in ("query", "scalar", "one"):
+        original = getattr(st.db, nome)
+        monkeypatch.setattr(st.db, nome, lambda sql, *a, _o=original, **k: (consultas.append(sql), _o(sql, *a, **k))[1])
+    em_lote = [x.vence_em for x in st.repo.run_summaries(linhas)]
+    monkeypatch.undo()
+    assert em_lote == um_a_um and None not in em_lote
+    assert sum("kind='run.updated'" in q for q in consultas) == 1
+    assert not any("FROM settings" in q for q in consultas)                    # a marca vem da memória
+
+
+def test_31_50_a_etapa_so_vai_no_lembrete_quando_a_chave_e_do_catalogo() -> None:
+    """Revisão do #313: num plano livre a chave da etapa é da IA e pode levar um nome; só a da ação de catálogo vai."""
+    from app.taskqueue.service import _etapa_segura
+    assert _etapa_segura({"key": "open_mail_inbox", "capability": "OPEN_MAIL_INBOX"}) == "open_mail_inbox"
+    assert _etapa_segura({"key": "send_dm_i2", "capability": "SEND_DM"}) == "send_dm_i2"
+    assert _etapa_segura({"key": "send_dm_ana", "capability": "SEND_DM"}) is None
+    assert _etapa_segura({"key": "verify_sent", "capability": None}) is None
+    assert _etapa_segura(None) is None

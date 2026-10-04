@@ -306,6 +306,10 @@ class UiTree:
                 partes.append(("desc", value, exato))
             elif kind == "text":
                 partes.append(("text", value, exato))
+            elif kind == "dentro":
+                # 31.50: o elemento fica DENTRO dos limites de um elemento com este id (o título NA barra, não o item
+                # de mesmo texto no menu lateral aberto por cima de outra pasta).
+                partes.append(("dentro", value, False))
             else:
                 partes.append(("text", part.strip(), False))
         return partes
@@ -327,10 +331,17 @@ class UiTree:
 
     def _find_partes(self, partes: list[tuple[str, str, bool]], *,
                      variants: Callable[[str], tuple[str, ...]] | None = None) -> list[UiElement]:
+        def do_id(e: UiElement, valor: str) -> bool:
+            rid = e.resource_id
+            return rid == valor or rid.endswith("/" + valor) or rid.endswith(":id/" + valor)
+
         def casa(e: UiElement, campo: str, valor: str, exato: bool) -> bool:
             if campo == "resource_id":
-                rid = e.resource_id
-                return rid == valor or rid.endswith("/" + valor) or rid.endswith(":id/" + valor)
+                return do_id(e, valor)
+            if campo == "dentro":
+                x1, y1, x2, y2 = e.bounds
+                return any(c is not e and do_id(c, valor) and c.bounds[0] <= x1 and c.bounds[1] <= y1
+                           and x2 <= c.bounds[2] and y2 <= c.bounds[3] for c in self.elements)
             hay = norm_text(e.text if campo == "text" else e.desc)
             formas = variants(valor) if variants else (valor,)
             return any((hay == norm_text(v)) if exato else (norm_text(v) in hay) for v in formas)
@@ -339,7 +350,8 @@ class UiTree:
 
     def find_selector(self, selector: str) -> list[UiElement]:
         """Seletor textual: `id=…`, `text=…`, `desc=…` (accessibility id) ou texto puro; `==` casa exato.
-        Partes unidas por `|` precisam casar no MESMO elemento: `id=chat_title|text=QA-001`."""
+        Partes unidas por `|` precisam casar no MESMO elemento: `id=chat_title|text=QA-001`. `dentro=<id>` (31.50): o
+        elemento está dentro dos limites de um elemento com esse id (`text==Inbox|dentro=toolbar`)."""
         return self._find_partes(self._partes_do_seletor(selector))
 
     def partes_em_elementos_diferentes(self, selector: str) -> bool:

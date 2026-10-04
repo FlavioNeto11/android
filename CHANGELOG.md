@@ -30,6 +30,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Carência ao ligar: a marca `vencimento_ligado_desde` fica em `settings`. No deploy, o que hoje espera ganha mais 24 h.
 - Lembrete `pendencia.vence_em` 2 h antes, uma vez por item, com dados sem o comando; a Canais põe o tipo no
   montador. `vence_em` no `RunSummary`, no `Objective` e na lista de aprovações pendentes.
+- Contrato: adendo v1.33 (número da orquestradora). O lembrete sai uma vez por espera (a chave leva a entrada), e as
+  listas leem as entradas em `needs_input` numa consulta só.
 - Testes: `test_outlook_declarado.py`, `test_dica_de_tela_ao_juiz.py`, `test_pergunta_vence.py` e
   `test_needs_input_expira.py`, `simulated`. `real`: not_run.
 

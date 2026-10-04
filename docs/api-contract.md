@@ -5654,3 +5654,15 @@ Sem migração, atrás de `pedidos.colaboracao.enabled` (desligada, tudo como an
 
 As regras 1 e 2 (uma conta por alvo no pedido inteiro e `approval_required` para pessoa real sem conversa prévia) são da porta de
 política (`PolicyEngine.check`, item 30.62): o provedor `contexto_do_pedido(run_id)` vem num PR à parte.
+
+## Adendo v1.33 (04/10/2026; número da orquestradora; item 31.50) — `vence_em` e o lembrete antes do vencimento
+
+- `RunSummary.vence_em`, `Objective.vence_em` e o campo `vence_em` de cada item de `GET /api/approvals` (pendentes): o
+  instante ISO em que o item vence pelo sistema. O cálculo é o mais tardio entre a entrada na espera e a marca de quando
+  o vencimento foi ligado (`vencimento_ligado_desde`), mais `execucao.pergunta_vence_h`. É `null` fora da espera
+  (`needs_input`; objetivo `waiting_user` de execução terminada; aprovação `pending`) e com o vencimento desligado.
+  A aprovação vence junto com o objetivo que bloqueia. Campo novo e opcional: cliente antigo o ignora.
+- As listas (`GET /api/runs` e afins) leem as entradas em `needs_input` numa consulta só, para todas as execuções.
+- Evento novo `pendencia.vence_em` (tabela de eventos acima). Sai uma vez por ESPERA, 2 h antes de vencer, com a chave
+  `vencimento:lembrete:<id>:<entrada na espera>`: o objetivo retomado que volta a esperar ganha outro lembrete. O
+  texto ao dono é do montador dos avisos (28.31).

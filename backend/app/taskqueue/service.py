@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import re
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import Any
@@ -64,6 +65,16 @@ _VOLTAM_COM_RODIZIO = WAKEABLE | {InstanceState.stopping}
 NEEDS_INPUT_EXPIRA_H = 24
 #: 31.50: a marca (em `settings`) de quando o vencimento foi visto ligado; a carência conta dela (`_ligado_desde`).
 CHAVE_LIGADO_DESDE = "vencimento_ligado_desde"
+def _etapa_segura(etapa: Mapping[str, object] | None) -> str | None:
+    """31.50 (revisão do #313): a chave da etapa só vai no lembrete quando é a da ação de catálogo (`open_mail_inbox`,
+    ou a cópia `open_mail_inbox_i2` do for_each). Num plano livre a chave é escrita pela IA e pode levar um nome
+    (`send_dm_<nome>`)."""
+    if not etapa or not etapa["capability"]:
+        return None
+    chave = str(etapa["key"])
+    return chave if re.fullmatch(re.escape(str(etapa["capability"]).lower()) + r"(_i\d+)?", chave) else None
+
+
 #: 31.50: o lembrete sai quando faltam estas horas para o vencimento (`RunService.lembrar_antes_de_vencer`).
 LEMBRETE_ANTES_H = 2
 #: 31.50: o evento do lembrete. Quem escreve o texto ao dono é o montador dos avisos (28.31); aqui só vão os dados.
@@ -148,6 +159,7 @@ class RunService:
                                          is not None)
         self.scheduler = scheduler
         repo.prazo_do_vencimento = self._prazo_para_os_dtos     # 31.50: o `vence_em` dos DTOs
+        self._marca_lida: str | None = None
         self._historico: HistoricoDeAcoes | None = None
         self.devices = devices
         self.provider = provider
@@ -1511,7 +1523,8 @@ class RunService:
         Sai o evento `pendencia.vence_em`; o texto é do montador dos avisos (28.31). Os `dados` dizem o que é
         (`aprovacao`, `objetivo` ou `execucao`), o aparelho, a ação de catálogo e a chave da etapa que espera, e o
         `vence_em`. Nunca o comando nem o título da etapa: os dois podem levar um nome ou um arroba. Devolve as chaves
-        `vencimento:lembrete:<id>` dos lembretes que saíram; o mesmo item não sai duas vezes (o evento é a marca)."""
+        `vencimento:lembrete:<id>:<entrada na espera>` dos lembretes que saíram; a mesma espera não sai duas vezes (o
+        evento é a marca)."""
         ligado, horas_cfg = self._vencimento()
         if not ligado:
             return []
@@ -1536,14 +1549,16 @@ class RunService:
             itens.append((str(o["id"]), max(str(o["espera_desde"] or ""), str(o["fim"] or ""), ligado_desde),
                           {"o_que": "aprovacao" if o["blocked_kind"] == "approval" else "objetivo",
                            "run_id": str(o["run_id"]), "objective_id": str(o["id"]), "aparelho": o["instance_id"],
-                           "acao": etapa["capability"] if etapa else None, "etapa": etapa["key"] if etapa else None}))
+                           "acao": etapa["capability"] if etapa else None, "etapa": _etapa_segura(etapa)}))
         for ref, desde, dados in itens:
             # Vence entre agora e agora + LEMBRETE_ANTES_H: `desde` dentro da janela correspondente.
             if not (janela[0] <= desde < janela[1]):
                 continue
-            chave = f"vencimento:lembrete:{ref}"
+            # Uma vez por ESPERA, não por item: o objetivo retomado que volta a esperar ganha outro lembrete. A chave leva
+            # a entrada na espera (`desde`), e só barra o lembrete emitido depois dela.
+            chave = f"vencimento:lembrete:{ref}:{desde}"
             if db.scalar("SELECT 1 FROM events WHERE kind=? AND (objective_id=? OR (objective_id IS NULL AND run_id=?)) "
-                         "LIMIT 1", (EVENTO_DO_LEMBRETE, ref, ref)):
+                         "AND ts >= ? LIMIT 1", (EVENTO_DO_LEMBRETE, ref, ref, desde)):
                 continue
             vence_em = to_iso(parse_iso(desde) + prazo)
             self.repo.bus.emit(EVENTO_DO_LEMBRETE, f"Vence em {LEMBRETE_ANTES_H} h ou menos: {dados['o_que']} {ref}",
@@ -1560,8 +1575,13 @@ class RunService:
         ligado, horas = self._vencimento()
         if not ligado:
             return None
-        marca = self.repo.db.scalar("SELECT value FROM settings WHERE key=?", (CHAVE_LIGADO_DESDE,))
-        return horas, str(marca or now_iso())      # sem a marca ainda: a volta a grava agora
+        # A marca só muda quando a volta a grava ou apaga (neste processo, o líder): fica em memória, e uma lista com
+        # N execuções não lê `settings` N vezes.
+        # `""`: lida e ausente (a volta ainda não a gravou); o `vence_em` sai nulo, em vez de andar com o relógio.
+        if self._marca_lida is None:
+            marca = self.repo.db.scalar("SELECT value FROM settings WHERE key=?", (CHAVE_LIGADO_DESDE,))
+            self._marca_lida = str(marca or "")
+        return horas, self._marca_lida
 
     def _ligado_desde(self) -> str:
         """31.50, carência ao ligar: quando o vencimento foi visto ligado pela primeira vez (`settings`, durável entre
@@ -1573,10 +1593,12 @@ class RunService:
             db.execute("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING",
                        (CHAVE_LIGADO_DESDE, now_iso()))
             marca = db.scalar("SELECT value FROM settings WHERE key=?", (CHAVE_LIGADO_DESDE,))
+        self._marca_lida = str(marca)
         return str(marca)
 
     def _esquecer_ligado_desde(self) -> None:
         self.repo.db.execute("DELETE FROM settings WHERE key=?", (CHAVE_LIGADO_DESDE,))
+        self._marca_lida = None
 
     def _cancelar_antes_de_iniciar(self, run_id: str, detalhe: str, *, message: str | None = None,
                                    dados: dict[str, object] | None = None) -> None:

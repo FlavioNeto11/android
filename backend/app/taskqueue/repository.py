@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -1330,7 +1330,21 @@ class Repository:
         return n
 
     # ================================================================== DTOs e eventos
-    def run_summary(self, row: Row, *, deduplicated: bool | None = None) -> RunSummary:
+    def run_summaries(self, rows: Sequence[Row]) -> list[RunSummary]:
+        """Os resumos de uma LISTA. 31.50: a entrada em `needs_input` de todas sai numa consulta só (o `vence_em`),
+        em vez de uma por execução."""
+        perguntas = [str(r["id"]) for r in rows if r["status"] == RunStatus.needs_input.value]
+        entradas: dict[str, str] = {}
+        if perguntas and self.prazo_do_vencimento is not None:
+            marcas = ",".join("?" for _ in perguntas)
+            entradas = {str(x["run_id"]): str(x["t"]) for x in self.db.query(
+                f"SELECT run_id, MAX(ts) AS t FROM events WHERE kind='run.updated' AND run_id IN ({marcas}) "
+                "GROUP BY run_id", tuple(perguntas))}
+        return [self.run_summary(r, entrada_da_pergunta=entradas.get(str(r["id"]), r["created_at"])
+                                 if str(r["id"]) in perguntas else None) for r in rows]
+
+    def run_summary(self, row: Row, *, deduplicated: bool | None = None,
+                    entrada_da_pergunta: str | None = None) -> RunSummary:
         ids = loads(row["instance_ids"], [])
         counts = self._counts(row["id"])
         total = sum(counts.model_dump().values())
@@ -1346,7 +1360,7 @@ class Repository:
             teto_de_autonomia=_col(row, "teto_de_autonomia"),
             pedido_id=_col(row, "pedido_id"), ocorrencia_id=_col(row, "ocorrencia_id"),
             prova_fluxo_id=_col(row, "prova_fluxo_id"), origem=origem, origem_ref=origem_ref,
-            vence_em=self._vence_em_da_pergunta(row))
+            vence_em=self._vence_em_da_pergunta(row, entrada_da_pergunta))
 
     def _vence_em(self, desde: str | None) -> str | None:
         """31.50: o mais tardio entre `desde` e a marca de quando o vencimento foi ligado, mais o prazo."""
@@ -1354,13 +1368,28 @@ class Repository:
         if prazo is None or not desde:
             return None
         horas, ligado_desde = prazo
+        if not ligado_desde:                          # a volta ainda não gravou a marca: não dá para dizer quando
+            return None
         return to_iso(parse_iso(max(str(desde), ligado_desde)) + timedelta(hours=horas))
 
-    def _vence_em_da_pergunta(self, row: Row) -> str | None:
+    def _vence_em_da_pergunta(self, row: Row, entrada: str | None = None) -> str | None:
         if row["status"] != RunStatus.needs_input.value or self.prazo_do_vencimento is None:
             return None
-        entrada = self.db.scalar("SELECT MAX(ts) FROM events WHERE run_id=? AND kind='run.updated'", (row["id"],))
+        if entrada is None:                           # fora de `run_summaries`: uma consulta, só para esta execução
+            entrada = self.db.scalar("SELECT MAX(ts) FROM events WHERE run_id=? AND kind='run.updated'", (row["id"],))
         return self._vence_em(entrada or row["created_at"])
+
+    def vence_em_dos_objetivos(self, ids: Sequence[str]) -> dict[str, str | None]:
+        """31.50: o `vence_em` de vários objetivos numa consulta só (a lista de aprovações pendentes)."""
+        if not ids or self.prazo_do_vencimento is None:
+            return {}
+        marcas = ",".join("?" for _ in ids)
+        terminais = {s.value for s in RUN_TERMINAL}
+        return {str(o["id"]): self._vence_em(max(str(o["finished_at"] or ""), str(o["fim"] or "")))
+                if o["status"] == ObjectiveStatus.waiting_user.value and o["run_status"] in terminais else None
+                for o in self.db.query(f"SELECT o.id, o.status, o.finished_at, r.status AS run_status, "
+                                       f"r.finished_at AS fim FROM objectives o JOIN runs r ON r.id=o.run_id "
+                                       f"WHERE o.id IN ({marcas})", tuple(ids))}
 
     def _vence_em_do_objetivo(self, row: Row) -> str | None:
         if row["status"] != ObjectiveStatus.waiting_user.value or self.prazo_do_vencimento is None:

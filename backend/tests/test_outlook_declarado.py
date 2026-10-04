@@ -964,18 +964,21 @@ def test_a_caixa_do_outlook_prova_pela_lista_e_nao_pelo_juiz() -> None:
     m = {x.definition.package: x for x in descobrir(PASTA_DOS_APPS)}[OUTLOOK]
     assert m.catalog is not None
     cap = m.catalog.get("OPEN_MAIL_INBOX")
-    assert (cap.post_kind, cap.local_proof) == ("model_judged", "selector:id=conversation_list & text==Inbox")
+    assert (cap.post_kind, cap.local_proof) == ("model_judged", "selector:id=conversation_list & text==Inbox|dentro=toolbar")
     assert "lista de mensagens" not in cap.post_description
     assert cap.saidas == ("remetente", "assunto")
     telas = (PASTA_DOS_APPS / OUTLOOK / "telas.yaml").read_text(encoding="utf-8")
     assert "ids: [conversation_list]" in telas
 
 
-def _pasta(titulo: str) -> Any:
-    """A barra e a lista como o android-01 mostrou (04/10): o título é um TextView sem id dentro de `toolbar`."""
+def _pasta(titulo: str, *, menu_com: str | None = None) -> Any:
+    """A barra e a lista como o android-01 mostrou (04/10): o título é um TextView sem id dentro de `toolbar`.
+    `menu_com`: o menu lateral aberto por cima, com um item desse texto FORA da barra."""
     p = 'package="com.microsoft.office.outlook" clickable="false" enabled="true" content-desc=""'
+    menu = (f'<node index="3" text="{menu_com}" resource-id="" class="android.widget.TextView" {p}'
+            ' bounds="[40,400][500,460]" />') if menu_com else ""
     return parse_hierarchy(
-        '<hierarchy rotation="0">'
+        '<hierarchy rotation="0">' + menu +
         f'<node index="0" text="" resource-id="com.microsoft.office.outlook:id/toolbar" class="android.view.ViewGroup" {p}'
         ' bounds="[0,48][720,160]" />'
         f'<node index="1" text="{titulo}" resource-id="" class="android.widget.TextView" {p} bounds="[144,77][242,131]" />'
@@ -996,6 +999,9 @@ def test_31_50a_a_prova_local_da_caixa_exige_o_titulo_da_pasta() -> None:
     assert local_proof_holds(prova, etapa, _pasta("Inbox")) is True
     assert not local_proof_holds(prova, etapa, _pasta("Sent"))
     assert not local_proof_holds(prova, etapa, _pasta("Drafts"))
+    # Revisão do #313: o menu lateral aberto sobre Enviados tem um item "Inbox", mas fora da barra: não prova.
+    assert not local_proof_holds(prova, etapa, _pasta("Sent", menu_com="Inbox"))
+    assert local_proof_holds(prova, etapa, _pasta("Inbox", menu_com="Sent")) is True
 
 
 def test_31_50a_plano_de_fluxo_salvo_prova_com_o_catalogo_atual() -> None:
@@ -1013,3 +1019,18 @@ def test_31_50a_plano_de_fluxo_salvo_prova_com_o_catalogo_atual() -> None:
     assert livre.postcondition == velha and de_outro_app.postcondition == velha
     assert atualizar_pos_condicoes([da_caixa], OUTLOOK) == []          # já atual: nada a trocar
     assert atualizar_pos_condicoes([livre], "pacote.sem.catalogo") == []
+
+
+def test_31_50a_fluxo_salvo_sem_o_argumento_da_prova_atual_fica_como_esta() -> None:
+    """Revisão do #313: a pós-condição atual cita `{username}`, e o fluxo salvo não tem esse argumento: trocar daria uma
+    prova com a variável crua. A etapa salva fica; com o argumento, troca."""
+    from app.models import PlanStep, Postcondition
+    from app.planning.capabilities import atualizar_pos_condicoes
+    velha = Postcondition(kind="model_judged", value="o perfil está aberto", description="")
+    sem = PlanStep(key="open_profile", title="t", goal="g", postcondition=velha, capability="OPEN_PROFILE")
+    com = PlanStep(key="open_profile", title="t", goal="g", postcondition=velha, capability="OPEN_PROFILE",
+                   bindings={"username": "conta_teste"})
+    assert atualizar_pos_condicoes([sem], "com.instagram.android") == []
+    assert sem.postcondition == velha
+    assert atualizar_pos_condicoes([com], "com.instagram.android") == ["open_profile"]
+    assert "{" not in com.postcondition.value

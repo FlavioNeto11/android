@@ -556,6 +556,10 @@ def atualizar_pos_condicoes(steps: Iterable[PlanStep], package: str | None) -> l
         valores = {k: v for k, v in step.bindings.items() if v is not None}
         atual = Postcondition(kind=cap.post_kind, value=_aplicar(cap.post_value, valores),  # type: ignore[arg-type]
                               description=_aplicar(cap.post_description, valores))
+        if _variaveis(atual.value) - _variaveis(step.postcondition.value):
+            # Revisão do #313: a pós-condição nova cita um argumento que o fluxo salvo não tem. Trocar daria uma
+            # prova com `{…}` cru; fica a salva, e a falha (se houver) é honesta.
+            continue
         if (atual.kind, atual.value) != (step.postcondition.kind, step.postcondition.value):
             step.postcondition = atual
             trocadas.append(step.key)
