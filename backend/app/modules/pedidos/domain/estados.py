@@ -140,6 +140,11 @@ OCORRENCIA_TRANSICOES: Mapping[str, frozenset[str]] = _tabela({
 })
 OCORRENCIA = MaquinaDeEstados("ocorrencia", OCORRENCIA_TRANSICOES)
 
+#: Estados em que a ocorrência já terminou e tem `terminada_em` (a 28.10 F2 usa: a dependência `depois_de` aceita qualquer um
+#: deles, e o fim do último deles abre a janela da próxima). `falhou` entra porque, ENQUANTO está `falhou`, a retentativa
+#: ainda não existe: ao repetir, a MESMA linha volta a `devida` e deixa de contar (§7.6).
+OCORRENCIA_TERMINAIS: tuple[str, ...] = ("concluida", "falhou", "incerta", "cancelada", "pulada", "perdida")
+
 #: Estados da ocorrência em que o §6.2 manda gravar o motivo (`pedido_ocorrencias.motivo`): o fim sem execução
 #: "nunca some" — é visível e diz por quê —, e a falha e o incerto dizem o que aconteceu.
 OCORRENCIA_EXIGE_MOTIVO: frozenset[str] = frozenset({"pulada", "perdida", "cancelada", "falhou", "incerta"})

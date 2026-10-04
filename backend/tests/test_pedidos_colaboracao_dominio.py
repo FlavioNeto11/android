@@ -5,6 +5,8 @@ direto e indireto, linhagem, porta-voz único, orçamento reservado do pai e dep
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from app.modules.pedidos.domain import colaboracao as c
 from app.modules.pedidos.domain.colaboracao import DadosDoPai, Irmao, Limites, Recusa
 
@@ -180,3 +182,69 @@ def test_motivo_orcamento_e_puro_e_diz_os_numeros() -> None:
     assert c.motivo_orcamento_do_filho(10.0, 1.0, [2.0, None], 3.0) is None
     m = c.motivo_orcamento_do_filho(10.0, 1.0, [2.0, None], 8.0)
     assert m is not None and "10.0000" in m and "8.0000" in m and "1.0000" in m and "2.0000" in m
+
+
+# ---------------------------------------------------------------- F2: a dependência no despacho (puro)
+def _t(minutos: int) -> datetime:
+    return datetime(2026, 10, 4, 12, 0, tzinfo=timezone.utc) + timedelta(minutes=minutos)
+
+
+def test_estados_que_comprovam_cada_tipo() -> None:
+    assert c.ESTADOS_QUE_COMPROVAM["precisa_de_resultado"] == ("concluida",)
+    assert set(c.ESTADOS_QUE_COMPROVAM["depois_de"]) == {"concluida", "falhou", "incerta", "cancelada", "pulada", "perdida"}
+    # os terminais da ocorrência, e só eles: nenhum estado aberto comprova a ordem
+    assert not {"prevista", "devida", "despachada", "rodando"} & set(c.ESTADOS_QUE_COMPROVAM["depois_de"])
+
+
+def test_inicio_da_janela_e_o_fim_da_ultima_terminada_ou_a_criacao() -> None:
+    assert c.inicio_da_janela(_t(30), _t(0)) == _t(30)
+    assert c.inicio_da_janela(None, _t(0)) == _t(0)
+
+
+def test_sem_dependencia_esta_atendida() -> None:
+    assert c.dependencias_atendidas([], {}, _t(0)) is True
+
+
+def test_prova_depois_do_inicio_atende_e_antes_ou_no_instante_nao() -> None:
+    dep = [("a", "precisa_de_resultado")]
+    assert c.pendentes(dep, {"a": {"precisa_de_resultado": _t(11)}}, _t(10)) == []
+    assert c.pendentes(dep, {"a": {"precisa_de_resultado": _t(10)}}, _t(10)) == ["a"], "no instante exato não é depois"
+    assert c.pendentes(dep, {"a": {"precisa_de_resultado": _t(9)}}, _t(10)) == ["a"], "a conclusão antiga não vale de novo"
+    assert c.pendentes(dep, {"a": {"precisa_de_resultado": None}}, _t(10)) == ["a"]
+    assert c.pendentes(dep, {}, _t(10)) == ["a"]
+
+
+def test_pendentes_listam_so_os_sem_prova_em_ordem_alfabetica() -> None:
+    dep = [("z", "depois_de"), ("a", "precisa_de_resultado"), ("m", "depois_de")]
+    fins = {"m": {"depois_de": _t(5)}}
+    assert c.pendentes(dep, fins, _t(0)) == ["a", "z"]
+    assert c.dependencias_atendidas(dep, fins, _t(0)) is False
+
+
+def test_tipo_desconhecido_nunca_comprova() -> None:
+    assert c.pendentes([("a", "talvez")], {"a": {"talvez": _t(99)}}, _t(0)) == ["a"]
+
+
+def test_espera_vencida_so_depois_do_limite() -> None:
+    assert c.espera_vencida(_t(0), _t(60), 3600) is False, "no limite exato ainda espera"
+    assert c.espera_vencida(_t(0), _t(61), 3600) is True
+    assert c.espera_vencida(_t(0), _t(10), 3600) is False
+
+
+def test_motivo_da_dependencia_leva_so_o_id() -> None:
+    assert c.motivo_da_dependencia("ped-abc") == "dependência não comprovada: ped-abc"
+
+
+# ---------------------------------------------------------------- F2: a reserva dos filhos no orçamento do pai (puro)
+def test_filho_vivo_reserva_o_total_e_o_terminado_so_o_que_gastou() -> None:
+    vivo = c.FilhoNoOrcamento(True, 3.0, 1.0)
+    terminado = c.FilhoNoOrcamento(False, 3.0, 1.0)
+    assert c.reservado_aos_filhos([vivo]) == 3.0
+    assert c.reservado_aos_filhos([terminado]) == 1.0, "reservado − gasto volta ao pai; o gasto fica"
+    assert c.reservado_aos_filhos([vivo, terminado]) == 4.0
+    assert c.reservado_aos_filhos([]) == 0.0
+
+
+def test_filho_vivo_que_gastou_alem_da_reserva_conta_o_gasto() -> None:
+    assert c.reservado_aos_filhos([c.FilhoNoOrcamento(True, 2.0, 2.5)]) == 2.5
+    assert c.reservado_aos_filhos([c.FilhoNoOrcamento(True, None, 0.5)]) == 0.5
