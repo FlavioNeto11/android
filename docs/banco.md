@@ -723,10 +723,23 @@ ninguém descobre até precisar.
 ```powershell
 pwsh -File scripts\backup.ps1                      # cópia em data\backups\<AAAAMMDD-HHmmss>\
 pwsh -File scripts\backup.ps1 -IncluirSegredos -Reter 30
-pwsh -File scripts\backup.ps1 -Instalar            # tarefa agendada diária, 03:00
+pwsh -File scripts\backup.ps1 -IncluirSegredos -Instalar   # tarefa farm-backup, diária, 03:00 (-Origem diario)
 ```
 
 A retenção nunca apaga a última cópia, mesmo que a idade diga que sim: backup vazio é pior que backup velho.
+
+**Quem fez a cópia, e o teto das de deploy (29.38).** O `manifesto.json` diz `origem` (`deploy`, `ensaio`, `diario`
+ou `manual`) e o `commit` da árvore. Em 04/10/2026 havia 161 cópias e 23 GB em `data/backups`, quase todas de
+deploy: com dez deploys num dia, a retenção em dias não segura nada. O `deploy.ps1` chama `backup.ps1 -Teto 10`,
+que guarda as **10 cópias de deploy e de ensaio mais novas**. Cópia antiga sem `origem` conta como de deploy, porque
+a tarefa diária nunca tinha sido registrada no ambiente central. As cópias diária e manual só saem pela retenção em
+dias. Uma pasta com nome escolhido à mão (`20261003-120818-antes-ra20b`, `config-antes-*.yaml`) nunca é apagada
+por regra automática. As regras ficam em `scripts/lib/copias-de-backup.ps1`.
+
+**`deploy.ps1 -PularBackup` logo depois de um `-Ensaio`.** O ensaio já fez a cópia do que está no ar. Por isso
+uma subida até 60 min depois dele, **no mesmo commit**, pode pular a sua própria cópia. Sem uma cópia de ensaio
+assim, o deploy recusa o `-PularBackup` antes de parar qualquer coisa. Um ensaio de outro commit não vale, porque a
+subida pode trazer uma migração que ele não ensaiou.
 
 ### A chave do cofre é DPAPI, e isso muda o que o backup significa
 

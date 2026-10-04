@@ -37,6 +37,15 @@
 .PARAMETER Reter
   Dias de retenção. Pastas mais velhas que isso são apagadas ao fim de uma corrida bem-sucedida.
 
+.PARAMETER Origem
+  Quem pediu a cópia: `manual` (padrão), `deploy`, `ensaio` (o `deploy.ps1 -Ensaio`) ou `diario` (a tarefa
+  `farm-backup`). Vai para o manifesto junto com o commit da árvore; o teto e o `deploy.ps1 -PularBackup` leem
+  esses dois campos (`lib\copias-de-backup.ps1`).
+
+.PARAMETER Teto
+  Quantas cópias de deploy e de ensaio ficam (0 = sem teto). O `deploy.ps1` passa 10. Cópia diária e manual não
+  contam; cópia antiga sem `origem` conta como de deploy.
+
 .PARAMETER Banco
   Caminho do SQLite a copiar. Por omissão, `data\poc.sqlite3` da raiz do projeto.
 
@@ -44,7 +53,8 @@
   Inclui `data\credentials.key`. Fora por omissão: o destino do backup passa a exigir o mesmo cuidado do original.
 
 .PARAMETER Instalar
-  Registra a tarefa agendada diária (03:00) e sai.
+  Registra a tarefa agendada `farm-backup` (diária, 03:00, `-Origem diario`) e sai. Remove a `parque-backup-diario`
+  do nome antigo, se existir.
 
 .EXAMPLE
   pwsh -File scripts\backup.ps1
@@ -57,6 +67,8 @@ param(
   [int]$Reter = 14,
   [string]$Banco = '',
   [switch]$IncluirSegredos,
+  [ValidateSet('manual', 'deploy', 'ensaio', 'diario')][string]$Origem = 'manual',
+  [int]$Teto = 0,
   [switch]$Instalar
 )
 $ErrorActionPreference = 'Stop'
@@ -64,12 +76,16 @@ $root = Split-Path -Parent $PSScriptRoot
 if (-not $Destino) { $Destino = Join-Path $root 'data\backups' }
 if (-not $Banco)   { $Banco   = Join-Path $root 'data\poc.sqlite3' }
 $py = Join-Path $root 'backend\.venv\Scripts\python.exe'
-$tarefa = 'parque-backup-diario'
+# O mesmo prefixo das outras tarefas de boot do ambiente central (`farm-central`, `farm-agente`).
+$tarefa = 'farm-backup'
+. (Join-Path $PSScriptRoot 'lib\copias-de-backup.ps1')
 
 if ($Instalar) {
   $script = $MyInvocation.MyCommand.Path
   $argumentos = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$script`" " +
-                "-Destino `"$Destino`" -Reter $Reter" + $(if ($IncluirSegredos) { ' -IncluirSegredos' } else { '' })
+                "-Destino `"$Destino`" -Reter $Reter -Origem diario" +
+                $(if ($IncluirSegredos) { ' -IncluirSegredos' } else { '' })
+  Unregister-ScheduledTask -TaskName 'parque-backup-diario' -Confirm:$false -ErrorAction SilentlyContinue
   $exe = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
   if (-not $exe) { $exe = 'powershell.exe' }
   $eu = ([Security.Principal.WindowsIdentity]::GetCurrent()).Name
@@ -87,7 +103,8 @@ if ($Instalar) {
 $carimbo = Get-Date -Format 'yyyyMMdd-HHmmss'
 $pasta = Join-Path $Destino $carimbo
 New-Item -ItemType Directory -Force $pasta | Out-Null
-$resumo = [ordered]@{ ts = (Get-Date).ToString('o'); pasta = $pasta }
+$commit = (& git -C $root rev-parse HEAD 2>$null)
+$resumo = [ordered]@{ ts = (Get-Date).ToString('o'); pasta = $pasta; origem = $Origem; commit = $commit }
 
 # ------------------------------------------------------------------ o banco
 # `-Banco` explícito é uma ordem, não uma sugestão: quem aponta um arquivo quer AQUELE arquivo. Sem esta guarda,
@@ -186,6 +203,14 @@ if ($Reter -gt 0) {
              Where-Object { $_.Name -match '^\d{8}-\d{6}$' } | Sort-Object Name)
   if ($todas.Count -gt 0) { $velhas = $velhas | Where-Object { $_.Name -ne $todas[-1].Name } }
   foreach ($v in $velhas) { Remove-Item $v.FullName -Recurse -Force -Confirm:$false; Write-Host "removido (retenção): $($v.Name)" }
+}
+
+# ------------------------------------------------------------------ teto das cópias de deploy (29.38)
+# Só depois da cópia nova conferida: o teto nunca deixa o destino com uma cópia a menos que o pedido.
+foreach ($v in @(Get-CopiasAlemDoTeto $Destino $Teto $pasta)) {
+  if (-not (Test-Path $v.FullName)) { continue }   # a retenção acima já levou
+  Remove-Item $v.FullName -Recurse -Force -Confirm:$false
+  Write-Host "removido (teto de $Teto cópias de deploy): $($v.Name)"
 }
 
 Write-Host "pronto: $pasta"
