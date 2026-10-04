@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-342 de 413 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+346 de 413 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -67,7 +67,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 8.1 | implemented | not_run | opus | ok | prompts.py:75-82 (content_brief só conteúdo; tom só se o comando pedir), prompts.py:154-156 (desempate: em conflito vale a persona), prompts.py:178-189 + :204-206 (_INSTRUCAO_DE_TELA por kind: comentário cita a tela, DM… | Preencher as 8 personas e rodar a prova antes/depois é decisão e gasto do dono: exige PATCH no backend de produção (127.0.0.1:8000) e 8 chamadas pagas de IA po… |
 | 8.2 | implemented | not_run | opus | ok | navigation.py:298-344 (mensagem_de: última fala ATRIBUÍDA à contraparte; vazio quando não há certeza), state.py:99-104 (_LEITURA_DE_CONVERSA: READ_MESSAGES sim, COLLECT_THREADS não), state.py:1165-1177 (SEND_MESSAGE vir… | Aceite de nível 2 — conversa real entre duas contas do parque com memória reutilizada na execução seguinte — exige ligar emulador e operar conta real do Instag… |
 | 8.3 | partial | real | opus (sessão Android) + worker-impl | — | Real 03/10/2026, central WIN-7S2UASNLFOP @1ab8e767 (078), textos exatos aprovados pelo orquestrador; nada além de um gesto público por passo, sem curtir nem seguir. Post da conta do android-01 às 04:44:53Z (rótulo de IA… | Seguem not_run: learn_from de comentário, COLLECT_COMMENTS com itens e for_each com itens reais. |
-| 8.4 | blocked | not_run | sonnet | ok | Confirmado no código de hoje (não no achado de f1e61b3): nenhuma porta do Instagram filtra por kind (emulator vs external) — state.py:_session_gate decide só por profile_id vinculado ao instance_id; state.py:aplicar_ver… | Autorização do dono para: instalar o Instagram (~238MB) num aparelho remoto pelo túnel, autenticar com senha real via Appium central num aparelho de outra máqu… |
+| 8.4 | implemented | real | claude-opus-5-5 | — | real 04/10/2026, central WIN-7S2UASNLFOP em 3b5355ce (deploy 16), worker-lan-01 (192.168.1.11), android-13 (worker-04): install_apk c-20261004001143-ea295d succeeded 00:12:29Z (release da loja 447.0.0.55.81); open_app c… |  |
 | 9.1 | implemented | real | opus | ok | Sessão de painel nova: backend/migrations/035_sessao_do_painel.sql (tabela panel_sessions + coluna pending_approvals.decided_by) e backend/app/security/sessions.py (token aleatório, SHA-256 no banco, janela deslizante,… |  |
 | 9.2 | implemented | real | opus | ok | Servidor: backend/app/config.py:112 (server.tls_cert/tls_key/tls_behind_proxy) e :528/:534 (Config.tls_direto/tls_ativo); backend/app/main.py:86 conferir_tls — sair do loopback passa a exigir TLS declarado (certificado… |  |
 | 9.3 | implemented | real | opus | ok | Ja estava no codigo de hoje, conferido item a item: backend/app/api.py:2383 (DELETE /workers/{id}, recusa com connected/open_commands e desamarra o runtime) e :2403 (POST /workers/{id}/rotate-credential); backend/app/wo… |  |
@@ -326,10 +326,10 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.52 | implemented | simulated | opus (sessão Android) | — | fix/29-52-resposta-com-credencial @ 16174425 (→ 90c058e2 no integ), porta única pergunta_sensivel(ref\|None) no commit de integração 7fd72929; na main pela suíte 14 (integ 51270b9c, fast-forward) e implantado no deploy… | Prova real not_run: itens 4 e 5 do roteiro do Chrome da orquestradora pós-deploy 14 (pergunta sensível aberta no painel e o evento pergunta_sensivel); sem perg… |
 | 29.53 | pendente | — | — | — |  |  |
 | 29.54 | implemented | real | sonnet | — | Real em 03/10/2026, maquina central WIN-7S2UASNLFOP, checkout 4ad5f8b6 (codigo do 2264843e, deploy 15): hostname em server.public_hosts as 21:35:02Z, central reiniciado as 21:46:56Z, /api/health local ok sem exposicao_p… |  |
-| 29.55 | pendente | — | — | — |  |  |
-| 29.56 | pendente | — | — | — |  |  |
+| 29.55 | implemented | real | claude-opus-5-5 | — | real 04/10/2026 00:04:53Z-00:06:03Z, notebook worker-lan-01 (192.168.1.11), commit 3b5355ce (deploy 16, agente 0.1.0+3b5355c): dump do incidente posto em C:\Users\Administrator\AppData\Local\Temp\AndroidEmulator\emu-cra… |  |
+| 29.56 | implemented | real | claude-opus-5-5 | — | real 04/10/2026, central WIN-7S2UASNLFOP em 0b7c2c39 (deploy 17, suíte 17; PR #185 656d8bce + 3e05f037): prova de fora pela orquestradora às 01:15Z por https://dev.nvit.com.br — 8 pedidos com Bearer inventado em /api/in… |  |
 | 29.57 | pendente | — | — | — |  |  |
-| 29.58 | pendente | — | — | — |  |  |
+| 29.58 | implemented | real | claude-opus-5-5 | — | real 04/10/2026 00:01:08Z-00:01:56Z, central WIN-7S2UASNLFOP, commit 3b5355ce (deploy 16): execução r-20261004000108-fee44f no android-10 (QA Messenger, sem conta) com o comando da 5f2de5 -> completed, 6 etapas succeede… |  |
 | 29.59 | pendente | — | — | — |  |  |
 | 29.60 | pendente | — | — | — |  |  |
 | 29.61 | pendente | — | — | — |  |  |
@@ -377,7 +377,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.35 | implemented | simulated | claude-opus-5-5 | — | PR #155 (feat/30-35-resultado-posterior @ 32d8ef6b) na main pela suíte 11 (97425d5f): o GravadorDoResultadoPosterior (passo da curadoria) grava learning_reviews.resultado_posterior (descartar, rebaixar pela escada ou pe… |  |
 | 30.36 | partial | simulated | claude-opus-5-5 | — | PR #163 (feat/30-36-forma @ 2a16417a; código 32d69b00, docs 2a16417a; base d5a1c3a9, a main da suíte 12), para a suíte 13. Comparador da sombra com caminho × forma (Posicao.FORMA, que não conta), contra efetivo num pont… |  |
 | 30.37 | partial | simulated | claude-opus-5-5 | — | PR #168 (feat/30-37-prova @ d067d904, base 177b18cd), para a suíte 14: migração 084 (runs.prova_fluxo_id, learning_validations.teto_usd); a execução de prova roda o plano do próprio fluxo (FlowStore.plano_em_prova, cand… |  |
-| 30.38 | partial | simulated | claude-opus-5-5 | — | (c) no PR #165 (fix/30-38c-classe-de-agora @ 657ab399, base cd71ac4e), para a suíte 13: ServicoDePareceres.do_item e na_fila usam _classe_de_agora (a gravada C não monta dossiê); a API dá classe = a de agora no parecer… |  |
+| 30.38 | partial | simulated | claude-opus-5-5 | — | Partes (a) e (b) implantadas no deploy 16 (commit 3b5355ce; branch feat/30-38-ab-validacao @ 096bc432, adendo v1.02): vocabulário fechado da origem em app/contracts/origem.py, selo de origem no painel e aba Aprendizado… |  |
 | 30.39 | implemented | real | sonnet | — | Real em 03/10/2026, maquina central WIN-7S2UASNLFOP (porta 8000, SQLite), central em 4ad5f8b6 (codigo do 2264843e, deploy 15). Retrocarga as 21:45:10Z: 85 linhas reproducao: em 27 receitas (76 for, 9 against), todas rea… |  |
 | 30.40 | implemented | simulated | opus | — | PR #174 (merge 3af38a45) na main e no ar no deploy 16 (central em 3b5355ce, migracao 088). Simulado: backend/tests/test_learning_prova_validacao.py e backend/tests/test_learning_curador_dominio.py; 981 passed em SQLite… |  |
 | 30.41 | implemented | real | opus | — | Real, 04/10, central em 3b5355ce (deploy 16), banco so leitura as 00:30Z: as provas de fluxo lv-aedde49e (run r-20261004000905-ef5c86, android-09, 6 etapas) e lv-d8ee3b5f (run r-20261004001905-9c839c, android-10, 6 etap… |  |
@@ -420,7 +420,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (71): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 28.16, 28.17, 28.18, 28.19, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 29.53, 29.55, 29.56, 29.57, 29.58, 29.59, 29.60, 29.61, 29.62, 29.63, 29.64, 29.65, 30.18, 30.31, 30.34, 30.36, 30.37, 30.38, 30.43, 30.44, 30.45, 31.10, 31.11, 31.12, 31.21, 31.26, 31.27, 31.28, 32.2, T.2
+Pendentes (67): 8.3, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 28.16, 28.17, 28.18, 28.19, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 29.53, 29.57, 29.59, 29.60, 29.61, 29.62, 29.63, 29.64, 29.65, 30.18, 30.31, 30.34, 30.36, 30.37, 30.38, 30.43, 30.44, 30.45, 31.10, 31.11, 31.12, 31.21, 31.26, 31.27, 31.28, 32.2, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

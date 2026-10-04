@@ -1520,20 +1520,15 @@
   },
   "8.4": {
    "id": "8.4",
-   "status": "blocked",
-   "proof": "not_run",
-   "evidence": "Confirmado no código de hoje (não no achado de f1e61b3): nenhuma porta do Instagram filtra por kind (emulator vs external) — state.py:_session_gate decide só por profile_id vinculado ao instance_id; state.py:aplicar_versao_promovida só recusa rt.store (emulador-loja), não recusa external; state.py:_app_resolver chama aplicar_versao_promovida na primeira vez que a porta do app vê um aparelho sem device_app_state — o mesmo caminho que hoje distribui QA Messenger para android-12..15 distribuiria o Instagram. A lacuna dos achados #53/#110 é falta de EXERCÍCIO real (login por túnel, install-multiple de ~238MB, DM ponta a ponta), não falta de código. Procedimento passo a passo registrado em docs/parque-distribuido.md, seção nova 'Instagram num aparelho remoto (item 8.4, achados #53 e #110)', pronto para quando o dono autorizar.",
-   "blocker": "Autorização do dono para: instalar o Instagram (~238MB) num aparelho remoto pelo túnel, autenticar com senha real via Appium central num aparelho de outra máquina, e enviar uma DM real ponta a ponta. É operação em conta real do Instagram e em infraestrutura de produção — proibido nesta chamada pela regra 6. Nenhuma mudança de código é necessária para desbloquear; falta o ato, que fica pronto e documentado no procedimento.",
-   "arquivos": [
-    "docs/parque-distribuido.md"
-   ],
-   "testes": "not_run — nada de código mudou (só leitura em state.py e documentação); nenhum teste automatizado cabe aqui. Verificação feita lendo o código de hoje (_session_gate, aplicar_versao_promovida, _app_resolver em backend/app/state.py).",
-   "grupo": "8-operacao:8.3+8.4",
-   "modelo": "sonnet",
-   "esforco": "high",
-   "conferido": true,
-   "conferencia": "Documentação em docs/parque-distribuido.md:338 existe; código verifica estado da sessão sem filtro de kind, aplicar_versao_promovida recusa apenas rt.store, _app_resolver chama como esperado. Bloqueado por teste real.",
-   "quando": "2026-09-23T10:47:46+00:00"
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "real 04/10/2026, central WIN-7S2UASNLFOP em 3b5355ce (deploy 16), worker-lan-01 (192.168.1.11), android-13 (worker-04): install_apk c-20261004001143-ea295d succeeded 00:12:29Z (release da loja 447.0.0.55.81); open_app c-20261004001243-d85086 -> tela de login 00:12:46Z; android-13 vinculado como SECUNDARIO a persona ig-KW1uWMsISqStNXbU (andre.carvalho9543; android-06 segue principal) 00:15:18Z, consentimento 00:15:45Z; session/connect c-20261004001548-03701b uncertain (o toque em Log in se perdeu: formulario preenchido, botao habilitado, sem erro) e UM toque manual em Log in 00:22:30Z pelo controle manual, sem redigitar -> perfil andre.carvalho9543 00:24:20Z, sem desafio; sessao do android-13 session_ready. Navegacao real pelo produto: r-20261004002501-4af285 abriu inbox e a conversa com @lucas.almeida9484 no android-13 (open_inbox_1 e open_thread_1 succeeded). O ENVIO da DM e not_run: a politica recusou pelo ADR-055 (outra conta nossa ja interagiu com o alvo em 30 dias; o Bruno tambem nao esta livre), objetivo cancelado 00:33:43Z sem envio pendente. Seguem: 29.64 (re-toque verificado no connect; credencial em review se reconcilia) e 29.65 (politica one prefere o principal); ate la todo comando da persona diz o aparelho.",
+   "grupo": "android-deploy16-e-8.4",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T01:18:16+00:00"
   },
   "9.1": {
    "id": "9.1",
@@ -6374,13 +6369,13 @@
    "id": "30.38",
    "status": "partial",
    "proof": "simulated",
-   "evidence": "(c) no PR #165 (fix/30-38c-classe-de-agora @ 657ab399, base cd71ac4e), para a suíte 13: ServicoDePareceres.do_item e na_fila usam _classe_de_agora (a gravada C não monta dossiê); a API dá classe = a de agora no parecer pendente e classe_no_parecer = a gravada quando difere; o selo diz '(era B no parecer)' e a linha sai do aceite em lote; adendo v1.00 parcial. simulated: test_learning_pareceres (detalhe e fila C/B), ParecerDaIA.test.tsx (2 casos), test_learning* + arquitetura 857 passed, vitest do aprendizado 152 passed, typecheck ok, docs-check 0/0. Cópia do central (03/10 17:49Z): os 9 fluxos do Instagram com parecer de antes do 30.32 aparecem C com classe_no_parecer B; na_fila com 55 pareceres pendentes de 6 ms para 178 ms. Falta: (a) a origem nas execuções de validação e (b) a rota e a tela dos pedidos de validação, na suíte 14 depois do 30.37; o real da (c) no painel do central depois do deploy 13.",
-   "grupo": "aprendizado-pr165",
+   "evidence": "Partes (a) e (b) implantadas no deploy 16 (commit 3b5355ce; branch feat/30-38-ab-validacao @ 096bc432, adendo v1.02): vocabulário fechado da origem em app/contracts/origem.py, selo de origem no painel e aba Aprendizado > Validação (GET /api/aprendizado/validacoes); summaryOf mantém origem/origem_ref/prova_fluxo_id/pedido_id/app_ids ao abrir pelo cartão (frontend/src/store/live.test.ts). Simulated: backend/tests/test_origem_da_execucao.py, test_validacoes_listagem.py, testes do front (1439 passed na suíte 16). Percurso no navegador feito antes do merge; a conferência no deploy 16 (selo ao abrir pelo clique no cartão) é da validação do deploy 16. Parte (c) saiu no #174.",
+   "grupo": "android-deploy16-e-8.4",
    "modelo": "claude-opus-5-5",
-   "esforco": "medio",
+   "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T18:03:11+00:00"
+   "quando": "2026-10-04T01:18:16+00:00"
   },
   "29.51": {
    "id": "29.51",
@@ -6613,6 +6608,42 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-04T00:44:01+00:00"
+  },
+  "29.55": {
+   "id": "29.55",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "real 04/10/2026 00:04:53Z-00:06:03Z, notebook worker-lan-01 (192.168.1.11), commit 3b5355ce (deploy 16, agente 0.1.0+3b5355c): dump do incidente posto em C:\\Users\\Administrator\\AppData\\Local\\Temp\\AndroidEmulator\\emu-crash-37.1.11.db\\reports; android-13 (worker-04, sem conta) stop c-20261004000454-152f78 e start c-20261004000501-020867 -> online em 62 s, sem escada; reports\\ com 0 dumps, arquivo movido para C:\\farm\\quarentena-crash\\; agente.log 00:05:01Z '1 relatório(s) de falha pendente(s) ... quarentena'; emulador worker-04 com -crash-report-mode never. Parte (c), falha rápida no diálogo, segue simulated (backend/tests/test_relatorio_de_falha_do_emulador.py, test_worker_executor.py): com flag e quarentena o diálogo não aparece. PR #176, suíte 16.",
+   "grupo": "android-deploy16-e-8.4",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T01:18:16+00:00"
+  },
+  "29.58": {
+   "id": "29.58",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "real 04/10/2026 00:01:08Z-00:01:56Z, central WIN-7S2UASNLFOP, commit 3b5355ce (deploy 16): execução r-20261004000108-fee44f no android-10 (QA Messenger, sem conta) com o comando da 5f2de5 -> completed, 6 etapas succeeded, UMA ação side_effect=1 (tap em send_message), nenhuma recusa e nenhum efeito_repetido, a árvore mostra o texto uma vez, US$ 0,0001. A recusa de efeito numa etapa sem efeito (parte A) e o fechamento uncertain por efeito repetido (parte C) seguem simulated: backend/tests/test_efeito_pela_acao.py (12 testes; mutação sem a recusa faz os de ponta a ponta falharem). A 1ª recusa executor.efeito_fora_da_etapa no real, em aparelho de QA, vira a prova real da parte A. PR #179, adendo v1.08, suíte 16. Fora: painel mostrar N (29.60).",
+   "grupo": "android-deploy16-e-8.4",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T01:18:16+00:00"
+  },
+  "29.56": {
+   "id": "29.56",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "real 04/10/2026, central WIN-7S2UASNLFOP em 0b7c2c39 (deploy 17, suíte 17; PR #185 656d8bce + 3e05f037): prova de fora pela orquestradora às 01:15Z por https://dev.nvit.com.br — 8 pedidos com Bearer inventado em /api/instances deram 401 e o 9º deu 429 com Retry-After: 60 (01:15:27Z); sem Authorization logo depois, 401 (a sessão sem Bearer não tranca); /central/ com X-Frame-Options DENY, X-Content-Type-Options nosniff e Referrer-Policy same-origin; webhook do Trello HEAD 200, GET 401, POST sem assinatura 401. Simulated: backend/tests/test_tranca_por_cliente.py (14: chave do cliente pelo túnel com CF-Connecting-IP só com par loopback + tls_behind_proxy + Host público, trava de um IP não tranca outro, Bearer conta e bloqueado nem o token certo passa, local nunca tranca, cabeçalhos), frontend LoginPage.test.tsx (429 em HTML da Cloudflare -> espere 10 segundos). Rota de login do endereço público não foi chamada.",
+   "grupo": "android-deploy16-e-8.4",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T01:18:16+00:00"
   }
  },
  "rodadas": [
@@ -8282,6 +8313,19 @@
    ],
    "grupos": [
     "30.40-30.42"
+   ]
+  },
+  {
+   "quando": "2026-10-04T01:18:16+00:00",
+   "itens": [
+    "29.55",
+    "29.58",
+    "30.38",
+    "8.4",
+    "29.56"
+   ],
+   "grupos": [
+    "android-deploy16-e-8.4"
    ]
   }
  ]
