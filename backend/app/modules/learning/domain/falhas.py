@@ -97,11 +97,13 @@ REGRAS: tuple[tuple[FailureKind, tuple[str, ...]], ...] = (
     # O valor que a etapa entrega às seguintes (item 24.3) só existe se o ator chamar `read_value`: como o
     # `collect_list` da coleta, deixar de ler (ou insistir em leitura inválida) é conduta do ator com a ferramenta. E
     # concluir na tela de outro app (item 24.7) também: o executor disse qual app abrir e o ator não abriu. E insistir
-    # em "dado ausente" fora de etapa de leitura (31.38): a ferramenta só vale onde há o que ler.
+    # em "dado ausente" fora de etapa de leitura (31.38): a ferramenta só vale onde há o que ler. E concluir a limpeza
+    # sem gesto nenhum (31.40 b): o executor disse o que cobre a tela e o ator não fechou.
     (_F.IA_CHAMADA_INVALIDA, ("insistiu em chamadas invalidas", "nao usou collect_list", "acao da receita invalida",
                               "concluiu a etapa sem ler o valor", "o valor da etapa nao foi lido",
                               "entrega as seguintes nao foi lido", "concluir a etapa fora do app dela",
-                              "dado ausente' numa etapa que nao e de leitura")),
+                              "dado ausente' numa etapa que nao e de leitura",
+                              "concluiu a limpeza sem tocar no que cobre a tela")),
     (_F.IA_INDISPONIVEL, ("ia indisponivel", "verificacao nao pode ser feita", "sem chave configurada",
                           "chave da anthropic invalida", "credencial recusada por", "falha de rede ao contatar",
                           "limite de requisicoes", "resposta do modelo truncada", "sem chamar nenhuma ferramenta",

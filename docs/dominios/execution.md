@@ -260,6 +260,17 @@ despacho (`_policy_gate`, a trava de sempre, com a mesma frase) e em `RunService
   31.36), retomando da tela atual. Uma vez por objetivo; a segunda recusa segue o caminho de sempre. O juiz não
   afrouxa: conteúdo coberto nunca comprova. O orçamento de chamadas da ação (18.3) que corta uma etapa de LEITURA dá o
   desfecho do 31.38 ("Dado ausente: … orçamento de chamadas da etapa esgotado"). Achado real: 3894c1 (US$ 0,306).
+  **31.40 b** (achado real 95d10f: a limpeza entrou, o ator deu `step_done` sem tocar e ela nunca se comprovava, porque
+  a etapa opcional só tinha prova local):
+  - O juiz cita em `cobre` o id (`eN`) do elemento que cobre. Sem o id, a árvore procura uma pista (classe ou
+    resource-id com dialog, modal, banner, cookie, popup, overlay, consent, bottom sheet ou snackbar).
+  - O elemento achado vai à limpeza em `steps.variables` (`cobre_id`, `cobre_texto`, `cobre_bounds`), sem migração,
+    e o objetivo da etapa o nomeia ao ator.
+  - **(i)** Com o elemento conhecido, a árvore decide sem IA: ele sumiu, ou saiu da área que cobria, é limpeza feita;
+    ainda lá, não comprovada. Sem o elemento, a limpeza tem no máximo UM julgamento.
+  - **(iii)** `step_done` sem gesto nenhum (tap, long_press, drag, scroll, press_back) numa limpeza ainda coberta é
+    recusado ("limpeza sem toque").
+  - A receita fica desligada na etapa opcional: ela repetiria os toques de um diálogo noutro.
 - **Relação do valor lido (item 31.41, `ai.relacao_do_valor`, sem migração):** o `read_value` só grava a saída com
   evidência de que o elemento É o que foi pedido (`taskqueue/relacao.py`, determinístico): (a) o seletor que o catálogo
   declara (`saidas_relacao: [nome=seletor]`); (b) um termo do nome, do glossário PT→EN ou de um sinônimo do catálogo

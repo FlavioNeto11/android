@@ -66,7 +66,8 @@ SISTEMAS = {
     # Item 29.58 (C): o verificador passa a contar as cópias do efeito desta execução (`copias`) — o hash muda de
     # propósito, não é enfraquecimento do teste.
     # Item 31.40: o verificador marca `sobreposicao` quando algo cobre o alvo — o hash muda de propósito.
-    "VERIFIER_SYSTEM": "95311c6d36d88f9090fa3de5e0356e8987ad1b449d3492e3bbe3fac05e9feb0a",
+    # Item 31.40 b: e cita em `cobre` o id do elemento que cobre — o hash muda de propósito.
+    "VERIFIER_SYSTEM": "a4d0e42259723899533aaec2010c4485bcb569ac4e36866541d9a727a2370b43",
 }
 
 

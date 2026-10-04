@@ -216,6 +216,73 @@ class Outcome(StrEnum):
     device_stuck = "device_stuck"
 
 
+#: Item 31.40 b: a chave da etapa de limpeza que o scheduler insere antes da etapa coberta (`limpar_antes_<chave>`).
+PREFIXO_LIMPEZA = "limpar_antes_"
+
+#: 31.40 b: sem o id do juiz, o que na árvore tem cara de coisa que cobre a tela (classe ou resource-id).
+_PISTAS_DE_COBERTURA = re.compile(r"dialog|modal|banner|cookie|popup|pop_up|overlay|consent|bottom_?sheet|snackbar",
+                                  re.IGNORECASE)
+
+#: 31.40 b (iii): os gestos que contam como "fechar" numa limpeza (o ator que só olhou não limpou nada).
+GESTOS_DA_LIMPEZA = ("tap", "long_press", "drag", "scroll", "press_back")
+
+
+@dataclass(frozen=True, slots=True)
+class Cobertura:
+    """Item 31.40 b: o elemento que cobre o alvo de uma etapa (pelo id que o juiz citou ou pela árvore). Viaja para a
+    limpeza em `steps.variables` (`cobre_*`, sem migração): o ator o recebe, e a limpeza se comprova pela árvore quando
+    ele sai, sem IA."""
+    resource_id: str
+    texto: str
+    bounds: tuple[int, int, int, int]
+
+    def variaveis(self) -> dict[str, str]:
+        return {"cobre_id": self.resource_id, "cobre_texto": self.texto,
+                "cobre_bounds": ",".join(str(v) for v in self.bounds)}
+
+    @staticmethod
+    def das_variaveis(variaveis: dict[str, str] | None) -> Cobertura | None:
+        v = variaveis or {}
+        if "cobre_bounds" not in v:
+            return None
+        try:
+            x1, y1, x2, y2 = (int(p) for p in v["cobre_bounds"].split(","))
+        except ValueError:
+            return None
+        return Cobertura(v.get("cobre_id", ""), v.get("cobre_texto", ""), (x1, y1, x2, y2))
+
+    @staticmethod
+    def do_elemento(e: UiElement) -> Cobertura:
+        return Cobertura(e.resource_id, (e.text or e.desc or "")[:120], e.bounds)
+
+
+def cobertura_na_arvore(tree: UiTree, ref: str | None) -> Cobertura | None:
+    """31.40 b (ii): o elemento que cobre — o que o juiz citou (`Verdict.cobre`), senão o primeiro da árvore com cara de
+    diálogo, banner ou cookies. Nenhum dos dois: `None` (a limpeza segue sem ele, com UM julgamento)."""
+    if ref and (e := tree.by_id(ref)) is not None:
+        return Cobertura.do_elemento(e)
+    for e in tree.elements:
+        if _PISTAS_DE_COBERTURA.search(e.class_name or "") or _PISTAS_DE_COBERTURA.search(e.resource_id or ""):
+            return Cobertura.do_elemento(e)
+    return None
+
+
+def ainda_cobre(c: Cobertura, tree: UiTree) -> bool:
+    """31.40 b (i): o elemento que cobria segue na árvore E na mesma área. Sumiu, ou saiu da área que cobria: a limpeza
+    está feita. Sem resource-id nem texto, só a mesma caixa conta como o mesmo elemento."""
+    x1, y1, x2, y2 = c.bounds
+    for e in tree.elements:
+        if c.resource_id or c.texto:
+            mesmo = ((not c.resource_id or e.resource_id == c.resource_id)
+                     and (not c.texto or c.texto in ((e.text or "")[:120], (e.desc or "")[:120])))
+        else:
+            mesmo = e.bounds == c.bounds
+        a1, b1, a2, b2 = e.bounds
+        if mesmo and a1 < x2 and x1 < a2 and b1 < y2 and y1 < b2:
+            return True
+    return False
+
+
 @dataclass(slots=True)
 class StepOutcome:
     outcome: Outcome
@@ -260,6 +327,8 @@ class StepOutcome:
     #: Item 31.40: o juiz recusou a etapa sem efeito porque algo COBRE o alvo. O scheduler insere a limpeza opcional
     #: antes dela (uma vez por objetivo) em vez de repetir a mesma etapa.
     sobreposicao: bool = False
+    #: 31.40 b: o elemento que cobre (do id do juiz ou da árvore), que a limpeza recebe; `None` quando não se achou.
+    cobertura: Cobertura | None = None
 
 
 class OrcamentoDaEtapa(AIError):
@@ -501,6 +570,8 @@ class StepExecutor:
         #: nunca decidem desfecho, verificação nem guarda.
         self.costuras: CosturasDeAprendizado = SEM_COSTURAS
         self._effects: dict[str, tuple[str, str]] = {}      # step_id → (perfil, interação em aberto)
+        #: 31.40 b: tentativas de limpeza (sem o elemento que cobria) que já gastaram o seu ÚNICO julgamento
+        self._juiz_da_limpeza: set[str] = set()
         # Pacote "anr": etapas que já gastaram a sua reabertura determinística depois de um ANR. Por ETAPA, não por
         # tentativa — na r-20260928195344-02ee9e cada tentativa acabava pelo prazo e a seguinte reabria de novo. Some
         # no desfecho final da etapa. Memória do processo: reiniciado o backend, a contagem de mortes (que vem do
@@ -1002,6 +1073,9 @@ class StepExecutor:
         if leitura:
             # Item 24.3: a etapa que entrega um valor às seguintes precisa LER (`read_value`), e ler é decisão sobre a
             # tela da vez — a receita reproduziria os gestos e concluiria sem valor nenhum.
+            mode = "off"
+        if step.opcional:
+            # 31.40 b: a limpeza fecha o diálogo DA VEZ; a receita repetiria os toques de um diálogo noutro.
             mode = "off"
         self._effects.pop(step.id, None)
         rr = _RecipeRun(mode=mode, leitura=leitura)
@@ -1718,6 +1792,7 @@ class StepExecutor:
         veredito_antecipado: tuple[bool, str, DeliveryLevel | None, Observation | None, bool] | None = None
         copias_vistas: list[int] = []        # 29.58 (C): `Verdict.copias` de cada julgamento desta tentativa
         sobreposicoes: list[bool] = []       # 31.40: `Verdict.sobreposicao` de cada "não"/"incerto" desta tentativa
+        coberturas: list[Cobertura] = []     # 31.40 b: o elemento que cobre, a cada sobreposição achada
         julgamentos_antes_do_ator = 0
         sig_julgada_antes_do_ator: str | None = None
 
@@ -2369,6 +2444,19 @@ class StepExecutor:
                 if errors_in_row >= 4:
                     return await fail_or_retry("A IA não usou collect_list na etapa de coleta.", obs)
                 continue
+            if (isinstance(args, StepDone) and step.opcional and self.cfg.file.ai.limpeza_opcional
+                    and not self._tocou_na_limpeza(attempt_id)
+                    and ((cobria := Cobertura.das_variaveis(step.variables)) is None or ainda_cobre(cobria, obs.tree))):
+                # 31.40 b (iii): na 95d10f o ator deu step_done sem tocar em nada e a tela seguiu coberta. Concluir uma
+                # limpeza sem fechar nada não é limpeza feita.
+                aid = intencao("step_done", args.model_dump(mode="json"), rationale, side_effect=False)
+                repo.finish_action(aid, ActionStatus.rejected, error="limpeza sem toque")
+                history.append("step_done REJEITADA: nesta limpeza nada foi tocado e o que cobre a tela continua lá — "
+                               "feche-o (o X, “Fechar”, “Agora não”, ou press_back) antes de concluir.")
+                errors_in_row += 1
+                if errors_in_row >= 4:
+                    return await fail_or_retry("A IA concluiu a limpeza sem tocar no que cobre a tela.", obs)
+                continue
             if isinstance(args, StepDone):
                 declared = args
                 aid = intencao("step_done", args.model_dump(mode="json"), rationale, side_effect=False)
@@ -2736,7 +2824,8 @@ class StepExecutor:
                                                                       attempt_id=attempt_id, cartao=cartao,
                                                                       pacote=app.package, imagem_forcada=bool(visuais),
                                                                       copias_vistas=copias_vistas,
-                                                                      sobreposicoes=sobreposicoes)
+                                                                      sobreposicoes=sobreposicoes,
+                                                                      coberturas=coberturas)
         except DriverTimeout as exc:
             return await self._stuck(rt, step, fired, str(exc))
         except AIError as exc:
@@ -2815,7 +2904,8 @@ class StepExecutor:
             # 31.40: o último "não" foi por algo que COBRE o alvo. Repetir a etapa daria na mesma tela coberta (3894c1:
             # três recusas e um plano revisado igual): o scheduler põe a limpeza opcional antes dela, uma vez.
             metricas.contar("etapa.sobreposicao")
-            return StepOutcome(Outcome.failed, f"Pós-condição não comprovada (sobreposição): {text}", sobreposicao=True)
+            return StepOutcome(Outcome.failed, f"Pós-condição não comprovada (sobreposição): {text}", sobreposicao=True,
+                               cobertura=coberturas[-1] if coberturas else None)
         return StepOutcome(Outcome.retry if step.attempts < step.max_attempts else Outcome.failed,
                            f"Pós-condição não comprovada: {text}")
 
@@ -2898,6 +2988,12 @@ class StepExecutor:
             return None, f"a verificação não pôde ser feita ({type(exc).__name__})"
         return (texto, "") if ok else (None, texto or "a tela não mostra o estado vazio")
 
+    def _tocou_na_limpeza(self, attempt_id: str) -> bool:
+        """31.40 b (iii): a tentativa da limpeza já fez algum gesto que fecha (toque, arrasto, rolagem, voltar)."""
+        marcas = ",".join("?" * len(GESTOS_DA_LIMPEZA))
+        return bool(self.repo.db.scalar(f"SELECT COUNT(*) FROM actions WHERE attempt_id=? AND status='done' "
+                                        f"AND tool IN ({marcas})", (attempt_id, *GESTOS_DA_LIMPEZA)))
+
     def _tempos(self, attempt_id: str | None) -> TemposDaTentativa | None:
         """Os tempos da tentativa em curso (31.24, C-4), ou `None` fora de `run_step` (chamada sem tentativa)."""
         return self._tempos_da_tentativa.get(attempt_id) if attempt_id else None
@@ -2931,20 +3027,35 @@ class StepExecutor:
                       attempt_id: str | None = None, cartao: tuple[str, ...] = (), pacote: str | None,
                       imagem_forcada: bool = False, uma_rodada: bool = False, so_prova_local: bool = False,
                       proposito: MotivoDaChamada = "julgamento", copias_vistas: list[int] | None = None,
-                      sobreposicoes: list[bool] | None = None
+                      sobreposicoes: list[bool] | None = None, coberturas: list[Cobertura] | None = None
                       ) -> tuple[bool, str, DeliveryLevel | None, Observation | None, bool]:
         """A verificação (`_verificar`), com o tempo inteiro dela somado na tentativa (31.24, C-4:
         `attempts.verificacao_ms`). Só mede: os argumentos passam como vieram."""
         inicio = time.monotonic()
         if step.opcional and self.cfg.file.ai.limpeza_opcional:
-            so_prova_local = True              # item 31.36: a limpeza opcional só se comprova sem juiz
+            if step.key.startswith(PREFIXO_LIMPEZA) and Cobertura.das_variaveis(step.variables) is None:
+                # 31.40 b (i): a limpeza da sobreposição sem o elemento que cobria: a árvore não decide, então UM
+                # julgamento (uma leitura, um veredito) por limpeza; os seguintes, só a prova local. A conferência da
+                # ENTRADA (antes do ator, `so_prova_local`) não o gasta: o juiz é para depois do gesto.
+                if so_prova_local:
+                    pass
+                elif attempt_id is not None and attempt_id in self._juiz_da_limpeza:
+                    so_prova_local = True
+                else:
+                    uma_rodada = True
+                    if attempt_id is not None:
+                        self._juiz_da_limpeza.add(attempt_id)
+            else:
+                so_prova_local = True          # item 31.36: a limpeza opcional só se comprova sem juiz (31.40 b: com o
+                                               # elemento que cobria conhecido, a árvore decide antes, em `_verificar`)
         try:
             return await self._verificar(rt, step, ctx_for, run_id, objective_id, deadline, call_timeout,
                                          patient=patient, facts=facts, failure_marks=failure_marks,
                                          local_proof=local_proof, capability=capability, attempt_id=attempt_id,
                                          cartao=cartao, pacote=pacote, imagem_forcada=imagem_forcada,
                                          uma_rodada=uma_rodada, so_prova_local=so_prova_local, proposito=proposito,
-                                         copias_vistas=copias_vistas, sobreposicoes=sobreposicoes)
+                                         copias_vistas=copias_vistas, sobreposicoes=sobreposicoes,
+                                         coberturas=coberturas)
         finally:
             if (tempos := self._tempos(attempt_id)) is not None:
                 tempos.verificacao_ms += ms_desde(inicio)
@@ -2956,7 +3067,7 @@ class StepExecutor:
                          attempt_id: str | None = None, cartao: tuple[str, ...] = (), pacote: str | None,
                          imagem_forcada: bool = False, uma_rodada: bool = False, so_prova_local: bool = False,
                          proposito: MotivoDaChamada = "julgamento", copias_vistas: list[int] | None = None,
-                         sobreposicoes: list[bool] | None = None
+                         sobreposicoes: list[bool] | None = None, coberturas: list[Cobertura] | None = None
                          ) -> tuple[bool, str, DeliveryLevel | None, Observation | None, bool]:
         """`uma_rodada`: uma só leitura e, se a pós-condição a exigir, um só julgamento — devolve o veredito mesmo
         negativo, sem esperar a tela mudar até o fim do orçamento. É o modo dos atalhos que conferem ANTES do ator
@@ -3006,6 +3117,13 @@ class StepExecutor:
             # Nível de entrega (enviada/entregue/lida) não é comprovável por texto/seletor — o texto já aparece no
             # campo ANTES do envio. Sempre que o plano exigir um nível, o verificador julga a tela também.
             judged = post.kind == "model_judged" or (ok and need is not None)
+            if step.opcional and (cobria := Cobertura.das_variaveis(step.variables)) is not None:
+                # 31.40 b (i): a limpeza sabe o que cobria a tela; a árvore decide, sem IA: saiu (ou deixou a área que
+                # cobria) é limpeza feita; ainda lá, não comprovada. O juiz não é chamado nos dois casos.
+                judged = False
+                ok = not ainda_cobre(cobria, obs.tree)
+                text = ("o elemento que cobria a tela saiu dela: comprovado pela árvore, sem IA" if ok else
+                        "o elemento que cobria a tela continua nela (árvore, sem IA)")
             if (frente := self._tela_fora_do_app(step, obs, pacote)) is not None:
                 # A tela é de OUTRO app (etapas entre apps, item 24.7): o texto ou o seletor da pós-condição podem
                 # estar lá também, e o modelo julgaria a tela errada. Nem prova local nem modelo; segue olhando até o
@@ -3139,6 +3257,9 @@ class StepExecutor:
                         copias_vistas.append(verdict.copias)
                     if sobreposicoes is not None and verdict.satisfied in ("no", "uncertain"):
                         sobreposicoes.append(bool(verdict.sobreposicao))
+                        if (coberturas is not None and verdict.sobreposicao
+                                and (achada := cobertura_na_arvore(obs.tree, verdict.cobre)) is not None):
+                            coberturas.append(achada)
                     ok = verdict.satisfied == "yes"
                     if ok and need and DELIVERY_ORDER[level or DeliveryLevel.none] < DELIVERY_ORDER[need]:
                         ok = False
