@@ -114,3 +114,52 @@ def test_com_dois_porta_vozes_o_terceiro_nao_toca_e_entre_eles_vale_um_por_alvo(
     assert policies.check(b, _curtir(), counterparty=ALVO, pedido=pedido).allowed
     _curtiu(svc, a)                                            # um porta-voz tocou: o outro não toca o mesmo alvo
     assert not policies.check(b, _curtir(), counterparty=ALVO, pedido=pedido).allowed
+
+
+# ------------------------------------------------------------------ ligação: a porta do despacho lê o pedido da execução
+def _pedido_da_familia(state: Any, *pids: str) -> str:
+    """Um pedido raiz com a 1ª persona e um filho por persona seguinte (28.10), e a execução `run-f` nascida da raiz
+    (`runs.pedido_id`, 28.4). Com uma persona só, é um pedido solo: sem filhos."""
+    for i, pid in enumerate(pids):
+        state.db.execute("INSERT INTO pedidos(id, titulo, objetivo, alvos, pai_id, criado_em, atualizado_em)"
+                         " VALUES (?,'Curtir','curtir',?,?,'2026-10-04T10:00:00Z','2026-10-04T10:00:00Z')",
+                         (f"ped-familia-{i}", f'{{"alvos":[{{"profile_id":"{pid}"}}]}}',
+                          None if i == 0 else "ped-familia-0"))
+    state.db.execute("UPDATE runs SET pedido_id='ped-familia-0' WHERE id='run-f'")
+    return "ped-familia-0"
+
+
+async def test_a_porta_do_despacho_le_a_familia_do_pedido_da_execucao(harness: Any) -> None:
+    """30.62 ligado ao `_policy_gate`: curtir aceita mais de uma conta por alvo na frota, mas no pedido entre personas a
+    família conta como UMA. Sem `runs.pedido_id`, a mesma etapa não ouve falar do 30.62."""
+    from .test_protecao_de_frota import ALVO, _execucao_em_duas_contas, _porta
+
+    state = harness.state
+    pids = _execucao_em_duas_contas(state, "LIKE_POST", {"post_author": ALVO})
+    state.social_repo.record_interaction(pids["android-02"], type="post_liked", direction="outbound",
+                                         status=InteractionStatus.confirmed.value, counterparty=ALVO, app_id="ig")
+    sem_pedido = await _porta(state, "android-01")
+    assert sem_pedido is None or "30.62" not in (sem_pedido.reason or "")
+    _pedido_da_familia(state, *pids.values())
+    no_pedido = await _porta(state, "android-01")
+    assert no_pedido is not None and not no_pedido.allowed and no_pedido.retry_at is None
+    assert "30.62" in no_pedido.reason
+
+
+async def test_pedido_solo_nao_e_entre_personas_e_curtir_segue_autonomo(harness: Any) -> None:
+    """Revisão da fila da suíte 32, item 2: o 30.62 é para pedido ENTRE personas. Um pedido solo ("curtir os posts de
+    @x") com uma persona só não ganha contexto, e a curtida autônoma em pessoa real sem conversa segue autônoma, em vez
+    de virar uma aprovação por curtida."""
+    from app.modules.pedidos.infrastructure.contexto import contexto_do_pedido
+
+    from .test_protecao_de_frota import ALVO, _execucao_em_duas_contas, _porta
+
+    state = harness.state
+    pids = _execucao_em_duas_contas(state, "LIKE_POST", {"post_author": ALVO})
+    # só a conta do pedido no despacho: duas na mesma execução pediriam a confirmação de várias contas
+    state.db.execute("DELETE FROM steps WHERE objective_id='run-f:android-02'")
+    state.db.execute("DELETE FROM objectives WHERE id='run-f:android-02'")
+    _pedido_da_familia(state, pids["android-01"])
+    assert contexto_do_pedido(state.db, "run-f") is None
+    assert await _porta(state, "android-01") is None                 # segue sem parar: nem recusa, nem aprovação
+    assert state.approval_service.list() == []

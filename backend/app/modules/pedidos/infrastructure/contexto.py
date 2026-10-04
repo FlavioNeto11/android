@@ -8,26 +8,18 @@ Só leitura, sem texto livre: ids de pedido e de persona, nada de objetivo, tít
 `instagram_profiles.id`, o mesmo de `device_profile_bindings.profile_id` e de `objectives.profile_id` (o `profile_id` da
 política). Execução sem pedido devolve `None`.
 
-NÃO está ligado ao `AppState` ainda: a ligação vem depois do 30.62 (a porta ganha o parâmetro `pedido`). Enquanto isso, o
-dataclass é local, com os MESMOS campos e nomes do `ContextoDoPedido` que o 30.62 põe em `app/social/policy.py`; depois dele,
-isto vira `from app.social.policy import ContextoDoPedido`.
+Ligado ao `AppState._policy_gate` pelo 30.62: o dataclass é o `ContextoDoPedido` da porta (`app/social/policy.py`), com
+`porta_vozes` como CONJUNTO. Dois porta-vozes ficam os dois (só eles tocam um alvo, e entre eles vale uma conta por alvo);
+"um ou nenhum" fazia o caso ambíguo cair no MENOS restrito (revisão da fila, 04/10).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from app.db import Database, Row, loads
+from app.social.policy import ContextoDoPedido
+
+__all__ = ["PORTA_VOZ", "ContextoDoPedido", "contexto_do_pedido"]
 
 PORTA_VOZ = "porta_voz"
-
-
-@dataclass(frozen=True)
-class ContextoDoPedido:
-    """`raiz`: o id do pedido raiz. `familia`: as personas (profile_id) de toda a família. `porta_voz`: a persona do porta-voz,
-    ou `None` (sem porta-voz, ou com mais de uma persona nele: a porta que decida pelo mais restrito)."""
-    raiz: str
-    familia: frozenset[str]
-    porta_voz: str | None
 
 
 def _personas(db: Database, alvos_json: str | None) -> set[str]:
@@ -60,7 +52,10 @@ def _pedido_da_execucao(db: Database, run_id: str) -> Row | None:
 
 
 def contexto_do_pedido(db: Database, run_id: str) -> ContextoDoPedido | None:
-    """A família da execução `run_id`, ou `None` se ela não nasceu de um pedido (ou o pedido sumiu)."""
+    """A família da execução `run_id`, ou `None` se ela não nasceu de um pedido ENTRE PERSONAS: sem pedido, pedido que
+    sumiu, pedido solo (sem pai nem filhos) ou família de uma persona só. O contrato do 30.62 é "entre personas"; um
+    pedido solo ("curtir os posts de @x") segue a política do perfil, como antes, e não vira uma aprovação por curtida
+    (revisão da fila da suíte 32, item 2)."""
     p = _pedido_da_execucao(db, run_id)
     if p is None:
         return None
@@ -73,5 +68,6 @@ def contexto_do_pedido(db: Database, run_id: str) -> ContextoDoPedido | None:
         familia |= pessoas
         if m["papel"] == PORTA_VOZ and m["estado"] != "cancelado":
             porta_voz |= pessoas
-    return ContextoDoPedido(raiz=raiz, familia=frozenset(familia),
-                            porta_voz=next(iter(porta_voz)) if len(porta_voz) == 1 else None)
+    if len(membros) < 2 or len(familia) < 2:
+        return None
+    return ContextoDoPedido(raiz=raiz, familia=frozenset(familia), porta_vozes=frozenset(porta_voz))
