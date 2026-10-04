@@ -115,6 +115,22 @@ PARTES_EM_ELEMENTOS_DIFERENTES = "as partes do seletor estão em elementos difer
 #: testes cujo gancho é a decisão do ator numa etapa dessas (como `ATALHO_ANTES_DO_ATOR`): eles desligam isto.
 OPEN_APP_SEM_IA = True
 
+#: 31.48: o pacote de um `id=<pacote>:id/<nome>` na pós-condição `element_present` (a primeira parte que o traz).
+_ID_COM_PACOTE = re.compile(r"(?:^|\|)\s*id=([A-Za-z][\w.]*):id/")
+
+
+def pacote_da_prova(post: Postcondition) -> str:
+    """31.48: o app cuja tela a pós-condição `element_present` exige, quando o seletor diz (`id=com.x:id/lista`).
+    Sem pacote no seletor, ou outro tipo de pós-condição, `""`.
+
+    MEDIDO (banco central, 04/10): a etapa "abrir o QA Messenger" com `element_present id=…:id/conversation_list`
+    (modelo 141e) foi à IA em 43 de 49 sucessos, 15 deles só para o ator pedir `open_app`; a mesma etapa com
+    `app_foreground` (modelo 2c35) fechou sem ator em 50 de 50, pelo LT-6. A abertura é a mesma; o que muda é a prova."""
+    if post.kind != "element_present":
+        return ""
+    achado = _ID_COM_PACOTE.search(post.value or "")
+    return achado.group(1) if achado else ""
+
 
 def parte_vazia_da_pos_condicao(post: Postcondition) -> str | None:
     """31.44: o que a pós-condição confere sem valor (`text=`, `<vazia>`, `texto vazio`), ou `None` quando tem valor.
@@ -2130,7 +2146,15 @@ class StepExecutor:
                 # do ator — em 7 d, 48 dessas etapas pagaram um decide (p50 9,0 s) para pedir exatamente isso. Só quando
                 # a receita não conduz (ela também não chama a IA, e o funil dela fica intacto) e nunca em etapa com
                 # efeito. Interstitial ou foco que não chega: a volta seguinte não comprova e o ator assume, nesta tentativa.
-                alvo_do_foco = step.postcondition.value if step.postcondition.kind == "app_foreground" else ""
+                # 31.48: também a etapa que prova por um elemento DO app (`id=<pacote>:id/…`) quando o app não está na
+                # frente. Com ele já na frente (dentro de uma conversa, num aviso), abrir não muda nada: segue o ator.
+                # Aberto o app, a volta seguinte lê a tela: lista à vista, o LT-1 fecha sem ator; o aviso "Novidades da
+                # versão" é outra tela (a lista some), e o ator o dispensa.
+                alvo_do_foco = (step.postcondition.value if step.postcondition.kind == "app_foreground"
+                                else pacote_da_prova(step.postcondition))
+                if (step.postcondition.kind == "element_present" and alvo_do_foco
+                        and obs.package == alvo_do_foco):
+                    alvo_do_foco = ""
                 if (OPEN_APP_SEM_IA and alvo_do_foco and not abriu_sem_ia and rep is None and decisions == 0
                         and not step.side_effect and not fired and alvo_do_foco in self._allowed_packages()
                         and not self._postcondition_holds(step, obs, cartao, pacote=app.package)):
