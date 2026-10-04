@@ -92,6 +92,30 @@ if (-not $PularBackup) {
   if ($LASTEXITCODE -ne 0) { throw 'o backup falhou; a subida NÃO continua sem cópia do banco.' }
 }
 
+# ------------------------------------------------------------------ 1b. a pasta do site institucional (29.77)
+# Com `portal.site_ligado`, um arquivo fora da lista de extensões em `site/` (um `Thumbs.db` que o Explorer deixou, um
+# rascunho) DERRUBA a subida do central inteiro, de propósito (ADR-075): nada fora da lista vai à internet. Conferido
+# aqui, antes de parar qualquer coisa e também no -Ensaio, para a recusa aparecer com o backend ainda no ar.
+Write-Host '--- pasta do site institucional (29.77) ---'
+Push-Location (Join-Path $root 'backend')
+try {
+  & (Join-Path $root 'backend\.venv\Scripts\python.exe') -c @'
+import sys
+from pathlib import Path
+from app.config import get_config
+from app.modules.portal.presentation.site import SiteInvalido, ler_site
+ligado = get_config().file.portal.site_ligado
+try:
+    print(f"    site/: {len(ler_site(Path('..') / 'site'))} arquivo(s) na lista; portal.site_ligado={ligado}")
+except (SiteInvalido, OSError) as e:
+    print(f"    site/: {e}")
+    sys.exit(1 if ligado else 0)
+'@
+} finally { Pop-Location }
+if ($LASTEXITCODE -ne 0) {
+  throw 'a pasta site/ tem arquivo fora da lista e portal.site_ligado está ligado: o central não subiria. Limpe a pasta.'
+}
+
 if ($Ensaio) {
   Write-Host ''
   Write-Host 'ENSAIO: backup feito, nada foi parado. Para ensaiar a migração sem tocar no banco do ambiente central:'

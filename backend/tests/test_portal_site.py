@@ -184,6 +184,14 @@ def test_pasta_real_so_tem_extensoes_da_lista_e_nada_em_linha() -> None:
     assert "<style" not in html and not re.search(r"\sstyle=", html), "estilo em linha"
     assert not re.search(r"\son[a-z]+=", html), "manipulador de evento em linha"
     assert "<!--portal:contatos-->" in html and "<!--portal:token-->" in html
+    # Sem JavaScript (ou com erro de script), o Enter faz o envio padrão do navegador: com GET, nome e telefone iriam
+    # na URL, que fica em log de borda. POST em `/` cai no 405 do site e nada vai para a URL.
+    form = re.search(r'<form[^>]*id="formulario-contato"[^>]*>', html)
+    assert form is not None and 'method="post"' in form.group(0)
+    # A CSP só deixa `'self'`: recurso de fora seria bloqueado em silêncio, e a página subiria sem ele.
+    css = arquivos["/assets/site.css"].corpo.decode("utf-8")
+    assert not re.search(r'(?:src|href)="https?://(?!wa\.me/)', html), "recurso de fora na página"
+    assert "@import" not in css and not re.search(r"url\(\s*['\"]?https?:", css), "recurso de fora no CSS"
 
 
 def test_padrao_do_telefone_e_o_mesmo_no_config_no_dominio_e_na_pagina() -> None:

@@ -349,6 +349,9 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
             return RedirectResponse(url=PREFIXO_DO_PAINEL + "/", status_code=307)
 
         site_ligado = cfg.file.portal.site_ligado and (cfg.root / "site").is_dir()
+        if cfg.file.portal.site_ligado and not site_ligado:
+            logging.getLogger("poc").warning("portal.site_ligado sem a pasta %s: a raiz segue no painel",
+                                             cfg.root / "site")
         # 29.77: com o site institucional ligado, a raiz é dele e só `/central` segue redirecionando ao painel.
         for caminho_de_entrada in ((PREFIXO_DO_PAINEL,) if site_ligado else ("/", PREFIXO_DO_PAINEL)):
             app.add_api_route(caminho_de_entrada, _para_o_painel, methods=["GET", "HEAD"], include_in_schema=False)
