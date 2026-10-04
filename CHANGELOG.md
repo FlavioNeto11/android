@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.33: o pedido fora do catálogo vira recusa, não pergunta (branch feat/31-33-recusa-fora-do-catalogo, sem migração)
+
+- O planejador põe o pedido que nenhuma ação do catálogo do app cobre no campo fechado `fora_do_catalogo` (nos três
+  esquemas com catálogo), e não em `missing`. A execução termina `failed` com uma frase montada dos dados do catálogo
+  (o app e os títulos das ações dele, sem app nem ação fixos no código), sem pergunta, com `plan.refused`
+  `sem_acao_do_catalogo`. Achado real do 23.14: a pergunta antiga não tinha resposta.
+- Prova: `simulated` (`backend/tests/test_recusa_fora_do_catalogo.py`, 6 testes); `real` depois do deploy, com as mesmas
+  5 leituras mode=plan do 23.14.
+
 ## 2026-10-04 — 29.36: o motivo do aparelho remoto parado acompanha a conexão e a queda (branch fix/29-36-detalhe-do-externo-parado, sem migração)
 
 - `DeviceManager._recalcular_motivo_do_parado`: reescreve o `state_detail` de um aparelho de worker `stopped` com o

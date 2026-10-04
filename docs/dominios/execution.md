@@ -246,6 +246,13 @@ despacho (`_policy_gate`, a trava de sempre, com a mesma frase) e em `RunService
   `sem_acao_do_catalogo` | `acao_de_outro_catalogo`.
 - Num plano de FLUXO, a trilha da 045 (`_registrar_resolucao`) grava a resolução antes da porta. O fluxo casou de fato; o
   que se recusou foi o plano dele.
+- **O comando que pede o que o catálogo não faz (item 31.33)** não chega a virar etapa: o planejador diz o caso no
+  campo fechado `fora_do_catalogo` (`{app_id, pedido}`), e não mais em `missing`. A pergunta antiga ("Como devo fazer
+  isso?") não tinha resposta possível. `RunService._recusar_fora_do_catalogo` termina a execução em `failed`, sem
+  etapa e sem pergunta. O texto é montado só de dados (`parsing.texto_fora_do_catalogo`): o pedido, o nome do app e os
+  títulos das ações oferecidas pelo catálogo dele (ADR-052), no formato "<Pedido> não está disponível no <app>: o
+  catálogo dele só tem <títulos>. Faça essa parte você mesmo ou peça só o que está nessa lista." O evento
+  `plan.refused` leva `{motivo: "sem_acao_do_catalogo", pedidos: [{app_id, app, pedido, disponiveis}]}`.
 - App sem catálogo (o QA Messenger) segue livre com efeito. Os 12 fluxos ativos do central com `send_message` livre
   são todos dele (medido em 03/10, só leitura).
 - **O caso que motivou** (r-20261001190557-e7bc42, 01/10 19:05Z: "enviar e-mail pelo Outlook", `fill_recipient`
