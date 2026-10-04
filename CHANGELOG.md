@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — T.2 (parte 4): o Instagram dos testes não espera os 6 s da 1ª sonda (branch perf/t2-aprendizado-4)
+
+- Causa medida: o portão de internet do scheduler (`caps.requires_internet` e conectividade diferente de `healthy`)
+  segurava a etapa do Instagram até a primeira volta do monitor do aparelho, que dorme 6 s. Nos testes com
+  `FakeInstagram`, cerca de 6 s por teste eram só essa espera.
+- `Harness.medir_a_internet()` (opcional, em `tests/conftest.py`): roda a sonda de conectividade na hora e de novo a
+  cada `boot()`. O padrão segue `unknown`, então quem testa o portão não muda. Chamada em 9 arquivos de teste do
+  Instagram.
+- Medida (`simulated`, `-n 2`): o conjunto do `FakeInstagram` caiu de 333 s para 250 s (424 aprovados).
+  `test_receita_chave_generica` foi de 6 s para 0,34 s; os três casos de `test_tela_da_falha` saíram de ~5,9 s para
+  menos de 1 s.
+- Ficam fora, por outra causa (não sobem pelo laço do scheduler): `instagram_auth`, `conduta_de_login`,
+  `retoque_no_login`, `release_lifecycle` e `porta_de_sessao_no_teto` (FakeRt próprio).
+
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
 - Retorno do dono (04/10, Aprendizado › Para aprovar com 5 selecionados): o formulário do aceite abria com o botão

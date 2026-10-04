@@ -233,6 +233,7 @@ async def test_a_execucao_grava_a_tela_da_tentativa_que_falhou(harness: Harness,
     st = harness.state
     assert st is not None
     _app_do_instagram(monkeypatch, harness)
+    await harness.medir_a_internet()   # T.2: a sonda do monitor agora; o Instagram não espera os 6 s da 1ª volta
     falhou: list[str] = []
 
     async def run_step(**kw: Any) -> StepOutcome:
