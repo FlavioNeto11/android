@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 30.66: textos da aba Para aprovar (branch fix/30-66-textos-do-painel)
+
+- Fila vazia com itens em Revisar: o topo diz "Nada para aprovar; N para revisar sem pressa". A frase "publicado antes da
+  regra de aprovação (tem efeito externo)" vai uma vez para o cabeçalho de Revisar, em vez de em cada item.
+- Decidido pela plataforma: regra com nome legível (o id só no `title`), título sem chave interna com versão nem lacuna
+  crua (`tituloDaDecisao`), parecer do curador "pedir mais evidência". Prova `simulated`: testes de componente em
+  `DecididoPelaPlataforma.test.tsx` e `AprendizadoPage.test.tsx`. Navegador: `not_run` (passeio depois do deploy 32).
+
 ## 2026-10-04 — 28.28: pergunta ao bot do Telegram vai à orquestradora, e nome de persona não sai pelo canal (branch canais/28-28-pergunta-ao-bot)
 
 - **O defeito:** o dono perguntou ao bot "porque tem tanta coisa represada em validação?" e depois respondeu "no
