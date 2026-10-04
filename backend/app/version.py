@@ -127,9 +127,16 @@ def entradas_do_manifesto(caminho: Path) -> list[str]:
     return entradas
 
 
+#: Sobras de editor e de merge (`.orig` de um conflito, `.swp` do vim, `~` de backup) que podem estar numa pasta do
+#: manifesto no checkout do central e não são código: contadas, mudariam a impressão só de um lado.
+SUFIXOS_FORA = frozenset({".pyc", ".pyo", ".orig", ".rej", ".swp", ".swo", ".bak", ".tmp"})
+
+
 def _fica_fora(relativo: Path) -> bool:
-    """O que não é código do pacote: o selo de build (muda a cada cópia sem o código mudar) e o cache do Python."""
-    return relativo.as_posix() == ARQUIVO_DE_BUILD or "__pycache__" in relativo.parts or relativo.suffix == ".pyc"
+    """O que não é código do pacote: o selo de build (muda a cada cópia sem o código mudar), o cache do Python e
+    sobras de editor e de merge."""
+    return (relativo.as_posix() == ARQUIVO_DE_BUILD or "__pycache__" in relativo.parts
+            or relativo.suffix in SUFIXOS_FORA or relativo.name.endswith("~"))
 
 
 def _arquivos_do_pacote(pacote: Path) -> list[str]:

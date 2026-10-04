@@ -176,6 +176,8 @@ def test_a_impressao_do_codigo_e_a_mesma_no_checkout_e_na_copia_do_instalador(tm
     (copia / "worker" / "__pycache__").mkdir(exist_ok=True)
     (copia / "worker" / "__pycache__" / "agent.cpython-312.pyc").write_bytes(b"\x00cache")
     (copia / "solto.pyc").write_bytes(b"\x00cache")
+    for sobra in ("agent.py.orig", ".agent.py.swp", "agent.py~"):     # sobras de merge e de editor
+        (copia / "worker" / sobra).write_text("x\n", encoding="utf-8")
 
     no_checkout = codigo_do_agente.__wrapped__(APP)
     assert no_checkout is not None
