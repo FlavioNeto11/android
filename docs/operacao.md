@@ -58,7 +58,7 @@ buildado (`npm run build`) para `start.ps1` servir `frontend/dist/index.html`
 
 ```powershell
 cd backend; .venv\Scripts\python.exe -m pytest -q          # SQLite (padrão), em série
-cd backend; .venv\Scripts\python.exe -m pytest -q -n 8     # a mesma suíte em 8 processos (pytest-xdist), ~5:06
+cd backend; .venv\Scripts\python.exe -m pytest -q -n 6     # a mesma suíte em 6 processos (pytest-xdist), ~10 min; padrão desde 04/10 (29.67)
 # com TEST_DATABASE_URL=postgresql://...  , a mesma suíte roda contra PostgreSQL, ~14 min
 cd frontend; npm run typecheck && npm test
 cd backend; .venv\Scripts\python.exe -m pytest -q ..\scripts\tests   # lógica pura dos scripts, sem tocar o parque
@@ -78,7 +78,7 @@ commit**, e roda **em segundo plano** — nunca ficar ocioso esperando. O harnes
 por porta: `backend/tests/conftest.py:48` fixa `base_console_port: 5640` (o padrão de produção é 5554,
 `config.py:184`), então a suíte nunca endereça um emulador real do parque, mesmo rodando na mesma máquina.
 
-**Suíte em paralelo (`-n 8`, J-XDIST).** O `pytest-xdist` está nas dependências de dev (`backend/requirements-dev.in`). Medido em 02/10 na máquina central (22 núcleos lógicos), serial em `25624c4` (prova real da sessão Android, 16:40–17:16Z) e paralelas em `7a1d0b0` (o mesmo código de teste): em série ~36 min (2178 s); com `-n 8`, 5:06 e 5:47 em duas execuções seguidas, as três com o mesmo resultado (4752 passed e 9 skipped, sem falha, nas duas paralelas; a referência em série deu 4754 passed e 7 skipped porque rodou num worktree com a junção `backend/.venv` — os 2 testes a mais de `test_supervisao_do_central.py` exigem o venv NA árvore e pulam também em série sem ela). `-n 12` não ganha tempo e já expôs um teste de tempo frágil (`test_worker_executor.py::test_guarda_de_ram_e_reavaliada_depois_da_espera_na_fila`, que agora espera pelo fato em vez de `sleep(0.05)`). O isolamento entre processos vem do próprio harness: `tmp_path` e SQLite por teste, portas de console falsas a partir de 5640. No PostgreSQL, cada teste cria um schema `t<uuid>` e cada sessão apaga só os schemas que ela criou (`conftest.py::_SCHEMAS_DE_TESTE`); como cada worker do xdist é uma sessão, o desenho vale também em paralelo, mas a corrida em PostgreSQL com `-n` está `not_run`. Continua a regra de uma suíte completa por vez na máquina, mesmo entre sessões: antes de disparar, confira se já há um `python -m pytest` rodando.
+**Suíte em paralelo (J-XDIST; `-n 6` desde 04/10).** Com `-n 8` o convidado de um aparelho de conta real ficou sem CPU durante a SQLite (29.67); em `-n 6` a suíte leva ~10 min. As medições abaixo são as de `-n 8`, de 02/10. O `pytest-xdist` está nas dependências de dev (`backend/requirements-dev.in`). Medido em 02/10 na máquina central (22 núcleos lógicos), serial em `25624c4` (prova real da sessão Android, 16:40–17:16Z) e paralelas em `7a1d0b0` (o mesmo código de teste): em série ~36 min (2178 s); com `-n 8`, 5:06 e 5:47 em duas execuções seguidas, as três com o mesmo resultado (4752 passed e 9 skipped, sem falha, nas duas paralelas; a referência em série deu 4754 passed e 7 skipped porque rodou num worktree com a junção `backend/.venv` — os 2 testes a mais de `test_supervisao_do_central.py` exigem o venv NA árvore e pulam também em série sem ela). `-n 12` não ganha tempo e já expôs um teste de tempo frágil (`test_worker_executor.py::test_guarda_de_ram_e_reavaliada_depois_da_espera_na_fila`, que agora espera pelo fato em vez de `sleep(0.05)`). O isolamento entre processos vem do próprio harness: `tmp_path` e SQLite por teste, portas de console falsas a partir de 5640. No PostgreSQL, cada teste cria um schema `t<uuid>` e cada sessão apaga só os schemas que ela criou (`conftest.py::_SCHEMAS_DE_TESTE`); como cada worker do xdist é uma sessão, o desenho vale também em paralelo, mas a corrida em PostgreSQL com `-n` está `not_run`. Continua a regra de uma suíte completa por vez na máquina, mesmo entre sessões: antes de disparar, confira se já há um `python -m pytest` rodando.
 
 **PostgreSQL de teste.** O contêiner `farm-pg` (PostgreSQL 17 na porta 55433; receita em
 [banco.md](banco.md#rodar-a-suíte-contra-o-postgresql)) é o banco das corridas com `TEST_DATABASE_URL`; em 29/09 a
@@ -237,6 +237,10 @@ isso). Pontos que já causaram incidente:
   RAM disponível, top processos por memória, discos.
 - `GET /api/health` (`backend/app/api.py:210`) — commit, migração, `ai_billing` (conta de IA sem crédito),
   estado do túnel/worker.
+- `GET /api/ai/balances` (`curl -s http://127.0.0.1:8000/api/ai/balances`) — saldo **estimado** das contas de IA
+  (Anthropic, OpenAI, Gemini), com limites; concilia pelo relatório de custo do provedor com cache de 15 min
+  (`?refresh=1` força). Registrar um saldo lido na conta do provedor: `POST /api/ai/balances/{conta}` (grava a
+  leitura e concilia na hora; ADR-051). Nenhuma das duas chama modelo de IA.
 - `GET /api/diagnostics` (`backend/app/api.py:243`) — o mesmo relatório do `diagnose.ps1` mais o que só o
   backend sabe (capacidade medida, ferramentas).
 - **Relógio do host** — a tarefa `farm-relogio` (SYSTEM, a cada 15 min) roda `scripts/sincronizar-relogio.ps1`: mede o

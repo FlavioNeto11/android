@@ -30,8 +30,8 @@ from app.planning import prompts
 from app.planning.anthropic_provider import AnthropicProvider, strict_schema
 from app.planning.capabilities import CapabilityCatalog, load_catalog
 from app.planning.openai_provider import OpenAICompatProvider
-from app.planning.parsing import (TENTATIVAS_DO_FORMATO_CURTO, _MultiPlanCurtoOut, _MultiPlanOut, _PlanCurtoOut,
-                                  _PlanOut, catalog_plan_from_json, plan_from_json)
+from app.planning.parsing import (PISO_DA_ETAPA_COM_IA_S, TENTATIVAS_DO_FORMATO_CURTO, _MultiPlanCurtoOut,
+                                  _MultiPlanOut, _PlanCurtoOut, _PlanOut, catalog_plan_from_json, plan_from_json)
 from app.planning.provider import AIError, AppContext, PlanRequest
 from app.taskqueue.recipes import step_template_hash
 
@@ -149,9 +149,9 @@ def test_plano_livre_curto_recebe_descricao_precondicao_e_tentativas_do_backend(
     assert {k: s.max_attempts for k, s in por_chave.items()} == {
         "open_app": TENTATIVAS_DO_FORMATO_CURTO, "open_conversation": 3, "fill_message": 3, "send_message": 1,
         "list_contacts": 3}
-    # o prazo segue do modelo, com os limites de sempre (30 a 600 s)
+    # o prazo segue do modelo, com os limites do backend: piso de 120 s na etapa com IA (29.75; era 30) e teto de 600
     assert (por_chave["open_app"].timeout_s, por_chave["send_message"].timeout_s,
-            por_chave["open_conversation"].timeout_s) == (30, 600, 60)
+            por_chave["open_conversation"].timeout_s) == (PISO_DA_ETAPA_COM_IA_S, 600, PISO_DA_ETAPA_COM_IA_S)
     enviar = por_chave["send_message"]
     assert enviar.side_effect and enviar.commit_guard == ["QA-001", "Bom dia {run_id}"]
     nivel = enviar.postcondition.required_delivery_level

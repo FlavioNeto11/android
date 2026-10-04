@@ -243,6 +243,24 @@ class ClienteTrello:
             raise FalhaDoTrello("o Trello não devolveu o quadro do cartão")
         return quadro
 
+    async def cartao(self, card: str) -> tuple[str, str]:
+        """`GET /1/cards/{id ou shortLink}?fields=id,idBoard`: o id inteiro do cartão e o quadro dele. A API aceita o
+        código curto do link (`trello.com/c/<shortLink>`), e é ele que a pessoa tem à mão."""
+        resposta = self._objeto(await self._pedir("GET", f"/1/cards/{quote(card, safe='')}", params={"fields": "id,idBoard"}),
+                                "o cartão")
+        ident, quadro = resposta.get("id"), resposta.get("idBoard")
+        if not isinstance(ident, str) or not ident or not isinstance(quadro, str) or not quadro:
+            raise FalhaDoTrello("o Trello não devolveu o cartão e o quadro dele")
+        return ident, quadro
+
+    async def nomes_dos_anexos(self, card: str) -> dict[str, str]:
+        """`GET /1/cards/{id}/attachments?fields=id,name`: nome → id de cada anexo do cartão (para não mandar duas vezes
+        o mesmo arquivo, que vai com o nome neutro `anexo-<sha>.<ext>`)."""
+        lista = await self._pedir("GET", f"/1/cards/{quote(card, safe='')}/attachments", params={"fields": "id,name"})
+        if not isinstance(lista, list):
+            raise FalhaDoTrello("o Trello não devolveu os anexos do cartão")
+        return {str(a["name"]): str(a["id"]) for a in lista if isinstance(a, dict) and a.get("name") and a.get("id")}
+
     async def anexar_arquivo(self, card: str, conteudo: bytes, mime: str, nome: str) -> str:
         """`POST /1/cards/{id}/attachments` com o arquivo em multipart (item 28.24, exceção (b) do dono). `nome` é neutro
         (`anexo-<sha>.<ext>`): o do remetente nunca chega aqui. Devolve o id do anexo no Trello. Como todo pedido do

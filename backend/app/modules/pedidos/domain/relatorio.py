@@ -27,6 +27,9 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
+from app.modules.pedidos.domain import consolidacao as dominio_consolidacao
+from app.modules.pedidos.domain.vistas import EM_ABERTO, NAO_COBREM, ObservacaoVista, OcorrenciaVista
+
 VERSAO_DO_FORMATO = 1
 #: Quanto cabe em "observado" e em "não coberto"; o excesso vira um item que diz quanto ficou de fora.
 MAX_OBSERVADO = 500
@@ -34,36 +37,6 @@ MAX_NAO_COBERTO = 500
 MAX_TEXTO = 200
 ALCANCE = ("Vale só para as ocorrências e observações listadas neste relatório; não generaliza para além da amostra "
            "coletada.")
-
-#: O que cada estado de ocorrência diz ao relatório. `concluida` é a única que cobre; as demais terminais NÃO cobrem.
-NAO_COBREM = ("perdida", "pulada", "incerta", "falhou", "cancelada")
-EM_ABERTO = ("prevista", "devida", "despachada", "rodando")
-
-
-@dataclass(frozen=True)
-class OcorrenciaVista:
-    id: str
-    previsto_para: str
-    estado: str
-    motivo: str | None = None
-    custo_usd: float = 0.0
-    origem: str = "agenda"
-
-
-@dataclass(frozen=True)
-class ObservacaoVista:
-    id: str
-    ocorrencia_id: str
-    alvo: str
-    nome: str
-    situacao: str                      # observado | incerto | ausente (como foi GRAVADA)
-    valor: str | None
-    tipo: str = "text"
-    fonte: str = ""
-    trecho: str | None = None
-    sha256: str | None = None
-    capturado_em: str = ""
-
 
 @dataclass(frozen=True)
 class EntradaDoRelatorio:
@@ -75,6 +48,10 @@ class EntradaDoRelatorio:
     ocorrencias: Sequence[OcorrenciaVista] = ()
     observacoes: Sequence[ObservacaoVista] = ()
     pendencias: Sequence[str] = ()     # os valores das pendências ABERTAS da memória (§8.1)
+    #: 28.10 F4: os filhos diretos do pedido (`domain/consolidacao.FilhoVisto`). Vazio = nada de `consolidacao` no relatório,
+    #: que sai idêntico ao de antes. `consolidacao_falhou` diz que os filhos existem mas a leitura deles falhou.
+    filhos: Sequence[object] = ()
+    consolidacao_falhou: bool = False
 
 
 @dataclass
@@ -129,6 +106,13 @@ def montar(entrada: EntradaDoRelatorio) -> dict[str, object]:
                          + (f": {_curto(o.motivo, 160)}" if o.motivo else "")})
 
     _lacunas(no_periodo, itens, entrada)
+    consolidacao = None
+    if entrada.filhos:
+        consolidacao = dominio_consolidacao.consolidar(entrada.filhos)        # type: ignore[arg-type]
+        itens.nao_coberto.extend(dominio_consolidacao.itens_nao_cobertos(consolidacao))
+    elif entrada.consolidacao_falhou:
+        itens.nao_coberto.append({"tipo": "consolidacao_indisponivel",
+                                  "texto": "a leitura das observações e da memória dos filhos falhou: sem consolidação"})
     for c in entrada.criterios:
         itens.nao_coberto.append({"tipo": "criterio_nao_avaliado", "criterio": _curto(c),
                                   "texto": "critério sem verificação estruturada nesta versão: só o fechamento da execução o atesta"})
@@ -164,7 +148,7 @@ def montar(entrada: EntradaDoRelatorio) -> dict[str, object]:
     custo = 0.0
     for o in no_periodo:                          # já ordenadas: a soma de ponto flutuante não depende da entrada
         custo += float(o.custo_usd or 0.0)
-    return {
+    saida: dict[str, object] = {
         "formato": VERSAO_DO_FORMATO,
         "pedido_id": entrada.pedido_id,
         "pedido_versao": entrada.pedido_versao,
@@ -175,6 +159,9 @@ def montar(entrada: EntradaDoRelatorio) -> dict[str, object]:
         "nao_coberto": nao_coberto,
         "custo_usd": round(custo, 6),
     }
+    if consolidacao is not None:                    # a chave só existe com filhos: o relatório sem filhos não muda
+        saida["consolidacao"] = consolidacao
+    return saida
 
 
 def serializar(relatorio: Mapping[str, object]) -> str:

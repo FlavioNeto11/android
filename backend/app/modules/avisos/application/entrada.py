@@ -18,6 +18,10 @@ Sem fato (a mensagem solta):
 - `/orq <texto>`: recado para a orquestradora, guardado e não executado;
 - `/captura <aparelho>`, ou "captura do android-12" (28.24, exceção (a) do dono): a tela do aparelho volta como imagem, só
   ao chat do dono. Não executa nada no aparelho;
+- `/ler` (ou "leia", "o que tem nessa imagem") em RESPOSTA (reply) a uma foto do dono (28.24, F3): a IA descreve a imagem, uma
+  vez só (a descrição fica gravada) e com teto em dólar; sem reply a um anexo, a resposta explica o formato. Não pede
+  Executar: o gasto é pequeno e tem teto. O fato `anexo:<id>` é montado pelo canal (o anexo guardado da mensagem respondida);
+  qualquer outra resposta a uma foto segue a gramática comum;
 - "quem é você?", "você é uma IA?" (e `/quem`): a pergunta pela identidade (28.17). Quem responde é a ANA, que diz
   que é IA; a frase precisa ser SÓ a pergunta, para um pedido que começa parecido seguir como texto livre.
 
@@ -40,7 +44,8 @@ from app.contracts.identidade import APRESENTACAO_DA_IA
 
 #: O que cada intenção é. `desconhecida` responde com a ajuda; `vazia` não responde.
 INTENCOES = frozenset({"ajuda", "identidade", "status", "pendencias", "aprovar", "vetar", "responder", "para", "livre",
-                       "orquestradora", "desconhecida", "vazia", "autorizar_convidado", "recusar_convidado", "captura"})
+                       "orquestradora", "desconhecida", "vazia", "autorizar_convidado", "recusar_convidado", "captura",
+                       "ler_anexo"})
 
 AJUDA = (
     "Comandos da Central:\n"
@@ -50,6 +55,7 @@ AJUDA = (
     "/responder <id> <texto>: responde à pergunta de uma execução\n"
     "/para <aparelho ou persona> <objetivo>: um pedido com destino\n"
     "/captura <aparelho>: a tela do aparelho, como imagem (também: \"captura do android-12\")\n"
+    "/ler: respondendo a uma foto sua, a IA descreve a imagem (uma vez só, com teto de gasto; também: \"leia\")\n"
     "Texto livre também é um pedido; antes de rodar, a Central mostra a prévia e espera Executar.\n"
     "Foto, PDF e texto (arquivo .txt) ficam guardados na Central; a legenda vale como mensagem.\n"
     "Respondendo a um aviso, o id é o dele: \"sim\" aprova, \"não\" veta, e o texto responde a uma pergunta.\n"
@@ -71,10 +77,31 @@ _QUEM_E = re.compile(
     r"(?:qual (?:e )?)?(?:o )?seu nome|como (?:voce|vc) se chama"
     r")\s*[?!.]*$")
 _ANDROID = re.compile(r"^android-\d+$", re.IGNORECASE)
+#: "leia", "ler essa imagem", "descreva a foto", "o que tem nessa imagem?": já sem acento, de ponta a ponta, e só quando a
+#: mensagem é reply a um anexo do dono (a frase solta, sem anexo, segue como texto livre).
+_LER = re.compile(r"^(?:(?:por favor )?(?:le|leia|ler|descreva|descreve)(?: (?:essa|esta|a|ela))?(?: (?:imagem|foto|print))?"
+                  r"|o que (?:tem|ha|aparece|esta) (?:nessa|nesta|na) (?:imagem|foto|print)(?: ai)?)\s*[?!.]*$")
 #: "captura do android-12", "me manda um print do android-12", "screenshot de tela do android-3": já sem acento, de ponta a
 #: ponta. Só com o id do aparelho; "captura do app do Pedro" segue como pedido de texto livre.
 _CAPTURA = re.compile(r"^(?:(?:me )?(?:manda|mande|envia|envie|tira|tire|pega|pegue) )?(?:a |uma? )?"
                       r"(?:captura|print|screenshot)(?: de tela)? (?:do |da |de )?(?P<alvo>android-\d+)\s*[?!.]*$")
+#: Pergunta solta ao bot (28.28): termina em "?" ou começa por palavra de pergunta, já sem acento. Não é pedido de
+#: aparelho: "porque tem tanta coisa represada em validação?" virava texto livre, a prévia pedia destino e o dono
+#: recebia "Diga onde ou por quem". Na dúvida entre pergunta e pedido, repassar é melhor que recusar (orquestradora).
+_PERGUNTA_INICIO = re.compile(
+    r"^(?:(?:oi|ola|ana|e ai)[\s,!.]+)?(?:por ?que|pq|o ?que|oq|quando|como|quanto|quantos|quantas|cade|qual|quais|onde|"
+    r"quem|sera que|tem como|ja|esta|estao|existe|existem)\b")
+#: O que faz da frase um pedido para um aparelho ou uma persona, mesmo terminando em "?": "pode abrir o QA no
+#: android-12?" é pedido.
+_CITA_DESTINO = re.compile(r"\bandroid-\d+\b|@\w|\bpersona\b")
+
+
+def _eh_pergunta(normal: str) -> bool:
+    if _CITA_DESTINO.search(normal):
+        return False
+    return normal.rstrip().endswith("?") or bool(_PERGUNTA_INICIO.match(normal))
+
+
 #: "para o X: objetivo", "para a X: objetivo", "para X: objetivo" (os dois-pontos são o que separa o destino).
 _PARA_LIVRE = re.compile(r"^\s*para\s+(?:o\s+|a\s+)?(?P<alvo>[^:\n]{1,60}?)\s*:\s*(?P<objetivo>\S.*)$",
                          re.IGNORECASE | re.DOTALL)
@@ -91,6 +118,13 @@ class Intencao:
     alvo: str | None = None
     #: O que dizer quando o formato não serve (só em `desconhecida`).
     motivo: str | None = None
+    #: `/aprovar <x>` ou `/vetar <x>` em REPLY a um aviso: a primeira palavra digitada. Quem decide confere se ela é o
+    #: id de OUTRA pendência (28.26); se for, nada se decide. Sem isso o reply decidia o aviso e o id virava nota.
+    ref_digitado: str | None = None
+    #: Por que uma mensagem foi à orquestradora (28.28): `comando` (`/orq`), `reply` (ao bot que a Central não mandou),
+    #: `pergunta` (pergunta solta do dono), `continuacao` (reply a uma resposta nossa de um repasse) ou `sem_destino`
+    #: (texto livre que a prévia recusou). Decide a resposta ao dono; o repasse é o mesmo.
+    repasse: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +150,11 @@ class Fato:
     @property
     def pergunta(self) -> bool:
         return self.tipo == "run" and self.detalhe == "needs_input"
+
+    @property
+    def anexo(self) -> bool:
+        """O anexo do dono a que a mensagem responde (28.24, F3): a identidade é o `canal_anexos.id`."""
+        return self.tipo == "anexo"
 
     @property
     def convidado(self) -> bool:
@@ -158,6 +197,8 @@ def rotear(texto: str | None, *, fato: str | Fato | None = None) -> Intencao:
     m = _PARA_LIVRE.match(t)
     if m:
         return Intencao("para", alvo=m.group("alvo").strip(), texto=m.group("objetivo").strip())
+    if _eh_pergunta(normal):
+        return Intencao("orquestradora", texto=t, repasse="pergunta")
     return Intencao("livre", texto=t)
 
 
@@ -172,15 +213,19 @@ def _rotear_comando(t: str, f: Fato | None) -> Intencao:
         if not _ANDROID.match(alvo):
             return Intencao("desconhecida", motivo="Formato: /captura android-NN (o id do aparelho).")
         return Intencao("captura", alvo=alvo.lower())
+    if cmd == "ler":
+        if f is not None and f.anexo:
+            return Intencao("ler_anexo", ref=f.ident)
+        return Intencao("desconhecida", motivo="Responda (reply) à foto que você mandou com /ler.")
     if cmd in ("status", "estado"):
         return Intencao("status")
     if cmd == "pendencias":
         return Intencao("pendencias")
     if cmd == "orq":
-        return Intencao("orquestradora", texto=resto)
+        return Intencao("orquestradora", texto=resto, repasse="comando")
     if cmd in ("aprovar", "vetar"):
         if f is not None and f.aprovacao:
-            return Intencao(cmd, ref=f.ident, texto=resto)
+            return Intencao(cmd, ref=f.ident, texto=resto, ref_digitado=resto.split()[0] if resto.split() else None)
         ref, _, nota = resto.partition(" ")
         if not ref:
             return Intencao("desconhecida", motivo=f"Falta o id: /{cmd} <id> (a /pendencias mostra os ids).")
@@ -203,6 +248,9 @@ def _rotear_comando(t: str, f: Fato | None) -> Intencao:
 
 
 def _rotear_resposta(t: str, f: Fato) -> Intencao | None:
+    if f.anexo:
+        # Só o pedido de leitura é do anexo; "sim", um objetivo ou qualquer outra frase seguem a gramática comum (None).
+        return Intencao("ler_anexo", ref=f.ident) if _LER.match(" ".join(_sem_acento(t).split())) else None
     if f.convidado:
         # Sem este ramo, o "sim" do dono ao aviso do convidado cairia no texto livre e viraria PEDIDO (28.18).
         if f.detalhe != "novo":

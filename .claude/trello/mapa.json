@@ -2115,7 +2115,7 @@
   "29.30": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac14374d8f9e8157806f675",
    "url": "https://trello.com/c/oUl4UPYU",
-   "lista": "em_validacao",
+   "lista": "espera_voce",
    "lote": "lote_A8_atuais_pendentes"
   },
   "29.33": {
@@ -2535,7 +2535,7 @@
   "28.15": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141473d1fd9e0fd328111",
    "url": "https://trello.com/c/cS8Yi3nL",
-   "lista": "em_validacao",
+   "lista": "espera_voce",
    "lote": "lote_A8_atuais_pendentes",
    "nome": "28.15 · Telegram como canal de entrada (no servidor desde o deploy 14, desligado até a última revisão)"
   },
@@ -2858,7 +2858,7 @@
   "28.18": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac17a13adc57edc3c97a98e",
    "url": "https://trello.com/c/ij2QiYYZ",
-   "lista": "em_validacao",
+   "lista": "espera_voce",
    "lote": "canais",
    "nome": "28.18 · Convidado no Telegram, com o nome primeiro"
   },
@@ -2956,7 +2956,7 @@
   "31.26": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1a3edd83037f3f2fd5d27",
    "url": "https://trello.com/c/mHmW63Mg",
-   "lista": "aguardando_data",
+   "lista": "espera_voce",
    "lote": "canais",
    "nome": "Marcador de entrega dispensa o 1º julgamento"
   },
@@ -3226,7 +3226,7 @@
   "28.24": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac26ddcc30b2b7d0b45bf81",
    "url": "https://trello.com/c/mjYDdaJi",
-   "lista": "em_validacao",
+   "lista": "espera_voce",
    "lote": null
   },
   "29.71": {
@@ -3244,7 +3244,7 @@
   "30.55": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac277fa860ea70afdbe5987",
    "url": "https://trello.com/c/bvILP8V8",
-   "lista": "em_validacao",
+   "lista": "concluido",
    "lote": null
   },
   "31.42": {
@@ -3256,7 +3256,7 @@
   "28.25": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2785257d3831db43d8e69",
    "url": "https://trello.com/c/enArdvfN",
-   "lista": "em_validacao",
+   "lista": "concluido",
    "lote": null
   },
   "29.72": {
@@ -3274,7 +3274,7 @@
   "31.43": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac27a5695f2200d43d795c9",
    "url": "https://trello.com/c/qEHXZNus",
-   "lista": "em_validacao",
+   "lista": "concluido",
    "lote": null
   },
   "29.73": {
@@ -3390,6 +3390,54 @@
    "url": "https://trello.com/c/28ujx5ws",
    "lista": "em_validacao",
    "lote": null
+  },
+  "28.29": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2a024eb744ad5a631cd97",
+   "url": "https://trello.com/c/y4VXCPG9",
+   "lista": "em_execucao",
+   "lote": null
+  },
+  "28.30": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2a24631a51aa03768f1d3",
+   "url": "https://trello.com/c/EfMoW4Ld",
+   "lista": "proximas",
+   "lote": null
+  },
+  "avulsa:analise-instagram-skills": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2a443d99873c4c88388bb",
+   "url": "https://trello.com/c/Du48n73N",
+   "lista": "concluido",
+   "lote": null
+  },
+  "31.51": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2a4446599c75f6bb99ebe",
+   "url": "https://trello.com/c/2M254Mzx",
+   "lista": "proximas",
+   "lote": null
+  },
+  "30.65": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2a4449ce7b1a738eac2d5",
+   "url": "https://trello.com/c/sfEfdhB7",
+   "lista": "proximas",
+   "lote": null
+  },
+  "28.24-F5": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2a445fcd257a517118cf1",
+   "url": "https://trello.com/c/a5ZU6wFk",
+   "lista": "proximas",
+   "lote": null
+  },
+  "28.31": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2a5600443e74726a6c551",
+   "url": "https://trello.com/c/VmZFGMdQ",
+   "lista": "em_execucao",
+   "lote": null
+  },
+  "operacao:cota-semanal": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2aacf232905dbfcef66a7",
+   "url": "https://trello.com/c/8CtqEhBO",
+   "lista": "em_execucao",
+   "lote": null
   }
  },
  "falhas": [],
@@ -3418,6 +3466,7 @@
   }
  },
  "listas_extra": {
-  "aguardando_data": "6ac2993cb2061eb82efd107e"
+  "aguardando_data": "6ac2993cb2061eb82efd107e",
+  "espera_voce": "6ac2a39bc05cc874bd6320ee"
  }
 }

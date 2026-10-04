@@ -5,7 +5,7 @@ import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
 import { EmptyState } from '../../components/EmptyState';
-import { toLoadError } from '../../lib/loadError';
+import { LoadErrorBanner, toLoadError, type LoadError } from '../../lib/loadError';
 import { formatDateTime, formatQuando } from '../../lib/time';
 import { toast } from '../../store/toasts';
 import { apiAprendizado } from './api';
@@ -14,6 +14,12 @@ import {
 } from './aprovacaoAutomatica';
 import { DecisaoInline } from './DecisaoInline';
 import styles from './Aprendizado.module.css';
+
+/** 30.63: o "Ver todas" diz quantas o dono já desfez (desligou depois), em vez de contá-las caladas. */
+function textoDesfeitas(decididos: DecisaoDaPlataforma[]): string {
+  const n = decididos.filter((d) => d.estado === 'disabled').length;
+  return n === 0 ? '' : ` (${n} ${n === 1 ? 'desfeita' : 'desfeitas'})`;
+}
 
 /** Quantas decisões a seção mostra antes do "Ver todas" (as mais recentes primeiro). */
 const VISIVEIS = 5;
@@ -71,12 +77,22 @@ function LinhaDaDecisao({ d, onMudou }: { d: DecisaoDaPlataforma; onMudou: () =>
  * nenhuma contra). Em `shadow`, só o que ela decidiria; em `on`, as decisões, cada uma com o Desligar. Em `off` e sem
  * decisão nenhuma, a seção some (não há o que mostrar). `tituloDe` acha o nome dos itens que ainda estão nas filas.
  */
-export function DecididoPelaPlataforma({ relatorio, tituloDe, onMudou }: {
+export function DecididoPelaPlataforma({ relatorio, erro = null, tituloDe, onMudou }: {
   relatorio: RelatorioDaAprovacao | null;
+  /** 30.63 (c): o erro da rota que não é "não existe" (404): a seção aparece com ele, em vez de sumir. */
+  erro?: LoadError | null;
   tituloDe: (itemRef: string) => string;
   onMudou: () => void;
 }) {
   const [todas, setTodas] = useState(false);
+  if (!relatorio && erro) {
+    return (
+      <section className={styles.secao} aria-labelledby="aprendizado-plataforma">
+        <h2 id="aprendizado-plataforma" className={styles.secaoTitulo}><Bot size={16} aria-hidden /> Decidido pela plataforma</h2>
+        <LoadErrorBanner error={erro} onRetry={onMudou} />
+      </section>
+    );
+  }
   if (!relatorio || (relatorio.modo === 'off' && relatorio.decididos.length === 0)) return null;
   const volta = relatorio.ultima_volta;
   const visiveis = todas ? relatorio.decididos : relatorio.decididos.slice(0, VISIVEIS);
@@ -85,10 +101,9 @@ export function DecididoPelaPlataforma({ relatorio, tituloDe, onMudou }: {
       <h2 id="aprendizado-plataforma" className={styles.secaoTitulo}><Bot size={16} aria-hidden /> Decidido pela plataforma</h2>
       {relatorio.modo === 'shadow' ? (
         <Banner tone="info" icon={Eye} compact role="note">
-          {/* "Nada foi decidido" só com a lista vazia: com decisões abaixo, a frase contradiz a tela. */}
-          {relatorio.decididos.length === 0
-            ? 'Em observação: a plataforma só anota o que decidiria. Nada foi decidido sozinho ainda.'
-            : 'Em observação agora; as decisões abaixo são de quando ela decidia sozinha.'}
+          {relatorio.decididos.length > 0
+            ? 'Em observação: a plataforma só anota o que decidiria. As decisões abaixo são de quando ela decidia.'
+            : 'Em observação: a plataforma só anota o que decidiria. Nada foi decidido sozinho ainda.'}
         </Banner>
       ) : null}
       {relatorio.modo === 'on' ? (
@@ -130,7 +145,7 @@ export function DecididoPelaPlataforma({ relatorio, tituloDe, onMudou }: {
       {relatorio.decididos.length > VISIVEIS ? (
         <div className={styles.toolbar}>
           <Button size="sm" variant="ghost" onClick={() => setTodas((x) => !x)}>
-            {todas ? 'Mostrar só as mais recentes' : `Ver todas as ${relatorio.decididos.length} decisões`}
+            {todas ? 'Mostrar só as mais recentes' : `Ver todas as ${relatorio.decididos.length} decisões${textoDesfeitas(relatorio.decididos)}`}
           </Button>
         </div>
       ) : null}

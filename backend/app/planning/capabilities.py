@@ -174,14 +174,15 @@ def local_proof_error(valor: str | None) -> str | None:
         return None
     if valor.startswith("count_gt:"):
         # 29.30: `count_gt:<binding>:<seletor>` — o número lido no elemento é MAIOR que o do binding (a contagem de
-        # antes). O binding é nome de variável; o seletor é de UM elemento (sem `&`).
+        # antes). O binding é nome de variável; o seletor da contagem é de UM elemento. 30.60: depois dele, guardas
+        # com `&` (cada uma tem de casar na tela, por exemplo o @ do próprio perfil).
         binding, _, seletor = valor[len("count_gt:"):].partition(":")
         if not re.fullmatch(r"[a-z_0-9]+", binding):
             return "count_gt: o binding precisa ser um nome ([a-z_0-9]+)"
         if not seletor.strip():
             return "count_gt: sem seletor"
-        if "&" in seletor:
-            return "count_gt: não aceita `&` (o seletor é de UM elemento)"
+        if not all(p.strip() for p in seletor.split("&")):
+            return "count_gt: guarda vazia depois de `&`"
         return None
     for prefixo in ("sent_text:", "selector:", "selector_band:"):
         if valor.startswith(prefixo):
