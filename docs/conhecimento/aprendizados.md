@@ -2397,3 +2397,17 @@ com ou sem `-no-window`, ninguém vê o diálogo para responder. O processo fica
 
 **Aplicabilidade.** Vigente. Aparelho preso em `booting` sem erro: ler o fim de `data/logs/emulator-<avd>.log` antes de
 reiniciar ou resetar. Diálogo do emulador na sessão 0 é parada silenciosa, e esperar o prazo só alimenta a escada.
+
+### K-091 — O ensaio só de leitura não deixa evidência de fluxo, mas mexe nas receitas da navegação
+
+**Sintoma.** 04/10, 12:07Z–12:10Z: dois ensaios no Instagram (a9cf9c e 3d7b28) fecharam `cancelled` sem efeito, como
+se espera. Mesmo assim, a `receita:73` (`open_profile_1`) saiu de `published` para `disabled` às 12:09:15Z, com a
+razão "3 falhas seguidas ao reproduzir". Nasceu também a `receita:166` candidata.
+
+**Causa.** O ensaio corta só a etapa de efeito (e o preenchimento dela). As etapas de navegação rodam de verdade, e a
+loja de receitas conta a reprodução, a divergência e o que a IA ensina, como em qualquer execução. A divergência da
+a9cf9c foi a 3ª seguida da 73, e a quarentena é automática.
+
+**Aplicabilidade.** Vigente. Antes de ensaiar no app real, contar com isso: o ensaio põe à prova as receitas do
+caminho. A receita em quarentena pelo sistema não pede reensino. A próxima execução real do mesmo passo manda a etapa
+à IA, nasce a candidata v2, e ela sobe com 2 concordâncias (`docs/dominios/aprendizado.md`, ensaio só de leitura).

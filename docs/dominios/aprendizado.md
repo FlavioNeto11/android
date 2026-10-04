@@ -1061,9 +1061,33 @@ caminhos de sempre (a sombra do fluxo, os contadores da receita) e quem decide s
     - Por que não deixa evidência: o veredito não deixa nenhuma, e o pedido fecha `ensaio_so_leitura`, nunca
       `feita`. Navegar até o botão não é o fluxo, e um `for` do ensaio contaria para a autopublicação (30.34) um fluxo
       cujo efeito nunca rodou. A linha `invalida` do 30.42 continua vencendo.
-    - O que falta: nada cria execução de ensaio sozinho; ela nasce pela API com a chave. O ensaio no Instagram vai
-      depois deste ajuste no ar, repetindo o portão 1 com o campo conferido vazio (decisão da orquestradora, 04/10).
-  - Prova `simulated`: `tests/test_learning_ensaio_e_oraculo.py`.
+    - Nada cria execução de ensaio sozinho: ela nasce pela API com a chave.
+    - **Prova `real` (04/10, só por leitura do resultado):**
+      - Portão 1 no QA: r-20261004094430-a3b72b (android-10). Parou antes do `send_message`, e o provedor do QA ficou
+        em 20 → 20; o texto ficou digitado, e isso levou ao ajuste do preenchimento (#230).
+      - Repetido com o ajuste: r-20261004110912-ea5b4e. Parou antes do `fill_message`, o campo ficou vazio e o
+        provedor em 20 → 20.
+      - Instagram, depois do #237 e com o gatilho da orquestradora: r-20261004120738-a9cf9c (comentar, android-03) e
+        r-20261004120952-3d7b28 (responder, android-01). Os dois fecharam `cancelled`, com as etapas 1–3 comprovadas.
+        A etapa de efeito ficou `skipped` com 0 tentativas, sem rascunho e sem aprovação.
+    - **O que o ensaio deixa no livro.** A execução de ensaio não tem `prova_fluxo_id`, então não deixa evidência de
+      fluxo nem faz nascer fluxo. As etapas de navegação, porém, rodam de verdade, e a loja de receitas as trata como
+      em qualquer execução: reprodução conta, divergência conta e a IA ensina.
+      - Nos dois ensaios do Instagram, a `receita:91` ganhou dois `for` (`open_comments_1`).
+      - A `receita:73` divergiu (`open_profile_1`), a IA assumiu, e foi a 3ª falha seguida dela: o sistema a pôs em
+        quarentena ("3 falhas seguidas ao reproduzir"; no livro, `disabled`).
+      - A `receita:166` nasceu candidata, aprendida da IA no 3d7b28, de outro passo.
+      - Com a quarentena, a 73 não se reproduz mais. O passo dela volta sozinho: na próxima execução real com o mesmo
+        `step_hash`, a busca cai em `quarentena`, a IA faz a etapa e o caminho dela vira a candidata v2 (a 73 passa a
+        `superseded`). Ela sobe com 2 concordâncias reais (`ai.recipes_promote_after`). Não é vetada, porque o veto
+        (`receita_vetada`) só conta decisão de pessoa ou evidência inválida. Não pede reensino.
+      - Quem ensaia no app real deve contar com esse efeito na loja: o ensaio não deixa evidência de fluxo, mas mexe
+        nas receitas da navegação.
+  - Prova `simulated`: `tests/test_learning_ensaio_e_oraculo.py`. A conferência no QA também tem prova `real` (04/10):
+    o pedido lv-1be2a60f37a73b12 rodou como r-20261004121625-92d0b4 no android-07 (`account_label` qa-user-07), com
+    6/6 etapas e 1 mensagem da execução no provedor do QA: "o efeito saiu uma vez", evidência `for`, US$ 0,0631. O
+    fluxo foi a `validated` pela sombra. Antes dele, o P4 tinha ficado parado por execuções só de plano (30.49) e
+    caído num aparelho sem conta (30.50).
 - **Fora das fatias 1 e 2:** a classe do fluxo pela etapa mais restritiva (30.32).
 - **Prova** `simulated`: `tests/test_learning_validacao.py`, `tests/test_learning_validacao_sql.py`,
   `tests/test_learning_curador.py` (`*validacao*`, `evidencia_chegou`). Ligar no central é `modo: "on"` depois do
@@ -1263,6 +1287,10 @@ evidência pela execução de prova, porque o comando casa só com fluxo `active
 - **Nenhuma recusa grava pedido:** a resposta diz o motivo. O pedido vivo é conflito.
 - O painel ainda não tem o botão; a rota basta para a orquestradora e o dono.
 - Prova `simulated`: `backend/tests/test_learning_pedir_validacao.py`.
+- Prova `real` (04/10, deploy 23): a rota devolveu 201 para `no-qa-messenger-levantar-todos-os-contat` com o pedido
+  lv-5cf7389f13e4e0f0. Ao despachar, ele fechou `plano_acima_do_teto`: o `for_each` não tinha tamanho conhecido.
+  Esse é o caso do 30.48 (prova por amostra). Já o `literal-para-suporte` recebe 422 `credencial` (texto com cara de
+  código) e fica fora da validação por pedido.
 
 ## O item de mais de um app (30.33-C)
 
