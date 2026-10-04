@@ -296,6 +296,12 @@ achado não se confirmam nos dados.
     `efeito` (política do efeito externo, inclusive `by_risk`) · `nova_tentativa` · `erros_seguidos` · `piso` (alvo
     inexistente, 7.8) · `bloqueio` (a cascata) · `ciclo`. No `verify`: `nivel` (7.10) e `sim_com_efeito` (17.10). A
     linha com `escalate` é sempre tier ≥ 1: o rejulgamento era gravado como `verify` tier 0.
+    Desde o 31.26 (opção A, `ai.sent_text_dispensa_primeiro_juiz`), na etapa com nível `sent` cuja ação declara a prova
+    local `sent_text` (a SEND_MESSAGE do Instagram), a prova confirmada na árvore substitui o primeiro julgamento
+    (o barato). Nesse caso a única linha `verify` da etapa é a do rejulgamento `sim_com_efeito`, e é ele quem decide.
+    Fica a decisão "envio comprovado pela árvore local (sent_text)" e a métrica `verificacao.primeiro_juiz_dispensado`.
+    O atalho só vale quando: o nível é `sent` (entregue e lida, a árvore não prova); é o primeiro julgamento da
+    verificação; o rejulgamento vai acontecer (ligado e com modelo diferente). Sem isso, nada muda.
   - `verdict` (o desfecho): `yes`/`no`/`uncertain`/`unprovable` no `verify`; o nome da ferramenta no `decide` (fora
     da lista de ferramentas, `desconhecida`); `plano` ou `pergunta` no `plan`; nulo na leitura e na linha de erro.
   - `image_reason` (por que a imagem foi junto, ou não), na ordem de `_motivo_da_imagem`. Sem imagem: `sensivel`,

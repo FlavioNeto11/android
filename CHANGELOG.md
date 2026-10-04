@@ -98,6 +98,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Ela fica fora da taxa de acordo e do veredito principal, com medidas próprias; a transição do dono item a item vence.
   Ninguém registra transição como se fosse o dono (decisão da orquestradora, golden set §2).
 - Prova `simulated`: `scripts/tests/test_jev_relatorio_31_10.py`.
+## 2026-10-04 — 31.26 (opção A): a prova local `sent_text` dispensa o primeiro julgamento do envio (branch feat/31-26a-sent-text-dispensa-juiz, sem migração)
+
+- Na etapa com nível `sent` cuja ação declara `sent_text` (SEND_MESSAGE do Instagram), a prova confirmada na árvore
+  substitui o julgamento barato. O rejulgamento do 17.10 (`sim_com_efeito`) continua e decide. Chave
+  `ai.sent_text_dispensa_primeiro_juiz` (true). Ganho estimado: 2 a 4 s e menos de 1 centavo por envio (inferido).
+- Prova:
+  - `simulated`: `backend/tests/test_sent_text_dispensa_juiz.py` (6 testes) e `test_dm_verificador.py`;
+  - `not_run` a real: DM entre contas nossas segue barrada até ~02/11 (ADR-055).
 
 ## 2026-10-04 — 30.52: o dossiê do curador pela marca do conteúdo e a recusa do pedido pela pessoa (branch fix/30-52-dossie-pela-marca)
 

@@ -251,6 +251,8 @@ ai:
                                   # pessoa (não vale para challenge, auth_required e wrong_account); false = como antes
   rejudge_yes_on_side_effect: true  # (true) 17.10: o "sim" do verificador barato em etapa com efeito externo (ou que confirma o
                                     # nível de entrega) é conferido UMA vez pelo modelo de escalonamento; só age se os modelos diferem
+  sent_text_dispensa_primeiro_juiz: true  # (true) 31.26 A: nível `sent` com a prova local `sent_text` (SEND_MESSAGE do
+                                    # Instagram) dispensa o 1º julgamento; o rejulgamento acima continua e decide
   verify_max_model_calls: 2       # (5) verificação por visão só rejulga quando a tela muda
   # cache_ttl_do_plano: 1h       # (1h) 31.30: cache do prefixo do plano da execução; 5m = o pedido de antes
   esquema_do_plano: longo         # (longo) LT-4b: curto = a etapa livre do plano sem description/precondition/max_attempts
