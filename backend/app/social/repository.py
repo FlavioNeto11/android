@@ -1573,7 +1573,7 @@ class SocialRepository:
     def saidas_da_acao(self, profile_id: str, capability: str, *, types: tuple[str, ...], statuses: tuple[str, ...],
                        since: str, app_id: str | None = None,
                        exclude_step_id: str | None = None
-                       ) -> list[tuple[str, str, str | None, dict[str, Any] | None, str | None]]:
+                       ) -> list[tuple[str, str, str | None, dict[str, object] | None, str | None]]:
         """30.64: as interações de SAÍDA deste perfil, destes tipos e estados, desde `since`, com o que se sabe do objeto:
         `(id, occurred_at, counterparty, argumentos da etapa que a gravou | None, texto enviado | None)`, a mais
         recente primeiro. A de etapa
@@ -1601,7 +1601,7 @@ class SocialRepository:
 
     def pedidos_da_acao(self, profile_id: str, capability: str, *, since: str,
                         exclude_step_id: str | None = None
-                        ) -> list[tuple[str, str, str | None, dict[str, Any] | None, str, str | None]]:
+                        ) -> list[tuple[str, str, str | None, dict[str, object] | None, str, str | None]]:
         """30.64: os pedidos de aprovação deste perfil e desta ação ainda sem interação (pendente, ou aprovado e não
         executado, de objetivo vivo), desde `since`: `(id, created_at, target, argumentos da etapa | None, status,
         texto que vai ser digitado | None)`, o mais recente primeiro. O da etapa `exclude_step_id` não conta (a porta roda de novo na retomada), nem o das versões
