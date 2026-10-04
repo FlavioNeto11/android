@@ -116,7 +116,7 @@ describe('CanaisPage', () => {
     backend.on('GET', /^\/api\/canais\/estado$/, () => json(ativo()));
     await abrir();
     await waitFor(() => text().includes('Aviso pelo Telegram'));
-    expect(container.querySelectorAll('button')).toHaveLength(0);
+    expect(container.querySelectorAll('[role="tabpanel"] button')).toHaveLength(0);   // as duas abas (botões do tablist) ficam de fora
     expect(backend.calls.every((c) => c.method === 'GET')).toBe(true);
   });
 });
