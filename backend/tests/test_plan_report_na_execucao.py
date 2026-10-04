@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator
 
 import httpx
+import pytest
 import pytest_asyncio
 import yaml
 
