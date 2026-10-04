@@ -79,6 +79,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_backup.py`, com 3 testes novos (teto em ensaio e depois ligado, com cópias falsas de cada origem;
   ensaio recente do mesmo commit; recusa antes do `stop.ps1`). Real: `not_run` até o deploy com a cópia nova e o
   registro da tarefa.
+## 2026-10-04 — 31.34: a prévia da grade cede a vez à leitura da árvore (branch feat/31-34-grade-cede-a-vez, sem migração)
+
+- `hierarchy()` marca o aparelho por `capture_yield_to_tree_s` (configuração, 2 s por padrão, 0 desliga, PUT /api/settings);
+  nesse intervalo a volta da GRADE não captura (`arvore_em_curso`, conta em `captura.evitada`) e o painel mostra a última
+  miniatura. O foco e o pedido explícito não cedem. Medida do 31.28 (04/10, android-04): painel aberto levava o p95 da
+  leitura da árvore de ~0,3 s a ~2 s.
+- Prova: `simulated` (`backend/tests/test_grade_cede_a_arvore.py`); `real` depois do deploy, com o mesmo `ab_3128.py`.
 
 ## 2026-10-04 — 29.36: o motivo do aparelho remoto parado acompanha a conexão e a queda (branch fix/29-36-detalhe-do-externo-parado, sem migração)
 

@@ -215,6 +215,7 @@ limits:
   ai_max_tokens_per_run: 3000000
   capture_grid_interval_s: 5
   capture_focus_interval_s: 1
+  capture_yield_to_tree_s: 2         # 31.34: a grade cede a vez à leitura da árvore (0 desliga)
   frame_max_age_ms: 6000
   log_retention_days: 14
   evidence_retention_days: 14

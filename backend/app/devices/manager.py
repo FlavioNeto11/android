@@ -436,6 +436,8 @@ class DeviceRuntime:
         self.frame_seq = 0
         # Saúde da captura (ver `devices/stream.py`): falhas SEGUIDAS e a última mensagem. Zera a cada frame novo.
         self.capture_failures = 0
+        #: Item 31.34: até quando (monotônico) a prévia da grade cede a vez a uma leitura da árvore neste aparelho.
+        self.arvore_ate = 0.0
         self.capture_error: str | None = None
         self.capture_error_at: str | None = None
         self.recent_frames: OrderedDict[str, tuple[float, int, int]] = OrderedDict()
@@ -3444,6 +3446,13 @@ class DeviceManager:
                 resultado = "ia_no_controle"
                 if antigo_capturaria:
                     metricas.contar("captura.evitada", motivo="ia_no_controle")
+            elif (not pedido and nivel != "foco" and (nivel is not None or s.preview_mode == "always")
+                  and time.monotonic() < rt.arvore_ate):
+                # Item 31.34: há leitura da árvore em curso neste aparelho; a grade mostra a última miniatura (com a
+                # idade dela) e volta a capturar quando a janela acabar. O foco e o pedido explícito não cedem.
+                resultado = "arvore_em_curso"
+                if antigo_capturaria:
+                    metricas.contar("captura.evitada", motivo="arvore_em_curso")
             elif s.preview_mode == "always":
                 if antigo_capturaria:                     # o laço antigo, como volta atrás sem reinício
                     resultado = await self._ciclo_de_previa(rt)
@@ -3474,6 +3483,14 @@ class DeviceManager:
             resultado = "falha"
         # Recuo depois de falhas seguidas (`devices/stream.py`).
         return resultado, backoff_s(interval, rt.capture_failures)
+
+    def _marcar_leitura_da_arvore(self, rt: DeviceRuntime) -> None:
+        """Item 31.34: a leitura da árvore avisa a prévia da grade para não disputar o ADB do aparelho por
+        `capture_yield_to_tree_s` (0 desliga). Medido em 04/10 (android-04, `ab_3128.py`): com a grade capturando,
+        o p95 da leitura ia de 0,3 s a ~2 s; a mediana não mudava."""
+        janela = self.get_settings().capture_yield_to_tree_s
+        if janela > 0:
+            rt.arvore_ate = max(rt.arvore_ate, time.monotonic() + janela)
 
     def _previa_pausada(self, rt: DeviceRuntime) -> bool:
         """Contrato C3: `on_demand` e ninguém olhando. Não é `stale` nem erro — é a economia funcionando."""
@@ -4217,6 +4234,7 @@ class DeviceManager:
     async def hierarchy(self, rt: DeviceRuntime) -> UiTree:
         if not await self.ensure_automation(rt):
             raise DriverError(rt.automation.detail or "Sessão de automação indisponível", effect_possible=False)
+        self._marcar_leitura_da_arvore(rt)
         lida = rt.automation                       # a "geração" da sessão que esta leitura usa (cada transição troca o objeto)
         try:
             xml = await rt.executor.run(rt.io.page_source, timeout=40, label="hierarquia")
