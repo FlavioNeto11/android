@@ -244,3 +244,40 @@ def test_texto_dinamico_passa_pela_redacao() -> None:
     _, retrato = r.montar(_estado(), None, AGORA)
     texto, _ = r.montar(_estado(frentes={"Android": "<script>"}), retrato, AGORA, "21:40Z")
     assert texto is not None and "<script>" not in texto and "&lt;script&gt;" in texto
+
+
+# --- cadência: a rotina no máximo a cada piso; "Precisa de você" que muda sai já (orquestradora, 04/10 23:14Z) ---
+
+def test_rotina_antes_do_piso_nao_sai_e_depois_sai() -> None:
+    ant = {"pendencias": ["p1"]}
+
+    assert not r.pode_enviar({"pendencias": ["p1"]}, ant, "2026-10-04T21:30:00Z", AGORA, 3600)
+    assert r.pode_enviar({"pendencias": ["p1"]}, ant, "2026-10-04T21:00:00Z", AGORA, 3600)
+
+
+def test_precisa_de_voce_que_muda_sai_antes_do_piso() -> None:
+    recente = "2026-10-04T21:59:00Z"
+    assert r.pode_enviar({"pendencias": ["p1", "p2"]}, {"pendencias": ["p1"]}, recente, AGORA, 3600)   # nova
+    assert r.pode_enviar({"pendencias": []}, {"pendencias": ["p1"]}, recente, AGORA, 3600)             # resolvida
+    assert r.pode_enviar({"pendencias": ["p1"]}, None, recente, AGORA, 3600)                           # 1º retrato
+
+
+def test_sem_envio_anterior_sai() -> None:
+    assert r.pode_enviar({"pendencias": []}, None, None, AGORA, 3600)
+
+
+def test_rodada_segura_a_rotina_sem_andar_o_retrato(monkeypatch: pytest.MonkeyPatch) -> None:
+    gravados: list[tuple[Path, dict]] = []
+    enviados: list[str] = []
+    monkeypatch.setattr(r, "_agora", lambda: AGORA)
+    monkeypatch.setattr(r, "compor", lambda c, a: ("texto de rotina", {"pendencias": []}, 20))
+    monkeypatch.setattr(r, "enviar", lambda t: enviados.append(t) or 999)
+    monkeypatch.setattr(r, "_gravar_json", lambda p, d: gravados.append((p, d)))
+    monkeypatch.setattr(r, "_ler_json", lambda p, d: {})
+    cursor = {"enviado_em": "2026-10-04T21:30:00Z", "eventos_linha": 10, "retrato": {"pendencias": []}}
+    novo = r.rodada(cursor, 3600)
+    assert enviados == [] and novo is not None
+    assert novo["retrato"] == cursor["retrato"] and novo["eventos_linha"] == 10   # nada se perde: conta do último envio
+    assert novo["conferido_em"] == "2026-10-04T22:00:00Z" and novo["enviado_em"] == cursor["enviado_em"]
+    novo = r.rodada({**cursor, "enviado_em": "2026-10-04T20:59:00Z"}, 3600)
+    assert enviados == ["texto de rotina"] and novo is not None and novo["message_id"] == 999

@@ -343,6 +343,10 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   - Antes de sair, todo texto passa pela redação do Trello (nomes relidos do banco do central a cada rodada) e pelo
     filtro de e-mail, telefone e link.
   - Quando nada mudou e não há pendência nova, o resumo **não sai** naquela hora.
+  - **Cadência** (orquestradora, 04/10 23:14Z, pela regra da rotina agrupada): o laço confere a cada 20 minutos; a
+    rotina sai **no máximo uma vez por hora** desde o último envio, mesmo que algo mude a cada volta. O que muda
+    "Precisa de você" (pendência nova ou resolvida) sai na volta em que mudar. A rotina segurada não se perde: o envio
+    seguinte conta tudo o que mudou desde o último.
   - Frases curtas, sem jargão e sem tabela.
   - Urgência vai na hora: sim ou não pedido ao dono, deploy que falhou, incidente real ou teto de custo.
   - A leitura dos quadros do Trello continua a cada 20 minutos.
@@ -377,7 +381,8 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
     Senão, ou se o filtro falhar, sai "Pedido #<6 do id>". O aparelho (`android-12`) pode sair: não é pessoa nem conta.
   - O resumo de hora volta só no 28.31 F3. Ele abre com "Precisa de você: N" e a lista, depois diz só o que mudou e
     não sai sem novidade.
-- **Hoje:** o resumo de hora (`resumo_laco.py`) está PARADO desde 04/10 19:12Z, até o 28.31 F3.
+- **Hoje:** o resumo de hora (`resumo_laco.py`), no molde do 28.31 F3, foi religado em 04/10 23:15Z com o "liga" da
+  orquestradora.
 - **No produto:** a saída do 28.15 e o molde do 28.31 (`modules/avisos/domain/mensagem.py` e `privacidade.py`; a
   janela em `infrastructure/fila_sql.py`).
 
@@ -495,7 +500,7 @@ As ferramentas do Trello ficam em `.claude/trello/`.
 2. Religar os processos em segundo plano (os scripts de `.claude/canais/`), a partir de `C:/git/android`, com `PYTHONIOENCODING=utf-8
    PYTHONUNBUFFERED=1` e a saída anexada aos `.log`:
    - `telegram_inbox.py`, um consumidor só;
-   - `resumo_laco.py --intervalo 3600`;
+   - `resumo_laco.py --intervalo 1200 --piso-rotina 3600`;
    - um monitor sobre os dois logs.
 3. Retomar a leitura dos quadros a partir do "último visto" do handoff.
 4. Avisar a orquestradora.
