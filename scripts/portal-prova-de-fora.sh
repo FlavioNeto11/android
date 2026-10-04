@@ -15,7 +15,8 @@
 #                                               responde 200 ao HEAD e 401 ao GET e ao POST sem assinatura. Sem a
 #                                               variavel, o esperado e o webhook fechado (401 ou 404).
 #             SITE=ligado                       o site institucional esta no ar (29.77, `portal.site_ligado: true`): a
-#                                               raiz responde 200 com a CSP do site, em vez do 307 para o painel.
+#                                               raiz responde 200 com a CSP do site e SEM Set-Cookie (a pagina
+#                                               promete que nao usa cookies), em vez do 307 para o painel.
 #             CONTATO=ligado                    o formulario esta no ar (`portal.contato_ligado: true`). A prova manda UM
 #                                               POST com a ISCA preenchida: passa por Host, Origin, Content-Type e pela
 #                                               excecao do portao, e por construcao nao grava nem avisa ninguem (202).
@@ -83,11 +84,19 @@ else
         else
             printf 'FALHOU %-28s      esperado Disallow de /central/ e /api/\n' "/robots.txt (corpo)"; FALHAS=$((FALHAS + 1))
         fi
-        csp="$(curl -s -o /dev/null -D - -m 20 "https://$H/" | tr -d '\r' | grep -i '^content-security-policy:')"
+        cabecalhos="$(curl -s -o /dev/null -D - -m 20 "https://$H/" | tr -d '\r')"
+        csp="$(grep -i '^content-security-policy:' <<< "$cabecalhos")"
         if [[ "$csp" == *"script-src 'self'"* && "$csp" == *"frame-ancestors 'none'"* ]]; then
             printf 'ok     %-28s      (CSP do site)\n' "/ (cabecalhos)"
         else
             printf 'FALHOU %-28s      esperado a CSP do site\n' "/ (cabecalhos)"; FALHAS=$((FALHAS + 1))
+        fi
+        # A pagina diz "nao usa cookies nem rastreadores" (ADR-075). A origem nunca poe cookie no site; a borda da
+        # Cloudflare poderia, conforme a zona. Se aparecer, muda o texto da pagina ou desliga-se o recurso na zona.
+        if grep -qi '^set-cookie:' <<< "$cabecalhos"; then
+            printf 'FALHOU %-28s      a raiz pos cookie; a pagina promete que nao usa\n' "/ (sem cookie)"; FALHAS=$((FALHAS + 1))
+        else
+            printf 'ok     %-28s      (nenhum Set-Cookie, como a pagina promete)\n' "/ (sem cookie)"
         fi
     else
         confere /                   "301 302 307 308" "raiz: redireciona para o painel"

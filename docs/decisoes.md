@@ -5539,7 +5539,7 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
 9. **Retenção.** A linha inteira (o dado pessoal some com ela) vence em 180 dias, o prazo escrito no aviso de privacidade
    da página; não é configurável: mudar exige mudar a página e este ADR. O laço apaga a cada hora e roda mesmo com o
    contato desligado (desligar o formulário não congela a promessa). Na Canais, o corpo da `avisos_entregas` é apagado
-   depois de enviado e a `canal_enviadas` guarda só a chave. Os backups guardam cópia até o teto de cópias deles. O
+   depois de enviado e a `canal_enviadas` guarda só a chave. Os backups guardam cópia pela regra deles (abaixo, "Cópias de segurança"). O
    histórico no Telegram é do dono. Controladora dos dados: a SICAT (está na página).
 10. **Ligar e recuar.** Ligar: o bloco `portal:` no `config.yaml` do central (`site_ligado` e `contato_ligado` em `true`,
     `contatos` com os dois números), a origem pública em `allowed_origins` (já está pelo ADR-073), reiniciar a tarefa
@@ -5558,8 +5558,21 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
 
 **Limites conhecidos** (revisão independente do #333, notas baixas).
 - Apagar o conteúdo ao descartar é um `UPDATE` que zera os campos: a página antiga do banco (SQLite com WAL,
-  PostgreSQL) só some de fato no vacuum. As cópias em `data/backups` guardam o que havia na hora da cópia e herdam o
-  mesmo prazo: saem pelo teto de cópias dos backups, não pelo descarte.
+  PostgreSQL) só some de fato no vacuum. As cópias em `data/backups` guardam o que havia na hora da cópia e saem pela
+  regra delas, não pelo descarte.
+- **Cópias de segurança** (`scripts/backup.ps1`, o prazo real; a página não promete número e diz que elas "podem guardar
+  a mensagem por mais tempo"):
+  - a pasta com o nome padrão `AAAAMMDD-HHmmss` (tarefa diária `farm-backup`, deploy, ensaio e manual sem sufixo) sai
+    na primeira cópia bem-sucedida depois de 14 dias (`-Reter 14`, o padrão que a tarefa e o deploy usam); a mais nova
+    nunca sai, mesmo vencida;
+  - as de deploy e de ensaio ainda têm o teto das 10 mais novas (com `PODAR-LIGADO` no destino);
+  - a pasta com sufixo no nome (feita à mão, como `-ensaio-restauracao-2939`) não casa com a regra e não sai sozinha:
+    quem a cria depois de o contato estar ligado a apaga à mão quando acabar;
+  - com as cópias rodando, um contato some de tudo em até ~194 dias (180 + 14). Parada a rotina, a última cópia fica.
+- O `cliente_hash` (HMAC do IP, ou do /64 no IPv6, com o sal que não gira) fica na linha pelos mesmos 180 dias, contra
+  abuso; a página diz isso. O IP em si não é guardado em lugar nenhum do portal.
+- **Exclusão a pedido**: hoje é o procedimento manual de `docs/operacao.md` ("Pedido de exclusão de um contato do site"),
+  com o sim do dono porque apaga dado. A ação de produto (rota e botão no painel) é o 29.83.
 - Um contato `retido` que depois volta a `pendente` (o canal caiu antes da entrega) perde o motivo `teto_por_hora` e
   fica de fora do resumo: o resumo pode subcontar. E uma virada de hora sem líder da trava `avisos` (o backend caído
   ou a trava trocando de dono) não é resumida: aquela hora fica sem resumo.

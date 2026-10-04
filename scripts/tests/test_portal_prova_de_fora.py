@@ -55,7 +55,8 @@ else
     /api/login) codigo=429 ;;
     /central/|/assets/site.css) codigo=200 ;;
     /central) codigo=307; destino="${url%/central}/central/" ;;
-    /) codigo=200; extra="content-security-policy: default-src 'self'; script-src 'self'; frame-ancestors 'none'" ;;
+    /) codigo=200; extra="content-security-policy: default-src 'self'; script-src 'self'; frame-ancestors 'none'"
+       [[ "$QUEBRA" == cookie ]] && extra="$extra"$'\r\n''set-cookie: __cf_bm=x; Path=/; Secure; HttpOnly' ;;
     /robots.txt) codigo=200; corpo=$'User-agent: *\nAllow: /\nDisallow: /central/\nDisallow: /api/'
                  [[ "$QUEBRA" == robots ]] && corpo=$'User-agent: *\nAllow: /' ;;
     /api/portal/contato)
@@ -122,7 +123,7 @@ def test_com_o_site_e_o_contato_ligados_tudo_passa_e_nada_de_verdade_e_enviado(t
     r, pedidos = _rodar(tmp_path)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "RESULTADO: tudo como esperado" in r.stdout
-    for esperado in ("/rascunho.pdf", "/site/index.html", "/robots.txt (corpo)", "/ (cabecalhos)",
+    for esperado in ("/rascunho.pdf", "/site/index.html", "/robots.txt (corpo)", "/ (cabecalhos)", "/ (sem cookie)",
                      "tipo errado recusado", "corpo acima do teto", "POST com a isca", "/api/instances"):
         assert esperado in r.stdout, esperado
     contato = [p for p in pedidos if p.startswith("POST /api/portal/contato")]
@@ -137,6 +138,13 @@ def test_com_o_site_e_o_contato_ligados_tudo_passa_e_nada_de_verdade_e_enviado(t
 def test_api_aberta_de_fora_para_tudo(tmp_path: Path) -> None:
     r, _ = _rodar(tmp_path, quebra="instancias")
     assert r.returncode == 2 and "PARE" in r.stdout
+
+
+def test_cookie_na_raiz_reprova(tmp_path: Path) -> None:
+    """A página promete "não usa cookies"; um cookie da borda na raiz (o `__cf_bm`, por exemplo) reprova a prova."""
+    r, _ = _rodar(tmp_path, quebra="cookie")
+    assert r.returncode == 1
+    assert "FALHOU / (sem cookie)" in r.stdout
 
 
 def test_robots_sem_barrar_a_api_reprova(tmp_path: Path) -> None:

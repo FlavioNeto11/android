@@ -451,6 +451,26 @@ por hora (acima, a linha fica `retido` e o laço `portal-contatos` manda quando 
 `portal_contatos` (migração 107) por 180 dias. Para ver o que está parado sem expor o conteúdo:
 `SELECT estado, motivo, COUNT(*) FROM portal_contatos GROUP BY 1, 2`.
 
+**O que a página promete e onde isso vale** (aviso de privacidade, ADR-075):
+- sem cookie: a prova de fora reprova se a raiz devolver `Set-Cookie` (a borda da Cloudflare poderia pôr um);
+- 180 dias no sistema: o laço apaga a linha inteira a cada hora, com o contato ligado ou não;
+- o descartado (teto diário, `campo_invalido`, `falhas_demais`) tem o conteúdo apagado sem chegar à equipe. O
+  `pendente` (canal desligado) e o `retido` (excesso na hora) guardam o conteúdo até a entrega ou os 180 dias;
+- cópias de segurança: a pasta `AAAAMMDD-HHmmss` sai na primeira cópia depois de 14 dias (`-Reter 14`), menos a mais
+  nova; as de deploy e de ensaio têm ainda o teto de 10. Pasta com sufixo no nome não sai sozinha: depois de ligar o
+  contato, quem cria uma a apaga à mão quando acabar;
+- o `cliente_hash` (código do endereço de rede, nunca o IP) fica os mesmos 180 dias.
+
+**Pedido de exclusão de um contato do site** (o visitante pede pelo formulário ou por telefone). Quem executa é o
+operador, com o sim do dono no chat, porque apaga dado; a ação no painel é o 29.83.
+1. Achar as linhas pelo telefone que o visitante deu, comparando só os dígitos (troque `<DIGITOS>` pelos últimos 8):
+   `SELECT id, criado_em, estado FROM portal_contatos WHERE replace(replace(replace(replace(replace(telefone,' ',''),'-',''),'(',''),')',''),'+','') LIKE '%<DIGITOS>'`.
+   Não copie o conteúdo para chat, cartão ou log.
+2. Apagar a mensagem no chat do Telegram: o dono, à mão (o bot só apaga a própria mensagem até 48 h).
+3. Responder ao visitante pelo telefone que ele deixou. Dizer que as cópias de segurança saem pela rotina delas, em até
+   14 dias.
+4. Apagar as linhas, incluindo a do próprio pedido de exclusão: `DELETE FROM portal_contatos WHERE id IN (<ids>)`.
+
 **Recuo.** `site_ligado` e `contato_ligado` em `false` e reiniciar `farm-central`: a raiz volta ao 307 para o painel e a
 rota responde 404. Recuo parcial: só `contato_ligado: false`; o site fica e mostra o aviso no lugar do formulário. A
 retenção de 180 dias continua rodando com o contato desligado.
