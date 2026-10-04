@@ -13,7 +13,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable
 
 from ..config import Config
-from ..contracts.origem import eh_execucao_de_validacao
+from ..contracts.origem import eh_ensaio_de_leitura, eh_execucao_de_validacao
 from ..db import Row, dumps, loads
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter
 from ..metricas import metricas
@@ -30,6 +30,8 @@ from .balanceamento import Candidato, Servidor
 from .executor import Outcome, StepExecutor, StepOutcome, saidas_exigidas, tela_da_falha
 from .flows import FlowStore
 from .foreach import expand
+from .oraculo_qa import (PACOTE_DO_QA, URI_DAS_MENSAGENS, conferencia_se_aplica,
+                         mensagens_da_execucao)
 from .projecao import projetar
 from .recipes import hash_generico_da_linha
 from .repository import MOTIVO_REJEICAO, RENOVAR_POSSE_S, PosseDaEtapaPerdida, Repository
@@ -1248,6 +1250,11 @@ class Scheduler:
                     # Antes de assumir a etapa: nenhuma tentativa consumida, nenhuma chamada de modelo gasta.
                     self._hold(obj, srow, porta)
                     break
+                # 30.31 (fatia 2): o ensaio só de leitura para ANTES da etapa com efeito fora do aparelho. A etapa nem é
+                # assumida: nenhuma tentativa, nenhuma decisão do ator, nenhum toque.
+                if srow["side_effect"] and eh_ensaio_de_leitura(run["idempotency_key"]):
+                    self._parar_no_ensaio(obj, srow, rt)
+                    break
                 # 30.43: toda execução de validação (a prova de fluxo e a re-execução de receita do P4) parte de estado
                 # conhecido; no 6f459c a IA abriu o app dentro da conversa e enviou já na abertura
                 if eh_execucao_de_validacao(run["prova_fluxo_id"], run["idempotency_key"]):
@@ -1281,6 +1288,8 @@ class Scheduler:
                 # que com a verificação vencida leva o app ao estado conhecido — a tela inicial — e desfaz a retomada.
                 if outcome.outcome != Outcome.succeeded and not da_tela_atual:
                     break
+            if eh_execucao_de_validacao(run["prova_fluxo_id"], run["idempotency_key"]):
+                await self._conferir_no_app_de_qa(obj, run, rt)
             self._maybe_complete(objective_id)
             self._parar_pela_conta(objective_id, rt)
         except asyncio.CancelledError:
@@ -1428,6 +1437,73 @@ class Scheduler:
         return (AppContext(row["id"], row["name"], row["package"], row["activity"], row["nav_hints"],
                            loads(row["known_selectors"]), row["category"], bool(row["builtin"])),
                 self.repo.conta_esperada(profile_id, str(row["id"]), rotulo, do_aparelho=do_aparelho))
+
+    def _parar_no_ensaio(self, obj: Row, srow: Row, rt: DeviceRuntime) -> None:
+        """30.31 (fatia 2): o ENSAIO SÓ DE LEITURA chegou à etapa com efeito fora do aparelho e para aqui. Ela e as
+        seguintes ficam `skipped`; o objetivo fecha `cancelled` PELO SISTEMA, como a prova que pediria uma pessoa
+        (30.37): sem `por`, sem o sinal `cancelou_execucao`, sem aviso. Nenhuma etapa reprovou e nenhuma comprovou o
+        efeito, então o veredito não deixa evidência, nem a favor nem contra (`domain/prova.py`); o pedido de validação
+        fecha `ensaio_so_leitura`. Navegar até o botão não é o fluxo: um `for` aqui contaria para a autopublicação
+        (30.34) um fluxo cujo efeito nunca rodou."""
+        repo = self.repo
+        run_id, objective_id = obj["run_id"], obj["id"]
+        motivo = (f"Ensaio só de leitura: parou antes da etapa {srow['seq']} ({srow['key']}), que tem efeito fora do "
+                  "aparelho. Nada foi enviado.")
+        for r in repo.db.query("SELECT id FROM steps WHERE objective_id=? AND plan_version=? AND status IN"
+                               " ('pending','ready','retry_wait') ORDER BY seq, id", (objective_id, obj["plan_version"])):
+            repo.transition_step(r["id"], StepStatus.skipped, detail=motivo)
+        repo.decision(f"{rt.id}: {motivo}", run_id=run_id, instance_id=rt.id)
+        repo.db.execute("UPDATE runs SET cancel_requested=1, pause_requested=0 WHERE id=?", (run_id,))
+        repo.set_objective(objective_id, ObjectiveStatus.cancelled, detail=motivo, message=f"{rt.id}: {motivo}")
+        repo.recompute_run(run_id)
+
+    async def _conferir_no_app_de_qa(self, obj: Row, run: Row, rt: DeviceRuntime) -> None:
+        """30.31 (fatia 2): ao fim da execução de validação, o próprio app de QA conta as mensagens DESTA execução
+        (`oraculo_qa`). Duas ou mais = o efeito saiu repetido: grava o fato do 29.58 (`efeito_repetido`, `fonte:
+        provedor`) na etapa de efeito, e o veredito (30.42), a reprodução da receita (30.43) e o painel (29.60) o leem
+        como leem o do verificador. Uma = conferido. Zero com o efeito comprovado pela tela fica só no diário nesta
+        fatia: é um desfecho novo, com decisão própria. Só leitura; falha de leitura não muda nada."""
+        if not conferencia_se_aplica(run["command"]):
+            return
+        efeito = self.repo.db.query(
+            "SELECT id, seq, key, app_id, result FROM steps WHERE objective_id=? AND plan_version=? AND side_effect=1"
+            " AND status='succeeded' ORDER BY seq DESC, id", (obj["id"], obj["plan_version"]))
+        alvo = next((e for e in efeito if self._pacote_da_etapa(run, rt, e["app_id"]) == PACOTE_DO_QA), None)
+        if alvo is None:
+            return
+        run_id = obj["run_id"]
+        # Aparelho falso (testes): o provedor dele, se tiver; sem ele, não confere (o `adb` de verdade não existe ali).
+        ler = (getattr(rt.io, "consultar_provedor", None) if self.devices.io_factory is not None
+               else (lambda uri: rt.adb.shell(f"content query --uri {uri}", timeout=20)))
+        if ler is None:
+            return
+        try:
+            saida = await rt.executor.run(ler, URI_DAS_MENSAGENS, timeout=25, label="conferir no app de QA")
+        except Exception as exc:  # noqa: BLE001 - a conferência é uma leitura a mais; nunca derruba a execução
+            self.repo.decision(f"{rt.id}: Conferência no app de QA: não lida ({str(exc).splitlines()[0][:160] if str(exc) else type(exc).__name__}).",
+                               run_id=run_id, instance_id=rt.id)
+            return
+        n = mensagens_da_execucao(str(saida or ""), run_id)
+        texto = {0: "nenhuma mensagem desta execução no app (a tela comprovou o envio; fica registrado)",
+                 1: "1 mensagem desta execução no app: o efeito saiu uma vez"}.get(
+            n, f"{n} mensagens desta execução no app: o efeito saiu {n} vezes")
+        self.repo.decision(f"{rt.id}: Conferência no app de QA (etapa {alvo['seq']}, {alvo['key']}): {texto}.",
+                           run_id=run_id, instance_id=rt.id)
+        if n < 2:
+            return
+        resultado = loads(alvo["result"], {}) or {}
+        anterior = resultado.get("efeito_repetido") if isinstance(resultado, dict) else None
+        if isinstance(anterior, dict) and int(anterior.get("copias") or 0) >= n:
+            return                              # o verificador ou o diário já viram tanto quanto o app: fica o deles
+        resultado["efeito_repetido"] = {"copias": n, "fonte": "provedor"}
+        self.repo.db.execute("UPDATE steps SET result=? WHERE id=?", (dumps(resultado), alvo["id"]))
+
+    def _pacote_da_etapa(self, run: Row, rt: DeviceRuntime, app_id: str | None) -> str | None:
+        try:
+            app, _ = self._app_context(run, rt, app_id)
+        except KeyError:
+            return None
+        return app.package
 
     async def _partir_da_prova(self, obj: Row, run: Row, rt: DeviceRuntime) -> None:
         """30.42: a EXECUÇÃO DE PROVA parte de um estado conhecido. Antes da 1ª etapa: `force-stop` de TODOS os apps do

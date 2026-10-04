@@ -83,6 +83,7 @@ describe('29.60: efeito repetido', () => {
   it('fala em português quem contou e quantas vezes, e só pega etapas com 2 ou mais cópias', () => {
     expect(fonteDoEfeitoRepetido('verificador')).toBe('contado na tela pelo verificador');
     expect(fonteDoEfeitoRepetido('acoes')).toBe('contado pelas ações gravadas desta execução');
+    expect(fonteDoEfeitoRepetido('provedor')).toBe('contado no próprio app de QA ao fim da validação');
     expect(fraseDoEfeitoRepetido(2)).toBe('apareceu 2 vezes');
     const passos = [
       { id: 'a', result: null },

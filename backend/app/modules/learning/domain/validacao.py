@@ -112,6 +112,8 @@ class Motivo(StrEnum):
     ATOR_SEM_ACAO = "ator_sem_acao"
     EXECUCAO_FALHOU = "execucao_falhou"
     EXPIROU = "expirou"
+    #: 30.31 (fatia 2): o ensaio só de leitura parou antes da etapa com efeito, como devia; não é evidência do fluxo
+    ENSAIO_SO_LEITURA = "ensaio_so_leitura"
 
 
 #: 30.38 (b): o motivo como a pessoa lê, no painel (Aprendizado › Validação). O código fica no `title`; nunca sai cru na
@@ -134,6 +136,8 @@ MOTIVO_HUMANO: Mapping[Motivo, str] = {
     Motivo.EFEITO_REPETIDO: "O efeito saiu mais de uma vez na execução: ela não vale como evidência.",
     Motivo.PONTO_DE_PARTIDA: "A abertura não chegou ao ponto de partida do fluxo: a prova não vale.",
     Motivo.ATOR_SEM_ACAO: "O ator declarou a etapa pronta sem agir: a prova não vale.",
+    Motivo.ENSAIO_SO_LEITURA: ("Ensaio só de leitura: percorreu o fluxo e parou antes do efeito, como devia; não conta "
+                               "como prova do fluxo."),
     Motivo.AMBIENTE_OCUPADO: "O central estava ocupado (reinício, suíte, implantação ou saúde); tenta na volta seguinte.",
     Motivo.SEM_APARELHO: "Nenhum aparelho ocioso servia; tenta na volta seguinte.",
     Motivo.ORCAMENTO: "O orçamento de validação desta janela acabou.",

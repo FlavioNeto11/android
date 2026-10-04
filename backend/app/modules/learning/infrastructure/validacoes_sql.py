@@ -8,6 +8,7 @@ import secrets
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
+from app.contracts.origem import eh_ensaio_de_leitura
 from app.db import Database, Row
 from app.models import Plan
 from app.modules.learning.application.validacao import (COMANDO_NA_LISTA, NovoPedido, Origem, PedidoListado,
@@ -397,6 +398,10 @@ class FontesDaValidacaoSql:
         if any(chave not in tamanhos for chave in modelos):
             return None
         return fixas + sum(n * tamanhos[chave] for chave, n in modelos.items())
+
+    def ensaio_da_execucao(self, run_id: str) -> bool:
+        r = self._db.one("SELECT idempotency_key FROM runs WHERE id=?", (run_id,))
+        return r is not None and eh_ensaio_de_leitura(linhas.texto_ou_nulo(r, "idempotency_key"))
 
     def desfecho(self, run_id: str) -> tuple[str, float] | None:
         r = self._db.one("SELECT status FROM runs WHERE id=?", (run_id,))

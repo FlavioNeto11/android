@@ -103,7 +103,8 @@ export function oQuePrecisaDaPessoa(a: {
 }
 
 /** 29.60: quem contou as cópias de um efeito repetido, em português (sem o código cru do contrato). */
-export function fonteDoEfeitoRepetido(fonte: 'verificador' | 'acoes'): string {
+export function fonteDoEfeitoRepetido(fonte: 'verificador' | 'acoes' | 'provedor'): string {
+  if (fonte === 'provedor') return 'contado no próprio app de QA ao fim da validação'; // 30.31 (fatia 2)
   return fonte === 'verificador' ? 'contado na tela pelo verificador' : 'contado pelas ações gravadas desta execução';
 }
 
@@ -114,7 +115,7 @@ export function fraseDoEfeitoRepetido(copias: number): string {
 
 /** 29.60: as etapas com efeito repetido de uma execução, para o resumo. Só a versão de plano atual de cada objetivo
  * não é filtrada de propósito: um efeito repetido numa versão anterior também saiu do aparelho. */
-export function efeitosRepetidos<T extends { result: { efeito_repetido?: { copias: number; fonte: 'verificador' | 'acoes' } } | null }>(
+export function efeitosRepetidos<T extends { result: { efeito_repetido?: { copias: number; fonte: 'verificador' | 'acoes' | 'provedor' } } | null }>(
   steps: readonly T[],
 ): T[] {
   return steps.filter((s) => (s.result?.efeito_repetido?.copias ?? 0) >= 2);

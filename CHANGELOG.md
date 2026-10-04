@@ -69,6 +69,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   mais caro por teste (~11 s). Fecha o 29.53 com o portão (#199) e esta medida: prova `real` (04/10, 08:45:00Z a
   08:52:40Z, central, integ/suite-21 cebee288).
 
+## 2026-10-04 — 30.31 fatia 2: o ensaio só de leitura e a conferência no app de QA (branch feat/30-31-fatia-2)
+
+- **Conferência no app de QA.** Ao fim da execução de validação, o `ContentProvider` do QA conta as mensagens
+  daquela execução (só leitura, e só quando o comando traz `{run_id}`). Com 2 ou mais, a etapa de efeito ganha o
+  `efeito_repetido` do 29.58 com `fonte: provedor`, e o veredito do 30.42 a trata como inválida.
+- **Ensaio só de leitura** (`ensaio:<pedido>`). A execução para antes da etapa com efeito: ela e as seguintes ficam
+  `skipped` e o objetivo fecha pelo sistema. O pedido fecha `ensaio_so_leitura` (motivo novo, adendo v1.11). Nada
+  cria ensaio no central ainda.
+- **Painel:** o motivo novo e a fonte `provedor` com texto próprio.
+- Sem migração. Testes: `test_learning_ensaio_e_oraculo.py` (9) e os afetados (1140 passed em SQLite).
+
 ## 2026-10-04 — 29.53: o portão de PostgreSQL de uma suíte, por escrito (branch docs/29-53-portao-pg, só docs)
 
 - `docs/banco.md` ("O portão de PostgreSQL de uma suíte") e `.claude/rules/testes.md`. Toda suíte roda PG dirigido

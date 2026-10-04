@@ -1020,10 +1020,29 @@ caminhos de sempre (a sombra do fluxo, os contadores da receita) e quem decide s
 - **Limite conhecido**: a chegada cujo item não é revisto (o dossiê não mudou, ou o mesmo hash já foi recusado por
   custo ou triagem) fica `feita` sem `revisao_nova_id` e volta como candidata a cada volta, sem custo (sai antes do
   provedor) e sem segurar pedido novo.
-- **Fora desta fatia** (desvios do desenho aprovado, avisados à orquestradora): a conferência pelo ContentProvider do
-  QA (existe só em `scripts/eval_run.py`, e os aparelhos do notebook estão fora do adb do central); o ensaio só
-  leitura do Instagram em perfil de terceiro (precisa de um modo "parar antes do commit" no executor); a classe do
-  fluxo pela etapa mais restritiva (30.32).
+- **Fatia 2 (04/10, adendo v1.11).** Duas peças, sem migração:
+  - **A conferência no app de QA** (`taskqueue/oraculo_qa.py`, `Scheduler._conferir_no_app_de_qa`):
+    - Quando roda: ao fim de toda execução de validação cujo comando traz `{run_id}` e cuja etapa de efeito é do QA.
+    - O que faz: lê o `ContentProvider` do app (`content query`, só leitura) e conta as mensagens daquela execução. A
+      linha do tempo ganha a decisão com o número.
+    - Com 2 ou mais: grava o fato do 29.58 na etapa de efeito, `{"copias": N, "fonte": "provedor"}`. O veredito do
+      30.42, a reprodução do 30.43 e o painel o leem como leem o do verificador. Se o verificador já viu tanto quanto
+      o app, fica o dele.
+    - Com 0, e a tela tendo comprovado o envio: fica só no diário nesta fatia. É um desfecho novo, que pede decisão
+      própria.
+    - Os aparelhos de validação (09, 10 e 12) são hospedados pelo central, então o `adb` dele os alcança.
+  - **O ensaio só de leitura** (chave `ensaio:<pedido>`, `contracts/origem.py`; `Scheduler._parar_no_ensaio`):
+    - O que faz: percorre o fluxo e para ANTES da primeira etapa com efeito fora do aparelho, sem assumi-la. Nenhuma
+      tentativa, nenhuma decisão do ator, nenhum toque.
+    - Como fecha: ela e as seguintes ficam `skipped`, e o objetivo fecha `cancelled` pelo sistema, como a prova que
+      pediria uma pessoa (30.37).
+    - Por que não deixa evidência: o veredito não deixa nenhuma, e o pedido fecha `ensaio_so_leitura`, nunca
+      `feita`. Navegar até o botão não é o fluxo, e um `for` do ensaio contaria para a autopublicação (30.34) um fluxo
+      cujo efeito nunca rodou. A linha `invalida` do 30.42 continua vencendo.
+    - O que falta: nada cria execução de ensaio ainda. Ligar o despachante ao Instagram em perfil de terceiro (G3)
+      é decisão da orquestradora, com a vez dela no aparelho de conta real.
+  - Prova `simulated`: `tests/test_learning_ensaio_e_oraculo.py`.
+- **Fora das fatias 1 e 2:** a classe do fluxo pela etapa mais restritiva (30.32).
 - **Prova** `simulated`: `tests/test_learning_validacao.py`, `tests/test_learning_validacao_sql.py`,
   `tests/test_learning_curador.py` (`*validacao*`, `evidencia_chegou`). Ligar no central é `modo: "on"` depois do
   deploy que a levar (P4 do desenho: verba única de US$ 2,5 para os 15 itens do QA).
