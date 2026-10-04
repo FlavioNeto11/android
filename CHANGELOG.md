@@ -28,6 +28,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - (c) A seção "Decidido pela plataforma" mostra o erro da rota quando não é 404, em vez de sumir.
 - (d) Em `shadow`, com decisões antigas, a seção não diz mais "Nada foi decidido sozinho ainda".
 - (e) Pendências: o resumo no Telegram fica condicionado aos avisos ligados.
+- (g) Percurso no navegador da orquestradora (deploy 30). O "Por quê" mostrava a frase crua da régua ("saúde
+  pouca_amostra", "parecer observar (lr-…)") e agora usa os rótulos da tela. O "Ver todas" diz quantas foram desfeitas.
 - (f) A doc e a docstring diziam que mudar o modo valia sem reiniciar, e não vale: o `config.yaml` é lido na subida.
   Medido em 04/10, às 18:38Z: o modo continuava `shadow` três minutos depois do "on" no arquivo.
 - Prova `simulated`: 2 testes novos no backend, 39 aprovados; 2 testes novos no front, 50 aprovados.

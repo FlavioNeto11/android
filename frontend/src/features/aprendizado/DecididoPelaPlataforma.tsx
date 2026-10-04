@@ -15,6 +15,12 @@ import {
 import { DecisaoInline } from './DecisaoInline';
 import styles from './Aprendizado.module.css';
 
+/** 30.63: o "Ver todas" diz quantas o dono já desfez (desligou depois), em vez de contá-las caladas. */
+function textoDesfeitas(decididos: DecisaoDaPlataforma[]): string {
+  const n = decididos.filter((d) => d.estado === 'disabled').length;
+  return n === 0 ? '' : ` (${n} ${n === 1 ? 'desfeita' : 'desfeitas'})`;
+}
+
 /** Quantas decisões a seção mostra antes do "Ver todas" (as mais recentes primeiro). */
 const VISIVEIS = 5;
 
@@ -139,7 +145,7 @@ export function DecididoPelaPlataforma({ relatorio, erro = null, tituloDe, onMud
       {relatorio.decididos.length > VISIVEIS ? (
         <div className={styles.toolbar}>
           <Button size="sm" variant="ghost" onClick={() => setTodas((x) => !x)}>
-            {todas ? 'Mostrar só as mais recentes' : `Ver todas as ${relatorio.decididos.length} decisões`}
+            {todas ? 'Mostrar só as mais recentes' : `Ver todas as ${relatorio.decididos.length} decisões${textoDesfeitas(relatorio.decididos)}`}
           </Button>
         </div>
       ) : null}
