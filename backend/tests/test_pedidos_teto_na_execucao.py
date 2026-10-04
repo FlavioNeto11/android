@@ -12,7 +12,7 @@ from types import SimpleNamespace
 from typing import Literal
 
 import pytest
-from pydantic import ConfigDict
+from pydantic import ConfigDict, create_model
 
 from app.models import RunCreate
 from app.modules.pedidos.infrastructure import laco as modulo_laco
@@ -25,9 +25,11 @@ class ComTeto(RunCreate):
     teto_de_autonomia: Literal["observar", "preparar", "agir"] | None = None
 
 
-class SemTeto(RunCreate):
-    """O `RunCreate` de antes do lado da execução: `extra="forbid"` recusaria um campo que não existe."""
-    model_config = ConfigDict(extra="forbid")
+# O `RunCreate` de antes do lado da execução: `extra="forbid"` recusaria um campo que não existe. Subclasse não serve
+# desde que a migração 100 entrou (herdaria o campo): o modelo é montado com os campos de hoje, menos o teto.
+SemTeto = create_model(
+    "SemTeto", __config__=ConfigDict(extra="forbid"),
+    **{n: (f.annotation, f) for n, f in RunCreate.model_fields.items() if n != "teto_de_autonomia"})  # type: ignore[call-overload]
 
 
 def _requisicao(autonomia: str, papel: str | None):
