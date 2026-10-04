@@ -109,7 +109,8 @@ class DossiesSql:
         # 30.36: o `against` que tem a `forma` da mesma origem saiu do contra (`promocao.efetivas`): o curador não o vê
         # 30.42: o `for`/`against` que tem a `invalida` da mesma origem também (a prova que não vale); a `invalida` fica
         formas = {x.origin_ref for x in todas if x.posicao == "forma"}
-        da_invalida = {x.origin_ref for x in todas if x.posicao == "invalida"}
+        da_invalida = ({x.origin_ref for x in todas if x.posicao == "invalida"}
+                       - {x.origin_ref for x in todas if x.posicao == "revalidada"})    # 30.53: a neutralizada não tira
         evidencias = [x for x in todas if (x.run_id is None or x.run_id not in invalidas)
                       and not (x.posicao == "against" and x.origin_ref in formas)
                       and not (x.posicao in ("for", "against") and x.origin_ref in da_invalida)]

@@ -118,7 +118,8 @@ async def test_a_prova_comum_segue_ate_o_efeito(real: Real) -> None:
 async def test_a_conferencia_ve_uma_mensagem_e_nao_marca_repeticao(real: Real) -> None:
     run = real.prova(f"{PREFIXO_VALIDACAO}lv-um")
     assert (await real.h.wait_run(run)).status == "completed"
-    assert any("Conferência no app de QA (etapa" in d and "o efeito saiu uma vez" in d for d in _decisoes(real, run))
+    assert any("Conferência no app de QA (etapa" in d and "1 de 1 esperadas: o efeito saiu uma vez" in d
+               for d in _decisoes(real, run))
     assert "efeito_repetido" not in str(real.db.scalar("SELECT result FROM steps WHERE run_id=? AND key='send_message'",
                                                        (run,)))
     leitura = LeituraSql(real.db).execucao(run)
@@ -139,8 +140,8 @@ async def test_duas_mensagens_no_app_viram_o_efeito_repetido_do_29_58(real: Real
     run = real.prova(f"{PREFIXO_VALIDACAO}lv-dois")
     assert (await real.h.wait_run(run)).status == "completed"
     resultado = json.loads(str(real.db.scalar("SELECT result FROM steps WHERE run_id=? AND key='send_message'", (run,))))
-    assert resultado["efeito_repetido"] == {"copias": 2, "fonte": "provedor"}
-    assert any("2 mensagens desta execução no app: o efeito saiu 2 vezes" in d for d in _decisoes(real, run))
+    assert resultado["efeito_repetido"] == {"copias": 2, "fonte": "provedor", "esperadas": 1}   # 30.53
+    assert any("2 mensagens desta execução no app, 1 esperadas: o efeito saiu repetido" in d for d in _decisoes(real, run))
     leitura = LeituraSql(real.db).execucao(run)
     assert leitura is not None and leitura.prova is not None and leitura.prova.posicao is Posicao.INVALIDA
 

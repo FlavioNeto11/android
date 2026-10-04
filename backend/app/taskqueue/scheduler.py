@@ -32,7 +32,7 @@ from .balanceamento import Candidato, Servidor
 from .executor import Outcome, StepExecutor, StepOutcome, saidas_exigidas, tela_da_falha
 from .flows import FlowStore
 from .foreach import expand
-from .oraculo_qa import (PACOTE_DO_QA, URI_DAS_MENSAGENS, conferencia_se_aplica,
+from .oraculo_qa import (PACOTE_DO_QA, URI_DAS_MENSAGENS, conferencia_se_aplica, leitura_da_conferencia,
                          mensagens_da_execucao)
 from .projecao import projetar
 from .recipes import hash_generico_da_linha
@@ -1509,7 +1509,7 @@ class Scheduler:
 
     async def _conferir_no_app_de_qa(self, obj: Row, run: Row, rt: DeviceRuntime) -> None:
         """30.31 (fatia 2): ao fim da execução de validação, o próprio app de QA conta as mensagens DESTA execução
-        (`oraculo_qa`). Duas ou mais = o efeito saiu repetido: grava o fato do 29.58 (`efeito_repetido`, `fonte:
+        (`oraculo_qa`). Mais mensagens que as esperadas (30.53: uma por etapa de efeito comprovada) = o efeito saiu repetido: grava o fato do 29.58 (`efeito_repetido`, `fonte:
         provedor`) na etapa de efeito, e o veredito (30.42), a reprodução da receita (30.43) e o painel (29.60) o leem
         como leem o do verificador. Uma = conferido. Zero com o efeito comprovado pela tela fica só no diário nesta
         fatia: é um desfecho novo, com decisão própria. Só leitura; falha de leitura não muda nada."""
@@ -1518,7 +1518,8 @@ class Scheduler:
         efeito = self.repo.db.query(
             "SELECT id, seq, key, app_id, result FROM steps WHERE objective_id=? AND plan_version=? AND side_effect=1"
             " AND status='succeeded' ORDER BY seq DESC, id", (obj["id"], obj["plan_version"]))
-        alvo = next((e for e in efeito if self._pacote_da_etapa(run, rt, e["app_id"]) == PACOTE_DO_QA), None)
+        do_qa = [e for e in efeito if self._pacote_da_etapa(run, rt, e["app_id"]) == PACOTE_DO_QA]
+        alvo = do_qa[0] if do_qa else None
         if alvo is None:
             return
         run_id = obj["run_id"]
@@ -1534,18 +1535,18 @@ class Scheduler:
                                run_id=run_id, instance_id=rt.id)
             return
         n = mensagens_da_execucao(str(saida or ""), run_id)
-        texto = {0: "nenhuma mensagem desta execução no app (a tela comprovou o envio; fica registrado)",
-                 1: "1 mensagem desta execução no app: o efeito saiu uma vez"}.get(
-            n, f"{n} mensagens desta execução no app: o efeito saiu {n} vezes")
+        # 30.53: uma mensagem por etapa de efeito comprovada (o `for_each` manda uma por item); só passar disso repete.
+        esperadas = len(do_qa)
+        texto, copias = leitura_da_conferencia(n, esperadas)
         self.repo.decision(f"{rt.id}: Conferência no app de QA (etapa {alvo['seq']}, {alvo['key']}): {texto}.",
                            run_id=run_id, instance_id=rt.id)
-        if n < 2:
+        if copias is None:
             return
         resultado = loads(alvo["result"], {}) or {}
         anterior = resultado.get("efeito_repetido") if isinstance(resultado, dict) else None
-        if isinstance(anterior, dict) and int(anterior.get("copias") or 0) >= n:
+        if isinstance(anterior, dict) and int(anterior.get("copias") or 0) >= copias:
             return                              # o verificador ou o diário já viram tanto quanto o app: fica o deles
-        resultado["efeito_repetido"] = {"copias": n, "fonte": "provedor"}
+        resultado["efeito_repetido"] = {"copias": copias, "fonte": "provedor", "esperadas": esperadas}
         self.repo.db.execute("UPDATE steps SET result=? WHERE id=?", (dumps(resultado), alvo["id"]))
 
     def _pacote_da_etapa(self, run: Row, rt: DeviceRuntime, app_id: str | None) -> str | None:

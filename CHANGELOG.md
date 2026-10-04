@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 30.53: a conferência do QA por item e a revalidada (branch fix/30-53-conferencia-por-item)
+
+- A prova real do 30.48 (r-20261004132450-38f68a) fechou `efeito_repetido` com duas mensagens legítimas, uma por
+  contato: a conferência do QA (#203) esperava uma mensagem por execução. Agora ela espera uma por etapa de efeito
+  comprovada ("N de N esperadas") e guarda `esperadas` no fato.
+- `revalidada`, posição nova sem DDL: só neutraliza a `invalida` da mesma origem. O passo `revalidacao_da_conferencia`
+  a grava para a conferência antiga com cópias dentro do esperado. Nenhum `for` retroativo, e o `steps.result` fica
+  intacto. O painel e o dossiê a mostram.
+- Prova `simulated`: `test_learning_conferencia_por_item.py` (com contraprova), oráculo e `DetalheRico.test.tsx`; 2
+  mutações conferidas; 1234 testes relacionados do backend. Real: `not_run`.
 ## 2026-10-04 — 30.48: a prova de fluxo com `for_each` roda uma amostra (branch feat/30-48-prova-por-amostra)
 
 - O `for_each` de tamanho desconhecido nunca cabia no teto do 30.41 (lv-5cf7389f13e4e0f0 fechou

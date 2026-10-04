@@ -222,6 +222,20 @@ class ForDeProva:
 
 
 @dataclass(frozen=True, slots=True)
+class InvalidaARevalidar:
+    """30.53: uma `invalida:efeito_repetido` que a regra de hoje desfaz (`domain.prova.conferencia_revalida`)."""
+
+    item_ref: str
+    origin_ref: str
+    run_id: str
+    simulada: bool
+    aparelho: str | None
+    marca: str | None                       # a da própria linha `invalida` (a mesma encarnação do conteúdo)
+    copias: int
+    esperadas: int
+
+
+@dataclass(frozen=True, slots=True)
 class ContraGravado:
     """Uma linha `against` de fluxo, de uma execução, que ainda não tem a `forma` da mesma origem ao lado (30.36)."""
 
@@ -238,6 +252,7 @@ class LeituraNativa(Protocol):
     def contra_de_fluxos(self) -> list[ContraGravado]: ...
     def fors_de_prova(self) -> list[ForDeProva]: ...
     def efeito_repetido_da_execucao(self, run_id: str) -> int | None: ...
+    def invalidas_a_revalidar(self) -> list[InvalidaARevalidar]: ...
 
 
 class PortaDeValidacao(Protocol):
@@ -574,6 +589,39 @@ class ReclassificacaoDoEfeitoDuplicado:
                 self._decidir(texto, run_id)
             except Exception:  # noqa: BLE001 - a linha do tempo informa; a evidência já foi gravada
                 log.exception("aprendizado: decisão na execução %s", run_id)
+
+
+class RevalidacaoDaConferencia:
+    """30.53: a `invalida:efeito_repetido` que a conferência do QA de antes do 30.53 gravou ao contar as mensagens de um
+    `for_each` (duas mensagens a dois contatos viravam "o efeito saiu 2 vezes") ganha ao lado a `revalidada` da MESMA
+    origem, que só a neutraliza (`promocao.efetivas`). Nenhum `for` nasce aqui: a favor só nasce de prova que fechou
+    certo. O `steps.result` fica como estava; a correção fica na trilha (a linha e a decisão na execução). Vale para o
+    fluxo e para a receita da mesma execução. Idempotente pelo índice único. Nunca chama IA."""
+
+    nome = "revalidacao_da_conferencia"
+
+    def __init__(self, repo: RepositorioDeAprendizado, leitura: LeituraNativa, *, decidir: Decidir | None = None) -> None:
+        self._repo = repo
+        self._leitura = leitura
+        self._decidir = decidir
+
+    def executar(self, agora: datetime) -> int:
+        n = 0
+        for x in self._leitura.invalidas_a_revalidar():
+            texto = (f"revalidada: a conferência do QA contou {x.copias} mensagens para {x.esperadas} etapas de efeito "
+                     "comprovadas, uma por item (30.53); a inválida desta execução não vale")
+            if not self._repo.registrar_evidencia(NovaEvidencia(
+                    item_ref=x.item_ref, stance=Posicao.REVALIDADA, origin_ref=x.origin_ref, simulated=x.simulada,
+                    run_id=x.run_id, instance_id=x.aparelho, detail=f"{x.marca} {texto}" if x.marca else texto)):
+                continue
+            n += 1
+            if self._decidir is not None:
+                try:
+                    self._decidir(f"Aprendizado: a inválida de “{x.item_ref}” nesta execução foi desfeita: a conferência "
+                                  f"do QA viu {x.copias} mensagens para {x.esperadas} etapas de efeito (30.53)", x.run_id)
+                except Exception:   # a linha do tempo informa; a evidência já foi gravada
+                    log.exception("aprendizado: decisão na execução %s", x.run_id)
+        return n
 
 
 def _casa(fluxo: FluxoEmProva, comando: str) -> bool:

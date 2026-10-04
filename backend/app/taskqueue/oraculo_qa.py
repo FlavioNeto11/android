@@ -26,3 +26,17 @@ def mensagens_da_execucao(saida: str, run_id: str) -> int:
     if not run_id:
         return 0
     return sum(1 for linha in saida.splitlines() if linha.lstrip().startswith("Row:") and run_id in linha)
+
+
+def leitura_da_conferencia(n: int, esperadas: int) -> tuple[str, int | None]:
+    """30.53: o texto da conferência e as cópias do efeito repetido (`None` sem repetição). `esperadas`: as etapas de
+    efeito no app de QA comprovadas (uma mensagem por item do `for_each`; uma no plano sem laço). Só passar delas é
+    repetição: duas mensagens de dois contatos não são o efeito saindo duas vezes."""
+    esperadas = max(1, esperadas)
+    if n == 0:
+        return ("nenhuma mensagem desta execução no app (a tela comprovou o envio; fica registrado)", None)
+    if n <= esperadas:
+        sobra = "o efeito saiu uma vez" if n == esperadas else "faltou mensagem no app (fica registrado)"
+        return f"{n} de {esperadas} esperadas: {sobra}", None
+    copias = n - esperadas + 1
+    return f"{n} mensagens desta execução no app, {esperadas} esperadas: o efeito saiu repetido", copias

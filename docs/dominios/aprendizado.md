@@ -1587,6 +1587,36 @@ lv-5cf7389f13e4e0f0 (30.47, 04/10) fechou `plano_acima_do_teto`. Agora a PROVA d
 execução comum 5) e `test_learning_prova_teto.py` (os casos do 30.41 reescritos). `real`: `not_run` até o deploy; o
 esperado é o lv-5cf7389f13e4e0f0 de novo despachar e provar 3 de N contatos.
 
+## A conferência do QA por item e a revalidada (30.53)
+
+A prova real do 30.48 foi a r-20261004132450-38f68a, no android-10: amostra de 2 de 8, 13/13 etapas comprovadas,
+US$ 0,13. Ela fechou `efeito_repetido` porque a conferência do QA (#203) contava as mensagens da execução no app
+inteiro e esperava uma. As duas mensagens legítimas, uma por contato, viraram "o efeito saiu 2 vezes", e quatro linhas
+`invalida` foram gravadas: a do fluxo e as das receitas 64, 68 e 84.
+
+- **A conferência espera uma mensagem por etapa de efeito comprovada no app de QA.** São as etapas da versão final do
+  plano, uma por item do `for_each` (`oraculo_qa.leitura_da_conferencia`). Só passar delas é repetição: o fato guarda
+  `copias` e `esperadas`. O texto na execução diz "N de N esperadas".
+- **`revalidada`, posição nova, sem DDL.** Ela só NEUTRALIZA a `invalida` da mesma (item, origem):
+  - em `promocao.efetivas`, nos leitores SQL (`linhas.favor_efetivo`/`contra_efetivo`), no dossiê do curador
+    (`revalidada_e`) e no painel ("desfeita pela revalidada");
+  - não conta a favor nem contra, e nenhum `for` nasce dela. A favor só nasce de prova que fechou certo: a repetição da
+    prova com o 30.53 no ar dá esse `for`.
+- **O passo `revalidacao_da_conferencia`** (`RevalidacaoDaConferencia`) revalida a `invalida:efeito_repetido` só quando
+  todo fato de repetição da execução é da conferência antiga (`fonte: provedor`, sem `esperadas`), e as cópias não
+  passam das etapas de efeito comprovadas (`domain.prova.conferencia_revalida`).
+  - Vale para o fluxo e para a receita da mesma execução.
+  - O `steps.result` fica intacto; a correção fica na linha e numa decisão na execução.
+  - É idempotente.
+  - O fato da regra nova, o do verificador e o do diário nunca se revalidam aqui.
+
+**Prova:**
+- `simulated`: `backend/tests/test_learning_conferencia_por_item.py` (com contraprova), os testes do oráculo em
+  `test_learning_ensaio_e_oraculo.py`, e `frontend/src/features/aprendizado/DetalheRico.test.tsx`. Duas mutações
+  conferidas.
+- `real`: `not_run` até o deploy. O esperado é que o passo revalide as 4 linhas da 38f68a e que a próxima prova do
+  fluxo com `for_each` feche `for`.
+
 ## A validação com rosto no item (30.43)
 
 Os achados 5 e 6 da validação do deploy 14 e o P4 de 03/10 (o 6f459c). Desenho aprovado pela orquestradora às 23:32Z,

@@ -1821,6 +1821,8 @@ class EfeitoRepetido(BaseModel):
     as mensagens desta execução; `taskqueue/oraculo_qa.py`)."""
     copias: int = Field(ge=2)
     fonte: Literal["verificador", "acoes", "provedor"]
+    #: 30.53: no `provedor`, quantas mensagens a conferência esperava (uma por etapa de efeito comprovada no QA).
+    esperadas: int | None = Field(default=None, ge=1, exclude_if=lambda v: v is None)
 
 
 class StepResult(BaseModel):

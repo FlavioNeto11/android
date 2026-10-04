@@ -67,7 +67,8 @@ def efetivas(evidencias: Iterable[Evidencia]) -> list[Evidencia]:
     deles divergir."""
     lista = [e for e in evidencias if not e.origin_ref.startswith(ORIGEM_DA_REPRODUCAO)]
     formas = {(e.item_ref, e.origin_ref) for e in lista if e.stance is Posicao.FORMA}
-    invalidas = {(e.item_ref, e.origin_ref) for e in lista if e.stance is Posicao.INVALIDA}
+    revalidadas = {(e.item_ref, e.origin_ref) for e in lista if e.stance is Posicao.REVALIDADA}   # 30.53
+    invalidas = {(e.item_ref, e.origin_ref) for e in lista if e.stance is Posicao.INVALIDA} - revalidadas
     if not formas and not invalidas:
         return lista
     return [e for e in lista

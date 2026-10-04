@@ -254,6 +254,23 @@ def veredito_da_prova(etapas: Sequence[EtapaDaProva], *, status: str,
     return nada
 
 
+
+def conferencia_revalida(fatos: Sequence[Mapping[str, object]], esperadas: int) -> bool:
+    """30.53: a `invalida:efeito_repetido` da execução se desfaz pela regra de hoje? Só quando TODO fato de repetição
+    gravado nas etapas é da conferência do QA de antes do 30.53 (`fonte: provedor`, sem `esperadas`), e as cópias que ela
+    contou (as mensagens da execução no app) não passam das etapas de efeito comprovadas (`esperadas`, uma por item do
+    `for_each`). O fato com `esperadas` já é da regra nova (só se grava acima delas), e o do verificador ou do diário
+    nunca se revalida aqui."""
+    if not fatos or esperadas < 1:
+        return False
+    for f in fatos:
+        if f.get("fonte") != "provedor" or f.get("esperadas") is not None:
+            return False
+        copias = f.get("copias")
+        if not isinstance(copias, int) or copias > esperadas:
+            return False
+    return True
+
 __all__ = ["COM_EFEITO", "PREFIXO", "PREFIXO_DA_EXPANSAO", "ROTULO_DO_MOTIVO", "SEM_ACAO", "AcaoDaProva", "EtapaDaProva",
            "MotivoDaInvalida", "TentativaDaProva", "VereditoDaProva", "amostra_da_evidencia", "amostra_do_rastro",
-           "detalhe_da_invalida", "efeito_repetido", "motivo_da_invalida", "rastro_da_amostra", "veredito_da_prova"]
+           "conferencia_revalida", "detalhe_da_invalida", "efeito_repetido", "motivo_da_invalida", "rastro_da_amostra", "veredito_da_prova"]

@@ -23,6 +23,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from collections.abc import Callable, Mapping
 from datetime import datetime
 
@@ -36,15 +37,16 @@ from app.modules.learning.application.evidencia_da_receita import (EvidenciaDaRe
                                                                    ReproducaoAConferir, RetrocargaDaReceita)
 from app.modules.learning.application.nativos import (AssinaturaDoPlano, ContraGravado, D1Nativo, Decidir,
                                                       ExecucaoAssentada, ExecucaoDeHabilidade, FluxoEmProva,
-                                                      ForDeProva, PassoAssinado, ProvaDaExecucao,
+                                                      ForDeProva, InvalidaARevalidar, PassoAssinado, ProvaDaExecucao,
                                                       ReclassificacaoDaForma, ReclassificacaoDoEfeitoDuplicado,
-                                                      SombraDosFluxos, ValidacaoPorExecucao)
+                                                      RevalidacaoDaConferencia, SombraDosFluxos, ValidacaoPorExecucao)
 from app.modules.learning.application.ports import RepositorioDeAprendizado
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.evidencia_invalida import run_da_etapa
 from app.modules.learning.domain.promocao import ORIGEM_DA_REPRODUCAO
-from app.modules.learning.domain.prova import (PREFIXO_DA_EXPANSAO, AcaoDaProva, EtapaDaProva, TentativaDaProva,
-                                               amostra_do_rastro, detalhe_da_invalida, efeito_repetido,
+from app.modules.learning.domain.prova import (PREFIXO_DA_EXPANSAO, AcaoDaProva, EtapaDaProva, MotivoDaInvalida,
+                                               TentativaDaProva, amostra_do_rastro, conferencia_revalida,
+                                               detalhe_da_invalida, efeito_repetido, motivo_da_invalida,
                                                veredito_da_prova)
 from app.modules.learning.domain.livro import (escopo_da_receita, estado_nativo, fluxo_tem_efeito, hash_da_receita,
                                                ref_da_trilha)
@@ -181,6 +183,50 @@ class LeituraSql:
         """30.42: as cópias do efeito da execução (`domain.prova.efeito_repetido`), ou `None`. O passo da curadoria
         aplica a MESMA regra do veredito às provas que já deixaram o `for`. 30.43: `regra_propria=False`, só o 29.58."""
         return efeito_repetido(self._etapas_da_prova(run_id), regra_propria=regra_propria)
+
+    def invalidas_a_revalidar(self) -> list[InvalidaARevalidar]:
+        """30.53: as `invalida:efeito_repetido` ainda sem a `revalidada` irmã cuja execução a regra de hoje absolve
+        (`conferencia_revalida`): os fatos de repetição das etapas e as etapas de efeito comprovadas na versão final do
+        plano de cada objetivo (uma mensagem por etapa)."""
+        linhas_ = self._db.query(
+            "SELECT e.item_ref, e.origin_ref, e.run_id, e.simulated, e.instance_id, e.detail FROM learning_evidence e"
+            " WHERE e.stance = 'invalida' AND e.run_id IS NOT NULL AND e.detail LIKE ?"
+            " AND NOT EXISTS (SELECT 1 FROM learning_evidence f WHERE f.item_ref = e.item_ref"
+            " AND f.origin_ref = e.origin_ref AND f.stance = 'revalidada') ORDER BY e.id",
+            (f"%invalida:{MotivoDaInvalida.EFEITO_REPETIDO.value}%",))
+        saida: list[InvalidaARevalidar] = []
+        absolvidas: dict[str, tuple[int, int] | None] = {}
+        for r in linhas_:
+            run_id = linhas.texto(r, "run_id")
+            if motivo_da_invalida(linhas.texto_ou_nulo(r, "detail")) is not MotivoDaInvalida.EFEITO_REPETIDO:
+                continue
+            if run_id not in absolvidas:
+                absolvidas[run_id] = self._absolvida(run_id)
+            achado = absolvidas[run_id]
+            if achado is None:
+                continue
+            marca = _MARCA_DA_LINHA.match(linhas.texto_ou_nulo(r, "detail") or "")
+            saida.append(InvalidaARevalidar(
+                item_ref=linhas.texto(r, "item_ref"), origin_ref=linhas.texto(r, "origin_ref"), run_id=run_id,
+                simulada=bool(linhas.inteiro(r, "simulated")), aparelho=linhas.texto_ou_nulo(r, "instance_id"),
+                marca=marca.group(0) if marca else None, copias=achado[0], esperadas=achado[1]))
+        return saida
+
+    def _absolvida(self, run_id: str) -> tuple[int, int] | None:
+        """(cópias contadas, etapas de efeito comprovadas) quando a regra de hoje absolve a execução; senão `None`."""
+        fatos: list[dict[str, object]] = []
+        for r in self._db.query("SELECT result FROM steps WHERE run_id=? AND result LIKE ? ORDER BY seq, id",
+                                (run_id, "%efeito_repetido%")):
+            resultado = linhas.json_legado(linhas.texto_ou_nulo(r, "result"))
+            fato = resultado.get("efeito_repetido") if isinstance(resultado, dict) else None
+            if isinstance(fato, dict):
+                fatos.append(fato)
+        esperadas = int(self._db.scalar(
+            "SELECT COUNT(*) FROM steps s JOIN objectives o ON o.id = s.objective_id WHERE s.run_id=?"
+            " AND s.side_effect=1 AND s.status='succeeded' AND s.plan_version = o.plan_version", (run_id,)) or 0)
+        if not conferencia_revalida(fatos, esperadas):
+            return None
+        return max(int(str(f.get("copias"))) for f in fatos), esperadas
 
     def reproducoes_a_conferir(self, run_id: str | None = None) -> list[ReproducaoAConferir]:
         """30.43: as linhas `reproducao:` (for/against) sem a `invalida` irmã, de execução de validação (a MESMA
@@ -454,6 +500,9 @@ class TrilhaDaAdocao:
         self._trilha.registrar(LivroKind.FLUXO, flow_id, frm, to, motivo=reason, por=by, run_id=None)
 
 
+_MARCA_DA_LINHA = re.compile(r"\[[0-9a-f]{12}\]")
+
+
 # ------------------------------------------------------------------ composição
 def ligar(servico: LearningService, repo: RepositorioDeAprendizado, db: Database, *,
           concordancias: Callable[[], int] = lambda: 1, com_prova: Callable[[], bool] = lambda: True,
@@ -471,6 +520,7 @@ def ligar(servico: LearningService, repo: RepositorioDeAprendizado, db: Database
                                                 decidir=decidir))
     servico.registrar_passo(ReclassificacaoDaForma(repo, leitura, decidir=decidir))   # 30.36
     servico.registrar_passo(ReclassificacaoDoEfeitoDuplicado(repo, leitura, decidir=decidir))   # 30.42
+    servico.registrar_passo(RevalidacaoDaConferencia(repo, leitura, decidir=decidir))   # 30.53
     reproducoes = ReproducoesSql(db)                                                  # 30.39: a evidência da receita
     servico.registrar_minerador(EvidenciaDaReceita(repo, reproducoes))
     # 30.43: depois da evidência da receita (precisa da linha) e antes do fechamento do pedido de validação (ligado

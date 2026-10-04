@@ -130,6 +130,10 @@ class Posicao(StrEnum):
     #: fora das contagens. Ao lado de um `for` ou `against` da MESMA origem, tira essa linha das contagens
     #: (`promocao.efetivas`), como a `forma` faz com o `against`.
     INVALIDA = "invalida"
+    #: 30.53: a regra de hoje desfez a `invalida` da MESMA (item, origem) (a conferência do QA que contava duas mensagens
+    #: de dois contatos como o efeito saindo duas vezes). Só NEUTRALIZA a `invalida`: não conta a favor nem contra, e
+    #: nenhum `for` nasce dela. O log só cresce: a `invalida` fica à vista, ao lado.
+    REVALIDADA = "revalidada"
 
 
 class Braco(StrEnum):

@@ -60,6 +60,9 @@ INVALIDA_DA_EVIDENCIA = ("posicao `invalida`: a execução de prova não vale co
 AMOSTRA_DA_EVIDENCIA = ("`amostra` \"N de M\": provado em amostra de N — a prova rodou só os N primeiros itens do laço, "
                         "na ordem da tela; é uma evidência como outra, sobre a etapa do laço, e não diz que a lista "
                         "inteira foi feita")
+REVALIDADA_DA_EVIDENCIA = ("posicao `revalidada`: a regra de hoje desfez a `invalida` da mesma execução (30.53: a "
+                           "conferência do QA contava uma mensagem por item do laço como repetição); não conta a favor "
+                           "nem contra, e a linha que a `invalida` tirava volta a valer")
 #: 30.39: só no dossiê da receita. O contador acumulado não é evidência citável; a lista datada é.
 CONTADORES_DA_RECEITA = ("`conteudo.uso` (`replay_ok`, `replay_fail`) são contadores acumulados SEM data, aparelho, versão "
                          "do app nem marca de real ou simulado; incluem o histórico de antes da evidência datada e também "
@@ -117,7 +120,7 @@ class Evidencia:
     """Uma linha de `learning_evidence`, sem o `detail` (texto livre)."""
 
     id: int
-    posicao: str                            # for | against | conflict | forma (30.36) | invalida (30.42)
+    posicao: str                            # for | against | conflict | forma (30.36) | invalida (30.42) | revalidada (30.53)
     origin_ref: str                         # 'attempt:<id>' | 'step:<id>' | 'signal:<id>' | 'run:<id>'
     em: str                                 # `observed_at`, ISO
     run_id: str | None = None
@@ -336,6 +339,8 @@ class Dossie:
             evidencias["forma_e"] = FORMA_DA_EVIDENCIA
         if any(e.posicao == "invalida" for e in self.evidencias):
             evidencias["invalida_e"] = INVALIDA_DA_EVIDENCIA
+        if any(e.posicao == "revalidada" for e in self.evidencias):
+            evidencias["revalidada_e"] = REVALIDADA_DA_EVIDENCIA
         lista = evidencias["lista"]
         assert isinstance(lista, list)
         for linha, e in zip(lista, self.evidencias, strict=True):
@@ -707,7 +712,7 @@ def _parecer(bruto: str | Mapping[str, object], dossie: Dossie, probabilidade: f
 
 
 __all__ = ["CAMPOS_DA_SAIDA", "CAMPOS_OBRIGATORIOS", "DECISOES_COM_ALVO", "LIMIARES_DE_CONFIANCA",
-           "CONTADORES_DA_RECEITA", "FORMA_DA_EVIDENCIA", "LIMITE_DA_CONCLUSAO", "MAX_EVIDENCIAS", "OPCOES_FECHADAS", "PRINCIPAL_DO_ITEM",
+           "CONTADORES_DA_RECEITA", "FORMA_DA_EVIDENCIA", "LIMITE_DA_CONCLUSAO", "MAX_EVIDENCIAS", "OPCOES_FECHADAS", "PRINCIPAL_DO_ITEM", "REVALIDADA_DA_EVIDENCIA",
            "SECOES_CITAVEIS", "SEM_CAMINHO_DA_RECEITA",
            "SOMBRA_DA_RECEITA", "VERSAO_DO_DOSSIE", "AppDoItem", "Causa",
            "Confianca", "Decisao",
