@@ -65,6 +65,22 @@ async def validacoes(request: Request, estado: EstadoDoPedido | None = None,
             "total": sum(contagem.values()), "modo": validacao.modo().value}
 
 
+@router.post("/validacoes/{pedido_id}/recusar", response_model=None)
+async def recusar_validacao(request: Request, pedido_id: str) -> JsonObject:
+    """30.52: o gesto de recusar um pedido ainda pendente (o da reprodução que já existe). Sem execução nem gasto, e o
+    motivo (`recusada_pela_pessoa`) não pesa contra o item. 404 sem o pedido; 409 quando ele já saiu de `pendente`."""
+    servico, validacao = _servicos(request)
+    if not validacao.recusar_pela_pessoa(pedido_id, by=_quem(request)):
+        if not validacao.listar(None, 1, None, pedido=pedido_id):
+            raise HTTPException(404, detail={"code": "pedido_desconhecido", "message": f"Não há o pedido {pedido_id}."})
+        raise HTTPException(409, detail={"code": "pedido_nao_pendente",
+                                         "message": f"O pedido {pedido_id} não está mais pendente."})
+    [p] = validacao.listar(None, 1, None, pedido=pedido_id)
+    item = pedido_json(p)
+    nomear_apps([item], servico)
+    return item
+
+
 @router.post("/fluxo/{ref}/validacao", response_model=None)
 async def pedir_validacao(request: Request, ref: str) -> JSONResponse:
     """30.47: o gesto de pedir a prova de um fluxo candidato. A regra é a do pedido do curador, mais a classe C e o

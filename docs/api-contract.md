@@ -5409,3 +5409,13 @@ passa a autonomia do pedido neste campo; isso é do PR da frente Canais.
 Prova:
 - `simulated`: `backend/tests/test_teto_de_autonomia.py` (os três níveis e o nulo).
 - `not_run`: PostgreSQL e o central depois do deploy.
+
+## Adendo v1.20 (04/10/2026; número da orquestradora; item 30.52) — a pessoa recusa um pedido de validação pendente
+
+`POST /api/aprendizado/validacoes/{id}/recusar`, sem corpo. Fecha o pedido ainda `pendente` como `recusada`, com o
+motivo `recusada_pela_pessoa`, sem execução nem gasto. O motivo é neutro: não é chegada para o curador, nem evidência,
+nem contestação, e não pesa contra o item. Quem recusou vai ao log do backend.
+- **200:** o pedido, no mesmo formato de um item de `GET /api/aprendizado/validacoes` (`motivo_humano` incluído).
+- **404** `pedido_desconhecido`: não há o pedido.
+- **409** `pedido_nao_pendente`: o pedido já saiu de `pendente` (despachou, fechou ou expirou).
+- **503:** a validação não foi composta.

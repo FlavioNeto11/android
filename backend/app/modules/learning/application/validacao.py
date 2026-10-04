@@ -164,7 +164,7 @@ class RegistroDeValidacoes(Protocol):
     #: 30.38 (b): a listagem, das mais novas para as mais antigas (`antes`: o `created_at` do último da página
     #: anterior), e a contagem por estado de TODOS os pedidos.
     def listar(self, estado: EstadoDoPedido | None, limite: int, antes: str | None, *, item: str | None = None,
-               run: str | None = None) -> list[PedidoListado]: ...
+               run: str | None = None, pedido: str | None = None) -> list[PedidoListado]: ...
     def contagens(self) -> dict[str, int]: ...
 
 
@@ -283,6 +283,16 @@ class ServicoDeValidacao:
             comando_com_credencial=bool(comando) and self._triagem(comando or ""),
             fluxo_ativo=bool(comando) and e.kind is LivroKind.RECEITA and self._fontes.fluxo_ativo_para(comando or ""),
             caminho=self._caminho(e.kind.value, e.trail_ref, comando))
+
+    # ------------------------------------------------------------------ 1c. a pessoa recusa (30.52)
+    def recusar_pela_pessoa(self, pedido_id: str, *, by: str) -> bool:
+        """30.52: uma PESSOA recusa um pedido ainda `pendente` (o do parecer que pede uma reprodução que já existe, por
+        exemplo). Fecha `recusada/recusada_pela_pessoa`, sem execução nem gasto; o motivo não é chegada para o curador
+        nem evidência. `False` quando o pedido não está mais pendente (já despachou, fechou ou não existe)."""
+        feito = self._registro.recusar(pedido_id, Motivo.RECUSADA_PELA_PESSOA, self._relogio())
+        if feito:
+            log.info("aprendizado: %s recusou o pedido de validação %s", by, pedido_id)
+        return feito
 
     # ------------------------------------------------------------------ 1b. a pessoa pede (30.47)
     def pedir_pela_pessoa(self, e: EntradaDoLivro, *, by: str) -> str:
@@ -545,10 +555,10 @@ class ServicoDeValidacao:
 
     # ------------------------------------------------------------------ 5. a leitura do painel (30.38 b)
     def listar(self, estado: EstadoDoPedido | None = None, limite: int = 50, antes: str | None = None, *,
-               item: str | None = None, run: str | None = None) -> list[PedidoListado]:
+               item: str | None = None, run: str | None = None, pedido: str | None = None) -> list[PedidoListado]:
         """Só leitura e independente do `modo`: com a validação pausada, o painel ainda mostra o que já se pediu.
-        30.43: `item` e `run` filtram (o rosto da validação no item e no Resumo da execução)."""
-        return self._registro.listar(estado, max(1, min(limite, LISTA_MAX)), antes, item=item, run=run)
+        30.43: `item` e `run` filtram (o rosto da validação no item e no Resumo da execução); 30.52: `pedido`, um só."""
+        return self._registro.listar(estado, max(1, min(limite, LISTA_MAX)), antes, item=item, run=run, pedido=pedido)
 
     def contagens(self) -> dict[str, int]:
         """Um número por estado do vocabulário (zero quando não há), para os filtros do painel."""
