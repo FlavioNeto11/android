@@ -267,6 +267,34 @@ def test_estado_v1_por_padrao_e_v2_so_quando_pedido(banco: Banco, tmp_path: Path
         braco.main(["--db", str(banco.caminho), "--estado", "v3"])
 
 
+def test_31_55_as_variantes_da_pergunta_so_mudam_o_pedido_offline(banco: Banco, tmp_path: Path) -> None:
+    """31.55: `--pergunta p1|p2` troca as instruções e as opções SÓ no pedido do braço offline. P1 diz quando `review`
+    cabe; P2 tira o `review`; as duas mantêm o `nenhuma` e o mesmo id da pergunta. A sombra do runtime não muda."""
+    from app.planning.decisao_fechada import curador  # noqa: PLC0415
+    from app.planning.decisao_fechada.contrato import ID_NENHUMA  # noqa: PLC0415
+    banco.revisao()
+    padrao, _ = _casos(banco)
+    [p_runtime] = padrao[0].pedido.perguntas
+    assert p_runtime.instrucoes == curador._INSTRUCOES == braco._INSTRUCOES_DO_RUNTIME  # noqa: SLF001
+    p1, _ = braco.casos_do_curador(banco.db, desde=None, autores_dono=frozenset(), pergunta="p1")
+    p2, _ = braco.casos_do_curador(banco.db, desde=None, autores_dono=frozenset(), pergunta="p2")
+    [q1], [q2] = p1[0].pedido.perguntas, p2[0].pedido.perguntas
+    assert q1.id == q2.id == curador.PERGUNTA_TRIAGEM and q1.limiar == q2.limiar == 0.85
+    assert "Keep is the default" in q1.instrucoes and set(q1.opcoes) == set(p_runtime.opcoes)
+    assert q2.instrucoes == p_runtime.instrucoes and set(q2.opcoes) == set(p_runtime.opcoes) - {"opt:revisar"}
+    assert ID_NENHUMA in q1.opcoes and ID_NENHUMA in q2.opcoes
+    assert p1[0].pedido.estado == padrao[0].pedido.estado            # a entrada é a mesma; só a pergunta muda
+    # seco pela porta (nada de rede) e a saída diz qual pergunta foi
+    seco = braco.DecisorSeco()
+    registros, interrompido = braco.rodar(p2, seco)
+    assert interrompido is None and len(seco.pedidos) == 1
+    saida = tmp_path / "p2.json"
+    assert braco.main(["--db", str(banco.caminho), "--pergunta", "p2", "--json", str(saida)]) == 0
+    assert json.loads(saida.read_text(encoding="utf-8"))["pergunta"] == "p2"
+    with pytest.raises(SystemExit):
+        braco.main(["--db", str(banco.caminho), "--pergunta", "p3"])
+
+
 @pytest.mark.parametrize("argv, msg", [
     (["--enviar"], "--teto"),
     (["--enviar", "--teto", "0.06"], "--teto"),

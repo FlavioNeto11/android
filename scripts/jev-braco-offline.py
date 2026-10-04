@@ -37,6 +37,7 @@ Uso, a partir da raiz do checkout:
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import hashlib
 import importlib.util
 import json
@@ -54,9 +55,11 @@ sys.path.insert(0, str(RAIZ / "backend"))
 from app.config import DecisaoFechadaCfg, EnvSettings  # noqa: E402
 from app.modules.context_retrieval.adapters.jev import JevSemanticProvider  # noqa: E402
 from app.modules.context_retrieval.wiring import _AmbienteDoProvedor  # noqa: E402
-from app.planning.decisao_fechada.contrato import PedidoDeDecisao, ResultadoDeDecisao, resultado_de_fallback  # noqa: E402
+from app.planning.decisao_fechada.contrato import (  # noqa: E402
+    PedidoDeDecisao, ResultadoDeDecisao, pergunta_choice, resultado_de_fallback,
+)
 from app.planning.decisao_fechada.curador import (  # noqa: E402
-    ESTADO_DA_SOMBRA, VERSOES_DO_ESTADO, TriagemDoCurador, decisao_real_da_triagem,
+    ESTADO_DA_SOMBRA, OPCOES, PERGUNTA_TRIAGEM, VERSOES_DO_ESTADO, TriagemDoCurador, decisao_real_da_triagem,
 )
 from app.planning.decisao_fechada.decisores import ChamadaAoJev, Decisor, DecisorJev  # noqa: E402
 from app.planning.decisao_fechada.porta import TIMEOUT_SHADOW_S, Porta, RegistroDeDecisao  # noqa: E402
@@ -138,6 +141,44 @@ def decisor_real(teto: Teto) -> DecisorJev:
     return DecisorJev(transporte, conferir_gasto=teto.conferir, registrar=teto.registrar)
 
 
+# ------------------------------------------------------------------ variantes da pergunta (31.55)
+#: As instruções da triagem em `curador.py`, copiadas: a P2 muda só as opções, e o teste confere que o texto é o mesmo.
+_INSTRUCOES_DO_RUNTIME: Final = (
+    "The state describes one item that a device-automation platform learned by itself (a lesson or a recipe), only as "
+    "counts and categories. Pick what should happen to it, or none if the facts do not tell.")
+#: P1: diz quando `review` cabe. Medido em 04/10 (31.55): com a pergunta do runtime, o Jev pôs `review` em 52 das 57
+#: linhas que o dono rotulou `keep`; a pergunta tratava `review` como a resposta segura sem motivo forte.
+_INSTRUCOES_P1: Final = (
+    "The state describes one item that a device-automation platform learned by itself (a lesson or a recipe), only as "
+    "counts and categories. Pick what should happen to it. Keep is the default: pick keep when the facts show nothing "
+    "wrong with the item. Pick review only when the facts show a specific problem that a person must look at: evidence "
+    "against it, a conflict, failures, or a health or risk flag. Pick demote or discard only when the facts show that "
+    "the item is not reliable now. Pick none if the facts do not tell.")
+_OPCOES_P1: Final[dict[str, str]] = {
+    "opt:manter": "keep: nothing in the facts shows a problem, so the item stays as it is",
+    "opt:revisar": "review: the facts show a specific problem (evidence against, a conflict, failures, a health or risk "
+                   "flag) that a person must look at",
+    "opt:rebaixar": OPCOES["opt:rebaixar"],
+    "opt:descartar": OPCOES["opt:descartar"],
+}
+#: P2: a pergunta do runtime sem a opção `review`, para ver se a massa vai para `keep` ou se espalha.
+_OPCOES_P2: Final[dict[str, str]] = {k: v for k, v in OPCOES.items() if k != "opt:revisar"}
+#: Pré-registradas em `.claude/handoffs/jev/preregistro-31-55.md` ANTES de gastar (condição da orquestradora, 04/10
+#: 21:53Z): depois de rodar, o texto não muda; mudança é rodada nova, com novo sim.
+PERGUNTAS_DO_31_55: Final[dict[str, tuple[str, dict[str, str]]]] = {
+    "p1": (_INSTRUCOES_P1, _OPCOES_P1),
+    "p2": (_INSTRUCOES_DO_RUNTIME, _OPCOES_P2),
+}
+
+
+def com_a_pergunta(pedido: PedidoDeDecisao, variante: str | None) -> PedidoDeDecisao:
+    """O pedido com a pergunta da variante (`p1`/`p2`), ou o mesmo pedido sem variante. Só o braço offline usa isto."""
+    if variante is None:
+        return pedido
+    instrucoes, opcoes = PERGUNTAS_DO_31_55[variante]
+    return dataclasses.replace(pedido, perguntas=(pergunta_choice(PERGUNTA_TRIAGEM, instrucoes, opcoes),))
+
+
 # ------------------------------------------------------------------ casos
 def _hash_curto(texto: str) -> str:
     return hashlib.sha256(texto.encode("utf-8")).hexdigest()[:12]
@@ -145,7 +186,8 @@ def _hash_curto(texto: str) -> str:
 
 def casos_do_curador(db: Any, *, desde: str | None, autores_dono: frozenset[str],
                      versao_do_estado: str = ESTADO_DA_SOMBRA,
-                     confirmacoes: Mapping[str, Mapping[str, str]] | None = None) -> tuple[list[Caso], Counter[str]]:
+                     confirmacoes: Mapping[str, Mapping[str, str]] | None = None,
+                     pergunta: str | None = None) -> tuple[list[Caso], Counter[str]]:
     """Os casos da R1: uma revisão do curador por caso, só os `kind` de F1 (`TriagemDoCurador.pedido`). O rótulo é o
     do relatório do 31.10, contado a partir da revisão (não há linha de sombra no braço offline)."""
     sql = "SELECT * FROM learning_reviews WHERE template_id=?" + (" AND created_at>=?" if desde else "")
@@ -163,6 +205,7 @@ def casos_do_curador(db: Any, *, desde: str | None, autores_dono: frozenset[str]
         if pedido is None:
             fora[str(r["item_kind"])] += 1
             continue
+        pedido = com_a_pergunta(pedido, pergunta)
         rotulo, fonte = rel._rotulo_do_curador(db, r, str(r["created_at"]), autores_dono, confirmacoes)
         try:
             parecer = json.loads(r["saida"]).get("decisao") if r["saida"] else None
@@ -252,7 +295,7 @@ def _sinal(itens: Sequence[dict[str, Any]]) -> dict[str, Any]:
 def montar(casos: Sequence[Caso], registros: Sequence[RegistroDeDecisao | None], *, fora: Mapping[str, int],
            versao_do_estado: str = ESTADO_DA_SOMBRA,
            agora: datetime, enviado: bool, interrompido: str | None, teto: Teto | None,
-           pedidos_secos: int | None) -> dict[str, Any]:
+           pedidos_secos: int | None, pergunta: str | None = None) -> dict[str, Any]:
     por_kind: dict[str, list[dict[str, Any]]] = defaultdict(list)
     linhas_saida: list[dict[str, Any]] = []
     for caso, registro in zip(casos, registros, strict=False):
@@ -294,7 +337,8 @@ def montar(casos: Sequence[Caso], registros: Sequence[RegistroDeDecisao | None],
                       "em_ai_calls": False})
     return {
         "aviso": AVISO.format(n=rotulos),
-        "consumidor": "curador", "classe": "C0", "estado": versao_do_estado, "enviado": enviado,
+        "consumidor": "curador", "classe": "C0", "estado": versao_do_estado, "pergunta": pergunta or "runtime",
+        "enviado": enviado,
         "interrompido": interrompido,
         "casos": len(casos), "rodados": sum(1 for r in registros if r is not None), "fora_de_f1": dict(fora),
         "pedidos_secos": pedidos_secos, "estratos": estratos, "custo": custo, "linhas": linhas_saida,
@@ -367,6 +411,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                    help="o `decided_by` do dono no rótulo 1 (repetível); sem ele, o rótulo 1 fica desligado")
     p.add_argument("--rotulos-em-bloco", metavar="ARQ",
                    help="31.11: o JSON dos rótulos confirmados pelo dono em bloco (fonte à parte, fora do veredito)")
+    p.add_argument("--pergunta", choices=sorted(PERGUNTAS_DO_31_55),
+                   help="31.55: variante pré-registrada da pergunta (só aqui; padrão: a do runtime)")
     p.add_argument("--enviar", action="store_true", help="chama o Jev de verdade (exige --teto)")
     p.add_argument("--teto", type=float, help=f"teto da rodada em US$ (no máximo {TETO_MAX_USD})")
     p.add_argument("--json", help="arquivo do JSON; padrão: a tela")
@@ -384,7 +430,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         casos, fora = casos_do_curador(db, desde=args.desde, versao_do_estado=args.estado,
                                        autores_dono=frozenset(n.strip() for n in args.autor_dono if n.strip()),
-                                       confirmacoes=confirmacoes)
+                                       confirmacoes=confirmacoes, pergunta=args.pergunta)
     finally:
         db.close()
     seco = DecisorSeco() if teto is None else None
@@ -392,7 +438,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     registros, interrompido = rodar(casos, decisor)
     rel_ = montar(casos, registros, fora=fora, versao_do_estado=args.estado, agora=datetime.now(UTC),
                   enviado=teto is not None,
-                  interrompido=interrompido, teto=teto, pedidos_secos=len(seco.pedidos) if seco is not None else None)
+                  interrompido=interrompido, teto=teto, pedidos_secos=len(seco.pedidos) if seco is not None else None,
+                  pergunta=args.pergunta)
     texto = json.dumps(rel_, ensure_ascii=False, indent=1, default=str)
     if args.json:
         Path(args.json).write_text(texto, encoding="utf-8")
