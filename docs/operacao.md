@@ -742,6 +742,18 @@ e "quem é você?" (ou `/quem`) responde que é a ANA e que é uma IA, sem virar
 - O registro fica em `canal_entradas` e `canal_enviadas` (migração 085), com o texto só do que veio do dono e foi aceito.
   Contagem por estado: `SELECT estado, COUNT(*) FROM canal_entradas WHERE canal='telegram' GROUP BY estado`.
 
+**Retenção (item 28.16).** A conversa não fica guardada para sempre. A faxina corre de hora em hora no líder da
+trava `avisos`, mesmo com o aviso desligado. Para o que tem mais de `avisos.entrada.retencao_dias` (Telegram, 30 de
+fábrica) ou `trello.retencao_dias` (Trello, 30), ela:
+- primeiro ZERA o texto, a prévia, a resposta e o erro, e depois apaga a linha;
+- deixa de pé a linha que ainda espera alguém (`recebida`, `pergunta`, `executando`), sem o texto, e a mais nova de
+  cada canal (o offset do Telegram);
+- no Trello, esquece também os `trello_cartoes` já arquivados.
+
+O mínimo é 2 dias, para passar da janela em que o canal repete uma entrega e o dedupe continuar valendo. O log diz
+`canais: faxina do <canal> (…)`. Um reply a um aviso mais velho que o prazo vira recado para a orquestradora, nunca
+ação.
+
 Prova real (o dono faz com a sessão Canais; sem ela fica `not_run`):
 1. Ligar `avisos.entrada.enabled: true` no `config/config.yaml`, com backup antes, e reiniciar a tarefa `farm-central`.
 2. Mandar `/status` e depois `/pendencias` ao bot. Cada um tem de responder na thread, e a linha correspondente em

@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.16: faxina das tabelas de canal por prazo de retenção (branch canais/28-16-faxina-canais, sem migração)
+
+- `modules/avisos/infrastructure/faxina_sql.py`: a faxina das tabelas de canal, por canal. Vale para `canal_entradas` e
+  `canal_enviadas` (085) e, no Trello, para os `trello_cartoes` arquivados (087).
+  - Primeiro ZERA o texto, a prévia, a resposta e o erro das linhas vencidas; só depois as apaga.
+  - Ficam a linha que espera alguém (sem o texto) e a mais nova de cada canal, que segura o offset do Telegram e
+    impede que o canal pareça vazio e descarte uma mensagem pendente como histórico.
+- `ServicoDeAvisos.faxinar_canais`: de hora em hora, no líder da trava `avisos`, sob a cerca. Não depende do Telegram
+  pronto, porque o Trello pode estar ligado sozinho.
+- Config: `avisos.entrada.retencao_dias` e `trello.retencao_dias` (30; mínimo 2, acima da janela de repetição do canal,
+  para o dedupe seguir valendo). Documentado em `config.example.yaml` e em `docs/operacao.md` §15.1.
+- As tabelas de contatos do 28.18 (090) entram na faxina no rebase do #205.
+- Testes: `tests/test_canais_faxina.py` (6). Prova simulada; a real é a primeira faxina no central depois do deploy,
+  que só tem o que apagar daqui a 30 dias.
+
 ## 2026-10-04 — 29.36: o motivo do aparelho remoto parado acompanha a conexão e a queda (branch fix/29-36-detalhe-do-externo-parado, sem migração)
 
 - `DeviceManager._recalcular_motivo_do_parado`: reescreve o `state_detail` de um aparelho de worker `stopped` com o

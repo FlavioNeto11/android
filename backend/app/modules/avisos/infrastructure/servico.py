@@ -29,6 +29,7 @@ from app.models import Problem
 from app.modules.avisos.adapters.telegram import CanalTelegram
 from app.modules.avisos.application.entrega import Canal, Resultado, entregar
 from app.modules.avisos.domain.mensagem import Aviso, aviso_de_evento
+from app.modules.avisos.infrastructure.faxina_sql import Faxina, FaxinaDosCanais
 from app.modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from app.taskqueue.travas import AVISOS, Lideranca, TravaPerdida
 
@@ -44,7 +45,7 @@ FAXINA_S = 3600.0
 class ServicoDeAvisos:
     def __init__(self, cfg: Config, bus: EventBus, fila: FilaDeAvisos, lideranca: Lideranca, *,
                  canal: Canal | None = None, lider: Callable[[str], int | None] | None = None,
-                 redigir: Callable[[str], str] | None = None):
+                 redigir: Callable[[str], str] | None = None, faxina_canais: FaxinaDosCanais | None = None):
         self.cfg = cfg
         self.bus = bus
         self.fila = fila
@@ -56,6 +57,10 @@ class ServicoDeAvisos:
         self._lider = lider or self._tomar
         self._esperar_ate = 0.0
         self._faxina_em = 0.0
+        #: A faxina das tabelas de canal (28.16). Roda no mesmo laço, mas NÃO depende do Telegram pronto: o Trello pode
+        #: estar ligado sem ele, e o que já foi gravado precisa sair no prazo mesmo com o canal desligado depois.
+        self._faxina_canais = faxina_canais
+        self._faxina_canais_em = 0.0
 
     # ------------------------------------------------------------------ configuração e saúde
     def _segredos(self) -> tuple[str, str]:
@@ -204,6 +209,32 @@ class ServicoDeAvisos:
             log.info("avisos: %d vencido(s) e %d antigo(s) purgado(s)", vencidos, purgados)
         self._faxina_em = time.monotonic() + FAXINA_S
 
+    def faxinar_canais(self) -> list[Faxina]:
+        """Uma volta da faxina dos canais (28.16), de hora em hora e só no líder da trava `avisos`. Devolve o que fez."""
+        if self._faxina_canais is None or time.monotonic() < self._faxina_canais_em:
+            return []
+        token = self._lider(AVISOS)
+        if token is None:
+            return []
+
+        def cerca():  # noqa: ANN202 - context manager do mandato
+            return self.lideranca.cercada(AVISOS, token)
+
+        feitas: list[Faxina] = []
+        try:
+            for canal, dias in (("telegram", self.cfg.file.avisos.entrada.retencao_dias),
+                                ("trello", self.cfg.file.trello.retencao_dias)):
+                f = self._faxina_canais.faxinar(cerca=cerca, canal=canal, retencao_dias=dias)
+                feitas.append(f)
+                if f.algo:
+                    log.info("canais: faxina do %s (%d zerada(s), %d apagada(s), %d enviada(s), %d cartão(ões))",
+                             canal, f.zeradas, f.apagadas, f.enviadas, f.cartoes)
+        except TravaPerdida as exc:
+            log.warning("canais: faxina recusada, %s", exc)
+            return feitas
+        self._faxina_canais_em = time.monotonic() + FAXINA_S
+        return feitas
+
     # ------------------------------------------------------------------ laço
     async def laco(self) -> None:
         """Escuta o barramento e entrega a cada `intervalo_s`. Assinatura que o barramento descartou (consumidor lento)
@@ -227,6 +258,7 @@ class ServicoDeAvisos:
                     ultimo = max(ultimo, rec.id or 0)
                     rec = fila_de_eventos.get_nowait() if not fila_de_eventos.empty() else None
                 await self.entregar_uma_vez()
+                self.faxinar_canais()
             except asyncio.CancelledError:
                 self.bus.unsubscribe(fila_de_eventos)
                 raise
