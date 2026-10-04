@@ -94,10 +94,17 @@ class _Encadeador(SimulatedProvider):
     def __init__(self) -> None:
         super().__init__()
         self.pedidos: list[int] = []
+        self.esperou = False
 
     async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]:
         self.pedidos.append(req.encadear)
         d, uso = await super().decide(req)
+        # O `wait_for` do provedor simulado depende do relógio (só espera se a mensagem ainda não chegou ao aparelho
+        # falso); no PostgreSQL, mais lento, ela já chegou e ele fecha a etapa direto. Os toques fecham a etapa logo
+        # depois e a encadeada atrás deles é descartada. Uma espera própria, uma vez, é a decisão que não fecha a etapa.
+        if req.encadear > 1 and d.tool == "step_done" and not self.esperou:
+            self.esperou = True
+            d = Decision("wait_for", {"rationale": "esperar antes de fechar", "seconds": 0})
         if req.encadear > 1 and d.tool not in ("step_done", "step_blocked"):
             d.extras = [Decision("wait_for", {"rationale": "encadeada", "seconds": 0})]
         return d, uso
