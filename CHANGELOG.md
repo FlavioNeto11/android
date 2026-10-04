@@ -46,6 +46,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   recarimbam os índices pela contagem nova (eles foram gravados contando só a tabela).
 - Prova `simulated`: 24 testes em `.claude/canais/test_resumo_laco.py` e 17 em `.claude/trello/test_redacao.py` (41
   passed). O ensaio contra os dados de agora compôs a mensagem sem enviar. `not_run`: um envio real.
+## 2026-10-04 — 31.60: um só percentil (posto mais próximo) também na latência por etapa (branch fix/31-60-percentil)
+
+- O K-085 (`app/metricas.percentil`, posto mais próximo em aritmética exata) já estava na `integ/suite-32` (fe5b469e).
+  Faltava `scripts/latencia-por-etapa.py`, que interpolava entre os postos: agora ele usa a mesma função do backend.
+  Os demais scripts do Jev, `rodada_qa_pareada` e a camada de aprendizado já usavam o posto mais próximo.
+- A linha de base de 04/10 (00:42Z a 00:48Z) foi recalculada pela regra nova, só leitura, para o 31.58 não comparar
+  duas definições. Exemplos: ator p95 de 4.130 para 4.207 ms; parede p95 de 69,6 para 87,2 s (n=10, a amostra real).
+- Prova: `simulated` (`scripts/tests/test_latencia_por_etapa.py`, n=2, 6 e 10). O teste que esperava a mediana
+  interpolada de {1, 2} ms (1,5) passou a esperar o posto (1,0).
 
 ## 2026-10-04 — 28.29: o registro das decisões automáticas diz a verdade e se lê fácil (branch canais/28-29-registro-de-decisoes)
 
