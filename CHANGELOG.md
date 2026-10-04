@@ -62,6 +62,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `test_telegram_entrada.py`, `test_trello_leitor.py` e `test_identidade_da_ia.py` (os títulos), com os títulos
   esperados atualizados nos testes de aviso. Prova simulada; a real vem com o primeiro aviso depois do deploy.
 
+## 2026-10-04 — 29.53 (medida): os dez arquivos mais lentos do PG dirigido (branch docs/29-53-medida-pg, só docs)
+
+- `docs/banco.md`: tabela dos dez mais lentos, de `--durations=0` agregado por arquivo na etapa de PG da suíte 21
+  (94 arquivos, 1890 passed, 7 min 36 s; soma 3387 s). Nenhum arquivo passa de 5 % do total; `test_rotation` é o
+  mais caro por teste (~11 s). Fecha o 29.53 com o portão (#199) e esta medida: prova `real` (04/10, 08:45:00Z a
+  08:52:40Z, central, integ/suite-21 cebee288).
+
 ## 2026-10-04 — 29.53: o portão de PostgreSQL de uma suíte, por escrito (branch docs/29-53-portao-pg, só docs)
 
 - `docs/banco.md` ("O portão de PostgreSQL de uma suíte") e `.claude/rules/testes.md`. Toda suíte roda PG dirigido

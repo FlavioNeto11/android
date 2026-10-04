@@ -335,8 +335,28 @@ pela regra de saúde. Desde então o portão é este:
   segurança dela.
 - **Lote só de painel ou só de docs não roda PG.** Foi o caso da suíte 20.
 
-A medida por arquivo (os dez mais lentos, de `--durations=0` agregado por arquivo) sai da etapa de PG da suíte 21
-e entra aqui.
+**Os mais lentos (medido na suíte 21, 04/10/2026, 08:45:00Z a 08:52:40Z).** PG dirigido em 94 arquivos, `-n 8`, Idle,
+esquema do worker ligado, sobre `integ/suite-21` (cebee288): 1890 passed, 3 skipped em 7 min 36 s de relógio.
+`--durations=0` agregado por arquivo soma 3387 s de trabalho em 91 arquivos (setup + chamada + teardown, somados
+entre os 8 workers):
+
+| Arquivo | Soma | Testes | Setup |
+|---|---|---|---|
+| `test_workers.py` | 156 s | 44 | 5 s |
+| `test_trello_leitor.py` | 150 s | 37 | 63 s |
+| `test_instagram_auth.py` | 144 s | 34 | 18 s |
+| `test_social_memory.py` | 120 s | 37 | 0 s |
+| `test_trello_webhook.py` | 115 s | 35 | 59 s |
+| `test_capabilities.py` | 110 s | 47 | 27 s |
+| `test_rotation.py` | 100 s | 9 | 25 s |
+| `test_release_lifecycle.py` | 96 s | 25 | 8 s |
+| `test_caminho_rapido_2.py` | 89 s | 20 | 25 s |
+| `test_sessao_declarada.py` | 89 s | 44 | 42 s |
+
+Nenhum arquivo passa de 5 % do total: a etapa é longa pela soma, não por um vilão. Onde o setup pesa (Trello e
+sessão declarada, ~40 % a 60 % do arquivo), o custo é montar o harness com o laço de avisos. `test_rotation` gasta
+~11 s por teste (só 9 testes): é o primeiro a olhar se a etapa precisar encolher. O que é do host aparece como
+variação entre rodadas do mesmo commit, e não foi separado nesta medida única.
 
 ## Dois backends no mesmo banco: o que já foi feito
 
