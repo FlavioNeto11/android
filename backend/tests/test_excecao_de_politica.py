@@ -173,7 +173,7 @@ def test_duplicata_em_aberto_recusada_revogar_encerra_e_o_gasto_nao_pega_encerra
     assert revogada.estado == "revogada" and revogada.encerrada_por == "orquestradora"
     assert eventos[-1][0] == "politica.excecao_revogada"
     motivo = excecoes.reservar("r-2:etapa-a")                          # revogar antes da reserva: a reserva falha
-    assert motivo is not None and "foi revogada por orquestradora" in motivo
+    assert motivo is not None and "foi revogada antes do efeito" in motivo and "orquestradora" not in motivo
     assert excecoes.obter(exc).usada_em is None                                    # type: ignore[union-attr]
     assert not policies.check(contas["mariana"], capability_of(IG, "SEND_MESSAGE"), counterparty=ALVO,
                               step_id="r-2:etapa-a").allowed
@@ -486,7 +486,7 @@ async def test_ponta_a_ponta_revogada_no_commit_o_gesto_nao_acontece(por_posicao
     assert tocados == [] and etapa["status"] == "failed", (tocados, etapa["status"], etapa["status_detail"])
     erro = por_posicao.state.db.scalar("SELECT error FROM attempts WHERE step_id=? ORDER BY number DESC LIMIT 1",
                                        (etapa["id"],))
-    assert "foi revogada por orquestradora antes do efeito" in (erro or "") and "não foi disparado" in (erro or "")
+    assert "foi revogada antes do efeito" in (erro or "") and "não foi disparado" in (erro or "")
 
 
 async def test_ponta_a_ponta_vencida_no_commit_o_gesto_nao_acontece(por_posicao: Any, monkeypatch: Any) -> None:
@@ -495,3 +495,63 @@ async def test_ponta_a_ponta_vencida_no_commit_o_gesto_nao_acontece(por_posicao:
     erro = por_posicao.state.db.scalar("SELECT error FROM attempts WHERE step_id=? ORDER BY number DESC LIMIT 1",
                                        (etapa["id"],))
     assert "venceu antes do efeito" in (erro or "")
+
+
+# ------------------------------------------------------------------ releitura 6c do #309
+async def test_reservada_sem_interacao_nao_vale_para_a_etapa_revisada_e_fecha_incerta(harness: Any) -> None:
+    """Releitura 6c, itens 1 e 2: a etapa S reserva a exceção e o `open_effect` não grava interação (queda, ação sem
+    `interaction_type`); S termina `failed`. A revisada S′ não casa a exceção (ela está `em_uso`): a porta recusa, e a
+    reservada órfã fecha `incerta` (o efeito pode ter saído), nunca reaberta."""
+    state = harness.state
+    pids, cliente = _cenario(harness)
+    exc = cliente.post("/api/politica/excecoes", json=_corpo(pids["android-01"])).json()["excecao"]
+    await _porta(state, "android-01")
+    etapa = "run-f:android-01:v1:efeito"
+    assert state.excecoes.reservar(etapa) is None and state.excecoes.obter(exc["id"]).estado == "em_uso"
+    state.db.execute("UPDATE steps SET status='failed' WHERE id=?", (etapa,))
+    assert state.excecoes.ativa_para(pids["android-01"], ALVO, "SEND_MESSAGE", "run-f:android-01:v2:efeito") is None
+    veredito = state.policies.check(pids["android-01"], capability_of(IG, "SEND_MESSAGE"), counterparty=ALVO,
+                                    step_id="run-f:android-01:v2:efeito")
+    assert not veredito.allowed and veredito.excecao is None
+    state.excecoes.vencer()
+    assert state.excecoes.obter(exc["id"]).estado == "incerta"
+    assert cliente.post(f"/api/politica/excecoes/{exc['id']}/revogar").status_code == 409
+
+
+async def test_prender_que_perde_a_corrida_faz_a_porta_recusar(harness: Any, monkeypatch: Any) -> None:
+    state = harness.state
+    pids, cliente = _cenario(harness)
+    assert cliente.post("/api/politica/excecoes", json=_corpo(pids["android-01"])).status_code == 201
+    monkeypatch.setattr(state.excecoes, "prender", lambda *_a, **_k: False)
+    recusa = await _porta(state, "android-01")
+    assert recusa is not None and not recusa.allowed and recusa.retry_at is None and "deixou de estar em aberto" in recusa.reason
+    assert state.approval_service.list() == []
+
+
+def test_porta_sem_excecao_solta_a_vencida_e_o_commit_segue(tmp_path: Path) -> None:
+    """Releitura 6c, item 1 (fim): a etapa que passa pela porta SEM exceção não falha no commit por uma vencida antiga
+    presa a ela; a porta a solta."""
+    _svc, repo, _policies, contas = _frota_com_alvo_nosso(tmp_path)
+    excecoes, _ = _excecoes(repo)
+    exc = _criar(excecoes, contas["mariana"])
+    excecoes.prender(exc, "r-2:etapa-a")
+    repo.db.execute("UPDATE excecoes_de_politica SET expira_em=? WHERE id=?", (to_iso(now() - timedelta(minutes=1)), exc))
+    excecoes.vencer()
+    assert excecoes.reservar("r-2:etapa-a") is not None                 # presa e vencida: o commit não sai
+    excecoes.soltar_da_etapa("r-2:etapa-a")                              # a porta passou a etapa sem exceção
+    assert excecoes.reservar("r-2:etapa-a") is None
+
+
+def test_eventos_levam_so_ids_e_estado(tmp_path: Path) -> None:
+    """Releitura 6c, item 4: alvo, motivo e autorização ficam no GET, nunca no barramento."""
+    _svc, repo, _policies, contas = _frota_com_alvo_nosso(tmp_path)
+    excecoes, eventos = _excecoes(repo)
+    exc = _criar(excecoes, contas["mariana"])
+    excecoes.prender(exc, "r-2:etapa-a")
+    excecoes.reservar("r-2:etapa-a")
+    excecoes.disparou("r-2:etapa-a", "int-1")
+    excecoes.liquidar("int-1", houve_efeito=False)
+    assert [t for t, _ in eventos] == ["politica.excecao_criada", "politica.excecao_sem_efeito"]
+    for _tipo, dados in eventos:
+        assert set(dados) <= {"excecao_id", "estado", "encerrada_por", "step_id", "run_id", "interaction_id"}
+        assert ALVO not in str(dados) and AUTORIZACAO not in str(dados) and "prova do 31.26" not in str(dados)

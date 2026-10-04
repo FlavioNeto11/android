@@ -23,8 +23,9 @@
 --     em_uso_em     quando o executor a reservou, logo antes do gesto (UPDATE condicional). Em uso não volta a
 --                   aberta, não vence e não é revogada; o `settle_effect` a liquida (usada ou `sem_efeito`).
 --     encerrada_em / encerrada_por / encerramento   quando foi encerrada sem uso: `recusada` (a pessoa rejeitou o
---                   cartão da etapa presa), `revogada` (pela rota) ou `sem_efeito` (reservada, e o gesto não teve
---                   efeito). Encerrada não volta a valer.
+--                   cartão da etapa presa), `revogada` (pela rota), `sem_efeito` (reservada, e o gesto não teve
+--                   efeito) ou `incerta` (reservada, e a etapa terminou sem liquidação: o efeito pode ter saído).
+--                   Encerrada não volta a valer.
 --
 -- O alvo é sempre conta nossa viva (a rota recusa pessoa real) e só há uma em aberto por perfil, alvo e ação.
 --
@@ -50,7 +51,7 @@ CREATE TABLE excecoes_de_politica (
   em_uso_em        TEXT,
   encerrada_em     TEXT,
   encerrada_por    TEXT,
-  encerramento     TEXT CHECK (encerramento IS NULL OR encerramento IN ('recusada','revogada','sem_efeito'))
+  encerramento     TEXT CHECK (encerramento IS NULL OR encerramento IN ('recusada','revogada','sem_efeito','incerta'))
 );
 
 CREATE INDEX ix_excecoes_de_politica_alvo ON excecoes_de_politica (profile_id, alvo, capability);

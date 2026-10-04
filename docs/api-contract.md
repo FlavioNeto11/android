@@ -1171,6 +1171,7 @@ A tabela de eventos deste documento (seção "Eventos") não lista os seguintes,
 | `politica.excecao_recusada` | sim | `social/excecoes.py` — o dono rejeitou o cartão da etapa presa e a exceção acabou (30.65) |
 | `politica.excecao_revogada` | sim | `social/excecoes.py` — a exceção em aberto foi revogada pela rota (30.65) |
 | `politica.excecao_sem_efeito` | sim | `social/excecoes.py` — reservada, o gesto terminou sem efeito; ela fecha e não volta a aberta (30.65) |
+| `politica.excecao_incerta` | sim | `social/excecoes.py` — reservada, e a etapa terminou sem liquidação; o efeito pode ter saído e conta como usada (30.65) |
 | `app_state.updated` | sim | `state.py` |
 | `session.needs_person` | sim | `modules/identity/application/session_rules.py::emit_needs_person_change`, chamada por `integrations/app_declarado/sessao.py::SessaoDeclarada._save` e `state.py::AppState._sessao_desmentida` — a sessão da conta entrou em `auth_challenge`/`wrong_account` |
 | `learning.needs_person` | sim | `modules/learning/application/espera.py::AvisadorDeEspera`, chamado por `LearningService` (`mudar_estado`, `propor`, `avisar_item`, `avisar_mudanca_nativa`) e pelos ouvintes das lojas de receita e fluxo (`infrastructure/ligar_nativos.py`) — um item do Livro de aprendizado entrou na espera do dono (faixa B ou C da política de risco) ou saiu dela; ver o adendo v0.49 |
@@ -5687,18 +5688,24 @@ sempre abre cartão novo: o aprovado de uma versão anterior com o mesmo texto e
   e o gesto não acontece; se a reserva levantar, também não. Se a reserva ganhou antes, revogar responde 409
   `excecao_em_uso` ("o efeito pode ter saído") e nunca grava "revogada" por cima. A reservada é liquidada no
   `settle_effect`: usada se o efeito saiu ou pode ter saído, `sem_efeito` se não saiu (não volta a aberta); a queda do
-  processo a deixa `em_uso`, visível no GET. A vencida continua apontando a etapa (a reserva a encontra). O cartão cita no máximo 80 caracteres da autorização (o aviso do Telegram corta em 500).
+  processo a deixa `em_uso` até a etapa terminar: então ela fecha usada (etapa `succeeded`) ou `incerta` (o resto; o
+  efeito pode ter saído), nunca reaberta. A vencida continua apontando a etapa (a reserva a encontra). A porta liga à
+  etapa só a exceção que usou (`prender`, que falha se ela deixou de estar em aberto, e a porta recusa) e solta todas
+  quando passa a etapa sem exceção: o commit reserva exatamente a que a porta usou. A reservada nunca vale para outra
+  etapa. O motivo do desfecho não cita pessoa nem alvo. O cartão cita no máximo 80 caracteres da autorização (o aviso do Telegram corta em 500).
 - **`GET /api/politica/excecoes?profile_id=`**: `{"excecoes": [...]}`, as mais novas primeiro (até 200). Cada uma traz
   `id`, `regra` (`uma_conta_por_alvo`), `profile_id`, `alvo`, `capability`, `motivo`, `autorizacao`, `autor`,
   `autor_com_sessao`, `criada_em`, `expira_em`, `step_id`, `presa_em`, `usada_em`, `interaction_id`, `vencida_em`,
   `em_uso_em`, `encerrada_em`, `encerrada_por`, `encerramento` e `estado` (`ativa` | `presa` | `em_uso` | `usada` |
-  `vencida` | `recusada` | `revogada` | `sem_efeito`). Ler encerra as vencidas.
+  `vencida` | `recusada` | `revogada` | `sem_efeito` | `incerta`). Ler encerra as vencidas.
 - **Ciclo.** A porta do despacho prende a exceção à etapa que casou (outra etapa só a toma se a presa terminou sem efeito);
   o `open_effect` a gasta quando o efeito sai (uso único: a segunda volta à recusa; uma falha ao gastar não derruba o
   efeito, que fica registrado). Sem uso até `expira_em`, ela vence e solta a etapa; o vencimento roda na porta do despacho
   e na leitura da rota, não há varredura em segundo plano. Rejeitar o cartão da etapa presa a encerra (`recusada`), e a
   rota de revogar também: encerrada não volta a valer para etapa nenhuma.
 - **Eventos** (persistidos, sem aviso no Telegram): `politica.excecao_criada`, `politica.excecao_usada`,
-  `politica.excecao_vencida`, `politica.excecao_recusada` e `politica.excecao_revogada`. Não entram no registro de decisões automáticas (28.25): é decisão de pessoa.
+  `politica.excecao_vencida`, `politica.excecao_recusada`, `politica.excecao_revogada`, `politica.excecao_sem_efeito` e
+  `politica.excecao_incerta`. Enxutos: `data` leva só `excecao_id`, `estado`, `encerrada_por`, `step_id`, `run_id` e,
+  quando há, `interaction_id`; alvo, motivo e autorização ficam só no GET. Não entram no registro de decisões automáticas (28.25): é decisão de pessoa.
 - **Prova:** `simulated` (`backend/tests/test_excecao_de_politica.py`). `not_run`: a exceção do 31.26, que a orquestradora
   cria depois do deploy 32.

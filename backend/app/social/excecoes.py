@@ -72,8 +72,9 @@ class Excecao:
     em_uso_em: str | None
     encerrada_em: str | None
     encerrada_por: str | None
-    #: `recusada` (o dono rejeitou o cartão da etapa presa), `revogada` (pela rota) ou `sem_efeito` (reservada, e o
-    #: gesto terminou sem efeito: fecha fechado; outra exceção, se for o caso, é criada de novo).
+    #: `recusada` (o dono rejeitou o cartão da etapa presa), `revogada` (pela rota), `sem_efeito` (reservada, e o
+    #: gesto terminou sem efeito: fecha fechado; outra exceção, se for o caso, é criada de novo) ou `incerta`
+    #: (reservada, e a etapa terminou sem liquidação: o efeito pode ter saído; conta como usada).
     encerramento: str | None
 
     @property
@@ -104,15 +105,27 @@ def _excecao(row: object) -> Excecao:
     return Excecao(**campos)
 
 
-def _sem_efeito(emitir: Emitir | None, tipo: str, mensagem: str, dados: dict[str, object]) -> None:
-    if emitir is not None:
-        emitir(tipo, mensagem, dados)
+#: A etapa que terminou assim com a exceção ainda `em_uso` (sem liquidação: queda, `open_effect` que não rodou) a
+#: encerra: `succeeded` como usada; o resto como `incerta` (o efeito pode ter saído). Nunca volta a aberta.
+_ETAPA_TERMINADA = ("succeeded", "failed", "cancelled", "skipped", "uncertain")
 
 
 class ExcecoesDePolitica:
     def __init__(self, db: Database, emitir: Emitir | None = None):
         self.db = db
         self.emitir = emitir
+
+    def _emitir(self, tipo: str, excecao_id: str, texto: str, **extra: object) -> None:
+        """Evento enxuto: só ids e estado. Alvo, motivo e autorização ficam no GET; menos dado no barramento é menos
+        lugar para vazar, e a regra dos avisos não depende do redator."""
+        if self.emitir is None:
+            return
+        x = self.obter(excecao_id)
+        run = self.db.scalar("SELECT run_id FROM steps WHERE id=?", (x.step_id,)) if x and x.step_id else None
+        self.emitir(tipo, f"exceção {excecao_id} à regra de uma conta por alvo {texto} (30.65)",
+                    {"excecao_id": excecao_id, "estado": x.estado if x else None,
+                     "encerrada_por": x.encerrada_por if x else None, "step_id": x.step_id if x else None,
+                     "run_id": run, **extra})
 
     # ------------------------------------------------------------------ rota
     def criar(self, *, profile_id: str, alvo: str, capability: str, motivo: str, autorizacao: str, autor: str,
@@ -153,9 +166,7 @@ class ExcecoesDePolitica:
              autor, 1 if autor_com_sessao else 0, to_iso(agora), to_iso(prazo)))
         criada = self.obter(excecao_id)
         assert criada is not None
-        _sem_efeito(self.emitir, "politica.excecao_criada",
-                    f"exceção à regra de uma conta por alvo criada para {acao} em {alvo_normal} (30.65)",
-                    {"excecao": criada.to_dict()})
+        self._emitir("politica.excecao_criada", excecao_id, "criada")
         return criada
 
     def obter(self, excecao_id: str) -> Excecao | None:
@@ -171,15 +182,16 @@ class ExcecoesDePolitica:
     # ------------------------------------------------------------------ porta (só leitura)
     def ativa_para(self, profile_id: str, alvo: str | None, capability: str, step_id: str | None) -> Excecao | None:
         """A exceção que vale para esta etapa, ou `None`. Só lê: o `check` é puro (30.61 o reusa na prévia).
-        Vale a não usada, dentro do prazo, deste perfil, alvo e ação, livre ou presa a ESTA etapa, ou presa a uma
-        etapa que terminou sem efeito (a versão revisada da mesma etapa a retoma)."""
+        Vale a EM ABERTO (nem reservada, nem usada, nem vencida, nem encerrada), dentro do prazo, deste perfil, alvo e
+        ação, livre ou presa a ESTA etapa, ou presa a uma etapa que terminou sem efeito (a versão revisada da mesma
+        etapa a retoma). A reservada (`em_uso`) nunca: o gesto dela pode ter saído sem interação gravada."""
         alvo_normal = normalizar_alvo(alvo)
         if alvo_normal is None:
             return None
         estados = ",".join("?" * len(_TERMINOU_SEM_EFEITO))
         row = self.db.one(
             "SELECT x.* FROM excecoes_de_politica x WHERE x.profile_id=? AND x.alvo=? AND x.capability=?"
-            " AND x.usada_em IS NULL AND x.vencida_em IS NULL AND x.encerrada_em IS NULL AND x.expira_em>?"
+            f" AND {_EM_ABERTO} AND x.expira_em>?"
             " AND (x.step_id IS NULL OR x.step_id=? OR EXISTS (SELECT 1 FROM steps e WHERE e.id=x.step_id"
             f" AND e.status IN ({estados}) AND NOT EXISTS (SELECT 1 FROM social_interactions i"
             " WHERE i.step_id=e.id AND i.direction='outbound')))"
@@ -188,37 +200,53 @@ class ExcecoesDePolitica:
         return _excecao(row) if row else None
 
     # ------------------------------------------------------------------ escrita (gate, efeito, varredura)
-    def prender(self, excecao_id: str, step_id: str) -> None:
-        """A porta casou a exceção com esta etapa: outra etapa não a toma enquanto esta estiver viva."""
-        self.db.execute(f"UPDATE excecoes_de_politica SET step_id=?, presa_em=? WHERE id=? AND {_EM_ABERTO}"
-                        " AND (step_id IS NULL OR step_id<>?)", (step_id, to_iso(now()), excecao_id, step_id))
+    def prender(self, excecao_id: str, step_id: str) -> bool:
+        """A porta casou a exceção com esta etapa: outra etapa não a toma enquanto esta estiver viva. `False` quando ela
+        deixou de estar em aberto entre a leitura e esta escrita: a porta recusa (não há exceção para a etapa).
+
+        Ela passa a ser a ÚNICA ligação desta etapa: as outras exceções presas a ela, de passagens anteriores pela
+        porta, são soltas (salvo a reservada, que nunca se solta). É o que diz ao executor qual exceção a porta usou."""
+        agora = to_iso(now())
+        cur = self.db.execute(f"UPDATE excecoes_de_politica SET step_id=?, presa_em=CASE WHEN step_id=? THEN presa_em"
+                              f" ELSE ? END WHERE id=? AND {_EM_ABERTO}", (step_id, step_id, agora, excecao_id))
+        if int(cur.rowcount or 0) != 1:
+            return False
+        self.db.execute(f"UPDATE excecoes_de_politica SET step_id=NULL WHERE step_id=? AND id<>? AND NOT ({_EM_USO})",
+                        (step_id, excecao_id))
+        return True
+
+    def soltar_da_etapa(self, step_id: str) -> None:
+        """A porta passou esta etapa SEM exceção: nenhuma fica ligada a ela (salvo a reservada). Assim o executor não
+        reserva no commit uma exceção que a porta não usou, nem falha por uma vencida antiga presa."""
+        self.db.execute(f"UPDATE excecoes_de_politica SET step_id=NULL WHERE step_id=? AND NOT ({_EM_USO})", (step_id,))
 
     def reservar(self, step_id: str | None) -> str | None:
-        """O executor, logo antes do gesto com efeito: `None` segue (nenhuma exceção presa à etapa, ou a reserva ganhou);
-        um texto é o motivo literal para a etapa falhar fechada, sem gesto.
+        """O executor, logo antes do gesto com efeito: `None` segue (a porta passou a etapa sem exceção, ou a reserva
+        ganhou); um texto é o motivo literal para a etapa falhar fechada, sem gesto.
 
-        A reserva é um UPDATE condicional, não uma leitura seguida de ação: com duas reservas (ou uma revogação) ao mesmo
-        tempo, só uma linha é afetada. Exceção presa que venceu, foi revogada, recusada, já usada ou já reservada não é
-        reservada, e o efeito não sai."""
+        A exceção ligada à etapa é a que a porta usou na última passagem (`prender` deixa só ela; `soltar_da_etapa`
+        nenhuma). A reserva é um UPDATE condicional dela, não uma leitura seguida de ação: com duas reservas (ou uma
+        revogação) ao mesmo tempo, só uma linha é afetada. Se ela venceu, foi revogada, recusada, já usada, ou se há uma
+        reservada sem liquidação ligada à etapa, o efeito não sai. O motivo não cita pessoa nem alvo (vai ao desfecho)."""
         if not step_id:
             return None
-        presas = [_excecao(r) for r in self.db.query(
-            "SELECT * FROM excecoes_de_politica WHERE step_id=? ORDER BY presa_em, criada_em, id", (step_id,))]
-        if not presas:
+        ligadas = [_excecao(r) for r in self.db.query(
+            "SELECT * FROM excecoes_de_politica WHERE step_id=? ORDER BY presa_em DESC, criada_em DESC, id DESC",
+            (step_id,))]
+        if not ligadas:
             return None
-        agora = to_iso(now())
-        for x in presas:
-            if x.estado not in ("ativa", "presa"):
-                continue
+        em_uso = [x for x in ligadas if x.estado == "em_uso"]
+        x = em_uso[0] if em_uso else ligadas[0]
+        if not em_uso and x.estado in ("ativa", "presa"):
+            agora = to_iso(now())
             cur = self.db.execute(f"UPDATE excecoes_de_politica SET em_uso_em=? WHERE id=? AND step_id=? AND {_EM_ABERTO}"
                                   " AND expira_em>?", (agora, x.id, step_id, agora))
             if int(cur.rowcount or 0) == 1:
                 return None
-        x = self.obter(presas[-1].id) or presas[-1]
-        como = {"revogada": f"foi revogada por {x.encerrada_por or 'uma pessoa'}",
-                "recusada": f"foi recusada por {x.encerrada_por or 'uma pessoa'}",
-                "sem_efeito": "já foi usada numa tentativa sem efeito", "usada": "já foi usada",
-                "em_uso": "já está em uso por outro disparo"}.get(x.estado, "venceu")
+            x = self.obter(x.id) or x
+        como = {"revogada": "foi revogada", "recusada": "foi recusada",
+                "sem_efeito": "já foi usada numa tentativa sem efeito", "incerta": "já foi usada (efeito incerto)",
+                "usada": "já foi usada", "em_uso": "já está em uso por outro disparo"}.get(x.estado, "venceu")
         return (f"a exceção {x.id} à regra de uma conta por alvo {como} antes do efeito; o efeito não foi disparado "
                 "(30.65)")
 
@@ -239,21 +267,39 @@ class ExcecoesDePolitica:
         agora = to_iso(now())
         if houve_efeito:
             self.db.execute(f"UPDATE excecoes_de_politica SET usada_em=? WHERE id=? AND {_EM_USO}", (agora, row["id"]))
-            tipo, texto = "politica.excecao_usada", "usada"
+            self._emitir("politica.excecao_usada", str(row["id"]), "usada", interaction_id=interaction_id)
         else:
             self.db.execute(f"UPDATE excecoes_de_politica SET encerrada_em=?, encerrada_por='sistema',"
                             f" encerramento='sem_efeito' WHERE id=? AND {_EM_USO}", (agora, row["id"]))
-            tipo, texto = "politica.excecao_sem_efeito", "encerrada sem efeito confirmado"
-        x = self.obter(str(row["id"]))
-        _sem_efeito(self.emitir, tipo,
-                    f"exceção à regra de uma conta por alvo {texto} em {row['capability']} para {row['alvo']} (30.65)",
-                    {"excecao": x.to_dict() if x else {"id": row["id"]}, "interaction_id": interaction_id})
+            self._emitir("politica.excecao_sem_efeito", str(row["id"]), "encerrada sem efeito confirmado",
+                         interaction_id=interaction_id)
+
+    def fechar_em_uso_orfas(self) -> int:
+        """A reservada cuja etapa terminou sem liquidação (queda do processo, `open_effect` que não rodou ou levantou)
+        não fica `em_uso` para sempre: etapa `succeeded`, usada; senão `incerta` (o efeito pode ter saído). Efeito
+        incerto conta como usado: nunca volta a aberta."""
+        estados = ",".join("?" * len(_ETAPA_TERMINADA))
+        orfas = self.db.query(
+            f"SELECT x.id, e.status FROM excecoes_de_politica x JOIN steps e ON e.id = x.step_id WHERE {_EM_USO}"
+            f" AND e.status IN ({estados}) ORDER BY x.em_uso_em, x.id", _ETAPA_TERMINADA)
+        agora = to_iso(now())
+        for row in orfas:
+            if row["status"] == "succeeded":
+                self.db.execute(f"UPDATE excecoes_de_politica SET usada_em=? WHERE id=? AND {_EM_USO}", (agora, row["id"]))
+                self._emitir("politica.excecao_usada", str(row["id"]), "usada (etapa concluída sem liquidação)")
+            else:
+                self.db.execute(f"UPDATE excecoes_de_politica SET encerrada_em=?, encerrada_por='sistema',"
+                                f" encerramento='incerta' WHERE id=? AND {_EM_USO}", (agora, row["id"]))
+                self._emitir("politica.excecao_incerta", str(row["id"]), "encerrada como incerta: o efeito pode ter saído")
+        return len(orfas)
 
     def vencer(self) -> int:
-        """Encerra as em aberto cujo prazo passou, com um evento cada. Idempotente. A em uso fica fora do alcance.
+        """Encerra as em aberto cujo prazo passou, com um evento cada, e fecha as reservadas órfãs. Idempotente. A em
+        uso fica fora do alcance do prazo.
 
-        A vencida continua apontando a etapa em que estava presa: é assim que a reserva no commit a encontra e falha
-        ("venceu antes do efeito"); a porta não a usa de novo porque ela não está em aberto.
+        A vencida continua ligada à etapa em que estava presa: é assim que a reserva no commit a encontra e falha
+        ("venceu antes do efeito"); a porta não a usa de novo porque ela não está em aberto, e a solta se passar a
+        etapa sem exceção.
 
         Roda na porta do despacho e na leitura da rota; não há varredura em segundo plano."""
         agora = to_iso(now())
@@ -262,9 +308,8 @@ class ExcecoesDePolitica:
         for row in vencidas:
             self.db.execute(f"UPDATE excecoes_de_politica SET vencida_em=? WHERE id=? AND {_EM_ABERTO}",
                             (agora, row["id"]))
-            _sem_efeito(self.emitir, "politica.excecao_vencida",
-                        f"exceção à regra de uma conta por alvo venceu sem uso ({row['capability']}, {row['alvo']})"
-                        " (30.65)", {"excecao_id": row["id"]})
+            self._emitir("politica.excecao_vencida", str(row["id"]), "venceu sem uso")
+        self.fechar_em_uso_orfas()
         return len(vencidas)
 
     # ------------------------------------------------------------------ pessoa (recusa do cartão, revogação)
@@ -278,8 +323,8 @@ class ExcecoesDePolitica:
         return [i for i in ids if self._encerrar(i, como="recusada", por=por) is not None]
 
     def revogar(self, excecao_id: str, *, por: str | None) -> Excecao:
-        """Encerra pela rota a exceção ainda em aberto (presa ou livre). `ExcecaoInvalida` se ela não existe ou já
-        terminou (usada, vencida, recusada ou revogada)."""
+        """Encerra pela rota a exceção ainda em aberto (presa ou livre). `ExcecaoEmUso` se o executor já a reservou;
+        `ExcecaoInvalida` se ela não existe ou já terminou."""
         self.vencer()
         if self.obter(excecao_id) is None:
             raise ExcecaoInvalida(f"exceção {excecao_id} não existe")
@@ -293,15 +338,9 @@ class ExcecoesDePolitica:
 
     def _encerrar(self, excecao_id: str, *, como: str, por: str | None) -> Excecao | None:
         """Encerra se ainda estiver em aberto; `None` se outra coisa a terminou antes (a corrida fica no WHERE)."""
-        antes = self.obter(excecao_id)
-        if antes is None or antes.estado not in ("ativa", "presa"):
+        cur = self.db.execute(f"UPDATE excecoes_de_politica SET encerrada_em=?, encerrada_por=?, encerramento=?"
+                              f" WHERE id=? AND {_EM_ABERTO}", (to_iso(now()), por or "", como, excecao_id))
+        if int(cur.rowcount or 0) != 1:
             return None
-        self.db.execute(f"UPDATE excecoes_de_politica SET encerrada_em=?, encerrada_por=?, encerramento=?"
-                        f" WHERE id=? AND {_EM_ABERTO}", (to_iso(now()), por or "", como, excecao_id))
-        encerrada = self.obter(excecao_id)
-        if encerrada is None or encerrada.encerramento != como:
-            return None
-        _sem_efeito(self.emitir, f"politica.excecao_{como}",
-                    f"exceção à regra de uma conta por alvo {como} ({encerrada.capability}, {encerrada.alvo}) (30.65)",
-                    {"excecao": encerrada.to_dict()})
-        return encerrada
+        self._emitir(f"politica.excecao_{como}", excecao_id, como)
+        return self.obter(excecao_id)

@@ -2137,8 +2137,16 @@ class AppState:
         if not veredito.allowed:
             return veredito
         if veredito.excecao is not None:
-            # 30.65: o `check` só lê; quem escreve é a porta. A exceção fica presa a esta etapa até o efeito sair.
-            self.excecoes.prender(veredito.excecao, srow["id"])
+            # 30.65: o `check` só lê; quem escreve é a porta. A exceção fica presa a esta etapa até o efeito sair, e é
+            # a única ligada a ela: é a que o executor reserva no commit. Se deixou de estar em aberto entre a leitura
+            # e a escrita, não há exceção para a etapa, e a porta recusa.
+            if not self.excecoes.prender(veredito.excecao, srow["id"]):
+                return Verdict(allowed=False, policy=veredito.policy, counts=veredito.counts,
+                               reason=f"a exceção {veredito.excecao} à regra de uma conta por alvo deixou de estar em "
+                                      "aberto antes de ser presa a esta etapa (30.65): recusado, não adiado",
+                               hint="Nada foi feito. Se ainda for o caso, crie outra exceção.")
+        elif cap.side_effect:
+            self.excecoes.soltar_da_etapa(srow["id"])    # 30.65: passou sem exceção; o commit não reserva nenhuma
         # O texto é escrito AQUI, com a persona deste perfil, antes de qualquer digitação e antes da aprovação —
         # senão a pessoa aprovaria um rascunho que não é o que vai ser enviado.
         parado = await self._draft_gate(obj, srow, cap, profile_id, rt=rt, pacote=pacote)
