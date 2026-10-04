@@ -19,6 +19,23 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.77: site institucional na raiz e contato que chega ao Telegram do dono (branch feat/29-77-portal-institucional)
+
+- **O pedido:** o dono quer um site público na raiz de `dev.nvit.com.br`, com link para o painel e um formulário cuja
+  mensagem chega ao Telegram dele, e os telefones na página com WhatsApp. O site apresenta a ANA e as personas como
+  identidade declarada de quem contrata, e traz a seção "O que a ANA não faz".
+- **O que muda (tudo desligado de fábrica, `portal.site_ligado` e `portal.contato_ligado`):**
+  - `site/` (HTML, CSS, JS e SVG próprios) servido da memória na raiz, montado por último; lista fechada de extensões
+    (arquivo fora dela derruba a subida, e o `deploy.ps1` confere antes de parar o central); CSP sem `unsafe-inline`,
+    `Permissions-Policy` e COOP; os contatos do `config.yaml` entram escapados;
+  - `POST /api/portal/contato` (adendo v1.36), a segunda exceção do portão em `/api/`: isca e token de tempo mínimo com
+    a mesma resposta do aceito, validação, taxa por cliente (HMAC com sal, IPv6 por /64), teto diário e teto de avisos
+    por hora; grava antes de avisar a Canais (28.32) e o laço `portal-contatos` reenvia e apaga em 180 dias;
+  - migração 107 (`portal_contatos`); ADR-075, que emenda o ADR-073; `scripts/portal-prova-de-fora.sh` ganha
+    `SITE=ligado` e `CONTATO=ligado` (um `POST` com a isca, que não grava nem avisa).
+- **Prova:** `simulated` (`backend/tests/test_portal_site.py`, 12; `backend/tests/test_portal_contato.py`, 19; mais
+  `test_arquitetura`, `test_cobertura_de_rotas`, `test_portal_publico_central` e `scripts/tests`). `not_run`: ligado
+  no central e a prova de fora com o site no ar.
 ## 2026-10-04 — 28.29: o registro das decisões automáticas diz a verdade e se lê fácil (branch canais/28-29-registro-de-decisoes)
 
 Achados das duas revisões independentes do deploy 30, do passeio da orquestradora pela aba "Decidido sozinho" e da

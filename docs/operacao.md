@@ -410,6 +410,48 @@ para sem tirar nada se alguma foi mexida à mão) e `conferir` só lê e diz se 
 sem gravar; a prova de fora deu 22 de 22 às 23:06:58Z.
 Para tirar o hostname do ar, `Stop-Service Cloudflared` (e, se for o caso, `cloudflared service uninstall`).
 
+### Site institucional na raiz (29.77, ADR-075; desligado, prova `simulated`)
+
+O site público da SICAT/ANA (pasta `site/`, versionada) vai na raiz de `https://dev.nvit.com.br/`, com o painel seguindo
+em `/central/`. O formulário de contato manda a mensagem ao Telegram do dono pelo bot (contrato `portal.contato`, item
+28.32 da Canais). Tudo DESLIGADO de fábrica; o `config.yaml` só vale na subida.
+
+**Ligar (orquestradora, depois do PR da Canais no ar):**
+
+1. No `config/config.yaml` do central, o bloco abaixo, com os dois números de verdade (estão no brief fora do Git;
+   nunca em doc, teste ou commit). Os dois `_ligado` vão juntos: só o site, sem o contato, mostra um formulário que
+   recebe 404.
+
+   ```yaml
+   portal:
+     site_ligado: true
+     contato_ligado: true
+     contatos:
+       - nome: "<nome>"
+         telefone: "<+55 (DDD) número>"
+   ```
+
+2. Conferir que `https://dev.nvit.com.br` está em `server.allowed_origins` (está desde o ADR-073; sem ela todo envio
+   leva 403) e que o aviso do Telegram está pronto (`GET /api/canais/estado`).
+3. `pwsh -File scripts\deploy.ps1 -Ensaio` confere a pasta `site/` (arquivo fora da lista derruba a subida do central
+   inteiro; o caso comum é o `Thumbs.db` ou o `desktop.ini` do Explorer: apague e rode de novo). Depois, reiniciar a
+   tarefa `farm-central`.
+4. Prova de fora, sem credencial e sem contato de verdade:
+   `SITE=ligado CONTATO=ligado bash scripts/portal-prova-de-fora.sh depois`. O `POST` dela leva a isca preenchida:
+   202 prova Host, Origin, Content-Type e a exceção do portão, sem gravar nem avisar. 403 = falta a origem; 404 =
+   bandeira desligada (ou o reinício não aconteceu); 401 = o código do 29.77 não está no ar.
+5. O primeiro contato de verdade é do dono (ele preenche o formulário e confere a mensagem no Telegram): é efeito no
+   Telegram dele, então pede o sim dele.
+
+**O que esperar.** Taxa por cliente pelo IP da borda (`cf-connecting-ip`; só vale com `tls_behind_proxy` e o Host
+público): 3 por hora e 10 por dia de fábrica (`portal.limites`). Teto global de 500 guardados por dia e de 20 avisos
+por hora (acima, a linha fica `retido` e o laço `portal-contatos` manda quando a janela abre). Os contatos ficam em
+`portal_contatos` (migração 107) por 180 dias. Para ver o que está parado sem expor o conteúdo:
+`SELECT estado, motivo, COUNT(*) FROM portal_contatos GROUP BY 1, 2`.
+
+**Recuo.** `site_ligado` e `contato_ligado` em `false` e reiniciar `farm-central`: a raiz volta ao 307 para o painel e a
+rota responde 404. A retenção de 180 dias continua rodando com o contato desligado.
+
 ## 12. Tabela de scripts por risco
 
 `[S]` seguro (só leitura ou sandbox) · `[T]` gasta chamada de API paga · `[P]` toca o parque, o ambiente central ou o sistema ·
@@ -447,7 +489,7 @@ Para tirar o hostname do ar, `Stop-Service Cloudflared` (e, se for o caso, `clou
 | `portal-gerar-senha.ps1` | P | **Rodado pelo dono**: gera o `API_TOKEN` e grava no `.env` sem mostrar na tela (`-Trocar` substitui). Sessão de IA não roda este script no `.env` de verdade |
 | `python scripts/portal-config.py conferir`, ou `ligar`/`recuar` com `--ensaio` | S | Só lê o `config.yaml`: diz se o bloco `server` está pronto para o portal ou o que mudaria |
 | `python scripts/portal-config.py ligar` / `recuar` | P | Declara ou tira o hostname público no `config.yaml` (sete linhas, com cópia em `data/backups/`); vale no próximo reinício do central |
-| `portal-prova-de-fora.sh antes` / `depois` | S | Só pedidos sem credencial ao endereço público; nunca tenta login. Sai com 2 se `/api/instances` der 200 |
+| `portal-prova-de-fora.sh antes` / `depois` | S | Só pedidos sem credencial ao endereço público; nunca tenta login. Sai com 2 se `/api/instances` der 200. Com `SITE=ligado` confere o site na raiz; com `CONTATO=ligado`, um `POST` com a isca (não grava nem avisa) |
 | `usage-report.ps1` | S | Só lê `ai_calls`, não chama provedor |
 | `demo-run.ps1` | D/T | Envia comando real ao backend (gasta IA se o provedor não for simulado) |
 | `aceites-remotos.ps1` (sem `-Yes`) | S | Só mostra o roteiro |
