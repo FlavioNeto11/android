@@ -124,7 +124,9 @@ def test_transicao_da_plataforma_entra_com_e_sem_o_prefixo_da_confirmacao(cena: 
     (d,) = cena.registro.listar()
     assert d.fila == "aprendizado" and d.item_ref == "licao-1" and d.regra == "auto:qa_revisar v1"
     assert d.fatos["kind"] == "licao" and d.fatos["para"] == "published" and d.fatos["de"] == "validated"
-    assert ("confirmado(a)" in d.efeito) is confirmacao
+    # 28.29: a confirmação fica nos fatos e o efeito sai legível, com o gênero do tipo ("Lição confirmada"), sem "(a)".
+    assert (d.fatos.get("confirmacao") is True) is confirmacao and "(a)" not in d.efeito
+    assert d.efeito.startswith("Lição confirmada" if confirmacao else "Lição publicada")
     assert "lr-b12b" not in d.efeito
     assert cena.adaptador.varrer() == 0                                  # reler não duplica
 

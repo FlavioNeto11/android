@@ -19,6 +19,45 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.29: o registro das decisões automáticas diz a verdade e se lê fácil (branch canais/28-29-registro-de-decisoes)
+
+Achados das duas revisões independentes do deploy 30, do passeio da orquestradora pela aba "Decidido sozinho" e da
+Aprendizado, que fez o primeiro desfazer real (04/10).
+
+- **Registro coerente com o livro.** Desligar pela tela do Aprendizado (a rota do livro) não passava pelo registro, e a
+  decisão seguia "não desfeita", oferecendo o Desligar de novo.
+  - Agora `DesfazerDecisoes.reconciliar` grava a decisão como desfeita, com quem, quando e o motivo da trilha (lidos pela
+    inversa da fila, `desfeita_por_fora`).
+  - O item que mudou de outro jeito (aposentado) não oferece o botão.
+- **Cursores com janela de releitura.** O id que fica visível fora de ordem no PostgreSQL entra na volta seguinte; a
+  `origem_ref` deduplica.
+- **O cartão diz qual item foi e se lê.**
+  - Ganha `item_nome` (o título do item no livro) e `run_id` (a execução do objetivo ou da pergunta vencida).
+  - O efeito sai com gênero ("Receita publicada", "Fluxo confirmado") e o texto dos fatos, cortado na palavra. As
+    linhas antigas são lidas assim também.
+  - No painel:
+    - o nome com link para o Livro;
+    - o vencimento agrupado ("21 objetivos encerrados por vencimento"), com link para a execução e hora local;
+    - "por você, no painel";
+    - o estado sem repetir;
+    - o motivo limitado a 300, como a rota, com a mensagem do 422 em português;
+    - "Hoje" a partir da meia-noite local;
+    - a nota do Telegram honesta;
+    - e, no Aprendizado, o banner do modo `shadow` sem contradizer a lista.
+- **Resumo do Telegram.** "Dá para desfazer" só para o que tem volta. O encerrado diz que não reabre, e as aprovações
+  pendentes encerradas junto pelo vencimento aparecem pela contagem.
+- **Passeio real do deploy 31** (orquestradora): o vencimento gravado como "31.43" aparecia como "Regra 31.43"; agora a
+  fila diz qual foi ("Vencimento de pergunta sem resposta"), e regra desconhecida vira "Regra automática da plataforma",
+  nunca o número. A nota da aba deixou de repetir o título da página. O "texto:", o corte no meio da palavra e o
+  "passou a publicado · estava publicado" já saíam certos neste branch.
+- Prova `simulated`:
+  - `backend/tests/test_decisoes_registro_coerente.py`: 16 testes. Contra o código antigo a coleção falha (os nomes novos
+    não existem), então não há contraprova por teste.
+  - Ajustes de texto em `test_decisoes_adaptador.py` e `test_decisoes_resumo.py`.
+  - Com `-k "decis or arquitetura or aprendizado or pendencias or learning"`: 3228 passed.
+  - vitest `pendencias` e `aprendizado`: 241 passed; typecheck limpo.
+- `not_run`: PostgreSQL, e o passeio no navegador depois do deploy.
+
 ## 2026-10-04 — 28.28: pergunta ao bot do Telegram vai à orquestradora, e nome de persona não sai pelo canal (branch canais/28-28-pergunta-ao-bot)
 
 - **O defeito:** o dono perguntou ao bot "porque tem tanta coisa represada em validação?" e depois respondeu "no

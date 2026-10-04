@@ -6,6 +6,10 @@ decisão diz o PORQUÊ (`SemInversaSegura.motivo`) e a rota responde 409 `sem_in
 sobre uma fila que tem regras próprias, e inventar uma volta insegura seria pior que não ter.
 
 Idempotente: desfazer uma decisão já desfeita devolve o estado dela e não chama a inversa de novo.
+
+O registro reflete o estado de AGORA do item, por qualquer caminho (28.29): se a pessoa desfez o efeito pela tela da fila
+dona (o Desligar do Aprendizado é a rota do livro, não esta), `reconciliar` grava a decisão como desfeita com quem, quando
+e por quê, lidos da trilha da fila. Sem isso a decisão seguia "não desfeita" e oferecia o mesmo gesto de novo.
 """
 from __future__ import annotations
 
@@ -38,6 +42,23 @@ class PrazoVencido(Exception):
         self.dias = dias
 
 
+@dataclass(frozen=True, slots=True)
+class DesfeitaPorFora:
+    """O efeito da decisão já foi desfeito por outro caminho: quem, quando (UTC ISO) e o motivo que ficou na trilha."""
+
+    por: str
+    em: str | None
+    motivo: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class Descricao:
+    """Qual item a decisão tocou, para o painel dizer e abrir (28.29): o nome legível e a execução, quando há."""
+
+    nome: str | None = None
+    run_id: str | None = None
+
+
 class InversaDaFila(Protocol):
     def por_que_nao(self, decisao: Decisao) -> str | None:
         """O motivo de NÃO haver inversa segura agora (frase em português), ou `None` se há. Só lê."""
@@ -45,6 +66,14 @@ class InversaDaFila(Protocol):
 
     def desfazer(self, decisao: Decisao, *, por: str, motivo: str | None) -> None:
         """Desfaz na fila dona. Levanta `SemInversaSegura`. Se o efeito já está desfeito, não faz nada (idempotente)."""
+        ...
+
+    def desfeita_por_fora(self, decisao: Decisao) -> DesfeitaPorFora | None:
+        """Se o efeito da decisão já foi desfeito por outro caminho, quem, quando e por quê. Só lê."""
+        ...
+
+    def descrever(self, decisao: Decisao) -> Descricao | None:
+        """O nome do item e a execução dele, para o painel. Só lê; `None` quando a fila não sabe dizer."""
         ...
 
 
@@ -60,11 +89,17 @@ class SemInversa:
     def desfazer(self, decisao: Decisao, *, por: str, motivo: str | None) -> None:
         raise SemInversaSegura(self.motivo)
 
+    def desfeita_por_fora(self, decisao: Decisao) -> DesfeitaPorFora | None:
+        return None
+
+    def descrever(self, decisao: Decisao) -> Descricao | None:
+        return None
+
 
 class RegistroParaDesfazer(Protocol):
     def agora(self) -> datetime: ...
     def obter(self, decisao_id: int) -> Decisao | None: ...
-    def marcar_desfeita(self, decisao_id: int, *, por: str, motivo: str | None) -> bool: ...
+    def marcar_desfeita(self, decisao_id: int, *, por: str, motivo: str | None, em: str | None = None) -> bool: ...
 
 
 #: O verbo do botão por fila: o desfazer do aprendizado é DESLIGAR o item (published → disabled), o das outras é desfazer.
@@ -97,6 +132,27 @@ class DesfazerDecisoes:
     def _inversa(self, decisao: Decisao) -> InversaDaFila:
         return self._inversas.get(decisao.fila) or SemInversa("esta fila ainda não tem a volta ligada")
 
+    def reconciliar(self, d: Decisao) -> Decisao:
+        """A decisão como o registro deve mostrá-la agora: se o efeito foi desfeito por outro caminho, grava (CAS, uma
+        vez) com quem, quando e o motivo da trilha da fila dona. Uma falha de leitura da fila não esconde a decisão."""
+        if d.desfeita:
+            return d
+        try:
+            fora = self._inversa(d).desfeita_por_fora(d)
+        except Exception:  # noqa: BLE001 - a lista não quebra por uma fila que não leu; o desfazer confere de novo
+            return d
+        if fora is None:
+            return d
+        self._registro.marcar_desfeita(d.id, por=fora.por, motivo=fora.motivo, em=fora.em)
+        return self._registro.obter(d.id) or d
+
+    def descrever(self, d: Decisao) -> Descricao:
+        """O nome e a execução do item, pela fila dona; a falha de leitura da fila só tira o nome da tela."""
+        try:
+            return self._inversa(d).descrever(d) or Descricao()
+        except Exception:  # noqa: BLE001 - a lista não quebra por uma fila que não leu
+            return Descricao()
+
     def situacao(self, d: Decisao) -> Situacao:
         quando = parse_iso(d.decidida_em) or self._registro.agora()
         ate = prazo_ate(quando, self._dias()).isoformat().replace("+00:00", "Z")
@@ -113,6 +169,7 @@ class DesfazerDecisoes:
         d = self._registro.obter(decisao_id)
         if d is None:
             raise DecisaoNaoEncontrada(str(decisao_id))
+        d = self.reconciliar(d)
         if d.desfeita:
             return d, False
         quando = parse_iso(d.decidida_em) or self._registro.agora()

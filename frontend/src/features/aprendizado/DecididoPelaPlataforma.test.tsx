@@ -148,6 +148,21 @@ describe('Decidido pela plataforma', () => {
     expect(text(secao()!.querySelector('[aria-label="O que a plataforma decidiria"]')!)).toContain('back_to_list (v1)');
   });
 
+  it('em shadow com a lista vazia diz que nada foi decidido; com decisões, que são de quando ela decidia sozinha', async () => {
+    relatorio = { modo: 'shadow', casos_na_sombra: 0, decididos_pela_plataforma: [], ultima_volta: null };
+    await montar();
+    await waitFor(() => secao());
+    expect(text(secao()!)).toContain('Nada foi decidido sozinho ainda');
+    await act(async () => root.unmount());
+    container.remove();
+    montado = false;
+    relatorio = { modo: 'shadow', casos_na_sombra: 0, decididos_pela_plataforma: DECISOES, ultima_volta: null };
+    await montar();
+    await waitFor(() => linha('receita:180'));
+    expect(text(secao()!)).not.toContain('Nada foi decidido sozinho');
+    expect(text(secao()!)).toContain('As decisões abaixo são de quando ela decidia.');   // a frase da main (deploy 31)
+  });
+
   it('em off sem decisão a seção some e as filas seguem', async () => {
     relatorio = { modo: 'off', ultima_volta: null, casos_na_sombra: 0, decididos_pela_plataforma: [] };
     await montar();
