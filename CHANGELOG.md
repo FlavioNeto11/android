@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.36: o motivo do aparelho remoto parado acompanha a conexão e a queda (branch fix/29-36-detalhe-do-externo-parado, sem migração)
+
+- `DeviceManager._recalcular_motivo_do_parado`: reescreve o `state_detail` de um aparelho de worker `stopped` com o
+  motivo de agora (`_motivo_do_externo_parado`), sem readotar. Roda em `bind_worker`, na conexão e na queda do worker,
+  e no monitor para quem tem `desired_state=stopped`, que não é readotado. Republica só quando o texto muda; `error`
+  (frase do reparo) e aparelho local ficam de fora.
+- Motivo: RA-21, diagnóstico provado em 03/10. O texto da queda ("servidor fora do ar") ficava preso depois da
+  reconexão em 5 de 6 aparelhos do notebook às 00:30Z, porque era a readoção que trocava a frase.
+- Teste: RunsPage "a lista desenha 50 por vez" ganha prazo próprio de 20 s (estourou os 5 s padrão sob carga na suíte
+  20; a asserção não muda).
+- Prova `simulated`: `test_estado_por_servidor.py` (3 novos: reconexão troca o "fora do ar" preso por "emulador
+  desligado" sem mexer no `desired_state`; queda troca o "desligado" pelo "fora do ar"; `error`, aparelho local e
+  texto igual não republicam); 1206 passed nos testes de vínculo do worker e detalhe de estado. Real: na próxima
+  queda e volta do notebook depois do deploy.
+
 ## 2026-10-04 — 29.53: o portão de PostgreSQL de uma suíte, por escrito (branch docs/29-53-portao-pg, só docs)
 
 - `docs/banco.md` ("O portão de PostgreSQL de uma suíte") e `.claude/rules/testes.md`. Toda suíte roda PG dirigido

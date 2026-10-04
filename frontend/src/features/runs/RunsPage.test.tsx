@@ -106,7 +106,9 @@ it('a lista desenha 50 por vez, com título curto sem a abertura repetida, e "Mo
   const mais = byRole('button', /Mostrar mais \(196 restantes\)/);
   await click(mais);
   await waitFor(() => expect(itens()).toHaveLength(100));
-});
+  // Prazo próprio: desenhar 50 e depois 100 cartões estourou os 5 s padrão sob a suíte em prioridade Idle (suíte 20,
+  // 04/10), com o mesmo resultado isolado. A asserção não muda; muda só quanto o teste espera a máquina ocupada.
+}, 20_000);
 
 it('buscar traz o histórico inteiro (páginas de 200) e acha a execução antiga; o filtro fica no link', async () => {
   servirHistorico();
