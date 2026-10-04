@@ -100,7 +100,10 @@ def test_rajada_de_11_vira_o_primeiro_na_hora_e_um_agrupado_com_a_contagem(tmp_p
     assert len(c.canal.enviados) == 2
     titulo, corpo, link = c.canal.enviados[1]
     assert titulo == "ANA: 10 execuções pararam pedindo informação"
-    assert corpo == CORPO_AGRUPADO and link == "L"
+    # 28.31: uma linha por item (até 5), "+N no painel" e o gesto; nada de corpo genérico.
+    linhas = corpo.split("\n")
+    assert linhas[:5] == [f"• t-run:r{i}:needs_input" for i in range(1, 6)] and linhas[5] == "+5 no painel"
+    assert linhas[6].startswith("Espera você:") and CORPO_AGRUPADO not in corpo and link == "L"
     assert c.fila.contagens() == {"enviado": 11}
     # O reply ao agrupado não aponta fato nenhum: a `canal_enviadas` guarda a família do grupo.
     fatos = [r["fato"] for r in c.db.query("SELECT fato FROM canal_enviadas ORDER BY ref_mensagem")]
@@ -249,11 +252,12 @@ def test_execucao_de_lote_nao_vira_aviso_e_a_do_dono_vira(tmp_path: Path) -> Non
 
 def test_o_link_do_agrupado_e_o_da_caixa_mesmo_sem_link_na_primeira_linha(tmp_path: Path) -> None:
     c = Cena(tmp_path)
-    c.chega("pedido:p1", tipo="pedido.relatorio_pronto", link=None)       # aviso de pedido que não pede pessoa
-    c.chega("pedido:p2", tipo="pedido.relatorio_pronto", link="CAIXA")
-    c.chega("pedido:p3", tipo="pedido.relatorio_pronto", link="CAIXA")
+    # A pausa sai na hora (28.31: parou algo do dono); o relatório pronto seria rotina e não entraria numa rajada.
+    c.chega("pedido:p1", tipo="pedido.pausa_automatica", link=None)       # aviso de pedido que não pede pessoa
+    c.chega("pedido:p2", tipo="pedido.pausa_automatica", link="CAIXA")
+    c.chega("pedido:p3", tipo="pedido.pausa_automatica", link="CAIXA")
     c.volta()
-    assert c.canal.enviados == [("ANA: 3 novidades de pedidos", CORPO_AGRUPADO, "CAIXA")]
+    assert [(t, link) for t, _c, link in c.canal.enviados] == [("ANA: 3 novidades de pedidos", "CAIXA")]
 
 
 def test_aviso_de_convidado_nunca_se_agrupa(tmp_path: Path) -> None:

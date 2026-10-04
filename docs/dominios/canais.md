@@ -301,9 +301,34 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   - Frases curtas, sem jargão e sem tabela.
   - Urgência vai na hora: sim ou não pedido ao dono, deploy que falhou, incidente real ou teto de custo.
   - A leitura dos quadros do Trello continua a cada 20 minutos.
-- **Hoje:** `resumo_laco.py --intervalo 3600`, que roda em laço em segundo plano e não depende de a sessão estar
-  ociosa. A curadoria fica em `situacao.json`, e `--carimbar` vem antes de cada envio.
-- **No produto:** a saída do 28.15 (`modules/avisos/`).
+- **Toda mensagem tem conteúdo (28.31; dono, Telegram 04/10 19:10Z: "essas mensagens estão genéricas e sem
+  relevancia"). Vale para o aviso do produto e para o texto que a Canais escreve à mão.**
+  - Molde de até 5 linhas:
+    1. o assunto e o resultado, com número quando houver;
+    2. o que é crítico;
+    3. "Espera você: <o gesto>" ou "Nada a fazer.";
+    4. o link.
+  - Três níveis, e o nível decide a entrega:
+    - **1, precisa de você agora** (aprovação, pergunta, conta pedindo pessoa, ocorrência incerta, convidado): sai na
+      hora.
+    - **2, algo falhou:** a pausa e o orçamento esgotado pararam algo do dono e saem na hora. A ocorrência perdida e
+      os eventos perdidos não pararam nada e esperam a janela.
+    - **3, rotina** (relatório, encerramento, 80% do orçamento, condição atendida, aprendizado): nunca sai sozinha. Vai
+      na mensagem da janela de 1 h, uma linha cada.
+  - A rajada (vários do mesmo tipo seguidos) lista uma linha por item, até 5, mais "+N no painel".
+  - O rótulo do pedido é texto da pessoa: só sai quando o pedido foi criado pelo dono (o de convidado, de frente ou
+    de IA sai sempre pelo id curto; até o 28.31 F2 marcar quem criou, todo pedido sai assim) e nenhum filtro mudaria
+    nada nele. São três filtros:
+    - o redator de credencial;
+    - contato (e-mail, @, telefone, IP);
+    - persona pela régua estrita: 2 letras ou mais, e "Ana" também.
+
+    Senão, ou se o filtro falhar, sai "Pedido #<6 do id>". O aparelho (`android-12`) pode sair: não é pessoa nem conta.
+  - O resumo de hora volta só no 28.31 F3. Ele abre com "Precisa de você: N" e a lista, depois diz só o que mudou e
+    não sai sem novidade.
+- **Hoje:** o resumo de hora (`resumo_laco.py`) está PARADO desde 04/10 19:12Z, até o 28.31 F3.
+- **No produto:** a saída do 28.15 e o molde do 28.31 (`modules/avisos/domain/mensagem.py` e `privacidade.py`; a
+  janela em `infrastructure/fila_sql.py`).
 
 **C-20 · Resposta ao dono.**
 - **Regra:**

@@ -19,6 +19,51 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.31 F1: o aviso diz o que aconteceu, o que é crítico e se espera o dono (branch canais/28-31-avisos-com-conteudo)
+
+A queixa do dono (Telegram, 04/10 19:10Z): avisos "genéricos e sem relevância". A causa estava no código, e era de
+propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramentas do Claude; decisões da orquestradora
+(19:22Z).
+
+- **Molde**, em até 5 linhas: assunto e resultado com número, o crítico, "Espera você: …" ou "Nada a fazer.", e o link.
+  Exemplo: "⏸️ Pedido «Preço do Pi» pausado: 3 falhas seguidas / As próximas ocorrências não rodam até você retomar. /
+  Espera você: veja a falha no painel e retome ou cancele o pedido."
+- **Três níveis decidem a entrega** (`mensagem.NIVEL_POR_TIPO`, `entrega_do_tipo`): o 1 e o 2 que parou algo saem na
+  hora. A rotina (relatório, encerramento, 80%, condição atendida, aprendizado) e o 2 que não parou nada esperam na fila
+  até a mais velha fazer 1 h (`JANELA_DA_ROTINA_S`). Aí saem numa mensagem só, uma linha cada, com o primeiro link que houver; a
+  `canal_enviadas` grava `grupo:rotina`.
+- **Rajada** (28.19) com uma linha por item, até 5, mais "+N no painel" e o gesto.
+- **Privacidade** (`avisos/domain/privacidade.py`; o `sem_nome_de_persona` do 28.28 saiu de `entrada.py` para cá, e
+  `entrada.py` o reexporta):
+  - O rótulo do pedido só sai quando o pedido foi criado pelo dono E nenhum filtro mudaria nada nele: redator,
+    contato e persona pela régua estrita (2 letras ou mais, e "Ana"). Senão, ou sem os nomes, sai "Pedido #<6 do id>".
+    Como o pedido ainda não guarda quem o criou de forma confiável, TODO pedido sai pelo id curto até a F2 (decisão da
+    orquestradora, 04/10 20:06Z: nome de terceiro que não é persona não se detecta por regra).
+  - Telefone: 9 dígitos ou mais, prefixo + ou (, ou "dddd-dddd". A data ISO fica, mas não esconde o telefone colado nela.
+  - A fila lê primeiro o que sai na hora: 600 linhas de rotina na fila não seguram uma aprovação (revisão do #310).
+  - O texto livre (pergunta, resumo e texto da aprovação) sai sem contato e sem persona.
+  - O `detail` da conta nunca sai: vira uma frase fixa por `status`.
+  - O alvo da aprovação segue a exceção do ADR-071 (d).
+  - O aparelho pode sair.
+- O redator e os nomes de persona valem sempre; `avisos.entrada.enabled` decide só se o conteúdo da aprovação e da
+  pergunta vai junto.
+- `ROTULOS` não mudou: é também o nome do cartão do espelho do Trello.
+- Sem migração e sem chave de config. A F2 roteia o aviso de pedido de prova de frente (`lote:`) para a janela, porque o
+  pedido não guarda a chave hoje; até lá, segue proibida prova que crie pedido. A F2 também põe nos `dados` o que falta
+  (teto, contagens e manchete) e os links específicos. A F3 traz o resumo de hora no molde.
+- Prova `simulated`:
+  - `backend/tests/test_avisos_molde.py`: 37 testes. Contrato por tipo e por conversa ligada ou desligada; rótulo e
+    reserva; régua estrita; nível de todo tipo de aviso do pedido; janela da rotina.
+  - Ajustes de propósito em `test_avisos_servico`, `_fila`, `_rajada`, `_aprendizado`, `test_identidade_da_ia` e
+    `test_pedidos_colaboracao_consolidacao`.
+  - Esses arquivos, mais `test_trello_espelho` e `test_telegram_entrada`: 177 passed.
+  - A varredura de avisos, telegram, canais, pedido, learning, decisões e trello passou, salvo as falhas da base
+    integ/suite-31, que a junção `2fba62cd` conserta.
+  - Sem contraprova por teste: contra o código antigo, a coleção falha no import de `privacidade`.
+- Limite conhecido: o nome de um terceiro escrito por extenso, sem @, e-mail ou telefone, não é detectável; ele só sai
+  no texto que a pessoa escreveu e que a conversa já mostrava.
+- `not_run`: PostgreSQL e a prova real (um aviso de cada nível, depois do deploy, com o dono avisado uma vez).
+
 ## 2026-10-04 — 28.28: pergunta ao bot do Telegram vai à orquestradora, e nome de persona não sai pelo canal (branch canais/28-28-pergunta-ao-bot)
 
 - **O defeito:** o dono perguntou ao bot "porque tem tanta coisa represada em validação?" e depois respondeu "no

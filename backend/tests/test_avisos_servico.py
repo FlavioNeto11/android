@@ -87,8 +87,9 @@ def test_ligado_o_evento_de_pendencia_sai_uma_vez_com_o_link_da_caixa(tmp_path: 
     assert _pendencia(servico) is False, "o mesmo fato enfileirou duas vezes"
     _volta(servico)
     _volta(servico)
-    assert canal.enviados == [("ANA: Uma execução parou pedindo informação",
-                               "Abra a caixa de Pendências do painel para ver.", "http://painel.local:8000/#/pendencias")]
+    assert canal.enviados == [("ANA: ❓ Uma execução parou com uma pergunta",
+                               "Ela não segue sem a sua resposta.\nEspera você: responda na caixa de Pendências.",
+                               "http://painel.local:8000/#/pendencias")]
     assert banco.one("SELECT estado, tentativas FROM avisos_entregas")["estado"] == "enviado"
 
 
@@ -196,11 +197,15 @@ def test_com_a_conversa_ligada_aprovacao_e_pergunta_levam_o_conteudo_redigido_e_
     servico.enfileirar_evento("session.needs_person", {"active": True, "detail": "senha errada da conta lucas.real"}, 5)
     corpos = {str(x["tipo"]): str(x["corpo"]) for x in banco.query("SELECT tipo, corpo FROM avisos_entregas")}
     aprovacao = corpos["approval.pending"]
-    assert aprovacao.startswith("Responder o comentário de @maria\nAlvo: @maria\nTexto: “oi! a senha: **REDACTED**")
-    assert "Abc!2345xyz" not in aprovacao and aprovacao.endswith("…\n" + COMO_DECIDIR)
-    assert len(aprovacao) == CONTEUDO_MAX + 1 + len(COMO_DECIDIR)
-    assert corpos["run.needs_input"] == "Para qual contato do QA Messenger?\n" + COMO_RESPONDER
-    assert corpos["session.needs_person"] == "Abra a caixa de Pendências do painel para ver."
+    # O @ do resumo é contato e sai oculto; o alvo é a exceção do ADR-071 (d) e sai como está (28.31).
+    assert aprovacao.startswith("Responder o comentário de <contato>\nAlvo: @maria · Texto: “oi! a senha: **REDACTED**")
+    # O corte é na palavra (28.31): a sequência de 600 "x" sem espaço sai inteira, e o "…" diz que houve corte.
+    assert "Abc!2345xyz" not in aprovacao and aprovacao.endswith("…”\n" + COMO_DECIDIR)
+    assert all(len(linha) <= CONTEUDO_MAX for linha in aprovacao.split("\n"))
+    assert corpos["run.needs_input"] == "Pergunta: Para qual contato do QA Messenger?\n" + COMO_RESPONDER
+    assert corpos["session.needs_person"] == ("Nada é tentado na tela até alguém resolver.\n"
+                                              "Espera você: resolva no aparelho pelo painel.")
+    assert "lucas" not in corpos["session.needs_person"]
 
 
 def test_conteudo_da_fila_nao_leva_dado_de_persona(tmp_path: Path) -> None:
@@ -213,7 +218,7 @@ def test_conteudo_da_fila_nao_leva_dado_de_persona(tmp_path: Path) -> None:
     assert len(linhas) == 2
     for linha in linhas:
         texto = repr(dict(linha))
-        for proibido in ("Maria", "maria", "CPF", "123", "p-lucas", "android-01", "lucas", "senha"):
+        for proibido in ("Maria", "maria", "CPF", "123", "p-lucas", "lucas", "senha"):   # o aparelho pode (28.31)
             assert proibido not in texto, proibido
 
 
