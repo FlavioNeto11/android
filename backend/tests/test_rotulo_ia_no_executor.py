@@ -12,20 +12,25 @@ o que o executor faz com o toque no Share.
 """
 from __future__ import annotations
 
+import json
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, AsyncIterator
 
+import pytest
+
 from app.automation.hierarchy import UiTree
 from app.db import Row
-from app.models import Plan, PlannerInfo
+from app.models import Plan, PlannerInfo, ProfileCreate
 from app.planning.capabilities import CapabilityNode, compose, load_catalog
 from app.planning.provider import Decision, DecisionRequest, PlanRequest, Usage, Verdict, VerifyRequest
 from app.state import AppState
+from app.taskqueue.repository import Repository
 
 from .conftest import CountingProvider, Harness
 from .fake_instagram import PKG, AtorDoInstagram, FakeInstagram, Node
+from .test_capabilities import SENHA
 
 IID = "android-01"
 LEGENDA = "Fim de tarde na praia"
@@ -87,8 +92,9 @@ class AtorQueTocaNoShare(AtorDoInstagram):
     name = "ator-que-toca-no-share"
     model = "roteiro-do-editor-de-publicacao"
 
-    def __init__(self, rotulo: str | None) -> None:
+    def __init__(self, rotulo: str | None, image_id: str | None = None) -> None:
         self.rotulo = rotulo
+        self.image_id = image_id          # None: a etapa sem imagem; senão a imagem que a etapa publica
         self.toques = 0
 
     async def plan(self, req: PlanRequest) -> tuple[Plan, Usage]:
@@ -98,11 +104,13 @@ class AtorQueTocaNoShare(AtorDoInstagram):
             key="publicar", capability="CREATE_POST",
             bindings={"image_id": "img-1", "content": LEGENDA, "content_verbatim": "true"})])
         assert not faltando
-        # Só a etapa de efeito: a galeria (`preparo`) e a imagem são do aparelho real. O `rotulo_ia` entra como a
-        # central o gravaria (sem `image_id` na etapa, `_com_rotulo_ia` não o reescreve).
+        # Só a etapa de efeito: a galeria (`preparo`) é do aparelho real. Com `image_id`, a central regrava o
+        # `rotulo_ia` pela origem (`_com_rotulo_ia`); sem ele, o argumento fica como o roteiro o pôs.
         publicar = next(e for e in etapas if e.capability == "CREATE_POST")
         assert publicar.commit_guard == [LEGENDA]
         bindings = {k: v for k, v in publicar.bindings.items() if k != "image_id"}
+        if self.image_id is not None:
+            bindings["image_id"] = self.image_id
         if self.rotulo is not None:
             bindings["rotulo_ia"] = self.rotulo
         etapa = publicar.model_copy(update={"depends_on": [], "bindings": bindings})
@@ -237,12 +245,45 @@ async def test_com_o_interruptor_ligado_o_toque_no_share_passa_pela_guarda(tmp_p
         assert not any((n or "").startswith("Efeito recusado antes do toque") for n in notas)
 
 
-async def test_sem_o_rotulo_pedido_o_interruptor_desligado_nao_impede_o_share(tmp_path: Path) -> None:
-    """`rotulo_ia="false"` (imagem enviada pelo dono) e etapa sem o argumento: a guarda não age, o Share é tocado mesmo
-    com "Add AI label" desligado."""
-    for rotulo in ("false", None):
+def _imagem_da_persona(h: Harness, image_id: str, source: str) -> None:
+    """Uma imagem pronta de uma persona (a FK de `persona_images` exige o perfil), antes do pedido."""
+    s = _estado(h)
+    pid = s.social.create_profile(ProfileCreate(username="persona.da.imagem", password=SENHA)).id
+    s.db.execute("INSERT INTO persona_images(id, persona_id, source, status, is_primary, created_at, bytes_sha256)"
+                 " VALUES (?, ?, ?, 'ready', 0, '2026-10-04T10:00:00Z', ?)", (image_id, pid, source, "c" * 64))
+
+
+async def test_em_duvida_o_interruptor_desligado_impede_o_share(tmp_path: Path) -> None:
+    """Revisão R1 (o teste antigo dizia o contrário): etapa sem o argumento e sem imagem legível, e o "false" sem upload
+    conhecido que o sustente — a guarda exige o rótulo, o Share não é tocado e a etapa para numa pessoa."""
+    for rotulo in (None, "false"):
         async with _parque(tmp_path / str(rotulo), rotulo, ligado=False) as h:
             etapa = await _publicar(h)
-            assert len(_aparelho(h).shares) == 1, rotulo
-            assert not any("Add AI label" in (a["error"] or "") for a in _acoes(h, etapa["id"])), rotulo
-            assert etapa["status"] != "waiting_user" or "Add AI label" not in (etapa["status_detail"] or ""), rotulo
+            assert _aparelho(h).shares == [], rotulo
+            assert etapa["status"] == "waiting_user" and "Add AI label" in (etapa["status_detail"] or ""), rotulo
+
+
+async def test_etapa_antiga_sem_o_argumento_com_imagem_gerada_nao_publica(tmp_path: Path,
+                                                                          monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisão R1, o caso realista: a etapa criada ANTES do 29.79 (sem `rotulo_ia`; aqui, a central sem o
+    `_com_rotulo_ia`) e retomada depois, publicando imagem GERADA — a origem decide e o Share sem rótulo não sai."""
+    monkeypatch.setattr(Repository, "_com_rotulo_ia", lambda self, bindings: bindings)
+    ator = AtorQueTocaNoShare(None, image_id="img-gerada")
+    async with _parque(tmp_path, None, ligado=False, ator=ator) as h:
+        _imagem_da_persona(h, "img-gerada", "generated")
+        etapa = await _publicar(h)
+        assert "rotulo_ia" not in (json.loads(etapa["bindings"]) or {})        # de fato sem o argumento
+        assert _aparelho(h).shares == []
+        assert etapa["status"] == "waiting_user" and "Add AI label" in (etapa["status_detail"] or "")
+
+
+async def test_o_upload_conhecido_dispensa_o_interruptor(tmp_path: Path) -> None:
+    """Imagem enviada pelo dono (sem marca de IA): a central grava "false" e a origem confirma — o Share sai com o
+    interruptor desligado, e o item da aprovação já diz "sem rótulo de IA (imagem enviada por você)"."""
+    ator = AtorQueTocaNoShare(None, image_id="img-enviada")
+    async with _parque(tmp_path, None, ligado=False, ator=ator) as h:
+        _imagem_da_persona(h, "img-enviada", "upload")
+        etapa = await _publicar(h)
+        assert json.loads(etapa["bindings"])["rotulo_ia"] == "false"
+        assert len(_aparelho(h).shares) == 1
+        assert not any("Add AI label" in (a["error"] or "") for a in _acoes(h, etapa["id"]))

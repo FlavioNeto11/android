@@ -128,6 +128,19 @@ def rotulo_ia_da_imagem(db: Database, image_id: str) -> str | None:
     return "false" if str(origem) == "upload" else "true"
 
 
+def rotulo_ia_exigido(db: Database, bindings: Mapping[str, object]) -> bool:
+    """29.79, revisão R1 (em dúvida, não publica): o toque de publicar exige o rótulo de IA ligado? Decide pela ORIGEM da
+    imagem que a etapa vai publicar, não pelo argumento gravado (a etapa criada antes do 29.79, ou com o `image_id`
+    resolvido depois por `resolver_saidas`/`{item}`, não o tem). Sem imagem legível, imagem inexistente ou origem
+    desconhecida: exige. Só o upload conhecido dispensa — e nem ele, se a etapa gravou "true"."""
+    if str(bindings.get(ARGUMENTO_DO_ROTULO_IA) or "").strip().lower() == "true":
+        return True
+    imagem = _id_da_imagem(bindings)
+    if not imagem or "{" in imagem:
+        return True
+    return rotulo_ia_da_imagem(db, imagem) != "false"
+
+
 def chave_da_aprovacao(bindings: Mapping[str, object], cap: Capability, *, perfil: str, aparelho: str,
                        pacote: str | None, run_id: str, objective_id: str, tem_imagem: bool = False,
                        midia_sha256: str | None = None) -> str | None:
@@ -137,6 +150,10 @@ def chave_da_aprovacao(bindings: Mapping[str, object], cap: Capability, *, perfi
     `midia_da_etapa`."""
     if cap.key in OBJETO_INSUFICIENTE:
         return None                                     # o objeto declarado não diz qual é o objeto do efeito
+    if tem_imagem and not str(bindings.get(ARGUMENTO_DO_ROTULO_IA) or "").strip():
+        # 29.79, revisão R1: a etapa com imagem e SEM o rótulo gravado (criada antes do 29.79, ou imagem resolvida
+        # depois) não fecha chave: o sim do plano não pode cobrir uma publicação cujo rótulo ninguém decidiu.
+        return None
     objeto = objeto_da_acao(cap, bindings)
     if objeto is None or any(not valor for valor in objeto.values()):
         return None                                     # objeto não declarado, ausente, vazio ou por resolver

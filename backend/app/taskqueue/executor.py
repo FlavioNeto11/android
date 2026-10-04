@@ -60,6 +60,7 @@ from ..security.redaction import redact
 from ..security.secret_store import SecretStoreLocked, SecretStoreUnavailable
 from ..security.sensitive_input import SensitiveInputError, SensitiveInputUnavailable
 from ..social.approvals import ler_rascunho
+from ..social.chave_da_aprovacao import ARGUMENTO_DO_ROTULO_IA, rotulo_ia_exigido
 from ..util import norm_text, now, now_iso, parse_iso
 from .costuras import (SAIU_POR_EXCECAO, SEM_COSTURAS, CosturasDeAprendizado, FechamentoDeTentativa, PedidoDeLicoes,
                        avisar, pedir_licoes)
@@ -712,6 +713,15 @@ class StepExecutor:
 
     def _pacote_do_app_id(self, app_id: str) -> str | None:
         return self.repo.db.scalar("SELECT package FROM apps WHERE id=?", (app_id,))
+
+    def _argumentos_da_guarda(self, cap: Capability, step: StepDTO) -> dict[str, str]:
+        """29.79, revisão R1: os argumentos que `rejeicao_do_interruptor` lê. O `rotulo_ia` vem da ORIGEM da imagem
+        (`rotulo_ia_exigido`), não do que a etapa gravou: a etapa antiga ou com a imagem resolvida depois não o tem, e
+        em dúvida o Share exige o rótulo ligado."""
+        argumentos = {k: str(v) for k, v in (step.bindings or {}).items()}
+        if any(e.partition(":")[0].strip() == ARGUMENTO_DO_ROTULO_IA for e in cap.commit_switch):
+            argumentos[ARGUMENTO_DO_ROTULO_IA] = "true" if rotulo_ia_exigido(self.repo.db, argumentos) else "false"
+        return argumentos
 
     def preenchedor(self, rt: DeviceRuntime, resolver: Callable[[str], SecretResolution], tree_vista: UiTree,
                     observe: Callable[[], Any], *, profile_id: str | None = None, run_id: str | None = None,
@@ -2910,7 +2920,8 @@ class StepExecutor:
                     reject = "o efeito externo desta etapa já foi disparado; é proibido repetir. Apenas verifique."
                 else:
                     reject = rejeicao_do_commit(step.commit_guard, step.band_guard, cartao, obs.tree, target)
-                    desligado = (rejeicao_do_interruptor(cap.commit_switch, step.bindings, obs.tree)
+                    desligado = (rejeicao_do_interruptor(cap.commit_switch, self._argumentos_da_guarda(cap, step),
+                                                         obs.tree)
                                  if reject is None and cap is not None else None)
                     if desligado:
                         recusas_do_interruptor += 1
@@ -3812,16 +3823,33 @@ def rejeicao_do_commit(commit_guard: Sequence[str], band_guard: Sequence[str], c
     return None
 
 
+#: Dois candidatos a interruptor com o centro a menos disto um do outro (em px, na vertical) são dúvida: recusa.
+EMPATE_DO_INTERRUPTOR_PX = 12
+
+
 def interruptor_ligado(tree: UiTree, seletor: str) -> bool:
-    """O interruptor de `seletor` está ligado na tela? O elemento do seletor marcado, ou um elemento marcado na MESMA
-    linha dele (no Instagram o texto "Add AI label" e o interruptor são irmãos)."""
+    """O interruptor de `seletor` está ligado na tela? O próprio elemento do seletor marcado, ou o ÚNICO candidato da
+    linha dele: um elemento clicável ou marcado, à DIREITA do texto, cuja faixa vertical se sobrepõe à do texto (o
+    interruptor medido em 03/10 é mais alto que o texto), o de centro mais próximo do centro do texto. Revisão (c) do
+    29.79: qualquer marcável encostado na faixa valia, e o interruptor ligado da linha de cima (compartilhar em outra
+    rede) passaria por este. Dois candidatos quase empatados: recusa (em dúvida, não publica)."""
     for alvo in tree.find_selector(seletor):
         if alvo.checked:
             return True
-        # Faixas verticais que se SOBREPÕEM: o interruptor medido (03/10) é mais alto que o texto, e o centro dele cai
-        # bem na borda de baixo do texto.
-        y1, y2 = alvo.bounds[1], alvo.bounds[3]
-        if any(e.checked and e.bounds[1] < y2 and e.bounds[3] > y1 for e in tree.elements):
+        x2, y1, y2 = alvo.bounds[2], alvo.bounds[1], alvo.bounds[3]
+        centro = (y1 + y2) / 2
+        candidatos = sorted(
+            (e for e in tree.elements
+             if e.id != alvo.id and (e.clickable or e.checked) and e.bounds[0] >= x2
+             and e.bounds[1] < y2 and e.bounds[3] > y1),
+            key=lambda e: abs((e.bounds[1] + e.bounds[3]) / 2 - centro))
+        if not candidatos:
+            continue
+        if len(candidatos) > 1 and (abs((candidatos[1].bounds[1] + candidatos[1].bounds[3]) / 2 - centro)
+                                    - abs((candidatos[0].bounds[1] + candidatos[0].bounds[3]) / 2 - centro)
+                                    < EMPATE_DO_INTERRUPTOR_PX):
+            return False
+        if candidatos[0].checked:
             return True
     return False
 

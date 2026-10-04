@@ -13,7 +13,7 @@ from app.automation.hierarchy import UiElement, UiTree
 from app.planning.capabilities import Capability, CapabilityCatalog, capability_of
 from app.porta_do_plano import previa_da_porta
 from app.social.chave_da_aprovacao import (chave_da_aprovacao, imagem_de_outra_persona, midia_da_etapa,
-                                           rotulo_ia_da_imagem)
+                                           rotulo_ia_da_imagem, rotulo_ia_exigido)
 from app.taskqueue.executor import interruptor_ligado, rejeicao_do_interruptor
 
 from .test_capabilities import IG
@@ -30,8 +30,8 @@ def _el(i: int, texto: str, y: tuple[int, int], *, checked: bool = False, classe
 
 def _tela(ligado: bool, *, mesma_linha: bool = True) -> UiTree:
     interruptor_y = (900, 960) if mesma_linha else (1400, 1460)
-    return UiTree(elements=[_el(1, "Add AI label", (900, 960)),
-                            _el(2, "", interruptor_y, checked=ligado, classe="android.widget.Switch"),
+    return UiTree(elements=[_no("e1", (104, 282), (900, 960), clicavel=False, texto="Add AI label"),
+                            _no("e2", (584, 688), interruptor_y, checked=ligado),
                             _el(3, "Share", (100, 160))], packages=[IG], sensitive=False)
 
 
@@ -66,6 +66,28 @@ def test_a_tela_medida_no_8_3_com_o_rotulo_ligado_e_desligado() -> None:
     assert rejeicao_do_interruptor(SWITCH, {"rotulo_ia": "true"}, tela(False)) is not None
 
 
+def _no(i: str, x: tuple[int, int], y: tuple[int, int], *, checked: bool = False, clicavel: bool = True,
+        texto: str = "") -> UiElement:
+    return UiElement(id=i, text=texto, desc="", resource_id="", class_name="android.view.View", package=IG,
+                     bounds=(x[0], y[0], x[1], y[1]), clickable=clicavel, enabled=True, focused=False,
+                     scrollable=False, editable=False, checked=checked, password=False)
+
+
+def test_so_um_candidato_conta_o_da_direita_mais_proximo() -> None:
+    """Revisão (c): o interruptor ligado da linha de CIMA (encostando na faixa do texto, como com fonte maior) não vale
+    pelo da linha do rótulo; dois candidatos quase empatados são dúvida e recusam; à esquerda do texto não conta."""
+    texto = _no("t", (104, 282), (505, 543), clicavel=False, texto="Add AI label")
+    de_cima_ligado = _no("cima", (584, 688), (420, 510), checked=True)       # encosta na faixa, centro em 465
+    o_dele_desligado = _no("dele", (584, 688), (495, 591))                    # centro em 543 (o do texto: 524)
+    tela = UiTree(elements=[texto, de_cima_ligado, o_dele_desligado], packages=[IG], sensitive=False)
+    assert not interruptor_ligado(tela, "text==Add AI label")
+    empatados = UiTree(elements=[texto, _no("a", (584, 688), (500, 548), checked=True), _no("b", (700, 720), (502, 550))],
+                       packages=[IG], sensitive=False)
+    assert not interruptor_ligado(empatados, "text==Add AI label")
+    a_esquerda = UiTree(elements=[texto, _no("esq", (0, 90), (505, 543), checked=True)], packages=[IG], sensitive=False)
+    assert not interruptor_ligado(a_esquerda, "text==Add AI label")
+
+
 def test_sem_rotulo_pedido_a_guarda_nao_age() -> None:
     assert rejeicao_do_interruptor(SWITCH, {"rotulo_ia": "false"}, _tela(False)) is None
     assert rejeicao_do_interruptor(SWITCH, {}, _tela(False)) is None
@@ -89,6 +111,40 @@ def _imagem(state: Any, iid: str, persona: str, source: str = "generated", sha: 
 def _outro_perfil(state: Any) -> str:
     """Um perfil de outra persona, em outro aparelho (a FK de `persona_images` exige o perfil)."""
     return _plano(state, [], aparelho="android-02", run_id="run-q")
+
+
+async def test_em_duvida_o_share_exige_o_rotulo(harness: Any) -> None:
+    """Revisão R1: o que a guarda do Share lê vem da ORIGEM da imagem resolvida. Etapa sem o argumento (criada antes do
+    29.79, ou com a imagem resolvida depois por `resolver_saidas`), imagem inexistente, por resolver ou ausente: exige.
+    Só o upload conhecido dispensa — e nem ele se a etapa gravou "true"; "false" forjado em imagem gerada não dispensa."""
+    state = harness.state
+    p1 = _outro_perfil(state)
+    _imagem(state, "gerada", p1, "generated")
+    _imagem(state, "enviada", p1, "upload")
+    assert rotulo_ia_exigido(state.db, {"image_id": "gerada"})                         # etapa antiga / resolvida depois
+    assert rotulo_ia_exigido(state.db, {"image_id": "gerada", "rotulo_ia": "false"})   # forjado
+    assert rotulo_ia_exigido(state.db, {"image_id": "nao-existe"})
+    assert rotulo_ia_exigido(state.db, {"image_id": "{{saida:img}}"})
+    assert rotulo_ia_exigido(state.db, {})
+    assert not rotulo_ia_exigido(state.db, {"image_id": "enviada"})
+    assert rotulo_ia_exigido(state.db, {"image_id": "enviada", "rotulo_ia": "true"})
+
+
+async def test_etapa_com_imagem_e_sem_o_rotulo_gravado_nao_fecha_chave(harness: Any) -> None:
+    """Revisão R1, na porta: imagem literal, pronta e da persona, mas a etapa sem `rotulo_ia` (criada antes do 29.79):
+    sem chave, o item fica para a execução — o sim do plano não cobre publicação cujo rótulo ninguém decidiu."""
+    state = harness.state
+    pid = _plano(state, [{"key": "antiga", "cap": "CREATE_POST",
+                          "bindings": {"image_id": "img-a", "content": "praia", "content_verbatim": "true"}}])
+    _imagem(state, "img-a", pid)
+    item = _por_chave(previa_da_porta(state, "run-p"))["antiga"]
+    assert item["chave"] is None and item["selo"] == "na_execucao" and item["rotulo_ia"] is None
+    cap = capability_of(IG, "CREATE_POST")
+    tem, sha = midia_da_etapa(state.db, {"image_id": "img-a"}, perfil=pid)
+    assert tem and sha
+    assert chave_da_aprovacao({"image_id": "img-a", "content": "praia", "content_verbatim": "true"}, cap, perfil=pid,
+                              aparelho="android-01", pacote=IG, run_id="r", objective_id="o", tem_imagem=tem,
+                              midia_sha256=sha) is None
 
 
 async def test_a_origem_da_imagem_decide_o_rotulo(harness: Any) -> None:
