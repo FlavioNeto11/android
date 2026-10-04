@@ -189,6 +189,16 @@ class RecusaDaCentral(Exception):
         self.codigo = codigo
 
 
+class PlanoMudou(RecusaDaCentral):
+    """O 409 `plano_mudou` do "Executar (aprova N)" (30.61): algum item não é mais o que o dono viu e NADA foi gravado.
+    `previa` é a prévia nova da porta, que volta ao dono (28.27)."""
+
+    def __init__(self, mensagem: str, previa: dict[str, object], mudaram: list[dict[str, object]]):
+        super().__init__(mensagem, "plano_mudou")
+        self.previa = previa
+        self.mudaram = mudaram
+
+
 @dataclass(frozen=True)
 class Previa:
     """A prévia de alvos do painel, resumida para uma linha e para o botão Executar."""
@@ -225,7 +235,27 @@ class PortasDaCentral(Protocol):
     def decidir(self, approval_id: str, verbo: str, nota: str | None = None) -> str: ...
     def responder(self, run_id: str, texto: str) -> tuple[str, str]: ...
     def previa(self, texto: str, instance_ids: list[str] | None = None) -> Previa: ...
-    def criar(self, texto: str, alvos: list[dict[str, object]], chave: str) -> tuple[str, str]: ...
+    def criar(self, texto: str, alvos: list[dict[str, object]], chave: str, modo: str = "execute") -> tuple[str, str]:
+        """A execução do pedido, pelo MESMO `RunService.create` da rota. `modo="plan"` (28.27): para em `planned`, e quem
+        inicia é o gesto do dono na prévia da porta (ou o vigia, quando nada pede o sim dele)."""
+        ...
+    def estado_da_execucao(self, run_id: str) -> str | None:
+        """O `status` da execução, ou `None` quando ela não existe."""
+        ...
+    def porta(self, run_id: str) -> dict[str, object]:
+        """A prévia da porta (30.61, `porta_do_plano.previa_da_porta`): a recusa sobe como `RecusaDaCentral`."""
+        ...
+    def aprovar_plano(self, run_id: str, aprovar: list[tuple[str, str]]) -> dict[str, object]:
+        """"Aprovar N e iniciar" (30.61, `porta_do_plano.aprovar_plano`), com os pares `(step_id, chave)` que o dono VIU.
+        O 409 `plano_mudou` sobe como `PlanoMudou`, com a prévia nova; o resto, como `RecusaDaCentral`."""
+        ...
+    def iniciar(self, run_id: str) -> None:
+        """Inicia a execução `planned` sem a porta (a prévia dela não pôde ser lida): a porta decide no despacho."""
+        ...
+    def cancelar(self, run_id: str) -> None: ...
+    def imagem_da_etapa(self, run_id: str, step_id: str) -> tuple[bytes, str] | None:
+        """Os bytes e o mime da imagem que a etapa vai publicar (`image_id`), ou `None`. Quem chama confere o sha256."""
+        ...
     def online(self) -> list[str]: ...
     async def captura(self, instance_id: str) -> Captura:
         """A tela atual do aparelho pela MESMA prévia do painel (tela sensível não sai). Não executa nada nele."""
@@ -498,6 +528,7 @@ class ConversaDoCanal:
         await self._retomar_anexos(saida)
         for linha in self.repo.a_tratar():
             await self._tratar(saida, linha)
+        await self._ver_planos(saida)
         await self._contar_desfechos(saida)
 
     async def _reparar_presas(self, saida: SaidaDaConversa) -> None:
@@ -1086,8 +1117,24 @@ class ConversaDoCanal:
             # O caminho comum viu credencial onde o canal não viu (a forma do texto, p. ex.): final, sem nova tentativa.
             await self._recusar_ja_gravada(saida, linha)
             return
+        if self._em_planejamento(nova):
+            # A execução respondida era só de plano (a do Executar pelo canal, 28.27): a sucessora também para em
+            # `planned`, e o vigia mostra a porta dela. Sem isto, ela ficaria parada sem ninguém para iniciar.
+            self.repo.marcar(self._id(linha), "executando", intencao=i.tipo, destino="central", alvo=f"run:{rid}",
+                             run_id=nova, previa={"fase": FASE_PLANEJANDO, "curta": curta},
+                             de=("recebida", "pergunta"))
+            await self._responder(saida, linha, f"Respondida: a execução segue em {curta}. Confiro as travas do plano "
+                                                "e conto aqui.")
+            return
         await self._feita(saida, linha, i, f"Respondida: a execução segue em {curta}. Conto aqui quando terminar.",
                           alvo=f"run:{rid}", run_id=nova)
+
+    def _em_planejamento(self, run_id: str) -> bool:
+        try:
+            return self.portas.estado_da_execucao(run_id) in ("planning", "planned")
+        except Exception:  # noqa: BLE001 - na dúvida, o desfecho de sempre
+            log.exception("telegram: estado da execução %s", run_id)
+            return False
 
     # ------------------------------------------------------------------ prévia e botões
     async def _previa(self, saida: SaidaDaConversa, linha: Linha, i: Intencao, texto: str,
@@ -1135,10 +1182,14 @@ class ConversaDoCanal:
         oid = self._id(original)
         if acao == "c":
             if self.repo.marcar(oid, "cancelada", de=("pergunta",)):
+                if previa.get("fase") == FASE_PORTA and previa.get("run_id"):
+                    self._cancelar_plano(str(previa["run_id"]))
                 await self._responder(saida, original, "Cancelado: nada foi executado.")
-        elif acao == "a" and extra:
+        elif acao == "p" and previa.get("fase") == FASE_PORTA:
+            await self._executar_aprovando(saida, original, i, previa)
+        elif acao == "a" and extra and previa.get("fase") != FASE_PORTA:
             await self._previa(saida, original, i, str(previa.get("texto") or ""), [extra])
-        elif acao == "x" and isinstance(previa.get("alvos"), list):
+        elif acao == "x" and isinstance(previa.get("alvos"), list) and previa.get("fase") != FASE_PORTA:
             if self.repo.idade_s(original) > self.cfg.file.avisos.entrada.ttl_previa_s:
                 # O pedido pode já não valer (o aparelho mudou, a aprovação passou): quem manda de novo vê a prévia atual.
                 if self.repo.marcar(oid, "cancelada", erro="prévia venceu", de=("pergunta",)):
@@ -1148,8 +1199,10 @@ class ConversaDoCanal:
                 return
             alvos = [a for a in previa["alvos"] if isinstance(a, dict)]  # type: ignore[union-attr]
             try:
+                # 28.27: só o plano. O vigia lê a porta quando ele fica pronto: nada pede o sim do dono, inicia; senão,
+                # a prévia da porta e o "Executar (aprova N)".
                 run_id, curta = self.portas.criar(str(previa.get("texto") or ""), alvos,
-                                                  f"{self.repo.canal}:{original['id_externo']}")
+                                                  f"{self.repo.canal}:{original['id_externo']}", modo="plan")
             except RecusaDaCentral as recusa:
                 self.repo.marcar(oid, "falhou", erro="recusada pela Central", de=("executando",))
                 await self._responder(saida, original, f"Não criei a execução: {self._redigir(str(recusa))[:300]}")
@@ -1159,8 +1212,156 @@ class ConversaDoCanal:
                 self.repo.marcar(oid, "falhou", erro="erro interno ao criar", de=("executando",))
                 await self._responder(saida, original, "Não criei a execução: erro interno (está no log da Central).")
                 return
-            await self._feita(saida, original, i, f"Execução {curta} criada. Conto aqui quando terminar.",
-                              run_id=run_id)
+            self.repo.marcar(oid, "executando", run_id=run_id, previa={**previa, "fase": FASE_PLANEJANDO, "curta": curta},
+                             de=("executando",))
+
+    # ------------------------------------------------------------------ a porta do plano (28.27)
+    async def _ver_planos(self, saida: SaidaDaConversa) -> None:
+        """O vigia das execuções que o Executar criou só de plano. Pronto o plano, lê a porta; a execução que seguiu ou
+        parou sem ela (pergunta, falha, cancelada por fora) vai ao desfecho de sempre."""
+        for linha in self.repo.planejando():
+            previa = _json(linha.get("previa"))
+            if previa.get("fase") != FASE_PLANEJANDO:
+                continue
+            oid, run_id = self._id(linha), str(linha["run_id"])
+            curta = str(previa.get("curta") or run_id[-6:])
+            i = Intencao(str(linha.get("intencao") or "livre"))
+            try:
+                estado = self.portas.estado_da_execucao(run_id)
+            except Exception:  # noqa: BLE001 - tenta de novo na próxima volta
+                log.exception("telegram: estado da execução %s", run_id)
+                continue
+            if estado == "planning":
+                continue
+            if estado is None:
+                if self.repo.marcar(oid, "falhou", erro="execução não encontrada", de=("executando",)):
+                    await self._responder(saida, linha, f"Não achei a execução {curta}: nada foi iniciado.")
+                continue
+            if estado != "planned":
+                self.repo.marcar(oid, "feita", run_id=run_id, de=("executando",))
+                continue
+            try:
+                previa_da_porta = self.portas.porta(run_id)
+            except Exception as exc:  # noqa: BLE001 - sem a prévia, a porta decide no despacho, como antes do 28.27
+                log.warning("telegram: prévia da porta da execução %s indisponível (%s)", run_id, type(exc).__name__)
+                await self._iniciar_sem_porta(saida, linha, i, run_id, curta)
+                continue
+            await self._mostrar_porta(saida, linha, i, run_id, curta, previa_da_porta, de=("executando",))
+
+    async def _iniciar_sem_porta(self, saida: SaidaDaConversa, linha: Linha, i: Intencao, run_id: str,
+                                 curta: str) -> None:
+        try:
+            self.portas.iniciar(run_id)
+        except RecusaDaCentral as recusa:
+            self.repo.marcar(self._id(linha), "feita", run_id=run_id, de=("executando", "pergunta"))
+            await self._responder(saida, linha, f"Não iniciei a execução {curta}: {self._redigir(str(recusa))[:300]}")
+            return
+        await self._feita(saida, linha, i, f"Execução {curta} iniciada; as travas se decidem na execução (a prévia "
+                                           "delas não pôde ser lida agora). Conto aqui quando terminar.", run_id=run_id)
+
+    async def _mostrar_porta(self, saida: SaidaDaConversa, linha: Linha, i: Intencao, run_id: str, curta: str,
+                             previa_da_porta: Mapping[str, object], *, de: tuple[str, ...]) -> None:
+        """N = 0 (nada aprovável pelo canal): inicia com `aprovar=[]` e manda uma linha. N > 0: a prévia da porta, os
+        botões e as imagens; a linha volta a `pergunta` com o retrato do que o dono viu (os pares que o Executar manda)."""
+        nomes = self._nomes_de_persona()
+        imagens: dict[str, tuple[bytes, str]] = {}
+
+        def conferida(item: Mapping[str, object]) -> bool:
+            sid, sha = str(item.get("step_id") or ""), item.get("imagem_sha256")
+            if not sid or not isinstance(sha, str) or not sha:
+                return False
+            try:
+                imagem = self.portas.imagem_da_etapa(run_id, sid)
+            except Exception:  # noqa: BLE001 - sem a imagem, o item fica fora do canal
+                log.exception("telegram: imagem da etapa %s", sid)
+                return False
+            if imagem is None or hashlib.sha256(imagem[0]).hexdigest() != sha:
+                return False
+            imagens[sid] = imagem
+            return True
+
+        leitura = ler_porta(previa_da_porta, nomes, self._redigir, conferida)
+        oid = self._id(linha)
+        if not leitura.aprovar:
+            try:
+                self.portas.aprovar_plano(run_id, [])
+            except RecusaDaCentral as recusa:
+                self.repo.marcar(oid, "feita", run_id=run_id, de=de)
+                await self._responder(saida, linha, f"Não iniciei a execução {curta}: {self._redigir(str(recusa))[:300]}")
+                return
+            await self._feita(saida, linha, i, linha_sem_aprovacao(curta, leitura), run_id=run_id)
+            return
+        retrato = {**_json(linha.get("previa")), "fase": FASE_PORTA, "run_id": run_id, "curta": curta,
+                   "hash_do_plano": previa_da_porta.get("hash_do_plano"),
+                   "validade_ate": previa_da_porta.get("validade_ate"),
+                   "aprovar": [[sid, chave] for sid, chave in leitura.aprovar]}
+        if not self.repo.marcar(oid, "pergunta", run_id=run_id, previa=retrato, de=de):
+            return
+        mensagens = mensagens_da_porta(previa_da_porta, curta, leitura, nomes, self._redigir)
+        n = len(leitura.aprovar)
+        for k, texto in enumerate(mensagens, 1):
+            botoes = [(f"Executar (aprova {n})", f"p:{oid}"), ("Cancelar", f"c:{oid}")] if k == len(mensagens) else None
+            await self._responder(saida, linha, texto, origem="previa", botoes=botoes)
+        for numero, item in enumerate(itens_da_previa(previa_da_porta), 1):
+            imagem = imagens.get(str(item.get("step_id")))
+            if imagem is None:
+                continue
+            try:
+                await self.enviar_conteudo(saida, imagem[0], f"item {numero}", mime_declarado=imagem[1],
+                                           responde_a=_texto(linha.get("ref_mensagem")), entrada_id=oid)
+            except (AnexoRecusado, FalhaDeEnvio) as falha:
+                log.warning("telegram: imagem do item %s não saiu (%s)", numero, type(falha).__name__)
+
+    async def _executar_aprovando(self, saida: SaidaDaConversa, original: Linha, i: Intencao,
+                                  previa: Mapping[str, object]) -> None:
+        """O "Executar (aprova N)": manda ao `aprovar_plano` exatamente os pares do retrato. Vencida (o TTL da prévia ou a
+        validade da porta), cancela a execução `planned`. Plano mudado: nada foi gravado, e sai a prévia nova."""
+        oid, run_id = self._id(original), str(previa.get("run_id") or "")
+        curta = str(previa.get("curta") or run_id[-6:])
+        validade = parse_iso(str(previa.get("validade_ate") or ""))
+        vencida = self.repo.idade_s(original) > self.cfg.file.avisos.entrada.ttl_previa_s or (
+            validade is not None and validade <= self.repo.relogio())
+        if vencida:
+            if self.repo.marcar(oid, "cancelada", erro="prévia venceu", de=("pergunta",)):
+                self._cancelar_plano(run_id)
+                await self._responder(saida, original, RESPOSTA_VENCIDA)
+            return
+        if not self.repo.marcar(oid, "executando", de=("pergunta",)):
+            return
+        bruto = previa.get("aprovar")
+        aprovar = [(str(p[0]), str(p[1])) for p in bruto if isinstance(p, list) and len(p) == 2] \
+            if isinstance(bruto, list) else []
+        try:
+            resposta = self.portas.aprovar_plano(run_id, aprovar)
+        except PlanoMudou as mudou:
+            k = len(mudou.mudaram)
+            await self._responder(saida, original, f"O plano mudou em {k} {'item' if k == 1 else 'itens'} desde a prévia: "
+                                                   "nada foi gravado. Segue a prévia nova.")
+            await self._mostrar_porta(saida, original, i, run_id, curta, mudou.previa, de=("executando",))
+            return
+        except RecusaDaCentral as recusa:
+            self.repo.marcar(oid, "feita", run_id=run_id, de=("executando",))
+            await self._responder(saida, original, f"Não iniciei a execução {curta}: {self._redigir(str(recusa))[:300]}")
+            return
+        except Exception:
+            log.exception("telegram: aprovar o plano da execução %s", run_id)
+            self.repo.marcar(oid, "falhou", erro="erro interno ao aprovar o plano", de=("executando",))
+            await self._responder(saida, original, "Não iniciei a execução: erro interno (está no log da Central).")
+            return
+        sins = resposta.get("aprovacoes")
+        n = len(sins) if isinstance(sins, list) else len(aprovar)
+        ate = parse_iso(str(resposta.get("validade_ate") or ""))
+        validos = f", válidos até {ate:%H:%M}Z" if ate is not None else ""
+        await self._feita(saida, original, i, f"Execução {curta} iniciada; {n} {'sim gravado' if n == 1 else 'sins gravados'}"
+                                              f"{validos}. Conto aqui quando terminar.", run_id=run_id)
+
+    def _cancelar_plano(self, run_id: str) -> None:
+        if not run_id:
+            return
+        try:
+            self.portas.cancelar(run_id)
+        except Exception:  # noqa: BLE001 - a execução `planned` não tem efeito; a faxina das execuções a encerra
+            log.exception("telegram: cancelar a execução %s da prévia cancelada", run_id)
 
     # ------------------------------------------------------------------ desfecho na thread
     async def _contar_desfechos(self, saida: SaidaDaConversa) -> None:

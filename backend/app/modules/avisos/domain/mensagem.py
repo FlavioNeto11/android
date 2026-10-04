@@ -235,6 +235,30 @@ def _conteudo(partes: list[str | None], nomes: Iterable[str], redigir: Redigir) 
     return _cortar(texto_livre(texto, nomes, redigir).strip(), CONTEUDO_MAX) or None
 
 
+def partes_da_aprovacao(alvo: str | None, texto: str | None, nomes: Iterable[str], redigir: Redigir, *,
+                        maximo: int | None = CONTEUDO_MAX) -> list[str]:
+    """O alvo e o texto de uma aprovação como a mensagem de aprovação pendente os mostra: o alvo só redigido (a exceção do
+    ADR-071 (d): sem o filtro de contato e de persona, porque aprovar sem saber para quem não é aprovação informada) e o
+    texto pelo `texto_livre`. A prévia da porta pelo canal (28.27) usa a MESMA regra, com o texto inteiro
+    (`maximo=None`)."""
+    partes: list[str] = []
+    if alvo:
+        partes.append(f"Alvo: {redigir(alvo).strip()}")
+    livre = texto_livre(texto, nomes, redigir).strip() if texto else ""
+    if livre:
+        partes.append(f"Texto: “{_cortar(livre, maximo) if maximo is not None else livre}”")
+    return partes
+
+
+def texto_mostravel(texto: str, nomes: Iterable[str], redigir: Redigir) -> bool:
+    """O texto sai pelo canal exatamente como é (nenhum filtro do `texto_livre` mudaria nada). Quando não sai, o dono não
+    vê o que aprovaria, e o sim dele por ali não vale (28.27)."""
+    try:
+        return texto_livre(texto, nomes, redigir).strip() == texto.strip()
+    except Exception:  # noqa: BLE001 - filtro com erro: na dúvida, não mostrável
+        return False
+
+
 def nome_do_pedido(aviso: Mapping[str, object], nomes: Iterable[str], redigir: Redigir | None) -> str:
     """"Pedido «<rótulo>»" ou "Pedido #<6 do id>". O rótulo só sai quando o pedido foi criado PELO DONO (o texto é dele,
     no chat dele) E passa por todos os filtros sem mudar nada. Nome de terceiro que não é persona não se detecta por
@@ -334,10 +358,8 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
         linhas = ["A etapa não segue sem a sua decisão.", "Espera você: decida na caixa de Pendências."]
         if conversa and redigir is not None:
             # A exceção do alvo (ADR-071 (d)): ele sai redigido, mas sem o filtro de contato e de persona.
-            alvo, texto = _texto(a.get("target")), _texto(a.get("content"))
             resumo = _conteudo([_texto(a.get("summary"))], nomes, redigir)
-            detalhe = " · ".join(x for x in (f"Alvo: {redigir(alvo).strip()}" if alvo else None,
-                                             f"Texto: “{_conteudo([texto], nomes, redigir)}”" if texto else None) if x)
+            detalhe = " · ".join(partes_da_aprovacao(_texto(a.get("target")), _texto(a.get("content")), nomes, redigir))
             linhas = [x for x in (resumo, _cortar(detalhe, CONTEUDO_MAX) if detalhe else None) if x] + [COMO_DECIDIR]
     elif kind == "run.updated":
         run = _filho(dados, "run")
