@@ -982,8 +982,12 @@ class LacoDePedidos:
                 instance_ids.append(iid)
         if not (instance_ids or targets):
             raise ValueError("o pedido não tem alvos")
+        # 28.23: a execução recebe o teto de autonomia do pedido (o mais restrito entre o pedido e o papel). O campo é do
+        # lado da execução (`RunCreate.teto_de_autonomia`, migração 100); até ele existir, nada vai, e a ordem em que os
+        # dois lados entram não quebra nenhum.
+        teto = ({"teto_de_autonomia": self._autonomia(p)} if "teto_de_autonomia" in RunCreate.model_fields else {})
         return RunCreate(command=p["objetivo"], instance_ids=instance_ids, targets=targets, device_policy=politica,
-                         mode="execute", idempotency_key=chave)
+                         mode="execute", idempotency_key=chave, **teto)
 
     def _despachar_uma(self, p: Row, o: Row, token: int, agora: datetime, r: Resumo) -> bool:
         if not self.repo.reservar(o["id"], self.lideranca.dono, to_iso(agora + timedelta(seconds=self.cfg.posse_s)),

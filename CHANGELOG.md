@@ -66,6 +66,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   ficou sem motivo.
 - Prova `simulated`: `test_pedidos_orcamento.py` (3 novos, com contraprova), `test_pedidos_api.py` (1 novo), vitest
   `PedidosPage.test.tsx` (2 novos). Real: `not_run` até o deploy.
+## 2026-10-04 — 28.23, lado do laço: a execução do pedido leva o teto de autonomia (branch canais/28-23-teto-no-laco)
+
+- `laco._requisicao` passa `teto_de_autonomia` = a mais restrita entre a autonomia do pedido e o teto do papel, só quando o
+  `RunCreate` tem o campo (o lado da execução, migração 100 e adendo v1.19, é de outra frente). Os dois lados entram em
+  qualquer ordem sem quebrar; o teto só vale quando os dois estiverem no ar.
+- Prova `simulated`: `test_pedidos_teto_na_execucao.py` (7, com contraprova; um modelo com o campo e outro sem). Real: `not_run`.
+
 ## 2026-10-04 — 28.10 F3: o papel limita a autonomia do pedido (branch canais/28-10-f3-papeis, sem migração, adendo v1.18)
 
 - `colaboracao.TETO_DO_PAPEL`: pesquisador e checador observam, o redator prepara, só o porta-voz age. A prévia, a criação
