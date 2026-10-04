@@ -49,7 +49,8 @@ SNAPSHOT = {
 SISTEMAS = {
     # Item 24.3: o ator aprende quando usar read_value (ler antes de concluir e antes do efeito; código, senha e
     # token nunca são valor) — o hash muda de propósito, como no 24.8 abaixo.
-    "ACTOR_SYSTEM": "7abb5006b5bcfa77c0ccca55589e20b3ddf5a70d511509ac58367543746223dd",
+    # Item 31.38: a regra de leitura ganhou `step_blocked(kind="dado_ausente")` — o hash muda de propósito.
+    "ACTOR_SYSTEM": "29ab96bfc6f9bf37bb09c321f36a54563565726ae62d60eaf86242b8480fd9c4",
     # Item 24.8: o exemplo vedado (código lido no Outlook) virou um exemplo permitido, e a regra de código/senha/
     # token nunca atravessar etapas entrou no texto — o hash muda de propósito, não é enfraquecimento do teste.
     # Item 24.3: a regra de `saidas` e `{{saida:<nome>}}` (valor lido numa etapa e usado nas seguintes).

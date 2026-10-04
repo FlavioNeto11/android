@@ -43,6 +43,8 @@ MAX_PLAN_REVISIONS = 1
 #: "defeito de plano" de propósito (nota da Jev): a revisão COPIA as etapas não comprovadas, o plano não muda, e a
 #: Aprendizado não pode minerar isto como lição do planejador.
 MOTIVO_FALTA_DE_INFORMACAO = "falta de informação"
+#: Item 31.38: o motivo da revisão dada à leitura que não achou o valor (UMA por objetivo; a contagem lê este prefixo).
+MOTIVO_DADO_AUSENTE = "dado ausente"
 # estados que o rodízio pode ligar sob demanda
 WAKEABLE = {InstanceState.stopped, InstanceState.absent, InstanceState.hibernated}
 #: Quanto um objetivo ESPERA o worker que hospeda o aparelho dele voltar antes de parar para uma pessoa. Queda
@@ -1754,6 +1756,19 @@ class Scheduler:
         # failed
         repo.finish_attempt(attempt_id, AttemptStatus.failed, error=detail, screen=out.tela_da_falha, error_kind=kind)
         repo.transition_step(step.id, StepStatus.failed, detail=detail, level="error", error_kind=kind)
+        if out.dado_ausente:                 # 31.38: UM plano revisado por objetivo, com a evidência; a segunda vez é final
+            ja_revisou = int(self.repo.db.scalar(
+                "SELECT COUNT(*) FROM plan_versions WHERE objective_id=? AND reason LIKE ?",
+                (oid, f"Recuperação automática ({MOTIVO_DADO_AUSENTE})%")) or 0)
+            if not ja_revisou:
+                rec = self._try_recover(obj, step, detail or "dado ausente", app_vivo=app_vivo, dado_ausente=True)
+                if rec.revisou:
+                    return rec.da_tela_atual
+            metricas.contar("objetivo.dado_ausente_final", revisado="sim" if ja_revisou else "nao")
+            self._fail_objective(obj, f"Etapa '{step.title}': {detail}"
+                                 + (" O plano já tinha sido revisado uma vez por dado ausente." if ja_revisou else ""))
+            self._hold_siblings(obj, step)
+            return False
         if out.plan_defect:                  # refazer o MESMO plano falharia igual (e custaria igual) em todo aparelho
             self._fail_objective(obj, f"Etapa '{step.title}': {detail}")
             self._hold_siblings(obj, step)
@@ -2110,7 +2125,7 @@ class Scheduler:
         return bool(steps) and self._revisao_condenada(obj["id"], run, steps) is None
 
     def _try_recover(self, obj: Any, step: Any, detail: str, *, app_vivo: bool | None = None,
-                     falta_de_informacao: bool = False) -> _Recuperacao:
+                     falta_de_informacao: bool = False, dado_ausente: bool = False) -> _Recuperacao:
         run = self.repo.run_row(obj["run_id"])
         if run is not None and run["prova_fluxo_id"]:
             # 30.42: a prova não replaneja: um plano novo não é mais o fluxo, e a prova dele já não diria nada sobre o
@@ -2133,6 +2148,7 @@ class Scheduler:
         # O prefixo "Recuperação automática" é o que o teto (`_pode_recuperar`) conta: a revisão por falta de informação
         # (29.35) entra no MESMO teto, senão "falta informação → revisa → mesma tela" giraria sem fim.
         reason = (f"Recuperação automática ({MOTIVO_FALTA_DE_INFORMACAO}) após '{step.title}': {detail}" if falta_de_informacao
+                  else f"Recuperação automática ({MOTIVO_DADO_AUSENTE}) após '{step.title}': {detail}" if dado_ausente
                   else f"Recuperação automática após falha em '{step.title}': {detail}")
         versao = self.repo.revise_plan(obj["id"], reason, steps)
         self.herdar_textos(obj["id"], versao)

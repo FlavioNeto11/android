@@ -252,7 +252,14 @@ class StepOutcome:
     #: "falta de informação") antes de parar o objetivo em `waiting_user`: "o campo X não existe" quase sempre é o plano
     #: na tela errada, não informação que a pessoa precise dar.
     falta_de_informacao: bool = False
+    #: Item 31.38: a etapa de LEITURA não achou o valor (o ator relatou `dado_ausente` ou o teto de decisões da leitura
+    #: estourou). Não há nova tentativa da MESMA etapa; o scheduler dá UM plano revisado por objetivo, e a segunda vez
+    #: fecha o objetivo como falha.
+    dado_ausente: bool = False
 
+
+#: Item 31.38: o começo do `detail` da etapa de leitura que não achou o valor (o scheduler e o plano revisado o reconhecem).
+PREFIXO_DADO_AUSENTE = "Dado ausente:"
 
 #: A mesma triagem que decide se uma pergunta pede credencial (29.52): uma só, para a falta de informação também.
 _TRIAGEM_DE_CREDENCIAL = TriagemDeCredencial()
@@ -1379,6 +1386,13 @@ class StepExecutor:
             if anterior and anterior["error"]:
                 history.append(f"(tentativa anterior desta etapa falhou) {str(anterior['error'])[:400]} — "
                                "não repita o mesmo caminho; procure outro.")
+        ausente = repo.db.one("SELECT status_detail FROM steps WHERE objective_id=? AND key=? AND plan_version<? AND "
+                              "status='failed' AND status_detail LIKE ? ORDER BY plan_version DESC, id DESC LIMIT 1",
+                              (step.objective_id, step.key, step.plan_version, PREFIXO_DADO_AUSENTE + "%"))
+        if ausente:
+            # 31.38: o plano foi revisado porque a leitura não achou o valor; o ator do plano novo sabe onde já se procurou.
+            history.append(f"(plano revisado) na versão anterior: {str(ausente['status_detail'])[:300]} — procure em "
+                           "outra tela ou outro caminho; se também não estiver lá, chame step_blocked(kind=\"dado_ausente\").")
         if fired:
             history.append("(tentativa anterior) a ação com efeito externo desta etapa JÁ foi disparada; "
                            "resultado " + ("desconhecido" if unknown else "registrado") + ".")
@@ -1540,6 +1554,18 @@ class StepExecutor:
                 return StepOutcome(Outcome.uncertain, detail)
             return StepOutcome(Outcome.failed, detail, sem_recuperacao=True)
 
+        async def dado_ausente(motivo: str, obs: Observation | None) -> StepOutcome:
+            """31.38: o que se procurou e onde, para a pessoa, sem nada lido da página (o texto do modelo fica na nota
+            da evidência, já triado). Sem nova tentativa da mesma etapa: quem decide o replano é o scheduler."""
+            onde = f"na etapa '{step.title}'" + (f" do {app.name or app.package}" if app else "")
+            texto = (f"{PREFIXO_DADO_AUSENTE} procurei " + ", ".join(f"'{n}'" for n in saidas_declaradas)
+                     + f" {onde} e não encontrei ({motivo}).")
+            await evidence(obs, f"Falha: {texto}")
+            metricas.contar("etapa.dado_ausente", motivo="teto" if motivo.startswith("teto") else "ator")
+            if step.side_effect and fired:
+                return StepOutcome(Outcome.uncertain, texto)
+            return StepOutcome(Outcome.failed, texto, dado_ausente=True)
+
         async def parar_na_trava(trava: ContaTravada, pacote: str | None) -> StepOutcome:
             """ADR-055: a tela de verificação encerra a etapa SEM tocar, teclar nem reabrir — nem a receita nem o ator
             chegam a vê-la. O desfecho é `auth_challenge` com o subtipo e o trecho, na tentativa (o `detail`) e no
@@ -1580,6 +1606,9 @@ class StepExecutor:
         opcional = step.opcional and self.cfg.file.ai.limpeza_opcional
         if opcional:                       # item 31.36: limpar a tela vale no máximo 3 decisões do ator
             max_actions = min(max_actions, LIMITE_DA_ETAPA_OPCIONAL)
+        # Item 31.38: a etapa de LEITURA (declara saídas e não deixa marca) tem teto próprio de decisões; a de efeito não.
+        leitura = bool(saidas_declaradas) and not step.side_effect and not step.commit_guard
+        teto_leitura = int(self.cfg.file.ai.max_decisoes_leitura) if leitura else 0
         ai_cfg = self._ai_da_execucao(str(run["id"]))      # 17.14: o perfil da execução pode trocar imagem e árvore
         judged_step = step.postcondition.kind == "model_judged" or need is not None
         decisions = 0
@@ -2007,6 +2036,8 @@ class StepExecutor:
                                              ai=ai_cfg)
                 image_requested = False
                 if encadeada is None:          # a ação encadeada não é decisão nova (31.35)
+                    if teto_leitura and decisions >= teto_leitura:
+                        return await dado_ausente(f"teto de {teto_leitura} decisões da leitura", obs)
                     decisions += 1
                 actor_history = compress_history(history, ai_cfg.actor_history_lines)
                 rr.exerceu(StrategyKind.ai_actor)
@@ -2300,6 +2331,17 @@ class StepExecutor:
                 aid = intencao("step_done", args.model_dump(mode="json"), rationale, side_effect=False)
                 repo.finish_action(aid, ActionStatus.done, result={"declared": True})
                 break
+            if isinstance(args, StepBlocked) and args.kind == "dado_ausente" and not leitura:
+                # 31.38: "dado ausente" só existe em etapa de leitura; na de efeito o ator usa os tipos de sempre.
+                aid = intencao("step_blocked", {"kind": args.kind, "needs_user": args.needs_user}, rationale,
+                               side_effect=False)
+                repo.finish_action(aid, ActionStatus.rejected, error="dado_ausente fora de etapa de leitura")
+                history.append("step_blocked(dado_ausente) REJEITADO: esta etapa não é de leitura; se não dá para "
+                               "seguir, use outro kind (missing_info, unexpected_screen, other).")
+                errors_in_row += 1
+                if errors_in_row >= 4:
+                    return await fail_or_retry("A IA insistiu em 'dado ausente' numa etapa que não é de leitura.", obs)
+                continue
             if isinstance(args, StepBlocked):
                 # O motivo é texto do MODELO e pode citar o que ele viu na tela (um código de verificação, um segredo). Ele
                 # vai a quatro destinos — `steps.status_detail` e `attempts.error` (pelo desfecho), a nota da evidência e o
@@ -2319,6 +2361,9 @@ class StepExecutor:
                                                 obs.package)
                 if step.side_effect and fired:
                     return StepOutcome(Outcome.uncertain, razao)
+                if args.kind == "dado_ausente":
+                    # 31.38: sem a cascata ao modelo forte nem nova tentativa: o plano revisado (uma vez) é a segunda olhada.
+                    return await dado_ausente("o modelo de ação não o achou na tela", obs)
                 if (tier == 0 and not from_recipe and not bloqueio_escalado and ai_cfg.cascade_blocked_to_tier1
                         and args.kind not in ("challenge", "auth_required", "wrong_account")):
                     # Item 17.10: o ator barato desiste cedo ("não vejo", "falta informação"). Antes de acordar uma pessoa,

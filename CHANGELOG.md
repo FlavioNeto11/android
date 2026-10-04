@@ -54,6 +54,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   para cada uma. Hoje a lista tem só o `account_label`, porque `instance_id` e `run_id` nunca faltam.
 - Prova `simulated`: `test_learning_aparelho_com_variaveis.py` e o teste de ligação em `test_learning_validacao_sql.py`
   (mutação conferida). Sem DDL.
+## 2026-10-04 — 31.38: a leitura sem o dado para cedo (branch feat/31-38-dado-ausente, sem migração)
+
+- `step_blocked(kind="dado_ausente")` só em etapa de leitura, e o teto `ai.max_decisoes_leitura` (12; p95 8 em n=16)
+  com o mesmo desfecho: sem nova tentativa da mesma etapa, UM plano revisado por objetivo com a evidência no histórico
+  do ator, e a segunda vez fecha como falha final. A frase diz o que se procurou e onde, sem conteúdo da página. Regra
+  nova no `ACTOR_SYSTEM` (hash muda). Prova: `backend/tests/test_dado_ausente.py` (simulated); real `not_run`.
 
 ## 2026-10-04 — 28.16 + 28.18: a faxina leva os eventos dos contatos do Telegram (branch canais/28-18-faxina-090, sem migração)
 

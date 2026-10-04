@@ -222,9 +222,12 @@ class StepBlocked(_Args):
 
     `challenge` (ADR-055): tela de verificação — confirmar que é humano, CAPTCHA, código de login/2FA. Vira
     `auth_challenge` (só uma pessoa resolve), nunca `auth_required`: este devolvia o caso ao login automático, que
-    voltava a abrir o app sobre uma conta travada."""
+    voltava a abrir o app sobre uma conta travada.
+
+    `dado_ausente` (31.38): só em etapa de LEITURA — o valor pedido não está onde a etapa manda procurar. A etapa não
+    se repete: o objetivo ganha UM plano revisado com a evidência, e a segunda vez fecha como falha."""
     kind: Literal["auth_required", "challenge", "wrong_account", "missing_info", "app_incompatible",
-                  "unexpected_screen", "other"]
+                  "unexpected_screen", "dado_ausente", "other"]
     reason: str
     needs_user: bool
 

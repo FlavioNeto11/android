@@ -253,6 +253,13 @@ despacho (`_policy_gate`, a trava de sempre, com a mesma frase) e em `RunService
   títulos das ações oferecidas pelo catálogo dele (ADR-052), no formato "<Pedido> não está disponível no <app>: o
   catálogo dele só tem <títulos>. Faça essa parte você mesmo ou peça só o que está nessa lista." O evento
   `plan.refused` leva `{motivo: "sem_acao_do_catalogo", pedidos: [{app_id, app, pedido, disponiveis}]}`.
+- **Leitura sem o dado (item 31.38, `ai.max_decisoes_leitura`, sem migração):** na etapa de LEITURA (declara saídas,
+  sem efeito nem commit_guard) o ator pode chamar `step_blocked(kind="dado_ausente")`, e o teto de decisões por
+  tentativa (12: p95 de 8 medido em 16 leituras com sucesso desde 27/09, com folga) tem o mesmo desfecho. A etapa não
+  se repete nem sobe ao modelo forte: falha com "Dado ausente: procurei '<saída>' na etapa '<título>' do <app> e não
+  encontrei (<motivo>)", sem texto da página. O objetivo ganha UM plano revisado (motivo "Recuperação automática (dado
+  ausente)"), e o ator dele recebe essa frase no histórico; a segunda vez fecha o objetivo como falha final. Em etapa
+  de efeito o teto não vale e `dado_ausente` é recusado. Achado real: ba5ebc (`read_parties`, 21 decisões, verba).
 - **Etapa de limpeza opcional (item 31.36, `ai.limpeza_opcional`, migração 098):** o planejador marca `opcional` a
   etapa que só limpa a tela (aviso, banner, cookies, dica); o parsing só aceita a marca sem efeito, sem `saidas`, sem
   for_each e sem commit_guard. Ela roda com no máximo 3 decisões do ator, sem juiz (`so_prova_local`) e sem escalar.
