@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 168 44" width="168" height="44" role="img" aria-label="SICAT">
+  <g fill="none" stroke="#e6edf5" stroke-width="6" stroke-linejoin="round">
+    <path d="M33 7H12a7.5 7.5 0 0 0 0 15h12a7.5 7.5 0 0 1 0 15H3"/>
+    <path d="M44 7v30"/>
+    <path d="M86 7H69a15 15 0 0 0 0 30h17"/>
+    <path d="M95 37l16-30 16 30"/>
+    <path d="M134 7h30M149 7v30"/>
+  </g>
+  <circle cx="111" cy="31" r="4" fill="#22d3ee"/>
+</svg>

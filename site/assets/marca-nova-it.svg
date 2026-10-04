@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 196 44" width="196" height="44" role="img" aria-label="Nova IT">
+  <g fill="none" stroke="#e6edf5" stroke-width="6" stroke-linejoin="round">
+    <path d="M4 37V7l23 30V7"/>
+    <circle cx="51" cy="22" r="15"/>
+    <path d="M73 7l15 30 15-30"/>
+    <path d="M108 37l16-30 16 30"/>
+  </g>
+  <g fill="none" stroke="#22d3ee" stroke-width="6" stroke-linejoin="round">
+    <path d="M157 7v30"/>
+    <path d="M165 7h28M179 7v30"/>
+  </g>
+</svg>
