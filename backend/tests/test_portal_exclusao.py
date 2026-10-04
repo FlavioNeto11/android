@@ -6,6 +6,7 @@ o código dela não está nesta base). Nomes e telefones fictícios; nada vai a 
 """
 from __future__ import annotations
 
+import importlib
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -275,3 +276,49 @@ def test_id_de_contato_apagado_nunca_volta(harness: Harness) -> None:
     repo.excluir(ids=[maior], mantidos=[], pedido_por="telefone", executado_por="x", mensagens_apagadas=0,
                  mensagens_a_mao=0, agora=now())
     assert _gravar(harness, TEL_A) > maior
+
+
+# ------------------------------------------------------------------ contra a Canais REAL (28.34, #340)
+def _sem_a_exclusao_da_canais(h: Harness) -> bool:
+    """Pula só enquanto o 28.34 não está na base. Se o domínio da Canais já tem `ApagadoNoCanal` e o serviço não tem a
+    função, é a peça que mudou de lugar: o teste FALHA em vez de pular calado (nota da orquestradora, 04/10)."""
+    assert h.state is not None
+    tem_funcao = callable(getattr(h.state.avisos, "apagar_avisos_do_portal", None))
+    try:
+        dominio = importlib.import_module("app.modules.avisos.domain.portal")
+    except ImportError:
+        return not tem_funcao
+    if hasattr(dominio, "ApagadoNoCanal"):
+        assert tem_funcao, "ApagadoNoCanal existe e state.avisos.apagar_avisos_do_portal não: o contrato do 28.34 mudou"
+    return not tem_funcao
+
+
+async def test_canais_real_lapide_impede_o_aviso_depois_da_exclusao(harness: Harness,
+                                                                   monkeypatch: pytest.MonkeyPatch) -> None:
+    """O contato entregue à fila (ainda não enviado) e o que nunca chegou à fila: os dois saem, e um avisar depois da
+    exclusão (o laço de reenvio no meio do caminho) não põe nada para sair na chave do contato."""
+    if _sem_a_exclusao_da_canais(harness):
+        pytest.skip("o 28.34 (#340) ainda não está nesta base")
+    from .test_avisos_servico import CanalFalso
+
+    assert harness.state is not None
+    st = harness.state
+    harness.cfg.file.avisos.enabled = True
+    monkeypatch.setattr(st.avisos, "_canal", CanalFalso())
+    na_fila = _gravar(harness, TEL_A, estado="pendente")
+    campos = {"nome": "Pessoa Fictícia", "empresa": "", "telefone": TEL_A, "mensagem": "teste fictício"}
+    assert st.portal.contatos.entregar(na_fila, campos, now()) == "entregue"
+    fora_da_fila = _gravar(harness, TEL_A, estado="pendente")
+    async with _logado(harness) as c:
+        r = await c.post("/api/portal/contatos/excluir", json={"ids": [na_fila, fora_da_fila], "pedido_por": "telefone"})
+    assert r.status_code == 200, r.text
+    assert r.json()["apagados"] == [na_fila, fora_da_fila] and r.json()["mantidos"] == []
+    assert _ids_no_banco(harness) == set()
+    # O laço de reenvio que já tinha lido a linha antes do DELETE tenta avisar: a lápide faz disso um no-op.
+    for contato_id in (na_fila, fora_da_fila):
+        st.portal.contatos.entregar(contato_id, campos, now())
+    linhas = [dict(r) for r in st.db.query(
+        "SELECT chave, estado, corpo FROM avisos_entregas WHERE chave IN (?, ?) ORDER BY chave",
+        (f"portal:{na_fila}", f"portal:{fora_da_fila}"))]
+    assert [x["chave"] for x in linhas] == sorted([f"portal:{na_fila}", f"portal:{fora_da_fila}"])
+    assert all(x["estado"] == "descartado" and x["corpo"] == "" for x in linhas), linhas
