@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-430 de 481 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+436 de 482 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -417,16 +417,17 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.53 | implemented | real | opus | — | 04/10, central, deploy 28. (b) 16:15:34Z: 4 linhas revalidada (311-314) para r-20261004132450-38f68a (fluxo + receitas 64, 68, 84), texto '... 2 mensagens para 2 etapas de efeito comprovadas, uma por item (30.53)'; sem… | None |
 | 30.54 | implemented | simulated | claude-opus-5-5 | — | PR #262 (fix/30-54-aceite-em-lote, [skip ci]), só painel. DecisaoInline põe o campo e os botões na mesma linha e mostra à vista por que o botão está apagado. ParaAprovarTab ganhou o resumo do lote por item e por efeito,… | A tela no navegador fica not_run até o deploy da suíte 28 (validação da orquestradora no Chrome do dono). |
 | 30.55 | implemented | real | claude-fable-5-1 | — | Real, 04/10/2026, máquina central, commit e3f6c13c (migração 102_decisoes_automaticas, /api/health sem problems às 19:01Z). Sombra: 1ª volta às 18:27:26.872Z, com 40 avaliados e 18 que decidiria, nenhum decidido. On (fa… | None |
-| 30.56 | pendente | — | — | — |  |  |
-| 30.57 | blocked | not_run | opus | — | Item aberto em 04/10 pela orquestradora: learn_from a partir de interação de comentário e for_each com itens reais, que saíram do 8.3. Nada executado. | Sem alvo possível: pelo ADR-055 (uma conta por alvo em 30 dias), as 3 contas vivas já se tocaram em 03/10, então não há comentário entre contas nossas antes de… |
-| 30.58 | pendente | — | — | — |  |  |
-| 30.59 | pendente | — | — | — |  |  |
-| 30.60 | pendente | — | — | — |  |  |
+| 30.56 | implemented | simulated | claude-fable-5-1 | — | Implantado no deploy 31 (central 0ede1860, migração 103, /api/health sem problems às 19:58Z). Resposta a comentário já dada é recusada antes do rascunho e da aprovação (UMA_VEZ_POR_ALVO), sem retry_at. Prova simulated:… | None |
+| 30.57 | implemented | simulated | claude-fable-5-1 | — | Implantado no deploy 31 (central 0ede1860, migração 103, /api/health sem problems às 19:58Z). (a) resposta a comentário ensina o perfil pelo caminho real (open_effect); (b) o teto por hora e por dia conta os pedidos de… | None |
+| 30.58 | implemented | simulated | claude-fable-5-1 | — | Implantado no deploy 31 (central 0ede1860, migração 103, /api/health sem problems às 19:58Z). O motivo dado_ausente do executor vira alvo_ausente na classificação de falhas, com a regra em domain/falhas.py e a catraca e… | None |
+| 30.59 | implemented | real | claude-fable-5-1 | — | Implantado no deploy 31 (central 0ede1860, migração 103, /api/health sem problems às 19:58Z). Proposta de ação de catálogo por etapa (chave acao_de_catalogo\|<pacote>\|etapa:<chave>). Prova simulated: backend/tests/test… | None |
+| 30.60 | implemented | simulated | claude-fable-5-1 | — | Implantado no deploy 31 (central 0ede1860, migração 103, /api/health sem problems às 19:58Z). CREATE_POST endurecido: prova local count_gt com guarda do título do próprio perfil e conta esperada (account_label); marcas… | None |
 | 30.61 | pendente | — | — | — |  |  |
 | 30.62 | pendente | — | — | — |  |  |
-| 30.63 | pendente | — | — | — |  |  |
+| 30.63 | implemented | simulated | claude-fable-5-1 | — | Implantado no deploy 31 (central 0ede1860, migração 103, /api/health sem problems às 19:58Z). Achados das revisões do 30.55: a régua lê a revisão REAL mais recente do curador (REVISOES_LIDAS=20); o modo aceita o boolean… | None |
 | 30.64 | pendente | — | — | — |  |  |
 | 30.65 | pendente | — | — | — |  |  |
+| 30.66 | pendente | — | — | — |  |  |
 | 31.1 | implemented | simulated | sessao | — | Commit b5a40c98 (na main desde o PR #110, sessao jev, 02/10/2026): trava de 255 opcoes e opcao nenhuma no adaptador do Jev (choice). backend/tests/test_context_retrieval_semantic.py com provedor falso. Chamada real: not… |  |
 | 31.2 | implemented | simulated | sessao | — | PR #112 (merge b5baf3e5 na main, commits 89a92b03 + a6cfa0fd, sessao jev, 02/10/2026): migracao 073 (ai_calls.origem e ref, TEXT sem CHECK), Usage.origem, filtro por origem no gasto (costs.spent_usd). backend/tests/test… |  |
 | 31.3 | implemented | not_run | sessao | — | Item de decisao (texto do ADR): ADR-069 escrito e aprovado pelo dono (02/10/2026 ~21:35Z, 'sim para todos' no chat da orquestradora), PR #102, merge fd59fbd7. Emenda o ADR-063; D-J1 (porta unica, constantes fechadas, Te… |  |
@@ -488,7 +489,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (51): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.29, 28.30, 28.31, 29.7, 29.9, 29.13, 29.19, 29.21, 29.30, 29.38, 29.41, 29.68, 29.75, 29.76, 30.34, 30.52, 30.56, 30.57, 30.58, 30.59, 30.60, 30.61, 30.62, 30.63, 30.64, 30.65, 31.11, 31.12, 31.13, 31.35, 31.40, 31.45, 31.47, 31.48, 31.49, 31.50, 31.51, 31.52, T.2
+Pendentes (46): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.29, 28.30, 28.31, 29.7, 29.9, 29.13, 29.19, 29.21, 29.30, 29.38, 29.41, 29.68, 29.75, 29.76, 30.34, 30.52, 30.61, 30.62, 30.64, 30.65, 30.66, 31.11, 31.12, 31.13, 31.35, 31.40, 31.45, 31.47, 31.48, 31.49, 31.50, 31.51, 31.52, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

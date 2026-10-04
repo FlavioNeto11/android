@@ -7610,16 +7610,16 @@
   },
   "30.57": {
    "id": "30.57",
-   "status": "blocked",
-   "proof": "not_run",
-   "evidence": "Item aberto em 04/10 pela orquestradora: learn_from a partir de interação de comentário e for_each com itens reais, que saíram do 8.3. Nada executado.",
-   "blocker": "Sem alvo possível: pelo ADR-055 (uma conta por alvo em 30 dias), as 3 contas vivas já se tocaram em 03/10, então não há comentário entre contas nossas antes de ~02/11/2026. A outra via é um comentário orgânico de terceiro num post nosso: uma resposta, com aprovação do dono em Pendências.",
-   "grupo": "aprendizado-8-3-fechamento",
-   "modelo": "opus",
-   "esforco": "high",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Implantado no deploy 31 (central 0ede1860, migração 103, /api/health sem problems às 19:58Z). (a) resposta a comentário ensina o perfil pelo caminho real (open_effect); (b) o teto por hora e por dia conta os pedidos de aprovação ainda sem interação; o próprio perfil sai do for_each. Prova simulated (suíte 31, testes do 30.57 no PR #288). Real: not_run.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-deploy31-b",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T17:29:38+00:00"
+   "quando": "2026-10-04T20:01:26+00:00"
   },
   "29.71": {
    "id": "29.71",
@@ -7802,6 +7802,71 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-04T19:55:16+00:00"
+  },
+  "30.56": {
+   "id": "30.56",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Implantado no deploy 31 (central 0ede1860, migração 103, /api/health sem problems às 19:58Z). Resposta a comentário já dada é recusada antes do rascunho e da aprovação (UMA_VEZ_POR_ALVO), sem retry_at. Prova simulated: backend/tests/test_ja_respondido.py (8 testes, com a forma exata da interação real int-fPuCkX3vCt7WnmsL e a porta do despacho); sobre uma cópia do banco do central o caso real é recusado. Real: not_run (nenhuma resposta repetida pedida depois do deploy).",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-deploy31-b",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T20:01:26+00:00"
+  },
+  "30.58": {
+   "id": "30.58",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Implantado no deploy 31 (central 0ede1860, migração 103, /api/health sem problems às 19:58Z). O motivo dado_ausente do executor vira alvo_ausente na classificação de falhas, com a regra em domain/falhas.py e a catraca em backend/tests/test_learning_falhas.py (4 motivos do executor, texto real de 04/10). Prova simulated. Real: not_run.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-deploy31-b",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T20:01:26+00:00"
+  },
+  "30.59": {
+   "id": "30.59",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Implantado no deploy 31 (central 0ede1860, migração 103, /api/health sem problems às 19:58Z). Proposta de ação de catálogo por etapa (chave acao_de_catalogo|<pacote>|etapa:<chave>). Prova simulated: backend/tests/test_learning_backlog.py e os 67 arquivos do aprendizado (1095 aprovados). Real, depois do deploy 31, às 20:00Z pela rota PATCH /api/aprendizado/backlog/{id}: as 47 linhas do formato antigo (<pacote>|<hash>) foram para wontfix e a linha nova fk-ea00e3de56 (com.pocqa.messenger|etapa:open_app) ficou planned com plan_item=31.48; conferido no banco só lendo (47 wontfix; fk-ea00e3de56 planned 31.48).",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-deploy31-b",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T20:01:26+00:00"
+  },
+  "30.60": {
+   "id": "30.60",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Implantado no deploy 31 (central 0ede1860, migração 103, /api/health sem problems às 19:58Z). CREATE_POST endurecido: prova local count_gt com guarda do título do próprio perfil e conta esperada (account_label); marcas de pendente e falha; galeria só com a imagem pedida (MediaStore conferido); aprovação reaproveitada compara a imagem; edição gravada na transação da decisão; piso de aprovação para publicar (LimitsCfg.publicar_sem_aprovacao=false); aprovação de objetivo encerrado sem efeito não reserva alvo nem teto. Prova simulated: backend/tests/test_create_post_endurecido.py, test_create_post.py, test_ja_respondido.py. Real: not_run (a publicação de teste do 29.30 espera o sim do dono ao item concreto e a conferência da imagem na tela de edição).",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-deploy31-b",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T20:01:26+00:00"
+  },
+  "30.63": {
+   "id": "30.63",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Implantado no deploy 31 (central 0ede1860, migração 103, /api/health sem problems às 19:58Z). Achados das revisões do 30.55: a régua lê a revisão REAL mais recente do curador (REVISOES_LIDAS=20); o modo aceita o booleano do YAML; a seção do painel mostra o erro da rota em vez de sumir, não diz 'nada decidido' em shadow com decisões antigas, conta as desfeitas no 'Ver todas', e o porquê usa os rótulos da tela. Prova simulated: backend/tests/test_aprovacao_automatica.py e frontend DecididoPelaPlataforma.test.tsx. Real parcial: o passeio da orquestradora no navegador (deploy 31, 0ede1860) abriu 'Para aprovar' e 'Decidido pela plataforma' sem erro e o 'Ver todas as 18' funcionou; a primeira volta depois do reinício (19:54:06.923Z) avaliou 22 itens e decidiu 0, em modo on.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-deploy31-b",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T20:01:26+00:00"
   }
  },
  "rodadas": [
@@ -10228,6 +10293,20 @@
    ],
    "grupos": [
     "resultado-orquestradora-deploy31"
+   ]
+  },
+  {
+   "quando": "2026-10-04T20:01:26+00:00",
+   "itens": [
+    "30.56",
+    "30.57",
+    "30.58",
+    "30.59",
+    "30.60",
+    "30.63"
+   ],
+   "grupos": [
+    "resultado-orquestradora-deploy31-b"
    ]
   }
  ]
