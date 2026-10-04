@@ -46,6 +46,8 @@ ERRO_MAX = 200
 _FALHAS = ("failed", "uncertain", "interrupted")
 #: Etapas que contam na condução (`steps.driven_by`): as que chegaram a um desfecho.
 _ETAPA_COM_DESFECHO = ("succeeded", "failed", "uncertain", "waiting_user")
+#: 30.59: a condução que fecha a etapa sem IA (receita pura ou atalho do executor, LT-1).
+_SEM_IA = frozenset({"recipe", "sem_ator"})
 _INTERVENCOES_LIGADAS = (SignalKind.TOMOU_CONTROLE.value, SignalKind.TELA_DESCONHECIDA_CHAMOU_PESSOA.value)
 #: Tamanho do lote de um `IN (...)` (o limite de parâmetros do SQLite antigo é 999).
 _LOTE = 400
@@ -360,25 +362,31 @@ class FontesDeFalhaSql:
         return saida
 
     def acoes_livres(self, desde: str, ate: str) -> list[AcaoLivre]:
-        """Etapas livres comprovadas pela tela (`result.verified`), por (app, modelo). A chave da etapa (e nunca o
-        título ou o objetivo, que podem trazer nome de terceiro) é o que identifica o modelo para a pessoa."""
+        """Etapas livres comprovadas pela tela (`result.verified`), por (app, chave da etapa) — 30.59: a mesma etapa
+        com dois objetivos (dois `template_hash`) é uma proposta só. A chave da etapa (e nunca o título ou o objetivo,
+        que podem trazer nome de terceiro) é o que identifica a etapa para a pessoa. `sem_ia` conta as que fecharam
+        por receita ou pelo atalho do executor (`driven_by` `recipe` ou `sem_ator`)."""
         pacotes = self._pacotes()
         execucoes: dict[tuple[str, str], set[str]] = defaultdict(set)
-        chaves: dict[tuple[str, str], Counter[str]] = defaultdict(Counter)
+        modelos: dict[tuple[str, str], Counter[str]] = defaultdict(Counter)
+        sem_ia: Counter[tuple[str, str]] = Counter()
         for s in self._db.query(
-                "SELECT s.template_hash, s.template_key, s.key, s.app_id, s.run_id, s.result, r.app_ids FROM steps s"
-                " JOIN runs r ON r.id = s.run_id WHERE r.simulated = 0 AND s.capability IS NULL"
+                "SELECT s.template_hash, s.template_key, s.key, s.app_id, s.run_id, s.result, s.driven_by, r.app_ids"
+                " FROM steps s JOIN runs r ON r.id = s.run_id WHERE r.simulated = 0 AND s.capability IS NULL"
                 " AND s.status = 'succeeded' AND s.template_hash IS NOT NULL AND s.finished_at >= ?"
                 " AND s.finished_at < ?", (desde, ate)):
             if not _comprovada(linhas.texto_ou_nulo(s, "result")):
                 continue
-            k = (self._app(pacotes, s), linhas.texto(s, "template_hash"))
-            execucoes[k].add(linhas.texto(s, "run_id"))
             chave = linhas.texto_ou_nulo(s, "template_key") or linhas.texto(s, "key")
-            chaves[k][(redact(chave) or "")[:60]] += 1
-        acoes = [AcaoLivre(app=app, template_hash=h, chave=chaves[(app, h)].most_common(1)[0][0], execucoes=len(runs))
-                 for (app, h), runs in execucoes.items()]
-        return sorted(acoes, key=lambda a: (-a.execucoes, a.app, a.template_hash))
+            k = (self._app(pacotes, s), (redact(chave) or "")[:60])
+            execucoes[k].add(linhas.texto(s, "run_id"))
+            modelos[k][linhas.texto(s, "template_hash")] += 1
+            sem_ia[k] += linhas.texto_ou_nulo(s, "driven_by") in _SEM_IA
+        acoes = [AcaoLivre(app=app, chave=chave, execucoes=len(runs),
+                           modelos=tuple(h for h, _n in modelos[(app, chave)].most_common()),
+                           etapas=sum(modelos[(app, chave)].values()), sem_ia=sem_ia[(app, chave)])
+                 for (app, chave), runs in execucoes.items()]
+        return sorted(acoes, key=lambda a: (-a.execucoes, a.app, a.chave))
 
     def saude(self, desde: str, ate: str, *, simulados: bool) -> SaudeDasExecucoes:
         real = "" if simulados else " AND r.simulated = 0"

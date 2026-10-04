@@ -377,6 +377,12 @@ com o banco aberto só para leitura.
   depois de `fixed` é medida nas últimas 2 × `prova_minimo` elegíveis. `fixed` e `reopened` nunca vêm de uma pessoa.
 - **Propostas** (sempre decisão de pessoa): `acao_de_catalogo` (ação nova não entra no catálogo pelo banco),
   `promover_licao` e `promover_tela`.
+  - Desde o 30.59, a `acao_de_catalogo` agrupa por (app, chave da etapa), com a referência `<pacote>|etapa:<chave>`.
+    Antes agrupava por `template_hash`, e a mesma etapa com dois objetivos virava duas propostas iguais.
+  - Ela não é proposta quando 80 % ou mais das etapas comprovadas fecharam sem IA (`driven_by` `recipe` ou
+    `sem_ator`, `ACAO_SEM_IA_MAX`): o ganho já foi colhido.
+  - As linhas antigas, por `template_hash` (`<pacote>|<hash>`), não são reescritas: o estado de uma linha é da pessoa.
+    Ficam abertas até alguém marcá-las `wontfix` pela rota do backlog.
 - `scripts/aprendizado-backlog.py` grava o md em `data/aprendizado/` e imprime o topo.
 - **Quebra de série do `pct_por_receita`** (a parte das etapas conduzidas só por receita, em `Saude`): no deploy 7
   (03/10/2026, processo do central de pé às 07:28:40Z; commit 49811568, migração 081) o denominador mudou. Antes,
