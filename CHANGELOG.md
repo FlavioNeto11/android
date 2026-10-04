@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 30.61: a prévia da porta e a aprovação antecipada no plano, backend (branch feat/30-61-aprovacao-no-plano)
+
+- `GET /api/runs/{id}/porta`: numa execução `planned`, o selo de cada etapa com efeito (permitido, aprovação, adiado,
+  recusado, na execução), pela mesma conta da porta do despacho e só lendo; a chave do item aprovável.
+- `POST /api/runs/{id}/aprovar-plano`: o sim do dono antes de iniciar, item a item, com 409 `plano_mudou` quando algo
+  mudou; tiradas e dependentes canceladas; depois inicia. `POST …/porta/renovar` estende a validade (24 h, até 72 h).
+- Na execução, o sim do plano só vale para o item idêntico (chave recalculada), na validade e uma vez; senão sai como
+  `expired` e a porta pergunta como hoje. `REPLY_COMMENT` nunca se aprova no plano (o objeto declarado não diz qual
+  comentário). Migração `105_aprovacao_no_plano`; adendo v1.32.
+- Prova: `simulated` (`tests/test_porta_do_plano.py`, `tests/test_chave_da_aprovacao.py`). `not_run`: o painel e a
+  execução real.
+
 ## 2026-10-04 — 28.28: pergunta ao bot do Telegram vai à orquestradora, e nome de persona não sai pelo canal (branch canais/28-28-pergunta-ao-bot)
 
 - **O defeito:** o dono perguntou ao bot "porque tem tanta coisa represada em validação?" e depois respondeu "no
