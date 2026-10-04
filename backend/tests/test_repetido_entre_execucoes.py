@@ -274,3 +274,22 @@ def test_a_propria_etapa_e_o_objeto_por_resolver_nao_se_barram(tmp_path: Path) -
     # `{item}` ainda não diz quem é: a porta de frota e a aprovação de sempre valem; o 30.64 não adivinha
     veredito = policies.check(pid, seguir, counterparty=None, step_id="r-b:x", bindings={"username": "{item}"})
     assert "30.64" not in veredito.reason
+
+
+def test_o_texto_gerado_se_compara_depois_do_rascunho(tmp_path: Path) -> None:
+    """Revisão da fila, item 5: na porta o texto ainda é briefing e passa; relida a etapa com o rascunho, a mesma
+    mensagem de ontem dá o motivo para a confirmação (o `_policy_gate` chama isto depois do `_draft_gate`)."""
+    repo, policies, _db, pid = _conta(tmp_path)
+    dm = capability_of(IG, "SEND_MESSAGE")
+    _dm_autonoma(policies, pid)
+    _conversa(repo, pid)
+    interacao = _mandou(repo, pid, "Bom dia, Ana!")
+    antes = policies.check(pid, dm, counterparty=ANA, app_id="instagram", step_id="r-2:x",
+                           bindings={"username": ANA, "content_brief": "deseje bom dia"})
+    assert antes.allowed and not antes.needs_approval
+    motivo = policies.mensagem_repetida(pid, dm, {"username": ANA, "content_brief": "deseje bom dia",
+                                                  "content": "Bom dia, Ana!"}, app_id="instagram", step_id="r-2:x")
+    assert motivo and interacao in motivo and "30.64" in motivo
+    assert policies.mensagem_repetida(pid, dm, {"username": ANA, "content": "Oi, tudo bem?"}, app_id="instagram",
+                                      step_id="r-2:x") is None
+    assert policies.mensagem_repetida(pid, capability_of(IG, "FOLLOW"), {"username": ANA}) is None   # só DM
