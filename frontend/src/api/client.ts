@@ -119,6 +119,7 @@ import type {
   RunReport,
   RunSummary,
   PreviaDaPorta,
+  PreviaDoItem,
   AprovarPlanoItem,
   AprovarPlanoResultado,
   RenovarPlanoResultado,
@@ -934,6 +935,9 @@ export const api = {
     request<AprovarPlanoResultado>('POST', `/runs/${enc(id)}/aprovar-plano`, { body: { aprovar, tirar } }),
   /** 30.61 "Renovar": só o sim ainda válido; o vencido volta para rever (409 `sim_vencido` quando nada renovou). */
   renovarPorta: (id: string) => request<RenovarPlanoResultado>('POST', `/runs/${enc(id)}/porta/renovar`),
+  /** 30.68: o selo, o motivo e a chave do item com o texto editado no cartão. Só leitura (não grava, não chama IA). */
+  previaDoItem: (id: string, stepId: string, texto: string) =>
+    request<PreviaDoItem>('POST', `/runs/${enc(id)}/porta/item`, { body: { step_id: stepId, texto } }),
   pauseRun: (id: string) => request<RunSummary>('POST', `/runs/${enc(id)}/pause`),
   resumeRun: (id: string) => request<RunSummary>('POST', `/runs/${enc(id)}/resume`),
   cancelRun: (id: string) => request<RunSummary>('POST', `/runs/${enc(id)}/cancel`),

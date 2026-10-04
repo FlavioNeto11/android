@@ -11,6 +11,8 @@ let container: HTMLElement;
 let backend: FakeBackend;
 
 const CHAVE = 'a'.repeat(64);
+/** 30.68: a chave da prévia do texto EDITADO (outra que a da prévia do plano). */
+const CHAVE_EDITADA = 'b'.repeat(64);
 
 function item(over: Partial<ItemDaPorta>): ItemDaPorta {
   return {
@@ -20,6 +22,15 @@ function item(over: Partial<ItemDaPorta>): ItemDaPorta {
     texto_na_execucao: false, tem_imagem: false, imagem_sha256: null, chave: CHAVE, dependentes: [], falhou: false,
     ...over,
   };
+}
+
+function travado(): boolean {
+  const botao = byRole('button', /Aprovar 1 e iniciar/);
+  return botao.getAttribute('aria-disabled') === 'true' || (botao as HTMLButtonElement).disabled;
+}
+
+async function sair(el: HTMLElement): Promise<void> {
+  await act(async () => { el.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); });
 }
 
 function previa(itens: ItemDaPorta[], over: Partial<PreviaDaPorta> = {}): PreviaDaPorta {
@@ -50,6 +61,12 @@ beforeEach(() => {
   backend = new FakeBackend();
   backend.install();
   backend.on('GET', /\/runs\/run-p\/porta$/, () => json(PLANO));
+  // 30.68: por padrão, o texto editado segue pedindo o aval, com a chave do texto editado.
+  backend.on('POST', /\/runs\/run-p\/porta\/item$/, (c) => {
+    const corpo = c.body as { step_id: string; texto: string };
+    return json({ step_id: corpo.step_id, texto: corpo.texto.trim(),
+                  item: item({ step_id: corpo.step_id, texto: corpo.texto.trim(), chave: CHAVE_EDITADA }) });
+  });
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -78,19 +95,20 @@ describe('PortaDoPlano (30.61)', () => {
     await setValue(byRole('textbox', /Texto de SEND_MESSAGE para @ana/) as HTMLTextAreaElement, 'oi! tudo certo?');
     await click(byRole('button', /Não fazer esta — LIKE_POST/));
     expect(text(container)).toContain('não será feita');
+    await waitFor(() => expect(travado()).toBe(false));
     await click(byRole('button', /Aprovar 1 e iniciar/));
     await waitFor(() => expect(backend.callsTo('POST', /aprovar-plano$/)).toHaveLength(1));
     const corpo = backend.callsTo('POST', /aprovar-plano$/)[0]?.body as { aprovar: unknown[]; tirar: string[] };
-    expect(corpo.aprovar).toEqual([{ step_id: 'run-p:android-01:v1:dm', chave: CHAVE, texto: 'oi! tudo certo?' }]);
+    expect(corpo.aprovar).toEqual([{ step_id: 'run-p:android-01:v1:dm', chave: CHAVE_EDITADA, texto: 'oi! tudo certo?' }]);
     expect(corpo.tirar).toEqual(['run-p:android-01:v1:like']);
   });
 
   it('texto em branco trava o Aprovar com o motivo', async () => {
     await montar();
     await setValue(byRole('textbox', /Texto de SEND_MESSAGE/) as HTMLTextAreaElement, '   ');
-    const botao = byRole('button', /Aprovar 1 e iniciar/);
-    expect(botao.getAttribute('aria-disabled') === 'true' || (botao as HTMLButtonElement).disabled).toBe(true);
+    expect(travado()).toBe(true);
     expect(backend.callsTo('POST', /aprovar-plano$/)).toHaveLength(0);
+    expect(backend.callsTo('POST', /porta\/item$/)).toHaveLength(0);     // a trava local não pergunta à porta
   });
 
   it('plano_mudou mostra o que mudou e troca pela prévia nova, sem gravar', async () => {
@@ -191,15 +209,13 @@ describe('Revisão do painel (F1, F2, B2)', () => {
     await montar();
     await setValue(byRole('textbox', /Texto de SEND_MESSAGE/) as HTMLTextAreaElement, 'oi { nome }');
     expect(text(container)).toContain('ele sai exatamente assim');
-    const botao = byRole('button', /Aprovar 1 e iniciar/);
-    expect(botao.getAttribute('aria-disabled') === 'true' || (botao as HTMLButtonElement).disabled).toBe(false);
+    await waitFor(() => expect(travado()).toBe(false));
   });
 
   it('o emoji perto do limite conta como o servidor conta', async () => {
     await montar();
     await setValue(byRole('textbox', /Texto de SEND_MESSAGE/) as HTMLTextAreaElement, '😀'.repeat(2200));
-    const botao = byRole('button', /Aprovar 1 e iniciar/);
-    expect(botao.getAttribute('aria-disabled') === 'true' || (botao as HTMLButtonElement).disabled).toBe(false);
+    await waitFor(() => expect(travado()).toBe(false));
   });
 });
 
@@ -212,8 +228,91 @@ describe('Revisão do painel (N2)', () => {
     } }, 409));
     await montar();
     await setValue(byRole('textbox', /Texto de SEND_MESSAGE/) as HTMLTextAreaElement, 'já comentado antes');
+    await waitFor(() => expect(travado()).toBe(false));
     await click(byRole('button', /Aprovar 1 e iniciar/));
     await waitFor(() => expect(text(container)).toContain('com o texto editado: já comentado'));
     expect((byRole('textbox', /Texto de SEND_MESSAGE/) as HTMLTextAreaElement).value).toBe('já comentado antes');
+  });
+});
+
+describe('30.68: a prévia do texto editado antes do sim', () => {
+  it('trava o Aprovar até a prévia do texto voltar, mostra o motivo novo e manda a chave do texto editado', async () => {
+    let soltar: (() => void) | null = null;
+    backend.on('POST', /\/runs\/run-p\/porta\/item$/, (c) => new Promise<Response>((ok) => {
+      const corpo = c.body as { step_id: string; texto: string };
+      soltar = () => ok(json({ step_id: corpo.step_id, texto: corpo.texto,
+        item: item({ texto: corpo.texto, chave: CHAVE_EDITADA, motivo: 'esta conta já mandou ESTA mensagem para @ana' }) }));
+    }));
+    backend.on('POST', /\/runs\/run-p\/aprovar-plano$/, () => json({
+      run: { id: 'run-p', status: 'running' }, aprovacoes: ['apr-1'], tiradas: [], validade_ate: '2026-10-05T21:00:00.000Z',
+    }));
+    await montar();
+    const campo = byRole('textbox', /Texto de SEND_MESSAGE/) as HTMLTextAreaElement;
+    await setValue(campo, '  oi de novo  ');
+    expect(travado()).toBe(true);                                    // antes mesmo de a espera da digitação acabar
+    await sair(campo);                                               // sair do campo confere na hora
+    await waitFor(() => expect(backend.callsTo('POST', /porta\/item$/)).toHaveLength(1));
+    expect(backend.callsTo('POST', /porta\/item$/)[0]?.body).toEqual({ step_id: 'run-p:android-01:v1:dm', texto: 'oi de novo' });
+    expect(text(container)).toContain('Conferindo este texto na porta');
+    expect(travado()).toBe(true);
+    await act(async () => soltar?.());
+    await waitFor(() => expect(text(container)).toContain('Com este texto: pede seu aval — esta conta já mandou ESTA mensagem para @ana'));
+    expect(travado()).toBe(false);
+    // A espera da digitação também dispara, mas o mesmo texto não se pede duas vezes.
+    await new Promise((r) => setTimeout(r, 600));
+    expect(backend.callsTo('POST', /porta\/item$/)).toHaveLength(1);
+    await click(byRole('button', /Aprovar 1 e iniciar/));
+    await waitFor(() => expect(backend.callsTo('POST', /aprovar-plano$/)).toHaveLength(1));
+    const corpo = backend.callsTo('POST', /aprovar-plano$/)[0]?.body as { aprovar: unknown[] };
+    expect(corpo.aprovar).toEqual([{ step_id: 'run-p:android-01:v1:dm', chave: CHAVE_EDITADA, texto: 'oi de novo' }]);
+  });
+
+  it('o item que deixa de ser 🔒 com o texto editado diz por quê e não deixa aprovar', async () => {
+    backend.on('POST', /\/runs\/run-p\/porta\/item$/, (c) => json({ step_id: 'run-p:android-01:v1:dm',
+      texto: (c.body as { texto: string }).texto,
+      item: item({ selo: 'recusado', chave: null, motivo: 'esta conta já comentou este texto' }) }));
+    await montar();
+    await setValue(byRole('textbox', /Texto de SEND_MESSAGE/) as HTMLTextAreaElement, 'outro texto');
+    await waitFor(() => expect(text(container)).toContain('Com este texto, a ação não pede mais o seu aval aqui (não será feita): esta conta já comentou este texto'));
+    expect(travado()).toBe(true);
+  });
+
+  it('a resposta do texto antigo não vale para o texto novo', async () => {
+    const pendentes: { texto: string; ok: (r: Response) => void }[] = [];
+    backend.on('POST', /\/runs\/run-p\/porta\/item$/, (c) => new Promise<Response>((ok) => {
+      pendentes.push({ texto: (c.body as { texto: string }).texto, ok });
+    }));
+    await montar();
+    const campo = byRole('textbox', /Texto de SEND_MESSAGE/) as HTMLTextAreaElement;
+    await setValue(campo, 'primeiro');
+    await sair(campo);
+    await setValue(campo, 'segundo');
+    await sair(campo);
+    await waitFor(() => expect(pendentes).toHaveLength(2));
+    const [velho, novo] = pendentes;
+    await act(async () => novo?.ok(json({ step_id: 'run-p:android-01:v1:dm', texto: 'segundo',
+      item: item({ texto: 'segundo', chave: CHAVE_EDITADA }) })));
+    await act(async () => velho?.ok(json({ step_id: 'run-p:android-01:v1:dm', texto: 'primeiro',
+      item: item({ selo: 'recusado', chave: null, motivo: 'velho' }) })));
+    await waitFor(() => expect(travado()).toBe(false));
+    expect(text(container)).not.toContain('velho');
+  });
+
+  it('erro ao conferir trava com o motivo e sair do campo tenta de novo', async () => {
+    let vez = 0;
+    backend.on('POST', /\/runs\/run-p\/porta\/item$/, (c) => {
+      vez += 1;
+      return vez === 1 ? apiError(500, 'internal', 'caiu')
+        : json({ step_id: 'run-p:android-01:v1:dm', texto: (c.body as { texto: string }).texto,
+                 item: item({ chave: CHAVE_EDITADA }) });
+    });
+    await montar();
+    const campo = byRole('textbox', /Texto de SEND_MESSAGE/) as HTMLTextAreaElement;
+    await setValue(campo, 'oi outra vez');
+    await sair(campo);
+    await waitFor(() => expect(text(container)).toContain('Não deu para conferir este texto'));
+    expect(travado()).toBe(true);
+    await sair(campo);
+    await waitFor(() => expect(travado()).toBe(false));
   });
 });

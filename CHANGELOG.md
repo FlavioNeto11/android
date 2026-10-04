@@ -194,6 +194,17 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
 - Limite conhecido: o nome de um terceiro escrito por extenso, sem @, e-mail ou telefone, não é detectável; ele só sai
   no texto que a pessoa escreveu e que a conversa já mostrava.
 - `not_run`: PostgreSQL e a prova real (um aviso de cada nível, depois do deploy, com o dono avisado uma vez).
+
+## 2026-10-04 — 30.68: o dono vê o que a porta faz com o texto editado antes do sim (branch feat/30-68-previa-do-texto)
+
+- Rota nova só de leitura, `POST /api/runs/{id}/porta/item` (adendo v1.38): o item da prévia recalculado com o texto
+  editado (selo, motivo, chave), pela mesma conta da prévia, sem gravar nem chamar IA.
+- No cartão do plano, ao sair do campo ou após meio segundo sem digitar, o painel confere o texto editado; o "Aprovar"
+  fica travado até a conferência voltar, mostra o motivo novo junto do item e não deixa aprovar o que deixou de ser 🔒.
+- O gesto passa a mandar a chave do texto editado, conferida no servidor antes e depois da edição: o sim gravado é o do
+  texto que o dono viu.
+- Prova: `simulated` (`tests/test_porta_do_plano.py`, `PortaDoPlano.test.tsx`). `not_run`: o percurso no navegador.
+
 ## 2026-10-04 — 30.61: o painel da prévia da porta (branch feat/30-61-painel)
 
 - Na execução com plano pronto, a tela mostra o que a porta vai fazer com cada ação, em cartões por aparelho e persona:
