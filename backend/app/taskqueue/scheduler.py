@@ -1268,10 +1268,14 @@ class Scheduler:
                     self._hold(obj, srow, porta)
                     break
                 # 30.31 (fatia 2): o ensaio só de leitura para ANTES da etapa com efeito fora do aparelho. A etapa nem é
-                # assumida: nenhuma tentativa, nenhuma decisão do ator, nenhum toque.
-                if srow["side_effect"] and eh_ensaio_de_leitura(run["idempotency_key"]):
-                    self._parar_no_ensaio(obj, srow, rt)
-                    break
+                # assumida: nenhuma tentativa, nenhuma decisão do ator, nenhum toque. E para antes também do
+                # PREENCHIMENTO desse efeito (portão 1, a3b72b): sem isso o texto ficava digitado na caixa, e um toque
+                # seguinte o enviaria.
+                if eh_ensaio_de_leitura(run["idempotency_key"]):
+                    efeito = srow if srow["side_effect"] else self._efeito_que_esta_etapa_prepara(obj, srow)
+                    if efeito is not None:
+                        self._parar_no_ensaio(obj, srow, rt, efeito=efeito)
+                        break
                 # 30.43: toda execução de validação (a prova de fluxo e a re-execução de receita do P4) parte de estado
                 # conhecido; no 6f459c a IA abriu o app dentro da conversa e enviou já na abertura
                 if eh_execucao_de_validacao(run["prova_fluxo_id"], run["idempotency_key"]):
@@ -1455,17 +1459,38 @@ class Scheduler:
                            loads(row["known_selectors"]), row["category"], bool(row["builtin"])),
                 self.repo.conta_esperada(profile_id, str(row["id"]), rotulo, do_aparelho=do_aparelho))
 
-    def _parar_no_ensaio(self, obj: Row, srow: Row, rt: DeviceRuntime) -> None:
-        """30.31 (fatia 2): o ENSAIO SÓ DE LEITURA chegou à etapa com efeito fora do aparelho e para aqui. Ela e as
-        seguintes ficam `skipped`; o objetivo fecha `cancelled` PELO SISTEMA, como a prova que pediria uma pessoa
-        (30.37): sem `por`, sem o sinal `cancelou_execucao`, sem aviso. Nenhuma etapa reprovou e nenhuma comprovou o
-        efeito, então o veredito não deixa evidência, nem a favor nem contra (`domain/prova.py`); o pedido de validação
-        fecha `ensaio_so_leitura`. Navegar até o botão não é o fluxo: um `for` aqui contaria para a autopublicação
-        (30.34) um fluxo cujo efeito nunca rodou."""
+    def _efeito_que_esta_etapa_prepara(self, obj: Row, srow: Row) -> Row | None:
+        """30.31: a etapa SEM efeito de que uma etapa com efeito ainda por rodar depende diretamente, quando ela não é
+        ação do catálogo. É o preenchimento do plano livre (no QA, `fill_message` antes de `send_message`): a IA digita
+        ali o texto que o efeito enviaria. A ação do catálogo fica de fora, porque é navegação declarada (no Instagram,
+        `OPEN_COMMENTS` antes de `CREATE_COMMENT`) e o texto é digitado dentro da própria etapa com efeito. Na dúvida,
+        o plano livre para uma etapa mais cedo: a navegação sem catálogo logo antes do efeito também fica sem ensaio."""
+        if srow["side_effect"] or srow["capability"]:
+            return None
+        for e in self.repo.db.query(
+                "SELECT * FROM steps WHERE objective_id=? AND plan_version=? AND side_effect=1"
+                " AND status IN ('pending','ready','retry_wait') ORDER BY seq, id",
+                (obj["id"], obj["plan_version"])):
+            if srow["key"] in (loads(e["depends_on"]) if e["depends_on"] else []):
+                return e
+        return None
+
+    def _parar_no_ensaio(self, obj: Row, srow: Row, rt: DeviceRuntime, *, efeito: Row) -> None:
+        """30.31 (fatia 2): o ENSAIO SÓ DE LEITURA chegou à etapa com efeito fora do aparelho (ou ao preenchimento
+        dela, `_efeito_que_esta_etapa_prepara`) e para aqui. Ela e as seguintes ficam `skipped`; o objetivo fecha
+        `cancelled` PELO SISTEMA, como a prova que pediria uma pessoa (30.37): sem `por`, sem o sinal
+        `cancelou_execucao`, sem aviso. Nenhuma etapa reprovou e nenhuma comprovou o efeito, então o veredito não deixa
+        evidência, nem a favor nem contra (`domain/prova.py`); o pedido de validação fecha `ensaio_so_leitura`. Navegar
+        até o botão não é o fluxo: um `for` aqui contaria para a autopublicação (30.34) um fluxo cujo efeito nunca
+        rodou."""
         repo = self.repo
         run_id, objective_id = obj["run_id"], obj["id"]
-        motivo = (f"Ensaio só de leitura: parou antes da etapa {srow['seq']} ({srow['key']}), que tem efeito fora do "
-                  "aparelho. Nada foi enviado.")
+        if efeito["id"] == srow["id"]:
+            motivo = (f"Ensaio só de leitura: parou antes da etapa {srow['seq']} ({srow['key']}), que tem efeito fora "
+                      "do aparelho. Nada foi enviado.")
+        else:
+            motivo = (f"Ensaio só de leitura: parou antes da etapa {srow['seq']} ({srow['key']}), que prepara o efeito "
+                      f"da etapa {efeito['seq']} ({efeito['key']}). Nada foi digitado nem enviado.")
         for r in repo.db.query("SELECT id FROM steps WHERE objective_id=? AND plan_version=? AND status IN"
                                " ('pending','ready','retry_wait') ORDER BY seq, id", (objective_id, obj["plan_version"])):
             repo.transition_step(r["id"], StepStatus.skipped, detail=motivo)
