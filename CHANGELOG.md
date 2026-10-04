@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.72: o histórico de erros do portal vira candidato a item do plano (branch feat/29-72-candidatos-do-portal)
+
+- Parte do pedido do dono de 04/10 (30.55, aprovação automática). `scripts/candidatos-do-portal.py` lê o relatório
+  "o que mais falha" (o de sempre e o da camada `pessoa`) e grava `data/aprendizado/candidatos-do-portal.json`: grupo
+  aberto, sem `plan_item` e com o mínimo de ocorrências, mais as propostas abertas, com contagem, exemplos por id
+  (nunca o texto do erro), frente sugerida pela camada e onde alterar. O que fica de fora é contado pelo motivo.
+- Nada entra no plano por aqui: o número é da orquestradora. Só GET, sem IA.
+- Prova `simulated`: `scripts/tests/test_candidatos_do_portal.py` (5). Real: rodado contra o central em 04/10
+  16:12Z (1fc66a6c): 70 candidatos, 0 com item do plano.
+
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
 - Retorno do dono (04/10, Aprendizado › Para aprovar com 5 selecionados): o formulário do aceite abria com o botão
