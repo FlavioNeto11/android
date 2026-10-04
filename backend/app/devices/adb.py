@@ -206,6 +206,18 @@ class Adb:
         res = self._run(["shell", "getprop sys.boot_completed"], timeout=8)
         return res.returncode == 0 and res.stdout.strip() == "1"
 
+    def uptime_s(self) -> float | None:
+        """Segundos desde o boot do convidado (`/proc/uptime`); `None` se não deu para ler. Num wake, o snapshot
+        carregado traz o uptime de antes da hibernação (29.34): é o sinal de "carregou" quando o log do emulador
+        ainda não chegou ao arquivo (a saída dele é bufferizada e a linha só aparece depois do boot)."""
+        res = self._run(["shell", "cat /proc/uptime"], timeout=8)
+        if res.returncode != 0:
+            return None
+        try:
+            return float(res.stdout.split()[0])
+        except (IndexError, ValueError):
+            return None
+
     # Serviços do `system_server` sem os quais NADA acontece no aparelho: sem `activity` não se abre app, sem
     # `package` não se instala nem se lista o que está instalado. `settings` entra porque é ele que o Appium usa
     # (`settings delete global hidden_api_policy`) ao abrir a sessão — foi o "exited with code 20" medido em campo.
