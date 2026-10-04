@@ -954,7 +954,9 @@ class Repository:
     def set_objective(self, objective_id: str, status: ObjectiveStatus, *, detail: str | None = None,
                       blocked_reason: str | None = None, needs: str | None = None,
                       delivery_level: DeliveryLevel | None = None, message: str | None = None,
-                      level: str = "info", blocked_kind: str | None = None) -> None:
+                      level: str = "info", blocked_kind: str | None = None,
+                      dados: dict[str, object] | None = None) -> None:
+        """`dados`: campos a mais no `data` do `objective.updated` desta transição (a marca de vencimento, 31.43)."""
         # `wait_reason` sempre volta a NULL aqui (item 7.3): toda chamada a `set_objective` é uma transição de
         # ESTADO do objetivo — a espera tipada (device_slot/profile_limit/ai_capacity/model_response), que só o
         # scheduler e o `_ai` escrevem via `note_waiting`/coluna direta, sempre termina numa destas transições.
@@ -988,7 +990,7 @@ class Repository:
         self.bus.emit("objective.updated", message or f"{row['instance_id']}: objetivo {status.value}"
                       + (f" — {detail}" if detail else ""), level=level, run_id=row["run_id"],
                       instance_id=row["instance_id"], objective_id=objective_id,
-                      data={"objective": self.objective_dto(row).model_dump(mode="json")})
+                      data={"objective": self.objective_dto(row).model_dump(mode="json"), **(dados or {})})
 
     def emit_objective(self, objective_id: str, message: str | None = None) -> None:
         """Publica o objetivo sem mudar o estado (progresso de etapas, nível de entrega)."""

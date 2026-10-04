@@ -134,6 +134,31 @@ Uma execução em `needs_input` há `NEEDS_INPUT_EXPIRA_H` (24 h) sem resposta �
   iniciado e sem a intenção do prazo de início (`pedidos/domain/fechamento.py`).
 - Prova `simulated`: `backend/tests/test_needs_input_expira.py`.
 
+### A pergunta parada vence sozinha (31.43)
+
+O prazo da 29.50 deixa de ser a constante e passa ao config (`execucao.pergunta_vence_h`, 24 h por padrão; a chave
+`execucao.vencimento_ligado`, ligada de fábrica, desliga os dois vencimentos). `NEEDS_INPUT_EXPIRA_H` fica como o padrão.
+
+- Segundo caso: o objetivo em `waiting_user` de uma execução JÁ TERMINADA (na prática `completed_with_issues`, onde
+  `recompute_run` deixa a execução "para permitir retomada"). Ele ficava `waiting_user` para sempre; no central eram 22.
+  `RunService.vencer_objetivos_parados(agora)` roda no mesmo laço (`_expiracao_uma_vez`) e o fecha PELO SISTEMA:
+  - o relógio é o mais tardio entre `objectives.finished_at` (a entrada em `waiting_user`) e `runs.finished_at`:
+    nunca adianta, e a retomada de outro item da execução recomeça o prazo;
+  - o objetivo vira `cancelled`, com as etapas abertas e as aprovações pendentes dele; o `status_detail` é "Sem resposta
+    em 24 h: o pedido venceu e foi encerrado pelo sistema. Para seguir, faça o pedido de novo.";
+  - `recompute_run` deriva o status da execução, que segue `completed_with_issues`: não é cancelamento da pessoa, sem
+    `cancel_requested` e sem o sinal `cancelou_execucao`;
+  - a escrita é condicional ao objetivo ainda em `waiting_user` e à execução ainda terminal: a retomada no meio da
+    varredura ganha. Execução ainda viva (`running`, `paused`, `needs_input`) não é tocada;
+  - fecha o estoque existente no primeiro ciclo, sem escrita manual no banco.
+- A marca para máquina, de formato fixo (a Canais a lê por um adaptador), vai nos dois casos em `dados.vencimento` com
+  exatamente `regra` ("31.43"), `motivo` ("vencido_sem_resposta"), `horas` e `desde`: no `run.updated` (pergunta; o
+  `expirada` da 29.50 continua ao lado) e no `objective.updated` (objetivo parado).
+- Só muda estado: nada responde a pergunta, digita, toca o aparelho ou chama IA. Pedido de senha, desafio ou CAPTCHA
+  também só são encerrados. O "Bloqueado: …" que o objetivo deixou no aparelho sai se nenhum outro objetivo dele espera
+  uma pessoa; os outros avisos ficam. O objetivo vencido deixa de contar como aberto (`api._OBJETIVO_ABERTO`).
+- Prova `simulated`: `backend/tests/test_pergunta_vence.py`. `not_run`: o primeiro ciclo no central depois do deploy.
+
 Provas (`simulated`, harness na porta 5640):
 `backend/tests/test_intencao_chamadores.py::test_os_tres_chamadores_coerentes_para_a_mesma_frase` (valor inválido,
 buraco vazio e empate, com `count("plan")` inalterado) e `::test_empate_na_execucao_pergunta_com_as_opcoes_e_nao_grava_skill`.

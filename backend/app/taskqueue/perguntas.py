@@ -77,7 +77,7 @@ def pergunta_sensivel_aberta(db: Database, instance_ids: Iterable[str] = ()) -> 
     """Leitura pública (2): existe AGORA alguma pergunta aberta que pede credencial? Para o texto livre de um canal (a
     senha mandada sem responder à pergunta) e para a caixa de novo pedido do painel. Com `instance_ids`, só as
     execuções desses aparelhos contam, mais as que ainda não têm aparelho (na dúvida, contam). As execuções em
-    `needs_input` expiram em `NEEDS_INPUT_EXPIRA_H` horas, o que limita a varredura."""
+    `needs_input` expiram em `execucao.pergunta_vence_h` horas (padrão `NEEDS_INPUT_EXPIRA_H`), o que limita a varredura."""
     filtro = set(instance_ids)
     for run in db.query("SELECT * FROM runs WHERE status=? ORDER BY created_at DESC", (RunStatus.needs_input.value,)):
         if filtro:

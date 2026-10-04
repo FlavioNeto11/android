@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.43: a pergunta parada vence sozinha (branch feat/31-43-pergunta-parada-vence)
+
+- Antes: a 29.50 só cancelava a execução em `needs_input`; o objetivo em `waiting_user` de execução já terminada
+  (`completed_with_issues`, "para permitir retomada") ficava para sempre (22 no banco central).
+- Config novo `execucao.pergunta_vence_h` (24 h) e `execucao.vencimento_ligado` (ligado); `NEEDS_INPUT_EXPIRA_H` é o padrão.
+- `RunService.vencer_objetivos_parados`: no mesmo laço da expiração, fecha o objetivo parado como `cancelled` pelo sistema
+  (etapas e aprovações junto; relógio = o mais tardio entre a espera e o fim da execução; escrita condicional contra
+  a retomada), e `recompute_run` deriva a execução. Sem sinal de pessoa; só muda estado.
+- Evento com formato fixo `dados.vencimento = {regra: "31.43", motivo: "vencido_sem_resposta", horas, desde}` no
+  `run.updated` (com o `expirada` antigo) e no `objective.updated`. `Repository.set_objective` ganhou `dados`.
+- Prova `simulated`: `backend/tests/test_pergunta_vence.py` (11), `test_needs_input_expira.py`. `not_run`: o central.
+- Docs: `docs/dominios/execution.md` (31.43), `docs/api-contract.md` (adendo v1.21, número a confirmar).
+
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
 - Retorno do dono (04/10, Aprendizado › Para aprovar com 5 selecionados): o formulário do aceite abria com o botão
