@@ -164,9 +164,10 @@ mais os apps que o comando cita fora das aspas, pelo nome do cadastro ou pelo r�
 (`planning/apps_do_comando.py::apps_citados`). "No Outlook" acha o cadastro "Microsoft Outlook".
 
 **Apelidos e acentos (item 31.29, 04/10/2026).** O casamento ignora acento e caixa. Os apps de SISTEMA também têm
-apelidos comuns, por pacote (`APELIDOS_POR_PACOTE`): `com.android.settings` atende por "Configurações", "Ajustes" e
-"Settings". Um apelido seguido de "do/da/de/no/na <outro app>" é uma tela daquele app ("as configurações do
-Instagram") e não cita o app de sistema. O padrão para o Instagram quando nenhum app é citado NÃO mudou, e é de
+apelidos de MAIS DE UMA palavra, sem ambiguidade, por pacote (`APELIDOS_POR_PACOTE`). `com.android.settings` atende por
+"Configurações do aparelho/telefone/celular/sistema", "Ajustes do aparelho/telefone/sistema" e "Android Settings".
+"Configurações", "Ajustes" e "Settings" SOZINHOS não são apelido, porque sequestrariam comando do Instagram ("faça uns
+ajustes na legenda") — revisão da Android. O padrão para o Instagram quando nenhum app é citado NÃO mudou, e é de
 propósito.
 
 Motivo medido: na linha de base de 04/10, 11 de 12 comandos com "Configurações" sem "do Android" não casaram app

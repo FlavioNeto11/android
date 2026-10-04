@@ -29,13 +29,14 @@ ABRIR_ENDERECO = re.compile(r"\b(abr\w*|acess\w*|entr\w*|naveg\w*|visit\w*|v[aá
 #: 31.29: os nomes COMUNS dos apps de sistema, por pacote. O cadastro tem um nome só ("Configurações do Android"), e
 #: quem escreve "abra as Configurações" não o citava: o comando caía no app padrão (o Instagram) e o planejador, com o
 #: catálogo errado, pedia a pessoa (11 de 12 na linha de base de 04/10). Só app de SISTEMA entra aqui; app com manifesto
-#: tem o rótulo dele.
+#: tem o rótulo dele. Só apelido de MAIS DE UMA palavra, sem ambiguidade (revisão da Android, 04/10): "ajustes" e
+#: "configurações" sozinhos sequestrariam comando do Instagram ("faça uns ajustes na legenda", "mude as configurações
+#: de privacidade").
 APELIDOS_POR_PACOTE: Final[dict[str, tuple[str, ...]]] = {
-    "com.android.settings": ("Configurações", "Ajustes", "Settings"),
+    "com.android.settings": ("Configurações do aparelho", "Configurações do telefone", "Configurações do celular",
+                             "Configurações do sistema", "Ajustes do aparelho", "Ajustes do telefone",
+                             "Ajustes do sistema", "Android Settings"),
 }
-#: Depois de um apelido, "do/da/de/no/na <outro app>" é uma tela DENTRO do outro app ("as configurações do Instagram"),
-#: não o app de sistema.
-_DE_OUTRO_APP = r"\s+(?:do|da|de|dos|das|no|na|nos|nas)\s+(?:o\s+|a\s+)?"
 #: Texto citado é CONTEÚDO (a mensagem a enviar, o comentário a escrever), não o pedido.
 CITACAO = re.compile(r"\"[^\"]*\"|“[^”]*”|'[^']*'")
 
@@ -75,16 +76,8 @@ def apps_citados(command: str, apps: Sequence[AppContext]) -> list[AppContext]:
     texto = sem_acento(sem_citacoes(command))
     posicoes: list[tuple[int, int, AppContext]] = []
     for ordem, app in enumerate(apps):
-        apelidos = {sem_acento(a) for a in APELIDOS_POR_PACOTE.get(app.package or "", ())}
-        outros = [sem_acento(n) for o in apps if o is not app for n in nomes_do_app(o)]
-        achados = []
-        for nome in nomes_do_app(app):
-            for m in re.finditer(rf"(?<!\w){re.escape(sem_acento(nome))}(?!\w)", texto):
-                if sem_acento(nome) in apelidos and any(
-                        re.match(rf"{_DE_OUTRO_APP}{re.escape(o)}(?!\w)", texto[m.end():]) for o in outros):
-                    continue                    # "as configurações do Instagram" é tela do Instagram (31.29)
-                achados.append(m.start())
-                break
+        achados = [m.start() for nome in nomes_do_app(app)
+                   if (m := re.search(rf"(?<!\w){re.escape(sem_acento(nome))}(?!\w)", texto))]
         if achados:
             posicoes.append((min(achados), ordem, app))
     return [app for _, _, app in sorted(posicoes, key=lambda p: (p[0], p[1]))]

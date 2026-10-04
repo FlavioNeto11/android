@@ -21,8 +21,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-04 — 31.29: apelidos de app de sistema e casamento sem acento (branch feat/31-29-apelidos-do-app)
 
-- `apps_citados` ignora acento e caixa. `com.android.settings` atende por "Configurações", "Ajustes" e "Settings"
-  (`APELIDOS_POR_PACOTE`). "As configurações do Instagram" continua sendo do Instagram.
+- `apps_citados` ignora acento e caixa. `com.android.settings` ganha apelidos de mais de uma palavra
+  (`APELIDOS_POR_PACOTE`): "Configurações do aparelho", "Ajustes do telefone", "Android Settings" etc. Uma palavra só
+  não é apelido ("ajustes na legenda" segue no app padrão).
 - O padrão para o Instagram sem app citado não muda.
 - Origem: investigação só leitura do 31.29. 11 de 12 comandos da 1ª rodada da linha de base caíram no Instagram por
   dizerem só "Configurações".
