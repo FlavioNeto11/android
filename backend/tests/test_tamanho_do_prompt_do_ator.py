@@ -130,3 +130,30 @@ async def test_31_52_aparelho_com_conta_real_nunca_grava_a_arvore(harness: Harne
     assert gravadas == []
     await ex._arvore_antes_da_poda(obs, 1, run_id="r", iid="android-02", step_id="s", attempt_id="a")  # noqa: SLF001
     assert [g["instance_id"] for g in gravadas] == ["android-02"]     # sem vínculo, grava
+
+def test_31_52_a_barra_vai_ao_prompt_sem_query_fragmento_nem_token_no_caminho() -> None:
+    """Revisão da orquestradora: a `url_bar` ia CRUA ao provedor. O redator pega segredo no formato que conhece, não
+    `?code=`, `token=`, e-mail na query ou token de redefinição no caminho."""
+    from app.taskqueue.executor import endereco_para_o_prompt as limpa
+    assert limpa("accounts.exemplo.com/o/oauth2/callback?code=4/0AbCdEf&state=xyz") == "accounts.exemplo.com/o/oauth2/callback?…"
+    assert limpa("https://site.exemplo/entrar?token=abc123&email=pessoa@exemplo.com") == "https://site.exemplo/entrar?…"
+    assert limpa("site.exemplo/reset/Q2hhdmVEZVJlZGVmaW5pY2Fv/confirmar") == "site.exemplo/reset/…/confirmar"
+    assert limpa("site.exemplo/conta#access_token=abc") == "site.exemplo/conta#…"
+    assert limpa("usuario:senha@site.exemplo/painel") == "site.exemplo/painel"
+    assert limpa("site.exemplo/perfil/pessoa@exemplo.com") == "site.exemplo/perfil/…"
+    # o que o ator precisa para saber em que página está fica igual
+    assert limpa("noticias.exemplo/2026/10/como-fazer-um-bolo-de-chocolate") == "noticias.exemplo/2026/10/como-fazer-um-bolo-de-chocolate"
+    assert limpa("exemplo.com") == "exemplo.com" and limpa("") == ""
+
+
+def test_31_52_o_prompt_e_o_diagnostico_levam_a_barra_limpa_e_a_arvore_local_fica_crua() -> None:
+    from app.taskqueue.executor import _arvore_com_endereco_limpo
+    cru = "contas.exemplo/reset/Q2hhdmVEZVJlZGVmaW5pY2Fv?token=abc123"
+    xml = XML.replace(f'resource-id="{CHROME}:id/url_bar" class', f'text="{cru}" resource-id="{CHROME}:id/url_bar" class')
+    xml = xml.replace('<node index="0" text="" text=', '<node index="0" text=')
+    arvore = parse_hierarchy(xml)
+    limpa = _arvore_com_endereco_limpo(arvore, CHROME)
+    linhas = "\n".join(limpa.prompt_lines(50, ocultar=UI_DO_NAVEGADOR[CHROME]))
+    assert "contas.exemplo/reset/…?…" in linhas and "abc123" not in linhas and "Q2hhdm" not in linhas
+    assert arvore.elements[0].text == cru                          # a árvore local (type_secret confere o site) segue crua
+    assert _arvore_com_endereco_limpo(arvore, "com.outro.app") is arvore

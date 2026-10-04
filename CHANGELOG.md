@@ -24,6 +24,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `ai.diagnostico_arvore_aparelhos` vem vazia por padrão, e assim nada é gravado. Nos aparelhos de teste listados, a
   decisão do ator com algo podado grava a árvore de antes da poda como evidência `hierarchy` JSON, com o texto redigido;
   tela sensível nunca entra. Aparelho com conta real vinculada nunca grava, mesmo listado.
+- A barra de endereço do Chrome vai ao ator e ao diagnóstico só como host e caminho: query, fragmento e pedaço
+  opaco do caminho (token de redefinição) não saem da máquina pelo prompt.
 - `scripts/poda-ab-offline.py` faz o A/B da poda sobre essas árvores, mostrando só números.
 - A `url_bar` sai da lista da poda e volta ao prompt do ator (risco achado na medida do 31.35).
 - Teste: `tests/test_tamanho_do_prompt_do_ator.py`, `simulated`. `real`: not_run (janela de prova, com o diagnóstico

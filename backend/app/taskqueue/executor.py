@@ -163,6 +163,44 @@ def _host(url_ou_texto: str) -> str:
     return t.split("/", 1)[0].split("#", 1)[0].split("?", 1)[0].rsplit("@", 1)[-1].split(":", 1)[0]
 
 
+#: 31.52: um pedaço de caminho com 20 ou mais letras e dígitos seguidos é opaco (token de redefinição, id de sessão).
+_SEGMENTO_OPACO = re.compile(r"[A-Za-z0-9]{20,}")
+
+
+def endereco_para_o_prompt(texto: str) -> str:
+    """31.52: o texto da barra de endereço como ele vai à IA e ao diagnóstico: host e caminho, sem o resto.
+
+    O redator pega segredo no formato que conhece (`senha=…`), não `?code=`, `token=` ou um e-mail na query, e o
+    Chrome mostra o caminho e a query. Fica o host (sem usuário e senha antes do `@`) e o caminho; a query vira `?…`,
+    o fragmento `#…`, e o pedaço de caminho opaco (20 ou mais letras e dígitos seguidos) ou com `@` vira `…`. É o que
+    o ator precisa para saber em que página está, sem levar o que identifica a pessoa ou a sessão."""
+    t = (texto or "").strip()
+    esquema = ""
+    if "://" in t:
+        esquema, t = t.split("://", 1)
+        esquema += "://"
+    cauda = ""
+    for marca in ("?", "#"):
+        if marca in t:
+            t, _ = t.split(marca, 1)
+            cauda = cauda or f"{marca}…"
+    autoridade, _, caminho = t.partition("/")
+    autoridade = autoridade.rsplit("@", 1)[-1]
+    partes = [("…" if "@" in p or _SEGMENTO_OPACO.search(p) else p) for p in caminho.split("/")] if caminho else []
+    return esquema + autoridade + ("/" + "/".join(partes) if "/" in t else "") + cauda
+
+
+def _arvore_com_endereco_limpo(tree: UiTree, pacote: str | None) -> UiTree:
+    """A árvore com a barra de endereço do navegador passada por `endereco_para_o_prompt`. A árvore local (seletores,
+    guardas, a conferência do site em `type_secret`) segue com o texto cru; esta é só a que sai daqui."""
+    barra = BARRA_DE_ENDERECO.get(pacote or "")
+    if barra is None or not any(e.resource_id == barra and e.text for e in tree.elements):
+        return tree
+    return dataclasses.replace(tree, elements=[
+        dataclasses.replace(e, text=endereco_para_o_prompt(e.text)) if e.resource_id == barra and e.text else e
+        for e in tree.elements])
+
+
 def urls_da_pessoa(command: str) -> set[str]:
     """Os endereços que `open_url` abre: SÓ os escritos no comando (o executor acrescenta, por aparelho, os sites das
     contas de portal da persona — `ToolContext.allowed_hosts`). Nem os parâmetros do plano (o planejador pode
@@ -1078,8 +1116,9 @@ class StepExecutor:
         ocultar = (UI_DO_NAVEGADOR.get(obs.package or "", frozenset())
                    if (ai or self.cfg.file.ai).podar_ui_do_navegador else frozenset())
         podados = sum(1 for e in obs.tree.elements if e.resource_id in ocultar) if ocultar else 0
-        lines = obs.tree.prompt_lines(self.cfg.file.ai.max_hierarchy_elements, scale, protect=protect, boost=boost,
-                                      ocultar=ocultar)
+        # 31.52: a `url_bar` fica no prompt, mas sem query, fragmento e pedaço opaco do caminho
+        lines = _arvore_com_endereco_limpo(obs.tree, obs.package).prompt_lines(
+            self.cfg.file.ai.max_hierarchy_elements, scale, protect=protect, boost=boost, ocultar=ocultar)
         return ScreenInput(width=w, height=h, jpeg=jpeg, elements=lines, package=obs.package,
                            sensitive=obs.sensitive, tree=obs.tree, podados=podados), scale
 
@@ -1098,7 +1137,7 @@ class StepExecutor:
             return
         corpo = {"regra": "31.52", "package": obs.package, "width": obs.width, "height": obs.height, "podados": podados,
                  "elements": [{**e.to_dict(), "text": redact(e.text) or "", "desc": redact(e.desc) or ""}
-                              for e in obs.tree.elements]}
+                              for e in _arvore_com_endereco_limpo(obs.tree, obs.package).elements]}
         try:
             await self.repo.add_evidence_async(
                 run_id=run_id, instance_id=iid, step_id=step_id, attempt_id=attempt_id, kind="hierarchy",

@@ -1678,6 +1678,11 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
   árvore local fica inteira para seletores, guardas e pós-condições.
 - 31.52: a `url_bar` fica no prompt. É onde o ator lê em que página está e onde digita um endereço; tirá-la deixava
   "abrir a página X" e "estou na página certa?" às cegas (risco achado na medida do 31.35).
+- O texto dela vai ao ator e ao diagnóstico só como host e caminho (`executor.endereco_para_o_prompt`): a query vira
+  `?…`, o fragmento `#…`, e o pedaço de caminho opaco (20 ou mais letras e dígitos seguidos) ou com `@` vira `…`.
+  O redator de segredos pega segredo no formato que conhece (`senha=…`), não dado pessoal nem `?code=`, `token=` ou
+  um e-mail na URL; por isso a barra tem limpeza própria. A árvore local segue crua: é por ela que o `type_secret`
+  confere o site. A imagem da tela, quando vai, ainda mostra a barra (fora desta limpeza).
 - O A/B offline da poda era impossível, porque só os números depois dela ficavam em `ai_calls`. Agora,
   `ai.diagnostico_arvore_aparelhos` (lista; vazia, o padrão, deixa o diagnóstico desligado) diz os aparelhos DE TESTE
   em que cada decisão do ator com algo podado grava a árvore de ANTES da poda:
