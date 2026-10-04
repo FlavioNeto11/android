@@ -23,6 +23,9 @@ from app.modules.learning.infrastructure.revisoes_sql import RegistroDeRevisoesS
 
 log = logging.getLogger("poc.aprendizado")
 
+#: A espera antes da primeira volta: o bastante para o processo assentar, bem menos que o intervalo.
+PRIMEIRA_VOLTA_S = 60.0
+
 
 class LacoDaAutopublicacao:
     nome = "autopublicacao"
@@ -56,8 +59,12 @@ class LacoDaAutopublicacao:
         return self._ociosa.wait(max(0.0, timeout_s))
 
     async def laco(self, lider: Callable[[], int | None]) -> None:
+        # A primeira volta sai logo depois do início, não depois de um intervalo inteiro: com reinícios a cada hora
+        # (os deploys de 03 e 04/10), esperar 3600 s antes da primeira podia deixar a sombra sem rodar nunca.
+        espera = PRIMEIRA_VOLTA_S
         while True:
-            await asyncio.sleep(max(60.0, self._intervalo_s()))
+            await asyncio.sleep(espera)
+            espera = max(60.0, self._intervalo_s())
             try:
                 await asyncio.to_thread(self._volta, lider)
             except Exception:  # noqa: BLE001 - a sombra nunca derruba o processo
@@ -75,4 +82,4 @@ def ligar(servico: LearningService, repo: RepositorioDeAprendizado, db: Database
     return auto
 
 
-__all__ = ["LacoDaAutopublicacao", "ligar"]
+__all__ = ["PRIMEIRA_VOLTA_S", "LacoDaAutopublicacao", "ligar"]

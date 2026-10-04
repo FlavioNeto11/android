@@ -5166,7 +5166,6 @@ Prova:
 - `simulated`: `backend/tests/test_learning_prova_teto.py`.
 - `not_run`: o primeiro despacho do P4 depois do deploy.
 
-
 ## Adendo v1.10 (03/10/2026; número da orquestradora; item 30.43) — a validação com rosto no item
 
 Aditivo aos v1.07, v1.09 e ao da lista de validações (30.38 b). Nenhuma rota nova e nenhuma migração.
@@ -5222,3 +5221,17 @@ Prova:
 - Real da conferência: a primeira validação do QA com `{run_id}` depois do deploy.
 - Ensaio: `not_run`. Nada cria execução de ensaio no central ainda; a ligação do despachante ao Instagram em perfil
   de terceiro é da orquestradora.
+
+## Adendo v1.12 (04/10/2026; número da orquestradora; item 30.34) — a última volta da sombra da autopublicação
+
+Aditivo ao v0.93. `GET /api/aprendizado/metricas` → `curador.autopublicacao` ganha `ultima_volta`:
+
+- `null` antes da primeira volta deste processo;
+- depois, `{"em": "<ISO>", "modo": "shadow", "avaliados": N, "publicaria": P, "marcados": M}`:
+  - `avaliados`: os fluxos em `validated` que a D1 segura;
+  - `publicaria`: os que passam na regra agora;
+  - `marcados`: os casos novos desta volta.
+
+É em memória e zera no reinício. A primeira volta sai 60 s depois do início, e as seguintes de `intervalo_s` em
+`intervalo_s`. Os outros campos do bloco não mudam. O painel ainda não lê a chave.
+

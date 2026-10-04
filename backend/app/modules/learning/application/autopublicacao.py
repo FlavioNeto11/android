@@ -78,6 +78,9 @@ class ServicoDeAutopublicacao:
         self._modo = modo
         self._relogio = relogio
         self.parametros = parametros
+        # A última volta deste processo (em memória: some no reinício, e o relatório diz `null` até a primeira). Sem
+        # ela, "0 casos" não separava "avaliou e ninguém passou" de "a volta nunca rodou" (relatório de 04/10).
+        self._ultima: tuple[datetime, ResultadoDaVolta] | None = None
 
     @property
     def modo(self) -> ModoDaAutopublicacao:
@@ -104,10 +107,13 @@ class ServicoDeAutopublicacao:
                           x.item_ref)
             if x.item_ref not in ja and self._sombra.marcar(x.item_ref, self._dados(e, x, modo), app=e.app):
                 marcados.append(x.item_ref)
-        if marcados:
-            log.info("aprendizado: autopublicação em %s marcou %d caso(s): %s", modo.value, len(marcados),
-                     ", ".join(marcados))
-        return ResultadoDaVolta(modo, avaliados, tuple(publicaria), tuple(marcados))
+        r = ResultadoDaVolta(modo, avaliados, tuple(publicaria), tuple(marcados))
+        self._ultima = (self._relogio(), r)
+        # Uma linha por volta, mesmo vazia: é ela que prova no log que a sombra roda.
+        log.info("aprendizado: autopublicação em %s: %d fluxo(s) avaliado(s), %d publicaria(m), %d caso(s) novo(s)%s",
+                 modo.value, avaliados, len(publicaria), len(marcados),
+                 f": {', '.join(marcados)}" if marcados else "")
+        return r
 
     def _candidatos(self) -> list[EntradaDoLivro]:
         """Os fluxos que a D1 segura em `validated`: o resto nem chega à regra (ela os recusaria pelo estado)."""
@@ -163,7 +169,16 @@ class ServicoDeAutopublicacao:
         return {"modo": self._modo().value, "casos": b.casos, "abertos": b.abertos, "limpos": b.limpos,
                 "regrediram": b.regrediram, "taxa_sem_regressao": b.taxa_sem_regressao, "libera": b.libera,
                 "limiares": {"casos_fechados": p.casos_min, "taxa_sem_regressao": p.taxa_sem_regressao_min,
-                             "janela_dias": p.janela_de_regressao_dias}}
+                             "janela_dias": p.janela_de_regressao_dias},
+                "ultima_volta": self.ultima_volta()}
+
+    def ultima_volta(self) -> dict[str, object] | None:
+        """A última volta deste processo; `None` antes da primeira (o laço espera `primeira_volta_s` depois do início)."""
+        if self._ultima is None:
+            return None
+        em, r = self._ultima
+        return {"em": to_iso(em), "modo": r.modo.value, "avaliados": r.avaliados, "publicaria": len(r.publicaria),
+                "marcados": len(r.marcados)}
 
     def casos(self) -> Sequence[tuple[CasoDaSombra, str]]:
         """Cada caso com o desfecho de agora (o relatório lista item a item)."""

@@ -2,6 +2,7 @@
 balanço lê as regressões das tabelas de sempre. Prova `simulated` (banco de teste, sem IA nem aparelho)."""
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -234,3 +235,45 @@ def test_o_caso_da_sombra_nao_aparece_na_aba_sinais(mundo: Mundo, db: Database) 
 
 def test_o_servico_fica_pendurado_no_livro(mundo: Mundo) -> None:
     assert mundo.servico.extensao(ServicoDeAutopublicacao) is mundo.auto
+
+
+# ------------------------------------------------------------------ a volta deixa rastro (relatório da sombra, 04/10)
+def test_a_volta_vazia_deixa_rastro_no_log_e_nas_metricas(mundo: Mundo, caplog: pytest.LogCaptureFixture) -> None:
+    """Zero casos só prova algo se a volta rodou: antes da primeira, `ultima_volta` é `null`; depois, mesmo sem
+    nenhum candidato, ela diz quando rodou e quantos avaliou, e o log tem uma linha."""
+    assert mundo.auto.relatorio()["ultima_volta"] is None
+    with caplog.at_level("INFO", logger="poc.aprendizado"):
+        assert mundo.laco._volta(LIDER) is not None
+    assert mundo.auto.relatorio()["ultima_volta"] == {"em": to_iso(INICIO), "modo": "shadow", "avaliados": 0,
+                                                      "publicaria": 0, "marcados": 0}
+    assert any("autopublicação em shadow: 0 fluxo(s) avaliado(s), 0 publicaria(m), 0 caso(s) novo(s)" in m
+               for m in caplog.messages), caplog.messages
+    ref = mundo.pronto("comentar-no-post")
+    mundo.agora += timedelta(hours=1)
+    with caplog.at_level("INFO", logger="poc.aprendizado"):
+        mundo.laco._volta(LIDER)
+    assert mundo.auto.relatorio()["ultima_volta"] == {"em": to_iso(INICIO + timedelta(hours=1)), "modo": "shadow",
+                                                      "avaliados": 1, "publicaria": 1, "marcados": 1}
+    assert any(m.endswith(f"1 caso(s) novo(s): {ref}") for m in caplog.messages)
+
+
+def test_sem_lider_a_volta_nao_conta(mundo: Mundo) -> None:
+    assert mundo.laco._volta(SEM_LIDER) is None
+    assert mundo.auto.relatorio()["ultima_volta"] is None
+
+
+async def test_a_primeira_volta_sai_logo_depois_do_inicio(mundo: Mundo, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Com o intervalo de 1 h e reinícios a cada hora, esperar o intervalo antes da primeira volta deixava a sombra
+    sem rodar; a primeira espera é `PRIMEIRA_VOLTA_S`, as seguintes, o intervalo."""
+    esperas: list[float] = []
+
+    async def dormir(s: float) -> None:
+        esperas.append(s)
+        if len(esperas) == 3:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(ligar_autopublicacao.asyncio, "sleep", dormir)
+    with pytest.raises(asyncio.CancelledError):
+        await mundo.laco.laco(LIDER)
+    assert esperas == [ligar_autopublicacao.PRIMEIRA_VOLTA_S, 3600.0, 3600.0]
+    assert mundo.auto.relatorio()["ultima_volta"] is not None
