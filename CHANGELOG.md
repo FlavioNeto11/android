@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — teste do preparo zumbi drenado sem Timer de relógio (branch fix/b2-r4-sem-timer)
+
+- `test_prontidao_subsistemas::test_b2_r4_boot_local_preparo_zumbi_drenado_nao_libera_esta_tentativa` falhou no
+  PG das suítes 24 e 25: o `threading.Timer(0.3)` corria contra a montagem dos dublês e, com a máquina carregada,
+  soltava o preparo antes de ele estourar o prazo (sem zumbi, a escada rodava). O preparo agora termina quando o
+  manager começa a drenar o zumbi; as asserções não mudaram e a produção não foi tocada. Prova `simulated`: 8
+  rodadas seguidas e o arquivo inteiro (37 passed).
+
 ## 2026-10-04 — 29.67: a sonda de interrupção não conta a amostra com o host saturado (branch fix/29-67-irq-com-host-saturado)
 
 - Causa medida (central, leitura só): o android-06 não tem defeito próprio. Convidado de 2 vCPU tem ~2x a fração de
