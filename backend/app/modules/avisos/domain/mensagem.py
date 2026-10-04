@@ -80,6 +80,9 @@ NIVEL_POR_TIPO: dict[str, int] = {
 }
 #: Os de nível 2 que PARARAM algo do dono: saem na hora. O resto do nível 2 vai à janela, com a rotina.
 PARARAM_ALGO = frozenset({"pedido.pausa_automatica", "pedido.orcamento_esgotado"})
+#: Os tipos que esperam a janela, para a fila separá-los já na consulta (a entrega é do tipo).
+TIPOS_DA_JANELA: frozenset[str] = frozenset(t for t, n in NIVEL_POR_TIPO.items() if n != PRECISA_DE_VOCE
+                                            and t not in PARARAM_ALGO)
 #: Quanto a rotina espera, contada do aviso mais velho dela, antes de sair numa mensagem só. Fica no código (decisão
 #: (f): sem chave nova de config nesta rodada).
 JANELA_DA_ROTINA_S = 3600.0
@@ -217,8 +220,13 @@ def _conteudo(partes: list[str | None], nomes: Iterable[str], redigir: Redigir) 
 
 
 def nome_do_pedido(aviso: Mapping[str, object], nomes: Iterable[str], redigir: Redigir | None) -> str:
-    """"Pedido «<rótulo>»" com o título que passa por todos os filtros sem mudar nada, ou "Pedido #<6 do id>"."""
-    seguro = texto_seguro(_texto(aviso.get("pedido_titulo")), nomes, redigir)
+    """"Pedido «<rótulo>»" ou "Pedido #<6 do id>". O rótulo só sai quando o pedido foi criado PELO DONO (o texto é dele,
+    no chat dele) E passa por todos os filtros sem mudar nada. Nome de terceiro que não é persona não se detecta por
+    regra; por isso o pedido de convidado, de frente (`lote:`) ou de IA sai sempre pelo id curto (decisão da
+    orquestradora, 04/10 20:06Z). O pedido ainda não guarda quem o criou de forma confiável (`criado_por` vazio): até o
+    28.31 F2 pôr `criado_pelo_dono` no aviso, todo pedido sai pelo id curto."""
+    pelo_dono = aviso.get("criado_pelo_dono") is True
+    seguro = texto_seguro(_texto(aviso.get("pedido_titulo")), nomes, redigir) if pelo_dono else None
     if seguro:
         return f"Pedido «{_cortar(seguro, ROTULO_MAX)}»"
     curto = (_texto(aviso.get("pedido_id")) or "").removeprefix("ped_")[:6]

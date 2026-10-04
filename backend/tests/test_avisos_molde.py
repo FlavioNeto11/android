@@ -81,9 +81,10 @@ def test_contrato_por_tipo_nada_de_persona_contato_nem_ip(evento: tuple[str, dic
 
 
 def test_rotulo_do_pedido_sai_quando_e_limpo_e_vira_reserva_quando_qualquer_filtro_mudaria() -> None:
-    def titulo(pedido_titulo: str, redigir=REDIGIR, nomes=PERSONA) -> str:  # noqa: ANN001
+    def titulo(pedido_titulo: str, redigir=REDIGIR, nomes=PERSONA, pelo_dono: bool = True) -> str:  # noqa: ANN001
         a = aviso_de_evento("pedido.aviso", {"aviso": {"id": "a1", "tipo": "pausa_automatica",
                                                        "pedido_id": "ped_kUZT1aBcd", "pedido_titulo": pedido_titulo,
+                                                       "criado_pelo_dono": pelo_dono,
                                                        "dados": {"falhas_seguidas": 3}}}, 1,
                             redigir=redigir, nomes=nomes)
         assert a is not None
@@ -92,6 +93,9 @@ def test_rotulo_do_pedido_sai_quando_e_limpo_e_vira_reserva_quando_qualquer_filt
     assert titulo("Preço do Raspberry Pi 5") == "ANA: ⏸️ Pedido «Preço do Raspberry Pi 5» pausado: 3 falhas seguidas"
     # Qualquer troca derruba o rótulo inteiro: persona (mesmo de 2 letras, e "Ana"), contato, segredo, ou sem redator.
     reserva = "ANA: ⏸️ Pedido #kUZT1a pausado: 3 falhas seguidas"
+    # Só o pedido criado pelo dono mostra o rótulo (decisão da orquestradora, 04/10 20:06Z): o de convidado, de frente
+    # ou de IA pode trazer nome de terceiro, que regra nenhuma detecta. Sem a marca (hoje, todo pedido), o id curto.
+    assert titulo("Preço do Raspberry Pi 5", pelo_dono=False) == reserva
     assert titulo("Posts do Bo", nomes=["Bo"]) == reserva
     assert titulo("Posts da Ana", nomes=["Ana"]) == reserva
     assert titulo("Falar com @fulano") == reserva
@@ -116,8 +120,11 @@ def test_privacidade_regua_estrita_e_contato() -> None:
         assert sem_contato(titulo) == titulo
         assert texto_seguro(titulo, PERSONA, REDIGIR) == titulo
     for fone in ("+55 11 98888-7777", "98888-7777", "(11) 98888-7777", "1198888777", "11 9 8888 7777", "11.98888.7777",
-                 "+55-11-98888-7777", "+55 (11) 9.8888-7777"):
+                 "+55-11-98888-7777", "+55 (11) 9.8888-7777", "3333-4444"):
         assert sem_contato(f"fone {fone}") == "fone <contato>", fone
+    # A data não esconde o telefone colado nela (revisão do #310), e continua lá.
+    assert sem_contato("2026-10-05 11 91234-5678") == "2026-10-05 <contato>"
+    assert texto_seguro("Visita 2026-10-05 11 91234-5678", [], REDIGIR) is None
     assert texto_seguro("Preço do Pi", [], None) is None and texto_seguro("Preço do Pi", [], REDIGIR) == "Preço do Pi"
 
 
@@ -186,3 +193,15 @@ def test_execucao_se_diz_pela_hora_e_pelo_aparelho_nunca_pelo_id() -> None:
                                                 "started_at": "2026-10-04T14:02:11.000Z"}}, 3, redigir=REDIGIR)
     assert a is not None and a.titulo == "ANA: ❓ A execução das 14:02Z no android-12 parou com uma pergunta"
     assert "abc123" not in a.titulo
+
+
+def test_aprovacao_sai_na_primeira_volta_mesmo_com_600_de_rotina_mais_velhas(tmp_path: Path) -> None:
+    """Revisão do #310: com uma leitura só (ORDER BY id LIMIT 500), a aprovação de depois ficava fora da varredura e só
+    saía depois da rotina."""
+    c = Cena(tmp_path)
+    for i in range(600):
+        c.chega(f"pedido:perdida{i}", tipo="pedido.ocorrencia_perdida")
+    c.chega("approval:ap1", tipo="approval.pending")
+    c.volta()
+    assert [t for t, _c, _l in c.canal.enviados] == ["t-approval:ap1"]
+

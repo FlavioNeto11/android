@@ -316,7 +316,9 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
     - **3, rotina** (relatório, encerramento, 80% do orçamento, condição atendida, aprendizado): nunca sai sozinha. Vai
       na mensagem da janela de 1 h, uma linha cada.
   - A rajada (vários do mesmo tipo seguidos) lista uma linha por item, até 5, mais "+N no painel".
-  - O rótulo do pedido é texto da pessoa: só sai se nenhum filtro mudaria nada nele. São três filtros:
+  - O rótulo do pedido é texto da pessoa: só sai quando o pedido foi criado pelo dono (o de convidado, de frente ou
+    de IA sai sempre pelo id curto; até o 28.31 F2 marcar quem criou, todo pedido sai assim) e nenhum filtro mudaria
+    nada nele. São três filtros:
     - o redator de credencial;
     - contato (e-mail, @, telefone, IP);
     - persona pela régua estrita: 2 letras ou mais, e "Ana" também.

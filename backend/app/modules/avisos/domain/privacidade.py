@@ -30,13 +30,17 @@ _TELEFONE = re.compile(r"(?<!\w)[+(]?\d[\d\s().-]{6,}\d(?!\w)")
 _DATA = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
+_FIXO = re.compile(r"\d{4}-\d{4}")
+#: No lugar de cada caractere de uma data ISO enquanto o telefone é procurado: não é dígito nem separador de telefone.
+_MASCARA = "\x00"
+
+
 def _e_telefone(trecho: str) -> bool:
-    """Telefone tem 9 dígitos ou mais ("98888-7777"), ou começa com "+" ou "(" e tem 8 ou mais. Data ISO, hora, versão
-    e o número de item ("28.12-05") ficam: são o que diz QUAL pedido é, e o dono precisa disso."""
+    """Telefone tem 9 dígitos ou mais ("98888-7777"), ou começa com "+" ou "(" e tem 8 ou mais, ou é "dddd-dddd" (fixo
+    de 8 dígitos; decisão da orquestradora, 04/10 20:06Z). Hora, versão e o número de item ("28.12-05") ficam: são o que
+    diz QUAL pedido é. A data ISO nem chega aqui: `sem_contato` a mascara antes."""
     digitos = sum(ch.isdigit() for ch in trecho)
-    if _DATA.search(trecho):
-        return False
-    return digitos >= 9 or (trecho[0] in "+(" and digitos >= 8)
+    return digitos >= 9 or (trecho[0] in "+(" and digitos >= 8) or bool(_FIXO.fullmatch(trecho))
 
 
 def _sem_acento_minusculo(t: str) -> str:
@@ -84,7 +88,13 @@ def sem_contato(texto: str) -> str:
     conta) e o IP antes do telefone (quatro grupos de dígitos)."""
     for padrao in (_EMAIL, _ARROBA, _IP):
         texto = padrao.sub(CONTATO_OCULTO, texto)
-    return _TELEFONE.sub(lambda m: CONTATO_OCULTO if _e_telefone(m.group(0)) else m.group(0), texto)
+    # A data ISO fica (diz qual pedido é), mas não pode esconder o telefone colado nela ("2026-10-05 11 91234-5678",
+    # revisão do #310): procura o telefone no texto com a data mascarada, do mesmo tamanho, e troca no original.
+    mascarado = _DATA.sub(lambda m: _MASCARA * len(m.group(0)), texto)
+    trocas = [(m.start(), m.end()) for m in _TELEFONE.finditer(mascarado) if _e_telefone(m.group(0))]
+    for a, b in reversed(trocas):
+        texto = texto[:a] + CONTATO_OCULTO + texto[b:]
+    return texto
 
 
 def texto_livre(texto: str, nomes: Iterable[str], redigir: Callable[[str], str]) -> str:

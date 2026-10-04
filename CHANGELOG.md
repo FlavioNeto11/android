@@ -35,8 +35,12 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
 - **Rajada** (28.19) com uma linha por item, até 5, mais "+N no painel" e o gesto.
 - **Privacidade** (`avisos/domain/privacidade.py`; o `sem_nome_de_persona` do 28.28 saiu de `entrada.py` para cá, e
   `entrada.py` o reexporta):
-  - O rótulo do pedido só sai se nenhum filtro mudaria nada nele: redator, contato e persona pela régua estrita (2
-    letras ou mais, e "Ana"). Senão, ou sem os nomes, sai "Pedido #<6 do id>".
+  - O rótulo do pedido só sai quando o pedido foi criado pelo dono E nenhum filtro mudaria nada nele: redator,
+    contato e persona pela régua estrita (2 letras ou mais, e "Ana"). Senão, ou sem os nomes, sai "Pedido #<6 do id>".
+    Como o pedido ainda não guarda quem o criou de forma confiável, TODO pedido sai pelo id curto até a F2 (decisão da
+    orquestradora, 04/10 20:06Z: nome de terceiro que não é persona não se detecta por regra).
+  - Telefone: 9 dígitos ou mais, prefixo + ou (, ou "dddd-dddd". A data ISO fica, mas não esconde o telefone colado nela.
+  - A fila lê primeiro o que sai na hora: 600 linhas de rotina na fila não seguram uma aprovação (revisão do #310).
   - O texto livre (pergunta, resumo e texto da aprovação) sai sem contato e sem persona.
   - O `detail` da conta nunca sai: vira uma frase fixa por `status`.
   - O alvo da aprovação segue a exceção do ADR-071 (d).

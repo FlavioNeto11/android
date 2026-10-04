@@ -24,13 +24,12 @@ from typing import cast
 from app.db import Database
 from app.modules.avisos.application.entrega import Cerca, Entrega
 from app.modules.avisos.domain.mensagem import (
-    JANELA,
     JANELA_DA_ROTINA_S,
+    TIPOS_DA_JANELA,
     TIPO_DA_ROTINA,
     Aviso,
     corpo_agrupado,
     corpo_da_rotina,
-    entrega_do_tipo,
     titulo_agrupado,
     titulo_da_rotina,
 )
@@ -89,16 +88,18 @@ class FilaDeAvisos:
         numa mensagem só, uma linha cada. O que pede o dono passa sempre na frente.
         """
         agora = self._agora()
+        # Duas leituras, a do que sai na hora PRIMEIRO: com 500 linhas de rotina mais velhas na fila, uma leitura só
+        # deixaria a aprovação de depois fora da varredura até a rotina sair (revisão do #310).
+        da_janela = sorted(TIPOS_DA_JANELA)
+        marcas_da_janela = ",".join("?" * len(da_janela))
+        devidas_sql = ("SELECT id, tipo, criado_em FROM avisos_entregas WHERE estado='pendente' AND canal=?"
+                       " AND (proximo_envio_em IS NULL OR proximo_envio_em <= ?) AND tipo {} IN ({}) ORDER BY id LIMIT ?")
         with cerca():
-            devidas = self.db.query(
-                "SELECT id, tipo, criado_em FROM avisos_entregas WHERE estado='pendente' AND canal=?"
-                " AND (proximo_envio_em IS NULL OR proximo_envio_em <= ?) ORDER BY id LIMIT ?",
-                (self.canal, agora, LIMITE_DA_VARREDURA))
-            if not devidas:
-                return None
-            na_hora = [x for x in devidas if entrega_do_tipo(str(x["tipo"])) != JANELA]
-            rotina = [x for x in devidas if entrega_do_tipo(str(x["tipo"])) == JANELA]
+            na_hora = self.db.query(devidas_sql.format("NOT", marcas_da_janela),
+                                    (self.canal, agora, *da_janela, LIMITE_DA_VARREDURA))
             escolhidas = self._escolher(na_hora, agrupar_s, agrupar_a_partir_de) if na_hora else []
+            rotina = [] if escolhidas else self.db.query(devidas_sql.format("", marcas_da_janela),
+                                                         (self.canal, agora, *da_janela, LIMITE_DA_VARREDURA))
             e_rotina = False
             if not escolhidas and rotina:
                 fecha = to_iso(self.relogio() - timedelta(seconds=janela_s))
