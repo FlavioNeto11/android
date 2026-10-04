@@ -281,6 +281,9 @@ export interface AvisoDTO {
   requer_pessoa: boolean;
   criado_em: string;
   lido_em: string | null;
+  // Adendo v1.31 (28.31 F2a): o canal de fora usa; o painel ainda não
+  criado_pelo_dono?: boolean;
+  de_lote?: boolean;
 }
 
 export interface ListaDeAvisos {

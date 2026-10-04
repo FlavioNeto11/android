@@ -80,6 +80,12 @@ NIVEL_POR_TIPO: dict[str, int] = {
 }
 #: Os de nível 2 que PARARAM algo do dono: saem na hora. O resto do nível 2 vai à janela, com a rotina.
 PARARAM_ALGO = frozenset({"pedido.pausa_automatica", "pedido.orcamento_esgotado"})
+#: O aviso de um pedido do LOTE de uma frente (28.31 F2a): o tipo ganha este prefixo e vai sempre à janela, qualquer que
+#: seja o nível, porque a prova da frente não é notícia para o dono. Duas exceções saem na hora: a aprovação, porque só o
+#: dono decide (orquestradora, 04/10 01:20Z, a mesma regra das execuções de lote), e a ocorrência incerta, porque efeito
+#: incerto em conta real é crítico mesmo num lote (revisão da #312, 04/10 20:27Z).
+PREFIXO_DE_LOTE = "pedido.lote."
+LOTE_NA_HORA = frozenset({"aprovacao_pendente", "ocorrencia_incerta"})
 #: Os tipos que esperam a janela, para a fila separá-los já na consulta (a entrega é do tipo).
 TIPOS_DA_JANELA: frozenset[str] = frozenset(t for t, n in NIVEL_POR_TIPO.items() if n != PRECISA_DE_VOCE
                                             and t not in PARARAM_ALGO)
@@ -145,11 +151,15 @@ class Aviso:
 
 
 def nivel_do_tipo(tipo: str) -> int:
+    if tipo.startswith(PREFIXO_DE_LOTE):
+        return ROTINA
     return NIVEL_POR_TIPO.get(tipo, PRECISA_DE_VOCE)
 
 
 def entrega_do_tipo(tipo: str) -> str:
     """`agora` ou `janela`. É o tipo que decide, e não o aviso: a linha da fila guarda só o tipo."""
+    if tipo.startswith(PREFIXO_DE_LOTE):
+        return JANELA
     if nivel_do_tipo(tipo) == PRECISA_DE_VOCE or tipo in PARARAM_ALGO:
         return AGORA
     return JANELA
@@ -356,7 +366,8 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
         if ident is None:
             return None
         sub = _texto(aviso.get("tipo")) or "desconhecido"
-        tipo, chave = f"pedido.{sub}", chave_do_fato("pedido", ident)
+        de_lote = aviso.get("de_lote") is True and sub not in LOTE_NA_HORA
+        tipo, chave = (f"{PREFIXO_DE_LOTE}{sub}" if de_lote else f"pedido.{sub}"), chave_do_fato("pedido", ident)
         assunto, linhas = _do_pedido(sub, aviso, nomes, redigir)
         # Aviso que NÃO pede pessoa não é pendência: não há o que abrir na caixa, então a mensagem vai sem link.
         if not aviso.get("requer_pessoa"):
