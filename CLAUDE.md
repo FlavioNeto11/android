@@ -81,7 +81,7 @@ Este arquivo carrega em toda sessão. Mantenha-o curto; o detalhe fica em `docs/
 | O quê | Comando | Observação |
 |---|---|---|
 | Testes do backend, um arquivo | `cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_x.py` | durante o trabalho |
-| Suíte do backend inteira | `cd backend && .venv/Scripts/python.exe -m pytest -q -n 8` | ~6 min em SQLite (36 min em série, mesmo resultado); uma suíte por vez na máquina, em prioridade Idle (no PowerShell, `(Get-Process -Id $PID).PriorityClass='Idle'` antes do pytest, que vale em todo shell; `start /low` foi negado em uma das sessões); só antes do merge |
+| Suíte do backend inteira | `cd backend && .venv/Scripts/python.exe -m pytest -q -n 6` | ~10 min em SQLite (36 min em série, mesmo resultado; com `-n 8` eram ~6 min, mas a suíte deixava aparelho de conta real sem CPU: 29.67, 04/10); uma suíte por vez na máquina, em prioridade Idle (no PowerShell, `(Get-Process -Id $PID).PriorityClass='Idle'` antes do pytest, que vale em todo shell; `start /low` foi negado em uma das sessões); só antes do merge |
 | Suíte em PostgreSQL | a mesma, com `TEST_DATABASE_URL=postgresql://…` | ~14 min em série; `docs/banco.md` |
 | Testes dos scripts | `backend/.venv/Scripts/python.exe -m pytest -q scripts/tests` | a partir da raiz |
 | Frontend | `cd frontend && npm run typecheck && npm test` | `npm run build` gera o `dist` que o backend serve |

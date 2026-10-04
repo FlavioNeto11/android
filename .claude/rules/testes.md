@@ -8,6 +8,7 @@ paths:
 
 - **Durante o trabalho, rode só o arquivo ou o `-k` afetado.** Suíte inteira ~36 min em série / ~5 a 6 min com `-n 8` (SQLite) / ~14 min
   (PostgreSQL) — guarde para antes do commit, em segundo plano (não fique ocioso esperando).
+- **No funil de entrega a suíte roda em `-n 6` desde 04/10** (medido: com `-n 8` o convidado de um aparelho de conta real ficou sem CPU durante a SQLite, 29.67; em `-n 6` leva ~10 min), com a pausa de reparo nos aparelhos de conta real do início da SQLite ao "PG verde".
 - **Suíte inteira em paralelo: `pytest -q -n 8`** (pytest-xdist; ~5:06 contra ~36 min (2178 s) em série, mesmo resultado; `docs/operacao.md` §4). **Uma suíte completa por vez na máquina, entre todas as sessões**: confira se já há `python -m pytest` rodando antes de disparar.
 - **Prioridade Idle na suíte** (o parque divide a máquina; carga alta já derrubou convidado com conta real, ADR-053): no PowerShell,
   `(Get-Process -Id $PID).PriorityClass='Idle'; & .venv\Scripts\python.exe -m pytest -q -n 8` — os workers do xdist herdam a classe.

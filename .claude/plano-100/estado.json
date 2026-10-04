@@ -4803,21 +4803,15 @@
   "29.21": {
    "id": "29.21",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "backend/app/devices/rede_convergencia.py (_pedir_reinicio diz qual termo de ocupado segurou; com objetivo em wait_reason='rede' o esgotamento retenta em retentativa_do_reinicio_s=30 s em vez de 300 s; o objetivo que espera a rede nao conta como ocupado), backend/app/vitrine.py (objetivo_que_segura, objetivo_esperando_a_rede); commits c7f799c5 e af70f572 (branch fix/29-21-reinicio-da-rede). Caso real que motivou: android-05, 02/10 19:00:16-19:07:09Z, reinicio pedido e nenhum restart criado (execucao 7385f3). Reproducao real de 02/10 19:17Z NAO reproduziu (wake quente do snapshot). K-071. Observacao real 02/10/2026 19:50-19:53Z no central (main a1fa730, migracao 068, ja com o 29.21 implantado): android-05 parado (c-20261002195039-aa9df5) e ligado a frio (c-20261002195048-48cd93) com objetivo de QA Messenger (r-20261002195048-7963c2, ~US$0,097); o tunel subiu sozinho e nenhum reinicio foi pedido, logo o caminho do 29.21 NAO foi exercitado. Achado colateral virou o 29.22 (trafego_verificado da medicao #134 atravessou o boot).",
-   "blocker": "Prova real do caminho novo ainda not_run: precisa de uma ocorrencia em que o reinicio pedido pela rede seja segurado (o boot a frio de 02/10 19:50Z nao reproduziu). Observar a proxima ocorrencia espontanea no parque; causa exata do 'ocupado' de 19:00 nao provada. Divida: reinicios_max, _reinicio_agendado e espera_ate so em memoria.",
-   "arquivos": [
-    "backend/app/devices/rede_convergencia.py",
-    "backend/app/vitrine.py",
-    "backend/tests/test_rede_aplicacao.py"
-   ],
-   "testes": "pytest -n 8 tests/test_rede_*.py + test_distribute, test_loja_de_apps, test_quarentena_de_conta, test_sempre_na_promovida, test_app_repository, test_arquitetura: 317 passed, 1 falha conhecida de corrida com -n 8 (test_servidor_de_uma_vez_serve_um_get_so_no_caminho_do_token, passa isolado com e sem a mudanca); test_reinicio_com_objetivo_esperando_a_rede (4 casos) e test_reinicio_que_nao_sai_diz_qual_termo_segurou",
-   "grupo": "29-21-rede",
-   "modelo": "",
-   "esforco": "",
+   "proof": "real",
+   "evidence": "04/10/2026, central, main 24da29ef: android-05 (QA, rede exigida_com_bloqueio, trafego_verificado rev 1) parado às 12:31:24Z (snapshot descartado) e ligado a frio (c-20261004123129-561e24), online às 12:33:05Z. A rede não regrediu para 'configurado'; a convergência remediu às 12:34:57Z (device.network succeeded, medição #1215) sem pedir reinício. Nenhuma linha de reinício segurado no backend.log desde 00:04Z. O cenário de 02/10 não se reproduziu.",
+   "blocker": "Causa exata do 'ocupado' de 02/10 segue não provada; os termos do 29.21 ficam no detail da linha de rede quando ocorrer.",
+   "grupo": "android-suite26",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-02T20:38:56+00:00"
+   "quando": "2026-10-04T13:17:24+00:00"
   },
   "17.8": {
    "id": "17.8",
@@ -7119,15 +7113,15 @@
   "29.38": {
    "id": "29.38",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "PR #223 (feat/29-38-backup-diario @ 7f999472), suíte 23 e deploy 23 (9add9fb2, 10:20:39Z). backup.ps1 -Origem/-Teto/-Podar, manifesto com origem e commit; deploy.ps1 passa -Teto 10 e aceita -PularBackup só até 60 min depois de um -Ensaio no mesmo commit (recusa antes do stop); -Instalar registra farm-backup. A poda nasce em ENSAIO (lista e não apaga) até data/backups/PODAR-LIGADO ou -Podar. simulated: backend/tests/test_backup.py (8 passed; teto em ensaio e ligado, ensaio recente, recusa antes do stop).",
-   "blocker": "Depende do sim do dono no chat para apagar as ~150 cópias antigas (22 GB; incluem as sem manifesto e sem origem) e para registrar a tarefa farm-backup. Até lá a poda só lista.",
-   "grupo": "android-suite23",
-   "modelo": "claude-opus-5-5",
-   "esforco": "sessao executora",
+   "proof": "real",
+   "evidence": "04/10/2026, máquina central, main em afbc9a9f: às ~12:43Z a orquestradora rodou `pwsh -NoProfile -File scripts/backup.ps1 -Instalar` (saída: tarefa 'farm-backup' registrada, diária, 03:00, destino data/backups, retenção de 14 dias); `Get-ScheduledTask farm-backup` devolveu State Ready com gatilho diário. Decisão por delegação do dono (Telegram, msg 167 de 10:06:22Z, que vale como chat por ordem dele no chat em 04/10). O backup do deploy 26 (60b3a0a9, pasta 20261004-101310) rodou o teto de 10 cópias em ensaio: nada apagado. Código do item no ar desde o deploy 23 (9add9fb2).",
+   "blocker": "A poda das ~154 cópias antigas (22 GB) segue desligada: apagar não tem volta, o disco tem 166 GB livres e a delegação foi genérica; liga com um sim específico do dono (criar data/backups/PODAR-LIGADO). Falta conferir a primeira corrida diária (03:00 de 05/10, hora local).",
+   "grupo": "orquestradora-deploy26",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T10:21:51+00:00"
+   "quando": "2026-10-04T13:17:24+00:00"
   },
   "28.20": {
    "id": "28.20",
@@ -7405,14 +7399,14 @@
    "id": "14.12",
    "status": "partial",
    "proof": "real",
-   "evidence": "04/10/2026, máquina central, main 2c7ab99e, sem SQLite rodando, % por thread do qemu-system por janelas de 60 s (scratchpad threads1412.ps1/braco1412.ps1). Braço A: android-07 gerenciado, gpu host, acordado do snapshot (c-20261004111124-9aca6f), 11:12:30Z a 11:22:46Z: 0,07 a 0,14 núcleo (mediana 0,09); nenhuma thread acima de 5,1 % de um núcleo. Braço B: o mesmo AVD num emulador avulso -read-only, -gpu swiftshader_indirect, porta 5720 (fora do parque e do harness), boot a frio 11:24:14Z, 11:24:2xZ a 11:36:40Z: 0,67 e 0,23 nos 2 primeiros minutos (boot), depois 0,06 a 0,11 (mediana 0,08); nenhuma thread acima de 7,6 %. Leitura dos aparelhos no ar às 11:10Z (gpu host): 04 0,07, 03 0,23, 01 0,43, 06 0,59 núcleo. O spin de 1,1 a 1,2 núcleo do RA-3b não se reproduz em nenhum renderizador; o aceite (até 0,3 núcleo ocioso) vale nos dois braços. Conta do cores 4 para 03/06 (só leitura): o 01 com 4 vCPU tem ~0,2 a 0,35 GB a mais de memória privada que os de 2 vCPU e não gasta mais CPU ocioso.",
-   "blocker": "Falta o braço C (aparelho no ar com a prévia aberta, pelo painel_equivalente.py, contra fechada), para atribuir a causa do spin medido no RA-3b, e o K novo. O cores 4 nos 03/06 depende da decisão do dono (risco de conta, aparelho com conta real); não aplicado.",
-   "grupo": "android-suite25",
+   "evidence": "Braço C (04/10, android-07 gerenciado, gpu host, amostras com o host até 50 %): prévia fechada 0,08-0,10 núcleo (mediana 0,085), prévia aberta pelo painel_equivalente.py 0,12-0,24 (mediana 0,145). Com os braços A (0,09) e B (0,08): o spin de 1,1 núcleo do RA-3b não se reproduz; aceite atendido nos três braços. K-092 no PR #256 (docs).",
+   "blocker": "cores 4 nos 03/06 é decisão do dono.",
+   "grupo": "android-suite26",
    "modelo": "claude-opus-5-5",
    "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T12:12:17+00:00"
+   "quando": "2026-10-04T13:17:24+00:00"
   },
   "30.49": {
    "id": "30.49",
@@ -7469,6 +7463,32 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-04T12:27:16+00:00"
+  },
+  "29.39": {
+   "id": "29.39",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "PR #250 (feat/29-39-copia-avd @ 43795584), suíte 26. backup.ps1 -AVDs [-Aparelhos] e scripts/lib/copias-de-avd.ps1: um aparelho por vez, só hibernado ou parado; guarda antes de cada arquivo e no fim (sem trava contra o rodízio; a pausa de reparo, persistida desde o 25.13, só segura reinício/reset); aparelho que acorda deixa a cópia '<carimbo>-abortada', nada apagado; sha256 por arquivo no manifesto, só o id do aparelho; Restore-AvdAFrio confere a cópia, MOVE o AVD substituído e reescreve o path= do .ini. Nasce desligada (sem -Aparelhos só com data/backups/AVD-LIGADO; fora do farm-backup). simulated: backend/tests/test_backup.py (4 novos, 12 passed). real 04/10/2026, central, 43795584: android-07 (QA) hibernado, cópia completa de 7,94 GB em 50 s (data/backups/avd/android-07/20261004-092554); restaurada num ANDROID_AVD_HOME à parte (34 arquivos, hashes conferidos, 28 s) e bootada como emulador avulso -read-only na porta 5720 (boot 12:28:47Z, apps do usuário presentes). Nenhum aparelho de conta real tocado. Deploy 26: 60b3a0a9, no ar às 13:14:51Z, migração 099.",
+   "blocker": "Cópia de aparelho de conta real e o agendamento dependem do sim do dono (AVD-LIGADO e farm-backup do 29.38).",
+   "grupo": "android-suite26",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T13:17:24+00:00"
+  },
+  "29.68": {
+   "id": "29.68",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "04/10/2026, android-10 contra android-09 (notebook), sem IA. Antes do reboot (12:33Z): árvore pela API p50 252 ms (10) contra 283 ms (09); no convidado do 10, load 1,2 e kernel inflado nos mesmos processos (composer 8,8 % contra 4,5 %, surfaceflinger 7,4 % contra 3,6 %, HAL de sensores 8,8 % contra 0,9 %); load do 10 ~0,5 de noite e de dia contra 0,05-0,07 do 09. Boot a frio do 10 (stop 12:34:55Z, online 12:36:34Z): system_server em 47,0 s contra 29,9 s do 09. Leitura no notebook por ssh (só leitura): os 4 qemu iguais (BelowNormal, afinidade 0xFFF, sem power throttling, sem janela, mesma linha de comando e config.ini), CPU i7-9850H não híbrida, Ultimate Performance. Depois do boot (12:50Z): laço de CPU pura 1562/1284 ms (10) contra 1474/1431 ms (09); syscall/binder 257/239 contra 268/314 ms; tecla nula por adb 146 contra 153 ms. Causa: estado de longa duração do convidado/emulador (23 h no ar), desfeito pelo boot a frio; não é configuração do host.",
+   "blocker": "Confirmar com a rodada sem IA da Jev no 10 depois do boot (fill_message por receita contra 4,4 s das 00:01Z).",
+   "grupo": "android-suite26",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T13:17:24+00:00"
   }
  },
  "rodadas": [
@@ -9581,6 +9601,27 @@
     "jev-31-38",
     "jev-pos-deploy-25",
     "jev-t2"
+   ]
+  },
+  {
+   "quando": "2026-10-04T13:17:24+00:00",
+   "itens": [
+    "29.39",
+    "29.21",
+    "29.68",
+    "14.12"
+   ],
+   "grupos": [
+    "android-suite26"
+   ]
+  },
+  {
+   "quando": "2026-10-04T13:17:24+00:00",
+   "itens": [
+    "29.38"
+   ],
+   "grupos": [
+    "orquestradora-deploy26"
    ]
   }
  ]
