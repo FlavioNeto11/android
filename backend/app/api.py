@@ -368,7 +368,7 @@ async def put_settings(request: Request, patch: dict[str, Any]) -> Any:
         raise err(400, "invalid_setting", str(exc).splitlines()[0] + ": " + "; ".join(str(exc).splitlines()[1:3])) from exc
     s.bus.emit("settings.updated", "Limites atualizados", data={"settings": value.model_dump()})
     if "max_online_devices" in patch:
-        s.publicar_vagas_do_host()
+        s.workers.publicar(s.cfg.owner_id)
     s.scheduler.wake()
     return value
 
@@ -3456,7 +3456,7 @@ async def put_server_limits(request: Request, worker_id: str, body: ServerLimits
             valor = s.settings.update(vivos)
             s.bus.emit("settings.updated", "Limites atualizados", data={"settings": valor.model_dump()})
             if "max_online_devices" in vivos:
-                s.publicar_vagas_do_host()
+                s.workers.publicar(s.cfg.owner_id)
         # Os dois tetos que não são configuração viva deste servidor moram em `worker_limits`, como nos workers:
         # "trabalhando ao mesmo tempo" (agendador) e "aparelhos existentes" (provisionamento, migração 050).
         no_banco = {k: patch[k] for k in ("max_working", "max_devices") if k in patch}
@@ -3471,7 +3471,7 @@ async def put_server_limits(request: Request, worker_id: str, body: ServerLimits
         await s.workers.enviar_limites(worker_id)
         # As vagas efetivas estão no `WorkerDTO` (29.82): sem o evento, o painel seguia com as antigas até a próxima
         # mudança observável daquela máquina.
-        s._publish_worker(worker_id)
+        s.workers.publicar(worker_id)
     s.scheduler.wake()
     return next(x for x in _limites_dos_servidores(s) if x.worker_id == worker_id)
 

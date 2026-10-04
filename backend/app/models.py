@@ -1461,11 +1461,13 @@ class WorkerDTO(BaseModel):
     accel: str | None = None
     appium_mode: str = "central"
     appium_url: str | None = None
-    #: O que a máquina DECLAROU no `hello` (o `worker.yaml` dela).
+    #: Worker remoto: o que a máquina DECLAROU no `hello` (o `worker.yaml` dela). Este servidor: o
+    #: `max_online_devices` da subida (a linha que o `LocalWorker` grava). Para comparar ocupação, use o efetivo.
     max_slots: int = 1
-    #: 29.82: as vagas que valem — o que o dono decidiu no painel (`worker_limits`), ou o declarado sem decisão. É o
-    #: mesmo teto do agendador (`WorkerRegistry.capacidade`); comparar a ocupação com `max_slots` acusava "9 ligados
-    #: para 6 vagas" numa máquina com 9 decididas. `None` = backend de antes do 29.82.
+    #: 29.82: as vagas que valem (`WorkerRegistry.vagas_que_valem`, o mesmo teto do agendador): no worker remoto, o
+    #: decidido no painel (`worker_limits`) ou o declarado sem decisão; neste servidor, o `max_online_devices` vivo.
+    #: Comparar a ocupação com `max_slots` acusava "9 ligados para 6 vagas" numa máquina com 9 decididas. `None` =
+    #: backend de antes do 29.82.
     effective_max_slots: int | None = None
     verbs: list[str] = []
     state: str                                  # online | offline | degraded | maintenance

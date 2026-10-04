@@ -319,6 +319,22 @@ class WorkerRegistry:
         #: não fazem sentido sobre ele: remover apagaria a linha do próprio central (e soltaria o `worker_id` de
         #: todos os aparelhos locais), e rotacionar credencial trocaria um segredo que ninguém usa.
         self.local_worker_id: str | None = None
+        #: As vagas vivas DESTE servidor (`max_online_devices`, editável em tempo de execução). Quem tem a
+        #: configuração (`AppState`) instala; sem gancho, o central segue a regra dos outros workers.
+        self.vagas_do_host: Callable[[], int] | None = None
+
+    def vagas_que_valem(self, linha: Row) -> int:
+        """29.82: as vagas que valem numa máquina, a regra ÚNICA do agendador (`capacidade`) e do painel (`dto`).
+        Este servidor: a configuração viva. Worker remoto: o que o dono decidiu no painel; sem decisão, o que a
+        máquina declarou no `hello`."""
+        if self.vagas_do_host is not None and linha["id"] == self.local_worker_id:
+            return max(1, int(self.vagas_do_host() or 1))
+        return max(1, int(self.limites_definidos(linha["id"]).get("max_slots") or linha["max_slots"] or 1))
+
+    def publicar(self, worker_id: str) -> None:
+        """Mudança observável que não passou pelo canal do worker (limites decididos no painel) vira o mesmo
+        `worker.updated` das outras."""
+        self.on_change(worker_id)
 
     # ------------------------------------------------------------------ inscrição
     def criar_inscricao(self, label: str | None = None, ttl_s: float = INSCRICAO_TTL_S) -> str:
@@ -714,8 +730,7 @@ class WorkerRegistry:
         decidido = self.limites_definidos(worker_id)
         return WorkerCapacity(
             worker_id, linha["name"], connected=worker_id in self.live, maintenance=bool(linha["maintenance"]),
-            # O que o dono decidiu no painel manda; sem decisão, vale o que a máquina declarou no `hello`.
-            max_slots=max(1, int(decidido.get("max_slots") or linha["max_slots"] or 1)),
+            max_slots=self.vagas_que_valem(linha),
             ram_free_mb=res.ram_free_mb, disk_free_gb=res.disk_free_gb, last_seen_at=linha["last_seen_at"],
             stale=idade is None or idade > BATIDA_VELHA_S,
             degraded_detail=linha["state_detail"] if linha["state"] == "degraded" else None,
@@ -946,9 +961,7 @@ class WorkerRegistry:
             agent_outdated=self._defasado(row), accel=self.aceleracao.get(row["id"]),
             appium_mode=row["appium_mode"], appium_url=row["appium_url"],
             max_slots=row["max_slots"], verbs=loads(row["verbs"]) or [],
-            # A mesma regra de `capacidade`: o decidido manda, senão o declarado.
-            effective_max_slots=max(1, int(self.limites_definidos(row["id"]).get("max_slots")
-                                           or row["max_slots"] or 1)),
+            effective_max_slots=self.vagas_que_valem(row),
             # `maintenance` ganha do estado observado na EXIBIÇÃO, mas os dois ficam no DTO: um worker em
             # manutenção continua online, e esconder isso atrapalharia quem está diagnosticando.
             state="maintenance" if row["maintenance"] else row["state"],

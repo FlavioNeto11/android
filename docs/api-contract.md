@@ -5877,11 +5877,12 @@ Sem migração. Muda a v1.26 e a rota `POST .../trello`.
 Sem migração. Muda o `Worker` da v0.8 (`GET /api/workers`, `GET /api/workers/{id}`, snapshot e `worker.updated`).
 - `effective_max_slots: number | null`: as vagas que valem naquela máquina, a mesma regra do agendador
   (`WorkerRegistry.capacidade`): o `max_slots` decidido no painel (`worker_limits`), ou o declarado sem decisão.
-  `max_slots` segue sendo o que a máquina declarou no `hello`. Ausente = backend de antes do 29.82.
+  Neste servidor, `effective_max_slots` é o `max_online_devices` vivo. A regra é uma função só
+  (`WorkerRegistry.vagas_que_valem`), usada pelo agendador e pelo DTO. `max_slots` segue sendo o que o worker
+  remoto declarou no `hello` (no central, o valor da subida). Ausente = backend de antes do 29.82.
 - `PUT /api/servers/{worker_id}/limits` num worker remoto passa a emitir `worker.updated` com o DTO novo, para o painel
   trocar as vagas sem esperar outra mudança daquela máquina. Para ESTE servidor, `PUT /api/servers/{host}/limits` e
-  `PUT /api/settings` com `max_online_devices` regravam o `max_slots` da linha do central com o valor vivo e emitem o
-  mesmo `worker.updated` (antes, o DTO só mudava no próximo reinício).
+  `PUT /api/settings` com `max_online_devices` emitem o mesmo `worker.updated`, já com as vagas vivas.
 - O painel compara a ocupação com `effective_max_slots ?? max_slots` (`frontend/src/store/metricas.ts`).
 - **Prova:** `simulated` (`backend/tests/test_limites_por_servidor.py::test_api_lista_e_muda_limites_do_host_e_do_worker`,
   `frontend/src/store/metricas.test.ts`, caso 29.82). `not_run`: o topo e a Infraestrutura do central com o notebook em
