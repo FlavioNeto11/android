@@ -29,14 +29,14 @@ from app.util import now, to_iso
 from .fake_instagram import FakeInstagram
 from .test_capabilities import IG, build, perfil
 
-SELETOR = "id=row_profile_header_textview_post_count"
+SELETOR = "id=profile_header_familiar_post_count_value"
 PROVA = f"count_gt:posts_antes:{SELETOR}"
 
 
 def _perfil_com_contagem(texto: str | None) -> UiTree:
     no = "" if texto is None else (
         f'<node class="android.widget.TextView" text="{texto}" '
-        'resource-id="com.instagram.android:id/row_profile_header_textview_post_count" bounds="[0,0][100,50]"/>')
+        'resource-id="com.instagram.android:id/profile_header_familiar_post_count_value" bounds="[0,0][100,50]"/>')
     return parse_hierarchy("<hierarchy>" + no + "</hierarchy>")
 
 
