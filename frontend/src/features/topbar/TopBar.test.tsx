@@ -79,12 +79,12 @@ describe('Menu lateral — as nove seções sempre alcançáveis', () => {
 
   const menu = (el: HTMLElement) => el.querySelector('nav[aria-label="Seções"]') as HTMLElement;
 
-  it('lista as dez seções como links canônicos, com aria-current só na atual', async () => {
+  it('lista as onze seções como links canônicos, com aria-current só na atual', async () => {
     const el = await renderBar([]);
     const links = Array.from(menu(el).querySelectorAll('a'));
     expect(links.map((a) => a.getAttribute('href'))).toEqual([
       '#/painel', '#/personas', '#/aplicativos', '#/execucoes', '#/pedidos', '#/pendencias', '#/aprendizado', '#/infraestrutura', '#/configuracao',
-      '#/diagnostico',
+      '#/diagnostico', '#/canais',
     ]);
     expect(links.map((a) => text(a))).toContain('Personas');
     expect(links.filter((a) => a.getAttribute('aria-current') === 'page').map((a) => text(a))).toEqual(['Painel']);

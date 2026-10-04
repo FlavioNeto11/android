@@ -2771,3 +2771,45 @@ export interface PersonaBatch {
   done: boolean;
   created_at: string;
 }
+
+// ---- Canais (item 32.5): `GET /api/canais/estado`, só leitura --------------------------------------------------
+// A resposta é uma lista fechada de números, horas e códigos: nunca título, texto de mensagem, id de chat, de quadro ou
+// de cartão (`backend/app/modules/avisos/infrastructure/estado_sql.py`). O que a tela escreve vem destes códigos.
+
+/** Por que o último envio falhou (lista fechada do backend). */
+export type MotivoDeFalhaDeAviso = 'rede' | '401' | '429' | 'tempo_esgotado' | 'outro';
+
+export interface CanalAvisoTelegram {
+  ligado: boolean;
+  /** Só se os dois segredos (token do bot e chat) estão no `.env`; o valor nunca vem. */
+  segredo_presente: boolean;
+  /** Linhas da fila por estado: pendente, enviando, enviado, falhou, incerto, descartado. */
+  fila: Record<string, number>;
+  ultimo_envio_em: string | null;
+  ultima_falha: { em: string; motivo: MotivoDeFalhaDeAviso } | null;
+  problemas: string[];
+}
+
+export interface CanalConversaTelegram {
+  ligada: boolean;
+  ultima_leitura_em: string | null;
+  entradas: Record<string, number>;
+  problemas: string[];
+}
+
+export interface CanalTrello {
+  ligado: boolean;
+  webhook_ligado: boolean;
+  cadastro_automatico: boolean;
+  ultima_reconciliacao_em: string | null;
+  cartoes: Record<string, number>;
+  entradas: Record<string, number>;
+  problemas: string[];
+}
+
+export interface CanaisEstado {
+  gerado_em: string;
+  aviso_telegram: CanalAvisoTelegram;
+  conversa_telegram: CanalConversaTelegram;
+  trello: CanalTrello;
+}

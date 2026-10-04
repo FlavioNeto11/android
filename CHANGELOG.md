@@ -95,6 +95,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   miniatura. O foco e o pedido explícito não cedem. Medida do 31.28 (04/10, android-04): painel aberto levava o p95 da
   leitura da árvore de ~0,3 s a ~2 s.
 - Prova: `simulated` (`backend/tests/test_grade_cede_a_arvore.py`); `real` depois do deploy, com o mesmo `ab_3128.py`.
+## 2026-10-04 — 32.5: a tela Canais no painel, só leitura (branch canais/32-5-tela-canais)
+
+- `GET /api/canais/estado` (`modules/avisos/presentation/estado.py`, consulta em `infrastructure/estado_sql.py`; adendo v1.13 de
+  `docs/api-contract.md`) e a tela `#/canais` (`frontend/src/features/canais/`), no menu junto de Diagnóstico: três cartões (aviso
+  pelo Telegram, conversa pelo Telegram, Trello) com selo ligado / desligado / com problema, "há X min", contagens em
+  português e o motivo da última falha traduzido. A resposta é lista fechada de números, horas e códigos: nunca conteúdo de aviso,
+  mensagem ou cartão, nem segredo. Sem escrita, sem migração, sem config nova.
+- Prova `simulated`: `backend/tests/test_canais_estado.py` (19) e `frontend/src/features/canais/CanaisPage.test.tsx`. `not_run`:
+  o central; a conferência no navegador vem depois do deploy.
 
 ## 2026-10-04 — 29.36: o motivo do aparelho remoto parado acompanha a conexão e a queda (branch fix/29-36-detalhe-do-externo-parado, sem migração)
 

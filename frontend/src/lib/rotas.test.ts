@@ -14,6 +14,11 @@ describe('rotas', () => {
     expect(parseHash('#/execucoes/r1?aba=linha-do-tempo')?.query).toEqual({ aba: 'linha-do-tempo' });
   });
 
+  it('#/canais é uma tela (32.5)', () => {
+    expect(parseHash('#/canais')).toEqual({ tela: 'canais', segmentos: [], query: {} });
+    expect(hashDe('canais')).toBe('#/canais');
+  });
+
   it('#/perfis vira personas e marca legado', () => {
     expect(parseHash('#/perfis/abc')).toEqual({ tela: 'personas', segmentos: ['abc'], query: {}, legado: true });
   });
