@@ -5259,8 +5259,14 @@ a pessoa não tinha como sair de `aguardando_pessoa` além de cancelar. A prova 
      `incerta`, nada reexecuta e `pendencias()` a ignora; o pedido retoma quando não houver outra pendência (PR #220).
 4. **O 28.10 sai em fatias F1 a F5, e a liberação tem regras.**
    - **F1 (estrutura):** migração 096 e adendo v1.16, PR #227, na suíte 24, **desligada de fábrica**.
-   - **F2 a F4:** as fatias intermediárias do desenho da §9. Cada uma só começa com o ok da orquestradora, **uma de
-     cada vez**, e nasce desligada de fábrica.
+   - **F2 (dependência no laço):** a ocorrência do filho só fica `devida` com a dependência comprovada
+     (`precisa_de_resultado` = ocorrência do `de` `concluida` na janela; `depois_de` = terminada). A reserva de orçamento
+     dos filhos passa a valer também no laço.
+   - **F3 (papéis):** `pesquisador` e `checador` limitam a autonomia a `observar`, `redator` a `preparar`, e só o
+     `porta_voz` pode `agir`.
+   - **F4 (consolidação):** o relatório do pai lê as observações e a memória dos filhos, nunca o texto livre. Conflito
+     entre fontes vai ao relatório como conflito, sem voto.
+   - F2 a F4: cada uma só começa com o ok da orquestradora, **uma de cada vez**, e nasce desligada de fábrica.
    - **F5 (regras para fora):** porta-voz, uma conta por alvo no pedido inteiro, `approval_required` e a proibição de
      simular apoio (§9, ADR-050, ADR-055). Fica só com prova `simulated` até o dono autorizar.
    - Nenhuma fatia liga sozinha: ligar é decisão à parte.
