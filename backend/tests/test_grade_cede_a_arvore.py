@@ -42,3 +42,17 @@ async def test_zero_desliga_e_sem_espectador_segue_sem_interesse(harness: Harnes
     rt.arvore_ate = 0.0
     await devs.hierarchy(rt)
     assert rt.arvore_ate == 0.0
+
+
+async def test_leitura_mais_longa_que_a_janela_continua_protegida_e_a_janela_conta_do_fim(harness: Harness) -> None:
+    devs, _ = await _preparar(harness)
+    rt = devs.get("android-01")
+    devs.registrar_interesse("aba", ["android-01"], None, 20)
+    rt.arvores_em_curso = 1                    # uma leitura longa em curso, com a janela do início já vencida
+    rt.arvore_ate = 0.0
+    assert (await devs._volta_da_previa(rt))[0] == "arvore_em_curso"
+    rt.arvores_em_curso = 0
+    await devs.hierarchy(rt)                   # ao terminar, a janela recomeça do FIM e o contador volta a zero
+    assert rt.arvores_em_curso == 0 and rt.arvore_ate > 0
+    assert (await devs._volta_da_previa(rt))[0] == "arvore_em_curso"
+    devs.soltar_interesse("aba")

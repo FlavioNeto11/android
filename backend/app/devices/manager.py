@@ -438,6 +438,8 @@ class DeviceRuntime:
         self.capture_failures = 0
         #: Item 31.34: até quando (monotônico) a prévia da grade cede a vez a uma leitura da árvore neste aparelho.
         self.arvore_ate = 0.0
+        #: Leituras da árvore em curso agora: enquanto houver uma, a grade cede a vez, dure ela o que durar.
+        self.arvores_em_curso = 0
         self.capture_error: str | None = None
         self.capture_error_at: str | None = None
         self.recent_frames: OrderedDict[str, tuple[float, int, int]] = OrderedDict()
@@ -3447,7 +3449,7 @@ class DeviceManager:
                 if antigo_capturaria:
                     metricas.contar("captura.evitada", motivo="ia_no_controle")
             elif (not pedido and nivel != "foco" and (nivel is not None or s.preview_mode == "always")
-                  and time.monotonic() < rt.arvore_ate):
+                  and (rt.arvores_em_curso > 0 or time.monotonic() < rt.arvore_ate)):
                 # Item 31.34: há leitura da árvore em curso neste aparelho; a grade mostra a última miniatura (com a
                 # idade dela) e volta a capturar quando a janela acabar. O foco e o pedido explícito não cedem.
                 resultado = "arvore_em_curso"
@@ -4232,9 +4234,20 @@ class DeviceManager:
         return await rt.executor.run(rt.adb.list_packages, timeout=40, label="listar pacotes")
 
     async def hierarchy(self, rt: DeviceRuntime) -> UiTree:
+        # Item 31.34: a leitura conta como "em curso" do começo ao fim, e a janela de `capture_yield_to_tree_s`
+        # recomeça no FIM. Contar só do início deixava a leitura mais longa que a janela (a cauda que o item quer
+        # cortar) sem proteção no meio (nota da Android no #222).
+        rt.arvores_em_curso += 1
+        self._marcar_leitura_da_arvore(rt)
+        try:
+            return await self._ler_a_arvore(rt)
+        finally:
+            rt.arvores_em_curso -= 1
+            self._marcar_leitura_da_arvore(rt)
+
+    async def _ler_a_arvore(self, rt: DeviceRuntime) -> UiTree:
         if not await self.ensure_automation(rt):
             raise DriverError(rt.automation.detail or "Sessão de automação indisponível", effect_possible=False)
-        self._marcar_leitura_da_arvore(rt)
         lida = rt.automation                       # a "geração" da sessão que esta leitura usa (cada transição troca o objeto)
         try:
             xml = await rt.executor.run(rt.io.page_source, timeout=40, label="hierarquia")
