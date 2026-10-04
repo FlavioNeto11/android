@@ -443,6 +443,21 @@ class RepositorioDePedidos:
         return self.db.query(f"SELECT de, para, tipo, criado_em FROM pedido_dependencias WHERE de IN ({marcas})"
                              f" OR para IN ({marcas}) ORDER BY criado_em, de, para", (*ids, *ids))
 
+    def dependencias_do_pedido(self, para: str) -> list[Row]:
+        """De quem este pedido espera (28.10 F2): `(de, tipo)`, em ordem estável. Pedido sem dependência: lista vazia."""
+        return self.db.query("SELECT de, tipo FROM pedido_dependencias WHERE para=? ORDER BY de", (para,))
+
+    def fim_mais_recente(self, pedido_id: str, estados: Sequence[str]) -> str | None:
+        """O `terminada_em` mais recente de uma ocorrência do pedido num dos `estados` (28.10 F2), ou `None`. É a prova do
+        `de` (estados que comprovam o tipo) e o início da janela do `para` (todo estado terminal). `id` desempata o mesmo
+        instante: a leitura é de uma linha só e o PostgreSQL não promete ordem sem ORDER BY completo."""
+        if not estados:
+            return None
+        linha = self.db.one(f"SELECT terminada_em FROM pedido_ocorrencias WHERE pedido_id=? AND estado IN ({_marcas(estados)})"
+                            " AND terminada_em IS NOT NULL ORDER BY terminada_em DESC, id DESC LIMIT 1",
+                            (pedido_id, *estados))
+        return None if linha is None else linha["terminada_em"]
+
     def inserir_dependencia(self, de: str, para: str, tipo: str, em: str) -> bool:
         """`ON CONFLICT DO NOTHING`: repetir o par é seguro e o tipo da primeira vez vale."""
         cur = self.db.execute("INSERT INTO pedido_dependencias(de, para, tipo, criado_em) VALUES (?,?,?,?)"

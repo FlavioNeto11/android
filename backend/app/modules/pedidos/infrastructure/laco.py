@@ -40,9 +40,9 @@ from app.modules.pedidos.infrastructure.relatorios import ServicoDeRelatorios
 from app.modules.pedidos.infrastructure.repositorio import RepositorioDePedidos
 from app.modules.pedidos.domain.resumo import ResumidorDeRelatorio
 from app.modules.pedidos.domain import avisos as dominio_avisos
-from app.modules.pedidos.domain import gatilhos, gatilhos_dinamicos, tentativas
+from app.modules.pedidos.domain import colaboracao, gatilhos, gatilhos_dinamicos, tentativas
 from app.modules.pedidos.domain.chave import chave_da_ocorrencia, chave_da_tentativa, formatar_instante
-from app.modules.pedidos.domain.estados import transicionar_ocorrencia, transicionar_pedido
+from app.modules.pedidos.domain.estados import OCORRENCIA_TERMINAIS, transicionar_ocorrencia, transicionar_pedido
 from app.modules.pedidos.domain.memoria import MemoriaInvalida
 from app.modules.pedidos.domain.fechamento import (INTENCAO_PRAZO_DE_INICIO, ObjetivoVisto, fechar,
                                                    prazo_de_inicio_vencido)
@@ -87,6 +87,7 @@ class Resumo:
     despachadas: int = 0
     fechadas: int = 0
     adiadas: int = 0
+    seguradas: int = 0          # `devida` que espera a dependência (28.10 F2); não conta como adiada (essa é do saldo)
     encerrados: int = 0
     puladas: int = 0
     perdidas: int = 0
@@ -781,6 +782,9 @@ class LacoDePedidos:
 
     def _despachar_pedido(self, p: Row, devidas: list[Row], token: int, agora: datetime, r: Resumo,
                           orcamento: int) -> int:
+        devidas = self._liberadas_pela_dependencia(p, devidas, token, agora, r)
+        if not devidas:
+            return 0
         plano = decidir(p["sobreposicao"], p["autonomia"], self.repo.ids_das_abertas(p["id"]),
                         [Devida(o["id"], o["previsto_para"], o["chave"]) for o in devidas])
         if plano.incoerente:
@@ -819,6 +823,42 @@ class LacoDePedidos:
             if self._despachar_uma(p, por_id[oid], token, agora, r):
                 criou += 1
         return criou
+
+    def _liberadas_pela_dependencia(self, p: Row, devidas: list[Row], token: int, agora: datetime, r: Resumo) -> list[Row]:
+        """28.10 F2: das `devida` do pedido, as que já podem ir à sobreposição e ao despacho.
+
+        Pedido que é `para` em `pedido_dependencias` só despacha uma ocorrência quando cada `de` está comprovado NA JANELA
+        dela: a janela abre no fim da última ocorrência terminada do próprio pedido (ou na criação dele) e a prova é uma
+        ocorrência do `de` que terminou DEPOIS disso e num estado que comprova o tipo (`colaboracao.ESTADOS_QUE_COMPROVAM`:
+        `precisa_de_resultado` só `concluida`; `depois_de` qualquer fim). Sem prova a ocorrência fica `devida`, sem
+        execução e sem gastar tentativa, e passada `espera_dependencia_s` desde o `previsto_para` vira `pulada` com o
+        motivo `dependência não comprovada: <id do de>` (só o id: nunca título nem objetivo).
+
+        Fora desta função o laço é o de sempre: com `colaboracao.enabled` desligada, nem a tabela é lida (a dependência
+        gravada direto no banco não segura nada). A nova tentativa (28.5, `tentativa > 0`) passa direto: o despacho dela já
+        foi autorizado pela dependência, e segurar a repetição de uma ocorrência que já rodou só a faria expirar."""
+        if not self.cfg.colaboracao.enabled:
+            return devidas
+        dependencias = self.repo.dependencias_do_pedido(p["id"])
+        novas = [o for o in devidas if int(o["tentativa"] or 0) == 0]
+        if not dependencias or not novas:
+            return devidas
+        ultimo = self.repo.fim_mais_recente(p["id"], OCORRENCIA_TERMINAIS)
+        inicio = colaboracao.inicio_da_janela(parse_iso(ultimo) if ultimo else None, parse_iso(p["criado_em"]))
+        fins: dict[str, dict[str, datetime | None]] = {}
+        for d in dependencias:
+            estados = colaboracao.ESTADOS_QUE_COMPROVAM.get(d["tipo"])
+            fim = self.repo.fim_mais_recente(d["de"], estados) if estados else None
+            fins.setdefault(d["de"], {})[d["tipo"]] = parse_iso(fim) if fim else None
+        faltam = colaboracao.pendentes([(d["de"], d["tipo"]) for d in dependencias], fins, inicio)
+        if not faltam:
+            return devidas
+        espera = self.cfg.colaboracao.espera_dependencia_s
+        vencidas = [o for o in novas if colaboracao.espera_vencida(parse_iso(o["previsto_para"]), agora, espera)]
+        self._pular([(o["id"], colaboracao.motivo_da_dependencia(faltam[0])) for o in vencidas], token, agora, r)
+        fora = {o["id"] for o in novas}
+        r.seguradas += len(novas) - len(vencidas)
+        return [o for o in devidas if o["id"] not in fora]
 
     def _motivo_de_saldo(self) -> str | None:
         """O saldo adia, nunca falha: erro ao ler o saldo não segura o despacho (a execução já tem a própria barreira
