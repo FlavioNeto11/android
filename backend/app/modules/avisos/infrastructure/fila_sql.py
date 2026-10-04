@@ -99,9 +99,12 @@ class FilaDeAvisos:
             return Entrega(id=int(r["id"]), chave=str(r["chave"]), tipo=str(r["tipo"]), titulo=str(r["titulo"]),
                            corpo=str(r["corpo"] or ""), link=cast("str | None", r["link"]),
                            tentativas=int(r["tentativas"]))
+        # O link do agrupado é o da CAIXA, que o corpo manda abrir: todo link da fila é `link_da_caixa` (ou nenhum, no
+        # aviso de pedido que não pede pessoa), então vale o primeiro que houver no grupo, e não o da primeira linha.
+        link = next((str(x["link"]) for x in linhas if x["link"]), None)
         return Entrega(id=int(r["id"]), chave=str(r["chave"]), tipo=str(r["tipo"]),
                        titulo=titulo_agrupado(str(r["tipo"]), len(linhas)), corpo=CORPO_AGRUPADO,
-                       link=cast("str | None", r["link"]), tentativas=max(int(x["tentativas"]) for x in linhas),
+                       link=link, tentativas=max(int(x["tentativas"]) for x in linhas),
                        ids=tuple(int(x["id"]) for x in linhas))
 
     def _escolher(self, devidas: list, agrupar_s: float, a_partir_de: int) -> list[int]:  # type: ignore[type-arg]

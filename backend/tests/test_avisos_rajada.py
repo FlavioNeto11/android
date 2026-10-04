@@ -70,8 +70,8 @@ class Cena:
         self.fila = FilaDeAvisos(self.db, relogio=self.r)
         self.canal = Canal()
 
-    def chega(self, chave: str, tipo: str = "run.needs_input", corpo: str = "c") -> None:
-        self.fila.enfileirar(Aviso(chave=chave, tipo=tipo, titulo=f"t-{chave}", corpo=corpo, link="L"))
+    def chega(self, chave: str, tipo: str = "run.needs_input", corpo: str = "c", link: str | None = "L") -> None:
+        self.fila.enfileirar(Aviso(chave=chave, tipo=tipo, titulo=f"t-{chave}", corpo=corpo, link=link))
 
     def volta(self, agrupar_s: float = 60.0, a_partir_de: int = 3) -> object:
         token = self.lider.tomar(AVISOS)
@@ -242,5 +242,15 @@ def test_execucao_de_lote_nao_vira_aviso_e_a_do_dono_vira(tmp_path: Path) -> Non
         return servico.enfileirar_evento("run.updated", {"run": {"id": rid, "status": "needs_input"}}, 1)
 
     assert needs("rl") is False, "a execução do lote de frente avisou o dono"
-    assert servico.enfileirar_evento("approval.pending", {"approval": {"id": "ap-l", "run_id": "rl"}}, 2) is False
+    # A aprovação que o lote abre SEGUE avisando: só o dono decide (orquestradora, 04/10 01:20Z).
+    assert servico.enfileirar_evento("approval.pending", {"approval": {"id": "ap-l", "run_id": "rl"}}, 2) is True
     assert needs("rt") is True and needs("rp") is True, "pedido de pessoa (Telegram ou painel) segue avisando"
+
+
+def test_o_link_do_agrupado_e_o_da_caixa_mesmo_sem_link_na_primeira_linha(tmp_path: Path) -> None:
+    c = Cena(tmp_path)
+    c.chega("pedido:p1", tipo="pedido.relatorio_pronto", link=None)       # aviso de pedido que não pede pessoa
+    c.chega("pedido:p2", tipo="pedido.relatorio_pronto", link="CAIXA")
+    c.chega("pedido:p3", tipo="pedido.relatorio_pronto", link="CAIXA")
+    c.volta()
+    assert c.canal.enviados == [("Central de Aparelhos: 3 novidades de pedidos", CORPO_AGRUPADO, "CAIXA")]

@@ -657,6 +657,7 @@ Desde então:
   um lote de teste, medida ou validação pela API manda `idempotency_key: "lote:<frente>:<id>"` no `POST /api/commands`.
   São 8 a 120 caracteres, só `A-Za-z0-9_.:-`, um id por execução. A regra está em `contracts/origem.e_execucao_do_sistema`.
   Pedido do dono pelo painel, pelo Telegram ou pelo Trello segue avisando.
+  A APROVAÇÃO que um lote abre segue avisando, porque só o dono decide. Na prova e na validação ela segue calada (30.37).
 - **A rajada sai agrupada.**
   - O primeiro aviso de um tipo sai na hora.
   - Os do mesmo tipo que chegam até `avisos.agrupar_s` (60 s) depois esperam o fim da janela. Com

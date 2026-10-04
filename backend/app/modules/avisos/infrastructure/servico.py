@@ -23,7 +23,7 @@ import time
 from collections.abc import Callable
 
 from app.config import Config
-from app.contracts.origem import e_execucao_do_sistema
+from app.contracts.origem import PREFIXO_LOTE, e_execucao_do_sistema
 from app.events import EventBus
 from app.models import Problem
 from app.modules.avisos.adapters.telegram import CanalTelegram
@@ -124,10 +124,14 @@ class ServicoDeAvisos:
             return False
 
     def _e_de_prova(self, kind: str, data: dict[str, object] | None) -> bool:
-        """30.37 e 28.19: a execução do SISTEMA não é de uma pessoa: nada dela vira aviso ao dono, nem a pergunta
-        (`run.updated` em `needs_input`) nem a aprovação que ela abriria. São a prova de fluxo (`runs.prova_fluxo_id`), a
-        validação do QA e o lote de uma frente (pela chave de idempotência; a regra mora em
-        `contracts/origem.e_execucao_do_sistema`). Em 04/10 um lote de medida sem marca mandou 11 avisos seguidos.
+        """30.37 e 28.19: a execução do SISTEMA não é de uma pessoa: a pergunta dela (`run.updated` em `needs_input`)
+        não vira aviso ao dono. São a prova de fluxo (`runs.prova_fluxo_id`), a validação do QA e o lote de uma frente
+        (pela chave de idempotência; a regra mora em `contracts/origem.e_execucao_do_sistema`). Em 04/10 um lote de
+        medida sem marca mandou 11 avisos seguidos.
+
+        A APROVAÇÃO é diferente: só o dono decide (orquestradora, 04/10 01:20Z). A aprovação que um LOTE abre segue
+        avisando (agrupada, se vier em série, pela regra da rajada). A da prova e a da validação seguem caladas, como o
+        30.37 decidiu.
         Só consulto o banco para o evento que AVISARIA; falha na consulta deixa o aviso seguir (o dono recebe um aviso
         a mais, nunca perde um de pessoa)."""
         if kind not in ("run.updated", "approval.pending"):
@@ -145,6 +149,8 @@ class ServicoDeAvisos:
             return False
         if linha is None:
             return False
+        if kind == "approval.pending" and str(linha["idempotency_key"] or "").startswith(PREFIXO_LOTE):
+            return False                                   # aprovação de lote: o dono decide, então avisa
         return e_execucao_do_sistema(linha["prova_fluxo_id"], linha["idempotency_key"])
 
     # ------------------------------------------------------------------ saída (líder)

@@ -29,7 +29,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - a regra está em `fila_sql.reivindicar_um`, com as chaves novas `avisos.agrupar_s` (60) e
     `avisos.agrupar_a_partir_de` (3);
   - o reply ao agrupado não responde a fato nenhum (`canal_enviadas.fato = grupo:<tipo>`).
-- Sem migração. Prova `simulated`: `backend/tests/test_avisos_rajada.py` (11 casos).
+- Sem migração. Prova `simulated`: `backend/tests/test_avisos_rajada.py` (12 casos). A aprovação que um lote abre segue avisando (só o dono decide), e o link do agrupado é o da caixa.
 
 ## 2026-10-03/04 — Suíte 16 na main e deploy 16 no central (3b5355ce; migrações 087 e 088; config sem mudança)
 
