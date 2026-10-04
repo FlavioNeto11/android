@@ -1275,6 +1275,15 @@ class Scheduler:
                     if efeito is not None:
                         self._parar_no_ensaio(obj, srow, rt, efeito=efeito)
                         break
+                # 28.23, defesa: o teto `observar` já recusa o plano com efeito; se uma etapa com efeito chegar aqui
+                # mesmo assim (plano de fluxo, skill, revisão), para antes dela e do PREENCHIMENTO dela, pelo mesmo
+                # mecanismo do ensaio, e o objetivo fecha `failed` (sem ação com efeito não há efeito possível).
+                if "teto_de_autonomia" in run.keys() and run["teto_de_autonomia"] == "observar":
+                    efeito = (srow if (srow["side_effect"] or loads(srow["commit_guard"], []))
+                              else self._efeito_que_esta_etapa_prepara(obj, srow))
+                    if efeito is not None:
+                        self._parar_no_teto(obj, srow, rt, efeito=efeito)
+                        break
                 porta = await self.policy_gate(obj, srow, run) if self.policy_gate else None
                 if porta is not None:
                     # Antes de assumir a etapa: nenhuma tentativa consumida, nenhuma chamada de modelo gasta.
@@ -1478,6 +1487,20 @@ class Scheduler:
             if srow["key"] in (loads(e["depends_on"]) if e["depends_on"] else []):
                 return e
         return None
+
+    def _parar_no_teto(self, obj: Row, srow: Row, rt: DeviceRuntime, *, efeito: Row) -> None:
+        """28.23: o teto `observar` chegou à etapa com efeito (ou ao preenchimento dela) no despacho. Ela e as seguintes
+        ficam `skipped`, e o objetivo fecha `failed` com o motivo: nenhuma tentativa, nenhum toque, nada digitado."""
+        repo = self.repo
+        alvo = "que tem efeito fora do aparelho" if efeito["id"] == srow["id"] else (
+            f"que prepara o efeito da etapa {efeito['seq']} ({efeito['key']})")
+        motivo = (f"Teto de autonomia observar: parou antes da etapa {srow['seq']} ({srow['key']}), {alvo}. Nada foi "
+                  "digitado nem enviado.")
+        for r in repo.db.query("SELECT id FROM steps WHERE objective_id=? AND plan_version=? AND status IN"
+                               " ('pending','ready','retry_wait') ORDER BY seq, id", (obj["id"], obj["plan_version"])):
+            repo.transition_step(r["id"], StepStatus.skipped, detail=motivo)
+        metricas.contar("execucao.parada_no_teto", teto="observar")
+        self._fail_objective(obj, motivo)
 
     def _parar_no_ensaio(self, obj: Row, srow: Row, rt: DeviceRuntime, *, efeito: Row) -> None:
         """30.31 (fatia 2): o ENSAIO SÓ DE LEITURA chegou à etapa com efeito fora do aparelho (ou ao preenchimento

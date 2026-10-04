@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.23: o teto de autonomia chega à execução (branch feat/28-23-teto-de-autonomia)
+
+- Migração 100 (`runs.teto_de_autonomia`) e adendo v1.19 do contrato: `POST /api/runs` aceita `observar`,
+  `preparar`, `agir` ou nulo. `observar` recusa no plano a etapa com efeito (`plan.refused`, `acima_da_autonomia`,
+  execução `failed`) e, como defesa, o despacho para antes dela e do preenchimento dela; `preparar` exige aprovação
+  para o efeito, valendo a mais restritiva entre o teto e a persona; nulo e `agir` ficam como hoje. Fecha o achado
+  de segurança da Canais (a autonomia do pedido não chegava à execução); o lado do laço é PR da Canais. Prova
+  `simulated`: `backend/tests/test_teto_de_autonomia.py`.
+
 ## 2026-10-04 — teste do preparo zumbi drenado sem Timer de relógio (branch fix/b2-r4-sem-timer)
 
 - `test_prontidao_subsistemas::test_b2_r4_boot_local_preparo_zumbi_drenado_nao_libera_esta_tentativa` falhou no

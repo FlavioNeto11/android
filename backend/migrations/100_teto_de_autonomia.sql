@@ -1,0 +1,11 @@
+-- O teto de autonomia chega à execução (item 28.23, Fase 28; número 100 reservado pela orquestradora em 04/10).
+--
+-- Por quê: achado de segurança da frente Canais (F3 do 28.10). A autonomia do pedido persistente (`pedidos.autonomia`)
+-- não chegava à execução: `laco._requisicao` criava a execução sem teto, e um pedido `observar` com objetivo de efeito
+-- dependia só da política da persona. `pedidos` fica desligado no central até isto estar no ar.
+--
+-- - `runs.teto_de_autonomia`: `observar` (a etapa com efeito é recusada no plano e, como defesa, a execução para antes
+--   dela no despacho), `preparar` (a etapa com efeito exige aprovação, qualquer que seja a política da persona) ou
+--   `agir` (como hoje). NULO = como hoje, inclusive todas as execuções anteriores a esta migração. O domínio valida
+--   o vocabulário (`RunCreate`); sem CHECK, como as outras colunas de texto fechado de `runs`.
+ALTER TABLE runs ADD COLUMN teto_de_autonomia TEXT;

@@ -25,7 +25,7 @@ from ..modules.identity.application.available_data import common_data, missing_s
 from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
 from ..modules.skills.infrastructure.run_planning import RunPlan, SkillRunPlanner
 from ..models import (RUN_TERMINAL, DistributeSpec, DistributionPick, DistributionPreview, InstanceState, MissingInfo,
-                      ObjectiveDTO, ObjectiveStatus, Plan, ResolveBody, ResolvedTargetDTO, RunCreate, RunStatus,
+                      ObjectiveDTO, ObjectiveStatus, Plan, PlanStep, ResolveBody, ResolvedTargetDTO, RunCreate, RunStatus,
                       RunSummary, RunTarget, RunTargetsPreview, RunTargetsResolveBody, SessionStatus, StepResult,
                       StepStatus)
 from ..planning.apps_do_comando import apps_citados, pede_site
@@ -1083,6 +1083,9 @@ class RunService:
         if plan.fora_do_catalogo:
             self._recusar_fora_do_catalogo(run_id, plan)
             return
+        if self._teto_observar(run_id) and (com_efeito := [s for s in plan.steps if s.side_effect or s.commit_guard]):
+            self._recusar_pelo_teto(run_id, plan, com_efeito)
+            return
         recusadas = self._efeitos_fora_do_catalogo(plan, instances, apps)
         if recusadas:
             self._recusar_no_planejamento(run_id, plan, recusadas)
@@ -1132,6 +1135,24 @@ class RunService:
                                             "capability": passo.capability, "motivo": motivo}
                     break
         return list(recusadas.values())
+
+    def _teto_observar(self, run_id: str) -> bool:
+        """28.23: a execução nasceu com o teto `observar` (o pedido persistente que só observa)."""
+        row = self.repo.run_row(run_id)
+        return bool(row is not None and "teto_de_autonomia" in row.keys() and row["teto_de_autonomia"] == "observar")
+
+    def _recusar_pelo_teto(self, run_id: str, plan: Plan, com_efeito: list[PlanStep]) -> None:
+        """Item 28.23: com o teto `observar`, nenhuma etapa com efeito chega a existir. A execução termina recusada
+        (`failed`, nunca `uncertain`: sem ação com efeito não há efeito possível), com o evento `plan.refused` de
+        motivo `acima_da_autonomia` e só as chaves das etapas (nada do texto do pedido)."""
+        chaves = [s.key for s in com_efeito]
+        texto = (f"O teto de autonomia desta execução é observar: o plano tem {len(chaves)} etapa(s) com efeito fora do "
+                 f"aparelho ({', '.join(chaves)}), e nenhuma pode rodar. Nada foi feito.")
+        self.repo.save_plan(run_id, plan)
+        self.repo.decision(f"Recusado no planejamento (item 28.23): {texto}", run_id=run_id)
+        self.repo.bus.emit("plan.refused", texto, level="warn", run_id=run_id,
+                           data={"motivo": "acima_da_autonomia", "teto": "observar", "etapas": chaves})
+        self.repo.set_run_status(run_id, RunStatus.failed, texto, level="warn", message=f"Execução {run_id}: {texto}")
 
     def _recusar_fora_do_catalogo(self, run_id: str, plan: Plan) -> None:
         """Item 31.33: o comando pede o que nenhuma ação do catálogo do app faz. Antes virava `needs_input` com uma
