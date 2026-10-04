@@ -3684,9 +3684,10 @@ instalação afrouxa, por `LimitsCfg.publicar_sem_aprovacao` (padrão `false`). 
 `backend/tests/test_create_post_endurecido.py`.
 
 **Emenda 30.62, 04/10/2026 (orquestradora, 28.10 F5):** num pedido entre personas, a porta recebe
-`pedido: ContextoDoPedido(raiz, familia, porta_voz)`, de `social/policy.py`, e a família conta como uma conta só.
+`pedido: ContextoDoPedido(raiz, familia, porta_vozes)`, de `social/policy.py`, e a família conta como uma conta só.
 - **Uma conta por alvo no pedido inteiro, em todos os baldes**, inclusive curtir, que na frota aceita mais de uma.
-  - Com porta-voz, só ele toca o alvo.
+  - Com porta-vozes (um conjunto; vazio = nenhum declarado), só eles tocam o alvo, e entre eles vale uma conta por
+    alvo.
   - Sem porta-voz, a primeira persona da família que mexeu com o alvo, ou que tem pedido em aberto sobre ele, fica com
     ele.
   - Nos dois casos as outras são recusadas, não adiadas. A contagem é a da frota, restrita aos ids da família

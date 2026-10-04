@@ -73,7 +73,7 @@ def test_persona_fora_da_familia_nao_conta_para_o_pedido(tmp_path: Path) -> None
 
 def test_com_porta_voz_so_ele_toca_o_alvo(tmp_path: Path) -> None:
     _svc, _repo, policies, a, b, _c = _mundo(tmp_path)
-    pedido = ContextoDoPedido(raiz="r-1", familia=frozenset({a, b}), porta_voz=a)
+    pedido = ContextoDoPedido(raiz="r-1", familia=frozenset({a, b}), porta_vozes=frozenset({a}))
     recusado = policies.check(b, _curtir(), counterparty=ALVO, pedido=pedido)
     assert not recusado.allowed and "porta-voz" in recusado.reason and recusado.retry_at is None
     assert policies.check(a, _curtir(), counterparty=ALVO, pedido=pedido).allowed
@@ -103,3 +103,14 @@ def test_alvo_que_e_conta_nossa_nao_ganha_o_piso_da_pessoa_real(tmp_path: Path) 
     pedido = ContextoDoPedido(raiz="r-1", familia=frozenset({a}))
     veredito = policies.check(a, _curtir(), counterparty="@bia.souza91182", pedido=pedido)
     assert "30.62" not in veredito.reason
+
+
+def test_com_dois_porta_vozes_o_terceiro_nao_toca_e_entre_eles_vale_um_por_alvo(tmp_path: Path) -> None:
+    """Revisão da fila: com mais de um porta-voz o provedor devolvia `None`, e a porta caía no caso menos restrito."""
+    svc, _repo, policies, a, b, c = _mundo(tmp_path)
+    pedido = ContextoDoPedido(raiz="r-1", familia=frozenset({a, b, c}), porta_vozes=frozenset({a, b}))
+    recusado = policies.check(c, _curtir(), counterparty=ALVO, pedido=pedido)
+    assert not recusado.allowed and "porta-voz" in recusado.reason
+    assert policies.check(b, _curtir(), counterparty=ALVO, pedido=pedido).allowed
+    _curtiu(svc, a)                                            # um porta-voz tocou: o outro não toca o mesmo alvo
+    assert not policies.check(b, _curtir(), counterparty=ALVO, pedido=pedido).allowed

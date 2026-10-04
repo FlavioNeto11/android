@@ -131,13 +131,15 @@ class Verdict:
 class ContextoDoPedido:
     """30.62 (28.10 F5): as personas de UM pedido entre personas (o raiz e os filhos) contam como uma conta só.
 
-    `familia` são ids de `instagram_profiles` (o `profile_id` da porta). `porta_voz`, quando há, é a única persona da
-    família que toca um alvo. Quem monta é o laço dos pedidos (`contexto_do_pedido(run_id)`); sem contexto, a porta
-    decide como sempre."""
+    `familia` são ids de `instagram_profiles` (o `profile_id` da porta). `porta_vozes`: vazio = nenhum declarado (o
+    primeiro da família que tocou o alvo fica com ele); com um ou mais, SÓ eles tocam um alvo, e entre eles continua
+    valendo uma conta por alvo. Um conjunto, e não "um ou nenhum": com dois porta-vozes, `None` caía no caso MENOS
+    restrito (revisão da fila, 04/10). Quem monta é o laço dos pedidos (`contexto_do_pedido(run_id)`); sem contexto, a
+    porta decide como sempre."""
 
     raiz: str
     familia: frozenset[str] = frozenset()
-    porta_voz: str | None = None
+    porta_vozes: frozenset[str] = frozenset()
 
 
 #: Ordem de rigor das políticas, da mais restritiva à mais livre — usada só para saber se um valor escolhido é
@@ -378,14 +380,14 @@ class PolicyEngine:
     def _um_so_da_familia(self, profile_id: str, counterparty: str | None, agora: datetime, app_id: str | None,
                           pedido: ContextoDoPedido) -> tuple[str, str] | None:
         """30.62 (a): uma conta por alvo no pedido INTEIRO, em todos os baldes (curtir também, que na frota aceita mais de
-        uma). Com porta-voz, só ele toca o alvo; sem ele, a primeira persona da família que mexeu com o alvo (ou tem pedido
+        uma). Com porta-vozes, só eles tocam o alvo; sem eles, a primeira persona da família que mexeu com o alvo (ou tem pedido
         em aberto sobre ele) na janela da frota fica com ele. `None` libera; senão `(motivo, dica)` de uma RECUSA.
 
         Alvo desconhecido não é daqui: a regra da frota (ADR-055) já recusa."""
         alvo = normalizar_alvo(counterparty)
         if alvo is None:
             return None
-        if pedido.porta_voz and pedido.porta_voz != profile_id:
+        if pedido.porta_vozes and profile_id not in pedido.porta_vozes:
             return ("neste pedido entre personas só o porta-voz toca o alvo; esta persona não age sobre "
                     f"{alvo} (30.62) — recusado, não adiado",
                     "Deixe a ação com o porta-voz do pedido; as outras personas só conversam entre si.")

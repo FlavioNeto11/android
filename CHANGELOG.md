@@ -236,7 +236,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-04 — 30.62: a família de um pedido entre personas conta como uma conta (branch feat/30-62-contexto-do-pedido)
 
-- `PolicyEngine.check(..., pedido: ContextoDoPedido | None)`. `ContextoDoPedido(raiz, familia, porta_voz)` fica em
+- `PolicyEngine.check(..., pedido: ContextoDoPedido | None)`. `ContextoDoPedido(raiz, familia, porta_vozes: frozenset)` fica em
   `social/policy.py`, e é de lá que a frente de Canais importa.
 - (a) Uma conta por alvo no pedido inteiro, em todos os baldes; com porta-voz, só ele age.
 - (b) Pessoa real sem conversa prévia pede aprovação em qualquer ação.
