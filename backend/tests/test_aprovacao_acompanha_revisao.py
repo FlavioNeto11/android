@@ -286,3 +286,16 @@ async def test_tentar_novamente_com_texto_aprovado_nao_pede_a_mesma_aprovacao(ha
     assert state.approval_service.list() == []
     depois = state.approvals.get(aprovado.id)
     assert depois is not None and depois.step_id == V2
+
+
+def test_o_mesmo_texto_para_a_mesma_pessoa_em_outro_post_pede_de_novo(tmp_path: Path) -> None:
+    """30.64: o alvo da aprovação é só a pessoa (`@ana`). O post que a etapa procura (`caption_contains`) é o OBJETO da
+    ação; aprovar o comentário no post A não aprova o mesmo comentário no post B dela depois de uma revisão."""
+    db, store = _banco(tmp_path)
+    v1, v2 = _etapa(db, 1, "c1", "bom dia"), _etapa(db, 2, "c1", "bom dia")
+    for sid, legenda in ((v1, "praia ao entardecer"), (v2, "jantar em família")):
+        db.execute("UPDATE steps SET bindings=? WHERE id=?",
+                   (json.dumps({"username": "@ana", "content": "bom dia", "caption_contains": legenda}), sid))
+    _decidida(store, v1, "bom dia")
+    assert _acompanhar(store, v2, "bom dia") is None
+    assert store.objeto_da_etapa(v2) == {"username": "@ana", "caption_contains": "jantar em família"}   # sem o texto

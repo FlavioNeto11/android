@@ -22,6 +22,9 @@ from ..util import new_token, now, now_iso, parse_iso
 
 STATUSES = ("pending", "approved", "edited", "rejected", "expired")
 
+#: 30.64: os argumentos de TEXTO da etapa. Ficam fora do objeto da ação: o texto se compara à parte, já com a edição.
+ARGUMENTOS_DE_TEXTO = frozenset({"content", "content_brief", "content_verbatim"})
+
 
 @dataclass(slots=True)
 class Approval:
@@ -73,6 +76,18 @@ class ApprovalStore:
                         decided_at=row["decided_at"], decided_note=row["decided_note"],
                         decided_by=row["decided_by"], interaction_id=row["interaction_id"],
                         image_id=self._imagem_da_etapa(row["step_id"]))
+
+    def objeto_da_etapa(self, step_id: str | None) -> dict[str, str]:
+        """30.64: o OBJETO da ação nos argumentos da etapa: todo argumento menos o texto (que se compara à parte, já com a
+        edição). O alvo da aprovação é só a PESSOA (`@ana`); o post, o comentário ou a legenda que a etapa procura
+        (`caption_contains`, `post_author`, `image_id`...) moram aqui. Sem isto, aprovar "comentar no post A de @ana"
+        valia para o post B dela depois de uma revisão do plano."""
+        if not step_id:
+            return {}
+        argumentos = loads(self.db.scalar("SELECT bindings FROM steps WHERE id=?", (step_id,)), {})
+        if not isinstance(argumentos, dict):
+            return {}
+        return {str(k): str(v) for k, v in argumentos.items() if k not in ARGUMENTOS_DE_TEXTO and v not in (None, "")}
 
     def _imagem_da_etapa(self, step_id: str | None) -> str | None:
         """O `image_id` dos argumentos da etapa (29.30), ou `None`. Argumento ilegível não derruba a lista."""
@@ -127,7 +142,9 @@ class ApprovalStore:
                 and (anterior.target or None) == (target or None)
                 and (anterior.content or "").strip() == (content or "").strip()
                 # 30.60 (N1): a mesma legenda com OUTRA imagem é outra publicação; aprovar uma não aprova a outra.
-                and anterior.image_id == self._imagem_da_etapa(step_id))
+                and anterior.image_id == self._imagem_da_etapa(step_id)
+                # 30.64: o mesmo texto para a mesma pessoa em OUTRO post (outra legenda, outro autor) é outra ação.
+                and self.objeto_da_etapa(anterior.step_id) == self.objeto_da_etapa(step_id))
         if not vale or anterior.step_id is None or disparou(anterior.step_id):
             return None
         self.db.execute("UPDATE pending_approvals SET step_id=? WHERE id=? AND step_id=?",
