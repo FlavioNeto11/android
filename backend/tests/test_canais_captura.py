@@ -6,6 +6,7 @@ harness (provedor simulado). Nada de aparelho nem Telegram reais.
 """
 from __future__ import annotations
 
+import asyncio
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,6 +15,7 @@ import pytest
 
 from app.devices.captura_pontual import capturar_para_o_dono
 from app.models import InstanceState
+from app.modules.avisos.infrastructure.anexos import AnexoRecusado
 from app.modules.avisos.application.entrada import rotear
 from app.modules.avisos.infrastructure.entrada import Captura, Recebida
 
@@ -80,6 +82,20 @@ async def test_o_dono_pede_e_a_tela_volta_so_a_ele_com_legenda_so_do_aparelho(c:
     e = c.entrada(5)
     assert (e["estado"], e["intencao"], e["resposta"]) == ("feita", "captura", "captura enviada")
     assert len(c.bot.mensagens()) == 0                                                # nada de texto extra: só a imagem
+
+
+async def test_erro_de_disco_depois_do_envio_nao_vira_nao_enviei(c: CenarioAnexos, caplog: pytest.LogCaptureFixture) -> None:
+    """Achado 8 da revisão: a imagem já estava no chat do dono e ele ouvia "Não enviei a captura"."""
+    def disco_cheio(*_a: object, **_k: object) -> None:
+        raise AnexoRecusado("Não consegui guardar o arquivo na Central (erro de disco).")
+
+    c.armazem.guardar = disco_cheio                                                  # type: ignore[method-assign]
+    with caplog.at_level("ERROR", logger="poc.avisos.entrada"):
+        await c.volta(msg(5, "captura do android-12"))
+    assert [e["metodo"] for e in c.bot.envios] == ["sendPhoto"] and c.bot.mensagens() == []   # só a imagem: nada de "não enviei"
+    e = c.entrada(5)
+    assert (e["estado"], e["resposta"]) == ("feita", "captura enviada")
+    assert any("não consegui guardar o rastro" in r.getMessage() for r in caplog.records)
 
 
 async def test_sem_captura_o_motivo_vai_ao_dono_como_texto(c: CenarioAnexos) -> None:
@@ -193,7 +209,27 @@ async def test_frame_velho_acorda_a_previa_por_pouco_tempo_e_espera_o_novo() -> 
         rt.frame = _frame(0.0, jpeg=novo)                                             # a prévia publicou um frame novo
 
     assert await capturar_para_o_dono(g, "android-12", dormir=dormir) == (novo, None)
-    assert g.interesses == [("captura-canal-android-12", [], "android-12", 5)] and g.soltos == ["captura-canal-android-12"]
+    assert len(g.interesses) == 1 and g.interesses[0][1:] == ([], "android-12", 10)       # 8 s de espera + 2 s de folga
+    assert g.interesses[0][0].startswith("captura-canal-android-12-") and g.soltos == [g.interesses[0][0]]
+
+
+async def test_o_interesse_vive_mais_que_a_espera() -> None:
+    """Achado 7 da revisão: o TTL (5 s) era menor que a espera (8 s)."""
+    from app.devices.captura_pontual import ESPERA_S, ttl_do_interesse
+    assert ttl_do_interesse(ESPERA_S) > ESPERA_S and ttl_do_interesse(0.05) >= 5 and ttl_do_interesse(30.0) > 30.0
+
+
+async def test_dois_pedidos_do_mesmo_aparelho_usam_chaves_diferentes_e_cada_um_solta_so_a_sua() -> None:
+    rt = _rt(_frame(60))
+    g = Gerenciador(rt)
+
+    async def dormir(_s: float) -> None:
+        await asyncio.sleep(0)                                                       # cede a vez: os dois pedidos se sobrepõem
+        rt.frame = _frame(0.0)
+
+    await asyncio.gather(capturar_para_o_dono(g, "android-12", dormir=dormir), capturar_para_o_dono(g, "android-12", dormir=dormir))
+    chaves = [i[0] for i in g.interesses]
+    assert len(chaves) == 2 and len(set(chaves)) == 2 and sorted(g.soltos) == sorted(chaves)
 
 
 async def test_sem_frame_novo_no_prazo_diz_ao_dono_e_solta_o_interesse() -> None:
@@ -203,7 +239,8 @@ async def test_sem_frame_novo_no_prazo_diz_ao_dono_e_solta_o_interesse() -> None
         return None
 
     jpeg, motivo = await capturar_para_o_dono(g, "android-12", espera_s=0.05, dormir=dormir)
-    assert jpeg is None and "captura nova" in (motivo or "") and g.soltos == ["captura-canal-android-12"]
+    assert jpeg is None and "captura nova" in (motivo or "") and len(g.soltos) == 1
+    assert g.soltos[0].startswith("captura-canal-android-12-") and g.soltos[0] == g.interesses[0][0]
 
 
 @pytest.mark.parametrize("rt", [_rt(_frame(0.1, sensivel=True)), _rt(_frame(0.1, jpeg=b"")),
@@ -243,3 +280,38 @@ async def test_com_o_gerenciador_real_do_harness_o_aparelho_fora_do_ar_e_dito(ha
         assert (jpeg is not None) != (motivo is not None)
 
 
+
+
+async def test_o_segundo_pedido_continua_com_interesse_quando_o_primeiro_termina() -> None:
+    """Achado 7, 2ª passada: o gerenciador real faz `pop` pela chave; com chave fixa o `finally` do 1º soltava o do 2º."""
+    rt = _rt(_frame(60))
+
+    class ComPop(Gerenciador):
+        def __init__(self, rt: SimpleNamespace) -> None:
+            super().__init__(rt)
+            self.vivos: dict[object, tuple[object, ...]] = {}
+
+        def registrar_interesse(self, *args: object) -> None:
+            self.vivos[args[0]] = args                                               # substitui, como o real
+
+        def soltar_interesse(self, conexao: str) -> None:
+            self.vivos.pop(conexao, None)
+
+    g = ComPop(rt)
+    visto: list[int] = []
+
+    async def lento(_s: float) -> None:
+        await asyncio.sleep(0.01)
+        if len(visto) == 0 and rt.frame.mono < time.monotonic() - 30:               # type: ignore[union-attr]
+            visto.append(len(g.vivos))
+            rt.frame = _frame(0.0)                                                   # o 1º recebe o frame e termina
+
+    async def espera(_s: float) -> None:
+        await asyncio.sleep(0.01)
+        visto.append(-1) if not g.vivos else None
+
+    a = asyncio.create_task(capturar_para_o_dono(g, "android-12", dormir=lento))
+    await asyncio.sleep(0)
+    b = asyncio.create_task(capturar_para_o_dono(g, "android-12", espera_s=0.3, dormir=espera))
+    await asyncio.gather(a, b)
+    assert visto[0] == 2 and -1 not in visto                                         # os dois tinham interesse vivo

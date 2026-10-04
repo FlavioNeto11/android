@@ -546,6 +546,11 @@ avisos:                           # aviso fora do painel (item 28.11): espelho d
   #     enabled: true             # (true) false = recusa todo anexo, com o motivo dito ao dono
   #     max_bytes: 10485760       # (10 MB) acima disso é recusado sem baixar tudo; o Bot API baixa até 20 MB
   #     tipos: [image/jpeg, image/png, image/webp, application/pdf, text/plain]   # o mime é conferido pelo conteúdo
+  #     leitura:                  # (28.24 F3) a IA descreve a imagem que o DONO mandou, a pedido (/ler em reply, ou POST /api/canais/anexos/{id}/ler)
+  #       enabled: true           # (true) false = a leitura responde 'desligada', sem chamar o provedor
+  #       teto_usd: 0.05          # (0.05) por imagem, ESTIMADO antes da chamada: acima disso nada é enviado ao provedor
+  #       modelo: ""              # vazio = o mais barato de ai.prices com vision:true em ai.models (hoje claude-haiku-4-5)
+  #       max_tokens: 400         # teto da resposta do modelo
 
 trello:                           # Trello do dono (item 32.2, ADR-072): espelho do plano e canal de comandos. Ligar exige TRELLO_API_KEY e TRELLO_TOKEN no .env
   enabled: false                  # (false) desligado = nenhuma chamada ao Trello. Os segredos NUNCA moram aqui (docs/operacao.md)

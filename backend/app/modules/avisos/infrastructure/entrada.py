@@ -66,7 +66,7 @@ from app.modules.avisos.domain.anexos import (
     normalizar_mime,
     tamanho_legivel,
 )
-from app.modules.avisos.infrastructure.anexos import AnexoRecusado, ArmazemDeAnexos
+from app.modules.avisos.infrastructure.anexos import AnexoJaResolvido, AnexoRecusado, ArmazemDeAnexos
 from app.modules.avisos.infrastructure.convidados import ConvidadosDoTelegram
 from app.modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
 from app.security.sessions import OPERADOR
@@ -108,6 +108,7 @@ MOTIVO_TIPO_FORA = "esse tipo de arquivo não é aceito. Aceito imagem (JPEG, PN
 _MOTIVO_GRANDE = "o arquivo é grande demais (o limite é {max})."
 MOTIVO_ANEXOS_DESLIGADOS = "os anexos estão desligados na Central."
 MOTIVO_SEM_ANEXO_NO_CANAL = "este canal não baixa anexos."
+MOTIVO_NAO_REGISTROU = "não consegui registrar o anexo agora. Mande de novo."
 MOTIVO_NAO_BAIXOU = "não consegui baixar o arquivo do canal. Mande de novo."
 #: O mime genérico não é declaração de tipo: vale o que o conteúdo mostrar.
 _MIME_GENERICO = "application/octet-stream"
@@ -194,6 +195,10 @@ class PortasDaCentral(Protocol):
     def online(self) -> list[str]: ...
     async def captura(self, instance_id: str) -> Captura:
         """A tela atual do aparelho pela MESMA prévia do painel (tela sensível não sai). Não executa nada nele."""
+        ...
+    async def ler_anexo(self, anexo_id: int) -> str:
+        """A IA descreve a imagem que o dono mandou (28.24, F3): o texto para o dono, com o custo. A recusa (teto, falha da
+        IA, gasto barrado) sobe como `RecusaDaCentral`, com a frase para o dono."""
         ...
     def desfecho(self, run_id: str) -> str | None: ...
     def pergunta_sensivel(self, ref: str | None) -> str | None:
@@ -566,23 +571,47 @@ class ConversaDoCanal:
                 motivo = _MOTIVO_GRANDE.format(max=tamanho_legivel(cfg.max_bytes))
             elif self.anexos is None or a.ref is None or not hasattr(saida, "baixar_anexo"):
                 motivo = MOTIVO_SEM_ANEXO_NO_CANAL
-            if motivo is not None:
-                respostas.append(self._anexo_recusado(a, motivo, ident))
+            elif ident is None:
+                motivo = MOTIVO_NAO_REGISTROU                       # a mensagem não está gravada: sem ela o pendente não tem dono
+            if motivo is not None or self.anexos is None or ident is None or a.ref is None:
+                respostas.append(self._anexo_recusado(a, motivo or MOTIVO_NAO_REGISTROU, ident))
             else:
-                assert self.anexos is not None and ident is not None and a.ref is not None
                 pendentes.append(self.anexos.pendente(a.ref, entrada_id=ident, mime_declarado=declarado,
                                                       tamanho=a.tamanho or 0))
         return ident, respostas, pendentes
 
+    def _armazem(self) -> ArmazemDeAnexos:
+        """O armazém, ou `AnexoRecusado` (que as conversas já dizem ao dono): checagem explícita, que o `python -O` não remove."""
+        if self.anexos is None:
+            raise AnexoRecusado("Os anexos não estão disponíveis na Central.")
+        return self.anexos
+
     def _recusa_pendente(self, linha: Mapping[str, object], motivo: str) -> str:
-        assert self.anexos is not None
-        self.anexos.recusar(motivo, linha_id=self._id(linha), tamanho=int(str(linha.get("bytes") or 0)))
+        self._armazem().recusar(motivo, linha_id=self._id(linha), tamanho=int(str(linha.get("bytes") or 0)))
         return RESPOSTA_ANEXO_RECUSADO.format(motivo=motivo)
 
     async def _baixar(self, saida: SaidaDaConversa | None, linha: Mapping[str, object]) -> str:
         """Baixa e guarda o anexo `pendente`. Sempre RESOLVE a linha (`guardado` ou `recusado`, com o motivo) e devolve o
-        que dizer ao dono: a falha no download nunca fica calada nem deixa a linha pendente."""
-        assert self.anexos is not None
+        que dizer ao dono: a falha no download nunca fica calada nem deixa a linha pendente. Uma linha que outro líder já
+        resolveu não derruba a conversa: a resposta é o resultado que ficou gravado."""
+        try:
+            return await self._baixar_pendente(saida, linha)
+        except AnexoJaResolvido as ja:
+            log.warning("anexos: o pendente %s já estava resolvido; digo o resultado gravado", linha.get("id"))
+            return self._texto_do_resolvido(ja.linha)
+        except AnexoRecusado as recusa:                                   # sem armazém (`_armazem`)
+            return RESPOSTA_ANEXO_RECUSADO.format(motivo=recusa.motivo)
+
+    @staticmethod
+    def _texto_do_resolvido(linha: Mapping[str, object] | None) -> str:
+        if linha is not None and linha.get("estado") == "guardado":
+            return RESPOSTA_ANEXO_OK.format(rotulo=ROTULO.get(str(linha.get("mime")), "o arquivo"),
+                                            tamanho=tamanho_legivel(int(str(linha.get("bytes") or 0))), id=linha.get("id"))
+        motivo = _texto(linha.get("motivo_recusa")) if linha is not None else None
+        return RESPOSTA_ANEXO_RECUSADO.format(motivo=motivo or "o anexo já foi tratado antes.")
+
+    async def _baixar_pendente(self, saida: SaidaDaConversa | None, linha: Mapping[str, object]) -> str:
+        armazem = self._armazem()
         cfg = self.cfg.file.avisos.entrada.anexos
         baixar = getattr(saida, "baixar_anexo", None)
         ref = str(linha.get("ref_externa") or "")
@@ -596,8 +625,8 @@ class ConversaDoCanal:
             log.warning("telegram: anexo não baixado (%s)", falha.motivo)       # o motivo do canal já vem sem URL nem token
             return self._recusa_pendente(linha, MOTIVO_NAO_BAIXOU)
         try:
-            guardada = self.anexos.guardar(conteudo, tipos=cfg.tipos, max_bytes=cfg.max_bytes,
-                                           mime_declarado=_texto(linha.get("mime_declarado")), linha_id=self._id(linha))
+            guardada = armazem.guardar(conteudo, tipos=cfg.tipos, max_bytes=cfg.max_bytes,
+                                       mime_declarado=_texto(linha.get("mime_declarado")), linha_id=self._id(linha))
         except AnexoRecusado as recusa:
             return self._recusa_pendente(linha, recusa.motivo)
         return RESPOSTA_ANEXO_OK.format(rotulo=ROTULO.get(str(guardada["mime"]), "o arquivo"),
@@ -623,8 +652,7 @@ class ConversaDoCanal:
         conferidos de novo pelo conteúdo. A legenda passa pela redação de credencial; quem chama garante que ela não
         traz nome de persona, conta, e-mail, telefone nem IP (regra do dono para texto de mensagem e de cartão)."""
         cfg = self._cfg_do_envio(saida)
-        assert self.anexos is not None
-        conteudo, mime, sha = self.anexos.conteudo_de(referencia, tipos=cfg.tipos, max_bytes=cfg.max_bytes)
+        conteudo, mime, sha = self._armazem().conteudo_de(referencia, tipos=cfg.tipos, max_bytes=cfg.max_bytes)
         return await self._despachar(saida, conteudo, mime, sha, legenda, responde_a, entrada_id)
 
     async def enviar_conteudo(self, saida: SaidaDaConversa, conteudo: bytes, legenda: str = "", *,
@@ -633,8 +661,7 @@ class ConversaDoCanal:
         """Manda ao dono um arquivo que o PRODUTO gerou (uma captura de tela do aparelho, p. ex.). O conteúdo é conferido
         como o recebido (tipo da lista pela assinatura, teto) e fica guardado em `data/anexos` com a retenção do 28.16."""
         cfg = self._cfg_do_envio(saida)
-        assert self.anexos is not None
-        mime = self.anexos.verificar(conteudo, tipos=cfg.tipos, max_bytes=cfg.max_bytes, mime_declarado=mime_declarado)
+        mime = self._armazem().verificar(conteudo, tipos=cfg.tipos, max_bytes=cfg.max_bytes, mime_declarado=mime_declarado)
         return await self._despachar(saida, conteudo, mime, None, legenda, responde_a, entrada_id)
 
     def _cfg_do_envio(self, saida: SaidaDaConversa):  # noqa: ANN202 - o modelo de config
@@ -647,15 +674,21 @@ class ConversaDoCanal:
 
     async def _despachar(self, saida: SaidaDaConversa, conteudo: bytes, mime: str, sha: str | None, legenda: str,
                          responde_a: str | None, entrada_id: int | None) -> str | None:
-        assert self.anexos is not None
+        armazem = self._armazem()
         enviada = await saida.enviar_anexo(conteudo, mime, self._redigir(legenda),  # type: ignore[attr-defined]
                                            responde_a=responde_a)
         self.repo.registrar_enviada(enviada, "anexo", entrada_id=entrada_id)
-        if sha is None:
-            # O conteúdo que o produto gerou ainda não está no armazém: guarda agora, já enviado (a linha é `saida`).
-            self.anexos.guardar(conteudo, tipos=(mime,), max_bytes=len(conteudo), entrada_id=entrada_id, direcao="saida")
-        else:
-            self.anexos.registrar_saida(sha, mime, len(conteudo), entrada_id=entrada_id)
+        # Daqui em diante o arquivo JÁ está no chat do dono: uma falha ao guardar o rastro (erro de disco, banco) não pode
+        # virar "não enviei" para quem chamou. Registra o que deu, diz a verdade no log e devolve o envio.
+        try:
+            if sha is None:
+                # O conteúdo que o produto gerou ainda não está no armazém: guarda agora, já enviado (a linha é `saida`).
+                armazem.guardar(conteudo, tipos=(mime,), max_bytes=len(conteudo), entrada_id=entrada_id, direcao="saida")
+            else:
+                armazem.registrar_saida(sha, mime, len(conteudo), entrada_id=entrada_id)
+        except Exception as erro:  # noqa: BLE001 - o envio já aconteceu; o rastro é o que falhou
+            motivo = erro.motivo if isinstance(erro, AnexoRecusado) else type(erro).__name__
+            log.error("anexos: enviei o arquivo (mensagem %s), mas não consegui guardar o rastro dele (%s)", enviada, motivo)
         return enviada
 
     async def _recusar_credencial(self, saida: SaidaDaConversa | None, r: Recebida, motivo: str, ok: str,
@@ -780,7 +813,20 @@ class ConversaDoCanal:
         if responde_a is not None and enviada is None and not self.repo.da_pessoa(responde_a) and texto.strip():
             return Intencao("orquestradora", texto=texto.strip())
         fato = enviada.get("fato") if enviada is not None else None
+        if enviada is None and responde_a is not None and self.anexos is not None:
+            fato = self._fato_do_anexo(responde_a)
         return rotear(texto, fato=str(fato) if fato else None)
+
+    def _fato_do_anexo(self, responde_a: str) -> str | None:
+        """O reply do dono a uma foto dele vira o fato `anexo:<id>` (a 1ª imagem GUARDADA da mensagem respondida); sem foto
+        guardada ali, nada muda e a mensagem segue a gramática comum (28.24, F3)."""
+        entrada = self.repo.entrada_da_pessoa(responde_a)
+        if entrada is None or self.anexos is None:
+            return None
+        for a in self.anexos.da_entrada(entrada):
+            if a.get("estado") == "guardado" and str(a.get("mime") or "").startswith("image/"):
+                return f"anexo:{a['id']}"
+        return None
 
     async def _agir(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
         if i.tipo == "vazia":
@@ -801,6 +847,8 @@ class ConversaDoCanal:
             await self._feita(saida, linha, i, texto, alvo=f"convidado:{i.ref}" if i.ref else None)
         elif i.tipo == "captura":
             await self._captura(saida, linha, i)
+        elif i.tipo == "ler_anexo":
+            await self._ler_anexo(saida, linha, i)
         elif i.tipo == "desconhecida":
             await self._feita(saida, linha, i, f"{i.motivo or 'Não entendi.'} /ajuda mostra os comandos.")
         elif i.tipo == "status":
@@ -843,6 +891,17 @@ class ConversaDoCanal:
         else:
             self.repo.marcar(self._id(linha), "feita", intencao=i.tipo, destino="central", alvo=alvo_do_fato,
                              resposta="captura enviada", de=("recebida", "pergunta", "executando"))
+
+    async def _ler_anexo(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
+        """A IA descreve a foto do dono (28.24, F3). Sem Executar: o gasto é pequeno e tem teto por imagem; a descrição fica
+        gravada e a segunda leitura não paga. A recusa vira uma frase ao dono (nada é gravado como lido)."""
+        alvo = f"anexo:{i.ref}"
+        try:
+            texto = await self.portas.ler_anexo(int(i.ref or 0))
+        except RecusaDaCentral as recusa:
+            await self._feita(saida, linha, i, str(recusa)[:500], alvo=alvo)
+            return
+        await self._feita(saida, linha, i, texto, alvo=alvo)
 
     def _texto_pendencias(self) -> str:
         itens = self.portas.pendencias()

@@ -33,6 +33,16 @@ class CaminhoForaDoArmazem(Exception):
     """A referência não aponta para um arquivo do armazém (fora de `data/anexos`, link, sha malformado, tipo fora da lista)."""
 
 
+class AnexoJaResolvido(Exception):
+    """A linha `pendente` já fora resolvida (guardada ou recusada) quando se tentou resolvê-la de novo: dupla resolução
+    (dois líderes lendo a mesma mensagem). Não é recusa do conteúdo; `linha` é o estado atual dela, para o chamador dizer
+    ao dono o que aconteceu em vez de perder a resposta."""
+
+    def __init__(self, linha: "Linha | None"):
+        super().__init__("o anexo pendente já foi resolvido")
+        self.linha = linha
+
+
 class AnexoRecusado(Exception):
     """O conteúdo não pode ser guardado ou enviado. `motivo` é português simples e não ecoa o conteúdo nem o nome do arquivo."""
 
@@ -92,15 +102,20 @@ class ArmazemDeAnexos:
                 " mime_declarado=NULL WHERE id=? AND estado='pendente'",
                 (sha, mime, int(tamanho), estado, motivo[:MAX_MOTIVO] if motivo else None, int(linha_id)))
             linha = self.linha(int(linha_id))
-            assert linha is not None and (cur.rowcount or 0) == 1, "o anexo pendente já foi resolvido"
+            if linha is None or (cur.rowcount or 0) != 1:
+                raise AnexoJaResolvido(linha)
             return linha
         ident = self.db.inserted_id(
             "INSERT INTO canal_anexos(canal, entrada_id, direcao, sha256, mime, bytes, estado, motivo_recusa, criado_em)"
             " VALUES (?,?,?,?,?,?,?,?,?)",
             (self.canal, entrada_id, direcao, sha, mime, int(tamanho), estado,
              motivo[:MAX_MOTIVO] if motivo else None, self._agora()))
-        linha = self.linha(int(ident))
-        assert linha is not None
+        return self._lida(int(ident))
+
+    def _lida(self, ident: int) -> Linha:
+        linha = self.linha(ident)
+        if linha is None:                                    # invariante da gravação: checada mesmo com `python -O`
+            raise RuntimeError("a linha do anexo gravada não foi encontrada")
         return linha
 
     def pendente(self, ref: str, *, entrada_id: int, mime_declarado: str | None, tamanho: int) -> Linha:
@@ -111,9 +126,7 @@ class ArmazemDeAnexos:
             " VALUES (?,?,?,?,?,?,?,?)",
             (self.canal, entrada_id, "entrada", int(tamanho), "pendente", self._agora(), ref,
              mime_declarado if mime_declarado in EXTENSAO else None))
-        linha = self.linha(int(ident))
-        assert linha is not None
-        return linha
+        return self._lida(int(ident))
 
     def a_retomar(self, idade_s: float, limite: int = 20) -> list[Linha]:
         """Os `pendente` mais velhos que `idade_s`: a Central caiu entre gravar a mensagem e baixar o anexo."""
@@ -159,8 +172,16 @@ class ArmazemDeAnexos:
             raise AnexoRecusado("Não consegui guardar o arquivo na Central (erro de disco).") from None
         if not novo:
             log.info("anexos: conteúdo repetido; o arquivo existente é reaproveitado")
-        return self._inserir(entrada_id=entrada_id, direcao=direcao, estado="guardado", sha=sha, mime=detectado,
-                             tamanho=len(conteudo), motivo=None, linha_id=linha_id)
+        linha = self._inserir(entrada_id=entrada_id, direcao=direcao, estado="guardado", sha=sha, mime=detectado,
+                              tamanho=len(conteudo), motivo=None, linha_id=linha_id)
+        if not novo:
+            # O arquivo existia quando olhei, mas a faxina (28.16) pode tê-lo tirado do lugar entre aquela conferência e a
+            # gravação desta linha. Com a linha já gravada ela o deixaria; se ele não está lá, grava de novo.
+            try:
+                _gravar_atomico(destino, conteudo)
+            except OSError as exc:
+                log.error("anexos: a linha %s ficou sem arquivo (%s)", linha.get("id"), type(exc).__name__)
+        return linha
 
     # ------------------------------------------------------------------ leitura
     def linha(self, ident: int) -> Linha | None:
@@ -262,7 +283,12 @@ class ArmazemDeAnexos:
         mime = detectar_mime(dados)
         if mime is None or mime not in tipos:
             raise AnexoRecusado("O conteúdo não é um tipo que a Central envia.")
-        return dados, mime, hashlib.sha256(dados).hexdigest()
+        sha = hashlib.sha256(dados).hexdigest()
+        # O nome É o sha256 do conteúdo (`<sha>.<ext>`): um `.tmp` que sobrou de `_gravar_atomico`, um arquivo que o
+        # operador largou na pasta ou um conteúdo que mudou depois de guardado não saem por um canal.
+        if caminho.name != f"{sha}.{EXTENSAO[mime]}":
+            raise AnexoRecusado("O arquivo não é o conteúdo que o nome diz; não envio.")
+        return dados, mime, sha
 
     def registrar_saida(self, sha: str, mime: str, tamanho: int, *, entrada_id: int | None = None) -> Linha:
         """A linha do que a Central mandou (a referência por id ou sha256 não grava de novo o arquivo)."""

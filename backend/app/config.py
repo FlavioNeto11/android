@@ -1190,6 +1190,17 @@ class ConvidadosDoTelegramCfg(BaseModel):
     novos_por_hora: int = Field(20, ge=1, le=500)           # chats novos atendidos por hora; o excesso fica sem resposta
 
 
+class LeituraDeAnexoCfg(BaseModel):
+    """A IA lê a imagem que o DONO mandou (item 28.24, fatia F3; C-22). Só imagem de entrada do dono, uma chamada por imagem
+    (a descrição fica gravada e a segunda leitura não paga), com teto em dólar ESTIMADO antes de chamar: acima dele, nada
+    é enviado ao provedor. `modelo` vazio = o mais barato de `ai.prices` que `ai.models` declara com visão."""
+
+    enabled: bool = True
+    teto_usd: float = Field(0.05, gt=0, le=5)
+    modelo: str = ""
+    max_tokens: int = Field(400, ge=50, le=2000)
+
+
 class AnexosDaEntradaCfg(BaseModel):
     """Anexos dos canais (item 28.24, F1; regra do dono em `docs/dominios/canais.md` §6). Só o chat do dono tem anexo
     baixado, e só os tipos da lista: o mime é conferido pelo CONTEÚDO (assinatura), nunca só pelo que o remetente
@@ -1200,6 +1211,7 @@ class AnexosDaEntradaCfg(BaseModel):
     max_bytes: int = Field(10 * 1024 * 1024, ge=1024, le=20_000_000)
     tipos: list[Literal["image/jpeg", "image/png", "image/webp", "application/pdf", "text/plain"]] = Field(
         default_factory=lambda: ["image/jpeg", "image/png", "image/webp", "application/pdf", "text/plain"])
+    leitura: LeituraDeAnexoCfg = LeituraDeAnexoCfg()
 
 
 class EntradaDoTelegramCfg(BaseModel):

@@ -51,8 +51,9 @@ class AnexoNaoPodeIrAoCartao(Exception):
         self.codigo, self.motivo, self.status = codigo, motivo, status
 
 
-def conferir_origem(db: Database, anexo: dict[str, object] | None) -> dict[str, object]:
-    """O anexo só serve se foi o DONO quem mandou. Devolve a linha; senão levanta `AnexoNaoPodeIrAoCartao`."""
+def conferir_origem(db: Database, anexo: dict[str, object] | None, *, acao: str = "ir ao cartão") -> dict[str, object]:
+    """O anexo só serve se foi o DONO quem mandou. Devolve a linha; senão levanta `AnexoNaoPodeIrAoCartao`. `acao` é o
+    que a pessoa pediu, para a mensagem (a leitura pela IA, F3, usa a mesma conferência: "ser lida pela IA")."""
     if anexo is None:
         raise AnexoNaoPodeIrAoCartao("anexo_desconhecido", "Não há anexo com esse id.", 404)
     entrada = None
@@ -60,7 +61,7 @@ def conferir_origem(db: Database, anexo: dict[str, object] | None) -> dict[str, 
         entrada = db.one("SELECT do_dono, tipo FROM canal_entradas WHERE id=? AND canal=?",
                          (int(str(anexo["entrada_id"])), anexo.get("canal")))
     if anexo.get("direcao") != "entrada" or entrada is None or int(entrada["do_dono"]) != 1 or entrada["tipo"] != "mensagem":
-        raise AnexoNaoPodeIrAoCartao("anexo_nao_permitido", "Só a imagem que o dono mandou pelo canal pode ir ao cartão.")
+        raise AnexoNaoPodeIrAoCartao("anexo_nao_permitido", f"Só a imagem que o dono mandou pelo canal pode {acao}.")
     if anexo.get("estado") != "guardado":
         raise AnexoNaoPodeIrAoCartao("anexo_sem_arquivo", "Este anexo não tem arquivo guardado (recusado ou apagado).")
     return anexo

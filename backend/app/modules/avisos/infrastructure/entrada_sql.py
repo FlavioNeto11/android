@@ -191,6 +191,13 @@ class EntradasDoCanal:
             "SELECT 1 AS x FROM canal_entradas WHERE canal=? AND ref_mensagem=? AND tipo='mensagem' AND do_dono=1",
             (self.canal, ref_mensagem)) is not None
 
+    def entrada_da_pessoa(self, ref_mensagem: str) -> int | None:
+        """O id da `canal_entradas` da mensagem que a PESSOA (o dono) mandou, ou None: o reply a uma foto dela acha o anexo."""
+        r = self.db.one(
+            "SELECT id FROM canal_entradas WHERE canal=? AND ref_mensagem=? AND tipo='mensagem' AND do_dono=1"
+            " ORDER BY id LIMIT 1", (self.canal, ref_mensagem))
+        return int(r["id"]) if r is not None else None
+
     def ajuda_ja_enviada(self) -> bool:
         return self.db.one("SELECT 1 AS x FROM canal_enviadas WHERE canal=? AND origem='ajuda' LIMIT 1",
                            (self.canal,)) is not None
