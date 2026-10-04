@@ -5946,8 +5946,8 @@ Sem rota HTTP nova. A conversa do Telegram usa os MESMOS serviços das rotas do 
   - Vencida (`avisos.entrada.ttl_previa_s` da linha ou `validade_ate` da porta): `RunService.cancel`.
 - `c:<id>` na fase da porta também cancela a execução `planned`.
 - Item aprovável pelo canal: selo `aprovacao` com `chave`, texto que `privacidade.texto_livre` não mudaria (até 3000
-  caracteres) e, se `tem_imagem`, bytes cujo sha256 bate com `imagem_sha256`. O resto pede o dono no painel ou na
-  execução.
+  caracteres), bloco que cabe inteiro numa mensagem (3800) e, se `tem_imagem`, bytes cujo sha256 bate com
+  `imagem_sha256`. Só a imagem desses itens é enviada. O resto pede o dono no painel ou na execução.
 - **Prova:** `simulated`. `backend/tests/test_telegram_entrada.py` (a conversa, com o falso),
   `backend/tests/test_telegram_portas.py` (as portas reais no harness) e `backend/tests/test_avisos_porta.py` (domínio).
   `not_run`: o Telegram real e um plano real com item que pede o sim.

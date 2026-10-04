@@ -484,8 +484,9 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   - O "Executar (aprova N)" manda exatamente os pares `(etapa, chave)` que o dono viu, gravados na linha. Se o plano
     mudou (409 `plano_mudou`), nada é gravado e sai a prévia nova. Prévia vencida (o TTL da prévia ou a validade da
     porta) cancela a execução `planned`, e o Cancelar também.
-  - P1: item que o dono não veria por inteiro (texto com nome de persona, contato ou segredo, texto longo, imagem que
-    não confere) fica FORA do sim pelo canal. Ele pede o dono no painel ou na execução, e a prévia diz quantos são.
+  - P1: item que o dono não veria por inteiro (texto com nome de persona, contato ou segredo, texto longo, bloco que não
+    cabe inteiro numa mensagem, imagem que não confere) fica FORA do sim pelo canal. Ele pede o dono no painel ou na
+    execução, e a prévia diz quantos são. A imagem só sai para o item que fica no sim pelo canal.
   - Desafio, 2FA e CAPTCHA seguem com a pessoa na execução (ADR-009); a prévia lembra disso no rodapé.
   - Texto puro (R2): o adaptador não usa `parse_mode`, e o texto do item chega como é.
   - A porta ilegível não trava o pedido: a execução inicia e a porta decide no despacho, como antes do 28.27.

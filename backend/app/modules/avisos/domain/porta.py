@@ -59,7 +59,7 @@ def ler_porta(previa: Mapping[str, object], nomes: Iterable[str], redigir: Redig
     aprovar: list[tuple[str, str]] = []
     fora: list[str] = []
     na_execucao = 0
-    for item in itens_da_previa(previa):
+    for numero, item in enumerate(itens_da_previa(previa), 1):
         selo, chave, sid = item.get("selo"), item.get("chave"), str(item.get("step_id") or "")
         if selo == NA_EXECUCAO:
             na_execucao += 1
@@ -69,8 +69,11 @@ def ler_porta(previa: Mapping[str, object], nomes: Iterable[str], redigir: Redig
         texto = item.get("texto")
         mostravel = not isinstance(texto, str) or not texto.strip() or (
             len(texto) <= TEXTO_MAX_NO_CANAL and texto_mostravel(texto, nomes, redigir))
-        imagem_ok = not item.get("tem_imagem") or imagem_conferida(item)
-        if isinstance(chave, str) and chave and sid and mostravel and imagem_ok:
+        # O bloco inteiro tem de caber numa mensagem: cortado com "…", o dono não leria tudo o que aprova (revisão do
+        # 28.27, B). A imagem só é conferida (e só sai) para o item que fica no sim pelo canal (A).
+        cabe = mostravel and len(_bloco(numero, item, False, nomes, redigir)) <= LIMITE
+        imagem_ok = cabe and (not item.get("tem_imagem") or imagem_conferida(item))
+        if isinstance(chave, str) and chave and sid and imagem_ok:
             aprovar.append((sid, chave))
         else:
             fora.append(sid)
@@ -97,7 +100,8 @@ def linha_sem_aprovacao(curta: str, leitura: LeituraDaPorta) -> str:
 def _bloco(n: int, item: Mapping[str, object], fora: bool, nomes: list[str], redigir: Redigir) -> str:
     emoji, leitura = SELOS.get(str(item.get("selo")), ("•", str(item.get("selo") or "")))
     titulo = texto_livre(str(item.get("titulo") or item.get("acao") or "etapa"), nomes, redigir).strip()
-    onde = f" · {item['aparelho']}" if item.get("aparelho") else ""
+    aparelho = texto_livre(str(item.get("aparelho") or ""), nomes, redigir).strip()
+    onde = f" · {aparelho}" if aparelho else ""
     linhas = [f"{n}. {emoji} {titulo}{onde}: {FORA_DO_CANAL if fora else leitura}"]
     motivo = texto_livre(str(item.get("motivo") or ""), nomes, redigir).strip()
     if motivo:
@@ -109,7 +113,9 @@ def _bloco(n: int, item: Mapping[str, object], fora: bool, nomes: list[str], red
     if item.get("texto_na_execucao"):
         linhas.append("   O texto é escrito na execução.")
     if item.get("tem_imagem"):
-        linhas.append(f"   Imagem: segue abaixo, como \"item {n}\"." if not fora else "   Imagem: no painel.")
+        # Só a imagem do item que pede o sim pelo canal é enviada (conferida pelo sha256); a dos outros fica no painel.
+        enviada = not fora and item.get("selo") == APROVACAO
+        linhas.append(f"   Imagem: segue abaixo, como \"item {n}\"." if enviada else "   Imagem: no painel.")
     if item.get("selo") == "adiado" and _hora(item.get("retry_at")):
         linhas.append(f"   Segue a partir de {_hora(item.get('retry_at'))}.")
     return "\n".join(linhas)

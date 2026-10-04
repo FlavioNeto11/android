@@ -749,3 +749,45 @@ async def test_imagem_conferida_vai_ao_dono_e_a_diferente_fica_fora(c: Cenario, 
     await _executar(c)
     assert json.loads(str(c.linha(5)["previa"]))["aprovar"] == [["s1", f"{'s1':0<64}"]]
     assert enviadas == [(imagem, "item 1")]
+
+
+async def test_imagem_de_item_fora_do_canal_nao_sai(c: Cenario, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisão do 28.27 (A): o item cujo texto os filtros mudariam fica fora do sim, e a imagem dele também não sai."""
+    import hashlib
+
+    enviadas: list[bytes] = []
+
+    async def enviar(saida: object, conteudo: bytes, legenda: str = "", **kw: object) -> str:
+        enviadas.append(conteudo)
+        return "999"
+
+    monkeypatch.setattr(c.servico.conversa, "enviar_conteudo", enviar)
+    c.portas.personas = ["Bruno Lima"]
+    imagem = b"imagem do item fora"
+    c.portas.imagens = {"s1": (imagem, "application/octet-stream")}
+    c.portas.previa_da_porta = _porta(
+        _item("s1", texto="oi, Bruno Lima", tem_imagem=True, imagem_sha256=hashlib.sha256(imagem).hexdigest()),
+        _item("s2"))
+    await _executar(c)
+    assert json.loads(str(c.linha(5)["previa"]))["aprovar"] == [["s2", f"{'s2':0<64}"]]
+    assert enviadas == [] and "Imagem: no painel." in "\n".join(c.bot.textos())
+
+
+async def test_item_cujo_bloco_nao_cabe_inteiro_fica_fora_do_sim(c: Cenario) -> None:
+    """Revisão do 28.27 (B): cortado com "…", o dono não leria tudo o que aprova."""
+    c.portas.previa_da_porta = _porta(_item("s1", motivo="m" * 3790), _item("s2"))
+    await _executar(c)
+    assert json.loads(str(c.linha(5)["previa"]))["aprovar"] == [["s2", f"{'s2':0<64}"]]
+
+
+async def test_erro_interno_ao_iniciar_sem_sim_pendente_nao_fica_em_laco(c: Cenario,
+                                                                       monkeypatch: pytest.MonkeyPatch) -> None:
+    def quebra(run_id: str, aprovar: list[tuple[str, str]]) -> dict[str, object]:
+        raise RuntimeError("banco fora")
+
+    monkeypatch.setattr(c.portas, "aprovar_plano", quebra)
+    await _executar(c)
+    assert c.linha(5)["estado"] == "falhou"
+    assert c.bot.textos()[-1] == "Não iniciei a execução: erro interno (está no log da Central)."
+    await c.volta()
+    assert c.linha(5)["estado"] == "falhou"

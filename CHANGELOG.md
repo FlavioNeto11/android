@@ -28,13 +28,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     pendente, e a imagem conferida pelo sha256), com "Executar (aprova N)" e "Cancelar".
 - O segundo toque manda exatamente os pares `(etapa, chave)` que o dono viu. Plano mudado (409): nada gravado, prévia
   nova. Vencida: cancela a execução `planned`. Porta ilegível: inicia e a porta decide no despacho.
-- P1: item cujo texto os filtros mudariam, longo demais ou com imagem que não confere fica fora do sim pelo canal.
+- P1: item cujo texto os filtros mudariam, longo demais, cujo bloco não cabe inteiro numa mensagem ou com imagem que não
+  confere fica fora do sim pelo canal, e a imagem dele não sai (revisão de segredos, achados A e B). O aparelho passa
+  pelo filtro, e o erro interno ao iniciar sem sim pendente marca a linha como falha em vez de repetir a cada volta.
 - `mensagem.partes_da_aprovacao` passa a montar as linhas de alvo e texto da aprovação pendente e da porta (a mesma
   regra), e `mensagem.texto_mostravel` diz se o texto sai inteiro.
 - Regra C-26 em `docs/dominios/canais.md`.
 - Prova `simulated`:
   - 420 passed em todos os `test_avisos_*`, `test_telegram_*` e `test_canais_anexos*`, em série e em Idle;
-  - os novos: 10 na conversa (`test_telegram_entrada.py`, com o falso da porta), 2 nas portas reais no harness
+  - os novos: 13 na conversa (`test_telegram_entrada.py`, com o falso da porta), 2 nas portas reais no harness
     (`test_telegram_portas.py`) e 5 no domínio (`test_avisos_porta.py`).
 - `not_run`: o Telegram real e um plano real com item que pede o sim.
 

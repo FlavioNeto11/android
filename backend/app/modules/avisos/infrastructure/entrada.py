@@ -1304,6 +1304,12 @@ class ConversaDoCanal:
                 self.repo.marcar(oid, "feita", run_id=run_id, de=de)
                 await self._responder(saida, linha, f"Não iniciei a execução {curta}: {self._redigir(str(recusa))[:300]}")
                 return
+            except Exception:
+                # Sem isto a linha ficaria em `executando` e o vigia tentaria de novo a cada volta, para sempre.
+                log.exception("telegram: iniciar o plano da execução %s", run_id)
+                self.repo.marcar(oid, "falhou", erro="erro interno ao iniciar o plano", de=de)
+                await self._responder(saida, linha, "Não iniciei a execução: erro interno (está no log da Central).")
+                return
             await self._feita(saida, linha, i, linha_sem_aprovacao(curta, leitura), run_id=run_id)
             return
         retrato = {**_json(linha.get("previa")), "fase": FASE_PORTA, "run_id": run_id, "curta": curta,
@@ -1317,8 +1323,10 @@ class ConversaDoCanal:
         for k, texto in enumerate(mensagens, 1):
             botoes = [(f"Executar (aprova {n})", f"p:{oid}"), ("Cancelar", f"c:{oid}")] if k == len(mensagens) else None
             await self._responder(saida, linha, texto, origem="previa", botoes=botoes)
+        no_sim = {sid for sid, _ in leitura.aprovar}
         for numero, item in enumerate(itens_da_previa(previa_da_porta), 1):
-            imagem = imagens.get(str(item.get("step_id")))
+            sid = str(item.get("step_id"))
+            imagem = imagens.get(sid) if sid in no_sim else None     # só a do item que o dono aprova por aqui
             if imagem is None:
                 continue
             try:
