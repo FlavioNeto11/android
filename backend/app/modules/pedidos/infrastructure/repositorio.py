@@ -144,7 +144,7 @@ class RepositorioDePedidos:
     def gatilhos_dinamicos_ativos(self, tipo: str) -> list[Row]:
         """Os gatilhos `tipo` ativos de pedidos `ativo`, com o que o laço precisa do pedido (o passo 4 do §7.2)."""
         return self.db.query(
-            "SELECT g.*, p.versao AS pedido_versao, p.autonomia AS pedido_autonomia, p.papel AS pedido_papel,"
+            "SELECT g.*, p.versao AS pedido_versao, p.autonomia AS pedido_autonomia, p.papel AS pedido_papel, p.pai_id AS pedido_pai_id,"
             " p.fim_em AS pedido_fim_em,"
             " p.max_ocorrencias AS pedido_max_ocorrencias FROM pedido_gatilhos g JOIN pedidos p ON p.id = g.pedido_id"
             " WHERE g.tipo=? AND g.ativo=1 AND p.estado='ativo' ORDER BY p.criado_em, g.criado_em, g.id", (tipo,))
@@ -407,6 +407,12 @@ class RepositorioDePedidos:
     def filhos(self, pai_id: str) -> list[Row]:
         """Os filhos diretos, na ordem em que nasceram (`id` desempata o mesmo instante)."""
         return self.db.query("SELECT * FROM pedidos WHERE pai_id=? ORDER BY criado_em, id", (pai_id,))
+
+    def familia_tem_porta_voz(self, raiz_id: str) -> bool:
+        """A família (a raiz e os filhos diretos: a profundidade máxima é 2) tem um porta-voz? (28.10 F5) Só o papel é lido,
+        nunca o título nem o objetivo. O cancelado não conta (nunca agirá); o concluído sim: o papel continua ocupado."""
+        return self.db.scalar("SELECT 1 FROM pedidos WHERE papel='porta_voz' AND estado<>'cancelado'"
+                              " AND (id=? OR pai_id=?) LIMIT 1", (raiz_id, raiz_id)) is not None
 
     def descendentes(self, pai_id: str) -> list[Row]:
         """Todos os descendentes (filhos, netos...), do mais perto ao mais longe. Anda por `pai_id` com um conjunto de

@@ -60,6 +60,10 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
 **C-04 · Ao dono, só pergunta de sim ou não.**
 - **Origem:** dono, 03/10 18:15Z.
 - **Regra:** ao dono vai só pergunta de sim ou não, e só do que é dele. Uma pergunta por mensagem ou por comentário.
+- **Endurecimento possível, não adotado (o dono pediu menos atrito):** pedir uma confirmação a mais quando o "sim" é reply a um
+  aviso de aprovação ANTIGO, ou quando já saiu outro aviso da mesma aprovação (o "sim" poderia valer para a versão
+  anterior). Hoje o "sim" em reply a qualquer aviso da aprovação a decide. Fica anotado para o caso de um "sim" decidir o que
+  não devia (achado (b) da orquestradora, 04/10).
 
 **C-05 · Nunca parada.**
 - **Origem:** dono, 03/10 18:15Z.
@@ -188,6 +192,30 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
     continuam no chat.
   - Pedido do dono é registrado, respondido no cartão e repassado à orquestradora entre aspas. Quem executa a
     decisão que mexe no mundo real é ela.
+- **Pergunta ao bot e o repasse (28.28, depois das entradas 889 e 891 de 04/10):**
+  - Uma pergunta solta do dono vai à orquestradora, e o dono ouve "Recebi sua pergunta: a resposta vem por
+    aqui, em resposta a esta mensagem", sem prometer prazo, porque a resposta depende de alguém ler o repasse. É pergunta a frase que termina em "?" ou começa por porque, o que, quando, como, quanto, cadê, qual,
+    onde, quem, tem como, já, está ou existe. Se a frase cita aparelho (`android-NN`), `@` ou "persona", ela é pedido e
+    vai para a prévia.
+  - Um reply a uma resposta nossa que veio de um repasse (ou de uma falha) continua a mesma conversa. O texto de antes
+    e o novo vão juntos (`previa.texto` da linha) e não viram pedido novo.
+  - Texto livre que a prévia recusa (quase sempre por falta de destino) também vai à orquestradora. O dono ouve as
+    duas saídas: se é pergunta, já foi repassada; se é pedido, ele manda de novo com o aparelho. A falha muda e o
+    texto do extrator do painel ("Diga onde ou por quem") não saem mais.
+  - Na dúvida entre pergunta e pedido, repassar (orquestradora, 04/10).
+  - **O caminho inteiro:**
+    1. A linha fica com `estado='orquestradora'` e `previa={repasse, texto}` em `canal_entradas`.
+    2. A Canais lê a caixa a cada etapa e manda o texto literal à orquestradora.
+    3. A orquestradora responde, e a Canais entrega a resposta em reply à mensagem do dono
+       (`telegram_status.py --reply-to <ref_mensagem>`).
+  - Quem responde a pergunta repassada é a orquestradora. A Canais entrega o texto dela, sem escrever uma resposta
+    própria. Na 889, as duas responderam e o dono recebeu duas respostas (04/10).
+- **Nome de persona nunca sai pelo canal (C-02, 28.28):**
+  - Todo texto que a conversa manda passa por `sem_nome_de_persona`. Ele troca o nome de exibição, o primeiro e o último
+    nome e o @ das personas cadastradas por `<persona>`, por palavra inteira e sem diferença de maiúscula ou acento.
+  - "ANA" é poupada, porque é o nome da IA.
+  - O filtro existe porque as recusas e as perguntas da prévia vêm de texto compartilhado com o painel, onde o exemplo
+    do extrator trazia um nome.
 
 **C-13 · Aprovar pelo Trello nunca aprova; vetar veta.**
 - **Origem:** orquestradora 03/10 21:28Z.
@@ -199,6 +227,17 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   - O comando livre fica desligado de fábrica. Ligado, só mostra a prévia, sem executar.
 - **No produto:** 32.2, trello-integracao §3 e §7; `trello.comando_livre: false`.
 - **Prova:** `simulated`.
+- **Aprovar pelo Telegram (conferido na revisão independente do deploy 29, 04/10, e no 28.26):**
+  - "sim" ou "não" só decidem o item do aviso a que respondem. Um "sim" solto vira texto livre: prévia e Executar.
+  - Uma aprovação expirada ou já decidida não é aprovada, porque a decisão só passa com o status `pending`, na mesma
+    transação. Um id que serve para mais de um item é recusado.
+  - `/aprovar <id>` ou `/vetar <id>` em reply a um aviso (28.26): se o id é de OUTRA pendência, nada se decide e a
+    resposta diz qual é qual. Se é o mesmo item, a decisão segue e o id sai da nota. Uma palavra que não é id de
+    pendência é só nota, como antes. Código: `ref_digitado` em `application/entrada.py` e a conferência em `_decidir`.
+  - A conferência vale contra a aprovação em QUALQUER estado (`ids_de_aprovacoes`: já decidida ou vencida) e contra a
+    execução esperando resposta, e não só contra as pendentes. Um pedaço de 1 a 3 caracteres com dígito ("a1f") é id
+    incompleto: nada se decide, e a resposta pede 4 ou mais caracteres. "ok" e "sim" seguem como nota (revisão da
+    fila da suíte 31, 04/10).
 
 **C-14 · Cartão novo do dono.**
 - **Origem:** dono 03/10 ~20:10Z.
@@ -303,14 +342,41 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
     em português simples para reenviar e a linha fica com o motivo: nenhuma falha de anexo fica calada.
   - O TEXTO de mensagem e de cartão que acompanha o anexo segue sem nome de persona, conta, e-mail, telefone ou IP. As
     exceções são só do arquivo, e só ao chat do dono (a) e ao cartão que o dono pediu (b).
-  - A leitura do conteúdo da imagem pela IA é chamada paga: só quando o dono pede, com teto por mensagem e custo
-    registrado (F2; a F1 só guarda e referencia).
+  - **A IA lê a imagem do dono (F3, 04/10):** é chamada paga, então só quando o dono pede: `/ler` (ou "leia", "o que tem nessa
+    imagem") em reply à foto dele no Telegram, ou `POST /api/canais/anexos/{id}/ler` com confirmação. Só anexo de ENTRADA do
+    dono e só imagem (JPEG, PNG, WEBP; o GIF nem é guardado). O custo é estimado ANTES (imagem no teto de tokens da API, preço
+    do modelo e `max_tokens` inteiro) e acima de `avisos.entrada.anexos.leitura.teto_usd` (US$ 0,05 por imagem) nada é
+    enviado. O modelo é o mais barato com visão de `ai.prices` (hoje o Haiku; uma imagem 720x1280 custa ~US$ 0,003). A
+    descrição fica na linha do anexo (migração 103): a segunda leitura devolve o texto sem custo e sem chamada. A descrição
+    passa pelo MESMO redator de credencial dos avisos e da conversa, ao gravar e ao devolver; o custo (tokens x `ai.prices`)
+    entra em `ai_calls` com `origem='canais'` e o gasto é conferido no hub antes. Falha da IA vira uma frase ao dono e nada é
+    gravado como lido. Não pede Executar: a resposta é só texto, nada é executado.
+  - A tela Anexos (aba de Canais no painel, F4) lista o que passou pelos canais, só para quem tem o login do painel: miniatura
+    de imagem, ícone de PDF, canal, sentido, data e tamanho, sem nome de remetente nem caminho de disco. Só imagem e PDF têm
+    prévia (o texto guardado e o anexo de convidado não saem por `/conteudo`), o arquivo sai como download com
+    `Cache-Control: no-store`, e "Anexar ao cartão" é a rota da exceção (b) com o id do cartão e a confirmação na própria linha.
 - **Hoje:** nada na operação provisória.
 - **No produto:** item 28.24 (`modules/avisos/`: `domain/anexos.py`, `infrastructure/anexos.py`, `anexos_trello.py`, o
   adaptador do Telegram, `GET /api/canais/anexos/{id}`, `POST /api/canais/anexos/{id}/trello`, `devices/captura_pontual.py`,
-  migração 101). Falta: a leitura pela IA (teto por imagem) e a tela do painel.
-- **Prova:** `simulated` (`backend/tests/test_canais_anexos.py`, `test_canais_anexos_trello.py`, `test_canais_captura.py`);
+  migrações 101 e 103, `infrastructure/anexos_leitura.py`, `POST /api/canais/anexos/{id}/ler`; `GET /api/canais/anexos` e a
+  aba Anexos, `frontend/src/features/canais/AnexosTab.tsx`). Falta: o botão "Ler" na aba Anexos (a F3 só tem a rota e o
+  Telegram) e a prova `real` da leitura (uma chamada paga, `not_run`).
+- **Prova:** `simulated` (`backend/tests/test_canais_anexos.py`, `test_canais_anexos_trello.py`, `test_canais_captura.py`, `test_canais_leitura_anexo.py`, `test_canais_script_status.py`);
   `not_run` com o bot, o Trello, o aparelho e o disco reais.
+
+**C-23 · O que a plataforma decidiu sozinha: um resumo, nunca um aviso por decisão.**
+- **Origem:** dono, 04/10 (pedido 30.55: decidir sozinha o que hoje espera a aprovação dele); item 28.25.
+- **Regra:**
+  - Cada decisão automática fica no registro `decisoes_automaticas`, com a regra que decidiu, e o dono vê todas na aba
+    "Decidido sozinho" de Pendências, com o desfazer dentro de `avisos.decisoes_automaticas.desfazer_dias` (7).
+  - No Telegram sai **no máximo UMA mensagem por janela** (`janela_min`, 60) e só quando houve decisão nova nela.
+  - O texto é a contagem por regra em português simples ("3 perguntas sem resposta havia 24 h foram encerradas") e o
+    link `#/pendencias?aba=decididas`. Frases fixas no código: a string da regra, o nome de persona, conta, e-mail,
+    telefone, IP e o texto de comando não entram. O corpo passa pelo redator dos avisos.
+  - Decisão já desfeita, ou mais velha que `avisos.validade_h`, não conta.
+- **Hoje:** `modules/decisoes/` (adaptador, resumo e desfazer); o aviso é do tipo `decisoes.resumo` e sai pela fila de avisos
+  (28.11), no líder da trava `avisos`.
+- **No produto:** a janela sobrevive a reinício (`decisoes_automaticas_estado`).
 
 ## 7. Arquivos locais (fora do Git) e o que guardam
 

@@ -5,7 +5,8 @@ retroativo. Daqui em diante quem fecha a tentativa grava o tipo no vocabulário 
 
 - `repository.finish_attempt` classifica o erro FINAL — o que o `COALESCE` deixa gravado: o texto novo ou, sem ele, o
   que `note_attempt` (ou a reconciliação) já tinha anotado na tentativa;
-- `scheduler._reconciliar` grava `interrompida`, qualquer que seja o texto guardado;
+- `scheduler._reconciliar` (e a pausa, e a tomada) grava `interrompida`, qualquer que seja o texto guardado; a
+  tentativa interrompida que esperou a pessoa grava a razão pelo texto (29.74);
 - a etapa grava o tipo do SEU desfecho final (`failed`, `uncertain`, `waiting_user`) e o apaga quando sai dele
   (confirmada à mão, comprovada depois): o tipo nunca sobra numa etapa que terminou bem.
 """
@@ -72,11 +73,17 @@ async def test_finish_attempt_grava_o_tipo_do_erro_final_depois_do_coalesce(harn
                         error="O efeito foi disparado, mas não foi possível comprovar o resultado pela tela.")
     assert _tipo(harness, a4) == F.EFEITO_NAO_COMPROVADO.value
 
-    # 5) interrompida: o status decide antes do texto (o texto guardado pode ser o erro anterior da tentativa)
+    # 5) interrompida que esperou a pessoa (29.74): o texto é a razão da parada e decide
     a5 = _nova_tentativa(harness, etapa, 5)
     repo.finish_attempt(a5, AttemptStatus.interrupted, error="O app pede autenticação (senha).",
                         recovery="Aguardando o usuário")
-    assert _tipo(harness, a5) == F.INTERROMPIDA.value
+    assert _tipo(harness, a5) == F.AUTENTICACAO.value
+
+    # 5b) interrompida pela pausa: o status decide antes do texto (o texto guardado pode ser o erro anterior)
+    a5b = _nova_tentativa(harness, etapa, 7)
+    repo.note_attempt(a5b, error="O app pede autenticação (senha).")
+    repo.finish_attempt(a5b, AttemptStatus.interrupted, recovery="Pausado pelo usuário num ponto seguro")
+    assert _tipo(harness, a5b) == F.INTERROMPIDA.value
 
     # 6) cancelada é decisão, não defeito
     a6 = _nova_tentativa(harness, etapa, 6)
@@ -84,10 +91,11 @@ async def test_finish_attempt_grava_o_tipo_do_erro_final_depois_do_coalesce(harn
     assert _tipo(harness, a6) is None
 
     # o mesmo classificador puro da leitura retroativa: gravado e retroativo nunca discordam
-    for tentativa in (a1, a2, a4, a5):
-        linha = harness.state.db.one("SELECT error, status, failure_kind FROM attempts WHERE id=?", (tentativa,))
+    for tentativa in (a1, a2, a4, a5, a5b):
+        linha = harness.state.db.one("SELECT error, status, failure_kind, recovery FROM attempts WHERE id=?",
+                                     (tentativa,))
         assert linha is not None
-        assert classificar_falha(linha["error"], linha["status"]) == FailureKind(linha["failure_kind"])
+        assert classificar_falha(linha["error"], linha["status"], recovery=linha["recovery"]) ==             FailureKind(linha["failure_kind"])
 
 
 async def test_reconciliar_grava_interrompida_mesmo_com_erro_anotado(harness: Harness) -> None:
@@ -124,7 +132,7 @@ async def test_a_etapa_grava_o_tipo_do_desfecho_final_e_o_apaga_ao_sair_dele(har
     assert st.db.scalar("SELECT COUNT(*) FROM attempts a JOIN steps s ON s.id=a.step_id WHERE s.run_id=?"
                         " AND s.instance_id='android-01' AND a.failure_kind IS NOT NULL", (run.id,)) == 0
 
-    # parada esperando a pessoa: a etapa diz POR QUÊ (autenticação); a tentativa, que foi interrompida, diz isso
+    # parada esperando a pessoa: a etapa diz POR QUÊ (autenticação), e a tentativa interrompida também (29.74)
     parada = st.db.one("SELECT id, status, status_detail, failure_kind FROM steps WHERE run_id=?"
                        " AND instance_id='android-02' AND status='waiting_user'", (run.id,))
     assert parada is not None
@@ -133,7 +141,7 @@ async def test_a_etapa_grava_o_tipo_do_desfecho_final_e_o_apaga_ao_sair_dele(har
     tentativa = st.db.one("SELECT status, failure_kind FROM attempts WHERE step_id=? ORDER BY number DESC LIMIT 1",
                           (parada["id"],))
     assert tentativa is not None
-    assert (tentativa["status"], tentativa["failure_kind"]) == ("interrupted", F.INTERROMPIDA.value)
+    assert (tentativa["status"], tentativa["failure_kind"]) == ("interrupted", F.AUTENTICACAO.value)
 
     # a pessoa confirma à mão: a etapa sai do desfecho de falha e o tipo não sobra nela
     st.runs.resolve(run.id, by["android-02"].id, ResolveBody(resolution="confirm_done", note="loguei e abri"))

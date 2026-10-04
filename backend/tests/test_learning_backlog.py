@@ -810,15 +810,39 @@ def test_propostas_de_acao_licao_e_tela(mundo: Mundo) -> None:
     _item(db, "li-tela-conflito", "tela", "published", dias_no_estado=8, contra=1)
     rel = mundo.falhas.relatorio(dias=14)
     propostas = {(p.proposta.tipo, p.proposta.ref) for p in rel.propostas}
-    assert propostas == {(TipoDeProposta.ACAO_DE_CATALOGO, f"{PACOTE}|th-rolar"),
+    assert propostas == {(TipoDeProposta.ACAO_DE_CATALOGO, f"{PACOTE}|etapa:rolar_feed"),
                          (TipoDeProposta.PROMOVER_LICAO, "li-ajuda"), (TipoDeProposta.PROMOVER_TELA, "li-tela")}
     acao = next(p.proposta for p in rel.propostas if p.proposta.tipo is TipoDeProposta.ACAO_DE_CATALOGO)
     assert "th-rolar" in acao.fragmento and "rolar_feed" in acao.fragmento and "3 execuções" in acao.detalhe
     mundo.falhas.executar(AGORA)
     gravadas = {r["cluster_key"] for r in db.query("SELECT cluster_key FROM learning_backlog WHERE category='proposta'")}
-    assert gravadas == {f"acao_de_catalogo|{PACOTE}|th-rolar", "promover_licao|li-ajuda", "promover_tela|li-tela"}
+    assert gravadas == {f"acao_de_catalogo|{PACOTE}|etapa:rolar_feed", "promover_licao|li-ajuda",
+                       "promover_tela|li-tela"}
     assert mundo.falhas.executar(AGORA) >= 0                                             # idempotente
     assert db.scalar("SELECT COUNT(*) FROM learning_backlog WHERE category='proposta'") == 3
+
+
+def test_acao_de_catalogo_agrupa_por_chave_e_pula_a_que_ja_fecha_sem_ia(mundo: Mundo) -> None:
+    """30.59, com a forma do caso real (QA Messenger, 04/10): `open_app` com dois objetivos (141e e 2c35) era duas
+    propostas iguais; `check_account` já fechava por receita e era proposta à toa."""
+    db = mundo.db
+    for i, (modelo, conducao) in enumerate([("th-141e", "ai")] * 3 + [("th-2c35", "sem_ator")] * 2):
+        semear(db, f"r-abrir{i}", dias(1 + i * 0.1), [Etapa("open_app", None, "succeeded", [T("succeeded")],
+                                                              driven_by=conducao, verificada=True, template_hash=modelo)])
+    for i in range(5):   # 4 de 5 por receita = 80 %: o ganho já foi colhido, não propõe
+        semear(db, f"r-conta{i}", dias(1 + i * 0.1), [Etapa("check_account", None, "succeeded", [T("succeeded")],
+                                                              driven_by="ai" if i == 0 else "recipe", verificada=True,
+                                                              template_hash="th-5cb3")])
+    for i in range(5):   # 3 de 5 sem IA = 60 %: continua proposta
+        semear(db, f"r-ler{i}", dias(1 + i * 0.1), [Etapa("read_title", None, "succeeded", [T("succeeded")],
+                                                           driven_by="ai" if i < 2 else "recipe", verificada=True,
+                                                           template_hash="th-ler")])
+    acoes = [p.proposta for p in mundo.falhas.relatorio(dias=14).propostas
+             if p.proposta.tipo is TipoDeProposta.ACAO_DE_CATALOGO]
+    assert sorted(a.ref for a in acoes) == [f"{PACOTE}|etapa:open_app", f"{PACOTE}|etapa:read_title"]
+    abrir = next(a for a in acoes if a.ref.endswith("open_app"))
+    assert "5 execuções" in abrir.detalhe and "2 de 5 etapas já fecharam sem IA" in abrir.detalhe
+    assert "th-141e, th-2c35" in abrir.fragmento                      # o modelo mais frequente primeiro
 
 
 def test_saude_do_aprendizado(mundo: Mundo) -> None:

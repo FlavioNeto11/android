@@ -158,6 +158,11 @@ class RegraDeTelaSensivel:
         return self.why or f"tela declarada como sensível para {alvo}"
 
 
+#: As chaves que `UiTree._partes_do_seletor` entende (31.44: `parte_sem_valor` só vale para elas).
+_CHAVES_DO_SELETOR = frozenset({"id", "resource-id", "resource_id", "desc", "accessibility-id", "accessibility_id",
+                                "content-desc", "text"})
+
+
 @dataclass(slots=True)
 class UiElement:
     id: str
@@ -304,6 +309,21 @@ class UiTree:
             else:
                 partes.append(("text", part.strip(), False))
         return partes
+
+    @staticmethod
+    def parte_sem_valor(selector: str) -> str | None:
+        """31.44: a primeira parte do seletor (`a|b`) que declara a chave e deixa o valor VAZIO (`text=`, `desc==`), ou
+        `<vazia>` para uma parte em branco; `None` quando todas têm valor. É o que sobra de um molde `text={var}` cuja
+        variável chegou sem valor. `_partes_do_seletor` não rejeita: `text=` vira a busca pelo texto literal "text="
+        (e uma parte em branco casaria com qualquer elemento), e a etapa só falha depois de gastar as tentativas.
+        `chave=valor` com chave desconhecida é texto literal, como em `_partes_do_seletor`, e não entra aqui."""
+        for part in selector.split("|"):
+            if not part.strip():
+                return "<vazia>"
+            kind, sep, value = part.partition("==" if "==" in part else "=")
+            if sep and not value.strip() and kind.strip().lower() in _CHAVES_DO_SELETOR:
+                return part.strip()
+        return None
 
     def _find_partes(self, partes: list[tuple[str, str, bool]], *,
                      variants: Callable[[str], tuple[str, ...]] | None = None) -> list[UiElement]:

@@ -59,3 +59,14 @@
 }
 
 .filhas { margin: var(--sp-1) 0 0; padding-left: var(--sp-4); color: var(--text-2); font-size: var(--fs-sm); }
+
+/* "Decidido sozinho" (28.25) */
+.decididas { display: flex; flex-direction: column; gap: var(--sp-3); }
+.filtros { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+.filtro { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text-2); font-size: var(--fs-sm); }
+.decidida {
+  display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0;
+  padding: var(--sp-3) var(--sp-4); border: 1px solid var(--border-1); border-radius: var(--radius-md); background: var(--surface-1);
+}
+.desfeita { opacity: 0.75; }
+.semVolta { color: var(--text-3); font-size: var(--fs-sm); }

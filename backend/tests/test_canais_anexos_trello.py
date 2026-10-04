@@ -24,6 +24,7 @@ CHAVE = "chave-trello-de-teste-77aa"
 TOKEN = "token-trello-de-teste-99bb"
 QUADRO = "b" * 24
 CARTAO = "c" * 24
+CURTO = "Ab3dEf9h"                       # o código curto do link do cartão
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR" + b"\x02" * 60
 
 
@@ -32,15 +33,19 @@ class TrelloFalso:
         self.pedidos: list[tuple[str, str, dict[str, str], bytes]] = []
         self.quadro = QUADRO
         self.falha_no_anexo: tuple[int, str] | None = None
+        self.anexos: list[dict[str, str]] = []
 
     def handler(self, req: httpx.Request) -> httpx.Response:
         self.pedidos.append((req.method, req.url.path, dict(req.headers), req.content))
         assert CHAVE not in str(req.url) and TOKEN not in str(req.url)                # a credencial NUNCA vai na URL
-        if req.method == "GET" and req.url.path == f"/1/cards/{CARTAO}":
+        if req.method == "GET" and req.url.path in (f"/1/cards/{CARTAO}", f"/1/cards/{CURTO}"):
             return httpx.Response(200, json={"id": CARTAO, "idBoard": self.quadro})
+        if req.method == "GET" and req.url.path == f"/1/cards/{CARTAO}/attachments":
+            return httpx.Response(200, json=self.anexos)
         if req.method == "POST" and req.url.path == f"/1/cards/{CARTAO}/attachments":
             if self.falha_no_anexo is not None:
                 return httpx.Response(self.falha_no_anexo[0], text=self.falha_no_anexo[1])
+            self.anexos.append({"id": "a" * 24, "name": req.url.params.get("name", "")})
             return httpx.Response(200, json={"id": "a" * 24, "url": "https://trello.com/1/cards/x/attachments/y/download/n"})
         return httpx.Response(404, text="not found")
 
@@ -94,7 +99,8 @@ async def test_a_imagem_do_dono_vai_ao_cartao_com_nome_neutro_e_credencial_so_no
     _ligar(harness, trello)
     ident = _anexo(harness)
     r = await _postar(harness, ident, {"card": CARTAO, "confirmar": True})
-    assert r.status_code == 200 and r.json() == {"anexo_id": ident, "card": CARTAO, "trello_anexo": "a" * 24}
+    assert r.status_code == 200 and r.json() == {"anexo_id": ident, "card": CARTAO, "trello_anexo": "a" * 24,
+                                                  "ja_estava": False}
     [(_, caminho, cab, corpo)] = [p for p in trello.pedidos if p[0] == "POST"]
     assert caminho == f"/1/cards/{CARTAO}/attachments" and cab["content-type"].startswith("multipart/form-data")
     assert PNG in corpo and b'filename="anexo-' in corpo and b".png" in corpo
@@ -154,3 +160,23 @@ async def test_o_cliente_so_escreve_o_anexo_pelo_metodo_novo_e_nao_leva_credenci
     assert json.dumps([p[1] for p in trello.pedidos]).count("oauth") == 0
 
 
+
+
+@pytest.mark.parametrize("colado", [f"https://trello.com/c/{CURTO}/123-titulo-do-cartao", f"https://trello.com/c/{CURTO}",
+                                    CURTO, f"  {CURTO} "])
+async def test_aceita_o_link_e_o_codigo_curto_e_anexa_no_id_inteiro(harness: Harness, trello: TrelloFalso,
+                                                                    colado: str) -> None:
+    # Revisão da fila da suíte 31: a tela só aceitava o id de 24, e o dono só tem o link do cartão.
+    _ligar(harness, trello)
+    r = await _postar(harness, _anexo(harness), {"card": colado, "confirmar": True})
+    assert r.status_code == 200 and r.json()["card"] == CARTAO and trello.anexou() == 1
+
+
+async def test_a_mesma_imagem_no_mesmo_cartao_vai_uma_vez_so(harness: Harness, trello: TrelloFalso) -> None:
+    # Depois de recarregar a página o botão volta; o segundo envio devolve o anexo que já está no cartão.
+    _ligar(harness, trello)
+    ident = _anexo(harness)
+    primeiro = await _postar(harness, ident, {"card": CARTAO, "confirmar": True})
+    segundo = await _postar(harness, ident, {"card": f"https://trello.com/c/{CURTO}", "confirmar": True})
+    assert primeiro.json()["ja_estava"] is False and segundo.json()["ja_estava"] is True
+    assert segundo.json()["trello_anexo"] == primeiro.json()["trello_anexo"] and trello.anexou() == 1

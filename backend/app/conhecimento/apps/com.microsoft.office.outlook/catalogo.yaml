@@ -19,7 +19,8 @@
 #
 # As provas são `model_judged` e `items_collected`: as telas depois do login não foram observadas neste parque, e um
 # `element_present` com id inventado reprovaria a etapa certa (ou aprovaria a errada). Quando a caixa for observada
-# (29.12), os ids entram como prova local, como no Instagram.
+# (29.12), os ids entram como prova local, como no Instagram. A caixa já foi (02/10, `telas.yaml`): a OPEN_MAIL_INBOX
+# prova pela lista (`conversation_list`) desde o 31.45.
 #
 # Login e conferência da conta não aparecem aqui: são do motor de sessão (`sessao.yaml`), fora do laço da IA, e a
 # porta de sessão garante a conta antes de qualquer etapa.
@@ -32,9 +33,13 @@ acoes:
     title: Abrir a caixa de entrada do Outlook
     goal: Ir para a Caixa de Entrada do Outlook, sem abrir nenhuma mensagem.
     saidas: [remetente, assunto]
-    post_kind: model_judged
-    post_value: caixa de entrada aberta
-    post_description: A tela mostra a Caixa de Entrada do Outlook com a lista de mensagens.
+    # 31.45: prova pela árvore, com o mesmo id que define a tela `caixa_de_entrada` (`telas.yaml`). Antes era
+    # `model_judged` "com a lista de mensagens", e a linha da lista é um `ComposeView` sem texto nem descrição: o juiz
+    # via "Inbox" e recusava por não ler remetente e assunto (r-…-8c3f6e, r-…-996716, 3 tentativas cada). Remetente e
+    # assunto continuam exigidos, mas como SAÍDA (`read_value`, leitura visual do 12.5), não como prova da tela.
+    post_kind: element_present
+    post_value: id=conversation_list
+    post_description: A lista da Caixa de Entrada do Outlook está à vista.
 
   - key: COLLECT_MAIL_HEADERS
     title: Levantar remetente e assunto das mensagens recentes

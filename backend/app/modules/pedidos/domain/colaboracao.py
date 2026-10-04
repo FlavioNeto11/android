@@ -304,13 +304,55 @@ def reservado_aos_filhos(filhos: Iterable[FilhoNoOrcamento]) -> float:
 
 
 # ------------------------------------------------------------------ F3: o papel limita a autonomia
-def autonomia_efetiva(autonomia: str, papel: str | None) -> str:
+#: O teto de quem NÃO é o porta-voz numa família que tem um (F5, §9 "para fora"): só o porta-voz toca um alvo. O pedido sem
+#: papel (a raiz, ou um irmão comum) observa e consolida; efeito é do porta-voz. O redator segue com o `preparar` do papel
+#: (rascunho com aprovação), que já é mais restrito que o de quem age.
+TETO_FORA_DO_PORTA_VOZ = "observar"
+
+
+def autonomia_efetiva(autonomia: str, papel: str | None, familia_com_porta_voz: bool = False) -> str:
     """A mais restrita entre a autonomia do pedido e o teto do papel (§6.4: o pedido nunca afrouxa; aqui o papel também
-    não). Papel ou autonomia desconhecidos não afrouxam nada: devolvem a autonomia como veio."""
+    não). Papel ou autonomia desconhecidos não afrouxam nada: devolvem a autonomia como veio.
+
+    F5: numa família com porta-voz, quem tem papel comum (sem papel) não age fora dele: o teto é `observar`. O papel que já
+    tem teto próprio (`TETO_DO_PAPEL`) mantém o dele; o porta-voz também."""
     teto = TETO_DO_PAPEL.get(papel or "")
+    if teto is None and familia_com_porta_voz and papel is None:
+        teto = TETO_FORA_DO_PORTA_VOZ
     if teto is None or autonomia not in AUTONOMIAS:
         return autonomia
     return min(autonomia, teto, key=AUTONOMIAS.index)
+
+
+@dataclass(frozen=True)
+class Reator:
+    """Um pedido da família visto pela regra de reação (F5): `objetivo` (o texto sem destinos), a autonomia EFETIVA e as
+    pessoas (persona ou aparelho) que agem por ele. Nada daqui vai a mensagem: a recusa diz só a regra."""
+    id: str
+    objetivo: str
+    autonomia: str
+    pessoas: frozenset[str]
+
+
+def _texto(objetivo: str) -> str:
+    return " ".join(objetivo.casefold().split())
+
+
+def validar_reacao_repetida(novo: Reator, familia: Iterable[Reator]) -> Recusa | None:
+    """`reacao_repetida` (F5, §9): é proibido simular apoio de pessoas independentes. Dois pedidos da mesma família, ambos
+    com autonomia de efeito (`preparar` ou `agir`), com o MESMO objetivo e personas diferentes, dariam a duas personas a
+    reação ao mesmo conteúdo. A regra é o que o código sabe ler: o texto igual (sem caixa nem espaços repetidos) e as
+    personas. Reagir ao mesmo conteúdo com palavras diferentes, ou citar-se como terceiro, é do planejador."""
+    if novo.autonomia == "observar":
+        return None
+    for outro in familia:
+        if outro.id == novo.id or outro.autonomia == "observar" or _texto(outro.objetivo) != _texto(novo.objetivo):
+            continue
+        if len(outro.pessoas | novo.pessoas) > 1:
+            return Recusa("reacao_repetida", "Dois pedidos da mesma família dariam a duas personas diferentes a reação ao "
+                          "mesmo conteúdo, o que simularia apoio de pessoas independentes. Deixe só uma persona (o "
+                          "porta-voz) reagir, ou baixe um dos dois para `observar`.", "objetivo")
+    return None
 
 
 def validar_autonomia(autonomia: str, papel: str | None) -> Recusa | None:
@@ -323,10 +365,12 @@ def validar_autonomia(autonomia: str, papel: str | None) -> Recusa | None:
                   f"`{autonomia}`.", "autonomia")
 
 
-def nota_de_rebaixamento(autonomia: str, papel: str | None) -> str | None:
+def nota_de_rebaixamento(autonomia: str, papel: str | None, familia_com_porta_voz: bool = False) -> str | None:
     """O que a ocorrência registra quando o laço decide abaixo da autonomia gravada (pedido do legado, ou gravado com a
     colaboração desligada): só os nomes do papel e das autonomias, nunca o texto do pedido."""
-    efetiva = autonomia_efetiva(autonomia, papel)
+    efetiva = autonomia_efetiva(autonomia, papel, familia_com_porta_voz)
     if efetiva == autonomia:
         return None
+    if papel is None:
+        return f"autonomia rebaixada: a família tem porta-voz e só ele age para fora: {autonomia} → {efetiva}"
     return f"autonomia rebaixada ao teto do papel {papel}: {autonomia} → {efetiva}"

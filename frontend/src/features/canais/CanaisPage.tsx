@@ -1,4 +1,4 @@
-import { CircleCheck, CircleOff, MessageSquare, Radio, Send, SquareKanban, TriangleAlert, type LucideIcon } from 'lucide-react';
+import { Activity, CircleCheck, CircleOff, MessageSquare, Paperclip, Radio, Send, SquareKanban, TriangleAlert, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
@@ -8,14 +8,22 @@ import { Banner } from '../../components/Banner';
 import { Card, CardBody, CardHeader } from '../../components/Card';
 import { Page } from '../../components/Page';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
+import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
 import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
 import { useIntervaloVisivel } from '../../lib/polling';
 import { tempoRelativo, useNow } from '../../lib/time';
+import { useUiStore } from '../../store/ui';
+import { AnexosTab } from './AnexosTab';
 import {
   falhaVigente, frasesDaFila, frasesDasEntradas, frasesDosCartoes, MOTIVO_DA_FALHA, seloDaConversa, seloDoAviso, seloDoTrello,
   textoDoProblema, type Selo,
 } from './resumo';
 import styles from './Canais.module.css';
+
+type Aba = 'estado' | 'anexos';
+const ABAS: readonly Aba[] = ['estado', 'anexos'];
+const isAba = (v: unknown): v is Aba => typeof v === 'string' && (ABAS as readonly string[]).includes(v);
+const ID = 'canais';
 
 /** Relê a cada 30 s (com a aba visível): o estado dos canais anda devagar, e a tela não escreve nada. */
 const RELEITURA_MS = 30_000;
@@ -142,6 +150,15 @@ export function CanaisPage() {
   const [erro, setErro] = useState<LoadError | null>(null);
   const token = useRef(0);
   const agora = useNow();
+  // A guia vem do link (`#/canais?aba=anexos`); "Estado" é a padrão e não entra nele.
+  const abaDoLink = useUiStore((s) => s.rota.query.aba);
+  const trocarQuery = useUiStore((s) => s.trocarQuery);
+  const aba: Aba = isAba(abaDoLink) ? abaDoLink : 'estado';
+  const trocar = (a: Aba) => trocarQuery({ aba: a === 'estado' ? undefined : a }, 'replace');
+  const tabs: TabDef<Aba>[] = [
+    { id: 'estado', label: 'Estado', icon: Activity },
+    { id: 'anexos', label: 'Anexos', icon: Paperclip },
+  ];
 
   const carregar = useCallback(async () => {
     const meu = ++token.current;
@@ -183,9 +200,12 @@ export function CanaisPage() {
   return (
     <Page
       title="Canais"
-      lead={<><Radio size={14} aria-hidden className={styles.leadIcone} /> Como andam o aviso e a conversa pelo Telegram e o espelho no Trello. Só leitura: ligar, desligar e reenviar ficam na configuração da instalação.</>}
+      lead={<><Radio size={14} aria-hidden className={styles.leadIcone} /> Como andam o aviso e a conversa pelo Telegram e o espelho no Trello, e os arquivos que passaram por eles. O estado é só leitura: ligar, desligar e reenviar ficam na configuração da instalação.</>}
     >
-      {corpo}
+      <Tabs tabs={tabs} active={aba} onChange={trocar} idBase={ID} label="Canais" />
+      <TabPanel idBase={ID} id={aba} className={styles.tabBody}>
+        {aba === 'estado' ? corpo : <AnexosTab />}
+      </TabPanel>
     </Page>
   );
 }

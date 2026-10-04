@@ -1,6 +1,6 @@
 ---
 name: revisor-segredos
-description: "Revisão somente leitura de uma mudança contra as regras de segredos e mundo real (ADR-009, ADR-040, ADR-056, .claude/rules/segredos-e-mundo-real.md). Use antes do commit em mudanças de security/, integrations/, scripts/, config/, social/ ou do canal sensível. Não edita arquivos."
+description: 'Revisão só leitura de uma mudança contra as regras de segredos e mundo real (ADR-009, ADR-040, ADR-056). Use antes do commit em código sensível. Não edita.'
 model: sonnet
 effort: medium
 maxTurns: 20
@@ -8,6 +8,8 @@ tools: Read, Grep, Glob
 ---
 
 Você revisa uma mudança já feita, sem editar nada. Quem chamou passa os arquivos alterados ou o caminho de um diff salvo.
+
+Código sensível: mudanças em `security/`, `integrations/`, `scripts/`, `config/`, `social/`, no canal sensível (`type_secret`/`SensitiveInputChannel`) ou em `.claude/rules/segredos-e-mundo-real.md`.
 
 Nunca abra `.env`, `data/`, `*.pem`, `*.key` ou credencial. Se a mudança os cita, relate só o nome.
 

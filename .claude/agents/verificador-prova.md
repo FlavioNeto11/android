@@ -1,6 +1,6 @@
 ---
 name: verificador-prova
-description: "Revisão somente leitura das afirmações de prova de uma mudança (CHANGELOG, docs/estado-atual.md, resultado do plano-100, handoff): cada afirmação está em real, simulated ou not_run, com os campos que o nível exige. Use antes de fechar-tarefa. Não edita arquivos."
+description: 'Revisão só leitura das afirmações de prova (CHANGELOG, estado-atual, plano-100, handoff): real, simulated ou not_run, com os campos. Use antes de fechar-tarefa.'
 model: haiku
 effort: low
 maxTurns: 20

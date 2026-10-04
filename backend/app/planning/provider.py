@@ -47,9 +47,9 @@ def frase_dos_modelos(models: Mapping[str, str]) -> str | None:
 #: alimenta a fatia do teto do dia (`_budget`) e o relatório do Livro, então uma grafia solta viraria gasto sem dono.
 #: `execucao` = o laço da execução (há `run_id`); as demais nascem do portal ou de uma rotina e não têm `run_id`.
 OrigemDeIA = Literal["execucao", "ensino", "orquestracao", "assistente", "social", "persona", "curador",
-                     "decisao_fechada", "leitura"]
+                     "decisao_fechada", "leitura", "canais"]
 ORIGENS_DE_IA: tuple[str, ...] = ("execucao", "ensino", "orquestracao", "assistente", "social", "persona",
-                                  "curador", "decisao_fechada", "leitura")
+                                  "curador", "decisao_fechada", "leitura", "canais")
 
 #: Qual régua de gasto barrou (item 31.6, decisão P6): o painel, o aviso e a 30.13 leem o MOTIVO, nunca a frase.
 #: Só existe quando `kind="budget"`. `saldo` é o saldo da conta (ADR-051) e `kind="balance"` continua sendo o que o
@@ -287,6 +287,9 @@ class VerifyRequest:
     #: Rejulgamento pelo modelo de ESCALONAMENTO (item 7.10): só quando o verificador barato recusou com um nível de
     #: entrega que já atende ao exigido — o erro que a bateria de 25/09 mediu. Mesmo prompt, outro modelo.
     escalate: bool = False
+    #: Item 31.46: fatos sobre como a tela do app é desenhada (`dicas_ao_juiz` do `telas.yaml`), ditos ao juiz. Vão no
+    #: conteúdo do pedido e NÃO no `VERIFIER_SYSTEM` (snapshot de `test_prompts_licoes`); vazio = o pedido de antes.
+    dicas_da_tela: list[str] = field(default_factory=list)
 
 
 #: Teto do que um leitor devolve (item 12.5): uma linha de lista de e-mail tem poucas linhas curtas; passar disto é

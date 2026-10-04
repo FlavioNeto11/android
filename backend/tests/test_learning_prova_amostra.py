@@ -44,11 +44,11 @@ from .test_learning_prova import Mundo, _candidato, _digerir, _evidencias, _prov
 
 # ------------------------------------------------------------------ a regra pura
 def test_o_tamanho_da_amostra_e_o_que_cabe_no_teto() -> None:
-    assert maximo_de_etapas_da_prova() == 17
-    assert teto_da_prova(17) is not None and teto_da_prova(18) is None
+    assert maximo_de_etapas_da_prova() == 37                # 29.75: máximo de US$ 0,80
+    assert teto_da_prova(37) is not None and teto_da_prova(38) is None
     assert tamanho_da_amostra(3, 4) == 3                  # o "todos os contatos" do QA: 3 + 3 × 4 = 15 etapas
-    assert tamanho_da_amostra(9, 4) == 2                  # 9 + 2 × 4 = 17
-    assert tamanho_da_amostra(10, 4) is None              # nem 2 itens cabem
+    assert tamanho_da_amostra(29, 4) == 2                 # 29 + 2 × 4 = 37
+    assert tamanho_da_amostra(30, 4) is None              # nem 2 itens cabem
     assert tamanho_da_amostra(3, 0) is None               # sem laço
 
 

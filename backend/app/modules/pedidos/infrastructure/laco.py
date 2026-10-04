@@ -133,7 +133,8 @@ class LacoDePedidos:
         #: Observações do fechamento, memória e relatório (28.7). O resumo por IA só existe com `resumo_ia` ligado E um
         #: `resumidor` injetado; sem os dois, nada de IA é chamado.
         self.relatorios = ServicoDeRelatorios(db, lambda: self.relogio(), resumidor=resumidor, resumo_ia=cfg.resumo_ia,
-                                              resumo_ia_teto_usd=cfg.resumo_ia_teto_usd, marcar=self.repo.marcar)
+                                              resumo_ia_teto_usd=cfg.resumo_ia_teto_usd, marcar=self.repo.marcar,
+                                              colaboracao=lambda: self.cfg.colaboracao.enabled)
         self.acoes = AcoesDePedidos(self.repo, runs, lambda: self.relogio(), self.acordar, relatorios=self.relatorios)
         self._loop: asyncio.AbstractEventLoop | None = None
         self._evento: asyncio.Event | None = None
@@ -645,7 +646,8 @@ class LacoDePedidos:
                 self.repo.cas_cursor(g["id"], antes, depois)
             return
         ultima = self.repo.ultima_do_gatilho(g["id"])
-        autonomia = colaboracao.autonomia_efetiva(g["pedido_autonomia"], g["pedido_papel"])
+        autonomia = colaboracao.autonomia_efetiva(
+            g["pedido_autonomia"], g["pedido_papel"], self._familia_com_porta_voz(g["pedido_id"], g["pedido_pai_id"], g["pedido_papel"]))
         piso = self.cfg.piso_agir_s if autonomia == "agir" else self.cfg.piso_observar_s
         if ultima is not None and parse_iso(ultima["previsto_para"]) + timedelta(seconds=piso) > agora:
             return              # dentro do piso da autonomia: os eventos esperam (e coalescem) sem mover o cursor
@@ -1018,15 +1020,24 @@ class LacoDePedidos:
                 r.despachadas += 1
         return True
 
-    @staticmethod
-    def _autonomia(p: Row) -> str:
-        """A autonomia com que o laço decide (28.10 F3): a mais restrita entre a do pedido e o teto do papel dele. A API
-        já recusa o pedido acima do teto; isto é a defesa para o legado e para o pedido gravado com a colaboração desligada."""
-        return colaboracao.autonomia_efetiva(p["autonomia"], p["papel"])
+    def _familia_com_porta_voz(self, pedido_id: str, pai_id: str | None, papel: str | None) -> bool:
+        """A família do pedido tem porta-voz? (28.10 F5) Só conta com a colaboração ligada e só para quem NÃO tem papel:
+        o papel já tem o teto dele, e a pergunta ao banco fica para o pedido que precisa dela."""
+        if papel is not None or not self.cfg.colaboracao.enabled:
+            return False
+        return self.repo.familia_tem_porta_voz(pai_id or pedido_id)
 
-    @staticmethod
-    def _nota_de_rebaixamento(p: Row | None) -> str | None:
-        return None if p is None else colaboracao.nota_de_rebaixamento(p["autonomia"], p["papel"])
+    def _autonomia(self, p: Row) -> str:
+        """A autonomia com que o laço decide (28.10 F3 e F5): a mais restrita entre a do pedido, o teto do papel dele e,
+        numa família com porta-voz, o `observar` de quem não é o porta-voz (só ele age para fora). A API já recusa o pedido
+        acima do teto do papel; isto é a defesa para o legado, para o pedido gravado com a colaboração desligada e para a
+        raiz e os irmãos sem papel, que a API não recusa (o porta-voz nasce depois deles)."""
+        return colaboracao.autonomia_efetiva(p["autonomia"], p["papel"],
+                                             self._familia_com_porta_voz(p["id"], p["pai_id"], p["papel"]))
+
+    def _nota_de_rebaixamento(self, p: Row | None) -> str | None:
+        return None if p is None else colaboracao.nota_de_rebaixamento(
+            p["autonomia"], p["papel"], self._familia_com_porta_voz(p["id"], p["pai_id"], p["papel"]))
 
     @staticmethod
     def _prioridade(p: Row) -> int:

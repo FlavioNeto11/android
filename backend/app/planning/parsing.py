@@ -262,6 +262,13 @@ def _norm_saida(nome: str) -> str:
     return re.sub(r"[^a-z0-9_]+", "_", nome.strip().lower()).strip("_")[:40]
 
 
+#: Piso do prazo da etapa livre, que é a etapa conduzida pelo ator de IA (item 29.75). Era 30: o modelo pedia 60 s e
+#: a etapa morria por prazo com a IA ainda pensando (7 dias até 04/10: 18 tentativas esgotadas, 12 delas de 60 s, 8
+#: com a chamada de IA passando do prazo restante). Uma observação, uma decisão e a verificação já passam de 60 s com o
+#: host ocupado. O teto (600) não muda.
+PISO_DA_ETAPA_COM_IA_S = 120
+
+
 def _etapa_livre(key: str, e: _StepOut | _LivreOut | _StepCurtoOut | _LivreCurtoOut, *, depends_on: list[str],
                  for_each: str | None, app_id: str | None) -> PlanStep:
     """A etapa escrita pelo modelo, com os limites do backend (prazo, uma tentativa no efeito externo). A mesma no
@@ -278,7 +285,7 @@ def _etapa_livre(key: str, e: _StepOut | _LivreOut | _StepCurtoOut | _LivreCurto
         precondicao, tentativas = e.precondition, e.max_attempts
     return PlanStep(key=norm_key(key), title=e.title, goal=e.goal, depends_on=[norm_key(d) for d in depends_on],
                     side_effect=e.side_effect, commit_guard=e.commit_guard, precondition=precondicao,
-                    postcondition=postcondicao, timeout_s=max(30, min(e.timeout_s, 600)),
+                    postcondition=postcondicao, timeout_s=max(PISO_DA_ETAPA_COM_IA_S, min(e.timeout_s, 600)),
                     max_attempts=1 if e.side_effect else max(1, min(tentativas, 5)),
                     for_each=norm_key(for_each) if for_each else None, app_id=app_id,
                     saidas=list(dict.fromkeys(n for n in map(_norm_saida, e.saidas) if n)),

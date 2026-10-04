@@ -13,7 +13,9 @@ conversa do canal (`ConversaDoCanal.enviar_conteudo`); aqui não existe canal.
 from __future__ import annotations
 
 import asyncio
+import math
 import time
+import uuid
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
@@ -24,8 +26,15 @@ if TYPE_CHECKING:
 
 #: Quanto esperar o frame novo depois de acordar a prévia (o ritmo do foco é de 1 s; sobra para um aparelho lento).
 ESPERA_S = 8.0
-#: O interesse que o pedido registra: o mínimo que o gerenciador aceita (5 s), solto assim que o frame chega.
+#: O interesse que o pedido registra vale ao menos o piso do gerenciador (5 s) e SEMPRE mais que a espera: com TTL menor
+#: que a espera, num aparelho lento a prévia deixava de ser pedida antes do prazo e os últimos segundos só esperavam.
+#: Ele é solto assim que o frame chega, então a folga não prolonga nada.
 TTL_DO_INTERESSE_S = 5
+FOLGA_DO_INTERESSE_S = 2
+
+
+def ttl_do_interesse(espera_s: float) -> int:
+    return max(TTL_DO_INTERESSE_S, math.ceil(espera_s) + FOLGA_DO_INTERESSE_S)
 
 
 async def capturar_para_o_dono(gerenciador: DeviceManager, instance_id: str, *, espera_s: float = ESPERA_S,
@@ -42,8 +51,10 @@ async def capturar_para_o_dono(gerenciador: DeviceManager, instance_id: str, *, 
     quadro = rt.frame
     if quadro is None or time.monotonic() - quadro.mono > idade_max:
         antes = quadro.mono if quadro is not None else 0.0
-        conexao = f"captura-canal-{instance_id}"
-        gerenciador.registrar_interesse(conexao, [], instance_id, TTL_DO_INTERESSE_S)
+        # Uma chave por PEDIDO: o interesse de uma conexão é substituído, então com chave fixa dois /captura do mesmo
+        # aparelho dividiam o mesmo interesse e o `finally` do primeiro soltava o do segundo no meio da espera.
+        conexao = f"captura-canal-{instance_id}-{uuid.uuid4().hex[:8]}"
+        gerenciador.registrar_interesse(conexao, [], instance_id, ttl_do_interesse(espera_s))
         try:
             limite = time.monotonic() + espera_s
             quadro = None

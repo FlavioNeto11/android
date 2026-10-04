@@ -12,7 +12,7 @@ import pytest_asyncio
 from app.config import AppConfigFile, Config, EnvSettings
 from app.db import MIGRATIONS_DIR as _MIGRACOES_ORIGINAIS
 from app.devices.emulator_backend import FakeEmulatorBackend
-from app.models import RunCreate
+from app.models import InstanceState, RunCreate
 from app.planning.provider import Usage
 from app.planning.simulated_provider import SimulatedProvider
 from app.state import AppState
@@ -278,6 +278,8 @@ class Harness:
         self.emulator = FakeEmulatorBackend()
         # T.2: ligado por `pular_o_tempo()`; sem isso, tudo corre em tempo real como sempre.
         self.relogio: RelogioVirtual | None = None
+        # T.2: ligado por `medir_a_internet()`; sem isso, a conectividade nasce `unknown` e espera a sonda do monitor.
+        self.internet_medida = False
 
     def pular_o_tempo(self) -> RelogioVirtual:
         """As ferramentas deixam de DORMIR e passam a avançar o relógio do aparelho falso (`relogio_virtual.py`).
@@ -293,6 +295,24 @@ class Harness:
         if self.state is not None:
             self.state.scheduler.executor.dormir = self.relogio.dormir
         return self.relogio
+
+    async def medir_a_internet(self) -> None:
+        """Roda AGORA a sonda de conectividade que o monitor rodaria na 1ª volta (6 s depois de o aparelho entrar no ar),
+        e de novo a cada `boot()` (o teste de reinício sobe outro backend).
+
+        T.2: a porta da internet do escalonador (`requires_internet`, o Instagram) segura a tarefa enquanto a
+        conectividade é `unknown`; sem isto cada teste do `FakeInstagram` pagava ~6 s parado à espera do monitor
+        (medido em 04/10: ~50 testes). O resultado é o mesmo da sonda do monitor (o `connectivity_probe` do aparelho
+        falso), só que antes. Opt-in: o teste que prova "entrar no ar não prova internet" segue vendo `unknown`."""
+        self.internet_medida = True
+        if self.state is not None:
+            await self._medir_a_internet()
+
+    async def _medir_a_internet(self) -> None:
+        assert self.state is not None
+        for rt in list(self.state.devices.devices.values()):
+            if rt.state == InstanceState.online:
+                await self.state.devices.conferir_conectividade(rt)
 
     def encurtar_verificacao(self, segundos: float = 1.5) -> None:
         """Encurta o ORÇAMENTO de `_verify` (normal, paciente e piso) para o teste que prova "sem a mensagem na tela até
@@ -322,6 +342,8 @@ class Harness:
         # contagem de chamadas de IA, escondendo a causa. O harness declara a variante, como já declara o aparelho.
         for rt in self.state.devices.devices.values():
             rt.ui_variant = "en-US/xhdpi"
+        if self.internet_medida:
+            await self._medir_a_internet()
         return self.state
 
     async def crash(self) -> None:

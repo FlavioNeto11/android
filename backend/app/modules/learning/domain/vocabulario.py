@@ -80,6 +80,9 @@ class SignalKind(StrEnum):
     #: 30.34: o caso da sombra da autopublicação, o fluxo B que publicaria (`source_ref` = `autopublicaria:<item>`,
     #: `created_by` = sistema: um por item). Não é gesto de pessoa: fica fora da régua de intervenções.
     AUTOPUBLICARIA = "autopublicaria"
+    #: 30.55: o caso da sombra da aprovação automática, a receita ou o fluxo que a plataforma decidiria (`source_ref` =
+    #: `aprovaria:<item>`, `created_by` = sistema: um por item). Também não é gesto de pessoa.
+    APROVARIA = "aprovaria"
 
 
 #: Sinais que contam como intervenção humana na régua diária (`learning_daily.interventions`).

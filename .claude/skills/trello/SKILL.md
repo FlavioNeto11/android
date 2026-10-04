@@ -1,6 +1,6 @@
 ---
 name: trello
-description: Manter o Trello do dono (workspace Central de Aparelhos) como espelho legível do plano-100 e do estado das frentes. É da sessão Canais (Trello e Telegram); a orquestradora só repassa os fatos. Use ao receber qualquer mudança de estado de uma frente, ao fechar um deploy, nas rotinas diária e semanal, ou para carregar cartões em lote a partir do plano.
+description: 'Manter o Trello do dono como espelho do plano-100 e das frentes (sessão Canais). Use a cada mudança de estado, deploy, rotina diária/semanal ou carga em lote.'
 ---
 
 # Trello — manutenção pela sessão Canais

@@ -48,10 +48,18 @@ from .modules.avisos.infrastructure.espelho import EspelhoDoTrello, FontesDaCent
 from .modules.avisos.infrastructure.espelho_sql import CartoesDoTrello, CursorDoTrello
 from .devices.captura_pontual import capturar_para_o_dono
 from .modules.avisos.infrastructure.anexos import ArmazemDeAnexos
+from .modules.avisos.infrastructure.anexos_leitura import LeitorDeAnexo
 from .modules.avisos.infrastructure.faxina_sql import FaxinaDosCanais
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from .modules.avisos.infrastructure.portas_da_central import PortasReais
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos
+from .decisoes_inversas import inversas_das_filas
+from .modules.decisoes.application.desfazer import DesfazerDecisoes
+from .modules.decisoes.infrastructure.adaptador_sql import AdaptadorDeDecisoes
+from .modules.decisoes.infrastructure.estado_sql import EstadoDasDecisoes
+from .modules.decisoes.infrastructure.registro_sql import RegistroSql as RegistroDeDecisoes
+from .modules.decisoes.infrastructure.resumo_sql import ResumoDasDecisoes
+from .modules.decisoes.infrastructure.servico import ServicoDeDecisoes
 from .modules.avisos.infrastructure.trello_leitor import LeitorDoTrello
 from .modules.avisos.infrastructure.trello_webhook import CadastroDoWebhook, PortaDoWebhook
 from .modules.avisos.infrastructure.trello_saude import problemas_do_trello
@@ -88,6 +96,7 @@ from .planning.decisao_fechada.intencao import ConsumidorDeIntencao
 from .planning.capabilities import (Capability, alvo_da_acao, capability_of, contraparte, efeito_fora_do_catalogo,
                                     texto_a_gerar)
 from .planning.catalog import capabilities_of, pacote_ancora, screen_reader_of, session_factory_of
+from .planning.anthropic_provider import AnthropicProvider
 from .planning.provider import AIProvider, build_provider
 from .planning.routing import perfis_para_o_painel
 from .modules.identity.infrastructure.persona_images import (compor_servico_de_imagens, identidade_para_foto,
@@ -310,6 +319,17 @@ class AppState:
         self.avisos = ServicoDeAvisos(cfg, self.bus, FilaDeAvisos(self.db), self.lideranca, lider=self._lider,
                                       redigir=TriagemDeCredencial().redigir,
                                       faxina_canais=FaxinaDosCanais(self.db, pasta_anexos=self.anexos_canal.pasta))
+        # O que a plataforma decide sozinha (28.25): o registro único, o adaptador que recolhe os produtores e o resumo
+        # agrupado (no máximo uma mensagem por janela) pelo mesmo caminho dos avisos. O desfazer entra pelas rotas.
+        self.decisoes_registro = RegistroDeDecisoes(self.db)
+        _estado_das_decisoes = EstadoDasDecisoes(self.db)
+        self.decisoes = ServicoDeDecisoes(
+            cfg, AdaptadorDeDecisoes(self.db, self.decisoes_registro, _estado_das_decisoes,
+                                     redigir=TriagemDeCredencial().redigir),
+            ResumoDasDecisoes(self.db, _estado_das_decisoes, enfileirar=self.avisos.enfileirar_aviso,
+                              pode_avisar=lambda: self.avisos.ligado and self.avisos.canal() is not None,
+                              redigir=TriagemDeCredencial().redigir),
+            lider=self._lider)
         self.transport = build_transport(cfg.env.command_transport, owner_id=cfg.owner_id or "local",
                                          url=cfg.env.nats_url)
         self.commands = CommandStore(self.db, owner_id=cfg.owner_id, outbox=self.outbox)
@@ -526,6 +546,9 @@ class AppState:
             receitas=self.scheduler.executor.recipes,
             decidir=lambda texto, run_id: self.repo.decision(texto, run_id=run_id), eventos=self.bus,
             curador_de_ia=CuradorComTriagemEmSombra(self._curador_do_hub, self._triagem_do_curador))
+        # O desfazer das decisões automáticas (28.25): a inversa de cada fila entra aqui, fora do módulo (ver o docstring).
+        self.decisoes_desfazer = DesfazerDecisoes(self.decisoes_registro, inversas_das_filas(self.learning),
+                                                  dias=lambda: float(self.cfg.file.avisos.decisoes_automaticas.desfazer_dias))
         self._digestoes: set[asyncio.Task[None]] = set()
         # Ensino v2 (fase F, §13): as rotas ficam atrás de `skills.enabled`; o generalizador é o `generalize` do
         # provedor (simulado: regras fixas; real: uma chamada paga do planejador, contada em `ai_calls`).
@@ -541,10 +564,19 @@ class AppState:
         # A conversa de volta pelo Telegram (28.15, ADR-071): o mesmo bot dos avisos recebe; desligada de fábrica
         # (`avisos.entrada.enabled`). As portas chamam os MESMOS serviços das rotas do painel.
         triagem = TriagemDeCredencial()
+        # A IA lê a imagem do dono (28.24, F3): provedor da Anthropic FORA do hub, mas com o gasto conferido NO hub antes
+        # (teto do dia e saldo da conta) e o custo em `ai_calls` (`origem='canais'`). Simulado: texto fixo, sem chamada.
+        conferir = getattr(self.provider, "conferir_gasto", None)
+        self.leitor_de_anexos = LeitorDeAnexo(
+            cfg, self.db, self.anexos_canal, descritor=lambda: AnthropicProvider(cfg), redigir=triagem.redigir,
+            conferir_gasto=None if conferir is None else (lambda: conferir(run_id=None, origem="canais", conta="anthropic")),
+            registrar_uso=lambda u: self.repo.add_usage(None, None, u),
+            simulado=lambda: (cfg.env.ai_provider or "anthropic").strip().lower() == "simulated")
         portas_da_central = PortasReais(db=self.db, runs=self.runs, aprovacoes=self.approval_service, saude=self.health,
                                         online=lambda: [d.id for d in self.devices.list_dtos()
                                                         if str(d.state) == "online" and d.kind != "store"],
-                                        capturar=lambda alvo: capturar_para_o_dono(self.devices, alvo))
+                                        capturar=lambda alvo: capturar_para_o_dono(self.devices, alvo),
+                                        leitor_de_anexos=self.leitor_de_anexos)
         # Quem fala com o bot e não é o dono (28.18): apresentação, nome, o dono decide; desligado de fábrica
         # (`avisos.entrada.convidados.enabled`). A recusa de credencial é a mesma da conversa do dono.
         convidados = ConvidadosDoTelegram(
@@ -2093,7 +2125,8 @@ class AppState:
         # `package`: a política é do APP desta etapa (23.10) — SEND_MESSAGE do Instagram e o de outro catálogo são
         # escolhas diferentes do perfil.
         veredito = self.policies.check(profile_id, cap, run_id=obj["run_id"], counterparty=alvo,
-                                       app_id=app_da_etapa.id if app_da_etapa else None, package=pacote)
+                                       app_id=app_da_etapa.id if app_da_etapa else None, package=pacote,
+                                       step_id=srow["id"])
         if not veredito.allowed:
             return veredito
         # O texto é escrito AQUI, com a persona deste perfil, antes de qualquer digitação e antes da aprovação —
@@ -2478,6 +2511,8 @@ class AppState:
             self._bg.append(asyncio.create_task(self._saldos_loop(), name="saldos-de-ia"))
             # Aviso fora do painel: enfileira em qualquer réplica (chave única) e só o líder da trava `avisos` envia.
             self._bg.append(asyncio.create_task(self.avisos.laco(), name="avisos-fora-do-painel"))
+            # O recolher das decisões automáticas (28.25) em qualquer réplica; o resumo, só no líder da trava `avisos`.
+            self._bg.append(asyncio.create_task(self.decisoes.laco(), name="decisoes-automaticas"))
             # A conversa de volta (28.15): long-poll do getUpdates, só no líder da trava `avisos` (único consumidor).
             self._bg.append(asyncio.create_task(self.telegram_entrada.laco(), name="telegram-entrada"))
             # O espelho do Trello (32.2): reconciliador no líder da trava `avisos`; sem `trello.enabled` não chama nada.
@@ -2780,7 +2815,8 @@ class AppState:
             await asyncio.sleep(EXPIRACAO_INTERVALO_S)
 
     async def _expiracao_uma_vez(self) -> bool:
-        """Uma volta da expiração das perguntas sem resposta, só no líder da trava da retenção. É faxina do mesmo
+        """Uma volta da expiração das perguntas sem resposta (29.50) e do vencimento dos objetivos parados (31.43), só no
+        líder da trava da retenção. É faxina do mesmo
         tipo, e uma trava nova teria de entrar em `TRAVAS_DOS_LACOS`. Idempotente: o cancelamento é condicional ao
         `needs_input`. Devolve se rodou."""
         if self._lider(RETENCAO) is None:
@@ -2791,6 +2827,13 @@ class AppState:
                 log.info("expiração: %s execução(ões) sem resposta encerradas pelo sistema", len(expiradas))
         except Exception:  # a faxina nunca derruba o processo
             log.exception("expiração das perguntas sem resposta")
+        try:
+            # 31.43: o objetivo `waiting_user` de execução já terminada, que ninguém retomou, vence no mesmo prazo.
+            vencidos = await asyncio.to_thread(self.runs.vencer_objetivos_parados, now())
+            if vencidos:
+                log.info("vencimento: %s objetivo(s) parados sem resposta encerrados pelo sistema", len(vencidos))
+        except Exception:  # a faxina nunca derruba o processo
+            log.exception("vencimento dos objetivos parados")
         return True
 
     async def _retention_loop(self) -> None:

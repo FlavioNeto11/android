@@ -392,7 +392,7 @@ class OpenAICompatProvider:
                         else "imagem não enviada (julgue pela lista de elementos)"))
         esquema = strict_schema(Verdict)
         texto = prompts.verifier_user_text(req.ctx, desc, s.elements, req.ctx.required_delivery_level,
-                                           req.facts) + self._json_hint(modelo, esquema)
+                                           req.facts, req.dicas_da_tela) + self._json_hint(modelo, esquema)
         msg, usage = await self._create(role="verify", model=modelo, system=prompts.VERIFIER_SYSTEM,
                                         content=self._screen_content(s, texto), max_tokens=3000,
                                         schema=esquema, schema_name="veredito", tier=int(escalado),
