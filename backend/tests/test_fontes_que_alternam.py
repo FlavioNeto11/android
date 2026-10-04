@@ -105,3 +105,48 @@ async def test_renderizador_ainda_nao_sondado_nao_apaga_o_conhecido(harness: Har
     outro = {"renderer": {"configured": "host", "fallback": True, "gles": "swiftshader", "vulkan": None}}
     comparado = devs._dto_para_comparar(rt, outro)["renderer"]
     assert comparado["gles"] == "swiftshader" and comparado["fallback"] is True   # valor novo de verdade conta
+
+
+async def test_seed_com_mensagem_marca_a_janela_e_o_reinicio_pula_o_dto_provisorio(harness: Harness) -> None:
+    """Deploy 26 (04/10): as publicações do seed COM mensagem ("online — aparelho externo via ADB") gravam o DTO
+    provisório (verbos de "sem worker", renderizador nulo). O evento passa a dizer `janela_do_seed`, e o processo novo
+    procura a referência no último DTO com o renderizador conhecido, não na última linha."""
+    import json
+
+    s = harness.state
+    assert s is not None
+    devs = s.devices
+    rt = devs.get("android-01")
+    antes = (rt.worker_id, rt.worker_verbs, rt.renderer_configured)
+    try:
+        rt.worker_id, rt.worker_verbs, rt.renderer_configured = "worker-x", ["start", "stop"], "host"
+        devs.publish(rt, level="warn")                                  # o worker falando: a referência boa
+        boa = dict(rt.dto_persistido or {})
+        rt.worker_verbs, rt.renderer_configured = None, None            # o backend cai e o seed grava o provisório
+        devs.publish(rt, "online — aparelho externo via ADB")
+        ultima = s.db.query("SELECT data FROM events WHERE kind='instance.updated' AND instance_id=? ORDER BY id DESC"
+                            " LIMIT 1", (rt.id,))[0]
+        dados = json.loads(ultima["data"])
+        assert dados.get("janela_do_seed") is True
+        assert (dados["instance"].get("renderer") or {}).get("configured") is None     # o provisório foi gravado
+
+        # Processo novo: a última linha é a provisória; a referência é a boa.
+        rt.dto_publicado = rt.controle_anunciado = rt.dto_persistido = None
+        rt.dto_persistido_lido = False
+        devs.publish(rt, "online — aparelho externo via ADB")           # seed de novo, com mensagem: grava
+        assert (rt.dto_persistido or {}).get("supported_verbs") == boa["supported_verbs"]
+        # O `hello` devolve os mesmos verbos e renderizador. O evento grava (o `stream` sai de `worker_offline`: o
+        # worker conectou, isso é fato), sem a marca, e os verbos são os de antes do seed: a troca provisório → real tem
+        # a anterior marcada `janela_do_seed` e não conta como oscilação.
+        rt.worker_verbs, rt.renderer_configured = ["start", "stop"], "host"
+        desde = _ultimo_id(s)
+        devs.publish(rt)
+        novos = s.db.query("SELECT data FROM events WHERE id > ? AND instance_id=? AND kind='instance.updated'",
+                           (desde, rt.id))
+        assert len(novos) == 1
+        depois = json.loads(novos[0]["data"])
+        assert "janela_do_seed" not in depois
+        assert depois["instance"]["supported_verbs"] == boa["supported_verbs"]
+        assert (depois["instance"].get("renderer") or {}).get("configured") == (boa.get("renderer") or {}).get("configured")
+    finally:
+        rt.worker_id, rt.worker_verbs, rt.renderer_configured = antes

@@ -123,6 +123,13 @@ declaração do worker e o AVD local (`abi.type`, só x86_64) só preenchem o qu
 janela, `gles`/`vulkan` ainda não sondados (nulos) não apagam o que já se sabia. O `stream` que diz "worker
 desconectado" continua contando: é fato.
 
+Validação depois do deploy 26 (04/10, 13:15Z): as publicações do seed COM mensagem ("online — aparelho externo via
+ADB") gravam o DTO provisório, e a saída da janela aparecia como 6 trocas de verbos e 10 de renderizador. Duas
+correções, sem publicar o que o worker não confirmou: o evento gravado na janela (worker do aparelho conhecido e sem
+`hello`) leva `janela_do_seed: true`, e a referência lida do log depois do reinício é o último `instance.updated` com
+`renderer.configured` conhecido, entre as 20 linhas mais recentes. **Critério:** zero trocas de `supported_verbs` e
+`renderer` fora da janela; a troca cujo evento anterior tem `janela_do_seed` é a saída da janela, não oscilação.
+
 **Quem usa.** Um app declara em que renderizador ele não roda (`renderizador_recusado` no `app.yaml`), e a plataforma
 recusa instalar e abrir o app nesse aparelho: ver [apps e loja](apps-e-loja.md#compatibilidade).
 

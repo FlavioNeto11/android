@@ -831,8 +831,14 @@ class DeviceManager:
         # Mensagem explícita é registro ("inventário conferido", "adotado do worker…"): vai ao log mesmo sem campo novo.
         persistir = (message is not None or level != "info" or assinatura != rt.dto_publicado
                      or controle != rt.controle_anunciado)
+        # 29.66: com o worker do aparelho conhecido e ainda sem `hello` (seed ou reconexão), verbos e renderizador são
+        # os provisórios de "externo sem worker". O evento diz isso, para a troca de saída da janela não contar como
+        # oscilação; o DTO segue o real (publicar o que o worker não confirmou seria afirmar o que não se mediu).
+        dados: dict[str, object] = {"instance": dto}
+        if rt.worker_id and rt.worker_verbs is None:
+            dados["janela_do_seed"] = True
         self.bus.emit("instance.updated" if persistir else "instance.progress", message or f"{rt.id}: {rt.state.value}",
-                      level=level, instance_id=rt.id, data={"instance": dto})
+                      level=level, instance_id=rt.id, data=dados)
         if persistir:
             rt.dto_publicado, rt.controle_anunciado, rt.dto_persistido = assinatura, controle, comparado
 
@@ -861,15 +867,20 @@ class DeviceManager:
     def _ultimo_dto_persistido(self, rt: DeviceRuntime) -> dict[str, object] | None:
         if rt.dto_persistido is None and not rt.dto_persistido_lido:
             rt.dto_persistido_lido = True              # uma leitura por aparelho e processo, achando ou não
+            # A referência é o último DTO gravado COM o worker falando (renderizador conhecido), entre as 20 linhas mais
+            # recentes: as publicações do seed com mensagem gravam o DTO provisório, e lê-lo como referência fazia a
+            # saída da janela parecer troca (deploy 26, 04/10: 6 trocas de verbos e 10 de renderizador às 13:15Z).
             linhas = self.db.query("SELECT data FROM events WHERE kind='instance.updated' AND instance_id=?"
-                                   " ORDER BY id DESC LIMIT 1", (rt.id,))
-            if linhas and linhas[0]["data"]:
+                                   " ORDER BY id DESC LIMIT 20", (rt.id,))
+            for linha in linhas:
                 try:
-                    instancia = loads(linhas[0]["data"], {}).get("instance")
+                    instancia = loads(linha["data"], {}).get("instance") if linha["data"] else None
                 except (ValueError, AttributeError):
                     instancia = None
-                if isinstance(instancia, dict):
+                rend = instancia.get("renderer") if isinstance(instancia, dict) else None
+                if isinstance(rend, dict) and rend.get("configured") is not None:
                     rt.dto_persistido = instancia
+                    break
         return rt.dto_persistido
 
     def _set_state(self, rt: DeviceRuntime, state: InstanceState, detail: str | None = None,
