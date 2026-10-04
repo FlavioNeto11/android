@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.74: a tentativa interrompida que esperou a pessoa diz por quê (branch fix/29-74-interrompida-pela-pessoa)
+
+- `classificar_falha(…, recovery)`: a tentativa `interrupted` com o `recovery` do `waiting_user` ou da prova de fluxo
+  é classificada pelo texto. Sem regra, vira `ia_declarou_bloqueio`. Pausa, tomada e reconciliação seguem
+  `interrompida`. Regras novas: `auth_challenge` (trava da conta) → `autenticacao`, e a recusa da triagem de valor
+  sensível → `falta_informacao`.
+- `finish_attempt` grava com o `recovery`. A leitura retroativa (`tipo_da_tentativa`) relê o `interrompida` gravado
+  antes, sem migração. Nos dados do central (04/10), as 77 que esperaram a pessoa se repartem em 42 `autenticacao`,
+  6 `ia_saldo`, 1 `sessao_de_automacao` e 28 sem regra (relatos da IA).
+- Testes: `test_interrompida_pela_pessoa.py` (5), mais `test_falha_classificada_gravada.py` e `test_tela_da_falha.py`
+  com o tipo novo. Prova: `simulated`.
+
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
 - Retorno do dono (04/10, Aprendizado › Para aprovar com 5 selecionados): o formulário do aceite abria com o botão

@@ -19,7 +19,7 @@ from collections.abc import Sequence
 from app.db import Database, Row
 from app.modules.learning.application.feedback import (ItemLido, RefDoItem, ServicoDeFeedback, SinalGravado)
 from app.modules.learning.application.servico import LearningService
-from app.modules.learning.domain.falhas import classificar_falha
+from app.modules.learning.domain.falhas import tipo_da_tentativa
 from app.modules.learning.domain.vocabulario import LivroKind, Polaridade, SignalKind
 from app.modules.learning.domain.voto import Uso
 from app.modules.learning.infrastructure import linhas
@@ -61,7 +61,7 @@ class LeituraDoVotoSql:
             " s.skill_id, s.skill_version, s.failure_kind FROM steps s WHERE s.run_id=?" + filtro
             + " ORDER BY s.objective_id, s.plan_version, s.seq", params)
         tentativas = self._db.query(
-            "SELECT a.id, a.step_id, a.number, a.status, a.error, a.recipe_id, a.failure_kind FROM attempts a"
+            "SELECT a.id, a.step_id, a.number, a.status, a.error, a.recipe_id, a.failure_kind, a.recovery FROM attempts a"
             " JOIN steps s ON s.id = a.step_id WHERE s.run_id=?" + filtro + " ORDER BY a.step_id, a.number", params)
         concluidas = [e for e in etapas if linhas.texto(e, "status") == "succeeded"]
         comprovadas = sum(1 for e in concluidas if _verificada(e))
@@ -192,11 +192,8 @@ def _tipo_da_falha(etapa: Row | None, tentativa: Row | None) -> str | None:
         return gravado
     if tentativa is None:
         return None
-    gravado = linhas.texto_ou_nulo(tentativa, "failure_kind")
-    if gravado:
-        return gravado
-    tipo = classificar_falha(linhas.texto_ou_nulo(tentativa, "error"), linhas.texto_ou_nulo(tentativa, "status"))
-    return tipo.value if tipo is not None else None
+    return tipo_da_tentativa(linhas.texto_ou_nulo(tentativa, "failure_kind"), linhas.texto_ou_nulo(tentativa, "error"),
+                             linhas.texto_ou_nulo(tentativa, "status"), recovery=linhas.texto_ou_nulo(tentativa, "recovery"))
 
 
 def _sinal(r: Row) -> SinalGravado:

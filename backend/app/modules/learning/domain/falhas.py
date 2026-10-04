@@ -81,8 +81,10 @@ def _normal(texto: str) -> str:
 REGRAS: tuple[tuple[FailureKind, tuple[str, ...]], ...] = (
     (_F.APP_ANR, ("parou de responder (anr)",)),
     (_F.INTERROMPIDA, ("tentativa interrompida",)),
+    # 29.74: a trava da conta (`motivo_da_trava`: "auth_challenge (conta_travada): …", desafio, dois fatores) também é
+    # da pessoa (ADR-009); antes caía em `outro` na etapa e em `interrompida` na tentativa.
     (_F.AUTENTICACAO, ("pede autenticacao", "consentimento_pendente", "auth_required", "tela de login",
-                       "login manualmente")),
+                       "login manualmente", "auth_challenge")),
     # "não há UMA conta da pessoa" (item 24.4): a etapa confere a conta e não há conta certa para conferir — é a conta
     # da pessoa no app, não navegação; como a conta errada, fica com ela e nunca vira lição.
     (_F.CONTA_ERRADA, ("wrong_account", "conta errada", "outra conta logada", "nao ha uma conta da pessoa")),
@@ -129,7 +131,10 @@ REGRAS: tuple[tuple[FailureKind, tuple[str, ...]], ...] = (
                                "saiu de foco antes de completar", "digitacao incompleta")),
     (_F.POS_CONDICAO_NAO_COMPROVADA, ("pos-condicao nao comprovada", "pos-condicao nao apareceu")),
     (_F.ALVO_AUSENTE, ("alvo ausente", "nao achou o alvo", "elemento nao encontrado")),
-    (_F.FALTA_INFORMACAO, ("parametro ausente", "missing_info", "falta informacao")),
+    # 29.74: o valor sensível que a triagem não deixa passar de uma etapa a outra (ADR-009) é parada do executor que
+    # pede a pessoa sem passar pela IA; sem regra, viraria relato da IA.
+    (_F.FALTA_INFORMACAO, ("parametro ausente", "missing_info", "falta informacao",
+                           "nao passam de uma etapa a outra")),
     (_F.IA_DECLAROU_BLOQUEIO, ("bloqueio relatado pela ia", "step_blocked")),
 )
 
@@ -145,11 +150,16 @@ def classificar_texto(texto: str | None) -> FailureKind:
     return _F.OUTRO
 
 
-def classificar_falha(error: str | None, status: str | None, error_kind: str | None = None) -> FailureKind | None:
+def classificar_falha(error: str | None, status: str | None, error_kind: str | None = None,
+                      recovery: str | None = None) -> FailureKind | None:
     """O tipo de uma tentativa (ou etapa) no seu status FINAL. `None` quando o status não é falha.
 
-    `interrupted` é sempre `interrompida`, qualquer que seja o texto: é a reconciliação de partida
-    (`scheduler._reconciliar`) quem fecha, e o texto guardado pode ser o erro anterior da mesma tentativa.
+    `interrupted` é `interrompida` (a reconciliação de partida, a pausa e a tomada de controle), qualquer que seja o
+    texto: o texto guardado pode ser o erro anterior da mesma tentativa. A exceção (29.74) é a tentativa que parou
+    para esperar a pessoa: `recovery` "Aguardando o usuário" ou o encerramento da prova de fluxo
+    (`ESPEROU_A_PESSOA`). Ali o texto É a razão da parada (o app pede autenticação, falta informação, a IA relatou o
+    bloqueio), e chamá-la de interrompida jogava tudo num grupo da camada `execucao` que ninguém conserta. Sem regra
+    para o texto, é o relato livre da IA (`report_blocked` com `needs_user`): `ia_declarou_bloqueio`.
 
     `error_kind` (RA-22): o `AIError.kind` que encerrou a tentativa (`attempts.error_kind`). Quando decide
     (`pelo_erro_que_encerrou`), vence o texto: a mensagem do executor deixa de ser contrato. Sem ele, o texto.
@@ -158,8 +168,33 @@ def classificar_falha(error: str | None, status: str | None, error_kind: str | N
     if s in STATUS_SEM_FALHA:
         return None
     if s == "interrupted":
-        return _F.INTERROMPIDA
+        if not esperou_a_pessoa(recovery):
+            return _F.INTERROMPIDA
+        tipo = pelo_erro_que_encerrou(error_kind) or classificar_texto(error)
+        return _F.IA_DECLAROU_BLOQUEIO if tipo in (_F.OUTRO, _F.INTERROMPIDA) else tipo
     return pelo_erro_que_encerrou(error_kind) or classificar_texto(error)
+
+
+#: O começo do `attempts.recovery` das tentativas `interrupted` que pararam para esperar a pessoa (29.74), escrito
+#: pelo scheduler: o `waiting_user` (`_apply`) e a prova de fluxo que não espera ninguém (`_prova_sem_pessoa`). Um
+#: teste confere que o scheduler escreve estes textos.
+ESPEROU_A_PESSOA: tuple[str, ...] = ("Aguardando o usuário", "Prova de fluxo: encerrada pelo sistema")
+
+
+def esperou_a_pessoa(recovery: str | None) -> bool:
+    r = _normal(recovery or "").strip()
+    return any(r.startswith(_normal(p)) for p in ESPEROU_A_PESSOA)
+
+
+def tipo_da_tentativa(gravado: str | None, error: str | None, status: str | None, error_kind: str | None = None,
+                      recovery: str | None = None) -> str | None:
+    """O tipo de uma tentativa na LEITURA: o gravado (ADR-054) ou, sem ele, o classificado agora. O `interrompida`
+    gravado antes do 29.74 é relido com o `recovery`, para o gravado e o retroativo não discordarem: a tentativa que
+    esperou a pessoa sai do grupo de interrompidas também no histórico, sem migração."""
+    if gravado and gravado != _F.INTERROMPIDA.value:
+        return gravado
+    tipo = classificar_falha(error, status, error_kind, recovery)
+    return tipo.value if tipo is not None else gravado
 
 
 #: `AIError.kind` (planning/provider.py) → tipo da falha, em ORDEM de precedência. Só os tipos que ENCERRAM a chamada

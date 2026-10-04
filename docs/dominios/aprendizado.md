@@ -118,6 +118,15 @@ Os dois classificam por `classificar_falha(texto, status, error_kind)`, o mesmo 
 continua ganhando do prazo. O status vem antes (`interrupted` segue `interrompida`). Com isso a mensagem de IA do
 executor deixa de ser contrato; as REGRAS de texto ficam para o legado sem `error_kind`.
 
+**A interrompida que esperou a pessoa (29.74).** `interrupted` segue `interrompida` na reconciliação, na pausa e na
+tomada de controle. A tentativa que parou para esperar a pessoa (o `recovery` do `waiting_user`, "Aguardando o
+usuário", e o da prova de fluxo, "Prova de fluxo: encerrada pelo sistema": `falhas.ESPEROU_A_PESSOA`) é classificada
+pelo texto, como a etapa: autenticação, trava da conta (`auth_challenge`), saldo, falta de informação. Texto sem regra
+ali é o relato livre da IA (`ia_declarou_bloqueio`). Antes, tudo isso formava um grupo da camada `execucao`
+(`fk-d0f1c2ed23`, ~77 ocorrências em 04/10) que ninguém consertava. O legado gravado `interrompida` é relido com o
+`recovery` na leitura retroativa (`falhas.tipo_da_tentativa`, no relatório, no agregado diário, no feedback e no
+aprendido da execução), sem migração, e conta como retroativo. Com `retroativo=False`, fica o gravado.
+
 **Dívida paga (29/09, `2b0e5db`).** O contrato de gesto mora em `app/shared/costuras.py`: `TomadaDeControle`,
 `CosturaDeControle`, `avisar`, as portas de comando e de ensino e `autor_do_gesto`. `taskqueue/costuras.py` o reexporta,
 e `test_aparelhos_nao_conhecem_a_fila` (em `test_arquitetura.py`) impede a volta do import `devices` → `taskqueue`.
