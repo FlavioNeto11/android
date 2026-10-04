@@ -5388,3 +5388,24 @@ Aditivo ao v1.16 (o v1.17 é do 28.22). Sem migração e sem rota nova. Só vale
 Prova:
 - `simulated`: `backend/tests/test_pedidos_colaboracao_papeis.py` (17 testes, com contraprova: sem a fatia, 3 falham).
 - `not_run`: PostgreSQL e o central (a colaboração e `pedidos` estão desligados lá).
+## Adendo v1.19 (04/10/2026; número da orquestradora; item 28.23) — o teto de autonomia da execução
+
+`POST /api/runs` aceita o campo opcional `teto_de_autonomia`: `"observar"`, `"preparar"`, `"agir"` ou `null`
+(padrão). Ele fica gravado na execução (migração 100) e volta no resumo dela (`RunSummary.teto_de_autonomia`).
+Só restringe: nunca afrouxa a política da persona.
+
+- `null` e `"agir"`: como antes deste adendo.
+- `"observar"`: um plano com etapa de efeito (ou `commit_guard`) é recusado. A execução termina `failed` (nunca
+  `uncertain`: sem ação com efeito não há efeito possível), com o evento `plan.refused` e
+  `data = {"motivo": "acima_da_autonomia", "teto": "observar", "etapas": [<chaves>]}`. Como defesa, se uma etapa com
+  efeito chegar ao despacho (plano de fluxo, skill, revisão), a execução para antes dela e da etapa que a preenche;
+  as etapas restantes ficam `skipped` e o objetivo, `failed` (métrica `execucao.parada_no_teto`).
+- `"preparar"`: a etapa com efeito exige aprovação, qualquer que seja a política da persona. Sem ação do catálogo
+  que peça a aprovação, a etapa é segurada (`approval_required`) e não roda sozinha.
+
+Valor fora do vocabulário: `422`. Quem cria a execução a partir de um pedido persistente (o laço, F3 do 28.10)
+passa a autonomia do pedido neste campo; isso é do PR da frente Canais.
+
+Prova:
+- `simulated`: `backend/tests/test_teto_de_autonomia.py` (os três níveis e o nulo).
+- `not_run`: PostgreSQL e o central depois do deploy.

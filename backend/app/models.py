@@ -1652,6 +1652,10 @@ class RunCreate(BaseModel):
     #: Perfil de IA desta execução (item 17.7): um nome de `ai.profiles`. Vazio = as funções padrão, ou o canário,
     #: quando `ai.canary` estiver ligado. Nome que a configuração não tem é recusado (422) antes de criar a execução.
     ai_profile: str | None = Field(None, min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.-]+$")
+    #: Item 28.23 (migração 100): o teto de autonomia desta execução, gravado nela. `observar` recusa no plano a etapa
+    #: com efeito (e o despacho para antes dela, como defesa); `preparar` exige aprovação para ela, qualquer que seja a
+    #: política da persona (vale a mais restritiva); `agir` e nulo = como hoje. Só restringe: nunca afrouxa a persona.
+    teto_de_autonomia: Literal["observar", "preparar", "agir"] | None = None
     # ADR-040: a execução NÃO carrega credencial. `credentials`/`consent_credentials` (ADR-025) saíram: a senha é da
     # conta da persona (cofre, consentimento por conta) e a automação a digita de lá. `extra="forbid"` faz um
     # cliente antigo que ainda mande o campo receber 422 em vez de ser aceito em silêncio.
@@ -1800,6 +1804,8 @@ class RunSummary(BaseModel):
     #: Perfil de IA usado (item 17.7) e de onde veio: `explicit` (pedido) ou `canary` (sorteio). `None` = padrão.
     ai_profile: str | None = None
     ai_profile_source: Literal["explicit", "canary"] | None = None
+    #: Item 28.23: o teto de autonomia gravado na execução (`null` = como hoje).
+    teto_de_autonomia: Literal["observar", "preparar", "agir"] | None = None
     #: O pedido persistente e a ocorrência que originaram a execução (28.9; `null` em toda execução anterior).
     pedido_id: str | None = None
     ocorrencia_id: str | None = None

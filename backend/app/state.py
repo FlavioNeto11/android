@@ -2022,6 +2022,14 @@ class AppState:
         # Uma capability que o app DA ETAPA não tem conta como nenhuma. Antes, `cap is None` liberava a etapa com o
         # efeito que tivesse: uma chave inventada numa etapa do Instagram passava por fora de tudo abaixo.
         cap = capability_of(pacote, capability) if capability else None
+        teto = run["teto_de_autonomia"] if "teto_de_autonomia" in run.keys() else None
+        if teto == "preparar" and cap is None and (srow["side_effect"] or loads(srow["commit_guard"], [])):
+            # 28.23: com o teto `preparar`, todo efeito pede aprovação; a etapa com efeito SEM ação do catálogo não tem
+            # como pedir (a aprovação é da capability). Vale a mais restritiva: ela não roda sozinha.
+            return Verdict(allowed=False, policy="approval_required",
+                           reason="o teto de autonomia desta execução é preparar: o efeito precisa da sua aprovação, e "
+                                  "esta etapa não tem a ação do catálogo que a pediria",
+                           hint="Faça esta parte você mesmo, ou peça só o que o catálogo do app faz.")
         if cap is None:
             # Item 13.2: etapa com EFEITO externo sem ação do catálogo, num app que TEM catálogo, passaria por fora de
             # política, aprovação, limite e coordenação de frota (uma habilidade treinada, um plano livre que
@@ -2089,8 +2097,11 @@ class AppState:
         srow = self.repo.step_row(srow["id"]) or srow          # relê: o texto pode ter acabado de entrar
         # Aprovação por política, por DM fria (o porquê vem no `reason` do veredito que libera) ou pela confirmação
         # do mesmo pedido a várias contas — nenhum grupo nem perfil afrouxa as duas últimas.
-        if veredito.needs_approval or confirmacao:
-            motivo = "; ".join(m for m in (veredito.reason, confirmacao) if m)
+        # 28.23: com o teto `preparar`, o efeito exige aprovação qualquer que seja a política da persona.
+        pelo_teto = ("teto de autonomia preparar: o efeito precisa da sua aprovação"
+                     if teto == "preparar" and cap.side_effect else "")
+        if veredito.needs_approval or confirmacao or pelo_teto:
+            motivo = "; ".join(m for m in (veredito.reason, confirmacao, pelo_teto) if m)
             return self._approval_gate(obj, srow, cap, profile_id, motivo=motivo)
         return None
 

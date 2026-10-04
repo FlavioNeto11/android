@@ -173,13 +173,13 @@ class Repository:
             with self.db.tx():
                 self.db.execute(
                     "INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at,"
-                    " targets, ai_profile, ai_profile_source, pedido_id, ocorrencia_id, prioridade, prova_fluxo_id)"
-                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " targets, ai_profile, ai_profile_source, pedido_id, ocorrencia_id, prioridade, prova_fluxo_id,"
+                    " teto_de_autonomia) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     # `redact` é a SEGUNDA linha (a primeira é a recusa em `RunService.create`): comando com formato de
                     # segredo não chega a esta tabela, que a API de execuções devolve e o planejador lê (ADR-025).
                     (run_id, req.idempotency_key, redact(req.command.strip()), req.mode, RunStatus.planning.value,
                      int(simulated), dumps(req.instance_ids), now_iso(), targets, perfil, perfil_origem,
-                     pedido_id, ocorrencia_id, int(prioridade), prova))
+                     pedido_id, ocorrencia_id, int(prioridade), prova, req.teto_de_autonomia))
         except INTEGRITY_ERRORS:
             row = self.db.one("SELECT * FROM runs WHERE idempotency_key=?", (req.idempotency_key,))
             assert row is not None
@@ -1331,6 +1331,7 @@ class Repository:
             status_detail=row["status_detail"], deduplicated=deduplicated,
             app_ids=loads(_col(row, "app_ids"), []) or [],
             ai_profile=_col(row, "ai_profile"), ai_profile_source=_col(row, "ai_profile_source"),
+            teto_de_autonomia=_col(row, "teto_de_autonomia"),
             pedido_id=_col(row, "pedido_id"), ocorrencia_id=_col(row, "ocorrencia_id"),
             prova_fluxo_id=_col(row, "prova_fluxo_id"), origem=origem, origem_ref=origem_ref)
 
