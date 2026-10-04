@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.50, lado da Canais: o lembrete de vencimento no montador dos avisos (branch canais/31-50-montador-vencimento, sobre a F1 do 28.31)
+
+- O evento `pendencia.vence_em` (Jev, #313, adendo v1.33) entra em `KINDS_QUE_AVISAM` e vira aviso de nível 1, na hora,
+  com rajada ("N pendências vencem nas próximas 2 h"). Molde: "⏳ A aprovação no android-12 vence às 22:30Z", a etapa de
+  catálogo que espera (só a chave), "Se vencer: cancelado pelo sistema." e "Espera você: decida/responda na caixa de
+  Pendências antes disso.", com o link. A chave do aviso é `data.chave`; a `etapa` não é usada.
+- O lembrete de execução do sistema (prova, validação, lote) cala pela regra `_e_de_prova`; o de aprovação de lote avisa.
+  A resposta ao lembrete no Telegram não vira pedido.
+- Prova `simulated`: `backend/tests/test_avisos_vencimento.py` (10); afetados 179 passed.
+
 ## 2026-10-04 — 28.31 F1: o aviso diz o que aconteceu, o que é crítico e se espera o dono (branch canais/28-31-avisos-com-conteudo)
 
 A queixa do dono (Telegram, 04/10 19:10Z): avisos "genéricos e sem relevância". A causa estava no código, e era de

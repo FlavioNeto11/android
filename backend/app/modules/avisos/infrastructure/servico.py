@@ -37,7 +37,7 @@ log = logging.getLogger("poc.avisos")
 
 #: Eventos que podem virar aviso. O filtro barato antes de montar a mensagem.
 KINDS_QUE_AVISAM = frozenset({"approval.pending", "run.updated", "session.needs_person", "pedido.aviso",
-                              "learning.needs_person"})
+                              "learning.needs_person", "pendencia.vence_em"})
 #: De quanto em quanto tempo o laço varre incertos, vencidos e purga (a entrega roda a cada volta).
 FAXINA_S = 3600.0
 
@@ -157,9 +157,12 @@ class ServicoDeAvisos:
         30.37 decidiu.
         Só consulto o banco para o evento que AVISARIA; falha na consulta deixa o aviso seguir (o dono recebe um aviso
         a mais, nunca perde um de pessoa)."""
-        if kind not in ("run.updated", "approval.pending"):
+        if kind not in ("run.updated", "approval.pending", "pendencia.vence_em"):
             return False
-        filho = (data or {}).get("run" if kind == "run.updated" else "approval")
+        # 31.50: o lembrete do vencimento segue a regra do item que lembra (a aprovação de lote avisa; o resto do sistema não).
+        lembrete = kind == "pendencia.vence_em"
+        aprovacao = kind == "approval.pending" or (lembrete and (data or {}).get("o_que") == "aprovacao")
+        filho = (data or {}) if lembrete else (data or {}).get("run" if kind == "run.updated" else "approval")
         run_id = filho.get("id" if kind == "run.updated" else "run_id") if isinstance(filho, dict) else None
         if isinstance(filho, dict) and filho.get("prova_fluxo_id"):
             return True
@@ -172,7 +175,7 @@ class ServicoDeAvisos:
             return False
         if linha is None:
             return False
-        if kind == "approval.pending" and str(linha["idempotency_key"] or "").startswith(PREFIXO_LOTE):
+        if aprovacao and str(linha["idempotency_key"] or "").startswith(PREFIXO_LOTE):
             return False                                   # aprovação de lote: o dono decide, então avisa
         return e_execucao_do_sistema(linha["prova_fluxo_id"], linha["idempotency_key"])
 
