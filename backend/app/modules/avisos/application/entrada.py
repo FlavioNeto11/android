@@ -16,6 +16,8 @@ Sem fato (a mensagem solta):
 - `/para <aparelho|persona> <objetivo>`, ou "para o X: <objetivo>";
 - texto livre: um objetivo, com o destino tirado do texto pelo extrator do painel;
 - `/orq <texto>`: recado para a orquestradora, guardado e não executado;
+- `/captura <aparelho>`, ou "captura do android-12" (28.24, exceção (a) do dono): a tela do aparelho volta como imagem, só
+  ao chat do dono. Não executa nada no aparelho;
 - "quem é você?", "você é uma IA?" (e `/quem`): a pergunta pela identidade (28.17). Quem responde é a ANA, que diz
   que é IA; a frase precisa ser SÓ a pergunta, para um pedido que começa parecido seguir como texto livre.
 
@@ -38,7 +40,7 @@ from app.contracts.identidade import APRESENTACAO_DA_IA
 
 #: O que cada intenção é. `desconhecida` responde com a ajuda; `vazia` não responde.
 INTENCOES = frozenset({"ajuda", "identidade", "status", "pendencias", "aprovar", "vetar", "responder", "para", "livre",
-                       "orquestradora", "desconhecida", "vazia", "autorizar_convidado", "recusar_convidado"})
+                       "orquestradora", "desconhecida", "vazia", "autorizar_convidado", "recusar_convidado", "captura"})
 
 AJUDA = (
     "Comandos da Central:\n"
@@ -47,6 +49,7 @@ AJUDA = (
     "/aprovar <id> e /vetar <id> [nota]: decide uma aprovação\n"
     "/responder <id> <texto>: responde à pergunta de uma execução\n"
     "/para <aparelho ou persona> <objetivo>: um pedido com destino\n"
+    "/captura <aparelho>: a tela do aparelho, como imagem (também: \"captura do android-12\")\n"
     "Texto livre também é um pedido; antes de rodar, a Central mostra a prévia e espera Executar.\n"
     "Foto, PDF e texto (arquivo .txt) ficam guardados na Central; a legenda vale como mensagem.\n"
     "Respondendo a um aviso, o id é o dele: \"sim\" aprova, \"não\" veta, e o texto responde a uma pergunta.\n"
@@ -68,6 +71,10 @@ _QUEM_E = re.compile(
     r"(?:qual (?:e )?)?(?:o )?seu nome|como (?:voce|vc) se chama"
     r")\s*[?!.]*$")
 _ANDROID = re.compile(r"^android-\d+$", re.IGNORECASE)
+#: "captura do android-12", "me manda um print do android-12", "screenshot de tela do android-3": já sem acento, de ponta a
+#: ponta. Só com o id do aparelho; "captura do app do Pedro" segue como pedido de texto livre.
+_CAPTURA = re.compile(r"^(?:(?:me )?(?:manda|mande|envia|envie|tira|tire|pega|pegue) )?(?:a |uma? )?"
+                      r"(?:captura|print|screenshot)(?: de tela)? (?:do |da |de )?(?P<alvo>android-\d+)\s*[?!.]*$")
 #: "para o X: objetivo", "para a X: objetivo", "para X: objetivo" (os dois-pontos são o que separa o destino).
 _PARA_LIVRE = re.compile(r"^\s*para\s+(?:o\s+|a\s+)?(?P<alvo>[^:\n]{1,60}?)\s*:\s*(?P<objetivo>\S.*)$",
                          re.IGNORECASE | re.DOTALL)
@@ -142,7 +149,11 @@ def rotear(texto: str | None, *, fato: str | Fato | None = None) -> Intencao:
         por_fato = _rotear_resposta(t, f)
         if por_fato is not None:
             return por_fato
-    if _QUEM_E.match(" ".join(_sem_acento(t).split())):
+    normal = " ".join(_sem_acento(t).split())
+    captura = _CAPTURA.match(normal)
+    if captura:
+        return Intencao("captura", alvo=captura.group("alvo"))
+    if _QUEM_E.match(normal):
         return Intencao("identidade")
     m = _PARA_LIVRE.match(t)
     if m:
@@ -156,6 +167,11 @@ def _rotear_comando(t: str, f: Fato | None) -> Intencao:
         return Intencao("ajuda")
     if cmd in ("quem", "ana"):
         return Intencao("identidade")
+    if cmd in ("captura", "print", "screenshot"):
+        alvo = resto.split()[0] if resto.split() else ""
+        if not _ANDROID.match(alvo):
+            return Intencao("desconhecida", motivo="Formato: /captura android-NN (o id do aparelho).")
+        return Intencao("captura", alvo=alvo.lower())
     if cmd in ("status", "estado"):
         return Intencao("status")
     if cmd == "pendencias":

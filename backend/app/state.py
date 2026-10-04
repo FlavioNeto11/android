@@ -46,6 +46,7 @@ from .modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
 from .modules.avisos.application.espelho import LinhaDeCusto
 from .modules.avisos.infrastructure.espelho import EspelhoDoTrello, FontesDaCentral
 from .modules.avisos.infrastructure.espelho_sql import CartoesDoTrello, CursorDoTrello
+from .devices.captura_pontual import capturar_para_o_dono
 from .modules.avisos.infrastructure.anexos import ArmazemDeAnexos
 from .modules.avisos.infrastructure.faxina_sql import FaxinaDosCanais
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
@@ -542,7 +543,8 @@ class AppState:
         triagem = TriagemDeCredencial()
         portas_da_central = PortasReais(db=self.db, runs=self.runs, aprovacoes=self.approval_service, saude=self.health,
                                         online=lambda: [d.id for d in self.devices.list_dtos()
-                                                        if str(d.state) == "online" and d.kind != "store"])
+                                                        if str(d.state) == "online" and d.kind != "store"],
+                                        capturar=lambda alvo: capturar_para_o_dono(self.devices, alvo))
         # Quem fala com o bot e não é o dono (28.18): apresentação, nome, o dono decide; desligado de fábrica
         # (`avisos.entrada.convidados.enabled`). A recusa de credencial é a mesma da conversa do dono.
         convidados = ConvidadosDoTelegram(

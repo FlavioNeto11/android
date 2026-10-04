@@ -171,6 +171,15 @@ class Pendencia:
     resumo: str
 
 
+@dataclass(frozen=True)
+class Captura:
+    """A tela de um aparelho (28.24, exceção (a)): a imagem, ou o motivo, em português simples, de não haver."""
+
+    conteudo: bytes | None = None
+    mime: str = "image/jpeg"
+    motivo: str | None = None
+
+
 class PortasDaCentral(Protocol):
     """O que a conversa pode fazer, pelos MESMOS serviços das rotas do painel."""
 
@@ -183,6 +192,9 @@ class PortasDaCentral(Protocol):
     def previa(self, texto: str, instance_ids: list[str] | None = None) -> Previa: ...
     def criar(self, texto: str, alvos: list[dict[str, object]], chave: str) -> tuple[str, str]: ...
     def online(self) -> list[str]: ...
+    async def captura(self, instance_id: str) -> Captura:
+        """A tela atual do aparelho pela MESMA prévia do painel (tela sensível não sai). Não executa nada nele."""
+        ...
     def desfecho(self, run_id: str) -> str | None: ...
     def pergunta_sensivel(self, ref: str | None) -> str | None:
         """O tipo da credencial que a pergunta aberta pede (`senha`, `2fa`, `codigo`, `token`, `credencial`), ou None.
@@ -787,6 +799,8 @@ class ConversaDoCanal:
             else:
                 texto = await self.decidir_convidado(i.ref, i.tipo == "autorizar_convidado")
             await self._feita(saida, linha, i, texto, alvo=f"convidado:{i.ref}" if i.ref else None)
+        elif i.tipo == "captura":
+            await self._captura(saida, linha, i)
         elif i.tipo == "desconhecida":
             await self._feita(saida, linha, i, f"{i.motivo or 'Não entendi.'} /ajuda mostra os comandos.")
         elif i.tipo == "status":
@@ -806,6 +820,29 @@ class ConversaDoCanal:
         self.repo.marcar(self._id(linha), "feita", intencao=i.tipo, destino="central", alvo=alvo, run_id=run_id,
                          resposta=self._redigir(texto), de=("recebida", "pergunta", "executando"))
         await self._responder(saida, linha, texto)
+
+    async def _captura(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
+        """A tela do aparelho de volta ao DONO (exceção (a) do dono, 04/10 15:17Z). Só chega aqui a linha do dono; o convidado
+        não tem comando. A legenda leva só o id do aparelho. O arquivo passa pelo mesmo caminho de toda saída de anexo
+        (tipo e tamanho conferidos, guardado em `data/anexos`, retenção do 28.16)."""
+        alvo = i.alvo or ""
+        captura = await self.portas.captura(alvo)
+        alvo_do_fato = f"aparelho:{alvo}"
+        if captura.conteudo is None:
+            await self._feita(saida, linha, i, captura.motivo or f"Não consegui a captura do {alvo}.", alvo=alvo_do_fato)
+            return
+        try:
+            await self.enviar_conteudo(saida, captura.conteudo, f"Captura do {alvo}", mime_declarado=captura.mime,
+                                       responde_a=_texto(linha.get("ref_mensagem")), entrada_id=self._id(linha))
+        except AnexoRecusado as recusa:
+            await self._feita(saida, linha, i, f"Não enviei a captura: {recusa.motivo}", alvo=alvo_do_fato)
+        except FalhaDeEnvio as falha:
+            log.warning("telegram: captura não enviada (%s)", falha.motivo)
+            await self._feita(saida, linha, i, "Tirei a captura, mas o canal não aceitou o arquivo. Tente de novo.",
+                              alvo=alvo_do_fato)
+        else:
+            self.repo.marcar(self._id(linha), "feita", intencao=i.tipo, destino="central", alvo=alvo_do_fato,
+                             resposta="captura enviada", de=("recebida", "pergunta", "executando"))
 
     def _texto_pendencias(self) -> str:
         itens = self.portas.pendencias()
