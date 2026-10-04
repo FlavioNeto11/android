@@ -159,6 +159,7 @@
       }
     ],
     "missing": [],
+    "fora_do_catalogo": [],
     "planner": {
       "provider": "skill",
       "model": "skill:ig.conversas_da_caixa@1",

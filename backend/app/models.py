@@ -231,6 +231,16 @@ class MissingInfo(BaseModel):
     question: str
 
 
+class ForaDoCatalogo(BaseModel):
+    """Item 31.33: o pedido que nenhuma ação do catálogo do app cobre, dito pelo planejador num campo FECHADO. Antes ia
+    para `missing` e virava uma pergunta que a pessoa não tinha como responder; agora a execução é recusada com um texto
+    montado dos dados do catálogo (`disponiveis` são os títulos das ações oferecidas, do backend, nunca do modelo)."""
+    app_id: str | None = None
+    app: str
+    pedido: str
+    disponiveis: list[str] = []
+
+
 class PlannerInfo(BaseModel):
     provider: str
     model: str
@@ -249,6 +259,8 @@ class Plan(BaseModel):
     success_criteria: list[str] = []
     steps: list[PlanStep] = []
     missing: list[MissingInfo] = []
+    #: Item 31.33: não vazio = o comando pede o que o catálogo do app não faz; a execução é recusada no planejamento.
+    fora_do_catalogo: list[ForaDoCatalogo] = []
     planner: PlannerInfo
 
     @field_validator("steps")

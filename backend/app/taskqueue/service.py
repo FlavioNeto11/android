@@ -32,7 +32,7 @@ from ..planning.apps_do_comando import apps_citados, pede_site
 from ..planning.capabilities import CapabilityCatalog, efeito_fora_do_catalogo, load_catalog
 from ..planning.decisao_fechada.entidades import registrar_fonte_dos_apps
 from ..planning.catalog import capabilities_of, session_provider_of
-from ..planning.parsing import apps_do_plano
+from ..planning.parsing import apps_do_plano, texto_fora_do_catalogo
 from ..planning.provider import AIError, AIProvider, AppContext, MarcaDaChamada, PlanRequest
 from ..security.redaction import redact
 from ..shared.costuras import SISTEMA
@@ -1080,6 +1080,9 @@ class RunService:
         # RA-7: a porta do item 13.2 também no PLANEJAMENTO, para todo plano (planejador, fluxo, skill), antes de
         # qualquer etapa existir. No despacho ela só recusava ao chegar na etapa com efeito, depois que os preparativos
         # (abrir, preencher destinatário, assunto…) já tinham gastado decisões.
+        if plan.fora_do_catalogo:
+            self._recusar_fora_do_catalogo(run_id, plan)
+            return
         recusadas = self._efeitos_fora_do_catalogo(plan, instances, apps)
         if recusadas:
             self._recusar_no_planejamento(run_id, plan, recusadas)
@@ -1129,6 +1132,19 @@ class RunService:
                                             "capability": passo.capability, "motivo": motivo}
                     break
         return list(recusadas.values())
+
+    def _recusar_fora_do_catalogo(self, run_id: str, plan: Plan) -> None:
+        """Item 31.33: o comando pede o que nenhuma ação do catálogo do app faz. Antes virava `needs_input` com uma
+        pergunta ("Como devo fazer isso?") que a pessoa não tinha como responder: não há resposta que crie a ação. A
+        execução termina recusada, sem etapa e sem pergunta, com o texto montado dos dados do catálogo (ADR-052): vale
+        para qualquer app declarado, sem nome de app nem ação no código."""
+        texto = " ".join(texto_fora_do_catalogo(f.pedido, f.app, f.disponiveis) for f in plan.fora_do_catalogo)
+        self.repo.save_plan(run_id, plan)
+        self.repo.decision(f"Recusado no planejamento (item 31.33): {texto}", run_id=run_id)
+        self.repo.bus.emit("plan.refused", texto, level="warn", run_id=run_id,
+                           data={"motivo": "sem_acao_do_catalogo",
+                                 "pedidos": [f.model_dump() for f in plan.fora_do_catalogo]})
+        self.repo.set_run_status(run_id, RunStatus.failed, texto, level="warn", message=f"Execução {run_id}: {texto}")
 
     def _recusar_no_planejamento(self, run_id: str, plan: Plan, recusadas: list[dict[str, object]]) -> None:
         """O plano inteiro sai sem etapas, com uma pergunta por etapa recusada: o caminho do `missing` (a execução

@@ -16,7 +16,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ValidationError
 
-from ..models import (DeliveryLevel, MissingInfo, Plan, PlannerInfo, PlanStep, Postcondition, SocialDraftDTO)
+from ..models import (DeliveryLevel, ForaDoCatalogo, MissingInfo, Plan, PlannerInfo, PlanStep, Postcondition,
+                      SocialDraftDTO)
 from ..taskqueue.saidas import referencias
 from .capabilities import (CapabilityCatalog, CapabilityNode, compose, herdar_argumentos, load_catalog,
                            montar_etapa)
@@ -78,12 +79,19 @@ class _CapStepOut(BaseModel):
     for_each: str | None
 
 
+class _ForaOut(BaseModel):
+    """Item 31.33: o pedido que nenhuma ação do catálogo do app cobre. `pedido` é a ação pedida em poucas palavras."""
+    app_id: str | None
+    pedido: str
+
+
 class _CapPlanOut(BaseModel):
     summary: str
     parameters: list[_ParamOut]
     success_criteria: list[str]
     steps: list[_CapStepOut]
     missing: list[MissingInfo]
+    fora_do_catalogo: list[_ForaOut] = []
 
 
 # Formato do planejamento ENTRE APPS (item 24.1, ADR-058): cada etapa diz o app dela e é AÇÃO do catálogo (app com
@@ -121,6 +129,7 @@ class _MultiPlanOut(BaseModel):
     success_criteria: list[str]
     steps: list[_MultiStepOut]
     missing: list[MissingInfo]
+    fora_do_catalogo: list[_ForaOut] = []
 
 
 # Formato CURTO da etapa livre (LT-4b, `ai.esquema_do_plano: curto`): o plano custa ~6,6 ms por token de saída, e
@@ -184,6 +193,7 @@ class _MultiPlanCurtoOut(BaseModel):
     success_criteria: list[str]
     steps: list[_MultiStepCurtoOut]
     missing: list[MissingInfo]
+    fora_do_catalogo: list[_ForaOut] = []
 
 
 #: Tentativas da etapa livre sem efeito no formato curto: o padrão de `PlanStep`. No formato longo o modelo escolhia
@@ -324,6 +334,46 @@ def plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: str, max
     return plan
 
 
+def _titulo_limpo(titulo: str) -> str:
+    """O título da ação sem os marcadores de argumento ("Abrir a conversa com {username}" → "Abrir a conversa com …")."""
+    return re.sub(r"\s+", " ", re.sub(r"\{[^}]*\}", "…", titulo)).strip()
+
+
+def fora_do_catalogo(itens: Iterable[_ForaOut], catalogos: Mapping[str, CapabilityCatalog],
+                     nomes: Mapping[str, str]) -> list[ForaDoCatalogo]:
+    """Item 31.33: o sinal fechado do modelo com os dados do catálogo (ADR-052). O app e as ações disponíveis vêm do
+    backend, nunca do modelo: o que ele diz é só QUAL app e O QUE foi pedido. App que o modelo cita e não está entre
+    os do comando cai no único app com catálogo, se houver um só; senão vai pelo nome que veio, sem lista."""
+    saida: list[ForaDoCatalogo] = []
+    for item in itens:
+        pedido_em = item.app_id or ""
+        app_id = pedido_em if pedido_em in catalogos else next(iter(catalogos)) if len(catalogos) == 1 else pedido_em
+        catalogo = catalogos.get(app_id)
+        disponiveis = list(dict.fromkeys(_titulo_limpo(c.title) for c in catalogo.offered)) if catalogo else []
+        saida.append(ForaDoCatalogo(app_id=app_id or None, app=nomes.get(app_id) or app_id or "app",
+                                    pedido=item.pedido.strip(), disponiveis=disponiveis))
+    return saida
+
+
+#: A frase vai ao painel e ao Telegram: o catálogo do Instagram tem ~30 ações e viraria um parágrafo.
+MAX_TITULOS_NA_RECUSA = 8
+
+
+def texto_fora_do_catalogo(pedido: str, app: str, disponiveis: list[str]) -> str:
+    """Item 31.33: a frase da recusa, só com dados (o pedido dito pelo modelo, o nome do app e os títulos do catálogo
+    dele). Nada de app ou ação fixos aqui: serve a qualquer app declarado (ADR-052)."""
+    pedido = pedido.strip().rstrip(".")
+    sujeito = (pedido[:1].upper() + pedido[1:]) if pedido else "Isso"
+    if not disponiveis:
+        return f"{sujeito} não está disponível no {app}. Faça essa parte você mesmo."
+    itens = [d[:1].lower() + d[1:] for d in disponiveis[:MAX_TITULOS_NA_RECUSA]]
+    if len(disponiveis) > MAX_TITULOS_NA_RECUSA:
+        itens.append(f"mais {len(disponiveis) - MAX_TITULOS_NA_RECUSA}")
+    lista = itens[0] if len(itens) == 1 else ", ".join(itens[:-1]) + " e " + itens[-1]
+    return (f"{sujeito} não está disponível no {app}: o catálogo dele só tem {lista}. Faça essa parte você mesmo ou "
+            "peça só o que está nessa lista.")
+
+
 def catalog_plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: str, max_steps: int,
                            curto: bool = False) -> Plan:
     """Planejamento COM catálogo: o modelo escolhe ações e argumentos; o backend monta as etapas. Com
@@ -348,6 +398,11 @@ def catalog_plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: 
                 success_criteria=out.success_criteria, steps=[] if missing else steps,
                 missing=out.missing + missing,
                 planner=PlannerInfo(provider=provider, model=model, simulated=False))
+    fora = fora_do_catalogo(out.fora_do_catalogo, {plan.app_id or "": req.catalog},
+                            {plan.app_id or "": (app.name or app.id or "") if app else req.catalog.package})
+    if fora:
+        # A recusa substitui o plano inteiro: um pedaço montado ou uma pergunta não servem a quem pediu o impossível.
+        plan.steps, plan.missing, plan.fora_do_catalogo = [], [], fora
     plan.required_apps = apps_do_plano(plan, getattr(req, "instances", ()))
     return plan
 
@@ -439,6 +494,10 @@ def _plano_entre_apps(raw: str, req: PlanRequest, *, provider: str, model: str, 
                     steps=[] if faltas else [etapa for _, etapa in montadas],
                     missing=out.missing + faltas,
                     planner=PlannerInfo(provider=provider, model=model, simulated=False))
+        fora = fora_do_catalogo(out.fora_do_catalogo, catalogos,
+                                {k: a.name or k for k, a in conhecidos.items()})
+        if fora:
+            plan.steps, plan.missing, plan.fora_do_catalogo = [], [], fora
     except (ValidationError, ValueError) as exc:
         raise AIError(f"Plano inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
     plan.required_apps = apps_do_plano(plan, getattr(req, "instances", ()))
