@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.73: o agente reconecta rápido depois do reinício do central (branch fix/29-73-reconexao-rapida)
+
+- Deploy 28: o central fechou o canal com 1012 (service restart) às 15:59:17Z e voltou às 16:00:33Z; a escada do
+  agente (2, 4, 8, 16, 32, 60 s) marcou a tentativa seguinte para 16:01:29Z, e o worker ficou ~1 min fora depois do
+  central de pé (o mesmo nos reinícios de 10:13 e 13:00, hora do notebook).
+- `EsperaDeReconexao`: o fechamento 1012 ou 1001 abre uma janela de 3 min com espera fixa de 3 s; depois, a escada de
+  sempre. Queda sem aviso segue a escada. Muda arquivo do manifesto (`worker/agent.py`): o deploy leva o agente novo.
+- Prova `simulated`: `test_worker_agent.py` (2 testes novos, puros; mutação conferida). Real: `not_run` (o próximo
+  deploy depois do agente novo).
+
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
 - Retorno do dono (04/10, Aprendizado › Para aprovar com 5 selecionados): o formulário do aceite abria com o botão
