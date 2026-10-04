@@ -5370,3 +5370,21 @@ Prova:
   `test_pedidos_api.py::test_cancelar_grava_o_motivo_so_no_detalhe_e_nunca_no_evento_nem_no_aviso`; vitest
   `PedidosPage.test.tsx` (2 novos).
 - `not_run`: PostgreSQL e o central depois do deploy.
+## Adendo v1.18 (04/10/2026; número da orquestradora; item 28.10 F3) — o papel limita a autonomia do pedido
+
+Aditivo ao v1.16 (o v1.17 é do 28.22). Sem migração e sem rota nova. Só vale com `pedidos.colaboracao.enabled`.
+
+- **Teto por papel:** `pesquisador` e `checador` vão até `observar`, `redator` até `preparar`, e `porta_voz` até `agir`.
+- **`POST /api/pedidos/previa` e `POST /api/pedidos`:** o pedido com `papel` e uma `autonomia` acima do teto é recusado com
+  422 `autonomia_acima_do_papel` (`campo: "autonomia"`), e a prévia o lista como bloqueio, sem selo. A estrutura (os códigos
+  do v1.16) é conferida antes. Vale também para o pedido sem pai.
+- **`PATCH /api/pedidos/{id}`:** mudar a `autonomia` de um pedido com papel para acima do teto é 422
+  `autonomia_acima_do_papel`, já no `dry_run`. O papel continua sem mudar depois de criado.
+- **Ocorrência:** quando o laço decide abaixo da autonomia gravada (pedido gravado acima do teto antes desta fatia), a
+  ocorrência terminada traz no `motivo` a nota `autonomia rebaixada ao teto do papel <papel>: <gravada> → <efetiva>`.
+- **Limite:** a autonomia ainda não chega à execução. O teto vale no que o laço decide (sobreposição, janela, piso). A
+  execução ganha o teto no 28.23 (adendo v1.19).
+
+Prova:
+- `simulated`: `backend/tests/test_pedidos_colaboracao_papeis.py` (17 testes, com contraprova: sem a fatia, 3 falham).
+- `not_run`: PostgreSQL e o central (a colaboração e `pedidos` estão desligados lá).

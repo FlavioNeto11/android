@@ -128,6 +128,14 @@ class PedidosApi:
             return None, previa.Bloqueio(e.code, e.message, "alvos")
 
     def _validar_colaboracao(self, corpo: CorpoDoPedido, pid: str | None) -> previa.Bloqueio | None:
+        """A estrutura (F1) e, com ela válida, o teto de autonomia do papel (F3): a pessoa corrige primeiro a árvore."""
+        b = self._validar_estrutura(corpo, pid)
+        if b is not None or corpo.papel is None or not self.cfg.colaboracao.enabled:
+            return b
+        r = colaboracao.validar_autonomia(corpo.autonomia, corpo.papel)
+        return previa.Bloqueio(r.codigo, r.mensagem, r.campo or "") if r else None
+
+    def _validar_estrutura(self, corpo: CorpoDoPedido, pid: str | None) -> previa.Bloqueio | None:
         """A estrutura de pai, papel e dependências (28.10, F1), pelo domínio. `pid` é o id que o pedido terá (na prévia
         não se sabe: a chave de idempotência só chega na criação). Pedido que já existe é repetição da mesma chave: a
         estrutura dele foi conferida quando nasceu e o pai pode ter terminado desde então, então não se confere de novo."""
@@ -540,6 +548,9 @@ class PedidosApi:
         if analise.bloqueios:
             b = analise.bloqueios[0]
             raise ErroDeApi(422, b.codigo, b.mensagem, **({"campo": b.campo} if b.campo else {}))
+        recusa = colaboracao.validar_autonomia(depois.autonomia, p["papel"])     # F3: o papel não muda, a autonomia sim
+        if recusa is not None:
+            raise ErroDeApi(422, recusa.codigo, recusa.mensagem, campo=recusa.campo)
         selo_antes, selo_depois = previa.selo(antes), previa.selo(depois)
         muda: list[JsonObject] = []
         fa, fd = previa.forma_canonica(antes), previa.forma_canonica(depois)

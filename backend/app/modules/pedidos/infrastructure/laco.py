@@ -277,6 +277,10 @@ class LacoDePedidos:
                 fech = replace(fech, estado="incerta", motivo=f"{fech.motivo}; {decisao.complemento}"[:500])
             elif decisao.complemento:
                 fech = replace(fech, motivo=f"{fech.motivo}; {decisao.complemento}")
+        if fech.terminal:
+            nota = self._nota_de_rebaixamento(p or self.repo.pedido(o["pedido_id"]))
+            if nota:
+                fech = replace(fech, motivo="; ".join(x for x in (fech.motivo, nota) if x)[:500])
         transicionar_ocorrencia(o["estado"], fech.estado, motivo=fech.motivo)
         preparo = self._observar(o, fech) if fech.terminal else None
         avisos: list[Mapping[str, object]] = []
@@ -523,7 +527,7 @@ class LacoDePedidos:
             return int(p["janela_recuperacao_s"])
         if g is None:
             return self.cfg.janela_padrao_s
-        return janela_padrao_s(g["tipo"], autonomia=p["autonomia"], periodo_s=gatilhos.periodo_s(g["tipo"], spec),
+        return janela_padrao_s(g["tipo"], autonomia=self._autonomia(p), periodo_s=gatilhos.periodo_s(g["tipo"], spec),
                                padrao_s=self.cfg.janela_padrao_s)
 
     def _materializar_pedido(self, p: Row, token: int, agora: datetime, r: Resumo) -> None:
@@ -641,7 +645,8 @@ class LacoDePedidos:
                 self.repo.cas_cursor(g["id"], antes, depois)
             return
         ultima = self.repo.ultima_do_gatilho(g["id"])
-        piso = self.cfg.piso_agir_s if g["pedido_autonomia"] == "agir" else self.cfg.piso_observar_s
+        autonomia = colaboracao.autonomia_efetiva(g["pedido_autonomia"], g["pedido_papel"])
+        piso = self.cfg.piso_agir_s if autonomia == "agir" else self.cfg.piso_observar_s
         if ultima is not None and parse_iso(ultima["previsto_para"]) + timedelta(seconds=piso) > agora:
             return              # dentro do piso da autonomia: os eventos esperam (e coalescem) sem mover o cursor
         instante = truncar(agora)
@@ -823,11 +828,11 @@ class LacoDePedidos:
         devidas = self._liberadas_pela_dependencia(p, devidas, token, agora, r)
         if not devidas:
             return 0
-        plano = decidir(p["sobreposicao"], p["autonomia"], self.repo.ids_das_abertas(p["id"]),
+        plano = decidir(p["sobreposicao"], self._autonomia(p), self.repo.ids_das_abertas(p["id"]),
                         [Devida(o["id"], o["previsto_para"], o["chave"]) for o in devidas])
         if plano.incoerente:
             log.warning("pedidos: pedido %s pede a sobreposição %s com autonomia %s; aplicada: pular",
-                        p["id"], p["sobreposicao"], p["autonomia"])
+                        p["id"], p["sobreposicao"], self._autonomia(p))
         despachar, pular = list(plano.despachar), list(plano.pular)
         if p["max_ocorrencias"] is not None:
             # Uma nova tentativa (28.5) já virou execução: `executadas` a conta, e o máximo não a barra.
@@ -1008,6 +1013,16 @@ class LacoDePedidos:
             if self.repo.marcar_despachada(o["id"], run_id, n):
                 r.despachadas += 1
         return True
+
+    @staticmethod
+    def _autonomia(p: Row) -> str:
+        """A autonomia com que o laço decide (28.10 F3): a mais restrita entre a do pedido e o teto do papel dele. A API
+        já recusa o pedido acima do teto; isto é a defesa para o legado e para o pedido gravado com a colaboração desligada."""
+        return colaboracao.autonomia_efetiva(p["autonomia"], p["papel"])
+
+    @staticmethod
+    def _nota_de_rebaixamento(p: Row | None) -> str | None:
+        return None if p is None else colaboracao.nota_de_rebaixamento(p["autonomia"], p["papel"])
 
     @staticmethod
     def _prioridade(p: Row) -> int:

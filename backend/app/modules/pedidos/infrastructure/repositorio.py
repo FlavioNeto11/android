@@ -144,7 +144,8 @@ class RepositorioDePedidos:
     def gatilhos_dinamicos_ativos(self, tipo: str) -> list[Row]:
         """Os gatilhos `tipo` ativos de pedidos `ativo`, com o que o laço precisa do pedido (o passo 4 do §7.2)."""
         return self.db.query(
-            "SELECT g.*, p.versao AS pedido_versao, p.autonomia AS pedido_autonomia, p.fim_em AS pedido_fim_em,"
+            "SELECT g.*, p.versao AS pedido_versao, p.autonomia AS pedido_autonomia, p.papel AS pedido_papel,"
+            " p.fim_em AS pedido_fim_em,"
             " p.max_ocorrencias AS pedido_max_ocorrencias FROM pedido_gatilhos g JOIN pedidos p ON p.id = g.pedido_id"
             " WHERE g.tipo=? AND g.ativo=1 AND p.estado='ativo' ORDER BY p.criado_em, g.criado_em, g.id", (tipo,))
 

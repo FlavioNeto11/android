@@ -66,6 +66,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   ficou sem motivo.
 - Prova `simulated`: `test_pedidos_orcamento.py` (3 novos, com contraprova), `test_pedidos_api.py` (1 novo), vitest
   `PedidosPage.test.tsx` (2 novos). Real: `not_run` até o deploy.
+## 2026-10-04 — 28.10 F3: o papel limita a autonomia do pedido (branch canais/28-10-f3-papeis, sem migração, adendo v1.18)
+
+- `colaboracao.TETO_DO_PAPEL`: pesquisador e checador observam, o redator prepara, só o porta-voz age. A prévia, a criação
+  e o `PATCH` recusam acima do teto com 422 `autonomia_acima_do_papel`.
+- O laço decide a sobreposição, a janela e o piso com a mais restrita das duas, e a ocorrência registra o rebaixamento.
+- Achado: a autonomia do pedido não chega à execução (o §6.4 não vale no plano). O desenho do 28.23 está em
+  `docs/design/pedidos-persistentes.md` §9; até ele estar no ar, `pedidos` fica desligado no central.
+- Prova `simulated`: `test_pedidos_colaboracao_papeis.py` (17, com contraprova). Real: `not_run`.
 
 ## 2026-10-04 — 28.13: fechamento da Fase 28 (branch canais/28-13-fechamento-fase-28, só docs)
 
