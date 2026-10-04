@@ -74,3 +74,17 @@ def test_duas_migracoes_em_esquemas_diferentes_correm_juntas() -> None:
             assert time.monotonic() - inicio < 120
     finally:
         preso.close()
+
+
+def test_o_unlock_solta_a_mesma_chave_com_o_search_path_trocado_no_meio() -> None:
+    """A 2ª chave é lida uma vez: recalculada no unlock, o `search_path` trocado no meio soltaria outra chave e a do
+    esquema A ficaria presa até a sessão fechar (revisão da Android no #184)."""
+    dsn_a = _dsn_de_teste()
+    assert dsn_a
+    db = Database(dsn_a)
+    try:
+        with db._trava_de_migracao():                                   # noqa: SLF001
+            db._conn.execute("SET search_path TO public")               # noqa: SLF001
+        assert _tenta(dsn_a) is True                                    # a trava do esquema A foi solta
+    finally:
+        db.close()

@@ -554,11 +554,14 @@ class Database:
         if self.dialect != "postgres":
             yield
             return
-        self._conn.execute(f"SELECT pg_advisory_lock(%s, {_ESQUEMA_DA_TRAVA})", (_LOCK_MIGRACAO,))
+        # A 2ª chave é lida UMA vez e o mesmo inteiro vai ao lock e ao unlock: recalculada no unlock, um `search_path`
+        # trocado no meio daria outra chave, e a trava ficaria presa até a sessão fechar.
+        esquema = int(self._conn.execute(f"SELECT {_ESQUEMA_DA_TRAVA} AS k").fetchone()["k"])
+        self._conn.execute("SELECT pg_advisory_lock(%s::int, %s::int)", (_LOCK_MIGRACAO, esquema))
         try:
             yield
         finally:
-            self._conn.execute(f"SELECT pg_advisory_unlock(%s, {_ESQUEMA_DA_TRAVA})", (_LOCK_MIGRACAO,))
+            self._conn.execute("SELECT pg_advisory_unlock(%s::int, %s::int)", (_LOCK_MIGRACAO, esquema))
 
     def _impressao(self, script: str) -> str:
         """sha256 do script RENDERIZADO. Renderizado, e não o arquivo cru, porque é o texto renderizado que o banco
