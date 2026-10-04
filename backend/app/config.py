@@ -661,8 +661,9 @@ class AiCfg(BaseModel):
     # aparelho de conta real; tela sensível nunca é gravada.
     diagnostico_arvore_aparelhos: list[str] = Field(default_factory=list)
     # Item 31.54, DESLIGADO por padrão: tapa com um retângulo opaco a barra de endereço do Chrome (bounds da `url_bar`
-    # na árvore) na imagem que vai ao ator e ao juiz; o texto limpo da barra (31.52) segue na árvore. Liga só depois
-    # do A/B offline nas capturas que já existem, sem chamada paga: tapar pode tirar uma evidência que eles usam.
+    # na árvore) na imagem que vai ao ator e ao juiz; o texto limpo da barra (31.52) segue na árvore. Liga só pelo
+    # A/B ao vivo do 31.56 (android-09, sites públicos, desligada × ligada): sucesso igual e não mais de 20 % de decisões
+    # a mais. Tapar pode tirar do ator e do juiz uma evidência que eles usam.
     tapar_barra_de_endereco: bool = False
     # Item 31.35 (parte B), DESLIGADO por padrão: quantas ações o ator pode mandar numa decisão de etapa SEM efeito
     # (chamadas paralelas de ferramenta; o executor confere o alvo de cada uma na tela nova). 1 = uma só, como sempre.

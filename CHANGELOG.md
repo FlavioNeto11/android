@@ -222,8 +222,8 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
 
 - O `observed_result` grava cada endereço já limpo, e o valor lido que é URL vai limpo ao histórico do ator.
 - `ai.tapar_barra_de_endereco` (desligada por padrão) põe um retângulo opaco sobre a barra do Chrome na imagem do
-  ator e do juiz; sem os bounds da barra, a imagem vai como está e a métrica diz `sem_bounds`. Liga só depois do A/B
-  offline.
+  ator e do juiz; sem os bounds da barra, a imagem vai como está e a métrica diz `sem_bounds`. Liga só pelo A/B ao
+  vivo do 31.56 (sucesso igual e não mais de 20 % de decisões a mais).
 - A limpeza de endereços mudou para `app/security/enderecos.py`. Prova `simulated`:
   `backend/tests/test_url_fora_do_prompt.py`.
 
