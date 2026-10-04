@@ -41,10 +41,13 @@ class AlvoResolvido:
     app_id: str | None = None
     origem: Origem = "ui"
     app_ids: tuple[str, ...] = ()
+    #: Por que ESTE aparelho, quando a origem sozinha não diz (29.65: "vinculo" vale para a sessão única e para o
+    #: principal entre dois com sessão pronta). Nulo = a origem basta.
+    motivo: str | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {"instance_id": self.instance_id, "profile_id": self.profile_id, "app_id": self.app_id,
-                "app_ids": list(self.app_ids), "origem": self.origem}
+                "app_ids": list(self.app_ids), "origem": self.origem, "motivo": self.motivo}
 
 
 def _sem_repetir(ids: Iterable[str | None]) -> tuple[str, ...]:
@@ -236,38 +239,41 @@ def _persona_no_aparelho(mundo: Mundo, instance_id: str, app_ids: tuple[str, ...
 
 # ================================================================== aparelho de uma persona
 def _aparelhos_pela_politica(mundo: Mundo, profile_id: str, candidatos: list[str],
-                             politica: Politica) -> list[tuple[str, Origem]]:
-    """Casos E, F e G: dos aparelhos candidatos da persona, quais recebem a tarefa, e por quê."""
+                             politica: Politica) -> list[tuple[str, Origem, str | None]]:
+    """Casos E, F e G: dos aparelhos candidatos da persona, quais recebem a tarefa, e por quê (o terceiro campo diz
+    o motivo quando a origem não basta)."""
     if not candidatos:
         return []
     aptos = [d for d in candidatos if d in mundo.aptos]
     if politica == "all":
-        return [(d, "vinculo") for d in (aptos or candidatos)]
+        return [(d, "vinculo", None) for d in (aptos or candidatos)]
     principal = mundo.principal(profile_id)
     if politica == "primary" and principal in candidatos:
-        return [(str(principal), "vinculo")]
+        return [(str(principal), "vinculo", None)]
     if len(candidatos) == 1:
-        return [(candidatos[0], "vinculo")]
+        return [(candidatos[0], "vinculo", None)]
     # `one`: a pessoa faz uma vez (D4). Sessão pronta NAQUELE aparelho antes de tudo: é onde a conta já está
     # aberta. Entre dois com sessão, o principal (29.65): o secundário existe para quando o principal não serve, e
     # o desempate do balanceamento mandava a mesma persona ora a um, ora a outro (android-06 e android-13, 04/10).
     # O principal desligado com outro ligado e entre secundários, o balanceamento (que prefere o ligado) desempata.
     com_sessao = [d for d in aptos if (profile_id, d) in mundo.sessoes_prontas]
     if len(com_sessao) == 1:
-        return [(com_sessao[0], "vinculo")]
+        return [(com_sessao[0], "vinculo", None)]
     if principal in com_sessao and (principal in mundo.ligados or not mundo.ligados.intersection(com_sessao)):
-        return [(str(principal), "vinculo")]
+        outros = ", ".join(d for d in com_sessao if d != principal)
+        return [(str(principal), "vinculo", f"aparelho principal da persona; {outros} (vinculado) também tinha sessão "
+                                            "pronta")]
     if com_sessao:
-        return [(mundo.desempatar(com_sessao) or com_sessao[0], "balanceamento")]
+        return [(mundo.desempatar(com_sessao) or com_sessao[0], "balanceamento", None)]
     # Sem sessão pronta em lugar nenhum: o principal, onde a porta de sessão autentica se houver credencial com
     # consentimento. Principal fora de ar e outro apto: o balanceamento escolhe entre os aptos.
     if principal in aptos:
-        return [(str(principal), "vinculo")]
+        return [(str(principal), "vinculo", None)]
     if len(aptos) == 1:
-        return [(aptos[0], "vinculo")]
+        return [(aptos[0], "vinculo", None)]
     if aptos:
-        return [(mundo.desempatar(aptos) or aptos[0], "balanceamento")]
-    return [(principal if principal in candidatos else candidatos[0], "vinculo")]
+        return [(mundo.desempatar(aptos) or aptos[0], "balanceamento", None)]
+    return [(principal if principal in candidatos else candidatos[0], "vinculo", None)]
 
 
 # ================================================================== o texto contra a seleção
@@ -386,15 +392,15 @@ def _por_persona(pedido: PedidoDeAlvos, dicas: DicasDoTexto, mundo: Mundo, estad
                 estreitou_aparelho = set(citados) != set(pool)
                 pool = citados
         if explicitos:
-            escolhas: list[tuple[str, Origem]] = [(d, "ui") for d in pool]
+            escolhas: list[tuple[str, Origem, str | None]] = [(d, "ui", None) for d in pool]
         elif pedido.instance_ids and len(pool) == 1 and not pelo_texto:
-            escolhas = [(pool[0], "ui")]           # persona E aparelho pela interface: nada a decidir
+            escolhas = [(pool[0], "ui", None)]     # persona E aparelho pela interface: nada a decidir
         else:
             escolhas = _aparelhos_pela_politica(mundo, p, pool, pedido.device_policy)
-        for d, origem in escolhas:
+        for d, origem, motivo in escolhas:
             if estreitou_persona or estreitou_aparelho:
-                origem = "texto"
-            estado.alvos.append(AlvoResolvido(d, p, _primeiro(apps), origem, apps))
+                origem, motivo = "texto", None
+            estado.alvos.append(AlvoResolvido(d, p, _primeiro(apps), origem, apps, motivo))
     for d in aparelhos_texto:
         if d not in usados_pelo_texto:
             estado.perguntas.append(Pergunta(

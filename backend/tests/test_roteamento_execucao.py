@@ -168,7 +168,7 @@ async def test_rota_da_previa_pelo_http(harness: Harness) -> None:
         assert r.status_code == 200, r.text
         corpo = r.json()
         assert corpo["targets"] == [{"instance_id": "android-02", "profile_id": lucas, "app_id": None,
-                                     "origem": "texto", "app_ids": []}]
+                                     "origem": "texto", "motivo": None, "app_ids": []}]
         assert corpo["command_sem_destinos"] == "abrir o QA Messenger" and corpo["questions"] == []
         r = await c.post("/api/runs/targets/resolve", json={"command": "abra o app"})
         assert r.status_code == 400 and r.json()["detail"]["code"] == "sem_alvo"

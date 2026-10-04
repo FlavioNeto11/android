@@ -114,6 +114,19 @@ def test_e_principal_desligado_com_sessao_cede_ao_secundario_ligado() -> None:
     assert alvos(p, m=os_dois) == [("android-01", "andre", "vinculo")]
 
 
+def test_e_principal_entre_dois_com_sessao_diz_o_motivo() -> None:
+    """29.65: "vinculo" vale para a sessão única e para o principal entre dois com sessão pronta; a prévia precisa
+    dizer qual dos dois casos foi. O motivo só aparece no segundo: nos outros, a origem basta."""
+    p = PedidoDeAlvos(profile_ids=("andre",))
+    ambos = frozenset({("andre", "android-01"), ("andre", "android-02")})
+    [alvo] = resolver_alvos(p, DicasDoTexto(), mundo(prontas=ambos)).alvos
+    assert (alvo.instance_id, alvo.origem) == ("android-01", "vinculo")
+    assert alvo.motivo is not None and "principal" in alvo.motivo and "android-02" in alvo.motivo
+    assert alvo.as_dict()["motivo"] == alvo.motivo
+    [so_um] = resolver_alvos(p, DicasDoTexto(), mundo(prontas=frozenset({("andre", "android-02")}))).alvos
+    assert (so_um.instance_id, so_um.motivo) == ("android-02", None)
+
+
 def test_f_primary_e_g_all() -> None:
     pronto2 = mundo(prontas=frozenset({("andre", "android-02")}))
     assert alvos(PedidoDeAlvos(profile_ids=("andre",), device_policy="primary"), m=pronto2) == [

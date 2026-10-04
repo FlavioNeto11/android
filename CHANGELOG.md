@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.65: a prévia diz por que o principal venceu (branch fix/29-65-motivo-do-principal)
+
+- Prova real do deploy 27 (r-20261004151117-b4e6f9, só plano): com sessão pronta no android-06 (principal) e no
+  android-13, a política `one` escolheu o 06, mas a prévia dizia só `origem: vinculo`, o mesmo rótulo da sessão única.
+- O alvo resolvido ganha `motivo` (opcional, também em `ResolvedTargetDTO` e em `runs.targets`): "aparelho principal
+  da persona; android-13 (vinculado) também tinha sessão pronta". Nos outros casos fica nulo: a origem basta.
+- Prova `simulated`: `test_roteamento_por_persona.py::test_e_principal_entre_dois_com_sessao_diz_o_motivo`, e o
+  esperado da prévia HTTP em `test_roteamento_execucao.py` passa a ter `motivo`; 3377 testes que tocam `origem` e
+  alvos verdes. Sem DDL. Real: `not_run` (a releitura da mesma prévia depois do deploy).
+
 ## 2026-10-04 — 30.52: o dossiê do curador pela marca do conteúdo e a recusa do pedido pela pessoa (branch fix/30-52-dossie-pela-marca)
 
 - O parecer lr-1cfb91a981c5f21f citou `against` da versão antiga do fluxo reaprendido e pediu uma reprodução que já

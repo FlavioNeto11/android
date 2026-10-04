@@ -280,7 +280,8 @@ class RunService:
             avisos.append("Há destino tirado do texto do comando: confira antes de executar.")
         return RunTargetsPreview(
             targets=[ResolvedTargetDTO(instance_id=a.instance_id, profile_id=a.profile_id, app_id=a.app_id,
-                                       app_ids=list(a.app_ids), origem=a.origem) for a in resolucao.alvos],
+                                       app_ids=list(a.app_ids), origem=a.origem, motivo=a.motivo)
+                     for a in resolucao.alvos],
             questions=[p.as_dict() for p in resolucao.perguntas], command_sem_destinos=comando, warnings=avisos)
 
     def _resolver(self, command: str, instance_ids: Sequence[str], profile_ids: Sequence[str],
