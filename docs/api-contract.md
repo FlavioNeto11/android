@@ -1165,6 +1165,9 @@ A tabela de eventos deste documento (seção "Eventos") não lista os seguintes,
 | `worker.refused` | sim | `api.py` (conexão de worker recusada — host fora da lista, versão de protocolo incompatível) |
 | `worker.metrics` | **não** (`EPHEMERAL_KINDS`) | `state.py` — CPU/RAM/disco a cada batida (10 s); persistir enchia o log (57% dos eventos) |
 | `approval.pending` | sim | `state.py` — uma aprovação social passou a aguardar decisão |
+| `politica.excecao_criada` | sim | `social/excecoes.py` — exceção de uso único à regra de uma conta por alvo criada pela rota (30.65) |
+| `politica.excecao_usada` | sim | `social/excecoes.py` — o efeito da etapa presa saiu e a exceção foi gasta (30.65) |
+| `politica.excecao_vencida` | sim | `social/excecoes.py` — a exceção venceu sem uso (30.65) |
 | `app_state.updated` | sim | `state.py` |
 | `session.needs_person` | sim | `modules/identity/application/session_rules.py::emit_needs_person_change`, chamada por `integrations/app_declarado/sessao.py::SessaoDeclarada._save` e `state.py::AppState._sessao_desmentida` — a sessão da conta entrou em `auth_challenge`/`wrong_account` |
 | `learning.needs_person` | sim | `modules/learning/application/espera.py::AvisadorDeEspera`, chamado por `LearningService` (`mudar_estado`, `propor`, `avisar_item`, `avisar_mudanca_nativa`) e pelos ouvintes das lojas de receita e fluxo (`infrastructure/ligar_nativos.py`) — um item do Livro de aprendizado entrou na espera do dono (faixa B ou C da política de risco) ou saiu dela; ver o adendo v0.49 |
@@ -5653,3 +5656,26 @@ Sem migração, atrás de `pedidos.colaboracao.enabled` (desligada, tudo como an
 
 As regras 1 e 2 (uma conta por alvo no pedido inteiro e `approval_required` para pessoa real sem conversa prévia) são da porta de
 política (`PolicyEngine.check`, item 30.62): o provedor `contexto_do_pedido(run_id)` vem num PR à parte.
+
+## Adendo v1.30 (04/10/2026; número da orquestradora; item 30.65) — exceção de uso único à regra de uma conta por alvo
+
+Migração `104_excecoes_de_politica`. A porta de frota (ADR-055) recusa, sem caminho de aprovação, o efeito sobre um alvo que
+outra conta da frota já tocou na janela. A exceção tira só essa recusa, só para o perfil, o alvo e a ação dela, e NÃO libera
+sozinha: a etapa casada vira `approval_required` e aparece em Pendências com o motivo "exceção … à regra de uma conta por alvo
+em 30 dias (ADR-055) … uso único (30.65)". Conta retirada, espaçamento, tetos, DM fria e repetição (30.64) seguem valendo.
+
+- **`POST /api/politica/excecoes`** (201), atrás do login. Corpo, todos obrigatórios, campo desconhecido é recusado:
+  `profile_id` (perfil de ORIGEM), `alvo` (o @, normalizado), `capability` (`SEND_MESSAGE`...), `motivo`, `autorizacao`
+  (quem autorizou, por onde e quando) e `expira_em` (UTC ISO; no máximo 72 h a partir de agora). O autor é a sessão do
+  painel. Resposta `{"excecao": {...}}`. 422 `excecao_invalida`: prazo acima de 72 h ou já passado, alvo vazio, perfil
+  inexistente.
+- **`GET /api/politica/excecoes?profile_id=`**: `{"excecoes": [...]}`, as mais novas primeiro (até 200). Cada uma traz
+  `id`, `regra` (`uma_conta_por_alvo`), `profile_id`, `alvo`, `capability`, `motivo`, `autorizacao`, `autor`,
+  `criada_em`, `expira_em`, `step_id`, `presa_em`, `usada_em`, `interaction_id`, `vencida_em` e `estado`
+  (`ativa` | `presa` | `usada` | `vencida`). Ler encerra as vencidas.
+- **Ciclo.** A porta do despacho prende a exceção à etapa que casou (outra etapa só a toma se a presa terminou sem efeito);
+  o `open_effect` a gasta quando o efeito sai (uso único: a segunda volta à recusa). Sem uso até `expira_em`, ela vence.
+- **Eventos** (persistidos, sem aviso no Telegram): `politica.excecao_criada`, `politica.excecao_usada`,
+  `politica.excecao_vencida`. Não entram no registro de decisões automáticas (28.25): é decisão de pessoa.
+- **Prova:** `simulated` (`backend/tests/test_excecao_de_politica.py`). `not_run`: a exceção do 31.26, que a orquestradora
+  cria depois do deploy 32.

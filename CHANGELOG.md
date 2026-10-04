@@ -234,6 +234,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   curto, envio repetido), `frontend/src/features/canais/AnexosTab.test.tsx` (13 casos). `real`: `not_run` (o passeio no navegador,
   depois do deploy).
 
+## 2026-10-04 — 30.65: exceção de uso único à regra de uma conta por alvo (branch feat/30-65-excecao-de-politica)
+
+- Migração `104_excecoes_de_politica` e `app/social/excecoes.py`: a exceção é criada pela rota (`POST` e
+  `GET /api/politica/excecoes`, adendo v1.30), presa à etapa pela porta do despacho, gasta no `open_effect` e vencida no
+  prazo (no máximo 72 h). Cada passo vira evento `politica.excecao_*`.
+- `PolicyEngine._fleet_gate` deixa passar só a recusa de uma conta por alvo do perfil, alvo e ação da exceção. O `check`
+  põe a etapa em `approval_required`, com o motivo, e devolve `Verdict.excecao`. O `check` continua só lendo.
+- Emenda 30.65 do ADR-055. Prova `simulated`: `backend/tests/test_excecao_de_politica.py`. `not_run`: a exceção do 31.26,
+  depois do deploy 32.
+
 ## 2026-10-04 — 30.64: o objeto do efeito na aprovação e no "já feito" (branch feat/30-64-objeto-alvo)
 
 - `objeto_alvo` no catálogo (Capability, domínio e registro), declarado nas 11 ações com efeito do Instagram.

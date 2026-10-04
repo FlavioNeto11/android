@@ -3728,6 +3728,20 @@ perfil, pela ação, pelo texto e pelo OBJETO, não só pela pessoa.
 Prova `simulated`: `backend/tests/test_objeto_alvo.py`, `test_repetido_entre_execucoes.py`,
 `test_aprovacao_acompanha_revisao.py`.
 
+**Emenda 30.65, 04/10/2026 (orquestradora; autorização do dono pelo Telegram às 19:02:26Z, entrada 1189):** a regra
+de uma conta por alvo admite EXCEÇÃO de uso único, criada por pessoa pela rota (`POST /api/politica/excecoes`, adendo
+v1.30). A exceção vale para um perfil de origem, um alvo e uma ação, por no máximo 72 h, e guarda autor, motivo e
+autorização.
+- A exceção casada não libera sozinha: vira `approval_required` e aparece em Pendências como exceção à regra de 30 dias.
+  Nunca vira autônomo.
+- Ela tira só a recusa da regra de uma conta por alvo. Conta retirada, espaçamento, tetos, DM fria e repetição (30.64)
+  valem iguais. Uma exceção de DM não libera comentário nem seguir para o mesmo alvo.
+- É gasta quando o efeito sai (`open_effect`) e vence no prazo. Criação, uso e vencimento viram eventos
+  `politica.excecao_*`.
+- Não é configuração (`fleet_target_window_days` segue global) nem decisão automática (fica fora do registro 28.25).
+
+Prova `simulated`: `backend/tests/test_excecao_de_politica.py`.
+
 ## ADR-056 — Rede por aparelho: VPN dentro do Android com proxy encadeado, saída medida e revisão da cláusula de rede do ADR-055
 
 **Data:** 29/09/2026 · **Estado:** vigente (decisão); implementação planejada na Fase 25, `not_run` · **Decisão do
