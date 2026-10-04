@@ -206,11 +206,16 @@ def motivo(f: FatosDaAprovacao, a: Avaliacao) -> str:
     parecer = (f"parecer {pesa.value} ({p.id})" if pesa is not None and p is not None
                else "sem parecer que pese (delegação do dono)")
     apps = ", ".join(f.apps)
-    onde = f" em {f.execucoes} execuções e {f.aparelhos} aparelhos" if f.execucoes else ""
+    onde = (f" em {_plural(f.execucoes, 'execução', 'execuções')} e {_plural(f.aparelhos, 'aparelho', 'aparelhos')}"
+            if f.execucoes else "")
     return (f"auto:{a.regra.value} v{VERSAO_DA_REGRA} — classe {f.classe.value}; app {apps} (qa); "
             f"{f.a_favor} a favor{onde}, {f.contra} contra; "
-            f"{f.falhas_de_reproducao} falhas de reprodução; saúde {f.saude.value if f.saude else 'sem rótulo'}; "
+            f"{_plural(f.falhas_de_reproducao, 'falha', 'falhas')} de reprodução; saúde {f.saude.value if f.saude else 'sem rótulo'}; "
             f"{parecer}")
+
+
+def _plural(n: int, um: str, varios: str) -> str:
+    return f"{n} {um if n == 1 else varios}"
 
 
 _MARCA = re.compile(r"(?:^|: )auto:(?P<regra>[a-z_]+) v(?P<versao>\d+)(?: — |$)")

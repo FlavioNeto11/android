@@ -10,6 +10,7 @@ import {
 import { lerMetricas, lerPaginaDeRevisoes, type MetricasDoAprendizado, type PaginaDeRevisoes } from './metricas';
 import type { RespostaDoPedido } from './parecer';
 import { lerListaDeValidacoes, type ListaDeValidacoes } from './validacao';
+import { lerRelatorioDaAprovacao, type RelatorioDaAprovacao } from './aprovacaoAutomatica';
 
 /**
  * As rotas do aprendizado (ADR-054). Ficam aqui, e não no objeto `api` do cliente, porque são de UM contexto e
@@ -135,6 +136,10 @@ export const apiAprendizado = {
     lerListaDeValidacoes(await apiRequest<unknown>('GET', '/aprendizado/validacoes', {
       query: { estado: q.estado || undefined, limite: q.limite ?? 50, antes: q.antes || undefined, item: q.item || undefined, run: q.run || undefined }, signal,
     })),
+
+  /** 30.55: a aprovação automática (modo, última volta e as decisões da plataforma, com o item de agora). */
+  aprovacaoAutomatica: async (signal?: AbortSignal): Promise<RelatorioDaAprovacao> =>
+    lerRelatorioDaAprovacao(await apiRequest<unknown>('GET', '/aprendizado/aprovacao-automatica', { signal })),
 
   /** Os votos por item e os sinais implícitos de uma execução (A4). */
   feedback: async (runId: string, signal?: AbortSignal): Promise<FeedbackDaExecucao> =>

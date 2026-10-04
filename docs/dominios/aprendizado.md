@@ -1844,6 +1844,16 @@ que a plataforma já decidiu não é decidido por ela de novo.
 - os casos na sombra e as últimas 50 decisões da plataforma;
 - com `itens`, a régua item a item.
 
+**Painel** (aba Aprendizado › Para aprovar; `DecididoPelaPlataforma.tsx`): a seção "Decidido pela plataforma" fica
+depois das duas filas, para o dono ver primeiro o que sobra para ele.
+- **Em `on`:** mostra as 5 decisões mais recentes, com "Ver todas". Cada uma traz o título, o gesto ("Publicou" ou
+  "Confirmou que fica"), a hora, a regra e o "Por quê" (os fatos do motivo, sem o prefixo). O botão "Desligar" (motivo
+  obrigatório) só aparece enquanto o item segue `published`; o item já desligado leva o selo "Desligado depois".
+- **Em `shadow`:** avisa que a plataforma só observa e lista, pelos nomes das filas, o que ela decidiria na última
+  volta.
+- **Em `off` sem decisão, ou com backend sem a rota:** a seção some.
+- "Para aprovar" diz, em `on`, que os itens do app de teste que cumprem a régua a plataforma decide sozinha.
+
 **Config:** `aprendizado.aprovacao_automatica`, com `modo: off | shadow | on` (`off` de fábrica) e `intervalo_s`
 (900). O modo é relido a cada volta: mudar o config vale na próxima, sem reiniciar. Para desligar, `modo: "off"`.
 
