@@ -68,7 +68,7 @@ from .midia_galeria import INTERNAS_POR_CODIGO, MidiaRecusada, colocar_midia_na_
 from .recipes import (READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, eh_generica,
                       filhos_rotulados, hash_generico_da_linha, unique_selectors)
 from .repository import Repository
-from .relacao import relacao_do_valor
+from .relacao import e_nome_de_papel, pergunta_de_papel, relacao_do_valor
 from .saidas import (RECUSAS_DETERMINISTICAS, ChaveDeTentativa, LeituraInvalida, LeituraSemTexto,
                      LeituraVisualRecusada, args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor,
                      ler_valor_visual, nomes_citados, razao_sem_segredo, texto_da_tela, texto_do_elemento, triagem,
@@ -586,6 +586,11 @@ class StepExecutor:
         self._effects: dict[str, tuple[str, str]] = {}      # step_id → (perfil, interação em aberto)
         #: 31.40 b: tentativas de limpeza (sem o elemento que cobria) que já gastaram o seu ÚNICO julgamento
         self._juiz_da_limpeza: set[str] = set()
+        #: Revisão do #307: por tentativa, (elemento, nome, valor) que o juiz de PAPEL respondeu "no" — só o "no"; o
+        #: "uncertain" é passageiro (página carregando) e pergunta de novo. Some no fim da tentativa (`run_step`).
+        self._papel_negado: dict[str, set[tuple[str, str, str]]] = {}
+        #: O último veredito do juiz de relação (`_relacao_visual`), para o cache acima distinguir "no" de "uncertain".
+        self._ultimo_veredito_de_relacao: str | None = None
         # Pacote "anr": etapas que já gastaram a sua reabertura determinística depois de um ANR. Por ETAPA, não por
         # tentativa — na r-20260928195344-02ee9e cada tentativa acabava pelo prazo e a seguinte reabria de novo. Some
         # no desfecho final da etapa. Memória do processo: reiniciado o backend, a contagem de mortes (que vem do
@@ -1135,6 +1140,7 @@ class StepExecutor:
             fechada = True
         finally:
             self._registrar_estrategia(attempt_id, rr)
+            self._papel_negado.pop(attempt_id, None)
             if not fechada:
                 # Saiu por exceção (o scheduler a transforma em falha): o aprendizado sabe da tentativa do mesmo jeito,
                 # uma vez, e sem desfecho que pareça sucesso.
@@ -2441,12 +2447,23 @@ class StepExecutor:
                     relacao = (relacao_do_valor(obs.tree, alvo, args.name, valor,
                                                 relacoes=tuple(cap.saidas_relacao) if cap else ())
                                if lido_da_imagem is None else None)
-                    perguntou = relacao is None and (lido_da_imagem is not None or bool(cap and args.name in cap.saidas))
-                    if perguntou:
+                    papel = e_nome_de_papel(args.name)
+                    perguntou = relacao is None and (lido_da_imagem is not None or papel
+                                                     or bool(cap and args.name in cap.saidas))
+                    negados = self._papel_negado.setdefault(attempt_id, set())
+                    chave_do_papel = (alvo.id if alvo is not None else "", args.name, valor)
+                    if perguntou and chave_do_papel not in negados:
                         # Da imagem, ou saída que o CATÁLOGO declara sem seletor nem rótulo na árvore (a caixa do Outlook,
                         # a lista do QA): a ação diz onde está o valor, mas só o juiz confirma que é ele. Livre: dúvida.
-                        relacao = await self._relacao_visual(rt, step, ctx_for, run_id, oid, deadline, attempt_id,
-                                                             obs, args.name, valor, ai_cfg)
+                        # 31.47: nome de PAPEL (manchete, assunto…) cai aqui também, mesmo sem catálogo, e a pergunta é
+                        # a do papel (df1212: duas leituras certas da manchete do g1 recusadas sem juiz nenhum).
+                        try:
+                            relacao = await self._relacao_visual(rt, step, ctx_for, run_id, oid, deadline, attempt_id,
+                                                                 obs, args.name, valor, ai_cfg, alvo=alvo)
+                        except AIError as exc:        # revisão do #307 (achado 3): como a leitura visual
+                            return await desfecho_de_ia(exc, obs, "a relação do valor lido")
+                        if relacao is None and papel and self._ultimo_veredito_de_relacao == "no":
+                            negados.add(chave_do_papel)
                     if relacao is None:
                         aid = intencao("read_value", args_da_chamada_invalida(bruto, obs.tree), None, side_effect=False)
                         repo.finish_action(aid, ActionStatus.rejected, error=f"sem relação com '{args.name}'")
@@ -2455,10 +2472,17 @@ class StepExecutor:
                                       "valor ao que foi pedido (sem seletor, rótulo ou forma"
                                       + ("; o verificador não confirmou)" if perguntou else ")"),
                                       run_id=run_id, instance_id=iid, step_id=step.id)
-                        history.append(f"read_value REJEITADA: nada na tela liga este valor a '{args.name}' (nem rótulo "
-                                       "vizinho, nem forma, nem o seletor do catálogo). Leia o elemento rotulado como "
-                                       f"'{args.name}'; se ele não existe nesta tela, chame "
-                                       'step_blocked(kind="dado_ausente").')
+                        if papel and perguntou:
+                            history.append(f"read_value REJEITADA: o verificador não confirmou que este elemento ocupa "
+                                           f"o papel de '{args.name}' nesta tela. Leia o elemento que de fato é o "
+                                           f"'{args.name}' (posição, destaque e tamanho), não rodapé, menu, botão nem "
+                                           "anúncio; se ele não existe nesta tela, chame "
+                                           'step_blocked(kind="dado_ausente").')
+                        else:
+                            history.append(f"read_value REJEITADA: nada na tela liga este valor a '{args.name}' (nem "
+                                           "rótulo vizinho, nem forma, nem o seletor do catálogo). Leia o elemento "
+                                           f"rotulado como '{args.name}'; se ele não existe nesta tela, chame "
+                                           'step_blocked(kind="dado_ausente").')
                         errors_in_row += 1
                         recusas_de_saida += 1
                         if errors_in_row >= 4 or recusas_de_saida >= 4:
@@ -3103,15 +3127,19 @@ class StepExecutor:
 
     async def _relacao_visual(self, rt: DeviceRuntime, step: StepDTO, ctx_for: Callable[[], StepContext], run_id: str,
                               objective_id: str, deadline: float, attempt_id: str | None, obs: Observation, nome: str,
-                              valor: str, ai: AiCfg) -> str | None:
+                              valor: str, ai: AiCfg, *, alvo: UiElement | None = None) -> str | None:
         """31.41: o valor lido da IMAGEM não tem elemento com texto na árvore para a regra determinística. Uma pergunta
         de sim ou não ao verificador, com a imagem: este valor é, na tela, o `nome` pedido? "yes" = `"verificador"`;
         "no", "uncertain" ou qualquer outra coisa = `None` (dúvida nunca fecha como sucesso). Custa uma chamada de
-        verificação por leitura visual aceita pelo leitor."""
-        ctx = dataclasses.replace(ctx_for(), postcondition_description=(
-            f"O valor lido para '{nome}' foi \"{valor}\". Julgue SÓ a relação: na tela, esse texto é o '{nome}' que o "
-            "objetivo pede (o rótulo, a posição ou o papel dele na tela o identificam como tal), e não outro texto "
-            "qualquer? yes = é; no = é outro; uncertain = não dá para afirmar."))
+        verificação por leitura visual aceita pelo leitor. 31.47: para nome de PAPEL (`e_nome_de_papel`) a pergunta é "este
+        elemento ocupa o papel `nome` nesta tela?" (posição, destaque, vizinhança), não "o texto tem relação com `nome`"."""
+        if e_nome_de_papel(nome):
+            pergunta = pergunta_de_papel(nome, valor, alvo, (obs.width, obs.height))
+        else:
+            pergunta = (f"O valor lido para '{nome}' foi \"{valor}\". Julgue SÓ a relação: na tela, esse texto é o "
+                        f"'{nome}' que o objetivo pede (o rótulo, a posição ou o papel dele na tela o identificam como "
+                        "tal), e não outro texto qualquer? yes = é; no = é outro; uncertain = não dá para afirmar.")
+        ctx = dataclasses.replace(ctx_for(), postcondition_description=pergunta)
         if obs.jpeg is None:
             obs = await self.devices.completar_imagem(rt, obs, timeout=float(self.get_settings().driver_call_timeout_s),
                                                       lado_max=ai.screenshot_max_side)
@@ -3121,6 +3149,7 @@ class StepExecutor:
                                  lambda: self.provider.verify(VerifyRequest(ctx=ctx, screen=screen, facts=[])),
                                  step_id=step.id, role="verify", deadline=t_end, attempt_id=attempt_id,
                                  marca=MarcaDaChamada(motivo="julgamento", image_reason="pedida"))
+        self._ultimo_veredito_de_relacao = verdict.satisfied
         return "verificador" if verdict.satisfied == "yes" else None
 
     async def _verify(self, rt: DeviceRuntime, step: StepDTO, ctx_for: Callable[[], StepContext], run_id: str,

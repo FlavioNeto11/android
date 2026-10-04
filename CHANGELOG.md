@@ -177,6 +177,24 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
   comentário). Migração `105_aprovacao_no_plano`; adendo v1.32.
 - Prova: `simulated` (`tests/test_porta_do_plano.py`, `tests/test_chave_da_aprovacao.py`). `not_run`: o painel e a
   execução real.
+## 2026-10-04 — 31.47: nome de papel é julgado como papel, não como palavra do texto (branch fix/31-47-relacao-de-papel)
+
+- Revisão do #307: a pergunta julga o VALOR ("o texto X é, inteiro, o nome mostrado nesse elemento?"), não só o
+  elemento: um trecho como "há 2 horas" dentro do nó da manchete é recusado; "nome"/"name" sozinhos saem da lista;
+  o "não" do juiz para a mesma (etapa, elemento, nome, valor) não se paga de novo; falha do juiz vira desfecho de IA
+  (`desfecho_de_ia`), como na leitura visual. Testes: 206 direcionados (`simulated`).
+- Achado real (df1212, Chrome, g1, android-09, banco central só leitura): `read_value(name=
+  "manchete", element_id="e85")` recusado duas vezes com "sem relação com 'manchete'" (31.41) e a etapa `read_headline`
+  em dado ausente. Nenhuma chamada de juiz existia na tentativa: a regra da árvore não achou rótulo nem forma e o nome
+  não estava em `cap.saidas` (planejamento livre). O texto de uma manchete nunca contém "manchete".
+- `taskqueue/relacao.py`: lista fechada de nomes de papel pt/en (`e_nome_de_papel`) e o enunciado `pergunta_de_papel`
+  ("este elemento ocupa o papel X nesta tela?", com id, bounds e tamanho da tela; rodapé, menu, botão, banner e anúncio
+  nomeados como não ocupam). `executor.py`: nome de papel sem evidência na árvore sempre vai ao verificador
+  (`_relacao_visual(..., alvo=)`), e a recusa do histórico diz que o papel não foi confirmado. As quatro recusas viram
+  dado ausente (31.41/31.38) continuam; "não" e "incerto" recusam; nome que não é de papel segue com a pergunta antiga.
+- Prova `simulated`: `tests/test_relacao_de_papel.py` (36: lista, caso df1212 com juiz "ocupa", controle negativo com
+  rodapé e menu, nome fora da lista, ponta a ponta no harness) e os testes do 31.41; nenhuma IA paga. Execução real
+  `not_run`. Sem migração; nenhum texto com snapshot sha256 mudou.
 
 ## 2026-10-04 — 28.28: pergunta ao bot do Telegram vai à orquestradora, e nome de persona não sai pelo canal (branch canais/28-28-pergunta-ao-bot)
 
