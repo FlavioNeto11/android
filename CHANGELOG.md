@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — Suíte 18 na main e deploy 18 no central (f1651ec8; sem migração; Trello na etapa 3)
+
+- **Integrado e implantado** (FF 02:05Z; deploy 02:06:05–02:06:41Z): #186 (29.63, esquema-modelo no harness de PG),
+  #187 (28.19, lote e rajada no avisador), #188 (30.45), #189 (31.27, espera do juiz adaptativa), #190 (31.29, apelidos de
+  app de sistema), #191 (29.64, re-toque verificado em Entrar), #192 (29.65, `one` prefere o principal) e #193 (29.60,
+  N do efeito repetido no painel). Saúde ok, `problems` vazio; agente do notebook 0.1.0+f1651ec.
+- **Suíte 18** (integ/suite-18 f1651ec8): SQLite 9158 passed, 13 skipped; `scripts/tests` 544; front 1467; docs-check
+  0/0; PG dos afetados 4306 passed, 12 skipped (183 arquivos, `-n 8`, esquema-modelo, 12 min 32 s). Conflitos de
+  CHANGELOG em sete PRs e um de código em `contracts/origem.py` (30.43 + 28.19, blocos independentes), juntados.
+- **Armadilha:** o farm-pg, ao subir, faz ~2 min de fsync de recuperação; a primeira rodada deu 1913 erros "the database
+  system is starting up". Esperar a conexão antes do pytest.
+- **Config do central** (por instalação): `trello` etapa 3 às 02:05:54Z (`reconciliar_s` 300, cadastro automático com o
+  webhook), pelo `.claude/handoffs/canais/trello-config.py`, com cópia em `data/backups`.
+
 ## 2026-10-04 — 30.45: o veredito da validação enxerga a evidência reclassificada (branch feat/30-45-veredito-reclassificado)
 
 - `GET /api/aprendizado/validacoes` passa a mandar, em cada pedido, `invalida_depois`: a linha `invalida` que a
