@@ -309,3 +309,57 @@ async def test_publicado_e_intocado_nao_le_a_trilha(harness: Harness, monkeypatc
     async with _cliente(harness) as c:
         [item] = (await c.get("/api/decisoes-automaticas")).json()["itens"]
     assert item["pode_desfazer"] is True and lidas == []
+
+
+async def test_desligado_por_regra_e_religado_a_mao_nao_oferece_o_botao(harness: Harness) -> None:
+    """Revisão do #322 (A1): a regra desligou e a PESSOA religou à mão. A publicação de agora é dela: o desfazer não
+    pode desligá-la dizendo que desfez a decisão da plataforma."""
+    lic = _publicar_licao(harness)
+    did = _decidir(harness, "aprendizado", lic, fatos={"kind": "licao", "para": "published"}, dias_atras=0.001)
+    harness.state.learning.mudar_estado(LivroKind.LICAO, lic, SkillState.DISABLED, by="sistema", reason="saúde piorou")
+    harness.state.learning.mudar_estado(LivroKind.LICAO, lic, SkillState.PUBLISHED, by="panel", reason="religuei")
+    n = len(_trilha(harness, lic))
+    async with _cliente(harness) as c:
+        [item] = (await c.get("/api/decisoes-automaticas")).json()["itens"]
+        assert item["desfeita"] is False and item["pode_desfazer"] is False
+        assert "religado à mão por panel" in item["por_que_nao"]
+        r = await c.post(f"/api/decisoes-automaticas/{did}/desfazer", json={"confirmar": True, "motivo": "x"})
+        assert r.status_code == 409 and r.json()["detail"]["code"] == "sem_inversa_segura"
+    assert len(_trilha(harness, lic)) == n                                        # nada desligou o que a pessoa religou
+
+
+async def test_religado_pela_plataforma_mantem_o_botao(harness: Harness) -> None:
+    """O religar por regra (`plataforma`) é outra decisão automática: a publicação segue da plataforma, e o botão fica."""
+    lic = _publicar_licao(harness)
+    _decidir(harness, "aprendizado", lic, fatos={"kind": "licao", "para": "published"}, dias_atras=0.001)
+    harness.state.learning.mudar_estado(LivroKind.LICAO, lic, SkillState.DISABLED, by="sistema", reason="saúde piorou")
+    harness.state.learning.mudar_estado(LivroKind.LICAO, lic, SkillState.PUBLISHED, by="plataforma", reason="voltou")
+    async with _cliente(harness) as c:
+        [item] = (await c.get("/api/decisoes-automaticas")).json()["itens"]
+    assert item["pode_desfazer"] is True and item["por_que_nao"] is None
+
+
+def test_o_memo_e_por_contexto() -> None:
+    """Revisão do #320 (N1): o memo da listagem vive num `ContextVar`. Outro contexto (outra requisição, outra thread)
+    não vê o memo de uma listagem aberta e lê o estado de agora."""
+    import contextvars
+
+    class Entrada:
+        state, title, state_at = SkillState.PUBLISHED, "Lição", "2000-01-01T00:00:00Z"
+
+    class Livro:
+        def __init__(self) -> None:
+            self.lidas = 0
+
+        def entrada(self, kind: object, ref: str) -> object:
+            self.lidas += 1
+            return Entrada()
+
+    livro = Livro()
+    inversa = InversaDoAprendizado(livro)  # type: ignore[arg-type]
+    d = _decisao("aprendizado", "receita:1", {"kind": "receita", "para": "published"})
+    with inversa.memorizado():
+        inversa.por_que_nao(d), inversa.descrever(d)
+        assert livro.lidas == 1
+        contextvars.Context().run(lambda: (inversa.por_que_nao(d), inversa.descrever(d)))
+        assert livro.lidas == 3                                     # o outro contexto leu de novo, sem o memo

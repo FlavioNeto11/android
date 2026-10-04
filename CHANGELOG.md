@@ -32,6 +32,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: três testes novos em `tests/test_decisoes_registro_coerente.py`. Os falsos de
   `tests/test_decisoes_desfazer.py` ganharam o `detalhe` e o `state_at` que a inversa lê agora; o comportamento coberto
   é o mesmo. 89 passed nos cinco arquivos de decisões.
+- Revisão do #322 (Reload plugins, `C:/claude-ferramentas/revisao-28-33.md`):
+  - A1: uma regra desligou e uma PESSOA religou à mão (`disabled → published`). O botão não volta, com o motivo "o item
+    foi religado à mão por <quem> depois", e o desfazer pela rota dá 409 sem tocar na trilha. Religar por regra
+    (`plataforma`) mantém o botão. A primeira publicação (de `validated`) não conta como religar.
+  - M2: a última transição para `disabled` usa o mesmo filtro da transição da decisão (`t.id >`).
+  - N1 do #320: o memo da listagem vive num `ContextVar`. Outra requisição ou thread não vê o memo de uma listagem
+    aberta. A trilha também é memorizada na listagem.
+  - M1 (relógios de dois backends): anotado, sem conserto.
+  - Testes: 46 passed em `test_decisoes_registro_coerente` e `test_decisoes_desfazer`, em série e em Idle, com três
+    testes novos (A1, o religar por regra e o memo por contexto).
 
 ## 2026-10-04 — 28.29, achado 4 da revisão: o GET do registro lê o livro uma vez por item (branch canais/28-29-leitura-unica)
 

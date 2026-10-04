@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from contextvars import ContextVar
 
 from app.modules.decisoes.application.desfazer import (Descricao, DesfeitaPorFora, InversaDaFila, SemInversa,
                                                          SemInversaSegura)
@@ -41,6 +42,10 @@ PREFIXO_DO_MOTIVO = "desligado pelo dono: "
 AUTORES_AUTOMATICOS = frozenset({SISTEMA, PLATAFORMA})
 MOTIVO_DESLIGADO_POR_REGRA = ("o item foi desligado depois por uma regra automática, não por uma pessoa; confira na tela "
                               "do Aprendizado")
+#: Revisão do #322 (A1): desligado por uma regra e religado à mão por uma pessoa. A publicação de agora é dela, e o
+#: desfazer desligaria o gesto da pessoa registrando-o como "desfez a decisão da plataforma".
+MOTIVO_RELIGADO_A_MAO = ("o item foi religado à mão por {quem} depois; a publicação de agora é dessa pessoa; confira na "
+                         "tela do Aprendizado")
 
 
 def _de_pessoa(autor: object) -> bool:
@@ -70,34 +75,43 @@ class InversaDoAprendizado:
 
     def __init__(self, servico: LearningService):
         self._servico = servico
-        #: A leitura do livro reaproveitada dentro de UMA listagem (`memorizado`); `None` fora dela. A listagem é
-        #: síncrona dentro do handler (nenhum `await` no meio), então duas requisições não dividem o mesmo memo.
-        self._memo: dict[tuple[LivroKind, str], object] | None = None
+        #: A leitura do livro reaproveitada dentro de UMA listagem (`memorizado`); `None` fora dela. Num `ContextVar`
+        #: (revisão do #320, N1): a instância é única e compartilhada, e cada requisição (ou thread) tem o seu memo,
+        #: mesmo que a listagem um dia ganhe um `await` no meio ou rode no threadpool. O desfazer nunca vê o memo.
+        self._memo: ContextVar[dict[tuple[object, ...], object] | None] = ContextVar(
+            f"memo_da_inversa_{id(self)}", default=None)
 
     @contextmanager
     def memorizado(self) -> Iterator[None]:
         """Revisão do 28.29 (achado 4): na listagem, `por_que_nao`, `descrever` e `desfeita_por_fora` perguntavam o mesmo
         item ao livro, 3 a 4 leituras por decisão e até 200 decisões por GET. Aqui, uma leitura por item. O desfazer
         não passa por aqui: ele lê o estado de agora."""
-        anterior, self._memo = self._memo, {}
+        token = self._memo.set({})
         try:
             yield
         finally:
-            self._memo = anterior
+            self._memo.reset(token)
 
-    def _entrada(self, kind: LivroKind, ref: str):  # noqa: ANN202 - o tipo é o do serviço do livro
-        if self._memo is None:
-            return self._servico.entrada(kind, ref)
-        chave = (kind, ref)
-        if chave not in self._memo:
+    def _lido(self, chave: tuple[object, ...], ler: Callable[[], object]):  # noqa: ANN202 - o tipo é o do livro
+        memo = self._memo.get()
+        if memo is None:
+            return ler()
+        if chave not in memo:
             try:
-                self._memo[chave] = self._servico.entrada(kind, ref)
+                memo[chave] = ler()
             except ErroDeAprendizado as exc:
-                self._memo[chave] = exc
-        valor = self._memo[chave]
+                memo[chave] = exc
+        valor = memo[chave]
         if isinstance(valor, ErroDeAprendizado):
             raise valor
         return valor
+
+    def _entrada(self, kind: LivroKind, ref: str):  # noqa: ANN202 - o tipo é o do serviço do livro
+        return self._lido((kind, ref), lambda: self._servico.entrada(kind, ref))
+
+    def _trilha(self, kind: LivroKind, ref: str) -> list:  # type: ignore[type-arg]
+        """A trilha do item; na listagem, lida uma vez para `por_que_nao` e `desfeita_por_fora`."""
+        return self._lido((kind, ref, "trilha"), lambda: list(self._servico.detalhe(kind, ref).trilha))  # type: ignore[return-value]
 
     @staticmethod
     def _kind(d: Decisao) -> LivroKind | None:
@@ -114,7 +128,8 @@ class InversaDoAprendizado:
             return "o tipo do item não está registrado nesta decisão"
         # 28.29: o estado de AGORA do item, e não só o da decisão (o botão aparecia para o que já tinha mudado).
         try:
-            atual = self._entrada(kind, self._ref(decisao, kind)).state
+            entrada = self._entrada(kind, self._ref(decisao, kind))
+            atual = entrada.state
         except NaoEncontrado:
             return "o item não existe mais no livro de aprendizado"
         except ErroDeAprendizado:
@@ -122,21 +137,36 @@ class InversaDoAprendizado:
         if atual not in (SkillState.PUBLISHED, SkillState.DISABLED):
             return (f"o item já mudou de estado depois da decisão automática (agora: {atual.value}); "
                     "confira na tela do Aprendizado")
+        depois_de = _transicao_da_decisao(decisao)
         if atual is SkillState.DISABLED:
             # 28.33 (achado 5): desligado por uma regra automática não tem o que desligar, e o desfazer não pode
             # registrar como dele o que outra decisão fez. Desligado por pessoa segue sem motivo (o desfazer é
-            # idempotente). A trilha só é lida para o item desligado.
+            # idempotente).
             try:
-                ultimo = self._ultimo_desligamento(kind, self._ref(decisao, kind))
+                ultimo = self._ultima(kind, self._ref(decisao, kind), SkillState.DISABLED, depois_de)
             except ErroDeAprendizado:
                 return None                                    # na dúvida o botão fica; o desfazer confere de novo
             if ultimo is not None and not _de_pessoa(ultimo.decided_by):
                 return MOTIVO_DESLIGADO_POR_REGRA
+        elif _mudou_depois(entrada.state_at, decisao.decidida_em):
+            # Revisão do #322 (A1): publicado de novo depois da decisão. Religado à mão por uma pessoa, a publicação de
+            # agora é dela (o achado 6 pelo caminho da regra que desligou). Intocado, a trilha nem é lida.
+            try:
+                religado = self._ultima(kind, self._ref(decisao, kind), SkillState.PUBLISHED, depois_de)
+            except ErroDeAprendizado:
+                return None
+            # Religar é `disabled → published`: a primeira publicação (de `validated`) não conta, porque é a que a
+            # decisão registrou (na linha sem o id da transição, a trilha inteira é lida).
+            if (religado is not None and religado.from_state is SkillState.DISABLED
+                    and _de_pessoa(religado.decided_by)):
+                return MOTIVO_RELIGADO_A_MAO.format(quem=religado.decided_by)
         return None
 
-    def _ultimo_desligamento(self, kind: LivroKind, ref: str):  # noqa: ANN202 - a transição do livro
-        desligadas = [t for t in self._servico.detalhe(kind, ref).trilha if t.to_state is SkillState.DISABLED]
-        return max(desligadas, key=lambda x: x.id) if desligadas else None
+    def _ultima(self, kind: LivroKind, ref: str, para: SkillState, depois_de: int):  # noqa: ANN202 - a transição
+        """A última transição da trilha para `para` DEPOIS da transição da decisão (revisão do #322, M2: o mesmo filtro
+        de `desfeita_por_fora`)."""
+        achadas = [t for t in self._trilha(kind, ref) if t.to_state is para and t.id > depois_de]
+        return max(achadas, key=lambda x: x.id) if achadas else None
 
     def descrever(self, decisao: Decisao) -> Descricao | None:
         """O título do item no livro (28.29: a lista dizia "Fluxo confirmado" 15 vezes sem dizer qual)."""
@@ -167,7 +197,7 @@ class InversaDoAprendizado:
                 return None
             if entrada.state is SkillState.PUBLISHED and not _mudou_depois(entrada.state_at, decisao.decidida_em):
                 return None                                    # nada mudou desde a publicação da plataforma
-            trilha = self._servico.detalhe(kind, ref).trilha
+            trilha = self._trilha(kind, ref)
         except ErroDeAprendizado:
             return None
         depois_de = _transicao_da_decisao(decisao)
