@@ -17,9 +17,11 @@ from typing import Literal
 OrigemDaExecucao = Literal["prova_fluxo", "validacao_qa", "telegram", "trello"]
 ORIGENS_DA_EXECUCAO: tuple[OrigemDaExecucao, ...] = ("prova_fluxo", "validacao_qa", "telegram", "trello")
 
+
 #: A chave de idempotência das execuções que a validação do QA cria (`modules/learning/application/validacao.py`).
 #: Nenhum outro lugar escreve o literal: `tests/test_origem_da_execucao.py` reprova se escrever.
 PREFIXO_VALIDACAO = "validacao:"
+
 
 #: Prefixo da chave de idempotência → origem.
 PREFIXOS_DE_ORIGEM: Mapping[str, OrigemDaExecucao] = {
@@ -28,13 +30,16 @@ PREFIXOS_DE_ORIGEM: Mapping[str, OrigemDaExecucao] = {
     "trello:": "trello",
 }
 
+
 #: 30.43: as origens que são EXECUÇÃO DE VALIDAÇÃO (a prova de fluxo e a re-execução da validação do QA): partem de
 #: estado conhecido (`Scheduler._partir_da_prova`) e o efeito repetido delas tira a evidência (`domain/prova.py`).
 ORIGENS_DE_VALIDACAO: tuple[OrigemDaExecucao, ...] = ("prova_fluxo", "validacao_qa")
 
+
 def eh_execucao_de_validacao(prova_fluxo_id: str | None, idempotency_key: str | None) -> bool:
     """A execução é de validação, pela MESMA regra de `origem_da_execucao` (30.43)."""
     return origem_da_execucao(prova_fluxo_id, idempotency_key)[0] in ORIGENS_DE_VALIDACAO
+
 
 #: A chave de idempotência das execuções de LOTE de uma frente (28.19): rodada de medida, de teste ou de validação que
 #: uma sessão dispara pela API (`lote:<frente>:<id>`, um id por execução). Fica FORA de `PREFIXOS_DE_ORIGEM` de
@@ -42,11 +47,13 @@ def eh_execucao_de_validacao(prova_fluxo_id: str | None, idempotency_key: str | 
 #: não mandar ao dono um aviso por execução de um lote que não é dele.
 PREFIXO_LOTE = "lote:"
 
+
 def e_execucao_do_sistema(prova_fluxo_id: str | None, idempotency_key: str | None) -> bool:
     """A execução é do sistema, e não de uma pessoa (28.19): prova de fluxo, validação do QA ou lote de frente. Nada
     dela vira aviso individual ao dono. Telegram e Trello são pedidos de pessoa: seguem avisando."""
     origem, _ = origem_da_execucao(prova_fluxo_id, idempotency_key)
     return origem in ("prova_fluxo", "validacao_qa") or (idempotency_key or "").startswith(PREFIXO_LOTE)
+
 
 def origem_da_execucao(prova_fluxo_id: str | None,
                        idempotency_key: str | None) -> tuple[OrigemDaExecucao | None, str | None]:
