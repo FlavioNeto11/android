@@ -98,6 +98,10 @@ def _executor(tmp_path: Path, telas: list[UiTree], verificador: _VerificadorQueD
     """Só o que `StepExecutor._verify` lê: config, aparelho, provedor, porta de capability e `_ai` (sem banco)."""
     ex = object.__new__(StepExecutor)
     ex.cfg = make_config(tmp_path, 1)
+    # T2: o orçamento da verificação curto. O que se prova ("pendente até o prazo → não comprovado") não depende do
+    # tamanho do prazo; com o piso padrão de 8 s cada caso pagava 8 s de relógio real.
+    ai = ex.cfg.file.ai
+    ai.verify_budget_min_s = ai.verify_budget_s = ai.verify_budget_patient_s = 1.5
     ex.repo = SimpleNamespace(decision=lambda *a, **k: None)  # type: ignore[assignment]
     ex.devices = _Aparelho(telas, frente)  # type: ignore[assignment]
     ex.provider = verificador  # type: ignore[assignment]

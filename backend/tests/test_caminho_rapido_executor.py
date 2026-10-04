@@ -23,6 +23,14 @@ from app.util import norm_text
 
 from .conftest import Harness
 
+
+@pytest.fixture(autouse=True)
+def _pular_o_tempo(request: pytest.FixtureRequest) -> None:
+    """T2: o tempo das ferramentas do aparelho falso é PULADO (relógio virtual), não esperado. Só nos testes com o
+    harness; o que eles provam (ordem dos fatos, contagens, desfechos) é o mesmo."""
+    if "harness" in request.fixturenames:
+        request.getfixturevalue("harness").pular_o_tempo()
+
 TERMINAIS = ("completed", "completed_with_issues", "failed", "waiting_user")
 
 
