@@ -18,6 +18,7 @@ import pytest
 from app.db import Database, loads
 from app.models import (Plan, PlannerInfo, PlanStep, PersonaCreate, PersonaTraits, Postcondition, ProfileCreate,
                         ProfilePatch, ResolveBody, StepDTO)
+from app.planning.capabilities import load_catalog
 from app.social.approvals import Approval, ApprovalStore, definir_texto
 
 from .conftest import Harness, make_config
@@ -182,7 +183,8 @@ def _decidida(store: ApprovalStore, step_id: str, texto: str, status: str = "app
 
 
 def _acompanhar(store: ApprovalStore, step_id: str, texto: str, *, disparou: bool = False) -> Approval | None:
-    return store.acompanhar_revisao(step_id, profile_id=None, capability="CREATE_COMMENT", target="@ana",
+    return store.acompanhar_revisao(step_id, profile_id=None, acao=load_catalog("com.instagram.android").get(
+        "CREATE_COMMENT"), target="@ana",
                                     content=texto, disparou=lambda _etapa: disparou)
 
 
@@ -295,7 +297,12 @@ def test_o_mesmo_texto_para_a_mesma_pessoa_em_outro_post_pede_de_novo(tmp_path: 
     v1, v2 = _etapa(db, 1, "c1", "bom dia"), _etapa(db, 2, "c1", "bom dia")
     for sid, legenda in ((v1, "praia ao entardecer"), (v2, "jantar em família")):
         db.execute("UPDATE steps SET bindings=? WHERE id=?",
-                   (json.dumps({"username": "@ana", "content": "bom dia", "caption_contains": legenda}), sid))
+                   (json.dumps({"post_author": "@ana", "content": "bom dia", "caption_contains": legenda}), sid))
     _decidida(store, v1, "bom dia")
     assert _acompanhar(store, v2, "bom dia") is None
-    assert store.objeto_da_etapa(v2) == {"username": "@ana", "caption_contains": "jantar em família"}   # sem o texto
+    comentar = load_catalog("com.instagram.android").get("CREATE_COMMENT")
+    assert store.objeto_da_etapa(v2, comentar) == {"post_author": "@ana", "caption_contains": "jantar em família"}
+    # o texto fica de fora; sem declaração no catálogo não há objeto, e sem objeto não há reuso (falha fechado)
+    assert store.objeto_da_etapa(v2, None) is None
+    assert store.acompanhar_revisao(v2, profile_id=None, acao=None, target="@ana", content="bom dia",
+                                    disparou=lambda _etapa: False) is None

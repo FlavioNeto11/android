@@ -2397,7 +2397,7 @@ class AppState:
             # aprovou na versão anterior virava pedido novo e o objetivo voltava a esperá-la. Só vale a decisão
             # sobre a mesma etapa, com o mesmo alvo e o mesmo texto, cujo efeito ainda não saiu.
             pedido = self.approvals.acompanhar_revisao(
-                srow["id"], profile_id=profile_id, capability=cap.key, target=alvo, content=bindings.get("content"),
+                srow["id"], profile_id=profile_id, acao=cap, target=alvo, content=bindings.get("content"),
                 disparou=lambda etapa: self.repo.commit_state(etapa)[0])
             if pedido is not None:
                 self.repo.decision(
