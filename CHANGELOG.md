@@ -302,6 +302,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `PISO_DA_ETAPA_COM_IA_S` (120; era 30) e 600. Etapa de catálogo e receita não mudam.
 - Teste: `test_esquema_curto_do_plano.py` com o piso novo (30 → 120, 60 → 120, o teto de 600 mantido); 492 testes do
   planejador e do parser aprovados. Prova: simulated. A Jev lê o diff antes do merge (arquivo do planejador).
+## 2026-10-04 — 28.10 F5 (parte 1): só o porta-voz age; reação repetida recusada (branch canais/28-10-f5-regras-para-fora, empilhado na F4, sem migração)
+
+- Numa família com porta-voz, o pedido sem papel (raiz ou irmão comum) decide e executa com `observar`; a execução recebe o teto
+  (28.23) e a ocorrência registra o rebaixamento sem persona nem texto. Prévia mostra o rebaixamento; o detalhe ganha
+  `autonomia_efetiva`.
+- 422 `reacao_repetida`: dois pedidos de efeito da mesma família com o mesmo objetivo e personas diferentes. Adendo v1.28.
+- Prova: `simulated` (`backend/tests/test_pedidos_colaboracao_para_fora.py`). `not_run`: pedido real. Regras 1 e 2 ficam na porta de
+  política (30.62).
+
 ## 2026-10-04 — 28.10 F4: o pai consolida observações e memória dos filhos (branch canais/28-10-f4-consolidacao, sem migração)
 
 - O relatório do pai ganha o bloco `consolidacao` (`fontes`, `valores`, `conflitos`), lido só das observações comprovadas e da

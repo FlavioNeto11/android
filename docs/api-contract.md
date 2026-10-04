@@ -5631,3 +5631,25 @@ sem isso o relatório é idêntico ao de antes (a chave `consolidacao` não exis
 Prova:
 - `simulated`: `backend/tests/test_pedidos_colaboracao_consolidacao.py`.
 - `not_run`: pedido pai de teste no app de teste, PostgreSQL e o central (a colaboração está desligada lá).
+
+## Adendo v1.28 (04/10/2026; número da orquestradora; item 28.10 F5, parte 1) — só o porta-voz age; duas reações ao mesmo conteúdo são recusadas
+
+Sem migração, atrás de `pedidos.colaboracao.enabled` (desligada, tudo como antes).
+
+- **Teto da família.** Numa família (a raiz e os filhos diretos) com um porta-voz que não foi cancelado, o pedido SEM papel (a
+  raiz ou um irmão comum) decide e executa com `observar`: `autonomia_efetiva` ganha o terceiro argumento
+  `familia_com_porta_voz`. O laço leva esse teto à execução (`RunCreate.teto_de_autonomia`, 28.23) e a ocorrência registra
+  "autonomia rebaixada: a família tem porta-voz e só ele age para fora: agir → observar" (só autonomias, nunca persona, conta ou
+  texto do comando). O porta-voz segue com `agir` e os papéis com teto próprio mantêm o deles.
+- **`PedidoView.autonomia_efetiva`** (campo novo, sempre presente): a autonomia com que o pedido decide hoje.
+- **Prévia.** `alertas` ganha `autonomia_rebaixada_pela_familia` (um filho novo sem papel numa família com porta-voz) e
+  `autonomia.teto` mostra o teto efetivo: a pessoa vê o rebaixamento antes de criar. O selo continua cobrindo a autonomia pedida.
+- **Recusa nova, 422 `reacao_repetida`** (campo `objetivo`; prévia e criação, também na conferência dentro da transação): um
+  filho cuja autonomia efetiva é `preparar` ou `agir`, com o mesmo objetivo (sem diferença de caixa ou espaços) de um pedido
+  vivo da família que também tem efeito, e personas diferentes (a do alvo, ou a única do aparelho). A mensagem não cita
+  persona nem texto. O que o código não lê (a mesma reação com outras palavras, uma persona citar a outra como terceiro) é do
+  planejador.
+- **Prova:** `simulated` (`backend/tests/test_pedidos_colaboracao_para_fora.py`). `not_run`: pedido real depois do deploy.
+
+As regras 1 e 2 (uma conta por alvo no pedido inteiro e `approval_required` para pessoa real sem conversa prévia) são da porta de
+política (`PolicyEngine.check`, item 30.62): o provedor `contexto_do_pedido(run_id)` vem num PR à parte.
