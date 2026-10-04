@@ -50,6 +50,7 @@ class Limites(Protocol):
 class Guardado(Protocol):
     id: int
     tentativas: int
+    estado: str
     nome: str
     empresa: str
     telefone: str
@@ -66,8 +67,8 @@ class Repositorio(Protocol):
     def marcar(self, contato_id: int, estado: str, motivo: str | None, agora: datetime, *,
                tentou: bool = ...) -> None: ...
     def a_reenviar(self, limite: int) -> list[Guardado]: ...
-    def retidos(self) -> int: ...
-    def descartados_desde(self, desde: datetime) -> int: ...
+    def retidos_que_chegaram_entre(self, inicio: datetime, fim: datetime) -> int: ...
+    def descartados_pelo_teto_diario_entre(self, inicio: datetime, fim: datetime) -> int: ...
 
 
 #: O tipo `ContatoDoPortal` e a função `avisar_contato_do_portal` da Canais (28.32), vistos daqui só pela forma: o
@@ -140,11 +141,13 @@ class ServicoDeContato:
         self.entregar(contato_id, campos, agora)
         return Resposta(202)
 
-    def entregar(self, contato_id: int, campos: Mapping[str, str], agora: datetime) -> str:
+    def entregar(self, contato_id: int, campos: Mapping[str, str], agora: datetime, *, antes: str = "pendente") -> str:
         """Tenta passar o contato à Canais; devolve o estado em que a linha ficou. Nunca levanta: o contato já está
-        guardado, e o laço tenta de novo."""
+        guardado, e o laço tenta de novo. `antes` é o estado da linha: a já `retido` não é remarcada (a hora em que
+        bateu no teto fica), e ao ser entregue guarda o motivo `teto_por_hora`, que é o que o resumo conta."""
         if self.repo.entregues_desde(agora - timedelta(hours=1)) >= self.limites().telegram_hora:
-            self.repo.marcar(contato_id, "retido", "teto_por_hora", agora)
+            if antes != "retido":
+                self.repo.marcar(contato_id, "retido", "teto_por_hora", agora)
             return "retido"
         avisar, tipo = self._avisar(), self._tipo()
         if avisar is None or tipo is None:
@@ -159,7 +162,7 @@ class ServicoDeContato:
             self.repo.marcar(contato_id, "pendente", "falha_interna", agora, tentou=True)
             return "pendente"
         if getattr(resultado, "enfileirado", False) is True:
-            self.repo.marcar(contato_id, "entregue", None, agora, tentou=True)
+            self.repo.marcar(contato_id, "entregue", "teto_por_hora" if antes == "retido" else None, agora, tentou=True)
             return "entregue"
         motivo = str(getattr(resultado, "motivo", None) or "falha_interna")[:40]
         estado = "descartado" if motivo == "campo_invalido" else "pendente"
@@ -178,17 +181,21 @@ class ServicoDeContato:
                 continue
             campos = {"nome": contato.nome, "empresa": contato.empresa, "telefone": contato.telefone,
                       "mensagem": contato.mensagem}
-            estado = self.entregar(contato.id, campos, agora)
+            estado = self.entregar(contato.id, campos, agora, antes=contato.estado)
             contagem[estado] = contagem.get(estado, 0) + 1
             if estado == "retido":
                 break                                                  # o teto da hora vale para todos os seguintes
         return contagem
 
     def resumir(self, agora: datetime) -> str | None:
-        """O "+N" acima dos tetos ao dono: os `retido` agora e os `descartado` da última hora, pelo aviso
-        `portal.resumo` da Canais, que tem chave por hora UTC (chamar de novo na mesma hora não duplica). Sem nada acima
-        dos tetos, ou sem a porta da Canais nesta base, não chama. Devolve o motivo da recusa, ou `None`."""
-        retidos, descartados = self.repo.retidos(), self.repo.descartados_desde(agora - timedelta(hours=1))
+        """O "+N" acima dos tetos ao dono, pelo aviso `portal.resumo` da Canais (chave por hora UTC), sobre a hora
+        FECHADA anterior a `agora` (`[HH-1:00, HH:00)`): cada contato entra em um resumo só. Conta os que chegaram nela
+        e bateram no teto de avisos por hora (R2) e os descartados pelo teto diário, o único sinal de abuso (R3).
+        Sem nada acima dos tetos, ou sem a porta da Canais nesta base, não chama. Devolve o motivo da recusa, ou `None`."""
+        fim = agora.replace(minute=0, second=0, microsecond=0)
+        inicio = fim - timedelta(hours=1)
+        retidos = self.repo.retidos_que_chegaram_entre(inicio, fim)
+        descartados = self.repo.descartados_pelo_teto_diario_entre(inicio, fim)
         avisar = self._avisar_resumo()
         if (retidos == 0 and descartados == 0) or avisar is None:
             return None

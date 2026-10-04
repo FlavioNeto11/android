@@ -53,12 +53,56 @@ class Portal:
 
         self.contatos = ServicoDeContato(self.repo, limites=lambda: cfg.file.portal.limites, avisar=avisar,
                                          tipo_do_contato=_tipo_da_canais, avisar_resumo=avisar_resumo)
-        if (problema := self.problema_de_ip_da_borda()) is not None:
-            log.warning("portal: %s", problema)
+        for _codigo, mensagem, _dica in self.problemas(com_contagens=False):   # o banco ainda não migrou aqui
+            log.warning("portal: %s", mensagem)
+
+    @property
+    def site_presente(self) -> bool:
+        return (self.cfg.root / "site" / "index.html").is_file()
 
     @property
     def contato_ligado(self) -> bool:
-        return bool(self.cfg.file.portal.contato_ligado)
+        """A bandeira E a página que emite o token: com `site_ligado` sem a pasta `site/`, a raiz segue no painel e a
+        rota do contato ficaria aberta sem página; aí o contato vale como desligado (revisão do #333, item 5)."""
+        portal = self.cfg.file.portal
+        return bool(portal.contato_ligado and portal.site_ligado and self.site_presente)
+
+    def problemas(self, *, com_contagens: bool = True) -> list[tuple[str, str, str]]:
+        """Os problemas do portal para o `/api/health`: `(código, mensagem, dica)`, só com nomes de configuração e
+        contagens, nunca dado do visitante."""
+        achados: list[tuple[str, str, str]] = []
+        portal = self.cfg.file.portal
+        if portal.site_ligado and not self.site_presente:
+            achados.append((
+                "portal_site_sem_pasta",
+                "portal.site_ligado está ligado e a pasta site/ (com o index.html) não existe nesta instalação: a raiz "
+                "segue no painel e o contato do site está desligado.",
+                "Confira o checkout (a pasta site/ vem no Git) e reinicie o central, ou desligue portal.site_ligado."))
+        if (problema := self.problema_de_ip_da_borda()) is not None:
+            achados.append((
+                "portal_contato_sem_ip_da_borda", problema + ".",
+                "Declare server.tls_behind_proxy e server.public_hosts no config.yaml e reinicie, ou desligue "
+                "portal.contato_ligado. Procedimento em docs/operacao.md, \"Site institucional na raiz\"."))
+        if not com_contagens:
+            return achados
+        try:
+            esperando, falhos = self.repo.parados(now())
+        except Exception:  # noqa: BLE001 - a saúde não cai por causa de uma contagem
+            log.exception("portal: contagem dos contatos parados")
+            esperando, falhos = 0, 0
+        if esperando or falhos:
+            partes = []
+            if esperando:
+                partes.append(f"{esperando} contato(s) do site esperando há mais de 1 h com o aviso desligado "
+                              "(canal_desligado)")
+            if falhos:
+                partes.append(f"{falhos} contato(s) do site descartado(s) nas últimas 24 h depois de 10 falhas da entrega "
+                              "(falhas_demais)")
+            achados.append((
+                "portal_contatos_parados", "; ".join(partes) + ".",
+                "Com canal_desligado: ligue avisos (avisos.enabled, token e chat do Telegram) e reinicie; os contatos saem "
+                "na ordem. Com falhas_demais: veja o log poc.portal e o da Canais (o conteúdo já foi apagado)."))
+        return achados
 
     def problema_de_ip_da_borda(self) -> str | None:
         """Com o contato ligado, a taxa por cliente precisa do IP da borda (`security.access.cliente_de`). Sem

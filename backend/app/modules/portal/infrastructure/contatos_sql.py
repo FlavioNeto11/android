@@ -70,16 +70,41 @@ class ContatosSql:
             "SELECT COUNT(*) AS n FROM portal_contatos WHERE estado='entregue' AND atualizado_em>=?",
             (to_iso(desde),)) or 0)
 
-    def retidos(self) -> int:
-        return int(self.db.scalar("SELECT COUNT(*) AS n FROM portal_contatos WHERE estado='retido'") or 0)
-
-    def descartados_desde(self, desde: datetime) -> int:
+    def retidos_que_chegaram_entre(self, inicio: datetime, fim: datetime) -> int:
+        """Os contatos que CHEGARAM em `[inicio, fim)` e bateram no teto de avisos por hora (motivo `teto_por_hora`,
+        que a linha guarda mesmo depois de entregue). É o "guardados sem aviso na última hora" do resumo, não o
+        estoque de agora (revisão do #333, R2)."""
         return int(self.db.scalar(
-            "SELECT COUNT(*) AS n FROM portal_contatos WHERE estado='descartado' AND atualizado_em>=?",
-            (to_iso(desde),)) or 0)
+            "SELECT COUNT(*) AS n FROM portal_contatos WHERE motivo='teto_por_hora' AND estado IN ('retido', 'entregue') "
+            "AND criado_em>=? AND criado_em<?", (to_iso(inicio), to_iso(fim))) or 0)
+
+    def descartados_pelo_teto_diario_entre(self, inicio: datetime, fim: datetime) -> int:
+        """Só o teto diário é sinal de abuso; `campo_invalido` e `falhas_demais` não entram no resumo (R3)."""
+        return int(self.db.scalar(
+            "SELECT COUNT(*) AS n FROM portal_contatos WHERE estado='descartado' AND motivo='teto_diario' "
+            "AND criado_em>=? AND criado_em<?", (to_iso(inicio), to_iso(fim))) or 0)
+
+    def parados(self, agora: datetime) -> tuple[int, int]:
+        """Para a saúde: os `pendente` por `canal_desligado` que chegaram há mais de 1 h, e os descartados por
+        `falhas_demais` nas últimas 24 h. Só contagens."""
+        esperando = self.db.scalar(
+            "SELECT COUNT(*) AS n FROM portal_contatos WHERE estado='pendente' AND motivo='canal_desligado' "
+            "AND criado_em<?", (to_iso(agora - timedelta(hours=1)),))
+        falhos = self.db.scalar(
+            "SELECT COUNT(*) AS n FROM portal_contatos WHERE estado='descartado' AND motivo='falhas_demais' "
+            "AND atualizado_em>=?", (to_iso(agora - timedelta(days=1)),))
+        return int(esperando or 0), int(falhos or 0)
 
     def marcar(self, contato_id: int, estado: str, motivo: str | None, agora: datetime, *,
                tentou: bool = False) -> None:
+        """Descartar apaga o conteúdo, por qualquer motivo: não se guarda dado de quem não vai ser atendido (revisão
+        do #333; o teto diário já grava vazio). Ficam o estado, o motivo, as horas e o hash do cliente (a taxa)."""
+        if estado == "descartado":
+            self.db.execute(
+                "UPDATE portal_contatos SET estado=?, motivo=?, atualizado_em=?, tentativas=tentativas+?, nome='', "
+                "empresa='', telefone='', mensagem='' WHERE id=?",
+                (estado, motivo, to_iso(agora), 1 if tentou else 0, contato_id))
+            return
         self.db.execute(
             "UPDATE portal_contatos SET estado=?, motivo=?, atualizado_em=?, tentativas=tentativas+? WHERE id=?",
             (estado, motivo, to_iso(agora), 1 if tentou else 0, contato_id))

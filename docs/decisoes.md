@@ -5465,6 +5465,8 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
    recebe 202) sem página que emita o token. Com o site no ar e o contato desligado, o servidor troca o formulário (entre
    `<!--portal:formulario-->` e `<!--portal:fim-do-formulario-->`) por um aviso de que ele está fora do ar, e os
    telefones seguem na página; se o token vier vazio, o JS faz o mesmo. Esse é o recuo parcial: desligar só o contato.
+   Com `site_ligado` e sem a pasta `site/` (sem o `index.html`), a raiz segue no painel, o contato vale como desligado
+   e a saúde mostra `portal_site_sem_pasta`.
 2. **O site é servido da memória** (`modules/portal/presentation/site.py::SitePublico`), montado por ÚLTIMO na raiz para a
    API e `/central` casarem antes. A pasta `site/` é lida uma vez, numa lista fechada de extensões (`html css js svg png
    webp ico txt woff2`); arquivo fora da lista ou oculto **derruba a subida do central inteiro**, de propósito: um
@@ -5506,14 +5508,20 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
 6. **Grava antes de avisar** (migração 107, `portal_contatos`). Só depois a Canais é chamada pelo contrato do 28.32
    (`state.avisos.avisar_contato_do_portal(ContatoDoPortal(...))`, chave `portal:<id>`, idempotente), resolvido na hora de
    usar: sem o código da Canais a linha fica `pendente` (`canal_ausente`). Acima de `telegram_hora` avisos por hora a
-   linha fica `retido`; `canal_desligado` e falha deixam `pendente`; `campo_invalido` vira `descartado`. O laço
-   `portal-contatos` (a cada minuto, no líder da trava `avisos`) reenvia pela ordem `tentativas, id` e respeita o teto
-   da hora. O "+N" acima dos tetos (os `retido` agora e os `descartado` da última hora) vai ao dono pelo aviso
-   `portal.resumo` da Canais (`avisar_resumo_do_portal(retidos, descartados, janela_h)`, #335), só com números e com
-   chave por hora UTC (vale a primeira chamada da hora): o laço chama uma vez por hora, na virada, com a hora que
-   acabou de fechar. Acima do limiar da Canais sai na hora; abaixo, na janela da rotina. `tentativas` conta as chamadas que chegaram à Canais, menos `canal_desligado` (espera, não falha); com 10
-   falhas (`FALHAS_MAX`) a linha vira `descartado` com motivo `falhas_demais`. Sem isso, um conteúdo que faz a Canais
-   levantar voltaria a cada minuto e, com 20 assim, prenderia o reenvio dos seguintes em silêncio.
+   linha fica `retido`; `canal_desligado` e falha deixam `pendente`; `campo_invalido` vira `descartado`. **Descartar
+   apaga o conteúdo, por qualquer motivo** (teto diário, `campo_invalido`, `falhas_demais`): ficam o estado, o motivo,
+   as horas e o hash do cliente; não se guarda dado de quem não vai ser atendido. O laço `portal-contatos` (a cada
+   minuto, no líder da trava `avisos`) reenvia pela ordem `tentativas, id` e respeita o teto da hora. `tentativas`
+   conta as chamadas que chegaram à Canais, menos `canal_desligado` (espera, não falha); com 10 falhas (`FALHAS_MAX`) a
+   linha vira `descartado` com motivo `falhas_demais`. Sem isso, um conteúdo que faz a Canais levantar voltaria a cada
+   minuto e, com 20 assim, prenderia o reenvio dos seguintes em silêncio.
+   **O "+N" acima dos tetos** vai ao dono pelo aviso `portal.resumo` da Canais (`avisar_resumo_do_portal(retidos,
+   descartados, janela_h)`, #335), só com números e com chave por hora UTC (vale a primeira chamada da hora). O laço
+   chama uma vez por hora, na virada, sobre a hora FECHADA anterior, então cada contato entra em um resumo só:
+   `retidos` são os que chegaram nela e bateram no teto de avisos (a linha guarda o motivo `teto_por_hora` mesmo depois
+   de entregue), e `descartados` são só os do teto diário, o único sinal de abuso. Acima do limiar da Canais sai na
+   hora; abaixo, na janela da rotina. O que não é abuso aparece na saúde: `portal_contatos_parados` com os `pendente`
+   por `canal_desligado` há mais de 1 h e os `falhas_demais` das últimas 24 h, só em contagens.
    `entregue` aqui quer dizer "na fila da Canais" (`enfileirado=True`), não "lido no Telegram": se o canal for
    desligado com o aviso ainda na fila, ele vence em `avisos.validade_h` e o corpo some, e a linha do portal segue
    `entregue` (o contato continua na tabela pelos 180 dias). Por isso a página diz ao visitante que a mensagem foi

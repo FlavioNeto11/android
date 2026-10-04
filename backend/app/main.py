@@ -348,7 +348,7 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
         async def _para_o_painel() -> RedirectResponse:
             return RedirectResponse(url=PREFIXO_DO_PAINEL + "/", status_code=307)
 
-        site_ligado = cfg.file.portal.site_ligado and (cfg.root / "site").is_dir()
+        site_ligado = cfg.file.portal.site_ligado and (cfg.root / "site" / "index.html").is_file()
         if cfg.file.portal.site_ligado and not site_ligado:
             logging.getLogger("poc").warning("portal.site_ligado sem a pasta %s: a raiz segue no painel",
                                              cfg.root / "site")

@@ -6,9 +6,11 @@ Prova `simulated`: o harness de sempre e uma Canais FALSA no lugar de `avisar_co
 from __future__ import annotations
 
 import logging
+import shutil
 import time
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
+from pathlib import Path
 
 import httpx
 import pytest
@@ -56,6 +58,10 @@ class CanaisFalsa:
 
 def _ligar(h: Harness, monkeypatch: pytest.MonkeyPatch, canais: CanaisFalsa | None = None, *,
            ligado: bool = True) -> CanaisFalsa | None:
+    # O contato só vale com o site ligado E a página na pasta (revisão do #333, itens M3 e 5).
+    if not (Path(h.cfg.root) / "site").exists():
+        shutil.copytree(Path(__file__).resolve().parents[2] / "site", Path(h.cfg.root) / "site")
+    h.cfg.file.portal.site_ligado = True
     h.cfg.file.portal.contato_ligado = ligado
     h.cfg.file.server.public_hosts = [PUBLICO]
     h.cfg.file.server.tls_behind_proxy = True
@@ -392,7 +398,10 @@ def test_contato_sem_o_site_e_recusado_na_subida() -> None:
 
 
 # ---------------------------------------------------------------- o "+N" acima dos tetos (portal.resumo, Canais #335)
-def test_resumo_dos_tetos_so_com_algo_acima_e_so_com_numeros(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resumo_conta_a_hora_fechada_e_so_o_teto_diario_como_descarte(harness: Harness,
+                                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    """R1 a R3: a janela é a hora UTC fechada anterior; `retidos` são os que CHEGARAM nela e bateram no teto de
+    avisos (mesmo já entregues), não o estoque; descarte que conta é só o do teto diário."""
     _ligar(harness, monkeypatch, CanaisFalsa())
     assert harness.state is not None
     chamadas: list[tuple[int, int, int]] = []
@@ -403,16 +412,25 @@ def test_resumo_dos_tetos_so_com_algo_acima_e_so_com_numeros(harness: Harness, m
 
     monkeypatch.setattr(harness.state.avisos, "avisar_resumo_do_portal", resumo, raising=False)
     servico, repo = harness.state.portal.contatos, harness.state.portal.repo
-    assert servico.resumir(now()) is None and chamadas == []            # nada acima dos tetos: não chama
-    for i in range(3):
-        repo.gravar(nome="n", empresa="", telefone="00000000", mensagem="m", cliente_hash=f"r{i}", agora=now(),
-                    estado="retido", motivo="teto_por_hora")
-    repo.gravar(nome="", empresa="", telefone="", mensagem="", cliente_hash="d", agora=now(), estado="descartado",
-                motivo="teto_diario")
-    repo.gravar(nome="", empresa="", telefone="", mensagem="", cliente_hash="velho",
-                agora=now() - timedelta(hours=3), estado="descartado", motivo="teto_diario")
-    assert servico.resumir(now()) is None
-    assert chamadas == [(3, 1, 1)]                                       # o descartado de 3 h atrás fica de fora
+    virada = now().replace(minute=0, second=0, microsecond=0)
+    dentro, antes, depois = virada - timedelta(minutes=30), virada - timedelta(hours=2), virada + timedelta(minutes=5)
+    assert servico.resumir(virada + timedelta(minutes=1)) is None and chamadas == []     # nada: não chama
+    marcas = iter(range(100))
+
+    def linha(estado: str, motivo: str, quando: datetime) -> None:
+        repo.gravar(nome="n", empresa="", telefone="00000000", mensagem="m", cliente_hash=f"c-{next(marcas)}",
+                    agora=quando, estado=estado, motivo=motivo)
+
+    for _ in range(3):
+        linha("retido", "teto_por_hora", dentro)
+    linha("entregue", "teto_por_hora", dentro)                 # bateu no teto e já saiu: conta
+    linha("retido", "teto_por_hora", antes)                    # de outra hora: fica de fora
+    linha("retido", "teto_por_hora", depois)                   # da hora que ainda não fechou: fica de fora
+    linha("descartado", "teto_diario", dentro)
+    linha("descartado", "campo_invalido", dentro)              # recusa da Canais: não é abuso
+    linha("descartado", "falhas_demais", dentro)               # falha nossa: vai à saúde, não ao resumo
+    assert servico.resumir(virada + timedelta(minutes=1)) is None
+    assert chamadas == [(4, 1, 1)]
 
 
 def test_resumo_sem_a_porta_da_canais_nao_chama_nada(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -422,3 +440,63 @@ def test_resumo_sem_a_porta_da_canais_nao_chama_nada(harness: Harness, monkeypat
     harness.state.portal.repo.gravar(nome="n", empresa="", telefone="00000000", mensagem="m", cliente_hash="r",
                                      agora=now(), estado="retido")
     assert harness.state.portal.contatos.resumir(now()) is None
+
+
+# ---------------------------------------------------------------- revisão do #333, 2ª rodada
+def test_descartar_apaga_o_conteudo_pelos_tres_motivos(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.modules.portal.application.contato import FALHAS_MAX
+
+    canais = _ligar(harness, monkeypatch, CanaisFalsa(AvisadoFalso(False, "campo_invalido")))
+    assert harness.state is not None and canais is not None
+    servico, repo = harness.state.portal.contatos, harness.state.portal.repo
+    campos = {"nome": "Visitante Fictício", "empresa": "E", "telefone": TELEFONE, "mensagem": "m"}
+    cid = repo.gravar(nome="Visitante Fictício", empresa="E", telefone=TELEFONE, mensagem="m", cliente_hash="a",
+                      agora=now())
+    assert servico.entregar(cid, campos, now()) == "descartado"                    # campo_invalido da Canais
+    cid2 = repo.gravar(nome="Outro Fictício", empresa="", telefone=TELEFONE, mensagem="m2", cliente_hash="b",
+                       agora=now())
+    harness.state.db.execute("UPDATE portal_contatos SET tentativas=? WHERE id=?", (FALHAS_MAX, cid2))
+    canais.resposta = AvisadoFalso(True, None)
+    servico.reenviar(now())                                                         # falhas_demais
+    repo.gravar(nome="", empresa="", telefone="", mensagem="", cliente_hash="c", agora=now(), estado="descartado",
+                motivo="teto_diario")                    # o caminho da rota: test_teto_diario_descarta_sem_guardar...
+    descartados = [l for l in _linhas(harness) if l["estado"] == "descartado"]
+    assert {l["motivo"] for l in descartados} == {"campo_invalido", "falhas_demais", "teto_diario"}
+    for l in descartados:
+        assert l["nome"] == l["empresa"] == l["telefone"] == l["mensagem"] == "", l["motivo"]
+        assert l["cliente_hash"]                                                    # a taxa por cliente segue contando
+
+
+def test_saude_mostra_contatos_parados_so_com_contagens(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    _ligar(harness, monkeypatch, CanaisFalsa())
+    assert harness.state is not None
+    repo = harness.state.portal.repo
+
+    def parados() -> object:
+        assert harness.state is not None
+        return next((p for p in harness.state.health().problems if p.code == "portal_contatos_parados"), None)
+
+    assert parados() is None
+    repo.gravar(nome="Visitante Fictício", empresa="", telefone=TELEFONE, mensagem="m", cliente_hash="a",
+                agora=now() - timedelta(minutes=20), estado="pendente", motivo="canal_desligado")
+    assert parados() is None                                   # há menos de 1 h: ainda é espera normal
+    repo.gravar(nome="Visitante Fictício", empresa="", telefone=TELEFONE, mensagem="m", cliente_hash="b",
+                agora=now() - timedelta(hours=2), estado="pendente", motivo="canal_desligado")
+    repo.gravar(nome="", empresa="", telefone="", mensagem="", cliente_hash="c", agora=now(), estado="descartado",
+                motivo="falhas_demais")
+    achado = parados()
+    assert achado is not None
+    texto = achado.message + achado.hint                       # type: ignore[attr-defined]
+    assert "1 contato(s) do site esperando" in texto and "1 contato(s) do site descartado(s)" in texto
+    assert TELEFONE not in texto and "Visitante" not in texto
+
+
+async def test_site_ligado_sem_a_pasta_desliga_o_contato_e_diz_por_que(harness: Harness,
+                                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    _ligar(harness, monkeypatch, CanaisFalsa())
+    assert harness.state is not None
+    shutil.rmtree(Path(harness.cfg.root) / "site")              # a pasta temporária do teste, criada por _ligar
+    async with _cliente(harness) as c:
+        assert (await c.post(ROTA, json=_corpo(harness))).status_code == 404
+    codigos = {p.code for p in harness.state.health().problems}
+    assert "portal_site_sem_pasta" in codigos and _linhas(harness) == []
