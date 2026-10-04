@@ -296,3 +296,21 @@ async def test_31_50_ao_ligar_o_que_ja_esperava_ganha_a_carencia(harness: Harnes
     assert _status(harness, run_id, oid)[0] == "waiting_user"
     assert st.runs.vencer_objetivos_parados(now() + timedelta(hours=23)) == []
     assert st.runs.vencer_objetivos_parados(now() + timedelta(hours=25)) == [oid]
+
+
+async def test_31_50_lembrete_uma_vez_nas_duas_horas_antes_com_dados_sem_texto_do_pedido(harness: Harness) -> None:
+    """31.50: o objetivo parado recebe UM `pendencia.vence_em` quando faltam 2 h ou menos; fora da janela, nada. Os
+    dados dizem o que é, o aparelho, a ação e o `vence_em`; o texto ao dono é do montador dos avisos (28.31)."""
+    st = harness.state
+    assert st is not None
+    run_id, oid = await _parado(harness, espera_h=20, fim_h=20)
+    assert st.runs.lembrar_antes_de_vencer(now()) == []                       # faltam 4 h: cedo
+    agora = now() + timedelta(hours=3)                                         # faltam ~1 h
+    assert st.runs.lembrar_antes_de_vencer(agora) == [f"vencimento:lembrete:{oid}"]
+    assert st.runs.lembrar_antes_de_vencer(agora) == []                       # uma vez só
+    dados = _ultimo_evento(harness, "pendencia.vence_em", objective_id=oid)
+    assert (dados["o_que"], dados["aparelho"], dados["regra"]) == ("objetivo", "android-01", "31.50")
+    assert dados["vence_em"] > to_iso(agora) and dados["chave"] == f"vencimento:lembrete:{oid}"
+    comando = str(st.db.scalar("SELECT command FROM runs WHERE id=?", (run_id,)))
+    assert comando not in json.dumps(dados, ensure_ascii=False)
+    assert _status(harness, run_id, oid)[0] == "waiting_user"                  # o lembrete não muda estado

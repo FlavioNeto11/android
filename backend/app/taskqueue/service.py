@@ -38,7 +38,7 @@ from ..planning.provider import AIError, AIProvider, AppContext, MarcaDaChamada,
 from ..security.redaction import redact
 from ..shared.costuras import SISTEMA
 from ..shared.resources import Target
-from ..util import now_iso, to_iso
+from ..util import now_iso, parse_iso, to_iso
 from .balanceamento import Candidato, Distribuicao, Servidor, distribuir
 from .costuras import (SEM_COSTURAS, CancelamentoDeExecucao, CosturasDeAprendizado, PedidoDeLicoes,
                        RepeticaoDeExecucao, ResolucaoDeItem, avisar, pedir_licoes)
@@ -64,6 +64,10 @@ _VOLTAM_COM_RODIZIO = WAKEABLE | {InstanceState.stopping}
 NEEDS_INPUT_EXPIRA_H = 24
 #: 31.50: a marca (em `settings`) de quando o vencimento foi visto ligado; a carência conta dela (`_ligado_desde`).
 CHAVE_LIGADO_DESDE = "vencimento_ligado_desde"
+#: 31.50: o lembrete sai quando faltam estas horas para o vencimento (`RunService.lembrar_antes_de_vencer`).
+LEMBRETE_ANTES_H = 2
+#: 31.50: o evento do lembrete. Quem escreve o texto ao dono é o montador dos avisos (28.31); aqui só vão os dados.
+EVENTO_DO_LEMBRETE = "pendencia.vence_em"
 #: 31.43: a marca para máquina de todo vencimento do sistema (pergunta ou bloqueio), no `data` do evento.
 REGRA_DO_VENCIMENTO = "31.43"
 MOTIVO_VENCIDO = "vencido_sem_resposta"
@@ -1497,6 +1501,57 @@ class RunService:
             avisar(self.costuras.cancelou_execucao, CancelamentoDeExecucao(
                 run_id=run_id, status_anterior=status.value, antes_de_iniciar=antes_de_iniciar, quem=por, em=em))
         return self.repo.run_summary(self._run(run_id))
+
+    def lembrar_antes_de_vencer(self, agora: datetime) -> list[str]:
+        """31.50: UM lembrete por item que vence nas próximas `LEMBRETE_ANTES_H` horas: a execução em `needs_input` e
+        o objetivo em `waiting_user` de execução terminada (as mesmas filas das duas varreduras acima). Antes, o item
+        vencia sem aviso prévio e o dono só sabia depois.
+
+        Sai o evento `pendencia.vence_em`; o texto é do montador dos avisos (28.31). Os `dados` dizem o que é
+        (`aprovacao`, `objetivo` ou `execucao`), o aparelho, a ação de catálogo e a chave da etapa que espera, e o
+        `vence_em`. Nunca o comando nem o título da etapa: os dois podem levar um nome ou um arroba. Devolve as chaves
+        `vencimento:lembrete:<id>` dos lembretes que saíram; o mesmo item não sai duas vezes (o evento é a marca)."""
+        ligado, horas_cfg = self._vencimento()
+        if not ligado:
+            return []
+        prazo, ligado_desde = timedelta(hours=horas_cfg), self._ligado_desde()
+        janela = (to_iso(agora - prazo), to_iso(agora - prazo + timedelta(hours=LEMBRETE_ANTES_H)))
+        db, saidos = self.repo.db, []
+        itens: list[tuple[str, str, dict[str, object]]] = []
+        for run in db.query("SELECT id, created_at, instance_ids FROM runs WHERE status=? ORDER BY created_at, id",
+                            (RunStatus.needs_input.value,)):
+            entrada = db.scalar("SELECT MAX(ts) FROM events WHERE run_id=? AND kind='run.updated'",
+                                (run["id"],)) or run["created_at"]
+            itens.append((str(run["id"]), max(str(entrada), ligado_desde),
+                          {"o_que": "execucao", "run_id": str(run["id"]),
+                           "aparelhos": loads(str(run["instance_ids"]), [])}))
+        terminais = tuple(s.value for s in RUN_TERMINAL)
+        marcas = ",".join("?" for _ in terminais)
+        for o in db.query("SELECT o.id, o.run_id, o.instance_id, o.blocked_kind, o.finished_at AS espera_desde, "
+                          f"r.finished_at AS fim FROM objectives o JOIN runs r ON r.id=o.run_id WHERE o.status=? "
+                          f"AND r.status IN ({marcas}) ORDER BY o.id", (ObjectiveStatus.waiting_user.value, *terminais)):
+            etapa = db.one("SELECT key, capability FROM steps WHERE objective_id=? AND status=? "
+                           "ORDER BY seq DESC, id DESC LIMIT 1", (o["id"], StepStatus.waiting_user.value))
+            itens.append((str(o["id"]), max(str(o["espera_desde"] or ""), str(o["fim"] or ""), ligado_desde),
+                          {"o_que": "aprovacao" if o["blocked_kind"] == "approval" else "objetivo",
+                           "run_id": str(o["run_id"]), "objective_id": str(o["id"]), "aparelho": o["instance_id"],
+                           "acao": etapa["capability"] if etapa else None, "etapa": etapa["key"] if etapa else None}))
+        for ref, desde, dados in itens:
+            # Vence entre agora e agora + LEMBRETE_ANTES_H: `desde` dentro da janela correspondente.
+            if not (janela[0] <= desde < janela[1]):
+                continue
+            chave = f"vencimento:lembrete:{ref}"
+            if db.scalar("SELECT 1 FROM events WHERE kind=? AND (objective_id=? OR (objective_id IS NULL AND run_id=?)) "
+                         "LIMIT 1", (EVENTO_DO_LEMBRETE, ref, ref)):
+                continue
+            vence_em = to_iso(parse_iso(desde) + prazo)
+            self.repo.bus.emit(EVENTO_DO_LEMBRETE, f"Vence em {LEMBRETE_ANTES_H} h ou menos: {dados['o_que']} {ref}",
+                               run_id=str(dados["run_id"]), objective_id=dados.get("objective_id"),  # type: ignore[arg-type]
+                               instance_id=dados.get("aparelho"),  # type: ignore[arg-type]
+                               data={**dados, "regra": "31.50", "chave": chave, "vence_em": vence_em,
+                                     "acontece_se_vencer": "cancelado pelo sistema"})
+            saidos.append(chave)
+        return saidos
 
     def _ligado_desde(self) -> str:
         """31.50, carência ao ligar: quando o vencimento foi visto ligado pela primeira vez (`settings`, durável entre
