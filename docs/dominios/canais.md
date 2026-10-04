@@ -204,6 +204,8 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
     2. A Canais lê a caixa a cada etapa e manda o texto literal à orquestradora.
     3. A orquestradora responde, e a Canais entrega a resposta em reply à mensagem do dono
        (`telegram_status.py --reply-to <ref_mensagem>`).
+  - Quem responde a pergunta repassada é a orquestradora. A Canais entrega o texto dela, sem escrever uma resposta
+    própria. Na 889, as duas responderam e o dono recebeu duas respostas (04/10).
 - **Nome de persona nunca sai pelo canal (C-02, 28.28):**
   - Todo texto que a conversa manda passa por `sem_nome_de_persona`. Ele troca o nome de exibição, o primeiro e o último
     nome e o @ das personas cadastradas por `<persona>`, por palavra inteira e sem diferença de maiúscula ou acento.
