@@ -135,6 +135,10 @@ class PanelSessions:
         linha = self.db.one("SELECT * FROM panel_sessions WHERE token_hash=?", (impressao(token),))
         if linha is None or linha["revoked_at"]:
             return None
+        if str(linha["operator"] or "").casefold().replace(" ", "").startswith(PREFIXOS_DE_CANAL):
+            # Revisão da #314: a sessão aberta ANTES de o login recusar o prefixo dos canais não vale mais (renovaria
+            # sozinha por 30 dias, e `trello:<membro_dono>` seria o dono na criação do pedido).
+            return None
         agora = now()
         try:
             expira = parse_iso(linha["expires_at"])

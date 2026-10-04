@@ -33,7 +33,7 @@ import time
 from collections import deque
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.config import Config, TrelloCfg
 from app.models import Problem
@@ -55,7 +55,7 @@ from app.modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
 from app.modules.avisos.infrastructure.espelho_sql import CartoesDoTrello, CursorDoTrello
 from app.modules.avisos.infrastructure.trello_webhook import CadastroDoWebhook
 from app.taskqueue.travas import AVISOS
-from app.util import parse_iso
+from app.util import parse_iso, to_iso
 
 log = logging.getLogger("poc.avisos.trello")
 
@@ -243,6 +243,41 @@ TIPO_DO_COMENTARIO = "trello.comentario"
 TEXTO_DO_COMENTARIO_MAX = 300
 RESPOSTA_COMENTARIO_SEM_TELEGRAM = ("Recebi o seu comentário e repassei à orquestradora. A confirmação pelo Telegram não "
                                     "saiu (o canal está desligado): confirme pelo painel ou pelo chat da sessão.")
+#: As travas do laço (revisão da #314): o 🤖 é convenção, e uma sessão que o esquece gera pedido ao dono. No máximo UM
+#: pedido em aberto por cartão (o que o dono ainda não respondeu, nas últimas `ABERTO_S`) e `COMENTARIOS_POR_HORA` pedidos
+#: por hora no quadro; acima disso o comentário só vai à orquestradora, e o dono recebe UMA linha por hora dizendo que parou.
+COMENTARIOS_POR_HORA = 6
+ABERTO_S = 24 * 3600
+RESPOSTA_COMENTARIO_JA_ABERTO = ("Recebi o seu comentário e repassei à orquestradora. Já há um pedido de confirmação deste "
+                                 "cartão esperando você no Telegram: responda lá.")
+RESPOSTA_COMENTARIO_NO_TETO = (f"Recebi o seu comentário e repassei à orquestradora. Parei de pedir confirmação no Telegram "
+                               f"nesta hora (mais de {COMENTARIOS_POR_HORA} pedidos): confirme pelo chat da sessão.")
+
+
+class ComentariosDoTrello:
+    """28.30 (revisão da #314): a conferência que a conversa do Telegram faz antes de o sim do dono valer. Relê a action do
+    comentário pela API: o mesmo texto que foi gravado é `igual`; outro texto, `mudou`; 404, `apagado`; outra falha ou o
+    Trello desligado, `sem_conferir`; sem linha gravada, `desconhecido`."""
+
+    def __init__(self, repo: EntradasDoCanal, cliente: Callable[[], ClienteTrello | None]):
+        self.repo = repo
+        self._cliente = cliente
+
+    async def conferir(self, action: str) -> tuple[str, str | None]:
+        ident = self.repo.id_de(action)
+        linha = self.repo.linha(ident) if ident is not None else None
+        gravado = _texto(linha.get("texto")) if linha is not None else None
+        if gravado is None:
+            return "desconhecido", None
+        cliente = self._cliente()
+        if cliente is None:
+            return "sem_conferir", gravado
+        try:
+            bruta = await cliente.acao(action)
+        except FalhaDoTrello as falha:
+            return ("apagado" if falha.status == 404 else "sem_conferir"), gravado
+        atual = _texto((_mapa((bruta if isinstance(bruta, dict) else {}).get("data")) or {}).get("text"))
+        return ("igual" if atual is not None and atual.strip() == gravado.strip() else "mudou"), gravado
 
 
 class ConversaDoTrello(ConversaDoCanal):
@@ -317,8 +352,11 @@ class ConversaDoTrello(ConversaDoCanal):
         no quadro com a conta dele): vai à orquestradora, e o dono confirma com sim ou não no Telegram. O cartão recebe
         a resposta na hora. No Telegram só saem o nome do cartão e o texto que passam inteiros pelos filtros do 28.31."""
         ref = RefDoTrello.ler(linha.get("ref_mensagem"))
-        pedida = False
-        if ref is not None and self.avisar_dono is not None:
+        pedida, resposta = False, RESPOSTA_COMENTARIO_SEM_TELEGRAM
+        trava = self._trava_do_comentario(linha, ref) if ref is not None and self.avisar_dono is not None else None
+        if trava is not None:
+            resposta = trava
+        elif ref is not None and self.avisar_dono is not None:
             nomes = self._nomes_de_persona()
             bruto = await saida.nome_do_cartao(ref.card) if isinstance(saida, SaidaDoTrello) else None
             nome = texto_seguro(bruto, nomes, self._redigir)
@@ -334,11 +372,32 @@ class ConversaDoTrello(ConversaDoCanal):
                     "Comentário no Trello sozinho não autoriza nada; o sim daqui é que vale.",
                     "Espera você: responda sim ou não a esta mensagem."]),
                 link=f"https://trello.com/c/{ref.card}"))
+            if pedida:
+                resposta = RESPOSTA_DO_REPASSE[REPASSE_COMENTARIO]
         self.repo.marcar(self._id(linha), "orquestradora", intencao=i.tipo, destino="orquestradora",
                          previa={"repasse": REPASSE_COMENTARIO, "texto": i.texto, "confirmacao_pedida": pedida},
                          de=("recebida", "pergunta"))
-        await self._responder(saida, linha, RESPOSTA_DO_REPASSE[REPASSE_COMENTARIO] if pedida else
-                              RESPOSTA_COMENTARIO_SEM_TELEGRAM)
+        await self._responder(saida, linha, resposta)
+
+    def _trava_do_comentario(self, linha: Linha, ref: RefDoTrello) -> str | None:
+        """A resposta do cartão quando uma das travas segura o pedido de confirmação, ou `None` (pode pedir)."""
+        agora = datetime.fromtimestamp(self._agora(), timezone.utc)
+        abertos = [a for a in self.repo.comentarios_com_pedido(desde=to_iso(agora - timedelta(seconds=ABERTO_S)),
+                                                                card=ref.card, exceto=self._id(linha))
+                   if not self.repo.comentario_respondido(a)]
+        if abertos:
+            return RESPOSTA_COMENTARIO_JA_ABERTO
+        if len(self.repo.comentarios_com_pedido(desde=to_iso(agora - timedelta(hours=1)))) < COMENTARIOS_POR_HORA:
+            return None
+        if self.avisar_dono is not None:
+            # Uma linha por hora (a chave é a hora): a fila deduplica o resto.
+            self.avisar_dono(Aviso(
+                chave=chave_do_fato("comentario-teto", agora.strftime("%Y-%m-%dT%H")), tipo=TIPO_DO_COMENTARIO,
+                titulo=titulo_do_aviso("💬 Parei de pedir confirmação dos seus comentários nesta hora"),
+                corpo=(f"Mais de {COMENTARIOS_POR_HORA} comentários pediram confirmação em 1 h. Os novos vão à orquestradora "
+                       "sem pergunta até a próxima hora.\nNada a fazer."),
+                link=None))
+        return RESPOSTA_COMENTARIO_NO_TETO
 
     async def _decidir(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
         if i.tipo == "vetar":

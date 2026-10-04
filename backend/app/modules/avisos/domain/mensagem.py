@@ -68,6 +68,7 @@ NIVEL_POR_TIPO: dict[str, int] = {
     "pedido.aprovacao_pendente": PRECISA_DE_VOCE,
     "pedido.pergunta": PRECISA_DE_VOCE,
     "pedido.ocorrencia_incerta": PRECISA_DE_VOCE,
+    "trello.comentario": PRECISA_DE_VOCE,          # 28.30: o pedido de confirmação de um comentário do dono
     "pedido.pausa_automatica": ALGO_FALHOU,
     "pedido.orcamento_esgotado": ALGO_FALHOU,
     "pedido.ocorrencia_perdida": ALGO_FALHOU,

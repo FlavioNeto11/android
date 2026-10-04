@@ -212,6 +212,28 @@ class EntradasDoCanal:
         self.db.execute("UPDATE canal_entradas SET resultado_em=? WHERE id=? AND canal=?",
                         (self._agora(), int(ident), self.canal))
 
+    # ------------------------------------------------------------------ o comentário do dono no Trello (28.30)
+    def comentarios_com_pedido(self, *, desde: str, card: str | None = None, exceto: int | None = None) -> list[str]:
+        """As actions (ids do Trello) dos comentários do dono que pediram confirmação no Telegram desde `desde` (ISO),
+        do cartão `card` se dado. A marca é `previa.confirmacao_pedida`, gravada junto com o estado `orquestradora`."""
+        sql = ("SELECT id_externo FROM canal_entradas WHERE canal=? AND estado='orquestradora' AND recebida_em >= ?"
+               " AND previa LIKE ?")
+        args: list[object] = [self.canal, desde, '%"confirmacao_pedida": true%']
+        if card:
+            sql += " AND ref_mensagem LIKE ?"
+            args.append(f"{card}/%")
+        if exceto is not None:
+            sql += " AND id <> ?"
+            args.append(int(exceto))
+        return [str(r["id_externo"]) for r in self.db.query(sql + " ORDER BY id", tuple(args))]
+
+    def comentario_respondido(self, action: str) -> bool:
+        """O dono já respondeu sim ou não ao pedido daquele comentário? A resposta é uma linha do TELEGRAM cujo repasse é
+        `comentario_sim`/`comentario_nao` e cujo texto leva o id da action: a consulta olha o outro canal de propósito."""
+        return self.db.scalar(
+            "SELECT 1 FROM canal_entradas WHERE canal='telegram' AND previa LIKE ? AND previa LIKE ? LIMIT 1",
+            ('%"repasse": "comentario_%', f"%{action}%")) is not None
+
     # ------------------------------------------------------------------ leitura (saúde e orquestradora)
     def contagens(self) -> dict[str, int]:
         linhas = self.db.query("SELECT estado, COUNT(*) AS n FROM canal_entradas WHERE canal=? GROUP BY estado",

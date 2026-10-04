@@ -289,7 +289,15 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   - Só o dono: a anotação de um membro autorizado segue só registrada, e a linha sem autor lido não é do dono.
   - O recado que falha por erro interno responde com uma frase fixa, e o reply a ela segue à orquestradora (a entrada 1256
     de 04/10 ficou `falhou` sem resposta).
-  - O login do painel recusa nome começado por `trello:` ou `telegram:`: esse é o operador dos canais.
+  - O login do painel recusa nome começado por `trello:` ou `telegram:`: esse é o operador dos canais. A sessão antiga
+    com esse nome deixa de valer.
+  - Travas do laço: no máximo um pedido em aberto por cartão (o que o dono não respondeu em 24 h) e 6 pedidos por hora no
+    quadro; acima disso o comentário só vai à orquestradora e o dono recebe uma linha por hora dizendo que parou.
+  - O sim relê o comentário no Trello: se mudou, foi apagado ou não deu para conferir, nada é repassado e o dono ouve
+    uma linha. O repasse leva o texto gravado do comentário. O sim nunca é tratado como senha, mesmo com uma pergunta
+    de credencial aberta.
+  - O `texto_seguro` barra link (`http://`, `https://`, `www.`): o endereço de um perfil diz de quem se trata. Vale
+    também para o rótulo do pedido (28.31).
 - **No produto:** `ConversaDoTrello._comentario`, `Fato.comentario` e o ramo dele em `_rotear_resposta`, o tipo
   `trello.comentario` (fora do agrupamento, `SEM_AGRUPAR`), `ClienteTrello.nome_do_cartao`.
 - **Prova:** `simulated` (`backend/tests/test_canais_comentario_do_dono.py`). `not_run`: o comentário real do dono num
