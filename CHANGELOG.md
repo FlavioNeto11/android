@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.16 + 28.18: a faxina leva os eventos dos contatos do Telegram (branch canais/28-18-faxina-090, sem migração)
+
+- `faxina_sql.py`: os `canal_contato_eventos` (090) vencem com o prazo do canal, como o resto do que a conversa guarda.
+  O texto do convidado entra ali redigido e cortado, mas é conteúdo.
+- O registro `canal_contatos` NÃO vence, embora o comentário da 090 diga que a faxina cobre as duas tabelas. Ali moram a
+  decisão do dono e o histórico de quem falou com o bot, que ele pediu para guardar. Apagado, o convidado autorizado
+  voltaria a ser pessoa nova.
+- Teste: `test_canais_faxina.py::test_os_eventos_do_contato_vencem_e_o_registro_do_contato_fica`. Prova simulada.
+
 ## 2026-10-04 — 28.16: faxina das tabelas de canal por prazo de retenção (branch canais/28-16-faxina-canais, sem migração)
 
 - `modules/avisos/infrastructure/faxina_sql.py`: a faxina das tabelas de canal, por canal. Vale para `canal_entradas` e

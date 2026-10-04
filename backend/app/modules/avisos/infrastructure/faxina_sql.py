@@ -17,7 +17,13 @@ horas. A reconciliação do Trello lê só depois do cursor.
 
 O que se apaga, por canal:
 - `canal_entradas` e `canal_enviadas` (085);
-- no Trello, também os `trello_cartoes` (087) já arquivados.
+- no Trello, também os `trello_cartoes` (087) já arquivados;
+- os `canal_contato_eventos` (090) do canal: o que cada convidado mandou entra ali redigido e cortado, mas é conteúdo, e
+  vence como o resto. O limite por hora do convidado olha só a última hora, bem dentro do prazo mínimo.
+
+O registro `canal_contatos` (090) NÃO vence, embora o comentário da 090 diga que a faxina cobre as duas tabelas: ali
+moram a decisão do dono (autorizado ou recusado) e o histórico de quem falou com o bot, que o dono pediu para guardar.
+Apagado por prazo, o convidado autorizado voltaria a ser pessoa nova e o dono teria de decidir de novo.
 
 O cursor do Trello é uma linha por quadro e não entra. Um reply a um aviso cuja `canal_enviadas` já foi apagada é tratado
 como reply a uma mensagem que a Central não mandou: vira recado guardado para a orquestradora, nunca ação.
@@ -42,10 +48,11 @@ class Faxina:
     apagadas: int = 0
     enviadas: int = 0
     cartoes: int = 0
+    eventos: int = 0
 
     @property
     def algo(self) -> bool:
-        return bool(self.zeradas or self.apagadas or self.enviadas or self.cartoes)
+        return bool(self.zeradas or self.apagadas or self.enviadas or self.cartoes or self.eventos)
 
 
 class FaxinaDosCanais:
@@ -73,4 +80,6 @@ class FaxinaDosCanais:
             if canal == "trello":
                 cartoes = self.db.execute(
                     "DELETE FROM trello_cartoes WHERE estado='arquivado' AND atualizado_em < ?", (limite,)).rowcount or 0
-        return Faxina(int(zeradas), int(apagadas), int(enviadas), int(cartoes))
+            eventos = self.db.execute(
+                "DELETE FROM canal_contato_eventos WHERE canal=? AND em < ?", (canal, limite)).rowcount or 0
+        return Faxina(int(zeradas), int(apagadas), int(enviadas), int(cartoes), int(eventos))
