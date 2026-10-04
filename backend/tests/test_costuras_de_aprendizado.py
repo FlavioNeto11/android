@@ -221,6 +221,7 @@ async def test_com_costuras_no_op_quebradas_ou_ligadas_os_desfechos_ficam_identi
         (tmp_path / pasta).mkdir()
         h = Harness(tmp_path / pasta, 3)
         await h.boot()
+        h.pular_o_tempo()   # T.2: os dois cenários com o mesmo relógio virtual; o que se compara é o desfecho
         try:
             if costuras is not None:
                 _instalar(h, costuras)
@@ -240,6 +241,7 @@ async def test_com_costuras_no_op_quebradas_ou_ligadas_os_desfechos_ficam_identi
 
 # ---------------------------------------------------------------------------------------------------- lições
 async def test_licoes_do_ator_uma_vez_por_tentativa_e_nunca_na_etapa_da_receita(harness: Harness) -> None:
+    harness.pular_o_tempo()   # T.2: o assentamento das ferramentas não muda quantas lições cada tentativa recebe
     st = harness.state
     assert st is not None
     harness.cfg.file.ai.recipes = "replay"
@@ -293,6 +295,7 @@ async def test_licoes_do_ator_uma_vez_por_tentativa_e_nunca_na_etapa_da_receita(
 
 # ---------------------------------------------------------------------------------------------------- fechamento
 async def test_ao_fechar_tentativa_uma_vez_por_tentativa_e_leva_a_arvore(harness: Harness) -> None:
+    harness.pular_o_tempo()   # T.2: sem assentamento em tempo real
     st = harness.state
     assert st is not None
     espia = Espia()
@@ -1032,6 +1035,7 @@ async def test_licoes_do_livro_seguem_o_modo_e_o_fornecedor_registrado(harness: 
 
 async def test_observador_registrado_recebe_cada_fechamento_e_um_quebrado_nao_cala_os_outros(
         harness: Harness) -> None:
+    harness.pular_o_tempo()   # T.2: sem assentamento em tempo real
     st = harness.state
     assert st is not None
     vistos: list[str] = []
