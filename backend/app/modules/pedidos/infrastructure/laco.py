@@ -40,9 +40,9 @@ from app.modules.pedidos.infrastructure.relatorios import ServicoDeRelatorios
 from app.modules.pedidos.infrastructure.repositorio import RepositorioDePedidos
 from app.modules.pedidos.domain.resumo import ResumidorDeRelatorio
 from app.modules.pedidos.domain import avisos as dominio_avisos
-from app.modules.pedidos.domain import gatilhos, gatilhos_dinamicos, tentativas
+from app.modules.pedidos.domain import colaboracao, gatilhos, gatilhos_dinamicos, tentativas
 from app.modules.pedidos.domain.chave import chave_da_ocorrencia, chave_da_tentativa, formatar_instante
-from app.modules.pedidos.domain.estados import transicionar_ocorrencia, transicionar_pedido
+from app.modules.pedidos.domain.estados import OCORRENCIA_TERMINAIS, transicionar_ocorrencia, transicionar_pedido
 from app.modules.pedidos.domain.memoria import MemoriaInvalida
 from app.modules.pedidos.domain.fechamento import (INTENCAO_PRAZO_DE_INICIO, ObjetivoVisto, fechar,
                                                    prazo_de_inicio_vencido)
@@ -87,6 +87,7 @@ class Resumo:
     despachadas: int = 0
     fechadas: int = 0
     adiadas: int = 0
+    seguradas: int = 0          # `devida` que espera a dependência (28.10 F2); não conta como adiada (essa é do saldo)
     encerrados: int = 0
     puladas: int = 0
     perdidas: int = 0
@@ -305,8 +306,8 @@ class LacoDePedidos:
         efeito = run_status is None or self.repo.efeito_possivel(o["run_id"])
         sem_orcamento: str | None = None
         if p["orcamento_total_usd"] is not None:
-            total, gasto, necessario = self._situacao_do_orcamento(p)
-            sem_orcamento = motivo_sem_orcamento(total, gasto + custo, necessario)
+            total, gasto, necessario, reservado = self._situacao_do_orcamento(p)
+            sem_orcamento = motivo_sem_orcamento(total, gasto + custo, necessario, reservado)
         teto = p["orcamento_ocorrencia_usd"]
         if sem_orcamento is None and teto is not None and float(o["custo_usd"] or 0.0) + custo >= float(teto):
             sem_orcamento = f"o teto da ocorrência (US$ {float(teto):.4f}) já foi gasto"
@@ -418,12 +419,40 @@ class LacoDePedidos:
                     r.puladas += 1
 
     # ------------------------------------------------------------------ 1b. orçamento total (28.6)
-    def _situacao_do_orcamento(self, p: Row) -> tuple[float | None, float, float]:
-        """`(total, gasto, necessario)`: o orçamento total do pedido, o que as ocorrências fechadas já gastaram e o que
-        a próxima deve custar (`domain/orcamento.py::custo_estimado`)."""
+    def _situacao_do_orcamento(self, p: Row) -> tuple[float | None, float, float, float]:
+        """`(total, gasto, necessario, reservado)`: o orçamento total do pedido, o que as ocorrências fechadas já gastaram,
+        o que a próxima deve custar (`domain/orcamento.py::custo_estimado`) e o que os filhos VIVOS seguram do saldo
+        (28.10 F2; sempre 0 sem `colaboracao.enabled`, sem filhos ou sem orçamento total). Os quatro vão juntos às
+        funções de `orcamento.py` (`motivo_sem_orcamento`, `quantas_cabem`)."""
         total = p["orcamento_total_usd"]
         necessario = custo_estimado(self.repo.ultimos_custos(p["id"], ULTIMAS_PARA_ESTIMAR), p["orcamento_ocorrencia_usd"])
-        return (None if total is None else float(total)), self.repo.custo_total(p["id"]), necessario
+        reservado = 0.0 if total is None else self._reservado_aos_filhos(p["id"])
+        return (None if total is None else float(total)), self.repo.custo_total(p["id"]), necessario, reservado
+
+    def _reservado_aos_filhos(self, pai_id: str) -> float:
+        """28.10 F2: o que os filhos diretos do pedido seguram do saldo dele, em US$ (`colaboracao.reservado_aos_filhos`).
+
+        O `orcamento_total_usd` de um filho foi RESERVADO do pai na criação (F1) e só o que o filho gasta sai de verdade:
+        enquanto ele vive, o pai não pode usar a reserva inteira; quando termina, só o gasto (`reservado − gasto`
+        volta ao saldo do pai). Os netos de um filho terminado entram no gasto dele pela mesma regra, porque a reserva
+        deles saiu do orçamento do filho. Desligado, o saldo do pai é só o dele, como antes da F2."""
+        if not self.cfg.colaboracao.enabled:
+            return 0.0
+        return colaboracao.reservado_aos_filhos(self._filhos_no_orcamento(pai_id, {pai_id}))
+
+    def _filhos_no_orcamento(self, pai_id: str, vistos: set[str]) -> list[colaboracao.FilhoNoOrcamento]:
+        saida: list[colaboracao.FilhoNoOrcamento] = []
+        for f in self.repo.filhos(pai_id):
+            if f["id"] in vistos:       # linhagem gravada em círculo não prende o laço
+                continue
+            vistos.add(f["id"])
+            vivo = f["estado"] not in colaboracao.ESTADOS_TERMINAIS
+            gasto = self.repo.custo_total(f["id"])
+            if not vivo:
+                gasto += colaboracao.reservado_aos_filhos(self._filhos_no_orcamento(f["id"], vistos))
+            reservado = f["orcamento_total_usd"]
+            saida.append(colaboracao.FilhoNoOrcamento(vivo, None if reservado is None else float(reservado), gasto))
+        return saida
 
     def _orcamentos(self, token: int, agora: datetime, r: Resumo) -> None:
         """Pedido cujo orçamento total não cobre outra ocorrência: o que ainda não virou execução é `pulada`
@@ -441,12 +470,17 @@ class LacoDePedidos:
 
     def _conferir_orcamento(self, p: Row, token: int, agora: datetime, r: Resumo) -> bool:
         """`True` = sem orçamento para outra ocorrência."""
-        total, gasto, necessario = self._situacao_do_orcamento(p)
-        motivo = motivo_sem_orcamento(total, gasto, necessario)
+        total, gasto, necessario, reservado = self._situacao_do_orcamento(p)
+        motivo = motivo_sem_orcamento(total, gasto, necessario, reservado)
         if motivo is None:
             if dominio_avisos.passou_de_80(gasto, total):
                 self._avisar_orcamento_80(p, float(total), gasto, agora)
             return False
+        if reservado > 0 and motivo_sem_orcamento(total, gasto, necessario) is None:
+            # 28.10 F2: o pedido TEM saldo; é a reserva dos filhos vivos que o segura. Nada é pulado (a `devida` espera o
+            # filho terminar e devolver o que não gastou: `quantas_cabem` já a segura no despacho) e o pai NÃO encerra por
+            # orçamento, o que levaria os filhos junto (`encerrar_filhos`). O alerta de 80 % segue o gasto real, não a reserva.
+            return True
         for linha in self.repo.ids_prevista_devida(p["id"]):
             self._pular([(linha["id"], f"orçamento: {motivo}")], token, agora, r, de=linha["estado"])
         if self.repo.quantas_em_aberto(p["id"]) == 0:
@@ -781,6 +815,9 @@ class LacoDePedidos:
 
     def _despachar_pedido(self, p: Row, devidas: list[Row], token: int, agora: datetime, r: Resumo,
                           orcamento: int) -> int:
+        devidas = self._liberadas_pela_dependencia(p, devidas, token, agora, r)
+        if not devidas:
+            return 0
         plano = decidir(p["sobreposicao"], p["autonomia"], self.repo.ids_das_abertas(p["id"]),
                         [Devida(o["id"], o["previsto_para"], o["chave"]) for o in devidas])
         if plano.incoerente:
@@ -819,6 +856,42 @@ class LacoDePedidos:
             if self._despachar_uma(p, por_id[oid], token, agora, r):
                 criou += 1
         return criou
+
+    def _liberadas_pela_dependencia(self, p: Row, devidas: list[Row], token: int, agora: datetime, r: Resumo) -> list[Row]:
+        """28.10 F2: das `devida` do pedido, as que já podem ir à sobreposição e ao despacho.
+
+        Pedido que é `para` em `pedido_dependencias` só despacha uma ocorrência quando cada `de` está comprovado NA JANELA
+        dela: a janela abre no fim da última ocorrência terminada do próprio pedido (ou na criação dele) e a prova é uma
+        ocorrência do `de` que terminou DEPOIS disso e num estado que comprova o tipo (`colaboracao.ESTADOS_QUE_COMPROVAM`:
+        `precisa_de_resultado` só `concluida`; `depois_de` qualquer fim). Sem prova a ocorrência fica `devida`, sem
+        execução e sem gastar tentativa, e passada `espera_dependencia_s` desde o `previsto_para` vira `pulada` com o
+        motivo `dependência não comprovada: <id do de>` (só o id: nunca título nem objetivo).
+
+        Fora desta função o laço é o de sempre: com `colaboracao.enabled` desligada, nem a tabela é lida (a dependência
+        gravada direto no banco não segura nada). A nova tentativa (28.5, `tentativa > 0`) passa direto: o despacho dela já
+        foi autorizado pela dependência, e segurar a repetição de uma ocorrência que já rodou só a faria expirar."""
+        if not self.cfg.colaboracao.enabled:
+            return devidas
+        dependencias = self.repo.dependencias_do_pedido(p["id"])
+        novas = [o for o in devidas if int(o["tentativa"] or 0) == 0]
+        if not dependencias or not novas:
+            return devidas
+        ultimo = self.repo.fim_mais_recente(p["id"], OCORRENCIA_TERMINAIS)
+        inicio = colaboracao.inicio_da_janela(parse_iso(ultimo) if ultimo else None, parse_iso(p["criado_em"]))
+        fins: dict[str, dict[str, datetime | None]] = {}
+        for d in dependencias:
+            estados = colaboracao.ESTADOS_QUE_COMPROVAM.get(d["tipo"])
+            fim = self.repo.fim_mais_recente(d["de"], estados) if estados else None
+            fins.setdefault(d["de"], {})[d["tipo"]] = parse_iso(fim) if fim else None
+        faltam = colaboracao.pendentes([(d["de"], d["tipo"]) for d in dependencias], fins, inicio)
+        if not faltam:
+            return devidas
+        espera = self.cfg.colaboracao.espera_dependencia_s
+        vencidas = [o for o in novas if colaboracao.espera_vencida(parse_iso(o["previsto_para"]), agora, espera)]
+        self._pular([(o["id"], colaboracao.motivo_da_dependencia(faltam[0])) for o in vencidas], token, agora, r)
+        fora = {o["id"] for o in novas}
+        r.seguradas += len(novas) - len(vencidas)
+        return [o for o in devidas if o["id"] not in fora]
 
     def _motivo_de_saldo(self) -> str | None:
         """O saldo adia, nunca falha: erro ao ler o saldo não segura o despacho (a execução já tem a própria barreira

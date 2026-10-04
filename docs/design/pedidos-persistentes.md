@@ -456,7 +456,9 @@ o espaçamento e os limites são código; a IA entra no plano e na leitura de ca
     nunca se citam como terceiros, nunca aparecem como vozes distintas na mesma conversa. É o comportamento
     inautêntico coordenado da política da Meta e a campanha coordenada que o ADR-050 já recusa.
 
-### 9.1 Fatia F1 (28.10, 04/10/2026): só a estrutura
+### 9.1 Fatias F1 e F2 (28.10, 04/10/2026): a estrutura e o laço que a lê
+
+**F1: só a estrutura.**
 
 Entregue, desligada de fábrica (`pedidos.colaboracao.enabled: false`) e SEM efeito no laço (`laco.py` não muda):
 
@@ -471,8 +473,8 @@ Entregue, desligada de fábrica (`pedidos.colaboracao.enabled: false`) e SEM efe
   transação da criação, com o banco travado (dois filhos juntos não passam do limite).
 - **Orçamento:** o `orcamento_total_usd` do filho é RESERVADO do pai e nunca soma: gasto do próprio pai + totais dos filhos
   não passam do total do pai. O filho DECLARA o seu (sem declarar, `orcamento_do_pai`), com ou sem total no pai. Só a
-  criação reserva: o orçamento em tempo de execução do pai (`laco._situacao_do_orcamento`) ainda não desconta a reserva
-  dos filhos (F2).
+  criação reserva; o orçamento em tempo de execução do pai (`laco._situacao_do_orcamento`) passa a descontar a reserva
+  dos filhos VIVOS na F2 (abaixo).
 - **Leitura:** `PedidoView.papel`; o detalhe ganha `filhos: [{id, titulo, estado, papel}]` e `dependencias: [{de, para,
   tipo}]`. A estrutura nasce com o pedido: o `PATCH` não muda `pai_id`, `papel` nem dependências. Repetir a
   `idempotency_key` com outra estrutura é `idempotency_conflict`.
@@ -485,8 +487,32 @@ Entregue, desligada de fábrica (`pedidos.colaboracao.enabled: false`) e SEM efe
   `rascunho → encerrado` e `aguardando_pessoa → encerrado` (ator `sistema`); o laço não as percorre.
 - **Sem tela:** o painel só ganhou os tipos (`papel`, `filhos`, `dependencias`) e o rótulo do motivo `pai`.
 
-Fica para as próximas fatias: **F2** (a ocorrência do filho só fica `devida` com a dependência comprovada, e o laço
-desconta a reserva dos filhos do orçamento do pai), **F3** (o papel limita as capacidades e a autonomia no plano da
+**F2: dependência no laço e reserva no orçamento.**
+
+Entregue sem migração e sem adendo, tudo atrás de `pedidos.colaboracao.enabled` (desligado, o laço é idêntico ao de antes,
+mesmo com a dependência gravada direto no banco):
+
+- **Dependência no despacho** (`laco._liberadas_pela_dependencia`, antes da sobreposição). A ocorrência `devida` de um pedido
+  `para` só despacha com cada `de` comprovado NA JANELA dela. A janela abre no `terminada_em` da última ocorrência terminada do
+  próprio pedido (qualquer estado terminal) ou, sem nenhuma, na criação dele; a prova é uma ocorrência do `de` que terminou
+  estritamente DEPOIS disso. `precisa_de_resultado` aceita só `concluida` (falha, incerteza e cancelamento não são sucesso);
+  `depois_de` aceita qualquer estado terminal (`concluida`, `falhou`, `incerta`, `cancelada`, `pulada`, `perdida`). A conclusão
+  ANTIGA, anterior ao fim da última ocorrência do filho, não vale de novo. É o critério de `_dependencias_comprovadas` das etapas,
+  aplicado a pedidos.
+- **Espera.** Sem prova a ocorrência fica `devida` (sem execução, sem tentativa gasta). Passado `pedidos.colaboracao.espera_dependencia_s`
+  (novo; padrão 3600, `ge=60`) desde o `previsto_para`, vira `pulada` com o motivo `dependência não comprovada: <id do pedido de>`
+  (só o id; com mais de um `de` pendente, o primeiro em ordem alfabética). A nova tentativa (28.5, `tentativa > 0`) não é segurada:
+  o despacho dela já foi autorizado. `Resumo.seguradas` conta as que esperaram na volta.
+- **Orçamento do pai** (`laco._situacao_do_orcamento`, que alimenta o "sem orçamento" do 28.6, a nova tentativa e o
+  `quantas_cabem`). O saldo livre do pai é `total − gasto − reservado`, e `reservado` soma o `orcamento_total_usd` dos filhos VIVOS
+  (`rascunho`, `ativo`, `pausado`, `aguardando_pessoa`). O filho TERMINADO (`concluido`, `encerrado`, `cancelado`) libera só o que
+  não gastou: fica comprometido o gasto dele (`reservado − gasto` volta ao pai). O filho vivo que já passou da reserva conta o gasto.
+  Se é só a reserva que impede a próxima ocorrência, ela espera `devida` e o pai NÃO encerra por orçamento: o encerramento levaria
+  os filhos junto (§9.1). O alerta de 80 % segue o gasto real.
+- **Limite conhecido:** o teto que o `AIRouter` dá à EXECUÇÃO do pai (`teto_usd_da_execucao`) ainda é `total − gasto`, sem a reserva:
+  uma execução do pai pode, no pior caso, gastar além do saldo livre, o limite do excesso que o 28.6 já documenta (uma ocorrência).
+
+Fica para as próximas fatias: **F3** (o papel limita as capacidades e a autonomia no plano da
 ocorrência e a escolha de persona), **F4** (consolidação: o pai lê observações e memória dos filhos, e o conflito vai ao
 relatório) e **F5** (as regras para fora: uma conta por alvo no pedido inteiro, `approval_required` para pessoa real e a
 proibição de apoio simulado).

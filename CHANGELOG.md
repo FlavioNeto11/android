@@ -60,6 +60,20 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   com o mesmo desfecho: sem nova tentativa da mesma etapa, UM plano revisado por objetivo com a evidência no histórico
   do ator, e a segunda vez fecha como falha final. A frase diz o que se procurou e onde, sem conteúdo da página. Regra
   nova no `ACTOR_SYSTEM` (hash muda). Prova: `backend/tests/test_dado_ausente.py` (simulated); real `not_run`.
+## 2026-10-04 — 28.10 F2: dependência entre pedidos no laço e reserva dos filhos no orçamento do pai (branch canais/28-10-f2-dependencias, sem migração)
+
+- Despacho: com `pedidos.colaboracao.enabled`, a ocorrência `devida` de um pedido que é `para` em `pedido_dependencias` só
+  despacha com cada `de` comprovado na janela dela (depois do fim da última ocorrência terminada do próprio pedido, ou da
+  criação dele). `precisa_de_resultado` pede uma ocorrência do `de` `concluida`; `depois_de` aceita qualquer estado terminal.
+  Sem prova ela fica `devida`; passada `pedidos.colaboracao.espera_dependencia_s` (novo, padrão 3600, mínimo 60) desde o
+  `previsto_para`, vira `pulada` com o motivo `dependência não comprovada: <id do pedido de>` (só o id). A nova tentativa
+  (28.5) não é segurada. Lógica pura em `domain/colaboracao.py`; consultas em `RepositorioDePedidos`.
+- Orçamento: `laco._situacao_do_orcamento` (e com ele o "sem orçamento" e o `quantas_cabem` do 28.6) desconta do saldo do pai
+  a reserva dos filhos VIVOS; o filho terminado libera só o que não gastou (`reservado − gasto`). Se é só a reserva que
+  segura o pai, a ocorrência espera `devida` e o pai não encerra por orçamento (levaria os filhos junto).
+- Desligado (`colaboracao.enabled: false`, o padrão) o laço é o de antes, mesmo com a dependência gravada no banco.
+- Prova `simulated`: `test_pedidos_colaboracao_laco.py` (laço real em SQLite, relógio falso) e `test_pedidos_colaboracao_dominio.py`.
+  `not_run`: PostgreSQL e o central. Fica para a F3 em diante: papel, consolidação e regras para fora.
 
 ## 2026-10-04 — 28.16 + 28.18: a faxina leva os eventos dos contatos do Telegram (branch canais/28-18-faxina-090, sem migração)
 

@@ -2,8 +2,8 @@
 
 Um pedido pai com sub-pedidos (`pai_id`), dependências entre eles (`pedido_dependencias(de, para, tipo)`, migração 096)
 e um papel opcional por pedido. Este módulo decide só se a ESTRUTURA é válida; quem grava e quem lê é a API
-(`infrastructure/servico.py`). O laço de ocorrências NÃO olha para nada daqui na F1: dependência que segura a ocorrência
-é a F2, papel que limita a autonomia é a F3.
+(`infrastructure/servico.py`). O laço de ocorrências NÃO olha para nada daqui na F1; a F2 (fim deste módulo) é o que ele lê:
+a dependência que segura a ocorrência `devida` e a reserva dos filhos no orçamento do pai. Papel que limita a autonomia é a F3.
 
 As recusas voltam como `Recusa(codigo, mensagem, campo)`, com o mesmo formato do `Bloqueio` da prévia: a prévia mostra o
 que a criação devolveria (422 com `code`). A ordem das conferências é a ordem em que a pessoa corrige: primeiro o pai,
@@ -11,12 +11,15 @@ depois o tamanho da árvore, depois as dependências, por último o dinheiro.
 
 Direção da dependência: `(de, para)` quer dizer "`para` depende de `de`". A seta vai de quem vem antes para quem espera.
 
-Puro: stdlib. Sem banco, sem relógio.
+Puro: stdlib e `estados` (o vocabulário da ocorrência). Sem banco, sem relógio.
 """
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
+
+from app.modules.pedidos.domain.estados import OCORRENCIA_TERMINAIS
 
 #: O que cada pedido da família faz (§9). `porta_voz` é o único que age para fora, e só há um por família.
 PAPEIS: tuple[str, ...] = ("pesquisador", "checador", "redator", "porta_voz")
@@ -212,3 +215,84 @@ def validar_raiz(*, papel: str | None, dependencias: Sequence[tuple[str, str]]) 
         return Recusa("dependencia_fora_da_familia", "Um pedido sem pai não tem família: informe `pai_id` para depender "
                       "de um irmão ou do pai.", "dependencias")
     return None
+
+
+# ------------------------------------------------------------------ F2: a dependência no despacho
+#: Estados da ocorrência do `de` que valem como "comprovado" para cada tipo. `precisa_de_resultado` só aceita `concluida`:
+#: falha ou incerteza nunca contam como sucesso. `depois_de` só pede a ORDEM: qualquer fim serve (o `para` não usa o que o
+#: `de` produziu, só não pode vir antes dele).
+ESTADOS_QUE_COMPROVAM: Mapping[str, tuple[str, ...]] = {
+    "precisa_de_resultado": ("concluida",),
+    "depois_de": OCORRENCIA_TERMINAIS,
+}
+#: Prefixo do motivo da ocorrência `pulada` pela espera vencida. Só o id do pedido `de` o segue: nunca título, objetivo
+#: nem texto de comando (o motivo é lido no painel e vai a avisos).
+MOTIVO_DEPENDENCIA = "dependência não comprovada: "
+
+
+def inicio_da_janela(fim_da_ultima_terminada: datetime | None, criado_em: datetime) -> datetime:
+    """Onde começa a janela do filho: o fim da ocorrência anterior que terminou (qualquer estado terminal) ou, sem
+    nenhuma, a criação do pedido. A prova do `de` só vale se for DEPOIS disto: o resultado que o filho já consumiu (ou
+    deixou passar) numa ocorrência anterior não vale de novo para a seguinte."""
+    return fim_da_ultima_terminada if fim_da_ultima_terminada is not None else criado_em
+
+
+def pendentes(dependencias: Iterable[tuple[str, str]], fins_por_de: Mapping[str, Mapping[str, datetime | None]],
+              inicio: datetime) -> list[str]:
+    """Os ids dos pedidos `de` sem prova na janela que abre em `inicio`, em ordem alfabética (estável para o motivo).
+
+    * `dependencias`: `(de, tipo)` do pedido que espera;
+    * `fins_por_de[de][tipo]`: o `terminada_em` MAIS RECENTE de uma ocorrência do `de` num estado que comprova aquele
+      tipo (`ESTADOS_QUE_COMPROVAM`), ou `None`/ausente se não há nenhuma. É estritamente maior que `inicio` que vale:
+      o que terminou no mesmo instante em que a janela abriu é o que a abriu.
+
+    Tipo desconhecido nunca comprova (a F1 só grava os dois tipos; um valor estranho segura a ocorrência em vez de
+    liberá-la)."""
+    sem_prova: set[str] = set()
+    for de, tipo in dependencias:
+        fim = (fins_por_de.get(de) or {}).get(tipo)
+        if tipo not in ESTADOS_QUE_COMPROVAM or fim is None or fim <= inicio:
+            sem_prova.add(de)
+    return sorted(sem_prova)
+
+
+def dependencias_atendidas(dependencias: Iterable[tuple[str, str]],
+                           fins_por_de: Mapping[str, Mapping[str, datetime | None]], inicio: datetime) -> bool:
+    """Todo `de` está comprovado na janela (sem dependência, está). Ver `pendentes`."""
+    return not pendentes(dependencias, fins_por_de, inicio)
+
+
+def espera_vencida(previsto_para: datetime, agora: datetime, espera_s: float) -> bool:
+    """A ocorrência esperou mais que `espera_s` desde o `previsto_para`: deixa de esperar e vira `pulada`. Estritamente
+    maior: no limite exato ela ainda espera."""
+    return (agora - previsto_para).total_seconds() > espera_s
+
+
+def motivo_da_dependencia(de: str) -> str:
+    """O motivo da `pulada` pela espera vencida: só o id do pedido `de` (ver `MOTIVO_DEPENDENCIA`)."""
+    return f"{MOTIVO_DEPENDENCIA}{de}"
+
+
+# ------------------------------------------------------------------ F2: a reserva dos filhos no orçamento do pai
+@dataclass(frozen=True)
+class FilhoNoOrcamento:
+    """O que o orçamento do pai precisa saber de um filho direto, já lido do banco."""
+    vivo: bool                           # não terminal: `concluido`, `encerrado` e `cancelado` não são vivos
+    reservado_usd: float | None          # o `orcamento_total_usd` do filho (a reserva que saiu do pai)
+    gasto_usd: float                     # o que o filho (e o que ele, por sua vez, reservou aos filhos) já consumiu
+
+
+def reservado_aos_filhos(filhos: Iterable[FilhoNoOrcamento]) -> float:
+    """O que o pai NÃO pode usar por causa dos filhos (F2), em US$.
+
+    * filho VIVO: a reserva inteira (`orcamento_total_usd`), ou o que já gastou se passou dela (o gasto é dinheiro que
+      saiu de verdade, e a reserva só limita o filho entre uma ocorrência e outra);
+    * filho TERMINADO: só o que gastou. A reserva que ele não usou (`reservado − gasto`) volta ao saldo do pai: o gasto
+      ficou, o resto foi liberado.
+
+    Soma sem teto: é o laço que subtrai isto do saldo do pai (`orcamento.restante`)."""
+    total = 0.0
+    for f in filhos:
+        gasto = max(0.0, f.gasto_usd)
+        total += max(float(f.reservado_usd or 0.0), gasto) if f.vivo else gasto
+    return total

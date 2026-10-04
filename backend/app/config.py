@@ -1353,8 +1353,9 @@ class SensitiveScreenSeed(BaseModel):
 
 class ColaboracaoCfg(BaseModel):
     """Colaboração entre pedidos (item 28.10, fatia F1; `docs/design/pedidos-persistentes.md` §9): pedido pai com
-    sub-pedidos, dependências e papéis. A F1 é só a ESTRUTURA (grava, valida e encerra os filhos com o pai); o laço ainda
-    não olha para ela. Desligada de fábrica: com `enabled: false` a API recusa `pai_id`, `papel` e `dependencias` com
+    sub-pedidos, dependências e papéis. A F1 é a ESTRUTURA (grava, valida e encerra os filhos com o pai); a F2 faz o laço
+    ler a dependência (a ocorrência do filho só despacha com o `de` comprovado) e descontar a reserva dos filhos do orçamento
+    do pai. Desligada de fábrica: com `enabled: false` a API recusa `pai_id`, `papel` e `dependencias` com
     `colaboracao_desligada`, e todo pedido se comporta como antes."""
 
     enabled: bool = False
@@ -1362,6 +1363,9 @@ class ColaboracaoCfg(BaseModel):
     max_profundidade: int = Field(2, ge=2, le=4)
     #: Filhos diretos de um mesmo pai (o §9: no máximo 5): trava a explosão de sub-pedidos, cada um com o próprio custo.
     max_filhos: int = Field(5, ge=1, le=20)
+    #: F2: quanto a ocorrência do filho espera a dependência ser comprovada (a partir do `previsto_para`) antes de virar
+    #: `pulada` ("dependência não comprovada: <id do pedido de>"). Dentro dela fica `devida`, sem execução.
+    espera_dependencia_s: int = Field(3600, ge=60, le=604_800)
 
 
 class PedidosCfg(BaseModel):

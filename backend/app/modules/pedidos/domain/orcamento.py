@@ -34,31 +34,40 @@ def custo_estimado(ultimos: Sequence[float], teto_ocorrencia: float | None) -> f
     return float(teto_ocorrencia or 0.0)
 
 
-def restante(total: float | None, gasto: float) -> float | None:
-    """O que sobra do orçamento total (`None` = sem orçamento total)."""
-    return None if total is None else total - gasto
+def restante(total: float | None, gasto: float, reservado: float = 0.0) -> float | None:
+    """O que sobra do orçamento total (`None` = sem orçamento total).
+
+    `reservado` (28.10 F2) é o que os filhos VIVOS do pedido seguram do saldo dele (`colaboracao.reservado_aos_filhos`):
+    o filho terminado já devolveu o que não gastou, então o desconto é só o dos que ainda podem gastar. Sem filhos, 0, e
+    a conta é a de sempre."""
+    return None if total is None else total - gasto - reservado
 
 
-def motivo_sem_orcamento(total: float | None, gasto: float, necessario: float) -> str | None:
+def motivo_sem_orcamento(total: float | None, gasto: float, necessario: float, reservado: float = 0.0) -> str | None:
     """Texto do motivo quando o pedido NÃO pode despachar outra ocorrência; `None` = pode (ou não tem orçamento).
 
-    `gasto >= total` encerra, e `restante < necessario` também: despachar uma ocorrência que não cabe só gastaria o que
-    não há. Sem estimativa (`necessario == 0`) basta haver algum saldo."""
-    sobra = restante(total, gasto)
+    `gasto >= total` encerra, e `restante < necessario` também: despachar uma ocorrência que não cobre só gastaria o que
+    não há. Sem estimativa (`necessario == 0`) basta haver algum saldo. Com `reservado` (filhos vivos, 28.10 F2) o saldo
+    livre é o que sobra DEPOIS da reserva, e o motivo diz que é a reserva que segura o pedido."""
+    sobra = restante(total, gasto, reservado)
     if total is None or sobra is None:
         return None
     if sobra <= 0:
+        if reservado > 0 and gasto < total:
+            return (f"o que resta do orçamento (US$ {total - gasto:.4f}) está reservado aos pedidos filhos "
+                    f"(US$ {reservado:.4f})")
         return f"orçamento total esgotado (gastou US$ {gasto:.4f} de US$ {total:.4f})"
     if necessario > 0 and sobra < necessario:
-        return f"o que resta do orçamento (US$ {sobra:.4f}) não cobre uma ocorrência (~US$ {necessario:.4f})"
+        extra = f"; US$ {reservado:.4f} estão reservados aos pedidos filhos" if reservado > 0 else ""
+        return f"o que resta do orçamento (US$ {sobra:.4f}) não cobre uma ocorrência (~US$ {necessario:.4f}){extra}"
     return None
 
 
-def quantas_cabem(total: float | None, gasto: float, necessario: float) -> int | None:
+def quantas_cabem(total: float | None, gasto: float, necessario: float, reservado: float = 0.0) -> int | None:
     """Quantas ocorrências a estimativa deixa despachar numa mesma volta; `None` = sem limite (sem orçamento total, ou
     sem estimativa). Uma volta que despacha várias ocorrências do mesmo pedido (`permitir_todas`) não pode gastar mais
-    de uma vez o que sobrou."""
-    sobra = restante(total, gasto)
+    de uma vez o que sobrou. `reservado`: o que os filhos vivos seguram (ver `restante`)."""
+    sobra = restante(total, gasto, reservado)
     if sobra is None:
         return None
     if sobra <= 0:

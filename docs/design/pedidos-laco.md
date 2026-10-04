@@ -95,6 +95,8 @@ Ordem de uma volta (`uma_volta`, síncrona nas partes de banco, com `create` na 
    o que já acabou.
 3. `materializar()` — §2.
 4. `despachar()` — §3 e §4.
+   Com `pedidos.colaboracao.enabled` (28.10 F2) a `devida` de um pedido que depende de outro só segue para a sobreposição
+   com cada `de` comprovado na janela dela; sem prova espera e, passada `espera_dependencia_s`, vira `pulada` (`dependência não comprovada: <id>`).
 5. Atualiza `proxima_em` de cada pedido tocado e calcula o próximo acordar = `min(tick_s, proxima_em - agora)`.
 
 Cada passo pega exceção por pedido (um pedido com `spec` quebrada não para os outros) e registra no pedido
@@ -460,6 +462,9 @@ Decisões e limites:
   `orcamento`; com uma aberta, espera ela fechar (o custo real decide). `_orcamentos` roda DEPOIS de materializar e ANTES de
   despachar, para a `devida` nascida na mesma volta também ser barrada. Pedido sem `orcamento_total_usd` nunca entra no
   caminho: comportamento idêntico ao do 28.4.
+- **Reserva dos filhos (28.10 F2).** Com `colaboracao.enabled`, `_situacao_do_orcamento` desconta do saldo do pai o
+  `orcamento_total_usd` dos filhos VIVOS (não terminais); o filho terminado libera só o que não gastou (`reservado − gasto`).
+  Se é só a reserva que impede a próxima ocorrência, ela espera `devida` e o pai não encerra por orçamento. Desligado, nada muda.
 - **Teto por ocorrência na execução.** `AIRouter._budget` (que já barra `ai_max_usd_per_run`/`per_day` ANTES de gastar)
   pergunta ao repositório o teto do pedido: o menor entre `orcamento_ocorrencia_usd − custo das tentativas anteriores` e
   `orcamento_total_usd − gasto fechado do pedido`. Estourado, `AIError(kind="budget")`, como o teto global. Não há campo
