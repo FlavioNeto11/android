@@ -577,6 +577,8 @@ class AppState:
             receitas=self.scheduler.executor.recipes,
             decidir=lambda texto, run_id: self.repo.decision(texto, run_id=run_id), eventos=self.bus,
             curador_de_ia=CuradorComTriagemEmSombra(self._curador_do_hub, self._triagem_do_curador))
+        # 31.50: o lembrete de vencimento diz a etapa pelo nome do catálogo, não pela chave da capability.
+        self.avisos.nome_da_capability = lambda capability: self.learning.nome_da_capability(None, capability)
         # O desfazer das decisões automáticas (28.25): a inversa de cada fila entra aqui, fora do módulo (ver o docstring).
         self.decisoes_desfazer = DesfazerDecisoes(
             self.decisoes_registro,

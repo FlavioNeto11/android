@@ -258,6 +258,10 @@ def _rotear_comando(t: str, f: Fato | None) -> Intencao:
 
 
 def _rotear_resposta(t: str, f: Fato) -> Intencao | None:
+    if f.tipo == "vencimento":
+        # 31.50: o lembrete só avisa. Sem este ramo, a resposta a ele cairia no texto livre e viraria pedido.
+        return Intencao("desconhecida", motivo="Este lembrete só avisa: responda ao aviso original ou na caixa de "
+                                               "Pendências do painel.")
     if f.anexo:
         # Só o pedido de leitura é do anexo; "sim", um objetivo ou qualquer outra frase seguem a gramática comum (None).
         return Intencao("ler_anexo", ref=f.ident) if _LER.match(" ".join(_sem_acento(t).split())) else None

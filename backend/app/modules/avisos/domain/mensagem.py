@@ -13,7 +13,8 @@ Molde (28.31, queixa do dono de 04/10 19:10Z: "mensagens genéricas e sem relev�
 
 Três níveis (`NIVEL_POR_TIPO`), e o nível DECIDE a entrega (`entrega_do_tipo`):
 
-    1 precisa de você agora  aprovação, pergunta, conta pedindo pessoa, ocorrência incerta, convidado: sai na hora.
+    1 precisa de você agora  aprovação, pergunta, conta pedindo pessoa, ocorrência incerta, convidado, lembrete de
+                             vencimento (31.50): sai na hora.
     2 algo falhou            pausa e orçamento esgotado PARARAM algo do dono e saem na hora; ocorrência perdida e
                              eventos perdidos não pararam nada e vão à janela.
     3 rotina                 relatório, encerramento, 80% do orçamento, condição atendida, aprendizado: nunca saem
@@ -45,6 +46,7 @@ constante de contrato (`app.contracts.identidade`). Só texto: nenhuma regra de 
 """
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
@@ -69,6 +71,7 @@ NIVEL_POR_TIPO: dict[str, int] = {
     "pedido.pergunta": PRECISA_DE_VOCE,
     "pedido.ocorrencia_incerta": PRECISA_DE_VOCE,
     "trello.comentario": PRECISA_DE_VOCE,          # 28.30: o pedido de confirmação de um comentário do dono
+    "pendencia.vence_em": PRECISA_DE_VOCE,
     "pedido.pausa_automatica": ALGO_FALHOU,
     "pedido.orcamento_esgotado": ALGO_FALHOU,
     "pedido.ocorrencia_perdida": ALGO_FALHOU,
@@ -99,6 +102,7 @@ JANELA_DA_ROTINA_S = 3600.0
 #: espelho do Trello (`application/espelho.py`): mudar a frase muda o cartão.
 ROTULOS: dict[str, str] = {
     "approval.pending": "Aprovação aguardando a sua decisão",
+    "pendencia.vence_em": "Uma pendência vence em breve",
     "run.needs_input": "Uma execução parou pedindo informação",
     "session.needs_person": "Uma conta pede intervenção humana",
     "pedido.pausa_automatica": "Um pedido foi pausado automaticamente",
@@ -374,6 +378,35 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
         # Aviso que NÃO pede pessoa não é pendência: não há o que abrir na caixa, então a mensagem vai sem link.
         if not aviso.get("requer_pessoa"):
             link = None
+    elif kind == "pendencia.vence_em":
+        # 31.50 (Jev): o lembrete 2 h antes de vencer. A chave é a do produtor (`vencimento:lembrete:<id>:<entrada na
+        # espera>`): uma por espera. Diz o que vence, onde e quando, e o que acontece; nunca o comando nem o título da
+        # etapa (o produtor nem os manda). A `acao` é a capability da etapa (`SEND_MESSAGE`); o serviço põe ao lado o
+        # NOME dela no catálogo (`acao_nome`), que é o que sai. A `etapa` não é usada.
+        d = dados or {}
+        chave_do_produtor = _texto(d.get("chave"))
+        if chave_do_produtor is None:
+            return None
+        tipo, chave = "pendencia.vence_em", chave_do_produtor
+        o_que = _texto(d.get("o_que")) or ""
+        sujeito = SUJEITO_DO_VENCIMENTO.get(o_que, "Uma pendência")
+        lista = d.get("aparelhos")
+        aparelhos = [x for x in lista if isinstance(x, str)] if isinstance(lista, list) else []
+        aparelho = _texto(d.get("aparelho")) or (aparelhos[0] if len(aparelhos) == 1 else None)
+        acao = _texto(d.get("acao"))
+        nome_da_acao = texto_seguro(_texto(d.get("acao_nome")), nomes, redigir) if redigir is not None else None
+        etapa = nome_da_acao or (acao if acao and _CHAVE_DE_CATALOGO.match(acao) else None)
+        hora = _hora(d.get("vence_em"))
+        # O tempo relativo na frente (orquestradora, 20:47Z): só "22:30Z" pode ser lido como hora local. O produtor
+        # avisa entre 2 h e 1 h 50 antes (volta de 10 min), por isso "em até".
+        assunto = (f"⏳ {sujeito}{f' no {aparelho}' if aparelho else ''} vence em até 2 h"
+                   f"{f' ({hora})' if hora else ''}")
+        acontece = _texto(d.get("acontece_se_vencer")) or "cancelado pelo sistema"
+        linhas = [x for x in (
+            f"Etapa que espera: {etapa}." if etapa else None,
+            f"Se vencer: {acontece}.",
+            "Espera você: decida na caixa de Pendências antes disso." if o_que == "aprovacao" else
+            "Espera você: responda na caixa de Pendências antes disso.") if x]
     elif kind == "learning.needs_person":
         # Só a ENTRADA na espera é notícia: a saída (`aguardando` falso) não manda nada, e uma saída sem a entrada
         # correspondente (reinício do processo do Livro) é no-op. `desde` é a hora da transição e se repete na
@@ -391,6 +424,13 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
                  nivel=nivel_do_tipo(tipo))
 
 
+#: 31.50: o que vence, pelo `o_que` do lembrete.
+SUJEITO_DO_VENCIMENTO = {"aprovacao": "A aprovação", "objetivo": "O objetivo parado", "execucao": "A pergunta da execução"}
+#: A capability que sai no lembrete quando o catálogo não tem nome para ela: só a chave (`SEND_MESSAGE`, como o produtor
+#: manda `steps.capability`), nunca texto livre.
+_CHAVE_DE_CATALOGO = re.compile(r"^[A-Za-z][A-Za-z0-9_.]{1,60}$")
+
+
 #: O aviso AGRUPADO (28.19): uma rajada do mesmo tipo vira uma mensagem com a contagem. Texto fixo, sem dado do fato;
 #: `{n}` é o único campo. Tipo sem plural próprio cai no genérico.
 ROTULOS_AGRUPADOS: dict[str, str] = {
@@ -398,6 +438,7 @@ ROTULOS_AGRUPADOS: dict[str, str] = {
     "run.needs_input": "{n} execuções pararam pedindo informação",
     "session.needs_person": "{n} contas pedem intervenção humana",
     "learning.needs_person": "{n} conhecimentos aprendidos esperam a sua revisão",
+    "pendencia.vence_em": "{n} pendências vencem nas próximas 2 h",
 }
 ROTULO_AGRUPADO_DE_PEDIDO = "{n} novidades de pedidos"
 ROTULO_AGRUPADO_GENERICO = "{n} avisos seguidos do mesmo tipo"
