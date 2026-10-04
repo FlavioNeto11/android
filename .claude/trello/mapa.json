@@ -2115,7 +2115,7 @@
   "29.30": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac14374d8f9e8157806f675",
    "url": "https://trello.com/c/oUl4UPYU",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": "lote_A8_atuais_pendentes"
   },
   "29.33": {
@@ -2956,7 +2956,7 @@
   "31.26": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1a3edd83037f3f2fd5d27",
    "url": "https://trello.com/c/mHmW63Mg",
-   "lista": "bloqueado",
+   "lista": "em_validacao",
    "lote": "canais",
    "nome": "Marcador de entrega dispensa o 1º julgamento"
   },
@@ -3232,7 +3232,7 @@
   "29.71": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac26fa913b8c7d0996de09a",
    "url": "https://trello.com/c/drLZAPXt",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": null
   },
   "avulso:ferramentas-do-claude": {
