@@ -20,6 +20,9 @@
 --     usada_em / interaction_id   quando o efeito saiu: uso único, gasta no `open_effect`.
 --     vencida_em    quando venceu por prazo sem uso (`vencer`, na porta e na leitura da rota). Continua apontando a
 --                   etapa: a reserva no commit a encontra e falha.
+--     etapa_do_uso / run_do_uso   a etapa e a execução que a reservaram, gravadas na reserva e NUNCA limpas: a trilha
+--                   da exceção a uma regra de ADR diz para sempre quem a usou (o `step_id` é a ligação viva da porta e
+--                   pode ser solto depois).
 --     em_uso_em     quando o executor a reservou, logo antes do gesto (UPDATE condicional). Em uso não volta a
 --                   aberta, não vence e não é revogada; o `settle_effect` a liquida (usada ou `sem_efeito`).
 --     encerrada_em / encerrada_por / encerramento   quando foi encerrada sem uso: `recusada` (a pessoa rejeitou o
@@ -49,6 +52,8 @@ CREATE TABLE excecoes_de_politica (
   interaction_id   TEXT,
   vencida_em       TEXT,
   em_uso_em        TEXT,
+  etapa_do_uso     TEXT,
+  run_do_uso       TEXT,
   encerrada_em     TEXT,
   encerrada_por    TEXT,
   encerramento     TEXT CHECK (encerramento IS NULL OR encerramento IN ('recusada','revogada','sem_efeito','incerta'))

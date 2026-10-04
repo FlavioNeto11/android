@@ -70,6 +70,10 @@ class Excecao:
     vencida_em: str | None
     #: Quando o executor a reservou, logo antes do gesto (uso único: não volta a aberta).
     em_uso_em: str | None
+    #: A etapa e a execução que a reservaram: gravadas na reserva e nunca limpas (a trilha da exceção). O `step_id` é
+    #: a ligação viva com a porta e pode ser solto depois.
+    etapa_do_uso: str | None
+    run_do_uso: str | None
     encerrada_em: str | None
     encerrada_por: str | None
     #: `recusada` (o dono rejeitou o cartão da etapa presa), `revogada` (pela rota), `sem_efeito` (reservada, e o
@@ -95,7 +99,8 @@ class Excecao:
                 "autor": self.autor, "autor_com_sessao": self.autor_com_sessao, "criada_em": self.criada_em,
                 "expira_em": self.expira_em, "step_id": self.step_id, "presa_em": self.presa_em,
                 "usada_em": self.usada_em, "interaction_id": self.interaction_id, "vencida_em": self.vencida_em,
-                "em_uso_em": self.em_uso_em, "encerrada_em": self.encerrada_em, "encerrada_por": self.encerrada_por,
+                "em_uso_em": self.em_uso_em, "etapa_do_uso": self.etapa_do_uso, "run_do_uso": self.run_do_uso,
+                "encerrada_em": self.encerrada_em, "encerrada_por": self.encerrada_por,
                 "encerramento": self.encerramento, "estado": self.estado}
 
 
@@ -121,11 +126,13 @@ class ExcecoesDePolitica:
         if self.emitir is None:
             return
         x = self.obter(excecao_id)
-        run = self.db.scalar("SELECT run_id FROM steps WHERE id=?", (x.step_id,)) if x and x.step_id else None
+        # A etapa e a execução do USO quando houve reserva (nunca limpas); antes disso, a ligação viva com a porta.
+        etapa = (x.etapa_do_uso or x.step_id) if x else None
+        run = (x.run_do_uso if x and x.run_do_uso
+               else self.db.scalar("SELECT run_id FROM steps WHERE id=?", (etapa,)) if etapa else None)
         self.emitir(tipo, f"exceção {excecao_id} à regra de uma conta por alvo {texto} (30.65)",
                     {"excecao_id": excecao_id, "estado": x.estado if x else None,
-                     "encerrada_por": x.encerrada_por if x else None, "step_id": x.step_id if x else None,
-                     "run_id": run, **extra})
+                     "encerrada_por": x.encerrada_por if x else None, "step_id": etapa, "run_id": run, **extra})
 
     # ------------------------------------------------------------------ rota
     def criar(self, *, profile_id: str, alvo: str, capability: str, motivo: str, autorizacao: str, autor: str,
@@ -239,8 +246,9 @@ class ExcecoesDePolitica:
         x = em_uso[0] if em_uso else ligadas[0]
         if not em_uso and x.estado in ("ativa", "presa"):
             agora = to_iso(now())
-            cur = self.db.execute(f"UPDATE excecoes_de_politica SET em_uso_em=? WHERE id=? AND step_id=? AND {_EM_ABERTO}"
-                                  " AND expira_em>?", (agora, x.id, step_id, agora))
+            cur = self.db.execute(f"UPDATE excecoes_de_politica SET em_uso_em=?, etapa_do_uso=?, run_do_uso=(SELECT"
+                                  f" run_id FROM steps WHERE id=?) WHERE id=? AND step_id=? AND {_EM_ABERTO}"
+                                  " AND expira_em>?", (agora, step_id, step_id, x.id, step_id, agora))
             if int(cur.rowcount or 0) == 1:
                 return None
             x = self.obter(x.id) or x
@@ -280,7 +288,7 @@ class ExcecoesDePolitica:
         incerto conta como usado: nunca volta a aberta."""
         estados = ",".join("?" * len(_ETAPA_TERMINADA))
         orfas = self.db.query(
-            f"SELECT x.id, e.status FROM excecoes_de_politica x JOIN steps e ON e.id = x.step_id WHERE {_EM_USO}"
+            f"SELECT x.id, e.status FROM excecoes_de_politica x JOIN steps e ON e.id = x.etapa_do_uso WHERE {_EM_USO}"
             f" AND e.status IN ({estados}) ORDER BY x.em_uso_em, x.id", _ETAPA_TERMINADA)
         agora = to_iso(now())
         for row in orfas:

@@ -5696,7 +5696,8 @@ sempre abre cartão novo: o aprovado de uma versão anterior com o mesmo texto e
 - **`GET /api/politica/excecoes?profile_id=`**: `{"excecoes": [...]}`, as mais novas primeiro (até 200). Cada uma traz
   `id`, `regra` (`uma_conta_por_alvo`), `profile_id`, `alvo`, `capability`, `motivo`, `autorizacao`, `autor`,
   `autor_com_sessao`, `criada_em`, `expira_em`, `step_id`, `presa_em`, `usada_em`, `interaction_id`, `vencida_em`,
-  `em_uso_em`, `encerrada_em`, `encerrada_por`, `encerramento` e `estado` (`ativa` | `presa` | `em_uso` | `usada` |
+  `em_uso_em`, `etapa_do_uso`, `run_do_uso` (a etapa e a execução que a reservaram: gravadas na reserva, nunca
+  limpas; os eventos as usam), `encerrada_em`, `encerrada_por`, `encerramento` e `estado` (`ativa` | `presa` | `em_uso` | `usada` |
   `vencida` | `recusada` | `revogada` | `sem_efeito` | `incerta`). Ler encerra as vencidas.
 - **Ciclo.** A porta do despacho prende a exceção à etapa que casou (outra etapa só a toma se a presa terminou sem efeito);
   o `open_effect` a gasta quando o efeito sai (uso único: a segunda volta à recusa; uma falha ao gastar não derruba o

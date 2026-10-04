@@ -555,3 +555,25 @@ def test_eventos_levam_so_ids_e_estado(tmp_path: Path) -> None:
     for _tipo, dados in eventos:
         assert set(dados) <= {"excecao_id", "estado", "encerrada_por", "step_id", "run_id", "interaction_id"}
         assert ALVO not in str(dados) and AUTORIZACAO not in str(dados) and "prova do 31.26" not in str(dados)
+
+
+async def test_a_trilha_guarda_para_sempre_a_etapa_e_a_execucao_do_uso(harness: Any) -> None:
+    """A exceção a uma regra de ADR diz para sempre qual etapa e execução a usaram, mesmo se a mesma etapa voltar à porta
+    sem exceção (que solta a ligação viva `step_id`)."""
+    state = harness.state
+    pids, cliente = _cenario(harness)
+    exc = cliente.post("/api/politica/excecoes", json=_corpo(pids["android-01"])).json()["excecao"]
+    await _porta(state, "android-01")
+    etapa = "run-f:android-01:v1:efeito"
+    assert state.excecoes.reservar(etapa) is None
+    iid = state.social.open_effect(pids["android-01"], capability="SEND_MESSAGE",
+                                   interaction_type=InteractionType.dm_sent.value,
+                                   bindings={"username": ALVO, "content": "oi"}, run_id="run-f", step_id=etapa,
+                                   app_id="ig", counterparty=ALVO)
+    state.social.settle_effect(pids["android-01"], iid, outcome="succeeded")
+    state.excecoes.soltar_da_etapa(etapa)                 # a mesma etapa voltou à porta sem exceção
+    [lida] = cliente.get("/api/politica/excecoes", params={"profile_id": pids["android-01"]}).json()["excecoes"]
+    assert lida["id"] == exc["id"] and lida["estado"] == "usada"
+    assert (lida["etapa_do_uso"], lida["run_do_uso"]) == (etapa, "run-f")
+    usada = state.db.one("SELECT data FROM events WHERE kind='politica.excecao_usada'")
+    assert usada is not None and etapa in usada["data"] and "run-f" in usada["data"]
