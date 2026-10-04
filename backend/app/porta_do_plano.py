@@ -145,13 +145,15 @@ def _exigir_na_porta(run: Row, *, ja_aprovado: bool = False) -> None:
     """A porta só vale para a execução `planned` SEM pedido de cancelar. O cancelamento condicionado do canal (28.27)
     marca `cancel_requested` e fecha a execução na mesma transação; quem lê no meio (a prévia, o gesto, o
     `previa_do_item`) não pode oferecer nem gravar "Aprovar N e iniciar" numa execução que está sendo cancelada.
-    `ja_aprovado`: o texto do gesto, que confere de novo dentro da transação."""
+    `ja_aprovado`: o texto do gesto, que confere de novo dentro da transação. O cancelado vem primeiro: quem cancelou
+    pelo canal não pode ler "já foi aprovado ou iniciado" (sugestão do Aprendizado na conferência de `d1cdbb2c`)."""
+    if run["status"] == "cancelled" or run["cancel_requested"]:
+        raise PortaIndisponivel("invalid_state", "Esta execução foi cancelada." if run["status"] == "cancelled"
+                                else "Esta execução está sendo cancelada.")
     if run["status"] != "planned":
         raise PortaIndisponivel("invalid_state", "O plano desta execução já foi aprovado ou iniciado." if ja_aprovado
                                 else f"A prévia da porta é da execução com plano pronto (`planned`); esta está em "
                                      f"'{run['status']}'.")
-    if run["cancel_requested"]:
-        raise PortaIndisponivel("invalid_state", "Esta execução está sendo cancelada.")
 
 
 def _plano(state: AppState, run_id: str) -> tuple[Row, dict[str, Row], list[Row], dict[str, list[str]]]:
@@ -449,8 +451,8 @@ def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por:
         resumo = state.runs.start(run_id, por=por)
     except RunError as exc:
         # O cancelamento do canal chegou entre esta transação e o início: ele já expirou os sins gravados acima
-        # (`_cancelar_antes_de_iniciar`), e a resposta é a da porta, não um erro do serviço.
-        raise PortaIndisponivel("invalid_state", exc.message) from None
+        # (`_cancelar_antes_de_iniciar`), e a resposta é a da porta, não um erro do serviço. O código do serviço fica.
+        raise PortaIndisponivel(exc.code, exc.message, exc.status) from None
     return {"run": resumo.model_dump(mode="json"), "aprovacoes": gravadas, "tiradas": tirados, "validade_ate": validade}
 
 

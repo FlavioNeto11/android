@@ -295,3 +295,35 @@ async def test_marca_e_fecho_do_cancelamento_na_mesma_transacao(harness: Harness
     monkeypatch.undo()
     assert st.runs.cancel(run_id, por="telegram:dono", so_se_planejada=True) is not None
     await harness.wait_run(run_id, statuses=("cancelled",))
+
+
+async def test_cancelamento_entre_a_transacao_e_o_inicio_expira_os_sins_do_plano(harness: Harness,
+                                                                                  monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pergunta do Aprendizado na conferência de `d1cdbb2c`: o cancelamento do canal chega DEPOIS de o `aprovar_plano`
+    gravar os sins e ANTES do `start`. Os sins de origem `plano` não podem ficar `approved` numa execução cancelada:
+    o `_cancelar_antes_de_iniciar` os expira, e o gesto volta como recusa da porta com o código do serviço."""
+    from app.porta_do_plano import AprovarPlanoBody, ItemAprovado, PortaIndisponivel, aprovar_plano
+
+    from .test_porta_do_plano import _plano_com_dm
+
+    st = harness.state
+    assert st is not None
+    itens = _plano_com_dm(st)
+    original = st.runs.start
+
+    def cancelado_antes_do_inicio(run_id: str, *, por: str) -> Any:
+        assert st.runs.cancel(run_id, por="telegram:dono", so_se_planejada=True) is not None
+        return original(run_id, por=por)
+
+    monkeypatch.setattr(st.runs, "start", cancelado_antes_do_inicio)
+    corpo = AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"])],
+                             tirar=[itens["dm2"]["step_id"]])
+    with pytest.raises(PortaIndisponivel) as recusa:
+        aprovar_plano(st, "run-p", corpo, por="flavio")
+    assert recusa.value.codigo == "invalid_state"
+    assert st.db.scalar("SELECT status FROM runs WHERE id='run-p'") == "cancelled"
+    sins = [dict(r) for r in st.db.query("SELECT status FROM pending_approvals WHERE run_id='run-p' AND origem='plano'")]
+    assert sins and all(s["status"] != "approved" for s in sins)
+    with pytest.raises(PortaIndisponivel) as depois:                     # quem cancelou lê o motivo certo
+        aprovar_plano(st, "run-p", corpo, por="flavio")
+    assert "foi cancelada" in depois.value.mensagem
