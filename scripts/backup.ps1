@@ -27,9 +27,9 @@
   O `.env` **não entra** no backup e não é impresso em lugar nenhum: ele é o arquivo de segredos, e um backup que
   o carrega multiplica cópias do segredo em pastas que ninguém audita. Guarde-o à parte, no gerenciador de senhas.
 
-  **AVDs não entram.** `data/avd` tem 64 GB e guarda as sessões (inclusive a conta Google da VM-loja e os logins
-  do Instagram); um `.zip` disso a cada dia não cabe, e a cópia a quente de um emulador ligado não é confiável.
-  A política está em `docs/banco.md`: cópia a frio, sob demanda, com os emuladores desligados.
+  **AVDs não entram nesta cópia.** `data/avd` tem ~60 GB e guarda as sessões (inclusive a conta Google da VM-loja e
+  os logins do Instagram); a cópia a quente de um emulador ligado não é confiável. Eles têm a etapa própria `-AVDs`
+  (29.39): a frio, um aparelho por vez, só hibernado ou parado (`lib\copias-de-avd.ps1`, `docs/banco.md`).
 
 .PARAMETER Destino
   Pasta raiz dos backups. Cada corrida cria `<Destino>\<AAAAMMDD-HHmmss>\`.
@@ -56,6 +56,14 @@
 .PARAMETER IncluirSegredos
   Inclui `data\credentials.key`. Fora por omissão: o destino do backup passa a exigir o mesmo cuidado do original.
 
+.PARAMETER AVDs
+  Só a cópia a frio dos AVDs (29.39), sem a cópia do banco. Com `-Aparelhos`, exatamente esses; sem ele, os aparelhos
+  locais com conta vinculada, e só com o arquivo `AVD-LIGADO` no destino (criado depois do sim do dono). Aparelho no
+  ar fica para a próxima; nada é desligado por causa da cópia. Nasce fora do agendamento (`-Instalar` não a inclui).
+
+.PARAMETER Aparelhos
+  Ids para `-AVDs` (ex.: `android-07`). Aparelho de conta real só com o sim do dono.
+
 .PARAMETER Instalar
   Registra a tarefa agendada `farm-backup` (diária, 03:00, `-Origem diario`) e sai. Remove a `parque-backup-diario`
   do nome antigo, se existir.
@@ -74,6 +82,10 @@ param(
   [ValidateSet('manual', 'deploy', 'ensaio', 'diario')][string]$Origem = 'manual',
   [int]$Teto = 0,
   [switch]$Podar,
+  [switch]$AVDs,
+  [string[]]$Aparelhos = @(),
+  [string]$AvdHome = '',
+  [string]$Api = 'http://127.0.0.1:8000',
   [switch]$Instalar
 )
 $ErrorActionPreference = 'Stop'
@@ -102,6 +114,32 @@ if ($Instalar) {
                -StartWhenAvailable -MultipleInstances IgnoreNew
   Register-ScheduledTask -TaskName $tarefa -Action $acao -Trigger $gatilho -Principal $principal -Settings $ajustes | Out-Null
   Write-Host "tarefa '$tarefa' registrada (diária, 03:00). Destino: $Destino; retenção: $Reter dias."
+  return
+}
+
+if ($AVDs) {
+  # ------------------------------------------------------------------ cópia a frio dos AVDs (29.39)
+  . (Join-Path $PSScriptRoot 'lib\copias-de-avd.ps1')
+  if (-not $AvdHome) { $AvdHome = Join-Path $root 'data\avd' }
+  $commit = (& git -C $root rev-parse HEAD 2>$null)
+  $ids = @($Aparelhos)
+  if (-not $ids) {
+    if (-not (Test-Path -LiteralPath (Join-Path $Destino 'AVD-LIGADO'))) {
+      Write-Host "cópia a frio dos AVDs DESLIGADA: sem -Aparelhos e sem $Destino\AVD-LIGADO (criado depois do sim do dono)."
+      return
+    }
+    $lista = Invoke-RestMethod -Uri "$Api/api/instances" -TimeoutSec 10
+    if ($lista -isnot [array] -and $lista.instances) { $lista = $lista.instances }
+    $ids = @($lista | Where-Object { $_.account_label -and $_.worker_id -eq $env:COMPUTERNAME } | ForEach-Object { $_.id })
+  }
+  $guarda = { param($i) Get-MotivoParaNaoCopiar $i -LerEstado { param($x) Get-EstadoDoAparelho $x -Api $Api } }
+  foreach ($id in $ids) {                                    # um por vez: a guarda vale antes de cada um
+    $motivo = & $guarda $id
+    if ($motivo) { Write-Host "$id fica para a próxima: $motivo"; continue }
+    $r = Copy-AvdAFrio -Id $id -AvdHome $AvdHome -Destino $Destino -Guarda $guarda -Commit $commit
+    $gb = if ($r.total_bytes) { [math]::Round($r.total_bytes / 1GB, 2) } else { 0 }
+    Write-Host "$id`: $($r.estado) ($gb GB)$(if ($r.motivo) { " - $($r.motivo)" })$(if ($r.pasta) { " em $($r.pasta)" })"
+  }
   return
 }
 

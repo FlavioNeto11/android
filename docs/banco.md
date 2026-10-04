@@ -763,7 +763,7 @@ ninguém descobre até precisar.
 | `config/` | cópia direta | `scripts/backup.ps1` |
 | `data/credentials.key` | cópia direta, **só com `-IncluirSegredos`** | `scripts/backup.ps1` |
 | `.env` | **não entra** — é o arquivo de segredos; guarde no gerenciador de senhas | — |
-| `data/avd` (64 GB) | cópia **a frio**, sob demanda, com os emuladores desligados | manual (ver abaixo) |
+| `data/avd` (~60 GB) | cópia **a frio**, um aparelho por vez, só hibernado ou parado (29.39) | `scripts/backup.ps1 -AVDs` (ver abaixo) |
 | `apks/` (catálogo) | cópia direta — **obrigatória junto com o banco** | manual, ou storage compartilhado |
 | `data/evidence`, `data/avatars` | cópia direta, ou já no bucket | manual, ou storage compartilhado |
 
@@ -846,12 +846,31 @@ um arquivo `.env` bem guardado; a alternativa é só um dos backends executar au
 `data/avd` guarda as sessões: a conta Google da VM-loja (com 2FA) e os logins do Instagram. Aparelho novo sem
 esses dados significa refazer login e passar por desafio de verificação — por isso eles importam, e por isso não
 entram no backup diário (dezenas de GB, e a cópia a quente de um emulador ligado não é confiável). A política é
-cópia **a frio**, sob demanda, antes de mexer no host:
+cópia **a frio** (29.39), pela etapa `-AVDs` do `backup.ps1` (`scripts/lib/copias-de-avd.ps1`):
 
 ```powershell
-pwsh -File scripts\stop.ps1 -StopEmulators
-Compress-Archive -Path data\avd\* -DestinationPath D:\copias\avd-$(Get-Date -Format yyyyMMdd).zip
+pwsh -File scripts\backup.ps1 -AVDs -Aparelhos android-07     # só os aparelhos da lista
+pwsh -File scripts\backup.ps1 -AVDs                           # os locais com conta: só com data\backups\AVD-LIGADO
 ```
+
+- **Um aparelho por vez, e só se ele JÁ estiver hibernado ou parado.** A cópia nunca hiberna nem desliga ninguém;
+  o aparelho no ar fica para a próxima.
+- **Não há trava contra o rodízio acordar o aparelho no meio** (a pausa de reparo, persistida desde o 25.13, segura
+  só reinício e reset automáticos). Por isso a guarda roda antes de cada arquivo e mais uma vez no fim: aparelho fora
+  de `hibernated`/`stopped` ou emulador com o AVD aberto param a cópia, que fica em `<carimbo>-abortada` (nada é
+  apagado; o AVD só foi lido).
+- **Destino:** `data\backups\avd\<id>\<carimbo>\`, com `manifesto.json` (`origem: avd-semanal`, commit,
+  estado, e caminho, tamanho e sha256 de cada arquivo, conferido depois da cópia). Manifesto e saída levam só o id
+  do aparelho, nunca nome de conta ou de persona. As travas do emulador (`*.lock`) não vão. Recusa se sobrariam
+  menos de 50 GB livres. ~5,5 a 6 GB por aparelho.
+- **Nasce desligada e sem agendamento.** A lista padrão (aparelhos locais com conta vinculada) só roda com o arquivo
+  `AVD-LIGADO` no destino, criado depois do sim do dono; a tarefa `farm-backup` (29.38) não chama `-AVDs`. Aparelho
+  de conta real só com esse sim. Retenção: 2 cópias por aparelho, pela mesma regra de poda do 29.38.
+- **Restauração** (`Restore-AvdAFrio`, com o aparelho parado): confere o sha256 da cópia inteira, MOVE o AVD atual
+  para `<carimbo>-avd-substituido\` (nunca apaga), copia de volta, confere de novo e reescreve o `path=` do `.ini`
+  para o lugar restaurado. A sessão volta ao estado da cópia (até 7 dias atrás): se o app pedir login de novo, é
+  com a pessoa. O ensaio da restauração roda só em aparelho de QA, num `ANDROID_AVD_HOME` à parte e num emulador
+  avulso `-read-only` fora das portas do parque.
 
 No worker, o equivalente é `C:\farm\avd`.
 

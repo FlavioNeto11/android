@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.39: cópia a frio dos AVDs, um aparelho por vez (branch feat/29-39-copia-avd)
+
+- `backup.ps1 -AVDs [-Aparelhos …]` e `scripts/lib/copias-de-avd.ps1`: copia o `.ini` e o `.avd` de um aparelho
+  hibernado ou parado para `data/backups/avd/<id>/<carimbo>/`, com o sha256 de cada arquivo no manifesto (só o id
+  do aparelho). Sem trava contra o rodízio, a guarda roda antes de cada arquivo e no fim; o aparelho que acorda deixa
+  a cópia `abortada`, sem apagar nada. `Restore-AvdAFrio` confere a cópia, move o AVD substituído e reescreve o `.ini`.
+- Nasce desligada: sem `-Aparelhos`, só com `data/backups/AVD-LIGADO` (sim do dono); fora do `farm-backup`.
+- Prova `simulated`: `backend/tests/test_backup.py` (4 novos: hash e restauração sem apagar; aborto quando o aparelho
+  acorda; guarda; nasce desligada).
+
 ## 2026-10-04 — teste do preparo zumbi drenado sem Timer de relógio (branch fix/b2-r4-sem-timer)
 
 - `test_prontidao_subsistemas::test_b2_r4_boot_local_preparo_zumbi_drenado_nao_libera_esta_tentativa` falhou no
