@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 30.57: a resposta a comentário ensina, e o leque do for_each para na política antes do pedido (branch feat/30-57-comentario-e-for-each)
+
+- (a) Prova `simulated` de que a resposta a comentário ensina o perfil pelo caminho real (`open_effect` com
+  `draft_meta`, depois `confirm_interaction` e `learn_from`): memória com `source=interaction` e `interaction_id`.
+  Pendente, incerta ou elogio sem fato não ensinam (`tests/test_comentario_ensina.py`). Em 03/10 o caminho rodou no
+  real, com a lista de candidatos vazia.
+- (b) Defeito achado e corrigido: o teto por hora e por dia não contava os pedidos de aprovação pendentes. Com 5 itens
+  e `comments_per_hour` 3, os 5 viravam pedido ao dono. Agora o pedido sem interação ocupa o teto
+  (`SocialRepository.pedidos_em_aberto_desde`): 3 viram pedido e 2 ficam adiados. O pedido da própria etapa não conta.
+- (b) Na expansão do bloco com efeito, o item que é o próprio perfil sai (`Scheduler._sem_o_proprio_perfil`, com rastro).
+  As outras contas nossas passam pela porta de política item a item. Sem teto novo de itens.
+- Emenda datada do ADR-055 e notas nos domínios de execução e de perfis. Teste de lista mista (próprio perfil, conta
+  nossa na janela, terceiro) e do balde por hora em `tests/test_leque_do_for_each.py`. Os 42 arquivos afetados deram
+  880 aprovados.
+- Prova real: `not_run` (ADR-055 até ~02/11, ou um comentário orgânico de terceiro).
+
 ## 2026-10-04 — 30.56: a resposta a comentário já dada não volta ao dono como pedido novo (branch feat/30-56-ja-respondido)
 
 - Caso real: a execução `r-20261004172212-fc1a88` pediu ao lucas uma segunda resposta ao comentário do bruno (a primeira

@@ -66,7 +66,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-052](#adr-052--conhecimento-de-app-como-dado-zero-python-por-app-motores-genéricos-no-núcleo) | Conhecimento de app como dado: zero Python por app, motores genéricos no núcleo | vigente; fatias 1–4 implementadas (28/09), fatia 5 (aprendizado) absorvida por ADR-054 (20.9) | 28/09 |
 | [ADR-053](#adr-053--falhas-reiteradas-do-instagram-medir-para-onde-foi-o-tempo-e-não-transformar-lentidão-em-falha) | Falhas reiteradas do Instagram: medir para onde foi o tempo e não transformar lentidão em falha | vigente, implantado em 28/09 (`93967d0`); pendências dos revisores resolvidas em `7a02491` (itens 21.10–21.14) | 28/09 |
 | [ADR-054](#adr-054--aprendizado-contínuo-livro-de-aprendizado-com-ciclo-de-vida-publicação-sozinha-só-sem-efeito-externo-d1-feedback-implícito-com-botão-opcional-d2-lições-medidas-e-backlog-do-que-mais-falha) | Aprendizado contínuo: livro com ciclo de vida, D1 (publica sozinho só sem efeito externo), D2 (feedback implícito + botão), lições medidas e backlog do que mais falha | vigente; fundação (A1) implantada em `c359f65` (29/09 ~03:55Z), A2–A9 integradas e implantadas em 29/09 ~07:38Z (lições em shadow, telas em observe) | 29/09 |
-| [ADR-055](#adr-055--proteção-de-contas-a-conta-travada-para-sem-ser-tocada-o-aparelho-entra-em-quarentena-uma-conta-por-alvo-e-nenhum-reset-com-conta) | Proteção de contas: a conta travada para sem ser tocada, o aparelho entra em quarentena, uma conta por alvo e nenhum reset com conta | vigente (código, migração 054); integrado em `c359f65`, a implantar; `e9da86e` implantado; substitui em parte o ADR-029; substituída em parte por ADR-056 (a cláusula de rede); emendado 04/10 (30.56: resposta a comentário uma vez por pessoa, também na mesma conta) | 29/09 |
+| [ADR-055](#adr-055--proteção-de-contas-a-conta-travada-para-sem-ser-tocada-o-aparelho-entra-em-quarentena-uma-conta-por-alvo-e-nenhum-reset-com-conta) | Proteção de contas: a conta travada para sem ser tocada, o aparelho entra em quarentena, uma conta por alvo e nenhum reset com conta | vigente (código, migração 054); integrado em `c359f65`, a implantar; `e9da86e` implantado; substitui em parte o ADR-029; substituída em parte por ADR-056 (a cláusula de rede); emendado 04/10 (30.56: resposta a comentário uma vez por pessoa, também na mesma conta; 30.57: pedido pendente ocupa o teto e o próprio perfil sai do `for_each`) | 29/09 |
 | [ADR-056](#adr-056--rede-por-aparelho-vpn-dentro-do-android-com-proxy-encadeado-saída-medida-e-revisão-da-cláusula-de-rede-do-adr-055) | Rede por aparelho: VPN dentro do Android com proxy encadeado, saída medida; revisa a cláusula de rede do ADR-055 | vigente (decisão do dono); Fase 25 a implementar; substitui em parte o ADR-055 | 29/09 |
 | [ADR-057](#adr-057--outlook-como-primeiro-app-novo-conta-por-app-sessão-por-conta-e-credencial-clonada-no-cofre) | Outlook como primeiro app novo: conta por app, sessão por conta e credencial clonada no cofre | vigente (decisão do dono); Fase 23 a implementar | 29/09 |
 | [ADR-058](#adr-058--comando-entre-aplicativos-catálogo-pelo-app-da-etapa-e-valor-lido-entre-etapas) | Comando entre aplicativos: catálogo pelo app da etapa e valor lido entre etapas | vigente; Fase 24 implementada (24.1–24.9); o §3 (valor lido entre etapas) é completado pelo [ADR-065](#adr-065--ação-de-catálogo-entrega-valor-lido-a-outra-etapa-saidas-declaradas-no-catalogoyaml) para ação de catálogo | 29/09 |
@@ -3627,6 +3627,19 @@ não contam, porque a porta roda de novo na retomada.
 - `CREATE_COMMENT` grava o mesmo tipo e fica fora. Seguir também fica fora: o segundo FOLLOW alterna, não duplica.
 - Prova `simulated`: `backend/tests/test_ja_respondido.py`. Sobre uma cópia do banco do central, o caso real é
   recusado citando a `int-fPuCkX3vCt7WnmsL`.
+
+**Emenda 30.57, 04/10/2026 (orquestradora, item 30.57 b):** o leque de um `for_each` com efeito em app real é limitado
+pela política, item a item, antes do pedido. Não há teto novo de itens: o `for_each_max_items` ("nunca trunca, acima
+disso bloqueia") e o fluxo de 8 contatos do QA seguem como estão.
+- **O pedido pendente ocupa o teto.** O teto por hora e por dia do balde conta também os pedidos de aprovação ainda sem
+  interação (pendentes, ou aprovados e não executados) desta conta. Antes, 5 itens com `comments_per_hour` 3 viravam 5
+  pedidos ao dono: a porta só via o que já tinha saído, e nada sai antes do sim. Agora 3 viram pedido e 2 ficam adiados
+  (`retry_at`), sem pedido. O pedido da própria etapa não conta, porque a porta roda de novo na retomada.
+- **O próprio perfil sai da lista.** Na expansão do bloco com efeito, o item que é o próprio perfil que executa sai
+  (`Scheduler._sem_o_proprio_perfil`, com linha no rastro). As outras contas nossas NÃO saem por regra fixa (emenda do
+  ADR-050); quem as segura é a porta: uma conta por alvo na janela, o 30.56 e os tetos.
+- Os valores dos baldes são calibráveis (29.75). Prova `simulated`: `backend/tests/test_leque_do_for_each.py`. A prova
+  real segue `not_run` (ADR-055 até ~02/11, ou um comentário orgânico de terceiro).
 
 ## ADR-056 — Rede por aparelho: VPN dentro do Android com proxy encadeado, saída medida e revisão da cláusula de rede do ADR-055
 

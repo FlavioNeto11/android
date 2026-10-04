@@ -1554,6 +1554,19 @@ class SocialRepository:
              *((exclude_step_id,) if exclude_step_id else ())))
         return str(linha["id"]) if linha else None
 
+    def pedidos_em_aberto_desde(self, profile_id: str, since: str, *,
+                                exclude_step_id: str | None = None) -> list[tuple[str, str]]:
+        """`(capability, created_at)` dos pedidos de aprovação deste perfil ainda sem interação (pendente, ou aprovado e
+        não executado) criados desde `since`. 30.57: o teto por hora conta também o que já está na fila do dono — sem
+        isto, os itens de um `for_each` viravam todos pedido antes de qualquer um sair. O da etapa `exclude_step_id`
+        não conta (a porta roda de novo na retomada)."""
+        sem_a_etapa = " AND (step_id IS NULL OR step_id<>?)" if exclude_step_id else ""
+        return [(str(r["capability"]), str(r["created_at"])) for r in self.db.query(
+            "SELECT capability, created_at FROM pending_approvals WHERE profile_id=?"
+            " AND status IN ('pending','approved','edited') AND interaction_id IS NULL AND created_at>=?"
+            f"{sem_a_etapa} ORDER BY created_at, id",
+            (profile_id, since, *((exclude_step_id,) if exclude_step_id else ())))]
+
     # ------------------------------------------------------------------ memória
     def insert_memory(self, profile_id: str, *, subject: str, content: str, source: str, fingerprint: str,
                       interaction_id: str | None = None, importance: float = 0.5, confidence: float = 0.5,
