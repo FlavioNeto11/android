@@ -28,6 +28,7 @@ from app.modules.pedidos.domain import observacao as dominio_observacao
 from app.modules.pedidos.domain import relatorio as dominio_relatorio
 from app.modules.pedidos.domain.chave import formatar_instante
 from app.modules.pedidos.domain.resumo import ResumidorDeRelatorio, SemResumo
+from app.modules.pedidos.domain.vistas import ObservacaoVista, OcorrenciaVista
 from app.modules.pedidos.infrastructure.repositorio_memoria import NovaObservacao, RepositorioDeMemoria
 from app.security.redaction import looks_secret, mentions_credential
 from app.util import to_iso
@@ -164,10 +165,10 @@ class ServicoDeRelatorios:
         entrada = dominio_relatorio.EntradaDoRelatorio(
             pedido_id=pedido["id"], pedido_versao=int(pedido["versao"]), periodo_ate=periodo_ate, periodo_de=de,
             criterios=tuple(_criterios(pedido["criterios_sucesso"])),
-            ocorrencias=tuple(dominio_relatorio.OcorrenciaVista(
+            ocorrencias=tuple(OcorrenciaVista(
                 id=r["id"], previsto_para=r["previsto_para"], estado=r["estado"], motivo=r["motivo"],
                 custo_usd=float(r["custo_usd"] or 0.0), origem=r["origem"]) for r in self.repo.ocorrencias(pedido["id"])),
-            observacoes=tuple(dominio_relatorio.ObservacaoVista(
+            observacoes=tuple(ObservacaoVista(
                 id=r["id"], ocorrencia_id=r["ocorrencia_id"], alvo=r["alvo"], nome=r["nome"], situacao=r["situacao"],
                 valor=r["valor"], tipo=r["tipo"], fonte=r["fonte"], trecho=r["trecho"], sha256=r["sha256"],
                 capturado_em=r["capturado_em"]) for r in self.repo.todas_as_observacoes(pedido["id"])),
@@ -198,10 +199,10 @@ class ServicoDeRelatorios:
             for f in self.repo.filhos_do_pai(pedido_id):
                 visto.append(dominio_consolidacao.FilhoVisto(
                     id=f["id"], papel=f["papel"], estado=f["estado"],
-                    ocorrencias=tuple(dominio_relatorio.OcorrenciaVista(
+                    ocorrencias=tuple(OcorrenciaVista(
                         id=r["id"], previsto_para=r["previsto_para"], estado=r["estado"], motivo=r["motivo"],
                         custo_usd=float(r["custo_usd"] or 0.0), origem=r["origem"]) for r in self.repo.ocorrencias(f["id"])),
-                    observacoes=tuple(dominio_relatorio.ObservacaoVista(
+                    observacoes=tuple(ObservacaoVista(
                         id=r["id"], ocorrencia_id=r["ocorrencia_id"], alvo=r["alvo"], nome=r["nome"],
                         situacao=r["situacao"], valor=r["valor"], tipo=r["tipo"], fonte=r["fonte"], trecho=r["trecho"],
                         sha256=r["sha256"], capturado_em=r["capturado_em"]) for r in self.repo.todas_as_observacoes(f["id"])),
