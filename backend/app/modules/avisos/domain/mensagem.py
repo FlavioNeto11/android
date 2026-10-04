@@ -183,6 +183,14 @@ def _numero(valor: object) -> float | None:
     return float(valor)
 
 
+def _hora(valor: object) -> str | None:
+    """"HH:MMZ" de um instante ISO em UTC ("2026-10-04T14:02:11.000Z"), ou `None`. A hora é a do relógio da Central."""
+    texto = _texto(valor)
+    if not texto or len(texto) < 16 or texto[10] not in "T " or texto[13] != ":":
+        return None
+    return f"{texto[11:16]}Z"
+
+
 def chave_do_fato(familia: str, *partes: str) -> str:
     """A chave de deduplicação dos avisos (28.14): `<família>:<parte>[:<parte>…]`. Um fato, uma chave, em qualquer
     réplica; os quatro eventos que avisam (e o `learning.needs_person`) passam por aqui."""
@@ -313,11 +321,13 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
         if run.get("status") != "needs_input" or ident is None:
             return None
         tipo, chave = "run.needs_input", chave_do_fato("run", ident, "needs_input")
-        curto = _texto(run.get("short_id")) or ident.rsplit("-", 1)[-1][:6]
+        # A execução se diz pela hora e pelo aparelho (decisão da orquestradora, 04/10 20:04Z): o id não diz nada ao
+        # dono, e o comando nunca sai. Sem hora legível, "Uma execução".
         lista = run.get("instance_ids")
         aparelhos = [x for x in lista if isinstance(x, str)] if isinstance(lista, list) else []
         onde = f" no {aparelhos[0]}" if len(aparelhos) == 1 else ""
-        assunto = f"❓ A execução {curto}{onde} parou com uma pergunta"
+        hora = _hora(run.get("started_at")) or _hora(run.get("created_at"))
+        assunto = f"❓ {f'A execução das {hora}' if hora else 'Uma execução'}{onde} parou com uma pergunta"
         linhas = ["Ela não segue sem a sua resposta.", "Espera você: responda na caixa de Pendências."]
         if conversa and redigir is not None:
             pergunta = _conteudo([_texto(run.get("status_detail"))], nomes, redigir)

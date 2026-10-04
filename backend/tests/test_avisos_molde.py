@@ -42,6 +42,7 @@ def _evento_de_pedido(sub: str) -> dict[str, object]:
 EVENTOS: list[tuple[str, dict[str, object]]] = [
     ("approval.pending", {"approval": {"id": "ap1", "summary": LIVRE, "target": "@loja_x", "content": LIVRE}}),
     ("run.updated", {"run": {"id": "r-20261004-abc123", "short_id": "abc123", "status": "needs_input",
+                             "started_at": "2026-10-04T14:02:11.000Z",
                              "instance_ids": ["android-12"], "command": LIVRE, "status_detail": LIVRE}}),
     ("session.needs_person", {"active": True, "instance_id": "android-03", "status": "auth_challenge",
                               "detail": LIVRE, "profile_id": "p-bruno"}),
@@ -114,7 +115,8 @@ def test_privacidade_regua_estrita_e_contato() -> None:
                    "[canais 28.10f12] filho A", "US$ 1299.90"):
         assert sem_contato(titulo) == titulo
         assert texto_seguro(titulo, PERSONA, REDIGIR) == titulo
-    for fone in ("+55 11 98888-7777", "98888-7777", "(11) 98888-7777", "1198888777"):
+    for fone in ("+55 11 98888-7777", "98888-7777", "(11) 98888-7777", "1198888777", "11 9 8888 7777", "11.98888.7777",
+                 "+55-11-98888-7777", "+55 (11) 9.8888-7777"):
         assert sem_contato(f"fone {fone}") == "fone <contato>", fone
     assert texto_seguro("Preço do Pi", [], None) is None and texto_seguro("Preço do Pi", [], REDIGIR) == "Preço do Pi"
 
@@ -176,3 +178,11 @@ def test_sem_os_nomes_de_persona_o_rotulo_vira_reserva(tmp_path: Path) -> None:
     assert servico.enfileirar_evento("pedido.aviso", _evento_de_pedido("pausa_automatica"), 5) is True
     titulo = str(banco.scalar("SELECT titulo FROM avisos_entregas"))
     assert titulo == "ANA: ⏸️ Pedido #kUZT1a pausado: 3 falhas seguidas"
+
+
+def test_execucao_se_diz_pela_hora_e_pelo_aparelho_nunca_pelo_id() -> None:
+    a = aviso_de_evento("run.updated", {"run": {"id": "r-20261004140211-abc123", "short_id": "abc123",
+                                                "status": "needs_input", "instance_ids": ["android-12"],
+                                                "started_at": "2026-10-04T14:02:11.000Z"}}, 3, redigir=REDIGIR)
+    assert a is not None and a.titulo == "ANA: ❓ A execução das 14:02Z no android-12 parou com uma pergunta"
+    assert "abc123" not in a.titulo

@@ -52,7 +52,7 @@ def test_os_avisos_dos_canais_falam_como_ana() -> None:
     from app.modules.avisos.domain.mensagem import ROTULOS, aviso_de_evento, titulo_agrupado
 
     a = aviso_de_evento("run.updated", {"run": {"id": "r-1", "status": "needs_input"}}, 7)
-    assert a is not None and a.titulo == f"{NOME_DA_IA}: ❓ A execução 1 parou com uma pergunta"
+    assert a is not None and a.titulo == f"{NOME_DA_IA}: ❓ Uma execução parou com uma pergunta"
     assert titulo_agrupado("approval.pending", 3) == f"{NOME_DA_IA}: 3 aprovações aguardando a sua decisão"
     fontes = [RAIZ / "backend" / "app" / "modules" / "avisos" / p
               for p in ("domain/mensagem.py", "infrastructure/trello_leitor.py", "infrastructure/entrada.py")]
