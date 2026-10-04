@@ -42,9 +42,10 @@ _PELA_REGRA_PROPRIA = frozenset({TEXTO, BRIEFING, VERBATIM, ARGUMENTO_DA_IMAGEM}
 OBJETO_INSUFICIENTE = frozenset({"REPLY_COMMENT"})
 
 
-#: O marcador de modelo que ainda não virou texto: `{item}`, `{nome}`, `{{saida:…}}`. Uma chave solta (emoticon, código)
-#: é texto final (revisão do painel, B2).
-_VARIAVEL = re.compile(r"\{\{|\{[A-Za-z_][\w.:-]*\}")
+#: O marcador de modelo que ainda não virou texto: `{item}`, `{nome}`, `{{saida:…}}` e a expressão do compilador de
+#: habilidades `${ parameters.x }` (com ou sem espaço, `compiler.py::_EXPR`). Uma chave solta (emoticon, código) é texto
+#: final (revisão do painel, B2 e N1).
+_VARIAVEL = re.compile(r"\{\{|\$\{|\{[A-Za-z_][\w.:-]*\}")
 
 
 def tem_variavel(texto: str) -> bool:

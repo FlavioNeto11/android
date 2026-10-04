@@ -178,3 +178,18 @@ describe('Revisão do painel (F1, F2, B2)', () => {
     expect(temVariavel('oi :-{ tchau')).toBe(false);
   });
 });
+
+describe('Revisão do painel (N2)', () => {
+  it('o 409 pelo texto editado mantém a edição no campo para corrigir', async () => {
+    const nova = previa([item({})]);
+    backend.on('POST', /\/runs\/run-p\/aprovar-plano$/, () => json({ detail: {
+      code: 'plano_mudou', message: 'mudou', previa: nova,
+      mudaram: [{ step_id: 'run-p:android-01:v1:dm', selo: 'recusado', motivo: 'com o texto editado: já comentado' }],
+    } }, 409));
+    await montar();
+    await setValue(byRole('textbox', /Texto de SEND_MESSAGE/) as HTMLTextAreaElement, 'já comentado antes');
+    await click(byRole('button', /Aprovar 1 e iniciar/));
+    await waitFor(() => expect(text(container)).toContain('com o texto editado: já comentado'));
+    expect((byRole('textbox', /Texto de SEND_MESSAGE/) as HTMLTextAreaElement).value).toBe('já comentado antes');
+  });
+});

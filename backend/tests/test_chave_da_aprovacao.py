@@ -108,3 +108,4 @@ def test_chave_solta_nao_e_variavel() -> None:
     """B2 da revisão do painel: só `{nome}` e `{{…}}` são marcadores de modelo; o emoticon é texto final."""
     assert _chave("SEND_MESSAGE", {**DM, "content": "oi :-{ tchau"}) is not None
     assert _chave("SEND_MESSAGE", {**DM, "content": "oi {nome}"}) is None
+    assert _chave("SEND_MESSAGE", {**DM, "content": "oi ${ parameters.nome }"}) is None    # N1: a expressão com espaço

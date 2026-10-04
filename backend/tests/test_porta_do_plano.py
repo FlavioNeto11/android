@@ -467,3 +467,25 @@ async def test_chave_solta_e_texto_final_e_o_longo_tem_mensagem_propria(harness:
     aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(
         step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"], texto="oi :-{ até logo")]), por="flavio")
     assert state.db.scalar("SELECT generated_content FROM pending_approvals") == "oi :-{ até logo"
+
+
+async def test_dm_editada_para_um_texto_ja_enviado_segue_no_cadeado_com_a_regra_real(harness: Any,
+                                                                                    monkeypatch: Any) -> None:
+    """B1, cenário real (`_repetido` de verdade, sem monkeypatch): a única regra da porta que depende do TEXTO é a da
+    DM repetida, e ela pede CONFIRMAÇÃO (nunca recusa). Editar a DM para um texto já enviado ao mesmo alvo mantém o item
+    🔒 com chave: o sim do plano é a confirmação daquele texto, e a execução o honra. O comentário não entra aqui: a
+    recusa dele é pelo OBJETO (o post), não pelo texto, então editar o texto não muda o selo."""
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    pid = str(itens["dm"]["profile_id"])
+    state.social_repo.record_interaction(pid, type="dm_sent", direction="outbound", status="confirmed",
+                                         counterparty=ALVO, outgoing_content="já mandei isto", app_id="ig",
+                                         run_id="r-antiga", occurred_at=to_iso(now() - timedelta(days=1)))
+    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(
+        step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"], texto="já mandei isto")]), por="flavio")
+    linha = state.db.one("SELECT status, generated_content FROM pending_approvals WHERE origem='plano'")
+    assert (linha["status"], linha["generated_content"]) == ("approved", "já mandei isto")
+    previa_refeita = _por_chave(previa_da_porta(state, "run-p"))["dm"]
+    assert previa_refeita["selo"] == APROVACAO and "repetição passa por confirmação" in previa_refeita["motivo"]
+    assert await _gate(state, "dm") is None                      # a mesma chave: o sim do plano cobre a confirmação

@@ -36,10 +36,13 @@ function oQue(item: ItemDaPorta): string {
 
 interface Mudou { step_id: string; selo: string | null; motivo: string }
 
+/** O começo do motivo que o servidor dá quando o item deixou de ser 🔒 por causa do texto editado (B1). */
+const MOTIVO_DO_TEXTO_EDITADO = 'com o texto editado:';
+
 /** O mesmo limite e o mesmo marcador de modelo do servidor (`LIMITE_DO_TEXTO`, `tem_variavel`). */
 export const LIMITE_DO_TEXTO = 2200;
 export function temVariavel(texto: string): boolean {
-  return /\{\{|\{[A-Za-z_][\w.:-]*\}/.test(texto);
+  return /\{\{|\$\{|\{[A-Za-z_][\w.:-]*\}/.test(texto);
 }
 
 /** Lê o 409 `plano_mudou`: a lista do que mudou e a prévia nova. Tolerante: o que faltar vira vazio. */
@@ -145,7 +148,10 @@ export function PortaDoPlano({ runId }: { runId: string }) {
           // no replanejamento voltaria em 409 a cada clique sem aparecer para desmarcar; a edição de um item que mudou
           // esconderia o texto novo.
           const vivas = new Set(lido.previa.itens.map((i) => i.step_id));
-          const mudados = new Set(lido.mudaram.map((m) => m.step_id));
+          // N2: quando o que mudou foi o PRÓPRIO texto editado ("com o texto editado: …"), a edição fica no campo para o
+          // dono corrigir, em vez de redigitar.
+          const mudados = new Set(lido.mudaram.filter((m) => !m.motivo.startsWith(MOTIVO_DO_TEXTO_EDITADO))
+            .map((m) => m.step_id));
           setTiradas((t) => new Set([...t].filter((id) => vivas.has(id))));
           setTextos((t) => Object.fromEntries(Object.entries(t).filter(([id]) => vivas.has(id) && !mudados.has(id))));
           setPrevia(lido.previa);
