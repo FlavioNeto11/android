@@ -5928,3 +5928,26 @@ o item do 🔒 só aparecia num 409 depois do clique.
 - **Prova:** `simulated` (`backend/tests/test_porta_do_plano.py`: a rota, o só-leitura e a DM repetida com a regra
   real; `frontend/src/features/runs/PortaDoPlano.test.tsx`). Nenhuma regra real tira hoje um item do 🔒 só pela edição
   do texto; o teste desse caminho é com selo forçado. `not_run`: o percurso no navegador e qualquer execução real.
+
+## Adendo v1.41 (04/10/2026; número da orquestradora; item 28.27) — o Executar do Telegram passa pela porta do plano
+
+Sem rota HTTP nova. A conversa do Telegram usa os MESMOS serviços das rotas do 30.61 (`GET /runs/{id}/porta` e
+`POST /runs/{id}/aprovar-plano`). A regra de produto é a C-26 de `docs/dominios/canais.md`.
+
+- O botão `Executar` (`x:<id>`) cria a execução com `mode="plan"`. Ela para em `planned` e nada inicia sozinho.
+- O vigia lê `porta_do_plano.previa_da_porta` quando a execução chega a `planned`, sempre com o operador `telegram:dono`.
+  - **N = 0** itens aprováveis pelo canal: chama `aprovar_plano(aprovar=[], tirar=[])`, que inicia, e manda uma linha.
+  - **N > 0**: a linha volta a `pergunta`, com `previa = {fase: "porta", run_id, curta, hash_do_plano, validade_ate,
+    aprovar: [[step_id, chave], …]}`. Saem a prévia e os botões `p:<id>` ("Executar (aprova N)") e `c:<id>` ("Cancelar").
+  - Porta ilegível: `RunService.start`, e a porta decide no despacho.
+- O `p:<id>` chama `aprovar_plano` com exatamente os pares de `previa.aprovar`.
+  - `plano_mudou` (409): nada gravado, e sai a prévia nova.
+  - `invalid_state`: a recusa volta como texto.
+  - Vencida (`avisos.entrada.ttl_previa_s` da linha ou `validade_ate` da porta): `RunService.cancel`.
+- `c:<id>` na fase da porta também cancela a execução `planned`.
+- Item aprovável pelo canal: selo `aprovacao` com `chave`, texto que `privacidade.texto_livre` não mudaria (até 3000
+  caracteres) e, se `tem_imagem`, bytes cujo sha256 bate com `imagem_sha256`. O resto pede o dono no painel ou na
+  execução.
+- **Prova:** `simulated`. `backend/tests/test_telegram_entrada.py` (a conversa, com o falso),
+  `backend/tests/test_telegram_portas.py` (as portas reais no harness) e `backend/tests/test_avisos_porta.py` (domínio).
+  `not_run`: o Telegram real e um plano real com item que pede o sim.
