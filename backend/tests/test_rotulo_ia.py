@@ -4,17 +4,19 @@ inclui, a prévia e a aprovação o dizem, e o executor não toca no Share sem o
 OUTRA persona não se aprova nem fecha chave. Tudo sem aparelho: hierarquia falsa e banco do harness."""
 from __future__ import annotations
 
+import dataclasses
 import json
 from typing import Any
 
 import pytest
 
-from app.automation.hierarchy import UiElement, UiTree
+from app.automation.hierarchy import UiElement, UiTree, parse_hierarchy
 from app.planning.capabilities import Capability, CapabilityCatalog, capability_of
 from app.porta_do_plano import previa_da_porta
 from app.social.chave_da_aprovacao import (chave_da_aprovacao, imagem_de_outra_persona, midia_da_etapa,
                                            rotulo_ia_da_imagem, rotulo_ia_exigido)
-from app.taskqueue.executor import interruptor_ligado, rejeicao_do_interruptor
+from app.taskqueue.executor import (interruptor_ligado, marca_junto_da_conta, marcas_exigidas,
+                                    rejeicao_do_interruptor)
 
 from .test_capabilities import IG
 from .test_porta_do_plano import _plano, _por_chave
@@ -67,10 +69,53 @@ def test_a_tela_medida_no_8_3_com_o_rotulo_ligado_e_desligado() -> None:
 
 
 def _no(i: str, x: tuple[int, int], y: tuple[int, int], *, checked: bool = False, clicavel: bool = True,
-        texto: str = "") -> UiElement:
+        texto: str = "", marcavel: bool = False) -> UiElement:
     return UiElement(id=i, text=texto, desc="", resource_id="", class_name="android.view.View", package=IG,
                      bounds=(x[0], y[0], x[1], y[1]), clickable=clicavel, enabled=True, focused=False,
-                     scrollable=False, editable=False, checked=checked, password=False)
+                     scrollable=False, editable=False, checked=checked, password=False, checkable=marcavel)
+
+
+def test_o_interruptor_nao_clicavel_da_linha_clicavel_ainda_e_o_candidato() -> None:
+    """Revisão C1: a LINHA inteira recebe o toque e o interruptor dela é `clickable=false`, `checkable=true` e
+    desligado; o interruptor LIGADO da linha vizinha encosta na faixa do texto. Sem o `checkable`, o vizinho era o único
+    candidato e o Share saía sem rótulo. Agora o dele (mais perto) decide: desligado, e o Share é recusado."""
+    texto = _no("t", (104, 282), (505, 543), clicavel=False, texto="Add AI label")
+    linha = _no("linha", (0, 720), (480, 600))                                   # começa à esquerda: não é candidato
+    o_dele = _no("dele", (584, 688), (495, 591), clicavel=False, marcavel=True)  # centro 543 (o do texto: 524)
+    vizinho_ligado = _no("vizinho", (584, 688), (420, 510), checked=True)        # centro 465, encosta na faixa
+    tela = UiTree(elements=[texto, linha, o_dele, vizinho_ligado], packages=[IG], sensitive=False)
+    assert not interruptor_ligado(tela, "text==Add AI label")
+    assert rejeicao_do_interruptor(SWITCH, {"rotulo_ia": "true"}, tela) is not None
+    ligado = UiTree(elements=[texto, linha, _no("dele", (584, 688), (495, 591), clicavel=False, marcavel=True,
+                                                checked=True), vizinho_ligado], packages=[IG], sensitive=False)
+    assert interruptor_ligado(ligado, "text==Add AI label")
+
+
+def test_o_empate_diz_interruptor_ambiguo() -> None:
+    """Interruptor dentro de um contêiner também à direita: empate, falha fechado, e o motivo diz "ambíguo" para quem
+    atende o `waiting_user` (não "ligue o interruptor", que a pessoa veria ligado)."""
+    texto = _no("t", (104, 282), (505, 543), clicavel=False, texto="Add AI label")
+    tela = UiTree(elements=[texto, _no("caixa", (560, 710), (490, 596)),
+                            _no("sw", (584, 688), (495, 591), checked=True)], packages=[IG], sensitive=False)
+    motivo = rejeicao_do_interruptor(SWITCH, {"rotulo_ia": "true"}, tela)
+    assert motivo is not None and motivo.startswith("interruptor ambíguo")
+    desligado = UiTree(elements=[texto, _no("sw", (584, 688), (495, 591))], packages=[IG], sensitive=False)
+    assert "LIGADO" in (rejeicao_do_interruptor(SWITCH, {"rotulo_ia": "true"}, desligado) or "")
+
+
+def test_o_parser_le_o_checkable() -> None:
+    """Revisão C1: o `checkable` do uiautomator chega ao `UiElement` (e só aparece no dicionário quando é verdadeiro)."""
+    xml = ('<hierarchy><node class="android.widget.FrameLayout" package="com.instagram.android" bounds="[0,0][720,1280]">'
+           '<node class="android.view.View" package="com.instagram.android" text="" resource-id="" clickable="false" '
+           'checkable="true" checked="false" enabled="true" bounds="[584,495][688,591]"/>'
+           '<node class="android.widget.TextView" package="com.instagram.android" text="Add AI label" clickable="false" '
+           'enabled="true" bounds="[104,505][282,543]"/></node></hierarchy>')
+    arvore = parse_hierarchy(xml)
+    sw = next(e for e in arvore.elements if e.class_name == "android.view.View")
+    assert sw.checkable and not sw.clickable
+    assert sw.to_dict()["checkable"] is True
+    rotulo = next(e for e in arvore.elements if e.text == "Add AI label")
+    assert "checkable" not in rotulo.to_dict()
 
 
 def test_so_um_candidato_conta_o_da_direita_mais_proximo() -> None:
@@ -101,6 +146,59 @@ def test_o_catalogo_do_instagram_declara_a_guarda_no_create_post() -> None:
         CapabilityCatalog("x", [Capability(key="P", title="p", goal="g", post_kind="model_judged", post_value="v",
                                            post_description="d", side_effect=True, commit_selector="text==Share",
                                            commit_switch=("nao_declarado:text==X",))])
+
+
+MARCA = "id=secondary_label|text==AI info"
+
+
+def _cabecalho(conta: str, y: int, *, marca: bool = True, i: str = "a") -> list[UiElement]:
+    """O cabeçalho de um post no feed como o 8.3 mediu (android-01, 03/10): o nome da conta em (98,y)-(632,y+51) e, com
+    rótulo, "AI info" (`secondary_label`) colado logo abaixo, em (98,y+50)-(632,y+104)."""
+    nome = UiElement(id=f"{i}-nome", text=conta, desc=conta, resource_id=f"{IG}:id/row_feed_photo_profile_name",
+                     class_name="android.widget.Button", package=IG, bounds=(98, y, 632, y + 51), clickable=True,
+                     enabled=True, focused=False, scrollable=False, editable=False, checked=False, password=False)
+    rotulo = UiElement(id=f"{i}-ai", text="AI info", desc="AI info", resource_id=f"{IG}:id/secondary_label",
+                       class_name="android.widget.Button", package=IG, bounds=(98, y + 50, 632, y + 104),
+                       clickable=False, enabled=True, focused=False, scrollable=False, editable=False, checked=False,
+                       password=False)
+    return [nome, rotulo] if marca else [nome]
+
+
+def test_a_marca_de_ia_so_conta_colada_no_nome_da_nossa_conta() -> None:
+    """29.79 (d): "AI info" logo abaixo do nome da conta da etapa prova o rótulo; a de OUTRO perfil do feed não prova, e
+    sem a conta conhecida é dúvida."""
+    medida = UiTree(elements=_cabecalho("lucas.almeida9484", 395), packages=[IG], sensitive=False)
+    assert marca_junto_da_conta(medida, MARCA, "lucas.almeida9484")
+    assert marca_junto_da_conta(medida, MARCA, "@lucas.almeida9484")              # a arroba é notação nossa
+    assert not marca_junto_da_conta(medida, MARCA, "outra.conta")
+    assert not marca_junto_da_conta(medida, MARCA, None)
+    # o nosso post sem rótulo e, mais abaixo no feed, o post de IA de outro perfil
+    feed = UiTree(elements=[*_cabecalho("lucas.almeida9484", 395, marca=False),
+                            *_cabecalho("outra.conta", 1200, i="b")], packages=[IG], sensitive=False)
+    assert not marca_junto_da_conta(feed, MARCA, "lucas.almeida9484")
+    # "AI info" solto longe do nome (outro lugar da tela) não é a marca do nosso post
+    longe = UiTree(elements=[_cabecalho("lucas.almeida9484", 395, marca=False)[0],
+                             _cabecalho("x", 900, i="c")[1]], packages=[IG], sensitive=False)
+    assert not marca_junto_da_conta(longe, MARCA, "lucas.almeida9484")
+    # o texto "AI info" sem o `secondary_label` medido: dúvida, não conta
+    sem_id = UiTree(elements=[_cabecalho("lucas.almeida9484", 395, marca=False)[0],
+                              dataclasses.replace(_cabecalho("lucas.almeida9484", 395)[1], resource_id="")],
+                    packages=[IG], sensitive=False)
+    assert not marca_junto_da_conta(sem_id, MARCA, "lucas.almeida9484")
+
+
+def test_a_marca_so_e_exigida_com_o_argumento_true() -> None:
+    marcas = ("rotulo_ia:" + MARCA,)
+    assert marcas_exigidas(marcas, {"rotulo_ia": "true"}) == [MARCA]
+    assert marcas_exigidas(marcas, {"rotulo_ia": "false"}) == []
+    assert marcas_exigidas(marcas, {}) == []
+    cap = capability_of(IG, "CREATE_POST")
+    assert cap.commit_switch_mark == ("rotulo_ia:" + MARCA,)
+    with pytest.raises(ValueError, match="commit_switch_mark exige commit_switch"):
+        CapabilityCatalog("x", [Capability(key="P", title="p", goal="g", post_kind="model_judged", post_value="v",
+                                           post_description="d", side_effect=True, commit_selector="text==Share",
+                                           optional_bindings=("rotulo_ia",),
+                                           commit_switch_mark=("rotulo_ia:text==AI info",))])
 
 
 def _imagem(state: Any, iid: str, persona: str, source: str = "generated", sha: str = "c" * 64) -> None:

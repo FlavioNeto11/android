@@ -69,6 +69,11 @@ class Capability:
     # texto e o interruptor costumam ser irmãos). Sem ele ligado o executor não toca no efeito e, na segunda recusa,
     # para pedindo uma pessoa.
     commit_switch: tuple[str, ...] = ()
+    # 29.79 (d): a MARCA que o interruptor deixa na publicação, conferida DEPOIS do efeito, só pela árvore e só leitura,
+    # como `<argumento>:<seletor>` — vale quando o argumento é "true" (o "AI info" do cabeçalho do post). Conta só a
+    # marca colada logo abaixo do nome da conta da etapa: o post é o NOSSO, não o de outro perfil do feed. Sem ela, a
+    # publicação comprovada pela contagem fica incerta ("publicado, rótulo não confirmado") e nada se repete.
+    commit_switch_mark: tuple[str, ...] = ()
     # Guardas que precisam estar na MESMA faixa vertical do alvo. É o que distingue a linha certa numa lista:
     # numa lista de pedidos, "@ana" em qualquer lugar da tela não prova que o botão tocado é o dela.
     band_guard: tuple[str, ...] = ()
@@ -211,10 +216,10 @@ def commit_switch_error(cap: Capability) -> str | None:
     tem de ser declarado pela ação (senão a guarda nunca liga) e a ação tem de ter `commit_selector` (o toque de efeito
     é estrutural; sem ele não há "antes do toque" a conferir)."""
     if not cap.commit_switch:
-        return None
+        return "commit_switch_mark exige commit_switch" if cap.commit_switch_mark else None
     if not cap.commit_selector:
         return "exige commit_selector"
-    for entrada in cap.commit_switch:
+    for entrada in (*cap.commit_switch, *cap.commit_switch_mark):
         argumento, _, seletor = entrada.partition(":")
         if not argumento.strip() or not seletor.strip():
             return f"entrada inválida: {entrada!r} (use <argumento>:<seletor>)"

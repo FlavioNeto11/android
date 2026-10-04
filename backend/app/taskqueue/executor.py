@@ -714,6 +714,27 @@ class StepExecutor:
     def _pacote_do_app_id(self, app_id: str) -> str | None:
         return self.repo.db.scalar("SELECT package FROM apps WHERE id=?", (app_id,))
 
+    async def _marcas_depois_do_efeito(self, rt: DeviceRuntime, cap: Capability, step: StepDTO,
+                                       obs: Observation | None, conta: str | None, call_timeout: float) -> list[str]:
+        """29.79 (d): as marcas exigidas (`commit_switch_mark`) que NÃO aparecem junto do nome da conta depois do efeito.
+        Uma leitura (a última tela da verificação, ou uma nova se ela não existir) e no máximo uma releitura depois de
+        `ESPERA_DA_MARCA_S`. Leitura que falha é dúvida: a marca conta como ausente."""
+        exigidas = marcas_exigidas(cap.commit_switch_mark, self._argumentos_da_guarda(cap, step))
+        if not exigidas:
+            return []
+        for releitura in (False, True):
+            if releitura:
+                await asyncio.sleep(ESPERA_DA_MARCA_S)
+            if obs is None or releitura:
+                try:
+                    obs = await self.devices.observe(rt, timeout=call_timeout, imagem=False)
+                except DriverError:
+                    obs = None
+                    continue
+            if all(marca_junto_da_conta(obs.tree, m, conta) for m in exigidas):
+                return []
+        return exigidas
+
     def _argumentos_da_guarda(self, cap: Capability, step: StepDTO) -> dict[str, str]:
         """29.79, revisão R1: os argumentos que `rejeicao_do_interruptor` lê. O `rotulo_ia` vem da ORIGEM da imagem
         (`rotulo_ia_exigido`), não do que a etapa gravou: a etapa antiga ou com a imagem resolvida depois não o tem, e
@@ -3193,6 +3214,21 @@ class StepExecutor:
             if step.side_effect and fired:
                 return StepOutcome(Outcome.uncertain, falta, delivery_level=level)
             return StepOutcome(Outcome.retry if step.attempts < step.max_attempts else Outcome.failed, falta)
+        if ok and step.side_effect and fired and cap is not None and cap.commit_switch_mark:
+            # 29.79 (d): a contagem prova que publicou, não que saiu COM o rótulo. Só leitura, pela árvore: a última
+            # tela da verificação e, sem a marca, UMA releitura depois de uma espera curta. Sem ela, o efeito existe e
+            # a pessoa confere; nada se repete.
+            faltam = await self._marcas_depois_do_efeito(rt, cap, step, obs, account_label, call_timeout)
+            if faltam:
+                motivo = ("publicado, rótulo não confirmado: a publicação foi comprovada (" + text + "), mas "
+                          + ", ".join(f"'{m}'" for m in faltam) + " não apareceu junto do nome da conta "
+                          + (account_label or "(desconhecida)") + " na tela depois do efeito. Confira a publicação "
+                          "no aparelho; não publique de novo.")
+                await evidence(obs, motivo)
+                return StepOutcome(Outcome.uncertain, motivo, delivery_level=level,
+                                   result=StepResult(verified=False, evidence_text=motivo, delivery_level=level))
+            if exigidas := marcas_exigidas(cap.commit_switch_mark, self._argumentos_da_guarda(cap, step)):
+                text += "; marca " + ", ".join(f"'{m}'" for m in exigidas) + " vista junto do nome da conta"
         if ok:
             if (conta := evidencia_da_conta(account_label, step.postcondition.value, text)) is not None:
                 repo.db.execute("UPDATE instances SET account_evidence=?, account_evidence_ts=? WHERE id=?",
@@ -3827,30 +3863,75 @@ def rejeicao_do_commit(commit_guard: Sequence[str], band_guard: Sequence[str], c
 EMPATE_DO_INTERRUPTOR_PX = 12
 
 
-def interruptor_ligado(tree: UiTree, seletor: str) -> bool:
-    """O interruptor de `seletor` está ligado na tela? O próprio elemento do seletor marcado, ou o ÚNICO candidato da
-    linha dele: um elemento clicável ou marcado, à DIREITA do texto, cuja faixa vertical se sobrepõe à do texto (o
-    interruptor medido em 03/10 é mais alto que o texto), o de centro mais próximo do centro do texto. Revisão (c) do
-    29.79: qualquer marcável encostado na faixa valia, e o interruptor ligado da linha de cima (compartilhar em outra
-    rede) passaria por este. Dois candidatos quase empatados: recusa (em dúvida, não publica)."""
+def estado_do_interruptor(tree: UiTree, seletor: str) -> str:
+    """O interruptor de `seletor` na tela: "ligado", "desligado", "ambiguo" ou "ausente". Ligado é o próprio elemento do
+    seletor marcado, ou o ÚNICO candidato da linha dele: um elemento clicável, marcável (`checkable`) ou marcado, à
+    DIREITA do texto, cuja faixa vertical se sobrepõe à do texto (o interruptor medido em 03/10 é mais alto que o
+    texto), o de centro mais próximo do centro do texto. Revisão (c) do 29.79: qualquer marcável encostado na faixa
+    valia, e o interruptor ligado da linha de cima (compartilhar em outra rede) passaria por este. Revisão C1: o
+    interruptor `clickable=false` (a linha é que recebe o toque) entra pelo `checkable` — sem isso o vizinho ligado
+    virava o único candidato. Dois candidatos quase empatados: "ambiguo" (em dúvida, não publica)."""
+    estado = "ausente"
     for alvo in tree.find_selector(seletor):
         if alvo.checked:
-            return True
+            return "ligado"
         x2, y1, y2 = alvo.bounds[2], alvo.bounds[1], alvo.bounds[3]
         centro = (y1 + y2) / 2
         candidatos = sorted(
             (e for e in tree.elements
-             if e.id != alvo.id and (e.clickable or e.checked) and e.bounds[0] >= x2
+             if e.id != alvo.id and (e.clickable or e.checkable or e.checked) and e.bounds[0] >= x2
              and e.bounds[1] < y2 and e.bounds[3] > y1),
             key=lambda e: abs((e.bounds[1] + e.bounds[3]) / 2 - centro))
         if not candidatos:
+            estado = "desligado" if estado == "ausente" else estado     # o texto está, o interruptor não se acha
             continue
         if len(candidatos) > 1 and (abs((candidatos[1].bounds[1] + candidatos[1].bounds[3]) / 2 - centro)
                                     - abs((candidatos[0].bounds[1] + candidatos[0].bounds[3]) / 2 - centro)
                                     < EMPATE_DO_INTERRUPTOR_PX):
-            return False
+            estado = "ambiguo"
+            continue
         if candidatos[0].checked:
-            return True
+            return "ligado"
+        if estado != "ambiguo":
+            estado = "desligado"
+    return estado
+
+
+def interruptor_ligado(tree: UiTree, seletor: str) -> bool:
+    """O interruptor de `seletor` está ligado na tela (`estado_do_interruptor`)?"""
+    return estado_do_interruptor(tree, seletor) == "ligado"
+
+
+#: 29.79 (d): a marca conta colada no nome da conta: a borda de cima dela até isto (px) abaixo da de baixo do nome.
+COLA_DA_MARCA_PX = 12
+#: 29.79 (d): a espera antes da única releitura da marca (ela pode chegar depois do cartão do post).
+ESPERA_DA_MARCA_S = 3.0
+
+
+def marcas_exigidas(commit_switch_mark: Sequence[str], bindings: Mapping[str, str]) -> list[str]:
+    """29.79 (d): os seletores de `commit_switch_mark` (`<argumento>:<seletor>`) cujo argumento é "true"."""
+    exigidas: list[str] = []
+    for entrada in commit_switch_mark:
+        argumento, _, seletor = entrada.partition(":")
+        if str(bindings.get(argumento.strip(), "")).strip().lower() == "true":
+            exigidas.append(seletor.strip())
+    return exigidas
+
+
+def marca_junto_da_conta(tree: UiTree, seletor: str, conta: str | None) -> bool:
+    """29.79 (d): a marca do `seletor` está na tela logo ABAIXO do nome da `conta`, na mesma coluna? Medido no 8.3 (03/10,
+    android-01): o nome em (98,395)-(632,446) e "AI info" em (98,445)-(632,499). A marca de OUTRO perfil do feed (um post
+    de IA alheio) não conta, e sem a conta conhecida não há como dizer que o post é o nosso: dúvida, não conta."""
+    nomes = {norm_text(v) for v in variantes_de_arroba(conta or "") if v}
+    if not nomes:
+        return False
+    contas = [e for e in tree.elements if norm_text(e.text) in nomes or norm_text(e.desc) in nomes]
+    for marca in tree.find_selector(seletor):
+        for nome in contas:
+            colada = nome.bounds[1] <= marca.bounds[1] <= nome.bounds[3] + COLA_DA_MARCA_PX
+            mesma_coluna = marca.bounds[0] < nome.bounds[2] and marca.bounds[2] > nome.bounds[0]
+            if marca.id != nome.id and colada and mesma_coluna:
+                return True
     return False
 
 
@@ -3862,7 +3943,12 @@ def rejeicao_do_interruptor(commit_switch: Sequence[str], bindings: Mapping[str,
         argumento, _, seletor = entrada.partition(":")
         if str(bindings.get(argumento.strip(), "")).strip().lower() != "true":
             continue
-        if not interruptor_ligado(tree, seletor.strip()):
+        estado = estado_do_interruptor(tree, seletor.strip())
+        if estado == "ambiguo":
+            return (f"interruptor ambíguo: mais de um controle na linha de '{seletor.strip()}' (a etapa pede "
+                    f"{argumento.strip()}) e não dá para dizer qual é o dele; em dúvida o efeito não sai — uma pessoa "
+                    "confere a tela")
+        if estado != "ligado":
             return (f"antes do efeito, '{seletor.strip()}' tem de estar LIGADO (a etapa pede {argumento.strip()}) e não "
                     "está: ligue-o nesta tela antes de tocar no efeito")
     return None

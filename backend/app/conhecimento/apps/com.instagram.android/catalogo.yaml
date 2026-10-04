@@ -542,6 +542,10 @@ acoes:
     # sem estado; o interruptor é um `android.view.View` clicável na MESMA linha, `checked=true` quando ligado. A
     # conferir de novo na medida dos seletores depois do deploy (versão do app). Sem ele ligado, nada de Share.
     commit_switch: ['rotulo_ia:text==Add AI label']
+    # 29.79 (d): a prova de que a publicação saiu COM o rótulo (a contagem só prova que saiu). MEDIDO no 8.3
+    # (`data/diag-8-3/a01-post-02-publicado.json`): logo depois do Share o feed mostra o post novo com "AI info" em
+    # `secondary_label`, colado abaixo de `row_feed_photo_profile_name` (o nome da conta). Só leitura, pela árvore.
+    commit_switch_mark: ['rotulo_ia:id=secondary_label|text==AI info']
     limit_bucket: posts
     default_policy: approval_required
     needs_draft: true

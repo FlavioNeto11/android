@@ -26,6 +26,7 @@ from app.models import Plan, PlannerInfo, ProfileCreate
 from app.planning.capabilities import CapabilityNode, compose, load_catalog
 from app.planning.provider import Decision, DecisionRequest, PlanRequest, Usage, Verdict, VerifyRequest
 from app.state import AppState
+from app.taskqueue import executor
 from app.taskqueue.repository import Repository
 
 from .conftest import CountingProvider, Harness
@@ -47,8 +48,17 @@ class InstagramComLegenda(FakeInstagram):
 
     rotulo_ligado: bool = False
     shares: list[str] = field(default_factory=list)
+    #: 29.79 (d): None = depois do Share a tela de antes (sem o post); True/False = o feed com o post novo da conta,
+    #: com ou sem "AI info" no cabeçalho (como o 8.3 mediu).
+    marca_no_post: bool | None = None
 
     def _build(self) -> list[Node]:
+        if self.screen == "feed_apos_share":
+            cabecalho = [Node(_BT, (98, 395, 632, 446), text=self.account, desc=self.account,
+                              rid="row_feed_photo_profile_name", clickable=True)]
+            if self.marca_no_post:
+                cabecalho.append(Node(_BT, (98, 445, 632, 499), text="AI info", desc="AI info", rid="secondary_label"))
+            return [*cabecalho, Node(_TV, (0, 1150, 720, 1200), text=LEGENDA, rid="row_feed_comment_textview_layout")]
         if self.screen != "legenda":
             return super()._build()
         # Medido em 03/10: o texto não tem estado; o interruptor é um View clicável MAIS ALTO que o texto (as faixas
@@ -74,7 +84,7 @@ class InstagramComLegenda(FakeInstagram):
         if hit is not None and hit.action == "share":
             self.calls.append(f"tap:{x},{y}")
             self.shares.append(f"{x},{y}")
-            self.screen = "perfil_apos_share"
+            self.screen = "perfil_apos_share" if self.marca_no_post is None else "feed_apos_share"
             return
         if hit is not None and hit.action == "rotulo":
             self.calls.append(f"tap:{x},{y}")
@@ -138,16 +148,16 @@ class AtorQueTocaNoShare(AtorDoInstagram):
 
 # ==================================================================== o parque
 @asynccontextmanager
-async def _parque(tmp_path: Path, rotulo: str | None, *, ligado: bool,
-                  ator: AtorQueTocaNoShare | None = None) -> AsyncIterator[Harness]:
+async def _parque(tmp_path: Path, rotulo: str | None, *, ligado: bool, ator: AtorQueTocaNoShare | None = None,
+                  marca_no_post: bool | None = None) -> AsyncIterator[Harness]:
     h = Harness(tmp_path, 1, factory=lambda rt: InstagramComLegenda(account="eu.teste", screen="legenda",
-                                                                    rotulo_ligado=ligado))
+                                                                    rotulo_ligado=ligado, marca_no_post=marca_no_post))
     h.ai = CountingProvider(ator or AtorQueTocaNoShare(rotulo))
     h.encurtar_verificacao()          # depois do Share a verificação não acha a publicação: sem esperar os 60 s
     await h.boot()
     await h.medir_a_internet()
     s = _estado(h)
-    s.db.execute("UPDATE instances SET app_id='instagram' WHERE id=?", (IID,))
+    s.db.execute("UPDATE instances SET app_id='instagram', account_label='eu.teste' WHERE id=?", (IID,))
     s.devices.get(IID).app_id = "instagram"
     # CREATE_POST nasce `approval_required`: a porta de política seguraria a etapa antes do executor. Fora de prova aqui.
     s.scheduler.policy_gate = None
@@ -287,3 +297,49 @@ async def test_o_upload_conhecido_dispensa_o_interruptor(tmp_path: Path) -> None
         assert json.loads(etapa["bindings"])["rotulo_ia"] == "false"
         assert len(_aparelho(h).shares) == 1
         assert not any("Add AI label" in (a["error"] or "") for a in _acoes(h, etapa["id"]))
+
+
+# ==================================================================== 29.79 (d): a marca depois do Share
+class AtorQueVePublicado(AtorQueTocaNoShare):
+    """O juiz diz que a publicação saiu (a contagem é outro assunto): o que está em prova é a conferência da marca."""
+
+    async def verify(self, req: VerifyRequest) -> tuple[Verdict, Usage]:
+        return Verdict(satisfied="yes", evidence="[roteiro] publicação nova no feed"), Usage()
+
+
+async def test_com_a_marca_no_post_a_publicacao_rotulada_e_sucesso(tmp_path: Path,
+                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    """Depois do Share, o feed mostra o post da conta com "AI info" colado no nome: a etapa fecha comprovada e a
+    evidência diz que a marca foi vista."""
+    monkeypatch.setattr(executor, "ESPERA_DA_MARCA_S", 0.01)
+    async with _parque(tmp_path, "true", ligado=True, ator=AtorQueVePublicado("true"), marca_no_post=True) as h:
+        etapa = await _publicar(h)
+        assert len(_aparelho(h).shares) == 1
+        assert etapa["status"] == "succeeded", (etapa["status"], etapa["status_detail"])
+        assert "vista junto do nome da conta" in (etapa["status_detail"] or "")
+
+
+async def test_sem_a_marca_no_post_publicado_rotulo_nao_confirmado(tmp_path: Path,
+                                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisão (d): o post saiu (o juiz o viu) mas sem "AI info": a etapa NÃO é sucesso — fica incerta com "publicado,
+    rótulo não confirmado", o Share não se repete e a conferência só leu a tela (uma releitura, nenhum toque)."""
+    monkeypatch.setattr(executor, "ESPERA_DA_MARCA_S", 0.01)
+    async with _parque(tmp_path, "true", ligado=True, ator=AtorQueVePublicado("true"), marca_no_post=False) as h:
+        etapa = await _publicar(h)
+        fake = _aparelho(h)
+        assert len(fake.shares) == 1                                           # nada se repete
+        assert etapa["status"] == "uncertain", (etapa["status"], etapa["status_detail"])
+        assert (etapa["status_detail"] or "").startswith("publicado, rótulo não confirmado")
+        toques = [c for c in fake.calls if c.startswith("tap:")]
+        assert toques == [f"tap:{fake.shares[0]}"]                             # só o Share foi tocado
+
+
+async def test_sem_rotulo_pedido_a_marca_nao_e_conferida(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Upload conhecido ("false"): a marca não é exigida e a publicação sem "AI info" é sucesso como antes."""
+    monkeypatch.setattr(executor, "ESPERA_DA_MARCA_S", 0.01)
+    ator = AtorQueVePublicado(None, image_id="img-enviada")
+    async with _parque(tmp_path, None, ligado=False, ator=ator, marca_no_post=False) as h:
+        _imagem_da_persona(h, "img-enviada", "upload")
+        etapa = await _publicar(h)
+        assert etapa["status"] == "succeeded", (etapa["status"], etapa["status_detail"])
+        assert "AI info" not in (etapa["status_detail"] or "")

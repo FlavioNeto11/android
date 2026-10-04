@@ -69,6 +69,7 @@ CAMPOS_NOVOS: dict[str, object] = {
     "objeto_alvo": [],
     # 29.79: interruptores que têm de estar ligados antes do toque de efeito (o rótulo de IA do CREATE_POST).
     "commit_switch": [],
+    "commit_switch_mark": [],
 }
 MUDANCAS: dict[tuple[str, str], object] = {
     # C10 — o pedido citava "o post que contém 'Ainda sobre Setembro Amarelo 2024'", mas "Posts", a folha "Comments"

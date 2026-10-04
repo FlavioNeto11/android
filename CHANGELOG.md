@@ -208,6 +208,14 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
   recusava na execução.
 - O cartão do plano e as aprovações da execução dizem "com rótulo de IA", ou "sem rótulo de IA (imagem enviada por
   você)" no upload do dono (marcar o upload como feito por IA é o 29.81). Adendo v1.40.
+- Revisão R1: em dúvida não publica. A guarda do Share decide pela ORIGEM da imagem resolvida (`rotulo_ia_exigido`), e a
+  etapa com imagem e sem `rotulo_ia` gravado não fecha chave. (c) e C1: o interruptor é o ÚNICO candidato à direita do
+  texto na faixa dele (clicável, `checkable` ou marcado; `UiElement.checkable` novo); empate recusa como
+  "interruptor ambíguo".
+- Revisão (d): a contagem prova que publicou, não que saiu COM o rótulo. Catálogo novo `commit_switch_mark`; no
+  CREATE_POST, `rotulo_ia:id=secondary_label|text==AI info`, medido no 8.3 no cabeçalho do post. Depois do Share, só
+  leitura e pela árvore, a marca tem de estar colada abaixo do nome da conta: a última tela da verificação e no máximo
+  uma releitura. Sem ela, a etapa fica `uncertain`, "publicado, rótulo não confirmado", e o Share não se repete.
 - Prova: `simulated` (`tests/test_rotulo_ia.py`, `tests/test_rotulo_ia_no_executor.py`, `PortaDoPlano.test.tsx`,
   `execution.test.tsx`). `not_run`: a medida dos seletores no aparelho depois do deploy e a 1ª publicação real.
 
