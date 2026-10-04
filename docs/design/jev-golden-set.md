@@ -186,6 +186,31 @@ de volta e volume real, e só então decide o contrato com a Aprendizado.
   repetido): o relatório encerra com erro. Falha fechada.
 - Prova `simulated`: `scripts/tests/test_jev_relatorio_31_10.py`.
 
+*Registro de 04/10 (21:45Z a 22:00Z), 31.55, a confiança do curador R1 (receita).* Nada do runtime mudou:
+`ESTADO_DA_SOMBRA` segue `v1` e o limiar da porta segue 0,85.
+- **Sombra no central (só leitura, 21:45Z):** 41 linhas de `curador_triagem`, 38 abaixo do limiar. A maior probabilidade
+  tem mediana 0,79 e máximo 0,86; o topo é `revisar` em 39 linhas. Contra os rótulos do dono (39 linhas), a concordância
+  é de 2 em 39, e baixar o limiar não ajuda: em 0,5 a cobertura iria a 41 de 41 com o mesmo `revisar` contra o rótulo.
+  Nove linhas têm o mesmo `estado_hash` e rótulos diferentes (o achado do 31.19).
+- **Braço offline (`scripts/jev-braco-offline.py`, pago, autorizado pela orquestradora, 21:51Z a 21:56Z):** três rodadas
+  sobre a entrada `v2`, cada uma com a chave `lote:jev:31.55-<rodada>` só no registro. Critério pré-registrado: concordância com o dono a 0,85 em 70 % ou
+  mais.
+
+  | Rodada | Respostas a 0,85 | Acertos |
+  |---|---|---|
+  | `v2` (a pergunta do runtime) | 11 | 1 (9 %) |
+  | `P1` (quando `revisar` cabe; escrita depois de ver a amostra) | 48 | 0 |
+  | `P2` (sem `revisar`) | 6 | 2 (33 %) |
+
+  Custo do item: US$ 0,006948 nas três, dentro do teto de US$ 0,15 e fora do livro-caixa do ADR-051.
+- **Ressalva que vale para tudo acima:** os rótulos são a confirmação em bloco de uma lista proposta pela própria sessão
+  (registro do 31.11), então qualquer acordo com a regra é circular. O perfil `degradando` e `falhas_seguidas` aparece nos
+  4 itens rebaixados e em nenhum dos 60 mantidos, mas isso mede a regra da ficha, não o dono. Nenhuma das quatro
+  variantes reproduz a política "manter até degradar".
+- **Decisão (orquestradora, 21:59Z):** nada muda no runtime e não há rodada nova nesta amostra. As variantes
+  pré-registradas ficam no braço offline (`--pergunta`, `PERGUNTAS_DO_31_55`). Prova `simulated` do código:
+  `scripts/tests/test_jev_braco_offline.py`; a medida é `real` (central, só leitura e chamadas pagas registradas acima).
+
 ## 3. Intenção (R2 e R3, 31.9)
 
 **Estratos (RA-2; execuções de 7 dias até 03/10 no central):** qa-messenger 58 (+3), instagram 15, outlook 5.

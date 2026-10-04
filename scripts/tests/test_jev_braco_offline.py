@@ -238,6 +238,27 @@ def test_regra_da_saude_e_um_segundo_controle_so_de_acompanhamento(banco: Banco,
     assert "regra da saúde" in braco.em_markdown(r)
 
 
+def test_controle_da_saude_v2_rebaixa_em_degradando_ao_lado_do_pre_registrado(banco: Banco) -> None:
+    """31.55: `controle_saude_v2` muda só `degradando` (→ rebaixar, a política do sistema); o pré-registrado segue igual."""
+    banco.revisao(saude="degradando", decisao="rebaixar")
+    banco.revisao(saude="saudavel", decisao="manter")
+    banco.revisao(saude="parado", decisao="observar")
+    casos, fora = _casos(banco)
+    assert [c.controle_saude for c in casos] == ["opt:revisar", "opt:manter", "opt:revisar"]       # não mudou
+    assert [c.controle_saude_v2 for c in casos] == ["opt:rebaixar", "opt:manter", "opt:revisar"]
+    assert braco.CONTROLE_DA_SAUDE["degradando"] == "revisar"
+    assert {k: v for k, v in braco.CONTROLE_DA_SAUDE_V2.items() if braco.CONTROLE_DA_SAUDE[k] != v} == {
+        "degradando": "rebaixar"}
+    r = braco.montar(casos, [None] * len(casos), fora=fora, agora=AGORA, enviado=False, interrompido=None, teto=None,
+                     pedidos_secos=0)
+    m = r["estratos"]["receita"]["medidas"]
+    assert m["concordancia_do_controle_da_saude_v2_com_o_curador"] == braco.rel._taxa(3, 3)
+    assert m["concordancia_do_controle_da_saude_com_o_curador"] == braco.rel._taxa(2, 3)
+    assert [l["controle_saude_v2"] for l in r["linhas"]] == ["opt:rebaixar", "opt:manter", "opt:revisar"]
+    md = braco.em_markdown(r)
+    assert "regra da saúde v2" in md and "circular" in md
+
+
 def test_a_saida_nao_leva_dossie_nem_item_ref(banco: Banco, tmp_path: Path) -> None:
     banco.revisao(contra=1)
     banco.revisao(kind="fluxo")
@@ -265,6 +286,34 @@ def test_estado_v1_por_padrao_e_v2_so_quando_pedido(banco: Banco, tmp_path: Path
     assert "(C0, estado v2)" in md.read_text(encoding="utf-8").splitlines()[0]
     with pytest.raises(SystemExit):
         braco.main(["--db", str(banco.caminho), "--estado", "v3"])
+
+
+def test_31_55_as_variantes_da_pergunta_so_mudam_o_pedido_offline(banco: Banco, tmp_path: Path) -> None:
+    """31.55: `--pergunta p1|p2` troca as instruções e as opções SÓ no pedido do braço offline. P1 diz quando `review`
+    cabe; P2 tira o `review`; as duas mantêm o `nenhuma` e o mesmo id da pergunta. A sombra do runtime não muda."""
+    from app.planning.decisao_fechada import curador  # noqa: PLC0415
+    from app.planning.decisao_fechada.contrato import ID_NENHUMA  # noqa: PLC0415
+    banco.revisao()
+    padrao, _ = _casos(banco)
+    [p_runtime] = padrao[0].pedido.perguntas
+    assert p_runtime.instrucoes == curador._INSTRUCOES == braco._INSTRUCOES_DO_RUNTIME  # noqa: SLF001
+    p1, _ = braco.casos_do_curador(banco.db, desde=None, autores_dono=frozenset(), pergunta="p1")
+    p2, _ = braco.casos_do_curador(banco.db, desde=None, autores_dono=frozenset(), pergunta="p2")
+    [q1], [q2] = p1[0].pedido.perguntas, p2[0].pedido.perguntas
+    assert q1.id == q2.id == curador.PERGUNTA_TRIAGEM and q1.limiar == q2.limiar == 0.85
+    assert "Keep is the default" in q1.instrucoes and set(q1.opcoes) == set(p_runtime.opcoes)
+    assert q2.instrucoes == p_runtime.instrucoes and set(q2.opcoes) == set(p_runtime.opcoes) - {"opt:revisar"}
+    assert ID_NENHUMA in q1.opcoes and ID_NENHUMA in q2.opcoes
+    assert p1[0].pedido.estado == padrao[0].pedido.estado            # a entrada é a mesma; só a pergunta muda
+    # seco pela porta (nada de rede) e a saída diz qual pergunta foi
+    seco = braco.DecisorSeco()
+    registros, interrompido = braco.rodar(p2, seco)
+    assert interrompido is None and len(seco.pedidos) == 1
+    saida = tmp_path / "p2.json"
+    assert braco.main(["--db", str(banco.caminho), "--pergunta", "p2", "--json", str(saida)]) == 0
+    assert json.loads(saida.read_text(encoding="utf-8"))["pergunta"] == "p2"
+    with pytest.raises(SystemExit):
+        braco.main(["--db", str(banco.caminho), "--pergunta", "p3"])
 
 
 @pytest.mark.parametrize("argv, msg", [
