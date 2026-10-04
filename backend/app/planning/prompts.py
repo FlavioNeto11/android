@@ -539,7 +539,18 @@ def actor_user_partes(req: DecisionRequest) -> tuple[str, str]:
     return (f"{step_block(req.ctx, for_actor=True)}\n\n{licoes_block(req.lessons)}",
             f"Histórico desta tentativa:\n{hist}\n\n"
             f"OBSERVAÇÃO ATUAL — app em primeiro plano: {s.package or 'desconhecido'}. {screen}\n"
-            f"<elementos_da_tela>\n{elements}\n</elementos_da_tela>\n\nEscolha UMA ferramenta.")
+            f"<elementos_da_tela>\n{elements}\n</elementos_da_tela>\n\n{_quantas_ferramentas(req.encadear)}")
+
+
+def _quantas_ferramentas(encadear: int) -> str:
+    """Item 31.35 (parte B): com `encadear` 1 o texto é o de sempre, byte a byte (o pedido não muda com a opção
+    desligada). Com mais, o ator pode mandar a sequência que já vê na tela, e o executor confere cada alvo antes."""
+    if encadear <= 1:
+        return "Escolha UMA ferramenta."
+    return (f"Escolha UMA ferramenta, ou até {encadear} chamadas em ordem quando as seguintes NÃO dependem do que a "
+            "tela vai mostrar depois da primeira (ex.: tocar em itens que você já vê, um depois do outro). `scroll` "
+            "só como a ÚLTIMA da sequência. O executor confere o alvo de cada chamada na tela nova e descarta o resto "
+            "se ele sumir.")
 
 
 def verifier_user_text(ctx: StepContext, screen_desc: str, elements: list[str], required_level: str | None,

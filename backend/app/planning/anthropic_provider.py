@@ -151,7 +151,7 @@ class AnthropicProvider:
     # ------------------------------------------------------------------ chamada base
     def _kwargs(self, *, model: str, system: str, content: list[dict[str, Any]], effort: str, max_tokens: int,
                 tools: bool, schema: dict[str, Any] | None, pensar: bool = True,
-                cache_ttl: str | None = None, cachear: bool = True) -> dict[str, Any]:
+                cache_ttl: str | None = None, cachear: bool = True, paralelo: bool = False) -> dict[str, Any]:
         """Monta a requisição respeitando a capacidade DECLARADA deste modelo (`ai.models`) e o que ele já recusou.
         `pensar=False` (item 17.14, `thinking: false` da função) deixa de mandar `thinking`, como num modelo sem ele.
         `cache_ttl` (31.30): validade do ponto de cache; `None` é o padrão da API (5 min), sem o campo.
@@ -189,7 +189,8 @@ class AnthropicProvider:
         if tools:
             estrito = caps.strict_tools and "strict" not in off
             kwargs["tools"] = self._tools if estrito else self._tools_loose
-            kwargs["tool_choice"] = {"type": "auto", "disable_parallel_tool_use": True}
+            # Item 31.35 (parte B): só a decisão que pode encadear ações libera chamadas paralelas.
+            kwargs["tool_choice"] = {"type": "auto", "disable_parallel_tool_use": not paralelo}
         return kwargs
 
     def _learn(self, model: str, exc: anthropic.BadRequestError) -> bool:
@@ -213,7 +214,7 @@ class AnthropicProvider:
     async def _create(self, *, role: str, model: str, system: str, content: list[dict[str, Any]], effort: str,
                       max_tokens: int, tools: bool = False, schema: dict[str, Any] | None = None, tier: int = 0,
                       with_image: bool = False, funcao: str | None = None, cache_ttl: str | None = None,
-                      cachear: bool = True) -> tuple[Any, Usage]:
+                      cachear: bool = True, paralelo: bool = False) -> tuple[Any, Usage]:
         """`funcao`: a função do hub que a chamada serve, quando difere de `role` (a decisão escalada é `escalation`).
         `cache_ttl`: validade do cache do prefixo (31.30); só o plano da execução pede outra que não a padrão."""
         if self._client is None:
@@ -228,7 +229,7 @@ class AnthropicProvider:
             for _ in range(len(_TUNABLE) + 2):
                 kwargs = self._kwargs(model=model, system=system, content=content, effort=effort,
                                       max_tokens=max_tokens, tools=tools, schema=schema, pensar=pensar,
-                                      cache_ttl=cache_ttl, cachear=cachear)
+                                      cache_ttl=cache_ttl, cachear=cachear, paralelo=paralelo)
                 try:
                     resp = await self._send(model, kwargs)
                     break
@@ -469,15 +470,19 @@ class AnthropicProvider:
             content = self._screen_content(req.screen, prompts.actor_user_text(req))
         resp, usage = await self._create(role="decide", model=model, system=prompts.ACTOR_SYSTEM, content=content,
                                          effort=self.cfg.env.ai_effort_actor, max_tokens=4000, tools=True,
-                                         tier=req.tier, with_image=with_image, funcao=funcao)
+                                         tier=req.tier, with_image=with_image, funcao=funcao,
+                                         paralelo=req.encadear > 1)
         self._check_stop(resp, model)
         text = " ".join(b.text for b in resp.content if b.type == "text").strip() or None
-        call = next((b for b in resp.content if b.type == "tool_use"), None)
+        chamadas = [b for b in resp.content if b.type == "tool_use"]
+        call = chamadas[0] if chamadas else None
         if call is None:
             raise AIError("O modelo respondeu sem chamar nenhuma ferramenta.", retryable=True, kind="invalid_output",
                           model=model)
         args = call.input if isinstance(call.input, dict) else {}
-        return Decision(tool=call.name, args=dict(args), raw_text=text), usage
+        extras = [Decision(tool=b.name, args=dict(b.input) if isinstance(b.input, dict) else {})
+                  for b in chamadas[1:max(1, req.encadear)]]
+        return Decision(tool=call.name, args=dict(args), raw_text=text, extras=extras), usage
 
     # ------------------------------------------------------------------ verificação
     async def verify(self, req: VerifyRequest) -> tuple[Verdict, Usage]:

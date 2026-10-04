@@ -360,6 +360,43 @@ UI_DO_NAVEGADOR: dict[str, frozenset[str]] = {
         "menu_button", "menu_button_wrapper", "home_button", "optional_toolbar_button", "bottom_toolbar",
         "control_container", "security_button")),
 }
+def _fila_encadeada(extras: list[Decision]) -> list[Decision]:
+    """Item 31.35 (parte B): as ações seguintes que o executor aceita encadear. Nada com efeito externo, e `scroll` só
+    como a última: depois de rolar, nenhum alvo escolhido antes continua no mesmo lugar."""
+    fila: list[Decision] = []
+    for d in extras:
+        if d.tool in EFFECT_CAPABLE - {"tap", "long_press"} or d.tool in CONTROL_TOOLS:
+            break
+        fila.append(d)
+        if d.tool == "scroll":
+            break
+    return fila
+
+
+def _proxima_encadeada(fila: list[Decision], antes: UiTree | None, agora: UiTree,
+                       history: list[str]) -> Decision | None:
+    """Item 31.35 (parte B): a próxima ação encadeada, com o alvo achado na tela NOVA. Os ids de elemento são posição
+    na árvore (`e12`) e mudam depois de uma ação; o alvo vale só se o MESMO elemento (id de recurso, texto, descrição e
+    classe) aparece uma única vez agora. Sem isso, ou com alvo por coordenada, a fila acaba e o ator decide de novo."""
+    d = fila.pop(0)
+    alvo = d.args.get("element_id")
+    if alvo is None:
+        if d.args.get("x") is None and d.args.get("y") is None:   # sem alvo (rolar, esperar, voltar)
+            return d
+        history.append(f"(executor) ação encadeada {d.tool} descartada: alvo por coordenada, sem conferência")
+        fila.clear()
+        return None
+    original = antes.by_id(str(alvo)) if antes is not None else None
+    chave = ((original.resource_id, original.text, original.desc, original.class_name)
+             if original is not None else None)
+    iguais = ([e for e in agora.elements if (e.resource_id, e.text, e.desc, e.class_name) == chave]
+              if chave and any(chave[:3]) else [])
+    if len(iguais) != 1:
+        history.append(f"(executor) ação encadeada {d.tool} descartada: o alvo não está (ou não é único) na tela nova")
+        fila.clear()
+        return None
+    return Decision(tool=d.tool, args={**d.args, "element_id": iguais[0].id}, raw_text=d.raw_text)
+
 
 _IMAGEM_VAI: frozenset[str] = frozenset({"politica_sempre", "pedida", "problema", "primeira_julgada", "arvore_pobre"})
 #: RA-10: a frase da linha do tempo de cada motivo de escalonamento do `decide` (a do efeito vem da política de risco).
@@ -1671,6 +1708,11 @@ class StepExecutor:
             return False
 
         settle_pendente: int | None = None     # C-2 (31.24): o assentamento depois da ação, para a decisão seguinte
+        # Item 31.35 (parte B): as ações seguintes da última decisão (`Decision.extras`), a árvore em que o ator as
+        # escolheu (para achar o MESMO alvo na tela nova) e a linha de `ai_calls` que as pagou.
+        fila_encadeada: list[Decision] = []
+        arvore_da_fila: UiTree | None = None
+        chamada_da_fila: int | None = None
         for _ in range(max_actions + 1):
             chamada_do_ator = None
             settle_da_volta, settle_pendente = settle_pendente, None
@@ -1945,11 +1987,15 @@ class StepExecutor:
                     except DriverError as exc:
                         log.info("%s: imagem para a decisão indisponível (%s); decide pela árvore", iid, exc)
                     completar_ms = ms_desde(t_completar)
+                encadeada = (_proxima_encadeada(fila_encadeada, arvore_da_fila, obs.tree, history)
+                             if fila_encadeada and errors_in_row == 0 else None)
+                fila_encadeada = fila_encadeada if encadeada is not None else []
                 screen, scale = self._screen(obs, with_image=quer_imagem,
                                              protect=tuple(step.commit_guard), boost=_boost_terms(step, app),
                                              ai=ai_cfg)
                 image_requested = False
-                decisions += 1
+                if encadeada is None:          # a ação encadeada não é decisão nova (31.35)
+                    decisions += 1
                 actor_history = compress_history(history, ai_cfg.actor_history_lines)
                 rr.exerceu(StrategyKind.ai_actor)
                 if licoes is None:
@@ -1966,14 +2012,21 @@ class StepExecutor:
                     arvore_chars=sum(len(linha) for linha in screen.elements),
                     historico_chars=sum(len(linha) for linha in actor_history), podados=screen.podados)
                 try:
-                    decision = await self._ai(run_id, oid, lambda: self.provider.decide(
-                        DecisionRequest(ctx=ctx_for(), screen=screen, history=actor_history, tier=tier,
-                                        lessons=list(pedidas))),
-                        step_id=step.id, role="decide", deadline=deadline, attempt_id=attempt_id, marca=marca,
-                        preparo=preparo)
+                    if encadeada is not None:
+                        decision, preparo.ai_call_id = encadeada, chamada_da_fila
+                    else:
+                        decision = await self._ai(run_id, oid, lambda: self.provider.decide(
+                            DecisionRequest(ctx=ctx_for(), screen=screen, history=actor_history, tier=tier,
+                                            lessons=list(pedidas),
+                                            encadear=1 if step.side_effect else ai_cfg.acoes_por_decisao)),
+                            step_id=step.id, role="decide", deadline=deadline, attempt_id=attempt_id, marca=marca,
+                            preparo=preparo)
                 except AIError as exc:
                     return await desfecho_de_ia(exc, obs, "a decisão da IA")
                 chamada_do_ator = preparo.ai_call_id
+                if encadeada is None and not step.side_effect:
+                    fila_encadeada, arvore_da_fila, chamada_da_fila = (
+                        _fila_encadeada(decision.extras), obs.tree, chamada_do_ator)
                 if rr.mode == "shadow" and rr.replayer is not None and not rr.diverged:
                     self._shadow_compare(rr, obs, decision)     # aprende-se a confiar na receita antes de deixá-la agir
             # ---------- validar
@@ -2467,6 +2520,8 @@ class StepExecutor:
             if is_commit:
                 repo.add_effect(oid, f"'{step.title}': {decision.tool} executado ({rationale or 'ação com efeito'})")
             history.append(f"{decision.tool}({_brief(args)}) → {_brief_result(out.result)}")
+            if decision.tool == "open_url":
+                await self._espera_depois_do_open_url(rt, call_timeout, ai_cfg, history)
             if rationale:
                 repo.decision(f"{iid} · {step.title}: {rationale}", run_id=run_id, instance_id=iid, step_id=step.id)
             if decision.tool == "collect_list":
@@ -3024,6 +3079,16 @@ class StepExecutor:
         finally:
             if (tempos := self._tempos(attempt_id)) is not None:
                 tempos.juiz_espera_ms += ms_desde(inicio)
+
+    async def _espera_depois_do_open_url(self, rt: DeviceRuntime, call_timeout: float, ai: AiCfg,
+                                         history: list[str]) -> bool:
+        """Item 31.35 (parte B), `ai.espera_apos_open_url`: a página carregando não pede decisão; a espera adaptativa do
+        31.27 (tela parada por 1 s, teto de 8 s) faz o que o ator fazia com um `wait_for` pago. Desligada, nada muda."""
+        if not ai.espera_apos_open_url:
+            return False
+        await self._esperar_a_tela_parar(rt, time.monotonic() + 8.0, 1.0, call_timeout, ())
+        history.append("(executor) esperou a página assentar depois do open_url, sem decisão da IA")
+        return True
 
     async def _esperar_a_tela_parar(self, rt: DeviceRuntime, fim: float, estavel: float, call_timeout: float,
                                     marcas: tuple[str, ...]) -> Observation | None:
