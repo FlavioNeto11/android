@@ -5653,3 +5653,18 @@ Sem migração, atrás de `pedidos.colaboracao.enabled` (desligada, tudo como an
 
 As regras 1 e 2 (uma conta por alvo no pedido inteiro e `approval_required` para pessoa real sem conversa prévia) são da porta de
 política (`PolicyEngine.check`, item 30.62): o provedor `contexto_do_pedido(run_id)` vem num PR à parte.
+
+## Adendo v1.34 (04/10/2026; número da orquestradora; item 30.66) — a decisão da plataforma com o nome do catálogo
+
+`GET /api/aprendizado/aprovacao-automatica` (adendo v1.24): cada linha de `decididos_pela_plataforma` ganha três campos,
+lidos do item de AGORA, em lote (os mesmos `capabilities`/`nomes_das_capabilities` da rota do livro):
+
+- `capability`: a ação do catálogo do item (receita: a derivação do detalhe; lição e tela: a `scope_capability`), ou
+  `null` quando não se sabe;
+- `capability_nome`: o nome dela em português, do catálogo do app (por exemplo "Enviar a mensagem"), ou `null` sem
+  catálogo;
+- `etapa`: o título da etapa de origem da receita, ou `null`.
+
+O item que saiu do livro vem com os três nulos, como `titulo`. Campos novos e opcionais: quem não os lê não muda. O painel
+titula a decisão como as outras telas (`tituloDoItem`: "Enviar a mensagem (v1)"), e sem eles cai no título de antes.
+Prova `simulated`: `backend/tests/test_aprovacao_automatica.py` e `frontend/src/features/aprendizado/DecididoPelaPlataforma.test.tsx`.
