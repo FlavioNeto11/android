@@ -1789,19 +1789,23 @@
    "id": "T.2",
    "status": "partial",
    "proof": "simulated",
-   "evidence": "backend/app/devices/manager.py:1558 (desvio io_factory de stop_instance removido; caminho real com backend.save_snapshot em :1603 e process_alive em :852 exercitado pelo aparelho falso); manager.py:1345-1368 (_boot falso ganha PID via _spawn SÓ ao fim do boot simulado, achado #165); manager.py:711-724 (_adopt falso idem); backend/app/devices/emulator_backend.py:53,56,77,80,123,128 (save_snapshot/process_alive novos em EmulatorBackend/Real/Fake); backend/app/config.py:239 (limits.boot_poll_s, achado #164 — sleep(2) fixo de _wait_boot virou configurável, usado em manager.py:1467); backend/tests/test_ciclo_de_vida_do_emulador.py (16 testes, 5 novos: hibernar com sucesso mede e passa pelo backend, falha no snapshot desliga e descarta, hibernação desligada na config, parada simples zera PID, _wait_boot estoura prazo chamado direto sem tocar adb). Agente remoto (worker/executor.py): JÁ tem ciclo de vida real testado hoje — backend/tests/test_worker_executor.py (21 testes: start/stop/hibernate/wake/reset, boot que não termina vira VerbUncertain via INTERVALO_SONDA_S monkeypatchado, guarda de RAM, guarda de vagas, fila de boot com cancelamento) — via monkeypatch de app.worker.executor.emu, não via EmulatorBackend compartilhado com manager.py; é uma costura diferente da sugerida no achado, mas resolve a lacuna de teste que o achado apontava (evidência conferida hoje, não é o que o achado #165 media ontem). Medido no fechamento de 24/09: suite completa 1130 passed em 570,6 s (9 min 30 s) - meta de 2-3 min NAO atingida; os 10 testes mais lentos somam ~178 s, liderados por test_execution.py::test_resultado_ambiguo_vira_incerto_e_nao_reenvia (64,6 s) e test_rotation.py (21,8 s + 13,2 s) - sao o alvo da proxima otimizacao (relogio injetavel nesses caminhos).\n\nJ10, 02/10/2026 (sessao jev, PR #30, merge 5a50f80): as SONDAS de _wait_boot ganharam teste: backend/tests/test_wait_boot_sondas.py (7 testes, simulated; so as tres chamadas ao Adb sao duble, o laco, a fase de prontidao e o estado sao os de producao): boot_completed antes de ui_ready, a interface so sondada depois do boot, AdbError/DriverError engolidos e repetidos, 120 s sem interface depois do boot com relogio injetavel em manager (sem dormir), prazo estourado sem boot_completed, preparo que falha rapido sem impedir a entrada no ar, AjusteDosApps virando evento. Mutacoes (120 s -> 12000 s; ordem das sondas) derrubam os testes. Nenhum codigo de producao mudou (manager.py e despacho.py intocados). 45 passed com test_ciclo_de_vida_do_emulador, test_prontidao e test_arquitetura.",
-   "blocker": "Continuam de fora do achado #165: o veredito do snapshot durante o boot (_snapshot_verdict) sem teste proprio; worker/executor.py nao unificado com EmulatorBackend (decisao de escopo, ja tem teste equivalente em test_worker_executor.py); tempo da suite 570,6 s em 24/09, meta de 2-3 min NAO atingida (alvo: relogio injetavel em test_execution.py e test_rotation.py). As sondas boot_completed/ui_ready/prepare_for_automation foram FECHADAS no J10 (ver evidence). Os demais pontos da linha do plano (38 das 85 rotas sem teste HTTP; eventos command.updated/worker.updated e tela de Infraestrutura) nao foram verificados neste registro.",
-   "arquivos": [
-    "backend/tests/test_wait_boot_sondas.py",
-    "backend/tests/test_ciclo_de_vida_do_emulador.py"
+   "evidence": "PR #239 (perf/t2-relogio-virtual-jev). 6 arquivos medidos em série e em Idle: de 182,4 s para 49,8 s, com 62 testes verdes nos dois lados. test_plan_report_na_execucao não teve ganho e voltou ao da main.",
+   "blocker": "T.2 é de várias frentes: esta é a parte da Jev (6 arquivos de 182,4 s para 49,8 s); a da Aprendizado entrou pelo PR #235; restam o intermitente do test_prontidao_subsistemas e os testes de rede da Android.",
+   "arquivos": [],
+   "testes": [
+    "backend/tests/test_dm_verificador.py",
+    "backend/tests/test_caminho_rapido_executor.py",
+    "backend/tests/test_cascata_ator_barato.py",
+    "backend/tests/test_verificador_escalado.py",
+    "backend/tests/test_leitura_transitoria.py",
+    "backend/tests/test_saidas_obrigatorias.py"
    ],
-   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_wait_boot_sondas.py tests/test_ciclo_de_vida_do_emulador.py tests/test_prontidao.py tests/test_arquitetura.py -> 45 passed",
-   "grupo": "sessao:jev-j14",
-   "modelo": "sessao",
-   "esforco": "",
+   "grupo": "jev-t2",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medium",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-02T15:23:13+00:00"
+   "quando": "2026-10-04T12:12:17+00:00"
   },
   "T.1": {
    "id": "T.1",
@@ -7236,15 +7240,21 @@
   "31.34": {
    "id": "31.34",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #222 (suíte 23) e PR #228 (a grade cede a vez durante toda a leitura da árvore); suíte 24 (integ/suite-24 @ 2c7ab99e: SQLite 9377 passed em -n 6, PG dirigido 3485 passed em 170 arquivos com 2 falhas tratadas, uma correção só de teste e um intermitente verde ao repetir; front 1491) e deploy 24 no ar em 04/10 (saúde ok às 11:08:36Z, migração 098_etapa_opcional, prova de fora ok às 11:08:43Z). Medida real pendente: A/B no android-04 com e sem o Painel aberto.",
+   "proof": "real",
+   "evidence": "04/10/2026, WIN-7S2UASNLFOP, deploy 24 (2c7ab99e, 098). A/B controlado no android-04, com 40 leituras de GET /api/instances/android-04/hierarchy por rodada (só leitura, sem IA) e as condições alternadas. Condição 'aberta' = painel_equivalente.py da orquestradora (watch na grade a cada 10 s e miniatura a cada 5 s). Pares (fechada | aberta), em ms p50/p95/máx: par 1, de 11:11Z: 219/385/571 | 164/265/428; par 2, de 11:16Z: 137/198/257 | 150/250/397; par 3, de 11:23Z: 241/642/847 | 206/256/281. Agregado com n=120 por condição: fechada p50 197, p95 408, máx 847; aberta p50 167, p95 265, máx 428. Zero leituras acima de 1 s nas rodadas válidas: a cauda de ~2 s do 31.28 não apareceu com o painel aberto. Descartada a rodada aberta de 11:18:22Z a 11:18:53Z: a execução fec1a1 da validação do aprendizado usou o aparelho de 11:18:36Z a 11:20:05Z, e foi nela que estiveram as 2 leituras acima de 1 s (máx. 2025 ms). Dados em .claude/handoffs/jev-scratch-2026-10-03/ab_3134.json. O android-04 foi desligado às 11:25Z (202). A janela do #228 está no deploy 24.",
    "blocker": null,
-   "grupo": "orquestradora-deploy24",
-   "modelo": "fable",
+   "arquivos": [
+    "backend/app/devices/manager.py"
+   ],
+   "testes": [
+    "backend/tests/test_grade_cede_a_arvore.py"
+   ],
+   "grupo": "jev-31-34-ab-real",
+   "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T11:09:24+00:00"
+   "quando": "2026-10-04T12:12:17+00:00"
   },
   "28.17": {
    "id": "28.17",
@@ -7262,15 +7272,22 @@
   "31.33": {
    "id": "31.33",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #219 (feat/31-33-recusa-fora-do-catalogo): pedido fora do catálogo vira recusa, não pergunta; suíte 24 (integ/suite-24 @ 2c7ab99e: SQLite 9377 passed em -n 6, PG dirigido 3485 passed em 170 arquivos com 2 falhas tratadas, uma correção só de teste e um intermitente verde ao repetir; front 1491) e deploy 24 no ar em 04/10 (saúde ok às 11:08:36Z, migração 098_etapa_opcional, prova de fora ok às 11:08:43Z). Prova real pendente com a Jev (5 leituras só de plano).",
+   "proof": "real",
+   "evidence": "04/10/2026, WIN-7S2UASNLFOP, deploy 24 (2c7ab99e). 5 leituras só de plano (mode=plan, android-12, Instagram, pedidos fora do catálogo, lote:jev:31.33-01..05), de 11:31:52Z a 11:32:22Z: r-20261004113152-6e3d5d, r-20261004113201-f55497, r-20261004113207-870053, r-20261004113212-bad3b9 e r-20261004113217-6cea71. Todas fecharam failed, com evento plan.refused de motivo sem_acao_do_catalogo, 1 pedido e 21 disponíveis; o texto da execução diz 'não está disponível' e corta em 8 títulos ('e mais 13'). Uma chamada de plano em cada: a 1ª gravou o prefixo (cache_write_1h 3066) e as outras 4 leram (cache_read 3066). Custo estimado em ~US$ 0,03. Nenhuma ficou em planned, então não houve o que cancelar.",
    "blocker": null,
-   "grupo": "orquestradora-deploy24",
-   "modelo": "fable",
+   "arquivos": [
+    "backend/app/planning/parsing.py",
+    "backend/app/planning/service.py"
+   ],
+   "testes": [
+    "backend/tests/test_recusa_fora_do_catalogo.py"
+   ],
+   "grupo": "jev-31-33-31-37-real",
+   "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T11:09:24+00:00"
+   "quando": "2026-10-04T12:12:17+00:00"
   },
   "31.36": {
    "id": "31.36",
@@ -7288,41 +7305,56 @@
   "31.37": {
    "id": "31.37",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #233 (feat/31-37-imagem-na-leitura): imagem na 1ª decisão da etapa com saidas; observe_screen e read_value fora da contagem de ciclo; suíte 24 (integ/suite-24 @ 2c7ab99e: SQLite 9377 passed em -n 6, PG dirigido 3485 passed em 170 arquivos com 2 falhas tratadas, uma correção só de teste e um intermitente verde ao repetir; front 1491) e deploy 24 no ar em 04/10 (saúde ok às 11:08:36Z, migração 098_etapa_opcional, prova de fora ok às 11:08:43Z). Prova real pendente com a Jev (uma leitura em aparelho de QA).",
+   "proof": "real",
+   "evidence": "04/10/2026, WIN-7S2UASNLFOP, deploy 24 (2c7ab99e). r-20261004113258-f014e6 (android-12, QA Messenger, lote:jev:31.37-01, mode=execute) fechou completed às 11:33:13Z. A etapa de leitura (read_first_conversation, com saídas) passou com 1 tentativa e 2 decisões, ambas no tier 0 e sem escalonamento. A 1ª decisão foi com imagem (image_reason=primeira_da_leitura); a 2ª, só pela árvore (arvore_rica). Ações: press_back e read_value. Custo estimado em ~US$ 0,05, mais a decisão fechada do Jev.",
    "blocker": null,
-   "grupo": "orquestradora-deploy24",
-   "modelo": "fable",
+   "arquivos": [
+    "backend/app/taskqueue/executor.py"
+   ],
+   "testes": [
+    "backend/tests/test_imagem_na_leitura.py"
+   ],
+   "grupo": "jev-31-33-31-37-real",
+   "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T11:09:24+00:00"
+   "quando": "2026-10-04T12:12:17+00:00"
   },
   "31.35": {
    "id": "31.35",
    "status": "partial",
    "proof": "simulated",
-   "evidence": "PR #224 (parte A: medida do prompt do ator e poda da barra do navegador, migração 097) e PR #226 (parte B: ações encadeadas e espera após open_url, entregue DESLIGADA); suíte 24 (integ/suite-24 @ 2c7ab99e: SQLite 9377 passed em -n 6, PG dirigido 3485 passed em 170 arquivos com 2 falhas tratadas, uma correção só de teste e um intermitente verde ao repetir; front 1491) e deploy 24 no ar em 04/10 (saúde ok às 11:08:36Z, migração 098_etapa_opcional, prova de fora ok às 11:08:43Z).",
-   "blocker": "Falta o A/B real do ai.acoes_por_decisao (teto US$ 1,00; adota com sucesso igual e 30 % menos decisões) e a comparação de custo nas ocorrências do 28.12.",
-   "grupo": "orquestradora-deploy24",
-   "modelo": "fable",
+   "evidence": "A/B do acoes_por_decisao não rodou: o perfil por execução não troca esse campo, e ligar no global exigiria editar o config.yaml do central. PR #242 (feat/31-35-perfil-encadear) faz o perfil escolher o valor (simulated: test_aba_ia_esquema_e_perfis, 16 passed).",
+   "blocker": "Falta o A/B real do acoes_por_decisao pelo perfil encadear-3 (teto US$ 1,00; adota com sucesso igual e 30 % menos decisões).",
+   "arquivos": [
+    "backend/app/config.py",
+    "backend/app/models.py",
+    "backend/app/planning/routing.py",
+    "frontend/src/api/types.ts"
+   ],
+   "testes": [
+    "backend/tests/test_aba_ia_esquema_e_perfis.py"
+   ],
+   "grupo": "jev-31-35b-ab",
+   "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T11:09:24+00:00"
+   "quando": "2026-10-04T12:12:17+00:00"
   },
   "28.10": {
    "id": "28.10",
    "status": "partial",
    "proof": "simulated",
-   "evidence": "PR #227 (canais/28-10-f1-colaboracao): colaboração entre pedidos, só a estrutura (F1), migração 096; suíte 24 (integ/suite-24 @ 2c7ab99e: SQLite 9377 passed em -n 6, PG dirigido 3485 passed em 170 arquivos com 2 falhas tratadas, uma correção só de teste e um intermitente verde ao repetir; front 1491) e deploy 24 no ar em 04/10 (saúde ok às 11:08:36Z, migração 098_etapa_opcional, prova de fora ok às 11:08:43Z).",
-   "blocker": "Faltam as fatias F2 a F5, uma por vez.",
-   "grupo": "orquestradora-deploy24",
+   "evidence": "PR #227 (F1, suíte 24, migração 096) e PR #240 (F2: dependência entre pedidos no laço e reserva dos filhos, desligada por padrão, sem migração); suíte 25 (integ/suite-25 @ 24da29ef: SQLite 9422 passed em -n 6, PG dirigido 2234 passed em 119 arquivos no farm-pg-rapido; 3 problemas tratados na integ) e deploy 25 no ar em 04/10 (deploy.ps1 terminou 12:06:27Z, migração 098, saúde ok, prova de fora ok às 12:06:50Z).",
+   "blocker": "Faltam as fatias F3 a F5, uma por vez.",
+   "grupo": "orquestradora-deploy25",
    "modelo": "fable",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T11:09:24+00:00"
+   "quando": "2026-10-04T12:12:28+00:00"
   },
   "14.13": {
    "id": "14.13",
@@ -7365,16 +7397,80 @@
   },
   "29.67": {
    "id": "29.67",
-   "status": "partial",
+   "status": "implemented",
    "proof": "simulated",
-   "evidence": "Diagnóstico real (leitura, 04/10, 30 h de sondas): o android-06 não tem defeito próprio, igual ao 03 em AVD e taxa de interrupções; convidado de 2 vCPU tem ~2x o irq do de 4 vCPU e sobe com a carga do host (0,04-0,07 calmo, acima de 0,10 sob suíte, 0,50 no 06 com SQLite -n 8). Correção no PR #234 (fix/29-67-irq-com-host-saturado), que entra na suíte 25: amostra de IRQ com a CPU do host acima de max_cpu_percent_before_boot não sobe nem zera irq_strikes; measurements(kind='irq') ganha host_cpu e ignorada; contador irq.amostra_ignorada. simulated: backend/tests/test_saude_do_convidado.py (2 novos). Medida de -n 6 contra -n 8 (06 ocioso): load1 mediano 1,29 contra 3,88, máximo 2,83 contra 12,29, +22 s de SQLite; regra no banco.md (commit 4ef33d7f no #234).",
-   "blocker": "A correção (PR #234) ainda não está na main: entra com a suíte 25.",
-   "grupo": "android-suite24",
+   "evidence": "PR #234 (fix/29-67-irq-com-host-saturado), suíte 25 e deploy 25 (24da29ef, no ar às 12:06Z, migração 098). Diagnóstico real (leitura, 04/10, 30 h de sondas): o android-06 não tem defeito próprio; convidado de 2 vCPU tem ~2x o irq do de 4 vCPU e sobe com a carga do host (0,04-0,07 calmo, acima de 0,10 sob suíte, 0,50 no 06 com SQLite -n 8). Amostra de IRQ com a CPU do host acima de android.max_cpu_percent_before_boot não sobe nem zera irq_strikes; measurements(kind='irq') ganha host_cpu e ignorada; contador irq.amostra_ignorada; aparelho remoto fica de fora. simulated: backend/tests/test_saude_do_convidado.py (2 novos). Regra do -n 6 na SQLite do funil no banco.md (4ef33d7f): o 06 ficou com load1 mediano 1,29 contra 3,88 do -n 8. Real not_run: contar amostras ignoradas e reinícios por IRQ na próxima suíte.",
+   "blocker": null,
+   "grupo": "android-suite25",
    "modelo": "claude-opus-5-5",
    "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T11:09:46+00:00"
+   "quando": "2026-10-04T12:12:17+00:00"
+  },
+  "31.38": {
+   "id": "31.38",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #238 (feat/31-38-dado-ausente). backend/tests/test_dado_ausente.py tem 3 testes; com test_prompts_licoes, test_compilador_de_skills, test_arquitetura, test_cascata_ator_barato, test_saidas_obrigatorias e test_etapa_opcional, foram 120 passed. docs-check limpo. O teto ai.max_decisoes_leitura=12 vem da medida: n=16 tentativas de leitura com sucesso desde 27/09, com p50 3, p95 8 e máx. 8 decisões. Prova real not_run: depois do deploy, UMA leitura com o dado ausente, com teto de US$ 0,30.",
+   "blocker": null,
+   "arquivos": [
+    "backend/app/automation/tools.py",
+    "backend/app/config.py",
+    "backend/app/planning/prompts.py",
+    "backend/app/taskqueue/executor.py",
+    "backend/app/taskqueue/scheduler.py",
+    "config/config.example.yaml"
+   ],
+   "testes": [
+    "backend/tests/test_dado_ausente.py",
+    "backend/tests/test_prompts_licoes.py"
+   ],
+   "grupo": "jev-31-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T12:12:17+00:00"
+  },
+  "14.12": {
+   "id": "14.12",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "04/10/2026, máquina central, main 2c7ab99e, sem SQLite rodando, % por thread do qemu-system por janelas de 60 s (scratchpad threads1412.ps1/braco1412.ps1). Braço A: android-07 gerenciado, gpu host, acordado do snapshot (c-20261004111124-9aca6f), 11:12:30Z a 11:22:46Z: 0,07 a 0,14 núcleo (mediana 0,09); nenhuma thread acima de 5,1 % de um núcleo. Braço B: o mesmo AVD num emulador avulso -read-only, -gpu swiftshader_indirect, porta 5720 (fora do parque e do harness), boot a frio 11:24:14Z, 11:24:2xZ a 11:36:40Z: 0,67 e 0,23 nos 2 primeiros minutos (boot), depois 0,06 a 0,11 (mediana 0,08); nenhuma thread acima de 7,6 %. Leitura dos aparelhos no ar às 11:10Z (gpu host): 04 0,07, 03 0,23, 01 0,43, 06 0,59 núcleo. O spin de 1,1 a 1,2 núcleo do RA-3b não se reproduz em nenhum renderizador; o aceite (até 0,3 núcleo ocioso) vale nos dois braços. Conta do cores 4 para 03/06 (só leitura): o 01 com 4 vCPU tem ~0,2 a 0,35 GB a mais de memória privada que os de 2 vCPU e não gasta mais CPU ocioso.",
+   "blocker": "Falta o braço C (aparelho no ar com a prévia aberta, pelo painel_equivalente.py, contra fechada), para atribuir a causa do spin medido no RA-3b, e o K novo. O cores 4 nos 03/06 depende da decisão do dono (risco de conta, aparelho com conta real); não aplicado.",
+   "grupo": "android-suite25",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T12:12:17+00:00"
+  },
+  "30.49": {
+   "id": "30.49",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #236 (fix/p4-ambiente-so-execucao): execução só de plano em planned não segura o P4; suíte 25 (integ/suite-25 @ 24da29ef: SQLite 9422 passed em -n 6, PG dirigido 2234 passed em 119 arquivos no farm-pg-rapido; 3 problemas tratados na integ) e deploy 25 no ar em 04/10 (deploy.ps1 terminou 12:06:27Z, migração 098, saúde ok, prova de fora ok às 12:06:50Z). Real observado: com as execuções só de plano canceladas o P4 despachou às 11:18:36Z; a prova com o código novo fica com a Aprendizado.",
+   "blocker": null,
+   "grupo": "orquestradora-deploy25",
+   "modelo": "fable",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T12:12:28+00:00"
+  },
+  "30.50": {
+   "id": "30.50",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #241 (fix/30-50-aparelho-com-as-variaveis): o P4 só escolhe aparelho com as variáveis de aparelho do plano; suíte 25 (integ/suite-25 @ 24da29ef: SQLite 9422 passed em -n 6, PG dirigido 2234 passed em 119 arquivos no farm-pg-rapido; 3 problemas tratados na integ) e deploy 25 no ar em 04/10 (deploy.ps1 terminou 12:06:27Z, migração 098, saúde ok, prova de fora ok às 12:06:50Z). Prova real pendente: novo pedido de validação do fluxo de QA (última prova da janela).",
+   "blocker": null,
+   "grupo": "orquestradora-deploy25",
+   "modelo": "fable",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T12:12:28+00:00"
   }
  },
  "rodadas": [
@@ -9401,6 +9497,45 @@
    ],
    "grupos": [
     "android-suite24"
+   ]
+  },
+  {
+   "quando": "2026-10-04T12:12:17+00:00",
+   "itens": [
+    "31.34",
+    "31.38",
+    "T.2",
+    "31.33",
+    "31.37",
+    "31.35"
+   ],
+   "grupos": [
+    "jev-31-33-31-37-real",
+    "jev-31-34-ab-real",
+    "jev-31-35b-ab",
+    "jev-31-38",
+    "jev-t2"
+   ]
+  },
+  {
+   "quando": "2026-10-04T12:12:17+00:00",
+   "itens": [
+    "29.67",
+    "14.12"
+   ],
+   "grupos": [
+    "android-suite25"
+   ]
+  },
+  {
+   "quando": "2026-10-04T12:12:28+00:00",
+   "itens": [
+    "30.49",
+    "30.50",
+    "28.10"
+   ],
+   "grupos": [
+    "orquestradora-deploy25"
    ]
   }
  ]

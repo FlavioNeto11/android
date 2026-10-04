@@ -26,6 +26,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   soltava o preparo antes de ele estourar o prazo (sem zumbi, a escada rodava). O preparo agora termina quando o
   manager começa a drenar o zumbi; as asserções não mudaram e a produção não foi tocada. Prova `simulated`: 8
   rodadas seguidas e o arquivo inteiro (37 passed).
+## 2026-10-04 — 28.13: fechamento da Fase 28 (branch canais/28-13-fechamento-fase-28, só docs)
+
+- `docs/relatorio-validacao.md` §30: os itens 28.1 a 28.21 com real × simulado × não executado, a fase cláusula por
+  cláusula (não fecha: o motor tem prova `real`, o caso de uso não), o que falta por quem decide e a validação.
+- 28.12 (real, 04/10, deploys 21 a 24): 4 pedidos, 5 execuções, todas acima do teto, US$ 1,288 de 1,70; reinícios sem
+  duplicar nem perder; 28.20 e 28.21 provados. Fica parcial: a leitura de varejo custa US$ 0,26 a 0,31 e trava no juiz.
+- Dois achados sem número: o encerramento por orçamento não gera relatório; `/cancelar` não grava o motivo.
+- `docs/decisoes.md`: ADR-074 (proposto). O ADR-059 passa de proposto a aceito; a fase fecha por cláusula; as emendas
+  do 28.5 vindas do dado real (28.20 e 28.21); o 28.10 em fatias F1 a F5 com regras de liberação; o custo do ator da
+  prova 1 registrado para a frente de latência e custo.
+- Prova real 1 do 28.12 (04/10, deploy 21): a ocorrência das 09:00Z parou no teto de US$ 0,10 com US$ 0,107 gastos.
+- Sem código, sem migração, sem teste de produto.
 
 ## 2026-10-04 — 29.67: a sonda de interrupção não conta a amostra com o host saturado (branch fix/29-67-irq-com-host-saturado)
 
