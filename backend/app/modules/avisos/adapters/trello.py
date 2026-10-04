@@ -138,10 +138,11 @@ class ClienteTrello:
         return FalhaDoTrello(motivo, status=status, definitiva=400 <= status < 500)
 
     async def _enviar(self, metodo: str, caminho: str, params: Mapping[str, str | int] | None,
-                      corpo: Mapping[str, object] | None) -> httpx.Response:
+                      corpo: Mapping[str, object] | None,
+                      arquivos: Mapping[str, tuple[str, bytes, str]] | None = None) -> httpx.Response:
         cliente = self._client or httpx.AsyncClient()
         try:
-            return await cliente.request(metodo, f"{API}{caminho}", params=params, json=corpo,
+            return await cliente.request(metodo, f"{API}{caminho}", params=params, json=corpo, files=arquivos,
                                          headers=self._cabecalhos(), timeout=self._timeout)
         except httpx.TimeoutException:
             raise FalhaDoTrello("tempo esgotado ao falar com o Trello") from None
@@ -152,10 +153,11 @@ class ClienteTrello:
                 await cliente.aclose()
 
     async def _pedir(self, metodo: str, caminho: str, *, params: Mapping[str, str | int] | None = None,
-                     corpo: Mapping[str, object] | None = None) -> Json:
+                     corpo: Mapping[str, object] | None = None,
+                     arquivos: Mapping[str, tuple[str, bytes, str]] | None = None) -> Json:
         for tentativa in range(MAX_REPETICOES + 1):
             await self._balde.tomar()
-            resposta = await self._enviar(metodo, caminho, params, corpo)
+            resposta = await self._enviar(metodo, caminho, params, corpo, arquivos)
             if resposta.status_code == 429:
                 if tentativa == MAX_REPETICOES:
                     raise FalhaDoTrello("Trello pediu para esperar (429) e continuou pedindo", status=429)
@@ -231,6 +233,27 @@ class ClienteTrello:
 
     async def arquivar_cartao(self, card: str) -> Json:
         return await self._pedir("PUT", f"/1/cards/{quote(card, safe='')}", corpo={"closed": True})
+
+    async def quadro_do_cartao(self, card: str) -> str:
+        """`GET /1/cards/{id}?fields=idBoard`: o quadro do cartão (para só anexar em cartão dos quadros configurados)."""
+        resposta = self._objeto(await self._pedir("GET", f"/1/cards/{quote(card, safe='')}", params={"fields": "idBoard"}),
+                                "o cartão")
+        quadro = resposta.get("idBoard")
+        if not isinstance(quadro, str) or not quadro:
+            raise FalhaDoTrello("o Trello não devolveu o quadro do cartão")
+        return quadro
+
+    async def anexar_arquivo(self, card: str, conteudo: bytes, mime: str, nome: str) -> str:
+        """`POST /1/cards/{id}/attachments` com o arquivo em multipart (item 28.24, exceção (b) do dono). `nome` é neutro
+        (`anexo-<sha>.<ext>`): o do remetente nunca chega aqui. Devolve o id do anexo no Trello. Como todo pedido do
+        cliente, a autenticação vai só no cabeçalho, nunca na URL nem no erro."""
+        resposta = self._objeto(await self._pedir(
+            "POST", f"/1/cards/{quote(card, safe='')}/attachments", arquivos={"file": (nome, conteudo, mime)},
+            params={"name": nome, "mimeType": mime}), "o anexo criado")
+        ident = resposta.get("id")
+        if not isinstance(ident, str) or not ident:
+            raise FalhaDoTrello("o Trello não devolveu o id do anexo")
+        return ident
 
     async def comentar(self, card: str, texto: str) -> str:
         """Comenta no cartão e devolve o id da action do comentário (a `ref_mensagem` da `canal_enviadas`)."""
