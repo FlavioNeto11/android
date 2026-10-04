@@ -105,10 +105,17 @@ def _rodar(tmp_path: Path, quebra: str = "") -> tuple[subprocess.CompletedProces
                           capture_output=True, text=True).stdout.strip())
     script = (subprocess.run([bash, "-c", f"cygpath -u '{SCRIPT}' 2>/dev/null || echo '{SCRIPT}'"],
                              capture_output=True, text=True).stdout.strip())
-    comando = (f'export PATH="{caminho}:$PATH" CURL_LOG="{reg}" QUEBRA="{quebra}" SITE=ligado CONTATO=ligado; '
+    # Blindagem contra a rede de verdade: o nome público é um `.invalid` (RFC 2606, nunca resolve) e, se o PATH não
+    # pegar a pasta do `curl` falso, o comando para antes de rodar a prova (saída 97) em vez de usar o `curl` real.
+    comando = (f'export PATH="{caminho}:$PATH" CURL_LOG="{reg}" QUEBRA="{quebra}" SITE=ligado CONTATO=ligado '
+               f'HOSTNAME_PUBLICO=prova.invalid; '
+               f'[ "$(command -v curl)" = "{caminho}/curl" ] || {{ echo "curl real no PATH"; exit 97; }}; '
                f'bash "{script}" depois')
     r = subprocess.run([bash, "-c", comando], capture_output=True, text=True, encoding="utf-8", timeout=120)
-    return r, registro.read_text(encoding="utf-8").splitlines()
+    assert r.returncode != 97, r.stdout + r.stderr
+    pedidos = registro.read_text(encoding="utf-8").splitlines()
+    assert pedidos, "nenhum pedido passou pelo curl falso"
+    return r, pedidos
 
 
 def test_com_o_site_e_o_contato_ligados_tudo_passa_e_nada_de_verdade_e_enviado(tmp_path: Path) -> None:
