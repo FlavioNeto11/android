@@ -61,7 +61,8 @@ export function DecididoSozinho() {
     <div className={styles.decididas}>
       <p className={styles.nota}>
         O que a plataforma resolveu por você, com a regra que decidiu. Dá para desfazer dentro de {lista?.desfazer_dias ?? 7} dias,
-        quando a fila de origem tem uma volta segura. Você recebe no Telegram um resumo por janela, nunca um aviso por decisão.
+        quando a fila de origem tem uma volta segura. Com os avisos do Telegram ligados, você recebe lá um resumo por janela,
+        nunca um aviso por decisão.
       </p>
 
       <div className={styles.filtros}>

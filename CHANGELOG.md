@@ -41,6 +41,20 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   da leitura") segue `ia_chamada_invalida`.
 - Medido no central, em leitura: 7 tentativas com esse texto em 04/10, que davam o candidato fk-9869d46dca do portal.
 - Prova `simulated`.
+## 2026-10-04 — 30.63: a régua da aprovação automática e a seção do painel, pelos achados das revisões (branch fix/30-63-regua-e-painel)
+
+- (a) A régua lê a revisão REAL mais recente do curador (`REVISOES_LIDAS` = 20). Uma simulada mais nova escondia um
+  parecer real contra. Há teste e mutante conferido.
+- (b) `AprovacaoAutomaticaCfg.modo` aceita o booleano do YAML: `on` sem aspas vira `true`, e em 04/10 isso derrubou a
+  carga do config. O exemplo e a doc pedem aspas.
+- (c) A seção "Decidido pela plataforma" mostra o erro da rota quando não é 404, em vez de sumir.
+- (d) Em `shadow`, com decisões antigas, a seção não diz mais "Nada foi decidido sozinho ainda".
+- (e) Pendências: o resumo no Telegram fica condicionado aos avisos ligados.
+- (g) Percurso no navegador da orquestradora (deploy 30). O "Por quê" mostrava a frase crua da régua ("saúde
+  pouca_amostra", "parecer observar (lr-…)") e agora usa os rótulos da tela. O "Ver todas" diz quantas foram desfeitas.
+- (f) A doc e a docstring diziam que mudar o modo valia sem reiniciar, e não vale: o `config.yaml` é lido na subida.
+  Medido em 04/10, às 18:38Z: o modo continuava `shadow` três minutos depois do "on" no arquivo.
+- Prova `simulated`: 2 testes novos no backend, 39 aprovados; 2 testes novos no front, 50 aprovados.
 
 ## 2026-10-04 — 29.73: o agente reconecta rápido depois do reinício do central (branch fix/29-73-reconexao-rapida)
 
