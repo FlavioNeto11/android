@@ -378,6 +378,10 @@ com o banco aberto só para leitura.
 - **Propostas** (sempre decisão de pessoa): `acao_de_catalogo` (ação nova não entra no catálogo pelo banco),
   `promover_licao` e `promover_tela`.
 - `scripts/aprendizado-backlog.py` grava o md em `data/aprendizado/` e imprime o topo.
+- `scripts/candidatos-do-portal.py` (29.72) grava `data/aprendizado/candidatos-do-portal.json`: os grupos abertos e sem
+  item do plano viram candidatos para a orquestradora numerar (contagem, ids de exemplo, frente sugerida). Ajuste de 04/10: `amostra_de_lote` (quantos dos exemplos são execução nossa, pela chave de idempotência
+  `lote:`/`ensaio:` ou pela prova de fluxo, lida do banco do central só para leitura, porque a API não expõe a chave) e
+  `dias_sem_ocorrer`; o grupo de amostra toda nossa ou parado há mais de 7 dias vai para o fim, com o motivo em `rebaixado`.
 - **Quebra de série do `pct_por_receita`** (a parte das etapas conduzidas só por receita, em `Saude`): no deploy 7
   (03/10/2026, processo do central de pé às 07:28:40Z; commit 49811568, migração 081) o denominador mudou. Antes,
   a etapa conduzida pela IA com as receitas desligadas ficava com `driven_by` nulo (`-`, fora da conta). Desde então
