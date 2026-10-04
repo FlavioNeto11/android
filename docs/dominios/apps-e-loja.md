@@ -84,6 +84,17 @@ A versão do formato também é conferida na carga (RA-24). `catalogo.yaml` (`co
 `sessao.yaml` (`versao`) só aceitam 1. Subir a versão exige, no mesmo commit, o código que a lê
 (`VERSOES_DE_CONTRATO`, `VERSOES_DE_TELAS`, `VERSOES_DE_SESSAO`).
 
+**Dica de tela ao juiz** (item 31.46): o `telas.yaml` aceita `dicas_ao_juiz: [{texto, telas?}]`, um fato sobre como a árvore
+do app é desenhada (o Outlook: a linha da lista é um `ComposeView` sem texto, então a árvore não mostra remetente nem
+assunto). O carregador recusa campo desconhecido, `texto` vazio ou acima de 600 caracteres e tela não declarada;
+`telas` vazio vale para o app inteiro. O executor passa o texto em `VerifyRequest.dicas_da_tela` quando o app da frente
+declara (`conhecimento_de_telas.dicas_da_tela`) e os provedores o põem no CONTEÚDO do pedido, no bloco
+`<dicas_da_tela>`, nunca no `VERIFIER_SYSTEM`; sem dica o pedido é o de antes. É fato de desenho, não regra de aceite: a
+pós-condição continua sendo a do passo, e o conteúdo da mensagem segue vindo da leitura visual (ADR-070). Vale para a
+etapa livre; a prova pela árvore da OPEN_MAIL_INBOX do catálogo é do 31.45. Prova `simulated`
+(`tests/test_dica_de_tela_ao_juiz.py`); a recusa real do juiz na pasta Enviados segue `not_run` (enviar e-mail é efeito
+externo não autorizado).
+
 **O que está no ar** (RA-24): `GET /api/apps/{pacote}/conhecimento` devolve cada YAML da pasta com `sha256` e
 `git_blob` do texto lido, que é o de `git rev-parse <commit>:<caminho>`, e aponta o arquivo gravado depois de o processo
 subir (`mudou_depois_do_inicio`) ([adendo v0.82](../api-contract.md); `integrations/app_declarado/prova.py`).

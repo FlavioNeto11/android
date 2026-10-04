@@ -123,6 +123,24 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Teste: `tests/test_outlook_declarado.py::test_a_caixa_do_outlook_prova_pela_lista_e_nao_pelo_juiz` (`simulated`);
   prova `real` não executada (uma abertura da caixa no android-01, só leitura, depois do deploy).
 
+## 2026-10-04 — 31.46: o juiz sabe que a linha da lista do Outlook não tem texto (branch fix/31-46-dica-da-lista-do-outlook)
+
+- Achado (r-…-e7bc42, 01/10): a etapa livre `verify_sent` foi recusada com "a lista de e-mails está vazia" na pasta Sent,
+  porque a linha da lista do Outlook é um `ComposeView` sem texto nem descrição na árvore. O 31.45 cobriu a ação
+  OPEN_MAIL_INBOX do catálogo; este cobre a etapa livre, que o planejador escreve com pós-condição `model_judged`.
+- Canal novo (não havia um do conhecimento do app até o juiz): `dicas_ao_juiz` no `telas.yaml` (esquema fechado, falha na
+  carga), `VerifyRequest.dicas_da_tela` e o bloco `<dicas_da_tela>` no texto do juiz dos dois provedores. O
+  `VERIFIER_SYSTEM` não muda (snapshot de `test_prompts_licoes`); sem dica o texto é idêntico ao de antes, então os outros
+  apps não mudam.
+- O Outlook declara a dica (app inteiro; só a caixa foi inspecionada, e a mesma lista serve Enviados: SUPOSIÇÃO). O texto
+  diz com todas as letras que linha presente prova SÓ que HÁ mensagens na pasta, que NÃO prova que uma mensagem específica
+  foi enviada ou recebida, e que, se a pós-condição pede remetente, assunto ou "o e-mail X foi enviado", sem leitura
+  visual o veredito continua NÃO confirmado (ADR-070). A ação VERIFY_SENT_MAIL no catálogo NÃO entrou.
+- Prova `simulated`: `tests/test_dica_de_tela_ao_juiz.py` (24: o texto da dica exige as frases acima; a ligação no
+  executor com juiz falso que captura o `VerifyRequest`, com dica no Outlook e sem dica em app que não declara) e 505
+  testes dos arquivos que tocam o conhecimento de telas, o texto do juiz e os provedores. O comportamento real do juiz
+  na pasta Enviados: `not_run` (exige chamada paga de IA e enviar e-mail é efeito externo não autorizado).
+
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
 - Retorno do dono (04/10, Aprendizado › Para aprovar com 5 selecionados): o formulário do aceite abria com o botão

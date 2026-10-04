@@ -3285,6 +3285,10 @@ class StepExecutor:
                     if quer_imagem:
                         obs = await self.devices.completar_imagem(rt, obs, timeout=call_timeout, lado_max=lado_max)
                     screen, _ = self._screen(obs, with_image=quer_imagem, protect=tuple(step.commit_guard), ai=ai_cfg)
+                    # Item 31.46: o que o app declara sobre a própria árvore (a linha da lista do Outlook sem texto),
+                    # uma vez por julgamento; vazio para quem não declara, e o pedido fica como era.
+                    dicas = telas_do_app.dicas_da_tela(CONHECIMENTO_DE_APPS / (obs.package or ""), obs.tree,
+                                                       package=obs.package)
                     # `t_end` é o orçamento DESTA verificação (nunca além do prazo da etapa): a chamada de
                     # verificação passa a ter limite próprio, que era o que faltava (achado #96).
                     if await self._sent_text_dispensa_o_juiz(step, capability, obs, need=need, local_proof=local_proof,
@@ -3302,7 +3306,8 @@ class StepExecutor:
                     else:
                         verdict = await self._ai(run_id, objective_id,
                                                  lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen,
-                                                                                            facts=list(facts or []))),
+                                                                                            facts=list(facts or []),
+                                                                                            dicas_da_tela=dicas)),
                                                  step_id=step.id, role="verify", deadline=t_end, attempt_id=attempt_id,
                                                  marca=MarcaDaChamada(motivo=proposito, image_reason=motivo_imagem))
                     judged_polls += 1
@@ -3322,7 +3327,8 @@ class StepExecutor:
                         verdict = await self._ai(
                             run_id, objective_id,
                             lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen,
-                                                                       facts=list(facts or []), escalate=True)),
+                                                                       facts=list(facts or []), escalate=True,
+                                                                       dicas_da_tela=dicas)),
                             step_id=step.id, role="verify", deadline=t_end, attempt_id=attempt_id,
                             marca=MarcaDaChamada(motivo="rejulgamento", escalate="nivel", image_reason=motivo_imagem))
                         level = verdict.delivery_level
@@ -3340,7 +3346,8 @@ class StepExecutor:
                         verdict = await self._ai(
                             run_id, objective_id,
                             lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen,
-                                                                       facts=list(facts or []), escalate=True)),
+                                                                       facts=list(facts or []), escalate=True,
+                                                                       dicas_da_tela=dicas)),
                             step_id=step.id, role="verify", deadline=t_end, attempt_id=attempt_id,
                             marca=MarcaDaChamada(motivo="rejulgamento", escalate="sim_com_efeito",
                                                  image_reason=motivo_imagem))

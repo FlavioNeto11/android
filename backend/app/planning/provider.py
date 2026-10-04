@@ -287,6 +287,9 @@ class VerifyRequest:
     #: Rejulgamento pelo modelo de ESCALONAMENTO (item 7.10): só quando o verificador barato recusou com um nível de
     #: entrega que já atende ao exigido — o erro que a bateria de 25/09 mediu. Mesmo prompt, outro modelo.
     escalate: bool = False
+    #: Item 31.46: fatos sobre como a tela do app é desenhada (`dicas_ao_juiz` do `telas.yaml`), ditos ao juiz. Vão no
+    #: conteúdo do pedido e NÃO no `VERIFIER_SYSTEM` (snapshot de `test_prompts_licoes`); vazio = o pedido de antes.
+    dicas_da_tela: list[str] = field(default_factory=list)
 
 
 #: Teto do que um leitor devolve (item 12.5): uma linha de lista de e-mail tem poucas linhas curtas; passar disto é

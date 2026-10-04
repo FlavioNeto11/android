@@ -167,3 +167,15 @@ leitura_visual:
     - tela: caixa_de_entrada
       dentro_de: [com.microsoft.office.outlook:id/conversation_list]
       saidas: [remetente, assunto]
+
+# Dicas ao juiz (item 31.46). OBSERVADO (r-…-e7bc42, 01/10): a etapa livre `verify_sent` foi recusada porque "a lista de
+# e-mails está vazia" na pasta Sent, e a linha da lista é um `ComposeView` sem texto nem descrição (ver acima). É um fato
+# de desenho da árvore, dito ao verificador junto do pedido; não troca a pós-condição do passo e vale para o app inteiro
+# porque a lista das outras pastas (Enviados, Rascunhos) é o mesmo componente (SUPOSIÇÃO: só a caixa foi inspecionada).
+dicas_ao_juiz:
+  - texto: >-
+      Neste app as linhas da lista de e-mails (caixa de entrada e pastas como Enviados) são um ComposeView sem texto na
+      hierarquia: a árvore não mostra remetente nem assunto, e isso sozinho não é motivo para recusar a pasta. Linha
+      presente prova SÓ que HÁ mensagens na pasta; NÃO prova que uma mensagem específica foi enviada ou recebida. Se a
+      pós-condição pede remetente, assunto ou "o e-mail X foi enviado", sem leitura visual o veredito continua NÃO
+      confirmado.
