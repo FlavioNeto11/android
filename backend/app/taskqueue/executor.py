@@ -11,12 +11,14 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import io
+import json
 import logging
 import re
 import time
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Protocol, Sequence, TypeVar
+from urllib.parse import unquote
 
 from PIL import Image
 from pydantic import BaseModel
@@ -54,6 +56,7 @@ from ..planning.provider import (AIError, AIProvider, AppContext, Decision, Deci
                                  MarcaDaChamada, MotivoDaChamada, MotivoDaImagem, MotivoDeEscalonamento,
                                  PreparoDaDecisao, ScreenInput, StepContext, Transcricao, Usage, Verdict, VerifyRequest)
 from ..db import Row, loads
+from ..security.redaction import redact
 from ..security.secret_store import SecretStoreLocked, SecretStoreUnavailable
 from ..security.sensitive_input import SensitiveInputError, SensitiveInputUnavailable
 from ..social.approvals import ler_rascunho
@@ -176,6 +179,75 @@ def _host(url_ou_texto: str) -> str:
     t = (url_ou_texto or "").strip().casefold()
     t = t.split("://", 1)[1] if "://" in t else t
     return t.split("/", 1)[0].split("#", 1)[0].split("?", 1)[0].rsplit("@", 1)[-1].split(":", 1)[0]
+
+
+#: 31.52: o que torna o 1º pedaço do caminho opaco (link de redefinição, convite, sessão): UUID, JWT, ou 16+ caracteres
+#: de token (letras, dígitos e `_-=.`) com pelo menos um dígito. Um slug sem dígito ("como-fazer-bolo") fica.
+_UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+_JWT = re.compile(r"[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+")
+_TRECHO_DE_TOKEN = re.compile(r"[A-Za-z0-9_\-=.]{16,}")
+#: `usuario@` ou `usuario:senha@` antes do host. A senha pode ter `/`, `?`, `#` e `@`; o `@` que fecha o usuário é o
+#: que deixa depois dele um host sem `@` até o primeiro `/`, `?`, `#` ou o fim. `:dígitos` seguido de `/`, `?`, `#` ou
+#: do fim é a porta, não senha (revisão 15c: sem isso, `site:8080/perfil/pessoa@exemplo` virava o host `exemplo`).
+_USUARIO_NA_URL = re.compile(r"^[^/@:?#\s]+(?::(?!\d+(?:[/?#]|$))\S*?)?@(?=[^/?#@\s]+(?:[/?#]|$))")
+#: Teto do texto que a limpeza lê: as regex abaixo são lineares nesse tamanho, e o histórico não precisa de mais.
+_TETO_DO_TEXTO = 2000
+
+
+def _pedaco_opaco(pedaco: str) -> bool:
+    if len(pedaco) > 200:              # longo assim é opaco, e as regex abaixo crescem com o quadrado do tamanho
+        return True
+    p = unquote(pedaco)
+    return ("@" in p or bool(_UUID.search(p)) or bool(_JWT.search(p))
+            or any(any(ch.isdigit() for ch in m.group(0)) for m in _TRECHO_DE_TOKEN.finditer(p)))
+
+
+def endereco_para_o_prompt(texto: str) -> str:
+    """31.52: um endereço como ele vai à IA (árvore, histórico do ator) e ao diagnóstico: o host e o 1º pedaço do
+    caminho; o resto do caminho vira `/…`, a query `?…` e o fragmento `#…`.
+
+    O redator pega segredo no formato que conhece (`senha=…`), não dado pessoal nem `?code=`, `token=`, e-mail em
+    `%40`, UUID, JWT ou base64url no caminho de um link de redefinição ou convite (revisão da orquestradora, 04/10:
+    uma lista de formatos sempre deixa um passar). O 1º pedaço também vira `…` se, decodificado, tiver `@` ou casar
+    `_pedaco_opaco`. Usuário e senha antes do host somem. É o que o ator precisa para saber em que site e seção está."""
+    t = (texto or "").strip()[:_TETO_DO_TEXTO]
+    esquema = ""
+    if "://" in t:
+        esquema, t = t.split("://", 1)
+        esquema += "://"
+    t = _USUARIO_NA_URL.sub("", t, count=1)
+    cauda = ""
+    for marca in ("?", "#"):
+        if marca in t:
+            t, _ = t.split(marca, 1)
+            cauda = cauda or f"{marca}…"
+    host, barra, caminho = t.partition("/")
+    if not barra:
+        return esquema + host + cauda
+    primeiro, _, resto = caminho.partition("/")
+    primeiro = "…" if primeiro and _pedaco_opaco(primeiro) else primeiro
+    return esquema + host + "/" + primeiro + ("/…" if resto else ("/" if caminho.endswith("/") else "")) + cauda
+
+
+#: Um endereço no meio de um texto (erro do driver, resultado de ação): com esquema, `www.`, ou host com `/` ou `?`.
+_URL_NO_TEXTO = re.compile(r"(?:https?://|\bwww\.)[^\s'\"<>]+|\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?=[/?])[^\s'\"<>]*", re.I)
+
+
+def enderecos_limpos(texto: str) -> str:
+    """31.52: o texto com cada endereço passado por `endereco_para_o_prompt` (histórico do ator). Cortado em
+    `_TETO_DO_TEXTO` antes da regex: um erro do driver com um blob de 100 mil caracteres travava o laço por minutos."""
+    return _URL_NO_TEXTO.sub(lambda m: endereco_para_o_prompt(m.group(0)), (texto or "")[:_TETO_DO_TEXTO])
+
+
+def _arvore_com_endereco_limpo(tree: UiTree, pacote: str | None) -> UiTree:
+    """A árvore com a barra de endereço do navegador passada por `endereco_para_o_prompt`. A árvore local (seletores,
+    guardas, a conferência do site em `type_secret`) segue com o texto cru; esta é só a que sai daqui."""
+    barra = BARRA_DE_ENDERECO.get(pacote or "")
+    if barra is None or not any(e.resource_id == barra and e.text for e in tree.elements):
+        return tree
+    return dataclasses.replace(tree, elements=[
+        dataclasses.replace(e, text=endereco_para_o_prompt(e.text)) if e.resource_id == barra and e.text else e
+        for e in tree.elements])
 
 
 def urls_da_pessoa(command: str) -> set[str]:
@@ -469,9 +541,11 @@ LIMITE_DA_ETAPA_OPCIONAL = 3
 #: Item 31.35: a barra do navegador, por pacote, que NÃO vai na árvore do prompt do ator (`ai.podar_ui_do_navegador`).
 #: Lista fechada e explícita: diálogos próprios do Chrome (primeira execução, permissões) continuam no prompt. Na
 #: ocorrência r-20261004090000-bbfe54 (28.12) as telas com árvore rica foram as de entrada nova mais cara (~4,2 mil).
+#: 31.52: a `url_bar` FICA no prompt. É onde o ator lê em que página está e onde digita um endereço; sem ela, "abrir a
+#: página X" e "estou na página certa?" ficavam às cegas (risco achado na medida do 31.35).
 UI_DO_NAVEGADOR: dict[str, frozenset[str]] = {
     "com.android.chrome": frozenset(f"com.android.chrome:id/{i}" for i in (
-        "toolbar", "toolbar_container", "toolbar_buttons", "location_bar", "url_bar", "location_bar_status_icon",
+        "toolbar", "toolbar_container", "toolbar_buttons", "location_bar", "location_bar_status_icon",
         "url_action_container", "delete_button", "mic_button", "tab_switcher_button", "tab_count",
         "menu_button", "menu_button_wrapper", "home_button", "optional_toolbar_button", "bottom_toolbar",
         "control_container", "security_button")),
@@ -1096,10 +1170,35 @@ class StepExecutor:
         ocultar = (UI_DO_NAVEGADOR.get(obs.package or "", frozenset())
                    if (ai or self.cfg.file.ai).podar_ui_do_navegador else frozenset())
         podados = sum(1 for e in obs.tree.elements if e.resource_id in ocultar) if ocultar else 0
-        lines = obs.tree.prompt_lines(self.cfg.file.ai.max_hierarchy_elements, scale, protect=protect, boost=boost,
-                                      ocultar=ocultar)
+        # 31.52: a `url_bar` fica no prompt, mas sem query, fragmento e pedaço opaco do caminho
+        lines = _arvore_com_endereco_limpo(obs.tree, obs.package).prompt_lines(
+            self.cfg.file.ai.max_hierarchy_elements, scale, protect=protect, boost=boost, ocultar=ocultar)
         return ScreenInput(width=w, height=h, jpeg=jpeg, elements=lines, package=obs.package,
                            sensitive=obs.sensitive, tree=obs.tree, podados=podados), scale
+
+    async def _arvore_antes_da_poda(self, obs: Observation, podados: int, *, run_id: str, iid: str, step_id: str,
+                                    attempt_id: str) -> None:
+        """31.52, diagnóstico DESLIGADO por padrão: grava, como evidência `hierarchy` (JSON), a árvore do navegador
+        ANTES da poda do 31.35, só nos aparelhos de `ai.diagnostico_arvore_aparelhos` (os de teste que o dono listar) e
+        nunca de tela sensível. Sem ela, o A/B offline da poda era impossível: só os números depois dela ficavam em
+        `ai_calls`. Texto e descrição passam pela redação de segredos. Falhar ao gravar não muda a etapa.
+
+        Aparelho com conta real (vínculo ativo de persona, a regra do ADR-055) nunca grava, mesmo listado: o vínculo
+        mora no banco, não no config, por isso a recusa é aqui, na hora de gravar, e não na carga do config."""
+        if self.repo.db.one("SELECT 1 FROM device_profile_bindings WHERE instance_id=? AND active=1 LIMIT 1",
+                            (iid,)) is not None:
+            log.warning("%s: diagnóstico 31.52 recusado, o aparelho tem conta real vinculada", iid)
+            return
+        corpo = {"regra": "31.52", "package": obs.package, "width": obs.width, "height": obs.height, "podados": podados,
+                 "elements": [{**e.to_dict(), "text": redact(e.text) or "", "desc": redact(e.desc) or ""}
+                              for e in _arvore_com_endereco_limpo(obs.tree, obs.package).elements]}
+        try:
+            await self.repo.add_evidence_async(
+                run_id=run_id, instance_id=iid, step_id=step_id, attempt_id=attempt_id, kind="hierarchy",
+                note=f"31.52: árvore do navegador antes da poda ({podados} podado(s)); diagnóstico",
+                data=json.dumps(corpo, ensure_ascii=False).encode("utf-8"), ext="json")
+        except Exception:  # noqa: BLE001 - diagnóstico nunca derruba a etapa
+            log.exception("%s: não foi possível gravar a árvore antes da poda", iid)
 
     # ------------------------------------------------------------------ etapa
     async def run_step(self, *, run: Any, objective: Any, step: StepDTO, attempt_id: str, rt: DeviceRuntime,
@@ -2287,6 +2386,9 @@ class StepExecutor:
                 screen, scale = self._screen(obs, with_image=quer_imagem,
                                              protect=tuple(step.commit_guard), boost=_boost_terms(step, app),
                                              ai=ai_cfg)
+                if screen.podados and iid in ai_cfg.diagnostico_arvore_aparelhos and not obs.sensitive:
+                    await self._arvore_antes_da_poda(obs, screen.podados, run_id=run_id, iid=iid, step_id=step.id,
+                                                     attempt_id=attempt_id)
                 image_requested = False
                 if encadeada is None:          # a ação encadeada não é decisão nova (31.35)
                     if teto_leitura and decisions >= teto_leitura:
@@ -2880,13 +2982,15 @@ class StepExecutor:
                     self.devices.invalidate_automation(rt, str(exc))
                     await self.devices.ensure_automation(rt)
                 if incerta:
-                    history.append(f"(executor) {decision.tool}({_brief(args)}) sem confirmação ({exc}): a ação pode "
+                    history.append(f"(executor) {decision.tool}({_brief(args)}) sem confirmação "
+                                   f"({enderecos_limpos(str(exc))}): a ação pode "
                                    "ter chegado ao app — confira na tela atual antes de repetir.")
                 else:
-                    history.append(f"{decision.tool}({_brief(args)}) FALHOU: {exc}")
+                    history.append(f"{decision.tool}({_brief(args)}) FALHOU: {enderecos_limpos(str(exc))}")
                 errors_in_row += 1
                 if errors_in_row >= 3:
-                    return await fail_or_retry(f"Falhas consecutivas do driver: {exc}", obs)
+                    # o erro vai a attempts.error, que a tentativa seguinte põe no histórico do ator
+                    return await fail_or_retry(f"Falhas consecutivas do driver: {enderecos_limpos(str(exc))}", obs)
                 continue
             errors_in_row = 0
             repo.finish_action(aid, ActionStatus.done, effect_possible=decision.tool in EFFECT_CAPABLE,
@@ -3971,9 +4075,13 @@ def _target_key(args: Any) -> str:
 
 
 def _brief(args: Any) -> str:
+    """A ação no histórico do ator. 31.52: a URL do `open_url` vai só com host e 1º pedaço do caminho."""
     d = args.model_dump(exclude={"rationale"}, exclude_none=True)
-    return ", ".join(f"{k}={str(v)[:60]!r}" for k, v in d.items())
+    return ", ".join(f"{k}={str(endereco_para_o_prompt(str(v)) if k.endswith('url') else v)[:60]!r}"
+                     for k, v in d.items())
 
 
 def _brief_result(result: dict[str, Any]) -> str:
-    return ", ".join(f"{k}={str(v)[:80]}" for k, v in result.items() if k != "ms") or "ok"
+    # o `open_url` devolve `opened_url` (revisão 15c): toda chave que termina em `url` passa pela limpeza
+    return ", ".join(f"{k}={str(endereco_para_o_prompt(str(v)) if k.endswith('url') else v)[:80]}"
+                     for k, v in result.items() if k != "ms") or "ok"

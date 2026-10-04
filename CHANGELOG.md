@@ -218,6 +218,17 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
 - Fica com o ator: os 19 casos em que o app já estava na frente, dentro de uma conversa. Voltar por regra pede uma
   árvore real para medir.
 - Teste: `tests/test_caminho_rapido_2.py`, com os dois modelos e o aviso, `simulated`. `real`: not_run.
+## 2026-10-04 — 31.52: a árvore do Chrome antes da poda, por diagnóstico; a barra de endereço fica no prompt (branch feat/31-52-arvore-antes-da-poda)
+
+- `ai.diagnostico_arvore_aparelhos` vem vazia por padrão, e assim nada é gravado. Nos aparelhos de teste listados, a
+  decisão do ator com algo podado grava a árvore de antes da poda como evidência `hierarchy` JSON, com o texto redigido;
+  tela sensível nunca entra. Aparelho com conta real vinculada nunca grava, mesmo listado.
+- A barra de endereço do Chrome vai ao ator e ao diagnóstico só como host e caminho: query, fragmento e pedaço
+  opaco do caminho (token de redefinição) não saem da máquina pelo prompt.
+- `scripts/poda-ab-offline.py` faz o A/B da poda sobre essas árvores, mostrando só números.
+- A `url_bar` sai da lista da poda e volta ao prompt do ator (risco achado na medida do 31.35).
+- Teste: `tests/test_tamanho_do_prompt_do_ator.py`, `simulated`. `real`: not_run (janela de prova, com o diagnóstico
+  ligado num aparelho de teste).
 
 ## 2026-10-04 — 28.28: pergunta ao bot do Telegram vai à orquestradora, e nome de persona não sai pelo canal (branch canais/28-28-pergunta-ao-bot)
 
