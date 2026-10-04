@@ -5947,12 +5947,23 @@ Instagram ("Add AI label").
   recusava.
 - **Catálogo `commit_switch`** (lista de `<argumento>:<seletor>`, validada na carga: o argumento é declarado pela ação e a
   ação tem `commit_selector`): com o argumento `"true"`, o interruptor do seletor tem de estar LIGADO na tela antes do
-  toque de efeito (o elemento marcado, ou um marcado cuja faixa vertical se sobrepõe à dele). Sem ele, o toque é
-  recusado; na 2ª recusa (ou na 1ª, vinda de receita) a etapa termina `waiting_user`, "nada foi publicado". O CREATE_POST
+  toque de efeito: o elemento marcado, ou o ÚNICO candidato da linha, que é clicável, `checkable` ou marcado, fica à
+  direita do texto e tem o centro na faixa dele alargada em meia altura. Sem ele, o toque é recusado; dois candidatos
+  empatados recusam como "interruptor ambíguo". Na 2ª recusa (ou na 1ª, vinda de receita) a etapa termina
+  `waiting_user`, "nada foi publicado". `UiElement.checkable` é novo e só aparece no dicionário quando é verdadeiro. O CREATE_POST
   declara `rotulo_ia:text==Add AI label`, e o `commit_selector` dele passa a `id=share_footer_button` (medido nas
   capturas da publicação manual do 8.3, android-01, 03/10 04:43Z: o texto "Share" era um TextView filho não clicável).
 - **Painel:** "com rótulo de IA" ou "sem rótulo de IA (imagem enviada por você)" no cartão do plano, na aba Textos e no
   guia de aprovações.
+- **Catálogo `commit_switch_mark`** (`<argumento>:<seletor>`; exige `commit_switch`): com o argumento `"true"`, depois do
+  efeito comprovado a marca tem de estar colada abaixo do nome da conta, no cartão do TOPO da tela. É só leitura e pela
+  árvore: a última tela da verificação e no máximo uma releitura. O CREATE_POST declara
+  `rotulo_ia:id=secondary_label|text==AI info`, medido no 8.3. Sem a marca, a etapa termina `uncertain`, "publicado; o
+  rótulo de IA não foi confirmado. Abra a publicação…", com `StepResult.efeito_comprovado: true`.
+- **`StepResult.efeito_comprovado`** (`boolean`, ausente quando falso): o efeito em si foi comprovado e só uma afirmação
+  sobre ele ficou incerta. A etapa nunca se refaz: `recovery_steps` a atravessa como comprovada, e `POST
+  /runs/{id}/objectives/{oid}/resolve` com `retry` responde **409 `efeito_comprovado`**. Restam confirmar (com o print) e
+  abandonar.
 - **Prova:** `simulated` (`backend/tests/test_rotulo_ia.py`, `backend/tests/test_rotulo_ia_no_executor.py`,
   `frontend/src/features/runs/PortaDoPlano.test.tsx`, `frontend/src/features/runs/execution.test.tsx`). `not_run`: a
   conferência dos seletores na versão atual do app (controle manual, sem Share) e a 1ª publicação real.

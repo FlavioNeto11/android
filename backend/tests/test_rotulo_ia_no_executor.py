@@ -26,7 +26,9 @@ from app.models import Plan, PlannerInfo, ProfileCreate
 from app.planning.capabilities import CapabilityNode, compose, load_catalog
 from app.planning.provider import Decision, DecisionRequest, PlanRequest, Usage, Verdict, VerifyRequest
 from app.state import AppState
+from app.models import ResolveBody
 from app.taskqueue import executor
+from app.taskqueue.service import RunError
 from app.taskqueue.repository import Repository
 
 from .conftest import CountingProvider, Harness
@@ -329,9 +331,21 @@ async def test_sem_a_marca_no_post_publicado_rotulo_nao_confirmado(tmp_path: Pat
         fake = _aparelho(h)
         assert len(fake.shares) == 1                                           # nada se repete
         assert etapa["status"] == "uncertain", (etapa["status"], etapa["status_detail"])
-        assert (etapa["status_detail"] or "").startswith("publicado, rótulo não confirmado")
+        assert (etapa["status_detail"] or "").startswith("publicado; o rótulo de IA não foi confirmado. Abra a "
+                                                         "publicação")
+        assert json.loads(etapa["result"])["efeito_comprovado"] is True
         toques = [c for c in fake.calls if c.startswith("tap:")]
         assert toques == [f"tap:{fake.shares[0]}"]                             # só o Share foi tocado
+
+        # Revisão D1: "repetir" o item incerto refaria a etapa com id novo, e o Share sairia de novo. Recusado; e nem a
+        # retomada (`recovery_steps`) põe a etapa de volta no plano.
+        s = _estado(h)
+        with pytest.raises(RunError) as erro:
+            s.runs.resolve(etapa["run_id"], etapa["objective_id"], ResolveBody(resolution="retry"))
+        assert erro.value.code == "efeito_comprovado"
+        run = s.db.one("SELECT * FROM runs WHERE id=?", (etapa["run_id"],))
+        assert "publicar" not in [p.key for p in s.scheduler.recovery_steps(run, etapa["objective_id"])]
+        assert len(fake.shares) == 1
 
 
 async def test_sem_rotulo_pedido_a_marca_nao_e_conferida(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -91,6 +91,20 @@ def test_o_interruptor_nao_clicavel_da_linha_clicavel_ainda_e_o_candidato() -> N
     assert interruptor_ligado(ligado, "text==Add AI label")
 
 
+def test_o_vizinho_que_so_encosta_nao_e_candidato() -> None:
+    """Revisão C1b: o interruptor da linha nem clicável nem marcável (o uiautomator não o expõe) e desligado; o LIGADO
+    da linha vizinha encosta na faixa do texto. Com o centro dele fora da faixa alargada em meia altura, não é
+    candidato: sem candidato, desligado, e o Share é recusado."""
+    texto = _no("t", (104, 282), (505, 543), clicavel=False, texto="Add AI label")
+    vizinho_ligado = _no("vizinho", (584, 688), (420, 510), checked=True)        # centro 465; a faixa é 486..562
+    tela = UiTree(elements=[texto, _no("dele", (584, 688), (495, 591), clicavel=False), vizinho_ligado],
+                  packages=[IG], sensitive=False)
+    assert not interruptor_ligado(tela, "text==Add AI label")
+    assert rejeicao_do_interruptor(SWITCH, {"rotulo_ia": "true"}, tela) is not None
+    medido = UiTree(elements=[texto, _no("sw", (584, 688), (495, 591), checked=True)], packages=[IG], sensitive=False)
+    assert interruptor_ligado(medido, "text==Add AI label")                       # o 8.3: centro 543, dentro
+
+
 def test_o_empate_diz_interruptor_ambiguo() -> None:
     """Interruptor dentro de um contêiner também à direita: empate, falha fechado, e o motivo diz "ambíguo" para quem
     atende o `waiting_user` (não "ligue o interruptor", que a pessoa veria ligado)."""
@@ -180,6 +194,19 @@ def test_a_marca_de_ia_so_conta_colada_no_nome_da_nossa_conta() -> None:
     longe = UiTree(elements=[_cabecalho("lucas.almeida9484", 395, marca=False)[0],
                              _cabecalho("x", 900, i="c")[1]], packages=[IG], sensitive=False)
     assert not marca_junto_da_conta(longe, MARCA, "lucas.almeida9484")
+    # Revisão D2: o post NOVO (no topo) sem marca e um ANTIGO nosso, mais abaixo, com marca: não confirma
+    antigo = UiTree(elements=[*_cabecalho("lucas.almeida9484", 395, marca=False),
+                              *_cabecalho("lucas.almeida9484", 1000, i="velho")], packages=[IG], sensitive=False)
+    assert not marca_junto_da_conta(antigo, MARCA, "lucas.almeida9484")
+    # ... e mesmo com o cabeçalho do topo de outro tipo (sem o `resource_id` do antigo): o nome mais alto é que decide
+    sem_rid = [dataclasses.replace(e, resource_id="") for e in _cabecalho("lucas.almeida9484", 395, marca=False)]
+    antigo2 = UiTree(elements=[*sem_rid, *_cabecalho("lucas.almeida9484", 1000, i="velho")], packages=[IG],
+                     sensitive=False)
+    assert not marca_junto_da_conta(antigo2, MARCA, "lucas.almeida9484")
+    # o cartão do topo é de outro perfil (o post novo não está onde devia) e o nosso, com marca, vem abaixo: dúvida
+    outro_no_topo = UiTree(elements=[*_cabecalho("outra.conta", 395, marca=False, i="b"),
+                                     *_cabecalho("lucas.almeida9484", 1000)], packages=[IG], sensitive=False)
+    assert not marca_junto_da_conta(outro_no_topo, MARCA, "lucas.almeida9484")
     # o texto "AI info" sem o `secondary_label` medido: dúvida, não conta
     sem_id = UiTree(elements=[_cabecalho("lucas.almeida9484", 395, marca=False)[0],
                               dataclasses.replace(_cabecalho("lucas.almeida9484", 395)[1], resource_id="")],

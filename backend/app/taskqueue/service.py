@@ -1841,6 +1841,11 @@ class RunService:
             # Achado #109: abandonar o item que espera aprovação não pode deixar o pedido na fila "Aguardando aprovação".
             self.scheduler._expirar_aprovacoes(objective_id, "item abandonado pelo usuário")  # noqa: SLF001
         elif body.resolution == "retry":
+            if blocking is not None and (loads(blocking["result"], {}) or {}).get("efeito_comprovado"):
+                # 29.79 (d): o efeito saiu (comprovado) e só uma afirmação sobre ele ficou incerta: repetir faria o
+                # efeito de novo (publicar duas vezes), que é pior do que a afirmação não confirmada.
+                raise RunError("efeito_comprovado", "O efeito desta etapa já saiu e foi comprovado; repetir o faria de "
+                                                    "novo. Confira no aparelho e confirme (com o print) ou abandone.")
             self._requeue(obj, "Usuário decidiu repetir este item." + note)
         elif obj["blocked_kind"] == "approval":
             # "Confirmar concluído" marcaria a etapa como feita SEM executar — e é justamente a etapa que espera

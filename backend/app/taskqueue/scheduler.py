@@ -2052,6 +2052,12 @@ class Scheduler:
         by_key = {s.key: s for s in plan.steps}
         proven = {r["key"]: bool(r["side_effect"]) for r in self.repo.db.query(
             "SELECT key, side_effect FROM steps WHERE objective_id=? AND status='succeeded'", (objective_id,))}
+        # 29.79 (d): o efeito comprovado com uma afirmação a mais incerta (a publicação saiu, o rótulo não se confirmou)
+        # também não volta: refazê-la publicaria de novo. Atravessa-se como o efeito comprovado.
+        for r in self.repo.db.query("SELECT key, result FROM steps WHERE objective_id=? AND side_effect=1"
+                                    " AND status<>'succeeded' AND result IS NOT NULL", (objective_id,)):
+            if (loads(r["result"], {}) or {}).get("efeito_comprovado"):
+                proven[r["key"]] = True
         # Rejeitada é DECISÃO, não lacuna: recriar a chave reabriria, com OUTRO texto, uma aprovação que alguém já
         # recusou — e a recusa, que a tela promete ser definitiva, não sobreviveria à primeira falha de qualquer
         # outra etapa do mesmo objetivo.

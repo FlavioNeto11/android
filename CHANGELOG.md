@@ -215,7 +215,10 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
 - Revisão (d): a contagem prova que publicou, não que saiu COM o rótulo. Catálogo novo `commit_switch_mark`; no
   CREATE_POST, `rotulo_ia:id=secondary_label|text==AI info`, medido no 8.3 no cabeçalho do post. Depois do Share, só
   leitura e pela árvore, a marca tem de estar colada abaixo do nome da conta: a última tela da verificação e no máximo
-  uma releitura. Sem ela, a etapa fica `uncertain`, "publicado, rótulo não confirmado", e o Share não se repete.
+  uma releitura. Só conta o cartão do TOPO (D2: um post antigo nosso com rótulo não confirma o novo). Sem ela, a etapa
+  fica `uncertain` ("publicado; o rótulo de IA não foi confirmado. Abra a publicação…") com
+  `StepResult.efeito_comprovado`. D1: essa etapa nunca se refaz. O "repetir" responde 409 `efeito_comprovado`, e
+  `recovery_steps` a atravessa. C1b: o candidato a interruptor tem o centro na faixa do texto alargada em meia altura.
 - Prova: `simulated` (`tests/test_rotulo_ia.py`, `tests/test_rotulo_ia_no_executor.py`, `PortaDoPlano.test.tsx`,
   `execution.test.tsx`). `not_run`: a medida dos seletores no aparelho depois do deploy e a 1ª publicação real.
 

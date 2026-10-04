@@ -3220,13 +3220,14 @@ class StepExecutor:
             # a pessoa confere; nada se repete.
             faltam = await self._marcas_depois_do_efeito(rt, cap, step, obs, account_label, call_timeout)
             if faltam:
-                motivo = ("publicado, rótulo não confirmado: a publicação foi comprovada (" + text + "), mas "
-                          + ", ".join(f"'{m}'" for m in faltam) + " não apareceu junto do nome da conta "
-                          + (account_label or "(desconhecida)") + " na tela depois do efeito. Confira a publicação "
-                          "no aparelho; não publique de novo.")
+                motivo = ("publicado; o rótulo de IA não foi confirmado. Abra a publicação: se o rótulo não "
+                          "estiver lá, ligue-o pelo app ou remova a publicação. Não publique de novo. (A publicação "
+                          "foi comprovada: " + text + "; " + ", ".join(f"'{m}'" for m in faltam) + " não apareceu "
+                          "no cartão do topo, junto do nome da conta " + (account_label or "(desconhecida)") + ".)")
                 await evidence(obs, motivo)
                 return StepOutcome(Outcome.uncertain, motivo, delivery_level=level,
-                                   result=StepResult(verified=False, evidence_text=motivo, delivery_level=level))
+                                   result=StepResult(verified=False, evidence_text=motivo, delivery_level=level,
+                                                     efeito_comprovado=True))
             if exigidas := marcas_exigidas(cap.commit_switch_mark, self._argumentos_da_guarda(cap, step)):
                 text += "; marca " + ", ".join(f"'{m}'" for m in exigidas) + " vista junto do nome da conta"
         if ok:
@@ -3870,17 +3871,23 @@ def estado_do_interruptor(tree: UiTree, seletor: str) -> str:
     texto), o de centro mais próximo do centro do texto. Revisão (c) do 29.79: qualquer marcável encostado na faixa
     valia, e o interruptor ligado da linha de cima (compartilhar em outra rede) passaria por este. Revisão C1: o
     interruptor `clickable=false` (a linha é que recebe o toque) entra pelo `checkable` — sem isso o vizinho ligado
-    virava o único candidato. Dois candidatos quase empatados: "ambiguo" (em dúvida, não publica)."""
+    virava o único candidato. Revisão C1b: e o centro do candidato tem de cair na faixa do texto alargada em meia
+    altura. Dois candidatos quase empatados: "ambiguo" (em dúvida, não publica)."""
     estado = "ausente"
     for alvo in tree.find_selector(seletor):
         if alvo.checked:
             return "ligado"
         x2, y1, y2 = alvo.bounds[2], alvo.bounds[1], alvo.bounds[3]
         centro = (y1 + y2) / 2
+        # Revisão C1b: o centro do candidato cai na faixa do texto alargada em meia altura para cada lado (no 8.3,
+        # 486..562: o interruptor medido tem o centro em 543). O ligado da linha vizinha que só encosta (centro em 465)
+        # fica de fora mesmo quando o da linha não é clicável nem marcável.
+        meia = (y2 - y1) / 2
         candidatos = sorted(
             (e for e in tree.elements
              if e.id != alvo.id and (e.clickable or e.checkable or e.checked) and e.bounds[0] >= x2
-             and e.bounds[1] < y2 and e.bounds[3] > y1),
+             and e.bounds[1] < y2 and e.bounds[3] > y1
+             and y1 - meia <= (e.bounds[1] + e.bounds[3]) / 2 <= y2 + meia),
             key=lambda e: abs((e.bounds[1] + e.bounds[3]) / 2 - centro))
         if not candidatos:
             estado = "desligado" if estado == "ausente" else estado     # o texto está, o interruptor não se acha
@@ -3919,19 +3926,27 @@ def marcas_exigidas(commit_switch_mark: Sequence[str], bindings: Mapping[str, st
 
 
 def marca_junto_da_conta(tree: UiTree, seletor: str, conta: str | None) -> bool:
-    """29.79 (d): a marca do `seletor` está na tela logo ABAIXO do nome da `conta`, na mesma coluna? Medido no 8.3 (03/10,
-    android-01): o nome em (98,395)-(632,446) e "AI info" em (98,445)-(632,499). A marca de OUTRO perfil do feed (um post
-    de IA alheio) não conta, e sem a conta conhecida não há como dizer que o post é o nosso: dúvida, não conta."""
+    """29.79 (d): a marca do `seletor` está na tela logo ABAIXO do nome da `conta`, na mesma coluna, no cartão do TOPO?
+    Medido no 8.3 (03/10, android-01): logo depois do Share o post novo é o primeiro do feed, com o nome em
+    (98,395)-(632,446) e "AI info" em (98,445)-(632,499). Só o nome da conta mais acima conta, e nenhum cabeçalho do
+    mesmo tipo (mesmo `resource_id`) pode estar acima dele: um post ANTIGO nosso com rótulo, mais abaixo no feed, não é
+    a marca do novo. A marca de OUTRO perfil não conta, e sem a conta conhecida não há como dizer que o post é o nosso:
+    dúvida, não conta."""
     nomes = {norm_text(v) for v in variantes_de_arroba(conta or "") if v}
     if not nomes:
         return False
     contas = [e for e in tree.elements if norm_text(e.text) in nomes or norm_text(e.desc) in nomes]
+    if not contas:
+        return False
+    nome = min(contas, key=lambda e: (e.bounds[1], e.bounds[0]))
+    if nome.resource_id and any(e.resource_id == nome.resource_id and e.bounds[1] < nome.bounds[1]
+                                for e in tree.elements):
+        return False                       # o cartão do topo é de outro perfil: o post novo não está onde devia
     for marca in tree.find_selector(seletor):
-        for nome in contas:
-            colada = nome.bounds[1] <= marca.bounds[1] <= nome.bounds[3] + COLA_DA_MARCA_PX
-            mesma_coluna = marca.bounds[0] < nome.bounds[2] and marca.bounds[2] > nome.bounds[0]
-            if marca.id != nome.id and colada and mesma_coluna:
-                return True
+        colada = nome.bounds[1] <= marca.bounds[1] <= nome.bounds[3] + COLA_DA_MARCA_PX
+        mesma_coluna = marca.bounds[0] < nome.bounds[2] and marca.bounds[2] > nome.bounds[0]
+        if marca.id != nome.id and colada and mesma_coluna:
+            return True
     return False
 
 
