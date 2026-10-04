@@ -27,6 +27,9 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
+from app.modules.pedidos.domain import consolidacao as dominio_consolidacao
+from app.modules.pedidos.domain.vistas import EM_ABERTO, NAO_COBREM, ObservacaoVista, OcorrenciaVista
+
 VERSAO_DO_FORMATO = 1
 #: Quanto cabe em "observado" e em "não coberto"; o excesso vira um item que diz quanto ficou de fora.
 MAX_OBSERVADO = 500
@@ -34,36 +37,6 @@ MAX_NAO_COBERTO = 500
 MAX_TEXTO = 200
 ALCANCE = ("Vale só para as ocorrências e observações listadas neste relatório; não generaliza para além da amostra "
            "coletada.")
-
-#: O que cada estado de ocorrência diz ao relatório. `concluida` é a única que cobre; as demais terminais NÃO cobrem.
-NAO_COBREM = ("perdida", "pulada", "incerta", "falhou", "cancelada")
-EM_ABERTO = ("prevista", "devida", "despachada", "rodando")
-
-
-@dataclass(frozen=True)
-class OcorrenciaVista:
-    id: str
-    previsto_para: str
-    estado: str
-    motivo: str | None = None
-    custo_usd: float = 0.0
-    origem: str = "agenda"
-
-
-@dataclass(frozen=True)
-class ObservacaoVista:
-    id: str
-    ocorrencia_id: str
-    alvo: str
-    nome: str
-    situacao: str                      # observado | incerto | ausente (como foi GRAVADA)
-    valor: str | None
-    tipo: str = "text"
-    fonte: str = ""
-    trecho: str | None = None
-    sha256: str | None = None
-    capturado_em: str = ""
-
 
 @dataclass(frozen=True)
 class EntradaDoRelatorio:
@@ -134,8 +107,7 @@ def montar(entrada: EntradaDoRelatorio) -> dict[str, object]:
 
     _lacunas(no_periodo, itens, entrada)
     consolidacao = None
-    if entrada.filhos:                             # import tardio: `consolidacao` lê tipos deste módulo
-        from app.modules.pedidos.domain import consolidacao as dominio_consolidacao
+    if entrada.filhos:
         consolidacao = dominio_consolidacao.consolidar(entrada.filhos)        # type: ignore[arg-type]
         itens.nao_coberto.extend(dominio_consolidacao.itens_nao_cobertos(consolidacao))
     elif entrada.consolidacao_falhou:

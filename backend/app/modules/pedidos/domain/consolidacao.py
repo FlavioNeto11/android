@@ -23,7 +23,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 from app.modules.pedidos.domain.colaboracao import ESTADOS_TERMINAIS
-from app.modules.pedidos.domain.relatorio import EM_ABERTO, ObservacaoVista, OcorrenciaVista
+from app.modules.pedidos.domain.vistas import EM_ABERTO, ObservacaoVista, OcorrenciaVista
 
 #: Os tipos de memória que são FATO a comparar entre filhos (o vocabulário é o de `domain/memoria.TIPOS`).
 TIPOS_DE_MEMORIA = ("descoberta", "decisao", "fonte")
