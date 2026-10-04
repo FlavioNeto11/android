@@ -114,6 +114,9 @@ desta conta ao mesmo alvo (ou pedido dela em aberto), o `REPLY_COMMENT` é recus
 aprovação, sem chegar ao dono (`UMA_VEZ_POR_ALVO`; a da própria etapa não conta). Limite conhecido: sem a publicação gravada
 na interação, uma resposta legítima ao mesmo alvo noutro comentário dentro da janela também é recusada; a 2ª fatia
 do 30.56 grava publicação e comentário e passa a chave a ser por comentário.
+O teto por hora e por dia conta também os pedidos de aprovação desta conta ainda sem interação (30.57). É ele que
+limita o leque de um `for_each` com efeito em app real: com `comments_per_hour` 3, 5 itens viram 3 pedidos e 2
+adiados. Os valores são calibráveis em dev (29.75).
 Pendente (decisão do dono): se um perfil pode afrouxar a política do catálogo — hoje afrouxar é permitido e fica
 marcado (`ProfilePolicyDTO.loosened`), não recusado (#114 item 3). A política de um perfil vem em três
 camadas, nesta ordem: **escolha própria → grupo → padrão** (`_own`/`_group`/`origin_for`); `limits_origin()`

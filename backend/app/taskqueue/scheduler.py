@@ -22,7 +22,7 @@ from ..modules.learning.domain.prova import rastro_da_amostra
 from ..modules.learning.domain.validacao import tamanho_da_amostra
 from ..models import (ActionStatus, AttemptStatus, ControlOwner, DeliveryLevel, InstanceCurrent, InstanceState,
                       ObjectiveStatus, Plan, PlanStep, Postcondition, RunStatus, StepDTO, StepStatus)
-from ..planning.capabilities import capability_of
+from ..planning.capabilities import capability_of, normalizar_alvo
 from ..planning.catalog import capabilities_of
 from ..releases.service import InstalacaoIncerta
 from ..planning.provider import AIError, AIProvider, AppContext
@@ -1902,6 +1902,7 @@ class Scheduler:
             if n is not None:
                 rastro = f" ({rastro_da_amostra(min(n, len(items)), len(items))})"
                 items = items[:n]
+        items = self._sem_o_proprio_perfil(obj, step, plan, items)
         collected = {**self._collected(obj["id"]), step.key: items}
         repo.db.execute("UPDATE objectives SET collected=? WHERE id=?", (dumps(collected), obj["id"]))
         done = {r["key"] for r in repo.db.query("SELECT key FROM steps WHERE objective_id=? AND status='succeeded'",
@@ -1911,6 +1912,35 @@ class Scheduler:
             # O começo "Expandido para " é lido pelo veredito da prova de fluxo (30.42, `domain.prova.PREFIXO_DA_EXPANSAO`):
             # a versão que só expande não é replanejamento.
             repo.revise_plan(obj["id"], f"Expandido para {len(items)} item(ns) lidos em '{step.title}'{rastro}", steps)
+
+    def _sem_o_proprio_perfil(self, obj: Any, step: Any, plan: Plan, items: list[str]) -> list[str]:
+        """30.57: no bloco com EFEITO, o item que é o próprio perfil que executa sai antes da expansão (responder ao
+        próprio comentário, curtir a própria publicação). Não vira etapa, então também não conta como item falho no
+        `_settle_items`; o rastro diz quantos saíram. Só o próprio: as outras contas nossas interagem entre si (emenda
+        do ADR-050) e quem as segura é a porta de política, item a item, antes do pedido (ADR-055, 30.56, tetos)."""
+        if not any(s.for_each == step.key and s.side_effect for s in plan.steps):
+            return items
+        perfil = self.repo.persona_do_objetivo(obj["profile_id"], obj["instance_id"])
+        if not perfil:
+            return items
+        nomes = [r["username"] for r in self.repo.db.query("SELECT username FROM instagram_profiles WHERE id=?",
+                                                           (perfil,))]
+        nomes += [r["handle"] for r in self.repo.db.query("SELECT handle FROM profile_accounts WHERE profile_id=?",
+                                                          (perfil,))]
+        proprios = {a for a in (normalizar_alvo(n) for n in nomes) if a}
+        if not proprios:
+            return items
+
+        def do_proprio(item: str) -> bool:
+            # o item da coleta é o @ ("bruno.ferreira9267") ou "autor said texto" (folha de comentários)
+            return any(normalizar_alvo(x) in proprios for x in (item, item.split(" said ", 1)[0]))
+
+        fora = [i for i in items if do_proprio(i)]
+        if fora:
+            self.repo.decision(f"{obj['instance_id']}: {len(fora)} item(ns) da lista de '{step.title}' são o próprio "
+                               "perfil e ficaram de fora (nada se faz consigo mesmo)",
+                               run_id=obj["run_id"], instance_id=obj["instance_id"], step_id=step.id)
+        return [i for i in items if not do_proprio(i)]
 
     def _skip_failed_item(self, obj: Any, step: Any, detail: str) -> bool:
         """Etapa de UM item falhou de vez (sem efeito disparado): pula só o resto DESTE item; os demais seguem."""

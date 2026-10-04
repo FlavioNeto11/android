@@ -32,7 +32,7 @@ from typing import Any, Callable
 
 from ..db import loads
 from ..models import InteractionStatus, InteractionType
-from ..planning.capabilities import Capability, normalizar_alvo
+from ..planning.capabilities import Capability, capability_of, normalizar_alvo
 from ..planning.catalog import pacote_ancora
 from ..util import now, parse_iso, to_iso
 from .contas_nossas import eh_conta_nossa, foi_retirada
@@ -95,6 +95,12 @@ _ROTULO_DO_BALDE = {"follows": "seguir", "dms": "mensagem direta", "comments": "
 #: em vários posts da mesma pessoa segue valendo — o histórico separa as duas pela etapa que gravou a interação.
 #: Seguir fica de fora: o segundo FOLLOW é alternância (deixar de seguir), não duplicata.
 UMA_VEZ_POR_ALVO: frozenset[str] = frozenset({"REPLY_COMMENT"})
+
+def _balde(acao: str, package: str | None) -> str | None:
+    """O balde de limite de uma ação pelo catálogo do app (`None` = o âncora); `None` se o catálogo não a tem."""
+    cap = capability_of(package or pacote_ancora(), acao)
+    return cap.limit_bucket if cap else None
+
 
 def _data(iso: str) -> str:
     """`2026-10-03T05:51:53.472Z` → `03/10/2026 05:51Z`, para o motivo que a pessoa lê."""
@@ -416,14 +422,22 @@ class PolicyEngine:
         tipos = BUCKET_TYPES.get(cap.limit_bucket, ())
         aquecendo = self._aquecendo(profile_id, limites, agora)
         contagem: dict[str, int] = {}
+        # 30.57: o pedido de aprovação ainda sem interação também ocupa o teto. Sem isto, os 5 itens de um `for_each`
+        # viravam 5 pedidos ao dono com `comments_per_hour` 3: a porta só via o que já tinha saído, e nada sai antes
+        # do sim. O da própria etapa não conta (a porta roda de novo na retomada).
+        na_fila = [quando for acao, quando in self.repo.pedidos_em_aberto_desde(
+            profile_id, to_iso(agora - timedelta(days=1)), exclude_step_id=step_id)
+            if _balde(acao, package) == cap.limit_bucket]
         # `direction="outbound"`: limite é sobre o que ESTA conta faz. Desde que ler uma conversa passou a gravar o
         # que a contraparte disse, contar só por tipo faria a caixa de entrada consumir a cota de envio.
         for unidade, delta, rotulo in (("hour", timedelta(hours=1), cap.limit_bucket),
                                        ("day", timedelta(days=1), f"{cap.limit_bucket}_dia")):
             teto = self._teto_com_aquecimento(limites.get(f"{cap.limit_bucket}_per_{unidade}", 0), limites, aquecendo)
             janela = to_iso(agora - delta)
-            feitas = self.repo.count_interactions_since(profile_id, janela, types=tipos, statuses=CONTAM,
+            saidas = self.repo.count_interactions_since(profile_id, janela, types=tipos, statuses=CONTAM,
                                                         direction="outbound")
+            pedidos = sum(1 for quando in na_fila if quando >= janela)
+            feitas = saidas + pedidos
             contagem[rotulo] = feitas
             if teto and feitas >= teto:
                 mais_antiga = self.repo.oldest_interaction_since(profile_id, janela, types=tipos, statuses=CONTAM,
@@ -431,9 +445,10 @@ class PolicyEngine:
                 libera = (parse_iso(mais_antiga) + delta) if mais_antiga else (agora + timedelta(minutes=10))
                 unidade_pt = "hora" if unidade == "hour" else "dia"
                 aquecimento_txt = " (perfil em aquecimento)" if aquecendo else ""
+                fila_txt = f", {pedidos} deles pedido(s) na fila de aprovação" if pedidos else ""
                 return Verdict(allowed=False, policy=politica, counts=contagem, retry_at=to_iso(libera),
                                reason=f"limite de {teto} {cap.limit_bucket} por {unidade_pt} atingido neste perfil "
-                                      f"({feitas}){aquecimento_txt}")
+                                      f"({feitas}{fila_txt}){aquecimento_txt}")
 
         if (parado := self._fleet_gate(profile_id, cap, counterparty, agora, app_id)) is not None:
             return Verdict(allowed=False, policy=politica, counts=contagem, retry_at=parado[1],
