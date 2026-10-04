@@ -1463,7 +1463,8 @@ class Scheduler:
                 await self.devices.force_stop_app(rt, app.package)         # type: ignore[arg-type]
             principal = apps[0]
             abriu, detalhe = await self.devices.open_app(
-                rt, {"id": principal.id, "package": principal.package, "activity": principal.activity})
+                rt, {"id": principal.id, "package": principal.package, "activity": principal.activity},
+                pela_execucao=True)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - a prova segue: a etapa de abertura comprova (ou reprova) o ponto de partida

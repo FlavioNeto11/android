@@ -4099,14 +4099,19 @@ class DeviceManager:
             rt.ui_variant = f"{locale or 'desconhecido'}/{_density_bucket(density)}"
         return rt.ui_variant
 
-    async def open_app(self, rt: DeviceRuntime, app: Any) -> tuple[bool, str]:
+    async def open_app(self, rt: DeviceRuntime, app: Any, *, pela_execucao: bool = False) -> tuple[bool, str]:
         """Abre o app e CONFERE que ele chegou ao primeiro plano. Devolve `(abriu, detalhe)`.
 
         O retorno do `am start` é positivo mesmo quando o app cai na abertura — era por isso que "Abrir app"
         virava `succeeded` sem prova nenhuma. A sonda é a mesma do instalador (`wait_for_focus`, janela em foco =
         pacote); sem comprovação quem chamou grava `uncertain` com o motivo, nunca sucesso.
+
+        `pela_execucao`: quem abre é a própria execução que segura o aparelho (o ponto de partida da prova, 30.42).
+        A trava contra a IA protege o aparelho de um comando de fora no meio da execução; aplicada à própria
+        execução, recusava toda abertura (medido no central em 04/10: 3 de 3 provas com "não confirmado").
         """
-        self._guard_not_running_ai(rt)
+        if not pela_execucao:
+            self._guard_not_running_ai(rt)
         # Outro app na frente (o secundário que ficou aberto, medido no android-01 em 26/09: dois "Abrir app" do
         # Instagram seguidos terminaram `uncertain` e, depois de um HOME, ele abriu na hora): volta à tela inicial
         # antes do `am start`. Custa uma leitura de foco; com o foco no próprio app ou em transição, nada muda.
