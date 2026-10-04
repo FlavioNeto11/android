@@ -28,12 +28,14 @@ _ARROBA_LIVRE = {"container", "dataclass", "property", "staticmethod", "classmet
                  "dono", "orquestradora", "canais"}
 
 
-def _nomes_sensiveis() -> tuple[list[str], list[str]]:
-    """(nomes inteiros e handles: casam sem diferença de maiúscula; partes soltas: só com inicial maiúscula)."""
+def _nomes_sensiveis(raiz: Path = RAIZ) -> tuple[list[str], list[str], bool]:
+    """(nomes inteiros e handles: casam sem diferença de maiúscula; partes soltas: só com inicial maiúscula; se o banco
+    foi lido)."""
     inteiros: set[str] = set(_RESERVA)
     partes: set[str] = set()
+    lido = False
     try:
-        caminho = str(RAIZ / "data" / "poc.sqlite3").replace("\\", "/")
+        caminho = str(raiz / "data" / "poc.sqlite3").replace("\\", "/")
         con = sqlite3.connect(f"file:{caminho}?mode=ro", uri=True)
         for (nome,) in con.execute("select name from personas"):
             if isinstance(nome, str) and nome.strip():
@@ -43,18 +45,19 @@ def _nomes_sensiveis() -> tuple[list[str], list[str]]:
             if isinstance(handle, str) and handle.strip():
                 inteiros.add(handle.strip().lstrip("@"))
         con.close()
+        lido = True
     except Exception:  # noqa: BLE001 - sem banco, fica a reserva
         pass
     # Conta que saiu da plataforma some do banco (ADR-068), mas o nome dela continua no plano e nas evidências antigas
     # (24.9, 03/10). A lista local fica em data/, fora do Git; uma linha por nome ou handle.
     try:
-        extras = (RAIZ / "data" / "redacao_nomes_extras.txt").read_text(encoding="utf-8").splitlines()
+        extras = (raiz / "data" / "redacao_nomes_extras.txt").read_text(encoding="utf-8").splitlines()
         inteiros.update(x.strip().lstrip("@") for x in extras if x.strip())
     except OSError:
         pass
     partes -={p for p in partes if p.lower() in {i.lower() for i in inteiros}}
     ordem = lambda xs: sorted(xs, key=len, reverse=True)  # noqa: E731 - o mais longo primeiro
-    return ordem(inteiros), ordem(partes)
+    return ordem(inteiros), ordem(partes), lido
 
 
 def _hosts() -> list[str]:
@@ -70,11 +73,28 @@ def _alternativa(nomes: list[str]) -> str:
     return "|".join(re.escape(n) for n in nomes) or r"(?!x)x"
 
 
-_INTEIROS, _PARTES = _nomes_sensiveis()
+def _compilar(inteiros: list[str], partes: list[str]) -> tuple[re.Pattern[str], re.Pattern[str]]:
+    # parte solta só com a inicial maiúscula do jeito que está no nome (sem re.I)
+    return (re.compile(r"(?<!\w)(" + _alternativa(inteiros) + r")(?!\w)", re.I),
+            re.compile(r"(?<!\w)(" + _alternativa(partes) + r")(?!\w)"))
+
+
+_INTEIROS, _PARTES, _ = _nomes_sensiveis()
 _HOST = re.compile(r"(?<![\w-])(" + _alternativa(_hosts()) + r")(?![\w-])", re.I)
-_PERSONA = re.compile(r"(?<!\w)(" + _alternativa(_INTEIROS) + r")(?!\w)", re.I)
-#: parte solta só com a inicial maiúscula do jeito que está no nome (sem re.I)
-_PERSONA_PARTE = re.compile(r"(?<!\w)(" + _alternativa(_PARTES) + r")(?!\w)")
+_PERSONA, _PERSONA_PARTE = _compilar(_INTEIROS, _PARTES)
+
+
+def recarregar(raiz: Path = RAIZ) -> bool:
+    """Relê os nomes do banco de `raiz`. Os nomes são lidos uma vez na importação; um processo longo (o laço do resumo,
+    28.31) não enxerga a persona criada depois de subir, e um worktree não tem o banco. Devolve se o banco foi lido
+    inteiro. Leitura que falha, mesmo em parte, NÃO troca os padrões: a falha transitória num processo que já tinha a
+    lista completa não pode trocá-la pela reserva."""
+    global _INTEIROS, _PARTES, _PERSONA, _PERSONA_PARTE  # noqa: PLW0603 - os padrões são do módulo
+    inteiros, partes, lido = _nomes_sensiveis(raiz)
+    if lido:
+        _INTEIROS, _PARTES = inteiros, partes
+        _PERSONA, _PERSONA_PARTE = _compilar(inteiros, partes)
+    return lido
 
 #: depois de "]" é o host de uma URL cuja senha já saiu ("[senha]@localhost"), não uma conta
 _HANDLE = re.compile(r"(?<![\w/\]])@(?![0-9a-f]{7,8}\b)([A-Za-z0-9_.]{3,})(?![\w])")
