@@ -6574,6 +6574,45 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-04T00:34:23+00:00"
+  },
+  "30.40": {
+   "id": "30.40",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #174 (merge 3af38a45) na main e no ar no deploy 16 (central em 3b5355ce, migracao 088). Simulado: backend/tests/test_learning_prova_validacao.py e backend/tests/test_learning_curador_dominio.py; 981 passed em SQLite e 34 em PG (03/10). Real: not_run. Na leitura do central (04/10 00:30Z, banco so leitura) nenhuma revisao de receita marcada sem caminho depois do deploy, entao nada a observar ainda.",
+   "blocker": "",
+   "grupo": "30.40-30.42",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T00:44:01+00:00"
+  },
+  "30.41": {
+   "id": "30.41",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, 04/10, central em 3b5355ce (deploy 16), banco so leitura as 00:30Z: as provas de fluxo lv-aedde49e (run r-20261004000905-ef5c86, android-09, 6 etapas) e lv-d8ee3b5f (run r-20261004001905-9c839c, android-10, 6 etapas) gravaram teto_usd 0.17 = 0.05 + 0.02 x 6, o proporcional; lv-e1a607a9 (run r-20261004002905-47b957, 2 etapas) gravou 0.09 = 0.05 + 0.02 x 2. As tres fecharam feita, gastando US$ 0.0613, 0.0755 e 0.0064. O recusada/plano_acima_do_teto de for_each grande segue so simulado: nao havia pedido de for_each pendente (a unica recusa com esse motivo, receita:135, e de 21:56Z, antes do deploy). Simulado: test_learning_prova_teto.py (7) e test_learning_prova_validacao.py; PG 99 passed (03/10 23:24-23:27Z).",
+   "blocker": "",
+   "grupo": "30.40-30.42",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T00:44:01+00:00"
+  },
+  "30.42": {
+   "id": "30.42",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, 04/10, central em 3b5355ce (deploy 16), banco so leitura: (a) a ev:48 ganhou a irma invalida id 178 (fluxo:enviar-a-mensagem-entrega-poc-instance-i, run r-20261003205026-5f2de5, detalhe 'invalida:efeito_repetido, o efeito saiu 2 vezes (reclassificada)') as 00:14:05Z, pelo passo de reclassificacao; (b) as 3 provas de fluxo depois do deploy (ef5c86, 9c839c, 47b957) gravaram a decisao 'ponto de partida' e fizeram o force-stop, mas a abertura voltou 'nao confirmado (A IA esta executando neste aparelho...)', porque open_app tem a trava _guard_not_running_ai; a etapa 1 abriu o app e as tres fecharam feita, 6/6, 6/6 e 2/2; (c) a regra do efeito repetido, aplicada so em leitura as 4 execucoes de validacao desde 23:30Z (19873b, ef5c86, 9c839c, 47b957), deu 0 repeticoes. Correcao de (b): ae80a31b no #183 (open_app(..., pela_execucao=True) no ponto de partida), simulated em test_learning_prova_ponto_de_partida.py::test_a_abertura_do_ponto_de_partida_e_da_propria_execucao, que falha sem a correcao. A abertura confirmada fica real so depois do deploy 17. Simulado: os arquivos do PR #178; SQLite 1017 passed; PG 1006 passed + 2 skipped.",
+   "blocker": "",
+   "grupo": "30.40-30.42",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T00:44:01+00:00"
   }
  },
  "rodadas": [
@@ -8232,6 +8271,17 @@
    ],
    "grupos": [
     "jev-31-24-31-25"
+   ]
+  },
+  {
+   "quando": "2026-10-04T00:44:01+00:00",
+   "itens": [
+    "30.40",
+    "30.41",
+    "30.42"
+   ],
+   "grupos": [
+    "30.40-30.42"
    ]
   }
  ]
