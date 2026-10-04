@@ -23,11 +23,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - `.claude/canais/resumo_laco.py`: o resumo abre com `🙋 Precisa de você: N` e a lista, com 🆕 na pendência nova.
   Depois vem só o que mudou desde o último envio. Saúde, plano, frentes e cartões parados aparecem só quando mudaram;
-  a Central com problema aparece sempre. Quando nada mudou e não há pendência nova, não envia. O retrato do último envio
-  fica no cursor, e a parte que monta o texto (`montar`) é pura.
+  a Central com problema entra quando muda e, enquanto o mesmo problema durar, volta no máximo a cada 3 h com "segue
+  desde HH:MMZ". Quando nada mudou e não há pendência nova, não envia. O retrato do último envio fica no cursor, e a
+  parte que monta o texto (`montar`) é pura.
+- Revisão independente (cinco consertos antes de ligar o laço):
+  - privacidade: `_sem_contato` troca e-mail, telefone e URL por marcador antes do `redigir`; a redação vem do mesmo
+    checkout e relê os nomes do banco do central a cada rodada (`redacao.recarregar`), e não só na importação;
+  - "N novidades" do canal interno desconta o que o último envio já contou;
+  - leitura do Trello ou do plano que falha mantém o retrato anterior, e a volta da leitura não vira novidade;
+  - a mudança só no detalhe do plano (parciais, bloqueados, a fazer) é detectada;
+  - `docs/dominios/canais.md` (C-19) diz quem entra em "Precisa de você": só o que espera o dono de verdade.
 - O laço segue parado até o F3 estar no ar e a orquestradora liberar.
-- Prova `simulated`: 7 testes em `.claude/canais/test_resumo_laco.py`. O ensaio contra os dados de agora compôs a
-  mensagem sem enviar. `not_run`: um envio real.
+- Prova `simulated`: 20 testes em `.claude/canais/test_resumo_laco.py` e 17 em `.claude/trello/test_redacao.py` (37
+  passed). O ensaio contra os dados de agora compôs a mensagem sem enviar. `not_run`: um envio real.
 
 ## 2026-10-04 — 28.29: o registro das decisões automáticas diz a verdade e se lê fácil (branch canais/28-29-registro-de-decisoes)
 

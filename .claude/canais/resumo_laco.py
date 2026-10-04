@@ -15,12 +15,15 @@ que ele mesmo mede, para nunca reenviar texto velho:
   foram curados ("N novidades desde HH:MMZ; detalho no próximo resumo"). Depois do envio, `mudou_extra` é esvaziado.
 
 28.31 F3 (o molde do dono): a mensagem abre com "🙋 Precisa de você: N" e a lista (a pendência nova leva 🆕); depois
-vem só o que MUDOU desde o último envio (saúde, plano, frentes e parados só se mudaram; a saúde com problema sempre).
-Quando nada mudou e não há pendência nova, NÃO envia: grava `conferido_em` e espera o próximo intervalo. O retrato do
-último envio fica no cursor (`retrato`).
+vem só o que MUDOU desde o último envio (saúde, plano e seu detalhe, frentes e parados só se mudaram). A saúde com
+problema que não muda é relembrada no máximo a cada 3 h, com "segue desde HH:MMZ". Leitura que falha (plano, Trello)
+mantém o retrato anterior: a volta da leitura não vira novidade. Quando nada mudou e não há pendência nova, NÃO envia:
+grava `conferido_em` e espera o próximo intervalo. O retrato do último envio fica no cursor (`retrato`). Quem entra em
+"Precisa de você": `docs/dominios/canais.md`.
 
-O corpo inteiro passa por `redacao.redigir` (o mesmo filtro do Trello) e o envio é o `telegram_status.py`, que lê token
-e chat do `.env` pelo `EnvSettings` e nunca imprime nada deles. O cursor (`resumo_cursor.json`) guarda a hora, o
+O corpo inteiro passa por `_sem_contato` (e-mail, telefone, URL) e por `redacao.redigir` (o mesmo filtro do Trello),
+com os nomes relidos do banco do central a cada rodada. O envio é o `telegram_status.py`, que lê token e chat do `.env`
+pelo `EnvSettings` e nunca imprime nada deles. O cursor (`resumo_cursor.json`) guarda a hora, o
 `message_id` e a linha do eventos do último envio: reiniciar o laço não repete nem pula.
 
 Uso (python do backend/.venv):
@@ -63,8 +66,13 @@ LIMITE = 3800
 MAX_MUDOU = 5
 MAX_CHARS_MUDOU = 140
 
-sys.path.insert(0, str(RAIZ / ".claude" / "trello"))
+#: a redação do MESMO checkout deste arquivo (a do central pode ser mais velha); os nomes vêm do banco do central
+sys.path.insert(0, str(SCRIPTS.parent / "trello"))
+import redacao  # noqa: E402
 from redacao import redigir  # noqa: E402
+
+#: o problema de saúde que não muda é relembrado no máximo a cada 3 h (decisão da orquestradora, 04/10)
+LEMBRAR_SAUDE = timedelta(hours=3)
 
 
 def _agora() -> datetime:
@@ -88,9 +96,23 @@ def _gravar_json(caminho: Path, dado: dict) -> None:
     tmp.replace(caminho)
 
 
+_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+_URL = re.compile(r"\b(?:https?://|www\.)\S+", re.I)
+#: telefone com ou sem DDI e DDD: +55 (11) 98765-4321, 11 98765 4321, 11987654321
+_TELEFONE = re.compile(r"(?<![\w.])(?:\+\d{1,3}[\s.-]?)?\(?\d{2}\)?[\s.-]?\d{4,5}[\s.-]?\d{4}(?![\w.])")
+
+
+def _sem_contato(texto: str) -> str:
+    """O `redigir` cobre handle, persona e IP, mas deixa passar e-mail (`a@b.com` não é handle), telefone e URL comum.
+    Nada disso vai ao dono pelo Telegram; o e-mail sai antes da URL para o domínio não virar link."""
+    texto = _EMAIL.sub("[e-mail]", texto)
+    texto = _URL.sub("[link]", texto)
+    return _TELEFONE.sub("[telefone]", texto)
+
+
 def _e(texto: object) -> str:
     """Redige e escapa: tudo o que é dinâmico passa por aqui antes de virar HTML do Telegram."""
-    return html.escape(redigir(str(texto)), quote=False)
+    return html.escape(redigir(_sem_contato(str(texto))), quote=False)
 
 
 def _cortar(texto: str, n: int) -> str:
@@ -128,7 +150,7 @@ def _plano() -> tuple[str, str]:
     except (OSError, subprocess.SubprocessError):
         pass
     if total is None:
-        return "<b>Plano geral:</b> leitura falhou nesta rodada", ""
+        return "", ""  # leitura falhou: `montar` mantém o plano do retrato anterior
     est = _ler_json(RAIZ / ".claude" / "plano-100" / "estado.json", {"itens": {}})["itens"]
     parciais = sum(1 for v in est.values() if v.get("status") == "partial")
     bloqueados = sum(1 for v in est.values() if v.get("status") == "blocked")
@@ -189,13 +211,14 @@ def _parados(agora: datetime) -> tuple[int, list[str]] | None:
     return len(parados), [nome for _, nome in parados[:3]]
 
 
-def ler_estado(agora: datetime) -> dict:
+def ler_estado(agora: datetime, ja_contado: int = 0) -> dict:
     """O retrato de agora, medido na hora (saúde, plano, Trello) e lido da situação curada pela Canais. É a única parte
-    com leitura de fora; `montar` é pura."""
+    com leitura de fora; `montar` é pura. `ja_contado` é a linha do eventos até onde o último envio já contou: o que
+    ele disse ("N novidades") não se repete no próximo."""
     sit = _ler_json(SITUACAO, {})
     titulo, detalhe = _plano()
     parados = _parados(agora)
-    n, desde = _nao_curados(int(sit.get("eventos_curados_ate", 0)))
+    n, desde = _nao_curados(max(int(sit.get("eventos_curados_ate", 0)), ja_contado))
     return {
         "saude": _saude(sit.get("deploy_no_ar")),
         "plano": titulo, "plano_detalhe": detalhe,
@@ -209,11 +232,45 @@ def ler_estado(agora: datetime) -> dict:
 
 
 #: O que fica no cursor para o próximo resumo dizer só o que mudou (28.31 F3).
-CHAVES_DO_RETRATO = ("saude", "plano", "frentes", "parados", "pendencias")
+CHAVES_DO_RETRATO = ("saude", "plano", "plano_detalhe", "frentes", "parados", "pendencias")
 
 
-def _retrato(estado: dict) -> dict:
-    return {k: estado.get(k) for k in CHAVES_DO_RETRATO}
+def _iso(dt: datetime) -> str:
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _de_iso(valor: object) -> datetime | None:
+    try:
+        return datetime.fromisoformat(str(valor).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _retrato(estado: dict, ant: dict) -> dict:
+    retrato = {k: estado.get(k) for k in CHAVES_DO_RETRATO}
+    # Leitura que falhou (`None` no Trello, plano vazio) não apaga o que se sabia: sem isso, a volta da leitura mostraria
+    # todo cartão parado como novo e repetiria o plano.
+    if estado.get("parados") is None:
+        retrato["parados"] = ant.get("parados")
+    if not estado.get("plano"):
+        retrato["plano"], retrato["plano_detalhe"] = ant.get("plano"), ant.get("plano_detalhe")
+    return retrato
+
+
+def _linha_da_saude(saude: str, ant: dict, agora: datetime) -> tuple[str | None, dict]:
+    """A saúde entra quando MUDA. O problema que dura sem mudar volta no máximo a cada `LEMBRAR_SAUDE`, com a hora em
+    que começou. Devolve a linha (ou `None`) e o `desde` e `lembrada_em` que vão para o retrato."""
+    if saude != ant.get("saude"):
+        return saude, {"saude_desde": _iso(agora), "saude_lembrada_em": _iso(agora)}
+    marcas = {"saude_desde": ant.get("saude_desde"), "saude_lembrada_em": ant.get("saude_lembrada_em")}
+    if saude.startswith("🟢"):
+        return None, marcas
+    lembrada = _de_iso(marcas["saude_lembrada_em"])
+    if lembrada is not None and agora - lembrada < LEMBRAR_SAUDE:
+        return None, marcas
+    desde = _de_iso(marcas["saude_desde"])
+    linha = saude + (f" · segue desde {desde:%H:%M}Z" if desde else "")
+    return linha, {**marcas, "saude_lembrada_em": _iso(agora)}
 
 
 def montar(estado: dict, anterior: dict | None, agora: datetime, desde: str | None = None) -> tuple[str | None, dict]:
@@ -228,10 +285,13 @@ def montar(estado: dict, anterior: dict | None, agora: datetime, desde: str | No
 
     mudou: list[str] = []
     saude = str(estado.get("saude") or "")
-    if saude and (saude != ant.get("saude") or not saude.startswith("🟢")):
-        mudou.append(saude)
-    if estado.get("plano") and estado.get("plano") != ant.get("plano"):
-        detalhe = estado.get("plano_detalhe")
+    marcas_da_saude: dict = {}
+    if saude:
+        linha, marcas_da_saude = _linha_da_saude(saude, ant, agora)
+        if linha:
+            mudou.append(linha)
+    detalhe = estado.get("plano_detalhe")
+    if estado.get("plano") and (estado.get("plano") != ant.get("plano") or detalhe != ant.get("plano_detalhe")):
         mudou.append(str(estado["plano"]) + (f" · {detalhe}" if detalhe else ""))
     frentes_antes = ant.get("frentes") or {}
     for nome, linha in (estado.get("frentes") or {}).items():
@@ -252,7 +312,7 @@ def montar(estado: dict, anterior: dict | None, agora: datetime, desde: str | No
     if resolvidas:
         mudou.append(f"✔️ {resolvidas} {'pendência sua saiu' if resolvidas == 1 else 'pendências suas saíram'} da lista")
 
-    retrato = _retrato(estado)
+    retrato = {**_retrato(estado, ant), **marcas_da_saude}
     if anterior is not None and not novas and not mudou:
         return None, retrato
 
@@ -281,7 +341,9 @@ def _desde(cursor: dict) -> str | None:
 
 def compor(cursor: dict, agora: datetime) -> tuple[str | None, dict, int]:
     """O texto a enviar (ou `None`: nada mudou), o retrato para o cursor e até onde o eventos foi contado."""
-    estado = ler_estado(agora)
+    if not redacao.recarregar(RAIZ):  # persona criada depois de o laço subir também sai
+        print(f"{agora:%H:%M:%S}Z aviso: banco do central não lido; a redação usa só a lista reserva", flush=True)
+    estado = ler_estado(agora, int(cursor.get("eventos_linha") or 0))
     texto, retrato = montar(estado, cursor.get("retrato"), agora, _desde(cursor))
     return texto, retrato, int(estado["eventos_linha"])
 

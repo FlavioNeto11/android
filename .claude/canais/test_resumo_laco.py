@@ -5,9 +5,12 @@ Rodar da raiz: `backend/.venv/Scripts/python.exe -m pytest -q .claude/canais/tes
 """
 from __future__ import annotations
 
+import sqlite3
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -51,12 +54,43 @@ def test_so_o_que_mudou_e_a_pendencia_nova_marcada() -> None:
     assert OK not in texto and "Plano geral" not in texto        # saúde e plano iguais não aparecem
 
 
-def test_saude_com_problema_aparece_sempre_e_a_resolvida_e_contada() -> None:
-    ruim = "🟡 <b>Central com 1 problema(s)</b>"
-    _, retrato = r.montar(_estado(saude=ruim, pendencias=["p1"]), None, AGORA)
-    texto, retrato = r.montar(_estado(saude=ruim, pendencias=[]), retrato, AGORA, "21:40Z")
-    assert texto is not None and ruim in texto and "<b>🙋 Nada espera você agora.</b>" in texto
+def test_pendencia_resolvida_e_contada() -> None:
+    _, retrato = r.montar(_estado(pendencias=["p1"]), None, AGORA)
+    texto, _ = r.montar(_estado(pendencias=[]), retrato, AGORA, "21:40Z")
+    assert texto is not None and "<b>🙋 Nada espera você agora.</b>" in texto
     assert "✔️ 1 pendência sua saiu da lista" in texto
+
+
+def test_saude_com_problema_que_nao_muda_so_volta_a_cada_3_horas() -> None:
+    ruim = "🟡 <b>Central com 1 problema(s)</b>"
+    _, retrato = r.montar(_estado(), None, AGORA)
+    texto, retrato = r.montar(_estado(saude=ruim), retrato, AGORA, "21:40Z")
+    assert texto is not None and ruim in texto                   # mudou: entra na hora
+    uma_hora = AGORA + timedelta(hours=1)
+    assert r.montar(_estado(saude=ruim), retrato, uma_hora, "22:00Z")[0] is None
+    # outra mudança sai, mas a saúde igual não pega carona e o lembrete não é adiado
+    texto, retrato = r.montar(_estado(saude=ruim, mudou=["x"]), retrato, uma_hora, "22:00Z")
+    assert texto is not None and ruim not in texto
+    texto, retrato = r.montar(_estado(saude=ruim), retrato, AGORA + timedelta(hours=3), "23:00Z")
+    assert texto is not None and f"{ruim} · segue desde 22:00Z" in texto
+    assert r.montar(_estado(saude=ruim), retrato, AGORA + timedelta(hours=5), "01:00Z")[0] is None
+    pior = "🔴 <b>A Central não respondeu</b> na hora deste resumo"
+    texto, _ = r.montar(_estado(saude=pior), retrato, AGORA + timedelta(hours=5), "01:00Z")
+    assert texto is not None and pior in texto and "segue" not in texto  # mudou de novo: entra na hora
+
+
+def test_mudanca_so_no_detalhe_do_plano_e_detectada() -> None:
+    _, retrato = r.montar(_estado(plano_detalhe="22 parciais · 2 bloqueados · 22 a fazer"), None, AGORA)
+    texto, _ = r.montar(_estado(plano_detalhe="21 parciais · 3 bloqueados · 22 a fazer"), retrato, AGORA, "21:40Z")
+    assert texto is not None and "3 bloqueados" in texto
+
+
+def test_plano_que_falha_na_leitura_mantem_o_retrato() -> None:
+    _, retrato = r.montar(_estado(), None, AGORA)
+    texto, retrato2 = r.montar(_estado(plano="", plano_detalhe="", mudou=["x"]), retrato, AGORA, "21:40Z")
+    assert texto is not None and "Plano geral" not in texto
+    assert retrato2["plano"] == retrato["plano"]
+    assert r.montar(_estado(), retrato2, AGORA, "22:00Z")[0] is None  # a volta da leitura não repete o plano
 
 
 def test_parados_so_os_novos_e_leitura_falha_nao_conta_como_mudanca() -> None:
@@ -67,12 +101,69 @@ def test_parados_so_os_novos_e_leitura_falha_nao_conta_como_mudanca() -> None:
     assert texto is None                                         # a leitura do Trello falhou: não inventa mudança
 
 
+def test_parados_a_volta_da_leitura_depois_de_um_envio_com_falha_nao_e_novidade() -> None:
+    _, retrato = r.montar(_estado(parados=["cartão A"], n_parados=1), None, AGORA)
+    # a rodada com o Trello fora ENVIA por outro motivo: o retrato guarda os parados que já se conheciam
+    texto, retrato2 = r.montar(_estado(parados=None, n_parados=None, mudou=["x"]), retrato, AGORA, "21:40Z")
+    assert texto is not None and retrato2["parados"] == ["cartão A"]
+    assert r.montar(_estado(parados=["cartão A"], n_parados=1), retrato2, AGORA, "22:00Z")[0] is None
+
+
 def test_mudou_extra_e_eventos_nao_curados_contam_como_mudanca() -> None:
     _, retrato = r.montar(_estado(), None, AGORA)
     texto, _ = r.montar(_estado(mudou=["deploy 32 no ar"]), retrato, AGORA, "21:40Z")
     assert texto is not None and "▪️ deploy 32 no ar" in texto
     texto, _ = r.montar(_estado(nao_curados=3, nao_curados_desde="21:50Z"), retrato, AGORA, "21:40Z")
     assert texto is not None and "3 novidades desde 21:50Z" in texto
+
+
+def test_eventos_nao_curados_ja_contados_nao_se_repetem(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(r, "_ler_json", lambda caminho, padrao: {"eventos_curados_ate": 10})
+    monkeypatch.setattr(r, "_linhas_de_fato", lambda: [f"21:{i:02d}Z | fato {i}" for i in range(15)])
+    monkeypatch.setattr(r, "_plano", lambda: ("", ""))
+    monkeypatch.setattr(r, "_parados", lambda agora: None)
+    monkeypatch.setattr(r, "_saude", lambda deploy: OK)
+    e = r.ler_estado(AGORA)
+    assert (e["nao_curados"], e["nao_curados_desde"]) == (5, "21:10Z")
+    e = r.ler_estado(AGORA, ja_contado=13)                       # o último envio contou até a linha 13
+    assert (e["nao_curados"], e["nao_curados_desde"]) == (2, "21:13Z")
+    assert r.ler_estado(AGORA, ja_contado=15)["nao_curados"] == 0
+
+
+@pytest.mark.parametrize(("entrada", "marcador"), [
+    ("escreva para fulano.tal@exemplo.com.br hoje", "[e-mail]"),
+    ("ligue +55 (11) 98765-4321", "[telefone]"),
+    ("ligue 11 98765 4321", "[telefone]"),
+    ("ligue 11987654321", "[telefone]"),
+    ("veja https://exemplo.com/caminho?x=1", "[link]"),
+    ("veja www.exemplo.com", "[link]"),
+])
+def test_contato_nao_vai_ao_dono(entrada: str, marcador: str) -> None:
+    saida = r._e(entrada)
+    assert marcador in saida and "exemplo" not in saida and "4321" not in saida
+
+
+def test_numeros_do_resumo_nao_viram_telefone() -> None:
+    texto = "436 de 482 itens · corte às 21:47Z de 2026-10-04 · deploy 31 · migração 106 · limite de 8 para 9"
+    assert r._sem_contato(texto) == texto
+
+
+def test_redacao_rele_os_nomes_do_banco(tmp_path: Path) -> None:
+    (tmp_path / "data").mkdir()
+    con = sqlite3.connect(tmp_path / "data" / "poc.sqlite3")
+    con.execute("create table personas (name text)")
+    con.execute("create table profile_accounts (handle text)")
+    con.execute("insert into personas values ('Teodora Quintanilha')")
+    con.execute("insert into profile_accounts values ('@teo.quinta')")
+    con.commit()
+    con.close()
+    try:
+        assert r.redacao.recarregar(tmp_path) is True              # persona criada depois da importação
+        saida = r._e("Teodora Quintanilha comentou como teo.quinta")
+        assert "Teodora" not in saida and "teo.quinta" not in saida
+        assert r.redacao.recarregar(tmp_path / "sem-banco") is False
+    finally:
+        r.redacao.recarregar()
 
 
 def test_texto_dinamico_passa_pela_redacao() -> None:

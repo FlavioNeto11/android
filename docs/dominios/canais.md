@@ -330,8 +330,18 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
 - **Regra:**
   - Sai um resumo **de hora em hora**, com o título `📊 ANA · Resumo das HH:MMZ`.
   - O resumo abre com `🙋 Precisa de você: N` e a lista das pendências do dono; a pendência nova leva 🆕 (28.31 F3).
-  - Depois vem só o que **mudou** desde o último envio. Situação da Central, porcentagem do plano (medida no
-    `estado.json`), linha de frente e cartão parado aparecem só quando mudaram; a Central com problema aparece sempre.
+  - **Quem entra em "Precisa de você"** (orquestradora, 04/10): só o que espera o DONO de verdade, isto é, uma decisão
+    dele, um sim ou não, ou um gesto que só ele faz. Não entram pedido de frente, pedido de convidado, nem execução de
+    lote (`lote:`). Hoje a lista é a `pendencias` do `situacao.json`, curada à mão pela Canais com esse critério. Se um
+    dia ela vier de consulta ao banco, o filtro vai junto, para o N não contar o que não é dele.
+  - Depois vem só o que **mudou** desde o último envio. Situação da Central, plano (porcentagem e o detalhe de
+    parciais, bloqueados e a fazer, medidos no `estado.json`), linha de frente e cartão parado aparecem só quando
+    mudaram. A Central com problema entra quando o estado muda; enquanto o mesmo problema durar, volta no máximo a cada
+    3 horas, com "segue desde HH:MMZ".
+  - Leitura que falha (plano, Trello) não conta como mudança e mantém o que se sabia, de modo que a volta da leitura
+    não reapresenta tudo como novo. "N novidades" do canal interno é contado uma vez só.
+  - Antes de sair, todo texto passa pela redação do Trello (nomes relidos do banco do central a cada rodada) e pelo
+    filtro de e-mail, telefone e link.
   - Quando nada mudou e não há pendência nova, o resumo **não sai** naquela hora.
   - Frases curtas, sem jargão e sem tabela.
   - Urgência vai na hora: sim ou não pedido ao dono, deploy que falhou, incidente real ou teto de custo.
