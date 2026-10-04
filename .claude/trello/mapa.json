@@ -2055,13 +2055,13 @@
   "28.12": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1431886b2725bbfddbf1d",
    "url": "https://trello.com/c/LeIITp2g",
-   "lista": "em_execucao",
+   "lista": "bloqueado",
    "lote": "lote_A8_atuais_pendentes"
   },
   "28.13": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1431b5a5167366e6121d0",
    "url": "https://trello.com/c/kSjpNBWu",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": "lote_A8_atuais_pendentes"
   },
   "29.7": {
@@ -3137,7 +3137,7 @@
   }
  },
  "falhas": [],
- "atualizado_em": "2026-10-04T10:21:11Z",
+ "atualizado_em": "2026-10-04T12:13:42Z",
  "arquivados": {
   "29.50": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac140b47c94d9584a3dc72e",
