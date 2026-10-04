@@ -176,6 +176,11 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
         # Aviso que NÃO pede pessoa não é pendência: não há o que abrir na caixa, então a mensagem vai sem link.
         if not aviso.get("requer_pessoa"):
             link, pendencia = None, False
+        # 28.10 F4: o relatório consolidado de um pai diz SÓ quantos conflitos há; o conteúdo e os filhos ficam no painel.
+        if sub == "relatorio_pronto":
+            n = _filho(aviso, "dados").get("conflitos")
+            if isinstance(n, int) and not isinstance(n, bool) and n > 0:
+                corpo = f"{n} conflito(s) entre os filhos"
     elif kind == "learning.needs_person":
         # Só a ENTRADA na espera é notícia: a saída (`aguardando` falso) não manda nada, e uma saída sem a entrada
         # correspondente (reinício do processo do Livro) é no-op. `desde` é a hora da transição e se repete na
