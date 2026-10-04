@@ -252,7 +252,7 @@ describe('detalhe rico: relações e seções ausentes', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('30.44: o título da etapa vai ao lado da chave; sem título, o texto fica como veio', async () => {
+  it('30.44: o título da etapa vai no lugar da chave (a chave fica no title); sem título, o texto fica como veio', async () => {
     const ev = (run: string, detail: string, etapa_titulo: string | null) => ({
       stance: 'for' as const, origin_ref: `reproducao:${run}`, run_id: run, instance_id: 'android-09', app_version: null,
       simulated: false, detail, observed_at: '2026-10-03T16:00:00Z', etapa_titulo });
@@ -261,7 +261,8 @@ describe('detalhe rico: relações e seções ausentes', () => {
                    ev('r-2', 'etapa 2 (open_inbox): reproduzida', null)],
     }));
     const linhas = Array.from(container.querySelectorAll('[aria-label="Evidências"] li')).map((li) => text(li));
-    expect(linhas.find((l) => l.includes('r-1'))).toContain('etapa 5 (send_message) — Enviar a mensagem: reproduzida');
+    expect(linhas.find((l) => l.includes('r-1'))).toContain('etapa 5 — Enviar a mensagem: reproduzida');
+    expect(container.querySelector('[aria-label="Evidências"] span[title="etapa 5 (send_message): reproduzida"]')).not.toBeNull();
     const sem = linhas.find((l) => l.includes('r-2'))!;
     expect(sem).toContain('etapa 2 (open_inbox): reproduzida');
     expect(sem).not.toContain('—');

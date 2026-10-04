@@ -1512,6 +1512,9 @@ O pedido não muda: o estado gravado é história, e o log só cresce. O que mud
 
 A `invalida` de outra execução do mesmo item não conta. A linha sem motivo legível lê `sem_evidencia`, o lado seguro.
 
+No mesmo PR, da validação do deploy 17: com o título da etapa, a evidência mostra "etapa N — Título". A chave em
+snake_case sai do texto e fica no `title` da linha (o `detail` cru), como no título da receita.
+
 Prova:
 - `simulated`: `test_validacoes_listagem.py`, os dois testes do 30.45;
 - `simulated`: `ValidacaoTab.test.tsx`;

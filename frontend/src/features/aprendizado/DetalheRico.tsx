@@ -442,7 +442,8 @@ function Evidencia({ evid }: { evid: readonly EvidenciaDoLivro[] }) {
               {x.app_version ? ` · app ${x.app_version}` : ''}
               {` · ${formatDateTime(x.observed_at)}`}
               {x.simulated ? ' · simulada' : ''}
-              {x.detail && textoDaEvidencia(x.detail, x.etapa_titulo) ? ` · ${textoDaEvidencia(x.detail, x.etapa_titulo)}` : ''}
+              {x.detail && textoDaEvidencia(x.detail, x.etapa_titulo)
+                ? <>{' · '}<span title={x.detail}>{textoDaEvidencia(x.detail, x.etapa_titulo)}</span></> : ''}
               {x.invalidada ? (
                 <>{' · '}<Badge tone="danger" size="sm">execução invalidada</Badge> não conta como prova</>
               ) : null}
