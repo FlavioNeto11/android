@@ -5751,8 +5751,10 @@ texto ainda por escrever (briefing) fica para a execução: aprovar no plano exi
   (`chave_sha256`, `chave_v`, `plan_version`, `expires_at`, `midia_sha256`, `decided_by`); as tiradas e as dependentes
   delas (pela conta do servidor, nunca pela lista do cliente) vão a `cancelled`; uma `decision` registra o gesto. Depois,
   `runs.start`. Resposta `{run, aprovacoes, tiradas, validade_ate}`. O segundo gesto é recusado (409 `invalid_state`).
-- **`POST /api/runs/{id}/porta/renovar`** (200): a validade dos sins do plano ainda em aberto volta a contar de agora,
-  sem reabrir os itens. `{run_id, renovadas, validade_ate}`. 404; 409 `invalid_state` em execução terminada.
+- **`POST /api/runs/{id}/porta/renovar`** (200): a validade dos sins do plano ainda VÁLIDOS volta a contar de agora,
+  sem reabrir os itens. `{run_id, renovadas, vencidas, validade_ate}`. O sim que já venceu (mesmo que a faxina ainda não
+  o tenha marcado) não se renova: sai como `expired` na hora; se nenhum foi renovado, 409 `sim_vencido` (`vencidas`),
+  e o dono revê a prévia ou a porta pergunta na execução. 404; 409 `invalid_state` em execução terminada.
 - **Validade:** `Settings.aprovacao_no_plano_validade_h` (padrão 24, de 1 a 72).
 - **Na execução** (trava deste item; o 31.49 estende): o `_approval_gate`, depois do descarte do 30.65 (aprovação anterior
   a `presa_em` não vale), aceita o sim de origem `plano` só se `approved`, dentro de `expires_at`, sem `interaction_id` e

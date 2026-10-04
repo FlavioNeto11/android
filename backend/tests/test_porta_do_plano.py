@@ -332,3 +332,20 @@ async def test_a_faxina_vence_o_sim_do_plano_fora_da_validade(harness: Any, monk
     linha = state.db.one("SELECT status, decided_note FROM pending_approvals")
     assert linha["status"] == "expired" and "validade" in linha["decided_note"]
     assert state.db.scalar("SELECT status FROM runs WHERE id='run-p'") == "planned"   # a execução fica como está
+
+
+async def test_renovar_nao_ressuscita_o_sim_vencido_que_a_faxina_nao_marcou(harness: Any, monkeypatch: Any) -> None:
+    """Revisão da parte 17: o sim vencido e ainda `approved` (a faxina roda a cada ciclo) não volta a valer pelo Renovar."""
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"],
+                                                                         chave=itens["dm"]["chave"])]), por="flavio")
+    state.db.execute("UPDATE pending_approvals SET expires_at=?", (to_iso(now() - timedelta(minutes=1)),))
+    try:
+        renovar_plano(state, "run-p")
+        raise AssertionError("o Renovar devia recusar o sim vencido")
+    except PortaIndisponivel as exc:
+        assert exc.codigo == "sim_vencido" and exc.extra["vencidas"] == 1
+    linha = state.db.one("SELECT status, expires_at FROM pending_approvals")
+    assert linha["status"] == "expired" and parse_iso(linha["expires_at"]) < now()

@@ -28,7 +28,7 @@ from .models import RUN_TERMINAL, InteractionType, StepStatus
 from .planning.capabilities import contraparte, objeto_da_acao, texto_a_gerar
 from .social.chave_da_aprovacao import VERSAO_DA_CHAVE, chave_da_aprovacao, midia_da_etapa, texto_exato
 from .taskqueue.repository import MOTIVO_REJEICAO
-from .util import now, to_iso
+from .util import now, now_iso, to_iso
 
 if TYPE_CHECKING:
     from .state import AppState, PortaDaEtapa
@@ -319,7 +319,13 @@ def renovar_plano(state: AppState, run_id: str) -> dict[str, object]:
     if run["status"] in {s.value for s in RUN_TERMINAL}:
         raise PortaIndisponivel("invalid_state", f"A execução está em '{run['status']}': não há o que renovar.")
     validade = to_iso(now() + timedelta(hours=validade_h(state)))
-    renovadas = state.approvals.renovar_do_plano(run_id, expires_at=validade)
+    with state.db.tx():
+        renovadas = state.approvals.renovar_do_plano(run_id, expires_at=validade)
+        # O que já venceu não se renova: sai agora (como a faxina faria) e a decisão volta ao dono.
+        vencidas = state.approvals.vencer_do_plano(now_iso(), run_id=run_id)
     if renovadas:
         state.repo.decision(f"validade dos sins do plano renovada até {validade}: {renovadas} item(ns)", run_id=run_id)
-    return {"run_id": run_id, "renovadas": renovadas, "validade_ate": validade}
+    if vencidas and not renovadas:
+        raise PortaIndisponivel("sim_vencido", f"{vencidas} sim(ns) do plano já tinham vencido e não se renovam: "
+                                               "reveja a prévia (ou a porta pergunta na execução).", vencidas=vencidas)
+    return {"run_id": run_id, "renovadas": renovadas, "vencidas": vencidas, "validade_ate": validade}

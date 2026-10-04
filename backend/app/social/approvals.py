@@ -269,20 +269,23 @@ class ApprovalStore:
             " AND status='approved' AND interaction_id IS NULL", (f"sim do plano encerrado: {reason}", objective_id))
         return int(cur.rowcount or 0) + int(plano.rowcount or 0)
 
-    def vencer_do_plano(self, agora: str) -> int:
+    def vencer_do_plano(self, agora: str, *, run_id: str | None = None) -> int:
         """30.61, faxina: o sim do plano cuja validade passou sai como `expired` (a porta já o trataria como ausente; aqui
         ele deixa também de reservar alvo e teto numa prévia abandonada em `planned`). A execução fica como está."""
         cur = self.db.execute(
             "UPDATE pending_approvals SET status='expired', decided_note='sim do plano vencido (validade)'"
-            " WHERE origem='plano' AND status='approved' AND interaction_id IS NULL AND expires_at<?", (agora,))
+            " WHERE origem='plano' AND status='approved' AND interaction_id IS NULL AND expires_at<?"
+            + (" AND run_id=?" if run_id else ""), (agora, *((run_id,) if run_id else ())))
         return int(cur.rowcount or 0)
 
     def renovar_do_plano(self, run_id: str, *, expires_at: str) -> int:
         """30.61 "Renovar": estende a validade dos sins do plano ainda em aberto desta execução, sem reabrir os itens (a
         chave segue a mesma; o despacho a confere de novo). Os já gastos, vencidos por descarte ou encerrados ficam."""
+        # Só o que AINDA vale: o sim vencido que a faxina não marcou (janela de até um ciclo) não volta a valer sem o dono
+        # rever (revisão da parte 17); o resultado não pode depender do relógio da faxina.
         cur = self.db.execute(
             "UPDATE pending_approvals SET expires_at=? WHERE run_id=? AND origem='plano' AND status='approved'"
-            " AND interaction_id IS NULL", (expires_at, run_id))
+            " AND interaction_id IS NULL AND expires_at>=?", (expires_at, run_id, now_iso()))
         return int(cur.rowcount or 0)
 
 
