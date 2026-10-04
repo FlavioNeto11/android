@@ -34,6 +34,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   texto igual não republicam); 1206 passed nos testes de vínculo do worker e detalhe de estado. Real: na próxima
   queda e volta do notebook depois do deploy.
 
+## 2026-10-04 — 31.30: o prefixo do plano fica 1 h no cache (branch feat/31-30-cache-1h-do-plano, sem migração)
+
+- Leitura (ai_calls do central, somente leitura): o planejador é ~2,8 s fixos mais ~3,6 ms por token de saída, e a
+  saída é o próprio plano. Os 23 % da linha de base vêm de planos livres de 2 a 6 etapas do QA Messenger, não de
+  desperdício. O corte que não muda a decisão é o cache: 12 de 43 planos da execução gravaram sem reler, e 5 deles
+  teriam relido com 1 h. Releitura tira ~0,2 a 0,7 s (amostra pequena).
+- `ai.cache_ttl_do_plano` (padrão `1h`, `config.py`) vai como `ttl` no `cache_control` dos três planejamentos da
+  execução (`anthropic_provider.py`). `5m` volta ao de antes. Custo: gravação de 1 h = 2x a entrada base (5 min =
+  1,25x), ~US$ 0,01 a mais por plano frio no prefixo de 6,7 mil tokens.
+- Prova `simulated`: `backend/tests/test_anthropic_provider.py::test_plano_da_execucao_pede_cache_de_1h_e_volta_a_5m_pela_config_31_30`
+  e `::test_padrao_e_1h_so_no_plano_da_execucao_31_30`. Real: `not_run` (sai da próxima leitura de latência).
+
 ## 2026-10-04 — 29.53: o portão de PostgreSQL de uma suíte, por escrito (branch docs/29-53-portao-pg, só docs)
 
 - `docs/banco.md` ("O portão de PostgreSQL de uma suíte") e `.claude/rules/testes.md`. Toda suíte roda PG dirigido

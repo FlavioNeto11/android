@@ -609,6 +609,14 @@ class AiCfg(BaseModel):
     # demais). `timeout_s` fica, porque é o modelo que sabe qual etapa é lenta. Estimado com count_tokens em 2 planos
     # reais do QA (a brevidade simulada por corte): −22 a −24 % de saída. `longo` é o formato de sempre, byte a byte.
     esquema_do_plano: Literal["longo", "curto"] = "longo"
+    # 31.30 (latência do planejador, 04/10): validade do cache do prefixo do PLANO da execução (system + esquema).
+    # Comando de pessoa chega espaçado: com 5 min, 12 de 43 planos da execução gravaram o cache sem reler, e 5
+    # deles teriam relido com 1 h (a mesma família de prefixo dentro da hora). Reler tira ~0,2 a 0,7 s do plano e
+    # não muda o que o planejador decide (o prompt é o mesmo byte a byte). Custo: a gravação de 1 h custa 2x a
+    # entrada base contra 1,25x a de 5 min (~US$ 0,01 a mais no prefixo de 6,7 mil tokens do plano entre apps),
+    # pago de volta na primeira releitura. `5m` volta ao de antes. Só os três planejamentos da execução; o
+    # curador e o treino seguem em 5 min.
+    cache_ttl_do_plano: Literal["5m", "1h"] = "1h"
     # Item 7.6 (dieta do contexto do ator): histórico da tentativa que vai ao ator, comprimido sem chamar o
     # modelo — linhas REJEITADA/FALHOU/(executor) (sempre relevantes: dizem o que NÃO fazer de novo) mais as
     # últimas N em ordem. O verificador continua recebendo o histórico completo que o executor lhe passa.
