@@ -534,6 +534,22 @@ class AnthropicProvider:
         raw = next((b.text for b in resp.content if b.type == "text"), "")
         return transcricao_from_json(raw, list(req.saidas)), usage
 
+    # ------------------------------------------------------------------ leitura de imagem dos canais (item 28.24, F3)
+    async def descrever_imagem(self, conteudo: bytes, mime: str, *, model: str, system: str, pergunta: str,
+                               max_tokens: int) -> tuple[str, Usage]:
+        """Descreve UMA imagem que o dono mandou por um canal, no `model` que o chamador escolheu (o mais barato com visão).
+        Fora do hub de propósito: não há papel, execução nem tela de aparelho; o chamador confere o gasto no hub ANTES
+        (`conferir_gasto`) e grava o `Usage` em `ai_calls` DEPOIS (`origem='canais'`). A resposta cortada por `max_tokens`
+        não é erro (a descrição vem curta de propósito); só a recusa por política é."""
+        imagem = {"type": "image", "source": {"type": "base64", "media_type": mime,
+                                              "data": base64.standard_b64encode(conteudo).decode()}}
+        resp, usage = await self._create(role="canais", model=model, system=system,
+                                         content=[imagem, {"type": "text", "text": pergunta}], effort="low",
+                                         max_tokens=max_tokens, with_image=True, cachear=False)
+        if resp.stop_reason == "refusal":
+            raise AIError("O provedor recusou ler esta imagem por política de segurança.", kind="refusal", model=model)
+        return "".join(b.text for b in resp.content if getattr(b, "type", "") == "text").strip(), usage
+
     # ------------------------------------------------------------------ geração de persona
     async def generate_persona(self, req: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]:
         """Pelo papel `persona` (item 17.8; sem `ai.roles.persona` é o `social`, com o mesmo modelo e orçamento). Só
