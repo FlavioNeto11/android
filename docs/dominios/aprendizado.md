@@ -107,7 +107,12 @@ gerenciador de aparelhos, de um lado, e o livro, do outro. Sem o livro ligado (`
 
 `failure_kind` é gravado em `repository.finish_attempt` (o erro final), na reconciliação (`interrompida`) e no desfecho
 da etapa. O vocabulário é fechado (`domain/falhas.py::FailureKind`), e uma catraca por AST exige que todo motivo do
-executor caia fora de `outro`. A camada e o "onde alterar" saem do tipo na hora da leitura.
+executor caia fora de `outro`. A catraca cobre também os motivos de `dado_ausente(...)` (30.58). A camada e o "onde
+alterar" saem do tipo na hora da leitura.
+
+O "Dado ausente: procurei …" da etapa de leitura (31.38) é `alvo_ausente`, qualquer que seja o motivo entre parênteses
+(30.58). A regra vem antes dos tetos de IA: "orçamento de chamadas da etapa esgotado" diz como a leitura desistiu, não
+que faltou crédito. Antes, as 7 tentativas de 04/10 caíam em `outro` e viravam candidato genérico no portal.
 
 Quando a etapa termina por erro de IA, o tipo vem dele e não do texto (RA-22, migração 081). O executor põe o
 `AIError.kind` no `StepOutcome.ai_error_kind` (o `desfecho_de_ia`, a verificação, e o `_run_guarded` do scheduler para o

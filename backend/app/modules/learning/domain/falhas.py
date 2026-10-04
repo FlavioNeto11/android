@@ -94,6 +94,10 @@ REGRAS: tuple[tuple[FailureKind, tuple[str, ...]], ...] = (
     # legado: o texto de um `AIError` é o que o executor escreveu em `attempts.error`; o TIPO (`AIError.kind`) chega por
     # `ai_calls.error_kind` e vence o texto onde existir (`classificar_pelo_tipo_da_ia`). Estas regras ficam para a
     # tentativa sem `ai_calls` (além da purga) e para o texto que o tipo não cobre (a catraca por AST depende delas).
+    # 30.58: a leitura que não achou o valor (31.38, `PREFIXO_DADO_AUSENTE` do executor) é o alvo da leitura ausente na
+    # tela, qualquer que seja o motivo entre parênteses. Antes dos tetos de IA: "orçamento de chamadas da etapa
+    # esgotado" é COMO a leitura desistiu, não falta de crédito. Sem esta regra, as 7 de 04/10 caíam em `outro`.
+    (_F.ALVO_AUSENTE, ("dado ausente: procurei",)),
     (_F.IA_SALDO, ("sem credito", "recarregue no console", "recarregue o credito")),  # legado
     (_F.IA_ORCAMENTO, ("teto de gasto de ia", "chamadas de ia por objetivo", "orcamento de")),  # legado
     # O valor que a etapa entrega às seguintes (item 24.3) só existe se o ator chamar `read_value`: como o

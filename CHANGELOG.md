@@ -32,6 +32,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Prova:** `simulated`. `tests/test_telegram_entrada.py` tem 7 testes novos, com as duas mensagens literais; 4 deles
   falham contra o código antigo, e as contraprovas cobrem o pedido com aparelho e "quem é você". 324 passed nos testes
   de telegram e canais. Doc em `docs/dominios/canais.md` (C-12, o caminho do repasse).
+## 2026-10-04 — 30.58: o "dado ausente" da leitura é alvo ausente, não `outro` (branch fix/30-58-dado-ausente)
+
+- `domain/falhas.py`: a regra `dado ausente: procurei` leva a `alvo_ausente`, antes dos tetos de IA. O texto do
+  orçamento da etapa ia para `ia_orcamento`, que nunca vira lição.
+- A catraca por AST de `tests/test_learning_falhas.py` passa a cobrir os motivos de `dado_ausente(...)`.
+- Teste novo com os 4 motivos do executor e o texto real de 04/10. A conduta do 31.38 ("insistiu em dado ausente fora
+  da leitura") segue `ia_chamada_invalida`.
+- Medido no central, em leitura: 7 tentativas com esse texto em 04/10, que davam o candidato fk-9869d46dca do portal.
+- Prova `simulated`.
 
 ## 2026-10-04 — 29.73: o agente reconecta rápido depois do reinício do central (branch fix/29-73-reconexao-rapida)
 
