@@ -48,6 +48,15 @@ class Approval:
     #: 29.30: a imagem da persona que a etapa vai publicar (`image_id` dos argumentos da etapa), para quem aprova VER
     #: o que sai, e não só a legenda. Lida da etapa, sem coluna nova: a aprovação aponta para ela por `step_id`.
     image_id: str | None = None
+    #: 30.61: `plano` (o sim dado na prévia da porta, antes de iniciar) ou `execucao` (a porta do despacho, como sempre).
+    #: A de origem `plano` só vale na execução para o item IDÊNTICO (`chave_sha256`, recalculada no despacho), dentro de
+    #: `expires_at` e antes de o efeito sair; senão conta como ausente e a porta pergunta de novo.
+    origem: str = "execucao"
+    expires_at: str | None = None
+    chave_sha256: str | None = None
+    chave_v: int | None = None
+    plan_version: int | None = None
+    midia_sha256: str | None = None
 
     @property
     def content(self) -> str | None:
@@ -58,7 +67,7 @@ class Approval:
         d = {k: getattr(self, k) for k in
              ("id", "profile_id", "run_id", "objective_id", "step_id", "capability", "target", "summary",
               "generated_content", "approved_content", "status", "created_at", "decided_at", "decided_note",
-              "decided_by", "interaction_id", "image_id")}
+              "decided_by", "interaction_id", "image_id", "origem", "expires_at", "plan_version")}
         d["content"] = self.content
         return d
 
@@ -74,7 +83,10 @@ class ApprovalStore:
                         approved_content=row["approved_content"], status=row["status"], created_at=row["created_at"],
                         decided_at=row["decided_at"], decided_note=row["decided_note"],
                         decided_by=row["decided_by"], interaction_id=row["interaction_id"],
-                        image_id=self._imagem_da_etapa(row["step_id"]))
+                        image_id=self._imagem_da_etapa(row["step_id"]), origem=row.get("origem") or "execucao",
+                        expires_at=row.get("expires_at"), chave_sha256=row.get("chave_sha256"),
+                        chave_v=row.get("chave_v"), plan_version=row.get("plan_version"),
+                        midia_sha256=row.get("midia_sha256"))
 
     def objeto_da_etapa(self, step_id: str | None, acao: Capability | None) -> dict[str, str] | None:
         """30.64: o OBJETO da ação nos argumentos da etapa, pelo que o catálogo declara em `objeto_alvo` (fonte única,
@@ -131,6 +143,8 @@ class ApprovalStore:
         row = self.db.one(
             "SELECT a.* FROM pending_approvals a JOIN steps s ON s.id=a.step_id WHERE s.objective_id=? AND s.key=?"
             " AND s.plan_version<? AND a.status IN ('approved','edited','rejected')"
+            # 30.61: o sim do plano não migra para a etapa revisada; ele vale só pela chave, no `_approval_gate`.
+            " AND a.origem<>'plano'"
             " ORDER BY s.plan_version DESC, a.created_at DESC LIMIT 1",
             (etapa["objective_id"], etapa["key"], etapa["plan_version"]))
         if row is None:
@@ -183,6 +197,25 @@ class ApprovalStore:
         row = self.db.one("SELECT * FROM pending_approvals WHERE id=?", (approval_id,))
         return self._dto(row)
 
+    def aprovar_no_plano(self, *, profile_id: str, capability: str, summary: str, target: str | None,
+                         content: str | None, run_id: str, objective_id: str, step_id: str, chave_sha256: str,
+                         chave_v: int, plan_version: int, expires_at: str, midia_sha256: str | None,
+                         decided_by: str | None) -> Approval:
+        """30.61: o sim dado na prévia da porta, já decidido (`approved`, origem `plano`), num INSERT só, dentro da
+        transação do gesto. Vale na execução só pelo `_approval_gate`, que recalcula a chave da etapa relida."""
+        approval_id = f"apr-{new_token()}"
+        agora = now_iso()
+        self.db.execute(
+            "INSERT INTO pending_approvals(id, profile_id, run_id, objective_id, step_id, capability, target, summary,"
+            " generated_content, status, created_at, decided_at, decided_note, decided_by, origem, expires_at,"
+            " chave_sha256, chave_v, plan_version, midia_sha256)"
+            " VALUES (?,?,?,?,?,?,?,?,?,'approved',?,?,?,?,'plano',?,?,?,?,?)",
+            (approval_id, profile_id, run_id, objective_id, step_id, capability, target, summary, content, agora, agora,
+             "aprovado na prévia da porta (30.61)", decided_by or operador_atual(), expires_at, chave_sha256, chave_v,
+             plan_version, midia_sha256))
+        row = self.db.one("SELECT * FROM pending_approvals WHERE id=?", (approval_id,))
+        return self._dto(row)
+
     def decide(self, approval_id: str, *, status: str, content: str | None = None,
                note: str | None = None, decided_by: str | None = None,
                na_mesma_transacao: Callable[[Row], None] | None = None) -> Approval | None:
@@ -216,6 +249,14 @@ class ApprovalStore:
         """
         self.db.execute("UPDATE pending_approvals SET interaction_id=? WHERE step_id=? AND interaction_id IS NULL",
                         (interaction_id, step_id))
+
+    def descartar_do_plano(self, approval_id: str, *, motivo: str) -> bool:
+        """30.61: o sim dado no plano que não cobre a etapa sai como `expired`, com o porquê (condicional: só o aprovado
+        de origem `plano` ainda sem efeito)."""
+        cur = self.db.execute(
+            "UPDATE pending_approvals SET status='expired', decided_note=? WHERE id=? AND origem='plano'"
+            " AND status='approved' AND interaction_id IS NULL", (f"sim do plano descartado: {motivo}", approval_id))
+        return bool(cur.rowcount)
 
     def expire_for_objective(self, objective_id: str, *, reason: str) -> int:
         cur = self.db.execute(

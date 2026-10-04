@@ -113,7 +113,7 @@ from .releases.service import InstalacaoIncerta, ReleaseService
 from .security.sensitive_input import SensitiveInputChannel
 from .social.contas_nossas import MARCADOR
 from .social.repository import SocialRepository, frase_da_quarentena, sessao_vencida
-from .social.approvals import (ApprovalService, ApprovalStore, definir_texto, guardar_rascunho, ler_rascunho,
+from .social.approvals import (Approval, ApprovalService, ApprovalStore, definir_texto, guardar_rascunho, ler_rascunho,
                                textos_irmaos)
 from .social.persona_batch import LotesDePersona
 from .social.policy import UMA_CONTA_POR_ALVO, PolicyEngine, Verdict
@@ -129,6 +129,7 @@ from .taskqueue.sombra_intencao import SombraDaIntencao, catalogo_de
 from .taskqueue.travas import (AVISOS, CURADORIA, PEDIDOS, RENOVAR_TRAVA_S, RETENCAO, SALDOS, TRAVAS_DOS_LACOS, Lideranca,
                                TravaPerdida)
 from .training.generalizer import ProviderSkillGeneralizer
+from .social.chave_da_aprovacao import chave_da_aprovacao, midia_da_etapa
 from .util import iso_in, now, now_iso, parse_iso, to_iso
 from .vitrine import (_apps_changed, alvos_da_distribuicao, laco_de_convergencia, previa_de_entrega,
                       trabalho_ao_ligar)
@@ -2124,7 +2125,8 @@ class AppState:
         if veredito.needs_approval or confirmacao or pelo_teto or repetida:
             motivo = "; ".join(m for m in (veredito.reason, confirmacao, pelo_teto, repetida or "") if m)
             # 30.65: a etapa que usa a exceção sempre pede decisão nova; o aprovado de outra versão não vale para ela.
-            return self._approval_gate(obj, srow, cap, profile_id, motivo=motivo, excecao=veredito.excecao)
+            return self._approval_gate(obj, srow, cap, profile_id, motivo=motivo, excecao=veredito.excecao,
+                                       pacote=pacote)
         return None
 
     def vereditos_da_porta(self, obj: Row, srow: Row, run: Row) -> "PortaDaEtapa":
@@ -2449,7 +2451,7 @@ class AppState:
         return arvore
 
     def _approval_gate(self, obj: Any, srow: Any, cap: Any, profile_id: str, *, motivo: str = "",
-                       excecao: str | None = None) -> Any:
+                       excecao: str | None = None, pacote: str | None = None) -> Any:
         """Ação que exige aprovação: a decisão da pessoa acontece ANTES de digitar qualquer coisa.
 
         É por isso que a porta fica aqui e não no meio da etapa: etapa concluída é estado terminal, então não
@@ -2467,6 +2469,17 @@ class AppState:
         if pedido is not None and presa is not None and presa.presa_em \
                 and parse_iso(pedido.created_at) < parse_iso(presa.presa_em):
             pedido = None
+        if pedido is not None and pedido.origem == "plano":
+            # 30.61 (`pacote`: o app da etapa, para recalcular a chave). O sim do plano vale só para o item IDÊNTICO, na
+            # validade e antes de o efeito sair. Senão sai de cena como `expired` (não fica "aprovado e não enviado"
+            # contando contra outras etapas) e a porta pergunta de novo, como sempre.
+            descarte = self._sim_do_plano_nao_vale(pedido, obj, srow, cap, profile_id, pacote)
+            if descarte:
+                self.approvals.descartar_do_plano(pedido.id, motivo=descarte)
+                self.repo.decision(f"{obj['instance_id']}: o sim dado no plano para '{srow['title']}' não vale: "
+                                   f"{descarte}; a porta pergunta de novo.", run_id=obj["run_id"],
+                                   instance_id=obj["instance_id"], step_id=srow["id"])
+                pedido = None
         bindings = loads(srow["bindings"], {}) or {}
         # O alvo normalizado é a chave da reserva de frota (`SocialRepository.fleet_targeting`).
         alvo = contraparte(cap, bindings) or alvo_da_acao(cap, bindings)
@@ -2503,6 +2516,25 @@ class AppState:
                        reason=f"{srow['title']} precisa de aprovação antes de acontecer"
                               + (f" ({motivo})" if motivo else ""),
                        hint="Abra Aprovações e escolha aprovar, editar ou rejeitar.")
+
+    def _sim_do_plano_nao_vale(self, pedido: Approval, obj: Row, srow: Row, cap: Capability, profile_id: str,
+                               pacote: str | None) -> str:
+        """30.61: por que o sim dado na prévia NÃO cobre esta etapa ('' quando cobre). Falha fechado: vencido, já gasto,
+        ou a chave da etapa RELIDA (texto, alvo, objeto, mídia, perfil, aparelho, app) diferente da aprovada."""
+        if pedido.status != "approved":
+            return f"a aprovação está '{pedido.status}'"
+        if not pedido.expires_at or parse_iso(pedido.expires_at) <= now():
+            return "venceu"
+        if pedido.interaction_id is not None:
+            return "já foi gasto num efeito"
+        bindings = loads(srow["bindings"], {}) or {}
+        tem_imagem, sha = midia_da_etapa(self.db, bindings)
+        chave = chave_da_aprovacao(bindings, cap, perfil=profile_id, aparelho=str(obj["instance_id"]), pacote=pacote,
+                                   run_id=str(obj["run_id"]), objective_id=str(obj["id"]), tem_imagem=tem_imagem,
+                                   midia_sha256=sha)
+        if chave is None or chave != pedido.chave_sha256:
+            return "o item mudou desde a aprovação (a chave divergiu)"
+        return ""
 
     def _seed_apps(self) -> None:
         """Os apps do `config.yaml` entram no registro na subida; o que já existe (mesmo id) fica como está.

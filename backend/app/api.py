@@ -74,7 +74,7 @@ from .modules.learning.presentation.livro import mudar_status_legado
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
 from .planning import conciliacao, costs, saldos
-from .porta_do_plano import PortaIndisponivel, previa_da_porta
+from .porta_do_plano import AprovarPlanoBody, PortaIndisponivel, aprovar_plano, previa_da_porta
 from .security import access as acesso           # o módulo, não os nomes: `LOOPBACK_DE_TESTE` é injetado em tempo
 from .security import local_secret               # de execução e um `from ... import` congelaria o valor antigo
 from .security.access import avaliar, publicos_de
@@ -3122,7 +3122,19 @@ async def run_porta(request: Request, run_id: str) -> dict[str, object]:
     try:
         return previa_da_porta(st(request), run_id)
     except PortaIndisponivel as exc:
-        raise err(exc.status, exc.codigo, exc.mensagem) from exc
+        raise err(exc.status, exc.codigo, exc.mensagem, **exc.extra) from exc
+
+
+@router.post("/runs/{run_id}/aprovar-plano")
+async def run_aprovar_plano(request: Request, run_id: str, body: AprovarPlanoBody) -> dict[str, object]:
+    """30.61: "Aprovar N e iniciar". 409 `plano_mudou` (com `mudaram` e a `previa` nova) quando algum item não é mais o
+    que o dono viu; nada é gravado. Senão grava os sins de origem `plano`, cancela as tiradas e inicia."""
+    try:
+        return aprovar_plano(st(request), run_id, body, por=_autor_do_sinal(request))
+    except PortaIndisponivel as exc:
+        raise err(exc.status, exc.codigo, exc.mensagem, **exc.extra) from exc
+    except RunError as exc:
+        raise _run_error(exc) from exc
 
 
 @router.post("/commands/refine")

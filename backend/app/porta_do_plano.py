@@ -21,10 +21,12 @@ from collections.abc import Mapping
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel, Field
+
 from .db import Row, loads
-from .models import InteractionType
+from .models import InteractionType, StepStatus
 from .planning.capabilities import contraparte, objeto_da_acao, texto_a_gerar
-from .social.chave_da_aprovacao import chave_da_aprovacao, midia_da_etapa, texto_exato
+from .social.chave_da_aprovacao import VERSAO_DA_CHAVE, chave_da_aprovacao, midia_da_etapa, texto_exato
 from .util import now, to_iso
 
 if TYPE_CHECKING:
@@ -41,11 +43,27 @@ SEMPRE_NA_EXECUCAO = ("desafio", "2FA", "CAPTCHA")
 
 
 class PortaIndisponivel(Exception):
-    """A prévia não se aplica (execução inexistente, fora de `planned`, sem plano). `codigo` e `status` vão à rota."""
+    """A prévia ou o gesto não se aplicam (execução inexistente, fora de `planned`, sem plano, item que mudou). `codigo`,
+    `status` e `extra` vão à rota."""
 
-    def __init__(self, codigo: str, mensagem: str, status: int = 409):
+    def __init__(self, codigo: str, mensagem: str, status: int = 409, **extra: object):
         super().__init__(mensagem)
-        self.codigo, self.mensagem, self.status = codigo, mensagem, status
+        self.codigo, self.mensagem, self.status, self.extra = codigo, mensagem, status, extra
+
+
+class ItemAprovado(BaseModel):
+    """Um item 🔒 da prévia que o dono aprova: a etapa e a chave que ele VIU."""
+
+    step_id: str = Field(min_length=1, max_length=300)
+    chave: str = Field(min_length=64, max_length=64)
+
+
+class AprovarPlanoBody(BaseModel):
+    """`POST /runs/{id}/aprovar-plano`: os itens aprovados (com a chave vista) e as etapas tiradas ("Não fazer esta").
+    As dependentes das tiradas saem junto, pela conta do servidor, nunca pela lista do cliente."""
+
+    aprovar: list[ItemAprovado] = Field(default_factory=list, max_length=500)
+    tirar: list[str] = Field(default_factory=list, max_length=500)
 
 
 def validade_h(state: AppState) -> int:
@@ -108,7 +126,8 @@ def _selo(porta: PortaDaEtapa, alvo_por_resolver: bool, repetida: str) -> tuple[
     return PERMITIDO, v.reason, v.hint, None
 
 
-def previa_da_porta(state: AppState, run_id: str) -> dict[str, object]:
+def _plano(state: AppState, run_id: str) -> tuple[Row, dict[str, Row], list[Row], dict[str, list[str]]]:
+    """`(run, objetivos, etapas da versão atual não canceladas, dependentes transitivos)` de uma execução `planned`."""
     run = state.repo.run_row(run_id)
     if run is None:
         raise PortaIndisponivel("not_found", "Execução não encontrada.", 404)
@@ -126,6 +145,11 @@ def previa_da_porta(state: AppState, run_id: str) -> dict[str, object]:
     for e in etapas:
         por_objetivo.setdefault(str(e["objective_id"]), []).append(e)
     dependentes = {k: v for lista in por_objetivo.values() for k, v in _dependentes(lista).items()}
+    return run, objetivos, etapas, dependentes
+
+
+def previa_da_porta(state: AppState, run_id: str) -> dict[str, object]:
+    run, objetivos, etapas, dependentes = _plano(state, run_id)
     rotulos = {str(r["id"]): f"@{r['username']}" if r["username"] else str(r["id"])
                for r in state.db.query("SELECT id, username FROM instagram_profiles")}
 
@@ -215,3 +239,70 @@ def _item(state: AppState, run: Row, obj: Row, e: Row, dependentes: list[str], r
             "alvo": alvo, "objeto_alvo": objeto, "selo": selo, "motivo": motivo, "dica": dica, "retry_at": retry_at,
             "texto": texto if fechado else None, "texto_na_execucao": texto_na_execucao, "tem_imagem": tem_imagem,
             "imagem_sha256": imagem_sha, "chave": chave, "falhou": False}
+
+
+def _texto(valor: object) -> str | None:
+    return None if valor is None else str(valor)
+
+
+def _itens(previa: Mapping[str, object]) -> list[dict[str, object]]:
+    itens = previa.get("itens")
+    return [i for i in itens if isinstance(i, dict)] if isinstance(itens, list) else []
+
+
+#: O que o gesto escreve no `detail` da etapa tirada e no `decided_note` da aprovação.
+MOTIVO_TIRADA = "tirada na prévia da porta (30.61): o dono escolheu não fazer"
+
+
+def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por: str) -> dict[str, object]:
+    """30.61: o gesto "Aprovar N e iniciar". Recalcula a prévia AGORA (a mesma conta do `GET`) e compara item a item com
+    o que o dono viu: qualquer item que não é mais 🔒 com a MESMA chave devolve 409 `plano_mudou`, com a lista e a
+    prévia nova, e nada é gravado. Senão, numa transação, grava cada sim como aprovação `approved` de origem `plano`
+    (chave, versão do plano, validade, sha256 da mídia) e cancela as tiradas e as dependentes delas; depois inicia a
+    execução. O sim só vale na execução pelo `_approval_gate`, que recalcula a chave da etapa relida."""
+    previa = previa_da_porta(state, run_id)
+    _run, objetivos, etapas, dependentes = _plano(state, run_id)
+    itens = {str(i["step_id"]): i for i in _itens(previa)}
+    do_plano = {str(e["id"]) for e in etapas}
+    pedidos = list(dict.fromkeys((i.step_id, i.chave) for i in corpo.aprovar))
+    if len({sid for sid, _c in pedidos}) != len(pedidos):
+        raise PortaIndisponivel("invalid_body", "A mesma etapa veio com duas chaves.", 422)
+    if set(corpo.tirar) & {sid for sid, _c in pedidos}:
+        raise PortaIndisponivel("invalid_body", "A mesma etapa veio para aprovar e para tirar.", 422)
+    mudaram: list[dict[str, object]] = []
+    for sid, chave in pedidos:
+        item = itens.get(sid)
+        if item is None or item["selo"] != APROVACAO or not item["chave"] or item["chave"] != chave:
+            mudaram.append({"step_id": sid, "selo": item["selo"] if item else None,
+                            "motivo": (item["motivo"] if item else "a etapa não está mais no plano")
+                            or "a chave mudou: o item não é mais o que você viu"})
+    mudaram += [{"step_id": sid, "selo": None, "motivo": "a etapa não está mais no plano"}
+                for sid in corpo.tirar if sid not in do_plano]
+    if mudaram:
+        raise PortaIndisponivel("plano_mudou", f"{len(mudaram)} item(ns) mudaram desde a prévia; nada foi gravado.",
+                                mudaram=mudaram, previa=previa)
+    tirados = sorted({*corpo.tirar, *(d for sid in corpo.tirar for d in dependentes.get(sid, []))})
+    aprovar = [(sid, chave) for sid, chave in pedidos if sid not in tirados]   # a dependente de uma tirada sai junto
+    validade = to_iso(now() + timedelta(hours=validade_h(state)))
+    etapa_por_id = {str(e["id"]): e for e in etapas}
+    gravadas: list[str] = []
+    with state.db.tx():
+        # Dois gestos ao mesmo tempo: a transação serializa, e o segundo vê o sim do primeiro (ou a execução iniciada).
+        if state.db.scalar("SELECT status FROM runs WHERE id=?", (run_id,)) != "planned" or state.db.scalar(
+                "SELECT 1 FROM pending_approvals WHERE run_id=? AND origem='plano' LIMIT 1", (run_id,)):
+            raise PortaIndisponivel("invalid_state", "O plano desta execução já foi aprovado ou iniciado.")
+        for sid, chave in aprovar:
+            item, e = itens[sid], etapa_por_id[sid]
+            obj = objetivos[str(e["objective_id"])]
+            gravadas.append(state.approvals.aprovar_no_plano(
+                profile_id=str(item["profile_id"]), capability=str(item["acao"]),
+                summary=f"{e['title']} — aprovado na prévia da porta", target=_texto(item.get("alvo")),
+                content=_texto(item.get("texto")), run_id=run_id, objective_id=str(obj["id"]), step_id=sid,
+                chave_sha256=chave, chave_v=VERSAO_DA_CHAVE, plan_version=int(obj["plan_version"]), expires_at=validade,
+                midia_sha256=_texto(item.get("imagem_sha256")), decided_by=por).id)
+        for sid in tirados:
+            state.repo.transition_step(sid, StepStatus.cancelled, detail=MOTIVO_TIRADA)
+        state.repo.decision(f"plano aprovado na prévia da porta por {por}: {len(gravadas)} item(ns) aprovado(s) até "
+                            f"{validade}, {len(tirados)} etapa(s) tirada(s)", run_id=run_id)
+    resumo = state.runs.start(run_id, por=por)
+    return {"run": resumo.model_dump(mode="json"), "aprovacoes": gravadas, "tiradas": tirados, "validade_ate": validade}

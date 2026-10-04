@@ -6,13 +6,24 @@ Nível de prova: `simulated` (harness com aparelhos falsos, catálogo do Instagr
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from typing import Any
 
 from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app.models import ProfileCreate
-from app.porta_do_plano import APROVACAO, NA_EXECUCAO, RECUSADO, previa_da_porta
+from app.porta_do_plano import (
+    APROVACAO,
+    NA_EXECUCAO,
+    RECUSADO,
+    AprovarPlanoBody,
+    ItemAprovado,
+    PortaIndisponivel,
+    aprovar_plano,
+    previa_da_porta,
+)
+from app.util import now, parse_iso, to_iso
 
 from .test_capabilities import IG, SENHA
 
@@ -150,3 +161,119 @@ async def test_pela_rota_404_409_e_200(harness: Any) -> None:
     assert fora.status_code == 409 and fora.json()["detail"]["code"] == "invalid_state"
     ok = cliente.get("/api/runs/run-p/porta")
     assert ok.status_code == 200 and ok.json()["itens"][0]["selo"] == APROVACAO
+
+
+# ------------------------------------------------------------------ o gesto "Aprovar N e iniciar" e a porta que o honra
+def _sem_iniciar(state: Any, monkeypatch: Any) -> list[tuple[str, str]]:
+    """`runs.start` registrado e sem despachar: o que se mede aqui é o gesto e a porta, não o agendador."""
+    chamadas: list[tuple[str, str]] = []
+
+    def start(run_id: str, *, por: str = "sistema") -> Any:
+        chamadas.append((run_id, por))
+        return state.repo.run_summary(state.repo.run_row(run_id))
+
+    monkeypatch.setattr(state.runs, "start", start)
+    return chamadas
+
+
+async def _gate(state: Any, chave_da_etapa: str, run_id: str = "run-p") -> Any:
+    db = state.db
+    etapa = db.one("SELECT * FROM steps WHERE id=?", (f"{run_id}:android-01:v1:{chave_da_etapa}",))
+    return await state._policy_gate(db.one("SELECT * FROM objectives WHERE id=?", (etapa["objective_id"],)),  # noqa: SLF001
+                                    etapa, db.one("SELECT * FROM runs WHERE id=?", (run_id,)))
+
+
+def _plano_com_dm(state: Any) -> dict[str, dict[str, Any]]:
+    _plano(state, [
+        {"key": "dm", "cap": "SEND_MESSAGE", "bindings": DM},
+        {"key": "dm2", "cap": "SEND_MESSAGE", "bindings": {**DM, "username": "@outra.pessoa"}},
+        {"key": "depois", "cap": None, "efeito": 0, "depende": ["dm2"]},
+    ])
+    return _por_chave(previa_da_porta(state, "run-p"))
+
+
+async def test_aprovar_grava_o_sim_do_plano_tira_as_dependentes_e_inicia(harness: Any, monkeypatch: Any) -> None:
+    state = harness.state
+    iniciou = _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    corpo = AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"])],
+                             tirar=[itens["dm2"]["step_id"]])
+    saida = aprovar_plano(state, "run-p", corpo, por="flavio")
+    [linha] = state.db.query("SELECT * FROM pending_approvals")
+    assert (linha["origem"], linha["status"], linha["step_id"]) == ("plano", "approved", itens["dm"]["step_id"])
+    assert linha["chave_sha256"] == itens["dm"]["chave"] and linha["chave_v"] == 1 and linha["plan_version"] == 1
+    assert linha["decided_by"] == "flavio" and linha["generated_content"] == "oi, tudo bem?"
+    assert parse_iso(linha["expires_at"]) > now() + timedelta(hours=23)
+    status = {r["key"]: r["status"] for r in state.db.query("SELECT key, status FROM steps")}
+    assert status["dm2"] == "cancelled" and status["depois"] == "cancelled" and status["dm"] != "cancelled"
+    assert saida["tiradas"] == ["run-p:android-01:v1:depois", "run-p:android-01:v1:dm2"]
+    assert iniciou == [("run-p", "flavio")]
+    # o segundo gesto não grava outro sim
+    try:
+        aprovar_plano(state, "run-p", corpo, por="flavio")
+        raise AssertionError("o segundo gesto devia ser recusado")
+    except PortaIndisponivel as exc:
+        assert exc.codigo in ("invalid_state", "plano_mudou")
+    assert int(state.db.scalar("SELECT COUNT(*) FROM pending_approvals")) == 1
+
+
+async def test_item_que_mudou_devolve_409_e_nada_e_gravado(harness: Any, monkeypatch: Any) -> None:
+    state = harness.state
+    iniciou = _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    state.db.execute("UPDATE steps SET bindings=? WHERE key='dm'", (json.dumps({**DM, "content": "oi!"}),))
+    corpo = AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"])],
+                             tirar=[itens["dm2"]["step_id"]])
+    try:
+        aprovar_plano(state, "run-p", corpo, por="flavio")
+        raise AssertionError("devia devolver plano_mudou")
+    except PortaIndisponivel as exc:
+        assert exc.codigo == "plano_mudou" and exc.status == 409
+        assert [m["step_id"] for m in exc.extra["mudaram"]] == [itens["dm"]["step_id"]]   # type: ignore[union-attr]
+        assert "itens" in exc.extra["previa"]                                              # type: ignore[operator]
+    assert not state.db.scalar("SELECT COUNT(*) FROM pending_approvals") and not iniciou
+    assert state.db.scalar("SELECT status FROM steps WHERE key='dm2'") != "cancelled"
+
+
+async def test_a_porta_honra_o_sim_identico_e_descarta_o_mudado(harness: Any, monkeypatch: Any) -> None:
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"],
+                                                                         chave=itens["dm"]["chave"])]), por="flavio")
+    assert await _gate(state, "dm") is None                      # o mesmo item: segue sem parar
+    assert int(state.db.scalar("SELECT COUNT(*) FROM pending_approvals")) == 1
+    state.db.execute("UPDATE steps SET bindings=? WHERE key='dm'", (json.dumps({**DM, "content": "oi!"}),))
+    veredito = await _gate(state, "dm")                          # texto mudou: o sim do plano não cobre
+    assert veredito is not None and not veredito.allowed and veredito.policy == "approval_required"
+    linhas = {r["origem"]: r for r in state.db.query("SELECT * FROM pending_approvals")}
+    assert linhas["plano"]["status"] == "expired" and "chave divergiu" in linhas["plano"]["decided_note"]
+    assert linhas["execucao"]["status"] == "pending"
+
+
+async def test_o_sim_do_plano_vencido_nao_vale(harness: Any, monkeypatch: Any) -> None:
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"],
+                                                                         chave=itens["dm"]["chave"])]), por="flavio")
+    state.db.execute("UPDATE pending_approvals SET expires_at=?", (to_iso(now() - timedelta(minutes=1)),))
+    veredito = await _gate(state, "dm")
+    assert veredito is not None and not veredito.allowed
+    assert state.db.scalar("SELECT decided_note FROM pending_approvals WHERE origem='plano'").endswith("venceu")
+
+
+async def test_o_gesto_pela_rota(harness: Any, monkeypatch: Any) -> None:
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    app = create_app(harness.cfg, state=state)
+    app.state.poc = state
+    cliente = TestClient(app, client=("127.0.0.1", 123))
+    errado = cliente.post("/api/runs/run-p/aprovar-plano",
+                          json={"aprovar": [{"step_id": itens["dm"]["step_id"], "chave": "0" * 64}]})
+    assert errado.status_code == 409 and errado.json()["detail"]["code"] == "plano_mudou"
+    assert errado.json()["detail"]["previa"]["itens"]
+    ok = cliente.post("/api/runs/run-p/aprovar-plano",
+                      json={"aprovar": [{"step_id": itens["dm"]["step_id"], "chave": itens["dm"]["chave"]}]})
+    assert ok.status_code == 200 and len(ok.json()["aprovacoes"]) == 1
