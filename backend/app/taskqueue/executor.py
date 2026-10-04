@@ -68,6 +68,7 @@ from .midia_galeria import INTERNAS_POR_CODIGO, MidiaRecusada, colocar_midia_na_
 from .recipes import (READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, eh_generica,
                       filhos_rotulados, hash_generico_da_linha, unique_selectors)
 from .repository import Repository
+from .dialogos import LIMITE_DE_DIALOGOS, botao_que_fecha
 from .relacao import relacao_do_valor
 from .saidas import (RECUSAS_DETERMINISTICAS, ChaveDeTentativa, LeituraInvalida, LeituraSemTexto,
                      LeituraVisualRecusada, args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor,
@@ -1920,7 +1921,15 @@ class StepExecutor:
         fila_encadeada: list[Decision] = []
         arvore_da_fila: UiTree | None = None
         chamada_da_fila: int | None = None
-        for _ in range(max_actions + 1):
+        # Item 31.51: na limpeza, o executor fecha pela árvore os diálogos do site em série (`botao_que_fecha`), com
+        # teto próprio: essas voltas não contam nas `max_actions` do ator.
+        limpeza = step.key.startswith(PREFIXO_LIMPEZA)
+        cobertura_da_limpeza = Cobertura.das_variaveis(step.variables) if limpeza else None
+        fechados_pela_regra = 0
+        for volta in range(max_actions + 1 + (LIMITE_DE_DIALOGOS if limpeza else 0)):
+            if volta - fechados_pela_regra > max_actions:
+                break
+            pela_regra = False
             chamada_do_ator = None
             settle_da_volta, settle_pendente = settle_pendente, None
             # ---------- ponto seguro
@@ -2087,6 +2096,18 @@ class StepExecutor:
                     repo.decision(f"{iid} · {step.title}: receita divergiu — {exc}; a IA assume esta etapa",
                                   run_id=run_id, instance_id=iid, step_id=step.id)
             scale = self._image_scale(obs, ai_cfg)
+            if (decision is None and limpeza and not fired and fechados_pela_regra < LIMITE_DE_DIALOGOS
+                    and (botao := botao_que_fecha(obs.tree, cobertura_da_limpeza.bounds
+                                                  if cobertura_da_limpeza is not None
+                                                  and ainda_cobre(cobertura_da_limpeza, obs.tree) else None))
+                    is not None):
+                # ---------- 31.51: o botão que fecha ou recusa está na árvore: toca nele, sem IA e sem gastar ação
+                rotulo = (botao.text or botao.desc or botao.resource_id)[:60]
+                decision = Decision(tool="tap", args={"element_id": botao.id,
+                                                      "rationale": f"[regra 31.51] fechar o diálogo: '{rotulo}'"})
+                fechados_pela_regra += 1
+                pela_regra = True
+                history.append(f"(executor) diálogo fechado pela árvore, sem IA: '{rotulo}' ({botao.id})")
             if decision is None:
                 # ---------- LT-1: a pós-condição já vale na tela que acabou de ser lida? Pular o ator, nunca a prova.
                 # Só etapa SEM efeito (a UI otimista de uma etapa com efeito mostra o "feito" antes de ele valer),
@@ -2730,7 +2751,7 @@ class StepExecutor:
 
             # ---------- agir (intenção gravada ANTES)
             aid = intencao(decision.tool, args.model_dump(mode="json"), rationale, side_effect=is_commit,
-                           source="recipe" if from_recipe else "ai")
+                           source="recipe" if from_recipe else ("regra" if pela_regra else "ai"))
             if is_commit:
                 fired = True           # a partir daqui o efeito pode ter ocorrido, aconteça o que acontecer
                 self._open_effect(objective, step, rt, cap, app.id)   # o histórico registra a INTENÇÃO, não o sucesso
