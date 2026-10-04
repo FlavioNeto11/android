@@ -1182,6 +1182,21 @@ de fluxos B com efeito que cheguem a `validated` com o parecer `aprovar` de conf
 aparelhos. O alimentador realista é o QA, pelas execuções de validação do P4 (30.31). Desde a 30.32, os fluxos de
 comentar, responder, mandar mensagem e seguir do Instagram são C e não entram.
 
+## A pessoa pede a validação (30.47)
+
+Até o 30.47, o pedido de validação nascia só do parecer `pedir_evidencia` do curador. Um fluxo candidato só ganha
+evidência pela execução de prova, porque o comando casa só com fluxo `active`. Sem parecer, não havia como provar.
+
+- `POST /api/aprendizado/fluxo/{ref}/validacao` (adendo v1.14) chama `ServicoDeValidacao.pedir_pela_pessoa`.
+- **O pedido:** a regra do pedido do curador (`pedido_do_parecer`, com `pedir_evidencia` e a falta
+  `reproducao_em_outro_aparelho`), com o comando e o aparelho de origem. Quem pediu vai no `review_id`
+  (`pedido:<quem>`).
+- **Só fluxo `candidate`.** Ficam com o dono: a classe C (a classe de agora, pelo dossiê do curador; sem dossiê, C) e o
+  efeito fora do app de QA (`efeito_real`).
+- **Nenhuma recusa grava pedido:** a resposta diz o motivo. O pedido vivo é conflito.
+- O painel ainda não tem o botão; a rota basta para a orquestradora e o dono.
+- Prova `simulated`: `backend/tests/test_learning_pedir_validacao.py`.
+
 ## O item de mais de um app (30.33-C)
 
 Um fluxo pode atravessar apps: o C1 lê no Outlook e abre o perfil no Instagram. O `app_id` dele é o app PRINCIPAL,

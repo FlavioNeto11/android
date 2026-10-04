@@ -31,15 +31,16 @@ from datetime import datetime, timedelta
 from typing import Protocol
 
 from app.contracts.origem import PREFIXO_VALIDACAO
-from app.modules.learning.domain.curador import Falta, Parecer
+from app.modules.learning.domain.ciclo import ConflitoDeEstado, ExigeODono, SkillState, TransicaoProibida
+from app.modules.learning.domain.curador import Decisao, Falta, Parecer
 from app.modules.learning.domain.livro import EntradaDoLivro, apps_do_item
-from app.modules.learning.domain.politica_de_risco import Classificacao, Razao
+from app.modules.learning.domain.politica_de_risco import ClasseDeRisco, Classificacao, Razao
 from app.modules.learning.domain.validacao import (VALIDADE_DO_PEDIDO_H, Ambiente, AparelhoCandidato, EstadoDoPedido,
                                                    FatosDoParecer, Folego, Grupo, Motivo, ProvaAnterior,
                                                    escolher_aparelho, excluidos_da_validacao,
                                                    limite_de_provas_atingido, motivo_da_prova_invalida,
-                                                   pedido_do_parecer, pode_despachar, sobra_aparelho_novo,
-                                                   teto_da_prova)
+                                                   motivo_humano, pedido_do_parecer, pode_despachar,
+                                                   sobra_aparelho_novo, teto_da_prova)
 from app.modules.learning.domain.vocabulario import LivroKind, Modo, Posicao
 from app.util import parse_iso, to_iso
 
@@ -219,18 +220,34 @@ class DespachoDeValidacao(Protocol):
     def enfileirar(self, comando: str, aparelho: str, chave: str, prova: str | None = None) -> str: ...  # o run_id
 
 
+#: 30.47: o `review_id` do pedido que uma PESSOA fez (não há parecer por trás): `pedido:<quem>`. A coluna não tem FK, e
+#: ninguém resolve o `review_id` de um pedido como revisão; é assim que o pedido guarda quem pediu.
+PREFIXO_DO_PEDIDO_DA_PESSOA = "pedido:"
+
+
+class PedidoRecusado(TransicaoProibida):
+    """30.47: o pedido da pessoa não passa numa regra do pedido (a mesma do parecer). `motivo` é o código."""
+
+    def __init__(self, motivo: Motivo) -> None:
+        super().__init__(motivo_humano(motivo.value) or motivo.value)
+        self.motivo = motivo
+
+
 class ServicoDeValidacao:
     nome = "validacao"
 
     def __init__(self, registro: RegistroDeValidacoes, fontes: FontesDaValidacao, despacho: DespachoDeValidacao,
                  *, triagem: Callable[[str], bool], ajustes: Callable[[], AjustesDaValidacao],
-                 relogio: Callable[[], datetime]) -> None:
+                 relogio: Callable[[], datetime],
+                 risco_do_item: Callable[[EntradaDoLivro], Classificacao | None] | None = None) -> None:
         self._registro = registro
         self._fontes = fontes
         self._despacho = despacho
         self._triagem = triagem
         self._ajustes = ajustes
         self._relogio = relogio
+        # 30.47: a classe de risco de AGORA (o dossiê), para o pedido da pessoa; sem ela, o pedido é recusado (C).
+        self._risco_do_item = risco_do_item
 
     # ------------------------------------------------------------------ 1. o parecer vira pedido
     def ao_parecer(self, e: EntradaDoLivro, review_id: str, parecer: Parecer, risco: Classificacao) -> str | None:
@@ -241,14 +258,7 @@ class ServicoDeValidacao:
             return None
         origem = self._fontes.origem(e.nasceu_de) if e.nasceu_de else None
         comando = origem.comando if origem is not None else None
-        fatos = FatosDoParecer(
-            decisao=parecer.decisao, falta=tuple(parecer.falta), kind=e.kind, estado=e.state,
-            vetado=self._fontes.vetado(e), toca_sessao=Razao.SESSAO_OU_AUTENTICACAO in risco.razoes,
-            efeito=e.side_effect, app_qa=self._todos_de_qa(e), comando=comando,
-            comando_com_credencial=bool(comando) and self._triagem(comando or ""),
-            fluxo_ativo=bool(comando) and e.kind is LivroKind.RECEITA and self._fontes.fluxo_ativo_para(comando or ""),
-            caminho=self._caminho(e.kind.value, e.trail_ref, comando))
-        pedido = pedido_do_parecer(fatos)
+        pedido = pedido_do_parecer(self._fatos(e, parecer.decisao, tuple(parecer.falta), risco, comando))
         if pedido is None:
             return None
         agora = self._relogio()
@@ -259,6 +269,58 @@ class ServicoDeValidacao:
             estado=pedido.estado.value, motivo=pedido.motivo.value if pedido.motivo else None,
             expira_em=to_iso(agora + timedelta(hours=VALIDADE_DO_PEDIDO_H)),
             teto_usd=aj.teto_por_pedido_usd), agora)
+
+    def _fatos(self, e: EntradaDoLivro, decisao: Decisao, falta: tuple[Falta, ...], risco: Classificacao,
+               comando: str | None) -> FatosDoParecer:
+        return FatosDoParecer(
+            decisao=decisao, falta=falta, kind=e.kind, estado=e.state,
+            vetado=self._fontes.vetado(e), toca_sessao=Razao.SESSAO_OU_AUTENTICACAO in risco.razoes,
+            efeito=e.side_effect, app_qa=self._todos_de_qa(e), comando=comando,
+            comando_com_credencial=bool(comando) and self._triagem(comando or ""),
+            fluxo_ativo=bool(comando) and e.kind is LivroKind.RECEITA and self._fontes.fluxo_ativo_para(comando or ""),
+            caminho=self._caminho(e.kind.value, e.trail_ref, comando))
+
+    # ------------------------------------------------------------------ 1b. a pessoa pede (30.47)
+    def pedir_pela_pessoa(self, e: EntradaDoLivro, *, by: str) -> str:
+        """30.47: uma PESSOA (o dono ou a orquestradora) pede a validação de um fluxo candidato, sem esperar o parecer
+        do curador. O pedido é o mesmo que um "pedir evidência" geraria (reprodução em outro aparelho, com o comando de
+        origem e o aparelho de origem excluído), e o despachante P4 faz o resto com o teto de sempre.
+
+        Só para fluxo `candidate` (a prova roda o plano do próprio fluxo). Recusa, sem gravar nada, o que um parecer
+        recusaria (vetado, sessão, sem origem, credencial no comando, sem caminho) e, além disso:
+        - a classe C (e o item sem dossiê de agora, que conta como C): segue item a item com o dono;
+        - o efeito fora do app de QA (`efeito_real`): segue exigindo o dono.
+        Devolve o id do pedido. Já havendo pedido vivo para o item, `ConflitoDeEstado`."""
+        aj = self._ajustes()
+        if aj.modo is Modo.OFF:
+            raise TransicaoProibida("A validação automática está desligada (aprendizado.validacao.modo: off).")
+        if e.kind is not LivroKind.FLUXO or e.state is not SkillState.CANDIDATE:
+            estado = e.state.value if e.state is not None else e.native_status
+            raise TransicaoProibida(f"Pedir validação vale só para fluxo candidato; {e.kind.value} {e.ref} está em "
+                                    f"'{estado}'.")
+        risco = self._risco_do_item(e) if self._risco_do_item is not None else None
+        if risco is None or risco.classe is ClasseDeRisco.C:
+            raise ExigeODono("Fluxo de classe C segue item a item com o dono: a validação automática não o prova.")
+        origem = self._fontes.origem(e.nasceu_de) if e.nasceu_de else None
+        comando = origem.comando if origem is not None else None
+        pedido = pedido_do_parecer(self._fatos(e, Decisao.PEDIR_EVIDENCIA, (Falta.REPRODUCAO_EM_OUTRO_APARELHO,),
+                                               risco, comando))
+        if pedido is None:                                   # inalcançável: a falta pedida é sempre automatizável
+            raise TransicaoProibida("Não há o que validar automaticamente neste fluxo.")
+        if pedido.motivo is not None:
+            raise PedidoRecusado(pedido.motivo)
+        agora = self._relogio()
+        pid = self._registro.criar(NovoPedido(
+            review_id=f"{PREFIXO_DO_PEDIDO_DA_PESSOA}{by}", item_ref=e.trail_ref, item_kind=e.kind.value,
+            scope_app=e.app or "", grupo=pedido.grupo.value, falta=tuple(f.value for f in pedido.falta),
+            run_origem=e.nasceu_de, comando=comando or "",
+            aparelho_excluido=origem.aparelho if origem is not None else None,
+            estado=pedido.estado.value, motivo=None, expira_em=to_iso(agora + timedelta(hours=VALIDADE_DO_PEDIDO_H)),
+            teto_usd=aj.teto_por_pedido_usd), agora)
+        if pid is None:
+            raise ConflitoDeEstado(f"O fluxo {e.ref} já tem um pedido de validação vivo.")
+        log.info("aprendizado: %s pediu a validação de %s (pedido %s)", by, e.trail_ref, pid)
+        return pid
 
     def _caminho(self, kind: str, item_ref: str, comando: str | None) -> bool:
         """30.36/30.37: a execução de validação chega ao item? Receita: o plano do fluxo ativo passa pela etapa dela;
@@ -496,5 +558,6 @@ _MOTIVO_DA_POSICAO: dict[Posicao, Motivo] = {Posicao.AGAINST: Motivo.EVIDENCIA_C
                                              Posicao.FORMA: Motivo.DIVERGENCIA_DE_FORMA}
 
 
-__all__ = ["COMANDO_NA_LISTA", "LISTA_MAX", "AjustesDaValidacao", "DespachoDeValidacao", "FontesDaValidacao",
-           "NovoPedido", "Origem", "PedidoListado", "PedidoVivo", "RegistroDeValidacoes", "ServicoDeValidacao"]
+__all__ = ["COMANDO_NA_LISTA", "LISTA_MAX", "PREFIXO_DO_PEDIDO_DA_PESSOA", "AjustesDaValidacao", "DespachoDeValidacao",
+           "FontesDaValidacao", "NovoPedido", "Origem", "PedidoListado", "PedidoRecusado", "PedidoVivo",
+           "RegistroDeValidacoes", "ServicoDeValidacao"]

@@ -20,10 +20,14 @@ from app.modules.learning.domain.livro import EntradaDoLivro
 from app.modules.learning.domain.validacao import Ambiente, AparelhoCandidato
 from app.modules.learning.domain.vocabulario import Modo
 from app.modules.learning.infrastructure import linhas
+from app.modules.learning.infrastructure.dossies import DossiesSql
+from app.modules.learning.infrastructure.eventos import RiscoDoRegistro
 from app.modules.learning.infrastructure.revisoes_sql import RegistroDeRevisoesSql
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
+from app.modules.learning.infrastructure.sql_repository import SqlLearningRepository
 from app.modules.learning.infrastructure.validacoes_sql import FontesDaValidacaoSql, RegistroDeValidacoesSql
 from app.taskqueue.balanceamento import Candidato
+from app.util import to_iso
 
 log = logging.getLogger(__name__)
 
@@ -135,10 +139,14 @@ def ligar(servico: LearningService, db: Database, *, fila: Fila, parque: Parque,
     fontes = FontesDaValidacaoSql(db, precos=precos, fluxo_ativo_para=fluxo_ativo_para,
                                   vetado=_Veto(servico), plano_ativo_para=plano_ativo_para)
     triagem = TriagemDeCredencial()
+    # 30.47: a classe de risco de agora para o pedido da pessoa, pelo mesmo dossiê do curador (só leitura).
+    dossies = DossiesSql(db, servico, SqlLearningRepository(db, clock=lambda: to_iso(relogio()), precos=precos),
+                         RiscoDoRegistro())
     validacao = ServicoDeValidacao(RegistroDeValidacoesSql(db), fontes,
                                    DespachoDoParque(db, fila, parque, saudavel=saudavel),
                                    triagem=triagem.recusa, ajustes=lambda: ajustes_da_validacao(config()),
-                                   relogio=relogio)
+                                   relogio=relogio,
+                                   risco_do_item=lambda e: d.risco if (d := dossies.dossie(e)) is not None else None)
     servico.anexar(validacao)
     # Depois da sombra dos fluxos (`fluxos_d1`, ligada antes): o digest roda os mineradores em ordem, e o pedido fecha
     # pela evidência que a sombra acabou de gravar. Trocar a ordem fecharia toda validação de fluxo `sem_evidencia`.

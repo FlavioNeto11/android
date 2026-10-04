@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 30.47: a pessoa pede a validação de um fluxo candidato (branch feat/30-47-pedir-validacao)
+
+- `POST /api/aprendizado/fluxo/{ref}/validacao` (adendo v1.14) cria o pedido que um "pedir evidência" do curador
+  geraria: o comando de origem, o aparelho de origem excluído e quem pediu (`review_id = pedido:<quem>`). O despachante
+  P4 o leva como prova do fluxo.
+- Só fluxo candidato. A classe C (ou o item sem dossiê) e o efeito fora do app de QA seguem com o dono. As recusas não
+  gravam nada.
+- Prova `simulated`: `test_learning_pedir_validacao.py`, 4 testes com mutação conferida. Empilhado sobre o #203.
+
 ## 2026-10-04 — 30.31 fatia 2: o ensaio só de leitura e a conferência no app de QA (branch feat/30-31-fatia-2)
 
 - **Conferência no app de QA.** Ao fim da execução de validação, o `ContentProvider` do QA conta as mensagens
