@@ -38,6 +38,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   30 min em 04/10. Agora o `planned` só conta no modo `execute`.
 - Prova `simulated`: `test_learning_validacao_sql.py::test_execucao_so_de_plano_parada_em_planned_nao_segura_o_p4`
   (mutação conferida). Sem DDL.
+## 2026-10-04 — 30.31: o ensaio para antes da porta de política (branch fix/30-31-ensaio-antes-da-porta)
+
+- No despacho, a parada do ensaio só de leitura vinha DEPOIS da porta de política. Com catálogo, a etapa de efeito em
+  `approval_required` (o `CREATE_COMMENT` do Instagram) era segurada ali primeiro: a IA escrevia o texto (pago), o
+  pedido de aprovação abria e o dono era avisado, e o ensaio não fechava `cancelled`. Agora a parada vem antes.
+- Prova `simulated`: `test_ensaio_antes_da_porta.py`, pelo `Scheduler._work`. O ensaio fecha `cancelled` sem rascunho,
+  sem aprovação e sem aviso. Fora do ensaio, a porta segue segurando. Mutação conferida.
 
 ## 2026-10-04 — 28.16 + 28.18: a faxina leva os eventos dos contatos do Telegram (branch canais/28-18-faxina-090, sem migração)
 
