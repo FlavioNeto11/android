@@ -62,6 +62,16 @@ class PortasReais:
                   f"Esperando você: {aprovar} aprovação(ões) e {esperando} pergunta(s). /pendencias mostra."]
         return "\n".join(linhas)
 
+    def status_para_convidado(self) -> str:
+        """O `/status` de quem não é o dono (28.18, C-09): só contagens. Nenhum id de aparelho, nenhuma pendência, nada de
+        persona ou conta: o convidado vê se a Central está no ar, e só."""
+        h = self._saude()
+        marcas = ",".join("?" * len(_ATIVAS))
+        ativas = int(self.db.scalar(f"SELECT COUNT(*) FROM runs WHERE status IN ({marcas})", _ATIVAS) or 0)
+        return "\n".join([f"Central: {'no ar' if h.status == 'ok' else 'no ar, com alertas'}",
+                          f"Aparelhos online: {len(self._online())}",
+                          f"Execuções em andamento: {ativas}"])
+
     def aprovacoes_pendentes(self) -> list[str]:
         return [str(a["id"]) for a in self.aprovacoes.list(status="pending", limit=200)]
 

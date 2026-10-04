@@ -52,6 +52,7 @@ from app.modules.avisos.application.entrada import (
     texto_para_o_extrator,
 )
 from app.modules.avisos.application.entrega import FalhaDeEnvio
+from app.modules.avisos.infrastructure.convidados import ConvidadosDoTelegram
 from app.modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
 from app.security.sessions import OPERADOR
 from app.taskqueue.travas import AVISOS
@@ -170,6 +171,11 @@ class Recebida:
     botao_id: str | None = None        # o toque num botão, para o canal tirar o relógio (`answerCallbackQuery`)
     #: Quando a pessoa escreveu (epoch, do canal). O toque num botão não traz hora própria: a idade da prévia o protege.
     escrita_em: float | None = None
+    #: O chat de onde veio, se é conversa privada e a identidade que o canal dá de quem escreveu (28.18: o caminho do
+    #: convidado). Só o Telegram preenche; o Trello não usa.
+    chat: str | None = None
+    privado: bool = False
+    perfil: Mapping[str, object] | None = field(default=None, compare=False)
 
 
 class SaidaDaConversa(Protocol):
@@ -246,6 +252,15 @@ def _ler_update(u: Mapping[str, object], chat_do_dono: str) -> Recebida | None:
     update_id = _int(u.get("update_id"))
     if update_id is None:
         return None
+    membro = _mapa(u.get("my_chat_member"))
+    if membro is not None:
+        # 28.18 (C-11): o bot posto ou tirado de um chat. O texto é o status novo do bot (`member`, `left`, `kicked`...).
+        mchat = _mapa(membro.get("chat")) or {}
+        novo = _mapa(membro.get("new_chat_member")) or {}
+        return Recebida(id_externo=str(update_id), ordem=update_id, tipo="membro", do_dono=False,
+                        texto=str(novo.get("status") or ""),
+                        chat=str(mchat.get("id")) if mchat.get("id") is not None else None,
+                        privado=mchat.get("type") == "private")
     msg, cb = _mapa(u.get("message")), _mapa(u.get("callback_query"))
     tipo = "mensagem" if msg is not None else "botao" if cb is not None else "outro"
     de = _mapa((cb if cb is not None else msg or {}).get("from"))     # quem apertou o botão / escreveu
@@ -266,7 +281,11 @@ def _ler_update(u: Mapping[str, object], chat_do_dono: str) -> Recebida | None:
                     responde_a=_texto(_int(responde.get("message_id"))) if responde is not None else None,
                     botao_id=str(cb.get("id")) if cb is not None and cb.get("id") is not None else None,
                     # no botão, `message.date` é a hora da mensagem do BOT, não a do toque: fica sem hora
-                    escrita_em=float(d) if cb is None and msg is not None and (d := _int(msg.get("date"))) else None)
+                    escrita_em=float(d) if cb is None and msg is not None and (d := _int(msg.get("date"))) else None,
+                    chat=chat_id or None,
+                    # Privado de verdade: o chat é a própria pessoa (no Telegram, chat.id == from.id na conversa a dois).
+                    privado=privado and bool(autor) and chat_id == autor,
+                    perfil=dict(de) if de else None)
 
 
 class ConversaDoCanal:
@@ -289,11 +308,19 @@ class ConversaDoCanal:
         self._agora = relogio or time.time
         #: mensagens antigas desta volta (escritas com a Central fora): o dono é avisado uma vez no fim da volta
         self._antigas = 0
+        #: O "sim" ou o "não" do dono a quem chegou (28.18): (chat, autorizar) → o que responder ao dono. Só o leitor do
+        #: Telegram com os convidados ligados o põe; sem ele, a resposta diz que o caminho está desligado.
+        self.decidir_convidado: Callable[[str, bool], Awaitable[str]] | None = None
 
     def _idade_max_s(self) -> float:
         """Quanto uma mensagem pode ter de idade para ser tratada (E2). O canal que tem a regra dele (o Trello:
         `trello.idade_max_s`) sobrepõe; o padrão é o da conversa do Telegram."""
         return self.cfg.file.avisos.entrada.idade_max_s
+
+    def gravar_sem_texto(self, r: Recebida, estado: str) -> bool:
+        """A linha da update que não é da conversa do dono (o convidado, 28.18): sem texto, já no estado final. Devolve se
+        a linha é nova."""
+        return self._linha(r, None, estado)
 
     def gravar_falha(self, r: Recebida, erro: str) -> bool:
         """O leitor não conseguiu registrar a update: o mínimo (sem texto) como `falhou`, para a ordem andar."""
@@ -533,6 +560,12 @@ class ConversaDoCanal:
             await self._feita(saida, linha, i, AJUDA)
         elif i.tipo == "identidade":
             await self._feita(saida, linha, i, RESPOSTA_IDENTIDADE)
+        elif i.tipo in ("autorizar_convidado", "recusar_convidado"):
+            if self.decidir_convidado is None or not i.ref:
+                texto = "Os convidados do Telegram estão desligados: nada mudou."
+            else:
+                texto = await self.decidir_convidado(i.ref, i.tipo == "autorizar_convidado")
+            await self._feita(saida, linha, i, texto, alvo=f"convidado:{i.ref}" if i.ref else None)
         elif i.tipo == "desconhecida":
             await self._feita(saida, linha, i, f"{i.motivo or 'Não entendi.'} /ajuda mostra os comandos.")
         elif i.tipo == "status":
@@ -706,12 +739,14 @@ class LeitorDoTelegram:
                  lider: Callable[[str], int | None], recusa: Callable[[str], bool], redigir: Callable[[str], str],
                  canal: CanalTelegram | None = None, chat_id: str | None = None,
                  dormir: Callable[[float], Awaitable[None]] | None = None, operador: str = OPERADOR_DO_TELEGRAM,
-                 relogio: Callable[[], float] | None = None):
+                 relogio: Callable[[], float] | None = None, convidados: ConvidadosDoTelegram | None = None):
         self.cfg = cfg
         self.repo = repo
         self.portas = portas
         self.conversa = ConversaDoCanal(cfg, repo, portas, recusa=recusa, redigir=redigir, operador=operador,
                                         relogio=relogio)
+        #: Quem fala com o bot e não é o dono (28.18). `None` ou desligado: gravado sem texto e sem resposta (28.15).
+        self.convidados = convidados
         self._lider = lider
         self._canal = canal
         self._chat_injetado = chat_id
@@ -817,11 +852,26 @@ class LeitorDoTelegram:
         saida = SaidaDoTelegram(canal)
         await self.conversa.enviar_ajuda_inicial(saida)
         chat = self._segredos()[1]
+        envio, apagar = self._envio_ao_convidado(canal)
+        if self.convidados is not None and self.convidados.ligado:
+            convidados = self.convidados
+            self.conversa.decidir_convidado = lambda c, sim: convidados.decidir(c, sim, envio)
+        else:
+            self.conversa.decidir_convidado = None
         for bruta in brutas:
             r = _ler_update(bruta, chat)
             if r is None:
                 continue
             try:
+                if self.convidados is not None and self.convidados.trata(r.tipo, r.chat, r.privado, r.do_dono, chat):
+                    # A linha vai SEM texto (o dedupe e o offset), e só a linha nova é tratada: a update relida não
+                    # repete a apresentação nem o aviso ao dono.
+                    if self.conversa.gravar_sem_texto(r, "convidado"):
+                        await self.convidados.tratar(
+                            tipo=r.tipo, chat=r.chat or "", privado=r.privado, texto=r.texto,
+                            perfil=dict(r.perfil) if r.perfil else None, update_id=r.id_externo,
+                            ref_mensagem=r.ref_mensagem, enviar=envio, apagar=apagar)
+                    continue
                 await self.conversa.registrar(r, saida)
             except Exception as exc:  # noqa: BLE001 - uma update ruim não pode travar a conversa (o offset teria de andar)
                 # Sem a linha o offset não anda e a MESMA update voltaria a cada volta, para sempre. Registra o mínimo
@@ -831,6 +881,20 @@ class LeitorDoTelegram:
         await self.conversa.avisar_antigas(saida)
         await self.conversa.tratar_pendentes(saida)
         return len(brutas)
+
+    @staticmethod
+    def _envio_ao_convidado(canal: CanalTelegram) -> tuple[Callable[[str, str], Awaitable[str | None]],
+                                                          Callable[[str, str], Awaitable[bool]]]:
+        """A saída ao chat do CONVIDADO (28.18): o mesmo bot, outro `chat_id`. Nunca se usa para o dono."""
+        async def enviar(chat_id: str, texto: str) -> str | None:
+            mid = await canal.responder(texto, chat_id=chat_id)
+            return str(mid) if mid is not None else None
+
+        async def apagar(chat_id: str, ref: str) -> bool:
+            mid = _num(ref)
+            return mid is not None and await canal.apagar(mid, chat_id=chat_id)
+
+        return enviar, apagar
 
     async def _descartar_historico(self, canal: CanalTelegram) -> None:
         """A 1ª subida do canal (nenhuma linha): o que o Telegram guardou (até 24 h) é histórico, e um "/aprovar" ou um

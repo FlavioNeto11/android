@@ -19,6 +19,28 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.18: convidado no Telegram, com o nome primeiro (branch canais/28-18-convidado-telegram, migração 090)
+
+- Migração 090 (`canal_contatos`, `canal_contato_eventos`): o estado de cada chat que não é o dono e o histórico pedido
+  pelo dono. O vínculo id↔pessoa fica só no banco.
+- `modules/avisos/infrastructure/convidados.py`: num chat privado novo, a apresentação da ANA e a pergunta do nome,
+  uma vez. O nome vai ao dono num aviso (`convidado:<chat>:novo`), que ele responde com sim ou não.
+  - O convidado autorizado tem `/ajuda` e `/status` (só contagens). O resto vira "recebido; passei ao dono" e um aviso
+    ao dono, com teto por hora.
+  - O recusado fica em silêncio.
+  - Grupos são ignorados, e pôr ou tirar o bot de um grupo avisa o dono (`my_chat_member`).
+  - A credencial do convidado é retida sem texto e apagada do chat dele.
+- `application/entrada.py`: o fato `convidado:` na gramática. O "sim" ou o "não" ao aviso de quem chegou decide sobre
+  a pessoa. Antes, cairia no texto livre e viraria pedido. A resposta a qualquer outro aviso de convidado só explica
+  que nada foi executado.
+- Os avisos `telegram.*` nunca se agrupam (28.19): o do convidado novo se decide por reply.
+- `adapters/telegram.py`: `responder` e `apagar` aceitam o `chat_id` do convidado, e `allowed_updates` ganha
+  `my_chat_member`.
+- Emenda de 04/10 ao ADR-071; regra C-10 em `docs/dominios/canais.md`; `docs/operacao.md` §15.1; `docs/banco.md`
+  (090); `config.example.yaml` (`avisos.entrada.convidados`, desligado de fábrica).
+- Testes: `tests/test_telegram_convidados.py` (12) e `test_avisos_rajada.py::test_aviso_de_convidado_nunca_se_agrupa`.
+  Prova simulada; a real vem com o primeiro contato depois de ligar a entrada (pergunta do dono com a orquestradora).
+
 ## 2026-10-04 — 29.36: o motivo do aparelho remoto parado acompanha a conexão e a queda (branch fix/29-36-detalhe-do-externo-parado, sem migração)
 
 - `DeviceManager._recalcular_motivo_do_parado`: reescreve o `state_detail` de um aparelho de worker `stopped` com o

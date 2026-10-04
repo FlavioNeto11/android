@@ -254,3 +254,14 @@ def test_o_link_do_agrupado_e_o_da_caixa_mesmo_sem_link_na_primeira_linha(tmp_pa
     c.chega("pedido:p3", tipo="pedido.relatorio_pronto", link="CAIXA")
     c.volta()
     assert c.canal.enviados == [("ANA: 3 novidades de pedidos", CORPO_AGRUPADO, "CAIXA")]
+
+
+def test_aviso_de_convidado_nunca_se_agrupa(tmp_path: Path) -> None:
+    """28.18: o aviso do convidado novo se decide respondendo a ELE; agrupado, o reply não teria fato. Sai um a um, sem
+    esperar a janela do tipo."""
+    c = Cena(tmp_path)
+    for i in range(4):
+        c.chega(f"convidado:{700 + i}:novo", tipo="telegram.convidado_novo", link=None)
+    for _ in range(4):
+        c.volta()
+    assert [t for t, _c, _l in c.canal.enviados] == [f"t-convidado:{700 + i}:novo" for i in range(4)]

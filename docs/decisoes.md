@@ -5023,6 +5023,27 @@ uma execução e pedir coisas, sem abrir o painel e sem atalho de política.
 
 `not_run`: a conversa real com o dono, que depende do "vai" da orquestradora para trocar a caixa provisória.
 
+**Emenda de 04/10/2026 (item 28.18, frente Canais): quem não é o dono recebe a apresentação, e o dono decide.**
+- **Origem:** decisões do dono no Telegram em 03/10: "vc responde pra todo mundo eu so autorizo" (22:52Z), o nome de
+  quem chega pode ir ao chat dele (22:41Z) e o histórico de quem fala fica guardado (22:44Z). Regras C-08 a C-11 de
+  [dominios/canais.md](dominios/canais.md).
+- **O que muda:** a decisão 2 ("só o chat configurado") continua valendo para COMANDO. O dono segue o único que
+  aprova, veta, responde a execução e pede. Um chat privado que não é o dono deixa de ser só gravado sem texto:
+  1. no chat novo sai a apresentação da ANA e a pergunta do nome, uma vez;
+  2. o nome vai ao dono, num aviso que ele responde com sim ou não;
+  3. o chat autorizado recebe `/ajuda`, `/status` (só contagens) e "recebido; passei ao dono", e cada mensagem vira
+     aviso ao dono, com teto por hora;
+  4. o recusado fica em silêncio.
+- **O que não muda:**
+  - convidado nunca executa nem decide;
+  - a quem não é o dono não vai dado de persona, conta, e-mail, telefone, IP, segredo ou pendência;
+  - o texto dele não entra em `canal_entradas`; no histórico (migração 090), entra redigido;
+  - grupos e canais seguem ignorados, e pôr ou tirar o bot de um grupo só avisa o dono;
+  - o "sim" do dono ao aviso de um convidado é decisão sobre aquela pessoa, nunca pedido (o fato `convidado:` na
+    gramática), e a resposta dele a qualquer outro aviso de convidado não vira pedido nem vai à pessoa.
+- **Desligado de fábrica** (`avisos.entrada.convidados.enabled`). A prova é `simulated`
+  (`tests/test_telegram_convidados.py`); a real vem com o primeiro contato depois de a entrada ser ligada.
+
 **Relação.** ADR-009, ADR-025/040 (credencial), ADR-054 (sinal), ADR-062 (Pendências), item 28.11 (aviso), ADR-072
 (Trello); `backend/app/modules/avisos/`, migração 085, [api-contract.md](api-contract.md) (adendo v0.98),
 [operacao.md](operacao.md).
