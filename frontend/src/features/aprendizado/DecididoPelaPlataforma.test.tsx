@@ -219,10 +219,36 @@ describe('30.66: os textos da aba Para aprovar', () => {
     expect(tituloDaDecisao({ ...d, titulo: 'Enviar a mensagem (v2)' })).toBe('Enviar a mensagem (v2)');
   });
 
-  it('com a fila vazia e itens em Revisar, o topo diz as duas coisas', async () => {
+  it('com a fila vazia e itens em Revisar, o topo diz as duas coisas e cita a aprovação automática ligada', async () => {
     await montar();
     await waitFor(() => expect(text(container)).toContain('Nada para aprovar; 1 para revisar sem pressa'));
     expect(text(container)).not.toContain('Nada aguardando você');
+    await waitFor(() => expect(text(container)).toContain('até você decidir (ou a aprovação automática, que está ligada)'));
+    expect(text(container)).toContain('aparece aqui, a menos que a aprovação automática o publique.');
+  });
+
+  it('com a aprovação automática desligada, o vazio não fala dela', async () => {
+    relatorio = { modo: 'off', ultima_volta: null, casos_na_sombra: 0, decididos_pela_plataforma: [] };
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Nada para aprovar; 1 para revisar sem pressa'));
+    expect(text(container)).not.toContain('aprovação automática, que está ligada');
+    expect(text(container)).not.toContain('a menos que a aprovação automática');
+  });
+
+  it('com Revisar em falha, o topo não afirma o vazio', async () => {
+    backend.on('GET', /^\/api\/aprendizado\/revisar$/,
+               () => json({ detail: { code: 'internal', message: 'falhou' } }, 500));
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Nada para aprovar; não deu para carregar Revisar'));
+    expect(text(container)).not.toContain('Nada aguardando você');
+  });
+
+  it('o título usa o nome do catálogo quando o backend o manda', () => {
+    const d = { kind: 'receita' as const, ref: '180', item_ref: 'receita:180', titulo: 'send_message_i1 (v1)' };
+    expect(tituloDaDecisao({ ...d, capability: 'SEND_MESSAGE', capability_nome: 'Enviar a mensagem' }))
+      .toBe('Enviar a mensagem (v1)');
+    expect(tituloDaDecisao({ ...d, etapa: 'Digitar a mensagem' })).toBe('Digitar a mensagem (v1)');
+    expect(tituloDaDecisao(d)).toBe('Receita nº 180 · send message (v1)');           // sem catálogo: o recurso de antes
   });
 
   it('em Revisar a frase do efeito externo aparece uma vez, no cabeçalho, e não em cada item', async () => {

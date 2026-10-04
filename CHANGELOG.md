@@ -26,6 +26,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Decidido pela plataforma: regra com nome legível (o id só no `title`), título sem chave interna com versão nem lacuna
   crua (`tituloDaDecisao`), parecer do curador "pedir mais evidência". Prova `simulated`: testes de componente em
   `DecididoPelaPlataforma.test.tsx` e `AprendizadoPage.test.tsx`. Navegador: `not_run` (passeio depois do deploy 32).
+- Revisão curta: o vazio cita a aprovação automática quando ela está ligada; o topo só afirma o vazio com as duas listas
+  lidas (Revisar em falha ou carregando é dito); o título da decisão usa o nome do catálogo (`capability_nome`, que a
+  rota `aprovacao-automatica` passa a mandar com `capability` e `etapa`).
 
 ## 2026-10-04 — 28.28: pergunta ao bot do Telegram vai à orquestradora, e nome de persona não sai pelo canal (branch canais/28-28-pergunta-ao-bot)
 
