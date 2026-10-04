@@ -23,7 +23,7 @@ grava `conferido_em` e espera o próximo intervalo. O retrato do último envio f
 
 Cadência (decisão da orquestradora, 04/10 23:14Z, regra da rotina agrupada): a ROTINA sai no máximo uma vez por
 `--piso-rotina` (3600 s) desde o último envio, mesmo que algo mude a cada volta; o que muda "Precisa de você" (pendência
-nova ou resolvida) e a saúde que deixa de ser 🟢 ou volta a ele (23:18Z) saem na volta em que mudarem. A rotina segurada não se perde: o retrato do cursor não anda, e a volta
+nova ou resolvida) e a saúde que piora (🟢 → 🟡 → 🔴) ou volta ao 🟢 (23:18Z e 23:21Z) saem na volta em que mudarem. A rotina segurada não se perde: o retrato do cursor não anda, e a volta
 seguinte ao piso conta tudo o que mudou desde o último envio.
 
 O corpo inteiro passa por `_sem_contato` (e-mail, telefone, URL) e por `redacao.redigir` (o mesmo filtro do Trello),
@@ -374,20 +374,28 @@ def _desde(cursor: dict) -> str | None:
         return None
 
 
-def _verde(retrato: dict | None) -> bool:
-    """Sem retrato anterior conta como 🟢: a Central já ruim no primeiro envio é uma piora a contar."""
-    return retrato is None or str(retrato.get("saude") or "🟢").startswith("🟢")
+_GRAVIDADE = {"🟢": 0, "🟡": 1, "🔴": 2}
+
+
+def _gravidade(retrato: dict | None) -> int:
+    """🟢 0 < 🟡 1 < 🔴 2. Sem retrato anterior conta como 🟢: a Central já ruim no primeiro envio é uma piora a contar.
+    Texto que não começa por nenhum dos três conta como o pior: na dúvida, o dono fica sabendo."""
+    if retrato is None:
+        return 0
+    saude = str(retrato.get("saude") or "🟢")
+    return next((g for marca, g in _GRAVIDADE.items() if saude.startswith(marca)), max(_GRAVIDADE.values()))
 
 
 def seguro_ate(retrato: dict, anterior: dict | None, enviado_em: str | None, agora: datetime,
                piso_s: int) -> datetime | None:
     """A cadência: até quando a rotina fica segura pelo piso, ou `None` (sai já). Furam o piso, na volta em que mudam:
-    "Precisa de você" (pendência nova ou resolvida) e a saúde que deixa de ser 🟢 ou volta a ele, uma vez por
-    transição (o retrato só anda no envio). A saúde que segue ruim, mesmo com outro texto, fica com o piso. Sem envio
-    anterior válido, sai. Pura."""
+    "Precisa de você" (pendência nova ou resolvida) e a saúde cuja gravidade SOBE (🟢 → 🟡 → 🔴) ou volta ao 🟢, uma
+    vez por transição (o retrato só anda no envio). A que desce sem chegar ao 🟢 (🔴 → 🟡) e a que segue igual, mesmo
+    com outro texto, ficam com o piso. Sem envio anterior válido, sai. Pura."""
     if set(retrato.get("pendencias") or []) != set((anterior or {}).get("pendencias") or []):
         return None
-    if _verde(retrato) != _verde(anterior):
+    agora_g, antes_g = _gravidade(retrato), _gravidade(anterior)
+    if agora_g > antes_g or (agora_g == 0 and antes_g > 0):
         return None
     ultimo = _de_iso(enviado_em)
     if ultimo is None:

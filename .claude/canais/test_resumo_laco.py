@@ -313,3 +313,23 @@ def test_hora_sem_fuso_nao_derruba_e_armar_recusa(monkeypatch: pytest.MonkeyPatc
                                       "--ultimo-envio", "2026-10-04T23:10:48"])
     assert r.main() == 2 and gravados == []
     assert "com o Z" in capsys.readouterr().out
+
+
+AMARELO = "🟡 <b>Central com 1 problema(s)</b>"
+
+
+def test_gravidade_que_sobe_entre_estados_ruins_fura_o_piso() -> None:
+    assert r.pode_enviar({"pendencias": [], "saude": RUIM}, {"pendencias": [], "saude": AMARELO}, RECENTE, AGORA, 3600)
+    assert r.pode_enviar({"pendencias": [], "saude": AMARELO}, {"pendencias": [], "saude": OK}, RECENTE, AGORA, 3600)
+
+
+def test_gravidade_que_desce_sem_chegar_ao_verde_espera_o_piso() -> None:
+    assert not r.pode_enviar({"pendencias": [], "saude": AMARELO}, {"pendencias": [], "saude": RUIM}, RECENTE, AGORA,
+                             3600)
+
+
+def test_volta_ao_verde_de_qualquer_gravidade_fura_o_piso_e_texto_estranho_conta_como_o_pior() -> None:
+    for ruim in (AMARELO, RUIM):
+        assert r.pode_enviar({"pendencias": [], "saude": OK}, {"pendencias": [], "saude": ruim}, RECENTE, AGORA, 3600)
+    assert r.pode_enviar({"pendencias": [], "saude": "Central sem marca"}, {"pendencias": [], "saude": AMARELO},
+                         RECENTE, AGORA, 3600)
