@@ -237,14 +237,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-04 — 30.64: o objeto do efeito na aprovação e no "já feito" (branch feat/30-64-objeto-alvo)
 
 - `objeto_alvo` no catálogo (Capability, domínio e registro), declarado nas 11 ações com efeito do Instagram.
-  - `objeto_da_acao()` devolve `None`, e falha fechado, sem declaração ou com argumento por resolver.
-  - A carga recusa um nome que não é argumento da ação, o texto e a repetição.
+  - `objeto_da_acao()` devolve `None` sem declaração ou com argumento por resolver.
+  - A carga recusa um nome que não é argumento da ação, o texto e a repetição, e EXIGE a declaração em toda ação com
+    efeito que não seja `internal` nem `manual_only`. Sem ela, a porta manda para aprovação.
 - O `acompanhar_revisao` só reaproveita a aprovação para o mesmo objeto declarado.
 - O `check` recebe `bindings=`, e vale o mesmo perfil com o mesmo objeto noutra etapa (saída ou pedido em aberto).
   - A DM com o MESMO texto (já enviado, ou aprovado e não enviado) pede confirmação; a de texto novo segue a política.
-  - Seguir, curtir, comentar e publicar a mesma imagem são recusados.
-  - O app `qa` fica fora.
-  - Emenda 30.64 do ADR-055.
+    O texto gerado se compara depois do rascunho (`mensagem_repetida`).
+  - Com objeto inequívoco, seguir, curtir, comentar e publicar a mesma imagem são recusados.
+  - O objeto ambíguo (legenda vazia, ou só a pessoa em post ou comentário) pede aprovação. A curtida passa, porque o
+    seletor exato `desc==Like` segura a duplicata; a prova pelo executor fica em `test_alvo_por_legenda.py`.
+  - `pedidos_da_acao` filtra por app.
+  - Emenda 30.64 do ADR-055. Revisão da fila da suíte 32: itens 4, 5, 7, 8 e 10.
 - Prova `simulated`: `backend/tests/test_objeto_alvo.py`, `test_repetido_entre_execucoes.py` e
   `test_aprovacao_acompanha_revisao.py`, com 440 testes em 18 arquivos de política, catálogo e aprovação. `not_run`:
   efeito real.

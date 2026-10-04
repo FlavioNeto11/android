@@ -116,24 +116,94 @@ def test_dm_ja_enviada_com_o_mesmo_texto_pede_e_texto_novo_segue_a_politica(tmp_
                               bindings={"username": ANA, "content_brief": "deseje bom dia"}).needs_approval
 
 
-def test_o_bom_dia_diario_no_app_de_teste_nao_pede_aprovacao(tmp_path: Path) -> None:
-    """O fluxo de bom dia a cada contato da lista, rodado duas vezes no app de QA em perfil autônomo: a mesma mensagem
-    ao mesmo contato não vira pedido (app `qa` fica fora do 30.64). No Instagram, as mesmas duas execuções pedem."""
-    repo, policies, db, pid = _conta(tmp_path)
-    db.execute("INSERT INTO apps(id, name, package, activity, builtin, category)"
-               " VALUES ('qa-msg','QA Messenger','com.pocqa.messenger',NULL,1,'qa')")
+def test_a_mesma_dm_em_duas_execucoes_no_instagram_pede_confirmacao(tmp_path: Path) -> None:
+    """A mesma mensagem ao mesmo contato, de novo, num perfil autônomo do Instagram: pede confirmação."""
+    repo, policies, _db, pid = _conta(tmp_path)
     dm = capability_of(IG, "SEND_MESSAGE")
     _dm_autonoma(policies, pid)
-    for app_id in ("qa-msg", "instagram"):
-        _conversa(repo, pid, app_id)
-        _mandou(repo, pid, "Bom dia android-05", app_id)          # a 1ª execução já mandou
-    segunda = {app_id: policies.check(pid, dm, counterparty=ANA, app_id=app_id, step_id="r-2:x",
-                                      bindings={"username": ANA, "content": "Bom dia android-05"})
-               for app_id in ("qa-msg", "instagram")}
-    assert segunda["qa-msg"].allowed and not segunda["qa-msg"].needs_approval
-    assert "30.64" not in segunda["qa-msg"].reason
-    assert segunda["instagram"].allowed and segunda["instagram"].needs_approval
-    assert "30.64" in segunda["instagram"].reason
+    _conversa(repo, pid)
+    _mandou(repo, pid, "Bom dia android-05")                        # a 1ª execução já mandou
+    segunda = policies.check(pid, dm, counterparty=ANA, app_id="instagram", step_id="r-2:x",
+                             bindings={"username": ANA, "content": "Bom dia android-05"})
+    assert segunda.allowed and segunda.needs_approval and "30.64" in segunda.reason
+
+
+async def test_o_bom_dia_do_qa_messenger_sai_antes_da_porta_e_roda_duas_vezes_sem_pedir(harness: Any) -> None:
+    """Revisão da fila, item 7: o QA Messenger não tem catálogo, então a etapa sai da porta ANTES do `check` e o 30.64
+    nem é consultado. Duas execuções do "bom dia" ao mesmo contato, com a mesma mensagem, seguem sem pedido."""
+    from app.models import ProfileCreate
+
+    from .test_capabilities import SENHA
+
+    state = harness.state
+    db = state.db
+    pid = state.social.create_profile(ProfileCreate(username="lucas.almeida9484", password=SENHA,
+                                                    instance_id="android-01")).id
+    pacote = db.scalar("SELECT a.package FROM instances i JOIN apps a ON a.id=i.app_id WHERE i.id='android-01'")
+    assert pacote and capability_of(pacote, "SEND_MESSAGE") is None          # sem catálogo: nada a consultar
+    for n in (1, 2):
+        run = f"run-bd{n}"
+        db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
+                   " VALUES (?,?,'bom dia','execute','running',1,'[\"android-01\"]','2026-10-04T10:00:00Z')",
+                   (run, f"k-{run}"))
+        db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, parameters, profile_id)"
+                   " VALUES (?,?,'android-01','running',1,'{}',?)", (f"{run}:android-01", run, pid))
+        db.execute(
+            "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal, depends_on,"
+            " side_effect, commit_guard, postcondition, timeout_s, max_attempts, status, capability, bindings)"
+            " VALUES (?,?,?,'android-01',1,1,'efeito','Bom dia','bom dia','[]',1,'[]',"
+            "'{\"kind\":\"model_judged\",\"value\":\"x\",\"description\":\"y\"}',180,1,'ready','SEND_MESSAGE',?)",
+            (f"{run}:android-01:v1:efeito", run, f"{run}:android-01",
+             json.dumps({"username": "contato1", "content": "Bom dia android-01"})))
+        veredito = await state._policy_gate(db.one("SELECT * FROM objectives WHERE id=?", (f"{run}:android-01",)),  # noqa: SLF001
+                                            db.one("SELECT * FROM steps WHERE id=?", (f"{run}:android-01:v1:efeito",)),
+                                            db.one("SELECT * FROM runs WHERE id=?", (run,)))
+        assert veredito is None, veredito
+        state.social_repo.record_interaction(pid, type=InteractionType.dm_sent.value, direction="outbound",
+                                             status=InteractionStatus.confirmed.value, counterparty="@contato1",
+                                             outgoing_content="Bom dia android-01", run_id=run,
+                                             step_id=f"{run}:android-01:v1:efeito")
+    assert state.approval_service.list() == []
+
+
+def test_comentar_sem_dizer_qual_post_pede_aprovacao_e_nunca_recusa(tmp_path: Path) -> None:
+    """Revisão da fila, item 4: "comente no post mais recente de @ana" duas vezes pode ser o mesmo post ou dois.
+    Objeto ambíguo (legenda vazia) não recusa; com um comentário já feito sobre ela, passa por aprovação."""
+    repo, policies, db, pid = _conta(tmp_path)
+    comentar = capability_of(IG, "CREATE_COMMENT")
+    sid = _etapa(db, "r-a", "CREATE_COMMENT", {"post_author": ANA, "content": "Lindo!"})
+    _fez(repo, pid, InteractionType.comment_replied.value, ANA, sid)
+    veredito = policies.check(pid, comentar, counterparty=ANA, app_id="instagram", step_id="r-b:x",
+                              bindings={"post_author": ANA, "content": "Que foto!"})
+    assert veredito.allowed and veredito.needs_approval
+    assert "objeto não identificado" in veredito.reason and "30.64" in veredito.reason
+
+
+def test_curtir_sem_legenda_passa_porque_o_seletor_exato_segura_a_duplicata(tmp_path: Path) -> None:
+    """Revisão da fila, item 4: a curtida por posição (objeto ambíguo) passa; quem impede curtir de novo o mesmo post é
+    o seletor de commit EXATO (`desc==Like` não casa com o coração curtido). A prova no executor de verdade está em
+    `test_alvo_por_legenda.py::test_post_ja_curtido_o_commit_exato_nao_toca_e_a_etapa_nao_conta`."""
+    repo, policies, db, pid = _conta(tmp_path)
+    for acao, args, tipo in (("LIKE_POST", {"post_author": ANA}, InteractionType.post_liked.value),
+                             ("LIKE_COMMENT", {"username": ANA}, InteractionType.comment_liked.value)):
+        cap = capability_of(IG, acao)
+        assert cap is not None and cap.commit_selector == "desc==Like"
+        sid = _etapa(db, f"r-{acao}", acao, args)
+        _fez(repo, pid, tipo, ANA, sid)
+        veredito = policies.check(pid, cap, counterparty=ANA, app_id="instagram", step_id="r-b:x", bindings=args)
+        assert veredito.allowed and "30.64" not in veredito.reason, acao
+
+
+def test_acao_com_efeito_sem_objeto_declarado_passa_por_aprovacao(tmp_path: Path) -> None:
+    """Revisão da fila, item 8: a carga já exige `objeto_alvo`; se uma ação com efeito chegar sem ele, falha fechado."""
+    from dataclasses import replace
+
+    _repo, policies, _db, pid = _conta(tmp_path)
+    seguir = capability_of(IG, "FOLLOW")
+    assert seguir is not None
+    sem = replace(seguir, objeto_alvo=())
+    veredito = policies.check(pid, sem, counterparty=ANA, app_id="instagram", step_id="r-b:x", bindings={"username": ANA})
+    assert veredito.allowed and veredito.needs_approval and "objeto_alvo" in veredito.reason
 
 
 def test_seguir_feito_noutra_execucao_recusa_o_segundo(tmp_path: Path) -> None:

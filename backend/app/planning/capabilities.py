@@ -262,6 +262,10 @@ def objeto_alvo_error(cap: Capability) -> str | None:
             return f"objeto_alvo {nome!r} é o texto da ação; o texto se compara à parte"
     if len(set(cap.objeto_alvo)) != len(cap.objeto_alvo):
         return "objeto_alvo com nome repetido"
+    # Revisão da fila da suíte 32, item 8: ação com efeito que a plataforma pode fazer sozinha declara sobre o quê age;
+    # sem isso a porta não reconhece a repetição. A interna (sem planejador) e a `manual_only` (nunca automática) não.
+    if cap.side_effect and not cap.internal and cap.default_policy != "manual_only" and not cap.objeto_alvo:
+        return "ação com efeito precisa declarar objeto_alvo (os argumentos que dizem sobre o quê ela age)"
     return None
 
 

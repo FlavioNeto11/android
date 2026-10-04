@@ -1599,7 +1599,7 @@ class SocialRepository:
                           argumentos if isinstance(argumentos, dict) else None, r["outgoing_content"]))
         return saida
 
-    def pedidos_da_acao(self, profile_id: str, capability: str, *, since: str,
+    def pedidos_da_acao(self, profile_id: str, capability: str, *, since: str, app_id: str | None = None,
                         exclude_step_id: str | None = None
                         ) -> list[tuple[str, str, str | None, dict[str, object] | None, str, str | None]]:
         """30.64: os pedidos de aprovação deste perfil e desta ação ainda sem interação (pendente, ou aprovado e não
@@ -1609,14 +1609,16 @@ class SocialRepository:
         revisada, e não um segundo pedido."""
         sem_a_etapa = (" AND (a.step_id IS NULL OR (a.step_id<>? AND NOT EXISTS (SELECT 1 FROM steps x WHERE x.id=?"
                        " AND x.objective_id=a.objective_id AND x.key=e.key)))") if exclude_step_id else ""
+        por_app = " AND (a.app_id=? OR a.app_id IS NULL)" if app_id else ""
         linhas = self.db.query(
             "SELECT a.id, a.created_at, a.target, a.status, a.generated_content, a.approved_content, e.bindings"
             " FROM pending_approvals a LEFT JOIN steps e ON e.id=a.step_id"
             " WHERE a.profile_id=? AND a.capability=? AND a.status IN ('pending','approved','edited')"
             " AND a.interaction_id IS NULL AND a.created_at>=? AND (a.objective_id IS NULL OR NOT EXISTS (SELECT 1"
             " FROM objectives o WHERE o.id=a.objective_id AND o.status IN ('succeeded','failed','cancelled')))"
-            f"{sem_a_etapa} ORDER BY a.created_at DESC, a.id DESC LIMIT 200",
-            (profile_id, capability, since, *((exclude_step_id, exclude_step_id) if exclude_step_id else ())))
+            f"{por_app}{sem_a_etapa} ORDER BY a.created_at DESC, a.id DESC LIMIT 200",
+            (profile_id, capability, since, *((app_id,) if app_id else ()),
+             *((exclude_step_id, exclude_step_id) if exclude_step_id else ())))
         saida = []
         for r in linhas:
             argumentos = loads(r["bindings"], None)

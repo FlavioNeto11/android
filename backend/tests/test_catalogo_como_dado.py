@@ -217,7 +217,8 @@ def _doc(*acoes: dict[str, object], **raiz: object) -> dict[str, object]:
 
 
 def test_um_catalogo_minimo_de_outro_app_carrega_so_com_dado(tmp_path: Path) -> None:
-    enviar_bruta = _acao(key="ENVIAR", bindings=["para"], side_effect=True, risk="high", commit_selector="desc==Send")
+    enviar_bruta = _acao(key="ENVIAR", bindings=["para"], side_effect=True, risk="high", commit_selector="desc==Send",
+                         objeto_alvo=["para"])
     catalogo = carregar_catalogo(_arquivo(tmp_path, _doc(_acao(), enviar_bruta)))
     assert catalogo.package == "com.exemplo.email"
     enviar = catalogo.get("ENVIAR")

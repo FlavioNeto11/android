@@ -3702,17 +3702,24 @@ Prova `simulated`: `backend/tests/test_contexto_do_pedido.py`.
 perfil, pela ação, pelo texto e pelo OBJETO, não só pela pessoa.
 - **`objeto_alvo` no catálogo**, por ação, é a fonte única do objeto: o post (`post_author` + `caption_contains`), o
   comentário e a conversa (`username`) ou a mídia (`image_id`). O texto fica fora e se compara à parte.
-  - Ação com efeito sem a declaração falha fechado: não reaproveita aprovação nem se reconhece repetida. Um teste percorre
-    os catálogos e só aceita a falta em `manual_only`; hoje falta só em LOGOUT.
+  - A carga do catálogo EXIGE a declaração em toda ação com efeito que a plataforma pode fazer sozinha (não exige na
+    `internal` nem na `manual_only`; hoje só LOGOUT fica sem). Sem ela, a porta falha fechado: aprovação, e o
+    `acompanhar_revisao` não reaproveita.
 - **Reuso da aprovação na revisão do plano** (`acompanhar_revisao`): exige o mesmo objeto declarado. O mesmo texto para
   a mesma pessoa noutro post é pedido novo.
 - **O mesmo perfil em duas execuções:** a porta olha as saídas e os pedidos em aberto do PRÓPRIO perfil, de outra etapa,
   sobre o mesmo objeto, na janela da frota (`fleet_target_window_days`).
   - DM só pede confirmação com o MESMO texto (igualdade normalizada): já enviado ao alvo na janela, ou aprovado e ainda
     não enviado noutra etapa. Texto diferente segue a política do perfil, para que conversa em andamento e o bom dia
-    diário não virem rajada de pedidos. Sem texto conhecido na porta (briefing), não se compara.
-  - App de categoria `qa` fica fora desta regra inteira.
-  - Seguir, curtir o mesmo post, comentar de novo e publicar a mesma imagem são recusados antes da aprovação.
+    diário não virem rajada de pedidos. O texto gerado se compara DEPOIS do rascunho (`mensagem_repetida`, chamada
+    pelo `_policy_gate` com a etapa relida).
+  - O QA Messenger não tem catálogo e sai da porta antes do `check`: o bom dia diário nunca chega a esta regra.
+  - Objeto inequívoco (seguir, aceitar ou recusar pedido, publicar a mesma imagem, curtir ou comentar o post com a
+    legenda dita): recusa antes da aprovação.
+  - Objeto AMBÍGUO (argumento declarado vazio, como a legenda do "post mais recente", ou só a pessoa numa ação sobre post
+    ou comentário) nunca recusa. Pede aprovação, salvo quando o seletor de commit EXATO de estado (`desc==Like`, balde
+    `likes`) já impede a duplicata, porque não casa com o coração curtido. Isso está provado pelo executor com o aparelho
+    falso de `test_alvo_por_legenda.py`.
   - Uma saída sem etapa conhecida só conta quando o objeto é a própria pessoa (DM, seguir).
   - As versões anteriores da mesma etapa no objetivo não contam: é o pedido que o `acompanhar_revisao` leva adiante.
 

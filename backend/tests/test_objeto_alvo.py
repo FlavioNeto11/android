@@ -29,6 +29,10 @@ def _faltam_declarar() -> list[str]:
     return faltam
 
 
+def test_a_interna_e_a_manual_nao_precisam_declarar() -> None:
+    CapabilityCatalog("com.exemplo.x", [_cap(default_policy="manual_only"), replace(_cap(key="PREPARAR"), internal=True)])
+
+
 def test_toda_acao_com_efeito_declara_o_objeto_ou_e_so_manual() -> None:
     """O catálogo inteiro, de todos os apps: a lista das que faltam declarar tem de ser só de ação que a plataforma
     nunca faz sozinha (`manual_only`). Uma ação nova com efeito sem `objeto_alvo` quebra aqui, com o nome dela."""
@@ -73,6 +77,7 @@ def _cap(**campos: object) -> Capability:
     (("autor",), "não é argumento da ação"),
     (("content",), "é o texto da ação"),
     (("post_author", "post_author"), "nome repetido"),
+    ((), "precisa declarar objeto_alvo"),                  # revisão da fila, item 8: efeito sem declaração não carrega
 ])
 def test_a_carga_recusa_objeto_mal_declarado(objeto: tuple[str, ...], motivo: str) -> None:
     with pytest.raises(ValueError, match=motivo):

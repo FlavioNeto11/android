@@ -102,6 +102,17 @@ def _balde(acao: str, package: str | None) -> str | None:
     return cap.limit_bucket if cap else None
 
 
+#: 30.64: baldes em que o objeto é uma coisa na tela (post, comentário), não a pessoa: só a pessoa não diz QUAL.
+_BALDES_DE_OBJETO_NA_TELA = frozenset({"likes", "comments"})
+
+
+def _seletor_de_estado(cap: Capability) -> bool:
+    """O commit casa um ESTADO exato (`desc==Like`) que deixa de existir depois do efeito: o coração já curtido não
+    casa, então repetir não alterna nem duplica. É o que segura a duplicata quando o objeto é ambíguo (30.64)."""
+    seletor = (cap.commit_selector or "").strip()
+    return cap.limit_bucket == "likes" and seletor.startswith("desc==")
+
+
 def _texto_normalizado(texto: object) -> str | None:
     """30.64: o texto para comparar repetição de mensagem: sem caixa e com os espaços colapsados; `None` sem texto."""
     limpo = " ".join(str(texto or "").split()).casefold()
@@ -441,34 +452,50 @@ class PolicyEngine:
                   app_id: str | None, step_id: str | None) -> tuple[bool, str, str] | None:
         """30.64: o MESMO perfil já fez, ou tem pedido em aberto de outra etapa (outra execução, inclusive), desta ação
         sobre o MESMO objeto (`objeto_alvo` do catálogo: o post, o comentário, a conversa, a mídia)? `None` segue;
-        senão `(recusa, motivo, dica)`. Mensagem direta não se recusa (conversa continua) e só pede confirmação com o
-        MESMO texto (igualdade normalizada) já enviado ao alvo na janela, ou aprovado e ainda não enviado noutra etapa:
-        `recusa=False`. Texto diferente segue a política do perfil: a conversa em andamento e o fluxo que manda bom dia
-        todo dia não viram rajada de pedidos. O resto (seguir, curtir o mesmo post, comentar de novo, publicar a mesma
-        imagem) faria o efeito duas vezes, ou o desfaria num toque que alterna: recusa. App de categoria `qa` (o de
-        teste, efeito só no aparelho) fica fora.
+        senão `(recusa, motivo, dica)`; `recusa=False` é "passa por aprovação".
 
-        Sem objeto (ação sem declaração, argumento por resolver) não há o que comparar, e a aprovação de sempre vale.
+        - Mensagem direta não se recusa (conversa continua): pede confirmação só com o MESMO texto (igualdade
+          normalizada) já enviado ao alvo na janela, ou aprovado e ainda não enviado noutra etapa. Texto diferente segue
+          a política do perfil, e o texto ainda por gerar se compara depois do rascunho (`mensagem_repetida`).
+        - Objeto inequívoco (seguir, aceitar/recusar pedido, publicar a mesma imagem, curtir ou comentar o post com a
+          legenda dita): RECUSA — faria o efeito duas vezes, ou o desfaria num toque que alterna.
+        - Objeto AMBÍGUO (argumento declarado vazio, como a legenda do "post mais recente", ou só a pessoa numa ação sobre
+          post ou comentário) nunca recusa: dois "comente no post mais recente de @ana" podem ser o mesmo post ou dois.
+          Pede aprovação, salvo quando o seletor de commit EXATO de estado já impede a duplicata (`desc==Like` não casa
+          com o coração já curtido): aí passa, e é o seletor que segura (revisão da fila da suíte 32, item 4).
+        - Ação com efeito sem `objeto_alvo` declarado falha fechado: aprovação (a carga já exige a declaração).
+
         Uma saída sem etapa conhecida só conta quando o objeto é a própria pessoa (DM, seguir): de uma curtida antiga
-        sem etapa não se sabe QUAL post foi, e contá-la recusaria o próximo post da mesma pessoa."""
+        sem etapa não se sabe QUAL post foi."""
         if cap.key in UMA_VEZ_POR_ALVO or not cap.side_effect or not cap.interaction_type or self._settings is None:
             return None
+        if not cap.objeto_alvo:
+            return (False, f"{cap.key} tem efeito e não declara sobre o quê age (objeto_alvo): passa por aprovação "
+                           "(30.64)", "")
         objeto = objeto_da_acao(cap, bindings)
-        if objeto is None or (app_id and self.repo.db.scalar("SELECT category FROM apps WHERE id=?", (app_id,)) == "qa"):
-            return None
+        if objeto is None:
+            return None                      # argumento por resolver (`{item}`): a porta roda de novo com ele
         so_a_pessoa = tuple(cap.objeto_alvo) == (cap.counterparty,)
+        conversa = cap.limit_bucket == "dms" or cap.interaction_type == InteractionType.dm_sent.value
+        ambiguo = not conversa and (any(not v for v in objeto.values())
+                                    or (so_a_pessoa and cap.limit_bucket in _BALDES_DE_OBJETO_NA_TELA))
+        if ambiguo and _seletor_de_estado(cap):
+            return None                      # o commit exato não casa com o já feito: o seletor segura a duplicata
+        texto = _texto_normalizado((bindings or {}).get("content"))
+        if conversa and texto is None:
+            return None                      # o texto ainda vai ser escrito: compara-se depois do rascunho
 
         def do_registro(argumentos: Mapping[str, object] | None, quem: str | None) -> dict[str, str] | None:
             if argumentos is not None:
                 return objeto_da_acao(cap, argumentos)
             return {str(cap.counterparty): normalizar_alvo(quem) or ""} if so_a_pessoa else None
 
+        def ambiguo_pede(onde: str) -> tuple[bool, str, str]:
+            return (False, f"{cap.key} sobre {qual} sem dizer QUAL (objeto não identificado) e esta conta já {onde}: "
+                           "pode ser o mesmo, passa por aprovação (30.64)", "")
+
         dias = max(1, int(getattr(self._settings(), "fleet_target_window_days", 30) or 30))
         since = to_iso(agora - timedelta(days=dias))
-        conversa = cap.limit_bucket == "dms" or cap.interaction_type == InteractionType.dm_sent.value
-        texto = _texto_normalizado((bindings or {}).get("content"))
-        if conversa and texto is None:
-            return None                      # o texto ainda vai ser escrito: não se sabe se repete
         qual = ", ".join(f"{k} {v}" for k, v in objeto.items() if v) or "o mesmo objeto"
         for interacao, quando, quem, argumentos, enviado in self.repo.saidas_da_acao(
                 profile_id, cap.key, types=(cap.interaction_type,), statuses=CONTAM, since=since, app_id=app_id,
@@ -480,12 +507,14 @@ class PolicyEngine:
                     continue
                 return (False, f"esta conta já mandou ESTA mensagem a {qual} em {_data(quando)} ({interacao}): a "
                                "repetição passa por confirmação (30.64)", "")
+            if ambiguo:
+                return ambiguo_pede(f"fez isso em {_data(quando)} ({interacao})")
             return (True, f"esta conta já fez {cap.key} sobre {qual} em {_data(quando)} ({interacao}); repetir faria o "
                           f"efeito duas vezes, ou o desfaria num toque que alterna (30.64) — recusado antes da aprovação",
                     "Se for mesmo outro item, diga no comando o que o distingue (a legenda do post, por exemplo) e refaça "
                     "o plano.")
         for pedido, quando, quem, argumentos, status, a_digitar in self.repo.pedidos_da_acao(
-                profile_id, cap.key, since=since, exclude_step_id=step_id):
+                profile_id, cap.key, since=since, app_id=app_id, exclude_step_id=step_id):
             if do_registro(argumentos, quem) != objeto:
                 continue
             if conversa:
@@ -493,10 +522,22 @@ class PolicyEngine:
                     continue
                 return (False, f"esta mesma mensagem a {qual} já foi aprovada em {_data(quando)} ({pedido}), noutra "
                                "etapa, e ainda não saiu: a repetição passa por confirmação (30.64)", "")
+            if ambiguo:
+                return ambiguo_pede(f"tem pedido disso em aberto ({pedido})")
             return (True, f"esta conta já tem um pedido de {cap.key} sobre {qual} em aberto ({pedido}), noutra etapa; um "
                           "segundo faria o efeito duas vezes (30.64) — recusado antes da aprovação",
                     "Decida o pedido que já está em Pendências.")
         return None
+
+    def mensagem_repetida(self, profile_id: str, cap: Capability, bindings: Mapping[str, object] | None, *,
+                          app_id: str | None = None, step_id: str | None = None) -> str | None:
+        """30.64 (revisão da fila, item 5): o `check` roda ANTES do rascunho, e a DM com texto gerado chegava sem texto
+        a comparar. A porta chama isto DEPOIS do `_draft_gate`, com a etapa relida: o motivo quando o texto agora
+        conhecido repete uma mensagem já enviada (ou aprovada e não enviada) ao mesmo alvo; `None` senão. Só lê."""
+        if not (cap.limit_bucket == "dms" or cap.interaction_type == InteractionType.dm_sent.value):
+            return None
+        repetido = self._repetido(profile_id, cap, bindings, now(), app_id, step_id)
+        return repetido[1] if repetido is not None and not repetido[0] else None
 
     def check(self, profile_id: str, cap: Capability, *, run_id: str | None = None,
               counterparty: str | None = None, app_id: str | None = None, package: str | None = None,

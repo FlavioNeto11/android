@@ -2140,13 +2140,18 @@ class AppState:
         if parado is not None:
             return parado
         srow = self.repo.step_row(srow["id"]) or srow          # relê: o texto pode ter acabado de entrar
+        # 30.64 (revisão da fila, item 5): o `check` rodou antes do rascunho; a DM de texto gerado só agora tem o que
+        # comparar. Repetir a mesma mensagem ao mesmo alvo passa por confirmação, mesmo com o perfil autônomo.
+        repetida = self.policies.mensagem_repetida(profile_id, cap, loads(srow["bindings"], {}) or {},
+                                                   app_id=app_da_etapa.id if app_da_etapa else None,
+                                                   step_id=srow["id"])
         # Aprovação por política, por DM fria (o porquê vem no `reason` do veredito que libera) ou pela confirmação
         # do mesmo pedido a várias contas — nenhum grupo nem perfil afrouxa as duas últimas.
         # 28.23: com o teto `preparar`, o efeito exige aprovação qualquer que seja a política da persona.
         pelo_teto = ("teto de autonomia preparar: o efeito precisa da sua aprovação"
                      if teto == "preparar" and cap.side_effect else "")
-        if veredito.needs_approval or confirmacao or pelo_teto:
-            motivo = "; ".join(m for m in (veredito.reason, confirmacao, pelo_teto) if m)
+        if veredito.needs_approval or confirmacao or pelo_teto or repetida:
+            motivo = "; ".join(m for m in (veredito.reason, confirmacao, pelo_teto, repetida or "") if m)
             return self._approval_gate(obj, srow, cap, profile_id, motivo=motivo)
         return None
 
