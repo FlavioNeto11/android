@@ -187,6 +187,7 @@ export function TextsTab({ detail, approvals }: { detail: RunDetail; approvals: 
                 {branco ? <Badge tone="warning">em branco</Badge> : null}
                 {alvo === 'descartar' ? <Badge tone="warning">não será enviado</Badge> : null}
                 {a.rotulo_ia ? <Badge tone="neutral">com rótulo de IA</Badge> : null}
+                {a.rotulo_ia === false ? <Badge tone="warning">sem rótulo de IA (imagem enviada por você)</Badge> : null}
               </div>
               {a.image_id && a.profile_id ? (
                 // 29.30: a publicação leva esta imagem; quem aprova a legenda vê também o que vai ao feed.

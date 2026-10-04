@@ -5928,3 +5928,31 @@ o item do 🔒 só aparecia num 409 depois do clique.
 - **Prova:** `simulated` (`backend/tests/test_porta_do_plano.py`: a rota, o só-leitura e a DM repetida com a regra
   real; `frontend/src/features/runs/PortaDoPlano.test.tsx`). Nenhuma regra real tira hoje um item do 🔒 só pela edição
   do texto; o teste desse caminho é com selo forçado. `not_run`: o percurso no navegador e qualquer execução real.
+
+## Adendo v1.40 (04/10/2026; número da orquestradora; item 29.79) — o rótulo de IA da publicação
+
+Regra do dono (03/10): imagem realista gerada por IA e publicada pela automação SEMPRE leva o rótulo de IA do
+Instagram ("Add AI label").
+
+- **`rotulo_ia` na etapa:** a central grava o argumento na etapa que publica imagem (`image_id`) ao materializar o
+  plano, pela origem da imagem em `persona_images.source`: `generated` e `imported_legacy` dão `"true"`; `upload` (enviada
+  pelo dono) dá `"false"`. Vale por cima do que o plano disser; imagem por resolver ou inexistente fica sem o argumento.
+  Como argumento da etapa, entra na chave da aprovação (v1.32): publicar sem o rótulo é outro item. O sim reaproveitado
+  numa revisão do plano exige o mesmo rótulo.
+- **`ItemDaPorta.rotulo_ia`** (`boolean | null`) e **`Approval.rotulo_ia`** (`boolean | null`): `true` = sai com o rótulo;
+  `false` = sai sem ele (imagem enviada pelo dono; o item diz "sem rótulo de IA (imagem enviada por você)"); `null` = sem
+  imagem ou sem o argumento gravado. Marcar um upload como feito por IA é o item 29.81.
+- **Imagem de outra persona:** `midia_da_etapa(..., perfil=)` não fecha chave para a imagem cuja `persona_id` não é o
+  perfil que publica. Na prévia, o item sai `recusado` ("a imagem é de outra persona"); na execução, a galeria já a
+  recusava.
+- **Catálogo `commit_switch`** (lista de `<argumento>:<seletor>`, validada na carga: o argumento é declarado pela ação e a
+  ação tem `commit_selector`): com o argumento `"true"`, o interruptor do seletor tem de estar LIGADO na tela antes do
+  toque de efeito (o elemento marcado, ou um marcado cuja faixa vertical se sobrepõe à dele). Sem ele, o toque é
+  recusado; na 2ª recusa (ou na 1ª, vinda de receita) a etapa termina `waiting_user`, "nada foi publicado". O CREATE_POST
+  declara `rotulo_ia:text==Add AI label`, e o `commit_selector` dele passa a `id=share_footer_button` (medido nas
+  capturas da publicação manual do 8.3, android-01, 03/10 04:43Z: o texto "Share" era um TextView filho não clicável).
+- **Painel:** "com rótulo de IA" ou "sem rótulo de IA (imagem enviada por você)" no cartão do plano, na aba Textos e no
+  guia de aprovações.
+- **Prova:** `simulated` (`backend/tests/test_rotulo_ia.py`, `backend/tests/test_rotulo_ia_no_executor.py`,
+  `frontend/src/features/runs/PortaDoPlano.test.tsx`, `frontend/src/features/runs/execution.test.tsx`). `not_run`: a
+  conferência dos seletores na versão atual do app (controle manual, sem Share) e a 1ª publicação real.

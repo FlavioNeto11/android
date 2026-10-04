@@ -325,6 +325,7 @@ export function PortaDoPlano({ runId }: { runId: string }) {
                     <Badge tone={selo.tone} icon={selo.icon}>{rotuloDoSelo(item)}</Badge>
                     {item.tem_imagem ? <Badge tone="neutral" icon={ImageIcon}>com imagem</Badge> : null}
                     {item.rotulo_ia ? <Badge tone="neutral">com rótulo de IA</Badge> : null}
+                    {item.rotulo_ia === false ? <Badge tone="warning">sem rótulo de IA (imagem enviada por você)</Badge> : null}
                     {tirada ? <Badge tone="warning">{porDependencia ? 'sai junto (depende de uma tirada)' : 'não será feita'}</Badge> : null}
                   </div>
                   {item.image_id && item.profile_id ? (

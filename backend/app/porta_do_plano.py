@@ -327,7 +327,9 @@ def _item(state: AppState, run: Row, obj: Row, e: Row, dependentes: list[str], r
             # mesma que entra na chave).
             "image_id": str(bindings.get(ARGUMENTO_DA_IMAGEM)).strip() if imagem_sha else None,
             # 29.79: a publicação sai com o rótulo de IA do Instagram (o argumento que a central gravou na etapa).
-            "rotulo_ia": (str(bindings.get(ARGUMENTO_DO_ROTULO_IA)) == "true") if tem_imagem else None,
+            # `None` sem imagem ou sem o argumento (imagem por resolver): só "false" gravado diz "sem rótulo".
+            "rotulo_ia": (str(bindings[ARGUMENTO_DO_ROTULO_IA]).strip().lower() == "true")
+                         if tem_imagem and bindings.get(ARGUMENTO_DO_ROTULO_IA) is not None else None,
             "imagem_sha256": imagem_sha, "chave": chave, "falhou": False}
 
 

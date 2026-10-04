@@ -142,3 +142,20 @@ async def test_imagem_de_outra_persona_nao_fecha_chave_nem_se_aprova(harness: An
     assert itens["pub"]["chave"] is None and itens["pub"]["image_id"] is None
     assert itens["minha"]["selo"] == "aprovacao" and itens["minha"]["chave"]
     assert itens["minha"]["rotulo_ia"] is True and itens["minha"]["image_id"] == "img-m"
+
+
+async def test_o_upload_do_dono_diz_sem_rotulo_e_a_imagem_por_resolver_nao_diz_nada(harness: Any) -> None:
+    """Orquestradora, 22:36Z: o upload nasce `rotulo_ia` falso e o item diz "sem rótulo de IA"; sem o argumento gravado
+    (imagem por resolver) o campo é `None`, nunca um "sem rótulo" que ninguém decidiu."""
+    state = harness.state
+    pid = _plano(state, [{"key": "up", "cap": "CREATE_POST",
+                          "bindings": {"image_id": "img-u", "content": "praia", "content_verbatim": "true"}},
+                         {"key": "solta", "cap": "CREATE_POST",
+                          "bindings": {"image_id": "img-z", "content": "outra", "content_verbatim": "true"}}])
+    _imagem(state, "img-u", pid, "upload")
+    linha = state.db.scalar("SELECT bindings FROM steps WHERE key='up'")
+    state.db.execute("UPDATE steps SET bindings=? WHERE key='up'",
+                     (json.dumps(state.repo._com_rotulo_ia(json.loads(linha))),))  # noqa: SLF001
+    itens = _por_chave(previa_da_porta(state, "run-p"))
+    assert itens["up"]["rotulo_ia"] is False
+    assert itens["solta"]["tem_imagem"] is True and itens["solta"]["rotulo_ia"] is None

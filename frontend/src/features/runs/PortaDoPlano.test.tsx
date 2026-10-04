@@ -247,6 +247,16 @@ describe('29.30 no cartão do plano', () => {
     expect(img?.getAttribute('src')).toContain('img-1');
     expect(text(container)).toContain('com rótulo de IA');       // 29.79
   });
+
+  it('29.79: a imagem enviada pelo dono diz com todas as letras que sai sem o rótulo de IA', async () => {
+    backend.on('GET', /\/runs\/run-p\/porta$/, () => json(previa([
+      item({ step_id: 'run-p:android-01:v1:pub', acao: 'CREATE_POST', alvo: null, tem_imagem: true, image_id: 'img-u',
+             imagem_sha256: 'c'.repeat(64), rotulo_ia: false }),
+    ])));
+    await montar();
+    expect(text(container)).toContain('sem rótulo de IA (imagem enviada por você)');
+    expect(text(container)).not.toContain('com rótulo de IA');
+  });
 });
 
 describe('30.68: a prévia do texto editado antes do sim', () => {

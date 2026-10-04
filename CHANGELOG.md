@@ -206,7 +206,8 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
   Share (`commit_selector` passa a `id=share_footer_button`; o `text==Share` era o TextView filho, não clicável).
 - A imagem de OUTRA persona não fecha chave nem se aprova no plano ("a imagem é de outra persona"); a galeria já a
   recusava na execução.
-- O cartão do plano e as aprovações da execução dizem "com rótulo de IA".
+- O cartão do plano e as aprovações da execução dizem "com rótulo de IA", ou "sem rótulo de IA (imagem enviada por
+  você)" no upload do dono (marcar o upload como feito por IA é o 29.81). Adendo v1.40.
 - Prova: `simulated` (`tests/test_rotulo_ia.py`, `tests/test_rotulo_ia_no_executor.py`, `PortaDoPlano.test.tsx`,
   `execution.test.tsx`). `not_run`: a medida dos seletores no aparelho depois do deploy e a 1ª publicação real.
 
