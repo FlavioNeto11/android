@@ -300,6 +300,13 @@ verificador** (ADR-024); como entram no prompt, em [ia.md §15](../ia.md).
 1. **Nascimento por contraste.** Uma falha seguida de sucesso comprovado na mesma etapa gera candidata do ator. Um
    defeito do plano seguido de plano que comprovou a mesma ação gera candidata do planejador. Falha repetida sem
    contraste não prova o que funciona e vai ao backlog.
+   - O seletor com as partes em elementos diferentes (`seletor_em_elementos_diferentes`, 31.32) também conta como
+     defeito do plano.
+   - Quando todos os defeitos são desse tipo, a lição diz para não juntar num seletor só partes que a tela tem em
+     elementos diferentes, sem proibir o tipo da pós-condição.
+   - Esse defeito ensina também contra um plano que comprovou com o MESMO tipo, porque o conserto é o seletor e não o
+     tipo.
+   - Com um defeito genérico no meio, vale a lição do tipo.
 2. **Texto fechado.** Modelos fixos por tipo de falha. As lacunas só aceitam: ação do catálogo, tipo de pós-condição,
    contagem, sufixo de resource-id, `{parâmetro}` e rótulo curto que se repetiu, idêntico, em 2 execuções. Nunca
    `attempts.error` cru, texto de tela, nome de terceiro, valor de parâmetro ou segredo. A nota de um voto vira

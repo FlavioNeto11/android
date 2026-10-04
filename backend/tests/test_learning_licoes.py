@@ -477,6 +477,57 @@ def test_defeito_do_plano_seguido_de_plano_que_comprovou_vira_licao_do_planejado
     assert "model_judged" in json.dumps(licao.content)
 
 
+SELETOR = "seletor_em_elementos_diferentes"
+DETALHE_DO_SELETOR = "Defeito do plano — as partes do seletor estão em elementos diferentes desta tela"
+
+
+def _defeito(mundo: Mundo, run: str, *, pos: str, falha: str, detalhe: str, dias: int = 5) -> None:
+    semear(mundo.db, run, [Tentativa("failed", detalhe, falha)], status_da_etapa="failed", pos=pos, dias_atras=dias,
+           status_da_execucao="failed")
+    mundo.db.execute("UPDATE steps SET failure_kind=? WHERE run_id=?", (falha, run))
+
+
+def test_seletor_em_elementos_diferentes_vira_licao_do_seletor_31_32(mundo: Mundo) -> None:
+    """31.32: o tipo novo é lido pelo minerador. A lição diz para não juntar partes de elementos diferentes, sem
+    proibir o tipo da pós-condição."""
+    _defeito(mundo, "r-seletor", pos="model_judged", falha=SELETOR, detalhe=DETALHE_DO_SELETOR)
+    semear(mundo.db, "r-ok", [Tentativa("succeeded", toques=[Toque(rid("ok"))])], pos="text_visible", dias_atras=1)
+    assert mundo.licoes.minerar_plano("r-ok") == 1
+    [licao] = mundo.licoes_do_livro()
+    assert licao.source_kind is SourceKind.PLAN_DEFECT and licao.escopo == Escopo(app=IG, role="planner")
+    assert licao.summary == ("Em com.instagram.android: na pós-condição model_judged de OPEN_POST, não junte num "
+                             "seletor só partes que a tela tem em elementos diferentes; falhou assim 1×.")
+    assert licao.content["modelo"] == SELETOR
+
+
+def test_o_defeito_do_seletor_ensina_contra_o_mesmo_tipo_e_o_generico_nao_31_32(mundo: Mundo) -> None:
+    """O conserto do seletor é um elemento só no MESMO tipo: o plano seguinte que comprovou com `text_visible` ensina.
+    O defeito genérico do mesmo tipo segue sem contraste (nada mudou de tipo)."""
+    _defeito(mundo, "r-generico", pos="text_visible", falha="defeito_do_plano",
+             detalhe="Defeito do plano — a pós-condição não é comprovável", dias=6)
+    semear(mundo.db, "r-ok1", [Tentativa("succeeded", toques=[Toque(rid("ok"))])], pos="text_visible", dias_atras=5)
+    assert mundo.licoes.minerar_plano("r-ok1") == 0
+    _defeito(mundo, "r-seletor", pos="text_visible", falha=SELETOR, detalhe=DETALHE_DO_SELETOR, dias=3)
+    semear(mundo.db, "r-ok2", [Tentativa("succeeded", toques=[Toque(rid("ok"))])], pos="text_visible", dias_atras=1)
+    assert mundo.licoes.minerar_plano("r-ok2") == 1
+    [licao] = mundo.licoes_do_livro()
+    assert licao.content["modelo"] == SELETOR and "text_visible" in licao.summary
+    [ev] = mundo.repo.evidencias(licao.id)
+    assert ev.run_id == "r-seletor"                                          # só o do seletor; o genérico ficou fora
+
+
+def test_defeitos_misturados_ficam_com_a_licao_do_tipo_31_32(mundo: Mundo) -> None:
+    """Um genérico no meio dos do seletor: vale a lição mais ampla (não use o tipo)."""
+    _defeito(mundo, "r-seletor", pos="model_judged", falha=SELETOR, detalhe=DETALHE_DO_SELETOR, dias=6)
+    _defeito(mundo, "r-generico", pos="model_judged", falha="defeito_do_plano",
+             detalhe="Defeito do plano — a pós-condição não é comprovável", dias=4)
+    semear(mundo.db, "r-ok", [Tentativa("succeeded", toques=[Toque(rid("ok"))])], pos="text_visible", dias_atras=1)
+    assert mundo.licoes.minerar_plano("r-ok") == 2                           # uma evidência por defeito
+    [licao] = mundo.licoes_do_livro()                                       # numa lição só
+    assert licao.content["modelo"] == "defeito_do_plano"
+    assert licao.summary.startswith("Em com.instagram.android: não use a pós-condição model_judged em OPEN_POST")
+
+
 # ================================================================== nota humana
 def test_nota_humana_nasce_human_origin_e_so_o_dono_valida(mundo: Mundo) -> None:
     sid = contraste_ciclo(mundo.db, "r1")

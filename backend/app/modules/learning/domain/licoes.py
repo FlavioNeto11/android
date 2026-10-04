@@ -224,6 +224,12 @@ _COM_CONTAGEM = frozenset({FailureKind.EFEITO_ALVO_ERRADO, FailureKind.EFEITO_GU
 #: Os tipos cujo alvo bom é o controle do EFEITO (nos outros, o primeiro toque da tentativa que comprovou).
 _ALVO_DO_EFEITO = frozenset({FailureKind.EFEITO_ALVO_ERRADO})
 MODELO_DO_PLANEJADOR = "Em {app}: não use a pós-condição {tipo} em {acao}; foi julgada não comprovável {n}×."
+#: 31.32: o defeito é do SELETOR, não do tipo da pós-condição: a lição diz para não juntar num seletor só as partes que a
+#: tela tem em elementos diferentes, e o tipo segue valendo.
+MODELO_DO_SELETOR = ("Em {app}: na pós-condição {tipo} de {acao}, não junte num seletor só partes que a tela tem em "
+                     "elementos diferentes; falhou assim {n}×.")
+#: Os tipos de falha que o minerador do planejador lê: o defeito do plano genérico e o do seletor composto (31.32).
+DEFEITOS_DO_PLANO = frozenset({FailureKind.DEFEITO_DO_PLANO, FailureKind.SELETOR_EM_ELEMENTOS_DIFERENTES})
 MODELO_DA_NOTA = "{prefixo} nota de quem acompanhou: {nota}"
 
 
@@ -334,6 +340,7 @@ class DefeitoDoPlano:
     step_id: str
     run_id: str
     instance_id: str | None
+    falha: FailureKind = FailureKind.DEFEITO_DO_PLANO
 
 
 @dataclass(frozen=True, slots=True)
@@ -376,11 +383,15 @@ def licao_do_planejador(c: ContrasteDoPlano) -> NovoItem | Recusa:
             return acao if isinstance(acao, Recusa) else Recusa(MotivoDeRecusa.ACAO_INVALIDA)
     n = min(len(c.defeitos), CONTAGEM_MAX)
     defeitos: list[JsonValue] = [d.step_id for d in c.defeitos[:20]]
-    texto = MODELO_DO_PLANEJADOR.format(app=c.app, tipo=c.tipo, acao=c.acao, n=n)
+    # Só do seletor quando TODOS os defeitos são dele; com um genérico no meio, vale a lição do tipo (a mais ampla).
+    do_seletor = all(d.falha is FailureKind.SELETOR_EM_ELEMENTOS_DIFERENTES for d in c.defeitos)
+    modelo = FailureKind.SELETOR_EM_ELEMENTOS_DIFERENTES if do_seletor else FailureKind.DEFEITO_DO_PLANO
+    texto = (MODELO_DO_SELETOR if do_seletor else MODELO_DO_PLANEJADOR).format(app=c.app, tipo=c.tipo, acao=c.acao,
+                                                                                 n=n)
     if len(texto) > LICAO_MAX_CARACTERES:
         return Recusa(MotivoDeRecusa.LONGA)
     return NovoItem(kind=LivroKind.LICAO, escopo=Escopo(app=c.app, role=Papel.PLANNER.value),
-                    content={"modelo": FailureKind.DEFEITO_DO_PLANO.value, "acao": c.acao, "tipo": c.tipo},
+                    content={"modelo": modelo.value, "acao": c.acao, "tipo": c.tipo},
                     summary=texto, source_kind=SourceKind.PLAN_DEFECT, side_effect=c.side_effect,
                     app_version=c.app_version,
                     provenance={"regra": "defeito_do_plano", "minerador": VERSAO_DO_MINERADOR,
@@ -536,8 +547,9 @@ def bloco_de_licoes(textos: Sequence[str]) -> str:
     return "\n".join((ABRE, AVISO, *linhas, FECHA))
 
 
-__all__ = ["ABRE", "ACAO_DE_SESSAO", "AVISO", "CONTAGEM_MAX", "FECHA", "LACUNAS", "LICAO_MAX_CARACTERES",
-           "LIMIARES_DA_LICAO", "MODELOS_DO_ATOR", "MODELO_DA_NOTA", "MODELO_DO_PLANEJADOR", "NOTA_NA_LICAO_MAX",
+__all__ = ["ABRE", "ACAO_DE_SESSAO", "AVISO", "CONTAGEM_MAX", "DEFEITOS_DO_PLANO", "FECHA", "LACUNAS",
+           "LICAO_MAX_CARACTERES", "LIMIARES_DA_LICAO", "MODELOS_DO_ATOR", "MODELO_DA_NOTA", "MODELO_DO_PLANEJADOR",
+           "MODELO_DO_SELETOR", "NOTA_NA_LICAO_MAX",
            "ROTULO_EXECUCOES_MIN", "ROTULO_MAX", "TELAS_EXCLUIDAS", "VERSAO_DO_MINERADOR", "Alvo", "AlvoObservado",
            "Contraste", "ContrasteDoPlano", "DefeitoDoPlano", "Escolha", "Escolhida", "MotivoDeRecusa", "Nivel",
            "NotaDeFeedback", "Pedido", "Recusa", "TipoDeAlvo", "alvo_seguro", "bloco_de_licoes",

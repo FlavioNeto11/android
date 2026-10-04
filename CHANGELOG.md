@@ -220,6 +220,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Toda volta loga uma linha `info` (avaliados, publicaria, casos novos), e as métricas ganham
   `curador.autopublicacao.ultima_volta` (adendo v1.12).
 - Prova `simulated`: `test_learning_autopublicacao_sombra.py`, 3 testes novos. A fatia B (o `on`) segue fora.
+## 2026-10-04 — 31.32 (Aprendizado): o minerador de lições do planejador lê o seletor em elementos diferentes (branch feat/31-32-licao-do-seletor)
+
+- Empilhado sobre o #207 (Jev). `_defeitos` lê `defeito_do_plano` e `seletor_em_elementos_diferentes`. A lição só do
+  seletor tem modelo próprio, que não proíbe o tipo da pós-condição, e ensina também contra o mesmo tipo.
+- Prova `simulated`: `test_learning_licoes.py`, 3 testes novos com mutação conferida; 107 testes de lições, falhas e
+  seletor aprovados.
 
 ## 2026-10-04 — 31.32: seletor com as partes em elementos diferentes falha na hora (branch feat/31-32-seletor-impossivel, sem migração)
 

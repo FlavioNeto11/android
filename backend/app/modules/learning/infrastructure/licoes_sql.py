@@ -29,8 +29,8 @@ from app.automation.hierarchy import detectar_trava_generica, normalizar_texto_d
 from app.db import Database, Row
 from app.modules.learning.domain.efeito import NAO_COMPROVADA, NovaExposicao
 from app.modules.learning.domain.falhas import FailureKind, classificar_falha
-from app.modules.learning.domain.licoes import (AlvoObservado, Contraste, ContrasteDoPlano, DefeitoDoPlano,
-                                                NotaDeFeedback)
+from app.modules.learning.domain.licoes import (DEFEITOS_DO_PLANO, AlvoObservado, Contraste, ContrasteDoPlano,
+                                                DefeitoDoPlano, NotaDeFeedback)
 from app.modules.learning.domain.livro import ItemDeAprendizado
 from app.modules.learning.domain.vocabulario import Braco, DetalheDeEstado, Papel, SignalKind, TipoDeProposta
 from app.modules.learning.infrastructure import linhas
@@ -178,14 +178,17 @@ class SqlLicoesRepository:
                 continue
             params = {**parametros.get(linhas.texto(s, "objective_id"), {}),
                       **_texto_por_chave(linhas.texto_ou_nulo(s, "variables"))}
-            for d in self._defeitos(acao, capability is None, pacote, fim):
+            for d, falha in self._defeitos(acao, capability is None, pacote, fim):
                 tipo = _tipo_da_pos(linhas.texto_ou_nulo(d, "postcondition"))
-                if not tipo or tipo == tipo_bom:
+                # O defeito genérico só ensina contra um plano que comprovou com OUTRO tipo. O do seletor (31.32)
+                # ensina também contra o mesmo tipo: o conserto é o seletor de um elemento só, não trocar de tipo.
+                do_seletor = falha is FailureKind.SELETOR_EM_ELEMENTOS_DIFERENTES
+                if not tipo or (tipo == tipo_bom and not do_seletor):
                     continue
                 chave = (pacote, acao, tipo)
                 atual = saida.get(chave)
                 defeito = DefeitoDoPlano(linhas.texto(d, "id"), linhas.texto(d, "run_id"),
-                                         linhas.texto_ou_nulo(d, "instance_id"))
+                                         linhas.texto_ou_nulo(d, "instance_id"), falha)
                 if atual is None:
                     saida[chave] = ContrasteDoPlano(
                         app=pacote, acao=acao, livre=capability is None, tipo=tipo, defeitos=(defeito,),
@@ -200,8 +203,9 @@ class SqlLicoesRepository:
                         parametros=atual.parametros, app_version=atual.app_version)
         return list(saida.values())
 
-    def _defeitos(self, acao: str, livre: bool, pacote: str, antes_de: str) -> list[Row]:
-        """As etapas REAIS da mesma ação que falharam por defeito do plano antes desta comprovar (30 dias)."""
+    def _defeitos(self, acao: str, livre: bool, pacote: str, antes_de: str) -> list[tuple[Row, FailureKind]]:
+        """As etapas REAIS da mesma ação que falharam por defeito do plano (o genérico ou o do seletor, 31.32) antes desta
+        comprovar (30 dias), cada uma com o tipo da falha."""
         inicio = _dias_antes(antes_de, DEFEITO_DIAS)
         filtro = "s.capability IS NULL AND s.key=?" if livre else "s.capability=?"
         candidatas = self._db.query(
@@ -209,10 +213,12 @@ class SqlLicoesRepository:
             " s.app_id, r.app_ids FROM steps s JOIN runs r ON r.id = s.run_id"
             f" WHERE r.simulated = 0 AND s.status='failed' AND {filtro} AND s.finished_at < ? AND s.finished_at >= ?",
             (acao, antes_de, inicio))
-        return [d for d in candidatas
-                if _tipo(linhas.texto_ou_nulo(d, "failure_kind"), linhas.texto_ou_nulo(d, "status_detail"),
-                         "failed") is FailureKind.DEFEITO_DO_PLANO
-                and self._pacote(d["app_id"], d["app_ids"]) == pacote]
+        saida: list[tuple[Row, FailureKind]] = []
+        for d in candidatas:
+            falha = _tipo(linhas.texto_ou_nulo(d, "failure_kind"), linhas.texto_ou_nulo(d, "status_detail"), "failed")
+            if falha in DEFEITOS_DO_PLANO and self._pacote(d["app_id"], d["app_ids"]) == pacote:
+                saida.append((d, falha))
+        return saida
 
     # ================================================================== notas do D2
     def notas(self, desde: str) -> list[NotaDeFeedback]:
