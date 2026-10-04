@@ -121,3 +121,19 @@ async def test_a_reexecucao_da_validacao_do_qa_tambem_parte_de_estado_conhecido(
     nova = fake.calls[antes:]
     assert nova.count("force_stop") == 1 and nova.index("force_stop") == 0
     assert any("Validação do QA (re-execução): ponto de partida" in d for d in _eventos(real, run.id, "decision"))
+
+
+async def test_a_abertura_do_ponto_de_partida_e_da_propria_execucao(real: Real, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A trava contra a IA no aparelho (`_guard_not_running_ai`) protege de um comando DE FORA no meio da execução; a
+    abertura do ponto de partida é da própria execução. Medido no central em 04/10: 3 de 3 provas gravaram "não
+    confirmado (A IA está executando neste aparelho...)" e só a etapa 1 abriu o app."""
+    assert real.h.state is not None
+    rt = real.h.state.devices.get("android-01")
+    abriu: list[str] = []
+    monkeypatch.setattr(rt.adb, "current_focus", lambda *_a, **_k: (None, None))
+    monkeypatch.setattr(rt.adb, "start_app", lambda pacote, *_a, **_k: abriu.append(pacote))
+    run = real.prova("partida-propria")
+    assert (await real.h.wait_run(run)).status == "completed"
+    assert abriu == ["com.pocqa.messenger"]
+    [decisao] = [d for d in _eventos(real, run, "decision") if "ponto de partida" in d]
+    assert decisao.endswith("o app está em primeiro plano."), decisao

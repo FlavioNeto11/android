@@ -188,6 +188,12 @@ class FontesDoLivro(Protocol):
         """As versões do app observadas hoje em aparelho ativo (o eixo de comparação do §7)."""
         ...
 
+    def titulos_das_etapas(self, citadas: Sequence[tuple[str, int, str]]) -> dict[tuple[str, int, str], str]:
+        """O título (texto do planejador, lido da execução na hora; nunca gravado no livro) de cada etapa citada por
+        (execução, posição, chave). Acha a etapa por `steps.run_id` e `steps.key`, preferindo a mesma posição; sem a
+        etapa (execução limpa pela retenção, chave que não existe mais) a citada fica fora do dicionário."""
+        ...
+
     def pacotes_de_teste(self) -> frozenset[str]:
         """Os pacotes dos apps de teste (`apps.category='qa'`): a lista padrão do livro os esconde (RA-19)."""
         ...

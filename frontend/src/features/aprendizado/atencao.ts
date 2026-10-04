@@ -54,7 +54,7 @@ export function filaDeAtencao<T extends EntradaDoLivro>(itens: readonly T[]): T[
 /** O motivo principal, em português: o primeiro que o backend listou (o que produziu o rótulo). `null` se não veio. */
 export function motivoPrincipal(e: Pick<EntradaDoLivro, 'saude'>): string | null {
   const m = e.saude?.motivos[0];
-  return m ? textoDoMotivo(m) : null;
+  return m ? textoDoMotivo(m, e.saude) : null;
 }
 
 /** `*` é a etapa livre (sem capability definida), como nas falhas. */

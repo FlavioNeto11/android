@@ -258,3 +258,20 @@ def test_o_contra_da_reproducao_dentro_da_janela_nao_contesta_a_receita(mundo: M
     mundo.digerir("run-1")
     assert [(x["stance"], x["origin_ref"]) for x in mundo.linhas(r)] == [("against", "reproducao:run-1")]
     assert mundo.servico.detalhe(LivroKind.RECEITA, str(r)).saude == antes
+
+
+def test_o_detalhe_do_item_lista_a_evidencia_na_ordem_do_acontecido(mundo: Mundo) -> None:
+    """30.44: a retrocarga grava depois linhas de antes (a receita:87); o detalhe as mostra pela data, não pelo id."""
+    from app.modules.learning.presentation.livro import _detalhe
+
+    r = mundo.receita()
+    mundo.execucao("run-nova")
+    mundo.etapa("run-nova", 1, driven_by="recipe", receita=r, fim="2026-10-03T22:00:00.000Z")
+    mundo.digerir("run-nova")                                      # gravada primeiro (id menor), aconteceu depois
+    mundo.execucao("run-velha")
+    mundo.etapa("run-velha", 1, driven_by="recipe", receita=r, fim="2026-10-02T09:00:00.000Z")
+    mundo.digerir("run-velha")
+    d = mundo.servico.detalhe(LivroKind.RECEITA, str(r))
+    assert d is not None
+    saida = _detalhe(d, mundo.servico)["evidencias"]
+    assert isinstance(saida, list) and [x["run_id"] for x in saida] == ["run-nova", "run-velha"]   # type: ignore[index]

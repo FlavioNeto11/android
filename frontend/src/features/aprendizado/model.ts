@@ -172,6 +172,9 @@ export interface EvidenciaDoLivro {
   observed_at: string;
   /** 30.23: a execução desta evidência foi marcada como evidência inválida no item; não prova nada. */
   invalidada?: boolean;
+  /** 30.44: o título da etapa que o `detail` cita ("etapa 5 (send_message)"), lido da execução na hora da leitura;
+   *  `null` sem etapa citada ou sem a execução. Nunca gravado: é texto do planejador. */
+  etapa_titulo?: string | null;
 }
 
 export interface TransicaoDoLivro {
@@ -605,18 +608,31 @@ export function motivoDaInvalida(d: string | null | undefined): string | null {
   return (m && MOTIVO_DA_INVALIDA[m[1] ?? '']) || null;
 }
 
-export function textoDaEvidencia(d: string): string {
+/**
+ * O texto da evidência para a pessoa. `titulo` (30.44): o título da etapa citada, lido da execução na hora pelo
+ * backend (o `detail` gravado só tem a chave): "etapa 5 (send_message): reproduzida" vira "etapa 5 (send_message) —
+ * Enviar a mensagem: reproduzida". Sem título, nada muda.
+ */
+export function textoDaEvidencia(d: string, titulo?: string | null): string {
   const rotulo = (tipo: string) => {
     const r = POSTCONDITION_KIND[tipo] ?? tipo;
     return r.charAt(0).toLowerCase() + r.slice(1);              // "Avaliado pela IA" → "avaliado pela IA"
   };
-  return d
+  const comTitulo = (texto: string) => {
+    const nome = titulo?.trim();
+    if (!nome) return texto;
+    // Só a primeira citação, e sem quebrar a frase: antes de ":" o título fecha a etapa; antes de palavra, uma vírgula.
+    return texto.replace(/\betapa (\d+) \(([A-Za-z0-9_.-]+)\)(?=[: ]|$)/, (citacao, _n: string, _k: string, pos: number) =>
+      `${citacao} — ${nome}${texto.charAt(pos + citacao.length) === ' ' ? ',' : ''}`);
+  };
+  const limpo = d
     .replace(/^\[[0-9a-f]{6,}\]\s*/, '')
     .replace(/^invalida:[a-z_]+\s*(— )?/, '')                     // 30.42: o motivo já vai no rótulo da linha
     .replace(/\(([a-z_]+) × ([a-z_]+)\)/g, (_, feito: string, esperado: string) =>
       `(nesta execução: ${rotulo(feito)}; no fluxo: ${rotulo(esperado)})`)
     .replace(/ \(\+(\d+)\)$/, (_, n: string) => ` (e mais ${n})`)
     .trim();
+  return comTitulo(limpo);
 }
 
 // ---------------------------------------------------------------- o que a PESSOA pode fazer

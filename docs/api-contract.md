@@ -5169,6 +5169,11 @@ Aditivo aos v1.07, v1.09 e ao da lista de validações (30.38 b). Nenhuma rota n
   efeito saiu N vezes nesta execução`). O pedido de validação de receita pode fechar `recusada/efeito_repetido`.
 - **Linha do tempo:** a re-execução da validação do QA mostra a decisão "Validação do QA (re-execução): ponto de
   partida…".
+- **30.44, no mesmo ciclo:** cada evidência do detalhe (`evidencias[]` de `GET /api/aprendizado/{kind}/{ref}`)
+  ganha `etapa_titulo`: o título da etapa que o `detail` cita ("etapa N (chave)"). Ele é lido de `steps` pela execução
+  e pela chave, na hora da leitura, sem gravar; o `detail` segue só com a chave, porque o título pode trazer texto de
+  pessoa. É `null` sem etapa citada, sem a execução ou quando a triagem de credencial recusa o título. A lista sai
+  pela data do acontecido (`observed_at`), não pela ordem de gravação.
 
 Prova:
 - `simulated`: `backend/tests/test_learning_reproducao_repetida.py`, `test_learning_nasceu_em_validacao.py` e
