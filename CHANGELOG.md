@@ -164,6 +164,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   menos de 1 s.
 - Ficam fora, por outra causa (não sobem pelo laço do scheduler): `instagram_auth`, `conduta_de_login`,
   `retoque_no_login`, `release_lifecycle` e `porta_de_sessao_no_teto` (FakeRt próprio).
+## 2026-10-04 — 29.34: o veredito do snapshot também pelo uptime do convidado (branch fix/29-34-uptime-do-wake)
+
+- Prova real contra (04/10, android-02, wake das 16:19Z): `load_ms` nulo, porque a linha "Successfully loaded snapshot"
+  só chega ao log depois do boot (saída bufferizada); o `/proc/uptime` era 3728 s, contra 12 min desde o wake.
+- `Adb.uptime_s` e `manager.snapshot_pelo_uptime`: no primeiro `boot_completed` de um wake sem veredito, um uptime maior
+  que o tempo desde o spawn (com folga de 15 s) dá o veredito positivo. `load_ms` = spawn → boot, o prazo do wake passa
+  a contar do boot, e a medição traz `snapshot_por` e `uptime_s`. Só positivo: o negativo continua só pelo log.
+- Testes: `test_wake_relogio_do_snapshot.py` (+5). Prova: `simulated`; a real é o wake do 02 depois do deploy da 30
+  (o agente vai junto: `devices/adb.py` está no manifesto).
 
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
