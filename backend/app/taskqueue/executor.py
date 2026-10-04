@@ -16,7 +16,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, Awaitable, Callable, Protocol, Sequence, TypeVar
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Protocol, Sequence, TypeVar
 
 from PIL import Image
 from pydantic import BaseModel
@@ -73,6 +73,9 @@ from .saidas import (RECUSAS_DETERMINISTICAS, ChaveDeTentativa, LeituraInvalida,
                      LeituraVisualRecusada, args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor,
                      ler_valor_visual, nomes_citados, razao_sem_segredo, texto_da_tela, texto_do_elemento, triagem,
                      variaveis_da_receita)
+
+if TYPE_CHECKING:
+    from ..modules.identity.application.persona_images import PersonaImageService
 
 log = logging.getLogger("poc.executor")
 
@@ -595,7 +598,7 @@ class StepExecutor:
         self.sensitive_input: Any = None
         #: 29.30, injetado pelo AppState: o serviço de imagens da persona, de onde `PUT_MEDIA_IN_GALLERY` tira a mídia.
         #: Sem ele a etapa falha com o motivo (nada vai ao aparelho).
-        self.persona_images: Any = None
+        self.persona_images: PersonaImageService | None = None
         #: VERIFY pela porta de capability (fase G, §14.1): a prova local do catálogo, embrulhada pelo provider. O
         #: executor continua dono do aparelho e do desfecho: ele observa e entrega a leitura; só `proved` dispensa o
         #: verificador, `not_proved`/`unknown` seguem o caminho de sempre (o modelo).
@@ -1445,7 +1448,7 @@ class StepExecutor:
         except Exception:  # noqa: BLE001 - corrigir o cache nunca pode derrubar a etapa
             log.exception("%s: falha ao atualizar o estado de sessão do perfil", instance_id)
 
-    async def _run_interna(self, *, run: Any, objective: Any, step: StepDTO, attempt_id: str,
+    async def _run_interna(self, *, run: Row, objective: Row, step: StepDTO, attempt_id: str,
                            rt: DeviceRuntime) -> StepOutcome:
         """`PUT_MEDIA_IN_GALLERY` (29.30): a imagem da persona da conta deste aparelho vai para a galeria dele.
 

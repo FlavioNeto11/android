@@ -15,9 +15,12 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import TYPE_CHECKING
 
 from app.models import InstanceState
+
+if TYPE_CHECKING:
+    from app.devices.manager import DeviceManager
 
 #: Quanto esperar o frame novo depois de acordar a prévia (o ritmo do foco é de 1 s; sobra para um aparelho lento).
 ESPERA_S = 8.0
@@ -25,7 +28,7 @@ ESPERA_S = 8.0
 TTL_DO_INTERESSE_S = 5
 
 
-async def capturar_para_o_dono(gerenciador: Any, instance_id: str, *, espera_s: float = ESPERA_S,
+async def capturar_para_o_dono(gerenciador: DeviceManager, instance_id: str, *, espera_s: float = ESPERA_S,
                                dormir: Callable[[float], Awaitable[None]] = asyncio.sleep) -> tuple[bytes | None, str | None]:
     try:
         rt = gerenciador.get(instance_id)

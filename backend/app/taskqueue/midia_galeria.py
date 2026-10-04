@@ -14,7 +14,10 @@ import os
 import re
 import tempfile
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.modules.identity.application.persona_images import PersonaImageService
 
 #: Capabilities `internal` que o executor despacha por código, em vez de entregar ao ator.
 INTERNAS_POR_CODIGO = frozenset({"PUT_MEDIA_IN_GALLERY"})
@@ -32,7 +35,7 @@ def nome_na_galeria(image_id: str) -> str:
     return f"img_{limpo}"
 
 
-def colocar_midia_na_galeria(persona_images: Any, persona_id: str | None, image_id: str | None,
+def colocar_midia_na_galeria(persona_images: PersonaImageService | None, persona_id: str | None, image_id: str | None,
                              enviar: Callable[[str, str], str]) -> str:
     """Confere a imagem, grava os bytes num arquivo temporário e os entrega a `enviar(local, nome)` (o
     `Adb.enviar_midia_para_galeria` do aparelho, ou o dublê dele). Devolve o caminho no aparelho.
