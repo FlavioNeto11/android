@@ -3396,6 +3396,12 @@
    "url": "https://trello.com/c/y4VXCPG9",
    "lista": "em_execucao",
    "lote": null
+  },
+  "28.30": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2a24631a51aa03768f1d3",
+   "url": "https://trello.com/c/EfMoW4Ld",
+   "lista": "proximas",
+   "lote": null
   }
  },
  "falhas": [],
