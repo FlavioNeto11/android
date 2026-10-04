@@ -154,12 +154,19 @@ export function tituloDoGrupo(fila: FilaDecidida, n: number): string {
 }
 
 /** O porquê da decisão, em português: a regra que a tomou. Regras de fábrica têm frase; as outras aparecem como são. */
-export function motivoDaRegra(regra: string): string {
-  if (regra.startsWith('31.43-pergunta')) return 'Pergunta sem resposta por tempo demais';
-  if (regra.startsWith('31.43-objetivo')) return 'Objetivo esperando uma execução que já terminou';
+export function motivoDaRegra(regra: string, fila?: FilaDecidida): string {
+  // O vencimento grava a regra como o número do item ("31.43"), e o número não diz nada a quem lê (passeio do deploy
+  // 31): a fila diz qual vencimento foi.
+  if (regra.startsWith('31.43-pergunta') || (regra.startsWith('31.43') && fila === 'pergunta')) {
+    return 'Vencimento de pergunta sem resposta';
+  }
+  if (regra.startsWith('31.43-objetivo') || (regra.startsWith('31.43') && fila === 'objetivo')) {
+    return 'Vencimento de objetivo esperando uma execução que já terminou';
+  }
+  if (regra.startsWith('31.43')) return 'Vencimento do que esperava você além do prazo';
   if (regra.startsWith('auto:qa_para_aprovar')) return 'Aprovação automática do que esperava você';
   if (regra.startsWith('auto:qa_revisar')) return 'Confirmação automática do que estava em revisão';
-  return `Regra ${regra}`;
+  return 'Regra automática da plataforma';
 }
 
 export interface FiltroDecidido { regra?: string; desde?: string | null; desfeitas?: 'todas' | 'nao' | 'sim' }

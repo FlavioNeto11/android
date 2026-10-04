@@ -62,7 +62,7 @@ function GrupoDoVencimento({ g, agora }: { g: Extract<Bloco, { tipo: 'grupo' }>;
         <Badge size="sm" tone="accent"><Bot size={11} aria-hidden /> {ROTULO_DA_FILA[g.fila]}</Badge>
       </div>
       <Disclosure bare summary={<strong className={styles.titulo}>{tituloDoGrupo(g.fila, g.itens.length)}</strong>}>
-        <span className={styles.detalhe}>Por quê: {motivoDaRegra(g.regra)}</span>
+        <span className={styles.detalhe}>Por quê: {motivoDaRegra(g.regra, g.fila)}</span>
         {porques.map((p) => <span key={p} className={styles.semVolta} data-sem-volta>{p}</span>)}
         <ul className={styles.linhasDoGrupo} aria-label={tituloDoGrupo(g.fila, g.itens.length)}>
           {g.itens.map((d) => (
@@ -100,7 +100,7 @@ function CartaoDecidido({ d, agora, aberto, onAbrir, onFechar, onDesfazer }: {
           <span className={styles.detalhe}>{d.efeito}</span>
         </>
       ) : <strong className={styles.titulo}>{d.efeito}</strong>}
-      <span className={styles.detalhe}>Por quê: {motivoDaRegra(d.regra)}</span>
+      <span className={styles.detalhe}>Por quê: {motivoDaRegra(d.regra, d.fila)}</span>
       {fatos.length > 0 ? <span className={styles.detalhe}>{fatos.join(' · ')}</span> : null}
       {d.desfeita ? (
         <span className={styles.detalhe} data-desfeita>
@@ -165,8 +165,8 @@ export function DecididoSozinho() {
   return (
     <div className={styles.decididas}>
       <p className={styles.nota}>
-        O que a plataforma resolveu por você, com a regra que decidiu. Dá para desfazer dentro de {lista?.desfazer_dias ?? 7} dias,
-        quando a fila de origem tem uma volta segura. Quando os avisos estão ligados, você recebe no Telegram um resumo por janela, nunca um aviso por decisão.
+        Cada linha diz a regra que decidiu. O desfazer vale por {lista?.desfazer_dias ?? 7} dias, onde a fila de origem tem
+        volta segura. Com os avisos ligados, chega no Telegram um resumo por janela, nunca um aviso por decisão.
       </p>
 
       <div className={styles.filtros}>

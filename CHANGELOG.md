@@ -46,6 +46,10 @@ Aprendizado, que fez o primeiro desfazer real (04/10).
     - e, no Aprendizado, o banner do modo `shadow` sem contradizer a lista.
 - **Resumo do Telegram.** "Dá para desfazer" só para o que tem volta. O encerrado diz que não reabre, e as aprovações
   pendentes encerradas junto pelo vencimento aparecem pela contagem.
+- **Passeio real do deploy 31** (orquestradora): o vencimento gravado como "31.43" aparecia como "Regra 31.43"; agora a
+  fila diz qual foi ("Vencimento de pergunta sem resposta"), e regra desconhecida vira "Regra automática da plataforma",
+  nunca o número. A nota da aba deixou de repetir o título da página. O "texto:", o corte no meio da palavra e o
+  "passou a publicado · estava publicado" já saíam certos neste branch.
 - Prova `simulated`:
   - `backend/tests/test_decisoes_registro_coerente.py`: 16 testes. Contra o código antigo a coleção falha (os nomes novos
     não existem), então não há contraprova por teste.

@@ -83,7 +83,7 @@ describe('aba "Decidido sozinho"', () => {
     // As decisões do vencimento viram um grupo (28.29): o cartão avulso da pergunta deu lugar ao grupo fechado.
     const p = container.querySelector('li[data-grupo-decidido]') as HTMLElement;
     expect(text(p)).toContain('1 pergunta encerrada por vencimento');
-    expect(text(p)).toContain('Por quê: Pergunta sem resposta por tempo demais');
+    expect(text(p)).toContain('Por quê: Vencimento de pergunta sem resposta');
     expect(byRole('tab', /Decidido sozinho/, container).getAttribute('aria-selected')).toBe('true');
     await click(byRole('tab', /Esperando você/, container));
     expect(useUiStore.getState().rota.query.aba).toBeUndefined();
@@ -268,7 +268,8 @@ describe('28.29: cartão, grupo do vencimento e textos', () => {
 
   it('a nota do topo não promete aviso que pode estar desligado', async () => {
     await abrir();
-    expect(text(container)).toContain('Quando os avisos estão ligados, você recebe no Telegram um resumo por janela');
+    expect(text(container)).toContain('Com os avisos ligados, chega no Telegram um resumo por janela');
+    expect(text(container)).not.toContain('O que a plataforma resolveu por você');   // o título da página já diz (passeio do deploy 31)
   });
 
   it('"Hoje" é a meia-noite local do dia e o 7 dias segue sendo agora − 7 d', () => {
@@ -308,7 +309,11 @@ describe('leitura tolerante e textos', () => {
     expect(fatosEmPortugues({ horas: 24, para: 'published', de: 'validated', kind: 'licao', xis: 1 }))
       .toEqual(['esperou 24 h', 'passou a publicado', 'estava validado', 'xis: 1']);
     expect(motivoDaRegra('auto:qa_para_aprovar v1')).toContain('Aprovação automática');
-    expect(motivoDaRegra('alguma')).toBe('Regra alguma');
+    expect(motivoDaRegra('alguma')).toBe('Regra automática da plataforma');
+    // O número do item nunca vira o nome da regra (passeio do deploy 31): a fila diz qual vencimento foi.
+    expect(motivoDaRegra('31.43', 'objetivo')).toBe('Vencimento de objetivo esperando uma execução que já terminou');
+    expect(motivoDaRegra('31.43', 'pergunta')).toBe('Vencimento de pergunta sem resposta');
+    expect(motivoDaRegra('31.43')).not.toContain('31.43');
     expect(desdeDoPeriodo('tudo', AGORA)).toBeNull();
     expect(desdeDoPeriodo('7d', AGORA)).toBe(new Date(AGORA - 7 * 86_400_000).toISOString());
     expect(new Date(desdeDoPeriodo('hoje', AGORA) as string).getHours()).toBe(0);
