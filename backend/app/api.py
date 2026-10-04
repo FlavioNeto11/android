@@ -367,6 +367,8 @@ async def put_settings(request: Request, patch: dict[str, Any]) -> Any:
     except ValueError as exc:
         raise err(400, "invalid_setting", str(exc).splitlines()[0] + ": " + "; ".join(str(exc).splitlines()[1:3])) from exc
     s.bus.emit("settings.updated", "Limites atualizados", data={"settings": value.model_dump()})
+    if "max_online_devices" in patch:
+        s.publicar_vagas_do_host()
     s.scheduler.wake()
     return value
 
@@ -3453,6 +3455,8 @@ async def put_server_limits(request: Request, worker_id: str, body: ServerLimits
         if vivos:
             valor = s.settings.update(vivos)
             s.bus.emit("settings.updated", "Limites atualizados", data={"settings": valor.model_dump()})
+            if "max_online_devices" in vivos:
+                s.publicar_vagas_do_host()
         # Os dois tetos que não são configuração viva deste servidor moram em `worker_limits`, como nos workers:
         # "trabalhando ao mesmo tempo" (agendador) e "aparelhos existentes" (provisionamento, migração 050).
         no_banco = {k: patch[k] for k in ("max_working", "max_devices") if k in patch}

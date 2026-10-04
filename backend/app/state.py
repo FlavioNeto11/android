@@ -727,6 +727,14 @@ class AppState:
                               lambda pedido: conferir(run_id=pedido.run_id, origem=ORIGEM_NO_GASTO, conta="typesafe")),
                           registrar=self.decisao_sombra.registrar_chamada)
 
+    def publicar_vagas_do_host(self) -> None:
+        """29.82: as vagas DESTE servidor são a configuração viva (`max_online_devices`), mas o `WorkerDTO` lê a linha
+        que o `LocalWorker` gravou na subida. Sem regravá-la, o painel seguia com as vagas antigas até o próximo
+        reinício, embora o agendador já obedecesse ao valor novo."""
+        vagas = max(1, int(self.settings.get().max_online_devices or 1))
+        self.db.execute("UPDATE workers SET max_slots=? WHERE id=?", (vagas, self.cfg.owner_id))
+        self._publish_worker(self.cfg.owner_id)
+
     def _publish_worker(self, worker_id: str) -> None:
         """Qualquer mudança observável de worker vira evento. A tela de infraestrutura vive disto."""
         linha = self.db.one("SELECT * FROM workers WHERE id=?", (worker_id,))

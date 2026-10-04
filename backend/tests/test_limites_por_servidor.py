@@ -240,6 +240,15 @@ async def test_api_lista_e_muda_limites_do_host_e_do_worker(tmp_path: Path) -> N
             assert r.status_code == 200, r.text
             assert h.state.settings.get().max_online_devices == 5
             assert h.state.settings.get().boot_parallelism == 3
+            # 29.82: o DTO deste servidor acompanha o valor vivo, sem esperar o próximo reinício, e vira evento.
+            central = next(w for w in (await c.get("/api/workers")).json() if w["id"] == host)
+            assert (central["max_slots"], central["effective_max_slots"]) == (5, 5)
+            assert (await c.put("/api/settings", json={"max_online_devices": 7})).status_code == 200
+            central = next(w for w in (await c.get("/api/workers")).json() if w["id"] == host)
+            assert central["effective_max_slots"] == 7
+            do_host = [d["worker"] for d in (json.loads(r["data"]) for r in h.state.db.query(
+                "SELECT data FROM events WHERE kind='worker.updated' ORDER BY id")) if d["worker"]["id"] == host]
+            assert do_host and do_host[-1]["effective_max_slots"] == 7
             assert r.json()["effective"]["max_working"] == 4
             travado = await c.put(f"/api/servers/{host}/limits", json={"min_free_ram_mb": 1000})
             assert travado.status_code == 400 and travado.json()["detail"]["code"] == "locked_limit"
