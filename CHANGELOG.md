@@ -55,6 +55,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - (f) A doc e a docstring diziam que mudar o modo valia sem reiniciar, e não vale: o `config.yaml` é lido na subida.
   Medido em 04/10, às 18:38Z: o modo continuava `shadow` três minutos depois do "on" no arquivo.
 - Prova `simulated`: 2 testes novos no backend, 39 aprovados; 2 testes novos no front, 50 aprovados.
+## 2026-10-04 — 29.76 (a, b): amostra de lote com o denominador inteiro e o token só para o central local (branch fix/29-76-candidatos-e-reconexao)
+
+- Revisão independente do deploy 30: em `scripts/candidatos-do-portal.py` o denominador da amostra só contava os
+  `run_id` achados no banco; com 2 exemplos ausentes e 1 de lote saía "1 de 1" e o grupo ia para o fim. Agora o
+  denominador é todo exemplo com `run_id` ("1 de 3", não rebaixa); nenhum achado segue `null`.
+- O `Authorization: Bearer` só vai para `127.0.0.1`, `localhost` ou `::1`; um `--base` de fora segue sem o token e
+  com aviso no stderr. `ultima` sem fuso vale como UTC (antes derrubava a subtração com `TypeError`).
+- Prova `simulated`: `scripts/tests/test_candidatos_do_portal.py` (3 testes novos; o "1 de 2" do teste antigo vira
+  "1 de 3"). Real: `not_run` até rodar o script contra o central depois do merge.
 
 ## 2026-10-04 — 29.73: o agente reconecta rápido depois do reinício do central (branch fix/29-73-reconexao-rapida)
 
