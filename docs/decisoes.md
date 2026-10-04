@@ -3708,7 +3708,10 @@ perfil, pela ação, pelo texto e pelo OBJETO, não só pela pessoa.
   a mesma pessoa noutro post é pedido novo.
 - **O mesmo perfil em duas execuções:** a porta olha as saídas e os pedidos em aberto do PRÓPRIO perfil, de outra etapa,
   sobre o mesmo objeto, na janela da frota (`fleet_target_window_days`).
-  - DM passa por aprovação, com o porquê.
+  - DM só pede confirmação com o MESMO texto (igualdade normalizada): já enviado ao alvo na janela, ou aprovado e ainda
+    não enviado noutra etapa. Texto diferente segue a política do perfil, para que conversa em andamento e o bom dia
+    diário não virem rajada de pedidos. Sem texto conhecido na porta (briefing), não se compara.
+  - App de categoria `qa` fica fora desta regra inteira.
   - Seguir, curtir o mesmo post, comentar de novo e publicar a mesma imagem são recusados antes da aprovação.
   - Uma saída sem etapa conhecida só conta quando o objeto é a própria pessoa (DM, seguir).
   - As versões anteriores da mesma etapa no objetivo não contam: é o pedido que o `acompanhar_revisao` leva adiante.

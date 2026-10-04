@@ -240,8 +240,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - `objeto_da_acao()` devolve `None`, e falha fechado, sem declaração ou com argumento por resolver.
   - A carga recusa um nome que não é argumento da ação, o texto e a repetição.
 - O `acompanhar_revisao` só reaproveita a aprovação para o mesmo objeto declarado.
-- O `check` recebe `bindings=`: com o mesmo perfil e o mesmo objeto noutra etapa (saída ou pedido em aberto), a DM pede
-  aprovação, e seguir, curtir, comentar e publicar a mesma imagem são recusados. Emenda 30.64 do ADR-055.
+- O `check` recebe `bindings=`, e vale o mesmo perfil com o mesmo objeto noutra etapa (saída ou pedido em aberto).
+  - A DM com o MESMO texto (já enviado, ou aprovado e não enviado) pede confirmação; a de texto novo segue a política.
+  - Seguir, curtir, comentar e publicar a mesma imagem são recusados.
+  - O app `qa` fica fora.
+  - Emenda 30.64 do ADR-055.
 - Prova `simulated`: `backend/tests/test_objeto_alvo.py`, `test_repetido_entre_execucoes.py` e
   `test_aprovacao_acompanha_revisao.py`, com 440 testes em 18 arquivos de política, catálogo e aprovação. `not_run`:
   efeito real.

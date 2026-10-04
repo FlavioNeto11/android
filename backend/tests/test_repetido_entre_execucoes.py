@@ -23,11 +23,13 @@ from .test_capabilities import IG, build, perfil
 from .test_protecao_de_frota import _Frota
 
 ANA = "@ana.souza"
+_SERVICOS: dict[str, Any] = {}                 # perfil → o SocialService que o criou (para mudar a política dele)
 
 
 def _conta(tmp_path: Path) -> tuple[Any, PolicyEngine, Any, str]:
     _svc, repo, _pol, db = build(tmp_path)
     pid = perfil(_svc, "lucas.almeida9484", "android-01")
+    _SERVICOS[pid] = _svc
     repo.update_profile(pid, {"automation_policy": '{"limits": {"warmup_days": 0, '
                                                    '"cooldown_between_external_actions_s": 0}}'})
     return repo, PolicyEngine(repo, lambda: _Frota()), db, pid
@@ -57,17 +59,81 @@ def _fez(repo: Any, pid: str, tipo: str, alvo: str, step_id: str | None, *, dias
                                    occurred_at=to_iso(now() - timedelta(days=dias_atras)))
 
 
-def test_dm_aprovada_noutra_execucao_faz_a_segunda_pedir_aprovacao(tmp_path: Path) -> None:
+def _conversa(repo: Any, pid: str, app_id: str = "instagram") -> None:
+    """A pessoa já escreveu a esta conta: a DM não é fria e o piso do ADR-055 não entra no caminho."""
+    repo.record_interaction(pid, type=InteractionType.dm_received.value, direction="inbound",
+                            status=InteractionStatus.confirmed.value, counterparty=ANA, app_id=app_id,
+                            incoming_content="oi!", occurred_at=to_iso(now() - timedelta(days=2)))
+
+
+def _mandou(repo: Any, pid: str, texto: str, app_id: str = "instagram") -> str:
+    return repo.record_interaction(pid, type=InteractionType.dm_sent.value, direction="outbound",
+                                   status=InteractionStatus.confirmed.value, counterparty=ANA, app_id=app_id,
+                                   outgoing_content=texto, run_id="r-a",
+                                   occurred_at=to_iso(now() - timedelta(days=1)))
+
+
+def _dm_autonoma(policies: PolicyEngine, pid: str) -> None:
+    from app.models import ProfilePolicyPatch
+    _SERVICOS[pid].set_policy(pid, ProfilePolicyPatch(capabilities={"SEND_MESSAGE": "autonomous"}), package=IG)
+
+
+def test_dm_com_o_mesmo_texto_aprovado_noutra_execucao_pede_confirmacao(tmp_path: Path) -> None:
     _repo, policies, db, pid = _conta(tmp_path)
     dm = capability_of(IG, "SEND_MESSAGE")
     sid = _etapa(db, "r-a", "SEND_MESSAGE", {"username": ANA, "content": "oi"})
     pedido = ApprovalStore(db).open(profile_id=pid, capability="SEND_MESSAGE", summary="DM", target=ANA, content="oi",
                                     run_id="r-a", objective_id="r-a:android-01", step_id=sid)
+    # ainda pendente: o dono não aprovou nada, não há repetição a confirmar
+    pendente = policies.check(pid, dm, run_id="r-b", counterparty=ANA, app_id="instagram",
+                              step_id="r-b:android-01:v1:efeito", bindings={"username": ANA, "content": "oi"})
+    assert "30.64" not in pendente.reason
     ApprovalStore(db).decide(pedido.id, status="approved", decided_by="dono")
     veredito = policies.check(pid, dm, run_id="r-b", counterparty=ANA, app_id="instagram",
-                              step_id="r-b:android-01:v1:efeito", bindings={"username": "Ana.Souza", "content": "oi"})
+                              step_id="r-b:android-01:v1:efeito", bindings={"username": "Ana.Souza", "content": " OI "})
     assert veredito.allowed and veredito.needs_approval
     assert pedido.id in veredito.reason and "30.64" in veredito.reason
+    outra = policies.check(pid, dm, run_id="r-b", counterparty=ANA, app_id="instagram",
+                           step_id="r-b:android-01:v1:efeito", bindings={"username": ANA, "content": "tudo bem?"})
+    assert "30.64" not in outra.reason
+
+
+def test_dm_ja_enviada_com_o_mesmo_texto_pede_e_texto_novo_segue_a_politica(tmp_path: Path) -> None:
+    """Conversa em andamento num perfil autônomo: a mensagem nova sai sozinha; a MESMA de ontem pede confirmação."""
+    repo, policies, _db, pid = _conta(tmp_path)
+    dm = capability_of(IG, "SEND_MESSAGE")
+    _dm_autonoma(policies, pid)
+    _conversa(repo, pid)
+    interacao = _mandou(repo, pid, "Bom dia, Ana!")
+    nova = policies.check(pid, dm, counterparty=ANA, app_id="instagram", step_id="r-b:x",
+                          bindings={"username": ANA, "content": "Como foi o fim de semana?"})
+    assert nova.allowed and not nova.needs_approval and "30.64" not in nova.reason
+    mesma = policies.check(pid, dm, counterparty=ANA, app_id="instagram", step_id="r-b:x",
+                           bindings={"username": ANA, "content": "bom dia,   ana!"})
+    assert mesma.allowed and mesma.needs_approval and interacao in mesma.reason
+    # texto ainda por escrever (briefing sem `content`): não se sabe se repete, segue a política
+    assert not policies.check(pid, dm, counterparty=ANA, app_id="instagram", step_id="r-b:x",
+                              bindings={"username": ANA, "content_brief": "deseje bom dia"}).needs_approval
+
+
+def test_o_bom_dia_diario_no_app_de_teste_nao_pede_aprovacao(tmp_path: Path) -> None:
+    """O fluxo de bom dia a cada contato da lista, rodado duas vezes no app de QA em perfil autônomo: a mesma mensagem
+    ao mesmo contato não vira pedido (app `qa` fica fora do 30.64). No Instagram, as mesmas duas execuções pedem."""
+    repo, policies, db, pid = _conta(tmp_path)
+    db.execute("INSERT INTO apps(id, name, package, activity, builtin, category)"
+               " VALUES ('qa-msg','QA Messenger','com.pocqa.messenger',NULL,1,'qa')")
+    dm = capability_of(IG, "SEND_MESSAGE")
+    _dm_autonoma(policies, pid)
+    for app_id in ("qa-msg", "instagram"):
+        _conversa(repo, pid, app_id)
+        _mandou(repo, pid, "Bom dia android-05", app_id)          # a 1ª execução já mandou
+    segunda = {app_id: policies.check(pid, dm, counterparty=ANA, app_id=app_id, step_id="r-2:x",
+                                      bindings={"username": ANA, "content": "Bom dia android-05"})
+               for app_id in ("qa-msg", "instagram")}
+    assert segunda["qa-msg"].allowed and not segunda["qa-msg"].needs_approval
+    assert "30.64" not in segunda["qa-msg"].reason
+    assert segunda["instagram"].allowed and segunda["instagram"].needs_approval
+    assert "30.64" in segunda["instagram"].reason
 
 
 def test_seguir_feito_noutra_execucao_recusa_o_segundo(tmp_path: Path) -> None:

@@ -102,6 +102,12 @@ def _balde(acao: str, package: str | None) -> str | None:
     return cap.limit_bucket if cap else None
 
 
+def _texto_normalizado(texto: object) -> str | None:
+    """30.64: o texto para comparar repetição de mensagem: sem caixa e com os espaços colapsados; `None` sem texto."""
+    limpo = " ".join(str(texto or "").split()).casefold()
+    return limpo or None
+
+
 def _data(iso: str) -> str:
     """`2026-10-03T05:51:53.472Z` → `03/10/2026 05:51Z`, para o motivo que a pessoa lê."""
     quando = parse_iso(iso)
@@ -435,9 +441,12 @@ class PolicyEngine:
                   app_id: str | None, step_id: str | None) -> tuple[bool, str, str] | None:
         """30.64: o MESMO perfil já fez, ou tem pedido em aberto de outra etapa (outra execução, inclusive), desta ação
         sobre o MESMO objeto (`objeto_alvo` do catálogo: o post, o comentário, a conversa, a mídia)? `None` segue;
-        senão `(recusa, motivo, dica)`. Mensagem direta não se recusa (conversa continua): `recusa=False` e a etapa
-        passa por aprovação. O resto (seguir, curtir o mesmo post, comentar de novo, publicar a mesma imagem) faria o
-        efeito duas vezes, ou o desfaria num toque que alterna: recusa.
+        senão `(recusa, motivo, dica)`. Mensagem direta não se recusa (conversa continua) e só pede confirmação com o
+        MESMO texto (igualdade normalizada) já enviado ao alvo na janela, ou aprovado e ainda não enviado noutra etapa:
+        `recusa=False`. Texto diferente segue a política do perfil: a conversa em andamento e o fluxo que manda bom dia
+        todo dia não viram rajada de pedidos. O resto (seguir, curtir o mesmo post, comentar de novo, publicar a mesma
+        imagem) faria o efeito duas vezes, ou o desfaria num toque que alterna: recusa. App de categoria `qa` (o de
+        teste, efeito só no aparelho) fica fora.
 
         Sem objeto (ação sem declaração, argumento por resolver) não há o que comparar, e a aprovação de sempre vale.
         Uma saída sem etapa conhecida só conta quando o objeto é a própria pessoa (DM, seguir): de uma curtida antiga
@@ -445,7 +454,7 @@ class PolicyEngine:
         if cap.key in UMA_VEZ_POR_ALVO or not cap.side_effect or not cap.interaction_type or self._settings is None:
             return None
         objeto = objeto_da_acao(cap, bindings)
-        if objeto is None:
+        if objeto is None or (app_id and self.repo.db.scalar("SELECT category FROM apps WHERE id=?", (app_id,)) == "qa"):
             return None
         so_a_pessoa = tuple(cap.objeto_alvo) == (cap.counterparty,)
 
@@ -457,26 +466,33 @@ class PolicyEngine:
         dias = max(1, int(getattr(self._settings(), "fleet_target_window_days", 30) or 30))
         since = to_iso(agora - timedelta(days=dias))
         conversa = cap.limit_bucket == "dms" or cap.interaction_type == InteractionType.dm_sent.value
+        texto = _texto_normalizado((bindings or {}).get("content"))
+        if conversa and texto is None:
+            return None                      # o texto ainda vai ser escrito: não se sabe se repete
         qual = ", ".join(f"{k} {v}" for k, v in objeto.items() if v) or "o mesmo objeto"
-        for interacao, quando, quem, argumentos in self.repo.saidas_da_acao(
+        for interacao, quando, quem, argumentos, enviado in self.repo.saidas_da_acao(
                 profile_id, cap.key, types=(cap.interaction_type,), statuses=CONTAM, since=since, app_id=app_id,
                 exclude_step_id=step_id):
             if do_registro(argumentos, quem) != objeto:
                 continue
             if conversa:
-                return (False, f"esta conta já mandou mensagem a {qual} em {_data(quando)} ({interacao}): a nova passa "
-                               "por aprovação (30.64)", "")
+                if _texto_normalizado(enviado) != texto:
+                    continue
+                return (False, f"esta conta já mandou ESTA mensagem a {qual} em {_data(quando)} ({interacao}): a "
+                               "repetição passa por confirmação (30.64)", "")
             return (True, f"esta conta já fez {cap.key} sobre {qual} em {_data(quando)} ({interacao}); repetir faria o "
                           f"efeito duas vezes, ou o desfaria num toque que alterna (30.64) — recusado antes da aprovação",
                     "Se for mesmo outro item, diga no comando o que o distingue (a legenda do post, por exemplo) e refaça "
                     "o plano.")
-        for pedido, quando, quem, argumentos in self.repo.pedidos_da_acao(profile_id, cap.key, since=since,
-                                                                           exclude_step_id=step_id):
+        for pedido, quando, quem, argumentos, status, a_digitar in self.repo.pedidos_da_acao(
+                profile_id, cap.key, since=since, exclude_step_id=step_id):
             if do_registro(argumentos, quem) != objeto:
                 continue
             if conversa:
-                return (False, f"já há mensagem a {qual} pedida ou aprovada em {_data(quando)} ({pedido}), noutra etapa: "
-                               "esta passa por aprovação (30.64)", "")
+                if status not in ("approved", "edited") or _texto_normalizado(a_digitar) != texto:
+                    continue
+                return (False, f"esta mesma mensagem a {qual} já foi aprovada em {_data(quando)} ({pedido}), noutra "
+                               "etapa, e ainda não saiu: a repetição passa por confirmação (30.64)", "")
             return (True, f"esta conta já tem um pedido de {cap.key} sobre {qual} em aberto ({pedido}), noutra etapa; um "
                           "segundo faria o efeito duas vezes (30.64) — recusado antes da aprovação",
                     "Decida o pedido que já está em Pendências.")

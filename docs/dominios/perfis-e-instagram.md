@@ -115,8 +115,9 @@ aprovação, sem chegar ao dono (`UMA_VEZ_POR_ALVO`; a da própria etapa não co
 na interação, uma resposta legítima ao mesmo alvo noutro comentário dentro da janela também é recusada; a 2ª fatia
 do 30.56 grava publicação e comentário e passa a chave a ser por comentário.
 Toda ação com efeito declara no catálogo SOBRE O QUÊ age (`objeto_alvo`, 30.64): o post, o comentário, a conversa ou a
-mídia. Com isso, o mesmo perfil, a mesma ação e o mesmo objeto em duas execuções não saem duas vezes. A DM passa por
-aprovação; seguir, curtir o mesmo post, comentar de novo e publicar a mesma imagem são recusados. A aprovação revista
+mídia. Com isso, o mesmo perfil, a mesma ação e o mesmo objeto em duas execuções não saem duas vezes. A DM com o
+MESMO texto pede confirmação, e a de texto novo segue a política; seguir, curtir o mesmo post, comentar de novo e
+publicar a mesma imagem são recusados. O app de teste (`qa`) fica fora. A aprovação revista
 também só vale para o mesmo objeto.
 O teto por hora e por dia conta também os pedidos de aprovação desta conta ainda sem interação (30.57). É ele que
 limita o leque de um `for_each` com efeito em app real: com `comments_per_hour` 3, 5 itens viram 3 pedidos e 2
