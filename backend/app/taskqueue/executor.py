@@ -11,12 +11,14 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import io
+import json
 import logging
 import re
 import time
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Protocol, Sequence, TypeVar
+from urllib.parse import unquote
 
 from PIL import Image
 from pydantic import BaseModel
@@ -54,6 +56,7 @@ from ..planning.provider import (AIError, AIProvider, AppContext, Decision, Deci
                                  MarcaDaChamada, MotivoDaChamada, MotivoDaImagem, MotivoDeEscalonamento,
                                  PreparoDaDecisao, ScreenInput, StepContext, Transcricao, Usage, Verdict, VerifyRequest)
 from ..db import Row, loads
+from ..security.redaction import redact
 from ..security.secret_store import SecretStoreLocked, SecretStoreUnavailable
 from ..security.sensitive_input import SensitiveInputError, SensitiveInputUnavailable
 from ..social.approvals import ler_rascunho
@@ -68,7 +71,8 @@ from .midia_galeria import INTERNAS_POR_CODIGO, MidiaRecusada, colocar_midia_na_
 from .recipes import (READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, eh_generica,
                       filhos_rotulados, hash_generico_da_linha, unique_selectors)
 from .repository import Repository
-from .relacao import relacao_do_valor
+from .dialogos import LIMITE_DE_DIALOGOS, MOTIVO_SEM_SAIDA, botao_que_fecha, dialogo_sem_saida, e_navegador
+from .relacao import e_nome_de_papel, pergunta_de_papel, relacao_do_valor
 from .saidas import (RECUSAS_DETERMINISTICAS, ChaveDeTentativa, LeituraInvalida, LeituraSemTexto,
                      LeituraVisualRecusada, args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor,
                      ler_valor_visual, nomes_citados, razao_sem_segredo, texto_da_tela, texto_do_elemento, triagem,
@@ -115,6 +119,22 @@ PARTES_EM_ELEMENTOS_DIFERENTES = "as partes do seletor estão em elementos difer
 #: testes cujo gancho é a decisão do ator numa etapa dessas (como `ATALHO_ANTES_DO_ATOR`): eles desligam isto.
 OPEN_APP_SEM_IA = True
 
+#: 31.48: o pacote de um `id=<pacote>:id/<nome>` na pós-condição `element_present` (a primeira parte que o traz).
+_ID_COM_PACOTE = re.compile(r"(?:^|\|)\s*id=([A-Za-z][\w.]*):id/")
+
+
+def pacote_da_prova(post: Postcondition) -> str:
+    """31.48: o app cuja tela a pós-condição `element_present` exige, quando o seletor diz (`id=com.x:id/lista`).
+    Sem pacote no seletor, ou outro tipo de pós-condição, `""`.
+
+    MEDIDO (banco central, 04/10): a etapa "abrir o QA Messenger" com `element_present id=…:id/conversation_list`
+    (modelo 141e) foi à IA em 43 de 49 sucessos, 15 deles só para o ator pedir `open_app`; a mesma etapa com
+    `app_foreground` (modelo 2c35) fechou sem ator em 50 de 50, pelo LT-6. A abertura é a mesma; o que muda é a prova."""
+    if post.kind != "element_present":
+        return ""
+    achado = _ID_COM_PACOTE.search(post.value or "")
+    return achado.group(1) if achado else ""
+
 
 def parte_vazia_da_pos_condicao(post: Postcondition) -> str | None:
     """31.44: o que a pós-condição confere sem valor (`text=`, `<vazia>`, `texto vazio`), ou `None` quando tem valor.
@@ -159,6 +179,75 @@ def _host(url_ou_texto: str) -> str:
     t = (url_ou_texto or "").strip().casefold()
     t = t.split("://", 1)[1] if "://" in t else t
     return t.split("/", 1)[0].split("#", 1)[0].split("?", 1)[0].rsplit("@", 1)[-1].split(":", 1)[0]
+
+
+#: 31.52: o que torna o 1º pedaço do caminho opaco (link de redefinição, convite, sessão): UUID, JWT, ou 16+ caracteres
+#: de token (letras, dígitos e `_-=.`) com pelo menos um dígito. Um slug sem dígito ("como-fazer-bolo") fica.
+_UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+_JWT = re.compile(r"[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+")
+_TRECHO_DE_TOKEN = re.compile(r"[A-Za-z0-9_\-=.]{16,}")
+#: `usuario@` ou `usuario:senha@` antes do host. A senha pode ter `/`, `?`, `#` e `@`; o `@` que fecha o usuário é o
+#: que deixa depois dele um host sem `@` até o primeiro `/`, `?`, `#` ou o fim. `:dígitos` seguido de `/`, `?`, `#` ou
+#: do fim é a porta, não senha (revisão 15c: sem isso, `site:8080/perfil/pessoa@exemplo` virava o host `exemplo`).
+_USUARIO_NA_URL = re.compile(r"^[^/@:?#\s]+(?::(?!\d+(?:[/?#]|$))\S*?)?@(?=[^/?#@\s]+(?:[/?#]|$))")
+#: Teto do texto que a limpeza lê: as regex abaixo são lineares nesse tamanho, e o histórico não precisa de mais.
+_TETO_DO_TEXTO = 2000
+
+
+def _pedaco_opaco(pedaco: str) -> bool:
+    if len(pedaco) > 200:              # longo assim é opaco, e as regex abaixo crescem com o quadrado do tamanho
+        return True
+    p = unquote(pedaco)
+    return ("@" in p or bool(_UUID.search(p)) or bool(_JWT.search(p))
+            or any(any(ch.isdigit() for ch in m.group(0)) for m in _TRECHO_DE_TOKEN.finditer(p)))
+
+
+def endereco_para_o_prompt(texto: str) -> str:
+    """31.52: um endereço como ele vai à IA (árvore, histórico do ator) e ao diagnóstico: o host e o 1º pedaço do
+    caminho; o resto do caminho vira `/…`, a query `?…` e o fragmento `#…`.
+
+    O redator pega segredo no formato que conhece (`senha=…`), não dado pessoal nem `?code=`, `token=`, e-mail em
+    `%40`, UUID, JWT ou base64url no caminho de um link de redefinição ou convite (revisão da orquestradora, 04/10:
+    uma lista de formatos sempre deixa um passar). O 1º pedaço também vira `…` se, decodificado, tiver `@` ou casar
+    `_pedaco_opaco`. Usuário e senha antes do host somem. É o que o ator precisa para saber em que site e seção está."""
+    t = (texto or "").strip()[:_TETO_DO_TEXTO]
+    esquema = ""
+    if "://" in t:
+        esquema, t = t.split("://", 1)
+        esquema += "://"
+    t = _USUARIO_NA_URL.sub("", t, count=1)
+    cauda = ""
+    for marca in ("?", "#"):
+        if marca in t:
+            t, _ = t.split(marca, 1)
+            cauda = cauda or f"{marca}…"
+    host, barra, caminho = t.partition("/")
+    if not barra:
+        return esquema + host + cauda
+    primeiro, _, resto = caminho.partition("/")
+    primeiro = "…" if primeiro and _pedaco_opaco(primeiro) else primeiro
+    return esquema + host + "/" + primeiro + ("/…" if resto else ("/" if caminho.endswith("/") else "")) + cauda
+
+
+#: Um endereço no meio de um texto (erro do driver, resultado de ação): com esquema, `www.`, ou host com `/` ou `?`.
+_URL_NO_TEXTO = re.compile(r"(?:https?://|\bwww\.)[^\s'\"<>]+|\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?=[/?])[^\s'\"<>]*", re.I)
+
+
+def enderecos_limpos(texto: str) -> str:
+    """31.52: o texto com cada endereço passado por `endereco_para_o_prompt` (histórico do ator). Cortado em
+    `_TETO_DO_TEXTO` antes da regex: um erro do driver com um blob de 100 mil caracteres travava o laço por minutos."""
+    return _URL_NO_TEXTO.sub(lambda m: endereco_para_o_prompt(m.group(0)), (texto or "")[:_TETO_DO_TEXTO])
+
+
+def _arvore_com_endereco_limpo(tree: UiTree, pacote: str | None) -> UiTree:
+    """A árvore com a barra de endereço do navegador passada por `endereco_para_o_prompt`. A árvore local (seletores,
+    guardas, a conferência do site em `type_secret`) segue com o texto cru; esta é só a que sai daqui."""
+    barra = BARRA_DE_ENDERECO.get(pacote or "")
+    if barra is None or not any(e.resource_id == barra and e.text for e in tree.elements):
+        return tree
+    return dataclasses.replace(tree, elements=[
+        dataclasses.replace(e, text=endereco_para_o_prompt(e.text)) if e.resource_id == barra and e.text else e
+        for e in tree.elements])
 
 
 def urls_da_pessoa(command: str) -> set[str]:
@@ -452,9 +541,11 @@ LIMITE_DA_ETAPA_OPCIONAL = 3
 #: Item 31.35: a barra do navegador, por pacote, que NÃO vai na árvore do prompt do ator (`ai.podar_ui_do_navegador`).
 #: Lista fechada e explícita: diálogos próprios do Chrome (primeira execução, permissões) continuam no prompt. Na
 #: ocorrência r-20261004090000-bbfe54 (28.12) as telas com árvore rica foram as de entrada nova mais cara (~4,2 mil).
+#: 31.52: a `url_bar` FICA no prompt. É onde o ator lê em que página está e onde digita um endereço; sem ela, "abrir a
+#: página X" e "estou na página certa?" ficavam às cegas (risco achado na medida do 31.35).
 UI_DO_NAVEGADOR: dict[str, frozenset[str]] = {
     "com.android.chrome": frozenset(f"com.android.chrome:id/{i}" for i in (
-        "toolbar", "toolbar_container", "toolbar_buttons", "location_bar", "url_bar", "location_bar_status_icon",
+        "toolbar", "toolbar_container", "toolbar_buttons", "location_bar", "location_bar_status_icon",
         "url_action_container", "delete_button", "mic_button", "tab_switcher_button", "tab_count",
         "menu_button", "menu_button_wrapper", "home_button", "optional_toolbar_button", "bottom_toolbar",
         "control_container", "security_button")),
@@ -586,6 +677,11 @@ class StepExecutor:
         self._effects: dict[str, tuple[str, str]] = {}      # step_id → (perfil, interação em aberto)
         #: 31.40 b: tentativas de limpeza (sem o elemento que cobria) que já gastaram o seu ÚNICO julgamento
         self._juiz_da_limpeza: set[str] = set()
+        #: Revisão do #307: por tentativa, (elemento, nome, valor) que o juiz de PAPEL respondeu "no" — só o "no"; o
+        #: "uncertain" é passageiro (página carregando) e pergunta de novo. Some no fim da tentativa (`run_step`).
+        self._papel_negado: dict[str, set[tuple[str, str, str]]] = {}
+        #: O último veredito do juiz de relação (`_relacao_visual`), para o cache acima distinguir "no" de "uncertain".
+        self._ultimo_veredito_de_relacao: str | None = None
         # Pacote "anr": etapas que já gastaram a sua reabertura determinística depois de um ANR. Por ETAPA, não por
         # tentativa — na r-20260928195344-02ee9e cada tentativa acabava pelo prazo e a seguinte reabria de novo. Some
         # no desfecho final da etapa. Memória do processo: reiniciado o backend, a contagem de mortes (que vem do
@@ -1074,10 +1170,35 @@ class StepExecutor:
         ocultar = (UI_DO_NAVEGADOR.get(obs.package or "", frozenset())
                    if (ai or self.cfg.file.ai).podar_ui_do_navegador else frozenset())
         podados = sum(1 for e in obs.tree.elements if e.resource_id in ocultar) if ocultar else 0
-        lines = obs.tree.prompt_lines(self.cfg.file.ai.max_hierarchy_elements, scale, protect=protect, boost=boost,
-                                      ocultar=ocultar)
+        # 31.52: a `url_bar` fica no prompt, mas sem query, fragmento e pedaço opaco do caminho
+        lines = _arvore_com_endereco_limpo(obs.tree, obs.package).prompt_lines(
+            self.cfg.file.ai.max_hierarchy_elements, scale, protect=protect, boost=boost, ocultar=ocultar)
         return ScreenInput(width=w, height=h, jpeg=jpeg, elements=lines, package=obs.package,
                            sensitive=obs.sensitive, tree=obs.tree, podados=podados), scale
+
+    async def _arvore_antes_da_poda(self, obs: Observation, podados: int, *, run_id: str, iid: str, step_id: str,
+                                    attempt_id: str) -> None:
+        """31.52, diagnóstico DESLIGADO por padrão: grava, como evidência `hierarchy` (JSON), a árvore do navegador
+        ANTES da poda do 31.35, só nos aparelhos de `ai.diagnostico_arvore_aparelhos` (os de teste que o dono listar) e
+        nunca de tela sensível. Sem ela, o A/B offline da poda era impossível: só os números depois dela ficavam em
+        `ai_calls`. Texto e descrição passam pela redação de segredos. Falhar ao gravar não muda a etapa.
+
+        Aparelho com conta real (vínculo ativo de persona, a regra do ADR-055) nunca grava, mesmo listado: o vínculo
+        mora no banco, não no config, por isso a recusa é aqui, na hora de gravar, e não na carga do config."""
+        if self.repo.db.one("SELECT 1 FROM device_profile_bindings WHERE instance_id=? AND active=1 LIMIT 1",
+                            (iid,)) is not None:
+            log.warning("%s: diagnóstico 31.52 recusado, o aparelho tem conta real vinculada", iid)
+            return
+        corpo = {"regra": "31.52", "package": obs.package, "width": obs.width, "height": obs.height, "podados": podados,
+                 "elements": [{**e.to_dict(), "text": redact(e.text) or "", "desc": redact(e.desc) or ""}
+                              for e in _arvore_com_endereco_limpo(obs.tree, obs.package).elements]}
+        try:
+            await self.repo.add_evidence_async(
+                run_id=run_id, instance_id=iid, step_id=step_id, attempt_id=attempt_id, kind="hierarchy",
+                note=f"31.52: árvore do navegador antes da poda ({podados} podado(s)); diagnóstico",
+                data=json.dumps(corpo, ensure_ascii=False).encode("utf-8"), ext="json")
+        except Exception:  # noqa: BLE001 - diagnóstico nunca derruba a etapa
+            log.exception("%s: não foi possível gravar a árvore antes da poda", iid)
 
     # ------------------------------------------------------------------ etapa
     async def run_step(self, *, run: Any, objective: Any, step: StepDTO, attempt_id: str, rt: DeviceRuntime,
@@ -1135,6 +1256,7 @@ class StepExecutor:
             fechada = True
         finally:
             self._registrar_estrategia(attempt_id, rr)
+            self._papel_negado.pop(attempt_id, None)
             if not fechada:
                 # Saiu por exceção (o scheduler a transforma em falha): o aprendizado sabe da tentativa do mesmo jeito,
                 # uma vez, e sem desfecho que pareça sucesso.
@@ -1941,7 +2063,15 @@ class StepExecutor:
         fila_encadeada: list[Decision] = []
         arvore_da_fila: UiTree | None = None
         chamada_da_fila: int | None = None
-        for _ in range(max_actions + 1):
+        # Item 31.51: na limpeza, o executor fecha pela árvore os diálogos do site em série (`botao_que_fecha`), com
+        # teto próprio: essas voltas não contam nas `max_actions` do ator.
+        limpeza = step.key.startswith(PREFIXO_LIMPEZA)
+        cobertura_da_limpeza = Cobertura.das_variaveis(step.variables) if limpeza else None
+        fechados_pela_regra = 0
+        for volta in range(max_actions + 1 + (LIMITE_DE_DIALOGOS if limpeza else 0)):
+            if volta - fechados_pela_regra > max_actions:
+                break
+            pela_regra = False
             chamada_do_ator = None
             settle_da_volta, settle_pendente = settle_pendente, None
             # ---------- ponto seguro
@@ -2108,6 +2238,31 @@ class StepExecutor:
                     repo.decision(f"{iid} · {step.title}: receita divergiu — {exc}; a IA assume esta etapa",
                                   run_id=run_id, instance_id=iid, step_id=step.id)
             scale = self._image_scale(obs, ai_cfg)
+            # 31.51: só no NAVEGADOR (revisão do #308): num app com conta real, um aviso não reconhecido com "Dismiss"
+            # não se fecha por regra sem pessoa; ali fica o comportamento de antes.
+            area = (cobertura_da_limpeza.bounds if cobertura_da_limpeza is not None
+                    and ainda_cobre(cobertura_da_limpeza, obs.tree) else None)
+            regra_vale = decision is None and limpeza and not fired and e_navegador(obs.package)
+            botao = botao_que_fecha(obs.tree, area) if regra_vale else None
+            if botao is not None and fechados_pela_regra < LIMITE_DE_DIALOGOS:
+                # ---------- o botão que fecha ou recusa está na árvore: toca nele, sem IA e sem gastar ação
+                rotulo = (botao.text or botao.desc or botao.resource_id)[:60]
+                decision = Decision(tool="tap", args={"element_id": botao.id, "is_commit_action": False,
+                                                      "rationale": f"[regra 31.51] fechar o diálogo: '{rotulo}'"})
+                fechados_pela_regra += 1
+                pela_regra = True
+                history.append(f"(executor) diálogo fechado pela árvore, sem IA: '{rotulo}' ({botao.id})")
+            elif botao is not None:
+                # O diálogo volta depois do teto de toques: falha dizendo qual ficou, sem cair na IA.
+                return await falhar_sem_nova_tentativa(
+                    f"{MOTIVO_SEM_SAIDA} '{(botao.text or botao.desc or botao.resource_id)[:60]}': ele voltou depois de "
+                    f"{LIMITE_DE_DIALOGOS} toques; nada foi aceito.", obs)
+            elif regra_vale and (sobra := dialogo_sem_saida(obs.tree, area)) is not None:
+                # Diálogo sem saída que preserve a privacidade (só aceitar, ou não reconhecido): falha com o motivo,
+                # sem IA. A IA poderia aceitar os cookies opcionais ou abrir o app; nunca vira sucesso.
+                return await falhar_sem_nova_tentativa(
+                    f"{MOTIVO_SEM_SAIDA} '{sobra}': nenhum botão de recusar, fechar ou continuar no navegador; nada "
+                    "foi aceito.", obs)
             if decision is None:
                 # ---------- LT-1: a pós-condição já vale na tela que acabou de ser lida? Pular o ator, nunca a prova.
                 # Só etapa SEM efeito (a UI otimista de uma etapa com efeito mostra o "feito" antes de ele valer),
@@ -2145,7 +2300,16 @@ class StepExecutor:
                 # do ator — em 7 d, 48 dessas etapas pagaram um decide (p50 9,0 s) para pedir exatamente isso. Só quando
                 # a receita não conduz (ela também não chama a IA, e o funil dela fica intacto) e nunca em etapa com
                 # efeito. Interstitial ou foco que não chega: a volta seguinte não comprova e o ator assume, nesta tentativa.
-                alvo_do_foco = step.postcondition.value if step.postcondition.kind == "app_foreground" else ""
+                # 31.48: também a etapa que prova por um elemento DO app (`id=<pacote>:id/…`) quando o app não está na
+                # frente. Com ele já na frente (dentro de uma conversa, num aviso), abrir não muda nada: segue o ator.
+                # Aberto o app, a volta seguinte lê a tela: lista à vista, o LT-1 fecha sem ator; o aviso "Novidades da
+                # versão" é outra tela (a lista some), e o ator o dispensa.
+                alvo_do_foco = (step.postcondition.value if step.postcondition.kind == "app_foreground"
+                                else pacote_da_prova(step.postcondition))
+                # Só o app DA ETAPA: um seletor com o pacote de outro app cadastrado não abre esse outro app.
+                if (step.postcondition.kind == "element_present" and alvo_do_foco
+                        and (alvo_do_foco != app.package or obs.package == alvo_do_foco)):
+                    alvo_do_foco = ""
                 if (OPEN_APP_SEM_IA and alvo_do_foco and not abriu_sem_ia and rep is None and decisions == 0
                         and not step.side_effect and not fired and alvo_do_foco in self._allowed_packages()
                         and not self._postcondition_holds(step, obs, cartao, pacote=app.package)):
@@ -2222,6 +2386,9 @@ class StepExecutor:
                 screen, scale = self._screen(obs, with_image=quer_imagem,
                                              protect=tuple(step.commit_guard), boost=_boost_terms(step, app),
                                              ai=ai_cfg)
+                if screen.podados and iid in ai_cfg.diagnostico_arvore_aparelhos and not obs.sensitive:
+                    await self._arvore_antes_da_poda(obs, screen.podados, run_id=run_id, iid=iid, step_id=step.id,
+                                                     attempt_id=attempt_id)
                 image_requested = False
                 if encadeada is None:          # a ação encadeada não é decisão nova (31.35)
                     if teto_leitura and decisions >= teto_leitura:
@@ -2441,12 +2608,23 @@ class StepExecutor:
                     relacao = (relacao_do_valor(obs.tree, alvo, args.name, valor,
                                                 relacoes=tuple(cap.saidas_relacao) if cap else ())
                                if lido_da_imagem is None else None)
-                    perguntou = relacao is None and (lido_da_imagem is not None or bool(cap and args.name in cap.saidas))
-                    if perguntou:
+                    papel = e_nome_de_papel(args.name)
+                    perguntou = relacao is None and (lido_da_imagem is not None or papel
+                                                     or bool(cap and args.name in cap.saidas))
+                    negados = self._papel_negado.setdefault(attempt_id, set())
+                    chave_do_papel = (alvo.id if alvo is not None else "", args.name, valor)
+                    if perguntou and chave_do_papel not in negados:
                         # Da imagem, ou saída que o CATÁLOGO declara sem seletor nem rótulo na árvore (a caixa do Outlook,
                         # a lista do QA): a ação diz onde está o valor, mas só o juiz confirma que é ele. Livre: dúvida.
-                        relacao = await self._relacao_visual(rt, step, ctx_for, run_id, oid, deadline, attempt_id,
-                                                             obs, args.name, valor, ai_cfg)
+                        # 31.47: nome de PAPEL (manchete, assunto…) cai aqui também, mesmo sem catálogo, e a pergunta é
+                        # a do papel (df1212: duas leituras certas da manchete do g1 recusadas sem juiz nenhum).
+                        try:
+                            relacao = await self._relacao_visual(rt, step, ctx_for, run_id, oid, deadline, attempt_id,
+                                                                 obs, args.name, valor, ai_cfg, alvo=alvo)
+                        except AIError as exc:        # revisão do #307 (achado 3): como a leitura visual
+                            return await desfecho_de_ia(exc, obs, "a relação do valor lido")
+                        if relacao is None and papel and self._ultimo_veredito_de_relacao == "no":
+                            negados.add(chave_do_papel)
                     if relacao is None:
                         aid = intencao("read_value", args_da_chamada_invalida(bruto, obs.tree), None, side_effect=False)
                         repo.finish_action(aid, ActionStatus.rejected, error=f"sem relação com '{args.name}'")
@@ -2455,10 +2633,17 @@ class StepExecutor:
                                       "valor ao que foi pedido (sem seletor, rótulo ou forma"
                                       + ("; o verificador não confirmou)" if perguntou else ")"),
                                       run_id=run_id, instance_id=iid, step_id=step.id)
-                        history.append(f"read_value REJEITADA: nada na tela liga este valor a '{args.name}' (nem rótulo "
-                                       "vizinho, nem forma, nem o seletor do catálogo). Leia o elemento rotulado como "
-                                       f"'{args.name}'; se ele não existe nesta tela, chame "
-                                       'step_blocked(kind="dado_ausente").')
+                        if papel and perguntou:
+                            history.append(f"read_value REJEITADA: o verificador não confirmou que este elemento ocupa "
+                                           f"o papel de '{args.name}' nesta tela. Leia o elemento que de fato é o "
+                                           f"'{args.name}' (posição, destaque e tamanho), não rodapé, menu, botão nem "
+                                           "anúncio; se ele não existe nesta tela, chame "
+                                           'step_blocked(kind="dado_ausente").')
+                        else:
+                            history.append(f"read_value REJEITADA: nada na tela liga este valor a '{args.name}' (nem "
+                                           "rótulo vizinho, nem forma, nem o seletor do catálogo). Leia o elemento "
+                                           f"rotulado como '{args.name}'; se ele não existe nesta tela, chame "
+                                           'step_blocked(kind="dado_ausente").')
                         errors_in_row += 1
                         recusas_de_saida += 1
                         if errors_in_row >= 4 or recusas_de_saida >= 4:
@@ -2754,7 +2939,7 @@ class StepExecutor:
                 # 30.65: a exceção desta etapa não pôde ser reservada (revogada, recusada, vencida, já em uso): nada sai.
                 return await falhar_sem_nova_tentativa(sem_reserva, obs)
             aid = intencao(decision.tool, args.model_dump(mode="json"), rationale, side_effect=is_commit,
-                           source="recipe" if from_recipe else "ai")
+                           source="recipe" if from_recipe else ("regra" if pela_regra else "ai"))
             if is_commit:
                 fired = True           # a partir daqui o efeito pode ter ocorrido, aconteça o que acontecer
                 self._open_effect(objective, step, rt, cap, app.id)   # o histórico registra a INTENÇÃO, não o sucesso
@@ -2797,13 +2982,15 @@ class StepExecutor:
                     self.devices.invalidate_automation(rt, str(exc))
                     await self.devices.ensure_automation(rt)
                 if incerta:
-                    history.append(f"(executor) {decision.tool}({_brief(args)}) sem confirmação ({exc}): a ação pode "
+                    history.append(f"(executor) {decision.tool}({_brief(args)}) sem confirmação "
+                                   f"({enderecos_limpos(str(exc))}): a ação pode "
                                    "ter chegado ao app — confira na tela atual antes de repetir.")
                 else:
-                    history.append(f"{decision.tool}({_brief(args)}) FALHOU: {exc}")
+                    history.append(f"{decision.tool}({_brief(args)}) FALHOU: {enderecos_limpos(str(exc))}")
                 errors_in_row += 1
                 if errors_in_row >= 3:
-                    return await fail_or_retry(f"Falhas consecutivas do driver: {exc}", obs)
+                    # o erro vai a attempts.error, que a tentativa seguinte põe no histórico do ator
+                    return await fail_or_retry(f"Falhas consecutivas do driver: {enderecos_limpos(str(exc))}", obs)
                 continue
             errors_in_row = 0
             repo.finish_action(aid, ActionStatus.done, effect_possible=decision.tool in EFFECT_CAPABLE,
@@ -3103,15 +3290,19 @@ class StepExecutor:
 
     async def _relacao_visual(self, rt: DeviceRuntime, step: StepDTO, ctx_for: Callable[[], StepContext], run_id: str,
                               objective_id: str, deadline: float, attempt_id: str | None, obs: Observation, nome: str,
-                              valor: str, ai: AiCfg) -> str | None:
+                              valor: str, ai: AiCfg, *, alvo: UiElement | None = None) -> str | None:
         """31.41: o valor lido da IMAGEM não tem elemento com texto na árvore para a regra determinística. Uma pergunta
         de sim ou não ao verificador, com a imagem: este valor é, na tela, o `nome` pedido? "yes" = `"verificador"`;
         "no", "uncertain" ou qualquer outra coisa = `None` (dúvida nunca fecha como sucesso). Custa uma chamada de
-        verificação por leitura visual aceita pelo leitor."""
-        ctx = dataclasses.replace(ctx_for(), postcondition_description=(
-            f"O valor lido para '{nome}' foi \"{valor}\". Julgue SÓ a relação: na tela, esse texto é o '{nome}' que o "
-            "objetivo pede (o rótulo, a posição ou o papel dele na tela o identificam como tal), e não outro texto "
-            "qualquer? yes = é; no = é outro; uncertain = não dá para afirmar."))
+        verificação por leitura visual aceita pelo leitor. 31.47: para nome de PAPEL (`e_nome_de_papel`) a pergunta é "este
+        elemento ocupa o papel `nome` nesta tela?" (posição, destaque, vizinhança), não "o texto tem relação com `nome`"."""
+        if e_nome_de_papel(nome):
+            pergunta = pergunta_de_papel(nome, valor, alvo, (obs.width, obs.height))
+        else:
+            pergunta = (f"O valor lido para '{nome}' foi \"{valor}\". Julgue SÓ a relação: na tela, esse texto é o "
+                        f"'{nome}' que o objetivo pede (o rótulo, a posição ou o papel dele na tela o identificam como "
+                        "tal), e não outro texto qualquer? yes = é; no = é outro; uncertain = não dá para afirmar.")
+        ctx = dataclasses.replace(ctx_for(), postcondition_description=pergunta)
         if obs.jpeg is None:
             obs = await self.devices.completar_imagem(rt, obs, timeout=float(self.get_settings().driver_call_timeout_s),
                                                       lado_max=ai.screenshot_max_side)
@@ -3121,6 +3312,7 @@ class StepExecutor:
                                  lambda: self.provider.verify(VerifyRequest(ctx=ctx, screen=screen, facts=[])),
                                  step_id=step.id, role="verify", deadline=t_end, attempt_id=attempt_id,
                                  marca=MarcaDaChamada(motivo="julgamento", image_reason="pedida"))
+        self._ultimo_veredito_de_relacao = verdict.satisfied
         return "verificador" if verdict.satisfied == "yes" else None
 
     async def _verify(self, rt: DeviceRuntime, step: StepDTO, ctx_for: Callable[[], StepContext], run_id: str,
@@ -3381,8 +3573,9 @@ class StepExecutor:
                         verdict = await self._ai(
                             run_id, objective_id,
                             lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen,
-                                                                       facts=list(facts or []), escalate=True,
-                                                                       dicas_da_tela=dicas)),
+                                                                       facts=list(facts or []), escalate=True)),
+                            # 31.50 (d): SEM a dica da tela. O rejulgamento do "sim" com efeito é a segunda opinião
+                            # independente; com a mesma orientação do primeiro juiz, deixava de ser.
                             step_id=step.id, role="verify", deadline=t_end, attempt_id=attempt_id,
                             marca=MarcaDaChamada(motivo="rejulgamento", escalate="sim_com_efeito",
                                                  image_reason=motivo_imagem))
@@ -3883,9 +4076,13 @@ def _target_key(args: Any) -> str:
 
 
 def _brief(args: Any) -> str:
+    """A ação no histórico do ator. 31.52: a URL do `open_url` vai só com host e 1º pedaço do caminho."""
     d = args.model_dump(exclude={"rationale"}, exclude_none=True)
-    return ", ".join(f"{k}={str(v)[:60]!r}" for k, v in d.items())
+    return ", ".join(f"{k}={str(endereco_para_o_prompt(str(v)) if k.endswith('url') else v)[:60]!r}"
+                     for k, v in d.items())
 
 
 def _brief_result(result: dict[str, Any]) -> str:
-    return ", ".join(f"{k}={str(v)[:80]}" for k, v in result.items() if k != "ms") or "ok"
+    # o `open_url` devolve `opened_url` (revisão 15c): toda chave que termina em `url` passa pela limpeza
+    return ", ".join(f"{k}={str(endereco_para_o_prompt(str(v)) if k.endswith('url') else v)[:80]}"
+                     for k, v in result.items() if k != "ms") or "ok"

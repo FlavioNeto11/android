@@ -176,6 +176,7 @@ dicas_ao_juiz:
   - texto: >-
       Neste app as linhas da lista de e-mails (caixa de entrada e pastas como Enviados) são um ComposeView sem texto na
       hierarquia: a árvore não mostra remetente nem assunto, e isso sozinho não é motivo para recusar a pasta. Linha
-      presente prova SÓ que HÁ mensagens na pasta; NÃO prova que uma mensagem específica foi enviada ou recebida. Se a
+      presente prova SÓ que HÁ mensagens na pasta; NÃO prova que uma mensagem específica foi enviada ou recebida. A
+      pasta aberta se identifica pelo TÍTULO da barra (Inbox, Sent, Drafts…), não pela lista, que é igual em todas. Se a
       pós-condição pede remetente, assunto ou "o e-mail X foi enviado", sem leitura visual o veredito continua NÃO
       confirmado.

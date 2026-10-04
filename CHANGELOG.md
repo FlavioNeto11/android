@@ -19,6 +19,192 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.31 F3: o resumo de hora abre com "Precisa de você" e só diz o que mudou (branch canais/28-31-f3-resumo)
+
+- `.claude/canais/resumo_laco.py`: o resumo abre com `🙋 Precisa de você: N` e a lista, com 🆕 na pendência nova.
+  Depois vem só o que mudou desde o último envio. Saúde, plano, frentes e cartões parados aparecem só quando mudaram;
+  a Central com problema entra quando muda e, enquanto o mesmo problema durar, volta no máximo a cada 3 h com "segue
+  desde HH:MMZ". Quando nada mudou e não há pendência nova, não envia. O retrato do último envio fica no cursor, e a
+  parte que monta o texto (`montar`) é pura.
+- Revisão independente (cinco consertos antes de ligar o laço):
+  - privacidade: `_sem_contato` troca e-mail, telefone e URL por marcador antes do `redigir`; a redação vem do mesmo
+    checkout e relê os nomes do banco do central a cada rodada (`redacao.recarregar`), e não só na importação. A
+    leitura que falha, mesmo em parte, não troca a lista que já valia; sem nenhuma leitura inteira nesta subida, o
+    laço não envia nem grava (tenta de novo em 2 min);
+  - "N novidades" do canal interno desconta o que o último envio já contou;
+  - leitura do Trello ou do plano que falha mantém o retrato anterior, e a volta da leitura não vira novidade;
+  - a mudança só no detalhe do plano (parciais, bloqueados, a fazer) é detectada;
+  - `docs/dominios/canais.md` (C-19) diz quem entra em "Precisa de você": só o que espera o dono de verdade.
+- Branch canais/28-31-f3-eventos, sobre o #321: o contador de novidades conta as duas formas de fato do canal interno, a
+  linha de tabela e a linha "- HH:MMZ (DD/MM) orquestradora: …", na ordem do arquivo. Antes contava só a de tabela, e as
+  45 linhas novas do dia ficavam fora da conta (medido no arquivo de 04/10 às 22:08Z: 289 fatos, 244 de tabela).
+  Condição para ligar o laço.
+- Revisão do #327: só conta a linha de tabela que começa pela hora (com ou sem a data); cabeçalho, separador e prosa
+  com "|" não contam, e a hora do resumo só aceita uma hora (texto livre do canal interno nunca chega a ela). A linha
+  em lista com "|" é um fato só. No arquivo de 04/10 às 22:53Z dá 290 fatos pelas duas regras.
+- O laço segue parado até o F3 estar no ar e a orquestradora liberar. Antes de ligá-lo, `--carimbar` e `--armar`
+  recarimbam os índices pela contagem nova (eles foram gravados contando só a tabela).
+- Prova `simulated`: 24 testes em `.claude/canais/test_resumo_laco.py` e 17 em `.claude/trello/test_redacao.py` (41
+  passed). O ensaio contra os dados de agora compôs a mensagem sem enviar. `not_run`: um envio real.
+
+## 2026-10-04 — 28.29: o registro das decisões automáticas diz a verdade e se lê fácil (branch canais/28-29-registro-de-decisoes)
+
+Achados das duas revisões independentes do deploy 30, do passeio da orquestradora pela aba "Decidido sozinho" e da
+Aprendizado, que fez o primeiro desfazer real (04/10).
+
+- **Registro coerente com o livro.** Desligar pela tela do Aprendizado (a rota do livro) não passava pelo registro, e a
+  decisão seguia "não desfeita", oferecendo o Desligar de novo.
+  - Agora `DesfazerDecisoes.reconciliar` grava a decisão como desfeita, com quem, quando e o motivo da trilha (lidos pela
+    inversa da fila, `desfeita_por_fora`).
+  - O item que mudou de outro jeito (aposentado) não oferece o botão.
+- **Cursores com janela de releitura.** O id que fica visível fora de ordem no PostgreSQL entra na volta seguinte; a
+  `origem_ref` deduplica.
+- **O cartão diz qual item foi e se lê.**
+  - Ganha `item_nome` (o título do item no livro) e `run_id` (a execução do objetivo ou da pergunta vencida).
+  - O efeito sai com gênero ("Receita publicada", "Fluxo confirmado") e o texto dos fatos, cortado na palavra. As
+    linhas antigas são lidas assim também.
+  - No painel:
+    - o nome com link para o Livro;
+    - o vencimento agrupado ("21 objetivos encerrados por vencimento"), com link para a execução e hora local;
+    - "por você, no painel";
+    - o estado sem repetir;
+    - o motivo limitado a 300, como a rota, com a mensagem do 422 em português;
+    - "Hoje" a partir da meia-noite local;
+    - a nota do Telegram honesta;
+    - e, no Aprendizado, o banner do modo `shadow` sem contradizer a lista.
+- **Resumo do Telegram.** "Dá para desfazer" só para o que tem volta. O encerrado diz que não reabre, e as aprovações
+  pendentes encerradas junto pelo vencimento aparecem pela contagem.
+- **Passeio real do deploy 31** (orquestradora): o vencimento gravado como "31.43" aparecia como "Regra 31.43"; agora a
+  fila diz qual foi ("Vencimento de pergunta sem resposta"), e regra desconhecida vira "Regra automática da plataforma",
+  nunca o número. A nota da aba deixou de repetir o título da página. O "texto:", o corte no meio da palavra e o
+  "passou a publicado · estava publicado" já saíam certos neste branch.
+- Prova `simulated`:
+  - `backend/tests/test_decisoes_registro_coerente.py`: 16 testes. Contra o código antigo a coleção falha (os nomes novos
+    não existem), então não há contraprova por teste.
+  - Ajustes de texto em `test_decisoes_adaptador.py` e `test_decisoes_resumo.py`.
+  - Com `-k "decis or arquitetura or aprendizado or pendencias or learning"`: 3228 passed.
+  - vitest `pendencias` e `aprendizado`: 241 passed; typecheck limpo.
+- `not_run`: PostgreSQL, e o passeio no navegador depois do deploy.
+## 2026-10-04 — 28.24 F5: o botão "Ler pela IA" e as correções da revisão da aba Anexos (branch canais/28-24-f5-botao-ler)
+
+- **Painel:** a aba Anexos ganha "Ler pela IA" na imagem que o dono mandou. A confirmação fica na própria linha, porque é
+  uma chamada paga com teto por imagem. A descrição aparece no item, com o custo quando a leitura é nova; a já gravada
+  aparece sem botão. O erro da rota fica na linha, em português.
+- **Correções da revisão do painel do deploy 31:**
+  - o anexo que já estava no cartão diz "Já estava no cartão do Trello", não "Anexado";
+  - o "desde" do período é fixado na primeira página, e "Carregar mais" pede a mesma janela;
+  - a miniatura baixa uma vez, só quando o item chega à tela ou quando a prévia abre, e fica em memória (URL `blob:`,
+    revogada ao sair da aba); a rota segue `no-store`, e a prévia usa o mesmo arquivo;
+  - o estado vazio diz o que dá para fazer com um anexo.
+- **Backend:** a lista traz `pode_ler`, `descricao` e `lida_em`. O envio ao cartão recusa com 422 `tipo_nao_aceito` o tipo
+  que a entrada não aceita (ou maior que o teto), antes de qualquer chamada ao Trello. `pode_ir_ao_cartao` e `pode_ler`
+  passam a olhar também os tipos aceitos. A retenção apaga a descrição da IA junto com o arquivo vencido, mesmo quando o
+  arquivo não sai naquela volta.
+- **Teste intermitente:** `test_filtros_de_canal_direcao_dono_estado_e_periodo` voltava anexos para jan. e fev. de 2026. O laço de
+  avisos do harness roda a faxina dos canais (retenção de 30 dias) na primeira volta, e quando ela caía depois do UPDATE
+  apagava as duas linhas no meio do teste; isso aconteceu com `-n 6`. As datas agora são relativas e ficam dentro do prazo,
+  e o teste dá ele mesmo uma volta da faxina. A causa está provada: com as datas antigas e a volta forçada, o teste falha.
+  Sem migração; adendo v1.37.
+- **Prova:** `simulated`. Backend com 135 passed em `test_canais_anexos_lista.py`, `test_canais_anexos_trello.py` e nos
+  vizinhos. Frontend com 1536 passed: `AnexosTab.test.tsx` tem 7 testes novos, e o typecheck passa. O passeio no navegador
+  e a leitura paga real ficam `not_run`.
+## 2026-10-04 — 28.31 F2a: o pedido guarda quem o criou e o lote (branch canais/28-31-f2a-autor, sobre a F1)
+
+- Migração 106 (`pedidos.criado_por_tipo`, `pedidos.lote`), decididas na criação por `pedidos/domain/autor.py`
+  (contrato da orquestradora, 04/10 20:27Z): `lote:` na chave é `frente`, sempre; operador na lista declarada
+  `pedidos.operadores_do_dono` (ou `trello:<membro_dono>`) é `dono`; outro operador é `convidado` (o login aceita
+  qualquer nome); sem operador, `desconhecido`. Lista vazia de fábrica: ninguém é o dono. Sem backfill.
+- O `AvisoDTO` ganha `criado_pelo_dono` e `de_lote` (Adendo v1.31). Com isso o rótulo do pedido criado pelo dono volta a
+  sair no Telegram (com os filtros da F1), e o aviso de pedido de lote vai à janela de rotina (`pedido.lote.<tipo>`),
+  menos a aprovação e a ocorrência incerta, que saem na hora.
+- Prova `simulated`: `backend/tests/test_pedidos_autor.py`. `not_run`: pedido real depois do deploy.
+## 2026-10-04 — 28.30: comentário do dono em cartão nunca fica mudo (branch canais/28-30-comentario-do-dono, sobre a F1 do 28.31)
+
+- Comentário do dono num cartão do plano vai à orquestradora, recebe resposta no cartão e gera, na mesma volta, um pedido
+  de confirmação de sim ou não no Telegram dele, com o nome do cartão e o texto (só se passarem inteiros pelos filtros do
+  28.31). O sim e o não de lá vão à orquestradora e nunca viram pedido. Regra C-24 em `docs/dominios/canais.md`.
+- O prefixo 🤖 (C-07) passa a ser de segurança: sem ele, o comentário de uma sessão com o token do dono vira pergunta ao
+  dono. O que o produto escreve é reconhecido também pelo registro de enviadas.
+- A linha do Trello sem autor lido não vale como do dono; o login do painel recusa nome começado por `trello:` ou
+  `telegram:` (revisão da #312).
+- O recado que falha por erro interno responde com uma frase fixa em vez de ficar `falhou` mudo (entrada 1256 de 04/10).
+- Revisão da #314: o sim não é tratado como senha com pergunta de credencial aberta; o sim relê o comentário (mudou ou
+  apagado não repassa) e o repasse leva o texto; um pedido em aberto por cartão e 6 por hora, com uma linha ao dono no
+  teto; `texto_seguro` barra link; a sessão antiga com nome de canal não vale; o nível do `trello.comentario` declarado.
+- Resíduos da revisão da #314, parte 12b:
+  - o aviso do teto é `trello.teto_de_comentarios`, rotina e janela, e a resposta a ele só informa (não vira pedido);
+  - as travas leem a `previa` como JSON, sem depender do espaço do `json.dumps`;
+  - só destrava o cartão o sim que foi repassado, ou o não: o sim recusado por `mudou`, `apagado` ou `sem_conferir` não conta;
+  - as travas e o "respondido" leem a prévia, não o estado da linha (a linha atendida pode virar `feita`).
+- Contrato: Adendo v1.35 em `docs/api-contract.md` (login, aviso `trello.comentario`, repasses `comentario_sim` e
+  `comentario_nao`).
+- Prova `simulated`: `backend/tests/test_canais_comentario_do_dono.py` (44) e os ajustes em `test_trello_leitor.py` e
+  `test_trello_cliente.py`. `not_run`: o comentário real num cartão de teste.
+## 2026-10-04 — 31.50, lado da Canais: o lembrete de vencimento no montador dos avisos (branch canais/31-50-montador-vencimento, sobre a F1 do 28.31)
+
+- O evento `pendencia.vence_em` (Jev, #313, adendo v1.33) entra em `KINDS_QUE_AVISAM` e vira aviso de nível 1, na hora,
+  com rajada ("N pendências vencem nas próximas 2 h"). Molde: "⏳ A aprovação no android-12 vence em até 2 h (22:30Z)", a etapa de
+  catálogo que espera (o nome do catálogo; sem ele, a chave da capability como o produtor manda), "Se vencer: cancelado pelo sistema." e "Espera você: decida/responda na caixa de
+  Pendências antes disso.", com o link. A chave do aviso é `data.chave`; a `etapa` não é usada.
+- O lembrete de execução do sistema (prova, validação, lote) cala pela regra `_e_de_prova`; o de aprovação de lote avisa.
+  A resposta ao lembrete no Telegram não vira pedido.
+- Prova `simulated`: `backend/tests/test_avisos_vencimento.py` (10); afetados 179 passed.
+
+## 2026-10-04 — 28.31 F1: o aviso diz o que aconteceu, o que é crítico e se espera o dono (branch canais/28-31-avisos-com-conteudo)
+
+A queixa do dono (Telegram, 04/10 19:10Z): avisos "genéricos e sem relevância". A causa estava no código, e era de
+propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramentas do Claude; decisões da orquestradora
+(19:22Z).
+
+- **Molde**, em até 5 linhas: assunto e resultado com número, o crítico, "Espera você: …" ou "Nada a fazer.", e o link.
+  Exemplo: "⏸️ Pedido «Preço do Pi» pausado: 3 falhas seguidas / As próximas ocorrências não rodam até você retomar. /
+  Espera você: veja a falha no painel e retome ou cancele o pedido."
+- **Três níveis decidem a entrega** (`mensagem.NIVEL_POR_TIPO`, `entrega_do_tipo`): o 1 e o 2 que parou algo saem na
+  hora. A rotina (relatório, encerramento, 80%, condição atendida, aprendizado) e o 2 que não parou nada esperam na fila
+  até a mais velha fazer 1 h (`JANELA_DA_ROTINA_S`). Aí saem numa mensagem só, uma linha cada, com o primeiro link que houver; a
+  `canal_enviadas` grava `grupo:rotina`.
+- **Rajada** (28.19) com uma linha por item, até 5, mais "+N no painel" e o gesto.
+- **Privacidade** (`avisos/domain/privacidade.py`; o `sem_nome_de_persona` do 28.28 saiu de `entrada.py` para cá, e
+  `entrada.py` o reexporta):
+  - O rótulo do pedido só sai quando o pedido foi criado pelo dono E nenhum filtro mudaria nada nele: redator,
+    contato e persona pela régua estrita (2 letras ou mais, e "Ana"). Senão, ou sem os nomes, sai "Pedido #<6 do id>".
+    Como o pedido ainda não guarda quem o criou de forma confiável, TODO pedido sai pelo id curto até a F2 (decisão da
+    orquestradora, 04/10 20:06Z: nome de terceiro que não é persona não se detecta por regra).
+  - Telefone: 9 dígitos ou mais, prefixo + ou (, ou "dddd-dddd". A data ISO fica, mas não esconde o telefone colado nela.
+  - A fila lê primeiro o que sai na hora: 600 linhas de rotina na fila não seguram uma aprovação (revisão do #310).
+  - O texto livre (pergunta, resumo e texto da aprovação) sai sem contato e sem persona.
+  - O `detail` da conta nunca sai: vira uma frase fixa por `status`.
+  - O alvo da aprovação segue a exceção do ADR-071 (d).
+  - O aparelho pode sair.
+- O redator e os nomes de persona valem sempre; `avisos.entrada.enabled` decide só se o conteúdo da aprovação e da
+  pergunta vai junto.
+- `ROTULOS` não mudou: é também o nome do cartão do espelho do Trello.
+- Sem migração e sem chave de config. A F2 roteia o aviso de pedido de prova de frente (`lote:`) para a janela, porque o
+  pedido não guarda a chave hoje; até lá, segue proibida prova que crie pedido. A F2 também põe nos `dados` o que falta
+  (teto, contagens e manchete) e os links específicos. A F3 traz o resumo de hora no molde.
+- Prova `simulated`:
+  - `backend/tests/test_avisos_molde.py`: 37 testes. Contrato por tipo e por conversa ligada ou desligada; rótulo e
+    reserva; régua estrita; nível de todo tipo de aviso do pedido; janela da rotina.
+  - Ajustes de propósito em `test_avisos_servico`, `_fila`, `_rajada`, `_aprendizado`, `test_identidade_da_ia` e
+    `test_pedidos_colaboracao_consolidacao`.
+  - Esses arquivos, mais `test_trello_espelho` e `test_telegram_entrada`: 177 passed.
+  - A varredura de avisos, telegram, canais, pedido, learning, decisões e trello passou, salvo as falhas da base
+    integ/suite-31, que a junção `2fba62cd` conserta.
+  - Sem contraprova por teste: contra o código antigo, a coleção falha no import de `privacidade`.
+- Limite conhecido: o nome de um terceiro escrito por extenso, sem @, e-mail ou telefone, não é detectável; ele só sai
+  no texto que a pessoa escreveu e que a conversa já mostrava.
+- `not_run`: PostgreSQL e a prova real (um aviso de cada nível, depois do deploy, com o dono avisado uma vez).
+## 2026-10-04 — 30.61: o painel da prévia da porta (branch feat/30-61-painel)
+
+- Na execução com plano pronto, a tela mostra o que a porta vai fazer com cada ação, em cartões por aparelho e persona:
+  liberada, pede seu aval, espera, não será feita, decide na execução. O dono edita o texto, tira o que não quer
+  (as dependentes saem junto) e clica "Aprovar N e iniciar"; se o plano mudou, a tela diz o quê e mostra a prévia nova.
+- O gesto aceita o texto editado no cartão: a chave gravada é a do texto que vai sair (recalculada no servidor).
+- Na execução viva, a validade dos sins do plano aparece com "Renovar"; o que já venceu volta para o dono rever.
+- Nota da Ferramentas: o painel reconhece `{ação}` como variável como o servidor (flag `u`), conta o limite por
+  caractere (um emoji vale 1) e avisa, sem travar, quando sobra `{` no texto ("ele sai exatamente assim").
+- Prova: `simulated` (`tests/test_porta_do_plano.py`, `PortaDoPlano.test.tsx`). `not_run`: o percurso no navegador.
+
 ## 2026-10-04 — 30.61: a prévia da porta e a aprovação antecipada no plano, backend (branch feat/30-61-aprovacao-no-plano)
 
 - `GET /api/runs/{id}/porta`: numa execução `planned`, o selo de cada etapa com efeito (permitido, aprovação, adiado,
@@ -30,6 +216,83 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   comentário). Migração `105_aprovacao_no_plano`; adendo v1.32.
 - Prova: `simulated` (`tests/test_porta_do_plano.py`, `tests/test_chave_da_aprovacao.py`). `not_run`: o painel e a
   execução real.
+## 2026-10-04 — 31.47: nome de papel é julgado como papel, não como palavra do texto (branch fix/31-47-relacao-de-papel)
+
+- Revisão do #307: a pergunta julga o VALOR ("o texto X é, inteiro, o nome mostrado nesse elemento?"), não só o
+  elemento: um trecho como "há 2 horas" dentro do nó da manchete é recusado; "nome"/"name" sozinhos saem da lista;
+  o "não" do juiz para a mesma (etapa, elemento, nome, valor) não se paga de novo; falha do juiz vira desfecho de IA
+  (`desfecho_de_ia`), como na leitura visual. Testes: 206 direcionados (`simulated`).
+- Achado real (df1212, Chrome, g1, android-09, banco central só leitura): `read_value(name=
+  "manchete", element_id="e85")` recusado duas vezes com "sem relação com 'manchete'" (31.41) e a etapa `read_headline`
+  em dado ausente. Nenhuma chamada de juiz existia na tentativa: a regra da árvore não achou rótulo nem forma e o nome
+  não estava em `cap.saidas` (planejamento livre). O texto de uma manchete nunca contém "manchete".
+- `taskqueue/relacao.py`: lista fechada de nomes de papel pt/en (`e_nome_de_papel`) e o enunciado `pergunta_de_papel`
+  ("este elemento ocupa o papel X nesta tela?", com id, bounds e tamanho da tela; rodapé, menu, botão, banner e anúncio
+  nomeados como não ocupam). `executor.py`: nome de papel sem evidência na árvore sempre vai ao verificador
+  (`_relacao_visual(..., alvo=)`), e a recusa do histórico diz que o papel não foi confirmado. As quatro recusas viram
+  dado ausente (31.41/31.38) continuam; "não" e "incerto" recusam; nome que não é de papel segue com a pergunta antiga.
+- Prova `simulated`: `tests/test_relacao_de_papel.py` (36: lista, caso df1212 com juiz "ocupa", controle negativo com
+  rodapé e menu, nome fora da lista, ponta a ponta no harness) e os testes do 31.41; nenhuma IA paga. Execução real
+  `not_run`. Sem migração; nenhum texto com snapshot sha256 mudou.
+## 2026-10-04 — 31.51: a limpeza fecha diálogos do site em série pela árvore, sem aceitar nada (branch fix/31-51-dialogos-em-serie)
+
+- Achado real r-20261004190200-5b56e6 (android-10): "Abra o app…" e depois o aviso de cookies cobriam a página; a
+  limpeza gastou as 3 ações da etapa (voltar, reabrir o Chrome, procurar) sem tocar no "Agora não" que estava na
+  árvore, e no plano revisado a IA tocou "Configurar cookies", que abre outro modal.
+- `taskqueue/dialogos.py`: `botao_que_fecha` (recusar antes de fechar; nunca aceitar, permitir ou configurar) e
+  `dialogo_sem_saida`. O executor toca o botão antes do ator, até 4 diálogos, sem gastar as ações da etapa; sem saída
+  que preserve a privacidade, falha com motivo literal (regra em `learning/domain/falhas.py`), nunca sucesso.
+- Teste: `tests/test_dialogos_em_serie.py` (árvores remontadas do que a 5b56e6 gravou; o executor não grava a árvore
+  inteira), `simulated`; prova `real` não executada.
+- Revisão do #308: só no navegador; veto no rótulo e no id, com espanhol, alemão e consentimento implícito ("Got it",
+  "Entendi", "OK"); id só para ícone sem rótulo; diálogo que volta falha no teto; "sem saída" não é pulado
+  (`scheduler.py`); só o diálogo que cobre a tela conta. O teste de ponta a ponta (harness) achou que o toque da regra
+  era recusado na validação (faltava `is_commit_action`): corrigido. 22 testes no arquivo, 119 na regressão.
+## 2026-10-04 — 31.48: abrir o app sem IA também quando a prova é um elemento do app (branch fix/31-48-open-app-sem-ator)
+
+- MEDIDO no banco central: a etapa "abrir o QA Messenger" provada pela lista (`element_present`, modelo 141e) foi à IA
+  em 43 de 49 sucessos. Com `app_foreground` (2c35), fechou sem ator em 50 de 50.
+- O LT-6 passa a abrir o app sem IA quando a prova é `id=<pacote>:id/…` e o app não está na frente. Depois, o LT-1 fecha
+  sem ator se a lista aparecer. Com o aviso "Novidades da versão" (outra tela), o ator o dispensa.
+- Fica com o ator: os 19 casos em que o app já estava na frente, dentro de uma conversa. Voltar por regra pede uma
+  árvore real para medir.
+- Teste: `tests/test_caminho_rapido_2.py`, com os dois modelos e o aviso, `simulated`. `real`: not_run.
+## 2026-10-04 — 31.52: a árvore do Chrome antes da poda, por diagnóstico; a barra de endereço fica no prompt (branch feat/31-52-arvore-antes-da-poda)
+
+- `ai.diagnostico_arvore_aparelhos` vem vazia por padrão, e assim nada é gravado. Nos aparelhos de teste listados, a
+  decisão do ator com algo podado grava a árvore de antes da poda como evidência `hierarchy` JSON, com o texto redigido;
+  tela sensível nunca entra. Aparelho com conta real vinculada nunca grava, mesmo listado.
+- A barra de endereço do Chrome vai ao ator e ao diagnóstico só como host e caminho: query, fragmento e pedaço
+  opaco do caminho (token de redefinição) não saem da máquina pelo prompt.
+- `scripts/poda-ab-offline.py` faz o A/B da poda sobre essas árvores, mostrando só números.
+- A `url_bar` sai da lista da poda e volta ao prompt do ator (risco achado na medida do 31.35).
+- Teste: `tests/test_tamanho_do_prompt_do_ator.py`, `simulated`. `real`: not_run (janela de prova, com o diagnóstico
+  ligado num aparelho de teste).
+## 2026-10-04 — 30.66: textos da aba Para aprovar (branch fix/30-66-textos-do-painel)
+
+- Fila vazia com itens em Revisar: o topo diz "Nada para aprovar; N para revisar sem pressa". A frase "publicado antes da
+  regra de aprovação (tem efeito externo)" vai uma vez para o cabeçalho de Revisar, em vez de em cada item.
+- Decidido pela plataforma: regra com nome legível (o id só no `title`), título sem chave interna com versão nem lacuna
+  crua (`tituloDaDecisao`), parecer do curador "pedir mais evidência". Prova `simulated`: testes de componente em
+  `DecididoPelaPlataforma.test.tsx` e `AprendizadoPage.test.tsx`. Navegador: `not_run` (passeio depois do deploy 32).
+- Revisão curta: o vazio cita a aprovação automática quando ela está ligada; o topo só afirma o vazio com as duas listas
+  lidas (Revisar em falha ou carregando é dito); o título da decisão usa o nome do catálogo (`capability_nome`, que a
+  rota `aprovacao-automatica` passa a mandar com `capability` e `etapa`; adendo v1.34).
+## 2026-10-04 — 31.50: achados da revisão do deploy 30 (branch fix/31-50-revisao-deploy30)
+
+- (a) A r-20261004195451-7d3527 (prova real do 31.45) foi pelo ator: o plano veio de um fluxo salvo antes do #278.
+  - O plano de fluxo passa a provar a etapa de catálogo com a pós-condição atual do catálogo.
+  - OPEN_MAIL_INBOX prova sem IA pela lista E pelo título "Inbox"; sem o título, o juiz decide.
+- (b) O vencimento do objetivo parado roda numa transação só.
+- (c) `pergunta_vence_h` tem piso de 1 h.
+- (d) O rejulgamento do 17.10 vai sem a dica da tela.
+- Carência ao ligar: a marca `vencimento_ligado_desde` fica em `settings`. No deploy, o que hoje espera ganha mais 24 h.
+- Lembrete `pendencia.vence_em` 2 h antes, uma vez por item, com dados sem o comando; a Canais põe o tipo no
+  montador. `vence_em` no `RunSummary`, no `Objective` e na lista de aprovações pendentes.
+- Contrato: adendo v1.33 (número da orquestradora). O lembrete sai uma vez por espera (a chave leva a entrada), e as
+  listas leem as entradas em `needs_input` numa consulta só.
+- Testes: `test_outlook_declarado.py`, `test_dica_de_tela_ao_juiz.py`, `test_pergunta_vence.py` e
+  `test_needs_input_expira.py`, `simulated`. `real`: not_run.
 
 ## 2026-10-04 — 28.28: pergunta ao bot do Telegram vai à orquestradora, e nome de persona não sai pelo canal (branch canais/28-28-pergunta-ao-bot)
 
@@ -76,6 +339,36 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   com aviso no stderr. `ultima` sem fuso vale como UTC (antes derrubava a subtração com `TypeError`).
 - Prova `simulated`: `scripts/tests/test_candidatos_do_portal.py` (3 testes novos; o "1 de 2" do teste antigo vira
   "1 de 3"). Real: `not_run` até rodar o script contra o central depois do merge.
+
+## 2026-10-04 — 29.76 (c, d, e): o agente duplicado cede o canal no 4409; aviso quando o log contradiz o uptime (branch fix/29-76-agente-e-veredito)
+
+- Revisão independente do deploy 30, achado 10: o comentário de `api.py` prometia que o agente duplicado para com o
+  4409 (conflito), mas `worker/agent.py` caía no `except` e tentava de novo, e dois processos com o mesmo
+  `worker_id` se derrubavam a cada espera (a cada 3 s na janela do 29.73). Agora o 4409 cede o canal e só tenta de novo
+  depois de 10 min (`ESPERA_NO_CONFLITO_S`); sair não resolvia, porque a tarefa `farm-agente` religa em 1 min (revisão do
+  #303). Quem perde o canal cancela o que tinha em voo e não age em aparelho. Se o deslocado é a cópia velha (código
+  diferente do central, e o novo com o do central: `motivo_do_conflito`), o central fecha com `agente_defasado` e ela
+  sai de vez, com a marca `agente-cedido.json` impedindo a volta do mesmo código. A recusa de credencial por
+  fechamento (4401/4403) segue na escada. Muda arquivo do manifesto: o deploy leva o agente.
+  Da 2ª revisão do #303: a marca vale 24 h (`VALIDADE_DA_MARCA_S`) e o `worker-install` (ps1 e sh) a apaga, para um
+  rollback ao código marcado não deixar o worker sem agente; e o cancelamento antes do `try` de `_executar` (tarefa que
+  nem começou, ou o `await` do Ack) passa por `_ao_terminar`, que grava `cancelled` e solta `_tarefas`/`_ocupados` (antes
+  o aparelho ficava "em voo" e recusava todo comando até o processo reiniciar). Da 3ª: marca com idade negativa (relógio que
+  andou para trás) não vale (`0 <= idade < 24 h`).
+  A suspeita do 1012 está respondida pela prova real do deploy 30 ("nova tentativa em 3 s" no log do agente).
+- Achado 11: depois do veredito pelo uptime o log não era mais lido. Na medição, se o log disser que o `poc_hib` foi
+  recusado, a medição leva `log_contradiz: true` e sai um aviso, sem mudar o aparelho; como o log é bufferizado, uma
+  segunda leitura 120 s depois (mesmo boot) também avisa. Nos logs reais, as 7 recusas
+  seguiram em boot a frio.
+- Achado 12: a nota de que `load_ms` mede intervalos diferentes por `snapshot_por` vai para o código e para
+  `docs/dominios/parque.md`.
+- Prova `simulated`: `test_worker_agent.py::test_conflito_4409_cede_o_canal_pela_espera_longa_e_a_recusa_por_fechamento_segue_a_escada`,
+  `test_wake_relogio_do_snapshot.py::test_log_que_contradiz_o_uptime_avisa_sem_mudar_o_aparelho` e
+  `::test_log_que_contradiz_depois_da_medicao_avisa_na_segunda_leitura`,
+  `test_worker_agent.py::test_deslocado_cancela_o_verbo_em_voo_e_nao_age_mais_no_aparelho`,
+  `::test_copia_defasada_sai_e_nao_volta_ate_atualizar`, `::test_motivo_do_conflito_so_diz_defasado_com_certeza`,
+  `::test_cancelamento_antes_de_comecar_grava_cancelled_e_solta_o_aparelho`, `::test_marca_de_cedido_vence_em_24_horas`
+  e `::test_a_instalacao_apaga_a_marca_de_cedido`, com mutação conferida. Real: `not_run`.
 
 ## 2026-10-04 — 29.73: o agente reconecta rápido depois do reinício do central (branch fix/29-73-reconexao-rapida)
 

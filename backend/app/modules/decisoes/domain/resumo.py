@@ -76,9 +76,17 @@ def chave_da_frase(fila: str, regra: str) -> str:
     return fila if fila in ("pergunta", "objetivo", "pedido") else "outras"
 
 
-def corpo_do_resumo(decisoes: Iterable[DecisaoParaResumir], desfazer_dias: float) -> str | None:
+#: As frases cujas decisões têm volta pelo painel: o aprendizado (desligar o item). Pergunta, objetivo e pedido
+#: encerrados não reabrem (`decisoes_inversas.SemInversa`); o resumo dizia "Dá para desfazer" para todos (28.29).
+COM_VOLTA = ("aprendizado:aprovar", "aprendizado:revisar", "aprendizado")
+SEM_VOLTA = ("pergunta", "objetivo", "pedido")
+
+
+def corpo_do_resumo(decisoes: Iterable[DecisaoParaResumir], desfazer_dias: float, *,
+                    aprovacoes_encerradas: int = 0) -> str | None:
     """As frases do resumo, uma por linha, e o prazo do desfazer. `None` sem nenhuma decisão. A ordem é estável (a das
-    frases acima), não a do banco."""
+    frases acima), não a do banco. `aprovacoes_encerradas`: as aprovações pendentes que os vencimentos encerraram junto
+    (o 31.43 expira as do objetivo), que o dono não vê de outro jeito."""
     contagem: dict[str, int] = {}
     horas: dict[str, float | None] = {}
     for d in decisoes:
@@ -90,11 +98,17 @@ def corpo_do_resumo(decisoes: Iterable[DecisaoParaResumir], desfazer_dias: float
         return None
     ordem = ("pergunta", "objetivo", "aprendizado:aprovar", "aprendizado:revisar", "aprendizado", "pedido", "outras")
     linhas = [f"- {_frase(c, contagem[c], horas.get(c))}." for c in ordem if c in contagem]
+    if aprovacoes_encerradas > 0:
+        n = aprovacoes_encerradas
+        linhas.append(f"- Os encerramentos incluem {_plural(n, 'aprovação pendente', 'aprovações pendentes')}, "
+                      f"que {'venceu' if n == 1 else 'venceram'} junto.")
     dias = int(desfazer_dias) if float(desfazer_dias).is_integer() else desfazer_dias
-    linhas.append(f"Dá para desfazer pelo painel em até {dias} {'dia' if dias == 1 else 'dias'}.")
-    if any(c.startswith("aprendizado") for c in contagem):
+    if any(c in COM_VOLTA for c in contagem):
         # O desfazer do aprendizado é desligar o item (contrato da orquestradora, 04/10), nunca "voltar para revisão".
-        linhas.append("Os aprendizados decididos sozinhos se desfazem desligando o item.")
+        linhas.append(f"Os aprendizados se desfazem desligando o item pelo painel, em até {dias} "
+                      f"{'dia' if dias == 1 else 'dias'}.")
+    if any(c in SEM_VOLTA for c in contagem):
+        linhas.append("O que foi encerrado não reabre: para seguir, faça o pedido de novo.")
     return "\n".join(linhas)
 
 

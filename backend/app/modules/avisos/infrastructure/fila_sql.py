@@ -23,17 +23,30 @@ from typing import cast
 
 from app.db import Database
 from app.modules.avisos.application.entrega import Cerca, Entrega
-from app.modules.avisos.domain.mensagem import CORPO_AGRUPADO, Aviso, titulo_agrupado
+from app.modules.avisos.domain.mensagem import (
+    JANELA_DA_ROTINA_S,
+    PREFIXO_DE_LOTE,
+    TIPOS_DA_JANELA,
+    TIPO_DA_ROTINA,
+    Aviso,
+    corpo_agrupado,
+    corpo_da_rotina,
+    titulo_agrupado,
+    titulo_da_rotina,
+)
 from app.util import to_iso
 
 #: Estados que já não mudam: candidatos à purga.
 ESTADOS_FINAIS = ("enviado", "falhou", "incerto", "descartado")
 MAX_ERRO = 300
+#: O aviso do pedido de lote de frente (28.31 F2a) vai à janela: o tipo dele começa com este prefixo.
+LOTE_LIKE = PREFIXO_DE_LOTE + "%"
 #: Quantas linhas devidas a reivindicação olha para achar a próxima mensagem: mais que qualquer rajada real.
 LIMITE_DA_VARREDURA = 500
 #: Os avisos sobre quem não é o dono (28.18) saem sempre um a um: o do convidado novo se decide respondendo a ELE (o
-#: agrupado não aceita resposta), e cada um leva o nome de uma pessoa diferente.
-SEM_AGRUPAR = "telegram."
+#: agrupado não aceita resposta), e cada um leva o nome de uma pessoa diferente. O comentário do dono num cartão (28.30)
+#: também: o sim ou o não é a resposta àquela mensagem.
+SEM_AGRUPAR = ("telegram.", "trello.comentario")
 
 
 def _curto(texto: str) -> str:
@@ -60,7 +73,8 @@ class FilaDeAvisos:
         return (cur.rowcount or 0) == 1
 
     # ------------------------------------------------------------------ saída (líder)
-    def reivindicar_um(self, *, cerca: Cerca, agrupar_s: float = 0.0, agrupar_a_partir_de: int = 3) -> Entrega | None:
+    def reivindicar_um(self, *, cerca: Cerca, agrupar_s: float = 0.0, agrupar_a_partir_de: int = 3,
+                       janela_s: float = JANELA_DA_ROTINA_S) -> Entrega | None:
         """A próxima mensagem devida, com as suas linhas já marcadas `enviando` e a tentativa contada, ou `None`.
 
         A cerca é a do mandato do líder. O `UPDATE ... WHERE estado='pendente'` confere de novo o estado: duas
@@ -72,16 +86,31 @@ class FilaDeAvisos:
         contagem (`titulo_agrupado`); com menos, uma a uma, sem nova espera (a linha nascida antes do último envio não
         espera de novo). A espera de uma linha nunca passa de `agrupar_s`: uma rajada de 11 vira 2 mensagens, e dois
         avisos seguidos do dono continuam dois, com o segundo atrasado no máximo `agrupar_s`.
+
+        Rotina (28.31). A linha cujo tipo é de `janela` (`mensagem.entrega_do_tipo`: o nível 3 e o nível 2 que não parou
+        nada) nunca sai sozinha nem entra numa rajada: espera até a mais velha delas fazer `janela_s`, e aí TODAS saem
+        numa mensagem só, uma linha cada. O que pede o dono passa sempre na frente.
         """
         agora = self._agora()
+        # Duas leituras, a do que sai na hora PRIMEIRO: com 500 linhas de rotina mais velhas na fila, uma leitura só
+        # deixaria a aprovação de depois fora da varredura até a rotina sair (revisão do #310).
+        da_janela = sorted(TIPOS_DA_JANELA)
+        marcas_da_janela = ",".join("?" * len(da_janela))
+        devidas_sql = ("SELECT id, tipo, criado_em FROM avisos_entregas WHERE estado='pendente' AND canal=?"
+                       " AND (proximo_envio_em IS NULL OR proximo_envio_em <= ?)"
+                       " AND {}(tipo IN ({}) OR tipo LIKE ?) ORDER BY id LIMIT ?")
         with cerca():
-            devidas = self.db.query(
-                "SELECT id, tipo, criado_em FROM avisos_entregas WHERE estado='pendente' AND canal=?"
-                " AND (proximo_envio_em IS NULL OR proximo_envio_em <= ?) ORDER BY id LIMIT ?",
-                (self.canal, agora, LIMITE_DA_VARREDURA))
-            if not devidas:
-                return None
-            escolhidas = self._escolher(devidas, agrupar_s, agrupar_a_partir_de)
+            na_hora = self.db.query(devidas_sql.format("NOT ", marcas_da_janela),
+                                    (self.canal, agora, *da_janela, LOTE_LIKE, LIMITE_DA_VARREDURA))
+            escolhidas = self._escolher(na_hora, agrupar_s, agrupar_a_partir_de) if na_hora else []
+            rotina = [] if escolhidas else self.db.query(devidas_sql.format("", marcas_da_janela),
+                                                         (self.canal, agora, *da_janela, LOTE_LIKE,
+                                                          LIMITE_DA_VARREDURA))
+            e_rotina = False
+            if not escolhidas and rotina:
+                fecha = to_iso(self.relogio() - timedelta(seconds=janela_s))
+                if min(str(x["criado_em"]) for x in rotina) <= fecha:
+                    escolhidas, e_rotina = [int(x["id"]) for x in rotina], True
             if not escolhidas:
                 return None
             marcas = ",".join("?" * len(escolhidas))
@@ -102,11 +131,19 @@ class FilaDeAvisos:
             return Entrega(id=int(r["id"]), chave=str(r["chave"]), tipo=str(r["tipo"]), titulo=str(r["titulo"]),
                            corpo=str(r["corpo"] or ""), link=cast("str | None", r["link"]),
                            tentativas=int(r["tentativas"]))
+        titulos = [str(x["titulo"]) for x in linhas]
+        if e_rotina:
+            # A rotina não pede gesto nem aceita reply; o link é o primeiro que houver (o específico de cada item é do
+            # 28.31 F2), como no agrupado.
+            return Entrega(id=int(r["id"]), chave=str(r["chave"]), tipo=TIPO_DA_ROTINA,
+                           titulo=titulo_da_rotina(len(linhas)), corpo=corpo_da_rotina(titulos),
+                           link=next((str(x["link"]) for x in linhas if x["link"]), None),
+                           tentativas=max(int(x["tentativas"]) for x in linhas), ids=tuple(int(x["id"]) for x in linhas))
         # O link do agrupado é o da CAIXA, que o corpo manda abrir: todo link da fila é `link_da_caixa` (ou nenhum, no
         # aviso de pedido que não pede pessoa), então vale o primeiro que houver no grupo, e não o da primeira linha.
         link = next((str(x["link"]) for x in linhas if x["link"]), None)
         return Entrega(id=int(r["id"]), chave=str(r["chave"]), tipo=str(r["tipo"]),
-                       titulo=titulo_agrupado(str(r["tipo"]), len(linhas)), corpo=CORPO_AGRUPADO,
+                       titulo=titulo_agrupado(str(r["tipo"]), len(linhas)), corpo=corpo_agrupado(titulos),
                        link=link, tentativas=max(int(x["tentativas"]) for x in linhas),
                        ids=tuple(int(x["id"]) for x in linhas))
 

@@ -168,6 +168,8 @@ install -d -o "$USUARIO" -g "$USUARIO" -m 0755 "$DESTINO" "$WORK_DIR" "$(dirname
 install -d -m 0755 "$(dirname "$CONFIG")"
 montar_pacote
 chown -R "$USUARIO:$USUARIO" "$DESTINO"
+# 29.76: a marca de "agente que cedeu o canal" é do código anterior; instalar é a decisão de que este código vale.
+rm -f -- "$WORK_DIR/agente-cedido.json"
 echo "pacote do agente em $DESTINO (versao $VERSAO, ${#PACOTE[@]} entradas do manifesto)"
 
 # ---------------------------------------------------------------- 4. ambiente Python

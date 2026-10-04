@@ -724,10 +724,10 @@ export function acaoDeAprovarNaFila(e: Pick<EntradaDoLivro, 'kind' | 'state' | '
 /** Limite do motivo no backend (`CorpoDeStatus.reason`, 1 a 500). */
 export const MOTIVO_MAX = 500;
 
-export function erroDoMotivo(motivo: string): string | null {
+export function erroDoMotivo(motivo: string, max: number = MOTIVO_MAX): string | null {
   const m = motivo.trim();
   if (!m) return 'Diga o motivo: fica na trilha do item.';
-  if (m.length > MOTIVO_MAX) return `No máximo ${MOTIVO_MAX} caracteres.`;
+  if (m.length > max) return `No máximo ${max} caracteres.`;
   return null;
 }
 

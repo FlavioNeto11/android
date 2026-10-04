@@ -342,6 +342,7 @@ interface ManualInput {
 | `plan.revised` | `{objective_id, version, reason}` | sim |
 | `control.changed` | `{instance_id, control, pending}` | sim |
 | `decision` | `{text}` | sim |
+| `pendencia.vence_em` | 31.50, uma vez por item, 2 h antes de vencer: `{o_que: aprovacao\|objetivo\|execucao, run_id, objective_id?, aparelho? \| aparelhos?, acao?, etapa?, vence_em, acontece_se_vencer, chave: "vencimento:lembrete:<id>", regra: "31.50"}`; nunca o comando nem o título. `vence_em` (ISO, nulo fora da espera) também vem em `RunSummary` (`needs_input`), `Objective` (parado) e na lista de aprovações pendentes | sim |
 | `log` | livre | sim |
 | `apps.updated` | `{apps: AppConfig[]}` | não |
 | `settings.updated` | `{settings: Settings}` | não |
@@ -3354,6 +3355,7 @@ interface AvisoDTO {
   id: string; pedido_id: string; pedido_titulo: string; ocorrencia_id: string | null;
   tipo: AvisoTipo; nivel: 'info' | 'warn' | 'error'; mensagem: string; dados: Record<string, unknown>;
   requer_pessoa: boolean; criado_em: string; lido_em: string | null;
+  criado_pelo_dono: boolean; de_lote: boolean;   // Adendo v1.31 (28.31 F2a)
 }
 ```
 
@@ -5661,6 +5663,32 @@ Sem migração, atrás de `pedidos.colaboracao.enabled` (desligada, tudo como an
 As regras 1 e 2 (uma conta por alvo no pedido inteiro e `approval_required` para pessoa real sem conversa prévia) são da porta de
 política (`PolicyEngine.check`, item 30.62): o provedor `contexto_do_pedido(run_id)` vem num PR à parte.
 
+## Adendo v1.29 (04/10/2026; número da orquestradora; item 28.29) — o registro das decisões diz qual item e o estado de agora
+
+Aditivo ao v1.22. Sem rota nova e sem migração.
+
+- **`GET /api/decisoes-automaticas`, cada item:**
+  - campos novos `item_nome` (o título do item no livro do aprendizado; `null` nas outras filas ou quando o item sumiu) e
+    `run_id` (a execução do objetivo ou da pergunta vencida; `null` no aprendizado);
+  - `efeito` sai legível e com gênero ("Receita publicada…", "Fluxo confirmado…"), também nas linhas gravadas antes;
+  - `fatos.texto` vem cortado na última palavra inteira, com "…";
+  - `fatos` da decisão nova do aprendizado pode trazer `confirmacao: true`, e a do objetivo vencido traz `run_id`.
+- **Estado de agora:** antes de responder, a lista reconcilia cada decisão não desfeita com a fila dona. O item do
+  aprendizado que alguém desligou por outro caminho, como a rota do livro, aparece com `desfeita: true`. `desfeita_por`,
+  `desfeita_em` e `motivo_do_desfazer` vêm da última transição para `disabled` na trilha (gravados uma vez, CAS).
+  - O filtro `desfeitas=nao` já tira essas linhas.
+  - O item que mudou de outro jeito (aposentado) volta com `pode_desfazer: false` e o porquê.
+  - O `POST …/desfazer` de uma decisão desfeita por outro caminho responde `desfeita_agora: false` e não troca autor
+    nem motivo.
+- **Resumo no Telegram** (não é rota; `docs/dominios/canais.md`, C-23): o desfazer só é oferecido para o aprendizado. O
+  encerrado diz que não reabre, e as aprovações pendentes que o vencimento encerrou junto aparecem pela contagem.
+- O `ja_estava` do `POST /api/canais/anexos/{id}/trello` (o mesmo arquivo não vai duas vezes ao cartão) está descrito no
+  trecho da rota, no PR do 28.24 F4.
+
+Prova:
+- `simulated`: `tests/test_decisoes_registro_coerente.py`.
+- `not_run`: PostgreSQL e o central depois do deploy.
+
 ## Adendo v1.30 (04/10/2026; número da orquestradora; item 30.65) — exceção de uso único à regra de uma conta por alvo
 
 Migração `104_excecoes_de_politica`. A porta de frota (ADR-055) recusa, sem caminho de aprovação, o efeito sobre um alvo que
@@ -5711,6 +5739,30 @@ sempre abre cartão novo: o aprovado de uma versão anterior com o mesmo texto e
 - **Prova:** `simulated` (`backend/tests/test_excecao_de_politica.py`). `not_run`: a exceção do 31.26, que a orquestradora
   cria depois do deploy 32.
 
+## Adendo v1.31 (04/10/2026; número da orquestradora; item 28.31 F2a) — o pedido guarda quem o criou, e o aviso diz se é do dono ou de um lote
+
+Migração 106 (`pedidos.criado_por_tipo`, `pedidos.lote`), decididas uma vez, na criação (`POST /api/pedidos`), nesta
+ordem (contrato da orquestradora, 04/10 20:27Z):
+
+1. `idempotency_key` que começa com `lote:`: `frente`, SEMPRE, mesmo com operador; `lote` guarda a chave.
+2. Operador na lista declarada do dono: `dono`. A lista é a chave nova `pedidos.operadores_do_dono` (config por
+   instalação, nomes de sessão do painel, sem diferença de caixa e espaço), mais o `trello:<trello.membro_dono>`. Vazia de
+   fábrica: ninguém é o dono.
+3. Outro operador: `convidado`. O `POST /api/login` aceita qualquer nome, então uma sessão das frentes ou a pessoa de
+   confiança caem aqui.
+4. Sem operador: `desconhecido`. O loopback sem sessão não é o dono. `ia` é do vocabulário; hoje nada a cria.
+
+O `PedidoView` não muda. O **`AvisoDTO`** (`GET /api/pedidos/avisos` e o evento `pedido.aviso`) ganha dois campos, sempre
+presentes:
+
+- `criado_pelo_dono` (booleano): o pedido é do dono. Só aí o canal de fora pode mostrar o título; os outros saem pelo id curto.
+- `de_lote` (booleano): o pedido é do lote de uma frente. O aviso vai à janela de rotina do canal, qualquer que seja o nível
+  (tipo `pedido.lote.<tipo>` na fila de envio), menos `aprovacao_pendente` (só o dono decide) e `ocorrencia_incerta`
+  (efeito incerto em conta real é crítico), que saem na hora.
+
+Pedido anterior à 106: os dois `false`. **Prova:** `simulated` (`backend/tests/test_pedidos_autor.py`). `not_run`: um pedido
+real de lote depois do deploy.
+
 ## Adendo v1.32 (04/10/2026; número da orquestradora; item 30.61) — a prévia da porta e a aprovação antecipada no plano
 
 Migração `105_aprovacao_no_plano`. O dono vê, numa execução `planned`, o que a porta do despacho vai fazer com cada etapa
@@ -5749,12 +5801,19 @@ texto ainda por escrever (briefing) fica para a execução: aprovar no plano exi
   (`step_id`, `selo`, `motivo`) e `previa` (a nova), e nada é gravado. 422 `invalid_body`: a mesma etapa com duas chaves,
   ou para aprovar e tirar. Senão, numa transação: cada sim vira `pending_approvals` `approved` de origem `plano`
   (`chave_sha256`, `chave_v`, `plan_version`, `expires_at`, `midia_sha256`, `decided_by`); as tiradas e as dependentes
-  delas (pela conta do servidor, nunca pela lista do cliente) vão a `cancelled`; uma `decision` registra o gesto. Depois,
+  delas (pela conta do servidor, nunca pela lista do cliente) vão a `cancelled`; uma `decision` registra o gesto. Cada
+  item aprovado aceita `texto` opcional, o texto EDITADO no cartão: a chave conferida é a vista (a do texto da prévia),
+  o texto entra na etapa (`apply_edit`) e a chave gravada é a recalculada da etapa relida (a do texto que vai sair);
+  texto vazio, com marcador de modelo (`{nome}`, `{{…}}`; uma chave solta é texto) ou em ação que não escreve dá 422
+  `invalid_body`, e acima de 2200 caracteres 422 `texto_longo`, sem gravar nada. O selo se refaz com o texto editado: se
+  o item deixa de ser 🔒 com chave (por exemplo, o comentário repetido), 409 `plano_mudou` com "com o texto editado: …" e
+  a edição desfeita. Depois,
   `runs.start`. Resposta `{run, aprovacoes, tiradas, validade_ate}`. O segundo gesto é recusado (409 `invalid_state`).
 - **`POST /api/runs/{id}/porta/renovar`** (200): a validade dos sins do plano ainda VÁLIDOS volta a contar de agora,
   sem reabrir os itens. `{run_id, renovadas, vencidas, validade_ate}`. O sim que já venceu (mesmo que a faxina ainda não
   o tenha marcado) não se renova: sai como `expired` na hora; se nenhum foi renovado, 409 `sim_vencido` (`vencidas`),
-  e o dono revê a prévia ou a porta pergunta na execução. 404; 409 `invalid_state` em execução terminada.
+  e o dono revê a prévia ou a porta pergunta na execução. Os vencidos também ganham uma `decision` (só a contagem). 404;
+  409 `invalid_state` em execução terminada.
 - **Validade:** `Settings.aprovacao_no_plano_validade_h` (padrão 24, de 1 a 72).
 - **Na execução** (trava deste item; o 31.49 estende): o `_approval_gate`, depois do descarte do 30.65 (aprovação anterior
   a `presa_em` não vale), aceita o sim de origem `plano` só se `approved`, dentro de `expires_at`, sem `interaction_id` e
@@ -5764,5 +5823,64 @@ texto ainda por escrever (briefing) fica para a execução: aprovar no plano exi
   aberto (frota, 30.56, 30.57). O objetivo encerrado (cancelado, vencido, abandonado) encerra o sim sem efeito, e a faxina
   periódica marca `expired` o que passou da validade; a execução `planned` em si não é cancelada.
 - **`Approval`** (lista de aprovações, eventos) ganha `origem`, `expires_at` e `plan_version`.
-- **Prova:** `simulated` (`backend/tests/test_porta_do_plano.py`, `backend/tests/test_chave_da_aprovacao.py`). `not_run`:
-  o painel (fatia seguinte) e qualquer execução real.
+- **Painel** (`frontend/src/features/runs/PortaDoPlano.tsx`): na execução `planned`, a prévia em cartões por aparelho e
+  persona, com o selo, "Saiba mais", o texto editável no 🔒, "Não fazer esta" (as dependentes saem junto), a seção
+  "Ainda vão pedir você na execução" e a barra "Aprovar N e iniciar"; o 409 `plano_mudou` mostra o que mudou e troca pela
+  prévia nova. Na execução viva, `ValidadeDoPlano` mostra a validade dos sins do plano com "Renovar" (o caso misto diz
+  "N renovados, M vencidos voltam para você rever").
+- **Prova:** `simulated` (`backend/tests/test_porta_do_plano.py`, `backend/tests/test_chave_da_aprovacao.py`,
+  `frontend/src/features/runs/PortaDoPlano.test.tsx`). `not_run`: o percurso no navegador (depois do deploy) e qualquer
+  execução real.
+
+## Adendo v1.33 (04/10/2026; número da orquestradora; item 31.50) — `vence_em` e o lembrete antes do vencimento
+
+- `RunSummary.vence_em`, `Objective.vence_em` e o campo `vence_em` de cada item de `GET /api/approvals` (pendentes): o
+  instante ISO em que o item vence pelo sistema. O cálculo é o mais tardio entre a entrada na espera e a marca de quando
+  o vencimento foi ligado (`vencimento_ligado_desde`), mais `execucao.pergunta_vence_h`. É `null` fora da espera
+  (`needs_input`; objetivo `waiting_user` de execução terminada; aprovação `pending`) e com o vencimento desligado.
+  A aprovação vence junto com o objetivo que bloqueia. Campo novo e opcional: cliente antigo o ignora.
+- As listas (`GET /api/runs` e afins) leem as entradas em `needs_input` numa consulta só, para todas as execuções.
+- Evento novo `pendencia.vence_em` (tabela de eventos acima). Sai uma vez por ESPERA, 2 h antes de vencer, com a chave
+  `vencimento:lembrete:<id>:<entrada na espera>`: o objetivo retomado que volta a esperar ganha outro lembrete. O
+  texto ao dono é do montador dos avisos (28.31).
+
+## Adendo v1.34 (04/10/2026; número da orquestradora; item 30.66) — a decisão da plataforma com o nome do catálogo
+
+`GET /api/aprendizado/aprovacao-automatica` (adendo v1.24): cada linha de `decididos_pela_plataforma` ganha três campos,
+lidos do item de AGORA, em lote (os mesmos `capabilities`/`nomes_das_capabilities` da rota do livro):
+
+- `capability`: a ação do catálogo do item (receita: a derivação do detalhe; lição e tela: a `scope_capability`), ou
+  `null` quando não se sabe;
+- `capability_nome`: o nome dela em português, do catálogo do app (por exemplo "Enviar a mensagem"), ou `null` sem
+  catálogo;
+- `etapa`: o título da etapa de origem da receita, ou `null`.
+
+O item que saiu do livro vem com os três nulos, como `titulo`. Campos novos e opcionais: quem não os lê não muda. O painel
+titula a decisão como as outras telas (`tituloDoItem`: "Enviar a mensagem (v1)"), e sem eles cai no título de antes.
+Prova `simulated`: `backend/tests/test_aprovacao_automatica.py` e `frontend/src/features/aprendizado/DecididoPelaPlataforma.test.tsx`.
+
+## Adendo v1.35 (04/10/2026; número da orquestradora; item 28.30) — comentário do dono no Trello vira confirmação no Telegram; o login recusa o prefixo dos canais
+
+- **`POST /api/login`:** o `operator` que começa com `trello:` ou `telegram:` (sem diferença de caixa, espaços ignorados) é
+  recusado como nome inválido, a mesma resposta do nome curto ou com caractere de controle. Esse é o operador das conversas
+  dos canais, e `trello:<membro_dono>` é dono na criação do pedido (Adendo v1.31).
+- **Aviso novo do canal de fora, tipo `trello.comentario`:** o comentário do dono num cartão do quadro sem aviso da
+  Central vai à orquestradora (`canal_entradas.estado='orquestradora'`, `previa.repasse='comentario'`), recebe resposta
+  no cartão e gera um pedido de confirmação no Telegram dele. A chave é `comentario:<action>:<card>`, e o aviso nunca é
+  agrupado. O nome do cartão e o texto só vão se passarem inteiros pelos filtros do 28.31.
+- **Repasses novos:** o sim e o não do dono, em reply àquele aviso, ficam com a orquestradora (`previa.repasse` =
+  `comentario_sim` ou `comentario_nao`). Nada se executa e nada se aprova por eles.
+- **Prova:** `simulated` (`backend/tests/test_canais_comentario_do_dono.py`). `not_run`: comentário real num cartão de
+  teste.
+
+## Adendo v1.37 (04/10/2026; número da orquestradora; item 28.24, F5) — a lista diz o que dá para ler, e o cartão recusa o tipo
+
+Sem migração. Muda a v1.26 e a rota `POST .../trello`.
+- `GET /api/canais/anexos`: cada item ganha três chaves fixas.
+  - `pode_ler`: a imagem guardada que o dono mandou, a única que `POST .../ler` aceita.
+  - `descricao`: a descrição que a IA já gravou, ou `null`.
+  - `lida_em`: ISO, ou `null`.
+
+  `pode_ir_ao_cartao` passa a exigir também um mime da lista `avisos.entrada.anexos.tipos`.
+- `POST /api/canais/anexos/{id}/trello`: o anexo de tipo que a entrada não aceita, ou maior que o teto, é recusado com **422**
+  `tipo_nao_aceito` antes de qualquer chamada ao Trello. O arquivo fora do armazém segue **409** `anexo_sem_arquivo`.

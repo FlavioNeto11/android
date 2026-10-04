@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import re
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import Any
@@ -29,7 +30,8 @@ from ..models import (RUN_TERMINAL, DistributeSpec, DistributionPick, Distributi
                       RunSummary, RunTarget, RunTargetsPreview, RunTargetsResolveBody, SessionStatus, StepResult,
                       StepStatus)
 from ..planning.apps_do_comando import apps_citados, pede_site
-from ..planning.capabilities import CapabilityCatalog, efeito_fora_do_catalogo, load_catalog
+from ..planning.capabilities import (CapabilityCatalog, atualizar_pos_condicoes, efeito_fora_do_catalogo,
+                                     load_catalog)
 from ..planning.decisao_fechada.entidades import registrar_fonte_dos_apps
 from ..planning.catalog import capabilities_of, session_provider_of
 from ..planning.parsing import apps_do_plano, texto_fora_do_catalogo
@@ -37,7 +39,7 @@ from ..planning.provider import AIError, AIProvider, AppContext, MarcaDaChamada,
 from ..security.redaction import redact
 from ..shared.costuras import SISTEMA
 from ..shared.resources import Target
-from ..util import now_iso, to_iso
+from ..util import now_iso, parse_iso, to_iso
 from .balanceamento import Candidato, Distribuicao, Servidor, distribuir
 from .costuras import (SEM_COSTURAS, CancelamentoDeExecucao, CosturasDeAprendizado, PedidoDeLicoes,
                        RepeticaoDeExecucao, ResolucaoDeItem, avisar, pedir_licoes)
@@ -61,6 +63,22 @@ _VOLTAM_COM_RODIZIO = WAKEABLE | {InstanceState.stopping}
 #: Antes, a execução esperava para sempre, e só um cancelamento pela rota a tirava do ar, o que é um sinal de PESSOA
 #: (`cancelou_execucao`, ADR-054) que ninguém deu. É o PADRÃO: o prazo de verdade é `execucao.pergunta_vence_h` (31.43).
 NEEDS_INPUT_EXPIRA_H = 24
+#: 31.50: a marca (em `settings`) de quando o vencimento foi visto ligado; a carência conta dela (`_ligado_desde`).
+CHAVE_LIGADO_DESDE = "vencimento_ligado_desde"
+def _etapa_segura(etapa: Mapping[str, object] | None) -> str | None:
+    """31.50 (revisão do #313): a chave da etapa só vai no lembrete quando é a da ação de catálogo (`open_mail_inbox`,
+    ou a cópia `open_mail_inbox_i2` do for_each). Num plano livre a chave é escrita pela IA e pode levar um nome
+    (`send_dm_<nome>`)."""
+    if not etapa or not etapa["capability"]:
+        return None
+    chave = str(etapa["key"])
+    return chave if re.fullmatch(re.escape(str(etapa["capability"]).lower()) + r"(_i\d+)?", chave) else None
+
+
+#: 31.50: o lembrete sai quando faltam estas horas para o vencimento (`RunService.lembrar_antes_de_vencer`).
+LEMBRETE_ANTES_H = 2
+#: 31.50: o evento do lembrete. Quem escreve o texto ao dono é o montador dos avisos (28.31); aqui só vão os dados.
+EVENTO_DO_LEMBRETE = "pendencia.vence_em"
 #: 31.43: a marca para máquina de todo vencimento do sistema (pergunta ou bloqueio), no `data` do evento.
 REGRA_DO_VENCIMENTO = "31.43"
 MOTIVO_VENCIDO = "vencido_sem_resposta"
@@ -140,6 +158,8 @@ class RunService:
         self.dados = SqlProfileDataStore(repo.db, tem_provedor_de_sessao=lambda pacote: session_provider_of(pacote)
                                          is not None)
         self.scheduler = scheduler
+        repo.prazo_do_vencimento = self._prazo_para_os_dtos     # 31.50: o `vence_em` dos DTOs
+        self._marca_lida: str | None = None
         self._historico: HistoricoDeAcoes | None = None
         self.devices = devices
         self.provider = provider
@@ -1084,6 +1104,7 @@ class RunService:
                                         "não cabe mais no molde dele.", level="warn")
                     return
                 plan = da_prova
+                self._pos_do_catalogo(run_id, plan)
                 repo.decision(f"Prova de fluxo (validação): o plano é o do fluxo {prova}, com os parâmetros do comando "
                               "de origem; o planejador não é chamado.", run_id=run_id)
             elif known is not None and known.plan is None:
@@ -1092,6 +1113,7 @@ class RunService:
             elif known is not None and known.plan is not None:
                 plan = known.plan
                 self._registrar_resolucao(run_id, known)
+                self._pos_do_catalogo(run_id, plan)
             else:
                 # Livre, por catálogo ou ENTRE APPS (item 24.1): quem decide é `_catalogos`, pelo app dos aparelhos e
                 # pelos apps que o comando cita.
@@ -1339,6 +1361,14 @@ class RunService:
             session_max_age_s=int(self.scheduler.cfg.file.contas.session_max_age_s),
             unknown_retry_cap=int(self.scheduler.get_settings().session_unknown_retry_cap)))
 
+    def _pos_do_catalogo(self, run_id: str, plan: Plan) -> None:
+        """31.50 (a): o plano de fluxo salvo prova as etapas de catálogo com a pós-condição ATUAL do catálogo."""
+        if plan.planner.provider != "fluxo":
+            return
+        if trocadas := atualizar_pos_condicoes(plan.steps, plan.app_package):
+            self.repo.decision(f"Plano salvo: a prova de {', '.join(trocadas)} segue o catálogo atual do app "
+                               "(31.50 a), não a pós-condição gravada no fluxo.", run_id=run_id)
+
     def _alvos(self, run: Mapping[str, object]) -> tuple[list[Target], str]:
         """Onde os recursos se resolvem — o aparelho e a persona DO ALVO, como `_plan` fotografa — e o comando sem
         destinos, que é o que casa com a habilidade."""
@@ -1485,6 +1515,91 @@ class RunService:
                 run_id=run_id, status_anterior=status.value, antes_de_iniciar=antes_de_iniciar, quem=por, em=em))
         return self.repo.run_summary(self._run(run_id))
 
+    def lembrar_antes_de_vencer(self, agora: datetime) -> list[str]:
+        """31.50: UM lembrete por item que vence nas próximas `LEMBRETE_ANTES_H` horas: a execução em `needs_input` e
+        o objetivo em `waiting_user` de execução terminada (as mesmas filas das duas varreduras acima). Antes, o item
+        vencia sem aviso prévio e o dono só sabia depois.
+
+        Sai o evento `pendencia.vence_em`; o texto é do montador dos avisos (28.31). Os `dados` dizem o que é
+        (`aprovacao`, `objetivo` ou `execucao`), o aparelho, a ação de catálogo e a chave da etapa que espera, e o
+        `vence_em`. Nunca o comando nem o título da etapa: os dois podem levar um nome ou um arroba. Devolve as chaves
+        `vencimento:lembrete:<id>:<entrada na espera>` dos lembretes que saíram; a mesma espera não sai duas vezes (o
+        evento é a marca)."""
+        ligado, horas_cfg = self._vencimento()
+        if not ligado:
+            return []
+        prazo, ligado_desde = timedelta(hours=horas_cfg), self._ligado_desde()
+        janela = (to_iso(agora - prazo), to_iso(agora - prazo + timedelta(hours=LEMBRETE_ANTES_H)))
+        db, saidos = self.repo.db, []
+        itens: list[tuple[str, str, dict[str, object]]] = []
+        for run in db.query("SELECT id, created_at, instance_ids FROM runs WHERE status=? ORDER BY created_at, id",
+                            (RunStatus.needs_input.value,)):
+            entrada = db.scalar("SELECT MAX(ts) FROM events WHERE run_id=? AND kind='run.updated'",
+                                (run["id"],)) or run["created_at"]
+            itens.append((str(run["id"]), max(str(entrada), ligado_desde),
+                          {"o_que": "execucao", "run_id": str(run["id"]),
+                           "aparelhos": loads(str(run["instance_ids"]), [])}))
+        terminais = tuple(s.value for s in RUN_TERMINAL)
+        marcas = ",".join("?" for _ in terminais)
+        for o in db.query("SELECT o.id, o.run_id, o.instance_id, o.blocked_kind, o.finished_at AS espera_desde, "
+                          f"r.finished_at AS fim FROM objectives o JOIN runs r ON r.id=o.run_id WHERE o.status=? "
+                          f"AND r.status IN ({marcas}) ORDER BY o.id", (ObjectiveStatus.waiting_user.value, *terminais)):
+            etapa = db.one("SELECT key, capability FROM steps WHERE objective_id=? AND status=? "
+                           "ORDER BY seq DESC, id DESC LIMIT 1", (o["id"], StepStatus.waiting_user.value))
+            itens.append((str(o["id"]), max(str(o["espera_desde"] or ""), str(o["fim"] or ""), ligado_desde),
+                          {"o_que": "aprovacao" if o["blocked_kind"] == "approval" else "objetivo",
+                           "run_id": str(o["run_id"]), "objective_id": str(o["id"]), "aparelho": o["instance_id"],
+                           "acao": etapa["capability"] if etapa else None, "etapa": _etapa_segura(etapa)}))
+        for ref, desde, dados in itens:
+            # Vence entre agora e agora + LEMBRETE_ANTES_H: `desde` dentro da janela correspondente.
+            if not (janela[0] <= desde < janela[1]):
+                continue
+            # Uma vez por ESPERA, não por item: o objetivo retomado que volta a esperar ganha outro lembrete. A chave leva
+            # a entrada na espera (`desde`), e só barra o lembrete emitido depois dela.
+            chave = f"vencimento:lembrete:{ref}:{desde}"
+            if db.scalar("SELECT 1 FROM events WHERE kind=? AND (objective_id=? OR (objective_id IS NULL AND run_id=?)) "
+                         "AND ts >= ? LIMIT 1", (EVENTO_DO_LEMBRETE, ref, ref, desde)):
+                continue
+            vence_em = to_iso(parse_iso(desde) + prazo)
+            self.repo.bus.emit(EVENTO_DO_LEMBRETE, f"Vence em {LEMBRETE_ANTES_H} h ou menos: {dados['o_que']} {ref}",
+                               run_id=str(dados["run_id"]), objective_id=dados.get("objective_id"),  # type: ignore[arg-type]
+                               instance_id=dados.get("aparelho"),  # type: ignore[arg-type]
+                               data={**dados, "regra": "31.50", "chave": chave, "vence_em": vence_em,
+                                     "acontece_se_vencer": "cancelado pelo sistema"})
+            saidos.append(chave)
+        return saidos
+
+    def _prazo_para_os_dtos(self) -> tuple[float, str] | None:
+        """31.50: o que o repositório precisa para o `vence_em`. Desligado, `None`. Só LÊ a marca: quem a grava é a
+        volta do vencimento, para uma leitura de DTO nunca escrever no banco."""
+        ligado, horas = self._vencimento()
+        if not ligado:
+            return None
+        # A marca só muda quando a volta a grava ou apaga (neste processo, o líder): fica em memória, e uma lista com
+        # N execuções não lê `settings` N vezes.
+        # `""`: lida e ausente (a volta ainda não a gravou); o `vence_em` sai nulo, em vez de andar com o relógio.
+        if self._marca_lida is None:
+            marca = self.repo.db.scalar("SELECT value FROM settings WHERE key=?", (CHAVE_LIGADO_DESDE,))
+            self._marca_lida = str(marca or "")
+        return horas, self._marca_lida
+
+    def _ligado_desde(self) -> str:
+        """31.50, carência ao ligar: quando o vencimento foi visto ligado pela primeira vez (`settings`, durável entre
+        reinícios). O relógio de cada espera conta a partir do mais tardio entre a entrada nela e esta marca. Antes, o
+        relógio usava só marcas do passado, e ao ligar venceu de uma vez tudo o que já estava parado (21 objetivos na
+        primeira volta do deploy 30, sem aviso). Desligar apaga a marca: ligar de novo dá a carência outra vez."""
+        db = self.repo.db
+        if not (marca := db.scalar("SELECT value FROM settings WHERE key=?", (CHAVE_LIGADO_DESDE,))):
+            db.execute("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING",
+                       (CHAVE_LIGADO_DESDE, now_iso()))
+            marca = db.scalar("SELECT value FROM settings WHERE key=?", (CHAVE_LIGADO_DESDE,))
+        self._marca_lida = str(marca)
+        return str(marca)
+
+    def _esquecer_ligado_desde(self) -> None:
+        self.repo.db.execute("DELETE FROM settings WHERE key=?", (CHAVE_LIGADO_DESDE,))
+        self._marca_lida = None
+
     def _cancelar_antes_de_iniciar(self, run_id: str, detalhe: str, *, message: str | None = None,
                                    dados: dict[str, object] | None = None) -> None:
         """Fecha como `cancelled` a execução que não começou: etapas abertas, objetivos e aprovações junto. Quem chama
@@ -1515,9 +1630,12 @@ class RunService:
         expiração, nunca a adiantaria. Sem evento nenhum (execução anterior aos eventos), vale a criação."""
         ligado, horas_cfg = self._vencimento()
         if not ligado:
+            self._esquecer_ligado_desde()
             return []
         horas = _horas(horas_cfg)
         limite = to_iso(agora - timedelta(hours=horas_cfg))
+        if self._ligado_desde() >= limite:          # 31.50: ainda na carência de quando o vencimento foi ligado
+            return []
         expiradas: list[str] = []
         # A entrada é depois da criação: quem nasceu depois do limite não pode ter vencido.
         for run in self.repo.db.query("SELECT id, created_at FROM runs WHERE status=? AND created_at < ? "
@@ -1563,9 +1681,12 @@ class RunService:
         objetivo ainda em `waiting_user` E à execução ainda terminal; do contrário, a resposta dela vale e nada é tocado."""
         ligado, horas_cfg = self._vencimento()
         if not ligado:
+            self._esquecer_ligado_desde()
             return []
         horas = _horas(horas_cfg)
         limite = to_iso(agora - timedelta(hours=horas_cfg))
+        if self._ligado_desde() >= limite:          # 31.50: ainda na carência de quando o vencimento foi ligado
+            return []
         terminais = tuple(s.value for s in RUN_TERMINAL)
         marcas = ",".join("?" for _ in terminais)
         vencidos: list[str] = []
@@ -1581,25 +1702,29 @@ class RunService:
                 continue
             oid, run_id = str(o["id"]), str(o["run_id"])
             try:
-                # A guarda de corrida: nenhum valor muda (`status=status`), só o `rowcount` diz se o objetivo ainda espera e
-                # a execução ainda está terminal. Mudar o status aqui desligaria a conferência de transição e a conta da
-                # espera do `set_objective` logo abaixo.
-                if not self.repo.db.execute(
-                        "UPDATE objectives SET status=status WHERE id=? AND status=? AND EXISTS "
-                        f"(SELECT 1 FROM runs WHERE id=? AND status IN ({marcas}))",
-                        (oid, ObjectiveStatus.waiting_user.value, run_id, *terminais)).rowcount:
-                    continue
-                motivo = f"vencido sem resposta em {horas} h"
-                self.repo.cancel_open_steps(run_id, objective_id=oid, reason=f"pedido {motivo}")
-                self.repo.set_objective(
-                    oid, ObjectiveStatus.cancelled,
-                    detail=f"Sem resposta em {horas} h: o pedido venceu e foi encerrado pelo sistema. "
-                           "Para seguir, faça o pedido de novo.",
-                    message=f"{o['instance_id']}: pedido sem resposta em {horas} h; encerrado pelo sistema",
-                    dados={"vencimento": {"regra": REGRA_DO_VENCIMENTO, "motivo": MOTIVO_VENCIDO, "horas": horas,
-                                          "desde": desde}})
-                self.scheduler._expirar_aprovacoes(oid, f"pedido {motivo}")  # noqa: SLF001
-                self.repo.recompute_run(run_id)
+                # 31.50 (b): a guarda e o cancelamento numa transação só. Em comandos separados, uma retomada entre a
+                # guarda e o `set_objective` era atropelada, e uma falha no meio deixava as etapas canceladas com o
+                # objetivo ainda em `waiting_user`. A `tx()` é reentrante: o que os métodos abrem por dentro entra nesta.
+                with self.repo.db.tx():
+                    # A guarda de corrida: nenhum valor muda (`status=status`), só o `rowcount` diz se o objetivo ainda
+                    # espera e a execução ainda está terminal. Mudar o status aqui desligaria a conferência de transição e
+                    # a conta da espera do `set_objective` logo abaixo.
+                    if not self.repo.db.execute(
+                            "UPDATE objectives SET status=status WHERE id=? AND status=? AND EXISTS "
+                            f"(SELECT 1 FROM runs WHERE id=? AND status IN ({marcas}))",
+                            (oid, ObjectiveStatus.waiting_user.value, run_id, *terminais)).rowcount:
+                        continue
+                    motivo = f"vencido sem resposta em {horas} h"
+                    self.repo.cancel_open_steps(run_id, objective_id=oid, reason=f"pedido {motivo}")
+                    self.repo.set_objective(
+                        oid, ObjectiveStatus.cancelled,
+                        detail=f"Sem resposta em {horas} h: o pedido venceu e foi encerrado pelo sistema. "
+                               "Para seguir, faça o pedido de novo.",
+                        message=f"{o['instance_id']}: pedido sem resposta em {horas} h; encerrado pelo sistema",
+                        dados={"vencimento": {"regra": REGRA_DO_VENCIMENTO, "motivo": MOTIVO_VENCIDO, "horas": horas,
+                                              "desde": desde}})
+                    self.scheduler._expirar_aprovacoes(oid, f"pedido {motivo}")  # noqa: SLF001
+                    self.repo.recompute_run(run_id)
                 self._soltar_aviso_do_aparelho(str(o["instance_id"]))
                 vencidos.append(oid)
             except Exception:  # noqa: BLE001 - um objetivo ruim não pode prender os outros

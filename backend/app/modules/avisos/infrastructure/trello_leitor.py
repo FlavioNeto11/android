@@ -33,7 +33,7 @@ import time
 from collections import deque
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.config import Config, TrelloCfg
 from app.models import Problem
@@ -41,8 +41,10 @@ from app.modules.avisos.adapters.trello import ClienteTrello, FalhaDoTrello
 from app.modules.avisos.application.entrada import AJUDA, Intencao, rotear
 from app.modules.avisos.application.entrega import FalhaDeEnvio
 from app.modules.avisos.application.espelho import PREFIXO_DA_IA, prefixo_da_ia
-from app.modules.avisos.domain.mensagem import Aviso, chave_do_fato, titulo_do_aviso
+from app.modules.avisos.domain.mensagem import ROTINA, Aviso, chave_do_fato, titulo_do_aviso
+from app.modules.avisos.domain.privacidade import texto_seguro
 from app.modules.avisos.infrastructure.entrada import (
+    RESPOSTA_DO_REPASSE,
     ConversaDoCanal,
     Linha,
     PortasDaCentral,
@@ -53,7 +55,7 @@ from app.modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
 from app.modules.avisos.infrastructure.espelho_sql import CartoesDoTrello, CursorDoTrello
 from app.modules.avisos.infrastructure.trello_webhook import CadastroDoWebhook
 from app.taskqueue.travas import AVISOS
-from app.util import parse_iso
+from app.util import parse_iso, to_iso
 
 log = logging.getLogger("poc.avisos.trello")
 
@@ -214,6 +216,14 @@ class SaidaDoTrello:
             self.falha = falha
             raise FalhaDeEnvio(falha.motivo, definitiva=falha.definitiva, status=falha.status) from None
 
+    async def nome_do_cartao(self, card: str) -> str | None:
+        """O nome do cartão para o pedido de confirmação do comentário do dono (28.30); `None` se o Trello falhar."""
+        try:
+            return await self._cliente.nome_do_cartao(card)
+        except FalhaDoTrello as falha:
+            log.warning("trello: nome do cartão não lido (%s)", falha.motivo)
+            return None
+
     async def confirmar_botao(self, botao_id: str) -> None:
         return None
 
@@ -224,14 +234,66 @@ class SaidaDoTrello:
         return False
 
 
+#: 28.30: o comentário do dono num cartão sem aviso da Central (os cartões do plano).
+REPASSE_COMENTARIO = "comentario"
+#: O operador da linha sem autor lido: não casa com nenhum `membro_dono` (os ids do Trello são hexadecimais).
+AUTOR_DESCONHECIDO = "desconhecido"
+TIPO_DO_COMENTARIO = "trello.comentario"
+#: O aviso de que o teto por hora segurou os pedidos: só informa (nível 3, vai à janela da rotina). O nome não começa
+#: por `trello.comentario`, que a fila nunca agrupa (`SEM_AGRUPAR`).
+TIPO_DO_TETO = "trello.teto_de_comentarios"
+#: O trecho do comentário que vai ao Telegram (o inteiro fica no cartão e na linha da entrada).
+TEXTO_DO_COMENTARIO_MAX = 300
+RESPOSTA_COMENTARIO_SEM_TELEGRAM = ("Recebi o seu comentário e repassei à orquestradora. A confirmação pelo Telegram não "
+                                    "saiu (o canal está desligado): confirme pelo painel ou pelo chat da sessão.")
+#: As travas do laço (revisão da #314): o 🤖 é convenção, e uma sessão que o esquece gera pedido ao dono. No máximo UM
+#: pedido em aberto por cartão (o que o dono ainda não respondeu, nas últimas `ABERTO_S`) e `COMENTARIOS_POR_HORA` pedidos
+#: por hora no quadro; acima disso o comentário só vai à orquestradora, e o dono recebe UMA linha por hora dizendo que parou.
+COMENTARIOS_POR_HORA = 6
+ABERTO_S = 24 * 3600
+RESPOSTA_COMENTARIO_JA_ABERTO = ("Recebi o seu comentário e repassei à orquestradora. Já há um pedido de confirmação deste "
+                                 "cartão esperando você no Telegram: responda lá.")
+RESPOSTA_COMENTARIO_NO_TETO = (f"Recebi o seu comentário e repassei à orquestradora. Parei de pedir confirmação no Telegram "
+                               f"nesta hora (mais de {COMENTARIOS_POR_HORA} pedidos): confirme pelo chat da sessão.")
+
+
+class ComentariosDoTrello:
+    """28.30 (revisão da #314): a conferência que a conversa do Telegram faz antes de o sim do dono valer. Relê a action do
+    comentário pela API: o mesmo texto que foi gravado é `igual`; outro texto, `mudou`; 404, `apagado`; outra falha ou o
+    Trello desligado, `sem_conferir`; sem linha gravada, `desconhecido`."""
+
+    def __init__(self, repo: EntradasDoCanal, cliente: Callable[[], ClienteTrello | None]):
+        self.repo = repo
+        self._cliente = cliente
+
+    async def conferir(self, action: str) -> tuple[str, str | None]:
+        ident = self.repo.id_de(action)
+        linha = self.repo.linha(ident) if ident is not None else None
+        gravado = _texto(linha.get("texto")) if linha is not None else None
+        if gravado is None:
+            return "desconhecido", None
+        cliente = self._cliente()
+        if cliente is None:
+            return "sem_conferir", gravado
+        try:
+            bruta = await cliente.acao(action)
+        except FalhaDoTrello as falha:
+            return ("apagado" if falha.status == 404 else "sem_conferir"), gravado
+        atual = _texto((_mapa((bruta if isinstance(bruta, dict) else {}).get("data")) or {}).get("text"))
+        return ("igual" if atual is not None and atual.strip() == gravado.strip() else "mudou"), gravado
+
+
 class ConversaDoTrello(ConversaDoCanal):
     """A `ConversaDoCanal` com as regras do Trello (ver o docstring do módulo). Só ESTREITA o comum: a gramática e as
     políticas de identidade, credencial, idade, tamanho e limite de taxa são as do Telegram."""
 
     def __init__(self, cfg: Config, repo: EntradasDoCanal, portas: PortasDaCentral, *, recusa: Callable[[str], bool],
-                 redigir: Callable[[str], str], relogio: Callable[[], float] | None = None):
+                 redigir: Callable[[str], str], relogio: Callable[[], float] | None = None,
+                 avisar_dono: Callable[[Aviso], bool] | None = None):
         super().__init__(cfg, repo, portas, recusa=recusa, redigir=redigir,
                          operador=f"trello:{cfg.file.trello.membro_dono}", relogio=relogio)
+        #: 28.30: o pedido de confirmação do comentário do dono vai ao Telegram dele pela fila de avisos.
+        self.avisar_dono = avisar_dono
 
     def _idade_max_s(self) -> float:
         return self.cfg.file.trello.idade_max_s
@@ -242,8 +304,9 @@ class ConversaDoTrello(ConversaDoCanal):
         return ref.autor if ref is not None else ""
 
     async def _tratar(self, saida: SaidaDaConversa, linha: Linha) -> None:
-        # O operador é o AUTOR da action (`decided_by='trello:<idMember>'`), não um valor fixo da instância.
-        self.operador = f"trello:{self._autor(linha) or self.cfg.file.trello.membro_dono}"
+        # O operador é o AUTOR da action (`decided_by='trello:<idMember>'`), não um valor fixo da instância. Sem autor
+        # lido, ninguém: a linha não vale como do dono (revisão da #312, 04/10 20:36Z).
+        self.operador = f"trello:{self._autor(linha) or AUTOR_DESCONHECIDO}"
         await super()._tratar(saida, linha)
 
     def _intencao(self, linha: Linha) -> Intencao:
@@ -251,8 +314,11 @@ class ConversaDoTrello(ConversaDoCanal):
         responde_a = str(linha.get("responde_a") or "")
         fato = responde_a[len(PREFIXO_DO_FATO):] if responde_a.startswith(PREFIXO_DO_FATO) else None
         if fato is None and not texto.lstrip().startswith("/"):
-            # Anotação solta num cartão que não é da Central (3f): não é pedido. Só o comando com barra vale em qualquer cartão.
-            return Intencao("vazia")
+            # Comentário num cartão que não é de aviso da Central (os cartões do plano, 28.30): não é pedido nem comando,
+            # mas também não fica mudo. Vai à orquestradora e pede a confirmação do dono no Telegram (`_comentario`).
+            if not texto.strip():
+                return Intencao("vazia")
+            return Intencao("orquestradora", texto=texto.strip(), repasse=REPASSE_COMENTARIO)
         return rotear(texto, fato=fato)
 
     # ------------------------------------------------------------------ o que cada intenção faz aqui
@@ -268,14 +334,73 @@ class ConversaDoTrello(ConversaDoCanal):
         await self._agir_do_autor(saida, linha, i)
 
     async def _agir_do_autor(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
-        dono = self._autor(linha) == self.cfg.file.trello.membro_dono
-        if not dono and i.tipo in ("aprovar", "vetar", "responder"):
+        autor = self._autor(linha)
+        dono = bool(autor) and autor == self.cfg.file.trello.membro_dono
+        if i.repasse == REPASSE_COMENTARIO:
+            if dono:
+                await self._comentario(saida, linha, i)
+            else:
+                # A anotação de quem o dono autorizou segue como antes: nem pedido, nem pergunta a ele.
+                self.repo.marcar(self._id(linha), "ignorada", intencao="vazia", de=("recebida",))
+        elif not dono and i.tipo in ("aprovar", "vetar", "responder"):
             # Quem o dono autorizou a PEDIR não decide aprovação nem responde pergunta de execução.
             await self._feita(saida, linha, i, RESPOSTA_SO_O_DONO)
         elif i.tipo == "ajuda":
             await self._feita(saida, linha, i, AJUDA + AJUDA_DO_TRELLO)
         else:
             await ConversaDoCanal._agir(self, saida, linha, i)
+
+    async def _comentario(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
+        """28.30: o comentário do dono num cartão. O comentário sozinho não autoriza nada (a ANA e as sessões escrevem
+        no quadro com a conta dele): vai à orquestradora, e o dono confirma com sim ou não no Telegram. O cartão recebe
+        a resposta na hora. No Telegram só saem o nome do cartão e o texto que passam inteiros pelos filtros do 28.31."""
+        ref = RefDoTrello.ler(linha.get("ref_mensagem"))
+        pedida, resposta = False, RESPOSTA_COMENTARIO_SEM_TELEGRAM
+        trava = self._trava_do_comentario(linha, ref) if ref is not None and self.avisar_dono is not None else None
+        if trava is not None:
+            resposta = trava
+        elif ref is not None and self.avisar_dono is not None:
+            nomes = self._nomes_de_persona()
+            bruto = await saida.nome_do_cartao(ref.card) if isinstance(saida, SaidaDoTrello) else None
+            nome = texto_seguro(bruto, nomes, self._redigir)
+            texto = texto_seguro(i.texto, nomes, self._redigir)
+            if texto is not None and len(texto) > TEXTO_DO_COMENTARIO_MAX:
+                texto = texto[:TEXTO_DO_COMENTARIO_MAX].rstrip() + "…"
+            pedida = self.avisar_dono(Aviso(
+                chave=chave_do_fato("comentario", ref.action, ref.card), tipo=TIPO_DO_COMENTARIO,
+                titulo=titulo_do_aviso(f"💬 Você comentou no cartão «{nome}»" if nome else
+                                       "💬 Você comentou num cartão do Trello"),
+                corpo="\n".join([
+                    f"«{texto}»" if texto else "O texto fica no cartão: tem dado que não sai por aqui.",
+                    "Comentário no Trello sozinho não autoriza nada; o sim daqui é que vale.",
+                    "Espera você: responda sim ou não a esta mensagem."]),
+                link=f"https://trello.com/c/{ref.card}"))
+            if pedida:
+                resposta = RESPOSTA_DO_REPASSE[REPASSE_COMENTARIO]
+        self.repo.marcar(self._id(linha), "orquestradora", intencao=i.tipo, destino="orquestradora",
+                         previa={"repasse": REPASSE_COMENTARIO, "texto": i.texto, "confirmacao_pedida": pedida},
+                         de=("recebida", "pergunta"))
+        await self._responder(saida, linha, resposta)
+
+    def _trava_do_comentario(self, linha: Linha, ref: RefDoTrello) -> str | None:
+        """A resposta do cartão quando uma das travas segura o pedido de confirmação, ou `None` (pode pedir)."""
+        agora = datetime.fromtimestamp(self._agora(), timezone.utc)
+        abertos = [a for a in self.repo.comentarios_com_pedido(desde=to_iso(agora - timedelta(seconds=ABERTO_S)),
+                                                                card=ref.card, exceto=self._id(linha))
+                   if not self.repo.comentario_respondido(a)]
+        if abertos:
+            return RESPOSTA_COMENTARIO_JA_ABERTO
+        if len(self.repo.comentarios_com_pedido(desde=to_iso(agora - timedelta(hours=1)))) < COMENTARIOS_POR_HORA:
+            return None
+        if self.avisar_dono is not None:
+            # Uma linha por hora (a chave é a hora): a fila deduplica o resto.
+            self.avisar_dono(Aviso(
+                chave=chave_do_fato("comentario-teto", agora.strftime("%Y-%m-%dT%H")), tipo=TIPO_DO_TETO, nivel=ROTINA,
+                titulo=titulo_do_aviso("💬 Parei de pedir confirmação dos seus comentários nesta hora"),
+                corpo=(f"Mais de {COMENTARIOS_POR_HORA} comentários pediram confirmação em 1 h. Os novos vão à orquestradora "
+                       "sem pergunta até a próxima hora.\nNada a fazer."),
+                link=None))
+        return RESPOSTA_COMENTARIO_NO_TETO
 
     async def _decidir(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
         if i.tipo == "vetar":
@@ -370,7 +495,7 @@ class LeitorDoTrello:
         self._cliente = cliente
         self._dormir = dormir
         self.conversa = ConversaDoTrello(cfg, repo, portas, recusa=recusa, redigir=redigir,
-                                         relogio=lambda: relogio().timestamp())
+                                         relogio=lambda: relogio().timestamp(), avisar_dono=avisar_dono)
         self._recusada: FalhaDoTrello | None = None
         self._reacoes: deque[float] = deque()      # as reações a convidados na última hora (monotônico)
         #: O webhook (§8) só ANOTA o id da action e acorda o laço; a volta de avisos relê a action pela API.

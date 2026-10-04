@@ -253,6 +253,15 @@ class ClienteTrello:
             raise FalhaDoTrello("o Trello não devolveu o cartão e o quadro dele")
         return ident, quadro
 
+    async def nome_do_cartao(self, card: str) -> str:
+        """`GET /1/cards/{id}?fields=name`: o nome do cartão, para o pedido de confirmação do comentário do dono (28.30)."""
+        resposta = self._objeto(await self._pedir("GET", f"/1/cards/{quote(card, safe='')}", params={"fields": "name"}),
+                                "o cartão")
+        nome = resposta.get("name")
+        if not isinstance(nome, str):
+            raise FalhaDoTrello("o Trello não devolveu o nome do cartão")
+        return nome
+
     async def nomes_dos_anexos(self, card: str) -> dict[str, str]:
         """`GET /1/cards/{id}/attachments?fields=id,name`: nome → id de cada anexo do cartão (para não mandar duas vezes
         o mesmo arquivo, que vai com o nome neutro `anexo-<sha>.<ext>`)."""

@@ -1822,6 +1822,8 @@ class RunSummary(BaseModel):
     #: fluxo provado, o pedido de validação ou o id externo do canal.
     origem: OrigemDaExecucao | None = None
     origem_ref: str | None = None
+    #: 31.50: quando a pergunta (`needs_input`) vence pelo sistema, ISO; nulo fora de `needs_input` ou desligado.
+    vence_em: str | None = None
 
 
 class EfeitoRepetido(BaseModel):
@@ -1956,6 +1958,8 @@ class ObjectiveDTO(BaseModel):
     ai_calls: int
     ai_input_tokens: int
     ai_output_tokens: int
+    #: 31.50: quando o objetivo parado (`waiting_user` de execução terminada) vence pelo sistema, ISO; nulo fora disso.
+    vence_em: str | None = None
 
 
 class PlanVersionDTO(BaseModel):

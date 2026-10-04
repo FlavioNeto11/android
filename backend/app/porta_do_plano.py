@@ -26,7 +26,8 @@ from pydantic import BaseModel, Field
 from .db import Row, loads
 from .models import RUN_TERMINAL, InteractionType, StepStatus
 from .planning.capabilities import contraparte, objeto_da_acao, texto_a_gerar
-from .social.chave_da_aprovacao import VERSAO_DA_CHAVE, chave_da_aprovacao, midia_da_etapa, texto_exato
+from .social.approvals import apply_edit
+from .social.chave_da_aprovacao import VERSAO_DA_CHAVE, chave_da_aprovacao, midia_da_etapa, tem_variavel, texto_exato
 from .taskqueue.repository import MOTIVO_REJEICAO
 from .util import now, now_iso, to_iso
 
@@ -39,6 +40,8 @@ log = logging.getLogger("poc.porta_do_plano")
 PERMITIDO, APROVACAO, ADIADO, RECUSADO, NA_EXECUCAO = "permitido", "aprovacao", "adiado", "recusado", "na_execucao"
 #: Validade padrão da aprovação antecipada, em horas (`LimitsCfg.aprovacao_no_plano_validade_h`).
 VALIDADE_PADRAO_H = 24
+#: O maior texto editado aceito no cartão do plano (o do comentário e da legenda do Instagram).
+LIMITE_DO_TEXTO = 2200
 #: O que sempre pede a pessoa na execução, qualquer que seja o plano (ADR-009).
 SEMPRE_NA_EXECUCAO = ("desafio", "2FA", "CAPTCHA")
 
@@ -57,6 +60,9 @@ class ItemAprovado(BaseModel):
 
     step_id: str = Field(min_length=1, max_length=300)
     chave: str = Field(min_length=64, max_length=64)
+    #: O texto EDITADO no cartão do plano (`None`: o da prévia). A chave conferida é a que o dono viu (a do texto da
+    #: prévia); a gravada é a do texto editado, recalculada da etapa relida: a chave é a do texto que vai sair.
+    texto: str | None = Field(default=None, max_length=20_000)   # o limite real (LIMITE_DO_TEXTO) tem mensagem própria
 
 
 class AprovarPlanoBody(BaseModel):
@@ -267,6 +273,7 @@ def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por:
     itens = {str(i["step_id"]): i for i in _itens(previa)}
     do_plano = {str(e["id"]) for e in etapas}
     pedidos = list(dict.fromkeys((i.step_id, i.chave) for i in corpo.aprovar))
+    editados = {i.step_id: i.texto.strip() for i in corpo.aprovar if i.texto is not None}
     if len({sid for sid, _c in pedidos}) != len(pedidos):
         raise PortaIndisponivel("invalid_body", "A mesma etapa veio com duas chaves.", 422)
     if set(corpo.tirar) & {sid for sid, _c in pedidos}:
@@ -280,6 +287,20 @@ def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por:
                             or "a chave mudou: o item não é mais o que você viu"})
     mudaram += [{"step_id": sid, "selo": None, "motivo": "a etapa não está mais no plano"}
                 for sid in corpo.tirar if sid not in do_plano]
+    for sid, texto in editados.items():
+        item = itens.get(sid)
+        if item is None or sid in {m["step_id"] for m in mudaram}:
+            continue
+        if item.get("texto") is None:
+            raise PortaIndisponivel("invalid_body", f"A etapa {sid} não escreve texto: não há o que editar.", 422)
+        if not texto:
+            raise PortaIndisponivel("invalid_body", "O texto editado está vazio.", 422)
+        if len(texto) > LIMITE_DO_TEXTO:
+            raise PortaIndisponivel("texto_longo", f"O texto editado tem {len(texto)} caracteres; o limite é "
+                                                   f"{LIMITE_DO_TEXTO}.", 422)
+        if tem_variavel(texto):
+            raise PortaIndisponivel("invalid_body", "O texto editado tem variável por resolver ({nome}): escreva o "
+                                                    "texto final.", 422)
     if mudaram:
         raise PortaIndisponivel("plano_mudou", f"{len(mudaram)} item(ns) mudaram desde a prévia; nada foi gravado.",
                                 mudaram=mudaram, previa=previa)
@@ -296,6 +317,22 @@ def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por:
         for sid, chave in aprovar:
             item, e = itens[sid], etapa_por_id[sid]
             obj = objetivos[str(e["objective_id"])]
+            novo = editados.get(sid)
+            if novo is not None and novo != str(item.get("texto") or "").strip():
+                apply_edit(state.db, sid, novo)
+                # O selo se refaz com o texto editado (revisão do painel, B1): há regra que depende do texto (o
+                # comentário repetido é recusado, a DM repetida pede confirmação). Se o item editado não é mais um 🔒
+                # com chave, nada se grava (o raise dentro da transação desfaz a edição) e o dono ouve o porquê.
+                refeito = _item(state, _run, obj, state.repo.step_row(sid), [], {}, set())
+                if refeito is None or refeito["selo"] != APROVACAO or not refeito["chave"]:
+                    motivo = str(refeito["motivo"] if refeito else "") or "o item não fecha mais uma aprovação"
+                    raise PortaIndisponivel(
+                        "plano_mudou", "Com o texto editado, o item não é mais o que se aprova no plano; nada foi "
+                                       "gravado.", previa=previa,
+                        mudaram=[{"step_id": sid, "selo": refeito["selo"] if refeito else None,
+                                  "motivo": f"com o texto editado: {motivo}"}])
+                chave = str(refeito["chave"])
+                item = {**item, "texto": novo}
             gravadas.append(state.approvals.aprovar_no_plano(
                 profile_id=str(item["profile_id"]), capability=str(item["acao"]),
                 summary=f"{e['title']} — aprovado na prévia da porta", target=_texto(item.get("alvo")),
@@ -325,6 +362,10 @@ def renovar_plano(state: AppState, run_id: str) -> dict[str, object]:
         vencidas = state.approvals.vencer_do_plano(now_iso(), run_id=run_id)
     if renovadas:
         state.repo.decision(f"validade dos sins do plano renovada até {validade}: {renovadas} item(ns)", run_id=run_id)
+    if vencidas:
+        # Só a contagem (sem alvo nem texto): o que venceu volta para o dono rever, e o log diz quantos.
+        state.repo.decision(f"{vencidas} sim(ns) do plano já vencido(s) não se renovaram: voltam para você rever",
+                            run_id=run_id)
     if vencidas and not renovadas:
         raise PortaIndisponivel("sim_vencido", f"{vencidas} sim(ns) do plano já tinham vencido e não se renovam: "
                                                "reveja a prévia (ou a porta pergunta na execução).", vencidas=vencidas)

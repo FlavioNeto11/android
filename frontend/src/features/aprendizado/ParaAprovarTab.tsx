@@ -19,7 +19,7 @@ import type { RelatorioDaAprovacao } from './aprovacaoAutomatica';
 import { ResumoParaDecidir } from './ResumoParaDecidir';
 import {
   type AcaoDoItem, type EntradaDoLivro, ONDE_FICAM_AS_HABILIDADES, acaoDeAprovarNaFila, acoesNaFila, ordenarPendentes,
-  tituloDoItem, titulosDaLista,
+  porQueOSistemaNaoPublica, tituloDoItem, titulosDaLista,
 } from './model';
 import { type ModoDoCurador, efeitoDoAceite, textoDaRecusa } from './parecer';
 import styles from './Aprendizado.module.css';
@@ -48,6 +48,10 @@ const entraNoLote = (e: EntradaDoLivro): boolean => !!e.parecer && !e.parecer.re
 /** 30.54: "1 parecer", "5 pareceres" (o "parecer(es)" confundia quem decide). */
 const pareceres = (n: number): string => (n === 1 ? '1 parecer' : `${n} pareceres`);
 const selecionados = (n: number): string => (n === 1 ? '1 selecionado' : `${n} selecionados`);
+/** 30.66: o motivo comum de Revisar ("tem efeito externo"), dito uma vez no cabeçalho em vez de em cada item. */
+const AVISO_DE_REVISAR = porQueOSistemaNaoPublica({
+  por_que_nao_publica: { codigo: 'efeito_externo', espera_o_dono: true, detalhe: null },
+}) ?? 'tem efeito externo';
 
 /**
  * 30.54: o que o aceite em lote vai fazer, antes do motivo. O dono via só "Aceitar 5 parecer(es)" sem saber o que o
@@ -137,6 +141,8 @@ export function ParaAprovarTab() {
   // A seleção só guarda o que ainda está na lista (o item aprovado sai da fila).
   const itensFila = useMemo(() => fila.itens ?? [], [fila.itens]);
   const itensLegado = useMemo(() => legado.itens ?? [], [legado.itens]);
+  // 30.66: com a aprovação automática ligada, quem decide pode ser a plataforma; o texto do vazio diz isso.
+  const autoLigada = aprovacao?.modo === 'on';
   const escolhidosFila = itensFila.filter((e) => selFila.has(chaveDoItem(e)));
   const escolhidosLegado = itensLegado.filter((e) => selLegado.has(chaveDoItem(e)));
   // Os títulos sem repetição de cada lista (P4 do deploy 3); os avisos do lote usam os mesmos, para achar o item.
@@ -292,8 +298,17 @@ export function ParaAprovarTab() {
           />
         ) : null}
         {fila.itens !== null && itensFila.length === 0 ? (
-          <EmptyState icon={Inbox} compact title="Nada aguardando você">
-            Quando o sistema validar algo com efeito externo, ou uma nota sua virar candidata, aparece aqui.
+          // 30.66: "nada" no topo e uma lista longa logo abaixo se contradiziam; o topo diz as duas coisas.
+          // Só diz "nada" com as duas listas lidas: com Revisar carregando ou com erro, o topo não pode afirmar o vazio.
+          <EmptyState icon={Inbox} compact
+                      title={legado.erro ? 'Nada para aprovar; não deu para carregar Revisar'
+                        : legado.itens === null ? 'Nada para aprovar; carregando Revisar…'
+                        : itensLegado.length > 0 ? `Nada para aprovar; ${itensLegado.length} para revisar sem pressa`
+                        : 'Nada aguardando você'}>
+            {itensLegado.length > 0
+              ? `Os itens de Revisar, abaixo, continuam valendo como antes até você decidir${autoLigada ? ' (ou a aprovação automática, que está ligada)' : ''}. `
+              : null}
+            {`Quando o sistema validar algo com efeito externo, ou uma nota sua virar candidata, aparece aqui${autoLigada ? ', a menos que a aprovação automática o publique' : ''}.`}
           </EmptyState>
         ) : (
           <ul className={styles.lista} aria-label="Itens para aprovar">
@@ -315,8 +330,9 @@ export function ParaAprovarTab() {
 
       <section className={styles.secao} aria-labelledby="aprendizado-revisar">
         <h2 id="aprendizado-revisar" className={styles.secaoTitulo}><History size={16} aria-hidden /> Revisar</h2>
+        {/* 30.66: a frase que se repetia em cada item é dita uma vez aqui; o item com outro motivo segue com o dele. */}
         <Banner tone="warning" icon={ShieldAlert} compact role="note">
-          Itens antigos com efeito externo, ainda ativos.
+          Publicados antes da regra de aprovação ({AVISO_DE_REVISAR}) e ainda ativos: vale revisar.
         </Banner>
         <Disclosure summary="Saiba mais" bare>
           <p className={styles.secaoLead}>
@@ -386,6 +402,7 @@ export function ParaAprovarTab() {
                 entrada={e}
                 titulo={titulos.get(e)}
                 acoes={[CONFIRMAR, REBAIXAR]}
+                avisoNoCabecalho={AVISO_DE_REVISAR}
                 selecionado={selLegado.has(chaveDoItem(e))}
                 onSelecionar={(sim) => alternar(setSelLegado)(e, sim)}
                 onMudou={() => void carregar()}

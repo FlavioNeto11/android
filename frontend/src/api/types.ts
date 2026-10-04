@@ -1339,6 +1339,11 @@ export interface Approval {
   /** 29.30: a imagem da persona que a etapa vai publicar (CREATE_POST), para quem aprova ver o que sai. Ausente nas
    *  aprovações sem imagem (e no backend anterior ao campo). */
   image_id?: string | null;
+  /** 30.61: `plano` (o sim dado na prévia da porta) ou `execucao`. Ausente nas respostas antigas = `execucao`. */
+  origem?: 'plano' | 'execucao';
+  /** 30.61: até quando o sim do plano vale; nulo nas de execução. */
+  expires_at?: string | null;
+  plan_version?: number | null;
 }
 
 export interface ApprovalDecisionItem {
@@ -2834,8 +2839,13 @@ export interface CanalAnexo {
   do_dono: boolean;
   /** O arquivo sai por `/conteudo`: imagem ou PDF guardado, nunca o de convidado. */
   tem_conteudo: boolean;
-  /** Pode ir a um cartão do Trello (`POST .../trello`): só a mensagem do dono, guardada. */
+  /** Pode ir a um cartão do Trello (`POST .../trello`): só a mensagem do dono, guardada, de um tipo que a entrada aceita. */
   pode_ir_ao_cartao: boolean;
+  /** F5: a IA pode descrevê-lo (`POST .../ler`): só a imagem guardada que o dono mandou. */
+  pode_ler: boolean;
+  /** F5: a descrição que a IA já fez (gravada; ler de novo não custa), ou `null`. */
+  descricao: string | null;
+  lida_em: string | null;
 }
 
 export interface CanalAnexosPagina {
@@ -2849,4 +2859,77 @@ export interface CanalAnexoAoCartao {
   anexo_id: number;
   card: string;
   trello_anexo: string;
+  /** F5: o anexo já estava no cartão (a rota não anexa duas vezes). */
+  ja_estava?: boolean;
 }
+
+/** 28.24 F5: resposta de `POST /api/canais/anexos/{id}/ler`. `do_cache`: a descrição já existia e não custou nada. */
+export interface CanalAnexoLeitura {
+  anexo_id: number;
+  descricao: string;
+  custo_usd: number;
+  do_cache: boolean;
+  modelo: string | null;
+}
+
+/** 30.61 (adendo v1.32): o selo de uma etapa na prévia da porta. */
+export type SeloDaPorta = 'permitido' | 'aprovacao' | 'adiado' | 'recusado' | 'na_execucao';
+
+/** Uma etapa com efeito na prévia da porta (`GET /runs/{id}/porta`). */
+export interface ItemDaPorta {
+  objective_id: string;
+  step_id: string;
+  aparelho: string;
+  titulo: string;
+  persona_rotulo?: string | null;
+  profile_id?: string | null;
+  app?: string | null;
+  acao?: string | null;
+  alvo?: string | null;
+  objeto_alvo?: Record<string, string> | null;
+  selo: SeloDaPorta;
+  motivo: string;
+  dica: string;
+  retry_at: string | null;
+  texto?: string | null;
+  texto_na_execucao?: boolean;
+  tem_imagem?: boolean;
+  imagem_sha256?: string | null;
+  chave: string | null;
+  dependentes: string[];
+  falhou: boolean;
+}
+
+export interface PreviaDaPorta {
+  run_id: string;
+  hash_do_plano: string;
+  validade_ate: string;
+  custo_rascunhos_usd: number;
+  estimativa: boolean;
+  parcial: boolean;
+  total: boolean;
+  itens: ItemDaPorta[];
+  na_execucao: { textos_da_tela: number; itens_for_each: number; sempre: string[] };
+}
+
+export interface AprovarPlanoItem {
+  step_id: string;
+  chave: string;
+  /** O texto editado no cartão; omitido = o da prévia. */
+  texto?: string;
+}
+
+export interface RenovarPlanoResultado {
+  run_id: string;
+  renovadas: number;
+  vencidas: number;
+  validade_ate: string;
+}
+
+export interface AprovarPlanoResultado {
+  run: RunSummary;
+  aprovacoes: string[];
+  tiradas: string[];
+  validade_ate: string;
+}
+

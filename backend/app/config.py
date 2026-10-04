@@ -656,6 +656,10 @@ class AiCfg(BaseModel):
     # Item 31.35: tira da árvore QUE VAI AO ATOR a barra do navegador (endereço, abas, menu); a árvore local fica
     # completa para seletores, guardas e pós-condições. `false` volta ao prompt de antes, sem reinício de código.
     podar_ui_do_navegador: bool = True
+    # Item 31.52, diagnóstico DESLIGADO por padrão (lista vazia): os aparelhos DE TESTE em que o executor grava, como
+    # evidência, a árvore do navegador antes da poda acima, para o A/B offline (`scripts/poda-ab-offline.py`). Nunca um
+    # aparelho de conta real; tela sensível nunca é gravada.
+    diagnostico_arvore_aparelhos: list[str] = Field(default_factory=list)
     # Item 31.35 (parte B), DESLIGADO por padrão: quantas ações o ator pode mandar numa decisão de etapa SEM efeito
     # (chamadas paralelas de ferramenta; o executor confere o alvo de cada uma na tela nova). 1 = uma só, como sempre.
     # Liga só depois do A/B com teto (sucesso igual e >= 30 % menos decisões).
@@ -1494,6 +1498,10 @@ class PedidosCfg(BaseModel):
     piso_agir_s: int = Field(3600, ge=60, le=86_400)
     #: Colaboração entre pedidos (28.10, F1): estrutura sem efeito no laço. Desligada de fábrica.
     colaboracao: ColaboracaoCfg = ColaboracaoCfg()
+    #: Os nomes de sessão do painel que são o DONO (28.31 F2a, migração 106). Só o pedido criado por um deles (ou pelo
+    #: `trello:<membro_dono>`) grava `criado_por_tipo='dono'` e mostra o título no canal de fora. O login aceita qualquer
+    #: nome, então qualquer outro grava `convidado`. Vazia de fábrica: ninguém é o dono, e o aviso sai pelo id curto.
+    operadores_do_dono: list[str] = Field(default_factory=list, max_length=20)
 
 
 class ExecucaoCfg(BaseModel):
@@ -1504,7 +1512,9 @@ class ExecucaoCfg(BaseModel):
     vencimento_ligado: bool = True
     #: Horas sem resposta para a pergunta (`needs_input`) e o bloqueio (`waiting_user`) vencerem. Para o bloqueio, o relógio é
     #: o mais tardio entre a entrada do objetivo em `waiting_user` e o fim da execução.
-    pergunta_vence_h: float = Field(24.0, ge=0.01, le=8760.0)
+    #: 31.50 (c): piso de 1 h. Com 0,01 h, um "0.05" digitado no lugar de "5" encerrava em minutos tudo o que espera uma
+    #: pessoa (perguntas, bloqueios e aprovações pendentes), e o vencimento não tem desfazer.
+    pergunta_vence_h: float = Field(24.0, ge=1.0, le=8760.0)
 
 
 class AppConfigFile(BaseModel):

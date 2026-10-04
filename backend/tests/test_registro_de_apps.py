@@ -36,7 +36,7 @@ def _catalogo_de_mentira() -> CapabilityCatalog:
         post_description="O recado aparece na conversa.", bindings=("destinatario",),
         # ação com limite declara quem é o alvo (ADR-055): é por ele que a frota conta contas por pessoa
         side_effect=True, risk="medium", default_policy="approval_required", limit_bucket="dms",
-        counterparty="destinatario")
+        counterparty="destinatario", objeto_alvo=("destinatario",))       # 30.64: o efeito é sobre quem recebe
     return CapabilityCatalog(PACOTE_FALSO, [enviar])
 
 

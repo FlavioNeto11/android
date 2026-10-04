@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from app.modules.avisos.domain.mensagem import CAMINHO_DA_CAIXA, aviso_de_evento, chave_do_fato
+from app.modules.avisos.domain.mensagem import CAMINHO_DA_CAIXA, JANELA_DA_ROTINA_S, aviso_de_evento, chave_do_fato
 from app.modules.learning.domain.espera import AvisoDeEspera, Faixa
 
 from .test_avisos_servico import AQUI, CanalFalso, Relogio, _backend, _cfg
@@ -72,8 +72,13 @@ def test_mesma_espera_reemitida_sai_uma_vez_e_reentrada_sai_de_novo(tmp_path: Pa
     assert servico.enfileirar_evento("learning.needs_person", _dados(aguardando=False), 12) is False
     assert servico.enfileirar_evento("learning.needs_person", _dados(desde="2026-10-02T22:00:00+00:00"), 13) is True
     asyncio.run(servico.entregar_uma_vez())
+    assert canal.enviados == [], "a espera do aprendizado é rotina (28.31): não sai sozinha"
+    r.avancar(JANELA_DA_ROTINA_S + 1)
     asyncio.run(servico.entregar_uma_vez())
-    assert [t for t, _c, _l in canal.enviados] == ["ANA: Um conhecimento aprendido espera a sua revisão"] * 2
+    assert len(canal.enviados) == 1
+    titulo, corpo, _link = canal.enviados[0]
+    assert titulo == "ANA: 📋 Rotina: 2 novidades desde a última mensagem"
+    assert corpo.count("📚 Um conhecimento aprendido espera a sua revisão") == 2
     assert banco.scalar("SELECT COUNT(*) FROM avisos_entregas") == 2
 
 

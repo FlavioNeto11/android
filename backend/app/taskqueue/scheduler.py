@@ -29,6 +29,7 @@ from ..planning.provider import AIError, AIProvider, AppContext
 from ..util import iso_in, now, now_iso, parse_iso
 from .ai_slots import VagasDeIA
 from .balanceamento import Candidato, Servidor
+from .dialogos import MOTIVO_SEM_SAIDA
 from .executor import (PREFIXO_LIMPEZA, Cobertura, Outcome, StepExecutor, StepOutcome, saidas_exigidas,
                        tela_da_falha)
 from .flows import FlowStore
@@ -1699,8 +1700,11 @@ class Scheduler:
                         log.exception("registro do que foi lido na etapa %s", step.id)
             repo.emit_objective(oid)             # progresso ao vivo no painel
             return False
+        # 31.51 (revisão do #308, 3c): o diálogo do site sem saída que preserve a privacidade NÃO é pulado: a etapa
+        # seguinte rodaria com ele na tela e a IA poderia aceitar. O objetivo falha com o motivo literal.
         if (o in (Outcome.failed, Outcome.retry, Outcome.uncertain) and getattr(step, "opcional", False)
-                and not step.side_effect and self.cfg.file.ai.limpeza_opcional):
+                and not step.side_effect and self.cfg.file.ai.limpeza_opcional
+                and not (detail or "").startswith(MOTIVO_SEM_SAIDA)):
             # Item 31.36: a etapa que só limpa a tela não derruba o objetivo nem gasta tentativa e replano. Fica
             # `skipped` com o motivo, como AVISO (o objetivo segue e pode fechar `succeeded`), e o worker continua
             # da tela atual. As seguintes, se o aviso realmente atrapalhar, falham pela razão delas.

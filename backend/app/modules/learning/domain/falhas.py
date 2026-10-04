@@ -135,7 +135,9 @@ REGRAS: tuple[tuple[FailureKind, tuple[str, ...]], ...] = (
     (_F.COLETA_INCOMPLETA, ("lista nao chegou ao fim", "itens; o limite e")),
     (_F.DIGITACAO_INCOMPLETA, ("texto continua incompleto", "o texto nao foi comprovado",
                                "saiu de foco antes de completar", "digitacao incompleta")),
-    (_F.POS_CONDICAO_NAO_COMPROVADA, ("pos-condicao nao comprovada", "pos-condicao nao apareceu")),
+    # 31.51: o diálogo do site que a limpeza não fecha sem aceitar nada é a tela que segue coberta.
+    (_F.POS_CONDICAO_NAO_COMPROVADA, ("pos-condicao nao comprovada", "pos-condicao nao apareceu",
+                                      "a limpeza nao fechou o dialogo do site")),
     (_F.ALVO_AUSENTE, ("alvo ausente", "nao achou o alvo", "elemento nao encontrado")),
     # 29.74: o valor sensível que a triagem não deixa passar de uma etapa a outra (ADR-009) é parada do executor que
     # pede a pessoa sem passar pela IA; sem regra, viraria relato da IA.

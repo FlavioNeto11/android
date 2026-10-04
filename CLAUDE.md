@@ -10,17 +10,15 @@ Este arquivo carrega em toda sessão. Mantenha-o curto; o detalhe fica em `docs/
 
 1. [`.claude/handoff-current.md`](.claude/handoff-current.md): handoff curto e local da sessão (comece por ele; se faltar, só o topo de `docs/estado-atual.md`). Depois, só o topo de
    [`docs/estado-atual.md`](docs/estado-atual.md) (~50 KB: `sed -n 1,45p`) para o que acabou de mudar, bloqueios e próxima ação.
-2. [`docs/README.md`](docs/README.md): índice, com a fonte principal de cada assunto e quando abri-la.
+2. [`docs/README.md`](docs/README.md): índice, com a fonte principal de cada assunto, quando abri-la e o mapa "onde alterar".
 3. Só o que a tarefa pede. Um item do plano-100 tem pacote próprio em `.claude/plano-100/pacotes/<id>.md`. Um
    domínio, `docs/dominios/*.md`. Uma decisão, `grep -n "ADR-" docs/decisoes.md`. Uma armadilha conhecida,
    `grep -n -i "<termo>" docs/conhecimento/aprendizados.md`.
 
-**Não abra por inteiro:**
-
-- `docs/plano-100.md` (~50 KB): leia só a linha do item com `grep -n "^| <id> |"`.
-- `docs/auditoria-2026-09-21/` (467 KB): registro datado do commit `f1e61b3`. Confira no código antes de repetir
-  um achado.
-- As seções históricas de `docs/relatorio-validacao.md` e `docs/api-contract.md`: consulte por `grep -n "^#"`.
+**Não abra por inteiro** (a guarda barra o `Read` sem `limit` em `docs/plano-100.md`, `docs/decisoes.md`,
+`docs/estado-atual.md` e `CHANGELOG.md` e devolve o caminho; no plano, `grep -n "^| <id> |"`): nem
+`docs/auditoria-2026-09-21/` (467 KB, registro datado do commit `f1e61b3`: confira no código antes de repetir um
+achado), nem as seções históricas de `docs/relatorio-validacao.md` e `docs/api-contract.md` (`grep -n "^#"`).
 
 ## Invariantes (não negociáveis)
 
@@ -53,7 +51,7 @@ Este arquivo carrega em toda sessão. Mantenha-o curto; o detalhe fica em `docs/
 
   Um teste com mock não prova o ambiente real.
 - **Migração aplicada não se edita**; cria-se a próxima (`backend/migrations/NNN_*.sql`, com sha256 em
-  `schema_migrations`).
+  `schema_migrations`). Detalhe em `.claude/rules/migracoes.md`; a guarda barra a edição de migração commitada.
 - `config/config.yaml` e `.env` são **por instalação e ficam fora do Git**; o exemplo é `config/config.example.yaml`.
   Um checkout entre commits antigos pode apagar o `config.yaml` do ambiente central: confira antes de trocar de branch
   (`docs/operacao.md`).
@@ -61,56 +59,44 @@ Este arquivo carrega em toda sessão. Mantenha-o curto; o detalhe fica em `docs/
   sem conferir.
 - **Estado do plano-100 só pelo mecanismo.** `.claude/plano-100/estado.json` e `docs/execucao-plano-100-runner.md`
   mudam por `scripts/claude-plan-100.py aplicar|relatorio`, nunca à mão. Todo ID novo no plano entra num bloco de
-  `.claude/plano-100.json`.
+  `.claude/plano-100.json` (detalhe em `.claude/rules/plano-100.md`).
 - **Não abra sessão Claude aninhada** (`claude -p`: não há CLI nesta máquina). Orquestração pelo Workflow
-  `.claude/workflows/plano-100.js` ou por subagentes. Esse `.js` não pode ter quebra de linha literal dentro de
-  string e fica em LF.
+  `.claude/workflows/plano-100.js` ou por subagentes. Esse `.js` fica em LF e sem quebra de linha literal em string
+  (`.claude/rules/workflows-js.md`; o hook `workflow-js.py` confere).
 
 ## Economia de contexto (política completa em [`.claude/politica-de-contexto.md`](.claude/politica-de-contexto.md))
 
-- A conversa é memória temporária; o repositório é a durável. Contexto >400k: `/handoff` e preparar a troca; >500k: sessão nova
-  + `.claude/handoff-current.md`, não retomar a antiga. Registro em `.claude/session-registry.md`; sessões históricas não se reativam.
-- Saída de ferramenta seletiva: `grep`/`head`/`tail`/`wc`, `git diff --stat` antes do diff, `Read` com `offset`/`limit`, teste
-  devolve contagem e falhas (nunca a lista dos aprovados), script grande vira arquivo (não reenviar inline).
-- Subagent só se necessário e pelos agents de `.claude/agents/` (`worker-mecanico`, `-investigacao`, `-impl`, `-arquitetura`),
-  com retorno `Feito / Evidências / Validação / Bloqueios / Mudanças / Próximo`. Opus `xhigh` só por pedido explícito.
-- Atualização intermediária curta (`Feito / Validado / Pendente / Próximo`); estado importante vai para o repositório.
+- A conversa é memória temporária; o repositório é a durável. Contexto >400k: `/handoff` e preparar a troca; >500k:
+  sessão nova + `.claude/handoff-current.md`, não retomar a antiga. Registro em `.claude/session-registry.md`.
+- Saída de ferramenta seletiva (`grep`/`head`/`tail`, `git diff --stat`, `Read` com `offset`/`limit`; teste devolve
+  contagem e falhas).
+- Subagent só se necessário e pelos agents de `.claude/agents/`, com retorno `Feito / Evidências / Validação /
+  Bloqueios / Mudanças / Próximo`. Opus `xhigh` só por pedido explícito.
 
 ## Comandos verificados
 
 | O quê | Comando | Observação |
 |---|---|---|
 | Testes do backend, um arquivo | `cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_x.py` | durante o trabalho |
-| Suíte do backend inteira | `cd backend && .venv/Scripts/python.exe -m pytest -q -n 6` | ~10 min em SQLite (36 min em série, mesmo resultado; com `-n 8` eram ~6 min, mas a suíte deixava aparelho de conta real sem CPU: 29.67, 04/10); uma suíte por vez na máquina, em prioridade Idle (no PowerShell, `(Get-Process -Id $PID).PriorityClass='Idle'` antes do pytest, que vale em todo shell; `start /low` foi negado em uma das sessões); só antes do merge |
-| Suíte em PostgreSQL | a mesma, com `TEST_DATABASE_URL=postgresql://…` | ~14 min em série; `docs/banco.md` |
-| Testes dos scripts | `backend/.venv/Scripts/python.exe -m pytest -q scripts/tests` | a partir da raiz |
+| Suíte do backend inteira | `cd backend && .venv/Scripts/python.exe -m pytest -q -n 6` | ~10 min; uma por vez na máquina, em prioridade Idle (no PowerShell, `(Get-Process -Id $PID).PriorityClass='Idle'` antes); só antes do merge; por que não `-n 8`: `.claude/rules/testes.md` |
 | Frontend | `cd frontend && npm run typecheck && npm test` | `npm run build` gera o `dist` que o backend serve |
-| Estado do plano-100 | `python scripts/claude-plan-100.py check` | não chama IA |
-| Pacotes do plano-100 | `python scripts/plano-100-pacotes.py`, ou com `--fila --bloco <b>` | sem `--fila`, regenera o índice |
+| Estado do plano-100 | `python scripts/claude-plan-100.py check` | não chama IA; pacotes e fila: skill `plano-100` |
 | Documentação | `python scripts/docs-check.py` | links, IDs, mapa, migrações, vocabulário |
-| Saúde do ambiente central | `curl -s http://127.0.0.1:8000/api/health` | leitura: `commit`, `migration`, `problems` |
-| Saldo das contas de IA | `curl -s http://127.0.0.1:8000/api/ai/balances` | estimado; leitura nova: `POST …/{conta}` (ADR-051) |
-| Subir ou parar (dev) | `scripts/start.ps1 -Dev` / `-Simulated`; `scripts/stop.ps1` | [P] na máquina central: é o ambiente central |
-| Implantar | `scripts/deploy.ps1` (`-Ensaio` para ensaiar) | [P], permitido para validar (ambiente central) |
 
-Os comandos com `/` e `&&` funcionam no Git Bash e no PowerShell 7. Na tabela de scripts de `docs/operacao.md`, [P] marca o que toca o parque ou o ambiente central, e [T] o que gasta API.
+Suíte em PostgreSQL, testes dos scripts, saúde, saldos de IA, subir, parar e implantar: [`docs/operacao.md`](docs/operacao.md)
+(§ 3, § 4, § 6, § 10; na tabela de scripts da § 12, [P] marca o que toca o parque ou o ambiente central, e [T] o que
+gasta API). Os comandos com `/` e `&&` funcionam no Git Bash e no PowerShell 7.
 
 ## Fluxo de trabalho (protocolo permanente)
 
-1. **Recuperar contexto.** Skill `retomar`: `git status`, `git log -5`, `git worktree list`, `estado-atual.md` e
-   `claude-plan-100.py check`.
+1. **Recuperar contexto**: skill `retomar`.
 2. **Selecionar a tarefa** em [`docs/roadmap.md`](docs/roadmap.md), separando decisão do dono, implementação
    pendente e validação pendente.
-3. **Confirmar os critérios de aceite.** Skill `preparar-tarefa <id>`: linha do plano ou pacote, ADRs envolvidos,
-   aprendizados da área, se toca o mundo real.
-4. **Preparar o pacote mínimo**: arquivos, testes direcionados e as decisões envolvidas. Para executar itens pela
-   esteira, use a skill `plano-100` (modelo e esforço vêm do pacote, não se inventam).
-5. **Executar.** Leia por busca e trechos; mantenha saídas longas em arquivo.
-6. **Validar** com teste direcionado; a suíte inteira só no fim. Registre real, simulado ou não executado.
-7. **Atualizar** o doc principal do assunto, o ADR (se houve decisão), o aprendizado (se houve armadilha), o estado
-   pelo mecanismo e o `CHANGELOG.md`. Rode `python scripts/docs-check.py`.
-8. **Handoff.** Skill `fechar-tarefa`: atualize [`docs/estado-atual.md`](docs/estado-atual.md), faça o commit e o
-   push.
+3. **Critérios de aceite**: skill `preparar-tarefa <id>`.
+4. **Executar** com o pacote mínimo (itens pela esteira: skill `plano-100`), lendo por busca e trechos.
+5. **Validar** com teste direcionado; a suíte inteira só no fim. Registre real, simulado ou não executado.
+6. **Fechar**: skill `fechar-tarefa` (doc do assunto, ADR, aprendizado, estado pelo mecanismo, `CHANGELOG.md`,
+   `docs-check`, `docs/estado-atual.md`, commit e push).
 
 ## Convenções
 
@@ -122,23 +108,5 @@ Os comandos com `/` e `&&` funcionam no Git Bash e no PowerShell 7. Na tabela de
 - Código e docs em português. Comentários explicam o porquê; siga a densidade do arquivo vizinho.
 - Subagentes não leem este arquivo automaticamente como você: passe no prompt as regras que valem para eles.
 
-## Onde alterar (mapa rápido)
-
-| Área | Código | Doc principal |
-|---|---|---|
-| API, eventos, rotas | `backend/app/api.py`, `models.py`, `events.py` | [`docs/api-contract.md`](docs/api-contract.md) |
-| Comandos e worker | `backend/app/commands/`, `workers/`, `worker/` | [`docs/arquitetura.md`](docs/arquitetura.md), [`docs/worker.md`](docs/worker.md) |
-| Aparelhos e parque | `backend/app/devices/`, `taskqueue/scheduler.py` | [`docs/dominios/parque.md`](docs/dominios/parque.md) |
-| Fila e execução | `backend/app/taskqueue/`, `modules/execution/` | [`docs/dominios/execution.md`](docs/dominios/execution.md) |
-| IA | `backend/app/planning/`, `taskqueue/executor.py` | [`docs/ia.md`](docs/ia.md) |
-| Apps, releases, loja, manifesto de app | `backend/app/releases/`, `modules/applications/` (`planning/catalog/` é shim) | [`docs/dominios/apps-e-loja.md`](docs/dominios/apps-e-loja.md) |
-| Skills, DSL, compilador, ensino | `backend/app/modules/skills/`, `modules/capabilities/`, `contracts/skills/` | [`docs/dominios/skills.md`](docs/dominios/skills.md), [`docs/design/evolucao-arquitetural.md`](docs/design/evolucao-arquitetural.md) |
-| Perfis, Instagram, treinamento | `backend/app/social/`, `app/conhecimento/apps/`, `integrations/app_declarado/`, `training/` | [`docs/dominios/perfis-e-instagram.md`](docs/dominios/perfis-e-instagram.md) |
-| Retrieval de contexto de código (desligado por padrão) | `backend/app/modules/context_retrieval/`, `scripts/plano-100-pacotes.py --contexto` | [`docs/dominios/context-retrieval.md`](docs/dominios/context-retrieval.md) |
-| Banco e migrações | `backend/app/db.py`, `backend/migrations/` | [`docs/banco.md`](docs/banco.md) |
-| Segurança | `backend/app/security/` | [`docs/operacao.md`](docs/operacao.md) |
-| Painel | `frontend/src/features/*` | [`docs/produto.md`](docs/produto.md) |
-| Operação e scripts | `scripts/*.ps1` | [`docs/operacao.md`](docs/operacao.md) |
-
-Regras por caminho carregadas sob demanda: `.claude/rules/*.md` (migrações, workflows, segredos e mundo real,
-testes, plano-100).
+Onde alterar cada área (código e doc principal): [`docs/README.md`](docs/README.md#onde-alterar). Regras por caminho
+carregadas sob demanda: `.claude/rules/*.md` (migrações, workflows, segredos e mundo real, testes, plano-100).

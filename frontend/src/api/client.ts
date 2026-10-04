@@ -43,6 +43,7 @@ import type {
   ControlTakeResponse,
   CanaisEstado,
   CanalAnexoAoCartao,
+  CanalAnexoLeitura,
   CanalAnexosPagina,
   CommandRefinement,
   CreateRunRequest,
@@ -117,6 +118,10 @@ import type {
   RunPage,
   RunReport,
   RunSummary,
+  PreviaDaPorta,
+  AprovarPlanoItem,
+  AprovarPlanoResultado,
+  RenovarPlanoResultado,
   SessionJobAccepted,
   SocialDraft,
   SocialInteraction,
@@ -487,6 +492,12 @@ export const api = {
   /** Anexa ao cartão do Trello o arquivo que o dono mandou (`confirmar` é exigido pela rota: é efeito num sistema externo). */
   canaisAnexarAoCartao: (id: number, card: string) =>
     request<CanalAnexoAoCartao>('POST', `/canais/anexos/${id}/trello`, { body: { card, confirmar: true } }),
+  /** F5: a IA descreve a imagem. Chamada paga (com teto por imagem): só sai do botão de confirmar. */
+  canaisLerAnexo: (id: number) =>
+    request<CanalAnexoLeitura>('POST', `/canais/anexos/${id}/ler`, { body: { confirmar: true }, timeoutMs: 90_000 }),
+  /** F5: o arquivo do anexo como Blob, para a aba guardá-lo em memória (a rota responde `no-store`). */
+  canaisAnexoArquivo: async (id: number): Promise<Blob> =>
+    (await rawRequest('GET', `/canais/anexos/${id}/conteudo`)).blob(),
 
   getSettings: () => request<Settings>('GET', '/settings'),
   putSettings: (patch: Partial<Settings>) => request<Settings>('PUT', '/settings', { body: patch }),
@@ -916,6 +927,13 @@ export const api = {
    *  sem plano. Lida por `features/runs/projecao.ts::lerProjecao` (tolerante). */
   runProjection: (id: string, signal?: AbortSignal) => request<unknown>('GET', `/runs/${enc(id)}/projection`, { signal }),
   startRun: (id: string) => request<RunSummary>('POST', `/runs/${enc(id)}/start`),
+  /** 30.61: a prévia da porta numa execução `planned` (só leitura; não chama IA). 409 `invalid_state` fora de `planned`. */
+  portaDoPlano: (id: string, signal?: AbortSignal) => request<PreviaDaPorta>('GET', `/runs/${enc(id)}/porta`, { signal }),
+  /** 30.61: "Aprovar N e iniciar". 409 `plano_mudou` traz `mudaram` e a `previa` nova no `detail`; nada é gravado. */
+  aprovarPlano: (id: string, aprovar: AprovarPlanoItem[], tirar: string[]) =>
+    request<AprovarPlanoResultado>('POST', `/runs/${enc(id)}/aprovar-plano`, { body: { aprovar, tirar } }),
+  /** 30.61 "Renovar": só o sim ainda válido; o vencido volta para rever (409 `sim_vencido` quando nada renovou). */
+  renovarPorta: (id: string) => request<RenovarPlanoResultado>('POST', `/runs/${enc(id)}/porta/renovar`),
   pauseRun: (id: string) => request<RunSummary>('POST', `/runs/${enc(id)}/pause`),
   resumeRun: (id: string) => request<RunSummary>('POST', `/runs/${enc(id)}/resume`),
   cancelRun: (id: string) => request<RunSummary>('POST', `/runs/${enc(id)}/cancel`),

@@ -248,6 +248,39 @@ button.miniatura:focus-visible {
   font-size: var(--fs-sm);
 }
 
+/* F5: a descrição que a IA fez da imagem, dentro do próprio anexo. */
+.descricao {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-3);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+}
+
+.descricaoRotulo {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+.descricaoTexto {
+  margin: 0;
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.lerErro {
+  margin: 0;
+  color: var(--danger-text);
+  font-size: var(--fs-sm);
+}
+
 /* "Anexar ao cartão": o mesmo desenho do DecisaoInline do Aprendizado (campo e ações na mesma linha, sem modal). */
 .anexar {
   display: flex;

@@ -237,6 +237,10 @@ isso). Pontos que já causaram incidente:
   RAM disponível, top processos por memória, discos.
 - `GET /api/health` (`backend/app/api.py:210`) — commit, migração, `ai_billing` (conta de IA sem crédito),
   estado do túnel/worker.
+- `GET /api/ai/balances` (`curl -s http://127.0.0.1:8000/api/ai/balances`) — saldo **estimado** das contas de IA
+  (Anthropic, OpenAI, Gemini), com limites; concilia pelo relatório de custo do provedor com cache de 15 min
+  (`?refresh=1` força). Registrar um saldo lido na conta do provedor: `POST /api/ai/balances/{conta}` (grava a
+  leitura e concilia na hora; ADR-051). Nenhuma das duas chama modelo de IA.
 - `GET /api/diagnostics` (`backend/app/api.py:243`) — o mesmo relatório do `diagnose.ps1` mais o que só o
   backend sabe (capacidade medida, ferramentas).
 - **Relógio do host** — a tarefa `farm-relogio` (SYSTEM, a cada 15 min) roda `scripts/sincronizar-relogio.ps1`: mede o

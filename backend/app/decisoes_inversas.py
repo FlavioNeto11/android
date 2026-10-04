@@ -16,7 +16,10 @@ Investigação (lida, sem mexer nas filas), 04/10:
 """
 from __future__ import annotations
 
-from app.modules.decisoes.application.desfazer import InversaDaFila, SemInversa, SemInversaSegura
+from collections.abc import Callable
+
+from app.modules.decisoes.application.desfazer import (Descricao, DesfeitaPorFora, InversaDaFila, SemInversa,
+                                                         SemInversaSegura)
 from app.modules.decisoes.domain.decisao import Decisao
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.application.pareceres import ServicoDePareceres
@@ -28,6 +31,8 @@ MOTIVO_PERGUNTA = ("a execução foi encerrada e uma pergunta encerrada não rea
 MOTIVO_OBJETIVO = ("reabrir um objetivo encerrado repetiria ações no aparelho; peça de novo, ou use \"Tentar "
                    "novamente\" na execução depois de conferir")
 MOTIVO_PEDIDO = "um pedido encerrado é estado final e não reabre; crie o pedido de novo"
+#: O prefixo que `_mover` põe no motivo da trilha; a leitura do desligamento por outro caminho o tira.
+PREFIXO_DO_MOTIVO = "desligado pelo dono: "
 
 class InversaDoAprendizado:
     """Desligar (`published → disabled`) o item que a plataforma decidiu sozinha, pelo serviço do livro: a mesma trilha,
@@ -47,9 +52,51 @@ class InversaDoAprendizado:
     def por_que_nao(self, decisao: Decisao) -> str | None:
         if decisao.fatos.get("para") != SkillState.PUBLISHED.value:
             return "só o que a plataforma deixou publicado pode ser desligado; as outras decisões são conferidas na própria tela"
-        if self._kind(decisao) is None:
+        kind = self._kind(decisao)
+        if kind is None:
             return "o tipo do item não está registrado nesta decisão"
+        # 28.29: o estado de AGORA do item, e não só o da decisão (o botão aparecia para o que já tinha mudado).
+        try:
+            atual = self._servico.entrada(kind, self._ref(decisao, kind)).state
+        except NaoEncontrado:
+            return "o item não existe mais no livro de aprendizado"
+        except ErroDeAprendizado:
+            return None                                        # na dúvida o botão fica; o desfazer confere de novo
+        if atual not in (SkillState.PUBLISHED, SkillState.DISABLED):
+            return (f"o item já mudou de estado depois da decisão automática (agora: {atual.value}); "
+                    "confira na tela do Aprendizado")
         return None
+
+    def descrever(self, decisao: Decisao) -> Descricao | None:
+        """O título do item no livro (28.29: a lista dizia "Fluxo confirmado" 15 vezes sem dizer qual)."""
+        kind = self._kind(decisao)
+        if kind is None:
+            return None
+        try:
+            titulo = self._servico.entrada(kind, self._ref(decisao, kind)).title
+        except ErroDeAprendizado:
+            return None
+        return Descricao(nome=" ".join(str(titulo or "").split())[:120] or None)
+
+    def desfeita_por_fora(self, decisao: Decisao) -> DesfeitaPorFora | None:
+        """O item que a plataforma publicou e alguém DESLIGOU por outro caminho (a tela do Aprendizado, a rota do livro):
+        quem, quando e o motivo, da última transição para `disabled` na trilha dele."""
+        kind = self._kind(decisao)
+        if decisao.fatos.get("para") != SkillState.PUBLISHED.value or kind is None:
+            return None
+        ref = self._ref(decisao, kind)
+        try:
+            if self._servico.entrada(kind, ref).state is not SkillState.DISABLED:
+                return None
+            trilha = self._servico.detalhe(kind, ref).trilha
+        except ErroDeAprendizado:
+            return None
+        desligadas = [t for t in trilha if t.to_state is SkillState.DISABLED]
+        if not desligadas:
+            return None
+        t = max(desligadas, key=lambda x: x.id)
+        motivo = (t.reason or "").removeprefix(PREFIXO_DO_MOTIVO).strip() or None
+        return DesfeitaPorFora(por=t.decided_by, em=t.decided_at, motivo=motivo)
 
     @staticmethod
     def _ref(decisao: Decisao, kind: LivroKind) -> str:
@@ -61,7 +108,7 @@ class InversaDoAprendizado:
         """Pelo MESMO caminho da rota `POST /api/aprendizado/{kind}/{ref}/status`: com o curador composto, passa antes
         pelo serviço dos pareceres (que grava também o rótulo do parecer pendente)."""
         servico = self._servico.extensao(ServicoDePareceres) or self._servico
-        servico.mudar_estado(kind, ref, SkillState.DISABLED, by=por, reason=f"desligado pelo dono: {texto}")
+        servico.mudar_estado(kind, ref, SkillState.DISABLED, by=por, reason=f"{PREFIXO_DO_MOTIVO}{texto}")
 
     def desfazer(self, decisao: Decisao, *, por: str, motivo: str | None) -> None:
         porque = self.por_que_nao(decisao)
@@ -91,6 +138,25 @@ class InversaDoAprendizado:
             raise SemInversaSegura(str(exc)) from exc
 
 
-def inversas_das_filas(learning: LearningService) -> dict[str, InversaDaFila]:
-    return {"aprendizado": InversaDoAprendizado(learning), "pergunta": SemInversa(MOTIVO_PERGUNTA),
-            "objetivo": SemInversa(MOTIVO_OBJETIVO), "pedido": SemInversa(MOTIVO_PEDIDO)}
+class SemInversaDaExecucao(SemInversa):
+    """Pergunta e objetivo vencidos: sem volta segura, mas o painel abre a execução (28.29). A pergunta É a execução
+    (`item_ref`); o objetivo diz a dele nos fatos ou, na linha gravada antes do 28.29, pela leitura injetada."""
+
+    def __init__(self, motivo: str, *, run_do_objetivo: Callable[[str], str | None] | None = None):
+        super().__init__(motivo)
+        self._run_do_objetivo = run_do_objetivo
+
+    def descrever(self, decisao: Decisao) -> Descricao | None:
+        if decisao.fila == "pergunta":
+            return Descricao(run_id=decisao.item_ref)
+        run_id = decisao.fatos.get("run_id")
+        if isinstance(run_id, str) and run_id:
+            return Descricao(run_id=run_id)
+        return Descricao(run_id=self._run_do_objetivo(decisao.item_ref)) if self._run_do_objetivo else None
+
+
+def inversas_das_filas(learning: LearningService, *, run_do_objetivo: Callable[[str], str | None] | None = None
+                       ) -> dict[str, InversaDaFila]:
+    return {"aprendizado": InversaDoAprendizado(learning), "pergunta": SemInversaDaExecucao(MOTIVO_PERGUNTA),
+            "objetivo": SemInversaDaExecucao(MOTIVO_OBJETIVO, run_do_objetivo=run_do_objetivo),
+            "pedido": SemInversa(MOTIVO_PEDIDO)}

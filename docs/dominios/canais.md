@@ -93,6 +93,10 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   e vai com Brasília (UTC−3) ao lado quando é para o dono. Comentário com a hora errada é corrigido, não apagado.
 - **No produto:** `prefixo_da_ia()` no espelho do 32.2. O leitor ignora o eco das próprias respostas pelo prefixo e
   pelo registro de enviadas, porque o token é o do dono.
+- **Desde o 28.30 a regra é de segurança, não de estilo:** comentário sem 🤖 com o token do dono vira pedido de
+  confirmação no Telegram dele (C-24). O registro de enviadas (`canal_enviadas`) cobre o que o produto escreve, com ou
+  sem 🤖; o prefixo cobre quem escreve por fora do produto (a ANA da sessão Canais, a orquestradora, as frentes). Toda
+  sessão que comenta no Trello começa o texto com `🤖`.
 
 ## 3. Quem fala com os canais
 
@@ -272,6 +276,35 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   sobre ele, atualiza **na hora** o cartão correspondente (descrição e comentário com 🤖). Só depois se responde ao
   dono. O arquivo de situação do resumo sozinho não basta.
 
+**C-24 · Comentário do dono em cartão nunca fica mudo (28.30).**
+- **Origem:** dono, Telegram 04/10 18:56Z: o "Autorizado" dele em dois cartões ficou 1 h 30 sem ninguém reconhecer.
+- **Regra:**
+  - Comentário do dono num cartão sem aviso da Central (os cartões do plano) não é pedido nem comando, e também não é
+    autorização: a ANA e as sessões escrevem no quadro com a conta dele. Ele vai à orquestradora (estado
+    `orquestradora`) e o cartão recebe a resposta na hora.
+  - Na mesma volta sai ao Telegram dele um pedido de confirmação de sim ou não, que nomeia o cartão e o comentário. O sim
+    de lá é que vale; o sim e o não vão à orquestradora, nunca viram pedido.
+  - O nome do cartão e o texto só vão se passarem inteiros pelos filtros do 28.31 (`texto_seguro`); senão, "num cartão
+    do Trello" e "o texto fica no cartão".
+  - Só o dono: a anotação de um membro autorizado segue só registrada, e a linha sem autor lido não é do dono.
+  - O recado que falha por erro interno responde com uma frase fixa, e o reply a ela segue à orquestradora (a entrada 1256
+    de 04/10 ficou `falhou` sem resposta).
+  - O login do painel recusa nome começado por `trello:` ou `telegram:`: esse é o operador dos canais. A sessão antiga
+    com esse nome deixa de valer.
+  - Travas do laço: no máximo um pedido em aberto por cartão (o que o dono não respondeu em 24 h) e 6 pedidos por hora no
+    quadro; acima disso o comentário só vai à orquestradora e o dono recebe uma linha por hora dizendo que parou
+    (`trello.teto_de_comentarios`, rotina: vai na janela, e responder a ela não vira pedido). Só destrava o cartão a
+    resposta que foi à orquestradora (o não, ou o sim que passou na conferência).
+  - O sim relê o comentário no Trello: se mudou, foi apagado ou não deu para conferir, nada é repassado e o dono ouve
+    uma linha. O repasse leva o texto gravado do comentário. O sim nunca é tratado como senha, mesmo com uma pergunta
+    de credencial aberta.
+  - O `texto_seguro` barra link (`http://`, `https://`, `www.`): o endereço de um perfil diz de quem se trata. Vale
+    também para o rótulo do pedido (28.31).
+- **No produto:** `ConversaDoTrello._comentario`, `Fato.comentario` e o ramo dele em `_rotear_resposta`, o tipo
+  `trello.comentario` (fora do agrupamento, `SEM_AGRUPAR`), `ClienteTrello.nome_do_cartao`.
+- **Prova:** `simulated` (`backend/tests/test_canais_comentario_do_dono.py`). `not_run`: o comentário real do dono num
+  cartão de teste e o tempo até a pergunta no Telegram.
+
 **C-17 · Forma dos cartões.**
 - **Regra:**
   - Todo cartão tem uma parte para quem não é técnico (`**Para quem não é técnico:**` e `**Por que importa:**`) e
@@ -295,15 +328,58 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
 **C-19 · Resumo e urgência.**
 - **Origem:** dono, Telegram 03/10 21:40Z ("pode reduzir os feedbacks de hora em hora"); antes eram 20 minutos.
 - **Regra:**
-  - Sai um resumo **de hora em hora**, com o título `📊 ANA · IA Gerente de Operações da Central · HH:MMZ`.
-  - Conteúdo do resumo: situação da Central, porcentagem do plano medida no `estado.json`, uma linha por frente,
-    o que mudou e as pendências do dono.
+  - Sai um resumo **de hora em hora**, com o título `📊 ANA · Resumo das HH:MMZ`.
+  - O resumo abre com `🙋 Precisa de você: N` e a lista das pendências do dono; a pendência nova leva 🆕 (28.31 F3).
+  - **Quem entra em "Precisa de você"** (orquestradora, 04/10): só o que espera o DONO de verdade, isto é, uma decisão
+    dele, um sim ou não, ou um gesto que só ele faz. Não entram pedido de frente, pedido de convidado, nem execução de
+    lote (`lote:`). Hoje a lista é a `pendencias` do `situacao.json`, curada à mão pela Canais com esse critério. Se um
+    dia ela vier de consulta ao banco, o filtro vai junto, para o N não contar o que não é dele.
+  - Depois vem só o que **mudou** desde o último envio. Situação da Central, plano (porcentagem e o detalhe de
+    parciais, bloqueados e a fazer, medidos no `estado.json`), linha de frente e cartão parado aparecem só quando
+    mudaram. A Central com problema entra quando o estado muda; enquanto o mesmo problema durar, volta no máximo a cada
+    3 horas, com "segue desde HH:MMZ".
+  - Leitura que falha (plano, Trello) não conta como mudança e mantém o que se sabia, de modo que a volta da leitura
+    não reapresenta tudo como novo. "N novidades" do canal interno é contado uma vez só.
+  - Antes de sair, todo texto passa pela redação do Trello (nomes relidos do banco do central a cada rodada) e pelo
+    filtro de e-mail, telefone e link.
+  - Quando nada mudou e não há pendência nova, o resumo **não sai** naquela hora.
   - Frases curtas, sem jargão e sem tabela.
   - Urgência vai na hora: sim ou não pedido ao dono, deploy que falhou, incidente real ou teto de custo.
   - A leitura dos quadros do Trello continua a cada 20 minutos.
-- **Hoje:** `resumo_laco.py --intervalo 3600`, que roda em laço em segundo plano e não depende de a sessão estar
-  ociosa. A curadoria fica em `situacao.json`, e `--carimbar` vem antes de cada envio.
-- **No produto:** a saída do 28.15 (`modules/avisos/`).
+- **Toda mensagem tem conteúdo (28.31; dono, Telegram 04/10 19:10Z: "essas mensagens estão genéricas e sem
+  relevancia"). Vale para o aviso do produto e para o texto que a Canais escreve à mão.**
+  - Molde de até 5 linhas:
+    1. o assunto e o resultado, com número quando houver;
+    2. o que é crítico;
+    3. "Espera você: <o gesto>" ou "Nada a fazer.";
+    4. o link.
+  - Três níveis, e o nível decide a entrega:
+    - **1, precisa de você agora** (aprovação, pergunta, conta pedindo pessoa, ocorrência incerta, convidado, e o
+      lembrete de vencimento do 31.50): sai na hora.
+    - O lembrete de vencimento (`pendencia.vence_em`, 2 h antes) diz o que vence (aprovação, objetivo parado ou pergunta
+      da execução), o aparelho, "em até 2 h" e a hora UTC, a etapa que espera (o nome do catálogo, ou a chave da capability; nunca texto livre) e o que acontece
+      se vencer. A chave é a do produtor, uma por espera. O lembrete de execução do sistema (prova, validação, lote)
+      cala pela mesma regra do `run.updated`; o de aprovação de lote avisa. Responder a ele não vira pedido.
+    - **2, algo falhou:** a pausa e o orçamento esgotado pararam algo do dono e saem na hora. A ocorrência perdida e
+      os eventos perdidos não pararam nada e esperam a janela.
+    - **3, rotina** (relatório, encerramento, 80% do orçamento, condição atendida, aprendizado): nunca sai sozinha. Vai
+      na mensagem da janela de 1 h, uma linha cada.
+  - A rajada (vários do mesmo tipo seguidos) lista uma linha por item, até 5, mais "+N no painel".
+  - O rótulo do pedido é texto da pessoa: só sai quando o pedido foi criado pelo dono (o de convidado, de frente ou
+    de IA sai sempre pelo id curto; desde a F2a, migração 106, o pedido guarda quem o criou: `dono` só para o
+    operador da lista `pedidos.operadores_do_dono` ou o `trello:<membro_dono>`, e o anterior à 106 sai pelo id curto) e
+    nenhum filtro mudaria nada nele. O aviso de pedido de lote de frente (`lote:`) vai à janela de rotina, menos a
+    aprovação e a ocorrência incerta. São três filtros:
+    - o redator de credencial;
+    - contato (e-mail, @, telefone, IP);
+    - persona pela régua estrita: 2 letras ou mais, e "Ana" também.
+
+    Senão, ou se o filtro falhar, sai "Pedido #<6 do id>". O aparelho (`android-12`) pode sair: não é pessoa nem conta.
+  - O resumo de hora volta só no 28.31 F3. Ele abre com "Precisa de você: N" e a lista, depois diz só o que mudou e
+    não sai sem novidade.
+- **Hoje:** o resumo de hora (`resumo_laco.py`) está PARADO desde 04/10 19:12Z, até o 28.31 F3.
+- **No produto:** a saída do 28.15 e o molde do 28.31 (`modules/avisos/domain/mensagem.py` e `privacidade.py`; a
+  janela em `infrastructure/fila_sql.py`).
 
 **C-20 · Resposta ao dono.**
 - **Regra:**
@@ -359,9 +435,14 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
 - **No produto:** item 28.24 (`modules/avisos/`: `domain/anexos.py`, `infrastructure/anexos.py`, `anexos_trello.py`, o
   adaptador do Telegram, `GET /api/canais/anexos/{id}`, `POST /api/canais/anexos/{id}/trello`, `devices/captura_pontual.py`,
   migrações 101 e 103, `infrastructure/anexos_leitura.py`, `POST /api/canais/anexos/{id}/ler`; `GET /api/canais/anexos` e a
-  aba Anexos, `frontend/src/features/canais/AnexosTab.tsx`). Falta: o botão "Ler" na aba Anexos (a F3 só tem a rota e o
-  Telegram) e a prova `real` da leitura (uma chamada paga, `not_run`).
-- **Prova:** `simulated` (`backend/tests/test_canais_anexos.py`, `test_canais_anexos_trello.py`, `test_canais_captura.py`, `test_canais_leitura_anexo.py`, `test_canais_script_status.py`);
+  aba Anexos, `frontend/src/features/canais/AnexosTab.tsx`). Na F5, a aba ganha o botão "Ler pela IA" (só na imagem do dono,
+  com a confirmação da chamada paga na linha; a descrição gravada aparece sem botão). Também diz "Já estava no cartão" quando o
+  arquivo já estava lá, e fixa o "desde" do período na primeira página. A miniatura baixa quando o item chega à tela e fica
+  em memória enquanto a aba está aberta (a rota segue `no-store`), e o estado vazio diz o que dá para fazer com um anexo. A
+  descrição da IA vence com o arquivo: a retenção a apaga, sem filtrar o texto antes. O envio ao cartão recusa com 422
+  `tipo_nao_aceito` o tipo que a entrada não aceita, antes de chamar o Trello. Falta a prova `real` da leitura (uma chamada
+  paga, `not_run`) e o passeio no navegador da F5 (`not_run`, espera o fim do 29.41).
+- **Prova:** `simulated` (`backend/tests/test_canais_anexos.py`, `test_canais_anexos_trello.py`, `test_canais_anexos_lista.py`, `test_canais_captura.py`, `test_canais_leitura_anexo.py`, `test_canais_script_status.py`, `frontend/src/features/canais/AnexosTab.test.tsx`);
   `not_run` com o bot, o Trello, o aparelho e o disco reais.
 
 **C-23 · O que a plataforma decidiu sozinha: um resumo, nunca um aviso por decisão.**
@@ -374,6 +455,13 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
     link `#/pendencias?aba=decididas`. Frases fixas no código: a string da regra, o nome de persona, conta, e-mail,
     telefone, IP e o texto de comando não entram. O corpo passa pelo redator dos avisos.
   - Decisão já desfeita, ou mais velha que `avisos.validade_h`, não conta.
+  - O resumo só oferece desfazer ao que tem volta (o aprendizado, desligando o item). O encerrado (pergunta, objetivo,
+    pedido) diz que não reabre, e as aprovações pendentes que o vencimento encerrou junto aparecem pela contagem
+    (28.29, depois da primeira prova real: a mensagem 207 prometia desfazer 21 encerramentos sem volta).
+  - O registro mostra o estado de agora do item, por qualquer caminho. Se o dono desliga pela tela do Aprendizado, a
+    decisão aparece desfeita com quem, quando e o motivo da trilha, e o botão some. O cartão diz qual item foi
+    (nome e link no Livro; a execução, no vencimento), e o texto é legível: "Receita publicada", sem "(a)", cortado na
+    palavra (28.29).
 - **Hoje:** `modules/decisoes/` (adaptador, resumo e desfazer); o aviso é do tipo `decisoes.resumo` e sai pela fila de avisos
   (28.11), no líder da trava `avisos`.
 - **No produto:** a janela sobrevive a reinício (`decisoes_automaticas_estado`).

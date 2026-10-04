@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Mapping
 
 from ..db import Database
@@ -41,6 +42,16 @@ _PELA_REGRA_PROPRIA = frozenset({TEXTO, BRIEFING, VERBATIM, ARGUMENTO_DA_IMAGEM}
 OBJETO_INSUFICIENTE = frozenset({"REPLY_COMMENT"})
 
 
+#: O marcador de modelo que ainda não virou texto: `{item}`, `{nome}`, `{{saida:…}}` e a expressão do compilador de
+#: habilidades `${ parameters.x }` (com ou sem espaço, `compiler.py::_EXPR`). Uma chave solta (emoticon, código) é texto
+#: final (revisão do painel, B2 e N1).
+_VARIAVEL = re.compile(r"\{\{|\$\{|\{[A-Za-z_][\w.:-]*\}")
+
+
+def tem_variavel(texto: str) -> bool:
+    return _VARIAVEL.search(texto) is not None
+
+
 def texto_exato(cap: Capability, bindings: Mapping[str, object]) -> tuple[bool, str | None]:
     """`(fechado, texto)`. Fechado quando a etapa não escreve nada, ou escreve um texto já final (`content_verbatim`);
     aberto quando o texto ainda vai ser escrito (briefing): aí não há o que aprovar no plano."""
@@ -50,7 +61,7 @@ def texto_exato(cap: Capability, bindings: Mapping[str, object]) -> tuple[bool, 
     texto = valores.get(TEXTO)
     if texto is None or not str(texto).strip():
         return (not cap.needs_draft), None
-    if "{" in str(texto):                               # `{item}`, `{{saida:…}}`: ainda não é o texto que vai sair
+    if tem_variavel(str(texto)):                        # `{item}`, `{{saida:…}}`: ainda não é o texto que vai sair
         return False, None
     return True, str(texto)
 
@@ -65,6 +76,8 @@ def argumentos_da_acao(cap: Capability, bindings: Mapping[str, object]) -> dict[
             continue
         bruto = bindings.get(nome)
         texto = "" if bruto is None else str(bruto).strip()
+        # Mais estrito que `tem_variavel` DE PROPÓSITO (nota da Ferramentas, 04/10): um argumento (alvo, id, objeto)
+        # com qualquer `{` não é o valor final que se aprova; falhar fechado aqui só faz o item perguntar na execução.
         if "{" in texto:
             return None
         argumentos[nome] = texto.lower().lstrip("@") if nome == cap.counterparty else texto
@@ -78,7 +91,7 @@ def midia_da_etapa(db: Database, bindings: Mapping[str, object]) -> tuple[bool, 
     imagem = str(valor).strip() if valor is not None else ""
     if not imagem:
         return False, None
-    if "{" in imagem:
+    if "{" in imagem:                   # mais estrito que `tem_variavel` de propósito: id de imagem não tem `{`
         return True, None
     sha = db.scalar("SELECT bytes_sha256 FROM persona_images WHERE id=? AND status='ready'", (imagem,))
     return True, (str(sha) if sha else None)

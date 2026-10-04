@@ -237,7 +237,7 @@ def test_o_aviso_do_canal_leva_so_contagens() -> None:
                         "mensagem": "O relatório 1 do pedido 'Maria olha o preço' está pronto. Consolidou 3 filho(s); 2 conflito(s).",
                         "dados": {"relatorio_id": "rel_1", "filhos_lidos": 3, "conflitos": 2}}}
     a = aviso_de_evento("pedido.aviso", evento, 7)
-    assert a is not None and a.corpo == "2 conflito(s) entre os filhos"
+    assert a is not None and a.titulo.endswith("relatório pronto: 2 conflito(s) entre os filhos")
     saiu = f"{a.titulo} {a.corpo}"
     assert "Maria" not in saiu and "R$" not in saiu and "android" not in saiu
 
@@ -246,4 +246,4 @@ def test_aviso_sem_conflito_ou_de_pedido_comum_sai_como_hoje() -> None:
     for dados in ({"relatorio_id": "rel_1"}, {"relatorio_id": "rel_1", "conflitos": 0}):
         evento = {"aviso": {"id": "avs_1", "tipo": "relatorio_pronto", "requer_pessoa": False, "dados": dados}}
         a = aviso_de_evento("pedido.aviso", evento, 7)
-        assert a is not None and a.corpo == ""
+        assert a is not None and a.corpo == "Nada a fazer." and "conflito" not in a.titulo

@@ -70,3 +70,5 @@
 }
 .desfeita { opacity: 0.75; }
 .semVolta { color: var(--text-3); font-size: var(--fs-sm); }
+.linkDoItem { color: var(--accent-text); text-decoration: underline; text-underline-offset: 2px; }
+.linhasDoGrupo { display: flex; flex-direction: column; gap: var(--sp-1); margin: var(--sp-2) 0 0; padding: 0; list-style: none; color: var(--text-2); font-size: var(--fs-sm); }

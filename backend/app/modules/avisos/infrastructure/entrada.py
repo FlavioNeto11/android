@@ -41,9 +41,8 @@ import json
 import logging
 import re
 import time
-import unicodedata
-from collections.abc import Awaitable, Callable, Iterable, Mapping
-from dataclasses import dataclass, field
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Protocol
 
@@ -67,6 +66,8 @@ from app.modules.avisos.domain.anexos import (
     normalizar_mime,
     tamanho_legivel,
 )
+from app.modules.avisos.domain.privacidade import PERSONA_OCULTA as PERSONA_OCULTA  # reexport (28.28)
+from app.modules.avisos.domain.privacidade import sem_nome_de_persona as sem_nome_de_persona
 from app.modules.avisos.infrastructure.anexos import AnexoJaResolvido, AnexoRecusado, ArmazemDeAnexos
 from app.modules.avisos.infrastructure.convidados import ConvidadosDoTelegram
 from app.modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
@@ -86,34 +87,29 @@ RESPOSTA_DO_REPASSE = {
     "continuacao": "Recebi, junto com a mensagem anterior: a resposta vem por aqui, em resposta a esta mensagem.",
     "sem_destino": ("Não sei se isso é um pedido para um aparelho ou uma pergunta para mim. Se é pergunta, já repassei: a "
                     "ANA responde por aqui. Se é pedido, mande de novo dizendo o aparelho (ex.: \"no android-12\")."),
+    # 28.30: o comentário do dono num cartão e o sim ou o não dele no Telegram.
+    "comentario": "Recebi o seu comentário. Pedi a sua confirmação no Telegram: o sim de lá é que vale.",
+    "comentario_sim": "Confirmado: repassei à orquestradora, que age e responde no cartão.",
+    "comentario_nao": "Entendido: o comentário fica sem efeito. Avisei a orquestradora.",
 }
-#: No lugar de um nome de persona em texto que sai pelo canal (28.28; regra C-02: nome de persona não vai ao canal).
-PERSONA_OCULTA = "<persona>"
+#: 28.30: as respostas do dono ao pedido de confirmação de um comentário seu no Trello.
+REPASSES_DO_COMENTARIO = ("comentario_sim", "comentario_nao")
+RESPOSTA_COMENTARIO_MUDOU = "O comentário mudou depois do pedido: nada foi repassado. Comente de novo no cartão."
+RESPOSTA_COMENTARIO_APAGADO = "O comentário foi apagado depois do pedido: nada foi repassado."
+RESPOSTA_COMENTARIO_SEM_CONFERIR = ("Não consegui conferir o comentário no Trello agora: nada foi repassado. Responda sim "
+                                    "de novo daqui a pouco.")
 
 
-def sem_nome_de_persona(texto: str, nomes: Iterable[str]) -> str:
-    """Troca nome, primeiro nome e @ de persona cadastrada por `PERSONA_OCULTA`, palavra inteira e sem diferença de
-    maiúscula ou acento. Vale para TODO texto que a conversa manda: as recusas e as perguntas da prévia vêm de texto
-    compartilhado com o painel, onde o nome pode aparecer (o exemplo "com a persona …" do extrator)."""
-    # "ANA" é o nome da IA da Central (decisão do dono, 03/10): uma persona chamada Ana não apaga a ANA das respostas.
-    alvos = sorted({n.strip().lstrip("@") for n in nomes if n and len(n.strip().lstrip("@")) >= 3
-                    and _sem_acento_minusculo(n.strip().lstrip("@")) != "ana"}, key=len, reverse=True)
-    if not alvos:
-        return texto
-    base = _sem_acento_minusculo(texto)
-    trocas: list[tuple[int, int]] = []
-    for nome in alvos:
-        for m in re.finditer(rf"(?<![\w@])@?{re.escape(_sem_acento_minusculo(nome))}(?!\w)", base):
-            if not any(a < m.end() and m.start() < b for a, b in trocas):
-                trocas.append((m.start(), m.end()))
-    for a, b in sorted(trocas, reverse=True):
-        texto = texto[:a] + PERSONA_OCULTA + texto[b:]
-    return texto
+class ConferenciaDeComentario(Protocol):
+    """28.30: o que a conversa do Telegram precisa do Trello para o sim do dono valer só para o comentário que ele viu.
+    `conferir(action)` devolve (`igual` | `mudou` | `apagado` | `sem_conferir` | `desconhecido`, texto gravado)."""
+
+    async def conferir(self, action: str) -> tuple[str, str | None]: ...
 
 
-def _sem_acento_minusculo(t: str) -> str:
-    # Um caractere por caractere (NFD sem as marcas), para as posições do texto original continuarem valendo.
-    return "".join(unicodedata.normalize("NFD", ch.lower())[0] for ch in t)
+#: 28.30 e a entrada 1256 de 04/10: o recado que a Central não conseguiu tratar não fica mudo. Frase fixa, sem eco.
+RESPOSTA_FALHA_INTERNA = ("Não consegui tratar este recado por um erro aqui dentro; ele ficou guardado e a orquestradora vai "
+                          "olhar. /ajuda mostra os comandos.")
 #: A credencial é recusada sem guardar e apagada do canal quando ele deixa (contrato dos canais, §7); a resposta nunca
 #: ecoa o texto.
 RESPOSTA_CREDENCIAL = ("Isso parece senha ou código: não guardei, não repassei e apaguei a mensagem do chat. Senha "
@@ -458,6 +454,8 @@ class ConversaDoCanal:
         #: O "sim" ou o "não" do dono a quem chegou (28.18): (chat, autorizar) → o que responder ao dono. Só o leitor do
         #: Telegram com os convidados ligados o põe; sem ele, a resposta diz que o caminho está desligado.
         self.decidir_convidado: Callable[[str, bool], Awaitable[str]] | None = None
+        #: 28.30: a conferência do comentário no Trello antes de o sim do dono valer (`AppState` liga; sem ela, repassa).
+        self.comentarios: ConferenciaDeComentario | None = None
 
     def _idade_max_s(self) -> float:
         """Quanto uma mensagem pode ter de idade para ser tratada (E2). O canal que tem a regra dele (o Trello:
@@ -780,6 +778,10 @@ class ConversaDoCanal:
         resposta a essa pergunta, "curta" quando é texto curto com ela aberta (pode ter sido um pedido), None quando
         passa. Na dúvida (a pergunta não pôde ser lida), recusa: o dono responde pelo painel."""
         i = self._intencao({"texto": r.texto, "responde_a": r.responde_a})
+        if i.repasse in REPASSES_DO_COMENTARIO:
+            # 28.30 (revisão da #314): o "sim" ao pedido de confirmação de um comentário é curto, mas é resposta a um fato
+            # que não pede credencial. Sem isto, com uma pergunta de senha aberta, ele era recusado e apagado como senha.
+            return None
         if i.tipo in ("livre", "orquestradora"):
             # E6: o texto livre E o recado à orquestradora (reply a mensagem que a Central não mandou, ou `/orq`) são
             # repassados com o texto; com uma pergunta de senha aberta, o curto é tratado como a senha.
@@ -841,7 +843,13 @@ class ConversaDoCanal:
             await self._responder(saida, linha, texto)
         except Exception as exc:  # uma mensagem ruim não para a conversa
             log.exception("telegram: mensagem %s", linha.get("id"))
-            self.repo.marcar(self._id(linha), "falhou", erro=type(exc).__name__, de=("recebida",))
+            if self.repo.marcar(self._id(linha), "falhou", erro=type(exc).__name__, de=("recebida",)):
+                # 28.30 (entrada 1256): a falha não fica muda. O reply a esta resposta segue à orquestradora (a
+                # continuação do 28.28 leva o texto da linha `falhou`). Se nem a resposta sai, só o log.
+                try:
+                    await self._responder(saida, linha, RESPOSTA_FALHA_INTERNA)
+                except Exception:  # noqa: BLE001 - a resposta da falha não pode derrubar a conversa
+                    log.exception("telegram: a resposta da falha da mensagem %s não saiu", linha.get("id"))
         finally:
             OPERADOR.reset(token)
 
@@ -884,6 +892,8 @@ class ConversaDoCanal:
     async def _agir(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
         if i.tipo == "vazia":
             self.repo.marcar(self._id(linha), "ignorada", intencao=i.tipo, de=("recebida",))
+        elif i.tipo == "orquestradora" and i.repasse in REPASSES_DO_COMENTARIO:
+            await self._repassar_comentario(saida, linha, i)
         elif i.tipo == "orquestradora":
             await self._repassar(saida, linha, i)
         elif i.tipo == "ajuda":
@@ -939,6 +949,23 @@ class ConversaDoCanal:
                          previa={"repasse": i.repasse or "comando", "texto": i.texto},
                          de=("recebida", "pergunta"))
         await self._responder(saida, linha, RESPOSTA_DO_REPASSE.get(i.repasse or "", RESPOSTA_DO_REPASSE["comando"]))
+
+    async def _repassar_comentario(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
+        """O sim ou o não ao pedido de confirmação de um comentário (28.30). O sim relê o comentário no Trello: se mudou,
+        sumiu ou não deu para conferir, nada é repassado. O repasse leva o texto gravado do comentário, não só os ids."""
+        estado, gravado = ("desconhecido", None)
+        if self.comentarios is not None and i.ref:
+            estado, gravado = await self.comentarios.conferir(i.ref)
+        recusa = {"mudou": RESPOSTA_COMENTARIO_MUDOU, "apagado": RESPOSTA_COMENTARIO_APAGADO,
+                  "sem_conferir": RESPOSTA_COMENTARIO_SEM_CONFERIR}.get(estado) if i.repasse == "comentario_sim" else None
+        if recusa is not None:
+            self.repo.marcar(self._id(linha), "feita", intencao=i.tipo, destino="central", resposta=recusa,
+                             previa={"repasse": i.repasse, "texto": i.texto, "conferencia": estado},
+                             de=("recebida", "pergunta"))
+            await self._responder(saida, linha, recusa)
+            return
+        texto = f"{i.texto} Comentário: «{gravado}»" if gravado else i.texto
+        await self._repassar(saida, linha, replace(i, texto=texto))
 
     async def _feita(self, saida: SaidaDaConversa, linha: Linha, i: Intencao, texto: str, *, alvo: str | None = None,
                      run_id: str | None = None) -> None:

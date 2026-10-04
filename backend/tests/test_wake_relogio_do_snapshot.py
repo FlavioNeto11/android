@@ -6,6 +6,7 @@ sondas/o veredito do log são dublês; o laço de `_wait_boot`, a prontidão e a
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import subprocess
 from typing import Any
@@ -201,3 +202,50 @@ def test_adb_uptime_s_le_o_proc_uptime(harness: Harness, monkeypatch: pytest.Mon
 
     monkeypatch.setattr(adb, "_run", run)
     assert [adb.uptime_s() for _ in range(4)] == [3728.41, None, None, None]
+
+
+async def test_log_que_contradiz_o_uptime_avisa_sem_mudar_o_aparelho(harness: Harness,
+                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    """29.76 (d): depois do veredito pelo uptime o log não é mais lido no laço. Se ele disser, no fim, que o snapshot
+    do projeto foi recusado, o convidado carregou outro estado: a medição leva `log_contradiz` e sai um aviso; o
+    aparelho segue no ar (acordou, funciona) e `snapshot_failures` não muda."""
+    relogio = _RelogioInjetavel()
+    rt, _ = _preparar(harness, monkeypatch, relogio, carregado_em=None, boot_ok_em=relogio.agora + 120,
+                      ui=lambda _agora: True, uptime=3728.0)
+    s = harness.state
+    assert s is not None
+    boot_ok = relogio.agora + 120
+    # Mudo até o boot (o laço decide pelo uptime); depois, o log traz a recusa.
+    monkeypatch.setattr(s.devices, "_snapshot_verdict", lambda _rt: False if relogio.agora > boot_ok else None)
+    avisos: list[str] = []
+    emitir = s.devices.bus.emit
+    monkeypatch.setattr(s.devices.bus, "emit",
+                        lambda kind, msg="", **k: (avisos.append(msg) if kind == "log" else None, emitir(kind, msg, **k))[1])
+    assert await s.devices._wait_boot(rt, relogio.monotonic(), warm=True) is True      # noqa: SLF001
+    dados = json.loads(s.db.query("SELECT data FROM measurements WHERE kind='boot'")[-1]["data"])
+    assert (dados["snapshot_por"], dados["log_contradiz"]) == ("uptime", True)
+    assert any("foi recusado" in a for a in avisos)
+    assert rt.snapshot_failures == 0 and rt.state == InstanceState.online
+
+
+async def test_log_que_contradiz_depois_da_medicao_avisa_na_segunda_leitura(harness: Harness,
+                                                                           monkeypatch: pytest.MonkeyPatch) -> None:
+    """29.76 (d), revisão do #303: o log é bufferizado e a recusa pode chegar depois da medição. Sem a linha na hora, a
+    medição sai sem `log_contradiz`, e a segunda leitura (`LOG_CONTRADIZ_RELEITURA_S` depois) avisa."""
+    relogio = _RelogioInjetavel()
+    rt, _ = _preparar(harness, monkeypatch, relogio, carregado_em=None, boot_ok_em=relogio.agora + 120,
+                      ui=lambda _agora: True, uptime=3728.0)
+    s = harness.state
+    assert s is not None
+    chegou = {"recusa": False}
+    monkeypatch.setattr(s.devices, "_snapshot_verdict", lambda _rt: False if chegou["recusa"] else None)
+    monkeypatch.setattr(manager_mod, "LOG_CONTRADIZ_RELEITURA_S", 0.01)
+    avisos: list[str] = []
+    monkeypatch.setattr(s.devices, "_avisar_log_contradiz", lambda _rt: avisos.append(_rt.id))
+    assert await s.devices._wait_boot(rt, relogio.monotonic(), warm=True) is True      # noqa: SLF001
+    dados = json.loads(s.db.query("SELECT data FROM measurements WHERE kind='boot'")[-1]["data"])
+    assert dados["snapshot_por"] == "uptime" and "log_contradiz" not in dados and avisos == []
+    chegou["recusa"] = True                  # a linha bufferizada chega ao arquivo depois do boot
+    await asyncio.sleep(0.1)
+    assert avisos == ["android-01"]
+

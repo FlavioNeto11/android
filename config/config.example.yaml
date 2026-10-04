@@ -232,7 +232,7 @@ limits:
 # Vencimento do que espera uma pessoa que não veio (29.50 e 31.43): só muda estado; nada responde, digita nem toca aparelho.
 execucao:
   vencimento_ligado: true         # false: nem a pergunta (needs_input) nem o bloqueio (waiting_user) vencem sozinhos
-  pergunta_vence_h: 24            # horas sem resposta (0,01 a 8760); no bloqueio, conta do mais tardio entre a espera e o fim da execução
+  pergunta_vence_h: 24            # horas sem resposta (1 a 8760); no bloqueio, conta do mais tardio entre a espera e o fim da execução
 
 ai:
   # O provedor real é escolhido no .env (AI_PROVIDER). Quando for externo, screenshots e textos das telas SAEM
@@ -247,7 +247,8 @@ ai:
   limpeza_apos_sobreposicao: true   # 31.40: recusa do juiz por sobreposição insere a limpeza opcional (uma vez)
   relacao_do_valor: true        # 31.41: só grava o valor lido com relação ao pedido (seletor, rótulo, forma ou o juiz)
   max_decisoes_leitura: 12      # 31.38: teto de decisões por tentativa em etapa de leitura (p95 medido 8 + folga; 0 desliga)
-  podar_ui_do_navegador: true    # 31.35: a barra do Chrome não vai à árvore do prompt do ator
+  podar_ui_do_navegador: true    # 31.35: a barra do Chrome não vai à árvore do prompt do ator (a url_bar fica, 31.52)
+  diagnostico_arvore_aparelhos: []   # 31.52: aparelhos DE TESTE que gravam a árvore antes da poda (vazio = desligado). Só aparelho SEM vínculo ativo de persona: o vinculado é recusado na hora de gravar
   acoes_por_decisao: 1          # 31.35: até 3 ações por decisão em etapa sem efeito (1 = desligado; liga após A/B)
   espera_apos_open_url: false   # 31.35: depois do open_url o executor espera a tela parar, sem decisão da IA
   strong_model_for_side_effect: by_risk   # true = todo efeito externo decide no modelo caro (39 % das decisões iam ao
@@ -709,6 +710,8 @@ pedidos:                          # pedidos persistentes (28.4): o objetivo que 
   retentativa_teto_s: 900         # ... no máximo isto (o laço pode levar até tick_s a mais)
   piso_observar_s: 900           # menor intervalo entre ocorrências de pedido `observar` ou `preparar` (28.9): 15 min
   piso_agir_s: 3600               # idem para `agir` (efeito externo): 1 h
+  operadores_do_dono: []          # nomes de sessão do painel que são o DONO (28.31 F2a): só o pedido deles mostra o título
+                                  # no Telegram; qualquer outro nome grava `convidado` (o login aceita qualquer nome). Vazia: ninguém
   colaboracao:                    # colaboração entre pedidos (28.10, F1 e F2): pai, filhos, dependências e papéis
     enabled: false                #   DESLIGADA de fábrica: a API recusa `pai_id`, `papel` e `dependencias` (422 `colaboracao_desligada`).
                                   #   Ligada, valida e grava; F2: o laço só despacha o filho com a dependência comprovada e

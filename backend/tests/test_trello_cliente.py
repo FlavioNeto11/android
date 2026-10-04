@@ -119,13 +119,14 @@ async def test_nenhum_metodo_publico_poe_a_chave_ou_o_token_em_qualquer_parte_da
         "comentar": ("c1", "oi"), "cartoes_da_lista": ("l1",), "comentarios": ("c1", 5), "webhook": ("w1",), "webhooks_do_membro": (),
         "criar_webhook": ("q1", "https://exemplo.test/h", "d"), "apagar_webhook": ("w1",),
         "quadro_do_cartao": ("c1",), "anexar_arquivo": ("c1", b"PNG", "image/png", "anexo-x.png"),   # 28.24
-        "cartao": ("AbCd1234",), "nomes_dos_anexos": ("c1",)}                                            # 28.24 F4
+        "cartao": ("AbCd1234",), "nomes_dos_anexos": ("c1",),                                            # 28.24 F4
+        "nome_do_cartao": ("c1",)}                                                                       # 28.30
     nomes = {n for n, f in inspect.getmembers(ClienteTrello, inspect.iscoroutinefunction) if not n.startswith("_")}
     assert nomes == set(chamadas), f"método público sem cobertura neste teste: {nomes ^ set(chamadas)}"
     for nome, args in chamadas.items():
         antes = len(srv.pedidos)
         srv.respostas = [httpx.Response(200, json=[]) if nome in ("webhooks_do_membro", "cartoes_da_lista", "comentarios", "nomes_dos_anexos")
-                         else httpx.Response(200, json={"id": "x1", "idBoard": "b1"})]
+                         else httpx.Response(200, json={"id": "x1", "idBoard": "b1", "name": "N"})]
         kw = {"nome": "Outro"} if nome == "atualizar_cartao" else {}
         await getattr(cli, nome)(*args, **kw)
         assert len(srv.pedidos) == antes + 1, nome

@@ -158,6 +158,28 @@ O prazo da 29.50 deixa de ser a constante e passa ao config (`execucao.pergunta_
   também só são encerrados. O "Bloqueado: …" que o objetivo deixou no aparelho sai se nenhum outro objetivo dele espera
   uma pessoa; os outros avisos ficam. O objetivo vencido deixa de contar como aberto (`api._OBJETIVO_ABERTO`).
 - Prova `simulated`: `backend/tests/test_pergunta_vence.py`. `not_run`: o primeiro ciclo no central depois do deploy.
+- 31.50 (revisão do deploy 30):
+  - a guarda e o cancelamento do objetivo vencido são UMA transação: a retomada no meio não é atropelada, e uma falha
+    no meio não deixa etapas canceladas com o objetivo esperando;
+  - `pergunta_vence_h` tem piso de 1 h: um "0.05" no lugar de "5" encerraria em minutos o que espera uma pessoa;
+  - carência ao ligar: a marca `vencimento_ligado_desde` (`settings`) é gravada quando o vencimento é visto ligado e
+    apagada quando desligado; nada vence antes da marca mais o prazo. Antes, ligar venceu de uma vez os 21 que já
+    estavam parados (primeira volta do deploy 30);
+  - lembrete: a mesma volta (`RunService.lembrar_antes_de_vencer`) emite `pendencia.vence_em` UMA vez por item quando
+    faltam 2 h ou menos (`LEMBRETE_ANTES_H`). Os dados dizem o que é, o aparelho, a ação de catálogo, a chave da etapa
+    e o `vence_em`, nunca o comando nem o título. O texto ao dono é do montador dos avisos (28.31, Canais);
+  - `vence_em` (o mais tardio entre a espera e a marca, mais o prazo) vem no `RunSummary` em `needs_input`, no
+    `Objective` parado e na lista de aprovações pendentes (que vencem com o objetivo).
+
+### Plano de fluxo salvo prova com o catálogo atual (31.50 a)
+
+OBSERVADO (r-20261004195451-7d3527, 04/10): o plano veio de um fluxo salvo antes do #278, que congelou a pós-condição
+`model_judged` antiga do OPEN_MAIL_INBOX, e a etapa foi pelo ator e pelo juiz (13 chamadas). Num plano de fluxo
+(`planner.provider == "fluxo"`, inclusive a prova de fluxo), a etapa de catálogo do app do plano recebe a pós-condição
+ATUAL do catálogo (`planning.capabilities.atualizar_pos_condicoes`), com uma decisão registrada; a `local_proof` já vinha
+do catálogo atual pela ação. No Outlook, a caixa de entrada se prova sem IA pela lista E pelo título
+(`selector:id=conversation_list & text==Inbox`, OBSERVADO no android-01); sem o título, o juiz decide. O rejulgamento do
+17.10 vai sem a dica da tela (31.46), para continuar uma segunda opinião independente.
 
 Provas (`simulated`, harness na porta 5640):
 `backend/tests/test_intencao_chamadores.py::test_os_tres_chamadores_coerentes_para_a_mesma_frase` (valor inválido,
@@ -296,6 +318,17 @@ despacho (`_policy_gate`, a trava de sempre, com a mesma frase) e em `RunService
   - **(iii)** `step_done` sem gesto nenhum (tap, long_press, drag, scroll, press_back) numa limpeza ainda coberta é
     recusado ("limpeza sem toque").
   - A receita fica desligada na etapa opcional: ela repetiria os toques de um diálogo noutro.
+  - **31.51** (r-20261004190200-5b56e6, dois diálogos do site em série): antes do ator, a limpeza procura na árvore
+    o botão que fecha ou recusa (`taskqueue/dialogos.py`, lista fechada de rótulos: recusar e "só os necessários"
+    antes de fechar; "continuar no navegador" no "abra o app") e toca nele sem IA, um diálogo por vez, com teto
+    próprio (`LIMITE_DE_DIALOGOS`, 4) que não gasta as `max_actions` da etapa. Nunca toca "aceitar", "permitir",
+    "concordo" nem "configurar". Diálogo sem essa saída (o aviso que só aceita, ou um diálogo não reconhecido): a
+    etapa falha com "A limpeza não fechou o diálogo do site '…'", sem IA e sem aceitar nada. As ações levam
+    `source='regra'`. Revisão do #308: só no NAVEGADOR (`dialogos.NAVEGADORES`; em outro app, como o Instagram, fica
+    o comportamento de antes); o veto vale no rótulo e no id (`cookie-accept-and-close`) e pega "Aceptar",
+    "Akzeptieren", "Got it", "Entendi" e "OK"; o id só vale para ícone sem rótulo; o diálogo que volta depois de 4
+    toques falha dizendo qual ficou; a falha "sem saída" NÃO é pulada como limpeza opcional (o objetivo falha, a etapa
+    seguinte não roda com o diálogo na tela); e só conta o diálogo que cobre a tela (área do juiz, ou 15% dela).
 - **Relação do valor lido (item 31.41, `ai.relacao_do_valor`, sem migração):** o `read_value` só grava a saída com
   evidência de que o elemento É o que foi pedido (`taskqueue/relacao.py`, determinístico): (a) o seletor que o catálogo
   declara (`saidas_relacao: [nome=seletor]`); (b) um termo do nome, do glossário PT→EN ou de um sinônimo do catálogo
@@ -304,6 +337,14 @@ despacho (`_policy_gate`, a trava de sempre, com a mesma frase) e em `RunService
   não vale). Valor da IMAGEM, ou saída de catálogo sem seletor nem rótulo na árvore: UMA pergunta de sim ou não ao
   verificador (~US$ 0,005 com o Haiku e imagem), e incerto conta como não. Dúvida recusa a leitura
   (`leitura.sem_relacao`, linha na execução); quatro recusas viram o desfecho do 31.38. Achado real: 03d58e.
+  **Nome de PAPEL (item 31.47, sem migração):** `manchete`, `título`, `assunto`, `nome`, `remetente`, `autor`… (lista
+  fechada pt/en, `e_nome_de_papel`) rotulam o LUGAR do texto, não uma palavra dele: a manchete de um portal nunca contém
+  "manchete". Sem evidência da árvore, o nome de papel vai SEMPRE ao verificador (mesmo em planejamento livre, sem
+  catálogo), e a pergunta é "este elemento ocupa o papel X nesta tela?" (`pergunta_de_papel`: id, bounds e tamanho da
+  tela; rodapé, item de menu, botão, banner e anúncio nomeados como NÃO), não "o texto tem relação com X". "não" e
+  "incerto" recusam como antes. Nome que não é de papel (preço, protocolo…) segue com a pergunta de relação. Custo: uma
+  chamada de verificação por leitura de papel sem rótulo na árvore. Achado real: df1212 (g1, `read_headline`): duas
+  leituras certas da manchete recusadas, sem juiz nenhum, e a etapa terminou em dado ausente.
 - **Leitura sem o dado (item 31.38, `ai.max_decisoes_leitura`, sem migração):** na etapa de LEITURA (declara saídas,
   sem efeito nem commit_guard) o ator pode chamar `step_blocked(kind="dado_ausente")`, e o teto de decisões por
   tentativa (12: p95 de 8 medido em 16 leituras com sucesso desde 27/09, com folga) tem o mesmo desfecho. A etapa não
@@ -534,6 +575,12 @@ Do mesmo relatório de latência. Nenhum dos três converte falha em sucesso nem
   que falha ou foco que não chega: a volta seguinte não comprova e o ator assume na mesma tentativa. A abertura entra na
   regra do ANR como a da IA entrava (uma reabertura; a 2ª morte para a etapa). `esperar_foco` sonda a 0,5 s nos primeiros
   5 s (`INTERVALO_INICIAL_DO_FOCO_S`, `JANELA_INICIAL_DO_FOCO_S`), depois volta aos 2 s.
+  - 31.48: vale também para a etapa que prova por um elemento DO app (`element_present` com `id=<pacote>:id/…`,
+    `executor.pacote_da_prova`), quando esse app não está na frente. MEDIDO no banco central (04/10): o "abrir o QA
+    Messenger" com a prova da lista (modelo 141e) foi à IA em 43 de 49 sucessos (15 só para pedir `open_app`, 19 para
+    voltar de dentro de uma conversa); com `app_foreground` (2c35) fechou sem ator em 50 de 50. Aberto o app, a lista à
+    vista fecha pelo LT-1 sem ator. O aviso "Novidades da versão" é outra tela (a lista some), então a prova não vale e
+    o ator o dispensa. Com o app já na frente (dentro de uma conversa), abrir não muda nada e segue o ator.
   - Em modo sombra essas etapas não alimentam o `_veredito_da_sombra`, porque a IA não decide nelas. Uma candidata de
     `open_app` não promove por sombra.
   - O `open_app` do comando do painel (`manager.open_app`, com HOME e foco pelo adb) não mudou: está fora do caminho da

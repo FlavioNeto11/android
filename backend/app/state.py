@@ -52,7 +52,7 @@ from .modules.avisos.infrastructure.anexos import ArmazemDeAnexos
 from .modules.avisos.infrastructure.anexos_leitura import LeitorDeAnexo
 from .modules.avisos.infrastructure.faxina_sql import FaxinaDosCanais
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
-from .modules.avisos.infrastructure.portas_da_central import PortasReais
+from .modules.avisos.infrastructure.portas_da_central import PortasReais, nomes_de_persona
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos
 from .decisoes_inversas import inversas_das_filas
 from .modules.decisoes.application.desfazer import DesfazerDecisoes
@@ -61,7 +61,7 @@ from .modules.decisoes.infrastructure.estado_sql import EstadoDasDecisoes
 from .modules.decisoes.infrastructure.registro_sql import RegistroSql as RegistroDeDecisoes
 from .modules.decisoes.infrastructure.resumo_sql import ResumoDasDecisoes
 from .modules.decisoes.infrastructure.servico import ServicoDeDecisoes
-from .modules.avisos.infrastructure.trello_leitor import LeitorDoTrello
+from .modules.avisos.infrastructure.trello_leitor import ComentariosDoTrello, LeitorDoTrello
 from .modules.avisos.infrastructure.trello_webhook import CadastroDoWebhook, PortaDoWebhook
 from .modules.avisos.infrastructure.trello_saude import problemas_do_trello
 from .modules.context_retrieval.adapters.jev import JevSemanticProvider
@@ -347,7 +347,8 @@ class AppState:
         # Aviso fora do painel (28.11): espelho da caixa de Pendências no Telegram. Desligado de fábrica.
         self.avisos = ServicoDeAvisos(cfg, self.bus, FilaDeAvisos(self.db), self.lideranca, lider=self._lider,
                                       redigir=TriagemDeCredencial().redigir,
-                                      faxina_canais=FaxinaDosCanais(self.db, pasta_anexos=self.anexos_canal.pasta))
+                                      faxina_canais=FaxinaDosCanais(self.db, pasta_anexos=self.anexos_canal.pasta),
+                                      nomes_de_persona=lambda: nomes_de_persona(self.db))
         # O que a plataforma decide sozinha (28.25): o registro único, o adaptador que recolhe os produtores e o resumo
         # agrupado (no máximo uma mensagem por janela) pelo mesmo caminho dos avisos. O desfazer entra pelas rotas.
         self.decisoes_registro = RegistroDeDecisoes(self.db)
@@ -576,9 +577,14 @@ class AppState:
             receitas=self.scheduler.executor.recipes,
             decidir=lambda texto, run_id: self.repo.decision(texto, run_id=run_id), eventos=self.bus,
             curador_de_ia=CuradorComTriagemEmSombra(self._curador_do_hub, self._triagem_do_curador))
+        # 31.50: o lembrete de vencimento diz a etapa pelo nome do catálogo, não pela chave da capability.
+        self.avisos.nome_da_capability = lambda capability: self.learning.nome_da_capability(None, capability)
         # O desfazer das decisões automáticas (28.25): a inversa de cada fila entra aqui, fora do módulo (ver o docstring).
-        self.decisoes_desfazer = DesfazerDecisoes(self.decisoes_registro, inversas_das_filas(self.learning),
-                                                  dias=lambda: float(self.cfg.file.avisos.decisoes_automaticas.desfazer_dias))
+        self.decisoes_desfazer = DesfazerDecisoes(
+            self.decisoes_registro,
+            inversas_das_filas(self.learning, run_do_objetivo=lambda oid: self.db.scalar(
+                "SELECT run_id FROM objectives WHERE id=?", (oid,))),
+            dias=lambda: float(self.cfg.file.avisos.decisoes_automaticas.desfazer_dias))
         self._digestoes: set[asyncio.Task[None]] = set()
         # Ensino v2 (fase F, §13): as rotas ficam atrás de `skills.enabled`; o generalizador é o `generalize` do
         # provedor (simulado: regras fixas; real: uma chamada paga do planejador, contada em `ai_calls`).
@@ -634,6 +640,9 @@ class AppState:
             CursorDoTrello(self.db, self.db.agora), portas_da_central, lider=self._lider, recusa=triagem.recusa,
             redigir=triagem.redigir, avisar_dono=self.avisos.enfileirar_aviso, relogio=self.db.agora,
             cadastro=self.trello_cadastro)
+        # 28.30: o sim do dono no Telegram ao comentário dele só vale se o comentário no Trello ainda é o mesmo.
+        self.telegram_entrada.conversa.comentarios = ComentariosDoTrello(EntradasDoCanal(self.db, canal="trello"),
+                                                                         self.trello_leitor.cliente)
         # O webhook do Trello (32.2, §8): a rota só confere a assinatura e ANOTA o id da action; o líder a relê pela API.
         # Desligado de fábrica (`trello.webhook.enabled`); a reconciliação do leitor cobre sozinha.
         self.trello_webhook = PortaDoWebhook(cfg, EntradasDoCanal(self.db, canal="trello"),
@@ -675,7 +684,8 @@ class AppState:
             # barramento. É o MESMO caminho dos avisos da API (`PedidosApi.registrar_aviso`): chave igual, um evento só.
             avisar=lambda aviso: self.pedidos_api.registrar_aviso(aviso))
         # API de pedidos (28.9): prévia, criação, ações, leitura e os eventos `pedido.*` (as marcas do laço e das ações).
-        self.pedidos_api = PedidosApi(self.db, self.pedidos, self.runs, self.bus.emit, cfg.file.pedidos)
+        self.pedidos_api = PedidosApi(self.db, self.pedidos, self.runs, self.bus.emit, cfg.file.pedidos,
+                                      membro_trello_dono=cfg.file.trello.membro_dono)
         self.pedidos.notificar = self.pedidos_api.publicar
         # Costuras do aprendizado (ADR-054, A2): o executor pede as lições do ator e avisa cada tentativa fechada; o
         # serviço de execução pede as do planejador e avisa os gestos (resolver, repetir, cancelar, responder); o
@@ -2955,6 +2965,13 @@ class AppState:
                 log.info("vencimento: %s sim(ns) do plano vencido(s)", vencidos_do_plano)
         except Exception:  # a faxina nunca derruba o processo
             log.exception("vencimento dos sins do plano")
+        try:
+            # 31.50: o lembrete do que vence nas próximas horas (uma vez por item; o texto é do montador dos avisos).
+            lembrados = await asyncio.to_thread(self.runs.lembrar_antes_de_vencer, now())
+            if lembrados:
+                log.info("vencimento: %s lembrete(s) antes de vencer", len(lembrados))
+        except Exception:  # a faxina nunca derruba o processo
+            log.exception("lembrete antes do vencimento")
         return True
 
     async def _retention_loop(self) -> None:

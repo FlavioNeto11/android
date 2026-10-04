@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import contextlib
 import functools
 import io
 import logging
@@ -2888,10 +2889,23 @@ class DeviceManager:
                 "host_cpu_percent": None if cpu_ao_iniciar is None else round(cpu_ao_iniciar, 1),
                 "boots_em_voo": em_voo_ao_iniciar}
             if warm:                               # RA-15: quanto levou carregar o snapshot (None = ninguém disse)
+                # `load_ms` não é a mesma medida nas duas fontes: pelo log, spawn → linha lida; pelo uptime, spawn →
+                # `boot_completed` (inclui o boot depois do carregamento). Quem agregar filtra por `snapshot_por`.
                 medida["load_ms"] = None if load_s is None else int(round(load_s * 1000))
                 medida["snapshot_por"] = carregado_por
                 if uptime_no_veredito is not None:
                     medida["uptime_s"] = round(uptime_no_veredito, 1)
+                if carregado_por == "uptime":
+                    # 29.76 (d): o veredito pelo uptime para de ler o log. Se o log disser que o snapshot do projeto foi
+                    # recusado, o convidado carregou OUTRO estado (o uptime grande prova que não foi boot a frio). A saída
+                    # do emulador para o arquivo é bufferizada (a mesma razão do veredito pelo uptime), então lê agora e
+                    # de novo depois de `LOG_CONTRADIZ_RELEITURA_S`. Nos logs reais, as 7 recusas do `poc_hib` seguiram
+                    # em boot a frio; o aviso é para o caso que ainda não apareceu, sem mudar o aparelho.
+                    if self._snapshot_verdict(rt) is False:
+                        medida["log_contradiz"] = True
+                        self._avisar_log_contradiz(rt)
+                    else:
+                        self._reler_log_do_snapshot_depois(rt)
             self.db.execute("INSERT INTO measurements(ts, kind, data) VALUES (?,?,?)",
                             (now_iso(), "boot", dumps(medida)))
         # Antes de declarar `online`: o DTO que anuncia a entrada no ar já sai com o renderizador (e com o aviso).
@@ -3022,6 +3036,22 @@ class DeviceManager:
             return await rt.executor.run(rt.adb.uptime_s, timeout=10, label="uptime")
         except Exception:  # noqa: BLE001 - qualquer falha = sem veredito por esta fonte
             return None
+
+    def _avisar_log_contradiz(self, rt: DeviceRuntime) -> None:
+        self.bus.emit("log", f"{rt.id}: o uptime diz que acordou de snapshot, mas o log diz que o snapshot "
+                      f"{emu.SNAPSHOT_NAME!r} foi recusado; confira o estado do aparelho", level="warn", instance_id=rt.id)
+
+    def _reler_log_do_snapshot_depois(self, rt: DeviceRuntime) -> None:
+        """A segunda leitura do 29.76 (d), fora do caminho do boot. Só vale para o MESMO boot: o deslocamento do log
+        muda a cada partida, e um aparelho que já religou tem log novo."""
+        offset = rt.boot_log_offset
+
+        def reler() -> None:
+            if rt.boot_log_offset == offset and self._snapshot_verdict(rt) is False:
+                self._avisar_log_contradiz(rt)
+
+        with contextlib.suppress(RuntimeError):     # fora do laço (teste síncrono): sem segunda leitura
+            asyncio.get_running_loop().call_later(LOG_CONTRADIZ_RELEITURA_S, reler)
 
     def _snapshot_verdict(self, rt: DeviceRuntime) -> bool | None:
         """True = snapshot carregado · False = recusado pelo emulador · None = o log ainda não disse."""
@@ -4384,6 +4414,9 @@ class DeviceManager:
 #: Folga do veredito pelo uptime (29.34): num boot a frio o uptime do convidado nunca passa do tempo desde o spawn (o
 #: kernel começa depois do processo); a folga cobre o relógio do host e o do convidado andando um pouco diferente.
 FOLGA_DO_UPTIME_S = 15.0
+#: 29.76 (d): a segunda leitura do log depois do veredito pelo uptime. A saída do emulador é bufferizada; dois minutos
+#: cobrem a linha de "Successfully loaded" que, no android-02 (04/10), só apareceu depois do boot.
+LOG_CONTRADIZ_RELEITURA_S = 120.0
 
 
 def snapshot_pelo_uptime(uptime_s: float | None, desde_o_spawn_s: float) -> bool:

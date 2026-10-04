@@ -20,7 +20,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 
 from app.config import Config
 from app.contracts.origem import PREFIXO_LOTE, e_execucao_do_sistema
@@ -37,7 +37,7 @@ log = logging.getLogger("poc.avisos")
 
 #: Eventos que podem virar aviso. O filtro barato antes de montar a mensagem.
 KINDS_QUE_AVISAM = frozenset({"approval.pending", "run.updated", "session.needs_person", "pedido.aviso",
-                              "learning.needs_person"})
+                              "learning.needs_person", "pendencia.vence_em"})
 #: De quanto em quanto tempo o laço varre incertos, vencidos e purga (a entrega roda a cada volta).
 FAXINA_S = 3600.0
 
@@ -45,7 +45,8 @@ FAXINA_S = 3600.0
 class ServicoDeAvisos:
     def __init__(self, cfg: Config, bus: EventBus, fila: FilaDeAvisos, lideranca: Lideranca, *,
                  canal: Canal | None = None, lider: Callable[[str], int | None] | None = None,
-                 redigir: Callable[[str], str] | None = None, faxina_canais: FaxinaDosCanais | None = None):
+                 redigir: Callable[[str], str] | None = None, faxina_canais: FaxinaDosCanais | None = None,
+                 nomes_de_persona: Callable[[], Iterable[str]] | None = None):
         self.cfg = cfg
         self.bus = bus
         self.fila = fila
@@ -53,6 +54,10 @@ class ServicoDeAvisos:
         self._canal = canal
         #: O redator do conteúdo do aviso (28.15, decisão (d)): só vale com a conversa de volta ligada.
         self._redigir = redigir
+        self._nomes_de_persona = nomes_de_persona
+        #: 31.50: o nome em português da capability no catálogo (`LearningService.nome_da_capability`), ligado pelo
+        #: `AppState` depois de montar o Aprendizado. Sem ele, o lembrete mostra a chave.
+        self.nome_da_capability: Callable[[str], str | None] | None = None
         #: Quem diz se sou o líder: o `AppState._lider` (que tolera banco fora do ar). Injetável nos testes.
         self._lider = lider or self._tomar
         self._esperar_ate = 0.0
@@ -105,9 +110,19 @@ class ServicoDeAvisos:
             return False
         cfg = self.cfg.file.avisos
         # Com a conversa de volta ligada, a aprovação e a pergunta levam o conteúdo redigido (decisão (d) do ADR-071):
-        # o dono responde ali mesmo. Desligada, a mensagem segue a menor possível (28.11).
-        redigir = self._redigir if cfg.entrada.enabled else None
-        aviso = aviso_de_evento(kind, data, evento_id, cfg.url_painel, frozenset(cfg.aprendizado_faixas), redigir)
+        # o dono responde ali mesmo. Desligada, a mensagem diz onde responder. O redator e os nomes de persona valem
+        # sempre (28.31): são eles que deixam o rótulo do pedido sair. Sem os nomes, nada de texto da pessoa sai.
+        redigir, conversa = self._redigir, cfg.entrada.enabled
+        nomes = self._nomes()
+        if nomes is None:
+            redigir, conversa, nomes = None, False, []
+        if kind == "pendencia.vence_em":
+            if not (data or {}).get("chave"):
+                # O montador devolve None sem a chave do produtor: o lembrete não sairia calado.
+                log.warning("avisos: pendencia.vence_em sem a chave do produtor (evento %s): o lembrete não sai", evento_id)
+            data = self._com_nome_da_acao(data)
+        aviso = aviso_de_evento(kind, data, evento_id, cfg.url_painel, frozenset(cfg.aprendizado_faixas), redigir,
+                                nomes=nomes, conversa=conversa)
         if aviso is None or self._e_de_prova(kind, data):
             return False
         try:
@@ -115,6 +130,17 @@ class ServicoDeAvisos:
         except Exception:  # noqa: BLE001 - o aviso nunca derruba o emissor nem o laço
             log.exception("avisos: não foi possível enfileirar %s", aviso.chave)
             return False
+
+    def _nomes(self) -> list[str] | None:
+        """Os nomes de persona que o aviso não pode carregar, ou `None` se a leitura falhou (aí o aviso sai sem texto da
+        pessoa: o rótulo vira a reserva e o conteúdo fica no painel)."""
+        if self._nomes_de_persona is None:
+            return []
+        try:
+            return list(self._nomes_de_persona())
+        except Exception:  # noqa: BLE001 - o aviso sai mesmo assim, só que sem texto da pessoa
+            log.exception("avisos: nomes de persona indisponíveis")
+            return None
 
     def enfileirar_aviso(self, aviso: Aviso) -> bool:
         """Enfileira um aviso JÁ montado (o leitor do Trello avisa o dono do pedido de um convidado, 32.2). Mesma guarda
@@ -128,6 +154,18 @@ class ServicoDeAvisos:
             log.exception("avisos: não foi possível enfileirar %s", aviso.chave)
             return False
 
+    def _com_nome_da_acao(self, data: dict[str, object] | None) -> dict[str, object] | None:
+        """31.50: põe `acao_nome` (o nome do catálogo) ao lado da `acao` do lembrete. A falha da leitura só tira o nome."""
+        acao = (data or {}).get("acao")
+        if self.nome_da_capability is None or not isinstance(acao, str) or not acao:
+            return data
+        try:
+            nome = self.nome_da_capability(acao)
+        except Exception:  # noqa: BLE001 - o lembrete sai com a chave
+            log.exception("avisos: nome da capability %s não lido", acao)
+            return data
+        return {**(data or {}), "acao_nome": nome} if nome else data
+
     def _e_de_prova(self, kind: str, data: dict[str, object] | None) -> bool:
         """30.37 e 28.19: a execução do SISTEMA não é de uma pessoa: a pergunta dela (`run.updated` em `needs_input`)
         não vira aviso ao dono. São a prova de fluxo (`runs.prova_fluxo_id`), a validação do QA e o lote de uma frente
@@ -139,9 +177,12 @@ class ServicoDeAvisos:
         30.37 decidiu.
         Só consulto o banco para o evento que AVISARIA; falha na consulta deixa o aviso seguir (o dono recebe um aviso
         a mais, nunca perde um de pessoa)."""
-        if kind not in ("run.updated", "approval.pending"):
+        if kind not in ("run.updated", "approval.pending", "pendencia.vence_em"):
             return False
-        filho = (data or {}).get("run" if kind == "run.updated" else "approval")
+        # 31.50: o lembrete do vencimento segue a regra do item que lembra (a aprovação de lote avisa; o resto do sistema não).
+        lembrete = kind == "pendencia.vence_em"
+        aprovacao = kind == "approval.pending" or (lembrete and (data or {}).get("o_que") == "aprovacao")
+        filho = (data or {}) if lembrete else (data or {}).get("run" if kind == "run.updated" else "approval")
         run_id = filho.get("id" if kind == "run.updated" else "run_id") if isinstance(filho, dict) else None
         if isinstance(filho, dict) and filho.get("prova_fluxo_id"):
             return True
@@ -154,7 +195,7 @@ class ServicoDeAvisos:
             return False
         if linha is None:
             return False
-        if kind == "approval.pending" and str(linha["idempotency_key"] or "").startswith(PREFIXO_LOTE):
+        if aprovacao and str(linha["idempotency_key"] or "").startswith(PREFIXO_LOTE):
             return False                                   # aprovação de lote: o dono decide, então avisa
         return e_execucao_do_sistema(linha["prova_fluxo_id"], linha["idempotency_key"])
 

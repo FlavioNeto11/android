@@ -116,7 +116,7 @@ def test_varias_decisoes_na_janela_viram_uma_mensagem_so(cena: Cena) -> None:
     assert aviso is not None and cena.mensagens() == 1
     assert "3 perguntas sem resposta havia 24 h foram encerradas" in aviso.corpo
     assert "2 objetivos que esperavam uma execução já terminada foram encerrados" in aviso.corpo
-    assert "até 7 dias" in aviso.corpo
+    assert "até 7 dias" not in aviso.corpo and "não reabre" in aviso.corpo        # sem volta: não promete desfazer
     assert aviso.link == PAINEL + "/#/pendencias?aba=decididas"
     # decisão nova DENTRO da janela espera a próxima: nada de uma mensagem por decisão
     cena.decidir(1, prefixo="nova")
@@ -161,8 +161,10 @@ def test_frases_fixas_de_cada_fila_e_regra_desconhecida_vira_outras() -> None:
     assert "1 aprendizado em revisão foi confirmado pela plataforma" in corpo
     assert "1 pedido que esperava uma pessoa foi encerrado" in corpo
     assert "2 outras decisões da plataforma" in corpo
-    assert "Dá para desfazer pelo painel em até 1 dia." in corpo
-    assert corpo.endswith("Os aprendizados decididos sozinhos se desfazem desligando o item.")
+    # 28.29: o desfazer só é oferecido ao que tem volta (o aprendizado); o encerrado diz que não reabre.
+    assert "Dá para desfazer" not in corpo
+    assert "Os aprendizados se desfazem desligando o item pelo painel, em até 1 dia." in corpo
+    assert corpo.endswith("O que foi encerrado não reabre: para seguir, faça o pedido de novo.")
     assert "voltar" not in corpo and "revisão do dono" not in corpo
     assert corpo_do_resumo([], 7) is None
 

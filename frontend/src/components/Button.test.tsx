@@ -72,3 +72,14 @@ it('nenhuma tela passa disabledReason com texto fixo — isso mataria o botão p
   expect(culpados, `Use disabledReason={condicao ? null : 'motivo'}. Encontrado em:\n${culpados.join('\n')}`)
     .toEqual([]);
 });
+
+it('30.67: sem iconOnly, o `label` vira o nome acessível e o texto visível continua', async () => {
+  await render(<Button label="Não enviar este — android-01">Não enviar este</Button>);
+  const botao = byRole('button', 'Não enviar este — android-01');
+  expect(botao.textContent).toContain('Não enviar este');
+});
+
+it('30.67: sem iconOnly, com motivo, o nome acessível leva o label e o motivo', async () => {
+  await render(<Button label="Aprovar — android-01" disabledReason="texto em branco">Aprovar</Button>);
+  expect(byRole('button', 'Aprovar — android-01 — indisponível: texto em branco')).toBeTruthy();
+});

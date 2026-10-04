@@ -17,7 +17,7 @@ Os fatos são os mesmos que o resto do módulo usa:
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
@@ -227,26 +227,40 @@ class ServicoDeAprovacaoAutomatica:
         e, com `itens`, a régua item a item com os motivos de fora."""
         saida: dict[str, object] = {"modo": self._modo().value, "ultima_volta": self.ultima_volta(),
                                     "casos_na_sombra": self._livro.marcados(),
-                                    "decididos_pela_plataforma": [self._decisao(d) for d in self._livro.decisoes(50)]}
+                                    "decididos_pela_plataforma": self._decisoes(self._livro.decisoes(50))}
         if itens:
             saida["itens"] = [_item(x) for x in self.avaliar_filas()]
         return saida
 
-    def _decisao(self, d: DecisaoDaPlataforma) -> dict[str, object]:
+    def _entrada(self, item_ref: str) -> EntradaDoLivro | None:
+        kind, _, ref = item_ref.partition(":")
+        try:
+            return self._servico.entrada(LivroKind(kind), ref)
+        except (ErroDeAprendizado, ValueError):
+            return None
+
+    def _decisoes(self, decisoes: list[DecisaoDaPlataforma]) -> list[dict[str, object]]:
+        """30.66: com a capability e o nome dela no catálogo, em lote, para o painel titular a decisão como as outras
+        telas ("Enviar a mensagem (v1)"), e não pela chave interna da etapa."""
+        entradas = {d.item_ref: self._entrada(d.item_ref) for d in decisoes}
+        vivas = [e for e in entradas.values() if e is not None]
+        capabilities = self._servico.capabilities(vivas) if vivas else {}
+        nomes = self._servico.nomes_das_capabilities(vivas, capabilities) if vivas else {}
+        return [self._decisao(d, entradas[d.item_ref], capabilities, nomes) for d in decisoes]
+
+    def _decisao(self, d: DecisaoDaPlataforma, e: EntradaDoLivro | None,
+                 capabilities: Mapping[str, str | None], nomes: Mapping[str, str | None]) -> dict[str, object]:
         """A linha da trilha com o item de AGORA (o painel lista com o título e oferece Desligar só ao que segue vivo).
         O item que saiu do livro fica sem título e sem estado, e a linha continua (a trilha é o registro)."""
         kind, _, ref = d.item_ref.partition(":")
-        e: EntradaDoLivro | None = None
-        try:
-            e = self._servico.entrada(LivroKind(kind), ref)
-        except (ErroDeAprendizado, ValueError):
-            e = None
         regra = regra_do_motivo(d.motivo)
         gesto = Gesto.PUBLICAR if (d.de, d.para) == ("validated", "published") else Gesto.CONFIRMAR
         return {"item_ref": d.item_ref, "kind": kind, "ref": ref, "de": d.de, "para": d.para, "motivo": d.motivo,
                 "em": d.em, "gesto": gesto.value, "regra": regra[0] if regra else None,
                 "versao": regra[1] if regra else None, "titulo": e.title if e is not None else None,
-                "app": e.app if e is not None else None,
+                "app": e.app if e is not None else None, "etapa": e.etapa if e is not None else None,
+                "capability": capabilities.get(e.trail_ref) if e is not None else None,
+                "capability_nome": nomes.get(e.trail_ref) if e is not None else None,
                 "estado": e.state.value if e is not None and e.state is not None else None}
 
     def ultima_volta(self) -> dict[str, object] | None:

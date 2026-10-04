@@ -208,6 +208,8 @@ Write-Host 'dependências do agente instaladas (sete, não as do backend).'
 
 # ---------------------------------------------------------------- 4. configuração
 New-Item -ItemType Directory -Force $WorkDir | Out-Null
+# 29.76: a marca de "agente que cedeu o canal" é do código anterior; instalar é a decisão de que este código vale.
+Remove-Item -LiteralPath (Join-Path $WorkDir 'agente-cedido.json') -Force -ErrorAction SilentlyContinue
 if (-not (Test-Path -LiteralPath $Config)) {
   Copy-Item -LiteralPath $exemplo -Destination $Config -Force
   # Parênteses: em modo de ARGUMENTO, `"a" + "b"` não concatena — o `+` vira um argumento posicional a mais.

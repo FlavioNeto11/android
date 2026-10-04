@@ -12,7 +12,8 @@ import styles from './Canais.module.css';
  */
 export function AnexarAoCartao({ anexoId, onFeito, onCancelar }: {
   anexoId: number;
-  onFeito: () => void;
+  /** `jaEstava`: a rota achou o mesmo arquivo no cartão e não anexou de novo (F5). */
+  onFeito: (jaEstava: boolean) => void;
   onCancelar: () => void;
 }) {
   const [texto, setTexto] = useState('');
@@ -26,8 +27,8 @@ export function AnexarAoCartao({ anexoId, onFeito, onCancelar }: {
     setEnviando(true);
     setErro(null);
     try {
-      await api.canaisAnexarAoCartao(anexoId, conferido.card);
-      onFeito();
+      const r = await api.canaisAnexarAoCartao(anexoId, conferido.card);
+      onFeito(r.ja_estava === true);
     } catch (e) {
       // A mensagem da rota já vem em português e sem chave nem token (ex.: "Esse cartão não é de um quadro que a Central espelha.").
       setErro(toApiError(e).message);

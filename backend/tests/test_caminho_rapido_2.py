@@ -251,6 +251,72 @@ async def test_lt6_etapa_com_efeito_nunca_abre_pelo_executor(harness: Harness) -
     assert "deterministic" not in (_etapa_open_app(harness, run.id)["estrategias"][0] or "")
 
 
+def _open_app_por_elemento(h: Harness, pacote: str = "com.pocqa.messenger") -> None:
+    """31.48: a etapa "abrir o app" com a prova do modelo 141e (`element_present` da lista), não `app_foreground`."""
+    plano0 = h.ai.inner.plan
+
+    async def plan(req: Any) -> Any:
+        plano, uso = await plano0(req)
+        for s in plano.steps:
+            if s.key == "open_app":
+                s.postcondition = Postcondition(kind="element_present",
+                                                value=f"id={pacote}:id/conversation_list",
+                                                description="A lista de conversas do QA Messenger está à vista.")
+        return plano, uso
+
+    h.ai.inner.plan = plan
+
+
+async def test_31_48_etapa_que_prova_pela_lista_abre_o_app_e_fecha_sem_ator(harness: Harness) -> None:
+    _open_app_por_elemento(harness)
+    run = harness.run(["android-01"])
+    await harness.wait_run(run.id, statuses=TERMINAIS)
+    etapa = _etapa_open_app(harness, run.id)
+    assert harness.ai.count("decide", step="open_app") == 0
+    assert etapa["status"] == "succeeded" and etapa["estrategias"] == ["deterministic"]
+    assert etapa["driven_by"] == "sem_ator"
+    assert len(harness.fakes["android-01"].messages) == 1               # o resto do plano seguiu normalmente
+
+
+async def test_31_48_com_o_aviso_na_tela_a_lista_nao_prova_e_o_ator_dispensa(harness: Harness) -> None:
+    """O aviso "Novidades da versão" é outra tela: a lista some, a prova não vale, e só então o ator age."""
+    _open_app_por_elemento(harness)
+    harness.fakes["android-01"].interstitial = True
+    run = harness.run(["android-01"])
+    await harness.wait_run(run.id, statuses=TERMINAIS)
+    etapa = _etapa_open_app(harness, run.id)
+    assert harness.ai.count("decide", step="open_app") >= 1
+    assert etapa["status"] == "succeeded" and not harness.fakes["android-01"].interstitial
+    assert etapa["estrategias"] == ["deterministic>ai_actor"]
+
+
+async def test_31_48_pacote_de_outro_app_cadastrado_nao_abre_esse_app(harness: Harness,
+                                                                       monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisão da orquestradora: o pacote do seletor tem de ser o app DA ETAPA, não só um app cadastrado. Um id com o
+    mesmo nome em outro pacote cadastrado não faz o executor abrir esse outro app: segue o ator."""
+    from app.taskqueue.executor import StepExecutor
+    outro = "com.outro.app"
+    cadastrados = StepExecutor._allowed_packages
+    monkeypatch.setattr(StepExecutor, "_allowed_packages", lambda self: {*cadastrados(self), outro})
+    _open_app_por_elemento(harness, pacote=outro)
+    run = harness.run(["android-01"])
+    # A prova com o outro pacote nunca fecha neste aparelho falso: basta a 1ª decisão do ator, e a execução é cancelada.
+    await harness.wait(lambda: harness.ai.count("decide", step="open_app") >= 1, what="o ator decidir a etapa")
+    harness.state.runs.cancel(run.id)  # type: ignore[union-attr]
+    linha = harness.state.db.one("SELECT COUNT(*) AS n FROM events WHERE run_id=? AND message LIKE ?",  # type: ignore[union-attr]
+                                 (run.id, "%aberto pelo executor%"))
+    assert linha["n"] == 0
+
+
+def test_31_48_o_pacote_vem_so_do_id_com_pacote_da_prova_por_elemento() -> None:
+    from app.taskqueue.executor import pacote_da_prova
+    pc = lambda kind, value: Postcondition(kind=kind, value=value, description="")  # noqa: E731
+    assert pacote_da_prova(pc("element_present", "id=com.pocqa.messenger:id/conversation_list")) == "com.pocqa.messenger"
+    assert pacote_da_prova(pc("element_present", "text=Conversas|id=com.x.y:id/lista")) == "com.x.y"
+    assert pacote_da_prova(pc("element_present", "id=conversation_list")) == ""
+    assert pacote_da_prova(pc("model_judged", "id=com.x.y:id/lista")) == ""
+
+
 def _leitor(respostas: list[str | None]) -> tuple[Any, list[float]]:
     momentos: list[float] = []
 

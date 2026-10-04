@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from collections.abc import Callable, Sequence
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +30,7 @@ from ..planning.catalog import session_provider_of
 from ..planning.provider import Usage
 from ..security.redaction import redact
 from ..storage import DiskStorage, Storage, put_async
-from ..util import new_run_id, now_iso, truncate
+from ..util import new_run_id, now_iso, parse_iso, to_iso, truncate
 from .latencia import TemposDaTentativa, motivo_da_espera
 from .recipes import para_hash, step_template_hash
 from .saidas import como_texto, nomes_citados, referencias, resolver, sem_sufixo_de_item
@@ -142,6 +144,9 @@ class Repository:
         self.owner_id = owner_id
         #: Onde a evidência é gravada (item 5.7). Sem argumento, é a pasta local de sempre.
         self.storage: Storage = storage or DiskStorage(evidence_dir)
+        #: 31.50: (prazo em horas, ligado desde) do vencimento, ou `None` desligado. Quem sabe é o `RunService`, que o
+        #: preenche; sem ele (testes de repositório), os DTOs saem sem `vence_em`, como antes.
+        self.prazo_do_vencimento: Callable[[], tuple[float, str] | None] | None = None
         #: Os dados NÃO sigilosos da persona de cada aparelho, para as variáveis `{perfil_email}` etc. (ADR-040). "O app
         #: tem provedor de sessão?" decide o VALOR de `conta_<app>_usuario` (29.71: o nome no app, nunca o e-mail de
         #: login, no app de login gerenciado): com o predicado em falso, a materialização punha o e-mail do Instagram no
@@ -1325,7 +1330,21 @@ class Repository:
         return n
 
     # ================================================================== DTOs e eventos
-    def run_summary(self, row: Row, *, deduplicated: bool | None = None) -> RunSummary:
+    def run_summaries(self, rows: Sequence[Row]) -> list[RunSummary]:
+        """Os resumos de uma LISTA. 31.50: a entrada em `needs_input` de todas sai numa consulta só (o `vence_em`),
+        em vez de uma por execução."""
+        perguntas = [str(r["id"]) for r in rows if r["status"] == RunStatus.needs_input.value]
+        entradas: dict[str, str] = {}
+        if perguntas and self.prazo_do_vencimento is not None:
+            marcas = ",".join("?" for _ in perguntas)
+            entradas = {str(x["run_id"]): str(x["t"]) for x in self.db.query(
+                f"SELECT run_id, MAX(ts) AS t FROM events WHERE kind='run.updated' AND run_id IN ({marcas}) "
+                "GROUP BY run_id", tuple(perguntas))}
+        return [self.run_summary(r, entrada_da_pergunta=entradas.get(str(r["id"]), r["created_at"])
+                                 if str(r["id"]) in perguntas else None) for r in rows]
+
+    def run_summary(self, row: Row, *, deduplicated: bool | None = None,
+                    entrada_da_pergunta: str | None = None) -> RunSummary:
         ids = loads(row["instance_ids"], [])
         counts = self._counts(row["id"])
         total = sum(counts.model_dump().values())
@@ -1340,7 +1359,45 @@ class Repository:
             ai_profile=_col(row, "ai_profile"), ai_profile_source=_col(row, "ai_profile_source"),
             teto_de_autonomia=_col(row, "teto_de_autonomia"),
             pedido_id=_col(row, "pedido_id"), ocorrencia_id=_col(row, "ocorrencia_id"),
-            prova_fluxo_id=_col(row, "prova_fluxo_id"), origem=origem, origem_ref=origem_ref)
+            prova_fluxo_id=_col(row, "prova_fluxo_id"), origem=origem, origem_ref=origem_ref,
+            vence_em=self._vence_em_da_pergunta(row, entrada_da_pergunta))
+
+    def _vence_em(self, desde: str | None) -> str | None:
+        """31.50: o mais tardio entre `desde` e a marca de quando o vencimento foi ligado, mais o prazo."""
+        prazo = self.prazo_do_vencimento() if self.prazo_do_vencimento is not None else None
+        if prazo is None or not desde:
+            return None
+        horas, ligado_desde = prazo
+        if not ligado_desde:                          # a volta ainda não gravou a marca: não dá para dizer quando
+            return None
+        return to_iso(parse_iso(max(str(desde), ligado_desde)) + timedelta(hours=horas))
+
+    def _vence_em_da_pergunta(self, row: Row, entrada: str | None = None) -> str | None:
+        if row["status"] != RunStatus.needs_input.value or self.prazo_do_vencimento is None:
+            return None
+        if entrada is None:                           # fora de `run_summaries`: uma consulta, só para esta execução
+            entrada = self.db.scalar("SELECT MAX(ts) FROM events WHERE run_id=? AND kind='run.updated'", (row["id"],))
+        return self._vence_em(entrada or row["created_at"])
+
+    def vence_em_dos_objetivos(self, ids: Sequence[str]) -> dict[str, str | None]:
+        """31.50: o `vence_em` de vários objetivos numa consulta só (a lista de aprovações pendentes)."""
+        if not ids or self.prazo_do_vencimento is None:
+            return {}
+        marcas = ",".join("?" for _ in ids)
+        terminais = {s.value for s in RUN_TERMINAL}
+        return {str(o["id"]): self._vence_em(max(str(o["finished_at"] or ""), str(o["fim"] or "")))
+                if o["status"] == ObjectiveStatus.waiting_user.value and o["run_status"] in terminais else None
+                for o in self.db.query(f"SELECT o.id, o.status, o.finished_at, r.status AS run_status, "
+                                       f"r.finished_at AS fim FROM objectives o JOIN runs r ON r.id=o.run_id "
+                                       f"WHERE o.id IN ({marcas})", tuple(ids))}
+
+    def _vence_em_do_objetivo(self, row: Row) -> str | None:
+        if row["status"] != ObjectiveStatus.waiting_user.value or self.prazo_do_vencimento is None:
+            return None
+        run = self.db.one("SELECT status, finished_at FROM runs WHERE id=?", (row["run_id"],))
+        if run is None or RunStatus(run["status"]) not in RUN_TERMINAL:
+            return None                               # execução viva: o relógio só começa quando ela termina
+        return self._vence_em(max(str(row["finished_at"] or ""), str(run["finished_at"] or "")))
 
     def objective_dto(self, row: Row) -> ObjectiveDTO:
         done, total = self._step_progress(row["id"], row["plan_version"])
@@ -1353,7 +1410,8 @@ class Repository:
             plan_version=row["plan_version"], parameters=loads(row["parameters"], {}), steps_done=done, steps_total=total,
             delivery_level=DeliveryLevel(row["delivery_level"]) if row["delivery_level"] else None,
             effects=loads(row["effects"], []), started_at=row["started_at"], finished_at=row["finished_at"],
-            ai_calls=row["ai_calls"], ai_input_tokens=row["ai_input_tokens"], ai_output_tokens=row["ai_output_tokens"])
+            ai_calls=row["ai_calls"], ai_input_tokens=row["ai_input_tokens"], ai_output_tokens=row["ai_output_tokens"],
+            vence_em=self._vence_em_do_objetivo(row))
 
     def _step_progress(self, objective_id: str, version: int) -> tuple[int, int]:
         # Item 31.36: a etapa opcional pulada conta como feita (o objetivo não fica preso nela).

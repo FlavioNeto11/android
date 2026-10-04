@@ -11,13 +11,15 @@ import json
 import logging
 from contextvars import ContextVar
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 import psutil
 import websockets
 
-from ..contracts.worker.protocol import (FEATURE_OBSERVACAO_LOCAL, FEATURE_RESERVA_DE_BOOT, RECUSA_CERCA_NAO_MAIOR,
+from ..contracts.worker.protocol import (FECHAMENTO_MOTIVO_DEFASADO, FEATURE_OBSERVACAO_LOCAL, FEATURE_RESERVA_DE_BOOT,
+                                         RECUSA_CERCA_NAO_MAIOR,
                                          Ack, Dispatch, Heartbeat, Hello, Limits, ObserveImage, ObserveResult,
                                          Progress, Result, WorkerDevice, WorkerResources)
 from ..contracts.worker.verbos import sem_hibernacao
@@ -52,6 +54,24 @@ RECONEXAO_MAX_S = 60.0
 RECONEXAO_RAJADA_S = 3.0
 RECONEXAO_RAJADA_JANELA_S = 180.0
 FECHAMENTO_DE_REINICIO = frozenset({1001, 1012})
+#: 29.76: o central fecha com 4409 o canal ANTIGO quando outra conexão deste mesmo worker assume
+#: (`workers/registry.py::attach`). Um processo só tem um canal por vez, então receber o 4409 quer dizer que há outro
+#: agente com o mesmo `worker_id` (partida manual mais a tarefa, processo velho que sobrou de uma atualização).
+#: Tentar de novo faria os dois se derrubarem a cada espera, e na janela curta do 29.73 isso seria a cada 3 s. Sair
+#: também não resolve: a tarefa `farm-agente` religa o processo em 1 min (RestartCount 999), e os dois lançadores se
+#: derrubariam a cada minuto (revisão do #303). Este agente cede o canal e só tenta de novo depois de
+#: `ESPERA_NO_CONFLITO_S`: se o outro sumiu (o processo velho morreu), volta sozinho; se não, a troca vira uma a cada
+#: 10 min, com o motivo no log. A recusa de credencial por fechamento (4401/4403) segue na escada: parar o worker
+#: remoto por um erro passageiro do central custa mais do que insistir.
+FECHAMENTO_DE_CONFLITO = 4409
+ESPERA_NO_CONFLITO_S = 600.0
+#: Validade da marca `agente-cedido.json` (29.76): passado isso, o agente marcado volta a tentar.
+VALIDADE_DA_MARCA_S = 24 * 3600.0
+
+
+def motivo_do_fechamento(exc: BaseException) -> str:
+    rcvd = getattr(exc, "rcvd", None)
+    return str(getattr(rcvd, "reason", "") or "")
 
 
 def codigo_do_fechamento(exc: BaseException) -> int | None:
@@ -477,9 +497,67 @@ class Agent:
             return
         self._diario.registrar_cerca(msg.instance_id, msg.fence)
         self._ocupados[msg.instance_id] = msg.command_id
-        self._tarefas[msg.command_id] = asyncio.create_task(self._executar(msg))
+        tarefa = asyncio.create_task(self._executar(msg))
+        self._tarefas[msg.command_id] = tarefa
+        tarefa.add_done_callback(lambda t: self._ao_terminar(msg, t))
+
+    def _ao_terminar(self, msg: Dispatch, tarefa: asyncio.Task[None]) -> None:
+        """Rede de segurança do 29.76 (revisão do #303): o cancelamento que chega ANTES do `try` de `_executar` (tarefa
+        recém-criada que nem começou, ou o `await` do Ack) não grava desfecho nem roda o `finally`. Sem isto, o
+        comando ficava em `_tarefas`/`_ocupados` para sempre: o Hello o declarava em voo e todo comando novo àquele
+        aparelho era recusado até o processo reiniciar. Nada foi tocado nesse ponto, então o desfecho é `cancelled`."""
+        self._tarefas.pop(msg.command_id, None)
+        if self._ocupados.get(msg.instance_id) == msg.command_id:
+            self._ocupados.pop(msg.instance_id, None)
+        if tarefa.cancelled() and self._diario.desfecho(msg.command_id) is None:
+            corpo = Result(command_id=msg.command_id, outcome="cancelled", fence=msg.fence,
+                           reason="cancelado antes de começar; nada foi tocado no aparelho").model_dump()
+            self._diario.guardar(msg.command_id, corpo)
+            if self._ws is not None:                 # sem canal, sai na volta (`_reenviar_pendentes`)
+                with contextlib.suppress(RuntimeError):
+                    asyncio.get_running_loop().create_task(self._send(corpo))
+
+    async def _ceder_o_canal(self) -> None:
+        """29.76: quem perdeu o canal não age em aparelho. O que estava em voo é cancelado; cada verbo para no próximo
+        `ponto_seguro` e o desfecho (`cancelled` antes de tocar, `uncertain` depois) vai para o diário, que sai na
+        volta com a cerca dele. A reserva de RAM segue a regra do executor: solta se nada foi iniciado; órfã até o
+        processo sumir se o emulador já subiu (`executor._v_start`). Uma thread de `to_thread` que já começou não para
+        no meio (nenhuma para): o que ela faz é o último passo, e o desfecho diz `uncertain`."""
+        tarefas = list(self._tarefas.values())
+        for t in tarefas:
+            t.cancel()
+        if tarefas:
+            await asyncio.gather(*tarefas, return_exceptions=True)
+
+    def _marca_de_cedido(self) -> Path:
+        return Path(self.settings.work_dir) / "agente-cedido.json"
+
+    def _marcar_cedido(self) -> None:
+        with contextlib.suppress(OSError):
+            self._marca_de_cedido().write_text(json.dumps({"agent_code": AGENT_CODE, "em": now_iso()}), encoding="utf-8")
+
+    def _cedido_antes(self) -> bool:
+        """A marca vale só para o MESMO código e por `VALIDADE_DA_MARCA_S` (24 h): a atualização troca o código, e o
+        `worker-install` apaga a marca. A validade cobre o que a marca não sabe distinguir (revisão do #303): um
+        rollback que devolve o mesmo código marcado, ou o agente da tarefa deslocado por um agente manual de código
+        novo que depois foi fechado; nos dois, o worker ficaria sem agente para sempre."""
+        try:
+            marca = json.loads(self._marca_de_cedido().read_text(encoding="utf-8"))
+            quando = parse_iso(str(marca.get("em") or ""))
+        except (OSError, ValueError, AttributeError, TypeError):
+            return False
+        if marca.get("agent_code") != AGENT_CODE or quando is None:
+            return False
+        # Idade negativa = marca "do futuro" (relógio que andou para trás): não vale, senão barraria o agente por 24 h
+        # mais o erro do relógio.
+        return 0 <= (now() - quando).total_seconds() < VALIDADE_DA_MARCA_S
 
     async def run_forever(self) -> None:
+        if AGENT_CODE and self._cedido_antes():
+            log.error("este código de agente (%s) já cedeu o canal a um agente com o código do central: não conecta "
+                      "(apague %s depois de conferir que não há outro agente, ou atualize)", AGENT_CODE,
+                      self._marca_de_cedido())
+            return
         reconexao = EsperaDeReconexao()
         while True:
             espera = RECONEXAO_MIN_S
@@ -491,6 +569,18 @@ class Agent:
                 log.error("%s", exc)
                 return
             except Exception as exc:  # noqa: BLE001 - rede: tenta de novo, sempre
-                espera = reconexao.depois_da_queda(exc, asyncio.get_running_loop().time())
-                log.warning("conexão caiu (%s); nova tentativa em %.0f s", exc, espera)
+                if codigo_do_fechamento(exc) == FECHAMENTO_DE_CONFLITO:
+                    await self._ceder_o_canal()
+                    if motivo_do_fechamento(exc) == FECHAMENTO_MOTIVO_DEFASADO:
+                        self._marcar_cedido()
+                        log.error("outra conexão deste worker assumiu o canal (4409) com o código do central, e este "
+                                  "agente roda código antigo (%s): sai e não volta até ser atualizado", AGENT_CODE)
+                        return
+                    espera = ESPERA_NO_CONFLITO_S
+                    log.error("outra conexão deste worker assumiu o canal (4409): há outro agente com o mesmo "
+                              "worker_id; este cancelou o que tinha em voo, cede o canal e tenta de novo em %.0f s "
+                              "(sair não adianta: a tarefa farm-agente religaria em 1 min)", espera)
+                else:
+                    espera = reconexao.depois_da_queda(exc, asyncio.get_running_loop().time())
+                    log.warning("conexão caiu (%s); nova tentativa em %.0f s", exc, espera)
             await asyncio.sleep(espera)

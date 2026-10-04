@@ -33,7 +33,7 @@ AUTORIZACAO = "dono pelo Telegram em 04/10 às 19:02 UTC, entrada 1189"
 
 def _excecoes(repo: Any) -> tuple[ExcecoesDePolitica, list[tuple[str, dict[str, object]]]]:
     eventos: list[tuple[str, dict[str, object]]] = []
-    return ExcecoesDePolitica(repo.db, lambda tipo, _msg, dados: eventos.append((tipo, dados))), eventos
+    return ExcecoesDePolitica(repo.db, lambda tipo, _msg, dados: eventos.append((tipo, dados)), perfis=repo), eventos
 
 
 def _frota_com_alvo_nosso(tmp_path: Path) -> tuple[Any, Any, Any, dict[str, str]]:
