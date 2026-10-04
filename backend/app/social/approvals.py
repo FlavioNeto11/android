@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from ..db import Database, Row, dumps, loads
+from ..planning.capabilities import Capability, objeto_da_acao
 from ..security.sessions import operador_atual
 from ..util import new_token, now, now_iso, parse_iso
 
@@ -74,6 +75,16 @@ class ApprovalStore:
                         decided_by=row["decided_by"], interaction_id=row["interaction_id"],
                         image_id=self._imagem_da_etapa(row["step_id"]))
 
+    def objeto_da_etapa(self, step_id: str | None, acao: Capability | None) -> dict[str, str] | None:
+        """30.64: o OBJETO da ação nos argumentos da etapa, pelo que o catálogo declara em `objeto_alvo` (fonte única,
+        a mesma da chave da aprovação no plano). O alvo da aprovação é só a PESSOA (`@ana`); o post, o comentário ou a
+        mídia moram aqui. Sem isto, aprovar "comentar no post A de @ana" valia para o post B dela depois de uma
+        revisão do plano. `None` (sem declaração, argumento por resolver, etapa ilegível) falha fechado."""
+        if not step_id:
+            return None
+        argumentos = loads(self.db.scalar("SELECT bindings FROM steps WHERE id=?", (step_id,)), {})
+        return objeto_da_acao(acao, argumentos) if isinstance(argumentos, dict) else None
+
     def _imagem_da_etapa(self, step_id: str | None) -> str | None:
         """O `image_id` dos argumentos da etapa (29.30), ou `None`. Argumento ilegível não derruba a lista."""
         if not step_id:
@@ -92,7 +103,7 @@ class ApprovalStore:
                           (step_id,))
         return self._dto(row) if row else None
 
-    def acompanhar_revisao(self, step_id: str, *, profile_id: str | None, capability: str, target: str | None,
+    def acompanhar_revisao(self, step_id: str, *, profile_id: str | None, acao: Capability | None, target: str | None,
                            content: str | None, disparou: Callable[[str], bool]) -> Approval | None:
         """A decisão já tomada sobre ESTA etapa numa versão anterior do plano, quando ela vale para a etapa revisada.
 
@@ -112,8 +123,10 @@ class ApprovalStore:
         mesma decisão na aba de aprovações.
         """
         etapa = self.db.one("SELECT objective_id, key, plan_version FROM steps WHERE id=?", (step_id,))
-        if etapa is None or not etapa["objective_id"]:
+        objeto = self.objeto_da_etapa(step_id, acao)
+        if etapa is None or not etapa["objective_id"] or acao is None or objeto is None:
             return None
+        capability = acao.key
         row = self.db.one(
             "SELECT a.* FROM pending_approvals a JOIN steps s ON s.id=a.step_id WHERE s.objective_id=? AND s.key=?"
             " AND s.plan_version<? AND a.status IN ('approved','edited','rejected')"
@@ -127,7 +140,10 @@ class ApprovalStore:
                 and (anterior.target or None) == (target or None)
                 and (anterior.content or "").strip() == (content or "").strip()
                 # 30.60 (N1): a mesma legenda com OUTRA imagem é outra publicação; aprovar uma não aprova a outra.
-                and anterior.image_id == self._imagem_da_etapa(step_id))
+                and anterior.image_id == self._imagem_da_etapa(step_id)
+                # 30.64: o mesmo texto para a mesma pessoa em OUTRO post (outra legenda, outro autor) é outra ação.
+                # declarado no catálogo (`objeto_alvo`); sem declaração não há reuso (acima).
+                and self.objeto_da_etapa(anterior.step_id, acao) == objeto)
         if not vale or anterior.step_id is None or disparou(anterior.step_id):
             return None
         self.db.execute("UPDATE pending_approvals SET step_id=? WHERE id=? AND step_id=?",

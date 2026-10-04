@@ -3698,6 +3698,36 @@ instalação afrouxa, por `LimitsCfg.publicar_sem_aprovacao` (padrão `false`). 
 
 Prova `simulated`: `backend/tests/test_contexto_do_pedido.py`.
 
+**Emenda 30.64, 04/10/2026 (orquestradora, desenho do 30.61):** o item de uma ação com efeito é identificado pelo
+perfil, pela ação, pelo texto e pelo OBJETO, não só pela pessoa.
+- **`objeto_alvo` no catálogo**, por ação, é a fonte única do objeto: o post (`post_author` + `caption_contains`), o
+  comentário e a conversa (`username`) ou a mídia (`image_id`). O texto fica fora e se compara à parte.
+  - A carga do catálogo EXIGE a declaração em toda ação com efeito que a plataforma pode fazer sozinha (não exige na
+    `internal` nem na `manual_only`; hoje só LOGOUT fica sem). Sem ela, a porta falha fechado: aprovação, e o
+    `acompanhar_revisao` não reaproveita.
+- **Reuso da aprovação na revisão do plano** (`acompanhar_revisao`): exige o mesmo objeto declarado. O mesmo texto para
+  a mesma pessoa noutro post é pedido novo.
+- **O mesmo perfil em duas execuções:** a porta olha as saídas e os pedidos em aberto do PRÓPRIO perfil, de outra etapa,
+  sobre o mesmo objeto, na janela da frota (`fleet_target_window_days`).
+  - DM só pede confirmação com o MESMO texto (igualdade normalizada): já enviado ao alvo na janela, ou aprovado e ainda
+    não enviado noutra etapa. Texto diferente segue a política do perfil, para que conversa em andamento e o bom dia
+    diário não virem rajada de pedidos. O texto gerado se compara DEPOIS do rascunho (`mensagem_repetida`, chamada
+    pelo `_policy_gate` com a etapa relida).
+  - O QA Messenger não tem catálogo e sai da porta antes do `check`: o bom dia diário nunca chega a esta regra.
+  - Objeto inequívoco (seguir, aceitar ou recusar pedido, publicar a mesma imagem, curtir ou comentar o post com a
+    legenda dita): recusa antes da aprovação.
+  - Objeto AMBÍGUO (argumento declarado vazio, como a legenda do "post mais recente", ou só a pessoa numa ação sobre post
+    ou comentário) nunca recusa; pede aprovação. A curtida também, por enquanto. O seletor de commit EXATO de estado
+    (`desc==Like`) não casa com o coração curtido, o que o executor prova com o aparelho falso de
+    `test_alvo_por_legenda.py`, mas aparelho falso não prova o ambiente real. A curtida ambígua volta a passar quando o
+    mesmo teste usar a árvore REAL, anonimizada, de um post já curtido
+    (`_SELETOR_DE_ESTADO_PROVADO_EM_TELA_REAL`).
+  - Uma saída sem etapa conhecida só conta quando o objeto é a própria pessoa (DM, seguir).
+  - As versões anteriores da mesma etapa no objetivo não contam: é o pedido que o `acompanhar_revisao` leva adiante.
+
+Prova `simulated`: `backend/tests/test_objeto_alvo.py`, `test_repetido_entre_execucoes.py`,
+`test_aprovacao_acompanha_revisao.py`.
+
 ## ADR-056 — Rede por aparelho: VPN dentro do Android com proxy encadeado, saída medida e revisão da cláusula de rede do ADR-055
 
 **Data:** 29/09/2026 · **Estado:** vigente (decisão); implementação planejada na Fase 25, `not_run` · **Decisão do

@@ -724,3 +724,34 @@ async def test_receita_que_repete_o_balao_na_publicacao_errada_e_recusada(coment
     assert fake.folhas_abertas == [_ALVO]                        # nenhuma folha nova: a de baixo não foi aberta
     rejeitadas = _rejeitadas(h, passo["id"])
     assert rejeitadas and rejeitadas[0]["source"] == "recipe" and "cartão" in (rejeitadas[0]["error"] or "")
+
+
+@pytest_asyncio.fixture
+async def ja_curtidos(tmp_path: Path) -> AsyncIterator[Harness]:
+    async for h in _parque(tmp_path, None, curtidas=[True, True]):
+        yield h
+
+
+async def test_post_ja_curtido_o_commit_exato_nao_toca_e_a_etapa_nao_conta(ja_curtidos: Harness) -> None:
+    """30.64 (revisão da fila da suíte 32, item 4): a curtida por posição (sem legenda) tem objeto AMBÍGUO, e a porta a
+    deixa passar porque é o seletor de commit EXATO que segura a duplicata. Esta é a prova pelo executor de verdade: na
+    tela com os corações já no estado curtido (`desc="Liked"`), o toque de commit é recusado (`desc==Like` não casa),
+    nada é curtido nem descurtido, e a etapa não fecha como sucesso."""
+    run = ja_curtidos.run([IID], command="curta a primeira publicação de @anarabottinipsicopedagoga")
+    s = _estado(ja_curtidos)
+
+    def curtir() -> str | None:
+        row = s.db.one("SELECT status FROM steps WHERE run_id=? AND key='curtir' ORDER BY plan_version DESC LIMIT 1",
+                       (run.id,))
+        return row["status"] if row else None
+
+    await ja_curtidos.wait(lambda: curtir() in ("waiting_user", "failed", "succeeded", "uncertain", "cancelled"),
+                           timeout=120, what="LIKE_POST parar")
+    fake = _aparelho(ja_curtidos)
+    assert fake.coracoes_tocados == [] and fake.curtidas == [True, True]      # nenhum toque: nada alternou
+    versoes = s.db.query("SELECT status FROM steps WHERE run_id=? AND key='curtir'", (run.id,))
+    assert versoes and all(v["status"] != "succeeded" for v in versoes)
+    rejeitadas = s.db.query("SELECT a.error FROM actions a JOIN attempts t ON t.id = a.attempt_id"
+                            " JOIN steps e ON e.id = t.step_id WHERE e.run_id=? AND e.key='curtir'"
+                            " AND a.status='rejected'", (run.id,))
+    assert rejeitadas and all("desc==Like" in (r["error"] or "") for r in rejeitadas)   # recusado pelo seletor exato

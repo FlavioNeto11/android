@@ -307,7 +307,8 @@ def test_a_revisao_so_reaproveita_a_aprovacao_com_a_mesma_imagem(tmp_path: Path,
         pedido = store.open(profile_id=None, capability="CREATE_POST", summary="Publicar", step_id="r-1:v1:post",
                             content="Fim de tarde")
         store.decide(pedido.id, status="approved")
-        achada = store.acompanhar_revisao("r-1:v2:post", profile_id=None, capability="CREATE_POST", target=None,
+        achada = store.acompanhar_revisao("r-1:v2:post", profile_id=None,
+                                          acao=load_catalog("com.instagram.android").get("CREATE_POST"), target=None,
                                           content="Fim de tarde", disparou=lambda _s: False)
         assert (achada is not None) is reaproveita
     finally:
