@@ -48,6 +48,9 @@ REMOTE_APK_RE = re.compile(r"^/data/app/[A-Za-z0-9_.=~/\-]+\.apk$")
 #: só ler de outro lugar — e, se estender, estende AQUI, não num `shell` montado por quem chama.
 DIR_PRIVADO_NO_CONVIDADO = "/data/local/tmp/rede"
 NOME_PRIVADO_RE = re.compile(r"^[a-z0-9][a-z0-9_.\-]{0,59}$")
+#: Galeria do aparelho onde a mídia de uma publicação própria é colocada (29.30), e a regra do nome do arquivo.
+DIR_DA_GALERIA = "/sdcard/Pictures/Central"
+NOME_DE_MIDIA_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-]{0,59}$")
 
 KEYCODES = {"back": 4, "home": 3, "recents": 187, "enter": 66, "delete": 67, "wakeup": 224, "menu": 82}
 
@@ -637,6 +640,34 @@ class Adb:
         res = self._run(["shell", f"rm -f {remoto}"], timeout=15)
         if res.returncode != 0:
             raise AdbError(f"não foi possível apagar o arquivo privado em {self.serial} ({res.returncode})")
+
+    # -- mídia na galeria (29.30) -------------------------------------------------------------------------------
+    def enviar_midia_para_galeria(self, local: str, nome: str, *, timeout: float = 60) -> str:
+        """`adb push` de um JPEG do host para `/sdcard/Pictures/Central/<nome>.jpg` e a indexação da galeria; devolve o
+        caminho no aparelho. É a ÚNICA gravação em armazenamento do usuário que o projeto faz, e só com imagem que a
+        própria persona tem (quem confere isso é o despacho, não esta camada).
+
+        O mesmo `Adb` serve aparelho local e remoto: a central alcança o remoto pelo túnel (`docs/worker.md`), então não
+        há verbo de agente para isto. A prova real num aparelho remoto está `not_run`. O `nome` passa por regra fixa
+        (sem `/`, `..` nem espaço): ele entra na linha de comando do convidado."""
+        if not NOME_DE_MIDIA_RE.match(nome) or ".." in nome:
+            raise AdbError("nome de mídia inválido para a galeria")
+        remoto = f"{DIR_DA_GALERIA}/{nome}.jpg"
+        self.shell(f"mkdir -p {DIR_DA_GALERIA}", timeout=15)
+        res = self._run(["push", local, remoto], timeout=timeout)
+        if res.returncode != 0:
+            # Sem o caminho do host na mensagem: ela vira evento, log e corpo de resposta HTTP.
+            raise AdbError(f"adb push da mídia falhou em {self.serial} ({res.returncode})")
+        # Sem a indexação o arquivo existe e a galeria do editor não o mostra. O broadcast não devolve código de saída
+        # confiável: o que se confere é o arquivo no destino.
+        self.shell(f"am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file://{remoto}", timeout=20)
+        try:
+            presente = self.shell(f"ls {remoto}", timeout=15).strip() == remoto
+        except AdbError:
+            presente = False
+        if not presente:
+            raise AdbError(f"a mídia não chegou à galeria de {self.serial}")
+        return remoto
 
     def open_store_listing(self, package: str) -> None:
         """Abre a página do app na Play Store DESTE aparelho. O toque em Instalar/Atualizar é sempre do usuário."""

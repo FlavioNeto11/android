@@ -45,12 +45,15 @@ DEFAULT_LIMITS: dict[str, int] = {
     "comments_per_hour": 8,
     "follows_per_hour": 8,
     "dms_per_hour": 15,
+    # 29.30: publicar no PRÓPRIO feed. Um por hora e um por dia: o piso do aquecimento (`max(1, …)`) mantém 1 em 1.
+    "posts_per_hour": 1,
     # Tetos DIÁRIOS (achado #114): o teto por hora sozinho deixava passar um volume alto ao longo do dia, desde
     # que espaçado — que é justamente o padrão "devagar e sempre" mais difícil de perceber olhando só a hora.
     "likes_per_day": 150,
     "comments_per_day": 40,
     "follows_per_day": 40,
     "dms_per_day": 60,
+    "posts_per_day": 1,
     "actions_per_run": 20,
     "cooldown_between_external_actions_s": 45,
     # Aquecimento (achado #114): nos primeiros `warmup_days` de VIDA DO PERFIL NESTE SISTEMA (não a idade da
@@ -68,6 +71,7 @@ BUCKET_TYPES: dict[str, tuple[str, ...]] = {
     "follows": (InteractionType.followed.value, InteractionType.unfollowed.value,
                 InteractionType.follow_request_accepted.value, InteractionType.follow_request_declined.value),
     "dms": (InteractionType.dm_sent.value,),
+    "posts": (InteractionType.post_published.value,),
 }
 
 # Tentativa e efeito confirmado contam igual: uma ação que talvez tenha saído já mexeu com a conta.
@@ -80,7 +84,8 @@ TODOS_OS_BALDES: tuple[str, ...] = tuple(dict.fromkeys(t for tipos in BUCKET_TYP
 #: Baldes em que o alvo é de UMA conta só (ADR-055, decisão do dono em 29/09). É regra, não configuração: nem o
 #: `LimitsCfg` afrouxa. Curtir fica de fora: o teto dela é `LimitsCfg.fleet_max_accounts_per_target`.
 UMA_CONTA_POR_ALVO: frozenset[str] = frozenset({"follows", "dms", "comments"})
-_ROTULO_DO_BALDE = {"follows": "seguir", "dms": "mensagem direta", "comments": "comentário", "likes": "curtida"}
+_ROTULO_DO_BALDE = {"follows": "seguir", "dms": "mensagem direta", "comments": "comentário", "likes": "curtida",
+                   "posts": "publicação"}
 
 #: A interação que diz que a pessoa JÁ conversa com esta conta: ela escreveu a esta conta por mensagem direta.
 _FALA_DELA_NA_DM = (InteractionType.dm_received.value,)

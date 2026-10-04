@@ -53,8 +53,8 @@ def test_todo_campo_do_catalogo_tem_destino_na_definicao() -> None:
     assert len(set(CAMPOS.values())) == len(CAMPOS), "dois campos do catálogo no mesmo destino"
 
 
-def test_as_23_capabilities_do_instagram_chegam_inteiras() -> None:
-    assert len(CAPABILITIES) == 23
+def test_as_26_capabilities_do_instagram_chegam_inteiras() -> None:
+    assert len(CAPABILITIES) == 26      # 23 + as três do 29.30 (publicar no próprio feed)
     for cap in CAPABILITIES:
         d = definicao(cap, PACKAGE)
         assert d.ref == CapabilityRef(app=PACKAGE, key=cap.key, contract_version=1)
@@ -67,7 +67,7 @@ def test_as_23_capabilities_do_instagram_chegam_inteiras() -> None:
 def test_estrategias_por_capability_e_o_que_se_oferece() -> None:
     reg = _registro()
     internas = {c.key for c in CAPABILITIES if c.internal}
-    assert internas == {"AUTHENTICATE_INSTAGRAM", "VERIFY_ACCOUNT"}
+    assert internas == {"AUTHENTICATE_INSTAGRAM", "VERIFY_ACCOUNT", "PUT_MEDIA_IN_GALLERY"}
     for cap in CAPABILITIES:
         d = reg.definition("instagram", cap.key)
         assert d is not None

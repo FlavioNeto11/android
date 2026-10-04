@@ -75,6 +75,7 @@ class FakeQaDevice:
     input_text: str = ""
     focused: str | None = None
     messages: list[Message] = field(default_factory=list)
+    midias_na_galeria: list[dict] = field(default_factory=list)      # 29.30: o que o push colocou na galeria
     interstitial: bool = False
     require_login: bool = False
     # Tela de login: o que foi digitado em cada campo (id → texto). O campo de senha aparece MASCARADO na hierarquia,
@@ -233,6 +234,14 @@ class FakeQaDevice:
             return "No result found."
         return "\n".join(f"Row: {i} _id={i + 1}, account={self.account}, contact={m.contact}, body={m.body}, "
                          f"status=Entregue ✓✓, created_at={int(m.sent_at * 1000)}" for i, m in enumerate(self.messages))
+
+    def enviar_midia_para_galeria(self, local: str, nome: str, *, timeout: float = 60) -> str:
+        """29.30: o `Adb.enviar_midia_para_galeria` do dublê. Registra o que chegou (nome, bytes lidos do arquivo local e
+        a indexação pedida) em `midias_na_galeria`; não toca na tela."""
+        with open(local, "rb") as f:
+            dados = f.read()
+        self.midias_na_galeria.append({"nome": nome, "bytes": dados, "indexada": True})
+        return f"/sdcard/Pictures/Central/{nome}.jpg"
 
     def force_stop(self, package: str) -> None:
         self._enter("force_stop")

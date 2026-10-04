@@ -24,7 +24,7 @@ import pytest
 
 from app.models import (InteractionStatus, InteractionType, PolicyGroupCreate, ProfileCreate, ProfilePolicyPatch,
                         SocialDraftDTO)
-from app.planning.capabilities import (CapabilityNode, CatalogoInvalido, capability_of, catalogo_de_dados, compose,
+from app.planning.capabilities import (BALDES_SEM_ALVO, CapabilityNode, CatalogoInvalido, capability_of, catalogo_de_dados, compose,
                                        contraparte, load_catalog)
 from app.planning.provider import Usage
 from app.social.conteudo import fala_atribuida_a_terceiro
@@ -176,7 +176,9 @@ def test_com_conversa_previa_a_politica_autonoma_vale(tmp_path: Path) -> None:
 def test_catalogo_declara_quem_e_o_alvo_de_toda_acao_com_limite() -> None:
     catalogo = load_catalog(IG)
     assert catalogo is not None
-    alvos = {c.key: c.counterparty for c in catalogo.capabilities if c.limit_bucket}
+    # 29.30: publicar no próprio feed (balde `posts`) não tem outra pessoa do outro lado: só ele dispensa o alvo.
+    alvos = {c.key: c.counterparty for c in catalogo.capabilities
+             if c.limit_bucket and c.limit_bucket not in BALDES_SEM_ALVO}
     assert all(alvos.values()), alvos
     # quem publicou, nas ações sobre a publicação; o dono do comentário nas ações sobre o comentário
     assert alvos["LIKE_POST"] == alvos["UNLIKE_POST"] == alvos["CREATE_COMMENT"] == "post_author"

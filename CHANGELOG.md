@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.30 (PR-A): CREATE_POST como capability do catálogo do Instagram (branch feat/29-30-create-post, sem migração)
+
+- Publicar no PRÓPRIO feed entra no catálogo como três ações: `READ_POSTS_COUNT` (lê o número de publicações do perfil
+  e entrega `posts_antes`), `PUT_MEDIA_IN_GALLERY` (`internal`: código determinístico põe a imagem da persona na galeria
+  do aparelho) e `CREATE_POST` (`approval_required`, `needs_draft`, `risk: high`; a prova é `count_gt:posts_antes:…`, o
+  número de publicações maior que o lido antes). Interação nova `post_published`; balde `posts`, sem alvo
+  (`BALDES_SEM_ALVO`), com tetos `posts_per_hour` e `posts_per_day` em 1.
+- `Adb.enviar_midia_para_galeria` (push para `/sdcard/Pictures/Central/` e scan de mídia) e o despacho de
+  `PUT_MEDIA_IN_GALLERY` em `StepExecutor._run_interna`: a imagem precisa ser da persona da conta do aparelho e estar
+  pronta, senão a etapa falha sem tocar no aparelho. Tipo de texto novo `post_caption` para a legenda.
+- Prova `simulated`: `test_create_post.py` (36), `test_catalogo_como_dado.py`, `test_capabilities.py`,
+  `test_capabilities_do_dominio.py`, `test_protecao_de_frota.py`. Real: `not_run` — os seletores do editor de
+  publicação (Share, contador de publicações) NÃO foram medidos; a exploração e a publicação de UMA imagem de teste
+  esperam o sim do dono. O planejador ainda não emite `PUT_MEDIA_IN_GALLERY` (interna não é oferecida): fica para o PR-B.
+
 ## 2026-10-04 — 30.52: o dossiê do curador pela marca do conteúdo e a recusa do pedido pela pessoa (branch fix/30-52-dossie-pela-marca)
 
 - O parecer lr-1cfb91a981c5f21f citou `against` da versão antiga do fluxo reaprendido e pediu uma reprodução que já

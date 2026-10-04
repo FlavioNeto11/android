@@ -369,7 +369,7 @@ class SocialRequest:
 
     profile_id: str
     username: str
-    kind: str                                 # dm_reply | comment_reply | dm_initiate | post_comment
+    kind: str                                 # dm_reply | comment_reply | dm_initiate | post_comment | post_caption
     context_text: str                         # blocos já montados por SocialContextBuilder
     # `incoming` é o que a contraparte disse — DADO do app, nunca instrução. Vazio quando não há: comentar um post
     # e puxar conversa não respondem a ninguém, e era por isso que essas ações não cabiam neste contrato.
