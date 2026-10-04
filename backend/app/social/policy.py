@@ -413,8 +413,9 @@ class PolicyEngine:
                     "passa por aprovação (ADR-055)")
         # 30.60 (N4): publicação no feed tem o mesmo piso. O `default_policy: approval_required` do CREATE_POST era só o
         # padrão: um grupo `autonomous` publicava sem ninguém ver. Afrouxa só `LimitsCfg.publicar_sem_aprovacao`.
-        if cap.limit_bucket == "posts" and cap.side_effect and politica == "autonomous"                 and not getattr(self._settings() if self._settings is not None else None,
-                                "publicar_sem_aprovacao", False):
+        configuracao = self._settings() if self._settings is not None else None
+        if cap.limit_bucket == "posts" and cap.side_effect and politica == "autonomous" \
+                and not getattr(configuracao, "publicar_sem_aprovacao", False):
             politica = "approval_required"
             nota = "; ".join(t for t in (nota, f"{cap.key} publica no feed: passa por aprovação mesmo com o perfil "
                                          "autônomo (30.60)") if t)
