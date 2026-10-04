@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.57: o marcador de entrega declarado no catálogo dispensa o primeiro julgamento (branch feat/31-57-marcador-de-entrega)
+
+- Catálogo: o campo `delivery_marks` (`nivel=Texto`, com os níveis `sent`, `delivered` e `read`) é conferido na carga e
+  só cabe em ação com efeito. Ele aparece no contrato do domínio como `side_effect.delivery_marks`.
+- `taskqueue/proofs.py`: `nivel_pelo_marcador` só afirma o nível pelo marcador logo abaixo da bolha desta execução,
+  com o texto fora do campo e sem marca de pendente nem de falha na tela.
+- Executor: com o marcador casado e o nível exigido atendido, o primeiro julgamento é dispensado e o rejulgamento do
+  17.10 decide. Valem as mesmas travas do 31.26, e a chave é `ai.marcador_de_entrega_dispensa_primeiro_juiz`.
+- Nenhum app declara marcador ainda: a árvore real do Instagram não foi medida (UNKNOWN). Prova `simulated`
+  (`backend/tests/test_marcador_de_entrega.py`, 16 testes); prova real `not_run`.
+
 ## 2026-10-04 — 28.29: o registro das decisões automáticas diz a verdade e se lê fácil (branch canais/28-29-registro-de-decisoes)
 
 Achados das duas revisões independentes do deploy 30, do passeio da orquestradora pela aba "Decidido sozinho" e da

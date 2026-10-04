@@ -100,6 +100,9 @@ class SideEffectContract:
     #: Textos que, enquanto visíveis, dizem que o efeito ainda está a caminho ("Sending…"): não desmentem nem
     #: comprovam. Nenhuma prova (local ou do modelo) fecha a etapa com um deles na tela (ADR-055, DM de 19/09).
     pending_marks: tuple[str, ...] = ()
+    #: 31.57: o marcador de cada nível de entrega (`nivel=Texto`) que o app mostra debaixo da mensagem desta execução.
+    #: Casado na árvore, dispensa só o PRIMEIRO julgamento; o rejulgamento decide.
+    delivery_marks: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

@@ -688,6 +688,10 @@ class AiCfg(BaseModel):
     # do Instagram: o texto numa mensagem do fio e fora do campo), essa prova substitui o PRIMEIRO julgamento (o barato).
     # O rejulgamento do "sim" com efeito (17.10) continua e é quem vale; sem ele (desligado ou mesmo modelo), nada muda.
     sent_text_dispensa_primeiro_juiz: bool = True
+    # Item 31.57: o marcador de entrega declarado no catálogo (`delivery_marks`), casado logo abaixo da mensagem desta
+    # execução, dispensa o PRIMEIRO julgamento quando atende ao nível exigido. Mesmas travas do 31.26: o rejulgamento do
+    # 17.10 continua e decide. Sem marcador declarado (hoje, nenhum app), nada muda.
+    marcador_de_entrega_dispensa_primeiro_juiz: bool = True
     verify_max_model_calls: int = Field(2, ge=1, le=5)
     # Depois de um "sim" numa etapa com efeito já disparado, quanto esperar antes de RECONFERIR a tela em busca
     # de marca de falha. Existe porque app de mensagem tem UI otimista: o balão aparece e o campo limpa antes de

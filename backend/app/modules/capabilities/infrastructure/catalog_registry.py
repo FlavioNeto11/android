@@ -60,6 +60,7 @@ CAMPOS: dict[str, str] = {
     "saidas_relacao": "output.relations",
     "failure_marks": "side_effect.failure_marks",
     "pending_marks": "side_effect.pending_marks",
+    "delivery_marks": "side_effect.delivery_marks",
     "local_proof": "local_proof",
 }
 
@@ -95,7 +96,8 @@ def definicao(cap: Capability, package: str) -> CapabilityDefinition:
                                        commit_guard=tuple(cap.commit_guard), band_guard=tuple(cap.band_guard),
                                        interaction_type=cap.interaction_type,
                                        failure_marks=tuple(cap.failure_marks),
-                                       pending_marks=tuple(cap.pending_marks)),
+                                       pending_marks=tuple(cap.pending_marks),
+                                       delivery_marks=tuple(cap.delivery_marks)),
         governance=Governance(risk=Risk(cap.risk), default_policy=DefaultPolicy(cap.default_policy),
                               limit_bucket=cap.limit_bucket, counterparty=cap.counterparty,
                               objeto_alvo=tuple(cap.objeto_alvo),

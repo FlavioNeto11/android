@@ -304,6 +304,16 @@ achado não se confirmam nos dados.
     Fica a decisão "envio comprovado pela árvore local (sent_text)" e a métrica `verificacao.primeiro_juiz_dispensado`.
     O atalho só vale quando: o nível é `sent` (entregue e lida, a árvore não prova); é o primeiro julgamento da
     verificação; o rejulgamento vai acontecer (ligado e com modelo diferente). Sem isso, nada muda.
+    Desde o 31.57 (`ai.marcador_de_entrega_dispensa_primeiro_juiz`), o catálogo do app pode declarar o MARCADOR de cada
+    nível (`delivery_marks: [delivered=Delivered, read=Seen]`, níveis `sent`, `delivered` e `read`). Ele dispensa o
+    primeiro julgamento com as mesmas travas, para qualquer nível exigido que o nível marcado atenda, quando o marcador
+    casado (`proofs.nivel_pelo_marcador`) cumpre todas estas condições:
+    - é o texto inteiro, normalizado, da PRIMEIRA linha logo abaixo da bolha mais baixa com o texto desta execução;
+    - o texto saiu (bolha fora do campo de escrita);
+    - não há marca de pendente nem de falha na tela.
+    A métrica é a mesma, com `prova=marcador:<nivel>`, e o rejulgamento decide o nível que vale. Nenhum app declara
+    marcador ainda: se a árvore real do Instagram expõe "Seen" ou "Delivered" debaixo da bolha não foi medido, e a
+    declaração espera uma captura real, só leitura.
   - `verdict` (o desfecho): `yes`/`no`/`uncertain`/`unprovable` no `verify`; o nome da ferramenta no `decide` (fora
     da lista de ferramentas, `desconhecida`); `plano` ou `pergunta` no `plan`; nulo na leitura e na linha de erro.
   - `image_reason` (por que a imagem foi junto, ou não), na ordem de `_motivo_da_imagem`. Sem imagem: `sensivel`,

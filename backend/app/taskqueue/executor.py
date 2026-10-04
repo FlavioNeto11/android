@@ -50,7 +50,7 @@ from ..modules.identity.domain.available_data import ResolvedSecret, SecretResol
 from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
 from ..modules.learning.infrastructure.segredo import TriagemDeCredencial
 from ..planning.capabilities import (CONHECIMENTO_DE_APPS, Capability, capability_of, contraparte, guardas_do_cartao,
-                                     load_catalog)
+                                     load_catalog, marcas_de_entrega)
 from ..planning.catalog import session_provider_of
 from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, LeituraRequest,
                                  MarcaDaChamada, MotivoDaChamada, MotivoDaImagem, MotivoDeEscalonamento,
@@ -64,7 +64,7 @@ from ..util import norm_text, now, now_iso, parse_iso
 from .costuras import (SAIU_POR_EXCECAO, SEM_COSTURAS, CosturasDeAprendizado, FechamentoDeTentativa, PedidoDeLicoes,
                        avisar, pedir_licoes)
 from .foreach import sanitize_item, teto_de_chamadas
-from .proofs import marcas_pendentes_na_tela, variantes_de_arroba
+from .proofs import marcas_pendentes_na_tela, nivel_pelo_marcador, variantes_de_arroba
 from .projecao import HistoricoDeAcoes, app_da_etapa
 from .latencia import TemposDaTentativa, ms_desde
 from .midia_galeria import INTERNAS_POR_CODIGO, MidiaRecusada, colocar_midia_na_galeria
@@ -3518,8 +3518,23 @@ class StepExecutor:
                                                        package=obs.package)
                     # `t_end` é o orçamento DESTA verificação (nunca além do prazo da etapa): a chamada de
                     # verificação passa a ter limite próprio, que era o que faltava (achado #96).
-                    if await self._sent_text_dispensa_o_juiz(step, capability, obs, need=need, local_proof=local_proof,
-                                                             ja_julgou=judged_polls > 0, escalou=escalou):
+                    marcado = self._marcador_dispensa_o_juiz(step, capability, obs, need=need,
+                                                             ja_julgou=judged_polls > 0, escalou=escalou)
+                    if marcado is not None:
+                        # 31.57: o marcador de entrega que o catálogo declara ("Seen" debaixo da bolha desta execução)
+                        # afirma o nível na árvore. Como no 31.26, substitui SÓ o julgamento barato: o "sim" segue para
+                        # o rejulgamento do 17.10 logo abaixo, que confere a tela e diz o nível que vale.
+                        verdict = Verdict(satisfied="yes", delivery_level=marcado,
+                                          evidence=f"marcador de entrega '{marcado.value}' declarado no catálogo, logo "
+                                                   "abaixo da mensagem desta execução: o primeiro julgamento foi "
+                                                   "dispensado; o rejulgamento confere")
+                        metricas.contar("verificacao.primeiro_juiz_dispensado", prova=f"marcador:{marcado.value}")
+                        self.repo.decision(f"{rt.id} · {step.title}: nível {marcado.value} pelo marcador do catálogo na "
+                                           "árvore; o primeiro julgamento foi dispensado e o rejulgamento confere",
+                                           run_id=run_id, instance_id=rt.id, step_id=step.id)
+                    elif await self._sent_text_dispensa_o_juiz(step, capability, obs, need=need,
+                                                               local_proof=local_proof, ja_julgou=judged_polls > 0,
+                                                               escalou=escalou):
                         # 31.26 (A): a prova local `sent_text` já comprovou o envio desta execução na árvore (o app não
                         # mostra "Entregue"). Ela substitui SÓ o julgamento barato: o "sim" daqui segue para o
                         # rejulgamento do 17.10 logo abaixo, que é quem decide.
@@ -3703,6 +3718,26 @@ class StepExecutor:
         dele continua julgado como sempre."""
         cap = capability_of(capability.app, capability.key) if capability is not None else None
         return tuple(m for m in cap.pending_marks if m) if cap is not None else ()
+
+    def _marcador_dispensa_o_juiz(self, step: StepDTO, capability: CapabilityRef | None, obs: Observation, *,
+                                  need: DeliveryLevel | None, ja_julgou: bool, escalou: bool) -> DeliveryLevel | None:
+        """31.57: o nível que o marcador declarado no catálogo afirma nesta tela, quando ele dispensa o PRIMEIRO
+        julgamento; `None` senão. As mesmas travas do 31.26: há nível exigido e o marcado o atende, é o primeiro
+        julgamento, e o rejulgamento do 17.10 vai acontecer (ligado e com modelo diferente). Sem rejulgamento, o
+        marcador sozinho fecharia o efeito, e isso o desenho não aceita."""
+        ai = self.cfg.file.ai
+        if not (ai.marcador_de_entrega_dispensa_primeiro_juiz and need is not None and capability is not None
+                and not ja_julgou and not escalou and ai.rejudge_yes_on_side_effect
+                and self.cfg.ai_role("verify").model != self.cfg.ai_role("escalation").model):
+            return None
+        cap = capability_of(capability.app, capability.key)
+        if cap is None or not cap.delivery_marks:
+            return None
+        nivel = nivel_pelo_marcador(marcas_de_entrega(cap.delivery_marks), (step.bindings or {}).get("content"),
+                                    obs.tree, pendentes=cap.pending_marks, falhas=cap.failure_marks)
+        if nivel is None or DELIVERY_ORDER[DeliveryLevel(nivel)] < DELIVERY_ORDER[need]:
+            return None
+        return DeliveryLevel(nivel)
 
     async def _sent_text_dispensa_o_juiz(self, step: StepDTO, capability: CapabilityRef | None, obs: Observation, *,
                                          need: DeliveryLevel | None, local_proof: str | None, ja_julgou: bool,
