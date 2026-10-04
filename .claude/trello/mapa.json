@@ -1695,7 +1695,7 @@
   "29.47": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1409ee7c45b5645215356",
    "url": "https://trello.com/c/7NiGAZkU",
-   "lista": null,
+   "lista": "concluido_hoje",
    "lote": "lote_A7_hoje"
   },
   "29.48": {
@@ -1971,7 +1971,7 @@
   "14.13": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac142bc024c20540c08f2d0",
    "url": "https://trello.com/c/zC0Jg2DU",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "lote_A8_atuais_pendentes"
   },
   "15.15": {
@@ -2788,7 +2788,7 @@
   "30.40": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac16c2e8db615383c900b44",
    "url": "https://trello.com/c/r5ezb0Lo",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "30.40 · Pedido antigo herda o teto da configuração; curador não pede evidência de receita sem caminho"
   },
@@ -2893,7 +2893,7 @@
   "29.60": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1980a4682cb489b1c9c4d",
    "url": "https://trello.com/c/tpDFwZdM",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "O painel mostra quantas vezes um efeito se repetiu"
   },
@@ -3096,7 +3096,7 @@
   "29.66": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac22837203aaf8dfcf43cac",
    "url": "https://trello.com/c/NR3R88GQ",
-   "lista": "em_validacao",
+   "lista": "em_execucao",
    "lote": "canais",
    "nome": "29.66 — Campos do aparelho que alternavam a cada reinício"
   },
@@ -3117,7 +3117,7 @@
   "29.67": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac228427c94d9584a7e80e9",
    "url": "https://trello.com/c/okBJKQaY",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "29.67 — Sonda de saúde não conta falha com a central saturada"
   },
@@ -3225,7 +3225,7 @@
   }
  },
  "falhas": [],
- "atualizado_em": "2026-10-04T15:09:00Z",
+ "atualizado_em": "2026-10-04T15:13:00Z",
  "arquivados": {
   "29.50": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac140b47c94d9584a3dc72e",
