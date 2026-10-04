@@ -1790,7 +1790,7 @@
    "status": "partial",
    "proof": "simulated",
    "evidence": "PR #239 (perf/t2-relogio-virtual-jev). 6 arquivos medidos em série e em Idle: de 182,4 s para 49,8 s, com 62 testes verdes nos dois lados. test_plan_report_na_execucao não teve ganho e voltou ao da main.",
-   "blocker": "T.2 é de várias frentes: esta é a parte da Jev (6 arquivos de 182,4 s para 49,8 s); a da Aprendizado entrou pelo PR #235; restam o intermitente do test_prontidao_subsistemas e os testes de rede da Android.",
+   "blocker": "T.2 é de várias frentes: esta é a parte da Jev; restam testes lentos da Aprendizado e os de rede da Android.",
    "arquivos": [],
    "testes": [
     "backend/tests/test_dm_verificador.py",
@@ -1805,7 +1805,7 @@
    "esforco": "medium",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T12:12:17+00:00"
+   "quando": "2026-10-04T12:27:16+00:00"
   },
   "T.1": {
    "id": "T.1",
@@ -2206,7 +2206,7 @@
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T11:09:24+00:00"
+   "quando": "2026-10-04T12:27:16+00:00"
   },
   "13.1": {
    "id": "13.1",
@@ -5193,32 +5193,15 @@
   "28.12": {
    "id": "28.12",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "PR #118, merge 26eee424 na main (02/10/2026, sessao jev). Ajustes de API: PedidoView.proxima_prevista (data calculada pela agenda quando o laco ainda nao gerou) e laco{ligado} na lista (sinal do laco desligado). Achados da validacao do deploy 2 na tela Pedidos: erro na primeira carga so com o aviso e Tentar de novo; previa com persona e app pelo nome, aviso de autonomia (Observar/Preparar) e objetivo recolhido com as quebras; cabecalho de cartao compartilhado (ui.module.css, <=720 px, texto com base 12rem e acao no canto); leitura em portugues das datas; barra de filtros some sem pedidos; botao no link velho; titulo dado pela pessoa inteiro no detalhe; objetivo do Resumo com pre-line; 'Carregar mais antigas' so com detalhe cheio (20); motivo de nova tentativa legivel (UTC). Prova simulated: vitest 1279/106 arquivos, typecheck limpo, pytest de pedidos 458 (Idle, -n 3), docs-check 0/0; navegador contra backend simulado a 1366/600/386/375 px (lista, filtros, Avisos, erro e nova tentativa, novo pedido, datas, previa nas tres autonomias, detalhe e abas, link velho, Pendencias). Persona e app pelo nome na previa: so vitest (o simulado nao tem persona). Suite inteira do backend: not_run neste PR.",
-   "blocker": "Prova real pendente: so depois do deploy 3, com pedidos.enabled ligado no central (e desligado no fim), teto US$ 1,00 no total e US$ 0,30 por pedido, aparelho sem conta real, navegador so leitura percorrendo o detalhe de um pedido.",
-   "files": [
-    "backend/app/modules/pedidos/infrastructure/laco.py",
-    "backend/app/modules/pedidos/infrastructure/servico.py",
-    "frontend/src/features/pedidos/ListaDePedidos.tsx",
-    "frontend/src/features/pedidos/DetalheDoPedido.tsx",
-    "frontend/src/features/pedidos/PreviaDoPedido.tsx",
-    "frontend/src/features/pedidos/NovoPedido.tsx",
-    "frontend/src/features/pedidos/CaixaDeAvisos.tsx",
-    "frontend/src/components/ui.module.css"
-   ],
-   "testes": [
-    "frontend/src/features/pedidos/PedidosPage.test.tsx",
-    "frontend/src/features/pedidos/NovoPedido.test.tsx",
-    "frontend/src/features/pedidos/formato.test.ts",
-    "backend/tests/test_pedidos_api.py",
-    "backend/tests/test_pedidos_retentativa.py"
-   ],
-   "grupo": "sessao:jev-28-12",
+   "proof": "real",
+   "evidence": "Real em 04/10/2026 no central (WIN-7S2UASNLFOP), deploys 21 a 24, 4 pedidos só de observação (lote:canais:28.12-01 a -04), nenhuma ação com efeito externo. Ocorrências: -01 ped_3Ypk6VjEVUGQC4ziIiNtvQ 09:00Z run r-20261004090000-bbfe54 US$ 0.1069 incerta (cancelado 09:11:53Z); -02 ped_O_tLG52eXcmZNGB0THvIkA 10:00Z r-20261004100000-f8722d 0.3087 incerta (resolvida 10:21:07Z pelo 28.21), 11:00Z pulada (pausa), 12:00Z r-20261004120000-3894c1 0.3063 falhou (encerrado por orçamento); -03 ped_bdH23ZWKXDSkln9MstvhfA 10:35Z r-20261004103500-ba5ebc 0.3055 falhou pelo orçamento (28.20; encerrado); -04 ped_Jfb2Q2_EXBicgUxGwiivUQ (condição + recorrência) 10:45Z r-20261004104500-7ae54f 0.261 falhou no teto da ocorrência, 11:45Z e 12:45Z puladas (pausa), cancelado 12:07:24Z. Gasto real do bloco US$ 1,288 de 1,70; cinco execuções, todas acima do teto, nenhuma entregou a leitura. Reinícios dos deploys 23 e 24: exatamente uma execução por ocorrência, nenhuma duplicada nem sumida. Antes x depois das correções do deploy 24 (-02 10:00Z x 12:00Z): decisões 23->19, imagens 11->12, verificações 5->8, duração 224->297 s, custo 0.3087->0.3063 (igual). Relatórios determinísticos reais: 2 (-01 e -04, encerramento, sem_conclusao, com nao_coberto). Avisos: ocorrencia_incerta 2, orcamento_esgotado 2, relatorio_pronto 2. not_run: a condição avaliada em real (preco_1 nunca observado), o pedido só de leitura com relatório (a leitura do -03 falhou no orçamento), a ocorrência perdida de propósito, a lista de próximas execuções no painel. Detalhe: docs/relatorio-validacao.md §30.1 (PR #244).",
+   "blocker": "A leitura de página de varejo no navegador custa US$ 0,26 a 0,31 por ocorrência e trava no juiz por sobreposição (diálogo 'Abra o app' sobre a página na pós-condição do open_url). Reabre depois do 31.38 provado e do diagnóstico da Jev sobre o juiz.",
+   "grupo": "canais",
    "modelo": "sessao",
-   "esforco": "",
+   "esforco": "M",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-02T23:44:10+00:00"
+   "quando": "2026-10-04T12:27:16+00:00"
   },
   "30.12": {
    "id": "30.12",
@@ -6166,16 +6149,16 @@
   },
   "30.31": {
    "id": "30.31",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Portao 1 do ensaio (PR #203 no ar pelo deploy 22, d37043df). Execucao r-20261004094430-a3b72b, chave ensaio:qa-enviar-01, android-10 (worker-lan-01, tunel 127.0.0.1:15557), 04/10 09:44:30Z a 09:45:10Z (40 s), comando 'No QA Messenger, envie para o contato QA-001 a mensagem: Ensaio portao 1 {run_id}'. Fechou cancelled com a decisao 'Ensaio so de leitura: parou antes da etapa 5 (send_message), que tem efeito fora do aparelho. Nada foi enviado.' Etapas: 1 open_app, 2 check_account, 3 open_conversation, 4 fill_message succeeded; 5 send_message (side_effect) e 6 verify_sent skipped. Provedor do QA (content query content://com.pocqa.messenger.provider/messages): 20 linhas as 09:44:21Z e 20 as 09:45:15Z, nenhuma com a3b72b. Custo US$ 0,0662 (planning.costs.spent_usd). Achado: o texto ficou DIGITADO no message_input (lido as 09:45:35Z); limpo as 09:47Z (force-stop e reabertura do app de QA) e conferido vazio as 09:47:23Z (so a dica 'Mensagem').",
-   "blocker": "Ensaio para antes do commit, nao antes do preenchimento: deixa texto digitado na caixa. Ajuste pedido pela orquestradora (parar antes da primeira etapa que digita texto do efeito, com teste de campo vazio), PR para a suite 24; o ensaio do Instagram so depois do deploy 24, repetindo o portao 1. A conferencia do QA na validacao (fatia 2) ainda sem execucao de validacao real: vem pelos pedidos do #218 depois do deploy 23.",
+   "evidence": "Portao 1 do ensaio (PR #203 no ar pelo deploy 22, d37043df). Execucao r-20261004094430-a3b72b, chave ensaio:qa-enviar-01, android-10 (worker-lan-01, tunel 127.0.0.1:15557), 04/10 09:44:30Z a 09:45:10Z (40 s), comando 'No QA Messenger, envie para o contato QA-001 a mensagem: Ensaio portao 1 {run_id}'. Fechou cancelled com a decisao 'Ensaio so de leitura: parou antes da etapa 5 (send_message), que tem efeito fora do aparelho. Nada foi enviado.' Etapas: 1 open_app, 2 check_account, 3 open_conversation, 4 fill_message succeeded; 5 send_message (side_effect) e 6 verify_sent skipped. Provedor do QA (content query content://com.pocqa.messenger.provider/messages): 20 linhas as 09:44:21Z e 20 as 09:45:15Z, nenhuma com a3b72b. Custo US$ 0,0662 (planning.costs.spent_usd). Achado: o texto ficou DIGITADO no message_input (lido as 09:45:35Z); limpo as 09:47Z (force-stop e reabertura do app de QA) e conferido vazio as 09:47:23Z (so a dica 'Mensagem'). Ajuste do preenchimento (PR #230, no ar pelo deploy 24, 2c7ab99e) e portao 1 repetido: r-20261004110912-ea5b4e, chave ensaio:qa-enviar-02, android-10, 11:09:12Z a 11:09:42Z (30 s), cancelled com 'Ensaio so de leitura: parou antes da etapa 4 (fill_message), que prepara o efeito da etapa 5 (send_message). Nada foi digitado nem enviado.'; etapas 1-3 succeeded, 4-6 skipped; provedor do QA 20 -> 20; message_input lido as 11:09:44Z so com a dica 'Mensagem' (vazio). US$ 0,0757. Ensaio no Instagram depois do #237 (ensaio antes da porta) no ar pelo deploy 25 (24da29ef), disparado pela orquestradora, conferido por mim so por leitura: ensaio 1 r-20261004120738-a9cf9c (ensaio:ig-comentar-01, android-03) e ensaio 2 r-20261004120952-3d7b28 (ensaio:ig-responder-01, android-01), os dois cancelled com as etapas 1-3 (open_profile_1, open_post_1, open_comments_1) succeeded e a etapa 4 de efeito (comment_1 CREATE_COMMENT / reply_1 REPLY_COMMENT) skipped com 0 tentativas, nenhuma chamada social (rascunho), 0 aprovacoes. Custo por spent_usd: US$ 0,0685 e US$ 0,0655. Aprendizado: execucao comum com chave ensaio (sem prova_fluxo_id) nao deixa evidencia de fluxo nem nasce fluxo; deixa evidencia de RECEITA das etapas de navegacao que rodaram de verdade: receita:91 for x2 (open_comments_1 reproduzida), receita:73 against (open_profile_1 divergiu, a IA assumiu) e a receita:166 candidate nova (aprendida da IA, em sombra). A against da a9cf9c foi a 3a falha seguida da receita:73 e a regra de saude do sistema a desligou (published -> disabled, '3 falhas seguidas ao reproduzir', 12:09:15Z). O curador nao revisou nada destas execucoes ate 12:13Z (a ultima revisao da receita:73 e de 03/10). Fatia 2 (conferencia do QA numa validacao real, #203): pedido lv-1be2a60f37a73b12 despachado pelo P4 como r-20261004121625-92d0b4 no android-07 (account_label qa-user-07), 04/10 12:16:25Z a 12:17:26Z, validacao feita, US$ 0,0631 (planning.costs.spent_usd); 6/6 etapas succeeded; provedor do QA no android-07 (emulator-5566) com exatamente 1 linha 'Prova 203 r-20261004121625-92d0b4'; decisao 'Conferencia no app de QA (etapa 5, send_message): 1 mensagem desta execucao no app: o efeito saiu uma vez.'; evidencia for '[2c10657f49e4] prova: 6/6 etapas comprovadas'; fluxo enviar-a-mensagem-leitura-31-27-n1-08233 candidate -> validated as 12:17:11Z.",
+   "blocker": "",
    "grupo": "deploy22-23-provas",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T11:09:24+00:00"
+   "quando": "2026-10-04T12:27:16+00:00"
   },
   "30.32": {
    "id": "30.32",
@@ -6301,7 +6284,7 @@
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T11:09:24+00:00"
+   "quando": "2026-10-04T12:27:16+00:00"
   },
   "30.35": {
    "id": "30.35",
@@ -7196,7 +7179,7 @@
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T11:09:24+00:00"
+   "quando": "2026-10-04T12:27:16+00:00"
   },
   "28.16": {
    "id": "28.16",
@@ -7235,7 +7218,7 @@
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T11:09:24+00:00"
+   "quando": "2026-10-04T12:27:16+00:00"
   },
   "31.34": {
    "id": "31.34",
@@ -7254,7 +7237,7 @@
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T12:12:17+00:00"
+   "quando": "2026-10-04T12:27:16+00:00"
   },
   "28.17": {
    "id": "28.17",
@@ -7287,7 +7270,7 @@
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T12:12:17+00:00"
+   "quando": "2026-10-04T12:27:16+00:00"
   },
   "31.36": {
    "id": "31.36",
@@ -7319,29 +7302,22 @@
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T12:12:17+00:00"
+   "quando": "2026-10-04T12:27:16+00:00"
   },
   "31.35": {
    "id": "31.35",
    "status": "partial",
    "proof": "simulated",
-   "evidence": "A/B do acoes_por_decisao não rodou: o perfil por execução não troca esse campo, e ligar no global exigiria editar o config.yaml do central. PR #242 (feat/31-35-perfil-encadear) faz o perfil escolher o valor (simulated: test_aba_ia_esquema_e_perfis, 16 passed).",
-   "blocker": "Falta o A/B real do acoes_por_decisao pelo perfil encadear-3 (teto US$ 1,00; adota com sucesso igual e 30 % menos decisões).",
-   "arquivos": [
-    "backend/app/config.py",
-    "backend/app/models.py",
-    "backend/app/planning/routing.py",
-    "frontend/src/api/types.ts"
-   ],
-   "testes": [
-    "backend/tests/test_aba_ia_esquema_e_perfis.py"
-   ],
-   "grupo": "jev-31-35b-ab",
+   "evidence": "A/B do acoes_por_decisao interrompido depois do 1º braço. r-20261004121431-980478, com ai_profile encadear-3: 19 ações para 19 decisões, nenhuma encadeada. O planejador fez uma etapa por toque, então nas etapas de navegação não havia 2ª ação; e a leitura só fez observe_screen e find_element. US$ 0,18. O comando não exercita o encadeamento; precisa de um comando cujas etapas tenham 2 ou mais ações.",
+   "blocker": "Parte B fechada sem adoção (com o plano de uma ação por etapa não há o que encadear; 980478: 19 ações em 19 decisões); falta a medida real da parte A (tokens por decisão do ator no navegador antes e depois).",
+   "arquivos": [],
+   "testes": [],
+   "grupo": "jev-pos-deploy-25",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T12:12:17+00:00"
+   "quando": "2026-10-04T12:27:16+00:00"
   },
   "28.10": {
    "id": "28.10",
@@ -7411,27 +7387,19 @@
   "31.38": {
    "id": "31.38",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #238 (feat/31-38-dado-ausente). backend/tests/test_dado_ausente.py tem 3 testes; com test_prompts_licoes, test_compilador_de_skills, test_arquitetura, test_cascata_ator_barato, test_saidas_obrigatorias e test_etapa_opcional, foram 120 passed. docs-check limpo. O teto ai.max_decisoes_leitura=12 vem da medida: n=16 tentativas de leitura com sucesso desde 27/09, com p50 3, p95 8 e máx. 8 decisões. Prova real not_run: depois do deploy, UMA leitura com o dado ausente, com teto de US$ 0,30.",
+   "proof": "real",
+   "evidence": "04/10/2026, WIN-7S2UASNLFOP, deploy 25 (24da29ef, 098). A prova é r-20261004120913-0488e3 (android-12, QA Messenger, lote:jev:31.38-03). read_email falhou com 'Dado ausente:' relatado pelo ator: 1 tentativa e 6 decisões, sem estourar o teto de 12. Veio UM plano revisado com motivo '(dado ausente)'; na v2, read_email falhou de novo com 'Dado ausente:' e o objetivo fechou failed, sem 3º plano. A execução ficou completed_with_issues, a US$ 0,20, abaixo do teto de 0,30. Duas tentativas anteriores não exercitaram o caminho. A 03d58e (US$ 0,06) fechou sucesso porque a conversa tinha um id de execução antigo e o ator o leu como 'protocolo': achado de qualidade, valor sem relação aceito como o dado pedido. Na 9f9bac (US$ 0,12), o perfil do contato não existe no app, e a falha foi na NAVEGAÇÃO, pelo orçamento de 7 chamadas da etapa (18.3). Também no A/B 980478: na v1 a leitura falhou por dado_ausente; na v2 ela parou no orçamento de 7 chamadas (18.3) antes do teto de 12 do 31.38.",
    "blocker": null,
-   "arquivos": [
-    "backend/app/automation/tools.py",
-    "backend/app/config.py",
-    "backend/app/planning/prompts.py",
-    "backend/app/taskqueue/executor.py",
-    "backend/app/taskqueue/scheduler.py",
-    "config/config.example.yaml"
-   ],
+   "arquivos": [],
    "testes": [
-    "backend/tests/test_dado_ausente.py",
-    "backend/tests/test_prompts_licoes.py"
+    "backend/tests/test_dado_ausente.py"
    ],
-   "grupo": "jev-31-38",
+   "grupo": "jev-pos-deploy-25",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T12:12:17+00:00"
+   "quando": "2026-10-04T12:27:16+00:00"
   },
   "14.12": {
    "id": "14.12",
@@ -7449,28 +7417,58 @@
   "30.49": {
    "id": "30.49",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #236 (fix/p4-ambiente-so-execucao): execução só de plano em planned não segura o P4; suíte 25 (integ/suite-25 @ 24da29ef: SQLite 9422 passed em -n 6, PG dirigido 2234 passed em 119 arquivos no farm-pg-rapido; 3 problemas tratados na integ) e deploy 25 no ar em 04/10 (deploy.ps1 terminou 12:06:27Z, migração 098, saúde ok, prova de fora ok às 12:06:50Z). Real observado: com as execuções só de plano canceladas o P4 despachou às 11:18:36Z; a prova com o código novo fica com a Aprendizado.",
-   "blocker": null,
-   "grupo": "orquestradora-deploy25",
-   "modelo": "fable",
+   "proof": "real",
+   "evidence": "PR #236 no ar. O ambiente do P4 deixou de contar runs plan-only em planned: o pedido lv-1be2a60f37a73b12 saiu da espera (log 'validacao espera (sem_aparelho...)' ate 12:08Z; 'validacao lv-1be2a60f37a73b12 ... em android-07' as 12:16:25Z) e, lido as 12:19Z, ha 0 runs mode plan em planned.",
+   "blocker": "",
+   "grupo": "deploy22-23-provas",
+   "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T12:12:28+00:00"
+   "quando": "2026-10-04T12:27:16+00:00"
   },
   "30.50": {
    "id": "30.50",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #241 (fix/30-50-aparelho-com-as-variaveis): o P4 só escolhe aparelho com as variáveis de aparelho do plano; suíte 25 (integ/suite-25 @ 24da29ef: SQLite 9422 passed em -n 6, PG dirigido 2234 passed em 119 arquivos no farm-pg-rapido; 3 problemas tratados na integ) e deploy 25 no ar em 04/10 (deploy.ps1 terminou 12:06:27Z, migração 098, saúde ok, prova de fora ok às 12:06:50Z). Prova real pendente: novo pedido de validação do fluxo de QA (última prova da janela).",
-   "blocker": null,
-   "grupo": "orquestradora-deploy25",
-   "modelo": "fable",
+   "proof": "real",
+   "evidence": "PR #241 no ar. O plano da prova usa {account_label} (check_account); o P4 escolheu o android-07 (account_label qa-user-07) e nao o android-04 sem conta (onde a fec1a1 tinha fechado ator_sem_acao): r-20261004121625-92d0b4, etapa check_account succeeded, 6/6 etapas, validacao feita.",
+   "blocker": "",
+   "grupo": "deploy22-23-provas",
+   "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T12:12:28+00:00"
+   "quando": "2026-10-04T12:27:16+00:00"
+  },
+  "28.13": {
+   "id": "28.13",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "PR #244 (canais/28-13-fechamento-fase-28 @ 00cfe3d2, só docs, [skip ci]): docs/relatorio-validacao.md §30 (itens 28.1 a 28.21 com real/simulated/not_run, o bloco 28.12 por ocorrência, a fase cláusula por cláusula: NÃO fecha, o motor sim e o caso de uso não; o que falta e quem decide), docs/decisoes.md ADR-074 (proposto; ADR-059 aceito), CHANGELOG. Números lidos só do banco do central e do GET /api/health (24da29ef, migração 098) em 04/10/2026 12:07-12:12Z. docs-check 0 erros 0 avisos; claude-plan-100.py check passou. Dois achados propostos sem número: o encerramento por orçamento não grava o relatório final (contraria o §6.5; -02 e -03 sem linha em pedido_relatorios) e POST /cancelar não grava o motivo.",
+   "blocker": null,
+   "grupo": "canais",
+   "modelo": "sessao",
+   "esforco": "M",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T12:27:16+00:00"
+  },
+  "31.39": {
+   "id": "31.39",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "04/10/2026, deploy 25. Os mesmos 3 comandos e aparelhos da linha de base do 31.24 (deploy 16, 00:01Z a 00:20Z), lote:jev:31.39-01..03. As 3 casaram fluxo adotado, sem chamada de plano nos dois lados, e fecharam completed. Por execução, antes → depois: (1) fee44f → a17079, android-10: parede 40,2 → 61,5 s; ator 3 decisões, 6,5 → 7,7 s; conferência 4, 13,4 → 10,7 s; espera do juiz 3,0 → 4,7 s; custo US$ 0,079 → 0,060. (2) ef5c86 → f32c9e, android-09: parede 31,4 → 34,0 s; ator 1 decisão, 2,2 → 1,8 s; conferência 10,8 → 11,3 s; custo 0,061 → 0,035. (3) 9c839c → dd421e, android-10: parede 43,3 → 61,3 s; ator 7,5 → 6,2 s; conferência 13,4 → 11,8 s; custo 0,076 → 0,050. Custo total 0,216 → 0,144 (−33 %). O excedente de parede do android-10 vem do aparelho, nas etapas de navegação (open_app 6,2 → 12,5 s; open_conversation 4,7 → 10,0 s; fill_message 4,4 → 9,9 s): leitura da árvore no preparo de 207–279 ms para 543–965 ms, imagem de 428 para 1703 ms, type_text de 2,2 para 6,2 s. INFERRED: carga no worker do notebook depois das rodadas da Canais das 12:00Z no 09 e no 10, sem medida de host.",
+   "blocker": null,
+   "arquivos": [
+    ".claude/handoffs/jev-scratch-2026-10-03/prova_3139.py"
+   ],
+   "testes": [],
+   "grupo": "jev-pos-deploy-25",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T12:27:16+00:00"
   }
  },
  "rodadas": [
@@ -9536,6 +9534,53 @@
    ],
    "grupos": [
     "orquestradora-deploy25"
+   ]
+  },
+  {
+   "quando": "2026-10-04T12:27:16+00:00",
+   "itens": [
+    "28.12",
+    "28.13"
+   ],
+   "grupos": [
+    "canais"
+   ]
+  },
+  {
+   "quando": "2026-10-04T12:27:16+00:00",
+   "itens": [
+    "30.31",
+    "30.34",
+    "12.3",
+    "30.47",
+    "30.46",
+    "30.49",
+    "30.50"
+   ],
+   "grupos": [
+    "deploy22-23-provas"
+   ]
+  },
+  {
+   "quando": "2026-10-04T12:27:16+00:00",
+   "itens": [
+    "31.34",
+    "31.38",
+    "T.2",
+    "31.33",
+    "31.37",
+    "31.35",
+    "31.38",
+    "31.39",
+    "31.35"
+   ],
+   "grupos": [
+    "jev-31-33-31-37-real",
+    "jev-31-34-ab-real",
+    "jev-31-35b-ab",
+    "jev-31-38",
+    "jev-pos-deploy-25",
+    "jev-t2"
    ]
   }
  ]
