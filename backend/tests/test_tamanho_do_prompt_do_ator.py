@@ -8,6 +8,7 @@ Nível de prova: `simulated` (árvore escrita à mão e harness com provedor sim
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 from app.automation.hierarchy import parse_hierarchy
@@ -79,7 +80,8 @@ async def test_31_52_o_diagnostico_grava_a_arvore_antes_da_poda_com_texto_redigi
         return 1
 
     ex = object.__new__(StepExecutor)
-    ex.repo = SimpleNamespace(add_evidence_async=add_evidence_async)  # type: ignore[assignment]
+    sem_conta = SimpleNamespace(one=lambda sql, args: None)          # android-09: aparelho de QA, sem vínculo
+    ex.repo = SimpleNamespace(add_evidence_async=add_evidence_async, db=sem_conta)  # type: ignore[assignment]
     await ex._arvore_antes_da_poda(obs, 1, run_id="r", iid="android-09", step_id="s", attempt_id="a")  # noqa: SLF001
     [g] = gravadas
     assert (g["kind"], g["ext"], g["instance_id"]) == ("hierarchy", "json", "android-09")
@@ -101,3 +103,30 @@ async def test_31_52_o_diagnostico_grava_a_arvore_antes_da_poda_com_texto_redigi
 def test_31_52_o_diagnostico_vem_desligado() -> None:
     from app.config import AiCfg
     assert AiCfg().diagnostico_arvore_aparelhos == []
+
+
+async def test_31_52_aparelho_com_conta_real_nunca_grava_a_arvore(harness: Harness) -> None:
+    """Revisão da orquestradora: listar um aparelho de conta real no diagnóstico não grava nada. A regra é a do
+    ADR-055 (vínculo ativo de persona = conta real logada), lida do banco na hora de gravar."""
+    from app.devices.manager import Observation
+    from app.taskqueue.executor import StepExecutor
+
+    st = harness.state
+    assert st is not None
+    obs = Observation(frame_id="1", ts="2026-10-04T12:00:00Z", width=720, height=1280, jpeg=None,
+                      tree=parse_hierarchy(XML), package=CHROME, sensitive=False)
+    gravadas: list[dict[str, Any]] = []
+
+    async def add_evidence_async(**k: Any) -> int:
+        gravadas.append(k)
+        return 1
+
+    ex = object.__new__(StepExecutor)
+    ex.repo = SimpleNamespace(add_evidence_async=add_evidence_async, db=st.db)  # type: ignore[assignment]
+    perfil = st.social_repo.create_profile(username="conta_teste", first_name=None, last_name=None,
+                                           display_name=None, birth_date=None, email=None, persona_id=None)
+    st.social_repo.bind(perfil, "android-01", reason="teste")
+    await ex._arvore_antes_da_poda(obs, 1, run_id="r", iid="android-01", step_id="s", attempt_id="a")  # noqa: SLF001
+    assert gravadas == []
+    await ex._arvore_antes_da_poda(obs, 1, run_id="r", iid="android-02", step_id="s", attempt_id="a")  # noqa: SLF001
+    assert [g["instance_id"] for g in gravadas] == ["android-02"]     # sem vínculo, grava

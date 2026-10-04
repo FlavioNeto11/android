@@ -1088,7 +1088,14 @@ class StepExecutor:
         """31.52, diagnóstico DESLIGADO por padrão: grava, como evidência `hierarchy` (JSON), a árvore do navegador
         ANTES da poda do 31.35, só nos aparelhos de `ai.diagnostico_arvore_aparelhos` (os de teste que o dono listar) e
         nunca de tela sensível. Sem ela, o A/B offline da poda era impossível: só os números depois dela ficavam em
-        `ai_calls`. Texto e descrição passam pela redação de segredos. Falhar ao gravar não muda a etapa."""
+        `ai_calls`. Texto e descrição passam pela redação de segredos. Falhar ao gravar não muda a etapa.
+
+        Aparelho com conta real (vínculo ativo de persona, a regra do ADR-055) nunca grava, mesmo listado: o vínculo
+        mora no banco, não no config, por isso a recusa é aqui, na hora de gravar, e não na carga do config."""
+        if self.repo.db.one("SELECT 1 FROM device_profile_bindings WHERE instance_id=? AND active=1 LIMIT 1",
+                            (iid,)) is not None:
+            log.warning("%s: diagnóstico 31.52 recusado, o aparelho tem conta real vinculada", iid)
+            return
         corpo = {"regra": "31.52", "package": obs.package, "width": obs.width, "height": obs.height, "podados": podados,
                  "elements": [{**e.to_dict(), "text": redact(e.text) or "", "desc": redact(e.desc) or ""}
                               for e in obs.tree.elements]}

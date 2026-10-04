@@ -1683,7 +1683,9 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
   em que cada decisão do ator com algo podado grava a árvore de ANTES da poda:
   - vira evidência `hierarchy` JSON, com a nota "31.52:";
   - texto e descrição passam pela redação de segredos;
-  - tela sensível nunca é gravada.
+  - tela sensível nunca é gravada;
+  - aparelho com conta real (vínculo ativo de persona, regra do ADR-055) nunca grava, mesmo listado: a recusa é na
+    hora de gravar, porque o vínculo mora no banco e não no config.
 - `scripts/poda-ab-offline.py` lê essas evidências (banco só leitura) e mede, por árvore, os caracteres do prompt sem e
   com a poda. Imprime só números e ids.
 - Prova `simulated`: `backend/tests/test_tamanho_do_prompt_do_ator.py`. `not_run`: o A/B sobre árvores reais. Fica
