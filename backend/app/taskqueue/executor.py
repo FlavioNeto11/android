@@ -360,6 +360,8 @@ UI_DO_NAVEGADOR: dict[str, frozenset[str]] = {
         "menu_button", "menu_button_wrapper", "home_button", "optional_toolbar_button", "bottom_toolbar",
         "control_container", "security_button")),
 }
+
+
 def _fila_encadeada(extras: list[Decision]) -> list[Decision]:
     """Item 31.35 (parte B): as ações seguintes que o executor aceita encadear. Nada com efeito externo, e `scroll` só
     como a última: depois de rolar, nenhum alvo escolhido antes continua no mesmo lugar."""
@@ -398,7 +400,12 @@ def _proxima_encadeada(fila: list[Decision], antes: UiTree | None, agora: UiTree
     return Decision(tool=d.tool, args={**d.args, "element_id": iguais[0].id}, raw_text=d.raw_text)
 
 
-_IMAGEM_VAI: frozenset[str] = frozenset({"politica_sempre", "pedida", "problema", "primeira_julgada", "arvore_pobre"})
+_IMAGEM_VAI: frozenset[str] = frozenset({"politica_sempre", "pedida", "problema", "primeira_julgada",
+                                         "primeira_da_leitura", "arvore_pobre"})
+#: Item 31.37: ferramentas que só LEEM a tela. Repeti-las não é ciclo sem progresso: na leitura do Outlook (d62546,
+#: e7df7c) `observe_screen` duas vezes contou como ciclo e escalou 2 ou 3 decisões para o Opus. A contagem segue
+#: valendo para toda ferramenta que age na tela.
+FORA_DO_CICLO: frozenset[str] = frozenset({"observe_screen", "read_value"})
 #: RA-10: a frase da linha do tempo de cada motivo de escalonamento do `decide` (a do efeito vem da política de risco).
 _FRASE_DO_ESCALONAMENTO: dict[str, str] = {
     "nova_tentativa": "nova tentativa da mesma etapa", "erros_seguidos": "erros seguidos",
@@ -874,13 +881,13 @@ class StepExecutor:
         return getattr(self.provider, "model", "") or ""
 
     def _want_image(self, tree: UiTree, *, judged_step: bool, first: bool, trouble: bool, requested: bool,
-                    ai: AiCfg | None = None) -> bool:
+                    ai: AiCfg | None = None, le_valor: bool = False) -> bool:
         """Política `ai.image_policy`: se a imagem vai junto. O porquê é `_motivo_da_imagem`, a única régua."""
         return self._motivo_da_imagem(tree, judged_step=judged_step, first=first, trouble=trouble,
-                                      requested=requested, ai=ai) in _IMAGEM_VAI
+                                      requested=requested, ai=ai, le_valor=le_valor) in _IMAGEM_VAI
 
     def _motivo_da_imagem(self, tree: UiTree, *, judged_step: bool, first: bool, trouble: bool,
-                          requested: bool, ai: AiCfg | None = None) -> MotivoDaImagem:
+                          requested: bool, ai: AiCfg | None = None, le_valor: bool = False) -> MotivoDaImagem:
         """Política `ai.image_policy`. A imagem custa ~1/3 dos tokens novos de cada chamada; a hierarquia quase sempre
         basta. Em `auto` a imagem vai quando a árvore é pobre (WebView/canvas), na 1ª decisão de etapa julgada por
         visão, depois de erro/ciclo, ou quando o próprio modelo pede (observe_screen.need_image).
@@ -902,6 +909,10 @@ class StepExecutor:
             return "problema"
         if first and judged_step:
             return "primeira_julgada"
+        if first and le_valor:
+            # Item 31.37: a etapa que LÊ um valor (`saidas`) quase sempre precisa ver a tela; sem a imagem, a 1ª
+            # decisão era um `observe_screen(need_image)` pago só para pedi-la (d62546, e7df7c).
+            return "primeira_da_leitura"
         informative = sum(1 for e in tree.elements if e.text or e.desc or e.clickable or e.editable)
         return "arvore_pobre" if informative < ai.rich_tree_min_elements else "arvore_rica"
 
@@ -1728,7 +1739,7 @@ class StepExecutor:
             # a imagem só vem se ela divergir e a IA precisar (`completar_imagem`, mais abaixo).
             receita_decide = rr.mode == "replay" and not rr.diverged and not fired and rr.replayer is not None
             pede = dict(judged_step=judged_step, first=decisions == 0, trouble=errors_in_row >= 1 or same_count >= 1,
-                        requested=image_requested, ai=ai_cfg)
+                        requested=image_requested, ai=ai_cfg, le_valor=bool(saidas_declaradas))
             t_observacao = time.monotonic()
             try:
                 obs = last_obs = await reler_se_ocupada(
@@ -1973,7 +1984,8 @@ class StepExecutor:
                 t_prompt = time.monotonic()                     # C-2 (31.24): daqui até `_ai` é a montagem do pedido
                 arvore_ms, imagem_ms, completar_ms = obs.ms_arvore, obs.ms_imagem, 0
                 motivo_imagem = self._motivo_da_imagem(obs.tree, judged_step=judged_step, first=decisions == 0,
-                                                       trouble=trouble, requested=image_requested, ai=ai_cfg)
+                                                       trouble=trouble, requested=image_requested, ai=ai_cfg,
+                                                       le_valor=bool(saidas_declaradas))
                 quer_imagem = motivo_imagem in _IMAGEM_VAI
                 if quer_imagem and obs.jpeg is None and obs.image_omitted == "policy":
                     # A receita divergiu depois da observação só de árvore: a imagem vem agora, da mesma árvore,
@@ -2451,14 +2463,15 @@ class StepExecutor:
                                (", ".join(step.commit_guard) or "sem textos de guarda") + " visíveis")
 
             # ---------- detectar ciclo sem progresso
-            sig = (obs.tree.signature(), f"{decision.tool}:{_target_key(args)}")
-            same_count = same_count + 1 if sig == last_sig else 0
-            last_sig = sig
-            sigs.append((sig[0], obs.tree.signature(estrutural=True), sig[1]))
-            self._ultima_acao_da_etapa[step.id] = (sigs[-1][1], sigs[-1][2])      # LT-12: onde esta tentativa parou
-            ciclo = ciclo_sem_progresso(sigs, int(s.no_progress_limit))
-            if ciclo:
-                return await fail_or_retry(ciclo, obs)
+            if decision.tool not in FORA_DO_CICLO:        # item 31.37: só ler a tela não é ciclo
+                sig = (obs.tree.signature(), f"{decision.tool}:{_target_key(args)}")
+                same_count = same_count + 1 if sig == last_sig else 0
+                last_sig = sig
+                sigs.append((sig[0], obs.tree.signature(estrutural=True), sig[1]))
+                self._ultima_acao_da_etapa[step.id] = (sigs[-1][1], sigs[-1][2])  # LT-12: onde esta tentativa parou
+                ciclo = ciclo_sem_progresso(sigs, int(s.no_progress_limit))
+                if ciclo:
+                    return await fail_or_retry(ciclo, obs)
 
             # ---------- agir (intenção gravada ANTES)
             aid = intencao(decision.tool, args.model_dump(mode="json"), rationale, side_effect=is_commit,

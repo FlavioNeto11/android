@@ -45,6 +45,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - A ação do catálogo antes do efeito (`OPEN_COMMENTS`) segue: no Instagram, o comentário é digitado dentro da própria
   etapa com efeito.
 - Prova `simulated`: `test_learning_ensaio_e_oraculo.py` (o campo termina vazio; mutação conferida).
+## 2026-10-04 — 31.37: imagem na 1ª decisão da leitura e ler a tela fora do ciclo (branch feat/31-37-imagem-na-leitura, sem migração)
+
+- A etapa com `saidas` manda a imagem já na 1ª decisão (motivo novo `primeira_da_leitura`, também no painel de uso);
+  `observe_screen` e `read_value` (`FORA_DO_CICLO`) não contam mais como ciclo sem progresso nem disparam a escalada.
+  A contagem segue valendo para ferramenta que age na tela. Achado real: 12.3, d62546 e e7df7c.
+- Prova: `simulated` (`backend/tests/test_imagem_na_leitura.py`, com contraprova); `real` depois do deploy.
 
 ## 2026-10-04 — 28.16: faxina das tabelas de canal por prazo de retenção (branch canais/28-16-faxina-canais, sem migração)
 
