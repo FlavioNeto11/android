@@ -5,9 +5,16 @@ muda o que sai para fora: quem faz (perfil, aparelho, app), o quê (a ação), p
 sobre o quê (o OBJETO-alvo que a ação declara, 30.64), o texto exato que será digitado e a mídia pelo sha256 do
 CONTEÚDO, mais o escopo (execução e objetivo). O texto entra literal: uma vírgula a mais é outro item.
 
-Falha fechado: sem chave (`None`), o item não se aprova no plano e fica para a execução. Isso acontece com objeto-alvo
-não declarado ou ainda por resolver (`{item}`, `{{saida:…}}`), com o texto ainda por escrever (briefing, rascunho na
-execução) e com uma imagem citada cujo sha256 não se conhece.
+A chave leva TODOS os argumentos que a ação declara (`bindings` e `optional_bindings`), não só o `objeto_alvo`: a mesma
+resposta noutro comentário do mesmo @ é outro item, e a chave não depende de o catálogo estar bem declarado.
+
+Falha fechado: sem chave (`None`), o item não se aprova no plano e fica para a execução. Isso acontece com:
+- objeto-alvo não declarado, com argumento AUSENTE ou VAZIO (curtir "um post de @x", sem dizer qual: na execução o
+  primeiro da grade pode ser outro), ou ainda por resolver (`{item}`, `{{saida:…}}`);
+- alvo vazio quando a ação declara `counterparty`;
+- qualquer argumento declarado ainda por resolver;
+- texto ainda por escrever (briefing, rascunho na execução) ou com variável por resolver;
+- imagem citada cujo sha256 não se conhece.
 
 Função pura: quem chama lê a etapa de novo e o sha256 da mídia (`midia_da_etapa`) e passa os valores.
 """
@@ -18,12 +25,14 @@ import json
 from collections.abc import Mapping
 
 from ..db import Database
-from ..planning.capabilities import TEXTO, Capability, contraparte, objeto_da_acao, texto_a_gerar
+from ..planning.capabilities import BRIEFING, TEXTO, VERBATIM, Capability, contraparte, objeto_da_acao, texto_a_gerar
 
 #: Versão do formato da chave. Mudar o que entra muda a versão: chave velha nunca casa com chave nova.
 VERSAO_DA_CHAVE = 1
-#: O argumento da etapa que aponta a imagem da persona (29.30).
+#: O argumento da etapa que aponta a imagem da persona (29.30). Entra na chave pelo sha256 dos bytes, não pelo id.
 ARGUMENTO_DA_IMAGEM = "image_id"
+#: Argumentos que entram pela regra do texto (literal e final) ou da mídia, e não como argumento comum.
+_PELA_REGRA_PROPRIA = frozenset({TEXTO, BRIEFING, VERBATIM, ARGUMENTO_DA_IMAGEM})
 
 
 def texto_exato(cap: Capability, bindings: Mapping[str, object]) -> tuple[bool, str | None]:
@@ -35,7 +44,25 @@ def texto_exato(cap: Capability, bindings: Mapping[str, object]) -> tuple[bool, 
     texto = valores.get(TEXTO)
     if texto is None or not str(texto).strip():
         return (not cap.needs_draft), None
+    if "{" in str(texto):                               # `{item}`, `{{saida:…}}`: ainda não é o texto que vai sair
+        return False, None
     return True, str(texto)
+
+
+def argumentos_da_acao(cap: Capability, bindings: Mapping[str, object]) -> dict[str, str] | None:
+    """Todos os argumentos da etapa e os que a ação declara (`bindings` e `optional_bindings`; o declarado ausente entra
+    vazio), fora os de texto e mídia, com o `counterparty` normalizado. Os da etapa entram mesmo sem declaração: a chave
+    não depende de o catálogo estar bem declarado. `None` se algum ainda está por resolver."""
+    argumentos: dict[str, str] = {}
+    for nome in dict.fromkeys((*cap.bindings, *cap.optional_bindings, *sorted(bindings))):
+        if nome in _PELA_REGRA_PROPRIA:
+            continue
+        bruto = bindings.get(nome)
+        texto = "" if bruto is None else str(bruto).strip()
+        if "{" in texto:
+            return None
+        argumentos[nome] = texto.lower().lstrip("@") if nome == cap.counterparty else texto
+    return argumentos
 
 
 def midia_da_etapa(db: Database, bindings: Mapping[str, object]) -> tuple[bool, str | None]:
@@ -59,7 +86,13 @@ def chave_da_aprovacao(bindings: Mapping[str, object], cap: Capability, *, perfi
     `bindings` são os da etapa RELIDA (depois de `resolver_saidas`, na execução). `tem_imagem`/`midia_sha256` vêm de
     `midia_da_etapa`."""
     objeto = objeto_da_acao(cap, bindings)
-    if objeto is None:
+    if objeto is None or any(not valor for valor in objeto.values()):
+        return None                                     # objeto não declarado, ausente, vazio ou por resolver
+    alvo = contraparte(cap, bindings)
+    if cap.counterparty and not alvo:
+        return None
+    argumentos = argumentos_da_acao(cap, bindings)
+    if argumentos is None:
         return None
     fechado, texto = texto_exato(cap, bindings)
     if not fechado:
@@ -67,7 +100,7 @@ def chave_da_aprovacao(bindings: Mapping[str, object], cap: Capability, *, perfi
     if tem_imagem and not midia_sha256:
         return None
     conteudo = {"v": VERSAO_DA_CHAVE, "perfil": perfil, "aparelho": aparelho, "pacote": pacote or "",
-                "capability": cap.key, "alvo": contraparte(cap, bindings) or "", "objeto": objeto,
+                "capability": cap.key, "alvo": alvo or "", "objeto": objeto, "argumentos": argumentos,
                 "texto": texto, "midia_sha256": midia_sha256 if tem_imagem else None,
                 "run_id": run_id, "objective_id": objective_id}
     canonico = json.dumps(conteudo, sort_keys=True, ensure_ascii=False, separators=(",", ":"))

@@ -62,3 +62,30 @@ def test_a_midia_entra_pelo_sha256_dos_bytes(tmp_path: Path) -> None:
     com_b = _chave("SEND_MESSAGE", DM, tem_imagem=True, midia_sha256="b" * 64)
     assert com_a is not None and com_b is not None and com_a != com_b
     assert _chave("SEND_MESSAGE", DM, tem_imagem=True, midia_sha256=None) is None   # imagem sem sha256: fechado
+
+
+# ------------------------------------------------------------------ revisão antecipada da chave (04/10)
+def test_objeto_ausente_ou_vazio_falha_fechado() -> None:
+    """Curtir "um post de @x" sem dizer qual: na execução o primeiro da grade pode ser outro. Sem chave."""
+    assert _chave("LIKE_POST", {"post_author": "@a"}) is None
+    assert _chave("LIKE_POST", {"post_author": "@a", "caption_contains": "  "}) is None
+    assert _chave("CREATE_COMMENT", {"post_author": "@a", "content": "lindo!", "content_verbatim": "true"}) is None
+
+
+def test_texto_com_variavel_por_resolver_falha_fechado() -> None:
+    assert _chave("SEND_MESSAGE", {**DM, "content": "oi {item}"}) is None
+    assert _chave("SEND_MESSAGE", {**DM, "content": "oi {{saida:nome}}"}) is None
+
+
+def test_alvo_vazio_falha_fechado() -> None:
+    assert _chave("SEND_MESSAGE", {**DM, "username": ""}) is None
+    assert _chave("SEND_MESSAGE", {"content": "oi", "content_verbatim": "true"}) is None
+
+
+def test_resposta_igual_noutro_comentario_do_mesmo_arroba_e_outro_item() -> None:
+    """A chave leva todos os argumentos da etapa, não só o `objeto_alvo` (REPLY_COMMENT declara só `username`)."""
+    base = {"username": "@a", "content": "obrigada!", "content_verbatim": "true"}
+    um = _chave("REPLY_COMMENT", {**base, "target": "comentário 'que lindo'"})
+    outro = _chave("REPLY_COMMENT", {**base, "target": "comentário 'parabéns'"})
+    assert um is not None and outro is not None and um != outro
+    assert _chave("REPLY_COMMENT", {**base, "target": "comentário de {item}"}) is None
