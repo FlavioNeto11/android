@@ -33,8 +33,11 @@ SemTeto = create_model(
 
 
 def _requisicao(autonomia: str, papel: str | None):
-    p = {"objetivo": "Abrir a lista e anotar o primeiro preço", "alvos": ALVOS, "autonomia": autonomia, "papel": papel}
-    laco = SimpleNamespace(_autonomia=LacoDePedidos._autonomia)
+    p = {"id": "ped-teste", "pai_id": None, "objetivo": "Abrir a lista e anotar o primeiro preço", "alvos": ALVOS,
+         "autonomia": autonomia, "papel": papel}
+    # 28.10 F5: `_autonomia` lê a família (porta-voz) pela instância; sem porta-voz, a autonomia efetiva é a de antes.
+    laco = SimpleNamespace(_familia_com_porta_voz=lambda *_a: False)
+    laco._autonomia = lambda linha: LacoDePedidos._autonomia(laco, linha)  # type: ignore[arg-type]
     return LacoDePedidos._requisicao(laco, p, "ped:x:chave-de-teste")  # type: ignore[arg-type]
 
 
