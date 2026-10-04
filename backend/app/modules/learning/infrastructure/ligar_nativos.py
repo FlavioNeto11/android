@@ -31,7 +31,7 @@ from pydantic import ValidationError
 from app.automation.tools import COMMIT_VOCAB
 from app.db import Database, Row
 from app.models import Plan, PlanStep
-from app.contracts.origem import PREFIXO_VALIDACAO, eh_execucao_de_validacao
+from app.contracts.origem import PREFIXO_LOTE, PREFIXO_VALIDACAO, eh_ensaio_de_leitura, eh_execucao_de_validacao
 from app.modules.learning.application.evidencia_da_receita import (EvidenciaDaReceita, InvalidaDaReproducao,
                                                                    ReproducaoAConferir, RetrocargaDaReceita)
 from app.modules.learning.application.nativos import (AssinaturaDoPlano, ContraGravado, D1Nativo, Decidir,
@@ -44,7 +44,8 @@ from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.evidencia_invalida import run_da_etapa
 from app.modules.learning.domain.promocao import ORIGEM_DA_REPRODUCAO
 from app.modules.learning.domain.prova import (PREFIXO_DA_EXPANSAO, AcaoDaProva, EtapaDaProva, TentativaDaProva,
-                                               detalhe_da_invalida, efeito_repetido, veredito_da_prova)
+                                               detalhe_da_invalida, efeito_repetido, evidencia_de_uso,
+                                               veredito_da_prova)
 from app.modules.learning.domain.livro import (escopo_da_receita, estado_nativo, fluxo_tem_efeito, hash_da_receita,
                                                ref_da_trilha)
 from app.modules.learning.domain.vocabulario import LivroKind, Posicao
@@ -141,8 +142,8 @@ class LeituraSql:
         self._db = db
 
     def execucao(self, run_id: str) -> ExecucaoAssentada | None:
-        row = self._db.one("SELECT id, command, status, simulated, plan, flow_id, skill_id, instance_ids, prova_fluxo_id"
-                           " FROM runs WHERE id=?", (run_id,))
+        row = self._db.one("SELECT id, command, status, simulated, plan, flow_id, skill_id, instance_ids, prova_fluxo_id,"
+                           " idempotency_key, cancel_requested FROM runs WHERE id=?", (run_id,))
         if row is None:
             return None
         prova = linhas.texto_ou_nulo(row, "prova_fluxo_id")
@@ -155,7 +156,24 @@ class LeituraSql:
                                  simulada=bool(linhas.inteiro(row, "simulated")),
                                  aparelho=_primeiro_aparelho(linhas.texto_ou_nulo(row, "instance_ids")),
                                  assinatura=forma,
-                                 prova=self._prova(run_id, prova, linhas.texto(row, "status")) if prova else None)
+                                 prova=self._prova(run_id, prova, linhas.texto(row, "status")) if prova else None,
+                                 uso=self._uso(row) if not prova else None)
+
+    def _uso(self, row: Row) -> ProvaDaExecucao | None:
+        """30.51: a execução comum que usou o fluxo (`runs.flow_id`) pela regra da prova (`_prova`). Ensaio, lote de teste
+        e execução com cancelamento pedido (pela pessoa ou pelo sistema) não contam contra (`evidencia_de_uso`)."""
+        fluxo_id = linhas.texto_ou_nulo(row, "flow_id")
+        if not fluxo_id or linhas.texto_ou_nulo(row, "skill_id"):
+            return None
+        run_id = linhas.texto(row, "id")
+        v = self._prova(run_id, fluxo_id, linhas.texto(row, "status"))
+        if v is None:
+            return None
+        chave = linhas.texto_ou_nulo(row, "idempotency_key") or ""
+        conta_contra = not (eh_ensaio_de_leitura(chave) or chave.startswith(PREFIXO_LOTE)
+                            or linhas.inteiro(row, "cancel_requested"))
+        achado = evidencia_de_uso(v.posicao, v.detalhe, conta_contra=conta_contra)
+        return None if achado is None else ProvaDaExecucao(fluxo_id, v.content_hash, achado[0], achado[1])
 
     def _prova(self, run_id: str, fluxo_id: str, status: str) -> ProvaDaExecucao | None:
         """30.37/30.42: o desfecho da execução de prova pelas etapas (não pelo plano), pela regra única de

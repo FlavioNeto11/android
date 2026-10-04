@@ -19,6 +19,7 @@ from app.modules.learning.application.resultado_posterior import RevisaoSemDesfe
 from app.modules.learning.domain.ciclo import SkillState
 from app.modules.learning.domain.efeito import SUCESSO
 from app.modules.learning.domain.evidencia_invalida import run_invalidada
+from app.modules.learning.domain.promocao import ORIGEM_DO_USO
 from app.modules.learning.domain.resultado_posterior import MudancaNaJanela
 from app.modules.learning.domain.vocabulario import Braco
 from app.modules.learning.infrastructure import linhas
@@ -81,6 +82,15 @@ class ResultadoPosteriorSql:
                 " AND e.filled_at >= ? AND e.filled_at <= ? ORDER BY e.filled_at, e.unit_id",
                 (item_ref, Braco.WITH.value, desde, ate))
             return [linhas.texto(r, "outcome") in SUCESSO for r in linhas_
+                    if linhas.texto_ou_nulo(r, "run_id") not in invalidas]
+        if item_kind == "fluxo":
+            # 30.51: o uso do fluxo ativo é a evidência de USO (`uso:<run_id>`), a favor ou contra pelas etapas. Só ela:
+            # a prova e a sombra não são uso. Real, na janela, sem a execução invalidada.
+            linhas_ = self._db.query(
+                "SELECT stance, run_id FROM learning_evidence WHERE item_ref=? AND origin_ref LIKE ?"
+                " AND stance IN ('for', 'against') AND simulated=0 AND observed_at >= ? AND observed_at <= ?"
+                " ORDER BY observed_at, id", (item_ref, ORIGEM_DO_USO + "%", desde, ate))
+            return [linhas.texto(r, "stance") == "for" for r in linhas_
                     if linhas.texto_ou_nulo(r, "run_id") not in invalidas]
         return []
 

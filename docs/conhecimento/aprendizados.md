@@ -2289,7 +2289,7 @@ fluxo de execução (11 `for`, 2 `against`), nenhuma veio de execução que usou
 **O que não funcionou.** Recusar só os pendentes condenados pelo mecanismo: o código no ar não tinha rota nem método
 para isso (o `recusar` do registro de validações nasceu no 30.36), e escrita crua no banco não é caminho.
 
-**Aplicabilidade.** Vigente até o 30.37 (suíte 14). Todo pedido de validação de item `fluxo:` cujo comando de origem casa
+**Aplicabilidade.** Fechado em duas partes: o pedido de validação, pelo 30.37 (suíte 14; conferido em 04/10, com 6 provas de fluxo ativo com `for` e nenhum `sem_evidencia`); o uso comum do fluxo ativo, pelo 30.51 (evidência `uso:<run_id>`). Antes deles: Todo pedido de validação de item `fluxo:` cujo comando de origem casa
 com um fluxo ativo fecha `sem_evidencia`, e a evidência de uso de fluxo ativo só vem da sombra de outras execuções.
 
 ### K-087 — O restart zera a espera do curador: num dia de deploys, ele fica horas sem volta

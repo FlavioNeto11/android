@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 30.51: a execução comum que usa o fluxo ativo deixa evidência (branch feat/30-51-evidencia-de-uso)
+
+- O resto do K-086. A execução que casava com o fluxo ativo (`runs.flow_id`) não deixava nada no livro: 16 execuções e
+  0 evidências entre 03/10 18Z e 04/10 12Z. Agora ela deixa uma linha `uso:<run_id>` a favor ou contra, pela regra da
+  prova. Ensaio, lote de teste e execução com cancelamento pedido não contam contra, e a mesma execução não conta duas
+  vezes.
+- O D-5 enxerga o uso: na eficácia e nas falhas seguidas do rótulo do fluxo (não na contestação) e na janela do
+  resultado posterior. Os limiares do dono ficam como estão.
+- Prova `simulated`: `test_learning_evidencia_de_uso.py` (11 testes; 2 mutações conferidas). 1310 testes do
+  aprendizado e dos fluxos passam com `-n 2`. Sem DDL. Real: `not_run`.
 ## 2026-10-04 — teste do preparo zumbi drenado sem Timer de relógio (branch fix/b2-r4-sem-timer)
 
 - `test_prontidao_subsistemas::test_b2_r4_boot_local_preparo_zumbi_drenado_nao_libera_esta_tentativa` falhou no

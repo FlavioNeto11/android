@@ -1400,6 +1400,33 @@ re-execução.
 **Prova:** `simulated` em `backend/tests/test_learning_prova.py`. `real`: `not_run` até a 1ª validação de fluxo depois
 do deploy que levar o 30.37; o P4 fica pausado (`validacao.modo: off`) até lá.
 
+## A evidência de uso do fluxo ativo (30.51)
+
+Até aqui, a execução comum que casava com o fluxo ativo (`runs.flow_id`) não deixava nada no livro. Era o resto do
+K-086: o uso de um fluxo publicado só contava pela sombra de outras execuções. Entre 03/10 18Z e 04/10 12Z foram 16
+execuções e 0 evidências. Decisão da orquestradora (04/10):
+
+- **Origem própria.** A execução comum que usou o fluxo deixa UMA linha `uso:<run_id>` (`ORIGEM_DO_USO`), distinta
+  da prova e da sombra (`run:<run_id>`). O texto troca "prova:" por "uso:". A regra é a mesma da prova
+  (`veredito_da_prova`, lido em `LeituraSql._uso`), mas só `for` e `against` viram linha
+  (`domain.prova.evidencia_de_uso`). A invalida e o "sem desfecho" (infra, ator que não agiu, plano revisado) não
+  dizem nada do fluxo.
+- **Uma vez.** A execução que já tem `for`/`against` do item por outra origem não grava o uso (`_minerar_uso`).
+  Minerar de novo também não duplica, pelo índice único.
+- **O que não conta contra:** o ensaio (`ensaio:`), o lote de teste (`lote:`) e a execução com cancelamento pedido
+  (`runs.cancel_requested`, da pessoa ou do sistema). O que passou ainda conta a favor. Nenhum D1 roda aqui: o fluxo
+  usado é o ativo.
+- **O D-5 enxerga o uso, com os limiares do dono.**
+  - O uso é o contador do fluxo, como a reprodução é o da receita. Entra na eficácia (`a_favor`/`contra`) e nas falhas
+    seguidas do rótulo (`falhas_seguidas_no_fim(usos_do_fluxo(...))`, na ordem da gravação).
+  - Não entra na contestação: uma falha de uso não é `contestado_recentemente`. Duas seguidas degradam, pelo
+    `aprendizado.saude.falhas_seguidas`.
+  - A janela do resultado posterior (`ResultadoPosteriorSql.usos`) lê, para o fluxo, só o uso real, sem a prova, a
+    sombra e o simulado.
+
+**Prova:** `simulated` em `backend/tests/test_learning_evidencia_de_uso.py`, com duas mutações conferidas: o
+"não conta contra" e a contestação. `real`: `not_run` até o deploy.
+
 ## A evidência datada da receita (30.39)
 
 A lacuna ("a receita não tem evidência datada") tinha um custo medido em 03/10: o curador pedia `execucao_real` em 23 de
