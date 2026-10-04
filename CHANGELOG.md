@@ -25,6 +25,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   texto, ou que CONTÉM o texto, com o campo limpo, passava por envio. Pior ainda com "Seen" embaixo: ia a `read`.
 - `UiTree.mensagens_iguais` conta por igualdade normalizada, e `sent_as_message(..., antes=)` só prova com MAIS bolhas
   iguais do que a linha de base. Sem linha de base, não afirma nada.
+- Revisão (R1 e R2): a bolha igual que conta tem de ser a ÚLTIMA mensagem da conversa (`ultima_bolha_igual`: nenhum
+  elemento do mesmo tipo de bolha abaixo dela; "Seen", hora e reação não contam). Sem id para dizer o que é
+  mensagem, o modelo julga. As bolhas são contadas DISTINTAS, e o texto dentro de um balão com a mesma descrição
+  conta uma vez.
 - O executor guarda a linha de base no toque do efeito (`_guardar_linha_de_base`), e ela chega à prova local
   (`StepView.mensagens_antes`) e ao marcador.
 - Prova: `simulated` (`backend/tests/test_marcador_de_entrega.py`, com os casos da bolha antiga, da que contém o texto

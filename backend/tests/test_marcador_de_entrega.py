@@ -268,3 +268,44 @@ def test_a_linha_de_base_e_a_contagem_da_tela_no_toque(tmp_path: Path) -> None:
     sem_texto = etapa.model_copy(update={"id": "outra", "bindings": {"username": "@ana"}})
     ex._guardar_linha_de_base(sem_texto, VISTA)  # noqa: SLF001
     assert "outra" not in ex._linha_de_base()  # noqa: SLF001
+
+
+# ==================================================================== 31.59, revisão: R1 e R2
+def test_r1_bolha_antiga_revelada_por_rolagem_com_mensagem_abaixo_nao_prova() -> None:
+    """R1: no toque a bolha igual antiga estava fora da tela (linha de base 0); o envio falha, o campo limpa e a lista
+    rola: a antiga entra, com mensagens mais novas abaixo. Ela não é a última mensagem: não prova."""
+    mais_nova = (_TV, "uma resposta depois", "direct_text_message_text_view")
+    tela = _tela(CABECALHO, BOLHA, _status("Seen"), mais_nova, CAMPO_VAZIO)
+    assert tela.mensagens_iguais(CONTEUDO) == 1
+    assert tela.sent_as_message(CONTEUDO, antes=0) is False
+    assert _nivel(tela) is None
+
+
+def test_r1_a_ultima_bolha_com_seen_e_hora_abaixo_prova() -> None:
+    """O "Seen", a hora e a reação abaixo da última bolha não são mensagem: ela segue sendo a última."""
+    tela = _tela(CABECALHO, BOLHA, _status("Seen"), (_TV, "22:41", "message_timestamp"), CAMPO_VAZIO)
+    assert tela.sent_as_message(CONTEUDO, antes=0) is True
+    assert _nivel(tela) == "read"
+
+
+def test_r1_bolha_sem_id_nao_diz_o_que_e_mensagem_e_vai_ao_modelo() -> None:
+    corpo = (f'<node class="{_TV}" text="{CONTEUDO}" resource-id="" bounds="[0,80][700,140]"/>'
+             f'<node class="{_TV}" text="Seen" resource-id="{PKG}:id/s" bounds="[0,160][700,220]"/>'
+             f'<node class="{_ET}" text="Message…" resource-id="{PKG}:id/c" bounds="[0,240][700,300]"/>')
+    tela = parse_hierarchy(f"<hierarchy>{corpo}</hierarchy>")
+    assert tela.sent_as_message(CONTEUDO, antes=0) is not True
+    assert _nivel(tela) is None
+
+
+def test_r2_balao_com_texto_e_descricao_iguais_conta_uma_vez() -> None:
+    """R2: o balão (descrição = a mensagem) e o texto dentro dele são UMA bolha; re-renderizar não sobe a contagem."""
+    corpo = (f'<node class="android.view.ViewGroup" content-desc="{CONTEUDO}" resource-id="{PKG}:id/message_content"'
+             f' bounds="[0,80][700,200]">'
+             f'<node class="{_TV}" text="{CONTEUDO}" resource-id="{PKG}:id/direct_text_message_text_view"'
+             f' bounds="[20,90][680,190]"/></node>'
+             f'<node class="{_ET}" text="Message…" resource-id="{PKG}:id/row_thread_composer_edittext"'
+             f' bounds="[0,300][700,360]"/>')
+    tela = parse_hierarchy(f"<hierarchy>{corpo}</hierarchy>")
+    assert tela.mensagens_iguais(CONTEUDO) == 1
+    assert tela.sent_as_message(CONTEUDO, antes=1) is False          # a mesma bolha de antes: nenhum envio
+    assert tela.sent_as_message(CONTEUDO, antes=0) is True

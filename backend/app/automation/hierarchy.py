@@ -214,6 +214,11 @@ class UiElement:
         return " | ".join(parts)
 
 
+def _dentro(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool:
+    """O retângulo `a` está dentro de `b` (bordas inclusive)."""
+    return b[0] <= a[0] and b[1] <= a[1] and a[2] <= b[2] and a[3] <= b[3]
+
+
 @dataclass(slots=True)
 class UiTree:
     elements: list[UiElement]
@@ -254,13 +259,45 @@ class UiTree:
         n = norm_text(needle)
         return bool(n) and any(n in norm_text(t) for t in self.texts())
 
-    def mensagens_iguais(self, content: str) -> int:
-        """31.59: quantos elementos NÃO editáveis têm o texto (ou a descrição) IGUAL ao conteúdo, normalizado. Igualdade
-        e não "contém": a bolha antiga "oi, tudo bem?" não é a mensagem "oi"."""
+    def bolhas_iguais(self, content: str) -> list[UiElement]:
+        """31.59: as bolhas DISTINTAS com o texto (ou a descrição) IGUAL ao conteúdo, normalizado, em elementos não
+        editáveis. Igualdade e não "contém": a bolha antiga "oi, tudo bem?" não é a mensagem "oi". Distintas (R2 da
+        revisão): o elemento contido noutro já contado (o texto dentro do balão que repete a mesma descrição) não soma."""
         n = norm_text(content)
         if not n:
-            return 0
-        return sum(1 for e in self.elements if not e.editable and (norm_text(e.text) == n or norm_text(e.desc) == n))
+            return []
+        iguais = sorted((e for e in self.elements if not e.editable and (norm_text(e.text) == n or norm_text(e.desc) == n)),
+                        key=lambda e: -((e.bounds[2] - e.bounds[0]) * (e.bounds[3] - e.bounds[1])))
+        distintas: list[UiElement] = []
+        for e in iguais:
+            if not any(_dentro(e.bounds, d.bounds) for d in distintas):
+                distintas.append(e)
+        return distintas
+
+    def mensagens_iguais(self, content: str) -> int:
+        """31.59: quantas bolhas distintas com o texto IGUAL (`bolhas_iguais`)."""
+        return len(self.bolhas_iguais(content))
+
+    def ultima_bolha_igual(self, content: str) -> UiElement | None:
+        """31.59 (R1 da revisão): a bolha igual mais baixa, se ela for a ÚLTIMA mensagem da conversa; `None` senão.
+
+        "Mensagem" é o mesmo tipo de elemento da bolha (o `resource_id` dela ou o de um elemento igual dentro dela): se
+        houver outro desse tipo abaixo, a bolha é antiga (revelada por rolagem, ou com resposta depois). O "Seen", a hora
+        e a reação abaixo dela não são mensagem e não contam. Sem `resource_id` para dizer o que é mensagem, `None`: a
+        árvore não sabe, e o modelo julga."""
+        bolhas = self.bolhas_iguais(content)
+        if not bolhas:
+            return None
+        bolha = max(bolhas, key=lambda e: e.bounds[3])
+        n = norm_text(content)
+        tipos = {e.resource_id for e in self.elements
+                 if e.resource_id and not e.editable and _dentro(e.bounds, bolha.bounds)
+                 and (norm_text(e.text) == n or norm_text(e.desc) == n)}
+        if not tipos:
+            return None
+        if any(e.resource_id in tipos and e.bounds[1] >= bolha.bounds[3] for e in self.elements):
+            return None
+        return bolha
 
     def sent_as_message(self, content: str, *, antes: int | None = None) -> bool | None:
         """Prova determinística de 'texto enviado numa conversa' (achado #102), sem chamar o modelo: o conteúdo
@@ -272,12 +309,17 @@ class UiTree:
         31.59: `antes` é quantas bolhas com o texto IGUAL havia na tela de ANTES do envio (a linha de base que o executor
         guarda no toque do efeito). A prova exige que a contagem tenha AUMENTADO: sem isso, uma mensagem antiga com o
         mesmo texto e o campo limpo eram indistinguíveis de um envio. Sem linha de base (`None`), a árvore não afirma
-        nada e o modelo julga, como antes de existir a prova."""
+        nada e o modelo julga, como antes de existir a prova.
+
+        A bolha que conta também tem de ser a ÚLTIMA mensagem da conversa (`ultima_bolha_igual`, R1): uma bolha antiga
+        que entrou na tela por rolagem tem mensagens mais novas abaixo."""
         n = norm_text(content)
         if not n or antes is None:
             return None
         no_campo = any(e.editable and n in norm_text(e.text) for e in self.elements)
-        return self.mensagens_iguais(content) > antes and not no_campo
+        if no_campo or self.mensagens_iguais(content) <= antes:
+            return False
+        return self.ultima_bolha_igual(content) is not None
 
     def count_text(self, needle: str) -> int:
         n = norm_text(needle)

@@ -319,7 +319,9 @@ def test_texto_ainda_no_compositor_nao_prova_envio() -> None:
                                             rid=ID_COMPOSITOR, y=1180)))
     assert so_no_campo.sent_as_message("oi, tudo bem?", antes=0) is False
 
-    publicado = parse_hierarchy(_tela(_no("android.widget.TextView", text="oi, tudo bem?", y=600),
+    # 31.59 (R1): a bolha leva o id real do Instagram; sem id, a árvore não sabe o que é mensagem e o modelo julga.
+    publicado = parse_hierarchy(_tela(_no("android.widget.TextView", text="oi, tudo bem?",
+                                          rid=f"{IG}:id/direct_text_message_text_view", y=600),
                                       _no("android.widget.AutoCompleteTextView", text=DICA, rid=ID_COMPOSITOR, y=1180)))
     assert publicado.sent_as_message("oi, tudo bem?", antes=0) is True
 

@@ -80,10 +80,9 @@ def nivel_pelo_marcador(marcas: Iterable[tuple[str, str]], conteudo: str | None,
         return None
     if marcas_pendentes_na_tela(pendentes, tree) or marcas_pendentes_na_tela(falhas, tree):
         return None
-    bolhas = [e for e in tree.elements if not e.editable and (norm_text(e.text) == n or norm_text(e.desc) == n)]
-    if not bolhas:
+    bolha = tree.ultima_bolha_igual(conteudo or "")
+    if bolha is None:
         return None
-    bolha = max(bolhas, key=lambda e: e.bounds[3])
     abaixo = [e for e in tree.elements if e is not bolha and norm_text(f"{e.text} {e.desc}")
               and e.bounds[1] >= bolha.bounds[3]]
     if not abaixo:

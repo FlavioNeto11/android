@@ -316,7 +316,8 @@ achado não se confirmam nos dados.
     declaração espera uma captura real, só leitura.
     Desde o 31.59, a prova `sent_text` (e o marcador por cima dela) exige a LINHA DE BASE: no toque do efeito, o
     executor guarda quantas bolhas com o texto IGUAL (normalizado; não mais "contém") a tela tinha, e a prova só vale
-    se depois houver mais. Sem isso, uma mensagem antiga com o mesmo texto (ou que contém o texto), com "Seen" embaixo e
+    se depois houver mais, e a bolha igual mais baixa tem de ser a última mensagem (nenhuma bolha do mesmo tipo abaixo;
+    "Seen" e hora não contam), com as bolhas contadas distintas. Sem isso, uma mensagem antiga com o mesmo texto (ou que contém o texto), com "Seen" embaixo e
     o campo limpo, passava por envio. A linha de base mora em memória; a verificação sem ela (reconciliação depois de
     reinício) não tem prova pela árvore e vai ao modelo.
   - `verdict` (o desfecho): `yes`/`no`/`uncertain`/`unprovable` no `verify`; o nome da ferramenta no `decide` (fora
