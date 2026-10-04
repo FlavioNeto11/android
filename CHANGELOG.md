@@ -35,7 +35,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Resíduos da revisão da #314, parte 12b:
   - o aviso do teto é `trello.teto_de_comentarios`, rotina e janela, e a resposta a ele só informa (não vira pedido);
   - as travas leem a `previa` como JSON, sem depender do espaço do `json.dumps`;
-  - só destrava o cartão o sim que foi repassado, ou o não: o sim recusado por `mudou`, `apagado` ou `sem_conferir` não conta.
+  - só destrava o cartão o sim que foi repassado, ou o não: o sim recusado por `mudou`, `apagado` ou `sem_conferir` não conta;
+  - as travas e o "respondido" leem a prévia, não o estado da linha (a linha atendida pode virar `feita`).
 - Contrato: Adendo v1.35 em `docs/api-contract.md` (login, aviso `trello.comentario`, repasses `comentario_sim` e
   `comentario_nao`).
 - Prova `simulated`: `backend/tests/test_canais_comentario_do_dono.py` (44) e os ajustes em `test_trello_leitor.py` e

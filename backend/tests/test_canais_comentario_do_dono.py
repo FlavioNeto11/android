@@ -379,6 +379,9 @@ def test_as_travas_nao_dependem_do_formato_do_json(tmp_path: Path, compacto: boo
     assert repo.comentarios_com_pedido(desde="2000-01-01T00:00:00Z") == ["a1"]
     assert repo.comentarios_com_pedido(desde="2000-01-01T00:00:00Z", card="card-x") == ["a1"]
     assert repo.comentarios_com_pedido(desde="2000-01-01T00:00:00Z", card="outro") == []
+    # Parte 12c: a linha já respondida pode virar `feita`; o pedido segue contando para o teto e o "em aberto".
+    db.execute("UPDATE canal_entradas SET estado='feita' WHERE canal='trello'")
+    assert repo.comentarios_com_pedido(desde="2000-01-01T00:00:00Z") == ["a1"]
 
 
 @pytest.mark.parametrize("compacto", [False, True])
@@ -408,3 +411,8 @@ def test_so_a_resposta_repassada_conta_como_respondida(tmp_path: Path, compacto:
     assert repo.comentario_respondido("a0043") is True
     responde(6, "orquestradora", "comando", "a0044")                           # outro repasse não é resposta
     assert repo.comentario_respondido("a0044") is False
+    # Parte 12c: a resposta repassada que depois vira `feita` segue contando; a recusada segue não contando.
+    db.execute("UPDATE canal_entradas SET estado='feita' WHERE canal='telegram'")
+    assert repo.comentario_respondido("a0042") is True and repo.comentario_respondido("a0043") is True
+    responde(7, "feita", "comentario_sim", "a0045", conferencia="mudou")
+    assert repo.comentario_respondido("a0045") is False
