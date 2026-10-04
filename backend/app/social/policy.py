@@ -106,11 +106,18 @@ def _balde(acao: str, package: str | None) -> str | None:
 _BALDES_DE_OBJETO_NA_TELA = frozenset({"likes", "comments"})
 
 
+#: 30.64: a garantia do seletor exato só vale quando provada com a árvore de uma tela REAL gravada (anonimizada) de post
+#: já curtido. Hoje a prova é do executor com o aparelho falso (`test_alvo_por_legenda.py`), que não prova o ambiente
+#: real: a curtida ambígua vai para aprovação (decisão da orquestradora, 04/10 19:44Z). Destrava com a árvore real.
+_SELETOR_DE_ESTADO_PROVADO_EM_TELA_REAL = False
+
+
 def _seletor_de_estado(cap: Capability) -> bool:
     """O commit casa um ESTADO exato (`desc==Like`) que deixa de existir depois do efeito: o coração já curtido não
-    casa, então repetir não alterna nem duplica. É o que segura a duplicata quando o objeto é ambíguo (30.64)."""
+    casa, então repetir não alterna nem duplica. Seguraria a duplicata quando o objeto é ambíguo (30.64), mas só vale
+    depois de provado com tela real (`_SELETOR_DE_ESTADO_PROVADO_EM_TELA_REAL`)."""
     seletor = (cap.commit_selector or "").strip()
-    return cap.limit_bucket == "likes" and seletor.startswith("desc==")
+    return _SELETOR_DE_ESTADO_PROVADO_EM_TELA_REAL and cap.limit_bucket == "likes" and seletor.startswith("desc==")
 
 
 def _texto_normalizado(texto: object) -> str | None:

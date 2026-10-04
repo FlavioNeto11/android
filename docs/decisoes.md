@@ -3717,9 +3717,11 @@ perfil, pela ação, pelo texto e pelo OBJETO, não só pela pessoa.
   - Objeto inequívoco (seguir, aceitar ou recusar pedido, publicar a mesma imagem, curtir ou comentar o post com a
     legenda dita): recusa antes da aprovação.
   - Objeto AMBÍGUO (argumento declarado vazio, como a legenda do "post mais recente", ou só a pessoa numa ação sobre post
-    ou comentário) nunca recusa. Pede aprovação, salvo quando o seletor de commit EXATO de estado (`desc==Like`, balde
-    `likes`) já impede a duplicata, porque não casa com o coração curtido. Isso está provado pelo executor com o aparelho
-    falso de `test_alvo_por_legenda.py`.
+    ou comentário) nunca recusa; pede aprovação. A curtida também, por enquanto. O seletor de commit EXATO de estado
+    (`desc==Like`) não casa com o coração curtido, o que o executor prova com o aparelho falso de
+    `test_alvo_por_legenda.py`, mas aparelho falso não prova o ambiente real. A curtida ambígua volta a passar quando o
+    mesmo teste usar a árvore REAL, anonimizada, de um post já curtido
+    (`_SELETOR_DE_ESTADO_PROVADO_EM_TELA_REAL`).
   - Uma saída sem etapa conhecida só conta quando o objeto é a própria pessoa (DM, seguir).
   - As versões anteriores da mesma etapa no objetivo não contam: é o pedido que o `acompanhar_revisao` leva adiante.
 

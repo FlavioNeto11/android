@@ -245,8 +245,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - A DM com o MESMO texto (já enviado, ou aprovado e não enviado) pede confirmação; a de texto novo segue a política.
     O texto gerado se compara depois do rascunho (`mensagem_repetida`).
   - Com objeto inequívoco, seguir, curtir, comentar e publicar a mesma imagem são recusados.
-  - O objeto ambíguo (legenda vazia, ou só a pessoa em post ou comentário) pede aprovação. A curtida passa, porque o
-    seletor exato `desc==Like` segura a duplicata; a prova pelo executor fica em `test_alvo_por_legenda.py`.
+  - O objeto ambíguo (legenda vazia, ou só a pessoa em post ou comentário) pede aprovação. A curtida também, até a prova
+    do seletor exato `desc==Like` com uma árvore de tela real. A prova pelo executor com o aparelho falso fica em
+    `test_alvo_por_legenda.py`.
   - `pedidos_da_acao` filtra por app.
   - Emenda 30.64 do ADR-055. Revisão da fila da suíte 32: itens 4, 5, 7, 8 e 10.
 - Prova `simulated`: `backend/tests/test_objeto_alvo.py`, `test_repetido_entre_execucoes.py` e

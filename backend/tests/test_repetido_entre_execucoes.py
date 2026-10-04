@@ -179,10 +179,11 @@ def test_comentar_sem_dizer_qual_post_pede_aprovacao_e_nunca_recusa(tmp_path: Pa
     assert "objeto não identificado" in veredito.reason and "30.64" in veredito.reason
 
 
-def test_curtir_sem_legenda_passa_porque_o_seletor_exato_segura_a_duplicata(tmp_path: Path) -> None:
-    """Revisão da fila, item 4: a curtida por posição (objeto ambíguo) passa; quem impede curtir de novo o mesmo post é
-    o seletor de commit EXATO (`desc==Like` não casa com o coração curtido). A prova no executor de verdade está em
-    `test_alvo_por_legenda.py::test_post_ja_curtido_o_commit_exato_nao_toca_e_a_etapa_nao_conta`."""
+def test_curtir_sem_legenda_pede_aprovacao_ate_a_prova_em_tela_real(tmp_path: Path) -> None:
+    """Revisão da fila, item 4: a curtida por posição (objeto ambíguo) seria segura pelo seletor de commit EXATO
+    (`desc==Like` não casa com o coração curtido), provado no executor com o aparelho falso em
+    `test_alvo_por_legenda.py::test_post_ja_curtido_o_commit_exato_nao_toca_e_a_etapa_nao_conta`. Até a prova com a
+    árvore de uma tela REAL gravada, ela passa por aprovação, como os outros ambíguos."""
     repo, policies, db, pid = _conta(tmp_path)
     for acao, args, tipo in (("LIKE_POST", {"post_author": ANA}, InteractionType.post_liked.value),
                              ("LIKE_COMMENT", {"username": ANA}, InteractionType.comment_liked.value)):
@@ -191,7 +192,7 @@ def test_curtir_sem_legenda_passa_porque_o_seletor_exato_segura_a_duplicata(tmp_
         sid = _etapa(db, f"r-{acao}", acao, args)
         _fez(repo, pid, tipo, ANA, sid)
         veredito = policies.check(pid, cap, counterparty=ANA, app_id="instagram", step_id="r-b:x", bindings=args)
-        assert veredito.allowed and "30.64" not in veredito.reason, acao
+        assert veredito.allowed and veredito.needs_approval and "objeto não identificado" in veredito.reason, acao
 
 
 def test_acao_com_efeito_sem_objeto_declarado_passa_por_aprovacao(tmp_path: Path) -> None:
