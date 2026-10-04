@@ -31,14 +31,6 @@ from app.state import AppState
 from .conftest import CountingProvider, Harness
 from .fake_instagram import AtorDoInstagram, FakeInstagram
 
-
-@pytest.fixture(autouse=True)
-def _pular_o_tempo(request: pytest.FixtureRequest) -> None:
-    """T2: o tempo das ferramentas do aparelho falso é PULADO (relógio virtual), não esperado. Só nos testes com o
-    harness; o que eles provam (ordem dos fatos, contagens, desfechos) é o mesmo."""
-    if "harness" in request.fixturenames:
-        request.getfixturevalue("harness").pular_o_tempo()
-
 FIXTURES = Path(__file__).parent / "fixtures" / "dsl" / "v1alpha1" / "validos"
 ABRIR = "ig.abrir_conversa"
 DONO = "painel:flavio"
