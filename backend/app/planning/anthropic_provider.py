@@ -151,10 +151,11 @@ class AnthropicProvider:
     # ------------------------------------------------------------------ chamada base
     def _kwargs(self, *, model: str, system: str, content: list[dict[str, Any]], effort: str, max_tokens: int,
                 tools: bool, schema: dict[str, Any] | None, pensar: bool = True,
-                cache_ttl: str | None = None) -> dict[str, Any]:
+                cache_ttl: str | None = None, cachear: bool = True) -> dict[str, Any]:
         """Monta a requisição respeitando a capacidade DECLARADA deste modelo (`ai.models`) e o que ele já recusou.
         `pensar=False` (item 17.14, `thinking: false` da função) deixa de mandar `thinking`, como num modelo sem ele.
-        `cache_ttl` (31.30): validade do ponto de cache; `None` é o padrão da API (5 min), sem o campo."""
+        `cache_ttl` (31.30): validade do ponto de cache; `None` é o padrão da API (5 min), sem o campo.
+        `cachear=False` (30.46): sem ponto de cache, para a chamada cujo prefixo nunca se repete."""
         caps = self.cfg.model_caps(model)
         off = self._unsupported.setdefault(model, set())
         if tools and not caps.tools:
@@ -163,7 +164,7 @@ class AnthropicProvider:
         if max_tokens and caps.max_output:
             max_tokens = min(max_tokens, caps.max_output)
         # Ferramentas + system são idênticos em todas as decisões: o ponto de cache no system reaproveita esse prefixo
-        # (a ordem cacheada é tools → system). SEMPRE marcado: abaixo do mínimo do modelo a API só ignora o ponto,
+        # (a ordem cacheada é tools → system). SEMPRE marcado, menos no curador (`cachear=False`, 30.46): abaixo do mínimo do modelo a API só ignora o ponto,
         # sem erro e sem custo. A porta que havia aqui (`len(system)//4 >= min_cache_tokens`) contava só o system e
         # subcontava os tokens: o ator dava 706 pela conta contra um prefixo real de 6 091 tokens, e o Sonnet 5
         # (mínimo 1024) e o Haiku 4.5 (4096) saíam sem `cache_control` — medido em 24/09: 46 decisões com
@@ -171,7 +172,9 @@ class AnthropicProvider:
         cache: dict[str, str] = {"type": "ephemeral"}
         if cache_ttl and cache_ttl != "5m":
             cache["ttl"] = cache_ttl
-        bloco: dict[str, Any] = {"type": "text", "text": system, "cache_control": cache}
+        bloco: dict[str, Any] = {"type": "text", "text": system}
+        if cachear:
+            bloco["cache_control"] = cache
         kwargs: dict[str, Any] = dict(model=model, max_tokens=max_tokens, system=[bloco],
                                       messages=[{"role": "user", "content": content}])
         if pensar and caps.thinking and "thinking" not in off:
@@ -209,8 +212,8 @@ class AnthropicProvider:
 
     async def _create(self, *, role: str, model: str, system: str, content: list[dict[str, Any]], effort: str,
                       max_tokens: int, tools: bool = False, schema: dict[str, Any] | None = None, tier: int = 0,
-                      with_image: bool = False, funcao: str | None = None, cache_ttl: str | None = None
-                      ) -> tuple[Any, Usage]:
+                      with_image: bool = False, funcao: str | None = None, cache_ttl: str | None = None,
+                      cachear: bool = True) -> tuple[Any, Usage]:
         """`funcao`: a função do hub que a chamada serve, quando difere de `role` (a decisão escalada é `escalation`).
         `cache_ttl`: validade do cache do prefixo (31.30); só o plano da execução pede outra que não a padrão."""
         if self._client is None:
@@ -225,7 +228,7 @@ class AnthropicProvider:
             for _ in range(len(_TUNABLE) + 2):
                 kwargs = self._kwargs(model=model, system=system, content=content, effort=effort,
                                       max_tokens=max_tokens, tools=tools, schema=schema, pensar=pensar,
-                                      cache_ttl=cache_ttl)
+                                      cache_ttl=cache_ttl, cachear=cachear)
                 try:
                     resp = await self._send(model, kwargs)
                     break
@@ -433,11 +436,17 @@ class AnthropicProvider:
 
     # ------------------------------------------------------------------ curador do Livro (30.12)
     async def review_knowledge(self, req: PedidoDeParecer) -> tuple[ParecerBruto, Usage]:
-        """Dossiê do item + opções fechadas → parecer. Modelo do planejador, só texto; o esquema leva os enums."""
+        """Dossiê do item + opções fechadas → parecer. Modelo do planejador, só texto; o esquema leva os enums.
+
+        Sem ponto de cache (30.46): o esquema entra no prefixo cacheado e leva os citáveis e os alvos DO ITEM, então o
+        prefixo muda a cada parecer. Medido no central entre 03/10 12:00Z e 04/10 08:07Z: 45 pareceres, 45 gravações
+        de cache (1678 a 1803 tokens, 24 tamanhos distintos), nenhuma leitura, mesmo com chamadas a 4 s uma da outra. A
+        gravação custa 1,25x a entrada; sem o ponto, o mesmo prefixo sai a 1x. O plano da execução, de esquema fixo,
+        relê (22 de 31 no mesmo período)."""
         resp, usage = await self._create(role="plan", model=self.models["plan"], system=CURADOR_SYSTEM,
                                          content=[{"type": "text", "text": curador_user(req)}],
                                          effort=self.cfg.env.ai_effort_planner, max_tokens=3000,
-                                         schema=esquema_do_parecer(req.opcoes))
+                                         schema=esquema_do_parecer(req.opcoes), cachear=False)
         self._check_stop(resp, self.models["plan"])
         raw = next((b.text for b in resp.content if b.type == "text"), "")
         try:

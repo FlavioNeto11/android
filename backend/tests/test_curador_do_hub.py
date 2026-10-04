@@ -92,6 +92,25 @@ async def test_anthropic_manda_o_esquema_e_devolve_o_objeto(tmp_path: Path) -> N
     assert parecer.bruto == PARECER and parecer.modelo == "claude-opus-5" and parecer.probabilidade is None
 
 
+async def test_anthropic_curador_vai_sem_ponto_de_cache_30_46(tmp_path: Path) -> None:
+    """30.46: o esquema entra no prefixo cacheado e leva os citáveis e os alvos do item, então dois pareceres seguidos
+    nunca têm o mesmo prefixo. No central foram 45 gravações e 0 leitura (03/10 12:00Z a 04/10 08:07Z). O parecer vai
+    sem `cache_control`; as outras chamadas seguem com ele. `simulated`: o fake só prova o que a requisição pede."""
+    outro = PedidoDeParecer(dossie=PEDIDO.dossie, opcoes={**OPCOES, "evidencias_citadas": ["item:licao:L9", "ev:7"]},
+                            classe="B", ref="hash-2")
+    assert esquema_do_parecer(PEDIDO.opcoes) != esquema_do_parecer(outro.opcoes)       # a causa: o prefixo muda
+    p, fake = provedor_anthropic(tmp_path, [_resp([SimpleNamespace(type="text", text=json.dumps(PARECER))])
+                                            for _ in range(2)])
+    await p.review_knowledge(PEDIDO)
+    await p.review_knowledge(outro)
+    for call in fake.calls:
+        assert "cache_control" not in json.dumps(call["system"]) and "cache_control" not in json.dumps(call["messages"])
+        assert call["system"][0]["text"]                                               # o system segue lá, inteiro
+    com = p._kwargs(model="claude-sonnet-5", system="s", content=[], effort="low", max_tokens=10,  # noqa: SLF001
+                    tools=False, schema=None)
+    assert com["system"][0]["cache_control"] == {"type": "ephemeral"}                  # o padrão não mudou
+
+
 async def test_anthropic_resposta_que_nao_e_json_e_saida_invalida(tmp_path: Path) -> None:
     p, _ = provedor_anthropic(tmp_path, [_resp([SimpleNamespace(type="text", text="acho que manter")])])
     with pytest.raises(AIError) as e:
