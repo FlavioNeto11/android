@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.71 (revisão): a materialização também entrega o @, não o e-mail (branch fix/29-71-identificador-so-sem-handle)
+
+- Achado 4 da revisão independente do deploy 29, confirmado e mais grave que o suposto: o `Repository` montava as
+  contas da persona com "o app tem provedor de sessão?" FIXO em falso (`lambda _pacote: False`), então
+  `_variaveis_da_persona`, usada pela materialização (binding, título e objetivo da etapa), seguia dando o e-mail de
+  login do Instagram como `conta_instagram_usuario`. O conserto do 29.71 só valia para a lista do planejador.
+- O `Repository` passa a usar o mesmo `session_provider_of` do serviço. O login por formulário (conta de site, app sem
+  provedor) continua com o identificador, que é o que o formulário pede.
+- Teste: `test_usuario_da_conta.py::test_a_materializacao_e_o_planejador_veem_o_mesmo_valor_do_instagram` (harness).
+  Mutação conferida: com o predicado em falso, a variável volta a ser o e-mail. 93 testes vizinhos aprovados.
+  Prova: simulated.
+
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
 - Retorno do dono (04/10, Aprendizado › Para aprovar com 5 selecionados): o formulário do aceite abria com o botão

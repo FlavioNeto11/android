@@ -24,6 +24,7 @@ from ..modules.identity.application.available_data import profile_variables
 from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
 from ..modules.learning.domain.falhas import classificar_falha
 from ..modules.pedidos.domain.orcamento import teto_da_execucao
+from ..planning.catalog import session_provider_of
 from ..planning.provider import Usage
 from ..security.redaction import redact
 from ..storage import DiskStorage, Storage, put_async
@@ -141,9 +142,12 @@ class Repository:
         self.owner_id = owner_id
         #: Onde a evidência é gravada (item 5.7). Sem argumento, é a pasta local de sempre.
         self.storage: Storage = storage or DiskStorage(evidence_dir)
-        #: Os dados NÃO sigilosos da persona de cada aparelho, para as variáveis `{perfil_email}` etc. (ADR-040). Só
-        #: o não sigiloso é lido aqui, então "o app tem provedor?" não muda nada: fica em falso.
-        self._dados = SqlProfileDataStore(db, tem_provedor_de_sessao=lambda _pacote: False)
+        #: Os dados NÃO sigilosos da persona de cada aparelho, para as variáveis `{perfil_email}` etc. (ADR-040). "O app
+        #: tem provedor de sessão?" decide o VALOR de `conta_<app>_usuario` (29.71: o nome no app, nunca o e-mail de
+        #: login, no app de login gerenciado): com o predicado em falso, a materialização punha o e-mail do Instagram no
+        #: binding, no título e no objetivo da etapa, embora a lista do planejador (`service.dados`) já desse o @.
+        self._dados = SqlProfileDataStore(db, tem_provedor_de_sessao=lambda pacote: session_provider_of(pacote)
+                                          is not None)
 
     # ================================================================== execuções
     def create_run(self, req: RunCreate, *, simulated: bool, targets: str | None = None,

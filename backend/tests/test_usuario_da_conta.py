@@ -6,12 +6,18 @@ perfil. No app de login GERENCIADO (o Instagram, o Outlook) quem entra é o prov
 da credencial; a variável é o @. No app de login por formulário (o Chrome de um portal) a variável segue sendo o
 identificador, que é o que o formulário pede: a contraprova do login.
 
-Nível de prova: `simulated`, puro (o domínio de `available_data`, contas montadas à mão; valores fictícios).
+Nível de prova: `simulated`. Puro (o domínio de `available_data`, contas montadas à mão) e, no último teste, o harness
+(a materialização e o planejador lendo o mesmo banco; valores fictícios).
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from app.modules.identity.domain.available_data import (AccountRecord, account_data, available_data,
                                                         profile_variables, resolve_secret)
+
+if TYPE_CHECKING:
+    from .conftest import Harness
 
 EMAIL = "lucas.login@exemplo.test"
 
@@ -56,3 +62,33 @@ def test_os_nomes_nao_mudam_entre_apps_com_e_sem_handle() -> None:
     chrome = _conta("chrome", handle="", login="lucas.portal", managed=False)
     assert profile_variables(None, [ig, chrome]) == {"conta_chrome_usuario": "lucas.portal"}
     assert resolve_secret([ig, chrome], "conta_chrome_senha").secret is not None
+
+
+def test_a_materializacao_e_o_planejador_veem_o_mesmo_valor_do_instagram(harness: "Harness") -> None:
+    """Revisão independente do deploy 29 (achado 4): o `Repository` montava as contas com "tem provedor de sessão?"
+    sempre falso, então a variável da MATERIALIZAÇÃO (binding, título e objetivo da etapa) seguia com o e-mail de
+    login do Instagram, embora a lista do planejador (`service.dados`) já desse o @. Com o predicado real nos dois, os
+    valores são iguais e o e-mail não aparece. No harness: Instagram com provedor de sessão, valores fictícios."""
+    from app.models import ProfileCreate
+    from app.util import now_iso
+
+    st = harness.state
+    assert st is not None
+    pid = st.social.create_profile(ProfileCreate(username="lucas.teste", instance_id="android-01", first_name="Lucas",
+                                                 last_name="Teste")).id
+    conta = st.social_repo.conta_ancora(pid)
+    assert conta is not None and conta["app_id"] == "instagram"
+    st.db.execute("INSERT INTO account_credentials(account_id, login_identifier, secret_ref, key_id, updated_at)"
+                  " VALUES (?,?,?,?,?)", (conta["id"], EMAIL, "ref-ficticia", "k1", now_iso()))
+
+    da_materializacao = st.repo._variaveis_da_persona(pid)                      # noqa: SLF001
+    do_planejador = profile_variables_do_servico(st, pid)
+    assert da_materializacao["conta_instagram_usuario"] == "lucas.teste"
+    assert da_materializacao == do_planejador
+    assert EMAIL not in repr(da_materializacao)
+
+
+def profile_variables_do_servico(st: object, pid: str) -> dict[str, str]:
+    from app.modules.identity.application.available_data import profile_variables as variaveis
+
+    return variaveis(st.runs.dados, pid)                                         # type: ignore[attr-defined]
