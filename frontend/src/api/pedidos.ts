@@ -11,7 +11,9 @@ export type Autonomia = 'observar' | 'preparar' | 'agir';
 export type Sobreposicao = 'pular' | 'guardar_uma' | 'permitir_todas';
 export type TipoDeGatilho = 'agora' | 'horario' | 'recorrencia' | 'evento' | 'condicao' | 'persona';
 export type OrigemOcorrencia = 'agenda' | 'recuperacao' | 'evento' | 'condicao' | 'persona' | 'manual' | 'backfill';
-export type MotivoDeEncerramento = 'prazo' | 'contagem' | 'orcamento' | 'abandonado';
+export type MotivoDeEncerramento = 'prazo' | 'contagem' | 'orcamento' | 'abandonado' | 'pai';
+/** Papel do pedido numa família (28.10, F1); `null` = pedido comum. */
+export type PapelDoPedido = 'pesquisador' | 'checador' | 'redator' | 'porta_voz';
 export type EstadoPedido = 'rascunho' | 'ativo' | 'pausado' | 'aguardando_pessoa' | 'concluido' | 'encerrado' | 'cancelado';
 export type EstadoOcorrencia = 'prevista' | 'devida' | 'despachada' | 'rodando' | 'concluida' | 'falhou' | 'incerta'
   | 'cancelada' | 'pulada' | 'perdida';
@@ -50,6 +52,7 @@ export interface PedidoDTO {
   pausado_motivo: string | null;
   encerrado_motivo: MotivoDeEncerramento | null;
   pai_id: string | null;
+  papel: PapelDoPedido | null;
   criado_em: string;
   atualizado_em: string;
 }
@@ -127,7 +130,14 @@ export interface SinalDoLaco {
   ligado: boolean;
 }
 
+export interface FilhoDoPedido { id: string; titulo: string; estado: EstadoPedido; papel: PapelDoPedido | null }
+/** `para` depende de `de` (28.10, F1). */
+export interface DependenciaDoPedido { de: string; para: string; tipo: 'precisa_de_resultado' | 'depois_de' }
+
 export interface PedidoDetalhe extends PedidoView {
+  /** 28.10, F1: só a estrutura; nenhuma tela a mostra ainda. */
+  filhos?: FilhoDoPedido[];
+  dependencias?: DependenciaDoPedido[];
   gatilhos: GatilhoDTO[];
   proximas: ProximaData[];
   laco?: SinalDoLaco;
