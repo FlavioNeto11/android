@@ -119,6 +119,9 @@ class Motivo(StrEnum):
     EXPIROU = "expirou"
     #: 30.31 (fatia 2): o ensaio só de leitura parou antes da etapa com efeito, como devia; não é evidência do fluxo
     ENSAIO_SO_LEITURA = "ensaio_so_leitura"
+    #: 30.52: a PESSOA recusou o pedido ainda pendente (`POST /validacoes/{id}/recusar`): sem execução nem gasto, e não
+    #: pesa contra o item (não é chegada para o curador, não é contra, não é contestação).
+    RECUSADA_PELA_PESSOA = "recusada_pela_pessoa"
 
 
 #: 30.38 (b): o motivo como a pessoa lê, no painel (Aprendizado › Validação). O código fica no `title`; nunca sai cru na
@@ -152,6 +155,7 @@ MOTIVO_HUMANO: Mapping[Motivo, str] = {
     Motivo.DIVERGENCIA_DE_FORMA: "A execução fez o caminho, mas só reescreveu a forma; não conta a favor.",
     Motivo.EXECUCAO_FALHOU: "A execução de validação falhou.",
     Motivo.EXPIROU: "O pedido passou do prazo sem rodar.",
+    Motivo.RECUSADA_PELA_PESSOA: "Uma pessoa recusou o pedido antes de ele rodar; não pesa contra o item.",
 }
 
 

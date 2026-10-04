@@ -192,7 +192,7 @@ class RegistroDeValidacoesSql:
                          (review_id, pedido_id))
 
     def listar(self, estado: EstadoDoPedido | None, limite: int, antes: str | None, *, item: str | None = None,
-               run: str | None = None) -> list[PedidoListado]:
+               run: str | None = None, pedido: str | None = None) -> list[PedidoListado]:
         """30.38 (b): as mais novas primeiro; `id` desempata o mesmo instante (a página seguinte usa só `created_at`,
         e o mesmo instante na fronteira de duas páginas é raro e só repete a linha). Pelo índice `(estado, created_at)`
         com o filtro de estado. 30.43: `item` (o `item_ref`, a seção "Validações" do item) e `run` (a execução: o
@@ -207,6 +207,9 @@ class RegistroDeValidacoesSql:
         if run is not None:
             where.append("v.run_id=?")
             params.append(run)
+        if pedido is not None:
+            where.append("v.id=?")
+            params.append(pedido)
         if antes:
             where.append("v.created_at<?")
             params.append(antes)

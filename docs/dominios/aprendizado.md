@@ -1565,6 +1565,28 @@ sem migração:
 `not_run` até o deploy que o levar. O esperado é que a próxima prova do P4 grave em `learning_validations.teto_usd` o
 proporcional ao plano dela.
 
+## O dossiê pela marca do conteúdo e a recusa pela pessoa (30.52)
+
+Em 04/10, o parecer lr-1cfb91a981c5f21f (fluxo `enviar-a-mensagem-leitura-31-27-n1-08233`, reaprendido às 10:34Z) citou os
+`against` 226 e 233 da marca antiga `[072ae4d8443c]` como se fossem do conteúdo de agora. Concluiu "a favor e contra no
+mesmo aparelho; falta reprodução em outro aparelho", mas a reprodução já existia: a ev 274, no android-07, com a marca
+`[2c10657f49e4]`. A regra da sombra (30.34) filtra pela marca, e o dossiê não filtrava. O pedido que esse parecer abriu
+(lv-26679df914e1b809) gastou mais uma prova, porque não havia como recusá-lo.
+
+- **O dossiê do fluxo separa as versões.** A `lista` das evidências traz só as linhas com a marca do conteúdo ATUAL
+  (`marca_do_conteudo(e.content_hash)`) e o legado sem marca. As linhas com a marca de outro conteúdo vão em
+  `de_versoes_anteriores`, com a explicação `versoes_anteriores_e` (`OUTRA_VERSAO_DA_EVIDENCIA`). Seguem citáveis e no
+  `total`, mas não se misturam à versão de agora. Sem versão anterior, nem a chave aparece. A receita e os outros
+  tipos não mudam.
+- **A pessoa recusa um pedido pendente:** `POST /api/aprendizado/validacoes/{id}/recusar`, sem DDL.
+  - Fecha `recusada` com o motivo `recusada_pela_pessoa`, sem execução nem gasto.
+  - O motivo não é chegada para o curador, nem evidência, nem contestação: não pesa contra o item.
+  - Respostas: 404 quando o pedido não existe; 409 quando ele já saiu de `pendente`.
+  - O `listar` ganhou o filtro `pedido` (um só).
+
+**Prova:** `simulated` em `backend/tests/test_learning_dossie_pela_marca.py` (3 testes; mutação conferida no separador
+das versões). `real`: `not_run` até o deploy.
+
 ## A validação com rosto no item (30.43)
 
 Os achados 5 e 6 da validação do deploy 14 e o P4 de 03/10 (o 6f459c). Desenho aprovado pela orquestradora às 23:32Z,

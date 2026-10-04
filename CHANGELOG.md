@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 30.52: o dossiê do curador pela marca do conteúdo e a recusa do pedido pela pessoa (branch fix/30-52-dossie-pela-marca)
+
+- O parecer lr-1cfb91a981c5f21f citou `against` da versão antiga do fluxo reaprendido e pediu uma reprodução que já
+  existia (a regra da sombra filtra pela marca, o dossiê não). Agora o dossiê do fluxo põe as evidências de outra
+  marca em `de_versoes_anteriores`, rotuladas, fora da `lista` da versão atual.
+- `POST /api/aprendizado/validacoes/{id}/recusar`: a pessoa recusa o pedido pendente (`recusada_pela_pessoa`, neutro,
+  sem DDL). O pedido lv-26679df914e1b809 rodou por falta dela.
+- Prova `simulated`: `test_learning_dossie_pela_marca.py` (3; mutação conferida); 1122 testes do aprendizado, do
+  curador e da validação passam com `-n 2`. Real: `not_run`.
 ## 2026-10-04 — teste do preparo zumbi drenado sem Timer de relógio (branch fix/b2-r4-sem-timer)
 
 - `test_prontidao_subsistemas::test_b2_r4_boot_local_preparo_zumbi_drenado_nao_libera_esta_tentativa` falhou no

@@ -11,7 +11,10 @@ intervenções da etapa (fontes de outros itens). O que o dossiê não traz, a r
 """
 from __future__ import annotations
 
+import re
+
 from app.db import Database
+from app.modules.learning.application.nativos import marca_do_conteudo
 from app.modules.learning.application.ports import CatalogoDeRisco, RepositorioDeAprendizado
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.ciclo import SYSTEM_ACTOR, NaoEncontrado
@@ -48,13 +51,16 @@ class DossiesSql:
         # `learning.needs_person`.
         self._risco = RiscoDoConteudo(db, catalogo)
 
-    def _evidencias(self, item_ref: str) -> list[Evidencia]:
+    def _evidencias(self, item_ref: str, marca: str | None = None) -> list[Evidencia]:
+        """`marca`: a do conteúdo ATUAL do fluxo (`marca_do_conteudo`). A linha com a marca de OUTRO conteúdo é da versão
+        anterior (30.52) e vai à parte no dossiê, como a regra da sombra a deixa de fora; sem marca (legado), fica."""
         return [Evidencia(id=linhas.inteiro(r, "id"), posicao=linhas.texto(r, "stance"),
                           origin_ref=linhas.texto(r, "origin_ref"), em=linhas.texto(r, "observed_at"),
                           run_id=linhas.texto_ou_nulo(r, "run_id"), aparelho=linhas.texto_ou_nulo(r, "instance_id"),
-                          app_version=linhas.texto_ou_nulo(r, "app_version"), simulated=bool(r["simulated"]))
+                          app_version=linhas.texto_ou_nulo(r, "app_version"), simulated=bool(r["simulated"]),
+                          outra_versao=_de_outra_versao(linhas.texto_ou_nulo(r, "detail"), marca))
                 for r in self._db.query(
-                    "SELECT id, stance, origin_ref, run_id, instance_id, app_version, simulated, observed_at"
+                    "SELECT id, stance, origin_ref, run_id, instance_id, app_version, simulated, observed_at, detail"
                     " FROM learning_evidence WHERE item_ref=? ORDER BY id DESC LIMIT 200", (item_ref,))]
 
     def _apps(self, e: EntradaDoLivro, conteudo: JsonObject | None) -> tuple[AppDoItem, ...]:
@@ -103,7 +109,8 @@ class DossiesSql:
         relacoes = [Relacao(tipo=str(r.get("tipo")), kind=str(r.get("kind")), ref=str(r.get("ref")))
                     for r in d.relacoes if isinstance(r, dict) and r.get("kind") and r.get("ref")]
         invalidas = frozenset(r for t in d.trilha if (r := run_invalidada(t.reason)) is not None)
-        todas = self._evidencias(e.trail_ref)
+        marca = marca_do_conteudo(e.content_hash) if e.kind is LivroKind.FLUXO and e.content_hash else None
+        todas = self._evidencias(e.trail_ref, marca)
         # 30.36: o `against` que tem a `forma` da mesma origem saiu do contra (`promocao.efetivas`): o curador não o vê
         # 30.42: o `for`/`against` que tem a `invalida` da mesma origem também (a prova que não vale); a `invalida` fica
         formas = {x.origin_ref for x in todas if x.posicao == "forma"}
@@ -114,6 +121,17 @@ class DossiesSql:
         return montar_dossie(identidade, risco, d.conteudo, evidencias=evidencias, trilha=trilha,
                              relacoes=relacoes, saude=_saude(d.saude), versao=d.versao,
                              max_evidencias=MAX_EVIDENCIAS if max_evidencias is None else max_evidencias)
+
+
+_MARCA = re.compile(r"\[[0-9a-f]{12}\]")
+
+
+def _de_outra_versao(detalhe: str | None, marca: str | None) -> bool:
+    """A linha leva a marca de um conteúdo (`[<hash12>]` no começo do `detail`) e ela não é a do conteúdo atual."""
+    if marca is None or not detalhe:
+        return False
+    achada = _MARCA.match(detalhe)
+    return achada is not None and achada.group(0) != marca
 
 
 __all__ = ["DossiesSql"]
