@@ -161,7 +161,9 @@ def test_frases_fixas_de_cada_fila_e_regra_desconhecida_vira_outras() -> None:
     assert "1 aprendizado em revisão foi confirmado pela plataforma" in corpo
     assert "1 pedido que esperava uma pessoa foi encerrado" in corpo
     assert "2 outras decisões da plataforma" in corpo
-    assert corpo.endswith("Dá para desfazer pelo painel em até 1 dia.")
+    assert "Dá para desfazer pelo painel em até 1 dia." in corpo
+    assert corpo.endswith("Os aprendizados decididos sozinhos se desfazem desligando o item.")
+    assert "voltar" not in corpo and "revisão do dono" not in corpo
     assert corpo_do_resumo([], 7) is None
 
 

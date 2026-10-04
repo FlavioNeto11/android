@@ -46,6 +46,7 @@ from .api import ROTAS_DE_SESSAO, recusa_do_despacho, router, worker_router
 from .commands.despacho import DespachoRecusado
 from .config import Config, get_config
 from .modules.avisos.presentation.estado import router as canais_estado_router
+from .modules.decisoes.presentation.rotas import router as decisoes_automaticas_router
 from .modules.avisos.presentation.webhook_trello import (
     METODOS_DO_WEBHOOK_DO_TRELLO,
     ROTA_DO_WEBHOOK_DO_TRELLO,
@@ -325,6 +326,7 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
         app.include_router(context_retrieval_router)   # só leitura (ADR-063)
         app.include_router(trello_webhook_router)      # o webhook do Trello (32.2): assinatura, fora do login
         app.include_router(canais_estado_router)       # `/api/canais/estado` (32.5): só leitura, atrás do login
+        app.include_router(decisoes_automaticas_router)   # `/api/decisoes-automaticas` (28.25): listar e desfazer, atrás do login
     app.include_router(worker_router)      # o canal do worker também atende na porta principal (modo (b))
     dist = cfg.root / "frontend" / "dist"
     if cfg.serve_api and dist.exists():

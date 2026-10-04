@@ -50,6 +50,8 @@ from .modules.avisos.infrastructure.faxina_sql import FaxinaDosCanais
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from .modules.avisos.infrastructure.portas_da_central import PortasReais
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos
+from .decisoes_inversas import inversas_das_filas
+from .modules.decisoes.application.desfazer import DesfazerDecisoes
 from .modules.decisoes.infrastructure.adaptador_sql import AdaptadorDeDecisoes
 from .modules.decisoes.infrastructure.estado_sql import EstadoDasDecisoes
 from .modules.decisoes.infrastructure.registro_sql import RegistroSql as RegistroDeDecisoes
@@ -538,6 +540,9 @@ class AppState:
             receitas=self.scheduler.executor.recipes,
             decidir=lambda texto, run_id: self.repo.decision(texto, run_id=run_id), eventos=self.bus,
             curador_de_ia=CuradorComTriagemEmSombra(self._curador_do_hub, self._triagem_do_curador))
+        # O desfazer das decisões automáticas (28.25): a inversa de cada fila entra aqui, fora do módulo (ver o docstring).
+        self.decisoes_desfazer = DesfazerDecisoes(self.decisoes_registro, inversas_das_filas(self.learning),
+                                                  dias=lambda: float(self.cfg.file.avisos.decisoes_automaticas.desfazer_dias))
         self._digestoes: set[asyncio.Task[None]] = set()
         # Ensino v2 (fase F, §13): as rotas ficam atrás de `skills.enabled`; o generalizador é o `generalize` do
         # provedor (simulado: regras fixas; real: uma chamada paga do planejador, contada em `ai_calls`).

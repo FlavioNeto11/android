@@ -92,6 +92,9 @@ def corpo_do_resumo(decisoes: Iterable[DecisaoParaResumir], desfazer_dias: float
     linhas = [f"- {_frase(c, contagem[c], horas.get(c))}." for c in ordem if c in contagem]
     dias = int(desfazer_dias) if float(desfazer_dias).is_integer() else desfazer_dias
     linhas.append(f"Dá para desfazer pelo painel em até {dias} {'dia' if dias == 1 else 'dias'}.")
+    if any(c.startswith("aprendizado") for c in contagem):
+        # O desfazer do aprendizado é desligar o item (contrato da orquestradora, 04/10), nunca "voltar para revisão".
+        linhas.append("Os aprendizados decididos sozinhos se desfazem desligando o item.")
     return "\n".join(linhas)
 
 
