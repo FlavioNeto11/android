@@ -80,6 +80,7 @@ def _executor(tmp_path: Path, telas: list[UiTree], *, max_chamadas: int = 2) -> 
     ex.cfg = make_config(tmp_path, 1)
     ai = ex.cfg.file.ai
     ai.judge_wait_s = 0.01                     # cada sondagem custa ~nada: o que se conta é quantas houve
+    ai.judge_wait_estavel_s = 0.0              # 31.27: espera fixa; a adaptativa também lê a árvore e mudaria a conta
     ai.effect_settle_s = 0.0
     ai.verify_budget_min_s = 0.5
     ai.verify_budget_patient_s = 0.6           # o teto de quem NÃO sai cedo: ~60 sondagens de 0,01 s

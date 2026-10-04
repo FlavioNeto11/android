@@ -646,6 +646,10 @@ class AiCfg(BaseModel):
     # `recipe_settle_s` é o assentamento entre tentativas de conferir a pós-condição na reprodução de receita.
     action_settle_s: float = Field(0.6, ge=0, le=10)
     judge_wait_s: float = Field(1.5, ge=0, le=30)
+    # 31.27: a espera ANTES do primeiro julgamento acompanha a tela. Sai quando a árvore fica igual por este tempo, sem
+    # marca pendente do catálogo, e nunca passa de `judge_wait_s`. 0 volta à espera fixa. Medido em 04/10: as 6 esperas
+    # fixas de 1,5 s das etapas com nível de entrega somaram 9 s em 149 s de parede.
+    judge_wait_estavel_s: float = Field(0.6, ge=0, le=30)
     recipe_settle_s: float = Field(1.0, ge=0, le=10)
     # T.2 (achado #164): o orçamento de `_verify` eram três literais (8 / 15 / 60 s) no meio do laço, e o teste do
     # resultado ambíguo pagava os 60 s INTEIROS em tempo real para provar "sem a mensagem na tela até o prazo →

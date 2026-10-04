@@ -472,6 +472,28 @@ Prova `simulated`: `tests/test_caminho_rapido_2.py` (LT-5 com o `_verify` direto
 app, desligam `OPEN_APP_SEM_IA`. `not_run`, que é o aceite: "NÃO comprovada" mediana 16,9 → ≤ 7 s; `open_app` mediana
 2,2 → ≤ 1,5 s; etapa `app_foreground` com decide = 0; motivo "nova tentativa" < 10/semana.
 
+## Espera do juiz adaptativa (item 31.27, 04/10/2026)
+
+A espera ANTES do primeiro julgamento (`patient`, com pós-condição julgada ou nível de entrega) existe para o app sair de
+"enviando" e não pagar dois julgamentos. Ela era um sono fixo de `judge_wait_s` (1,5 s). Agora acompanha a tela.
+
+- **Como funciona.** Lê a árvore a cada `PASSO_DA_ESPERA_DO_JUIZ_S` (0,3 s) e sai quando a assinatura fica igual por
+  `ai.judge_wait_estavel_s` (0,6 s), sem marca pendente do catálogo. Nunca passa de `judge_wait_s`. A última leitura vira
+  a primeira do verificador, que não relê.
+- **O que não muda.**
+  - A tela que ainda muda espera até o teto, como antes.
+  - "Enviando…" declarado e parado não conta como assentado.
+  - A leitura que falha cai na espera fixa.
+  - A espera ENTRE duas sondagens, que espera a tela MUDAR (LT-5), segue fixa.
+  - `judge_wait_estavel_s: 0` volta ao comportamento antigo.
+- **Medida.**
+  - Na linha de base de 04/10 (`.claude/handoffs/jev-latencia-linha-de-base-2026-10-04.md`), as 4 esperas antes do
+    julgamento somaram 6 s em 233 s de parede.
+  - No "depois" do deploy 16, foram 6 esperas e 9 s em 149 s.
+  - O tempo segue contado em `attempts.juiz_espera_ms` (31.24).
+  - Ganho estimado (INFERRED): 0,7 a 1,2 s por espera; medir de novo depois do deploy.
+- Teste: `tests/test_juiz_espera_adaptativa.py` (`simulated`).
+
 ## VERIFY pela porta de capability
 
 - `StepExecutor.__init__` cria `self.capabilities = CatalogCapabilityProvider(CatalogCapabilityRegistry(...))`.
