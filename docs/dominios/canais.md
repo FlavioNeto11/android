@@ -361,8 +361,9 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   migrações 101 e 103, `infrastructure/anexos_leitura.py`, `POST /api/canais/anexos/{id}/ler`; `GET /api/canais/anexos` e a
   aba Anexos, `frontend/src/features/canais/AnexosTab.tsx`). Na F5, a aba ganha o botão "Ler pela IA" (só na imagem do dono,
   com a confirmação da chamada paga na linha; a descrição gravada aparece sem botão). Também diz "Já estava no cartão" quando o
-  arquivo já estava lá, e fixa o "desde" do período na primeira página. A miniatura fica em memória enquanto a aba está aberta
-  (a rota segue `no-store`), e o estado vazio diz o que dá para fazer com um anexo. O envio ao cartão recusa com 422
+  arquivo já estava lá, e fixa o "desde" do período na primeira página. A miniatura baixa quando o item chega à tela e fica
+  em memória enquanto a aba está aberta (a rota segue `no-store`), e o estado vazio diz o que dá para fazer com um anexo. A
+  descrição da IA vence com o arquivo: a retenção a apaga, sem filtrar o texto antes. O envio ao cartão recusa com 422
   `tipo_nao_aceito` o tipo que a entrada não aceita, antes de chamar o Trello. Falta a prova `real` da leitura (uma chamada
   paga, `not_run`) e o passeio no navegador da F5 (`not_run`, espera o fim do 29.41).
 - **Prova:** `simulated` (`backend/tests/test_canais_anexos.py`, `test_canais_anexos_trello.py`, `test_canais_anexos_lista.py`, `test_canais_captura.py`, `test_canais_leitura_anexo.py`, `test_canais_script_status.py`, `frontend/src/features/canais/AnexosTab.test.tsx`);

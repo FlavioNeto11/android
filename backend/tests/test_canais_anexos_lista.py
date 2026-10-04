@@ -7,7 +7,9 @@ paginação batem com o banco.
 """
 from __future__ import annotations
 
+import contextlib
 import json
+from datetime import timedelta
 
 import httpx
 import pytest
@@ -15,6 +17,8 @@ from pydantic import SecretStr
 
 from app.main import create_app
 from app.modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
+from app.modules.avisos.infrastructure.faxina_sql import FaxinaDosCanais
+from app.util import now, to_iso
 
 from .conftest import Harness
 
@@ -92,8 +96,18 @@ async def test_filtros_de_canal_direcao_dono_estado_e_periodo(harness: Harness) 
     a_saida = _anexo(harness, PDF, direcao="saida")
     a_recusa = _anexo(harness, recusado=True)
     a_trello = _anexo(harness, canal="trello")
-    harness.state.db.execute("UPDATE canal_anexos SET criado_em=? WHERE id=?", ("2026-01-10T12:00:00.000Z", a_dono))
-    harness.state.db.execute("UPDATE canal_anexos SET criado_em=? WHERE id=?", ("2026-02-10T12:00:00.000Z", a_saida))
+    # Datas DENTRO da retenção dos canais (30 dias): o laço de avisos do harness roda a faxina dos canais na 1ª volta, e
+    # uma data fixa e velha (jan/fev de 2026) era apagada no meio do teste quando a volta caía depois deste UPDATE (o
+    # flake de 04/10 com -n 6). Relativas a agora, sem horário de borda.
+    agora = now()
+    dia = lambda d: to_iso(agora - timedelta(days=d))                     # noqa: E731
+    data = lambda d: (agora - timedelta(days=d)).date().isoformat()        # noqa: E731
+    harness.state.db.execute("UPDATE canal_anexos SET criado_em=? WHERE id=?", (dia(20), a_dono))
+    harness.state.db.execute("UPDATE canal_anexos SET criado_em=? WHERE id=?", (dia(10), a_saida))
+    # A volta da faxina que o laço pode dar a qualquer momento, dada aqui de propósito: o teste não depende de quando ela cai.
+    faxina = FaxinaDosCanais(harness.state.db, pasta_anexos=harness.state.anexos_canal.pasta)
+    for canal in ("telegram", "trello"):
+        faxina.faxinar(cerca=contextlib.nullcontext, canal=canal, retencao_dias=30)
 
     async def ids(**q: object) -> set[int]:
         async with _cliente(harness) as cli:
@@ -108,9 +122,9 @@ async def test_filtros_de_canal_direcao_dono_estado_e_periodo(harness: Harness) 
     assert await ids(do_dono="true") == {a_dono, a_recusa, a_trello}
     assert await ids(do_dono="false") == {a_convidado, a_saida}
     assert await ids(estado="recusado") == {a_recusa}
-    assert await ids(desde="2026-02-01") == {a_saida, a_convidado, a_recusa, a_trello}
-    assert await ids(ate="2026-02-01") == {a_dono}
-    assert await ids(desde="2026-01-01T00:00:00Z", ate="2026-03-01T00:00:00Z") == {a_dono, a_saida}
+    assert await ids(desde=data(15)) == {a_saida, a_convidado, a_recusa, a_trello}       # data sozinha vale 00:00Z
+    assert await ids(ate=data(15)) == {a_dono}
+    assert await ids(desde=dia(25), ate=dia(5)) == {a_dono, a_saida}
     assert await ids(canal="telegram", direcao="entrada", do_dono="true") == {a_dono, a_recusa}
 
 
@@ -218,3 +232,13 @@ async def test_f5_tipo_que_a_entrada_nao_aceita_nao_vai_ao_cartao(harness: Harne
     async with _cliente(harness) as cli:
         item = (await cli.get("/api/canais/anexos")).json()["items"][0]
     assert item["id"] == pdf and item["pode_ir_ao_cartao"] is False
+
+
+async def test_f5_imagem_de_tipo_fora_da_lista_nao_oferece_ler(harness: Harness) -> None:
+    """Revisão da parte 16: o botão Ler cruza com a lista de tipos; sem isso a imagem fora dela mostrava o botão e a leitura
+    falhava antes de pagar."""
+    imagem = _anexo(harness)
+    harness.cfg.file.avisos.entrada.anexos.tipos = ["application/pdf"]
+    async with _cliente(harness) as cli:
+        item = (await cli.get("/api/canais/anexos")).json()["items"][0]
+    assert item["id"] == imagem and item["pode_ler"] is False

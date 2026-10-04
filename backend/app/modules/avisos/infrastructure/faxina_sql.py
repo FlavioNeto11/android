@@ -81,6 +81,11 @@ class FaxinaDosCanais:
         """Fase 1 dos anexos: apaga o arquivo de cada conteúdo vencido que nenhuma outra linha `guardado` usa e marca as
         linhas `apagado`. O arquivo que não se apaga deixa a linha `guardado` (a próxima volta repete)."""
         assert self.pasta_anexos is not None
+        # 28.24 F5 (revisão da parte 16): a descrição que a IA fez sai junto, e ANTES do arquivo. Uma captura de conversa
+        # lida pela IA deixa telefone e e-mail de terceiro no texto; ele não fica além do prazo nem quando o arquivo não se
+        # apaga nesta volta. O texto não é filtrado (o dono pediu a leitura); só não é guardado além do prazo.
+        self.db.execute("UPDATE canal_anexos SET descricao=NULL WHERE canal=? AND criado_em < ? AND descricao IS NOT NULL",
+                        (canal, limite))
         vencidos = self.db.query(
             "SELECT id, sha256, mime FROM canal_anexos WHERE canal=? AND estado='guardado' AND criado_em < ?",
             (canal, limite))

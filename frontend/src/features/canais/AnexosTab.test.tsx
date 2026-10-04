@@ -248,6 +248,42 @@ describe('AnexosTab', () => {
     expect(backend.callsTo('GET', CONTEUDO)).toHaveLength(1);
   });
 
+  it('F5: a miniatura só baixa quando o item chega à tela, ou ao abrir a prévia', async () => {
+    const observados: { cb: IntersectionObserverCallback; el: Element | null }[] = [];
+    class ObservadorFalso {
+      private registro: { cb: IntersectionObserverCallback; el: Element | null };
+      constructor(cb: IntersectionObserverCallback) {
+        this.registro = { cb, el: null };
+        observados.push(this.registro);
+      }
+      observe(el: Element) { this.registro.el = el; }
+      disconnect() { this.registro.el = null; }
+      unobserve() { this.registro.el = null; }
+      takeRecords() { return []; }
+    }
+    const original = (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver;
+    (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = ObservadorFalso;
+    try {
+      const outra = anexo({ id: 4, pode_ler: true });
+      backend.on('GET', LISTA, () => json(pagina([IMAGEM, outra])));
+      await abrir();
+      await waitFor(() => text().includes('Mostrando 2 de 2'));
+      expect(backend.callsTo('GET', CONTEUDO)).toHaveLength(0);                       // nada entrou na tela ainda
+      const [li3, li4] = Array.from(container.querySelectorAll('li')) as HTMLElement[];
+      const doItem = (li?: HTMLElement) => observados.find((o) => o.el === li);
+      await act(async () => {
+        doItem(li3)?.cb([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
+      });
+      await waitFor(() => li3?.querySelector('img'));
+      expect(backend.callsTo('GET', CONTEUDO).map((c) => c.path)).toEqual(['/api/canais/anexos/3/conteudo']);
+      await click(byRole('button', /Ver prévia$/, li4));                                // fora da tela, mas a prévia pede
+      await waitFor(() => li4?.querySelector('img[alt="Prévia: Imagem 4"]'));
+      expect(backend.callsTo('GET', CONTEUDO)).toHaveLength(2);
+    } finally {
+      (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = original;
+    }
+  });
+
   it('F5: o arquivo que não baixa vira o ícone de imagem quebrada e a prévia diz que não carregou', async () => {
     backend.on('GET', CONTEUDO, () => apiError(404, 'anexo_sem_arquivo', 'O arquivo saiu da Central.'));
     backend.on('GET', LISTA, () => json(pagina([IMAGEM])));

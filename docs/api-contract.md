@@ -5410,18 +5410,6 @@ Prova:
 - `simulated`: `backend/tests/test_teto_de_autonomia.py` (os três níveis e o nulo).
 - `not_run`: PostgreSQL e o central depois do deploy.
 
-## Adendo v1.37 (04/10/2026; número da orquestradora; item 28.24, F5) — a lista diz o que dá para ler, e o cartão recusa o tipo
-
-Sem migração. Muda a v1.26 e a rota `POST .../trello`.
-- `GET /api/canais/anexos`: cada item ganha três chaves fixas.
-  - `pode_ler`: a imagem guardada que o dono mandou, a única que `POST .../ler` aceita.
-  - `descricao`: a descrição que a IA já gravou, ou `null`.
-  - `lida_em`: ISO, ou `null`.
-
-  `pode_ir_ao_cartao` passa a exigir também um mime da lista `avisos.entrada.anexos.tipos`.
-- `POST /api/canais/anexos/{id}/trello`: o anexo de tipo que a entrada não aceita, ou maior que o teto, é recusado com **422**
-  `tipo_nao_aceito` antes de qualquer chamada ao Trello. O arquivo fora do armazém segue **409** `anexo_sem_arquivo`.
-
 ## Adendo v1.26 (04/10/2026; número da orquestradora; item 28.24, F4) — a lista de anexos e o conteúdo só de imagem e PDF
 
 Sem migração. Alimenta a aba Anexos da tela Canais. Atrás do mesmo login das outras `/api/canais` (sem ele, **401**).
@@ -5665,3 +5653,15 @@ Sem migração, atrás de `pedidos.colaboracao.enabled` (desligada, tudo como an
 
 As regras 1 e 2 (uma conta por alvo no pedido inteiro e `approval_required` para pessoa real sem conversa prévia) são da porta de
 política (`PolicyEngine.check`, item 30.62): o provedor `contexto_do_pedido(run_id)` vem num PR à parte.
+
+## Adendo v1.37 (04/10/2026; número da orquestradora; item 28.24, F5) — a lista diz o que dá para ler, e o cartão recusa o tipo
+
+Sem migração. Muda a v1.26 e a rota `POST .../trello`.
+- `GET /api/canais/anexos`: cada item ganha três chaves fixas.
+  - `pode_ler`: a imagem guardada que o dono mandou, a única que `POST .../ler` aceita.
+  - `descricao`: a descrição que a IA já gravou, ou `null`.
+  - `lida_em`: ISO, ou `null`.
+
+  `pode_ir_ao_cartao` passa a exigir também um mime da lista `avisos.entrada.anexos.tipos`.
+- `POST /api/canais/anexos/{id}/trello`: o anexo de tipo que a entrada não aceita, ou maior que o teto, é recusado com **422**
+  `tipo_nao_aceito` antes de qualquer chamada ao Trello. O arquivo fora do armazém segue **409** `anexo_sem_arquivo`.

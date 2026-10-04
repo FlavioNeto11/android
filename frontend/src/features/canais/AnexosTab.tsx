@@ -1,5 +1,5 @@
 import { CircleCheck, Download, Eye, EyeOff, FileQuestion, FileText, ImageIcon, ImageOff, Paperclip, ScanText } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { api, canalAnexoConteudoUrl, toApiError } from '../../api/client';
 import type { CanalAnexo, CanalAnexosPagina } from '../../api/types';
 import { Badge } from '../../components/Badge';
@@ -66,6 +66,28 @@ function useUrlDoArquivo(obter: ObterArquivo, id: number, ativo: boolean): { url
     return () => { vivo = false; };
   }, [obter, id, ativo]);
   return estado;
+}
+
+/**
+ * F5 (revisão da parte 16): a miniatura só baixa quando o item chega perto da tela, como fazia o `loading="lazy"` da
+ * `<img>` antes da memória: sem isto, cada página (e cada "Carregar mais") baixava todas as imagens de uma vez. Sem
+ * IntersectionObserver (navegador antigo, teste), o item vale como visível.
+ */
+function useNaTela(ref: RefObject<Element | null>): boolean {
+  const [visivel, setVisivel] = useState(() => typeof IntersectionObserver === 'undefined');
+  useEffect(() => {
+    const el = ref.current;
+    if (visivel || !el || typeof IntersectionObserver === 'undefined') return undefined;
+    const observador = new IntersectionObserver((entradas) => {
+      if (entradas.some((e) => e.isIntersecting)) {
+        setVisivel(true);
+        observador.disconnect();
+      }
+    }, { rootMargin: '200px' });
+    observador.observe(el);
+    return () => observador.disconnect();
+  }, [ref, visivel]);
+  return visivel;
 }
 
 /**
@@ -245,7 +267,10 @@ function ItemDeAnexo({ a, agora, aberto, anexando, anexado, obterArquivo, onAbri
 }) {
   const tipo = tipoDoAnexo(a);
   const motivo = semPrevia(a);
-  const arquivo = useUrlDoArquivo(obterArquivo, a.id, a.tem_conteudo && tipo === 'imagem');
+  const item = useRef<HTMLLIElement>(null);
+  const naTela = useNaTela(item);
+  // Baixa ao chegar à tela ou ao abrir a prévia, o que vier primeiro; depois fica na memória da aba.
+  const arquivo = useUrlDoArquivo(obterArquivo, a.id, a.tem_conteudo && tipo === 'imagem' && (naTela || aberto));
   const [imagemQuebrou, setImagemQuebrou] = useState(false);
   // "Ler pela IA" (F3/F5): a descrição gravada vem na lista; a nova só sai do botão de confirmar (chamada paga).
   const [descricao, setDescricao] = useState<string | null>(a.descricao);
@@ -271,7 +296,7 @@ function ItemDeAnexo({ a, agora, aberto, anexando, anexado, obterArquivo, onAbri
   };
 
   return (
-    <li className={styles.anexo} data-expandido={aberto || undefined} aria-label={nome}>
+    <li ref={item} className={styles.anexo} data-expandido={aberto || undefined} aria-label={nome}>
       <div className={styles.anexoTopo}>
         {a.tem_conteudo ? (
           <button type="button" className={styles.miniatura} aria-expanded={aberto}

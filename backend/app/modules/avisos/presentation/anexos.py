@@ -86,7 +86,7 @@ def _item(linha: dict[str, object], tipos: frozenset[str]) -> dict[str, object]:
         # A mesma regra de `conferir_origem`: só a mensagem do dono, guardada; e só o tipo que a entrada aceita (28.24 F5).
         "pode_ir_ao_cartao": origem_do_dono and linha.get("mime") in tipos,
         # F5: o botão Ler. Só a imagem do dono; a descrição gravada (já redigida na leitura) vem junto.
-        "pode_ler": origem_do_dono and linha.get("mime") in IMAGENS,
+        "pode_ler": origem_do_dono and linha.get("mime") in IMAGENS and linha.get("mime") in tipos,
         "descricao": linha.get("descricao"),
         "lida_em": linha.get("lida_em"),
     }

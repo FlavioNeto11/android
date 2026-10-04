@@ -27,14 +27,20 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Correções da revisão do painel do deploy 31:**
   - o anexo que já estava no cartão diz "Já estava no cartão do Trello", não "Anexado";
   - o "desde" do período é fixado na primeira página, e "Carregar mais" pede a mesma janela;
-  - a miniatura baixa uma vez e fica em memória (URL `blob:`, revogada ao sair da aba); a rota segue `no-store`, e a prévia
-    usa o mesmo arquivo;
+  - a miniatura baixa uma vez, só quando o item chega à tela ou quando a prévia abre, e fica em memória (URL `blob:`,
+    revogada ao sair da aba); a rota segue `no-store`, e a prévia usa o mesmo arquivo;
   - o estado vazio diz o que dá para fazer com um anexo.
 - **Backend:** a lista traz `pode_ler`, `descricao` e `lida_em`. O envio ao cartão recusa com 422 `tipo_nao_aceito` o tipo
-  que a entrada não aceita, antes de qualquer chamada ao Trello. `pode_ir_ao_cartao` passa a olhar também os tipos aceitos.
+  que a entrada não aceita (ou maior que o teto), antes de qualquer chamada ao Trello. `pode_ir_ao_cartao` e `pode_ler`
+  passam a olhar também os tipos aceitos. A retenção apaga a descrição da IA junto com o arquivo vencido, mesmo quando o
+  arquivo não sai naquela volta.
+- **Teste intermitente:** `test_filtros_de_canal_direcao_dono_estado_e_periodo` voltava anexos para jan. e fev. de 2026. O laço de
+  avisos do harness roda a faxina dos canais (retenção de 30 dias) na primeira volta, e quando ela caía depois do UPDATE
+  apagava as duas linhas no meio do teste; isso aconteceu com `-n 6`. As datas agora são relativas e ficam dentro do prazo,
+  e o teste dá ele mesmo uma volta da faxina. A causa está provada: com as datas antigas e a volta forçada, o teste falha.
   Sem migração; adendo v1.37.
 - **Prova:** `simulated`. Backend com 135 passed em `test_canais_anexos_lista.py`, `test_canais_anexos_trello.py` e nos
-  vizinhos. Frontend com 1535 passed: `AnexosTab.test.tsx` tem 6 testes novos, e o typecheck passa. O passeio no navegador
+  vizinhos. Frontend com 1536 passed: `AnexosTab.test.tsx` tem 7 testes novos, e o typecheck passa. O passeio no navegador
   e a leitura paga real ficam `not_run`.
 
 ## 2026-10-04 — 28.28: pergunta ao bot do Telegram vai à orquestradora, e nome de persona não sai pelo canal (branch canais/28-28-pergunta-ao-bot)
