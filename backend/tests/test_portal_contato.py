@@ -296,3 +296,36 @@ def test_sal_nasce_uma_vez_e_fica(harness: Harness) -> None:
     assert harness.state is not None
     repo = harness.state.portal.repo
     assert repo.sal() == repo.sal() and len(repo.sal()) == 32
+
+
+# ---------------------------------------------------------------- contra a Canais REAL (28.32, #331)
+async def test_canal_desligado_na_canais_real_fica_pendente(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sem falso: o tipo e a função vêm de `app.modules.avisos` (resolvidos na hora de usar) e o aviso está desligado
+    no harness."""
+    _ligar(harness, monkeypatch)
+    harness.cfg.file.avisos.enabled = False
+    async with _cliente(harness) as c:
+        assert (await c.post(ROTA, json=_corpo(harness))).status_code == 202
+    [linha] = _linhas(harness)
+    assert linha["estado"] == "pendente" and linha["motivo"] == "canal_desligado" and linha["tentativas"] == 1
+
+
+async def test_canais_real_enfileira_uma_vez_pela_chave(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    from .test_avisos_servico import CanalFalso
+
+    _ligar(harness, monkeypatch)
+    assert harness.state is not None
+    harness.cfg.file.avisos.enabled = True
+    monkeypatch.setattr(harness.state.avisos, "_canal", CanalFalso())
+    async with _cliente(harness) as c:
+        assert (await c.post(ROTA, json=_corpo(harness))).status_code == 202
+    [linha] = _linhas(harness)
+    assert linha["estado"] == "entregue"
+    fila = [dict(r) for r in harness.state.db.query(
+        "SELECT chave, tipo FROM avisos_entregas WHERE tipo='portal.contato' ORDER BY chave")]
+    assert fila == [{"chave": f"portal:{linha['id']}", "tipo": "portal.contato"}]
+    # O reenvio do mesmo id (o laço depois de uma resposta perdida) não duplica a mensagem.
+    resultado = harness.state.portal.contatos.entregar(
+        int(str(linha["id"])), {"nome": "Visitante Fictício", "empresa": "", "telefone": TELEFONE, "mensagem": "x"}, now())
+    assert resultado == "entregue"
+    assert harness.state.db.scalar("SELECT COUNT(*) AS n FROM avisos_entregas WHERE tipo='portal.contato'") == 1
