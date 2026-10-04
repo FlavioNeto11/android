@@ -21,6 +21,11 @@ mantém o retrato anterior: a volta da leitura não vira novidade. Quando nada m
 grava `conferido_em` e espera o próximo intervalo. O retrato do último envio fica no cursor (`retrato`). Quem entra em
 "Precisa de você": `docs/dominios/canais.md`.
 
+Cadência (decisão da orquestradora, 04/10 23:14Z, regra da rotina agrupada): a ROTINA sai no máximo uma vez por
+`--piso-rotina` (3600 s) desde o último envio, mesmo que algo mude a cada volta; o que muda "Precisa de você" (pendência
+nova ou resolvida) sai na volta em que mudar. A rotina segurada não se perde: o retrato do cursor não anda, e a volta
+seguinte ao piso conta tudo o que mudou desde o último envio.
+
 O corpo inteiro passa por `_sem_contato` (e-mail, telefone, URL) e por `redacao.redigir` (o mesmo filtro do Trello),
 com os nomes relidos do banco do central a cada rodada. O envio é o `telegram_status.py`, que lê token e chat do `.env`
 pelo `EnvSettings` e nunca imprime nada deles. O cursor (`resumo_cursor.json`) guarda a hora, o
@@ -30,7 +35,8 @@ Uso (python do backend/.venv):
   resumo_laco.py --carimbar               carimba situacao.json (hora do relógio, eventos curados até agora)
   resumo_laco.py --ensaio                 compõe e grava `resumo_ensaio.html`, sem enviar e sem mexer no cursor
   resumo_laco.py --uma-vez                compõe e envia uma vez
-  resumo_laco.py [--intervalo 1200]       laço: envia quando o último envio tiver `intervalo` segundos
+  resumo_laco.py [--intervalo 1200] [--piso-rotina 3600]
+                                          laço: confere a cada `intervalo`; a rotina sai no máximo a cada `piso-rotina`
   resumo_laco.py --armar --desde-linha N --ultimo-envio 2026-10-03T18:40:00Z
                                           grava o cursor inicial (passagem da caixa) e sai
 """
@@ -366,6 +372,18 @@ def _desde(cursor: dict) -> str | None:
         return None
 
 
+def pode_enviar(retrato: dict, anterior: dict | None, enviado_em: str | None, agora: datetime, piso_s: int) -> bool:
+    """A cadência: "Precisa de você" que mudou sai já; a rotina, só com o último envio a `piso_s` segundos ou mais.
+    Sem envio anterior (cursor sem `enviado_em`), sai. Pura."""
+    if set(retrato.get("pendencias") or []) != set((anterior or {}).get("pendencias") or []):
+        return True
+    try:
+        ultimo = datetime.fromisoformat(str(enviado_em).replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    return (agora - ultimo).total_seconds() >= piso_s
+
+
 def compor(cursor: dict, agora: datetime) -> tuple[str | None, dict | None, int]:
     """O texto a enviar (ou `None`: nada mudou), o retrato para o cursor e até onde o eventos foi contado. Retrato `None`:
     os nomes de persona ainda não foram lidos do banco nesta subida, e nada sai (nem se grava)."""
@@ -395,16 +413,19 @@ def enviar(texto: str) -> int | None:
     return None
 
 
-def rodada(cursor: dict) -> dict | None:
-    """Uma volta. Nada mudou: não envia; grava só `conferido_em`, e o próximo resumo segue contando do último envio."""
+def rodada(cursor: dict, piso_s: int = 0) -> dict | None:
+    """Uma volta. Nada mudou, ou só rotina antes do piso: não envia; grava só `conferido_em`, e o próximo resumo segue
+    contando do último envio."""
     agora = _agora()
     texto, retrato, linhas = compor(cursor, agora)
     if retrato is None:
         return None  # sem os nomes do banco: o laço tenta de novo em 2 min, sem marcar a rodada
-    if texto is None:
+    segura = texto is not None and not pode_enviar(retrato, cursor.get("retrato"), cursor.get("enviado_em"), agora,
+                                                   piso_s)
+    if texto is None or segura:
         novo = {**cursor, "conferido_em": agora.strftime("%Y-%m-%dT%H:%M:%SZ")}
         _gravar_json(CURSOR, novo)
-        print(f"{agora:%H:%M:%S}Z nada mudou: sem envio", flush=True)
+        print(f"{agora:%H:%M:%S}Z {'só rotina antes do piso' if segura else 'nada mudou'}: sem envio", flush=True)
         return novo
     mid = enviar(texto)
     if mid is None:
@@ -426,6 +447,8 @@ def main() -> int:
     ap.add_argument("--ensaio", action="store_true")
     ap.add_argument("--uma-vez", action="store_true")
     ap.add_argument("--intervalo", type=int, default=1200)
+    ap.add_argument("--piso-rotina", type=int, default=3600,
+                    help="a rotina sai no máximo uma vez a cada N s; o que muda Precisa de você sai já")
     ap.add_argument("--armar", action="store_true")
     ap.add_argument("--desde-linha", type=int, default=None)
     ap.add_argument("--ultimo-envio", default=None)
@@ -461,9 +484,10 @@ def main() -> int:
         print(f"ensaio gravado ({len(texto)} chars, eventos até a linha {linhas}); nada enviado")
         return 0
     if args.uma_vez:
-        return 0 if rodada(cursor) else 1
+        return 0 if rodada(cursor, args.piso_rotina) else 1
 
-    print(f"{_agora():%H:%M:%S}Z laço do resumo ligado, a cada {args.intervalo} s", flush=True)
+    print(f"{_agora():%H:%M:%S}Z laço do resumo ligado, a cada {args.intervalo} s, rotina no máximo a cada "
+          f"{args.piso_rotina} s", flush=True)
     while True:
         try:
             # A última volta, com ou sem envio: a que não enviou (nada mudou) também espera o intervalo inteiro.
@@ -476,7 +500,7 @@ def main() -> int:
             time.sleep(min(espera, 60))
             cursor = _ler_json(CURSOR, cursor)  # o cursor pode ser rearmado por fora
             continue
-        novo = rodada(cursor)
+        novo = rodada(cursor, args.piso_rotina)
         if novo is None:
             time.sleep(120)  # falha de envio ou banco não lido: tenta de novo em 2 min, sem pular a rodada
             continue

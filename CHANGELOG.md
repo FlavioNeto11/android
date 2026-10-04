@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.31 F3: a rotina do resumo sai no máximo uma vez por hora; "Precisa de você" que muda sai já (branch canais/28-31-piso-da-rotina)
+
+- **Por quê:** a orquestradora pediu, no "liga" do laço (04/10 23:14Z), pela regra da rotina agrupada: a rotina sai no
+  máximo uma vez por hora, mesmo que algo mude a cada volta de 20 minutos. O que muda "Precisa de você" sai na volta em
+  que mudar. Até aqui o laço mandava a cada volta com mudança.
+- **O quê:** `resumo_laco.py` ganhou `pode_enviar` (pura) e `--piso-rotina` (3600 s). A volta só de rotina antes do
+  piso grava só `conferido_em`; o retrato do cursor não anda, e o envio seguinte conta tudo desde o último. A pendência
+  nova ou resolvida passa o piso. Doc: `docs/dominios/canais.md` C-19 e § 8.
+- **Prova:** `simulated`, `.claude/canais/test_resumo_laco.py` (45 passed com `test_redacao.py`: a rotina antes e
+  depois do piso, a pendência nova, a resolvida, o primeiro retrato, e a `rodada` que segura sem andar o retrato).
+  O laço real: `not_run` com o piso; ele roda desde 23:15Z com `--intervalo 3600`, que já respeita a hora.
+
 ## 2026-10-04 — 28.31 F3: o resumo de hora abre com "Precisa de você" e só diz o que mudou (branch canais/28-31-f3-resumo)
 
 - `.claude/canais/resumo_laco.py`: o resumo abre com `🙋 Precisa de você: N` e a lista, com 🆕 na pendência nova.
