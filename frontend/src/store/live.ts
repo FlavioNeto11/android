@@ -247,7 +247,7 @@ function handleEvent(ev: EventRecord): void {
     });
   }
 
-  if (ev.kind === 'control.changed' || ev.kind === 'instance.updated') {
+  if (ev.kind === 'control.changed' || ev.kind === 'instance.updated' || ev.kind === 'instance.progress') {
     const id = ev.instance_id
       ?? (isRecord(ev.data) && typeof ev.data.instance_id === 'string' ? ev.data.instance_id : null)
       ?? (isRecord(ev.data) && isRecord(ev.data.instance) && typeof ev.data.instance.id === 'string' ? ev.data.instance.id : null);

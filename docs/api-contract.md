@@ -329,6 +329,7 @@ interface ManualInput {
 | kind | data | persistido |
 |---|---|---|
 | `instance.updated` | `{instance: Instance}` | sim |
+| `instance.progress` | `{instance: Instance}`, o mesmo DTO; sai quando só mudou telemetria ou o controle já anunciado por `control.changed` (14.13) | não |
 | `frame` | `{instance_id, frame: FrameInfo}` | não |
 | `metrics` | `{metrics: Metrics}` | não |
 | `health.updated` | `{health: Health}` | não |

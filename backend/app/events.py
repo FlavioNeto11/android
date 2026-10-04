@@ -24,7 +24,10 @@ log = logging.getLogger("poc.events")
 EPHEMERAL_KINDS = {"frame", "metrics", "worker.metrics", "health.updated", "apps.updated", "settings.updated",
                    # Loja de apps: cada transição do proxy de cada aparelho. A verdade fica em `device_proxy_state`;
                    # persistir encheria o log com três eventos por aparelho a cada aplicação.
-                   "proxy.updated"}
+                   "proxy.updated",
+                   # 14.13: o DTO do aparelho quando só mudou telemetria ou o controle já anunciado por
+                   # `control.changed` (`devices/publicacao.py`). O fato segue em `instance.updated`.
+                   "instance.progress"}
 
 #: RA-11 (reavaliação de 03/10): a telemetria do parque mora no mesmo balde da auditoria. `instance.updated` leva o DTO
 #: inteiro do aparelho a cada mudança (32 mil linhas e 48 MiB em 14 dias, 03/10) e empurrava para fora da janela de
