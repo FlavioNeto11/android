@@ -2479,11 +2479,8 @@ class StepExecutor:
             if is_commit:
                 repo.add_effect(oid, f"'{step.title}': {decision.tool} executado ({rationale or 'ação com efeito'})")
             history.append(f"{decision.tool}({_brief(args)}) → {_brief_result(out.result)}")
-            if decision.tool == "open_url" and ai_cfg.espera_apos_open_url:
-                # Item 31.35 (parte B): a página carregando não pede decisão; a espera adaptativa do 31.27 (tela
-                # parada por 1 s, teto de 8 s) faz o que o ator fazia com um `wait_for` pago.
-                await self._esperar_a_tela_parar(rt, time.monotonic() + 8.0, 1.0, call_timeout, ())
-                history.append("(executor) esperou a página assentar depois do open_url, sem decisão da IA")
+            if decision.tool == "open_url":
+                await self._espera_depois_do_open_url(rt, call_timeout, ai_cfg, history)
             if rationale:
                 repo.decision(f"{iid} · {step.title}: {rationale}", run_id=run_id, instance_id=iid, step_id=step.id)
             if decision.tool == "collect_list":
@@ -3029,6 +3026,16 @@ class StepExecutor:
         finally:
             if (tempos := self._tempos(attempt_id)) is not None:
                 tempos.juiz_espera_ms += ms_desde(inicio)
+
+    async def _espera_depois_do_open_url(self, rt: DeviceRuntime, call_timeout: float, ai: AiCfg,
+                                         history: list[str]) -> bool:
+        """Item 31.35 (parte B), `ai.espera_apos_open_url`: a página carregando não pede decisão; a espera adaptativa do
+        31.27 (tela parada por 1 s, teto de 8 s) faz o que o ator fazia com um `wait_for` pago. Desligada, nada muda."""
+        if not ai.espera_apos_open_url:
+            return False
+        await self._esperar_a_tela_parar(rt, time.monotonic() + 8.0, 1.0, call_timeout, ())
+        history.append("(executor) esperou a página assentar depois do open_url, sem decisão da IA")
+        return True
 
     async def _esperar_a_tela_parar(self, rt: DeviceRuntime, fim: float, estavel: float, call_timeout: float,
                                     marcas: tuple[str, ...]) -> Observation | None:

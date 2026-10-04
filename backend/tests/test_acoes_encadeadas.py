@@ -123,3 +123,58 @@ async def test_execucao_ligada_executa_a_encadeada_com_a_mesma_chamada_de_ia(tmp
         assert any(len(t) >= 2 and t[-1] == "wait_for" for t in por_decisao.values()), por_decisao
     finally:
         await state.stop()
+
+
+class _AlvoSumido(SimulatedProvider):
+    """Cada decisão que pode encadear traz um toque num alvo que não existe: a fila tem de acabar sem dano."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.decisoes = 0
+
+    async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]:
+        self.decisoes += 1
+        d, uso = await super().decide(req)
+        if req.encadear > 1 and d.tool not in ("step_done", "step_blocked"):
+            d.extras = [Decision("tap", {"rationale": "fantasma", "element_id": "e9999"})]
+        return d, uso
+
+
+async def _rodada(tmp_path: Path, prov: SimulatedProvider, encadear: int) -> tuple[str, list[str]]:
+    h = Harness(tmp_path, 1)
+    h.ai = CountingProvider(prov)
+    h.cfg.file.ai.acoes_por_decisao = encadear
+    state = await h.boot()
+    try:
+        run = h.run(["android-01"])
+        await h.wait_run(run.id, statuses=("completed", "completed_with_issues", "failed", "waiting_user"))
+        linha = state.repo.run_row(run.id)
+        acoes = state.db.query("SELECT a.tool FROM actions a JOIN attempts t ON t.id=a.attempt_id JOIN steps s"
+                               " ON s.id=t.step_id WHERE s.run_id=? ORDER BY a.intent_at", (run.id,))
+        return str(linha["status"]), [str(a["tool"]) for a in acoes]
+    finally:
+        await state.stop()
+
+
+async def test_alvo_que_nao_esta_na_tela_nova_volta_a_decisao_normal_sem_falhar(tmp_path: Path) -> None:
+    base, acoes_base = await _rodada(tmp_path / "base", SimulatedProvider(), 1)
+    prov = _AlvoSumido()
+    ligado, acoes = await _rodada(tmp_path / "ligado", prov, 3)
+    assert prov.decisoes > 0 and ligado == base                 # a etapa termina como sem encadear
+    assert acoes == acoes_base                                   # o toque fantasma nunca virou ação
+
+
+async def test_espera_depois_do_open_url_ligada_e_desligada(harness: Harness) -> None:
+    executor = harness.state.scheduler.executor                  # type: ignore[union-attr]
+    chamadas: list[tuple[float, float]] = []
+
+    async def esperar(rt: object, fim: float, estavel: float, call_timeout: float, marcas: tuple[str, ...]) -> None:
+        chamadas.append((estavel, call_timeout))
+
+    executor._esperar_a_tela_parar = esperar                     # type: ignore[method-assign]
+    history: list[str] = []
+    assert await executor._espera_depois_do_open_url(None, 5.0, AiCfg(), history) is False
+    assert chamadas == [] and history == []
+    ligado = AiCfg(espera_apos_open_url=True)
+    assert await executor._espera_depois_do_open_url(None, 5.0, ligado, history) is True
+    assert chamadas == [(1.0, 5.0)] and "open_url" in history[-1]
