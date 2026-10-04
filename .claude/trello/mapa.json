@@ -1671,7 +1671,7 @@
   "29.34": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac14013bb9f0f5e4e93566c",
    "url": "https://trello.com/c/htMUmU5m",
-   "lista": "em_execucao",
+   "lista": "em_validacao",
    "lote": "lote_A7_hoje"
   },
   "29.40": {
@@ -1947,13 +1947,13 @@
   "8.3": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac142a8a559ac8bcd36887b",
    "url": "https://trello.com/c/7mjqqUVK",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "lote_A8_atuais_pendentes"
   },
   "8.4": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac142ade0dc03a396d15698",
    "url": "https://trello.com/c/bwekMm81",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "lote_A8_atuais_pendentes"
   },
   "12.3": {
@@ -2121,13 +2121,13 @@
   "29.33": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac143789f04b7688ec30dc0",
    "url": "https://trello.com/c/sAmgIRtT",
-   "lista": "em_validacao",
+   "lista": "aguardando_data",
    "lote": "lote_A8_atuais_pendentes"
   },
   "29.35": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac14411a50206ea39ff3d98",
    "url": "https://trello.com/c/yqMD3Eei",
-   "lista": "em_validacao",
+   "lista": "aguardando_data",
    "lote": "lote_A8_atuais_pendentes"
   },
   "29.36": {
@@ -2145,7 +2145,7 @@
   "29.38": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1441df45a9563fa86c171",
    "url": "https://trello.com/c/K2m3OjZ4",
-   "lista": "em_validacao",
+   "lista": "aguardando_data",
    "lote": "lote_A8_atuais_pendentes"
   },
   "29.39": {
@@ -2584,28 +2584,28 @@
   "29.50": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141df1b2a40845aa1284d",
    "url": "https://trello.com/c/FrKAksd7",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "lote_A8_atuais_pendentes",
    "nome": "29.50 · Pergunta sem resposta por 24 h é encerrada pelo sistema"
   },
   "30.31": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141e2d8402040e0b08976",
    "url": "https://trello.com/c/LrWebgp8",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "lote_A8_atuais_pendentes",
    "nome": "30.31 · P4: validação dos itens aprendidos no QA (pausada até o 30.37)"
   },
   "30.34-A": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141e71675f2e1e7a24a01",
    "url": "https://trello.com/c/GmYxOgNq",
-   "lista": "em_validacao",
+   "lista": "aguardando_data",
    "lote": "lote_A8_atuais_pendentes",
    "nome": "30.34-A · Autopublicação de fluxos de risco B em sombra"
   },
   "30.35": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141e867cb69f4e53652fa",
    "url": "https://trello.com/c/jmcDPWqD",
-   "lista": "em_validacao",
+   "lista": "aguardando_data",
    "lote": "lote_A8_atuais_pendentes",
    "nome": "30.35 · Desfecho posterior: o fluxo é rebaixado se falhar depois de publicado"
   },
@@ -2647,7 +2647,7 @@
   "30.38": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac14e62f6d19dbb5d12ecee",
    "url": "https://trello.com/c/uxzHd11C",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais"
   },
   "avulsa:29.47-ambiente-filhos": {
@@ -2677,13 +2677,13 @@
   "28.16": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1500d34bbb1bb5f9b8ac3",
    "url": "https://trello.com/c/DiOgjU7L",
-   "lista": "em_validacao",
+   "lista": "aguardando_data",
    "lote": "canais"
   },
   "31.22": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac15013d69f731aab0ccb53",
    "url": "https://trello.com/c/IaysgW95",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais"
   },
   "estudo:power-ups": {
@@ -2702,7 +2702,7 @@
   "29.52": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac151a0d1f8b25c99ca3c0e",
    "url": "https://trello.com/c/OTC5rSZB",
-   "lista": "em_validacao",
+   "lista": "aguardando_data",
    "lote": "canais"
   },
   "decisao:power-ups-nativos": {
@@ -2750,7 +2750,7 @@
   "30.39": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac15b67f01f9e9e2199273c",
    "url": "https://trello.com/c/Om6mKPy4",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "fatos-1940"
   },
   "risco:incidente-reinicio-0310": {
@@ -2762,7 +2762,7 @@
   "29.55": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac15bcdfedbbda5922408a6",
    "url": "https://trello.com/c/ORCuKE7V",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais"
   },
   "marco:deploy-14": {
@@ -2823,7 +2823,7 @@
   "29.58": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1790f30a090ce503b5e01",
    "url": "https://trello.com/c/Ct2DFcIL",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "29.58 · Ação com efeito dentro de etapa declarada sem efeito"
   },
@@ -2935,14 +2935,14 @@
   "29.64": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1a3dd3f0a5b5730899340",
    "url": "https://trello.com/c/jqkSiQk0",
-   "lista": "em_validacao",
+   "lista": "aguardando_data",
    "lote": "canais",
    "nome": "Entrar reconfere o toque em Log in"
   },
   "29.65": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1a3e2aa791f2ad504c2e5",
    "url": "https://trello.com/c/Sx3dYPRm",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "A política one prefere o aparelho principal"
   },
@@ -2956,7 +2956,7 @@
   "31.26": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1a3edd83037f3f2fd5d27",
    "url": "https://trello.com/c/mHmW63Mg",
-   "lista": "em_validacao",
+   "lista": "aguardando_data",
    "lote": "canais",
    "nome": "Marcador de entrega dispensa o 1º julgamento"
   },
@@ -3061,28 +3061,28 @@
   "30.46": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac22822178d383b3f7d9efc",
    "url": "https://trello.com/c/r8qyhLJn",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "30.46 — O curador para de gravar um cache que nunca relê"
   },
   "31.31": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac22827e8f34668b53f6eec",
    "url": "https://trello.com/c/mlvCIYvl",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "31.31 — Estimativa de custo separa a gravação do cache de 1 hora"
   },
   "31.32": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2282b4d4353c3a3d77e66",
    "url": "https://trello.com/c/4HHPPnG6",
-   "lista": "em_validacao",
+   "lista": "aguardando_data",
    "lote": "canais",
    "nome": "31.32 — Plano com conferência impossível falha cedo e com clareza"
   },
   "31.34": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2282fe701662ae35276a7",
    "url": "https://trello.com/c/qB1I9qRl",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "31.34 — A prévia do painel cede a vez à execução"
   },
@@ -3131,7 +3131,7 @@
   "31.37": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2290352678b8f75de4086",
    "url": "https://trello.com/c/LTS7bYIM",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "31.37 — Leitura de valor sem gastar decisão pedindo a imagem"
   },
@@ -3159,14 +3159,14 @@
   "31.38": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac24544b35c92a76d09c9dc",
    "url": "https://trello.com/c/rbB7NPGC",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "31.38 — Teto de decisões na leitura e desfecho claro quando o dado não está na página"
   },
   "30.50": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac245487fb0eea6515446ad",
    "url": "https://trello.com/c/fPC4vWTN",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "30.50 — Validação só vai para aparelho que tem os dados que o plano usa"
   },
@@ -3201,7 +3201,7 @@
   "30.52": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac25212489bd6e45cc1d580",
    "url": "https://trello.com/c/yks3udv7",
-   "lista": "em_validacao",
+   "lista": "aguardando_data",
    "lote": "canais",
    "nome": "30.52 — O revisor de fluxos olha só as provas da versão atual"
   },
@@ -3226,7 +3226,7 @@
   "28.24": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac26ddcc30b2b7d0b45bf81",
    "url": "https://trello.com/c/mjYDdaJi",
-   "lista": "em_execucao",
+   "lista": "em_validacao",
    "lote": null
   },
   "29.71": {
@@ -3244,7 +3244,7 @@
   "30.55": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac277fa860ea70afdbe5987",
    "url": "https://trello.com/c/bvILP8V8",
-   "lista": "em_execucao",
+   "lista": "em_validacao",
    "lote": null
   },
   "31.42": {
@@ -3262,7 +3262,7 @@
   "29.72": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac27855489bd6e45cf9ff25",
    "url": "https://trello.com/c/4mABUwkP",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": null
   },
   "suite:28": {
@@ -3274,31 +3274,121 @@
   "31.43": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac27a5695f2200d43d795c9",
    "url": "https://trello.com/c/qEHXZNus",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": null
   },
   "29.73": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac27a5bc016aad977e086de",
    "url": "https://trello.com/c/j0Y7fCtg",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": null
   },
   "31.44": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac27e1f893c5923191c7023",
    "url": "https://trello.com/c/CgPovDpq",
-   "lista": "em_execucao",
+   "lista": "em_validacao",
    "lote": null
   },
   "29.74": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac28158887ad7c5c5ec3907",
    "url": "https://trello.com/c/vSFdcOYn",
-   "lista": "em_execucao",
+   "lista": "em_validacao",
    "lote": null
   },
   "31.45": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2815cccdbb7677a045b5d",
    "url": "https://trello.com/c/13fBkkx4",
+   "lista": "em_validacao",
+   "lote": null
+  },
+  "29.75": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac29312fcf4496c2bdb767d",
+   "url": "https://trello.com/c/LCyZQcV6",
    "lista": "em_execucao",
+   "lote": null
+  },
+  "30.56": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac29368fb5cc203670f015b",
+   "url": "https://trello.com/c/NbrEcino",
+   "lista": "em_execucao",
+   "lote": null
+  },
+  "30.57": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac29368c016aad977063317",
+   "url": "https://trello.com/c/wtHrZ4j3",
+   "lista": "em_execucao",
+   "lote": null
+  },
+  "30.58": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac29369e9cc881e3ec175ab",
+   "url": "https://trello.com/c/exyiiS9v",
+   "lista": "em_execucao",
+   "lote": null
+  },
+  "30.59": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac29369854ad4d0a21da761",
+   "url": "https://trello.com/c/jnvtnypQ",
+   "lista": "em_execucao",
+   "lote": null
+  },
+  "31.47": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac29369639003c824826d67",
+   "url": "https://trello.com/c/PbjWGeXi",
+   "lista": "em_execucao",
+   "lote": null
+  },
+  "31.48": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2936abbf147a4b9cb6a38",
+   "url": "https://trello.com/c/mUCvwbGN",
+   "lista": "em_execucao",
+   "lote": null
+  },
+  "30.60": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac29474fa852d6da229efc7",
+   "url": "https://trello.com/c/e7qmAp18",
+   "lista": "em_execucao",
+   "lote": null
+  },
+  "28.26": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac295ec1702d057646a16ae",
+   "url": "https://trello.com/c/4ZgFMCEb",
+   "lista": "em_validacao",
+   "lote": null
+  },
+  "30.61": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2966fd3750548cfbca043",
+   "url": "https://trello.com/c/hWVl2Wqb",
+   "lista": "em_execucao",
+   "lote": null
+  },
+  "31.49": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2966f557287f1219169ec",
+   "url": "https://trello.com/c/iILpjQDJ",
+   "lista": "em_execucao",
+   "lote": null
+  },
+  "28.27": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac296709649e7388d146bfe",
+   "url": "https://trello.com/c/ZfHllT0s",
+   "lista": "em_execucao",
+   "lote": null
+  },
+  "30.62": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2967e524f4717f7e651ed",
+   "url": "https://trello.com/c/HIwS6uRQ",
+   "lista": "em_execucao",
+   "lote": null
+  },
+  "28.28": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2990f98674a6c2746add7",
+   "url": "https://trello.com/c/NGJRToX3",
+   "lista": "em_execucao",
+   "lote": null
+  },
+  "31.46": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac29bc15112ad05934f2bf0",
+   "url": "https://trello.com/c/28ujx5ws",
+   "lista": "em_validacao",
    "lote": null
   }
  },
@@ -3326,5 +3416,8 @@
    "lote": "lote_A7_hoje",
    "motivo": "duplicado do lote do plano, arquivado 03/10 18:36Z; vale o cartão escrito à mão"
   }
+ },
+ "listas_extra": {
+  "aguardando_data": "6ac2993cb2061eb82efd107e"
  }
 }
