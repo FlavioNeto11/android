@@ -317,6 +317,9 @@ class LimitsCfg(BaseModel):
     boot_parallelism: int = Field(2, ge=1, le=10)
     max_steps_per_objective: int = Field(12, ge=1, le=40)
     for_each_max_items: int = Field(25, ge=1, le=200)    # teto de itens de uma coleta (nunca trunca: acima disso, bloqueia)
+    # 30.61: por quantas horas vale o sim dado na prévia da porta (aprovação antecipada no plano). Vencida conta como
+    # ausente: a porta pergunta de novo na execução; "Renovar" na prévia estende sem reabrir os itens.
+    aprovacao_no_plano_validade_h: int = Field(24, ge=1, le=72)
     max_actions_per_step: int = Field(12, ge=1, le=60)
     max_attempts_per_step: int = Field(3, ge=1, le=10)
     step_timeout_s: int = Field(180, ge=10, le=3600)

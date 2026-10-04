@@ -14,7 +14,8 @@ Falha fechado: sem chave (`None`), o item não se aprova no plano e fica para a 
 - alvo vazio quando a ação declara `counterparty`;
 - qualquer argumento declarado ainda por resolver;
 - texto ainda por escrever (briefing, rascunho na execução) ou com variável por resolver;
-- imagem citada cujo sha256 não se conhece.
+- imagem citada cujo sha256 não se conhece;
+- ação cujo `objeto_alvo` declarado não basta para identificar o objeto do efeito (`OBJETO_INSUFICIENTE`).
 
 Função pura: quem chama lê a etapa de novo e o sha256 da mídia (`midia_da_etapa`) e passa os valores.
 """
@@ -33,6 +34,11 @@ VERSAO_DA_CHAVE = 1
 ARGUMENTO_DA_IMAGEM = "image_id"
 #: Argumentos que entram pela regra do texto (literal e final) ou da mídia, e não como argumento comum.
 _PELA_REGRA_PROPRIA = frozenset({TEXTO, BRIEFING, VERBATIM, ARGUMENTO_DA_IMAGEM})
+#: Ações cujo `objeto_alvo` declarado NÃO identifica o objeto do efeito: nunca se aprovam no plano (chave `None`; o item
+#: fica `na_execucao` e a pergunta acontece lá, com o objeto à vista). Decisão da orquestradora, 04/10: REPLY_COMMENT
+#: declara só `username`, e o mesmo @ pode ter vários comentários. Quando o catálogo ganhar o argumento que diz QUAL
+#: comentário, a ação sai da lista (com o teste).
+OBJETO_INSUFICIENTE = frozenset({"REPLY_COMMENT"})
 
 
 def texto_exato(cap: Capability, bindings: Mapping[str, object]) -> tuple[bool, str | None]:
@@ -85,6 +91,8 @@ def chave_da_aprovacao(bindings: Mapping[str, object], cap: Capability, *, perfi
 
     `bindings` são os da etapa RELIDA (depois de `resolver_saidas`, na execução). `tem_imagem`/`midia_sha256` vêm de
     `midia_da_etapa`."""
+    if cap.key in OBJETO_INSUFICIENTE:
+        return None                                     # o objeto declarado não diz qual é o objeto do efeito
     objeto = objeto_da_acao(cap, bindings)
     if objeto is None or any(not valor for valor in objeto.values()):
         return None                                     # objeto não declarado, ausente, vazio ou por resolver

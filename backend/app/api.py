@@ -74,6 +74,7 @@ from .modules.learning.presentation.livro import mudar_status_legado
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
 from .planning import conciliacao, costs, saldos
+from .porta_do_plano import PortaIndisponivel, previa_da_porta
 from .security import access as acesso           # o módulo, não os nomes: `LOOPBACK_DE_TESTE` é injetado em tempo
 from .security import local_secret               # de execução e um `from ... import` congelaria o valor antigo
 from .security.access import avaliar, publicos_de
@@ -3111,6 +3112,17 @@ async def run_report(request: Request, run_id: str) -> Any:
         return st(request).runs.report(run_id)
     except RunError as exc:
         raise _run_error(exc) from exc
+
+
+@router.get("/runs/{run_id}/porta")
+async def run_porta(request: Request, run_id: str) -> dict[str, object]:
+    """30.61: a prévia da porta do despacho numa execução `planned`: o selo de cada etapa com efeito (permitido,
+    aprovacao, adiado, recusado, na_execucao), a chave dos itens aprováveis e o que só se decide na execução. Só leitura:
+    não grava decisão, não abre pedido, não chama IA. 404 sem execução; 409 `invalid_state` fora de `planned`."""
+    try:
+        return previa_da_porta(st(request), run_id)
+    except PortaIndisponivel as exc:
+        raise err(exc.status, exc.codigo, exc.mensagem) from exc
 
 
 @router.post("/commands/refine")

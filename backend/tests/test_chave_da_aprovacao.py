@@ -8,7 +8,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.planning.capabilities import capability_of
-from app.social.chave_da_aprovacao import chave_da_aprovacao, midia_da_etapa, texto_exato
+from app.social.chave_da_aprovacao import (
+    OBJETO_INSUFICIENTE,
+    chave_da_aprovacao,
+    midia_da_etapa,
+    texto_exato,
+)
 
 from .test_capabilities import IG, build
 
@@ -82,10 +87,18 @@ def test_alvo_vazio_falha_fechado() -> None:
     assert _chave("SEND_MESSAGE", {"content": "oi", "content_verbatim": "true"}) is None
 
 
-def test_resposta_igual_noutro_comentario_do_mesmo_arroba_e_outro_item() -> None:
-    """A chave leva todos os argumentos da etapa, não só o `objeto_alvo` (REPLY_COMMENT declara só `username`)."""
-    base = {"username": "@a", "content": "obrigada!", "content_verbatim": "true"}
-    um = _chave("REPLY_COMMENT", {**base, "target": "comentário 'que lindo'"})
-    outro = _chave("REPLY_COMMENT", {**base, "target": "comentário 'parabéns'"})
+def test_argumento_fora_do_objeto_alvo_entra_na_chave() -> None:
+    """A chave leva todos os argumentos da etapa, não só o `objeto_alvo`: o mesmo DM com outro argumento é outro item."""
+    um = _chave("SEND_MESSAGE", {**DM, "thread_hint": "conversa de ontem"})
+    outro = _chave("SEND_MESSAGE", {**DM, "thread_hint": "conversa de hoje"})
     assert um is not None and outro is not None and um != outro
-    assert _chave("REPLY_COMMENT", {**base, "target": "comentário de {item}"}) is None
+    assert _chave("SEND_MESSAGE", {**DM, "thread_hint": "conversa de {item}"}) is None
+
+
+def test_acao_com_objeto_insuficiente_nunca_se_aprova_no_plano() -> None:
+    """REPLY_COMMENT declara só `username`: o mesmo @ tem vários comentários. Chave `None` sempre, até o catálogo dizer
+    QUAL comentário (decisão da orquestradora, 04/10); aí a ação sai de `OBJETO_INSUFICIENTE`."""
+    assert OBJETO_INSUFICIENTE == {"REPLY_COMMENT"}
+    base = {"username": "@a", "content": "obrigada!", "content_verbatim": "true"}
+    assert _chave("REPLY_COMMENT", {**base, "target": "comentário 'que lindo'"}) is None
+    assert _chave("REPLY_COMMENT", base) is None
