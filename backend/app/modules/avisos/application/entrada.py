@@ -85,6 +85,23 @@ _LER = re.compile(r"^(?:(?:por favor )?(?:le|leia|ler|descreva|descreve)(?: (?:e
 #: ponta. Só com o id do aparelho; "captura do app do Pedro" segue como pedido de texto livre.
 _CAPTURA = re.compile(r"^(?:(?:me )?(?:manda|mande|envia|envie|tira|tire|pega|pegue) )?(?:a |uma? )?"
                       r"(?:captura|print|screenshot)(?: de tela)? (?:do |da |de )?(?P<alvo>android-\d+)\s*[?!.]*$")
+#: Pergunta solta ao bot (28.28): termina em "?" ou começa por palavra de pergunta, já sem acento. Não é pedido de
+#: aparelho: "porque tem tanta coisa represada em validação?" virava texto livre, a prévia pedia destino e o dono
+#: recebia "Diga onde ou por quem". Na dúvida entre pergunta e pedido, repassar é melhor que recusar (orquestradora).
+_PERGUNTA_INICIO = re.compile(
+    r"^(?:(?:oi|ola|ana|e ai)[\s,!.]+)?(?:por ?que|pq|o ?que|oq|quando|como|quanto|quantos|quantas|cade|qual|quais|onde|"
+    r"quem|sera que|tem como|ja|esta|estao|existe|existem)\b")
+#: O que faz da frase um pedido para um aparelho ou uma persona, mesmo terminando em "?": "pode abrir o QA no
+#: android-12?" é pedido.
+_CITA_DESTINO = re.compile(r"\bandroid-\d+\b|@\w|\bpersona\b")
+
+
+def _eh_pergunta(normal: str) -> bool:
+    if _CITA_DESTINO.search(normal):
+        return False
+    return normal.rstrip().endswith("?") or bool(_PERGUNTA_INICIO.match(normal))
+
+
 #: "para o X: objetivo", "para a X: objetivo", "para X: objetivo" (os dois-pontos são o que separa o destino).
 _PARA_LIVRE = re.compile(r"^\s*para\s+(?:o\s+|a\s+)?(?P<alvo>[^:\n]{1,60}?)\s*:\s*(?P<objetivo>\S.*)$",
                          re.IGNORECASE | re.DOTALL)
@@ -104,6 +121,10 @@ class Intencao:
     #: `/aprovar <x>` ou `/vetar <x>` em REPLY a um aviso: a primeira palavra digitada. Quem decide confere se ela é o
     #: id de OUTRA pendência (28.26); se for, nada se decide. Sem isso o reply decidia o aviso e o id virava nota.
     ref_digitado: str | None = None
+    #: Por que uma mensagem foi à orquestradora (28.28): `comando` (`/orq`), `reply` (ao bot que a Central não mandou),
+    #: `pergunta` (pergunta solta do dono), `continuacao` (reply a uma resposta nossa de um repasse) ou `sem_destino`
+    #: (texto livre que a prévia recusou). Decide a resposta ao dono; o repasse é o mesmo.
+    repasse: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,6 +197,8 @@ def rotear(texto: str | None, *, fato: str | Fato | None = None) -> Intencao:
     m = _PARA_LIVRE.match(t)
     if m:
         return Intencao("para", alvo=m.group("alvo").strip(), texto=m.group("objetivo").strip())
+    if _eh_pergunta(normal):
+        return Intencao("orquestradora", texto=t, repasse="pergunta")
     return Intencao("livre", texto=t)
 
 
@@ -199,7 +222,7 @@ def _rotear_comando(t: str, f: Fato | None) -> Intencao:
     if cmd == "pendencias":
         return Intencao("pendencias")
     if cmd == "orq":
-        return Intencao("orquestradora", texto=resto)
+        return Intencao("orquestradora", texto=resto, repasse="comando")
     if cmd in ("aprovar", "vetar"):
         if f is not None and f.aprovacao:
             return Intencao(cmd, ref=f.ident, texto=resto, ref_digitado=resto.split()[0] if resto.split() else None)

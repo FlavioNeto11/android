@@ -41,7 +41,8 @@ import json
 import logging
 import re
 import time
-from collections.abc import Awaitable, Callable, Mapping
+import unicodedata
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -76,6 +77,43 @@ log = logging.getLogger("poc.avisos.entrada")
 
 #: Quem age pela conversa, na auditoria (decisão (b)): legível e sem o chat_id.
 OPERADOR_DO_TELEGRAM = "telegram:dono"
+#: O que o dono ouve quando a mensagem vai à orquestradora (28.28), pelo motivo do repasse. Nunca o texto do extrator do
+#: painel: "Diga onde ou por quem" não responde a uma pergunta.
+RESPOSTA_DO_REPASSE = {
+    "comando": "Recado guardado para a orquestradora (não executado).",
+    "reply": "Recado guardado para a orquestradora (não executado).",
+    "pergunta": "Recebi sua pergunta: a resposta vem por aqui, em resposta a esta mensagem.",
+    "continuacao": "Recebi, junto com a mensagem anterior: a resposta vem por aqui, em resposta a esta mensagem.",
+    "sem_destino": ("Não sei se isso é um pedido para um aparelho ou uma pergunta para mim. Se é pergunta, já repassei: a "
+                    "ANA responde por aqui. Se é pedido, mande de novo dizendo o aparelho (ex.: \"no android-12\")."),
+}
+#: No lugar de um nome de persona em texto que sai pelo canal (28.28; regra C-02: nome de persona não vai ao canal).
+PERSONA_OCULTA = "<persona>"
+
+
+def sem_nome_de_persona(texto: str, nomes: Iterable[str]) -> str:
+    """Troca nome, primeiro nome e @ de persona cadastrada por `PERSONA_OCULTA`, palavra inteira e sem diferença de
+    maiúscula ou acento. Vale para TODO texto que a conversa manda: as recusas e as perguntas da prévia vêm de texto
+    compartilhado com o painel, onde o nome pode aparecer (o exemplo "com a persona …" do extrator)."""
+    # "ANA" é o nome da IA da Central (decisão do dono, 03/10): uma persona chamada Ana não apaga a ANA das respostas.
+    alvos = sorted({n.strip().lstrip("@") for n in nomes if n and len(n.strip().lstrip("@")) >= 3
+                    and _sem_acento_minusculo(n.strip().lstrip("@")) != "ana"}, key=len, reverse=True)
+    if not alvos:
+        return texto
+    base = _sem_acento_minusculo(texto)
+    trocas: list[tuple[int, int]] = []
+    for nome in alvos:
+        for m in re.finditer(rf"(?<![\w@])@?{re.escape(_sem_acento_minusculo(nome))}(?!\w)", base):
+            if not any(a < m.end() and m.start() < b for a, b in trocas):
+                trocas.append((m.start(), m.end()))
+    for a, b in sorted(trocas, reverse=True):
+        texto = texto[:a] + PERSONA_OCULTA + texto[b:]
+    return texto
+
+
+def _sem_acento_minusculo(t: str) -> str:
+    # Um caractere por caractere (NFD sem as marcas), para as posições do texto original continuarem valendo.
+    return "".join(unicodedata.normalize("NFD", ch.lower())[0] for ch in t)
 #: A credencial é recusada sem guardar e apagada do canal quando ele deixa (contrato dos canais, §7); a resposta nunca
 #: ecoa o texto.
 RESPOSTA_CREDENCIAL = ("Isso parece senha ou código: não guardei, não repassei e apaguei a mensagem do chat. Senha "
@@ -818,10 +856,18 @@ class ConversaDoCanal:
         # Regra do CANAL (decisão (e)): reply a uma mensagem do bot que a Central não mandou é da orquestradora; reply
         # a uma mensagem da própria pessoa não é reply ao bot. A gramática comum só conhece o `/orq`.
         if responde_a is not None and enviada is None and not self.repo.da_pessoa(responde_a) and texto.strip():
-            return Intencao("orquestradora", texto=texto.strip())
+            return Intencao("orquestradora", texto=texto.strip(), repasse="reply")
         fato = enviada.get("fato") if enviada is not None else None
         if enviada is None and responde_a is not None and self.anexos is not None:
             fato = self._fato_do_anexo(responde_a)
+        # Reply a uma resposta NOSSA sem fato (28.28): continua a conversa da mensagem que a gerou. Se aquela foi
+        # repassada à orquestradora (ou falhou), esta vai junto, com o texto de antes, e não vira pedido novo ("no
+        # trello" depois de uma pergunta virava "Diga onde ou por quem").
+        if enviada is not None and not fato and enviada.get("entrada_id") is not None and texto.strip():
+            antes = self.repo.linha(int(str(enviada["entrada_id"])))
+            if antes is not None and str(antes.get("estado")) in ("orquestradora", "falhou") and antes.get("texto"):
+                return Intencao("orquestradora", texto=f"{str(antes['texto']).strip()} — {texto.strip()}",
+                                repasse="continuacao")
         return rotear(texto, fato=str(fato) if fato else None)
 
     def _fato_do_anexo(self, responde_a: str) -> str | None:
@@ -839,9 +885,7 @@ class ConversaDoCanal:
         if i.tipo == "vazia":
             self.repo.marcar(self._id(linha), "ignorada", intencao=i.tipo, de=("recebida",))
         elif i.tipo == "orquestradora":
-            self.repo.marcar(self._id(linha), "orquestradora", intencao=i.tipo, destino="orquestradora",
-                             de=("recebida",))
-            await self._responder(saida, linha, "Recado guardado para a orquestradora (não executado).")
+            await self._repassar(saida, linha, i)
         elif i.tipo == "ajuda":
             await self._feita(saida, linha, i, AJUDA)
         elif i.tipo == "identidade":
@@ -866,9 +910,35 @@ class ConversaDoCanal:
             await self._decidir(saida, linha, i)
         elif i.tipo == "responder":
             await self._responder_pergunta(saida, linha, i)
-        elif i.tipo in ("para", "livre"):
-            texto = texto_para_o_extrator(i.alvo or "", i.texto) if i.tipo == "para" else i.texto
-            await self._previa(saida, linha, i, texto, None)
+        elif i.tipo == "para":
+            await self._previa(saida, linha, i, texto_para_o_extrator(i.alvo or "", i.texto), None)
+        elif i.tipo == "livre":
+            try:
+                await self._previa(saida, linha, i, i.texto, None)
+            except RecusaDaCentral:
+                # 28.28: texto livre que a prévia recusa (quase sempre "sem destino") não vira falha com o texto do
+                # extrator do painel; vai à orquestradora, e o dono ouve as duas saídas.
+                await self._repassar(saida, linha, Intencao("orquestradora", texto=i.texto, repasse="sem_destino"))
+
+    def _nomes_de_persona(self) -> list[str]:
+        """Os nomes que não saem pelo canal. A porta é opcional (as portas de teste antigas não a têm); erro de leitura
+        não derruba a resposta, mas fica no log."""
+        ler = getattr(self.portas, "nomes_de_persona", None)
+        if ler is None:
+            return []
+        try:
+            return list(ler())
+        except Exception:  # noqa: BLE001 - a resposta sai mesmo assim; o nome do exemplo é o único risco
+            log.exception("telegram: nomes de persona indisponíveis")
+            return []
+
+    async def _repassar(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
+        """A mensagem fica guardada para a orquestradora (estado `orquestradora`), que responde; a Canais entrega a
+        resposta em reply à mensagem do dono (o caminho inteiro em docs/dominios/canais.md, 28.28)."""
+        self.repo.marcar(self._id(linha), "orquestradora", intencao=i.tipo, destino="orquestradora",
+                         previa={"repasse": i.repasse or "comando", "texto": i.texto},
+                         de=("recebida", "pergunta"))
+        await self._responder(saida, linha, RESPOSTA_DO_REPASSE.get(i.repasse or "", RESPOSTA_DO_REPASSE["comando"]))
 
     async def _feita(self, saida: SaidaDaConversa, linha: Linha, i: Intencao, texto: str, *, alvo: str | None = None,
                      run_id: str | None = None) -> None:
@@ -1082,6 +1152,7 @@ class ConversaDoCanal:
 
     async def _enviar(self, saida: SaidaDaConversa, texto: str, *, origem: str, responde_a: str | None = None,
                       botoes: list[tuple[str, str]] | None = None, entrada_id: int | None = None) -> None:
+        texto = sem_nome_de_persona(texto, self._nomes_de_persona())
         try:
             enviada = await saida.responder(texto, responde_a=responde_a, botoes=botoes)
         except FalhaDeEnvio as falha:

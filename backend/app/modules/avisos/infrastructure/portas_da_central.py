@@ -71,6 +71,14 @@ class PortasReais:
         return f"{leitura.descricao}\n\n{rodape}"
 
     # ------------------------------------------------------------------ leitura
+    def nomes_de_persona(self) -> list[str]:
+        """Nome de exibição, primeiro e último nome e @ das personas: o que a conversa tira de todo texto que manda pelo
+        canal (28.28). Inclui as aposentadas: o nome continua sendo de uma pessoa da plataforma."""
+        nomes: list[str] = []
+        for r in self.db.query("SELECT display_name, first_name, last_name, username FROM instagram_profiles"):
+            nomes.extend(str(v) for v in (r["display_name"], r["first_name"], r["last_name"], r["username"]) if v)
+        return nomes
+
     def status(self) -> str:
         h = self._saude()
         online = self._online()
