@@ -266,10 +266,13 @@ class AnthropicProvider:
         u = resp.usage
         read = getattr(u, "cache_read_input_tokens", 0) or 0
         write = getattr(u, "cache_creation_input_tokens", 0) or 0
+        # 31.31: a parte gravada por 1 h (o plano da execução, 31.30) custa 2x a entrada, e não 1,25x.
+        write_1h = getattr(getattr(u, "cache_creation", None), "ephemeral_1h_input_tokens", 0) or 0
         respondeu = getattr(resp, "model", None) or model
         trocou = fallback_info(resp)
         usage = Usage(calls=1, input_tokens=(u.input_tokens or 0) + read + write, output_tokens=u.output_tokens or 0,
-                      cache_read_tokens=read, cache_write_tokens=write, role=role, model=respondeu,
+                      cache_read_tokens=read, cache_write_tokens=write, cache_write_1h_tokens=write_1h,
+                      role=role, model=respondeu,
                       tier=tier, with_image=with_image, ms=round((time.monotonic() - t0) * 1000),
                       requested_model=model, fallback=trocou, provider=self.role.provider if self.role else self.name)
         if trocou:

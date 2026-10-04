@@ -197,6 +197,7 @@ def gasto_usd_por_conta(db: Database, cfg: Config, since: str = "", *, until: st
         "SELECT provider, model, SUM(CASE WHEN usd IS NULL THEN input_tokens ELSE 0 END) input_tokens,"
         " SUM(CASE WHEN usd IS NULL THEN cache_read ELSE 0 END) cache_read,"
         " SUM(CASE WHEN usd IS NULL THEN cache_write ELSE 0 END) cache_write,"
+        " SUM(CASE WHEN usd IS NULL THEN COALESCE(cache_write_1h, 0) ELSE 0 END) cache_write_1h,"
         " SUM(CASE WHEN usd IS NULL THEN output_tokens ELSE 0 END) output_tokens,"
         " SUM(COALESCE(usd, 0)) usd_declarado FROM ai_calls"
         f" WHERE {filtro} AND COALESCE(provider,'') <> 'simulated' GROUP BY provider, model", params)

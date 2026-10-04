@@ -110,6 +110,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `learning/domain/falhas.py`, no backlog, no diagnóstico e no rótulo do painel. O composto válido segue comprovando.
 - Prova `simulated`: `backend/tests/test_seletor_impossivel.py` (5, um de ponta a ponta). Real: `not_run`.
 
+## 2026-10-04 — 31.31: a gravação de cache de 1 h à parte no custo (branch feat/31-31-cache-1h-no-custo, migração 092)
+
+- Desde o 31.30, o prefixo do plano vai ao cache por 1 h. A gravação de 1 h custa 2x a entrada, e a de 5 min, 1,25x.
+  Com a coluna única `cache_write`, a estimativa ao vivo ficava abaixo do real nos planos frios.
+- Migração 092: `ai_calls.cache_write_1h`, a parte de 1 h de `cache_write`. O provedor Anthropic lê
+  `usage.cache_creation.ephemeral_1h_input_tokens`, e `costs.extra_1h` soma a diferença de preço no teto
+  (`spent_usd`), por origem (`usd_por`), no saldo por conta, no `/api/usage` e na projeção. A linha sem a coluna custa
+  como antes. Os relatórios do aprendizado e do desempenho ainda contam a gravação a 1,25x.
+- Prova `simulated`: `backend/tests/test_cache_de_1h_no_custo.py` (6). PostgreSQL: `not_run` (fica para a suíte).
+  Real: `not_run`.
+
 ## 2026-10-04 — 29.53: o portão de PostgreSQL de uma suíte, por escrito (branch docs/29-53-portao-pg, só docs)
 
 - `docs/banco.md` ("O portão de PostgreSQL de uma suíte") e `.claude/rules/testes.md`. Toda suíte roda PG dirigido

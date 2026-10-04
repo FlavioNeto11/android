@@ -84,6 +84,7 @@ class Usage:
     output_tokens: int = 0
     cache_read_tokens: int = 0                # parte da entrada lida do cache (cobrada a 0,1×)
     cache_write_tokens: int = 0               # parte da entrada gravada no cache (cobrada a 1,25×)
+    cache_write_1h_tokens: int = 0            # 31.31: parte de `cache_write_tokens` gravada por 1 h (cobrada a 2×)
     role: str = ""                            # plan | decide | verify
     model: str = ""                           # modelo que RESPONDEU (é por ele que a API cobra)
     tier: int = 0

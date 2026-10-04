@@ -1,0 +1,11 @@
+-- A gravação de cache de 1 h à parte em `ai_calls` (item 31.31, Fase 31; número 092 reservado pela orquestradora em
+-- 04/10).
+--
+-- Por quê: desde o 31.30, o prefixo do plano da execução vai ao cache da Anthropic com `ttl: 1h`. A gravação de 1 h custa
+-- 2x a entrada base, e a de 5 min, 1,25x. `ai_calls.cache_write` é uma coluna só, cobrada pelo 3º preço de `ai.prices`
+-- (o de 5 min): a estimativa ao vivo (teto do dia, painel de uso, saldo por conta) ficava abaixo do real nos planos frios.
+--
+-- `cache_write_1h`: a PARTE de `cache_write` gravada com validade de 1 h (`usage.cache_creation.ephemeral_1h_input_tokens`).
+-- `cache_write` continua sendo o total gravado, como antes. O custo da linha soma a diferença de preço só sobre esta
+-- parte (`planning/costs.extra_1h`). NULO no legado e nos provedores sem cache de 1 h, que é o mesmo que 0.
+ALTER TABLE ai_calls ADD COLUMN cache_write_1h INTEGER;
