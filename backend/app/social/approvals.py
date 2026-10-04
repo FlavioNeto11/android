@@ -43,6 +43,9 @@ class Approval:
     #: querendo dizer "não dá para saber", que é mais honesto do que carimbar `panel` em todas elas.
     decided_by: str | None = None
     interaction_id: str | None = None                        # preenchido no commit: o efeito que esta decisão liberou
+    #: 29.30: a imagem da persona que a etapa vai publicar (`image_id` dos argumentos da etapa), para quem aprova VER
+    #: o que sai, e não só a legenda. Lida da etapa, sem coluna nova: a aprovação aponta para ela por `step_id`.
+    image_id: str | None = None
 
     @property
     def content(self) -> str | None:
@@ -53,7 +56,7 @@ class Approval:
         d = {k: getattr(self, k) for k in
              ("id", "profile_id", "run_id", "objective_id", "step_id", "capability", "target", "summary",
               "generated_content", "approved_content", "status", "created_at", "decided_at", "decided_note",
-              "decided_by", "interaction_id")}
+              "decided_by", "interaction_id", "image_id")}
         d["content"] = self.content
         return d
 
@@ -68,7 +71,17 @@ class ApprovalStore:
                         target=row["target"], summary=row["summary"], generated_content=row["generated_content"],
                         approved_content=row["approved_content"], status=row["status"], created_at=row["created_at"],
                         decided_at=row["decided_at"], decided_note=row["decided_note"],
-                        decided_by=row["decided_by"], interaction_id=row["interaction_id"])
+                        decided_by=row["decided_by"], interaction_id=row["interaction_id"],
+                        image_id=self._imagem_da_etapa(row["step_id"]))
+
+    def _imagem_da_etapa(self, step_id: str | None) -> str | None:
+        """O `image_id` dos argumentos da etapa (29.30), ou `None`. Argumento ilegível não derruba a lista."""
+        if not step_id:
+            return None
+        bruto = self.db.scalar("SELECT bindings FROM steps WHERE id=?", (step_id,))
+        argumentos = loads(bruto, {})
+        valor = argumentos.get("image_id") if isinstance(argumentos, dict) else None
+        return valor if isinstance(valor, str) and valor else None
 
     def get(self, approval_id: str) -> Approval | None:
         row = self.db.one("SELECT * FROM pending_approvals WHERE id=?", (approval_id,))

@@ -1023,3 +1023,6 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
 .atributosSeta { transition: transform 0.12s ease; }
 .atributosSeta[data-aberto] { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .atributosSeta { transition: none; } }
+
+/* 29.30: a imagem que a publicação aprovada vai levar. */
+.aprovacaoImagem { display: block; max-width: min(240px, 100%); border-radius: var(--radius-md); border: 1px solid var(--border-1); }

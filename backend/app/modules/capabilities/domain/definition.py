@@ -122,6 +122,8 @@ class ExecutionContract:
     max_attempts: int = 3
     #: Estratégias que servem a esta capability. Um nó só pode pedir estas.
     strategies: tuple[StrategyKind, ...] = ()
+    #: 29.30: as capabilities internas que o plano põe imediatamente antes desta, com os argumentos dela.
+    preparo: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

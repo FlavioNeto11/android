@@ -1336,6 +1336,9 @@ export interface Approval {
   decided_by: string | null;
   /** O efeito que esta decisão liberou — preenchido só no commit, quando a interação nasce. */
   interaction_id: string | null;
+  /** 29.30: a imagem da persona que a etapa vai publicar (CREATE_POST), para quem aprova ver o que sai. Ausente nas
+   *  aprovações sem imagem (e no backend anterior ao campo). */
+  image_id?: string | null;
 }
 
 export interface ApprovalDecisionItem {

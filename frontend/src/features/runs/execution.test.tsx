@@ -280,6 +280,20 @@ describe('Textos — os N rascunhos da execução, lidos e decididos juntos', ()
     expect(text(el)).toContain('não escreve nada, só precisa do seu aval');
   });
 
+  it('29.30: a publicação mostra a imagem que vai ao feed ao lado da legenda; o comentário não ganha imagem', async () => {
+    const post = { ...rascunho('a-3', 'obj-3', 'Fim de tarde'), capability: 'CREATE_POST', target: null,
+                   summary: 'Publicar a imagem no feed', image_id: 'img-9' };
+    backend.on('GET', /^\/api\/approvals$/, () => json([rascunho('a-1', 'obj-1', 'Que post lindo!'), post]));
+
+    const el = await render(<Textos detail={makeRunDetail()} />);
+    await waitFor(() => expect(text(el)).toContain('Fim de tarde'));
+
+    const imagens = el.querySelectorAll('img');
+    expect(imagens).toHaveLength(1);
+    expect(imagens[0]?.getAttribute('src')).toBe('/api/personas/p-a-3/images/img-9');
+    expect(imagens[0]?.getAttribute('alt')).toContain('Imagem que será publicada');
+  });
+
   it('trocar de aba não apaga o que a pessoa já reescreveu', async () => {
     // O RunView monta só a aba ativa, então a aba é DESMONTADA ao sair dela. Quem reescreveu oito textos não pode
     // perdê-los por ter ido conferir uma evidência — por isso o texto em edição mora no gancho, que fica acima.

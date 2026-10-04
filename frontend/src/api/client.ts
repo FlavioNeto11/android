@@ -416,6 +416,11 @@ export function profileAvatarUrl(profileId: string, temFoto: boolean | undefined
   return temFoto ? `${API_BASE}/instagram/profiles/${enc(profileId)}/avatar` : undefined;
 }
 
+/** 29.30: URL de uma imagem da persona (a que a publicação aprovada vai levar). A rota só serve a imagem pronta. */
+export function personaImageUrl(personaId: string, imageId: string): string {
+  return `${API_BASE}/personas/${enc(personaId)}/images/${enc(imageId)}`;
+}
+
 /** URL do ícone do aplicativo, extraído do próprio APK. Só vale pedir quando `release.has_icon`: sem ícone
  *  servível (o caso do ícone adaptativo em XML) a rota responde 404 de propósito. */
 export function releaseIconUrl(releaseId: string): string {

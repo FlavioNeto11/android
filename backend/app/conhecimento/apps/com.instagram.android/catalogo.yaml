@@ -486,11 +486,13 @@ acoes:
   - key: CREATE_POST
     title: Publicar a imagem no feed com a legenda aprovada
     interaction_type: post_published
-    # `image_id` é obrigatório em PUT_MEDIA_IN_GALLERY e aqui herda dela (a aprovação mostra a imagem). `posts_antes`
+    # `image_id` é a imagem da persona a publicar (a aprovação a mostra). O `preparo` põe PUT_MEDIA_IN_GALLERY logo
+    # antes, com o mesmo `image_id`: a interna não é oferecida ao planejador, quem a pede é este contrato. `posts_antes`
     # vem de READ_POSTS_COUNT e é o que a prova local compara. Sem alvo: publicar não tem OUTRA pessoa (ADR-055 conta
     # contas por alvo); por isso não há `counterparty` nem binding `username`/`target`.
-    optional_bindings: [image_id, posts_antes, content_brief, content, content_verbatim]
-    inherited_bindings: [image_id]
+    bindings: [image_id]
+    optional_bindings: [posts_antes, content_brief, content, content_verbatim]
+    preparo: [PUT_MEDIA_IN_GALLERY]
     precondition: A imagem está na galeria do aparelho, o editor de nova publicação está aberto com ela escolhida e a
       legenda já foi escrita e aprovada.
     goal: Publicar a imagem escolhida com a legenda aprovada. Depois do Share, voltar ao PRÓPRIO perfil para a
