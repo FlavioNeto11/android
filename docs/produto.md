@@ -54,8 +54,8 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
   balanceamento), o comando sem os destinos e as perguntas; destino tirado do texto só executa depois de confirmado.
   Se faltar dado essencial ou houver ambiguidade, a execução fica `needs_input` com as perguntas — a IA nunca
   inventa. **Não há campo de senha no Comando** (ADR-040): a senha fica na conta da persona.
-- **Menu lateral e cabeçalho (revisão de UX, 30/09).** As dez seções (Painel, Personas, Aplicativos, Execuções, Pedidos, Aprendizado,
-  Infraestrutura, Configuração, Diagnóstico e Pendências) ficam num menu lateral recolhível (ícone e rótulo; só ícone quando
+- **Menu lateral e cabeçalho (revisão de UX, 30/09).** As onze seções (Painel, Personas, Aplicativos, Execuções, Pedidos, Aprendizado,
+  Infraestrutura, Configuração, Diagnóstico, Canais e Pendências) ficam num menu lateral recolhível (ícone e rótulo; só ícone quando
   recolhido; **abre expandido a partir de 1280 px** e recolhido abaixo, e a escolha da pessoa fica guardada no navegador e vence
   o padrão; abaixo de 1024 px vira gaveta, aberta pelo botão "Menu", que traz o selo de pendências, com o Tab preso dentro e Esc
   para fechar). **No celular (abaixo de 768 px) o cabeçalho é uma linha só de 56 px**: Menu, marca, semáforo de saúde e o botão
@@ -249,6 +249,11 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
     tem a cor da situação (aviso para sucesso sem prova completa);
   - com mais de 3 aparelhos, os comprovados começam recolhidos ("Ver etapas e efeitos (…)") e o resto fica à vista;
   - campo desconhecido aparece em chave/valor, e linha que não é objeto cai para a árvore genérica.
+- **Canais (04/10, item 32.5; só leitura).** `#/canais`, no menu junto de Diagnóstico: três cartões (Aviso pelo Telegram, Conversa pelo
+  Telegram, Trello) com selo ligado, desligado ou com problema, "há X min" e as contagens em frases ("3 avisos enviados, 1 na fila"); o
+  motivo da última falha de envio vem traduzido e os códigos de problema viram frases. Relê a cada 30 s e não tem botão de
+  escrita (ligar, desligar e reenviar ficam na configuração). Nunca mostra conteúdo de aviso, mensagem ou cartão
+  (`GET /api/canais/estado`, adendo v1.11 do contrato). Código em `frontend/src/features/canais/`.
 - **Diagnóstico: "Outros dados" legível (29/09, mesmo pedido).** Era uma árvore aninhada sem fim, em que o teste de
   escala repetia a lista de aparelhos em cada leva. Agora cada chave tem um bloco com título e explicação
   (`frontend/src/features/diagnostics/OutrosDados.tsx`, leitura em `outros.ts`):

@@ -5195,3 +5195,32 @@ Prova:
 - `simulated`: `backend/tests/test_learning_reproducao_repetida.py`, `test_learning_nasceu_em_validacao.py` e
   `test_validacoes_listagem.py::test_a_listagem_filtra_por_item_e_por_execucao`.
 - `not_run`: o central depois do deploy.
+
+## Adendo v1.11 (04/10/2026; número provisório, a orquestradora confirma no merge; item 32.5) — `GET /api/canais/estado`, o estado dos canais
+
+Uma rota nova, **só leitura**, atrás do login como toda rota `/api/` do painel (sessão ou credencial; sem elas, `401`
+`unauthorized`; `POST`, `PUT`, `PATCH` e `DELETE` no caminho dão `405`). Sem migração e sem config nova. Alimenta a tela
+**Canais** do painel (`#/canais`), que relê a cada 30 s.
+
+A resposta é uma lista **fechada** de números, horas (ISO-8601) e códigos. Nunca título nem corpo de aviso, texto de
+mensagem, `chat_id`, id de membro, nome, token, URL com segredo, nem id de quadro, lista ou cartão. O motivo da última falha
+de envio é um código derivado do `ultimo_erro` por regra (o texto dele não sai: pode carregar a URL do bot). Dos
+problemas da saúde sai só o `code`.
+
+- `gerado_em`
+- `aviso_telegram`: `ligado` (`avisos.enabled`), `segredo_presente` (booleano: token do bot E chat no `.env`), `fila`
+  (`pendente`, `enviando`, `enviado`, `falhou`, `incerto`, `descartado`; todas presentes, com zero), `ultimo_envio_em`,
+  `ultima_falha` (`null` ou `{em, motivo}`, `motivo` em `rede` | `401` | `429` | `tempo_esgotado` | `outro`; a hora é a do
+  início da tentativa, e só conta a linha ainda `pendente` ou `falhou`), `problemas` (códigos, p. ex. `avisos_sem_segredo`).
+- `conversa_telegram`: `ligada` (`avisos.enabled` E `avisos.entrada.enabled`), `ultima_leitura_em` (a mensagem mais recente
+  recebida; o marco de 1ª subida não conta), `entradas` (por estado: `recebida`, `ignorada`, `recusada`, `limitada`,
+  `orquestradora`, `pergunta`, `executando`, `feita`, `cancelada`, `falhou`, `aviso`; um estado desconhecido soma em
+  `outro`), `problemas` (só `telegram_entrada_*`).
+- `trello`: `ligado`, `webhook_ligado`, `cadastro_automatico`, `ultima_reconciliacao_em` (o `atualizado_em` mais recente
+  do cursor), `cartoes` (`ativo`, `arquivado`, `criando`), `entradas` (como acima, `canal='trello'`), `problemas` (só
+  `trello_*`, sem repetir).
+
+Prova:
+- `simulated`: `backend/tests/test_canais_estado.py` (conjunto de chaves travado; nenhum valor carrega o texto semeado nas
+  tabelas nem segredo; `401` sem sessão; `405` nos métodos de escrita) e `frontend/src/features/canais/CanaisPage.test.tsx`.
+- `not_run`: o central depois do deploy (a conferência no navegador vem depois).

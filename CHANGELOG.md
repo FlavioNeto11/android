@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 32.5: a tela Canais no painel, só leitura (branch canais/32-5-tela-canais)
+
+- `GET /api/canais/estado` (`modules/avisos/presentation/estado.py`, consulta em `infrastructure/estado_sql.py`; adendo v1.11 de
+  `docs/api-contract.md`) e a tela `#/canais` (`frontend/src/features/canais/`), no menu junto de Diagnóstico: três cartões (aviso
+  pelo Telegram, conversa pelo Telegram, Trello) com selo ligado / desligado / com problema, "há X min", contagens em
+  português e o motivo da última falha traduzido. A resposta é lista fechada de números, horas e códigos: nunca conteúdo de aviso,
+  mensagem ou cartão, nem segredo. Sem escrita, sem migração, sem config nova.
+- Prova `simulated`: `backend/tests/test_canais_estado.py` (19) e `frontend/src/features/canais/CanaisPage.test.tsx`. `not_run`:
+  o central; a conferência no navegador vem depois do deploy.
+
 ## 2026-10-04 — 29.36: o motivo do aparelho remoto parado acompanha a conexão e a queda (branch fix/29-36-detalhe-do-externo-parado, sem migração)
 
 - `DeviceManager._recalcular_motivo_do_parado`: reescreve o `state_detail` de um aparelho de worker `stopped` com o
