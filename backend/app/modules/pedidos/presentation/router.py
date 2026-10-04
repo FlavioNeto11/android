@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 
 from app.modules.pedidos.infrastructure.servico import ESTADOS, ErroDeApi, PedidosApi
 from app.modules.pedidos.presentation.schemas import (AtivarCorpo, BuscaCorpo, CancelarCorpo, CriarCorpo, EdicaoCorpo,
-                                                      LerAvisosCorpo, PausarCorpo, PreviaCorpo, RetomarCorpo, selecao, utc)
+                                                      LerAvisosCorpo, PausarCorpo, PreviaCorpo, ResolverIncertaCorpo, RetomarCorpo, selecao, utc)
 from app.security.sessions import operador_atual
 
 router = APIRouter(prefix="/api/pedidos")
@@ -149,6 +149,14 @@ async def ocorrencias(request: Request, pedido_id: str, estado: str | None = Non
                       antes_de: str | None = None) -> dict[str, object]:
     return _chamar(lambda: _api(request).ocorrencias(pedido_id, estado=estado, origem=origem, de=de, ate=ate,
                                                      limit=limit, antes_de=antes_de))
+
+
+@router.post("/{pedido_id}/ocorrencias/{ocorrencia_id}/resolver")
+async def resolver_incerta(request: Request, pedido_id: str, ocorrencia_id: str, corpo: ResolverIncertaCorpo) -> dict[str, object]:
+    """A pessoa conferiu uma ocorrência `incerta` e a dá por resolvida (28.21): grava quem, quando e a nota (obrigatória).
+    NÃO reexecuta e NÃO muda o estado (segue `incerta`); só a tira das pendências, e então o `retomar` do pedido vale.
+    Repetir é idempotente (200, sem regravar). Devolve a ocorrência."""
+    return _chamar(lambda: _api(request).resolver_incerta(pedido_id, ocorrencia_id, corpo.nota, operador_atual()))
 
 
 @router.get("/{pedido_id}/execucoes")

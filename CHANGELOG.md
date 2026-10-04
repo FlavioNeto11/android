@@ -116,6 +116,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Decisão registrada em `docs/design/pedidos-laco.md` (o "parâmetro a revisitar com números no 28.12").
 - Testes: `test_pedidos_retentativa.py` (3 novos: sem commit → `falhou` e a hora seguinte roda; com commit → `incerta`;
   conta nas falhas seguidas). Prova simulada; a real é a próxima ocorrência que parar no teto depois do deploy.
+## 2026-10-04 — 28.21: a pessoa resolve a ocorrência incerta e o pedido deixa de ficar preso (branch canais/28-21-resolver-incerta, migração 095)
+
+- Achado real do 28.12: `retomar` dava 409 `pendencia_aberta` para sempre num pedido com ocorrência `incerta`, porque ela só
+  saía das pendências quando uma ocorrência posterior concluía; a única saída era cancelar.
+- Migração 095: `pedido_ocorrencias.resolvida_em`, `resolvida_por`, `resolvida_nota` (nulas).
+- `POST /api/pedidos/{id}/ocorrencias/{oid}/resolver` (nota obrigatória): só marca, a ocorrência segue `incerta`, nada é
+  reexecutado; idempotente; 404/409 fora do caso. `pendencias` ignora a incerta resolvida e mantém a regra antiga.
+- Painel: "Marcar como resolvida" na pendência (diálogo com nota) e quem/quando/nota na guia Ocorrências.
+- Contrato: adendo v1.15 em `docs/api-contract.md`. Prova `simulated`: `backend/tests/test_pedidos_resolver_incerta.py` e
+  `PedidosPage.test.tsx`; `not_run` no central.
 
 ## 2026-10-04 — 29.36: o motivo do aparelho remoto parado acompanha a conexão e a queda (branch fix/29-36-detalhe-do-externo-parado, sem migração)
 

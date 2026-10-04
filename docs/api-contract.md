@@ -3318,8 +3318,8 @@ Quem age é sempre a **pessoa** (`ator = pessoa`, de `estados.py`); as arestas d
   `422 backfill_grande_demais`. A chave leva o instante do slot e a origem, então repetir o gesto não duplica
   (`ja_existentes` conta os que já estavam).
 - **Responder a uma pendência** não ganha rota nova: aprovação segue as rotas de aprovação, pergunta segue
-  `POST /api/runs/{id}/successor` (ADR-047) e ocorrência `incerta` segue a resolução de objetivo; depois, `retomar` devolve
-  o pedido a `ativo` (a aresta `aguardando_pessoa → ativo` é da pessoa e não é automática em `estados.py:79`).
+  `POST /api/runs/{id}/successor` (ADR-047) e ocorrência `incerta` segue `POST /api/pedidos/{id}/ocorrencias/{oid}/resolver`
+  (v1.15, item 28.21); depois, `retomar` devolve o pedido a `ativo` (a aresta `aguardando_pessoa → ativo` é da pessoa e não é automática em `estados.py:79`).
 
 ### Avisos e Pendências
 
@@ -3500,8 +3500,8 @@ contrato, salvo o abaixo.
 - `cancelar`: `execucoes_em_curso` traz só `run_id` (`entregue` não é conhecido: `RunService.cancel` roda dentro de
   `acoes.cancelar`).
 - `pendencias` (aguardando_pessoa): `pergunta` = execução do pedido em `needs_input`; `aprovacao` = `pending_approvals`
-  pendente de execução do pedido; `ocorrencia_incerta` = `incerta` sem ocorrência posterior `concluida` (heurística: a 067
-  não marca "resolvida").
+  pendente de execução do pedido; `ocorrencia_incerta` = `incerta` ainda não resolvida pela pessoa (`resolvida_em` nulo, v1.15) e
+  sem ocorrência posterior `concluida` (a regra antiga, que fica).
 - A prévia devolve `autonomia.exige_aprovacao`/`recusado` pela TABELA do §6.4 do desenho (por grau), não pelas capacidades do
   plano, que só se conhecem depois de planejar (sem IA na prévia). `custo` fica `sem_base` sem histórico nem
   `orcamento_ocorrencia_usd`. Limite conhecido do orçamento: o excesso máximo é o custo de UMA ocorrência aberta, limitado
@@ -5264,3 +5264,35 @@ Prova:
 - `simulated`: `backend/tests/test_canais_estado.py` (conjunto de chaves travado; nenhum valor carrega o texto semeado nas
   tabelas nem segredo; `401` sem sessão; `405` nos métodos de escrita) e `frontend/src/features/canais/CanaisPage.test.tsx`.
 - `not_run`: o central depois do deploy (a conferência no navegador vem depois).
+
+## Adendo v1.15 (04/10/2026; número da orquestradora; item 28.21) — a pessoa resolve a ocorrência incerta
+
+Aditivo ao v0.45 (pedidos). Migração **095**. Achado real do 28.12: o pedido com uma ocorrência `incerta` ia a
+`aguardando_pessoa` e ficava preso, porque `retomar` respondia 409 `pendencia_aberta` e a incerta só saía das pendências
+quando uma ocorrência POSTERIOR concluía, o que um pedido parado não gera. A única saída era cancelar.
+
+- **`POST /api/pedidos/{id}/ocorrencias/{oid}/resolver`**, corpo `{nota}`: a pessoa conferiu no aparelho o que a ocorrência
+  fez e a dá por resolvida. **Só marca**: a ocorrência CONTINUA `incerta`, nada é reexecutado e o estado do pedido não muda.
+  Devolve a ocorrência (`OcorrenciaDTO`) com os campos novos.
+  - `nota` é **obrigatória** e não vazia depois do `strip` (422 `nota_obrigatoria`, também para campo ausente), com o teto de
+    500 caracteres da quarentena (29.24); acima disso, 422 do contrato.
+  - 404 `not_found` se o pedido ou a ocorrência não existe, ou se a ocorrência é de outro pedido. 409 `invalid_state`
+    (com `estado`) se a ocorrência não está `incerta`.
+  - **Repetir é idempotente**: numa já resolvida, 200 com o que foi gravado na primeira vez; a nota nova é ignorada (a
+    trilha não é reescrita) e o evento não é reemitido. O `UPDATE` tem CAS (`estado='incerta' AND resolvida_em IS NULL`),
+    então duas chamadas concorrentes gravam uma só.
+  - `resolvida_por` é o operador da sessão (`panel` sem sessão), `resolvida_em` o relógio do serviço de pedidos.
+  - Evento: o `pedido.ocorrencia.updated` de sempre (nível `warn`, porque segue incerta), já com os campos novos.
+- **`OcorrenciaDTO`** (detalhe, `ocorrencias_recentes`, lista de ocorrências, evento e snapshot) ganha `resolvida_em`,
+  `resolvida_por` e `resolvida_nota`, todos `null` até alguém resolver. Um cliente antigo os ignora.
+- **`pendencias`** deixa de listar a incerta com `resolvida_em` preenchido; a regra antiga (ocorrência posterior `concluida`)
+  continua. Sem outra pendência, `POST /api/pedidos/{id}/retomar` passa a valer (`aguardando_pessoa → ativo`). Resolver uma
+  incerta não libera `pergunta` nem `aprovacao` do mesmo pedido.
+- **Painel:** no aviso "Este pedido espera você", a pendência `ocorrencia_incerta` ganha "Marcar como resolvida" (diálogo com
+  a nota obrigatória); a guia Ocorrências mostra quem, quando e a nota.
+
+Prova:
+- `simulated`: `backend/tests/test_pedidos_resolver_incerta.py` (retomar 409 antes; nota; quem/quando/nota e estado
+  incerto; pendências vazias e retomar 200; idempotência; 409; 404; evento; sessão; 401) e
+  `frontend/src/features/pedidos/PedidosPage.test.tsx` (fluxo do botão, 409, exibição).
+- `not_run`: o central depois do deploy (a migração 095 e o fluxo no painel).

@@ -142,6 +142,14 @@ class CancelarCorpo(_Corpo):
     motivo: str | None = Field(default=None, max_length=200)
 
 
+class ResolverIncertaCorpo(_Corpo):
+    """Uma pessoa dá a ocorrência `incerta` por resolvida (28.21). A nota é OBRIGATÓRIA, como a da quarentena (29.24): é o
+    que diz depois o que foi conferido. Sem `min_length` de propósito: vazio e só espaços caem juntos no mesmo 422
+    `nota_obrigatoria` do serviço, em vez de um deles virar o 422 genérico do pydantic."""
+
+    nota: str = Field(default="", max_length=500)
+
+
 class BuscaCorpo(BaseModel):
     """Corpo de `POST /api/pedidos/busca` (29.26): a mesma listagem de `GET /api/pedidos`, com o termo `q` (texto livre
     digitado pela pessoa, procurado no título e no objetivo) no corpo e não na URL: query string vira linha de log de

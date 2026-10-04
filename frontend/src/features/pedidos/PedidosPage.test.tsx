@@ -228,9 +228,74 @@ describe('detalhe e navegação por hash', () => {
     expect(text(aviso)).toContain('A ocorrência de 02/10 terminou incerta');
     expect(text(aviso)).toContain('confira no aparelho se a ação aconteceu');
     expect(aviso.querySelector('a[href="#/execucoes/run-5"]')).not.toBeNull();
-    expect(aviso.querySelector('button')?.textContent).toContain('Retomar');
+    expect(allByRole('button', /Retomar/, aviso)).toHaveLength(1);
+    expect(allByRole('button', /Marcar como resolvida/, aviso)).toHaveLength(1);
     // o aviso fica antes das guias
     expect(aviso.compareDocumentPosition(container.querySelector('[role="tablist"]') as HTMLElement) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('28.21: "Marcar como resolvida" exige a nota, manda a nota, relê o pedido e o Retomar passa a valer', async () => {
+    let resolvida = false;
+    const incerta = makeOcorrencia({ id: 'oc_i', estado: 'incerta', run_id: 'run-5', previsto_para: '2026-10-02T22:00:00Z' });
+    backend.on('GET', /^\/api\/pedidos\/ped_a1$/, () => json(detalhe(ATIVO, {
+      estado: 'aguardando_pessoa', acoes_permitidas: ['retomar', 'cancelar'],
+      ocorrencias_recentes: [resolvida
+        ? { ...incerta, resolvida_em: '2026-10-04T10:00:00Z', resolvida_por: 'Ana', resolvida_nota: 'a mensagem não saiu' }
+        : incerta],
+      pendencias: resolvida ? [] : [{ tipo: 'ocorrencia_incerta', ref: 'oc_i', run_id: null, ocorrencia_id: 'oc_i', desde: '2026-10-02T22:10:00Z' }],
+    })));
+    backend.on('POST', /^\/api\/pedidos\/ped_a1\/ocorrencias\/oc_i\/resolver$/, () => {
+      resolvida = true;
+      return json({ ...incerta, resolvida_em: '2026-10-04T10:00:00Z', resolvida_por: 'Ana', resolvida_nota: 'a mensagem não saiu' });
+    });
+    await irPara({ tela: 'pedidos', segmentos: ['ped_a1'] });
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Este pedido espera você'));
+    await click(byRole('button', /Marcar como resolvida/));
+    expect(text(modal())).toContain('A ocorrência continua marcada como incerta');
+    // em branco: o erro aparece junto do campo e nada é enviado
+    await click(byRole('button', 'Confirmar', modal()));
+    expect(text(modal())).toContain('Diga o que você conferiu');
+    expect(backend.callsTo('POST', /resolver$/)).toHaveLength(0);
+    await setValue(modal().querySelector('textarea') as HTMLTextAreaElement, '   ');
+    await click(byRole('button', 'Confirmar', modal()));
+    expect(backend.callsTo('POST', /resolver$/)).toHaveLength(0);
+    await setValue(modal().querySelector('textarea') as HTMLTextAreaElement, '  a mensagem não saiu  ');
+    await click(byRole('button', 'Confirmar', modal()));
+    await waitFor(() => expect(backend.callsTo('POST', /resolver$/)).toHaveLength(1));
+    expect(backend.callsTo('POST', /resolver$/)[0]?.body).toEqual({ nota: 'a mensagem não saiu' });
+    await waitFor(() => expect(text(container)).toContain('Nenhuma decisão aberta: já dá para retomar.'));
+    expect(toasts()).toContain('Ocorrência marcada como resolvida');
+    expect(allByRole('button', /Marcar como resolvida/)).toHaveLength(0);
+    expect(allByRole('button', /Retomar/).length).toBeGreaterThan(0);
+  });
+
+  it('28.21: se a ocorrência já mudou (409), a tela avisa, fecha o diálogo e relê', async () => {
+    backend.on('GET', /^\/api\/pedidos\/ped_a1$/, () => json(detalhe(ATIVO, {
+      estado: 'aguardando_pessoa', acoes_permitidas: ['retomar', 'cancelar'],
+      ocorrencias_recentes: [makeOcorrencia({ id: 'oc_i', estado: 'incerta' })],
+      pendencias: [{ tipo: 'ocorrencia_incerta', ref: 'oc_i', run_id: null, ocorrencia_id: 'oc_i', desde: '2026-10-02T22:10:00Z' }],
+    })));
+    backend.on('POST', /resolver$/, () => apiError(409, 'invalid_state', 'A ocorrência está concluida.'));
+    await irPara({ tela: 'pedidos', segmentos: ['ped_a1'] });
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Este pedido espera você'));
+    await click(byRole('button', /Marcar como resolvida/));
+    await setValue(modal().querySelector('textarea') as HTMLTextAreaElement, 'conferido');
+    await click(byRole('button', 'Confirmar', modal()));
+    await waitFor(() => expect(toasts()).toContain('A ocorrência mudou'));
+    expect(modal()).toBeNull();
+  });
+
+  it('28.21: a ocorrência incerta resolvida mostra quem, quando e a nota na guia Ocorrências', async () => {
+    backend.on('GET', /^\/api\/pedidos\/ped_a1$/, () => json(detalhe(ATIVO, {
+      ocorrencias_recentes: [makeOcorrencia({ id: 'oc_i', estado: 'incerta', resolvida_em: '2026-10-04T10:00:00Z',
+                                              resolvida_por: 'Ana', resolvida_nota: 'a mensagem não saiu' })],
+    })));
+    await irPara({ tela: 'pedidos', segmentos: ['ped_a1'], query: { aba: 'ocorrencias' } });
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Resolvida por Ana'));
+    expect(text(container)).toContain('a mensagem não saiu');
   });
 
   it('o botão "Novo pedido" está sempre no cabeçalho da página', async () => {
