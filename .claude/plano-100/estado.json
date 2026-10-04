@@ -5810,17 +5810,16 @@
    "id": "23.15",
    "status": "implemented",
    "proof": "simulated",
-   "blocker": "",
-   "evidence": "feat/ra-7-recusa-no-planejamento @ 0f72f7cb (867d3683 o item), na main pelo merge 2b42085d da suíte 7 (123650cc). A porta de política do item 13.2 também no planejamento: a etapa com efeito fora do catálogo do app recusa antes de executar, com o evento plan.refused (adendo v0.79); sem DDL. simulated: backend/tests/test_recusa_no_planejamento.py e o cruzamento da suíte 7 (22f66a6e). A prova real no Outlook do android-01 é a parte Android (23.14): not_run aqui.",
-   "arquivos": [
-    "backend/tests/test_recusa_no_planejamento.py"
-   ],
-   "grupo": "jev-ids-suite-7",
-   "modelo": "claude-opus-5-5 (sessão Jev)",
-   "esforco": "",
+   "evidence": "Segue simulated. Nas 5 leituras reais do 23.14 (04/10, deploy 21) a porta RA-7 não agiu (0 plan.refused): o planejador por catálogo já devolveu missing sem etapa. A porta só age quando o planejador produz uma etapa de efeito LIVRE num app com catálogo (caminho entre apps, fluxo ou skill), caso que não ocorreu.",
+   "blocker": "a prova real pede um plano com etapa de efeito livre num app com catálogo, que o planejador por catálogo não produz",
+   "arquivos": [],
+   "testes": [],
+   "grupo": "jev-23-14-23-15",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T07:32:33+00:00"
+   "quando": "2026-10-04T09:43:24+00:00"
   },
   "17.13": {
    "id": "17.13",
@@ -6871,18 +6870,20 @@
   },
   "31.28": {
    "id": "31.28",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Só a medida, só leitura (mode=ro + query_only), central WIN-7S2UASNLFOP, 04/10/2026 00:56Z, janelas de measurements kind=metricas desde 02/10, por aparelho: leitura da árvore com e sem prévia do painel no MESMO aparelho na janela. Worker do notebook (09/10/12/13; prévia ~88 KB, ~0,4 s): sem prévia 603 leituras, mediana dos p50 244 ms; com prévia 129 leituras, 149 ms — a prévia não pesa. Central (01/03/06; screencap cru ~700 KB, ~1,1 s): sem prévia 618 leituras, mediana dos p50 721 ms; com prévia 14 leituras em 5 janelas, 3.571 ms — indício de ~5×, amostra pequena e confundida (conta real, app pesado, prévia aberta quando alguém mexe). Página: .claude/handoffs/jev-31-28-medida-previa-2026-10-04.md. Orquestradora (04/10 01:00Z): medida aceita como inconclusiva, sem A/B nesta noite.",
-   "blocker": "Sem A/B controlado (árvore lida N vezes com o painel aberto e fechado no mesmo aparelho do central sem conta real); a mudança (prévia fora do ADB e reuso da árvore) é da Android e só se o A/B confirmar.",
-   "arquivos": [],
-   "testes": "não se aplica (medida só leitura).",
-   "grupo": "jev-31-21-31-27-31-28-31-29",
+   "evidence": "04/10/2026, WIN-7S2UASNLFOP, deploy 21 (32cbcd6d), android-04 (sem conta real; wake c-20261004090809-0b1c11, stop c-20261004091807-630292). 4 rodadas de 40 leituras de /hierarchy a 0,5 s, alternando painel fechado e aberto (aberta conferida pela orquestradora: 5 pedidos de frame do 04 em cada janela). Fechada 2: p50 234, p95 303. Aberta 1: p50 258, p95 1988. Aberta 2: p50 260, p95 2104 ms. A fechada 1 (p50 567, p95 6125) ficou fora por ser logo após o boot. Veredito: a prévia não muda a mediana, mas abre uma cauda de ~2 s no p95. Mecanismo provável: o laço de captura da grade (capture_grid_interval_s 5) disputa o ADB. É sinal, não prova forte (2 rodadas por condição). O conserto barato foi proposto e não implementado. Arquivo: .claude/handoffs/jev-31-28-ab-painel-2026-10-04.md",
+   "blocker": "Ressalva: a Aprendizado abriu o painel (tela Perfis) por volta de 09:16Z, durante a fechada 2.",
+   "arquivos": [
+    ".claude/handoffs/jev-scratch-2026-10-03/ab_3128.py"
+   ],
+   "testes": [],
+   "grupo": "jev-31-28-31-30-31-31-31-32",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T08:14:29+00:00"
+   "quando": "2026-10-04T09:43:24+00:00"
   },
   "31.29": {
    "id": "31.29",
@@ -6967,6 +6968,158 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-04T08:57:24+00:00"
+  },
+  "23.14": {
+   "id": "23.14",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "04/10/2026, WIN-7S2UASNLFOP, deploy 21 (32cbcd6d). 5 leituras com mode=plan no android-01 (Outlook da conta real), uma de cada vez, chaves lote:jev:23.14-01..05, comando de ENVIAR e-mail (destino de domínio reservado): r-20261004085647-5badac, r-20261004085837-3a14d1, r-20261004085842-7efb88, r-20261004085847-339b34, r-20261004085853-606686. Todas fecharam em needs_input com 0 objetivos, 0 etapas, 0 decisões e 0 ações (nada tocou o aparelho): 1 chamada de plano (Sonnet 5.5, 2,95 a 3,98 s) + 1 da sombra do Jev por leitura. O caso de antes: r-20261001190557-e7bc42 gastou 113 decisões e r-20261001102648-8594fe 59 antes de falhar. Quem recusou foi o planejador por catálogo (missing, 0 etapas), não a porta RA-7 (0 plan.refused): o plano não trouxe etapa de efeito livre. Custo total US$ 0,0577 (1ª US$ 0,024 gravando o cache; as outras ~US$ 0,0085 relendo). Sem aviso individual no Telegram (avisos_entregas 0 por execução; 28.19). Achado: o texto do needs_input é uma pergunta que a pessoa não tem como responder (oferece incluir ação no catálogo ou enviar por outro app) — proposto como 31.33.",
+   "blocker": null,
+   "arquivos": [
+    ".claude/handoffs/jev-scratch-2026-10-03/prova_2314.py"
+   ],
+   "testes": [],
+   "grupo": "jev-23-14-23-15",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T09:43:24+00:00"
+  },
+  "30.18": {
+   "id": "30.18",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, 04/10, central WIN-7S2UASNLFOP em 32cbcd6d (deploy 21), execucoes so de leitura pela API (chaves lote:aprendizado:30-18-*), nenhuma etapa com side_effect, tela conferida por leitura da arvore antes e depois (sem desafio). android-01 primeiro: (1) Outlook r-20261004085921-ebfa90 completed em 170 s (open_inbox succeeded; 10 chamadas de IA, 26 642 tokens novos + 58 471 de cache lido) -> fluxo candidato fluxo:abrir-a-caixa-de-entrada-do-outlook-e-le nasceu com 1 evidencia real a favor (android-01); (2) Instagram (lucas.almeida9484) r-20261004090221-67182e completed em 130 s (open_profile_1 succeeded; 4 chamadas) -> fluxo:abrir-o-proprio-perfil-no-instagram-e-le candidato com 1 evidencia real; (3) QA Messenger no android-01: r-20261004085832-4a7162 completed_with_issues, o app esta DESLOGADO no 01 (tela 'Entrar no QA Messenger'); nada foi digitado. QA repetido no android-10 (qa-user-10): r-20261004090526-db8eee completed em 30 s (open_app, open_conversation, read_last_message succeeded; 6 chamadas) -> fluxo:abrir-a-conversa-com-qa-001-no-qa-messen candidato com 1 evidencia real. Visao por app (GET /api/aprendizado/apps, 09:04Z): Instagram declarado, 54 itens (receita 32, fluxo 16, habilidade 1, licao 5), licoes shadow e telas observe; Outlook declarado, 16 itens (receita 11, fluxo 4, tela 1); QA Messenger loja, 149 itens, licoes on por app. Curador: aprendizado.curador.modo 'on' (nesta fatia igual a shadow: grava o parecer, o aceite e sempre da pessoa) e ai.decisao_fechada.consumidores.curador = shadow; metricas: 91 revisoes validas, 0 simuladas, US$ 1,14. Nenhum efeito externo, nenhuma tela de desafio tocada. Custo pelo calculo do app (planning.costs.spent_usd: tokens x ai.prices + usd declarado), corrigido 04/10 ~09:15Z: QA no 01 US$ 0,0128; Outlook US$ 0,0742; Instagram US$ 0,0358; QA no 10 US$ 0,0412; total US$ 0,1641 (o 0,0001 citado antes era a soma crua de ai_calls.usd, que so guarda o custo declarado da sombra do Jev).",
+   "blocker": "Achado: o QA Messenger do android-01 esta deslogado (a leitura do QA foi feita no android-10). Reentrar e da Android/dono (credencial ficticia de teste via cofre), nao desta prova.",
+   "grupo": "30.18",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T09:43:24+00:00"
+  },
+  "29.24": {
+   "id": "29.24",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Código já na main (712c1f9a; resultado simulated já registrado pela Aprendizado). Real (04/10/2026 09:04:32Z, central, commit 32cbcd6d no ar): POST de resolver quarentena com nota vazia -> 422 nota_obrigatoria; com nota em android-02 (sem conta travada) -> 404 no_locked_account; nenhuma escrita. Teste: backend/tests/test_resolver_quarentena.py.",
+   "blocker": null,
+   "grupo": "android-suite22",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T09:43:30+00:00"
+  },
+  "29.25": {
+   "id": "29.25",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "O codigo ja estava na main desde a suite 5 (a61ffbd0 'persona sem @ no grupo, cabecalho do cartao no celular e flows/match em POST' e d4bc2ab8 'editor do grupo lista o membro sem conta'), com prova simulated em frontend/src/features/profiles/ProfilesPage.test.tsx ('29.25 (B3)', dois testes), backend/tests/test_grupos_de_acesso.py, test_intencao_chamadores.py e app.integration.test.tsx; o runner seguia 'pendente'. Faltava o passe no navegador, feito em 04/10 ~09:15-09:16Z no painel do central (http://127.0.0.1:8000/central/#/personas, deploy 21 = 32cbcd6d), so leitura: B3 - o grupo Recuperacao mostra 5 chips 'Nome · sem conta' (Juliana Mendes, Thiago Moreira, Mariana Costa, Beatriz Rocha, Felipe Nogueira) com data-sem-conta e estilo discreto, nenhum '@' sozinho; o grupo Operacao mostra os 3 @ das contas vivas. I6 - em 375 px (emulacao mobile) os cabecalhos dos cartoes de grupo dao 275 px ao texto (>= 12rem) e a acao (Editar, apagar) desce para baixo do texto; sem rolagem horizontal. Captura: .claude/handoffs/29-25-grupos-375px-2026-10-04.jpg. flows/match em POST conferido na varredura (api.py:762).",
+   "blocker": "",
+   "grupo": "29.25",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T09:43:24+00:00"
+  },
+  "31.30": {
+   "id": "31.30",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "PR #201 (272fe63b), no deploy 21 (32cbcd6d), 04/10/2026, WIN-7S2UASNLFOP. (a) O 1º plano após o deploy, r-20261004085647-5badac às 08:56:51Z, gravou 6829 tokens com ttl 1h, sem 400. (b) r-20261004091207-298035 (mode=plan, android-12, chave lote:jev:cache1h-01): o plano das 09:12:12.846Z leu cache_read=6829 com cache_write=0. O plano anterior do mesmo prefixo foi às 09:06:27.832Z, ~5 min 40 s antes, depois do vencimento de um cache de 5 min. Custo ~US$ 0,013. O A/B do raciocínio do plano (perfil planejador-sem-pensar) deu NO-GO: p50 0 %, média −3,6 %, US$ 0,678. Arquivo: jev-ab-plan-31-30-2026-10-04.md",
+   "blocker": null,
+   "arquivos": [
+    "backend/app/config.py",
+    "backend/app/planning/anthropic_provider.py",
+    "docs/ia.md",
+    "config/config.example.yaml"
+   ],
+   "testes": [
+    "backend/tests/test_anthropic_provider.py::test_plano_da_execucao_pede_cache_de_1h_e_volta_a_5m_pela_config_31_30",
+    "backend/tests/test_anthropic_provider.py::test_padrao_e_1h_so_no_plano_da_execucao_31_30"
+   ],
+   "grupo": "jev-31-28-31-30-31-31-31-32",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T09:43:24+00:00"
+  },
+  "31.31": {
+   "id": "31.31",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #211 (52abc22e), na suíte 22: migração 092 (ai_calls.cache_write_1h), Usage.cache_write_1h_tokens, extra_1h a 2x a entrada em costs/saldos/api /usage/projecao. Testes: backend/tests/test_cache_de_1h_no_custo.py (6) e scripts/tests (544 passed). A prova real vem depois do deploy 22: o próximo plano com gravação de 1 h deve ter cache_write_1h > 0.",
+   "blocker": "not_run real até o deploy 22",
+   "arquivos": [
+    "backend/migrations/092_cache_de_1h.sql",
+    "backend/app/costs.py",
+    "backend/app/saldos.py",
+    "backend/app/api.py",
+    "backend/app/projecao.py",
+    "docs/banco.md"
+   ],
+   "testes": [
+    "backend/tests/test_cache_de_1h_no_custo.py"
+   ],
+   "grupo": "jev-31-28-31-30-31-31-31-32",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T09:43:24+00:00"
+  },
+  "31.32": {
+   "id": "31.32",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #207 (c0b829b6), na suíte 22. Opção (a) da orquestradora: um diagnóstico sem juiz. Hierarchy.partes_em_elementos_diferentes e _verificar marcam como defeito do plano o seletor com '|' cujas partes estão em elementos diferentes da tela. Novo FailureKind SELETOR_EM_ELEMENTOS_DIFERENTES (camada PLANO). Testes: backend/tests/test_seletor_impossivel.py (5, um deles ponta a ponta no harness).",
+   "blocker": "not_run real (depende de um caso real com o seletor impossível)",
+   "arquivos": [
+    "backend/app/devices/hierarchy.py",
+    "backend/app/taskqueue/executor.py",
+    "backend/app/modules/learning/domain/falhas.py",
+    "frontend/src/features/aprendizado/model.ts",
+    "docs/dominios/execution.md"
+   ],
+   "testes": [
+    "backend/tests/test_seletor_impossivel.py"
+   ],
+   "grupo": "jev-31-28-31-30-31-31-31-32",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T09:43:24+00:00"
+  },
+  "29.35": {
+   "id": "29.35",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #209 (fix/29-35-falta-de-informacao-revisa @ 60330bd2), suíte 22 e deploy 22 (d37043df, 09:42Z). Falta de informação NÃO sensível (missing_info sem credencial, TriagemDeCredencial) deixa de parar em waiting_user: a tentativa fecha failed e passa pela recuperação automática com motivo 'falta de informação' (scheduler.MOTIVO_FALTA_DE_INFORMACAO, _revisao_cabe sem Any). simulated: backend/tests/test_falta_de_informacao.py (cascatas [0,1,0,1] e [0,0]; credencial e código de verificação seguem com a pessoa) + test_desbravador.py. Real not_run: sai na próxima execução com missing_info não sensível.",
+   "blocker": null,
+   "grupo": "android-suite22",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T09:43:30+00:00"
+  },
+  "29.33": {
+   "id": "29.33",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #214 (fix/29-33-admissao-por-cpu @ 63cadeab) + correção de integração d37043df (o Protocol _ComSemRecurso tinha entrado entre @dataclass e class _Desbravador; 9 testes do desbravador falharam na SQLite da suíte 22 e passaram depois da correção, 45 passed). android.max_cpu_percent_before_boot=85: WorkerCapacity.sem_recurso recusa boot com CPU do host acima do limiar; adb.fator_de_carga_do_preparo (x1 até 50 %, x3 em 100 %) estica o prazo do ajuste; medição de boot ganha host_cpu_percent e boots_em_voo. simulated: backend/tests/test_admissao_por_cpu.py (19). Agente do notebook atualizado no deploy 22 (0.1.0+d37043d, outdated=False). Real not_run: medir boot sob carga no parque.",
+   "blocker": null,
+   "grupo": "android-suite22",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T09:43:30+00:00"
   }
  },
  "rodadas": [
@@ -8820,6 +8973,66 @@
    ],
    "grupos": [
     "android-suite21"
+   ]
+  },
+  {
+   "quando": "2026-10-04T09:43:24+00:00",
+   "itens": [
+    "23.14",
+    "23.15"
+   ],
+   "grupos": [
+    "jev-23-14-23-15"
+   ]
+  },
+  {
+   "quando": "2026-10-04T09:43:24+00:00",
+   "itens": [
+    "30.18"
+   ],
+   "grupos": [
+    "30.18"
+   ]
+  },
+  {
+   "quando": "2026-10-04T09:43:24+00:00",
+   "itens": [
+    "29.24"
+   ],
+   "grupos": [
+    "29.24"
+   ]
+  },
+  {
+   "quando": "2026-10-04T09:43:24+00:00",
+   "itens": [
+    "29.25"
+   ],
+   "grupos": [
+    "29.25"
+   ]
+  },
+  {
+   "quando": "2026-10-04T09:43:24+00:00",
+   "itens": [
+    "31.28",
+    "31.30",
+    "31.31",
+    "31.32"
+   ],
+   "grupos": [
+    "jev-31-28-31-30-31-31-31-32"
+   ]
+  },
+  {
+   "quando": "2026-10-04T09:43:30+00:00",
+   "itens": [
+    "29.35",
+    "29.33",
+    "29.24"
+   ],
+   "grupos": [
+    "android-suite22"
    ]
   }
  ]
