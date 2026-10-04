@@ -176,8 +176,10 @@ class InversaDoAprendizado:
 
     def _ultima(self, kind: LivroKind, ref: str, para: SkillState, depois_de: int):  # noqa: ANN202 - a transição
         """A última transição da trilha para `para` DEPOIS da transição da decisão (revisão do #322, M2: o mesmo filtro
-        de `desfeita_por_fora`)."""
-        achadas = [t for t in self._trilha(kind, ref) if t.to_state is para and t.id > depois_de]
+        de `desfeita_por_fora`). A linha `published → published` do "Confirmar que fica" (30.24) não é publicação nova:
+        o item não muda, só a confirmação é gravada (e move o `state_at`). Decisão da orquestradora, 04/10 23:00Z."""
+        achadas = [t for t in self._trilha(kind, ref) if t.to_state is para and t.id > depois_de
+                   and not (para is SkillState.PUBLISHED and t.from_state is SkillState.PUBLISHED)]
         return max(achadas, key=lambda x: x.id) if achadas else None
 
     def descrever(self, decisao: Decisao) -> Descricao | None:

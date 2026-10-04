@@ -46,13 +46,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     que o religar por regra mantinha o botão. Na linha antiga, sem o id da transição, só conta a volta de `disabled` ou
     `deprecated`.
   - O memo diz que uma tarefa criada dentro do bloco herdaria o mesmo dict (hoje nada cria tarefa ali).
-  - Testes: 49 passed em `test_decisoes_registro_coerente` e `test_decisoes_desfazer`, em série e em Idle. São seis
+  - "Confirmar que fica" (`published → published`, 30.24) não é republicação: move o `state_at`, mas o item não muda, e
+    o botão fica (por pessoa ou pela regra).
+  - Testes: 51 passed em `test_decisoes_registro_coerente` e `test_decisoes_desfazer`, em série e em Idle. Os
     testes novos:
     - A1;
     - o reativado depois de depreciado;
     - o republicado por regra;
     - o memo por contexto;
-    - os dois caminhos da trilha, com e sem o id.
+    - os dois caminhos da trilha, com e sem o id;
+    - a confirmação que fica, por pessoa e pela regra.
 
 ## 2026-10-04 — 28.29, achado 4 da revisão: o GET do registro lê o livro uma vez por item (branch canais/28-29-leitura-unica)
 

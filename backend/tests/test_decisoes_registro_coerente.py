@@ -424,3 +424,13 @@ async def test_depreciado_pela_regra_e_reativado_pela_pessoa_nao_oferece_o_botao
         r = await c.post(f"/api/decisoes-automaticas/{did}/desfazer", json={"confirmar": True, "motivo": "x"})
         assert r.status_code == 409
     assert len(_trilha(harness, lic)) == n
+
+
+@pytest.mark.parametrize("quem", ["painel:dono", "plataforma"])
+def test_confirmar_que_fica_nao_e_republicacao(quem: str) -> None:
+    """Decisão da orquestradora (04/10 23:00Z): a linha `published → published` do "Confirmar que fica" (30.24) move o
+    `state_at`, mas o item não muda; o botão fica, com o id da decisão e sem ele."""
+    confirmado = (11, S.PUBLISHED, S.PUBLISHED, quem)
+    assert _inversa_com_trilha(_DA_DECISAO, confirmado).por_que_nao(_decisao_com_id(10)) is None
+    antiga = _decisao("aprendizado", "receita:1", {"kind": "receita", "para": "published"})
+    assert _inversa_com_trilha((5, S.VALIDATED, S.PUBLISHED, "plataforma"), confirmado).por_que_nao(antiga) is None
