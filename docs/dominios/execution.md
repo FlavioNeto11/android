@@ -158,6 +158,23 @@ O prazo da 29.50 deixa de ser a constante e passa ao config (`execucao.pergunta_
   também só são encerrados. O "Bloqueado: …" que o objetivo deixou no aparelho sai se nenhum outro objetivo dele espera
   uma pessoa; os outros avisos ficam. O objetivo vencido deixa de contar como aberto (`api._OBJETIVO_ABERTO`).
 - Prova `simulated`: `backend/tests/test_pergunta_vence.py`. `not_run`: o primeiro ciclo no central depois do deploy.
+- 31.50 (revisão do deploy 30):
+  - a guarda e o cancelamento do objetivo vencido são UMA transação: a retomada no meio não é atropelada, e uma falha
+    no meio não deixa etapas canceladas com o objetivo esperando;
+  - `pergunta_vence_h` tem piso de 1 h: um "0.05" no lugar de "5" encerraria em minutos o que espera uma pessoa;
+  - carência ao ligar: a marca `vencimento_ligado_desde` (`settings`) é gravada quando o vencimento é visto ligado e
+    apagada quando desligado; nada vence antes da marca mais o prazo. Antes, ligar venceu de uma vez os 21 que já
+    estavam parados (primeira volta do deploy 30).
+
+### Plano de fluxo salvo prova com o catálogo atual (31.50 a)
+
+OBSERVADO (r-20261004195451-7d3527, 04/10): o plano veio de um fluxo salvo antes do #278, que congelou a pós-condição
+`model_judged` antiga do OPEN_MAIL_INBOX, e a etapa foi pelo ator e pelo juiz (13 chamadas). Num plano de fluxo
+(`planner.provider == "fluxo"`, inclusive a prova de fluxo), a etapa de catálogo do app do plano recebe a pós-condição
+ATUAL do catálogo (`planning.capabilities.atualizar_pos_condicoes`), com uma decisão registrada; a `local_proof` já vinha
+do catálogo atual pela ação. No Outlook, a caixa de entrada se prova sem IA pela lista E pelo título
+(`selector:id=conversation_list & text==Inbox`, OBSERVADO no android-01); sem o título, o juiz decide. O rejulgamento do
+17.10 vai sem a dica da tela (31.46), para continuar uma segunda opinião independente.
 
 Provas (`simulated`, harness na porta 5640):
 `backend/tests/test_intencao_chamadores.py::test_os_tres_chamadores_coerentes_para_a_mesma_frase` (valor inválido,

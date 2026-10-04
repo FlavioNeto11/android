@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.50: achados da revisão do deploy 30 (branch fix/31-50-revisao-deploy30)
+
+- (a) A r-20261004195451-7d3527 (prova real do 31.45) foi pelo ator: o plano veio de um fluxo salvo antes do #278.
+  - O plano de fluxo passa a provar a etapa de catálogo com a pós-condição atual do catálogo.
+  - OPEN_MAIL_INBOX prova sem IA pela lista E pelo título "Inbox"; sem o título, o juiz decide.
+- (b) O vencimento do objetivo parado roda numa transação só.
+- (c) `pergunta_vence_h` tem piso de 1 h.
+- (d) O rejulgamento do 17.10 vai sem a dica da tela.
+- Carência ao ligar: a marca `vencimento_ligado_desde` fica em `settings`. No deploy, o que hoje espera ganha mais 24 h.
+- Testes: `test_outlook_declarado.py`, `test_dica_de_tela_ao_juiz.py`, `test_pergunta_vence.py` e
+  `test_needs_input_expira.py`, `simulated`. `real`: not_run.
+
 ## 2026-10-04 — 28.28: pergunta ao bot do Telegram vai à orquestradora, e nome de persona não sai pelo canal (branch canais/28-28-pergunta-ao-bot)
 
 - **O defeito:** o dono perguntou ao bot "porque tem tanta coisa represada em validação?" e depois respondeu "no
