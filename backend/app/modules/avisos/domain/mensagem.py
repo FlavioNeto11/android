@@ -12,6 +12,9 @@ O item "Para aprovar" do Aprendizado entra pelo `learning.needs_person` (30.21; 
 avisa, e por padrão só a faixa C (item a item). A faixa B é aprovação em lote e fica na caixa, para não virar um aviso
 por receita; ligá-la é `avisos.aprendizado_faixas`.
 
+Rajada (28.19): vários avisos do mesmo tipo em sequência saem como UMA mensagem com a contagem (`titulo_agrupado`); a
+regra de quando agrupar é da fila (`fila_sql.reivindicar_um`).
+
 Chave de deduplicação comum (28.14): `<família>:<identidade do fato>`, montada só por `chave_do_fato`. Famílias:
 `approval`, `run`, `session`, `pedido` e `learning`. A identidade é a do FATO, nunca a do evento quando o fato se
 repete em eventos.
@@ -174,6 +177,28 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
         return None
     return Aviso(chave=chave, tipo=tipo, titulo="Central de Aparelhos: " + ROTULOS.get(tipo, ROTULO_GENERICO_DE_PEDIDO),
                  corpo=corpo or (CORPO_PADRAO if pendencia else ""), link=link)
+
+
+#: O aviso AGRUPADO (28.19): uma rajada do mesmo tipo vira uma mensagem com a contagem. Texto fixo, sem dado do fato;
+#: `{n}` é o único campo. Tipo sem plural próprio cai no genérico.
+ROTULOS_AGRUPADOS: dict[str, str] = {
+    "approval.pending": "{n} aprovações aguardando a sua decisão",
+    "run.needs_input": "{n} execuções pararam pedindo informação",
+    "session.needs_person": "{n} contas pedem intervenção humana",
+    "learning.needs_person": "{n} conhecimentos aprendidos esperam a sua revisão",
+}
+ROTULO_AGRUPADO_DE_PEDIDO = "{n} novidades de pedidos"
+ROTULO_AGRUPADO_GENERICO = "{n} avisos seguidos do mesmo tipo"
+#: O agrupado não leva conteúdo nem aceita resposta por reply: quem decide abre a caixa.
+CORPO_AGRUPADO = "Chegaram em sequência. Abra a caixa de Pendências do painel para ver cada um."
+#: A família do fato de uma mensagem agrupada em `canal_enviadas`: reply a ela não responde a nenhum fato.
+FAMILIA_DO_GRUPO = "grupo"
+
+
+def titulo_agrupado(tipo: str, n: int) -> str:
+    modelo = ROTULOS_AGRUPADOS.get(tipo) or (ROTULO_AGRUPADO_DE_PEDIDO if tipo.startswith("pedido.")
+                                             else ROTULO_AGRUPADO_GENERICO)
+    return "Central de Aparelhos: " + modelo.format(n=n)
 
 
 def texto_da_mensagem(titulo: str, corpo: str, link: str | None) -> str:

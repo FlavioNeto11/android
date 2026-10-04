@@ -651,6 +651,22 @@ dado de terceiro. É só saída (sem webhook, sem rota de entrada). Desligado de
 líder da trava `avisos` envia, e a fila durável (`avisos_entregas`, migração 068) deduplica por fato: o mesmo evento nunca
 vira duas mensagens (chave comum `<família>:<fato>`: `approval`, `run`, `session`, `pedido`, `learning`), e um envio interrompido por queda vira `incerto` e **não** é reenviado.
 
+**Lote de teste e rajada (28.19).** Em 04/10 o dono recebeu 11 avisos seguidos de um lote de medida de uma frente.
+Desde então:
+- **Execução do sistema não avisa.** São três casos: prova de fluxo, validação do QA e lote de frente. Quem dispara
+  um lote de teste, medida ou validação pela API manda `idempotency_key: "lote:<frente>:<id>"` no `POST /api/commands`.
+  São 8 a 120 caracteres, só `A-Za-z0-9_.:-`, um id por execução. A regra está em `contracts/origem.e_execucao_do_sistema`.
+  Pedido do dono pelo painel, pelo Telegram ou pelo Trello segue avisando.
+- **A rajada sai agrupada.**
+  - O primeiro aviso de um tipo sai na hora.
+  - Os do mesmo tipo que chegam até `avisos.agrupar_s` (60 s) depois esperam o fim da janela. Com
+    `avisos.agrupar_a_partir_de` (3) ou mais, saem como UMA mensagem com a contagem ("10 execuções pararam pedindo
+    informação"). Com menos, saem um a um.
+  - Uma rajada de 11 vira 2 mensagens, e dois avisos seguidos do dono continuam dois. Nenhum aviso espera mais que a
+    janela.
+  - O agrupado não leva conteúdo, e responder a ele (reply) não decide nada: cada item se abre na caixa.
+  - `agrupar_s: 0` volta ao comportamento anterior.
+
 Procedimento (o dono faz; sem ele a prova real fica `not_run`):
 
 1. No Telegram, fale com **@BotFather** → `/newbot` → escolha o nome e o username (termina em `bot`). Ele devolve o token.

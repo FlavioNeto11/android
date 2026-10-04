@@ -23,7 +23,7 @@ import time
 from collections.abc import Callable
 
 from app.config import Config
-from app.contracts.origem import PREFIXO_VALIDACAO
+from app.contracts.origem import e_execucao_do_sistema
 from app.events import EventBus
 from app.models import Problem
 from app.modules.avisos.adapters.telegram import CanalTelegram
@@ -124,11 +124,12 @@ class ServicoDeAvisos:
             return False
 
     def _e_de_prova(self, kind: str, data: dict[str, object] | None) -> bool:
-        """30.37: a execução de PROVA de fluxo (a validação do curador) é do sistema, não de uma pessoa: nada dela vira
-        aviso ao dono, nem a pergunta (`run.updated` em `needs_input`) nem a aprovação que ela abriria. A prova se
-        reconhece pelo fluxo que prova (`runs.prova_fluxo_id`) ou pela chave de idempotência da validação
-        (`validacao:`). Só consulto o banco para o evento que AVISARIA; falha na consulta deixa o aviso seguir (o dono
-        recebe um aviso a mais, nunca perde um de pessoa)."""
+        """30.37 e 28.19: a execução do SISTEMA não é de uma pessoa: nada dela vira aviso ao dono, nem a pergunta
+        (`run.updated` em `needs_input`) nem a aprovação que ela abriria. São a prova de fluxo (`runs.prova_fluxo_id`), a
+        validação do QA e o lote de uma frente (pela chave de idempotência; a regra mora em
+        `contracts/origem.e_execucao_do_sistema`). Em 04/10 um lote de medida sem marca mandou 11 avisos seguidos.
+        Só consulto o banco para o evento que AVISARIA; falha na consulta deixa o aviso seguir (o dono recebe um aviso
+        a mais, nunca perde um de pessoa)."""
         if kind not in ("run.updated", "approval.pending"):
             return False
         filho = (data or {}).get("run" if kind == "run.updated" else "approval")
@@ -138,12 +139,13 @@ class ServicoDeAvisos:
         if not isinstance(run_id, str) or not run_id:
             return False
         try:
-            return self.fila.db.one(
-                "SELECT 1 FROM runs WHERE id=? AND (prova_fluxo_id IS NOT NULL OR idempotency_key LIKE ?)",
-                (run_id, f"{PREFIXO_VALIDACAO}%")) is not None
+            linha = self.fila.db.one("SELECT prova_fluxo_id, idempotency_key FROM runs WHERE id=?", (run_id,))
         except Exception:  # noqa: BLE001 - ver a docstring: na dúvida, avisa
             log.exception("avisos: não foi possível conferir se a execução %s é de prova", run_id)
             return False
+        if linha is None:
+            return False
+        return e_execucao_do_sistema(linha["prova_fluxo_id"], linha["idempotency_key"])
 
     # ------------------------------------------------------------------ saída (líder)
     def _tomar(self, nome: str) -> int | None:
@@ -169,7 +171,8 @@ class ServicoDeAvisos:
         try:
             self._faxina(cerca)
             resultado = await entregar(self.fila, canal, cerca=cerca, agora=self.fila.relogio, limite=cfg.lote,
-                                       max_tentativas=cfg.max_tentativas, backoff_s=cfg.backoff_s)
+                                       max_tentativas=cfg.max_tentativas, backoff_s=cfg.backoff_s,
+                                       agrupar_s=cfg.agrupar_s, agrupar_a_partir_de=cfg.agrupar_a_partir_de)
         except TravaPerdida as exc:
             log.warning("avisos: entrega recusada, %s", exc)
             return None

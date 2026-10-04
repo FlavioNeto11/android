@@ -23,12 +23,14 @@ from typing import cast
 
 from app.db import Database
 from app.modules.avisos.application.entrega import Cerca, Entrega
-from app.modules.avisos.domain.mensagem import Aviso
+from app.modules.avisos.domain.mensagem import CORPO_AGRUPADO, Aviso, titulo_agrupado
 from app.util import to_iso
 
 #: Estados que já não mudam: candidatos à purga.
 ESTADOS_FINAIS = ("enviado", "falhou", "incerto", "descartado")
 MAX_ERRO = 300
+#: Quantas linhas devidas a reivindicação olha para achar a próxima mensagem: mais que qualquer rajada real.
+LIMITE_DA_VARREDURA = 500
 
 
 def _curto(texto: str) -> str:
@@ -55,44 +57,95 @@ class FilaDeAvisos:
         return (cur.rowcount or 0) == 1
 
     # ------------------------------------------------------------------ saída (líder)
-    def reivindicar_um(self, *, cerca: Cerca) -> Entrega | None:
-        """A próxima linha devida, já marcada `enviando` e com a tentativa contada, ou `None`.
+    def reivindicar_um(self, *, cerca: Cerca, agrupar_s: float = 0.0, agrupar_a_partir_de: int = 3) -> Entrega | None:
+        """A próxima mensagem devida, com as suas linhas já marcadas `enviando` e a tentativa contada, ou `None`.
 
         A cerca é a do mandato do líder. O `UPDATE ... WHERE estado='pendente'` confere de novo o estado: duas
         reivindicações que sobrevivessem à cerca ainda não pegariam a mesma linha.
+
+        Rajada (28.19), com `agrupar_s` > 0. O primeiro aviso de um tipo sai na hora, como sempre. A linha do mesmo
+        tipo que nasceu DEPOIS de um envio desse tipo há menos de `agrupar_s` espera o fim dessa janela. Fechada a
+        janela, todas as pendentes do tipo saem juntas: com `agrupar_a_partir_de` ou mais, como UMA mensagem com a
+        contagem (`titulo_agrupado`); com menos, uma a uma, sem nova espera (a linha nascida antes do último envio não
+        espera de novo). A espera de uma linha nunca passa de `agrupar_s`: uma rajada de 11 vira 2 mensagens, e dois
+        avisos seguidos do dono continuam dois, com o segundo atrasado no máximo `agrupar_s`.
         """
         agora = self._agora()
         with cerca():
-            linha = self.db.one(
-                "SELECT id FROM avisos_entregas WHERE estado='pendente' AND canal=?"
-                " AND (proximo_envio_em IS NULL OR proximo_envio_em <= ?) ORDER BY id LIMIT 1",
-                (self.canal, agora))
-            if linha is None:
+            devidas = self.db.query(
+                "SELECT id, tipo, criado_em FROM avisos_entregas WHERE estado='pendente' AND canal=?"
+                " AND (proximo_envio_em IS NULL OR proximo_envio_em <= ?) ORDER BY id LIMIT ?",
+                (self.canal, agora, LIMITE_DA_VARREDURA))
+            if not devidas:
                 return None
+            escolhidas = self._escolher(devidas, agrupar_s, agrupar_a_partir_de)
+            if not escolhidas:
+                return None
+            marcas = ",".join("?" * len(escolhidas))
             cur = self.db.execute(
-                "UPDATE avisos_entregas SET estado='enviando', tentativas=tentativas+1, iniciado_em=?"
-                " WHERE id=? AND estado='pendente'", (agora, int(linha["id"])))
-            if (cur.rowcount or 0) != 1:
+                f"UPDATE avisos_entregas SET estado='enviando', tentativas=tentativas+1, iniciado_em=?"  # noqa: S608
+                f" WHERE id IN ({marcas}) AND estado='pendente'", (agora, *escolhidas))
+            if (cur.rowcount or 0) != len(escolhidas):
+                # Outra reivindicação levou parte delas (não deveria passar da cerca): devolve as que eu marquei.
+                self.db.execute(
+                    f"UPDATE avisos_entregas SET estado='pendente', tentativas=tentativas-1, iniciado_em=NULL"  # noqa: S608
+                    f" WHERE id IN ({marcas}) AND estado='enviando' AND iniciado_em=?", (*escolhidas, agora))
                 return None
-            r = self.db.one("SELECT id, chave, tipo, titulo, corpo, link, tentativas FROM avisos_entregas WHERE id=?",
-                            (int(linha["id"]),))
-        assert r is not None
-        return Entrega(id=int(r["id"]), chave=str(r["chave"]), tipo=str(r["tipo"]), titulo=str(r["titulo"]),
-                       corpo=str(r["corpo"] or ""), link=cast("str | None", r["link"]), tentativas=int(r["tentativas"]))
+            linhas = self.db.query(
+                f"SELECT id, chave, tipo, titulo, corpo, link, tentativas FROM avisos_entregas"  # noqa: S608
+                f" WHERE id IN ({marcas}) ORDER BY id", tuple(escolhidas))
+        r = linhas[0]
+        if len(linhas) == 1:
+            return Entrega(id=int(r["id"]), chave=str(r["chave"]), tipo=str(r["tipo"]), titulo=str(r["titulo"]),
+                           corpo=str(r["corpo"] or ""), link=cast("str | None", r["link"]),
+                           tentativas=int(r["tentativas"]))
+        return Entrega(id=int(r["id"]), chave=str(r["chave"]), tipo=str(r["tipo"]),
+                       titulo=titulo_agrupado(str(r["tipo"]), len(linhas)), corpo=CORPO_AGRUPADO,
+                       link=cast("str | None", r["link"]), tentativas=max(int(x["tentativas"]) for x in linhas),
+                       ids=tuple(int(x["id"]) for x in linhas))
 
-    def marcar_enviado(self, entrega_id: int, *, message_id: int | None = None) -> None:
+    def _escolher(self, devidas: list, agrupar_s: float, a_partir_de: int) -> list[int]:  # type: ignore[type-arg]
+        """Os ids da próxima mensagem: a primeira linha devida cujo tipo não está segurado, e, com o agrupamento ligado,
+        as outras devidas do mesmo tipo quando passam de `a_partir_de`. Ver `reivindicar_um`."""
+        if agrupar_s <= 0:
+            return [int(devidas[0]["id"])]
+        limite = to_iso(self.relogio() - timedelta(seconds=agrupar_s))
+        segurado: dict[str, bool] = {}
+        for linha in devidas:
+            tipo = str(linha["tipo"])
+            if tipo not in segurado:
+                ultimo = self.db.one(
+                    "SELECT MAX(enviado_em) AS u FROM avisos_entregas WHERE canal=? AND tipo=? AND estado='enviado'"
+                    " AND enviado_em > ?", (self.canal, tipo, limite))
+                u = ultimo["u"] if ultimo is not None else None
+                # Segura só a linha que nasceu DEPOIS do último envio do tipo dentro da janela.
+                segurado[tipo] = u is not None and str(linha["criado_em"]) > str(u)
+            if segurado[tipo]:
+                continue
+            do_tipo = [int(x["id"]) for x in devidas if str(x["tipo"]) == tipo]
+            return do_tipo if len(do_tipo) >= a_partir_de else [int(linha["id"])]
+        return []
+
+    def marcar_enviado(self, entrega_id: int, *, message_id: int | None = None, fato: str | None = None) -> None:
         """Com o `message_id`, a mensagem entra no registro do que a Central enviou pelo canal (`canal_enviadas` da
         085, item 28.15): é o que liga o reply da pessoa ao fato do aviso, e o que separa o reply à Central do reply à
-        orquestradora."""
+        orquestradora. `fato` troca a chave da linha (o agrupado do 28.19 grava `grupo:<tipo>`, que não é fato)."""
         agora = self._agora()
         self.db.execute("UPDATE avisos_entregas SET estado='enviado', enviado_em=?, proximo_envio_em=NULL,"
                         " ultimo_erro=NULL WHERE id=? AND estado='enviando'", (agora, entrega_id))
         if message_id is not None:
-            self.db.execute(
-                "INSERT INTO canal_enviadas(canal, ref_mensagem, origem, fato, aviso_id, enviada_em)"
-                " SELECT canal, ?, 'aviso', chave, id, ? FROM avisos_entregas WHERE id=?"
-                " ON CONFLICT (canal, ref_mensagem) DO NOTHING",
-                (str(int(message_id)), agora, entrega_id))
+            if fato is None:
+                self.db.execute(
+                    "INSERT INTO canal_enviadas(canal, ref_mensagem, origem, fato, aviso_id, enviada_em)"
+                    " SELECT canal, ?, 'aviso', chave, id, ? FROM avisos_entregas WHERE id=?"
+                    " ON CONFLICT (canal, ref_mensagem) DO NOTHING",
+                    (str(int(message_id)), agora, entrega_id))
+            else:
+                self.db.execute(
+                    "INSERT INTO canal_enviadas(canal, ref_mensagem, origem, fato, aviso_id, enviada_em)"
+                    " SELECT canal, ?, 'aviso', ?, id, ? FROM avisos_entregas WHERE id=?"
+                    " ON CONFLICT (canal, ref_mensagem) DO NOTHING",
+                    (str(int(message_id)), fato, agora, entrega_id))
 
     def marcar_retentar(self, entrega_id: int, *, ate: datetime, erro: str) -> None:
         self.db.execute("UPDATE avisos_entregas SET estado='pendente', proximo_envio_em=?, ultimo_erro=?"
