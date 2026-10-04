@@ -149,9 +149,11 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   3. Só com o "autorizo" dele o id fica vinculado à pessoa, e ela passa a ser atendida pela C-09.
   4. Até lá, nada além da pergunta do nome.
 - **Hoje:** `telegram_inbox.py::_pedir_nome`, uma vez por chat novo.
-- **No produto:** item 28.18 (dona: frente Canais). Se mudar o modelo de autorização do 28.15, entra como emenda do
-  ADR-071. Até lá, o que responde a quem é desconhecido é ferramenta da sessão: uma saudação fixa, nenhum dado e
-  nenhum comando aceito.
+- **No produto:** item 28.18 (dona: frente Canais), com a emenda de 04/10 ao ADR-071.
+  - `modules/avisos/infrastructure/convidados.py` e a migração 090.
+  - O "sim" ou "não" do dono é o reply ao aviso `convidado:<chat>:novo`.
+  - Vem desligado (`avisos.entrada.convidados.enabled`). Até ligar, quem responde a quem é desconhecido é a ferramenta
+    da sessão, com a saudação fixa, sem dado e sem comando aceito.
 - **Prova:** `simulated` (caixa com chat falso).
 - **Nome no aviso ao dono:** SIM (dono, Telegram 03/10 22:41Z). O nome que a pessoa der vai no aviso, mas só no
   chat do próprio dono. Nunca vai ao chat de outra pessoa, ao Trello ou ao Git: o vínculo id↔nome fica no arquivo

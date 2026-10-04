@@ -21,7 +21,9 @@ Sem fato (a mensagem solta):
 
 Com fato (a resposta a um aviso, o comentário num cartão), o id é o do fato e não se escreve:
 - aprovação: "sim" ou `/aprovar [nota]` aprova; "não" ou `/vetar [nota]` veta;
-- execução que espera resposta: o texto, ou `/responder <texto>`, é a resposta.
+- execução que espera resposta: o texto, ou `/responder <texto>`, é a resposta;
+- convidado novo no Telegram (28.18, `convidado:<chat>:novo`): "sim" autoriza a pessoa, "não" recusa. Qualquer outro
+  aviso sobre convidado (a mensagem dele, o bot num grupo) só informa: a resposta do dono a ele NÃO vira pedido.
 
 A triagem de credencial também não mora aqui: o domínio e a aplicação não enxergam `app.security`. O serviço a faz
 antes de gravar o texto.
@@ -36,7 +38,7 @@ from app.contracts.identidade import APRESENTACAO_DA_IA
 
 #: O que cada intenção é. `desconhecida` responde com a ajuda; `vazia` não responde.
 INTENCOES = frozenset({"ajuda", "identidade", "status", "pendencias", "aprovar", "vetar", "responder", "para", "livre",
-                       "orquestradora", "desconhecida", "vazia"})
+                       "orquestradora", "desconhecida", "vazia", "autorizar_convidado", "recusar_convidado"})
 
 AJUDA = (
     "Comandos da Central:\n"
@@ -106,6 +108,11 @@ class Fato:
     @property
     def pergunta(self) -> bool:
         return self.tipo == "run" and self.detalhe == "needs_input"
+
+    @property
+    def convidado(self) -> bool:
+        """O aviso sobre quem não é o dono (28.18). `detalhe == "novo"` é o único que se decide."""
+        return self.tipo == "convidado"
 
 
 def _sem_acento(s: str) -> str:
@@ -179,6 +186,17 @@ def _rotear_comando(t: str, f: Fato | None) -> Intencao:
 
 
 def _rotear_resposta(t: str, f: Fato) -> Intencao | None:
+    if f.convidado:
+        # Sem este ramo, o "sim" do dono ao aviso do convidado cairia no texto livre e viraria PEDIDO (28.18).
+        if f.detalhe != "novo":
+            return Intencao("desconhecida", motivo="Este aviso só informa: nada foi executado, e a resposta não vai à "
+                                                   "pessoa. Para atender o pedido dela, peça pelo painel.")
+        palavra = _palavra(t)
+        if palavra in _SIM:
+            return Intencao("autorizar_convidado", ref=f.ident)
+        if palavra in _NAO:
+            return Intencao("recusar_convidado", ref=f.ident)
+        return Intencao("desconhecida", motivo="Para autorizar quem chegou, responda \"sim\" ou \"não\".")
     if f.aprovacao:
         palavra = _palavra(t)
         if palavra in _SIM:

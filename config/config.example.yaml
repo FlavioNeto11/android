@@ -516,6 +516,11 @@ avisos:                           # aviso fora do painel (item 28.11): espelho d
   #   ttl_previa_s: 900           # o botão Executar de uma prévia mais velha que isto não cria a execução
   #   idade_max_s: 900            # mensagem escrita há mais que isto (Central fora do ar) não é tratada; o dono é avisado
   #   retencao_dias: 30           # (28.16) depois disso o texto da conversa é zerado e a linha apagada (mínimo 2)
+  #   convidados:                 # quem fala com o bot e não é o dono (28.18, emenda ao ADR-071); só vale com a entrada ligada
+  #     enabled: false            # (false) desligado = gravado sem texto e sem resposta, como no 28.15
+  #     max_nome: 60              # o nome informado é cortado aqui (uma linha, sem e-mail, @conta nem IP)
+  #     avisos_por_hora: 6        # mensagens de UM convidado autorizado que viram aviso ao dono por hora
+  #     novos_por_hora: 20        # chats novos atendidos por hora; o excesso fica sem resposta
 
 trello:                           # Trello do dono (item 32.2, ADR-072): espelho do plano e canal de comandos. Ligar exige TRELLO_API_KEY e TRELLO_TOKEN no .env
   enabled: false                  # (false) desligado = nenhuma chamada ao Trello. Os segredos NUNCA moram aqui (docs/operacao.md)

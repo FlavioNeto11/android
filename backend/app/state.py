@@ -39,7 +39,9 @@ from .devices.sdk import SdkTools
 from .events import TELEMETRIA_KINDS, TELEMETRIA_RETENCAO_H, EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
-from .modules.avisos.infrastructure.entrada import ServicoDeEntrada
+from .modules.avisos.infrastructure.contatos_sql import ContatosDoCanal
+from .modules.avisos.infrastructure.convidados import ConvidadosDoTelegram
+from .modules.avisos.infrastructure.entrada import ServicoDeEntrada, parece_codigo
 from .modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
 from .modules.avisos.application.espelho import LinhaDeCusto
 from .modules.avisos.infrastructure.espelho import EspelhoDoTrello, FontesDaCentral
@@ -538,9 +540,15 @@ class AppState:
         portas_da_central = PortasReais(db=self.db, runs=self.runs, aprovacoes=self.approval_service, saude=self.health,
                                         online=lambda: [d.id for d in self.devices.list_dtos()
                                                         if str(d.state) == "online" and d.kind != "store"])
+        # Quem fala com o bot e não é o dono (28.18): apresentação, nome, o dono decide; desligado de fábrica
+        # (`avisos.entrada.convidados.enabled`). A recusa de credencial é a mesma da conversa do dono.
+        convidados = ConvidadosDoTelegram(
+            cfg, ContatosDoCanal(self.db, canal="telegram"), avisar_dono=self.avisos.enfileirar_aviso,
+            recusa=lambda t: triagem.recusa(t) or parece_codigo(t), redigir=triagem.redigir,
+            status=portas_da_central.status_para_convidado)
         self.telegram_entrada = ServicoDeEntrada(
             cfg, EntradasDoCanal(self.db, canal="telegram"), portas_da_central,
-            lider=self._lider, recusa=triagem.recusa, redigir=triagem.redigir)
+            lider=self._lider, recusa=triagem.recusa, redigir=triagem.redigir, convidados=convidados)
         # O espelho do Trello (32.2, ADR-072): reconciliador no líder da trava `avisos`; desligado de fábrica
         # (`trello.enabled`). Lê as MESMAS pendências do Telegram e do painel.
         self.trello_espelho = EspelhoDoTrello(

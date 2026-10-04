@@ -31,7 +31,8 @@ DEFINITIVOS = frozenset({400, 401, 403, 404})
 
 
 #: O que a entrada pede ao `getUpdates`: a mensagem e o toque no botão inline (a prévia de alvos, decisão (c)).
-UPDATES_DA_ENTRADA = '["message","callback_query"]'
+#: `my_chat_member` (28.18): o bot posto ou tirado de um grupo avisa o dono (C-11).
+UPDATES_DA_ENTRADA = '["message","callback_query","my_chat_member"]'
 #: Folga do cliente HTTP sobre o long-poll: o Telegram segura a conexão por `timeout` segundos antes de responder.
 FOLGA_DO_LONG_POLL_S = 15.0
 
@@ -129,10 +130,11 @@ class CanalTelegram:
         return await self.responder(texto_da_mensagem(titulo, corpo, link))
 
     async def responder(self, texto: str, *, responde_a: int | None = None,
-                        botoes: list[tuple[str, str]] | None = None) -> int | None:
+                        botoes: list[tuple[str, str]] | None = None, chat_id: str | None = None) -> int | None:
         """Uma mensagem ao chat configurado; devolve o `message_id` (o registro da 085). `responde_a` põe a mensagem
-        na thread da pessoa; `botoes` são (rótulo, callback_data) numa linha de teclado inline."""
-        corpo: dict[str, object] = {"chat_id": self._chat_id, "text": texto[:TEXTO_MAX],
+        na thread da pessoa; `botoes` são (rótulo, callback_data) numa linha de teclado inline. `chat_id` só para o
+        convidado (28.18): a resposta a ele vai ao chat DELE, nunca ao do dono."""
+        corpo: dict[str, object] = {"chat_id": chat_id or self._chat_id, "text": texto[:TEXTO_MAX],
                                     "disable_web_page_preview": True}
         if responde_a is not None:
             corpo["reply_parameters"] = {"message_id": responde_a, "allow_sending_without_reply": True}
@@ -173,11 +175,12 @@ class CanalTelegram:
         if resposta.status_code != 200 or _json(resposta).get("ok") is not True:
             raise self._falha(resposta)
 
-    async def apagar(self, message_id: int) -> bool:
+    async def apagar(self, message_id: int, *, chat_id: str | None = None) -> bool:
         """`deleteMessage` da mensagem da pessoa que tinha cara de credencial (contrato dos canais, §7). Em chat privado
         o bot apaga a mensagem recebida (até 48 h). Devolve se apagou: o Telegram recusa com 400 o que não pode apagar,
         e aí quem responde pede ao dono que apague."""
-        resposta = await self._chamar("deleteMessage", json={"chat_id": self._chat_id, "message_id": message_id})
+        resposta = await self._chamar("deleteMessage", json={"chat_id": chat_id or self._chat_id,
+                                                              "message_id": message_id})
         return resposta.status_code == 200 and _json(resposta).get("ok") is True
 
     async def descobrir_chats(self) -> list[ChatEncontrado]:

@@ -764,6 +764,21 @@ Prova real (o dono faz com a sessão Canais; sem ela fica `not_run`):
    volta na thread.
 5. Mandar `123456`: a mensagem some do chat, a resposta não ecoa nada, e a linha fica `recusada`, com `texto` NULL.
 
+**Quem não é o dono (item 28.18, emenda ao ADR-071; regras C-08 a C-11 de [dominios/canais.md](dominios/canais.md)).**
+Desligado de fábrica (`avisos.entrada.convidados.enabled`), e só vale com a entrada ligada. Ligado:
+- Num chat privado novo, sai a apresentação da ANA e a pergunta do nome, uma vez. A resposta seguinte é o nome.
+- O nome vai ao dono num aviso ("alguém novo quer falar pelo Telegram"). **Responda a esse aviso com sim ou não.**
+  O sim autoriza a pessoa; o não a deixa em silêncio. Responder de novo ao mesmo aviso muda a decisão.
+- O convidado autorizado tem `/ajuda` e `/status` (só contagens: sem aparelho, pendência, persona ou conta). Fora isso,
+  cada mensagem vira um aviso ao dono (até `avisos_por_hora` por convidado), e ele recebe "recebido; passei ao dono".
+  Convidado nunca executa nem decide, e responder ao aviso da mensagem dele não chega a ele nem vira pedido.
+- Grupos e canais são ignorados. Pôr ou tirar o bot de um grupo avisa o dono, sem o nome do grupo.
+- O histórico fica no banco, nunca no Trello nem no Git. Para conferir:
+  - `SELECT chat_id, estado, nome_informado, primeira_em, ultima_em FROM canal_contatos`;
+  - os eventos de um chat estão em `canal_contato_eventos`.
+- Prova real (`not_run` até ligar): um chat de teste do dono fala com o bot, recebe a pergunta do nome, o dono responde
+  sim ao aviso, e o `/status` do convidado sai só com as contagens.
+
 ## 16. Trello (item 32.2, ADR-072)
 
 O Trello do dono é espelho do que espera por ele e canal de veto e de resposta. Detalhe técnico e regras em

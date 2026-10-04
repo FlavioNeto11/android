@@ -31,6 +31,9 @@ ESTADOS_FINAIS = ("enviado", "falhou", "incerto", "descartado")
 MAX_ERRO = 300
 #: Quantas linhas devidas a reivindicação olha para achar a próxima mensagem: mais que qualquer rajada real.
 LIMITE_DA_VARREDURA = 500
+#: Os avisos sobre quem não é o dono (28.18) saem sempre um a um: o do convidado novo se decide respondendo a ELE (o
+#: agrupado não aceita resposta), e cada um leva o nome de uma pessoa diferente.
+SEM_AGRUPAR = "telegram."
 
 
 def _curto(texto: str) -> str:
@@ -116,6 +119,8 @@ class FilaDeAvisos:
         segurado: dict[str, bool] = {}
         for linha in devidas:
             tipo = str(linha["tipo"])
+            if tipo.startswith(SEM_AGRUPAR):
+                return [int(linha["id"])]
             if tipo not in segurado:
                 ultimo = self.db.one(
                     "SELECT MAX(enviado_em) AS u FROM avisos_entregas WHERE canal=? AND tipo=? AND estado='enviado'"

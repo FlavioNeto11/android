@@ -1131,6 +1131,17 @@ class LearningCfg(BaseModel):
     autopublicacao: AutopublicacaoCfg = AutopublicacaoCfg()
 
 
+class ConvidadosDoTelegramCfg(BaseModel):
+    """Quem fala com o bot e não é o dono (28.18, C-08 a C-11 de `docs/dominios/canais.md`): a apresentação da ANA e a
+    pergunta do nome, o dono decide com sim ou não, e o convidado autorizado nunca executa nem decide. Desligado de
+    fábrica, e só vale com a `entrada` ligada; desligado, quem não é o dono segue gravado sem texto e sem resposta."""
+
+    enabled: bool = False
+    max_nome: int = Field(60, ge=10, le=200)                # o nome informado é cortado aqui
+    avisos_por_hora: int = Field(6, ge=1, le=60)            # mensagens de UM convidado que viram aviso ao dono por hora
+    novos_por_hora: int = Field(20, ge=1, le=500)           # chats novos atendidos por hora; o excesso fica sem resposta
+
+
 class EntradaDoTelegramCfg(BaseModel):
     """A conversa de volta (item 28.15, ADR-071): o chat do `.env` dá comandos e responde à Central como no painel.
     Desligada de fábrica, e só liga com `avisos.enabled` (mesmo bot, mesmo token, mesma trava `avisos`). O chat aceito
@@ -1148,6 +1159,7 @@ class EntradaDoTelegramCfg(BaseModel):
     #: Quanto o que veio e foi pelo Telegram fica guardado (28.16): depois disso o texto é zerado e a linha apagada.
     #: Mínimo de 2 dias: passa da janela em que o Telegram guarda uma update (24 h), e o dedupe segue valendo.
     retencao_dias: float = Field(30.0, ge=2, le=3650)
+    convidados: ConvidadosDoTelegramCfg = ConvidadosDoTelegramCfg()
 
 
 class AvisosCfg(BaseModel):
