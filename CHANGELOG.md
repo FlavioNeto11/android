@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — Suíte 17 na main e deploy 17 no central (0b7c2c39; sem migração; Trello na etapa 2)
+
+- **Integrado e implantado** (FF 01:13:09Z; deploy 01:13:35–01:14:31Z): #182 (30.43), #183 (30.44), #184 (29.62, trava de
+  migração por esquema no PG) e #185 (29.56, tranca por cliente). Saúde ok, `problems` vazio; agente do notebook
+  0.1.0+0b7c2c3.
+- **Suíte 17** (integ/suite-17 0b7c2c39): SQLite 9117 passed (1 falha da catraca de `Any` no 29.56, corrigida em
+  3e05f037 e conferida: 91 passed nos vizinhos); `scripts/tests` 544; front 1464; docs-check 0/0; PG dos afetados 1560
+  passed em 94 arquivos com `-n 8` (12 min, já com a trava por esquema).
+- **Config do central** (por instalação): `trello` etapa 1 às 00:34Z (reinício 00:35Z, leitor no ar) e etapa 2
+  (`webhook.enabled`) às 01:13Z, pelo `.claude/handoffs/canais/trello-config.py`, com cópia em `data/backups`.
+- **Prova real** do 29.56 de fora (orquestradora, 01:15Z): 8 Bearer inventados → 401, o 9º → 429 `Retry-After: 60`;
+  cabeçalhos DENY/nosniff/same-origin em `/central/`; webhook HEAD 200, GET 401, POST sem assinatura 401.
+
 ## 2026-10-04 — 29.56: tranca de login por cliente, limite no Bearer e cabeçalhos de segurança (branch fix/29-56-tranca-por-cliente, sem migração)
 
 - A `PortaoDeLogin` passou a ser por cliente (`security.access.cliente_de`): pelo túnel o par é sempre `127.0.0.1`, e o
