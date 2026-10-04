@@ -2431,3 +2431,46 @@ ter pegado outra configuração (emulador anterior, ou o stream contínuo de ant
 (`TotalProcessorTime` em duas leituras), com o host abaixo de 50 % e sem aba do painel aberta no aparelho
 (a aba aberta puxa a prévia pelo ADB). `cores 4` nos aparelhos de conta é decisão do dono (o app enxerga o número
 de núcleos); a conta de CPU e RAM está no resultado do 14.12.
+
+### K-093 — Trocar o mapa do túnel com emuladores vivos deixa uma thread do qemu em 100 %; só o boot frio cura
+
+**Sintoma.** Na 29.41 (04/10), o mapa `data/tunnel/worker-lan-01.map` mudou às 20:37:52Z e o `worker-tunnel.ps1`
+reiniciou o ssh às 20:37:57Z. Cada um dos quatro `qemu-system` vivos no notebook da LAN ficou com uma thread a
+~100 % de um núcleo, quase toda em modo usuário (5 a 7 % de kernel). O total de cada processo foi de 0,14 a 0,6
+para ~1,25 núcleo. O ADB dos aparelhos com 20 a 31 h de uptime (09, 12, 13) ficou intermitente, com timeouts de
+15 s, inclusive pelo `adb` local do notebook, sem passar pelo túnel. No 10, o HAL `multihal` chegou a 41,7 % e o
+kworker do `virtio_vsock` ficou quente.
+
+**Medição (`real`, 04/10/2026, notebook worker-lan-01, central em dfebc34a).**
+
+- Descartados um a um:
+  - prioridade e afinidade (BelowNormal, máscara 4095, iguais às de antes);
+  - energia (Ultimate Performance, desempenho a 123 %);
+  - o ajuste do relógio das 20:26:33Z (anterior à troca, sem efeito nos aparelhos);
+  - a porta 1970 em SynSent (comportamento normal do emulador; os do central fazem o mesmo).
+- Não resolveram:
+  - `adb disconnect` no central;
+  - `adb kill-server` no notebook.
+- Resolveu o reinício frio (stop + start pela API): 12 em 77,5 s, 09 em 78,6 s, 10 em 65,6 s e 13 em 61,1 s (o 13
+  tem conta real e só reiniciou com o sim do dono). Depois de cada um, nenhuma thread quente.
+- O HAL quente que o 29.68 tinha medido no 10 era da mesma família e saiu com o mesmo boot frio.
+
+**Causa.** Não atribuída por dentro do qemu. O gatilho medido é a queda das conexões do túnel com o emulador no ar:
+algum laço do qemu (o vsock e o HAL de sensores são os suspeitos) fica girando e o `adbd` do convidado passa a
+responder aos trancos. Não é o mesmo spin do K-078 e do K-092: aquele era ~90 % de kernel e não se reproduz; este é
+modo usuário e tem gatilho.
+
+**O que fazer.**
+
+- O mapa do túnel se troca só com os emuladores do notebook desligados, ou aceitando reiniciar todos eles depois.
+  Com aparelho de conta real ligado, só com o sim do dono, porque o remédio é reiniciá-lo.
+- Depois de qualquer queda do túnel, medir a thread mais quente de cada `qemu-system` (`TotalProcessorTime` por
+  thread em duas leituras) antes de culpar o app ou a rede. A thread a ~100 % pede reinício frio; `adb` não cura.
+- O `adb start-server` aberto dentro de uma sessão ssh morre quando a sessão fecha. Para diagnosticar pelo `adb`
+  local do notebook, suba o servidor fora do ssh (o agente ou uma tarefa agendada) ou aceite que ele cai com a
+  sessão.
+
+**Aplicabilidade.** Vigente para o worker remoto pelo túnel ssh. Escrever o mesmo conteúdo no mapa (PUT de
+`worker_id` com portas nulas, a adoção do inventário, o deploy) não reinicia o ssh e não dispara o giro, porque o
+`worker-tunnel.ps1` só reinicia quando o conteúdo do mapa muda. No deploy 32 o hash do mapa ficou igual antes e
+depois.
