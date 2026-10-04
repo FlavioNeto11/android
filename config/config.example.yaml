@@ -237,6 +237,7 @@ ai:
   image_policy: auto              # (always) imagem só quando precisa ou quando o modelo pede
   rich_tree_min_elements: 8
   limpeza_opcional: true        # 31.36: etapa que só limpa a tela é pulada se não se comprova (false = a de sempre)
+  max_decisoes_leitura: 12      # 31.38: teto de decisões por tentativa em etapa de leitura (p95 medido 8 + folga; 0 desliga)
   podar_ui_do_navegador: true    # 31.35: a barra do Chrome não vai à árvore do prompt do ator
   acoes_por_decisao: 1          # 31.35: até 3 ações por decisão em etapa sem efeito (1 = desligado; liga após A/B)
   espera_apos_open_url: false   # 31.35: depois do open_url o executor espera a tela parar, sem decisão da IA
