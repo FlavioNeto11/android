@@ -173,6 +173,49 @@ def test_31_52_o_historico_do_ator_leva_a_url_limpa() -> None:
     assert enderecos_limpos("sem endereço aqui") == "sem endereço aqui"
 
 
+async def test_31_52_o_opened_url_do_open_url_real_vai_limpo_ao_historico(harness: Harness) -> None:
+    """Revisão 15c: o `open_url` devolve `opened_url`, não `url`; o teste passa pelo `ToolOutcome` da ferramenta real."""
+    from app.automation.tools import OpenUrl, ToolContext, execute_tool
+    from app.taskqueue.executor import _brief_result
+
+    st = harness.state
+    assert st is not None
+    rt = st.devices.get("android-01")
+    url = "https://contas.exemplo.test/reset/tok?token=abc123"
+    ctx = ToolContext(io=rt.io, call=lambda fn, *a: rt.executor.run(fn, *a, timeout=10),
+                      tree=parse_hierarchy("<hierarchy/>"), width=1, height=1, image_scale=1.0, app_package=None,
+                      app_activity=None, allowed_urls={url})
+    saida = await execute_tool(ctx, "open_url", OpenUrl(url=url, rationale="teste"))
+    assert saida.result == {"opened_url": url}                          # a ferramenta segue devolvendo a URL inteira
+    assert _brief_result(saida.result) == "opened_url=https://contas.exemplo.test/reset/…?…"
+
+
+def test_31_52_o_host_nao_e_trocado_por_porta_ou_arroba_depois_dele() -> None:
+    """Revisão 15c: o padrão do usuário e senha atravessava a porta até o primeiro `@` e trocava o host."""
+    from app.taskqueue.executor import endereco_para_o_prompt as limpa
+    assert limpa("site.exemplo:8080/perfil/pessoa@exemplo.com") == "site.exemplo:8080/perfil/…"
+    assert limpa("https://site.exemplo:443/?next=a@b.exemplo") == "https://site.exemplo:443/?…"
+    assert limpa("site.exemplo:8080") == "site.exemplo:8080"
+    assert limpa("usuario:p@ss@site.exemplo/a") == "site.exemplo/a"             # senha com `@` sai inteira
+    assert limpa("usuario@site.exemplo/painel") == "site.exemplo/painel"
+
+
+def test_31_52_a_limpeza_e_linear_em_texto_enorme() -> None:
+    """Revisão 15c: com 100 mil caracteres, `_JWT` e o trecho do host em `_URL_NO_TEXTO` levavam 17 s e 84 s, e as
+    funções rodam no laço do executor. Pedaço longo é opaco sem regex; o texto é cortado antes da regex."""
+    import time
+
+    from app.taskqueue.executor import endereco_para_o_prompt, enderecos_limpos
+    for chamada in (lambda: endereco_para_o_prompt("site.com/" + "a" * 100_000),
+                    lambda: endereco_para_o_prompt("site.com/" + "ab-" * 33_000),
+                    lambda: enderecos_limpos("erro " + "a." * 50_000),
+                    lambda: enderecos_limpos("erro " + "a-" * 50_000)):
+        t0 = time.perf_counter()
+        chamada()
+        assert time.perf_counter() - t0 < 1.0
+    assert endereco_para_o_prompt("site.com/" + "a" * 100_000) == "site.com/…"
+
+
 def test_31_52_o_prompt_e_o_diagnostico_levam_a_barra_limpa_e_a_arvore_local_fica_crua() -> None:
     from app.taskqueue.executor import _arvore_com_endereco_limpo
     cru = "contas.exemplo/reset/Q2hhdmVEZVJlZGVmaW5pY2Fv?token=abc123"

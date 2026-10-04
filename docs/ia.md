@@ -1693,6 +1693,11 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
     do driver (`enderecos_limpos`).
   - A árvore local segue crua: é por ela que o `type_secret` confere o site.
   - A imagem da tela, quando vai, ainda mostra a barra (fora desta limpeza; medida pedida pela orquestradora).
+  - **Limite aceito:** o perfil no 1º pedaço do caminho (o handle de rede social, como `site/fulano_silva`) continua
+    indo ao prompt, porque não tem forma de token. Do 2º pedaço em diante, nada do caminho vai.
+  - A porta (`:dígitos` seguido de `/`, `?`, `#` ou do fim) nunca é lida como senha: o host não é trocado pelo que
+    vem depois de um `@` no caminho ou na query. A limpeza lê no máximo 2000 caracteres, e um pedaço do caminho com
+    mais de 200 é opaco sem regex, para o laço do executor não travar num texto enorme.
 - O A/B offline da poda era impossível, porque só os números depois dela ficavam em `ai_calls`. Agora,
   `ai.diagnostico_arvore_aparelhos` (lista; vazia, o padrão, deixa o diagnóstico desligado) diz os aparelhos DE TESTE
   em que cada decisão do ator com algo podado grava a árvore de ANTES da poda:

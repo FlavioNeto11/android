@@ -169,11 +169,17 @@ def _host(url_ou_texto: str) -> str:
 _UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 _JWT = re.compile(r"[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+")
 _TRECHO_DE_TOKEN = re.compile(r"[A-Za-z0-9_\-=.]{16,}")
-#: `usuario@` ou `usuario:senha@` antes do host; a senha pode ter `/`, `?` e `#`.
-_USUARIO_NA_URL = re.compile(r"^[^/@:?#\s]+(?::[^@\s]*)?@")
+#: `usuario@` ou `usuario:senha@` antes do host. A senha pode ter `/`, `?`, `#` e `@`; o `@` que fecha o usuário é o
+#: que deixa depois dele um host sem `@` até o primeiro `/`, `?`, `#` ou o fim. `:dígitos` seguido de `/`, `?`, `#` ou
+#: do fim é a porta, não senha (revisão 15c: sem isso, `site:8080/perfil/pessoa@exemplo` virava o host `exemplo`).
+_USUARIO_NA_URL = re.compile(r"^[^/@:?#\s]+(?::(?!\d+(?:[/?#]|$))\S*?)?@(?=[^/?#@\s]+(?:[/?#]|$))")
+#: Teto do texto que a limpeza lê: as regex abaixo são lineares nesse tamanho, e o histórico não precisa de mais.
+_TETO_DO_TEXTO = 2000
 
 
 def _pedaco_opaco(pedaco: str) -> bool:
+    if len(pedaco) > 200:              # longo assim é opaco, e as regex abaixo crescem com o quadrado do tamanho
+        return True
     p = unquote(pedaco)
     return ("@" in p or bool(_UUID.search(p)) or bool(_JWT.search(p))
             or any(any(ch.isdigit() for ch in m.group(0)) for m in _TRECHO_DE_TOKEN.finditer(p)))
@@ -187,7 +193,7 @@ def endereco_para_o_prompt(texto: str) -> str:
     `%40`, UUID, JWT ou base64url no caminho de um link de redefinição ou convite (revisão da orquestradora, 04/10:
     uma lista de formatos sempre deixa um passar). O 1º pedaço também vira `…` se, decodificado, tiver `@` ou casar
     `_pedaco_opaco`. Usuário e senha antes do host somem. É o que o ator precisa para saber em que site e seção está."""
-    t = (texto or "").strip()
+    t = (texto or "").strip()[:_TETO_DO_TEXTO]
     esquema = ""
     if "://" in t:
         esquema, t = t.split("://", 1)
@@ -211,8 +217,9 @@ _URL_NO_TEXTO = re.compile(r"(?:https?://|\bwww\.)[^\s'\"<>]+|\b(?:[a-z0-9-]+\.)
 
 
 def enderecos_limpos(texto: str) -> str:
-    """31.52: o texto com cada endereço passado por `endereco_para_o_prompt` (histórico do ator)."""
-    return _URL_NO_TEXTO.sub(lambda m: endereco_para_o_prompt(m.group(0)), texto or "")
+    """31.52: o texto com cada endereço passado por `endereco_para_o_prompt` (histórico do ator). Cortado em
+    `_TETO_DO_TEXTO` antes da regex: um erro do driver com um blob de 100 mil caracteres travava o laço por minutos."""
+    return _URL_NO_TEXTO.sub(lambda m: endereco_para_o_prompt(m.group(0)), (texto or "")[:_TETO_DO_TEXTO])
 
 
 def _arvore_com_endereco_limpo(tree: UiTree, pacote: str | None) -> UiTree:
@@ -2881,7 +2888,8 @@ class StepExecutor:
                     history.append(f"{decision.tool}({_brief(args)}) FALHOU: {enderecos_limpos(str(exc))}")
                 errors_in_row += 1
                 if errors_in_row >= 3:
-                    return await fail_or_retry(f"Falhas consecutivas do driver: {exc}", obs)
+                    # o erro vai a attempts.error, que a tentativa seguinte põe no histórico do ator
+                    return await fail_or_retry(f"Falhas consecutivas do driver: {enderecos_limpos(str(exc))}", obs)
                 continue
             errors_in_row = 0
             repo.finish_action(aid, ActionStatus.done, effect_possible=decision.tool in EFFECT_CAPABLE,
@@ -3963,9 +3971,11 @@ def _target_key(args: Any) -> str:
 def _brief(args: Any) -> str:
     """A ação no histórico do ator. 31.52: a URL do `open_url` vai só com host e 1º pedaço do caminho."""
     d = args.model_dump(exclude={"rationale"}, exclude_none=True)
-    return ", ".join(f"{k}={str(endereco_para_o_prompt(str(v)) if k == 'url' else v)[:60]!r}" for k, v in d.items())
+    return ", ".join(f"{k}={str(endereco_para_o_prompt(str(v)) if k.endswith('url') else v)[:60]!r}"
+                     for k, v in d.items())
 
 
 def _brief_result(result: dict[str, Any]) -> str:
-    return ", ".join(f"{k}={str(endereco_para_o_prompt(str(v)) if k == 'url' else v)[:80]}"
+    # o `open_url` devolve `opened_url` (revisão 15c): toda chave que termina em `url` passa pela limpeza
+    return ", ".join(f"{k}={str(endereco_para_o_prompt(str(v)) if k.endswith('url') else v)[:80]}"
                      for k, v in result.items() if k != "ms") or "ok"
