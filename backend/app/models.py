@@ -214,6 +214,9 @@ class PlanStep(BaseModel):
     # Contrato C2 (ADR-058): os NOMES dos valores que esta etapa lê e deixa para as seguintes (`step_outputs`),
     # referidos no texto como `{{saida:<nome>}}`. Fora da serialização quando vazia, pelo mesmo motivo de `origin`.
     saidas: list[str] = Field(default_factory=list, exclude_if=lambda v: not v)
+    #: Item 31.36: etapa que só limpa a tela (aviso, banner, cookies, dica). Falhar não derruba o objetivo: vira
+    #: `skipped` e o objetivo segue. Só sem efeito, sem saídas, sem for_each e sem commit_guard (o parsing garante).
+    opcional: bool = Field(default=False, exclude_if=lambda v: not v)
 
     @field_validator("saidas")
     @classmethod
@@ -1866,6 +1869,7 @@ class StepDTO(BaseModel):
     bindings: dict[str, str] = {}
     for_each: str | None = None               # etapa-modelo ainda não expandida
     variables: dict[str, str] = {}            # variáveis próprias da etapa (item, item_index)
+    opcional: bool = False                    # item 31.36: etapa de limpeza; falhar vira `skipped` e o objetivo segue
 
 
 class ActionDTO(BaseModel):

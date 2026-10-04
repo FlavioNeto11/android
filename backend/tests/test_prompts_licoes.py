@@ -49,19 +49,19 @@ SNAPSHOT = {
 SISTEMAS = {
     # Item 24.3: o ator aprende quando usar read_value (ler antes de concluir e antes do efeito; código, senha e
     # token nunca são valor) — o hash muda de propósito, como no 24.8 abaixo.
-    "ACTOR_SYSTEM": "48f6240b40394d5fb907970262e5074afd31638f5ad7f728d68405249ffafcd8",
+    "ACTOR_SYSTEM": "7abb5006b5bcfa77c0ccca55589e20b3ddf5a70d511509ac58367543746223dd",
     # Item 24.8: o exemplo vedado (código lido no Outlook) virou um exemplo permitido, e a regra de código/senha/
     # token nunca atravessar etapas entrou no texto — o hash muda de propósito, não é enfraquecimento do teste.
     # Item 24.3: a regra de `saidas` e `{{saida:<nome>}}` (valor lido numa etapa e usado nas seguintes).
     # Item 29.57: os planejadores levam a regra de identidade (ANA, quando falam com a pessoa) — o hash muda de
     # propósito; o ator e o verificador não a levam e ficam iguais.
-    "PLANNER_SYSTEM": "a0426974079c7874db7bfc23a41f4d28465c366d5167ac4b1879aa29c46dd68c",
+    "PLANNER_SYSTEM": "1065525d77b034b5ba13cfe48ccb71fb7058c07aed385e62c8f807b785f6dace",
     "PLANNER_CAPABILITY_SYSTEM": "ff8bd07ef738da1e7d6fe965bb45b501669e4653aa6daca499b59af20fb6cc28",
     # 29.57 (leitura da orquestradora): o multiapp e as variantes curtas não tinham hash congelado; passam a ter, já
     # com a regra de identidade.
-    "PLANNER_MULTIAPP_SYSTEM": "c9a17ecd46981ffbcee550e5d2984fa2237f00a7d4d2c628937e3214a194e704",
-    "PLANNER_SYSTEM_CURTO": "cc0adaaae0eade1fab89fe8b7a7a3516f16da992bf9814bebcb5af984aa24686",
-    "PLANNER_MULTIAPP_SYSTEM_CURTO": "f7e1c496034fbda362df43b64bb1b8ed217c83c0e800621654ae2a1f0b0fb074",
+    "PLANNER_MULTIAPP_SYSTEM": "7c89a0732daab3ffc48854d421648813601296d4b38f1cdc26d15b5a13bc0f7e",
+    "PLANNER_SYSTEM_CURTO": "697f5c68a8940b807ff878e1080af18c7d5ea9827b5121009d31dbbefe258111",
+    "PLANNER_MULTIAPP_SYSTEM_CURTO": "14fc6c1f7867f06ede5db34fedd97437ba8eedcbab048eddf40559476dec1a35",
     # Item 29.58 (C): o verificador passa a contar as cópias do efeito desta execução (`copias`) — o hash muda de
     # propósito, não é enfraquecimento do teste.
     "VERIFIER_SYSTEM": "5da999c9734dcf67e15274124d1fd17486162fe44963b115c30677e8f941f7cb",

@@ -1641,6 +1641,18 @@ class Scheduler:
                         log.exception("registro do que foi lido na etapa %s", step.id)
             repo.emit_objective(oid)             # progresso ao vivo no painel
             return False
+        if (o in (Outcome.failed, Outcome.retry, Outcome.uncertain) and getattr(step, "opcional", False)
+                and not step.side_effect and self.cfg.file.ai.limpeza_opcional):
+            # Item 31.36: a etapa que só limpa a tela não derruba o objetivo nem gasta tentativa e replano. Fica
+            # `skipped` com o motivo, como AVISO (o objetivo segue e pode fechar `succeeded`), e o worker continua
+            # da tela atual. As seguintes, se o aviso realmente atrapalhar, falham pela razão delas.
+            repo.finish_attempt(attempt_id, AttemptStatus.failed, error=detail, screen=out.tela_da_falha,
+                                recovery="Etapa opcional (31.36): pulada; o objetivo segue", error_kind=kind)
+            repo.transition_step(step.id, StepStatus.skipped,
+                                 detail=f"limpeza opcional não comprovada; seguindo — {detail}", level="warn")
+            metricas.contar("etapa.opcional_pulada")
+            repo.emit_objective(oid)
+            return True
         if o == Outcome.yielded:
             repo.refund_attempt(step.id)
             repo.finish_attempt(attempt_id, AttemptStatus.interrupted,
