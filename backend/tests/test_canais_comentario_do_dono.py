@@ -59,6 +59,30 @@ async def test_o_pedido_de_confirmacao_nomeia_o_cartao_e_o_comentario(tmp_path: 
     assert len(c.avisos) == 1 and len(c.trello.textos()) == 1
 
 
+async def test_a_mesma_action_lida_de_novo_pede_uma_vez_so(tmp_path: Path) -> None:
+    """O webhook e a reconciliação podem ver a mesma action (e o `since` do Trello é inclusivo): um pedido só."""
+    c = await _cenario(tmp_path)
+    c.trello.eco = False
+    c.trello.comenta(DONO, C_MANUAL, "Autorizado")
+    c.trello.ignorar_since = True
+    for _ in range(3):
+        await c.volta()
+    assert len(c.avisos) == 1 and len(c.trello.textos()) == 1
+    assert c.repo.contagens() == {"orquestradora": 1}
+
+
+async def test_comentario_editado_ou_apagado_nao_pede_de_novo(tmp_path: Path) -> None:
+    """Editar ou apagar o comentário são outras actions (`updateComment`, `deleteComment`): só registradas, sem texto."""
+    c = await _cenario(tmp_path)
+    c.trello.eco = False
+    c.trello.comenta(DONO, C_MANUAL, "Autorizado")
+    await c.volta()
+    c.trello.acao("updateComment", DONO, C_MANUAL, texto="Não autorizado")
+    c.trello.acao("deleteComment", DONO, C_MANUAL)
+    await c.volta()
+    assert len(c.avisos) == 1 and len(c.trello.textos()) == 1
+
+
 async def test_comentario_com_o_prefixo_de_ia_nao_pede_nada(tmp_path: Path) -> None:
     """C-07: a ANA, as sessões e a orquestradora escrevem com o token do dono; o 🤖 no começo é o que separa."""
     c = await _cenario(tmp_path)
@@ -160,7 +184,8 @@ async def test_o_sim_no_telegram_fica_para_a_orquestradora_e_responde(tmp_path: 
     linha = c.linha(5)
     assert (linha["estado"], linha["destino"]) == ("orquestradora", "orquestradora")
     assert c.bot.textos()[-1] == "Confirmado: repassei à orquestradora, que age e responde no cartão."
-    assert "previa" not in c.portas.nomes() and "criar" not in c.portas.nomes()
+    # Só repassa: nenhum caminho até execução, aprovação ou resposta de pergunta.
+    assert not {"previa", "criar", "decidir", "responder"} & set(c.portas.nomes())
 
 
 async def test_falha_interna_nao_fica_muda(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

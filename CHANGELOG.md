@@ -29,7 +29,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - A linha do Trello sem autor lido não vale como do dono; o login do painel recusa nome começado por `trello:` ou
   `telegram:` (revisão da #312).
 - O recado que falha por erro interno responde com uma frase fixa em vez de ficar `falhou` mudo (entrada 1256 de 04/10).
-- Prova `simulated`: `backend/tests/test_canais_comentario_do_dono.py` (20) e os ajustes em `test_trello_leitor.py` e
+- Contrato: Adendo v1.35 em `docs/api-contract.md` (login, aviso `trello.comentario`, repasses `comentario_sim` e
+  `comentario_nao`).
+- Prova `simulated`: `backend/tests/test_canais_comentario_do_dono.py` (22) e os ajustes em `test_trello_leitor.py` e
   `test_trello_cliente.py`. `not_run`: o comentário real num cartão de teste.
 
 ## 2026-10-04 — 28.31 F1: o aviso diz o que aconteceu, o que é crítico e se espera o dono (branch canais/28-31-avisos-com-conteudo)
