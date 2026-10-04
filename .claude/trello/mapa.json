@@ -2007,7 +2007,7 @@
   "23.2": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac142f0d9d99ce8604b48e3",
    "url": "https://trello.com/c/AfkxxEtV",
-   "lista": "proximas",
+   "lista": "concluido_hoje",
    "lote": "lote_A8_atuais_pendentes"
   },
   "23.11": {
@@ -2695,7 +2695,7 @@
   "29.51": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1414fc1828905aa2c4add",
    "url": "https://trello.com/c/gwOQbAs2",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "lote_A8_atuais_pendentes",
    "nome": "Polimentos da tela Rede após o deploy 12 (lista “Saída pela casa” e carga dupla)"
   },
@@ -3214,13 +3214,13 @@
   "30.53": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac268da152f1e553e350f99",
    "url": "https://trello.com/c/Dy7oBz5u",
-   "lista": "em_execucao",
+   "lista": "em_validacao",
    "lote": null
   },
   "30.54": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac26be34e34851f778c3134",
    "url": "https://trello.com/c/2IBRqLk5",
-   "lista": "em_execucao",
+   "lista": "em_validacao",
    "lote": null
   },
   "28.24": {
@@ -3264,10 +3264,16 @@
    "url": "https://trello.com/c/4mABUwkP",
    "lista": "proximas",
    "lote": null
+  },
+  "suite:28": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac278ee4213418d0c123a45",
+   "url": "https://trello.com/c/ZIu5HgPI",
+   "lista": "concluido_hoje",
+   "lote": null
   }
  },
  "falhas": [],
- "atualizado_em": "2026-10-04T16:01:00Z",
+ "atualizado_em": "2026-10-04T16:04:00Z",
  "arquivados": {
   "29.50": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac140b47c94d9584a3dc72e",
