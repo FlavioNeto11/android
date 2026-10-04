@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.24 F1: anexos nos canais, o Telegram recebe e devolve imagens e arquivos (branch canais/28-24-anexos, migração 101)
+
+- O dono manda foto, PDF ou texto pelo Telegram (a legenda vale como mensagem): o tipo é conferido pelo conteúdo, o teto de
+  bytes vale antes e durante o download, e o arquivo vai a `data/anexos/<sha256>` com a retenção do 28.16. O convidado e os tipos
+  fora da lista são recusados com o motivo. `GET /api/canais/anexos/{id}` e `/conteudo` (só leitura), adendo v1.21, regra C-21.
+- A saída (`enviar_anexo`, `enviar_conteudo`) só manda o que está no armazém ou o que o produto gerou; caminho fora de
+  `data/anexos` é recusado. O token do bot nunca aparece em log, erro, evento ou banco (o endereço do download o leva).
+- Prova `simulated`: `test_canais_anexos.py` (68; nove mutações conferidas). Real: `not_run`. Fica para a F2 a leitura da imagem
+  pela IA, o cartão do Trello com a imagem e a tela do painel.
+
 ## 2026-10-04 — 30.52: o dossiê do curador pela marca do conteúdo e a recusa do pedido pela pessoa (branch fix/30-52-dossie-pela-marca)
 
 - O parecer lr-1cfb91a981c5f21f citou `against` da versão antiga do fluxo reaprendido e pediu uma reprodução que já

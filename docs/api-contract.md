@@ -5410,6 +5410,35 @@ Prova:
 - `simulated`: `backend/tests/test_teto_de_autonomia.py` (os três níveis e o nulo).
 - `not_run`: PostgreSQL e o central depois do deploy.
 
+## Adendo v1.21 (04/10/2026; número da orquestradora; item 28.24, F1) — anexos nos canais
+
+O Telegram passa a receber e a devolver arquivos (regra do dono em `docs/dominios/canais.md`, C-21). Migração `101_canal_anexos`.
+Duas rotas só de leitura, atrás do mesmo login das outras `/api/canais` (`GET /api/canais/estado`):
+- `GET /api/canais/anexos/{id}`: os metadados. Chaves fixas: `id`, `canal`, `entrada_id` (a `canal_entradas` da mensagem; nulo
+  na saída), `direcao` (`entrada`|`saida`), `sha256`, `mime` (o detectado pelo conteúdo), `bytes`, `estado`
+  (`guardado`|`recusado`|`apagado`), `motivo_recusa` (português simples), `criado_em`, `apagado_em`. Sem caminho de disco e sem o
+  nome que o remetente deu (o produto não o guarda). **404** `anexo_desconhecido`; **503** `not_ready`.
+- `GET /api/canais/anexos/{id}/conteudo`: o arquivo, com o mime guardado, `Content-Disposition: attachment;
+  filename="anexo-<id>.<ext>"` e `X-Content-Type-Options: nosniff`. **404** `anexo_sem_arquivo` (recusado, ou o arquivo sumiu
+  do disco); **410** `anexo_apagado` (a retenção do 28.16 o apagou).
+
+Comportamento da conversa (sem rota nova):
+- Só o chat do dono tem anexo baixado. Foto (a de maior tamanho), documento e legenda: a legenda (`caption`) vale como o texto da
+  mensagem. Tipos aceitos, configuráveis dentro desta lista fixa: `image/jpeg`, `image/png`, `image/webp`, `application/pdf` e
+  `text/plain`, até `avisos.entrada.anexos.max_bytes` (10 MB, no máximo 20 MB, o que o Bot API baixa). O teto vale antes (tamanho
+  declarado, `file_size` do `getFile`) e durante o download, que para ao passar dele. Voz, áudio, vídeo, GIF, figurinha e tipo
+  declarado fora da lista são recusados sem baixar; `application/octet-stream` não conta como declaração.
+- O tipo vem da assinatura do conteúdo (JPEG, PNG, WEBP, PDF; texto = UTF-8 válido sem byte nulo); o declarado só serve para recusar a
+  divergência. O arquivo vai a `data/anexos/<2 primeiros do sha256>/<sha256>.<ext>` por escrita atômica, deduplicado. A resposta ao
+  dono é curta ("Recebi a imagem (123 KB). Guardei na Central (anexo 17).") ou diz o motivo da recusa. Foto sem legenda não é pedido:
+  o anexo fica guardado e a mensagem, `ignorada`. O convidado recebe "Não recebo anexos de convidado." e nada é baixado.
+- Saída: `ConversaDoCanal.enviar_anexo` (por id, sha256 ou caminho DENTRO de `data/anexos`; fora, `CaminhoForaDoArmazem`) e
+  `enviar_conteudo` (o que o produto gerou). `sendPhoto` para imagem (cai para `sendDocument` se o Telegram recusar como foto) e
+  `sendDocument` para o resto; o nome no envio é `anexo-<sha>.<ext>`. A porta `SaidaComAnexos` é do canal: o Trello, que não a cumpre, recusa
+  o anexo com o motivo.
+- A faxina por retenção (28.16) apaga o arquivo e a linha dos anexos vencidos, sem seguir link nem sair de `data/anexos`.
+- Config: `avisos.entrada.anexos` (`enabled`, `max_bytes`, `tipos`). A leitura da imagem pela IA não existe na F1.
+
 ## Adendo v1.20 (04/10/2026; número da orquestradora; item 30.52) — a pessoa recusa um pedido de validação pendente
 
 `POST /api/aprendizado/validacoes/{id}/recusar`, sem corpo. Fecha o pedido ainda `pendente` como `recusada`, com o

@@ -1171,6 +1171,18 @@ class ConvidadosDoTelegramCfg(BaseModel):
     novos_por_hora: int = Field(20, ge=1, le=500)           # chats novos atendidos por hora; o excesso fica sem resposta
 
 
+class AnexosDaEntradaCfg(BaseModel):
+    """Anexos dos canais (item 28.24, F1; regra do dono em `docs/dominios/canais.md` §6). Só o chat do dono tem anexo
+    baixado, e só os tipos da lista: o mime é conferido pelo CONTEÚDO (assinatura), nunca só pelo que o remetente
+    declarou. O arquivo vai para `data/anexos/` pelo sha256 (o nome do remetente nunca é usado) e vence com a retenção
+    do 28.16. O Bot API baixa até 20 MB; o teto vale antes e durante o download."""
+
+    enabled: bool = True
+    max_bytes: int = Field(10 * 1024 * 1024, ge=1024, le=20_000_000)
+    tipos: list[Literal["image/jpeg", "image/png", "image/webp", "application/pdf", "text/plain"]] = Field(
+        default_factory=lambda: ["image/jpeg", "image/png", "image/webp", "application/pdf", "text/plain"])
+
+
 class EntradaDoTelegramCfg(BaseModel):
     """A conversa de volta (item 28.15, ADR-071): o chat do `.env` dá comandos e responde à Central como no painel.
     Desligada de fábrica, e só liga com `avisos.enabled` (mesmo bot, mesmo token, mesma trava `avisos`). O chat aceito
@@ -1189,6 +1201,7 @@ class EntradaDoTelegramCfg(BaseModel):
     #: Mínimo de 2 dias: passa da janela em que o Telegram guarda uma update (24 h), e o dedupe segue valendo.
     retencao_dias: float = Field(30.0, ge=2, le=3650)
     convidados: ConvidadosDoTelegramCfg = ConvidadosDoTelegramCfg()
+    anexos: AnexosDaEntradaCfg = AnexosDaEntradaCfg()
 
 
 class AvisosCfg(BaseModel):

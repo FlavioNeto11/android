@@ -228,7 +228,8 @@ class ServicoDeAvisos:
                 feitas.append(f)
                 if f.algo:
                     log.info("canais: faxina do %s (%d zerada(s), %d apagada(s), %d enviada(s), %d cartão(ões),"
-                             " %d evento(s) de contato)", canal, f.zeradas, f.apagadas, f.enviadas, f.cartoes, f.eventos)
+                             " %d evento(s) de contato, %d anexo(s))", canal, f.zeradas, f.apagadas, f.enviadas,
+                             f.cartoes, f.eventos, f.anexos)
         except TravaPerdida as exc:
             log.warning("canais: faxina recusada, %s", exc)
             return feitas

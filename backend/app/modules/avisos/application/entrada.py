@@ -48,6 +48,7 @@ AJUDA = (
     "/responder <id> <texto>: responde à pergunta de uma execução\n"
     "/para <aparelho ou persona> <objetivo>: um pedido com destino\n"
     "Texto livre também é um pedido; antes de rodar, a Central mostra a prévia e espera Executar.\n"
+    "Foto, PDF e texto (arquivo .txt) ficam guardados na Central; a legenda vale como mensagem.\n"
     "Respondendo a um aviso, o id é o dele: \"sim\" aprova, \"não\" veta, e o texto responde a uma pergunta.\n"
     "Senha e código não passam por aqui: grave no painel.")
 

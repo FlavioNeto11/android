@@ -275,6 +275,35 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   `--chat` só aceita um id já vinculado.
 - **No produto:** a entrada do 28.15 troca a caixa provisória, com o "vai" da orquestradora.
 
+**C-21 · Anexos nos canais.**
+- **Origem:** dono, Telegram 04/10 15:16Z ("o telegram possa enviar e receber imagens… qualquer outro tipo de anexo… assim
+  como você pode retornar anexos"); as duas exceções abaixo, 04/10 15:17Z, por resposta às perguntas da orquestradora.
+- **Regra:**
+  - Só o chat do dono tem anexo baixado. O convidado recebe "Não recebo anexos de convidado." (uma vez por mensagem) e
+    nada é baixado nem guardado.
+  - Só entram imagem JPEG, PNG ou WEBP, PDF e texto (`text/plain`), até o teto de bytes da config
+    (`avisos.entrada.anexos.max_bytes`, 10 MB). O tipo vem do CONTEÚDO (assinatura), não do que o remetente declarou;
+    divergência é recusa. O resto (voz, vídeo, figurinha, GIF, qualquer outro tipo) é recusado, e o motivo é dito ao dono
+    em português simples. Nada é executado nem aberto por programa externo.
+  - O arquivo se guarda em `data/anexos/<2 primeiros do sha256>/<sha256>.<ext>` (fora do Git). O nome que o remetente deu
+    nunca é usado. O mesmo conteúdo é um arquivo só. A retenção é a do 28.16: a faxina apaga o arquivo e a linha, e só
+    apaga o arquivo quando nenhuma outra linha guardada o usa.
+  - A legenda vale como o texto da mensagem e passa pela mesma triagem de credencial: legenda com cara de senha recusa a
+    mensagem e o arquivo não é baixado.
+  - A saída só manda arquivo que o produto gerou ou que já está em `data/anexos/`, por referência (id ou sha256), nunca
+    por caminho livre; um caminho fora de `data/anexos` (ou link) é recusado.
+  - **Exceção estreita (a), 04/10 15:17Z:** a captura de tela de um aparelho pode ir ao chat DO DONO no Telegram.
+  - **Exceção estreita (b), 04/10 15:17Z:** a imagem que o DONO mandar pode ir anexada ao cartão do Trello.
+  - O TEXTO de mensagem e de cartão que acompanha o anexo segue sem nome de persona, conta, e-mail, telefone ou IP. As
+    exceções são só do arquivo, e só ao chat do dono (a) e ao cartão que o dono pediu (b).
+  - A leitura do conteúdo da imagem pela IA é chamada paga: só quando o dono pede, com teto por mensagem e custo
+    registrado (F2; a F1 só guarda e referencia).
+- **Hoje:** nada na operação provisória.
+- **No produto:** F1 do item 28.24 (`modules/avisos/`: `domain/anexos.py`, `infrastructure/anexos.py`, o adaptador do
+  Telegram, `GET /api/canais/anexos/{id}`, migração 101). Falta: a leitura pela IA (F2), o cartão do Trello com a imagem
+  (exceção (b)) e a tela do painel.
+- **Prova:** `simulated` (`backend/tests/test_canais_anexos.py`); `not_run` com o bot e o disco reais.
+
 ## 7. Arquivos locais (fora do Git) e o que guardam
 
 Ficam em `.claude/handoffs/`, que o `.git/info/exclude` exclui: têm id de chat, vínculo com nome e estado da
