@@ -5969,22 +5969,14 @@
    "id": "29.47",
    "status": "implemented",
    "proof": "real",
-   "evidence": "feat/29-47-ambiente-dos-filhos @520e1af2 (4e998ff9 código: sdk.ambiente_dos_filhos por lista de permissão em SdkTools.env(), rede_servidor.ProcessosReais.lancar e diagnostics._run; 520e1af2 docs: operacao.md §11, linha do plano, CHANGELOG). simulated: tests/test_ambiente_dos_filhos.py (5; os 3 com filho real que imprime só os NOMES falham contra o código anterior); smoke local adb/emulator -accel-check/avdmanager/Appium 3.7.0 rc 0 com o ambiente filtrado (38 de 98 nomes). Na main pelo merge da suíte 9. REAL 03/10/2026, central WIN-7S2UASNLFOP, deploy 9 (main 3dcfc9ac, backend pid 33096 desde 11:04:15Z): os 18 descendentes do backend (adb ×14, Appium node ×1, sing-box ×1, conhost ×2) com 0 nomes proibidos no ambiente (só os nomes lidos; controle: o backend tem 1 nome com prefixo proibido); aparelho temporário android-20 criado e ligado pelo backend novo às 11:08:15Z: online, automação ready, qemu com 44 variáveis e 0 nomes proibidos; aposentado (avd_removed). Agente do notebook 0.1.0+3dcfc9a online, 09/10/12/13 com automação ready. Os qemu do 01/03/06 (lançados antes do deploy) seguem com o ambiente antigo até o próximo boot.",
-   "blocker": "",
-   "arquivos": [
-    "backend/app/devices/sdk.py",
-    "backend/app/devices/rede_servidor.py",
-    "backend/app/devices/diagnostics.py",
-    "backend/tests/test_ambiente_dos_filhos.py",
-    "docs/operacao.md"
-   ],
-   "testes": "suíte 9 inteira em integ/suite-9 @2c078dd1 (-n 8, Idle, 10:37–10:46Z): backend 7244 passed, 7 skipped, 1 failed (test_revisao_receitas::test_aparelho_do_lider_que_cai_libera_quem_espera: race do teste exposto pelo #145, registrado; não bloqueia, regra da orquestradora); scripts 463; frontend 1351 (112 arquivos) e typecheck; docs-check 0/0.",
-   "grupo": "deploy-9-android",
-   "modelo": "opus (sessão Android)",
-   "esforco": "high",
+   "evidence": "Prova real já registrada no estado (deploy 9: 18 descendentes com 0 nomes proibidos; android-20 ligado com qemu limpo). Só falta o mecanismo trocar o cartão.",
+   "blocker": null,
+   "grupo": "android-validacao-29",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T11:16:15+00:00"
+   "quando": "2026-10-04T15:11:53+00:00"
   },
   "29.44": {
    "id": "29.44",
@@ -6271,26 +6263,27 @@
    "id": "30.34",
    "status": "partial",
    "proof": "real",
-   "evidence": "Primeiro candidato real na sombra (central 24da29ef): volta de 04/10 13:07:25.686Z com avaliados 1, publicaria 0, marcados 0 (GET /api/aprendizado/metricas -> curador.autopublicacao.ultima_volta). O fluxo enviar-a-mensagem-leitura-31-27-n1-08233 (validated em 12:17:11Z pela sombra, requires_owner) atende 2 execucoes reais a favor na marca atual 2c10657f (r-20261004103305-1f3ac3 no android-12 e r-20261004121625-92d0b4 no android-07), 2 aparelhos, 0 contra, nao reaprendido. Ficou fora por SEM_PARECER: o parecer lr-1cfb91a981c5f21f (pedido_da_pessoa as 12:23:21Z) saiu as 13:07:27Z, 1,4 s depois da volta: real, classe B, pedir_evidencia, confianca media, US$ 0,0129. Na proxima volta, os motivos sao NAO_SUGERE_APROVAR e CONFIANCA_NAO_ALTA. Achado: o dossie do curador cita os against 226 e 233 da marca antiga 072ae4d8 e pede reproducao em outro aparelho que ja existe (ev 274, android-07); a regra da sombra filtra pela marca e o dossie nao.",
-   "blocker": "A liberacao do modo on segue dependendo de >= 30 casos fechados com >= 90% sem regressao; o curador misturando versoes no dossie barra o aprovar/alta (achado reportado, proposta sem codigo).",
-   "grupo": "deploy25-26-aprendizado",
-   "modelo": "opus",
-   "esforco": "high",
+   "evidence": "Fatia A real, 04/10: o laço da sombra está no ar (modo shadow, intervalo de 3600 s). A última volta lida foi às 14:15:50Z, com 1 avaliado; as métricas (curador.autopublicacao) estão no painel. O 1º candidato real, o fluxo enviar-a-mensagem-leitura-31-27-n1-08233, não publicaria: o parecer lr-1cfb91a981c5f21f decidiu pedir_evidencia com confiança média. Ainda não houve nenhum caso marcado 'autopublicaria'.",
+   "blocker": "Fatia B (on): exige ≥ 30 casos fechados e ≥ 90 % sem regressão em 7 dias na sombra. Hoje são 0 casos marcados, então depende de fluxos B com aprovar/alta e ≥ 2 execuções reais em ≥ 2 aparelhos.",
+   "grupo": "aprendizado-validacao-0410",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T14:42:50+00:00"
+   "quando": "2026-10-04T15:11:53+00:00"
   },
   "30.35": {
    "id": "30.35",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "PR #155 (feat/30-35-resultado-posterior @ 32d8ef6b) na main pela suíte 11 (97425d5f): o GravadorDoResultadoPosterior (passo da curadoria) grava learning_reviews.resultado_posterior (descartar, rebaixar pela escada ou pelo degrau D-5 da saúde, manter, sem_desfecho) 14 dias depois de cada revisão real e válida de receita ou lição, uma vez por revisão; determinístico, sem IA, sem migração. simulated: tests/test_learning_resultado_posterior.py (20 testes); bateria 1922 passed depois do rebase; suíte 11 SQLite -n 8 @35e3b0f6 8441 passed, 0 failed. Real: not_run; a primeira revisão real elegível é de 03/10 07:08Z, então o primeiro desfecho pode ser gravado a partir de 17/10 07:08Z.",
-   "grupo": "aprendizado-suite-11",
+   "evidence": "Leitura real de 04/10: são 61 revisões de receita ou lição pelo curador, a mais antiga de 03/10 às 07:08:14Z, e 0 têm resultado_posterior. Isso é o esperado: o desfecho só se grava 14 dias depois da revisão.",
+   "blocker": "Falta a janela de 14 dias. O primeiro desfecho real pode sair a partir de 17/10 07:08Z; nesse dia, ler learning_reviews.resultado_posterior. Nenhuma execução adianta essa data.",
+   "grupo": "aprendizado-validacao-0410",
    "modelo": "claude-opus-5-5",
    "esforco": "medio",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T15:34:12+00:00"
+   "quando": "2026-10-04T15:11:53+00:00"
   },
   "29.50": {
    "id": "29.50",
@@ -6349,42 +6342,28 @@
   "30.38": {
    "id": "30.38",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "(c) na suíte 13, (a) e (b) na suíte 14, tudo no ar; adendo v1.02. simulated: testes das suítes 13 e 14. Conferências reais da orquestradora no central (WIN-7S2UASNLFOP, deploy 20, 051fc3e0) em 04/10/2026: (a) às 08:13Z a tela Execuções mostrava a origem nas execuções de validação (14 marcas 'Prova de fluxo (validação)' e 10 'Validação do QA' na lista e no cartão); (b) GET /api/aprendizado/validacoes devolveu 200 às 08:13Z e a tela Aprendizado › Validação foi percorrida nas validações dos deploys 17 e 18; (c) GET /api/aprendizado/pendentes serviu `classe` com `classe_no_parecer` nulo nos 3 pareceres pendentes (classe B, sem divergência no momento). O caso em que a classe gravada difere da de agora não apareceu no central, por isso a prova do item fica simulated.",
-   "blocker": "",
-   "grupo": "orquestradora-deploy20",
-   "modelo": "claude-fable-5-1",
-   "esforco": "high",
+   "proof": "real",
+   "evidence": "Real, 04/10 14:57Z, central em 60b3a0a9 (migração 099), só leitura, US$ 0,00. (a) No painel, a lista de Execuções mostra a marca 'Prova de fluxo (validação)' na r-20261004132450-38f68a; a API dá origem=prova_fluxo e prova_fluxo_id=no-qa-messenger-levantar-todos-os-contat. (b) GET /api/aprendizado/validacoes (modo on, 74 pedidos), e no painel Aprendizado › Validação: filtros com contagem (pendente 1, feita 17, recusada 56), motivo humano, aparelho, custo e teto (ex.: lv-c99c807c071cf06e, android-10, US$ 0,13 de US$ 0,31, 'O efeito saiu mais de uma vez'), com os links para a execução e o Livro. (c) GET /api/aprendizado/pendentes: os 5 pareceres pendentes (receitas 106, 108, 135, 138 e o fluxo enviar-a-mensagem-leitura-31-27-n1-08233) vêm com classe B e classe_no_parecer null, porque a classe gravada é igual à de agora. Nenhum caso real com classes diferentes hoje; essa divergência só tem prova simulated (suíte 13).",
+   "blocker": null,
+   "grupo": "aprendizado-validacao-0410",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T08:14:29+00:00"
+   "quando": "2026-10-04T15:11:53+00:00"
   },
   "29.51": {
    "id": "29.51",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "feat/polimentos-rede-deploy12 @ a742f75f (722e0664 Rede; 591c8d84 títulos sem lacunas e candidato x desligado; 41950d20 pendentes uma vez; 4773d997 os 3 do backend; a742f75f adendo v1.01), na main pela suíte 13 (integ 798f1849 → main 1c54a7bb) e implantado no deploy 13 (03/10 18:50:02Z, WIN-7S2UASNLFOP, migração 083, problems []). Simulado: frontend 1415/1415 + typecheck na integ; suíte 13 SQLite 8503 passed, 7 skipped, 0 failed; afetados: test_learning_capability_na_linha.py (registro real: REPLY_COMMENT só no Instagram; sem app e dois apps = nulo), test_leitura_visual_papel.py ('ao provedor'), test_needs_input_da_habilidade.py e test_fatia_abrir_conversa.py (o fluxo salvo/habilidade salva que não serviu, sem id nem código), RedePage.test.tsx, aprendizado/model.test.ts, AprendizadoPage.test.tsx, FlowsRecipesSection.test.tsx, app.integration.test.tsx.",
-   "blocker": "Prova real not_run: o relatório do Chrome da orquestradora pós-deploy 13 (itens 6 a 11).",
-   "arquivos": [
-    "frontend/src/features/rede/RedePage.tsx",
-    "frontend/src/features/aprendizado/model.ts",
-    "frontend/src/features/aprendizado/api.ts",
-    "frontend/src/features/aprendizado/SinaisTab.tsx",
-    "frontend/src/features/settings/FlowsRecipesSection.tsx",
-    "backend/app/modules/learning/presentation/nomes.py",
-    "backend/app/modules/learning/application/servico.py",
-    "backend/app/modules/learning/infrastructure/eventos.py",
-    "backend/app/planning/routing.py",
-    "backend/app/taskqueue/service.py",
-    "docs/api-contract.md"
-   ],
-   "testes": "frontend 1415; suíte 13 SQLite 8503/7/0; afetados do backend.",
-   "grupo": "suite-13-android",
-   "modelo": "opus (sessão Android)",
-   "esforco": "high",
+   "evidence": "—",
+   "blocker": "Percurso no navegador (telas Rede e Aprendizado, itens 6 a 11), só leitura; faço depois do deploy 27, sem medida de latência em curso.",
+   "grupo": "android-validacao-29",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T18:53:33+00:00"
+   "quando": "2026-10-04T15:11:53+00:00"
   },
   "31.11": {
    "id": "31.11",
@@ -6438,26 +6417,14 @@
    "id": "29.52",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "fix/29-52-resposta-com-credencial @ 16174425 (→ 90c058e2 no integ), porta única pergunta_sensivel(ref|None) no commit de integração 7fd72929; na main pela suíte 14 (integ 51270b9c, fast-forward) e implantado no deploy 14 (03/10 restart 20:35:29Z, WIN-7S2UASNLFOP, migração 086, problems []). Simulado: tests/test_resposta_com_credencial.py (8) + afetados e arquitetura; telegram 153; RunView.test.tsx (4 novos); suíte 14 SQLite 8716 passed, 7 skipped, 0 failed (9c9fe676); frontend 1422/1422; PG dirigido do test_resposta_com_credencial verde.",
-   "blocker": "Prova real not_run: itens 4 e 5 do roteiro do Chrome da orquestradora pós-deploy 14 (pergunta sensível aberta no painel e o evento pergunta_sensivel); sem pergunta sensível depois do restart, fica não exercitado.",
-   "arquivos": [
-    "backend/app/security/redaction.py",
-    "backend/app/modules/learning/infrastructure/segredo.py",
-    "backend/app/taskqueue/perguntas.py",
-    "backend/app/taskqueue/assistente.py",
-    "backend/app/taskqueue/service.py",
-    "frontend/src/features/runs/RespostaSensivel.tsx",
-    "frontend/src/features/runs/RunView.tsx",
-    "frontend/src/features/runs/resumo.ts",
-    "docs/api-contract.md"
-   ],
-   "testes": "test_resposta_com_credencial 8; afetados 772; frontend 1422; suíte 14 SQLite 8716/7/0; PG dirigido 436+1 (a falha era de outro teste, corrigida).",
-   "grupo": "suite-14-android",
-   "modelo": "opus (sessão Android)",
-   "esforco": "high",
+   "evidence": "0 eventos pergunta_sensivel no banco e no backend.log (14:46Z).",
+   "blocker": "Sem data fixa: a primeira pergunta sensível espontânea; releitura em 11/10 junto com o 29.33 e o 29.35.",
+   "grupo": "android-validacao-29",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T20:39:39+00:00"
+   "quando": "2026-10-04T15:11:53+00:00"
   },
   "31.13": {
    "id": "31.13",
@@ -6556,15 +6523,15 @@
   "30.40": {
    "id": "30.40",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #174 (merge 3af38a45) na main e no ar no deploy 16 (central em 3b5355ce, migracao 088). Simulado: backend/tests/test_learning_prova_validacao.py e backend/tests/test_learning_curador_dominio.py; 981 passed em SQLite e 34 em PG (03/10). Real: not_run. Na leitura do central (04/10 00:30Z, banco so leitura) nenhuma revisao de receita marcada sem caminho depois do deploy, entao nada a observar ainda.",
-   "blocker": "",
-   "grupo": "30.40-30.42",
-   "modelo": "opus",
-   "esforco": "high",
+   "proof": "real",
+   "evidence": "Real, só leitura, 04/10 ~14:50Z, US$ 0,00. (b) As receitas marcadas sem caminho (70, 52, 72, 58 e 63; a 54 também) não receberam pedido novo depois da marca. Os pareceres feitos depois do deploy com o 30.40 (a1163ec6 de 21:06Z, na suíte 16 em 708c1a5a às 22:37Z) escolheram possivelmente_obsoleto e não pedir_evidencia: as 72 e 58 às 21:51Z, a 63 às 20:51Z. O pedir_evidencia da 54 (19:51Z) é anterior ao 30.40. As 4 receitas pendentes com pedir_evidencia (106, 108, 135 e 138) não têm a marca. (a) Não há caso real a exercitar: nenhum pedido vivo tem teto_usd NULL (contagem 0), e os pedidos novos já nascem com o teto proporcional do 30.41 (0,17; 0,09; 0,15). A herança no despacho só tem prova simulated.",
+   "blocker": null,
+   "grupo": "aprendizado-validacao-0410",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T00:44:01+00:00"
+   "quando": "2026-10-04T15:11:53+00:00"
   },
   "30.41": {
    "id": "30.41",
@@ -6697,37 +6664,40 @@
    "id": "29.64",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "PR #191 (b8cb3f5c + e840d668, revisão da orquestradora 01:31Z), suíte 18, deploy 18 (f1651ec8). simulated: backend/tests/test_retoque_no_login.py (16: toque ignorado com formulário intacto ganha UM re-toque sem redigitar e entra; dois ignorados param incertos sem terceiro envio; carregando, senha limpa, botão desabilitado, identificador trocado, erro de credencial/desafio/outra tela na releitura, outro pacote e conta parada no meio não ganham re-toque; review -> active com a conta conferida aberta, também no observe_only, mantendo blocked_until; invalid não se reconcilia; a senha não vaza em banco, log nem resultado), FakeInstagram.envios_ignorados/tela_ao_ignorar/pacote_forcado; vizinhos do login 270 passed. Real not_run: o toque perdido não se reproduz de propósito e pede login em conta real (android-13, 04/10, c-20261004001548-03701b é o caso que motivou).",
-   "grupo": "android-suite18",
+   "evidence": "—",
+   "blocker": "Prova real só no próximo login natural (orquestradora: não provocar login em conta real).",
+   "grupo": "android-validacao-29",
    "modelo": "claude-opus-5-5",
    "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T02:35:26+00:00"
+   "quando": "2026-10-04T15:11:53+00:00"
   },
   "29.65": {
    "id": "29.65",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "PR #192 (b321b081), suíte 18, deploy 18 (f1651ec8). simulated: backend/tests/test_roteamento_por_persona.py (caso E: sessão nos dois -> o principal; entre secundários com sessão o balanceamento desempata; principal desligado com secundário ligado cede ao balanceamento) e test_roteamento_execucao.py (prévia com os dois ligados -> principal; com cada um desligado -> o ligado); 115 passed nos testes de roteamento. Mundo.ligados vem do serviço (InstanceState.online). Com ele no ar, a regra de dizer o aparelho nos comandos da persona do android-13 caiu.",
-   "grupo": "android-suite18",
+   "evidence": "—",
+   "blocker": "Prova só com plano depois do 'no ar' da 27: uma execução em modo plano por persona (a de dois aparelhos, política one), ler na prévia o aparelho e o motivo, cancelar a planejada; nenhuma ação no aparelho.",
+   "grupo": "android-validacao-29",
    "modelo": "claude-opus-5-5",
    "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T02:35:26+00:00"
+   "quando": "2026-10-04T15:11:53+00:00"
   },
   "29.60": {
    "id": "29.60",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #193 (9175e09f), suíte 18, deploy 18 (f1651ec8). simulated: frontend/src/features/runs/ResumoDaExecucao.test.tsx (linha 'Efeito repetido' no resumo com título, aparelho, 'apareceu N vezes' e 'contado na tela pelo verificador'; some sem repetição) e resumo.test.ts (frases e filtro de 2+ cópias); 158 passed em features/runs; detalhe da etapa (InstancesTab) mostra 'Efeito repetido'. O percurso no navegador é da validação do deploy 18.",
-   "grupo": "android-suite18",
+   "proof": "real",
+   "evidence": "Ocorrência real: passo com efeito_repetido em steps.result do objetivo r-20261004132450-38f68a:android-10 (13:26:14Z, central em 60b3a0a9, deploy 26); a tela foi comprovada pela orquestradora no Chrome do dono (a execução 38f68a mostra 'apareceu 2 vezes').",
+   "blocker": null,
+   "grupo": "android-validacao-29",
    "modelo": "claude-opus-5-5",
    "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T02:35:26+00:00"
+   "quando": "2026-10-04T15:11:53+00:00"
   },
   "29.61": {
    "id": "29.61",
@@ -6759,14 +6729,14 @@
    "id": "29.57",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "PR #197 (branch feat/29-57-nome-ana, [skip ci]), sem migração. REGRA_DE_IDENTIDADE em contracts/identidade.py nos três planejadores e no assistente do comando; ator, verificador e escritor social com hash igual. Painel: lib/identidade.ts na prévia, perguntas e recusas. simulated: backend/tests/test_identidade_da_ia.py (regra nos 4 prompts que falam com a pessoa; nem regra, nem nome, nem apresentação no SOCIAL/ACTOR/VERIFIER; app/social/ não importa a identidade; painel com o mesmo nome), test_prompts_licoes.py (hashes dos planejadores atualizados de propósito), ProfileDetail.test.tsx (recusa com o nome); 1941 passed nos afetados do backend, front 273 passed nos afetados e typecheck limpo. Real not_run (sem chamada paga). Suíte 19 e deploy 19 (c683ab0e, 03:05Z). Hash congelado também do multiapp e das 2 variantes _CURTO (com a regra).",
-   "blocker": null,
-   "grupo": "android-fila19",
+   "evidence": "0 decisões citando ANA (14:46Z).",
+   "blocker": "Uma conversa real da ANA no painel ou no Telegram (frente Canais; chamada paga).",
+   "grupo": "android-validacao-29",
    "modelo": "claude-opus-5-5",
    "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T03:08:57+00:00"
+   "quando": "2026-10-04T15:11:53+00:00"
   },
   "32.4": {
    "id": "32.4",
@@ -6940,14 +6910,14 @@
    "id": "29.36",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "PR #200 (fix/29-36-detalhe-do-externo-parado), suíte 21 e deploy 21 (32cbcd6d, 08:55Z). DeviceManager._recalcular_motivo_do_parado em bind_worker (conexão e queda) e no monitor para desired_state=stopped, sem readotar. simulated: backend/tests/test_estado_por_servidor.py (3 novos: reconexão troca 'fora do ar' preso por 'emulador desligado' sem mexer no desired_state; queda troca 'desligado' por 'fora do ar'; error, aparelho local e texto igual não republicam); 1206 passed nos testes de vínculo do worker. Real not_run: sai na próxima queda e volta do notebook (o agente reconectou no deploy 21 às 08:55:51Z; conferir state_detail dos aparelhos parados do worker-lan-01).",
-   "blocker": null,
-   "grupo": "android-suite21",
+   "evidence": "Leitura real 04/10 14:46Z: android-14 e 15 (worker-lan-01, parados) mostram 'emulador desligado em Notebook da LAN', sem o texto preso de fora do ar.",
+   "blocker": "Falta observar uma queda e volta do worker (religar a tarefa farm-agente do notebook) e reler o state_detail; faço depois do deploy 27.",
+   "grupo": "android-validacao-29",
    "modelo": "claude-opus-5-5",
    "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T08:57:24+00:00"
+   "quando": "2026-10-04T15:11:53+00:00"
   },
   "23.14": {
    "id": "23.14",
@@ -7075,27 +7045,27 @@
    "id": "29.35",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "PR #209 (fix/29-35-falta-de-informacao-revisa @ 60330bd2), suíte 22 e deploy 22 (d37043df, 09:42Z). Falta de informação NÃO sensível (missing_info sem credencial, TriagemDeCredencial) deixa de parar em waiting_user: a tentativa fecha failed e passa pela recuperação automática com motivo 'falta de informação' (scheduler.MOTIVO_FALTA_DE_INFORMACAO, _revisao_cabe sem Any). simulated: backend/tests/test_falta_de_informacao.py (cascatas [0,1,0,1] e [0,0]; credencial e código de verificação seguem com a pessoa) + test_desbravador.py. Real not_run: sai na próxima execução com missing_info não sensível.",
-   "blocker": null,
-   "grupo": "android-suite22",
+   "evidence": "Leitura real 04/10 14:46Z: desde o deploy 22 (09:43Z), 0 de 30 objetivos em waiting_user; nos 7 dias antes, 21 de 161. Nenhum plan.revised por falta de informação ainda.",
+   "blocker": "Primeira prova possível: 11/10 ~09:43Z (7 dias desde o deploy 22; meta ≤ 5 objetivos em waiting_user por falta de informação não sensível).",
+   "grupo": "android-validacao-29",
    "modelo": "claude-opus-5-5",
    "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T09:43:30+00:00"
+   "quando": "2026-10-04T15:11:53+00:00"
   },
   "29.33": {
    "id": "29.33",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "PR #214 (fix/29-33-admissao-por-cpu @ 63cadeab) + correção de integração d37043df (o Protocol _ComSemRecurso tinha entrado entre @dataclass e class _Desbravador; 9 testes do desbravador falharam na SQLite da suíte 22 e passaram depois da correção, 45 passed). android.max_cpu_percent_before_boot=85: WorkerCapacity.sem_recurso recusa boot com CPU do host acima do limiar; adb.fator_de_carga_do_preparo (x1 até 50 %, x3 em 100 %) estica o prazo do ajuste; medição de boot ganha host_cpu_percent e boots_em_voo. simulated: backend/tests/test_admissao_por_cpu.py (19). Agente do notebook atualizado no deploy 22 (0.1.0+d37043d, outdated=False). Real not_run: medir boot sob carga no parque.",
-   "blocker": null,
-   "grupo": "android-suite22",
+   "evidence": "Leitura real 04/10 14:46Z (measurements.boot desde o deploy 22): 4 boots com host_cpu_percent e boots_em_voo — android-04 10:24Z 125,5 s CPU 15,1 %; android-07 11:12Z 40,2 s CPU 28,0 %; android-07 12:09Z 51,7 s CPU 18,4 %; android-05 12:33Z 95,2 s CPU 16,4 %; todos com 0 boots em voo. Nenhum boot sob CPU alta ainda; a admissão por CPU não foi exercida.",
+   "blocker": "Primeira prova possível: 11/10 ~09:43Z (7 dias desde o deploy 22, com zero degrau por prazo e menos boots > 120 s); antes disso, só com um boot de QA com o host acima de 85 %.",
+   "grupo": "android-validacao-29",
    "modelo": "claude-opus-5-5",
    "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T09:43:30+00:00"
+   "quando": "2026-10-04T15:11:53+00:00"
   },
   "25.11": {
    "id": "25.11",
@@ -7329,28 +7299,28 @@
   "14.13": {
    "id": "14.13",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #229 (feat/14-13-telemetria-fora-da-auditoria @ 7f3b735f), migração 094 (índices de events e measurements por ts e kind, IF NOT EXISTS), suíte 24. A publicação de instância que só muda telemetria volátil (resources, frame, connectivity.checked_at, stream.frame_age_s/last_frame_at, repair_pause.remaining_s) sai como instance.progress, efêmero (EPHEMERAL_KINDS), sem linha em events. Persiste instance.updated quando há mensagem, nível diferente de info, mudança na assinatura material ou controle não anunciado. O painel trata instance.progress como instance.updated (reducer.ts, live.ts). simulated: backend/tests/test_telemetria_fora_da_auditoria.py (4), test_revisao_previa.py, frontend reducer.test.ts. Real not_run: contar linhas instance.updated por hora antes e depois do deploy 24. Deploy 24: 2c7ab99e, backend no ar às 11:08:37Z, migração 098, agente 0.1.0+2c7ab99 nos dois workers.",
-   "blocker": null,
-   "grupo": "android-suite24",
+   "proof": "real",
+   "evidence": "Real 04/10, central (14.13 no ar desde o deploy 24, 11:08Z): instance.updated gravados por hora, das 14:00 às 15:00Z, sem reinício do backend: 11, contra 68–74 por hora nas horas calmas antes do 14.13 (04–07Z) e 148–418 nas horas com reinício. Leitura de events no banco central, só leitura.",
+   "blocker": "Ressalva: uma hora só sem reinício depois do 14.13; a releitura de 24 h (meta do RA-11) fica para amanhã.",
+   "grupo": "android-validacao-29b",
    "modelo": "claude-opus-5-5",
    "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T11:09:46+00:00"
+   "quando": "2026-10-04T15:11:53+00:00"
   },
   "29.66": {
    "id": "29.66",
-   "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #231 (fix/29-66-fontes-que-alternam @ aa85dcb1, sobre o #229), suíte 24. Causa medida no central: 1108 de 1114 alternâncias de capacidades coincidem com reinício do backend ou reconexão do worker. Fontes: abilist do ADB contra a declaração do worker, e verbos/renderer nulos de 'sem worker' antes do hello. registrar_capacidades só troca abis não vazios com observado=True (ler_capacidades); na janela do seed antes do hello, publish compara verbos e renderer com o último instance.updated gravado (lido uma vez do banco). simulated: backend/tests/test_fontes_que_alternam.py (4). Real not_run: contar alternâncias depois do deploy 24 e de um reinício do farm-central. Deploy 24: 2c7ab99e, backend no ar às 11:08:37Z, migração 098, agente 0.1.0+2c7ab99 nos dois workers.",
-   "blocker": null,
-   "grupo": "android-suite24",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Real 04/10, depois do deploy 26 (13:14:51Z): abis 0 trocas e 0 voltas A→B→A (a parte dos abis funciona); supported_verbs 6 e renderer 10 trocas às 13:15:20-31Z em 09/10/12/13/14/15. Causa: o seed grava (com mensagem) o DTO provisório e o processo novo o lia como referência. Conserto no PR #259 (referência com renderer.configured conhecido entre as 20 últimas linhas; evento da janela com janela_do_seed), critério redefinido pela orquestradora: zero trocas fora da janela.",
+   "blocker": "PR #259 na suíte 28 e um reinício do backend depois dele.",
+   "grupo": "android-validacao-29",
    "modelo": "claude-opus-5-5",
    "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T11:09:46+00:00"
+   "quando": "2026-10-04T15:11:53+00:00"
   },
   "29.37": {
    "id": "29.37",
@@ -7368,15 +7338,15 @@
   "29.67": {
    "id": "29.67",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #234 (fix/29-67-irq-com-host-saturado), suíte 25 e deploy 25 (24da29ef, no ar às 12:06Z, migração 098). Diagnóstico real (leitura, 04/10, 30 h de sondas): o android-06 não tem defeito próprio; convidado de 2 vCPU tem ~2x o irq do de 4 vCPU e sobe com a carga do host (0,04-0,07 calmo, acima de 0,10 sob suíte, 0,50 no 06 com SQLite -n 8). Amostra de IRQ com a CPU do host acima de android.max_cpu_percent_before_boot não sobe nem zera irq_strikes; measurements(kind='irq') ganha host_cpu e ignorada; contador irq.amostra_ignorada; aparelho remoto fica de fora. simulated: backend/tests/test_saude_do_convidado.py (2 novos). Regra do -n 6 na SQLite do funil no banco.md (4ef33d7f): o 06 ficou com load1 mediano 1,29 contra 3,88 do -n 8. Real not_run: contar amostras ignoradas e reinícios por IRQ na próxima suíte.",
+   "proof": "real",
+   "evidence": "Real 04/10, central em 60b3a0a9 (deploy 26), durante a suíte 27: measurements(kind='irq') com host_cpu 87,4–91,7 % às 14:59:03–07Z ficaram ignorada=true em android-05 (irq 0,116), 03 (0,157), 01 (0,2115) e 06 (0,4237, que contaria strike); às 15:03:10–11Z, host 23,8–36,6 %, as amostras voltaram a contar (ignorada=false). 184 de 368 amostras desde 14:40Z já trazem host_cpu.",
    "blocker": null,
-   "grupo": "android-suite25",
+   "grupo": "android-validacao-29b",
    "modelo": "claude-opus-5-5",
    "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T12:12:17+00:00"
+   "quando": "2026-10-04T15:11:53+00:00"
   },
   "31.38": {
    "id": "31.38",
@@ -9766,6 +9736,40 @@
    ],
    "grupos": [
     "deploy25-26-aprendizado"
+   ]
+  },
+  {
+   "quando": "2026-10-04T15:11:53+00:00",
+   "itens": [
+    "29.33",
+    "29.35",
+    "29.36",
+    "29.51",
+    "29.52",
+    "29.57",
+    "29.60",
+    "29.64",
+    "29.65",
+    "29.66",
+    "29.47",
+    "29.67",
+    "14.13"
+   ],
+   "grupos": [
+    "android-validacao-29",
+    "android-validacao-29b"
+   ]
+  },
+  {
+   "quando": "2026-10-04T15:11:53+00:00",
+   "itens": [
+    "30.38",
+    "30.40",
+    "30.34",
+    "30.35"
+   ],
+   "grupos": [
+    "aprendizado-validacao-0410"
    ]
   }
  ]
