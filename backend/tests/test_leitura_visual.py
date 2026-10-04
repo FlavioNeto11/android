@@ -469,7 +469,9 @@ def caixa_cega(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
                    post_description="A tela mostra a caixa de entrada.", max_attempts=2),
         # Com efeito: desde o RA-7 o planejamento recusa etapa com efeito fora do catálogo de um app que tem catálogo.
         Capability(key="QA_ESCREVER_AO_REMETENTE", title="Escrever ao remetente", goal="Escrever para o remetente lido.",
-                   post_kind="model_judged", post_value="v", post_description="d", side_effect=True, max_attempts=1)]))
+                   post_kind="model_judged", post_value="v", post_description="d", side_effect=True, max_attempts=1,
+                   # 30.64: ação com efeito declara sobre quem age; aqui o remetente lido, opcional (a etapa o tira da saída)
+                   optional_bindings=("remetente",), objeto_alvo=("remetente",))]))
     try:
         yield
     finally:

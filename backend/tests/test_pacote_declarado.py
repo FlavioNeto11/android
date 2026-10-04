@@ -43,7 +43,9 @@ def _gravar(pasta: Path, *, app: dict[str, Any] | None = None, catalogo: bool = 
     (pasta / "app.yaml").write_text(yaml.safe_dump(app or APP_DO_CORREIO, allow_unicode=True), encoding="utf-8")
     if catalogo:
         (pasta / "catalogo.yaml").write_text(yaml.safe_dump(
-            _doc(_acao(), _acao(key="RESPONDER", side_effect=True, needs_draft=True, risk="high")),
+            _doc(_acao(), _acao(key="RESPONDER", side_effect=True, needs_draft=True, risk="high",
+                                # 30.64: ação com efeito declara sobre quem age (o destinatário da resposta)
+                                optional_bindings=["destinatario"], objeto_alvo=["destinatario"])),
             allow_unicode=True, sort_keys=False), encoding="utf-8")
     return pasta
 

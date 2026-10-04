@@ -57,6 +57,7 @@ def catalogo_do_qa() -> CapabilityCatalog:
             post_kind="model_judged", post_value="mensagem na conversa",
             post_description="A mensagem aparece na conversa.", bindings=("recipient", "message"),
             side_effect=True, risk="low", commit_selector="id=send_button", commit_guard=("{recipient}", "{message}"),
+            objeto_alvo=("recipient",),                     # 30.64: a conversa com quem; a mensagem é o texto
             reconciliation="Observar a conversa: a mensagem aparece com status; enviar de novo duplicaria."),
     ])
 
