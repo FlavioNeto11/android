@@ -266,6 +266,10 @@ backends no mesmo banco seguem em fila. A forma de uma chave e a de duas não se
 subindo JUNTOS no mesmo banco não se esperariam, e o deploy para o antigo antes de subir o novo. Teste:
 `tests/test_trava_de_migracao_por_esquema.py` (só com `TEST_DATABASE_URL`).
 
+Medido em 04/10 (farm-pg, Idle, os mesmos test_learning_* + d1_fluxos + recuperacao_preserva_estado): 1016 passed em
+10 min 49 s com `-n 4` (antes: 22 min) e 7 min 58 s com `-n 8`. Uma migração por teste custa ~3,2 s (criar o esquema
+0,02 s, aplicar as 82 migrações 2,25 s, apagar 0,9 s): é a maior parte do que sobra.
+
 **O que ainda ficava de fora, e não fica mais.** Três arquivos abriam `Database(cfg.db_path)` — o arquivo SQLite —
 mesmo dentro da corrida do PostgreSQL, por causa de UMA asserção que lê os bytes do arquivo. Eram 43 funções de
 teste: autenticação do Instagram, perfis/vínculo e o cofre. Entre elas, o único chamador de `get_secret`, ou seja:
