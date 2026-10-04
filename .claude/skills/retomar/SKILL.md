@@ -1,6 +1,6 @@
 ---
 name: retomar
-description: Recuperar o contexto deste projeto no início de uma sessão — o que mudou desde a última vez, o que falta no plano-100, próxima ação sugerida. Use quando a sessão começa neste repositório, ou quando o usuário pede "onde paramos", "retome" ou "qual o estado atual".
+description: 'Recuperar o contexto ao abrir a sessão: o que mudou, o que falta no plano-100, próxima ação. Use ao começar ou com "onde paramos", "retome", "estado atual".'
 ---
 
 ## Gatilho

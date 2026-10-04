@@ -1,6 +1,6 @@
 ---
 name: preparar-tarefa
-description: Preparar uma tarefa antes de implementar — critérios de aceite, decisões do dono envolvidas, aprendizados da área, e se ela toca o mundo real. Use antes de começar um item de docs/plano-100.md ou qualquer mudança de escopo médio/grande neste projeto.
+description: 'Preparar tarefa antes de implementar: aceite, decisões do dono, aprendizados, se toca o mundo real. Use antes de item do plano-100 ou mudança média/grande.'
 argument-hint: <ID do plano-100, ex. 1.3, ou descrição da tarefa>
 ---
 
