@@ -488,7 +488,8 @@ class PolicyEngine:
         return None
 
     def _repetido(self, profile_id: str, cap: Capability, bindings: Mapping[str, object] | None, agora: datetime,
-                  app_id: str | None, step_id: str | None) -> tuple[bool, str, str] | None:
+                  app_id: str | None, step_id: str | None, *,
+                  desde: datetime | None = None) -> tuple[bool, str, str] | None:
         """30.64: o MESMO perfil já fez, ou tem pedido em aberto de outra etapa (outra execução, inclusive), desta ação
         sobre o MESMO objeto (`objeto_alvo` do catálogo: o post, o comentário, a conversa, a mídia)? `None` segue;
         senão `(recusa, motivo, dica)`; `recusa=False` é "passa por aprovação".
@@ -534,7 +535,11 @@ class PolicyEngine:
                            "pode ser o mesmo, passa por aprovação (30.64)", "")
 
         dias = max(1, int(getattr(self._settings(), "fleet_target_window_days", 30) or 30))
-        since = to_iso(agora - timedelta(days=dias))
+        inicio = agora - timedelta(days=dias)
+        since = to_iso(max(inicio, desde) if desde is not None else inicio)
+        # O pedido conta pela DECISÃO quando há `desde` (G1 da revisão do 31.49): o pendente criado antes do sim e
+        # aprovado depois não estava na prévia (ela só conta aprovado), e é repetição nova.
+        decidido_desde = to_iso(desde) if desde is not None else None
         qual = ", ".join(f"{k} {v}" for k, v in objeto.items() if v) or "o mesmo objeto"
         for interacao, quando, quem, argumentos, enviado in self.repo.saidas_da_acao(
                 profile_id, cap.key, types=(cap.interaction_type,), statuses=CONTAM, since=since, app_id=app_id,
@@ -553,7 +558,8 @@ class PolicyEngine:
                     "Se for mesmo outro item, diga no comando o que o distingue (a legenda do post, por exemplo) e refaça "
                     "o plano.")
         for pedido, quando, quem, argumentos, status, a_digitar in self.repo.pedidos_da_acao(
-                profile_id, cap.key, since=since, app_id=app_id, exclude_step_id=step_id):
+                profile_id, cap.key, since=to_iso(inicio), app_id=app_id, exclude_step_id=step_id,
+                decidido_desde=decidido_desde):
             if do_registro(argumentos, quem) != objeto:
                 continue
             if conversa:
@@ -569,13 +575,17 @@ class PolicyEngine:
         return None
 
     def mensagem_repetida(self, profile_id: str, cap: Capability, bindings: Mapping[str, object] | None, *,
-                          app_id: str | None = None, step_id: str | None = None) -> str | None:
+                          app_id: str | None = None, step_id: str | None = None,
+                          desde: datetime | None = None) -> str | None:
         """30.64 (revisão da fila, item 5): o `check` roda ANTES do rascunho, e a DM com texto gerado chegava sem texto
         a comparar. A porta chama isto DEPOIS do `_draft_gate`, com a etapa relida: o motivo quando o texto agora
-        conhecido repete uma mensagem já enviada (ou aprovada e não enviada) ao mesmo alvo; `None` senão. Só lê."""
+        conhecido repete uma mensagem já enviada (ou aprovada e não enviada) ao mesmo alvo; `None` senão. Só lê.
+
+        `desde` (31.49): só conta o que aconteceu a partir desse instante. A porta usa o `decided_at` do sim dado no
+        plano: a repetição que o dono já via na prévia está coberta pelo sim; a que surgiu depois, não."""
         if not (cap.limit_bucket == "dms" or cap.interaction_type == InteractionType.dm_sent.value):
             return None
-        repetido = self._repetido(profile_id, cap, bindings, now(), app_id, step_id)
+        repetido = self._repetido(profile_id, cap, bindings, now(), app_id, step_id, desde=desde)
         return repetido[1] if repetido is not None and not repetido[0] else None
 
     def check(self, profile_id: str, cap: Capability, *, run_id: str | None = None,

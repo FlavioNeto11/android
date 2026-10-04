@@ -1610,13 +1610,16 @@ class SocialRepository:
         return saida
 
     def pedidos_da_acao(self, profile_id: str, capability: str, *, since: str, app_id: str | None = None,
-                        exclude_step_id: str | None = None
+                        exclude_step_id: str | None = None, decidido_desde: str | None = None
                         ) -> list[tuple[str, str, str | None, dict[str, object] | None, str, str | None]]:
         """30.64: os pedidos de aprovação deste perfil e desta ação ainda sem interação (pendente, ou aprovado e não
         executado, de objetivo vivo), desde `since`: `(id, created_at, target, argumentos da etapa | None, status,
         texto que vai ser digitado | None)`, o mais recente primeiro. O da etapa `exclude_step_id` não conta (a porta roda de novo na retomada), nem o das versões
         anteriores DELA no mesmo objetivo (mesma chave de etapa): esse é o que `acompanhar_revisao` leva para a etapa
-        revisada, e não um segundo pedido."""
+        revisada, e não um segundo pedido.
+
+        `decidido_desde` (31.49): só o pedido decidido (ou, sem decisão, criado) a partir desse instante."""
+        desde_a_decisao = " AND COALESCE(a.decided_at, a.created_at)>=?" if decidido_desde else ""
         sem_a_etapa = (" AND (a.step_id IS NULL OR (a.step_id<>? AND NOT EXISTS (SELECT 1 FROM steps x WHERE x.id=?"
                        " AND x.objective_id=a.objective_id AND x.key=e.key)))") if exclude_step_id else ""
         por_app = " AND (a.app_id=? OR a.app_id IS NULL)" if app_id else ""
@@ -1626,8 +1629,9 @@ class SocialRepository:
             " WHERE a.profile_id=? AND a.capability=? AND a.status IN ('pending','approved','edited')"
             " AND a.interaction_id IS NULL AND a.created_at>=? AND (a.objective_id IS NULL OR NOT EXISTS (SELECT 1"
             " FROM objectives o WHERE o.id=a.objective_id AND o.status IN ('succeeded','failed','cancelled')))"
-            f"{_do_plano_em_vigor('a')}{por_app}{sem_a_etapa} ORDER BY a.created_at DESC, a.id DESC LIMIT 200",
-            (profile_id, capability, since, *((app_id,) if app_id else ()),
+            f"{_do_plano_em_vigor('a')}{desde_a_decisao}{por_app}{sem_a_etapa} ORDER BY a.created_at DESC, a.id DESC"
+            " LIMIT 200",
+            (profile_id, capability, since, *((decidido_desde,) if decidido_desde else ()), *((app_id,) if app_id else ()),
              *((exclude_step_id, exclude_step_id) if exclude_step_id else ())))
         saida = []
         for r in linhas:

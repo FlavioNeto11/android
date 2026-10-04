@@ -194,6 +194,16 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
 - Limite conhecido: o nome de um terceiro escrito por extenso, sem @, e-mail ou telefone, não é detectável; ele só sai
   no texto que a pessoa escreveu e que a conversa já mostrava.
 - `not_run`: PostgreSQL e a prova real (um aviso de cada nível, depois do deploy, com o dono avisado uma vez).
+## 2026-10-04 — 31.49: o executor honra o sim dado no plano (branch feat/31-49-executor-honra-o-plano)
+
+- `backend/app/state.py`: o sim do plano de capacidade com texto só vale com o texto exato que vai sair (conferido depois
+  da chave); o `_draft_gate` não pula a escrita por causa de um sim de origem `plano`; o pedido novo da execução diz por
+  que o sim do plano não valeu; a DM repetida que surge depois do sim o descarta (F1 da revisão; `mensagem_repetida`
+  ganha `desde`, e o pedido de outra etapa conta pela decisão, `COALESCE(decided_at, created_at)`, G1); o sim anterior
+  à exceção 30.65 presa sai como `expired`; o cartão não repete a frase da repetição. Empilhado sobre o 30.68 (#324); mescla
+  depois do #323 e do #324.
+- Prova: `simulated` (`backend/tests/test_executor_honra_o_plano.py`, 8 testes; `test_porta_do_plano`,
+  `test_chave_da_aprovacao`, `test_repetido_entre_execucoes` e `test_arquitetura` verdes, 68 no total). Real: `not_run` (espera o deploy 32 no ar).
 
 ## 2026-10-04 — 30.68: o dono vê o que a porta faz com o texto editado antes do sim (branch feat/30-68-previa-do-texto)
 
