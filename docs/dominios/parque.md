@@ -779,8 +779,10 @@ comandos e as leituras são só stdlib, em `devices/sonda_rede.py` (vão no agen
 `devices/rede_medicao.medir`; quem decide quando é o passo `verificar` da convergência (comando `device.network`,
 `acao: verificar`), com `conectado` ou `parcial`: ao ligar, a pedido, pela porta da tarefa (no máximo a cada 30 s) e
 na varredura quando vence `rede.deriva_s` ou, no `parcial`, `rede.sonda.reverificar_s` (padrão 600 s; depois de uma
-medição que não verificou, a porta também espera esse tanto). Antes de medir, relê como o conferir: deriva regride e
-nada é medido. O que se mede:
+medição que não verificou, a porta também espera esse tanto). Cada leitura da rede pelo adb (observação, estado da
+interface, janela do start) tem o prazo `rede.sonda.prazo_leitura_s` (90 s; a fila do aparelho dá mais 10), item 29.75:
+eram 45 s fixos, e 6 medições ao ligar falharam por prazo em 7 dias com o host disputado. Antes de medir, relê como o
+conferir: deriva regride e nada é medido. O que se mede:
 
 - **IP de saída v4 e v6**: HTTP/1.0 a um eco de IP na porta 80 (`rede.sonda.hosts_ipv4`, padrão `api.ipify.org` e
   `ipv4.icanhazip.com`; `hosts_ipv6`, `api6.ipify.org` e `ipv6.icanhazip.com`: a família vem do host), com o stdin

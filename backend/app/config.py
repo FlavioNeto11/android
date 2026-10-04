@@ -937,6 +937,11 @@ class RedeSondaCfg(BaseModel):
     # uid 2000, sem app, DNS, UDP nem vazamento), ligado e livre, a cada `reverificar_s`: sem perfil, a saída é a da casa
     # (presumida) até a medida dizer o contrário. `false` desliga (o harness de testes não fala com adb).
     medir_sem_rede: bool = True
+    # O prazo de cada leitura da rede pelo adb (observação, estado da interface, janela do start), item 29.75. Era 45 s
+    # fixos no código, com a fila do aparelho dando +10 ("rede do aparelho excedeu 55s"): 6 medições ao ligar falharam
+    # por prazo em 7 dias (03, 05, 06 e 09, host disputado por boot e suíte), e o aparelho ficou sem prova pós-boot até a
+    # varredura seguinte. 90 s cobre o boot sob carga; a leitura normal leva poucos segundos.
+    prazo_leitura_s: float = Field(90, ge=10, le=600)
 
     @field_validator("hosts_ipv4", "hosts_ipv6")
     @classmethod

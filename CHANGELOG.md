@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.75 (A): prazos da medição de rede e do backup calibrados (branch fix/29-75-prazos-de-rede-e-backup)
+
+- Pedido do dono (04/10 ~17:53Z): "se for necessário pode aumentar os limites ja falei que estamos em ambiente de dev".
+  Levantamento de 7 dias (banco em modo só leitura): 6 `device.network` falharam com "rede do aparelho excedeu 55s"
+  (45 s do adb mais 10 da fila, fixos em `rede_aplicacao.py`), todos ao ligar sob carga.
+- `rede.sonda.prazo_leitura_s` (90 s) vale para as quatro leituras da rede (observação, estado da interface duas vezes,
+  janela do start); `AparelhoPeloAdb.shell(timeout=None)` lê o prazo da config e a fila soma `FOLGA_DA_FILA_S` (10 s).
+- `scripts/lib/copias-de-avd.ps1`: o `Invoke-RestMethod` da lista de aparelhos passa de 10 s para 30 s (o backup roda em
+  Idle e estourou hoje com o host ocupado).
+- Mesmo item, sem PR: `ai_max_calls_per_objective` 60 → 90 e `objective_timeout_s` 900 → 1800 por `PUT /api/settings`
+  às 17:58:07Z (real).
+- Testes: `test_rede_religar_interface.py` (+1); 206 testes de rede aprovados. Prova: simulated; a real é a próxima
+  medição ao ligar sob carga.
+
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
 - Retorno do dono (04/10, Aprendizado › Para aprovar com 5 selecionados): o formulário do aceite abria com o botão
