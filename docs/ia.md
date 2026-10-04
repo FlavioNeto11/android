@@ -1671,3 +1671,20 @@ bloco sem dono. Na mesma janela, com a bateria, só a árvore somou 467 s (médi
 janela), contra 86 s de ações no aparelho; as 3.107 capturas de prévia do painel somaram 30 min de screencap. A 088 é o que permite dividir
 esse "resto" por decisão e por tentativa. Os cortes (reaproveitar a árvore, tirar a imagem quando a árvore basta, tirar
 a prévia do caminho do ADB) são item da Android, com os números do "depois" na mão.
+
+## 19. A poda da barra do navegador e o diagnóstico da árvore (itens 31.35 e 31.52)
+
+- `ai.podar_ui_do_navegador` (31.35) tira da árvore QUE VAI AO ATOR a barra do Chrome (`executor.UI_DO_NAVEGADOR`). A
+  árvore local fica inteira para seletores, guardas e pós-condições.
+- 31.52: a `url_bar` fica no prompt. É onde o ator lê em que página está e onde digita um endereço; tirá-la deixava
+  "abrir a página X" e "estou na página certa?" às cegas (risco achado na medida do 31.35).
+- O A/B offline da poda era impossível, porque só os números depois dela ficavam em `ai_calls`. Agora,
+  `ai.diagnostico_arvore_aparelhos` (lista; vazia, o padrão, deixa o diagnóstico desligado) diz os aparelhos DE TESTE
+  em que cada decisão do ator com algo podado grava a árvore de ANTES da poda:
+  - vira evidência `hierarchy` JSON, com a nota "31.52:";
+  - texto e descrição passam pela redação de segredos;
+  - tela sensível nunca é gravada.
+- `scripts/poda-ab-offline.py` lê essas evidências (banco só leitura) e mede, por árvore, os caracteres do prompt sem e
+  com a poda. Imprime só números e ids.
+- Prova `simulated`: `backend/tests/test_tamanho_do_prompt_do_ator.py`. `not_run`: o A/B sobre árvores reais. Fica
+  para a janela de prova, com o diagnóstico ligado no android-09 ou 10 por config, sem conta real.

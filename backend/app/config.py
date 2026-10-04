@@ -653,6 +653,10 @@ class AiCfg(BaseModel):
     # Item 31.35: tira da árvore QUE VAI AO ATOR a barra do navegador (endereço, abas, menu); a árvore local fica
     # completa para seletores, guardas e pós-condições. `false` volta ao prompt de antes, sem reinício de código.
     podar_ui_do_navegador: bool = True
+    # Item 31.52, diagnóstico DESLIGADO por padrão (lista vazia): os aparelhos DE TESTE em que o executor grava, como
+    # evidência, a árvore do navegador antes da poda acima, para o A/B offline (`scripts/poda-ab-offline.py`). Nunca um
+    # aparelho de conta real; tela sensível nunca é gravada.
+    diagnostico_arvore_aparelhos: list[str] = Field(default_factory=list)
     # Item 31.35 (parte B), DESLIGADO por padrão: quantas ações o ator pode mandar numa decisão de etapa SEM efeito
     # (chamadas paralelas de ferramenta; o executor confere o alvo de cada uma na tela nova). 1 = uma só, como sempre.
     # Liga só depois do A/B com teto (sucesso igual e >= 30 % menos decisões).

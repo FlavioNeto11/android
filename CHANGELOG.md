@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.52: a árvore do Chrome antes da poda, por diagnóstico; a barra de endereço fica no prompt (branch feat/31-52-arvore-antes-da-poda)
+
+- `ai.diagnostico_arvore_aparelhos` vem vazia por padrão, e assim nada é gravado. Nos aparelhos de teste listados, a
+  decisão do ator com algo podado grava a árvore de antes da poda como evidência `hierarchy` JSON, com o texto redigido;
+  tela sensível nunca entra.
+- `scripts/poda-ab-offline.py` faz o A/B da poda sobre essas árvores, mostrando só números.
+- A `url_bar` sai da lista da poda e volta ao prompt do ator (risco achado na medida do 31.35).
+- Teste: `tests/test_tamanho_do_prompt_do_ator.py`, `simulated`. `real`: not_run (janela de prova, com o diagnóstico
+  ligado num aparelho de teste).
+
 ## 2026-10-04 — 28.28: pergunta ao bot do Telegram vai à orquestradora, e nome de persona não sai pelo canal (branch canais/28-28-pergunta-ao-bot)
 
 - **O defeito:** o dono perguntou ao bot "porque tem tanta coisa represada em validação?" e depois respondeu "no

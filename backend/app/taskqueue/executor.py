@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import io
+import json
 import logging
 import re
 import time
@@ -54,6 +55,7 @@ from ..planning.provider import (AIError, AIProvider, AppContext, Decision, Deci
                                  MarcaDaChamada, MotivoDaChamada, MotivoDaImagem, MotivoDeEscalonamento,
                                  PreparoDaDecisao, ScreenInput, StepContext, Transcricao, Usage, Verdict, VerifyRequest)
 from ..db import Row, loads
+from ..security.redaction import redact
 from ..security.secret_store import SecretStoreLocked, SecretStoreUnavailable
 from ..security.sensitive_input import SensitiveInputError, SensitiveInputUnavailable
 from ..social.approvals import ler_rascunho
@@ -452,9 +454,11 @@ LIMITE_DA_ETAPA_OPCIONAL = 3
 #: Item 31.35: a barra do navegador, por pacote, que NÃO vai na árvore do prompt do ator (`ai.podar_ui_do_navegador`).
 #: Lista fechada e explícita: diálogos próprios do Chrome (primeira execução, permissões) continuam no prompt. Na
 #: ocorrência r-20261004090000-bbfe54 (28.12) as telas com árvore rica foram as de entrada nova mais cara (~4,2 mil).
+#: 31.52: a `url_bar` FICA no prompt. É onde o ator lê em que página está e onde digita um endereço; sem ela, "abrir a
+#: página X" e "estou na página certa?" ficavam às cegas (risco achado na medida do 31.35).
 UI_DO_NAVEGADOR: dict[str, frozenset[str]] = {
     "com.android.chrome": frozenset(f"com.android.chrome:id/{i}" for i in (
-        "toolbar", "toolbar_container", "toolbar_buttons", "location_bar", "url_bar", "location_bar_status_icon",
+        "toolbar", "toolbar_container", "toolbar_buttons", "location_bar", "location_bar_status_icon",
         "url_action_container", "delete_button", "mic_button", "tab_switcher_button", "tab_count",
         "menu_button", "menu_button_wrapper", "home_button", "optional_toolbar_button", "bottom_toolbar",
         "control_container", "security_button")),
@@ -1078,6 +1082,23 @@ class StepExecutor:
                                       ocultar=ocultar)
         return ScreenInput(width=w, height=h, jpeg=jpeg, elements=lines, package=obs.package,
                            sensitive=obs.sensitive, tree=obs.tree, podados=podados), scale
+
+    async def _arvore_antes_da_poda(self, obs: Observation, podados: int, *, run_id: str, iid: str, step_id: str,
+                                    attempt_id: str) -> None:
+        """31.52, diagnóstico DESLIGADO por padrão: grava, como evidência `hierarchy` (JSON), a árvore do navegador
+        ANTES da poda do 31.35, só nos aparelhos de `ai.diagnostico_arvore_aparelhos` (os de teste que o dono listar) e
+        nunca de tela sensível. Sem ela, o A/B offline da poda era impossível: só os números depois dela ficavam em
+        `ai_calls`. Texto e descrição passam pela redação de segredos. Falhar ao gravar não muda a etapa."""
+        corpo = {"regra": "31.52", "package": obs.package, "width": obs.width, "height": obs.height, "podados": podados,
+                 "elements": [{**e.to_dict(), "text": redact(e.text) or "", "desc": redact(e.desc) or ""}
+                              for e in obs.tree.elements]}
+        try:
+            await self.repo.add_evidence_async(
+                run_id=run_id, instance_id=iid, step_id=step_id, attempt_id=attempt_id, kind="hierarchy",
+                note=f"31.52: árvore do navegador antes da poda ({podados} podado(s)); diagnóstico",
+                data=json.dumps(corpo, ensure_ascii=False).encode("utf-8"), ext="json")
+        except Exception:  # noqa: BLE001 - diagnóstico nunca derruba a etapa
+            log.exception("%s: não foi possível gravar a árvore antes da poda", iid)
 
     # ------------------------------------------------------------------ etapa
     async def run_step(self, *, run: Any, objective: Any, step: StepDTO, attempt_id: str, rt: DeviceRuntime,
@@ -2207,6 +2228,9 @@ class StepExecutor:
                 screen, scale = self._screen(obs, with_image=quer_imagem,
                                              protect=tuple(step.commit_guard), boost=_boost_terms(step, app),
                                              ai=ai_cfg)
+                if screen.podados and iid in ai_cfg.diagnostico_arvore_aparelhos and not obs.sensitive:
+                    await self._arvore_antes_da_poda(obs, screen.podados, run_id=run_id, iid=iid, step_id=step.id,
+                                                     attempt_id=attempt_id)
                 image_requested = False
                 if encadeada is None:          # a ação encadeada não é decisão nova (31.35)
                     if teto_leitura and decisions >= teto_leitura:

@@ -8,6 +8,8 @@ Nível de prova: `simulated` (árvore escrita à mão e harness com provedor sim
 """
 from __future__ import annotations
 
+from typing import Any
+
 from app.automation.hierarchy import parse_hierarchy
 from app.taskqueue.executor import UI_DO_NAVEGADOR
 
@@ -33,7 +35,8 @@ def test_a_poda_tira_so_a_barra_do_navegador_do_prompt() -> None:
     inteira = "\n".join(arvore.prompt_lines(50))
     podada = "\n".join(arvore.prompt_lines(50, ocultar=UI_DO_NAVEGADOR[CHROME]))
     assert "url_bar" in inteira and "tab_switcher_button" in inteira
-    assert "url_bar" not in podada and "tab_switcher_button" not in podada
+    # 31.52: a barra de endereço FICA (o ator lê a página e digita o endereço); o resto da barra sai
+    assert "url_bar" in podada and "tab_switcher_button" not in podada
     # o conteúdo da página e o diálogo próprio do Chrome (fora da lista fechada) continuam no prompt
     assert "Lista de compras" in podada and "terms_accept" in podada
     assert len(arvore.elements) == 4            # a árvore local segue inteira (seletores, guardas, pós-condições)
@@ -53,3 +56,48 @@ async def test_cada_decisao_do_ator_grava_o_tamanho_da_arvore_e_do_historico(har
     for c in chamadas:
         if c["role"] != "decide":
             assert (c["prompt_arvore_chars"], c["prompt_historico_chars"], c["prompt_podados"]) == (None, None, None)
+
+
+async def test_31_52_o_diagnostico_grava_a_arvore_antes_da_poda_com_texto_redigido(tmp_path: Any) -> None:
+    """31.52: a árvore inteira (com o que a poda tira) vira evidência `hierarchy` JSON; o texto passa pela redação; e o
+    A/B offline (`scripts/poda-ab-offline.py`) remonta a mesma árvore e mede sem e com poda."""
+    import importlib.util
+    import json
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from app.devices.manager import Observation
+    from app.taskqueue.executor import StepExecutor
+
+    xml = XML.replace('text="Lista de compras"', 'text="Lista senha=xyz12345"')    # formato que a redação conhece
+    obs = Observation(frame_id="1", ts="2026-10-04T12:00:00Z", width=720, height=1280, jpeg=None,
+                      tree=parse_hierarchy(xml), package=CHROME, sensitive=False)
+    gravadas: list[dict[str, Any]] = []
+
+    async def add_evidence_async(**k: Any) -> int:
+        gravadas.append(k)
+        return 1
+
+    ex = object.__new__(StepExecutor)
+    ex.repo = SimpleNamespace(add_evidence_async=add_evidence_async)  # type: ignore[assignment]
+    await ex._arvore_antes_da_poda(obs, 1, run_id="r", iid="android-09", step_id="s", attempt_id="a")  # noqa: SLF001
+    [g] = gravadas
+    assert (g["kind"], g["ext"], g["instance_id"]) == ("hierarchy", "json", "android-09")
+    assert g["note"].startswith("31.52:")
+    corpo = json.loads(g["data"].decode("utf-8"))
+    assert len(corpo["elements"]) == 4 and corpo["podados"] == 1           # a árvore INTEIRA, antes da poda
+    assert "xyz12345" not in g["data"].decode("utf-8")                       # segredo não vai para o disco
+    arquivo = Path(tmp_path) / "arvore.json"
+    arquivo.write_bytes(g["data"])
+    raiz = Path(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location("poda_ab", raiz / "scripts" / "poda-ab-offline.py")
+    assert spec is not None and spec.loader is not None
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    m = modulo.medir(json.loads(arquivo.read_text(encoding="utf-8")), 140)
+    assert m["elementos"] == 4 and 0 < m["chars_com_poda"] < m["chars_sem_poda"]
+
+
+def test_31_52_o_diagnostico_vem_desligado() -> None:
+    from app.config import AiCfg
+    assert AiCfg().diagnostico_arvore_aparelhos == []
