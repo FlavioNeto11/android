@@ -51,15 +51,16 @@ def _obs(arvore: Any) -> Observation:
 
 
 # ------------------------------------------------------------------ a lista fechada
-@pytest.mark.parametrize("nome", ["manchete", "titulo", "título", "headline", "title", "assunto", "subject", "nome",
-                                  "name", "remetente", "sender", "autor", "author", "primeira_manchete",
+@pytest.mark.parametrize("nome", ["manchete", "titulo", "título", "headline", "title", "assunto", "subject",
+                                  "remetente", "sender", "autor", "author", "primeira_manchete",
                                   "titulo_do_video", "Manchete Principal"])
 def test_nome_de_papel_e_reconhecido(nome: str) -> None:
     assert e_nome_de_papel(nome)
 
 
 @pytest.mark.parametrize("nome", ["preco", "protocolo", "codigo", "valor", "email", "data", "telefone", "total",
-                                  "posts_antes", "numero_do_pedido"])
+                                  "posts_antes", "numero_do_pedido", "nome",
+                                  "name", "nome_do_produto", "file_name"])
 def test_nome_que_nao_e_de_papel_nao_e_reconhecido(nome: str) -> None:
     assert not e_nome_de_papel(nome)
 
@@ -76,7 +77,7 @@ def test_a_pergunta_de_papel_pergunta_o_papel_e_nomeia_o_que_nao_ocupa() -> None
     g1 = _g1()
     alvo = _el(g1, "Fale conosco")
     p = pergunta_de_papel("manchete", "Fale conosco", alvo, (720, 1280))
-    assert "ocupa o papel de 'manchete'" in p and "PAPEL" in p
+    assert "é, inteiro, o 'manchete' mostrado" in p and "PAPEL" in p
     assert "rodapé" in p and "item de menu" in p and "botão" in p              # o controle negativo está no enunciado
     assert f"elemento {alvo.id}" in p and "[40,1180][680,1220]" in p and "720x1280" in p   # o juiz acha o elemento
     assert "tem relação" not in p
@@ -117,7 +118,7 @@ async def test_caso_real_df1212_o_juiz_recebe_a_pergunta_de_papel_e_ocupa_aceita
     texto = "Lula vence em mais países, mas Flávio soma mais votos"
     r, enunciados = await _perguntar(harness, monkeypatch, "manchete", texto, "yes", _el(g1, texto))
     assert r == "verificador" and len(enunciados) == 1
-    assert "ocupa o papel de 'manchete'" in enunciados[0] and "bounds [40,400][680,560]" in enunciados[0]
+    assert "é, inteiro, o 'manchete' mostrado" in enunciados[0] and "bounds [40,400][680,560]" in enunciados[0]
     assert "tem relação" not in enunciados[0] and "Julgue SÓ a relação" not in enunciados[0]
 
 
@@ -128,7 +129,7 @@ async def test_controle_negativo_rodape_e_menu_nao_ocupam_o_papel_e_sao_recusado
     """A pergunta nova não vira "aceita qualquer texto": rodapé e item de menu, o juiz diz que NÃO ocupam (ou que não
     dá para afirmar), e a leitura é recusada."""
     r, enunciados = await _perguntar(harness, monkeypatch, "manchete", texto, veredito, _el(_g1(), texto))
-    assert r is None and len(enunciados) == 1 and "ocupa o papel de 'manchete'" in enunciados[0]
+    assert r is None and len(enunciados) == 1 and "é, inteiro, o 'manchete' mostrado" in enunciados[0]
 
 
 async def test_nome_que_nao_e_de_papel_continua_com_a_pergunta_antiga(harness: Harness, monkeypatch: Any) -> None:
@@ -191,7 +192,7 @@ async def test_leitura_de_manchete_de_ponta_a_ponta(tmp_path: Path, veredito: st
         saidas = state.db.scalar("SELECT COUNT(*) FROM step_outputs WHERE run_id=?", (run.id,))   # só a recusa o confere
         recusadas = state.db.scalar("SELECT COUNT(*) FROM actions WHERE status='rejected' AND error LIKE ?",
                                     ("sem relação com%",))
-        assert enunciados and all("ocupa o papel de 'manchete'" in e for e in enunciados)
+        assert enunciados and all("é, inteiro, o 'manchete' mostrado" in e for e in enunciados)
         if veredito == "yes":
             # A leitura em si foi aceita (a etapa pode falhar depois, pela pós-condição do provedor simulado, que não é o
             # assunto aqui): ação `read_value` concluída, nenhuma recusa por relação.
@@ -199,5 +200,26 @@ async def test_leitura_de_manchete_de_ponta_a_ponta(tmp_path: Path, veredito: st
             assert lidas_ok >= 1 and recusadas == 0
         else:
             assert saidas == 0 and recusadas >= 4
+            # Revisão do #307 (achado 2): o "não" do juiz para o mesmo (etapa, elemento, nome, valor) não se paga de novo.
+            # Uma pergunta por versão da etapa (a recuperação por dado ausente revisa o plano uma vez: v1 e v2), não
+            # uma por leitura recusada (eram 4 por tentativa).
+            assert len(enunciados) == 2
     finally:
         await state.stop()
+
+
+# ------------------------------------------------------------------ revisão do #307
+def test_a_pergunta_de_papel_julga_o_valor_e_recusa_o_trecho_que_nao_e_a_manchete() -> None:
+    """Achado 1: pela árvore o ator pode ler um TRECHO do nó; "há 2 horas" dentro do nó da manchete ocupa o papel,
+    mas não é a manchete. A pergunta julga o VALOR e nomeia data, hora e linha fina como "não é"."""
+    g1 = _g1()
+    p = pergunta_de_papel("manchete", "há 2 horas", _el(g1, "Fale conosco"), (720, 1280))
+    assert "Julgue o VALOR" in p and 'o texto "há 2 horas"' in p and "é, inteiro, o 'manchete' mostrado" in p
+    assert "data, hora" in p and "linha fina" in p and "NÃO é" in p
+
+
+async def test_o_trecho_errado_e_recusado_quando_o_juiz_diz_que_nao_e_a_manchete(harness: Harness,
+                                                                                monkeypatch: Any) -> None:
+    g1 = _g1()
+    r, enunciados = await _perguntar(harness, monkeypatch, "manchete", "há 2 horas", "no", _el(g1, "Fale conosco"))
+    assert r is None and len(enunciados) == 1 and "há 2 horas" in enunciados[0]

@@ -50,8 +50,9 @@ _TIPO_DO_NOME: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 #: Nomes de saída que dizem o PAPEL do elemento na tela (31.47), em pt e en, já normalizados. Lista FECHADA de propósito:
 #: o que não está aqui (preço, protocolo, código…) é dado que a tela rotula ou tem forma, e segue na pergunta de relação.
-_PAPEIS = frozenset({"manchete", "headline", "titulo", "title", "subtitulo", "subtitle", "assunto", "subject", "nome",
-                     "name", "remetente", "sender", "autor", "author", "destinatario", "recipient"})
+#: Sem "nome"/"name" sozinhos (revisão do #307): puxariam `nome_do_produto` e `file_name`, que não são papel na tela.
+_PAPEIS = frozenset({"manchete", "headline", "titulo", "title", "subtitulo", "subtitle", "assunto", "subject",
+                     "remetente", "sender", "autor", "author", "destinatario", "recipient"})
 _FAIXA_ACIMA_PX = 80          # o rótulo logo acima do valor (formulário em duas linhas)
 
 
@@ -94,11 +95,15 @@ def pergunta_de_papel(nome: str, valor: str, alvo: UiElement | None = None,
         x1, y1, x2, y2 = alvo.bounds
         onde = f" (elemento {alvo.id}, {alvo.class_name.rsplit('.', 1)[-1] or 'View'}, bounds [{x1},{y1}][{x2},{y2}]"
         onde += f", numa tela de {tela[0]}x{tela[1]} px)" if tela else ")"
+    # Revisão do #307 (achado 1): julga o VALOR, não só o elemento. Pela árvore o ator pode ler um TRECHO do nó
+    # (`ler_valor(trecho=…)`); um nó com manchete, linha fina e "há 2 horas" ocupa o papel, mas "há 2 horas" não é a
+    # manchete. O trecho legítimo (só a manchete, dentro de um nó maior) continua valendo.
     return (f"O valor lido para '{nome}' foi \"{valor}\"{onde}. '{nome}' é um PAPEL na tela, não uma palavra do texto: "
-            f"o texto de uma manchete não contém 'manchete'. Julgue SÓ o papel: esse elemento ocupa o papel de '{nome}' "
-            "nesta tela (a posição, o destaque, o tamanho e os vizinhos o identificam como tal)? Se for rodapé, item "
-            "de menu, botão, banner, anúncio, aviso ou outro texto qualquer, NÃO ocupa. yes = ocupa; no = não ocupa; "
-            "uncertain = não dá para afirmar.")
+            f"o texto de uma manchete não contém 'manchete'. Julgue o VALOR: o texto \"{valor}\" é, inteiro, o "
+            f"'{nome}' mostrado nesse elemento (a posição, o destaque, o tamanho e os vizinhos o identificam como tal)? "
+            "Se o valor for só parte de outra coisa do elemento (data, hora, 'há 2 horas', linha fina, autor, "
+            "categoria) ou se o elemento for rodapé, item de menu, botão, banner, anúncio ou aviso, NÃO é. "
+            f"yes = é o '{nome}'; no = não é; uncertain = não dá para afirmar.")
 
 
 def relacoes_do_catalogo(entradas: tuple[str, ...], nome: str) -> tuple[str | None, tuple[str, ...]]:

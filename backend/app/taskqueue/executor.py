@@ -576,6 +576,8 @@ class StepExecutor:
         self._effects: dict[str, tuple[str, str]] = {}      # step_id → (perfil, interação em aberto)
         #: 31.40 b: tentativas de limpeza (sem o elemento que cobria) que já gastaram o seu ÚNICO julgamento
         self._juiz_da_limpeza: set[str] = set()
+        #: Revisão do #307 (achado 2): (etapa, elemento, nome, valor) que o juiz de PAPEL já negou; não se paga de novo.
+        self._papel_negado: set[tuple[str, str, str, str]] = set()
         # Pacote "anr": etapas que já gastaram a sua reabertura determinística depois de um ANR. Por ETAPA, não por
         # tentativa — na r-20260928195344-02ee9e cada tentativa acabava pelo prazo e a seguinte reabria de novo. Some
         # no desfecho final da etapa. Memória do processo: reiniciado o backend, a contagem de mortes (que vem do
@@ -2399,13 +2401,19 @@ class StepExecutor:
                     papel = e_nome_de_papel(args.name)
                     perguntou = relacao is None and (lido_da_imagem is not None or papel
                                                      or bool(cap and args.name in cap.saidas))
-                    if perguntou:
+                    chave_do_papel = (step.id, alvo.id if alvo is not None else "", args.name, valor)
+                    if perguntou and chave_do_papel not in self._papel_negado:
                         # Da imagem, ou saída que o CATÁLOGO declara sem seletor nem rótulo na árvore (a caixa do Outlook,
                         # a lista do QA): a ação diz onde está o valor, mas só o juiz confirma que é ele. Livre: dúvida.
                         # 31.47: nome de PAPEL (manchete, assunto…) cai aqui também, mesmo sem catálogo, e a pergunta é
                         # a do papel (df1212: duas leituras certas da manchete do g1 recusadas sem juiz nenhum).
-                        relacao = await self._relacao_visual(rt, step, ctx_for, run_id, oid, deadline, attempt_id,
-                                                             obs, args.name, valor, ai_cfg, alvo=alvo)
+                        try:
+                            relacao = await self._relacao_visual(rt, step, ctx_for, run_id, oid, deadline, attempt_id,
+                                                                 obs, args.name, valor, ai_cfg, alvo=alvo)
+                        except AIError as exc:        # revisão do #307 (achado 3): como a leitura visual
+                            return await desfecho_de_ia(exc, obs, "a relação do valor lido")
+                        if relacao is None and papel:
+                            self._papel_negado.add(chave_do_papel)
                     if relacao is None:
                         aid = intencao("read_value", args_da_chamada_invalida(bruto, obs.tree), None, side_effect=False)
                         repo.finish_action(aid, ActionStatus.rejected, error=f"sem relação com '{args.name}'")
