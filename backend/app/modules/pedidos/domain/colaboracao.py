@@ -3,7 +3,8 @@
 Um pedido pai com sub-pedidos (`pai_id`), dependências entre eles (`pedido_dependencias(de, para, tipo)`, migração 096)
 e um papel opcional por pedido. Este módulo decide só se a ESTRUTURA é válida; quem grava e quem lê é a API
 (`infrastructure/servico.py`). O laço de ocorrências NÃO olha para nada daqui na F1; a F2 (fim deste módulo) é o que ele lê:
-a dependência que segura a ocorrência `devida` e a reserva dos filhos no orçamento do pai. Papel que limita a autonomia é a F3.
+a dependência que segura a ocorrência `devida` e a reserva dos filhos no orçamento do pai. A F3 é o teto de autonomia de
+cada papel (`TETO_DO_PAPEL`): a API recusa o pedido acima dele e o laço decide com o mais restrito dos dois.
 
 As recusas voltam como `Recusa(codigo, mensagem, campo)`, com o mesmo formato do `Bloqueio` da prévia: a prévia mostra o
 que a criação devolveria (422 com `code`). A ordem das conferências é a ordem em que a pessoa corrige: primeiro o pai,
@@ -19,11 +20,15 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
-from app.modules.pedidos.domain.estados import OCORRENCIA_TERMINAIS
+from app.modules.pedidos.domain.estados import AUTONOMIAS, OCORRENCIA_TERMINAIS
 
 #: O que cada pedido da família faz (§9). `porta_voz` é o único que age para fora, e só há um por família.
 PAPEIS: tuple[str, ...] = ("pesquisador", "checador", "redator", "porta_voz")
 PORTA_VOZ = "porta_voz"
+#: O teto de autonomia de cada papel (F3, §9): quem pesquisa ou checa só observa, o redator prepara (efeito vira rascunho
+#: com aprovação) e só o porta-voz pode agir. Sem papel, vale a autonomia do pedido.
+TETO_DO_PAPEL: Mapping[str, str] = {"pesquisador": "observar", "checador": "observar", "redator": "preparar",
+                                    "porta_voz": "agir"}
 #: `precisa_de_resultado`: o `para` usa o que o `de` produziu. `depois_de`: só a ordem importa.
 TIPOS_DE_DEPENDENCIA: tuple[str, ...] = ("precisa_de_resultado", "depois_de")
 #: Estados em que o pedido não volta a andar (os mesmos de `servico.TERMINAIS` e do §6.2).
@@ -296,3 +301,32 @@ def reservado_aos_filhos(filhos: Iterable[FilhoNoOrcamento]) -> float:
         gasto = max(0.0, f.gasto_usd)
         total += max(float(f.reservado_usd or 0.0), gasto) if f.vivo else gasto
     return total
+
+
+# ------------------------------------------------------------------ F3: o papel limita a autonomia
+def autonomia_efetiva(autonomia: str, papel: str | None) -> str:
+    """A mais restrita entre a autonomia do pedido e o teto do papel (§6.4: o pedido nunca afrouxa; aqui o papel também
+    não). Papel ou autonomia desconhecidos não afrouxam nada: devolvem a autonomia como veio."""
+    teto = TETO_DO_PAPEL.get(papel or "")
+    if teto is None or autonomia not in AUTONOMIAS:
+        return autonomia
+    return min(autonomia, teto, key=AUTONOMIAS.index)
+
+
+def validar_autonomia(autonomia: str, papel: str | None) -> Recusa | None:
+    """`autonomia_acima_do_papel`: o pedido pede mais do que o papel dele permite. A pessoa corrige baixando a autonomia
+    (ou trocando o papel, num pedido novo: o papel não muda depois de criado)."""
+    teto = TETO_DO_PAPEL.get(papel or "")
+    if teto is None or autonomia_efetiva(autonomia, papel) == autonomia:
+        return None
+    return Recusa("autonomia_acima_do_papel", f"O papel `{papel}` vai no máximo até `{teto}`; o pedido pede "
+                  f"`{autonomia}`.", "autonomia")
+
+
+def nota_de_rebaixamento(autonomia: str, papel: str | None) -> str | None:
+    """O que a ocorrência registra quando o laço decide abaixo da autonomia gravada (pedido do legado, ou gravado com a
+    colaboração desligada): só os nomes do papel e das autonomias, nunca o texto do pedido."""
+    efetiva = autonomia_efetiva(autonomia, papel)
+    if efetiva == autonomia:
+        return None
+    return f"autonomia rebaixada ao teto do papel {papel}: {autonomia} → {efetiva}"
