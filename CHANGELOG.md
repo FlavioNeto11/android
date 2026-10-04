@@ -35,8 +35,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - leitura do Trello ou do plano que falha mantém o retrato anterior, e a volta da leitura não vira novidade;
   - a mudança só no detalhe do plano (parciais, bloqueados, a fazer) é detectada;
   - `docs/dominios/canais.md` (C-19) diz quem entra em "Precisa de você": só o que espera o dono de verdade.
+- Branch canais/28-31-f3-eventos, sobre o #321: o contador de novidades conta as duas formas de fato do canal interno, a
+  linha de tabela e a linha "- HH:MMZ (DD/MM) orquestradora: …", na ordem do arquivo. Antes contava só a de tabela, e as
+  45 linhas novas do dia ficavam fora da conta (medido no arquivo de 04/10 às 22:08Z: 289 fatos, 244 de tabela).
+  Condição para ligar o laço.
 - O laço segue parado até o F3 estar no ar e a orquestradora liberar.
-- Prova `simulated`: 22 testes em `.claude/canais/test_resumo_laco.py` e 17 em `.claude/trello/test_redacao.py` (39
+- Prova `simulated`: 23 testes em `.claude/canais/test_resumo_laco.py` e 17 em `.claude/trello/test_redacao.py` (40
   passed). O ensaio contra os dados de agora compôs a mensagem sem enviar. `not_run`: um envio real.
 
 ## 2026-10-04 — 28.29: o registro das decisões automáticas diz a verdade e se lê fácil (branch canais/28-29-registro-de-decisoes)

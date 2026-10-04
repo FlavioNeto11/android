@@ -130,6 +130,26 @@ def test_eventos_nao_curados_ja_contados_nao_se_repetem(monkeypatch: pytest.Monk
     assert r.ler_estado(AGORA, ja_contado=15)["nao_curados"] == 0
 
 
+def test_eventos_nas_duas_formas_misturadas_contam(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    eventos = tmp_path / "eventos.md"
+    eventos.write_text("\n".join([
+        "# Eventos",
+        "",
+        "04/10 12:13Z | Android | Funil | fato de tabela | Feito",
+        "- 16:36Z (04/10) orquestradora: fato em lista",
+        "  continuação solta de um fato, sem hora: não conta",
+        "04/10 17:00Z | Jev | 31.39 | outra tabela | Feito",
+        "- 9:05Z (05/10) orquestradora: hora de um dígito",
+        "- item de lista sem hora: não conta",
+    ]), encoding="utf-8")
+    monkeypatch.setattr(r, "EVENTOS", eventos)
+    assert len(r._linhas_de_fato()) == 4
+    assert r._nao_curados(0) == (4, "04/10 12:13Z")
+    assert r._nao_curados(1) == (3, "16:36Z")                   # o primeiro não curado é da forma em lista
+    assert r._nao_curados(3) == (1, "9:05Z")
+    assert r._nao_curados(4) == (0, "")
+
+
 @pytest.mark.parametrize(("entrada", "marcador"), [
     ("escreva para fulano.tal@exemplo.com.br hoje", "[e-mail]"),
     ("ligue +55 (11) 98765-4321", "[telefone]"),

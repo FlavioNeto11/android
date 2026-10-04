@@ -162,12 +162,30 @@ def _plano() -> tuple[str, str]:
             f"{parciais} parciais · {bloqueados} bloqueados · {a_fazer} a fazer")
 
 
+#: As duas formas de fato no eventos.md: a linha de tabela (`04/10 12:13Z | Frente | …`) e, desde 03/10, a da
+#: orquestradora (`- 16:36Z (04/10) orquestradora: …`). As duas contam, na ordem do arquivo.
+_FATO_EM_LISTA = re.compile(r"^- \d{1,2}:\d{2}Z\b")
+_HORA_DO_FATO = re.compile(r"\b\d{1,2}:\d{2}Z\b")
+
+
+def _e_fato(linha: str) -> bool:
+    return bool(linha.strip()) and not linha.startswith("#") and ("|" in linha or bool(_FATO_EM_LISTA.match(linha)))
+
+
 def _linhas_de_fato() -> list[str]:
     try:
         linhas = EVENTOS.read_text(encoding="utf-8").splitlines()
     except OSError:
         return []
-    return [x for x in linhas if x.strip() and not x.startswith("#") and "|" in x]
+    return [x for x in linhas if _e_fato(x)]
+
+
+def _hora_do_fato(linha: str) -> str:
+    """A hora do fato, nas duas formas; na linha de tabela vale a 1ª coluna inteira (com a data), como antes."""
+    if "|" in linha and not _FATO_EM_LISTA.match(linha):
+        return linha.split("|", 1)[0].strip()
+    m = _HORA_DO_FATO.search(linha)
+    return m.group(0) if m else ""
 
 
 def _nao_curados(curados_ate: int) -> tuple[int, str]:
@@ -175,7 +193,7 @@ def _nao_curados(curados_ate: int) -> tuple[int, str]:
     novos = _linhas_de_fato()[curados_ate:]
     if not novos:
         return 0, ""
-    return len(novos), novos[0].split("|", 1)[0].strip()
+    return len(novos), _hora_do_fato(novos[0])
 
 
 #: listas do quadro Execução onde cartão parado é sinal de esquecimento (04/10: no lugar do teto do List Limits)
