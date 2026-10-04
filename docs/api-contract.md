@@ -5462,8 +5462,12 @@ Complemento (F2, mesmo item):
   ao dono ("… Mande de novo."). Se a Central cai entre gravar e baixar, a volta seguinte (anexo `pendente` com mais de 60 s) baixa UMA
   vez e conta o resultado; se falhar, fecha como `recusado` e avisa. Escolhi avisar+uma tentativa, e não só avisar, porque a referência
   do arquivo no Telegram costuma valer por horas e a retomada poupa o reenvio.
-- `POST /api/canais/anexos/{id}/trello` com `{"card": "<24 hex>", "confirmar": true}`: anexa ao cartão do Trello a imagem que o DONO
-  mandou (exceção (b) do dono, 04/10 15:17Z). Atrás do mesmo login. **200** `{anexo_id, card, trello_anexo}`; **400**
+- `POST /api/canais/anexos/{id}/trello` com `{"card": "<link, código curto ou id>", "confirmar": true}`: anexa ao cartão do Trello a
+  imagem que o DONO mandou (exceção (b) do dono, 04/10 15:17Z). Atrás do mesmo login. `card` aceita o link do cartão
+  (`https://trello.com/c/<código>/...`), o código curto de 8 letras e dígitos ou o id de 24 hexadecimais; o backend lê o id inteiro e
+  o quadro pela API (`GET /1/cards/{código ou id}`), e a resposta traz o id inteiro (28.24 F4, revisão da fila da suíte 31). O mesmo
+  arquivo no mesmo cartão vai uma vez só: se o cartão já tem o anexo de nome `anexo-<sha>.<ext>`, nada sobe e a resposta traz o que
+  existe com `ja_estava: true`. **200** `{anexo_id, card, trello_anexo, ja_estava}`; **400**
   `confirmacao_necessaria`; **404** `anexo_desconhecido`; **409** `anexo_nao_permitido` (convidado, saída ou mensagem que não é do dono),
   `anexo_sem_arquivo` (recusado, apagado ou sumido do disco) ou `cartao_fora_dos_quadros` (o cartão não é de um quadro de
   `trello.quadros`, conferido pela API antes de anexar); **422** `cartao_invalido`; **502** `trello_falhou` (mensagem sem chave nem token);

@@ -40,11 +40,11 @@ export function AnexarAoCartao({ anexoId, onFeito, onCancelar }: {
       <p className={styles.anexarResumo}>
         O arquivo vai para o cartão no Trello, que é um sistema fora da Central. Só cartões dos quadros que a Central espelha.
       </p>
-      <Field label="Cartão do Trello" hint="O id de 24 caracteres do cartão (letras de a a f e dígitos)." error={erro}>
+      <Field label="Cartão do Trello" hint="O link do cartão (Compartilhar › Copiar link), o código de 8 caracteres dele ou o id." error={erro}>
         {({ id, describedBy, invalid }) => (
           <div className={styles.anexarLinha}>
-            <TextInput id={id} aria-describedby={describedBy} invalid={invalid} value={texto} maxLength={64} autoFocus mono
-                       placeholder="Ex.: 5f1c0a9e8b7d6c5b4a392817" className={styles.anexarTexto}
+            <TextInput id={id} aria-describedby={describedBy} invalid={invalid} value={texto} maxLength={300} autoFocus mono
+                       placeholder="Ex.: https://trello.com/c/AbCdEf12" className={styles.anexarTexto}
                        onChange={(e) => setTexto(e.target.value)} />
             <div className={styles.anexarAcoes}>
               <Button type="submit" size="sm" variant="primary" loading={enviando} disabledReason={invalido}>

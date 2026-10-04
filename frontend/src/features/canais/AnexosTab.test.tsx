@@ -175,7 +175,7 @@ describe('AnexosTab', () => {
     await click(confirmar());                                                             // vazio: nada sai
     await setValue(campo, 'abc');
     await click(confirmar());                                                             // curto demais: nada sai
-    expect(text()).toContain('O id do cartão tem 24 caracteres');
+    expect(text()).toContain('Cole o link do cartão');
     expect(backend.callsTo('POST', /trello$/)).toHaveLength(0);
 
     await setValue(campo, `  ${CARTAO.toUpperCase()} `);
@@ -224,11 +224,15 @@ describe('anexos.ts', () => {
     expect(tamanhoLegivel(2 * 1024 * 1024)).toBe('2 MB');
   });
 
-  it('o id do cartão tem 24 hexadecimais; maiúscula e espaço são normalizados', () => {
+  it('o cartão vem pelo link, pelo código curto ou pelo id; o resto nem sai', () => {
     expect(validarCartao(`  ${CARTAO.toUpperCase()} `)).toEqual({ ok: true, card: CARTAO });
+    expect(validarCartao('https://trello.com/c/AbCdEf12/123-titulo-do-cartao')).toEqual({ ok: true, card: 'AbCdEf12' });
+    expect(validarCartao(' https://trello.com/c/AbCdEf12 ')).toEqual({ ok: true, card: 'AbCdEf12' });
+    expect(validarCartao('AbCdEf12')).toEqual({ ok: true, card: 'AbCdEf12' });             // o código curto mantém a caixa
     expect(validarCartao('')).toMatchObject({ ok: false });
     expect(validarCartao('g'.repeat(24))).toMatchObject({ ok: false });
-    expect(validarCartao('https://trello.com/c/AbCdEf12')).toMatchObject({ ok: false });
+    expect(validarCartao('https://example.com/c/AbCdEf12')).toMatchObject({ ok: false });
+    expect(validarCartao('../x')).toMatchObject({ ok: false });
   });
 
   it('o período vira o limite inferior em ISO; "todo o período" não manda nada', () => {

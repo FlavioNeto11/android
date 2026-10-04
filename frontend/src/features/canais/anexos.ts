@@ -49,10 +49,17 @@ export function semPrevia(a: CanalAnexo): string | null {
   return 'Este tipo de arquivo fica guardado na Central e não tem prévia.';
 }
 
-/** O id do cartão do Trello: 24 letras de a a f e dígitos. Devolve o id normalizado, ou o erro em português. */
+/**
+ * O cartão do Trello que a pessoa colou: o link (`trello.com/c/<código>/...`), o código curto de 8 caracteres ou o id
+ * de 24. Devolve o que vai à rota (o código ou o id; o backend resolve o id inteiro), ou o erro em português. A revisão
+ * da fila da suíte 31 achou que só o id de 24 passava, e o dono só tem o link.
+ */
 export function validarCartao(texto: string): { ok: true; card: string } | { ok: false; erro: string } {
-  const card = texto.trim().toLowerCase();
-  if (!card) return { ok: false, erro: 'Informe o id do cartão do Trello.' };
-  if (!/^[0-9a-f]{24}$/.test(card)) return { ok: false, erro: 'O id do cartão tem 24 caracteres (letras de a a f e dígitos).' };
-  return { ok: true, card };
+  const t = texto.trim();
+  if (!t) return { ok: false, erro: 'Cole o link do cartão do Trello.' };
+  const link = /^https?:\/\/(?:www\.)?trello\.com\/c\/([A-Za-z0-9]{8})(?:[/?#].*)?$/.exec(t);
+  if (link?.[1]) return { ok: true, card: link[1] };
+  if (/^[0-9a-fA-F]{24}$/.test(t)) return { ok: true, card: t.toLowerCase() };
+  if (/^[A-Za-z0-9]{8}$/.test(t)) return { ok: true, card: t };
+  return { ok: false, erro: 'Cole o link do cartão (trello.com/c/...), o código de 8 caracteres dele ou o id de 24.' };
 }

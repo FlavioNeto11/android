@@ -27,8 +27,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Painel: aba "Anexos" em Canais (`AnexosTab`, `AnexarAoCartao`): miniatura ou ícone, prévia no próprio item, filtros, "Carregar
   mais" e "Anexar ao cartão" com o campo e a confirmação em linha (padrão do `DecisaoInline`). O botão "Ler" e a descrição da IA ficam
   para depois da fatia 3.
-- Prova `simulated`: `backend/tests/test_canais_anexos_lista.py` (18 casos), `frontend/src/features/canais/AnexosTab.test.tsx`
-  (13 casos). `real`: `not_run` (o passeio no navegador, depois do deploy).
+- Revisão da fila da suíte 31: "Anexar ao cartão" aceita o link do cartão e o código curto, não só o id de 24 que o dono não vê
+  (o backend resolve o id pela API), e a mesma imagem no mesmo cartão vai uma vez só (`ja_estava`), conferido pelo nome neutro do
+  sha entre os anexos do cartão.
+- Prova `simulated`: `backend/tests/test_canais_anexos_lista.py` (18 casos), `test_canais_anexos_trello.py` (5 novos: link, código
+  curto, envio repetido), `frontend/src/features/canais/AnexosTab.test.tsx` (13 casos). `real`: `not_run` (o passeio no navegador,
+  depois do deploy).
 
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
