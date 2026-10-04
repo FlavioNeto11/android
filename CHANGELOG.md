@@ -24,7 +24,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ### Código
 - `modules/avisos/application/espelho.py`: o link do painel nos cartões do espelho leva só o id.
   - O id de fluxo pode ser o slug do objetivo (`fluxo:ler-sem-abrir-conversas-nem-enviar-nada-`), e o quadro tem
-    convidados. Um identificador com duas ou mais palavras de 3+ letras é texto: o link abre só a tela (Aprendizado,
+    convidados. Por isso vale uma LISTA DE PERMISSÃO dos formatos reais: `r-<14 dígitos>-<6 hex>`, `ped_` + 22
+    base64url, `receita:<número>`, `fluxo:<hex 8+>` e `fluxo:f<número>`. O resto abre só a tela (Aprendizado,
     Pendências ou Pedidos), sem o item.
   - Visto no 1º cartão do espelho, no deploy 18.
 - Prova `simulated`: `test_trello_espelho.py::test_link_do_cartao_leva_so_id_e_nunca_texto_derivado_do_pedido` e
