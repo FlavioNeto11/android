@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.61: rota desconhecida avisa, e Execuções sem id abre a mais recente (branch feat/29-61-rota-e-execucao-recente, só painel)
+
+- Hash que não nomeia tela (`#/runs`, link antigo ou digitado errado): aviso "Este endereço não existe no painel" com o
+  endereço, "Ir para o Painel" e "Dispensar"; a tela atual fica e o link volta ao canônico. O aviso sai ao navegar.
+- Execuções sem id no link não reabre a execução restaurada do navegador (`localStorage`): `selecaoRestaurada` faz a
+  lista abrir a mais recente; a execução escolhida nesta visita continua valendo, e o menu para Execuções não leva a
+  restaurada no link.
+- Prova `simulated`: `frontend/src/store/ui.test.ts` (6 casos novos); front 1473 passed. O percurso no navegador fica
+  para a validação do deploy.
+
 ## 2026-10-04 — 29.59: o selo "agente defasado" compara o código do agente, não o commit (branch fix/29-59-agente-defasado-por-codigo, sem migração)
 
 - `version.codigo_do_agente`: impressão (sha256, 16 hex) dos arquivos do pacote do agente. No checkout, pelas entradas
@@ -75,16 +85,6 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   system is starting up". Esperar a conexão antes do pytest.
 - **Config do central** (por instalação): `trello` etapa 3 às 02:05:54Z (`reconciliar_s` 300, cadastro automático com o
   webhook), pelo `.claude/handoffs/canais/trello-config.py`, com cópia em `data/backups`.
-
-## 2026-10-04 — 29.61: rota desconhecida avisa, e Execuções sem id abre a mais recente (branch feat/29-61-rota-e-execucao-recente, só painel)
-
-- Hash que não nomeia tela (`#/runs`, link antigo ou digitado errado): aviso "Este endereço não existe no painel" com o
-  endereço, "Ir para o Painel" e "Dispensar"; a tela atual fica e o link volta ao canônico. O aviso sai ao navegar.
-- Execuções sem id no link não reabre a execução restaurada do navegador (`localStorage`): `selecaoRestaurada` faz a
-  lista abrir a mais recente; a execução escolhida nesta visita continua valendo, e o menu para Execuções não leva a
-  restaurada no link.
-- Prova `simulated`: `frontend/src/store/ui.test.ts` (6 casos novos); front 1473 passed. O percurso no navegador fica
-  para a validação do deploy.
 
 ## 2026-10-04 — 30.45: o veredito da validação enxerga a evidência reclassificada (branch feat/30-45-veredito-reclassificado)
 
