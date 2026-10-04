@@ -256,6 +256,20 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   download do anexo com prazo total de 90 s (12; o laço de eventos nunca esteve bloqueado). Prova: `simulated`, em
   `test_canais_captura.py`, `test_canais_anexos.py`.
 
+## 2026-10-04 — 30.59: a proposta de ação de catálogo por etapa, não por modelo, e só onde ainda há IA (branch feat/30-59-propostas-por-chave)
+
+- Origem: a triagem dos candidatos do portal (fk-58790a32b8, fk-b9f8c90668 e fk-8fb6c107bf).
+  - `open_app` do QA Messenger tinha duas propostas iguais, uma por `template_hash` (141e e 2c35).
+  - `check_account` era proposta embora já fechasse por receita.
+- `AcaoLivre` agrupa por (app, chave da etapa), com `modelos`, `etapas` e `sem_ia`; a referência passa a ser
+  `<pacote>|etapa:<chave>`.
+- `proposta_de_acao` não propõe a etapa que fechou sem IA (`recipe` ou `sem_ator`) em 80 % ou mais das vezes
+  (`ACAO_SEM_IA_MAX`). O detalhe diz quantas já fecharam sem IA.
+- As 47 linhas abertas por `template_hash` no central não são reescritas, porque o estado é da pessoa: marcar
+  `wontfix` pela rota do backlog depois do deploy.
+- A parte do executor (o atalho LT-1 que não fecha o modelo 141e sem ator) foi para a Jev como 31.48.
+- Prova `simulated`: `backend/tests/test_learning_backlog.py` (teste novo com a forma do caso real) e os 67 arquivos
+  do aprendizado, com 1095 aprovados.
 
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
