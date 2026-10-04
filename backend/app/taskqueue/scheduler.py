@@ -73,13 +73,13 @@ AJUDA_DA_CONTA_DO_APP = ("Cadastre ou reative a conta da pessoa neste aplicativo
 _SEM_TELA_DA_FALHA = frozenset({Outcome.succeeded, Outcome.cancelled, Outcome.yielded})
 
 
-@dataclass
-
 class _ComSemRecurso(Protocol):
     """A forma da porta de recurso de uma máquina (`WorkerCapacity`): o scheduler não conhece o registro de workers."""
 
     def sem_recurso(self, limiar_cpu_percent: float | None = None) -> str | None: ...
 
+
+@dataclass
 class _Desbravador:
     """Aparelho que abre o caminho (aprende as receitas) para os aparelhos COMPATÍVEIS de uma execução."""
     instance_id: str
