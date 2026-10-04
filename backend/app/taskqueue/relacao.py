@@ -101,8 +101,9 @@ def pergunta_de_papel(nome: str, valor: str, alvo: UiElement | None = None,
     return (f"O valor lido para '{nome}' foi \"{valor}\"{onde}. '{nome}' é um PAPEL na tela, não uma palavra do texto: "
             f"o texto de uma manchete não contém 'manchete'. Julgue o VALOR: o texto \"{valor}\" é, inteiro, o "
             f"'{nome}' mostrado nesse elemento (a posição, o destaque, o tamanho e os vizinhos o identificam como tal)? "
-            "Se o valor for só parte de outra coisa do elemento (data, hora, 'há 2 horas', linha fina, autor, "
-            "categoria) ou se o elemento for rodapé, item de menu, botão, banner, anúncio ou aviso, NÃO é. "
+            "Uma manchete pode conter data ou hora (\"Ao vivo: …, 16h\"); o que NÃO vale é o valor ser só a data, a "
+            "hora ou outra parte do elemento ('há 2 horas', linha fina, autor, categoria), ou o elemento ser rodapé, "
+            "item de menu, botão, banner, anúncio ou aviso: nesses casos NÃO é. "
             f"yes = é o '{nome}'; no = não é; uncertain = não dá para afirmar.")
 
 

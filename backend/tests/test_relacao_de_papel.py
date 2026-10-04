@@ -140,7 +140,7 @@ async def test_nome_que_nao_e_de_papel_continua_com_a_pergunta_antiga(harness: H
 
 
 # ------------------------------------------------------------------ de ponta a ponta, no harness
-@pytest.mark.parametrize("veredito", ["yes", "no"])
+@pytest.mark.parametrize("veredito", ["yes", "no", "uncertain"])
 async def test_leitura_de_manchete_de_ponta_a_ponta(tmp_path: Path, veredito: str) -> None:
     """A df1212 no QA falso, planejamento LIVRE (sem catálogo): `read_value(name="manchete")` num texto sem rótulo nem
     forma. Com o juiz dizendo que o elemento ocupa o papel, a leitura é gravada; dizendo que não, é recusada quatro vezes
@@ -203,7 +203,10 @@ async def test_leitura_de_manchete_de_ponta_a_ponta(tmp_path: Path, veredito: st
             # Revisão do #307 (achado 2): o "não" do juiz para o mesmo (etapa, elemento, nome, valor) não se paga de novo.
             # Uma pergunta por versão da etapa (a recuperação por dado ausente revisa o plano uma vez: v1 e v2), não
             # uma por leitura recusada (eram 4 por tentativa).
-            assert len(enunciados) == 2
+            if veredito == "no":
+                assert len(enunciados) == 2
+            else:                          # o incerto é passageiro: cada leitura pergunta de novo (4 por tentativa)
+                assert len(enunciados) > 2
     finally:
         await state.stop()
 
@@ -215,7 +218,7 @@ def test_a_pergunta_de_papel_julga_o_valor_e_recusa_o_trecho_que_nao_e_a_manchet
     g1 = _g1()
     p = pergunta_de_papel("manchete", "há 2 horas", _el(g1, "Fale conosco"), (720, 1280))
     assert "Julgue o VALOR" in p and 'o texto "há 2 horas"' in p and "é, inteiro, o 'manchete' mostrado" in p
-    assert "data, hora" in p and "linha fina" in p and "NÃO é" in p
+    assert "só a data, a hora" in p and "linha fina" in p and "NÃO é" in p and "pode conter data ou hora" in p
 
 
 async def test_o_trecho_errado_e_recusado_quando_o_juiz_diz_que_nao_e_a_manchete(harness: Harness,

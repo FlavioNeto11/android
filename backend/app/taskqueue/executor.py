@@ -576,8 +576,11 @@ class StepExecutor:
         self._effects: dict[str, tuple[str, str]] = {}      # step_id → (perfil, interação em aberto)
         #: 31.40 b: tentativas de limpeza (sem o elemento que cobria) que já gastaram o seu ÚNICO julgamento
         self._juiz_da_limpeza: set[str] = set()
-        #: Revisão do #307 (achado 2): (etapa, elemento, nome, valor) que o juiz de PAPEL já negou; não se paga de novo.
-        self._papel_negado: set[tuple[str, str, str, str]] = set()
+        #: Revisão do #307: por tentativa, (elemento, nome, valor) que o juiz de PAPEL respondeu "no" — só o "no"; o
+        #: "uncertain" é passageiro (página carregando) e pergunta de novo. Some no fim da tentativa (`run_step`).
+        self._papel_negado: dict[str, set[tuple[str, str, str]]] = {}
+        #: O último veredito do juiz de relação (`_relacao_visual`), para o cache acima distinguir "no" de "uncertain".
+        self._ultimo_veredito_de_relacao: str | None = None
         # Pacote "anr": etapas que já gastaram a sua reabertura determinística depois de um ANR. Por ETAPA, não por
         # tentativa — na r-20260928195344-02ee9e cada tentativa acabava pelo prazo e a seguinte reabria de novo. Some
         # no desfecho final da etapa. Memória do processo: reiniciado o backend, a contagem de mortes (que vem do
@@ -1127,6 +1130,7 @@ class StepExecutor:
             fechada = True
         finally:
             self._registrar_estrategia(attempt_id, rr)
+            self._papel_negado.pop(attempt_id, None)
             if not fechada:
                 # Saiu por exceção (o scheduler a transforma em falha): o aprendizado sabe da tentativa do mesmo jeito,
                 # uma vez, e sem desfecho que pareça sucesso.
@@ -2401,8 +2405,9 @@ class StepExecutor:
                     papel = e_nome_de_papel(args.name)
                     perguntou = relacao is None and (lido_da_imagem is not None or papel
                                                      or bool(cap and args.name in cap.saidas))
-                    chave_do_papel = (step.id, alvo.id if alvo is not None else "", args.name, valor)
-                    if perguntou and chave_do_papel not in self._papel_negado:
+                    negados = self._papel_negado.setdefault(attempt_id, set())
+                    chave_do_papel = (alvo.id if alvo is not None else "", args.name, valor)
+                    if perguntou and chave_do_papel not in negados:
                         # Da imagem, ou saída que o CATÁLOGO declara sem seletor nem rótulo na árvore (a caixa do Outlook,
                         # a lista do QA): a ação diz onde está o valor, mas só o juiz confirma que é ele. Livre: dúvida.
                         # 31.47: nome de PAPEL (manchete, assunto…) cai aqui também, mesmo sem catálogo, e a pergunta é
@@ -2412,8 +2417,8 @@ class StepExecutor:
                                                                  obs, args.name, valor, ai_cfg, alvo=alvo)
                         except AIError as exc:        # revisão do #307 (achado 3): como a leitura visual
                             return await desfecho_de_ia(exc, obs, "a relação do valor lido")
-                        if relacao is None and papel:
-                            self._papel_negado.add(chave_do_papel)
+                        if relacao is None and papel and self._ultimo_veredito_de_relacao == "no":
+                            negados.add(chave_do_papel)
                     if relacao is None:
                         aid = intencao("read_value", args_da_chamada_invalida(bruto, obs.tree), None, side_effect=False)
                         repo.finish_action(aid, ActionStatus.rejected, error=f"sem relação com '{args.name}'")
@@ -3096,6 +3101,7 @@ class StepExecutor:
                                  lambda: self.provider.verify(VerifyRequest(ctx=ctx, screen=screen, facts=[])),
                                  step_id=step.id, role="verify", deadline=t_end, attempt_id=attempt_id,
                                  marca=MarcaDaChamada(motivo="julgamento", image_reason="pedida"))
+        self._ultimo_veredito_de_relacao = verdict.satisfied
         return "verificador" if verdict.satisfied == "yes" else None
 
     async def _verify(self, rt: DeviceRuntime, step: StepDTO, ctx_for: Callable[[], StepContext], run_id: str,
