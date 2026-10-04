@@ -30,7 +30,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Evento com formato fixo `dados.vencimento = {regra: "31.43", motivo: "vencido_sem_resposta", horas, desde}` no
   `run.updated` (com o `expirada` antigo) e no `objective.updated`. `Repository.set_objective` ganhou `dados`.
 - Prova `simulated`: `backend/tests/test_pergunta_vence.py` (11), `test_needs_input_expira.py`. `not_run`: o central.
-- Docs: `docs/dominios/execution.md` (31.43), `docs/api-contract.md` (adendo v1.21, número a confirmar).
+- Docs: `docs/dominios/execution.md` (31.43), `docs/api-contract.md` (adendo v1.23, número da orquestradora).
 
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 

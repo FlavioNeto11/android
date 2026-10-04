@@ -5420,7 +5420,7 @@ nem contestação, e não pesa contra o item. Quem recusou vai ao log do backend
 - **409** `pedido_nao_pendente`: o pedido já saiu de `pendente` (despachou, fechou ou expirou).
 - **503:** a validação não foi composta.
 
-## Adendo v1.21 (04/10/2026; número a confirmar pela orquestradora; item 31.43) — a pergunta parada vence sozinha: `vencimento` nos eventos
+## Adendo v1.23 (04/10/2026; número da orquestradora; item 31.43) — a pergunta parada vence sozinha: `vencimento` nos eventos
 
 Aditivo ao v0.95. Nenhuma rota nova, nenhum status novo e nenhuma migração. O prazo da pergunta sem resposta passa a vir do
 config (`execucao.pergunta_vence_h`, 24 h por padrão; `execucao.vencimento_ligado` desliga). O que muda para quem lê:
