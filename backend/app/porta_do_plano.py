@@ -141,14 +141,25 @@ def _selo(porta: PortaDaEtapa, alvo_por_resolver: bool, repetida: str) -> tuple[
     return PERMITIDO, v.reason, v.hint, None
 
 
+def _exigir_na_porta(run: Row, *, ja_aprovado: bool = False) -> None:
+    """A porta só vale para a execução `planned` SEM pedido de cancelar. O cancelamento condicionado do canal (28.27)
+    marca `cancel_requested` e fecha a execução na mesma transação; quem lê no meio (a prévia, o gesto, o
+    `previa_do_item`) não pode oferecer nem gravar "Aprovar N e iniciar" numa execução que está sendo cancelada.
+    `ja_aprovado`: o texto do gesto, que confere de novo dentro da transação."""
+    if run["status"] != "planned":
+        raise PortaIndisponivel("invalid_state", "O plano desta execução já foi aprovado ou iniciado." if ja_aprovado
+                                else f"A prévia da porta é da execução com plano pronto (`planned`); esta está em "
+                                     f"'{run['status']}'.")
+    if run["cancel_requested"]:
+        raise PortaIndisponivel("invalid_state", "Esta execução está sendo cancelada.")
+
+
 def _plano(state: AppState, run_id: str) -> tuple[Row, dict[str, Row], list[Row], dict[str, list[str]]]:
     """`(run, objetivos, etapas da versão atual não canceladas, dependentes transitivos)` de uma execução `planned`."""
     run = state.repo.run_row(run_id)
     if run is None:
         raise PortaIndisponivel("not_found", "Execução não encontrada.", 404)
-    if run["status"] != "planned":
-        raise PortaIndisponivel("invalid_state", f"A prévia da porta é da execução com plano pronto (`planned`); esta "
-                                                 f"está em '{run['status']}'.")
+    _exigir_na_porta(run)
     objetivos = {str(o["id"]): o for o in state.db.query(
         "SELECT * FROM objectives WHERE run_id=? ORDER BY instance_id, id", (run_id,))}
     etapas = [e for e in state.db.query("SELECT * FROM steps WHERE run_id=? AND status<>'cancelled'"
@@ -396,9 +407,14 @@ def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por:
     validade = to_iso(now() + timedelta(hours=validade_h(state)))
     gravadas: list[str] = []
     with state.db.tx():
-        # Dois gestos ao mesmo tempo: a transação serializa, e o segundo vê o sim do primeiro (ou a execução iniciada).
-        if state.db.scalar("SELECT status FROM runs WHERE id=?", (run_id,)) != "planned" or state.db.scalar(
-                "SELECT 1 FROM pending_approvals WHERE run_id=? AND origem='plano' LIMIT 1", (run_id,)):
+        # Dois gestos ao mesmo tempo: a transação serializa, e o segundo vê o sim do primeiro (ou a execução iniciada,
+        # ou o cancelamento do canal em curso: sem isto, sobrariam sins `approved` de origem `plano` numa execução
+        # cancelada).
+        agora_na_porta = state.db.one("SELECT status, cancel_requested FROM runs WHERE id=?", (run_id,))
+        if agora_na_porta is None:
+            raise PortaIndisponivel("not_found", "Execução não encontrada.", 404)
+        _exigir_na_porta(agora_na_porta, ja_aprovado=True)
+        if state.db.scalar("SELECT 1 FROM pending_approvals WHERE run_id=? AND origem='plano' LIMIT 1", (run_id,)):
             raise PortaIndisponivel("invalid_state", "O plano desta execução já foi aprovado ou iniciado.")
         for sid, chave in aprovar:
             item, e = itens[sid], etapa_por_id[sid]
@@ -428,7 +444,13 @@ def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por:
             state.repo.transition_step(sid, StepStatus.cancelled, detail=MOTIVO_TIRADA)
         state.repo.decision(f"plano aprovado na prévia da porta por {por}: {len(gravadas)} item(ns) aprovado(s) até "
                             f"{validade}, {len(tirados)} etapa(s) tirada(s)", run_id=run_id)
-    resumo = state.runs.start(run_id, por=por)
+    from .taskqueue.service import RunError  # noqa: PLC0415 - o serviço importa o planejamento; aqui só a exceção
+    try:
+        resumo = state.runs.start(run_id, por=por)
+    except RunError as exc:
+        # O cancelamento do canal chegou entre esta transação e o início: ele já expirou os sins gravados acima
+        # (`_cancelar_antes_de_iniciar`), e a resposta é a da porta, não um erro do serviço.
+        raise PortaIndisponivel("invalid_state", exc.message) from None
     return {"run": resumo.model_dump(mode="json"), "aprovacoes": gravadas, "tiradas": tirados, "validade_ate": validade}
 
 

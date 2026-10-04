@@ -1186,7 +1186,11 @@ class RunService:
             repo.set_run_status(run_id, RunStatus.cancelled, "Cancelada durante o planejamento")
             return
         if run and run["mode"] == "execute":
-            self.start(run_id)
+            try:
+                self.start(run_id)
+            except RunError as exc:
+                # Corrida com um cancelamento (o `start` troca o estado por compare-and-set): o outro gesto venceu.
+                log.info("execução %s não iniciou sozinha: %s", run_id, exc.message)
         else:
             repo.set_run_status(run_id, RunStatus.planned, "Plano pronto para inspeção",
                                 message=f"Execução {run_id}: plano pronto; aguardando início")
@@ -1502,16 +1506,24 @@ class RunService:
         run = self._run(run_id)
         status = RunStatus(run["status"])
         if so_se_planejada:
-            cur = self.repo.db.execute("UPDATE runs SET cancel_requested=1, pause_requested=0 "
-                                       "WHERE id=? AND status=? AND cancel_requested=0",
-                                       (run_id, RunStatus.planned.value))
-            if cur.rowcount != 1:
-                return None
-            status = RunStatus.planned  # a marca acabou de provar: `planned` e sem pedido anterior, episódio novo
+            # Marca e fecho na MESMA transação: uma marca sem o fecho (queda no meio) deixaria `planned` com
+            # `cancel_requested`, que nada além do Cancelar do painel destrava (o `start` e a porta recusam).
+            with self.repo.db.tx():
+                cur = self.repo.db.execute("UPDATE runs SET cancel_requested=1, pause_requested=0 "
+                                           "WHERE id=? AND status=? AND cancel_requested=0",
+                                           (run_id, RunStatus.planned.value))
+                if cur.rowcount != 1:
+                    return None
+                self._cancelar_antes_de_iniciar(run_id, "Cancelada antes de iniciar")
+            if por is not None:  # a marca provou `planned` sem pedido anterior: episódio novo
+                avisar(self.costuras.cancelou_execucao, CancelamentoDeExecucao(
+                    run_id=run_id, status_anterior=RunStatus.planned.value, antes_de_iniciar=True, quem=por,
+                    em=now_iso()))
+            return self.repo.run_summary(self._run(run_id))
         if status in RUN_TERMINAL and status != RunStatus.completed_with_issues:
             raise RunError("invalid_state", "A execução já terminou.")
-        episodio_novo = so_se_planejada or (status != RunStatus.cancelling and (
-            not run["cancel_requested"] or status in (RunStatus.running, RunStatus.paused)))
+        episodio_novo = status != RunStatus.cancelling and (
+            not run["cancel_requested"] or status in (RunStatus.running, RunStatus.paused))
         em = now_iso()
         self.repo.db.execute("UPDATE runs SET cancel_requested=1, pause_requested=0 WHERE id=?", (run_id,))
         antes_de_iniciar = status in (RunStatus.planned, RunStatus.needs_input, RunStatus.planning)

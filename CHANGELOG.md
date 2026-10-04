@@ -53,6 +53,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     `planejando()` e `presas_na_porta()` com a `previa` compacta, e os quatro valores do rótulo); 139 passed nos
     arquivos de início e cancelamento (`test_cancelamento`, `test_inicio_com_autor`, `test_maquinas_de_estado`,
     `test_execution`, `test_contrato_http` e outros).
+- Revisão de `cec9ddca` (orquestradora e Aprendizado, 04/10 23:42Z), sobre a pilha do #330 (`1bbffb27`):
+  - S2/S7: a porta (`_exigir_na_porta`, um predicado só) recusa `planned` com `cancel_requested` na prévia, no
+    `previa_do_item` e dentro da transação do `aprovar_plano` ("Esta execução está sendo cancelada."); o `RunError` do
+    início depois do gesto vira `PortaIndisponivel("invalid_state")`;
+  - S1: a marca e o fecho do cancelamento condicionado vão na mesma `db.tx()`; o compare-and-set segue com
+    `cancel_requested=0`;
+  - N1: o início automático do `mode=execute` que perde a corrida vira log, sem traceback.
+  - Prova `simulated`: 14 passed em `test_telegram_portas.py` (porta recusa a que está sendo cancelada, início
+    recusado vira recusa da porta, marca e fecho voltam juntos) e 170 passed em `test_porta_do_plano`,
+    `test_chave_da_aprovacao`, `test_cancelamento`, `test_inicio_com_autor`, `test_maquinas_de_estado`,
+    `test_execution`, `test_contrato_http`, `test_telegram_entrada`, `test_avisos_porta` e `test_cobertura_de_rotas`.
 - `mensagem.partes_da_aprovacao` passa a montar as linhas de alvo e texto da aprovação pendente e da porta (a mesma
   regra), e `mensagem.texto_mostravel` diz se o texto sai inteiro.
 - Regra C-26 em `docs/dominios/canais.md`.

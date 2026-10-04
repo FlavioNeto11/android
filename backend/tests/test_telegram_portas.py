@@ -224,3 +224,74 @@ async def test_inicio_depois_da_marca_do_cancelamento_e_recusado(harness: Harnes
     st.db.execute("UPDATE runs SET cancel_requested=0 WHERE id=?", (run_id,))
     portas.cancelar(run_id)                                  # planned: o condicionado cancela de fato
     await harness.wait_run(run_id, statuses=("cancelled",))
+
+
+async def test_porta_recusa_execucao_que_esta_sendo_cancelada(harness: Harness, como_telegram: None) -> None:
+    """Revisão de `cec9ddca` (S2/S7): `planned` com `cancel_requested` (a marca do cancelamento do canal antes do fecho)
+    não oferece a prévia nem grava sim: sem isto, sobravam sins `approved` de origem `plano` numa execução cancelada."""
+    portas = _portas(harness)
+    texto = "abrir o QA Messenger no android-01"
+    run_id, _ = portas.criar(texto, portas.previa(texto).alvos, "telegram:954", modo="plan")
+    await harness.wait_run(run_id, statuses=("planned",))
+    st = harness.state
+    assert st is not None
+    st.db.execute("UPDATE runs SET cancel_requested=1 WHERE id=?", (run_id,))
+    with pytest.raises(RecusaDaCentral) as previa:
+        portas.porta(run_id)
+    assert previa.value.codigo == "invalid_state" and "sendo cancelada" in str(previa.value)
+    with pytest.raises(RecusaDaCentral) as gesto:
+        portas.aprovar_plano(run_id, [])
+    assert gesto.value.codigo == "invalid_state" and "sendo cancelada" in str(gesto.value)
+    assert not st.db.scalar("SELECT COUNT(*) FROM pending_approvals WHERE run_id=? AND origem='plano'", (run_id,))
+    st.db.execute("UPDATE runs SET cancel_requested=0 WHERE id=?", (run_id,))
+    portas.cancelar(run_id)
+    await harness.wait_run(run_id, statuses=("cancelled",))
+
+
+async def test_inicio_recusado_depois_do_gesto_vira_recusa_da_porta(harness: Harness, como_telegram: None,
+                                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    """O cancelamento que chega entre a transação do `aprovar_plano` e o `start`: a resposta é a da porta
+    (`invalid_state`), não um `RunError` do serviço."""
+    from app.taskqueue.service import RunError
+
+    portas = _portas(harness)
+    texto = "abrir o QA Messenger no android-01"
+    run_id, _ = portas.criar(texto, portas.previa(texto).alvos, "telegram:955", modo="plan")
+    await harness.wait_run(run_id, statuses=("planned",))
+    st = harness.state
+    assert st is not None
+
+    def cancelado_no_meio(rid: str, *, por: str) -> None:
+        raise RunError("invalid_state", "A execução mudou de estado e não pode ser iniciada.")
+
+    monkeypatch.setattr(st.runs, "start", cancelado_no_meio)
+    with pytest.raises(RecusaDaCentral) as recusa:
+        portas.aprovar_plano(run_id, [])
+    assert recusa.value.codigo == "invalid_state"
+    monkeypatch.undo()
+    portas.cancelar(run_id)
+    await harness.wait_run(run_id, statuses=("cancelled",))
+
+
+async def test_marca_e_fecho_do_cancelamento_na_mesma_transacao(harness: Harness, como_telegram: None,
+                                                                monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisão de `cec9ddca` (S1): se o fecho falha, a marca volta junto; a execução não fica `planned` com
+    `cancel_requested`, que só o Cancelar do painel destravaria."""
+    portas = _portas(harness)
+    texto = "abrir o QA Messenger no android-01"
+    run_id, _ = portas.criar(texto, portas.previa(texto).alvos, "telegram:956", modo="plan")
+    await harness.wait_run(run_id, statuses=("planned",))
+    st = harness.state
+    assert st is not None
+
+    def fecho_que_quebra(rid: str, detalhe: str, **kw: Any) -> None:
+        raise RuntimeError("queda no meio")
+
+    monkeypatch.setattr(st.runs, "_cancelar_antes_de_iniciar", fecho_que_quebra)
+    with pytest.raises(RuntimeError):
+        st.runs.cancel(run_id, por="telegram:dono", so_se_planejada=True)
+    linha = st.db.one("SELECT status, cancel_requested FROM runs WHERE id=?", (run_id,))
+    assert linha is not None and linha["status"] == "planned" and not linha["cancel_requested"]
+    monkeypatch.undo()
+    assert st.runs.cancel(run_id, por="telegram:dono", so_se_planejada=True) is not None
+    await harness.wait_run(run_id, statuses=("cancelled",))
