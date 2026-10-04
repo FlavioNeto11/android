@@ -381,8 +381,10 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
         aparelho = _texto(d.get("aparelho")) or (aparelhos[0] if len(aparelhos) == 1 else None)
         acao = _texto(d.get("acao"))
         hora = _hora(d.get("vence_em"))
-        assunto = (f"⏳ {sujeito}{f' no {aparelho}' if aparelho else ''} "
-                   f"{f'vence às {hora}' if hora else 'vence nas próximas 2 h'}")
+        # O tempo relativo na frente (orquestradora, 20:47Z): só "22:30Z" pode ser lido como hora local. O produtor
+        # avisa entre 2 h e 1 h 50 antes (volta de 10 min), por isso "em até".
+        assunto = (f"⏳ {sujeito}{f' no {aparelho}' if aparelho else ''} vence em até 2 h"
+                   f"{f' ({hora})' if hora else ''}")
         acontece = _texto(d.get("acontece_se_vencer")) or "cancelado pelo sistema"
         linhas = [x for x in (
             f"Etapa que espera: {acao}." if acao and _CHAVE_DE_CATALOGO.match(acao) else None,

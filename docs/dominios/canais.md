@@ -312,7 +312,7 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
     - **1, precisa de você agora** (aprovação, pergunta, conta pedindo pessoa, ocorrência incerta, convidado, e o
       lembrete de vencimento do 31.50): sai na hora.
     - O lembrete de vencimento (`pendencia.vence_em`, 2 h antes) diz o que vence (aprovação, objetivo parado ou pergunta
-      da execução), o aparelho, a hora, a etapa de catálogo que espera (só a chave, nunca texto livre) e o que acontece
+      da execução), o aparelho, "em até 2 h" e a hora UTC, a etapa de catálogo que espera (só a chave, nunca texto livre) e o que acontece
       se vencer. A chave é a do produtor, uma por espera. O lembrete de execução do sistema (prova, validação, lote)
       cala pela mesma regra do `run.updated`; o de aprovação de lote avisa. Responder a ele não vira pedido.
     - **2, algo falhou:** a pausa e o orçamento esgotado pararam algo do dono e saem na hora. A ocorrência perdida e

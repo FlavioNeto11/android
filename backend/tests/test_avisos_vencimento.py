@@ -39,7 +39,7 @@ def test_o_lembrete_diz_o_que_vence_onde_quando_e_o_que_acontece() -> None:
     assert a is not None
     assert (a.chave, a.tipo, a.nivel) == (CHAVE, "pendencia.vence_em", PRECISA_DE_VOCE)
     assert entrega_do_tipo(a.tipo) == AGORA
-    assert a.titulo == "ANA: ⏳ A aprovação no android-12 vence às 22:30Z"
+    assert a.titulo == "ANA: ⏳ A aprovação no android-12 vence em até 2 h (22:30Z)"
     assert a.corpo.split("\n") == ["Etapa que espera: open_mail_inbox.", "Se vencer: cancelado pelo sistema.",
                                    "Espera você: decida na caixa de Pendências antes disso."]
     assert a.link is not None and a.link.startswith(PAINEL)
@@ -72,7 +72,7 @@ def test_so_a_chave_do_catalogo_sai_nunca_texto_livre_nem_a_etapa() -> None:
     assert a is not None
     assert "fulano" not in a.titulo + a.corpo and "Etapa que espera" not in a.corpo
     sem = aviso_de_evento("pendencia.vence_em", _dados(acao=None, vence_em=None), 1)
-    assert sem is not None and sem.titulo.endswith("vence nas próximas 2 h")
+    assert sem is not None and sem.titulo.endswith("vence em até 2 h")
 
 
 def test_o_tipo_entra_nos_que_avisam_no_nivel_e_na_rajada() -> None:
