@@ -67,6 +67,7 @@ from .latencia import TemposDaTentativa, ms_desde
 from .recipes import (READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, eh_generica,
                       filhos_rotulados, hash_generico_da_linha, unique_selectors)
 from .repository import Repository
+from .relacao import relacao_do_valor
 from .saidas import (RECUSAS_DETERMINISTICAS, ChaveDeTentativa, LeituraInvalida, LeituraSemTexto,
                      LeituraVisualRecusada, args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor,
                      ler_valor_visual, nomes_citados, razao_sem_segredo, texto_da_tela, texto_do_elemento, triagem,
@@ -2258,6 +2259,36 @@ class StepExecutor:
                                        needs="Este valor é da pessoa (ADR-009): faça esta parte manualmente, ou refaça "
                                              "o comando sem depender dele, e retome o item.")
                 assert alvo is not None
+                if ai_cfg.relacao_do_valor:
+                    # 31.41: o valor só vale se algo na tela o liga ao nome pedido; dúvida recusa a leitura (03d58e: um
+                    # id de execução numa mensagem foi entregue como "protocolo"). Da árvore, a regra determinística; da
+                    # imagem (sem texto na árvore), UMA pergunta de sim ou não ao verificador, e incerto conta como não.
+                    relacao = (relacao_do_valor(obs.tree, alvo, args.name, valor,
+                                                relacoes=tuple(cap.saidas_relacao) if cap else ())
+                               if lido_da_imagem is None else None)
+                    perguntou = relacao is None and (lido_da_imagem is not None or bool(cap and args.name in cap.saidas))
+                    if perguntou:
+                        # Da imagem, ou saída que o CATÁLOGO declara sem seletor nem rótulo na árvore (a caixa do Outlook,
+                        # a lista do QA): a ação diz onde está o valor, mas só o juiz confirma que é ele. Livre: dúvida.
+                        relacao = await self._relacao_visual(rt, step, ctx_for, run_id, oid, deadline, attempt_id,
+                                                             obs, args.name, valor, ai_cfg)
+                    if relacao is None:
+                        aid = intencao("read_value", args_da_chamada_invalida(bruto, obs.tree), None, side_effect=False)
+                        repo.finish_action(aid, ActionStatus.rejected, error=f"sem relação com '{args.name}'")
+                        metricas.contar("leitura.sem_relacao", origem="imagem" if lido_da_imagem else "arvore")
+                        repo.decision(f"{iid} · {step.title}: leitura de '{args.name}' recusada: nada na tela liga o "
+                                      "valor ao que foi pedido (sem seletor, rótulo ou forma"
+                                      + ("; o verificador não confirmou)" if perguntou else ")"),
+                                      run_id=run_id, instance_id=iid, step_id=step.id)
+                        history.append(f"read_value REJEITADA: nada na tela liga este valor a '{args.name}' (nem rótulo "
+                                       "vizinho, nem forma, nem o seletor do catálogo). Leia o elemento rotulado como "
+                                       f"'{args.name}'; se ele não existe nesta tela, chame "
+                                       'step_blocked(kind="dado_ausente").')
+                        errors_in_row += 1
+                        recusas_de_saida += 1
+                        if errors_in_row >= 4 or recusas_de_saida >= 4:
+                            return await dado_ausente("o valor lido não tinha relação com o pedido", obs)
+                        continue
                 lidos[args.name] = (valor, args.value_kind)
                 if lido_da_imagem is not None:
                     # O recorte vira evidência SÓ agora, com a leitura válida; a nota não traz o valor. A ação não leva o
@@ -2870,6 +2901,28 @@ class StepExecutor:
     def _tempos(self, attempt_id: str | None) -> TemposDaTentativa | None:
         """Os tempos da tentativa em curso (31.24, C-4), ou `None` fora de `run_step` (chamada sem tentativa)."""
         return self._tempos_da_tentativa.get(attempt_id) if attempt_id else None
+
+    async def _relacao_visual(self, rt: DeviceRuntime, step: StepDTO, ctx_for: Callable[[], StepContext], run_id: str,
+                              objective_id: str, deadline: float, attempt_id: str | None, obs: Observation, nome: str,
+                              valor: str, ai: AiCfg) -> str | None:
+        """31.41: o valor lido da IMAGEM não tem elemento com texto na árvore para a regra determinística. Uma pergunta
+        de sim ou não ao verificador, com a imagem: este valor é, na tela, o `nome` pedido? "yes" = `"verificador"`;
+        "no", "uncertain" ou qualquer outra coisa = `None` (dúvida nunca fecha como sucesso). Custa uma chamada de
+        verificação por leitura visual aceita pelo leitor."""
+        ctx = dataclasses.replace(ctx_for(), postcondition_description=(
+            f"O valor lido para '{nome}' foi \"{valor}\". Julgue SÓ a relação: na tela, esse texto é o '{nome}' que o "
+            "objetivo pede (o rótulo, a posição ou o papel dele na tela o identificam como tal), e não outro texto "
+            "qualquer? yes = é; no = é outro; uncertain = não dá para afirmar."))
+        if obs.jpeg is None:
+            obs = await self.devices.completar_imagem(rt, obs, timeout=float(self.get_settings().driver_call_timeout_s),
+                                                      lado_max=ai.screenshot_max_side)
+        screen, _ = self._screen(obs, with_image=True, protect=tuple(step.commit_guard), ai=ai)
+        t_end = min(deadline, time.monotonic() + float(ai.verify_budget_s))
+        verdict = await self._ai(run_id, objective_id,
+                                 lambda: self.provider.verify(VerifyRequest(ctx=ctx, screen=screen, facts=[])),
+                                 step_id=step.id, role="verify", deadline=t_end, attempt_id=attempt_id,
+                                 marca=MarcaDaChamada(motivo="julgamento", image_reason="pedida"))
+        return "verificador" if verdict.satisfied == "yes" else None
 
     async def _verify(self, rt: DeviceRuntime, step: StepDTO, ctx_for: Callable[[], StepContext], run_id: str,
                       objective_id: str, deadline: float, call_timeout: float, *, patient: bool,

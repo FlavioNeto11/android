@@ -50,6 +50,8 @@ def _normalizado(cap: Capability) -> dict[str, object]:
 CAMPOS_NOVOS: dict[str, object] = {
     # 24.3 (ADR-065): os valores que a ação pode entregar às etapas seguintes. O Instagram não declara nenhum.
     "saidas": [],
+    # 31.41: como reconhecer o elemento de cada saída (`nome=seletor`, `nome~termo`). O Instagram não declara saídas.
+    "saidas_relacao": [],
     # C10 (r-20260928165254-e31953, r-20260928195344-02ee9e): a legenda que identifica a publicação alvo.
     "card_guard": [],
     # C10, revisão: os controles do cartão tocados SEM efeito (o balão que abre a folha "Comments"). Lista desde a

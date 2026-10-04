@@ -43,6 +43,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Nasce desligada: sem `-Aparelhos`, só com `data/backups/AVD-LIGADO` (sim do dono); fora do `farm-backup`.
 - Prova `simulated`: `backend/tests/test_backup.py` (4 novos: hash e restauração sem apagar; aborto quando o aparelho
   acorda; guarda; nasce desligada).
+## 2026-10-04 — 31.41: o valor lido precisa ter relação com o pedido (branch feat/31-41-relacao-do-valor, sem migração)
+
+- `taskqueue/relacao.py`: seletor do catálogo, rótulo (próprio elemento, vizinho, glossário, sinônimo) ou forma
+  fechada; da imagem ou de saída de catálogo sem rótulo, uma pergunta ao verificador. Dúvida recusa
+  (`leitura.sem_relacao`) e nunca fecha como sucesso. Campo novo `Capability.saidas_relacao`. Prova:
+  `backend/tests/test_relacao_do_valor.py` (simulated, com as travas f014e6 e 12.3); real `not_run`.
 
 ## 2026-10-04 — teste do preparo zumbi drenado sem Timer de relógio (branch fix/b2-r4-sem-timer)
 

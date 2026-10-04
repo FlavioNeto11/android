@@ -644,6 +644,9 @@ class AiCfg(BaseModel):
     #: Item 31.40: a recusa do juiz por SOBREPOSIÇÃO (diálogo, banner, cookies cobrindo o alvo) numa etapa sem efeito
     #: não repete a etapa: a recuperação insere uma limpeza opcional (31.36) antes dela, uma vez por objetivo.
     limpeza_apos_sobreposicao: bool = True
+    #: Item 31.41: o valor lido só é gravado com evidência de RELAÇÃO com o nome pedido (seletor do catálogo, rótulo
+    #: vizinho ou forma fechada; da imagem, um "sim" do verificador). Dúvida recusa a leitura (`leitura.sem_relacao`).
+    relacao_do_valor: bool = True
     # Item 31.35: tira da árvore QUE VAI AO ATOR a barra do navegador (endereço, abas, menu); a árvore local fica
     # completa para seletores, guardas e pós-condições. `false` volta ao prompt de antes, sem reinício de código.
     podar_ui_do_navegador: bool = True

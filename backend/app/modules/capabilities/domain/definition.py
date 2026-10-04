@@ -137,6 +137,8 @@ class CollectOutput:
     #: Item 24.3 (ADR-065): os nomes dos valores que a capability PODE entregar às etapas seguintes, lidos da tela
     #: pelo executor (`read_value`). Um valor por nome, escolhido por etapa; a lista da coleta não passa por aqui.
     values: tuple[str, ...] = ()
+    #: Item 31.41: `nome=seletor` / `nome~termo` — como reconhecer o elemento de cada valor na tela.
+    relations: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
