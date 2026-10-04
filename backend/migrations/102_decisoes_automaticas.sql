@@ -13,7 +13,7 @@
 --     item_ref     o id do item na fila dona (execução, objetivo, `kind:ref` do livro, pedido). Id, nunca conteúdo.
 --     origem_ref   a identidade do FATO que gerou a linha (`run:<id>:<regra>`, `aprendizado:<id da transição>`...).
 --                  UNIQUE: o mesmo fato visto duas vezes (evento relido, duas réplicas) é UMA linha.
---     regra        a regra que decidiu, com a versão quando houver (`31.43-pergunta-24h`, `auto:qa_revisar@v1`).
+--     regra        a regra que decidiu, com a versão quando houver (`31.43-pergunta-24h`, `auto:qa_revisar v1`).
 --     efeito       uma frase curta em português do que aconteceu. Sem nome de persona, conta, e-mail, telefone, IP nem
 --                  texto de comando.
 --     fatos        JSON curto e plano (chave → texto ou número) com os fatos que a regra usou. Sem dado pessoal.

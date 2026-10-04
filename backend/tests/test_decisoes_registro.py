@@ -69,9 +69,9 @@ def test_o_mesmo_fato_duas_vezes_e_uma_linha_so(cena: tuple[Database, RegistroSq
 
 def test_porta_registrar_decisao_usa_o_relogio_do_registro(cena: tuple[Database, RegistroSql, Relogio]) -> None:
     _, reg, rel = cena
-    assert registrar_decisao(reg, "aprendizado", "licao:x", "aprendizado:7", "auto:qa_revisar@v1",
+    assert registrar_decisao(reg, "aprendizado", "licao:x", "aprendizado:7", "auto:qa_revisar v1",
                              "Aprendizado publicado sem o dono.", {"usos": 5}) is True
-    assert registrar_decisao(reg, "aprendizado", "licao:x", "aprendizado:7", "auto:qa_revisar@v1", "x") is False
+    assert registrar_decisao(reg, "aprendizado", "licao:x", "aprendizado:7", "auto:qa_revisar v1", "x") is False
     (d,) = reg.listar()
     assert d.decidida_em == to_iso(rel.t)
     # a hora do fato, quando o produtor a conhece, vale mais que a da leitura
