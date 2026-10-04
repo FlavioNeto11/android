@@ -44,6 +44,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   credencial ficou em `review`).
 - Prova `simulated`: `backend/tests/test_retoque_no_login.py` (6; `FakeInstagram.envios_ignorados`/`tela_ao_ignorar`);
   vizinhos do login 270 passed. Real `not_run` (o toque perdido não se reproduz de propósito; nenhum login real nesta noite).
+- Revisão da orquestradora (01:31Z): a releitura confere de forma explícita `estado.trava` e a classificação da tela
+  (erro de credencial); a reconciliação mantém `blocked_until` e vale no `observe_only`; testes dos negativos (botão
+  desabilitado, identificador trocado, erro/desafio/outra tela na releitura, outro pacote, conta parada no meio) e da
+  senha que não vaza (banco, log, resultado). 16 testes no arquivo.
 
 ## 2026-10-04 — 29.56: tranca de login por cliente, limite no Bearer e cabeçalhos de segurança (branch fix/29-56-tranca-por-cliente, sem migração)
 

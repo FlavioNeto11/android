@@ -896,7 +896,7 @@ class SessaoDeclarada:
         redigitar nada, entrou. A senha NÃO é digitada de novo: o re-toque só vale com ela ainda no campo (o app que
         recusou ou consumiu o envio limpa o campo). Uma vez só, e só com tudo isto conferido na tela de AGORA; qualquer
         dúvida (carregando, erro, outra tela, campo vazio, conta parada no meio) devolve o incerto de antes."""
-        botao = await self._formulario_intacto(rt, k, identificador, locale)
+        botao = await self._formulario_intacto(rt, k, conta, identificador, locale)
         if botao is None or self._parada_no_meio(conta, automatic=automatic) is not None:
             return incerto
         self.repo.finish_auth_attempt(conta.profile_id, attempt, outcome="", detail=None, stage="resubmitting")
@@ -910,8 +910,8 @@ class SessaoDeclarada:
                 return incerto
         return await self._watch_after_submit(rt, k, conta, locale)
 
-    async def _formulario_intacto(self, rt: DeviceRuntime, k: ConhecimentoDeSessao, identificador: str,
-                                  locale: str | None) -> UiElement | None:
+    async def _formulario_intacto(self, rt: DeviceRuntime, k: ConhecimentoDeSessao, conta: ContaDaSessao,
+                                  identificador: str, locale: str | None) -> UiElement | None:
         """O botão Entrar ATUAL, quando a tela segue sendo o formulário deste login, pronto para outro toque: o
         identificador à vista (no campo de usuário ou, no login em etapas, na tela), a senha ainda no campo, o botão
         habilitado e nada carregando. `None` em qualquer outro caso."""
@@ -924,6 +924,13 @@ class SessaoDeclarada:
         estado = self._reconhecer(k, tree, package, locale)
         form = estado.formulario if isinstance(estado.formulario, LoginForm) else None
         if estado.tipo != "login" or form is None or form.submit is None or not form.submit.enabled:
+            return None
+        # Desafio e erro de credencial conferidos na tela de AGORA, de forma explícita: o incerto da observação diz só
+        # o que ela viu até o prazo, e a tela pode ter mudado depois dele.
+        if estado.trava is not None:
+            return None
+        if classificar_depois_do_envio(k, tree, package=package, expected_username=conta.handle, locale=locale,
+                                       aceitos=conta.aceitos).outcome is not Outcome.UNCERTAIN:
             return None
         if not (form.password.text or "").strip():
             return None
@@ -1279,11 +1286,14 @@ class SessaoDeclarada:
         certo: foi o que ficou faltando no android-13 (04/10), em que um toque manual concluiu o envio incerto, a
         sessão virou `session_ready` e a credencial ficou em `review`, travando o login automático dos outros
         aparelhos da persona sem motivo. `invalid` NÃO sai daqui: a senha guardada foi recusada, e a sessão aberta à
-        mão não a conserta."""
-        if not self._login_em_revisao(conta):
+        mão não a conserta. Vale também na leitura sem login (`observe_only`): é o registro de um fato visto na tela,
+        não uma ação no aparelho."""
+        cred = self.repo.account_credential_row(conta.profile_id, conta.id)
+        if cred is None or cred["status"] != CREDENCIAL_EM_REVISAO:
             return
+        # Só o estado e as falhas mudam: uma pausa em vigor (`blocked_until`) é proteção e fica até vencer.
         self.repo.mark_account_credential(conta.profile_id, conta.id, status="active", failed_attempts=0,
-                                          blocked_until=None)
+                                          blocked_until=cred["blocked_until"])
         self.bus.emit("log", f"{instance_id}: {_como_conta(conta.handle)} está aberta e conferida no aparelho; o login "
                              "automático desta conta volta a valer", level="info", instance_id=instance_id,
                       data={"profile_id": conta.profile_id, "account_id": conta.id, "reason": "login_reconciliado"})
