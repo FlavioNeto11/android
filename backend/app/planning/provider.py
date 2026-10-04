@@ -148,6 +148,11 @@ class PreparoDaDecisao:
     arvore_ms: int | None = None
     imagem_ms: int | None = None
     prompt_ms: int | None = None
+    #: Item 31.35 (migração 097): tamanho, em caracteres, da árvore e do histórico que foram ao modelo, e quantos
+    #: elementos da interface do navegador a poda tirou da árvore do prompt.
+    arvore_chars: int | None = None
+    historico_chars: int | None = None
+    podados: int | None = None
     ai_call_id: int | None = None
 
 
@@ -231,6 +236,7 @@ class ScreenInput:
     package: str | None
     sensitive: bool
     tree: Any = None                          # UiTree completo (usado só pelo provedor simulado)
+    podados: int = 0                          # item 31.35: elementos da barra do navegador fora do prompt
 
 
 @dataclass(slots=True)

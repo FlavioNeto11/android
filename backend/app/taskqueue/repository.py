@@ -907,8 +907,8 @@ class Repository:
                 " cache_write, output_tokens, with_image, ms, ok, requested_model, fallback, provider,"
                 " error_kind, error_status, error_message, attempt_id, origem, ref,"
                 " verdict, escalate, motivo, image_reason, started_at, vaga_ms, prep_settle_ms, prep_observacao_ms,"
-                " prep_arvore_ms, prep_imagem_ms, prep_prompt_ms)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " prep_arvore_ms, prep_imagem_ms, prep_prompt_ms, prompt_arvore_chars, prompt_historico_chars, prompt_podados)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (now_iso(), run_id, objective_id, step_id, usage.role, usage.model, usage.tier, fresh,
                  usage.cache_read_tokens, usage.cache_write_tokens, usage.output_tokens, int(usage.with_image),
                  usage.ms, int(ok), usage.requested_model or usage.model, usage.fallback, usage.provider or None,
@@ -922,7 +922,10 @@ class Repository:
                  # Item 31.24 (migração 088): idem — início, vaga e o preparo da decisão do ator.
                  usage.started_at, usage.vaga_ms, prep.settle_ms if prep else None,
                  prep.observacao_ms if prep else None, prep.arvore_ms if prep else None,
-                 prep.imagem_ms if prep else None, prep.prompt_ms if prep else None))
+                 prep.imagem_ms if prep else None, prep.prompt_ms if prep else None,
+                 # Item 31.35 (migração 097): o tamanho das partes do prompt do ator.
+                 prep.arvore_chars if prep else None, prep.historico_chars if prep else None,
+                 prep.podados if prep else None))
         self.db.execute("UPDATE runs SET ai_input_tokens=ai_input_tokens+?, ai_output_tokens=ai_output_tokens+? WHERE id=?",
                         (usage.input_tokens, usage.output_tokens, run_id))
         if objective_id:

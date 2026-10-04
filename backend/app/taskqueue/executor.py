@@ -335,6 +335,17 @@ def tela_da_falha(arvore: object, pacote: str | None) -> str | None:
 
 
 #: RA-10: os motivos de imagem com que a imagem VAI junto; nos demais, a chamada decide pela árvore.
+#: Item 31.35: a barra do navegador, por pacote, que NÃO vai na árvore do prompt do ator (`ai.podar_ui_do_navegador`).
+#: Lista fechada e explícita: diálogos próprios do Chrome (primeira execução, permissões) continuam no prompt. Na
+#: ocorrência r-20261004090000-bbfe54 (28.12) as telas com árvore rica foram as de entrada nova mais cara (~4,2 mil).
+UI_DO_NAVEGADOR: dict[str, frozenset[str]] = {
+    "com.android.chrome": frozenset(f"com.android.chrome:id/{i}" for i in (
+        "toolbar", "toolbar_container", "toolbar_buttons", "location_bar", "url_bar", "location_bar_status_icon",
+        "url_action_container", "delete_button", "mic_button", "tab_switcher_button", "tab_count",
+        "menu_button", "menu_button_wrapper", "home_button", "optional_toolbar_button", "bottom_toolbar",
+        "control_container", "security_button")),
+}
+
 _IMAGEM_VAI: frozenset[str] = frozenset({"politica_sempre", "pedida", "problema", "primeira_julgada", "arvore_pobre"})
 #: RA-10: a frase da linha do tempo de cada motivo de escalonamento do `decide` (a do efeito vem da política de risco).
 _FRASE_DO_ESCALONAMENTO: dict[str, str] = {
@@ -893,9 +904,13 @@ class StepExecutor:
                 buf = io.BytesIO()
                 Image.open(io.BytesIO(jpeg)).resize((w, h)).save(buf, "JPEG", quality=72)
                 jpeg = buf.getvalue()
-        lines = obs.tree.prompt_lines(self.cfg.file.ai.max_hierarchy_elements, scale, protect=protect, boost=boost)
-        return ScreenInput(width=w, height=h, jpeg=jpeg, elements=lines,
-                           package=obs.package, sensitive=obs.sensitive, tree=obs.tree), scale
+        ocultar = (UI_DO_NAVEGADOR.get(obs.package or "", frozenset())
+                   if (ai or self.cfg.file.ai).podar_ui_do_navegador else frozenset())
+        podados = sum(1 for e in obs.tree.elements if e.resource_id in ocultar) if ocultar else 0
+        lines = obs.tree.prompt_lines(self.cfg.file.ai.max_hierarchy_elements, scale, protect=protect, boost=boost,
+                                      ocultar=ocultar)
+        return ScreenInput(width=w, height=h, jpeg=jpeg, elements=lines, package=obs.package,
+                           sensitive=obs.sensitive, tree=obs.tree, podados=podados), scale
 
     # ------------------------------------------------------------------ etapa
     async def run_step(self, *, run: Any, objective: Any, step: StepDTO, attempt_id: str, rt: DeviceRuntime,
@@ -1927,7 +1942,9 @@ class StepExecutor:
                     arvore_ms=round(arvore_ms) if arvore_ms is not None else None,
                     imagem_ms=(round(imagem_ms or 0) + completar_ms) if (imagem_ms is not None or completar_ms)
                     else None,
-                    prompt_ms=max(0, ms_desde(t_prompt) - completar_ms))
+                    prompt_ms=max(0, ms_desde(t_prompt) - completar_ms),
+                    arvore_chars=sum(len(linha) for linha in screen.elements),
+                    historico_chars=sum(len(linha) for linha in actor_history), podados=screen.podados)
                 try:
                     decision = await self._ai(run_id, oid, lambda: self.provider.decide(
                         DecisionRequest(ctx=ctx_for(), screen=screen, history=actor_history, tier=tier,
