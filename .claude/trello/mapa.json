@@ -3134,10 +3134,52 @@
    "lista": "em_validacao",
    "lote": "canais",
    "nome": "31.37 — Leitura de valor sem gastar decisão pedindo a imagem"
+  },
+  "28.22": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2453828cded0c7b872c62",
+   "url": "https://trello.com/c/2eUKGr9M",
+   "lista": "em_validacao",
+   "lote": "canais",
+   "nome": "28.22 — Pedido encerrado por orçamento ganha relatório; cancelamento guarda o motivo"
+  },
+  "31.40": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2453c3d7db305de320be4",
+   "url": "https://trello.com/c/T6qOPsdy",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "31.40 — Limpeza inserida quando o juiz recusa por sobreposição"
+  },
+  "31.41": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac245403bf61696fe066112",
+   "url": "https://trello.com/c/M7yrzce8",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "31.41 — Leitura não aceita valor sem relação com o pedido"
+  },
+  "31.38": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac24544b35c92a76d09c9dc",
+   "url": "https://trello.com/c/rbB7NPGC",
+   "lista": "em_validacao",
+   "lote": "canais",
+   "nome": "31.38 — Teto de decisões na leitura e desfecho claro quando o dado não está na página"
+  },
+  "30.50": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac245487fb0eea6515446ad",
+   "url": "https://trello.com/c/fPC4vWTN",
+   "lista": "em_validacao",
+   "lote": "canais",
+   "nome": "30.50 — Validação só vai para aparelho que tem os dados que o plano usa"
+  },
+  "31.39": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2454bbe98a6e96324b488",
+   "url": "https://trello.com/c/cOyV7dS5",
+   "lista": "em_execucao",
+   "lote": "canais",
+   "nome": "31.39 — Remedir a linha de base de latência depois das correções de hoje"
   }
  },
  "falhas": [],
- "atualizado_em": "2026-10-04T12:13:42Z",
+ "atualizado_em": "2026-10-04T12:24:10Z",
  "arquivados": {
   "29.50": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac140b47c94d9584a3dc72e",
