@@ -41,8 +41,7 @@ import json
 import logging
 import re
 import time
-import unicodedata
-from collections.abc import Awaitable, Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -67,6 +66,7 @@ from app.modules.avisos.domain.anexos import (
     normalizar_mime,
     tamanho_legivel,
 )
+from app.modules.avisos.domain.privacidade import PERSONA_OCULTA, sem_nome_de_persona  # noqa: F401 - reexport (28.28)
 from app.modules.avisos.infrastructure.anexos import AnexoJaResolvido, AnexoRecusado, ArmazemDeAnexos
 from app.modules.avisos.infrastructure.convidados import ConvidadosDoTelegram
 from app.modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
@@ -87,33 +87,6 @@ RESPOSTA_DO_REPASSE = {
     "sem_destino": ("Não sei se isso é um pedido para um aparelho ou uma pergunta para mim. Se é pergunta, já repassei: a "
                     "ANA responde por aqui. Se é pedido, mande de novo dizendo o aparelho (ex.: \"no android-12\")."),
 }
-#: No lugar de um nome de persona em texto que sai pelo canal (28.28; regra C-02: nome de persona não vai ao canal).
-PERSONA_OCULTA = "<persona>"
-
-
-def sem_nome_de_persona(texto: str, nomes: Iterable[str]) -> str:
-    """Troca nome, primeiro nome e @ de persona cadastrada por `PERSONA_OCULTA`, palavra inteira e sem diferença de
-    maiúscula ou acento. Vale para TODO texto que a conversa manda: as recusas e as perguntas da prévia vêm de texto
-    compartilhado com o painel, onde o nome pode aparecer (o exemplo "com a persona …" do extrator)."""
-    # "ANA" é o nome da IA da Central (decisão do dono, 03/10): uma persona chamada Ana não apaga a ANA das respostas.
-    alvos = sorted({n.strip().lstrip("@") for n in nomes if n and len(n.strip().lstrip("@")) >= 3
-                    and _sem_acento_minusculo(n.strip().lstrip("@")) != "ana"}, key=len, reverse=True)
-    if not alvos:
-        return texto
-    base = _sem_acento_minusculo(texto)
-    trocas: list[tuple[int, int]] = []
-    for nome in alvos:
-        for m in re.finditer(rf"(?<![\w@])@?{re.escape(_sem_acento_minusculo(nome))}(?!\w)", base):
-            if not any(a < m.end() and m.start() < b for a, b in trocas):
-                trocas.append((m.start(), m.end()))
-    for a, b in sorted(trocas, reverse=True):
-        texto = texto[:a] + PERSONA_OCULTA + texto[b:]
-    return texto
-
-
-def _sem_acento_minusculo(t: str) -> str:
-    # Um caractere por caractere (NFD sem as marcas), para as posições do texto original continuarem valendo.
-    return "".join(unicodedata.normalize("NFD", ch.lower())[0] for ch in t)
 #: A credencial é recusada sem guardar e apagada do canal quando ele deixa (contrato dos canais, §7); a resposta nunca
 #: ecoa o texto.
 RESPOSTA_CREDENCIAL = ("Isso parece senha ou código: não guardei, não repassei e apaguei a mensagem do chat. Senha "
