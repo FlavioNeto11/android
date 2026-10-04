@@ -119,10 +119,18 @@ export function PrivacidadeSection() {
       danger: true,
       body: (
         <>
+          {/* As duas frases do Telegram são condição da orquestradora (04/10) para o bot apagar também as respostas do
+              dono: ele decide sabendo. O texto é o mesmo da regra C-27 da Canais. */}
           <p className={styles.paragrafo}>
-            <strong>Será apagado:</strong> {n === 1 ? 'o contato selecionado' : `os ${n} contatos selecionados`} no sistema
-            (nome, empresa, telefone e mensagem), as mensagens do bot no Telegram enviadas há menos de 48 horas e as suas
-            respostas a elas, também com menos de 48 horas.
+            <strong>Será apagado:</strong>{' '}
+            {n === 1
+              ? 'Excluir este contato apaga os dados dele na Central (nome, empresa, telefone e mensagem). '
+                + 'Também serão apagados do seu Telegram o aviso deste contato e as suas respostas a esse aviso, quando o '
+                + 'Telegram ainda permitir (até 48 horas depois do envio).'
+              : `Excluir estes ${n} contatos apaga os dados deles na Central (nome, empresa, telefone e mensagem). `
+                + 'Também serão apagados do seu Telegram os avisos destes contatos e as suas respostas a esses avisos, '
+                + 'quando o Telegram ainda permitir (até 48 horas depois do envio).'}{' '}
+            O que não der para apagar sozinho aparece numa lista com a hora, para você apagar à mão.
           </p>
           <p className={styles.paragrafo}><strong>Não será apagado:</strong></p>
           <ul className={styles.confirmaLista}>

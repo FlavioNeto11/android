@@ -321,4 +321,10 @@ async def test_canais_real_lapide_impede_o_aviso_depois_da_exclusao(harness: Har
         "SELECT chave, estado, corpo FROM avisos_entregas WHERE chave IN (?, ?) ORDER BY chave",
         (f"portal:{na_fila}", f"portal:{fora_da_fila}"))]
     assert [x["chave"] for x in linhas] == sorted([f"portal:{na_fila}", f"portal:{fora_da_fila}"])
-    assert all(x["estado"] == "descartado" and x["corpo"] == "" for x in linhas), linhas
+    # Nada para sair e nenhum corpo: o que estava na fila virou lápide (`descartado`), o que o canal falso já mandou
+    # ficou `enviado` (a chave ocupada bloqueia do mesmo jeito), e o que nunca chegou à fila ganhou a lápide.
+    assert all(x["estado"] in ("descartado", "enviado") and x["corpo"] == "" for x in linhas), linhas
+    assert any(x["estado"] == "descartado" for x in linhas), linhas
+    # A mensagem já enviada saiu do chat agora (menos de 47 h) ou ficou para apagar à mão, nunca esquecida.
+    enviadas = sum(1 for x in linhas if x["estado"] == "enviado")
+    assert r.json()["mensagens_apagadas"] + len(r.json()["mensagens_a_mao"]) >= enviadas, r.json()

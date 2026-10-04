@@ -148,14 +148,15 @@ describe('Exclusão a pedido do titular', () => {
     const dialogo = await waitFor(() => byRole('dialog', /Apagar definitivamente\?/));
     const t = text(dialogo);
     expect(t).toContain('Será apagado');
-    expect(t).toContain('os 2 contatos selecionados');
+    expect(t).toContain('Excluir estes 2 contatos apaga os dados deles na Central');
+    expect(t).toContain('Também serão apagados do seu Telegram os avisos destes contatos e as suas respostas a esses avisos');
+    expect(t).toContain('O que não der para apagar sozinho aparece numa lista com a hora');
     expect(t).toContain('nome, empresa, telefone e mensagem');
-    expect(t).toContain('menos de 48 horas');
+    expect(t).toContain('até 48 horas depois do envio');
     expect(t).toContain('Não será apagado');
     expect(t).toContain('cópias de segurança');
     expect(t).toContain('cerca de duas semanas');
     expect(t).toContain('mais de 48 horas');
-    expect(t).toContain('as suas respostas a elas');
     expect(t).toContain('Não há como desfazer');
     await click(byRole('button', /^Voltar$/, dialogo));
     await waitFor(() => expect(allByRole('dialog', /.*/)).toHaveLength(0));
