@@ -318,7 +318,10 @@ async def test_com_a_marca_no_post_a_publicacao_rotulada_e_sucesso(tmp_path: Pat
         etapa = await _publicar(h)
         assert len(_aparelho(h).shares) == 1
         assert etapa["status"] == "succeeded", (etapa["status"], etapa["status_detail"])
-        assert "vista junto do nome da conta" in (etapa["status_detail"] or "")
+        assert "vista no cartão do topo, junto do nome da conta" in (etapa["status_detail"] or "")
+        # condição da orquestradora (D2): no sucesso a tela da conferência também fica como evidência
+        notas = [r["note"] for r in _estado(h).db.query("SELECT note FROM evidence WHERE step_id=?", (etapa["id"],))]
+        assert any((n or "").startswith("Conferência da marca depois do efeito") for n in notas)
 
 
 async def test_sem_a_marca_no_post_publicado_rotulo_nao_confirmado(tmp_path: Path,
@@ -334,6 +337,9 @@ async def test_sem_a_marca_no_post_publicado_rotulo_nao_confirmado(tmp_path: Pat
         assert (etapa["status_detail"] or "").startswith("publicado; o rótulo de IA não foi confirmado. Abra a "
                                                          "publicação")
         assert json.loads(etapa["result"])["efeito_comprovado"] is True
+        objetivo = _estado(h).db.one("SELECT needs FROM objectives WHERE id=?", (etapa["objective_id"],))
+        assert objetivo is not None and "repetir" not in (objetivo["needs"] or "").lower().split("repetir faria")[0]
+        assert "confirmar (com o print) ou abandonar" in (objetivo["needs"] or "")
         toques = [c for c in fake.calls if c.startswith("tap:")]
         assert toques == [f"tap:{fake.shares[0]}"]                             # só o Share foi tocado
 

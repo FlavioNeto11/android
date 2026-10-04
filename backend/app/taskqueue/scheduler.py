@@ -1770,9 +1770,14 @@ class Scheduler:
                                 error_kind=kind)
             repo.transition_step(step.id, StepStatus.uncertain, detail=detail, level="warn", error_kind=kind,
                                  result=out.result)
+            # 29.79 (d): o efeito comprovado não se repete (o resolve recusa o `retry`): a frase não o oferece.
+            comprovado = out.result is not None and out.result.efeito_comprovado
             repo.set_objective(oid, ObjectiveStatus.uncertain, detail=detail, blocked_reason=detail,
-                               needs="Confira no aparelho se o efeito ocorreu e decida: confirmar, repetir ou abandonar. "
-                                     "Nada será reenviado automaticamente.",
+                               needs=("O efeito saiu e foi comprovado; só uma conferência sobre ele ficou em aberto. "
+                                      "Confira no aparelho e decida: confirmar (com o print) ou abandonar. Repetir "
+                                      "faria o efeito de novo." if comprovado else
+                                      "Confira no aparelho se o efeito ocorreu e decida: confirmar, repetir ou abandonar. "
+                                      "Nada será reenviado automaticamente."),
                                delivery_level=out.delivery_level, level="warn", message=f"{rt.id}: resultado INCERTO — {detail}")
             rt.attention = "Resultado incerto: requer revisão"
             return False

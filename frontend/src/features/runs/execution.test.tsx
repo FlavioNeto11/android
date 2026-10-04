@@ -143,14 +143,16 @@ describe('App de cada etapa — comando entre apps (item 24.6, ADR-058)', () => 
 
 describe('Marcar como concluído cita o print (ADR-055)', () => {
   /** android-01 incerto no envio (efeito externo): a DM que o verificador não conseguiu provar. */
-  function detailIncerto(evidencias: Evidence[]): RunDetail {
+  function detailIncerto(evidencias: Evidence[], comprovado = false): RunDetail {
     const base = makeRunDetail();
     const [openApp, send, ...resto] = base.steps;
+    const result = comprovado
+      ? { verified: false, evidence_text: 'publicado; o rótulo de IA não foi confirmado', efeito_comprovado: true } : null;
     return {
       ...base,
       objectives: [{ ...base.objectives[0]!, status: 'uncertain', needs: null, blocked_reason: null,
                      status_detail: 'O efeito foi disparado, mas não foi possível comprová-lo' }, base.objectives[1]!],
-      steps: [openApp!, { ...send!, status: 'uncertain' }, ...resto],
+      steps: [openApp!, { ...send!, status: 'uncertain', ...(result ? { result } : {}) }, ...resto],
       evidence: evidencias,
     };
   }
@@ -174,6 +176,19 @@ describe('Marcar como concluído cita o print (ADR-055)', () => {
     await waitFor(() => expect(backend.callsTo('POST', /\/resolve$/)).toHaveLength(1));
     const corpo = backend.callsTo('POST', /\/resolve$/)[0]?.body as { resolution: string; evidence_id?: number };
     expect(corpo).toMatchObject({ resolution: 'confirm_done', evidence_id: 11 });
+  });
+
+  it('29.79 (d): efeito comprovado (publicou, o rótulo não se confirmou) esconde "Tentar novamente" e diz por quê', async () => {
+    // Os botões "Tentar novamente…" da tela: o do android-01 (incerto) e o do android-02 (aguardando você).
+    const repetir = (raiz: HTMLElement) =>
+      [...raiz.querySelectorAll('button')].filter((b) => text(b).includes('Tentar novamente…')).length;
+    const comum = await render(<><InstancesTab detail={detailIncerto([print(11)])} /><ConfirmHost /></>);
+    expect(repetir(comum)).toBe(2);
+    const el = await render(<><InstancesTab detail={detailIncerto([print(11)], true)} /><ConfirmHost /></>);
+    expect(repetir(el)).toBe(1);                         // só o do android-02 fica
+    expect(text(el)).toContain('O efeito já saiu e foi comprovado');
+    expect(text(el)).toContain('Marcar como concluído');
+    expect(text(el)).toContain('Abandonar');
   });
 
   it('etapa com efeito externo sem print avisa que a confirmação será recusada e não inventa um id', async () => {

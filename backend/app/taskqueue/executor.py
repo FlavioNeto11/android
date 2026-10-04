@@ -715,13 +715,14 @@ class StepExecutor:
         return self.repo.db.scalar("SELECT package FROM apps WHERE id=?", (app_id,))
 
     async def _marcas_depois_do_efeito(self, rt: DeviceRuntime, cap: Capability, step: StepDTO,
-                                       obs: Observation | None, conta: str | None, call_timeout: float) -> list[str]:
-        """29.79 (d): as marcas exigidas (`commit_switch_mark`) que NÃO aparecem junto do nome da conta depois do efeito.
-        Uma leitura (a última tela da verificação, ou uma nova se ela não existir) e no máximo uma releitura depois de
-        `ESPERA_DA_MARCA_S`. Leitura que falha é dúvida: a marca conta como ausente."""
+                                       obs: Observation | None, conta: str | None, call_timeout: float
+                                       ) -> tuple[list[str], Observation | None]:
+        """29.79 (d): as marcas exigidas (`commit_switch_mark`) que NÃO aparecem junto do nome da conta depois do efeito,
+        e a última tela lida (a evidência). Uma leitura (a última tela da verificação, ou uma nova se ela não existir) e
+        no máximo uma releitura depois de `ESPERA_DA_MARCA_S`. Leitura que falha é dúvida: a marca conta como ausente."""
         exigidas = marcas_exigidas(cap.commit_switch_mark, self._argumentos_da_guarda(cap, step))
         if not exigidas:
-            return []
+            return [], obs
         for releitura in (False, True):
             if releitura:
                 await asyncio.sleep(ESPERA_DA_MARCA_S)
@@ -732,8 +733,8 @@ class StepExecutor:
                     obs = None
                     continue
             if all(marca_junto_da_conta(obs.tree, m, conta) for m in exigidas):
-                return []
-        return exigidas
+                return [], obs
+        return exigidas, obs
 
     def _argumentos_da_guarda(self, cap: Capability, step: StepDTO) -> dict[str, str]:
         """29.79, revisão R1: os argumentos que `rejeicao_do_interruptor` lê. O `rotulo_ia` vem da ORIGEM da imagem
@@ -3218,18 +3219,25 @@ class StepExecutor:
             # 29.79 (d): a contagem prova que publicou, não que saiu COM o rótulo. Só leitura, pela árvore: a última
             # tela da verificação e, sem a marca, UMA releitura depois de uma espera curta. Sem ela, o efeito existe e
             # a pessoa confere; nada se repete.
-            faltam = await self._marcas_depois_do_efeito(rt, cap, step, obs, account_label, call_timeout)
+            faltam, tela_da_marca = await self._marcas_depois_do_efeito(rt, cap, step, obs, account_label,
+                                                                         call_timeout)
             if faltam:
                 motivo = ("publicado; o rótulo de IA não foi confirmado. Abra a publicação: se o rótulo não "
                           "estiver lá, ligue-o pelo app ou remova a publicação. Não publique de novo. (A publicação "
                           "foi comprovada: " + text + "; " + ", ".join(f"'{m}'" for m in faltam) + " não apareceu "
                           "no cartão do topo, junto do nome da conta " + (account_label or "(desconhecida)") + ".)")
-                await evidence(obs, motivo)
+                await evidence(tela_da_marca or obs, motivo)
                 return StepOutcome(Outcome.uncertain, motivo, delivery_level=level,
                                    result=StepResult(verified=False, evidence_text=motivo, delivery_level=level,
                                                      efeito_comprovado=True))
             if exigidas := marcas_exigidas(cap.commit_switch_mark, self._argumentos_da_guarda(cap, step)):
-                text += "; marca " + ", ".join(f"'{m}'" for m in exigidas) + " vista junto do nome da conta"
+                vista = ("marca " + ", ".join(f"'{m}'" for m in exigidas) + " vista no cartão do topo, junto do nome "
+                         "da conta")
+                # Revisão D2 (condição da orquestradora): no sucesso a tela da conferência também fica, para a pessoa
+                # ver QUAL cartão confirmou o rótulo (o limite aceito: o post novo fora da tela e um antigo nosso
+                # rotulado como primeiro cartão ainda passaria).
+                await evidence(tela_da_marca or obs, "Conferência da marca depois do efeito: " + vista)
+                text += "; " + vista
         if ok:
             if (conta := evidencia_da_conta(account_label, step.postcondition.value, text)) is not None:
                 repo.db.execute("UPDATE instances SET account_evidence=?, account_evidence_ts=? WHERE id=?",

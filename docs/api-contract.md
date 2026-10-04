@@ -5959,11 +5959,14 @@ Instagram ("Add AI label").
   efeito comprovado a marca tem de estar colada abaixo do nome da conta, no cartão do TOPO da tela. É só leitura e pela
   árvore: a última tela da verificação e no máximo uma releitura. O CREATE_POST declara
   `rotulo_ia:id=secondary_label|text==AI info`, medido no 8.3. Sem a marca, a etapa termina `uncertain`, "publicado; o
-  rótulo de IA não foi confirmado. Abra a publicação…", com `StepResult.efeito_comprovado: true`.
+  rótulo de IA não foi confirmado. Abra a publicação…", com `StepResult.efeito_comprovado: true`. Nos dois desfechos a
+  tela da conferência fica como evidência. **Limite aceito:** se o post novo não estiver na tela e um post ANTIGO da
+  mesma conta, com o rótulo, for o primeiro cartão, a conferência ainda passa. Ela só roda depois de a verificação
+  comprovar a publicação, sem marca de envio pendente; a evidência mostra qual cartão confirmou.
 - **`StepResult.efeito_comprovado`** (`boolean`, ausente quando falso): o efeito em si foi comprovado e só uma afirmação
   sobre ele ficou incerta. A etapa nunca se refaz: `recovery_steps` a atravessa como comprovada, e `POST
   /runs/{id}/objectives/{oid}/resolve` com `retry` responde **409 `efeito_comprovado`**. Restam confirmar (com o print) e
-  abandonar.
+  abandonar. O `needs` do objetivo não oferece repetir, e o painel esconde "Tentar novamente…" nesse caso.
 - **Prova:** `simulated` (`backend/tests/test_rotulo_ia.py`, `backend/tests/test_rotulo_ia_no_executor.py`,
   `frontend/src/features/runs/PortaDoPlano.test.tsx`, `frontend/src/features/runs/execution.test.tsx`). `not_run`: a
   conferência dos seletores na versão atual do app (controle manual, sem Share) e a 1ª publicação real.

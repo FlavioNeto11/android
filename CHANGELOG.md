@@ -219,6 +219,9 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
   fica `uncertain` ("publicado; o rótulo de IA não foi confirmado. Abra a publicação…") com
   `StepResult.efeito_comprovado`. D1: essa etapa nunca se refaz. O "repetir" responde 409 `efeito_comprovado`, e
   `recovery_steps` a atravessa. C1b: o candidato a interruptor tem o centro na faixa do texto alargada em meia altura.
+  Nos dois desfechos, a tela da conferência fica como evidência. O limite aceito pela orquestradora está escrito no
+  adendo: se o post novo estiver fora da tela e um antigo nosso, rotulado, for o primeiro cartão, a conferência passa. O
+  `needs` do objetivo não oferece repetir, e o painel esconde "Tentar novamente…" quando o efeito foi comprovado.
 - Prova: `simulated` (`tests/test_rotulo_ia.py`, `tests/test_rotulo_ia_no_executor.py`, `PortaDoPlano.test.tsx`,
   `execution.test.tsx`). `not_run`: a medida dos seletores no aparelho depois do deploy e a 1ª publicação real.
 

@@ -265,8 +265,10 @@ interface Step {
   // `evidence_id`: na confirmação manual, o print em que a pessoa se baseou (ADR-055)
   // `efeito_repetido` (29.58, adendo v1.08): a etapa com efeito que mostrou 2 ou mais cópias e fechou `uncertain`;
   // ausente quando não há repetição. `fonte`: quem contou (o verificador na tela, ou as ações gravadas).
+  // `efeito_comprovado` (29.79, adendo v1.40): o efeito saiu e foi comprovado, só uma afirmação sobre ele ficou incerta
+  // (o rótulo de IA); a etapa nunca se repete. Ausente quando falso.
   result: { verified: boolean; evidence_text: string | null; delivery_level?: DeliveryLevel; evidence_id?: number | null;
-            efeito_repetido?: EfeitoRepetido } | null;
+            efeito_repetido?: EfeitoRepetido; efeito_comprovado?: boolean } | null;
   claimed_by?: string | null;                        // backend que assumiu a etapa; null = nunca despachada
   driven_by: 'ai' | 'recipe' | 'recipe+ai' | 'sem_ator' | null;   // v0.2 — quem decidiu as ações; `sem_ator`: fechou sem ator (caminho rápido 1)
   /** Item 12.1: app em que esta etapa roda. `null`/ausente = o app do plano (`Plan.app_id`). */
