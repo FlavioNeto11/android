@@ -6532,6 +6532,48 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-03T21:53:39+00:00"
+  },
+  "31.24": {
+   "id": "31.24",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #175 @ b0dcf408 (branch feat/31-24-latencia-por-etapa), na main pela suíte 16 (deploy 16, 3b5355ce; /api/health às 00:01Z de 04/10: migração 088_latencia_por_etapa, problems []). Migração 088 (só ADD COLUMN e tabela nova): ai_calls.started_at, vaga_ms e prep_settle/observacao/arvore/imagem/prompt_ms (C-3, C-2); actions.ai_call_id (C-1); attempts.juiz_espera_ms, verificacao_ms, evidencia_ms (C-4); tabela esperas por motivo, escrita só quando o motivo muda (C-5); pendurada derivada na leitura, sem gravação nem vigia. Leitura versionada scripts/latencia-por-etapa.py (só leitura, só números e ids; --sem-bateria até o contrato do 32.3); o 'antes' real de 03/10 em docs/ia.md §18. simulated: backend/tests/test_latencia_por_etapa.py (15, inclusive o Harness de ponta a ponta e test_sobrecarga_em_instrucoes_ao_banco) e scripts/tests/test_latencia_por_etapa.py (4); afetados 264 arquivos no aca615d0: 5232 passed, 1 skipped; scripts/tests 535 passed; suíte 16 da orquestradora. Sobrecarga: 0 instrução a mais ao banco por decisão, ação e tentativa; ~4,8 µs de CPU por decisão (timeit). O real (o 'depois' medido no central) é a medida pedida depois do deploy 16; atualizo este item quando a página sair.",
+   "blocker": "",
+   "arquivos": [
+    "backend/migrations/088_latencia_por_etapa.sql",
+    "backend/app/taskqueue/latencia.py",
+    "backend/app/taskqueue/executor.py",
+    "backend/app/taskqueue/repository.py",
+    "backend/app/planning/provider.py",
+    "backend/app/devices/manager.py",
+    "scripts/latencia-por-etapa.py",
+    "docs/ia.md"
+   ],
+   "testes": "backend/tests/test_latencia_por_etapa.py: 15 passed; scripts/tests/test_latencia_por_etapa.py: 4 passed; afetados 5232 passed, 1 skipped (Idle, SQLite).",
+   "grupo": "jev-31-24-31-25",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T00:04:22+00:00"
+  },
+  "31.25": {
+   "id": "31.25",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Commit 2962f2e7, na main por cherry-pick como 3b5355ce (deploy 16). backend/app/planning/decisao_fechada/curador.py: evidencias_contra conta só POSICOES_CONTRA = {against, conflict}; a forma (30.36) e a invalida (30.42) seguem na lista e no total. Conserto na v1 (o que a sombra manda), herdado pela v2 via estado_do_dossie; o estado_hash muda só nos dossiês com forma ou invalida, e as linhas antigas ficam como estão. simulated: backend/tests/test_decisao_fechada_curador.py::test_contra_conta_so_against_e_conflict_31_25; curador v1, v2, domínio e arquitetura 97 passed (Idle, serial); scripts/tests/test_jev_braco_offline.py e test_jev_relatorio_31_10.py 32 passed.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/planning/decisao_fechada/curador.py",
+    "backend/tests/test_decisao_fechada_curador.py"
+   ],
+   "testes": "97 passed (curador v1/v2, domínio, arquitetura); 32 passed (braço offline, relatório 31.10).",
+   "grupo": "jev-31-24-31-25",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T00:04:22+00:00"
   }
  },
  "rodadas": [
@@ -8170,6 +8212,16 @@
    ],
    "grupos": [
     "30.39"
+   ]
+  },
+  {
+   "quando": "2026-10-04T00:04:22+00:00",
+   "itens": [
+    "31.24",
+    "31.25"
+   ],
+   "grupos": [
+    "jev-31-24-31-25"
    ]
   }
  ]
