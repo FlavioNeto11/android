@@ -30,6 +30,7 @@ from app.events import EPHEMERAL_KINDS
 from app.models import RunTargetsPreview
 from app.modules.execution.presentation.schemas import RunTargetsResolveBody
 from app.modules.pedidos.domain import avisos as dominio_avisos
+from app.modules.pedidos.domain import colaboracao
 from app.modules.pedidos.domain import gatilhos as dominio_gatilhos
 from app.modules.pedidos.domain import previa
 from app.modules.pedidos.domain.estados import ATOR_PESSOA, PEDIDO_ATORES, TransicaoInvalida, transicionar_pedido
@@ -78,6 +79,10 @@ class CorpoDoPedido:
     coalescer: bool = True
     max_tentativas: int = 2
     pausa_por_falha: int = 3
+    #: Colaboração entre pedidos (28.10, F1). Todos opcionais; com a colaboração desligada qualquer um deles é recusado.
+    pai_id: str | None = None
+    papel: str | None = None
+    dependencias: tuple[tuple[str, str], ...] = ()          # (de, tipo): o pedido NOVO depende de `de`
 
 
 @dataclass(frozen=True)
@@ -121,7 +126,47 @@ class PedidosApi:
                 raise ErroDeApi(409, e.code, e.message) from None      # nada é processado nem ecoado
             return None, previa.Bloqueio(e.code, e.message, "alvos")
 
-    def _montar(self, corpo: CorpoDoPedido) -> Montado:
+    def _validar_colaboracao(self, corpo: CorpoDoPedido, pid: str | None) -> previa.Bloqueio | None:
+        """A estrutura de pai, papel e dependências (28.10, F1), pelo domínio. `pid` é o id que o pedido terá (na prévia
+        não se sabe: a chave de idempotência só chega na criação). Pedido que já existe é repetição da mesma chave: a
+        estrutura dele foi conferida quando nasceu e o pai pode ter terminado desde então, então não se confere de novo."""
+        if corpo.pai_id is None and corpo.papel is None and not corpo.dependencias:
+            return None
+        cfg = self.cfg.colaboracao
+        if not cfg.enabled:
+            campo = "pai_id" if corpo.pai_id is not None else ("papel" if corpo.papel is not None else "dependencias")
+            return previa.Bloqueio("colaboracao_desligada", "A colaboração entre pedidos está desligada nesta instalação "
+                                   "(`pedidos.colaboracao.enabled`): `pai_id`, `papel` e `dependencias` não valem.", campo)
+        if pid is not None and self.repo.pedido(pid) is not None:
+            return None
+        if corpo.pai_id is None:
+            r = colaboracao.validar_raiz(papel=corpo.papel, dependencias=corpo.dependencias)
+            return previa.Bloqueio(r.codigo, r.mensagem, r.campo or "") if r else None
+        novo = pid or "(novo)"
+        pai_row = self.repo.pedido(corpo.pai_id)
+        pai = None if pai_row is None else colaboracao.DadosDoPai(
+            id=pai_row["id"], estado=pai_row["estado"], pai_id=pai_row["pai_id"],
+            orcamento_total_usd=pai_row["orcamento_total_usd"], gasto_usd=self.repo.custo_total(pai_row["id"]))
+        pais = self.repo.pais_dos_ancestrais(corpo.pai_id)
+        cadeia = colaboracao.cadeia_de_pais(corpo.pai_id, pais) or (corpo.pai_id,)
+        raiz = cadeia[-1]
+        familia = [r for r in [self.repo.pedido(raiz), *self.repo.descendentes(raiz)] if r is not None and r["id"] != novo]
+        irmaos = [colaboracao.Irmao(f["id"], f["papel"], f["orcamento_total_usd"]) for f in self.repo.filhos(corpo.pai_id)
+                  if f["id"] != novo]
+        dependidos: dict[str, str | None] = {}
+        for de, _tipo in corpo.dependencias:
+            linha = self.repo.pedido(de)
+            if linha is not None:
+                dependidos[de] = linha["pai_id"]
+        arestas = [(d["de"], d["para"]) for d in self.repo.dependencias_entre([r["id"] for r in familia])]
+        r = colaboracao.validar_filho(
+            novo_id=novo, pai=pai, pai_id=corpo.pai_id, pais=pais, irmaos=irmaos,
+            papeis_da_familia=[f["papel"] for f in familia], papel=corpo.papel, dependencias=corpo.dependencias,
+            pai_dos_dependidos=dependidos, arestas_da_familia=arestas, orcamento_total_usd=corpo.orcamento_total_usd,
+            limites=colaboracao.Limites(cfg.max_profundidade, cfg.max_filhos))
+        return previa.Bloqueio(r.codigo, r.mensagem, r.campo or "") if r else None
+
+    def _montar(self, corpo: CorpoDoPedido, pid: str | None = None) -> Montado:
         bloqueios: list[previa.Bloqueio] = []
         preview, erro = self._resolver(corpo.selecao)
         alvos: list[tuple[str, str | None, str | None]] = []
@@ -171,6 +216,9 @@ class PedidosApi:
         analise = previa.analisar(parametros, agora=self.agora(), piso_observar_s=self.cfg.piso_observar_s,
                                   piso_agir_s=self.cfg.piso_agir_s,
                                   quantas=previa.PROXIMAS_PADRAO)
+        colab = self._validar_colaboracao(corpo, pid)
+        if colab is not None:
+            bloqueios.append(colab)
         # gatilho que nem normalizou: `analisar` não o vê, e o bloqueio dele já está na lista
         todos = tuple(bloqueios) + analise.bloqueios
         return Montado(parametros, analise, todos, preview, self._alvos_json(preview, alvos, corpo))
@@ -219,20 +267,21 @@ class PedidosApi:
     def criar(self, corpo: CorpoDoPedido, *, idempotency_key: str, titulo: str | None, confirmacao: str | None,
               operador: str | None) -> tuple[JsonObject, bool]:
         """`(PedidoView, deduplicated)`. O primeiro bloqueio vira o erro HTTP do contrato."""
-        m = self._montar(corpo)
+        pid = previa.id_do_pedido(idempotency_key)
+        m = self._montar(corpo, pid)
         if m.bloqueios:
             b = m.bloqueios[0]
             raise ErroDeApi(STATUS_DO_BLOQUEIO.get(b.codigo, 422), b.codigo, b.mensagem,
                             **({"campo": b.campo} if b.campo else {}))
         p = m.parametros
         assert p is not None and m.alvos_json is not None
-        pid = previa.id_do_pedido(idempotency_key)
         selo = previa.selo(p)
         existente = self.repo.pedido(pid)
         if existente is not None:
             # Depois de editado (`versao` > 1) o conteúdo gravado já não é o do corpo original: só dá para conferir o
             # que nunca mudou. Repetir a chamada devolve o pedido como está agora.
-            if int(existente["versao"]) == 1 and previa.selo(self._parametros(existente)) != selo:
+            if int(existente["versao"]) == 1 and (previa.selo(self._parametros(existente)) != selo
+                                                  or self._estrutura_diverge(existente, corpo)):
                 raise ErroDeApi(409, "idempotency_conflict", "A mesma idempotency_key já criou um pedido com outro "
                                 "conteúdo. Use uma chave nova para um pedido novo.")
             return self.view(existente), True
@@ -242,17 +291,25 @@ class PedidosApi:
         em = to_iso(self.agora())
         resumo = (titulo or p.objetivo_sem_destinos[:80]).strip() or p.objetivo_sem_destinos[:80]
         with self.db.tx():
+            # dentro da transação (BEGIN IMMEDIATE no SQLite): dois filhos criados juntos não passam do limite de filhos
+            # nem reservam mais do que o pai tem; é a mesma conferência da prévia e do `_montar`, refeita com o banco travado
+            colab = self._validar_colaboracao(corpo, pid)
+            if colab is not None:
+                raise ErroDeApi(STATUS_DO_BLOQUEIO.get(colab.codigo, 422), colab.codigo, colab.mensagem,
+                                **({"campo": colab.campo} if colab.campo else {}))
             self.db.execute(
                 "INSERT INTO pedidos(id, titulo, objetivo, contexto, criterios_sucesso, alvos, autonomia, fuso,"
                 " inicio_em, fim_em, max_ocorrencias, orcamento_total_usd, orcamento_ocorrencia_usd, sobreposicao,"
-                " janela_recuperacao_s, coalescer, max_tentativas, pausa_por_falha, estado, versao, criado_por,"
-                " criado_em, atualizado_em) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'rascunho',1,?,?,?)",
+                " janela_recuperacao_s, coalescer, max_tentativas, pausa_por_falha, pai_id, papel, estado, versao,"
+                " criado_por, criado_em, atualizado_em) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'rascunho',1,?,?,?)",
                 (pid, resumo[:120], p.objetivo_sem_destinos, corpo.contexto,
                  dumps(list(corpo.criterios_sucesso)) if corpo.criterios_sucesso is not None else None,
                  m.alvos_json, p.autonomia, p.fuso, to_iso(p.inicio_em) if p.inicio_em else None,
                  to_iso(p.fim_em) if p.fim_em else None, p.max_ocorrencias, p.orcamento_total_usd,
                  p.orcamento_ocorrencia_usd, p.sobreposicao, p.janela_recuperacao_s, 1 if p.coalescer else 0,
-                 p.max_tentativas, p.pausa_por_falha, operador, em, em))
+                 p.max_tentativas, p.pausa_por_falha, corpo.pai_id, corpo.papel, operador, em, em))
+            for de, tipo in corpo.dependencias:
+                self.repo.inserir_dependencia(de, pid, tipo, em)
             for g in p.gatilhos:
                 self.repo.inserir_gatilho(novo_id("g"), pid, g.tipo, dumps(dict(g.spec)), None, em)
             self.repo.marcar("pedido", pid, pessoa=True)
@@ -262,6 +319,13 @@ class PedidosApi:
         if confirmacao is not None:
             self.laco.acordar()
         return self.view(self.repo.pedido(pid) or {}), False
+
+    def _estrutura_diverge(self, existente: Row, corpo: CorpoDoPedido) -> bool:
+        """A repetição da chave traz outro pai, outro papel ou outras dependências: é outro pedido (28.10, F1)."""
+        gravadas = sorted((d["de"], d["tipo"]) for d in self.repo.dependencias_entre([existente["id"]])
+                          if d["para"] == existente["id"])
+        return (existente["pai_id"] != corpo.pai_id or existente["papel"] != corpo.papel
+                or gravadas != sorted(corpo.dependencias))
 
     def _ativar_na_transacao(self, pid: str, de: str, versao: int, em: str) -> None:
         transicionar_pedido(de, "ativo", ator=ATOR_PESSOA)
@@ -347,14 +411,17 @@ class PedidosApi:
             return {"pedido": self.view(p), "sem_mudanca": True, "execucoes_em_curso": [], "ocorrencias_canceladas": 0}
         if p["estado"] in TERMINAIS:
             raise self._invalido(p)
-        futuras = len(self.repo.ids_prevista_devida(pedido_id))
-        em_curso = self.repo.execucoes_abertas(pedido_id)
+        # os descendentes ainda vivos vão junto (28.10, F1): o que eles têm a fazer ou em curso também conta na confirmação
+        vivos = [f["id"] for f in self.repo.descendentes(pedido_id) if f["estado"] not in TERMINAIS]
+        futuras = len(self.repo.ids_prevista_devida(pedido_id)) + sum(len(self.repo.ids_prevista_devida(i)) for i in vivos)
+        em_curso = self.repo.execucoes_abertas(pedido_id) + [r for i in vivos for r in self.repo.execucoes_abertas(i)]
         if not confirmar:
             raise ErroDeApi(409, "confirmacao_necessaria", "Cancelar não desfaz o que já foi feito. Confirme.",
                             execucoes_em_curso=em_curso, ocorrencias_futuras=futuras)
         self._rodar(lambda: self.acoes.cancelar(pedido_id, por=operador), p)
         return {"pedido": self.view(self._pedido(pedido_id)), "sem_mudanca": False,
-                "execucoes_em_curso": [{"run_id": r} for r in em_curso], "ocorrencias_canceladas": futuras}
+                "execucoes_em_curso": [{"run_id": r} for r in em_curso], "ocorrencias_canceladas": futuras,
+                "filhos_cancelados": len(vivos)}
 
     # ================================================================== edição
     def _parametros(self, p: Row) -> previa.ParametrosDoPedido:
@@ -541,7 +608,7 @@ class PedidosApi:
             "id", "titulo", "objetivo", "contexto", "autonomia", "fuso", "inicio_em", "fim_em", "max_ocorrencias",
             "orcamento_total_usd", "orcamento_ocorrencia_usd", "sobreposicao", "janela_recuperacao_s",
             "max_tentativas", "pausa_por_falha", "estado", "versao", "proxima_em", "criado_por", "pausado_motivo",
-            "encerrado_motivo", "pai_id", "criado_em", "atualizado_em")}
+            "encerrado_motivo", "pai_id", "papel", "criado_em", "atualizado_em")}
         v["criterios_sucesso"] = loads(p["criterios_sucesso"], None)
         v["alvos"] = alvos
         v["coalescer"] = bool(p["coalescer"])
@@ -608,7 +675,11 @@ class PedidosApi:
         em_curso = self.db.query("SELECT r.id AS run_id, r.ocorrencia_id, r.status FROM runs r WHERE r.pedido_id=?"
                                  " AND r.status NOT IN ('completed','completed_with_issues','cancelled','failed')"
                                  " ORDER BY r.created_at", (pedido_id,))
+        filhos = self.repo.filhos(pedido_id)
         v.update({
+            "filhos": [{"id": f["id"], "titulo": f["titulo"], "estado": f["estado"], "papel": f["papel"]} for f in filhos],
+            "dependencias": [{"de": d["de"], "para": d["para"], "tipo": d["tipo"]}
+                             for d in self.repo.dependencias_entre([pedido_id, *(f["id"] for f in filhos)])],
             "gatilhos": [{"id": g["id"], "tipo": g["tipo"], "ativo": bool(g["ativo"]), "criado_em": g["criado_em"],
                           "spec": loads(g["spec"], {}), "cursor": g["cursor"]} for g in gat],
             "proximas": proximas,
@@ -810,6 +881,19 @@ class PedidosApi:
                     self._publicar_ocorrencia(ident)
             except Exception:  # noqa: BLE001
                 log.exception("pedidos: evento de %s %s", tipo, ident)
+        self._encerrar_filhos_dos_encerrados([ident for (tipo, ident) in vistos if tipo == "pedido"])
+
+    def _encerrar_filhos_dos_encerrados(self, pedidos: Sequence[str]) -> None:
+        """Pai que o SISTEMA encerrou (prazo, contagem, orçamento, abandono) leva os filhos vivos (28.10, F1). Este é o
+        funil por onde passa tudo o que o laço escreve, então a cascata não toca o `laco.py`. Roda DEPOIS do commit do pai,
+        e a repetição conserta uma queda no meio (`encerrar_filhos` é idempotente). Falha aqui nunca desfaz o encerramento."""
+        for ident in pedidos:
+            try:
+                p = self.repo.pedido(ident)
+                if p is not None and p["estado"] == "encerrado" and self.acoes.encerrar_filhos(ident):
+                    self.publicar(self.repo.descarregar())
+            except Exception:  # noqa: BLE001
+                log.exception("pedidos: cascata do encerramento do pedido %s", ident)
 
     def _publicar_pedido(self, pid: str, pessoa: bool) -> None:
         p = self.repo.pedido(pid)

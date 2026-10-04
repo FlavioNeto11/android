@@ -379,3 +379,51 @@ class RepositorioDePedidos:
             sql += " AND gatilho_id=?"
             params.append(gatilho_id)
         return self.db.query(sql + " ORDER BY previsto_para, id", tuple(params))
+
+    # ------------------------------------------------------------------ colaboração (28.10 F1, migração 096)
+    def filhos(self, pai_id: str) -> list[Row]:
+        """Os filhos diretos, na ordem em que nasceram (`id` desempata o mesmo instante)."""
+        return self.db.query("SELECT * FROM pedidos WHERE pai_id=? ORDER BY criado_em, id", (pai_id,))
+
+    def descendentes(self, pai_id: str) -> list[Row]:
+        """Todos os descendentes (filhos, netos...), do mais perto ao mais longe. Anda por `pai_id` com um conjunto de
+        visitados: uma linhagem gravada em círculo não prende o laço."""
+        saida: list[Row] = []
+        vistos = {pai_id}
+        fila = [pai_id]
+        while fila:
+            atual = fila.pop(0)
+            for f in self.filhos(atual):
+                if f["id"] in vistos:
+                    continue
+                vistos.add(f["id"])
+                saida.append(f)
+                fila.append(f["id"])
+        return saida
+
+    def pais_dos_ancestrais(self, pai_id: str | None) -> dict[str, str | None]:
+        """`id → pai_id` do pai e de cada ancestral dele (a cadeia que `domain.colaboracao.cadeia_de_pais` percorre).
+        Para ao repetir um id: o domínio é quem reconhece o círculo."""
+        mapa: dict[str, str | None] = {}
+        atual = pai_id
+        while atual is not None and atual not in mapa:
+            linha = self.db.one("SELECT id, pai_id FROM pedidos WHERE id=?", (atual,))
+            if linha is None:
+                break
+            mapa[atual] = linha["pai_id"]
+            atual = linha["pai_id"]
+        return mapa
+
+    def dependencias_entre(self, ids: Sequence[str]) -> list[Row]:
+        """As dependências em que algum dos `ids` é o `de` ou o `para`, em ordem estável."""
+        if not ids:
+            return []
+        marcas = _marcas(ids)
+        return self.db.query(f"SELECT de, para, tipo, criado_em FROM pedido_dependencias WHERE de IN ({marcas})"
+                             f" OR para IN ({marcas}) ORDER BY criado_em, de, para", (*ids, *ids))
+
+    def inserir_dependencia(self, de: str, para: str, tipo: str, em: str) -> bool:
+        """`ON CONFLICT DO NOTHING`: repetir o par é seguro e o tipo da primeira vez vale."""
+        cur = self.db.execute("INSERT INTO pedido_dependencias(de, para, tipo, criado_em) VALUES (?,?,?,?)"
+                              " ON CONFLICT DO NOTHING", (de, para, tipo, em))
+        return (cur.rowcount or 0) == 1

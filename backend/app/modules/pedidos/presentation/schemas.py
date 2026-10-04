@@ -1,6 +1,7 @@
 """Corpos das rotas de pedidos (item 28.9, adendo v0.45). `extra="forbid"` como `RunCreate`: campo desconhecido é 422,
-e `pai_id`, `estado` e `criado_por` não se enviam (o primeiro é do 28.10; o segundo muda só por ação; o terceiro é o
-operador da sessão). Só a FORMA é validada aqui; as regras de negócio (piso, sobreposição, limites) são do domínio e
+e `estado` e `criado_por` não se enviam (o primeiro muda só por ação; o segundo é o operador da sessão). `pai_id`,
+`papel` e `dependencias` são do 28.10 (F1) e SÓ valem com `pedidos.colaboracao.enabled`: desligada, a API os recusa
+com 422 `colaboracao_desligada`. Não se editam depois (o PATCH não os aceita): a estrutura nasce com o pedido. Só a FORMA é validada aqui; as regras de negócio (piso, sobreposição, limites) são do domínio e
 voltam como `bloqueios` na prévia e como erro de contrato na criação."""
 from __future__ import annotations
 
@@ -15,6 +16,8 @@ from app.modules.pedidos.infrastructure.servico import CorpoDoPedido
 Autonomia = Literal["observar", "preparar", "agir"]
 Sobreposicao = Literal["pular", "guardar_uma", "permitir_todas"]
 TipoDeGatilho = Literal["agora", "horario", "recorrencia", "evento", "condicao", "persona"]
+Papel = Literal["pesquisador", "checador", "redator", "porta_voz"]
+TipoDeDependencia = Literal["precisa_de_resultado", "depois_de"]
 
 
 class _Corpo(BaseModel):
@@ -31,6 +34,12 @@ class AlvosCorpo(_Corpo):
 class GatilhoCorpo(_Corpo):
     tipo: TipoDeGatilho
     spec: dict[str, object] = Field(default_factory=dict)
+
+
+class DependenciaCorpo(_Corpo):
+    """O pedido novo depende de `de` (`para` é sempre ele): `precisa_de_resultado` ou `depois_de`."""
+    de: str = Field(min_length=1, max_length=64)
+    tipo: TipoDeDependencia
 
 
 def utc(d: datetime | None) -> datetime | None:
@@ -63,6 +72,10 @@ class PedidoCorpo(_Corpo):
     coalescer: bool = True
     max_tentativas: int = 2
     pausa_por_falha: int = 3
+    #: Colaboração entre pedidos (28.10, F1): só com `pedidos.colaboracao.enabled`.
+    pai_id: str | None = Field(default=None, min_length=1, max_length=64)
+    papel: Papel | None = None
+    dependencias: list[DependenciaCorpo] | None = Field(default=None, max_length=8)
 
     def para_corpo(self) -> CorpoDoPedido:
         return CorpoDoPedido(
@@ -73,7 +86,8 @@ class PedidoCorpo(_Corpo):
             max_ocorrencias=self.max_ocorrencias, orcamento_total_usd=self.orcamento_total_usd,
             orcamento_ocorrencia_usd=self.orcamento_ocorrencia_usd, sobreposicao=self.sobreposicao,
             janela_recuperacao_s=self.janela_recuperacao_s, coalescer=self.coalescer,
-            max_tentativas=self.max_tentativas, pausa_por_falha=self.pausa_por_falha)
+            max_tentativas=self.max_tentativas, pausa_por_falha=self.pausa_por_falha, pai_id=self.pai_id,
+            papel=self.papel, dependencias=tuple((d.de, d.tipo) for d in self.dependencias or ()))
 
 
 class PreviaCorpo(PedidoCorpo):
