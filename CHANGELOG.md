@@ -19,6 +19,30 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-03/04 — Suíte 16 na main e deploy 16 no central (3b5355ce; migrações 087 e 088; config sem mudança)
+
+- Integrados em `integ/suite-16`, nesta ordem: #174, #178 (30.42, com a correção do `for_each` e o 30.41 pelo
+  #181, d17b36c6), 30.38 (a, b), #176 (29.55), #179 (29.58), #175 (31.24, migração 088), #177 (32.2, migração 087,
+  com o `deque(maxlen)` da revisão) e o 31.25 (cherry-pick 2962f2e7).
+- Ajustes de integração:
+  - `copias_vistas` passa pelo embrulho `_verify` até `_verificar`;
+  - a recusa do 29.58 grava pela `intencao(...)`;
+  - os três `Any` novos foram tipados, e a catraca segue em 120;
+  - o classificador de falhas ganhou o motivo novo do 29.58;
+  - os motivos do 30.41 e do 30.42 ganharam texto humano (afaa5d8d);
+  - uma docstring deixou de citar o literal do prefixo da validação;
+  - o teste do Trello passou a chamar a rota por extenso.
+- Suíte:
+  - SQLite `-n 8` em Idle: 9082 passed, 7 skipped, 4 falhas cruzadas, corrigidas e reconferidas (246 passed);
+  - `scripts/tests`: 544 passed;
+  - front: typecheck e 1439 testes;
+  - PG dos afetados: 474 passed, 1 skipped.
+- Deploy: ensaio de migração numa cópia restaurada (087 e 088 aplicadas); `deploy.ps1 -PularDependencias` das
+  23:58:00 às 23:59:06Z; `/api/health` ok em 3b5355ce, migração 088, sem problemas. O agente do notebook está em
+  0.1.0+3b5355c.
+- Prova real do 29.58 (r-20261004000108-fee44f, android-10, comando da 5f2de5): uma entrega só, uma ação de efeito,
+  sem recusa falsa nem repetição marcada. A recusa em si segue `simulated`, porque a IA não errou desta vez.
+
 ## 2026-10-03 — 29.55: relatório de falha pendente do emulador não prende mais a subida (branch fix/29-55-crash-report)
 
 - Antes: um dump deixado pelo crashpad (`emu-crash-<versão>.db/reports/*.dmp`) fazia toda subida parar no diálogo de
