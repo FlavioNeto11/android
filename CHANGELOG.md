@@ -102,7 +102,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - execução cancelada, à mão ou pelo teto, conta como insucesso do braço;
   - os estados terminais vêm do `RUN_TERMINAL` do backend; a saída diz de onde vieram os preços (`precos: config` ou
     `padrao`); banco inexistente dá "banco não encontrado" em vez de traceback.
-- Prova: `simulated` (`scripts/tests/test_jev_veredito_31_56.py`, 15 testes, um por regra). Nenhuma execução do 31.56
+- Prova: `simulated` (`scripts/tests/test_jev_veredito_31_56.py`, 17 testes, um por regra, com o N1: o sucesso decide antes de "braço sem etapa"). Nenhuma execução do 31.56
   ainda.
 
 ## 2026-10-04 — 28.29: o registro das decisões automáticas diz a verdade e se lê fácil (branch canais/28-29-registro-de-decisoes)
