@@ -287,6 +287,28 @@ async def test_o_gesto_pela_rota(harness: Any, monkeypatch: Any) -> None:
     assert ok.status_code == 200 and len(ok.json()["aprovacoes"]) == 1
 
 
+async def test_renovar_pela_rota(harness: Any, monkeypatch: Any) -> None:
+    """`POST /api/runs/{id}/porta/renovar` pela HTTP: 200 com `renovadas` e `vencidas`, 409 `sim_vencido` quando nada
+    renova, 409 `invalid_state` na execução terminada e 404 na inexistente."""
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"],
+                                                                         chave=itens["dm"]["chave"])]), por="flavio")
+    app = create_app(harness.cfg, state=state)
+    app.state.poc = state
+    cliente = TestClient(app, client=("127.0.0.1", 123))
+    ok = cliente.post("/api/runs/run-p/porta/renovar")
+    assert ok.status_code == 200 and ok.json()["renovadas"] == 1 and ok.json()["vencidas"] == 0
+    state.db.execute("UPDATE pending_approvals SET expires_at=?", (to_iso(now() - timedelta(minutes=1)),))
+    vencido = cliente.post("/api/runs/run-p/porta/renovar")
+    assert vencido.status_code == 409 and vencido.json()["detail"]["code"] == "sim_vencido"
+    state.runs.cancel("run-p")
+    fora = cliente.post("/api/runs/run-p/porta/renovar")
+    assert fora.status_code == 409 and fora.json()["detail"]["code"] == "invalid_state"
+    assert cliente.post("/api/runs/nao-existe/porta/renovar").status_code == 404
+
+
 async def test_renovar_estende_a_validade_e_cancelar_encerra_o_sim(harness: Any, monkeypatch: Any) -> None:
     state = harness.state
     _sem_iniciar(state, monkeypatch)
