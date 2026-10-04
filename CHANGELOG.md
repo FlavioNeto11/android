@@ -28,6 +28,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Nada entra no plano por aqui: o número é da orquestradora. Só GET, sem IA.
 - Prova `simulated`: `scripts/tests/test_candidatos_do_portal.py` (5). Real: rodado contra o central em 04/10
   16:12Z (1fc66a6c): 70 candidatos, 0 com item do plano.
+- Ajuste (orquestradora, 04/10): `amostra_de_lote` ("n de m" exemplos de execução nossa, do banco só para leitura,
+  porque a API não expõe a chave de idempotência) e `dias_sem_ocorrer`; amostra toda nossa ou mais de 7 dias parado vai
+  para o fim (`rebaixado`). No central: 7 de 15 grupos rebaixados. Testes +2.
 
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 

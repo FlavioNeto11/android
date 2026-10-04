@@ -12,12 +12,13 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import sqlite3
 import sys
 import tempfile
 import unittest
 import urllib.error
 import urllib.parse
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import closing, redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -128,6 +129,52 @@ class TestCandidatos(unittest.TestCase):
         self.assertEqual((rc, corpo), (2, None))
         self.assertNotIn(TOKEN, out + err)
         self.assertIn("***", err)
+
+    def test_amostra_de_lote_e_ultima_ocorrencia_rebaixam(self) -> None:
+        """Ajuste da orquestradora: o grupo de amostra toda nossa (lote, ensaio, prova) ou parado há mais de 7 dias vai
+        para o fim, com o motivo; o resto segue pelo custo. Sem leitura do banco, a amostra é `null`."""
+        geral = json.loads(json.dumps(GERAL))
+        for g in geral["itens"]:
+            g["ultima"] = "2026-10-04T08:00:00Z"
+        next(g for g in geral["itens"] if g["id"] == "fk-barato")["ultima"] = "2026-09-25T08:00:00Z"
+        nossos = {f"r-fk-caro-{i}": True for i in range(5)} | {"r-fk-pessoa-0": True, "r-fk-pessoa-1": False}
+        pedidos: list[list[str]] = []
+
+        def de_lote(ids: list[str]) -> dict[str, bool]:
+            pedidos.append(list(ids))
+            return {i: nossos[i] for i in ids if i in nossos}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            destino = Path(tmp) / "c.json"
+            with redirect_stdout(io.StringIO()):
+                mod.main(["--saida", str(destino)], buscador=Fake([geral, PESSOA]), agora=AGORA, token=None,
+                         de_lote=de_lote)
+            corpo = json.loads(destino.read_text(encoding="utf-8"))
+        por = {c["chave"]: c for c in corpo["candidatos"]}
+        self.assertEqual([c["chave"] for c in corpo["candidatos"]], ["fk-pessoa", "fk-caro", "fk-barato", "fk-prop"])
+        self.assertEqual((por["fk-caro"]["amostra_de_lote"], por["fk-pessoa"]["amostra_de_lote"]), ("3 de 3", "1 de 2"))
+        self.assertIn("execução nossa", por["fk-caro"]["rebaixado"])
+        self.assertIsNone(por["fk-pessoa"]["rebaixado"])
+        self.assertIn("7 dias", por["fk-barato"]["rebaixado"])
+        self.assertEqual((por["fk-barato"]["dias_sem_ocorrer"], por["fk-barato"]["amostra_de_lote"]), (9.4, None))
+        self.assertEqual(len(pedidos), 1)                       # uma leitura só, com os ids dos exemplos
+        self.assertEqual(len(pedidos[0]), 3 * 3)
+
+    def test_de_lote_no_banco_so_le_e_reconhece_as_marcas(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            banco = Path(tmp) / "poc.sqlite3"
+            with closing(sqlite3.connect(banco)) as c, c:
+                c.execute("CREATE TABLE runs(id TEXT, idempotency_key TEXT, prova_fluxo_id TEXT)")
+                c.executemany("INSERT INTO runs VALUES (?,?,?)", [
+                    ("r1", "lote:android:x", None), ("r2", "ensaio:ig-01", None), ("r3", "chave-do-painel", "pf-1"),
+                    ("r4", "chave-do-painel", None)])
+            ler = mod.de_lote_no_banco(banco)
+            self.assertEqual(ler(["r1", "r2", "r3", "r4", "r9"]), {"r1": True, "r2": True, "r3": True, "r4": False})
+            self.assertEqual(ler([]), {})
+            self.assertEqual(mod.de_lote_no_banco(Path(tmp) / "nao-existe.sqlite3")(["r1"]), {})
+            with self.assertRaises(sqlite3.OperationalError):    # aberto só para leitura
+                with closing(sqlite3.connect(f"file:{banco.as_posix()}?mode=ro", uri=True)) as ro:
+                    ro.execute("DELETE FROM runs")
 
 
 if __name__ == "__main__":
