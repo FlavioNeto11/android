@@ -1165,6 +1165,13 @@ A tabela de eventos deste documento (seção "Eventos") não lista os seguintes,
 | `worker.refused` | sim | `api.py` (conexão de worker recusada — host fora da lista, versão de protocolo incompatível) |
 | `worker.metrics` | **não** (`EPHEMERAL_KINDS`) | `state.py` — CPU/RAM/disco a cada batida (10 s); persistir enchia o log (57% dos eventos) |
 | `approval.pending` | sim | `state.py` — uma aprovação social passou a aguardar decisão |
+| `politica.excecao_criada` | sim | `social/excecoes.py` — exceção de uso único à regra de uma conta por alvo criada pela rota (30.65) |
+| `politica.excecao_usada` | sim | `social/excecoes.py` — o efeito da etapa presa saiu e a exceção foi gasta (30.65) |
+| `politica.excecao_vencida` | sim | `social/excecoes.py` — a exceção venceu sem uso (30.65) |
+| `politica.excecao_recusada` | sim | `social/excecoes.py` — o dono rejeitou o cartão da etapa presa e a exceção acabou (30.65) |
+| `politica.excecao_revogada` | sim | `social/excecoes.py` — a exceção em aberto foi revogada pela rota (30.65) |
+| `politica.excecao_sem_efeito` | sim | `social/excecoes.py` — reservada, o gesto terminou sem efeito; ela fecha e não volta a aberta (30.65) |
+| `politica.excecao_incerta` | sim | `social/excecoes.py` — reservada, e a etapa terminou sem liquidação; o efeito pode ter saído e conta como usada (30.65) |
 | `app_state.updated` | sim | `state.py` |
 | `session.needs_person` | sim | `modules/identity/application/session_rules.py::emit_needs_person_change`, chamada por `integrations/app_declarado/sessao.py::SessaoDeclarada._save` e `state.py::AppState._sessao_desmentida` — a sessão da conta entrou em `auth_challenge`/`wrong_account` |
 | `learning.needs_person` | sim | `modules/learning/application/espera.py::AvisadorDeEspera`, chamado por `LearningService` (`mudar_estado`, `propor`, `avisar_item`, `avisar_mudanca_nativa`) e pelos ouvintes das lojas de receita e fluxo (`infrastructure/ligar_nativos.py`) — um item do Livro de aprendizado entrou na espera do dono (faixa B ou C da política de risco) ou saiu dela; ver o adendo v0.49 |
@@ -5690,3 +5697,52 @@ Sem migração. Muda a v1.26 e a rota `POST .../trello`.
   `pode_ir_ao_cartao` passa a exigir também um mime da lista `avisos.entrada.anexos.tipos`.
 - `POST /api/canais/anexos/{id}/trello`: o anexo de tipo que a entrada não aceita, ou maior que o teto, é recusado com **422**
   `tipo_nao_aceito` antes de qualquer chamada ao Trello. O arquivo fora do armazém segue **409** `anexo_sem_arquivo`.
+## Adendo v1.30 (04/10/2026; número da orquestradora; item 30.65) — exceção de uso único à regra de uma conta por alvo
+
+Migração `104_excecoes_de_politica`. A porta de frota (ADR-055) recusa, sem caminho de aprovação, o efeito sobre um alvo que
+outra conta da frota já tocou na janela. A exceção tira só essa recusa, só para o perfil, o alvo e a ação dela, e NÃO libera
+sozinha: a etapa casada vira `approval_required` e aparece em Pendências com o motivo "exceção … à regra de uma conta por alvo
+em 30 dias (ADR-055), criada por <autor> em <hora> …; autorização citada: <texto> … uso único (30.65)". "Autorizada pelo
+dono" só aparece quando quem criou era operador com sessão no painel: o loopback cria sem sessão, e aí a autorização é só
+texto citado. Conta retirada, espaçamento, tetos, DM fria e repetição (30.64) seguem valendo. A etapa que usa a exceção
+sempre abre cartão novo: o aprovado de uma versão anterior com o mesmo texto e alvo não é reaproveitado.
+
+- **`POST /api/politica/excecoes`** (201), atrás do login. Corpo, todos obrigatórios, campo desconhecido é recusado:
+  `profile_id` (perfil de ORIGEM), `alvo` (o @, normalizado), `capability` (`SEND_MESSAGE`...), `motivo`, `autorizacao`
+  (quem autorizou, por onde e quando) e `expira_em` (UTC ISO; no máximo 72 h a partir de agora). O autor é o operador da
+  sessão; sem sessão (loopback), o rótulo `panel`, e `autor_com_sessao` fica falso. Resposta `{"excecao": {...}}`.
+  422 `excecao_invalida`: prazo acima de 72 h ou já passado, alvo vazio, perfil inexistente, alvo que não é conta nossa
+  viva (abrir para pessoa real é decisão do dono), ou já existe uma em aberto para o mesmo perfil, alvo e ação. 409
+  `note_looks_secret`: `motivo` ou `autorizacao` com formato de credencial, antes de qualquer escrita (a triagem de nota;
+  hora com segundos, `19:02:26Z`, cai nela: escreva `19:02 UTC`).
+- **`POST /api/politica/excecoes/{id}/revogar`** (200): encerra a exceção em aberto, livre ou presa. `{"excecao": {...}}`
+  com `estado: "revogada"`. 404 `not_found`; 409 `excecao_encerrada` se ela já terminou. Com o cartão da etapa presa
+  ainda pendente, ele expira (sai de Pendências; o reply no Telegram é recusado como vencido) e o objetivo volta à
+  porta, que recusa. Se a etapa já passou da porta (aprovada, antes do commit), a RESERVA do executor falha: logo antes
+  do gesto ele faz um UPDATE condicional (`em_uso`) e, se a exceção não está em aberto (revogada, recusada, vencida, já
+  em uso ou usada), a etapa falha fechada com o motivo "a exceção … antes do efeito; o efeito não foi disparado (30.65)"
+  e o gesto não acontece; se a reserva levantar, também não. Se a reserva ganhou antes, revogar responde 409
+  `excecao_em_uso` ("o efeito pode ter saído") e nunca grava "revogada" por cima. A reservada é liquidada no
+  `settle_effect`: usada se o efeito saiu ou pode ter saído, `sem_efeito` se não saiu (não volta a aberta); a queda do
+  processo a deixa `em_uso` até a etapa terminar: então ela fecha usada (etapa `succeeded`) ou `incerta` (o resto; o
+  efeito pode ter saído), nunca reaberta. A vencida continua apontando a etapa (a reserva a encontra). A porta liga à
+  etapa só a exceção que usou (`prender`, que falha se ela deixou de estar em aberto, e a porta recusa) e solta todas
+  quando passa a etapa sem exceção: o commit reserva exatamente a que a porta usou. A reservada nunca vale para outra
+  etapa. O motivo do desfecho não cita pessoa nem alvo. O cartão cita no máximo 80 caracteres da autorização (o aviso do Telegram corta em 500).
+- **`GET /api/politica/excecoes?profile_id=`**: `{"excecoes": [...]}`, as mais novas primeiro (até 200). Cada uma traz
+  `id`, `regra` (`uma_conta_por_alvo`), `profile_id`, `alvo`, `capability`, `motivo`, `autorizacao`, `autor`,
+  `autor_com_sessao`, `criada_em`, `expira_em`, `step_id`, `presa_em`, `usada_em`, `interaction_id`, `vencida_em`,
+  `em_uso_em`, `etapa_do_uso`, `run_do_uso` (a etapa e a execução que a reservaram: gravadas na reserva, nunca
+  limpas; os eventos as usam), `encerrada_em`, `encerrada_por`, `encerramento` e `estado` (`ativa` | `presa` | `em_uso` | `usada` |
+  `vencida` | `recusada` | `revogada` | `sem_efeito` | `incerta`). Ler encerra as vencidas.
+- **Ciclo.** A porta do despacho prende a exceção à etapa que casou (outra etapa só a toma se a presa terminou sem efeito);
+  o `open_effect` a gasta quando o efeito sai (uso único: a segunda volta à recusa; uma falha ao gastar não derruba o
+  efeito, que fica registrado). Sem uso até `expira_em`, ela vence e solta a etapa; o vencimento roda na porta do despacho
+  e na leitura da rota, não há varredura em segundo plano. Rejeitar o cartão da etapa presa a encerra (`recusada`), e a
+  rota de revogar também: encerrada não volta a valer para etapa nenhuma.
+- **Eventos** (persistidos, sem aviso no Telegram): `politica.excecao_criada`, `politica.excecao_usada`,
+  `politica.excecao_vencida`, `politica.excecao_recusada`, `politica.excecao_revogada`, `politica.excecao_sem_efeito` e
+  `politica.excecao_incerta`. Enxutos: `data` leva só `excecao_id`, `estado`, `encerrada_por`, `step_id`, `run_id` e,
+  quando há, `interaction_id`; alvo, motivo e autorização ficam só no GET. Não entram no registro de decisões automáticas (28.25): é decisão de pessoa.
+- **Prova:** `simulated` (`backend/tests/test_excecao_de_politica.py`). `not_run`: a exceção do 31.26, que a orquestradora
+  cria depois do deploy 32.

@@ -20,6 +20,7 @@ from ..db import Database, Row, dumps, loads
 from ..planning.capabilities import Capability, objeto_da_acao
 from ..security.sessions import operador_atual
 from ..util import new_token, now, now_iso, parse_iso
+from .excecoes import ExcecoesDePolitica
 
 STATUSES = ("pending", "approved", "edited", "rejected", "expired")
 
@@ -309,10 +310,13 @@ class ApprovalService:
     marcada como concluída: o que a pessoa decide é o que VAI acontecer, não o que aconteceu.
     """
 
-    def __init__(self, store: ApprovalStore, repo: Any, scheduler: Any = None):
+    def __init__(self, store: ApprovalStore, repo: Any, scheduler: Any = None, *,
+                 excecoes: ExcecoesDePolitica | None = None):
         self.store = store
         self.repo = repo
         self.scheduler = scheduler
+        #: 30.65: rejeitar o cartão da etapa presa encerra a exceção de política dela.
+        self.excecoes = excecoes
 
     def list(self, *, status: str | None = "pending", profile_id: str | None = None, run_id: str | None = None,
              limit: int = 50) -> list[dict[str, Any]]:
@@ -335,6 +339,22 @@ class ApprovalService:
             except SocialError as exc:
                 recusadas.append({"id": d.id, "reason": str(exc)})
         return {"decided": decididas, "refused": recusadas}
+
+    def expirar_da_etapa(self, step_id: str | None, *, motivo: str) -> int:
+        """30.65: a exceção da etapa foi revogada com o cartão ainda pendente. O cartão expira (sai de Pendências; o
+        reply no Telegram passa a ser recusado como vencido) e o objetivo volta à porta, que agora recusa sem a exceção."""
+        if not step_id:
+            return 0
+        pedidos = [a for a in self.store.list(status="pending", limit=500) if a.step_id == step_id]
+        for a in pedidos:
+            self.store.db.execute("UPDATE pending_approvals SET status='expired', decided_at=?, decided_note=?"
+                                  " WHERE id=? AND status='pending'", (now_iso(), motivo, a.id))
+            if a.objective_id:
+                self.repo.resume_objective(a.objective_id, f"Cartão expirado: {motivo}.")
+                self.repo.recompute_run(a.run_id) if a.run_id else None
+        if pedidos and self.scheduler is not None:
+            self.scheduler.wake()
+        return len(pedidos)
 
     def decide(self, approval_id: str, verb: str, *, content: str | None = None,
                note: str | None = None) -> dict[str, Any]:
@@ -363,6 +383,10 @@ class ApprovalService:
                                      na_mesma_transacao=editar)
         if decidido is None:
             raise SocialError("already_decided", "Esta aprovação já foi decidida.", 409)
+        if verb == "reject" and self.excecoes is not None:
+            # 30.65: a recusa do dono encerra a exceção presa a esta etapa; ela não volta a valer para outra etapa do
+            # mesmo perfil, alvo e ação, nem de outra execução.
+            self.excecoes.recusar_da_etapa(pedido.step_id, por=decidido.decided_by)
 
         if pedido.objective_id:
             if verb == "reject":

@@ -457,8 +457,9 @@ class AppState:
         self._draft_locks: dict[str, asyncio.Lock] = {}
         self.scheduler.rollout_source = self._rollout_pending
         self.policies = PolicyEngine(self.social_repo, self.settings.get)
+        self.excecoes = self.social.excecoes          # 30.65: a porta prende; o `open_effect` gasta
         self.approvals = ApprovalStore(self.db)
-        self.approval_service = ApprovalService(self.approvals, self.repo, self.scheduler)
+        self.approval_service = ApprovalService(self.approvals, self.repo, self.scheduler, excecoes=self.excecoes)
         # O executor grava no histórico do perfil o efeito que dispara — é o que alimenta limites e memória.
         self.scheduler.executor.social = self.social
         self.scheduler.executor.approvals = self.approvals
@@ -2130,6 +2131,7 @@ class AppState:
         # escolhas diferentes do perfil.
         # 30.62: a execução que nasceu de um pedido entre personas leva a família dele; as personas da família contam
         # como UMA conta por alvo e a pessoa real sem conversa passa por aprovação. Sem pedido, `None` e nada muda.
+        self.excecoes.vencer()                    # 30.65: a exceção vencida sai com evento antes de a porta olhar
         veredito = self.policies.check(profile_id, cap, run_id=obj["run_id"], counterparty=alvo,
                                        app_id=app_da_etapa.id if app_da_etapa else None, package=pacote,
                                        step_id=srow["id"],
@@ -2137,6 +2139,17 @@ class AppState:
                                        bindings=loads(srow["bindings"], {}) or {})
         if not veredito.allowed:
             return veredito
+        if veredito.excecao is not None:
+            # 30.65: o `check` só lê; quem escreve é a porta. A exceção fica presa a esta etapa até o efeito sair, e é
+            # a única ligada a ela: é a que o executor reserva no commit. Se deixou de estar em aberto entre a leitura
+            # e a escrita, não há exceção para a etapa, e a porta recusa.
+            if not self.excecoes.prender(veredito.excecao, srow["id"]):
+                return Verdict(allowed=False, policy=veredito.policy, counts=veredito.counts,
+                               reason=f"a exceção {veredito.excecao} à regra de uma conta por alvo deixou de estar em "
+                                      "aberto antes de ser presa a esta etapa (30.65): recusado, não adiado",
+                               hint="Nada foi feito. Se ainda for o caso, crie outra exceção.")
+        elif cap.side_effect:
+            self.excecoes.soltar_da_etapa(srow["id"])    # 30.65: passou sem exceção; o commit não reserva nenhuma
         # O texto é escrito AQUI, com a persona deste perfil, antes de qualquer digitação e antes da aprovação —
         # senão a pessoa aprovaria um rascunho que não é o que vai ser enviado.
         parado = await self._draft_gate(obj, srow, cap, profile_id, rt=rt, pacote=pacote)
@@ -2155,7 +2168,8 @@ class AppState:
                      if teto == "preparar" and cap.side_effect else "")
         if veredito.needs_approval or confirmacao or pelo_teto or repetida:
             motivo = "; ".join(m for m in (veredito.reason, confirmacao, pelo_teto, repetida or "") if m)
-            return self._approval_gate(obj, srow, cap, profile_id, motivo=motivo)
+            # 30.65: a etapa que usa a exceção sempre pede decisão nova; o aprovado de outra versão não vale para ela.
+            return self._approval_gate(obj, srow, cap, profile_id, motivo=motivo, excecao=veredito.excecao)
         return None
 
     def _mesmo_pedido_noutras_contas(self, obj: Row, cap: Capability, profile_id: str,
@@ -2388,7 +2402,8 @@ class AppState:
             return None
         return arvore
 
-    def _approval_gate(self, obj: Any, srow: Any, cap: Any, profile_id: str, *, motivo: str = "") -> Any:
+    def _approval_gate(self, obj: Any, srow: Any, cap: Any, profile_id: str, *, motivo: str = "",
+                       excecao: str | None = None) -> Any:
         """Ação que exige aprovação: a decisão da pessoa acontece ANTES de digitar qualquer coisa.
 
         É por isso que a porta fica aqui e não no meio da etapa: etapa concluída é estado terminal, então não
@@ -2396,12 +2411,20 @@ class AppState:
 
         `motivo` é o porquê de a aprovação ser exigida além da política (DM fria, o mesmo pedido a várias contas —
         ADR-055): vai no resumo do pedido e no motivo da espera, para quem decide saber o que está confirmando.
+
+        `excecao`: a etapa usa esta exceção de política (30.65). O dono decide sobre o cartão DELA: a decisão de uma
+        versão anterior da etapa, com o mesmo texto e alvo, não vale, nem a da própria etapa tomada antes de a exceção
+        ser presa a ela.
         """
         pedido = self.approvals.for_step(srow["id"])
+        presa = self.excecoes.obter(excecao) if excecao else None
+        if pedido is not None and presa is not None and presa.presa_em \
+                and parse_iso(pedido.created_at) < parse_iso(presa.presa_em):
+            pedido = None
         bindings = loads(srow["bindings"], {}) or {}
         # O alvo normalizado é a chave da reserva de frota (`SocialRepository.fleet_targeting`).
         alvo = contraparte(cap, bindings) or alvo_da_acao(cap, bindings)
-        if pedido is None:
+        if pedido is None and excecao is None:
             # Etapa revisada (recuperação automática, “Tentar novamente”) tem id novo: sem isto, o que a pessoa já
             # aprovou na versão anterior virava pedido novo e o objetivo voltava a esperá-la. Só vale a decisão
             # sobre a mesma etapa, com o mesmo alvo e o mesmo texto, cujo efeito ainda não saiu.

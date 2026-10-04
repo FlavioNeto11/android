@@ -41,6 +41,7 @@ from ..modules.identity.application.session_rules import PRECISA_DE_PESSOA, emit
 from .contas_nossas import emails_so_desta_conta, handle_vivo, sem_o_rastro
 from .limpeza_de_conta import PedidoDeLimpeza
 from .memory import MemoryRefused, MemoryStore, reescrever_memoria
+from .excecoes import ExcecoesDePolitica
 from .policy import CONTAM, DEFAULT_LIMITS, PolicyEngine, com_politicas_do_app, politicas_do_app
 from .repository import (AparelhoEmQuarentena, BindingConflict, SocialRepository, campos_de_persona,
                          sessao_vencida)
@@ -112,6 +113,8 @@ class SocialService:
         self.contexts = SocialContextBuilder(repo, self.memory)
         self.provider = provider        # só a geração social usa; cadastro e sessão não dependem de IA
         self.policies = PolicyEngine(repo)
+        #: 30.65: as exceções de uso único à regra de uma conta por alvo; criar, gastar e vencer viram evento.
+        self.excecoes = ExcecoesDePolitica(repo.db, lambda tipo, mensagem, dados: bus.emit(tipo, mensagem, data=dados))
         self.usage_sink = usage_sink    # registra o custo da função social no mesmo relatório das demais
         # ADR-055: toda mudança de status do perfil e todo marcador de conta travada viram evento persistido — o
         # repositório grava, e quem tem o barramento anuncia. Vale também para quem escreve pelo repositório por
@@ -1036,13 +1039,22 @@ class SocialService:
             meta["memory_candidates"] = candidatos
         if (draft_meta or {}).get("rationale"):
             meta["rationale"] = draft_meta["rationale"]
-        return self.record_interaction(
+        interaction_id = self.record_interaction(
             profile_id, type=interaction_type, direction="outbound", status=InteractionStatus.pending.value,
             counterparty=alvo,
             thread_key=thread_de_dm(alvo) if interaction_type == InteractionType.dm_sent.value else None,
             outgoing_content=bindings.get("content"), target=bindings.get("target"), run_id=run_id,
             objective_id=objective_id, step_id=step_id, instance_id=instance_id,
             incoming_content=(draft_meta or {}).get("incoming") or None, metadata=meta, app_id=app_id).id
+        # 30.65: a exceção que o executor reservou para esta etapa (se houver) passa a apontar a interação; o
+        # `settle_effect` a liquida. Uma falha aqui não pode derrubar o `open_effect`: o executor pularia `_effects` e
+        # `link_interaction`, e a conta deste efeito (que alimenta a janela do ADR-055) se perderia. A exceção já está
+        # reservada (`em_uso`): não há uso duplo.
+        try:
+            self.excecoes.disparou(step_id, interaction_id)
+        except Exception:  # noqa: BLE001
+            log.exception("30.65: a exceção da etapa %s não foi ligada à interação %s", step_id, interaction_id)
+        return interaction_id
 
     def settle_effect(self, profile_id: str, interaction_id: str, *, outcome: str,
                       evidence: str | None = None) -> None:
@@ -1057,6 +1069,12 @@ class SocialService:
                 self.close_interaction(profile_id, interaction_id, status=estado, evidence=evidence)
         except SocialError:
             log.warning("interação %s não pôde ser fechada (%s)", interaction_id, outcome)
+        try:
+            # 30.65: efeito confirmado ou incerto gasta a exceção reservada; sem efeito, ela fecha `sem_efeito`.
+            self.excecoes.liquidar(interaction_id, houve_efeito=estado in (InteractionStatus.confirmed,
+                                                                            InteractionStatus.uncertain))
+        except Exception:  # noqa: BLE001
+            log.exception("30.65: a exceção da interação %s não foi liquidada", interaction_id)
 
     def confirm_effects_of_step(self, profile_id: str | None, step_id: str, *, evidence: str) -> int:
         """Fecha, como CONFIRMADAS, as interações que a etapa deixou incertas. É o par social do "confirmar

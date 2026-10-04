@@ -326,6 +326,31 @@ Aprendizado, que fez o primeiro desfazer real (04/10).
   curto, envio repetido), `frontend/src/features/canais/AnexosTab.test.tsx` (13 casos). `real`: `not_run` (o passeio no navegador,
   depois do deploy).
 
+## 2026-10-04 — 30.65: exceção de uso único à regra de uma conta por alvo (branch feat/30-65-excecao-de-politica)
+
+- Migração `104_excecoes_de_politica` e `app/social/excecoes.py`: a exceção é criada pela rota (`POST` e
+  `GET /api/politica/excecoes`, adendo v1.30), presa à etapa pela porta do despacho, gasta no `open_effect` e vencida no
+  prazo (no máximo 72 h). Cada passo vira evento `politica.excecao_*`.
+- `PolicyEngine._fleet_gate` deixa passar só a recusa de uma conta por alvo do perfil, alvo e ação da exceção. O `check`
+  põe a etapa em `approval_required`, com o motivo, e devolve `Verdict.excecao`. O `check` continua só lendo.
+- Revisão da fila (orquestradora, 04/10): o cartão diz quem criou e cita a autorização, e só atesta o dono com sessão de
+  operador; a etapa com exceção não reaproveita o aprovado de outra versão; só alvo que é conta nossa viva; rejeitar o
+  cartão encerra a exceção e há `POST /api/politica/excecoes/{id}/revogar`; uma em aberto por trio; `gastar` com ordem
+  e sem pegar vencida ou encerrada; `vencer` solta a etapa; falha ao gastar não derruba o `open_effect`; motivo e
+  autorização passam pela triagem de nota (409 `note_looks_secret`).
+- Releitura: revogada nunca sai (o executor confere no commit e falha fechado; a falha é `interrompida`, nunca lição);
+  revogar expira o cartão pendente e devolve o objetivo à porta; a decisão da própria etapa anterior à exceção não
+  vale; o cartão cita no máximo 80 caracteres da autorização.
+- Reserva atômica: o executor reserva a exceção (`em_uso`, UPDATE condicional) logo antes do gesto, mesmo quando o
+  `open_effect` não rodaria; reserva perdida ou que levanta não dispara. `liquidar` no `settle_effect` (usada ou
+  `sem_efeito`); revogar `em_uso` dá 409 `excecao_em_uso`; o `vencer` não solta mais a etapa (a reserva acha a vencida).
+- Releitura 6c: a reservada não vale para a etapa revisada (`ativa_para` usa o filtro de em aberto); `prender` confere a
+  linha afetada (a porta recusa se perdeu) e deixa só a exceção usada ligada à etapa; a porta sem exceção solta as
+  presas; a reservada órfã fecha usada ou `incerta` quando a etapa termina; o motivo do desfecho não cita pessoa;
+  eventos `politica.excecao_*` só com ids e estado.
+- Emenda 30.65 do ADR-055. Prova `simulated`: `backend/tests/test_excecao_de_politica.py`. `not_run`: a exceção do 31.26,
+  depois do deploy 32.
+
 ## 2026-10-04 — 30.64: o objeto do efeito na aprovação e no "já feito" (branch feat/30-64-objeto-alvo)
 
 - `objeto_alvo` no catálogo (Capability, domínio e registro), declarado nas 11 ações com efeito do Instagram.
