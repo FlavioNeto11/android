@@ -29,6 +29,7 @@ import logging.handlers
 import os
 import socket
 import sys
+from time import monotonic
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator, Mapping
@@ -53,7 +54,7 @@ from .modules.context_retrieval.presentation.router import router as context_ret
 from .modules.learning.presentation.router import router as learning_router
 from .modules.pedidos.presentation.router import router as pedidos_router
 from .modules.skills.presentation.router import router as skills_router
-from .security.access import avaliar, publicos_de
+from .security.access import CABECALHO_DO_IP_NA_BORDA, CLIENTE_LOCAL, avaliar, cliente_de, publicos_de
 from .security.redaction import RedactingFilter, chave_sensivel
 from .security.sessions import COOKIE, OPERADOR
 from .state import VERSION, AppState
@@ -175,6 +176,27 @@ def endereco_de_escuta(cfg: Config, ambiente: Mapping[str, str] | None = None, s
     return valor
 
 
+#: Cabeçalhos de segurança em TODA resposta (29.56), o painel estático inclusive. `DENY`: o painel não é posto em
+#: moldura por ninguém, nem por ele mesmo, e uma página de fora que o emoldurasse poderia induzir cliques nele.
+#: `nosniff` exige o tipo certo de cada arquivo, e os do `dist` saem certos (text/css, application/javascript).
+CABECALHOS_DE_SEGURANCA = {"X-Frame-Options": "DENY", "X-Content-Type-Options": "nosniff",
+                           "Referrer-Policy": "same-origin"}
+
+
+def _com_cabecalhos(resposta: Any) -> Any:
+    for nome, valor in CABECALHOS_DE_SEGURANCA.items():
+        resposta.headers.setdefault(nome, valor)
+    return resposta
+
+
+def _tentativas_demais(espera: float) -> JSONResponse:
+    """O 429 da trava, com `Retry-After`: é o que o painel lê para dizer quanto esperar."""
+    segundos = int(espera) + 1
+    return JSONResponse({"detail": {"code": "too_many_attempts", "retry_after_s": segundos,
+                                    "message": f"Tentativas demais. Espere {segundos} s e tente de novo."}},
+                        status_code=429, headers={"Retry-After": str(segundos)})
+
+
 def create_app(cfg: Config | None = None, state: AppState | None = None) -> FastAPI:
     cfg = cfg or get_config()
 
@@ -237,6 +259,15 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
                          host=request.headers.get("host"), authorization=request.headers.get("authorization"),
                          publicos=publicos_de(cfg), token=cfg.api_token, sessao_valida=operador is not None)
         request.state.operador = operador
+        # 29.56: a chave do cliente para a trava de tentativas (o login e o Bearer). Pelo túnel o par é sempre
+        # `127.0.0.1`; a regra de quando o IP da borda vale está em `cliente_de`.
+        cliente = cliente_de(par=request.client.host if request.client else None, host=request.headers.get("host"),
+                             ip_na_borda=request.headers.get(CABECALHO_DO_IP_NA_BORDA), publicos=publicos_de(cfg),
+                             atras_de_proxy=bool(cfg.file.server.tls_behind_proxy))
+        request.state.cliente = cliente
+        portao = getattr(poc, "portao_de_login", None)
+        # Só quem APRESENTA um Bearer entra na conta: a sessão por cookie não é adivinhável, e o local não se tranca.
+        chuta = portao is not None and cliente != CLIENTE_LOCAL and bool(request.headers.get("authorization"))
         # O `ContextVar` é o que leva o nome até as dezenas de funções que gravam auditoria sem ter o `Request`
         # na mão. É preenchido ANTES do `call_next`: a tarefa que o Starlette cria ali copia o contexto de agora.
         marca = OPERADOR.set(operador)
@@ -258,18 +289,27 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
                 # 32.2 §8 (ADR-072): o Trello não tem credencial nossa. Só `HEAD` e `POST` neste caminho EXATO passam sem
                 # ela; quem autentica é a assinatura `X-Trello-Webhook`, conferida na rota. `forbidden_host` não é perdoado.
                 recusa = None
+            if chuta and operador is None and caminho.startswith("/api/"):
+                # 29.56: o Bearer tinha o mesmo oráculo de força bruta que o login, sem trava nenhuma. Bloqueado,
+                # nem o token certo passa (é o que torna a trava uma trava); quem já tem sessão segue pelo cookie.
+                agora = monotonic()
+                if (espera := portao.segundos_de_espera(agora, cliente)) > 0:
+                    return _com_cabecalhos(_tentativas_demais(espera))
+                if recusa == "unauthorized":
+                    portao.registrar_falha(agora, cliente)
             if recusa == "unauthorized":
                 # Nada do segredo recebido entra na resposta nem no log: só o fato de não servir.
-                return JSONResponse({"detail": {"code": "unauthorized", "message": "Credencial ausente ou inválida."}},
-                                    status_code=401, headers={"WWW-Authenticate": "Bearer"})
+                return _com_cabecalhos(JSONResponse(
+                    {"detail": {"code": "unauthorized", "message": "Credencial ausente ou inválida."}},
+                    status_code=401, headers={"WWW-Authenticate": "Bearer"}))
             if recusa is not None:
-                return JSONResponse({"detail": {"code": "forbidden_host", "message": "Host não permitido."}},
-                                    status_code=403)
+                return _com_cabecalhos(JSONResponse(
+                    {"detail": {"code": "forbidden_host", "message": "Host não permitido."}}, status_code=403))
             origin = request.headers.get("origin")
             if request.method not in ("GET", "HEAD", "OPTIONS") and origin and origin not in allowed_origins:
-                return JSONResponse({"detail": {"code": "forbidden_origin", "message": "Origem não permitida."}},
-                                    status_code=403)
-            return await call_next(request)
+                return _com_cabecalhos(JSONResponse(
+                    {"detail": {"code": "forbidden_origin", "message": "Origem não permitida."}}, status_code=403))
+            return _com_cabecalhos(await call_next(request))
         finally:
             OPERADOR.reset(marca)
 

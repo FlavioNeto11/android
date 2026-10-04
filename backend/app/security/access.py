@@ -13,6 +13,7 @@ esquecimento seria justamente a que ninguém olha.
 from __future__ import annotations
 
 import hmac
+import ipaddress
 from typing import Any, Literal
 
 #: Nomes de `Host` que significam "esta máquina". Note o que **não** está aqui: `test`/`testserver`, os nomes que os
@@ -110,6 +111,39 @@ def avaliar(*, par: str | None, host: str | None, authorization: str | None,
     if nome in publicos:
         return None if credenciado else "unauthorized"
     return "forbidden_host"
+
+
+#: Cabeçalho com o IP de quem chamou, posto pela borda da Cloudflare (ADR-073). A borda SOBRESCREVE o valor que o
+#: cliente mandar, e o `cloudflared` o repassa ao backend pelo loopback; é por isso que vale só com par loopback.
+CABECALHO_DO_IP_NA_BORDA = "cf-connecting-ip"
+
+#: O cliente que nunca se tranca: par e nome desta máquina. Quem já está aqui tem o banco e o adb na mão.
+CLIENTE_LOCAL = "local"
+
+
+def cliente_de(*, par: str | None, host: str | None, ip_na_borda: str | None,
+               publicos: frozenset[str] | set[str], atras_de_proxy: bool) -> str:
+    """Quem é o cliente para a trava de tentativas (29.56): uma chave por origem, para que os chutes de um não
+    tranquem os outros.
+
+    Pelo túnel, todo par é `127.0.0.1`: sem isto, oito chutes de qualquer pessoa na internet trancavam o login de
+    fora do dono. O IP da borda só é aceito quando as três coisas valem juntas: par loopback (é o `cloudflared`
+    desta máquina que entrega), `tls_behind_proxy` declarado (há mesmo um proxy na frente) e nome em
+    `public_hosts` (o pedido veio pelo endereço público). Fora disso o cabeçalho é texto de quem chamou e não
+    compra nada: um par da rede vale pelo próprio endereço, que o cliente não escolhe.
+
+    `local` (par e nome de loopback) fica de fora da trava por quem chama. Pelo túnel sem o cabeçalho, todos caem
+    numa chave só (`tunel`), a mesma situação de antes, mas só para quem não se identifica.
+    """
+    nome = host_de(host)
+    if par_e_local(par) and (nome in LOOPBACK or nome in LOOPBACK_DE_TESTE):
+        return CLIENTE_LOCAL
+    if par_e_local(par) and atras_de_proxy and nome in publicos:
+        try:
+            return f"ip:{ipaddress.ip_address((ip_na_borda or '').strip())}"
+        except ValueError:
+            return "tunel"
+    return f"ip:{(par or '').strip().lower() or 'desconhecido'}"
 
 
 def publicos_de(cfg: Any) -> frozenset[str]:
