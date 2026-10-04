@@ -653,6 +653,14 @@ aprendizado:                      # aprendizado contínuo (ADR-054): livro, D1, 
   autopublicacao:
     modo: "off"
     intervalo_s: 3600             # de quanto em quanto tempo o laço avalia os fluxos (sob a trava de líder)
+  # Aprovação automática por política (30.55, pedido do dono em 04/10): a plataforma decide a receita ou o fluxo de
+  # "Para aprovar" (publica) e de "Revisar" (confirma que fica) quando: classe A ou B, todo app de categoria qa, ≥ 1 a
+  # favor real e 0 contra na versão atual, sem falha de reprodução, saúde sem rebaixar e nenhum parecer de rebaixar ou
+  # descartar. Conta real, classe C e app sem categoria ficam com o dono. Grava decided_by=plataforma com o motivo
+  # "auto:<regra> v1 — <fatos>"; desfazer é a ação de sempre. "off" (padrão) · "shadow" só marca o que decidiria · "on".
+  aprovacao_automatica:
+    modo: "off"
+    intervalo_s: 900
   ia_resumos_por_dia: 0           # lição escrita por IA: desligada (gasta saldo e abre injeção); só 0 é aceito
   takeover_gravar: false          # gravar as entradas manuais da tomada de controle fora do treino
   retencao: {sinais_dias: 180, feedback_dias: 365, exposicoes_dias: 120, evidencias_por_item: 200, diario_dias: 400,

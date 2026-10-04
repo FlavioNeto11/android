@@ -19,6 +19,28 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 30.55: a plataforma decide pela régua o que hoje espera o dono (branch feat/30-55-aprovacao-automatica, backend)
+
+- Pedido do dono (04/10): coisa demais para aprovar pelo portal. A plataforma passa a decidir a receita e o fluxo de
+  "Para aprovar" (ela publica) e de "Revisar" (ela confirma que fica) quando tudo vale junto:
+  - classe A ou B;
+  - todo app de categoria `qa`;
+  - ≥ 1 a favor real e 0 contra na versão atual, sem falha de reprodução;
+  - saúde sem rebaixar;
+  - nenhum parecer de rebaixar ou descartar;
+  - não reaprendido, sem texto de pessoa, sem veto.
+  Instagram (conta real), classe C e app sem categoria ficam com o dono. Desenho aprovado pela orquestradora; emenda
+  datada do ADR-054; adendo v1.24.
+- `domain/aprovacao_automatica.py` (a régua pura, o motivo `auto:<regra> v<n> — <fatos>`, `regra_do_motivo`).
+  `application/aprovacao_automatica.py` (a volta: `shadow` marca o sinal `aprovaria` uma vez, `on` decide pela porta
+  da pessoa com `decided_by = plataforma`, sem rótulo de parecer). Laço próprio sob a trava de líder.
+- `GET /api/aprendizado/aprovacao-automatica?itens=` (só leitura). Config `aprendizado.aprovacao_automatica`
+  (`modo`: `off` de fábrica, `shadow` ou `on`; `intervalo_s` 900). Sem migração.
+- `autor_do_gesto`: o operador de sessão "plataforma" vira `painel:plataforma`, como "sistema".
+- Desfazer = desligar (`published → disabled`); o item que a plataforma já decidiu não é decidido de novo.
+- Prova `simulated`: `tests/test_aprovacao_automatica.py` (35 testes). O ensaio sobre uma cópia do banco do central
+  decidiria 18 de 40 itens, todos de QA e classe B. `real`: `not_run` até o deploy.
+
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
 - Retorno do dono (04/10, Aprendizado › Para aprovar com 5 selecionados): o formulário do aceite abria com o botão

@@ -1785,3 +1785,69 @@ Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.
   teto de 150 tokens vale só para os pares (o bloco passa de ~220); `destemplatizar` troca substring sem fronteira de
   palavra; a varredura olha só 2 dias; o painel não consome as sugestões.
 - **Todos:** a suíte em PostgreSQL para o SQL de A2–A9 é `not_run`.
+
+## A aprovação automática (30.55)
+
+Pedido do dono (04/10): há coisa demais para ele aprovar pelo portal. A plataforma passa a decidir, pela régua, a
+receita e o fluxo que esperam por ele em duas filas. Desenho aprovado pela orquestradora às 16:16Z; a régua foi medida
+no 31.42; emenda datada do ADR-054. Sem migração.
+
+| Fila | Gesto da plataforma | Regra (no motivo) |
+|---|---|---|
+| "Para aprovar" (`validated` segurado pela D1) | publica (`validated → published`) | `qa_para_aprovar` |
+| "Revisar" (legado publicado com efeito) | confirma que fica, sem disparar prova | `qa_revisar` |
+
+**A régua** (`domain/aprovacao_automatica.avaliar`, pura). Devolve todos os motivos de fora, não só o primeiro:
+
+| Condição | Motivo de fora |
+|---|---|
+| a plataforma ainda não decidiu este item | `ja_decidido_pela_plataforma` |
+| todo app do item é de categoria `qa` (`apps.category`) | `app_fora_do_qa` |
+| classe de agora A ou B (a mais restritiva entre o dossiê e o parecer; sem dossiê, C) | `classe_c` |
+| ≥ 1 a favor real e efetivo na versão atual | `sem_a_favor` |
+| 0 contra efetivo | `evidencia_contra` |
+| nenhuma falha de reprodução (receita: `replay_fail`) | `falha_de_reproducao` |
+| saúde não é `degradando` nem `obsoleto_provavel` | `saude_rebaixando` |
+| nenhum parecer real e pendente do curador pedindo rebaixar, desativar, substituir, fundir ou aposentar | `parecer_contra` |
+| não é reaprendido (30.23), não tem texto de pessoa, nenhum veto o alcança | `reaprendido`, `texto_de_pessoa`, `vetado` |
+
+O parecer ausente ou `pedir_evidencia` não barra: a delegação do dono cobre. O simulado e o que uma pessoa já decidiu
+não pesam.
+
+A evidência da receita mora na fonte: a favor = `replay_ok` + `shadow_agree`; contra = a sombra que discordou
+(`shadow_total − shadow_agree`). O fluxo usa a evidência real da marca do conteúdo, sem as execuções invalidadas, como a
+autopublicação.
+
+**Como decide** (`application/aprovacao_automatica.py`). O laço próprio roda sob a trava de líder; a primeira volta é
+90 s depois do início, e as seguintes a cada `intervalo_s`.
+- **Em `shadow`:** marca uma vez o que decidiria (sinal `aprovaria`, `source_ref = aprovaria:<item>`,
+  `created_by = sistema`; fora da aba Sinais).
+- **Em `on`:** passa pela porta da pessoa (`LearningService.mudar_estado` e `confirmar_que_fica`) com
+  `by = "plataforma"`.
+  - Trilha, veto, guarda do fluxo e CAS são os de sempre.
+  - O motivo é `auto:<regra> v1 — classe B; app com.pocqa.messenger (qa); 10 a favor, 0 contra; 0 falhas de
+    reprodução; saúde saudavel; parecer observar (lr-…)`. Na confirmação, vem depois de `confirmado que fica: `.
+  - `regra_do_motivo()` devolve `(regra, versão)`. É o contrato com a Canais (28.25), que lê as linhas de
+    `decided_by = plataforma` por adaptador.
+  - O rótulo do parecer NÃO é gravado: a decisão da plataforma não entra no acerto do curador.
+- **A recusa** de uma transição (o item mudou no meio, um veto novo) fica no log, e o item segue com o dono.
+
+**Desfazer** é desligar (`published → disabled`), a ação de sempre da pessoa; a tabela não volta a `validated`. O item
+que a plataforma já decidiu não é decidido por ela de novo.
+
+**Leitura:** `GET /api/aprendizado/aprovacao-automatica?itens=true` devolve:
+- o modo e a última volta (avaliados, quem decidiria, decididos e quantos ficaram fora por motivo);
+- os casos na sombra e as últimas 50 decisões da plataforma;
+- com `itens`, a régua item a item.
+
+**Config:** `aprendizado.aprovacao_automatica`, com `modo: off | shadow | on` (`off` de fábrica) e `intervalo_s`
+(900). O modo é relido a cada volta: mudar o config vale na próxima, sem reiniciar. Para desligar, `modo: "off"`.
+
+**Prova:**
+- `simulated`: `backend/tests/test_aprovacao_automatica.py`.
+- Ensaio sobre uma CÓPIA do banco do central (04/10 ~16:40Z, também `simulated`):
+  - de 40 itens (3 + 37), decidiria 18, todos do app de QA e classe B;
+  - em `on`, as filas foram de 3 para 0 e de 37 para 22;
+  - a segunda volta não decidiu nada;
+  - os 11 do Instagram ficaram com o dono.
+- `real`: `not_run` até o deploy (entra em `shadow`).

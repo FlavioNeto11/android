@@ -3,6 +3,7 @@
 `GET /api/aprendizado/metricas?app=&dias=`: um bloco por linha da tabela do §10; ausente é `null`, nunca zero.
 `GET /api/aprendizado/revisoes?app=&decisao=&desde=&limite=&cursor=`: a lista chata dos pareceres, sem o dossiê nem a
 saída inteira (o detalhe do item já os entrega).
+`GET /api/aprendizado/aprovacao-automatica?itens=`: a régua da aprovação automática (30.55), só leitura.
 """
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
+from app.modules.learning.application.aprovacao_automatica import ServicoDeAprovacaoAutomatica
 from app.modules.learning.application.metricas import RevisaoNaLista, ServicoDeMetricas
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.ciclo import NaoEncontrado
@@ -103,6 +105,17 @@ async def revisoes_do_curador(request: Request, app: str | None = None, decisao:
     _do_item(linhas, servico)
     nomear_apps(linhas, servico)                       # `app_nome` e, no multi-app, `apps_nomes`
     return {"revisoes": linhas, "proximo": proximo}
+
+
+@router.get("/aprovacao-automatica", response_model=None)
+async def aprovacao_automatica(request: Request, itens: bool = False) -> JsonObject:
+    """30.55: o modo, a última volta, o que a plataforma decidiria (ou decidiu) e, com `itens=true`, a régua item a
+    item com os motivos de fora (o que a orquestradora lê no primeiro ciclo da sombra). Só leitura."""
+    aprovacao = _servico(request).extensao(ServicoDeAprovacaoAutomatica)
+    if aprovacao is None:
+        raise HTTPException(503, detail={"code": "not_ready",
+                                         "message": "A aprovação automática não foi composta."})
+    return aprovacao.relatorio(itens=itens)
 
 
 __all__ = ["router"]

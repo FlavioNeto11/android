@@ -154,7 +154,8 @@ def test_o_laco_e_registrado_a_parte_da_curadoria(tmp_path: Path) -> None:
     try:
         servico = montar_aprendizado(db, config=LearningCfg,
                                      retencao_de_logs_dias=lambda: 14, precos=lambda: PRECOS)
-        assert [laco.nome for laco in servico.lacos] == ["curador", "autopublicacao"]   # 30.34: laço próprio
+        # 30.34 e 30.55: laços próprios.
+        assert [laco.nome for laco in servico.lacos] == ["curador", "autopublicacao", "aprovacao_automatica"]
     finally:
         db.close()
 

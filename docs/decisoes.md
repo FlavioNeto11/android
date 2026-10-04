@@ -3325,6 +3325,43 @@ Prova `simulated`: `backend/tests/test_learning_prova.py`. `real`: `not_run` at�
 deploy que levar o 30.37 (o P4 fica pausado, `validacao.modo: off`, até lá). Domínio:
 [dominios/aprendizado.md](dominios/aprendizado.md), seção "A prova de fluxo (30.37)".
 
+**Emenda (04/10/2026, pedido do dono no chat da Canais; desenho aprovado pela orquestradora às 16:16Z; Fase 30, item
+30.55): a plataforma decide pela régua o que hoje espera o dono.** O dono pediu: "está ficando MUITA coisa para eu
+aprovar pelo portal ... a plataforma ja tem dados o suficiente pra tomar essa decisão". A medida do 31.42 mostrou que
+os 5 itens que ele aprovou eram todos do app de QA, de classe B e sem falha.
+
+- **O que a plataforma decide.** A receita ou o fluxo de "Para aprovar" (ela publica) e de "Revisar" (ela confirma
+  que fica, sem disparar prova). Decide só quando tudo vale junto:
+  - classe de agora A ou B;
+  - todo app do item de categoria `qa`;
+  - ≥ 1 a favor real e 0 contra efetivo na versão atual, e nenhuma falha de reprodução;
+  - saúde que não rebaixa;
+  - nenhum parecer real e pendente do curador pedindo rebaixar, desativar, substituir, fundir ou aposentar;
+  - não é reaprendido, não tem texto de pessoa, nenhum veto o alcança;
+  - a plataforma ainda não decidiu este item.
+- **O parecer não precisa ser "aprovar".** Parecer ausente ou `pedir_evidencia` não barra: é a delegação do dono (a R1
+  do 31.42 bateu 5 de 5 com a decisão dele).
+- **Fica com o dono:** conta real (Instagram), credencial, desafio, classe C, o que o curador quer rebaixar ou
+  descartar, app sem categoria e a mudança desta régua, que muda a versão da regra.
+- **Quem decide e como.** A plataforma passa pela porta da pessoa (`mudar_estado`, `confirmar_que_fica`) com
+  `decided_by = plataforma`: trilha, veto, guarda do fluxo e CAS são os de sempre.
+  - O motivo é `auto:<regra> v<n> — <fatos>` (na confirmação, depois de `confirmado que fica: `). É contrato com a
+    Canais (28.25).
+  - Sem `@` antes da versão: a forma `x:y@z` parece credencial, e a triagem do livro recusava a confirmação.
+  - A rota não aceita "plataforma" como operador da sessão (vira `painel:plataforma`, como `sistema`).
+  - O rótulo do parecer do curador NÃO é gravado: a decisão da plataforma não é rótulo humano.
+- **Desfazer** é a ação de sempre da pessoa: desligar (`published → disabled`; a tabela não volta a `validated`). O
+  item que a plataforma já decidiu uma vez não é decidido por ela de novo.
+- **Modo:** `aprendizado.aprovacao_automatica.modo` = `off` (de fábrica), `shadow` (marca uma vez o que decidiria, sinal
+  `aprovaria`) ou `on`. No deploy entra em `shadow`; a orquestradora lê o primeiro ciclo e vira `on` no mesmo dia se
+  bater com o ensaio.
+- **Sem migração.**
+
+Prova `simulated`: `backend/tests/test_aprovacao_automatica.py`. Ensaio sobre uma CÓPIA do banco do central (04/10,
+~16:40Z, também `simulated`): de 40 itens, decidiria 18, todos do app de QA e classe B; os 11 do Instagram ficam com
+o dono. `real`: `not_run` até o deploy. Domínio: [dominios/aprendizado.md](dominios/aprendizado.md), seção "A
+aprovação automática (30.55)".
+
 ## ADR-055 — Proteção de contas: a conta travada para sem ser tocada, o aparelho entra em quarentena, uma conta por alvo e nenhum reset com conta
 
 **Data:** 29/09/2026 · **Estado:** vigente; `e9da86e` implantado em 28/09; `c359f65` (+ `2511b12`) implantado em 29/09
