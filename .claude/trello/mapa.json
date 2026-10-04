@@ -2633,7 +2633,7 @@
   "32.2": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1421d1f7a755c5515af01",
    "url": "https://trello.com/c/o5Kxnu6A",
-   "lista": "em_execucao",
+   "lista": "em_validacao",
    "lote": "lote_A8_atuais_pendentes",
    "nome": "32.2 · Integração da Central com o Trello (em código: passo 4 de 6)"
   },
@@ -2647,7 +2647,7 @@
   "30.38": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac14e62f6d19dbb5d12ecee",
    "url": "https://trello.com/c/uxzHd11C",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": "canais"
   },
   "avulsa:29.47-ambiente-filhos": {
@@ -2762,7 +2762,7 @@
   "29.55": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac15bcdfedbbda5922408a6",
    "url": "https://trello.com/c/ORCuKE7V",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": "canais"
   },
   "marco:deploy-14": {
@@ -2788,7 +2788,7 @@
   "30.40": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac16c2e8db615383c900b44",
    "url": "https://trello.com/c/r5ezb0Lo",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": "canais",
    "nome": "30.40 · Pedido antigo herda o teto da configuração; curador não pede evidência de receita sem caminho"
   },
@@ -2823,7 +2823,7 @@
   "29.58": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1790f30a090ce503b5e01",
    "url": "https://trello.com/c/Ct2DFcIL",
-   "lista": "em_execucao",
+   "lista": "em_validacao",
    "lote": "canais",
    "nome": "29.58 · Ação com efeito dentro de etapa declarada sem efeito"
   },
@@ -2837,14 +2837,14 @@
   "30.41": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1791eca145d99e9d64bce",
    "url": "https://trello.com/c/AphOEZ6K",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": "canais",
    "nome": "30.41 · Teto por pedido proporcional ao plano; o que não cabe não despacha"
   },
   "30.42": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac179236661f9a5b7052e74",
    "url": "https://trello.com/c/Q1f6mAn2",
-   "lista": "em_execucao",
+   "lista": "em_validacao",
    "lote": "canais",
    "nome": "30.42 · A prova parte de estado conhecido e fecha pelo que o verificador viu"
   },
@@ -2872,9 +2872,16 @@
   "31.24": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac17a694cb8e046843e30c8",
    "url": "https://trello.com/c/EutILvSJ",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": "canais",
    "nome": "31.24 · Latência por etapa como métrica de primeira classe"
+  },
+  "suite:16": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac190459a6d47833b53f32e",
+   "url": "https://trello.com/c/1ZfpnvZU",
+   "lista": "concluido_hoje",
+   "lote": "canais",
+   "nome": "Suíte 16 → deploy 16 no ar (03/10 23:59Z)"
   }
  },
  "falhas": [],
