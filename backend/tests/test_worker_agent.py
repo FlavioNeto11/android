@@ -588,6 +588,10 @@ async def test_marca_de_cedido_vence_em_24_horas(tmp_path: Path, monkeypatch: py
     marca.write_text(_json.dumps({"agent_code": "codigo-x", "em": (now() - timedelta(hours=25)).isoformat()}),
                      encoding="utf-8")
     assert not agente._cedido_antes()
+    # Marca "do futuro" (relógio que andou para trás depois de gravá-la): não vale.
+    marca.write_text(_json.dumps({"agent_code": "codigo-x", "em": (now() + timedelta(hours=2)).isoformat()}),
+                     encoding="utf-8")
+    assert not agente._cedido_antes()
 
 
 def test_a_instalacao_apaga_a_marca_de_cedido() -> None:

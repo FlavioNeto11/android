@@ -548,7 +548,9 @@ class Agent:
             return False
         if marca.get("agent_code") != AGENT_CODE or quando is None:
             return False
-        return (now() - quando).total_seconds() < VALIDADE_DA_MARCA_S
+        # Idade negativa = marca "do futuro" (relógio que andou para trás): não vale, senão barraria o agente por 24 h
+        # mais o erro do relógio.
+        return 0 <= (now() - quando).total_seconds() < VALIDADE_DA_MARCA_S
 
     async def run_forever(self) -> None:
         if AGENT_CODE and self._cedido_antes():
