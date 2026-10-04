@@ -1505,18 +1505,14 @@
    "id": "8.3",
    "status": "partial",
    "proof": "real",
-   "evidence": "Real 03/10/2026, central WIN-7S2UASNLFOP @1ab8e767 (078), textos exatos aprovados pelo orquestrador; nada além de um gesto público por passo, sem curtir nem seguir. Post da conta do android-01 às 04:44:53Z (rótulo de IA ligado; único toque público o Share). Passo 10, CREATE_COMMENT da conta do android-03 no post: run r-20261003051135-2cbaaa, pendência apr-5snxXOUANXnt2wY9 decidida com edit para o texto aprovado, commit 05:40:58Z, interação int-VFeBi1x8OOAEwif8. Passo 11, REPLY_COMMENT da conta do android-01 ao comentário: run r-20261003054328-60e83c, pendência apr-3yuw2BBtwm--SbAd por edit, commit 05:51:53Z (10 min 13 s depois do anterior, gate do 29.28), resposta encadeada. Capturas e registro em data/diag-8-3/ (fora do Git). REPLY_COMMENT e edit em aparelho deixam de ser not_run.",
-   "blocker": "Seguem not_run: learn_from de comentário, COLLECT_COMMENTS com itens e for_each com itens reais.",
-   "arquivos": [
-    "data/diag-8-3/ (fora do Git)"
-   ],
-   "testes": "Prova real; sem teste novo.",
-   "grupo": "suite-7-android",
-   "modelo": "opus (sessão Android) + worker-impl",
-   "esforco": "high",
+   "evidence": "Real, só leitura, 04/10 15:16:56Z–15:18:11Z, android-01 (conta real da persona do android-01), r-20261004151656-f85a37 (chave lote:aprendizado:8.3-01), painel fechado. Plano de 4 etapas, nenhuma com efeito: OPEN_PROFILE, OPEN_POST, OPEN_COMMENTS e COLLECT_COMMENTS. As 4 foram comprovadas (1 de 1 com sucesso). O COLLECT_COMMENTS da publicação mais recente da própria conta voltou com itens: ['bruno.ferreira9267'], o comentário de outra conta nossa feito em 03/10 (r-20261003051135-2cbaaa). Nenhum desafio na tela. Nada comentado, curtido ou seguido. Custo pelo /api/usage: US$ 0,0717 (1 etapa pela IA, 3 por receita). Observação: a etapa 1 recebeu username='lucas.almeida9484@outlook.com' (o e-mail de login, não o nome no Instagram) e mesmo assim chegou ao próprio perfil.",
+   "blocker": "O learn_from de comentário exige comentar: fica not_run até o dono autorizar o alvo e o texto. O for_each com itens reais não foi pedido nesta rodada.",
+   "grupo": "aprendizado-deploy27-provas",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T07:24:43+00:00"
+   "quando": "2026-10-04T15:19:06+00:00"
   },
   "8.4": {
    "id": "8.4",
@@ -7513,29 +7509,42 @@
   },
   "30.51": {
    "id": "30.51",
-   "status": "partial",
-   "proof": "simulated",
-   "evidence": "PR #255 (depois da suite 26): backend/tests/test_learning_evidencia_de_uso.py (11 testes, 3 rodadas, 2 mutacoes conferidas: nao-conta-contra e contestacao); 1310 testes do aprendizado/fluxos com -n 2; sem DDL.",
-   "blocker": "PR #255 aberto, para a proxima suite (depois da 26); real not_run ate o deploy.",
-   "grupo": "deploy25-26-aprendizado",
-   "modelo": "opus",
-   "esforco": "high",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, 04/10 15:15Z, central ac7175ac (migração 100), android-09 (QA). Uma execução comum, r-20261004151508-71fb91 (chave lote:aprendizado:30.51-01), com o comando 'Abra o QA Messenger e confirme qual conta está conectada, sem enviar nada.', usou o fluxo ativo abrir-o-qa-messenger-e-confirmar-a-conta e terminou completed com 2/2 etapas. O fluxo ganhou a evidência stance=for com origin_ref=uso:r-20261004151508-71fb91, detail '[686ac998656d] uso: 2/2 etapas comprovadas' e observed_at 15:15:21.533Z, ao lado da prova anterior (run:r-20261004002905-47b957, da mesma marca). Custo pelo /api/usage (regra do spent_usd): US$ 0,0173.",
+   "blocker": null,
+   "grupo": "aprendizado-deploy27-provas",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T14:42:50+00:00"
+   "quando": "2026-10-04T15:19:06+00:00"
   },
   "30.52": {
    "id": "30.52",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "PR #258 (fix/30-52-dossie-pela-marca, adendo v1.20): o dossie do fluxo poe as evidencias de outra marca do conteudo em de_versoes_anteriores, rotuladas; POST /api/aprendizado/validacoes/{id}/recusar com o motivo neutro recusada_pela_pessoa, sem DDL. backend/tests/test_learning_dossie_pela_marca.py (3; mutacao conferida); 1130 testes do aprendizado/curador/validacao com -n 2 depois do merge da main (30.48). Defeito medido (real, 04/10): o parecer lr-1cfb91a981c5f21f (13:07:27Z) citou os against 226 e 233 da marca antiga [072ae4d8443c] e abriu o pedido lv-26679df914e1b809 (13:07:33Z) para uma reproducao que ja existia (ev 274, android-07); o pedido nao pode ser recusado (nao havia rota) e a orquestradora decidiu deixa-lo rodar (13:10Z). Desfecho do lv-26679df914e1b809: recusada/limite_de_provas ao despachar (30.42), sem execucao e sem gasto (US$ 0,00).",
-   "blocker": "PR #258 para a proxima suite.",
-   "grupo": "deploy25-26-aprendizado",
-   "modelo": "opus",
-   "esforco": "high",
+   "proof": "real",
+   "evidence": "Real, 04/10 15:16Z, central ac7175ac, US$ 0,00. POST /api/aprendizado/validacoes/{id}/recusar devolveu 404 pedido_desconhecido para lv-naoexiste0000 e 409 pedido_nao_pendente para lv-c99c807c071cf06e (fechado em efeito_repetido). O dossiê por versão ainda não tem prova real: até 15:16Z, nenhuma revisão do curador desde o deploy (learning_reviews.created_at >= 15:11Z: 0 linhas).",
+   "blocker": "(1) O 200 da rota exige um pedido pendente. O único é lv-32fded52ec729464 (fluxo:ler-sem-abrir-conversas-nem-enviar-nada-, multi-app QA + Chrome, teto 0,15, expira em 06/10 15:53Z), que não é pedido de teste: recusá-lo é decisão da orquestradora. (2) O dossiê por versão se prova na primeira revisão do curador, depois do deploy, de um fluxo com evidência de outra marca: a de enviar-a-mensagem-leitura-31-27-n1-08233 cai no cooldown até 05/10 ~13:07Z, salvo um gatilho evidencia_chegou.",
+   "grupo": "aprendizado-deploy27-provas",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T14:42:50+00:00"
+   "quando": "2026-10-04T15:19:06+00:00"
+  },
+  "30.54": {
+   "id": "30.54",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #262 (fix/30-54-aceite-em-lote, [skip ci]), só painel. DecisaoInline põe o campo e os botões na mesma linha e mostra à vista por que o botão está apagado. ParaAprovarTab ganhou o resumo do lote por item e por efeito, com quem fica de fora, deixou 'Aprovar selecionados' secundário com o aceite aberto e corrigiu o plural. simulated: frontend/src/features/aprendizado/ParecerDaIA.test.tsx (aceite em lote); 1493 testes do painel; typecheck limpo.",
+   "blocker": "A tela no navegador fica not_run até o deploy da suíte 28 (validação da orquestradora no Chrome do dono).",
+   "grupo": "aprendizado-deploy27-provas",
+   "modelo": "claude-opus-5-5",
+   "esforco": "medio",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T15:19:06+00:00"
   }
  },
  "rodadas": [
@@ -9785,6 +9794,18 @@
     "jev-28-23-real",
     "jev-31-40b",
     "jev-validacao-cartoes"
+   ]
+  },
+  {
+   "quando": "2026-10-04T15:19:06+00:00",
+   "itens": [
+    "30.51",
+    "30.52",
+    "8.3",
+    "30.54"
+   ],
+   "grupos": [
+    "aprendizado-deploy27-provas"
    ]
   }
  ]
