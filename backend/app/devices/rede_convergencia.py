@@ -180,7 +180,20 @@ class ConvergenciaDeRede:
         return self.st.cfg.file.rede
 
     def memoria(self, instance_id: str) -> _Memoria:
-        return self._mem.setdefault(instance_id, _Memoria())
+        mem = self._mem.get(instance_id)
+        if mem is None:
+            mem = self._mem[instance_id] = _Memoria()
+            # 25.11 (RA-12): o teto de reinícios da revisão em curso volta da linha do aparelho (migração 093). Sem
+            # isto, cada reinício do backend zerava a conta e o mesmo aparelho ganhava `reinicios_max` reinícios novos.
+            row = self._linha(instance_id)
+            if row is not None and row["restart_rev"] is not None and int(row["restarts_requested"] or 0) > 0:
+                mem.reinicios[int(row["restart_rev"])] = int(row["restarts_requested"])
+        return mem
+
+    def _gravar_reinicios(self, instance_id: str, rev: int, pedidos: int) -> None:
+        """A conta de reinícios pedidos da revisão `rev` na linha do aparelho (25.11). Zero apaga a conta."""
+        self.st.db.execute("UPDATE device_network SET restart_rev=?, restarts_requested=? WHERE instance_id=?",
+                           (rev if pedidos > 0 else None, max(0, pedidos), instance_id))
 
     def _linha(self, instance_id: str) -> Row | None:
         return self.st.db.one("SELECT * FROM device_network WHERE instance_id=?", (instance_id,))
@@ -436,6 +449,7 @@ class ConvergenciaDeRede:
         if row is None:
             return
         self._mem.pop(instance_id, None)
+        self._gravar_reinicios(instance_id, 0, 0)        # aparelho novo atrás do id: a conta da linha recomeça (25.11)
         if _vazio(row):
             self._apagar_linha(instance_id, f"dados do aparelho apagados ({motivo}): a rede antiga saiu junto")
             return
@@ -622,7 +636,8 @@ class ConvergenciaDeRede:
         if obs.conectada(plano_bloqueio):
             evidencia = f"{religado}túnel no ar, lido como uid 2000: {obs.descrever(pkg)}" + self._par_no_servidor(iid)
             novo = rede.registrar_observacao(self.st, iid, rev=rev, estado="conectado", evidencia=evidencia)
-            mem.reinicios.pop(rev, None)
+            if mem.reinicios.pop(rev, None) is not None:
+                self._gravar_reinicios(iid, rev, 0)
             mem.espera_ate = 0.0
             mem.ultima_conferencia = self._agora()
             # A primeira medição da conexão sai no próximo ponto seguro, não na deriva (`rede.deriva_s`, 15 min): no
@@ -1182,6 +1197,7 @@ class ConvergenciaDeRede:
         mem = self.memoria(instance_id)
         # Recusado também conta para o teto (`rede.reinicios_max`): um worker sem o verbo recusaria para sempre.
         mem.reinicios[rev] = mem.reinicios.get(rev, 0) + 1
+        self._gravar_reinicios(instance_id, rev, mem.reinicios[rev])
         if cid is None:
             # Recusado (verbo que o worker não tem, manutenção, quarentena): a recusa já está no histórico do aparelho,
             # EXCETO o verbo ausente e a pausa do reparo, que não abrem linha (`pedir_ciclo_de_vida` devolve None).
@@ -1237,7 +1253,8 @@ class ConvergenciaDeRede:
         n = mem.falhas[rev] = mem.falhas.get(rev, 0) + 1
         espera = min(3600.0, 300.0 * 3 ** (n - 1))
         mem.espera_ate = self._agora() + espera
-        mem.reinicios.pop(rev, None)
+        if mem.reinicios.pop(rev, None) is not None:
+            self._gravar_reinicios(instance_id, rev, 0)     # a desistência fecha a conta, aqui e na linha (25.11)
         quando = datetime.fromtimestamp(now().timestamp() + espera, tz=timezone.utc).strftime("%H:%M")
         try:
             rede.registrar_observacao(self.st, instance_id, rev=rev, estado="pendente",

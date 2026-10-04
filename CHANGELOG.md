@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 25.11: o teto de reinícios da convergência de rede sobrevive ao reinício do backend (branch fix/25-11-teto-de-reinicios-persistido, migração 093)
+
+- Migração 093: `device_network.restart_rev` e `restarts_requested` (só ADD COLUMN). A conta de reinícios pedidos da
+  revisão em curso, que vivia só em `_Memoria.reinicios`, é gravada a cada pedido (aceito ou recusado) e volta à
+  memória quando a convergência abre o aparelho. Fecha quando o túnel sobe, na desistência e na invalidação.
+- Motivo: RA-12. 88 reinícios pedidos pela rede em 7 dias; cada reinício do backend dava ao mesmo aparelho
+  `rede.reinicios_max` reinícios novos.
+- Prova `simulated`: `test_rede_aplicacao.py::test_reiniciar_o_backend_nao_zera_o_teto_de_reinicios` (memória
+  esvaziada no meio, como um processo novo: o total de pedidos fica em `reinicios_max`, e a desistência zera a conta
+  na linha). Real: `not_run` (a medida de reinícios pela rede em 7 dias depois do deploy).
+
 ## 2026-10-04 — 29.36: o motivo do aparelho remoto parado acompanha a conexão e a queda (branch fix/29-36-detalhe-do-externo-parado, sem migração)
 
 - `DeviceManager._recalcular_motivo_do_parado`: reescreve o `state_detail` de um aparelho de worker `stopped` com o
