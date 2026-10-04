@@ -654,7 +654,7 @@ numa rodada própria; os números de migração (059 em diante) e de ADR se conf
 | 28.7 | **Memória, observações e relatório**: `pedido_memoria`, `pedido_observacoes`, `pedido_relatorios` (migração 070; o 061 do plano ficou obsoleto); relatório determinístico com observado/conclusão/não coberto; resumo por IA opcional | §6.6, §8 | G |
 | 28.8 | **Gatilhos de evento, condição e persona**: cursor com detecção de buraco da retenção; condição determinística; `proxima_visita` presa aos limites | §7.8 | M |
 | 28.9 | **API e tela Pedidos**: adendo do contrato, criação pelo Comando com prévia, lista, detalhe, ações, caixa de avisos no painel | §11 | G |
-| 28.10 | **Colaboração**: sub-pedidos, dependências (migração 062), papéis, limites de profundidade e linhagem, porta-voz único, proibição de apoio simulado | §9 | G |
+| 28.10 | **Colaboração**: sub-pedidos, dependências (migração 096), papéis, limites de profundidade e linhagem, porta-voz único, proibição de apoio simulado | §9 | G |
 | 28.11 | **Aviso fora do painel** (decisão do dono: canal e conta) | §11 | P |
 | 28.12 | **Prova real** [A]: no central, um pedido de preço (`observar`, navegador, sem compra) com 3 ocorrências recorrentes, um reinício do backend no meio e uma ocorrência perdida de propósito; um pedido de políticos só de leitura com relatório determinístico. Chamada paga pontual autorizada | §12 | M |
 | 28.13 | **Fechamento**: seção no `relatorio-validacao.md`, ADR da implementação, CHANGELOG, handoff, estado pelo mecanismo | — | P |
