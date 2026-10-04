@@ -2411,3 +2411,23 @@ a9cf9c foi a 3ª seguida da 73, e a quarentena é automática.
 **Aplicabilidade.** Vigente. Antes de ensaiar no app real, contar com isso: o ensaio põe à prova as receitas do
 caminho. A receita em quarentena pelo sistema não pede reensino. A próxima execução real do mesmo passo manda a etapa
 à IA, nasce a candidata v2, e ela sobe com 2 concordâncias (`docs/dominios/aprendizado.md`, ensaio só de leitura).
+
+### K-092 — O spin ocioso de 1,1 núcleo por emulador (RA-3b) não se reproduz no parque de hoje; meça antes de consertar
+
+**Sintoma.** A reavaliação de 03/10 (RA-3b) registrou cada emulador ocioso gastando 1,1 a 1,2 núcleo do host numa
+thread a ~99 %, com a causa não atribuída. O 14.12 pedia o A/B por renderizador e depois `cores 4` nos de conta.
+
+**Medida (04/10, central, % por thread do `qemu-system` em janelas de 60 s, sem SQLite rodando).** android-07
+gerenciado com `gpu host`: 0,07 a 0,14 núcleo (mediana 0,09). O mesmo AVD avulso, `-read-only`, com
+`swiftshader_indirect`: 0,06 a 0,11 depois do boot (mediana 0,08). O 07 com a prévia aberta pelo socket do painel:
+mediana 0,145, contra 0,085 com ela fechada. Nenhuma thread passou de 7,6 % de um núcleo. Os aparelhos no ar
+(01, 03, 04, 06) ficaram entre 0,07 e 0,59 núcleo, e o mais alto tinha app em uso.
+
+**Causa.** Não atribuída, porque não se reproduz: nem o renderizador nem a prévia chegam perto. A medida antiga deve
+ter pegado outra configuração (emulador anterior, ou o stream contínuo de antes da prévia sob demanda). A prévia custa
+~0,06 núcleo por aparelho visível.
+
+**Aplicabilidade.** Vigente. Número de CPU do emulador "ocioso" se mede por thread do `qemu-system`
+(`TotalProcessorTime` em duas leituras), com o host abaixo de 50 % e sem aba do painel aberta no aparelho
+(a aba aberta puxa a prévia pelo ADB). `cores 4` nos aparelhos de conta é decisão do dono (o app enxerga o número
+de núcleos); a conta de CPU e RAM está no resultado do 14.12.
