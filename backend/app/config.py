@@ -204,6 +204,10 @@ class AndroidCfg(BaseModel):
     boot_timeout_s: int = 480
     est_instance_ram_mb: int | None = None      # RAM real por instância no host; None = ram_mb + 1100 (medido)
     min_free_ram_mb_after_boot: int = 1500      # folga que o host deve manter depois de cada boot
+    #: Admissão por CPU (29.33, RA-4): boot novo numa máquina com a CPU ACIMA disto espera (host: recusa com espera
+    #: crescente, como a RAM; worker: o rodízio segura pela CPU da última batida). 100 desliga. CPU desconhecida nunca
+    #: recusa. Subir emulador com a máquina saturada alonga todos os boots em voo, e o preparo deles estourava.
+    max_cpu_percent_before_boot: float = Field(85.0, ge=1.0, le=100.0)
     extra_emulator_args: list[str] = []
     #: DNS que o emulador entrega ao convidado (`-dns-server`). Vazio = autodetecção do emulador, que pega os
     #: primeiros DNS do host. Medido em 25/09/2026 no central: o DHCP do roteador entregava `1.178.36.77` (morto)

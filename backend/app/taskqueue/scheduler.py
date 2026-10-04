@@ -10,7 +10,7 @@ import logging
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Protocol
 
 from ..config import Config
 from ..contracts.origem import eh_ensaio_de_leitura, eh_execucao_de_validacao
@@ -74,6 +74,12 @@ _SEM_TELA_DA_FALHA = frozenset({Outcome.succeeded, Outcome.cancelled, Outcome.yi
 
 
 @dataclass
+
+class _ComSemRecurso(Protocol):
+    """A forma da porta de recurso de uma máquina (`WorkerCapacity`): o scheduler não conhece o registro de workers."""
+
+    def sem_recurso(self, limiar_cpu_percent: float | None = None) -> str | None: ...
+
 class _Desbravador:
     """Aparelho que abre o caminho (aprende as receitas) para os aparelhos COMPATÍVEIS de uma execução."""
     instance_id: str
@@ -833,7 +839,7 @@ class Scheduler:
                 motivo = f"worker “{cap.name}” está em manutenção"
             elif cap is not None and not host and not cap.connected:
                 motivo = f"worker “{cap.name}” não está conectado"
-            sem = cap.sem_recurso() if (cap is not None and not host) else None
+            sem = self._sem_recurso(cap) if (cap is not None and not host) else None
             teto = getattr(cap, "max_working", None) if cap is not None else None
             fotos[sid] = Servidor(
                 id=sid, nome=(cap.name if cap is not None else sid), disponivel=motivo is None,
@@ -890,6 +896,12 @@ class Scheduler:
     def _capacidade(self, worker_id: str | None) -> Any:
         return self.worker_capacity(worker_id) if (worker_id and self.worker_capacity) else None
 
+    def _sem_recurso(self, cap: _ComSemRecurso) -> str | None:
+        """O piso de RAM/disco da batida E o limiar de CPU (29.33, RA-4, `android.max_cpu_percent_before_boot`).
+        Uma só porta para os três lugares que decidem "dá para ligar mais um lá": o host decide a CPU dentro do
+        próprio boot (`DeviceManager._recusa_por_capacidade`), com a amostra dele."""
+        return cap.sem_recurso(self.cfg.file.android.max_cpu_percent_before_boot)
+
     def _operavel(self, worker_id: str) -> bool:
         """Dá para pedir ciclo de vida naquela máquina agora? Manutenção suspende NOVAS atribuições — e mandar
         desligar um aparelho lá é uma delas."""
@@ -914,7 +926,7 @@ class Scheduler:
             return f"aguardando a manutenção do worker “{cap.name}” terminar", None
         if cap.connected and "start" in (rt.worker_verbs or []):
             self._sem_worker.pop(rt.id, None)
-            if (sem := cap.sem_recurso()) is not None:
+            if (sem := self._sem_recurso(cap)) is not None:
                 return f"aguardando recurso na máquina do worker — {sem}", None
             return f"aguardando o worker “{cap.name}” ligar o aparelho", None
         desde = self._sem_worker.setdefault(rt.id, time.monotonic())
@@ -969,7 +981,7 @@ class Scheduler:
                 impedido[p] = (f"worker “{nome}” está em manutenção" if cap is not None and cap.maintenance
                                else f"worker “{nome}” não está conectado")
                 livres[p] = 0
-            elif (sem := cap.sem_recurso()) is not None:
+            elif (sem := self._sem_recurso(cap)) is not None:
                 # Piso de RAM/disco da ÚLTIMA batida. Não vale para o host: lá a guarda é mais fina (ela conhece
                 # a RAM estimada da instância e os boots em voo) e mora dentro do próprio boot.
                 impedido[p] = sem

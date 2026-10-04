@@ -18,6 +18,26 @@ from .sdk import NO_WINDOW, SdkTools
 # `sonda_rede`, e não `conectividade`: esta importa `models`, que não vai para o agente do worker.
 from .sonda_rede import comando_sonda, ler_sonda
 
+#: Prazo do `shell` dos ajustes de sempre do preparo (`Adb.prepare_for_automation`), com a máquina sem carga. O prazo do
+#: preparo inteiro, no executor, é `PRAZO_DO_PREPARO_S` (60 s) — 40 + 12 dos apps de fundo fica abaixo de 60.
+PRAZO_DO_AJUSTE_S = 40.0
+#: Acima desta CPU da máquina, o preparo ganha tempo: os `settings put`/`svc`/`wm` são processos do convidado, e com o
+#: host saturado (vários boots em voo) um preparo SADIO passa de 60 s — era o degrau de reparo por prazo (29.33, RA-4).
+CPU_DO_PREPARO_ESCALA_DESDE = 50.0
+#: Teto do fator: 100 % de CPU triplica o prazo (60 → 180 s). Passou disso, o aparelho está de fato sem resposta.
+FATOR_MAXIMO_DO_PREPARO = 3.0
+
+
+def fator_de_carga_do_preparo(cpu_percent: float | None) -> float:
+    """Quanto esticar o prazo do preparo pela CPU da máquina: 1 até `CPU_DO_PREPARO_ESCALA_DESDE`, linear até
+    `FATOR_MAXIMO_DO_PREPARO` em 100 %. CPU desconhecida (`None`) não estica: "não sei" não é "carregada", e o
+    prazo de sempre é o que valia antes."""
+    if cpu_percent is None or cpu_percent <= CPU_DO_PREPARO_ESCALA_DESDE:
+        return 1.0
+    fracao = min(1.0, (cpu_percent - CPU_DO_PREPARO_ESCALA_DESDE) / (100.0 - CPU_DO_PREPARO_ESCALA_DESDE))
+    return 1.0 + fracao * (FATOR_MAXIMO_DO_PREPARO - 1.0)
+
+
 PACKAGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
 ACTIVITY_RE = re.compile(r"^[A-Za-z0-9_.$]+$")
 # O que `pm path` devolve: /data/app/~~<aleatório>==/<pacote>-<aleatório>==/base.apk (ou split_config.*.apk).
@@ -148,6 +168,10 @@ class Adb:
         #: aparelho do worker é o central, que o prepara pelo túnel. Uma tupla, mesmo vazia, é "aparelho da
         #: automação": desativa a lista e reativa o que saiu dela. Quem chama pode trocá-la antes de cada preparo.
         self.apps_de_fundo: tuple[str, ...] | None = None if apps_de_fundo is None else tuple(apps_de_fundo)
+        #: Prazo do `shell` dos ajustes de sempre do preparo. Quem chama o troca antes de cada preparo, com o fator
+        #: da carga (`fator_de_carga_do_preparo`), junto do prazo do executor: o interno que estourasse primeiro
+        #: continuaria sendo o degrau de reparo, só que escondido atrás do prazo novo.
+        self.prazo_do_ajuste_s: float = PRAZO_DO_AJUSTE_S
 
     # -- base -----------------------------------------------------------------
     def _run(self, args: list[str], *, timeout: float = 30, binary: bool = False,
@@ -382,7 +406,7 @@ class Adb:
             # com teclado físico presente (hw.keyboard=yes) o teclado virtual não cobre botões da tela
             "settings put secure show_ime_with_hard_keyboard 0; "
             "locksettings set-disabled true; input keyevent 224; wm dismiss-keyguard",
-            timeout=40,
+            timeout=self.prazo_do_ajuste_s,
         )
         if self.apps_de_fundo is None:
             return None

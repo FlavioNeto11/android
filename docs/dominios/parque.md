@@ -48,6 +48,24 @@ ver [`../api-contract.md`](../api-contract.md); para os estados de comando e o r
   `kind=warm` traz `load_ms` (spawn → veredito lido; `null` se o log não disse). O wake do worker remoto não tem
   prazo próprio de 90 s (`worker/executor.py::_v_start` usa `boot_timeout_s`): sem mudança. Aceite real em 7 dias: wake
   > 90 s e "snapshot descartado" = 0 (`not_run`).
+- **Admissão por CPU e prazo do preparo pela carga (RA-4, item 29.33)** — a admissão só olhava RAM, e o preparo pós-boot
+  (`prepare_for_automation`) tinha 60 s fixos (40 s no `shell` interno): sob host saturado por outros boots em voo um
+  preparo sadio estourava, a tentativa ficava incerta e descia o degrau de reparo (3 episódios, 1 até o reset). Agora:
+  (1) `android.max_cpu_percent_before_boot` (padrão 85, `100` desliga) segura o boot novo — no host,
+  `_recusa_por_capacidade` recusa com a frase "CPU do host no limite", `capacidade.reserva{motivo=cpu}` e a espera
+  crescente da RAM (a RAM, se também faltar, é o texto); num worker, `WorkerCapacity.sem_recurso(limiar)` compara a CPU da
+  última batida (as três portas do `scheduler`: rodízio, `servidores`, espera do remoto). CPU desconhecida (`None`:
+  agente antigo, laço de métricas sem amostra) e batida velha (já segurada pelo próprio motivo) nunca recusam por CPU.
+  (2) O preparo já rodava só depois de `boot_completed` + interface, então o relógio dele nasce do "Boot completed"; o
+  que faltava era a carga, e o prazo agora é proporcional a ela: ×1 até 50 % de CPU, linear até ×3 em 100 %
+  (`adb.fator_de_carga_do_preparo`; 60 → 180 s no executor e 40 → 120 s no `shell` do adb, que crescem JUNTOS, pelo
+  `Adb.prazo_do_ajuste_s`). O estouro continua sendo "efeito incerto" — só que agora para o aparelho que de fato não
+  responde. O agente do worker aplica a mesma regra com a CPU da máquina dele. (3) A medição `boot` ganha
+  `host_cpu_percent` (CPU do host quando o boot começou; `null` se não amostrada) e `boots_em_voo` (outros boots nesta
+  máquina nesse instante); a medição `capacity` da recusa ganha `motivo` e `host_cpu_percent`. Sem migração. Prova
+  `simulated` (`tests/test_admissao_por_cpu.py`); aceite real em 7 dias: zero degrau de reparo por prazo e menos boots
+  > 120 s (`not_run`). Efeito colateral a vigiar: um host que fica ACIMA do limiar de forma estável nunca sobe boot novo
+  (a mensagem diz por quê); suba o limite ou use `100` se a medição real mostrar que 85 % é o regime normal.
 
 ## Renderizador do emulador (item 29.11)
 

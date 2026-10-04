@@ -22,7 +22,7 @@ from ..contracts.worker.protocol import MARCA_DE_FILA
 from ..devices import emulator as emu
 from ..devices import prontidao
 from ..devices import recursos
-from ..devices.adb import Adb, AdbError, AdbTimeout
+from ..devices.adb import PRAZO_DO_AJUSTE_S, Adb, AdbError, AdbTimeout, fator_de_carga_do_preparo
 from ..devices.avd import AvdError, AvdManager
 from ..devices.sdk import SdkTools
 from .settings import DeviceSpec, WorkerSettings
@@ -525,6 +525,10 @@ class WorkerExecutor:
             if not preparado:
                 preparado = True
                 inicio_do_preparo = time.monotonic()
+                # 29.33 (RA-4): o prazo do `shell` do preparo cresce com a CPU desta máquina (a mesma regra do central,
+                # `DeviceManager._prazo_do_preparo`): o preparo já roda DEPOIS do boot concluído, e o que o estourava
+                # era a carga de outros boots em voo, não o boot.
+                adb.prazo_do_ajuste_s = PRAZO_DO_AJUSTE_S * fator_de_carga_do_preparo(psutil.cpu_percent(interval=None))
                 try:
                     await asyncio.to_thread(adb.prepare_for_automation)
                 except AdbTimeout as exc:

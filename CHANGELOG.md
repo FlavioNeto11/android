@@ -134,6 +134,20 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `[0, 0]`). `test_desbravador.py`: o líder que para pede o código de verificação (credencial), não um dado comum.
 - Prova `simulated`. A meta (waiting_user do QA de 11 para no máximo 5 em 7 dias) é `not_run`.
 
+## 2026-10-04 — 29.33 (RA-4): admissão de boot por CPU e prazo do preparo pela carga (branch fix/29-33-admissao-por-cpu, sem migração)
+
+- Admissão: `android.max_cpu_percent_before_boot` (padrão 85; 100 desliga). Host: `DeviceManager._recusa_por_capacidade`
+  recusa com "CPU do host no limite", `capacidade.reserva{motivo=cpu}` e a espera crescente da RAM. Worker:
+  `WorkerCapacity.sem_recurso(limiar)` (via `Scheduler._sem_recurso`, nas três portas) compara a CPU da última batida.
+  CPU `None` e batida velha nunca recusam por CPU.
+- Prazo do preparo: o preparo já rodava depois do "Boot completed"; o que estourava era a carga. O prazo agora cresce com a
+  CPU (×1 até 50 %, ×3 em 100 %: 60 → 180 s no executor e 40 → 120 s no `shell` do adb, juntos, via
+  `Adb.prazo_do_ajuste_s`), no central (`_wait_boot`, `_preparar_e_revalidar`) e no agente do worker (que passa a ter versão
+  nova de código: atualizar o notebook para valer lá).
+- Medição `boot`: `host_cpu_percent` e `boots_em_voo` (no início do boot); `capacity` recusada: `motivo` e `host_cpu_percent`.
+- Prova `simulated`: `backend/tests/test_admissao_por_cpu.py` (19 testes, relógio injetável); real: `not_run` (aceite em 7
+  dias: zero degrau de reparo por prazo e menos boots > 120 s). Doc: `docs/dominios/parque.md`, `config/config.example.yaml`.
+
 ## 2026-10-04 — 29.53: o portão de PostgreSQL de uma suíte, por escrito (branch docs/29-53-portao-pg, só docs)
 
 - `docs/banco.md` ("O portão de PostgreSQL de uma suíte") e `.claude/rules/testes.md`. Toda suíte roda PG dirigido
