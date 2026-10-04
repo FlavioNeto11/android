@@ -16,6 +16,14 @@ TOOLS_DE_ESCRITA = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 TOOLS_DE_COMANDO = {"Bash", "PowerShell"}
 MIGRACAO = re.compile(r"(^|/)backend/migrations/\d{3}_[^/]+\.sql$")
 SO_PELO_MECANISMO = (".claude/plano-100/estado.json", "docs/execucao-plano-100-runner.md")
+# Arquivos que só se leem em trecho (CLAUDE.md, "Não abra por inteiro"): Read sem `limit` é barrado com a dica.
+LEITURA_GRANDE = ("docs/decisoes.md", "docs/plano-100.md", "docs/estado-atual.md")
+DICA_LEITURA = {
+    "changelog.md": "grep -n \"<termo>\" CHANGELOG.md, ou Read com offset/limit (o topo: limit 80)",
+    "docs/decisoes.md": "grep -n \"ADR-\" docs/decisoes.md e depois Read com offset/limit no ADR",
+    "docs/plano-100.md": "grep -n \"^| <id> |\" docs/plano-100.md",
+    "docs/estado-atual.md": "Read com limit 45 (o topo), ou sed -n 1,45p docs/estado-atual.md",
+}
 # Texto livre de commit ou tag (-m "…", --message=…) não abre arquivo: sai antes de procurar nomes de segredo.
 MENSAGEM = re.compile(r"""(?:^|\s)(?:-m|--message)(?:=|\s+)(?:"(?:[^"\\]|\\.)*"|'[^']*'|\S+)""")
 
@@ -58,6 +66,20 @@ def parece_arquivo(token, cwd, raiz):
     except OSError:
         pass
     return any(p and os.path.isfile(os.path.join(p, t)) for p in pastas)
+
+
+def leitura_grande(caminho):
+    # Devolve a chave de DICA_LEITURA quando o caminho é um dos arquivos grandes, senão "". O CHANGELOG.md só conta
+    # na raiz de um checkout (principal ou worktree: a pasta tem `.git`), para não pegar um changelog de dependência.
+    alvo = normalizar(caminho)
+    for rel in LEITURA_GRANDE:
+        if alvo == rel or alvo.endswith("/" + rel):
+            return rel
+    if alvo.rsplit("/", 1)[-1] == "changelog.md":
+        pasta = os.path.dirname(os.path.abspath(caminho))
+        if os.path.exists(os.path.join(pasta, ".git")):
+            return "changelog.md"
+    return ""
 
 
 def raiz_git(caminho):
@@ -112,6 +134,11 @@ def main():
         return
     if sensivel(caminho):
         bloquear("Bloqueado pela guarda do projeto: arquivo de segredo (" + caminho + "). Não leia nem edite.")
+    if tool == "Read" and not inp.get("limit"):
+        grande = leitura_grande(caminho)
+        if grande:
+            bloquear("Bloqueado pela guarda do projeto: " + caminho + " é grande e só se lê em trecho (CLAUDE.md, "
+                     "'Não abra por inteiro'). Use: " + DICA_LEITURA[grande] + ".")
     if tool in TOOLS_DE_ESCRITA:
         alvo = normalizar(caminho)
         if alvo.endswith(SO_PELO_MECANISMO):
