@@ -488,7 +488,8 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
     dizer "na fila", não "entregue": a página do Portal não promete entrega ao visitante.
   - O título é fixo: "ANA: 🌐 Mensagem de visitante do site (não verificada)". O corpo tem as linhas rotuladas `Nome:`,
     `Empresa:` e `Telefone:` (as duas últimas só quando houver) e `Mensagem:`.
-  - Higiene: NFKC; nome e empresa numa linha só; nenhum caractere de formato (Cf: direção, largura zero, hífen suave,
+  - Higiene: NFKC, menos nos ordinais `º` e `ª` ("nº 12, 1ª via"); no máximo 2 marcas combinantes (Mn, Me) seguidas
+    por caractere, para o "Zalgo" não ser desenhado por cima do título e do `│`; nome e empresa numa linha só; nenhum caractere de formato (Cf: direção, largura zero, hífen suave,
     tags); todo branco Unicode (Zs, braille em branco, preenchedores do hangul) vira espaço ASCII e se junta; o telefone
     só com dígitos e `+ ( ) -`; cada linha da mensagem com `│ ` na frente. Assim um "ANA:" escrito pelo visitante
     aparece como citação e nunca no começo de uma linha da tela (revisão do #331).
@@ -509,8 +510,18 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
     - `campo_invalido`: a defesa repete os tetos 80, 80, 30 e 1500 e os campos obrigatórios;
     - `canal_desligado`;
     - `falha_interna`.
+  - Acima dos tetos da rota (20 por hora retidos, 500 por dia descartados), os contatos não viram aviso um a um. O laço
+    do Portal chama `state.avisos.avisar_resumo_do_portal(retidos, descartados, janela_h)` no máximo uma vez por hora,
+    e só com algum contato. Sai o `portal.resumo`, nível 1, chave `portal-resumo:<hora UTC>`, com corpo só de
+    contagens, no molde do 28.31:
+    - título "ANA: 🌐 Contatos do site acima do limite";
+    - "N contatos guardados sem aviso e M descartados na última hora.";
+    - "Crítico: possível abuso do formulário de contato do site.";
+    - "Espera você: decidir se o formulário de contato do site segue ligado." com algum descartado ou com 20 ou mais
+      retidos (limiar combinado com o Portal); senão, "Nada a fazer: os guardados ficam na Central, sem aviso."
+    A resposta do dono a ele só informa e não liga nem desliga o formulário.
 - **Hoje:** `modules/avisos/domain/portal.py` (montagem e higiene),
-  `infrastructure/servico.py::avisar_contato_do_portal` e o apagamento do corpo em `infrastructure/fila_sql.py`. A rota,
+  `infrastructure/servico.py::avisar_contato_do_portal` e `avisar_resumo_do_portal`, e o apagamento do corpo em `infrastructure/fila_sql.py`. A rota,
   a tabela dos contatos, a taxa e a retenção são da frente Portal (29.77).
 
 ## 7. Arquivos locais (fora do Git) e o que guardam

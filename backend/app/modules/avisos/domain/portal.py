@@ -19,6 +19,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from .mensagem import PRECISA_DE_VOCE, Aviso, chave_do_fato, titulo_do_aviso
 
@@ -65,6 +66,13 @@ _QUEBRAS = re.compile("\r\n|[\r\u2028\u2029\u0085\x0b\x0c]")
 _PREENCHEDORES = frozenset("\u2800\u3164\u115f\u1160\uffa0")
 #: O ponto ideográfico (o de largura cheia e o de meia largura o NFKC já troca): um domínio com ele também vira link.
 _PONTOS = str.maketrans({"\u3002": "."})
+#: O ordinal do português (`nº`, `1ª`, `2º`) passa sem o NFKC, que o trocaria por `o` e `a` (revisão do #331). O resto
+#: da compatibilidade segue (`m²` vira `m2`, `™` vira `TM`).
+_ORDINAIS = re.compile("([\u00aa\u00ba])")
+#: Quantas marcas combinantes (Mn, Me) seguidas cada caractere base leva; as demais saem. Empilhadas (o "Zalgo"), elas
+#: são desenhadas por cima do título e do `│ ` (revisão do #331). O NFKC já compõe o acento do português (`é`), e duas
+#: bastam para o vietnamita.
+MARCAS_MAX = 2
 _TELEFONE_PERMITIDO = re.compile(r"[^0-9+()\- ]")
 _ESPACOS = re.compile(r"[ \t]+")
 
@@ -84,19 +92,34 @@ _COMANDO = re.compile(r"(?<![\w/])/(?=\w)")
 _MENCAO = re.compile(r"@(?=[A-Za-z0-9_]{3,})")
 
 
+def _nfkc(texto: str) -> str:
+    """NFKC, menos nos ordinais `º` e `ª`."""
+    return "".join(parte if _ORDINAIS.fullmatch(parte) else unicodedata.normalize("NFKC", parte)
+                   for parte in _ORDINAIS.split(texto))
+
+
 def _sem_controle(texto: str, *, quebra: str) -> str:
-    """NFKC (o espaço e o ponto de largura cheia viram ASCII), sem invisíveis nem formato (Cf); as quebras viram
-    `quebra`, e todo espaço da categoria Zs, preenchedor e controle vira espaço ASCII. Assim nenhum texto do visitante
-    é empurrado para o começo de uma linha da tela sem o `│ ` (revisão do #331, A1)."""
-    texto = _QUEBRAS.sub("\n", unicodedata.normalize("NFKC", _INVISIVEIS.sub("", texto)).translate(_PONTOS))
+    """NFKC (o espaço e o ponto de largura cheia viram ASCII; os ordinais ficam), sem invisíveis nem formato (Cf); as
+    quebras viram `quebra`, e todo espaço da categoria Zs, preenchedor e controle vira espaço ASCII. Assim nenhum texto
+    do visitante é empurrado para o começo de uma linha da tela sem o `│ ` (revisão do #331, A1). Cada caractere base
+    leva no máximo `MARCAS_MAX` marcas combinantes."""
+    texto = _QUEBRAS.sub("\n", _nfkc(_INVISIVEIS.sub("", texto)).translate(_PONTOS))
     saida: list[str] = []
+    marcas = 0
     for c in texto:
         if c == "\n":
             saida.append("\n" if quebra == "\n" else " ")
+            marcas = 0
             continue
         categoria = unicodedata.category(c)
         if categoria == "Cf":
             continue
+        if categoria in ("Mn", "Me"):
+            marcas += 1
+            if marcas > MARCAS_MAX:
+                continue
+        else:
+            marcas = 0
         saida.append(" " if categoria in ("Zs", "Cc") or c in _PREENCHEDORES else c)
     return "".join(saida)
 
@@ -116,7 +139,7 @@ def desarmar_links(texto: str) -> str:
     `tg:` → `tg[:]`, o ponto de domínio e de IP → `[.]` (o `www.` e o `t.me/` caem aí; o ponto ideográfico e o de largura
     cheia também), `/comando` → `⁄comando` e `@usuario` → `＠usuario`. Desarmar a mais é o lado seguro: "fim.Depois" sem
     espaço vira "fim[.]Depois"."""
-    texto = unicodedata.normalize("NFKC", texto).translate(_PONTOS)
+    texto = _nfkc(texto).translate(_PONTOS)
     texto = _HTTP.sub(lambda m: f"hxx{m.group(2).lower()}://", texto)
     texto = _ESQUEMA.sub("[:]//", texto)
     texto = _TG.sub(lambda m: m.group(0)[:-1] + "[:]", texto)
@@ -183,3 +206,56 @@ def aviso_do_contato(contato: ContatoDoPortal) -> Aviso | None:
         return None
     return Aviso(chave=chave_do_contato(contato.contato_id), tipo=TIPO_DO_CONTATO, titulo=TITULO_DO_CONTATO,
                  corpo=corpo_do_contato(contato), link=None, nivel=PRECISA_DE_VOCE)
+
+
+# ---------------------------------------------------------------------- o resumo dos tetos (pedido do 29.77)
+#: Os contatos acima dos tetos da rota do Portal (20 por hora retidos, 500 por dia descartados) não viram aviso um a um:
+#: o laço dela manda, no máximo uma vez por hora, só as contagens. Nenhum dado do visitante.
+TIPO_DO_RESUMO = "portal.resumo"
+TITULO_DO_RESUMO = titulo_do_aviso("🌐 Contatos do site acima do limite")
+#: Com algum descartado (o teto do dia estourou) ou com tantos retidos na janela (o teto de uma hora inteira), o resumo
+#: espera o dono; abaixo disso, "Nada a fazer". Combinado com a sessão do Portal.
+LIMIAR_RETIDOS = 20
+CONTAGEM_MAX, JANELA_MAX_H = 1_000_000, 24
+
+
+def chave_do_resumo(agora: datetime) -> str:
+    """`portal-resumo:<AAAA-MM-DDTHH>Z`: uma por hora UTC. A família não é `portal`, para a resposta do dono ter a
+    própria frase (a do contato fala de um visitante)."""
+    return chave_do_fato("portal-resumo", f"{agora.astimezone(timezone.utc):%Y-%m-%dT%H}Z")
+
+
+def _contagem(valor: object, minimo: int, maximo: int) -> bool:
+    return isinstance(valor, int) and not isinstance(valor, bool) and minimo <= valor <= maximo
+
+
+def resumo_valido(retidos: object, descartados: object, janela_h: object) -> bool:
+    """Inteiros (bool não conta), de 0 ao teto, a janela de 1 a 24 h, e ao menos um contato: com os dois zerados não
+    há o que dizer."""
+    if not (_contagem(retidos, 0, CONTAGEM_MAX) and _contagem(descartados, 0, CONTAGEM_MAX)
+            and _contagem(janela_h, 1, JANELA_MAX_H)):
+        return False
+    return int(retidos) + int(descartados) > 0  # type: ignore[call-overload]
+
+
+def espera_o_dono(retidos: int, descartados: int) -> bool:
+    return descartados > 0 or retidos >= LIMIAR_RETIDOS
+
+
+def corpo_do_resumo(retidos: int, descartados: int, janela_h: int) -> str:
+    """O molde do 28.31: o resultado com os números, o que é crítico e se espera o dono. O assunto está no título."""
+    janela = "na última hora" if janela_h == 1 else f"nas últimas {janela_h} h"
+    guardados = "1 contato guardado" if retidos == 1 else f"{retidos} contatos guardados"
+    descarte = "1 descartado" if descartados == 1 else f"{descartados} descartados"
+    gesto = ("Espera você: decidir se o formulário de contato do site segue ligado."
+             if espera_o_dono(retidos, descartados) else "Nada a fazer: os guardados ficam na Central, sem aviso.")
+    return "\n".join([f"{guardados} sem aviso e {descarte} {janela}.",
+                       "Crítico: possível abuso do formulário de contato do site.", gesto])
+
+
+def aviso_do_resumo(retidos: int, descartados: int, janela_h: int, agora: datetime) -> Aviso | None:
+    """O resumo pronto para a fila, ou `None` quando as contagens não servem (`resumo_valido`). Sem link."""
+    if not resumo_valido(retidos, descartados, janela_h):
+        return None
+    return Aviso(chave=chave_do_resumo(agora), tipo=TIPO_DO_RESUMO, titulo=TITULO_DO_RESUMO,
+                 corpo=corpo_do_resumo(retidos, descartados, janela_h), link=None, nivel=PRECISA_DE_VOCE)

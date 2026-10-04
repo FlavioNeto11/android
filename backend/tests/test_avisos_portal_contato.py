@@ -4,6 +4,8 @@ Prova `simulated`: só o domínio (`app.modules.avisos.domain.portal`), sem banc
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 
 from app.modules.avisos.domain import portal as p
@@ -156,3 +158,57 @@ def test_campo_invalido_nao_vira_aviso(campos: dict) -> None:
 def test_nos_tetos_ainda_serve() -> None:
     contato = _contato(nome="n" * 80, empresa="e" * 80, telefone="1" * 30, mensagem="m" * 1500)
     assert p.motivo_de_recusa(contato) is None and p.aviso_do_contato(contato) is not None
+
+
+def test_ordinais_do_portugues_ficam() -> None:
+    """Revisão do #331: o NFKC trocava `º` e `ª` por `o` e `a`. O resto da compatibilidade segue."""
+    texto = "n\u00ba 12, 1\u00aa via, 2\u00ba andar"
+    assert p.uma_linha(texto) == texto
+    assert p.citar(texto) == "│ " + texto
+    assert p.desarmar_links(texto) == texto
+    assert p.uma_linha("10 m\u00b2, marca\u2122") == "10 m2, marcaTM"
+
+
+def test_marcas_combinantes_empilhadas_saem() -> None:
+    """Revisão do #331: 30 marcas (Mn) por cima de uma letra eram desenhadas sobre o título e o `│`. Ficam 2."""
+    zalgo = "a" + "\u0301\u0300\u0302" * 10 + "b"
+    linha = p.uma_linha(zalgo)
+    assert linha == "\u00e1\u0300\u0302b"           # o NFKC compõe o 1º acento com a letra; ficam 2 marcas soltas
+    citada = p.citar(zalgo + "\n" + "\u0336" * 30)
+    assert citada.split("\n") == ["│ \u00e1\u0300\u0302b", "│ \u0336\u0336"]
+    assert p.uma_linha("e\u0301 voc\u00ea") == "\u00e9 voc\u00ea"          # o acento composto não é marca solta
+    assert p.uma_linha("x" + "\u20dd" * 5) == "x\u20dd\u20dd"                  # a marca envolvente (Me) também
+
+
+AGORA = datetime(2026, 10, 4, 22, 41, 7, tzinfo=timezone.utc)
+
+
+def test_resumo_chave_por_hora_e_so_contagens() -> None:
+    aviso = p.aviso_do_resumo(3, 0, 1, AGORA)
+    assert aviso is not None
+    assert (aviso.chave, aviso.tipo, aviso.link, aviso.nivel) == ("portal-resumo:2026-10-04T22Z", "portal.resumo", None, 1)
+    assert aviso.titulo == "ANA: 🌐 Contatos do site acima do limite"
+    assert aviso.corpo.split("\n") == ["3 contatos guardados sem aviso e 0 descartados na última hora.",
+                                       "Crítico: possível abuso do formulário de contato do site.",
+                                       "Nada a fazer: os guardados ficam na Central, sem aviso."]
+    outra = p.aviso_do_resumo(9, 1, 2, AGORA.replace(minute=59))
+    assert outra is not None and outra.chave == aviso.chave
+
+
+@pytest.mark.parametrize(("retidos", "descartados", "espera"), [
+    (19, 0, False), (20, 0, True), (0, 1, True), (1, 0, False), (0, 500, True)])
+def test_resumo_espera_o_dono_acima_do_limiar(retidos: int, descartados: int, espera: bool) -> None:
+    corpo = p.corpo_do_resumo(retidos, descartados, 1)
+    assert corpo.split("\n")[-1].startswith("Espera você:" if espera else "Nada a fazer:")
+
+
+def test_resumo_singular_e_janela() -> None:
+    assert p.corpo_do_resumo(1, 1, 3).split("\n")[0] == "1 contato guardado sem aviso e 1 descartado nas últimas 3 h."
+
+
+@pytest.mark.parametrize(("retidos", "descartados", "janela_h"), [
+    (0, 0, 1), (-1, 2, 1), (1, -1, 1), (True, 0, 1), (1, 0, 0), (1, 0, 25), (1.5, 0, 1), ("3", 0, 1),
+    (p.CONTAGEM_MAX + 1, 0, 1), (1, 0, True)])
+def test_resumo_invalido(retidos: object, descartados: object, janela_h: object) -> None:
+    assert not p.resumo_valido(retidos, descartados, janela_h)
+    assert p.aviso_do_resumo(retidos, descartados, janela_h, AGORA) is None  # type: ignore[arg-type]

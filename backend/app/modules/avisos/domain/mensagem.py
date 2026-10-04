@@ -73,6 +73,7 @@ NIVEL_POR_TIPO: dict[str, int] = {
     "trello.comentario": PRECISA_DE_VOCE,          # 28.30: o pedido de confirmação de um comentário do dono
     "pendencia.vence_em": PRECISA_DE_VOCE,
     "portal.contato": PRECISA_DE_VOCE,             # 28.32: a mensagem de um visitante do site; sai na hora, sem rajada
+    "portal.resumo": PRECISA_DE_VOCE,              # 28.32: os contatos acima dos tetos, só contagens, um por hora
     "pedido.pausa_automatica": ALGO_FALHOU,
     "pedido.orcamento_esgotado": ALGO_FALHOU,
     "pedido.ocorrencia_perdida": ALGO_FALHOU,

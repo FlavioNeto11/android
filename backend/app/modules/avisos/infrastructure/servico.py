@@ -36,6 +36,7 @@ from app.modules.avisos.domain.portal import (
     ContatoAvisado,
     ContatoDoPortal,
     aviso_do_contato,
+    aviso_do_resumo,
     motivo_de_recusa,
 )
 from app.modules.avisos.infrastructure.faxina_sql import Faxina, FaxinaDosCanais
@@ -186,6 +187,23 @@ class ServicoDeAvisos:
             return ContatoAvisado(True)
         except Exception as exc:  # noqa: BLE001 - a rota guarda o contato e tenta de novo; o texto não vai ao log
             log.error("avisos: contato do portal %s não entrou na fila: %s", cid, type(exc).__name__)
+            return ContatoAvisado(False, FALHA_INTERNA)
+
+    def avisar_resumo_do_portal(self, retidos: int, descartados: int, janela_h: int) -> ContatoAvisado:
+        """28.32, pedido do 29.77: os contatos acima dos tetos da rota (`retidos` acima de 20 por hora, `descartados`
+        acima de 500 por dia) numa mensagem só de contagens. Chave por hora UTC: duas chamadas na mesma hora dão uma
+        mensagem, e a segunda volta `enfileirado=True`. Os motivos são os do contato."""
+        try:
+            aviso = aviso_do_resumo(retidos, descartados, janela_h, self.fila.relogio())
+            if aviso is None:
+                log.info("avisos: resumo do portal recusado: %s", CAMPO_INVALIDO)
+                return ContatoAvisado(False, CAMPO_INVALIDO)
+            if not self.ligado or self.canal() is None:
+                return ContatoAvisado(False, CANAL_DESLIGADO)
+            self.fila.enfileirar(aviso)
+            return ContatoAvisado(True)
+        except Exception as exc:  # noqa: BLE001 - o laço do Portal tenta de novo na hora seguinte
+            log.error("avisos: resumo do portal não entrou na fila: %s", type(exc).__name__)
             return ContatoAvisado(False, FALHA_INTERNA)
 
     def _com_nome_da_acao(self, data: dict[str, object] | None) -> dict[str, object] | None:

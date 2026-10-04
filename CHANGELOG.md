@@ -37,6 +37,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - `backend/tests/test_avisos_portal_contato.py` e `backend/tests/test_avisos_portal_servico.py`: 65 passed;
   - os arquivos `test_avisos_*` e `test_canais_*`: 443 passed, em série e em Idle, sobre a junção da suíte 32
     (`e910916b`).
+- PR empilhado (pedido do 29.77 e dois ajustes da revisão):
+  - `portal.resumo`: `avisar_resumo_do_portal(retidos, descartados, janela_h)`, só contagens, uma mensagem por hora
+    UTC (chave `portal-resumo:<hora>`). "Espera você" com algum descartado ou com 20 ou mais retidos. A resposta do dono
+    só informa.
+  - Os ordinais `º` e `ª` passam sem o NFKC ("nº 12, 1ª via, 2º andar").
+  - No máximo 2 marcas combinantes por caractere (30 empilhadas viram 2).
+  - Testes: 196 passed nos arquivos tocados e no roteamento (`test_avisos_portal_*`, `test_avisos_telegram`,
+    `test_avisos_servico`, `test_avisos_fila`, `test_telegram_entrada`), em série e em Idle.
 - Revisão independente do #331 (Reload plugins, `C:/claude-ferramentas/revisao-28-32.md`):
   - A1, forja visual de uma linha da casa: a higiene faz NFKC e tira toda a categoria Cf. Os brancos Unicode (Zs,
     braille em branco, preenchedores do hangul) viram espaço ASCII e se juntam.
