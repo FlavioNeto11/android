@@ -3256,7 +3256,7 @@
   "28.25": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2785257d3831db43d8e69",
    "url": "https://trello.com/c/enArdvfN",
-   "lista": "em_execucao",
+   "lista": "em_validacao",
    "lote": null
   },
   "29.72": {
@@ -3286,7 +3286,19 @@
   "31.44": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac27e1f893c5923191c7023",
    "url": "https://trello.com/c/CgPovDpq",
-   "lista": "proximas",
+   "lista": "em_execucao",
+   "lote": null
+  },
+  "29.74": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac28158887ad7c5c5ec3907",
+   "url": "https://trello.com/c/vSFdcOYn",
+   "lista": "em_execucao",
+   "lote": null
+  },
+  "31.45": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2815cccdbb7677a045b5d",
+   "url": "https://trello.com/c/13fBkkx4",
+   "lista": "em_execucao",
    "lote": null
   }
  },
