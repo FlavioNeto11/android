@@ -549,6 +549,12 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   - `ok` quando 1 e 2 terminaram, mesmo com `a_mao`; `falhou` só com erro de banco em 1 ou 2. Erro de rede em 3 não é
     falha. O log leva só o id e as contagens; a função não guarda registro próprio (o registro da exclusão é do Portal,
     só com ids e contagens).
+  - **O dono decide sabendo** (orquestradora, 04/10 23:42Z, condição para apagar também a resposta dele): a
+    confirmação da exclusão no painel (Configuração → "Site e privacidade", PR #342 do Portal) diz, depois de "Será
+    apagado:", que "Também serão apagados do seu Telegram o aviso deste contato e as suas respostas a esse aviso,
+    quando o Telegram ainda permitir (até 48 horas depois do envio). O que não der para apagar sozinho aparece numa
+    lista com a hora, para você apagar à mão." (no plural, "os avisos destes contatos" e "a esses avisos"). Em "Não
+    será apagado:" ficam as cópias de segurança e as mensagens com mais de 48 horas; fecha com "Não há como desfazer."
   - O id do contato nunca se repete (`{{PK_AUTO}}`: AUTOINCREMENT no SQLite, BIGSERIAL no PG; travado pelo teste do
     Portal), senão um contato novo cairia na lápide do excluído e o aviso dele sumiria calado.
 - **Hoje:** `domain/portal.py` (`ApagadoNoCanal`, `JANELA_DE_APAGAR`, `da_para_apagar`),
