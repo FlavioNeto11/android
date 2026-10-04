@@ -68,7 +68,7 @@ from .midia_galeria import INTERNAS_POR_CODIGO, MidiaRecusada, colocar_midia_na_
 from .recipes import (READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, eh_generica,
                       filhos_rotulados, hash_generico_da_linha, unique_selectors)
 from .repository import Repository
-from .dialogos import LIMITE_DE_DIALOGOS, botao_que_fecha
+from .dialogos import LIMITE_DE_DIALOGOS, MOTIVO_SEM_SAIDA, botao_que_fecha, dialogo_sem_saida
 from .relacao import relacao_do_valor
 from .saidas import (RECUSAS_DETERMINISTICAS, ChaveDeTentativa, LeituraInvalida, LeituraSemTexto,
                      LeituraVisualRecusada, args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor,
@@ -2108,6 +2108,14 @@ class StepExecutor:
                 fechados_pela_regra += 1
                 pela_regra = True
                 history.append(f"(executor) diálogo fechado pela árvore, sem IA: '{rotulo}' ({botao.id})")
+            elif decision is None and limpeza and not fired and (sobra := dialogo_sem_saida(
+                    obs.tree, cobertura_da_limpeza.bounds if cobertura_da_limpeza is not None
+                    and ainda_cobre(cobertura_da_limpeza, obs.tree) else None)) is not None:
+                # 31.51: diálogo sem saída que preserve a privacidade (só aceitar, ou não reconhecido): falha com o
+                # motivo, sem IA. A IA poderia aceitar os cookies opcionais ou abrir o app; nunca vira sucesso.
+                return await falhar_sem_nova_tentativa(
+                    f"{MOTIVO_SEM_SAIDA} '{sobra}': nenhum botão de recusar, fechar ou continuar no navegador; nada "
+                    "foi aceito.", obs)
             if decision is None:
                 # ---------- LT-1: a pós-condição já vale na tela que acabou de ser lida? Pular o ator, nunca a prova.
                 # Só etapa SEM efeito (a UI otimista de uma etapa com efeito mostra o "feito" antes de ele valer),

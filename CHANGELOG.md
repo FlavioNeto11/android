@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.51: a limpeza fecha diálogos do site em série pela árvore, sem aceitar nada (branch fix/31-51-dialogos-em-serie)
+
+- Achado real r-20261004190200-5b56e6 (android-10): "Abra o app…" e depois o aviso de cookies cobriam a página; a
+  limpeza gastou as 3 ações da etapa (voltar, reabrir o Chrome, procurar) sem tocar no "Agora não" que estava na
+  árvore, e no plano revisado a IA tocou "Configurar cookies", que abre outro modal.
+- `taskqueue/dialogos.py`: `botao_que_fecha` (recusar antes de fechar; nunca aceitar, permitir ou configurar) e
+  `dialogo_sem_saida`. O executor toca o botão antes do ator, até 4 diálogos, sem gastar as ações da etapa; sem saída
+  que preserve a privacidade, falha com motivo literal (regra em `learning/domain/falhas.py`), nunca sucesso.
+- Teste: `tests/test_dialogos_em_serie.py` (árvores remontadas do que a 5b56e6 gravou; o executor não grava a árvore
+  inteira), `simulated`; prova `real` não executada.
+
 ## 2026-10-04 — 29.73: o agente reconecta rápido depois do reinício do central (branch fix/29-73-reconexao-rapida)
 
 - Deploy 28: o central fechou o canal com 1012 (service restart) às 15:59:17Z e voltou às 16:00:33Z; a escada do

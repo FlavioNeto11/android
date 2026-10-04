@@ -27,6 +27,8 @@ _ROTULOS_QUE_FECHAM: tuple[str, ...] = (
     "recusar opcionais", "rejeitar opcionais", "apenas necessarios", "somente necessarios", "apenas essenciais",
     "somente essenciais", "usar apenas cookies necessarios", "continuar sem aceitar", "nao aceitar",
     "reject all", "reject", "decline", "only necessary", "necessary only", "continue without accepting",
+    "continuar no navegador", "continuar no site", "usar o navegador", "ficar no navegador",
+    "continue in browser", "continue on web", "stay on web",
     "agora nao", "nao, obrigado", "nao obrigado", "mais tarde", "fechar", "dispensar",
     "not now", "no thanks", "no, thanks", "close", "dismiss", "x", "×", "✕",
 )
@@ -66,6 +68,25 @@ def _caixas_de_dialogo(tree: UiTree) -> list[tuple[int, int, int, int]]:
                 or _PISTAS.search(_rotulo(e)[:80])) and e.bounds not in caixas:
             caixas.append(e.bounds)
     return caixas
+
+
+#: O motivo literal da limpeza que acha um diálogo e não acha saída que preserve a privacidade (31.51, regra em
+#: `learning/domain/falhas.py`): nunca aceita, nunca vira sucesso, nunca passa para a IA (que poderia aceitar).
+MOTIVO_SEM_SAIDA = "A limpeza não fechou o diálogo do site"
+
+
+def dialogo_sem_saida(tree: UiTree, area: tuple[int, int, int, int] | None = None) -> str | None:
+    """O texto do diálogo que segue na tela sem botão de recusar, fechar ou continuar no navegador (o aviso de cookies
+    que só oferece aceitar ou configurar, ou um diálogo não reconhecido); `None` se não há diálogo, ou se há saída."""
+    if botao_que_fecha(tree, area) is not None:
+        return None
+    for e in tree.elements:
+        # Só o que tem cara de diálogo (classe ou id), dentro da área do que cobria quando se sabe: um elemento
+        # qualquer que o juiz citou (um "Voltar") não é diálogo do site e segue com a IA, como antes.
+        if (_PISTAS.search(e.class_name or "") or _PISTAS.search(e.resource_id or "")) \
+                and (area is None or _dentro(e, area) or e.bounds == area):
+            return (_rotulo(e) or e.resource_id or e.class_name.rsplit(".", 1)[-1])[:80]
+    return None
 
 
 def botao_que_fecha(tree: UiTree, area: tuple[int, int, int, int] | None = None) -> UiElement | None:

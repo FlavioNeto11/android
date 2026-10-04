@@ -296,6 +296,13 @@ despacho (`_policy_gate`, a trava de sempre, com a mesma frase) e em `RunService
   - **(iii)** `step_done` sem gesto nenhum (tap, long_press, drag, scroll, press_back) numa limpeza ainda coberta é
     recusado ("limpeza sem toque").
   - A receita fica desligada na etapa opcional: ela repetiria os toques de um diálogo noutro.
+  - **31.51** (r-20261004190200-5b56e6, dois diálogos do site em série): antes do ator, a limpeza procura na árvore
+    o botão que fecha ou recusa (`taskqueue/dialogos.py`, lista fechada de rótulos: recusar e "só os necessários"
+    antes de fechar; "continuar no navegador" no "abra o app") e toca nele sem IA, um diálogo por vez, com teto
+    próprio (`LIMITE_DE_DIALOGOS`, 4) que não gasta as `max_actions` da etapa. Nunca toca "aceitar", "permitir",
+    "concordo" nem "configurar". Diálogo sem essa saída (o aviso que só aceita, ou um diálogo não reconhecido): a
+    etapa falha com "A limpeza não fechou o diálogo do site '…'", sem IA e sem aceitar nada. As ações levam
+    `source='regra'`.
 - **Relação do valor lido (item 31.41, `ai.relacao_do_valor`, sem migração):** o `read_value` só grava a saída com
   evidência de que o elemento É o que foi pedido (`taskqueue/relacao.py`, determinístico): (a) o seletor que o catálogo
   declara (`saidas_relacao: [nome=seletor]`); (b) um termo do nome, do glossário PT→EN ou de um sinônimo do catálogo
