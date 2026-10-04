@@ -35,6 +35,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   enviado com a mensagem e a resposta apagadas, 47 h e canal desligado, recusa e rede, enviando, incerto e falhou,
   enviado sem id, erro de banco sem conteúdo no log, só a chave do contato, a janela); 242 passed em todos os
   `test_avisos_*`. Real: `not_run` (nenhuma exclusão real; o Telegram de verdade não foi chamado).
+- **Revisão independente do #340 (orquestradora, 04/10 23:49Z):** E1, a lápide entra antes dos UPDATEs, e só
+  `enviado` ou `descartado` relidos dão `ok` (o reenvio concorrente do Portal não fura mais a exclusão); E2, os passos 1
+  e 2 numa transação (a hora do `incerto` não se perde numa falha parcial); N1, o canal ilegível vai para `a_mao`; a
+  chave repetida no `avisar_contato_do_portal` registra aviso no log, só com o id; N2 e N3 escritos na C-27. Prova
+  `simulated`: 17 passed (o `enfileirar` concorrente antes e depois da lápide, a falha depois do `incerto`, o canal
+  ilegível, o aviso da chave repetida).
 
 ## 2026-10-04 — 28.32: a mensagem do visitante do site chega ao Telegram do dono (branch canais/28-32-contato-do-portal)
 

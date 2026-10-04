@@ -546,6 +546,17 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
        Telegram deixa até 48 h), saem pelo `deleteMessage`. Vão para `a_mao`, com a hora: a mais velha, a de canal
        desligado, a que o Telegram recusa, a que falha na rede, a `incerto` (pode ter saído; vale o `iniciado_em`) e a
        `enviado` sem `message_id` (vale o `enviado_em`).
+  - A lápide entra ANTES dos UPDATEs, e os passos 1 e 2 vão numa transação (revisão do #340, E1 e E2): o reenvio
+    concorrente do Portal nunca entra com corpo depois da exclusão, e a falha de um passo não consome a hora do
+    `incerto`. Só `enviado` ou `descartado` relidos dão `ok`; qualquer outro estado dá `em_envio`.
+  - **Fora do alcance, e fica no chat** (o dono sabe pela confirmação, que fala só do aviso e das respostas a ele):
+    - a resposta da Central à resposta do dono (texto fixo "Esta mensagem é de um visitante do site e só informa…",
+      sem dado do visitante);
+    - a resposta do dono a ESSA resposta (segundo nível) e os anexos de uma resposta dele.
+  - A janela de 47 h da resposta do dono conta de `recebida_em`, a hora em que a Central a recebeu, e não a da
+    mensagem: com a Central fora por horas, o Telegram recusa (400) e a mensagem vai para `a_mao`, que é o lado seguro.
+  - A chave já existir no `avisar_contato_do_portal` registra um aviso no log, só com o id: é o reenvio normal da
+    rota, ou um id reusado que cairia calado na lápide de um excluído.
   - `ok` quando 1 e 2 terminaram, mesmo com `a_mao`; `falhou` só com erro de banco em 1 ou 2. Erro de rede em 3 não é
     falha. O log leva só o id e as contagens; a função não guarda registro próprio (o registro da exclusão é do Portal,
     só com ids e contagens).

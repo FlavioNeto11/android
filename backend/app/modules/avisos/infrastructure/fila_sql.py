@@ -261,7 +261,17 @@ class FilaDeAvisos:
           de reenvio do Portal no meio de um envio) vira no-op: nada sai depois da exclusão. A lápide sai pela `purgar`.
 
         O estado é relido DEPOIS das escritas: o líder que reivindicou entre a leitura e o UPDATE aparece aqui como
-        `enviando`, e quem chama devolve `em_envio` em vez de dizer que acabou."""
+        `enviando`, e quem chama devolve `em_envio` em vez de dizer que acabou.
+
+        A LÁPIDE VEM PRIMEIRO (revisão do #340, E1): com a lápide depois dos UPDATEs, um `enfileirar` concorrente entre os
+        dois (o reenvio do Portal, sem linha ainda) entrava `pendente` COM corpo, a lápide conflitava e o texto saía
+        depois da exclusão. Assim, o `enfileirar` de depois é no-op, e o de antes é pego pelo UPDATE (no PostgreSQL, o
+        INSERT espera o concorrente pelo índice único). Quem chama abre a transação (E2), para a falha de um passo não
+        consumir a hora do `incerto`."""
+        self.db.execute(
+            "INSERT INTO avisos_entregas(chave, tipo, titulo, corpo, link, canal, estado, ultimo_erro, criado_em)"
+            " VALUES (?,?,?,'',NULL,?,'descartado','excluído a pedido do titular',?) ON CONFLICT (chave) DO NOTHING",
+            (chave, tipo, titulo, self.canal, self._agora()))
         incertos = [str(r["iniciado_em"]) for r in self.db.query(
             "SELECT iniciado_em FROM avisos_entregas WHERE chave=? AND estado='incerto' AND iniciado_em IS NOT NULL",
             (chave,))]
@@ -270,10 +280,6 @@ class FilaDeAvisos:
                         (chave,))
         self.db.execute("UPDATE avisos_entregas SET corpo='', link=NULL WHERE chave=? AND estado IN ('enviado','descartado')",
                         (chave,))
-        self.db.execute(
-            "INSERT INTO avisos_entregas(chave, tipo, titulo, corpo, link, canal, estado, ultimo_erro, criado_em)"
-            " VALUES (?,?,?,'',NULL,?,'descartado','excluído a pedido do titular',?) ON CONFLICT (chave) DO NOTHING",
-            (chave, tipo, titulo, self.canal, self._agora()))
         linha = self.db.one("SELECT estado, enviado_em FROM avisos_entregas WHERE chave=?", (chave,))
         estado = str(linha["estado"]) if linha is not None else ""
         if estado == "enviado" and linha is not None and linha["enviado_em"] and not self.db.scalar(

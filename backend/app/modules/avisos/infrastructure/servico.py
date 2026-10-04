@@ -192,7 +192,10 @@ class ServicoDeAvisos:
                 return ContatoAvisado(False, CAMPO_INVALIDO)
             if not self.ligado or self.canal() is None:
                 return ContatoAvisado(False, CANAL_DESLIGADO)
-            self.fila.enfileirar(aviso)                  # False = já estava: a chave garante uma mensagem só
+            if not self.fila.enfileirar(aviso):          # False = já estava: a chave garante uma mensagem só
+                # Só o id. A chave já existir é o reenvio da rota (normal) ou um id reusado (que cairia na lápide de um
+                # excluído e sumiria calado, revisão do #340): o log deixa a premissa falhar com barulho.
+                log.warning("avisos: contato do portal %s: a chave já existia na fila", cid)
             return ContatoAvisado(True)
         except Exception as exc:  # noqa: BLE001 - a rota guarda o contato e tenta de novo; o texto não vai ao log
             log.error("avisos: contato do portal %s não entrou na fila: %s", cid, type(exc).__name__)
@@ -230,16 +233,24 @@ class ServicoDeAvisos:
         contato). Erro de rede em 3 não é falha: vai para `a_mao`. O log leva só o id e as contagens."""
         chave = chave_do_contato(contato_id)
         try:
-            estado, a_mao = self.fila.descartar_do_contato(chave, tipo=TIPO_DO_CONTATO, titulo=TITULO_DO_CONTATO)
-            if estado == "enviando":
-                log.info("avisos: exclusão do contato do portal %s: a mensagem está saindo agora", contato_id)
-                return ApagadoNoCanal(APAGADO_EM_ENVIO)
-            respostas = self.fila.tirar_texto_das_respostas(chave)
-            no_chat = self.fila.respostas_ao_fato(chave)
+            # Os passos 1 e 2 numa transação (revisão do #340, E2): se um passo falha depois de o `incerto` virar
+            # `descartado`, tudo volta, e a nova tentativa ainda vê a hora dele para `a_mao`.
+            with self.fila.db.tx():
+                estado, a_mao = self.fila.descartar_do_contato(chave, tipo=TIPO_DO_CONTATO, titulo=TITULO_DO_CONTATO)
+                if estado not in ("enviado", "descartado"):
+                    # `enviando`, ou qualquer estado que ainda pode sair (defesa do E1): nada de `ok`, tente de novo.
+                    log.info("avisos: exclusão do contato do portal %s: a mensagem pode estar saindo agora", contato_id)
+                    return ApagadoNoCanal(APAGADO_EM_ENVIO)
+                respostas = self.fila.tirar_texto_das_respostas(chave)
+                no_chat = self.fila.respostas_ao_fato(chave)
         except Exception as exc:  # noqa: BLE001 - o Portal mantém o contato e mostra o motivo
             log.error("avisos: exclusão do contato do portal %s falhou no banco: %s", contato_id, type(exc).__name__)
             return ApagadoNoCanal(APAGADO_FALHOU)
-        canal = self.canal()
+        try:
+            canal = self.canal()
+        except Exception as exc:  # noqa: BLE001 - a fila e as respostas já terminaram: o chat fica para o dono (N1)
+            log.warning("avisos: exclusão do contato do portal %s: canal ilegível (%s)", contato_id, type(exc).__name__)
+            canal = None
         apagar = getattr(canal, "apagar", None) if canal is not None else None
         apagadas = 0
         for ref, hora in no_chat:

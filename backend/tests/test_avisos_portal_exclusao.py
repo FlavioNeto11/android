@@ -194,3 +194,78 @@ def test_janela_de_apagar() -> None:
     assert not p.da_para_apagar(to_iso(agora - timedelta(hours=47)), agora)
     assert not p.da_para_apagar("2026-10-04T10:00:00", agora)                 # sem fuso
     assert not p.da_para_apagar(None, agora) and not p.da_para_apagar("lixo", agora)
+
+
+@pytest.mark.parametrize("quando", ["antes_da_lapide", "depois_da_lapide"])
+def test_enfileirar_concorrente_nao_fura_a_exclusao(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                                    quando: str) -> None:
+    """Revisão do #340, E1: o reenvio do Portal (`avisar_contato_do_portal`) chega no meio da exclusão, sem linha ainda
+    para a chave. Antes ou depois da lápide, o texto do visitante nunca sai depois."""
+    r, canal = Relogio(), CanalQueApaga()
+    servico, db, _ = _backend(_cfg(tmp_path), "a", r, canal=canal)
+    original = db.execute
+    disparou: list[bool] = []
+
+    def execute(sql: str, params: tuple | dict = ()) -> object:  # type: ignore[type-arg]
+        lapide = sql.startswith("INSERT INTO avisos_entregas") and "'descartado'" in sql
+        if lapide and not disparou and quando == "antes_da_lapide":
+            disparou.append(True)
+            assert servico.avisar_contato_do_portal(_contato()).enfileirado
+        cur = original(sql, params)
+        if lapide and not disparou and quando == "depois_da_lapide":
+            disparou.append(True)
+            assert servico.avisar_contato_do_portal(_contato()).enfileirado
+        return cur
+
+    monkeypatch.setattr(db, "execute", execute)
+    assert _apagar(servico, 7, r.t).estado == p.APAGADO_OK
+    monkeypatch.undo()
+    assert disparou and _linha(db) == {"estado": "descartado", "corpo": "", "link": None}
+    for _ in range(3):
+        _volta(servico)
+    assert canal.enviados == []
+
+
+def test_falha_depois_do_incerto_desfaz_tudo_e_a_nova_tentativa_ainda_ve_a_hora(tmp_path: Path,
+                                                                                monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisão do #340, E2: sem a transação, o `incerto` virava `descartado`, um passo seguinte falhava, e na nova
+    tentativa a hora da mensagem que pode ter saído sumia de `a_mao`."""
+    r = Relogio()
+    servico, db, _ = _backend(_cfg(tmp_path), "a", r, canal=CanalQueApaga())
+    servico.avisar_contato_do_portal(_contato())
+    iniciado = to_iso(r.t - timedelta(minutes=5))
+    db.execute("UPDATE avisos_entregas SET estado='incerto', iniciado_em=? WHERE chave='portal:7'", (iniciado,))
+
+    def quebra(fato: str) -> int:
+        raise RuntimeError("banco fora")
+
+    monkeypatch.setattr(servico.fila, "tirar_texto_das_respostas", quebra)
+    assert _apagar(servico, 7, r.t) == p.ApagadoNoCanal(p.APAGADO_FALHOU)
+    assert _linha(db)["estado"] == "incerto"                               # nada ficou meio apagado
+    monkeypatch.undo()
+    assert _apagar(servico, 7, r.t) == p.ApagadoNoCanal(p.APAGADO_OK, 0, (iniciado,))
+
+
+def test_canal_ilegivel_depois_da_fila_vai_para_a_mao_sem_falhar(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisão do #340, N1: a leitura do canal fora do `try` subia a exceção ao Portal; agora o chat fica para o dono."""
+    r, canal = Relogio(), CanalQueApaga()
+    servico, db, _ = _backend(_cfg(tmp_path), "a", r, canal=canal)
+    servico.avisar_contato_do_portal(_contato())
+    _volta(servico)
+
+    def ilegivel() -> None:
+        raise RuntimeError("segredo ilegível")
+
+    monkeypatch.setattr(servico, "canal", ilegivel)
+    resultado = _apagar(servico, 7, r.t)
+    assert resultado.estado == p.APAGADO_OK and resultado.apagadas == 0 and len(resultado.a_mao) == 1
+
+
+def test_chave_repetida_avisa_no_log_so_com_o_id(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    r = Relogio()
+    servico, db, _ = _backend(_cfg(tmp_path), "a", r, canal=CanalQueApaga())
+    _apagar(servico, 7, r.t)                                               # a lápide
+    with caplog.at_level(logging.WARNING, logger="poc.avisos"):
+        assert servico.avisar_contato_do_portal(_contato()).enfileirado
+    assert "7" in caplog.text and "já existia" in caplog.text
+    assert NOME not in caplog.text and "98765" not in caplog.text and TEXTO not in caplog.text
