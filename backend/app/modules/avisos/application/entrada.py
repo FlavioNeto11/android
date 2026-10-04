@@ -91,6 +91,9 @@ class Intencao:
     alvo: str | None = None
     #: O que dizer quando o formato não serve (só em `desconhecida`).
     motivo: str | None = None
+    #: `/aprovar <x>` ou `/vetar <x>` em REPLY a um aviso: a primeira palavra digitada. Quem decide confere se ela é o
+    #: id de OUTRA pendência (28.26); se for, nada se decide. Sem isso o reply decidia o aviso e o id virava nota.
+    ref_digitado: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,7 +183,7 @@ def _rotear_comando(t: str, f: Fato | None) -> Intencao:
         return Intencao("orquestradora", texto=resto)
     if cmd in ("aprovar", "vetar"):
         if f is not None and f.aprovacao:
-            return Intencao(cmd, ref=f.ident, texto=resto)
+            return Intencao(cmd, ref=f.ident, texto=resto, ref_digitado=resto.split()[0] if resto.split() else None)
         ref, _, nota = resto.partition(" ")
         if not ref:
             return Intencao("desconhecida", motivo=f"Falta o id: /{cmd} <id> (a /pendencias mostra os ids).")

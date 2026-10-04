@@ -355,6 +355,28 @@ async def test_reply_ao_aviso_de_aprovacao_decide_como_pessoa(c: Cenario) -> Non
     assert c.linha(5)["alvo"] == "approval:apr-0000aa11"
 
 
+async def test_reply_com_id_de_outra_pendencia_nao_decide_nada(c: Cenario) -> None:
+    # 28.26: o reply é ao aviso do aa11 e o id digitado é o do bb22. Antes, decidia o aa11 com "bb22" de nota.
+    c.repo.registrar_enviada("555", "aviso", fato="approval:apr-0000aa11")
+    await c.volta(msg(5, "/aprovar bb22", reply_to=555))
+    assert "decidir" not in c.portas.nomes()
+    assert c.linha(5)["estado"] == "feita"
+    resposta = c.bot.textos()[-1]
+    assert "nada foi decidido" in resposta and "aa11" in resposta and "bb22" in resposta
+
+
+async def test_reply_com_o_mesmo_id_decide_e_o_id_sai_da_nota(c: Cenario) -> None:
+    c.repo.registrar_enviada("555", "aviso", fato="approval:apr-0000bb22")
+    await c.volta(msg(5, "/vetar bb22 o tom ficou agressivo", reply_to=555))
+    assert c.portas.chamadas[-1] == ("decidir", ("apr-0000bb22", "reject", "o tom ficou agressivo"), OPERADOR_DO_TELEGRAM)
+
+
+async def test_reply_com_nota_que_nao_e_id_segue_como_antes(c: Cenario) -> None:
+    c.repo.registrar_enviada("555", "aviso", fato="approval:apr-0000aa11")
+    await c.volta(msg(5, "/aprovar pode seguir assim", reply_to=555))
+    assert c.portas.chamadas[-1] == ("decidir", ("apr-0000aa11", "approve", "pode seguir assim"), OPERADOR_DO_TELEGRAM)
+
+
 async def test_aprovar_pelo_fim_do_id_e_ambiguidade(c: Cenario) -> None:
     await c.volta(msg(5, "/vetar bb22"), msg(6, "/aprovar aa11"))
     assert c.portas.chamadas[0][:2] == ("decidir", ("apr-0000bb22", "reject"))

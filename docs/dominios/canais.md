@@ -199,6 +199,13 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   - O comando livre fica desligado de fábrica. Ligado, só mostra a prévia, sem executar.
 - **No produto:** 32.2, trello-integracao §3 e §7; `trello.comando_livre: false`.
 - **Prova:** `simulated`.
+- **Aprovar pelo Telegram (conferido na revisão independente do deploy 29, 04/10, e no 28.26):**
+  - "sim" ou "não" só decidem o item do aviso a que respondem. Um "sim" solto vira texto livre: prévia e Executar.
+  - Uma aprovação expirada ou já decidida não é aprovada, porque a decisão só passa com o status `pending`, na mesma
+    transação. Um id que serve para mais de um item é recusado.
+  - `/aprovar <id>` ou `/vetar <id>` em reply a um aviso (28.26): se o id é de OUTRA pendência, nada se decide e a
+    resposta diz qual é qual. Se é o mesmo item, a decisão segue e o id sai da nota. Uma palavra que não é id de
+    pendência é só nota, como antes. Código: `ref_digitado` em `application/entrada.py` e a conferência em `_decidir`.
 
 **C-14 · Cartão novo do dono.**
 - **Origem:** dono 03/10 ~20:10Z.

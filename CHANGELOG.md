@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.26: "/aprovar <id>" em reply a um aviso de outra pendência não decide nada (branch canais/28-26-aprovar-id-e-reply)
+
+- Achado médio da revisão independente do deploy 29. Em reply a um aviso, o `/aprovar` ou `/vetar` decidia o item do
+  aviso e gravava o id digitado como nota. Com o id de outra pendência, aprovava-se o item errado sem dizer.
+- Agora o id digitado é conferido contra as pendências:
+  - outro item: nada se decide, e a resposta diz qual é qual;
+  - o mesmo item: a decisão segue, e o id sai da nota;
+  - uma palavra que não é id continua sendo nota.
+- `simulated`: `tests/test_telegram_entrada.py` tem 3 casos novos, e 2 deles falham contra o código antigo. O teste do
+  roteador também foi coberto. Nos arquivos de canais tocados: 203 passed.
+- Doc: `docs/dominios/canais.md`, depois da C-13.
+
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
 - Retorno do dono (04/10, Aprendizado › Para aprovar com 5 selecionados): o formulário do aceite abria com o botão

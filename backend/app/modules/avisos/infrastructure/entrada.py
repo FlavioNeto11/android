@@ -867,11 +867,27 @@ class ConversaDoCanal:
         return achados[0], ""
 
     async def _decidir(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
-        aid, erro = self._um_id(i.ref or "", self.portas.aprovacoes_pendentes(), "aprovação pendente")
+        pendentes = self.portas.aprovacoes_pendentes()
+        aid, erro = self._um_id(i.ref or "", pendentes, "aprovação pendente")
         if aid is None:
             await self._feita(saida, linha, i, erro)
             return
-        texto = self.portas.decidir(aid, "approve" if i.tipo == "aprovar" else "reject", i.texto or None)
+        nota = i.texto or None
+        if i.ref_digitado:
+            # Reply a um aviso E um id digitado (28.26): se o id é de OUTRA pendência, a pessoa pode estar decidindo a
+            # errada; nada se decide e a resposta diz qual é qual. Se é o mesmo item, segue, e o id sai da nota.
+            # Palavra que não casa com nenhuma pendência é só o começo da nota, como antes.
+            digitados = casar_ref(i.ref_digitado, pendentes)
+            if digitados and aid not in digitados:
+                outro = digitados[0][-6:] if len(digitados) == 1 else "mais de um item"
+                await self._feita(saida, linha, i, (
+                    f"O aviso respondido é do item {aid[-6:]} e o id {i.ref_digitado} é de outro ({outro}): "
+                    f"nada foi decidido. Responda ao aviso só com sim ou não, ou mande /{i.tipo} {i.ref_digitado} "
+                    "sem responder ao aviso."))
+                return
+            if digitados:
+                nota = i.texto.split(maxsplit=1)[1] if len(i.texto.split(maxsplit=1)) > 1 else None
+        texto = self.portas.decidir(aid, "approve" if i.tipo == "aprovar" else "reject", nota)
         await self._feita(saida, linha, i, texto, alvo=f"approval:{aid}")
 
     async def _responder_pergunta(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
