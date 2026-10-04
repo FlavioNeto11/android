@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-339 de 405 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+339 de 411 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -333,6 +333,9 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.60 | pendente | — | — | — |  |  |
 | 29.61 | pendente | — | — | — |  |  |
 | 29.62 | pendente | — | — | — |  |  |
+| 29.63 | pendente | — | — | — |  |  |
+| 29.64 | pendente | — | — | — |  |  |
+| 29.65 | pendente | — | — | — |  |  |
 | 29.44 | implemented | real | opus (sessão Android) | — | feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a med… |  |
 | 29.45 | implemented | simulated | opus (sessão Android) | — | feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entr… |  |
 | 29.43 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/caminho-rapido-1 @60e7962e: LT-1 (atalho de entrada sem o ator, ATALHO_ANTES_DO_ATOR, nunca em etapa com efeito, driven_by='sem_ator'), LT-2 (expect_done em etapa julgada → _verify(uma_rodada=True), nunca em etapa… |  |
@@ -403,8 +406,11 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.21 | pendente | — | — | — |  |  |
 | 31.22 | implemented | real | claude-opus-5-5 | — | PR #169 @ 82dcde1e mais o fix 671a0482 (a leitura da sombra conhece a coluna nova), na main pela suíte 14 (51270b9c): migração 086_sombra_estado_hash, decisao_fechada_sombra.estado_hash = sha256 do estado depois do priv… |  |
 | 31.23 | implemented | simulated | claude-opus-5-5 | — | PR #169 @ 82dcde1e (branch feat/31-8-sinal-curador-v2), na main pela suíte 14 (51270b9c) e no deploy 14: curador.estado_do_dossie_v2 soma ao v1 os campos fechados de sinal (versão viva, uso, idade da evidência a favor,… |  |
-| 31.24 | implemented | simulated | claude-opus-5-5 | — | PR #175 @ b0dcf408 (branch feat/31-24-latencia-por-etapa), na main pela suíte 16 (deploy 16, 3b5355ce; /api/health às 00:01Z de 04/10: migração 088_latencia_por_etapa, problems []). Migração 088 (só ADD COLUMN e tabela… |  |
+| 31.24 | implemented | real | claude-opus-5-5 | — | PR #175 @ b0dcf408 (branch feat/31-24-latencia-por-etapa), na main pela suíte 16 (deploy 16, 3b5355ce; /api/health às 00:01Z de 04/10: migração 088_latencia_por_etapa, problems []). Migração 088 (só ADD COLUMN e tabela… |  |
 | 31.25 | implemented | simulated | claude-opus-5-5 | — | Commit 2962f2e7, na main por cherry-pick como 3b5355ce (deploy 16). backend/app/planning/decisao_fechada/curador.py: evidencias_contra conta só POSICOES_CONTRA = {against, conflict}; a forma (30.36) e a invalida (30.42)… |  |
+| 31.26 | pendente | — | — | — |  |  |
+| 31.27 | pendente | — | — | — |  |  |
+| 31.28 | pendente | — | — | — |  |  |
 | 32.1 | implemented | not_run | opus (sessão jev, executora da orquestradora) | — | Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env,… |  |
 | 32.2 | pendente | — | — | — |  |  |
 | T.1 | implemented | not_run | opus | ok | docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, rea… | Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de produca… |
@@ -412,7 +418,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (66): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 28.16, 28.17, 28.18, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 29.53, 29.55, 29.56, 29.57, 29.58, 29.59, 29.60, 29.61, 29.62, 30.18, 30.31, 30.34, 30.36, 30.37, 30.38, 30.40, 30.41, 30.42, 30.43, 30.44, 31.10, 31.11, 31.12, 31.21, 32.2, T.2
+Pendentes (72): 8.3, 8.4, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 28.16, 28.17, 28.18, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 29.53, 29.55, 29.56, 29.57, 29.58, 29.59, 29.60, 29.61, 29.62, 29.63, 29.64, 29.65, 30.18, 30.31, 30.34, 30.36, 30.37, 30.38, 30.40, 30.41, 30.42, 30.43, 30.44, 31.10, 31.11, 31.12, 31.21, 31.26, 31.27, 31.28, 32.2, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

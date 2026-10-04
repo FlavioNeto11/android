@@ -6536,8 +6536,8 @@
   "31.24": {
    "id": "31.24",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #175 @ b0dcf408 (branch feat/31-24-latencia-por-etapa), na main pela suíte 16 (deploy 16, 3b5355ce; /api/health às 00:01Z de 04/10: migração 088_latencia_por_etapa, problems []). Migração 088 (só ADD COLUMN e tabela nova): ai_calls.started_at, vaga_ms e prep_settle/observacao/arvore/imagem/prompt_ms (C-3, C-2); actions.ai_call_id (C-1); attempts.juiz_espera_ms, verificacao_ms, evidencia_ms (C-4); tabela esperas por motivo, escrita só quando o motivo muda (C-5); pendurada derivada na leitura, sem gravação nem vigia. Leitura versionada scripts/latencia-por-etapa.py (só leitura, só números e ids; --sem-bateria até o contrato do 32.3); o 'antes' real de 03/10 em docs/ia.md §18. simulated: backend/tests/test_latencia_por_etapa.py (15, inclusive o Harness de ponta a ponta e test_sobrecarga_em_instrucoes_ao_banco) e scripts/tests/test_latencia_por_etapa.py (4); afetados 264 arquivos no aca615d0: 5232 passed, 1 skipped; scripts/tests 535 passed; suíte 16 da orquestradora. Sobrecarga: 0 instrução a mais ao banco por decisão, ação e tentativa; ~4,8 µs de CPU por decisão (timeit). O real (o 'depois' medido no central) é a medida pedida depois do deploy 16; atualizo este item quando a página sair.",
+   "proof": "real",
+   "evidence": "PR #175 @ b0dcf408 (branch feat/31-24-latencia-por-etapa), na main pela suíte 16 (deploy 16, 3b5355ce; /api/health às 00:01Z de 04/10: migração 088_latencia_por_etapa, problems []). Migração 088 (só ADD COLUMN e tabela nova): ai_calls.started_at, vaga_ms e prep_settle/observacao/arvore/imagem/prompt_ms (C-3, C-2); actions.ai_call_id (C-1); attempts.juiz_espera_ms, verificacao_ms, evidencia_ms (C-4); tabela esperas por motivo, escrita só quando o motivo muda (C-5); pendurada derivada na leitura, sem gravação nem vigia. Leitura versionada scripts/latencia-por-etapa.py (só leitura, só números e ids; --sem-bateria até o contrato do 32.3); o 'antes' real de 03/10 em docs/ia.md §18. simulated: backend/tests/test_latencia_por_etapa.py (15, inclusive o Harness de ponta a ponta e test_sobrecarga_em_instrucoes_ao_banco) e scripts/tests/test_latencia_por_etapa.py (4); afetados 264 arquivos no aca615d0: 5232 passed, 1 skipped; scripts/tests 535 passed; suíte 16 da orquestradora. Sobrecarga: 0 instrução a mais ao banco por decisão, ação e tentativa; ~4,8 µs de CPU por decisão (timeit). real: 04/10/2026, WIN-7S2UASNLFOP, central em 3b5355ce (deploy 16, reinício 23:58:00–23:59:06Z, migração 088). Leitura só leitura (mode=ro + query_only) às 00:26:39Z: scripts/latencia-por-etapa.py --desde 2026-10-03T23:59:06Z --sem-bateria; colunas ausentes: nenhuma; 4 execuções (r-20261004000108-fee44f, r-20261004000905-ef5c86, r-20261004001905-9c839c, r-20261004002501-4af285), 13 decides todos pareados pela actions.ai_call_id (0 sem ação), preparo com 0 'outros' negativos, 20 tentativas com juiz/verificação/evidência, 1 espera 'pessoa', pendurada confiável (p95 0,7 s por execução). Página: .claude/handoffs/jev-latencia-depois-2026-10-04.md (amostra pequena e marcada: 3 das 4 na rodada de PG do 29.62 ou prova do 29.58).",
    "blocker": "",
    "arquivos": [
     "backend/migrations/088_latencia_por_etapa.sql",
@@ -6555,7 +6555,7 @@
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T00:04:22+00:00"
+   "quando": "2026-10-04T00:34:23+00:00"
   },
   "31.25": {
    "id": "31.25",
@@ -6573,7 +6573,7 @@
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T00:04:22+00:00"
+   "quando": "2026-10-04T00:34:23+00:00"
   }
  },
  "rodadas": [
@@ -8216,6 +8216,16 @@
   },
   {
    "quando": "2026-10-04T00:04:22+00:00",
+   "itens": [
+    "31.24",
+    "31.25"
+   ],
+   "grupos": [
+    "jev-31-24-31-25"
+   ]
+  },
+  {
+   "quando": "2026-10-04T00:34:23+00:00",
    "itens": [
     "31.24",
     "31.25"
