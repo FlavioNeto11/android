@@ -22,7 +22,7 @@ from app.modules.learning.domain.falhas import (CAMADA, NUNCA_VIRA_LICAO, ONDE_A
                                                 camada_de, classificar_falha, classificar_texto,
                                                 falha_do_retorno_de_receita, onde_alterar)
 from app.taskqueue import recipes
-from app.taskqueue.executor import ciclo_sem_progresso
+from app.taskqueue.executor import PREFIXO_DADO_AUSENTE, ciclo_sem_progresso
 
 F = FailureKind
 EXECUTOR = Path(__file__).resolve().parents[1] / "app" / "taskqueue" / "executor.py"
@@ -170,7 +170,28 @@ def _motivos_do_executor() -> list[str]:
             motivos += _literal(no.args[0])
         elif nome == "StepOutcome" and len(no.args) >= 2 and _e_desfecho_de_falha(no.args[0]):
             motivos += _literal(no.args[1])
+        elif nome == "dado_ausente":
+            motivos += [_texto_do_dado_ausente(m) for m in _literal(no.args[0])]
     return motivos
+
+
+def _texto_do_dado_ausente(motivo: str) -> str:
+    """O texto que `dado_ausente(motivo, obs)` do executor monta (31.38), com as partes variáveis como 'N'."""
+    return f"{PREFIXO_DADO_AUSENTE} procurei 'N' na etapa 'N' do N e não encontrei ({motivo})."
+
+
+def test_o_dado_ausente_de_todo_motivo_e_alvo_ausente() -> None:
+    """30.58: os 7 de 04/10 caíam em `outro`; o do teto ia para `ia_orcamento`, que nunca vira lição."""
+    arvore = ast.parse(EXECUTOR.read_text(encoding="utf-8"))
+    motivos = [m for no in ast.walk(arvore) if isinstance(no, ast.Call) and isinstance(no.func, ast.Name)
+               and no.func.id == "dado_ausente" and no.args for m in _literal(no.args[0])]
+    assert len(motivos) >= 4, f"a varredura achou só {len(motivos)} motivos de dado ausente"
+    assert {classificar_texto(_texto_do_dado_ausente(m)) for m in motivos} == {F.ALVO_AUSENTE}
+    real = ("Dado ausente: procurei 'manchete' na etapa 'Ler manchete principal' do Chrome e não encontrei "
+            "(o modelo de ação não o achou na tela).")
+    assert classificar_texto(real) is F.ALVO_AUSENTE
+    # a conduta do ator (31.38) continua do ator: "dado ausente" fora de etapa de leitura não é esta regra
+    assert classificar_texto("A IA insistiu em 'dado ausente' numa etapa que não é de leitura.") is F.IA_CHAMADA_INVALIDA
 
 
 def test_todo_motivo_literal_do_executor_cai_fora_de_outro() -> None:
