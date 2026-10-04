@@ -60,12 +60,15 @@ CRITERIO: Final = {
     "cancelada": "execução cancelada (à mão ou pelo teto de US$ 0,25 por execução) conta como insucesso do braço dela",
     "inconclusivo": "menos pares completos que o mínimo, execução de par completo ainda rodando, ou braço sem etapa que"
                     " rodou com o sucesso do ligado igual ou maior",
-    "ordem": "o sucesso decide primeiro: ligado com menos sucesso que o desligado é nao_liga, com ou sem etapa; só"
-             " depois o braço sem etapa dá inconclusivo (os dois sem etapa também); por fim, as decisões por etapa",
+    "ordem": "1) menos pares completos que o mínimo: inconclusivo; 2) execução de par completo ainda rodando:"
+             " inconclusivo; 3) ligado com menos sucesso que o desligado: nao_liga, com ou sem etapa; 4) com sucesso"
+             " igual ou maior, braço sem etapa que rodou: inconclusivo; 5) a razão das decisões por etapa decide",
     "chave_repetida": "a chave é única: repetir o disparo devolve a execução original e não cria outra; cada par precisa"
                       " de NN novo, e quem dispara confere que cada chave criou uma execução nova",
     "pre_registrado": "2026-10-04 22:49Z (orquestradora), antes de qualquer execução do 31.56; bordas V1 a V3 da revisão"
-                      " às 23:25Z, também antes de qualquer execução",
+                      " às 23:25Z e N1 (o sucesso decide antes de 'braço sem etapa') às 23:51:15Z, os dois antes de"
+                      " qualquer execução (orquestradora conferiu no banco do central às 23:51:00Z, só leitura: zero"
+                      " execuções com chave lote:jev:31.56%)",
 }
 TERMINAIS: Final = frozenset(s.value for s in RUN_TERMINAL)
 LIMITE: Final = Fraction(1, 5)          # os 20 % do critério, exatos
