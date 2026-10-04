@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-346 de 413 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+349 de 414 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -333,7 +333,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.59 | pendente | — | — | — |  |  |
 | 29.60 | pendente | — | — | — |  |  |
 | 29.61 | pendente | — | — | — |  |  |
-| 29.62 | pendente | — | — | — |  |  |
+| 29.62 | implemented | real | opus | — | PR #184 (3cc8c1aa, com a revisao da Android: a 2a chave lida uma vez e o mesmo inteiro no lock e no unlock), na main pela suite 17 e no ar no deploy 17 (0b7c2c39, 01:14:31Z de 04/10; o backend do central subiu migrando… |  |
 | 29.63 | pendente | — | — | — |  |  |
 | 29.64 | pendente | — | — | — |  |  |
 | 29.65 | pendente | — | — | — |  |  |
@@ -382,8 +382,8 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.40 | implemented | simulated | opus | — | PR #174 (merge 3af38a45) na main e no ar no deploy 16 (central em 3b5355ce, migracao 088). Simulado: backend/tests/test_learning_prova_validacao.py e backend/tests/test_learning_curador_dominio.py; 981 passed em SQLite… |  |
 | 30.41 | implemented | real | opus | — | Real, 04/10, central em 3b5355ce (deploy 16), banco so leitura as 00:30Z: as provas de fluxo lv-aedde49e (run r-20261004000905-ef5c86, android-09, 6 etapas) e lv-d8ee3b5f (run r-20261004001905-9c839c, android-10, 6 etap… |  |
 | 30.42 | implemented | real | opus | — | Real, 04/10, central em 3b5355ce (deploy 16), banco so leitura: (a) a ev:48 ganhou a irma invalida id 178 (fluxo:enviar-a-mensagem-entrega-poc-instance-i, run r-20261003205026-5f2de5, detalhe 'invalida:efeito_repetido,… |  |
-| 30.43 | pendente | — | — | — |  |  |
-| 30.44 | pendente | — | — | — |  |  |
+| 30.43 | implemented | real | opus | — | Real, 04/10, central em 0b7c2c39 (deploy 17, 01:14:31Z), banco so leitura: as 01:29:29Z o passo receitas_efeito_repetido gravou 6 irmas invalida 'invalida:efeito_repetido, o efeito saiu 2 vezes nesta execucao' (ev 207-2… |  |
+| 30.44 | implemented | real | opus | — | Real, 04/10, central em 0b7c2c39 (deploy 17): a primeira prova depois do deploy, r-20261004012429-e25100 (lv-2074a6c3, feita, US$ 0,0675), gravou as 01:24:33Z 'ponto de partida. Encerrou com.pocqa.messenger (sem apagar… |  |
 | 30.45 | pendente | — | — | — |  |  |
 | 31.1 | implemented | simulated | sessao | — | Commit b5a40c98 (na main desde o PR #110, sessao jev, 02/10/2026): trava de 255 opcoes e opcao nenhuma no adaptador do Jev (choice). backend/tests/test_context_retrieval_semantic.py com provedor falso. Chamada real: not… |  |
 | 31.2 | implemented | simulated | sessao | — | PR #112 (merge b5baf3e5 na main, commits 89a92b03 + a6cfa0fd, sessao jev, 02/10/2026): migracao 073 (ai_calls.origem e ref, TEXT sem CHECK), Usage.origem, filtro por origem no gasto (costs.spent_usd). backend/tests/test… |  |
@@ -413,6 +413,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.26 | pendente | — | — | — |  |  |
 | 31.27 | pendente | — | — | — |  |  |
 | 31.28 | pendente | — | — | — |  |  |
+| 31.29 | pendente | — | — | — |  |  |
 | 32.1 | implemented | not_run | opus (sessão jev, executora da orquestradora) | — | Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env,… |  |
 | 32.2 | pendente | — | — | — |  |  |
 | T.1 | implemented | not_run | opus | ok | docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, rea… | Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de produca… |
@@ -420,7 +421,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (67): 8.3, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 28.16, 28.17, 28.18, 28.19, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 29.53, 29.57, 29.59, 29.60, 29.61, 29.62, 29.63, 29.64, 29.65, 30.18, 30.31, 30.34, 30.36, 30.37, 30.38, 30.43, 30.44, 30.45, 31.10, 31.11, 31.12, 31.21, 31.26, 31.27, 31.28, 32.2, T.2
+Pendentes (65): 8.3, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 28.16, 28.17, 28.18, 28.19, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 29.53, 29.57, 29.59, 29.60, 29.61, 29.63, 29.64, 29.65, 30.18, 30.31, 30.34, 30.36, 30.37, 30.38, 30.45, 31.10, 31.11, 31.12, 31.21, 31.26, 31.27, 31.28, 31.29, 32.2, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

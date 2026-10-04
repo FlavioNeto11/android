@@ -6644,6 +6644,45 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-04T01:18:16+00:00"
+  },
+  "30.43": {
+   "id": "30.43",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, 04/10, central em 0b7c2c39 (deploy 17, 01:14:31Z), banco so leitura: as 01:29:29Z o passo receitas_efeito_repetido gravou 6 irmas invalida 'invalida:efeito_repetido, o efeito saiu 2 vezes nesta execucao' (ev 207-212) nas reproducoes de receita das execucoes de validacao r-20261003205026-5f2de5 (receitas 64, 29, 78; idempotency validacao:lv-8232c6a4) e r-20261003215721-6f459c (receitas 29, 64, 82; validacao:lv-adf5ca9f). A 6f459c com a receita:82 e o caso que abriu o 30.43, e foi reclassificada pela regra, sem lista. A API do central devolve nasceu_em=validacao_qa na receita:123 (11 receitas nasceram em execucao de validacao: 123-125, 127, 129-131, 133, 137, 138, 140) e o pedido da execucao 0acd2f no filtro run. PR #182 (a63d57b7), na main pela suite 17 e no ar no deploy 17 (0b7c2c39, 01:14:31Z de 04/10; /api/health ok, migracao 088, sem problemas). Simulado: test_learning_reproducao_repetida.py, test_learning_nasceu_em_validacao.py, test_validacoes_listagem.py::test_a_listagem_filtra_por_item_e_por_execucao, test_learning_prova_ponto_de_partida.py::test_a_reexecucao_da_validacao_do_qa_tambem_parte_de_estado_conhecido e vitest (ValidacaoTab, DetalheRico, ResumoDaExecucao); PG dos afetados da suite 17: 1560 passed com -n 8. Navegador em 04/10, 00:36-00:42Z, servidor proprio (8765/5188, copia do banco do central, IA simulada), registrado no PR #182: Nao rodou / Rodou; depois, a marca Nasceu numa re-execucao da validacao do QA, a evidencia na ordem do acontecido com a invalida legivel e o veredito no Resumo. ",
+   "blocker": "",
+   "grupo": "30.43-30.44-29.62",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T01:35:11+00:00"
+  },
+  "30.44": {
+   "id": "30.44",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, 04/10, central em 0b7c2c39 (deploy 17): a primeira prova depois do deploy, r-20261004012429-e25100 (lv-2074a6c3, feita, US$ 0,0675), gravou as 01:24:33Z 'ponto de partida. Encerrou com.pocqa.messenger (sem apagar dados) e abriu com.pocqa.messenger: o app esta em primeiro plano.' A 0acd2f, de 00:55Z e antes do deploy, ainda tinha a abertura recusada. O ritmo de 4 por hora contado por runs.created_at segue a observar: desde 00:20Z foram so 3 execucoes de validacao (00:29, 00:55, 01:24), abaixo do limite, e por isso nada a medir ainda. PR #183 (ae80a31b), na main pela suite 17 e no ar no deploy 17 (0b7c2c39). Inclui a correcao do ponto de partida (open_app(..., pela_execucao=True)), achada no central: 3 de 3 provas do deploy 16 tinham a abertura recusada pela trava contra a IA. Simulado: test_learning_ritmo_p4.py, test_learning_titulo_da_etapa.py, test_learning_prova_ponto_de_partida.py::test_a_abertura_do_ponto_de_partida_e_da_propria_execucao (falha sem a correcao) e vitest. Navegador (04/10 00:36-00:42Z, servidor proprio): o titulo da etapa ao lado da chave, a evidencia em ordem decrescente e o motivo da eficacia ('3 de 5 deram certo (60%), abaixo de 80%'). ",
+   "blocker": "",
+   "grupo": "30.43-30.44-29.62",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T01:35:11+00:00"
+  },
+  "29.62": {
+   "id": "29.62",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "PR #184 (3cc8c1aa, com a revisao da Android: a 2a chave lida uma vez e o mesmo inteiro no lock e no unlock), na main pela suite 17 e no ar no deploy 17 (0b7c2c39, 01:14:31Z de 04/10; o backend do central subiu migrando sob a trava de duas chaves, /api/health ok, migracao 088). Medida real no farm-pg (PostgreSQL 17 de teste nesta maquina), 04/10: (a) os 1016 testes do aprendizado com -n 4 em 10 min 49 s (00:08:00-00:18:54Z) e com -n 8 em 7 min 58 s (00:18:54-00:26:56Z), contra 22 min com -n 4 antes do 29.62; (b) o PG dos afetados da suite 17 (orquestradora): 1560 passed com -n 8 em 12 min 36 s. Simulado: test_trava_de_migracao_por_esquema.py (esquemas diferentes nao se bloqueiam, o mesmo bloqueia, duas migracoes correm juntas, e o unlock solta a mesma chave com o search_path trocado), 6 passed em PG as 01:18Z de 04/10 (rodada a do 29.63). Rodada do 29.63 em PG com a trava por esquema (04/10, farm-pg, -n 8, mesmos testes): 1033 passed + 2 skipped em 8 min 49 s sem o esquema do worker e em 2 min 51 s com ele.",
+   "blocker": "",
+   "grupo": "30.43-30.44-29.62",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T01:35:11+00:00"
   }
  },
  "rodadas": [
@@ -8326,6 +8365,17 @@
    ],
    "grupos": [
     "android-deploy16-e-8.4"
+   ]
+  },
+  {
+   "quando": "2026-10-04T01:35:11+00:00",
+   "itens": [
+    "30.43",
+    "30.44",
+    "29.62"
+   ],
+   "grupos": [
+    "30.43-30.44-29.62"
    ]
   }
  ]
