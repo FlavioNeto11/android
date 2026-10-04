@@ -114,3 +114,31 @@ def test_com_dois_porta_vozes_o_terceiro_nao_toca_e_entre_eles_vale_um_por_alvo(
     assert policies.check(b, _curtir(), counterparty=ALVO, pedido=pedido).allowed
     _curtiu(svc, a)                                            # um porta-voz tocou: o outro não toca o mesmo alvo
     assert not policies.check(b, _curtir(), counterparty=ALVO, pedido=pedido).allowed
+
+
+# ------------------------------------------------------------------ ligação: a porta do despacho lê o pedido da execução
+def _pedido_da_familia(state: Any, *pids: str) -> str:
+    """Um pedido raiz cujos alvos são estas personas, e a execução `run-f` nascida dele (`runs.pedido_id`, 28.4)."""
+    alvos = ",".join(f'{{"profile_id":"{p}"}}' for p in pids)
+    state.db.execute("INSERT INTO pedidos(id, titulo, objetivo, alvos, criado_em, atualizado_em)"
+                     " VALUES ('ped-familia','Curtir','curtir',?,'2026-10-04T10:00:00Z','2026-10-04T10:00:00Z')",
+                     (f'{{"alvos":[{alvos}]}}',))
+    state.db.execute("UPDATE runs SET pedido_id='ped-familia' WHERE id='run-f'")
+    return "ped-familia"
+
+
+async def test_a_porta_do_despacho_le_a_familia_do_pedido_da_execucao(harness: Any) -> None:
+    """30.62 ligado ao `_policy_gate`: curtir aceita mais de uma conta por alvo na frota, mas no pedido entre personas a
+    família conta como UMA. Sem `runs.pedido_id`, a mesma etapa não ouve falar do 30.62."""
+    from .test_protecao_de_frota import ALVO, _execucao_em_duas_contas, _porta
+
+    state = harness.state
+    pids = _execucao_em_duas_contas(state, "LIKE_POST", {"post_author": ALVO})
+    state.social_repo.record_interaction(pids["android-02"], type="post_liked", direction="outbound",
+                                         status=InteractionStatus.confirmed.value, counterparty=ALVO, app_id="ig")
+    sem_pedido = await _porta(state, "android-01")
+    assert sem_pedido is None or "30.62" not in (sem_pedido.reason or "")
+    _pedido_da_familia(state, *pids.values())
+    no_pedido = await _porta(state, "android-01")
+    assert no_pedido is not None and not no_pedido.allowed and no_pedido.retry_at is None
+    assert "30.62" in no_pedido.reason

@@ -117,6 +117,7 @@ from .social.approvals import (ApprovalService, ApprovalStore, definir_texto, gu
 from .social.persona_batch import LotesDePersona
 from .social.policy import UMA_CONTA_POR_ALVO, PolicyEngine, Verdict
 from .social.service import SocialError, SocialService, thread_de_dm
+from .modules.pedidos.infrastructure.contexto import contexto_do_pedido
 from .modules.pedidos.infrastructure.laco import LacoDePedidos
 from .modules.pedidos.infrastructure.saldo import motivo_de_adiamento
 from .modules.pedidos.infrastructure.servico import PedidosApi
@@ -2124,9 +2125,11 @@ class AppState:
                                    instance_id=obj["instance_id"], step_id=srow["id"])
         # `package`: a política é do APP desta etapa (23.10) — SEND_MESSAGE do Instagram e o de outro catálogo são
         # escolhas diferentes do perfil.
+        # 30.62: a execução que nasceu de um pedido entre personas leva a família dele; as personas da família contam
+        # como UMA conta por alvo e a pessoa real sem conversa passa por aprovação. Sem pedido, `None` e nada muda.
         veredito = self.policies.check(profile_id, cap, run_id=obj["run_id"], counterparty=alvo,
                                        app_id=app_da_etapa.id if app_da_etapa else None, package=pacote,
-                                       step_id=srow["id"])
+                                       step_id=srow["id"], pedido=contexto_do_pedido(self.db, obj["run_id"]))
         if not veredito.allowed:
             return veredito
         # O texto é escrito AQUI, com a persona deste perfil, antes de qualquer digitação e antes da aprovação —

@@ -50,8 +50,8 @@ async def test_a_execucao_de_um_filho_sobe_a_raiz_e_lista_a_familia(h: Harness) 
     _alvos(h, pesq, "persona-pesq")
     ctx = contexto_do_pedido(h.state.db, _run(h, pv))
     assert ctx == ContextoDoPedido(raiz=pai, familia=frozenset({"persona-raiz", "persona-pv", "persona-pesq"}),
-                                   porta_voz="persona-pv")
-    assert {f.name for f in dataclasses.fields(ctx)} == {"raiz", "familia", "porta_voz"}
+                                   porta_vozes=frozenset({"persona-pv"}))
+    assert {f.name for f in dataclasses.fields(ctx)} == {"raiz", "familia", "porta_vozes"}
 
 
 async def test_a_execucao_da_raiz_tem_a_mesma_familia(h: Harness) -> None:
@@ -63,7 +63,7 @@ async def test_a_execucao_da_raiz_tem_a_mesma_familia(h: Harness) -> None:
     _alvos(h, pai, "persona-raiz")
     _alvos(h, pv, "persona-pv")
     ctx = contexto_do_pedido(h.state.db, _run(h, pai))
-    assert ctx is not None and ctx.raiz == pai and ctx.porta_voz == "persona-pv"
+    assert ctx is not None and ctx.raiz == pai and ctx.porta_vozes == {"persona-pv"}
     assert ctx.familia == frozenset({"persona-raiz", "persona-pv"})
 
 
@@ -74,7 +74,7 @@ async def test_contraprova_execucao_sem_pedido_ou_inexistente_e_none(h: Harness)
         assert contexto_do_pedido(h.state.db, r["id"]) is None
 
 
-async def test_sem_porta_voz_ou_com_ambiguidade_o_porta_voz_e_none(h: Harness) -> None:
+async def test_sem_porta_voz_e_com_dois_os_porta_vozes_sao_o_conjunto(h: Harness) -> None:
     _ligar(h)
     c = _cliente(h)
     pai = _pai(c, "pai-ctx-0003", gatilhos=[AGORA])
@@ -85,13 +85,13 @@ async def test_sem_porta_voz_ou_com_ambiguidade_o_porta_voz_e_none(h: Harness) -
     # porta-voz sem persona resolvida (aparelho sem vínculo único): ninguém é inventado
     h.state.db.execute("UPDATE pedidos SET alvos=NULL WHERE id=?", (pv,))
     ctx = contexto_do_pedido(h.state.db, run)
-    assert ctx is not None and ctx.porta_voz is None and ctx.familia == frozenset({"persona-raiz"})
-    # duas personas no porta-voz: ambíguo, a porta decide pelo mais restrito
+    assert ctx is not None and ctx.porta_vozes == frozenset() and ctx.familia == frozenset({"persona-raiz"})
+    # duas personas no porta-voz: as duas são porta-vozes (30.62: só elas tocam um alvo; entre elas, uma conta por alvo)
     _alvos(h, pv, "persona-a", "persona-b")
     ctx = contexto_do_pedido(h.state.db, run)
-    assert ctx is not None and ctx.porta_voz is None and {"persona-a", "persona-b"} <= ctx.familia
+    assert ctx is not None and ctx.porta_vozes == {"persona-a", "persona-b"} and {"persona-a", "persona-b"} <= ctx.familia
     # porta-voz cancelado deixa de ser porta-voz; a persona dele segue na família (já agiu, a porta olha o histórico)
     _alvos(h, pv, "persona-pv")
     h.state.db.execute("UPDATE pedidos SET estado='cancelado' WHERE id=?", (pv,))
     ctx = contexto_do_pedido(h.state.db, run)
-    assert ctx is not None and ctx.porta_voz is None and "persona-pv" in ctx.familia
+    assert ctx is not None and ctx.porta_vozes == frozenset() and "persona-pv" in ctx.familia
