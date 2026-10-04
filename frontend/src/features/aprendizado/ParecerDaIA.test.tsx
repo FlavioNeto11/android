@@ -123,13 +123,21 @@ describe('parecer da IA na fila', () => {
     await click(byRole('checkbox', /Selecionar/, item('licao:li-b')));
     expect(text(botao())).toContain('(1)');
     await click(botao());
+    // 30.54: antes do motivo, o que o curador sugere para cada item e quem fica de fora; o botão apagado diz por quê.
+    const resumo = container.querySelector('[data-resumo-do-lote]') as Element;
+    expect(text(resumo)).toContain('O curador sugere:');
+    expect(text(resumo)).toContain('1 selecionado fica de fora (classe C ou sem parecer)');
+    expect(text(container.querySelector('ul[aria-label="O que cada aceite faz"]') as Element)).toContain('validado (ainda não publicado)');
+    expect(text(container.querySelector('[data-por-que-apagado]') as Element)).toContain('Diga o motivo');
+    expect(byRole('button', /^Aprovar selecionados/, container).className).not.toMatch(/primary/i);
     await setValue(byRole('textbox', /Motivo do aceite em lote/, container) as HTMLInputElement, 'pareceres conferidos');
+    expect(container.querySelector('[data-por-que-apagado]')).toBeNull();
     await click(byRole('button', /^Aceitar 1 parecer/, container));
     await waitFor(() => expect(chamadas(/\/parecer\//)).toHaveLength(1));
     expect(chamadas(/\/parecer\//)[0]?.path).toBe('/api/aprendizado/licao/li-b/parecer/lr-b');
     expect(chamadas(/\/parecer\//)[0]?.body).toEqual({ resposta: 'aceitar', motivo: 'pareceres conferidos', em_lote: true });
     const [aviso] = useToastStore.getState().toasts;
-    expect(aviso?.title).toContain('1 parecer(es) aceito(s) de 2');
+    expect(aviso?.title).toContain('1 parecer aceito de 2 itens selecionados');
     expect(JSON.stringify(aviso?.details)).toContain('Classe C: decida item a item');
     expect(aviso?.details).toContain('Role a lista antes: validado (ainda não publicado)');   // validar não é publicar
     expect(chamadas(/\/status$/)).toHaveLength(0);                       // aceitar o parecer não é o /status

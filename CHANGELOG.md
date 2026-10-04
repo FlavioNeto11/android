@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
+
+- Retorno do dono (04/10, Aprendizado › Para aprovar com 5 selecionados): o formulário do aceite abria com o botão
+  "Aceitar 5 parecer(es)" apagado e caído na linha da dica, "Aprovar selecionados" seguia como ação principal e nada
+  dizia o que o curador sugeria.
+- `DecisaoInline`: o campo e os botões na mesma linha (vale para toda decisão do livro); o motivo de o botão estar
+  apagado fica à vista embaixo, não só para o leitor de tela; resumo opcional acima do campo.
+- `ParaAprovarTab`: o resumo do lote (o efeito de cada aceite, a conta por efeito e quantos ficam de fora, classe C ou
+  sem parecer); "Aprovar selecionados" deixa de ser a ação principal com o aceite aberto; plural certo ("1 parecer",
+  "5 pareceres", "1 selecionado", e o aviso final).
+- Prova `simulated`: `ParecerDaIA.test.tsx` (aceite em lote), 1493 testes do painel e typecheck. A tela no navegador
+  fica para depois do deploy (`not_run`).
+
 ## 2026-10-04 — 30.52: o dossiê do curador pela marca do conteúdo e a recusa do pedido pela pessoa (branch fix/30-52-dossie-pela-marca)
 
 - O parecer lr-1cfb91a981c5f21f citou `against` da versão antiga do fluxo reaprendido e pediu uma reprodução que já

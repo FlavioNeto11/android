@@ -43,6 +43,40 @@ type Lote = 'aprovar' | 'rebaixar' | 'confirmar' | 'pareceres-fila' | 'pareceres
 /** O parecer da linha entra no aceite em lote? O backend já disse (`recusa_no_lote` nulo: classe B, real, atual). */
 const entraNoLote = (e: EntradaDoLivro): boolean => !!e.parecer && !e.parecer.recusa_no_lote;
 
+/** 30.54: "1 parecer", "5 pareceres" (o "parecer(es)" confundia quem decide). */
+const pareceres = (n: number): string => (n === 1 ? '1 parecer' : `${n} pareceres`);
+const selecionados = (n: number): string => (n === 1 ? '1 selecionado' : `${n} selecionados`);
+
+/**
+ * 30.54: o que o aceite em lote vai fazer, antes do motivo. O dono via só "Aceitar 5 parecer(es)" sem saber o que o
+ * curador sugeria para cada item: aqui vai o efeito de cada aceite (o mesmo `efeitoDoAceite` do aviso final), a conta
+ * por efeito e quem fica de fora e por quê.
+ */
+function ResumoDoLote({ escolhidos, tituloDe }: {
+  escolhidos: readonly EntradaDoLivro[]; tituloDe: (e: EntradaDoLivro) => string;
+}) {
+  const entram = escolhidos.filter(entraNoLote);
+  const fora = escolhidos.length - entram.length;
+  const porEfeito = new Map<string, number>();
+  for (const e of entram) {
+    const efeito = efeitoDoAceite(e.parecer?.acao ?? null);
+    porEfeito.set(efeito, (porEfeito.get(efeito) ?? 0) + 1);
+  }
+  return (
+    <>
+      <span data-resumo-do-lote>
+        O curador sugere: {[...porEfeito].map(([efeito, n]) => `${efeito} (${n})`).join(', ')}.
+        {fora > 0 ? ` ${fora === 1 ? '1 selecionado fica' : `${fora} selecionados ficam`} de fora (classe C ou sem parecer): decida item a item.` : ''}
+      </span>
+      <ul aria-label="O que cada aceite faz">
+        {entram.map((e) => (
+          <li key={chaveDoItem(e)}>{tituloDe(e)}: {efeitoDoAceite(e.parecer?.acao ?? null)}</li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 /** O botão "Aceitar pareceres" de uma seção: só com o curador ligado e algum parecer à vista. */
 function AceitarPareceres({ modo, itens, escolhidos, onAbrir }: {
   modo: ModoDoCurador | null; itens: readonly EntradaDoLivro[]; escolhidos: readonly EntradaDoLivro[]; onAbrir: () => void;
@@ -163,7 +197,7 @@ export function ParaAprovarTab() {
     }
     toast({
       tone: falhas.length > 0 ? 'warning' : 'success',
-      title: `${ok} parecer(es) aceito(s) de ${itens.length} item(ns) selecionado(s)`,
+      title: `${ok === 1 ? '1 parecer aceito' : `${ok} pareceres aceitos`} de ${itens.length === 1 ? '1 item selecionado' : `${itens.length} itens selecionados`}`,
       details: falhas.length + feitos.length > 0 ? [...falhas, ...feitos] : null,
     });
     setSelFila(new Set());
@@ -210,12 +244,13 @@ export function ParaAprovarTab() {
         {fila.erro ? <LoadErrorBanner error={fila.erro} onRetry={() => void carregar()} /> : null}
         {itensFila.length > 0 ? (
           <div className={styles.toolbar}>
-            <span className={styles.secaoLead}>{escolhidosFila.length} selecionado(s)</span>
+            <span className={styles.secaoLead}>{selecionados(escolhidosFila.length)}</span>
             <div className={styles.toolbarFim}>
               <Button size="sm" variant="ghost" onClick={() => setSelFila(new Set(itensFila.map(chaveDoItem)))}>Selecionar todos</Button>
               <AceitarPareceres modo={modo} itens={itensFila} escolhidos={escolhidosFila}
                                 onAbrir={() => setLote('pareceres-fila')} />
-              <Button size="sm" variant="primary" icon={CheckCheck}
+              {/* 30.54: com o aceite dos pareceres aberto, a ação principal é a do formulário, não esta. */}
+              <Button size="sm" variant={lote === 'pareceres-fila' ? 'secondary' : 'primary'} icon={CheckCheck}
                       disabledReason={escolhidosFila.length === 0 ? 'Selecione ao menos um item.' : null}
                       onClick={() => setLote('aprovar')}>
                 Aprovar selecionados ({escolhidosFila.length})
@@ -227,7 +262,8 @@ export function ParaAprovarTab() {
           <DecisaoInline
             rotulo="Motivo do aceite em lote"
             dica="Vale para cada parecer aceito: fica na trilha de cada item e no registro do parecer, com o seu nome."
-            acao={{ confirmar: `Aceitar ${escolhidosFila.filter(entraNoLote).length} parecer(es)`, perigo: false }}
+            acao={{ confirmar: `Aceitar ${pareceres(escolhidosFila.filter(entraNoLote).length)}`, perigo: false }}
+            resumo={<ResumoDoLote escolhidos={escolhidosFila} tituloDe={tituloDe} />}
             onCancelar={() => setLote(null)}
             onConfirmar={(motivo) => aceitarPareceres(escolhidosFila, motivo)}
           />
@@ -279,7 +315,7 @@ export function ParaAprovarTab() {
         {legado.erro ? <LoadErrorBanner error={legado.erro} onRetry={() => void carregar()} /> : null}
         {itensLegado.length > 0 ? (
           <div className={styles.toolbar}>
-            <span className={styles.secaoLead}>{escolhidosLegado.length} selecionado(s)</span>
+            <span className={styles.secaoLead}>{selecionados(escolhidosLegado.length)}</span>
             <div className={styles.toolbarFim}>
               <Button size="sm" variant="ghost" onClick={() => setSelLegado(new Set(itensLegado.map(chaveDoItem)))}>Selecionar todos</Button>
               <AceitarPareceres modo={modo} itens={itensLegado} escolhidos={escolhidosLegado}
@@ -301,7 +337,8 @@ export function ParaAprovarTab() {
           <DecisaoInline
             rotulo="Motivo do aceite em lote"
             dica="Vale para cada parecer aceito: fica na trilha de cada item e no registro do parecer, com o seu nome."
-            acao={{ confirmar: `Aceitar ${escolhidosLegado.filter(entraNoLote).length} parecer(es)`, perigo: false }}
+            acao={{ confirmar: `Aceitar ${pareceres(escolhidosLegado.filter(entraNoLote).length)}`, perigo: false }}
+            resumo={<ResumoDoLote escolhidos={escolhidosLegado} tituloDe={tituloDe} />}
             onCancelar={() => setLote(null)}
             onConfirmar={(motivo) => aceitarPareceres(escolhidosLegado, motivo)}
           />

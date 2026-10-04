@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Field, TextInput } from '../../components/Field';
 import { type AcaoDoItem, MOTIVO_MAX, erroDoMotivo } from './model';
@@ -9,10 +9,12 @@ import styles from './Aprendizado.module.css';
  * modal: quem decide vê o item ao lado do que está escrevendo. Mora à parte da linha do item porque o detalhe (o
  * parecer da IA, 30.17) também decide, e a linha importa o detalhe.
  */
-export function DecisaoInline({ acao, rotulo, dica = 'Fica na trilha do item, com o seu nome.', semMotivo, motivoOpcional, onConfirmar, onCancelar }: {
+export function DecisaoInline({ acao, rotulo, dica = 'Fica na trilha do item, com o seu nome.', semMotivo, motivoOpcional, resumo, onConfirmar, onCancelar }: {
   acao: Pick<AcaoDoItem, 'confirmar' | 'perigo'>;
   rotulo?: string;
   dica?: string;
+  /** 30.54: o que a decisão vai fazer, acima do campo (no aceite em lote, o que o curador sugere para cada item). */
+  resumo?: ReactNode;
   /** O aviso do botão enquanto falta o motivo, quando ele não vai para a trilha (o parecer da IA guarda o seu à parte). */
   semMotivo?: string;
   /** 30.24: "Confirmar que fica" vale sem motivo (só o limite de tamanho). */
@@ -39,19 +41,25 @@ export function DecisaoInline({ acao, rotulo, dica = 'Fica na trilha do item, co
 
   return (
     <form className={styles.decisao} onSubmit={(e) => { e.preventDefault(); void enviar(); }}>
+      {resumo ? <div className={styles.decisaoResumo}>{resumo}</div> : null}
       <Field label={legenda} hint={dica} error={erro} className={styles.decisaoCampo}>
         {({ id, describedBy, invalid }) => (
-          <TextInput id={id} aria-describedby={describedBy} invalid={invalid} value={motivo} maxLength={MOTIVO_MAX}
-                     autoFocus placeholder="Ex.: conferi a evidência e o alvo está certo"
-                     onChange={(e) => setMotivo(e.target.value)} />
+          // 30.54: os botões na linha do campo, não na da dica (o dono via o "Aceitar" apagado e desalinhado embaixo).
+          <div className={styles.decisaoLinha}>
+            <TextInput id={id} aria-describedby={describedBy} invalid={invalid} value={motivo} maxLength={MOTIVO_MAX}
+                       autoFocus placeholder="Ex.: conferi a evidência e o alvo está certo" className={styles.decisaoTexto}
+                       onChange={(e) => setMotivo(e.target.value)} />
+            <div className={styles.decisaoAcoes}>
+              <Button type="submit" size="sm" variant={acao.perigo ? 'danger' : 'primary'} loading={enviando} disabledReason={invalido}>
+                {acao.confirmar}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={onCancelar} disabled={enviando}>Cancelar</Button>
+            </div>
+          </div>
         )}
       </Field>
-      <div className={styles.decisaoAcoes}>
-        <Button type="submit" size="sm" variant={acao.perigo ? 'danger' : 'primary'} loading={enviando} disabledReason={invalido}>
-          {acao.confirmar}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onCancelar} disabled={enviando}>Cancelar</Button>
-      </div>
+      {/* 30.54: por que o botão está apagado, à vista (o `disabledReason` só chegava ao leitor de tela). */}
+      {invalido && !enviando ? <p className={styles.decisaoPendente} data-por-que-apagado>{invalido}</p> : null}
     </form>
   );
 }
