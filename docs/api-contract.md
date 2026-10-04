@@ -5567,3 +5567,29 @@ Config: `aprendizado.aprovacao_automatica.modo` = `off` (de fábrica), `shadow` 
 
 - `simulated`: `tests/test_aprovacao_automatica.py`.
 - `real`: `not_run` até o deploy.
+
+## Adendo v1.29 (04/10/2026; número da orquestradora; item 28.29) — o registro das decisões diz qual item e o estado de agora
+
+Aditivo ao v1.22. Sem rota nova e sem migração.
+
+- **`GET /api/decisoes-automaticas`, cada item:**
+  - campos novos `item_nome` (o título do item no livro do aprendizado; `null` nas outras filas ou quando o item sumiu) e
+    `run_id` (a execução do objetivo ou da pergunta vencida; `null` no aprendizado);
+  - `efeito` sai legível e com gênero ("Receita publicada…", "Fluxo confirmado…"), também nas linhas gravadas antes;
+  - `fatos.texto` vem cortado na última palavra inteira, com "…";
+  - `fatos` da decisão nova do aprendizado pode trazer `confirmacao: true`, e a do objetivo vencido traz `run_id`.
+- **Estado de agora:** antes de responder, a lista reconcilia cada decisão não desfeita com a fila dona. O item do
+  aprendizado que alguém desligou por outro caminho, como a rota do livro, aparece com `desfeita: true`. `desfeita_por`,
+  `desfeita_em` e `motivo_do_desfazer` vêm da última transição para `disabled` na trilha (gravados uma vez, CAS).
+  - O filtro `desfeitas=nao` já tira essas linhas.
+  - O item que mudou de outro jeito (aposentado) volta com `pode_desfazer: false` e o porquê.
+  - O `POST …/desfazer` de uma decisão desfeita por outro caminho responde `desfeita_agora: false` e não troca autor
+    nem motivo.
+- **Resumo no Telegram** (não é rota; `docs/dominios/canais.md`, C-23): o desfazer só é oferecido para o aprendizado. O
+  encerrado diz que não reabre, e as aprovações pendentes que o vencimento encerrou junto aparecem pela contagem.
+- O `ja_estava` do `POST /api/canais/anexos/{id}/trello` (o mesmo arquivo não vai duas vezes ao cartão) está descrito no
+  trecho da rota, no PR do 28.24 F4.
+
+Prova:
+- `simulated`: `tests/test_decisoes_registro_coerente.py`.
+- `not_run`: PostgreSQL e o central depois do deploy.
