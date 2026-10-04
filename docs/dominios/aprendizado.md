@@ -1868,7 +1868,12 @@ depois das duas filas, para o dono ver primeiro o que sobra para ele.
 - "Para aprovar" diz, em `on`, que os itens do app de teste que cumprem a régua a plataforma decide sozinha.
 
 **Config:** `aprendizado.aprovacao_automatica`, com `modo: off | shadow | on` (`off` de fábrica) e `intervalo_s`
-(900). O modo é relido a cada volta: mudar o config vale na próxima, sem reiniciar. Para desligar, `modo: "off"`.
+(900). O laço lê o modo a cada volta, mas do config CARREGADO: o `config.yaml` só é lido na subida, então mudar o modo
+pede reiniciar a tarefa `farm-central` (30.63; antes esta linha dizia o contrário). Escreva o modo entre aspas
+(`modo: "on"`). Sem aspas, o YAML lê `on`/`off` como booleano, e desde o 30.63 o booleano vale como a palavra.
+
+Revisão que a régua lê (30.63): a REAL mais recente do curador. Uma simulada mais nova não esconde um parecer real
+anterior contra nem uma classe C.
 
 **Prova:**
 - `simulated`: `backend/tests/test_aprovacao_automatica.py`.

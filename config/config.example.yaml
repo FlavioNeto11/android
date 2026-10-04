@@ -673,6 +673,7 @@ aprendizado:                      # aprendizado contínuo (ADR-054): livro, D1, 
   # favor real e 0 contra na versão atual, sem falha de reprodução, saúde sem rebaixar e nenhum parecer de rebaixar ou
   # descartar. Conta real, classe C e app sem categoria ficam com o dono. Grava decided_by=plataforma com o motivo
   # "auto:<regra> v1 — <fatos>"; desfazer é a ação de sempre. "off" (padrão) · "shadow" só marca o que decidiria · "on".
+  # Sempre entre aspas (on/off sem aspas é booleano no YAML) e, para valer, reinicie o central (o config é lido na subida).
   aprovacao_automatica:
     modo: "off"
     intervalo_s: 900

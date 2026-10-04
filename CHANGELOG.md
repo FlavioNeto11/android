@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 30.63: a régua da aprovação automática e a seção do painel, pelos achados das revisões (branch fix/30-63-regua-e-painel)
+
+- (a) A régua lê a revisão REAL mais recente do curador (`REVISOES_LIDAS` = 20). Uma simulada mais nova escondia um
+  parecer real contra. Há teste e mutante conferido.
+- (b) `AprovacaoAutomaticaCfg.modo` aceita o booleano do YAML: `on` sem aspas vira `true`, e em 04/10 isso derrubou a
+  carga do config. O exemplo e a doc pedem aspas.
+- (c) A seção "Decidido pela plataforma" mostra o erro da rota quando não é 404, em vez de sumir.
+- (d) Em `shadow`, com decisões antigas, a seção não diz mais "Nada foi decidido sozinho ainda".
+- (e) Pendências: o resumo no Telegram fica condicionado aos avisos ligados.
+- (f) A doc e a docstring diziam que mudar o modo valia sem reiniciar, e não vale: o `config.yaml` é lido na subida.
+  Medido em 04/10, às 18:38Z: o modo continuava `shadow` três minutos depois do "on" no arquivo.
+- Prova `simulated`: 2 testes novos no backend, 39 aprovados; 2 testes novos no front, 50 aprovados.
+
 ## 2026-10-04 — 29.73: o agente reconecta rápido depois do reinício do central (branch fix/29-73-reconexao-rapida)
 
 - Deploy 28: o central fechou o canal com 1012 (service restart) às 15:59:17Z e voltou às 16:00:33Z; a escada do

@@ -5,7 +5,7 @@ import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
 import { EmptyState } from '../../components/EmptyState';
-import { toLoadError } from '../../lib/loadError';
+import { LoadErrorBanner, toLoadError, type LoadError } from '../../lib/loadError';
 import { formatDateTime, formatQuando } from '../../lib/time';
 import { toast } from '../../store/toasts';
 import { apiAprendizado } from './api';
@@ -71,12 +71,22 @@ function LinhaDaDecisao({ d, onMudou }: { d: DecisaoDaPlataforma; onMudou: () =>
  * nenhuma contra). Em `shadow`, só o que ela decidiria; em `on`, as decisões, cada uma com o Desligar. Em `off` e sem
  * decisão nenhuma, a seção some (não há o que mostrar). `tituloDe` acha o nome dos itens que ainda estão nas filas.
  */
-export function DecididoPelaPlataforma({ relatorio, tituloDe, onMudou }: {
+export function DecididoPelaPlataforma({ relatorio, erro = null, tituloDe, onMudou }: {
   relatorio: RelatorioDaAprovacao | null;
+  /** 30.63 (c): o erro da rota que não é "não existe" (404): a seção aparece com ele, em vez de sumir. */
+  erro?: LoadError | null;
   tituloDe: (itemRef: string) => string;
   onMudou: () => void;
 }) {
   const [todas, setTodas] = useState(false);
+  if (!relatorio && erro) {
+    return (
+      <section className={styles.secao} aria-labelledby="aprendizado-plataforma">
+        <h2 id="aprendizado-plataforma" className={styles.secaoTitulo}><Bot size={16} aria-hidden /> Decidido pela plataforma</h2>
+        <LoadErrorBanner error={erro} onRetry={onMudou} />
+      </section>
+    );
+  }
   if (!relatorio || (relatorio.modo === 'off' && relatorio.decididos.length === 0)) return null;
   const volta = relatorio.ultima_volta;
   const visiveis = todas ? relatorio.decididos : relatorio.decididos.slice(0, VISIVEIS);
@@ -85,7 +95,9 @@ export function DecididoPelaPlataforma({ relatorio, tituloDe, onMudou }: {
       <h2 id="aprendizado-plataforma" className={styles.secaoTitulo}><Bot size={16} aria-hidden /> Decidido pela plataforma</h2>
       {relatorio.modo === 'shadow' ? (
         <Banner tone="info" icon={Eye} compact role="note">
-          Em observação: a plataforma só anota o que decidiria. Nada foi decidido sozinho ainda.
+          {relatorio.decididos.length > 0
+            ? 'Em observação: a plataforma só anota o que decidiria. As decisões abaixo são de quando ela decidia.'
+            : 'Em observação: a plataforma só anota o que decidiria. Nada foi decidido sozinho ainda.'}
         </Banner>
       ) : null}
       {relatorio.modo === 'on' ? (

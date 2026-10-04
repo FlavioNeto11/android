@@ -1144,6 +1144,15 @@ class AprovacaoAutomaticaCfg(BaseModel):
     modo: Literal["off", "shadow", "on"] = "off"
     intervalo_s: int = Field(900, ge=60, le=86_400)         # de quanto em quanto tempo o laço passa a régua
 
+    @field_validator("modo", mode="before")
+    @classmethod
+    def _modo_do_yaml(cls, v: object) -> object:
+        """30.63 (b): `modo: on` sem aspas é o booleano `true` no YAML 1.1 (e `off`, `false`). Em 04/10 isso derrubou a
+        carga do config inteiro por 7 s. O booleano vale como a palavra que a pessoa escreveu."""
+        if isinstance(v, bool):
+            return "on" if v else "off"
+        return v
+
 
 class LearningCfg(BaseModel):
     """Aprendizado contínuo (ADR-054): o livro, o D1, a falha classificada e a régua durável. Nenhuma chamada de IA

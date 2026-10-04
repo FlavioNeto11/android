@@ -152,4 +152,24 @@ describe('Decidido pela plataforma', () => {
     await waitFor(() => expect(text(container)).toContain('back_to_list (v1)'));
     expect(secao()).toBeNull();
   });
+
+  it('30.63 (c): outro erro da rota aparece na seção, em vez de ela sumir', async () => {
+    backend.on('GET', /^\/api\/aprendizado\/aprovacao-automatica$/,
+               () => json({ detail: { code: 'internal', message: 'Falha ao ler a régua.' } }, 500));
+    await montar();
+    await waitFor(() => expect(secao()).not.toBeNull());
+    expect(text(secao()!)).toContain('Decidido pela plataforma');
+    expect(secao()!.querySelector('[role="alert"], button')).not.toBeNull();
+    expect(text(container)).toContain('back_to_list (v1)');                   // as filas seguem
+  });
+
+  it('30.63 (d): em shadow com decisões antigas não diz que nada foi decidido', async () => {
+    relatorio = { modo: 'shadow', casos_na_sombra: 0, decididos_pela_plataforma: DECISOES,
+                  ultima_volta: { em: '2026-10-04T18:00:00Z', avaliados: 40, decidiria: [], decididos: [] } };
+    await montar();
+    await waitFor(() => linha('receita:180'));
+    expect(text(secao()!)).toContain('Em observação');
+    expect(text(secao()!)).not.toContain('Nada foi decidido sozinho');
+    expect(text(secao()!)).toContain('de quando ela decidia');
+  });
 });
