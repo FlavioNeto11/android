@@ -5617,19 +5617,15 @@
   "14.11": {
    "id": "14.11",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "CPU por emulador medida de verdade: MedidorDeUso guarda os psutil.Process por pid do lançador (a 1ª leitura de objeto novo era sempre 0,0) (merge a37a8162). simulated: tests/test_cpu_por_emulador.py (9). Na main pelo merge 63a81cab da suíte 6 (branch feat/29-27-limpeza-e-adr050 @ be4e50f5, com o 30.23 @ 0cae56a7 e a main 31959696). Suíte 6 inteira, SQLite, -n 8, Idle, no be4e50f5: 6275 passed, 7 skipped em 393 s (frontend 1311, scripts 427). docs-check 0/0. Prova real: not_run no central até o deploy 4.",
-   "blocker": "",
-   "files": [
-    "backend/app/devices/emulator.py",
-    "tests/test_cpu_por_emulador.py"
-   ],
-   "grupo": "14-desempenho",
-   "modelo": "opus",
-   "esforco": "high",
+   "proof": "real",
+   "evidence": "Real 04/10, central em 1fc66a6c: 3 leituras emparelhadas do qemu do android-05 (pid por -avd), Δ de CPU do processo em 10 s (psutil, núcleo = 100 %) × resources.cpu_percent de GET /api/instances logo depois: 16:15:44Z 32,5 × 34,7 (2,2 pontos); 16:15:54Z 29,2 × 24,9 (4,3); 16:16:04Z 28,3 × 28,4 (0,1). Aceite (< 10 pontos em 3 leituras) atendido; a API não mostra mais 0,0.",
+   "blocker": null,
+   "grupo": "android-varredura-1",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T04:04:33+00:00"
+   "quando": "2026-10-04T16:25:01+00:00"
   },
   "12.5": {
    "id": "12.5",
@@ -5685,46 +5681,29 @@
   },
   "29.34": {
    "id": "29.34",
-   "status": "implemented",
-   "proof": "simulated",
-   "evidence": "feat/29-34-relogio-do-wake @9fb82b9d: manager._wait_boot com dois relógios — t0 (spawn) só para boot_seconds; no wake, antes do veredito do log o prazo é boot_timeout_s; com 'Successfully loaded snapshot' o wake_timeout_s conta dali; a medição boot kind=warm ganha load_ms. O worker remoto não tem relógio de 90 s próprio (_v_wake usa boot_timeout_s). simulated: tests/test_wake_relogio_do_snapshot.py (5 testes; 3 falham contra o manager antigo). Na main pelo merge 123650cc da suíte 7. Real: aceite em 7 dias depois do deploy 7 (wake > 90 s e 'snapshot descartado' = 0), not_run.",
-   "blocker": "",
-   "arquivos": [
-    "backend/app/devices/manager.py",
-    "backend/app/config.py",
-    "backend/tests/test_wake_relogio_do_snapshot.py",
-    "docs/dominios/parque.md"
-   ],
-   "testes": "tests/test_wake_relogio_do_snapshot.py + prontidão/reserva: 123 passed; suíte 7 inteira verde.",
-   "grupo": "suite-7-android",
-   "modelo": "opus (sessão Android) + worker-impl",
-   "esforco": "high",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Real 04/10, central em 1fc66a6c: os wakes desde o deploy 7 gravaram boot kind=warm com load_ms=None (android-04 09:12Z 246,7 s; android-07 11:12Z e 12:09Z), embora o emulator-<avd>.log traga 'Successfully loaded snapshot … using 42145 ms'. Experimento às 16:19:16Z (wake do android-02, QA hibernado, lote:android:29.34-wake-02): o log cresceu até 'Windows Hypervisor Platform accelerator is operational' logo após o spawn e PAROU; o aparelho ficou online às 16:22:03Z (boot_seconds 165,5, load_ms None) e a linha do snapshot ainda não estava no arquivo às 16:23Z. Causa: a saída do emulador para o arquivo é bufferizada (o processo filho escreve em arquivo, não em terminal), e o _snapshot_verdict lê o log durante o boot.",
+   "blocker": "Prova real contra: load_ms nulo nos 3 wakes desde o deploy 7 (04 às 09:12Z com 246,7 s; 07 às 11:12Z e 12:09Z) e no experimento do 02 (165,5 s); o veredito do snapshot não chega a True e o relógio de 90 s não começa. Conserto no mesmo ID, PR para a suíte 30: o veredito do snapshot por um sinal que não dependa do buffer do log (o emulador sem buffer, ou o uptime do Android depois do wake).",
+   "grupo": "android-varredura-1",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T07:24:43+00:00"
+   "quando": "2026-10-04T16:25:01+00:00"
   },
   "29.42": {
    "id": "29.42",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "feat/29-42-required-apps @295c3989: FlowStore.list devolve required_apps na ordem em que o plano gravado usa os apps (apps_na_ordem_do_plano em modules/learning/domain/livro.py, a mesma função do dossiê do curador; sem migração; 2 consultas para todos os fluxos); painel Configurações > Fluxos e DetalheRico mostram 'A → B' (frontend/src/lib/appsDoFluxo.ts). Adendo v0.85. simulated: backend/tests/test_flows_required_apps.py (11), frontend/src/lib/appsDoFluxo.test.ts, DetalheRico.test.tsx, FlowsRecipesSection.test.tsx. Na main pelo merge 123650cc da suíte 7. Real: conferência no navegador depois do deploy 7, not_run.",
-   "blocker": "",
-   "arquivos": [
-    "backend/app/taskqueue/flows.py",
-    "backend/app/modules/learning/domain/livro.py",
-    "backend/app/modules/learning/domain/conteudo.py",
-    "frontend/src/lib/appsDoFluxo.ts",
-    "frontend/src/features/aprendizado/DetalheRico.tsx",
-    "frontend/src/features/settings/FlowsRecipesSection.tsx",
-    "docs/api-contract.md"
-   ],
-   "testes": "backend 70 passed nos afetados; frontend 39; suíte 7 inteira verde.",
-   "grupo": "suite-7-android",
-   "modelo": "opus (sessão Android) + worker-impl",
-   "esforco": "high",
+   "proof": "real",
+   "evidence": "Real 04/10, central em 1fc66a6c: GET /api/flows devolve required_apps na ordem das etapas nos 3 fluxos entre apps (ler-no-outlook-o-assunto-do-e-mail-mais-: ['outlook','instagram'] — etapas open_outlook_inbox/read_profile_subject no Outlook e open_profile sem app, que roda no app do plano; ler-o-nome-do-primeiro-contato-da-lista- e ler-sem-abrir-conversas-nem-enviar-nada-: ['qa-messenger','chrome']), com flow_required_apps seguindo o conjunto; o painel (Aprendizado > Aprendido, navegador embutido, só leitura, 16:17Z) mostra 'Apps: QA Messenger → Chrome' (2) e 'Apps: Microsoft Outlook → Instagram'.",
+   "blocker": null,
+   "grupo": "android-varredura-1",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T07:24:43+00:00"
+   "quando": "2026-10-04T16:25:01+00:00"
   },
   "29.43": {
    "id": "29.43",
@@ -7537,14 +7516,14 @@
    "id": "30.52",
    "status": "partial",
    "proof": "real",
-   "evidence": "Real, 04/10 15:16Z, central ac7175ac, US$ 0,00. POST /api/aprendizado/validacoes/{id}/recusar devolveu 404 pedido_desconhecido para lv-naoexiste0000 e 409 pedido_nao_pendente para lv-c99c807c071cf06e (fechado em efeito_repetido). O dossiê por versão ainda não tem prova real: até 15:16Z, nenhuma revisão do curador desde o deploy (learning_reviews.created_at >= 15:11Z: 0 linhas).",
-   "blocker": "(1) O 200 da rota exige um pedido pendente. O único é lv-32fded52ec729464 (fluxo:ler-sem-abrir-conversas-nem-enviar-nada-, multi-app QA + Chrome, teto 0,15, expira em 06/10 15:53Z), que não é pedido de teste: recusá-lo é decisão da orquestradora. (2) O dossiê por versão se prova na primeira revisão do curador, depois do deploy, de um fluxo com evidência de outra marca: a de enviar-a-mensagem-leitura-31-27-n1-08233 cai no cooldown até 05/10 ~13:07Z, salvo um gatilho evidencia_chegou.",
-   "grupo": "aprendizado-deploy27-provas",
-   "modelo": "claude-opus-5-5",
-   "esforco": "medio",
+   "evidence": "04/10, central, deploy 28: pedido de teste lv-5b34159b9b816a59 (fluxo abrir-o-qa-messenger-e-contar-as-convers) criado 201 e recusado por POST /validacoes/{id}/recusar -> 200, estado recusada, motivo recusada_pela_pessoa, US$ 0. Antes: 404 pedido_desconhecido e 409 pedido_nao_pendente reais.",
+   "blocker": "falta ler a primeira revisao do curador depois do deploy com de_versoes_anteriores no dossie",
+   "grupo": "aprendizado-deploy28-provas",
+   "modelo": "opus",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T15:19:06+00:00"
+   "quando": "2026-10-04T16:25:13+00:00"
   },
   "30.54": {
    "id": "30.54",
@@ -7623,6 +7602,19 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-04T16:16:39+00:00"
+  },
+  "30.53": {
+   "id": "30.53",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "04/10, central, deploy 28. (b) 16:15:34Z: 4 linhas revalidada (311-314) para r-20261004132450-38f68a (fluxo + receitas 64, 68, 84), texto '... 2 mensagens para 2 etapas de efeito comprovadas, uma por item (30.53)'; sem for retroativo. (a) pedido lv-0c0aed6acef86383 -> feita; execucao de validacao r-20261004162034-548fdc no android-05, decisao 16:23:43Z 'Conferencia no app de QA (etapa 11, send_message_i3): 3 de 3 esperadas: o efeito saiu uma vez.'; evidencia 315 for real no fluxo enviar-bom-dia-a-cada-contato-da-lista-d [e6c247142c35], 316/317 for nas receitas 68 e 84, nenhuma invalida; custo /api/usage total_usd 0.1674.",
+   "blocker": null,
+   "grupo": "aprendizado-deploy28-provas",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T16:25:13+00:00"
   }
  },
  "rodadas": [
@@ -9945,6 +9937,27 @@
    ],
    "grupos": [
     "canais"
+   ]
+  },
+  {
+   "quando": "2026-10-04T16:25:01+00:00",
+   "itens": [
+    "14.11",
+    "29.42",
+    "29.34"
+   ],
+   "grupos": [
+    "android-varredura-1"
+   ]
+  },
+  {
+   "quando": "2026-10-04T16:25:13+00:00",
+   "itens": [
+    "30.53",
+    "30.52"
+   ],
+   "grupos": [
+    "aprendizado-deploy28-provas"
    ]
   }
  ]
