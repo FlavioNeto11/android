@@ -114,7 +114,8 @@ class SocialService:
         self.provider = provider        # só a geração social usa; cadastro e sessão não dependem de IA
         self.policies = PolicyEngine(repo)
         #: 30.65: as exceções de uso único à regra de uma conta por alvo; criar, gastar e vencer viram evento.
-        self.excecoes = ExcecoesDePolitica(repo.db, lambda tipo, mensagem, dados: bus.emit(tipo, mensagem, data=dados))
+        self.excecoes = ExcecoesDePolitica(repo.db, lambda tipo, mensagem, dados: bus.emit(tipo, mensagem, data=dados),
+                                           perfis=repo)
         self.usage_sink = usage_sink    # registra o custo da função social no mesmo relatório das demais
         # ADR-055: toda mudança de status do perfil e todo marcador de conta travada viram evento persistido — o
         # repositório grava, e quem tem o barramento anuncia. Vale também para quem escreve pelo repositório por

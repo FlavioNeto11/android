@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from ..db import Database
+from ..modules.identity.application.ports import ProfileStore
 from ..planning.capabilities import normalizar_alvo
 from ..util import new_token, now, parse_iso, to_iso
 from .contas_nossas import eh_conta_nossa, foi_retirada
@@ -116,9 +117,12 @@ _ETAPA_TERMINADA = ("succeeded", "failed", "cancelled", "skipped", "uncertain")
 
 
 class ExcecoesDePolitica:
-    def __init__(self, db: Database, emitir: Emitir | None = None):
+    def __init__(self, db: Database, emitir: Emitir | None = None, perfis: ProfileStore | None = None):
         self.db = db
         self.emitir = emitir
+        # Quem diz se o perfil existe é o registro de perfis (o mesmo porto das regras de sessão), não uma tabela de
+        # app: o núcleo não decide pelo nome do Instagram (ADR-052). Sem ele, `criar` recusa (só a leitura funciona).
+        self.perfis = perfis
 
     def _emitir(self, tipo: str, excecao_id: str, texto: str, **extra: object) -> None:
         """Evento enxuto: só ids e estado. Alvo, motivo e autorização ficam no GET; menos dado no barramento é menos
@@ -148,7 +152,7 @@ class ExcecoesDePolitica:
             raise ExcecaoInvalida("informe a ação (por exemplo SEND_MESSAGE)")
         if not (motivo or "").strip() or not (autorizacao or "").strip():
             raise ExcecaoInvalida("informe o motivo e a autorização (quem autorizou, por onde e quando)")
-        if self.db.scalar("SELECT 1 FROM instagram_profiles WHERE id=?", (profile_id,)) is None:
+        if self.perfis is None or self.perfis.profile_row(profile_id) is None:
             raise ExcecaoInvalida(f"perfil {profile_id} não existe")
         agora = now()
         try:
