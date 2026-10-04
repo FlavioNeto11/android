@@ -329,3 +329,20 @@ async def test_31_50_vence_em_no_dto_do_objetivo_parado_e_da_pergunta(harness: H
     assert st.repo.run_summary(st.repo.run_row(run_pergunta)).vence_em == to_iso(entrada + timedelta(hours=24))
     harness.cfg.file.execucao.vencimento_ligado = False
     assert st.repo.objective_dto(st.repo.objective_row(oid)).vence_em is None
+
+
+def test_31_50_a_aprovacao_pendente_traz_o_vence_em_do_objetivo() -> None:
+    """31.50: a aprovação vence junto com o objetivo que bloqueia; decidida, não vence."""
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from app.social.approvals import Approval, ApprovalService
+    pendente = Approval(id="a1", profile_id=None, run_id="r", objective_id="o", step_id=None, capability="CREATE_POST",
+                        target=None, summary="s", generated_content=None, approved_content=None, status="pending",
+                        created_at="2026-10-04T00:00:00.000Z")
+    decidida = replace(pendente, id="a2", status="approved")
+    loja = SimpleNamespace(list=lambda **_k: [pendente, decidida])
+    repo = SimpleNamespace(objective_row=lambda oid: {"id": oid},
+                           objective_dto=lambda row: SimpleNamespace(vence_em="2026-10-05T00:00:00.000Z"))
+    itens = ApprovalService(loja, repo).list(status=None)  # type: ignore[arg-type]
+    assert [i["vence_em"] for i in itens] == ["2026-10-05T00:00:00.000Z", None]
