@@ -92,11 +92,12 @@ class RepositorioDePedidos:
 
     def mudar_estado_do_pedido(self, pedido_id: str, de: str, para: str, em: str, *, versao: int | None = None,
                                pausado_motivo: str | None = None, encerrado_motivo: str | None = None,
-                               pessoa: bool = False) -> bool:
+                               cancelado_motivo: str | None = None, pessoa: bool = False) -> bool:
         sql = ("UPDATE pedidos SET estado=?, atualizado_em=?, proxima_em=NULL,"
-               " pausado_motivo=COALESCE(?, pausado_motivo), encerrado_motivo=COALESCE(?, encerrado_motivo)"
+               " pausado_motivo=COALESCE(?, pausado_motivo), encerrado_motivo=COALESCE(?, encerrado_motivo),"
+               " cancelado_motivo=COALESCE(?, cancelado_motivo)"
                " WHERE id=? AND estado=?")
-        params: list[object] = [para, em, pausado_motivo, encerrado_motivo, pedido_id, de]
+        params: list[object] = [para, em, pausado_motivo, encerrado_motivo, cancelado_motivo, pedido_id, de]
         if versao is not None:
             sql += " AND versao=?"
             params.append(versao)

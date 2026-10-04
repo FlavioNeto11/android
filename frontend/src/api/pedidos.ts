@@ -153,6 +153,8 @@ export interface PedidoDetalhe extends PedidoView {
   memoria: unknown | null;
   relatorios_recentes: unknown[] | null;
   observacoes_recentes: unknown[] | null;
+  /** 28.22: o motivo que a pessoa deu ao cancelar (texto livre; só o detalhe o traz, nunca o evento). */
+  cancelado_motivo?: string | null;
 }
 
 // ---------------------------------------------------------------- criação, prévia e edição
