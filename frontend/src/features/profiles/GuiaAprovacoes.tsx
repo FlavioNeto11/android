@@ -1,6 +1,6 @@
 import { CheckCircle2 } from 'lucide-react';
 import { useState } from 'react';
-import { api } from '../../api/client';
+import { api, personaImageUrl } from '../../api/client';
 import type { Approval } from '../../api/types';
 import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
@@ -54,6 +54,11 @@ export function AbaAprovacoes({ profile }: { profile: Pessoa }) {
         <Card key={a.id}>
           <CardHeader title={a.summary} subtitle={`${a.capability} · ${a.target ?? 'sem alvo'}`} />
           <CardBody className={styles.form}>
+            {a.image_id && a.profile_id ? (
+              // 29.30: a publicação leva esta imagem; quem aprova a legenda vê também o que vai ao feed.
+              <img className={styles.aprovacaoImagem} src={personaImageUrl(a.profile_id, a.image_id)}
+                   alt="Imagem que será publicada" loading="lazy" />
+            ) : null}
             <Field label="Conteúdo que será enviado">
               {({ id }) => (
                 <TextArea id={id} rows={3} defaultValue={a.content ?? ''}

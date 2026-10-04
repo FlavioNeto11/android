@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.30 (PR-B): a mídia entra no plano e a aprovação mostra a imagem (branch feat/29-30-create-post-b, sem migração)
+
+- `Capability.preparo` (e `ExecutionContract.preparo`): internas que o `compose` põe IMEDIATAMENTE antes da ação, com
+  os argumentos dela. CREATE_POST declara `preparo: [PUT_MEDIA_IN_GALLERY]` e passa a exigir `image_id`: a interna não
+  é oferecida ao planejador, quem a pede é o contrato da ação. Conferido na carga (`preparo_error`: existe, é interna,
+  os argumentos obrigatórios dela são da ação). Sem `image_id`, CREATE_POST vira pergunta antes de qualquer efeito.
+- A aprovação leva `image_id` (lido dos argumentos da etapa, sem coluna nova) e o painel mostra a imagem ao lado da
+  legenda, em Textos da execução e nas aprovações da persona (`personaImageUrl`, rota já existente).
+- Prova `simulated`: `test_create_post.py` (39), 48 arquivos afetados (923 testes) com `-n 2`;
+  `execution.test.tsx` (a imagem só na publicação), 339 testes de runs e perfis, typecheck. Real: `not_run`. O caminho
+  das habilidades (`skills/infrastructure/lowering.py`) ainda não aplica o `preparo`.
+
 ## 2026-10-04 — 29.30 (PR-A): CREATE_POST como capability do catálogo do Instagram (branch feat/29-30-create-post, sem migração)
 
 - Publicar no PRÓPRIO feed entra no catálogo como três ações: `READ_POSTS_COUNT` (lê o número de publicações do perfil
@@ -32,7 +44,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `test_create_post.py` (36), `test_catalogo_como_dado.py`, `test_capabilities.py`,
   `test_capabilities_do_dominio.py`, `test_protecao_de_frota.py`. Real: `not_run` — os seletores do editor de
   publicação (Share, contador de publicações) NÃO foram medidos; a exploração e a publicação de UMA imagem de teste
-  esperam o sim do dono. O planejador ainda não emite `PUT_MEDIA_IN_GALLERY` (interna não é oferecida): fica para o PR-B.
+  esperam o sim do dono. O planejador ainda não emite `PUT_MEDIA_IN_GALLERY` (interna não é oferecida): resolvido no PR-B (`preparo`).
 
 ## 2026-10-04 — 30.52: o dossiê do curador pela marca do conteúdo e a recusa do pedido pela pessoa (branch fix/30-52-dossie-pela-marca)
 

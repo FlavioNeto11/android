@@ -63,6 +63,8 @@ CAMPOS_NOVOS: dict[str, object] = {
     "counterparty": None,
     # ADR-055 (pacote dm-verificador): marcas de efeito A CAMINHO ("Sending…"), que nunca deixam a etapa passar.
     "pending_marks": [],
+    # 29.30: as internas que o `compose` põe antes da ação (CREATE_POST → PUT_MEDIA_IN_GALLERY). As 23 de antes, nenhuma.
+    "preparo": [],
 }
 MUDANCAS: dict[tuple[str, str], object] = {
     # C10 — o pedido citava "o post que contém 'Ainda sobre Setembro Amarelo 2024'", mas "Posts", a folha "Comments"

@@ -89,6 +89,11 @@ class Capability:
     needs_draft: bool = False                   # exige conteúdo gerado (e aprovado, se a política pedir) antes
     interaction_type: str | None = None         # que interação isto vira no histórico do perfil (dm_sent, followed…)
     internal: bool = False                      # resolvida por código determinístico; não é oferecida ao planejador
+    # 29.30: ações `internal` que o `compose` põe IMEDIATAMENTE antes desta, com os argumentos dela (CREATE_POST →
+    # PUT_MEDIA_IN_GALLERY). A interna não é oferecida ao planejador, então quem a pede é o contrato da ação que precisa
+    # dela, não o modelo. Conferido na carga: cada chave existe, é `internal` e os argumentos obrigatórios dela são
+    # argumentos desta.
+    preparo: tuple[str, ...] = ()
     timeout_s: int = 180
     max_attempts: int = 3
     collect: bool = False                       # etapa de coleta (pós-condição items_collected)
@@ -259,6 +264,22 @@ def saidas_error(cap: Capability) -> str | None:
     return None
 
 
+def preparo_error(cap: Capability, por_chave: Mapping[str, Capability]) -> str | None:
+    """Motivo pelo qual o `preparo` de uma ação é inválido; `None` quando está bem formado ou ausente. Uma chave
+    inexistente ou oferecida ao planejador viraria etapa duplicada ou pergunta no meio da execução; um argumento
+    obrigatório da interna que a ação não tem faria toda execução parar em `needs_input`."""
+    for chave in cap.preparo:
+        alvo = por_chave.get(chave)
+        if alvo is None:
+            return f"ação {chave!r} não existe neste catálogo"
+        if not alvo.internal:
+            return f"{chave} não é `internal` (o planejador já a oferece)"
+        fora = [b for b in alvo.bindings if b not in (*cap.bindings, *cap.optional_bindings)]
+        if fora:
+            return f"{chave} exige {', '.join(fora)}, que {cap.key} não declara"
+    return None
+
+
 class CapabilityCatalog:
     def __init__(self, package: str, capabilities: list[Capability], contract_version: int = 1):
         self.package = package
@@ -282,6 +303,10 @@ class CapabilityCatalog:
             if erro:
                 raise ValueError(f"{package}: {c.key}.saidas — {erro}")
         self._por_chave = {c.key: c for c in capabilities}
+        for c in capabilities:
+            erro = preparo_error(c, self._por_chave)
+            if erro:
+                raise ValueError(f"{package}: {c.key}.preparo — {erro}")
 
     @property
     def capabilities(self) -> list[Capability]:
@@ -358,13 +383,38 @@ def compose(catalog: CapabilityCatalog, nodes: list[CapabilityNode]) -> tuple[li
     """
     steps: list[PlanStep] = []
     missing: list[MissingInfo] = []
-    for node in herdar_argumentos(catalog, nodes):
+    for node in herdar_argumentos(catalog, com_preparo(catalog, nodes)):
         step, falta = montar_etapa(catalog, node)
         if step is not None:
             steps.append(step)
         if falta is not None:
             missing.append(falta)
     return steps, missing
+
+
+def com_preparo(catalog: CapabilityCatalog, nodes: list[CapabilityNode]) -> list[CapabilityNode]:
+    """Os nós com as ações de `preparo` inseridas imediatamente antes de quem as declara (29.30), com os argumentos
+    que a interna declara tirados do nó dela. A ação seguinte passa a depender da interna. Ação desconhecida passa
+    intacta (o `compose` a transforma em pergunta); argumento que falte na interna vira a pergunta dela, antes de
+    qualquer efeito."""
+    saida: list[CapabilityNode] = []
+    for node in nodes:
+        try:
+            cap = catalog.get(node.capability)
+        except UnknownCapability:
+            saida.append(node)
+            continue
+        antes: list[str] = []
+        for chave in cap.preparo:
+            interna = catalog.get(chave)
+            chave_do_no = f"{node.key}__{chave.lower()}"
+            saida.append(CapabilityNode(
+                key=chave_do_no, capability=interna.key, depends_on=list(node.depends_on), for_each=node.for_each,
+                bindings={b: node.bindings[b] for b in (*interna.bindings, *interna.optional_bindings)
+                          if node.bindings.get(b) is not None}))
+            antes.append(chave_do_no)
+        saida.append(replace(node, depends_on=[*node.depends_on, *antes]) if antes else node)
+    return saida
 
 
 def montar_etapa(catalog: CapabilityCatalog, node: CapabilityNode) -> tuple[PlanStep | None, MissingInfo | None]:

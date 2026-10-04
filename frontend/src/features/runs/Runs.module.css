@@ -1318,3 +1318,6 @@ button.evTile:hover {
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* 29.30: a imagem que a publicação aprovada vai levar. */
+.draftImagem { display: block; max-width: min(240px, 100%); border-radius: var(--radius-md); border: 1px solid var(--border-1); }

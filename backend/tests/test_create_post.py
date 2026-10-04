@@ -18,8 +18,8 @@ import pytest
 
 from app.automation.hierarchy import UiTree, parse_hierarchy
 from app.models import InteractionStatus, InteractionType
-from app.planning.capabilities import (BALDES_SEM_ALVO, CapabilityNode, compose, counterparty_error, herdar_argumentos,
-                                       load_catalog, local_proof_error)
+from app.planning.capabilities import (BALDES_SEM_ALVO, CapabilityNode, compose, counterparty_error, load_catalog,
+                                       local_proof_error, preparo_error)
 from app.social.policy import BUCKET_TYPES, DEFAULT_LIMITS, UMA_CONTA_POR_ALVO
 from app.taskqueue.executor import Outcome, StepExecutor
 from app.taskqueue.midia_galeria import MidiaRecusada, colocar_midia_na_galeria
@@ -64,14 +64,35 @@ def test_o_catalogo_carrega_as_tres_acoes_novas() -> None:
     assert {"READ_POSTS_COUNT", "CREATE_POST"} <= {c.key for c in cat.offered}
 
 
-def test_image_id_e_herdado_da_etapa_de_midia_pelo_create_post() -> None:
+def test_o_compose_poe_a_midia_na_galeria_antes_do_create_post_com_o_mesmo_image_id() -> None:
+    """A interna não é oferecida ao planejador: quem a pede é o `preparo` de CREATE_POST (29.30, PR-B)."""
     cat = load_catalog(IG)
-    nos = herdar_argumentos(cat, [
-        CapabilityNode(key="midia", capability="PUT_MEDIA_IN_GALLERY", bindings={"image_id": "img-1"}),
-        CapabilityNode(key="post", capability="CREATE_POST", depends_on=["midia"], bindings={"content": "legenda"})])
-    assert nos[1].bindings["image_id"] == "img-1"
-    etapas, faltas = compose(cat, nos)
-    assert not faltas and etapas[1].commit_selector and etapas[1].max_attempts == 1
+    etapas, faltas = compose(cat, [
+        CapabilityNode(key="contar", capability="READ_POSTS_COUNT"),
+        CapabilityNode(key="post", capability="CREATE_POST", depends_on=["contar"],
+                       bindings={"image_id": "img-1", "content": "legenda"})])
+    assert not faltas
+    assert [e.capability for e in etapas] == ["READ_POSTS_COUNT", "PUT_MEDIA_IN_GALLERY", "CREATE_POST"]
+    midia, post = etapas[1], etapas[2]
+    assert midia.bindings == {"image_id": "img-1"} and midia.depends_on == ["contar"]
+    assert post.depends_on == ["contar", "post__put_media_in_gallery"]
+    assert post.commit_selector and post.max_attempts == 1
+
+
+def test_sem_image_id_o_create_post_vira_pergunta_antes_de_qualquer_efeito() -> None:
+    etapas, faltas = compose(load_catalog(IG), [
+        CapabilityNode(key="post", capability="CREATE_POST", bindings={"content": "legenda"})])
+    assert not any(e.capability == "CREATE_POST" for e in etapas) and faltas
+
+
+def test_preparo_invalido_e_recusado_na_carga() -> None:
+    cat = load_catalog(IG)
+    post = cat.get("CREATE_POST")
+    por_chave = {c.key: c for c in cat.capabilities}
+    assert preparo_error(post, por_chave) is None
+    assert "não existe" in (preparo_error(replace(post, preparo=("NADA",)), por_chave) or "")
+    assert "não é `internal`" in (preparo_error(replace(post, preparo=("LIKE_POST",)), por_chave) or "")
+    assert "exige image_id" in (preparo_error(replace(post, bindings=()), por_chave) or "")
 
 
 # ====================================================================================== 2. balde sem alvo
@@ -278,3 +299,35 @@ def test_o_executor_recusa_imagem_de_outra_persona_sem_tocar_no_aparelho() -> No
     desfecho = _despachar(ex, rt, "img-da-outra")
     assert desfecho.outcome == Outcome.failed and "não é desta persona" in (desfecho.detail or "")
     assert aparelho.midias_na_galeria == [] and not repo.transicoes
+
+
+# ====================================================================================== aprovação com a imagem (PR-B)
+def test_a_aprovacao_leva_o_image_id_da_etapa_e_so_dela(tmp_path: Path) -> None:
+    """Quem aprova a legenda de CREATE_POST vê a imagem: o `image_id` vem dos argumentos da etapa (sem coluna nova)."""
+    from app.social.approvals import ApprovalStore
+
+    from .fake_skills import banco
+
+    db = banco(tmp_path, "aprovacao.sqlite3")
+    try:
+        db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
+                   " VALUES ('r-1', 'k-1', 'publicar', 'execute', 'running', 0, '[\"android-01\"]',"
+                   " '2026-10-04T15:00:00Z')")
+        db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version)"
+                   " VALUES ('r-1:o', 'r-1', 'android-01', 'running', 1)")
+        for sid, argumentos in (("r-1:post", '{"image_id": "img-9", "content": "Fim de tarde"}'),
+                                ("r-1:coment", '{"content": "Que lindo"}'), ("r-1:torto", "não é json")):
+            db.execute("INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
+                       " side_effect, postcondition, timeout_s, max_attempts, status, bindings)"
+                       " VALUES (?, 'r-1', 'r-1:o', 'android-01', 1, 1, ?, 't', 'g', 1, '{}', 60, 1, 'pending', ?)",
+                       (sid, sid, argumentos))
+        store = ApprovalStore(db)
+        post = store.open(profile_id=None, capability="CREATE_POST", summary="Publicar", step_id="r-1:post")
+        coment = store.open(profile_id=None, capability="CREATE_COMMENT", summary="Comentar", step_id="r-1:coment")
+        torto = store.open(profile_id=None, capability="CREATE_POST", summary="Publicar", step_id="r-1:torto")
+        solta = store.open(profile_id=None, capability="FOLLOW", summary="Seguir")
+        assert post.image_id == "img-9" and post.to_dict()["image_id"] == "img-9"
+        assert coment.image_id is None and torto.image_id is None and solta.image_id is None
+    finally:
+        db.close()
+

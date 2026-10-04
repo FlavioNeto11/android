@@ -1,6 +1,6 @@
 import { CheckCircle2, MessageSquareQuote, RotateCcw, Send, Undo2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
-import { api, hintForError, toApiError } from '../../api/client';
+import { api, hintForError, personaImageUrl, toApiError } from '../../api/client';
 import type { Approval, ApprovalDecisionItem, RunDetail } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
@@ -187,6 +187,11 @@ export function TextsTab({ detail, approvals }: { detail: RunDetail; approvals: 
                 {branco ? <Badge tone="warning">em branco</Badge> : null}
                 {alvo === 'descartar' ? <Badge tone="warning">não será enviado</Badge> : null}
               </div>
+              {a.image_id && a.profile_id ? (
+                // 29.30: a publicação leva esta imagem; quem aprova a legenda vê também o que vai ao feed.
+                <img className={styles.draftImagem} src={personaImageUrl(a.profile_id, a.image_id)}
+                     alt={`Imagem que será publicada por ${aparelho}`} loading="lazy" />
+              ) : null}
               {escreve ? (
                 <TextArea
                   rows={3}

@@ -49,8 +49,7 @@ def test_as_acoes_que_herdam_a_legenda_estao_declaradas_no_catalogo() -> None:
     herdam = {c.key: c.inherited_bindings for c in _instagram().capabilities if c.inherited_bindings}
     # ADR-055: o autor da publicação (`post_author`) nasce em OPEN_POST e segue para curtir, descurtir e comentar.
     assert herdam == {"OPEN_COMMENTS": ("caption_contains",), "LIKE_POST": ("caption_contains", "post_author"),
-                      "UNLIKE_POST": ("post_author",), "CREATE_COMMENT": ("caption_contains", "post_author"),
-                      "CREATE_POST": ("image_id",)}      # 29.30: a imagem herdada de PUT_MEDIA_IN_GALLERY
+                      "UNLIKE_POST": ("post_author",), "CREATE_COMMENT": ("caption_contains", "post_author")}
 
 
 def test_valor_da_propria_etapa_vence_o_herdado() -> None:
