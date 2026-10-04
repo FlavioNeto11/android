@@ -308,8 +308,10 @@ executado em 03/10/2026** (`real`, menos o login do dono): é o procedimento do 
 - **"Always Use HTTPS" ligado na zona** é pré-requisito (sem ele o login por http levaria o token em claro até a borda);
   HSTS é opcional, decisão do dono. O `API_TOKEN` tem de ser aleatório e longo (`scripts/portal-gerar-senha.ps1`: 24 bytes
   do gerador criptográfico, 32 caracteres).
-- **A tranca de login é GLOBAL (não por IP)** e o `Bearer` em `/api/*` não tem limite: crie na Cloudflare uma regra de
-  limite de taxa para `/api/` antes do uso de fora (a tranca por cliente é item futuro).
+- **A tranca de login é por cliente (29.56)** e conta também o `Bearer` errado em `/api/*`: pelo túnel, o cliente é o
+  `CF-Connecting-IP` (só com par loopback, `tls_behind_proxy: true` e `Host` em `public_hosts`); o acesso local nunca se
+  tranca. A regra de limite de taxa da Cloudflare continua como a primeira barreira (ela não segura quem usa vários IPs;
+  a entropia do `API_TOKEN` segura). Toda resposta leva `X-Frame-Options: DENY`, `nosniff` e `Referrer-Policy: same-origin`.
 - **Sem `API_TOKEN` ninguém entra pelo endereço público** (o login é por token). Quem grava o token no `.env` é o dono;
   o procedimento nunca o lê nem o imprime. `GET /api/health` mostra `exposicao_publica_incompleta` enquanto faltar
   qualquer peça.
@@ -386,9 +388,9 @@ foi feito pelo dono e funcionou (dito por ele no chat, 03/10 ~22:39Z). **Na Clou
 regra de limite de taxa `central-login-por-ip` (só `/api/login` de `dev.nvit.com.br`, por IP: mais de 1 pedido em 10 s
 bloqueia por 10 s; é a única regra de limite do plano gratuito) e HSTS de um mês, sem subdomínios e sem preload. Prova de
 fora às 22:49:15Z, sem tentativa de login: `Strict-Transport-Security: max-age=2592000`; `GET /api/login` três vezes
-seguidas dá 405, 429 e 429, e 13 s depois volta a 405; as outras rotas não são afetadas. **Conhecido:** a tranca de login
-do app é global (item 29.56). A regra mantém um IP abaixo das 8 tentativas por minuto que trancam o login, mas não segura
-quem usa vários IPs; a tranca por cliente continua necessária. Depois de errar a senha, espere 10 s para tentar de novo. O selo "agente
+seguidas dá 405, 429 e 429, e 13 s depois volta a 405; as outras rotas não são afetadas. A tranca de login do app
+passou a ser por cliente no 29.56 (antes era global): a regra mantém um IP abaixo das 8 tentativas por minuto, e os
+chutes de um IP já não trancam os outros. Depois de errar a senha, espere 10 s para tentar de novo. O selo "agente
 defasado" do notebook depois desse reinício é falso (item 29.59).
 
 **Recuo.** Tire `dev.nvit.com.br` de `server.public_hosts` e reinicie `farm-central`: tudo volta a 403, painel incluído.
@@ -763,7 +765,7 @@ comentado em `config/config.example.yaml`.
 4. **Prova de fora:** de fora da LAN, `HEAD https://dev.nvit.com.br/api/canais/trello/webhook` dá 200 e um `POST` sem
    assinatura dá 401, sem corpo; o resto de `/api/` segue 401 (use `.claude/handoffs/portal/prova-de-fora.sh depois`). Comente
    `/status` num cartão: a resposta tem de chegar em segundos (antes, em `reconciliar_s`), e `canal_entradas` mostra a linha
-   `feita`. **Não chame a rota de login do endereço público em teste** (a tranca é global, item 29.56).
+   `feita`. **Não chame a rota de login do endereço público em teste** (a tranca é por cliente desde o 29.56, mas tranca o IP de quem testa).
 5. **Só então** `trello.webhook.cadastro_automatico: true` (recadastro de hora em hora no líder, que recria o webhook
    desativado) e a `reconciliar_s` em 300. Desligar a rota (`enabled: false`) NÃO apaga o webhook do Trello; remover é o pedido
    explícito `scripts\trello-webhook.py --desligar`.

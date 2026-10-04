@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.56: tranca de login por cliente, limite no Bearer e cabeçalhos de segurança (branch fix/29-56-tranca-por-cliente, sem migração)
+
+- A `PortaoDeLogin` passou a ser por cliente (`security.access.cliente_de`): pelo túnel o par é sempre `127.0.0.1`, e o
+  cliente é o `CF-Connecting-IP` só com par loopback, `tls_behind_proxy` e `Host` público; par da rede vale pelo próprio
+  endereço; o acesso local nunca se tranca. Até 4096 clientes acompanhados, poda dos sem bloqueio vigente primeiro.
+- O `Bearer` errado em `/api/*` conta como chute do mesmo cliente; bloqueado, `/api/*` com `Authorization` responde `429
+  too_many_attempts` com `Retry-After`, mesmo com o token certo; a sessão por cookie segue valendo.
+- Toda resposta leva `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` e `Referrer-Policy: same-origin`.
+- Painel: o `429` em HTML do limite de taxa da Cloudflare vira `rate_limited` com "espere 10 segundos" (ou o
+  `Retry-After`), em vez de "Erro HTTP 429".
+- Prova `simulated`: `backend/tests/test_tranca_por_cliente.py` (14), `test_sessao_do_painel.py`, os 106 arquivos que montam
+  o app (1507 passed), `frontend/src/features/login/LoginPage.test.tsx` (9). A prova de fora fica para depois do deploy.
+
 ## 2026-10-03/04 — Suíte 16 na main e deploy 16 no central (3b5355ce; migrações 087 e 088; config sem mudança)
 
 - Integrados em `integ/suite-16`, nesta ordem: #174, #178 (30.42, com a correção do `for_each` e o 30.41 pelo

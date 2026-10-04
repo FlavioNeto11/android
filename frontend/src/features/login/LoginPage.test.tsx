@@ -95,6 +95,27 @@ describe('tela de login', () => {
     expect(useSessionStore.getState().operator).toBeNull();
   });
 
+  // 29.56: o limite de taxa da borda (Cloudflare) responde 429 em HTML, sem o nosso envelope nem Retry-After.
+  it.each([
+    [{}, '10 segundos'],
+    [{ 'Retry-After': '7' }, '7 segundos'],
+  ])('o 429 em HTML da borda diz quanto esperar (%j)', async (cabecalhos, espera) => {
+    useSessionStore.setState({ tokenRequired: true });
+    backend.on('POST', /^\/api\/login$/, () => new Response('<html>Error 1015: You are being rate limited</html>',
+      { status: 429, headers: { 'Content-Type': 'text/html', ...cabecalhos } }));
+    await montar();
+    await act(async () => {
+      const campo = byRole('textbox', /Seu nome/, container) as HTMLInputElement;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(campo, 'Ana');
+      campo.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await click(byRole('button', /Entrar/, container));
+
+    await waitFor(() => expect(text(container)).toContain('Não foi possível entrar'));
+    expect(text(container)).toContain(espera);
+    expect(text(container)).not.toContain('Erro HTTP 429');
+  });
+
   it('nome curto demais nem chega ao backend', async () => {
     await montar();
     await click(byRole('button', /Entrar/, container));
