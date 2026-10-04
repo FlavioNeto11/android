@@ -253,6 +253,13 @@ despacho (`_policy_gate`, a trava de sempre, com a mesma frase) e em `RunService
   títulos das ações oferecidas pelo catálogo dele (ADR-052), no formato "<Pedido> não está disponível no <app>: o
   catálogo dele só tem <títulos>. Faça essa parte você mesmo ou peça só o que está nessa lista." O evento
   `plan.refused` leva `{motivo: "sem_acao_do_catalogo", pedidos: [{app_id, app, pedido, disponiveis}]}`.
+- **Recusa por sobreposição (item 31.40, `ai.limpeza_apos_sobreposicao`, sem migração):** o juiz marca
+  `sobreposicao=true` quando o "não"/"incerto" é porque um diálogo, banner, aviso ou cookies cobre o alvo. Numa etapa
+  SEM efeito (sem `side_effect`, sem `commit_guard`, não opcional), a etapa falha sem nova tentativa e o plano revisado
+  ("Recuperação automática (sobreposição)") põe antes dela uma etapa `opcional` de limpeza (`limpar_antes_<chave>`,
+  31.36), retomando da tela atual. Uma vez por objetivo; a segunda recusa segue o caminho de sempre. O juiz não
+  afrouxa: conteúdo coberto nunca comprova. O orçamento de chamadas da ação (18.3) que corta uma etapa de LEITURA dá o
+  desfecho do 31.38 ("Dado ausente: … orçamento de chamadas da etapa esgotado"). Achado real: 3894c1 (US$ 0,306).
 - **Leitura sem o dado (item 31.38, `ai.max_decisoes_leitura`, sem migração):** na etapa de LEITURA (declara saídas,
   sem efeito nem commit_guard) o ator pode chamar `step_blocked(kind="dado_ausente")`, e o teto de decisões por
   tentativa (12: p95 de 8 medido em 16 leituras com sucesso desde 27/09, com folga) tem o mesmo desfecho. A etapa não
