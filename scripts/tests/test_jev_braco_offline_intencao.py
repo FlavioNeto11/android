@@ -239,7 +239,7 @@ def test_r5_seco_conta_os_apps_sem_vazar_o_comando(mundo: Mundo, tmp_path: Path)
     r = _saida(tmp_path)
     assert r["pedidos_secos"] == 2 and r["r5"]["pedidos_secos"] == 2         # intenção e R5, inglês e português
     r5 = r["r5"]
-    assert r5["casos_com_r5"] == 1 and r5["fora_r5"] == {} and r5["limiar"] == 0.85
+    assert r5["casos_com_r5"] == 1 and r5["fora_r5"] == {} and r5["limiar"] == 0.5     # 31.13: o relatório diz o limiar do código (só sombra)
     assert {(l["app_da_pergunta"], l["controle"]) for l in r5["linhas"]} == {("instagram", "sim"), ("outlook", "nao")}
     assert all(l["rotulo"] is None for l in r5["linhas"])                     # sem sucesso comprovado, sem rótulo
     assert r5["medidas"]["en"]["rotuladas"] == 0 and r5["medidas"]["en"]["fallbacks"] == {"desligado": 2}

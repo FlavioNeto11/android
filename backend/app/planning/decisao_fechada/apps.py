@@ -12,7 +12,7 @@ serviço e o `Plan.required_apps` do planejador não são tocados.
   instrução e nos critérios (C2, o cadastro do dono): os MESMOS nomes que a regex casa (`nomes_do_app`: o do cadastro e o
   rótulo do manifesto), passados por `motivo_c7` e por `mascarar_catalogo(redact(...))` antes do corte, como a descrição
   da R2. Nome C7 ou que o filtro esvazia: o app fica fora do pedido (perguntar por "(sem nome)" não mede nada).
-- **Resposta**: o `noul` devolve a probabilidade do "verdadeiro". A porta só aceita acima do limiar (0,85, pré-registrado);
+- **Resposta**: o `noul` devolve a probabilidade do "verdadeiro". A porta só aceita acima do limiar (0,5 só em sombra; era 0,85);
   abaixo é SEM resposta, e o complemento nunca vira `nao` (B7 do roteiro). Por isso a métrica da R5 é a precisão do `sim`,
   não a concordância (`docs/design/jev-golden-set.md`, pré-registro da R5).
 - **Travado no código** (`privacidade.R5_LIBERADA`, falso até o GO do 31.10): `ativo()` é falso, o chamador não lê o
@@ -46,7 +46,10 @@ NAO: Final = "nao"
 #: Teto de apps num pedido (cada app é uma pergunta do fan-out, e o custo cresce com elas). Acima, a R5 não vai: mandar só
 #: parte mediria o que o Jev não viu, como o teto do catálogo da R2. O central tem 7 apps cadastrados (03/10).
 MAX_APPS: Final = 16
-LIMIAR: Final = 0.85
+#: 31.13/29.75 (orquestradora, 04/10): 0,5, SÓ em sombra (a R5 não tem `on`; um `on` pede decisão e limiar próprios). O
+#: pré-registro era 0,85; a sintética deu 4 de 16 paráfrases pegas em 0,85 e 8 de 16 em 0,5, sem falso `sim`, e a maior
+#: probabilidade de um `nao` foi 0,18. A linha da sombra grava a probabilidade, então o relatório ainda mede em 0,85.
+LIMIAR: Final = 0.5
 _NOME_MAX: Final = 200
 
 _INSTRUCOES: Final = (

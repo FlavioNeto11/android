@@ -51,7 +51,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ / "backend"))
 
 from app.config import DecisaoFechadaCfg, load_config  # noqa: E402
-from app.planning.decisao_fechada.apps import NAO, SIM  # noqa: E402
+from app.planning.decisao_fechada.apps import LIMIAR, NAO, SIM  # noqa: E402
 from app.planning.decisao_fechada.decisores import Decisor  # noqa: E402
 from app.planning.decisao_fechada.intencao import PERGUNTA_CATALOGO, id_opaco  # noqa: E402
 from app.planning.decisao_fechada.porta import TIMEOUT_SHADOW_S, Porta, RegistroDeDecisao  # noqa: E402
@@ -291,7 +291,7 @@ def montar_r5(leitura: LeituraDoLote, enviaveis: Sequence[CasoDaIntencao],
              and j["fallback"] != "sem_registro"]
     return {
         "casos_com_r5": sum(1 for c in enviaveis if c.r5 is not None), "fora_r5": dict(leitura.fora_r5),
-        "pedidos_secos": pedidos_secos, "limiar": 0.85, "medidas": medidas, "custo": custo_r5(enviaveis, registros),
+        "pedidos_secos": pedidos_secos, "limiar": LIMIAR, "medidas": medidas, "custo": custo_r5(enviaveis, registros),
         "en_x_pt": {"comparaveis": len(pares), "iguais": sum(1 for a, b in pares if a == b),
                     "taxa": rel._taxa(sum(1 for a, b in pares if a == b), len(pares)),
                     "nota": "sem resposta (abaixo do limiar) conta como valor: `sim` × sem resposta é diferença"},

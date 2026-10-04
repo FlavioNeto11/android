@@ -239,6 +239,14 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
 - Revisão curta: o vazio cita a aprovação automática quando ela está ligada; o topo só afirma o vazio com as duas listas
   lidas (Revisar em falha ou carregando é dito); o título da decisão usa o nome do catálogo (`capability_nome`, que a
   rota `aprovacao-automatica` passa a mandar com `capability` e `etapa`; adendo v1.34).
+## 2026-10-04 — 31.50 (contagens em lote) e 31.13 (limiar da sombra dos apps) (branch perf/31-50-counts-em-lote)
+
+- A lista de execuções conta os objetivos de todas numa consulta só (`Repository.run_summaries`); antes era uma
+  consulta por execução. Prova `simulated`: `backend/tests/test_resumos_em_lote.py`.
+- 31.13, pela tabela do 29.75 (aceita pela orquestradora): o limiar da sombra dos apps do comando (R5) vai de 0,85
+  para 0,5, só em sombra. A R5 segue travada no código (`R5_LIBERADA = False`) e não tem `on`. Prova `simulated`:
+  `backend/tests/test_decisao_fechada_apps.py::test_31_13_na_sombra_0_6_ja_e_sim_e_a_probabilidade_fica_gravada`.
+
 ## 2026-10-04 — 31.50: achados da revisão do deploy 30 (branch fix/31-50-revisao-deploy30)
 
 - (a) A r-20261004195451-7d3527 (prova real do 31.45) foi pelo ator: o plano veio de um fluxo salvo antes do #278.
