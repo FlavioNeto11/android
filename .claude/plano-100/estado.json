@@ -6353,19 +6353,25 @@
    "quando": "2026-10-04T16:03:30+00:00"
   },
   "31.11": {
-   "blocker": "rótulos do dono",
-   "arquivos": [],
-   "testes": [],
    "id": "31.11",
    "status": "partial",
-   "proof": "real",
-   "evidence": "A rodada paga R2, R3 e R5 de 04/10 14:55Z é a mesma do 31.13 (316 chamadas, US$ 0,0167). Falta rótulo: 17 rótulos, e os rótulos 1 e 2 seguem em 0, então nenhum número vale como GO.",
-   "grupo": "jev-validacao-cartoes",
+   "proof": "simulated",
+   "evidence": "PR #270 (suíte 29): fonte confirmacao_em_bloco no rótulo 1 do curador, medida à parte, fora da taxa de acordo e do veredito; a transição do dono item a item vence; arquivo inválido falha fechado (--rotulos-em-bloco em jev-relatorio-31-10.py e jev-braco-offline.py). scripts/tests/test_jev_relatorio_31_10.py (5 testes novos). Ficha .claude/handoffs/jev/rotulos-31-11.md na mesa do dono.",
+   "blocker": "Resposta literal do dono à ficha (confirmar os 28 claros; 10 e 42: rebaixar ou manter). Nenhum rótulo gravado até lá.",
+   "arquivos": [
+    "scripts/jev-relatorio-31-10.py",
+    "scripts/jev-braco-offline.py",
+    "docs/design/jev-golden-set.md"
+   ],
+   "testes": [
+    "scripts/tests/test_jev_relatorio_31_10.py"
+   ],
+   "grupo": "jev-suite-29",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T15:18:20+00:00"
+   "quando": "2026-10-04T16:16:39+00:00"
   },
   "30.37": {
    "id": "30.37",
@@ -7241,32 +7247,32 @@
    "quando": "2026-10-04T12:27:16+00:00"
   },
   "31.35": {
-   "blocker": "medida A/B da poda exige trocar o config do central",
-   "arquivos": [],
-   "testes": [],
    "id": "31.35",
    "status": "partial",
-   "proof": "not_run",
-   "evidence": "Parte B fechada pela orquestradora. Parte A (poda da UI do navegador): falta a medida real de antes e depois. A migração 097 está aplicada e `prompt_arvore_chars` é gravado; precisa de 2 execuções no navegador do QA, com `ai.podar_ui_do_navegador` ligado e desligado (mudança de config).",
-   "grupo": "jev-validacao-cartoes",
+   "proof": "real",
+   "evidence": "Braço DESLIGADO medido (podar_ui_do_navegador=false, central 1fc66a6c, android-09, comando da referência r-20261004151508-71fb91). Execução f6b86a: 1 decisão, 1.705 caracteres de árvore no prompt, 0 podados, US$ 0,028 (costs.spent_usd). Execução fcc94d (reprodução): 0 decisões (o fluxo cobriu). Script: .claude/handoffs/jev-scratch-2026-10-03/prova_3135a.py, saídas off-01.json e off-02.json.",
+   "blocker": "Falta o braço LIGADO depois do deploy 29: 2 execuções com comando de navegador em site público (cookies, sem login, só leitura) que o fluxo não cubra, chaves lote:jev:31.35a-on-NN, teto total US$ 1,00.",
+   "arquivos": [],
+   "testes": [],
+   "grupo": "jev-suite-29",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T15:18:20+00:00"
+   "quando": "2026-10-04T16:16:39+00:00"
   },
   "28.10": {
    "id": "28.10",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "F1 PR #227 (migração 096, adendo v1.16), deploy 24. F2 PR #240 (canais/28-10-f2-dependencias @ 47de2338; dependência no despacho, espera_dependencia_s, reserva dos filhos no orçamento do pai), suíte 25, deploy 25 (24da29ef). F3 PR #252 (canais/28-10-f3-papeis @ accd756b, adendo v1.18; TETO_DO_PAPEL, 422 autonomia_acima_do_papel na prévia, na criação e no PATCH, o laço decide com min(pedido, papel) e a ocorrência registra 'autonomia rebaixada ao teto do papel <papel>: <gravada> → <efetiva>'), suíte 26, deploy 26 (60b3a0a9, 04/10/2026 13:16Z). Simulado: backend/tests/test_pedidos_colaboracao_papeis.py (17, com contraprova: 3 falham sem a fatia), test_pedidos_colaboracao_api.py e test_pedidos_colaboracao_laco.py; 582 nos test_pedidos* no PR da F3. Real not_run: pedidos.colaboracao.enabled e pedidos.enabled estão desligados no central (pedidos fica desligado até o 28.23 estar no ar).",
-   "blocker": "F4 (consolidação no pai) e F5 (regras para fora, só simulated até o sim do dono) não começaram; a prova real de qualquer fatia espera pedidos religado depois do 28.23.",
+   "proof": "real",
+   "evidence": "F1 PR #227 (migração 096, v1.16), deploy 24; F2 PR #240, deploy 25; F3 PR #252 (v1.18), deploy 26. F3 REAL em 04/10/2026 16:03Z, central WIN-7S2UASNLFOP, deploy 28 (1fc66a6c; pedidos.colaboracao.enabled ligado neste reinício): (1) papel pesquisador + autonomia agir: POST /api/pedidos/previa valido=false com bloqueio autonomia_acima_do_papel (campo autonomia) e sem selo; POST /api/pedidos (lote:canais:28.10-f3-01) 422 autonomia_acima_do_papel 'O papel `pesquisador` vai no máximo até `observar`; o pedido pede `agir`'; 0 pedidos gravados. (2) papel pesquisador + observar (lote:canais:28.10-f3-02): ped_U9TvCUHdVQaPCzaaZ1ub4w criado ativo, ocorrência r-20261004160341-2db829 (android-12 sem conta, QA Messenger) com runs.teto_de_autonomia='observar', completed_with_issues, US$ 0,1166; o pedido encerrou por orçamento (teto US$ 0,10), com os avisos 40 e 41 entregues ao Telegram (dono avisado antes, msg 191). Simulado: backend/tests/test_pedidos_colaboracao_papeis.py (17).",
+   "blocker": "F4 (consolidação no pai) e F5 (regras para fora) não começaram; F1/F2 sem prova real com pai e filhos (a raiz com papel foi a provada).",
    "grupo": "canais",
    "modelo": "sessao",
-   "esforco": "M",
+   "esforco": "G",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T13:24:55+00:00"
+   "quando": "2026-10-04T16:16:39+00:00"
   },
   "14.13": {
    "id": "14.13",
@@ -7446,21 +7452,28 @@
    "quando": "2026-10-04T15:15:34+00:00"
   },
   "31.40": {
-   "blocker": "deploy do #263 e a prova real",
-   "arquivos": [],
-   "testes": [
-    "backend/tests/test_sobreposicao.py"
-   ],
    "id": "31.40",
    "status": "partial",
    "proof": "simulated",
-   "evidence": "31.40 b no PR #263 (feat/31-40b-limpeza-comprovada), para a suíte 28. Implementa (i), (ii) e (iii) do desenho de 13:25Z. test_sobreposicao 9 passed; 39 arquivos afetados 1682 passed. A prova real (repetir a 3894c1) fica para depois do deploy.",
-   "grupo": "jev-31-40b",
+   "evidence": "31.40 b implantado no deploy 28 (PR #263): Verdict.cobre + Cobertura (resource_id/texto/bounds), ainda_cobre decide pela árvore, um único juiz por limpeza sem elemento conhecido, step_done sem gesto recusado, receita desligada em etapa opcional. backend/tests/test_sobreposicao.py (5 testes novos). Tentativa real dd3a72 (04/10, android-09): o site exibiu verificação de conta, cancelada sem tocar, US$ 0,045; não volta àquele site.",
+   "blocker": "Prova real pendente: depois do deploy 29, mesmo comando público do braço ligado do 31.35 (limpeza do banner de cookies).",
+   "arquivos": [
+    "backend/app/taskqueue/executor.py",
+    "backend/app/taskqueue/scheduler.py",
+    "backend/app/planning/provider.py",
+    "backend/app/planning/prompts.py",
+    "backend/app/learning/domain/falhas.py"
+   ],
+   "testes": [
+    "backend/tests/test_sobreposicao.py",
+    "backend/tests/test_prompts_licoes.py"
+   ],
+   "grupo": "jev-suite-29",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T15:18:20+00:00"
+   "quando": "2026-10-04T16:16:39+00:00"
   },
   "31.41": {
    "id": "31.41",
@@ -7563,14 +7576,53 @@
    "id": "28.24",
    "status": "partial",
    "proof": "simulated",
-   "evidence": "PR #267 (canais/28-24-anexos @ 78fbe914; 1cf6c3eb código + 78fbe914 renumera a regra para C-22), migração 101_canal_anexos, adendo v1.21, docs/dominios/canais.md C-22 (com as duas exceções do dono de 04/10 15:17Z). F1: o Telegram recebe foto/documento/legenda do dono (tipo conferido pelo conteúdo, teto antes e durante o download, guardado por sha256 em data/anexos com escrita atômica), convidado recusado sem download, saída por enviar_anexo/enviar_conteudo só de data/anexos ou do produto (sendPhoto/sendDocument), GET /api/canais/anexos/{id} e /conteudo, faxina 28.16 estendida; token fora de log/erro/banco. Simulado: backend/tests/test_canais_anexos.py (68 casos; 9 mutações derrubadas pelo teste certo), afetados avisos/canais/entrada/convidados/faxina/estado 326 passed, trello 154 passed, scripts/tests 544 passed, docs-check 0 erros. Real not_run: depois do deploy, o dono manda uma imagem pelo bot.",
-   "blocker": "F2: leitura da imagem pela IA quando o dono pede (paga, com teto), cartão do Trello com a imagem do dono, tela de anexos no painel e o chamador da captura de aparelho; prova real depois do deploy.",
+   "evidence": "PR #267 (canais/28-24-anexos @ 57c1b255): F1 1cf6c3eb, renumeração da regra para C-22 em 78fbe914, F2.0 ae0c1bea (falha no download avisa o dono; anexo pendente retomado uma vez após 60 s), F2.1 e1b6044a (POST /api/canais/anexos/{id}/trello com confirmar:true; só entrada do dono, quadro conferido; chave e token no cabeçalho), F2.2 71cf6a91 (/captura <aparelho> só no chat do dono, pela prévia do painel; tela sensível sem imagem; legenda só com o id do aparelho), docs 57c1b255. Migração 101_canal_anexos (ainda não aplicada; ganhou estado pendente, ref_externa, mime_declarado), adendo v1.21, C-22. Simulado: test_canais_anexos.py (73), test_canais_anexos_trello.py (9), test_canais_captura.py (28) e demais afetados: 368 passed; filtro trello: 163; scripts/tests: 544; docs-check 0. Mutações: 9 na F1 e 9 de 10 na F2 derrubaram o teste certo (a de saída no Trello é coberta por guarda redundante). Real not_run.",
+   "blocker": "Fatia 3 (leitura da imagem pela IA a pedido do dono, teto de US$ 0,05) e fatia 4 (tela no painel) não começaram. Prova real depois do deploy 29: saída por /captura do android-12, com aviso prévio ao dono; entrada só com imagem natural do dono.",
    "grupo": "canais",
    "modelo": "sonnet (worker-impl)",
    "esforco": "M",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T16:03:31+00:00"
+   "quando": "2026-10-04T16:16:40+00:00"
+  },
+  "31.26": {
+   "id": "31.26",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Opção A, PR #271 (suíte 29): com nível sent e prova local sent_text, o primeiro julgamento (barato) é dispensado; o rejulgamento 17.10 decide. Chave ai.sent_text_dispensa_primeiro_juiz (padrão true). backend/tests/test_sent_text_dispensa_juiz.py (6 testes).",
+   "blocker": "Prova real not_run: DM entre contas nossas barrada até ~02/11 (ADR-055).",
+   "arquivos": [
+    "backend/app/taskqueue/executor.py",
+    "backend/app/config.py",
+    "config/config.example.yaml",
+    "docs/ia.md"
+   ],
+   "testes": [
+    "backend/tests/test_sent_text_dispensa_juiz.py"
+   ],
+   "grupo": "jev-suite-29",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T16:16:39+00:00"
+  },
+  "31.42": {
+   "id": "31.42",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Medida só leitura, 04/10 16:01-16:05Z, central 1fc66a6c, sem IA: 88 itens esperaram a pessoa em 14 dias (a 5, b 2, d 8, e 3, f 48, f' 22); 98 abertos (61 PROVED, 37 INFERRED). Contraprova: R1 5/5 sem divergência da pessoa (N=5); R3 (cancelar needs_input > 24 h) 20/48 sem divergência; R2 0. .claude/handoffs/jev/regua-aprovacao-automatica.md com 15 consultas reproduzíveis.",
+   "blocker": null,
+   "arquivos": [
+    ".claude/handoffs/jev/regua-aprovacao-automatica.md"
+   ],
+   "testes": [],
+   "grupo": "jev-suite-29",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T16:16:39+00:00"
   }
  },
  "rodadas": [
@@ -9857,6 +9909,37 @@
   },
   {
    "quando": "2026-10-04T16:03:31+00:00",
+   "itens": [
+    "28.24"
+   ],
+   "grupos": [
+    "canais"
+   ]
+  },
+  {
+   "quando": "2026-10-04T16:16:39+00:00",
+   "itens": [
+    "31.35",
+    "31.40",
+    "31.11",
+    "31.26",
+    "31.42"
+   ],
+   "grupos": [
+    "jev-suite-29"
+   ]
+  },
+  {
+   "quando": "2026-10-04T16:16:39+00:00",
+   "itens": [
+    "28.10"
+   ],
+   "grupos": [
+    "canais"
+   ]
+  },
+  {
+   "quando": "2026-10-04T16:16:40+00:00",
    "itens": [
     "28.24"
    ],
