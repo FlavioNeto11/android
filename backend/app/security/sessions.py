@@ -63,6 +63,8 @@ def operador_atual() -> str | None:
 #: evento) e curto o bastante para caber numa coluna que alguém vai ler.
 _NOME_INVALIDO = re.compile(r"[\x00-\x1f\x7f]")
 NOME_MAX = 60
+#: O operador das conversas dos canais (`trello:<idMember>`, `telegram:<chat>`): nenhuma sessão do painel se chama assim.
+PREFIXOS_DE_CANAL = ("trello:", "telegram:")
 
 
 class NomeInvalido(ValueError):
@@ -78,6 +80,9 @@ def normalizar_nome(bruto: str | None) -> str:
         raise NomeInvalido(f"O nome do operador não pode passar de {NOME_MAX} caracteres.")
     if _NOME_INVALIDO.search(nome):
         raise NomeInvalido("O nome do operador não pode conter caracteres de controle.")
+    if nome.casefold().replace(" ", "").startswith(PREFIXOS_DE_CANAL):
+        # 28.31 F2a: `trello:<membro_dono>` é o dono na criação do pedido; o login não pode se dar esse nome.
+        raise NomeInvalido("Esse começo de nome é reservado aos canais (Trello e Telegram): use o seu nome.")
     return nome
 
 

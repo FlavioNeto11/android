@@ -87,7 +87,14 @@ RESPOSTA_DO_REPASSE = {
     "continuacao": "Recebi, junto com a mensagem anterior: a resposta vem por aqui, em resposta a esta mensagem.",
     "sem_destino": ("Não sei se isso é um pedido para um aparelho ou uma pergunta para mim. Se é pergunta, já repassei: a "
                     "ANA responde por aqui. Se é pedido, mande de novo dizendo o aparelho (ex.: \"no android-12\")."),
+    # 28.30: o comentário do dono num cartão e o sim ou o não dele no Telegram.
+    "comentario": "Recebi o seu comentário. Pedi a sua confirmação no Telegram: o sim de lá é que vale.",
+    "comentario_sim": "Confirmado: repassei à orquestradora, que age e responde no cartão.",
+    "comentario_nao": "Entendido: o comentário fica sem efeito. Avisei a orquestradora.",
 }
+#: 28.30 e a entrada 1256 de 04/10: o recado que a Central não conseguiu tratar não fica mudo. Frase fixa, sem eco.
+RESPOSTA_FALHA_INTERNA = ("Não consegui tratar este recado por um erro aqui dentro; ele ficou guardado e a orquestradora vai "
+                          "olhar. /ajuda mostra os comandos.")
 #: A credencial é recusada sem guardar e apagada do canal quando ele deixa (contrato dos canais, §7); a resposta nunca
 #: ecoa o texto.
 RESPOSTA_CREDENCIAL = ("Isso parece senha ou código: não guardei, não repassei e apaguei a mensagem do chat. Senha "
@@ -815,7 +822,13 @@ class ConversaDoCanal:
             await self._responder(saida, linha, texto)
         except Exception as exc:  # uma mensagem ruim não para a conversa
             log.exception("telegram: mensagem %s", linha.get("id"))
-            self.repo.marcar(self._id(linha), "falhou", erro=type(exc).__name__, de=("recebida",))
+            if self.repo.marcar(self._id(linha), "falhou", erro=type(exc).__name__, de=("recebida",)):
+                # 28.30 (entrada 1256): a falha não fica muda. O reply a esta resposta segue à orquestradora (a
+                # continuação do 28.28 leva o texto da linha `falhou`). Se nem a resposta sai, só o log.
+                try:
+                    await self._responder(saida, linha, RESPOSTA_FALHA_INTERNA)
+                except Exception:  # noqa: BLE001 - a resposta da falha não pode derrubar a conversa
+                    log.exception("telegram: a resposta da falha da mensagem %s não saiu", linha.get("id"))
         finally:
             OPERADOR.reset(token)
 
