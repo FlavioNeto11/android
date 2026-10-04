@@ -317,6 +317,27 @@ arquivos), `-n 8`, prioridade Idle:
 Com o reuso ligado, os 8 workers migraram uma vez cada e reusaram o esquema 551 vezes. Nenhuma troca e nenhuma
 conexão encerrada.
 
+### O portão de PostgreSQL de uma suíte (29.53)
+
+A suíte inteira em PostgreSQL não cabe colada num deploy. Em 03/10 ela não terminou na janela (27 % com `-n 8`),
+e o Docker/WSL logo depois do deploy 13 disputou CPU com os emuladores: três aparelhos com conta foram reiniciados
+pela regra de saúde. Desde então o portão é este:
+
+- **Toda suíte roda PG dirigido:** os arquivos de teste que o lote toca. São os testes alterados mais os que
+  importam um módulo alterado, ou passam pela API quando `api.py` muda. Roda com `-n 8`, em prioridade Idle, com o
+  esquema do worker ligado. Exemplos: 436 e 2729 testes nas suítes 14 e 15; 4306 em 183 arquivos na 18; 2823 em 164
+  arquivos na 19.
+- **O farm-pg sobe só na vez da suíte e para logo depois.** Ao subir, ele faz cerca de 2 min de recuperação com
+  `fsync`. Espere a primeira conexão aceita antes do pytest: a primeira rodada da suíte 18 deu 1913 erros "the
+  database system is starting up".
+- **A suíte inteira em PG roda só em janela própria.** Nenhum aparelho com conta pode estar subindo, e ela nunca
+  fica colada num deploy (nem antes, nem depois). O CI agendado (`ci.yml`, container descartável) é a rede de
+  segurança dela.
+- **Lote só de painel ou só de docs não roda PG.** Foi o caso da suíte 20.
+
+A medida por arquivo (os dez mais lentos, de `--durations=0` agregado por arquivo) sai da etapa de PG da suíte 21
+e entra aqui.
+
 ## Dois backends no mesmo banco: o que já foi feito
 
 > **Histórico.** Esta seção chegou a se chamar "o que foi preciso para isso ser seguro", depois "e por que ainda

@@ -14,6 +14,9 @@ paths:
   `cmd /c start /low` deu "Access is denied" no shell de uma sessão e funcionou em outra (medido em 02/10/2026): use a forma do PowerShell, que vale em todas.
 - **O harness usa `base_console_port: 5640`** (`backend/tests/conftest.py`) — confira antes de assumir isolamento
   dos emuladores reais (um `HOME` da suíte já derrubou um canário real — K-001).
+- **PostgreSQL na suíte = PG dirigido** (29.53, `docs/banco.md`, "O portão de PostgreSQL de uma suíte"): só os
+  arquivos que o lote toca, `-n 8`, Idle, depois de o farm-pg aceitar conexão. A suíte inteira em PG roda só em janela
+  sem aparelho com conta subindo, e nunca colada num deploy.
 - **Nunca enfraqueça nem apague um teste** para fazer a suíte passar.
 - Teste multi-banco abre o banco pela fábrica configurada, nunca `Database(caminho)` direto.
 - Teste de tempo real usa relógio **injetável**, não `time.sleep`/`datetime.now()` direto.

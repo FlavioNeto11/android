@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.53: o portão de PostgreSQL de uma suíte, por escrito (branch docs/29-53-portao-pg, só docs)
+
+- `docs/banco.md` ("O portão de PostgreSQL de uma suíte") e `.claude/rules/testes.md`. Toda suíte roda PG dirigido
+  nos arquivos que o lote toca (`-n 8`, Idle, esquema do worker); o farm-pg sobe só na vez da suíte e espera a
+  primeira conexão. A suíte inteira em PG roda só em janela sem aparelho com conta subindo, nunca colada num deploy.
+  Lote só de painel ou de docs não roda PG.
+- Falta a medida por arquivo (os dez mais lentos), que sai da etapa de PG da suíte 21 e fecha o item com prova real.
+
 ## 2026-10-04 — 29.61 (correção): o aviso de rota desconhecida aparece de verdade (branch fix/29-61-aviso-some, só painel)
 
 - Causa: `aoMudarHash` limpava o aviso olhando o hash DEPOIS de `aplicarHash`, que reescreve o endereço errado para a
