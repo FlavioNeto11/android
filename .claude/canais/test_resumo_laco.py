@@ -148,7 +148,14 @@ def test_numeros_do_resumo_nao_viram_telefone() -> None:
     assert r._sem_contato(texto) == texto
 
 
-def test_redacao_rele_os_nomes_do_banco(tmp_path: Path) -> None:
+@pytest.fixture
+def padroes_da_redacao(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Os padrões do módulo voltam ao fim do teste (num worktree sem banco, `recarregar()` não os restauraria)."""
+    for nome in ("_INTEIROS", "_PARTES", "_PERSONA", "_PERSONA_PARTE"):
+        monkeypatch.setattr(r.redacao, nome, getattr(r.redacao, nome))
+
+
+def test_redacao_rele_os_nomes_do_banco(tmp_path: Path, padroes_da_redacao: None) -> None:
     (tmp_path / "data").mkdir()
     con = sqlite3.connect(tmp_path / "data" / "poc.sqlite3")
     con.execute("create table personas (name text)")
@@ -157,13 +164,41 @@ def test_redacao_rele_os_nomes_do_banco(tmp_path: Path) -> None:
     con.execute("insert into profile_accounts values ('@teo.quinta')")
     con.commit()
     con.close()
-    try:
-        assert r.redacao.recarregar(tmp_path) is True              # persona criada depois da importação
-        saida = r._e("Teodora Quintanilha comentou como teo.quinta")
-        assert "Teodora" not in saida and "teo.quinta" not in saida
-        assert r.redacao.recarregar(tmp_path / "sem-banco") is False
-    finally:
-        r.redacao.recarregar()
+    assert r.redacao.recarregar(tmp_path) is True              # persona criada depois da importação
+    saida = r._e("Teodora Quintanilha comentou como teo.quinta")
+    assert "Teodora" not in saida and "teo.quinta" not in saida
+    # falha transitória depois de uma leitura inteira: a lista completa continua valendo, não só a reserva
+    assert r.redacao.recarregar(tmp_path / "sem-banco") is False
+    saida = r._e("Teodora Quintanilha comentou como teo.quinta")
+    assert "Teodora" not in saida and "teo.quinta" not in saida
+
+
+def test_falha_parcial_do_banco_nao_troca_a_lista(tmp_path: Path, padroes_da_redacao: None) -> None:
+    (tmp_path / "data").mkdir()
+    con = sqlite3.connect(tmp_path / "data" / "poc.sqlite3")
+    con.execute("create table personas (name text)")           # sem profile_accounts: a 2ª leitura falha
+    con.execute("insert into personas values ('Outra Pessoa')")
+    con.commit()
+    con.close()
+    antes = list(r.redacao._INTEIROS)
+    assert r.redacao.recarregar(tmp_path) is False
+    assert r.redacao._INTEIROS == antes
+
+
+def test_sem_banco_na_subida_nao_envia_e_depois_da_primeira_leitura_segue(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(r, "_banco_lido", False)
+    monkeypatch.setattr(r.redacao, "recarregar", lambda raiz=None: False)
+    monkeypatch.setattr(r, "ler_estado", lambda agora, ja=0: pytest.fail("não lê nada sem os nomes"))
+    assert r.compor({"eventos_linha": 7}, AGORA) == (None, None, 7)
+    gravados: list[object] = []
+    monkeypatch.setattr(r, "_gravar_json", lambda caminho, dado: gravados.append(dado))
+    monkeypatch.setattr(r, "enviar", lambda texto: pytest.fail("não envia"))
+    assert r.rodada({"eventos_linha": 7}) is None and gravados == []   # nem `conferido_em`
+    # já leu uma vez nesta subida: a falha seguinte compõe com a lista da última leitura
+    monkeypatch.setattr(r, "_banco_lido", True)
+    monkeypatch.setattr(r, "ler_estado", lambda agora, ja=0: _estado())
+    texto, retrato, _ = r.compor({"eventos_linha": 7}, AGORA)
+    assert texto is not None and retrato is not None
 
 
 def test_texto_dinamico_passa_pela_redacao() -> None:

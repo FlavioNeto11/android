@@ -87,10 +87,13 @@ _PERSONA, _PERSONA_PARTE = _compilar(_INTEIROS, _PARTES)
 def recarregar(raiz: Path = RAIZ) -> bool:
     """Relê os nomes do banco de `raiz`. Os nomes são lidos uma vez na importação; um processo longo (o laço do resumo,
     28.31) não enxerga a persona criada depois de subir, e um worktree não tem o banco. Devolve se o banco foi lido
-    (`False`: só a reserva e a lista extra)."""
+    inteiro. Leitura que falha, mesmo em parte, NÃO troca os padrões: a falha transitória num processo que já tinha a
+    lista completa não pode trocá-la pela reserva."""
     global _INTEIROS, _PARTES, _PERSONA, _PERSONA_PARTE  # noqa: PLW0603 - os padrões são do módulo
-    _INTEIROS, _PARTES, lido = _nomes_sensiveis(raiz)
-    _PERSONA, _PERSONA_PARTE = _compilar(_INTEIROS, _PARTES)
+    inteiros, partes, lido = _nomes_sensiveis(raiz)
+    if lido:
+        _INTEIROS, _PARTES = inteiros, partes
+        _PERSONA, _PERSONA_PARTE = _compilar(inteiros, partes)
     return lido
 
 #: depois de "]" é o host de uma URL cuja senha já saiu ("[senha]@localhost"), não uma conta

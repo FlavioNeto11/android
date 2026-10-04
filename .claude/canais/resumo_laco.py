@@ -73,6 +73,8 @@ from redacao import redigir  # noqa: E402
 
 #: o problema de saúde que não muda é relembrado no máximo a cada 3 h (decisão da orquestradora, 04/10)
 LEMBRAR_SAUDE = timedelta(hours=3)
+#: os nomes de persona já foram lidos do banco nesta subida? Antes disso, nada sai (a reserva não basta)
+_banco_lido = False
 
 
 def _agora() -> datetime:
@@ -339,10 +341,17 @@ def _desde(cursor: dict) -> str | None:
         return None
 
 
-def compor(cursor: dict, agora: datetime) -> tuple[str | None, dict, int]:
-    """O texto a enviar (ou `None`: nada mudou), o retrato para o cursor e até onde o eventos foi contado."""
-    if not redacao.recarregar(RAIZ):  # persona criada depois de o laço subir também sai
-        print(f"{agora:%H:%M:%S}Z aviso: banco do central não lido; a redação usa só a lista reserva", flush=True)
+def compor(cursor: dict, agora: datetime) -> tuple[str | None, dict | None, int]:
+    """O texto a enviar (ou `None`: nada mudou), o retrato para o cursor e até onde o eventos foi contado. Retrato `None`:
+    os nomes de persona ainda não foram lidos do banco nesta subida, e nada sai (nem se grava)."""
+    global _banco_lido  # noqa: PLW0603 - o estado da subida do laço
+    if redacao.recarregar(RAIZ):  # persona criada depois de o laço subir também sai
+        _banco_lido = True
+    elif not _banco_lido:
+        print(f"{agora:%H:%M:%S}Z banco do central não lido nesta subida: sem envio", flush=True)
+        return None, None, int(cursor.get("eventos_linha") or 0)
+    else:  # falha transitória: a redação segue com a lista da última leitura inteira
+        print(f"{agora:%H:%M:%S}Z aviso: banco do central não lido; vale a lista da última leitura", flush=True)
     estado = ler_estado(agora, int(cursor.get("eventos_linha") or 0))
     texto, retrato = montar(estado, cursor.get("retrato"), agora, _desde(cursor))
     return texto, retrato, int(estado["eventos_linha"])
@@ -365,6 +374,8 @@ def rodada(cursor: dict) -> dict | None:
     """Uma volta. Nada mudou: não envia; grava só `conferido_em`, e o próximo resumo segue contando do último envio."""
     agora = _agora()
     texto, retrato, linhas = compor(cursor, agora)
+    if retrato is None:
+        return None  # sem os nomes do banco: o laço tenta de novo em 2 min, sem marcar a rodada
     if texto is None:
         novo = {**cursor, "conferido_em": agora.strftime("%Y-%m-%dT%H:%M:%SZ")}
         _gravar_json(CURSOR, novo)
@@ -414,7 +425,10 @@ def main() -> int:
         print(f"situação carimbada às {sit['atualizado_em']}, eventos curados até {sit['eventos_curados_ate']}")
         return 0
     if args.ensaio:
-        texto, _, linhas = compor(cursor, _agora())
+        texto, retrato, linhas = compor(cursor, _agora())
+        if retrato is None:
+            print("ensaio: banco do central não lido; o laço NÃO enviaria")
+            return 1
         if texto is None:
             print("ensaio: nada mudou desde o último envio; o laço NÃO enviaria")
             return 0
@@ -439,7 +453,7 @@ def main() -> int:
             continue
         novo = rodada(cursor)
         if novo is None:
-            time.sleep(120)  # falha de envio: tenta de novo em 2 min, sem pular a rodada
+            time.sleep(120)  # falha de envio ou banco não lido: tenta de novo em 2 min, sem pular a rodada
             continue
         cursor = novo
 
