@@ -98,6 +98,28 @@ def _sem_acento(t: str) -> str:
     return "".join(ch for ch in unicodedata.normalize("NFD", t) if unicodedata.category(ch) != "Mn")
 
 
+def _abrir_repositorio_do_produto():  # noqa: ANN202 - o repositório do produto, aberto pela mesma config
+    """O MESMO repositório que o produto usa para `canal_enviadas` (`EntradasDoCanal`), sobre o banco que a config da
+    instalação aponta. Abrir não migra. Separado para o teste trocar por um falso."""
+    from app.config import load_config
+    from app.db import Database
+    from app.modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
+
+    return EntradasDoCanal(Database(load_config().db_dsn), canal="telegram")
+
+
+def _gravar_enviada(mid: object, abrir=None) -> None:  # noqa: ANN001
+    """Grava a mensagem que o script mandou ao DONO em `canal_enviadas` (`origem='ana'`, sem fato), para a resposta (reply)
+    do dono a ela ser reconhecida como resposta à ANA, e não cair como texto livre. Falhar aqui NUNCA falha o envio: só
+    avisa. Só o chat do dono (os `message_id` de um convidado podem colidir com os do dono na mesma tabela)."""
+    try:
+        if mid is None:
+            return
+        (abrir or _abrir_repositorio_do_produto)().registrar_enviada(str(mid), "ana")
+    except Exception as exc:  # noqa: BLE001 - a mensagem já saiu; o banco não pode desfazer isso
+        print(f"aviso: a mensagem saiu, mas não foi registrada em canal_enviadas ({type(exc).__name__})")
+
+
 async def _enviar(texto: str, reply_to: int | None, chat: str | None = None) -> int:
     env = EnvSettings()
     token = _segredo(env.telegram_bot_token)
@@ -141,6 +163,8 @@ async def _enviar(texto: str, reply_to: int | None, chat: str | None = None) -> 
         print(f"enviado {modo} ({len(texto)} chars) message_id={mid}")
         if chat:
             _historico_de_saida(chat, mid, _sem_tags(texto))
+        else:
+            _gravar_enviada(mid)
         return 0
     except FalhaDeEnvio as exc:
         print(f"Falhou: {exc.motivo}")

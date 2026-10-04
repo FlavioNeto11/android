@@ -1485,6 +1485,12 @@ class StepExecutor:
 
         if enviar is None:
             return await falha("este aparelho não sabe receber mídia na galeria", tentar_de_novo=False)
+        # 30.60 (achado 6): o perfil do objetivo precisa ter vínculo ATIVO com ESTE aparelho. Sem isso, a imagem de uma
+        # persona iria para a galeria de outra (objetivo de A despachado num aparelho que só tem B). O vínculo secundário
+        # conta (android-13 é também do André): é pertencer ao aparelho, não ser o único dele.
+        if persona_id and self.social is not None and self.social.repo.binding(persona_id, rt.id) is None:
+            return await falha(f"a persona do objetivo não está vinculada a {rt.id}: a imagem dela não vai para a galeria "
+                               "de outro perfil (nada foi enviado ao aparelho)", tentar_de_novo=False)
         try:
             remoto = await rt.executor.run(colocar_midia_na_galeria, self.persona_images, persona_id,
                                            step.bindings.get("image_id"), enviar, timeout=float(step.timeout_s),
@@ -3274,7 +3280,18 @@ class StepExecutor:
             # texto ausente) devolve `None`/`False` e cai para o modelo — nunca vira reprovação por si só.
             # Fase G: a pergunta vai ao `CapabilityProvider` (a mesma `local_proof_holds`, embrulhada); só `proved`
             # vale como atalho, exatamente como o `True` de antes.
-            if judged and need is None and local_proof and await self._prova_local(step, capability, obs):
+            provada = (judged and need is None and bool(local_proof)
+                       and await self._prova_local(step, capability, obs, conta=getattr(ctx_for(), "account_label", None)))
+            if provada and step.side_effect and local_proof.startswith("count_gt"):
+                # 30.60: a prova por CONTAGEM (publicar) não fecha o efeito sozinha. O contador do cabeçalho sobe de forma
+                # otimista, antes de o upload terminar ("Posting…"), e uma publicação nunca se repete por dúvida: a prova
+                # vira fato para o modelo, e o "sim" dele passa pelo rejulgamento do 17.10. O `sent_text` da DM segue
+                # como atalho: é o critério objetivo do ADR-055 (bolha com o texto e campo vazio), não um contador.
+                fato = f"a prova local da pós-condição casou na tela ({local_proof})"
+                if fato not in (facts or []):           # o laço relê a tela: o fato entra uma vez só
+                    facts = [*(facts or []), fato]
+                    text = "; ".join(t for t in (text, fato + "; o modelo confere antes de dar por feito") if t)
+            elif provada:
                 ok, judged = True, False
                 text = (f"pós-condição comprovada pela árvore local, sem IA ({local_proof})"
                         if not local_proof.startswith("sent_text") else
@@ -3528,7 +3545,7 @@ class StepExecutor:
         return await self._prova_local(step, capability, obs, sem_nivel=True)
 
     async def _prova_local(self, step: StepDTO, capability: CapabilityRef | None, obs: Observation, *,
-                           sem_nivel: bool = False) -> bool:
+                           sem_nivel: bool = False, conta: str | None = None) -> bool:
         """A prova local pela porta `CapabilityProvider.verify` (fase G). `proved` é o atalho de sempre.
 
         `not_proved` (marca de falha visível na tela) também cai para o caminho de sempre, e não reprova aqui: quem
@@ -3538,8 +3555,12 @@ class StepExecutor:
         """
         if capability is None:
             return False
+        # 30.60: a conta esperada no aparelho entra como `account_label`, para a prova conferir que a tela é a do PRÓPRIO
+        # perfil (o argumento da etapa, se houver, vence).
+        argumentos = {**({"account_label": conta} if conta else {}),
+                      **{k: str(v) for k, v in (step.bindings or {}).items() if v is not None}}
         vista = StepView(node_id=step.key, capability=capability,
-                         bindings=tuple((k, str(v)) for k, v in (step.bindings or {}).items() if v is not None),
+                         bindings=tuple(argumentos.items()),
                          band_guard=tuple(step.band_guard or ()),
                          required_delivery_level=(step.postcondition.required_delivery_level.value
                                                   if step.postcondition.required_delivery_level and not sem_nivel

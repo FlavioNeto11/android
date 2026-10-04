@@ -5176,14 +5176,14 @@
    "id": "28.12",
    "status": "partial",
    "proof": "real",
-   "evidence": "Real em 04/10/2026 no central (WIN-7S2UASNLFOP), deploys 21 a 24, 4 pedidos só de observação (lote:canais:28.12-01 a -04), nenhuma ação com efeito externo. Ocorrências: -01 ped_3Ypk6VjEVUGQC4ziIiNtvQ 09:00Z run r-20261004090000-bbfe54 US$ 0.1069 incerta (cancelado 09:11:53Z); -02 ped_O_tLG52eXcmZNGB0THvIkA 10:00Z r-20261004100000-f8722d 0.3087 incerta (resolvida 10:21:07Z pelo 28.21), 11:00Z pulada (pausa), 12:00Z r-20261004120000-3894c1 0.3063 falhou (encerrado por orçamento); -03 ped_bdH23ZWKXDSkln9MstvhfA 10:35Z r-20261004103500-ba5ebc 0.3055 falhou pelo orçamento (28.20; encerrado); -04 ped_Jfb2Q2_EXBicgUxGwiivUQ (condição + recorrência) 10:45Z r-20261004104500-7ae54f 0.261 falhou no teto da ocorrência, 11:45Z e 12:45Z puladas (pausa), cancelado 12:07:24Z. Gasto real do bloco US$ 1,288 de 1,70; cinco execuções, todas acima do teto, nenhuma entregou a leitura. Reinícios dos deploys 23 e 24: exatamente uma execução por ocorrência, nenhuma duplicada nem sumida. Antes x depois das correções do deploy 24 (-02 10:00Z x 12:00Z): decisões 23->19, imagens 11->12, verificações 5->8, duração 224->297 s, custo 0.3087->0.3063 (igual). Relatórios determinísticos reais: 2 (-01 e -04, encerramento, sem_conclusao, com nao_coberto). Avisos: ocorrencia_incerta 2, orcamento_esgotado 2, relatorio_pronto 2. not_run: a condição avaliada em real (preco_1 nunca observado), o pedido só de leitura com relatório (a leitura do -03 falhou no orçamento), a ocorrência perdida de propósito, a lista de próximas execuções no painel. Detalhe: docs/relatorio-validacao.md §30.1 (PR #244).",
-   "blocker": "A leitura de página de varejo no navegador custa US$ 0,26 a 0,31 por ocorrência e trava no juiz por sobreposição (diálogo 'Abra o app' sobre a página na pós-condição do open_url). Reabre depois do 31.38 provado e do diagnóstico da Jev sobre o juiz.",
-   "grupo": "canais",
-   "modelo": "sessao",
-   "esforco": "M",
+   "evidence": "Reprova real em 04/10/2026 19:02Z, central WIN-7S2UASNLFOP, deploy 30 (1b3568a7), autorização do dono (cartão 17:23Z, Telegram msg 215 às 18:56Z; reconhecida nas msgs 217/218). Pedido ped_1TuY2-zXWPCLAOz_y4fS4A (lote:canais:28.12-05, observar, android-10, 3 horários 19:02Z/19:17Z/19:32Z, janela 60 s, teto 0,45/oc. e 1,40 total). Ocorrência 1: r-20261004190200-5b56e6, completed_with_issues 19:04:23Z, ocorrência incerta, US$ 0,1886 (planning.costs.spent_usd); etapa open_list falhou duas vezes por sobreposição (diálogo 'Abra o app e ganhe frete grátis…' e depois 'Configurar cookies' sobre a lista; limpeza opcional esgotou as 3 ações). Parado pela regra 'mesmo motivo = parar': pedido cancelado às 19:05Z, 2ª e 3ª ocorrências não rodaram. Custo por ocorrência caiu de 0,26–0,31 para 0,19 (efeito do 31.38).",
+   "blocker": "O juiz do open_url recusa a página coberta por diálogos do site em série (app + cookies) e a limpeza opcional não os fecha em 3 ações: item da Jev. Recorrência, reinício no meio e ocorrência perdida seguem not_run.",
+   "grupo": "resultado-orquestradora-deploy31",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T12:27:16+00:00"
+   "quando": "2026-10-04T19:55:16+00:00"
   },
   "30.12": {
    "id": "30.12",
@@ -7188,15 +7188,15 @@
   "31.36": {
    "id": "31.36",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #232 (etapa de limpeza opcional), migração 098; tests/test_etapa_opcional.py (3 testes, 1 ponta a ponta); suíte 24 (integ/suite-24 @ 2c7ab99e: SQLite 9377 passed em -n 6, PG dirigido 3485 passed em 170 arquivos com 2 falhas tratadas, uma correção só de teste e um intermitente verde ao repetir; front 1491) e deploy 24 no ar em 04/10 (saúde ok às 11:08:36Z, migração 098_etapa_opcional, prova de fora ok às 11:08:43Z). Prova real pendente: ocorrências do 28.12 depois do deploy 24.",
+   "proof": "real",
+   "evidence": "04/10 19:57:26Z, central em 0ede1860: r-20261004195726-cb19de no android-09 (Chrome), chave lote:jev:31.36-01, comando da f8722d (28.12, todas as etapas sem efeito). O planejador marcou close_cookies como opcional (steps.opcional=1); a etapa ficou skipped depois de 1 tentativa, sem replano, e read_results deu succeeded. A execução fechou completed (a f8722d, antes do conserto, fechou completed_with_issues com replano e US$ 0,309). Custo: US$ 0,214914 em 20 chamadas de IA.",
    "blocker": null,
-   "grupo": "orquestradora-deploy24",
-   "modelo": "fable",
-   "esforco": "high",
+   "grupo": "resultado-orquestradora-deploy31-c",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T11:09:24+00:00"
+   "quando": "2026-10-04T20:05:31+00:00"
   },
   "31.37": {
    "id": "31.37",
@@ -7236,14 +7236,14 @@
    "id": "28.10",
    "status": "partial",
    "proof": "real",
-   "evidence": "F1/F2 REAL em 04/10/2026 18:35Z, central WIN-7S2UASNLFOP, deploy 30 (1b3568a7), aparelho android-12 (notebook, sem conta, QA Messenger), aviso prévio ao dono (Telegram msg 209). Pai ped_kUZTrLhVU5Cph-Di31vx4A (lote:canais:28.10-f1-01, horário amanhã, total US$ 1,05) com filho A ped_LP1dOeWVXoOpcwHvYqouCA (pesquisador, lote …-f1-02) e filho B ped_S8DuXfioX_StCeug1t9aXw (checador, lote …-f1-03, depende de A com precisa_de_resultado); GET do pai devolve filhos e dependencias (F1). F2 dependência: as duas ocorrências previstas para 18:35:29Z; A despachou (r-20261004183529-4bf401, completed 18:35:50.048Z) e B ficou 'devida' até A concluir (ocorrência concluida 18:35:50.076Z), despachando só depois (r-20261004183550-d27721, criada 18:35:50.127Z, completed 18:36:14Z); objetivos succeeded. F2 reserva: prévia de um terceiro filho de US$ 0,10 recusada com orcamento_do_pai ('o pai já gastou US$ 0.0000 e os outros filhos reservaram US$ 1.0000'), nada gravado. Custo: A US$ 0,0851 + B US$ 0,0388. Filhos encerrados por contagem; pai cancelado com motivo às ~18:36Z. | Antes desta prova: F1 PR #227 (migração 096, v1.16), deploy 24; F2 PR #240, deploy 25; F3 PR #252 (v1.18), deploy 26. F3 REAL em 04/10/2026 16:03Z, central WIN-7S2UASNLFOP, deploy 28 (1fc66a6c; pedidos.colaboracao.enabled ligado neste reinício): (1) papel pesquisador + autonomia agir: POST /api/pedidos/previa valido=false com bloqueio autonomia_acima_do_papel (campo autonomia) e sem selo; POST /api/pedidos (lote:canais:28.10-f3-01) 422 autonomia_acima_do_papel 'O papel `pesquisador` vai no máximo até `observar`; o pedido pede `agir`'; 0 pedidos gravados. (2) papel pesquisador + observar (lote:canais:28.10-f3-02): ped_U9TvCUHdVQaPCzaaZ1ub4w criado ativo, ocorrência r-20261004160341-2db829 (android-12 sem conta,",
-   "blocker": "F4 (#290) e F5 (#293/#295) em PR; a prova real deles espera o merge e o deploy.",
-   "grupo": "orquestradora-deploy30",
+   "evidence": "F1/F2 REAL em 04/10/2026 18:35Z, central WIN-7S2UASNLFOP, deploy 30 (1b3568a7), aparelho android-12 (notebook, sem conta, QA Messenger), aviso prévio ao dono (Telegram msg 209). Pai ped_kUZTrLhVU5Cph-Di31vx4A (lote:canais:28.10-f1-01, horário amanhã, total US$ 1,05) com filho A ped_LP1dOeWVXoOpcwHvYqouCA (pesquisador, lote …-f1-02) e filho B ped_S8DuXfioX_StCeug1t9aXw (checador, lote …-f1-03, depende de A com precisa_de_resultado); GET do pai devolve filhos e dependencias (F1). F2 dependência: as duas ocorrências previstas para 18:35:29Z; A despachou (r-20261004183529-4bf401, completed 18:35:50.048Z) e B ficou 'devida' até A concluir (ocorrência concluida 18:35:50.076Z), despachando só depois (r-20261004183550-d27721, criada 18:35:50.127Z, completed 18:36:14Z); objetivos succeeded. F2 reserva: prévia de um terceiro filho de US$ 0,10 recusada com orcamento_do_pai ('o pai já gastou US$ 0.0000 e os outros filhos reservaram US$ 1.0000'), nada gravado. Custo: A US$ 0,0851 + B US$ 0,0388. Filhos encerrados por contagem; pai cancelado com motivo às ~18:36Z. | Antes desta prova: F1 PR #227 (migração 096, v1.16), deploy 24; F2 PR #240, deploy 25; F3 PR #252 (v1.18), deploy 26. F3 REAL em 04/10/2026 16:03Z, central WIN-7S2UASNLFOP, deploy 28 (1fc66a6c; pedidos.colaboracao.enabled ligado neste reinício): (1) papel pesquisador + autonomia agir: POST /api/pedidos/previa valido=false com bloqueio autonomia_acima_do_papel (campo autonomia) e sem selo; POST /api/pedidos (lote:canais:28.10-f3-01) 422 autonomia_acima_do_papel 'O papel `pesquisador` vai no máximo até `observar`; o pedido pede `agir`'; 0 pedidos gravados. (2) papel pesquisador + observar (lote:canais:28.10-f3-02): ped_U9TvCUHdVQaPCzaaZ1ub4w criado ativo, ocorrência r-20261004160341-2db829 (android-12 sem conta, | DEPLOY 31 (no ar 04/10 19:53Z, central em 0ede1860, migração 103), fatias SIMULATED: F4 (o pai consolida observações e memória dos filhos; conflito vai ao relatório; o aviso leva só a contagem), PR #290 (f2d55032, c2401eee; conserto do ciclo relatorio↔consolidacao em 08435862, que na integ entrou como 6a2a7f2b), tests/test_pedidos_colaboracao_consolidacao.py com 17 testes. F5 parte 1 (numa família com porta-voz, quem não tem papel fica em 'observar'; prévia com autonomia_rebaixada_pela_familia; 422 reacao_repetida), PR #293 (774d3e56, 2e827c50, 789f3e2f), testes de pedidos. Nenhuma prova real da F4 nem da F5: proibida prova que crie pedido até o 28.31 F2 estar no ar.",
+   "blocker": "Falta: (1) F5b, o provedor contexto_do_pedido no PR #295 (merge do conserto da F4 em d6596d05), que só é LIGADO com o #305 da Aprendizado (porta_vozes como conjunto e a ligação ao _policy_gate); ordem de merge #295, #298, #305; (2) do lado do planejador (Jev), reação ao mesmo conteúdo com outras palavras e uma persona citar a outra; (3) prova real da F4 e da F5 (um pai de teste com colaboração ligada, no android-12) depois do 28.31 F2 no ar.",
+   "grupo": "resultado-orquestradora-deploy31-c",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T18:39:06+00:00"
+   "quando": "2026-10-04T20:05:31+00:00"
   },
   "14.13": {
    "id": "14.13",
@@ -7400,14 +7400,14 @@
    "id": "29.68",
    "status": "partial",
    "proof": "real",
-   "evidence": "04/10/2026, android-10 contra android-09 (notebook), sem IA. Antes do reboot (12:33Z): árvore pela API p50 252 ms (10) contra 283 ms (09); no convidado do 10, load 1,2 e kernel inflado nos mesmos processos (composer 8,8 % contra 4,5 %, surfaceflinger 7,4 % contra 3,6 %, HAL de sensores 8,8 % contra 0,9 %); load do 10 ~0,5 de noite e de dia contra 0,05-0,07 do 09. Boot a frio do 10 (stop 12:34:55Z, online 12:36:34Z): system_server em 47,0 s contra 29,9 s do 09. Leitura no notebook por ssh (só leitura): os 4 qemu iguais (BelowNormal, afinidade 0xFFF, sem power throttling, sem janela, mesma linha de comando e config.ini), CPU i7-9850H não híbrida, Ultimate Performance. Depois do boot (12:50Z): laço de CPU pura 1562/1284 ms (10) contra 1474/1431 ms (09); syscall/binder 257/239 contra 268/314 ms; tecla nula por adb 146 contra 153 ms. Causa: estado de longa duração do convidado/emulador (23 h no ar), desfeito pelo boot a frio; não é configuração do host. RODADA SEM IA DA JEV depois do deploy 26 (60b3a0a9), central calmo, fill_message por receita, uma execução por aparelho: android-10 em 6,0 s (r-20261004131626-d2f94d, 13:16Z) e android-09 em 4,3 s (r-20261004131718-b57272, 13:17Z); referências: 4,4 s no android-10 às 00:01Z e 8,5 s antes do boot a frio. O boot a frio desfez parte da lentidão (8,5 para 6,0 s), mas o 10 ainda fica ~40 % acima do 09 com n=1.",
-   "blocker": "Resto não explicado: 6,0 s contra 4,3 s com uma amostra por aparelho. Próxima medida: cinco execuções alternadas por aparelho, sem IA, com o central calmo, e os laços de CPU dentro do convidado na mesma hora. O 29.69 (religar a frio aparelho sem conta ocioso) só vira linha do plano se essa medida confirmar o efeito do tempo ligado.",
-   "grupo": "orquestradora-pos-deploy26",
+   "evidence": "04/10 20:00:00Z a 20:04:42Z, central em 0ede1860, android-09 com o painel fechado (passeio encerrado às 19:58:26Z), chaves lote:jev:29.68-03 a -07, comando da fee44f (QA Messenger). As 5 fecharam completed: 09306b, 1c6daf, 9154c7, 021f64 e 074480, com parede de 45,2 / 75,2 / 46,4 / 45,1 / 40,3 s. prep_arvore_ms por execução (n; máximo; mediana): 3; 1039; 315 | 4; 227; 225 | 3; 281; 213 | 3; 226; 187 | 3; 181; 161. 15 das 16 medidas ficaram abaixo de 1 s.",
+   "blocker": "Uma medida passou de 1 s (1039 ms), na primeira execução, a do aparelho ocioso. O critério 'abaixo de 1 s' não fecha em todas: a orquestradora decide se a primeira árvore depois de ocioso conta.",
+   "grupo": "resultado-orquestradora-deploy31-c",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T13:24:55+00:00"
+   "quando": "2026-10-04T20:05:31+00:00"
   },
   "28.22": {
    "id": "28.22",
@@ -7547,14 +7547,14 @@
    "id": "28.24",
    "status": "partial",
    "proof": "real",
-   "evidence": "real, 04/10 17:24:58Z, central C:\\git\\android em 1452f81d (deploy 29, migração 101_canal_anexos). Primeiro um aviso de uma linha ao dono (Telegram message_id 199). Depois UMA captura do android-12 (aparelho de teste, tela de Configurações do emulador, sem dado pessoal), frame android-12-2-1791134696757 de 720x1280 e 44944 bytes, mandada ao chat do DONO pelo CanalTelegram.enviar_anexo do produto (sendPhoto, message_id 200). A captura veio da MESMA prévia do painel (rt.frame), acordada por um watch com foco pelo /api/ws, a mesma fonte do capturar_para_o_dono. Script: scratchpad/prova_28_24_saida.py, fora do repo e sem segredo impresso. Limite: o caminho de conversa do /captura (ConversaDoCanal.enviar_conteudo) não foi exercido de ponta a ponta, porque /captura é comando do dono. Prova de ENTRADA: not_run, à espera de uma imagem natural do dono. canal_telegram sem entradas desde 13:14:52Z e getWebhookInfo pending_update_count=0.",
-   "blocker": "Faltam: (1) a entrada real com anexo (uma imagem do dono pelo Telegram, baixada para data/anexos e registrada em canal_anexos); (2) /captura pedido pelo próprio dono, o que é opcional; (3) as fatias 3 (leitura da imagem pela IA quando o dono pede, até US$ 0,05 por imagem) e 4 (tela de anexos no painel).",
-   "grupo": "canais-28-24-prova-saida",
-   "modelo": "opus (Canais)",
-   "esforco": "high",
+   "evidence": "real, 04/10 17:24:58Z, central C:\\git\\android em 1452f81d (deploy 29, migração 101_canal_anexos). Primeiro um aviso de uma linha ao dono (Telegram message_id 199). Depois UMA captura do android-12 (aparelho de teste, tela de Configurações do emulador, sem dado pessoal), frame android-12-2-1791134696757 de 720x1280 e 44944 bytes, mandada ao chat do DONO pelo CanalTelegram.enviar_anexo do produto (sendPhoto, message_id 200). A captura veio da MESMA prévia do painel (rt.frame), acordada por um watch com foco pelo /api/ws, a mesma fonte do capturar_para_o_dono. Script: scratchpad/prova_28_24_saida.py, fora do repo e sem segredo impresso. Limite: o caminho de conversa do /captura (ConversaDoCanal.enviar_conteudo) não foi exercido de ponta a ponta, porque /captura é comando do dono. Prova de ENTRADA: not_run, à espera de uma imagem natural do dono. canal_telegram sem entradas desde 13:14:52Z e getWebhookInfo pending_update_count=0. | DEPLOY 31 (no ar 04/10 19:53Z, central em 0ede1860, migração 103), fatias SIMULATED: F3 (a IA lê a imagem do dono, só JPEG/PNG/WEBP, teto US$ 0,05 por imagem, custo em ai_calls com origem='canais', migração 103 em canal_anexos), PR #286 (575f78b2, 1a589d90, 47cb4a86, b79c6366). F4 (tela de Anexos em Canais com prévia, filtros e 'Anexar ao cartão' pelo link, pelo código curto ou pelo id; anexo repetido devolve o que já estava), PR #284 (5f066872, 0b9cc793, 38ac13a6, acad6bf8); tests/test_canais_anexos_lista.py e test_canais_anexos_trello.py, AnexosTab.test.tsx. A revisão independente do painel do deploy 31 não achou bloqueio nem vazamento de dado de persona.",
+   "blocker": "Falta: (1) a entrada real com anexo (uma imagem do dono pelo Telegram) e a leitura paga dela (~US$ 0,003), conferindo ai_calls origem='canais' e a descrição em canal_anexos; depende de gesto dele; (2) F5: botão 'Ler' na aba Anexos, mais os 4 ajustes da revisão (dizer 'Já estava no cartão' com ja_estava; fixar o 'desde' na primeira carga; guardar a miniatura em memória; recusar no pode_ir_ao_cartao o tipo fora de entrada.anexos.tipos); (3) o passeio no navegador da aba depois do deploy.",
+   "grupo": "resultado-orquestradora-deploy31-c",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T17:29:26+00:00"
+   "quando": "2026-10-04T20:05:31+00:00"
   },
   "31.26": {
    "id": "31.26",
@@ -7610,29 +7610,29 @@
   },
   "30.57": {
    "id": "30.57",
-   "status": "blocked",
-   "proof": "not_run",
-   "evidence": "Item aberto em 04/10 pela orquestradora: learn_from a partir de interação de comentário e for_each com itens reais, que saíram do 8.3. Nada executado.",
-   "blocker": "Sem alvo possível: pelo ADR-055 (uma conta por alvo em 30 dias), as 3 contas vivas já se tocaram em 03/10, então não há comentário entre contas nossas antes de ~02/11/2026. A outra via é um comentário orgânico de terceiro num post nosso: uma resposta, com aprovação do dono em Pendências.",
-   "grupo": "aprendizado-8-3-fechamento",
-   "modelo": "opus",
-   "esforco": "high",
-   "conferido": null,
-   "conferencia": "",
-   "quando": "2026-10-04T17:29:38+00:00"
-  },
-  "29.71": {
-   "id": "29.71",
-   "status": "partial",
+   "status": "implemented",
    "proof": "simulated",
-   "evidence": "PR #266 (fix/29-71-usuario-da-conta) na suíte 29, no ar em 1452f81d desde 04/10 17:20Z: identity/domain/available_data.py::_usuario_da_conta (managed -> handle; senão login_identifier ou handle) em account_data, profile_variables e resolve_secret; backend/tests/test_usuario_da_conta.py (4). Suíte 29: SQLite -n 6 9675 ok + 1 falha da catraca de Any (corrigida em 1452f81d), PG dirigido 3976 ok. Revisão independente do deploy 29 (achado 4), confirmada no código: o #266 só consertou a lista do planejador; Repository._variaveis_da_persona (binding, título e objetivo da etapa) seguiu com o e-mail. Teste de mutação no PR #292.",
-   "blocker": "a materialização ainda monta a variável da conta com o identificador de login no Instagram (taskqueue/repository.py:146, provedor de sessão fixo em falso); conserto no PR 292, suíte 31",
-   "grupo": "orquestradora-deploy30",
+   "evidence": "Implantado no deploy 31 (central 0ede1860, migração 103, /api/health sem problems às 19:58Z). (a) resposta a comentário ensina o perfil pelo caminho real (open_effect); (b) o teto por hora e por dia conta os pedidos de aprovação ainda sem interação; o próprio perfil sai do for_each. Prova simulated (suíte 31, testes do 30.57 no PR #288). Real: not_run.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-deploy31-b",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T18:39:06+00:00"
+   "quando": "2026-10-04T20:01:26+00:00"
+  },
+  "29.71": {
+   "id": "29.71",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #292 (fix/29-71-identificador-so-sem-handle) na suíte 31, no ar em 0ede1860 desde 04/10 19:52Z (deploy 31, migração 103). taskqueue/repository.py: SqlProfileDataStore(db, tem_provedor_de_sessao=lambda pacote: session_provider_of(pacote) is not None); antes o provedor era fixo em falso e a materialização (binding, título e objetivo da etapa) montava a variável da conta do Instagram com o identificador de login. backend/tests/test_usuario_da_conta.py, teste no harness com mutação conferida. Suíte 31: SQLite inteiro 9969 ok (as 10 falhas são de junção, consertadas e reexecutadas: 843 ok), PG dirigido 4515 ok.",
+   "blocker": "Prova real not_run: precisa de uma execução no Instagram cujo plano use {conta_instagram_usuario}, que ficou travada até o deploy 31 e pede o ok da orquestradora (conta real).",
+   "grupo": "resultado-orquestradora-deploy31",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T19:55:16+00:00"
   },
   "29.73": {
    "id": "29.73",
@@ -7651,40 +7651,40 @@
    "id": "29.75",
    "status": "partial",
    "proof": "real",
-   "evidence": "Real 04/10, máquina central, commit 1452f81d. Levantamento só leitura (SQLite em mode=ro + GET /api/settings), janela 2026-09-27T00:00Z a 2026-10-04T17:55Z: orçamento do pedido atingido 24 tentativas (attempts.error LIKE 'Orçamento do pedido atingido%'); 'Limite de 60 chamadas de IA' 9; 'Tempo total do objetivo esgotado' 7 objetivos; prazo da etapa 18 tentativas (12 de 60 s, 8 com a IA passando do prazo); device.network failed com 'excedeu' 6 (03, 05, 06 ×2, 09 ×2) de 416 succeeded; backup -TimeoutSec 10: 1 (relato de 04/10); driver_call_timeout 1; 'Limite de 20 ações por etapa' 1; device_busy rejeitado 10 (stop 6, hibernate 4); escada 24 remediações e 297 eventos de pausa (NÃO MEXER). Aplicado: PUT /api/settings às 17:58:07Z, ai_max_calls_per_objective 60 -> 90 e objective_timeout_s 900 -> 1800 (antes e depois lidos pelo GET). PRs para a suíte 31: #289 (rede.sonda.prazo_leitura_s 90 com fila +10; copias-de-avd.ps1 -TimeoutSec 30) e #294 (PISO_DA_ETAPA_COM_IA_S 120 em planning/parsing.py).",
-   "blocker": "Falta o deploy dos PRs #289 e #294 (suíte 31) e a releitura das contagens 7 dias depois; o orçamento dos pedidos de prova é das frentes que criam o pedido (mínimo US$ 0,50, pela orquestradora).",
-   "grupo": "orquestradora-deploy30",
+   "evidence": "Real 04/10: PUT /api/settings às 17:58:07Z (ai_max_calls_per_objective 60 -> 90, objective_timeout_s 900 -> 1800) e, pela orquestradora, rede.espera_tun_s 180 -> 120 no config (vale desde a subida do deploy 31, 19:52:36Z), proposto pela medida do 29.22 (device.network de 105 s esperando o tun0). No ar em 0ede1860: PR #289 (rede.sonda.prazo_leitura_s 90 com +10 de fila; copias-de-avd.ps1 -TimeoutSec 30) e PR #294 (PISO_DA_ETAPA_COM_IA_S 120 em planning/parsing.py, só em _etapa_livre). Prova simulated dos PRs: test_rede_religar_interface.py e test_esquema_curto_do_plano.py, suíte 31 verde.",
+   "blocker": "Releitura das contagens em 7 dias (11/10): orçamento do pedido, limite de chamadas, tempo do objetivo, prazo da etapa, device.network 'excedeu', 'túnel não subiu' e religados pela interface.",
+   "grupo": "resultado-orquestradora-deploy31",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T18:39:06+00:00"
+   "quando": "2026-10-04T19:55:16+00:00"
   },
   "28.25": {
    "id": "28.25",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "REAL em 04/10/2026, central WIN-7S2UASNLFOP, deploy 30 (1b3568a7, migração 102_decisoes_automaticas). (a) Resumo: a primeira subida do deploy 30 encerrou 21 objetivos parados (regra 31.43, decididas 18:24:42Z) e o registro gravou as 21 com resumida_em 18:25:12.288Z; saiu UM aviso só (avisos_entregas 43, chave decisoes:resumo:1-21, tipo decisoes.resumo, enviado 18:25:13.707Z, Telegram msg 207, canal_enviadas 33) com o texto 'ANA: A plataforma decidiu sozinha o que esperava você' / '- 21 objetivos que esperavam uma execução já terminada foram encerrados. Dá para desfazer pelo painel em até 7 dias.': sem nome de persona, conta, aparelho nem texto de comando. (b) Registro e desfazer: 30.55 em on, a volta das 18:46:03Z decidiu 18 itens do aprendizado (15 auto:qa_revisar v1, 3 auto:qa_para_aprovar v1), GET /api/decisoes-automaticas?fila=aprendizado total 18 com pode_desfazer=true; a Aprendizado desfez a id 22 (receita:180) por POST /api/decisoes-automaticas/22/desfazer às 18:46:49Z (200) e o registro, lido pela Canais às 18:47:12Z, mostra desfeita=true, desfeita_em 18:46:49.058Z, desfeita_por panel, o motivo, pode_desfazer=false e por_que_nao 'já foi desfeita'; o livro foi para disabled (transição 248).",
-   "blocker": "Falta o resumo das 18 do aprendizado (janela de 60 min: sai depois de ~19:25Z, e conta 17 porque a desfeita não entra, por desenho). Achados baixos para o 28.29: fatos.texto corta no meio da palavra e o efeito diz 'publicado(a)'; o 31.43 subiu ligado por padrão (não sabido pela orquestradora) e não tem desfazer (SemInversa).",
-   "grupo": "resultado-orquestradora-janela30-a",
+   "evidence": "REAL em 04/10/2026, central WIN-7S2UASNLFOP, deploy 30 (1b3568a7, migração 102_decisoes_automaticas). (a) Resumo: a primeira subida do deploy 30 encerrou 21 objetivos parados (regra 31.43, decididas 18:24:42Z) e o registro gravou as 21 com resumida_em 18:25:12.288Z; saiu UM aviso só (avisos_entregas 43, chave decisoes:resumo:1-21, tipo decisoes.resumo, enviado 18:25:13.707Z, Telegram msg 207, canal_enviadas 33) com o texto 'ANA: A plataforma decidiu sozinha o que esperava você' / '- 21 objetivos que esperavam uma execução já terminada foram encerrados. Dá para desfazer pelo painel em até 7 dias.': sem nome de persona, conta, aparelho nem texto de comando. (b) Registro e desfazer: 30.55 em on, a volta das 18:46:03Z decidiu 18 itens do aprendizado (15 auto:qa_revisar v1, 3 auto:qa_para_aprovar v1), GET /api/decisoes-automaticas?fila=aprendizado total 18 com pode_desfazer=true; a Aprendizado desfez a id 22 (receita:180) por POST /api/decisoes-automaticas/22/desfazer às 18:46:49Z (200) e o registro, lido pela Canais às 18:47:12Z, mostra desfeita=true, desfeita_em 18:46:49.058Z, desfeita_por panel, o motivo, pode_desfazer=false e por_que_nao 'já foi desfeita'; o livro foi para disabled (transição 248). Segundo resumo (janela 22-39): avisos_entregas decisoes:resumo:22-39 criado 19:25:39.215Z, enviado 19:25:40.568Z, corpo '2 aprendizados que esperavam aprovação foram decididos pela plataforma / 15 aprendizados em revisão foram confirmados pela plataforma' (17 = 18 menos a desfeita), sem dado de persona; uma mensagem só por janela.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-deploy31",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T18:52:20+00:00"
+   "quando": "2026-10-04T19:55:16+00:00"
   },
   "30.55": {
    "id": "30.55",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Real, 04/10/2026, máquina central, deploy 30 (1b3568a7, migração 102_decisoes_automaticas, /api/health sem problems às 18:29Z). Primeira volta em sombra às 18:27:26.872Z (GET /api/aprendizado/aprovacao-automatica, modo shadow). Foram avaliados 40 itens e a plataforma decidiria 18, marcados uma vez no livro da sombra; nenhum foi decidido. Dos 18: 15 na fila revisar (regra qa_revisar) e 3 em para_aprovar (regra qa_para_aprovar: receita:180, receita:184 e fluxo:enviar-bom-dia-a-cada-contato-da-lista-d). Todos são classe B, do app com.pocqa.messenger, com contra 0, falhas de reprodução 0 e a_favor de no mínimo 1 (revisar) e 2 (para_aprovar). Motivos de fora: sem_a_favor 18, app_fora_do_qa 11, classe_c 10, parecer_contra 4, falha_de_reproducao 3, saude_rebaixando 2, evidencia_contra 1. Instagram e classe C ficaram de fora, como o ensaio previa. Falta, pela mesma régua: virar para on, registrar a primeira volta que decide e desfazer UM item real pelo painel ou pela rota.",
-   "blocker": "A virada para on é da orquestradora, depois da revisão independente da régua.",
-   "grupo": "orquestradora-deploy30",
+   "evidence": "Real, 04/10/2026, máquina central, commit e3f6c13c (migração 102_decisoes_automaticas, /api/health sem problems às 19:01Z). Sombra: 1ª volta às 18:27:26.872Z, com 40 avaliados e 18 que decidiria, nenhum decidido. On (farm-central reiniciada pela orquestradora: a config só se lê na partida): a volta de 18:46:03.941Z avaliou 40 itens e decidiu 18, todos classe B do com.pocqa.messenger; ficaram no registro do 28.25 (GET /api/decisoes-automaticas, ids até 39) e nas transições 230 a 248. Desfazer: às 18:46:49Z, POST /api/decisoes-automaticas/22/desfazer (receita:180, regra qa_para_aprovar) com confirmar e motivo; a receita foi para disabled e a decisão ficou marcada como desfeita. A Canais confirmou às 18:48Z que o resumo exclui a 22. A volta seguinte, às 19:01:04.173Z, avaliou 22 itens e decidiu 0: a receita:180 não foi decidida de novo, nem aparece nas filas. Às 19:01:35Z a receita voltou a published pela rota da pessoa (POST /api/aprendizado/receita/180/status, 200); o registro segue com 18 decisões e a 22 desfeita.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-deploy31",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T18:39:06+00:00"
+   "quando": "2026-10-04T19:55:16+00:00"
   },
   "29.72": {
    "id": "29.72",
@@ -7711,6 +7711,162 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-04T18:52:20+00:00"
+  },
+  "31.43": {
+   "id": "31.43",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "04/10/2026, central 1b3568a7 (deploy 30, PR #274). Primeira volta do vencimento na subida, 18:24:42.643Z a 18:24:43.049Z (só leitura no banco): 21 eventos objective.updated com dados.vencimento.regra='31.43', motivo vencido_sem_resposta; 21 objetivos waiting_user de execuções já terminadas foram a cancelled (android-09: 18, android-05: 2, android-01: 1); 0 de execução viva; 0 aprovação pendente nessas execuções; 0 needs_input vencido (nenhum aberto). Chaves: execucao.vencimento_ligado (padrão True, config.py) e execucao.pergunta_vence_h (padrão 24); lidas a cada volta do laço (sem reinício). Resta 1 waiting_user (android-01, r-20261004085832-4a7162, lote:aprendizado:30-18-qa, 'pede autenticação'), da Aprendizado, não da Jev: vence ~05/10 09:00Z.",
+   "blocker": "Achados da revisão independente no 31.50: piso de 1 h no prazo; guarda e cancelamento na mesma transação; graça ao ligar (só vence o que entrou em espera depois de ligado); lembrete 'vence em X h' antes do vencimento (texto e canal da Canais).",
+   "grupo": "resultado-orquestradora-deploy31",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T19:55:16+00:00"
+  },
+  "31.44": {
+   "id": "31.44",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #276 no deploy 30: pós-condição com valor vazio barrada antes de observar/agir/IA (sem conta conhecida: waiting_user conta_errada, tentativa devolvida; com conta: defeito_do_plano na 1ª). Caso real que motivou: r-20261004111836-fec1a1 (3 tentativas, 3 decisões). 80 testes direcionados.",
+   "blocker": "Prova real not_run: nenhuma execução real com molde vazio depois do deploy 30.",
+   "grupo": "resultado-orquestradora-deploy31",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T19:55:16+00:00"
+  },
+  "31.45": {
+   "id": "31.45",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "04/10 19:54:51Z, central em 0ede1860 (migração 103): r-20261004195451-7d3527 no android-01, chave lote:jev:31.45-01, comando da d62546 (uma etapa OPEN_MAIL_INBOX, sem efeito). completed, 1 tentativa, US$ 0,107296 (costs.spent_usd). A tela final é a Caixa de Entrada: o título 'Inbox' aparece na captura 2026-10-04T195635084Z_v1_open_inbox_a1_screenshot.jpg e no observed_result. Nada de login, desafio ou 'Confirm you're human'.",
+   "blocker": "A etapa foi por ai_actor (13 chamadas: decide 7, verify 3, leitura 2, decisao_fechada 1), não pela prova determinística element_present. Fica para o 31.50 (a): investigar por que não fechou sem ator e acrescentar a conferência do título da pasta.",
+   "grupo": "resultado-orquestradora-deploy31-c",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T20:05:31+00:00"
+  },
+  "31.46": {
+   "id": "31.46",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #280 no deploy 30: dicas_ao_juiz no telas.yaml (esquema fechado), dica no conteúdo do pedido ao juiz só para o app que declara; a do Outlook diz que linha presente prova só que há mensagens e não prova mensagem específica. 24 + 91 testes.",
+   "blocker": "Real not_run (envio de e-mail não autorizado). Achado da revisão (31.50 d): a dica também vai ao rejulgamento do 17.10, que perde independência: avaliar tirá-la de lá.",
+   "grupo": "resultado-orquestradora-deploy31",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T19:55:16+00:00"
+  },
+  "28.28": {
+   "id": "28.28",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #299 (branch canais/28-28-pergunta-ao-bot @ 2171a2d3): backend/tests/test_telegram_entrada.py com 7 testes novos (mensagens literais 889 e 891), 4 falham contra o código antigo; 324 passed em test_telegram*, test_trello_leitor, test_canais_*, test_arquitetura; docs-check 0 erros",
+   "blocker": "prova real not_run: depois da suíte 31, uma pergunta do dono ao bot vira linha 'orquestradora' e a resposta volta em reply",
+   "grupo": "resultado-orquestradora-deploy31",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T19:55:16+00:00"
+  },
+  "28.26": {
+   "id": "28.26",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #291, branch canais/28-26-aprovar-id-e-reply @ b7f82be2. Intencao.ref_digitado guarda o id digitado em reply. _decidir confere esse id contra as pendências: id de outra pendência = nada se decide e a resposta diz qual é qual; o mesmo item = segue e o id sai da nota; palavra que não é id = nota. simulated: tests/test_telegram_entrada.py (test_reply_com_id_de_outra_pendencia_nao_decide_nada, test_reply_com_o_mesmo_id_decide_e_o_id_sai_da_nota, test_reply_com_nota_que_nao_e_id_segue_como_antes; os 2 primeiros falham contra o código antigo) e test_telegram_roteador.py; 203 passed nos arquivos de canais tocados; docs-check 0. Doc em canais.md, depois da C-13.",
+   "blocker": "Prova real not_run: um /aprovar <id de outro> em reply, pelo dono, depois do deploy 31. É opcional, porque o caso é defensivo.",
+   "grupo": "resultado-orquestradora-deploy31",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T19:55:16+00:00"
+  },
+  "29.76": {
+   "id": "29.76",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "a/b no ar em 0ede1860 (PR #302, suíte 31): scripts/candidatos-do-portal.py com o denominador da amostra contando todo exemplo com run_id ('1 de 3', não rebaixa), Bearer só para 127.0.0.1/localhost/::1 e 'ultima' sem fuso como UTC; scripts/tests/test_candidatos_do_portal.py (10, 3 novos). c/d/e no PR #303 para a suíte 32 (agente para no 4409; log_contradiz na medição do wake; nota do load_ms). Real 04/10 19:54:16Z, central em 0ede1860: o script rodou contra o central (só GET e banco em mode=ro), com 59 candidatos e 7 rebaixados; fk-59b5a57058 '1 de 3' e fk-9869d46dca '2 de 3' sem rebaixar, fk-c368381db9 '3 de 3' rebaixado (amostra toda nossa). O caminho do token para --base de fora não foi exercido de verdade (sem API_TOKEN no ambiente): só simulated.",
+   "blocker": "PR #303 na suíte 32, com o ajuste da revisão (no 4409 a tarefa religa o agente: esperar ~10 min antes de sair ou dizer no log; o aviso de contradição lê o log bufferizado uma vez só).",
+   "grupo": "resultado-orquestradora-deploy31",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T19:55:16+00:00"
+  },
+  "30.56": {
+   "id": "30.56",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Implantado no deploy 31 (central 0ede1860, migração 103, /api/health sem problems às 19:58Z). Resposta a comentário já dada é recusada antes do rascunho e da aprovação (UMA_VEZ_POR_ALVO), sem retry_at. Prova simulated: backend/tests/test_ja_respondido.py (8 testes, com a forma exata da interação real int-fPuCkX3vCt7WnmsL e a porta do despacho); sobre uma cópia do banco do central o caso real é recusado. Real: not_run (nenhuma resposta repetida pedida depois do deploy).",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-deploy31-b",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T20:01:26+00:00"
+  },
+  "30.58": {
+   "id": "30.58",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Implantado no deploy 31 (central 0ede1860, migração 103, /api/health sem problems às 19:58Z). O motivo dado_ausente do executor vira alvo_ausente na classificação de falhas, com a regra em domain/falhas.py e a catraca em backend/tests/test_learning_falhas.py (4 motivos do executor, texto real de 04/10). Prova simulated. Real: not_run.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-deploy31-b",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T20:01:26+00:00"
+  },
+  "30.59": {
+   "id": "30.59",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Implantado no deploy 31 (central 0ede1860, migração 103, /api/health sem problems às 19:58Z). Proposta de ação de catálogo por etapa (chave acao_de_catalogo|<pacote>|etapa:<chave>). Prova simulated: backend/tests/test_learning_backlog.py e os 67 arquivos do aprendizado (1095 aprovados). Real, depois do deploy 31, às 20:00Z pela rota PATCH /api/aprendizado/backlog/{id}: as 47 linhas do formato antigo (<pacote>|<hash>) foram para wontfix e a linha nova fk-ea00e3de56 (com.pocqa.messenger|etapa:open_app) ficou planned com plan_item=31.48; conferido no banco só lendo (47 wontfix; fk-ea00e3de56 planned 31.48).",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-deploy31-b",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T20:01:26+00:00"
+  },
+  "30.60": {
+   "id": "30.60",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Implantado no deploy 31 (central 0ede1860, migração 103, /api/health sem problems às 19:58Z). CREATE_POST endurecido: prova local count_gt com guarda do título do próprio perfil e conta esperada (account_label); marcas de pendente e falha; galeria só com a imagem pedida (MediaStore conferido); aprovação reaproveitada compara a imagem; edição gravada na transação da decisão; piso de aprovação para publicar (LimitsCfg.publicar_sem_aprovacao=false); aprovação de objetivo encerrado sem efeito não reserva alvo nem teto. Prova simulated: backend/tests/test_create_post_endurecido.py, test_create_post.py, test_ja_respondido.py. Real: not_run (a publicação de teste do 29.30 espera o sim do dono ao item concreto e a conferência da imagem na tela de edição).",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-deploy31-b",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T20:01:26+00:00"
+  },
+  "30.63": {
+   "id": "30.63",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Implantado no deploy 31 (central 0ede1860, migração 103, /api/health sem problems às 19:58Z). Achados das revisões do 30.55: a régua lê a revisão REAL mais recente do curador (REVISOES_LIDAS=20); o modo aceita o booleano do YAML; a seção do painel mostra o erro da rota em vez de sumir, não diz 'nada decidido' em shadow com decisões antigas, conta as desfeitas no 'Ver todas', e o porquê usa os rótulos da tela. Prova simulated: backend/tests/test_aprovacao_automatica.py e frontend DecididoPelaPlataforma.test.tsx. Real parcial: o passeio da orquestradora no navegador (deploy 31, 0ede1860) abriu 'Para aprovar' e 'Decidido pela plataforma' sem erro e o 'Ver todas as 18' funcionou; a primeira volta depois do reinício (19:54:06.923Z) avaliou 22 itens e decidiu 0, em modo on.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-deploy31-b",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T20:01:26+00:00"
   }
  },
  "rodadas": [
@@ -10117,6 +10273,53 @@
    ],
    "grupos": [
     "resultado-orquestradora-janela30-a"
+   ]
+  },
+  {
+   "quando": "2026-10-04T19:55:16+00:00",
+   "itens": [
+    "30.55",
+    "31.43",
+    "31.44",
+    "31.45",
+    "31.46",
+    "28.25",
+    "28.12",
+    "28.28",
+    "28.26",
+    "29.71",
+    "29.75",
+    "29.76"
+   ],
+   "grupos": [
+    "resultado-orquestradora-deploy31"
+   ]
+  },
+  {
+   "quando": "2026-10-04T20:01:26+00:00",
+   "itens": [
+    "30.56",
+    "30.57",
+    "30.58",
+    "30.59",
+    "30.60",
+    "30.63"
+   ],
+   "grupos": [
+    "resultado-orquestradora-deploy31-b"
+   ]
+  },
+  {
+   "quando": "2026-10-04T20:05:31+00:00",
+   "itens": [
+    "31.45",
+    "31.36",
+    "29.68",
+    "28.10",
+    "28.24"
+   ],
+   "grupos": [
+    "resultado-orquestradora-deploy31-c"
    ]
   }
  ]

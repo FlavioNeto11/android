@@ -34,6 +34,52 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (`scheduler.py`); só o diálogo que cobre a tela conta. O teste de ponta a ponta (harness) achou que o toque da regra
   era recusado na validação (faltava `is_commit_action`): corrigido. 22 testes no arquivo, 119 na regressão.
 
+## 2026-10-04 — 28.28: pergunta ao bot do Telegram vai à orquestradora, e nome de persona não sai pelo canal (branch canais/28-28-pergunta-ao-bot)
+
+- **O defeito:** o dono perguntou ao bot "porque tem tanta coisa represada em validação?" e depois respondeu "no
+  trello" (entradas 889 e 891). As duas viraram texto livre: a prévia pediu destino, a entrada ficou `falhou`, e o dono
+  recebeu duas vezes "Diga onde ou por quem", com o nome de uma persona no exemplo.
+- **O que muda:**
+  - a pergunta solta vai à orquestradora, e o dono ouve que a resposta vem por ali, sem promessa de prazo;
+  - o reply a uma resposta nossa de repasse continua a conversa;
+  - o texto livre recusado pela prévia vai à orquestradora, e o dono ouve as duas saídas;
+  - todo texto que a conversa manda passa por `sem_nome_de_persona`.
+- **Prova:** `simulated`. `tests/test_telegram_entrada.py` tem 7 testes novos, com as duas mensagens literais; 4 deles
+  falham contra o código antigo, e as contraprovas cobrem o pedido com aparelho e "quem é você". 324 passed nos testes
+  de telegram e canais. Doc em `docs/dominios/canais.md` (C-12, o caminho do repasse).
+## 2026-10-04 — 30.58: o "dado ausente" da leitura é alvo ausente, não `outro` (branch fix/30-58-dado-ausente)
+
+- `domain/falhas.py`: a regra `dado ausente: procurei` leva a `alvo_ausente`, antes dos tetos de IA. O texto do
+  orçamento da etapa ia para `ia_orcamento`, que nunca vira lição.
+- A catraca por AST de `tests/test_learning_falhas.py` passa a cobrir os motivos de `dado_ausente(...)`.
+- Teste novo com os 4 motivos do executor e o texto real de 04/10. A conduta do 31.38 ("insistiu em dado ausente fora
+  da leitura") segue `ia_chamada_invalida`.
+- Medido no central, em leitura: 7 tentativas com esse texto em 04/10, que davam o candidato fk-9869d46dca do portal.
+- Prova `simulated`.
+## 2026-10-04 — 30.63: a régua da aprovação automática e a seção do painel, pelos achados das revisões (branch fix/30-63-regua-e-painel)
+
+- (a) A régua lê a revisão REAL mais recente do curador (`REVISOES_LIDAS` = 20). Uma simulada mais nova escondia um
+  parecer real contra. Há teste e mutante conferido.
+- (b) `AprovacaoAutomaticaCfg.modo` aceita o booleano do YAML: `on` sem aspas vira `true`, e em 04/10 isso derrubou a
+  carga do config. O exemplo e a doc pedem aspas.
+- (c) A seção "Decidido pela plataforma" mostra o erro da rota quando não é 404, em vez de sumir.
+- (d) Em `shadow`, com decisões antigas, a seção não diz mais "Nada foi decidido sozinho ainda".
+- (e) Pendências: o resumo no Telegram fica condicionado aos avisos ligados.
+- (g) Percurso no navegador da orquestradora (deploy 30). O "Por quê" mostrava a frase crua da régua ("saúde
+  pouca_amostra", "parecer observar (lr-…)") e agora usa os rótulos da tela. O "Ver todas" diz quantas foram desfeitas.
+- (f) A doc e a docstring diziam que mudar o modo valia sem reiniciar, e não vale: o `config.yaml` é lido na subida.
+  Medido em 04/10, às 18:38Z: o modo continuava `shadow` três minutos depois do "on" no arquivo.
+- Prova `simulated`: 2 testes novos no backend, 39 aprovados; 2 testes novos no front, 50 aprovados.
+## 2026-10-04 — 29.76 (a, b): amostra de lote com o denominador inteiro e o token só para o central local (branch fix/29-76-candidatos-e-reconexao)
+
+- Revisão independente do deploy 30: em `scripts/candidatos-do-portal.py` o denominador da amostra só contava os
+  `run_id` achados no banco; com 2 exemplos ausentes e 1 de lote saía "1 de 1" e o grupo ia para o fim. Agora o
+  denominador é todo exemplo com `run_id` ("1 de 3", não rebaixa); nenhum achado segue `null`.
+- O `Authorization: Bearer` só vai para `127.0.0.1`, `localhost` ou `::1`; um `--base` de fora segue sem o token e
+  com aviso no stderr. `ultima` sem fuso vale como UTC (antes derrubava a subtração com `TypeError`).
+- Prova `simulated`: `scripts/tests/test_candidatos_do_portal.py` (3 testes novos; o "1 de 2" do teste antigo vira
+  "1 de 3"). Real: `not_run` até rodar o script contra o central depois do merge.
+
 ## 2026-10-04 — 29.73: o agente reconecta rápido depois do reinício do central (branch fix/29-73-reconexao-rapida)
 
 - Deploy 28: o central fechou o canal com 1012 (service restart) às 15:59:17Z e voltou às 16:00:33Z; a escada do
@@ -188,6 +234,174 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   a contar do boot, e a medição traz `snapshot_por` e `uptime_s`. Só positivo: o negativo continua só pelo log.
 - Testes: `test_wake_relogio_do_snapshot.py` (+5). Prova: `simulated`; a real é o wake do 02 depois do deploy da 30
   (o agente vai junto: `devices/adb.py` está no manifesto).
+## 2026-10-04 — 28.24 F4: a tela Anexos dos canais (branch canais/28-24-f4-tela-anexos, PR #284)
+
+- Backend: `GET /api/canais/anexos` (lista paginada; filtros de canal, sentido, dono, estado e período; sem caminho, `sha256` nem
+  remetente) e `ArmazemDeAnexos.listar`. O conteúdo ganha `Cache-Control: no-store` e passa a recusar o texto (415) e o anexo de
+  convidado (404). Adendo v1.26; sem migração.
+- Painel: aba "Anexos" em Canais (`AnexosTab`, `AnexarAoCartao`): miniatura ou ícone, prévia no próprio item, filtros, "Carregar
+  mais" e "Anexar ao cartão" com o campo e a confirmação em linha (padrão do `DecisaoInline`). O botão "Ler" e a descrição da IA ficam
+  para depois da fatia 3.
+- Revisão da fila da suíte 31: "Anexar ao cartão" aceita o link do cartão e o código curto, não só o id de 24 que o dono não vê
+  (o backend resolve o id pela API), e a mesma imagem no mesmo cartão vai uma vez só (`ja_estava`), conferido pelo nome neutro do
+  sha entre os anexos do cartão.
+- Prova `simulated`: `backend/tests/test_canais_anexos_lista.py` (18 casos), `test_canais_anexos_trello.py` (5 novos: link, código
+  curto, envio repetido), `frontend/src/features/canais/AnexosTab.test.tsx` (13 casos). `real`: `not_run` (o passeio no navegador,
+  depois do deploy).
+## 2026-10-04 — 30.60: CREATE_POST endurecido (branch feat/30-60-create-post-endurecido)
+
+- Revisão do deploy 29: os achados 1, 2, 3, 5 e 6 e o N1, N3 e N4 foram confirmados no código e consertados. O achado 4
+  (identificador de login no `{conta_instagram_usuario}`) fica com o PR #292. O CREATE_POST não usa essa variável: a
+  guarda usa `{account_label}`, que vem de `profile_accounts.handle`.
+- A prova `count_gt` aceita guardas depois de `&`. A do CREATE_POST exige o título do próprio perfil. Com efeito
+  disparado, essa prova vira fato para o modelo e deixa de ser atalho. Ganhou marcas de pendente e de falha (textos não
+  medidos).
+- A galeria fica só com a imagem da etapa: limpeza da pasta `Central` no MediaStore e no disco, `ls` conferido, e
+  indexação conferida por `content query`.
+- A persona do objetivo precisa ter vínculo com o aparelho.
+- A aprovação reaproveitada compara a imagem. A edição grava o texto dentro da transação da decisão.
+- `LimitsCfg.publicar_sem_aprovacao` (padrão `false`) e o piso na porta de política.
+- `tests/test_create_post_endurecido.py` (21). Os 22 arquivos afetados deram 462 aprovados. Real: `not_run`.
+- Revisão da fila (suíte 31), achado médio: a aprovação aprovada de objetivo encerrado, que nunca disparou, deixa de
+  contar como "pedido em aberto". Antes ela reservava o alvo na frota, recusava a resposta nova por 30 dias (30.56) e
+  ocupava o teto (30.57), sem aparecer em Pendências. O conserto é o corte `_DE_OBJETIVO_VIVO` nas três leituras de
+  `pending_approvals`; o pedido sem objetivo segue contando. Há teste em `test_ja_respondido.py`, com mutante conferido;
+  os 11 arquivos afetados deram 241 aprovados.
+
+## 2026-10-04 — 30.57: a resposta a comentário ensina, e o leque do for_each para na política antes do pedido (branch feat/30-57-comentario-e-for-each)
+
+- (a) Prova `simulated` de que a resposta a comentário ensina o perfil pelo caminho real (`open_effect` com
+  `draft_meta`, depois `confirm_interaction` e `learn_from`): memória com `source=interaction` e `interaction_id`.
+  Pendente, incerta ou elogio sem fato não ensinam (`tests/test_comentario_ensina.py`). Em 03/10 o caminho rodou no
+  real, com a lista de candidatos vazia.
+- (b) Defeito achado e corrigido: o teto por hora e por dia não contava os pedidos de aprovação pendentes. Com 5 itens
+  e `comments_per_hour` 3, os 5 viravam pedido ao dono. Agora o pedido sem interação ocupa o teto
+  (`SocialRepository.pedidos_em_aberto_desde`): 3 viram pedido e 2 ficam adiados. O pedido da própria etapa não conta.
+- (b) Na expansão do bloco com efeito, o item que é o próprio perfil sai (`Scheduler._sem_o_proprio_perfil`, com rastro).
+  As outras contas nossas passam pela porta de política item a item. Sem teto novo de itens.
+- Emenda datada do ADR-055 e notas nos domínios de execução e de perfis. Teste de lista mista (próprio perfil, conta
+  nossa na janela, terceiro) e do balde por hora em `tests/test_leque_do_for_each.py`. Os 42 arquivos afetados deram
+  880 aprovados.
+- Prova real: `not_run` (ADR-055 até ~02/11, ou um comentário orgânico de terceiro).
+
+## 2026-10-04 — 30.56: a resposta a comentário já dada não volta ao dono como pedido novo (branch feat/30-56-ja-respondido)
+
+- Caso real: a execução `r-20261004172212-fc1a88` pediu ao lucas uma segunda resposta ao comentário do bruno (a primeira
+  era de 03/10, `int-fPuCkX3vCt7WnmsL`). O dono aprovou pelo Telegram e só o ator, já na tela, recusou a duplicata.
+  Nada saiu; o item foi abandonado (US$ 0,1643).
+- `PolicyEngine.check` recusa o `REPLY_COMMENT` antes do rascunho e da aprovação, sem `retry_at`, quando esta conta já
+  respondeu ao mesmo alvo na janela `fleet_target_window_days` (saída `comment_replied` pendente, confirmada ou incerta,
+  gravada por etapa de `REPLY_COMMENT` ou sem etapa conhecida) ou já tem pedido de resposta a ele em aberto. A interação
+  e o pedido da própria etapa não contam (retomada). `CREATE_COMMENT`, que grava o mesmo tipo, fica fora.
+- Repositório: `ultima_saida_para` e `pedido_em_aberto_para`, perguntas do próprio perfil. Emenda datada do ADR-055.
+  Sem migração.
+- Prova `simulated`: `backend/tests/test_ja_respondido.py` (8 testes, com a forma exata da interação real e a porta do
+  despacho). Sobre uma cópia do banco do central, o caso real é recusado citando a `int-fPuCkX3vCt7WnmsL`. Na
+  produção: `not_run` até o deploy.
+## 2026-10-04 — 28.24 F3: a IA lê a imagem que o dono mandou (branch canais/28-24-f3-ler-imagem, PR #286)
+
+- `/ler` (ou "leia", "o que tem nessa imagem") em reply a uma foto do dono no Telegram, e `POST /api/canais/anexos/{id}/ler`
+  com confirmação: a IA descreve a imagem, só anexo de entrada do dono e só imagem, uma chamada por imagem (a descrição fica
+  em `canal_anexos`, migração 103; a segunda leitura custa 0), estimativa de custo ANTES da chamada com teto de US$ 0,05
+  (`avisos.entrada.anexos.leitura.teto_usd`), modelo mais barato com visão (Haiku, ~US$ 0,003 por 720x1280), descrição pelo
+  redator de credencial, custo em `ai_calls` com `origem='canais'` (tokens x `ai.prices`). Adendo v1.25.
+- `.claude/canais/telegram_status.py` grava a mensagem que manda ao dono em `canal_enviadas` (`origem='ana'`), pelo repositório
+  do produto; se a gravação falha, o envio segue. A nota do achado (b) (endurecer o "sim" em reply a aviso antigo) entrou em
+  C-04 como "não adotado".
+- Prova `simulated`: `backend/tests/test_canais_leitura_anexo.py` (17), `test_canais_script_status.py` (3), e os testes de
+  anexos, conversa, entrada, provider e origem sem regressão. A chamada paga real ao provedor é `not_run` (a Canais valida depois do deploy).
+- Seis achados baixos da revisão independente do 28.24, um commit por achado: captura pontual com interesse maior que a espera
+  e chave por pedido (7); erro ao guardar o rastro depois do envio não vira "não enviei" (8); a faxina reconfere o uso antes
+  de apagar o arquivo e `guardar` regrava o que a faxina tirou (9; o "sem continue" no `CaminhoForaDoArmazem` é de propósito);
+  `AnexoJaResolvido` e `_armazem()` no lugar de `assert` de produção (10); `conteudo_de` confere o sha256 contra o nome (11);
+  download do anexo com prazo total de 90 s (12; o laço de eventos nunca esteve bloqueado). Prova: `simulated`, em
+  `test_canais_captura.py`, `test_canais_anexos.py`.
+
+## 2026-10-04 — 30.59: a proposta de ação de catálogo por etapa, não por modelo, e só onde ainda há IA (branch feat/30-59-propostas-por-chave)
+
+- Origem: a triagem dos candidatos do portal (fk-58790a32b8, fk-b9f8c90668 e fk-8fb6c107bf).
+  - `open_app` do QA Messenger tinha duas propostas iguais, uma por `template_hash` (141e e 2c35).
+  - `check_account` era proposta embora já fechasse por receita.
+- `AcaoLivre` agrupa por (app, chave da etapa), com `modelos`, `etapas` e `sem_ia`; a referência passa a ser
+  `<pacote>|etapa:<chave>`.
+- `proposta_de_acao` não propõe a etapa que fechou sem IA (`recipe` ou `sem_ator`) em 80 % ou mais das vezes
+  (`ACAO_SEM_IA_MAX`). O detalhe diz quantas já fecharam sem IA.
+- As 47 linhas abertas por `template_hash` no central não são reescritas, porque o estado é da pessoa: marcar
+  `wontfix` pela rota do backlog depois do deploy.
+- A parte do executor (o atalho LT-1 que não fecha o modelo 141e sem ator) foi para a Jev como 31.48.
+- Prova `simulated`: `backend/tests/test_learning_backlog.py` (teste novo com a forma do caso real) e os 67 arquivos
+  do aprendizado, com 1095 aprovados.
+## 2026-10-04 — 29.75 (A): prazos da medição de rede e do backup calibrados (branch fix/29-75-prazos-de-rede-e-backup)
+
+- Pedido do dono (04/10 ~17:53Z): "se for necessário pode aumentar os limites ja falei que estamos em ambiente de dev".
+  Levantamento de 7 dias (banco em modo só leitura): 6 `device.network` falharam com "rede do aparelho excedeu 55s"
+  (45 s do adb mais 10 da fila, fixos em `rede_aplicacao.py`), todos ao ligar sob carga.
+- `rede.sonda.prazo_leitura_s` (90 s) vale para as quatro leituras da rede (observação, estado da interface duas vezes,
+  janela do start); `AparelhoPeloAdb.shell(timeout=None)` lê o prazo da config e a fila soma `FOLGA_DA_FILA_S` (10 s).
+- `scripts/lib/copias-de-avd.ps1`: o `Invoke-RestMethod` da lista de aparelhos passa de 10 s para 30 s (o backup roda em
+  Idle e estourou hoje com o host ocupado).
+- Mesmo item, sem PR: `ai_max_calls_per_objective` 60 → 90 e `objective_timeout_s` 900 → 1800 por `PUT /api/settings`
+  às 17:58:07Z (real).
+- Testes: `test_rede_religar_interface.py` (+1); 206 testes de rede aprovados. Prova: simulated; a real é a próxima
+  medição ao ligar sob carga.
+## 2026-10-04 — 29.71 (revisão): a materialização também entrega o @, não o e-mail (branch fix/29-71-identificador-so-sem-handle)
+
+- Achado 4 da revisão independente do deploy 29, confirmado e mais grave que o suposto: o `Repository` montava as
+  contas da persona com "o app tem provedor de sessão?" FIXO em falso (`lambda _pacote: False`), então
+  `_variaveis_da_persona`, usada pela materialização (binding, título e objetivo da etapa), seguia dando o e-mail de
+  login do Instagram como `conta_instagram_usuario`. O conserto do 29.71 só valia para a lista do planejador.
+- O `Repository` passa a usar o mesmo `session_provider_of` do serviço. O login por formulário (conta de site, app sem
+  provedor) continua com o identificador, que é o que o formulário pede.
+- Teste: `test_usuario_da_conta.py::test_a_materializacao_e_o_planejador_veem_o_mesmo_valor_do_instagram` (harness).
+  Mutação conferida: com o predicado em falso, a variável volta a ser o e-mail. 93 testes vizinhos aprovados.
+  Prova: simulated.
+## 2026-10-04 — 29.75 (B): piso de 120 s no prazo da etapa com IA (branch fix/29-75-piso-da-etapa-com-ia)
+
+- Calibração em dev (pedido do dono, 04/10 ~17:53Z). Em 7 dias, 18 tentativas morreram por prazo da etapa, 12 com os
+  60 s que o modelo pediu e 8 com a chamada de IA passando do prazo restante.
+- `planning/parsing.py::_etapa_livre`: o `timeout_s` da etapa livre (a conduzida pelo ator de IA) fica entre
+  `PISO_DA_ETAPA_COM_IA_S` (120; era 30) e 600. Etapa de catálogo e receita não mudam.
+- Teste: `test_esquema_curto_do_plano.py` com o piso novo (30 → 120, 60 → 120, o teto de 600 mantido); 492 testes do
+  planejador e do parser aprovados. Prova: simulated. A Jev lê o diff antes do merge (arquivo do planejador).
+## 2026-10-04 — 28.10 F5 (parte 1): só o porta-voz age; reação repetida recusada (branch canais/28-10-f5-regras-para-fora, empilhado na F4, sem migração)
+
+- Numa família com porta-voz, o pedido sem papel (raiz ou irmão comum) decide e executa com `observar`; a execução recebe o teto
+  (28.23) e a ocorrência registra o rebaixamento sem persona nem texto. Prévia mostra o rebaixamento; o detalhe ganha
+  `autonomia_efetiva`.
+- 422 `reacao_repetida`: dois pedidos de efeito da mesma família com o mesmo objetivo e personas diferentes. Adendo v1.28.
+- Prova: `simulated` (`backend/tests/test_pedidos_colaboracao_para_fora.py`). `not_run`: pedido real. Regras 1 e 2 ficam na porta de
+  política (30.62).
+
+## 2026-10-04 — 28.10 F4: o pai consolida observações e memória dos filhos (branch canais/28-10-f4-consolidacao, sem migração)
+
+- O relatório do pai ganha o bloco `consolidacao` (`fontes`, `valores`, `conflitos`), lido só das observações comprovadas e da
+  memória-fato dos filhos diretos, nunca do texto livre das execuções. Divergência entre filhos é conflito com as duas fontes (id e
+  papel), sem voto; valor igual agrupa com a contagem; filho sem dado ou em andamento é marcado e rebaixa a conclusão a `parcial`.
+- O aviso `relatorio_pronto` leva só contagens ao Telegram ("N conflito(s) entre os filhos"). Sem filhos ou com a colaboração
+  desligada, o relatório é o de antes (adendo v1.27; `docs/design/pedidos-persistentes.md` §9.1).
+- Prova `simulated`: `backend/tests/test_pedidos_colaboracao_consolidacao.py`. `not_run`: pedido pai de teste no app de teste.
+## 2026-10-04 — 28.26: "/aprovar <id>" em reply a um aviso de outra pendência não decide nada (branch canais/28-26-aprovar-id-e-reply)
+
+- Achado médio da revisão independente do deploy 29. Em reply a um aviso, o `/aprovar` ou `/vetar` decidia o item do
+  aviso e gravava o id digitado como nota. Com o id de outra pendência, aprovava-se o item errado sem dizer.
+- Agora o id digitado é conferido contra as pendências:
+  - outro item: nada se decide, e a resposta diz qual é qual;
+  - o mesmo item: a decisão segue, e o id sai da nota;
+  - uma palavra que não é id continua sendo nota.
+- Revisão da fila da suíte 31: o id também é conferido contra a aprovação já decidida ou vencida e contra a execução
+  esperando resposta, e um pedaço curto com dígito ("a1f") é recusado como id incompleto.
+- `simulated`: `tests/test_telegram_entrada.py` tem 5 casos novos, e 4 deles falham contra o código antigo. O teste do
+  roteador também foi coberto. Nos arquivos de canais tocados: 203 passed.
+- Doc: `docs/dominios/canais.md`, depois da C-13.
+## 2026-10-04 — 29.75: limites da prova de fluxo calibrados (branch fix/29-75-limites-da-validacao)
+
+- `MAXIMO_DE_PROVAS` passa de 2 para 4 por item e versão em 7 dias. Em 7 dias houve 1 recusa `limite_de_provas`.
+- `TETO_DA_PROVA_MAXIMO_USD` passa de 0,40 para 0,80, e a prova cabe em até 37 etapas. Em 7 dias houve 3 recusas
+  `plano_acima_do_teto`.
+- Decisão da orquestradora sobre a tabela do 29.75. O ambiente é de calibração (decisão do dono).
+- A saúde (D-5), o α do curador, a regra de uma conta por alvo e a recusa `efeito_real` ficam como estão.
+- Os testes do limite, da amostra e do teto passam a seguir as constantes. Os 63 arquivos `test_learning_*` deram
+  1061 aprovados. A prova é `simulated`.
 
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 

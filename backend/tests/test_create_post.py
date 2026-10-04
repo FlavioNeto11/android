@@ -56,7 +56,7 @@ def test_o_catalogo_carrega_as_tres_acoes_novas() -> None:
     assert post.needs_draft and post.interaction_type == InteractionType.post_published.value
     assert post.limit_bucket == "posts" and post.counterparty is None
     assert post.commit_selector and post.commit_guard == ("{content}",)
-    assert post.local_proof == PROVA and local_proof_error(post.local_proof) is None
+    assert post.local_proof.startswith(PROVA + "&") and local_proof_error(post.local_proof) is None   # 30.60: a guarda
     # nenhum argumento que o `open_effect` tomaria por alvo (`username` ou `target`)
     assert not {"username", "target"} & {*post.bindings, *post.optional_bindings}
     # a interna não é oferecida ao planejador; as outras duas são
@@ -116,7 +116,8 @@ def test_posts_nao_e_uma_conta_por_alvo() -> None:
     ("count_gt::id=x", "binding"),
     ("count_gt:posts_antes:", "sem seletor"),
     ("count_gt:posts_antes:   ", "sem seletor"),
-    ("count_gt:posts_antes:id=a&id=b", "`&`"),
+    ("count_gt:posts_antes:id=a&id=b", None),          # 30.60: guarda depois de `&`
+    ("count_gt:posts_antes:id=a&", "guarda vazia"),
 ])
 def test_local_proof_error_do_count_gt(valor: str, esperado: str | None) -> None:
     erro = local_proof_error(valor)

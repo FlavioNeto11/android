@@ -363,6 +363,9 @@ class LimitsCfg(BaseModel):
     # (viva), esta conta espera ao menos isto, em segundos, desde o último gesto com efeito DELA (vale o maior entre este valor e
     # `cooldown_between_external_actions_s` do perfil). Ritmo baixo de propósito; conta retirada por bloqueio segue recusada.
     fleet_min_spacing_to_own_account_s: int = Field(600, ge=0, le=86400)
+    # 30.60 (N4): publicar no feed (balde `posts`) passa por uma pessoa mesmo com perfil ou grupo `autonomous`, como a DM
+    # fria do ADR-055. Só a instalação afrouxa, aqui; um perfil não tem esse poder.
+    publicar_sem_aprovacao: bool = False
     ai_max_calls_per_objective: int = Field(60, ge=1, le=1000)
     # Item 17.12: o teto acima é de UM objetivo sem repetição. Num `for_each`, cada item a mais soma `ai_max_calls_per_item`
     # (`teto = ai_max_calls_per_objective + por_item × (itens − 1)`), até `ai_max_calls_absolute`. 12 = ~8 chamadas medidas
@@ -937,6 +940,11 @@ class RedeSondaCfg(BaseModel):
     # uid 2000, sem app, DNS, UDP nem vazamento), ligado e livre, a cada `reverificar_s`: sem perfil, a saída é a da casa
     # (presumida) até a medida dizer o contrário. `false` desliga (o harness de testes não fala com adb).
     medir_sem_rede: bool = True
+    # O prazo de cada leitura da rede pelo adb (observação, estado da interface, janela do start), item 29.75. Era 45 s
+    # fixos no código, com a fila do aparelho dando +10 ("rede do aparelho excedeu 55s"): 6 medições ao ligar falharam
+    # por prazo em 7 dias (03, 05, 06 e 09, host disputado por boot e suíte), e o aparelho ficou sem prova pós-boot até a
+    # varredura seguinte. 90 s cobre o boot sob carga; a leitura normal leva poucos segundos.
+    prazo_leitura_s: float = Field(90, ge=10, le=600)
 
     @field_validator("hosts_ipv4", "hosts_ipv6")
     @classmethod
@@ -1144,6 +1152,15 @@ class AprovacaoAutomaticaCfg(BaseModel):
     modo: Literal["off", "shadow", "on"] = "off"
     intervalo_s: int = Field(900, ge=60, le=86_400)         # de quanto em quanto tempo o laço passa a régua
 
+    @field_validator("modo", mode="before")
+    @classmethod
+    def _modo_do_yaml(cls, v: object) -> object:
+        """30.63 (b): `modo: on` sem aspas é o booleano `true` no YAML 1.1 (e `off`, `false`). Em 04/10 isso derrubou a
+        carga do config inteiro por 7 s. O booleano vale como a palavra que a pessoa escreveu."""
+        if isinstance(v, bool):
+            return "on" if v else "off"
+        return v
+
 
 class LearningCfg(BaseModel):
     """Aprendizado contínuo (ADR-054): o livro, o D1, a falha classificada e a régua durável. Nenhuma chamada de IA
@@ -1187,6 +1204,17 @@ class ConvidadosDoTelegramCfg(BaseModel):
     novos_por_hora: int = Field(20, ge=1, le=500)           # chats novos atendidos por hora; o excesso fica sem resposta
 
 
+class LeituraDeAnexoCfg(BaseModel):
+    """A IA lê a imagem que o DONO mandou (item 28.24, fatia F3; C-22). Só imagem de entrada do dono, uma chamada por imagem
+    (a descrição fica gravada e a segunda leitura não paga), com teto em dólar ESTIMADO antes de chamar: acima dele, nada
+    é enviado ao provedor. `modelo` vazio = o mais barato de `ai.prices` que `ai.models` declara com visão."""
+
+    enabled: bool = True
+    teto_usd: float = Field(0.05, gt=0, le=5)
+    modelo: str = ""
+    max_tokens: int = Field(400, ge=50, le=2000)
+
+
 class AnexosDaEntradaCfg(BaseModel):
     """Anexos dos canais (item 28.24, F1; regra do dono em `docs/dominios/canais.md` §6). Só o chat do dono tem anexo
     baixado, e só os tipos da lista: o mime é conferido pelo CONTEÚDO (assinatura), nunca só pelo que o remetente
@@ -1197,6 +1225,7 @@ class AnexosDaEntradaCfg(BaseModel):
     max_bytes: int = Field(10 * 1024 * 1024, ge=1024, le=20_000_000)
     tipos: list[Literal["image/jpeg", "image/png", "image/webp", "application/pdf", "text/plain"]] = Field(
         default_factory=lambda: ["image/jpeg", "image/png", "image/webp", "application/pdf", "text/plain"])
+    leitura: LeituraDeAnexoCfg = LeituraDeAnexoCfg()
 
 
 class EntradaDoTelegramCfg(BaseModel):

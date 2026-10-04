@@ -1,6 +1,6 @@
 import { Bot, CheckCheck, History, Inbox, ShieldAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { toApiError } from '../../api/client';
+import { ApiError, toApiError } from '../../api/client';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
@@ -109,12 +109,16 @@ export function ParaAprovarTab() {
   const [lote, setLote] = useState<Lote | null>(null);
   const [modo, setModo] = useState<ModoDoCurador | null>(null);
   const [aprovacao, setAprovacao] = useState<RelatorioDaAprovacao | null>(null);
+  const [erroDaAprovacao, setErroDaAprovacao] = useState<LoadError | null>(null);
 
   const carregar = useCallback(async () => {
     const [p, r, a] = await Promise.allSettled([apiAprendizado.pendentes(), apiAprendizado.revisar(),
                                                 apiAprendizado.aprovacaoAutomatica()]);
-    // 30.55: sem a rota (backend de antes) ou com erro, a seção some; as filas seguem.
+    // 30.55: sem a rota (backend de antes, 404) a seção some; as filas seguem. 30.63 (c): qualquer OUTRO erro aparece
+    // na seção, em vez de sumir com ela (o dono achava que a plataforma não tinha decidido nada).
     setAprovacao(a.status === 'fulfilled' ? a.value : null);
+    setErroDaAprovacao(a.status === 'rejected' && !(a.reason instanceof ApiError && a.reason.status === 404)
+      ? toLoadError(a.reason) : null);
     setFila((antes) => (p.status === 'fulfilled'
       ? { itens: ordenarPendentes(Array.isArray(p.value?.itens) ? p.value.itens : []), erro: null }
       : { itens: antes.itens, erro: toLoadError(p.reason) }));
@@ -392,7 +396,8 @@ export function ParaAprovarTab() {
       </section>
 
       {/* 30.55: o que a plataforma decidiu fica depois das filas: o dono vê primeiro o que sobra para ele. */}
-      <DecididoPelaPlataforma relatorio={aprovacao} tituloDe={tituloDaRef} onMudou={() => void carregar()} />
+      <DecididoPelaPlataforma relatorio={aprovacao} erro={erroDaAprovacao} tituloDe={tituloDaRef}
+        onMudou={() => void carregar()} />
 
       <IntencaoSecao />
     </>

@@ -5410,6 +5410,43 @@ Prova:
 - `simulated`: `backend/tests/test_teto_de_autonomia.py` (os três níveis e o nulo).
 - `not_run`: PostgreSQL e o central depois do deploy.
 
+## Adendo v1.26 (04/10/2026; número da orquestradora; item 28.24, F4) — a lista de anexos e o conteúdo só de imagem e PDF
+
+Sem migração. Alimenta a aba Anexos da tela Canais. Atrás do mesmo login das outras `/api/canais` (sem ele, **401**).
+- `GET /api/canais/anexos`: página de anexos, do mais novo ao mais velho. Filtros (todos opcionais): `canal`, `direcao`
+  (`entrada`|`saida`), `do_dono` (booleano; olha a mensagem de origem, e a saída nunca é "do dono"), `estado`
+  (`guardado`|`recusado`|`apagado`; o `pendente`, que ainda espera o download, nunca entra), `desde` e `ate` (ISO; `ate` é
+  exclusivo; data sozinha vale 00:00Z), `limit` (1 a 100, padrão 24) e `offset`. Resposta: `{items, total, limit, offset}`,
+  com `total` batendo com os filtros. Cada item tem chaves fixas: `id`, `canal`, `direcao`, `mime`, `bytes`, `estado`,
+  `motivo_recusa`, `criado_em`, `apagado_em`, `do_dono`, `tem_conteudo` (imagem ou PDF guardado que sai por `/conteudo`; nunca o
+  de convidado) e `pode_ir_ao_cartao` (a regra de `POST .../trello`: mensagem do dono, guardada). Sem caminho de disco, sem
+  `sha256`, sem referência do canal e sem nome de remetente. **422** para filtro inválido (`periodo_invalido` para data fora do ISO).
+- `GET /api/canais/anexos/{id}/conteudo` (muda a v1.21): além de `Content-Disposition: attachment; filename="anexo-<id>.<ext>"` e
+  `X-Content-Type-Options: nosniff`, agora responde `Cache-Control: no-store`; só sai imagem (JPEG, PNG, WEBP) e PDF. Novos erros:
+  **415** `tipo_sem_previa` (o `text/plain` guardado não sai por aqui) e **404** `anexo_de_convidado` (a mensagem de origem não é
+  do dono; o convidado nunca tem anexo baixado, então a linha só existiria por defeito). Os 404 `anexo_sem_arquivo` e o 410
+  `anexo_apagado` seguem como na v1.21.
+
+## Adendo v1.25 (04/10/2026; número da orquestradora; item 28.24, F3) — a IA lê a imagem que o dono mandou
+
+Migração `103_canal_anexos_descricao` (só `ADD COLUMN` em `canal_anexos`: `descricao`, `lida_em`, `modelo_leitura`, `custo_usd`,
+`tokens_entrada`, `tokens_saida`). Os metadados do `GET /api/canais/anexos/{id}` NÃO mudam (as chaves fixas da v1.21 seguem; a
+descrição sai pela rota nova).
+
+- `POST /api/canais/anexos/{id}/ler` com `{"confirmar": true}`: a IA descreve a imagem. Atrás do mesmo login das outras rotas de
+  `/api/canais`. **200** `{anexo_id, descricao, custo_usd, do_cache, modelo}`; com a descrição já gravada, `do_cache: true`,
+  `custo_usd: 0` e nenhuma chamada ao provedor. Erros (`detail.code`): **400** `confirmacao_necessaria` (sem `confirmar: true`);
+  **404** `anexo_desconhecido`; **409** `anexo_nao_permitido` (convidado, saída ou mensagem que não é do dono), `anexo_sem_arquivo`,
+  `leitura_acima_do_teto` (a estimativa passa de `teto_usd`; nada foi enviado), `gasto_barrado` (teto do dia ou saldo da conta) ou
+  `gasto_nao_conferido`; **422** `anexo_nao_imagem` ou `imagem_grande_demais` (acima de 5 MB, o máximo do provedor); **502**
+  `ia_falhou` (nada é gravado como lido); **503** `leitura_desligada`, `sem_modelo_de_visao` ou `not_ready`.
+- Só imagem JPEG, PNG ou WEBP: o GIF não está na lista de tipos guardados (a animação é recusada no download), então não chega aqui.
+- Telegram, sem rota HTTP: `/ler`, "leia" ou "o que tem nessa imagem" em reply a uma foto do dono (intenção `ler_anexo`, fato
+  `anexo:<id>`); sem reply a um anexo, a resposta explica o formato. A resposta é a descrição mais uma linha com o modelo e o custo.
+- Config: `avisos.entrada.anexos.leitura` (`enabled`, `teto_usd` 0,05, `modelo` vazio = o mais barato com visão de `ai.prices`,
+  `max_tokens` 400). A descrição passa pelo redator de credencial dos textos do canal. O custo entra em `ai_calls` com
+  `origem='canais'` (o vocabulário de origem ganhou `canais`), por tokens x `ai.prices`.
+
 ## Adendo v1.21 (04/10/2026; número da orquestradora; item 28.24, F1) — anexos nos canais
 
 O Telegram passa a receber e a devolver arquivos (regra do dono em `docs/dominios/canais.md`, C-22). Migração `101_canal_anexos`.
@@ -5437,7 +5474,7 @@ Comportamento da conversa (sem rota nova):
   `sendDocument` para o resto; o nome no envio é `anexo-<sha>.<ext>`. A porta `SaidaComAnexos` é do canal: o Trello, que não a cumpre, recusa
   o anexo com o motivo.
 - A faxina por retenção (28.16) apaga o arquivo e a linha dos anexos vencidos, sem seguir link nem sair de `data/anexos`.
-- Config: `avisos.entrada.anexos` (`enabled`, `max_bytes`, `tipos`). A leitura da imagem pela IA não existe ainda.
+- Config: `avisos.entrada.anexos` (`enabled`, `max_bytes`, `tipos`). A leitura da imagem pela IA veio na F3 (v1.25).
 
 Complemento (F2, mesmo item):
 - **Download que falha:** a mensagem do dono e os anexos a baixar entram juntos, na mesma transação (`estado = 'pendente'`, com
@@ -5445,8 +5482,12 @@ Complemento (F2, mesmo item):
   ao dono ("… Mande de novo."). Se a Central cai entre gravar e baixar, a volta seguinte (anexo `pendente` com mais de 60 s) baixa UMA
   vez e conta o resultado; se falhar, fecha como `recusado` e avisa. Escolhi avisar+uma tentativa, e não só avisar, porque a referência
   do arquivo no Telegram costuma valer por horas e a retomada poupa o reenvio.
-- `POST /api/canais/anexos/{id}/trello` com `{"card": "<24 hex>", "confirmar": true}`: anexa ao cartão do Trello a imagem que o DONO
-  mandou (exceção (b) do dono, 04/10 15:17Z). Atrás do mesmo login. **200** `{anexo_id, card, trello_anexo}`; **400**
+- `POST /api/canais/anexos/{id}/trello` com `{"card": "<link, código curto ou id>", "confirmar": true}`: anexa ao cartão do Trello a
+  imagem que o DONO mandou (exceção (b) do dono, 04/10 15:17Z). Atrás do mesmo login. `card` aceita o link do cartão
+  (`https://trello.com/c/<código>/...`), o código curto de 8 letras e dígitos ou o id de 24 hexadecimais; o backend lê o id inteiro e
+  o quadro pela API (`GET /1/cards/{código ou id}`), e a resposta traz o id inteiro (28.24 F4, revisão da fila da suíte 31). O mesmo
+  arquivo no mesmo cartão vai uma vez só: se o cartão já tem o anexo de nome `anexo-<sha>.<ext>`, nada sobe e a resposta traz o que
+  existe com `ja_estava: true`. **200** `{anexo_id, card, trello_anexo, ja_estava}`; **400**
   `confirmacao_necessaria`; **404** `anexo_desconhecido`; **409** `anexo_nao_permitido` (convidado, saída ou mensagem que não é do dono),
   `anexo_sem_arquivo` (recusado, apagado ou sumido do disco) ou `cartao_fora_dos_quadros` (o cartão não é de um quadro de
   `trello.quadros`, conferido pela API antes de anexar); **422** `cartao_invalido`; **502** `trello_falhou` (mensagem sem chave nem token);
@@ -5567,3 +5608,48 @@ Config: `aprendizado.aprovacao_automatica.modo` = `off` (de fábrica), `shadow` 
 
 - `simulated`: `tests/test_aprovacao_automatica.py`.
 - `real`: `not_run` até o deploy.
+## Adendo v1.27 (04/10/2026; número da orquestradora; item 28.10 F4) — o relatório do pai consolida os filhos
+
+Aditivo ao v1.16 e ao v1.17. Sem migração e sem rota nova. Só vale com `pedidos.colaboracao.enabled` e para um pedido com filhos;
+sem isso o relatório é idêntico ao de antes (a chave `consolidacao` não existe).
+
+- **`conteudo` do relatório** (`GET /api/pedidos/{id}/relatorios`, `.../{rid}`; qualquer gatilho) ganha o objeto `consolidacao`:
+  - `fontes[]`: `{filho_id, papel, estado, situacao: "com_dado"|"sem_dado", em_andamento, observacoes, memoria}`, uma por filho direto;
+  - `valores[]`: `{origem: "observacao"|"memoria", alvo, nome, tipo, valor, fontes: [{filho_id, papel}], n_fontes}`: o mesmo valor
+    vindo de vários filhos aparece uma vez;
+  - `conflitos[]`: `{origem, alvo, nome, tipo, versoes: [{valor, fontes, n_fontes}]}`: valores diferentes para a mesma chave. Não há
+    campo de vencedor: o relatório não resolve por voto nem por maioria;
+  - `omitidos: {valores, conflitos}` (tetos 200 e 100) e `resumo: {filhos, com_dado, sem_dado, em_andamento, valores, conflitos}`.
+- **Origem dos dados:** observações comprovadas (`observado`, com valor, ocorrência `concluida`) e memória `descoberta`, `decisao` e
+  `fonte` dos filhos diretos. Nunca o texto livre das execuções, o título do filho ou nome de persona.
+- **`nao_coberto`** ganha os tipos `conflito_entre_filhos`, `filho_em_andamento`, `filho_sem_dado` e `consolidacao_indisponivel`, e a
+  `conclusao.situacao` fica `parcial` com qualquer um deles.
+- **Aviso `relatorio_pronto`:** quando o relatório tem o bloco, `dados` ganha `filhos_lidos` e `conflitos` (inteiros) e a mensagem do
+  painel termina com "Consolidou N filho(s); N conflito(s).". O texto do canal de fora (Telegram) leva só "N conflito(s) entre os
+  filhos", sem conteúdo e sem nome.
+
+Prova:
+- `simulated`: `backend/tests/test_pedidos_colaboracao_consolidacao.py`.
+- `not_run`: pedido pai de teste no app de teste, PostgreSQL e o central (a colaboração está desligada lá).
+
+## Adendo v1.28 (04/10/2026; número da orquestradora; item 28.10 F5, parte 1) — só o porta-voz age; duas reações ao mesmo conteúdo são recusadas
+
+Sem migração, atrás de `pedidos.colaboracao.enabled` (desligada, tudo como antes).
+
+- **Teto da família.** Numa família (a raiz e os filhos diretos) com um porta-voz que não foi cancelado, o pedido SEM papel (a
+  raiz ou um irmão comum) decide e executa com `observar`: `autonomia_efetiva` ganha o terceiro argumento
+  `familia_com_porta_voz`. O laço leva esse teto à execução (`RunCreate.teto_de_autonomia`, 28.23) e a ocorrência registra
+  "autonomia rebaixada: a família tem porta-voz e só ele age para fora: agir → observar" (só autonomias, nunca persona, conta ou
+  texto do comando). O porta-voz segue com `agir` e os papéis com teto próprio mantêm o deles.
+- **`PedidoView.autonomia_efetiva`** (campo novo, sempre presente): a autonomia com que o pedido decide hoje.
+- **Prévia.** `alertas` ganha `autonomia_rebaixada_pela_familia` (um filho novo sem papel numa família com porta-voz) e
+  `autonomia.teto` mostra o teto efetivo: a pessoa vê o rebaixamento antes de criar. O selo continua cobrindo a autonomia pedida.
+- **Recusa nova, 422 `reacao_repetida`** (campo `objetivo`; prévia e criação, também na conferência dentro da transação): um
+  filho cuja autonomia efetiva é `preparar` ou `agir`, com o mesmo objetivo (sem diferença de caixa ou espaços) de um pedido
+  vivo da família que também tem efeito, e personas diferentes (a do alvo, ou a única do aparelho). A mensagem não cita
+  persona nem texto. O que o código não lê (a mesma reação com outras palavras, uma persona citar a outra como terceiro) é do
+  planejador.
+- **Prova:** `simulated` (`backend/tests/test_pedidos_colaboracao_para_fora.py`). `not_run`: pedido real depois do deploy.
+
+As regras 1 e 2 (uma conta por alvo no pedido inteiro e `approval_required` para pessoa real sem conversa prévia) são da porta de
+política (`PolicyEngine.check`, item 30.62): o provedor `contexto_do_pedido(run_id)` vem num PR à parte.

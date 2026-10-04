@@ -37,6 +37,8 @@ como reply a uma mensagem que a Central não mandou: vira recado guardado para a
 from __future__ import annotations
 
 import logging
+import os
+import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -87,14 +89,13 @@ class FaxinaDosCanais:
         for v in vencidos:
             por_conteudo.setdefault((str(v["sha256"] or ""), str(v["mime"] or "")), []).append(int(v["id"]))
         for (sha, mime), ids in por_conteudo.items():
-            em_uso = self.db.one(
-                "SELECT 1 AS x FROM canal_anexos WHERE sha256=? AND estado='guardado'"
-                " AND NOT (canal=? AND criado_em < ?) LIMIT 1", (sha, canal, limite))
-            if em_uso is None and sha:
+            if not self._em_uso(sha, canal, limite) and sha:
                 try:
-                    caminho = caminho_em(self.pasta_anexos, sha, mime)
-                    caminho.unlink(missing_ok=True)
+                    self._apagar_se_ninguem_usa(caminho_em(self.pasta_anexos, sha, mime), sha, canal, limite)
                 except CaminhoForaDoArmazem:
+                    # Uma referência que não monta caminho DENTRO do armazém (sha malformado, tipo fora da lista, link para
+                    # fora) não é dona de arquivo nenhum de lá: não há o que apagar, e a linha vence como as outras (o
+                    # arquivo de fora, se existir, fica intocado). Não é "apagado sem apagar".
                     log.warning("canais: anexo %s fora do armazém ou inválido; o arquivo não foi tocado", ids[0])
                 except OSError as exc:
                     log.warning("canais: arquivo do anexo %s não apagado (%s); a próxima volta tenta de novo", ids[0],
@@ -103,6 +104,34 @@ class FaxinaDosCanais:
             marcas = ",".join("?" * len(ids))
             self.db.execute(f"UPDATE canal_anexos SET estado='apagado', apagado_em=? WHERE id IN ({marcas})",  # noqa: S608
                             (agora, *ids))
+
+    def _em_uso(self, sha: str, canal: str, limite: str) -> bool:
+        """Alguma linha `guardado` que NÃO vence nesta volta (de qualquer canal) ainda usa o conteúdo `sha`."""
+        return self.db.one(
+            "SELECT 1 AS x FROM canal_anexos WHERE sha256=? AND estado='guardado'"
+            " AND NOT (canal=? AND criado_em < ?) LIMIT 1", (sha, canal, limite)) is not None
+
+    def _apagar_se_ninguem_usa(self, caminho: Path, sha: str, canal: str, limite: str) -> None:
+        """Apaga o arquivo sem corrida com um anexo novo do MESMO conteúdo. O arquivo sai do lugar (rename atômico) ANTES
+        da reconferência de uso: quem chega depois do rename não o encontra no lugar e o regrava (`ArmazemDeAnexos.guardar`
+        confere de novo depois de gravar a linha); quem chegou antes é visto na reconferência e o arquivo volta. Só então
+        o `unlink`. Erro de disco sobe como `OSError` (a linha fica `guardado`; a próxima volta repete)."""
+        if not caminho.exists():
+            return
+        quarentena = caminho.with_name(f".{caminho.name}.{secrets.token_hex(4)}.apagando")
+        os.replace(caminho, quarentena)
+        try:
+            if self._em_uso(sha, canal, limite):
+                os.replace(quarentena, caminho)
+                return
+        except BaseException:
+            os.replace(quarentena, caminho)                            # na dúvida o arquivo volta; ninguém fica sem ele
+            raise
+        try:
+            quarentena.unlink(missing_ok=True)
+        except OSError:
+            os.replace(quarentena, caminho)                            # não apagou: volta ao lugar para a próxima volta
+            raise
 
     def faxinar(self, *, cerca: Cerca, canal: str, retencao_dias: float) -> Faxina:
         limite = to_iso(self.relogio() - timedelta(days=retencao_dias))

@@ -126,12 +126,21 @@ def _contagem_maior(bruto: str, bindings: dict[str, str], tree: UiTree) -> bool 
     """`count_gt:<binding>:<seletor>` (29.30): o número do elemento é MAIOR que o do binding (a contagem lida ANTES).
 
     `True` = maior; `False` = igual ou menor (nenhuma publicação nova apareceu); `None` = não dá para afirmar
-    (binding ausente ou não numérico, elemento ausente, texto sem número ou abreviado). Nunca reprova por si só."""
-    nome, _, seletor = bruto.partition(":")
+    (binding ausente ou não numérico, elemento ausente, texto sem número ou abreviado). Nunca reprova por si só.
+
+    30.60: guardas depois de `&` (`count_gt:posts_antes:<contagem>&<guarda>`) precisam TODAS casar na tela, com as
+    variáveis resolvidas pelos argumentos; sem elas, a contagem de OUTRO perfil (um sugerido aberto depois do Share)
+    provaria a publicação. Guarda com variável sem valor ou que não casa: `None` (o modelo julga), nunca `False`."""
+    nome, _, resto = bruto.partition(":")
+    seletor, *guardas = [p.strip() for p in resto.split("&")]
     antes = bindings.get(nome.strip())
-    if antes is None or not re.fullmatch(r"\s*\d+\s*", antes) or not seletor.strip():
+    if antes is None or not re.fullmatch(r"\s*\d+\s*", antes) or not seletor:
         return None
-    achados = tree.find_proof(seletor.strip(), variants=variantes_de_arroba)
+    for guarda in guardas:
+        resolvida = resolve_templates(guarda, bindings) or ""
+        if not resolvida or "{" in resolvida or not tree.find_proof(resolvida, variants=variantes_de_arroba):
+            return None
+    achados = tree.find_proof(seletor, variants=variantes_de_arroba)
     if not achados:
         return None
     numeros = [n for e in achados if (n := _primeiro_inteiro(e.text or e.desc or "")) is not None]

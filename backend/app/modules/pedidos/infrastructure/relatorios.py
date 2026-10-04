@@ -22,11 +22,13 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from app.db import Database, Row
+from app.modules.pedidos.domain import consolidacao as dominio_consolidacao
 from app.modules.pedidos.domain import memoria as dominio_memoria
 from app.modules.pedidos.domain import observacao as dominio_observacao
 from app.modules.pedidos.domain import relatorio as dominio_relatorio
 from app.modules.pedidos.domain.chave import formatar_instante
 from app.modules.pedidos.domain.resumo import ResumidorDeRelatorio, SemResumo
+from app.modules.pedidos.domain.vistas import ObservacaoVista, OcorrenciaVista
 from app.modules.pedidos.infrastructure.repositorio_memoria import NovaObservacao, RepositorioDeMemoria
 from app.security.redaction import looks_secret, mentions_credential
 from app.util import to_iso
@@ -67,8 +69,12 @@ class RelatorioPreparado:
 class ServicoDeRelatorios:
     def __init__(self, db: Database, relogio: Callable[[], datetime], *, resumidor: ResumidorDeRelatorio | None = None,
                  resumo_ia: bool = False, resumo_ia_teto_usd: float = 0.05,
-                 marcar: Callable[[str, str], None] | None = None):
+                 marcar: Callable[[str, str], None] | None = None,
+                 colaboracao: Callable[[], bool] | None = None):
         self.db = db
+        #: 28.10 F4: `True` quando `pedidos.colaboracao.enabled` está ligada. Sem ele (ou desligada) o relatório nem consulta
+        #: os filhos e sai como antes.
+        self._colaboracao = colaboracao
         self.relogio = relogio
         #: Anota "relatório novo" (`RepositorioDePedidos.marcar`): quem escreveu o relatório descarrega as marcas DEPOIS do
         #: commit e a API grava o aviso `relatorio_pronto` (28.9). Sem ele (teste, serviço isolado) nada é anotado.
@@ -155,17 +161,18 @@ class ServicoDeRelatorios:
             raise ValueError(f"gatilho de relatório inválido: {gatilho!r}")
         agora = self.relogio()
         periodo_ate = ate or formatar_instante(agora)
+        filhos, falhou = self._filhos_vistos(pedido["id"])
         entrada = dominio_relatorio.EntradaDoRelatorio(
             pedido_id=pedido["id"], pedido_versao=int(pedido["versao"]), periodo_ate=periodo_ate, periodo_de=de,
             criterios=tuple(_criterios(pedido["criterios_sucesso"])),
-            ocorrencias=tuple(dominio_relatorio.OcorrenciaVista(
+            ocorrencias=tuple(OcorrenciaVista(
                 id=r["id"], previsto_para=r["previsto_para"], estado=r["estado"], motivo=r["motivo"],
                 custo_usd=float(r["custo_usd"] or 0.0), origem=r["origem"]) for r in self.repo.ocorrencias(pedido["id"])),
-            observacoes=tuple(dominio_relatorio.ObservacaoVista(
+            observacoes=tuple(ObservacaoVista(
                 id=r["id"], ocorrencia_id=r["ocorrencia_id"], alvo=r["alvo"], nome=r["nome"], situacao=r["situacao"],
                 valor=r["valor"], tipo=r["tipo"], fonte=r["fonte"], trecho=r["trecho"], sha256=r["sha256"],
                 capturado_em=r["capturado_em"]) for r in self.repo.todas_as_observacoes(pedido["id"])),
-            pendencias=tuple(self.repo.pendencias_abertas(pedido["id"])))
+            pendencias=tuple(self.repo.pendencias_abertas(pedido["id"])), filhos=filhos, consolidacao_falhou=falhou)
         relatorio = dominio_relatorio.montar(entrada)
         conteudo = dominio_relatorio.serializar(relatorio)
         texto = por = None
@@ -181,6 +188,31 @@ class ServicoDeRelatorios:
                                   periodo_de=de, periodo_ate=periodo_ate, conteudo=conteudo,
                                   sha256=dominio_relatorio.sha256_de(conteudo), gerado_em=to_iso(agora),
                                   resumo_texto=texto, resumo_por=por, custo_usd=custo, relatorio=relatorio)
+
+    def _filhos_vistos(self, pedido_id: str) -> tuple[tuple[dominio_consolidacao.FilhoVisto, ...], bool]:
+        """28.10 F4: o que cada filho direto OBSERVOU e GUARDOU (observações e memória; nunca as execuções). Só com a
+        colaboração ligada. Falha de leitura não derruba o relatório: devolve `falhou` e ele diz que ficou sem consolidação."""
+        if self._colaboracao is None or not self._colaboracao():
+            return (), False
+        try:
+            visto = []
+            for f in self.repo.filhos_do_pai(pedido_id):
+                visto.append(dominio_consolidacao.FilhoVisto(
+                    id=f["id"], papel=f["papel"], estado=f["estado"],
+                    ocorrencias=tuple(OcorrenciaVista(
+                        id=r["id"], previsto_para=r["previsto_para"], estado=r["estado"], motivo=r["motivo"],
+                        custo_usd=float(r["custo_usd"] or 0.0), origem=r["origem"]) for r in self.repo.ocorrencias(f["id"])),
+                    observacoes=tuple(ObservacaoVista(
+                        id=r["id"], ocorrencia_id=r["ocorrencia_id"], alvo=r["alvo"], nome=r["nome"],
+                        situacao=r["situacao"], valor=r["valor"], tipo=r["tipo"], fonte=r["fonte"], trecho=r["trecho"],
+                        sha256=r["sha256"], capturado_em=r["capturado_em"]) for r in self.repo.todas_as_observacoes(f["id"])),
+                    memoria=tuple(dominio_consolidacao.EntradaDeMemoria(
+                        chave=e.chave, tipo=e.tipo, valor=e.valor, resolvida=e.resolvida)
+                        for e in self.repo.entradas(f["id"]))))
+            return tuple(visto), False
+        except Exception:  # noqa: BLE001 - a consolidação é um acréscimo: o relatório do próprio pedido sai de qualquer jeito
+            log.exception("pedidos: leitura dos filhos do pedido %s para a consolidação falhou", pedido_id)
+            return (), True
 
     def gravar_relatorio(self, p: RelatorioPreparado) -> Row | None:
         """Escreve o relatório preparado. O de encerramento é UM por pedido: já existindo, devolve o que existe."""

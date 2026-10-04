@@ -5,7 +5,8 @@ O que estes testes protegem:
   2. candidato é o grupo aberto, sem item do plano e com o mínimo de ocorrências; o resto é contado pelo motivo;
   3. o exemplo leva ids, nunca o texto do erro; a frente é sugestão pela camada; o arquivo diz a regra (nada entra
      no plano sem número);
-  4. o token vai no cabeçalho e nunca para a saída, nem no erro.
+  4. o token vai no cabeçalho e nunca para a saída, nem no erro; só para o central local (29.76);
+  5. o denominador da amostra de lote é todo exemplo com run_id, achado no banco ou não (29.76).
 """
 from __future__ import annotations
 
@@ -152,7 +153,7 @@ class TestCandidatos(unittest.TestCase):
             corpo = json.loads(destino.read_text(encoding="utf-8"))
         por = {c["chave"]: c for c in corpo["candidatos"]}
         self.assertEqual([c["chave"] for c in corpo["candidatos"]], ["fk-pessoa", "fk-caro", "fk-barato", "fk-prop"])
-        self.assertEqual((por["fk-caro"]["amostra_de_lote"], por["fk-pessoa"]["amostra_de_lote"]), ("3 de 3", "1 de 2"))
+        self.assertEqual((por["fk-caro"]["amostra_de_lote"], por["fk-pessoa"]["amostra_de_lote"]), ("3 de 3", "1 de 3"))
         self.assertIn("execução nossa", por["fk-caro"]["rebaixado"])
         self.assertIsNone(por["fk-pessoa"]["rebaixado"])
         self.assertIn("7 dias", por["fk-barato"]["rebaixado"])
@@ -175,6 +176,35 @@ class TestCandidatos(unittest.TestCase):
             with self.assertRaises(sqlite3.OperationalError):    # aberto só para leitura
                 with closing(sqlite3.connect(f"file:{banco.as_posix()}?mode=ro", uri=True)) as ro:
                     ro.execute("DELETE FROM runs")
+
+
+    def test_amostra_conta_o_exemplo_que_o_banco_nao_achou(self) -> None:
+        """29.76 (a): 2 exemplos ausentes do banco e 1 de lote dão "1 de 3", e o grupo não é rebaixado. Antes, o
+        denominador só contava os achados ("1 de 1") e o grupo ia para o fim."""
+        geral = {"commit": "abc", "itens": [_grupo("fk-um", "execucao", 9, 2.0), _grupo("fk-dois", "execucao", 9, 1.0)],
+                 "verificacao": [], "propostas": []}
+        nossos = {"r-fk-um-0": True}
+        saida = mod.montar([geral], minimo=3, agora=AGORA, de_lote=lambda ids: {i: nossos[i] for i in ids if i in nossos})
+        por = {c["chave"]: c for c in saida["candidatos"]}
+        self.assertEqual((por["fk-um"]["amostra_de_lote"], por["fk-um"]["rebaixado"]), ("1 de 3", None))
+        self.assertIsNone(por["fk-dois"]["amostra_de_lote"])
+        self.assertEqual([c["chave"] for c in saida["candidatos"]], ["fk-um", "fk-dois"])
+
+    def test_token_so_para_o_central_local(self) -> None:
+        """29.76 (b): um `--base` fora desta máquina não recebe o Bearer; o loopback recebe."""
+        for base, esperado in (("http://exemplo.test:8000", None), ("https://dev.nvit.com.br/central", None),
+                               ("http://localhost:8000", f"Bearer {TOKEN}"), ("http://[::1]:8000", f"Bearer {TOKEN}")):
+            with self.subTest(base=base):
+                fake = Fake()
+                _, out, err, _ = self._rodar(fake, "--base", base)
+                self.assertEqual([c.get("Authorization") for _, c in fake.pedidos], [esperado, esperado])
+                self.assertNotIn(TOKEN, out + err)
+
+    def test_ultima_sem_fuso_vale_como_utc(self) -> None:
+        """29.76 (b): 'ultima' sem fuso derrubava a subtração com TypeError; vale como UTC."""
+        self.assertEqual(mod._dias_sem_ocorrer("2026-09-25T08:00:00", AGORA), 9.4)
+        self.assertEqual(mod._dias_sem_ocorrer("2026-09-25T08:00:00Z", AGORA), 9.4)
+        self.assertIsNone(mod._dias_sem_ocorrer("ontem", AGORA))
 
 
 if __name__ == "__main__":

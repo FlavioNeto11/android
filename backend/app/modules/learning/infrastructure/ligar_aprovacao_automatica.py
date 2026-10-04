@@ -1,8 +1,8 @@
 """30.55: liga a aprovação automática ao Livro. O serviço fica pendurado no Livro (a rota e as métricas o acham pelo
 tipo) e o laço é registrado à parte, como o da autopublicação: o `AppState` o sobe sob a trava de líder.
 
-De fábrica o modo é `off` e nada roda; o modo é lido a cada volta, então mudar o config com o processo no ar vale na
-próxima. A volta só lê o livro, grava sinais e, em `on`, transições (sem IA, sem aparelho): roda numa thread."""
+De fábrica o modo é `off` e nada roda. O modo é lido a cada volta, mas do config carregado na subida: mudar o
+`config.yaml` pede reiniciar o central (30.63; o "vale na próxima, sem reiniciar" de antes estava errado). A volta só lê o livro, grava sinais e, em `on`, transições (sem IA, sem aparelho): roda numa thread."""
 from __future__ import annotations
 
 import asyncio

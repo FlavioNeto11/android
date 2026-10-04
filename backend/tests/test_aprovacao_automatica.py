@@ -312,3 +312,35 @@ async def test_desfazer_pela_rota_e_o_contrato_da_canais(mundo: Mundo, cliente: 
     assert (await asyncio.to_thread(mundo.ap.uma_volta)).decididos == ()
     lida = (await cliente.get("/api/aprendizado/aprovacao-automatica")).json()
     assert {x["item_ref"]: x["estado"] for x in lida["decididos_pela_plataforma"]}[refs["aprovar"]] == "disabled"
+
+
+# ------------------------------------------------------------------ 30.63: as duas revisões independentes
+def _revisao_gravada(m: Mundo, ref: str, decisao: Decisao, quando: datetime, *, simulada: bool) -> None:
+    from app.modules.learning.application.ports import NovaRevisao
+    from app.modules.learning.domain.curador import Parecer
+    from app.modules.learning.infrastructure.revisoes_sql import RegistroDeRevisoesSql
+
+    parecer = Parecer(decisao=decisao, evidencias_citadas=(ref,))
+    assert RegistroDeRevisoesSql(m.db).gravar(NovaRevisao(
+        item_ref=ref, item_kind="receita", scope_app=QA, gatilho="a_revisar", dossie_hash=f"h-{ref}-{decisao.value}",
+        dossie={"item": {"estado": "validated"}}, template_id="curador", template_versao="dossie-v1", provedor="teste",
+        modelo="m", simulated=simulada, validade="ok", saida=parecer.como_dados(),
+        classe_de_risco=ClasseDeRisco.B.value, politica="teste"), quando) is not None
+
+
+def test_a_revisao_simulada_por_cima_nao_esconde_o_parecer_real_contra(mundo: Mundo) -> None:
+    """30.63 (a): a régua lia só a revisão MAIS RECENTE; um ensaio simulado por cima apagava o "rebaixar" real."""
+    ref = mundo.receita("enviar", status="validated", sombra=(2, 2))
+    _revisao_gravada(mundo, ref, Decisao.REBAIXAR, datetime(2026, 10, 4, 15, 0, tzinfo=UTC), simulada=False)
+    _revisao_gravada(mundo, ref, Decisao.OBSERVAR, datetime(2026, 10, 4, 16, 0, tzinfo=UTC), simulada=True)
+    [item] = [x for x in mundo.ap.relatorio(itens=True)["itens"] if x["item_ref"] == ref]  # type: ignore[union-attr]
+    assert item["decide"] is False and "parecer_contra" in item["fora"]
+
+
+@pytest.mark.parametrize("valor, modo", [(True, "on"), (False, "off"), ("shadow", "shadow")])
+def test_o_modo_aceita_o_booleano_do_yaml(valor: object, modo: str) -> None:
+    """30.63 (b): `modo: on` sem aspas é `true` no YAML; em 04/10 isso derrubou a carga do config inteiro."""
+    import yaml
+
+    assert AprovacaoAutomaticaCfg.model_validate({"modo": valor}).modo == modo
+    assert AprovacaoAutomaticaCfg.model_validate(yaml.safe_load("modo: on")).modo == "on"
