@@ -1953,7 +1953,7 @@
   "8.4": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac142ade0dc03a396d15698",
    "url": "https://trello.com/c/bwekMm81",
-   "lista": "bloqueado",
+   "lista": "em_validacao",
    "lote": "lote_A8_atuais_pendentes"
   },
   "12.3": {
@@ -2837,21 +2837,21 @@
   "30.41": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1791eca145d99e9d64bce",
    "url": "https://trello.com/c/AphOEZ6K",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "30.41 · Teto por pedido proporcional ao plano; o que não cabe não despacha"
   },
   "30.42": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac179236661f9a5b7052e74",
    "url": "https://trello.com/c/Q1f6mAn2",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "30.42 · A prova parte de estado conhecido e fecha pelo que o verificador viu"
   },
   "30.43": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac179276281aa9b3107f942",
    "url": "https://trello.com/c/7xy7InvO",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": "canais",
    "nome": "30.43 · A validação com rosto no item"
   },
@@ -2872,7 +2872,7 @@
   "31.24": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac17a694cb8e046843e30c8",
    "url": "https://trello.com/c/EutILvSJ",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "31.24 · Latência por etapa como métrica de primeira classe"
   },
@@ -2907,16 +2907,65 @@
   "30.44": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac198161675f2e1e7167b9a",
    "url": "https://trello.com/c/jRV1L7h0",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": "canais",
    "nome": "Polimentos da evidência e da validação automática"
   },
   "29.63": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac19ece641516bfebf1dd9f",
    "url": "https://trello.com/c/fzyYiADk",
-   "lista": "proximas",
+   "lista": "em_execucao",
    "lote": "canais",
    "nome": "Segundo corte no tempo dos testes em PostgreSQL"
+  },
+  "28.19": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1a3d128481569da872e34",
+   "url": "https://trello.com/c/LzBZ2WcK",
+   "lista": "em_validacao",
+   "lote": "canais",
+   "nome": "Lote de teste não avisa um por um"
+  },
+  "30.45": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1a3d7eb91bfb1fe58adb8",
+   "url": "https://trello.com/c/KqAowv5B",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "Veredito enxerga a evidência reclassificada"
+  },
+  "29.64": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1a3dd3f0a5b5730899340",
+   "url": "https://trello.com/c/jqkSiQk0",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "Entrar reconfere o toque em Log in"
+  },
+  "29.65": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1a3e2aa791f2ad504c2e5",
+   "url": "https://trello.com/c/Sx3dYPRm",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "A política one prefere o aparelho principal"
+  },
+  "31.27": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1a3e7a9595d5f084cdb7d",
+   "url": "https://trello.com/c/UEzohhY4",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "Espera do juiz que acompanha a tela"
+  },
+  "31.26": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1a3edd83037f3f2fd5d27",
+   "url": "https://trello.com/c/mHmW63Mg",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "Marcador de entrega dispensa o 1º julgamento"
+  },
+  "31.28": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1a3f2938e24a52669004e",
+   "url": "https://trello.com/c/WKjq4JIc",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "A prévia do painel disputa o aparelho?"
   }
  },
  "falhas": [],
