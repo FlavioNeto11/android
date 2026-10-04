@@ -1410,6 +1410,38 @@ async def test_reinicio_recusado_tambem_conta_para_o_teto(parque: Harness, monke
     assert _linha(parque)["state"] == "pendente" and "nenhum boot foi detectado" in str(_linha(parque)["error"])
 
 
+async def test_reiniciar_o_backend_nao_zera_o_teto_de_reinicios(parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """25.11 (RA-12): a conta de reinícios pedidos da revisão vivia só na memória, e cada reinício do backend a zerava
+    (88 reinícios pedidos pela rede em 7 dias). Agora ela está na linha (`restart_rev`, `restarts_requested`, migração
+    093): esvaziar a memória da convergência, como um processo novo, não dá reinícios novos ao aparelho."""
+    st = parque.state
+    assert st is not None
+    _, reinicios, _ = _preparar(parque, monkeypatch, policy="livre")
+    reinicios.aceitar = False
+    conv = st.rede_convergencia
+    agora = [1_000_000.0]
+    conv._agora = lambda: agora[0]
+    maximo = int(st.cfg.file.rede.reinicios_max)
+    assert maximo >= 2
+    assert await _passo(parque, "varredura")
+    await asyncio.sleep(0.3)
+    assert len(reinicios.pedidos) == 1
+    linha = _linha(parque)
+    assert linha is not None and linha["restarts_requested"] == 1 and linha["restart_rev"] == linha["desired_rev"]
+    conv._mem.clear()                                                              # o backend reiniciou
+    for _ in range(8):
+        if _linha(parque)["state"] == "pendente":
+            break
+        agora[0] += 301
+        await _passo(parque, "varredura")
+        await asyncio.sleep(0.2)
+    # O teto valeu somando o antes e o depois do reinício: nenhum pedido além de `reinicios_max`.
+    assert len(reinicios.pedidos) == maximo
+    linha = _linha(parque)
+    assert linha["state"] == "pendente"
+    assert linha["restarts_requested"] == 0 and linha["restart_rev"] is None    # a desistência fecha a conta
+
+
 def test_adb_reverse_so_leva_a_porta_no_argumento(monkeypatch: pytest.MonkeyPatch) -> None:
     import subprocess
     from types import SimpleNamespace

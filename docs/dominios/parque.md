@@ -727,10 +727,12 @@ de outra pasta, a pasta muda em `adb.py`, não num `shell` montado por quem cham
   (`pending`, pela porta de despacho, ou `running`, suspenso entre etapas) o esgotamento NÃO põe os 300 s: o pedido
   segue agendado e retenta em `retentativa_do_reinicio_s` (30 s) com mais 24 tentativas, enquanto o objetivo
   esperar; sem ele, a espera de 5 min de antes. O objetivo que espera a rede nunca conta como ocupado (o worker, o
-  controle e `objetivo_em_andamento(..., exceto_quem_espera_a_rede=True)` são conferidos à parte). **Dívida
-  conhecida, não corrigida:** o teto `reinicios_max`, `_reinicio_agendado` e `espera_ate` vivem só em memória e
-  zeram no restart do central (a linha `configurado` persistida reabre o ciclo, então o aparelho não fica órfão, mas
-  o teto recomeça). **Causa exata do "ocupado" no android-05: não provada** (os eventos não mostravam termo nenhum
+  controle e `objetivo_em_andamento(..., exceto_quem_espera_a_rede=True)` são conferidos à parte). **O teto
+  persiste desde o 25.11:** a conta de reinícios pedidos da revisão em curso fica na linha (`device_network.restart_rev`
+  e `restarts_requested`, migração 093) e volta à memória quando a convergência abre o aparelho; o reinício do central
+  já não dá `reinicios_max` reinícios novos ao mesmo aparelho. A conta fecha quando o túnel sobe, na desistência e
+  na invalidação (wipe/reset). `_reinicio_agendado` e `espera_ate` seguem em memória: perdê-los só antecipa uma
+  conferência. **Causa exata do "ocupado" no android-05: não provada** (os eventos não mostravam termo nenhum
   ocupando); a observação nova é o que vai dizer na próxima ocorrência. Prova `simulated`:
   `tests/test_rede_aplicacao.py::test_reinicio_com_objetivo_esperando_a_rede` e
   `::test_reinicio_que_nao_sai_diz_qual_termo_segurou`; real: `not_run` (reproduzir no android-05).
