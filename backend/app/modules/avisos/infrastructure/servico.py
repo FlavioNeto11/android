@@ -55,6 +55,9 @@ class ServicoDeAvisos:
         #: O redator do conteúdo do aviso (28.15, decisão (d)): só vale com a conversa de volta ligada.
         self._redigir = redigir
         self._nomes_de_persona = nomes_de_persona
+        #: 31.50: o nome em português da capability no catálogo (`LearningService.nome_da_capability`), ligado pelo
+        #: `AppState` depois de montar o Aprendizado. Sem ele, o lembrete mostra a chave.
+        self.nome_da_capability: Callable[[str], str | None] | None = None
         #: Quem diz se sou o líder: o `AppState._lider` (que tolera banco fora do ar). Injetável nos testes.
         self._lider = lider or self._tomar
         self._esperar_ate = 0.0
@@ -113,6 +116,11 @@ class ServicoDeAvisos:
         nomes = self._nomes()
         if nomes is None:
             redigir, conversa, nomes = None, False, []
+        if kind == "pendencia.vence_em":
+            if not (data or {}).get("chave"):
+                # O montador devolve None sem a chave do produtor: o lembrete não sairia calado.
+                log.warning("avisos: pendencia.vence_em sem a chave do produtor (evento %s): o lembrete não sai", evento_id)
+            data = self._com_nome_da_acao(data)
         aviso = aviso_de_evento(kind, data, evento_id, cfg.url_painel, frozenset(cfg.aprendizado_faixas), redigir,
                                 nomes=nomes, conversa=conversa)
         if aviso is None or self._e_de_prova(kind, data):
@@ -145,6 +153,18 @@ class ServicoDeAvisos:
         except Exception:  # noqa: BLE001 - o aviso nunca derruba quem o pediu
             log.exception("avisos: não foi possível enfileirar %s", aviso.chave)
             return False
+
+    def _com_nome_da_acao(self, data: dict[str, object] | None) -> dict[str, object] | None:
+        """31.50: põe `acao_nome` (o nome do catálogo) ao lado da `acao` do lembrete. A falha da leitura só tira o nome."""
+        acao = (data or {}).get("acao")
+        if self.nome_da_capability is None or not isinstance(acao, str) or not acao:
+            return data
+        try:
+            nome = self.nome_da_capability(acao)
+        except Exception:  # noqa: BLE001 - o lembrete sai com a chave
+            log.exception("avisos: nome da capability %s não lido", acao)
+            return data
+        return {**(data or {}), "acao_nome": nome} if nome else data
 
     def _e_de_prova(self, kind: str, data: dict[str, object] | None) -> bool:
         """30.37 e 28.19: a execução do SISTEMA não é de uma pessoa: a pergunta dela (`run.updated` em `needs_input`)

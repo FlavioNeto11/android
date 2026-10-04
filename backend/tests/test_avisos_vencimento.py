@@ -19,16 +19,18 @@ from app.modules.avisos.domain.mensagem import (
     titulo_agrupado,
 )
 from app.modules.avisos.infrastructure.servico import KINDS_QUE_AVISAM
+from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
 
 from .test_avisos_servico import AQUI, CanalFalso, Relogio, _backend, _cfg, _run
 
 PAINEL = "https://painel.exemplo/central"
+REDIGIR = TriagemDeCredencial().redigir
 CHAVE = "vencimento:lembrete:obj-1:2026-10-03T22:30:00.000Z"
 
 
 def _dados(**kw: object) -> dict[str, object]:
     base: dict[str, object] = {"o_que": "aprovacao", "run_id": "r1", "objective_id": "obj-1", "aparelho": "android-12",
-                               "acao": "open_mail_inbox", "etapa": None, "vence_em": "2026-10-04T22:30:00.000Z",
+                               "acao": "OPEN_MAIL_INBOX", "etapa": None, "vence_em": "2026-10-04T22:30:00.000Z",
                                "acontece_se_vencer": "cancelado pelo sistema", "chave": CHAVE, "regra": "31.50"}
     base.update(kw)
     return base
@@ -40,7 +42,8 @@ def test_o_lembrete_diz_o_que_vence_onde_quando_e_o_que_acontece() -> None:
     assert (a.chave, a.tipo, a.nivel) == (CHAVE, "pendencia.vence_em", PRECISA_DE_VOCE)
     assert entrega_do_tipo(a.tipo) == AGORA
     assert a.titulo == "ANA: ⏳ A aprovação no android-12 vence em até 2 h (22:30Z)"
-    assert a.corpo.split("\n") == ["Etapa que espera: open_mail_inbox.", "Se vencer: cancelado pelo sistema.",
+    # Sem o nome do catálogo, a chave como o produtor manda (`steps.capability`, em maiúsculas).
+    assert a.corpo.split("\n") == ["Etapa que espera: OPEN_MAIL_INBOX.", "Se vencer: cancelado pelo sistema.",
                                    "Espera você: decida na caixa de Pendências antes disso."]
     assert a.link is not None and a.link.startswith(PAINEL)
 
@@ -60,6 +63,31 @@ def test_execucao_com_um_aparelho_diz_qual_e_com_varios_nao() -> None:
                              _dados(o_que="execucao", aparelho=None, aparelhos=["android-09", "android-10"]), 1)
     assert um is not None and " no android-09 " in um.titulo
     assert varios is not None and " no " not in varios.titulo.removeprefix("ANA: ")
+
+
+def test_com_o_nome_do_catalogo_sai_o_nome_e_nao_a_chave() -> None:
+    a = aviso_de_evento("pendencia.vence_em", _dados(acao="SEND_MESSAGE", acao_nome="Mandar mensagem"), 1,
+                        redigir=REDIGIR, nomes=["Bruno Lima", "Bruno"])
+    assert a is not None and "Etapa que espera: Mandar mensagem." in a.corpo and "SEND_MESSAGE" not in a.corpo
+    # O nome que não passa inteiro pelos filtros não sai: fica a chave.
+    b = aviso_de_evento("pendencia.vence_em", _dados(acao="SEND_MESSAGE", acao_nome="Falar com o Bruno"), 1,
+                        redigir=REDIGIR, nomes=["Bruno Lima", "Bruno"])
+    assert b is not None and "Etapa que espera: SEND_MESSAGE." in b.corpo and "Bruno" not in b.corpo
+    sujo = aviso_de_evento("pendencia.vence_em", _dados(acao="SEND_MESSAGE", acao_nome="Mandar a @fulano"), 1,
+                           redigir=REDIGIR)
+    assert sujo is not None and "fulano" not in sujo.corpo
+
+
+def test_o_servico_poe_o_nome_do_catalogo_e_avisa_sem_a_chave(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
+    servico._redigir = REDIGIR                                         # noqa: SLF001
+    servico.nome_da_capability = {"SEND_MESSAGE": "Mandar mensagem"}.get
+    _run(banco, "rc", chave="k-comum")
+    assert servico.enfileirar_evento("pendencia.vence_em", _dados(run_id="rc", acao="SEND_MESSAGE"), 1) is True
+    assert "Etapa que espera: Mandar mensagem." in str(banco.scalar("SELECT corpo FROM avisos_entregas"))
+    with caplog.at_level("WARNING"):
+        assert servico.enfileirar_evento("pendencia.vence_em", _dados(run_id="rc", chave=None), 2) is False
+    assert "sem a chave do produtor" in caplog.text
 
 
 def test_sem_a_chave_do_produtor_nao_ha_aviso() -> None:

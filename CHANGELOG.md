@@ -23,7 +23,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - O evento `pendencia.vence_em` (Jev, #313, adendo v1.33) entra em `KINDS_QUE_AVISAM` e vira aviso de nível 1, na hora,
   com rajada ("N pendências vencem nas próximas 2 h"). Molde: "⏳ A aprovação no android-12 vence em até 2 h (22:30Z)", a etapa de
-  catálogo que espera (só a chave), "Se vencer: cancelado pelo sistema." e "Espera você: decida/responda na caixa de
+  catálogo que espera (o nome do catálogo; sem ele, a chave da capability como o produtor manda), "Se vencer: cancelado pelo sistema." e "Espera você: decida/responda na caixa de
   Pendências antes disso.", com o link. A chave do aviso é `data.chave`; a `etapa` não é usada.
 - O lembrete de execução do sistema (prova, validação, lote) cala pela regra `_e_de_prova`; o de aprovação de lote avisa.
   A resposta ao lembrete no Telegram não vira pedido.

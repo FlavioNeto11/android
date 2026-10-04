@@ -368,7 +368,8 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
     elif kind == "pendencia.vence_em":
         # 31.50 (Jev): o lembrete 2 h antes de vencer. A chave é a do produtor (`vencimento:lembrete:<id>:<entrada na
         # espera>`): uma por espera. Diz o que vence, onde e quando, e o que acontece; nunca o comando nem o título da
-        # etapa (o produtor nem os manda). A `acao` é a chave do catálogo; a `etapa` não é usada.
+        # etapa (o produtor nem os manda). A `acao` é a capability da etapa (`SEND_MESSAGE`); o serviço põe ao lado o
+        # NOME dela no catálogo (`acao_nome`), que é o que sai. A `etapa` não é usada.
         d = dados or {}
         chave_do_produtor = _texto(d.get("chave"))
         if chave_do_produtor is None:
@@ -380,6 +381,8 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
         aparelhos = [x for x in lista if isinstance(x, str)] if isinstance(lista, list) else []
         aparelho = _texto(d.get("aparelho")) or (aparelhos[0] if len(aparelhos) == 1 else None)
         acao = _texto(d.get("acao"))
+        nome_da_acao = texto_seguro(_texto(d.get("acao_nome")), nomes, redigir) if redigir is not None else None
+        etapa = nome_da_acao or (acao if acao and _CHAVE_DE_CATALOGO.match(acao) else None)
         hora = _hora(d.get("vence_em"))
         # O tempo relativo na frente (orquestradora, 20:47Z): só "22:30Z" pode ser lido como hora local. O produtor
         # avisa entre 2 h e 1 h 50 antes (volta de 10 min), por isso "em até".
@@ -387,7 +390,7 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
                    f"{f' ({hora})' if hora else ''}")
         acontece = _texto(d.get("acontece_se_vencer")) or "cancelado pelo sistema"
         linhas = [x for x in (
-            f"Etapa que espera: {acao}." if acao and _CHAVE_DE_CATALOGO.match(acao) else None,
+            f"Etapa que espera: {etapa}." if etapa else None,
             f"Se vencer: {acontece}.",
             "Espera você: decida na caixa de Pendências antes disso." if o_que == "aprovacao" else
             "Espera você: responda na caixa de Pendências antes disso.") if x]
@@ -410,8 +413,9 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
 
 #: 31.50: o que vence, pelo `o_que` do lembrete.
 SUJEITO_DO_VENCIMENTO = {"aprovacao": "A aprovação", "objetivo": "O objetivo parado", "execucao": "A pergunta da execução"}
-#: A ação de catálogo que sai no lembrete: só a chave (`open_mail_inbox`), nunca texto livre.
-_CHAVE_DE_CATALOGO = re.compile(r"^[a-z][a-z0-9_.]{1,60}$")
+#: A capability que sai no lembrete quando o catálogo não tem nome para ela: só a chave (`SEND_MESSAGE`, como o produtor
+#: manda `steps.capability`), nunca texto livre.
+_CHAVE_DE_CATALOGO = re.compile(r"^[A-Za-z][A-Za-z0-9_.]{1,60}$")
 
 
 #: O aviso AGRUPADO (28.19): uma rajada do mesmo tipo vira uma mensagem com a contagem. Texto fixo, sem dado do fato;
