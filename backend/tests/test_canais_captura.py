@@ -6,6 +6,7 @@ harness (provedor simulado). Nada de aparelho nem Telegram reais.
 """
 from __future__ import annotations
 
+import asyncio
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -193,7 +194,27 @@ async def test_frame_velho_acorda_a_previa_por_pouco_tempo_e_espera_o_novo() -> 
         rt.frame = _frame(0.0, jpeg=novo)                                             # a prévia publicou um frame novo
 
     assert await capturar_para_o_dono(g, "android-12", dormir=dormir) == (novo, None)
-    assert g.interesses == [("captura-canal-android-12", [], "android-12", 5)] and g.soltos == ["captura-canal-android-12"]
+    assert len(g.interesses) == 1 and g.interesses[0][1:] == ([], "android-12", 10)       # 8 s de espera + 2 s de folga
+    assert g.interesses[0][0].startswith("captura-canal-android-12-") and g.soltos == [g.interesses[0][0]]
+
+
+async def test_o_interesse_vive_mais_que_a_espera() -> None:
+    """Achado 7 da revisão: o TTL (5 s) era menor que a espera (8 s)."""
+    from app.devices.captura_pontual import ESPERA_S, ttl_do_interesse
+    assert ttl_do_interesse(ESPERA_S) > ESPERA_S and ttl_do_interesse(0.05) >= 5 and ttl_do_interesse(30.0) > 30.0
+
+
+async def test_dois_pedidos_do_mesmo_aparelho_usam_chaves_diferentes_e_cada_um_solta_so_a_sua() -> None:
+    rt = _rt(_frame(60))
+    g = Gerenciador(rt)
+
+    async def dormir(_s: float) -> None:
+        await asyncio.sleep(0)                                                       # cede a vez: os dois pedidos se sobrepõem
+        rt.frame = _frame(0.0)
+
+    await asyncio.gather(capturar_para_o_dono(g, "android-12", dormir=dormir), capturar_para_o_dono(g, "android-12", dormir=dormir))
+    chaves = [i[0] for i in g.interesses]
+    assert len(chaves) == 2 and len(set(chaves)) == 2 and sorted(g.soltos) == sorted(chaves)
 
 
 async def test_sem_frame_novo_no_prazo_diz_ao_dono_e_solta_o_interesse() -> None:
@@ -203,7 +224,8 @@ async def test_sem_frame_novo_no_prazo_diz_ao_dono_e_solta_o_interesse() -> None
         return None
 
     jpeg, motivo = await capturar_para_o_dono(g, "android-12", espera_s=0.05, dormir=dormir)
-    assert jpeg is None and "captura nova" in (motivo or "") and g.soltos == ["captura-canal-android-12"]
+    assert jpeg is None and "captura nova" in (motivo or "") and len(g.soltos) == 1
+    assert g.soltos[0].startswith("captura-canal-android-12-") and g.soltos[0] == g.interesses[0][0]
 
 
 @pytest.mark.parametrize("rt", [_rt(_frame(0.1, sensivel=True)), _rt(_frame(0.1, jpeg=b"")),
