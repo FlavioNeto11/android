@@ -1947,7 +1947,7 @@
   "8.3": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac142a8a559ac8bcd36887b",
    "url": "https://trello.com/c/7mjqqUVK",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": "lote_A8_atuais_pendentes"
   },
   "8.4": {
@@ -3194,14 +3194,14 @@
   "30.51": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2520e4ae1363a554c6eff",
    "url": "https://trello.com/c/2wkgl0Gj",
-   "lista": "em_execucao",
+   "lista": "em_validacao",
    "lote": "canais",
    "nome": "30.51 — Execução comum que usa um fluxo aprendido deixa evidência"
   },
   "30.52": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac25212489bd6e45cc1d580",
    "url": "https://trello.com/c/yks3udv7",
-   "lista": "em_execucao",
+   "lista": "em_validacao",
    "lote": "canais",
    "nome": "30.52 — O revisor de fluxos olha só as provas da versão atual"
   },
@@ -3231,7 +3231,7 @@
   }
  },
  "falhas": [],
- "atualizado_em": "2026-10-04T15:18:00Z",
+ "atualizado_em": "2026-10-04T15:20:00Z",
  "arquivados": {
   "29.50": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac140b47c94d9584a3dc72e",
