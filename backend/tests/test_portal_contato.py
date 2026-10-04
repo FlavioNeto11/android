@@ -266,9 +266,10 @@ async def test_sem_o_codigo_da_canais_o_contato_fica_pendente(harness: Harness, 
     assert linha["estado"] == "pendente" and linha["motivo"] == "canal_ausente"
 
 
-async def test_falha_da_canais_nao_perde_o_contato(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
-    def explode(_contato: object) -> object:
-        raise RuntimeError("fora do ar")
+async def test_falha_da_canais_nao_perde_o_contato(harness: Harness, monkeypatch: pytest.MonkeyPatch,
+                                                   caplog: pytest.LogCaptureFixture) -> None:
+    def explode(contato: ContatoFalso) -> object:
+        raise RuntimeError(f"fora do ar ao mandar {contato.telefone}")       # a mensagem cita o dado do visitante
 
     _ligar(harness, monkeypatch, CanaisFalsa())
     assert harness.state is not None
@@ -277,6 +278,7 @@ async def test_falha_da_canais_nao_perde_o_contato(harness: Harness, monkeypatch
         assert (await c.post(ROTA, json=_corpo(harness))).status_code == 202
     [linha] = _linhas(harness)
     assert linha["estado"] == "pendente" and linha["motivo"] == "falha_interna"
+    assert "RuntimeError" in caplog.text and TELEFONE not in caplog.text
 
 
 # ---------------------------------------------------------------- retenção

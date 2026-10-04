@@ -141,8 +141,9 @@ class ServicoDeContato:
         try:
             resultado = avisar(tipo(contato_id=contato_id, nome=campos["nome"], empresa=campos["empresa"] or None,
                                     telefone=campos["telefone"] or None, mensagem=campos["mensagem"]))
-        except Exception:  # noqa: BLE001 - a falha da Canais não pode perder o contato nem derrubar a rota
-            log.exception("portal: contato %s, falha ao avisar", contato_id)
+        except Exception as erro:  # noqa: BLE001 - a falha da Canais não pode perder o contato nem derrubar a rota
+            # Só o tipo: a mensagem (e o traceback) de uma exceção lá dentro pode citar o nome ou o telefone do visitante.
+            log.error("portal: contato %s, falha ao avisar (%s)", contato_id, type(erro).__name__)
             self.repo.marcar(contato_id, "pendente", "falha_interna", agora, tentou=True)
             return "pendente"
         if getattr(resultado, "enfileirado", False) is True:
