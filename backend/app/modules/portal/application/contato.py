@@ -30,6 +30,11 @@ log = logging.getLogger("poc.portal")
 #: Resposta de um contato aceito, de uma isca e de um token cedo ou falso: idênticas de propósito.
 ACEITO: Mapping[str, object] = {"ok": True}
 
+#: Quantas falhas da Canais (exceção ou `falha_interna`) um contato aguenta antes de virar `descartado` com motivo
+#: `falhas_demais`. Sem teto, um conteúdo que faz a Canais levantar voltaria a cada volta e, com 20 assim, prenderia
+#: o reenvio de todos os seguintes em silêncio (revisão do #333, A2). `canal_desligado` não conta: é espera, não falha.
+FALHAS_MAX = 10
+
 MUITAS = "Recebemos muitas mensagens agora. Tente mais tarde, ou ligue ou chame no WhatsApp pelos telefones da página."
 
 
@@ -44,6 +49,7 @@ class Limites(Protocol):
 
 class Guardado(Protocol):
     id: int
+    tentativas: int
     nome: str
     empresa: str
     telefone: str
@@ -151,7 +157,7 @@ class ServicoDeContato:
             return "entregue"
         motivo = str(getattr(resultado, "motivo", None) or "falha_interna")[:40]
         estado = "descartado" if motivo == "campo_invalido" else "pendente"
-        self.repo.marcar(contato_id, estado, motivo, agora, tentou=True)
+        self.repo.marcar(contato_id, estado, motivo, agora, tentou=motivo != "canal_desligado")
         log.info("portal: contato %s ficou %s (%s)", contato_id, estado, motivo)
         return estado
 
@@ -159,6 +165,11 @@ class ServicoDeContato:
         """Uma volta do laço: tenta os não entregues, em ordem, até o teto da hora. Devolve a contagem por estado."""
         contagem: dict[str, int] = {}
         for contato in self.repo.a_reenviar(lote):
+            if contato.tentativas >= FALHAS_MAX:
+                self.repo.marcar(contato.id, "descartado", "falhas_demais", agora)
+                log.warning("portal: contato %s descartado depois de %s falhas da Canais", contato.id, contato.tentativas)
+                contagem["descartado"] = contagem.get("descartado", 0) + 1
+                continue
             campos = {"nome": contato.nome, "empresa": contato.empresa, "telefone": contato.telefone,
                       "mensagem": contato.mensagem}
             estado = self.entregar(contato.id, campos, agora)

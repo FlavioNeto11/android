@@ -1570,6 +1570,14 @@ class PortalCfg(BaseModel):
     contatos: list[ContatoPublicoCfg] = []
     limites: PortalContatoLimitesCfg = PortalContatoLimitesCfg()
 
+    @model_validator(mode="after")
+    def _contato_so_com_o_site(self) -> "PortalCfg":
+        """O formulário mora na página: contato ligado sem o site seria uma rota que aceita (o robô recebe 202) sem
+        página que emita o token, e nada seria gravado. Os dois ligam JUNTOS; a recusa é na subida (revisão do #333)."""
+        if self.contato_ligado and not self.site_ligado:
+            raise ValueError("portal.contato_ligado exige portal.site_ligado: o formulário mora na página do site")
+        return self
+
 
 class AppConfigFile(BaseModel):
     server: ServerCfg = ServerCfg()

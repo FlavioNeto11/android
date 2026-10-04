@@ -5461,8 +5461,10 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
 
 1. **Duas bandeiras, desligadas de fábrica** (`portal.site_ligado` e `portal.contato_ligado` no `config.yaml`, que só
    vale na subida). Com `site_ligado` desligado nada muda: `/` segue no 307 para `/central/`. Ligado, a raiz é do site e
-   só `/central` redireciona. Os dois se ligam juntos: com o site no ar e o contato desligado, o formulário aparece e o
-   envio recebe 404 (a página manda ligar ou chamar no WhatsApp).
+   só `/central` redireciona. Contato ligado sem o site é recusado na subida (`PortalCfg`): a rota aceitaria (o robô
+   recebe 202) sem página que emita o token. Com o site no ar e o contato desligado, o servidor troca o formulário (entre
+   `<!--portal:formulario-->` e `<!--portal:fim-do-formulario-->`) por um aviso de que ele está fora do ar, e os
+   telefones seguem na página; se o token vier vazio, o JS faz o mesmo. Esse é o recuo parcial: desligar só o contato.
 2. **O site é servido da memória** (`modules/portal/presentation/site.py::SitePublico`), montado por ÚLTIMO na raiz para a
    API e `/central` casarem antes. A pasta `site/` é lida uma vez, numa lista fechada de extensões (`html css js svg png
    webp ico txt woff2`); arquivo fora da lista ou oculto **derruba a subida do central inteiro**, de propósito: um
@@ -5496,15 +5498,19 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
    - taxa por cliente, contada no banco (sobrevive a reinício e vale entre réplicas): `por_cliente_hora` e
      `por_cliente_dia`, 429 com o texto que aponta os telefones. O cliente é o de `security.access.cliente_de`, que só
      aceita o IP da borda (`cf-connecting-ip`) com par loopback, `tls_behind_proxy` e Host público; sem o cabeçalho todo
-     visitante cai no balde `tunel`, e o site inteiro fica em `por_cliente_hora` contatos por hora. No banco vai só o
-     HMAC do cliente (IPv6 pelo /64), nunca o IP;
+     visitante cai no balde `tunel`, e o site inteiro fica em `por_cliente_hora` contatos por hora. Por isso, com o
+     contato ligado e sem `tls_behind_proxy` ou sem o nome público, a subida registra um aviso e o `GET /api/health`
+     mostra o problema `portal_contato_sem_ip_da_borda`. No banco vai só o HMAC do cliente (IPv6 pelo /64), nunca o IP;
    - teto diário global (`guardados_dia`): acima dele a linha entra como `descartado` e SEM o conteúdo (conta para a
      taxa, não guarda dado de quem não vai ser atendido) e a pessoa recebe o 429.
 6. **Grava antes de avisar** (migração 107, `portal_contatos`). Só depois a Canais é chamada pelo contrato do 28.32
    (`state.avisos.avisar_contato_do_portal(ContatoDoPortal(...))`, chave `portal:<id>`, idempotente), resolvido na hora de
    usar: sem o código da Canais a linha fica `pendente` (`canal_ausente`). Acima de `telegram_hora` avisos por hora a
    linha fica `retido`; `canal_desligado` e falha deixam `pendente`; `campo_invalido` vira `descartado`. O laço
-   `portal-contatos` (a cada minuto, no líder da trava `avisos`) reenvia em ordem de chegada e respeita o teto da hora.
+   `portal-contatos` (a cada minuto, no líder da trava `avisos`) reenvia pela ordem `tentativas, id` e respeita o teto
+   da hora. `tentativas` conta as chamadas que chegaram à Canais, menos `canal_desligado` (espera, não falha); com 10
+   falhas (`FALHAS_MAX`) a linha vira `descartado` com motivo `falhas_demais`. Sem isso, um conteúdo que faz a Canais
+   levantar voltaria a cada minuto e, com 20 assim, prenderia o reenvio dos seguintes em silêncio.
    `entregue` aqui quer dizer "na fila da Canais" (`enfileirado=True`), não "lido no Telegram": se o canal for
    desligado com o aviso ainda na fila, ele vence em `avisos.validade_h` e o corpo some, e a linha do portal segue
    `entregue` (o contato continua na tabela pelos 180 dias). Por isso a página diz ao visitante que a mensagem foi
@@ -5527,6 +5533,15 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
     com a isca (passa por Host, Origin, Content-Type e pela exceção do portão, e não grava nem avisa ninguém).
     Recuar: as duas bandeiras em `false` e reiniciar; a raiz volta ao 307.
 
+**Preço consciente** (revisão independente do #333, aceito pela orquestradora).
+- A contagem da taxa por cliente e dos tetos não é atômica: duas requisições simultâneas podem passar ambas no limite.
+  O excesso possível é de uma ou duas linhas, e os tetos seguem valendo na volta seguinte.
+- Um envio feito menos de `token_min_s` (3 s) depois de abrir a página recebe o 202 e some sem ser gravado: é o mesmo
+  caminho do robô, de propósito. Uma pessoa não preenche o formulário tão rápido; um preenchimento automático do
+  navegador mais um clique imediato poderia, e esse contato se perde sem aviso.
+- O token vale por `token_max_s` (2 h) e pode ser reusado nesse prazo: ele prova que houve uma página aberta há pouco,
+  não que o envio é único. Quem reusa continua sob a taxa por cliente e os tetos.
+
 **Marca pública** (o que a página diz é parte da decisão).
 - A página apresenta a **ANA** como a inteligência da SICAT que rege a presença digital de quem contrata. As **personas**
   são a identidade DECLARADA de quem contrata (a voz da marca, do atendimento, do porta-voz), com tom, memória e limites
@@ -5545,8 +5560,8 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
   painel, ou o site com `portal.site_ligado`), as três rotas de sessão, o webhook do Trello (`HEAD` e `POST`, ADR-072) e
   `POST /api/portal/contato` (este ADR). Todo o resto de `/api` segue em 401.
 - Item 5 ("nenhum outro caminho fora de `/api` e `/central` serve arquivo"): com o site ligado, a raiz serve a pasta
-  `site/` e nada além da lista. No loopback, `/api/<inexistente>` passa a responder o 404 em texto do site, não o JSON
-  do FastAPI (de fora segue 401).
+  `site/` e nada além da lista. No loopback, `/api/<inexistente>` passa a responder o 404 do site, não o JSON do
+  FastAPI (de fora segue 401).
 
 **Fica de fora (de propósito).**
 - `GET /api/portal/info`, que chegou a ser reservado: os contatos vão no HTML, e a rota seria superfície sem uso.

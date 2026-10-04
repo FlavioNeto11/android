@@ -253,7 +253,7 @@ async def test_canal_desligado_guarda_e_o_reenvio_usa_o_mesmo_id(harness: Harnes
     canais.resposta = AvisadoFalso(True, None)
     assert harness.state.portal.contatos.reenviar(now()) == {"entregue": 1}
     assert [c.contato_id for c in canais.recebidos] == [linha["id"], linha["id"]]
-    assert _linhas(harness)[0]["tentativas"] == 2
+    assert _linhas(harness)[0]["tentativas"] == 1          # `canal_desligado` é espera, não conta como falha
 
 
 async def test_sem_o_codigo_da_canais_o_contato_fica_pendente(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -307,7 +307,7 @@ async def test_canal_desligado_na_canais_real_fica_pendente(harness: Harness, mo
     async with _cliente(harness) as c:
         assert (await c.post(ROTA, json=_corpo(harness))).status_code == 202
     [linha] = _linhas(harness)
-    assert linha["estado"] == "pendente" and linha["motivo"] == "canal_desligado" and linha["tentativas"] == 1
+    assert linha["estado"] == "pendente" and linha["motivo"] == "canal_desligado" and linha["tentativas"] == 0
 
 
 async def test_canais_real_enfileira_uma_vez_pela_chave(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -329,3 +329,63 @@ async def test_canais_real_enfileira_uma_vez_pela_chave(harness: Harness, monkey
         int(str(linha["id"])), {"nome": "Visitante Fictício", "empresa": "", "telefone": TELEFONE, "mensagem": "x"}, now())
     assert resultado == "entregue"
     assert harness.state.db.scalar("SELECT COUNT(*) AS n FROM avisos_entregas WHERE tipo='portal.contato'") == 1
+
+
+# ---------------------------------------------------------------- revisão do #333
+def test_vinte_contatos_que_quebram_a_canais_nao_prendem_o_seguinte(harness: Harness,
+                                                                   monkeypatch: pytest.MonkeyPatch) -> None:
+    """A2: 20 linhas cuja entrega levanta, depois uma boa. Pela ordem `tentativas, id` a boa sai na 2ª volta, e as
+    ruins viram `descartado` (`falhas_demais`) depois de `FALHAS_MAX` falhas."""
+    from app.modules.portal.application.contato import FALHAS_MAX
+
+    canais = CanaisFalsa()
+
+    def seletiva(contato: ContatoFalso) -> AvisadoFalso:
+        if contato.mensagem == "quebra":
+            raise RuntimeError("conteúdo que a Canais não aceita")
+        return canais(contato)
+
+    _ligar(harness, monkeypatch, canais)
+    assert harness.state is not None
+    monkeypatch.setattr(harness.state.avisos, "avisar_contato_do_portal", seletiva, raising=False)
+    repo = harness.state.portal.repo
+    for i in range(20):
+        repo.gravar(nome="n", empresa="", telefone="00000000", mensagem="quebra", cliente_hash=f"c{i}", agora=now())
+    boa = repo.gravar(nome="n", empresa="", telefone="00000000", mensagem="boa", cliente_hash="c-boa", agora=now())
+    servico = harness.state.portal.contatos
+    assert servico.reenviar(now()) == {"pendente": 20}                  # a boa não coube no lote de 20
+    assert servico.reenviar(now()) == {"entregue": 1, "pendente": 19}   # e sai na volta seguinte, à frente das ruins
+    assert [c.contato_id for c in canais.recebidos] == [boa]
+    for _ in range(FALHAS_MAX + 1):
+        servico.reenviar(now())
+    ruins = [l for l in _linhas(harness) if l["id"] != boa]
+    assert {(l["estado"], l["motivo"]) for l in ruins} == {("descartado", "falhas_demais")}
+
+
+def test_saude_avisa_contato_ligado_sem_ip_da_borda(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """M2: sem `tls_behind_proxy`, todo visitante do túnel vira a mesma chave da taxa."""
+    _ligar(harness, monkeypatch, CanaisFalsa())
+    assert harness.state is not None
+
+    def problema() -> object:
+        assert harness.state is not None
+        return next((p for p in harness.state.health().problems if p.code == "portal_contato_sem_ip_da_borda"), None)
+
+    assert problema() is None
+    harness.cfg.file.server.tls_behind_proxy = False
+    achado = problema()
+    assert achado is not None and "tls_behind_proxy" in achado.message      # type: ignore[attr-defined]
+    harness.cfg.file.portal.contato_ligado = False
+    assert problema() is None
+
+
+def test_contato_sem_o_site_e_recusado_na_subida() -> None:
+    """M3: os dois ligam juntos; a combinação recusada é a que aceitaria (202) sem página que emita o token."""
+    from pydantic import ValidationError
+
+    from app.config import PortalCfg
+
+    with pytest.raises(ValidationError, match="contato_ligado exige portal.site_ligado"):
+        PortalCfg(contato_ligado=True)
+    assert PortalCfg(site_ligado=True, contato_ligado=True).contato_ligado
+    assert PortalCfg(site_ligado=True).site_ligado

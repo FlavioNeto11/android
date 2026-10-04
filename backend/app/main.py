@@ -360,7 +360,8 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
         if site_ligado:
             # POR ÚLTIMO: o `mount` na raiz casa qualquer caminho, então tudo que veio antes (a API, `/central`) vence.
             # Uma pasta `site/` com arquivo fora da lista derruba a subida aqui (ADR-075).
-            app.mount("/", SitePublico(cfg.root / "site", cfg.file.portal.contatos, _token_da_pagina), name="site")
+            app.mount("/", SitePublico(cfg.root / "site", cfg.file.portal.contatos, _token_da_pagina,
+                                       contato_ligado=cfg.file.portal.contato_ligado), name="site")
     return app
 
 

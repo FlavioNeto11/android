@@ -17,6 +17,7 @@ from app.db import Database
 from app.modules.portal.application.contato import Avisar, ServicoDeContato, TipoDoContato
 from app.modules.portal.application.protecao import emitir_token
 from app.modules.portal.infrastructure.contatos_sql import ContatosSql
+from app.security.access import publicos_de
 from app.util import now
 
 log = logging.getLogger("poc.portal")
@@ -48,10 +49,28 @@ class Portal:
 
         self.contatos = ServicoDeContato(self.repo, limites=lambda: cfg.file.portal.limites, avisar=avisar,
                                          tipo_do_contato=_tipo_da_canais)
+        if (problema := self.problema_de_ip_da_borda()) is not None:
+            log.warning("portal: %s", problema)
 
     @property
     def contato_ligado(self) -> bool:
         return bool(self.cfg.file.portal.contato_ligado)
+
+    def problema_de_ip_da_borda(self) -> str | None:
+        """Com o contato ligado, a taxa por cliente precisa do IP da borda (`security.access.cliente_de`). Sem
+        `tls_behind_proxy` ou sem o nome público, todo visitante do túnel vira a MESMA chave e a taxa de
+        `por_cliente_hora` passa a valer para a internet inteira (revisão do #333, M2). Só nomes de configuração."""
+        if not self.contato_ligado:
+            return None
+        faltas = []
+        if not self.cfg.file.server.tls_behind_proxy:
+            faltas.append("server.tls_behind_proxy: true")
+        if not publicos_de(self.cfg):
+            faltas.append("o nome público em server.public_hosts")
+        if not faltas:
+            return None
+        return ("portal.contato_ligado sem o IP da borda: falta " + " e ".join(faltas)
+                + "; a taxa por cliente vira uma só para todos os visitantes")
 
     def token(self) -> str:
         """O token da página. Vazio com o contato desligado: a rota nem existe, e o banco não é tocado."""

@@ -419,8 +419,8 @@ em `/central/`. O formulário de contato manda a mensagem ao Telegram do dono pe
 **Ligar (orquestradora, depois do PR da Canais no ar):**
 
 1. No `config/config.yaml` do central, o bloco abaixo, com os dois números de verdade (estão no brief fora do Git;
-   nunca em doc, teste ou commit). Os dois `_ligado` vão juntos: só o site, sem o contato, mostra um formulário que
-   recebe 404.
+   nunca em doc, teste ou commit). Os dois `_ligado` vão juntos: contato sem o site é recusado na subida, e só o site
+   mostra, no lugar do formulário, o aviso de que ele está fora do ar (o recuo parcial).
 
    ```yaml
    portal:
@@ -432,7 +432,9 @@ em `/central/`. O formulário de contato manda a mensagem ao Telegram do dono pe
    ```
 
 2. Conferir que `https://dev.nvit.com.br` está em `server.allowed_origins` (está desde o ADR-073; sem ela todo envio
-   leva 403) e que o aviso do Telegram está pronto (`GET /api/canais/estado`).
+   leva 403) e que o aviso do Telegram está pronto (`GET /api/canais/estado`). Depois do reinício, o `GET /api/health`
+   não pode trazer `portal_contato_sem_ip_da_borda` (falta `tls_behind_proxy` ou o nome público: a taxa por cliente
+   viraria uma só para todos).
 3. `pwsh -File scripts\deploy.ps1 -Ensaio` confere a pasta `site/` (arquivo fora da lista derruba a subida do central
    inteiro; o caso comum é o `Thumbs.db` ou o `desktop.ini` do Explorer: apague e rode de novo). Depois, reiniciar a
    tarefa `farm-central`.
@@ -450,7 +452,8 @@ por hora (acima, a linha fica `retido` e o laço `portal-contatos` manda quando 
 `SELECT estado, motivo, COUNT(*) FROM portal_contatos GROUP BY 1, 2`.
 
 **Recuo.** `site_ligado` e `contato_ligado` em `false` e reiniciar `farm-central`: a raiz volta ao 307 para o painel e a
-rota responde 404. A retenção de 180 dias continua rodando com o contato desligado.
+rota responde 404. Recuo parcial: só `contato_ligado: false`; o site fica e mostra o aviso no lugar do formulário. A
+retenção de 180 dias continua rodando com o contato desligado.
 
 ## 12. Tabela de scripts por risco
 

@@ -3463,6 +3463,11 @@ class AppState:
         problema_exposicao = self._problema_de_exposicao_publica()
         if problema_exposicao is not None:
             problems.append(problema_exposicao)
+        if (problema_portal := self.portal.problema_de_ip_da_borda()) is not None:
+            problems.append(Problem(code="portal_contato_sem_ip_da_borda", message=problema_portal + ".",
+                                    hint="Declare server.tls_behind_proxy e server.public_hosts no config.yaml e reinicie, "
+                                         "ou desligue portal.contato_ligado. Procedimento em docs/operacao.md, "
+                                         "\"Site institucional na raiz\"."))
         appium_up = self.appium.is_up(timeout=1.0)
         if not appium_up:
             problems.append(Problem(code="appium_down", message=self.appium.detail or "Servidor Appium não está respondendo.",

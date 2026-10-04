@@ -82,6 +82,16 @@
     var form = document.getElementById("formulario-contato");
     var estado = document.getElementById("estado-contato");
     if (!form || !estado) return;
+    // Sem token o envio seria recusado: em vez de um formulario que falha para sempre, o aviso e os telefones.
+    if (form.elements.token && !form.elements.token.value) {
+      var fora = document.createElement("div");
+      fora.className = "formulario formulario-fora";
+      var texto = document.createElement("p");
+      texto.textContent = "O formulário de contato está fora do ar no momento. Ligue ou chame no WhatsApp pelos telefones ao lado.";
+      fora.appendChild(texto);
+      form.parentNode.replaceChild(fora, form);   // tirar, nao esconder: o CSS do .formulario venceria o hidden
+      return;
+    }
     var enviando = false;
 
     function avisar(texto, tipo) {

@@ -149,13 +149,21 @@ async def test_contatos_entram_escapados_e_somem_sem_config(harness: Harness) ->
     assert "Prefere falar agora" not in texto and "<!--portal:" not in texto
 
 
-async def test_token_so_sai_com_o_contato_ligado(harness: Harness) -> None:
+async def test_as_combinacoes_das_duas_bandeiras(harness: Harness) -> None:
+    """Revisão do #333, A1: com o contato desligado o servidor troca o formulário pelo aviso (uma rota em 404 diria
+    "tente de novo" para sempre); ligado, o formulário sai com o token. Contato sem site é recusado na subida (M3,
+    em `test_portal_contato`); os dois desligados ficam no 307 (`test_desligado_a_raiz_segue_no_painel...`)."""
     _preparar(harness, site=True)
     async with _cliente(harness) as c:
-        assert 'name="token" value=""' in (await c.get("/")).text
+        texto = (await c.get("/")).text
+    assert "<form" not in texto and 'name="token"' not in texto and "formulário de contato está fora do ar" in texto
+    assert "Prefere falar agora" in texto                                 # os telefones seguem na página
     _preparar(harness, site=True, contato_ligado=True)
     async with _cliente(harness) as c:
-        assert re.search(r'name="token" value="\d+\.[0-9a-f]{32}"', (await c.get("/")).text)
+        texto = (await c.get("/")).text
+    assert 'id="formulario-contato" method="post"' in texto and "fora do ar" not in texto
+    assert re.search(r'name="token" value="\d+\.[0-9a-f]{32}"', texto)
+    assert "<!--portal:" not in texto
 
 
 def test_bloco_de_contatos_vazio_e_texto_vazio() -> None:
@@ -184,6 +192,7 @@ def test_pasta_real_so_tem_extensoes_da_lista_e_nada_em_linha() -> None:
     assert "<style" not in html and not re.search(r"\sstyle=", html), "estilo em linha"
     assert not re.search(r"\son[a-z]+=", html), "manipulador de evento em linha"
     assert "<!--portal:contatos-->" in html and "<!--portal:token-->" in html
+    assert "<!--portal:formulario-->" in html and "<!--portal:fim-do-formulario-->" in html
     # Sem JavaScript (ou com erro de script), o Enter faz o envio padrão do navegador: com GET, nome e telefone iriam
     # na URL, que fica em log de borda. POST em `/` cai no 405 do site e nada vai para a URL.
     form = re.search(r'<form[^>]*id="formulario-contato"[^>]*>', html)

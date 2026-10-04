@@ -52,7 +52,13 @@ CABECALHOS_DO_SITE: Mapping[str, str] = {
 
 MARCADOR_DOS_CONTATOS = "<!--portal:contatos-->"
 MARCADOR_DO_TOKEN = "<!--portal:token-->"
-_MARCADOR = re.compile(r"<!--portal:[a-z]+-->")
+#: O formulário fica entre estes dois marcadores. Com o contato desligado o servidor troca o trecho inteiro pelo aviso
+#: abaixo: um formulário cuja rota responde 404 diria "tente de novo" para sempre (revisão do #333, A1).
+INICIO_DO_FORMULARIO = "<!--portal:formulario-->"
+FIM_DO_FORMULARIO = "<!--portal:fim-do-formulario-->"
+SEM_FORMULARIO = ('<div class="formulario formulario-fora" id="formulario-contato"><p>O formulário de contato está '
+                  'fora do ar no momento. Ligue ou chame no WhatsApp pelos telefones ao lado.</p></div>')
+_MARCADOR = re.compile(r"<!--portal:[a-z-]+-->")
 
 
 class SiteInvalido(ValueError):
@@ -115,10 +121,15 @@ class SitePublico:
     """O app ASGI montado na raiz. Só `GET` e `HEAD`; o resto é 405. `token` devolve o token do formulário para
     esta página (string vazia quando o contato não está pronto: o POST recusa)."""
 
-    def __init__(self, raiz: Path, contatos: Iterable[ContatoPublico], token: Callable[[Scope], str]) -> None:
+    def __init__(self, raiz: Path, contatos: Iterable[ContatoPublico], token: Callable[[Scope], str], *,
+                 contato_ligado: bool) -> None:
         self.arquivos = ler_site(raiz)
-        self._modelo = self.arquivos["/index.html"].corpo.decode("utf-8").replace(
+        modelo = self.arquivos["/index.html"].corpo.decode("utf-8").replace(
             MARCADOR_DOS_CONTATOS, bloco_de_contatos(contatos))
+        if not contato_ligado and INICIO_DO_FORMULARIO in modelo and FIM_DO_FORMULARIO in modelo:
+            ini, fim = modelo.index(INICIO_DO_FORMULARIO), modelo.index(FIM_DO_FORMULARIO) + len(FIM_DO_FORMULARIO)
+            modelo = modelo[:ini] + SEM_FORMULARIO + modelo[fim:]
+        self._modelo = modelo
         self._token = token
 
     def index(self, scope: Scope) -> bytes:

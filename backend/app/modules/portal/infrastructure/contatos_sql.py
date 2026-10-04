@@ -77,10 +77,11 @@ class ContatosSql:
             (estado, motivo, to_iso(agora), 1 if tentou else 0, contato_id))
 
     def a_reenviar(self, limite: int) -> list[ContatoGuardado]:
-        """Os não entregues, do mais antigo para o mais novo (FIFO: quem escreveu primeiro chega primeiro)."""
+        """Os não entregues, os que menos falharam primeiro e, entre eles, do mais antigo para o mais novo: um contato
+        que faz a Canais falhar desce na fila e não prende os outros (revisão do #333, A2)."""
         linhas = self.db.query(
             "SELECT id, nome, empresa, telefone, mensagem, estado, tentativas FROM portal_contatos "
-            "WHERE estado IN ('pendente', 'retido') ORDER BY id LIMIT ?", (limite,))
+            "WHERE estado IN ('pendente', 'retido') ORDER BY tentativas, id LIMIT ?", (limite,))
         return [ContatoGuardado(int(r["id"]), r["nome"], r["empresa"], r["telefone"], r["mensagem"], r["estado"],
                                 int(r["tentativas"])) for r in linhas]
 
