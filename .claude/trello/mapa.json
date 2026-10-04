@@ -3270,10 +3270,22 @@
    "url": "https://trello.com/c/ZIu5HgPI",
    "lista": "concluido_hoje",
    "lote": null
+  },
+  "31.43": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac27a5695f2200d43d795c9",
+   "url": "https://trello.com/c/qEHXZNus",
+   "lista": "proximas",
+   "lote": null
+  },
+  "29.73": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac27a5bc016aad977e086de",
+   "url": "https://trello.com/c/j0Y7fCtg",
+   "lista": "proximas",
+   "lote": null
   }
  },
  "falhas": [],
- "atualizado_em": "2026-10-04T16:04:00Z",
+ "atualizado_em": "2026-10-04T16:12:00Z",
  "arquivados": {
   "29.50": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac140b47c94d9584a3dc72e",
