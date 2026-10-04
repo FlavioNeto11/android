@@ -50,6 +50,7 @@ DIR_PRIVADO_NO_CONVIDADO = "/data/local/tmp/rede"
 NOME_PRIVADO_RE = re.compile(r"^[a-z0-9][a-z0-9_.\-]{0,59}$")
 #: Galeria do aparelho onde a mídia de uma publicação própria é colocada (29.30), e a regra do nome do arquivo.
 DIR_DA_GALERIA = "/sdcard/Pictures/Central"
+URI_DE_IMAGENS = "content://media/external/images/media"
 NOME_DE_MIDIA_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-]{0,59}$")
 
 KEYCODES = {"back": 4, "home": 3, "recents": 187, "enter": 66, "delete": 67, "wakeup": 224, "menu": 82}
@@ -654,20 +655,37 @@ class Adb:
             raise AdbError("nome de mídia inválido para a galeria")
         remoto = f"{DIR_DA_GALERIA}/{nome}.jpg"
         self.shell(f"mkdir -p {DIR_DA_GALERIA}", timeout=15)
+        # 30.60 (achado 2): o editor de publicação abre na mídia MAIS RECENTE da galeria. Sobra de uma etapa anterior
+        # (outra imagem, outra persona) não pode estar lá quando o ator tocar: sai do índice e do disco antes do push.
+        # Só a NOSSA pasta, por padrão fixo; fotos do usuário em outras pastas não são tocadas.
+        self.shell(f"content delete --uri {URI_DE_IMAGENS} --where \"_data LIKE '%/Pictures/Central/img_%'\"",
+                   timeout=20)
+        self.shell(f"rm -f {DIR_DA_GALERIA}/img_*.jpg", timeout=15)
         res = self._run(["push", local, remoto], timeout=timeout)
         if res.returncode != 0:
             # Sem o caminho do host na mensagem: ela vira evento, log e corpo de resposta HTTP.
             raise AdbError(f"adb push da mídia falhou em {self.serial} ({res.returncode})")
-        # Sem a indexação o arquivo existe e a galeria do editor não o mostra. O broadcast não devolve código de saída
-        # confiável: o que se confere é o arquivo no destino.
-        self.shell(f"am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file://{remoto}", timeout=20)
         try:
-            presente = self.shell(f"ls {remoto}", timeout=15).strip() == remoto
+            na_pasta = [n.strip() for n in self.shell(f"ls {DIR_DA_GALERIA}", timeout=15).splitlines() if n.strip()]
         except AdbError:
-            presente = False
-        if not presente:
-            raise AdbError(f"a mídia não chegou à galeria de {self.serial}")
-        return remoto
+            na_pasta = []
+        if na_pasta != [f"{nome}.jpg"]:
+            raise AdbError(f"a pasta da galeria de {self.serial} não ficou só com a imagem da etapa "
+                           f"({len(na_pasta)} arquivo(s))")
+        # Sem a indexação o arquivo existe e o editor não o mostra. O broadcast não devolve código de saída confiável e
+        # o índice é assíncrono: o que se confere é a linha no MediaStore, com alguns segundos de folga.
+        self.shell(f"am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file://{remoto}", timeout=20)
+        consulta = (f"content query --uri {URI_DE_IMAGENS} --projection _id "
+                    f"--where \"_data LIKE '%/Pictures/Central/{nome}.jpg'\"")
+        for tentativa in range(5):
+            try:
+                if "_id=" in self.shell(consulta, timeout=15):
+                    return remoto
+            except AdbError:
+                pass
+            if tentativa < 4:
+                time.sleep(1.0)
+        raise AdbError(f"a mídia chegou ao disco de {self.serial}, mas a galeria não a indexou")
 
     def open_store_listing(self, package: str) -> None:
         """Abre a página do app na Play Store DESTE aparelho. O toque em Instalar/Atualizar é sempre do usuário."""

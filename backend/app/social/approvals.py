@@ -125,7 +125,9 @@ class ApprovalStore:
         vale = (anterior.status in ("approved", "edited") and anterior.interaction_id is None
                 and anterior.profile_id == profile_id and anterior.capability == capability
                 and (anterior.target or None) == (target or None)
-                and (anterior.content or "").strip() == (content or "").strip())
+                and (anterior.content or "").strip() == (content or "").strip()
+                # 30.60 (N1): a mesma legenda com OUTRA imagem é outra publicação; aprovar uma não aprova a outra.
+                and anterior.image_id == self._imagem_da_etapa(step_id))
         if not vale or anterior.step_id is None or disparou(anterior.step_id):
             return None
         self.db.execute("UPDATE pending_approvals SET step_id=? WHERE id=? AND step_id=?",
@@ -165,7 +167,8 @@ class ApprovalStore:
         return self._dto(row)
 
     def decide(self, approval_id: str, *, status: str, content: str | None = None,
-               note: str | None = None, decided_by: str | None = None) -> Approval | None:
+               note: str | None = None, decided_by: str | None = None,
+               na_mesma_transacao: Callable[[Any], None] | None = None) -> Approval | None:
         """Decisão é definitiva: só uma aprovação `pending` pode ser decidida, e só uma vez.
 
         `decided_by` sai da sessão do painel quando não é informado. Lido AQUI, e não empurrado por parâmetro
@@ -177,6 +180,10 @@ class ApprovalStore:
             row = self.db.one("SELECT * FROM pending_approvals WHERE id=? AND status='pending'", (approval_id,))
             if row is None:
                 return None
+            if na_mesma_transacao is not None:
+                # 30.60 (N3): o que acompanha a decisão (o texto editado na etapa) só se grava se ESTA decisão venceu
+                # a corrida pelo `pending`; antes, o texto da edição perdedora já estava na etapa.
+                na_mesma_transacao(row)
             self.db.execute(
                 "UPDATE pending_approvals SET status=?, approved_content=COALESCE(?, approved_content),"
                 " decided_at=?, decided_note=?, decided_by=? WHERE id=?",
@@ -330,11 +337,14 @@ class ApprovalService:
             raise SocialError("content_not_allowed",
                               "Só `edit` recebe texto; aprovar ou rejeitar não trocam o que será enviado.", 400)
 
+        editar: Callable[[Any], None] | None = None
         if verb == "edit" and pedido.step_id:
-            apply_edit(self.repo.db, pedido.step_id, content.strip())          # type: ignore[union-attr]
+            texto, etapa = content.strip(), pedido.step_id                     # type: ignore[union-attr]
+            editar = lambda _row: apply_edit(self.repo.db, etapa, texto)
         decidido = self.store.decide(approval_id, status={"approve": "approved", "edit": "edited",
                                                           "reject": "rejected"}[verb],
-                                     content=content.strip() if content else None, note=note)
+                                     content=content.strip() if content else None, note=note,
+                                     na_mesma_transacao=editar)
         if decidido is None:
             raise SocialError("already_decided", "Esta aprovação já foi decidida.", 409)
 
