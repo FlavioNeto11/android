@@ -23,6 +23,7 @@ from app.util import now, to_iso
 from .test_capabilities import IG, SENHA
 from .test_protecao_de_frota import ALVO as PESSOA_REAL
 from .test_protecao_de_frota import _execucao_em_duas_contas, _fez, _frota, _porta
+from .test_alvo_por_legenda import por_posicao  # noqa: F401 - fixture do Instagram falso (ponta a ponta)
 
 #: O alvo da exceção é uma conta NOSSA (a do 31.26 é a DM entre duas contas nossas). Perfil sem aparelho.
 ALVO = "@nossa.alvo91182"
@@ -442,3 +443,55 @@ def test_o_cartao_cita_no_maximo_80_caracteres_da_autorizacao(tmp_path: Path) ->
     motivo = policies.check(contas["mariana"], capability_of(IG, "SEND_MESSAGE"), counterparty=ALVO, step_id="s").reason
     citada = motivo.split("autorização citada: ", 1)[1].split(";", 1)[0]
     assert len(citada) <= 80 and citada.endswith("…") and longa.strip() not in motivo
+
+
+# ------------------------------------------------------------------ ponta a ponta: aparelho falso até o commit
+async def _curtir_com_excecao_que_termina(h: Any, monkeypatch: Any, como: str) -> tuple[Any, list[int]]:
+    """Corre "curtir a primeira publicação" no Instagram falso. Logo antes do gesto (na reserva do executor), uma pessoa
+    revoga a exceção presa à etapa, ou ela vence: o que a rota faria entre a porta e o commit. A reserva real roda e o
+    executor decide; o aparelho falso conta os corações tocados."""
+    from .test_alvo_por_legenda import IID, _aparelho
+
+    state = h.state
+    excecoes = state.social.excecoes
+    real = excecoes.reservar
+
+    def reservar_depois_da_pessoa(step_id: str | None) -> str | None:
+        if step_id and step_id.endswith(":curtir") and not state.db.scalar(
+                "SELECT 1 FROM excecoes_de_politica WHERE step_id=?", (step_id,)):
+            agora = to_iso(now())
+            campos = ("encerrada_em=?, encerrada_por='orquestradora', encerramento='revogada'" if como == "revogada"
+                      else "vencida_em=?")
+            state.db.execute("INSERT INTO excecoes_de_politica(id, regra, profile_id, alvo, capability, motivo,"
+                             " autorizacao, autor, criada_em, expira_em, step_id, presa_em) VALUES ('exc-e2e',"
+                             "'uma_conta_por_alvo','p','@anarabottinipsicopedagoga','LIKE_POST','m','a','x',?,?,?,?)",
+                             (agora, to_iso(now() + timedelta(hours=1)), step_id, agora))
+            state.db.execute(f"UPDATE excecoes_de_politica SET {campos} WHERE id='exc-e2e'", (agora,))
+        return real(step_id)
+
+    monkeypatch.setattr(excecoes, "reservar", reservar_depois_da_pessoa)
+    run = h.run([IID], command="curta a primeira publicação de @anarabottinipsicopedagoga")
+
+    def curtir() -> Any:
+        return state.db.one("SELECT * FROM steps WHERE run_id=? AND key='curtir' ORDER BY plan_version DESC LIMIT 1",
+                            (run.id,))
+
+    await h.wait(lambda: (c := curtir()) is not None and c["status"] in ("failed", "succeeded", "uncertain"),
+                 timeout=90, what="a etapa de curtir terminar")
+    return curtir(), _aparelho(h).coracoes_tocados
+
+
+async def test_ponta_a_ponta_revogada_no_commit_o_gesto_nao_acontece(por_posicao: Any, monkeypatch: Any) -> None:
+    etapa, tocados = await _curtir_com_excecao_que_termina(por_posicao, monkeypatch, "revogada")
+    assert tocados == [] and etapa["status"] == "failed", (tocados, etapa["status"], etapa["status_detail"])
+    erro = por_posicao.state.db.scalar("SELECT error FROM attempts WHERE step_id=? ORDER BY number DESC LIMIT 1",
+                                       (etapa["id"],))
+    assert "foi revogada por orquestradora antes do efeito" in (erro or "") and "não foi disparado" in (erro or "")
+
+
+async def test_ponta_a_ponta_vencida_no_commit_o_gesto_nao_acontece(por_posicao: Any, monkeypatch: Any) -> None:
+    etapa, tocados = await _curtir_com_excecao_que_termina(por_posicao, monkeypatch, "vencida")
+    assert tocados == [] and etapa["status"] == "failed", (tocados, etapa["status"], etapa["status_detail"])
+    erro = por_posicao.state.db.scalar("SELECT error FROM attempts WHERE step_id=? ORDER BY number DESC LIMIT 1",
+                                       (etapa["id"],))
+    assert "venceu antes do efeito" in (erro or "")
