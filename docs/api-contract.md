@@ -5302,3 +5302,21 @@ Prova:
 - O bloco ganha `publicados_pela_emenda`: o total na trilha (`validated → published` pelo sistema, com o motivo
   `autopublicacao_b:`).
 - `modo` passa a poder ser `"on"`.
+## Adendo v1.14 (04/10/2026; número da orquestradora; item 30.47) — a pessoa pede a validação de um fluxo candidato
+
+`POST /api/aprendizado/fluxo/{ref}/validacao`, sem corpo. Cria em `learning_validations` o pedido que um "pedir
+evidência" do curador geraria, e o despachante P4 faz o resto com o teto de sempre.
+- **O pedido:**
+  - o comando de origem do fluxo e o aparelho de origem excluído;
+  - a falta `reproducao_em_outro_aparelho` e o grupo `qa`;
+  - quem pediu em `review_id = "pedido:<quem>"` (o operador da sessão do painel, ou `panel`).
+- **201:** o pedido, no mesmo formato de um item de `GET /api/aprendizado/validacoes`.
+- **404:** o fluxo não existe.
+- **409** `pedido_vivo`: o fluxo já tem pedido pendente ou rodando.
+- **422** com `detail.code`. Nenhuma recusa grava pedido.
+  - Um motivo do vocabulário de recusa (`efeito_real` para o efeito fora do app de QA, `sem_origem`, `vetado`,
+    `sessao`, `credencial`, `sem_caminho`), com o mesmo texto humano da lista.
+  - Ou `recusado`, com a mensagem: o que não é fluxo `candidate`, a classe C (e o item sem dossiê de agora, que conta
+    como C) e o modo `off`.
+- **503:** a validação não foi composta.
+

@@ -185,6 +185,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (94 arquivos, 1890 passed, 7 min 36 s; soma 3387 s). Nenhum arquivo passa de 5 % do total; `test_rotation` é o
   mais caro por teste (~11 s). Fecha o 29.53 com o portão (#199) e esta medida: prova `real` (04/10, 08:45:00Z a
   08:52:40Z, central, integ/suite-21 cebee288).
+## 2026-10-04 — 30.47: a pessoa pede a validação de um fluxo candidato (branch feat/30-47-pedir-validacao)
+
+- `POST /api/aprendizado/fluxo/{ref}/validacao` (adendo v1.14) cria o pedido que um "pedir evidência" do curador
+  geraria: o comando de origem, o aparelho de origem excluído e quem pediu (`review_id = pedido:<quem>`). O despachante
+  P4 o leva como prova do fluxo.
+- Só fluxo candidato. A classe C (ou o item sem dossiê) e o efeito fora do app de QA seguem com o dono. As recusas não
+  gravam nada.
+- Prova `simulated`: `test_learning_pedir_validacao.py`, 4 testes com mutação conferida. Empilhado sobre o #203.
 
 ## 2026-10-04 — 30.31 fatia 2: o ensaio só de leitura e a conferência no app de QA (branch feat/30-31-fatia-2)
 

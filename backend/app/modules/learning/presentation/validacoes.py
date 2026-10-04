@@ -1,5 +1,8 @@
 """A leitura dos pedidos de validação automática (item 30.38 b; adendo v1.02). Só leitura, sem IA, sem custo.
 
+- `POST /api/aprendizado/fluxo/{ref}/validacao` (30.47, adendo v1.14): uma PESSOA pede a validação de um fluxo
+  candidato; o pedido entra na fila do P4 com quem pediu (`review_id = pedido:<quem>`). 201 com o pedido; 422 com o
+  motivo quando a regra recusa (classe C, efeito fora do QA, sem origem...); 409 com pedido vivo; 503 sem o serviço.
 - `GET /api/aprendizado/validacoes?estado=&item=&run=&limite=50&antes=`: os pedidos de `learning_validations`, dos mais novos para
   os mais antigos (`antes`: o `created_at` do último da página anterior), a contagem por estado de todos os pedidos, o
   total e o `modo` do despachante agora (`off` = pausado: o painel explica a pausa). Cada item leva o motivo em código e
@@ -13,11 +16,14 @@ Entra ANTES do livro (`router.py`): a rota genérica `{kind}/{ref}` casaria com 
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 
 from app.modules.learning.application.servico import LearningService
-from app.modules.learning.application.validacao import LISTA_MAX, PedidoListado, ServicoDeValidacao
+from app.modules.learning.application.validacao import LISTA_MAX, PedidoListado, PedidoRecusado, ServicoDeValidacao
+from app.modules.learning.domain.ciclo import ConflitoDeEstado, ErroDeAprendizado
 from app.modules.learning.domain.validacao import EstadoDoPedido, motivo_humano
-from app.modules.learning.presentation.livro import _servico
+from app.modules.learning.domain.vocabulario import LivroKind
+from app.modules.learning.presentation.livro import _chamar, _quem, _servico
 from app.modules.learning.presentation.nomes import nomear_apps
 from app.modules.skills.domain.document import JsonObject, JsonValue
 
@@ -57,3 +63,23 @@ async def validacoes(request: Request, estado: EstadoDoPedido | None = None,
     contagem = validacao.contagens()
     return {"itens": list[JsonValue](itens), "contagem": dict[str, JsonValue](contagem),
             "total": sum(contagem.values()), "modo": validacao.modo().value}
+
+
+@router.post("/fluxo/{ref}/validacao", response_model=None)
+async def pedir_validacao(request: Request, ref: str) -> JSONResponse:
+    """30.47: o gesto de pedir a prova de um fluxo candidato. A regra é a do pedido do curador, mais a classe C e o
+    efeito fora do QA, que seguem com o dono. Quem pediu fica no pedido."""
+    servico, validacao = _servicos(request)
+    entrada = _chamar(lambda: servico.entrada(LivroKind.FLUXO, ref))
+    try:
+        pid = validacao.pedir_pela_pessoa(entrada, by=_quem(request))
+    except PedidoRecusado as exc:
+        raise HTTPException(422, detail={"code": exc.motivo.value, "message": str(exc)}) from exc
+    except ConflitoDeEstado as exc:
+        raise HTTPException(409, detail={"code": "pedido_vivo", "message": str(exc)}) from exc
+    except ErroDeAprendizado as exc:
+        raise HTTPException(422, detail={"code": "recusado", "message": str(exc)}) from exc
+    p = next(x for x in validacao.listar(None, 5, None, item=entrada.trail_ref) if x.id == pid)
+    item = pedido_json(p)
+    nomear_apps([item], servico)
+    return JSONResponse(status_code=201, content=item)
