@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.67: a sonda de interrupção não conta a amostra com o host saturado (branch fix/29-67-irq-com-host-saturado)
+
+- Causa medida (central, leitura só): o android-06 não tem defeito próprio. Convidado de 2 vCPU tem ~2x a fração de
+  irq do de 4 vCPU e ela sobe com a carga do host (0,04–0,07 calmo, acima de 0,10 sob as suítes, 0,50 no 06 com a
+  SQLite em `-n 8`).
+- `_conferir_interrupcoes`: com a CPU do host acima de `android.max_cpu_percent_before_boot` (29.33), a amostra não
+  sobe nem zera `irq_strikes`. A linha `measurements(kind='irq')` ganha `host_cpu` e `ignorada`, e há o contador
+  `irq.amostra_ignorada`. Aparelho remoto fica de fora (o host dele é o do worker).
+- Testes de IRQ existentes fixam um host calmo (`_cpu_do_host`), porque a CPU real do host durante a suíte faria a
+  regra ignorar as amostras.
+- Prova `simulated`: `test_saude_do_convidado.py` (2 novos: com o host saturado o contador fica e com o host calmo a
+  regra age; aparelho remoto não olha o host do central). Real: `not_run`.
+
 ## 2026-10-04 — 28.16 + 28.18: a faxina leva os eventos dos contatos do Telegram (branch canais/28-18-faxina-090, sem migração)
 
 - `faxina_sql.py`: os `canal_contato_eventos` (090) vencem com o prazo do canal, como o resto do que a conversa guarda.

@@ -347,6 +347,23 @@ pela regra de saúde. Desde então o portão é este:
   segurança dela.
 - **Lote só de painel ou só de docs não roda PG.** Foi o caso da suíte 20.
 
+**A SQLite da suíte do funil roda com `-n 6`** (adotado pela orquestradora em 04/10/2026, pela medida abaixo). A
+suíte inteira em `-n 8` empurrava a carga para dentro dos convidados de 2 vCPU com conta real: o android-06 chegou a
+load 12 sob a SQLite (e a 52, sem CPU, quando a IA também estava nele; ADR-053). Com `-n 6`, o 06 fica como no host
+calmo, e a SQLite custa ~22 s a mais. Medida nas sondas de IRQ do android-06 (`measurements(kind='irq')`), com o 06
+ocioso nas três janelas:
+
+| Janela | load1 mediano | load1 máximo | irq mediano | irq máximo | SQLite |
+|---|---|---|---|---|---|
+| suíte 24, `-n 6` (10:27:40Z a 10:38:19Z) | 1,29 | 2,83 | 0,110 | 0,168 | 10 min 35 s, 9377 testes |
+| suíte 22, `-n 8` | 3,88 | 12,29 | 0,165 | 0,438 | 10 min 13 s, 9248 testes |
+| host calmo, sem suíte (10:22Z a 10:27Z) | 1,84 | — | 0,091 | — | — |
+
+A suíte 23 (`-n 8`) ficou fora da comparação: a IA trabalhava no 06 e o Docker subia junto. O `-n 8` da tabela de
+comandos do `CLAUDE.md` continua até o dono decidir a troca; esta regra vale para a suíte do funil. Na mesma suíte
+24, o farm-pg levou ~6 min do `docker start` até aceitar conexão (10:38Z a 10:45:04Z): é o passo morto mais longo
+do funil, e o motivo da medida do contêiner descartável na suíte 25.
+
 **Os mais lentos (medido na suíte 21, 04/10/2026, 08:45:00Z a 08:52:40Z).** PG dirigido em 94 arquivos, `-n 8`, Idle,
 esquema do worker ligado, sobre `integ/suite-21` (cebee288): 1890 passed, 3 skipped em 7 min 36 s de relógio.
 `--durations=0` agregado por arquivo soma 3387 s de trabalho em 91 arquivos (setup + chamada + teardown, somados

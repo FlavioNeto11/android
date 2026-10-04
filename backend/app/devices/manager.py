@@ -1148,7 +1148,16 @@ class DeviceManager:
         # só por controle, o reinício automático pediria outro reinício (ou diria que "não resolveu") a cada boot.
         carga, ncpu = float(p.get("load1") or 0), max(1.0, float(p.get("ncpu") or 1))
         ocioso = rt.control == ControlOwner.none and rt.state == InstanceState.online and carga <= ncpu
-        self._gravar_interrupcao(rt, frac, p, ocioso)
+        # 29.67 (ADR-053): com o host desta máquina acima do limiar de admissão do 29.33, a fração do convidado mede o
+        # HOST, não o convidado (medido em 04/10: 2 vCPU ficam em ~0,05 com o host calmo e passam de 0,10 sob as
+        # suítes; o 06 foi a 0,50 com a SQLite em -n 8). A amostra não conta: o contador nem sobe nem zera, e a
+        # próxima, com o host calmo, volta a contar. Aparelho remoto: o host dele é o do worker, fora daqui.
+        cpu_host = None if rt.external else self._cpu_do_host()
+        host_saturado = cpu_host is not None and cpu_host > self.android_de(rt).max_cpu_percent_before_boot
+        self._gravar_interrupcao(rt, frac, p, ocioso, host_cpu=cpu_host, ignorada=host_saturado)
+        if host_saturado:
+            metricas.contar("irq.amostra_ignorada", motivo="host_saturado")
+            return
         rt.irq_strikes = rt.irq_strikes + 1 if (ocioso and rt.irq_frac >= IRQ_OCIOSO_MAX) else 0
         if rt.irq_strikes < IRQ_SONDAS:
             return
@@ -1177,7 +1186,8 @@ class DeviceManager:
         self.publish(rt, f"{rt.id}: {motivo}" + (f" — comando {cid}" if cid else " — reinício não aberto"),
                      level="warn")
 
-    def _gravar_interrupcao(self, rt: DeviceRuntime, frac: float, p: dict[str, float], ocioso: bool) -> None:
+    def _gravar_interrupcao(self, rt: DeviceRuntime, frac: float, p: dict[str, float], ocioso: bool, *,
+                            host_cpu: float | None = None, ignorada: bool = False) -> None:
         """Cada fração medida vira uma linha `measurements(kind='irq')`: a causa do acúmulo (21–90% com dias no ar,
         ~2% depois do reinício) não é conhecida, e em memória a série morria com o processo. Controle e interesse
         (prévia em grade/foco) vão junto porque são hipóteses; o acerto de relógio (TIME_SET) já tem linha própria
@@ -1192,7 +1202,10 @@ class DeviceManager:
             self.db.execute("INSERT INTO measurements(ts, kind, data) VALUES (?,?,?)", (now_iso(), "irq", dumps({
                 "instance_id": rt.id, "irq_frac": round(frac, 4), "load1": p.get("load1"), "ncpu": p.get("ncpu"),
                 "ocioso": ocioso, "controle": rt.control.value, "interesse": self.nivel_de_interesse(rt),
-                "cpu_total_ticks": p.get("cpu_total_ticks"), "cpu_irq_ticks": p.get("cpu_irq_ticks")})))
+                "cpu_total_ticks": p.get("cpu_total_ticks"), "cpu_irq_ticks": p.get("cpu_irq_ticks"),
+                # 29.67: a CPU do host na amostra e se ela ficou fora da regra (host saturado). É a medida visível da
+                # decisão de não contar, sem evento por sonda.
+                "host_cpu": host_cpu, "ignorada": ignorada})))
         except Exception:  # noqa: BLE001 - medir nunca pode derrubar a sonda de saúde
             log.exception("%s: não foi possível gravar a fração de interrupção", rt.id)
 
