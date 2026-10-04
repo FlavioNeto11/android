@@ -6146,22 +6146,22 @@
   },
   "31.10": {
    "id": "31.10",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Curador em sombra real desde o deploy 9 (T_on 2026-10-03T11:04:15Z): 4 linhas às 13:10Z, conferidas pela prova do 31.17 (13:14:50Z). Relatório scripts/jev-relatorio-31-10.py com o 31.19 (@442a9249, na main pela suíte 11): rótulo 1 só do dono, estados_distintos, cobertura_por_limiar e percentil unificado; rodado no central em modo só leitura às 15:08Z (WIN-7S2UASNLFOP): curador, estrato receita, 4 pedidos, 0 respondidos, 0 rótulos, 1 estado C0, veredito 'sem amostra'. Deploy 11 (c8304e85, ~15:30Z) liga a intenção em sombra com C3. | Leitura PRELIMINAR da sombra de intenção (deploy 12 d5a1c3a9, migração 082; 03/10 17:19:44Z, WIN-7S2UASNLFOP, scripts/jev-leitura-intencao.py da main @d5a1c3a9, mode=ro + query_only, --desde 2026-10-03T15:29:51Z, só contagens): veredito OK, código 0. 6 linhas = 6 chamadas = 6 comandos, todas intencao/C3/shadow. R2: 6 pedidos, 4 respondidas (1 nenhuma), 2 fallbacks (1 privacidade c7_gatilho, 1 abaixo_do_limiar com confiança 0,56 e maior probabilidade 0,59); R3: 0. P(escolha) das respondidas: n 4, mín. 0,88, p50 0,96, todas ≥ 0,85 (a porta do 31.19 coerente). Custo: 5 chamadas em ai_calls (5 ok), US$ 0,000255 (US$ 0,000051 por chamada), tokens 6072 + 2115; latência p50 445 ms, p95 520 ms; cruzamento 5 postadas × 5 em ai_calls (bate). Zero texto: nenhuma violação de formato em nenhuma coluna. decisao_real casada nas 6; ambiguos 0 nas 6.",
-   "blocker": "Fecha (implemented) com a leitura de ≥ 10 linhas de intenção (critério da orquestradora). O P4 foi pausado às 17:18Z (K-086; religa com o 30.37): linhas novas só com comandos reais do dono (painel, ou Telegram com o 28.15, ~05/10). O GO do curador espera 30 rótulos por kind.",
+   "evidence": "04/10/2026, WIN-7S2UASNLFOP, deploy 20 (051fc3e0, migração 088). Execução paga única r-20261004082212-1e14e6 (android-12, QA, chave lote:jev:31.10:082212:n1, 08:22:12Z a 08:22:27Z, completed, US$ 0,0532 pela regra do spent_usd): a sombra R2 disparou no deploy 20 (1 chamada jev-1.13.0, origem decisao_fechada, 519 ms, US$ 0,0000516; fallback abaixo_do_limiar, sem rótulo). Relatório scripts/jev-relatorio-31-10.py às 08:21Z e 08:23Z (mode=ro): veredito NO-GO sem amostra em todo estrato — curador receita 0/30 rótulos (1 de 26 respondidos; rótulo 1 desligado sem --autor-dono; rótulo 2 sem produtor, 30.35), intenção qa-messenger 8/50 (todos pelo desfecho, precisão 1,0 e aceite errado 0,0, INFERRED; GO previsto 2026-10-07), instagram/outlook/configurações 0/50. Custo da sombra: curador 26 chamadas US$ 0,000685 p50 464 ms p95 629 ms; intenção 40 chamadas US$ 0,001801 p50 475 ms p95 643 ms; maior dia US$ 0,0013 contra a fatia de US$ 0,50. Parei em 1 execução: pelo golden set §8, comando de teste fica fora do piso e do GO. O que destrava: --autor-dono, produtor do rótulo 2 (30.35), rótulos de pessoa nas execuções sem fluxo. O GO em si é portão do 31.12. Arquivos: .claude/handoffs/jev-relatorio-31-10-2026-10-04.md e .json.",
+   "blocker": null,
    "arquivos": [
-    "docs/design/jev-golden-set.md",
-    "scripts/jev-leitura-intencao.py",
-    "scripts/jev-relatorio-31-10.py"
+    ".claude/handoffs/jev-relatorio-31-10-2026-10-04.md"
    ],
-   "testes": "real: relatório mode=ro no central (13:14Z e 15:08Z); simulated: scripts/tests/test_jev_relatorio_31_10.py. real: leitura preliminar da intenção mode=ro às 17:19:44Z (6 linhas, só contagens); simulated: scripts/tests/test_jev_leitura_intencao.py.",
-   "grupo": "leitura-intencao-preliminar-jev",
-   "modelo": "opus (sessão jev, executora da orquestradora)",
+   "testes": [
+    "scripts/tests/test_jev_relatorio_31_10.py"
+   ],
+   "grupo": "jev-31-10-31-27-real",
+   "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T17:20:31+00:00"
+   "quando": "2026-10-04T08:57:23+00:00"
   },
   "30.31": {
    "id": "30.31",
@@ -6291,14 +6291,15 @@
   "30.34": {
    "id": "30.34",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "Fatia A: PR #154 (feat/30-34-autopublicacao-sombra @ 147ad07f) na main pela suíte 11 (97425d5f): a regra pura, o livro da sombra (sinal autopublicaria, sem migração), o laço sob a trava de líder e o balanço nas métricas (adendo v0.93); o rascunho do contrato do relatório da sombra em docs/dominios/aprendizado.md. simulated: bateria 1953 passed depois do rebase; suíte 11 SQLite -n 8 @35e3b0f6 8441 passed, 0 failed. O deploy 11 liga aprendizado.autopublicacao.modo shadow. Falta: o relatório da sombra à orquestradora e a fatia B (o on pela trava da D1, só com ≥ 30 casos fechados e ≥ 90 % sem regressão em 7 dias).",
-   "grupo": "aprendizado-suite-11",
-   "modelo": "claude-opus-5-5",
-   "esforco": "medio",
+   "proof": "real",
+   "evidence": "Relatorio da sombra (leitura real, so leitura, 04/10 08:28:53Z a 08:30:51Z, central WIN-7S2UASNLFOP em 051fc3e0 = deploy 20, migration 088_latencia_por_etapa). Sombra ligada desde o deploy 11 (c8304e85, restart ~15:30Z de 03/10, aprendizado.autopublicacao.modo shadow). Balanco (GET /api/aprendizado/metricas, curador.autopublicacao): modo shadow, casos 0, abertos 0, limpos 0, regrediram 0, taxa_sem_regressao null, libera false; limiares 30 casos fechados, 0.9, 7 dias. Fila (GET /api/aprendizado?kind=fluxo&rotulo=todos): 48 fluxos (published 22, candidate 20, disabled 6) e NENHUM em validated, entao a regra nao teve candidato. Os alimentadores possiveis: 5 candidatos com efeito externo (3 do QA Messenger, 2 do Instagram), todos com evidencia 0 a favor e 0 contra; os 2 do Instagram de comentar ou abrir perfil sao C desde a 30.32 e nao entram. Ponto cego: a volta so loga quando marca, e o backend.log nao tem nenhuma linha de autopublicacao (nem erro), entao nao da para separar 'avaliou 0 candidatos' de 'a volta nao rodou desde o restart'; com 0 em validated o resultado e o mesmo.",
+   "blocker": "Fatia B (o on pela trava da D1) fica atras da trava e desligada, por decisao da orquestradora: so com >= 30 casos fechados e >= 90% sem regressao; 0 casos em 04/10 08:28:53Z. Nenhum fluxo chega a validated sem evidencia real; o alimentador realista e o P4 (validacoes do QA, 30.31).",
+   "grupo": "30.34",
+   "modelo": "opus",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T15:34:12+00:00"
+   "quando": "2026-10-04T08:57:23+00:00"
   },
   "30.35": {
    "id": "30.35",
@@ -6851,23 +6852,22 @@
   "31.27": {
    "id": "31.27",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #189 @ f295f15a, na main pela suíte 18 (merge e50e8ed7; deploy 18, f1651ec8). A espera ANTES do primeiro julgamento (patient, pós-condição julgada ou nível de entrega) deixa de ser o sono fixo de judge_wait_s (1,5 s): lê a árvore a cada 0,3 s e sai quando a assinatura fica igual por ai.judge_wait_estavel_s (novo, 0,6 s), sem marca pendente do catálogo, com teto em judge_wait_s; a última leitura vira a 1ª do verificador. A espera entre sondagens (LT-5) segue fixa; judge_wait_estavel_s: 0 volta ao antigo; attempts.juiz_espera_ms (31.24) conta nos dois modos. simulated: backend/tests/test_juiz_espera_adaptativa.py (7); afetados 44 arquivos 850 passed + 1 falha de contagem de leituras em test_caminho_rapido_2 (LT-5), corrigida fixando judge_wait_estavel_s = 0 no _executor daqueles testes (asserção intacta), depois 36 passed; suíte 18 da orquestradora. Partida real (só leitura, 04/10): linha de base 4 esperas antes do julgamento = 6 s em 233 s de parede; 'depois' do deploy 16, 6 esperas = 9 s em 149 s. O real do ganho é a leitura depois do deploy 18, comparando também chamadas do juiz por etapa (ponto da Android: ícone de 'enviando' pode assentar antes e custar um 2º julgamento).",
-   "blocker": "",
+   "proof": "real",
+   "evidence": "04/10/2026, WIN-7S2UASNLFOP, deploy 20 (051fc3e0; o 31.27 está no ar desde o deploy 18). 6 etapas julgadas depois (r-20261004081507-7dc718 da Aprendizado, e as minhas r-20261004082331-417c48 e r-20261004082426-1fa219, android-12, chave lote:jev:31.27-NN, uma de cada vez) contra 4 da linha de base (cef7ee, 61a962; espera fixa 1500 a 1502 ms). Espera do juiz depois: 965, 1162, 1325, 1585, 1729, 1778 ms (p50 1325 pelo posto); 3 de 6 saíram antes do teto, e as que passaram dele incluem as 2 da janela com 3 execuções concorrentes (a leitura iniciada antes do teto não é cortada; correção recusada pela orquestradora, ganho pequeno). Resto sem IA da verificação nas execuções em série: 983, 1181, 1345, 1649 ms (p50 ~1,26 s) contra 1,64 s na base (~-23 %). Chamadas de juiz por etapa: 2 (Haiku + Opus) antes e depois, sem segundo julgamento. Ressalva: a suíte 21 carregava o host (evidência 643 a 967 ms contra ~450; árvore mais lenta), o que joga contra o 31.27. simulated segue: backend/tests/test_juiz_espera_adaptativa.py (7). Leitura: .claude/handoffs/jev-latencia-p4-31-27-2026-10-04.md e .json. Custo das 3 execuções: US$ 0,261.",
+   "blocker": null,
    "arquivos": [
     "backend/app/taskqueue/executor.py",
-    "backend/app/config.py",
-    "backend/tests/test_juiz_espera_adaptativa.py",
-    "backend/tests/test_caminho_rapido_2.py",
-    "docs/dominios/execution.md"
+    "backend/app/config.py"
    ],
-   "testes": "test_juiz_espera_adaptativa.py: 7 passed; afetados 850 + 36 passed (Idle, serial).",
-   "grupo": "jev-31-21-31-27-31-28-31-29",
+   "testes": [
+    "backend/tests/test_juiz_espera_adaptativa.py"
+   ],
+   "grupo": "jev-31-10-31-27-real",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T08:14:29+00:00"
+   "quando": "2026-10-04T08:57:23+00:00"
   },
   "31.28": {
    "id": "31.28",
@@ -6902,6 +6902,71 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-04T08:14:29+00:00"
+  },
+  "28.15": {
+   "id": "28.15",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #166 (Canais; migração 085 canal_entradas/canal_enviadas, ADR-071) integrado na suíte 14 (bc7785d9), com 7fd72929 (integração com o 29.52, porta única pergunta_sensivel) e e657b4c8 (2ª revisão: E2 mensagem antiga não executa, E6, E7, E8, E9). Deploy 14 no central (main 51270b9c, 03/10 20:35Z) com avisos.entrada.enabled=false. Testes: backend/tests/test_telegram_entrada.py, test_telegram_roteador.py, test_avisos_telegram.py (bot falso por httpx.MockTransport).",
+   "blocker": "real: not_run até o dono dizer sim para ligar a entrada (avisos.entrada.enabled) e trocar a caixa provisória da sessão Canais pela entrada da Central (as duas não leem o mesmo bot: 409)",
+   "grupo": "canais-28-15-registro",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T08:57:23+00:00"
+  },
+  "18.8": {
+   "id": "18.8",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Absorvido pelo 20.9 e pelo ADR-054, como a propria linha do plano diz (e o ADR-052 registra: 'fatia 5 (aprendizado) absorvida por ADR-054 (20.9)'). Conferido no central em 04/10 08:41:54Z (051fc3e0, deploy 20), pela API do livro (GET /api/aprendizado?kind=<k>&rotulo=todos), as duas metades do 18.8: (1) TELA nova vira candidata com proveniencia: li-2486d2dfdd6f51a5, 'Tela aprendida aprendida_livre_bc699c (4 ids)', com.microsoft.office.outlook, candidate, origem sistema, criada 01/10 19:17Z por execucao real, evidencia 9 a favor e 0 contra (o registro do 20.9 dizia 'candidata real de tela: not_run'; agora ha uma, real); (2) ACAO nova vira candidata com proveniencia e passa pelo ciclo do livro: receitas 151 (published 80, candidate 37, validated 3, disabled 11, deprecated 20) e fluxos 48 (published 22, candidate 20, disabled 6), todas com origem 'execucao'; validar e publicar seguem a D1 do ADR-054 (sem efeito externo publica sozinho; com efeito espera o dono). Nada novo a implementar.",
+   "blocker": "",
+   "grupo": "18.8",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T08:57:23+00:00"
+  },
+  "29.26": {
+   "id": "29.26",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Ja entregue: commit 3c633ec5 (feat(painel): texto livre fora da query string ... (29.26)), na main pela suite 5 (merge 8413ddc9, 02/10) e no ar desde entao; o mecanismo seguia 'pendente'. Conferido no central em 04/10 08:43:20Z (051fc3e0, deploy 20), so leitura e previas sem efeito: GET /api/runs/distribution?command=x -> 405 (metodo_removido, Allow: POST); POST /api/runs/distribution com o comando no corpo -> 200 (requested, picks, per_server, missing, reasons); GET /api/pedidos?q=x -> 422 e POST /api/pedidos/busca {q} -> 200; a rota do contexto do Instagram e POST /api/instagram/profiles/{profile_id}/context (api.py:1557); GET /api/personas devolve has_avatar nas 14 personas (o painel so pede o avatar com has_avatar verdadeiro, api.py:1000). Nada novo a implementar.",
+   "blocker": "",
+   "grupo": "29.26",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T08:57:23+00:00"
+  },
+  "29.53": {
+   "id": "29.53",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Portão escrito: PR #199 (5efdbc35, docs/banco.md 'O portão de PostgreSQL de uma suíte' e .claude/rules/testes.md). Medida por arquivo: PR #212 (04f8a46a, tabela dos dez mais lentos em docs/banco.md). Real (04/10/2026 08:45:00Z a 08:52:40Z, central, integ/suite-21 cebee288): PG dirigido em 94 arquivos, -n 8, Idle, esquema do worker, 1890 passed / 3 skipped em 7 min 36 s; --durations=0 agregado por arquivo soma 3387 s em 91 arquivos; mais lentos test_workers 156 s, test_trello_leitor 150 s (setup 63 s), test_instagram_auth 144 s; nenhum arquivo passa de 5 % do total; test_rotation ~11 s por teste.",
+   "blocker": null,
+   "grupo": "android-suite21",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T08:57:24+00:00"
+  },
+  "29.36": {
+   "id": "29.36",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #200 (fix/29-36-detalhe-do-externo-parado), suíte 21 e deploy 21 (32cbcd6d, 08:55Z). DeviceManager._recalcular_motivo_do_parado em bind_worker (conexão e queda) e no monitor para desired_state=stopped, sem readotar. simulated: backend/tests/test_estado_por_servidor.py (3 novos: reconexão troca 'fora do ar' preso por 'emulador desligado' sem mexer no desired_state; queda troca 'desligado' por 'fora do ar'; error, aparelho local e texto igual não republicam); 1206 passed nos testes de vínculo do worker. Real not_run: sai na próxima queda e volta do notebook (o agente reconectou no deploy 21 às 08:55:51Z; conferir state_detail dos aparelhos parados do worker-lan-01).",
+   "blocker": null,
+   "grupo": "android-suite21",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T08:57:24+00:00"
   }
  },
  "rodadas": [
@@ -8699,6 +8764,62 @@
    ],
    "grupos": [
     "30.45"
+   ]
+  },
+  {
+   "quando": "2026-10-04T08:57:23+00:00",
+   "itens": [
+    "28.15"
+   ],
+   "grupos": [
+    "canais-28-15-registro"
+   ]
+  },
+  {
+   "quando": "2026-10-04T08:57:23+00:00",
+   "itens": [
+    "31.10",
+    "31.27"
+   ],
+   "grupos": [
+    "jev-31-10-31-27-real"
+   ]
+  },
+  {
+   "quando": "2026-10-04T08:57:23+00:00",
+   "itens": [
+    "30.34"
+   ],
+   "grupos": [
+    "30.34"
+   ]
+  },
+  {
+   "quando": "2026-10-04T08:57:23+00:00",
+   "itens": [
+    "18.8"
+   ],
+   "grupos": [
+    "18.8"
+   ]
+  },
+  {
+   "quando": "2026-10-04T08:57:23+00:00",
+   "itens": [
+    "29.26"
+   ],
+   "grupos": [
+    "29.26"
+   ]
+  },
+  {
+   "quando": "2026-10-04T08:57:24+00:00",
+   "itens": [
+    "29.53",
+    "29.36"
+   ],
+   "grupos": [
+    "android-suite21"
    ]
   }
  ]
