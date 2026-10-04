@@ -7235,15 +7235,15 @@
   "28.10": {
    "id": "28.10",
    "status": "partial",
-   "proof": "real",
-   "evidence": "F1/F2 REAL em 04/10/2026 18:35Z, central WIN-7S2UASNLFOP, deploy 30 (1b3568a7), aparelho android-12 (notebook, sem conta, QA Messenger), aviso prévio ao dono (Telegram msg 209). Pai ped_kUZTrLhVU5Cph-Di31vx4A (lote:canais:28.10-f1-01, horário amanhã, total US$ 1,05) com filho A ped_LP1dOeWVXoOpcwHvYqouCA (pesquisador, lote …-f1-02) e filho B ped_S8DuXfioX_StCeug1t9aXw (checador, lote …-f1-03, depende de A com precisa_de_resultado); GET do pai devolve filhos e dependencias (F1). F2 dependência: as duas ocorrências previstas para 18:35:29Z; A despachou (r-20261004183529-4bf401, completed 18:35:50.048Z) e B ficou 'devida' até A concluir (ocorrência concluida 18:35:50.076Z), despachando só depois (r-20261004183550-d27721, criada 18:35:50.127Z, completed 18:36:14Z); objetivos succeeded. F2 reserva: prévia de um terceiro filho de US$ 0,10 recusada com orcamento_do_pai ('o pai já gastou US$ 0.0000 e os outros filhos reservaram US$ 1.0000'), nada gravado. Custo: A US$ 0,0851 + B US$ 0,0388. Filhos encerrados por contagem; pai cancelado com motivo às ~18:36Z. | Antes desta prova: F1 PR #227 (migração 096, v1.16), deploy 24; F2 PR #240, deploy 25; F3 PR #252 (v1.18), deploy 26. F3 REAL em 04/10/2026 16:03Z, central WIN-7S2UASNLFOP, deploy 28 (1fc66a6c; pedidos.colaboracao.enabled ligado neste reinício): (1) papel pesquisador + autonomia agir: POST /api/pedidos/previa valido=false com bloqueio autonomia_acima_do_papel (campo autonomia) e sem selo; POST /api/pedidos (lote:canais:28.10-f3-01) 422 autonomia_acima_do_papel 'O papel `pesquisador` vai no máximo até `observar`; o pedido pede `agir`'; 0 pedidos gravados. (2) papel pesquisador + observar (lote:canais:28.10-f3-02): ped_U9TvCUHdVQaPCzaaZ1ub4w criado ativo, ocorrência r-20261004160341-2db829 (android-12 sem conta, | DEPLOY 31 (no ar 04/10 19:53Z, central em 0ede1860, migração 103), fatias SIMULATED: F4 (o pai consolida observações e memória dos filhos; conflito vai ao relatório; o aviso leva só a contagem), PR #290 (f2d55032, c2401eee; conserto do ciclo relatorio↔consolidacao em 08435862, que na integ entrou como 6a2a7f2b), tests/test_pedidos_colaboracao_consolidacao.py com 17 testes. F5 parte 1 (numa família com porta-voz, quem não tem papel fica em 'observar'; prévia com autonomia_rebaixada_pela_familia; 422 reacao_repetida), PR #293 (774d3e56, 2e827c50, 789f3e2f), testes de pedidos. Nenhuma prova real da F4 nem da F5: proibida prova que crie pedido até o 28.31 F2 estar no ar.",
-   "blocker": "Falta: (1) F5b, o provedor contexto_do_pedido no PR #295 (merge do conserto da F4 em d6596d05), que só é LIGADO com o #305 da Aprendizado (porta_vozes como conjunto e a ligação ao _policy_gate); ordem de merge #295, #298, #305; (2) do lado do planejador (Jev), reação ao mesmo conteúdo com outras palavras e uma persona citar a outra; (3) prova real da F4 e da F5 (um pai de teste com colaboração ligada, no android-12) depois do 28.31 F2 no ar.",
-   "grupo": "resultado-orquestradora-deploy31-c",
+   "proof": "simulated",
+   "evidence": "Implantado no deploy 32 (central 2c47b9fa, migrações 104-106, no ar às 2026-10-04T23:09Z; prova de fora e caminhada no navegador sem erro, pela Android/orquestradora; suíte 32 verde: SQLite 10315, PG dirigido 4625). F5b, o provedor do contexto do pedido para a porta de política: PR #295 (7c8a9d03, merge b640b5cc). Prova simulated: testes de pedidos na suíte 32. Real: not_run. O lote do 28.10 segue com as outras partes.",
+   "blocker": "outras partes do lote 28.10",
+   "grupo": "orquestrador-resultado-suite32-a",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T20:05:31+00:00"
+   "quando": "2026-10-04T23:43:27+00:00"
   },
   "14.13": {
    "id": "14.13",
@@ -7398,16 +7398,16 @@
   },
   "29.68": {
    "id": "29.68",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "04/10 20:00:00Z a 20:04:42Z, central em 0ede1860, android-09 com o painel fechado (passeio encerrado às 19:58:26Z), chaves lote:jev:29.68-03 a -07, comando da fee44f (QA Messenger). As 5 fecharam completed: 09306b, 1c6daf, 9154c7, 021f64 e 074480, com parede de 45,2 / 75,2 / 46,4 / 45,1 / 40,3 s. prep_arvore_ms por execução (n; máximo; mediana): 3; 1039; 315 | 4; 227; 225 | 3; 281; 213 | 3; 226; 187 | 3; 181; 161. 15 das 16 medidas ficaram abaixo de 1 s.",
-   "blocker": "Uma medida passou de 1 s (1039 ms), na primeira execução, a do aparelho ocioso. O critério 'abaixo de 1 s' não fecha em todas: a orquestradora decide se a primeira árvore depois de ocioso conta.",
-   "grupo": "resultado-orquestradora-deploy31-c",
+   "evidence": "Ver android-nota-29-68.md: o HAL de sensores alto do android-10 era a mesma família de giro do qemu (K-093); o reinício a frio do 10 às 21:11Z (start c-20261004211130-4c02b7, 65,6 s) zerou o HAL (0,16 s de CPU desde o boot); recriar o AVD worker-02 deixou de ser necessário.",
+   "blocker": "Releitura do tempo da execução de leitura sem IA (51,5 s contra 40,2 s) ainda not_run.",
+   "grupo": "orquestrador-resultado-suite32-a",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T20:05:31+00:00"
+   "quando": "2026-10-04T23:43:27+00:00"
   },
   "28.22": {
    "id": "28.22",
@@ -7546,15 +7546,15 @@
   "28.24": {
    "id": "28.24",
    "status": "partial",
-   "proof": "real",
-   "evidence": "real, 04/10 17:24:58Z, central C:\\git\\android em 1452f81d (deploy 29, migração 101_canal_anexos). Primeiro um aviso de uma linha ao dono (Telegram message_id 199). Depois UMA captura do android-12 (aparelho de teste, tela de Configurações do emulador, sem dado pessoal), frame android-12-2-1791134696757 de 720x1280 e 44944 bytes, mandada ao chat do DONO pelo CanalTelegram.enviar_anexo do produto (sendPhoto, message_id 200). A captura veio da MESMA prévia do painel (rt.frame), acordada por um watch com foco pelo /api/ws, a mesma fonte do capturar_para_o_dono. Script: scratchpad/prova_28_24_saida.py, fora do repo e sem segredo impresso. Limite: o caminho de conversa do /captura (ConversaDoCanal.enviar_conteudo) não foi exercido de ponta a ponta, porque /captura é comando do dono. Prova de ENTRADA: not_run, à espera de uma imagem natural do dono. canal_telegram sem entradas desde 13:14:52Z e getWebhookInfo pending_update_count=0. | DEPLOY 31 (no ar 04/10 19:53Z, central em 0ede1860, migração 103), fatias SIMULATED: F3 (a IA lê a imagem do dono, só JPEG/PNG/WEBP, teto US$ 0,05 por imagem, custo em ai_calls com origem='canais', migração 103 em canal_anexos), PR #286 (575f78b2, 1a589d90, 47cb4a86, b79c6366). F4 (tela de Anexos em Canais com prévia, filtros e 'Anexar ao cartão' pelo link, pelo código curto ou pelo id; anexo repetido devolve o que já estava), PR #284 (5f066872, 0b9cc793, 38ac13a6, acad6bf8); tests/test_canais_anexos_lista.py e test_canais_anexos_trello.py, AnexosTab.test.tsx. A revisão independente do painel do deploy 31 não achou bloqueio nem vazamento de dado de persona.",
-   "blocker": "Falta: (1) a entrada real com anexo (uma imagem do dono pelo Telegram) e a leitura paga dela (~US$ 0,003), conferindo ai_calls origem='canais' e a descrição em canal_anexos; depende de gesto dele; (2) F5: botão 'Ler' na aba Anexos, mais os 4 ajustes da revisão (dizer 'Já estava no cartão' com ja_estava; fixar o 'desde' na primeira carga; guardar a miniatura em memória; recusar no pode_ir_ao_cartao o tipo fora de entrada.anexos.tipos); (3) o passeio no navegador da aba depois do deploy.",
-   "grupo": "resultado-orquestradora-deploy31-c",
+   "proof": "simulated",
+   "evidence": "Implantado no deploy 32 (central 2c47b9fa, migrações 104-106, no ar às 2026-10-04T23:09Z; prova de fora e caminhada no navegador sem erro, pela Android/orquestradora; suíte 32 verde: SQLite 10315, PG dirigido 4625). F5 do botão 'Ler pela IA' na aba Anexos: PR #318 (30b0d39f, d9b8e453). Prova simulated: testes da aba Anexos (test_canais_anexos*) e do frontend na suíte 32. Real: not_run (nenhum anexo lido pela IA no painel depois do deploy). Cartão da F5 em Em validação; o cartão-pai segue com o dono.",
+   "blocker": "prova real de um anexo lido pela IA no painel",
+   "grupo": "orquestrador-resultado-suite32-a",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T20:05:31+00:00"
+   "quando": "2026-10-04T23:43:27+00:00"
   },
   "31.26": {
    "id": "31.26",
@@ -7792,16 +7792,16 @@
   },
   "29.76": {
    "id": "29.76",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "a/b no ar em 0ede1860 (PR #302, suíte 31): scripts/candidatos-do-portal.py com o denominador da amostra contando todo exemplo com run_id ('1 de 3', não rebaixa), Bearer só para 127.0.0.1/localhost/::1 e 'ultima' sem fuso como UTC; scripts/tests/test_candidatos_do_portal.py (10, 3 novos). c/d/e no PR #303 para a suíte 32 (agente para no 4409; log_contradiz na medição do wake; nota do load_ms). Real 04/10 19:54:16Z, central em 0ede1860: o script rodou contra o central (só GET e banco em mode=ro), com 59 candidatos e 7 rebaixados; fk-59b5a57058 '1 de 3' e fk-9869d46dca '2 de 3' sem rebaixar, fk-c368381db9 '3 de 3' rebaixado (amostra toda nossa). O caminho do token para --base de fora não foi exercido de verdade (sem API_TOKEN no ambiente): só simulated.",
-   "blocker": "PR #303 na suíte 32, com o ajuste da revisão (no 4409 a tarefa religa o agente: esperar ~10 min antes de sair ou dizer no log; o aviso de contradição lê o log bufferizado uma vez só).",
-   "grupo": "resultado-orquestradora-deploy31",
+   "evidence": "PR #303 (fix/29-76-agente-e-veredito, ponta 35c9e4fe) na suíte 32, no ar em 2c47b9fa desde 04/10 23:04Z (deploy 32, migração 106). c/d: o deslocado no 4409 cancela o que tem em voo e cede o canal por 10 min; a cópia defasada (motivo agente_defasado) sai e grava agente-cedido.json, que vale 24 h, só para o mesmo código e com idade >= 0, e é apagado pelo worker-install; cancelamento antes de começar grava cancelled e solta o aparelho (_ao_terminar). e: log_contradiz na medição do wake pelo uptime, com releitura 120 s depois; nota do load_ms. Prova simulated: test_worker_agent.py (4409, deslocado, defasado, motivo, cancelamento antes de começar, marca de 24 h e marca do futuro, instalação apaga a marca) e test_wake_relogio_do_snapshot.py, com mutação conferida. Real (deploy 32, 04/10): agentes 0.1.0+2c47b9f nos dois workers; no notebook o worker-install parou a tarefa antes de trocar (23:04:34 a 23:04:58Z) e o agente voltou conectado, sem 4409; mapa do túnel 7a141d3a3fd79649 inalterado; os 12 aparelhos online. Suíte 32 em 2c47b9fa: SQLite 10315 passed e 0 falhas, PG dirigido 4625 passed e 0 falhas (233 arquivos), scripts/tests 562, frontend 1557, docs-check sem erros.",
+   "blocker": "O caminho real do 4409 (dois agentes do mesmo worker) e o do agente_defasado não foram provocados no ambiente real: só simulated.",
+   "grupo": "orquestrador-resultado-suite32-a",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T19:55:16+00:00"
+   "quando": "2026-10-04T23:43:27+00:00"
   },
   "30.56": {
    "id": "30.56",
@@ -7867,6 +7867,149 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-04T20:01:26+00:00"
+  },
+  "29.41": {
+   "id": "29.41",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real 04/10/2026, central WIN-7S2UASNLFOP em dfebc34a, notebook worker-lan-01. Sim do dono (Telegram, canal_entradas 1322, 20:09:29Z) para a troca do mapa, worker.yaml e vagas; reinício do android-13 com o sim do dono no chat da orquestradora (21:17Z). Mudança: 20:34:49Z os cinco parados; 20:35:23Z config.yaml com 5 externos (orquestradora); 20:36:53Z farm-central reiniciada; 20:37:22Z PUT worker_id=worker-lan-01 nos cinco; 20:37:37Z worker.yaml com worker-07..11 (backup worker.yaml.bak-29.41); 20:37:52Z mapa do túnel com 11 pares (única troca; hash 7a141d3a3fd79649 inalterado até 22:00Z). Incidente (K-093): a troca deixou uma thread de cada qemu vivo do notebook a ~100 % e o adbd dos de uptime longo intermitente; adb disconnect e kill-server não limparam; reinício a frio limpou: 12 (77,5 s), 09 (78,6 s), 10 (65,6 s), 13 (61,1 s, canário limpo). Boots (create / 1º boot / 2º boot, rede): 04 worker-07 1,4 s / 117,4 s / 84,3 s, validada; 07 worker-08 1,6 s / 223,6 s / 137,5 s, validada (sem rota por 5 s logo após o online); 08 worker-09 1,3 s / 138,5 s / 87,2 s, validada; 02 worker-10 2,6 s / 169,0 s / 88,9 s, validada; 05 worker-11 1,9 s / 139,8 s / 66,1 s, validada (a convergência de rede fez um restart de 75,7 s antes). Vagas do notebook 4 -> 8 (21:21:52Z) -> 9 (21:50:54Z), pelo PUT /api/servers/worker-lan-01/limits, sem tocar no mapa. Retrato final 22:00:13Z com 9 qemu: CPU 30,7 %, VRAM 1417/4096 MiB (35 %), RAM livre 40,1 GB, thread mais quente 23,4 % (sem giro), adb do 13 pelo túnel 132 a 180 ms, canário do 13 sem sinal, adb dos 9 entre 118 e 187 ms. Medidas em scratchpad/2941-boots.txt e 2941-medidas.txt.",
+   "blocker": "2º boot do 07 (137,5 s) acima do p90 de 115 s; os outros quatro dentro. O AVD antigo dos cinco fica 7 dias no central. Lição K-093 e nota do start-server a registrar em PR pequeno.",
+   "grupo": "orquestrador-resultado-suite32-a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T23:43:27+00:00"
+  },
+  "30.61": {
+   "id": "30.61",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "Backend implantado no deploy 32 (central 2c47b9fa, migração 106 no ar, /api/health status ok e problems [] lido às 2026-10-04T23:13:35Z). Entraram: #319 (d5f75004; prévia da porta GET /runs/{id}/porta, gesto POST /runs/{id}/aprovar-plano, POST /porta/renovar, validade, faxina, a trava do sim do plano no _approval_gate, banco 105, adendo v1.32) e o conserto da suíte 32 f1afb489 (teste HTTP do POST /porta/renovar: 200, 409 sim_vencido, 409 invalid_state, 404). Prova simulated: backend/tests/test_porta_do_plano.py, test_chave_da_aprovacao.py e test_cobertura_de_rotas.py na suíte 32 (SQLite e PG verdes, pela orquestradora). Falta o PAINEL: #323 (feat/30-61-painel, rebaseado sobre a main e6372739, ponta fa6460ef), #324 (30.68, ponta 7096baae) e #334 (29.79, sobre o #330 da Jev) vão à suíte 33. Real: not_run (nenhuma execução real com aprovação no plano depois do deploy; o percurso no navegador espera o painel).",
+   "blocker": "painel (#323) na suíte 33",
+   "grupo": "orquestrador-resultado-suite32-a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T23:43:27+00:00"
+  },
+  "30.62": {
+   "id": "30.62",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Implantado no deploy 32 (central 2c47b9fa, migração 106, /api/health ok e problems [] às 2026-10-04T23:13:35Z). #305 (feat/30-62-ligacao): AppState._policy_gate passa pedido=contexto_do_pedido(db, run_id) ao PolicyEngine.check; a família de um pedido entre personas conta como uma conta, com porta-voz só ele age, e a pessoa real sem conversa prévia pede aprovação. Prova simulated: backend/tests/test_contexto_do_pedido.py (incluindo test_a_porta_do_despacho_le_a_familia_do_pedido_da_execucao) e test_pedidos_contexto_da_execucao.py, verdes na suíte 32. Real: not_run (nenhum pedido entre personas executado depois do deploy).",
+   "blocker": null,
+   "grupo": "orquestrador-resultado-suite32-a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T23:43:27+00:00"
+  },
+  "30.64": {
+   "id": "30.64",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Implantado no deploy 32 (central 2c47b9fa, migração 106, /api/health ok e problems [] às 2026-10-04T23:13:35Z). #306 (feat/30-64-objeto-alvo): objeto_alvo no catálogo, exigido na carga para toda ação com efeito não interna; o objeto entra na chave da aprovação e no já feito; a DM com o mesmo texto pede confirmação; seguir, curtir, comentar e publicar a mesma imagem com objeto inequívoco são recusados; o objeto ambíguo pede aprovação. Emenda 30.64 do ADR-055. As fixtures de integração declaram objeto_alvo (3014e414). Prova simulated: backend/tests/test_objeto_alvo.py, test_repetido_entre_execucoes.py e test_aprovacao_acompanha_revisao.py, verdes na suíte 32. Real: not_run; falta a árvore real de um post já curtido (desc==Like), só leitura, que espera a vez de aparelho.",
+   "blocker": null,
+   "grupo": "orquestrador-resultado-suite32-a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T23:43:27+00:00"
+  },
+  "30.65": {
+   "id": "30.65",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Implantado no deploy 32 (central 2c47b9fa, migração 106, /api/health ok e problems [] às 2026-10-04T23:13:35Z). #309 (feat/30-65-excecao-de-politica, 04d40a36): exceção de uso único à regra de uma conta por alvo em 30 dias (ADR-055), reservada no toque do efeito, revogável e com validade; o sim anterior à exceção presa sai como expired. Conserto da suíte 32 f1afb489: a exceção pergunta ao registro de perfis (ProfileStore) e não à tabela do Instagram (ADR-052, test_apps_fora_do_nucleo verde). Prova simulated: os testes do 30.65 do #309, test_apps_fora_do_nucleo.py e test_arquitetura.py, verdes na suíte 32. Real: not_run; a mensagem única autorizada pelo dono (Telegram, 04/10 19:02Z) ainda não foi executada pela exceção depois do deploy.",
+   "blocker": null,
+   "grupo": "orquestrador-resultado-suite32-a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T23:43:27+00:00"
+  },
+  "30.66": {
+   "id": "30.66",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Implantado no deploy 32 (central 2c47b9fa, migração 106, /api/health ok e problems [] às 2026-10-04T23:13:35Z). #311 (fix/30-66-textos-do-painel, 965756b0): os cinco textos do passeio do deploy 31 na aba Para aprovar e no Decidido pela plataforma (o topo diz Nada quando não há pendência, a decisão da plataforma com o nome do catálogo; adendo v1.34). Prova simulated: os testes do painel do #311 (vitest) e o typecheck, verdes na suíte 32. Real: not_run; o percurso no navegador da Central depois do deploy 32 ainda não foi feito (próximo passo da frente).",
+   "blocker": null,
+   "grupo": "orquestrador-resultado-suite32-a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T23:43:27+00:00"
+  },
+  "28.29": {
+   "id": "28.29",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Implantado no deploy 32 (central 2c47b9fa, migrações 104-106, no ar às 2026-10-04T23:09Z; prova de fora e caminhada no navegador sem erro, pela Android/orquestradora; suíte 32 verde: SQLite 10315, PG dirigido 4625). PR #304 (a41c9bef, 72bec222 do passeio do deploy 31). Prova simulated: backend/tests/test_decisoes_registro_coerente.py e test_decisoes_desfazer.py na suíte 32. Real: not_run (aba 'Decidido sozinho' não percorrida item a item depois do deploy). Cartão em Em validação.",
+   "blocker": null,
+   "grupo": "orquestrador-resultado-suite32-a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T23:43:27+00:00"
+  },
+  "28.30": {
+   "id": "28.30",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Implantado no deploy 32 (central 2c47b9fa, migrações 104-106, no ar às 2026-10-04T23:09Z; prova de fora e caminhada no navegador sem erro, pela Android/orquestradora; suíte 32 verde: SQLite 10315, PG dirigido 4625). PR #314 (e0bced75, 26ec6c84, 2beef7d8, 56970f9b; adendo v1.35). Prova simulated: test_telegram_entrada.py e os testes do comentário do dono na suíte 32. Real: not_run (nenhum 'Autorizado' do dono em cartão depois do deploy). Cartão em Em validação.",
+   "blocker": null,
+   "grupo": "orquestrador-resultado-suite32-a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T23:43:27+00:00"
+  },
+  "28.31": {
+   "id": "28.31",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "Implantado no deploy 32 (central 2c47b9fa, migrações 104-106, no ar às 2026-10-04T23:09Z; prova de fora e caminhada no navegador sem erro, pela Android/orquestradora; suíte 32 verde: SQLite 10315, PG dirigido 4625). F1 (PR #310, e3adedff..6cb876d1) e F2a (PR #312, 4ade2da7..80568aae, migração 106) no ar. F3 (resumo de hora no molde do dono) na main fora do deploy: #321 (merge 2e3a099c), #327 (merge e6372739), piso da rotina (842b9814, aba2da84) e gravidade da saúde (0b5f7683); laço religado com o 'liga' da orquestradora em 2026-10-04T23:25:54Z no central (checkout 0b5f7683, máquina central, --intervalo 1200 --piso-rotina 3600; um processo). O aviso do deploy 32 ao dono (Telegram, message_id 245, 23:10:48Z) saiu À MÃO pelo telegram_status.py, no molde; não é prova do produto. Real do produto: not_run (nenhum aviso do montador F1/F2a observado depois do deploy). Primeiro resumo do laço: not_run até ~00:11Z. Simulated: .claude/canais/test_resumo_laco.py (52 passed) e os testes de avisos na suíte 32.",
+   "blocker": "primeiro envio real do laço (~00:11Z)",
+   "grupo": "orquestrador-resultado-suite32-a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T23:43:27+00:00"
+  },
+  "31.50": {
+   "id": "31.50",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Implantado no deploy 32 (central 2c47b9fa, migrações 104-106, no ar às 2026-10-04T23:09Z; prova de fora e caminhada no navegador sem erro, pela Android/orquestradora; suíte 32 verde: SQLite 10315, PG dirigido 4625). Lado Canais (montador do lembrete pendencia.vence_em): PR #315 (a2961b42, 61166e6d, 7c29eb48). O lado da execução é da Jev (#313). Prova simulated: testes do montador dos avisos na suíte 32. Real: not_run (nenhum item venceu dentro da janela desde o deploy). Sem cartão próprio no Trello.",
+   "blocker": null,
+   "grupo": "orquestrador-resultado-suite32-a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T23:43:27+00:00"
+  },
+  "31.55": {
+   "id": "31.55",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "04/10 21:45Z, banco central só leitura: sombra do curador 41 linhas, 38 abaixo do limiar; topo revisar 39/41; contra 30 rótulos do dono: 2/39 iguais (tabela .claude/handoffs/jev/tabela-31-55.md). 21:51Z, braço offline v2 (jev-braco-offline.py --estado v2 --enviar --teto 0.05), chave lote:jev:31.55-v2: 65 chamadas ok, US$ 0,002198 (custo.chamadas do JSON; fora do livro-caixa do ADR-051), 57339 tokens; topo=rótulo 9/63 (recorte da sombra 7/39, v1 2/39); acima de 0,85: 1 de 11 igual ao dono; rebaixar 4/4. | 21:55:50Z pré-registro de P1/P2 (.claude/handoffs/jev/preregistro-31-55.md, código ca14e5bb). 21:56Z P1 (lote:jev:31.55-p1): 67 chamadas, US$ 0,002548; acima de 0,85: 0 de 48 iguais ao dono. P2 (lote:jev:31.55-p2): 67 chamadas, US$ 0,002202; acima de 0,85: 2 de 6. Total do item US$ 0,006948 (teto 0,15), fora do livro-caixa. Perfil v2: degradando/falhas_seguidas em 4/4 rebaixados e 0/60 mantidos.",
+   "blocker": "Nenhuma pergunta bateu 70% a 0,85 (v2 9%, P1 0% dentro da amostra, P2 33%); runtime sem mudança e nenhuma rodada nova (decisão da orquestradora, 21:59Z). Ressalva: Os 30 rótulos \"do dono\" são confirmação EM BLOCO dos rótulos que o curador já tinha proposto (a pergunta a ele foi confirmar os 28 rótulos do curador e rebaixar a 10 e a 42). Então \"a regra determinística explica 64 de 65\" é em boa parte circular: mede a regra contra ela mesma, com o carimbo do dono por cima. A medida que separa o julgamento dele da regra só existe com rótulo item a item, e essa taxa está SEM AMOSTRA. Conclusão: o Jev com a entrada v1, v2, P1 e P2 não reproduz a política de manter até degradar; se a R1 em receita precisa do Jev, só se decide com rótulos item a item dados depois de hoje.",
+   "grupo": "orquestrador-resultado-suite32-a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T23:43:27+00:00"
   }
  },
  "rodadas": [
@@ -10320,6 +10463,29 @@
    ],
    "grupos": [
     "resultado-orquestradora-deploy31-c"
+   ]
+  },
+  {
+   "quando": "2026-10-04T23:43:27+00:00",
+   "itens": [
+    "29.76",
+    "29.68",
+    "29.41",
+    "30.61",
+    "30.62",
+    "30.64",
+    "30.65",
+    "30.66",
+    "28.29",
+    "28.24",
+    "28.10",
+    "28.30",
+    "28.31",
+    "31.50",
+    "31.55"
+   ],
+   "grupos": [
+    "orquestrador-resultado-suite32-a"
    ]
   }
  ]
