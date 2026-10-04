@@ -23,7 +23,7 @@ grava `conferido_em` e espera o próximo intervalo. O retrato do último envio f
 
 Cadência (decisão da orquestradora, 04/10 23:14Z, regra da rotina agrupada): a ROTINA sai no máximo uma vez por
 `--piso-rotina` (3600 s) desde o último envio, mesmo que algo mude a cada volta; o que muda "Precisa de você" (pendência
-nova ou resolvida) sai na volta em que mudar. A rotina segurada não se perde: o retrato do cursor não anda, e a volta
+nova ou resolvida) e a saúde que deixa de ser 🟢 ou volta a ele (23:18Z) saem na volta em que mudarem. A rotina segurada não se perde: o retrato do cursor não anda, e a volta
 seguinte ao piso conta tudo o que mudou desde o último envio.
 
 O corpo inteiro passa por `_sem_contato` (e-mail, telefone, URL) e por `redacao.redigir` (o mesmo filtro do Trello),
@@ -273,10 +273,12 @@ def _iso(dt: datetime) -> str:
 
 
 def _de_iso(valor: object) -> datetime | None:
+    """A hora com fuso, ou `None`: a sem fuso (sem o "Z") não se compara com o relógio e derrubaria o laço."""
     try:
-        return datetime.fromisoformat(str(valor).replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(str(valor).replace("Z", "+00:00"))
     except ValueError:
         return None
+    return dt if dt.tzinfo is not None else None
 
 
 def _retrato(estado: dict, ant: dict) -> dict:
@@ -372,16 +374,30 @@ def _desde(cursor: dict) -> str | None:
         return None
 
 
-def pode_enviar(retrato: dict, anterior: dict | None, enviado_em: str | None, agora: datetime, piso_s: int) -> bool:
-    """A cadência: "Precisa de você" que mudou sai já; a rotina, só com o último envio a `piso_s` segundos ou mais.
-    Sem envio anterior (cursor sem `enviado_em`), sai. Pura."""
+def _verde(retrato: dict | None) -> bool:
+    """Sem retrato anterior conta como 🟢: a Central já ruim no primeiro envio é uma piora a contar."""
+    return retrato is None or str(retrato.get("saude") or "🟢").startswith("🟢")
+
+
+def seguro_ate(retrato: dict, anterior: dict | None, enviado_em: str | None, agora: datetime,
+               piso_s: int) -> datetime | None:
+    """A cadência: até quando a rotina fica segura pelo piso, ou `None` (sai já). Furam o piso, na volta em que mudam:
+    "Precisa de você" (pendência nova ou resolvida) e a saúde que deixa de ser 🟢 ou volta a ele, uma vez por
+    transição (o retrato só anda no envio). A saúde que segue ruim, mesmo com outro texto, fica com o piso. Sem envio
+    anterior válido, sai. Pura."""
     if set(retrato.get("pendencias") or []) != set((anterior or {}).get("pendencias") or []):
-        return True
-    try:
-        ultimo = datetime.fromisoformat(str(enviado_em).replace("Z", "+00:00"))
-    except ValueError:
-        return True
-    return (agora - ultimo).total_seconds() >= piso_s
+        return None
+    if _verde(retrato) != _verde(anterior):
+        return None
+    ultimo = _de_iso(enviado_em)
+    if ultimo is None:
+        return None
+    ate = ultimo + timedelta(seconds=piso_s)
+    return ate if agora < ate else None
+
+
+def pode_enviar(retrato: dict, anterior: dict | None, enviado_em: str | None, agora: datetime, piso_s: int) -> bool:
+    return seguro_ate(retrato, anterior, enviado_em, agora, piso_s) is None
 
 
 def compor(cursor: dict, agora: datetime) -> tuple[str | None, dict | None, int]:
@@ -461,6 +477,9 @@ def main() -> int:
         if args.desde_linha is None or not args.ultimo_envio:
             print("--armar pede --desde-linha e --ultimo-envio")
             return 2
+        if _de_iso(args.ultimo_envio) is None:
+            print(f"--ultimo-envio {args.ultimo_envio!r}: use a hora UTC com o Z, como 2026-10-04T23:10:48Z")
+            return 2
         _gravar_json(CURSOR, {"enviado_em": args.ultimo_envio, "message_id": None,
                               "eventos_linha": args.desde_linha})
         print(f"cursor armado: linha {args.desde_linha}, último envio {args.ultimo_envio}")
@@ -482,6 +501,9 @@ def main() -> int:
             return 0
         ENSAIO.write_text(texto, encoding="utf-8")
         print(f"ensaio gravado ({len(texto)} chars, eventos até a linha {linhas}); nada enviado")
+        ate = seguro_ate(retrato, cursor.get("retrato"), cursor.get("enviado_em"), _agora(), args.piso_rotina)
+        if ate is not None:
+            print(f"ensaio: só rotina; o laço seguraria pelo piso até {ate:%H:%M}Z")
         return 0
     if args.uma_vez:
         return 0 if rodada(cursor, args.piso_rotina) else 1
@@ -489,12 +511,9 @@ def main() -> int:
     print(f"{_agora():%H:%M:%S}Z laço do resumo ligado, a cada {args.intervalo} s, rotina no máximo a cada "
           f"{args.piso_rotina} s", flush=True)
     while True:
-        try:
-            # A última volta, com ou sem envio: a que não enviou (nada mudou) também espera o intervalo inteiro.
-            ultimo = max(datetime.fromisoformat(str(cursor.get(k)).replace("Z", "+00:00"))
-                         for k in ("enviado_em", "conferido_em") if cursor.get(k))
-        except ValueError:
-            ultimo = _agora() - timedelta(seconds=args.intervalo)
+        # A última volta, com ou sem envio: a que não enviou (nada mudou) também espera o intervalo inteiro.
+        horas = [h for h in (_de_iso(cursor.get(k)) for k in ("enviado_em", "conferido_em")) if h is not None]
+        ultimo = max(horas) if horas else _agora() - timedelta(seconds=args.intervalo)
         espera = (ultimo + timedelta(seconds=args.intervalo) - _agora()).total_seconds()
         if espera > 0:
             time.sleep(min(espera, 60))
