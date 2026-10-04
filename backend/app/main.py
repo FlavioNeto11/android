@@ -39,7 +39,7 @@ from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .api import ROTAS_DE_SESSAO, recusa_do_despacho, router, worker_router
@@ -183,7 +183,7 @@ CABECALHOS_DE_SEGURANCA = {"X-Frame-Options": "DENY", "X-Content-Type-Options": 
                            "Referrer-Policy": "same-origin"}
 
 
-def _com_cabecalhos(resposta: Any) -> Any:
+def _com_cabecalhos(resposta: Response) -> Response:
     for nome, valor in CABECALHOS_DE_SEGURANCA.items():
         resposta.headers.setdefault(nome, valor)
     return resposta
