@@ -9,13 +9,14 @@ desligado; o sim e o não no Telegram vão à orquestradora sem virar pedido; e 
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
 from app.db import Database
 from app.modules.avisos.application.entrada import Fato, rotear
-from app.modules.avisos.domain.mensagem import NIVEL_POR_TIPO, PRECISA_DE_VOCE, Aviso
+from app.modules.avisos.domain.mensagem import JANELA, NIVEL_POR_TIPO, PRECISA_DE_VOCE, ROTINA, Aviso, entrega_do_tipo
 from app.modules.avisos.domain.privacidade import texto_seguro
 from app.modules.avisos.infrastructure.entrada import (
     RESPOSTA_COMENTARIO_APAGADO,
@@ -32,6 +33,7 @@ from app.modules.avisos.infrastructure.trello_leitor import (
     RESPOSTA_COMENTARIO_NO_TETO,
     RESPOSTA_COMENTARIO_SEM_TELEGRAM,
     TIPO_DO_COMENTARIO,
+    TIPO_DO_TETO,
     ComentariosDoTrello,
     RefDoTrello,
     SaidaDoTrello,
@@ -271,6 +273,8 @@ async def test_teto_por_hora_e_uma_linha_ao_dono(tmp_path: Path) -> None:
     teto = [a for a in c.avisos if a.chave.startswith("comentario-teto:")]
     assert len(pedidos) == COMENTARIOS_POR_HORA
     assert len({a.chave for a in teto}) == 1 and "Parei" in teto[0].titulo
+    # Revisão da #314 (3c): o teto só informa; é rotina e vai à janela, não é nível 1.
+    assert (teto[0].tipo, teto[0].nivel) == (TIPO_DO_TETO, ROTINA)
     assert c.trello.textos()[-1] == PREFIXO + RESPOSTA_COMENTARIO_NO_TETO
     assert c.repo.contagens() == {"orquestradora": COMENTARIOS_POR_HORA + 2}
 
@@ -341,3 +345,66 @@ def test_sessao_antiga_com_prefixo_de_canal_nao_vale(tmp_path: Path) -> None:
 
 def test_o_nivel_do_pedido_de_confirmacao_e_declarado() -> None:
     assert NIVEL_POR_TIPO[TIPO_DO_COMENTARIO] == PRECISA_DE_VOCE
+    assert NIVEL_POR_TIPO[TIPO_DO_TETO] == ROTINA and entrega_do_tipo(TIPO_DO_TETO) == JANELA
+    assert not TIPO_DO_TETO.startswith(SEM_AGRUPAR)
+
+
+@pytest.mark.parametrize("texto", ["sim", "não", "ok", "o que é isso?"])
+def test_responder_ao_aviso_do_teto_nao_vira_pedido(texto: str) -> None:
+    """3c: sem o ramo próprio, o "sim" ao aviso do teto caía no texto livre e virava prévia de pedido."""
+    i = rotear(texto, fato="comentario-teto:2026-10-04T21")
+    assert i.tipo == "desconhecida" and "só informa" in str(i.motivo)
+
+
+def _repo_trello(tmp_path: Path) -> tuple[Database, EntradasDoCanal]:
+    cfg = make_config(tmp_path)
+    cfg.ensure_dirs()
+    db = Database(cfg.db_dsn)
+    db.migrate()
+    return db, EntradasDoCanal(db, canal="trello")
+
+
+@pytest.mark.parametrize("compacto", [False, True])
+def test_as_travas_nao_dependem_do_formato_do_json(tmp_path: Path, compacto: bool) -> None:
+    """3a: a marca `confirmacao_pedida` vale com o `json.dumps` do `marcar` e com o compacto; o falso não conta."""
+    db, repo = _repo_trello(tmp_path)
+    for n, pedida in ((1, True), (2, False)):
+        repo.gravar(id_externo=f"a{n}", ordem=n, tipo="comentario", do_dono=True, ref_mensagem=f"card-x/a{n}",
+                    responde_a=None, texto="Autorizado", tamanho=10, estado="recebida")
+        ident = int(repo.id_de(f"a{n}") or 0)
+        repo.marcar(ident, "orquestradora", previa={"repasse": "comentario", "confirmacao_pedida": pedida})
+        if compacto:
+            previa = {"repasse": "comentario", "confirmacao_pedida": pedida}
+            db.execute("UPDATE canal_entradas SET previa=? WHERE id=?", (json.dumps(previa, separators=(",", ":")), ident))
+    assert repo.comentarios_com_pedido(desde="2000-01-01T00:00:00Z") == ["a1"]
+    assert repo.comentarios_com_pedido(desde="2000-01-01T00:00:00Z", card="card-x") == ["a1"]
+    assert repo.comentarios_com_pedido(desde="2000-01-01T00:00:00Z", card="outro") == []
+
+
+@pytest.mark.parametrize("compacto", [False, True])
+def test_so_a_resposta_repassada_conta_como_respondida(tmp_path: Path, compacto: bool) -> None:
+    """3b: o sim recusado pela conferência (mudou, apagado, sem_conferir) fica `feita` e NÃO destrava o cartão; o sim
+    repassado e o não contam. Vale com qualquer formato do JSON gravado."""
+    db, repo = _repo_trello(tmp_path)
+    tg_repo = EntradasDoCanal(db, canal="telegram")
+
+    def responde(n: int, estado: str, repasse: str, action: str, **extra: object) -> None:
+        tg_repo.gravar(id_externo=f"u{n}", ordem=n, tipo="mensagem", do_dono=True, ref_mensagem=str(n), responde_a="555",
+                       texto="sim", tamanho=3, estado="recebida")
+        ident = int(tg_repo.id_de(f"u{n}") or 0)
+        previa = {"repasse": repasse, "texto": f"O dono CONFIRMOU (sim) o comentário {action} do cartão c do Trello.",
+                  **extra}
+        tg_repo.marcar(ident, estado, previa=previa)
+        if compacto:
+            db.execute("UPDATE canal_entradas SET previa=? WHERE id=?",
+                       (json.dumps(previa, ensure_ascii=False, separators=(",", ":")), ident))
+
+    for n, conferencia in enumerate(("mudou", "apagado", "sem_conferir"), start=1):
+        responde(n, "feita", "comentario_sim", "a0042", conferencia=conferencia)
+    assert repo.comentario_respondido("a0042") is False
+    responde(4, "orquestradora", "comentario_sim", "a0042")
+    assert repo.comentario_respondido("a0042") is True
+    responde(5, "orquestradora", "comentario_nao", "a0043")
+    assert repo.comentario_respondido("a0043") is True
+    responde(6, "orquestradora", "comando", "a0044")                           # outro repasse não é resposta
+    assert repo.comentario_respondido("a0044") is False

@@ -78,6 +78,7 @@ NIVEL_POR_TIPO: dict[str, int] = {
     "pedido.encerramento": ROTINA,
     "pedido.condicao_atendida": ROTINA,
     "learning.needs_person": ROTINA,
+    "trello.teto_de_comentarios": ROTINA,          # 28.30: o teto por hora segurou os pedidos; nada a fazer
 }
 #: Os de nível 2 que PARARAM algo do dono: saem na hora. O resto do nível 2 vai à janela, com a rotina.
 PARARAM_ALGO = frozenset({"pedido.pausa_automatica", "pedido.orcamento_esgotado"})

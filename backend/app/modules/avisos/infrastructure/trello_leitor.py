@@ -41,7 +41,7 @@ from app.modules.avisos.adapters.trello import ClienteTrello, FalhaDoTrello
 from app.modules.avisos.application.entrada import AJUDA, Intencao, rotear
 from app.modules.avisos.application.entrega import FalhaDeEnvio
 from app.modules.avisos.application.espelho import PREFIXO_DA_IA, prefixo_da_ia
-from app.modules.avisos.domain.mensagem import Aviso, chave_do_fato, titulo_do_aviso
+from app.modules.avisos.domain.mensagem import ROTINA, Aviso, chave_do_fato, titulo_do_aviso
 from app.modules.avisos.domain.privacidade import texto_seguro
 from app.modules.avisos.infrastructure.entrada import (
     RESPOSTA_DO_REPASSE,
@@ -239,6 +239,9 @@ REPASSE_COMENTARIO = "comentario"
 #: O operador da linha sem autor lido: não casa com nenhum `membro_dono` (os ids do Trello são hexadecimais).
 AUTOR_DESCONHECIDO = "desconhecido"
 TIPO_DO_COMENTARIO = "trello.comentario"
+#: O aviso de que o teto por hora segurou os pedidos: só informa (nível 3, vai à janela da rotina). O nome não começa
+#: por `trello.comentario`, que a fila nunca agrupa (`SEM_AGRUPAR`).
+TIPO_DO_TETO = "trello.teto_de_comentarios"
 #: O trecho do comentário que vai ao Telegram (o inteiro fica no cartão e na linha da entrada).
 TEXTO_DO_COMENTARIO_MAX = 300
 RESPOSTA_COMENTARIO_SEM_TELEGRAM = ("Recebi o seu comentário e repassei à orquestradora. A confirmação pelo Telegram não "
@@ -392,7 +395,7 @@ class ConversaDoTrello(ConversaDoCanal):
         if self.avisar_dono is not None:
             # Uma linha por hora (a chave é a hora): a fila deduplica o resto.
             self.avisar_dono(Aviso(
-                chave=chave_do_fato("comentario-teto", agora.strftime("%Y-%m-%dT%H")), tipo=TIPO_DO_COMENTARIO,
+                chave=chave_do_fato("comentario-teto", agora.strftime("%Y-%m-%dT%H")), tipo=TIPO_DO_TETO, nivel=ROTINA,
                 titulo=titulo_do_aviso("💬 Parei de pedir confirmação dos seus comentários nesta hora"),
                 corpo=(f"Mais de {COMENTARIOS_POR_HORA} comentários pediram confirmação em 1 h. Os novos vão à orquestradora "
                        "sem pergunta até a próxima hora.\nNada a fazer."),

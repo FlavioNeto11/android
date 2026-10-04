@@ -162,6 +162,11 @@ class Fato:
         return self.tipo == "comentario"
 
     @property
+    def teto_de_comentarios(self) -> bool:
+        """O aviso de que o teto por hora segurou os pedidos de confirmação (28.30): `comentario-teto:<hora>`."""
+        return self.tipo == "comentario-teto"
+
+    @property
     def convidado(self) -> bool:
         """O aviso sobre quem não é o dono (28.18). `detalhe == "novo"` é o único que se decide."""
         return self.tipo == "convidado"
@@ -256,6 +261,11 @@ def _rotear_resposta(t: str, f: Fato) -> Intencao | None:
     if f.anexo:
         # Só o pedido de leitura é do anexo; "sim", um objetivo ou qualquer outra frase seguem a gramática comum (None).
         return Intencao("ler_anexo", ref=f.ident) if _LER.match(" ".join(_sem_acento(t).split())) else None
+    if f.teto_de_comentarios:
+        # Revisão da #314: o aviso do teto só informa. Sem este ramo, um "sim" a ele cairia no texto livre e viraria
+        # pedido.
+        return Intencao("desconhecida", motivo="Este aviso só informa: nada foi executado. Para confirmar um comentário, "
+                                               "responda à mensagem de confirmação dele ou comente no cartão.")
     if f.convidado:
         # Sem este ramo, o "sim" do dono ao aviso do convidado cairia no texto livre e viraria PEDIDO (28.18).
         if f.detalhe != "novo":

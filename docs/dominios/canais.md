@@ -292,7 +292,9 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   - O login do painel recusa nome começado por `trello:` ou `telegram:`: esse é o operador dos canais. A sessão antiga
     com esse nome deixa de valer.
   - Travas do laço: no máximo um pedido em aberto por cartão (o que o dono não respondeu em 24 h) e 6 pedidos por hora no
-    quadro; acima disso o comentário só vai à orquestradora e o dono recebe uma linha por hora dizendo que parou.
+    quadro; acima disso o comentário só vai à orquestradora e o dono recebe uma linha por hora dizendo que parou
+    (`trello.teto_de_comentarios`, rotina: vai na janela, e responder a ela não vira pedido). Só destrava o cartão a
+    resposta que foi à orquestradora (o não, ou o sim que passou na conferência).
   - O sim relê o comentário no Trello: se mudou, foi apagado ou não deu para conferir, nada é repassado e o dono ouve
     uma linha. O repasse leva o texto gravado do comentário. O sim nunca é tratado como senha, mesmo com uma pergunta
     de credencial aberta.
