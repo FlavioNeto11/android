@@ -234,6 +234,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   curto, envio repetido), `frontend/src/features/canais/AnexosTab.test.tsx` (13 casos). `real`: `not_run` (o passeio no navegador,
   depois do deploy).
 
+## 2026-10-04 — 30.62 (ligação): a porta do despacho lê a família do pedido da execução (branch feat/30-62-ligacao)
+
+- `AppState._policy_gate` passa `pedido=contexto_do_pedido(db, run_id)` ao `check`: a execução nascida de um pedido entre
+  personas (28.10 F5b, `runs.pedido_id`) leva a família; sem pedido, pedido solo (sem pai nem filhos) ou família de
+  uma persona só, `None` e vale a política do perfil (revisão da fila, item 2). Só se calcula para ação com efeito. O provedor passa a devolver o
+  `ContextoDoPedido` da porta, com `porta_vozes` como conjunto (dois porta-vozes ficam os dois, não `None`).
+- Prova `simulated`: `backend/tests/test_contexto_do_pedido.py::test_a_porta_do_despacho_le_a_familia_do_pedido_da_execucao`
+  e `backend/tests/test_pedidos_contexto_da_execucao.py`. `not_run`: pedido real.
+
 ## 2026-10-04 — 30.62: a família de um pedido entre personas conta como uma conta (branch feat/30-62-contexto-do-pedido)
 
 - `PolicyEngine.check(..., pedido: ContextoDoPedido | None)`. `ContextoDoPedido(raiz, familia, porta_vozes: frozenset)` fica em
@@ -368,6 +377,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - 422 `reacao_repetida`: dois pedidos de efeito da mesma família com o mesmo objetivo e personas diferentes. Adendo v1.28.
 - Prova: `simulated` (`backend/tests/test_pedidos_colaboracao_para_fora.py`). `not_run`: pedido real. Regras 1 e 2 ficam na porta de
   política (30.62).
+- Provedor `contexto_do_pedido(db, run_id)` (`modules/pedidos/infrastructure/contexto.py`): `raiz`, `familia` e `porta_voz` da
+  execução, para a porta de política (30.62). NÃO ligado ao `state.py`. `simulated`: `tests/test_pedidos_contexto_da_execucao.py`.
 
 ## 2026-10-04 — 28.10 F4: o pai consolida observações e memória dos filhos (branch canais/28-10-f4-consolidacao, sem migração)
 
