@@ -82,8 +82,8 @@ OPERADOR_DO_TELEGRAM = "telegram:dono"
 RESPOSTA_DO_REPASSE = {
     "comando": "Recado guardado para a orquestradora (não executado).",
     "reply": "Recado guardado para a orquestradora (não executado).",
-    "pergunta": "Recebi sua pergunta: a ANA responde por aqui em instantes.",
-    "continuacao": "Recebi, junto com a mensagem anterior: a ANA responde por aqui em instantes.",
+    "pergunta": "Recebi sua pergunta: a resposta vem por aqui, em resposta a esta mensagem.",
+    "continuacao": "Recebi, junto com a mensagem anterior: a resposta vem por aqui, em resposta a esta mensagem.",
     "sem_destino": ("Não sei se isso é um pedido para um aparelho ou uma pergunta para mim. Se é pergunta, já repassei: a "
                     "ANA responde por aqui. Se é pedido, mande de novo dizendo o aparelho (ex.: \"no android-12\")."),
 }

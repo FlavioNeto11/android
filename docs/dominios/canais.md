@@ -189,8 +189,8 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   - Pedido do dono é registrado, respondido no cartão e repassado à orquestradora entre aspas. Quem executa a
     decisão que mexe no mundo real é ela.
 - **Pergunta ao bot e o repasse (28.28, depois das entradas 889 e 891 de 04/10):**
-  - Uma pergunta solta do dono vai à orquestradora, e o dono ouve "Recebi sua pergunta: a ANA responde por aqui em
-    instantes". É pergunta a frase que termina em "?" ou começa por porque, o que, quando, como, quanto, cadê, qual,
+  - Uma pergunta solta do dono vai à orquestradora, e o dono ouve "Recebi sua pergunta: a resposta vem por
+    aqui, em resposta a esta mensagem", sem prometer prazo, porque a resposta depende de alguém ler o repasse. É pergunta a frase que termina em "?" ou começa por porque, o que, quando, como, quanto, cadê, qual,
     onde, quem, tem como, já, está ou existe. Se a frase cita aparelho (`android-NN`), `@` ou "persona", ela é pedido e
     vai para a prévia.
   - Um reply a uma resposta nossa que veio de um repasse (ou de uma falha) continua a mesma conversa. O texto de antes

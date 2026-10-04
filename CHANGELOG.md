@@ -25,7 +25,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   trello" (entradas 889 e 891). As duas viraram texto livre: a prévia pediu destino, a entrada ficou `falhou`, e o dono
   recebeu duas vezes "Diga onde ou por quem", com o nome de uma persona no exemplo.
 - **O que muda:**
-  - a pergunta solta vai à orquestradora, e o dono ouve que a ANA responde em instantes;
+  - a pergunta solta vai à orquestradora, e o dono ouve que a resposta vem por ali, sem promessa de prazo;
   - o reply a uma resposta nossa de repasse continua a conversa;
   - o texto livre recusado pela prévia vai à orquestradora, e o dono ouve as duas saídas;
   - todo texto que a conversa manda passa por `sem_nome_de_persona`.

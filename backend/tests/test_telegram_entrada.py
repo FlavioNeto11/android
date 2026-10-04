@@ -461,7 +461,7 @@ async def test_pergunta_solta_do_dono_vai_a_orquestradora_e_nao_a_previa(c: Cena
     await c.volta(msg(5, "porque tem tanta coisa represada em validação?"))
     assert "previa" not in c.portas.nomes()
     assert (c.linha(5)["estado"], c.linha(5)["destino"]) == ("orquestradora", "orquestradora")
-    assert c.bot.textos()[-1] == "Recebi sua pergunta: a ANA responde por aqui em instantes."
+    assert c.bot.textos()[-1] == "Recebi sua pergunta: a resposta vem por aqui, em resposta a esta mensagem."
 
 
 async def test_reply_a_resposta_do_repasse_continua_a_conversa(c: Cenario) -> None:
