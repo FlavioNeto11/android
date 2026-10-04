@@ -275,7 +275,7 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   `--chat` só aceita um id já vinculado.
 - **No produto:** a entrada do 28.15 troca a caixa provisória, com o "vai" da orquestradora.
 
-**C-21 · Anexos nos canais.**
+**C-22 · Anexos nos canais.**
 - **Origem:** dono, Telegram 04/10 15:16Z ("o telegram possa enviar e receber imagens… qualquer outro tipo de anexo… assim
   como você pode retornar anexos"); as duas exceções abaixo, 04/10 15:17Z, por resposta às perguntas da orquestradora.
 - **Regra:**

@@ -5412,7 +5412,7 @@ Prova:
 
 ## Adendo v1.21 (04/10/2026; número da orquestradora; item 28.24, F1) — anexos nos canais
 
-O Telegram passa a receber e a devolver arquivos (regra do dono em `docs/dominios/canais.md`, C-21). Migração `101_canal_anexos`.
+O Telegram passa a receber e a devolver arquivos (regra do dono em `docs/dominios/canais.md`, C-22). Migração `101_canal_anexos`.
 Duas rotas só de leitura, atrás do mesmo login das outras `/api/canais` (`GET /api/canais/estado`):
 - `GET /api/canais/anexos/{id}`: os metadados. Chaves fixas: `id`, `canal`, `entrada_id` (a `canal_entradas` da mensagem; nulo
   na saída), `direcao` (`entrada`|`saida`), `sha256`, `mime` (o detectado pelo conteúdo), `bytes`, `estado`

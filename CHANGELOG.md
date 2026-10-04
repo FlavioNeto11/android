@@ -23,7 +23,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - O dono manda foto, PDF ou texto pelo Telegram (a legenda vale como mensagem): o tipo é conferido pelo conteúdo, o teto de
   bytes vale antes e durante o download, e o arquivo vai a `data/anexos/<sha256>` com a retenção do 28.16. O convidado e os tipos
-  fora da lista são recusados com o motivo. `GET /api/canais/anexos/{id}` e `/conteudo` (só leitura), adendo v1.21, regra C-21.
+  fora da lista são recusados com o motivo. `GET /api/canais/anexos/{id}` e `/conteudo` (só leitura), adendo v1.21, regra C-22.
 - A saída (`enviar_anexo`, `enviar_conteudo`) só manda o que está no armazém ou o que o produto gerou; caminho fora de
   `data/anexos` é recusado. O token do bot nunca aparece em log, erro, evento ou banco (o endereço do download o leva).
 - Prova `simulated`: `test_canais_anexos.py` (68; nove mutações conferidas). Real: `not_run`. Fica para a F2 a leitura da imagem
