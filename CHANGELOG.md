@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 30.49: execução só de plano não segura o P4 (branch fix/p4-ambiente-so-execucao)
+
+- O despachante da validação (P4) contava toda execução em `planned` como em curso. Na execução só de plano
+  (`mode='plan'`), `planned` é o estado final: três delas, da Jev, deixaram o P4 em `ambiente_ocupado` por mais de
+  30 min em 04/10. Agora o `planned` só conta no modo `execute`.
+- Prova `simulated`: `test_learning_validacao_sql.py::test_execucao_so_de_plano_parada_em_planned_nao_segura_o_p4`
+  (mutação conferida). Sem DDL.
+
 ## 2026-10-04 — 28.16 + 28.18: a faxina leva os eventos dos contatos do Telegram (branch canais/28-18-faxina-090, sem migração)
 
 - `faxina_sql.py`: os `canal_contato_eventos` (090) vencem com o prazo do canal, como o resto do que a conversa guarda.

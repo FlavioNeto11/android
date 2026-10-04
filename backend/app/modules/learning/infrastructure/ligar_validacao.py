@@ -32,7 +32,9 @@ from app.util import to_iso
 log = logging.getLogger(__name__)
 
 #: As execuções que ainda não assentaram: com qualquer uma delas, o despachante espera (restart, suíte e deploy
-#: derrubam ou seguram execuções; o parque é do uso antes de ser da validação).
+#: derrubam ou seguram execuções; o parque é do uso antes de ser da validação). O `planned` só conta no modo
+#: `execute` (30.49): na execução só de plano (`mode='plan'`) ele é o estado FINAL, e três delas paradas em `planned`
+#: seguraram o P4 por mais de 30 min em 04/10 (`ambiente_ocupado` em todas as voltas).
 EM_CURSO = ("planning", "planned", "running", "paused", "cancelling")
 
 
@@ -64,7 +66,8 @@ class DespachoDoParque:
 
     def ambiente(self) -> Ambiente:
         marcas = ",".join("?" for _ in EM_CURSO)
-        r = self._db.one(f"SELECT COUNT(*) AS n FROM runs WHERE status IN ({marcas})", EM_CURSO)
+        r = self._db.one(f"SELECT COUNT(*) AS n FROM runs WHERE status IN ({marcas})"
+                         " AND NOT (status='planned' AND mode='plan')", EM_CURSO)
         return Ambiente(saudavel=self._saudavel(), execucoes_em_curso=linhas.inteiro(r, "n") if r is not None else 0)
 
     def aparelhos(self, pacotes: Sequence[str]) -> Sequence[AparelhoCandidato]:
