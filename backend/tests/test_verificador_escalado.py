@@ -11,11 +11,21 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
+import pytest
+
 from app.automation.hierarchy import UiTree
 from app.models import DeliveryLevel
 from app.planning.provider import Usage, Verdict
 
 from .conftest import Harness
+
+
+@pytest.fixture(autouse=True)
+def _pular_o_tempo(request: pytest.FixtureRequest) -> None:
+    """T2: o tempo das ferramentas do aparelho falso é PULADO (relógio virtual), não esperado. Só nos testes com o
+    harness; o que eles provam (ordem dos fatos, contagens, desfechos) é o mesmo."""
+    if "harness" in request.fixturenames:
+        request.getfixturevalue("harness").pular_o_tempo()
 
 
 async def test_recusa_com_nivel_suficiente_e_rejulgada_pelo_modelo_de_escalonamento(harness: Harness) -> None:

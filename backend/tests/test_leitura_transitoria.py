@@ -33,6 +33,14 @@ from .test_observacao_remota import _parar, _remoto
 from .test_ui_ocupada import MSG_UI_OCUPADA, _espiar_recriacao
 
 
+@pytest.fixture(autouse=True)
+def _pular_o_tempo(request: pytest.FixtureRequest) -> None:
+    """T2: o tempo das ferramentas do aparelho falso é PULADO (relógio virtual), não esperado. Só nos testes com o
+    harness; o que eles provam (ordem dos fatos, contagens, desfechos) é o mesmo."""
+    if "harness" in request.fixturenames:
+        request.getfixturevalue("harness").pular_o_tempo()
+
+
 # ---------------------------------------------------------------- a origem do erro dá o tipo
 class _Adb:
     """`Adb` falso: toda leitura levanta o erro dado — o que o convidado saturado devolve."""

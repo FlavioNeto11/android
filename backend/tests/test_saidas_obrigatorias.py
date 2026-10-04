@@ -245,6 +245,7 @@ async def test_coleta_com_vazio_comprovado_pela_tela_fecha_marcada(harness: Harn
 
 async def test_coleta_com_lista_a_vista_e_zero_itens_e_falha(harness: Harness, catalogo_qa: None) -> None:
     harness.encurtar_verificacao()                   # o vazio não comprovado espera o orçamento da verificação
+    harness.pular_o_tempo()                          # T2: as rolagens da coleta pulam o tempo, não esperam
     inner, vistos = harness.ai.inner, []
     _plano(inner, _etapa("QA_COLETAR", kind="items_collected"))
     _ator(inner, coleta="id=nao_existe", vistos=vistos)
@@ -259,6 +260,7 @@ async def test_coleta_com_lista_a_vista_e_zero_itens_e_falha(harness: Harness, c
 
 async def test_coleta_vazia_com_erro_no_julgamento_nunca_e_sucesso(harness: Harness, catalogo_qa: None) -> None:
     harness.encurtar_verificacao()                   # o vazio não comprovado espera o orçamento da verificação
+    harness.pular_o_tempo()                          # T2: as rolagens da coleta pulam o tempo, não esperam
     inner, vistos = harness.ai.inner, []
     _plano(inner, _etapa("QA_COLETAR", kind="items_collected"))
     _ator(inner, coleta="id=nao_existe", vistos=vistos)
