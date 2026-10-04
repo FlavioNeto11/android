@@ -450,8 +450,9 @@ acoes:
       pedido.
 
   # ------------------------------------------------------------------------------- publicar no PRÓPRIO feed (29.30)
-  # CONTRATO NÃO MEDIDO (prova real `not_run`): o editor de publicação do Instagram 447 ainda não foi explorado num
-  # aparelho (a exploração e a publicação de UMA imagem de teste esperam a autorização do dono). Os seletores abaixo são
+  # CONTRATO MEDIDO EM PARTE (prova real da publicação `not_run`): o editor do Instagram 447 foi explorado só até a
+  # galeria, sem publicar (04/10 16:05Z, android-13, com o sim do dono); a legenda e o Share se medem na publicação de
+  # UMA imagem de teste, que o dono também autorizou. Os seletores abaixo são
   # os mais conservadores possíveis (exatos, e a prova local só afirma, nunca reprova) e SERÃO conferidos nessa
   # exploração; até lá, o que decide é o verificador por modelo e a aprovação humana.
   #
@@ -463,8 +464,9 @@ acoes:
     goal: Ler na tela do PRÓPRIO perfil o número de publicações, sem tocar em nada que mude a conta. Entregue-o em
       `posts_antes` com read_value(value_kind=number).
     saidas: [posts_antes]
-    # O contador do cabeçalho tem o id irmão dos de seguidores e seguindo (medidos); este NÃO foi medido.
-    saidas_relacao: ['posts_antes=id=row_profile_header_textview_post_count', posts_antes~publicações, posts_antes~posts]
+    # Medido em 04/10 16:05Z no android-13 (Instagram 447, perfil próprio): o número de publicações é o texto de
+    # `profile_header_familiar_post_count_value` (o rótulo "posts" é outro elemento).
+    saidas_relacao: ['posts_antes=id=profile_header_familiar_post_count_value', posts_antes~publicações, posts_antes~posts]
     post_kind: model_judged
     post_value: número de publicações do próprio perfil lido
     post_description: O número de publicações do cabeçalho do perfil foi lido e entregue em posts_antes.
@@ -498,10 +500,13 @@ acoes:
     post_description: O número de publicações do próprio perfil é maior que o lido antes de publicar.
     # A contagem do cabeçalho do perfil (ver READ_POSTS_COUNT). Prova positiva dispensa o verificador; sem ela, o
     # modelo julga como antes.
-    local_proof: count_gt:posts_antes:id=row_profile_header_textview_post_count
+    local_proof: count_gt:posts_antes:id=profile_header_familiar_post_count_value
     side_effect: true
     risk: high
-    # NÃO MEDIDO: o botão final da tela de legenda. Exato (`==`) para não casar "Share to Facebook" e afins.
+    # NÃO MEDIDO: o botão final da tela de legenda. Exato (`==`) para não casar "Share to Facebook" e afins. Medido
+    # até a galeria em 04/10 16:05Z (android-13): `profile_header_create_button` (desc "Create New") → "Create new post"
+    # → tela "New post" com `next_button_textview` (Next) e `action_bar_cancel`; a galeria estava vazia, então a
+    # tela da legenda e o Share ficam para a primeira publicação de teste.
     commit_selector: text==Share
     commit_guard: ['{content}']
     limit_bucket: posts
