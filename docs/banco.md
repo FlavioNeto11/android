@@ -339,9 +339,20 @@ pela regra de saúde. Desde então o portão é este:
   reparo em 01/03/06/13 do início da SQLite até o PG fechar (TTL renovado se preciso), e nenhuma frente roda
   objetivo de conta real nessa janela. Na suíte 23 a SQLite com `-n 8`, mesmo em Idle, deixou o convidado do 06 com
   load 52 e irq 0,50 em 2 vCPU (04/10, 09:52Z a 10:01Z).
-- **O farm-pg sobe só na vez da suíte e para logo depois.** Ao subir, ele faz cerca de 2 min de recuperação com
-  `fsync`. Espere a primeira conexão aceita antes do pytest: a primeira rodada da suíte 18 deu 1913 erros "the
-  database system is starting up".
+- **O PG da suíte roda no `farm-pg-rapido`** (adotado pela orquestradora em 04/10/2026, suíte 25). É o mesmo
+  `postgres:17-alpine`, descartável: dados em tmpfs de 4 GB (começa vazio a cada `docker start`, nada sobrevive
+  ao `stop`), `fsync=off`, `synchronous_commit=off`, `full_page_writes=off`, `max_connections=200`, porta
+  `127.0.0.1:55434`. Sobe só depois da SQLite, com pelo menos 7 GB livres no host (os 4 GB do tmpfs e a folga dos
+  emuladores), e para no fim. O `farm-pg` (volume persistente, porta 55433, `fsync` ligado) fica para a suíte
+  inteira em PG e para reproduzir o que só falha com durabilidade. Espere a primeira conexão aceita antes do
+  pytest: a primeira rodada da suíte 18 deu 1913 erros "the database system is starting up".
+
+  | Suíte | Contêiner | Aceitar conexão | PG dirigido |
+  |---|---|---|---|
+  | 25 | `farm-pg-rapido` | 3,1 s | 7 min 49 s, 2234 testes em 119 arquivos (4,8 testes/s) |
+  | 24 | `farm-pg` | ~6 min (recuperação com `fsync`) | 13 min 29 s, 3485 testes em 170 arquivos (4,3 testes/s) |
+
+  O ganho é sobretudo a subida (−6 min por suíte); por teste, ~10 % mais rápido.
 - **A suíte inteira em PG roda só em janela própria.** Nenhum aparelho com conta pode estar subindo, e ela nunca
   fica colada num deploy (nem antes, nem depois). O CI agendado (`ci.yml`, container descartável) é a rede de
   segurança dela.
