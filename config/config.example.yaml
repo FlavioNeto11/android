@@ -529,6 +529,10 @@ avisos:                           # aviso fora do painel (item 28.11): espelho d
   #     max_nome: 60              # o nome informado é cortado aqui (uma linha, sem e-mail, @conta nem IP)
   #     avisos_por_hora: 6        # mensagens de UM convidado autorizado que viram aviso ao dono por hora
   #     novos_por_hora: 20        # chats novos atendidos por hora; o excesso fica sem resposta
+  #   anexos:                     # (28.24) foto, PDF e texto que o DONO manda; guardados em data/anexos pelo sha256 (nunca pelo nome dele)
+  #     enabled: true             # (true) false = recusa todo anexo, com o motivo dito ao dono
+  #     max_bytes: 10485760       # (10 MB) acima disso é recusado sem baixar tudo; o Bot API baixa até 20 MB
+  #     tipos: [image/jpeg, image/png, image/webp, application/pdf, text/plain]   # o mime é conferido pelo conteúdo
 
 trello:                           # Trello do dono (item 32.2, ADR-072): espelho do plano e canal de comandos. Ligar exige TRELLO_API_KEY e TRELLO_TOKEN no .env
   enabled: false                  # (false) desligado = nenhuma chamada ao Trello. Os segredos NUNCA moram aqui (docs/operacao.md)

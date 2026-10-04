@@ -50,6 +50,8 @@ AJUDA_DO_CONVIDADO = (f"Por aqui você fala com a {NOME_DA_IA}, a IA da Central.
 RECEBIDO = "Recebido; passei ao dono."
 SO_DO_DONO = "Esse comando é só do dono. /ajuda mostra o que vale aqui."
 SEGREDO = "Isso parece senha ou código: não guardei e não repassei. Não mande senha por aqui."
+#: Anexo de convidado (28.24): nunca é baixado nem guardado; a resposta sai uma vez por mensagem.
+SEM_ANEXO = "Não recebo anexos de convidado."
 
 Envio = Callable[[str, str], Awaitable[str | None]]          # (chat, texto) → message_id
 Apagar = Callable[[str, str], Awaitable[bool]]               # (chat, message_id) → apagou?
@@ -93,7 +95,8 @@ class ConvidadosDoTelegram:
 
     # ------------------------------------------------------------------ o que chegou
     async def tratar(self, *, tipo: str, chat: str, privado: bool, texto: str, perfil: dict[str, object] | None,
-                     update_id: str, ref_mensagem: str | None, enviar: Envio, apagar: Apagar) -> None:
+                     update_id: str, ref_mensagem: str | None, enviar: Envio, apagar: Apagar,
+                     com_anexo: bool = False) -> None:
         if tipo == "membro":
             await self._membro(chat, privado, texto, update_id)
             return
@@ -111,6 +114,10 @@ class ConvidadosDoTelegram:
                 return
         else:
             self.contatos.tocar(chat, perfil)
+        if com_anexo and privado and contato.estado not in ("aguardando_dono", "recusado"):
+            # 28.24: o convidado nunca tem anexo baixado nem guardado; avisa uma vez por mensagem (a linha é nova só na
+            # 1ª leitura da update). Quem espera a decisão do dono ou foi recusado segue sem resposta (C-10, C-11).
+            await self._enviar(enviar, chat, SEM_ANEXO)
         if self._recusa(texto):
             self.contatos.evento(chat, "retido", None, len(texto))
             if contato.estado != "recusado":

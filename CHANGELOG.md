@@ -52,6 +52,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Os 35 eventos antigos da f85a37 ficam (apagar dado é com o dono, pela orquestradora).
 - Prova `simulated`: `test_usuario_da_conta.py` (4, puros, mutação conferida: 3 falham sem o conserto) e os testes de
   credencial e de variáveis da persona (51). Sem DDL. Real: `not_run`.
+## 2026-10-04 — 28.24 F1: anexos nos canais, o Telegram recebe e devolve imagens e arquivos (branch canais/28-24-anexos, migração 101)
+
+- O dono manda foto, PDF ou texto pelo Telegram (a legenda vale como mensagem): o tipo é conferido pelo conteúdo, o teto de
+  bytes vale antes e durante o download, e o arquivo vai a `data/anexos/<sha256>` com a retenção do 28.16. O convidado e os tipos
+  fora da lista são recusados com o motivo. `GET /api/canais/anexos/{id}` e `/conteudo` (só leitura), adendo v1.21, regra C-22.
+- A saída (`enviar_anexo`, `enviar_conteudo`) só manda o que está no armazém ou o que o produto gerou; caminho fora de
+  `data/anexos` é recusado. O token do bot nunca aparece em log, erro, evento ou banco (o endereço do download o leva).
+- Prova `simulated`: `test_canais_anexos.py` (73), `test_canais_anexos_trello.py` (9) e `test_canais_captura.py` (28);
+  mutações conferidas. Real: `not_run`.
+- F2: a falha no download nunca fica calada (anexo `pendente` retomado uma vez após queda; o dono é avisado); a imagem do dono vai
+  ao cartão do Trello por `POST /api/canais/anexos/{id}/trello` (exceção (b)); `/captura android-12` devolve a tela do aparelho só
+  ao chat do dono, pela prévia do painel (exceção (a)). A 101 (ainda não aplicada) ganhou o estado `pendente`. Fica para depois a
+  leitura da imagem pela IA e a tela do painel.
 
 ## 2026-10-04 — 30.52: o dossiê do curador pela marca do conteúdo e a recusa do pedido pela pessoa (branch fix/30-52-dossie-pela-marca)
 

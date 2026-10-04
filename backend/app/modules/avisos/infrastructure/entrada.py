@@ -21,6 +21,12 @@ O laço do Telegram:
    da sessão. `quem()` e `autor_do_gesto()` o leem, então a auditoria e o sinal contam como gesto de PESSOA;
 5. conta na thread o desfecho das execuções que a conversa criou.
 
+Anexos (item 28.24, F1): foto, PDF e texto que o DONO manda são baixados pelo canal (`SaidaComAnexos.baixar_anexo`, com
+teto de bytes), conferidos pelo conteúdo e guardados no `ArmazemDeAnexos` pelo sha256; a legenda vale como texto. O que
+não serve é recusado com o motivo dito ao dono. O convidado nunca tem anexo baixado. A saída (`enviar_anexo`,
+`enviar_conteudo`) só manda o que está no armazém, por id ou sha256, ou o que o produto gerou: nunca um caminho livre.
+Nenhum conteúdo de anexo é lido por IA aqui (a leitura é da F2).
+
 Toda ação passa por `PortasDaCentral`, que chama os MESMOS serviços das rotas do painel: a prévia de alvos é
 obrigatória (botão Executar, decisão (c)), e approval_required, o pré-voo, a rede e os tetos valem iguais. Nada aqui
 chama IA.
@@ -37,6 +43,7 @@ import re
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Protocol
 
 from app.config import Config
@@ -52,6 +59,14 @@ from app.modules.avisos.application.entrada import (
     texto_para_o_extrator,
 )
 from app.modules.avisos.application.entrega import FalhaDeEnvio
+from app.modules.avisos.domain.anexos import (
+    ROTULO,
+    AnexoGrandeDemais,
+    AnexoRecebido,
+    normalizar_mime,
+    tamanho_legivel,
+)
+from app.modules.avisos.infrastructure.anexos import AnexoRecusado, ArmazemDeAnexos
 from app.modules.avisos.infrastructure.convidados import ConvidadosDoTelegram
 from app.modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
 from app.security.sessions import OPERADOR
@@ -83,6 +98,28 @@ RESPOSTA_PRESA = ("A criação deste pedido foi interrompida antes de terminar. 
 RESPOSTA_ANTIGAS = ("{quantas} há mais de {min} min (a Central estava fora do ar) e não {foi} tratada{s}: nada foi "
                    "aprovado, vetado nem executado por {ela}. Mande de novo o que ainda valer.")
 RESPOSTA_LONGA = "Mensagem longa demais para a conversa (limite de {n} caracteres): não guardei. Use o painel."
+#: Anexos (28.24). O motivo da recusa vai ao dono em português simples e nunca ecoa o conteúdo nem o nome do arquivo.
+#: Quanto um anexo `pendente` espera antes de a volta seguinte retomá-lo (o download normal leva segundos): passou disso,
+#: a Central caiu entre gravar a mensagem e baixar o arquivo.
+ANEXO_PRESO_S = 60.0
+RESPOSTA_ANEXO_OK = "Recebi {rotulo} ({tamanho}). Guardei na Central (anexo {id})."
+RESPOSTA_ANEXO_RECUSADO = "Não guardei o anexo: {motivo}"
+MOTIVO_TIPO_FORA = "esse tipo de arquivo não é aceito. Aceito imagem (JPEG, PNG ou WEBP), PDF e texto."
+_MOTIVO_GRANDE = "o arquivo é grande demais (o limite é {max})."
+MOTIVO_ANEXOS_DESLIGADOS = "os anexos estão desligados na Central."
+MOTIVO_SEM_ANEXO_NO_CANAL = "este canal não baixa anexos."
+MOTIVO_NAO_BAIXOU = "não consegui baixar o arquivo do canal. Mande de novo."
+#: O mime genérico não é declaração de tipo: vale o que o conteúdo mostrar.
+_MIME_GENERICO = "application/octet-stream"
+#: Os campos da mensagem do Telegram que são anexo mas a Central não guarda, e o motivo dito ao dono.
+_ANEXOS_RECUSADOS = {
+    "voice": ("voz", "mensagem de voz não é aceita."),
+    "audio": ("audio", "áudio não é aceito."),
+    "video": ("video", "vídeo não é aceito."),
+    "video_note": ("video", "vídeo não é aceito."),
+    "animation": ("animacao", "animação (GIF) não é aceita."),
+    "sticker": ("figurinha", "figurinha não é aceita."),
+}
 #: Só dígitos (com espaço ou hífen entre eles), de 4 a 8: o formato de um código de verificação.
 _CODIGO = re.compile(r"[\s-]*(?:\d[\s-]?){4,8}[\s-]*")
 #: Com uma pergunta de senha aberta, o texto livre (ou o recado) com até isto de palavras é tratado como a senha.
@@ -134,6 +171,15 @@ class Pendencia:
     resumo: str
 
 
+@dataclass(frozen=True)
+class Captura:
+    """A tela de um aparelho (28.24, exceção (a)): a imagem, ou o motivo, em português simples, de não haver."""
+
+    conteudo: bytes | None = None
+    mime: str = "image/jpeg"
+    motivo: str | None = None
+
+
 class PortasDaCentral(Protocol):
     """O que a conversa pode fazer, pelos MESMOS serviços das rotas do painel."""
 
@@ -146,6 +192,9 @@ class PortasDaCentral(Protocol):
     def previa(self, texto: str, instance_ids: list[str] | None = None) -> Previa: ...
     def criar(self, texto: str, alvos: list[dict[str, object]], chave: str) -> tuple[str, str]: ...
     def online(self) -> list[str]: ...
+    async def captura(self, instance_id: str) -> Captura:
+        """A tela atual do aparelho pela MESMA prévia do painel (tela sensível não sai). Não executa nada nele."""
+        ...
     def desfecho(self, run_id: str) -> str | None: ...
     def pergunta_sensivel(self, ref: str | None) -> str | None:
         """O tipo da credencial que a pergunta aberta pede (`senha`, `2fa`, `codigo`, `token`, `credencial`), ou None.
@@ -176,6 +225,8 @@ class Recebida:
     chat: str | None = None
     privado: bool = False
     perfil: Mapping[str, object] | None = field(default=None, compare=False)
+    #: Os anexos da mensagem (28.24), já traduzidos e ainda NÃO baixados. A legenda vem em `texto`.
+    anexos: tuple[AnexoRecebido, ...] = ()
 
 
 class SaidaDaConversa(Protocol):
@@ -189,11 +240,29 @@ class SaidaDaConversa(Protocol):
     async def apagar(self, ref_mensagem: str) -> bool: ...
 
 
+class SaidaComAnexos(SaidaDaConversa, Protocol):
+    """A saída que também baixa e envia arquivo (28.24). O canal que não a cumpre (o Trello, hoje) recusa o anexo com o
+    motivo, sem erro. `baixar_anexo` levanta `AnexoGrandeDemais` acima do teto e `FalhaDeEnvio` na falha do canal, sempre
+    sem endereço nem token na mensagem."""
+
+    async def baixar_anexo(self, ref: str, max_bytes: int) -> bytes: ...
+    async def enviar_anexo(self, conteudo: bytes, mime: str, legenda: str = "", *,
+                           responde_a: str | None = None) -> str | None: ...
+
+
 class SaidaDoTelegram:
     """`SaidaDaConversa` sobre o `CanalTelegram`: só converte as referências (texto na parte comum, inteiro na Bot API)."""
 
     def __init__(self, canal: CanalTelegram):
         self.canal = canal
+
+    async def baixar_anexo(self, ref: str, max_bytes: int) -> bytes:
+        return await self.canal.baixar_anexo(ref, max_bytes)
+
+    async def enviar_anexo(self, conteudo: bytes, mime: str, legenda: str = "", *,
+                           responde_a: str | None = None) -> str | None:
+        mid = await self.canal.enviar_anexo(conteudo, mime, legenda, responde_a=_num(responde_a))
+        return str(mid) if mid is not None else None
 
     async def responder(self, texto: str, *, responde_a: str | None = None,
                         botoes: list[tuple[str, str]] | None = None) -> str | None:
@@ -272,7 +341,9 @@ def _ler_update(u: Mapping[str, object], chat_do_dono: str) -> Recebida | None:
     # Dono = conversa PRIVADA com o chat configurado E o autor é esse mesmo id. Num grupo ou canal o chat.id configurado
     # pode até coincidir, mas qualquer membro escreve nele: só o `from.id` identifica a pessoa.
     privado = chat is not None and chat.get("type") == "private"
-    texto = (cb.get("data") if cb is not None else msg.get("text") if msg is not None else None) or ""
+    # A legenda (`caption`) de foto e arquivo vale como o texto da mensagem (28.24).
+    texto = (cb.get("data") if cb is not None
+             else (msg.get("text") or msg.get("caption")) if msg is not None else None) or ""
     responde = _mapa(msg.get("reply_to_message")) if msg is not None and cb is None else None
     return Recebida(id_externo=str(update_id), ordem=update_id, tipo=tipo,
                     do_dono=bool(chat_do_dono) and privado and chat_id == chat_do_dono and autor == chat_do_dono,
@@ -285,7 +356,31 @@ def _ler_update(u: Mapping[str, object], chat_do_dono: str) -> Recebida | None:
                     chat=chat_id or None,
                     # Privado de verdade: o chat é a própria pessoa (no Telegram, chat.id == from.id na conversa a dois).
                     privado=privado and bool(autor) and chat_id == autor,
-                    perfil=dict(de) if de else None)
+                    perfil=dict(de) if de else None,
+                    anexos=_anexos_da_mensagem(msg) if msg is not None and cb is None else ())
+
+
+def _anexos_da_mensagem(msg: Mapping[str, object]) -> tuple[AnexoRecebido, ...]:
+    """Os anexos de uma mensagem do Telegram. Da foto fica o MAIOR tamanho (a lista vem em várias resoluções). O nome do
+    arquivo (`file_name`) nunca é lido. Voz, áudio, vídeo, animação e figurinha viram anexo já recusado, com o motivo."""
+    achados: list[AnexoRecebido] = []
+    fotos = msg.get("photo")
+    if isinstance(fotos, list):
+        candidatas = [f for f in fotos if isinstance(f, Mapping) and isinstance(f.get("file_id"), str)]
+        if candidatas:
+            melhor = max(candidatas, key=lambda f: (_int(f.get("file_size")) or 0,
+                                                   (_int(f.get("width")) or 0) * (_int(f.get("height")) or 0)))
+            achados.append(AnexoRecebido("imagem", "image/jpeg", _int(melhor.get("file_size")), str(melhor["file_id"])))
+    doc = _mapa(msg.get("document"))
+    # Uma animação (GIF) chega com o campo `document` também: não conta duas vezes.
+    if doc is not None and isinstance(doc.get("file_id"), str) and msg.get("animation") is None:
+        mime = doc.get("mime_type")
+        achados.append(AnexoRecebido("documento", mime if isinstance(mime, str) else None, _int(doc.get("file_size")),
+                                     str(doc["file_id"])))
+    for campo, (tipo, motivo) in _ANEXOS_RECUSADOS.items():
+        if msg.get(campo) is not None:
+            achados.append(AnexoRecebido(tipo, recusa=motivo))
+    return tuple(achados)
 
 
 class ConversaDoCanal:
@@ -295,10 +390,12 @@ class ConversaDoCanal:
 
     def __init__(self, cfg: Config, repo: EntradasDoCanal, portas: PortasDaCentral, *, recusa: Callable[[str], bool],
                  redigir: Callable[[str], str], operador: str = OPERADOR_DO_TELEGRAM,
-                 relogio: Callable[[], float] | None = None):
+                 relogio: Callable[[], float] | None = None, anexos: ArmazemDeAnexos | None = None):
         self.cfg = cfg
         self.repo = repo
         self.portas = portas
+        #: Onde os anexos do dono são guardados (28.24). Sem ele, todo anexo é recusado com o motivo.
+        self.anexos = anexos
         self._recusa = recusa
         self._redigir = redigir
         #: Quem age, como VALOR (`telegram:dono` hoje; `trello:<id>` no 32.2): vai ao ContextVar da sessão.
@@ -350,6 +447,7 @@ class ConversaDoCanal:
         Trello): cada uma ganha a resposta uma vez só (depois dela há uma `canal_enviadas` com o seu `entrada_id`)."""
         await self._reparar_presas(saida)
         await self._responder_recusas_sem_resposta(saida)
+        await self._retomar_anexos(saida)
         for linha in self.repo.a_tratar():
             await self._tratar(saida, linha)
         await self._contar_desfechos(saida)
@@ -423,7 +521,142 @@ class ConversaDoCanal:
             if self._linha(r, None, "ignorada", "antiga: escrita com a Central fora do ar"):
                 self._antigas += 1
             return
-        self._linha(r, r.texto)
+        with self.repo.db.tx():
+            # A mensagem e os anexos pendentes entram JUNTOS: uma queda depois disto deixa o `pendente` para a volta
+            # seguinte retomar, e antes disto a update não foi confirmada e o Telegram a entrega de novo.
+            nova = self._linha(r, r.texto)
+            triados = self._triar_anexos(saida, r) if nova and r.anexos and r.tipo == "mensagem" else None
+        if triados is not None:
+            # Só a linha NOVA: a releitura da mesma update não baixa nem responde de novo. A recusa de texto acima já
+            # saiu antes, então uma legenda com cara de credencial nunca chega a baixar o arquivo.
+            ident, respostas, pendentes = triados
+            for linha in pendentes:
+                respostas.append(await self._baixar(saida, linha))
+            if saida is not None:
+                await self._enviar(saida, "\n".join(respostas), origem="resposta", responde_a=r.ref_mensagem,
+                                   entrada_id=ident)
+
+    # ------------------------------------------------------------------ anexos (28.24)
+    def _anexo_recusado(self, a: AnexoRecebido, motivo: str, ident: int | None) -> str:
+        if self.anexos is not None:
+            self.anexos.recusar(motivo, entrada_id=ident, tamanho=a.tamanho or 0)
+        return RESPOSTA_ANEXO_RECUSADO.format(motivo=motivo)
+
+    def _triar_anexos(self, saida: SaidaDaConversa | None,
+                      r: Recebida) -> tuple[int | None, list[str], list[dict[str, object]]]:
+        """Decide, SEM rede, o que cada anexo do DONO pode ser: recusado já (desligado, tipo fora da lista, grande demais
+        pelo declarado, canal que não baixa) ou `pendente`, a baixar. Roda na transação da mensagem. Devolve o id da
+        mensagem, as respostas das recusas e as linhas `pendente`."""
+        ident = self.repo.id_de(r.id_externo)
+        cfg = self.cfg.file.avisos.entrada.anexos
+        respostas: list[str] = []
+        pendentes: list[dict[str, object]] = []
+        for a in r.anexos:
+            declarado = normalizar_mime(a.mime)
+            if declarado == _MIME_GENERICO:
+                declarado = None
+            motivo: str | None = None
+            if not cfg.enabled:
+                motivo = MOTIVO_ANEXOS_DESLIGADOS
+            elif a.recusa:
+                motivo = a.recusa
+            elif declarado is not None and declarado not in cfg.tipos:
+                motivo = MOTIVO_TIPO_FORA
+            elif a.tamanho is not None and a.tamanho > cfg.max_bytes:
+                motivo = _MOTIVO_GRANDE.format(max=tamanho_legivel(cfg.max_bytes))
+            elif self.anexos is None or a.ref is None or not hasattr(saida, "baixar_anexo"):
+                motivo = MOTIVO_SEM_ANEXO_NO_CANAL
+            if motivo is not None:
+                respostas.append(self._anexo_recusado(a, motivo, ident))
+            else:
+                assert self.anexos is not None and ident is not None and a.ref is not None
+                pendentes.append(self.anexos.pendente(a.ref, entrada_id=ident, mime_declarado=declarado,
+                                                      tamanho=a.tamanho or 0))
+        return ident, respostas, pendentes
+
+    def _recusa_pendente(self, linha: Mapping[str, object], motivo: str) -> str:
+        assert self.anexos is not None
+        self.anexos.recusar(motivo, linha_id=self._id(linha), tamanho=int(str(linha.get("bytes") or 0)))
+        return RESPOSTA_ANEXO_RECUSADO.format(motivo=motivo)
+
+    async def _baixar(self, saida: SaidaDaConversa | None, linha: Mapping[str, object]) -> str:
+        """Baixa e guarda o anexo `pendente`. Sempre RESOLVE a linha (`guardado` ou `recusado`, com o motivo) e devolve o
+        que dizer ao dono: a falha no download nunca fica calada nem deixa a linha pendente."""
+        assert self.anexos is not None
+        cfg = self.cfg.file.avisos.entrada.anexos
+        baixar = getattr(saida, "baixar_anexo", None)
+        ref = str(linha.get("ref_externa") or "")
+        if baixar is None or not ref:
+            return self._recusa_pendente(linha, MOTIVO_SEM_ANEXO_NO_CANAL)
+        try:
+            conteudo = await baixar(ref, cfg.max_bytes)
+        except AnexoGrandeDemais:
+            return self._recusa_pendente(linha, _MOTIVO_GRANDE.format(max=tamanho_legivel(cfg.max_bytes)))
+        except FalhaDeEnvio as falha:
+            log.warning("telegram: anexo não baixado (%s)", falha.motivo)       # o motivo do canal já vem sem URL nem token
+            return self._recusa_pendente(linha, MOTIVO_NAO_BAIXOU)
+        try:
+            guardada = self.anexos.guardar(conteudo, tipos=cfg.tipos, max_bytes=cfg.max_bytes,
+                                           mime_declarado=_texto(linha.get("mime_declarado")), linha_id=self._id(linha))
+        except AnexoRecusado as recusa:
+            return self._recusa_pendente(linha, recusa.motivo)
+        return RESPOSTA_ANEXO_OK.format(rotulo=ROTULO.get(str(guardada["mime"]), "o arquivo"),
+                                        tamanho=tamanho_legivel(int(str(guardada["bytes"]))), id=guardada["id"])
+
+    async def _retomar_anexos(self, saida: SaidaDaConversa) -> None:
+        """A Central caiu entre gravar a mensagem do dono e baixar o anexo: a linha ficou `pendente`. Tenta baixar UMA vez
+        (a referência do canal costuma valer por horas) e conta ao dono o resultado, como na hora; se o download falha, a
+        linha vira `recusado` (não fica tentando) e a resposta já pede o reenvio."""
+        if self.anexos is None:
+            return
+        for linha in self.anexos.a_retomar(ANEXO_PRESO_S):
+            texto = await self._baixar(saida, linha)
+            entrada = self.repo.linha(int(str(linha["entrada_id"]))) if linha.get("entrada_id") is not None else None
+            await self._enviar(saida, texto, origem="resposta", entrada_id=int(str(entrada["id"])) if entrada else None,
+                               responde_a=_texto(entrada.get("ref_mensagem")) if entrada else None)
+
+    # ------------------------------------------------------------------ anexos na saída (28.24)
+    async def enviar_anexo(self, saida: SaidaDaConversa, referencia: int | str | Path, legenda: str = "", *,
+                           responde_a: str | None = None, entrada_id: int | None = None) -> str | None:
+        """Manda ao dono um arquivo que JÁ está no armazém: `referencia` é o id do anexo, o sha256 de um anexo guardado ou
+        um caminho dentro de `data/anexos`. Um caminho de fora levanta `CaminhoForaDoArmazem`; o tipo e o tamanho são
+        conferidos de novo pelo conteúdo. A legenda passa pela redação de credencial; quem chama garante que ela não
+        traz nome de persona, conta, e-mail, telefone nem IP (regra do dono para texto de mensagem e de cartão)."""
+        cfg = self._cfg_do_envio(saida)
+        assert self.anexos is not None
+        conteudo, mime, sha = self.anexos.conteudo_de(referencia, tipos=cfg.tipos, max_bytes=cfg.max_bytes)
+        return await self._despachar(saida, conteudo, mime, sha, legenda, responde_a, entrada_id)
+
+    async def enviar_conteudo(self, saida: SaidaDaConversa, conteudo: bytes, legenda: str = "", *,
+                              mime_declarado: str | None = None, responde_a: str | None = None,
+                              entrada_id: int | None = None) -> str | None:
+        """Manda ao dono um arquivo que o PRODUTO gerou (uma captura de tela do aparelho, p. ex.). O conteúdo é conferido
+        como o recebido (tipo da lista pela assinatura, teto) e fica guardado em `data/anexos` com a retenção do 28.16."""
+        cfg = self._cfg_do_envio(saida)
+        assert self.anexos is not None
+        mime = self.anexos.verificar(conteudo, tipos=cfg.tipos, max_bytes=cfg.max_bytes, mime_declarado=mime_declarado)
+        return await self._despachar(saida, conteudo, mime, None, legenda, responde_a, entrada_id)
+
+    def _cfg_do_envio(self, saida: SaidaDaConversa):  # noqa: ANN202 - o modelo de config
+        cfg = self.cfg.file.avisos.entrada.anexos
+        if not cfg.enabled:
+            raise AnexoRecusado("Os anexos estão desligados na Central.")
+        if self.anexos is None or not hasattr(saida, "enviar_anexo"):
+            raise AnexoRecusado("Este canal não envia anexos.")
+        return cfg
+
+    async def _despachar(self, saida: SaidaDaConversa, conteudo: bytes, mime: str, sha: str | None, legenda: str,
+                         responde_a: str | None, entrada_id: int | None) -> str | None:
+        assert self.anexos is not None
+        enviada = await saida.enviar_anexo(conteudo, mime, self._redigir(legenda),  # type: ignore[attr-defined]
+                                           responde_a=responde_a)
+        self.repo.registrar_enviada(enviada, "anexo", entrada_id=entrada_id)
+        if sha is None:
+            # O conteúdo que o produto gerou ainda não está no armazém: guarda agora, já enviado (a linha é `saida`).
+            self.anexos.guardar(conteudo, tipos=(mime,), max_bytes=len(conteudo), entrada_id=entrada_id, direcao="saida")
+        else:
+            self.anexos.registrar_saida(sha, mime, len(conteudo), entrada_id=entrada_id)
+        return enviada
 
     async def _recusar_credencial(self, saida: SaidaDaConversa | None, r: Recebida, motivo: str, ok: str,
                                   sem_apagar: str) -> None:
@@ -566,6 +799,8 @@ class ConversaDoCanal:
             else:
                 texto = await self.decidir_convidado(i.ref, i.tipo == "autorizar_convidado")
             await self._feita(saida, linha, i, texto, alvo=f"convidado:{i.ref}" if i.ref else None)
+        elif i.tipo == "captura":
+            await self._captura(saida, linha, i)
         elif i.tipo == "desconhecida":
             await self._feita(saida, linha, i, f"{i.motivo or 'Não entendi.'} /ajuda mostra os comandos.")
         elif i.tipo == "status":
@@ -585,6 +820,29 @@ class ConversaDoCanal:
         self.repo.marcar(self._id(linha), "feita", intencao=i.tipo, destino="central", alvo=alvo, run_id=run_id,
                          resposta=self._redigir(texto), de=("recebida", "pergunta", "executando"))
         await self._responder(saida, linha, texto)
+
+    async def _captura(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
+        """A tela do aparelho de volta ao DONO (exceção (a) do dono, 04/10 15:17Z). Só chega aqui a linha do dono; o convidado
+        não tem comando. A legenda leva só o id do aparelho. O arquivo passa pelo mesmo caminho de toda saída de anexo
+        (tipo e tamanho conferidos, guardado em `data/anexos`, retenção do 28.16)."""
+        alvo = i.alvo or ""
+        captura = await self.portas.captura(alvo)
+        alvo_do_fato = f"aparelho:{alvo}"
+        if captura.conteudo is None:
+            await self._feita(saida, linha, i, captura.motivo or f"Não consegui a captura do {alvo}.", alvo=alvo_do_fato)
+            return
+        try:
+            await self.enviar_conteudo(saida, captura.conteudo, f"Captura do {alvo}", mime_declarado=captura.mime,
+                                       responde_a=_texto(linha.get("ref_mensagem")), entrada_id=self._id(linha))
+        except AnexoRecusado as recusa:
+            await self._feita(saida, linha, i, f"Não enviei a captura: {recusa.motivo}", alvo=alvo_do_fato)
+        except FalhaDeEnvio as falha:
+            log.warning("telegram: captura não enviada (%s)", falha.motivo)
+            await self._feita(saida, linha, i, "Tirei a captura, mas o canal não aceitou o arquivo. Tente de novo.",
+                              alvo=alvo_do_fato)
+        else:
+            self.repo.marcar(self._id(linha), "feita", intencao=i.tipo, destino="central", alvo=alvo_do_fato,
+                             resposta="captura enviada", de=("recebida", "pergunta", "executando"))
 
     def _texto_pendencias(self) -> str:
         itens = self.portas.pendencias()
@@ -739,12 +997,13 @@ class LeitorDoTelegram:
                  lider: Callable[[str], int | None], recusa: Callable[[str], bool], redigir: Callable[[str], str],
                  canal: CanalTelegram | None = None, chat_id: str | None = None,
                  dormir: Callable[[float], Awaitable[None]] | None = None, operador: str = OPERADOR_DO_TELEGRAM,
-                 relogio: Callable[[], float] | None = None, convidados: ConvidadosDoTelegram | None = None):
+                 relogio: Callable[[], float] | None = None, convidados: ConvidadosDoTelegram | None = None,
+                 anexos: ArmazemDeAnexos | None = None):
         self.cfg = cfg
         self.repo = repo
         self.portas = portas
         self.conversa = ConversaDoCanal(cfg, repo, portas, recusa=recusa, redigir=redigir, operador=operador,
-                                        relogio=relogio)
+                                        relogio=relogio, anexos=anexos)
         #: Quem fala com o bot e não é o dono (28.18). `None` ou desligado: gravado sem texto e sem resposta (28.15).
         self.convidados = convidados
         self._lider = lider
@@ -870,7 +1129,7 @@ class LeitorDoTelegram:
                         await self.convidados.tratar(
                             tipo=r.tipo, chat=r.chat or "", privado=r.privado, texto=r.texto,
                             perfil=dict(r.perfil) if r.perfil else None, update_id=r.id_externo,
-                            ref_mensagem=r.ref_mensagem, enviar=envio, apagar=apagar)
+                            ref_mensagem=r.ref_mensagem, enviar=envio, apagar=apagar, com_anexo=bool(r.anexos))
                     continue
                 await self.conversa.registrar(r, saida)
             except Exception as exc:  # noqa: BLE001 - uma update ruim não pode travar a conversa (o offset teria de andar)

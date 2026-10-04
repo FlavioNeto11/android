@@ -12,12 +12,12 @@ O autor de tudo isto é o operador do ContextVar (`telegram:dono`), que o servi�
 """
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
 from app.db import Database
 from app.models import Health, RunCreate, RunStatus, RunTarget, RunTargetsResolveBody
 from app.modules.avisos.application.entrada import casar_ref
-from app.modules.avisos.infrastructure.entrada import Pendencia, Previa, RecusaDaCentral
+from app.modules.avisos.infrastructure.entrada import Captura, Pendencia, Previa, RecusaDaCentral
 from app.security.sessions import operador_atual
 from app.shared.costuras import autor_do_gesto
 from app.social.approvals import ApprovalService
@@ -39,12 +39,21 @@ _ATIVAS = ("planning", "running", "paused", "cancelling")
 
 class PortasReais:
     def __init__(self, *, db: Database, runs: RunService, aprovacoes: ApprovalService, saude: Callable[[], Health],
-                 online: Callable[[], list[str]]):
+                 online: Callable[[], list[str]],
+                 capturar: Callable[[str], Awaitable[tuple[bytes | None, str | None]]] | None = None):
         self.db = db
+        self._capturar = capturar
         self.runs = runs
         self.aprovacoes = aprovacoes
         self._saude = saude
         self._online = online
+
+    async def captura(self, instance_id: str) -> Captura:
+        """A tela do aparelho pedida pelo dono (28.24, exceção (a)): a prévia do painel, sem caminho novo até o aparelho."""
+        if self._capturar is None:
+            return Captura(motivo="A captura de tela não está disponível nesta Central.")
+        jpeg, motivo = await self._capturar(instance_id)
+        return Captura(conteudo=jpeg, motivo=motivo)
 
     # ------------------------------------------------------------------ leitura
     def status(self) -> str:

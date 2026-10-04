@@ -46,6 +46,8 @@ from .modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
 from .modules.avisos.application.espelho import LinhaDeCusto
 from .modules.avisos.infrastructure.espelho import EspelhoDoTrello, FontesDaCentral
 from .modules.avisos.infrastructure.espelho_sql import CartoesDoTrello, CursorDoTrello
+from .devices.captura_pontual import capturar_para_o_dono
+from .modules.avisos.infrastructure.anexos import ArmazemDeAnexos
 from .modules.avisos.infrastructure.faxina_sql import FaxinaDosCanais
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from .modules.avisos.infrastructure.portas_da_central import PortasReais
@@ -302,10 +304,12 @@ class AppState:
         # Trava de líder dos laços de fundo (item 28.1): com dois backends com scheduler no mesmo banco, só um roda
         # saldos, curadoria e retenção; os outros pulam a volta sem erro.
         self.lideranca = Lideranca(self.db, dono=cfg.owner_id)
+        # Os anexos dos canais (28.24): o arquivo em `data/anexos/` (fora do Git), pelo sha256; a faxina do 28.16 os apaga.
+        self.anexos_canal = ArmazemDeAnexos(self.db, cfg.data_dir / "anexos")
         # Aviso fora do painel (28.11): espelho da caixa de Pendências no Telegram. Desligado de fábrica.
         self.avisos = ServicoDeAvisos(cfg, self.bus, FilaDeAvisos(self.db), self.lideranca, lider=self._lider,
                                       redigir=TriagemDeCredencial().redigir,
-                                      faxina_canais=FaxinaDosCanais(self.db))
+                                      faxina_canais=FaxinaDosCanais(self.db, pasta_anexos=self.anexos_canal.pasta))
         self.transport = build_transport(cfg.env.command_transport, owner_id=cfg.owner_id or "local",
                                          url=cfg.env.nats_url)
         self.commands = CommandStore(self.db, owner_id=cfg.owner_id, outbox=self.outbox)
@@ -539,7 +543,8 @@ class AppState:
         triagem = TriagemDeCredencial()
         portas_da_central = PortasReais(db=self.db, runs=self.runs, aprovacoes=self.approval_service, saude=self.health,
                                         online=lambda: [d.id for d in self.devices.list_dtos()
-                                                        if str(d.state) == "online" and d.kind != "store"])
+                                                        if str(d.state) == "online" and d.kind != "store"],
+                                        capturar=lambda alvo: capturar_para_o_dono(self.devices, alvo))
         # Quem fala com o bot e não é o dono (28.18): apresentação, nome, o dono decide; desligado de fábrica
         # (`avisos.entrada.convidados.enabled`). A recusa de credencial é a mesma da conversa do dono.
         convidados = ConvidadosDoTelegram(
@@ -548,7 +553,8 @@ class AppState:
             status=portas_da_central.status_para_convidado)
         self.telegram_entrada = ServicoDeEntrada(
             cfg, EntradasDoCanal(self.db, canal="telegram"), portas_da_central,
-            lider=self._lider, recusa=triagem.recusa, redigir=triagem.redigir, convidados=convidados)
+            lider=self._lider, recusa=triagem.recusa, redigir=triagem.redigir, convidados=convidados,
+            anexos=self.anexos_canal)
         # O espelho do Trello (32.2, ADR-072): reconciliador no líder da trava `avisos`; desligado de fábrica
         # (`trello.enabled`). Lê as MESMAS pendências do Telegram e do painel.
         self.trello_espelho = EspelhoDoTrello(
