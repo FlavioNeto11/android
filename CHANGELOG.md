@@ -55,6 +55,23 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - os testes novos: 6 passed.
 - SQLite intacto.
 
+## 2026-10-04 — 29.64: re-toque verificado em Entrar e `review` que se reconcilia (branch fix/29-64-retoque-no-login, sem migração)
+
+- `SessaoDeclarada._login`: depois de um envio `uncertain`, relê a tela e, só com o formulário intacto (identificador à
+  vista, senha ainda no campo, Entrar habilitado, sem ProgressBar, mesmo app) e a conta não parada no meio, dá UM toque
+  no botão atual, sem redigitar a senha, e observa de novo; a tentativa passa pela etapa `resubmitting`. Qualquer outra
+  tela devolve o incerto de antes, e o freio do ADR-055 vale como sempre.
+- Conta lida e conferida aberta no aparelho (`_garantir`, sessão reaproveitada) tira a credencial de `review`
+  (`active`, falhas zeradas, evento `login_reconciliado`); `invalid` não sai assim.
+- Motivo: android-13 em 04/10 (c-20261004001548-03701b `uncertain` com o formulário intacto; um toque manual entrou e a
+  credencial ficou em `review`).
+- Prova `simulated`: `backend/tests/test_retoque_no_login.py` (6; `FakeInstagram.envios_ignorados`/`tela_ao_ignorar`);
+  vizinhos do login 270 passed. Real `not_run` (o toque perdido não se reproduz de propósito; nenhum login real nesta noite).
+- Revisão da orquestradora (01:31Z): a releitura confere de forma explícita `estado.trava` e a classificação da tela
+  (erro de credencial); a reconciliação mantém `blocked_until` e vale no `observe_only`; testes dos negativos (botão
+  desabilitado, identificador trocado, erro/desafio/outra tela na releitura, outro pacote, conta parada no meio) e da
+  senha que não vaza (banco, log, resultado). 16 testes no arquivo.
+
 ## 2026-10-04 — 29.56: tranca de login por cliente, limite no Bearer e cabeçalhos de segurança (branch fix/29-56-tranca-por-cliente, sem migração)
 
 - A `PortaoDeLogin` passou a ser por cliente (`security.access.cliente_de`): pelo túnel o par é sempre `127.0.0.1`, e o

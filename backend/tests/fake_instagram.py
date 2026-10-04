@@ -55,6 +55,7 @@ class Node:
     editable: bool = False
     action: str = ""
     scrollable: bool = False
+    enabled: bool = True
 
 
 #: Conversas da caixa de entrada: usuário (como o app mostra, sem arroba) → mensagens, da mais antiga à mais nova.
@@ -88,6 +89,16 @@ class FakeInstagram:
     two_factor_on_login: bool = False
     wrong_password_message: bool = True
     submit_fault: str | None = None            # "lost" (não chega) | "timeout" (demora e o efeito ocorre)
+    # 29.64: quantos toques em Entrar o app IGNORA (o toque chega, nada acontece), e como a tela fica depois:
+    # "intacto" (preenchido, sem erro, o caso do android-13 em 04/10), "carregando" (um ProgressBar na tela) ou
+    # "senha_limpa" (o app esvaziou o campo da senha), "desabilitado" (Entrar desabilitado), "identificador_trocado"
+    # (outro usuário no campo), "erro" (a mensagem de senha errada, com a senha ainda no campo), "desafio" ou "feed".
+    envios_ignorados: int = 0
+    tela_ao_ignorar: str = "intacto"
+    _carregando: bool = False
+    _entrar_desabilitado: bool = False
+    #: Outro pacote na frente, sem mudar a tela desenhada (o teste do pacote diferente na releitura).
+    pacote_forcado: str | None = None
     hang_s: float = 3.0
     show_username_on_feed: bool = True
     # @ de OUTRA conta visível no feed (autor de reel, story seguido). Não é a conta logada, e não pode ser lido como
@@ -145,6 +156,8 @@ class FakeInstagram:
         return PNG
 
     def current_package(self) -> str | None:
+        if self.pacote_forcado is not None:
+            return self.pacote_forcado
         return PKG if self.screen != "launcher" else "com.android.launcher3"
 
     def current_focus(self) -> tuple[str | None, str | None]:
@@ -185,7 +198,7 @@ class FakeInstagram:
             rows = "".join(
                 f"<node class={quoteattr(n.cls)} package={quoteattr(PKG)} text={quoteattr(n.text)} "
                 f"resource-id={quoteattr((PKG + ':id/' + n.rid) if n.rid else '')} content-desc={quoteattr(n.desc)} "
-                f'clickable="{str(n.clickable).lower()}" enabled="true" focused="false" '
+                f'clickable="{str(n.clickable).lower()}" enabled="{str(n.enabled).lower()}" focused="false" '
                 f'password="{str(n.password).lower()}" scrollable="{str(n.scrollable).lower()}" '
                 f'bounds="[{n.bounds[0]},{n.bounds[1]}][{n.bounds[2]},{n.bounds[3]}]" />'
                 for n in self._nodes)
@@ -249,6 +262,8 @@ class FakeInstagram:
         if self.screen == "login_error" and self.wrong_password_message:
             erro = [Node("android.widget.TextView", (40, y(600), 680, y(650)),
                          text="Incorrect password. Please try again.", rid="login_error")]
+        if self._carregando:
+            erro = [*erro, Node("android.widget.ProgressBar", (330, y(760), 390, y(790)), rid="login_progress")]
         return [
             Node("android.widget.TextView", (40, y(200), 680, y(260)), text="Instagram", rid="logo"),
             Node("android.widget.EditText", (40, y(400), 680, y(470)), text=self.username_field, rid="login_username",
@@ -257,7 +272,7 @@ class FakeInstagram:
                  clickable=True, editable=True, password=True, action="focus:password"),
             *erro,
             Node("android.widget.Button", (40, y(680), 680, y(750)), text="Log in", rid="login_button",
-                 clickable=True, action="submit"),
+                 clickable=True, action="submit", enabled=not self._entrar_desabilitado),
             Node("android.widget.TextView", (40, y(800), 680, y(850)), text="Log in with Facebook", clickable=True),
             Node("android.widget.TextView", (40, y(900), 680, y(950)), text="Forgot password?", clickable=True),
         ]
@@ -338,6 +353,22 @@ class FakeInstagram:
 
     def _submit(self) -> None:
         self.calls.append("submit")
+        if self.envios_ignorados > 0:
+            self.envios_ignorados -= 1
+            t = self.tela_ao_ignorar
+            self._carregando = t == "carregando"
+            self._entrar_desabilitado = t == "desabilitado"
+            if t == "senha_limpa":
+                self.password_field = ""
+            elif t == "identificador_trocado":
+                self.username_field = "outra.pessoa.1234"
+            elif t == "erro":
+                self.screen = "login_error"
+            elif t == "desafio":
+                self.screen = "challenge"
+            elif t == "feed":
+                self.screen = "feed"
+            return
         if self.submit_fault == "lost":
             self.submit_fault = None
             raise DriverError("socket hang up (simulado): o toque não chegou ao app", effect_possible=False)
