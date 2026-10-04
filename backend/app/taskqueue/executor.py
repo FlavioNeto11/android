@@ -112,6 +112,16 @@ PARTES_EM_ELEMENTOS_DIFERENTES = "as partes do seletor estão em elementos difer
 OPEN_APP_SEM_IA = True
 
 
+def parte_vazia_da_pos_condicao(post: Postcondition) -> str | None:
+    """31.44: o que a pós-condição confere sem valor (`text=`, `<vazia>`, `texto vazio`), ou `None` quando tem valor.
+    Só olha o que se decide pelo texto da própria pós-condição: `element_present` e `text_visible`."""
+    if post.kind == "element_present":
+        return UiTree.parte_sem_valor(post.value)
+    if post.kind == "text_visible" and not norm_text(post.value):
+        return "texto vazio"
+    return None
+
+
 async def reler_se_ocupada(ler: Callable[[], Awaitable[T]], *, prazo: float, quem: str) -> T:
     """Faz a leitura e, se a UI estiver ocupada ou a leitura tiver falhado fora da sessão, relê com recuo — sem tocar
     na sessão. O recuo sai do prazo da etapa (`prazo`, relógio monotônico): sem tempo para esperar, o erro sobe na
@@ -1524,6 +1534,20 @@ class StepExecutor:
             return StepOutcome(Outcome.waiting_user, "A etapa confere a conta, e não há UMA conta da pessoa conhecida "
                                                      "no app dela; nada foi conferido contra uma conta vazia.",
                                needs="Cadastre ou reative a conta da pessoa neste aplicativo e retome o item.")
+        # 31.44: pós-condição com valor VAZIO (`text=` de um molde `text={var}` cuja variável chegou sem valor) não tem
+        # como ser comprovada: o seletor degrada para a busca do texto literal "text=" e a etapa gastaria as tentativas
+        # e a IA (fec1a1: 3 chamadas) para chegar a "0 elemento(s)". Falha fechada ANTES de qualquer observação ou ação.
+        if (vazia := parte_vazia_da_pos_condicao(step.postcondition)) is not None:
+            if not account_label:
+                # O aparelho está sem conta conhecida (rótulo vazio): é o caso do 24.4, com a mesma saída (a tentativa é
+                # devolvida e a pessoa cadastra a conta); o tipo é de conta, nunca vira lição para o planejador.
+                return StepOutcome(Outcome.waiting_user, f"A pós-condição confere {vazia} sem valor, e não há UMA conta "
+                                                         "da pessoa conhecida no app dela; nada foi conferido contra "
+                                                         "um valor vazio.",
+                                   needs="Cadastre ou reative a conta da pessoa neste aplicativo e retome o item.")
+            return StepOutcome(Outcome.failed, f"Defeito do plano — a pós-condição confere {vazia} sem valor (variável "
+                                               "do plano que chegou vazia); nada foi conferido contra um valor vazio e "
+                                               "repetir não resolve.", plan_defect=True)
         if saidas_declaradas:
             history.append("(executor) esta etapa entrega às seguintes o(s) valor(es) "
                            + ", ".join(f"'{n}'" for n in saidas_declaradas)

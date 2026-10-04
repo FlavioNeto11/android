@@ -571,6 +571,32 @@ a recuperação copiou a etapa igual e falhou mais 3.
     caminho novo entre a tela e o "comprovado").
 - Teste: `tests/test_seletor_impossivel.py` (`simulated`, com um caso de ponta a ponta no harness).
 
+### Pós-condição com valor vazio falha fechado antes de agir (31.44)
+
+Achado do histórico de erros do portal (29.72). Na r-20261004111836-fec1a1 (validação do fluxo "enviar a mensagem", no
+android-04), o molde de `check_account` era `id=…:id/account_label|text={account_label}`; a etapa não declara app e o
+aparelho não tinha `account_label`, então o valor virou `""`. `UiTree._partes_do_seletor` degrada `text=` para a busca
+do texto literal "text=": a etapa gastou 3 tentativas e 3 chamadas `decide` (32 mil tokens) para chegar a "0 elemento(s)".
+
+- **Guarda** (`_run_step`, junto das do `{{saida:…}}` e do `{account_label}` do 24.4, antes de qualquer observação,
+  ação ou IA): `parte_vazia_da_pos_condicao` acha parte do seletor (`element_present`) com chave conhecida e valor vazio
+  (`UiTree.parte_sem_valor`), parte em branco, ou `text_visible` em branco.
+- **Desfecho:** se o aparelho está sem conta conhecida (`account_label` vazio), `waiting_user` com o motivo do 24.4
+  (tipo `conta_errada`, que nunca vira lição; a tentativa é devolvida e a pessoa cadastra a conta). Com conta
+  conhecida, é variável do plano que chegou vazia: defeito do plano (`defeito_do_plano`) na 1ª tentativa, sem plano
+  revisado.
+- **Fora do alcance:** o seletor com valor preenchido mas incoerente (o `message_input|text=<nome da conversa>` da
+  r-20261004082521-2f21e2, caso do 31.32). Antes da ação o campo de escrita nem está na tela, então nada decide em
+  tempo de entrada; quem fecha é o 31.32, na tela final e em 1 tentativa. Esse seletor veio do planejador real: o QA
+  Messenger não tem pasta em `conhecimento/apps/` nem plano escrito à mão (o provedor simulado já usa
+  `id=chat_title|text={recipient}`), e o texto do planejador tem snapshot por sha256 (`test_prompts_licoes.py`), então
+  a correção fica com a lição do 31.32.
+- **Limite conhecido:** o 30.50 já tira do despacho de prova o aparelho sem `account_label`; esta guarda cobre qualquer
+  execução. Um molde "Conta: {account_label}" em texto livre ("Conta: " não vazio) segue pelo 24.4.
+- **Risco aceito (igual ao 31.32):** o `defeito_do_plano` com conta conhecida retém também os aparelhos irmãos da
+  execução, mesmo quando a variável vazia é por aparelho; e o tipo entra no minerador de lições do planejador.
+- Teste: `tests/test_pos_condicao_impossivel.py` (`simulated`; prova `real` não executada).
+
 ## VERIFY pela porta de capability
 
 - `StepExecutor.__init__` cria `self.capabilities = CatalogCapabilityProvider(CatalogCapabilityRegistry(...))`.
