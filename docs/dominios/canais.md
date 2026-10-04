@@ -312,6 +312,20 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
 - **Prova:** `simulated` (`backend/tests/test_canais_anexos.py`, `test_canais_anexos_trello.py`, `test_canais_captura.py`);
   `not_run` com o bot, o Trello, o aparelho e o disco reais.
 
+**C-23 · O que a plataforma decidiu sozinha: um resumo, nunca um aviso por decisão.**
+- **Origem:** dono, 04/10 (pedido 30.55: decidir sozinha o que hoje espera a aprovação dele); item 28.25.
+- **Regra:**
+  - Cada decisão automática fica no registro `decisoes_automaticas`, com a regra que decidiu, e o dono vê todas na aba
+    "Decidido sozinho" de Pendências, com o desfazer dentro de `avisos.decisoes_automaticas.desfazer_dias` (7).
+  - No Telegram sai **no máximo UMA mensagem por janela** (`janela_min`, 60) e só quando houve decisão nova nela.
+  - O texto é a contagem por regra em português simples ("3 perguntas sem resposta havia 24 h foram encerradas") e o
+    link `#/pendencias?aba=decididas`. Frases fixas no código: a string da regra, o nome de persona, conta, e-mail,
+    telefone, IP e o texto de comando não entram. O corpo passa pelo redator dos avisos.
+  - Decisão já desfeita, ou mais velha que `avisos.validade_h`, não conta.
+- **Hoje:** `modules/decisoes/` (adaptador, resumo e desfazer); o aviso é do tipo `decisoes.resumo` e sai pela fila de avisos
+  (28.11), no líder da trava `avisos`.
+- **No produto:** a janela sobrevive a reinício (`decisoes_automaticas_estado`).
+
 ## 7. Arquivos locais (fora do Git) e o que guardam
 
 Ficam em `.claude/handoffs/`, que o `.git/info/exclude` exclui: têm id de chat, vínculo com nome e estado da

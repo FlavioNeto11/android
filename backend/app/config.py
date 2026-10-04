@@ -1208,6 +1208,18 @@ class EntradaDoTelegramCfg(BaseModel):
     anexos: AnexosDaEntradaCfg = AnexosDaEntradaCfg()
 
 
+class DecisoesAutomaticasCfg(BaseModel):
+    """O que a plataforma decide sozinha (item 28.25): o resumo agrupado no Telegram e o prazo do desfazer. O resumo só sai
+    com `avisos.enabled` e o canal pronto; sem eles, o registro e a aba do painel funcionam do mesmo jeito."""
+
+    #: No máximo UMA mensagem por janela, e só se houve decisão nova nela. Nunca um aviso por decisão.
+    janela_min: float = Field(60.0, ge=1, le=1440)
+    #: Quantos dias o dono pode desfazer uma decisão depois que ela aconteceu.
+    desfazer_dias: float = Field(7.0, ge=0.01, le=365)
+    #: De quanto em quanto tempo o laço recolhe os eventos e a trilha (o adaptador) e confere a janela do resumo.
+    intervalo_s: float = Field(30.0, ge=5, le=3600)
+
+
 class AvisosCfg(BaseModel):
     """Aviso fora do painel (item 28.11; decisão do dono, 02/10: Telegram). Espelho da caixa de Pendências (ADR-062).
     Desde o 28.15 (ADR-071) o aviso leva o conteúdo (a pergunta, o que se aprova), redigido e cortado, e o mesmo bot
@@ -1236,6 +1248,7 @@ class AvisosCfg(BaseModel):
     #: aprovação em lote e fica na caixa de Pendências, para não virar um aviso por receita.
     aprendizado_faixas: list[Literal["B", "C"]] = Field(default_factory=lambda: ["C"])
     entrada: EntradaDoTelegramCfg = EntradaDoTelegramCfg()
+    decisoes_automaticas: DecisoesAutomaticasCfg = DecisoesAutomaticasCfg()
 
 
 #: Os papéis que `trello.listas` aceita (32.2): onde a Central cria os cartões, as listas cujo destino vale sim e não, e

@@ -52,6 +52,13 @@ from .modules.avisos.infrastructure.faxina_sql import FaxinaDosCanais
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from .modules.avisos.infrastructure.portas_da_central import PortasReais
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos
+from .decisoes_inversas import inversas_das_filas
+from .modules.decisoes.application.desfazer import DesfazerDecisoes
+from .modules.decisoes.infrastructure.adaptador_sql import AdaptadorDeDecisoes
+from .modules.decisoes.infrastructure.estado_sql import EstadoDasDecisoes
+from .modules.decisoes.infrastructure.registro_sql import RegistroSql as RegistroDeDecisoes
+from .modules.decisoes.infrastructure.resumo_sql import ResumoDasDecisoes
+from .modules.decisoes.infrastructure.servico import ServicoDeDecisoes
 from .modules.avisos.infrastructure.trello_leitor import LeitorDoTrello
 from .modules.avisos.infrastructure.trello_webhook import CadastroDoWebhook, PortaDoWebhook
 from .modules.avisos.infrastructure.trello_saude import problemas_do_trello
@@ -310,6 +317,17 @@ class AppState:
         self.avisos = ServicoDeAvisos(cfg, self.bus, FilaDeAvisos(self.db), self.lideranca, lider=self._lider,
                                       redigir=TriagemDeCredencial().redigir,
                                       faxina_canais=FaxinaDosCanais(self.db, pasta_anexos=self.anexos_canal.pasta))
+        # O que a plataforma decide sozinha (28.25): o registro único, o adaptador que recolhe os produtores e o resumo
+        # agrupado (no máximo uma mensagem por janela) pelo mesmo caminho dos avisos. O desfazer entra pelas rotas.
+        self.decisoes_registro = RegistroDeDecisoes(self.db)
+        _estado_das_decisoes = EstadoDasDecisoes(self.db)
+        self.decisoes = ServicoDeDecisoes(
+            cfg, AdaptadorDeDecisoes(self.db, self.decisoes_registro, _estado_das_decisoes,
+                                     redigir=TriagemDeCredencial().redigir),
+            ResumoDasDecisoes(self.db, _estado_das_decisoes, enfileirar=self.avisos.enfileirar_aviso,
+                              pode_avisar=lambda: self.avisos.ligado and self.avisos.canal() is not None,
+                              redigir=TriagemDeCredencial().redigir),
+            lider=self._lider)
         self.transport = build_transport(cfg.env.command_transport, owner_id=cfg.owner_id or "local",
                                          url=cfg.env.nats_url)
         self.commands = CommandStore(self.db, owner_id=cfg.owner_id, outbox=self.outbox)
@@ -526,6 +544,9 @@ class AppState:
             receitas=self.scheduler.executor.recipes,
             decidir=lambda texto, run_id: self.repo.decision(texto, run_id=run_id), eventos=self.bus,
             curador_de_ia=CuradorComTriagemEmSombra(self._curador_do_hub, self._triagem_do_curador))
+        # O desfazer das decisões automáticas (28.25): a inversa de cada fila entra aqui, fora do módulo (ver o docstring).
+        self.decisoes_desfazer = DesfazerDecisoes(self.decisoes_registro, inversas_das_filas(self.learning),
+                                                  dias=lambda: float(self.cfg.file.avisos.decisoes_automaticas.desfazer_dias))
         self._digestoes: set[asyncio.Task[None]] = set()
         # Ensino v2 (fase F, §13): as rotas ficam atrás de `skills.enabled`; o generalizador é o `generalize` do
         # provedor (simulado: regras fixas; real: uma chamada paga do planejador, contada em `ai_calls`).
@@ -2478,6 +2499,8 @@ class AppState:
             self._bg.append(asyncio.create_task(self._saldos_loop(), name="saldos-de-ia"))
             # Aviso fora do painel: enfileira em qualquer réplica (chave única) e só o líder da trava `avisos` envia.
             self._bg.append(asyncio.create_task(self.avisos.laco(), name="avisos-fora-do-painel"))
+            # O recolher das decisões automáticas (28.25) em qualquer réplica; o resumo, só no líder da trava `avisos`.
+            self._bg.append(asyncio.create_task(self.decisoes.laco(), name="decisoes-automaticas"))
             # A conversa de volta (28.15): long-poll do getUpdates, só no líder da trava `avisos` (único consumidor).
             self._bg.append(asyncio.create_task(self.telegram_entrada.laco(), name="telegram-entrada"))
             # O espelho do Trello (32.2): reconciliador no líder da trava `avisos`; sem `trello.enabled` não chama nada.

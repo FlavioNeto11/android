@@ -53,6 +53,21 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_pergunta_vence.py` (11), `test_needs_input_expira.py`. `not_run`: o central.
 - Docs: `docs/dominios/execution.md` (31.43), `docs/api-contract.md` (adendo v1.23, número da orquestradora).
 
+## 2026-10-04 — 28.25: o resumo do que a plataforma decidiu sozinha, com o desfazer (branch canais/28-25-decididas, PR 275)
+
+- Migração 102: `decisoes_automaticas` (o registro único, idempotente pela `origem_ref`) e `decisoes_automaticas_estado`
+  (cursores e a hora do último resumo). Porta de escrita para as frentes: `app/shared/decisoes.py::registrar_decisao`.
+- Adaptador: recolhe os eventos de vencimento do 31.43 e as transições `decided_by = 'plataforma'` do aprendizado (motivo
+  `auto:<regra> v<n> — <fatos>`, com e sem o prefixo `confirmado que fica: `). Os produtores ainda não estão na main:
+  prova `simulated`.
+- Resumo agrupado no Telegram: no máximo uma mensagem por janela (`avisos.decisoes_automaticas.janela_min`), só com decisão
+  nova, texto fixo sem dado pessoal e link para a aba "Decidido sozinho".
+- `GET /api/decisoes-automaticas` e `POST /api/decisoes-automaticas/{id}/desfazer` (v1.22 do contrato). O desfazer do
+  aprendizado DESLIGA o item; pergunta, objetivo e pedido respondem 409 `sem_inversa_segura` com o porquê.
+- Painel: Pendências ganha a aba "Decidido sozinho" (`?aba=decididas`): filtro por período e regra, o porquê e os fatos em
+  português, o desfazer com o motivo em linha (o botão do aprendizado é "Desligar") e, sem volta segura, o porquê no lugar
+  do botão.
+
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
 - Retorno do dono (04/10, Aprendizado › Para aprovar com 5 selecionados): o formulário do aceite abria com o botão
