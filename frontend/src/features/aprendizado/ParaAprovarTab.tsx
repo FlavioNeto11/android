@@ -141,6 +141,8 @@ export function ParaAprovarTab() {
   // A seleção só guarda o que ainda está na lista (o item aprovado sai da fila).
   const itensFila = useMemo(() => fila.itens ?? [], [fila.itens]);
   const itensLegado = useMemo(() => legado.itens ?? [], [legado.itens]);
+  // 30.66: com a aprovação automática ligada, quem decide pode ser a plataforma; o texto do vazio diz isso.
+  const autoLigada = aprovacao?.modo === 'on';
   const escolhidosFila = itensFila.filter((e) => selFila.has(chaveDoItem(e)));
   const escolhidosLegado = itensLegado.filter((e) => selLegado.has(chaveDoItem(e)));
   // Os títulos sem repetição de cada lista (P4 do deploy 3); os avisos do lote usam os mesmos, para achar o item.
@@ -297,13 +299,16 @@ export function ParaAprovarTab() {
         ) : null}
         {fila.itens !== null && itensFila.length === 0 ? (
           // 30.66: "nada" no topo e uma lista longa logo abaixo se contradiziam; o topo diz as duas coisas.
+          // Só diz "nada" com as duas listas lidas: com Revisar carregando ou com erro, o topo não pode afirmar o vazio.
           <EmptyState icon={Inbox} compact
-                      title={itensLegado.length > 0
-                        ? `Nada para aprovar; ${itensLegado.length} para revisar sem pressa`
+                      title={legado.erro ? 'Nada para aprovar; não deu para carregar Revisar'
+                        : legado.itens === null ? 'Nada para aprovar; carregando Revisar…'
+                        : itensLegado.length > 0 ? `Nada para aprovar; ${itensLegado.length} para revisar sem pressa`
                         : 'Nada aguardando você'}>
             {itensLegado.length > 0
-              ? 'Os itens de Revisar, abaixo, continuam valendo como antes até você decidir. Quando o sistema validar algo com efeito externo, ou uma nota sua virar candidata, aparece aqui.'
-              : 'Quando o sistema validar algo com efeito externo, ou uma nota sua virar candidata, aparece aqui.'}
+              ? `Os itens de Revisar, abaixo, continuam valendo como antes até você decidir${autoLigada ? ' (ou a aprovação automática, que está ligada)' : ''}. `
+              : null}
+            {`Quando o sistema validar algo com efeito externo, ou uma nota sua virar candidata, aparece aqui${autoLigada ? ', a menos que a aprovação automática o publique' : ''}.`}
           </EmptyState>
         ) : (
           <ul className={styles.lista} aria-label="Itens para aprovar">

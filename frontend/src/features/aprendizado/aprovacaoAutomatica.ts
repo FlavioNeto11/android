@@ -1,5 +1,5 @@
 import { metaDeSaude } from './detalhe';
-import { isLivroKind, rotuloDoKind, semLacunas, type LivroKind } from './model';
+import { isLivroKind, rotuloDoKind, semLacunas, tituloDoItem, type LivroKind } from './model';
 import { textoDaDecisao } from './parecer';
 
 /**
@@ -16,6 +16,10 @@ export interface DecisaoDaPlataforma {
   kind: LivroKind | null;
   ref: string;
   titulo: string | null;
+  /** 30.66: a capability e o nome dela no catálogo, para titular como as outras telas (`tituloDoItem`). */
+  capability: string | null;
+  capability_nome: string | null;
+  etapa: string | null;
   app: string | null;
   /** O estado de AGORA do item: Desligar só vale no que segue `published`. */
   estado: string | null;
@@ -58,6 +62,9 @@ function lerDecisao(v: unknown): DecisaoDaPlataforma | null {
     kind: isLivroKind(kind) ? kind : null,
     ref: texto(o.ref) ?? resto.join(':'),
     titulo: texto(o.titulo),
+    capability: texto(o.capability),
+    capability_nome: texto(o.capability_nome),
+    etapa: texto(o.etapa),
     app: texto(o.app),
     estado: texto(o.estado),
     gesto: o.gesto === 'publicar' ? 'publicar' : 'confirmar_que_fica',
@@ -111,9 +118,18 @@ const RE_CHAVE_COM_VERSAO = /^([a-z][a-z0-9]*(?:_[a-z0-9]+)*) \(v(\d+)\)$/;
  * (`doLivro`, com o nome da capability) quase nunca está à mão. Sem ele: as lacunas cruas ("{recipient_1}") viram "…" e a
  * chave interna com versão ganha o tipo e o número do item na frente ("Receita nº 180 · send message (v1)").
  */
-export function tituloDaDecisao(d: Pick<DecisaoDaPlataforma, 'titulo' | 'kind' | 'ref' | 'item_ref'>,
-                                doLivro?: string): string {
+export function tituloDaDecisao(
+  d: Pick<DecisaoDaPlataforma, 'titulo' | 'kind' | 'ref' | 'item_ref'>
+    & Partial<Pick<DecisaoDaPlataforma, 'capability' | 'capability_nome' | 'etapa'>>,
+  doLivro?: string,
+): string {
   if (doLivro && doLivro !== d.item_ref) return doLivro;
+  // Com o nome do catálogo (ou a etapa de origem) que o backend manda, a mesma regra das outras telas.
+  if (d.kind && d.titulo && (d.capability_nome || d.etapa)) {
+    const doItem = tituloDoItem({ kind: d.kind, ref: d.ref, title: d.titulo, capability: d.capability ?? null,
+                                  capability_nome: d.capability_nome ?? null, etapa: d.etapa ?? null });
+    if (doItem !== semLacunas(d.titulo)) return doItem;
+  }
   const nome = d.kind ? `${rotuloDoKind(d.kind)}${d.kind === 'receita' ? ' nº' : ''} ${d.ref}` : d.item_ref;
   const t = d.titulo ? semLacunas(d.titulo) : '';
   if (!t || t === '…') return nome;
