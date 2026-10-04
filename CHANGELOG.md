@@ -249,6 +249,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Releitura: revogada nunca sai (o executor confere no commit e falha fechado; a falha é `interrompida`, nunca lição);
   revogar expira o cartão pendente e devolve o objetivo à porta; a decisão da própria etapa anterior à exceção não
   vale; o cartão cita no máximo 80 caracteres da autorização.
+- Reserva atômica: o executor reserva a exceção (`em_uso`, UPDATE condicional) logo antes do gesto, mesmo quando o
+  `open_effect` não rodaria; reserva perdida ou que levanta não dispara. `liquidar` no `settle_effect` (usada ou
+  `sem_efeito`); revogar `em_uso` dá 409 `excecao_em_uso`; o `vencer` não solta mais a etapa (a reserva acha a vencida).
 - Emenda 30.65 do ADR-055. Prova `simulated`: `backend/tests/test_excecao_de_politica.py`. `not_run`: a exceção do 31.26,
   depois do deploy 32.
 

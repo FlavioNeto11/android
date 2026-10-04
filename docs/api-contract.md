@@ -1170,6 +1170,7 @@ A tabela de eventos deste documento (seção "Eventos") não lista os seguintes,
 | `politica.excecao_vencida` | sim | `social/excecoes.py` — a exceção venceu sem uso (30.65) |
 | `politica.excecao_recusada` | sim | `social/excecoes.py` — o dono rejeitou o cartão da etapa presa e a exceção acabou (30.65) |
 | `politica.excecao_revogada` | sim | `social/excecoes.py` — a exceção em aberto foi revogada pela rota (30.65) |
+| `politica.excecao_sem_efeito` | sim | `social/excecoes.py` — reservada, o gesto terminou sem efeito; ela fecha e não volta a aberta (30.65) |
 | `app_state.updated` | sim | `state.py` |
 | `session.needs_person` | sim | `modules/identity/application/session_rules.py::emit_needs_person_change`, chamada por `integrations/app_declarado/sessao.py::SessaoDeclarada._save` e `state.py::AppState._sessao_desmentida` — a sessão da conta entrou em `auth_challenge`/`wrong_account` |
 | `learning.needs_person` | sim | `modules/learning/application/espera.py::AvisadorDeEspera`, chamado por `LearningService` (`mudar_estado`, `propor`, `avisar_item`, `avisar_mudanca_nativa`) e pelos ouvintes das lojas de receita e fluxo (`infrastructure/ligar_nativos.py`) — um item do Livro de aprendizado entrou na espera do dono (faixa B ou C da política de risco) ou saiu dela; ver o adendo v0.49 |
@@ -5680,14 +5681,18 @@ sempre abre cartão novo: o aprovado de uma versão anterior com o mesmo texto e
 - **`POST /api/politica/excecoes/{id}/revogar`** (200): encerra a exceção em aberto, livre ou presa. `{"excecao": {...}}`
   com `estado: "revogada"`. 404 `not_found`; 409 `excecao_encerrada` se ela já terminou. Com o cartão da etapa presa
   ainda pendente, ele expira (sai de Pendências; o reply no Telegram é recusado como vencido) e o objetivo volta à
-  porta, que recusa. Se a etapa já passou da porta (aprovada, antes do commit), o executor confere no commit e a etapa
-  falha fechada com o motivo "a exceção … foi revogada … depois da aprovação; o efeito não foi disparado (30.65)": a
-  revogada nunca sai. O cartão cita no máximo 80 caracteres da autorização (o aviso do Telegram corta em 500).
+  porta, que recusa. Se a etapa já passou da porta (aprovada, antes do commit), a RESERVA do executor falha: logo antes
+  do gesto ele faz um UPDATE condicional (`em_uso`) e, se a exceção não está em aberto (revogada, recusada, vencida, já
+  em uso ou usada), a etapa falha fechada com o motivo "a exceção … antes do efeito; o efeito não foi disparado (30.65)"
+  e o gesto não acontece; se a reserva levantar, também não. Se a reserva ganhou antes, revogar responde 409
+  `excecao_em_uso` ("o efeito pode ter saído") e nunca grava "revogada" por cima. A reservada é liquidada no
+  `settle_effect`: usada se o efeito saiu ou pode ter saído, `sem_efeito` se não saiu (não volta a aberta); a queda do
+  processo a deixa `em_uso`, visível no GET. A vencida continua apontando a etapa (a reserva a encontra). O cartão cita no máximo 80 caracteres da autorização (o aviso do Telegram corta em 500).
 - **`GET /api/politica/excecoes?profile_id=`**: `{"excecoes": [...]}`, as mais novas primeiro (até 200). Cada uma traz
   `id`, `regra` (`uma_conta_por_alvo`), `profile_id`, `alvo`, `capability`, `motivo`, `autorizacao`, `autor`,
   `autor_com_sessao`, `criada_em`, `expira_em`, `step_id`, `presa_em`, `usada_em`, `interaction_id`, `vencida_em`,
-  `encerrada_em`, `encerrada_por`, `encerramento` e `estado` (`ativa` | `presa` | `usada` | `vencida` | `recusada` |
-  `revogada`). Ler encerra as vencidas.
+  `em_uso_em`, `encerrada_em`, `encerrada_por`, `encerramento` e `estado` (`ativa` | `presa` | `em_uso` | `usada` |
+  `vencida` | `recusada` | `revogada` | `sem_efeito`). Ler encerra as vencidas.
 - **Ciclo.** A porta do despacho prende a exceção à etapa que casou (outra etapa só a toma se a presa terminou sem efeito);
   o `open_effect` a gasta quando o efeito sai (uso único: a segunda volta à recusa; uma falha ao gastar não derruba o
   efeito, que fica registrado). Sem uso até `expira_em`, ela vence e solta a etapa; o vencimento roda na porta do despacho
