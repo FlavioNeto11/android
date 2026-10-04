@@ -5895,13 +5895,18 @@ o item do 🔒 só aparecia num 409 depois do clique.
   de baixo): o item da prévia recalculado com o texto proposto no lugar do da etapa. Resposta
   `{step_id, texto, item}`: `texto` já sem espaço nas pontas; `item` é o `ItemDaPorta` do v1.32 (selo, motivo, dica,
   chave), ou `null` se a etapa não fecha mais um item. Só leitura: não grava, não chama IA; a mesma conta (`_item`) da
-  `GET …/porta`, sobre uma cópia da etapa. 404 execução inexistente; 409 `plano_mudou` se a etapa saiu do plano; 422
+  `GET …/porta`, sobre uma cópia da etapa, DENTRO do laço do plano (a regra do mesmo efeito duas vezes no plano vale
+  igual). 404 execução inexistente; 409 `invalid_state` fora de `planned`; 409 `plano_mudou` se a etapa saiu do plano
+  ou se ela não é 🔒 com chave na prévia inteira (a 2ª DM ao mesmo alvo, o 2º comentário no mesmo objeto); 422
   `invalid_body` (texto vazio, com marcador de modelo, ou ação que não escreve) e `texto_longo` (acima de 2200
   caracteres), as mesmas recusas do gesto.
-- **Gesto (`POST …/aprovar-plano`):** no item com `texto` editado (diferente do da prévia), `chave` passa a ser a da
+- **Gesto (`POST …/aprovar-plano`):** só o item que é 🔒 com chave na prévia inteira aceita `texto` (senão 409
+  `plano_mudou`). No item com `texto` editado (diferente do da prévia), `chave` passa a ser a da
   prévia DESSE texto (a que a rota acima devolveu). O servidor a confere antes de gravar (selo 🔒 e chave iguais à do
   texto editado; senão 409 `plano_mudou` com "com o texto editado: …") e de novo na etapa relida depois do `apply_edit`
   (diferente: 409 e a edição desfeita). A chave gravada é, portanto, a que o dono viu.
+- **Imagem no cartão:** o `ItemDaPorta` ganha `image_id` (a imagem da publicação, só a de sha256 conhecido, a mesma
+  da chave); o cartão do plano mostra a imagem que vai ao feed, não só "com imagem" (29.30).
 - **Painel:** ao sair do campo, ou depois de 500 ms sem digitar, o painel pede a prévia do texto editado; o "Aprovar"
   fica travado ("Conferindo na porta o texto editado…") até ela voltar para o texto atual (resposta de texto antigo não
   vale). Junto do item: "Com este texto: pede seu aval — <motivo>", ou, se o item deixou de ser 🔒, "Com este texto, a

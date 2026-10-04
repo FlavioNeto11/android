@@ -494,6 +494,69 @@ async def test_chave_solta_aprovada_no_plano_e_honrada_pela_porta_na_execucao(ha
     assert await _gate(state, "dm") is None
 
 
+async def test_a_segunda_dm_ao_mesmo_alvo_editada_nao_vira_cadeado(harness: Any, monkeypatch: Any) -> None:
+    """A1 da revisão do 30.68: a 2ª DM do mesmo perfil ao mesmo alvo fica para a execução na prévia; editar o texto
+    dela (pela rota ou pelo gesto) não a põe no 🔒, porque o duplicado no plano não depende do texto."""
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    _plano(state, [{"key": "dm", "cap": "SEND_MESSAGE", "bindings": DM},
+                   {"key": "dm2", "cap": "SEND_MESSAGE", "bindings": {**DM, "content": "e aí?"}}])
+    itens = _por_chave(previa_da_porta(state, "run-p"))
+    assert itens["dm"]["selo"] == "aprovacao" and itens["dm2"]["selo"] == "na_execucao"
+    antes = _contagens(state)
+    try:
+        previa_do_item(state, "run-p", PreviaDoItemBody(step_id=itens["dm2"]["step_id"], texto="outro texto"))
+        raise AssertionError("devia recusar")
+    except PortaIndisponivel as exc:
+        assert exc.codigo == "plano_mudou" and exc.status == 409
+    try:
+        aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(
+            step_id=itens["dm2"]["step_id"], chave="d" * 64, texto="outro texto")]), por="flavio")
+        raise AssertionError("devia recusar")
+    except PortaIndisponivel as exc:
+        assert exc.codigo == "plano_mudou"
+        assert [m["step_id"] for m in exc.extra["mudaram"]] == [itens["dm2"]["step_id"]]
+    assert _contagens(state) == antes                            # nada gravado, o texto da etapa intacto
+    # A 1ª DM, editada, segue no 🔒 (os `vistos` do plano não a confundem com a 2ª).
+    r = previa_do_item(state, "run-p", PreviaDoItemBody(step_id=itens["dm"]["step_id"], texto="oi de novo"))
+    assert r["item"]["selo"] == "aprovacao" and r["item"]["chave"]
+
+
+async def test_o_segundo_comentario_no_mesmo_objeto_editado_segue_recusado(harness: Any, monkeypatch: Any) -> None:
+    """A1 da revisão do 30.68: o 2º comentário no mesmo post é recusado na prévia; editar o texto não o abre."""
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    post = {"post_author": "ana", "caption_contains": "praia", "content_verbatim": "true"}
+    _plano(state, [{"key": "c1", "cap": "CREATE_COMMENT", "bindings": {**post, "content": "que lugar!"}},
+                   {"key": "c2", "cap": "CREATE_COMMENT", "bindings": {**post, "content": "lindo"}}])
+    itens = _por_chave(previa_da_porta(state, "run-p"))
+    assert itens["c1"]["selo"] == "aprovacao" and itens["c2"]["selo"] == "recusado"
+    for chamada in (lambda: previa_do_item(state, "run-p", PreviaDoItemBody(step_id=itens["c2"]["step_id"], texto="outro")),
+                    lambda: aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(
+                        step_id=itens["c2"]["step_id"], chave="d" * 64, texto="outro")]), por="flavio")):
+        try:
+            chamada()
+            raise AssertionError("devia recusar")
+        except PortaIndisponivel as exc:
+            assert exc.codigo == "plano_mudou"
+    assert state.db.scalar("SELECT COUNT(*) FROM pending_approvals") == 0
+
+
+async def test_a_publicacao_no_plano_leva_a_imagem_que_vai_ao_feed(harness: Any) -> None:
+    """29.30/30.68: o item com imagem pronta traz `image_id` (o painel a mostra); imagem sem sha256 não traz."""
+    state = harness.state
+    pid = _plano(state, [{"key": "pub", "cap": "CREATE_POST",
+                          "bindings": {"image_id": "img-1", "content": "praia hoje", "content_verbatim": "true"}},
+                         {"key": "pub2", "cap": "CREATE_POST",
+                          "bindings": {"image_id": "img-2", "content": "outra", "content_verbatim": "true"}}])
+    state.db.execute("INSERT INTO persona_images(id, persona_id, source, status, is_primary, created_at, bytes_sha256)"
+                     " VALUES ('img-1', ?, 'generated', 'ready', 0, '2026-10-04T10:00:00Z', ?)", (pid, "c" * 64))
+    itens = _por_chave(previa_da_porta(state, "run-p"))
+    assert itens["pub"]["tem_imagem"] is True and itens["pub"]["image_id"] == "img-1"
+    assert itens["pub"]["imagem_sha256"] == "c" * 64
+    assert itens["pub2"]["tem_imagem"] is True and itens["pub2"]["image_id"] is None    # sem imagem pronta
+
+
 async def test_dm_editada_para_um_texto_ja_enviado_segue_no_cadeado_com_a_regra_real(harness: Any,
                                                                                     monkeypatch: Any) -> None:
     """B1, cenário real (`_repetido` de verdade, sem monkeypatch): a única regra da porta que depende do TEXTO é a da

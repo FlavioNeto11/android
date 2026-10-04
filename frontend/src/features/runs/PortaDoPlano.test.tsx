@@ -235,6 +235,19 @@ describe('Revisão do painel (N2)', () => {
   });
 });
 
+describe('29.30 no cartão do plano', () => {
+  it('a publicação mostra a imagem que vai ao feed', async () => {
+    backend.on('GET', /\/runs\/run-p\/porta$/, () => json(previa([
+      item({ step_id: 'run-p:android-01:v1:pub', acao: 'CREATE_POST', alvo: null, tem_imagem: true, image_id: 'img-1',
+             imagem_sha256: 'c'.repeat(64) }),
+    ])));
+    await montar();
+    const img = container.querySelector('img');
+    expect(img?.getAttribute('alt')).toBe('Imagem que CREATE_POST publica');
+    expect(img?.getAttribute('src')).toContain('img-1');
+  });
+});
+
 describe('30.68: a prévia do texto editado antes do sim', () => {
   it('trava o Aprovar até a prévia do texto voltar, mostra o motivo novo e manda a chave do texto editado', async () => {
     let soltar: (() => void) | null = null;

@@ -203,6 +203,9 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
   fica travado até a conferência voltar, mostra o motivo novo junto do item e não deixa aprovar o que deixou de ser 🔒.
 - O gesto passa a mandar a chave do texto editado, conferida no servidor antes e depois da edição: o sim gravado é o do
   texto que o dono viu.
+- Revisão (A1): só o que é 🔒 na prévia inteira tem texto editável; a 2ª DM ao mesmo alvo e o 2º comentário no mesmo
+  post seguem fora do aval com o texto que for (o texto editado passa pelo mesmo laço da prévia).
+- O cartão do plano mostra a imagem que a publicação leva (29.30), não só "com imagem".
 - Prova: `simulated` (`tests/test_porta_do_plano.py`, `PortaDoPlano.test.tsx`). `not_run`: o percurso no navegador.
 
 ## 2026-10-04 — 30.61: o painel da prévia da porta (branch feat/30-61-painel)

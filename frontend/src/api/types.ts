@@ -2894,6 +2894,8 @@ export interface ItemDaPorta {
   texto?: string | null;
   texto_na_execucao?: boolean;
   tem_imagem?: boolean;
+  /** A imagem que a publicação leva (29.30/30.68), só a de sha256 conhecido; o painel a mostra no cartão. */
+  image_id?: string | null;
   imagem_sha256?: string | null;
   chave: string | null;
   dependentes: string[];

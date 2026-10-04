@@ -1,6 +1,6 @@
 import { Ban, CheckCircle2, Clock, Hourglass, ImageIcon, Lock, Play, RotateCcw, ShieldQuestion, Undo2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, hintForError, toApiError } from '../../api/client';
+import { api, hintForError, personaImageUrl, toApiError } from '../../api/client';
 import type { AprovarPlanoItem, ItemDaPorta, PreviaDaPorta, SeloDaPorta } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
@@ -326,6 +326,11 @@ export function PortaDoPlano({ runId }: { runId: string }) {
                     {item.tem_imagem ? <Badge tone="neutral" icon={ImageIcon}>com imagem</Badge> : null}
                     {tirada ? <Badge tone="warning">{porDependencia ? 'sai junto (depende de uma tirada)' : 'não será feita'}</Badge> : null}
                   </div>
+                  {item.image_id && item.profile_id ? (
+                    // 29.30: quem aprova a publicação vê a imagem que vai ao feed, não só "com imagem".
+                    <img className={styles.draftImagem} src={personaImageUrl(item.profile_id, item.image_id)}
+                         alt={`Imagem que ${oQue(item)} publica`} loading="lazy" />
+                  ) : null}
                   {editavel ? (
                     <TextArea rows={3} aria-label={`Texto de ${oQue(item)} em ${item.aparelho}`} value={texto}
                               onChange={(e) => setTextos((s) => ({ ...s, [item.step_id]: e.target.value }))}

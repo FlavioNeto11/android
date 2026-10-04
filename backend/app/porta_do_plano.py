@@ -27,7 +27,8 @@ from .db import Row, loads
 from .models import RUN_TERMINAL, InteractionType, StepStatus
 from .planning.capabilities import contraparte, objeto_da_acao, texto_a_gerar
 from .social.approvals import apply_edit
-from .social.chave_da_aprovacao import VERSAO_DA_CHAVE, chave_da_aprovacao, midia_da_etapa, tem_variavel, texto_exato
+from .social.chave_da_aprovacao import (ARGUMENTO_DA_IMAGEM, VERSAO_DA_CHAVE, chave_da_aprovacao, midia_da_etapa,
+                                        tem_variavel, texto_exato)
 from .taskqueue.repository import MOTIVO_REJEICAO
 from .util import now, now_iso, to_iso
 
@@ -178,14 +179,41 @@ def _validar_texto(sid: str, original: Mapping[str, object] | None, texto: str) 
                                                 "texto final.", 422)
 
 
-def _item_com_texto(state: AppState, run: Row, obj: Row, e: Row, texto: str,
-                    dependentes: list[str]) -> dict[str, object] | None:
-    """O item como a porta o veria com `texto` no lugar do da etapa, SEM gravar: a mesma conta de `_item` sobre uma
-    cópia da linha. A chave sai igual à da etapa depois do `apply_edit` (o texto entra nos argumentos já sem espaço nas
-    pontas, como o `definir_texto` grava)."""
+def _com_texto(e: Row, texto: str) -> Row:
+    """Uma cópia da etapa com `texto` no lugar do dela, SEM gravar. A chave sai igual à da etapa depois do `apply_edit`
+    (o texto entra nos argumentos já sem espaço nas pontas, como o `definir_texto` grava)."""
     argumentos = loads(e["bindings"], {}) or {}
-    copia = {**e, "bindings": json.dumps({**argumentos, "content": texto}, ensure_ascii=False)}
-    return _item(state, run, obj, copia, dependentes, {}, set())
+    return {**e, "bindings": json.dumps({**argumentos, "content": texto}, ensure_ascii=False)}
+
+
+def _rotulos(state: AppState) -> dict[str, str]:
+    return {str(r["id"]): f"@{r['username']}" if r["username"] else str(r["id"])
+            for r in state.db.query("SELECT id, username FROM instagram_profiles")}
+
+
+def _itens_do_plano(state: AppState, run: Row, objetivos: Mapping[str, Row], etapas: list[Row],
+                    dependentes: Mapping[str, list[str]], rotulos: Mapping[str, str],
+                    trocas: Mapping[str, Row] | None = None) -> tuple[list[dict[str, object]], int]:
+    """Os itens da prévia, na ordem do plano, e quantas etapas-modelo de `for_each` ficaram fora. `trocas` põe uma cópia
+    no lugar da etapa (o texto editado, 30.68) DENTRO do laço: a regra do mesmo efeito duas vezes no plano (`vistos`)
+    vale igual para o texto editado (A1 da revisão do 30.68)."""
+    itens: list[dict[str, object]] = []
+    vistos: set[tuple[str, str, str]] = set()          # (perfil, ação, objeto): o mesmo efeito duas vezes no plano
+    modelos_for_each = 0
+    for e in etapas:
+        if e["for_each"]:
+            modelos_for_each += 1                       # etapa-modelo: os itens nascem da coleta, na execução
+            continue
+        obj = objetivos[str(e["objective_id"])]
+        linha = (trocas or {}).get(str(e["id"]), e)
+        item = _item(state, run, obj, linha, list(dependentes.get(str(e["id"]), [])), rotulos, vistos)
+        if item is not None:
+            itens.append(item)
+    return itens, modelos_for_each
+
+
+def _no_cadeado(item: Mapping[str, object] | None) -> bool:
+    return item is not None and item["selo"] == APROVACAO and bool(item["chave"])
 
 
 def previa_do_item(state: AppState, run_id: str, corpo: PreviaDoItemBody) -> dict[str, object]:
@@ -196,31 +224,25 @@ def previa_do_item(state: AppState, run_id: str, corpo: PreviaDoItemBody) -> dic
     etapa = next((e for e in etapas if str(e["id"]) == corpo.step_id), None)
     if etapa is None:
         raise PortaIndisponivel("plano_mudou", "A etapa não está mais no plano.", 409)
-    obj = objetivos[str(etapa["objective_id"])]
-    deps = dependentes.get(corpo.step_id, [])
-    original = _item(state, run, obj, etapa, deps, {}, set())
+    rotulos = _rotulos(state)
+    itens, _modelos = _itens_do_plano(state, run, objetivos, etapas, dependentes, rotulos)
+    original = next((i for i in itens if str(i["step_id"]) == corpo.step_id), None)
     texto = corpo.texto.strip()
     _validar_texto(corpo.step_id, original, texto)
-    proposto = _item_com_texto(state, run, obj, etapa, texto, deps)
+    # A1 da revisão: só o que é 🔒 com chave na prévia INTEIRA tem texto editável no plano (a 2ª DM ao mesmo alvo fica
+    # para a execução, o 2º comentário no mesmo objeto é recusado, com o texto que for).
+    if not _no_cadeado(original):
+        raise PortaIndisponivel("plano_mudou", "Este item não pede o seu aval no plano: o texto dele não se edita "
+                                               "aqui.", 409)
+    propostos, _modelos = _itens_do_plano(state, run, objetivos, etapas, dependentes, rotulos,
+                                          {corpo.step_id: _com_texto(etapa, texto)})
+    proposto = next((i for i in propostos if str(i["step_id"]) == corpo.step_id), None)
     return {"step_id": corpo.step_id, "texto": texto, "item": proposto}
 
 
 def previa_da_porta(state: AppState, run_id: str) -> dict[str, object]:
     run, objetivos, etapas, dependentes = _plano(state, run_id)
-    rotulos = {str(r["id"]): f"@{r['username']}" if r["username"] else str(r["id"])
-               for r in state.db.query("SELECT id, username FROM instagram_profiles")}
-
-    itens: list[dict[str, object]] = []
-    vistos: set[tuple[str, str, str]] = set()          # (perfil, ação, objeto): o mesmo efeito duas vezes no plano
-    modelos_for_each = 0
-    for e in etapas:
-        if e["for_each"]:
-            modelos_for_each += 1                       # etapa-modelo: os itens nascem da coleta, na execução
-            continue
-        obj = objetivos[str(e["objective_id"])]
-        item = _item(state, run, obj, e, dependentes.get(str(e["id"]), []), rotulos, vistos)
-        if item is not None:
-            itens.append(item)
+    itens, modelos_for_each = _itens_do_plano(state, run, objetivos, etapas, dependentes, _rotulos(state))
 
     falhas = sum(1 for i in itens if i.get("falhou"))
     return {
@@ -295,6 +317,9 @@ def _item(state: AppState, run: Row, obj: Row, e: Row, dependentes: list[str], r
             "profile_id": porta.profile_id, "app": porta.app_id or e["app_id"], "acao": cap.key if cap else e["capability"],
             "alvo": alvo, "objeto_alvo": objeto, "selo": selo, "motivo": motivo, "dica": dica, "retry_at": retry_at,
             "texto": texto if fechado else None, "texto_na_execucao": texto_na_execucao, "tem_imagem": tem_imagem,
+            # 29.30/30.68: quem aprova a publicação no plano vê a imagem que vai ao feed (só a de sha256 conhecido, a
+            # mesma que entra na chave).
+            "image_id": str(bindings.get(ARGUMENTO_DA_IMAGEM)).strip() if imagem_sha else None,
             "imagem_sha256": imagem_sha, "chave": chave, "falhou": False}
 
 
@@ -336,11 +361,21 @@ def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por:
     for sid, texto in editados.items():
         if itens.get(sid) is not None:              # a etapa que saiu do plano entra em `mudaram`, abaixo
             _validar_texto(sid, itens.get(sid), texto)
+    # Os itens com TODOS os textos editados no lugar, pelo mesmo laço da prévia (os `vistos` do plano valem).
+    propostos: dict[str, dict[str, object]] = {}
+    if editados:
+        trocas = {sid: _com_texto(etapa_por_id[sid], t) for sid, t in editados.items() if sid in etapa_por_id}
+        lista, _modelos = _itens_do_plano(state, _run, objetivos, etapas, dependentes, {}, trocas)
+        propostos = {str(i["step_id"]): i for i in lista}
     for sid, chave in pedidos:
         item = itens.get(sid)
+        if sid in editados and item is not None and not _no_cadeado(item):
+            # A1 da revisão: o caminho da edição não abre o que a prévia inteira não põe no 🔒.
+            mudaram.append({"step_id": sid, "selo": item["selo"],
+                            "motivo": str(item["motivo"] or "") or "este item não pede o seu aval no plano"})
+            continue
         if sid in editados and item is not None:
-            e = etapa_por_id[sid]
-            proposto = _item_com_texto(state, _run, objetivos[str(e["objective_id"])], e, editados[sid], [])
+            proposto = propostos.get(sid)
             if proposto is None or proposto["selo"] != APROVACAO or not proposto["chave"] or proposto["chave"] != chave:
                 motivo = (str(proposto["motivo"]) if proposto and proposto["selo"] != APROVACAO and proposto["motivo"]
                           else "a prévia deste texto mudou: confira de novo")
