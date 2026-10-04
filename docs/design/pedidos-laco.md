@@ -574,6 +574,14 @@ a adiada por saldo que vira `perdida` e o limite conhecido do orçamento.
   predicado largo ("na dúvida, `incerta`"); com os pedidos desligados o custo só aparece no 28.12. PARÂMETRO A REVISITAR com
   números no 28.12: a contagem de ocorrências `incerta` cuja falha veio depois de toque SEM `side_effect`. Se for alta,
   restringir às ações de commit passa a ser decisão com dado, não suposição.
+  PRIMEIRO DADO (28.12, 04/10, run `r-20261004090000-bbfe54`): a ocorrência de só observar parou no teto de US$ 0,10 por
+  ocorrência depois de abrir a página e tocar para navegar (6 `tap` com `effect_possible = 1`, nenhum com `side_effect`).
+  Fechou `incerta` e levou o pedido a `aguardando_pessoa`, o que travou a recorrência por falta de verba, não por dúvida
+  sobre o mundo. DECISÃO (orquestradora, 04/10, item 28.20), restrita a esse caso: se alguma tentativa terminou no teto
+  de orçamento (`attempts.error_kind = 'budget'`) e NENHUMA ação da execução tem `side_effect = 1`, o efeito possível dos
+  toques não conta (`RepositorioDePedidos.parou_no_orcamento_sem_efeito_declarado`). A ocorrência fecha `falhou`, com o
+  motivo do orçamento e sem nova tentativa; o pedido segue `ativo`; a falha conta em `pausa_por_falha`. Com uma ação de
+  commit na execução, segue `incerta`. O predicado largo continua para toda falha que não seja do orçamento.
   Testes: `test_pedidos_retentativa.py` (efeito → `incerta`, `aguardando_pessoa` e aviso, sem nova tentativa; antes de qualquer
   ação com efeito → repete; driver provou ausência → repete e esgotada vira `falhou`; `unknown`/`intended`; purgada; pedido pausado).
 - **A nova tentativa é a MESMA linha.** `retentar` faz `despachada|rodando → devida` num só `UPDATE` (CAS de estado, custo da

@@ -24,6 +24,9 @@ Duas perguntas, ambas puras:
    não produziu efeito: falhou antes de qualquer ação com efeito, ou o driver provou que nada chegou ao aparelho (ação
    registrada com `effect_possible = 0`).
 
+   Exceção do 28.20 (decidida no laço, que passa `efeito_possivel=False`): a execução que parou no teto de orçamento sem
+   nenhuma ação de commit (`side_effect`) falha pelo orçamento, `definitiva`, em vez de `incerta`.
+
 2. **Quando o pedido pausa** (`falhas_seguidas`, `deve_pausar`): N ocorrências seguidas que terminaram `falhou`
    (o `pause-on-failure` do Temporal). Conta OCORRÊNCIAS, não execuções: a ocorrência que falhou e foi repetida só conta
    quando a última tentativa também falha. `concluida` zera; `incerta` também (a pessoa entra no meio); `cancelada` não

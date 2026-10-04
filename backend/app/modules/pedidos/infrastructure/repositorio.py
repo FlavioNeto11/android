@@ -349,6 +349,15 @@ class RepositorioDePedidos:
             "SELECT 1 FROM actions a JOIN attempts t ON t.id=a.attempt_id JOIN steps s ON s.id=t.step_id"
             " WHERE s.run_id=? AND (a.effect_possible=1 OR a.status IN ('intended','unknown')) LIMIT 1", (run_id,)))
 
+    def parou_no_orcamento_sem_efeito_declarado(self, run_id: str) -> bool:
+        """28.20: alguma tentativa da execução terminou no teto de orçamento (`attempts.error_kind = 'budget'`, o
+        `AIError.kind` gravado, sem ler texto) e NENHUMA ação dela tinha efeito declarado (`actions.side_effect`, o
+        commit). Aí o "efeito possível" dos toques de navegação não deixa o mundo incerto: o que parou foi a verba."""
+        return bool(self.db.scalar(
+            "SELECT 1 FROM attempts t JOIN steps s ON s.id=t.step_id WHERE s.run_id=? AND t.error_kind='budget'"
+            " AND NOT EXISTS (SELECT 1 FROM actions a JOIN attempts t2 ON t2.id=a.attempt_id"
+            " JOIN steps s2 ON s2.id=t2.step_id WHERE s2.run_id=? AND a.side_effect=1) LIMIT 1", (run_id, run_id)))
+
     def desfechos_recentes(self, pedido_id: str, excluindo: str, limite: int) -> list[str]:
         """Estado das últimas ocorrências COM execução que fecharam (`concluida`, `falhou`, `incerta`, `cancelada`), a
         mais recente primeiro, sem `excluindo` (a que está fechando agora). Base da contagem de falhas seguidas."""

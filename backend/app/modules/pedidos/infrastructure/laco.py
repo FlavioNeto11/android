@@ -310,6 +310,13 @@ class LacoDePedidos:
         teto = p["orcamento_ocorrencia_usd"]
         if sem_orcamento is None and teto is not None and float(o["custo_usd"] or 0.0) + custo >= float(teto):
             sem_orcamento = f"o teto da ocorrência (US$ {float(teto):.4f}) já foi gasto"
+        # 28.20: a execução que parou no teto de orçamento sem nenhuma ação de efeito declarado (commit) falha POR
+        # ORÇAMENTO. Não é `incerta`: os toques de navegação contam como efeito possível, mas o que interrompeu foi a
+        # verba, e mandar o pedido esperar a pessoa travaria a recorrência por um motivo que não é do mundo. Não repete
+        # (sem verba nesta ocorrência); a pausa por falhas seguidas continua valendo.
+        if run_status is not None and self.repo.parou_no_orcamento_sem_efeito_declarado(o["run_id"]):
+            efeito = False
+            sem_orcamento = sem_orcamento or "a execução parou no teto de orçamento"
         return tentativas.decidir(estado=estado, tentativa=max(1, int(o["tentativa"] or 1)),
                                   max_tentativas=int(p["max_tentativas"] or self.cfg.max_tentativas),
                                   efeito_possivel=efeito, agora=agora, base_s=self.cfg.retentativa_base_s,
