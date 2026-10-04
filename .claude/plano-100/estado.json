@@ -4906,16 +4906,16 @@
   },
   "29.22": {
    "id": "29.22",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Real 04/10, central em 1452f81d, android-03 (exigida_com_bloqueio): medição #1354 às 17:22:31Z; parado e ligado a frio (emulator_started_at 17:25:33Z, online 17:26:54Z); às 17:27:23Z a linha seguia trafego_verificado com verified_at 17:22:31Z e pending='verificar' (a verificação de antes do boot deixou de valer); a convergência mediu ao ligar (c-20261004172708-5c279d, medição #1360 às 17:27:40Z), com a mesma saída 38.211.146.161. android-06: medição #1352 às 17:20:32Z, boot 17:32:15Z, online 17:34:27Z, pending='verificar'; a medição ao ligar falhou por prazo (c-20261004173445-62e335, 'rede do aparelho excedeu 55s'), e a linha seguiu com pending='verificar' e verified_at de antes do boot até a varredura medir (#1367 às 17:41:19Z, mesma saída 38.211.146.161, trafego_verificado).",
-   "blocker": "A porta segurando uma TAREFA não foi exercida: nenhuma tarefa foi despachada aos dois na janela entre o boot e a medição nova. Para provar, falta despachar uma tarefa inofensiva ao aparelho logo depois de um boot a frio e ver a frase 'o aparelho subiu depois da medição' no status_detail.",
-   "grupo": "orquestradora-deploy30",
+   "evidence": "Real 04/10, máquina central, deploy 30 (1b3568a7), android-05 (rede exigida_com_bloqueio, verificada antes às 18:27:20.593Z, medição #1390). Stop c-20261004183638-099073 e start a frio c-20261004183648-0f658e, online às 18:38:10.971Z. Execução r-20261004183653-870e8d (idempotency_key lote:android:29-22-01, QA Messenger, sem conta) criada às 18:36:53Z, durante o boot. Às 18:38:10.970Z, o evento e o status_detail do objetivo: 'rede exigida (exigida_com_bloqueio): o aparelho subiu depois da medição que o verificou (a prova de tráfego é de 2026-10-04T18:27:20.593Z, do Android de antes); medindo de novo de dentro do aparelho antes da tarefa'. O objetivo ficou pending por 73 s sem despacho e foi cancelado às 18:39:24Z ('Nenhuma ação com efeito externo foi realizada', sem custo de IA). A convergência seguiu: device.network c-20261004183811-ee7339 (105 s, terminou em 'configurado'), c-20261004183957-4b43fd (túnel religado pelo Start do cliente, 10 s) e c-20261004184057-183f47 (medição #1401 às 18:41:21.819Z, trafego_verificado, mesma saída). Do boot até a rede valer de novo, 3 min 11 s.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-janela30-a",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T18:39:06+00:00"
+   "quando": "2026-10-04T18:52:20+00:00"
   },
   "30.1": {
    "id": "30.1",
@@ -7638,14 +7638,14 @@
    "id": "29.73",
    "status": "implemented",
    "proof": "real",
-   "evidence": "Real 04/10, máquina central, deploy 30 (1b3568a7, migração 102_decisoes_automaticas, agentes 0.1.0+1b3568a nos dois workers; agente14 às 18:25:13Z). Reinício da tarefa farm-central depois do agente novo, lido nos eventos do banco (mode=ro): 'servidor encerrando' às 18:25:33.466Z, central de pé às 18:25:55.536Z e 'Worker Notebook da LAN conectou' às 18:25:57.353Z. O worker voltou 1,8 s depois do central de pé e 23,9 s depois do encerrando. Linha de base: 6,3 s no deploy 29 e ~1 min no deploy 28. No agente.log do notebook (ssh só leitura), uma nova tentativa a cada ~5 s ('conexão caiu ... nova tentativa em 3 s') e 'conectado' às 15:25:57,333 local (18:25:57Z). A orquestradora conferiu às 18:28Z.",
+   "evidence": "Real 04/10, máquina central, deploy 30 (1b3568a7, migração 102_decisoes_automaticas, agentes 0.1.0+1b3568a nos dois workers; agente14 às 18:25:13Z). Reinício da tarefa farm-central depois do agente novo, lido nos eventos do banco (mode=ro): 'servidor encerrando' às 18:25:33.466Z, central de pé às 18:25:55.536Z e 'Worker Notebook da LAN conectou' às 18:25:57.353Z. O worker voltou 1,8 s depois do central de pé e 23,9 s depois do encerrando. Linha de base: 6,3 s no deploy 29 e ~1 min no deploy 28. No agente.log do notebook (ssh só leitura), uma nova tentativa a cada ~5 s ('conexão caiu ... nova tentativa em 3 s') e 'conectado' às 15:25:57,333 local (18:25:57Z). A orquestradora conferiu às 18:28Z. Segunda amostra, com o reinício só da tarefa farm-central pedido pela orquestradora para o 30.55: 'servidor encerrando' às 18:43:53.449Z, 'Backend iniciado' às 18:44:32.686Z (subida de 39 s) e 'Worker Notebook da LAN conectou' às 18:44:36.509Z, 3,8 s depois do de pé (a tentativa do agente roda a cada ~5 s). Os aparelhos de conta real 01/03/06/13 seguiram online, 'readotado após reinício do backend', sem tela de desafio na /hierarchy às 18:45:22Z.",
    "blocker": null,
-   "grupo": "orquestradora-deploy30",
+   "grupo": "resultado-orquestradora-janela30-a",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T18:39:06+00:00"
+   "quando": "2026-10-04T18:52:20+00:00"
   },
   "29.75": {
    "id": "29.75",
@@ -7662,16 +7662,16 @@
   },
   "28.25": {
    "id": "28.25",
-   "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #275, branch canais/28-25-decididas @ d8822a32 (8 commits [skip ci]: 98a0b47a registro + migração 102 + porta registrar_decisao; 06b58c28 adaptador (31.43 vencido_sem_resposta; 30.55 decided_by=plataforma, motivo 'auto:<regra> v1 — fatos', com e sem 'confirmado que fica: '); 3dcb06ab resumo agrupado (uma mensagem por janela de 60 min, só contagem por regra, janela sobrevive a reinício); e784619a GET /api/decisoes-automaticas e POST /api/decisoes-automaticas/{id}/desfazer; 68213705 adendo v1.22 + canais.md + banco.md + CHANGELOG; 294dffc7 e 000f5357 aba 'Decidido sozinho' em Pendências; d8822a32 regra renumerada para C-23). simulated: tests/test_decisoes_registro.py, test_decisoes_adaptador.py, test_decisoes_resumo.py, test_decisoes_desfazer.py + arquitetura/cobertura de rotas/canais_estado/avisos_servico/configuração de exemplo = 124 passed; scripts/tests 544 passed; docs-check 0; frontend typecheck limpo + 1504 testes. Contraprovas: formato antigo com arroba não casa; decided_by≠plataforma não entra; desfazer do aprendizado = mudar_estado DISABLED com o autor da sessão (nunca published→validated); já disabled = idempotente; fora de 7 dias 409 prazo_vencido; sem confirmar 400; texto do resumo sem dado pessoal. Inversa por fila: aprendizado SIM (desligar, veto); pergunta NÃO (needs_input só vai a cancelled); objetivo NÃO (reabrir repetiria ações); pedido só a porta (sem produtor). Real: not_run (produtores 31.43 e 30.55 ainda não na main; Telegram sem rede nos testes). | No ar desde o deploy 30 (1b3568a7, migração 102_decisoes_automaticas, 04/10 18:27Z); GET /api/decisoes-automaticas 200 conferido pela orquestradora às 18:28Z. A prova real (resumo único e desfazer) espera a primeira volta do 30.55 em modo ligado.",
-   "blocker": "Prova real depois do deploy 30 com os produtores 31.43 e 30.55 no ar: primeira decisão automática real registrada, um resumo no Telegram do dono e a aba percorrida no Chrome pela orquestradora. Conferir o formato real de dados.vencimento (31.43) e os fatos kind/para do 30.55.",
-   "grupo": "orquestradora-deploy30",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "REAL em 04/10/2026, central WIN-7S2UASNLFOP, deploy 30 (1b3568a7, migração 102_decisoes_automaticas). (a) Resumo: a primeira subida do deploy 30 encerrou 21 objetivos parados (regra 31.43, decididas 18:24:42Z) e o registro gravou as 21 com resumida_em 18:25:12.288Z; saiu UM aviso só (avisos_entregas 43, chave decisoes:resumo:1-21, tipo decisoes.resumo, enviado 18:25:13.707Z, Telegram msg 207, canal_enviadas 33) com o texto 'ANA: A plataforma decidiu sozinha o que esperava você' / '- 21 objetivos que esperavam uma execução já terminada foram encerrados. Dá para desfazer pelo painel em até 7 dias.': sem nome de persona, conta, aparelho nem texto de comando. (b) Registro e desfazer: 30.55 em on, a volta das 18:46:03Z decidiu 18 itens do aprendizado (15 auto:qa_revisar v1, 3 auto:qa_para_aprovar v1), GET /api/decisoes-automaticas?fila=aprendizado total 18 com pode_desfazer=true; a Aprendizado desfez a id 22 (receita:180) por POST /api/decisoes-automaticas/22/desfazer às 18:46:49Z (200) e o registro, lido pela Canais às 18:47:12Z, mostra desfeita=true, desfeita_em 18:46:49.058Z, desfeita_por panel, o motivo, pode_desfazer=false e por_que_nao 'já foi desfeita'; o livro foi para disabled (transição 248).",
+   "blocker": "Falta o resumo das 18 do aprendizado (janela de 60 min: sai depois de ~19:25Z, e conta 17 porque a desfeita não entra, por desenho). Achados baixos para o 28.29: fatos.texto corta no meio da palavra e o efeito diz 'publicado(a)'; o 31.43 subiu ligado por padrão (não sabido pela orquestradora) e não tem desfazer (SemInversa).",
+   "grupo": "resultado-orquestradora-janela30-a",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T18:39:06+00:00"
+   "quando": "2026-10-04T18:52:20+00:00"
   },
   "30.55": {
    "id": "30.55",
@@ -7685,6 +7685,32 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-04T18:39:06+00:00"
+  },
+  "29.72": {
+   "id": "29.72",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real 04/10, máquina central, deploy 30 (1b3568a7, PR #273 na suíte 30). Às 2026-10-04T18:32:59.577460Z rodei scripts/candidatos-do-portal.py contra o central (só GET e banco em mode=ro): 74 candidatos, fora 0/0/0. amostra_de_lote preenchida pelo banco (por exemplo fk-c368381db9 '3 de 3', fk-59b5a57058 '1 de 3', fk-9869d46dca '2 de 3'), dias_sem_ocorrer em todos e 8 rebaixados (amostra toda nossa ou parados há mais de 7 dias; fk-5084a0e6a8 OPEN_FEED do Instagram, 10,3 dias, foi para o fim). A revisão independente achou o denominador da amostra contando só os run_id achados no banco; o conserto está no 29.76 (PR #302).",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-janela30-a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T18:52:20+00:00"
+  },
+  "29.74": {
+   "id": "29.74",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real 04/10, máquina central, deploy 30 (1b3568a7, PR #281 na suíte 30). Antes do deploy, o relatório de falhas tinha o grupo fk-d0f1c2ed23 ('tentativa interrompida' no QA Messenger, 65 ocorrências), que misturava a espera pela pessoa com a interrupção. Depois do deploy, às 2026-10-04T18:32:59.577460Z, o grupo deixou de existir: nenhum grupo 'interrompida' no relatório. As tentativas foram relidas pela regra nova (recovery 'Aguardando o usuário' com o erro da pessoa): fk-59b5a57058 'o app pede autenticação', 39 ocorrências, frente android, e fk-37a7dd80b5 'a IA declarou bloqueio', 20, frente jev.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-janela30-a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T18:52:20+00:00"
   }
  },
  "rodadas": [
@@ -10078,6 +10104,19 @@
    ],
    "grupos": [
     "orquestradora-deploy30"
+   ]
+  },
+  {
+   "quando": "2026-10-04T18:52:20+00:00",
+   "itens": [
+    "29.73",
+    "29.22",
+    "29.72",
+    "29.74",
+    "28.25"
+   ],
+   "grupos": [
+    "resultado-orquestradora-janela30-a"
    ]
   }
  ]
