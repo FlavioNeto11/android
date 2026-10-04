@@ -5505,6 +5505,10 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
    usar: sem o código da Canais a linha fica `pendente` (`canal_ausente`). Acima de `telegram_hora` avisos por hora a
    linha fica `retido`; `canal_desligado` e falha deixam `pendente`; `campo_invalido` vira `descartado`. O laço
    `portal-contatos` (a cada minuto, no líder da trava `avisos`) reenvia em ordem de chegada e respeita o teto da hora.
+   `entregue` aqui quer dizer "na fila da Canais" (`enfileirado=True`), não "lido no Telegram": se o canal for
+   desligado com o aviso ainda na fila, ele vence em `avisos.validade_h` e o corpo some, e a linha do portal segue
+   `entregue` (o contato continua na tabela pelos 180 dias). Por isso a página diz ao visitante que a mensagem foi
+   recebida, nunca que chegou a alguém.
 7. **O texto do visitante é DADO.** Não vai para IA, `runs`, `pedidos`, aprovações, cartão nem barramento; a resposta do
    dono à mensagem no Telegram é "só informa" (28.32). O log do portal leva só o id da linha e o motivo, nunca nome,
    telefone, mensagem ou IP (há teste).
