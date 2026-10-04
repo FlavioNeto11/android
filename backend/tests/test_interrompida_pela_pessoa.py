@@ -61,6 +61,11 @@ def test_texto_sem_regra_de_quem_esperou_a_pessoa_e_o_relato_da_ia() -> None:
     # o texto antigo da reconciliação, se sobrou na tentativa, não devolve a interrompida
     assert classificar_falha("Tentativa interrompida: backend reiniciado", "interrupted",
                              recovery=ESPERA) is F.IA_DECLAROU_BLOQUEIO
+    # o erro ANTERIOR da tentativa (navegação) não vira lição nem grupo de navegação de uma parada pela pessoa
+    for anterior in ("Alvo ausente: o botão Seguir", "Pós-condição não comprovada: a conversa não abriu.",
+                     "Defeito do plano: a etapa cita {{saida:x}}"):
+        assert classificar_falha(anterior, "interrupted", recovery=ESPERA) is F.IA_DECLAROU_BLOQUEIO, anterior
+        assert classificar_falha(anterior, "failed") is not F.IA_DECLAROU_BLOQUEIO, anterior   # fora da espera, vale
     # a parada da triagem de valor sensível (executor) pede a pessoa sem passar pela IA
     triagem = ("O valor 'codigo' lido na tela tem formato de código de verificação: código de verificação, senha e "
                "token não passam de uma etapa a outra (ADR-009, ADR-058). Nada foi gravado.")

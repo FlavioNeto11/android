@@ -159,7 +159,8 @@ def classificar_falha(error: str | None, status: str | None, error_kind: str | N
     para esperar a pessoa: `recovery` "Aguardando o usuário" ou o encerramento da prova de fluxo
     (`ESPEROU_A_PESSOA`). Ali o texto É a razão da parada (o app pede autenticação, falta informação, a IA relatou o
     bloqueio), e chamá-la de interrompida jogava tudo num grupo da camada `execucao` que ninguém conserta. Sem regra
-    para o texto, é o relato livre da IA (`report_blocked` com `needs_user`): `ia_declarou_bloqueio`.
+    para o texto, ou com um tipo de navegação (que pode ser o erro anterior da tentativa: `DA_PESSOA_NA_ESPERA`), é o
+    relato livre da IA (`report_blocked` com `needs_user`): `ia_declarou_bloqueio`.
 
     `error_kind` (RA-22): o `AIError.kind` que encerrou a tentativa (`attempts.error_kind`). Quando decide
     (`pelo_erro_que_encerrou`), vence o texto: a mensagem do executor deixa de ser contrato. Sem ele, o texto.
@@ -171,7 +172,7 @@ def classificar_falha(error: str | None, status: str | None, error_kind: str | N
         if not esperou_a_pessoa(recovery):
             return _F.INTERROMPIDA
         tipo = pelo_erro_que_encerrou(error_kind) or classificar_texto(error)
-        return _F.IA_DECLAROU_BLOQUEIO if tipo in (_F.OUTRO, _F.INTERROMPIDA) else tipo
+        return tipo if tipo in DA_PESSOA_NA_ESPERA else _F.IA_DECLAROU_BLOQUEIO
     return pelo_erro_que_encerrou(error_kind) or classificar_texto(error)
 
 
@@ -179,6 +180,13 @@ def classificar_falha(error: str | None, status: str | None, error_kind: str | N
 #: pelo scheduler: o `waiting_user` (`_apply`) e a prova de fluxo que não espera ninguém (`_prova_sem_pessoa`). Um
 #: teste confere que o scheduler escreve estes textos.
 ESPEROU_A_PESSOA: tuple[str, ...] = ("Aguardando o usuário", "Prova de fluxo: encerrada pelo sistema")
+
+
+#: O que o texto de quem esperou a pessoa pode dizer (revisão da Aprendizado no #281). O texto gravado numa
+#: `interrupted` pode ser o erro ANTERIOR da mesma tentativa ("alvo ausente", "pós-condição não comprovada"): se a
+#: navegação valesse aqui, uma parada pela pessoa viraria lição e grupo do backlog de navegação. Só o que nunca vira
+#: lição (autenticação, conta, IA, aparelho) e a falta de informação passam; o resto é o relato da IA.
+DA_PESSOA_NA_ESPERA = (NUNCA_VIRA_LICAO | {_F.FALTA_INFORMACAO}) - {_F.OUTRO, _F.INTERROMPIDA}
 
 
 def esperou_a_pessoa(recovery: str | None) -> bool:
