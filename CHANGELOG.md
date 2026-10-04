@@ -325,6 +325,18 @@ Aprendizado, que fez o primeiro desfazer real (04/10).
 - Prova `simulated`: `backend/tests/test_canais_anexos_lista.py` (18 casos), `test_canais_anexos_trello.py` (5 novos: link, código
   curto, envio repetido), `frontend/src/features/canais/AnexosTab.test.tsx` (13 casos). `real`: `not_run` (o passeio no navegador,
   depois do deploy).
+
+## 2026-10-04 — 30.62: a família de um pedido entre personas conta como uma conta (branch feat/30-62-contexto-do-pedido)
+
+- `PolicyEngine.check(..., pedido: ContextoDoPedido | None)`. `ContextoDoPedido(raiz, familia, porta_vozes: frozenset)` fica em
+  `social/policy.py`, e é de lá que a frente de Canais importa.
+- (a) Uma conta por alvo no pedido inteiro, em todos os baldes; com porta-voz, só ele age.
+- (b) Pessoa real sem conversa prévia pede aprovação em qualquer ação.
+- (c) Sem pedido, nada muda.
+- `SocialRepository.fleet_targeting(only_profile_ids=)`. Emenda do ADR-055.
+- 7 testes em `tests/test_contexto_do_pedido.py`. Os 12 arquivos afetados deram 271 aprovados.
+- A ligação em `state.py` e o provedor `contexto_do_pedido(run_id)` são da frente de Canais (28.10 F5). Real: `not_run`.
+
 ## 2026-10-04 — 30.60: CREATE_POST endurecido (branch feat/30-60-create-post-endurecido)
 
 - Revisão do deploy 29: os achados 1, 2, 3, 5 e 6 e o N1, N3 e N4 foram confirmados no código e consertados. O achado 4
