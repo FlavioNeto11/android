@@ -17,6 +17,7 @@ from collections.abc import Awaitable, Callable
 from app.db import Database
 from app.models import Health, RunCreate, RunStatus, RunTarget, RunTargetsResolveBody
 from app.modules.avisos.application.entrada import casar_ref
+from app.modules.avisos.infrastructure.anexos_leitura import LeitorDeAnexo, LeituraRecusada
 from app.modules.avisos.infrastructure.entrada import Captura, Pendencia, Previa, RecusaDaCentral
 from app.security.sessions import operador_atual
 from app.shared.costuras import autor_do_gesto
@@ -40,9 +41,11 @@ _ATIVAS = ("planning", "running", "paused", "cancelling")
 class PortasReais:
     def __init__(self, *, db: Database, runs: RunService, aprovacoes: ApprovalService, saude: Callable[[], Health],
                  online: Callable[[], list[str]],
-                 capturar: Callable[[str], Awaitable[tuple[bytes | None, str | None]]] | None = None):
+                 capturar: Callable[[str], Awaitable[tuple[bytes | None, str | None]]] | None = None,
+                 leitor_de_anexos: LeitorDeAnexo | None = None):
         self.db = db
         self._capturar = capturar
+        self._leitor_de_anexos = leitor_de_anexos
         self.runs = runs
         self.aprovacoes = aprovacoes
         self._saude = saude
@@ -54,6 +57,18 @@ class PortasReais:
             return Captura(motivo="A captura de tela não está disponível nesta Central.")
         jpeg, motivo = await self._capturar(instance_id)
         return Captura(conteudo=jpeg, motivo=motivo)
+
+    async def ler_anexo(self, anexo_id: int) -> str:
+        """A descrição da imagem do dono pela IA (28.24, F3), pela MESMA porta da rota `POST /api/canais/anexos/{id}/ler`."""
+        if self._leitor_de_anexos is None:
+            raise RecusaDaCentral("A leitura de imagem pela IA não está disponível nesta Central.")
+        try:
+            leitura = await self._leitor_de_anexos.ler(anexo_id)
+        except LeituraRecusada as recusa:
+            raise RecusaDaCentral(recusa.motivo, recusa.codigo) from None
+        rodape = ("Já tinha lido esta imagem: sem custo novo." if leitura.do_cache
+                  else f"Li com {leitura.modelo}; custo US$ {leitura.custo_usd:.4f}.")
+        return f"{leitura.descricao}\n\n{rodape}"
 
     # ------------------------------------------------------------------ leitura
     def status(self) -> str:

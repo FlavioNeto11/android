@@ -195,6 +195,10 @@ class PortasDaCentral(Protocol):
     async def captura(self, instance_id: str) -> Captura:
         """A tela atual do aparelho pela MESMA prévia do painel (tela sensível não sai). Não executa nada nele."""
         ...
+    async def ler_anexo(self, anexo_id: int) -> str:
+        """A IA descreve a imagem que o dono mandou (28.24, F3): o texto para o dono, com o custo. A recusa (teto, falha da
+        IA, gasto barrado) sobe como `RecusaDaCentral`, com a frase para o dono."""
+        ...
     def desfecho(self, run_id: str) -> str | None: ...
     def pergunta_sensivel(self, ref: str | None) -> str | None:
         """O tipo da credencial que a pergunta aberta pede (`senha`, `2fa`, `codigo`, `token`, `credencial`), ou None.
@@ -780,7 +784,20 @@ class ConversaDoCanal:
         if responde_a is not None and enviada is None and not self.repo.da_pessoa(responde_a) and texto.strip():
             return Intencao("orquestradora", texto=texto.strip())
         fato = enviada.get("fato") if enviada is not None else None
+        if enviada is None and responde_a is not None and self.anexos is not None:
+            fato = self._fato_do_anexo(responde_a)
         return rotear(texto, fato=str(fato) if fato else None)
+
+    def _fato_do_anexo(self, responde_a: str) -> str | None:
+        """O reply do dono a uma foto dele vira o fato `anexo:<id>` (a 1ª imagem GUARDADA da mensagem respondida); sem foto
+        guardada ali, nada muda e a mensagem segue a gramática comum (28.24, F3)."""
+        entrada = self.repo.entrada_da_pessoa(responde_a)
+        if entrada is None or self.anexos is None:
+            return None
+        for a in self.anexos.da_entrada(entrada):
+            if a.get("estado") == "guardado" and str(a.get("mime") or "").startswith("image/"):
+                return f"anexo:{a['id']}"
+        return None
 
     async def _agir(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
         if i.tipo == "vazia":
@@ -801,6 +818,8 @@ class ConversaDoCanal:
             await self._feita(saida, linha, i, texto, alvo=f"convidado:{i.ref}" if i.ref else None)
         elif i.tipo == "captura":
             await self._captura(saida, linha, i)
+        elif i.tipo == "ler_anexo":
+            await self._ler_anexo(saida, linha, i)
         elif i.tipo == "desconhecida":
             await self._feita(saida, linha, i, f"{i.motivo or 'Não entendi.'} /ajuda mostra os comandos.")
         elif i.tipo == "status":
@@ -843,6 +862,17 @@ class ConversaDoCanal:
         else:
             self.repo.marcar(self._id(linha), "feita", intencao=i.tipo, destino="central", alvo=alvo_do_fato,
                              resposta="captura enviada", de=("recebida", "pergunta", "executando"))
+
+    async def _ler_anexo(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
+        """A IA descreve a foto do dono (28.24, F3). Sem Executar: o gasto é pequeno e tem teto por imagem; a descrição fica
+        gravada e a segunda leitura não paga. A recusa vira uma frase ao dono (nada é gravado como lido)."""
+        alvo = f"anexo:{i.ref}"
+        try:
+            texto = await self.portas.ler_anexo(int(i.ref or 0))
+        except RecusaDaCentral as recusa:
+            await self._feita(saida, linha, i, str(recusa)[:500], alvo=alvo)
+            return
+        await self._feita(saida, linha, i, texto, alvo=alvo)
 
     def _texto_pendencias(self) -> str:
         itens = self.portas.pendencias()
