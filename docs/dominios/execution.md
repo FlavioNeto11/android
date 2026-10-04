@@ -504,6 +504,27 @@ A espera ANTES do primeiro julgamento (`patient`, com pós-condição julgada ou
   - Ganho estimado (INFERRED): 0,7 a 1,2 s por espera; medir de novo depois do deploy.
 - Teste: `tests/test_juiz_espera_adaptativa.py` (`simulated`).
 
+## Seletor com as partes em elementos diferentes (item 31.32, 04/10/2026)
+
+Em `element_present`, `|` exige tudo no MESMO elemento (`id=chat_title|text={{recipient}}`), e isso é válido: 382 etapas
+foram comprovadas assim. Na r-20261004082521-2f21e2, o plano pediu `id=…message_input|text=Suporte QA` com a conversa
+aberta. A caixa de texto e o título com o contato estavam na tela, mas em elementos diferentes. A etapa falhou 3 vezes,
+a recuperação copiou a etapa igual e falhou mais 3.
+
+- **Diagnóstico** (`UiTree.partes_em_elementos_diferentes`): o seletor composto não casa nenhum elemento, mas CADA parte
+  casa sozinha algum elemento da tela.
+- **Só na tela final:** o fim do orçamento da verificação, nunca na conferência de uma rodada antes do ator. Não vale
+  em tela de outro app, com marca pendente nem com legenda de cartão ausente.
+- **Desfecho:** a verificação devolve `unprovable` e a etapa vira defeito do plano (`plan_defect`). Falha na hora, sem
+  nova tentativa e sem plano revisado, e os aparelhos irmãos ficam retidos, como no defeito do plano de sempre. O tipo é
+  `seletor_em_elementos_diferentes`, na camada do plano.
+- **O que não muda:**
+  - o composto válido segue comprovando;
+  - a parte que não está na tela é a falha de sempre (a tela certa pode não ter chegado);
+  - nenhum juiz entra no lugar da pós-condição (decisão da orquestradora: 4 execuções no histórico não pagam um
+    caminho novo entre a tela e o "comprovado").
+- Teste: `tests/test_seletor_impossivel.py` (`simulated`, com um caso de ponta a ponta no harness).
+
 ## VERIFY pela porta de capability
 
 - `StepExecutor.__init__` cria `self.capabilities = CatalogCapabilityProvider(CatalogCapabilityRegistry(...))`.

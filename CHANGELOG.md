@@ -100,6 +100,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `curador.autopublicacao.ultima_volta` (adendo v1.12).
 - Prova `simulated`: `test_learning_autopublicacao_sombra.py`, 3 testes novos. A fatia B (o `on`) segue fora.
 
+## 2026-10-04 — 31.32: seletor com as partes em elementos diferentes falha na hora (branch feat/31-32-seletor-impossivel, sem migração)
+
+- Achado real da r-20261004082521-2f21e2: `id=…message_input|text=Suporte QA` com a conversa aberta. Cada parte estava
+  na tela, mas em elementos diferentes, e `|` exige o mesmo elemento. Foram 3 tentativas e mais 3 depois da recuperação,
+  que copia a etapa igual.
+- Na tela final da verificação, `UiTree.partes_em_elementos_diferentes` faz a etapa falhar como defeito do plano, na
+  1ª tentativa e sem plano revisado. O tipo novo `seletor_em_elementos_diferentes` (camada do plano) entra em
+  `learning/domain/falhas.py`, no backlog, no diagnóstico e no rótulo do painel. O composto válido segue comprovando.
+- Prova `simulated`: `backend/tests/test_seletor_impossivel.py` (5, um de ponta a ponta). Real: `not_run`.
+
 ## 2026-10-04 — 29.53: o portão de PostgreSQL de uma suíte, por escrito (branch docs/29-53-portao-pg, só docs)
 
 - `docs/banco.md` ("O portão de PostgreSQL de uma suíte") e `.claude/rules/testes.md`. Toda suíte roda PG dirigido

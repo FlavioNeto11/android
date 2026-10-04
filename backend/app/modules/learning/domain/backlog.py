@@ -94,6 +94,7 @@ ROTULO: Mapping[str, str] = {
     FailureKind.COLETA_INCOMPLETA.value: "coleta incompleta",
     FailureKind.DIGITACAO_INCOMPLETA.value: "digitação incompleta",
     FailureKind.DEFEITO_DO_PLANO.value: "defeito do plano",
+    FailureKind.SELETOR_EM_ELEMENTOS_DIFERENTES.value: "seletor com as partes em elementos diferentes",
     FailureKind.FALTA_INFORMACAO.value: "falta informação de quem pediu",
     FailureKind.OUTRO.value: "outro (o classificador não tem regra)",
     TipoDeVerificacao.FALSO_POSITIVO.value: "falso positivo do verificador (sucesso mascarado)",

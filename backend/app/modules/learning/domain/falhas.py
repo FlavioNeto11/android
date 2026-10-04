@@ -50,6 +50,8 @@ class FailureKind(StrEnum):
     DIGITACAO_INCOMPLETA = "digitacao_incompleta"
     # outros
     DEFEITO_DO_PLANO = "defeito_do_plano"
+    #: 31.32: o seletor composto da pós-condição pede no mesmo elemento partes que a tela tem em elementos diferentes.
+    SELETOR_EM_ELEMENTOS_DIFERENTES = "seletor_em_elementos_diferentes"
     FALTA_INFORMACAO = "falta_informacao"
     OUTRO = "outro"
 
@@ -107,6 +109,8 @@ REGRAS: tuple[tuple[FailureKind, tuple[str, ...]], ...] = (
     (_F.SESSAO_DE_AUTOMACAO, ("sessao de automacao indisponivel", "nao foi possivel observar a tela",
                               "falhas consecutivas do driver")),
     # A etapa cita `{{saida:…}}` que nenhuma etapa anterior leu (item 24.3): o plano ligou mal as etapas.
+    # 31.32: antes do defeito do plano genérico, porque o texto dele também começa por "Defeito do plano".
+    (_F.SELETOR_EM_ELEMENTOS_DIFERENTES, ("partes do seletor estao em elementos diferentes",)),
     (_F.DEFEITO_DO_PLANO, ("defeito do plano", "sem ele ter sido lido por uma etapa anterior")),
     (_F.EFEITO_NAO_COMPROVADO, ("efeito foi disparado, mas nao foi possivel compro",)),
     (_F.EFEITO_ALVO_ERRADO, ("efeito externo foi tentado no elemento errado", "controle de outra publicacao",
@@ -232,7 +236,7 @@ CAMADA: Mapping[FailureKind, Camada] = {
     _F.ALVO_AUSENTE: _C.IA_ATOR, _F.EFEITO_ALVO_ERRADO: _C.IA_ATOR, _F.EFEITO_GUARDA_NAO_ATENDIDA: _C.IA_ATOR,
     _F.EFEITO_NAO_COMPROVADO: _C.VERIFICACAO, _F.POS_CONDICAO_NAO_COMPROVADA: _C.VERIFICACAO,
     _F.COLETA_VAZIA: _C.CONHECIMENTO_DO_APP, _F.COLETA_INCOMPLETA: _C.CONHECIMENTO_DO_APP,
-    _F.DEFEITO_DO_PLANO: _C.PLANO,
+    _F.DEFEITO_DO_PLANO: _C.PLANO, _F.SELETOR_EM_ELEMENTOS_DIFERENTES: _C.PLANO,
     _F.FALTA_INFORMACAO: _C.PESSOA,
     _F.OUTRO: _C.INDEFINIDA,
 }

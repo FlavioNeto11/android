@@ -322,6 +322,15 @@ class UiTree:
         Partes unidas por `|` precisam casar no MESMO elemento: `id=chat_title|text=QA-001`."""
         return self._find_partes(self._partes_do_seletor(selector))
 
+    def partes_em_elementos_diferentes(self, selector: str) -> bool:
+        """31.32: o seletor composto (`a|b`) não casa nenhum elemento, mas CADA parte casa sozinha algum elemento desta
+        tela. A tela tem tudo o que ele pede, só que em elementos diferentes: `id=message_input|text=Suporte QA` na
+        conversa aberta (r-20261004082521-2f21e2). Seletor de uma parte, ou parte que não casa nada, é `False`."""
+        partes = self._partes_do_seletor(selector)
+        if len(partes) < 2 or self._find_partes(partes):
+            return False
+        return all(self._find_partes([p]) for p in partes)
+
     def find_proof(self, selector: str, *, variants: Callable[[str], tuple[str, ...]]) -> list[UiElement]:
         """`find_selector` para provas locais: cada valor de `text=`/`desc=` é aceito em qualquer das `variants`
         (um `@usuario` também vale sem a arroba — o Instagram quase nunca a mostra)."""
