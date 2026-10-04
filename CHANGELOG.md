@@ -234,6 +234,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   curto, envio repetido), `frontend/src/features/canais/AnexosTab.test.tsx` (13 casos). `real`: `not_run` (o passeio no navegador,
   depois do deploy).
 
+## 2026-10-04 — 30.64: o objeto do efeito na aprovação e no "já feito" (branch feat/30-64-objeto-alvo)
+
+- `objeto_alvo` no catálogo (Capability, domínio e registro), declarado nas 11 ações com efeito do Instagram.
+  - `objeto_da_acao()` devolve `None`, e falha fechado, sem declaração ou com argumento por resolver.
+  - A carga recusa um nome que não é argumento da ação, o texto e a repetição.
+- O `acompanhar_revisao` só reaproveita a aprovação para o mesmo objeto declarado.
+- O `check` recebe `bindings=`: com o mesmo perfil e o mesmo objeto noutra etapa (saída ou pedido em aberto), a DM pede
+  aprovação, e seguir, curtir, comentar e publicar a mesma imagem são recusados. Emenda 30.64 do ADR-055.
+- Prova `simulated`: `backend/tests/test_objeto_alvo.py`, `test_repetido_entre_execucoes.py` e
+  `test_aprovacao_acompanha_revisao.py`, com 440 testes em 18 arquivos de política, catálogo e aprovação. `not_run`:
+  efeito real.
+
 ## 2026-10-04 — 30.62 (ligação): a porta do despacho lê a família do pedido da execução (branch feat/30-62-ligacao)
 
 - `AppState._policy_gate` passa `pedido=contexto_do_pedido(db, run_id)` ao `check`: a execução nascida de um pedido entre
