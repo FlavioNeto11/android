@@ -247,6 +247,9 @@ interface RunSummary {
 /** O vocabulário fechado de `app/contracts/origem.py` (`ORIGENS_DA_EXECUCAO`), o mesmo do backend. */
 export type OrigemDaExecucao = 'prova_fluxo' | 'validacao_qa' | 'telegram' | 'trello';
 
+/** 29.58: o efeito que apareceu repetido (o 29.60 mostra no painel). */
+export interface EfeitoRepetido { copias: number; fonte: 'verificador' | 'acoes' }
+
 interface Step {
   id: string;                 // estável: `${run_id}:${instance_id}:v${plan_version}:${key}`
   run_id: string; objective_id: string; instance_id: string;
@@ -260,7 +263,10 @@ interface Step {
   next_retry_at: string | null;
   started_at: string | null; finished_at: string | null;
   // `evidence_id`: na confirmação manual, o print em que a pessoa se baseou (ADR-055)
-  result: { verified: boolean; evidence_text: string | null; delivery_level?: DeliveryLevel; evidence_id?: number | null } | null;
+  // `efeito_repetido` (29.58, adendo v1.08): a etapa com efeito que mostrou 2 ou mais cópias e fechou `uncertain`;
+  // ausente quando não há repetição. `fonte`: quem contou (o verificador na tela, ou as ações gravadas).
+  result: { verified: boolean; evidence_text: string | null; delivery_level?: DeliveryLevel; evidence_id?: number | null;
+            efeito_repetido?: EfeitoRepetido } | null;
   claimed_by?: string | null;                        // backend que assumiu a etapa; null = nunca despachada
   driven_by: 'ai' | 'recipe' | 'recipe+ai' | 'sem_ator' | null;   // v0.2 — quem decidiu as ações; `sem_ator`: fechou sem ator (caminho rápido 1)
   /** Item 12.1: app em que esta etapa roda. `null`/ausente = o app do plano (`Plan.app_id`). */

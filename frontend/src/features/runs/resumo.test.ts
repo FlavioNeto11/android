@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { makeRun } from '../../test/fixtures';
 import {
-  abaPadraoDaExecucao, objetivosComSucesso, oQuePrecisaDaPessoa, pedidoEhLongo, resultadoDaExecucao,
+  abaPadraoDaExecucao, efeitosRepetidos, fonteDoEfeitoRepetido, fraseDoEfeitoRepetido, objetivosComSucesso,
+  oQuePrecisaDaPessoa, pedidoEhLongo, resultadoDaExecucao,
 } from './resumo';
 
 const T0 = '2026-09-17T12:00:00.000Z';
@@ -75,5 +76,19 @@ describe('oQuePrecisaDaPessoa', () => {
   });
   it('objetivo bloqueado de execução terminada não é pedido à pessoa', () => {
     expect(oQuePrecisaDaPessoa({ ...base, status: 'completed_with_issues', bloqueados: 1, terminal: true })).toEqual([]);
+  });
+});
+
+describe('29.60: efeito repetido', () => {
+  it('fala em português quem contou e quantas vezes, e só pega etapas com 2 ou mais cópias', () => {
+    expect(fonteDoEfeitoRepetido('verificador')).toBe('contado na tela pelo verificador');
+    expect(fonteDoEfeitoRepetido('acoes')).toBe('contado pelas ações gravadas desta execução');
+    expect(fraseDoEfeitoRepetido(2)).toBe('apareceu 2 vezes');
+    const passos = [
+      { id: 'a', result: null },
+      { id: 'b', result: { efeito_repetido: { copias: 2, fonte: 'acoes' as const } } },
+      { id: 'c', result: {} },
+    ];
+    expect(efeitosRepetidos(passos).map((p) => p.id)).toEqual(['b']);
   });
 });

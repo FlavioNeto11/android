@@ -37,6 +37,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `test_roteamento_por_persona.py` (o caso E passa a esperar o principal; dois casos novos),
   `test_roteamento_execucao.py` (prévia com os dois ligados e com cada um desligado); 115 passed nos testes de roteamento.
 
+## 2026-10-04 — 29.60: o painel mostra o N do efeito repetido (branch feat/29-60-efeito-repetido-no-painel, só painel)
+
+- Detalhe da etapa (guia Instâncias): linha "Efeito repetido" com "apareceu N vezes" e quem contou ("contado na tela
+  pelo verificador" ou "contado pelas ações gravadas desta execução"), lendo `steps.result.efeito_repetido` (29.58).
+- Resumo da execução: linha de atenção "Efeito repetido" por etapa (título, aparelho, N, fonte), com a orientação de
+  conferir no app e apagar as cópias; some quando não há repetição. Sem código cru na tela.
+- Prova `simulated`: `ResumoDaExecucao.test.tsx` (com e sem repetição), `resumo.test.ts` (frases e filtro);
+  158 passed em `features/runs`. O percurso no navegador fica para a validação do deploy.
+
 ## 2026-10-04 — Suíte 17 na main e deploy 17 no central (0b7c2c39; sem migração; Trello na etapa 2)
 
 - **Integrado e implantado** (FF 01:13:09Z; deploy 01:13:35–01:14:31Z): #182 (30.43), #183 (30.44), #184 (29.62, trava de

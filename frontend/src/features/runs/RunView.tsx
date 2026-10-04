@@ -34,7 +34,7 @@ import { PlanTab } from './PlanTab';
 import { ReportTab } from './ReportTab';
 import { RespostaSensivel } from './RespostaSensivel';
 import { ResumoDaExecucao } from './ResumoDaExecucao';
-import { abaPadraoDaExecucao, type AbaDaExecucao } from './resumo';
+import { abaPadraoDaExecucao, efeitosRepetidos, type AbaDaExecucao } from './resumo';
 import { AssistenteDoComando } from '../command/AssistenteDoComando';
 import { repeatRun, responderExecucao, retryFailed, runAction } from './runActions';
 import styles from './Runs.module.css';
@@ -197,6 +197,11 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
     if (naTelaExecucoes) trocarQuery({ aba: t === defaultTab(run.status) ? undefined : ABA_NA_URL[t] });
   };
   const [busy, setBusy] = useState<string | null>(null);
+  // 29.60: as etapas com efeito repetido (29.58) sobem para o resumo, com o número de cópias e quem contou.
+  const repetidos = useMemo(() => (data ? efeitosRepetidos(data.steps) : []).map((s) => ({
+    chave: s.id, titulo: s.title, aparelho: s.instance_id,
+    copias: s.result?.efeito_repetido?.copias ?? 0, fonte: s.result?.efeito_repetido?.fonte ?? 'acoes',
+  })), [data]);
   const selectRun = useUiStore((st) => st.selectRun);
   const [retryResult, setRetryResult] = useState<RetryFailedResponse | null>(null);
   const requestCommandDraft = useUiStore((s) => s.requestCommandDraft);
@@ -342,6 +347,7 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
 
         <ResumoDaExecucao
           run={run}
+          repetidos={repetidos}
           perguntas={perguntas.length}
           sensivel={sensivel}
           bloqueados={blockedCount}
