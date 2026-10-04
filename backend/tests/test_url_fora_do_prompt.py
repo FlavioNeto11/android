@@ -103,6 +103,16 @@ def test_o_valor_lido_que_e_url_vai_limpo_ao_historico_do_ator() -> None:
         "read_value(protocolo) → lido: 2026-0042; todos os valores da etapa lidos")
 
 
+def test_a_recusa_do_juiz_com_url_vai_limpa_ao_historico_do_ator() -> None:
+    """U1: com a barra sem tapar, o juiz pode transcrever a URL da imagem na recusa."""
+    from app.taskqueue.executor import linha_da_recusa_do_juiz
+
+    linha = linha_da_recusa_do_juiz("no meio da tentativa",
+                                     "a barra mostra https://contas.exemplo/reset/tok?token=abc123 e não a lista")
+    assert "abc123" not in linha and "tok" not in linha
+    assert "https://contas.exemplo/reset/…?…" in linha and "NÃO está comprovada" in linha
+
+
 # ================================================================== (2) o observed_result
 async def test_o_observed_result_grava_a_url_limpa(harness: Harness) -> None:
     st = harness.state
@@ -117,3 +127,23 @@ async def test_o_observed_result_grava_a_url_limpa(harness: Harness) -> None:
                            observed="A página https://contas.exemplo/reset/tok?token=abc123 abriu")
     gravado = st.db.one("SELECT observed_result FROM attempts WHERE id=?", (tentativa["id"],))
     assert gravado is not None and gravado["observed_result"] == "A página https://contas.exemplo/reset/…?… abriu"
+
+
+async def test_o_erro_da_recusa_grava_a_url_limpa(harness: Harness) -> None:
+    """U1: o `error` da tentativa (o texto do juiz pelo `fail_or_retry`, ou o anotado) volta no histórico da seguinte,
+    no painel e no aviso: grava limpo, pelos dois caminhos."""
+    st = harness.state
+    assert st is not None
+    run = harness.run(["android-01"])
+    await harness.wait_run(run.id, statuses=TERMINAIS)
+    tentativa = st.db.one("SELECT a.id FROM attempts a JOIN steps s ON s.id=a.step_id WHERE s.run_id=?"
+                          " ORDER BY a.started_at, a.id LIMIT 1", (run.id,))
+    assert tentativa is not None
+    st.db.execute("UPDATE attempts SET status='running', error=NULL WHERE id=?", (tentativa["id"],))
+    st.repo.note_attempt(tentativa["id"], error="juiz: vi https://contas.exemplo/reset/tok?token=abc123")
+    anotado = st.db.one("SELECT error FROM attempts WHERE id=?", (tentativa["id"],))
+    assert anotado is not None and "abc123" not in anotado["error"] and "contas.exemplo/reset/…" in anotado["error"]
+    st.repo.finish_attempt(tentativa["id"], AttemptStatus.failed,
+                           error="recusada: a tela é https://contas.exemplo/reset/tok?token=abc123#x")
+    gravado = st.db.one("SELECT error FROM attempts WHERE id=?", (tentativa["id"],))
+    assert gravado is not None and "abc123" not in gravado["error"] and "contas.exemplo/reset/…" in gravado["error"]

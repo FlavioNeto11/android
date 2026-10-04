@@ -204,6 +204,14 @@ def imagem_com_barra_tapada(jpeg: bytes, tree: UiTree, pacote: str | None, largu
     return buf.getvalue()
 
 
+def linha_da_recusa_do_juiz(onde: str, texto: str) -> str:
+    """31.54 (U1 da revisão): a linha do histórico do ator quando o juiz conferiu a tela e recusou. Com a barra sem
+    tapar (o padrão), o juiz pode transcrever a URL da imagem; ela vai limpa (`enderecos_limpos`) ao histórico, que
+    volta ao ator e chega ao `attempts.error` pelo `fail_or_retry`."""
+    return (f"(executor) {onde}: o verificador conferiu a tela e a pós-condição NÃO está comprovada: "
+            f"{enderecos_limpos(texto)[:300]}. Continue a partir da tela atual.")
+
+
 def linha_do_valor_lido(nome: str, valor: str, faltam: Sequence[str]) -> str:
     """A linha do histórico do ator depois de um `read_value` lido da árvore. 31.54: o valor que é URL vai limpo
     (`enderecos_limpos`); a saída da etapa guarda o valor como foi lido, que é o que a pessoa pediu."""
@@ -2032,8 +2040,7 @@ class StepExecutor:
                 # seguem no veredito guardado.
                 veredito_antecipado = v
                 return True
-            history.append(f"(executor) {onde}: o verificador conferiu a tela e a pós-condição NÃO está comprovada: "
-                           f"{texto_v[:300]}. Continue a partir da tela atual.")
+            history.append(linha_da_recusa_do_juiz(onde, texto_v))
             repo.decision(f"{iid} · {step.title}: o verificador não comprovou a pós-condição {onde}; o ator segue "
                           "nesta mesma tentativa", run_id=run_id, instance_id=iid, step_id=step.id)
             return False

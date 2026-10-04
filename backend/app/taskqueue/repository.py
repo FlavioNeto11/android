@@ -733,8 +733,10 @@ class Repository:
 
     def note_attempt(self, attempt_id: str, *, error: str | None = None, recovery: str | None = None) -> None:
         """Anota erro original/recuperação numa tentativa ainda em andamento."""
+        # 31.54 (U1): o erro anotado pode trazer o texto do juiz com a URL que ele leu na imagem; grava limpo.
         self.db.execute("UPDATE attempts SET error=COALESCE(?, error), recovery=COALESCE(?, recovery) WHERE id=?",
-                        (truncate(error, 800), truncate(recovery, 800), attempt_id))
+                        (truncate(enderecos_limpos(error) if error else error, 800), truncate(recovery, 800),
+                         attempt_id))
 
     def refund_attempt(self, step_id: str) -> None:
         """Interrupção sem culpa da etapa (pausa, controle manual, reinício): não consome tentativa."""
@@ -757,7 +759,9 @@ class Repository:
         pela IA a partir da tela e volta no DTO e no painel; uma URL com `?code=` ou token no caminho não fica no banco."""
         atual = self.db.one("SELECT status, error, recovery FROM attempts WHERE id=?", (attempt_id,))
         anterior = atual["status"] if atual else None
-        erro = truncate(error, 800)
+        # 31.54 (U1): o `error` da recusa leva o texto do juiz (o `fail_or_retry`), que pode transcrever a URL da imagem.
+        # Volta no histórico da tentativa seguinte, no painel e no aviso: grava limpo, e o tipo é do texto gravado.
+        erro = truncate(enderecos_limpos(error) if error else error, 800)
         # A falha classificada (ADR-054): o tipo do erro FINAL, o mesmo que o COALESCE abaixo deixa gravado — o texto
         # novo ou, sem ele, o que `note_attempt` já anotou nesta tentativa. Mesmo classificador puro da leitura do
         # legado: o gravado e o retroativo nunca discordam. O `recovery` separa a interrompida que esperou a pessoa

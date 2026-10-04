@@ -1703,6 +1703,14 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
     (`linha_do_valor_lido`); a saída da etapa guarda o valor como foi lido. O texto que o ator digita (`type_text`)
     fica cru: é o que ele mesmo escolheu, e mascará-lo quebraria a conferência dele. A limpeza mora em
     `app/security/enderecos.py`, porque o repositório também a usa.
+  - 31.54 (U1 da revisão): a RECUSA do juiz também vai limpa ao histórico do ator (`linha_da_recusa_do_juiz`) e ao
+    `attempts.error` (`finish_attempt` e `note_attempt`). Com a barra sem tapar, o juiz pode transcrever a URL da imagem;
+    ao provedor isso não é novo, mas ao banco, ao painel e ao aviso era.
+  - **Resíduos conhecidos, sem código agora:**
+    - a saída do `read_value` guarda o valor cru e vai crua às etapas seguintes como `{{saida}}`, por desenho;
+    - o recorte da leitura visual é imagem crua;
+    - a chave só tapa a `url_bar`, não a omnibox aberta, a folha de informações da página nem as abas;
+    - as capturas de evidência seguem com a barra (evidência fica local, com retenção própria).
   - **Limite aceito:** o perfil no 1º pedaço do caminho (o handle de rede social, como `site/fulano_silva`) continua
     indo ao prompt, porque não tem forma de token. Do 2º pedaço em diante, nada do caminho vai.
   - A porta (`:dígitos` seguido de `/`, `?`, `#` ou do fim) nunca é lida como senha: o host não é trocado pelo que
