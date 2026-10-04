@@ -237,7 +237,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-04 — 30.62 (ligação): a porta do despacho lê a família do pedido da execução (branch feat/30-62-ligacao)
 
 - `AppState._policy_gate` passa `pedido=contexto_do_pedido(db, run_id)` ao `check`: a execução nascida de um pedido entre
-  personas (28.10 F5b, `runs.pedido_id`) leva a família; sem pedido, `None` e nada muda. O provedor passa a devolver o
+  personas (28.10 F5b, `runs.pedido_id`) leva a família; sem pedido, pedido solo (sem pai nem filhos) ou família de
+  uma persona só, `None` e vale a política do perfil (revisão da fila, item 2). Só se calcula para ação com efeito. O provedor passa a devolver o
   `ContextoDoPedido` da porta, com `porta_vozes` como conjunto (dois porta-vozes ficam os dois, não `None`).
 - Prova `simulated`: `backend/tests/test_contexto_do_pedido.py::test_a_porta_do_despacho_le_a_familia_do_pedido_da_execucao`
   e `backend/tests/test_pedidos_contexto_da_execucao.py`. `not_run`: pedido real.

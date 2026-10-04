@@ -118,13 +118,15 @@ def test_com_dois_porta_vozes_o_terceiro_nao_toca_e_entre_eles_vale_um_por_alvo(
 
 # ------------------------------------------------------------------ ligação: a porta do despacho lê o pedido da execução
 def _pedido_da_familia(state: Any, *pids: str) -> str:
-    """Um pedido raiz cujos alvos são estas personas, e a execução `run-f` nascida dele (`runs.pedido_id`, 28.4)."""
-    alvos = ",".join(f'{{"profile_id":"{p}"}}' for p in pids)
-    state.db.execute("INSERT INTO pedidos(id, titulo, objetivo, alvos, criado_em, atualizado_em)"
-                     " VALUES ('ped-familia','Curtir','curtir',?,'2026-10-04T10:00:00Z','2026-10-04T10:00:00Z')",
-                     (f'{{"alvos":[{alvos}]}}',))
-    state.db.execute("UPDATE runs SET pedido_id='ped-familia' WHERE id='run-f'")
-    return "ped-familia"
+    """Um pedido raiz com a 1ª persona e um filho por persona seguinte (28.10), e a execução `run-f` nascida da raiz
+    (`runs.pedido_id`, 28.4). Com uma persona só, é um pedido solo: sem filhos."""
+    for i, pid in enumerate(pids):
+        state.db.execute("INSERT INTO pedidos(id, titulo, objetivo, alvos, pai_id, criado_em, atualizado_em)"
+                         " VALUES (?,'Curtir','curtir',?,?,'2026-10-04T10:00:00Z','2026-10-04T10:00:00Z')",
+                         (f"ped-familia-{i}", f'{{"alvos":[{{"profile_id":"{pid}"}}]}}',
+                          None if i == 0 else "ped-familia-0"))
+    state.db.execute("UPDATE runs SET pedido_id='ped-familia-0' WHERE id='run-f'")
+    return "ped-familia-0"
 
 
 async def test_a_porta_do_despacho_le_a_familia_do_pedido_da_execucao(harness: Any) -> None:
@@ -142,3 +144,22 @@ async def test_a_porta_do_despacho_le_a_familia_do_pedido_da_execucao(harness: A
     no_pedido = await _porta(state, "android-01")
     assert no_pedido is not None and not no_pedido.allowed and no_pedido.retry_at is None
     assert "30.62" in no_pedido.reason
+
+
+async def test_pedido_solo_nao_e_entre_personas_e_curtir_segue_autonomo(harness: Any) -> None:
+    """Revisão da fila da suíte 32, item 2: o 30.62 é para pedido ENTRE personas. Um pedido solo ("curtir os posts de
+    @x") com uma persona só não ganha contexto, e a curtida autônoma em pessoa real sem conversa segue autônoma, em vez
+    de virar uma aprovação por curtida."""
+    from app.modules.pedidos.infrastructure.contexto import contexto_do_pedido
+
+    from .test_protecao_de_frota import ALVO, _execucao_em_duas_contas, _porta
+
+    state = harness.state
+    pids = _execucao_em_duas_contas(state, "LIKE_POST", {"post_author": ALVO})
+    # só a conta do pedido no despacho: duas na mesma execução pediriam a confirmação de várias contas
+    state.db.execute("DELETE FROM steps WHERE objective_id='run-f:android-02'")
+    state.db.execute("DELETE FROM objectives WHERE id='run-f:android-02'")
+    _pedido_da_familia(state, pids["android-01"])
+    assert contexto_do_pedido(state.db, "run-f") is None
+    assert await _porta(state, "android-01") is None                 # segue sem parar: nem recusa, nem aprovação
+    assert state.approval_service.list() == []

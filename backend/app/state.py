@@ -2129,7 +2129,8 @@ class AppState:
         # como UMA conta por alvo e a pessoa real sem conversa passa por aprovação. Sem pedido, `None` e nada muda.
         veredito = self.policies.check(profile_id, cap, run_id=obj["run_id"], counterparty=alvo,
                                        app_id=app_da_etapa.id if app_da_etapa else None, package=pacote,
-                                       step_id=srow["id"], pedido=contexto_do_pedido(self.db, obj["run_id"]))
+                                       step_id=srow["id"],
+                                       pedido=contexto_do_pedido(self.db, obj["run_id"]) if cap.side_effect else None)
         if not veredito.allowed:
             return veredito
         # O texto é escrito AQUI, com a persona deste perfil, antes de qualquer digitação e antes da aprovação —

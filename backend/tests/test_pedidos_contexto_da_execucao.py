@@ -84,8 +84,8 @@ async def test_sem_porta_voz_e_com_dois_os_porta_vozes_sao_o_conjunto(h: Harness
     run = _run(h, pai)
     # porta-voz sem persona resolvida (aparelho sem vínculo único): ninguém é inventado
     h.state.db.execute("UPDATE pedidos SET alvos=NULL WHERE id=?", (pv,))
-    ctx = contexto_do_pedido(h.state.db, run)
-    assert ctx is not None and ctx.porta_vozes == frozenset() and ctx.familia == frozenset({"persona-raiz"})
+    # e a família que sobra tem uma persona só: não é pedido ENTRE personas, a porta decide como sem pedido (30.62)
+    assert contexto_do_pedido(h.state.db, run) is None
     # duas personas no porta-voz: as duas são porta-vozes (30.62: só elas tocam um alvo; entre elas, uma conta por alvo)
     _alvos(h, pv, "persona-a", "persona-b")
     ctx = contexto_do_pedido(h.state.db, run)

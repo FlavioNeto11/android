@@ -52,7 +52,10 @@ def _pedido_da_execucao(db: Database, run_id: str) -> Row | None:
 
 
 def contexto_do_pedido(db: Database, run_id: str) -> ContextoDoPedido | None:
-    """A família da execução `run_id`, ou `None` se ela não nasceu de um pedido (ou o pedido sumiu)."""
+    """A família da execução `run_id`, ou `None` se ela não nasceu de um pedido ENTRE PERSONAS: sem pedido, pedido que
+    sumiu, pedido solo (sem pai nem filhos) ou família de uma persona só. O contrato do 30.62 é "entre personas"; um
+    pedido solo ("curtir os posts de @x") segue a política do perfil, como antes, e não vira uma aprovação por curtida
+    (revisão da fila da suíte 32, item 2)."""
     p = _pedido_da_execucao(db, run_id)
     if p is None:
         return None
@@ -65,4 +68,6 @@ def contexto_do_pedido(db: Database, run_id: str) -> ContextoDoPedido | None:
         familia |= pessoas
         if m["papel"] == PORTA_VOZ and m["estado"] != "cancelado":
             porta_voz |= pessoas
+    if len(membros) < 2 or len(familia) < 2:
+        return None
     return ContextoDoPedido(raiz=raiz, familia=frozenset(familia), porta_vozes=frozenset(porta_voz))
