@@ -126,13 +126,18 @@ def test_presa_a_uma_etapa_nao_vale_para_outra_e_gasta_volta_a_recusar(tmp_path:
     excecoes.prender(exc, "r-2:etapa-a")
     assert policies.check(contas["mariana"], dm, counterparty=ALVO, step_id="r-2:etapa-a").excecao == exc
     assert not policies.check(contas["mariana"], dm, counterparty=ALVO, step_id="r-3:etapa-b").allowed
-    excecoes.gastar("r-2:etapa-a", "int-1")
+    assert excecoes.reservar("r-2:etapa-a") is None                    # o executor, logo antes do gesto
+    assert excecoes.obter(exc).estado == "em_uso"                                  # type: ignore[union-attr]
+    excecoes.disparou("r-2:etapa-a", "int-1")                           # o `open_effect`
+    excecoes.liquidar("int-1", houve_efeito=True)                       # o `settle_effect`
     assert excecoes.obter(exc).estado == "usada"                                   # type: ignore[union-attr]
     assert eventos[-1][0] == "politica.excecao_usada"
     assert not policies.check(contas["mariana"], dm, counterparty=ALVO, step_id="r-2:etapa-a").allowed
 
 
-def test_vencida_recusa_vira_evento_e_solta_a_etapa(tmp_path: Path) -> None:
+def test_vencida_recusa_vira_evento_e_a_reserva_falha(tmp_path: Path) -> None:
+    """Releitura do #309, O2: a exceção que vence depois da porta continua apontando a etapa, e a reserva no commit falha
+    com o motivo próprio ("venceu antes do efeito"); o gesto não acontece."""
     svc, repo, policies, contas = _frota_com_alvo_nosso(tmp_path)
     _fez(svc, contas["lucas"], InteractionType.dm_sent, ALVO)
     excecoes, eventos = _excecoes(repo)
@@ -144,9 +149,10 @@ def test_vencida_recusa_vira_evento_e_solta_a_etapa(tmp_path: Path) -> None:
     assert excecoes.vencer() == 1 and excecoes.vencer() == 0
     vencida = excecoes.obter(exc)
     assert eventos[-1][0] == "politica.excecao_vencida" and vencida is not None
-    assert vencida.estado == "vencida" and vencida.step_id is None
-    excecoes.gastar("r-2:etapa-a", "int-1")                     # o gasto não pega a vencida
-    assert excecoes.obter(exc).usada_em is None                                    # type: ignore[union-attr]
+    assert vencida.estado == "vencida" and vencida.step_id == "r-2:etapa-a"
+    motivo = excecoes.reservar("r-2:etapa-a")
+    assert motivo is not None and "venceu antes do efeito" in motivo and "não foi disparado" in motivo
+    assert excecoes.obter(exc).em_uso_em is None                                   # type: ignore[union-attr]
 
 
 def test_duplicata_em_aberto_recusada_revogar_encerra_e_o_gasto_nao_pega_encerrada(tmp_path: Path) -> None:
@@ -165,7 +171,8 @@ def test_duplicata_em_aberto_recusada_revogar_encerra_e_o_gasto_nao_pega_encerra
     revogada = excecoes.revogar(exc, por="orquestradora")
     assert revogada.estado == "revogada" and revogada.encerrada_por == "orquestradora"
     assert eventos[-1][0] == "politica.excecao_revogada"
-    excecoes.gastar("r-2:etapa-a", "int-1")
+    motivo = excecoes.reservar("r-2:etapa-a")                          # revogar antes da reserva: a reserva falha
+    assert motivo is not None and "foi revogada por orquestradora" in motivo
     assert excecoes.obter(exc).usada_em is None                                    # type: ignore[union-attr]
     assert not policies.check(contas["mariana"], capability_of(IG, "SEND_MESSAGE"), counterparty=ALVO,
                               step_id="r-2:etapa-a").allowed
@@ -241,9 +248,12 @@ async def test_pela_rota_e_pela_porta_do_despacho_ate_o_gasto(harness: Any) -> N
     etapa = "run-f:android-01:v1:efeito"
     assert state.excecoes.obter(exc["id"]).step_id == etapa
 
-    state.social.open_effect(pids["android-01"], capability="SEND_MESSAGE",
-                             interaction_type=InteractionType.dm_sent.value, bindings={"username": ALVO, "content": "oi"},
-                             run_id="run-f", step_id=etapa, app_id="ig", counterparty=ALVO)
+    assert state.excecoes.reservar(etapa) is None
+    iid = state.social.open_effect(pids["android-01"], capability="SEND_MESSAGE",
+                                   interaction_type=InteractionType.dm_sent.value,
+                                   bindings={"username": ALVO, "content": "oi"}, run_id="run-f", step_id=etapa,
+                                   app_id="ig", counterparty=ALVO)
+    state.social.settle_effect(pids["android-01"], iid, outcome="succeeded")
     lista = cliente.get("/api/politica/excecoes", params={"profile_id": pids["android-01"]}).json()["excecoes"]
     assert [e["estado"] for e in lista] == ["usada"]
     tipos = [r["kind"] for r in state.db.query("SELECT kind FROM events WHERE kind LIKE 'politica.excecao_%' ORDER BY id")]
@@ -305,7 +315,7 @@ async def test_falha_ao_gastar_nao_derruba_o_open_effect(harness: Any, monkeypat
     def _quebra(*_a: object, **_k: object) -> None:
         raise RuntimeError("banco indisponível")
 
-    monkeypatch.setattr(state.social.excecoes, "gastar", _quebra)
+    monkeypatch.setattr(state.social.excecoes, "disparou", _quebra)
     iid = state.social.open_effect(pids["android-01"], capability="SEND_MESSAGE",
                                    interaction_type=InteractionType.dm_sent.value,
                                    bindings={"username": ALVO, "content": "oi"}, run_id="run-f",
@@ -314,27 +324,78 @@ async def test_falha_ao_gastar_nao_derruba_o_open_effect(harness: Any, monkeypat
 
 
 # ------------------------------------------------------------------ releitura do #309: revogar
-async def test_revogada_depois_da_porta_o_commit_nao_dispara(harness: Any) -> None:
-    """Releitura do #309, item 1: a etapa já passou da porta (aprovada, antes do commit) e a exceção é revogada. A porta
-    não roda de novo no meio da etapa; o executor confere no commit e a etapa falha fechada, com o motivo literal."""
+async def test_revogada_depois_da_porta_a_reserva_falha_e_a_rota_nao_revoga_em_uso(harness: Any) -> None:
+    """Releitura do #309: a etapa já passou da porta (aprovada, antes do commit). Revogar antes da reserva faz a reserva
+    falhar (nada sai); revogar depois da reserva devolve 409 e nunca grava "revogada" por cima de "em uso"."""
     from types import SimpleNamespace
 
     from app.modules.learning.domain.falhas import FailureKind, classificar_texto
 
     state = harness.state
     pids, cliente = _cenario(harness)
-    exc = cliente.post("/api/politica/excecoes", json=_corpo(pids["android-01"])).json()["excecao"]
-    await _porta(state, "android-01")
     etapa = SimpleNamespace(id="run-f:android-01:v1:efeito")
     executor = state.scheduler.executor
-    assert executor._excecao_encerrada(etapa) is None                              # noqa: SLF001
+
+    exc = cliente.post("/api/politica/excecoes", json=_corpo(pids["android-01"])).json()["excecao"]
+    await _porta(state, "android-01")
     [pedido] = state.approval_service.list()
     state.db.execute("UPDATE objectives SET status='waiting_user' WHERE id='run-f:android-01'")
     state.approval_service.decide(pedido["id"], "approve")
     assert cliente.post(f"/api/politica/excecoes/{exc['id']}/revogar").status_code == 200
-    motivo = executor._excecao_encerrada(etapa)                                    # noqa: SLF001
+    motivo = executor._reservar_excecao(etapa)                                     # noqa: SLF001
     assert motivo is not None and exc["id"] in motivo and "revogada" in motivo and "não foi disparado" in motivo
     assert classificar_texto(motivo) == FailureKind.INTERROMPIDA                  # decisão de pessoa: nunca vira lição
+
+    # a reserva ganha primeiro: revogar perde com 409 e o estado segue coerente até a liquidação
+    state.db.execute("DELETE FROM excecoes_de_politica")
+    nova = cliente.post("/api/politica/excecoes", json=_corpo(pids["android-01"])).json()["excecao"]
+    state.excecoes.prender(nova["id"], etapa.id)
+    assert executor._reservar_excecao(etapa) is None                               # noqa: SLF001
+    r = cliente.post(f"/api/politica/excecoes/{nova['id']}/revogar")
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "excecao_em_uso", r.text
+    assert "o efeito pode ter saído" in r.json()["detail"]["message"]
+    assert state.excecoes.obter(nova["id"]).estado == "em_uso"
+    assert executor._reservar_excecao(etapa) is not None                           # noqa: SLF001 - uso único
+    iid = state.social.open_effect(pids["android-01"], capability="SEND_MESSAGE",
+                                   interaction_type=InteractionType.dm_sent.value,
+                                   bindings={"username": ALVO, "content": "oi"}, run_id="run-f", step_id=etapa.id,
+                                   app_id="ig", counterparty=ALVO)
+    state.social.settle_effect(pids["android-01"], iid, outcome="succeeded")
+    assert state.excecoes.obter(nova["id"]).estado == "usada"
+
+
+def test_duas_reservas_so_uma_ganha_e_sem_efeito_fecha_fechado(tmp_path: Path) -> None:
+    """Releitura do #309: a reserva é um UPDATE condicional; a segunda perde. O gesto sem efeito encerra a exceção
+    `sem_efeito`, que não volta a aberta (uso único fecha fechado)."""
+    svc, repo, policies, contas = _frota_com_alvo_nosso(tmp_path)
+    _fez(svc, contas["lucas"], InteractionType.dm_sent, ALVO)
+    excecoes, eventos = _excecoes(repo)
+    outra, _ = _excecoes(repo)                                         # outro processo, o mesmo banco
+    exc = _criar(excecoes, contas["mariana"])
+    excecoes.prender(exc, "r-2:etapa-a")
+    assert excecoes.reservar("r-2:etapa-a") is None
+    perdeu = outra.reservar("r-2:etapa-a")
+    assert perdeu is not None and "já está em uso" in perdeu
+    excecoes.vencer()
+    assert excecoes.obter(exc).estado == "em_uso"                     # type: ignore[union-attr] - fora do vencer
+    excecoes.disparou("r-2:etapa-a", "int-1")
+    excecoes.liquidar("int-1", houve_efeito=False)
+    assert excecoes.obter(exc).estado == "sem_efeito" and eventos[-1][0] == "politica.excecao_sem_efeito"  # type: ignore[union-attr]
+    assert not policies.check(contas["mariana"], capability_of(IG, "SEND_MESSAGE"), counterparty=ALVO,
+                              step_id="r-2:etapa-b").allowed
+
+
+async def test_reserva_que_levanta_nao_deixa_o_efeito_sair(harness: Any, monkeypatch: Any) -> None:
+    from types import SimpleNamespace
+
+    state = harness.state
+
+    def _quebra(*_a: object, **_k: object) -> None:
+        raise RuntimeError("banco indisponível")
+
+    monkeypatch.setattr(state.social.excecoes, "reservar", _quebra)
+    motivo = state.scheduler.executor._reservar_excecao(SimpleNamespace(id="x"))   # noqa: SLF001
+    assert motivo is not None and "não foi disparado" in motivo
 
 
 async def test_revogar_com_o_cartao_pendente_expira_o_cartao(harness: Any) -> None:

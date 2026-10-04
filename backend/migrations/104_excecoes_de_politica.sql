@@ -18,9 +18,13 @@
 --     criada_em / expira_em   UTC. A rota recusa prazo acima de 72 h.
 --     step_id / presa_em      a etapa que a porta casou com ela. Outra etapa só a toma se a presa terminou sem efeito.
 --     usada_em / interaction_id   quando o efeito saiu: uso único, gasta no `open_effect`.
---     vencida_em    quando venceu por prazo sem uso (`vencer`, na porta e na leitura da rota); solta a etapa.
---     encerrada_em / encerrada_por / encerramento   quando uma pessoa a encerrou antes do uso: `recusada` (rejeitou o
---                   cartão da etapa presa) ou `revogada` (pela rota). Encerrada não volta a valer.
+--     vencida_em    quando venceu por prazo sem uso (`vencer`, na porta e na leitura da rota). Continua apontando a
+--                   etapa: a reserva no commit a encontra e falha.
+--     em_uso_em     quando o executor a reservou, logo antes do gesto (UPDATE condicional). Em uso não volta a
+--                   aberta, não vence e não é revogada; o `settle_effect` a liquida (usada ou `sem_efeito`).
+--     encerrada_em / encerrada_por / encerramento   quando foi encerrada sem uso: `recusada` (a pessoa rejeitou o
+--                   cartão da etapa presa), `revogada` (pela rota) ou `sem_efeito` (reservada, e o gesto não teve
+--                   efeito). Encerrada não volta a valer.
 --
 -- O alvo é sempre conta nossa viva (a rota recusa pessoa real) e só há uma em aberto por perfil, alvo e ação.
 --
@@ -43,9 +47,10 @@ CREATE TABLE excecoes_de_politica (
   usada_em         TEXT,
   interaction_id   TEXT,
   vencida_em       TEXT,
+  em_uso_em        TEXT,
   encerrada_em     TEXT,
   encerrada_por    TEXT,
-  encerramento     TEXT CHECK (encerramento IS NULL OR encerramento IN ('recusada','revogada'))
+  encerramento     TEXT CHECK (encerramento IS NULL OR encerramento IN ('recusada','revogada','sem_efeito'))
 );
 
 CREATE INDEX ix_excecoes_de_politica_alvo ON excecoes_de_politica (profile_id, alvo, capability);

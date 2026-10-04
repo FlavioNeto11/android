@@ -89,7 +89,7 @@ from .planning.capabilities import load_catalog
 from .planning.catalog import registered
 from .releases.catalog import ReleaseValidationError
 from .social.persona_batch import PersonaBatchAccepted, PersonaBatchDTO
-from .social.excecoes import ExcecaoInvalida
+from .social.excecoes import ExcecaoEmUso, ExcecaoInvalida
 from .social.service import SocialError
 from .taskqueue import observabilidade
 from .taskqueue.repository import CONTENT_TYPES
@@ -1659,16 +1659,19 @@ async def criar_excecao_de_politica(request: Request, body: ExcecaoDePoliticaCre
 @router.post("/politica/excecoes/{excecao_id}/revogar")
 async def revogar_excecao_de_politica(request: Request, excecao_id: str) -> dict[str, object]:
     """Encerra a exceção ainda em aberto (livre ou presa a uma etapa que espera o cartão). 404 se não existe; 409
-    `excecao_encerrada` se já terminou."""
+    `excecao_em_uso` se o executor já a reservou (o efeito pode ter saído); 409 `excecao_encerrada` se já terminou."""
     excecoes = st(request).excecoes
     if excecoes.obter(excecao_id) is None:
         raise err(404, "not_found", f"exceção {excecao_id} não existe")
     try:
         revogada = excecoes.revogar(excecao_id, por=quem(request))
+    except ExcecaoEmUso as exc:
+        # A reserva do executor ganhou: o gesto já pode ter acontecido. Nunca grava "revogada" por cima de "em uso".
+        raise err(409, "excecao_em_uso", str(exc)) from exc
     except ExcecaoInvalida as exc:
         raise err(409, "excecao_encerrada", str(exc)) from exc
     # O cartão pendente da etapa presa não fica órfão em Pendências e no Telegram; a etapa que já passou da porta é
-    # parada no commit pelo executor (`_excecao_encerrada`).
+    # parada no commit pelo executor (a reserva, `_reservar_excecao`, falha na revogada).
     st(request).approval_service.expirar_da_etapa(revogada.step_id, motivo=f"exceção {revogada.id} revogada")
     return {"excecao": revogada.to_dict()}
 

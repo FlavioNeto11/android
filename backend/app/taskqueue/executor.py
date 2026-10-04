@@ -1220,16 +1220,20 @@ class StepExecutor:
             log.exception("%s: a tela da etapa %s não virou memória", rt.id, step.key)
 
     # ------------------------------------------------------------------ histórico social do efeito
-    def _excecao_encerrada(self, step: StepDTO) -> str | None:
-        """30.65: o motivo literal quando a exceção de política presa a esta etapa foi encerrada por uma pessoa depois
-        da porta (revogada pela rota, ou o cartão recusado). A porta não roda de novo no meio da etapa; sem isto a DM
-        aprovada sairia com a exceção já revogada e a rota teria respondido 200 como se a tivesse impedido."""
+    def _reservar_excecao(self, step: StepDTO) -> str | None:
+        """30.65: reserva (UPDATE condicional) a exceção de política presa a esta etapa, logo antes do gesto. `None`
+        segue; um texto é o motivo literal para falhar fechado. A porta não roda de novo no meio da etapa, e o
+        `open_effect` nem sempre roda (ação sem `interaction_type`, objetivo sem perfil): a reserva é o que garante que
+        a revogada, a recusada e a vencida não saem, e que a rota de revogar não responde 200 com o efeito em voo. Se
+        a própria reserva falhar, o efeito também não sai."""
         excecoes = getattr(self.social, "excecoes", None)
-        x = excecoes.encerrada_da_etapa(step.id) if excecoes is not None else None
-        if x is None:
+        if excecoes is None:
             return None
-        return (f"a exceção {x.id} à regra de uma conta por alvo foi {x.encerramento} por {x.encerrada_por or 'uma pessoa'}"
-                " depois da aprovação; o efeito não foi disparado (30.65)")
+        try:
+            return excecoes.reservar(step.id)
+        except Exception:  # noqa: BLE001 - na dúvida, a exceção não autoriza nada
+            log.exception("30.65: a reserva da exceção da etapa %s falhou", step.id)
+            return "não foi possível reservar a exceção à regra de uma conta por alvo; o efeito não foi disparado (30.65)"
 
     def _open_effect(self, objective: Any, step: StepDTO, rt: DeviceRuntime, cap: Any,
                      app_id: str | None = None) -> None:
@@ -2746,9 +2750,9 @@ class StepExecutor:
                     return await fail_or_retry(ciclo, obs)
 
             # ---------- agir (intenção gravada ANTES)
-            if is_commit and (revogada := self._excecao_encerrada(step)) is not None:
-                # 30.65: a exceção desta etapa foi revogada (ou recusada) depois de a porta passar: nada sai.
-                return await falhar_sem_nova_tentativa(revogada, obs)
+            if is_commit and (sem_reserva := self._reservar_excecao(step)) is not None:
+                # 30.65: a exceção desta etapa não pôde ser reservada (revogada, recusada, vencida, já em uso): nada sai.
+                return await falhar_sem_nova_tentativa(sem_reserva, obs)
             aid = intencao(decision.tool, args.model_dump(mode="json"), rationale, side_effect=is_commit,
                            source="recipe" if from_recipe else "ai")
             if is_commit:
