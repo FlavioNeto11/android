@@ -1473,7 +1473,8 @@ class SocialRepository:
 
     def fleet_targeting(self, counterparty: str, since: str, *, types: tuple[str, ...],
                         statuses: tuple[str, ...], exclude_profile_id: str,
-                        app_id: str | None = None) -> tuple[int, str | None]:
+                        app_id: str | None = None,
+                        only_profile_ids: frozenset[str] | None = None) -> tuple[int, str | None]:
         """ÚNICA exceção deliberada à regra de isolamento deste arquivo (ver docstring do módulo).
 
         A regra existe para que o conteúdo de um perfil nunca vaze para outro. Isto aqui não devolve conteúdo
@@ -1485,6 +1486,12 @@ class SocialRepository:
         """
         if not types or not statuses or not counterparty:
             return 0, None
+        # 30.62: `only_profile_ids` restringe a contagem às personas de UM pedido (a família do 28.10), que contam como
+        # uma conta só. Conjunto vazio: ninguém mais na família, nada a contar.
+        if only_profile_ids is not None and not (only_profile_ids - {exclude_profile_id}):
+            return 0, None
+        ids = tuple(sorted(only_profile_ids - {exclude_profile_id})) if only_profile_ids is not None else ()
+        so_eles = f" AND profile_id IN ({','.join('?' * len(ids))})" if ids else ""
         t, s = ",".join("?" * len(types)), ",".join("?" * len(statuses))
         # Item 12.1: @nasa no Instagram e @nasa no TikTok são alvos diferentes — a coordenação é por (app, alvo).
         # Interação sem app (anterior à migração 037 foi toda preenchida) conta em qualquer app, por segurança.
@@ -1492,13 +1499,13 @@ class SocialRepository:
         contas = {str(r["profile_id"]) for r in self.db.query(
             f"SELECT DISTINCT profile_id FROM social_interactions"
             f" WHERE counterparty=? AND profile_id<>? AND occurred_at>=? AND direction='outbound'"
-            f" AND type IN ({t}) AND status IN ({s}){por_app}",
-            (counterparty, exclude_profile_id, since, *types, *statuses, *((app_id,) if app_id else ())))}
+            f" AND type IN ({t}) AND status IN ({s}){por_app}{so_eles}",
+            (counterparty, exclude_profile_id, since, *types, *statuses, *((app_id,) if app_id else ()), *ids))}
         ultima = self.db.scalar(
             f"SELECT MAX(occurred_at) FROM social_interactions"
             f" WHERE counterparty=? AND profile_id<>? AND occurred_at>=? AND direction='outbound'"
-            f" AND type IN ({t}) AND status IN ({s}){por_app}",
-            (counterparty, exclude_profile_id, since, *types, *statuses, *((app_id,) if app_id else ())))
+            f" AND type IN ({t}) AND status IN ({s}){por_app}{so_eles}",
+            (counterparty, exclude_profile_id, since, *types, *statuses, *((app_id,) if app_id else ()), *ids))
         # ADR-055: um pedido de aprovação ainda em aberto de outra conta RESERVA o alvo. Sem isto, duas execuções
         # quase juntas passavam as duas pela porta — nenhuma tinha disparado nada ainda — e a pessoa aprovava as duas.
         # O alvo do pedido é gravado cru (`@Ana`, `ana`) nos pedidos antigos: compara-se normalizado dos dois lados.
@@ -1506,8 +1513,8 @@ class SocialRepository:
         contas |= {str(r["profile_id"]) for r in self.db.query(
             "SELECT DISTINCT profile_id FROM pending_approvals WHERE profile_id IS NOT NULL AND profile_id<>?"
             " AND status IN ('pending','approved','edited') AND interaction_id IS NULL AND created_at>=?" + _DE_OBJETIVO_VIVO
-            + " AND lower(ltrim(trim(target), '@'))=?",
-            (exclude_profile_id, since, counterparty.lower().lstrip("@")))}
+            + " AND lower(ltrim(trim(target), '@'))=?" + so_eles,
+            (exclude_profile_id, since, counterparty.lower().lstrip("@"), *ids))}
         return len(contas), ultima
 
     def has_inbound_from(self, profile_id: str, counterparty: str, *, types: tuple[str, ...],

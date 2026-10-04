@@ -127,6 +127,19 @@ class Verdict:
         return not self.allowed and self.retry_at is not None
 
 
+@dataclass(frozen=True, slots=True)
+class ContextoDoPedido:
+    """30.62 (28.10 F5): as personas de UM pedido entre personas (o raiz e os filhos) contam como uma conta só.
+
+    `familia` são ids de `instagram_profiles` (o `profile_id` da porta). `porta_voz`, quando há, é a única persona da
+    família que toca um alvo. Quem monta é o laço dos pedidos (`contexto_do_pedido(run_id)`); sem contexto, a porta
+    decide como sempre."""
+
+    raiz: str
+    familia: frozenset[str] = frozenset()
+    porta_voz: str | None = None
+
+
 #: Ordem de rigor das políticas, da mais restritiva à mais livre — usada só para saber se um valor escolhido é
 #: mais FROUXO que o padrão do catálogo (achado #114); não decide nada sozinha.
 _POLICY_RANK = {"disabled": 0, "manual_only": 1, "approval_required": 2, "autonomous": 3}
@@ -362,6 +375,33 @@ class PolicyEngine:
         alvo = normalizar_alvo(counterparty)
         return bool(alvo) and self.repo.has_inbound_from(profile_id, alvo, types=_FALA_DELA_NA_DM, app_id=app_id)
 
+    def _um_so_da_familia(self, profile_id: str, counterparty: str | None, agora: datetime, app_id: str | None,
+                          pedido: ContextoDoPedido) -> tuple[str, str] | None:
+        """30.62 (a): uma conta por alvo no pedido INTEIRO, em todos os baldes (curtir também, que na frota aceita mais de
+        uma). Com porta-voz, só ele toca o alvo; sem ele, a primeira persona da família que mexeu com o alvo (ou tem pedido
+        em aberto sobre ele) na janela da frota fica com ele. `None` libera; senão `(motivo, dica)` de uma RECUSA.
+
+        Alvo desconhecido não é daqui: a regra da frota (ADR-055) já recusa."""
+        alvo = normalizar_alvo(counterparty)
+        if alvo is None:
+            return None
+        if pedido.porta_voz and pedido.porta_voz != profile_id:
+            return ("neste pedido entre personas só o porta-voz toca o alvo; esta persona não age sobre "
+                    f"{alvo} (30.62) — recusado, não adiado",
+                    "Deixe a ação com o porta-voz do pedido; as outras personas só conversam entre si.")
+        if not (pedido.familia - {profile_id}):
+            return None
+        dias = max(1, int(getattr(self._settings() if self._settings is not None else None,
+                                  "fleet_target_window_days", 30) or 30))
+        outras, _ultima = self.repo.fleet_targeting(alvo, to_iso(agora - timedelta(days=dias)), types=TODOS_OS_BALDES,
+                                                    statuses=CONTAM, exclude_profile_id=profile_id, app_id=app_id,
+                                                    only_profile_ids=pedido.familia)
+        if outras:
+            return (f"outra persona deste pedido já mexeu com {alvo} ou tem pedido em aberto para ele: no pedido inteiro "
+                    "vale uma conta por alvo (30.62) — recusado, não adiado",
+                    "O alvo fica com a persona do pedido que já mexeu com ele.")
+        return None
+
     # ------------------------------------------------------------------ decisão
     def _ja_feito(self, profile_id: str, cap: Capability, counterparty: str | None, agora: datetime,
                   app_id: str | None, step_id: str | None) -> tuple[str, str] | None:
@@ -391,7 +431,7 @@ class PolicyEngine:
 
     def check(self, profile_id: str, cap: Capability, *, run_id: str | None = None,
               counterparty: str | None = None, app_id: str | None = None, package: str | None = None,
-              step_id: str | None = None) -> Verdict:
+              step_id: str | None = None, pedido: ContextoDoPedido | None = None) -> Verdict:
         politica = self.policy_for(profile_id, cap, package)
         if politica == "disabled":
             return Verdict(allowed=False, policy=politica,
@@ -419,6 +459,14 @@ class PolicyEngine:
             politica = "approval_required"
             nota = "; ".join(t for t in (nota, f"{cap.key} publica no feed: passa por aprovação mesmo com o perfil "
                                          "autônomo (30.60)") if t)
+        # 30.62 (b): num pedido entre personas, efeito sobre pessoa real (não conta nossa) que ainda não conversa com esta
+        # conta passa por uma pessoa, em qualquer ação, não só DM. Só endurece; sem pedido, nada muda.
+        alvo_real = normalizar_alvo(counterparty) if pedido is not None and cap.side_effect else None
+        if alvo_real is not None and politica == "autonomous" and not eh_conta_nossa(self.repo.db, alvo_real) \
+                and not self.tem_conversa(profile_id, counterparty, app_id):
+            politica = "approval_required"
+            nota = "; ".join(t for t in (nota, f"{cap.key} para {alvo_real}, pessoa real sem conversa prévia com esta conta, "
+                                         "dentro de um pedido entre personas: passa por aprovação (30.62)") if t)
         if not cap.side_effect or not cap.limit_bucket:
             return Verdict(policy=politica, needs_approval=politica == "approval_required", reason=nota)
 
@@ -426,6 +474,9 @@ class PolicyEngine:
         # Recusa antes dos tetos: estes só ADIAM (`retry_at`), e o repetido não sai nem depois.
         if (feito := self._ja_feito(profile_id, cap, counterparty, agora, app_id, step_id)) is not None:
             return Verdict(allowed=False, policy=politica, reason=feito[0], hint=feito[1])
+        if pedido is not None and (da_familia := self._um_so_da_familia(profile_id, counterparty, agora, app_id,
+                                                                         pedido)) is not None:
+            return Verdict(allowed=False, policy=politica, reason=da_familia[0], hint=da_familia[1])
         limites = self.limits_for(profile_id)
         tipos = BUCKET_TYPES.get(cap.limit_bucket, ())
         aquecendo = self._aquecendo(profile_id, limites, agora)
