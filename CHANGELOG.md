@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.31 F3: o resumo de hora abre com "Precisa de você" e só diz o que mudou (branch canais/28-31-f3-resumo)
+
+- `.claude/canais/resumo_laco.py`: o resumo abre com `🙋 Precisa de você: N` e a lista, com 🆕 na pendência nova.
+  Depois vem só o que mudou desde o último envio. Saúde, plano, frentes e cartões parados aparecem só quando mudaram;
+  a Central com problema aparece sempre. Quando nada mudou e não há pendência nova, não envia. O retrato do último envio
+  fica no cursor, e a parte que monta o texto (`montar`) é pura.
+- O laço segue parado até o F3 estar no ar e a orquestradora liberar.
+- Prova `simulated`: 7 testes em `.claude/canais/test_resumo_laco.py`. O ensaio contra os dados de agora compôs a
+  mensagem sem enviar. `not_run`: um envio real.
+
 ## 2026-10-04 — 28.29: o registro das decisões automáticas diz a verdade e se lê fácil (branch canais/28-29-registro-de-decisoes)
 
 Achados das duas revisões independentes do deploy 30, do passeio da orquestradora pela aba "Decidido sozinho" e da

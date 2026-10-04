@@ -14,6 +14,11 @@ que ele mesmo mede, para nunca reenviar texto velho:
 - o `.claude/handoffs/canais/eventos.md` é canal INTERNO e nunca vai ao dono: dele só se conta quantos fatos ainda não
   foram curados ("N novidades desde HH:MMZ; detalho no próximo resumo"). Depois do envio, `mudou_extra` é esvaziado.
 
+28.31 F3 (o molde do dono): a mensagem abre com "🙋 Precisa de você: N" e a lista (a pendência nova leva 🆕); depois
+vem só o que MUDOU desde o último envio (saúde, plano, frentes e parados só se mudaram; a saúde com problema sempre).
+Quando nada mudou e não há pendência nova, NÃO envia: grava `conferido_em` e espera o próximo intervalo. O retrato do
+último envio fica no cursor (`retrato`).
+
 O corpo inteiro passa por `redacao.redigir` (o mesmo filtro do Trello) e o envio é o `telegram_status.py`, que lê token
 e chat do `.env` pelo `EnvSettings` e nunca imprime nada deles. O cursor (`resumo_cursor.json`) guarda a hora, o
 `message_id` e a linha do eventos do último envio: reiniciar o laço não repete nem pula.
@@ -184,50 +189,101 @@ def _parados(agora: datetime) -> tuple[int, list[str]] | None:
     return len(parados), [nome for _, nome in parados[:3]]
 
 
-def compor(cursor: dict, agora: datetime) -> tuple[str, int]:
+def ler_estado(agora: datetime) -> dict:
+    """O retrato de agora, medido na hora (saúde, plano, Trello) e lido da situação curada pela Canais. É a única parte
+    com leitura de fora; `montar` é pura."""
     sit = _ler_json(SITUACAO, {})
     titulo, detalhe = _plano()
-    partes = [f"<b>📊 ANA · IA Gerente de Operações da Central · {_hora(agora)}</b>", "", _saude(sit.get("deploy_no_ar")), "", titulo]
-    if detalhe:
-        partes.append(detalhe)
-
-    frentes = sit.get("frentes") or []
-    if frentes:
-        partes += ["", "<b>Frentes</b>"]
-        partes += [f"▪️ <b>{_e(f.get('nome', ''))}</b> · {_e(f.get('linha', ''))}" for f in frentes]
-        conferido = sit.get("atualizado_em")
-        try:
-            quando = datetime.fromisoformat(str(conferido).replace("Z", "+00:00"))
-            if agora - quando > timedelta(minutes=40):
-                partes.append(f"<i>Frentes conferidas às {quando:%H:%M}Z; o que mudou depois está abaixo.</i>")
-        except ValueError:
-            pass
-
-    # "Mudou" é só o que a Canais escreveu para o dono (`mudou_extra`); o laço não inventa texto.
-    mudou = [f"▪️ {_e(_cortar(str(x), MAX_CHARS_MUDOU))}" for x in (sit.get("mudou_extra") or [])][:MAX_MUDOU]
-    n, desde = _nao_curados(int(sit.get("eventos_curados_ate", 0)))
-    partes += ["", "<b>Mudou desde a última</b>"]
-    partes += mudou
-    if n:
-        partes.append(f"▪️ {n} {'novidade' if n == 1 else 'novidades'} desde {_e(desde)}; detalho no próximo resumo")
-    if not mudou and not n:
-        partes.append("▪️ nada novo nas frentes")
-    total_linhas = len(_linhas_de_fato())
-
     parados = _parados(agora)
-    if parados and parados[0]:
-        n_p, nomes = parados
-        partes += ["", f"<b>⏳ {n_p} cartão(ões) parado(s) há mais de 48 h, sem data de espera</b>"]
-        partes += [f"▪️ {_e(_cortar(x, MAX_CHARS_MUDOU))}" for x in nomes]
+    n, desde = _nao_curados(int(sit.get("eventos_curados_ate", 0)))
+    return {
+        "saude": _saude(sit.get("deploy_no_ar")),
+        "plano": titulo, "plano_detalhe": detalhe,
+        "frentes": {str(f.get("nome", "")): str(f.get("linha", "")) for f in (sit.get("frentes") or [])},
+        "parados": None if parados is None else list(parados[1]), "n_parados": None if parados is None else parados[0],
+        "pendencias": [str(p) for p in (sit.get("pendencias") or [])],
+        "mudou": [str(x) for x in (sit.get("mudou_extra") or [])][:MAX_MUDOU],
+        "nao_curados": n, "nao_curados_desde": desde,
+        "eventos_linha": len(_linhas_de_fato()),
+    }
 
-    pend = sit.get("pendencias") or []
-    partes += ["", "<b>🙋 Pendências suas</b>"]
-    partes += [f"▪️ {_e(p)}" for p in pend] if pend else ["▪️ nenhuma agora"]
 
+#: O que fica no cursor para o próximo resumo dizer só o que mudou (28.31 F3).
+CHAVES_DO_RETRATO = ("saude", "plano", "frentes", "parados", "pendencias")
+
+
+def _retrato(estado: dict) -> dict:
+    return {k: estado.get(k) for k in CHAVES_DO_RETRATO}
+
+
+def montar(estado: dict, anterior: dict | None, agora: datetime, desde: str | None = None) -> tuple[str | None, dict]:
+    """28.31 F3, molde do dono: abre com "Precisa de você" e a lista; depois só o que MUDOU desde o último envio
+    (saúde, plano, frentes e parados só se mudaram; a saúde com problema sempre, porque é o crítico); e devolve `None`
+    quando nada mudou e não há pendência nova. Pura: recebe o retrato de agora e o do último envio."""
+    ant = anterior or {}
+    pend = estado.get("pendencias") or []
+    pend_antes = set(ant.get("pendencias") or [])
+    novas = [p for p in pend if p not in pend_antes]
+    resolvidas = len(pend_antes - set(pend)) if anterior is not None else 0
+
+    mudou: list[str] = []
+    saude = str(estado.get("saude") or "")
+    if saude and (saude != ant.get("saude") or not saude.startswith("🟢")):
+        mudou.append(saude)
+    if estado.get("plano") and estado.get("plano") != ant.get("plano"):
+        detalhe = estado.get("plano_detalhe")
+        mudou.append(str(estado["plano"]) + (f" · {detalhe}" if detalhe else ""))
+    frentes_antes = ant.get("frentes") or {}
+    for nome, linha in (estado.get("frentes") or {}).items():
+        if frentes_antes.get(nome) != linha:
+            mudou.append(f"▪️ <b>{_e(nome)}</b> · {_e(linha)}")
+    parados = estado.get("parados")
+    if parados is not None:
+        novos_parados = [x for x in parados if x not in set(ant.get("parados") or [])]
+        if novos_parados:
+            mudou.append(f"⏳ {estado.get('n_parados')} cartão(ões) parado(s) há mais de 48 h, sem data de espera; novos:")
+            mudou += [f"▪️ {_e(_cortar(x, MAX_CHARS_MUDOU))}" for x in novos_parados]
+    # "Mudou" escrito pela Canais (`mudou_extra`); o laço não inventa texto.
+    mudou += [f"▪️ {_e(_cortar(x, MAX_CHARS_MUDOU))}" for x in estado.get("mudou") or []]
+    n = int(estado.get("nao_curados") or 0)
+    if n:
+        mudou.append(f"▪️ {n} {'novidade' if n == 1 else 'novidades'} desde {_e(estado.get('nao_curados_desde'))};"
+                     " detalho no próximo resumo")
+    if resolvidas:
+        mudou.append(f"✔️ {resolvidas} {'pendência sua saiu' if resolvidas == 1 else 'pendências suas saíram'} da lista")
+
+    retrato = _retrato(estado)
+    if anterior is not None and not novas and not mudou:
+        return None, retrato
+
+    partes = [f"<b>📊 ANA · Resumo das {_hora(agora)}</b>", ""]
+    if pend:
+        partes.append(f"<b>🙋 Precisa de você: {len(pend)}</b>")
+        partes += [f"▪️ {'🆕 ' if p in novas and anterior is not None else ''}{_e(p)}" for p in pend]
+    else:
+        partes.append("<b>🙋 Nada espera você agora.</b>")
+    if mudou:
+        # Sem retrato anterior (o 1º envio do F3), não há "desde": é o retrato inteiro.
+        partes += ["", f"<b>Mudou desde {_e(desde)}</b>" if desde and anterior is not None else "<b>Como está</b>"]
+        partes += mudou
     texto = "\n".join(partes)
     if len(texto) > LIMITE:
         texto = texto[:LIMITE].rsplit("\n", 1)[0] + "\n<i>(cortado)</i>"
-    return texto, total_linhas
+    return texto, retrato
+
+
+def _desde(cursor: dict) -> str | None:
+    try:
+        return f"{datetime.fromisoformat(str(cursor.get('enviado_em')).replace('Z', '+00:00')):%H:%M}Z"
+    except ValueError:
+        return None
+
+
+def compor(cursor: dict, agora: datetime) -> tuple[str | None, dict, int]:
+    """O texto a enviar (ou `None`: nada mudou), o retrato para o cursor e até onde o eventos foi contado."""
+    estado = ler_estado(agora)
+    texto, retrato = montar(estado, cursor.get("retrato"), agora, _desde(cursor))
+    return texto, retrato, int(estado["eventos_linha"])
 
 
 def enviar(texto: str) -> int | None:
@@ -244,12 +300,19 @@ def enviar(texto: str) -> int | None:
 
 
 def rodada(cursor: dict) -> dict | None:
+    """Uma volta. Nada mudou: não envia; grava só `conferido_em`, e o próximo resumo segue contando do último envio."""
     agora = _agora()
-    texto, linhas = compor(cursor, agora)
+    texto, retrato, linhas = compor(cursor, agora)
+    if texto is None:
+        novo = {**cursor, "conferido_em": agora.strftime("%Y-%m-%dT%H:%M:%SZ")}
+        _gravar_json(CURSOR, novo)
+        print(f"{agora:%H:%M:%S}Z nada mudou: sem envio", flush=True)
+        return novo
     mid = enviar(texto)
     if mid is None:
         return None
-    novo = {"enviado_em": agora.strftime("%Y-%m-%dT%H:%M:%SZ"), "message_id": mid, "eventos_linha": linhas}
+    novo = {"enviado_em": agora.strftime("%Y-%m-%dT%H:%M:%SZ"), "message_id": mid, "eventos_linha": linhas,
+            "retrato": retrato}
     _gravar_json(CURSOR, novo)
     # o que foi contado já foi dito: o próximo resumo só traz o que a Canais curar depois deste envio
     sit = _ler_json(SITUACAO, {})
@@ -289,7 +352,10 @@ def main() -> int:
         print(f"situação carimbada às {sit['atualizado_em']}, eventos curados até {sit['eventos_curados_ate']}")
         return 0
     if args.ensaio:
-        texto, linhas = compor(cursor, _agora())
+        texto, _, linhas = compor(cursor, _agora())
+        if texto is None:
+            print("ensaio: nada mudou desde o último envio; o laço NÃO enviaria")
+            return 0
         ENSAIO.write_text(texto, encoding="utf-8")
         print(f"ensaio gravado ({len(texto)} chars, eventos até a linha {linhas}); nada enviado")
         return 0
@@ -299,7 +365,9 @@ def main() -> int:
     print(f"{_agora():%H:%M:%S}Z laço do resumo ligado, a cada {args.intervalo} s", flush=True)
     while True:
         try:
-            ultimo = datetime.fromisoformat(str(cursor.get("enviado_em")).replace("Z", "+00:00"))
+            # A última volta, com ou sem envio: a que não enviou (nada mudou) também espera o intervalo inteiro.
+            ultimo = max(datetime.fromisoformat(str(cursor.get(k)).replace("Z", "+00:00"))
+                         for k in ("enviado_em", "conferido_em") if cursor.get(k))
         except ValueError:
             ultimo = _agora() - timedelta(seconds=args.intervalo)
         espera = (ultimo + timedelta(seconds=args.intervalo) - _agora()).total_seconds()

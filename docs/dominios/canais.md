@@ -328,9 +328,11 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
 **C-19 · Resumo e urgência.**
 - **Origem:** dono, Telegram 03/10 21:40Z ("pode reduzir os feedbacks de hora em hora"); antes eram 20 minutos.
 - **Regra:**
-  - Sai um resumo **de hora em hora**, com o título `📊 ANA · IA Gerente de Operações da Central · HH:MMZ`.
-  - Conteúdo do resumo: situação da Central, porcentagem do plano medida no `estado.json`, uma linha por frente,
-    o que mudou e as pendências do dono.
+  - Sai um resumo **de hora em hora**, com o título `📊 ANA · Resumo das HH:MMZ`.
+  - O resumo abre com `🙋 Precisa de você: N` e a lista das pendências do dono; a pendência nova leva 🆕 (28.31 F3).
+  - Depois vem só o que **mudou** desde o último envio. Situação da Central, porcentagem do plano (medida no
+    `estado.json`), linha de frente e cartão parado aparecem só quando mudaram; a Central com problema aparece sempre.
+  - Quando nada mudou e não há pendência nova, o resumo **não sai** naquela hora.
   - Frases curtas, sem jargão e sem tabela.
   - Urgência vai na hora: sim ou não pedido ao dono, deploy que falhou, incidente real ou teto de custo.
   - A leitura dos quadros do Trello continua a cada 20 minutos.
