@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from .db import Row, loads
-from .models import InteractionType, StepStatus
+from .models import RUN_TERMINAL, InteractionType, StepStatus
 from .planning.capabilities import contraparte, objeto_da_acao, texto_a_gerar
 from .social.chave_da_aprovacao import VERSAO_DA_CHAVE, chave_da_aprovacao, midia_da_etapa, texto_exato
 from .util import now, to_iso
@@ -306,3 +306,18 @@ def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por:
                             f"{validade}, {len(tirados)} etapa(s) tirada(s)", run_id=run_id)
     resumo = state.runs.start(run_id, por=por)
     return {"run": resumo.model_dump(mode="json"), "aprovacoes": gravadas, "tiradas": tirados, "validade_ate": validade}
+
+
+def renovar_plano(state: AppState, run_id: str) -> dict[str, object]:
+    """30.61 "Renovar": a validade dos sins do plano ainda em aberto volta a contar de agora (`validade_h`), sem reabrir os
+    itens. Só em execução viva; a chave segue a mesma e o despacho a confere de novo."""
+    run = state.repo.run_row(run_id)
+    if run is None:
+        raise PortaIndisponivel("not_found", "Execução não encontrada.", 404)
+    if run["status"] in {s.value for s in RUN_TERMINAL}:
+        raise PortaIndisponivel("invalid_state", f"A execução está em '{run['status']}': não há o que renovar.")
+    validade = to_iso(now() + timedelta(hours=validade_h(state)))
+    renovadas = state.approvals.renovar_do_plano(run_id, expires_at=validade)
+    if renovadas:
+        state.repo.decision(f"validade dos sins do plano renovada até {validade}: {renovadas} item(ns)", run_id=run_id)
+    return {"run_id": run_id, "renovadas": renovadas, "validade_ate": validade}

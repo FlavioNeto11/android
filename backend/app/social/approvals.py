@@ -262,6 +262,27 @@ class ApprovalStore:
         cur = self.db.execute(
             "UPDATE pending_approvals SET status='expired', decided_at=?, decided_note=? WHERE objective_id=?"
             " AND status='pending'", (now_iso(), reason, objective_id))
+        # 30.61: o objetivo encerrado (cancelado em `planned`, vencido pelo 31.43, abandonado) leva junto o sim do plano
+        # que não saiu; ele não vale mais e não deve reservar alvo nem teto.
+        plano = self.db.execute(
+            "UPDATE pending_approvals SET status='expired', decided_note=? WHERE objective_id=? AND origem='plano'"
+            " AND status='approved' AND interaction_id IS NULL", (f"sim do plano encerrado: {reason}", objective_id))
+        return int(cur.rowcount or 0) + int(plano.rowcount or 0)
+
+    def vencer_do_plano(self, agora: str) -> int:
+        """30.61, faxina: o sim do plano cuja validade passou sai como `expired` (a porta já o trataria como ausente; aqui
+        ele deixa também de reservar alvo e teto numa prévia abandonada em `planned`). A execução fica como está."""
+        cur = self.db.execute(
+            "UPDATE pending_approvals SET status='expired', decided_note='sim do plano vencido (validade)'"
+            " WHERE origem='plano' AND status='approved' AND interaction_id IS NULL AND expires_at<?", (agora,))
+        return int(cur.rowcount or 0)
+
+    def renovar_do_plano(self, run_id: str, *, expires_at: str) -> int:
+        """30.61 "Renovar": estende a validade dos sins do plano ainda em aberto desta execução, sem reabrir os itens (a
+        chave segue a mesma; o despacho a confere de novo). Os já gastos, vencidos por descarte ou encerrados ficam."""
+        cur = self.db.execute(
+            "UPDATE pending_approvals SET expires_at=? WHERE run_id=? AND origem='plano' AND status='approved'"
+            " AND interaction_id IS NULL", (expires_at, run_id))
         return int(cur.rowcount or 0)
 
 

@@ -22,6 +22,7 @@ from app.porta_do_plano import (
     PortaIndisponivel,
     aprovar_plano,
     previa_da_porta,
+    renovar_plano,
 )
 from app.util import now, parse_iso, to_iso
 
@@ -277,3 +278,53 @@ async def test_o_gesto_pela_rota(harness: Any, monkeypatch: Any) -> None:
     ok = cliente.post("/api/runs/run-p/aprovar-plano",
                       json={"aprovar": [{"step_id": itens["dm"]["step_id"], "chave": itens["dm"]["chave"]}]})
     assert ok.status_code == 200 and len(ok.json()["aprovacoes"]) == 1
+
+
+async def test_renovar_estende_a_validade_e_cancelar_encerra_o_sim(harness: Any, monkeypatch: Any) -> None:
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"],
+                                                                         chave=itens["dm"]["chave"])]), por="flavio")
+    state.db.execute("UPDATE pending_approvals SET expires_at=?", (to_iso(now() + timedelta(hours=1)),))
+    saida = renovar_plano(state, "run-p")
+    assert saida["renovadas"] == 1
+    assert parse_iso(state.db.scalar("SELECT expires_at FROM pending_approvals")) > now() + timedelta(hours=23)
+    assert await _gate(state, "dm") is None                      # renovado, a mesma chave segue valendo
+    state.runs.cancel("run-p")                                   # ainda `planned`: cancela antes de iniciar
+    linha = state.db.one("SELECT status, decided_note FROM pending_approvals")
+    assert linha["status"] == "expired" and linha["decided_note"].startswith("sim do plano encerrado")
+    try:
+        renovar_plano(state, "run-p")
+        raise AssertionError("execução cancelada não renova")
+    except PortaIndisponivel as exc:
+        assert exc.codigo == "invalid_state"
+
+
+async def test_sim_de_versao_anterior_do_plano_nao_conta_como_pedido_em_aberto(harness: Any, monkeypatch: Any) -> None:
+    """Revisão, item 6: o sim do plano da v1 não migra para a v2 e nunca ganha interação; não pode contar contra ela."""
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"],
+                                                                         chave=itens["dm"]["chave"])]), por="flavio")
+    pid = itens["dm"]["profile_id"]
+    desde = to_iso(now() - timedelta(days=1))
+    assert len(state.social_repo.pedidos_da_acao(pid, "SEND_MESSAGE", since=desde)) == 1
+    state.db.execute("UPDATE objectives SET plan_version=2 WHERE id='run-p:android-01'")
+    assert state.social_repo.pedidos_da_acao(pid, "SEND_MESSAGE", since=desde) == []
+
+
+async def test_a_faxina_vence_o_sim_do_plano_fora_da_validade(harness: Any, monkeypatch: Any) -> None:
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"],
+                                                                         chave=itens["dm"]["chave"])]), por="flavio")
+    assert state.approvals.vencer_do_plano(to_iso(now())) == 0
+    state.db.execute("UPDATE pending_approvals SET expires_at=?", (to_iso(now() - timedelta(minutes=1)),))
+    assert await state._expiracao_uma_vez() in (True, False)     # noqa: SLF001 - só roda no líder da trava
+    state.approvals.vencer_do_plano(to_iso(now()))
+    linha = state.db.one("SELECT status, decided_note FROM pending_approvals")
+    assert linha["status"] == "expired" and "validade" in linha["decided_note"]
+    assert state.db.scalar("SELECT status FROM runs WHERE id='run-p'") == "planned"   # a execução fica como está

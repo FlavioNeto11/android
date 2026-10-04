@@ -2948,6 +2948,13 @@ class AppState:
                 log.info("vencimento: %s objetivo(s) parados sem resposta encerrados pelo sistema", len(vencidos))
         except Exception:  # a faxina nunca derruba o processo
             log.exception("vencimento dos objetivos parados")
+        try:
+            # 30.61: o sim dado na prévia que venceu deixa de reservar alvo e teto (a prévia abandonada em `planned`).
+            vencidos_do_plano = await asyncio.to_thread(self.approvals.vencer_do_plano, now_iso())
+            if vencidos_do_plano:
+                log.info("vencimento: %s sim(ns) do plano vencido(s)", vencidos_do_plano)
+        except Exception:  # a faxina nunca derruba o processo
+            log.exception("vencimento dos sins do plano")
         return True
 
     async def _retention_loop(self) -> None:

@@ -74,7 +74,7 @@ from .modules.learning.presentation.livro import mudar_status_legado
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
 from .planning import conciliacao, costs, saldos
-from .porta_do_plano import AprovarPlanoBody, PortaIndisponivel, aprovar_plano, previa_da_porta
+from .porta_do_plano import AprovarPlanoBody, PortaIndisponivel, aprovar_plano, previa_da_porta, renovar_plano
 from .security import access as acesso           # o módulo, não os nomes: `LOOPBACK_DE_TESTE` é injetado em tempo
 from .security import local_secret               # de execução e um `from ... import` congelaria o valor antigo
 from .security.access import avaliar, publicos_de
@@ -3135,6 +3135,15 @@ async def run_aprovar_plano(request: Request, run_id: str, body: AprovarPlanoBod
         raise err(exc.status, exc.codigo, exc.mensagem, **exc.extra) from exc
     except RunError as exc:
         raise _run_error(exc) from exc
+
+
+@router.post("/runs/{run_id}/porta/renovar")
+async def run_porta_renovar(request: Request, run_id: str) -> dict[str, object]:
+    """30.61 "Renovar": a validade dos sins do plano em aberto volta a contar de agora, sem reabrir os itens."""
+    try:
+        return renovar_plano(st(request), run_id)
+    except PortaIndisponivel as exc:
+        raise err(exc.status, exc.codigo, exc.mensagem, **exc.extra) from exc
 
 
 @router.post("/commands/refine")
