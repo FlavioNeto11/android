@@ -2152,8 +2152,9 @@ class StepExecutor:
                 # versão" é outra tela (a lista some), e o ator o dispensa.
                 alvo_do_foco = (step.postcondition.value if step.postcondition.kind == "app_foreground"
                                 else pacote_da_prova(step.postcondition))
+                # Só o app DA ETAPA: um seletor com o pacote de outro app cadastrado não abre esse outro app.
                 if (step.postcondition.kind == "element_present" and alvo_do_foco
-                        and obs.package == alvo_do_foco):
+                        and (alvo_do_foco != app.package or obs.package == alvo_do_foco)):
                     alvo_do_foco = ""
                 if (OPEN_APP_SEM_IA and alvo_do_foco and not abriu_sem_ia and rep is None and decisions == 0
                         and not step.side_effect and not fired and alvo_do_foco in self._allowed_packages()
