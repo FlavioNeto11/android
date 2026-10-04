@@ -1667,6 +1667,9 @@ async def revogar_excecao_de_politica(request: Request, excecao_id: str) -> dict
         revogada = excecoes.revogar(excecao_id, por=quem(request))
     except ExcecaoInvalida as exc:
         raise err(409, "excecao_encerrada", str(exc)) from exc
+    # O cartão pendente da etapa presa não fica órfão em Pendências e no Telegram; a etapa que já passou da porta é
+    # parada no commit pelo executor (`_excecao_encerrada`).
+    st(request).approval_service.expirar_da_etapa(revogada.step_id, motivo=f"exceção {revogada.id} revogada")
     return {"excecao": revogada.to_dict()}
 
 

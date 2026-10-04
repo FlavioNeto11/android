@@ -232,6 +232,10 @@ def com_politicas_do_app(caps: Mapping[str, object] | None, package: str | None,
     return resultado
 
 
+#: Quanto da autorização o cartão cita (30.65, revisão R2).
+_CITACAO_MAX = 80
+
+
 def _texto_da_excecao(x: Excecao) -> str:
     """O porquê do cartão da exceção (30.65), sem atestar o que ninguém conferiu.
 
@@ -239,10 +243,13 @@ def _texto_da_excecao(x: Excecao) -> str:
     autorização é texto livre. Por isso o cartão diz quem criou e quando e cita a autorização à parte. "Autorizada pelo
     dono" só aparece quando quem criou era operador com sessão no painel."""
     quando = f"{x.criada_em[:16].replace('T', ' ')} UTC"
+    # O aviso do Telegram corta em 500 caracteres depois de "Alvo" e "Texto": autorização longa os empurraria para fora.
+    # O texto inteiro fica no painel (`GET /api/politica/excecoes`).
+    citada = x.autorizacao if len(x.autorizacao) <= _CITACAO_MAX else f"{x.autorizacao[:_CITACAO_MAX - 1].rstrip()}…"
     origem = (f"criada por {x.autor} em {quando}, autorizada pelo dono (operador com sessão)" if x.autor_com_sessao
               else f"criada por {x.autor} em {quando}, sem sessão de operador")
     return (f"exceção {x.id} à regra de uma conta por alvo em 30 dias (ADR-055), {origem}; autorização citada: "
-            f"{x.autorizacao}; vale para este perfil, este alvo e esta ação, uso único (30.65)")
+            f"{citada}; vale para este perfil, este alvo e esta ação, uso único (30.65)")
 
 
 class PolicyEngine:

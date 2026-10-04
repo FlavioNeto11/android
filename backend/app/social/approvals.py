@@ -340,6 +340,22 @@ class ApprovalService:
                 recusadas.append({"id": d.id, "reason": str(exc)})
         return {"decided": decididas, "refused": recusadas}
 
+    def expirar_da_etapa(self, step_id: str | None, *, motivo: str) -> int:
+        """30.65: a exceção da etapa foi revogada com o cartão ainda pendente. O cartão expira (sai de Pendências; o
+        reply no Telegram passa a ser recusado como vencido) e o objetivo volta à porta, que agora recusa sem a exceção."""
+        if not step_id:
+            return 0
+        pedidos = [a for a in self.store.list(status="pending", limit=500) if a.step_id == step_id]
+        for a in pedidos:
+            self.store.db.execute("UPDATE pending_approvals SET status='expired', decided_at=?, decided_note=?"
+                                  " WHERE id=? AND status='pending'", (now_iso(), motivo, a.id))
+            if a.objective_id:
+                self.repo.resume_objective(a.objective_id, f"Cartão expirado: {motivo}.")
+                self.repo.recompute_run(a.run_id) if a.run_id else None
+        if pedidos and self.scheduler is not None:
+            self.scheduler.wake()
+        return len(pedidos)
+
     def decide(self, approval_id: str, verb: str, *, content: str | None = None,
                note: str | None = None) -> dict[str, Any]:
         from .service import SocialError

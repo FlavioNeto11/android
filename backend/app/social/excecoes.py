@@ -209,6 +209,17 @@ class ExcecoesDePolitica:
                         " (30.65)", {"excecao_id": row["id"]})
         return len(vencidas)
 
+    def encerrada_da_etapa(self, step_id: str | None) -> Excecao | None:
+        """A exceção presa a esta etapa que uma pessoa encerrou (recusa ou revogação) sem efeito, quando nenhuma outra em
+        aberto está presa a ela. O executor confere no commit: a etapa que passou da porta com a exceção (aprovada,
+        antes de digitar) não envia depois da revogação."""
+        if not step_id or self.db.scalar(
+                f"SELECT 1 FROM excecoes_de_politica WHERE step_id=? AND {_EM_ABERTO}", (step_id,)) is not None:
+            return None
+        row = self.db.one("SELECT * FROM excecoes_de_politica WHERE step_id=? AND encerrada_em IS NOT NULL"
+                          " AND usada_em IS NULL ORDER BY encerrada_em DESC, id DESC LIMIT 1", (step_id,))
+        return _excecao(row) if row else None
+
     # ------------------------------------------------------------------ pessoa (recusa do cartão, revogação)
     def recusar_da_etapa(self, step_id: str | None, *, por: str | None) -> list[str]:
         """O dono rejeitou o cartão da etapa presa: a exceção acaba ali. Sem isto ela voltava a valer para qualquer

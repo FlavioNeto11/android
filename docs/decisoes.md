@@ -3740,7 +3740,8 @@ autorização.
   com sessão; a rota aceita o loopback, e aí o controle é a aprovação do dono no cartão.
 - Ela tira só a recusa da regra de uma conta por alvo. Conta retirada, espaçamento, tetos, DM fria e repetição (30.64)
   valem iguais. Uma exceção de DM não libera comentário nem seguir para o mesmo alvo.
-- É gasta quando o efeito sai (`open_effect`) e vence no prazo. Rejeitar o cartão a encerra, e a rota de revogar também.
+- É gasta quando o efeito sai (`open_effect`) e vence no prazo. Rejeitar o cartão a encerra, e a rota de revogar também:
+  revogar expira o cartão pendente, e a etapa que já passou da porta falha fechada no commit. Revogada nunca sai.
   Criação, uso, vencimento, recusa e revogação viram eventos `politica.excecao_*`.
 - Não é configuração (`fleet_target_window_days` segue global) nem decisão automática (fica fora do registro 28.25).
 

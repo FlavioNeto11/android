@@ -80,7 +80,10 @@ def _normal(texto: str) -> str:
 #: responder (ANR)…", r-20260928165254-e31953), e o prazo vencido DURANTE a chamada de IA é prazo, não IA.
 REGRAS: tuple[tuple[FailureKind, tuple[str, ...]], ...] = (
     (_F.APP_ANR, ("parou de responder (anr)",)),
-    (_F.INTERROMPIDA, ("tentativa interrompida",)),
+    # 30.65: a exceção de política revogada depois da porta para a etapa antes do commit. É decisão de pessoa, não
+    # navegação: nunca vira lição.
+    (_F.INTERROMPIDA, ("tentativa interrompida", "regra de uma conta por alvo foi revogada",
+                       "regra de uma conta por alvo foi recusada")),
     # 29.74: a trava da conta (`motivo_da_trava`: "auth_challenge (conta_travada): …", desafio, dois fatores) também é
     # da pessoa (ADR-009); antes caía em `outro` na etapa e em `interrompida` na tentativa.
     (_F.AUTENTICACAO, ("pede autenticacao", "consentimento_pendente", "auth_required", "tela de login",

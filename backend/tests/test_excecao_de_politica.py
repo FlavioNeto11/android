@@ -311,3 +311,73 @@ async def test_falha_ao_gastar_nao_derruba_o_open_effect(harness: Any, monkeypat
                                    bindings={"username": ALVO, "content": "oi"}, run_id="run-f",
                                    step_id="run-f:android-01:v1:efeito", app_id="ig", counterparty=ALVO)
     assert iid and state.db.scalar("SELECT COUNT(*) FROM social_interactions WHERE id=?", (iid,)) == 1
+
+
+# ------------------------------------------------------------------ releitura do #309: revogar
+async def test_revogada_depois_da_porta_o_commit_nao_dispara(harness: Any) -> None:
+    """Releitura do #309, item 1: a etapa já passou da porta (aprovada, antes do commit) e a exceção é revogada. A porta
+    não roda de novo no meio da etapa; o executor confere no commit e a etapa falha fechada, com o motivo literal."""
+    from types import SimpleNamespace
+
+    from app.modules.learning.domain.falhas import FailureKind, classificar_texto
+
+    state = harness.state
+    pids, cliente = _cenario(harness)
+    exc = cliente.post("/api/politica/excecoes", json=_corpo(pids["android-01"])).json()["excecao"]
+    await _porta(state, "android-01")
+    etapa = SimpleNamespace(id="run-f:android-01:v1:efeito")
+    executor = state.scheduler.executor
+    assert executor._excecao_encerrada(etapa) is None                              # noqa: SLF001
+    [pedido] = state.approval_service.list()
+    state.db.execute("UPDATE objectives SET status='waiting_user' WHERE id='run-f:android-01'")
+    state.approval_service.decide(pedido["id"], "approve")
+    assert cliente.post(f"/api/politica/excecoes/{exc['id']}/revogar").status_code == 200
+    motivo = executor._excecao_encerrada(etapa)                                    # noqa: SLF001
+    assert motivo is not None and exc["id"] in motivo and "revogada" in motivo and "não foi disparado" in motivo
+    assert classificar_texto(motivo) == FailureKind.INTERROMPIDA                  # decisão de pessoa: nunca vira lição
+
+
+async def test_revogar_com_o_cartao_pendente_expira_o_cartao(harness: Any) -> None:
+    """Releitura do #309, item 2: o cartão não fica órfão em Pendências (nem no Telegram, que recusa o vencido)."""
+    state = harness.state
+    pids, cliente = _cenario(harness)
+    exc = cliente.post("/api/politica/excecoes", json=_corpo(pids["android-01"])).json()["excecao"]
+    await _porta(state, "android-01")
+    [pedido] = state.approval_service.list()
+    state.db.execute("UPDATE objectives SET status='waiting_user' WHERE id='run-f:android-01'")
+    assert cliente.post(f"/api/politica/excecoes/{exc['id']}/revogar").status_code == 200
+    assert state.approval_service.list() == []
+    assert state.approvals.get(pedido["id"]).status == "expired"
+    # o objetivo volta à porta, que agora recusa sem a exceção
+    recusa = await _porta(state, "android-01")
+    assert recusa is not None and not recusa.allowed and recusa.retry_at is None
+
+
+async def test_decisao_da_propria_etapa_anterior_a_excecao_nao_vale(harness: Any) -> None:
+    """Releitura do #309, R1: o `for_step` da mesma etapa só vale se o pedido nasceu depois de a exceção ser presa."""
+    state = harness.state
+    pids, cliente = _cenario(harness)
+    etapa = "run-f:android-01:v1:efeito"
+    antigo = state.approvals.open(profile_id=pids["android-01"], capability="SEND_MESSAGE", summary="antes",
+                                  target=ALVO, content="oi", run_id="run-f", objective_id="run-f:android-01",
+                                  step_id=etapa)
+    state.db.execute("UPDATE pending_approvals SET status='approved', created_at=? WHERE id=?",
+                     (to_iso(now() - timedelta(hours=1)), antigo.id))
+    assert cliente.post("/api/politica/excecoes", json=_corpo(pids["android-01"])).status_code == 201
+    parada = await _porta(state, "android-01")
+    assert parada is not None and not parada.allowed and parada.policy == "approval_required"
+    [novo] = state.approval_service.list()
+    assert novo["id"] != antigo.id and "30.65" in novo["summary"]
+
+
+def test_o_cartao_cita_no_maximo_80_caracteres_da_autorizacao(tmp_path: Path) -> None:
+    """Releitura do #309, R2: o aviso do Telegram corta em 500; "Alvo" e "Texto" não podem sair do corte."""
+    svc, repo, policies, contas = _frota_com_alvo_nosso(tmp_path)
+    _fez(svc, contas["lucas"], InteractionType.dm_sent, ALVO)
+    excecoes, _ = _excecoes(repo)
+    longa = "dono pelo Telegram em 04/10 às 19:02 UTC, entrada 1189, " + "com contexto " * 20
+    excecoes.criar(profile_id=contas["mariana"], alvo=ALVO, capability="SEND_MESSAGE", motivo="prova",
+                   autorizacao=longa.strip(), autor="orquestradora", expira_em=to_iso(now() + timedelta(hours=1)))
+    motivo = policies.check(contas["mariana"], capability_of(IG, "SEND_MESSAGE"), counterparty=ALVO, step_id="s").reason
+    citada = motivo.split("autorização citada: ", 1)[1].split(";", 1)[0]
+    assert len(citada) <= 80 and citada.endswith("…") and longa.strip() not in motivo

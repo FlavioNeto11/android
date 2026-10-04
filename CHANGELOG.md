@@ -246,6 +246,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   cartão encerra a exceção e há `POST /api/politica/excecoes/{id}/revogar`; uma em aberto por trio; `gastar` com ordem
   e sem pegar vencida ou encerrada; `vencer` solta a etapa; falha ao gastar não derruba o `open_effect`; motivo e
   autorização passam pela triagem de nota (409 `note_looks_secret`).
+- Releitura: revogada nunca sai (o executor confere no commit e falha fechado; a falha é `interrompida`, nunca lição);
+  revogar expira o cartão pendente e devolve o objetivo à porta; a decisão da própria etapa anterior à exceção não
+  vale; o cartão cita no máximo 80 caracteres da autorização.
 - Emenda 30.65 do ADR-055. Prova `simulated`: `backend/tests/test_excecao_de_politica.py`. `not_run`: a exceção do 31.26,
   depois do deploy 32.
 

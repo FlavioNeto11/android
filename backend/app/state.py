@@ -2158,8 +2158,7 @@ class AppState:
         if veredito.needs_approval or confirmacao or pelo_teto or repetida:
             motivo = "; ".join(m for m in (veredito.reason, confirmacao, pelo_teto, repetida or "") if m)
             # 30.65: a etapa que usa a exceção sempre pede decisão nova; o aprovado de outra versão não vale para ela.
-            return self._approval_gate(obj, srow, cap, profile_id, motivo=motivo,
-                                       sem_reaproveitar=veredito.excecao is not None)
+            return self._approval_gate(obj, srow, cap, profile_id, motivo=motivo, excecao=veredito.excecao)
         return None
 
     def _mesmo_pedido_noutras_contas(self, obj: Row, cap: Capability, profile_id: str,
@@ -2393,7 +2392,7 @@ class AppState:
         return arvore
 
     def _approval_gate(self, obj: Any, srow: Any, cap: Any, profile_id: str, *, motivo: str = "",
-                       sem_reaproveitar: bool = False) -> Any:
+                       excecao: str | None = None) -> Any:
         """Ação que exige aprovação: a decisão da pessoa acontece ANTES de digitar qualquer coisa.
 
         É por isso que a porta fica aqui e não no meio da etapa: etapa concluída é estado terminal, então não
@@ -2402,14 +2401,19 @@ class AppState:
         `motivo` é o porquê de a aprovação ser exigida além da política (DM fria, o mesmo pedido a várias contas —
         ADR-055): vai no resumo do pedido e no motivo da espera, para quem decide saber o que está confirmando.
 
-        `sem_reaproveitar`: a etapa usa uma exceção de política (30.65). O dono decide sobre o cartão DELA; a decisão de
-        uma versão anterior da etapa, com o mesmo texto e alvo, não vale aqui.
+        `excecao`: a etapa usa esta exceção de política (30.65). O dono decide sobre o cartão DELA: a decisão de uma
+        versão anterior da etapa, com o mesmo texto e alvo, não vale, nem a da própria etapa tomada antes de a exceção
+        ser presa a ela.
         """
         pedido = self.approvals.for_step(srow["id"])
+        presa = self.excecoes.obter(excecao) if excecao else None
+        if pedido is not None and presa is not None and presa.presa_em \
+                and parse_iso(pedido.created_at) < parse_iso(presa.presa_em):
+            pedido = None
         bindings = loads(srow["bindings"], {}) or {}
         # O alvo normalizado é a chave da reserva de frota (`SocialRepository.fleet_targeting`).
         alvo = contraparte(cap, bindings) or alvo_da_acao(cap, bindings)
-        if pedido is None and not sem_reaproveitar:
+        if pedido is None and excecao is None:
             # Etapa revisada (recuperação automática, “Tentar novamente”) tem id novo: sem isto, o que a pessoa já
             # aprovou na versão anterior virava pedido novo e o objetivo voltava a esperá-la. Só vale a decisão
             # sobre a mesma etapa, com o mesmo alvo e o mesmo texto, cujo efeito ainda não saiu.

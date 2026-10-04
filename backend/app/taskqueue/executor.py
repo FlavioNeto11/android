@@ -1220,6 +1220,17 @@ class StepExecutor:
             log.exception("%s: a tela da etapa %s não virou memória", rt.id, step.key)
 
     # ------------------------------------------------------------------ histórico social do efeito
+    def _excecao_encerrada(self, step: StepDTO) -> str | None:
+        """30.65: o motivo literal quando a exceção de política presa a esta etapa foi encerrada por uma pessoa depois
+        da porta (revogada pela rota, ou o cartão recusado). A porta não roda de novo no meio da etapa; sem isto a DM
+        aprovada sairia com a exceção já revogada e a rota teria respondido 200 como se a tivesse impedido."""
+        excecoes = getattr(self.social, "excecoes", None)
+        x = excecoes.encerrada_da_etapa(step.id) if excecoes is not None else None
+        if x is None:
+            return None
+        return (f"a exceção {x.id} à regra de uma conta por alvo foi {x.encerramento} por {x.encerrada_por or 'uma pessoa'}"
+                " depois da aprovação; o efeito não foi disparado (30.65)")
+
     def _open_effect(self, objective: Any, step: StepDTO, rt: DeviceRuntime, cap: Any,
                      app_id: str | None = None) -> None:
         """Chamado no instante do commit. Efeito disparado é efeito que conta, mesmo sem resultado observado."""
@@ -2735,6 +2746,9 @@ class StepExecutor:
                     return await fail_or_retry(ciclo, obs)
 
             # ---------- agir (intenção gravada ANTES)
+            if is_commit and (revogada := self._excecao_encerrada(step)) is not None:
+                # 30.65: a exceção desta etapa foi revogada (ou recusada) depois de a porta passar: nada sai.
+                return await falhar_sem_nova_tentativa(revogada, obs)
             aid = intencao(decision.tool, args.model_dump(mode="json"), rationale, side_effect=is_commit,
                            source="recipe" if from_recipe else "ai")
             if is_commit:

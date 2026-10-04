@@ -5678,7 +5678,11 @@ sempre abre cartão novo: o aprovado de uma versão anterior com o mesmo texto e
   `note_looks_secret`: `motivo` ou `autorizacao` com formato de credencial, antes de qualquer escrita (a triagem de nota;
   hora com segundos, `19:02:26Z`, cai nela: escreva `19:02 UTC`).
 - **`POST /api/politica/excecoes/{id}/revogar`** (200): encerra a exceção em aberto, livre ou presa. `{"excecao": {...}}`
-  com `estado: "revogada"`. 404 `not_found`; 409 `excecao_encerrada` se ela já terminou.
+  com `estado: "revogada"`. 404 `not_found`; 409 `excecao_encerrada` se ela já terminou. Com o cartão da etapa presa
+  ainda pendente, ele expira (sai de Pendências; o reply no Telegram é recusado como vencido) e o objetivo volta à
+  porta, que recusa. Se a etapa já passou da porta (aprovada, antes do commit), o executor confere no commit e a etapa
+  falha fechada com o motivo "a exceção … foi revogada … depois da aprovação; o efeito não foi disparado (30.65)": a
+  revogada nunca sai. O cartão cita no máximo 80 caracteres da autorização (o aviso do Telegram corta em 500).
 - **`GET /api/politica/excecoes?profile_id=`**: `{"excecoes": [...]}`, as mais novas primeiro (até 200). Cada uma traz
   `id`, `regra` (`uma_conta_por_alvo`), `profile_id`, `alvo`, `capability`, `motivo`, `autorizacao`, `autor`,
   `autor_com_sessao`, `criada_em`, `expira_em`, `step_id`, `presa_em`, `usada_em`, `interaction_id`, `vencida_em`,
