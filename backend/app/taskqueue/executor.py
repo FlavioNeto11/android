@@ -18,6 +18,7 @@ import time
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Protocol, Sequence, TypeVar
+from urllib.parse import unquote
 
 from PIL import Image
 from pydantic import BaseModel
@@ -163,31 +164,55 @@ def _host(url_ou_texto: str) -> str:
     return t.split("/", 1)[0].split("#", 1)[0].split("?", 1)[0].rsplit("@", 1)[-1].split(":", 1)[0]
 
 
-#: 31.52: um pedaço de caminho com 20 ou mais letras e dígitos seguidos é opaco (token de redefinição, id de sessão).
-_SEGMENTO_OPACO = re.compile(r"[A-Za-z0-9]{20,}")
+#: 31.52: o que torna o 1º pedaço do caminho opaco (link de redefinição, convite, sessão): UUID, JWT, ou 16+ caracteres
+#: de token (letras, dígitos e `_-=.`) com pelo menos um dígito. Um slug sem dígito ("como-fazer-bolo") fica.
+_UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+_JWT = re.compile(r"[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+")
+_TRECHO_DE_TOKEN = re.compile(r"[A-Za-z0-9_\-=.]{16,}")
+#: `usuario@` ou `usuario:senha@` antes do host; a senha pode ter `/`, `?` e `#`.
+_USUARIO_NA_URL = re.compile(r"^[^/@:?#\s]+(?::[^@\s]*)?@")
+
+
+def _pedaco_opaco(pedaco: str) -> bool:
+    p = unquote(pedaco)
+    return ("@" in p or bool(_UUID.search(p)) or bool(_JWT.search(p))
+            or any(any(ch.isdigit() for ch in m.group(0)) for m in _TRECHO_DE_TOKEN.finditer(p)))
 
 
 def endereco_para_o_prompt(texto: str) -> str:
-    """31.52: o texto da barra de endereço como ele vai à IA e ao diagnóstico: host e caminho, sem o resto.
+    """31.52: um endereço como ele vai à IA (árvore, histórico do ator) e ao diagnóstico: o host e o 1º pedaço do
+    caminho; o resto do caminho vira `/…`, a query `?…` e o fragmento `#…`.
 
-    O redator pega segredo no formato que conhece (`senha=…`), não `?code=`, `token=` ou um e-mail na query, e o
-    Chrome mostra o caminho e a query. Fica o host (sem usuário e senha antes do `@`) e o caminho; a query vira `?…`,
-    o fragmento `#…`, e o pedaço de caminho opaco (20 ou mais letras e dígitos seguidos) ou com `@` vira `…`. É o que
-    o ator precisa para saber em que página está, sem levar o que identifica a pessoa ou a sessão."""
+    O redator pega segredo no formato que conhece (`senha=…`), não dado pessoal nem `?code=`, `token=`, e-mail em
+    `%40`, UUID, JWT ou base64url no caminho de um link de redefinição ou convite (revisão da orquestradora, 04/10:
+    uma lista de formatos sempre deixa um passar). O 1º pedaço também vira `…` se, decodificado, tiver `@` ou casar
+    `_pedaco_opaco`. Usuário e senha antes do host somem. É o que o ator precisa para saber em que site e seção está."""
     t = (texto or "").strip()
     esquema = ""
     if "://" in t:
         esquema, t = t.split("://", 1)
         esquema += "://"
+    t = _USUARIO_NA_URL.sub("", t, count=1)
     cauda = ""
     for marca in ("?", "#"):
         if marca in t:
             t, _ = t.split(marca, 1)
             cauda = cauda or f"{marca}…"
-    autoridade, _, caminho = t.partition("/")
-    autoridade = autoridade.rsplit("@", 1)[-1]
-    partes = [("…" if "@" in p or _SEGMENTO_OPACO.search(p) else p) for p in caminho.split("/")] if caminho else []
-    return esquema + autoridade + ("/" + "/".join(partes) if "/" in t else "") + cauda
+    host, barra, caminho = t.partition("/")
+    if not barra:
+        return esquema + host + cauda
+    primeiro, _, resto = caminho.partition("/")
+    primeiro = "…" if primeiro and _pedaco_opaco(primeiro) else primeiro
+    return esquema + host + "/" + primeiro + ("/…" if resto else ("/" if caminho.endswith("/") else "")) + cauda
+
+
+#: Um endereço no meio de um texto (erro do driver, resultado de ação): com esquema, `www.`, ou host com `/` ou `?`.
+_URL_NO_TEXTO = re.compile(r"(?:https?://|\bwww\.)[^\s'\"<>]+|\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?=[/?])[^\s'\"<>]*", re.I)
+
+
+def enderecos_limpos(texto: str) -> str:
+    """31.52: o texto com cada endereço passado por `endereco_para_o_prompt` (histórico do ator)."""
+    return _URL_NO_TEXTO.sub(lambda m: endereco_para_o_prompt(m.group(0)), texto or "")
 
 
 def _arvore_com_endereco_limpo(tree: UiTree, pacote: str | None) -> UiTree:
@@ -2849,10 +2874,11 @@ class StepExecutor:
                     self.devices.invalidate_automation(rt, str(exc))
                     await self.devices.ensure_automation(rt)
                 if incerta:
-                    history.append(f"(executor) {decision.tool}({_brief(args)}) sem confirmação ({exc}): a ação pode "
+                    history.append(f"(executor) {decision.tool}({_brief(args)}) sem confirmação "
+                                   f"({enderecos_limpos(str(exc))}): a ação pode "
                                    "ter chegado ao app — confira na tela atual antes de repetir.")
                 else:
-                    history.append(f"{decision.tool}({_brief(args)}) FALHOU: {exc}")
+                    history.append(f"{decision.tool}({_brief(args)}) FALHOU: {enderecos_limpos(str(exc))}")
                 errors_in_row += 1
                 if errors_in_row >= 3:
                     return await fail_or_retry(f"Falhas consecutivas do driver: {exc}", obs)
@@ -3935,9 +3961,11 @@ def _target_key(args: Any) -> str:
 
 
 def _brief(args: Any) -> str:
+    """A ação no histórico do ator. 31.52: a URL do `open_url` vai só com host e 1º pedaço do caminho."""
     d = args.model_dump(exclude={"rationale"}, exclude_none=True)
-    return ", ".join(f"{k}={str(v)[:60]!r}" for k, v in d.items())
+    return ", ".join(f"{k}={str(endereco_para_o_prompt(str(v)) if k == 'url' else v)[:60]!r}" for k, v in d.items())
 
 
 def _brief_result(result: dict[str, Any]) -> str:
-    return ", ".join(f"{k}={str(v)[:80]}" for k, v in result.items() if k != "ms") or "ok"
+    return ", ".join(f"{k}={str(endereco_para_o_prompt(str(v)) if k == 'url' else v)[:80]}"
+                     for k, v in result.items() if k != "ms") or "ok"

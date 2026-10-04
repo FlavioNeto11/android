@@ -133,17 +133,44 @@ async def test_31_52_aparelho_com_conta_real_nunca_grava_a_arvore(harness: Harne
 
 def test_31_52_a_barra_vai_ao_prompt_sem_query_fragmento_nem_token_no_caminho() -> None:
     """Revisão da orquestradora: a `url_bar` ia CRUA ao provedor. O redator pega segredo no formato que conhece, não
-    `?code=`, `token=`, e-mail na query ou token de redefinição no caminho."""
+    `?code=`, `token=`, e-mail na query ou token de redefinição no caminho. Decisão (parte 15b): vai só o host e o 1º
+    pedaço do caminho; o resto vira `/…`, e o 1º pedaço também vira `…` quando é opaco."""
     from app.taskqueue.executor import endereco_para_o_prompt as limpa
-    assert limpa("accounts.exemplo.com/o/oauth2/callback?code=4/0AbCdEf&state=xyz") == "accounts.exemplo.com/o/oauth2/callback?…"
+    assert limpa("accounts.exemplo.com/o/oauth2/callback?code=4/0AbCdEf&state=xyz") == "accounts.exemplo.com/o/…?…"
     assert limpa("https://site.exemplo/entrar?token=abc123&email=pessoa@exemplo.com") == "https://site.exemplo/entrar?…"
-    assert limpa("site.exemplo/reset/Q2hhdmVEZVJlZGVmaW5pY2Fv/confirmar") == "site.exemplo/reset/…/confirmar"
     assert limpa("site.exemplo/conta#access_token=abc") == "site.exemplo/conta#…"
-    assert limpa("usuario:senha@site.exemplo/painel") == "site.exemplo/painel"
+    # os formatos que passavam crus pela regra de 20 alfanuméricos seguidos (parte 15b, b1)
+    assert limpa("site.exemplo/reset/Q2hhdmVEZVJlZGVmaW5pY2Fv/confirmar") == "site.exemplo/reset/…"
+    assert limpa("site.exemplo/123e4567-e89b-12d3-a456-426614174000") == "site.exemplo/…"                 # UUID
+    assert limpa("site.exemplo/abcdefgh12.ijklmnop34.qrstuvwx") == "site.exemplo/…"                       # forma de JWT
+    assert limpa("site.exemplo/convite_Ab-12cd_EF=34gh") == "site.exemplo/…"                              # base64url
+    assert limpa("site.exemplo/pessoa%40exemplo.com") == "site.exemplo/…"                                 # e-mail em %40
+    assert limpa("site.exemplo/r/ab12") == "site.exemplo/r/…"                                             # token curto
+    assert limpa("site.exemplo/u/fulano") == "site.exemplo/u/…"                                           # usuário
     assert limpa("site.exemplo/perfil/pessoa@exemplo.com") == "site.exemplo/perfil/…"
-    # o que o ator precisa para saber em que página está fica igual
-    assert limpa("noticias.exemplo/2026/10/como-fazer-um-bolo-de-chocolate") == "noticias.exemplo/2026/10/como-fazer-um-bolo-de-chocolate"
-    assert limpa("exemplo.com") == "exemplo.com" and limpa("") == ""
+    assert limpa("usuario:senha@site.exemplo/painel") == "site.exemplo/painel"
+    assert limpa("https://usuario:se/n?h#a@site.exemplo/painel/x") == "https://site.exemplo/painel/…"     # `/` na senha
+    # o que o ator precisa para saber em que site e seção está fica
+    assert limpa("noticias.exemplo/2026/10/como-fazer-um-bolo") == "noticias.exemplo/2026/…"
+    assert limpa("site.exemplo/como-fazer-um-bolo-de-chocolate") == "site.exemplo/como-fazer-um-bolo-de-chocolate"
+    assert limpa("site.exemplo/") == "site.exemplo/" and limpa("exemplo.com") == "exemplo.com" and limpa("") == ""
+
+
+def test_31_52_o_historico_do_ator_leva_a_url_limpa() -> None:
+    """Parte 15b, b2.1: o `_brief` do `open_url` levava os 60 primeiros caracteres da URL do plano, query incluída; o
+    erro do driver também pode citar a URL."""
+    from pydantic import BaseModel
+
+    from app.taskqueue.executor import _brief, _brief_result, enderecos_limpos
+
+    class Abrir(BaseModel):
+        url: str
+
+    assert _brief(Abrir(url="https://contas.exemplo/reset/tok?token=abc123")) == "url='https://contas.exemplo/reset/…?…'"
+    assert _brief_result({"url": "site.exemplo/a/b?code=x", "ms": 3}) == "url=site.exemplo/a/…?…"
+    erro = "não abriu https://site.exemplo/reset/tok?x=1 (com.android.chrome:id/url_bar)"
+    assert enderecos_limpos(erro) == "não abriu https://site.exemplo/reset/…?… (com.android.chrome:id/url_bar)"
+    assert enderecos_limpos("sem endereço aqui") == "sem endereço aqui"
 
 
 def test_31_52_o_prompt_e_o_diagnostico_levam_a_barra_limpa_e_a_arvore_local_fica_crua() -> None:

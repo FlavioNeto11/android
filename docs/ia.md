@@ -1678,11 +1678,21 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
   árvore local fica inteira para seletores, guardas e pós-condições.
 - 31.52: a `url_bar` fica no prompt. É onde o ator lê em que página está e onde digita um endereço; tirá-la deixava
   "abrir a página X" e "estou na página certa?" às cegas (risco achado na medida do 31.35).
-- O texto dela vai ao ator e ao diagnóstico só como host e caminho (`executor.endereco_para_o_prompt`): a query vira
-  `?…`, o fragmento `#…`, e o pedaço de caminho opaco (20 ou mais letras e dígitos seguidos) ou com `@` vira `…`.
-  O redator de segredos pega segredo no formato que conhece (`senha=…`), não dado pessoal nem `?code=`, `token=` ou
-  um e-mail na URL; por isso a barra tem limpeza própria. A árvore local segue crua: é por ela que o `type_secret`
-  confere o site. A imagem da tela, quando vai, ainda mostra a barra (fora desta limpeza).
+- O texto dela vai ao ator e ao diagnóstico só como o host e o 1º pedaço do caminho
+  (`executor.endereco_para_o_prompt`):
+  - o resto do caminho vira `/…`, a query `?…` e o fragmento `#…`;
+  - usuário e senha antes do host somem;
+  - o 1º pedaço também vira `…` se, decodificado, tiver `@` ou casar UUID, JWT ou 16 ou mais caracteres de token
+    (letras, dígitos e `_-=.`) com pelo menos um dígito.
+
+  Uma lista de formatos de token sempre deixa um passar (UUID, JWT, base64url e `%40` passavam pela primeira
+  versão), por isso a regra corta o caminho em vez de reconhecer token. O redator de segredos pega segredo no formato
+  que conhece (`senha=…`), não dado pessoal nem `?code=`, `token=` ou um e-mail na URL; por isso a barra tem limpeza
+  própria.
+  - A mesma limpeza vale no histórico do ator: a URL do `open_url` (`_brief`, `_brief_result`) e os endereços no erro
+    do driver (`enderecos_limpos`).
+  - A árvore local segue crua: é por ela que o `type_secret` confere o site.
+  - A imagem da tela, quando vai, ainda mostra a barra (fora desta limpeza; medida pedida pela orquestradora).
 - O A/B offline da poda era impossível, porque só os números depois dela ficavam em `ai_calls`. Agora,
   `ai.diagnostico_arvore_aparelhos` (lista; vazia, o padrão, deixa o diagnóstico desligado) diz os aparelhos DE TESTE
   em que cada decisão do ator com algo podado grava a árvore de ANTES da poda:
@@ -1690,7 +1700,7 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
   - texto e descrição passam pela redação de segredos;
   - tela sensível nunca é gravada;
   - aparelho com conta real (vínculo ativo de persona, regra do ADR-055) nunca grava, mesmo listado: a recusa é na
-    hora de gravar, porque o vínculo mora no banco e não no config.
+    hora de gravar, porque o vínculo mora no banco e não no config. Liste só aparelho sem vínculo ativo de persona.
 - `scripts/poda-ab-offline.py` lê essas evidências (banco só leitura) e mede, por árvore, os caracteres do prompt sem e
   com a poda. Imprime só números e ids.
 - Prova `simulated`: `backend/tests/test_tamanho_do_prompt_do_ator.py`. `not_run`: o A/B sobre árvores reais. Fica
