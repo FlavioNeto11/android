@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.28: pergunta ao bot do Telegram vai à orquestradora, e nome de persona não sai pelo canal (branch canais/28-28-pergunta-ao-bot)
+
+- **O defeito:** o dono perguntou ao bot "porque tem tanta coisa represada em validação?" e depois respondeu "no
+  trello" (entradas 889 e 891). As duas viraram texto livre: a prévia pediu destino, a entrada ficou `falhou`, e o dono
+  recebeu duas vezes "Diga onde ou por quem", com o nome de uma persona no exemplo.
+- **O que muda:**
+  - a pergunta solta vai à orquestradora, e o dono ouve que a ANA responde em instantes;
+  - o reply a uma resposta nossa de repasse continua a conversa;
+  - o texto livre recusado pela prévia vai à orquestradora, e o dono ouve as duas saídas;
+  - todo texto que a conversa manda passa por `sem_nome_de_persona`.
+- **Prova:** `simulated`. `tests/test_telegram_entrada.py` tem 7 testes novos, com as duas mensagens literais; 4 deles
+  falham contra o código antigo, e as contraprovas cobrem o pedido com aparelho e "quem é você". 324 passed nos testes
+  de telegram e canais. Doc em `docs/dominios/canais.md` (C-12, o caminho do repasse).
+
 ## 2026-10-04 — 29.73: o agente reconecta rápido depois do reinício do central (branch fix/29-73-reconexao-rapida)
 
 - Deploy 28: o central fechou o canal com 1012 (service restart) às 15:59:17Z e voltou às 16:00:33Z; a escada do

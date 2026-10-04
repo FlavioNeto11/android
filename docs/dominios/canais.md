@@ -188,6 +188,28 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
     continuam no chat.
   - Pedido do dono é registrado, respondido no cartão e repassado à orquestradora entre aspas. Quem executa a
     decisão que mexe no mundo real é ela.
+- **Pergunta ao bot e o repasse (28.28, depois das entradas 889 e 891 de 04/10):**
+  - Uma pergunta solta do dono vai à orquestradora, e o dono ouve "Recebi sua pergunta: a ANA responde por aqui em
+    instantes". É pergunta a frase que termina em "?" ou começa por porque, o que, quando, como, quanto, cadê, qual,
+    onde, quem, tem como, já, está ou existe. Se a frase cita aparelho (`android-NN`), `@` ou "persona", ela é pedido e
+    vai para a prévia.
+  - Um reply a uma resposta nossa que veio de um repasse (ou de uma falha) continua a mesma conversa. O texto de antes
+    e o novo vão juntos (`previa.texto` da linha) e não viram pedido novo.
+  - Texto livre que a prévia recusa (quase sempre por falta de destino) também vai à orquestradora. O dono ouve as
+    duas saídas: se é pergunta, já foi repassada; se é pedido, ele manda de novo com o aparelho. A falha muda e o
+    texto do extrator do painel ("Diga onde ou por quem") não saem mais.
+  - Na dúvida entre pergunta e pedido, repassar (orquestradora, 04/10).
+  - **O caminho inteiro:**
+    1. A linha fica com `estado='orquestradora'` e `previa={repasse, texto}` em `canal_entradas`.
+    2. A Canais lê a caixa a cada etapa e manda o texto literal à orquestradora.
+    3. A orquestradora responde, e a Canais entrega a resposta em reply à mensagem do dono
+       (`telegram_status.py --reply-to <ref_mensagem>`).
+- **Nome de persona nunca sai pelo canal (C-02, 28.28):**
+  - Todo texto que a conversa manda passa por `sem_nome_de_persona`. Ele troca o nome de exibição, o primeiro e o último
+    nome e o @ das personas cadastradas por `<persona>`, por palavra inteira e sem diferença de maiúscula ou acento.
+  - "ANA" é poupada, porque é o nome da IA.
+  - O filtro existe porque as recusas e as perguntas da prévia vêm de texto compartilhado com o painel, onde o exemplo
+    do extrator trazia um nome.
 
 **C-13 · Aprovar pelo Trello nunca aprova; vetar veta.**
 - **Origem:** orquestradora 03/10 21:28Z.
