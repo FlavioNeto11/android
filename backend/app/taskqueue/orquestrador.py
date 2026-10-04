@@ -175,7 +175,8 @@ class Orquestrador:
         resolucao, _ = self.runs._resolver(texto, [], ids, [], "one", com_texto=False)  # noqa: SLF001
         onde = self._onde(resolucao)
         base.targets = [ResolvedTargetDTO(instance_id=a.instance_id, profile_id=a.profile_id, app_id=a.app_id,
-                                          app_ids=list(a.app_ids), origem=a.origem) for a in resolucao.alvos]
+                                          app_ids=list(a.app_ids), origem=a.origem, motivo=a.motivo)
+                        for a in resolucao.alvos]
         base.questions = [p.as_dict() for p in resolucao.perguntas]
         base.escolhidas = [PersonaEscolhida(profile_id=e.profile_id, nome=nome(e.profile_id), motivo=e.motivo,
                                             aderencia=e.aderencia,  # type: ignore[arg-type]

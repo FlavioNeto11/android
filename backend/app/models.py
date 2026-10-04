@@ -1687,6 +1687,9 @@ class ResolvedTargetDTO(BaseModel):
     profile_id: str | None = None
     app_id: str | None = None
     origem: Literal["ui", "texto", "vinculo", "balanceamento"]
+    #: Por que ESTE aparelho quando a origem não basta (29.65: o principal entre dois com sessão pronta). Nulo = a
+    #: origem diz tudo.
+    motivo: str | None = None
     #: Contrato C5: o CONJUNTO de apps do alvo (comando entre apps). `app_id` segue sendo o primeiro; vazio quando não
     #: há app. Quem só passa `app_id` recebe `[app_id]` (`alinhar_app_ids`).
     app_ids: list[str] = Field(default_factory=list)
