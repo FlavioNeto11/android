@@ -1049,6 +1049,9 @@ caminhos de sempre (a sombra do fluxo, os contadores da receita) e quem decide s
       - A ação do catálogo segue, porque é navegação declarada (`OPEN_COMMENTS` antes de `CREATE_COMMENT`), e o
         Instagram digita o comentário dentro da própria etapa com efeito.
       - No plano livre, na dúvida, o ensaio para uma etapa mais cedo.
+    - A parada vem ANTES da porta de política. Com catálogo, a etapa de efeito em `approval_required`
+      (`CREATE_COMMENT`) seria segurada ali primeiro, com rascunho pago, pedido de aprovação e aviso ao dono, e o
+      ensaio não fecharia `cancelled`. Prova `simulated`: `tests/test_ensaio_antes_da_porta.py`.
     - Como fecha: ela e as seguintes ficam `skipped`, e o objetivo fecha `cancelled` pelo sistema, como a prova que
       pediria uma pessoa (30.37).
     - Por que não deixa evidência: o veredito não deixa nenhuma, e o pedido fecha `ensaio_so_leitura`, nunca

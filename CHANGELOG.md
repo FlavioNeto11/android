@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 30.31: o ensaio para antes da porta de política (branch fix/30-31-ensaio-antes-da-porta)
+
+- No despacho, a parada do ensaio só de leitura vinha DEPOIS da porta de política. Com catálogo, a etapa de efeito em
+  `approval_required` (o `CREATE_COMMENT` do Instagram) era segurada ali primeiro: a IA escrevia o texto (pago), o
+  pedido de aprovação abria e o dono era avisado, e o ensaio não fechava `cancelled`. Agora a parada vem antes.
+- Prova `simulated`: `test_ensaio_antes_da_porta.py`, pelo `Scheduler._work`. O ensaio fecha `cancelled` sem rascunho,
+  sem aprovação e sem aviso. Fora do ensaio, a porta segue segurando. Mutação conferida.
+
 ## 2026-10-04 — 28.16 + 28.18: a faxina leva os eventos dos contatos do Telegram (branch canais/28-18-faxina-090, sem migração)
 
 - `faxina_sql.py`: os `canal_contato_eventos` (090) vencem com o prazo do canal, como o resto do que a conversa guarda.

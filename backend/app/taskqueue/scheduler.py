@@ -1262,20 +1262,22 @@ class Scheduler:
                 srow = self._conta_da_etapa(run, obj, rt, srow)
                 if srow is None:
                     break
-                porta = await self.policy_gate(obj, srow, run) if self.policy_gate else None
-                if porta is not None:
-                    # Antes de assumir a etapa: nenhuma tentativa consumida, nenhuma chamada de modelo gasta.
-                    self._hold(obj, srow, porta)
-                    break
                 # 30.31 (fatia 2): o ensaio só de leitura para ANTES da etapa com efeito fora do aparelho. A etapa nem é
                 # assumida: nenhuma tentativa, nenhuma decisão do ator, nenhum toque. E para antes também do
                 # PREENCHIMENTO desse efeito (portão 1, a3b72b): sem isso o texto ficava digitado na caixa, e um toque
-                # seguinte o enviaria.
+                # seguinte o enviaria. Fica ANTES da porta de política: com catálogo, a etapa de efeito em
+                # `approval_required` (o CREATE_COMMENT do Instagram) seria segurada ali primeiro, com rascunho pago,
+                # pedido de aprovação e aviso ao dono, e o ensaio não fecharia `cancelled`.
                 if eh_ensaio_de_leitura(run["idempotency_key"]):
                     efeito = srow if srow["side_effect"] else self._efeito_que_esta_etapa_prepara(obj, srow)
                     if efeito is not None:
                         self._parar_no_ensaio(obj, srow, rt, efeito=efeito)
                         break
+                porta = await self.policy_gate(obj, srow, run) if self.policy_gate else None
+                if porta is not None:
+                    # Antes de assumir a etapa: nenhuma tentativa consumida, nenhuma chamada de modelo gasta.
+                    self._hold(obj, srow, porta)
+                    break
                 # 30.43: toda execução de validação (a prova de fluxo e a re-execução de receita do P4) parte de estado
                 # conhecido; no 6f459c a IA abriu o app dentro da conversa e enviou já na abertura
                 if eh_execucao_de_validacao(run["prova_fluxo_id"], run["idempotency_key"]):
