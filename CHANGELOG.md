@@ -135,6 +135,17 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
 - Limite conhecido: o nome de um terceiro escrito por extenso, sem @, e-mail ou telefone, não é detectável; ele só sai
   no texto que a pessoa escreveu e que a conversa já mostrava.
 - `not_run`: PostgreSQL e a prova real (um aviso de cada nível, depois do deploy, com o dono avisado uma vez).
+## 2026-10-04 — 30.61: a prévia da porta e a aprovação antecipada no plano, backend (branch feat/30-61-aprovacao-no-plano)
+
+- `GET /api/runs/{id}/porta`: numa execução `planned`, o selo de cada etapa com efeito (permitido, aprovação, adiado,
+  recusado, na execução), pela mesma conta da porta do despacho e só lendo; a chave do item aprovável.
+- `POST /api/runs/{id}/aprovar-plano`: o sim do dono antes de iniciar, item a item, com 409 `plano_mudou` quando algo
+  mudou; tiradas e dependentes canceladas; depois inicia. `POST …/porta/renovar` estende a validade (24 h, até 72 h).
+- Na execução, o sim do plano só vale para o item idêntico (chave recalculada), na validade e uma vez; senão sai como
+  `expired` e a porta pergunta como hoje. `REPLY_COMMENT` nunca se aprova no plano (o objeto declarado não diz qual
+  comentário). Migração `105_aprovacao_no_plano`; adendo v1.32.
+- Prova: `simulated` (`tests/test_porta_do_plano.py`, `tests/test_chave_da_aprovacao.py`). `not_run`: o painel e a
+  execução real.
 
 ## 2026-10-04 — 28.28: pergunta ao bot do Telegram vai à orquestradora, e nome de persona não sai pelo canal (branch canais/28-28-pergunta-ao-bot)
 

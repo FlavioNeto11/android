@@ -74,6 +74,7 @@ from .modules.learning.presentation.livro import mudar_status_legado
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
 from .planning import conciliacao, costs, saldos
+from .porta_do_plano import AprovarPlanoBody, PortaIndisponivel, aprovar_plano, previa_da_porta, renovar_plano
 from .security import access as acesso           # o módulo, não os nomes: `LOOPBACK_DE_TESTE` é injetado em tempo
 from .security import local_secret               # de execução e um `from ... import` congelaria o valor antigo
 from .security.access import avaliar, publicos_de
@@ -3111,6 +3112,38 @@ async def run_report(request: Request, run_id: str) -> Any:
         return st(request).runs.report(run_id)
     except RunError as exc:
         raise _run_error(exc) from exc
+
+
+@router.get("/runs/{run_id}/porta")
+async def run_porta(request: Request, run_id: str) -> dict[str, object]:
+    """30.61: a prévia da porta do despacho numa execução `planned`: o selo de cada etapa com efeito (permitido,
+    aprovacao, adiado, recusado, na_execucao), a chave dos itens aprováveis e o que só se decide na execução. Só leitura:
+    não grava decisão, não abre pedido, não chama IA. 404 sem execução; 409 `invalid_state` fora de `planned`."""
+    try:
+        return previa_da_porta(st(request), run_id)
+    except PortaIndisponivel as exc:
+        raise err(exc.status, exc.codigo, exc.mensagem, **exc.extra) from exc
+
+
+@router.post("/runs/{run_id}/aprovar-plano")
+async def run_aprovar_plano(request: Request, run_id: str, body: AprovarPlanoBody) -> dict[str, object]:
+    """30.61: "Aprovar N e iniciar". 409 `plano_mudou` (com `mudaram` e a `previa` nova) quando algum item não é mais o
+    que o dono viu; nada é gravado. Senão grava os sins de origem `plano`, cancela as tiradas e inicia."""
+    try:
+        return aprovar_plano(st(request), run_id, body, por=_autor_do_sinal(request))
+    except PortaIndisponivel as exc:
+        raise err(exc.status, exc.codigo, exc.mensagem, **exc.extra) from exc
+    except RunError as exc:
+        raise _run_error(exc) from exc
+
+
+@router.post("/runs/{run_id}/porta/renovar")
+async def run_porta_renovar(request: Request, run_id: str) -> dict[str, object]:
+    """30.61 "Renovar": a validade dos sins do plano em aberto volta a contar de agora, sem reabrir os itens."""
+    try:
+        return renovar_plano(st(request), run_id)
+    except PortaIndisponivel as exc:
+        raise err(exc.status, exc.codigo, exc.mensagem, **exc.extra) from exc
 
 
 @router.post("/commands/refine")

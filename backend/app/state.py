@@ -6,6 +6,7 @@ import logging
 import shutil
 import socket
 import time
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from collections.abc import Awaitable, Mapping, Sequence
@@ -112,7 +113,7 @@ from .releases.service import InstalacaoIncerta, ReleaseService
 from .security.sensitive_input import SensitiveInputChannel
 from .social.contas_nossas import MARCADOR
 from .social.repository import SocialRepository, frase_da_quarentena, sessao_vencida
-from .social.approvals import (ApprovalService, ApprovalStore, definir_texto, guardar_rascunho, ler_rascunho,
+from .social.approvals import (Approval, ApprovalService, ApprovalStore, definir_texto, guardar_rascunho, ler_rascunho,
                                textos_irmaos)
 from .social.persona_batch import LotesDePersona
 from .social.policy import UMA_CONTA_POR_ALVO, PolicyEngine, Verdict
@@ -128,6 +129,7 @@ from .taskqueue.sombra_intencao import SombraDaIntencao, catalogo_de
 from .taskqueue.travas import (AVISOS, CURADORIA, PEDIDOS, RENOVAR_TRAVA_S, RETENCAO, SALDOS, TRAVAS_DOS_LACOS, Lideranca,
                                TravaPerdida)
 from .training.generalizer import ProviderSkillGeneralizer
+from .social.chave_da_aprovacao import chave_da_aprovacao, midia_da_etapa
 from .util import iso_in, now, now_iso, parse_iso, to_iso
 from .vitrine import (_apps_changed, alvos_da_distribuicao, laco_de_convergencia, previa_de_entrega,
                       trabalho_ao_ligar)
@@ -257,6 +259,32 @@ class _FontesDoEspelhoDoTrello:
 
     def livro_em_validacao(self) -> list[tuple[str, str, str]]:
         return [(v.id, v.item_ref, v.estado.value) for v in self._validacoes.vivos()]
+
+
+@dataclass(frozen=True, slots=True)
+class PortaDaEtapa:
+    """30.61: o que `AppState.vereditos_da_porta` decidiu sobre uma etapa, só lendo.
+
+    `final`: a decisão já está tomada antes do `check` (`veredito` é a recusa, ou `None` = segue sem parar, etapa sem ação
+    do catálogo). Senão `veredito` é o do `check` e os demais campos dizem o que a porta do despacho precisa para escrever
+    (rascunho, exceção presa, pedido de aprovação) e o que a prévia mostra."""
+
+    veredito: Verdict | None
+    final: bool = True
+    cap: Capability | None = None
+    profile_id: str | None = None
+    rt: DeviceRuntime | None = None
+    pacote: str | None = None
+    app_id: str | None = None
+    #: O mesmo pedido desta execução a várias contas sobre o mesmo alvo: a confirmação exigida ('' quando não há).
+    confirmacao: str = ""
+    #: A porta do despacho grava a decisão da confirmação uma vez por etapa (sem pedido aberto ainda).
+    registrar_confirmacao: bool = False
+    teto: str | None = None
+
+    @classmethod
+    def fim(cls, veredito: Verdict | None) -> PortaDaEtapa:
+        return cls(veredito=veredito, final=True)
 
 
 class AppState:
@@ -2061,84 +2089,16 @@ class AppState:
         (`Scheduler._app_context`): num comando entre apps, a etapa do Outlook e a do Instagram são julgadas cada uma
         pelo seu app. A regra não muda; a pergunta passa a ser feita ao app certo.
         """
-        capability = srow["capability"] if "capability" in srow.keys() else None
-        rt = self.devices.devices.get(obj["instance_id"])
-        app_da_etapa = self.scheduler._app_context(run, rt, _col_app(srow))[0] if rt else None  # noqa: SLF001
-        pacote = app_da_etapa.package if app_da_etapa else None
-        # Uma capability que o app DA ETAPA não tem conta como nenhuma. Antes, `cap is None` liberava a etapa com o
-        # efeito que tivesse: uma chave inventada numa etapa do Instagram passava por fora de tudo abaixo.
-        cap = capability_of(pacote, capability) if capability else None
-        teto = run["teto_de_autonomia"] if "teto_de_autonomia" in run.keys() else None
-        if teto == "preparar" and cap is None and (srow["side_effect"] or loads(srow["commit_guard"], [])):
-            # 28.23: com o teto `preparar`, todo efeito pede aprovação; a etapa com efeito SEM ação do catálogo não tem
-            # como pedir (a aprovação é da capability). Vale a mais restritiva: ela não roda sozinha.
-            return Verdict(allowed=False, policy="approval_required",
-                           reason="o teto de autonomia desta execução é preparar: o efeito precisa da sua aprovação, e "
-                                  "esta etapa não tem a ação do catálogo que a pediria",
-                           hint="Faça esta parte você mesmo, ou peça só o que o catálogo do app faz.")
-        if cap is None:
-            # Item 13.2: etapa com EFEITO externo sem ação do catálogo, num app que TEM catálogo, passaria por fora de
-            # política, aprovação, limite e coordenação de frota (uma habilidade treinada, um plano livre que
-            # atravessa apps ou a ação de outro app). Não passa: pede a ação do catálogo. A mesma regra recusa o plano
-            # ANTES de ele virar etapa (RA-7, `RunService._plan`); aqui fica a trava do despacho.
-            if efeito_fora_do_catalogo(bool(srow["side_effect"]), capability, pacote):
-                nome = app_da_etapa.name if app_da_etapa and app_da_etapa.name else pacote
-                estranha = f" (a ação {capability} não é do catálogo dele)" if capability else ""
-                return Verdict(allowed=False, policy="manual_only",
-                               reason=f"etapa com efeito externo em {nome} sem a ação do catálogo{estranha} — ela "
-                                      "passaria por fora da política e dos limites do perfil",
-                               hint="Refaça a habilidade escolhendo a ação do catálogo desta etapa (ou replaneje).")
-            return None
-        profile_id = obj["profile_id"] or self.social_repo.perfil_unico_da_instancia(obj["instance_id"])
-        if not profile_id:
-            # Sem perfil não há voz para escrever nem política para aprovar. Deixar passar seria pior do que
-            # parecer: como o texto deixou de ser congelado no plano, a etapa chega ao ator SEM `content` e SEM a
-            # guarda que dependia dele — o modelo inventaria a frase e publicaria, sem aval de ninguém. Antes
-            # desta série o texto literal segurava esse caso; hoje quem segura é esta porta.
-            if cap.needs_draft and texto_a_gerar(loads(srow["bindings"], {}) or {}) is not None:
-                return Verdict(allowed=False, policy=cap.default_policy,
-                               reason="este aparelho não tem perfil vinculado: não há voz para escrever o texto "
-                                      "desta etapa nem política para aprová-lo",
-                               hint="Vincule um perfil a este aparelho (ou peça o texto exato no comando, com "
-                                    "“envie exatamente…”) e retome o item.")
-            return None
-        # Alvo desta etapa, para a coordenação de frota (achado #114, ADR-055): o argumento que a AÇÃO declara no
-        # catálogo (`Capability.counterparty`), normalizado. Antes era `username` cru — curtir e comentar não o têm,
-        # e a porta de frota recebia `None` e liberava tudo; `@Ana` e `@ana` eram duas pessoas.
-        bindings = (loads(srow["bindings"], {}) or {}) if "bindings" in srow.keys() else {}
-        alvo = contraparte(cap, bindings)
-        # O mesmo pedido, nesta execução, a outras contas sobre o mesmo alvo (o caso de 19/09: uma execução, sete
-        # contas, uma pessoa). A porta de frota conta o que JÁ aconteceu; os objetivos irmãos chegam aqui juntos,
-        # antes de qualquer um disparar, e passariam todos. Decide-se pela execução, de forma determinística.
-        irmaos = self._mesmo_pedido_noutras_contas(obj, cap, profile_id, alvo)
-        confirmacao = ""
-        if irmaos:
-            contas = len({profile_id, *(dono for _o, _a, dono in irmaos)})
-            escolhido_id, escolhido_aparelho = min([(obj["id"], obj["instance_id"]),
-                                                    *((o, a) for o, a, _d in irmaos)])
-            if cap.limit_bucket in UMA_CONTA_POR_ALVO and escolhido_id != obj["id"]:
-                return Verdict(
-                    allowed=False, policy=cap.default_policy,
-                    reason=(f"esta execução manda o mesmo pedido ({cap.key}) a {contas} contas sobre {alvo}; em "
-                            "seguir, mensagem e comentário vale uma conta por alvo (ADR-055) — segue só a de "
-                            f"{escolhido_aparelho}, e esta foi recusada"),
-                    hint="Nada foi feito por esta conta. Para outro alvo, faça um pedido separado.")
-            confirmacao = (f"confirmação exigida: esta execução manda o mesmo pedido ({cap.key}) a {contas} contas "
-                           f"sobre {alvo}" + (" — só esta conta segue; as outras foram recusadas"
-                                              if cap.limit_bucket in UMA_CONTA_POR_ALVO else ""))
-            if self.approvals.for_step(srow["id"]) is None:        # uma vez por etapa, não a cada retomada
-                self.repo.decision(f"{obj['instance_id']}: {confirmacao}", run_id=obj["run_id"],
-                                   instance_id=obj["instance_id"], step_id=srow["id"])
-        # `package`: a política é do APP desta etapa (23.10) — SEND_MESSAGE do Instagram e o de outro catálogo são
-        # escolhas diferentes do perfil.
-        # 30.62: a execução que nasceu de um pedido entre personas leva a família dele; as personas da família contam
-        # como UMA conta por alvo e a pessoa real sem conversa passa por aprovação. Sem pedido, `None` e nada muda.
-        self.excecoes.vencer()                    # 30.65: a exceção vencida sai com evento antes de a porta olhar
-        veredito = self.policies.check(profile_id, cap, run_id=obj["run_id"], counterparty=alvo,
-                                       app_id=app_da_etapa.id if app_da_etapa else None, package=pacote,
-                                       step_id=srow["id"],
-                                       pedido=contexto_do_pedido(self.db, obj["run_id"]) if cap.side_effect else None,
-                                       bindings=loads(srow["bindings"], {}) or {})
+        porta = self.vereditos_da_porta(obj, srow, run)
+        if porta.registrar_confirmacao:                      # uma vez por etapa, não a cada retomada
+            self.repo.decision(f"{obj['instance_id']}: {porta.confirmacao}", run_id=obj["run_id"],
+                               instance_id=obj["instance_id"], step_id=srow["id"])
+        if porta.final:
+            return porta.veredito
+        veredito, cap, profile_id, rt = porta.veredito, porta.cap, porta.profile_id, porta.rt
+        assert veredito is not None and cap is not None and profile_id is not None
+        app_da_etapa_id, pacote, confirmacao, teto = porta.app_id, porta.pacote, porta.confirmacao, porta.teto
+        self.excecoes.vencer()                    # 30.65: a exceção vencida sai com evento (o `check` já não a usa)
         if not veredito.allowed:
             return veredito
         if veredito.excecao is not None:
@@ -2161,8 +2121,7 @@ class AppState:
         # 30.64 (revisão da fila, item 5): o `check` rodou antes do rascunho; a DM de texto gerado só agora tem o que
         # comparar. Repetir a mesma mensagem ao mesmo alvo passa por confirmação, mesmo com o perfil autônomo.
         repetida = self.policies.mensagem_repetida(profile_id, cap, loads(srow["bindings"], {}) or {},
-                                                   app_id=app_da_etapa.id if app_da_etapa else None,
-                                                   step_id=srow["id"])
+                                                   app_id=app_da_etapa_id, step_id=srow["id"])
         # Aprovação por política, por DM fria (o porquê vem no `reason` do veredito que libera) ou pela confirmação
         # do mesmo pedido a várias contas — nenhum grupo nem perfil afrouxa as duas últimas.
         # 28.23: com o teto `preparar`, o efeito exige aprovação qualquer que seja a política da persona.
@@ -2171,8 +2130,100 @@ class AppState:
         if veredito.needs_approval or confirmacao or pelo_teto or repetida:
             motivo = "; ".join(m for m in (veredito.reason, confirmacao, pelo_teto, repetida or "") if m)
             # 30.65: a etapa que usa a exceção sempre pede decisão nova; o aprovado de outra versão não vale para ela.
-            return self._approval_gate(obj, srow, cap, profile_id, motivo=motivo, excecao=veredito.excecao)
+            return self._approval_gate(obj, srow, cap, profile_id, motivo=motivo, excecao=veredito.excecao,
+                                       pacote=pacote)
         return None
+
+    def vereditos_da_porta(self, obj: Row, srow: Row, run: Row) -> "PortaDaEtapa":
+        """30.61: o que a porta do despacho decide sobre esta etapa, SÓ LENDO. É a mesma conta do `_policy_gate` (que a
+        chama e depois escreve: decisão, exceção presa, rascunho, pedido de aprovação), e a da prévia do plano
+        (`GET /runs/{id}/porta`), para as duas nunca divergirem. Não grava nada, não emite evento e não chama IA.
+
+        Etapa sem ação do catálogo num app SEM catálogo segue livre — o QA Messenger e o caminho livre seguem exatamente
+        como antes, sozinhos ou num comando entre apps. Tudo é pelo app DA ETAPA (item 24.2, ADR-058 decisão 2), o
+        mesmo que a execução usa (`Scheduler._app_context`)."""
+        capability = srow["capability"] if "capability" in srow.keys() else None
+        rt = self.devices.devices.get(obj["instance_id"])
+        app_da_etapa = self.scheduler._app_context(run, rt, _col_app(srow))[0] if rt else None  # noqa: SLF001
+        pacote = app_da_etapa.package if app_da_etapa else None
+        # Uma capability que o app DA ETAPA não tem conta como nenhuma. Antes, `cap is None` liberava a etapa com o
+        # efeito que tivesse: uma chave inventada numa etapa do Instagram passava por fora de tudo abaixo.
+        cap = capability_of(pacote, capability) if capability else None
+        teto = run["teto_de_autonomia"] if "teto_de_autonomia" in run.keys() else None
+        if teto == "preparar" and cap is None and (srow["side_effect"] or loads(srow["commit_guard"], [])):
+            # 28.23: com o teto `preparar`, todo efeito pede aprovação; a etapa com efeito SEM ação do catálogo não tem
+            # como pedir (a aprovação é da capability). Vale a mais restritiva: ela não roda sozinha.
+            return PortaDaEtapa.fim(Verdict(
+                allowed=False, policy="approval_required",
+                reason="o teto de autonomia desta execução é preparar: o efeito precisa da sua aprovação, e esta etapa "
+                       "não tem a ação do catálogo que a pediria",
+                hint="Faça esta parte você mesmo, ou peça só o que o catálogo do app faz."))
+        if cap is None:
+            # Item 13.2: etapa com EFEITO externo sem ação do catálogo, num app que TEM catálogo, passaria por fora de
+            # política, aprovação, limite e coordenação de frota (uma habilidade treinada, um plano livre que
+            # atravessa apps ou a ação de outro app). Não passa: pede a ação do catálogo. A mesma regra recusa o plano
+            # ANTES de ele virar etapa (RA-7, `RunService._plan`); aqui fica a trava do despacho.
+            if efeito_fora_do_catalogo(bool(srow["side_effect"]), capability, pacote):
+                nome = app_da_etapa.name if app_da_etapa and app_da_etapa.name else pacote
+                estranha = f" (a ação {capability} não é do catálogo dele)" if capability else ""
+                return PortaDaEtapa.fim(Verdict(
+                    allowed=False, policy="manual_only",
+                    reason=f"etapa com efeito externo em {nome} sem a ação do catálogo{estranha} — ela passaria por "
+                           "fora da política e dos limites do perfil",
+                    hint="Refaça a habilidade escolhendo a ação do catálogo desta etapa (ou replaneje)."))
+            return PortaDaEtapa.fim(None)
+        profile_id = obj["profile_id"] or self.social_repo.perfil_unico_da_instancia(obj["instance_id"])
+        if not profile_id:
+            # Sem perfil não há voz para escrever nem política para aprovar. Deixar passar seria pior do que
+            # parecer: como o texto deixou de ser congelado no plano, a etapa chega ao ator SEM `content` e SEM a
+            # guarda que dependia dele — o modelo inventaria a frase e publicaria, sem aval de ninguém. Antes
+            # desta série o texto literal segurava esse caso; hoje quem segura é esta porta.
+            if cap.needs_draft and texto_a_gerar(loads(srow["bindings"], {}) or {}) is not None:
+                return PortaDaEtapa.fim(Verdict(
+                    allowed=False, policy=cap.default_policy,
+                    reason="este aparelho não tem perfil vinculado: não há voz para escrever o texto desta etapa nem "
+                           "política para aprová-lo",
+                    hint="Vincule um perfil a este aparelho (ou peça o texto exato no comando, com “envie "
+                         "exatamente…”) e retome o item."))
+            return PortaDaEtapa.fim(None)
+        # Alvo desta etapa, para a coordenação de frota (achado #114, ADR-055): o argumento que a AÇÃO declara no
+        # catálogo (`Capability.counterparty`), normalizado. Antes era `username` cru — curtir e comentar não o têm,
+        # e a porta de frota recebia `None` e liberava tudo; `@Ana` e `@ana` eram duas pessoas.
+        bindings = (loads(srow["bindings"], {}) or {}) if "bindings" in srow.keys() else {}
+        alvo = contraparte(cap, bindings)
+        # O mesmo pedido, nesta execução, a outras contas sobre o mesmo alvo (o caso de 19/09: uma execução, sete
+        # contas, uma pessoa). A porta de frota conta o que JÁ aconteceu; os objetivos irmãos chegam aqui juntos,
+        # antes de qualquer um disparar, e passariam todos. Decide-se pela execução, de forma determinística.
+        irmaos = self._mesmo_pedido_noutras_contas(obj, cap, profile_id, alvo)
+        confirmacao = ""
+        registrar_confirmacao = False
+        if irmaos:
+            contas = len({profile_id, *(dono for _o, _a, dono in irmaos)})
+            escolhido_id, escolhido_aparelho = min([(obj["id"], obj["instance_id"]),
+                                                    *((o, a) for o, a, _d in irmaos)])
+            if cap.limit_bucket in UMA_CONTA_POR_ALVO and escolhido_id != obj["id"]:
+                return PortaDaEtapa.fim(Verdict(
+                    allowed=False, policy=cap.default_policy,
+                    reason=(f"esta execução manda o mesmo pedido ({cap.key}) a {contas} contas sobre {alvo}; em "
+                            "seguir, mensagem e comentário vale uma conta por alvo (ADR-055) — segue só a de "
+                            f"{escolhido_aparelho}, e esta foi recusada"),
+                    hint="Nada foi feito por esta conta. Para outro alvo, faça um pedido separado."))
+            confirmacao = (f"confirmação exigida: esta execução manda o mesmo pedido ({cap.key}) a {contas} contas "
+                           f"sobre {alvo}" + (" — só esta conta segue; as outras foram recusadas"
+                                              if cap.limit_bucket in UMA_CONTA_POR_ALVO else ""))
+            registrar_confirmacao = self.approvals.for_step(srow["id"]) is None
+        # `package`: a política é do APP desta etapa (23.10) — SEND_MESSAGE do Instagram e o de outro catálogo são
+        # escolhas diferentes do perfil.
+        # 30.62: a execução que nasceu de um pedido entre personas leva a família dele; as personas da família contam
+        # como UMA conta por alvo e a pessoa real sem conversa passa por aprovação. Sem pedido, `None` e nada muda.
+        veredito = self.policies.check(profile_id, cap, run_id=obj["run_id"], counterparty=alvo,
+                                       app_id=app_da_etapa.id if app_da_etapa else None, package=pacote,
+                                       step_id=srow["id"],
+                                       pedido=contexto_do_pedido(self.db, obj["run_id"]) if cap.side_effect else None,
+                                       bindings=loads(srow["bindings"], {}) or {})
+        return PortaDaEtapa(veredito=veredito, final=False, cap=cap, profile_id=profile_id, rt=rt, pacote=pacote,
+                            app_id=app_da_etapa.id if app_da_etapa else None, confirmacao=confirmacao,
+                            registrar_confirmacao=registrar_confirmacao, teto=teto)
 
     def _mesmo_pedido_noutras_contas(self, obj: Row, cap: Capability, profile_id: str,
                                      alvo: str | None) -> list[tuple[str, str, str]]:
@@ -2405,7 +2456,7 @@ class AppState:
         return arvore
 
     def _approval_gate(self, obj: Any, srow: Any, cap: Any, profile_id: str, *, motivo: str = "",
-                       excecao: str | None = None) -> Any:
+                       excecao: str | None = None, pacote: str | None = None) -> Any:
         """Ação que exige aprovação: a decisão da pessoa acontece ANTES de digitar qualquer coisa.
 
         É por isso que a porta fica aqui e não no meio da etapa: etapa concluída é estado terminal, então não
@@ -2423,6 +2474,17 @@ class AppState:
         if pedido is not None and presa is not None and presa.presa_em \
                 and parse_iso(pedido.created_at) < parse_iso(presa.presa_em):
             pedido = None
+        if pedido is not None and pedido.origem == "plano":
+            # 30.61 (`pacote`: o app da etapa, para recalcular a chave). O sim do plano vale só para o item IDÊNTICO, na
+            # validade e antes de o efeito sair. Senão sai de cena como `expired` (não fica "aprovado e não enviado"
+            # contando contra outras etapas) e a porta pergunta de novo, como sempre.
+            descarte = self._sim_do_plano_nao_vale(pedido, obj, srow, cap, profile_id, pacote)
+            if descarte:
+                self.approvals.descartar_do_plano(pedido.id, motivo=descarte)
+                self.repo.decision(f"{obj['instance_id']}: o sim dado no plano para '{srow['title']}' não vale: "
+                                   f"{descarte}; a porta pergunta de novo.", run_id=obj["run_id"],
+                                   instance_id=obj["instance_id"], step_id=srow["id"])
+                pedido = None
         bindings = loads(srow["bindings"], {}) or {}
         # O alvo normalizado é a chave da reserva de frota (`SocialRepository.fleet_targeting`).
         alvo = contraparte(cap, bindings) or alvo_da_acao(cap, bindings)
@@ -2459,6 +2521,25 @@ class AppState:
                        reason=f"{srow['title']} precisa de aprovação antes de acontecer"
                               + (f" ({motivo})" if motivo else ""),
                        hint="Abra Aprovações e escolha aprovar, editar ou rejeitar.")
+
+    def _sim_do_plano_nao_vale(self, pedido: Approval, obj: Row, srow: Row, cap: Capability, profile_id: str,
+                               pacote: str | None) -> str:
+        """30.61: por que o sim dado na prévia NÃO cobre esta etapa ('' quando cobre). Falha fechado: vencido, já gasto,
+        ou a chave da etapa RELIDA (texto, alvo, objeto, mídia, perfil, aparelho, app) diferente da aprovada."""
+        if pedido.status != "approved":
+            return f"a aprovação está '{pedido.status}'"
+        if not pedido.expires_at or parse_iso(pedido.expires_at) <= now():
+            return "venceu"
+        if pedido.interaction_id is not None:
+            return "já foi gasto num efeito"
+        bindings = loads(srow["bindings"], {}) or {}
+        tem_imagem, sha = midia_da_etapa(self.db, bindings)
+        chave = chave_da_aprovacao(bindings, cap, perfil=profile_id, aparelho=str(obj["instance_id"]), pacote=pacote,
+                                   run_id=str(obj["run_id"]), objective_id=str(obj["id"]), tem_imagem=tem_imagem,
+                                   midia_sha256=sha)
+        if chave is None or chave != pedido.chave_sha256:
+            return "o item mudou desde a aprovação (a chave divergiu)"
+        return ""
 
     def _seed_apps(self) -> None:
         """Os apps do `config.yaml` entram no registro na subida; o que já existe (mesmo id) fica como está.
@@ -2872,6 +2953,13 @@ class AppState:
                 log.info("vencimento: %s objetivo(s) parados sem resposta encerrados pelo sistema", len(vencidos))
         except Exception:  # a faxina nunca derruba o processo
             log.exception("vencimento dos objetivos parados")
+        try:
+            # 30.61: o sim dado na prévia que venceu deixa de reservar alvo e teto (a prévia abandonada em `planned`).
+            vencidos_do_plano = await asyncio.to_thread(self.approvals.vencer_do_plano, now_iso())
+            if vencidos_do_plano:
+                log.info("vencimento: %s sim(ns) do plano vencido(s)", vencidos_do_plano)
+        except Exception:  # a faxina nunca derruba o processo
+            log.exception("vencimento dos sins do plano")
         return True
 
     async def _retention_loop(self) -> None:
