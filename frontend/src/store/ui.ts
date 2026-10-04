@@ -146,10 +146,17 @@ function runDaRota(r: Rota): string | null {
   return r.tela === 'execucoes' ? r.segmentos[0] ?? null : null;
 }
 
-/** 29.61: o hash é de verdade um endereço que não existe? Vazio, `#` e `#/` são só "sem rota", sem aviso. */
+/** 29.61: o hash é de verdade um endereço que não existe? Vazio, `#` e `#/` são só "sem rota", sem aviso. Âncora de
+ * um elemento da página (`#conteudo`, o alvo do "Pular para o conteúdo") também não é endereço: rota sempre leva
+ * `/` ou nomeia uma tela, e avisar ali seria alarme à toa. */
 function hashDesconhecido(hash: string): string | null {
   if (!hash || hash === '#' || hash === '#/') return null;
-  return parseHash(hash) ? null : hash;
+  if (parseHash(hash)) return null;
+  const ancora = hash.slice(1);
+  if (!ancora.includes('/') && typeof document !== 'undefined' && document.getElementById(decodeURIComponent(ancora))) {
+    return null;
+  }
+  return hash;
 }
 
 /** A execução que a página abre: a do link; sem ela, a última escolhida, salvo em Execuções sem id (29.61), que abre

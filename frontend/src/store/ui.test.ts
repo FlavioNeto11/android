@@ -234,6 +234,22 @@ describe('29.61: rota desconhecida e Execuções sem id', () => {
     expect(useUiStore.getState().rotaDesconhecida).toBeNull();
   });
 
+  it('âncora de elemento da página (#conteudo, do "Pular para o conteúdo") não avisa; âncora sem alvo avisa', () => {
+    const main = document.createElement('main');
+    main.id = 'conteudo';
+    document.body.append(main);
+    try {
+      irPara('#/personas');
+      irPara('#conteudo');
+      expect(useUiStore.getState().rotaDesconhecida).toBeNull();
+      expect(useUiStore.getState().view).toBe('personas');
+      irPara('#semalvo');
+      expect(useUiStore.getState().rotaDesconhecida).toBe('#semalvo');
+    } finally {
+      main.remove();
+    }
+  });
+
   it('hash vazio não é endereço errado', () => {
     irPara('#/');
     expect(useUiStore.getState().rotaDesconhecida).toBeNull();
