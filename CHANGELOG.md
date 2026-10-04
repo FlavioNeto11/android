@@ -93,8 +93,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - o veredito (`liga`, `nao_liga` ou `inconclusivo`) pelo critério escrito no código antes de qualquer execução:
     sucesso igual ou maior no braço ligado e não mais de 20 % de decisões por etapa a mais.
 - A saída leva só números e ids.
-- Prova: `simulated` (`scripts/tests/test_jev_veredito_31_56.py`, 8 testes). Rodado só leitura no central: nenhuma
-  execução ainda, veredito `inconclusivo`.
+- Revisão do #338, as bordas pré-registradas antes de qualquer execução:
+  - V1: desligado em 0 decisão por etapa e ligado acima de 0 é `nao_liga`; os dois em 0 é igual;
+  - V2: a razão sai das somas cruas, em fração exata, sem arredondar antes; os 20 % exatos ligam;
+  - V3: só os pares completos (uma `off` e uma `on` no mesmo NN) entram; os outros vão para `pares_incompletos`, e
+    com menos de 3 pares completos o veredito é `inconclusivo`. As chaves fora do padrão são contadas
+    (`chaves_ignoradas`);
+  - execução cancelada, à mão ou pelo teto, conta como insucesso do braço;
+  - os estados terminais vêm do `RUN_TERMINAL` do backend; a saída diz de onde vieram os preços (`precos: config` ou
+    `padrao`); banco inexistente dá "banco não encontrado" em vez de traceback.
+- Prova: `simulated` (`scripts/tests/test_jev_veredito_31_56.py`, 15 testes, um por regra). Nenhuma execução do 31.56
+  ainda.
 
 ## 2026-10-04 — 28.29: o registro das decisões automáticas diz a verdade e se lê fácil (branch canais/28-29-registro-de-decisoes)
 
