@@ -236,7 +236,16 @@ async def test_a_inversa_so_e_chamada_uma_vez_e_so_quando_ha_inversa(harness: Ha
 # ===================================================================== a porta do aprendizado, com um livro falso
 class EntradaFalsa:
     def __init__(self, state: SkillState) -> None:
-        self.state = state
+        self.state, self.state_at = state, None
+
+
+class _Trilha:
+    """O detalhe do livro com o desligamento de uma PESSOA (28.33: só o da regra automática recusa o botão)."""
+
+    def __init__(self) -> None:
+        from types import SimpleNamespace
+        self.trilha = [SimpleNamespace(id=1, to_state=SkillState.DISABLED, decided_by="dono", decided_at=to_iso(now()),
+                                       reason="desliguei")]
 
 
 class LivroFalso:
@@ -253,6 +262,9 @@ class LivroFalso:
         if self.state is None:
             raise NaoEncontrado(f"Não há {kind.value} '{ref}' no livro.")
         return EntradaFalsa(self.state)
+
+    def detalhe(self, kind: LivroKind, ref: str) -> _Trilha:
+        return _Trilha()
 
     def mudar_estado(self, kind: LivroKind, ref: str, para: SkillState, *, by: str, reason: str) -> None:
         self.chamadas.append((kind, ref, para, by, reason))

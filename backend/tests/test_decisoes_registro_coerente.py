@@ -217,7 +217,7 @@ def test_dentro_da_listagem_o_livro_e_lido_uma_vez_por_item() -> None:
     from app.modules.learning.domain.ciclo import NaoEncontrado
 
     class Entrada:
-        state, title = SkillState.PUBLISHED, "Lição"
+        state, title, state_at = SkillState.PUBLISHED, "Lição", "2000-01-01T00:00:00Z"   # intocado desde a decisão
 
     class Livro:
         def __init__(self) -> None:
@@ -259,3 +259,53 @@ async def test_o_get_da_lista_le_o_livro_uma_vez_por_item(harness: Harness, monk
         itens = (await c.get("/api/decisoes-automaticas")).json()["itens"]
     assert len(itens) == 3 and all(i["pode_desfazer"] for i in itens)
     assert sorted(lidas) == sorted(licoes)                                         # antes: 3 leituras por item
+
+
+# ===================================================================== (d) 28.33: quem desligou e o religar à mão
+async def test_desligado_por_regra_automatica_nao_e_desfazer_e_nao_oferece_o_botao(harness: Harness) -> None:
+    """Achado 5 do 28.29: o desligamento pelo `sistema` (outra decisão automática) não vira "desfeita pela plataforma"."""
+    lic = _publicar_licao(harness)
+    did = _decidir(harness, "aprendizado", lic, fatos={"kind": "licao", "para": "published"})
+    harness.state.learning.mudar_estado(LivroKind.LICAO, lic, SkillState.DISABLED, by="sistema", reason="saúde piorou")
+    async with _cliente(harness) as c:
+        [item] = (await c.get("/api/decisoes-automaticas")).json()["itens"]
+        assert item["desfeita"] is False and item["desfeita_por"] is None
+        assert item["pode_desfazer"] is False and "regra automática" in item["por_que_nao"]
+        r = await c.post(f"/api/decisoes-automaticas/{did}/desfazer", json={"confirmar": True, "motivo": "x"})
+        assert r.status_code == 409 and r.json()["detail"]["code"] == "sem_inversa_segura"
+        # O resumo segue contando a decisão (só a desfeita sai da conta).
+        assert len((await c.get("/api/decisoes-automaticas?desfeitas=nao")).json()["itens"]) == 1
+
+
+async def test_desligado_pela_pessoa_e_religado_a_mao_segue_desfeito(harness: Harness) -> None:
+    """Achado 6 do 28.29: a pessoa desligou e depois religou; a publicação de agora é dela, e o botão não volta."""
+    lic = _publicar_licao(harness)
+    did = _decidir(harness, "aprendizado", lic, fatos={"kind": "licao", "para": "published"}, dias_atras=0.001)
+    harness.state.learning.mudar_estado(LivroKind.LICAO, lic, SkillState.DISABLED, by="panel", reason="não confio")
+    harness.state.learning.mudar_estado(LivroKind.LICAO, lic, SkillState.PUBLISHED, by="panel", reason="voltei atrás")
+    n = len(_trilha(harness, lic))
+    async with _cliente(harness) as c:
+        [item] = (await c.get("/api/decisoes-automaticas")).json()["itens"]
+        assert item["desfeita"] is True and item["desfeita_por"] == "panel" and item["motivo_do_desfazer"] == "não confio"
+        assert item["pode_desfazer"] is False
+        r = await c.post(f"/api/decisoes-automaticas/{did}/desfazer", json={"confirmar": True})
+        assert r.status_code == 200 and r.json()["desfeita_agora"] is False
+    assert len(_trilha(harness, lic)) == n                                        # nada desligou o que a pessoa religou
+
+
+async def test_publicado_e_intocado_nao_le_a_trilha(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A conferência do achado 6 só lê a trilha quando o estado mudou depois da decisão: o GET não volta a pagar
+    uma leitura extra por item (o achado 4)."""
+    lic = _publicar_licao(harness)
+    _decidir(harness, "aprendizado", lic, fatos={"kind": "licao", "para": "published"})
+    original = harness.state.learning.detalhe
+    lidas: list[str] = []
+
+    def contando(kind: LivroKind, ref: str) -> object:
+        lidas.append(ref)
+        return original(kind, ref)
+
+    monkeypatch.setattr(harness.state.learning, "detalhe", contando)
+    async with _cliente(harness) as c:
+        [item] = (await c.get("/api/decisoes-automaticas")).json()["itens"]
+    assert item["pode_desfazer"] is True and lidas == []

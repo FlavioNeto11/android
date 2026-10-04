@@ -26,6 +26,8 @@ from app.modules.learning.application.servico import LearningService
 from app.modules.learning.application.pareceres import ServicoDePareceres
 from app.modules.learning.domain.ciclo import ErroDeAprendizado, NaoEncontrado, SkillState, TransicaoProibida
 from app.modules.learning.domain.vocabulario import LivroKind
+from app.shared.costuras import PLATAFORMA, SISTEMA
+from app.util import parse_iso
 
 MOTIVO_PERGUNTA = ("a execução foi encerrada e uma pergunta encerrada não reabre (o estado só vai para cancelada); "
                    "para seguir, faça o pedido de novo")
@@ -34,6 +36,32 @@ MOTIVO_OBJETIVO = ("reabrir um objetivo encerrado repetiria ações no aparelho;
 MOTIVO_PEDIDO = "um pedido encerrado é estado final e não reabre; crie o pedido de novo"
 #: O prefixo que `_mover` põe no motivo da trilha; a leitura do desligamento por outro caminho o tira.
 PREFIXO_DO_MOTIVO = "desligado pelo dono: "
+#: 28.33 (achado 5 do 28.29): quem desliga sem ser pessoa. Desligamento por um deles é OUTRA decisão automática, não o
+#: desfazer desta.
+AUTORES_AUTOMATICOS = frozenset({SISTEMA, PLATAFORMA})
+MOTIVO_DESLIGADO_POR_REGRA = ("o item foi desligado depois por uma regra automática, não por uma pessoa; confira na tela "
+                              "do Aprendizado")
+
+
+def _de_pessoa(autor: object) -> bool:
+    return bool(autor) and str(autor) not in AUTORES_AUTOMATICOS
+
+
+def _transicao_da_decisao(decisao: Decisao) -> int:
+    """O id da transição da plataforma que a decisão registrou (`origem_ref = aprendizado:<id>`, do adaptador). Só o que
+    veio DEPOIS dela pode desfazê-la; sem o id legível, 0 (vale a trilha inteira, como antes do 28.33)."""
+    _, _, resto = decisao.origem_ref.partition("aprendizado:")
+    return int(resto) if resto.isdigit() else 0
+
+
+def _mudou_depois(instante: object, referencia: str) -> bool:
+    """O estado do item mudou DEPOIS da decisão (`state_at` > `decidida_em`, os dois em ISO). Na dúvida (data ausente ou
+    ilegível), conta como mudou: a trilha é lida e conferida, o que é o lado seguro."""
+    try:
+        a, b = parse_iso(str(instante or "")), parse_iso(referencia)
+    except ValueError:
+        return True
+    return a is None or b is None or a > b
 
 class InversaDoAprendizado:
     """Desligar (`published → disabled`) o item que a plataforma decidiu sozinha, pelo serviço do livro: a mesma trilha,
@@ -94,7 +122,21 @@ class InversaDoAprendizado:
         if atual not in (SkillState.PUBLISHED, SkillState.DISABLED):
             return (f"o item já mudou de estado depois da decisão automática (agora: {atual.value}); "
                     "confira na tela do Aprendizado")
+        if atual is SkillState.DISABLED:
+            # 28.33 (achado 5): desligado por uma regra automática não tem o que desligar, e o desfazer não pode
+            # registrar como dele o que outra decisão fez. Desligado por pessoa segue sem motivo (o desfazer é
+            # idempotente). A trilha só é lida para o item desligado.
+            try:
+                ultimo = self._ultimo_desligamento(kind, self._ref(decisao, kind))
+            except ErroDeAprendizado:
+                return None                                    # na dúvida o botão fica; o desfazer confere de novo
+            if ultimo is not None and not _de_pessoa(ultimo.decided_by):
+                return MOTIVO_DESLIGADO_POR_REGRA
         return None
+
+    def _ultimo_desligamento(self, kind: LivroKind, ref: str):  # noqa: ANN202 - a transição do livro
+        desligadas = [t for t in self._servico.detalhe(kind, ref).trilha if t.to_state is SkillState.DISABLED]
+        return max(desligadas, key=lambda x: x.id) if desligadas else None
 
     def descrever(self, decisao: Decisao) -> Descricao | None:
         """O título do item no livro (28.29: a lista dizia "Fluxo confirmado" 15 vezes sem dizer qual)."""
@@ -108,19 +150,29 @@ class InversaDoAprendizado:
         return Descricao(nome=" ".join(str(titulo or "").split())[:120] or None)
 
     def desfeita_por_fora(self, decisao: Decisao) -> DesfeitaPorFora | None:
-        """O item que a plataforma publicou e alguém DESLIGOU por outro caminho (a tela do Aprendizado, a rota do livro):
-        quem, quando e o motivo, da última transição para `disabled` na trilha dele."""
+        """O item que a plataforma publicou e uma PESSOA desligou depois por outro caminho (a tela do Aprendizado, a rota
+        do livro): quem, quando e o motivo, da última dessas transições para `disabled`.
+
+        28.33 (achados 5 e 6 do 28.29): o desligamento por regra automática (`sistema`, `plataforma`) não é o desfazer
+        desta decisão; e o item que a pessoa desligou e depois religou à mão segue desfeito (a publicação de agora é
+        dela). A trilha só é lida quando o estado mudou depois da decisão (`state_at`), para a listagem não pagar a
+        leitura de cada item publicado e intocado."""
         kind = self._kind(decisao)
         if decisao.fatos.get("para") != SkillState.PUBLISHED.value or kind is None:
             return None
         ref = self._ref(decisao, kind)
         try:
-            if self._entrada(kind, ref).state is not SkillState.DISABLED:
+            entrada = self._entrada(kind, ref)
+            if entrada.state not in (SkillState.DISABLED, SkillState.PUBLISHED):
                 return None
+            if entrada.state is SkillState.PUBLISHED and not _mudou_depois(entrada.state_at, decisao.decidida_em):
+                return None                                    # nada mudou desde a publicação da plataforma
             trilha = self._servico.detalhe(kind, ref).trilha
         except ErroDeAprendizado:
             return None
-        desligadas = [t for t in trilha if t.to_state is SkillState.DISABLED]
+        depois_de = _transicao_da_decisao(decisao)
+        desligadas = [t for t in trilha if t.to_state is SkillState.DISABLED and _de_pessoa(t.decided_by)
+                      and t.id > depois_de]
         if not desligadas:
             return None
         t = max(desligadas, key=lambda x: x.id)

@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.33: quem desligou conta, e o religar à mão não reabre o botão (branch canais/28-33-autor-do-desligar)
+
+- Achado 5 do 28.29: o desligamento por regra automática (`sistema`, `plataforma`) não é mais registrado como "desfeita".
+  A decisão continua contada, e o botão some com o motivo "foi desligado depois por uma regra automática". O desfazer
+  pela rota responde 409, sem gravar como dela o que outra decisão fez.
+- Achado 6 do 28.29: o item que uma pessoa desligou depois da decisão segue desfeito mesmo que ela o religue à mão. O
+  botão não volta, e nada desliga a publicação dela. Só vale o desligamento posterior à transição da própria decisão
+  (`origem_ref = aprendizado:<id>`).
+- A trilha só é lida quando o estado do item mudou depois da decisão (`state_at`), ou quando o item está desligado. O
+  publicado intocado não paga leitura extra no GET, porque o achado 4 continua valendo.
+- Prova `simulated`: três testes novos em `tests/test_decisoes_registro_coerente.py`. Os falsos de
+  `tests/test_decisoes_desfazer.py` ganharam o `detalhe` e o `state_at` que a inversa lê agora; o comportamento coberto
+  é o mesmo. 89 passed nos cinco arquivos de decisões.
+
 ## 2026-10-04 — 28.29, achado 4 da revisão: o GET do registro lê o livro uma vez por item (branch canais/28-29-leitura-unica)
 
 - `GET /api/decisoes-automaticas` lia o mesmo item do livro 3 a 4 vezes por decisão: em `por_que_nao`, em `descrever` e
