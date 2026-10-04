@@ -6234,30 +6234,21 @@
    "quando": "2026-10-03T15:33:30+00:00"
   },
   "31.19": {
+   "blocker": null,
+   "arquivos": [
+    "backend/app/planning/decisao_fechada/porta.py"
+   ],
+   "testes": [],
    "id": "31.19",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "feat/31-19-curador-limiar @442a9249, na main pela suíte 11 (35e3b0f6). (1) As 4 respostas reais do curador (03/10 13:10Z) ficaram abaixo do limiar com confiança 0,50–0,52 e maior probabilidade 0,60–0,62 sobre UM estado C0: o limiar fica 0,85 (registro datado no golden set §2). (2) A porta segue o contrato (decisão da orquestradora): no choice, o limiar mede a probabilidade devolvida da escolha, que precisa ser a maior; sem ela, abaixo_do_limiar (porta._valor_do_limiar, 69d24301). (3) Rótulo 1 do curador só do dono (--autor-dono; 'Flavio' confirmado em panel_sessions pela orquestradora). (4) Percentil pelo posto mais próximo no relatório do 31.10 e na prova do 31.17 (p50 437,3 e p95 552,8 ms nas 4 chamadas). Leitura real mode=ro do relatório (03/10 15:08Z, WIN-7S2UASNLFOP): estados_distintos 1, cobertura 0,50 → 1,0, 0,85 → 0, 11 transições de pessoa fora do dono. | Suíte 12 (main 5428abdb, 8460/0): o registro do item 20 do ADR-069 (docs/adr-069-item-20 @aa4f67cf, merge 7307cda3: porta→probabilidade da escolha e rótulo 1 do dono, com as ressalvas); o percentil unificado também no backend (K-085, fix/k085-percentil @fe5b469e, merge 5a6700be: metricas.percentil = posto ceil(p·n/100) com Fraction, sombra._p95 delega; 13 casos deslocados n≤40 presos por teste); a leitura só leitura da sombra de intenção (#160 @8b9b2548, merge 38f8ee97: scripts/jev-leitura-intencao.py, zero texto que falha fechado; execução no central not_run até ≥10 linhas); o aviso de transparência e o painel da decisão fechada legíveis (#157 @05b96b8f, merge 602cce17).",
-   "blocker": "",
-   "arquivos": [
-    "backend/app/metricas.py",
-    "backend/app/planning/decisao_fechada/contrato.py",
-    "backend/app/planning/decisao_fechada/porta.py",
-    "backend/app/planning/decisao_fechada/sombra.py",
-    "backend/app/planning/decisao_fechada/transparencia.py",
-    "docs/decisoes.md",
-    "docs/design/jev-golden-set.md",
-    "scripts/jev-leitura-intencao.py",
-    "scripts/jev-prova-31-17.py",
-    "scripts/jev-relatorio-31-10.py"
-   ],
-   "testes": "simulated: tests/test_decisao_fechada*.py 1044 passed (69d24301); scripts/tests 474; suíte 11 SQLite -n 8 @35e3b0f6 8441/0, docs-check 0/0, frontend 1374; real: relatório mode=ro às 15:08Z (só contagens). Suíte 12: SQLite -n 8 @5428abdb 8460/0 (orquestradora); K-085: 38 arquivos de percentil 725 passed; #160: scripts/tests 482 + 8 do script; #157: backend 2039, frontend 1378 + typecheck. PG da suíte 12: a da orquestradora.",
-   "grupo": "suite-12-jev",
-   "modelo": "opus (sessão jev, executora da orquestradora)",
+   "proof": "real",
+   "evidence": "Evidência real no banco central (só leitura): `decisao_fechada_sombra` id 102 (04/10 10:21Z, classe C0, modo shadow), escolha opt:manter, probabilidade da escolha 0,86 (a maior), confiança 0,82, sem fallback. A porta mediu o limiar 0,85 na probabilidade devolvida da escolha, não na confiança, como pede o critério. O id 19 (03/10 21:51Z: escolha opt:revisar 0,85, confiança 0,81) mostra o mesmo. A correção é 69d24301 (03/10 15:16Z). O rótulo 1 só do dono (`--autor-dono`) é política, sem medida.",
+   "grupo": "jev-validacao-cartoes",
+   "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T17:03:02+00:00"
+   "quando": "2026-10-04T15:18:20+00:00"
   },
   "30.34": {
    "id": "30.34",
@@ -6366,26 +6357,19 @@
    "quando": "2026-10-04T15:11:53+00:00"
   },
   "31.11": {
+   "blocker": "rótulos do dono",
+   "arquivos": [],
+   "testes": [],
    "id": "31.11",
    "status": "partial",
    "proof": "real",
-   "evidence": "Parte R1 (curador, C0) REAL; acompanhamento, nenhum número vale para GO (rótulos 1 e 2 = 0). Código: scripts/jev-braco-offline.py, na main em 926b4f6f (a Porta do runtime com o DecisorJev, sem o adaptador MIT; banco só leitura; --seco por padrão; teto ≤ US$ 0,05). Rodada única: 03/10/2026 18:53:06Z, WIN-7S2UASNLFOP, checkout central @ 926b4f6f (deploy 13 1c54a7bb no ar), --enviar --teto 0.05, janela da orquestradora sem suíte. 29 casos de receita (29 de fluxo fora de F1), 29 chamadas ok, US$ 0,000764, 20428 tokens, p50 439,6 ms / p95 528,3 ms, jev-1.13.0. As chamadas NÃO estão em ai_calls (o banco é só leitura para o braço). Sinal: 9 estados C0 distintos e 1 resposta distinta (a maior é sempre revisar), 0 instáveis; só a probabilidade varia com o estado (0,57 a 0,87). Cobertura em 0,85: 3 de 29, as 3 iguais ao curador. Concordância da maior com o curador 26/29 e do controle 2/29 (só acompanhamento). simulated: scripts/tests/test_jev_braco_offline.py (16); scripts/tests inteiro 498 passed (cf455b9c, mesmo conteúdo do 926b4f6f). Pendentes: R2 e R3 (composição offline só leitura em backend/app, branch novo, suíte 14 ou 15; a rodada espera 10 ou mais comandos reais, como o 31.10) e R5 (entra com o 31.13: formato do noul e pergunta). Atualização 03/10/2026 21:02:04Z, WIN-7S2UASNLFOP, central em 51270b9c (deploy 14): primeiro caso real da composição offline R2/R3/R5 com a salvaguarda (c) provada (sha256 do estado redigido reconstruído = estado_hash da linha, 31.22). Seco do lote da intenção com --r5 (código dos PRs #170 e #173 @ 313c98de, fora da main até a suíte 15; banco em mode=ro, nada enviado, US$ 0): 1 caso lido, 1 em c, 0 fora; origem validacao (execução r-20261003210026-1639eb); comandos distintos 1, piso 1 de 10; R5 montada (7 perguntas noul por idioma, 7 rotuladas, 0 fora). Não muda o estado: nenhum número novo de R2, R3 ou R5 (seco não chama o Jev).",
-   "blocker": "R2, R3 e R5: código pronto nos PRs #170 e #173 (composição offline e R5), fora da main até a suíte 15; volume de comandos reais = 1 de 10 distintos no piso (ADR-069 item 21, golden set §8 'Origem do caso'); a rodada paga só com 10 ou mais distintos e o 'vai' da orquestradora.",
-   "arquivos": [
-    "scripts/jev-braco-offline.py",
-    "scripts/tests/test_jev_braco_offline.py",
-    "docs/design/jev-golden-set.md",
-    "scripts/jev-braco-offline-intencao.py",
-    "backend/app/taskqueue/lote_intencao.py",
-    "backend/app/planning/decisao_fechada/apps.py"
-   ],
-   "testes": "scripts/tests/test_jev_braco_offline.py: 16 passed; scripts/tests inteiro: 498 passed (Idle). Rodada real única da R1 no central, 18:53:06Z.",
-   "grupo": "jev-31-22-real",
+   "evidence": "A rodada paga R2, R3 e R5 de 04/10 14:55Z é a mesma do 31.13 (316 chamadas, US$ 0,0167). Falta rótulo: 17 rótulos, e os rótulos 1 e 2 seguem em 0, então nenhum número vale como GO.",
+   "grupo": "jev-validacao-cartoes",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T21:37:46+00:00"
+   "quando": "2026-10-04T15:18:20+00:00"
   },
   "30.37": {
    "id": "30.37",
@@ -6427,17 +6411,19 @@
    "quando": "2026-10-04T15:11:53+00:00"
   },
   "31.13": {
+   "blocker": "falta caso de paráfrase que a regex perca para medir a cobertura; R5_LIBERADA segue False",
+   "arquivos": [],
+   "testes": [],
    "id": "31.13",
-   "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #173 (feat/31-13-r5-apps @ 530b8702, empilhado no #170; fora da main até a suíte 15 ou 16): ConsumidorDeApps em sombra (decisao_fechada/apps.py), um noul por app do cadastro com id opaco, nomes pelo motivo_c7 e pelo mascarar_catalogo, estado só com o comando (opção A da orquestradora), limiar 0,85, TRAVADO (R5_LIBERADA=False: não lê o cadastro nem monta pedido); lote 31.11 com --r5 e custo por comando e por app; MAX_APPS=16 pré-registrado (golden set §9, aceito pela orquestradora em 03/10 20:20Z, revisável pelo custo medido); origem do caso e piso de 10 comandos distintos por estado_hash (golden set §8, pré-registro de 03/10 20:28Z com 0 casos); GET /api/ai omite apps de consumidores_ativos enquanto travado (adendo v1.06). simulated: 2128 testes de backend (decisao_fechada*, lote, arquitetura e afins), 529 de scripts/tests, 55 do lote e do braço offline. real: not_run (rodada paga --r5 só com o vai da orquestradora e 10 comandos distintos depois do deploy 14; em 03/10 20:24Z havia 0).",
-   "blocker": "",
-   "grupo": "jev-pr173-e-suite-14",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "04/10/2026 14:55Z, central 60b3a0a9. `scripts/jev-braco-offline-intencao.py --r5 --enviar --teto 0.05`: 79 casos enviáveis, 51 comandos distintos (piso 10), 316 chamadas ao Jev, todas ok. Custo medido pelo transporte: US$ 0,0167. R5 (limiar 0,85), en: 553 perguntas, 71 respondidas. Precisão do sim 46/46 (1,0); cobertura do Jev 46/46. en × pt: 553/553 iguais. Paráfrases que a regex perde: n = 0 (nenhum caso desse tipo no lote), então a cobertura de paráfrase não se mede. Saída em .claude/handoffs/jev-scratch-2026-10-03/r5-3113.json. Aviso do próprio script: acompanhamento, nenhum número vale para GO (rótulos = 17).",
+   "grupo": "jev-validacao-cartoes",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T20:42:04+00:00"
+   "quando": "2026-10-04T15:18:20+00:00"
   },
   "31.22": {
    "id": "31.22",
@@ -6453,17 +6439,19 @@
    "quando": "2026-10-03T21:37:46+00:00"
   },
   "31.23": {
+   "blocker": null,
+   "arquivos": [],
+   "testes": [],
    "id": "31.23",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #169 @ 82dcde1e (branch feat/31-8-sinal-curador-v2), na main pela suíte 14 (51270b9c) e no deploy 14: curador.estado_do_dossie_v2 soma ao v1 os campos fechados de sinal (versão viva, uso, idade da evidência a favor, códigos de saúde e de risco, trilha); a privacidade aceita a lista nova; a sombra do runtime segue no v1; o braço offline ganha --estado v2, com o critério de troca pré-registrado no golden set §2. simulated: backend/tests/test_decisao_fechada_curador_v2.py e scripts/tests/test_jev_braco_offline.py. real: not_run (medida paga do v2 antes e depois do 30.39, cada uma com o vai da orquestradora e teto de US$ 0,05).",
-   "blocker": "",
-   "grupo": "jev-pr173-e-suite-14",
+   "proof": "real",
+   "evidence": "04/10/2026 14:57Z, `scripts/jev-braco-offline.py --estado v2|v1 --enviar --teto 0.05` nos mesmos 61 casos. v2: 61/61 chamadas, US$ 0,0021, 13 respondidos, cobertura a 0,85 (maior probabilidade) 0,213, 27 estados distintos. v1: US$ 0,0016, 2 respondidos, cobertura 0,033, 15 estados distintos. Escolhas entre os respondidos: v2 revisar 12 e manter 1; v1 revisar 1 e manter 1. O v2 ganha em cobertura e em estados. A sombra do runtime segue no v1; a troca depende do critério pré-registrado no golden set §2. Saída em cur-v2.json e cur-v1.json, no scratch.",
+   "grupo": "jev-validacao-cartoes",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T20:42:04+00:00"
+   "quando": "2026-10-04T15:18:20+00:00"
   },
   "29.54": {
    "id": "29.54",
@@ -6836,23 +6824,19 @@
    "quando": "2026-10-04T09:43:24+00:00"
   },
   "31.29": {
+   "blocker": null,
+   "arquivos": [],
+   "testes": [],
    "id": "31.29",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #190 @ 7d63cd2a (56706826 + a troca pedida pela Android), na main pela suíte 18 (merge 78e6dc67; deploy 18, f1651ec8). Investigação só leitura (04/10 00:55Z): 11 de 12 comandos da 1ª rodada da linha de base diziam só 'Configurações', o cadastro tem um nome só ('Configurações do Android'), nenhum app foi citado, a execução caiu no Instagram e o planejador pediu a pessoa (11 avisos no Telegram). Correção: planning/apps_do_comando.apps_citados ignora acento e caixa; APELIDOS_POR_PACOTE dá a com.android.settings só apelidos de mais de uma palavra ('Configurações do aparelho/telefone/celular/sistema', 'Ajustes do aparelho/telefone/sistema', 'Android Settings'); uma palavra só ('ajustes na legenda', 'configurações de privacidade') segue no app padrão; o padrão para o Instagram sem app citado não mudou. simulated: backend/tests/test_planejador_entre_apps.py::test_apelido_de_app_de_sistema_sem_acento_e_sem_caixa_31_29; afetados 36 arquivos + arquitetura 1158 passed. O real (um 'abra as Configurações do aparelho' num aparelho de QA) não foi executado.",
-   "blocker": "",
-   "arquivos": [
-    "backend/app/planning/apps_do_comando.py",
-    "backend/tests/test_planejador_entre_apps.py",
-    "docs/dominios/execution.md"
-   ],
-   "testes": "test_planejador_entre_apps.py + arquitetura 39 passed; afetados 1158 passed (Idle, serial).",
-   "grupo": "jev-31-21-31-27-31-28-31-29",
+   "proof": "real",
+   "evidence": "04/10/2026 15:16Z, deploy 27 (ac7175ac). r-20261004151647-330573, android-09, mode plan, lote:jev:31.29-01, comando que cita \"Configurações do aparelho\". Plano com app_package com.android.settings e 2 etapas; status planned, sem needs_input e sem cair no Instagram. Cancelada logo depois de lida. spent_usd US$ 0,0107.",
+   "grupo": "jev-validacao-cartoes",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T08:14:29+00:00"
+   "quando": "2026-10-04T15:18:20+00:00"
   },
   "28.15": {
    "id": "28.15",
@@ -7019,27 +7003,19 @@
    "quando": "2026-10-04T10:21:22+00:00"
   },
   "31.32": {
+   "blocker": "sem como forçar o caso; espera ocorrência espontânea",
+   "arquivos": [],
+   "testes": [],
    "id": "31.32",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "PR #207 (c0b829b6), na suíte 22. Opção (a) da orquestradora: um diagnóstico sem juiz. Hierarchy.partes_em_elementos_diferentes e _verificar marcam como defeito do plano o seletor com '|' cujas partes estão em elementos diferentes da tela. Novo FailureKind SELETOR_EM_ELEMENTOS_DIFERENTES (camada PLANO). Testes: backend/tests/test_seletor_impossivel.py (5, um deles ponta a ponta no harness).",
-   "blocker": "not_run real (depende de um caso real com o seletor impossível)",
-   "arquivos": [
-    "backend/app/devices/hierarchy.py",
-    "backend/app/taskqueue/executor.py",
-    "backend/app/modules/learning/domain/falhas.py",
-    "frontend/src/features/aprendizado/model.ts",
-    "docs/dominios/execution.md"
-   ],
-   "testes": [
-    "backend/tests/test_seletor_impossivel.py"
-   ],
-   "grupo": "jev-31-28-31-30-31-31-31-32",
+   "evidence": "Sem prova real: nenhuma rota aceita plano escrito à mão, e o planejador já foi ensinado a forma certa. Consulta passiva: 0 etapas com failure_kind 'seletor_em_elementos_diferentes' desde o deploy. Fecha quando aparecer um caso espontâneo.",
+   "grupo": "jev-validacao-cartoes",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T09:43:24+00:00"
+   "quando": "2026-10-04T15:18:20+00:00"
   },
   "29.35": {
    "id": "29.35",
@@ -7269,19 +7245,19 @@
    "quando": "2026-10-04T12:27:16+00:00"
   },
   "31.35": {
+   "blocker": "medida A/B da poda exige trocar o config do central",
+   "arquivos": [],
+   "testes": [],
    "id": "31.35",
    "status": "partial",
    "proof": "not_run",
-   "evidence": "Parte B (acoes_por_decisao): FECHADA pela orquestradora como 'sem onde agir com o plano de uma ação por etapa'. O braço real r-20261004121431-980478 (perfil encadear-3) fez 19 ações em 19 decisões, sem encadeamento, porque o planejador faz uma etapa por toque; US$ 0,18. O encadeamento fica desligado. Parte A (poda da UI do navegador): implementada, mas sem medida real de antes e depois feita por mim; por isso o item fica partial.",
-   "blocker": "parte A sem medida real de antes e depois",
-   "arquivos": [],
-   "testes": [],
-   "grupo": "jev-pos-deploy-26",
+   "evidence": "Parte B fechada pela orquestradora. Parte A (poda da UI do navegador): falta a medida real de antes e depois. A migração 097 está aplicada e `prompt_arvore_chars` é gravado; precisa de 2 execuções no navegador do QA, com `ai.podar_ui_do_navegador` ligado e desligado (mudança de config).",
+   "grupo": "jev-validacao-cartoes",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T13:24:55+00:00"
+   "quando": "2026-10-04T15:18:20+00:00"
   },
   "28.10": {
    "id": "28.10",
@@ -7474,21 +7450,21 @@
    "quando": "2026-10-04T15:15:34+00:00"
   },
   "31.40": {
+   "blocker": "deploy do #263 e a prova real",
+   "arquivos": [],
+   "testes": [
+    "backend/tests/test_sobreposicao.py"
+   ],
    "id": "31.40",
    "status": "partial",
-   "proof": "real",
-   "evidence": "04/10/2026, deploy 26 (60b3a0a9), central. r-20261004132036-95d10f, android-09, lote:jev:31.40-01, o mesmo comando da r-20261004120000-3894c1 (leitura de uma lista no navegador). O MECANISMO FOI PROVADO: a etapa open_url falhou com 'Pós-condição não comprovada (sobreposição)' (um diálogo modal do site cobria os resultados) e o scheduler inseriu UMA etapa limpar_antes_open_url, opcional=1, no plano 2, retomando da tela atual. O OBJETIVO NÃO FOI ALCANÇADO: a limpeza ficou skipped porque o ator respondeu step_done sem nenhum toque. O detalhe dela é 'a prova local do catálogo não confirmou e o modelo não foi consultado antes do ator'. Depois disso, open_url falhou de novo por sobreposição e o objetivo terminou failed. 8 decide, 2 verify, 1 plan. Custo pelo costs.spent_usd: US$ 0,108. OBSERVED no código (backend/app/taskqueue/executor.py:2939-2940): a etapa opcional do 31.36 só se comprova pela prova local, sem juiz, e a pós-condição model_judged 'nada cobre a tela' da limpeza só o juiz confirma. Logo, a limpeza do 31.40 nunca se comprova. INFERRED: o ator não recebe a sobreposição como instrução de fechar o diálogo, e por isso declarou step_done. Proposta: dar à limpeza o juiz (ou um teste de tela) e passar ao ator o elemento que cobre a tela; pede decisão antes do código.",
-   "blocker": "a limpeza opcional não age nem se comprova (ver evidence); correção depende de desenho aprovado",
-   "arquivos": [
-    ".claude/handoffs/jev-scratch-2026-10-03/prova_3141.py"
-   ],
-   "testes": [],
-   "grupo": "jev-pos-deploy-26",
+   "proof": "simulated",
+   "evidence": "31.40 b no PR #263 (feat/31-40b-limpeza-comprovada), para a suíte 28. Implementa (i), (ii) e (iii) do desenho de 13:25Z. test_sobreposicao 9 passed; 39 arquivos afetados 1682 passed. A prova real (repetir a 3894c1) fica para depois do deploy.",
+   "grupo": "jev-31-40b",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T13:24:55+00:00"
+   "quando": "2026-10-04T15:18:20+00:00"
   },
   "31.41": {
    "id": "31.41",
@@ -7508,17 +7484,19 @@
    "quando": "2026-10-04T13:24:55+00:00"
   },
   "28.23": {
+   "blocker": null,
+   "arquivos": [],
+   "testes": [],
    "id": "28.23",
    "status": "implemented",
    "proof": "real",
-   "evidence": "Lado do laço: PR #253, suíte 26, deploy 26 (60b3a0a9). Lado da execução: PR #257 (migração 100_teto_de_autonomia, adendo v1.19), suíte 27, deploy 27 (ac7175ac, no ar às 15:10:38Z de 04/10/2026, central WIN-7S2UASNLFOP), com `pedidos.enabled: true`. PROVA REAL da Jev em 04/10 ~15:15Z, android-09 (sem conta, QA Messenger), dois pedidos de teste com gatilho agora, ambos cancelados depois: (1) OBSERVAR, pedido ped_3w4Kmy-wUSShbaLbvAUJyg, execução r-20261004151528-729abd: teto gravado observar; plan.refused com motivo acima_da_autonomia e a etapa send_message; execução failed com 0 etapas rodadas e 0 ações de efeito; US$ 0,019. (2) PREPARAR, pedido ped_R49xbXD7W7mZynfIUTwPuQ, execução r-20261004151545-153cea: teto gravado preparar; open_app, check_account, open_conversation e fill_message succeeded; send_message ficou ready com 0 tentativas; objetivo em waiting_user (blocked_kind policy); 0 ações de efeito; US$ 0,040. Simulado: backend/tests/test_pedidos_teto_na_execucao.py e test_teto_de_autonomia.",
-   "blocker": "",
-   "grupo": "orquestradora-deploy27",
-   "modelo": "claude-fable-5-1",
-   "esforco": "sessao orquestradora",
+   "evidence": "Lado da execução, real em 04/10/2026, deploy 27 (ac7175ac, migração 100), android-09 (QA), pedidos de teste com gatilho agora, os dois cancelados depois. (1) observar: ped_3w4Kmy-wUSShbaLbvAUJyg, r-20261004151528-729abd. Teto gravado observar; plan.refused {acima_da_autonomia, observar, [send_message]}; execução failed com 0 etapas rodadas; 0 ações de efeito; US$ 0,019. (2) preparar: ped_R49xbXD7W7mZynfIUTwPuQ, r-20261004151545-153cea. Teto gravado preparar; open_app, check_account, open_conversation e fill_message succeeded; send_message ready com 0 tentativas; objetivo waiting_user (policy, motivo cita preparar); 0 efeito; US$ 0,040. Cancelada à mão: a execução ficou completed_with_issues com o objetivo em waiting_user. O lado do laço e o PG são da Canais e da suíte. A orquestradora registrou implemented/real (b6c77cd7). O fechamento em completed_with_issues com o objetivo em waiting_user é igual ao da aprovação comum (repository.recompute_run:1092).",
+   "grupo": "jev-28-23-real",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T15:16:55+00:00"
+   "quando": "2026-10-04T15:18:20+00:00"
   },
   "30.48": {
    "id": "30.48",
@@ -9788,6 +9766,25 @@
    ],
    "grupos": [
     "orquestradora-deploy27"
+   ]
+  },
+  {
+   "quando": "2026-10-04T15:18:20+00:00",
+   "itens": [
+    "31.13",
+    "31.19",
+    "31.23",
+    "31.29",
+    "31.32",
+    "31.11",
+    "31.35",
+    "28.23",
+    "31.40"
+   ],
+   "grupos": [
+    "jev-28-23-real",
+    "jev-31-40b",
+    "jev-validacao-cartoes"
    ]
   }
  ]
