@@ -1503,16 +1503,16 @@
   },
   "8.3": {
    "id": "8.3",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Real, só leitura, 04/10 15:16:56Z–15:18:11Z, android-01 (conta real da persona do android-01), r-20261004151656-f85a37 (chave lote:aprendizado:8.3-01), painel fechado. Plano de 4 etapas, nenhuma com efeito: OPEN_PROFILE, OPEN_POST, OPEN_COMMENTS e COLLECT_COMMENTS. As 4 foram comprovadas (1 de 1 com sucesso). O COLLECT_COMMENTS da publicação mais recente da própria conta voltou com itens: ['bruno.ferreira9267'], o comentário de outra conta nossa feito em 03/10 (r-20261003051135-2cbaaa). Nenhum desafio na tela. Nada comentado, curtido ou seguido. Custo pelo /api/usage: US$ 0,0717 (1 etapa pela IA, 3 por receita). Observação: a etapa 1 recebeu username='lucas.almeida9484@outlook.com' (o e-mail de login, não o nome no Instagram) e mesmo assim chegou ao próprio perfil.",
-   "blocker": "O learn_from de comentário exige comentar: fica not_run até o dono autorizar o alvo e o texto. O for_each com itens reais não foi pedido nesta rodada.",
-   "grupo": "aprendizado-deploy27-provas",
-   "modelo": "claude-opus-5-5",
-   "esforco": "medio",
+   "evidence": "Real, 03/10/2026 05:43:28Z–05:52:15Z, máquina central WIN-7S2UASNLFOP, android-01 (conta real da persona do android-01), commit implantado 1ab8e767 (deploy 4, no ar desde 04:12Z de 03/10). Execução r-20261003054328-60e83c: OPEN_PROFILE, OPEN_POST, OPEN_COMMENTS e REPLY_COMMENT, as 4 succeeded e verified=true (1 de 1 com sucesso comprovado). Aprovação apr-3yuw2BBtwm--SbAd com o verbo edit (decidida às 05:51:11Z); interação int-fPuCkX3vCt7WnmsL comment_replied confirmed, em resposta ao comentário de outra conta nossa. Custo US$ 0,3489 (/api/usage). Leitura em 04/10 15:16:56Z–15:18:11Z, r-20261004151656-f85a37 (lote:aprendizado:8.3-01, US$ 0,0717): COLLECT_COMMENTS da publicação mais recente voltou com 1 item. Prova real de que o ator recusa resposta duplicada: em 04/10 17:22:12Z–17:27:59Z (commit 1452f81d, deploy 29), r-20261004172212-fc1a88 (lote:aprendizado:8.3-02), aprovação apr-5d7EulsY4nZxJf88 approved pelo dono (telegram:dono, 17:24:53Z). A tentativa reply_1:a1 tocou só em 'View 1 more reply' (side_effect=false) e chamou step_blocked, porque já havia a resposta de 03/10. Nada digitado nem enviado: a hierarquia lida às 17:27:00Z mostra uma única resposta do lucas sob o comentário. Objetivo abandonado pela rota resolve às 17:27:59Z (decisão da orquestradora); custo US$ 0,1643. NÃO FORAM EXECUTADOS: o learn_from a partir de interação de comentário (a memória do perfil não tem item de origem interação) e o for_each com itens reais. Os dois saíram para o 30.57.",
+   "blocker": null,
+   "grupo": "aprendizado-8-3-fechamento",
+   "modelo": "opus",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T15:19:06+00:00"
+   "quando": "2026-10-04T17:29:38+00:00"
   },
   "8.4": {
    "id": "8.4",
@@ -7554,15 +7554,15 @@
   "28.24": {
    "id": "28.24",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "PR #267 (canais/28-24-anexos @ 57c1b255): F1 1cf6c3eb, renumeração da regra para C-22 em 78fbe914, F2.0 ae0c1bea (falha no download avisa o dono; anexo pendente retomado uma vez após 60 s), F2.1 e1b6044a (POST /api/canais/anexos/{id}/trello com confirmar:true; só entrada do dono, quadro conferido; chave e token no cabeçalho), F2.2 71cf6a91 (/captura <aparelho> só no chat do dono, pela prévia do painel; tela sensível sem imagem; legenda só com o id do aparelho), docs 57c1b255. Migração 101_canal_anexos (ainda não aplicada; ganhou estado pendente, ref_externa, mime_declarado), adendo v1.21, C-22. Simulado: test_canais_anexos.py (73), test_canais_anexos_trello.py (9), test_canais_captura.py (28) e demais afetados: 368 passed; filtro trello: 163; scripts/tests: 544; docs-check 0. Mutações: 9 na F1 e 9 de 10 na F2 derrubaram o teste certo (a de saída no Trello é coberta por guarda redundante). Real not_run.",
-   "blocker": "Fatia 3 (leitura da imagem pela IA a pedido do dono, teto de US$ 0,05) e fatia 4 (tela no painel) não começaram. Prova real depois do deploy 29: saída por /captura do android-12, com aviso prévio ao dono; entrada só com imagem natural do dono.",
-   "grupo": "canais",
-   "modelo": "sonnet (worker-impl)",
-   "esforco": "M",
+   "proof": "real",
+   "evidence": "real, 04/10 17:24:58Z, central C:\\git\\android em 1452f81d (deploy 29, migração 101_canal_anexos). Primeiro um aviso de uma linha ao dono (Telegram message_id 199). Depois UMA captura do android-12 (aparelho de teste, tela de Configurações do emulador, sem dado pessoal), frame android-12-2-1791134696757 de 720x1280 e 44944 bytes, mandada ao chat do DONO pelo CanalTelegram.enviar_anexo do produto (sendPhoto, message_id 200). A captura veio da MESMA prévia do painel (rt.frame), acordada por um watch com foco pelo /api/ws, a mesma fonte do capturar_para_o_dono. Script: scratchpad/prova_28_24_saida.py, fora do repo e sem segredo impresso. Limite: o caminho de conversa do /captura (ConversaDoCanal.enviar_conteudo) não foi exercido de ponta a ponta, porque /captura é comando do dono. Prova de ENTRADA: not_run, à espera de uma imagem natural do dono. canal_telegram sem entradas desde 13:14:52Z e getWebhookInfo pending_update_count=0.",
+   "blocker": "Faltam: (1) a entrada real com anexo (uma imagem do dono pelo Telegram, baixada para data/anexos e registrada em canal_anexos); (2) /captura pedido pelo próprio dono, o que é opcional; (3) as fatias 3 (leitura da imagem pela IA quando o dono pede, até US$ 0,05 por imagem) e 4 (tela de anexos no painel).",
+   "grupo": "canais-28-24-prova-saida",
+   "modelo": "opus (Canais)",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T16:16:40+00:00"
+   "quando": "2026-10-04T17:29:26+00:00"
   },
   "31.26": {
    "id": "31.26",
@@ -7615,6 +7615,19 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-04T16:25:13+00:00"
+  },
+  "30.57": {
+   "id": "30.57",
+   "status": "blocked",
+   "proof": "not_run",
+   "evidence": "Item aberto em 04/10 pela orquestradora: learn_from a partir de interação de comentário e for_each com itens reais, que saíram do 8.3. Nada executado.",
+   "blocker": "Sem alvo possível: pelo ADR-055 (uma conta por alvo em 30 dias), as 3 contas vivas já se tocaram em 03/10, então não há comentário entre contas nossas antes de ~02/11/2026. A outra via é um comentário orgânico de terceiro num post nosso: uma resposta, com aprovação do dono em Pendências.",
+   "grupo": "aprendizado-8-3-fechamento",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T17:29:38+00:00"
   }
  },
  "rodadas": [
@@ -9967,6 +9980,25 @@
    ],
    "grupos": [
     "jev-31-13-sintetica"
+   ]
+  },
+  {
+   "quando": "2026-10-04T17:29:26+00:00",
+   "itens": [
+    "28.24"
+   ],
+   "grupos": [
+    "canais-28-24-prova-saida"
+   ]
+  },
+  {
+   "quando": "2026-10-04T17:29:38+00:00",
+   "itens": [
+    "8.3",
+    "30.57"
+   ],
+   "grupos": [
+    "aprendizado-8-3-fechamento"
    ]
   }
  ]

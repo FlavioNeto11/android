@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-415 de 457 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+416 de 460 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -66,7 +66,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 7.11 | implemented | simulated | sessao | — | backend/app/state.py _ia_em_fallback + problema ai_fallback_em_uso em health(): chamadas dos ultimos 30 min com ai_calls.fallback preenchido, por funcao. Teste: backend/tests/test_saude_ao_vivo.py::test_chamadas_de_ia_e… |  |
 | 8.1 | implemented | not_run | opus | ok | prompts.py:75-82 (content_brief só conteúdo; tom só se o comando pedir), prompts.py:154-156 (desempate: em conflito vale a persona), prompts.py:178-189 + :204-206 (_INSTRUCAO_DE_TELA por kind: comentário cita a tela, DM… | Preencher as 8 personas e rodar a prova antes/depois é decisão e gasto do dono: exige PATCH no backend de produção (127.0.0.1:8000) e 8 chamadas pagas de IA po… |
 | 8.2 | implemented | not_run | opus | ok | navigation.py:298-344 (mensagem_de: última fala ATRIBUÍDA à contraparte; vazio quando não há certeza), state.py:99-104 (_LEITURA_DE_CONVERSA: READ_MESSAGES sim, COLLECT_THREADS não), state.py:1165-1177 (SEND_MESSAGE vir… | Aceite de nível 2 — conversa real entre duas contas do parque com memória reutilizada na execução seguinte — exige ligar emulador e operar conta real do Instag… |
-| 8.3 | partial | real | claude-opus-5-5 | — | Real, só leitura, 04/10 15:16:56Z–15:18:11Z, android-01 (conta real da persona do android-01), r-20261004151656-f85a37 (chave lote:aprendizado:8.3-01), painel fechado. Plano de 4 etapas, nenhuma com efeito: OPEN_PROFILE… | O learn_from de comentário exige comentar: fica not_run até o dono autorizar o alvo e o texto. O for_each com itens reais não foi pedido nesta rodada. |
+| 8.3 | implemented | real | opus | — | Real, 03/10/2026 05:43:28Z–05:52:15Z, máquina central WIN-7S2UASNLFOP, android-01 (conta real da persona do android-01), commit implantado 1ab8e767 (deploy 4, no ar desde 04:12Z de 03/10). Execução r-20261003054328-60e8… | None |
 | 8.4 | implemented | real | claude-opus-5-5 | — | real 04/10/2026, central WIN-7S2UASNLFOP em 3b5355ce (deploy 16), worker-lan-01 (192.168.1.11), android-13 (worker-04): install_apk c-20261004001143-ea295d succeeded 00:12:29Z (release da loja 447.0.0.55.81); open_app c… |  |
 | 9.1 | implemented | real | opus | ok | Sessão de painel nova: backend/migrations/035_sessao_do_painel.sql (tabela panel_sessions + coluna pending_approvals.decided_by) e backend/app/security/sessions.py (token aleatório, SHA-256 no banco, janela deslizante,… |  |
 | 9.2 | implemented | real | opus | ok | Servidor: backend/app/config.py:112 (server.tls_cert/tls_key/tls_behind_proxy) e :528/:534 (Config.tls_direto/tls_ativo); backend/app/main.py:86 conferir_tls — sair do loopback passa a exigir TLS declarado (certificado… |  |
@@ -279,7 +279,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 28.21 | implemented | real | sessao | — | PR #220 (canais/28-21-resolver-incerta @ 6104332e, migração 095, adendo v1.15), suíte 23, deploy 23 em 9add9fb2 (migração 095_ocorrencia_resolvida). Real em 04/10/2026 no central: o pedido ped_O_tLG52eXcmZNGB0THvIkA (lo… | None |
 | 28.22 | implemented | real | sessao | — | PR #247 (migração 099, adendo v1.17), suíte 26, deploy 26 (60b3a0a9). (b) motivo do cancelamento: REAL em 04/10/2026 13:17:18Z (ped_llz09XacVMyGLaanpZDOhg; motivo só no detalhe, 0 eventos e 0 avisos com ele) e tela vali… | None |
 | 28.23 | implemented | real | claude-opus-5-5 | — | Lado da execução, real em 04/10/2026, deploy 27 (ac7175ac, migração 100), android-09 (QA), pedidos de teste com gatilho agora, os dois cancelados depois. (1) observar: ped_3w4Kmy-wUSShbaLbvAUJyg, r-20261004151528-729abd… | None |
-| 28.24 | partial | simulated | sonnet (worker-impl) | — | PR #267 (canais/28-24-anexos @ 57c1b255): F1 1cf6c3eb, renumeração da regra para C-22 em 78fbe914, F2.0 ae0c1bea (falha no download avisa o dono; anexo pendente retomado uma vez após 60 s), F2.1 e1b6044a (POST /api/cana… | Fatia 3 (leitura da imagem pela IA a pedido do dono, teto de US$ 0,05) e fatia 4 (tela no painel) não começaram. Prova real depois do deploy 29: saída por /cap… |
+| 28.24 | partial | real | opus (Canais) | — | real, 04/10 17:24:58Z, central C:\git\android em 1452f81d (deploy 29, migração 101_canal_anexos). Primeiro um aviso de uma linha ao dono (Telegram message_id 199). Depois UMA captura do android-12 (aparelho de teste, te… | Faltam: (1) a entrada real com anexo (uma imagem do dono pelo Telegram, baixada para data/anexos e registrada em canal_anexos); (2) /captura pedido pelo própri… |
 | 28.25 | pendente | — | — | — |  |  |
 | 29.1 | implemented | real | opus | — | Real, 30/09/2026, central (runner `central`), commit 9428a6a: run 36713946044 do CI verde às 13:03Z, com o job `dependências` (2m14s) passando pelo `npm audit --audit-level=high` do Appium, pelo `npm ci` (o postinstall… |  |
 | 29.2 | implemented | simulated | opus | — | Migração backend/migrations/063_prova_de_vazamento.sql (leak_rev, leak_client, leak_result, leak_at, leak_detail, leak_pending em device_network; só colunas). backend/app/devices/rede.py (ProvaDeVazamento, bloqueio_prov… |  |
@@ -409,6 +409,8 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.53 | implemented | real | opus | — | 04/10, central, deploy 28. (b) 16:15:34Z: 4 linhas revalidada (311-314) para r-20261004132450-38f68a (fluxo + receitas 64, 68, 84), texto '... 2 mensagens para 2 etapas de efeito comprovadas, uma por item (30.53)'; sem… | None |
 | 30.54 | implemented | simulated | claude-opus-5-5 | — | PR #262 (fix/30-54-aceite-em-lote, [skip ci]), só painel. DecisaoInline põe o campo e os botões na mesma linha e mostra à vista por que o botão está apagado. ParaAprovarTab ganhou o resumo do lote por item e por efeito,… | A tela no navegador fica not_run até o deploy da suíte 28 (validação da orquestradora no Chrome do dono). |
 | 30.55 | pendente | — | — | — |  |  |
+| 30.56 | pendente | — | — | — |  |  |
+| 30.57 | blocked | not_run | opus | — | Item aberto em 04/10 pela orquestradora: learn_from a partir de interação de comentário e for_each com itens reais, que saíram do 8.3. Nada executado. | Sem alvo possível: pelo ADR-055 (uma conta por alvo em 30 dias), as 3 contas vivas já se tocaram em 03/10, então não há comentário entre contas nossas antes de… |
 | 31.1 | implemented | simulated | sessao | — | Commit b5a40c98 (na main desde o PR #110, sessao jev, 02/10/2026): trava de 255 opcoes e opcao nenhuma no adaptador do Jev (choice). backend/tests/test_context_retrieval_semantic.py com provedor falso. Chamada real: not… |  |
 | 31.2 | implemented | simulated | sessao | — | PR #112 (merge b5baf3e5 na main, commits 89a92b03 + a6cfa0fd, sessao jev, 02/10/2026): migracao 073 (ai_calls.origem e ref, TEXT sem CHECK), Usage.origem, filtro por origem no gasto (costs.spent_usd). backend/tests/test… |  |
 | 31.3 | implemented | not_run | sessao | — | Item de decisao (texto do ADR): ADR-069 escrito e aprovado pelo dono (02/10/2026 ~21:35Z, 'sim para todos' no chat da orquestradora), PR #102, merge fd59fbd7. Emenda o ADR-063; D-J1 (porta unica, constantes fechadas, Te… |  |
@@ -455,6 +457,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.44 | pendente | — | — | — |  |  |
 | 31.45 | pendente | — | — | — |  |  |
 | 31.46 | pendente | — | — | — |  |  |
+| 31.47 | pendente | — | — | — |  |  |
 | 32.1 | implemented | not_run | opus (sessão jev, executora da orquestradora) | — | Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env,… |  |
 | 32.2 | implemented | real | opus | — | 04/10, central (WIN-7S2UASNLFOP). Etapa 0: dono sim (Telegram msg 134, 00:05Z), TRELLO_API_KEY/TOKEN/API_SECRET presentes (EnvSettings, só presença). Etapa 1 (só leitura, 8c6fbd5f): /status do dono action 6ac19fd56ade9f… | None |
 | 32.4 | implemented | real | claude-fable-5-1 | — | PR #196 (cdad8422), na main pela suíte 19 (c683ab0e), no ar desde o deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). real, informado pela frente Canais (dona do espelho) em 04/10 08:14Z: depois do deploy 19 o espelho ree… |  |
@@ -464,7 +467,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (42): 8.3, 14.12, 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.25, 29.7, 29.9, 29.13, 29.19, 29.21, 29.30, 29.34, 29.38, 29.41, 29.68, 29.71, 29.72, 29.73, 29.74, 30.34, 30.48, 30.52, 30.55, 31.11, 31.12, 31.13, 31.35, 31.40, 31.43, 31.44, 31.45, 31.46, T.2
+Pendentes (44): 14.12, 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.25, 29.7, 29.9, 29.13, 29.19, 29.21, 29.30, 29.34, 29.38, 29.41, 29.68, 29.71, 29.72, 29.73, 29.74, 30.34, 30.48, 30.52, 30.55, 30.56, 30.57, 31.11, 31.12, 31.13, 31.35, 31.40, 31.43, 31.44, 31.45, 31.46, 31.47, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
