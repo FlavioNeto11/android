@@ -90,8 +90,9 @@ CONTROLE_DA_SAUDE: Final = {"saudavel": "manter", "pouca_amostra": "revisar", "e
 #: 31.55 (orquestradora, 04/10 22:36Z, da Aprendizado): a mesma regra com `degradando` → `rebaixar`, AO LADO da
 #: pré-registrada, que não muda. Por quê: o próprio sistema rebaixa sozinho em `degradando` (`learning/domain/ciclo.py`)
 #: e a aprovação automática conta `degradando` como contra; um controle que diz `revisar` ali contradiz a política que
-#: deveria espelhar. Ressalva: com os rótulos em bloco (31.11), a concordância desta coluna com o dono sobe de forma
-#: CIRCULAR (a ficha confirmada em bloco foi escrita pela mesma regra). Só acompanhamento, fora do GO.
+#: deveria espelhar. O número impresso é a concordância v2 × CURADOR (`concordancia_do_controle_da_saude_v2_com_o_curador`).
+#: Ressalva: qualquer comparação desta coluna com os rótulos em bloco do 31.11 é CIRCULAR (a ficha confirmada em bloco
+#: foi escrita pela mesma regra), e por isso a v2 × dono não é calculada aqui. Só acompanhamento, fora do GO.
 CONTROLE_DA_SAUDE_V2: Final = {**CONTROLE_DA_SAUDE, "degradando": "rebaixar"}
 
 
@@ -365,7 +366,8 @@ CONTROLE_EM_UMA_LINHA: Final = (
     "a concordância dele com o curador mede quanto o parecer do curador se explica só pelas contagens de evidência. "
     "O 2º controle, só de acompanhamento, é a regra da saúde (`CONTROLE_DA_SAUDE`): quanto do parecer se explica só "
     "pelo rótulo de saúde do dossiê. A coluna `controle_saude_v2` é a mesma regra com `degradando` → `rebaixar` (a "
-    "política do próprio sistema); com rótulos em bloco, a concordância dela com o dono é circular.")
+    "política do próprio sistema); o número é v2 × curador, e qualquer comparação dela com os rótulos em bloco seria "
+    "circular.")
 
 
 def _resposta_do_sinal(m: Mapping[str, Any], s: Mapping[str, Any]) -> str:

@@ -311,7 +311,8 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
   critério de 70 % a 0,85 (v2 1 de 11, P1 0 de 48, P2 2 de 6); os rótulos são confirmação em bloco, então o acordo é
   circular. Registro em `docs/design/jev-golden-set.md` § 2.
 - Coluna `controle_saude_v2` (pedido da Aprendizado, 22:36Z): a regra da saúde com `degradando` → `rebaixar`, ao lado
-  da pré-registrada, que não muda; com rótulos em bloco, a concordância dela com o dono é circular.
+  da pré-registrada, que não muda. O número impresso é v2 × curador; qualquer comparação dela com os rótulos em
+  bloco seria circular, e a v2 × dono não é calculada.
 - Prova do código: `simulated` (`scripts/tests/test_jev_braco_offline.py`).
 
 ## 2026-10-04 — 28.28: pergunta ao bot do Telegram vai à orquestradora, e nome de persona não sai pelo canal (branch canais/28-28-pergunta-ao-bot)
