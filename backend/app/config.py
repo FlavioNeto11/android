@@ -1439,6 +1439,17 @@ class PedidosCfg(BaseModel):
     colaboracao: ColaboracaoCfg = ColaboracaoCfg()
 
 
+class ExecucaoCfg(BaseModel):
+    """Vencimento do que espera uma pessoa que não veio (29.50 e 31.43). Só muda ESTADO: nada responde a pergunta, digita,
+    toca aparelho ou chama IA. Ligado de fábrica: sem isto a pergunta sem resposta prende a execução (`needs_input`) e o
+    objetivo (`waiting_user`) para sempre. Desligado, nenhum dos dois vence."""
+
+    vencimento_ligado: bool = True
+    #: Horas sem resposta para a pergunta (`needs_input`) e o bloqueio (`waiting_user`) vencerem. Para o bloqueio, o relógio é
+    #: o mais tardio entre a entrada do objetivo em `waiting_user` e o fim da execução.
+    pergunta_vence_h: float = Field(24.0, ge=0.01, le=8760.0)
+
+
 class AppConfigFile(BaseModel):
     server: ServerCfg = ServerCfg()
     paths: PathsCfg = PathsCfg()
@@ -1446,6 +1457,7 @@ class AppConfigFile(BaseModel):
     instances: InstancesCfg = InstancesCfg()
     appium: AppiumCfg = AppiumCfg()
     limits: LimitsCfg = LimitsCfg()
+    execucao: ExecucaoCfg = ExecucaoCfg()
     ai: AiCfg = AiCfg()
     contas: ContasCfg = ContasCfg()
     releases: ReleasesCfg = ReleasesCfg()

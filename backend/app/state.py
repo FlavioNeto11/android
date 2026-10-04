@@ -2780,7 +2780,8 @@ class AppState:
             await asyncio.sleep(EXPIRACAO_INTERVALO_S)
 
     async def _expiracao_uma_vez(self) -> bool:
-        """Uma volta da expiração das perguntas sem resposta, só no líder da trava da retenção. É faxina do mesmo
+        """Uma volta da expiração das perguntas sem resposta (29.50) e do vencimento dos objetivos parados (31.43), só no
+        líder da trava da retenção. É faxina do mesmo
         tipo, e uma trava nova teria de entrar em `TRAVAS_DOS_LACOS`. Idempotente: o cancelamento é condicional ao
         `needs_input`. Devolve se rodou."""
         if self._lider(RETENCAO) is None:
@@ -2791,6 +2792,13 @@ class AppState:
                 log.info("expiração: %s execução(ões) sem resposta encerradas pelo sistema", len(expiradas))
         except Exception:  # a faxina nunca derruba o processo
             log.exception("expiração das perguntas sem resposta")
+        try:
+            # 31.43: o objetivo `waiting_user` de execução já terminada, que ninguém retomou, vence no mesmo prazo.
+            vencidos = await asyncio.to_thread(self.runs.vencer_objetivos_parados, now())
+            if vencidos:
+                log.info("vencimento: %s objetivo(s) parados sem resposta encerrados pelo sistema", len(vencidos))
+        except Exception:  # a faxina nunca derruba o processo
+            log.exception("vencimento dos objetivos parados")
         return True
 
     async def _retention_loop(self) -> None:

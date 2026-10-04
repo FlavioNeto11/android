@@ -5465,3 +5465,29 @@ nem contestação, e não pesa contra o item. Quem recusou vai ao log do backend
 - **404** `pedido_desconhecido`: não há o pedido.
 - **409** `pedido_nao_pendente`: o pedido já saiu de `pendente` (despachou, fechou ou expirou).
 - **503:** a validação não foi composta.
+
+## Adendo v1.23 (04/10/2026; número da orquestradora; item 31.43) — a pergunta parada vence sozinha: `vencimento` nos eventos
+
+Aditivo ao v0.95. Nenhuma rota nova, nenhum status novo e nenhuma migração. O prazo da pergunta sem resposta passa a vir do
+config (`execucao.pergunta_vence_h`, 24 h por padrão; `execucao.vencimento_ligado` desliga). O que muda para quem lê:
+
+- O `data` do `run.updated` que a 29.50 emite (`needs_input` → `cancelled` pelo sistema) ganha `vencimento`; o `expirada` do v0.95
+  continua, igual, para quem já o lê.
+- Caso novo: o objetivo em `waiting_user` de execução já terminada (`completed_with_issues`) que ninguém retomou no prazo vai a
+  `cancelled` pelo sistema, e o `objective.updated` dessa transição leva o mesmo campo. A execução segue como
+  `recompute_run` a deriva (sem `cancel_requested`, sem o sinal `cancelou_execucao`).
+- Formato fixo, exatamente estas quatro chaves nos dois eventos:
+
+```json
+{"objective": {"status": "cancelled", "…": "…"},
+ "vencimento": {"regra": "31.43", "motivo": "vencido_sem_resposta", "horas": 24, "desde": "2026-10-03T12:00:00.000Z"}}
+```
+
+- `desde`: no `run.updated`, o `ts` da entrada em `needs_input`; no `objective.updated`, o mais tardio entre a entrada do
+  objetivo em `waiting_user` e o fim da execução. `horas` é o prazo em vigor (24, ou 0.5 se o config disser meia hora).
+- `status_detail` do objetivo: "Sem resposta em 24 h: o pedido venceu e foi encerrado pelo sistema. Para seguir, faça o
+  pedido de novo."
+
+Prova:
+- `simulated`: `tests/test_pergunta_vence.py`, `tests/test_needs_input_expira.py`.
+- `not_run`: o primeiro ciclo no central depois do deploy (fecha o estoque de 22 objetivos).
