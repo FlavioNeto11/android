@@ -21,7 +21,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -176,6 +176,62 @@ class PedidosApi:
             limites=colaboracao.Limites(cfg.max_profundidade, cfg.max_filhos))
         return previa.Bloqueio(r.codigo, r.mensagem, r.campo or "") if r else None
 
+    def _familia_com_porta_voz(self, pai_id: str | None, pedido_id: str, papel: str | None) -> bool:
+        """A família tem porta-voz? Só para quem não tem papel e com a colaboração ligada (F5)."""
+        if papel is not None or not self.cfg.colaboracao.enabled:
+            return False
+        return self.repo.familia_tem_porta_voz(pai_id or pedido_id)
+
+    def _teto_da_familia(self, corpo: CorpoDoPedido) -> str | None:
+        """A autonomia a que a família rebaixa este pedido novo (F5), ou `None` se não rebaixa. A prévia mostra isto ANTES
+        da criação (item 30.61): a pessoa vê que o pedido vai observar, em vez de descobrir no meio da execução."""
+        if corpo.pai_id is None:
+            return None
+        pai = self.repo.pedido(corpo.pai_id)
+        if pai is None or not self._familia_com_porta_voz(pai["pai_id"] or pai["id"], pai["id"], corpo.papel):
+            return None
+        efetiva = colaboracao.autonomia_efetiva(corpo.autonomia, corpo.papel, True)
+        return efetiva if efetiva != corpo.autonomia else None
+
+    def _pessoas(self, alvos: Iterable[tuple[str, str | None, str | None]]) -> frozenset[str]:
+        """As personas que agem por estes alvos: a do alvo, ou a única vinculada ao aparelho; sem nenhuma, o aparelho."""
+        saida: set[str] = set()
+        for iid, perfil, _app in alvos:
+            if perfil:
+                saida.add(perfil)
+                continue
+            ids = {str(r["profile_id"]) for r in self.db.query(
+                "SELECT profile_id FROM device_profile_bindings WHERE instance_id=? AND active=1", (iid,))}
+            saida.add(ids.pop() if len(ids) == 1 else f"aparelho:{iid}")
+        return frozenset(saida)
+
+    def _validar_reacoes(self, corpo: CorpoDoPedido, pid: str | None, alvos: Sequence[tuple[str, str | None, str | None]],
+                         objetivo: str) -> previa.Bloqueio | None:
+        """Regra 3 da F5 (§9): duas personas da família não reagem ao mesmo conteúdo. Só filho tem família a conferir; o
+        pedido que já existe é repetição da mesma chave (conferido quando nasceu)."""
+        if corpo.pai_id is None or not self.cfg.colaboracao.enabled or (pid is not None and self.repo.pedido(pid)):
+            return None
+        pai = self.repo.pedido(corpo.pai_id)
+        if pai is None:
+            return None                      # `pai_inexistente` já foi recusado pela estrutura
+        raiz = pai["pai_id"] or pai["id"]
+        membros = [r for r in [self.repo.pedido(raiz), *self.repo.descendentes(raiz)]
+                   if r is not None and r["estado"] not in colaboracao.ESTADOS_TERMINAIS]
+        com_porta_voz = any(m["papel"] == colaboracao.PORTA_VOZ for m in membros)
+        outros = []
+        for m in membros:
+            if not m["alvos"]:
+                continue
+            ts = self._alvos_do_banco(m["alvos"])["targets"]
+            pessoas = self._pessoas((t["instance_id"], t["profile_id"], t["app_id"]) for t in ts)  # type: ignore[union-attr]
+            outros.append(colaboracao.Reator(
+                m["id"], m["objetivo"], colaboracao.autonomia_efetiva(m["autonomia"], m["papel"], com_porta_voz), pessoas))
+        novo = colaboracao.Reator(pid or "(novo)", objetivo,
+                                  colaboracao.autonomia_efetiva(corpo.autonomia, corpo.papel, com_porta_voz),
+                                  self._pessoas(alvos))
+        r = colaboracao.validar_reacao_repetida(novo, outros)
+        return previa.Bloqueio(r.codigo, r.mensagem, r.campo or "") if r else None
+
     def _montar(self, corpo: CorpoDoPedido, pid: str | None = None) -> Montado:
         bloqueios: list[previa.Bloqueio] = []
         preview, erro = self._resolver(corpo.selecao)
@@ -227,6 +283,8 @@ class PedidosApi:
                                   piso_agir_s=self.cfg.piso_agir_s,
                                   quantas=previa.PROXIMAS_PADRAO)
         colab = self._validar_colaboracao(corpo, pid)
+        if colab is None:
+            colab = self._validar_reacoes(corpo, pid, alvos, parametros.objetivo_sem_destinos)
         if colab is not None:
             bloqueios.append(colab)
         # gatilho que nem normalizou: `analisar` não o vê, e o bloqueio dele já está na lista
@@ -252,6 +310,11 @@ class PedidosApi:
         analise = previa.analisar(p, agora=self.agora(), piso_observar_s=self.cfg.piso_observar_s,
                                   piso_agir_s=self.cfg.piso_agir_s, quantas=proximas)
         alertas = [*(a.para_dict() for a in analise.alertas)]
+        rebaixada = self._teto_da_familia(corpo)
+        if rebaixada is not None:
+            alertas.append({"codigo": "autonomia_rebaixada_pela_familia",
+                            "mensagem": f"A família tem porta-voz e só ele age para fora: este pedido fica em `{rebaixada}` "
+                                        f"(não `{corpo.autonomia}`)."})
         if m.preview is not None:
             alertas += [{"codigo": "alvo_aviso", "mensagem": w} for w in m.preview.warnings]
         valido = not m.bloqueios
@@ -265,7 +328,7 @@ class PedidosApi:
                       "warnings": list(pre.warnings) if pre else []},
             "proximas": [d.para_dict() for d in analise.proximas],
             "intervalo_minimo_s": analise.intervalo_minimo_s,
-            "autonomia": previa.autonomia_da_previa(p.autonomia),
+            "autonomia": previa.autonomia_da_previa(rebaixada or p.autonomia),
             "custo": previa.custo_da_previa([], p.orcamento_ocorrencia_usd,
                                             previa.ocorrencias_por_mes(analise.intervalo_minimo_s)),
             "bloqueios": [b.para_dict() for b in m.bloqueios],
@@ -303,7 +366,8 @@ class PedidosApi:
         with self.db.tx():
             # dentro da transação (BEGIN IMMEDIATE no SQLite): dois filhos criados juntos não passam do limite de filhos
             # nem reservam mais do que o pai tem; é a mesma conferência da prévia e do `_montar`, refeita com o banco travado
-            colab = self._validar_colaboracao(corpo, pid)
+            colab = (self._validar_colaboracao(corpo, pid)
+                     or self._validar_reacoes(corpo, pid, p.alvos, p.objetivo_sem_destinos))
             if colab is not None:
                 raise ErroDeApi(STATUS_DO_BLOQUEIO.get(colab.codigo, 422), colab.codigo, colab.mensagem,
                                 **({"campo": colab.campo} if colab.campo else {}))
@@ -645,6 +709,9 @@ class PedidosApi:
             "max_tentativas", "pausa_por_falha", "estado", "versao", "proxima_em", "criado_por", "pausado_motivo",
             "encerrado_motivo", "pai_id", "papel", "criado_em", "atualizado_em")}
         v["criterios_sucesso"] = loads(p["criterios_sucesso"], None)
+        # F5: com o porta-voz na família, o pedido sem papel decide e executa abaixo do que gravou.
+        v["autonomia_efetiva"] = colaboracao.autonomia_efetiva(
+            p["autonomia"], p["papel"], self._familia_com_porta_voz(p["pai_id"], p["id"], p["papel"]))
         v["alvos"] = alvos
         v["coalescer"] = bool(p["coalescer"])
         v["gatilhos_resumo"] = [{"tipo": g["tipo"], "descricao": previa.descrever_gatilho(

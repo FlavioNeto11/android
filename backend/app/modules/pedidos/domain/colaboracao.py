@@ -324,6 +324,37 @@ def autonomia_efetiva(autonomia: str, papel: str | None, familia_com_porta_voz: 
     return min(autonomia, teto, key=AUTONOMIAS.index)
 
 
+@dataclass(frozen=True)
+class Reator:
+    """Um pedido da família visto pela regra de reação (F5): `objetivo` (o texto sem destinos), a autonomia EFETIVA e as
+    pessoas (persona ou aparelho) que agem por ele. Nada daqui vai a mensagem: a recusa diz só a regra."""
+    id: str
+    objetivo: str
+    autonomia: str
+    pessoas: frozenset[str]
+
+
+def _texto(objetivo: str) -> str:
+    return " ".join(objetivo.casefold().split())
+
+
+def validar_reacao_repetida(novo: Reator, familia: Iterable[Reator]) -> Recusa | None:
+    """`reacao_repetida` (F5, §9): é proibido simular apoio de pessoas independentes. Dois pedidos da mesma família, ambos
+    com autonomia de efeito (`preparar` ou `agir`), com o MESMO objetivo e personas diferentes, dariam a duas personas a
+    reação ao mesmo conteúdo. A regra é o que o código sabe ler: o texto igual (sem caixa nem espaços repetidos) e as
+    personas. Reagir ao mesmo conteúdo com palavras diferentes, ou citar-se como terceiro, é do planejador."""
+    if novo.autonomia == "observar":
+        return None
+    for outro in familia:
+        if outro.id == novo.id or outro.autonomia == "observar" or _texto(outro.objetivo) != _texto(novo.objetivo):
+            continue
+        if len(outro.pessoas | novo.pessoas) > 1:
+            return Recusa("reacao_repetida", "Dois pedidos da mesma família dariam a duas personas diferentes a reação ao "
+                          "mesmo conteúdo, o que simularia apoio de pessoas independentes. Deixe só uma persona (o "
+                          "porta-voz) reagir, ou baixe um dos dois para `observar`.", "objetivo")
+    return None
+
+
 def validar_autonomia(autonomia: str, papel: str | None) -> Recusa | None:
     """`autonomia_acima_do_papel`: o pedido pede mais do que o papel dele permite. A pessoa corrige baixando a autonomia
     (ou trocando o papel, num pedido novo: o papel não muda depois de criado)."""

@@ -134,3 +134,64 @@ async def test_contraprova_colaboracao_desligada_o_laco_decide_como_hoje(h: Harn
     laco = _laco(h, colaboracao_ligada=False)
     laco.uma_volta()
     assert _teto_da_execucao(h, pai) == "agir"
+
+
+# =============================================================================================== prévia e criação
+def _previa(c, **kw) -> dict:
+    from .test_pedidos_api import _corpo
+    return c.post("/api/pedidos/previa", json=_corpo(**kw)).json()
+
+
+def _reator(id_: str, objetivo: str, autonomia: str, *pessoas: str) -> colaboracao.Reator:
+    return colaboracao.Reator(id_, objetivo, autonomia, frozenset(pessoas))
+
+
+def test_reacao_repetida_no_dominio() -> None:
+    a = _reator("a", "Curta  a publicação X", "agir", "p1")
+    ok = colaboracao.validar_reacao_repetida
+    r = ok(_reator("b", "curta a publicação x", "preparar", "p2"), [a])
+    assert r is not None and (r.codigo, r.campo) == ("reacao_repetida", "objetivo")
+    assert "p1" not in r.mensagem and "p2" not in r.mensagem and "publicação" not in r.mensagem
+    # contraprovas: a mesma persona, outro texto, quem só observa, e o que já observa na família
+    assert ok(_reator("b", "curta a publicação x", "agir", "p1"), [a]) is None
+    assert ok(_reator("b", "comente a publicação y", "agir", "p2"), [a]) is None
+    assert ok(_reator("b", "curta a publicação x", "observar", "p2"), [a]) is None
+    assert ok(_reator("b", "curta a publicação x", "agir", "p2"), [_reator("a", "curta a publicação x", "observar", "p1")]) is None
+
+
+async def test_previa_e_criacao_recusam_duas_reacoes_ao_mesmo_conteudo(h: Harness) -> None:
+    _ligar(h)
+    c = _cliente(h)
+    pai = _pai(c, "pai-reacao-0001", autonomia="observar")
+    h.state.db.execute("UPDATE pedidos SET alvos=? WHERE id=?",
+                       ('{"alvos":[{"instance_id":"android-01","profile_id":"persona-a","app_id":null}]}', pai))
+    h.state.db.execute("UPDATE pedidos SET autonomia='agir' WHERE id=?", (pai,))
+    corpo = {"autonomia": "agir", "pai_id": pai, "orcamento_total_usd": 2.0}
+    previa = _previa(c, **corpo)           # o alvo do filho é o android-01 sem persona: outra pessoa (o aparelho)
+    assert not previa["valido"] and previa["bloqueios"][0]["codigo"] == "reacao_repetida", previa["bloqueios"]
+    from .test_pedidos_colaboracao_api import _tentar
+    r = _tentar(c, "filho-reacao-0001", pai, autonomia="agir")
+    assert r.status_code == 422 and r.json()["detail"]["code"] == "reacao_repetida"
+    # contraprova: o filho que só observa passa, e o texto diferente também
+    assert _previa(c, **{**corpo, "autonomia": "observar"})["valido"]
+    assert _previa(c, **{**corpo, "objetivo": "Outra coisa bem diferente para fazer"})["valido"]
+
+
+async def test_a_previa_mostra_o_teto_da_familia_e_o_detalhe_o_teto_efetivo(h: Harness) -> None:
+    _ligar(h)
+    c = _cliente(h)
+    pai = _pai(c, "pai-previa-0001", autonomia="agir")
+    assert _filho(c, pai, "filho-pv-previa-01", papel="porta_voz", autonomia="agir").status_code == 201
+    previa = _previa(c, pai_id=pai, autonomia="agir", orcamento_total_usd=1.0, objetivo="Reunir as fontes da semana")
+    assert previa["valido"], previa["bloqueios"]
+    assert previa["autonomia"]["teto"] == "observar"
+    [alerta] = [a for a in previa["alertas"] if a["codigo"] == "autonomia_rebaixada_pela_familia"]
+    assert "porta-voz" in alerta["mensagem"] and "observar" in alerta["mensagem"] and "Reunir" not in alerta["mensagem"]
+    assert c.get(f"/api/pedidos/{pai}").json()["autonomia_efetiva"] == "observar"
+    # contraprovas: o porta-voz e a família sem porta-voz não têm alerta; desligada, o detalhe volta ao gravado
+    pv = _previa(c, pai_id=pai, autonomia="agir", papel="porta_voz", orcamento_total_usd=1.0)
+    assert all(a["codigo"] != "autonomia_rebaixada_pela_familia" for a in pv["alertas"])
+    outro = _pai(c, "pai-previa-0002", autonomia="agir")
+    assert c.get(f"/api/pedidos/{outro}").json()["autonomia_efetiva"] == "agir"
+    h.state.pedidos_api.cfg.colaboracao = ColaboracaoCfg(enabled=False)
+    assert c.get(f"/api/pedidos/{pai}").json()["autonomia_efetiva"] == "agir"

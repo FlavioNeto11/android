@@ -456,7 +456,7 @@ o espaçamento e os limites são código; a IA entra no plano e na leitura de ca
     nunca se citam como terceiros, nunca aparecem como vozes distintas na mesma conversa. É o comportamento
     inautêntico coordenado da política da Meta e a campanha coordenada que o ADR-050 já recusa.
 
-### 9.1 Fatias F1 a F4 (28.10, 04/10/2026): a estrutura, o laço que a lê, o papel e a consolidação
+### 9.1 Fatias F1 a F5 (28.10, 04/10/2026): a estrutura, o laço que a lê, o papel e a consolidação
 
 **F1: só a estrutura.**
 
@@ -559,8 +559,17 @@ Entregue sem migração, atrás de `pedidos.colaboracao.enabled` (desligado, ou 
 - **Prova:** `simulated` (`backend/tests/test_pedidos_colaboracao_consolidacao.py`). `not_run`: um pedido pai de teste no app de
   teste, depois do deploy.
 
-Fica para as próximas fatias: a escolha de persona pelo papel e **F5** (as regras para fora: uma conta por alvo no pedido inteiro,
-`approval_required` para pessoa real e a proibição de apoio simulado).
+Fica para as próximas fatias: a escolha de persona pelo papel.
+
+**F5, parte 1 (só pedidos; adendo v1.28 do contrato).** Só o porta-voz age para fora. Numa família com porta-voz, o pedido sem
+papel (a raiz, ou um irmão comum) decide e executa com `observar` (`autonomia_efetiva(..., familia_com_porta_voz)`), o teto
+vai à execução (28.23) e a ocorrência registra o rebaixamento sem persona nem texto. A prévia mostra o rebaixamento antes de
+criar, e o detalhe devolve `autonomia_efetiva`. A proibição de simular apoio vira a recusa `reacao_repetida`: dois pedidos de efeito
+da mesma família, com o mesmo objetivo e personas diferentes. Cobertura: o código lê o texto igual e as personas; reagir ao mesmo
+conteúdo com outras palavras e uma persona citar a outra como terceiro dependem do planejador (lado da Jev).
+**Para a porta de política (30.62, `PolicyEngine.check`):** a regra 1 (uma conta por alvo no pedido INTEIRO, curtida incluída)
+e a regra 2 (`approval_required` quando o alvo é pessoa real sem conversa prévia) precisam do contexto da família, que o provedor
+`contexto_do_pedido(run_id)` entrega à porta numa fatia separada.
 
 ## 10. Recursos e custo (26.6)
 
