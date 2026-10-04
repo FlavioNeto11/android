@@ -2035,6 +2035,7 @@ class AiProfileStatus(BaseModel):
     canary_fraction: float | None = None
     screenshot_max_side: int | None = None
     rich_tree_min_elements: int | None = None
+    acoes_por_decisao: int | None = None             # 31.35 B: o encadeamento do perfil (None = o global)
 
 
 class AiImageStatus(BaseModel):

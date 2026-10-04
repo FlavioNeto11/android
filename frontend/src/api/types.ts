@@ -432,6 +432,8 @@ interface AiProfileStatus {
   canary_fraction: number | null;       // a fatia das execuções sem perfil que vai para ele; null = não é o canário
   screenshot_max_side: number | null;
   rich_tree_min_elements: number | null;
+  /** 31.35 B: quantas ações por decisão o perfil permite (null/ausente = o global). */
+  acoes_por_decisao?: number | null;
 }
 
 interface AiImageStatus {

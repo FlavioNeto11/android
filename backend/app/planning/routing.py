@@ -499,7 +499,8 @@ def perfis_para_o_painel(cfg: Config) -> list[AiProfileStatus]:
         perfis.append(AiProfileStatus(
             name=nome, note=perfil.note, roles=funcoes,
             canary_fraction=ai.canary.fraction if ai.canary.profile == nome else None,
-            screenshot_max_side=perfil.screenshot_max_side, rich_tree_min_elements=perfil.rich_tree_min_elements))
+            screenshot_max_side=perfil.screenshot_max_side, rich_tree_min_elements=perfil.rich_tree_min_elements,
+            acoes_por_decisao=perfil.acoes_por_decisao))
     return perfis
 
 

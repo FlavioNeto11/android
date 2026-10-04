@@ -65,6 +65,15 @@ def test_o_perfil_diz_so_as_funcoes_que_muda(tmp_path: Path) -> None:
     assert (dieta.screenshot_max_side, dieta.rich_tree_min_elements) == (768, 12)
 
 
+def test_o_perfil_liga_o_encadeamento_so_nas_execucoes_dele(tmp_path: Path) -> None:
+    """31.35 B: o A/B de `acoes_por_decisao` roda por execução; o global (1) segue valendo para quem não escolheu."""
+    cfg = _cfg(tmp_path, {"encadear-3": {"acoes_por_decisao": 3}, "img-768": {"screenshot_max_side": 768}})
+    assert cfg.ai_da_execucao("encadear-3").acoes_por_decisao == 3
+    assert cfg.ai_da_execucao("img-768").acoes_por_decisao == cfg.file.ai.acoes_por_decisao == 1
+    assert cfg.ai_da_execucao(None) is cfg.file.ai
+    assert {p.name: p.acoes_por_decisao for p in perfis_para_o_painel(cfg)} == {"encadear-3": 3, "img-768": None}
+
+
 def test_o_perfil_que_escreve_o_social_muda_a_persona_que_o_herda(tmp_path: Path) -> None:
     [perfil] = perfis_para_o_painel(_cfg(tmp_path, {"social-haiku": {"roles": {"social": {"model": "claude-haiku-4-5"}}}}))
     assert {f.role: f.model for f in perfil.roles} == {"social": "claude-haiku-4-5", "persona": "claude-haiku-4-5"}
@@ -89,4 +98,5 @@ async def test_o_get_api_ai_traz_o_esquema_e_os_perfis(harness: Harness) -> None
     assert corpo["esquema_do_plano"] == "curto"
     assert corpo["leitura_visual"] is False                                  # desligada por padrão
     assert corpo["profiles"] == [{"name": "img-768", "note": "dieta de imagem", "roles": [], "canary_fraction": None,
-                                  "screenshot_max_side": 768, "rich_tree_min_elements": None}]
+                                  "screenshot_max_side": 768, "rich_tree_min_elements": None,
+                                  "acoes_por_decisao": None}]

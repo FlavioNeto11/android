@@ -19,6 +19,12 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.35 B: o perfil de IA escolhe `acoes_por_decisao` (branch feat/31-35-perfil-encadear, sem migração)
+
+- `ai.profiles.<nome>.acoes_por_decisao` (1 a 3) vale só nas execuções do perfil, por cima do global; o painel o mostra.
+  É o que deixa o A/B do encadeamento rodar por execução sem ligá-lo no parque inteiro. Prova: `simulated`
+  (`backend/tests/test_aba_ia_esquema_e_perfis.py`).
+
 ## 2026-10-04 — 28.16 + 28.18: a faxina leva os eventos dos contatos do Telegram (branch canais/28-18-faxina-090, sem migração)
 
 - `faxina_sql.py`: os `canal_contato_eventos` (090) vencem com o prazo do canal, como o resto do que a conversa guarda.
