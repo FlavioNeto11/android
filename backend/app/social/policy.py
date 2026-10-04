@@ -36,6 +36,7 @@ from ..planning.capabilities import Capability, capability_of, normalizar_alvo, 
 from ..planning.catalog import pacote_ancora
 from ..util import now, parse_iso, to_iso
 from .contas_nossas import eh_conta_nossa, foi_retirada
+from .excecoes import ExcecoesDePolitica
 from .repository import SocialRepository
 
 # Padrões conservadores. O perfil pode ENDURECER (nunca afrouxar sozinho os tetos de frota — esses moram em
@@ -145,6 +146,9 @@ class Verdict:
     needs_approval: bool = False
     hint: str = ""                       # o que a pessoa faz para destravar, quando depende dela
     counts: dict[str, int] = field(default_factory=dict)
+    #: 30.65: a exceção de uso único que fez a regra de uma conta por alvo virar aprovação; quem escreve (o
+    #: `_policy_gate`) a prende à etapa. `None` quando nenhuma exceção entrou.
+    excecao: str | None = None
 
     @property
     def is_wait(self) -> bool:
@@ -319,7 +323,8 @@ class PolicyEngine:
         return max(1, int(getattr(settings, "fleet_max_accounts_per_target", 1) or 1))
 
     def _fleet_gate(self, profile_id: str, cap: Capability, counterparty: str | None,
-                    agora: Any, app_id: str | None = None) -> tuple[str, str | None, str] | None:
+                    agora: Any, app_id: str | None = None, *, step_id: str | None = None,
+                    excecoes_usadas: list[str] | None = None) -> tuple[str, str | None, str] | None:
         """Esta conta pode mexer com este alvo, dado o que as OUTRAS contas da frota já fizeram com ele?
 
         `None` libera. Senão `(motivo, retry_at, dica)`: `retry_at=None` é RECUSA (o teto de contas por alvo foi
@@ -359,7 +364,13 @@ class PolicyEngine:
         since = to_iso(agora - timedelta(days=dias))
         outras, ultima = self.repo.fleet_targeting(alvo, since, types=TODOS_OS_BALDES, statuses=CONTAM,
                                                     app_id=app_id, exclude_profile_id=profile_id)
-        if outras >= teto:
+        # 30.65: a exceção de uso único, criada por pessoa, tira só ESTA recusa; quem a usa (`excecoes_usadas`) passa
+        # a etapa por aprovação. O espaçamento abaixo e as demais regras do `check` continuam valendo.
+        excecao = (ExcecoesDePolitica(self.repo.db).ativa_para(profile_id, alvo, cap.key, step_id)
+                   if outras >= teto and excecoes_usadas is not None else None)
+        if excecao is not None and excecoes_usadas is not None:
+            excecoes_usadas.append(excecao)
+        elif outras >= teto:
             regra = ("uma conta por alvo" if teto == 1 else f"no máximo {teto} contas por alvo")
             return (f"{outras} outra(s) conta(s) da frota já mexeram com {alvo} nos últimos {dias} dias ou têm pedido "
                     f"em aberto para ele; em {_ROTULO_DO_BALDE.get(cap.limit_bucket, cap.limit_bucket)} vale {regra} "
@@ -634,9 +645,18 @@ class PolicyEngine:
                                reason=f"limite de {teto} {cap.limit_bucket} por {unidade_pt} atingido neste perfil "
                                       f"({feitas}{fila_txt}){aquecimento_txt}")
 
-        if (parado := self._fleet_gate(profile_id, cap, counterparty, agora, app_id)) is not None:
+        excecoes: list[str] = []
+        if (parado := self._fleet_gate(profile_id, cap, counterparty, agora, app_id, step_id=step_id,
+                                       excecoes_usadas=excecoes)) is not None:
             return Verdict(allowed=False, policy=politica, counts=contagem, retry_at=parado[1],
                            reason=parado[0], hint=parado[2])
+        excecao = excecoes[0] if excecoes else None
+        if excecao is not None:
+            # Nunca autônomo: o dono vê o item em Pendências e aprova, com o porquê dizendo que é exceção.
+            politica = "approval_required"
+            nota = "; ".join(t for t in (nota, f"exceção {excecao} à regra de uma conta por alvo em 30 dias (ADR-055), "
+                                         "autorizada pelo dono para este perfil, este alvo e esta ação, uso único "
+                                         "(30.65)") if t)
 
         por_execucao = limites.get("actions_per_run", 0)
         if run_id and por_execucao:
@@ -657,4 +677,4 @@ class PolicyEngine:
                                reason=f"intervalo mínimo de {espera}s entre ações com efeito ainda não passou")
         # `reason` num veredito que LIBERA é o porquê da aprovação exigida (a DM fria): quem abre o pedido o mostra.
         return Verdict(policy=politica, needs_approval=politica == "approval_required", counts=contagem,
-                       reason=nota)
+                       reason=nota, excecao=excecao)

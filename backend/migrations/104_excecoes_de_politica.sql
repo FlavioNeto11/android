@@ -1,0 +1,42 @@
+-- Exceção de uso único à regra de uma conta por alvo (item 30.65; número 104 reservado pela orquestradora em 04/10).
+--
+-- Por quê: o dono autorizou UMA mensagem direta de prova (31.26) entre duas contas nossas, mas a porta de frota (ADR-055,
+-- `PolicyEngine._fleet_gate`) recusa sem caminho de aprovação quando outra conta da frota já mexeu com o alvo em 30 dias,
+-- e a única alavanca de configuração (`fleet_target_window_days`) é global. Esta tabela guarda a exceção pontual: um
+-- perfil, um alvo, uma ação, com prazo, criada por rota de pessoa citando a autorização. Ela NÃO libera sozinha: a etapa
+-- casada vira `approval_required` (o dono vê o item em Pendências com o porquê) e as demais regras seguem valendo.
+--
+--     regra         a regra que a exceção afrouxa. Só `uma_conta_por_alvo` existe.
+--     profile_id    o perfil de ORIGEM (`instagram_profiles.id`), o único que pode usá-la.
+--     alvo          o alvo normalizado (`@nome`), como a porta compara.
+--     capability    a ação (`SEND_MESSAGE`...). Exceção de uma ação não vale para outra no mesmo alvo.
+--     motivo        por que existe, em uma frase. Sem senha, e-mail, telefone nem texto da mensagem.
+--     autorizacao   quem autorizou, por onde e quando (ex.: dono, Telegram, 04/10 19:02:26Z, entrada 1189).
+--     autor         quem criou pela rota (a sessão do painel).
+--     criada_em / expira_em   UTC. A rota recusa prazo acima de 72 h.
+--     step_id / presa_em      a etapa que a porta casou com ela. Outra etapa só a toma se a presa terminou sem efeito.
+--     usada_em / interaction_id   quando o efeito saiu: uso único, gasta no `open_effect`.
+--     vencida_em    quando a varredura a encerrou por prazo sem uso.
+--
+-- Compatível com SQLite e PostgreSQL: só tipos comuns. Sem BEGIN/COMMIT: o executor já abre a transação.
+
+CREATE TABLE excecoes_de_politica (
+  id               TEXT PRIMARY KEY,
+  regra            TEXT NOT NULL CHECK (regra IN ('uma_conta_por_alvo')),
+  profile_id       TEXT NOT NULL,
+  alvo             TEXT NOT NULL,
+  capability       TEXT NOT NULL,
+  motivo           TEXT NOT NULL,
+  autorizacao      TEXT NOT NULL,
+  autor            TEXT NOT NULL,
+  criada_em        TEXT NOT NULL,
+  expira_em        TEXT NOT NULL,
+  step_id          TEXT,
+  presa_em         TEXT,
+  usada_em         TEXT,
+  interaction_id   TEXT,
+  vencida_em       TEXT
+);
+
+CREATE INDEX ix_excecoes_de_politica_alvo ON excecoes_de_politica (profile_id, alvo, capability);
+CREATE INDEX ix_excecoes_de_politica_etapa ON excecoes_de_politica (step_id);

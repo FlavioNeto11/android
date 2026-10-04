@@ -457,6 +457,7 @@ class AppState:
         self._draft_locks: dict[str, asyncio.Lock] = {}
         self.scheduler.rollout_source = self._rollout_pending
         self.policies = PolicyEngine(self.social_repo, self.settings.get)
+        self.excecoes = self.social.excecoes          # 30.65: a porta prende; o `open_effect` gasta
         self.approvals = ApprovalStore(self.db)
         self.approval_service = ApprovalService(self.approvals, self.repo, self.scheduler)
         # O executor grava no histórico do perfil o efeito que dispara — é o que alimenta limites e memória.
@@ -2134,6 +2135,9 @@ class AppState:
                                        bindings=loads(srow["bindings"], {}) or {})
         if not veredito.allowed:
             return veredito
+        if veredito.excecao is not None:
+            # 30.65: o `check` só lê; quem escreve é a porta. A exceção fica presa a esta etapa até o efeito sair.
+            self.excecoes.prender(veredito.excecao, srow["id"])
         # O texto é escrito AQUI, com a persona deste perfil, antes de qualquer digitação e antes da aprovação —
         # senão a pessoa aprovaria um rascunho que não é o que vai ser enviado.
         parado = await self._draft_gate(obj, srow, cap, profile_id, rt=rt, pacote=pacote)
