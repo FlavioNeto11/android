@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 30.45: o veredito da validação enxerga a evidência reclassificada (branch feat/30-45-veredito-reclassificado)
+
+- `GET /api/aprendizado/validacoes` passa a mandar, em cada pedido, `invalida_depois`: a linha `invalida` que a
+  execução deixou no item, mesmo chegada depois do fechamento.
+- O Resumo da execução diz "inválida (…)" no lugar de "a favor", e o histórico do item diz "Rodou; depois:
+  inválida — …". É o caso da 5f2de5, achado no navegador do 30.43.
+- Sem migração. Testes: `test_validacoes_listagem.py` e `ValidacaoTab.test.tsx`.
+
 ## 2026-10-04 — Suíte 17 na main e deploy 17 no central (0b7c2c39; sem migração; Trello na etapa 2)
 
 - **Integrado e implantado** (FF 01:13:09Z; deploy 01:13:35–01:14:31Z): #182 (30.43), #183 (30.44), #184 (29.62, trava de

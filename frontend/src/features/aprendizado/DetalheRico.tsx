@@ -476,7 +476,7 @@ function ValidacoesDoItem({ item }: { item: EntradaDoLivro }) {
                 {formatQuando(p.feito_em ?? p.created_at)}{' · '}
                 <Badge tone={META_DA_VALIDACAO[p.estado].tone} size="sm" title={p.motivo ?? undefined}>{META_DA_VALIDACAO[p.estado].label}</Badge>{' '}
                 {/* Sem motivo, o rótulo do estado já está no selo ao lado: não repete. */}
-                {p.motivo_humano || p.motivo ? leituraDoPedido(p) : null}
+                {p.motivo_humano || p.motivo || (p.estado === 'feita' && p.invalida_depois) ? leituraDoPedido(p) : null}
                 {p.aparelho ? ` · aparelho ${p.aparelho}` : ''}
                 {` · ${p.run_id || p.usd > 0 ? formatUsd(p.usd) : 'sem gasto'}`}
                 {p.run_id ? <>{' · '}<a className={styles.linkAlvo} href={hrefDaExecucao(p.run_id)} title={p.run_id}>{rotuloDaExecucao(p.run_id)}</a></> : null}

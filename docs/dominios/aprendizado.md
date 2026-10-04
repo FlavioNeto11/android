@@ -1499,6 +1499,24 @@ mostra a origem.
 **Prova:** `simulated` em `test_learning_ritmo_p4.py`, `test_learning_titulo_da_etapa.py`,
 `test_learning_evidencia_receita.py` (a ordem) e no vitest do painel. `real`: `not_run`.
 
+## O veredito enxerga a evidência reclassificada (30.45)
+
+Achado do navegador do 30.43 (04/10). O pedido da 5f2de5 fechou `feita` às 20:51Z. Às 00:14Z, o passo do 30.42 gravou a
+irmã `invalida` da mesma execução (ev 178), e o Resumo da execução seguia dizendo "Veredito da validação: a favor".
+
+O pedido não muda: o estado gravado é história, e o log só cresce. O que muda é a leitura:
+- `listar` devolve a `invalida` do par (item, execução) como `invalida_depois`, lendo a mais antiga, como
+  `invalida_da_execucao`;
+- o veredito diz "inválida (…)";
+- o histórico do item diz "Rodou; depois: inválida — …", ao lado do selo "Feita".
+
+A `invalida` de outra execução do mesmo item não conta. A linha sem motivo legível lê `sem_evidencia`, o lado seguro.
+
+Prova:
+- `simulated`: `test_validacoes_listagem.py`, os dois testes do 30.45;
+- `simulated`: `ValidacaoTab.test.tsx`;
+- `not_run`: o central depois do deploy.
+
 ## Pendências conhecidas
 
 Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.

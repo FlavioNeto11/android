@@ -12,7 +12,8 @@ from app.db import Database, Row
 from app.models import Plan
 from app.modules.learning.application.validacao import (COMANDO_NA_LISTA, NovoPedido, Origem, PedidoListado,
                                                        PedidoVivo)
-from app.modules.learning.domain.validacao import EstadoDoPedido, Grupo, Motivo, ProvaAnterior, marca_da_evidencia
+from app.modules.learning.domain.validacao import (EstadoDoPedido, Grupo, Motivo, ProvaAnterior, marca_da_evidencia,
+                                                 motivo_da_prova_invalida)
 from app.modules.learning.domain.vocabulario import LivroKind, Posicao
 from app.modules.learning.infrastructure import linhas
 from app.planning import costs
@@ -50,7 +51,9 @@ def _listado(r: Row) -> PedidoListado:
         usd=linhas.real(r, "usd"), teto_usd=linhas.real(r, "teto_usd") if r.get("teto_usd") is not None else None,
         created_at=linhas.texto(r, "created_at"), feito_em=linhas.texto_ou_nulo(r, "feito_em"),
         expira_em=linhas.texto(r, "expira_em"), revisao_nova_id=linhas.texto_ou_nulo(r, "revisao_nova_id"),
-        comando=linhas.texto(r, "comando")[:COMANDO_NA_LISTA])
+        comando=linhas.texto(r, "comando")[:COMANDO_NA_LISTA],
+        invalida_depois=(motivo_da_prova_invalida(linhas.texto_ou_nulo(r, "invalida_detalhe")).value
+                         if r.get("tem_invalida") else None))
 
 
 class RegistroDeValidacoesSql:
@@ -195,19 +198,25 @@ class RegistroDeValidacoesSql:
         veredito da validação no Resumo dela)."""
         where, params = [], list[object]()
         if estado is not None:
-            where.append("estado=?")
+            where.append("v.estado=?")
             params.append(estado.value)
         if item is not None:
-            where.append("item_ref=?")
+            where.append("v.item_ref=?")
             params.append(item)
         if run is not None:
-            where.append("run_id=?")
+            where.append("v.run_id=?")
             params.append(run)
         if antes:
-            where.append("created_at<?")
+            where.append("v.created_at<?")
             params.append(antes)
-        sql = "SELECT * FROM learning_validations" + (" WHERE " + " AND ".join(where) if where else "")
-        rows = self._db.query(sql + " ORDER BY created_at DESC, id DESC LIMIT ?", (*params, limite))
+        # 30.45: a linha `invalida` do par (item, execução), a mais antiga como em `invalida_da_execucao`. Pode ter
+        # chegado depois do fechamento (reclassificação): o pedido `feita` segue `feita`, e quem lê não diz "a favor".
+        invalida = ("FROM learning_evidence e WHERE e.item_ref = v.item_ref AND e.run_id = v.run_id"
+                    " AND e.stance = 'invalida'")
+        sql = (f"SELECT v.*, EXISTS (SELECT 1 {invalida}) AS tem_invalida,"
+               f" (SELECT e.detail {invalida} ORDER BY e.id LIMIT 1) AS invalida_detalhe"
+               " FROM learning_validations v" + (" WHERE " + " AND ".join(where) if where else ""))
+        rows = self._db.query(sql + " ORDER BY v.created_at DESC, v.id DESC LIMIT ?", (*params, limite))
         return [_listado(r) for r in rows]
 
     def contagens(self) -> dict[str, int]:
