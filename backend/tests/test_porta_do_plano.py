@@ -374,3 +374,32 @@ async def test_renovar_nao_ressuscita_o_sim_vencido_que_a_faxina_nao_marcou(harn
         assert exc.codigo == "sim_vencido" and exc.extra["vencidas"] == 1
     linha = state.db.one("SELECT status, expires_at FROM pending_approvals")
     assert linha["status"] == "expired" and parse_iso(linha["expires_at"]) < now()
+
+
+async def test_editar_o_texto_no_cartao_do_plano_recalcula_a_chave(harness: Any, monkeypatch: Any) -> None:
+    """Contrato da chave: a gravada é a do texto que vai sair, não a do texto da prévia."""
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    vista = itens["dm"]["chave"]
+    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(
+        step_id=itens["dm"]["step_id"], chave=vista, texto="oi! tudo certo por aí?")]), por="flavio")
+    linha = state.db.one("SELECT * FROM pending_approvals")
+    assert linha["chave_sha256"] not in (None, vista) and linha["generated_content"] == "oi! tudo certo por aí?"
+    assert json.loads(state.db.scalar("SELECT bindings FROM steps WHERE key='dm'"))["content"] == "oi! tudo certo por aí?"
+    assert await _gate(state, "dm") is None                      # a etapa relida tem a chave gravada
+
+
+async def test_texto_editado_com_variavel_ou_vazio_e_recusado_sem_gravar(harness: Any, monkeypatch: Any) -> None:
+    state = harness.state
+    iniciou = _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    for texto in ("oi {item}", "   "):
+        try:
+            aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(
+                step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"], texto=texto)]), por="flavio")
+            raise AssertionError("devia recusar")
+        except PortaIndisponivel as exc:
+            assert exc.status == 422 and exc.codigo == "invalid_body"
+    assert not state.db.scalar("SELECT COUNT(*) FROM pending_approvals") and not iniciou
+    assert json.loads(state.db.scalar("SELECT bindings FROM steps WHERE key='dm'"))["content"] == DM["content"]
