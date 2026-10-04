@@ -5208,3 +5208,10 @@ Aditivo ao v0.93. `GET /api/aprendizado/metricas` → `curador.autopublicacao` g
 
 É em memória e zera no reinício. A primeira volta sai 60 s depois do início, e as seguintes de `intervalo_s` em
 `intervalo_s`. Os outros campos do bloco não mudam. O painel ainda não lê a chave.
+
+**Com a 30.34-B (mesmo item, PR empilhado):**
+- `ultima_volta` ganha `publicados`: os fluxos publicados pela emenda naquela volta, 0 fora de `on` com o balanço
+  liberado.
+- O bloco ganha `publicados_pela_emenda`: o total na trilha (`validated → published` pelo sistema, com o motivo
+  `autopublicacao_b:`).
+- `modo` passa a poder ser `"on"`.

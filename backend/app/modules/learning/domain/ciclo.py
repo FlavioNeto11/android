@@ -26,9 +26,9 @@ from app.modules.learning.domain.evidencia_invalida import Renascimento, run_inv
 from app.modules.skills.domain.lifecycle import SYSTEM_ACTOR, Actor, SkillState, actor_of
 from app.util import parse_iso
 
-__all__ = ["SYSTEM_ACTOR", "Actor", "SkillState", "actor_of", "ESTADOS", "TRANSICOES", "VETO_DO_SISTEMA_DIAS",
-           "Desligamento", "caminho_da_pessoa", "conferir_nascimento", "conferir_transicao", "exige_o_dono",
-           "motivo_do_veto", "permitido"]
+__all__ = ["SYSTEM_ACTOR", "Actor", "SkillState", "actor_of", "ESTADOS", "MOTIVO_DA_EMENDA_B", "TRANSICOES",
+           "VETO_DO_SISTEMA_DIAS", "Desligamento", "caminho_da_pessoa", "conferir_nascimento", "conferir_transicao",
+           "exige_o_dono", "motivo_da_emenda_b", "motivo_do_veto", "permitido"]
 
 #: O livro não tem rascunho: o item nasce congelado (mudar é criar outro com `parent_id`).
 ESTADOS = frozenset(s for s in SkillState if s is not SkillState.DRAFT)
@@ -113,6 +113,15 @@ class NotaComCaraDeSegredo(ErroDeAprendizado):
 
 
 # ------------------------------------------------------------------ regras
+#: O começo do motivo na trilha da publicação pela emenda B (30.34): as métricas e o relatório a separam da D1, e a rota
+#: genérica recusa o motivo que começa assim (só o caminho da autopublicação o escreve).
+MOTIVO_DA_EMENDA_B = "autopublicacao_b"
+
+
+def motivo_da_emenda_b(reason: str) -> bool:
+    return reason.strip().casefold().startswith(MOTIVO_DA_EMENDA_B)
+
+
 def exige_o_dono(side_effect: bool, human_origin: bool, reaprendido: bool = False) -> bool:
     """`requires_owner` do D1. Derivado, nunca gravado. `reaprendido` (30.23): o item (re)nasceu no escopo de uma
     evidência inválida e espera o dono mesmo sem efeito e sem texto de pessoa (classe B forçada)."""
@@ -139,11 +148,16 @@ def _por_que_exige_o_dono(side_effect: bool, human_origin: bool) -> str:
 
 
 def conferir_transicao(frm: SkillState, to: SkillState, by: str, *, side_effect: bool, human_origin: bool,
-                       modo_publica: bool, reaprendido: bool = False) -> Actor:
+                       modo_publica: bool, reaprendido: bool = False, emenda_b: bool = False) -> Actor:
     """Confere a tabela e o D1 e devolve quem está movendo. Recusa com a razão legível.
 
     `modo_publica`: o modo do tipo está em `on` (lição, tela...) — sem isso o sistema grava e mede, mas não publica.
     Para a pessoa o modo não importa: ela sempre pode publicar.
+
+    `emenda_b` (30.34-B, emenda de 03/10 à D1): a ÚNICA saída do sistema para publicar o que tem efeito externo. Vale só
+    de `validated` para `published`, só pelo efeito: o texto de pessoa e o reaprendido seguem com o dono mesmo com ela.
+    Quem a passa é só o caminho da autopublicação (`LearningService.autopublicar_fluxo`), depois da regra e do balanço da
+    sombra; nenhuma rota a recebe.
     """
     if not by.strip():
         raise TransicaoProibida("Toda transição precisa dizer quem decidiu.")
@@ -156,7 +170,8 @@ def conferir_transicao(frm: SkillState, to: SkillState, by: str, *, side_effect:
     if actor not in quem:
         raise TransicaoProibida(f"{frm} → {to} é decisão de uma pessoa, não do sistema.")
     if actor is Actor.SYSTEM and to is SkillState.PUBLISHED:
-        if exige_o_dono(side_effect, human_origin, reaprendido):
+        pela_emenda = emenda_b and frm is SkillState.VALIDATED and not human_origin and not reaprendido
+        if exige_o_dono(side_effect, human_origin, reaprendido) and not pela_emenda:
             motivo = _por_que_exige_o_dono(side_effect, human_origin)
             raise ExigeODono(f"O item {motivo}: publicar é decisão do dono (D1). Ele fica em 'validated', na fila "
                              "Para aprovar.")

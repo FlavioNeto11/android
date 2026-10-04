@@ -4,8 +4,9 @@ A cada volta (laço próprio, sob a trava de líder), o serviço avalia os fluxo
 livro da sombra, o que publicaria: um CASO por item, uma vez. O balanço (casos, regressões, taxa) sai das marcas e dos
 eventos depois de cada uma, e é ele que diz, no relatório, se o `on` poderia ligar.
 
-Nesta fatia o modo vai só até `shadow` (o config recusa `on`): publicar de verdade exige um caminho próprio pela trava
-da D1 (`conferir_transicao` e `_mover_fluxo`), e esse caminho vem depois do relatório da sombra, à parte.
+Em `on` (30.34-B), o fluxo que passa na regra é publicado pelo caminho próprio da emenda
+(`LearningService.autopublicar_fluxo`), mas só com o balanço da sombra liberado (≥ 30 casos fechados, ≥ 90 % limpos).
+Sem o balanço, `on` se comporta como `shadow`. O caso é marcado do mesmo jeito: a sombra continua medindo.
 
 Os fatos de cada fluxo são os mesmos que o resto do módulo usa:
 - a classe é a de AGORA, a mais restritiva entre a do dossiê e a do parecer (a regra do aceite, `pareceres.py`);
@@ -27,7 +28,7 @@ from app.modules.learning.domain.autopublicacao import (Acao, Avaliacao, Balanco
                                                         FatosDaAutopublicacao, ModoDaAutopublicacao,
                                                         ParametrosDaAutopublicacao, ParecerParaAutopublicar, acao,
                                                         avaliar, balanco, desfecho)
-from app.modules.learning.domain.ciclo import SkillState
+from app.modules.learning.domain.ciclo import MOTIVO_DA_EMENDA_B, ErroDeAprendizado, SkillState
 from app.modules.learning.domain.evidencia_invalida import run_invalidada
 from app.modules.learning.domain.livro import EntradaDoLivro, LivroKind
 from app.modules.learning.domain.parecer import RevisaoGravada, mais_restritiva
@@ -48,6 +49,7 @@ class LivroDaSombra(Protocol):
     def casos(self) -> list[CasoDaSombra]: ...
     def marcar(self, item_ref: str, dados: dict[str, object], *, app: str | None) -> bool: ...
     def eventos(self, item_ref: str, desde: datetime) -> list[EventoDoCaso]: ...
+    def publicados(self) -> int: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +65,7 @@ class ResultadoDaVolta:
     avaliados: int
     publicaria: tuple[str, ...]        # os que passam na regra agora
     marcados: tuple[str, ...]          # os casos NOVOS desta volta (o já marcado não conta de novo)
+    publicados: tuple[str, ...] = ()   # os publicados pela emenda nesta volta (só em `on` com o balanço liberado)
 
 
 class ServicoDeAutopublicacao:
@@ -93,7 +96,7 @@ class ServicoDeAutopublicacao:
             return ResultadoDaVolta(modo, 0, (), ())
         ja = {c.item_ref for c in self._sombra.casos()}
         b = self.balanco()
-        avaliados, publicaria, marcados = 0, [], []
+        avaliados, publicaria, marcados, publicados = 0, [], [], []
         for e in self._candidatos():
             avaliados += 1
             x = self.avaliar(e)
@@ -101,19 +104,35 @@ class ServicoDeAutopublicacao:
             if a is Acao.NADA:
                 continue
             publicaria.append(x.item_ref)
-            if a is Acao.PUBLICAR:
-                # Inalcançável nesta fatia: o config não aceita `on`. Se chegar, registra e avisa; nunca publica calado.
-                log.error("aprendizado: autopublicação em 'on' sem o caminho de publicar (30.34): %s só registrado",
-                          x.item_ref)
             if x.item_ref not in ja and self._sombra.marcar(x.item_ref, self._dados(e, x, modo), app=e.app):
                 marcados.append(x.item_ref)
-        r = ResultadoDaVolta(modo, avaliados, tuple(publicaria), tuple(marcados))
+            if a is Acao.PUBLICAR and self._publicar(e, x, b):
+                publicados.append(x.item_ref)
+        r = ResultadoDaVolta(modo, avaliados, tuple(publicaria), tuple(marcados), tuple(publicados))
         self._ultima = (self._relogio(), r)
         # Uma linha por volta, mesmo vazia: é ela que prova no log que a sombra roda.
         log.info("aprendizado: autopublicação em %s: %d fluxo(s) avaliado(s), %d publicaria(m), %d caso(s) novo(s)%s",
                  modo.value, avaliados, len(publicaria), len(marcados),
                  f": {', '.join(marcados)}" if marcados else "")
+        if publicados:
+            log.warning("aprendizado: autopublicação (emenda B) publicou %d fluxo(s) com efeito: %s", len(publicados),
+                        ", ".join(publicados))
         return r
+
+    def _publicar(self, e: EntradaDoLivro, x: AvaliacaoDoFluxo, b: BalancoDaSombra) -> bool:
+        """A transição pela emenda. A recusa da trava (veto, guarda do fluxo, o item que mudou no meio) não derruba a
+        volta: fica no log, e o fluxo segue esperando o dono."""
+        c = self._contadores(e)
+        fechados = b.limpos + b.regrediram
+        motivo = (f"{MOTIVO_DA_EMENDA_B}: parecer {x.review_id} aprovar com confiança alta; {c.execucoes} execuções "
+                  f"reais em {c.aparelhos} aparelhos, nenhuma contra; sombra com {b.limpos} de {fechados} casos fechados "
+                  f"sem regressão ({b.taxa_sem_regressao})")
+        try:
+            self._servico.autopublicar_fluxo(e.ref, reason=motivo)
+        except ErroDeAprendizado as exc:
+            log.warning("aprendizado: autopublicação (emenda B) recusada para %s: %s", x.item_ref, exc)
+            return False
+        return True
 
     def _candidatos(self) -> list[EntradaDoLivro]:
         """Os fluxos que a D1 segura em `validated`: o resto nem chega à regra (ela os recusaria pelo estado)."""
@@ -170,6 +189,7 @@ class ServicoDeAutopublicacao:
                 "regrediram": b.regrediram, "taxa_sem_regressao": b.taxa_sem_regressao, "libera": b.libera,
                 "limiares": {"casos_fechados": p.casos_min, "taxa_sem_regressao": p.taxa_sem_regressao_min,
                              "janela_dias": p.janela_de_regressao_dias},
+                "publicados_pela_emenda": self._sombra.publicados(),
                 "ultima_volta": self.ultima_volta()}
 
     def ultima_volta(self) -> dict[str, object] | None:
@@ -178,7 +198,7 @@ class ServicoDeAutopublicacao:
             return None
         em, r = self._ultima
         return {"em": to_iso(em), "modo": r.modo.value, "avaliados": r.avaliados, "publicaria": len(r.publicaria),
-                "marcados": len(r.marcados)}
+                "marcados": len(r.marcados), "publicados": len(r.publicados)}
 
     def casos(self) -> Sequence[tuple[CasoDaSombra, str]]:
         """Cada caso com o desfecho de agora (o relatório lista item a item)."""

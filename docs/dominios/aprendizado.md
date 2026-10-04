@@ -558,9 +558,9 @@ pendente da orquestradora (gravar o `config.yaml` ou levar o override para o ban
 `maximo_por_hora`, `janela_dias`, `extra_usd` com `extra_ate` (ISO; sem fuso = UTC; data inválida recusa o config) e
 `custo_estimado_usd`. Ver a seção da 30.31 abaixo.
 
-**Autopublicação do fluxo B (30.34).** `aprendizado.autopublicacao.modo: "off" | "shadow"` (`off` de fábrica) e
-`intervalo_s` (3600). `shadow` só marca o que publicaria; `on` é recusado até a 30.34-B. O central liga `shadow` no
-deploy 11 (orquestradora, 03/10). Os limiares são da regra, não do
+**Autopublicação do fluxo B (30.34).** `aprendizado.autopublicacao.modo: "off" | "shadow" | "on"` (`off` de fábrica)
+e `intervalo_s` (3600). `shadow` só marca o que publicaria; `on` (30.34-B) publica, mas só com o balanço da sombra
+liberado, e sem ele é igual a `shadow`. O central liga `shadow` no deploy 11 (orquestradora, 03/10). Os limiares são da regra, não do
 config: ver "Autopublicação do fluxo B em sombra (30.34)".
 
 ## Evento `learning.needs_person` (30.21)
@@ -1115,7 +1115,8 @@ em sombra. Nesta fatia (30.34-A) a regra vai até `shadow`; publicar de verdade 
   - Sem esse rastro, "0 casos" não separava "avaliou e ninguém passou" de "não rodou" (relatório de 04/10).
 - **Nas métricas** (`/api/aprendizado/metricas`), o bloco `curador` ganha a chave `autopublicacao`. É o balanço, global,
   com o modo e os limiares; a chave é aditiva (adendo v0.93) e só aparece com o serviço composto.
-- **Config:** `aprendizado.autopublicacao.modo: "off" | "shadow"` e `intervalo_s`. `on` é recusado até a 30.34-B.
+- **Config:** `aprendizado.autopublicacao.modo: "off" | "shadow" | "on"` e `intervalo_s`. `on` sem o balanço
+  liberado é igual a `shadow` (30.34-B, abaixo).
 
 ### O relatório da sombra (rascunho do contrato da 30.34-B)
 
@@ -1162,9 +1163,37 @@ e `created_by = sistema`. O `data` traz `modo`, `review_id`, `execucoes`, `apare
 
 **O que a 30.34-B entrega, além disso.**
 - O caminho do `on` pela trava da D1: `decided_by = sistema`, com o motivo `autopublicacao_b` na trilha, para as métricas
-  o separarem da D1.
-- O `on` aceito no config. Sem `libera`, ele se comporta como `shadow`.
-- O script do relatório e a linha do painel.
+  o separarem da D1. Feito em 04/10, entregue desligado (abaixo).
+- O `on` aceito no config. Sem `libera`, ele se comporta como `shadow`. Feito.
+- O script do relatório e a linha do painel: ainda não.
+
+**O caminho do `on` (30.34-B, 04/10).** É uma saída estreita da D1, em duas camadas, cada uma com uma marca que só
+ele passa.
+- `conferir_transicao(..., emenda_b=True)` deixa o SISTEMA publicar o que tem efeito, mas só de `validated` para
+  `published`. O texto de pessoa e o reaprendido (30.23) seguem com o dono mesmo com a marca.
+- `_mover_fluxo(..., emenda_b=True)` pula só a recusa do efeito. O reaprendido, a guarda do fluxo e o CAS seguem.
+- O repositório confere de novo: só fluxo, só o sistema, só `validated → published`, só com o motivo marcado.
+- **Quem passa a marca:** só `LearningService.autopublicar_fluxo(ref, reason=...)`, chamado pela volta da
+  autopublicação em `on` com `libera`.
+  - A rota genérica (`mudar_estado`) recusa o motivo que começa com `autopublicacao_b`. O sistema por ela segue
+    recebendo `ExigeODono` num fluxo com efeito.
+- **O motivo na trilha diz por que:** o parecer (`review_id`, aprovar com confiança alta), as execuções e os aparelhos,
+  e o balanço da sombra no momento.
+  - O relatório conta essas publicações em `publicados_pela_emenda`.
+  - `aprovacoes.sistema.published` das métricas continua contando toda publicação do sistema, as da emenda inclusive.
+- **Em `on` a sombra segue medindo:** o caso é marcado antes de publicar.
+  - Se a trava recusar no meio (veto, guarda, o item mudou), fica no log e o fluxo segue esperando o dono.
+  - A publicação deixa um `warning` no log.
+- **Entregue desligado:** o central segue em `shadow`, e com 0 casos fechados nem `on` publicaria. Ligar `on` é decisão
+  da orquestradora, com o relatório da sombra.
+- Prova `simulated`: `test_learning_autopublicacao_sombra.py`. Os testes cobrem:
+  - `on` sem e com o balanço;
+  - a D1 inteira fora do caminho;
+  - a regra pura estreita;
+  - o candidato;
+  - a recusa no meio.
+
+  A mutação foi conferida: sem passar a marca ao repositório, a publicação falha.
 
 **O primeiro relatório (04/10).**
 - Leitura real às 08:28:53Z, no central em 051fc3e0 (deploy 20), com a sombra ligada desde o deploy 11:

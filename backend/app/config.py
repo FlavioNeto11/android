@@ -1081,11 +1081,12 @@ class ValidacaoCfg(BaseModel):
 
 class AutopublicacaoCfg(BaseModel):
     """A autopublicação do fluxo de classe B (30.34; emenda de 03/10 à D1 do ADR-054). De fábrica `off` (nada roda);
-    `shadow` só marca, no livro da sombra, o que publicaria. `on` não é aceito nesta fatia: publicar de verdade exige o
-    caminho próprio pela trava da D1, que vem depois do relatório da sombra. Os limiares (≥ 2 execuções reais, ≥ 2
-    aparelhos, ≥ 30 casos fechados com ≥ 90 % sem regressão) são da regra (`domain/autopublicacao.py`), não daqui."""
+    `shadow` só marca, no livro da sombra, o que publicaria. `on` (30.34-B) publica pelo caminho próprio da emenda na
+    trava da D1, mas só com o balanço da sombra liberado; sem ele, `on` se comporta como `shadow`. Os limiares (≥ 2
+    execuções reais, ≥ 2 aparelhos, ≥ 30 casos fechados com ≥ 90 % sem regressão) são da regra
+    (`domain/autopublicacao.py`), não daqui. Ligar `on` é decisão da orquestradora com o relatório da sombra."""
 
-    modo: Literal["off", "shadow"] = "off"
+    modo: Literal["off", "shadow", "on"] = "off"
     intervalo_s: int = Field(3600, ge=60, le=86_400)        # de quanto em quanto tempo o laço avalia os fluxos
 
 

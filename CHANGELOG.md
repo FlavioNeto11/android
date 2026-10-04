@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 30.34-B: o `on` da autopublicação pela trava da D1, entregue desligado (branch feat/30-34-fatia-b)
+
+- `aprendizado.autopublicacao.modo` aceita `on`. Sem o balanço da sombra liberado (≥ 30 casos fechados, ≥ 90 % sem
+  regressão), é igual a `shadow`. O central segue em `shadow`.
+- A saída da D1 é estreita.
+  - A marca `emenda_b` em `conferir_transicao` e em `_mover_fluxo` só é passada por
+    `LearningService.autopublicar_fluxo`, de `validated` para `published`.
+  - O texto de pessoa, o reaprendido, o veto e a guarda do fluxo seguem valendo.
+  - O sistema pela rota genérica continua recebendo `ExigeODono`, e o motivo `autopublicacao_b` é reservado.
+- O motivo na trilha traz o parecer, as execuções, os aparelhos e o balanço. O relatório ganha
+  `publicados_pela_emenda`, e `ultima_volta` ganha `publicados`.
+- Prova `simulated`: `test_learning_autopublicacao_sombra.py`, 8 testes novos, com mutação conferida. Empilhado sobre o
+  #204.
+
 ## 2026-10-04 — 30.34: a sombra da autopublicação deixa rastro e roda logo depois do início (branch feat/30-34-volta)
 
 - Relatório da sombra à orquestradora (leitura real 08:28:53Z, central em 051fc3e0): 0 casos. Nenhum dos 48 fluxos
