@@ -297,6 +297,12 @@ human" é sinal de conta perdida. O que muda no desafio e em volta dele:
 - **Login com freio.** Perfil `blocked` ou `disabled` nunca recebe a senha; um envio sem sucesso põe a credencial em
   `review` e o login automático para até a pessoa olhar; teto diário `max_logins_per_day` no `sessao.yaml` (3). Nenhum
   reset automático em aparelho com conta (a escada para em "Precisa do dono" + `stop`).
+  - **Re-toque verificado (29.64).** Envio incerto com o formulário INTACTO na tela de agora (identificador à vista,
+    senha ainda no campo, Entrar habilitado, nada carregando, mesmo app) ganha UM toque no botão atual, sem redigitar;
+    qualquer outra tela devolve o incerto e o freio acima vale. Motivo: no android-13 (04/10) o toque em Entrar se
+    perdeu e um toque manual entrou.
+  - **`review` que se reconcilia (29.64).** A conta lida e CONFERIDA aberta no aparelho tira a credencial de `review`
+    (volta a `active`, falhas zeradas, evento `login_reconciliado`); `invalid` não sai assim.
 - **Conduta, não disfarce.** Nada de mascarar emulador ou rede, proxy, resolver CAPTCHA ou tocar em "Get support": é
   evasão, proibida (ADR-009).
 

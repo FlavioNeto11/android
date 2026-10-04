@@ -88,6 +88,12 @@ class FakeInstagram:
     two_factor_on_login: bool = False
     wrong_password_message: bool = True
     submit_fault: str | None = None            # "lost" (não chega) | "timeout" (demora e o efeito ocorre)
+    # 29.64: quantos toques em Entrar o app IGNORA (o toque chega, nada acontece), e como a tela fica depois:
+    # "intacto" (preenchido, sem erro, o caso do android-13 em 04/10), "carregando" (um ProgressBar na tela) ou
+    # "senha_limpa" (o app esvaziou o campo da senha).
+    envios_ignorados: int = 0
+    tela_ao_ignorar: str = "intacto"
+    _carregando: bool = False
     hang_s: float = 3.0
     show_username_on_feed: bool = True
     # @ de OUTRA conta visível no feed (autor de reel, story seguido). Não é a conta logada, e não pode ser lido como
@@ -249,6 +255,8 @@ class FakeInstagram:
         if self.screen == "login_error" and self.wrong_password_message:
             erro = [Node("android.widget.TextView", (40, y(600), 680, y(650)),
                          text="Incorrect password. Please try again.", rid="login_error")]
+        if self._carregando:
+            erro = [*erro, Node("android.widget.ProgressBar", (330, y(760), 390, y(790)), rid="login_progress")]
         return [
             Node("android.widget.TextView", (40, y(200), 680, y(260)), text="Instagram", rid="logo"),
             Node("android.widget.EditText", (40, y(400), 680, y(470)), text=self.username_field, rid="login_username",
@@ -338,6 +346,12 @@ class FakeInstagram:
 
     def _submit(self) -> None:
         self.calls.append("submit")
+        if self.envios_ignorados > 0:
+            self.envios_ignorados -= 1
+            self._carregando = self.tela_ao_ignorar == "carregando"
+            if self.tela_ao_ignorar == "senha_limpa":
+                self.password_field = ""
+            return
         if self.submit_fault == "lost":
             self.submit_fault = None
             raise DriverError("socket hang up (simulado): o toque não chegou ao app", effect_possible=False)
