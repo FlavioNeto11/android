@@ -93,8 +93,8 @@ def test_o_teto_e_proporcional_com_piso_e_maximo() -> None:
     assert teto_da_prova(0) == pytest.approx(0.05)
     assert teto_da_prova(6) == pytest.approx(0.17)
     assert teto_da_prova(11) == pytest.approx(0.27)
-    assert teto_da_prova(17) == pytest.approx(0.39)
-    assert teto_da_prova(18) is None                     # 0,41 passa do máximo: não despacha
+    assert teto_da_prova(37) == pytest.approx(0.79)
+    assert teto_da_prova(38) is None                     # 0,81 passa do máximo de 0,80 (29.75): não despacha
     assert teto_da_prova(None) is None                   # tamanho desconhecido: o lado seguro
 
 
@@ -111,9 +111,9 @@ def test_o_for_each_de_8_contatos_despacha_a_amostra_de_3(mundo: Mundo) -> None:
 
 
 def test_o_for_each_em_que_nem_a_amostra_minima_cabe_fecha_sem_executar(mundo: Mundo) -> None:
-    """3 fixas + 8 modelos × 2 itens = 19 etapas > 17: nem a amostra mínima cabe no teto; o pedido fecha sem rodar."""
+    """3 fixas + 18 modelos × 2 itens = 39 etapas > 37: nem a amostra mínima cabe no teto; o pedido fecha sem rodar."""
     db, servico, parque, _, _ = mundo
-    pid = servico.ao_parecer(_fluxo(db, "f-largo", _plano("f-largo", modelos=8), coletados=8), "lr-1", PEDE, B)
+    pid = servico.ao_parecer(_fluxo(db, "f-largo", _plano("f-largo", modelos=18), coletados=8), "lr-1", PEDE, B)
     assert pid is not None and servico.uma_volta(lambda: 1) is None
     linha = _linha(db, pid)
     assert (linha["estado"], linha["motivo"], linha["run_id"]) == ("recusada", "plano_acima_do_teto", None)
@@ -143,7 +143,7 @@ def test_o_for_each_sem_lista_coletada_na_origem_despacha_a_amostra(mundo: Mundo
 def test_a_receita_que_resolve_num_fluxo_ativo_grande_fecha_sem_executar(mundo: Mundo) -> None:
     db, servico, parque, _, ativo = mundo
     plano = _plano("f-ativo", modelos=4)
-    _fluxo(db, "f-ativo", plano, coletados=8)
+    _fluxo(db, "f-ativo", plano, coletados=9)                # 3 + 4 × 9 = 39 etapas > 37 (máximo de 0,80, 29.75)
     ativo[COMANDO] = plano
     pid = servico.ao_parecer(_receita(), "lr-1", PEDE, B)
     assert pid is not None and servico.uma_volta(lambda: 1) is None

@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.75: limites da prova de fluxo calibrados (branch fix/29-75-limites-da-validacao)
+
+- `MAXIMO_DE_PROVAS` passa de 2 para 4 por item e versão em 7 dias. Em 7 dias houve 1 recusa `limite_de_provas`.
+- `TETO_DA_PROVA_MAXIMO_USD` passa de 0,40 para 0,80, e a prova cabe em até 37 etapas. Em 7 dias houve 3 recusas
+  `plano_acima_do_teto`.
+- Decisão da orquestradora sobre a tabela do 29.75. O ambiente é de calibração (decisão do dono).
+- A saúde (D-5), o α do curador, a regra de uma conta por alvo e a recusa `efeito_real` ficam como estão.
+- Os testes do limite, da amostra e do teto passam a seguir as constantes. Os 63 arquivos `test_learning_*` deram
+  1061 aprovados. A prova é `simulated`.
+
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
 - Retorno do dono (04/10, Aprendizado › Para aprovar com 5 selecionados): o formulário do aceite abria com o botão
