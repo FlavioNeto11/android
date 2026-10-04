@@ -258,7 +258,23 @@ inscrito", na Infraestrutura, apontar para um worker que não existe mais.
 - **Reconexão automática** com espera crescente até 60 s. Recusa explicada (credencial errada, não inscrito) faz
   o agente **parar** em vez de martelar: insistir não resolveria. Quando o central AVISA que está reiniciando
   (fechamento 1012 ou 1001), a espera fica fixa em 3 s por 3 min (29.73): com a escada, o worker ficava até um
-  minuto fora depois de o central voltar de um deploy longo.
+  minuto fora depois de o central voltar de um deploy longo. Prova real em 04/10, deploy 30: duas amostras de 1,8 s
+  e 3,8 s entre o central de pé e o worker conectado; o log do agente mostrou "nova tentativa em 3 s", então o
+  uvicorn manda o código de reinício. Um processo morto pelo `Stop-Process -Force` do `stop.ps1` (só os que sobram
+  do encerramento limpo) não manda fechamento e cai na escada. O fechamento **4409** (outra conexão deste mesmo
+  worker assumiu o canal) faz o agente **ceder o canal por 10 min** (29.76): com dois processos do mesmo `worker_id`,
+  tentar de novo pela escada faria os dois se derrubarem a cada espera, e sair não adianta (a tarefa `farm-agente`
+  religa em 1 min). Se o outro processo sumiu, ele volta sozinho; se não, a troca vira uma a cada 10 min, com o motivo
+  no log. Quem perde o canal **não age em aparelho**: o que estava em voo é cancelado no próximo ponto seguro, e o
+  desfecho (`cancelled` ou `uncertain`) vai para o diário. Se o deslocado roda código diferente do central e o que
+  assumiu roda o do central, o central fecha com o motivo `agente_defasado`: a cópia velha sai e grava
+  `agente-cedido.json` no `work_dir` com o código dela, e a tarefa que a religa encontra a marca e não conecta. A
+  marca vale só para o mesmo código e por 24 h, e o `worker-install` a apaga: a atualização sobe normalmente, e um
+  rollback para o código marcado (ou um agente manual que deslocou o da tarefa e depois foi fechado) não deixa o
+  worker sem agente para sempre. Para religar antes, apague a marca depois de conferir que não há outro agente. Um
+  verbo cancelado antes de começar (tarefa recém-criada, ou no envio do Ack) grava `cancelled` e solta o aparelho, em
+  vez de ficar "em voo" até o processo reiniciar. **Risco aceito:** se o agente ativo morrer fora da tarefa enquanto o outro espera
+  os 10 min, o worker fica até 10 min sem agente. A recusa de credencial por fechamento (4401/4403) segue na escada.
 - **Cerca (fencing):** todo despacho leva um número monotônico e o agente o devolve no resultado. Resultado com
   cerca velha — ou **sem** cerca — é recusado. E quem recusa não é só o central: o **agente** guarda a maior cerca
   já executada por aparelho (em disco, no diário) e recusa despacho de cerca que não seja MAIOR sem tocar no

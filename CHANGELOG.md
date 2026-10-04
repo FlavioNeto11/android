@@ -19,6 +19,35 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.76 (c, d, e): o agente duplicado cede o canal no 4409; aviso quando o log contradiz o uptime (branch fix/29-76-agente-e-veredito)
+
+- Revisão independente do deploy 30, achado 10: o comentário de `api.py` prometia que o agente duplicado para com o
+  4409 (conflito), mas `worker/agent.py` caía no `except` e tentava de novo, e dois processos com o mesmo
+  `worker_id` se derrubavam a cada espera (a cada 3 s na janela do 29.73). Agora o 4409 cede o canal e só tenta de novo
+  depois de 10 min (`ESPERA_NO_CONFLITO_S`); sair não resolvia, porque a tarefa `farm-agente` religa em 1 min (revisão do
+  #303). Quem perde o canal cancela o que tinha em voo e não age em aparelho. Se o deslocado é a cópia velha (código
+  diferente do central, e o novo com o do central: `motivo_do_conflito`), o central fecha com `agente_defasado` e ela
+  sai de vez, com a marca `agente-cedido.json` impedindo a volta do mesmo código. A recusa de credencial por
+  fechamento (4401/4403) segue na escada. Muda arquivo do manifesto: o deploy leva o agente.
+  Da 2ª revisão do #303: a marca vale 24 h (`VALIDADE_DA_MARCA_S`) e o `worker-install` (ps1 e sh) a apaga, para um
+  rollback ao código marcado não deixar o worker sem agente; e o cancelamento antes do `try` de `_executar` (tarefa que
+  nem começou, ou o `await` do Ack) passa por `_ao_terminar`, que grava `cancelled` e solta `_tarefas`/`_ocupados` (antes
+  o aparelho ficava "em voo" e recusava todo comando até o processo reiniciar).
+  A suspeita do 1012 está respondida pela prova real do deploy 30 ("nova tentativa em 3 s" no log do agente).
+- Achado 11: depois do veredito pelo uptime o log não era mais lido. Na medição, se o log disser que o `poc_hib` foi
+  recusado, a medição leva `log_contradiz: true` e sai um aviso, sem mudar o aparelho; como o log é bufferizado, uma
+  segunda leitura 120 s depois (mesmo boot) também avisa. Nos logs reais, as 7 recusas
+  seguiram em boot a frio.
+- Achado 12: a nota de que `load_ms` mede intervalos diferentes por `snapshot_por` vai para o código e para
+  `docs/dominios/parque.md`.
+- Prova `simulated`: `test_worker_agent.py::test_conflito_4409_cede_o_canal_pela_espera_longa_e_a_recusa_por_fechamento_segue_a_escada`,
+  `test_wake_relogio_do_snapshot.py::test_log_que_contradiz_o_uptime_avisa_sem_mudar_o_aparelho` e
+  `::test_log_que_contradiz_depois_da_medicao_avisa_na_segunda_leitura`,
+  `test_worker_agent.py::test_deslocado_cancela_o_verbo_em_voo_e_nao_age_mais_no_aparelho`,
+  `::test_copia_defasada_sai_e_nao_volta_ate_atualizar`, `::test_motivo_do_conflito_so_diz_defasado_com_certeza`,
+  `::test_cancelamento_antes_de_comecar_grava_cancelled_e_solta_o_aparelho`, `::test_marca_de_cedido_vence_em_24_horas`
+  e `::test_a_instalacao_apaga_a_marca_de_cedido`, com mutação conferida. Real: `not_run`.
+
 ## 2026-10-04 — 29.73: o agente reconecta rápido depois do reinício do central (branch fix/29-73-reconexao-rapida)
 
 - Deploy 28: o central fechou o canal com 1012 (service restart) às 15:59:17Z e voltou às 16:00:33Z; a escada do

@@ -19,6 +19,7 @@ import secrets
 from typing import Any, Awaitable, Callable
 
 from ..commands.states import COMMAND_OPEN
+from ..contracts.worker.protocol import FECHAMENTO_MOTIVO_DEFASADO
 from ..db import Database, Row, dumps, loads
 from ..metricas import metricas
 from ..models import WorkerDTO
@@ -226,6 +227,16 @@ class WorkerError(RuntimeError):
     def __init__(self, code: str, message: str):
         super().__init__(message)
         self.code, self.message = code, message
+
+
+def motivo_do_conflito(do_central: str | None, do_deslocado: str | None, do_novo: str | None) -> str:
+    """O motivo do fechamento 4409 da conexão deslocada (29.76). `agente_defasado` só com certeza: o deslocado roda
+    código diferente do central E o que assumiu roda o do central (a cópia velha de uma atualização). Qualquer
+    dúvida (código desconhecido, os dois iguais, os dois diferentes do central) é o motivo vazio: o deslocado só cede
+    o canal por um tempo, nunca sai de vez."""
+    if do_central and do_deslocado and do_deslocado != do_central and do_novo == do_central:
+        return FECHAMENTO_MOTIVO_DEFASADO
+    return ""
 
 
 class WorkerLink:

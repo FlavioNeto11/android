@@ -31,6 +31,11 @@ MARCA_DE_FILA = "na fila de boot"
 #: antigo o lê como a recusa de sempre. `data["last_fence"]` leva a maior cerca que o agente já executou.
 RECUSA_CERCA_NAO_MAIOR = "fence_not_newer"
 
+#: Motivo do fechamento 4409 (29.76) quando a conexão deslocada roda código de agente DIFERENTE do central e a que
+#: assumiu roda o do central: é a cópia velha que sobrou de uma atualização. Ela não volta (marca no `work_dir`); sem
+#: este motivo, o deslocado é do mesmo código e só cede o canal por um tempo.
+FECHAMENTO_MOTIVO_DEFASADO = "agente_defasado"
+
 #: Versão do contrato. O central recusa worker de versão maior que a dele — é melhor recusar do que agir com
 #: mensagens que não se entende. Worker MENOR é aceito enquanto o campo que falta tiver padrão.
 PROTOCOL_VERSION = 1
