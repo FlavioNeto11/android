@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-354 de 415 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+357 de 415 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -328,11 +328,11 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.54 | implemented | real | sonnet | — | Real em 03/10/2026, maquina central WIN-7S2UASNLFOP, checkout 4ad5f8b6 (codigo do 2264843e, deploy 15): hostname em server.public_hosts as 21:35:02Z, central reiniciado as 21:46:56Z, /api/health local ok sem exposicao_p… |  |
 | 29.55 | implemented | real | claude-opus-5-5 | — | real 04/10/2026 00:04:53Z-00:06:03Z, notebook worker-lan-01 (192.168.1.11), commit 3b5355ce (deploy 16, agente 0.1.0+3b5355c): dump do incidente posto em C:\Users\Administrator\AppData\Local\Temp\AndroidEmulator\emu-cra… |  |
 | 29.56 | implemented | real | claude-opus-5-5 | — | real 04/10/2026, central WIN-7S2UASNLFOP em 0b7c2c39 (deploy 17, suíte 17; PR #185 656d8bce + 3e05f037): prova de fora pela orquestradora às 01:15Z por https://dev.nvit.com.br — 8 pedidos com Bearer inventado em /api/in… |  |
-| 29.57 | pendente | — | — | — |  |  |
+| 29.57 | implemented | simulated | claude-opus-5-5 | — | PR #197 (branch feat/29-57-nome-ana, [skip ci]), sem migração. REGRA_DE_IDENTIDADE em contracts/identidade.py nos três planejadores e no assistente do comando; ator, verificador e escritor social com hash igual. Painel:… | None |
 | 29.58 | implemented | real | claude-opus-5-5 | — | real 04/10/2026 00:01:08Z-00:01:56Z, central WIN-7S2UASNLFOP, commit 3b5355ce (deploy 16): execução r-20261004000108-fee44f no android-10 (QA Messenger, sem conta) com o comando da 5f2de5 -> completed, 6 etapas succeede… |  |
-| 29.59 | pendente | — | — | — |  |  |
+| 29.59 | implemented | real | claude-opus-5-5 | — | PR #195 (branch fix/29-59-agente-defasado-por-codigo, [skip ci]), sem migração. version.codigo_do_agente (sha256 do pacote do agente pelo manifesto; no worker, pelo app/ montado; sem BUILD_VERSION/__pycache__/.pyc; CRLF… | None |
 | 29.60 | implemented | simulated | claude-opus-5-5 | — | PR #193 (9175e09f), suíte 18, deploy 18 (f1651ec8). simulated: frontend/src/features/runs/ResumoDaExecucao.test.tsx (linha 'Efeito repetido' no resumo com título, aparelho, 'apareceu N vezes' e 'contado na tela pelo ver… |  |
-| 29.61 | pendente | — | — | — |  |  |
+| 29.61 | partial | real | claude-fable-5-1 | — | PR #194, na main pela suíte 19 (c683ab0e) e no ar no deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). simulated: front 1475 passed na suíte 19, com os testes do aviso e da seleção. real, conferido pela orquestradora no p… | O aviso de rota desconhecida não aparece no central: falta achar por que o estado rotaDesconhecida não chega à tela (suspeita: é limpo quando a rota atual é re… |
 | 29.62 | implemented | real | opus | — | PR #184 (3cc8c1aa, com a revisao da Android: a 2a chave lida uma vez e o mesmo inteiro no lock e no unlock), na main pela suite 17 e no ar no deploy 17 (0b7c2c39, 01:14:31Z de 04/10; o backend do central subiu migrando… |  |
 | 29.63 | pendente | — | — | — |  |  |
 | 29.64 | implemented | simulated | claude-opus-5-5 | — | PR #191 (b8cb3f5c + e840d668, revisão da orquestradora 01:31Z), suíte 18, deploy 18 (f1651ec8). simulated: backend/tests/test_retoque_no_login.py (16: toque ignorado com formulário intacto ganha UM re-toque sem redigita… |  |
@@ -416,13 +416,13 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.29 | pendente | — | — | — |  |  |
 | 32.1 | implemented | not_run | opus (sessão jev, executora da orquestradora) | — | Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env,… |  |
 | 32.2 | implemented | real | opus | — | 04/10, central (WIN-7S2UASNLFOP). Etapa 0: dono sim (Telegram msg 134, 00:05Z), TRELLO_API_KEY/TOKEN/API_SECRET presentes (EnvSettings, só presença). Etapa 1 (só leitura, 8c6fbd5f): /status do dono action 6ac19fd56ade9f… | None |
-| 32.4 | pendente | — | — | — |  |  |
+| 32.4 | implemented | simulated | claude-fable-5-1 | — | PR #196 (cdad8422), na main pela suíte 19 (c683ab0e) e no ar no deploy 19 (04/10/2026 03:05Z). O link do painel nos cartões do espelho do Trello só leva identificador que casa por inteiro com a lista de permissão (execu… |  |
 | T.1 | implemented | not_run | opus | ok | docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, rea… | Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de produca… |
 | T.2 | partial | simulated | sessao | — | backend/app/devices/manager.py:1558 (desvio io_factory de stop_instance removido; caminho real com backend.save_snapshot em :1603 e process_alive em :852 exercitado pelo aparelho falso); manager.py:1345-1368 (_boot fals… | Continuam de fora do achado #165: o veredito do snapshot durante o boot (_snapshot_verdict) sem teste proprio; worker/executor.py nao unificado com EmulatorBac… |
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (61): 8.3, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 28.16, 28.17, 28.18, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 29.53, 29.57, 29.59, 29.61, 29.63, 30.18, 30.31, 30.34, 30.36, 30.37, 30.38, 30.45, 31.10, 31.11, 31.12, 31.21, 31.26, 31.27, 31.28, 31.29, 32.4, T.2
+Pendentes (58): 8.3, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 28.16, 28.17, 28.18, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 29.53, 29.61, 29.63, 30.18, 30.31, 30.34, 30.36, 30.37, 30.38, 30.45, 31.10, 31.11, 31.12, 31.21, 31.26, 31.27, 31.28, 31.29, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

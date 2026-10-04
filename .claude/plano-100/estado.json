@@ -6745,6 +6745,58 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-04T02:35:26+00:00"
+  },
+  "29.61": {
+   "id": "29.61",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "PR #194, na main pela suíte 19 (c683ab0e) e no ar no deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). simulated: front 1475 passed na suíte 19, com os testes do aviso e da seleção. real, conferido pela orquestradora no painel local do central às 03:10Z (navegador embutido, bundle index-CsKdzKDQ.js, que contém o texto do aviso): (a) Execuções sem id no link abriu a execução mais recente da lista (r-20261004013429-72c696): ok; (b) trocar o endereço para uma rota que não existe (#/rota-que-nao-existe) devolveu o endereço à tela atual, mas o aviso 'Este endereço não existe no painel' NÃO apareceu (nenhum elemento com role=alert, texto ausente do corpo), em três tentativas.",
+   "blocker": "O aviso de rota desconhecida não aparece no central: falta achar por que o estado rotaDesconhecida não chega à tela (suspeita: é limpo quando a rota atual é reaplicada). Correção e nova conferência no navegador.",
+   "grupo": "orquestradora-deploy19",
+   "modelo": "claude-fable-5-1",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T03:08:57+00:00"
+  },
+  "29.59": {
+   "id": "29.59",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "PR #195 (branch fix/29-59-agente-defasado-por-codigo, [skip ci]), sem migração. version.codigo_do_agente (sha256 do pacote do agente pelo manifesto; no worker, pelo app/ montado; sem BUILD_VERSION/__pycache__/.pyc; CRLF normalizado); Hello.agent_code opcional (esquema congelado atualizado com checklist); registry compara impressões e cai na versão para agente antigo. simulated: backend/tests/test_pacote_do_agente.py (simetria checkout x cópia do instalador; código só do central não muda; uma linha no agente muda), test_workers.py (3 novos), test_contratos_do_worker.py; 657 passed nos testes de worker e contrato. Real not_run: depois do deploy o agente do notebook aparece defasado até agente14.sh <sha> real (correto: version.py está no pacote). Suíte 19 e deploy 19 (c683ab0e, 03:05Z). Real (04/10 03:05:50Z, central WIN-7S2UASNLFOP, commit c683ab0e): o agente do notebook atualizado por agente14.sh reconectou como 0.1.0+c683ab0 com agent_outdated=false; antes da atualização, com agente f1651ec (sem agent_code), o selo seguia a regra da versão (true). Sobras .orig/.swp/~ fora da impressão.",
+   "blocker": null,
+   "grupo": "android-fila19",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T03:08:57+00:00"
+  },
+  "29.57": {
+   "id": "29.57",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #197 (branch feat/29-57-nome-ana, [skip ci]), sem migração. REGRA_DE_IDENTIDADE em contracts/identidade.py nos três planejadores e no assistente do comando; ator, verificador e escritor social com hash igual. Painel: lib/identidade.ts na prévia, perguntas e recusas. simulated: backend/tests/test_identidade_da_ia.py (regra nos 4 prompts que falam com a pessoa; nem regra, nem nome, nem apresentação no SOCIAL/ACTOR/VERIFIER; app/social/ não importa a identidade; painel com o mesmo nome), test_prompts_licoes.py (hashes dos planejadores atualizados de propósito), ProfileDetail.test.tsx (recusa com o nome); 1941 passed nos afetados do backend, front 273 passed nos afetados e typecheck limpo. Real not_run (sem chamada paga). Suíte 19 e deploy 19 (c683ab0e, 03:05Z). Hash congelado também do multiapp e das 2 variantes _CURTO (com a regra).",
+   "blocker": null,
+   "grupo": "android-fila19",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T03:08:57+00:00"
+  },
+  "32.4": {
+   "id": "32.4",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #196 (cdad8422), na main pela suíte 19 (c683ab0e) e no ar no deploy 19 (04/10/2026 03:05Z). O link do painel nos cartões do espelho do Trello só leva identificador que casa por inteiro com a lista de permissão (execução r-<14 dígitos>-<6 hex>, pedido ped_<22>, receita:<número>, fluxo:<hex de 8 ou mais ou f<número>>); o resto abre só a tela. simulated: testes do espelho (105 passed, com slug de uma palavra, curto e com número, e os ids reais); leitura independente do diff antes da troca. real: not_run (sem cartão novo do espelho depois do deploy 19 na hora do registro).",
+   "blocker": "",
+   "grupo": "orquestradora-deploy19",
+   "modelo": "claude-fable-5-1",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T03:08:57+00:00"
   }
  },
  "rodadas": [
@@ -8459,6 +8511,27 @@
    ],
    "grupos": [
     "android-suite18"
+   ]
+  },
+  {
+   "quando": "2026-10-04T03:08:57+00:00",
+   "itens": [
+    "29.61",
+    "29.59",
+    "29.57"
+   ],
+   "grupos": [
+    "android-fila19"
+   ]
+  },
+  {
+   "quando": "2026-10-04T03:08:57+00:00",
+   "itens": [
+    "29.61",
+    "32.4"
+   ],
+   "grupos": [
+    "orquestradora-deploy19"
    ]
   }
  ]
