@@ -127,6 +127,15 @@ a { color: var(--acento-forte); text-underline-offset: 3px; }
 .abertura h1 { font-size: clamp(2rem, 6.2vw, 3.5rem); font-weight: 800; margin-bottom: .45em; }
 .lide { font-size: 1.1rem; color: var(--texto-2); max-width: 38em; }
 .acoes { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+.triade { display: flex; flex-wrap: wrap; gap: 8px 0; margin-top: 28px; color: var(--texto-2); font-size: 1rem; }
+.triade li { display: flex; align-items: center; }
+.triade li + li::before { content: ""; width: 22px; height: 1px; margin: 0 12px; background: var(--acento); }
+.triade b { color: var(--texto); font-weight: 650; }
+.triade li:last-child b { color: var(--acento); }
+@media (max-width: 559px) {
+  .triade { flex-direction: column; gap: 6px; padding-left: 14px; border-left: 2px solid var(--acento); }
+  .triade li + li::before { display: none; }
+}
 @media (min-width: 980px) {
   .abertura { padding: 96px 0 56px; }
   .abertura-grade { grid-template-columns: 1.15fr 1fr; gap: 64px; }
@@ -196,6 +205,12 @@ a { color: var(--acento-forte); text-underline-offset: 3px; }
 .cabeca { max-width: 46em; margin-bottom: 40px; }
 .cabeca-centro { margin-left: auto; margin-right: auto; text-align: center; }
 .cabeca-lide { font-size: 1.08rem; color: var(--tinta-2); margin: 0; }
+.setores { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 22px; }
+.setores li {
+  padding: 6px 14px; border-radius: 999px; font-size: .9rem; font-weight: 600; color: var(--tinta);
+  background: #fff; border: 1px solid var(--linha);
+}
+.setores li:last-child { background: var(--tinta); border-color: var(--tinta); color: #fff; }
 .secao-escura .cabeca-lide { color: var(--texto-2); }
 .secao-escura a { color: var(--acento); }
 
