@@ -173,6 +173,20 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   no lugar de um `wait_for` pago.
 - Liga só depois do A/B com teto (US$ 1,00, aparelho de teste, navegação só de leitura; adota com sucesso igual e
   >= 30 % menos decisões). Prova: `simulated` (`backend/tests/test_acoes_encadeadas.py`).
+## 2026-10-04 — 29.66: abis, verbos e renderizador param de alternar a cada reinício do backend (branch fix/29-66-fontes-que-alternam, sobre o 14.13)
+
+- Diagnóstico (central, leitura só): 1108 de 1114 trocas de `abis`, `supported_verbs` e `renderer` nos aparelhos do
+  worker caíam em horas de reinício do backend ou de reconexão do worker, cerca de 22 por reinício.
+- `abis`: o aparelho vence. `registrar_capacidades(observado=True)` vem só da leitura pelo ADB; a declaração do
+  worker e o AVD local só preenchem abis vazio.
+- Janela do seed antes do `hello` (aparelho com `worker_id`, worker desconectado): verbos e renderizador valem, na
+  comparação do `publish`, o último DTO gravado, lido do log uma vez por aparelho depois do reinício. O painel recebe o
+  DTO real. `gles`/`vulkan` nulos não apagam o valor sondado.
+- `docs/banco.md`: a regra nova das suítes (pausa de reparo nos aparelhos de conta real e nenhum objetivo de conta
+  real da SQLite ao fim do PG).
+- Prova `simulated`: `backend/tests/test_fontes_que_alternam.py` (4); 365 passados nos testes de capacidades, verbos
+  e renderizador. Real: `not_run` até o deploy; a medida é contar as trocas por reinício.
+
 ## 2026-10-04 — 14.13: o DTO do aparelho só vai ao log quando conta um fato; índices de tempo (branch feat/14-13-telemetria-fora-da-auditoria, migração 094)
 
 - Medido no central (24 h, leitura só): 7383 `instance.updated` por dia, o dobro do que o plano supunha. ~2550 eram

@@ -335,6 +335,10 @@ pela regra de saúde. Desde então o portão é este:
   importam um módulo alterado, ou passam pela API quando `api.py` muda. Roda com `-n 8`, em prioridade Idle, com o
   esquema do worker ligado. Exemplos: 436 e 2729 testes nas suítes 14 e 15; 4306 em 183 arquivos na 18; 2823 em 164
   arquivos na 19.
+- **Aparelho de conta real não trabalha durante a suíte** (regra da orquestradora a partir da suíte 24): pausa de
+  reparo em 01/03/06/13 do início da SQLite até o PG fechar (TTL renovado se preciso), e nenhuma frente roda
+  objetivo de conta real nessa janela. Na suíte 23 a SQLite com `-n 8`, mesmo em Idle, deixou o convidado do 06 com
+  load 52 e irq 0,50 em 2 vCPU (04/10, 09:52Z a 10:01Z).
 - **O farm-pg sobe só na vez da suíte e para logo depois.** Ao subir, ele faz cerca de 2 min de recuperação com
   `fsync`. Espere a primeira conexão aceita antes do pytest: a primeira rodada da suíte 18 deu 1913 erros "the
   database system is starting up".
