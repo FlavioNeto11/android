@@ -441,7 +441,8 @@ class RunService:
             (str(r["id"]), str(r["display_name"] or " ".join(x for x in (r["first_name"], r["last_name"]) if x)
                                or (f"@{r['username']}" if r["username"] else r["id"])))
             for r in db.query("SELECT id, username, first_name, last_name, display_name FROM instagram_profiles"))
-        return Mundo(vinculos, aptos, prontas, self._desempatar, nomes, sem_conta)
+        ligados = frozenset(iid for iid, rt in self.devices.devices.items() if rt.state == InstanceState.online)
+        return Mundo(vinculos, aptos, prontas, self._desempatar, nomes, sem_conta, ligados)
 
     def _desempatar(self, candidatos: Sequence[str]) -> str | None:
         """Entre aparelhos igualmente bons de uma persona: o balanceamento de sempre (carga do servidor, ligado

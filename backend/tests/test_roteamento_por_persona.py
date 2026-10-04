@@ -84,12 +84,34 @@ def test_e_one_prefere_o_aparelho_com_sessao_pronta_e_o_balanceamento_desempata(
     assert alvos(p) == [("android-01", "andre", "vinculo")]
     # Sessão pronta só no android-02: é lá, mesmo não sendo o principal.
     assert alvos(p, m=mundo(prontas=frozenset({("andre", "android-02")}))) == [("android-02", "andre", "vinculo")]
-    # Sessão pronta nos dois: o balanceamento decide (o desempate de teste pega o último).
+    # Sessão pronta nos dois: o principal (29.65). Antes o balanceamento decidia, e a mesma persona ia ora a um
+    # aparelho, ora a outro (o desempate de teste pega o último, que NÃO é o principal: prova que não foi ele).
     ambos = frozenset({("andre", "android-01"), ("andre", "android-02")})
-    assert alvos(p, m=mundo(prontas=ambos)) == [("android-02", "andre", "balanceamento")]
+    assert alvos(p, m=mundo(prontas=ambos)) == [("android-01", "andre", "vinculo")]
     # Sessão pronta num aparelho que não está apto não conta; o principal fora de ar cede ao apto.
     assert alvos(p, m=mundo(aptos=frozenset({"android-02"}), prontas=frozenset({("andre", "android-01")}))) == [
         ("android-02", "andre", "vinculo")]
+
+
+def test_e_entre_secundarios_com_sessao_o_balanceamento_ainda_desempata() -> None:
+    """29.65: a preferência é pelo principal, não por um secundário qualquer. Principal sem sessão e dois secundários
+    com sessão: quem decide continua sendo o balanceamento."""
+    vinculos = (*VINCULOS, Vinculo("andre", "android-04", frozenset({"instagram"}), False))
+    m = Mundo(vinculos, TODOS, frozenset({("andre", "android-02"), ("andre", "android-04")}), _ultimo,
+              (("andre", "André"),))
+    assert alvos(PedidoDeAlvos(profile_ids=("andre",)), m=m) == [("android-04", "andre", "balanceamento")]
+
+
+def test_e_principal_desligado_com_sessao_cede_ao_secundario_ligado() -> None:
+    """29.65: preferir o principal não acorda aparelho à toa. Desligado, com o secundário ligado e com sessão, quem
+    decide é o balanceamento; ligado, ganha o principal."""
+    ambos = frozenset({("andre", "android-01"), ("andre", "android-02")})
+    p = PedidoDeAlvos(profile_ids=("andre",))
+    so_o_02 = Mundo(VINCULOS, TODOS, ambos, _ultimo, (("andre", "André"),), ligados=frozenset({"android-02"}))
+    assert alvos(p, m=so_o_02) == [("android-02", "andre", "balanceamento")]
+    os_dois = Mundo(VINCULOS, TODOS, ambos, _ultimo, (("andre", "André"),),
+                    ligados=frozenset({"android-01", "android-02"}))
+    assert alvos(p, m=os_dois) == [("android-01", "andre", "vinculo")]
 
 
 def test_f_primary_e_g_all() -> None:

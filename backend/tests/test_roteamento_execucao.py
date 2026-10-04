@@ -66,16 +66,18 @@ async def test_persona_em_dois_aparelhos_one_prefere_sessao_e_ligado_all_cria_do
     # Sessão pronta só no android-02: lá, mesmo não sendo o principal.
     _pronta(harness, andre, "android-02")
     assert _previa(harness, profile_ids=[andre]) == [("android-02", andre, "vinculo")]
-    # Sessão pronta nos dois: o balanceamento escolhe o LIGADO.
+    # Sessão pronta nos dois e os dois ligados: o principal (29.65). O principal desligado cede ao secundário
+    # ligado, pelo balanceamento (que escolhe o LIGADO): preferir o principal não pode acordar aparelho à toa.
     _pronta(harness, andre, "android-01")
     r1, r2 = st.devices.get("android-01"), st.devices.get("android-02")
     await harness.wait(lambda: r1.state == InstanceState.online and r2.state == InstanceState.online,
                        what="aparelhos online")
     try:
+        assert _previa(harness, profile_ids=[andre]) == [("android-01", andre, "vinculo")]
         r1.state = InstanceState.stopped
         assert _previa(harness, profile_ids=[andre]) == [("android-02", andre, "balanceamento")]
         r1.state, r2.state = InstanceState.online, InstanceState.stopped
-        assert _previa(harness, profile_ids=[andre]) == [("android-01", andre, "balanceamento")]
+        assert _previa(harness, profile_ids=[andre]) == [("android-01", andre, "vinculo")]
     finally:
         r1.state = r2.state = InstanceState.online
     # `primary` ignora a sessão e vai no principal; `all` pega os dois.
