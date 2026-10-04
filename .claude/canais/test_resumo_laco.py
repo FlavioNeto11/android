@@ -130,6 +130,45 @@ def test_eventos_nao_curados_ja_contados_nao_se_repetem(monkeypatch: pytest.Monk
     assert r.ler_estado(AGORA, ja_contado=15)["nao_curados"] == 0
 
 
+def test_eventos_nas_duas_formas_misturadas_contam(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    eventos = tmp_path / "eventos.md"
+    eventos.write_text("\n".join([
+        "# Eventos",
+        "",
+        "04/10 12:13Z | Android | Funil | fato de tabela | Feito",
+        "- 16:36Z (04/10) orquestradora: fato em lista",
+        "  continuação solta de um fato, sem hora: não conta",
+        "04/10 17:00Z | Jev | 31.39 | outra tabela | Feito",
+        "- 9:05Z (05/10) orquestradora: hora de um dígito",
+        "- item de lista sem hora: não conta",
+    ]), encoding="utf-8")
+    monkeypatch.setattr(r, "EVENTOS", eventos)
+    assert len(r._linhas_de_fato()) == 4
+    assert r._nao_curados(0) == (4, "04/10 12:13Z")
+    assert r._nao_curados(1) == (3, "16:36Z")                   # o primeiro não curado é da forma em lista
+    assert r._nao_curados(3) == (1, "9:05Z")
+    assert r._nao_curados(4) == (0, "")
+
+
+def test_cabecalho_separador_e_prosa_com_barra_nao_contam(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Revisão do #327: só a linha de tabela que começa pela hora é fato; o texto livre nunca vira a hora do resumo."""
+    eventos = tmp_path / "eventos.md"
+    eventos.write_text("\n".join([
+        "| Hora | Frente | Item | O que mudou | Lista |",
+        "|---|---|---|---|---|",
+        "prosa solta com a | no meio, segredo de ninguém",
+        "18:36Z | Orquestradora | 28.31 | fato sem data | Feito",
+        "- 10:00Z (04/10) x | y",
+        "04/10 08:14Z | Jev | 31.39 | fato com data | Feito",
+    ]), encoding="utf-8")
+    monkeypatch.setattr(r, "EVENTOS", eventos)
+    assert len(r._linhas_de_fato()) == 3
+    assert r._nao_curados(0) == (3, "18:36Z")
+    assert r._nao_curados(1) == (2, "10:00Z")                   # lista com "|": um fato só, a hora da lista
+    assert r._nao_curados(2) == (1, "04/10 08:14Z")
+    assert r._hora_do_fato("prosa | com barra") == "" and r._hora_do_fato("12:00Z texto | x") == ""
+
+
 @pytest.mark.parametrize(("entrada", "marcador"), [
     ("escreva para fulano.tal@exemplo.com.br hoje", "[e-mail]"),
     ("ligue +55 (11) 98765-4321", "[telefone]"),
