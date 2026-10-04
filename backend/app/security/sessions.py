@@ -165,33 +165,55 @@ class PanelSessions:
 
 
 class PortaoDeLogin:
-    """Trava de força bruta do `POST /api/login`, na memória do processo.
+    """Trava de força bruta do `POST /api/login` e do Bearer em `/api/*`, na memória do processo, POR CLIENTE.
 
     Na memória e não no banco de propósito: o que ela protege é o `API_TOKEN`, e quem tenta adivinhá-lo fala com
     UM processo. Persistir isso traria escrita no banco a cada tentativa errada — que é exatamente o que um
     atacante consegue provocar de graça.
+
+    Por cliente (29.56): a trava era uma só para o processo, e pelo túnel todo par é `127.0.0.1`; oito chutes de
+    qualquer pessoa na internet trancavam o login de fora do dono. A chave vem de `security.access.cliente_de`.
+    Sem teto global de propósito: ele devolveria o mesmo defeito por outra porta (quem tem dez IPs tranca todos),
+    e contra quem tem muitos IPs a defesa é a entropia do `API_TOKEN` e o limite de taxa da borda.
     """
+
+    #: Quantos clientes o portão acompanha. Um atacante que troca de IP a cada chute não pode crescer a memória sem
+    #: limite: passou disto, saem primeiro as chaves sem bloqueio vigente, das mais antigas para as mais novas.
+    MAX_CLIENTES = 4096
 
     def __init__(self, *, limite: int = 8, janela_s: float = 60.0, bloqueio_s: float = 60.0) -> None:
         self.limite = limite
         self.janela_s = janela_s
         self.bloqueio_s = bloqueio_s
-        self._falhas: list[float] = []
-        self._bloqueado_ate = 0.0
+        # cliente → (instantes das falhas na janela, bloqueado até). A ordem de inserção é a da última falha.
+        self._clientes: dict[str, tuple[list[float], float]] = {}
 
-    def segundos_de_espera(self, agora: float) -> float:
-        """Quanto falta para poder tentar de novo. `0` quando o portão está aberto."""
-        return max(0.0, self._bloqueado_ate - agora)
+    def segundos_de_espera(self, agora: float, cliente: str = "") -> float:
+        """Quanto falta para ESTE cliente poder tentar de novo. `0` quando o portão está aberto para ele."""
+        estado = self._clientes.get(cliente)
+        return max(0.0, estado[1] - agora) if estado else 0.0
 
-    def registrar_falha(self, agora: float) -> None:
-        self._falhas = [t for t in self._falhas if agora - t < self.janela_s]
-        self._falhas.append(agora)
-        if len(self._falhas) >= self.limite:
-            self._bloqueado_ate = agora + self.bloqueio_s
-            self._falhas.clear()
-            log.warning("login do painel bloqueado por %.0f s depois de %d tentativas inválidas",
-                        self.bloqueio_s, self.limite)
+    def registrar_falha(self, agora: float, cliente: str = "") -> None:
+        falhas, ate = self._clientes.pop(cliente, ([], 0.0))
+        falhas = [t for t in falhas if agora - t < self.janela_s]
+        falhas.append(agora)
+        if len(falhas) >= self.limite:
+            ate = agora + self.bloqueio_s
+            falhas = []
+            # O cliente vai no log (é um IP, não um segredo): é o que diz ao dono de onde vieram os chutes.
+            log.warning("login do painel bloqueado por %.0f s para %s depois de %d tentativas inválidas",
+                        self.bloqueio_s, cliente or "o processo", self.limite)
+        self._clientes[cliente] = (falhas, ate)
+        if len(self._clientes) > self.MAX_CLIENTES:
+            self._podar(agora)
 
-    def registrar_acerto(self) -> None:
-        self._falhas.clear()
-        self._bloqueado_ate = 0.0
+    def registrar_acerto(self, cliente: str = "") -> None:
+        self._clientes.pop(cliente, None)
+
+    def _podar(self, agora: float) -> None:
+        for chave in [c for c, (_, ate) in self._clientes.items() if ate <= agora]:
+            if len(self._clientes) <= self.MAX_CLIENTES:
+                return
+            del self._clientes[chave]
+        while len(self._clientes) > self.MAX_CLIENTES:
+            del self._clientes[next(iter(self._clientes))]

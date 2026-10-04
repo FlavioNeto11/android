@@ -971,6 +971,17 @@ painel só funcionava aberto na própria máquina central.
   O painel para de tentar nesses dois códigos e mostra o login — antes ficaria em backoff para sempre.
 - **Força bruta:** `POST /api/login` trava por 60 s depois de 8 tentativas inválidas em 1 min (`429
   too_many_attempts`), e a recusa é sempre `401 invalid_credentials`, sem dizer o que estava errado.
+  - **Por cliente (29.56).** A trava é de quem errou, não do processo. Pelo túnel o par é sempre `127.0.0.1`, e o
+    cliente é o `CF-Connecting-IP` só quando valem juntos: par loopback, `server.tls_behind_proxy: true` e `Host`
+    em `public_hosts` (`security.access.cliente_de`). Par da rede vale pelo próprio endereço; o acesso local (par e
+    nome de loopback) nunca entra na trava.
+  - **O Bearer conta (29.56).** Um `Authorization` errado em `/api/*` que termina em `401` é um chute do mesmo
+    cliente; bloqueado, qualquer `/api/*` com `Authorization` responde `429 too_many_attempts`, mesmo com o token
+    certo. A sessão por cookie segue valendo. `401` sem `Authorization` (painel antes do login) não conta.
+  - O `429` leva `Retry-After` (segundos) e `detail.retry_after_s`. O `429` em HTML do limite de taxa da borda
+    (Cloudflare) vira, no painel, `rate_limited` com "espere 10 segundos" quando falta o `Retry-After`.
+- **Cabeçalhos de segurança (29.56):** toda resposta leva `X-Frame-Options: DENY`, `X-Content-Type-Options:
+  nosniff` e `Referrer-Policy: same-origin`.
 
 **Identidade na auditoria.** `commands.requested_by` e `pending_approvals.decided_by` passam a gravar o operador
 da sessão, e **o nome do corpo da requisição não vence o da sessão** — `requested_by` no corpo era, até aqui, o

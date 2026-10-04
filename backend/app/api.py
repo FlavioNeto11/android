@@ -249,24 +249,28 @@ async def login(request: Request, response: Response, body: LoginBody) -> Any:
     s = st(request)
     agora = monotonic()
     exige = bool(getattr(request.state, "credencial_exigida", False))
+    # 29.56: a trava é por cliente (`security.access.cliente_de`); o middleware já calculou a chave.
+    cliente = str(getattr(request.state, "cliente", ""))
     if exige:
         # A trava só vale para quem apresenta segredo. Fora do `if`, oito chutes vindos da rede trancariam
         # também o login do loopback — que não usa token nenhum —, e aí o ataque não rouba nada: derruba.
-        if (espera := s.portao_de_login.segundos_de_espera(agora)) > 0:
-            raise err(429, "too_many_attempts",
-                      f"Tentativas de login demais. Espere {int(espera) + 1} s e tente de novo.")
+        if (espera := s.portao_de_login.segundos_de_espera(agora, cliente)) > 0:
+            raise HTTPException(status_code=429, headers={"Retry-After": str(int(espera) + 1)},
+                                detail={"code": "too_many_attempts", "retry_after_s": int(espera) + 1,
+                                        "message": f"Tentativas de login demais. Espere {int(espera) + 1} s e tente "
+                                                   "de novo."})
         recebido = body.token.get_secret_value() if body.token else ""
         # `token_ok` compara em tempo constante e só aceita o esquema Bearer; reaproveitá-lo é o que impede a
         # comparação ingênua de voltar por esta porta.
         if not acesso.token_ok(f"Bearer {recebido}", s.cfg.api_token):
-            s.portao_de_login.registrar_falha(agora)
+            s.portao_de_login.registrar_falha(agora, cliente)
             # Sem dizer o que estava errado: nome inexistente e token errado devolvem a MESMA coisa.
             raise err(401, "invalid_credentials", "Credencial inválida.")
     try:
         token, expira = s.sessions.abrir(body.operator)
     except NomeInvalido as exc:
         raise err(422, "invalid_operator", str(exc)) from None
-    s.portao_de_login.registrar_acerto()
+    s.portao_de_login.registrar_acerto(cliente)
     _gravar_cookie(response, s, token)
     nome = normalizar_nome(body.operator)
     s.bus.emit("log", f"{nome} entrou no painel", level="info")
