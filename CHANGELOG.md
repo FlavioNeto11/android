@@ -121,6 +121,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_cache_de_1h_no_custo.py` (6). PostgreSQL: `not_run` (fica para a suíte).
   Real: `not_run`.
 
+## 2026-10-04 — 29.35: falta de informação do ator passa pela revisão determinística (branch fix/29-35-falta-de-informacao-revisa, sem migração)
+
+- Executor: `step_blocked kind=missing_info` sai com `StepOutcome.falta_de_informacao` quando a razão NÃO é credencial
+  (`TriagemDeCredencial.pergunta_sensivel`). Senha, código e 2FA seguem direto para a pessoa (ADR-009).
+- Scheduler: antes do `waiting_user`, `_revisao_cabe` (só leitura, as portas do `_try_recover`) e uma revisão com o
+  motivo `Recuperação automática (falta de informação) …`. A revisão entra no mesmo teto por objetivo, sem laço; a
+  tentativa conta como falha. Marca `MOTIVO_FALTA_DE_INFORMACAO` em `plan_versions.reason` e em `plan.revised.data.reason`
+  para Aprendizado e Jev.
+- Testes: `test_falta_de_informacao.py` (falta comum revisa e conclui, com o evento marcado; falta de senha vai à
+  pessoa sem revisão). `test_cascata_ator_barato.py` passa a esperar uma revisão antes da pessoa (`[0, 1, 0, 1]` e
+  `[0, 0]`). `test_desbravador.py`: o líder que para pede o código de verificação (credencial), não um dado comum.
+- Prova `simulated`. A meta (waiting_user do QA de 11 para no máximo 5 em 7 dias) é `not_run`.
+
 ## 2026-10-04 — 29.53: o portão de PostgreSQL de uma suíte, por escrito (branch docs/29-53-portao-pg, só docs)
 
 - `docs/banco.md` ("O portão de PostgreSQL de uma suíte") e `.claude/rules/testes.md`. Toda suíte roda PG dirigido

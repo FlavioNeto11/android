@@ -595,6 +595,21 @@ a aprovação de texto não acompanha a etapa revisada, e o erro de adb no scree
 Prova: `simulated` (`test_ui_ocupada.py`, `test_anr_sinal_proprio.py`, `test_recuperacao_preserva_estado.py`) e `real`
 em `r-20260928234657-bbdf3c` e `r-20260928235215-6eb84c` ([relatório §21](../relatorio-validacao.md)).
 
+**Falta de informação passa pela revisão antes da pessoa (29.35, RA-9).** 23 % dos objetivos paravam em
+`waiting_user`, e o "campo X não existe" do ator chegava à pessoa sem passar pela recuperação. Agora o `missing_info`
+que não é credencial (a triagem é a `TriagemDeCredencial.pergunta_sensivel` do 29.52) ganha uma revisão determinística
+do plano antes do `waiting_user`. É a mesma da recuperação automática: as mesmas portas (prova não replaneja, efeito
+disparado não se refaz, cabe no prazo) e o mesmo teto por objetivo (`MAX_PLAN_REVISIONS`). A versão leva o motivo
+`Recuperação automática (falta de informação) após '<etapa>': <razão>`, e a marca `falta de informação`
+(`MOTIVO_FALTA_DE_INFORMACAO`) sai também em `plan.revised.data.reason`, que é o contrato para Aprendizado e Jev. A
+tentativa conta como falha, não como interrupção. Na segunda falta, com o teto gasto, a pessoa entra como antes.
+A marca não é "defeito de plano": a revisão copia as etapas não comprovadas, o plano em si não muda, e por isso não
+é lição do planejador. Na medida da meta, cada `missing_info` revisado cai num de dois baldes: "tela errada" (a
+versão revisada concluiu a etapa) ou "campo que não existe" (a versão revisada voltou a relatar a falta e foi para
+a pessoa). Os dois saem de `plan_versions.reason` com a marca, cruzado com o desfecho do objetivo. Senha, código e 2FA ficam com a pessoa sem revisão (ADR-009). A subida ao tier 1 (17.10) continua acontecendo antes.
+Prova: `simulated` (`test_falta_de_informacao.py`, `test_cascata_ator_barato.py`); a meta de `waiting_user` do QA
+(de 11 para no máximo 5 em 7 dias) é `not_run`.
+
 ## Valor lido entre etapas (item 24.3, ADR-058)
 
 Um comando que atravessa apps precisa levar um dado de uma etapa à outra ("leia o assunto do último e-mail no Outlook

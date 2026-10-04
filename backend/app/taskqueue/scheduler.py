@@ -38,6 +38,11 @@ from .repository import MOTIVO_REJEICAO, RENOVAR_POSSE_S, PosseDaEtapaPerdida, R
 
 log = logging.getLogger("poc.scheduler")
 MAX_PLAN_REVISIONS = 1
+#: 29.35: a marca, no motivo da versão do plano (`plan_versions.reason` e `plan.revised.data.reason`), da revisão feita
+#: porque o ator relatou falta de informação que não é credencial. Vocabulário para Aprendizado e Jev contarem. Não é
+#: "defeito de plano" de propósito (nota da Jev): a revisão COPIA as etapas não comprovadas, o plano não muda, e a
+#: Aprendizado não pode minerar isto como lição do planejador.
+MOTIVO_FALTA_DE_INFORMACAO = "falta de informação"
 # estados que o rodízio pode ligar sob demanda
 WAKEABLE = {InstanceState.stopped, InstanceState.absent, InstanceState.hibernated}
 #: Quanto um objetivo ESPERA o worker que hospeda o aparelho dele voltar antes de parar para uma pessoa. Queda
@@ -1646,6 +1651,21 @@ class Scheduler:
         if o in (Outcome.waiting_user, Outcome.uncertain, Outcome.device_stuck) and self._prova_sem_pessoa(
                 str(obj["run_id"]), oid, step.id, attempt_id, rt, detail, kind):
             return False
+        if o == Outcome.waiting_user and out.falta_de_informacao and self._revisao_cabe(obj, step.id, step.side_effect):
+            # 29.35 (RA-9): "falta informação" que não é credencial passa pela revisão determinística antes da pessoa.
+            # Conta como falha (não devolve a tentativa): é um plano novo, não uma interrupção. A segunda vez, já com o
+            # teto de recuperação gasto, cai no `waiting_user` de baixo.
+            repo.finish_attempt(attempt_id, AttemptStatus.failed, error=detail, screen=out.tela_da_falha, error_kind=kind,
+                                recovery="Revisão do plano (falta de informação) antes de pedir a pessoa")
+            repo.transition_step(step.id, StepStatus.failed, detail=detail, level="warn", error_kind=kind)
+            rec = self._try_recover(obj, step, detail or "falta informação", app_vivo=app_vivo, falta_de_informacao=True)
+            if rec.revisou:
+                return rec.da_tela_atual
+            # Não deveria acontecer (`_revisao_cabe` acabou de conferir): sem revisão, a pessoa decide, como antes.
+            repo.set_objective(oid, ObjectiveStatus.waiting_user, detail=detail, blocked_reason=detail, needs=out.needs,
+                               level="warn", message=f"{rt.id}: bloqueado — {detail}")
+            rt.attention = f"Bloqueado: {detail}"
+            return False
         if o == Outcome.waiting_user:
             repo.refund_attempt(step.id)
             repo.finish_attempt(attempt_id, AttemptStatus.interrupted, error=detail, recovery="Aguardando o usuário",
@@ -2028,7 +2048,18 @@ class Scheduler:
                 db.execute("UPDATE steps SET bindings=?, commit_guard=?, draft_meta=? WHERE id=?",
                            (dumps(bindings) if bindings else None, dumps(guardas), rascunho, nova["id"]))
 
-    def _try_recover(self, obj: Any, step: Any, detail: str, *, app_vivo: bool | None = None) -> _Recuperacao:
+    def _revisao_cabe(self, obj: Row, step_id: str, side_effect: bool) -> bool:
+        """`_try_recover` revisaria agora? Só leitura (29.35): quem chama precisa decidir ANTES de gravar a tentativa
+        como falha ou como interrupção. As mesmas portas, na mesma ordem: prova não replaneja, efeito disparado não se
+        refaz, teto por objetivo, algo a refazer e cabe no prazo."""
+        run = self.repo.run_row(obj["run_id"])
+        if run is None or run["prova_fluxo_id"] or not self._pode_recuperar(obj["id"], step_id, side_effect):
+            return False
+        steps = self.recovery_steps(run, obj["id"])
+        return bool(steps) and self._revisao_condenada(obj["id"], run, steps) is None
+
+    def _try_recover(self, obj: Any, step: Any, detail: str, *, app_vivo: bool | None = None,
+                     falta_de_informacao: bool = False) -> _Recuperacao:
         run = self.repo.run_row(obj["run_id"])
         if run is not None and run["prova_fluxo_id"]:
             # 30.42: a prova não replaneja: um plano novo não é mais o fluxo, e a prova dele já não diria nada sobre o
@@ -2048,7 +2079,10 @@ class Scheduler:
             self.repo.decision(f"{iid}: falha em '{step.title}' ({detail}). {condenada}", run_id=obj["run_id"],
                                instance_id=iid, step_id=step.id)
             return _Recuperacao(False, motivo=condenada)
-        reason = f"Recuperação automática após falha em '{step.title}': {detail}"
+        # O prefixo "Recuperação automática" é o que o teto (`_pode_recuperar`) conta: a revisão por falta de informação
+        # (29.35) entra no MESMO teto, senão "falta informação → revisa → mesma tela" giraria sem fim.
+        reason = (f"Recuperação automática ({MOTIVO_FALTA_DE_INFORMACAO}) após '{step.title}': {detail}" if falta_de_informacao
+                  else f"Recuperação automática após falha em '{step.title}': {detail}")
         versao = self.repo.revise_plan(obj["id"], reason, steps)
         self.herdar_textos(obj["id"], versao)
         if da_tela_atual:
