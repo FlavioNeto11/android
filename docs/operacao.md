@@ -463,7 +463,7 @@ por hora (acima, a linha fica `retido` e o laço `portal-contatos` manda quando 
 - o `cliente_hash` (código do endereço de rede, nunca o IP) fica os mesmos 180 dias.
 
 **Pedido de exclusão de um contato do site** (o visitante pede pelo formulário ou por telefone).
-- **Pelo painel (29.83):** Configuração → "Site e privacidade". Busque pelo telefone com DDD, marque as linhas
+- **Pelo painel (29.83):** Configuração → "Site e privacidade". Busque pelo telefone como a pessoa escreveu (com DDD, se ela usou), marque as linhas
   (inclusive a do próprio pedido, quando ele veio pelo formulário), diga por onde o pedido chegou e confirme "Apagar
   definitivamente". Quem aperta é uma pessoa logada; o resultado lista as mensagens que ficaram para apagar à mão no
   chat. Uma linha `mantida` com `em_envio` pede outra tentativa em um minuto; com `falhou`, ver o log `poc.portal` e o

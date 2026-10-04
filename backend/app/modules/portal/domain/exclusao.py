@@ -1,8 +1,12 @@
 """Regras puras da exclusão a pedido do titular (29.83, ADR-075): como o telefone se compara e o que se aceita do pedido.
 
-A comparação é por TODOS os dígitos que o operador informou, com DDD: "os últimos 8" casava números de outros DDDs
-(revisão do procedimento manual, X2). O `55` do país é opcional dos dois lados: o visitante pode ter escrito
-`+55 (11) …` e o operador `11 …`, ou o contrário.
+A comparação é SEMPRE do número inteiro, nunca por prefixo nem pelos finais: "os últimos 8" casava números de outros
+DDDs (revisão do procedimento manual, X2). Dois jeitos de escrever o mesmo número casam:
+- o `55` do país é opcional nos números brasileiros completos (DDD + número): `+55 (11) …` e `11 …` são o mesmo;
+- o `0` da frente (o de discagem, `011 …`) sai antes de comparar.
+Fora disso (número sem DDD, internacional, comprido), vale a igualdade exata de todos os dígitos: o formulário aceita
+qualquer telefone com 8 dígitos ou mais (`campos.TELEFONE`), e a exclusão tem de achar tudo o que ele aceitou
+(revisão do #342, E1). O mínimo da busca é o mesmo mínimo do formulário, para não virar busca curta.
 """
 from __future__ import annotations
 
@@ -15,6 +19,10 @@ IDS_MAX = 50
 #: Quantos dígitos o final mostrado na lista tem: desempata homônimos sem expor o número.
 DIGITOS_DO_FINAL = 4
 
+#: O mínimo e o máximo de dígitos da busca: os do formulário (8 dígitos ou mais, em até 30 caracteres).
+DIGITOS_MIN = 8
+DIGITOS_MAX = 30
+
 _PAIS = "55"
 
 
@@ -22,18 +30,22 @@ def digitos(texto: str) -> str:
     return "".join(c for c in texto if c.isascii() and c.isdigit())
 
 
-def nacional(texto: str) -> str | None:
-    """Os dígitos do número sem o `55` do país (DDD + número, 10 ou 11 dígitos), ou `None` se não é um telefone
-    brasileiro completo. Aceita de 10 a 13 dígitos na entrada."""
-    d = digitos(texto)
+def chave_do_telefone(texto: str) -> str | None:
+    """O número na forma de comparar, ou `None` se não chega a um telefone que o formulário aceitaria. Brasileiro
+    completo vira DDD + número (sem o `55`); o resto fica com todos os dígitos, sem os zeros da frente."""
+    d = digitos(texto).lstrip("0")
+    if len(d) < DIGITOS_MIN or len(d) > DIGITOS_MAX:
+        return None
     if len(d) in (12, 13) and d.startswith(_PAIS):
-        d = d[len(_PAIS):]
-    return d if len(d) in (10, 11) else None
+        return "br:" + d[len(_PAIS):]
+    if len(d) in (10, 11):
+        return "br:" + d
+    return "num:" + d
 
 
 def mesmo_telefone(informado: str, guardado: str) -> bool:
-    """Os dois números são o mesmo, dígito a dígito, com DDD. Telefone guardado vazio (o descarte apaga) nunca casa."""
-    a, b = nacional(informado), nacional(guardado)
+    """Os dois números são o mesmo, inteiros. Telefone guardado vazio (o descarte apaga) nunca casa."""
+    a, b = chave_do_telefone(informado), chave_do_telefone(guardado)
     return a is not None and a == b
 
 

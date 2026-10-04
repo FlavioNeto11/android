@@ -19,7 +19,7 @@ from pydantic import SecretStr
 
 from app.main import create_app
 from app.modules.portal.application.exclusao import MuitasBuscas
-from app.modules.portal.domain.exclusao import final, mesmo_telefone, nacional
+from app.modules.portal.domain.exclusao import chave_do_telefone, final, mesmo_telefone
 from app.util import now
 
 from .conftest import Harness
@@ -27,10 +27,10 @@ from .conftest import Harness
 BUSCA = "/api/portal/contatos/busca"
 EXCLUIR = "/api/portal/contatos/excluir"
 SEGREDO = "tk-portal-exclusao-5c1f2a"          # token de teste, não existe fora daqui
-# Fictícios: DDD 00 e 99 não existem, e o 21 só aparece para provar que outro DDD não casa.
-TEL_A = "+55 (00) 90000-0001"
-TEL_A_OUTRA_GRAFIA = "00900000001"
-TEL_OUTRO_DDD = "(99) 90000-0001"
+# Fictícios: os DDDs 10 e 20 não existem no Brasil (e não começam com 0, que a busca tira como o de discagem).
+TEL_A = "+55 (10) 90000-0001"
+TEL_A_OUTRA_GRAFIA = "10900000001"
+TEL_OUTRO_DDD = "(20) 90000-0001"
 
 
 @dataclass(frozen=True)
@@ -91,13 +91,14 @@ def _registros(h: Harness) -> list[dict[str, object]]:
 
 
 # ------------------------------------------------------------------ domínio
-def test_telefone_compara_todos_os_digitos_com_o_55_opcional() -> None:
-    assert nacional("+55 (00) 90000-0001") == nacional("00 90000-0001") == "00900000001"
+def test_telefone_compara_o_numero_inteiro_com_o_55_e_o_0_opcionais() -> None:
+    assert chave_do_telefone("+55 (10) 90000-0001") == chave_do_telefone("10 90000-0001") == "br:10900000001"
+    assert chave_do_telefone("0 10 90000-0001") == "br:10900000001"                 # o 0 de discagem sai
     assert mesmo_telefone(TEL_A_OUTRA_GRAFIA, TEL_A)
-    assert not mesmo_telefone("00900000001", TEL_OUTRO_DDD)            # mesmos 9 finais, outro DDD
-    assert not mesmo_telefone("90000-0001", TEL_A)                     # sem DDD não é telefone completo
+    assert not mesmo_telefone("10900000001", TEL_OUTRO_DDD)            # mesmos 9 finais, outro DDD
+    assert not mesmo_telefone("90000-0001", TEL_A)                     # o número inteiro, nunca os finais
     assert not mesmo_telefone(TEL_A, "")                               # o descarte apaga: nunca casa
-    assert nacional("123") is None and nacional("1" * 14) is None
+    assert chave_do_telefone("1234567") is None and chave_do_telefone("1" * 31) is None
     assert final(TEL_A) == "0001"
 
 
@@ -127,12 +128,12 @@ async def test_get_nas_rotas_nao_existe(harness: Harness) -> None:
 # ------------------------------------------------------------------ busca
 async def test_busca_mostra_so_id_data_estado_e_final(harness: Harness) -> None:
     a = _gravar(harness, TEL_A)
-    b = _gravar(harness, "00 90000 0001", estado="pendente")
+    b = _gravar(harness, "10 90000 0001", estado="pendente")
     _gravar(harness, TEL_OUTRO_DDD)
     async with _logado(harness) as c:
         r = await c.post(BUSCA, json={"telefone": TEL_A_OUTRA_GRAFIA})
-        curto = await c.post(BUSCA, json={"telefone": "90000-0001"})
-        nada = await c.post(BUSCA, json={"telefone": "(00) 91111-1111"})
+        curto = await c.post(BUSCA, json={"telefone": "9000-001"})
+        nada = await c.post(BUSCA, json={"telefone": "(10) 91111-1111"})
     assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
     contatos = r.json()["contatos"]
     assert [x["id"] for x in contatos] == [a, b]
@@ -388,3 +389,49 @@ async def test_falha_do_portal_depois_do_ok_da_canais_e_a_repeticao_resolve(harn
     assert r.status_code == 200 and r.json()["apagados"] == [a]
     assert _ids_no_banco(harness) == set() and len(_registros(harness)) == 1
     assert canais is not None and canais.chamados == [a, a]
+
+
+# ------------------------------------------------------------------ revisão do #342 (E1, E2)
+async def test_acha_e_apaga_o_que_o_formulario_aceitou_fora_do_formato_br(harness: Harness,
+                                                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    """O formulário aceita 8 dígitos ou mais; a exclusão acha tudo isso, pelo número INTEIRO (E1)."""
+    sem_ddd = _gravar(harness, "90000-0001")                          # 9 dígitos, sem DDD
+    internacional = _gravar(harness, "+1 (000) 555-0100 ramal 22")  # 13 dígitos, não começa com 55
+    comprido = _gravar(harness, "+351 000 000 000 0001")              # 16 dígitos
+    com_zero = _gravar(harness, "0 10 90000-0002")                   # o 0 de discagem
+    _canais(harness, monkeypatch, CanaisFalsa())
+    async with _logado(harness) as c:
+        achados = {}
+        for nome, tel in (("sem_ddd", "900000001"), ("internacional", "1000555010022"),
+                          ("comprido", "3510000000000001"), ("com_zero", "10 90000-0002")):
+            r = await c.post(BUSCA, json={"telefone": tel})
+            assert r.status_code == 200, (nome, r.text)
+            achados[nome] = [x["id"] for x in r.json()["contatos"]]
+        prefixo = await c.post(BUSCA, json={"telefone": "1000555"})     # 7 dígitos: abaixo do mínimo do formulário
+        parte = await c.post(BUSCA, json={"telefone": "10005550100"})   # o começo do internacional: não casa
+        r = await c.post(EXCLUIR, json={"ids": [sem_ddd, internacional, comprido, com_zero], "pedido_por": "telefone"})
+    assert achados == {"sem_ddd": [sem_ddd], "internacional": [internacional], "comprido": [comprido],
+                       "com_zero": [com_zero]}
+    assert prefixo.status_code == 422 and parte.json()["contatos"] == []
+    assert r.json()["apagados"] == [sem_ddd, internacional, comprido, com_zero] and _ids_no_banco(harness) == set()
+
+
+async def test_quem_sumiu_no_meio_nao_e_contado_como_apagado(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Outra exclusão (ou a faxina) leva a linha enquanto a Canais responde: esta não diz que apagou (E2)."""
+    assert harness.state is not None
+    st = harness.state
+    leva = _gravar(harness, TEL_A)
+    fica = _gravar(harness, TEL_A)
+
+    class CanaisQueDeixaOutroApagar(CanaisFalsa):
+        async def __call__(self, contato_id: int, agora: datetime) -> ApagadoFalso:
+            if contato_id == leva:
+                st.db.execute("DELETE FROM portal_contatos WHERE id=?", (leva,))
+            return await super().__call__(contato_id, agora)
+
+    _canais(harness, monkeypatch, CanaisQueDeixaOutroApagar())
+    async with _logado(harness) as c:
+        r = await c.post(EXCLUIR, json={"ids": [leva, fica], "pedido_por": "outro"})
+    assert r.json()["apagados"] == [fica] and r.json()["inexistentes"] == [leva]
+    [reg] = _registros(harness)
+    assert json.loads(str(reg["ids"])) == [fica]

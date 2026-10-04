@@ -5579,14 +5579,16 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
   ou a trava trocando de dono) não é resumida: aquela hora fica sem resumo.
 
 **Exclusão a pedido do titular** (item 29.83; decisões da orquestradora de 04/10, 23:20Z).
-- Na Configuração, seção "Site e privacidade": busca pelo telefone com DDD, lista só com id, data, estado e os 4
+- Na Configuração, seção "Site e privacidade": busca pelo telefone como a pessoa escreveu, lista só com id, data, estado e os 4
   dígitos finais (nome, empresa e mensagem nunca aparecem), escolha de por onde o pedido chegou e confirmação explícita
-  que diz o que SERÁ apagado (as linhas, as mensagens do bot e as respostas do dono com menos de 48 h) e o que NÃO será
+  que diz o que SERÁ apagado (as linhas, as mensagens do bot e as respostas do dono com menos de 47 h, a janela da Canais) e o que NÃO será
   (as cópias de segurança, o histórico do Telegram mais velho).
 - Rotas `POST /api/portal/contatos/busca` e `POST /api/portal/contatos/excluir` (adendo v1.42), atrás de sessão e
   com uma PESSOA nela: sem `request.state.operador`, 401, mesmo no loopback e com o Bearer (que é anônimo). Nenhuma
   automação chama. A busca é `POST` para o telefone não ir para a URL nem para o log de acesso.
-- A busca compara TODOS os dígitos informados, com DDD, com o `55` do país opcional dos dois lados. Teto de 30 buscas
+- A busca compara o número INTEIRO, nunca prefixo nem finais, de 8 a 30 dígitos (o mínimo do formulário) e sem os
+  zeros da frente: no brasileiro completo o `55` é opcional dos dois lados; fora dele (sem DDD, internacional),
+  igualdade exata de todos os dígitos. Tudo o que o formulário aceitou é achável (revisão do #342, E1). Teto de 30 buscas
   válidas por hora por operador (`portal.limites.buscas_por_operador_hora`, em memória; 429 `muitas_buscas`): a busca
   acha contatos e não pode virar varredura. Cada busca deixa no log o operador e a contagem, sem o telefone.
 - Uma falha do Portal DEPOIS do `ok` da Canais deixa a linha e o registro como estavam (a lápide já segura o aviso);
@@ -5603,7 +5605,8 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
   chegou (`formulario`, `telefone` ou `outro`, sem texto livre), os ids apagados, os mantidos com o motivo e as
   contagens de mensagens. **Sem prazo de retenção**: é a prova do atendimento, e não guarda NADA do titular (nem nome,
   nem telefone, nem hash dele, nem a mensagem); guardar uma identidade de quem pediu seria guardar o dado que ele
-  mandou apagar. O DELETE e o registro vão numa transação.
+  mandou apagar. O DELETE e o registro vão numa transação, e o registro e a resposta levam só o que aquele DELETE
+  apagou (`RETURNING`; revisão do #342, E2).
 
 **Marca pública** (o que a página diz é parte da decisão).
 - A página apresenta a **ANA** como a inteligência da SICAT que rege a presença digital de quem contrata. As **personas**

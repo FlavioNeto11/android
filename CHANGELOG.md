@@ -24,7 +24,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **O pedido:** o aviso de privacidade do site oferece a exclusão; até aqui só havia o procedimento manual. A
   orquestradora aprovou o desenho às 23:20Z (Configuração, migração 109, adendo v1.42, o lado da Canais no 28.34).
 - **O que muda:**
-  - Configuração ganha a seção "Site e privacidade" (`?aba=privacidade`): busca pelo telefone com DDD, lista só com
+  - Configuração ganha a seção "Site e privacidade" (`?aba=privacidade`): busca pelo número inteiro como a pessoa escreveu, lista só com
     id, data, estado e os 4 dígitos finais, "o pedido chegou por" sem texto livre e a confirmação com o que será e o
     que não será apagado;
   - `POST /api/portal/contatos/busca` e `POST /api/portal/contatos/excluir`, só para uma pessoa na sessão (401 sem

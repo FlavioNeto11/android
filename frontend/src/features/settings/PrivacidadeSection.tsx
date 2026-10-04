@@ -12,9 +12,11 @@ import type { Tone } from '../../lib/status';
 import { parseTs } from '../../lib/time';
 import styles from './Privacidade.module.css';
 
-/** Telefone com DDD: 10 (fixo) a 13 dígitos (celular com 55 na frente). Mesma regra da API, para nem ir à rede. */
-const MIN_DIGITOS = 10;
-const MAX_DIGITOS = 13;
+/** O telefone como a pessoa escreveu no formulário: de 8 a 30 dígitos, sem os zeros da frente (o de discagem), o mesmo
+ *  mínimo do formulário. A API compara o número inteiro (com o 55 opcional no brasileiro completo); a regra local só
+ *  evita ir à rede com o que ela recusaria. */
+const MIN_DIGITOS = 8;
+const MAX_DIGITOS = 30;
 
 const ESTADO: Record<PortalContatoAchado['estado'], { rotulo: string; tom: Tone }> = {
   pendente: { rotulo: 'Aguardando entrega', tom: 'warning' },
@@ -88,8 +90,9 @@ export function PrivacidadeSection() {
 
   const aoBuscar = async () => {
     const digitos = soDigitos(telefone);
-    if (digitos.length < MIN_DIGITOS || digitos.length > MAX_DIGITOS) {
-      setErroTelefone(`Informe o telefone com DDD, de ${MIN_DIGITOS} a ${MAX_DIGITOS} dígitos.`);
+    const semZeros = digitos.replace(/^0+/, '');
+    if (semZeros.length < MIN_DIGITOS || semZeros.length > MAX_DIGITOS) {
+      setErroTelefone(`Informe o telefone como a pessoa escreveu, com DDD se ela usou (${MIN_DIGITOS} a ${MAX_DIGITOS} dígitos).`);
       return;
     }
     setErroTelefone(null);
@@ -126,10 +129,10 @@ export function PrivacidadeSection() {
             {n === 1
               ? 'Excluir este contato apaga os dados dele na Central (nome, empresa, telefone e mensagem). '
                 + 'Também serão apagados do seu Telegram o aviso deste contato e as suas respostas a esse aviso, quando o '
-                + 'Telegram ainda permitir (até 48 horas depois do envio).'
+                + 'Telegram ainda permitir (até 47 horas depois do envio).'
               : `Excluir estes ${n} contatos apaga os dados deles na Central (nome, empresa, telefone e mensagem). `
                 + 'Também serão apagados do seu Telegram os avisos destes contatos e as suas respostas a esses avisos, '
-                + 'quando o Telegram ainda permitir (até 48 horas depois do envio).'}{' '}
+                + 'quando o Telegram ainda permitir (até 47 horas depois do envio).'}{' '}
             O que não der para apagar sozinho aparece numa lista com a hora, para você apagar à mão.
           </p>
           <p className={styles.paragrafo}><strong>Não será apagado:</strong></p>
@@ -139,7 +142,7 @@ export function PrivacidadeSection() {
               saem sozinhas.
             </li>
             <li>
-              As mensagens no Telegram (do bot e as suas respostas) com mais de 48 horas: ficam listadas para você apagar à
+              As mensagens no Telegram (do bot e as suas respostas) com mais de 47 horas: ficam listadas para você apagar à
               mão no chat.
             </li>
           </ul>
@@ -165,7 +168,7 @@ export function PrivacidadeSection() {
   return (
     <PageSection
       title={<><ShieldCheck size={16} aria-hidden className={styles.inlineIcon} /> Exclusão a pedido do titular</>}
-      subtitle="A pessoa que mandou mensagem pelo site pede para apagar os dados dela. Busque pelo telefone que ela informou, com DDD."
+      subtitle="A pessoa que mandou mensagem pelo site pede para apagar os dados dela. Busque pelo telefone que ela informou, como ela escreveu (com DDD, se usou)."
     >
       {erro ? (
         <Banner tone="warning" icon={ServerCrash} compact title="Não foi possível concluir">
@@ -174,7 +177,7 @@ export function PrivacidadeSection() {
       ) : null}
 
       <form className={styles.busca} onSubmit={(e) => { e.preventDefault(); void aoBuscar(); }} noValidate>
-        <Field label="Telefone com DDD" error={erroTelefone} className={styles.campoTelefone}>
+        <Field label="Telefone (com DDD, se a pessoa usou)" error={erroTelefone} className={styles.campoTelefone}>
           {({ id, describedBy, invalid }) => (
             <TextInput
               id={id} type="tel" inputMode="tel" autoComplete="off" invalid={invalid} aria-describedby={describedBy}
@@ -275,7 +278,7 @@ function Resultado({ r }: { r: PortalExclusaoResultado }) {
       </p>
       {r.mensagens_a_mao.length > 0 ? (
         <>
-          <p className={styles.paragrafo}>Apague à mão no chat do Telegram (o bot não apaga mensagem com mais de 48 horas, e uma mensagem que pode ter saído
+          <p className={styles.paragrafo}>Apague à mão no chat do Telegram (o bot não apaga mensagem com mais de 47 horas, e uma mensagem que pode ter saído
             sem registro também entra aqui):</p>
           <ul className={styles.lista}>
             {r.mensagens_a_mao.map((m, i) => (

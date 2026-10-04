@@ -17,11 +17,12 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Protocol
 
-from app.modules.portal.domain.exclusao import IDS_MAX, PEDIDO_POR, final, mesmo_telefone, nacional
+from app.modules.portal.domain.exclusao import (DIGITOS_MAX, DIGITOS_MIN, IDS_MAX, PEDIDO_POR, chave_do_telefone, final,
+                                                mesmo_telefone)
 
 log = logging.getLogger("poc.portal")
 
@@ -67,7 +68,7 @@ class RepositorioDeExclusao(Protocol):
     def com_telefone(self) -> Sequence[Achado]: ...
     def estados(self, ids: Sequence[int]) -> Mapping[int, str]: ...
     def excluir(self, *, ids: Sequence[int], mantidos: Sequence[tuple[int, str]], pedido_por: str,
-                executado_por: str, mensagens_apagadas: int, mensagens_a_mao: int, agora: datetime) -> int: ...
+                executado_por: str, mensagens_apagadas: int, mensagens_a_mao: int, agora: datetime) -> list[int]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,8 +135,9 @@ class ServicoDeExclusao:
         """Os contatos com aquele telefone, só com id, data, estado e os 4 dígitos finais. Nome, empresa e mensagem
         nunca saem daqui: a lista serve para escolher o que apagar, não para ler. Conta no teto do operador só a busca
         válida (a inválida não acha nada); o log leva o operador e a contagem, nunca o telefone."""
-        if not isinstance(telefone, str) or nacional(telefone) is None:
-            raise PedidoInvalido("telefone_invalido", "Informe o telefone com DDD (10 a 13 dígitos).")
+        if not isinstance(telefone, str) or chave_do_telefone(telefone) is None:
+            raise PedidoInvalido("telefone_invalido", "Informe o telefone como a pessoa escreveu, com DDD se ela usou "
+                                                      f"({DIGITOS_MIN} a {DIGITOS_MAX} dígitos).")
         self._contar_busca(operador, agora_s)
         achados = [{"id": c.id, "criado_em": c.criado_em, "estado": c.estado, "final": final(c.telefone)}
                    for c in self.repo.com_telefone() if mesmo_telefone(telefone, c.telefone)]
@@ -184,14 +186,20 @@ class ServicoDeExclusao:
                                    mensagens_apagadas=apagadas, mensagens_a_mao=a_mao, sem_canal=sem_canal)
 
     def concluir(self, pedido: PedidoDeExclusao, resultado: ResultadoDaExclusao, *, executado_por: str,
-                 agora: datetime) -> None:
-        """O DELETE e o registro, juntos. Só com algum contato existente: um pedido de ids que já não existem não deixa
-        rastro."""
+                 agora: datetime) -> ResultadoDaExclusao:
+        """O DELETE e o registro, juntos. A resposta diz só o que ESTE DELETE apagou: o id que outra exclusão (ou a
+        faxina) levou no meio vai para `inexistentes`. Um pedido de ids que já não existem não deixa rastro."""
+        de_fato: set[int] = set()
         if resultado.apagados or resultado.mantidos:
-            self.repo.excluir(ids=resultado.apagados, mantidos=resultado.mantidos, pedido_por=pedido.pedido_por,
-                              executado_por=executado_por, mensagens_apagadas=resultado.mensagens_apagadas,
-                              mensagens_a_mao=len(resultado.mensagens_a_mao), agora=agora)
+            de_fato = set(self.repo.excluir(
+                ids=resultado.apagados, mantidos=resultado.mantidos, pedido_por=pedido.pedido_por,
+                executado_por=executado_por, mensagens_apagadas=resultado.mensagens_apagadas,
+                mensagens_a_mao=len(resultado.mensagens_a_mao), agora=agora))
+        sumidos = [i for i in resultado.apagados if i not in de_fato]
+        resultado = replace(resultado, apagados=[i for i in resultado.apagados if i in de_fato],
+                            inexistentes=[*resultado.inexistentes, *sumidos])
         log.info("portal: exclusão a pedido (%s) por %s: %s apagado(s), %s mantido(s), %s inexistente(s), "
                  "%s mensagem(ns) apagada(s), %s à mão", pedido.pedido_por, executado_por, len(resultado.apagados),
                  len(resultado.mantidos), len(resultado.inexistentes), resultado.mensagens_apagadas,
                  len(resultado.mensagens_a_mao))
+        return resultado

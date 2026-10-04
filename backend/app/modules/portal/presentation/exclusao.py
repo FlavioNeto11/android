@@ -93,6 +93,6 @@ async def excluir_contatos(request: Request) -> Response:
         return _invalido(erro)
     agora = now()
     resultado = await portal.exclusao.decidir(pedido, agora)
-    await run_in_threadpool(portal.exclusao.concluir, pedido, resultado,
-                            executado_por=autor_do_gesto(request.state.operador), agora=agora)
+    resultado = await run_in_threadpool(portal.exclusao.concluir, pedido, resultado,
+                                        executado_por=autor_do_gesto(request.state.operador), agora=agora)
     return JSONResponse(resultado.corpo(), headers={"Cache-Control": "no-store"})

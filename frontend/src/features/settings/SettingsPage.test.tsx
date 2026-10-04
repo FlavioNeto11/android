@@ -141,7 +141,7 @@ describe('Configuração no contrato de página', () => {
     await render();
     expect(byRole('tab', /^Site e privacidade/, container).getAttribute('aria-selected')).toBe('true');
     expect(titulosDeCartao()).toContain('Exclusão a pedido do titular');
-    expect(byRole('textbox', /Telefone com DDD/, container)).toBeTruthy();
+    expect(byRole('textbox', /Telefone/, container)).toBeTruthy();
     // Clicar na aba também leva o link junto.
     await click(byRole('tab', /^Limites/, container));
     await click(byRole('tab', /^Site e privacidade/, container));

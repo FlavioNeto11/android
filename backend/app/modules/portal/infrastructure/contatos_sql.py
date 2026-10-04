@@ -151,15 +151,21 @@ class ContatosSql:
         return {int(r["id"]): str(r["estado"]) for r in linhas}
 
     def excluir(self, *, ids: Sequence[int], mantidos: Sequence[tuple[int, str]], pedido_por: str,
-                executado_por: str, mensagens_apagadas: int, mensagens_a_mao: int, agora: datetime) -> int:
+                executado_por: str, mensagens_apagadas: int, mensagens_a_mao: int, agora: datetime) -> list[int]:
         """O `DELETE` das linhas e o registro da exclusão, juntos: ou os dois ficam, ou nenhum. O registro só leva ids,
-        motivos e contagens; nada do titular. Devolve o id do registro."""
+        motivos e contagens; nada do titular. Devolve os ids que ESTE `DELETE` apagou (`RETURNING`): numa exclusão
+        simultânea dos mesmos ids, ou com a faxina no meio, a segunda não diz que apagou o que a outra apagou
+        (revisão do #342, E2). Sem nada apagado e nada mantido, não registra."""
         with self.db.tx():
+            apagados: list[int] = []
             if ids:
                 marcas = ",".join("?" * len(ids))
-                self.db.execute(f"DELETE FROM portal_contatos WHERE id IN ({marcas})", tuple(ids))  # noqa: S608
-            return int(self.db.inserted_id(
-                "INSERT INTO portal_exclusoes(executado_em, executado_por, pedido_por, ids, mantidos, "
-                "mensagens_apagadas, mensagens_a_mao) VALUES (?,?,?,?,?,?,?)",
-                (to_iso(agora), executado_por, pedido_por, dumps(list(ids)),
-                 dumps([{"id": i, "motivo": m} for i, m in mantidos]), mensagens_apagadas, mensagens_a_mao)))
+                apagados = sorted(int(r["id"]) for r in self.db.query(
+                    f"DELETE FROM portal_contatos WHERE id IN ({marcas}) RETURNING id", tuple(ids)))  # noqa: S608
+            if apagados or mantidos:
+                self.db.execute(
+                    "INSERT INTO portal_exclusoes(executado_em, executado_por, pedido_por, ids, mantidos, "
+                    "mensagens_apagadas, mensagens_a_mao) VALUES (?,?,?,?,?,?,?)",
+                    (to_iso(agora), executado_por, pedido_por, dumps(apagados),
+                     dumps([{"id": i, "motivo": m} for i, m in mantidos]), mensagens_apagadas, mensagens_a_mao))
+            return apagados

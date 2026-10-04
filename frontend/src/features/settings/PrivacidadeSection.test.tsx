@@ -33,7 +33,7 @@ async function render(): Promise<void> {
   await act(async () => { root.render(<><PrivacidadeSection /><ConfirmHost /></>); });
 }
 
-const campo = () => byRole('textbox', /Telefone com DDD/, container) as HTMLInputElement;
+const campo = () => byRole('textbox', /Telefone/, container) as HTMLInputElement;
 const caixa = (id: number) => byRole('checkbox', `Contato nº ${id}`, container) as HTMLInputElement;
 const rotulosDeLista = () => allByRole('checkbox', /Contato nº/, container).map((c) => c.getAttribute('aria-label'));
 
@@ -72,9 +72,9 @@ describe('Exclusão a pedido do titular', () => {
   it('telefone curto ou longo demais é barrado no campo e nada vai à rede', async () => {
     await render();
     await buscar('1190000');
-    expect(text(container)).toContain('Informe o telefone com DDD');
-    await buscar('55 11 90000-0001 99');
-    expect(text(container)).toContain('Informe o telefone com DDD');
+    expect(text(container)).toContain('Informe o telefone como a pessoa escreveu');
+    await buscar('1'.repeat(31));
+    expect(text(container)).toContain('Informe o telefone como a pessoa escreveu');
     expect(backend.calls).toHaveLength(0);
     const el = campo();
     expect(el.type).toBe('tel');
@@ -152,11 +152,11 @@ describe('Exclusão a pedido do titular', () => {
     expect(t).toContain('Também serão apagados do seu Telegram os avisos destes contatos e as suas respostas a esses avisos');
     expect(t).toContain('O que não der para apagar sozinho aparece numa lista com a hora');
     expect(t).toContain('nome, empresa, telefone e mensagem');
-    expect(t).toContain('até 48 horas depois do envio');
+    expect(t).toContain('até 47 horas depois do envio');
     expect(t).toContain('Não será apagado');
     expect(t).toContain('cópias de segurança');
     expect(t).toContain('cerca de duas semanas');
-    expect(t).toContain('mais de 48 horas');
+    expect(t).toContain('mais de 47 horas');
     expect(t).toContain('Não há como desfazer');
     await click(byRole('button', /^Voltar$/, dialogo));
     await waitFor(() => expect(allByRole('dialog', /.*/)).toHaveLength(0));
