@@ -4076,14 +4076,14 @@
    "id": "23.2",
    "status": "implemented",
    "proof": "real",
-   "evidence": "Real (leitura do banco central em 04/10 15:38Z): release com.microsoft.office.outlook-72635119-293cc771fcd5 (5.2635.3, Play Store via android-11 em 29/09, assinatura aprovada) com channel=promoted em 2026-09-30T21:42:16Z ('canario aprovado em android-07, 10 e 12 com a GPU do host'); app_release_validations install e launch ok em android-01, 02, 03, 05, 06, 07, 08, 09, 10, 12, 13 e 14 (o 14 com um launch por timeout de adb em 01/10 10:28Z, ok às 11:37Z). As duas esperas da promoção caíram: recusa por renderizador no ar (29.11 implemented/real; app.yaml do Outlook com renderizador_recusado: [swiftshader]) e P16 com 6 h reais em 30/09 (29.4). A medição de MemAvailable com os dois apps NÃO está no 29.12 (implemented/real só com entrega e prontidão): segue aberta; posso medir num aparelho de QA sem conta (Instagram e Outlook abertos, leitura de /proc/meminfo), sem efeito externo.",
+   "evidence": "Real (leitura do banco central em 04/10 15:38Z): release com.microsoft.office.outlook-72635119-293cc771fcd5 (5.2635.3, Play Store via android-11 em 29/09, assinatura aprovada) com channel=promoted em 2026-09-30T21:42:16Z ('canario aprovado em android-07, 10 e 12 com a GPU do host'); app_release_validations install e launch ok em android-01, 02, 03, 05, 06, 07, 08, 09, 10, 12, 13 e 14 (o 14 com um launch por timeout de adb em 01/10 10:28Z, ok às 11:37Z). As duas esperas da promoção caíram: recusa por renderizador no ar (29.11 implemented/real; app.yaml do Outlook com renderizador_recusado: [swiftshader]) e P16 com 6 h reais em 30/09 (29.4). A medição de MemAvailable com os dois apps NÃO está no 29.12 (implemented/real só com entrega e prontidão): segue aberta; posso medir num aparelho de QA sem conta (Instagram e Outlook abertos, leitura de /proc/meminfo), sem efeito externo. | MemAvailable com os dois apps (decisão da orquestradora: fecha o pedaço que faltava): Real 04/10, máquina central, android-02 (google_apis API 34, MemTotal 2021532 kB, 2 núcleos), com o host calmo (CPU do host 11 a 30 %, load do convidado de 0,7 a 1,1 antes de abrir os apps), depois do wake das 18:29Z. Leitura por adb shell /proc/meminfo e dumpsys meminfo. Só o launcher (18:30:30Z): MemAvailable 922556 kB. Com o Instagram aberto (deslogado, 18:31:19Z): 879924 kB, PSS do Instagram 189230 kB. Com os dois apps abertos (Outlook na tela de onboarding, sem conta no 02): 793764 kB às 18:32:06Z (load 4,43 com o Outlook subindo) e 836856 kB às 18:32:43Z (load 2,40); PSS do Outlook 234506 kB e do Instagram 176957 kB. Os dois processos seguiram vivos, sem ANR no logcat e sem crash dos apps no buffer de crash. A tentativa das 17:47Z, contaminada pela suíte (load 17), fica substituída por esta.",
    "blocker": null,
-   "grupo": "android-23.2",
-   "modelo": "claude-opus-5-5",
-   "esforco": "sessao executora",
+   "grupo": "orquestradora-deploy30",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T16:03:31+00:00"
+   "quando": "2026-10-04T18:39:06+00:00"
   },
   "25.10": {
    "id": "25.10",
@@ -4906,24 +4906,16 @@
   },
   "29.22": {
    "id": "29.22",
-   "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Branch fix/29-22-boot-invalida-verificacao (67fd075f + merges): devices/rede.py inicio_do_boot/boot_depois_da_medicao e motivo 'boot' em verificacao_invalida (marco = instances.emulator_started_at; aparelho de worker usa online_since_mono, renovado em manager.readotar_depois_do_worker); rede_convergencia.py mede ao ligar e na varredura; a porta da rede segura a tarefa ate medicao posterior ao boot (wake do snapshot tambem invalida: uma medicao por acordar). Sem coluna nova. Caso real que motivou: android-05 02/10 19:50Z, medicao #134 (19:20Z) atravessou o boot a frio e a porta liberou r-20261002195048-7963c2 com o aparelho sem DNS. K-073. Simulado: tests/test_rede_portao.py::test_verificacao_nao_atravessa_um_boot_novo e ::test_boot_sem_processo_local_usa_a_entrada_no_ar_e_politica_livre_nao_tem_efeito; test_hierarquia_sessao_morta (marco do worker). Suite combinada 761f0c30 (main 14ec911c + 28.5 + 29.22): 5476 passed, 9 skipped, 0 failed.",
-   "blocker": "Prova real not_run: parar e ligar a frio um aparelho exigida/exigida_com_bloqueio no central e ver a porta segurar ('subiu depois da medicao') ate a medicao nova; repetir num aparelho do worker (marco do agente) depois do deploy com o agente alinhado.",
-   "arquivos": [
-    "backend/app/devices/rede.py",
-    "backend/app/devices/rede_convergencia.py",
-    "backend/app/devices/manager.py",
-    "backend/tests/test_rede_portao.py",
-    "backend/tests/test_hierarquia_sessao_morta.py"
-   ],
-   "testes": "292 direcionados (test_rede_*, test_hierarquia_sessao_morta, test_pausa_de_reparo, test_porta_de_sessao_no_teto) + suite combinada 761f0c30 5476/0",
-   "grupo": "29-22-boot",
-   "modelo": "",
-   "esforco": "",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Real 04/10, central em 1452f81d, android-03 (exigida_com_bloqueio): medição #1354 às 17:22:31Z; parado e ligado a frio (emulator_started_at 17:25:33Z, online 17:26:54Z); às 17:27:23Z a linha seguia trafego_verificado com verified_at 17:22:31Z e pending='verificar' (a verificação de antes do boot deixou de valer); a convergência mediu ao ligar (c-20261004172708-5c279d, medição #1360 às 17:27:40Z), com a mesma saída 38.211.146.161. android-06: medição #1352 às 17:20:32Z, boot 17:32:15Z, online 17:34:27Z, pending='verificar'; a medição ao ligar falhou por prazo (c-20261004173445-62e335, 'rede do aparelho excedeu 55s'), e a linha seguiu com pending='verificar' e verified_at de antes do boot até a varredura medir (#1367 às 17:41:19Z, mesma saída 38.211.146.161, trafego_verificado).",
+   "blocker": "A porta segurando uma TAREFA não foi exercida: nenhuma tarefa foi despachada aos dois na janela entre o boot e a medição nova. Para provar, falta despachar uma tarefa inofensiva ao aparelho logo depois de um boot a frio e ver a frase 'o aparelho subiu depois da medição' no status_detail.",
+   "grupo": "orquestradora-deploy30",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-02T20:38:56+00:00"
+   "quando": "2026-10-04T18:39:06+00:00"
   },
   "30.1": {
    "id": "30.1",
@@ -5681,16 +5673,16 @@
   },
   "29.34": {
    "id": "29.34",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Real 04/10, central em 1fc66a6c: os wakes desde o deploy 7 gravaram boot kind=warm com load_ms=None (android-04 09:12Z 246,7 s; android-07 11:12Z e 12:09Z), embora o emulator-<avd>.log traga 'Successfully loaded snapshot … using 42145 ms'. Experimento às 16:19:16Z (wake do android-02, QA hibernado, lote:android:29.34-wake-02): o log cresceu até 'Windows Hypervisor Platform accelerator is operational' logo após o spawn e PAROU; o aparelho ficou online às 16:22:03Z (boot_seconds 165,5, load_ms None) e a linha do snapshot ainda não estava no arquivo às 16:23Z. Causa: a saída do emulador para o arquivo é bufferizada (o processo filho escreve em arquivo, não em terminal), e o _snapshot_verdict lê o log durante o boot.",
-   "blocker": "Prova real contra: load_ms nulo nos 3 wakes desde o deploy 7 (04 às 09:12Z com 246,7 s; 07 às 11:12Z e 12:09Z) e no experimento do 02 (165,5 s); o veredito do snapshot não chega a True e o relógio de 90 s não começa. Conserto no mesmo ID, PR para a suíte 30: o veredito do snapshot por um sinal que não dependa do buffer do log (o emulador sem buffer, ou o uptime do Android depois do wake).",
-   "grupo": "android-varredura-1",
-   "modelo": "claude-opus-5-5",
-   "esforco": "sessao executora",
+   "evidence": "Real 04/10, máquina central, deploy 30 (1b3568a7), android-02 (WIN-7S2UASNLFOP). Hibernate c-20261004182809-7e6779: medição hibernate #82229 às 18:28:41Z, saved=true, save_seconds 30,7. Wake c-20261004182855-9a3713 às 18:28:55Z, online às 18:29:19Z ('acordou em 24s'). Medição boot #82238 com kind=warm, boot_seconds 23,5, online_after 9, load_ms 15266, snapshot_por='uptime', uptime_s 10596,3 (o relógio do convidado seguiu do snapshot), host_cpu 25,9 %, boots_em_voo 0. Linha de base antes do #283 (16:19Z): load_ms None e nenhum veredito do snapshot.",
+   "blocker": null,
+   "grupo": "orquestradora-deploy30",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T16:25:01+00:00"
+   "quando": "2026-10-04T18:39:06+00:00"
   },
   "29.42": {
    "id": "29.42",
@@ -6874,15 +6866,15 @@
   "29.36": {
    "id": "29.36",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Leitura real 04/10 14:46Z: android-14 e 15 (worker-lan-01, parados) mostram 'emulador desligado em Notebook da LAN', sem o texto preso de fora do ar.",
-   "blocker": "Falta observar uma queda e volta do worker (religar a tarefa farm-agente do notebook) e reler o state_detail; faço depois do deploy 27.",
-   "grupo": "android-validacao-29",
-   "modelo": "claude-opus-5-5",
-   "esforco": "sessao executora",
+   "proof": "real",
+   "evidence": "Real 04/10, central em 1452f81d (deploy 29), eventos lidos do banco em mode=ro: duas quedas e voltas do worker-lan-01 sem provocar nada além do deploy. (1) Reinício do central: 'conexão encerrada' 17:18:37.894Z, android-14 e 15 'servidor Notebook da LAN fora do ar'; o worker reconectou às 17:19:13.992Z (agente 0.1.0+1fc66a6) e o detail dos dois foi recalculado na hora para 'servidor Notebook da LAN não sabe o estado do emulador deste aparelho'. (2) Troca do agente: queda 17:19:42.416Z, volta 17:19:48.952Z (agente 0.1.0+1452f81), mesmo recálculo; às 17:20:14.348Z os dois ficaram 'emulador desligado em Notebook da LAN'. GET /api/instances às ~18:20Z: android-14/15 stopped com 'emulador desligado em Notebook da LAN', sem o texto preso de fora do ar.",
+   "blocker": null,
+   "grupo": "orquestradora-deploy30",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T15:11:53+00:00"
+   "quando": "2026-10-04T18:39:06+00:00"
   },
   "23.14": {
    "id": "23.14",
@@ -7041,14 +7033,14 @@
    "id": "29.38",
    "status": "partial",
    "proof": "real",
-   "evidence": "04/10/2026, máquina central, main em afbc9a9f: às ~12:43Z a orquestradora rodou `pwsh -NoProfile -File scripts/backup.ps1 -Instalar` (saída: tarefa 'farm-backup' registrada, diária, 03:00, destino data/backups, retenção de 14 dias); `Get-ScheduledTask farm-backup` devolveu State Ready com gatilho diário. Decisão por delegação do dono (Telegram, msg 167 de 10:06:22Z, que vale como chat por ordem dele no chat em 04/10). O backup do deploy 26 (60b3a0a9, pasta 20261004-101310) rodou o teto de 10 cópias em ensaio: nada apagado. Código do item no ar desde o deploy 23 (9add9fb2).",
-   "blocker": "A poda das ~154 cópias antigas (22 GB) segue desligada: apagar não tem volta, o disco tem 166 GB livres e a delegação foi genérica; liga com um sim específico do dono (criar data/backups/PODAR-LIGADO). Falta conferir a primeira corrida diária (03:00 de 05/10, hora local).",
-   "grupo": "orquestradora-deploy26",
+   "evidence": "Real 04/10, máquina central: poda ligada (PODAR-LIGADO) e executada no deploy 28 (158 pastas, 188,1 GB livres); teto de 10 cópias de deploy segurou no deploy 29 (17:18Z): data/backups tem exatamente 10 cópias de deploy (20261004-051103 a 20261004-141831), mais as nomeadas, que ficam fora do teto. Tarefa farm-backup registrada, State Ready, NextRunTime 05/10 03:00 local.",
+   "blocker": "Falta a primeira execução diária da farm-backup (05/10 03:00 local = 06:00Z, LastTaskResult ainda 267011 = nunca rodou). O bloqueio antigo (poda e decisão do dono) não vale mais.",
+   "grupo": "orquestradora-deploy30",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T13:17:24+00:00"
+   "quando": "2026-10-04T18:39:06+00:00"
   },
   "28.20": {
    "id": "28.20",
@@ -7244,14 +7236,14 @@
    "id": "28.10",
    "status": "partial",
    "proof": "real",
-   "evidence": "F1 PR #227 (migração 096, v1.16), deploy 24; F2 PR #240, deploy 25; F3 PR #252 (v1.18), deploy 26. F3 REAL em 04/10/2026 16:03Z, central WIN-7S2UASNLFOP, deploy 28 (1fc66a6c; pedidos.colaboracao.enabled ligado neste reinício): (1) papel pesquisador + autonomia agir: POST /api/pedidos/previa valido=false com bloqueio autonomia_acima_do_papel (campo autonomia) e sem selo; POST /api/pedidos (lote:canais:28.10-f3-01) 422 autonomia_acima_do_papel 'O papel `pesquisador` vai no máximo até `observar`; o pedido pede `agir`'; 0 pedidos gravados. (2) papel pesquisador + observar (lote:canais:28.10-f3-02): ped_U9TvCUHdVQaPCzaaZ1ub4w criado ativo, ocorrência r-20261004160341-2db829 (android-12 sem conta, QA Messenger) com runs.teto_de_autonomia='observar', completed_with_issues, US$ 0,1166; o pedido encerrou por orçamento (teto US$ 0,10), com os avisos 40 e 41 entregues ao Telegram (dono avisado antes, msg 191). Simulado: backend/tests/test_pedidos_colaboracao_papeis.py (17).",
-   "blocker": "F4 (consolidação no pai) e F5 (regras para fora) não começaram; F1/F2 sem prova real com pai e filhos (a raiz com papel foi a provada).",
-   "grupo": "canais",
-   "modelo": "sessao",
-   "esforco": "G",
+   "evidence": "F1/F2 REAL em 04/10/2026 18:35Z, central WIN-7S2UASNLFOP, deploy 30 (1b3568a7), aparelho android-12 (notebook, sem conta, QA Messenger), aviso prévio ao dono (Telegram msg 209). Pai ped_kUZTrLhVU5Cph-Di31vx4A (lote:canais:28.10-f1-01, horário amanhã, total US$ 1,05) com filho A ped_LP1dOeWVXoOpcwHvYqouCA (pesquisador, lote …-f1-02) e filho B ped_S8DuXfioX_StCeug1t9aXw (checador, lote …-f1-03, depende de A com precisa_de_resultado); GET do pai devolve filhos e dependencias (F1). F2 dependência: as duas ocorrências previstas para 18:35:29Z; A despachou (r-20261004183529-4bf401, completed 18:35:50.048Z) e B ficou 'devida' até A concluir (ocorrência concluida 18:35:50.076Z), despachando só depois (r-20261004183550-d27721, criada 18:35:50.127Z, completed 18:36:14Z); objetivos succeeded. F2 reserva: prévia de um terceiro filho de US$ 0,10 recusada com orcamento_do_pai ('o pai já gastou US$ 0.0000 e os outros filhos reservaram US$ 1.0000'), nada gravado. Custo: A US$ 0,0851 + B US$ 0,0388. Filhos encerrados por contagem; pai cancelado com motivo às ~18:36Z. | Antes desta prova: F1 PR #227 (migração 096, v1.16), deploy 24; F2 PR #240, deploy 25; F3 PR #252 (v1.18), deploy 26. F3 REAL em 04/10/2026 16:03Z, central WIN-7S2UASNLFOP, deploy 28 (1fc66a6c; pedidos.colaboracao.enabled ligado neste reinício): (1) papel pesquisador + autonomia agir: POST /api/pedidos/previa valido=false com bloqueio autonomia_acima_do_papel (campo autonomia) e sem selo; POST /api/pedidos (lote:canais:28.10-f3-01) 422 autonomia_acima_do_papel 'O papel `pesquisador` vai no máximo até `observar`; o pedido pede `agir`'; 0 pedidos gravados. (2) papel pesquisador + observar (lote:canais:28.10-f3-02): ped_U9TvCUHdVQaPCzaaZ1ub4w criado ativo, ocorrência r-20261004160341-2db829 (android-12 sem conta,",
+   "blocker": "F4 (#290) e F5 (#293/#295) em PR; a prova real deles espera o merge e o deploy.",
+   "grupo": "orquestradora-deploy30",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T16:16:39+00:00"
+   "quando": "2026-10-04T18:39:06+00:00"
   },
   "14.13": {
    "id": "14.13",
@@ -7324,16 +7316,16 @@
   },
   "14.12": {
    "id": "14.12",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Braço C (04/10, android-07 gerenciado, gpu host, amostras com o host até 50 %): prévia fechada 0,08-0,10 núcleo (mediana 0,085), prévia aberta pelo painel_equivalente.py 0,12-0,24 (mediana 0,145). Com os braços A (0,09) e B (0,08): o spin de 1,1 núcleo do RA-3b não se reproduz; aceite atendido nos três braços. K-092 no PR #256 (docs).",
-   "blocker": "cores 4 nos 03/06 é decisão do dono.",
-   "grupo": "android-suite26",
-   "modelo": "claude-opus-5-5",
-   "esforco": "sessao executora",
+   "evidence": "Aceite do ocioso já medido no braço C (android-07, 04/10): 0,085 núcleo com a prévia fechada (<= 0,3). cores 4 nos 01/03/06, real em 04/10 na máquina central, commit 1452f81d: nproc=4 no android-01 (já valia); android-03 desligado pelo produto (c-20261004172433-335b7f) e religado a frio (c-20261004172533-cb0fcb, online às 17:26:54Z, 77 s), nproc=4; android-06 desligado (c-20261004172850-80a17a) e religado a frio (c-20261004173215-83bd96, online às 17:34:27Z, 129 s), nproc=4. Sem wipe: sessões session_ready, tela sem desafio antes e depois.",
+   "blocker": null,
+   "grupo": "orquestradora-deploy30",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T13:17:24+00:00"
+   "quando": "2026-10-04T18:39:06+00:00"
   },
   "30.49": {
    "id": "30.49",
@@ -7488,16 +7480,16 @@
   },
   "30.48": {
    "id": "30.48",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Deploy 26 (60b3a0a9, migracao 099) leva o #246. Pedido lv-c99c807c071cf06e (13:15:36Z, POST /api/aprendizado/fluxo/no-qa-messenger-levantar-todos-os-contat/validacao) despachado pelo P4 como r-20261004132450-38f68a no android-10, 13:24:50Z a 13:26:30Z, completed, spent_usd US$ 0,13, teto proporcional 0,31 (13 etapas). A amostra funcionou: motivo da expansao 'Expandido para 2 item(ns) ... (prova de fluxo: amostra de 2 de 8 itens, os primeiros na ordem da tela)'; N=2 (3 fixas + 5 por item cabem em 17); 13/13 etapas succeeded, send_message_i1 para 'Suporte QA' e send_message_i2 para 'QA-003', cada uma verificada na tela. O pedido fechou recusada/efeito_repetido por defeito da conferencia no app de QA (#203): ela conta as mensagens da execucao no app inteiro e espera 1; com for_each as 2 mensagens legitimas (uma por contato) viraram efeito_repetido {copias 2, fonte provedor} em send_message_i2; 4 linhas invalida (1 do fluxo, 3 de receitas).",
-   "blocker": "30.53 (aprovado 13:28Z): a conferencia do QA espera uma mensagem por etapa de efeito comprovada; as 4 invalida da 38f68a se desfazem pelo mecanismo do produto.",
-   "grupo": "deploy25-26-aprendizado",
-   "modelo": "opus",
-   "esforco": "high",
+   "evidence": "Real, 04/10/2026, máquina central, deploy 28 (1fc66a6c, que já leva o 30.53, 3a480b64). Pedido lv-0c0aed6acef86383 (fluxo:enviar-bom-dia-a-cada-contato-da-lista-d, criado às 16:17:16Z) despachado pelo P4 como r-20261004162034-548fdc no android-05 (QA), das 16:20:34Z às 16:23:43Z, status completed, 19 etapas (15 succeeded, 4 skipped). O teto proporcional foi de US$ 0,35, ou seja 15 etapas: 3 fixas mais 4 por item, vezes 3. O gasto foi de US$ 0,1674 (/api/usage?run_id). O rastro às 16:21:30.805Z diz: 'Expandido para 3 item(ns) lidos em Coletar contatos (prova de fluxo: amostra de 3 de 8 itens, os primeiros na ordem da tela)'. O pedido fechou em estado feita, sem efeito_repetido; a 1ª medida do 30.48 (38f68a, 13:24Z) tinha fechado recusada por defeito da conferência, já consertado pelo 30.53. O fluxo de tamanho desconhecido agora se valida por pedido.",
+   "blocker": null,
+   "grupo": "orquestradora-deploy30",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T14:42:50+00:00"
+   "quando": "2026-10-04T18:39:06+00:00"
   },
   "30.51": {
    "id": "30.51",
@@ -7541,15 +7533,15 @@
   "29.70": {
    "id": "29.70",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #261 na suíte 28 (deploy 28, 1fc66a6c): o modo Automático usa os apps citados quando _app_do_comando vem vazio; tarefa só de app sem conta vai por previa_sem_conta (aparelhos com o app pronto, sem conta real logada antes; a prévia diz quando não deu). test_automatico_app_sem_conta.py (4, mutação conferida), mais test_orquestracao, test_roteamento_por_conjunto_de_apps e os de distribuição.",
-   "blocker": "Real: POST /api/runs/targets/suggest com o comando literal faz a prévia; o caminho sem conta não chama IA, mas a rota pode chamar a IA se houver persona candidata. Faço depois da suíte 29, só a sugestão (não cria execução).",
-   "grupo": "android-suite28",
-   "modelo": "claude-opus-5-5",
-   "esforco": "sessao executora",
+   "proof": "real",
+   "evidence": "Real 04/10 17:46Z, máquina central, commit 1452f81d (o #261 está no ar desde o deploy 28): POST /api/runs/targets/suggest com 'abra o QA Messenger e leia a primeira conversa' -> modo 'distribuir', app_id qa-messenger, alvo android-09 (profile_id null, origem 'balanceamento', Notebook da LAN), resumo 'Tarefa sem conta: 1 aparelho(s) escolhido(s) pela carga dos servidores', warnings 'aparelho(s) com conta real logada (android-01, android-03, android-06, android-13) ficam de fora: há aparelho sem conta apto'. Nenhuma execução criada (a rota é prévia) e nenhuma persona proposta. Antes do conserto, o mesmo tipo de comando propunha a persona de conta real do android-01.",
+   "blocker": null,
+   "grupo": "orquestradora-deploy30",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T16:03:30+00:00"
+   "quando": "2026-10-04T18:39:06+00:00"
   },
   "28.24": {
    "id": "28.24",
@@ -7628,6 +7620,71 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-04T17:29:38+00:00"
+  },
+  "29.71": {
+   "id": "29.71",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "PR #266 (fix/29-71-usuario-da-conta) na suíte 29, no ar em 1452f81d desde 04/10 17:20Z: identity/domain/available_data.py::_usuario_da_conta (managed -> handle; senão login_identifier ou handle) em account_data, profile_variables e resolve_secret; backend/tests/test_usuario_da_conta.py (4). Suíte 29: SQLite -n 6 9675 ok + 1 falha da catraca de Any (corrigida em 1452f81d), PG dirigido 3976 ok. Revisão independente do deploy 29 (achado 4), confirmada no código: o #266 só consertou a lista do planejador; Repository._variaveis_da_persona (binding, título e objetivo da etapa) seguiu com o e-mail. Teste de mutação no PR #292.",
+   "blocker": "a materialização ainda monta a variável da conta com o identificador de login no Instagram (taskqueue/repository.py:146, provedor de sessão fixo em falso); conserto no PR 292, suíte 31",
+   "grupo": "orquestradora-deploy30",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T18:39:06+00:00"
+  },
+  "29.73": {
+   "id": "29.73",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real 04/10, máquina central, deploy 30 (1b3568a7, migração 102_decisoes_automaticas, agentes 0.1.0+1b3568a nos dois workers; agente14 às 18:25:13Z). Reinício da tarefa farm-central depois do agente novo, lido nos eventos do banco (mode=ro): 'servidor encerrando' às 18:25:33.466Z, central de pé às 18:25:55.536Z e 'Worker Notebook da LAN conectou' às 18:25:57.353Z. O worker voltou 1,8 s depois do central de pé e 23,9 s depois do encerrando. Linha de base: 6,3 s no deploy 29 e ~1 min no deploy 28. No agente.log do notebook (ssh só leitura), uma nova tentativa a cada ~5 s ('conexão caiu ... nova tentativa em 3 s') e 'conectado' às 15:25:57,333 local (18:25:57Z). A orquestradora conferiu às 18:28Z.",
+   "blocker": null,
+   "grupo": "orquestradora-deploy30",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T18:39:06+00:00"
+  },
+  "29.75": {
+   "id": "29.75",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Real 04/10, máquina central, commit 1452f81d. Levantamento só leitura (SQLite em mode=ro + GET /api/settings), janela 2026-09-27T00:00Z a 2026-10-04T17:55Z: orçamento do pedido atingido 24 tentativas (attempts.error LIKE 'Orçamento do pedido atingido%'); 'Limite de 60 chamadas de IA' 9; 'Tempo total do objetivo esgotado' 7 objetivos; prazo da etapa 18 tentativas (12 de 60 s, 8 com a IA passando do prazo); device.network failed com 'excedeu' 6 (03, 05, 06 ×2, 09 ×2) de 416 succeeded; backup -TimeoutSec 10: 1 (relato de 04/10); driver_call_timeout 1; 'Limite de 20 ações por etapa' 1; device_busy rejeitado 10 (stop 6, hibernate 4); escada 24 remediações e 297 eventos de pausa (NÃO MEXER). Aplicado: PUT /api/settings às 17:58:07Z, ai_max_calls_per_objective 60 -> 90 e objective_timeout_s 900 -> 1800 (antes e depois lidos pelo GET). PRs para a suíte 31: #289 (rede.sonda.prazo_leitura_s 90 com fila +10; copias-de-avd.ps1 -TimeoutSec 30) e #294 (PISO_DA_ETAPA_COM_IA_S 120 em planning/parsing.py).",
+   "blocker": "Falta o deploy dos PRs #289 e #294 (suíte 31) e a releitura das contagens 7 dias depois; o orçamento dos pedidos de prova é das frentes que criam o pedido (mínimo US$ 0,50, pela orquestradora).",
+   "grupo": "orquestradora-deploy30",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T18:39:06+00:00"
+  },
+  "28.25": {
+   "id": "28.25",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #275, branch canais/28-25-decididas @ d8822a32 (8 commits [skip ci]: 98a0b47a registro + migração 102 + porta registrar_decisao; 06b58c28 adaptador (31.43 vencido_sem_resposta; 30.55 decided_by=plataforma, motivo 'auto:<regra> v1 — fatos', com e sem 'confirmado que fica: '); 3dcb06ab resumo agrupado (uma mensagem por janela de 60 min, só contagem por regra, janela sobrevive a reinício); e784619a GET /api/decisoes-automaticas e POST /api/decisoes-automaticas/{id}/desfazer; 68213705 adendo v1.22 + canais.md + banco.md + CHANGELOG; 294dffc7 e 000f5357 aba 'Decidido sozinho' em Pendências; d8822a32 regra renumerada para C-23). simulated: tests/test_decisoes_registro.py, test_decisoes_adaptador.py, test_decisoes_resumo.py, test_decisoes_desfazer.py + arquitetura/cobertura de rotas/canais_estado/avisos_servico/configuração de exemplo = 124 passed; scripts/tests 544 passed; docs-check 0; frontend typecheck limpo + 1504 testes. Contraprovas: formato antigo com arroba não casa; decided_by≠plataforma não entra; desfazer do aprendizado = mudar_estado DISABLED com o autor da sessão (nunca published→validated); já disabled = idempotente; fora de 7 dias 409 prazo_vencido; sem confirmar 400; texto do resumo sem dado pessoal. Inversa por fila: aprendizado SIM (desligar, veto); pergunta NÃO (needs_input só vai a cancelled); objetivo NÃO (reabrir repetiria ações); pedido só a porta (sem produtor). Real: not_run (produtores 31.43 e 30.55 ainda não na main; Telegram sem rede nos testes). | No ar desde o deploy 30 (1b3568a7, migração 102_decisoes_automaticas, 04/10 18:27Z); GET /api/decisoes-automaticas 200 conferido pela orquestradora às 18:28Z. A prova real (resumo único e desfazer) espera a primeira volta do 30.55 em modo ligado.",
+   "blocker": "Prova real depois do deploy 30 com os produtores 31.43 e 30.55 no ar: primeira decisão automática real registrada, um resumo no Telegram do dono e a aba percorrida no Chrome pela orquestradora. Conferir o formato real de dados.vencimento (31.43) e os fatos kind/para do 30.55.",
+   "grupo": "orquestradora-deploy30",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T18:39:06+00:00"
+  },
+  "30.55": {
+   "id": "30.55",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Real, 04/10/2026, máquina central, deploy 30 (1b3568a7, migração 102_decisoes_automaticas, /api/health sem problems às 18:29Z). Primeira volta em sombra às 18:27:26.872Z (GET /api/aprendizado/aprovacao-automatica, modo shadow). Foram avaliados 40 itens e a plataforma decidiria 18, marcados uma vez no livro da sombra; nenhum foi decidido. Dos 18: 15 na fila revisar (regra qa_revisar) e 3 em para_aprovar (regra qa_para_aprovar: receita:180, receita:184 e fluxo:enviar-bom-dia-a-cada-contato-da-lista-d). Todos são classe B, do app com.pocqa.messenger, com contra 0, falhas de reprodução 0 e a_favor de no mínimo 1 (revisar) e 2 (para_aprovar). Motivos de fora: sem_a_favor 18, app_fora_do_qa 11, classe_c 10, parecer_contra 4, falha_de_reproducao 3, saude_rebaixando 2, evidencia_contra 1. Instagram e classe C ficaram de fora, como o ensaio previa. Falta, pela mesma régua: virar para on, registrar a primeira volta que decide e desfazer UM item real pelo painel ou pela rota.",
+   "blocker": "A virada para on é da orquestradora, depois da revisão independente da régua.",
+   "grupo": "orquestradora-deploy30",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T18:39:06+00:00"
   }
  },
  "rodadas": [
@@ -9999,6 +10056,28 @@
    ],
    "grupos": [
     "aprendizado-8-3-fechamento"
+   ]
+  },
+  {
+   "quando": "2026-10-04T18:39:06+00:00",
+   "itens": [
+    "29.71",
+    "14.12",
+    "29.38",
+    "29.22",
+    "29.70",
+    "29.36",
+    "29.73",
+    "29.34",
+    "23.2",
+    "29.75",
+    "28.25",
+    "28.10",
+    "30.55",
+    "30.48"
+   ],
+   "grupos": [
+    "orquestradora-deploy30"
    ]
   }
  ]
