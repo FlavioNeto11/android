@@ -29,6 +29,7 @@ import { historicoSeguro, pareceCredencial, pushHistory } from './history';
 import { PersonaTarget, usePreviaDosAlvos } from './PersonaTarget';
 import { PreviaDosAlvos, type NomeDaPersona } from './PreviaDosAlvos';
 import { SugestaoDeAlvos } from './SugestaoDeAlvos';
+import { NOME_DA_IA } from '../../lib/identidade';
 
 /** ADR-040: não existe mais campo de senha no comando — a credencial é da conta da persona. */
 export const SENHA_NO_COMANDO =
@@ -472,7 +473,7 @@ export function CommandPanel() {
     // A pergunta que o backend fez é o que a pessoa precisa responder: vai inteira, não resumida.
     const pergunta = dados.questions[0]?.question ?? dados.perguntas[0];
     const impede = dados.alerta_conduta ? 'Pedido não roteado pela regra de conduta das personas.'
-      : pergunta ? `A IA não sabe quem deve fazer isto: «${pergunta}»`
+      : pergunta ? `${NOME_DA_IA} não sabe quem deve fazer isto: «${pergunta}»`
       : dados.questions.length > 0 || dados.perguntas.length > 0 ? 'Há uma pergunta sobre quem faz.'
       : eco.erro;
     if (impede || !eco.eco) throw new ApiError(422, 'alvos_a_decidir', impede ?? 'Nenhum aparelho sugerido.');

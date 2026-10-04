@@ -8,6 +8,7 @@ import { TextArea, TextInput } from '../../components/Field';
 import ui from '../../components/ui.module.css';
 import { cx, plural } from '../../lib/format';
 import { pareceCredencial } from './history';
+import { NOME_DA_IA } from '../../lib/identidade';
 import styles from './AssistenteDoComando.module.css';
 
 /**
@@ -130,7 +131,7 @@ export function AssistenteDoComando({ comando, contexto, perguntasIniciais = [],
           ) : null}
         </div>
       ) : carregando ? (
-        <p className={styles.resumo}>Lendo o comando e o que o sistema sabe fazer…</p>
+        <p className={styles.resumo}>{NOME_DA_IA} está lendo o comando e o que o sistema sabe fazer…</p>
       ) : null}
 
       {pendentes > 0 ? (

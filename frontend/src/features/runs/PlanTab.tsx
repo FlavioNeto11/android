@@ -11,6 +11,7 @@ import { POSTCONDITION_KIND } from '../../lib/status';
 import { formatDateTime } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { appLabel } from './model';
+import { NOME_DA_IA } from '../../lib/identidade';
 import styles from './Runs.module.css';
 
 export const SIDE_EFFECT_LABEL = 'efeito externo — sem repetição automática';
@@ -103,7 +104,7 @@ export function PlanTab({ detail }: { detail: RunDetail }) {
       <EmptyState
         icon={ListTree}
         compact
-        title={detail.status === 'planning' ? 'A IA está montando o plano…' : 'Esta execução não tem plano'}
+        title={detail.status === 'planning' ? `${NOME_DA_IA} está montando o plano…` : 'Esta execução não tem plano'}
         hint={detail.status === 'planning' ? 'Isto costuma levar alguns segundos. O plano aparece aqui automaticamente.' : 'Veja a Linha do tempo para entender o que aconteceu.'}
       />
     );

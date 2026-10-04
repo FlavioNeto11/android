@@ -37,6 +37,7 @@ import { PERSONA_BIO_FIELDS, type Pessoa } from './pessoa';
 import {
   SecaoEditavel, comoTexto, paraLista, paraNumero, paraTexto, preenchimentoDe, type CampoDef, type Preenchimento,
 } from './SecaoEditavel';
+import { NOME_DA_IA } from '../../lib/identidade';
 import styles from './Profiles.module.css';
 
 const DATA_ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -538,7 +539,7 @@ function TestarPersona({ persona }: { persona: PersonaDTO }) {
             {rascunho ? (
               <div className={styles.draft}>
                 {rascunho.refused ? (
-                  <p className={styles.detail}>Recusou responder: {rascunho.refusal_reason}</p>
+                  <p className={styles.detail}>{NOME_DA_IA} recusou escrever esta resposta: {rascunho.refusal_reason}</p>
                 ) : (
                   <>
                     <p className={styles.draftText}>{rascunho.content}</p>

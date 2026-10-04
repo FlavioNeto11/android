@@ -41,6 +41,7 @@ import styles from './Runs.module.css';
 import { RunUsageCard } from './RunUsageCard';
 import { TextsTab, useRunApprovals } from './TextsTab';
 import { TimelineTab } from './TimelineTab';
+import { NOME_DA_IA } from '../../lib/identidade';
 
 /** O campo de cada pergunta, em português (os de destino vêm do roteamento por persona, ADR-044). */
 const CAMPO_DA_PERGUNTA: Record<string, string> = { profile_id: 'persona', instance_id: 'aparelho' };
@@ -384,7 +385,7 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
               tone="warning"
               icon={CircleHelp}
               role="alert"
-              title={deDestino ? 'Falta decidir quem faz e onde' : 'A IA precisa de mais informações para montar o plano'}
+              title={deDestino ? 'Falta decidir quem faz e onde' : `${NOME_DA_IA} precisa de mais informações para montar o plano`}
               actions={
                 <Button
                   size="sm"
