@@ -174,8 +174,10 @@ def test_marcas_combinantes_empilhadas_saem() -> None:
     zalgo = "a" + "\u0301\u0300\u0302" * 10 + "b"
     linha = p.uma_linha(zalgo)
     assert linha == "\u00e1\u0300\u0302b"           # o NFKC compõe o 1º acento com a letra; ficam 2 marcas soltas
-    citada = p.citar(zalgo + "\n" + "\u0336" * 30)
-    assert citada.split("\n") == ["│ \u00e1\u0300\u0302b", "│ \u0336\u0336"]
+    citada = p.citar(zalgo + "\n" + "\u0336" * 30 + "x\nfim")
+    # revisão do #335 (N1): a marca no começo da linha não tem base e sairia por cima do `│ `
+    assert citada.split("\n") == ["│ \u00e1\u0300\u0302b", "│ x", "│ fim"]
+    assert p.uma_linha("\u20d2" * 5 + "Ana") == "Ana" and p.citar("\u0338ok") == "│ ok"
     assert p.uma_linha("e\u0301 voc\u00ea") == "\u00e9 voc\u00ea"          # o acento composto não é marca solta
     assert p.uma_linha("x" + "\u20dd" * 5) == "x\u20dd\u20dd"                  # a marca envolvente (Me) também
 
@@ -186,12 +188,16 @@ AGORA = datetime(2026, 10, 4, 22, 41, 7, tzinfo=timezone.utc)
 def test_resumo_chave_por_hora_e_so_contagens() -> None:
     aviso = p.aviso_do_resumo(3, 0, 1, AGORA)
     assert aviso is not None
-    assert (aviso.chave, aviso.tipo, aviso.link, aviso.nivel) == ("portal-resumo:2026-10-04T22Z", "portal.resumo", None, 1)
-    assert aviso.titulo == "ANA: 🌐 Contatos do site acima do limite"
+    # abaixo do limiar: a rotina (nível 3), com as contagens no título
+    assert (aviso.chave, aviso.tipo, aviso.link, aviso.nivel) == ("portal-resumo:2026-10-04T22Z", "portal.resumo_rotina",
+                                                                  None, 3)
+    assert aviso.titulo == "ANA: 🌐 Contatos do site acima do limite: 3 guardados, 0 descartados"
     assert aviso.corpo.split("\n") == ["3 contatos guardados sem aviso e 0 descartados na última hora.",
                                        "Crítico: nada.", "Nada a fazer: os guardados ficam na Central, sem aviso."]
     outra = p.aviso_do_resumo(9, 1, 2, AGORA.replace(minute=59))
     assert outra is not None and outra.chave == aviso.chave
+    # acima do limiar: nível 2, sai na hora, título fixo
+    assert (outra.tipo, outra.nivel, outra.titulo) == ("portal.resumo", 2, "ANA: 🌐 Contatos do site acima do limite")
 
 
 @pytest.mark.parametrize(("retidos", "descartados", "espera"), [

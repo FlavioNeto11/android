@@ -163,7 +163,7 @@ def test_resumo_uma_vez_por_hora(tmp_path: Path) -> None:
     relogio = Relogio()
     canal = CanalFalso()
     servico, db, _ = _backend(_cfg(tmp_path), "a", relogio, canal=canal)
-    assert servico.avisar_resumo_do_portal(4, 0, 1) == p.ContatoAvisado(True, None)
+    assert servico.avisar_resumo_do_portal(25, 0, 1) == p.ContatoAvisado(True, None)
     assert servico.avisar_resumo_do_portal(9, 2, 1) == p.ContatoAvisado(True, None)   # mesma hora: a mesma chave
     linhas = _linhas(db)
     assert len(linhas) == 1 and linhas[0]["tipo"] == "portal.resumo"
@@ -196,8 +196,23 @@ def test_resumo_falha_interna(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_resumo_nivel_e_fora_do_trello() -> None:
-    assert nivel_do_tipo(p.TIPO_DO_RESUMO) == 1 and entrega_do_tipo(p.TIPO_DO_RESUMO) == AGORA
-    assert p.TIPO_DO_RESUMO not in TIPOS_DA_JANELA and p.TIPO_DO_RESUMO not in ROTULOS
+    """Revisão do #335: o resumo não pede o dono. Acima do limiar, nível 2 que sai na hora; abaixo, a rotina."""
+    assert nivel_do_tipo(p.TIPO_DO_RESUMO) == 2 and entrega_do_tipo(p.TIPO_DO_RESUMO) == AGORA
+    assert p.TIPO_DO_RESUMO not in TIPOS_DA_JANELA
+    assert nivel_do_tipo(p.TIPO_DO_RESUMO_ROTINA) == 3 and p.TIPO_DO_RESUMO_ROTINA in TIPOS_DA_JANELA
+    assert p.TIPO_DO_RESUMO not in ROTULOS and p.TIPO_DO_RESUMO_ROTINA not in ROTULOS
+
+
+def test_resumo_abaixo_do_limiar_vai_com_a_rotina(tmp_path: Path) -> None:
+    relogio = Relogio()
+    canal = CanalFalso()
+    servico, db, _ = _backend(_cfg(tmp_path), "a", relogio, canal=canal)
+    assert servico.avisar_resumo_do_portal(3, 0, 1).enfileirado
+    _volta(servico)
+    assert canal.enviados == []                                   # espera a janela da rotina
+    relogio.avancar(3601)
+    _volta(servico)
+    assert [t for t, _, _ in canal.enviados] == ["ANA: 🌐 Contatos do site acima do limite: 3 guardados, 0 descartados"]
 
 
 @pytest.mark.parametrize("texto", ["sim", "não", "desliga o formulário", "ok"])

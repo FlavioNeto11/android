@@ -73,7 +73,6 @@ NIVEL_POR_TIPO: dict[str, int] = {
     "trello.comentario": PRECISA_DE_VOCE,          # 28.30: o pedido de confirmação de um comentário do dono
     "pendencia.vence_em": PRECISA_DE_VOCE,
     "portal.contato": PRECISA_DE_VOCE,             # 28.32: a mensagem de um visitante do site; sai na hora, sem rajada
-    "portal.resumo": PRECISA_DE_VOCE,              # 28.32: os contatos acima dos tetos, só contagens, um por hora
     "pedido.pausa_automatica": ALGO_FALHOU,
     "pedido.orcamento_esgotado": ALGO_FALHOU,
     "pedido.ocorrencia_perdida": ALGO_FALHOU,
@@ -84,9 +83,13 @@ NIVEL_POR_TIPO: dict[str, int] = {
     "pedido.condicao_atendida": ROTINA,
     "learning.needs_person": ROTINA,
     "trello.teto_de_comentarios": ROTINA,          # 28.30: o teto por hora segurou os pedidos; nada a fazer
+    # 28.32: os contatos do site acima dos tetos, só contagens, um por hora. Não pede o dono (revisão do #335): acima
+    # do limiar, o formulário segurou contatos que seriam dele, e sai na hora; abaixo, vai com a rotina.
+    "portal.resumo": ALGO_FALHOU,
+    "portal.resumo_rotina": ROTINA,
 }
 #: Os de nível 2 que PARARAM algo do dono: saem na hora. O resto do nível 2 vai à janela, com a rotina.
-PARARAM_ALGO = frozenset({"pedido.pausa_automatica", "pedido.orcamento_esgotado"})
+PARARAM_ALGO = frozenset({"pedido.pausa_automatica", "pedido.orcamento_esgotado", "portal.resumo"})
 #: O aviso de um pedido do LOTE de uma frente (28.31 F2a): o tipo ganha este prefixo e vai sempre à janela, qualquer que
 #: seja o nível, porque a prova da frente não é notícia para o dono. Duas exceções saem na hora: a aprovação, porque só o
 #: dono decide (orquestradora, 04/10 01:20Z, a mesma regra das execuções de lote), e a ocorrência incerta, porque efeito

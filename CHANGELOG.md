@@ -42,8 +42,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     UTC (chave `portal-resumo:<hora>`). Com algum descartado ou com 20 ou mais retidos, aponta o possível abuso; nunca
     "Espera você", porque o formulário se protege sozinho. A resposta do dono só informa.
   - Os ordinais `º` e `ª` passam sem o NFKC ("nº 12, 1ª via, 2º andar").
-  - No máximo 2 marcas combinantes por caractere (30 empilhadas viram 2).
-  - Testes: 196 passed nos arquivos tocados e no roteamento (`test_avisos_portal_*`, `test_avisos_telegram`,
+  - No máximo 2 marcas combinantes por caractere (30 empilhadas viram 2); a marca sem base, no começo do texto ou da
+    linha, sai.
+  - O resumo não pede o dono: `portal.resumo` (nível 2, na hora) acima do limiar e `portal.resumo_rotina` (nível 3,
+    rotina) abaixo.
+  - Testes: 267 passed em todos os `test_avisos_*` e no `test_telegram_entrada`; antes, 196 passed nos arquivos tocados e no roteamento (`test_avisos_portal_*`, `test_avisos_telegram`,
     `test_avisos_servico`, `test_avisos_fila`, `test_telegram_entrada`), em série e em Idle.
 - Revisão independente do #331 (Reload plugins, `C:/claude-ferramentas/revisao-28-32.md`):
   - A1, forja visual de uma linha da casa: a higiene faz NFKC e tira toda a categoria Cf. Os brancos Unicode (Zs,

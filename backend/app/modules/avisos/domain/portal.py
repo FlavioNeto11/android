@@ -21,7 +21,7 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from .mensagem import PRECISA_DE_VOCE, Aviso, chave_do_fato, titulo_do_aviso
+from .mensagem import PRECISA_DE_VOCE, Aviso, chave_do_fato, nivel_do_tipo, titulo_do_aviso
 
 #: O tipo do aviso (fora da rajada e do espelho do Trello; nível 1 na amarração).
 TIPO_DO_CONTATO = "portal.contato"
@@ -71,7 +71,8 @@ _PONTOS = str.maketrans({"\u3002": "."})
 _ORDINAIS = re.compile("([\u00aa\u00ba])")
 #: Quantas marcas combinantes (Mn, Me) seguidas cada caractere base leva; as demais saem. Empilhadas (o "Zalgo"), elas
 #: são desenhadas por cima do título e do `│ ` (revisão do #331). O NFKC já compõe o acento do português (`é`), e duas
-#: bastam para o vietnamita.
+#: bastam para o vietnamita. A marca sem caractere base antes dela (no começo do texto ou da linha) sai: ela se
+#: apoiaria no espaço do nosso `│ ` e desenharia em cima do marcador (revisão do #335).
 MARCAS_MAX = 2
 _TELEFONE_PERMITIDO = re.compile(r"[^0-9+()\- ]")
 _ESPACOS = re.compile(r"[ \t]+")
@@ -105,11 +106,11 @@ def _sem_controle(texto: str, *, quebra: str) -> str:
     leva no máximo `MARCAS_MAX` marcas combinantes."""
     texto = _QUEBRAS.sub("\n", _nfkc(_INVISIVEIS.sub("", texto)).translate(_PONTOS))
     saida: list[str] = []
-    marcas = 0
+    marcas = MARCAS_MAX                                   # no começo, nenhuma marca solta: não há base dela
     for c in texto:
         if c == "\n":
             saida.append("\n" if quebra == "\n" else " ")
-            marcas = 0
+            marcas = MARCAS_MAX
             continue
         categoria = unicodedata.category(c)
         if categoria == "Cf":
@@ -211,7 +212,10 @@ def aviso_do_contato(contato: ContatoDoPortal) -> Aviso | None:
 # ---------------------------------------------------------------------- o resumo dos tetos (pedido do 29.77)
 #: Os contatos acima dos tetos da rota do Portal (20 por hora retidos, 500 por dia descartados) não viram aviso um a um:
 #: o laço dela manda, no máximo uma vez por hora, só as contagens. Nenhum dado do visitante.
+#: O resumo NÃO é "precisa de você" (revisão do #335): acima do limiar sai na hora como `portal.resumo`; abaixo, vai à
+#: janela da rotina como `portal.resumo_rotina`, com as contagens no título, porque a rotina mostra uma linha por aviso.
 TIPO_DO_RESUMO = "portal.resumo"
+TIPO_DO_RESUMO_ROTINA = "portal.resumo_rotina"
 TITULO_DO_RESUMO = titulo_do_aviso("🌐 Contatos do site acima do limite")
 #: Com algum descartado (o teto do dia estourou) ou com tantos retidos na janela (o teto de uma hora inteira), o resumo
 #: aponta o possível abuso. Combinado com a sessão do Portal. Nunca "Espera você": não há gesto que o dono faça ali, e
@@ -257,9 +261,21 @@ def corpo_do_resumo(retidos: int, descartados: int, janela_h: int) -> str:
     return "\n".join([f"{guardados} sem aviso e {descarte} {janela}.", critico, gesto])
 
 
+def titulo_do_resumo_rotina(retidos: int, descartados: int) -> str:
+    guardados = "1 guardado" if retidos == 1 else f"{retidos} guardados"
+    descarte = "1 descartado" if descartados == 1 else f"{descartados} descartados"
+    return titulo_do_aviso(f"🌐 Contatos do site acima do limite: {guardados}, {descarte}")
+
+
 def aviso_do_resumo(retidos: int, descartados: int, janela_h: int, agora: datetime) -> Aviso | None:
-    """O resumo pronto para a fila, ou `None` quando as contagens não servem (`resumo_valido`). Sem link."""
+    """O resumo pronto para a fila, ou `None` quando as contagens não servem (`resumo_valido`). Sem link. O nível é o
+    do tipo: 2 acima do limiar (sai na hora), 3 abaixo (a rotina)."""
     if not resumo_valido(retidos, descartados, janela_h):
         return None
-    return Aviso(chave=chave_do_resumo(agora), tipo=TIPO_DO_RESUMO, titulo=TITULO_DO_RESUMO,
-                 corpo=corpo_do_resumo(retidos, descartados, janela_h), link=None, nivel=PRECISA_DE_VOCE)
+    corpo = corpo_do_resumo(retidos, descartados, janela_h)
+    if acima_do_limiar(retidos, descartados):
+        return Aviso(chave=chave_do_resumo(agora), tipo=TIPO_DO_RESUMO, titulo=TITULO_DO_RESUMO, corpo=corpo, link=None,
+                     nivel=nivel_do_tipo(TIPO_DO_RESUMO))
+    return Aviso(chave=chave_do_resumo(agora), tipo=TIPO_DO_RESUMO_ROTINA,
+                 titulo=titulo_do_resumo_rotina(retidos, descartados), corpo=corpo, link=None,
+                 nivel=nivel_do_tipo(TIPO_DO_RESUMO_ROTINA))

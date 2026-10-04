@@ -512,8 +512,10 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
     - `falha_interna`.
   - Acima dos tetos da rota (20 por hora retidos, 500 por dia descartados), os contatos não viram aviso um a um. O laço
     do Portal chama `state.avisos.avisar_resumo_do_portal(retidos, descartados, janela_h)` no máximo uma vez por hora,
-    e só com algum contato. Sai o `portal.resumo`, nível 1, chave `portal-resumo:<hora UTC>`, com corpo só de
-    contagens, no molde do 28.31:
+    e só com algum contato. Sai com a chave `portal-resumo:<hora UTC>`, corpo só de contagens, no molde do 28.31, e
+    sem pedir o dono (revisão do #335): acima do limiar, `portal.resumo`, nível 2, na hora (o formulário segurou
+    contatos que seriam dele); abaixo, `portal.resumo_rotina`, nível 3, na janela da rotina, com as contagens no
+    título:
     - título "ANA: 🌐 Contatos do site acima do limite";
     - "N contatos guardados sem aviso e M descartados na última hora.";
     - com algum descartado ou com 20 ou mais retidos (limiar combinado com o Portal): "Crítico: possível abuso do
