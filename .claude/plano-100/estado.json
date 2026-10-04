@@ -7219,18 +7219,16 @@
   },
   "31.35": {
    "id": "31.35",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Braço DESLIGADO medido (podar_ui_do_navegador=false, central 1fc66a6c, android-09, comando da referência r-20261004151508-71fb91). Execução f6b86a: 1 decisão, 1.705 caracteres de árvore no prompt, 0 podados, US$ 0,028 (costs.spent_usd). Execução fcc94d (reprodução): 0 decisões (o fluxo cobriu). Script: .claude/handoffs/jev-scratch-2026-10-03/prova_3135a.py, saídas off-01.json e off-02.json.",
-   "blocker": "Falta o braço LIGADO depois do deploy 29: 2 execuções com comando de navegador em site público (cookies, sem login, só leitura) que o fluxo não cubra, chaves lote:jev:31.35a-on-NN, teto total US$ 1,00.",
-   "arquivos": [],
-   "testes": [],
-   "grupo": "jev-suite-29",
-   "modelo": "claude-opus-5-5",
-   "esforco": "high",
+   "evidence": "04/10 23:22Z, scripts/poda-ab-offline.py (só leitura, sem IA) sobre as 5 árvores do 31.52 da r-20261004231719-fd3d52: redução dos caracteres do prompt do ator 0,533 / 0,273 / 0,182 / 0,149 / 0,141; mediana 0,182 (3964 → 3243). Teste do script no #341, mesclado em 7f5ed632.",
+   "blocker": "",
+   "grupo": "orquestrador-resultado-suite32-b",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T16:16:39+00:00"
+   "quando": "2026-10-04T23:55:48+00:00"
   },
   "28.10": {
    "id": "28.10",
@@ -7558,25 +7556,16 @@
   },
   "31.26": {
    "id": "31.26",
-   "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Opção A, PR #271 (suíte 29): com nível sent e prova local sent_text, o primeiro julgamento (barato) é dispensado; o rejulgamento 17.10 decide. Chave ai.sent_text_dispensa_primeiro_juiz (padrão true). backend/tests/test_sent_text_dispensa_juiz.py (6 testes).",
-   "blocker": "Prova real not_run: DM entre contas nossas barrada até ~02/11 (ADR-055).",
-   "arquivos": [
-    "backend/app/taskqueue/executor.py",
-    "backend/app/config.py",
-    "config/config.example.yaml",
-    "docs/ia.md"
-   ],
-   "testes": [
-    "backend/tests/test_sent_text_dispensa_juiz.py"
-   ],
-   "grupo": "jev-suite-29",
-   "modelo": "claude-opus-5-5",
-   "esforco": "high",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "04/10/2026, central WIN-7S2UASNLFOP, deploy 32 no ar (2c47b9fa, migração 106_pedidos_autor): r-20261004233107-36aa69, chave lote:jev:31.26-01, criada mode=plan às 23:31:07Z; porta: OPEN_INBOX e OPEN_THREAD permitidos, SEND_MESSAGE selo=aprovacao, sem recusa e sem exceção. Tela do android-03 relida às 23:46:40Z (launcher, sem login nem desafio). start uma vez às 23:46:44Z (HTTP 200). Parou em approval_required: aprovação apr-eMaWBxuF5KUIJxTM criada às 23:49:00Z; o dono aprovou pelo Telegram às 23:49:23Z (decided_by telegram:dono). send_1 succeeded em 1 tentativa (23:49:24Z → 23:49:51Z), ações type_text, tap, tap; 3 decide e 0 verify na etapa. Prova: pela árvore local SEM IA (conteúdo presente numa mensagem do fio, ausente do campo de escrita, sem marca de envio pendente). Execução completed. Custo final US$ 0,291496 (costs.spent_usd). Lado de origem só: a conversa no android-01 não foi aberta.",
+   "blocker": "O caminho específico do item não foi exercitado: a prova local de conteúdo fechou a etapa antes de qualquer juiz, então não houve 'primeiro julgamento dispensado' nem rejulgamento 17.10, e delivery_level ficou nulo (nenhum nível 'sent' gravado). A exceção de DM entre contas nossas está gasta.",
+   "grupo": "orquestrador-resultado-suite32-b",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T16:16:39+00:00"
+   "quando": "2026-10-04T23:55:48+00:00"
   },
   "31.42": {
    "id": "31.42",
@@ -7742,14 +7731,14 @@
    "id": "31.45",
    "status": "partial",
    "proof": "real",
-   "evidence": "04/10 19:54:51Z, central em 0ede1860 (migração 103): r-20261004195451-7d3527 no android-01, chave lote:jev:31.45-01, comando da d62546 (uma etapa OPEN_MAIL_INBOX, sem efeito). completed, 1 tentativa, US$ 0,107296 (costs.spent_usd). A tela final é a Caixa de Entrada: o título 'Inbox' aparece na captura 2026-10-04T195635084Z_v1_open_inbox_a1_screenshot.jpg e no observed_result. Nada de login, desafio ou 'Confirm you're human'.",
-   "blocker": "A etapa foi por ai_actor (13 chamadas: decide 7, verify 3, leitura 2, decisao_fechada 1), não pela prova determinística element_present. Fica para o 31.50 (a): investigar por que não fechou sem ator e acrescentar a conferência do título da pasta.",
-   "grupo": "resultado-orquestradora-deploy31-c",
+   "evidence": "04/10/2026, central WIN-7S2UASNLFOP, deploy 32 no ar (2c47b9fa, migração 106_pedidos_autor): r-20261004232524-2e0775 no android-01 (só leitura), chave lote:jev:31.45-02, 23:25:24Z. completed, 1 tentativa. A pós-condição de OPEN_MAIL_INBOX fechou pela árvore local SEM IA (selector:id=conversation_list & text==Inbox|dentro=toolbar), com o título da pasta conferido. Etapa em 50 s (104 s na 7d3527). Plano reaproveitado do fluxo (0 chamadas ao planejador). US$ 0,111971.",
+   "blocker": "O 'sem ator' não: a etapa declara saidas [remetente, assunto], e só o ator chama read_value (8 decide, 2 leitura, 2 verify; 2 step_done rejeitados antes das saídas). Vira o 31.61 (suíte 34).",
+   "grupo": "orquestrador-resultado-suite32-b",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T20:05:31+00:00"
+   "quando": "2026-10-04T23:55:48+00:00"
   },
   "31.46": {
    "id": "31.46",
@@ -8010,6 +7999,84 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-04T23:43:27+00:00"
+  },
+  "31.48": {
+   "id": "31.48",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "04/10/2026, central WIN-7S2UASNLFOP, deploy 32 no ar (2c47b9fa, migração 106_pedidos_autor): r-20261004231422-8ac4dd no android-09 (QA Messenger), chave lote:jev:31.48-01, 23:14:22Z. completed, 1 de 1. As duas etapas (open_app, confirm_conversation_list) fecharam driven_by=sem_ator; 0 chamadas decide (só plan e decisao_fechada). US$ 0,039385 (costs.spent_usd).",
+   "blocker": "",
+   "grupo": "orquestrador-resultado-suite32-b",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T23:55:48+00:00"
+  },
+  "31.47": {
+   "id": "31.47",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "04/10/2026, central WIN-7S2UASNLFOP, deploy 32 no ar (2c47b9fa, migração 106_pedidos_autor): r-20261004231719-fd3d52 no android-09, chave lote:jev:31.47-01, 23:17:19Z. completed em 1 tentativa. read_headline: read_value done, sem rejeição nem dado ausente, a saída de papel gravada; 2 verify yes na etapa (inferido: um é o juiz de papel _relacao_visual, o outro a pós-condição). 6 decide no total. US$ 0,108464.",
+   "blocker": "",
+   "grupo": "orquestrador-resultado-suite32-b",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T23:55:48+00:00"
+  },
+  "31.52": {
+   "id": "31.52",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "04/10/2026, central WIN-7S2UASNLFOP, deploy 32 no ar (2c47b9fa, migração 106_pedidos_autor): com ai.diagnostico_arvore_aparelhos=[android-09], a r-20261004231719-fd3d52 gravou 5 evidências hierarchy com a nota '31.52:', todas no android-09; nenhuma em outro aparelho desde o deploy. A chave voltou a [] e a Central reiniciou saudável às 23:24:11Z (orquestradora).",
+   "blocker": "",
+   "grupo": "orquestrador-resultado-suite32-b",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T23:55:48+00:00"
+  },
+  "31.58": {
+   "id": "31.58",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "04/10 23:36:34Z, scripts/latencia-por-etapa.py (só leitura) de 23:09:51Z a 23:36:34Z, checkout 0b5f7683: ator Sonnet 5 n=15 p50 2.351 ms p95 6.514 ms (base n=22, 2.027/4.207); parede normais n=3 p50 65,4 s p95 98,5 s (base n=10, 13,3/87,2). Arquivos jev-latencia-pos-deploy-32.{md,json}.",
+   "blocker": "Medido, inconclusivo contra a base (decisão da orquestradora, opção a): 3 provas de outra natureza contra uma bateria de 10; painel não conferido. Repetir de graça depois do 31.56, painel fechado.",
+   "grupo": "orquestrador-resultado-suite32-b",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T23:55:48+00:00"
+  },
+  "31.60": {
+   "id": "31.60",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#337 mesclado em ed7d8009: latencia-por-etapa usa app.metricas.percentil (posto mais próximo, K-085); linha de base recalculada (jev-latencia-linha-de-base-2026-10-04-posto.md). pytest scripts/tests: 563 passed.",
+   "blocker": "",
+   "grupo": "orquestrador-resultado-suite32-b",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T23:55:48+00:00"
+  },
+  "31.56": {
+   "id": "31.56",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "#338 mesclado em f6387984: veredito mecânico pré-registrado (V1-V3 e N1), 17 testes.",
+   "blocker": "A/B ao vivo not_run: só depois do deploy 33.",
+   "grupo": "orquestrador-resultado-suite32-b",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T23:55:48+00:00"
   }
  },
  "rodadas": [
@@ -10486,6 +10553,23 @@
    ],
    "grupos": [
     "orquestrador-resultado-suite32-a"
+   ]
+  },
+  {
+   "quando": "2026-10-04T23:55:48+00:00",
+   "itens": [
+    "31.48",
+    "31.47",
+    "31.52",
+    "31.35",
+    "31.45",
+    "31.26",
+    "31.58",
+    "31.60",
+    "31.56"
+   ],
+   "grupos": [
+    "orquestrador-resultado-suite32-b"
    ]
   }
  ]
