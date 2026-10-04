@@ -6,6 +6,11 @@ perdido, duas réplicas) cair em `DO NOTHING`. Por isso roda em qualquer backend
 Os eventos têm retenção, e a tabela é grande: a consulta filtra por `kind` e por um `LIKE` no texto do `data` (só o
 vencimento do 31.43 tem a chave `"vencimento"`), e o cursor avança até o maior id lido mesmo quando nada casou, para a
 varredura seguinte não repassar o mesmo trecho.
+
+Janela de releitura (28.29, revisão independente do deploy 30): no PostgreSQL o id de sequência fica VISÍVEL fora de
+ordem. A transação longa que pegou o id N pode confirmar depois de outra ter confirmado o N+1, quando a varredura já
+passou de N; sem releitura, a decisão N nunca entraria no registro. Cada volta relê os últimos `RELEITURA_*` ids antes do
+cursor: o `origem_ref` único faz a releitura cair em `DO NOTHING`. No SQLite (um escritor só) a janela é inofensiva.
 """
 from __future__ import annotations
 
@@ -20,6 +25,9 @@ from app.modules.decisoes.infrastructure.registro_sql import RegistroSql
 log = logging.getLogger("poc.decisoes")
 
 LOTE = 200
+#: Quantos ids antes do cursor cada volta relê (a transação que confirma atrasada cabe aí com folga).
+RELEITURA_EVENTOS = 2000
+RELEITURA_APRENDIZADO = 500
 CURSOR_EVENTOS = "cursor:eventos"
 CURSOR_APRENDIZADO = "cursor:aprendizado"
 KINDS_DE_VENCIMENTO = ("run.updated", "objective.updated")
@@ -46,34 +54,38 @@ class AdaptadorDeDecisoes:
 
     def _eventos(self) -> int:
         novas = 0
+        cursor = self.estado.inteiro(CURSOR_EVENTOS)
+        teto = int(self.db.scalar("SELECT COALESCE(MAX(id), 0) FROM events") or 0)
+        desde = max(0, min(cursor, teto) - RELEITURA_EVENTOS)       # a janela vale mesmo sem evento novo
+        marcas = ",".join("?" for _ in KINDS_DE_VENCIMENTO)
         while True:
-            cursor = self.estado.inteiro(CURSOR_EVENTOS)
-            teto = int(self.db.scalar("SELECT COALESCE(MAX(id), 0) FROM events") or 0)
-            if teto <= cursor:
-                return novas
-            marcas = ",".join("?" for _ in KINDS_DE_VENCIMENTO)
             linhas = self.db.query(
                 "SELECT id, ts, kind, run_id, objective_id, data FROM events WHERE id > ? AND id <= ?"
                 f" AND kind IN ({marcas}) AND data LIKE ? ORDER BY id LIMIT ?",
-                (cursor, teto, *KINDS_DE_VENCIMENTO, CHAVE_NO_DATA, LOTE))
+                (desde, teto, *KINDS_DE_VENCIMENTO, CHAVE_NO_DATA, LOTE))
             for r in linhas:
                 d = decisao_de_evento(str(r["kind"]), loads(r["data"], {}), ts=str(r["ts"]), run_id=r["run_id"],
                                       objective_id=r["objective_id"])
                 if d is not None and self.registro.registrar(d):
                     novas += 1
-            cheio = len(linhas) >= LOTE
-            self.estado.gravar_inteiro(CURSOR_EVENTOS, int(linhas[-1]["id"]) if cheio else teto)
-            if not cheio:
-                return novas
+            if len(linhas) < LOTE:
+                break
+            desde = int(linhas[-1]["id"])
+            if desde > cursor:
+                self.estado.gravar_inteiro(CURSOR_EVENTOS, desde)    # o progresso de um lote cheio sobrevive à queda
+        if teto > cursor:
+            self.estado.gravar_inteiro(CURSOR_EVENTOS, teto)
+        return novas
 
     def _aprendizado(self) -> int:
         novas = 0
+        cursor = self.estado.inteiro(CURSOR_APRENDIZADO)
+        desde = max(0, cursor - RELEITURA_APRENDIZADO)
         while True:
-            cursor = self.estado.inteiro(CURSOR_APRENDIZADO)
             linhas = self.db.query(
                 "SELECT id, item_ref, item_kind, from_state, to_state, reason, decided_by, decided_at"
                 " FROM learning_transitions WHERE id > ? AND decided_by = ? ORDER BY id LIMIT ?",
-                (cursor, PLATAFORMA, LOTE))
+                (desde, PLATAFORMA, LOTE))
             for r in linhas:
                 d = decisao_de_transicao(
                     transicao_id=int(r["id"]), item_ref=str(r["item_ref"]), item_kind=str(r["item_kind"]),
@@ -82,6 +94,9 @@ class AdaptadorDeDecisoes:
                 if d is not None and self.registro.registrar(d):
                     novas += 1
             if linhas:
-                self.estado.gravar_inteiro(CURSOR_APRENDIZADO, int(linhas[-1]["id"]))
+                desde = int(linhas[-1]["id"])
+                if desde > cursor:
+                    cursor = desde
+                    self.estado.gravar_inteiro(CURSOR_APRENDIZADO, cursor)
             if len(linhas) < LOTE:
                 return novas

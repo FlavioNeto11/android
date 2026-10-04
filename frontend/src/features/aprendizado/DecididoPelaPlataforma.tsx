@@ -85,7 +85,10 @@ export function DecididoPelaPlataforma({ relatorio, tituloDe, onMudou }: {
       <h2 id="aprendizado-plataforma" className={styles.secaoTitulo}><Bot size={16} aria-hidden /> Decidido pela plataforma</h2>
       {relatorio.modo === 'shadow' ? (
         <Banner tone="info" icon={Eye} compact role="note">
-          Em observação: a plataforma só anota o que decidiria. Nada foi decidido sozinho ainda.
+          {/* "Nada foi decidido" só com a lista vazia: com decisões abaixo, a frase contradiz a tela. */}
+          {relatorio.decididos.length === 0
+            ? 'Em observação: a plataforma só anota o que decidiria. Nada foi decidido sozinho ainda.'
+            : 'Em observação agora; as decisões abaixo são de quando ela decidia sozinha.'}
         </Banner>
       ) : null}
       {relatorio.modo === 'on' ? (

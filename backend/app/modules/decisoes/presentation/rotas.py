@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.modules.decisoes.application.desfazer import (DecisaoNaoEncontrada, DesfazerDecisoes, PrazoVencido,
                                                          SemInversaSegura, rotulo_do_desfazer)
 from app.modules.decisoes.domain.decisao import Decisao
+from app.modules.decisoes.domain.leitura import efeito_legivel, fatos_legiveis
 from app.modules.decisoes.infrastructure.registro_sql import LIMITE_MAX, LIMITE_PADRAO, RegistroSql
 from app.shared.costuras import autor_do_gesto
 from app.shared.decisoes import FILAS
@@ -46,11 +47,19 @@ def _estado(request: Request) -> tuple[RegistroSql, DesfazerDecisoes, float]:
 
 def _item(d: Decisao, desfazer: DesfazerDecisoes) -> dict[str, object]:
     s = desfazer.situacao(d)
-    return {"id": d.id, "fila": d.fila, "item_ref": d.item_ref, "regra": d.regra, "efeito": d.efeito,
-            "fatos": dict(d.fatos), "decidida_em": d.decidida_em, "resumida_em": d.resumida_em,
+    descricao = desfazer.descrever(d)
+    fatos = fatos_legiveis(d.fatos)
+    return {"id": d.id, "fila": d.fila, "item_ref": d.item_ref, "regra": d.regra,
+            "efeito": efeito_legivel(d.fila, d.efeito, d.fatos), "fatos": fatos,
+            "item_nome": descricao.nome, "run_id": descricao.run_id or _texto(fatos.get("run_id")),
+            "decidida_em": d.decidida_em, "resumida_em": d.resumida_em,
             "desfeita": d.desfeita, "desfeita_em": d.desfeita_em, "desfeita_por": d.desfeita_por,
             "motivo_do_desfazer": d.motivo_do_desfazer,
             "pode_desfazer": s.pode, "acao_do_desfazer": rotulo_do_desfazer(d.fila), "por_que_nao": s.por_que_nao, "prazo_ate": s.prazo_ate}
+
+
+def _texto(valor: object) -> str | None:
+    return valor if isinstance(valor, str) and valor else None
 
 
 def _instante(valor: str | None, campo: str) -> str | None:
@@ -76,7 +85,11 @@ async def listar(request: Request, regra: str | None = Query(None, max_length=12
         raise HTTPException(400, detail={"code": "invalid", "message": f"'fila' precisa ser uma de: {', '.join(FILAS)}."})
     itens = registro.listar(regra=regra, fila=fila, desde=_instante(desde, "desde"), ate=_instante(ate, "ate"),
                             desfeitas=desfeitas, limite=limite)
-    return {"itens": [_item(d, desfazer) for d in itens], "total": len(itens), "regras": registro.regras(),
+    # 28.29: o registro mostra o estado de agora do item; o que foi desfeito por outro caminho sai do filtro "não".
+    agora = [desfazer.reconciliar(d) for d in itens]
+    if desfeitas == "nao":
+        agora = [d for d in agora if not d.desfeita]
+    return {"itens": [_item(d, desfazer) for d in agora], "total": len(agora), "regras": registro.regras(),
             "desfazer_dias": dias}
 
 

@@ -48,7 +48,7 @@ class ResumoDasDecisoes:
         if ultimo is not None and agora - ultimo < timedelta(minutes=janela_min):
             return None
         linhas = self.db.query(
-            "SELECT id, fila, regra, fatos, decidida_em, desfeita_em FROM decisoes_automaticas"
+            "SELECT id, fila, item_ref, regra, fatos, decidida_em, desfeita_em FROM decisoes_automaticas"
             " WHERE resumida_em IS NULL ORDER BY id LIMIT ?", (LIMITE_POR_RESUMO,))
         if not linhas:
             return None
@@ -58,7 +58,8 @@ class ResumoDasDecisoes:
                                         horas_dos_fatos(loads(r["fatos"], {}) or {}))
                      for r in frescas if r["desfeita_em"] is None]
         primeiro, ultimo_id = int(linhas[0]["id"]), int(linhas[-1]["id"])
-        corpo = corpo_do_resumo(contaveis, desfazer_dias)
+        objetivos = [str(r["item_ref"]) for r in frescas if r["desfeita_em"] is None and r["fila"] == "objetivo"]
+        corpo = corpo_do_resumo(contaveis, desfazer_dias, aprovacoes_encerradas=self._aprovacoes_vencidas(objetivos))
         aviso: Aviso | None = None
         if corpo is not None:
             if self._redigir is not None:
@@ -79,3 +80,15 @@ class ResumoDasDecisoes:
         if aviso is not None:
             self.estado.gravar(ULTIMO_RESUMO, quando)
         return aviso
+
+    def _aprovacoes_vencidas(self, objetivos: list[str]) -> int:
+        """Quantas aprovações pendentes os vencimentos destes objetivos encerraram (`pending_approvals` com o motivo do
+        31.43). Só a contagem sai: nem o conteúdo da aprovação nem o alvo vão ao resumo."""
+        total = 0
+        for i in range(0, len(objetivos), 200):
+            lote = objetivos[i:i + 200]
+            marcas = ",".join("?" for _ in lote)
+            total += int(self.db.scalar(
+                f"SELECT COUNT(*) FROM pending_approvals WHERE status='expired' AND objective_id IN ({marcas})"
+                " AND decided_note LIKE ?", (*lote, "%vencido sem resposta%")) or 0)
+        return total

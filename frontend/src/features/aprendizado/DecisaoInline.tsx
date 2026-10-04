@@ -9,7 +9,7 @@ import styles from './Aprendizado.module.css';
  * modal: quem decide vê o item ao lado do que está escrevendo. Mora à parte da linha do item porque o detalhe (o
  * parecer da IA, 30.17) também decide, e a linha importa o detalhe.
  */
-export function DecisaoInline({ acao, rotulo, dica = 'Fica na trilha do item, com o seu nome.', semMotivo, motivoOpcional, resumo, onConfirmar, onCancelar }: {
+export function DecisaoInline({ acao, rotulo, dica = 'Fica na trilha do item, com o seu nome.', semMotivo, motivoOpcional, motivoMax = MOTIVO_MAX, resumo, onConfirmar, onCancelar }: {
   acao: Pick<AcaoDoItem, 'confirmar' | 'perigo'>;
   rotulo?: string;
   dica?: string;
@@ -19,6 +19,8 @@ export function DecisaoInline({ acao, rotulo, dica = 'Fica na trilha do item, co
   semMotivo?: string;
   /** 30.24: "Confirmar que fica" vale sem motivo (só o limite de tamanho). */
   motivoOpcional?: boolean;
+  /** O limite da rota que recebe o motivo: cada rota tem o seu (o desfazer do "Decidido sozinho" aceita 300, o livro 500). */
+  motivoMax?: number;
   /** Devolve a mensagem de erro, ou `null` quando deu certo. */
   onConfirmar: (motivo: string) => Promise<string | null>;
   onCancelar: () => void;
@@ -26,8 +28,8 @@ export function DecisaoInline({ acao, rotulo, dica = 'Fica na trilha do item, co
   const [motivo, setMotivo] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const invalido = motivoOpcional ? (motivo.trim() ? erroDoMotivo(motivo) : null)
-    : semMotivo && !motivo.trim() ? semMotivo : erroDoMotivo(motivo);
+  const invalido = motivoOpcional ? (motivo.trim() ? erroDoMotivo(motivo, motivoMax) : null)
+    : semMotivo && !motivo.trim() ? semMotivo : erroDoMotivo(motivo, motivoMax);
   const legenda = rotulo ?? (motivoOpcional ? 'Motivo (opcional)' : 'Motivo');
 
   const enviar = async () => {
@@ -46,7 +48,7 @@ export function DecisaoInline({ acao, rotulo, dica = 'Fica na trilha do item, co
         {({ id, describedBy, invalid }) => (
           // 30.54: os botões na linha do campo, não na da dica (o dono via o "Aceitar" apagado e desalinhado embaixo).
           <div className={styles.decisaoLinha}>
-            <TextInput id={id} aria-describedby={describedBy} invalid={invalid} value={motivo} maxLength={MOTIVO_MAX}
+            <TextInput id={id} aria-describedby={describedBy} invalid={invalid} value={motivo} maxLength={motivoMax}
                        autoFocus placeholder="Ex.: conferi a evidência e o alvo está certo" className={styles.decisaoTexto}
                        onChange={(e) => setMotivo(e.target.value)} />
             <div className={styles.decisaoAcoes}>

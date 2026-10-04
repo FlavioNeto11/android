@@ -48,12 +48,13 @@ class RegistroSql:
              d.decidida_em or to_iso(self.relogio())))
         return (cur.rowcount or 0) == 1
 
-    def marcar_desfeita(self, decisao_id: int, *, por: str, motivo: str | None) -> bool:
-        """Grava o desfazer. Devolve se foi ESTA chamada que desfez (`False` = já estava desfeita, nada mudou)."""
+    def marcar_desfeita(self, decisao_id: int, *, por: str, motivo: str | None, em: str | None = None) -> bool:
+        """Grava o desfazer. Devolve se foi ESTA chamada que desfez (`False` = já estava desfeita, nada mudou). `em` é o
+        instante do gesto quando ele aconteceu por outro caminho (28.29, lido da trilha da fila dona); sem ele, agora."""
         cur = self.db.execute(
             "UPDATE decisoes_automaticas SET desfeita_em=?, desfeita_por=?, motivo_do_desfazer=?"
             " WHERE id=? AND desfeita_em IS NULL",
-            (to_iso(self.relogio()), por, (motivo or "").strip()[:300] or None, decisao_id))
+            (em or to_iso(self.relogio()), por, (motivo or "").strip()[:300] or None, decisao_id))
         return (cur.rowcount or 0) == 1
 
     # ------------------------------------------------------------------ leitura

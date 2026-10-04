@@ -1,4 +1,5 @@
 import { ApiError, apiRequest } from '../../api/client';
+import { formatDateTime } from '../../lib/time';
 
 /**
  * "Decidido sozinho" (item 28.25): o que a plataforma decidiu no lugar do dono, com o desfazer. Leitura tolerante: um
@@ -11,6 +12,10 @@ export interface Decidida {
   id: number;
   fila: FilaDecidida;
   item_ref: string;
+  /** O título do item do aprendizado ("Abrir a caixa de entrada"); `null` quando não há (e nas outras filas). */
+  item_nome: string | null;
+  /** A execução do objetivo ou da pergunta vencida; `null` no aprendizado. */
+  run_id: string | null;
   regra: string;
   efeito: string;
   fatos: Fatos;
@@ -37,10 +42,18 @@ const FILAS = Object.keys(ROTULO_DA_FILA) as FilaDecidida[];
 export type PeriodoDecidido = 'hoje' | '7d' | 'tudo';
 export const ROTULO_DO_PERIODO: Record<PeriodoDecidido, string> = { hoje: 'Hoje', '7d': '7 dias', tudo: 'Tudo' };
 
-/** O `desde` ISO do período escolhido (`null` = sem limite). O relógio entra por argumento, para o teste. */
+/**
+ * O `desde` ISO do período escolhido (`null` = sem limite). O relógio entra por argumento, para o teste. "Hoje" é a
+ * meia-noite LOCAL do dia (não agora − 24 h: às 15h isso traria a tarde de ontem sob o rótulo "Hoje").
+ */
 export function desdeDoPeriodo(p: PeriodoDecidido, agora: number): string | null {
   if (p === 'tudo') return null;
-  return new Date(agora - (p === 'hoje' ? 1 : 7) * 86_400_000).toISOString();
+  if (p === 'hoje') {
+    const meiaNoite = new Date(agora);
+    meiaNoite.setHours(0, 0, 0, 0);
+    return meiaNoite.toISOString();
+  }
+  return new Date(agora - 7 * 86_400_000).toISOString();
 }
 
 const texto = (v: unknown, padrao = ''): string => (typeof v === 'string' ? v : padrao);
@@ -62,7 +75,7 @@ export function lerDecidida(bruto: unknown): Decidida | null {
   const fila = FILAS.find((f) => f === r.fila);
   if (typeof r.id !== 'number' || !fila) return null;
   return {
-    id: r.id, fila, item_ref: texto(r.item_ref), regra: texto(r.regra), efeito: texto(r.efeito), fatos: fatosDe(r.fatos),
+    id: r.id, fila, item_ref: texto(r.item_ref), item_nome: textoOuNulo(r.item_nome), run_id: textoOuNulo(r.run_id), regra: texto(r.regra), efeito: texto(r.efeito), fatos: fatosDe(r.fatos),
     decidida_em: texto(r.decidida_em), desfeita: r.desfeita === true, desfeita_em: textoOuNulo(r.desfeita_em),
     desfeita_por: textoOuNulo(r.desfeita_por), motivo_do_desfazer: textoOuNulo(r.motivo_do_desfazer),
     pode_desfazer: r.pode_desfazer === true, acao_do_desfazer: texto(r.acao_do_desfazer, 'Desfazer') || 'Desfazer',
@@ -85,20 +98,59 @@ const ESTADO: Record<string, string> = {
 };
 const rotuloDoEstado = (v: string | number | boolean): string => ESTADO[String(v)] ?? String(v);
 
-/** Os fatos que a regra usou, em frases curtas em português. Chave que a tela não conhece aparece como `chave: valor`. */
+/**
+ * Os fatos que a regra usou, em frases curtas em português. O estado não se repete: na confirmação (`confirmacao`, ou
+ * `de` igual a `para`) o item não mudou de estado, então a frase é "segue publicado". Chave que a tela não conhece
+ * aparece como `chave: valor`; o `texto` (já cortado na palavra pelo servidor) aparece sem rótulo.
+ */
 export function fatosEmPortugues(fatos: Fatos): string[] {
   const linhas: string[] = [];
+  const segue = fatos.confirmacao === true || (fatos.de !== undefined && fatos.de === fatos.para);
   for (const [k, v] of Object.entries(fatos)) {
-    if (k === 'kind') continue;                      // o tipo já está no efeito
+    if (k === 'kind' || k === 'confirmacao') continue;   // o tipo já está no título; a confirmação vira "segue"
     if (k === 'horas') linhas.push(`esperou ${v} h`);
-    else if (k === 'desde') linhas.push(`parado desde ${String(v).slice(0, 16).replace('T', ' ')} (UTC)`);
+    else if (k === 'desde') linhas.push(`parado desde ${formatDateTime(String(v))}`);
     else if (k === 'estado_final') linhas.push(`ficou ${rotuloDoEstado(v)}`);
-    else if (k === 'para') linhas.push(`passou a ${rotuloDoEstado(v)}`);
-    else if (k === 'de') linhas.push(`estava ${rotuloDoEstado(v)}`);
+    else if (k === 'para') linhas.push(segue ? `segue ${rotuloDoEstado(v)}` : `passou a ${rotuloDoEstado(v)}`);
+    else if (k === 'de') { if (!segue) linhas.push(`estava ${rotuloDoEstado(v)}`); }
     else if (k === 'usos') linhas.push(`${v} uso(s)`);
+    else if (k === 'texto') linhas.push(String(v));
     else linhas.push(`${k}: ${String(v)}`);
   }
   return linhas;
+}
+
+/** Quem desfez, como a pessoa fala: o identificador cru (`panel`, `telegram:dono`) é do servidor, não da tela. */
+export function quemDesfez(por: string | null): string {
+  if (!por) return '';
+  if (por === 'panel') return 'por você, no painel';
+  if (por === 'telegram:dono') return 'por você, pelo Telegram';
+  if (por === 'plataforma') return 'pela plataforma';
+  return `por ${por}`;
+}
+
+/**
+ * O item do aprendizado que a decisão tocou: o tipo vem dos fatos (ou do prefixo do `item_ref`, `receita:180`) e a
+ * referência é o resto. Sem `:`, não há tipo conhecido e a tela mostra o `item_ref` como veio.
+ */
+export function itemDoAprendizado(d: Pick<Decidida, 'item_ref' | 'fatos'>): { kind: string | null; ref: string } {
+  const i = d.item_ref.indexOf(':');
+  const doPrefixo = i > 0 ? d.item_ref.slice(0, i) : null;
+  const kind = typeof d.fatos.kind === 'string' && d.fatos.kind ? d.fatos.kind : doPrefixo;
+  const ref = kind && d.item_ref.startsWith(`${kind}:`) ? d.item_ref.slice(kind.length + 1) : d.item_ref;
+  return { kind, ref };
+}
+
+/** As decisões do vencimento (31.43) são rotina em volume: viram um grupo por fila e regra, em vez de um cartão cada. */
+export const eDoVencimento = (d: Pick<Decidida, 'fila' | 'regra'>): boolean =>
+  (d.fila === 'objetivo' || d.fila === 'pergunta') && d.regra.startsWith('31.43');
+
+/** "21 objetivos encerrados por vencimento" (plural certo; "1 pergunta encerrada…"). */
+export function tituloDoGrupo(fila: FilaDecidida, n: number): string {
+  const feminino = fila === 'pergunta';
+  const nome = feminino ? (n === 1 ? 'pergunta' : 'perguntas') : (n === 1 ? 'objetivo' : 'objetivos');
+  const encerrado = `encerrad${feminino ? 'a' : 'o'}${n === 1 ? '' : 's'}`;
+  return `${n} ${nome} ${encerrado} por vencimento`;
 }
 
 /** O porquê da decisão, em português: a regra que a tomou. Regras de fábrica têm frase; as outras aparecem como são. */
@@ -125,8 +177,15 @@ export const apiDecididas = {
     apiRequest<unknown>('POST', `/decisoes-automaticas/${id}/desfazer`, { body: { confirmar: true, ...(motivo ? { motivo } : {}) } }),
 };
 
-/** A mensagem de uma recusa do desfazer, para a linha do item (o servidor já escreve em português). */
+/** O limite do motivo na rota do desfazer (`POST /decisoes-automaticas/{id}/desfazer`). */
+export const MOTIVO_DO_DESFAZER_MAX = 300;
+
+/**
+ * A mensagem de uma recusa do desfazer, para a linha do item (o servidor já escreve em português nas recusas de
+ * negócio). Um 422 é a validação do corpo (o motivo longo demais) e traz o texto cru do pydantic: vira frase nossa.
+ */
 export function falhaDoDesfazer(e: unknown): string {
+  if (e instanceof ApiError && e.status === 422) return `O motivo tem no máximo ${MOTIVO_DO_DESFAZER_MAX} caracteres.`;
   if (e instanceof ApiError) return e.message || 'Não foi possível desfazer.';
   return 'Não foi possível desfazer.';
 }

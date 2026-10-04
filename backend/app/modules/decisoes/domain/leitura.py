@@ -32,8 +32,58 @@ _PAR = re.compile(r"\s*([a-z0-9_]{1,40})\s*[=:]\s*([^,;]{1,80})")
 
 _DO_ITEM = {"licao": "Lição", "receita": "Receita", "fluxo": "Fluxo", "tela": "Tela", "preferencia": "Preferência",
             "habilidade": "Habilidade", "memoria": "Memória"}
-_O_QUE_FEZ = {"published": "publicado(a)", "validated": "validado(a)", "disabled": "desligado(a)",
-              "deprecated": "aposentado(a)", "candidate": "devolvido(a) à prova"}
+#: Os tipos de nome masculino; o resto é feminino. O "(a)" era texto de máquina na tela (28.29, passeio de 04/10).
+_MASCULINOS = frozenset({"fluxo"})
+_O_QUE_FEZ = {"published": "publicad", "validated": "validad", "disabled": "desligad", "deprecated": "aposentad",
+              "candidate": "devolvid"}
+#: O tamanho do texto dos fatos (o `MAX_VALOR` do kernel é 80, com a reticência dentro).
+MAX_TEXTO = 80
+
+
+def texto_curto(texto: str, limite: int = MAX_TEXTO) -> str:
+    """Uma linha de até `limite` caracteres, cortada na última palavra inteira e com "…" (antes cortava no meio:
+    "0 falhas de reprodu"). O texto que já cabe volta igual, então a leitura de uma linha antiga também o passa aqui."""
+    t = " ".join(texto.split())
+    if len(t) <= limite:
+        return t
+    corte = t[:limite - 1]
+    espaco = corte.rfind(" ")
+    return (corte[:espaco] if espaco > limite // 2 else corte).rstrip(" ,;:·-") + "…"
+
+
+def efeito_do_aprendizado(kind: str, para: str, *, confirmacao: bool) -> str:
+    """A frase do que a plataforma fez com o item, com o gênero do tipo ("Receita publicada", "Fluxo confirmado")."""
+    nome = _DO_ITEM.get(kind, "Item do aprendizado")
+    fim = "o" if kind in _MASCULINOS or kind not in _DO_ITEM else "a"
+    if confirmacao:
+        feito = f"confirmad{fim}"
+    elif para in _O_QUE_FEZ:
+        feito = _O_QUE_FEZ[para] + fim + (" à prova" if para == "candidate" else "")
+    else:
+        feito = f"levad{fim} a {para}"
+    return f"{nome} {feito} pela plataforma, sem esperar o dono."
+
+
+def efeito_legivel(fila: str, efeito: str, fatos: Mapping[str, Escalar]) -> str:
+    """O efeito como o painel o mostra. A decisão do aprendizado gravada antes do 28.29 traz "publicado(a)": a frase é
+    refeita dos fatos (a confirmação antiga se reconhece pelo próprio texto). As outras filas já são legíveis."""
+    if fila != "aprendizado":
+        return efeito
+    kind, para = fatos.get("kind"), fatos.get("para")
+    if not isinstance(kind, str) or not isinstance(para, str):
+        return efeito
+    confirmacao = fatos.get("confirmacao") is True or "confirmado(a)" in efeito
+    return efeito_do_aprendizado(kind, para, confirmacao=confirmacao)
+
+
+def fatos_legiveis(fatos: Mapping[str, Escalar]) -> dict[str, Escalar]:
+    """Os fatos como o painel os mostra: o `texto` cortado na palavra (a linha antiga vinha cortada no meio)."""
+    saida = dict(fatos)
+    texto = saida.get("texto")
+    if isinstance(texto, str) and len(texto) >= MAX_TEXTO and not texto.endswith("…"):
+        espaco = texto.rfind(" ")
+        saida["texto"] = (texto[:espaco] if espaco > MAX_TEXTO // 2 else texto[:MAX_TEXTO - 1]).rstrip(" ,;:·-") + "…"
+    return saida
 
 
 def _numero(valor: object) -> str:
@@ -89,6 +139,10 @@ def decisao_de_evento(kind: str, dados: Mapping[str, object] | None, *, ts: str,
         estado = _filho(dados, "objective").get("status")
         fila, origem = "objetivo", f"objetivo:{ident}:{regra.strip()}"
         efeito = "O objetivo que esperava uma execução já terminada foi encerrado."
+        # A execução do objetivo, para o painel abrir dali (28.29); a pergunta já é a própria execução.
+        execucao = _id(_filho(dados, "objective").get("run_id")) or _id(run_id)
+        if execucao is not None:
+            fatos["run_id"] = execucao
     if isinstance(estado, str) and estado.strip():
         fatos["estado_final"] = estado.strip()
     return NovaDecisao(fila, ident, origem, regra.strip(), efeito, fatos, ts)
@@ -118,7 +172,7 @@ def fatos_do_texto(texto: str) -> dict[str, Escalar]:
         v = m.group(2).strip()
         saida[m.group(1)] = int(v) if re.fullmatch(r"-?\d+", v) else float(v) if re.fullmatch(r"-?\d+\.\d+", v) else v
     if not saida and texto.strip():
-        saida["texto"] = " ".join(texto.split())[:80]
+        saida["texto"] = texto_curto(texto)
     return saida
 
 
@@ -138,10 +192,8 @@ def decisao_de_transicao(*, transicao_id: int, item_ref: str, item_kind: str, de
     fatos["kind"], fatos["para"] = item_kind, para
     if de:
         fatos["de"] = de
-    nome = _DO_ITEM.get(item_kind, "Item do aprendizado")
     if confirmacao:
-        efeito = f"{nome} confirmado(a) pela plataforma, sem esperar o dono."
-    else:
-        efeito = f"{nome} {_O_QUE_FEZ.get(para, para)} pela plataforma, sem esperar o dono."
+        fatos["confirmacao"] = True
+    efeito = efeito_do_aprendizado(item_kind, para, confirmacao=confirmacao)
     return NovaDecisao("aprendizado", item_ref, f"aprendizado:{transicao_id}", f"auto:{regra} v{versao}", efeito,
                        fatos, decided_at)

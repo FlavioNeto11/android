@@ -322,6 +322,13 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
     link `#/pendencias?aba=decididas`. Frases fixas no código: a string da regra, o nome de persona, conta, e-mail,
     telefone, IP e o texto de comando não entram. O corpo passa pelo redator dos avisos.
   - Decisão já desfeita, ou mais velha que `avisos.validade_h`, não conta.
+  - O resumo só oferece desfazer ao que tem volta (o aprendizado, desligando o item). O encerrado (pergunta, objetivo,
+    pedido) diz que não reabre, e as aprovações pendentes que o vencimento encerrou junto aparecem pela contagem
+    (28.29, depois da primeira prova real: a mensagem 207 prometia desfazer 21 encerramentos sem volta).
+  - O registro mostra o estado de agora do item, por qualquer caminho. Se o dono desliga pela tela do Aprendizado, a
+    decisão aparece desfeita com quem, quando e o motivo da trilha, e o botão some. O cartão diz qual item foi
+    (nome e link no Livro; a execução, no vencimento), e o texto é legível: "Receita publicada", sem "(a)", cortado na
+    palavra (28.29).
 - **Hoje:** `modules/decisoes/` (adaptador, resumo e desfazer); o aviso é do tipo `decisoes.resumo` e sai pela fila de avisos
   (28.11), no líder da trava `avisos`.
 - **No produto:** a janela sobrevive a reinício (`decisoes_automaticas_estado`).
