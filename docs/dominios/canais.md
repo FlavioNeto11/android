@@ -528,6 +528,33 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   `infrastructure/servico.py::avisar_contato_do_portal` e `avisar_resumo_do_portal`, e o apagamento do corpo em `infrastructure/fila_sql.py`. A rota,
   a tabela dos contatos, a taxa e a retenção são da frente Portal (29.77).
 
+**C-27 · Contato do site excluído a pedido do titular some do canal (28.34).**
+- **Origem:** frente Portal (29.83, exclusão a pedido do titular), contrato combinado entre as sessões em 04/10
+  23:25Z–23:40Z, com o desenho aprovado pela orquestradora às 23:20Z.
+- **Regra:**
+  - A rota do Portal (`POST /api/portal/contatos/excluir`, atrás de sessão; uma pessoa aperta) chama UMA função por
+    contato, `await state.avisos.apagar_avisos_do_portal(contato_id, agora)`, e só apaga o contato com `estado="ok"`.
+  - Nesta ordem:
+    1. **A fila primeiro, e para sempre**, na chave `portal:<id>`: `enviando` devolve `em_envio` e não mexe em nada
+       (a varredura vira o `enviando` parado em `incerto`, então isso se resolve em minutos); `pendente`, `falhou` e
+       `incerto` viram `descartado` sem corpo nem link; `enviado` e `descartado` ficam, sem corpo; sem linha, entra uma
+       **lápide** `descartado`. Pela chave UNIQUE, o `avisar_contato_do_portal` de depois vira no-op: nada sai depois da
+       exclusão, nem pelo laço de reenvio do Portal. O estado é relido depois das escritas, e o líder que reivindicou
+       no meio aparece como `em_envio`.
+    2. **As respostas do dono** às mensagens do fato perdem o texto em `canal_entradas`; a linha fica.
+    3. **O chat**: as mensagens do bot (`canal_enviadas.fato`) e as respostas do dono a elas, com menos de 47 h (o
+       Telegram deixa até 48 h), saem pelo `deleteMessage`. Vão para `a_mao`, com a hora: a mais velha, a de canal
+       desligado, a que o Telegram recusa, a que falha na rede, a `incerto` (pode ter saído; vale o `iniciado_em`) e a
+       `enviado` sem `message_id` (vale o `enviado_em`).
+  - `ok` quando 1 e 2 terminaram, mesmo com `a_mao`; `falhou` só com erro de banco em 1 ou 2. Erro de rede em 3 não é
+    falha. O log leva só o id e as contagens; a função não guarda registro próprio (o registro da exclusão é do Portal,
+    só com ids e contagens).
+  - O id do contato nunca se repete (`{{PK_AUTO}}`: AUTOINCREMENT no SQLite, BIGSERIAL no PG; travado pelo teste do
+    Portal), senão um contato novo cairia na lápide do excluído e o aviso dele sumiria calado.
+- **Hoje:** `domain/portal.py` (`ApagadoNoCanal`, `JANELA_DE_APAGAR`, `da_para_apagar`),
+  `infrastructure/fila_sql.py` (`descartar_do_contato`, `respostas_ao_fato`, `tirar_texto_das_respostas`) e
+  `infrastructure/servico.py::apagar_avisos_do_portal`. A rota e a tabela dos contatos são da frente Portal (29.83).
+
 ## 7. Arquivos locais (fora do Git) e o que guardam
 
 Ficam em `.claude/handoffs/`, que o `.git/info/exclude` exclui: têm id de chat, vínculo com nome e estado da

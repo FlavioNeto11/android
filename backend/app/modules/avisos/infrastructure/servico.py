@@ -21,6 +21,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable, Iterable
+from datetime import datetime
 
 from app.config import Config
 from app.contracts.origem import PREFIXO_LOTE, e_execucao_do_sistema
@@ -30,13 +31,21 @@ from app.modules.avisos.adapters.telegram import CanalTelegram
 from app.modules.avisos.application.entrega import Canal, Resultado, entregar
 from app.modules.avisos.domain.mensagem import Aviso, aviso_de_evento
 from app.modules.avisos.domain.portal import (
+    APAGADO_EM_ENVIO,
+    APAGADO_FALHOU,
+    APAGADO_OK,
     CAMPO_INVALIDO,
     CANAL_DESLIGADO,
     FALHA_INTERNA,
+    TIPO_DO_CONTATO,
+    TITULO_DO_CONTATO,
+    ApagadoNoCanal,
     ContatoAvisado,
     ContatoDoPortal,
     aviso_do_contato,
     aviso_do_resumo,
+    chave_do_contato,
+    da_para_apagar,
     motivo_de_recusa,
 )
 from app.modules.avisos.infrastructure.faxina_sql import Faxina, FaxinaDosCanais
@@ -205,6 +214,51 @@ class ServicoDeAvisos:
         except Exception as exc:  # noqa: BLE001 - o laço do Portal tenta de novo na hora seguinte
             log.error("avisos: resumo do portal não entrou na fila: %s", type(exc).__name__)
             return ContatoAvisado(False, FALHA_INTERNA)
+
+    async def apagar_avisos_do_portal(self, contato_id: int, agora: datetime) -> ApagadoNoCanal:
+        """28.34, a exclusão de um contato do site a pedido do titular (29.83; contrato em `docs/dominios/canais.md`
+        C-27). Nesta ordem:
+
+        1. a fila da chave `portal:<id>` (`FilaDeAvisos.descartar_do_contato`): `enviando` devolve `em_envio` sem mexer
+           em nada mais; o resto fica `descartado` sem corpo, ou entra uma lápide, e nada sai depois;
+        2. o texto das respostas do dono a essas mensagens sai do banco;
+        3. as mensagens do chat (as do bot e as respostas do dono) com menos de 47 h são apagadas pelo `deleteMessage`;
+           a mais velha, a de canal desligado, a que o Telegram recusa e a que pode ter saído sem registro vão para
+           `a_mao`, com a hora.
+
+        `ok` quando 1 e 2 terminaram, mesmo com `a_mao`; `falhou` com erro de banco em 1 ou 2 (o Portal mantém o
+        contato). Erro de rede em 3 não é falha: vai para `a_mao`. O log leva só o id e as contagens."""
+        chave = chave_do_contato(contato_id)
+        try:
+            estado, a_mao = self.fila.descartar_do_contato(chave, tipo=TIPO_DO_CONTATO, titulo=TITULO_DO_CONTATO)
+            if estado == "enviando":
+                log.info("avisos: exclusão do contato do portal %s: a mensagem está saindo agora", contato_id)
+                return ApagadoNoCanal(APAGADO_EM_ENVIO)
+            respostas = self.fila.tirar_texto_das_respostas(chave)
+            no_chat = self.fila.respostas_ao_fato(chave)
+        except Exception as exc:  # noqa: BLE001 - o Portal mantém o contato e mostra o motivo
+            log.error("avisos: exclusão do contato do portal %s falhou no banco: %s", contato_id, type(exc).__name__)
+            return ApagadoNoCanal(APAGADO_FALHOU)
+        canal = self.canal()
+        apagar = getattr(canal, "apagar", None) if canal is not None else None
+        apagadas = 0
+        for ref, hora in no_chat:
+            if apagar is None or not da_para_apagar(hora, agora) or not ref.isdigit():
+                a_mao.append(hora)
+                continue
+            try:
+                ok = bool(await apagar(int(ref)))
+            except Exception as exc:  # noqa: BLE001 - a rede não desfaz a exclusão: o dono apaga à mão
+                log.warning("avisos: exclusão do contato do portal %s: o chat não apagou uma mensagem (%s)", contato_id,
+                            type(exc).__name__)
+                ok = False
+            if ok:
+                apagadas += 1
+            else:
+                a_mao.append(hora)
+        log.info("avisos: contato do portal %s excluído do canal: %d apagada(s), %d à mão, %d resposta(s) sem texto",
+                 contato_id, apagadas, len(a_mao), respostas)
+        return ApagadoNoCanal(APAGADO_OK, apagadas, tuple(a_mao))
 
     def _com_nome_da_acao(self, data: dict[str, object] | None) -> dict[str, object] | None:
         """31.50: põe `acao_nome` (o nome do catálogo) ao lado da `acao` do lembrete. A falha da leitura só tira o nome."""

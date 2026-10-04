@@ -248,6 +248,59 @@ class FilaDeAvisos:
                 (*ESTADOS_FINAIS, limite))
         return int(cur.rowcount or 0)
 
+    # ------------------------------------------------------------------ exclusão a pedido do titular (28.34)
+    def descartar_do_contato(self, chave: str, *, tipo: str, titulo: str) -> tuple[str, list[str]]:
+        """A fila de um contato do site que o titular pediu para apagar (29.83). Devolve o estado final da linha e as
+        horas de mensagens que podem estar no chat sem registro (a `incerto`: pode ter saído; a `enviado` sem
+        `message_id`). Uma linha só por chave (UNIQUE):
+
+        - `pendente`, `falhou` e `incerto` viram `descartado`; o UPDATE confere o estado, então a reivindicação do líder
+          (`pendente → enviando`, também condicionada) e esta exclusão nunca pegam a mesma linha;
+        - `enviado` e `descartado` ficam, sem corpo nem link;
+        - sem linha: entra uma LÁPIDE `descartado` sem corpo. Pela chave, o `avisar_contato_do_portal` de depois (o laço
+          de reenvio do Portal no meio de um envio) vira no-op: nada sai depois da exclusão. A lápide sai pela `purgar`.
+
+        O estado é relido DEPOIS das escritas: o líder que reivindicou entre a leitura e o UPDATE aparece aqui como
+        `enviando`, e quem chama devolve `em_envio` em vez de dizer que acabou."""
+        incertos = [str(r["iniciado_em"]) for r in self.db.query(
+            "SELECT iniciado_em FROM avisos_entregas WHERE chave=? AND estado='incerto' AND iniciado_em IS NOT NULL",
+            (chave,))]
+        self.db.execute("UPDATE avisos_entregas SET estado='descartado', corpo='', link=NULL, proximo_envio_em=NULL,"
+                        " ultimo_erro='excluído a pedido do titular' WHERE chave=? AND estado IN ('pendente','falhou','incerto')",
+                        (chave,))
+        self.db.execute("UPDATE avisos_entregas SET corpo='', link=NULL WHERE chave=? AND estado IN ('enviado','descartado')",
+                        (chave,))
+        self.db.execute(
+            "INSERT INTO avisos_entregas(chave, tipo, titulo, corpo, link, canal, estado, ultimo_erro, criado_em)"
+            " VALUES (?,?,?,'',NULL,?,'descartado','excluído a pedido do titular',?) ON CONFLICT (chave) DO NOTHING",
+            (chave, tipo, titulo, self.canal, self._agora()))
+        linha = self.db.one("SELECT estado, enviado_em FROM avisos_entregas WHERE chave=?", (chave,))
+        estado = str(linha["estado"]) if linha is not None else ""
+        if estado == "enviado" and linha is not None and linha["enviado_em"] and not self.db.scalar(
+                "SELECT COUNT(*) FROM canal_enviadas WHERE canal=? AND fato=?", (self.canal, chave)):
+            incertos.append(str(linha["enviado_em"]))     # saiu sem `message_id`: o chat tem, o registro não
+        return estado, incertos
+
+    def respostas_ao_fato(self, fato: str) -> list[tuple[str, str]]:
+        """As mensagens do chat ligadas ao fato: as do bot (`canal_enviadas.fato`) e as respostas do dono a elas
+        (`canal_entradas.responde_a`), como `(ref_mensagem, hora UTC)`. A ordem é a do envio."""
+        bot = [(str(r["ref_mensagem"]), str(r["enviada_em"])) for r in self.db.query(
+            "SELECT ref_mensagem, enviada_em FROM canal_enviadas WHERE canal=? AND fato=? ORDER BY enviada_em, ref_mensagem",
+            (self.canal, fato))]
+        dono = [(str(r["ref_mensagem"]), str(r["recebida_em"])) for r in self.db.query(
+            "SELECT e.ref_mensagem, e.recebida_em FROM canal_entradas e WHERE e.canal=? AND e.ref_mensagem IS NOT NULL"
+            " AND e.responde_a IN (SELECT s.ref_mensagem FROM canal_enviadas s WHERE s.canal=? AND s.fato=?)"
+            " ORDER BY e.recebida_em, e.id", (self.canal, self.canal, fato))]
+        return bot + dono
+
+    def tirar_texto_das_respostas(self, fato: str) -> int:
+        """O texto das respostas do dono às mensagens do fato sai do banco; a linha fica (é o registro do canal)."""
+        cur = self.db.execute(
+            "UPDATE canal_entradas SET texto=NULL WHERE canal=? AND texto IS NOT NULL"
+            " AND responde_a IN (SELECT ref_mensagem FROM canal_enviadas WHERE canal=? AND fato=?)",
+            (self.canal, self.canal, fato))
+        return int(cur.rowcount or 0)
+
     # ------------------------------------------------------------------ leitura
     def contagens(self) -> dict[str, int]:
         linhas = self.db.query("SELECT estado, COUNT(*) AS n FROM avisos_entregas GROUP BY estado")

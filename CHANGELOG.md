@@ -19,6 +19,23 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.34: contato do site excluído a pedido do titular some do canal (branch canais/28-34-exclusao-do-contato)
+
+- **Por quê:** o 29.83 do Portal apaga um contato do site a pedido de quem escreveu. Sem o lado do canal, o aviso
+  ainda na fila sairia depois da exclusão, e a mensagem e a resposta do dono ficariam no chat.
+- **O quê:** `state.avisos.apagar_avisos_do_portal(contato_id, agora) -> ApagadoNoCanal(estado, apagadas, a_mao)`, no
+  contrato combinado com a sessão Portal (regra C-27 em `docs/dominios/canais.md`):
+  - a fila primeiro: `enviando` devolve `em_envio`; `pendente`, `falhou` e `incerto` viram `descartado` sem corpo; sem
+    linha, uma lápide pela chave, e o reenvio de depois vira no-op;
+  - o texto das respostas do dono sai do banco;
+  - as mensagens do bot e as respostas do dono com menos de 47 h saem do chat (`deleteMessage`); o resto vai para
+    `a_mao` com a hora, inclusive a `incerto` e a `enviado` sem `message_id`;
+  - `falhou` só com erro de banco; o log leva só o id e as contagens.
+- **Prova:** `simulated`, `backend/tests/test_avisos_portal_exclusao.py` (12 passed: pendente, lápide e reenvio no-op,
+  enviado com a mensagem e a resposta apagadas, 47 h e canal desligado, recusa e rede, enviando, incerto e falhou,
+  enviado sem id, erro de banco sem conteúdo no log, só a chave do contato, a janela); 242 passed em todos os
+  `test_avisos_*`. Real: `not_run` (nenhuma exclusão real; o Telegram de verdade não foi chamado).
+
 ## 2026-10-04 — 28.32: a mensagem do visitante do site chega ao Telegram do dono (branch canais/28-32-contato-do-portal)
 
 - `backend/app/modules/avisos/domain/portal.py`: `ContatoDoPortal`, `ContatoAvisado`, a defesa dos tetos, a higiene dos
