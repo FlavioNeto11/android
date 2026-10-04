@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.63: o esquema do worker no harness de PostgreSQL (branch fix/29-63-esquema-modelo)
+
+- `tests/esquema_do_worker.py`: em PG, cada worker migra um esquema uma vez, e a 1ª abertura de banco de cada teste
+  pelos ajudantes compartilhados o recebe esvaziado. Isso troca o custo de ~3,2 s por teste (criar, migrar e apagar)
+  pelo de esvaziar. Só harness de teste; em SQLite nada muda.
+- Os testes da própria migração seguem com esquema novo.
+- Qualquer falha ou mudança de estrutura troca o esquema, então o custo volta ao de antes, sem teste vermelho.
+- `ESQUEMA_MODELO=off` serve para a medida antes e depois.
+- Teste: `backend/tests/test_esquema_do_worker.py` (só com `TEST_DATABASE_URL`).
+- Prova: SQLite intacto (105 passed, 3 skipped; não prova o PG). A medida em PG (1016 testes, `-n 8`, antes e
+  depois) fica not_run até a vez da orquestradora, depois do deploy 17.
+
 ## 2026-10-04 — 29.56: tranca de login por cliente, limite no Bearer e cabeçalhos de segurança (branch fix/29-56-tranca-por-cliente, sem migração)
 
 - A `PortaoDeLogin` passou a ser por cliente (`security.access.cliente_de`): pelo túnel o par é sempre `127.0.0.1`, e o

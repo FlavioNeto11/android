@@ -283,6 +283,29 @@ O CI (`.github/workflows/ci.yml`) roda esta corrida num container `postgres:17` 
 schema que ela mesma criou (`DROP SCHEMA ... CASCADE`); sem isso o catálogo só cresce — medidos 1608 schemas e
 1,9 GB acumulados num único banco de desenvolvimento (achado #163) sem nenhum `DROP SCHEMA` no código.
 
+**O esquema do worker (29.63).** Criar, migrar e apagar um esquema por teste custava ~3,2 s em PostgreSQL (medido
+em 04/10: criar 0,02 s, 82 migrações 2,25 s, DROP 0,9 s). Agora cada processo da suíte (cada worker do xdist) migra
+UM esquema uma vez, e a primeira abertura de banco de cada teste pelos ajudantes compartilhados (`make_config`,
+`fake_skills.banco`) o recebe esvaziado (`tests/esquema_do_worker.py`). Esvaziar devolve o estado de logo depois da
+migração:
+- `TRUNCATE` de todas as tabelas, menos `schema_migrations`;
+- as linhas que as migrações semeiam voltam de um esquema-gêmeo;
+- as sequências voltam ao valor de então.
+
+Antes de esvaziar:
+- as conexões que sobraram do teste anterior naquele esquema são encerradas (marcadas por `application_name`);
+- a estrutura (colunas, índices, restrições, gatilhos, funções, visões e `schema_migrations`) é conferida pela
+  impressão; um teste que mexeu em DDL faz o esquema ser trocado por um novo.
+
+Qualquer falha também troca o esquema: no pior caso o custo é o de antes. Ficam com esquema novo, como sempre:
+- a segunda abertura de banco no mesmo teste;
+- toda chamada direta de `_dsn_de_teste()`;
+- os testes que trocam `MIGRATIONS_DIR` (os testes da própria migração).
+
+`ESQUEMA_MODELO=off` desliga o reuso, para medir antes e depois no mesmo commit. `ESQUEMA_MODELO_RELATORIO=<pasta>`
+grava, por worker, quantos reusos, migrações e trocas houve e por quê. Uma troca frequente é o achado a seguir, não
+ruído.
+
 ## Dois backends no mesmo banco: o que já foi feito
 
 > **Histórico.** Esta seção chegou a se chamar "o que foi preciso para isso ser seguro", depois "e por que ainda
