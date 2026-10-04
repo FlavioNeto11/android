@@ -63,6 +63,17 @@ class Capability:
     risk: str = "low"                           # low | medium | high — orienta a política padrão
     commit_selector: str | None = None          # QUEM dispara o efeito; sem isso o commit é adivinhado por verbo
     commit_guard: tuple[str, ...] = ()
+    # 29.79: interruptores que têm de estar LIGADOS na tela antes do toque de efeito, cada um como
+    # `<argumento>:<seletor>` — vale quando o argumento da etapa é "true" (o "Add AI label" do Instagram quando
+    # `rotulo_ia` é "true"). Ligado é o elemento do seletor marcado (`checked`) ou um marcado na mesma linha dele (o
+    # texto e o interruptor costumam ser irmãos). Sem ele ligado o executor não toca no efeito e, na segunda recusa,
+    # para pedindo uma pessoa.
+    commit_switch: tuple[str, ...] = ()
+    # 29.79 (d): a MARCA que o interruptor deixa na publicação, conferida DEPOIS do efeito, só pela árvore e só leitura,
+    # como `<argumento>:<seletor>` — vale quando o argumento é "true" (o "AI info" do cabeçalho do post). Conta só a
+    # marca colada logo abaixo do nome da conta da etapa: o post é o NOSSO, não o de outro perfil do feed. Sem ela, a
+    # publicação comprovada pela contagem fica incerta ("publicado, rótulo não confirmado") e nada se repete.
+    commit_switch_mark: tuple[str, ...] = ()
     # Guardas que precisam estar na MESMA faixa vertical do alvo. É o que distingue a linha certa numa lista:
     # numa lista de pedidos, "@ana" em qualquer lugar da tela não prova que o botão tocado é o dela.
     band_guard: tuple[str, ...] = ()
@@ -200,6 +211,23 @@ def local_proof_error(valor: str | None) -> str | None:
     return f"prova local desconhecida: {valor!r} (aceitas: {', '.join(LOCAL_PROOFS)})"
 
 
+def commit_switch_error(cap: Capability) -> str | None:
+    """Motivo pelo qual o `commit_switch` de uma ação é inválido; `None` quando está bem formado ou ausente. O argumento
+    tem de ser declarado pela ação (senão a guarda nunca liga) e a ação tem de ter `commit_selector` (o toque de efeito
+    é estrutural; sem ele não há "antes do toque" a conferir)."""
+    if not cap.commit_switch:
+        return "commit_switch_mark exige commit_switch" if cap.commit_switch_mark else None
+    if not cap.commit_selector:
+        return "exige commit_selector"
+    for entrada in (*cap.commit_switch, *cap.commit_switch_mark):
+        argumento, _, seletor = entrada.partition(":")
+        if not argumento.strip() or not seletor.strip():
+            return f"entrada inválida: {entrada!r} (use <argumento>:<seletor>)"
+        if argumento.strip() not in (*cap.bindings, *cap.optional_bindings):
+            return f"o argumento {argumento.strip()!r} não é declarado pela ação"
+    return None
+
+
 def card_control_error(cap: Capability) -> str | None:
     """Motivo pelo qual o `card_control` de uma ação é inválido; `None` quando está bem formado ou ausente. Um seletor
     vazio casaria qualquer elemento (ou nenhum), e um controle sem `card_guard` nunca seria conferido — nos dois casos
@@ -318,6 +346,9 @@ class CapabilityCatalog:
             erro = card_control_error(c)
             if erro:
                 raise ValueError(f"{package}: {c.key}.card_control — {erro}")
+            erro = commit_switch_error(c)
+            if erro:
+                raise ValueError(f"{package}: {c.key}.commit_switch — {erro}")
             erro = inherited_bindings_error(c)
             if erro:
                 raise ValueError(f"{package}: {c.key}.inherited_bindings — {erro}")

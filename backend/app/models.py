@@ -1848,6 +1848,9 @@ class StepResult(BaseModel):
     evidence_id: int | None = None            # confirmação manual: o print em que a pessoa se baseou (ADR-055)
     # 29.58 (C): presente só quando o efeito saiu repetido, na etapa onde a repetição foi VISTA.
     efeito_repetido: EfeitoRepetido | None = Field(default=None, exclude_if=lambda v: v is None)
+    #: 29.79 (d): o efeito EM SI foi comprovado (a publicação saiu), e o que ficou incerto é uma afirmação a mais sobre
+    #: ele (o rótulo de IA). A etapa nunca se refaz: nem "repetir" nem a retomada a põem de volta no plano.
+    efeito_comprovado: bool = Field(default=False, exclude_if=lambda v: not v)
 
 
 class StepDTO(BaseModel):

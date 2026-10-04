@@ -145,6 +145,7 @@ function ObjectiveRow({ detail, objective: o, attempts, voto, open, onToggle }: 
   const confirmacao = useMemo<Confirmacao>(() => ({
     print: printParaConfirmar(detail, o),
     efeitoExterno: etapaAConfirmar(detail, o)?.side_effect ?? false,
+    efeitoComprovado: etapaAConfirmar(detail, o)?.result?.efeito_comprovado ?? false,
   }), [detail, o]);
 
   return (
@@ -266,7 +267,11 @@ function BlockedBox({ objective: o, confirmacao }: { objective: Objective; confi
       {o.needs ? <p className={styles.needs}>{o.needs}</p> : null}
       {o.blocked_reason ? <p><span className={styles.muted}>Motivo: </span>{o.blocked_reason}</p> : null}
       {!o.needs && !o.blocked_reason && o.status_detail ? <p>{o.status_detail}</p> : null}
-      {uncertain ? (
+      {uncertain && confirmacao.efeitoComprovado ? (
+        <p style={{ marginTop: 6 }}>
+          <strong>O efeito já saiu e foi comprovado.</strong> Repetir o faria de novo, por isso não há “Tentar novamente”. Confira no aparelho o que ficou em aberto e então confirme (com o print) ou abandone.
+        </p>
+      ) : uncertain ? (
         <p style={{ marginTop: 6 }}>
           <strong>Nada será reenviado automaticamente.</strong> Uma ação com efeito externo pode ou não ter acontecido. Abra o aparelho, confira o que de fato ocorreu e então escolha abaixo.
         </p>
@@ -288,9 +293,11 @@ function BlockedBox({ objective: o, confirmacao }: { objective: Objective; confi
         <Button size="sm" icon={Check} loading={busy === 'confirm_done'} disabled={busy !== null && busy !== 'confirm_done'} onClick={() => void resolve('confirm_done')}>
           Marcar como concluído…
         </Button>
-        <Button size="sm" icon={RotateCcw} loading={busy === 'retry'} disabled={busy !== null && busy !== 'retry'} onClick={() => void resolve('retry')}>
-          Tentar novamente…
-        </Button>
+        {confirmacao.efeitoComprovado ? null : (
+          <Button size="sm" icon={RotateCcw} loading={busy === 'retry'} disabled={busy !== null && busy !== 'retry'} onClick={() => void resolve('retry')}>
+            Tentar novamente…
+          </Button>
+        )}
         <Button size="sm" variant="dangerGhost" icon={Ban} loading={busy === 'abandon'} disabled={busy !== null && busy !== 'abandon'} onClick={() => void resolve('abandon')}>
           Abandonar…
         </Button>

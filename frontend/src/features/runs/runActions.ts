@@ -115,6 +115,8 @@ const RESOLUTION_COPY: Record<Resolution, { title: string; confirmLabel: string;
 export interface Confirmacao {
   print: Evidence | null;
   efeitoExterno: boolean;
+  /** 29.79 (d): o efeito saiu e foi comprovado; repetir o faria de novo (o servidor recusa com 409). */
+  efeitoComprovado?: boolean;
 }
 
 export async function resolveObjective(objective: Objective, resolution: Resolution,

@@ -179,6 +179,9 @@ class UiElement:
     editable: bool
     checked: bool
     password: bool
+    #: 29.79, revisão C1: o uiautomator diz `checkable` no interruptor mesmo quando quem recebe o toque é a LINHA (o
+    #: interruptor fica `clickable=false`). Sem isto, o interruptor certo e desligado nem era candidato da guarda.
+    checkable: bool = False
 
     @property
     def center(self) -> tuple[int, int]:
@@ -188,6 +191,8 @@ class UiElement:
     def to_dict(self) -> dict:
         d = asdict(self)
         d["bounds"] = list(self.bounds)
+        if not self.checkable:
+            del d["checkable"]                 # só quando diz algo: as capturas e evidências de antes seguem iguais
         return d
 
     def line(self, scale: float = 1.0, *, protect: tuple[str, ...] = ()) -> str:
@@ -549,7 +554,8 @@ def parse_hierarchy(xml_text: str, *, max_elements: int = 1500,
             id=f"e{n}", text=MASK if (is_password and text) else text, desc=desc, resource_id=rid, class_name=cls,
             package=pkg, bounds=bounds,  # type: ignore[arg-type]
             clickable=clickable, enabled=a.get("enabled", "true") == "true", focused=a.get("focused") == "true",
-            scrollable=scrollable, editable=editable, checked=a.get("checked") == "true", password=is_password))
+            scrollable=scrollable, editable=editable, checked=a.get("checked") == "true", password=is_password,
+            checkable=a.get("checkable") == "true"))
     trava = detectar_trava_generica("\n".join(textos_normalizados), tem_onde_digitar=tem_onde_digitar)
     if trava is not None:
         if not sensitive:
