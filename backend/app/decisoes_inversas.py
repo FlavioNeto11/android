@@ -16,7 +16,8 @@ Investigação (lida, sem mexer nas filas), 04/10:
 """
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 
 from app.modules.decisoes.application.desfazer import (Descricao, DesfeitaPorFora, InversaDaFila, SemInversa,
                                                          SemInversaSegura)
@@ -41,6 +42,34 @@ class InversaDoAprendizado:
 
     def __init__(self, servico: LearningService):
         self._servico = servico
+        #: A leitura do livro reaproveitada dentro de UMA listagem (`memorizado`); `None` fora dela. A listagem é
+        #: síncrona dentro do handler (nenhum `await` no meio), então duas requisições não dividem o mesmo memo.
+        self._memo: dict[tuple[LivroKind, str], object] | None = None
+
+    @contextmanager
+    def memorizado(self) -> Iterator[None]:
+        """Revisão do 28.29 (achado 4): na listagem, `por_que_nao`, `descrever` e `desfeita_por_fora` perguntavam o mesmo
+        item ao livro, 3 a 4 leituras por decisão e até 200 decisões por GET. Aqui, uma leitura por item. O desfazer
+        não passa por aqui: ele lê o estado de agora."""
+        anterior, self._memo = self._memo, {}
+        try:
+            yield
+        finally:
+            self._memo = anterior
+
+    def _entrada(self, kind: LivroKind, ref: str):  # noqa: ANN202 - o tipo é o do serviço do livro
+        if self._memo is None:
+            return self._servico.entrada(kind, ref)
+        chave = (kind, ref)
+        if chave not in self._memo:
+            try:
+                self._memo[chave] = self._servico.entrada(kind, ref)
+            except ErroDeAprendizado as exc:
+                self._memo[chave] = exc
+        valor = self._memo[chave]
+        if isinstance(valor, ErroDeAprendizado):
+            raise valor
+        return valor
 
     @staticmethod
     def _kind(d: Decisao) -> LivroKind | None:
@@ -57,7 +86,7 @@ class InversaDoAprendizado:
             return "o tipo do item não está registrado nesta decisão"
         # 28.29: o estado de AGORA do item, e não só o da decisão (o botão aparecia para o que já tinha mudado).
         try:
-            atual = self._servico.entrada(kind, self._ref(decisao, kind)).state
+            atual = self._entrada(kind, self._ref(decisao, kind)).state
         except NaoEncontrado:
             return "o item não existe mais no livro de aprendizado"
         except ErroDeAprendizado:
@@ -73,7 +102,7 @@ class InversaDoAprendizado:
         if kind is None:
             return None
         try:
-            titulo = self._servico.entrada(kind, self._ref(decisao, kind)).title
+            titulo = self._entrada(kind, self._ref(decisao, kind)).title
         except ErroDeAprendizado:
             return None
         return Descricao(nome=" ".join(str(titulo or "").split())[:120] or None)
@@ -86,7 +115,7 @@ class InversaDoAprendizado:
             return None
         ref = self._ref(decisao, kind)
         try:
-            if self._servico.entrada(kind, ref).state is not SkillState.DISABLED:
+            if self._entrada(kind, ref).state is not SkillState.DISABLED:
                 return None
             trilha = self._servico.detalhe(kind, ref).trilha
         except ErroDeAprendizado:

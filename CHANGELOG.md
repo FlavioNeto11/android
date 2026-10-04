@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.29, achado 4 da revisão: o GET do registro lê o livro uma vez por item (branch canais/28-29-leitura-unica)
+
+- `GET /api/decisoes-automaticas` lia o mesmo item do livro 3 a 4 vezes por decisão: em `por_que_nao`, em `descrever` e
+  em `desfeita_por_fora`. A página tem até 200 decisões. Agora a listagem roda dentro de `DesfazerDecisoes.numa_leitura()`,
+  e a inversa do aprendizado reaproveita a leitura por item (`memorizado`), inclusive o "não existe mais". O desfazer
+  continua lendo o estado de agora.
+- Prova `simulated`: dois testes novos em `tests/test_decisoes_registro_coerente.py`, que falham com a memória desligada
+  (as leituras se repetiam por item) e passam com ela. 86 passed nos cinco arquivos de decisões.
+
 ## 2026-10-04 — 28.31 F3: a rotina do resumo sai no máximo uma vez por hora; "Precisa de você" que muda sai já (branch canais/28-31-piso-da-rotina)
 
 - **Por quê:** a orquestradora pediu, no "liga" do laço (04/10 23:14Z), pela regra da rotina agrupada: a rotina sai no

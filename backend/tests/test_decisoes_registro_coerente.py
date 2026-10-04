@@ -209,3 +209,53 @@ def test_resumo_so_oferece_desfazer_ao_que_tem_volta_e_conta_as_aprovacoes() -> 
     so_aprendizado = corpo_do_resumo([DecisaoParaResumir(9, "aprendizado", "auto:qa_revisar v1")], 1) or ""
     assert "não reabre" not in so_aprendizado and "em até 1 dia." in so_aprendizado
     assert "aprovaç" not in (corpo_do_resumo(venc, 7) or "")
+
+
+# ===================================================================== (c) uma leitura do livro por item na listagem
+def test_dentro_da_listagem_o_livro_e_lido_uma_vez_por_item() -> None:
+    """Revisão do 28.29 (achado 4): `por_que_nao`, `descrever` e `desfeita_por_fora` liam o mesmo item 3 vezes."""
+    from app.modules.learning.domain.ciclo import NaoEncontrado
+
+    class Entrada:
+        state, title = SkillState.PUBLISHED, "Lição"
+
+    class Livro:
+        def __init__(self) -> None:
+            self.lidas: list[str] = []
+
+        def entrada(self, kind: object, ref: str) -> object:
+            self.lidas.append(ref)
+            if ref == "sumiu":
+                raise NaoEncontrado("não há")
+            return Entrada()
+
+    livro = Livro()
+    inversa = InversaDoAprendizado(livro)  # type: ignore[arg-type]
+    d = _decisao("aprendizado", "receita:1", {"kind": "receita", "para": "published"})
+    sumiu = _decisao("aprendizado", "receita:sumiu", {"kind": "receita", "para": "published"})
+    with inversa.memorizado():
+        for x in (d, sumiu):
+            inversa.por_que_nao(x), inversa.descrever(x), inversa.desfeita_por_fora(x)
+        assert "não existe mais" in (inversa.por_que_nao(sumiu) or "")             # o erro também fica memorizado
+    assert livro.lidas == ["1", "sumiu"]
+    # Fora da listagem, cada pergunta lê o estado de agora (o desfazer depende disso).
+    inversa.por_que_nao(d), inversa.descrever(d)
+    assert livro.lidas == ["1", "sumiu", "1", "1"]
+
+
+async def test_o_get_da_lista_le_o_livro_uma_vez_por_item(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    licoes = [_publicar_licao(harness, f"tocar em [row_{n}]") for n in range(3)]
+    for lic in licoes:
+        _decidir(harness, "aprendizado", lic, fatos={"kind": "licao", "para": "published"})
+    original = harness.state.learning.entrada
+    lidas: list[str] = []
+
+    def contando(kind: LivroKind, ref: str) -> object:
+        lidas.append(ref)
+        return original(kind, ref)
+
+    monkeypatch.setattr(harness.state.learning, "entrada", contando)
+    async with _cliente(harness) as c:
+        itens = (await c.get("/api/decisoes-automaticas")).json()["itens"]
+    assert len(itens) == 3 and all(i["pode_desfazer"] for i in itens)
+    assert sorted(lidas) == sorted(licoes)                                         # antes: 3 leituras por item
