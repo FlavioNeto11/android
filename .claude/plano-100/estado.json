@@ -6888,14 +6888,14 @@
    "id": "28.15",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "PR #166 (Canais; migração 085 canal_entradas/canal_enviadas, ADR-071) integrado na suíte 14 (bc7785d9), com 7fd72929 (integração com o 29.52, porta única pergunta_sensivel) e e657b4c8 (2ª revisão: E2 mensagem antiga não executa, E6, E7, E8, E9). Deploy 14 no central (main 51270b9c, 03/10 20:35Z) com avisos.entrada.enabled=false. Testes: backend/tests/test_telegram_entrada.py, test_telegram_roteador.py, test_avisos_telegram.py (bot falso por httpx.MockTransport).",
-   "blocker": "real: not_run até o dono dizer sim para ligar a entrada (avisos.entrada.enabled) e trocar a caixa provisória da sessão Canais pela entrada da Central (as duas não leem o mesmo bot: 409)",
-   "grupo": "canais-28-15-registro",
-   "modelo": "opus",
-   "esforco": "high",
+   "evidence": "Aprovado pela orquestradora em 04/10 (só o chat do dono; triagem de credencial; efeito pela prévia com botões e pelas mesmas aprovações do painel; desliga com avisos.entrada.enabled). Ligado no deploy 26 (60b3a0a9, 04/10/2026 13:16Z): a caixa provisória (telegram_inbox.py) parou às 13:10:28Z, antes do reinício; o laço do produto subiu às 13:14:52Z ('1ª subida do canal; o histórico do chat foi descartado', canal_entradas id 440); GET /api/canais/estado com conversa_telegram ligada e problemas []; /api/health problems []; a tela #/canais no Chrome às ~13:16Z mostrou 'Conversa pelo Telegram: Ligado', sem erro no console. O dono foi avisado às 13:16:59Z (msg 180). Real not_run até a primeira mensagem do dono ser tratada pelo laço (canal_entradas canal='telegram', do_dono=1).",
+   "blocker": null,
+   "grupo": "canais",
+   "modelo": "sessao",
+   "esforco": "M",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T08:57:23+00:00"
+   "quando": "2026-10-04T13:24:55+00:00"
   },
   "18.8": {
    "id": "18.8",
@@ -7301,30 +7301,30 @@
   "31.35": {
    "id": "31.35",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "A/B do acoes_por_decisao interrompido depois do 1º braço. r-20261004121431-980478, com ai_profile encadear-3: 19 ações para 19 decisões, nenhuma encadeada. O planejador fez uma etapa por toque, então nas etapas de navegação não havia 2ª ação; e a leitura só fez observe_screen e find_element. US$ 0,18. O comando não exercita o encadeamento; precisa de um comando cujas etapas tenham 2 ou mais ações.",
-   "blocker": "Parte B fechada sem adoção (com o plano de uma ação por etapa não há o que encadear; 980478: 19 ações em 19 decisões); falta a medida real da parte A (tokens por decisão do ator no navegador antes e depois).",
+   "proof": "not_run",
+   "evidence": "Parte B (acoes_por_decisao): FECHADA pela orquestradora como 'sem onde agir com o plano de uma ação por etapa'. O braço real r-20261004121431-980478 (perfil encadear-3) fez 19 ações em 19 decisões, sem encadeamento, porque o planejador faz uma etapa por toque; US$ 0,18. O encadeamento fica desligado. Parte A (poda da UI do navegador): implementada, mas sem medida real de antes e depois feita por mim; por isso o item fica partial.",
+   "blocker": "parte A sem medida real de antes e depois",
    "arquivos": [],
    "testes": [],
-   "grupo": "jev-pos-deploy-25",
+   "grupo": "jev-pos-deploy-26",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T12:27:16+00:00"
+   "quando": "2026-10-04T13:24:55+00:00"
   },
   "28.10": {
    "id": "28.10",
    "status": "partial",
    "proof": "simulated",
-   "evidence": "PR #227 (F1, suíte 24, migração 096) e PR #240 (F2: dependência entre pedidos no laço e reserva dos filhos, desligada por padrão, sem migração); suíte 25 (integ/suite-25 @ 24da29ef: SQLite 9422 passed em -n 6, PG dirigido 2234 passed em 119 arquivos no farm-pg-rapido; 3 problemas tratados na integ) e deploy 25 no ar em 04/10 (deploy.ps1 terminou 12:06:27Z, migração 098, saúde ok, prova de fora ok às 12:06:50Z).",
-   "blocker": "Faltam as fatias F3 a F5, uma por vez.",
-   "grupo": "orquestradora-deploy25",
-   "modelo": "fable",
-   "esforco": "high",
+   "evidence": "F1 PR #227 (migração 096, adendo v1.16), deploy 24. F2 PR #240 (canais/28-10-f2-dependencias @ 47de2338; dependência no despacho, espera_dependencia_s, reserva dos filhos no orçamento do pai), suíte 25, deploy 25 (24da29ef). F3 PR #252 (canais/28-10-f3-papeis @ accd756b, adendo v1.18; TETO_DO_PAPEL, 422 autonomia_acima_do_papel na prévia, na criação e no PATCH, o laço decide com min(pedido, papel) e a ocorrência registra 'autonomia rebaixada ao teto do papel <papel>: <gravada> → <efetiva>'), suíte 26, deploy 26 (60b3a0a9, 04/10/2026 13:16Z). Simulado: backend/tests/test_pedidos_colaboracao_papeis.py (17, com contraprova: 3 falham sem a fatia), test_pedidos_colaboracao_api.py e test_pedidos_colaboracao_laco.py; 582 nos test_pedidos* no PR da F3. Real not_run: pedidos.colaboracao.enabled e pedidos.enabled estão desligados no central (pedidos fica desligado até o 28.23 estar no ar).",
+   "blocker": "F4 (consolidação no pai) e F5 (regras para fora, só simulated até o sim do dono) não começaram; a prova real de qualquer fatia espera pedidos religado depois do 28.23.",
+   "grupo": "canais",
+   "modelo": "sessao",
+   "esforco": "M",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T12:12:28+00:00"
+   "quando": "2026-10-04T13:24:55+00:00"
   },
   "14.13": {
    "id": "14.13",
@@ -7451,18 +7451,18 @@
    "id": "31.39",
    "status": "implemented",
    "proof": "real",
-   "evidence": "04/10/2026, deploy 25. Os mesmos 3 comandos e aparelhos da linha de base do 31.24 (deploy 16, 00:01Z a 00:20Z), lote:jev:31.39-01..03. As 3 casaram fluxo adotado, sem chamada de plano nos dois lados, e fecharam completed. Por execução, antes → depois: (1) fee44f → a17079, android-10: parede 40,2 → 61,5 s; ator 3 decisões, 6,5 → 7,7 s; conferência 4, 13,4 → 10,7 s; espera do juiz 3,0 → 4,7 s; custo US$ 0,079 → 0,060. (2) ef5c86 → f32c9e, android-09: parede 31,4 → 34,0 s; ator 1 decisão, 2,2 → 1,8 s; conferência 10,8 → 11,3 s; custo 0,061 → 0,035. (3) 9c839c → dd421e, android-10: parede 43,3 → 61,3 s; ator 7,5 → 6,2 s; conferência 13,4 → 11,8 s; custo 0,076 → 0,050. Custo total 0,216 → 0,144 (−33 %). O excedente de parede do android-10 vem do aparelho, nas etapas de navegação (open_app 6,2 → 12,5 s; open_conversation 4,7 → 10,0 s; fill_message 4,4 → 9,9 s): leitura da árvore no preparo de 207–279 ms para 543–965 ms, imagem de 428 para 1703 ms, type_text de 2,2 para 6,2 s. INFERRED: carga no worker do notebook depois das rodadas da Canais das 12:00Z no 09 e no 10, sem medida de host.",
+   "evidence": "04/10/2026, deploy 25. Os mesmos 3 comandos e aparelhos da linha de base do 31.24 (deploy 16, 00:01Z a 00:20Z), lote:jev:31.39-01..03. As 3 casaram fluxo adotado, sem chamada de plano nos dois lados, e fecharam completed. Por execução, antes → depois: (1) fee44f → a17079, android-10: parede 40,2 → 61,5 s; ator 3 decisões, 6,5 → 7,7 s; conferência 4, 13,4 → 10,7 s; espera do juiz 3,0 → 4,7 s; custo US$ 0,079 → 0,060. (2) ef5c86 → f32c9e, android-09: parede 31,4 → 34,0 s; ator 1 decisão, 2,2 → 1,8 s; conferência 10,8 → 11,3 s; custo 0,061 → 0,035. (3) 9c839c → dd421e, android-10: parede 43,3 → 61,3 s; ator 7,5 → 6,2 s; conferência 13,4 → 11,8 s; custo 0,076 → 0,050. Custo total 0,216 → 0,144 (−33 %). O excedente de parede do android-10 vem do aparelho, nas etapas de navegação (open_app 6,2 → 12,5 s; open_conversation 4,7 → 10,0 s; fill_message 4,4 → 9,9 s): leitura da árvore no preparo de 207–279 ms para 543–965 ms, imagem de 428 para 1703 ms, type_text de 2,2 para 6,2 s. INFERRED: carga no worker do notebook depois das rodadas da Canais das 12:00Z no 09 e no 10, sem medida de host. Remedição do android-10: 00e4d4 às 12:17Z (53,3 s), 0ef7e0 às 12:18Z (54,5 s) e fbac61 às 12:31Z com o central calmo (51,5 s; fill_message sem IA 8,5 s, contra 4,4 s antes). NOTA: o android-10 tem lentidão de base própria desde a madrugada, em apuração (29.68, Android); a comparação limpa é a do android-09 (ef5c86 → f32c9e: 31,4 → 34,0 s, custo 0,061 → 0,035).",
    "blocker": null,
    "arquivos": [
     ".claude/handoffs/jev-scratch-2026-10-03/prova_3139.py"
    ],
    "testes": [],
-   "grupo": "jev-pos-deploy-25",
+   "grupo": "jev-pos-deploy-26",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T12:27:16+00:00"
+   "quando": "2026-10-04T13:24:55+00:00"
   },
   "29.39": {
    "id": "29.39",
@@ -7481,14 +7481,74 @@
    "id": "29.68",
    "status": "partial",
    "proof": "real",
-   "evidence": "04/10/2026, android-10 contra android-09 (notebook), sem IA. Antes do reboot (12:33Z): árvore pela API p50 252 ms (10) contra 283 ms (09); no convidado do 10, load 1,2 e kernel inflado nos mesmos processos (composer 8,8 % contra 4,5 %, surfaceflinger 7,4 % contra 3,6 %, HAL de sensores 8,8 % contra 0,9 %); load do 10 ~0,5 de noite e de dia contra 0,05-0,07 do 09. Boot a frio do 10 (stop 12:34:55Z, online 12:36:34Z): system_server em 47,0 s contra 29,9 s do 09. Leitura no notebook por ssh (só leitura): os 4 qemu iguais (BelowNormal, afinidade 0xFFF, sem power throttling, sem janela, mesma linha de comando e config.ini), CPU i7-9850H não híbrida, Ultimate Performance. Depois do boot (12:50Z): laço de CPU pura 1562/1284 ms (10) contra 1474/1431 ms (09); syscall/binder 257/239 contra 268/314 ms; tecla nula por adb 146 contra 153 ms. Causa: estado de longa duração do convidado/emulador (23 h no ar), desfeito pelo boot a frio; não é configuração do host.",
-   "blocker": "Confirmar com a rodada sem IA da Jev no 10 depois do boot (fill_message por receita contra 4,4 s das 00:01Z).",
-   "grupo": "android-suite26",
-   "modelo": "claude-opus-5-5",
-   "esforco": "sessao executora",
+   "evidence": "04/10/2026, android-10 contra android-09 (notebook), sem IA. Antes do reboot (12:33Z): árvore pela API p50 252 ms (10) contra 283 ms (09); no convidado do 10, load 1,2 e kernel inflado nos mesmos processos (composer 8,8 % contra 4,5 %, surfaceflinger 7,4 % contra 3,6 %, HAL de sensores 8,8 % contra 0,9 %); load do 10 ~0,5 de noite e de dia contra 0,05-0,07 do 09. Boot a frio do 10 (stop 12:34:55Z, online 12:36:34Z): system_server em 47,0 s contra 29,9 s do 09. Leitura no notebook por ssh (só leitura): os 4 qemu iguais (BelowNormal, afinidade 0xFFF, sem power throttling, sem janela, mesma linha de comando e config.ini), CPU i7-9850H não híbrida, Ultimate Performance. Depois do boot (12:50Z): laço de CPU pura 1562/1284 ms (10) contra 1474/1431 ms (09); syscall/binder 257/239 contra 268/314 ms; tecla nula por adb 146 contra 153 ms. Causa: estado de longa duração do convidado/emulador (23 h no ar), desfeito pelo boot a frio; não é configuração do host. RODADA SEM IA DA JEV depois do deploy 26 (60b3a0a9), central calmo, fill_message por receita, uma execução por aparelho: android-10 em 6,0 s (r-20261004131626-d2f94d, 13:16Z) e android-09 em 4,3 s (r-20261004131718-b57272, 13:17Z); referências: 4,4 s no android-10 às 00:01Z e 8,5 s antes do boot a frio. O boot a frio desfez parte da lentidão (8,5 para 6,0 s), mas o 10 ainda fica ~40 % acima do 09 com n=1.",
+   "blocker": "Resto não explicado: 6,0 s contra 4,3 s com uma amostra por aparelho. Próxima medida: cinco execuções alternadas por aparelho, sem IA, com o central calmo, e os laços de CPU dentro do convidado na mesma hora. O 29.69 (religar a frio aparelho sem conta ocioso) só vira linha do plano se essa medida confirmar o efeito do tempo ligado.",
+   "grupo": "orquestradora-pos-deploy26",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T13:17:24+00:00"
+   "quando": "2026-10-04T13:24:55+00:00"
+  },
+  "28.22": {
+   "id": "28.22",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "PR #247 (canais/28-22-encerramento-e-motivo @ 019cc1bd, migração 099, adendo v1.17), suíte 26, deploy 26 (60b3a0a9, migração 099_pedido_cancelado_motivo). (b) REAL em 04/10/2026 13:17:18Z no central (WIN-7S2UASNLFOP), sem laço e sem IA: pedido ped_llz09XacVMyGLaanpZDOhg (lote:canais:28.22-prova, rascunho sem selo, nunca despachou, 0 runs) cancelado com motivo; GET /api/pedidos/{id} devolve cancelado_motivo; a resposta do cancelar (view) não o traz; 0 eventos e 0 pedido_avisos com o texto do motivo (3 eventos do pedido). Efeito colateral: o cancelamento gerou o relatório de encerramento e o aviso relatorio_pronto (avisos_entregas 34, Telegram do dono 13:17:19Z), explicado ao dono na msg 182. (a) relatório no encerramento por orçamento: simulated (backend/tests/test_pedidos_orcamento.py, 3 novos com contraprova); real not_run porque exige o laço, e pedidos está desligado até o 28.23.",
+   "blocker": "(a) relatório no encerramento por orçamento: prova real not_run, exige o laço de pedidos ligado, que segue desligado no central até o lado da execução do 28.23 ir ao ar; a parte (b), motivo do cancelamento, já tem prova real. Ajuste da orquestradora: a frente mandou implemented/real; fica partial até a prova real de (a).",
+   "grupo": "canais",
+   "modelo": "sessao",
+   "esforco": "M",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T13:24:55+00:00"
+  },
+  "31.40": {
+   "id": "31.40",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "04/10/2026, deploy 26 (60b3a0a9), central. r-20261004132036-95d10f, android-09, lote:jev:31.40-01, o mesmo comando da r-20261004120000-3894c1 (leitura de uma lista no navegador). O MECANISMO FOI PROVADO: a etapa open_url falhou com 'Pós-condição não comprovada (sobreposição)' (um diálogo modal do site cobria os resultados) e o scheduler inseriu UMA etapa limpar_antes_open_url, opcional=1, no plano 2, retomando da tela atual. O OBJETIVO NÃO FOI ALCANÇADO: a limpeza ficou skipped porque o ator respondeu step_done sem nenhum toque. O detalhe dela é 'a prova local do catálogo não confirmou e o modelo não foi consultado antes do ator'. Depois disso, open_url falhou de novo por sobreposição e o objetivo terminou failed. 8 decide, 2 verify, 1 plan. Custo pelo costs.spent_usd: US$ 0,108. OBSERVED no código (backend/app/taskqueue/executor.py:2939-2940): a etapa opcional do 31.36 só se comprova pela prova local, sem juiz, e a pós-condição model_judged 'nada cobre a tela' da limpeza só o juiz confirma. Logo, a limpeza do 31.40 nunca se comprova. INFERRED: o ator não recebe a sobreposição como instrução de fechar o diálogo, e por isso declarou step_done. Proposta: dar à limpeza o juiz (ou um teste de tela) e passar ao ator o elemento que cobre a tela; pede decisão antes do código.",
+   "blocker": "a limpeza opcional não age nem se comprova (ver evidence); correção depende de desenho aprovado",
+   "arquivos": [
+    ".claude/handoffs/jev-scratch-2026-10-03/prova_3141.py"
+   ],
+   "testes": [],
+   "grupo": "jev-pos-deploy-26",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T13:24:55+00:00"
+  },
+  "31.41": {
+   "id": "31.41",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "04/10/2026, deploy 26 (60b3a0a9, migração 099), central. r-20261004131859-5e4b81, android-12 (QA Messenger), lote:jev:31.41-01, o mesmo comando da r-20261004120701-03d58e (deploy 25). Lá, um id de execução antigo numa mensagem foi aceito como o protocolo e a execução fechou completed. Agora, em cada uma das 2 tentativas (plano 1 e o plano revisado 2), a regra determinística pela árvore recusou 2 read_value 'sem relação', 4 no total. Nenhuma pergunta ao verificador (0 chamadas verify). Em seguida o ator declarou o dado ausente. Houve 1 replano 'Recuperação automática (dado ausente)'; o objetivo terminou failed com 'Dado ausente:' e a execução completed_with_issues. Custo pelo costs.spent_usd: US$ 0,193 (a 03d58e custou 0,060).",
+   "blocker": null,
+   "arquivos": [
+    ".claude/handoffs/jev-scratch-2026-10-03/prova_3141.py"
+   ],
+   "testes": [],
+   "grupo": "jev-pos-deploy-26",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T13:24:55+00:00"
+  },
+  "28.23": {
+   "id": "28.23",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "LADO DO LAÇO (Canais), no ar: Desenho aprovado pela orquestradora em 04/10 (seis pontos), escrito no §9 de docs/design/pedidos-persistentes.md (PR #252). Lado do laço: PR #253 (canais/28-23-teto-no-laco @ 9b84692d), suíte 26, deploy 26 (60b3a0a9). _requisicao passa teto_de_autonomia = autonomia_efetiva(pedido, papel) só se RunCreate.model_fields tem o campo; fica inerte até o lado da execução. Simulado: backend/tests/test_pedidos_teto_na_execucao.py (7, com contraprova: 6 falham sem a mudança; um modelo com o campo e outro sem). LADO DA EXECUÇÃO (Jev), em PR: Lado da execução no PR #257 (feat/28-23-teto-de-autonomia, df9e03ec), aberto, sem suíte hoje. Migração 100 (runs.teto_de_autonomia), adendo v1.19, RunCreate e RunSummary. Com observar: plan.refused acima_da_autonomia e execução failed; no despacho, a defesa para antes da etapa de efeito e do preenchimento dela, com o objetivo failed (métrica execucao.parada_no_teto). Com preparar: aprovação forçada; o efeito sem ação do catálogo é segurado e o objetivo vai a waiting_user. Nulo e agir: iguais a hoje. Validação local (Idle, SQLite, depois do PG verde da 26): test_teto_de_autonomia 4 passed; 30 arquivos afetados 750 passed, 3 skipped; scripts/tests 544 passed; docs-check 0 erros. PG, central e laço da Canais: not_run.",
+   "blocker": "O lado da execução (PR 257, migração 100, adendo v1.19) espera a suíte seguinte à 26; até ele ir ao ar o campo do laço fica inerte e `pedidos` segue DESLIGADO no central. Prova real: um pedido em `observar` e um em `preparar` depois do deploy.",
+   "grupo": "orquestradora-pos-deploy26",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T13:24:55+00:00"
   }
  },
  "rodadas": [
@@ -9622,6 +9682,39 @@
    ],
    "grupos": [
     "orquestradora-deploy26"
+   ]
+  },
+  {
+   "quando": "2026-10-04T13:24:55+00:00",
+   "itens": [
+    "28.10",
+    "28.22",
+    "28.15"
+   ],
+   "grupos": [
+    "canais"
+   ]
+  },
+  {
+   "quando": "2026-10-04T13:24:55+00:00",
+   "itens": [
+    "31.40",
+    "31.41",
+    "31.39",
+    "31.35"
+   ],
+   "grupos": [
+    "jev-pos-deploy-26"
+   ]
+  },
+  {
+   "quando": "2026-10-04T13:24:55+00:00",
+   "itens": [
+    "28.23",
+    "29.68"
+   ],
+   "grupos": [
+    "orquestradora-pos-deploy26"
    ]
   }
  ]
