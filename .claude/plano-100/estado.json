@@ -6271,14 +6271,14 @@
    "id": "30.34",
    "status": "partial",
    "proof": "real",
-   "evidence": "Rastro da volta (PR #204 no ar pelo deploy 22, d37043df). O backend novo registrou a primeira linha as 09:41:03Z; a primeira volta da sombra saiu as 09:42:45.787Z, com a linha de log 'aprendizado: autopublicacao em shadow: 0 fluxo(s) avaliado(s), 0 publicaria(m), 0 caso(s) novo(s)' (data/logs/backend.log) e GET /api/aprendizado/metricas -> curador.autopublicacao.ultima_volta = {em 2026-10-04T09:42:45.787Z, modo shadow, avaliados 0, publicaria 0, marcados 0}, lido as 09:43:24Z. Sem o #204 a primeira volta esperava o intervalo inteiro.",
-   "blocker": "O modo on (fatia B, #210) vai na suite 23; a liberacao segue dependendo de >= 30 casos fechados com >= 90% sem regressao.",
-   "grupo": "deploy22-23-provas",
+   "evidence": "Primeiro candidato real na sombra (central 24da29ef): volta de 04/10 13:07:25.686Z com avaliados 1, publicaria 0, marcados 0 (GET /api/aprendizado/metricas -> curador.autopublicacao.ultima_volta). O fluxo enviar-a-mensagem-leitura-31-27-n1-08233 (validated em 12:17:11Z pela sombra, requires_owner) atende 2 execucoes reais a favor na marca atual 2c10657f (r-20261004103305-1f3ac3 no android-12 e r-20261004121625-92d0b4 no android-07), 2 aparelhos, 0 contra, nao reaprendido. Ficou fora por SEM_PARECER: o parecer lr-1cfb91a981c5f21f (pedido_da_pessoa as 12:23:21Z) saiu as 13:07:27Z, 1,4 s depois da volta: real, classe B, pedir_evidencia, confianca media, US$ 0,0129. Na proxima volta, os motivos sao NAO_SUGERE_APROVAR e CONFIANCA_NAO_ALTA. Achado: o dossie do curador cita os against 226 e 233 da marca antiga 072ae4d8 e pede reproducao em outro aparelho que ja existe (ev 274, android-07); a regra da sombra filtra pela marca e o dossie nao.",
+   "blocker": "A liberacao do modo on segue dependendo de >= 30 casos fechados com >= 90% sem regressao; o curador misturando versoes no dossie barra o aprovar/alta (achado reportado, proposta sem codigo).",
+   "grupo": "deploy25-26-aprendizado",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T12:27:16+00:00"
+   "quando": "2026-10-04T14:42:50+00:00"
   },
   "30.35": {
    "id": "30.35",
@@ -7549,6 +7549,45 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-04T13:24:55+00:00"
+  },
+  "30.48": {
+   "id": "30.48",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Deploy 26 (60b3a0a9, migracao 099) leva o #246. Pedido lv-c99c807c071cf06e (13:15:36Z, POST /api/aprendizado/fluxo/no-qa-messenger-levantar-todos-os-contat/validacao) despachado pelo P4 como r-20261004132450-38f68a no android-10, 13:24:50Z a 13:26:30Z, completed, spent_usd US$ 0,13, teto proporcional 0,31 (13 etapas). A amostra funcionou: motivo da expansao 'Expandido para 2 item(ns) ... (prova de fluxo: amostra de 2 de 8 itens, os primeiros na ordem da tela)'; N=2 (3 fixas + 5 por item cabem em 17); 13/13 etapas succeeded, send_message_i1 para 'Suporte QA' e send_message_i2 para 'QA-003', cada uma verificada na tela. O pedido fechou recusada/efeito_repetido por defeito da conferencia no app de QA (#203): ela conta as mensagens da execucao no app inteiro e espera 1; com for_each as 2 mensagens legitimas (uma por contato) viraram efeito_repetido {copias 2, fonte provedor} em send_message_i2; 4 linhas invalida (1 do fluxo, 3 de receitas).",
+   "blocker": "30.53 (aprovado 13:28Z): a conferencia do QA espera uma mensagem por etapa de efeito comprovada; as 4 invalida da 38f68a se desfazem pelo mecanismo do produto.",
+   "grupo": "deploy25-26-aprendizado",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T14:42:50+00:00"
+  },
+  "30.51": {
+   "id": "30.51",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "PR #255 (depois da suite 26): backend/tests/test_learning_evidencia_de_uso.py (11 testes, 3 rodadas, 2 mutacoes conferidas: nao-conta-contra e contestacao); 1310 testes do aprendizado/fluxos com -n 2; sem DDL.",
+   "blocker": "PR #255 aberto, para a proxima suite (depois da 26); real not_run ate o deploy.",
+   "grupo": "deploy25-26-aprendizado",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T14:42:50+00:00"
+  },
+  "30.52": {
+   "id": "30.52",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "PR #258 (fix/30-52-dossie-pela-marca, adendo v1.20): o dossie do fluxo poe as evidencias de outra marca do conteudo em de_versoes_anteriores, rotuladas; POST /api/aprendizado/validacoes/{id}/recusar com o motivo neutro recusada_pela_pessoa, sem DDL. backend/tests/test_learning_dossie_pela_marca.py (3; mutacao conferida); 1130 testes do aprendizado/curador/validacao com -n 2 depois do merge da main (30.48). Defeito medido (real, 04/10): o parecer lr-1cfb91a981c5f21f (13:07:27Z) citou os against 226 e 233 da marca antiga [072ae4d8443c] e abriu o pedido lv-26679df914e1b809 (13:07:33Z) para uma reproducao que ja existia (ev 274, android-07); o pedido nao pode ser recusado (nao havia rota) e a orquestradora decidiu deixa-lo rodar (13:10Z). Desfecho do lv-26679df914e1b809: recusada/limite_de_provas ao despachar (30.42), sem execucao e sem gasto (US$ 0,00).",
+   "blocker": "PR #258 para a proxima suite.",
+   "grupo": "deploy25-26-aprendizado",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T14:42:50+00:00"
   }
  },
  "rodadas": [
@@ -9715,6 +9754,18 @@
    ],
    "grupos": [
     "orquestradora-pos-deploy26"
+   ]
+  },
+  {
+   "quando": "2026-10-04T14:42:50+00:00",
+   "itens": [
+    "30.34",
+    "30.48",
+    "30.51",
+    "30.52"
+   ],
+   "grupos": [
+    "deploy25-26-aprendizado"
    ]
   }
  ]

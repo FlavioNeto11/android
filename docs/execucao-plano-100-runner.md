@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-408 de 442 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+408 de 443 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -380,7 +380,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.31 | implemented | real | opus | — | Portao 1 do ensaio (PR #203 no ar pelo deploy 22, d37043df). Execucao r-20261004094430-a3b72b, chave ensaio:qa-enviar-01, android-10 (worker-lan-01, tunel 127.0.0.1:15557), 04/10 09:44:30Z a 09:45:10Z (40 s), comando 'N… |  |
 | 30.32 | implemented | simulated | claude-opus-5-5 | — | PR #150 (feat/30-32-classe-do-fluxo @ 148de71c) na main pela suíte 10 (16fd1127) e no central pelo deploy 10 (2432046f). As etapas do fluxo entram na classe de risco, cada uma com os fatos do catálogo do app dela; vale… |  |
 | 30.33 | implemented | simulated | claude-opus-5-5 | — | As três fatias na main. Fatia A: PR #153, suíte 10, deploy 10, percorrida pela orquestradora no Chrome (.claude/handoffs/ux-deploy10-2026-10-03.md, item 12b; 375 px ok). Fatia B: PR #156 @ c9f1c18a, suíte 11 (97425d5f):… |  |
-| 30.34 | partial | real | opus | — | Rastro da volta (PR #204 no ar pelo deploy 22, d37043df). O backend novo registrou a primeira linha as 09:41:03Z; a primeira volta da sombra saiu as 09:42:45.787Z, com a linha de log 'aprendizado: autopublicacao em shad… | O modo on (fatia B, #210) vai na suite 23; a liberacao segue dependendo de >= 30 casos fechados com >= 90% sem regressao. |
+| 30.34 | partial | real | opus | — | Primeiro candidato real na sombra (central 24da29ef): volta de 04/10 13:07:25.686Z com avaliados 1, publicaria 0, marcados 0 (GET /api/aprendizado/metricas -> curador.autopublicacao.ultima_volta). O fluxo enviar-a-mensa… | A liberacao do modo on segue dependendo de >= 30 casos fechados com >= 90% sem regressao; o curador misturando versoes no dossie barra o aprovar/alta (achado r… |
 | 30.35 | implemented | simulated | claude-opus-5-5 | — | PR #155 (feat/30-35-resultado-posterior @ 32d8ef6b) na main pela suíte 11 (97425d5f): o GravadorDoResultadoPosterior (passo da curadoria) grava learning_reviews.resultado_posterior (descartar, rebaixar pela escada ou pe… |  |
 | 30.36 | implemented | real | opus | — | Codigo na main desde a suite 13 (PR #163) e no ar desde o deploy 13; hoje o central esta em c683ab0e (deploy 19). Real, banco do central em so leitura, lido em 04/10 08:09Z: 1 linha learning_evidence com stance='forma'… |  |
 | 30.37 | implemented | real | opus | — | Codigo na main desde a suite 14 (PR #168, migracao 084) e no ar desde o deploy 15; P4 ligado (validacao.modo on). Real, banco do central em so leitura, lido em 04/10 08:09Z: 13 execucoes de prova de fluxo (runs.prova_fl… |  |
@@ -394,11 +394,12 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.45 | implemented | real | opus | — | Real, 04/10, central em 051fc3e0 (deploy 20), painel na porta 8000 lido as 08:16-08:17Z. O Resumo da execucao r-20261003205026-5f2de5 mostra 'Veredito da validação: inválida (O efeito saiu mais de uma vez na execução: e… |  |
 | 30.46 | implemented | real | opus | — | Curador sem cache_control (PR #206, no ar desde o deploy 22; central 9add9fb2 do deploy 23). Leitura so de ai_calls (role plan sem run_id = parecer do curador): a volta de 04/10 10:21:15Z a 10:21:43Z fez 8 chamadas clau… |  |
 | 30.47 | implemented | real | opus | — | PR #218 no ar pelo deploy 23 (9add9fb2, migracao 095). POST /api/aprendizado/fluxo/no-qa-messenger-levantar-todos-os-contat/validacao em 04/10 10:23:04Z -> HTTP 201 com o pedido lv-5cf7389f13e4e0f0 (estado pendente, gru… | A execucao da prova que o pedido gera ainda nao rodou (ambiente_ocupado); o desfecho vai no proximo resultado. |
-| 30.48 | pendente | — | — | — |  |  |
+| 30.48 | partial | real | opus | — | Deploy 26 (60b3a0a9, migracao 099) leva o #246. Pedido lv-c99c807c071cf06e (13:15:36Z, POST /api/aprendizado/fluxo/no-qa-messenger-levantar-todos-os-contat/validacao) despachado pelo P4 como r-20261004132450-38f68a no a… | 30.53 (aprovado 13:28Z): a conferencia do QA espera uma mensagem por etapa de efeito comprovada; as 4 invalida da 38f68a se desfazem pelo mecanismo do produto. |
 | 30.49 | implemented | real | opus | — | PR #236 no ar. O ambiente do P4 deixou de contar runs plan-only em planned: o pedido lv-1be2a60f37a73b12 saiu da espera (log 'validacao espera (sem_aparelho...)' ate 12:08Z; 'validacao lv-1be2a60f37a73b12 ... em android… |  |
 | 30.50 | implemented | real | opus | — | PR #241 no ar. O plano da prova usa {account_label} (check_account); o P4 escolheu o android-07 (account_label qa-user-07) e nao o android-04 sem conta (onde a fec1a1 tinha fechado ator_sem_acao): r-20261004121625-92d0b… |  |
-| 30.51 | pendente | — | — | — |  |  |
-| 30.52 | pendente | — | — | — |  |  |
+| 30.51 | partial | simulated | opus | — | PR #255 (depois da suite 26): backend/tests/test_learning_evidencia_de_uso.py (11 testes, 3 rodadas, 2 mutacoes conferidas: nao-conta-contra e contestacao); 1310 testes do aprendizado/fluxos com -n 2; sem DDL. | PR #255 aberto, para a proxima suite (depois da 26); real not_run ate o deploy. |
+| 30.52 | partial | simulated | opus | — | PR #258 (fix/30-52-dossie-pela-marca, adendo v1.20): o dossie do fluxo poe as evidencias de outra marca do conteudo em de_versoes_anteriores, rotuladas; POST /api/aprendizado/validacoes/{id}/recusar com o motivo neutro… | PR #258 para a proxima suite. |
+| 30.53 | pendente | — | — | — |  |  |
 | 31.1 | implemented | simulated | sessao | — | Commit b5a40c98 (na main desde o PR #110, sessao jev, 02/10/2026): trava de 255 opcoes e opcao nenhuma no adaptador do Jev (choice). backend/tests/test_context_retrieval_semantic.py com provedor falso. Chamada real: not… |  |
 | 31.2 | implemented | simulated | sessao | — | PR #112 (merge b5baf3e5 na main, commits 89a92b03 + a6cfa0fd, sessao jev, 02/10/2026): migracao 073 (ai_calls.origem e ref, TEXT sem CHECK), Usage.origem, filtro por origem no gasto (costs.spent_usd). backend/tests/test… |  |
 | 31.3 | implemented | not_run | sessao | — | Item de decisao (texto do ADR): ADR-069 escrito e aprovado pelo dono (02/10/2026 ~21:35Z, 'sim para todos' no chat da orquestradora), PR #102, merge fd59fbd7. Emenda o ADR-063; D-J1 (porta unica, constantes fechadas, Te… |  |
@@ -449,7 +450,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (34): 8.3, 14.12, 15.15, 17.6, 17.9, 18.9, 23.2, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.22, 28.23, 29.7, 29.9, 29.13, 29.19, 29.21, 29.30, 29.38, 29.41, 29.68, 30.34, 30.48, 30.51, 30.52, 31.11, 31.12, 31.26, 31.35, 31.40, T.2
+Pendentes (35): 8.3, 14.12, 15.15, 17.6, 17.9, 18.9, 23.2, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.22, 28.23, 29.7, 29.9, 29.13, 29.19, 29.21, 29.30, 29.38, 29.41, 29.68, 30.34, 30.48, 30.51, 30.52, 30.53, 31.11, 31.12, 31.26, 31.35, 31.40, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
