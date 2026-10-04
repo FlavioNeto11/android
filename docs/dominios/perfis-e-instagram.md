@@ -111,7 +111,9 @@ aquecimento (3 dias a 34%) são **padrão inicial, ajustável pelo dono** (`Limi
 O que passa do teto de hora ou dia é represado antes de assumir a etapa (`retry_wait`, sem gastar tentativa).
 Resposta a comentário é uma vez por pessoa por conta na mesma janela (30.56, emenda do ADR-055): com resposta
 desta conta ao mesmo alvo (ou pedido dela em aberto), o `REPLY_COMMENT` é recusado antes do rascunho e da
-aprovação, sem chegar ao dono (`UMA_VEZ_POR_ALVO`; a da própria etapa não conta).
+aprovação, sem chegar ao dono (`UMA_VEZ_POR_ALVO`; a da própria etapa não conta). Limite conhecido: sem a publicação gravada
+na interação, uma resposta legítima ao mesmo alvo noutro comentário dentro da janela também é recusada; a 2ª fatia
+do 30.56 grava publicação e comentário e passa a chave a ser por comentário.
 Pendente (decisão do dono): se um perfil pode afrouxar a política do catálogo — hoje afrouxar é permitido e fica
 marcado (`ProfilePolicyDTO.loosened`), não recusado (#114 item 3). A política de um perfil vem em três
 camadas, nesta ordem: **escolha própria → grupo → padrão** (`_own`/`_group`/`origin_for`); `limits_origin()`

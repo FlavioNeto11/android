@@ -3620,8 +3620,10 @@ de 03/10, `int-fPuCkX3vCt7WnmsL`); o dono aprovou e só o ator, já na tela, rec
 pendente, confirmada ou incerta para o mesmo alvo, gravada por uma etapa de `REPLY_COMMENT` ou sem etapa conhecida.
 Também recusa quando a conta já tem um pedido de resposta a ele em aberto. A interação e o pedido da própria etapa
 não contam, porque a porta roda de novo na retomada.
-- A chave é (perfil, alvo, ação, janela): a resposta não grava a publicação (`thread_key` e `target` nulos), então outra
-  resposta à mesma pessoa noutro post também espera a janela. Gravar a publicação fica para depois.
+- **Limite conhecido.** A chave é (perfil, alvo, ação, janela), porque a resposta não grava a publicação nem o
+  comentário (`thread_key` e `target` nulos). Assim, uma resposta LEGÍTIMA ao mesmo alvo, noutro comentário ou noutra
+  publicação dentro da janela, também é recusada. É o lado seguro. A 2ª fatia do próprio 30.56 grava a publicação e
+  o comentário na interação, e a chave passa a ser por comentário.
 - `CREATE_COMMENT` grava o mesmo tipo e fica fora. Seguir também fica fora: o segundo FOLLOW alterna, não duplica.
 - Prova `simulated`: `backend/tests/test_ja_respondido.py`. Sobre uma cópia do banco do central, o caso real é
   recusado citando a `int-fPuCkX3vCt7WnmsL`.
