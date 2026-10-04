@@ -1599,7 +1599,7 @@
   "14.11": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac13f79190f57ee0df91fdd",
    "url": "https://trello.com/c/tR0j8EEq",
-   "lista": null,
+   "lista": "concluido_hoje",
    "lote": "lote_A7_hoje"
   },
   "17.13": {
@@ -1671,7 +1671,7 @@
   "29.34": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac14013bb9f0f5e4e93566c",
    "url": "https://trello.com/c/htMUmU5m",
-   "lista": null,
+   "lista": "em_execucao",
    "lote": "lote_A7_hoje"
   },
   "29.40": {
@@ -1683,7 +1683,7 @@
   "29.42": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1401fd22d3e8419dd6e3f",
    "url": "https://trello.com/c/eIYMYwM2",
-   "lista": null,
+   "lista": "concluido_hoje",
    "lote": "lote_A7_hoje"
   },
   "29.46": {
@@ -3214,7 +3214,7 @@
   "30.53": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac268da152f1e553e350f99",
    "url": "https://trello.com/c/Dy7oBz5u",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": null
   },
   "30.54": {
@@ -3244,7 +3244,7 @@
   "30.55": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac277fa860ea70afdbe5987",
    "url": "https://trello.com/c/bvILP8V8",
-   "lista": "proximas",
+   "lista": "em_execucao",
    "lote": null
   },
   "31.42": {
@@ -3256,7 +3256,7 @@
   "28.25": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2785257d3831db43d8e69",
    "url": "https://trello.com/c/enArdvfN",
-   "lista": "proximas",
+   "lista": "em_execucao",
    "lote": null
   },
   "29.72": {
@@ -3280,6 +3280,12 @@
   "29.73": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac27a5bc016aad977e086de",
    "url": "https://trello.com/c/j0Y7fCtg",
+   "lista": "proximas",
+   "lote": null
+  },
+  "31.44": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac27e1f893c5923191c7023",
+   "url": "https://trello.com/c/CgPovDpq",
    "lista": "proximas",
    "lote": null
   }
