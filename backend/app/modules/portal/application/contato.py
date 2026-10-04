@@ -66,12 +66,16 @@ class Repositorio(Protocol):
     def marcar(self, contato_id: int, estado: str, motivo: str | None, agora: datetime, *,
                tentou: bool = ...) -> None: ...
     def a_reenviar(self, limite: int) -> list[Guardado]: ...
+    def retidos(self) -> int: ...
+    def descartados_desde(self, desde: datetime) -> int: ...
 
 
 #: O tipo `ContatoDoPortal` e a função `avisar_contato_do_portal` da Canais (28.32), vistos daqui só pela forma: o
 #: construtor com os cinco campos, e a resposta pelos atributos `enfileirado` e `motivo` (lidos com `getattr`).
 TipoDoContato = Callable[..., object]
 Avisar = Callable[[object], object]
+#: `avisar_resumo_do_portal(retidos, descartados, janela_h)` da Canais (#335): um aviso por hora UTC, só com números.
+AvisarResumo = Callable[[int, int, int], object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,13 +90,15 @@ def _erro(status: int, code: str, message: str, **extra: object) -> Resposta:
 
 class ServicoDeContato:
     def __init__(self, repo: Repositorio, limites: Callable[[], Limites], avisar: Callable[[], Avisar | None],
-                 tipo_do_contato: Callable[[], TipoDoContato | None]) -> None:
+                 tipo_do_contato: Callable[[], TipoDoContato | None],
+                 avisar_resumo: Callable[[], AvisarResumo | None] = lambda: None) -> None:
         """`avisar` e `tipo_do_contato` são resolvidos a cada uso: o código da Canais pode não existir nesta base, e
         sem ele o contato fica `pendente` até existir."""
         self.repo = repo
         self.limites = limites
         self._avisar = avisar
         self._tipo = tipo_do_contato
+        self._avisar_resumo = avisar_resumo
         self._sal: bytes | None = None
 
     def sal(self) -> bytes:
@@ -177,3 +183,22 @@ class ServicoDeContato:
             if estado == "retido":
                 break                                                  # o teto da hora vale para todos os seguintes
         return contagem
+
+    def resumir(self, agora: datetime) -> str | None:
+        """O "+N" acima dos tetos ao dono: os `retido` agora e os `descartado` da última hora, pelo aviso
+        `portal.resumo` da Canais, que tem chave por hora UTC (chamar de novo na mesma hora não duplica). Sem nada acima
+        dos tetos, ou sem a porta da Canais nesta base, não chama. Devolve o motivo da recusa, ou `None`."""
+        retidos, descartados = self.repo.retidos(), self.repo.descartados_desde(agora - timedelta(hours=1))
+        avisar = self._avisar_resumo()
+        if (retidos == 0 and descartados == 0) or avisar is None:
+            return None
+        try:
+            resultado = avisar(retidos, descartados, 1)
+        except Exception as erro:  # noqa: BLE001 - o resumo é aviso; a falha não para o reenvio
+            log.error("portal: resumo dos tetos falhou (%s)", type(erro).__name__)
+            return "falha_interna"
+        if getattr(resultado, "enfileirado", False) is True:
+            return None
+        motivo = str(getattr(resultado, "motivo", None) or "falha_interna")[:40]
+        log.info("portal: resumo dos tetos não entrou na fila (%s)", motivo)
+        return motivo

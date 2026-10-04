@@ -14,7 +14,7 @@ from collections.abc import Callable
 
 from app.config import Config
 from app.db import Database
-from app.modules.portal.application.contato import Avisar, ServicoDeContato, TipoDoContato
+from app.modules.portal.application.contato import Avisar, AvisarResumo, ServicoDeContato, TipoDoContato
 from app.modules.portal.application.protecao import emitir_token
 from app.modules.portal.infrastructure.contatos_sql import ContatosSql
 from app.security.access import publicos_de
@@ -47,8 +47,12 @@ class Portal:
             funcao = getattr(avisos, "avisar_contato_do_portal", None)
             return funcao if callable(funcao) else None
 
+        def avisar_resumo() -> AvisarResumo | None:
+            funcao = getattr(avisos, "avisar_resumo_do_portal", None)
+            return funcao if callable(funcao) else None
+
         self.contatos = ServicoDeContato(self.repo, limites=lambda: cfg.file.portal.limites, avisar=avisar,
-                                         tipo_do_contato=_tipo_da_canais)
+                                         tipo_do_contato=_tipo_da_canais, avisar_resumo=avisar_resumo)
         if (problema := self.problema_de_ip_da_borda()) is not None:
             log.warning("portal: %s", problema)
 
@@ -97,6 +101,8 @@ class Portal:
                     contagem = await asyncio.to_thread(self.contatos.reenviar, now())
                     if contagem:
                         log.info("portal: reenvio %s", contagem)
+                    # A cada volta: a chave por hora UTC da Canais é que faz "no máximo um por hora".
+                    await asyncio.to_thread(self.contatos.resumir, now())
                 if time.monotonic() - ultima_retencao >= RETENCAO_S:
                     apagados = await asyncio.to_thread(self.repo.apagar_vencidos, now())
                     ultima_retencao = time.monotonic()

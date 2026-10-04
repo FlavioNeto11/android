@@ -389,3 +389,36 @@ def test_contato_sem_o_site_e_recusado_na_subida() -> None:
         PortalCfg(contato_ligado=True)
     assert PortalCfg(site_ligado=True, contato_ligado=True).contato_ligado
     assert PortalCfg(site_ligado=True).site_ligado
+
+
+# ---------------------------------------------------------------- o "+N" acima dos tetos (portal.resumo, Canais #335)
+def test_resumo_dos_tetos_so_com_algo_acima_e_so_com_numeros(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    _ligar(harness, monkeypatch, CanaisFalsa())
+    assert harness.state is not None
+    chamadas: list[tuple[int, int, int]] = []
+
+    def resumo(retidos: int, descartados: int, janela_h: int) -> AvisadoFalso:
+        chamadas.append((retidos, descartados, janela_h))
+        return AvisadoFalso(True, None)
+
+    monkeypatch.setattr(harness.state.avisos, "avisar_resumo_do_portal", resumo, raising=False)
+    servico, repo = harness.state.portal.contatos, harness.state.portal.repo
+    assert servico.resumir(now()) is None and chamadas == []            # nada acima dos tetos: não chama
+    for i in range(3):
+        repo.gravar(nome="n", empresa="", telefone="00000000", mensagem="m", cliente_hash=f"r{i}", agora=now(),
+                    estado="retido", motivo="teto_por_hora")
+    repo.gravar(nome="", empresa="", telefone="", mensagem="", cliente_hash="d", agora=now(), estado="descartado",
+                motivo="teto_diario")
+    repo.gravar(nome="", empresa="", telefone="", mensagem="", cliente_hash="velho",
+                agora=now() - timedelta(hours=3), estado="descartado", motivo="teto_diario")
+    assert servico.resumir(now()) is None
+    assert chamadas == [(3, 1, 1)]                                       # o descartado de 3 h atrás fica de fora
+
+
+def test_resumo_sem_a_porta_da_canais_nao_chama_nada(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    _ligar(harness, monkeypatch, CanaisFalsa())
+    assert harness.state is not None
+    monkeypatch.setattr(harness.state.portal.contatos, "_avisar_resumo", lambda: None)
+    harness.state.portal.repo.gravar(nome="n", empresa="", telefone="00000000", mensagem="m", cliente_hash="r",
+                                     agora=now(), estado="retido")
+    assert harness.state.portal.contatos.resumir(now()) is None

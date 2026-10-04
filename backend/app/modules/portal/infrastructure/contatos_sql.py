@@ -70,6 +70,14 @@ class ContatosSql:
             "SELECT COUNT(*) AS n FROM portal_contatos WHERE estado='entregue' AND atualizado_em>=?",
             (to_iso(desde),)) or 0)
 
+    def retidos(self) -> int:
+        return int(self.db.scalar("SELECT COUNT(*) AS n FROM portal_contatos WHERE estado='retido'") or 0)
+
+    def descartados_desde(self, desde: datetime) -> int:
+        return int(self.db.scalar(
+            "SELECT COUNT(*) AS n FROM portal_contatos WHERE estado='descartado' AND atualizado_em>=?",
+            (to_iso(desde),)) or 0)
+
     def marcar(self, contato_id: int, estado: str, motivo: str | None, agora: datetime, *,
                tentou: bool = False) -> None:
         self.db.execute(
