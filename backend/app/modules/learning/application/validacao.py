@@ -205,6 +205,9 @@ class FontesDaValidacao(Protocol):
     #: ATIVO do comando. `None`: sem plano (quem responde é o `sem_caminho` ou o `sem_fluxo_ativo`) ou `for_each` de
     #: tamanho desconhecido.
     def etapas_da_execucao(self, item_ref: str, comando: str) -> int | None: ...
+    #: 30.50: as `VARIAVEIS_DE_APARELHO` que o plano da execução usa (`{account_label}`); o aparelho escolhido precisa
+    #: ter todas. Sem plano, nenhuma.
+    def variaveis_de_aparelho(self, item_ref: str, comando: str) -> frozenset[str]: ...
     def desfecho(self, run_id: str) -> tuple[str, float] | None: ...    # (status, usd) quando assentou
     #: 30.31 (fatia 2): a execução é um ensaio só de leitura (`contracts.origem.eh_ensaio_de_leitura`).
     def ensaio_da_execucao(self, run_id: str) -> bool: ...
@@ -214,7 +217,8 @@ class DespachoDeValidacao(Protocol):
     """O parque e a fila de execuções (o lado do `taskqueue`)."""
 
     def ambiente(self) -> Ambiente: ...
-    def aparelhos(self, pacotes: Sequence[str]) -> Sequence[AparelhoCandidato]: ...  # com TODOS prontos
+    #: com TODOS os `pacotes` prontos e (30.50) com valor para cada variável de aparelho de `exige`
+    def aparelhos(self, pacotes: Sequence[str], exige: frozenset[str] = frozenset()) -> Sequence[AparelhoCandidato]: ...
     def gasto_da_operacao(self, agora: datetime, dias: int) -> float: ...
     #: `prova` (30.37): o id do fluxo que a execução prova (o pedido de fluxo roda o plano do próprio fluxo).
     def enfileirar(self, comando: str, aparelho: str, chave: str, prova: str | None = None) -> str: ...  # o run_id
@@ -368,7 +372,7 @@ class ServicoDeValidacao:
             log.info("aprendizado: validação espera (%s; %d pedido(s) pendente(s))", motivo.value, len(pendentes))
             return None
         for p in pendentes:                                      # o mais antigo que tiver aparelho
-            aparelho = escolher_aparelho(p.grupo, self._despacho.aparelhos(self._pacotes(p)),
+            aparelho = escolher_aparelho(p.grupo, self._despacho.aparelhos(self._pacotes(p), self._exige(p)),
                                          excluido=self._excluidos(p))
             if aparelho is None:
                 continue
@@ -392,6 +396,10 @@ class ServicoDeValidacao:
     def _pacotes(self, p: PedidoVivo) -> tuple[str, ...]:
         """30.33-C: o aparelho precisa de TODOS os apps do item prontos, não só do principal (`scope_app`)."""
         return tuple(dict.fromkeys(a for a in (p.scope_app, *self._fontes.apps_do_item(p.item_ref)) if a))
+
+    def _exige(self, p: PedidoVivo) -> frozenset[str]:
+        """30.50: as variáveis de aparelho que o plano da execução usa; o aparelho sem uma delas não serve."""
+        return self._fontes.variaveis_de_aparelho(p.item_ref, p.comando) if p.comando else frozenset()
 
     def _excluidos(self, p: PedidoVivo) -> frozenset[str]:
         """30.42: a origem; e, com `reproducao_em_outro_aparelho` na falta, também os aparelhos das provas anteriores."""
@@ -479,7 +487,7 @@ class ServicoDeValidacao:
             return Motivo.LIMITE_DE_PROVAS
         if Falta.REPRODUCAO_EM_OUTRO_APARELHO.value in p.falta:
             fora = excluidos_da_validacao(p.falta, origem=p.aparelho_excluido, provas=(a.aparelho for a in provas))
-            if not sobra_aparelho_novo(p.grupo, self._despacho.aparelhos(self._pacotes(p)), fora):
+            if not sobra_aparelho_novo(p.grupo, self._despacho.aparelhos(self._pacotes(p), self._exige(p)), fora):
                 return Motivo.SEM_APARELHO_NOVO
         return None
 

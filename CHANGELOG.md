@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 30.50: o P4 só escolhe aparelho com as variáveis de aparelho do plano (branch fix/30-50-aparelho-com-as-variaveis)
+
+- A prova fec1a1 (pedido lv-d2eee2ac9bebab21) caiu no android-04, que não tem conta de QA (`instances.account_label`
+  NULL). O `text={account_label}` do `check_account` virou vazio, e a prova fechou `ator_sem_acao`, gastando uma das
+  duas provas da janela.
+- Agora a fonte lê do plano da prova as `VARIAVEIS_DE_APARELHO` que ele usa, e o despacho só oferece aparelho com valor
+  para cada uma. Hoje a lista tem só o `account_label`, porque `instance_id` e `run_id` nunca faltam.
+- Prova `simulated`: `test_learning_aparelho_com_variaveis.py` e o teste de ligação em `test_learning_validacao_sql.py`
+  (mutação conferida). Sem DDL.
+
 ## 2026-10-04 — 28.16 + 28.18: a faxina leva os eventos dos contatos do Telegram (branch canais/28-18-faxina-090, sem migração)
 
 - `faxina_sql.py`: os `canal_contato_eventos` (090) vencem com o prazo do canal, como o resto do que a conversa guarda.

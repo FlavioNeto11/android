@@ -35,6 +35,10 @@ log = logging.getLogger(__name__)
 #: derrubam ou seguram execuções; o parque é do uso antes de ser da validação).
 EM_CURSO = ("planning", "planned", "running", "paused", "cancelling")
 
+#: 30.50: a coluna de `instances` de onde o executor tira cada variável de aparelho (`domain.validacao.
+#: VARIAVEIS_DE_APARELHO`). Variável nova lá precisa da coluna aqui; o teste confere que as duas listas casam.
+COLUNA_DA_VARIAVEL = {"account_label": "account_label"}
+
 
 class Fila(Protocol):
     def create(self, req: RunCreate, *, origem: tuple[str, str] | None = None, prioridade: int = 0,
@@ -67,8 +71,9 @@ class DespachoDoParque:
         r = self._db.one(f"SELECT COUNT(*) AS n FROM runs WHERE status IN ({marcas})", EM_CURSO)
         return Ambiente(saudavel=self._saudavel(), execucoes_em_curso=linhas.inteiro(r, "n") if r is not None else 0)
 
-    def aparelhos(self, pacotes: Sequence[str]) -> Sequence[AparelhoCandidato]:
-        """Os aparelhos com TODOS os `pacotes` prontos (30.33-C: o fluxo multi-app precisa de cada app dele)."""
+    def aparelhos(self, pacotes: Sequence[str], exige: frozenset[str] = frozenset()) -> Sequence[AparelhoCandidato]:
+        """Os aparelhos com TODOS os `pacotes` prontos (30.33-C: o fluxo multi-app precisa de cada app dele) e com valor
+        para cada variável de aparelho de `exige` (30.50: `{account_label}` vazio reprova a etapa que o confere)."""
         exigidos = sorted({p for p in pacotes if p})
         if not exigidos:
             return []
@@ -76,6 +81,11 @@ class DespachoDoParque:
             f"SELECT instance_id FROM device_app_state WHERE package_name IN ({linhas.marcas(len(exigidos))})"
             " AND state='ready' GROUP BY instance_id HAVING COUNT(DISTINCT package_name) = ? ORDER BY instance_id",
             (*exigidos, len(exigidos)))]
+        for variavel in sorted(exige):
+            coluna = COLUNA_DA_VARIAVEL[variavel]           # KeyError: variável de aparelho nova sem coluna aqui
+            com_valor = {linhas.texto(r, "id") for r in self._db.query(
+                f"SELECT id FROM instances WHERE {coluna} IS NOT NULL AND TRIM({coluna}) <> '' ORDER BY id")}
+            com_o_app = [i for i in com_o_app if i in com_valor]
         if not com_o_app:
             return []
         com_conta = {linhas.texto(r, "instance_id") for r in self._db.query(

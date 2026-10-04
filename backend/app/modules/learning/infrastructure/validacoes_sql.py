@@ -13,8 +13,8 @@ from app.db import Database, Row
 from app.models import Plan
 from app.modules.learning.application.validacao import (COMANDO_NA_LISTA, NovoPedido, Origem, PedidoListado,
                                                        PedidoVivo)
-from app.modules.learning.domain.validacao import (EstadoDoPedido, Grupo, Motivo, ProvaAnterior, marca_da_evidencia,
-                                                 motivo_da_prova_invalida)
+from app.modules.learning.domain.validacao import (VARIAVEIS_DE_APARELHO, EstadoDoPedido, Grupo, Motivo,
+                                                 ProvaAnterior, marca_da_evidencia, motivo_da_prova_invalida)
 from app.modules.learning.domain.vocabulario import LivroKind, Posicao
 from app.modules.learning.infrastructure import linhas
 from app.planning import costs
@@ -359,21 +359,32 @@ class FontesDaValidacaoSql:
     def etapas_da_execucao(self, item_ref: str, comando: str) -> int | None:
         """30.41: as etapas que a validação rodaria (o port). O fluxo pelo próprio plano com o comando
         (`FlowStore.plano_em_prova`); a receita pelo fluxo ATIVO do comando (`plano_ativo_para`, o `FlowStore.match`)."""
-        kind, _, ref = item_ref.partition(":")
-        try:
-            if kind == "fluxo":
-                plano = FlowStore(self._db).plano_em_prova(ref, comando)
-            elif kind == "receita" and self._plano_ativo_para is not None:
-                plano = self._plano_ativo_para(comando)
-            else:
-                return None
-        except ValueError:                       # plano ilegível: `pydantic.ValidationError` é `ValueError`
-            return None
+        plano = self._plano_da_execucao(item_ref, comando)
         if plano is None:
             return None
         # O id do fluxo vem do `planner.model` que `FlowStore._plano_com_valores` grava (`fluxo:<id>`, `fluxo-prova:<id>`).
+        kind, _, ref = item_ref.partition(":")
         fluxo_id = ref if kind == "fluxo" else plano.planner.model.partition(":")[2]
         return self._etapas_do_plano(plano, fluxo_id)
+
+    def variaveis_de_aparelho(self, item_ref: str, comando: str) -> frozenset[str]:
+        """30.50: as `VARIAVEIS_DE_APARELHO` que aparecem como `{nome}` no plano que a validação rodaria."""
+        plano = self._plano_da_execucao(item_ref, comando)
+        if plano is None:
+            return frozenset()
+        texto = plano.model_dump_json()
+        return frozenset(v for v in VARIAVEIS_DE_APARELHO if "{" + v + "}" in texto)
+
+    def _plano_da_execucao(self, item_ref: str, comando: str) -> Plan | None:
+        kind, _, ref = item_ref.partition(":")
+        try:
+            if kind == "fluxo":
+                return FlowStore(self._db).plano_em_prova(ref, comando)
+            if kind == "receita" and self._plano_ativo_para is not None:
+                return self._plano_ativo_para(comando)
+        except ValueError:                       # plano ilegível: `pydantic.ValidationError` é `ValueError`
+            return None
+        return None
 
     def _etapas_do_plano(self, plano: Plan, fluxo_id: str) -> int | None:
         """As etapas fixas mais as etapas-modelo do `for_each` vezes o tamanho da lista que a execução de ORIGEM do fluxo

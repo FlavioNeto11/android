@@ -1008,7 +1008,9 @@ caminhos de sempre (a sombra do fluxo, os contadores da receita) e quem decide s
   execução em curso, porque restart, suíte e deploy seguram ou derrubam execuções. Também precisa de fôlego na janela:
   β = 5% do gasto de IA da operação em 7 dias (o mesmo G_W do curador), mais a verba única `extra_usd` até `extra_ate`;
   e do ritmo, ≤4 por hora. Uma execução por volta: o comando de origem, em OUTRO aparelho (o de origem fica de fora),
-  ligado, ocioso, com o app `ready` e SEM conta real logada. Nesta fatia nem a leitura vai a conta real: a regra do
+  ligado, ocioso, com o app `ready` e SEM conta real logada. O aparelho também precisa ter cada variável de aparelho
+  que o plano da prova usa (30.50, `VARIAVEIS_DE_APARELHO`: hoje o `{account_label}`, de `instances.account_label`);
+  em 04/10 a prova fec1a1 caiu no android-04, sem conta de QA, e fechou `ator_sem_acao` no `check_account`. Nesta fatia nem a leitura vai a conta real: a regra do
   dono é conferir a tela antes de experimento numa conta real, e o despachante não confere tela; o pedido de leitura
   do Instagram de hoje (só logado em 01, 03 e 06) espera e expira. A volta roda na thread do loop, como o laço de
   pedidos: `RunService.create` agenda o planejamento com `asyncio.create_task`. A execução é comum (`RunService.create`, chave de idempotência `validacao:<pedido>`) e o custo dela é o da
