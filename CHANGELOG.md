@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.41: o valor lido precisa ter relação com o pedido (branch feat/31-41-relacao-do-valor, sem migração)
+
+- `taskqueue/relacao.py`: seletor do catálogo, rótulo (próprio elemento, vizinho, glossário, sinônimo) ou forma
+  fechada; da imagem ou de saída de catálogo sem rótulo, uma pergunta ao verificador. Dúvida recusa
+  (`leitura.sem_relacao`) e nunca fecha como sucesso. Campo novo `Capability.saidas_relacao`. Prova:
+  `backend/tests/test_relacao_do_valor.py` (simulated, com as travas f014e6 e 12.3); real `not_run`.
+
 ## 2026-10-04 — teste do preparo zumbi drenado sem Timer de relógio (branch fix/b2-r4-sem-timer)
 
 - `test_prontidao_subsistemas::test_b2_r4_boot_local_preparo_zumbi_drenado_nao_libera_esta_tentativa` falhou no

@@ -253,6 +253,14 @@ despacho (`_policy_gate`, a trava de sempre, com a mesma frase) e em `RunService
   títulos das ações oferecidas pelo catálogo dele (ADR-052), no formato "<Pedido> não está disponível no <app>: o
   catálogo dele só tem <títulos>. Faça essa parte você mesmo ou peça só o que está nessa lista." O evento
   `plan.refused` leva `{motivo: "sem_acao_do_catalogo", pedidos: [{app_id, app, pedido, disponiveis}]}`.
+- **Relação do valor lido (item 31.41, `ai.relacao_do_valor`, sem migração):** o `read_value` só grava a saída com
+  evidência de que o elemento É o que foi pedido (`taskqueue/relacao.py`, determinístico): (a) o seletor que o catálogo
+  declara (`saidas_relacao: [nome=seletor]`); (b) um termo do nome, do glossário PT→EN ou de um sinônimo do catálogo
+  (`nome~termo`) no resource-id ou na descrição do próprio elemento, no texto dele como rótulo ou num vizinho da mesma
+  linha ou logo acima; (c) a forma de um tipo FECHADO inferido do nome (e-mail, data, telefone, URL; número sozinho
+  não vale). Valor da IMAGEM, ou saída de catálogo sem seletor nem rótulo na árvore: UMA pergunta de sim ou não ao
+  verificador (~US$ 0,005 com o Haiku e imagem), e incerto conta como não. Dúvida recusa a leitura
+  (`leitura.sem_relacao`, linha na execução); quatro recusas viram o desfecho do 31.38. Achado real: 03d58e.
 - **Leitura sem o dado (item 31.38, `ai.max_decisoes_leitura`, sem migração):** na etapa de LEITURA (declara saídas,
   sem efeito nem commit_guard) o ator pode chamar `step_blocked(kind="dado_ausente")`, e o teto de decisões por
   tentativa (12: p95 de 8 medido em 16 leituras com sucesso desde 27/09, com folga) tem o mesmo desfecho. A etapa não

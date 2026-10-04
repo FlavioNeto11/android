@@ -641,6 +641,9 @@ class AiCfg(BaseModel):
     #: central em 04/10: as 16 tentativas de leitura que fecharam com sucesso desde 27/09 gastaram p50 3, p95 8, máx. 8
     #: decisões; 12 é o p95 com 50 % de folga. Estourado, vale o desfecho de `dado_ausente`. 0 desliga.
     max_decisoes_leitura: int = Field(12, ge=0, le=60)
+    #: Item 31.41: o valor lido só é gravado com evidência de RELAÇÃO com o nome pedido (seletor do catálogo, rótulo
+    #: vizinho ou forma fechada; da imagem, um "sim" do verificador). Dúvida recusa a leitura (`leitura.sem_relacao`).
+    relacao_do_valor: bool = True
     # Item 31.35: tira da árvore QUE VAI AO ATOR a barra do navegador (endereço, abas, menu); a árvore local fica
     # completa para seletores, guardas e pós-condições. `false` volta ao prompt de antes, sem reinício de código.
     podar_ui_do_navegador: bool = True
