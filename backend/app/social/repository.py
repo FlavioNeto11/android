@@ -111,6 +111,14 @@ _DE_OBJETIVO_VIVO = (" AND (objective_id IS NULL OR NOT EXISTS (SELECT 1 FROM ob
                      " WHERE o.id=pending_approvals.objective_id AND o.status IN ('succeeded','failed','cancelled')))")
 
 
+def _do_plano_em_vigor(tabela: str = "pending_approvals") -> str:
+    """30.61 (revisão, item 6): o sim dado no plano para uma versão ANTERIOR do plano do objetivo não está mais em aberto,
+    qualquer que seja a chave. Ele não migra para a etapa revisada (`acompanhar_revisao` o exclui) e nunca vai ganhar
+    `interaction_id`; sem este corte, reservava alvo e teto e virava "mensagem repetida" contra a etapa nova."""
+    return (f" AND NOT ({tabela}.origem='plano' AND {tabela}.plan_version < COALESCE((SELECT ov.plan_version"
+            f" FROM objectives ov WHERE ov.id={tabela}.objective_id), {tabela}.plan_version))")
+
+
 class SocialRepository:
     def __init__(self, db: Database):
         self.db = db
@@ -1513,6 +1521,7 @@ class SocialRepository:
         contas |= {str(r["profile_id"]) for r in self.db.query(
             "SELECT DISTINCT profile_id FROM pending_approvals WHERE profile_id IS NOT NULL AND profile_id<>?"
             " AND status IN ('pending','approved','edited') AND interaction_id IS NULL AND created_at>=?" + _DE_OBJETIVO_VIVO
+            + _do_plano_em_vigor()
             + " AND lower(ltrim(trim(target), '@'))=?" + so_eles,
             (exclude_profile_id, since, counterparty.lower().lstrip("@"), *ids))}
         return len(contas), ultima
@@ -1565,6 +1574,7 @@ class SocialRepository:
         linha = self.db.one(
             "SELECT id FROM pending_approvals WHERE profile_id=? AND capability=?"
             " AND status IN ('pending','approved','edited') AND interaction_id IS NULL AND created_at>=?" + _DE_OBJETIVO_VIVO
+            + _do_plano_em_vigor()
             + f" AND lower(ltrim(trim(target), '@'))=?{sem_a_etapa} ORDER BY created_at DESC, id DESC LIMIT 1",
             (profile_id, capability, since, counterparty.lower().lstrip("@"),
              *((exclude_step_id,) if exclude_step_id else ())))
@@ -1616,7 +1626,7 @@ class SocialRepository:
             " WHERE a.profile_id=? AND a.capability=? AND a.status IN ('pending','approved','edited')"
             " AND a.interaction_id IS NULL AND a.created_at>=? AND (a.objective_id IS NULL OR NOT EXISTS (SELECT 1"
             " FROM objectives o WHERE o.id=a.objective_id AND o.status IN ('succeeded','failed','cancelled')))"
-            f"{por_app}{sem_a_etapa} ORDER BY a.created_at DESC, a.id DESC LIMIT 200",
+            f"{_do_plano_em_vigor('a')}{por_app}{sem_a_etapa} ORDER BY a.created_at DESC, a.id DESC LIMIT 200",
             (profile_id, capability, since, *((app_id,) if app_id else ()),
              *((exclude_step_id, exclude_step_id) if exclude_step_id else ())))
         saida = []
@@ -1637,6 +1647,7 @@ class SocialRepository:
         return [(str(r["capability"]), str(r["created_at"])) for r in self.db.query(
             "SELECT capability, created_at FROM pending_approvals WHERE profile_id=?"
             " AND status IN ('pending','approved','edited') AND interaction_id IS NULL AND created_at>=?" + _DE_OBJETIVO_VIVO
+            + _do_plano_em_vigor()
             + f"{sem_a_etapa} ORDER BY created_at, id",
             (profile_id, since, *((exclude_step_id,) if exclude_step_id else ())))]
 

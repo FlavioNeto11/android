@@ -5710,3 +5710,59 @@ sempre abre cartão novo: o aprovado de uma versão anterior com o mesmo texto e
   quando há, `interaction_id`; alvo, motivo e autorização ficam só no GET. Não entram no registro de decisões automáticas (28.25): é decisão de pessoa.
 - **Prova:** `simulated` (`backend/tests/test_excecao_de_politica.py`). `not_run`: a exceção do 31.26, que a orquestradora
   cria depois do deploy 32.
+
+## Adendo v1.32 (04/10/2026; número da orquestradora; item 30.61) — a prévia da porta e a aprovação antecipada no plano
+
+Migração `105_aprovacao_no_plano`. O dono vê, numa execução `planned`, o que a porta do despacho vai fazer com cada etapa
+de efeito, e aprova antes de iniciar o que pede o aval dele. O sim do plano só afrouxa a parada para o item IDÊNTICO
+(a chave), dentro da validade e uma vez; qualquer diferença volta ao fluxo de hoje (pedido na execução). Nesta fatia o
+texto ainda por escrever (briefing) fica para a execução: aprovar no plano exige texto final (`content_verbatim`).
+
+- **`GET /api/runs/{id}/porta`** (200), só leitura: não grava decisão, não abre pedido, não prende exceção, não escreve
+  rascunho, não chama IA. 404 `not_found`; 409 `invalid_state` fora de `planned`; 409 `no_plan` sem etapas. Corpo:
+  `run_id`, `hash_do_plano` (atalho, não prova), `validade_ate`, `custo_rascunhos_usd` (0 nesta fatia), `estimativa`
+  (sempre `true`: a execução é paralela e a porta roda de novo no despacho; os tetos por balde não somam os itens
+  anteriores do plano), `parcial`/`total` (itens cuja porta não pôde ser calculada), `itens` e `na_execucao`
+  (`textos_da_tela`, `itens_for_each` — as etapas-modelo, cujos itens nascem da coleta —, `sempre`: desafio, 2FA,
+  CAPTCHA). Cada item: `objective_id`, `step_id`, `aparelho`, `titulo`, `persona_rotulo`, `profile_id`, `app`, `acao`,
+  `alvo`, `objeto_alvo`, `selo`, `motivo`, `dica`, `retry_at`, `texto` (o literal, quando final), `texto_na_execucao`,
+  `tem_imagem`, `imagem_sha256`, `chave` (só no selo `aprovacao`), `dependentes` (as etapas do mesmo objetivo que
+  dependem desta, transitivas) e `falhou`. Selos, pela MESMA conta do despacho (`AppState.vereditos_da_porta`):
+  - `permitido`: segue sem parar;
+  - `aprovacao`: pede o aval (política, DM fria, o mesmo pedido a várias contas, teto `preparar`, mensagem repetida), com
+    chave;
+  - `adiado`: espera até `retry_at`;
+  - `recusado`: não acontece (inclusive o mesmo efeito não-DM sobre o mesmo objeto duas vezes no plano);
+  - `na_execucao`: decide-se na execução, sem Aprovar: texto por escrever, alvo por resolver (`{item}`, `{{saida:…}}`),
+    aparelho fora do gerenciador, etapa que usa exceção de política (30.65: sempre decisão nova), DM idêntica repetida no
+    plano, item cuja chave é `None` e item cuja porta falhou.
+- **A chave** (`social/chave_da_aprovacao.py`, `VERSAO_DA_CHAVE = 1`): sha256 do JSON canônico de perfil, aparelho, pacote,
+  ação, alvo normalizado, objeto-alvo (30.64), TODOS os argumentos da etapa (fora texto e mídia), texto literal, sha256
+  dos bytes da imagem, execução e objetivo. `None` (falha fechado): objeto-alvo não declarado, ausente, vazio ou por
+  resolver; alvo vazio com `counterparty` declarado; argumento ou texto com variável; texto por escrever; imagem sem
+  sha256; e **ação cujo `objeto_alvo` declarado não identifica o objeto do efeito** (`OBJETO_INSUFICIENTE`, hoje só
+  `REPLY_COMMENT`, que declara só `username`: a pergunta acontece na execução, com o comentário à vista; quando o
+  catálogo ganhar o argumento que diz QUAL comentário, a ação sai da lista).
+- **`POST /api/runs/{id}/aprovar-plano`** (200), "Aprovar N e iniciar". Corpo: `aprovar: [{step_id, chave}]` (a chave
+  que o dono VIU) e `tirar: [step_id]` ("Não fazer esta"). O servidor recalcula a prévia: item que não é mais
+  `aprovacao` com a MESMA chave, ou etapa tirada que não está no plano, devolve 409 `plano_mudou` com `mudaram`
+  (`step_id`, `selo`, `motivo`) e `previa` (a nova), e nada é gravado. 422 `invalid_body`: a mesma etapa com duas chaves,
+  ou para aprovar e tirar. Senão, numa transação: cada sim vira `pending_approvals` `approved` de origem `plano`
+  (`chave_sha256`, `chave_v`, `plan_version`, `expires_at`, `midia_sha256`, `decided_by`); as tiradas e as dependentes
+  delas (pela conta do servidor, nunca pela lista do cliente) vão a `cancelled`; uma `decision` registra o gesto. Depois,
+  `runs.start`. Resposta `{run, aprovacoes, tiradas, validade_ate}`. O segundo gesto é recusado (409 `invalid_state`).
+- **`POST /api/runs/{id}/porta/renovar`** (200): a validade dos sins do plano ainda VÁLIDOS volta a contar de agora,
+  sem reabrir os itens. `{run_id, renovadas, vencidas, validade_ate}`. O sim que já venceu (mesmo que a faxina ainda não
+  o tenha marcado) não se renova: sai como `expired` na hora; se nenhum foi renovado, 409 `sim_vencido` (`vencidas`),
+  e o dono revê a prévia ou a porta pergunta na execução. 404; 409 `invalid_state` em execução terminada.
+- **Validade:** `Settings.aprovacao_no_plano_validade_h` (padrão 24, de 1 a 72).
+- **Na execução** (trava deste item; o 31.49 estende): o `_approval_gate`, depois do descarte do 30.65 (aprovação anterior
+  a `presa_em` não vale), aceita o sim de origem `plano` só se `approved`, dentro de `expires_at`, sem `interaction_id` e
+  com a chave da etapa RELIDA idêntica. Senão ele sai como `expired` (`decided_note` "sim do plano descartado: <porquê>"),
+  uma `decision` registra, e a porta abre o pedido de origem `execucao` de hoje, que passa a mandar. O sim do plano não
+  migra para a etapa revisada (`acompanhar_revisao`), e o de versão anterior do plano do objetivo não conta como pedido em
+  aberto (frota, 30.56, 30.57). O objetivo encerrado (cancelado, vencido, abandonado) encerra o sim sem efeito, e a faxina
+  periódica marca `expired` o que passou da validade; a execução `planned` em si não é cancelada.
+- **`Approval`** (lista de aprovações, eventos) ganha `origem`, `expires_at` e `plan_version`.
+- **Prova:** `simulated` (`backend/tests/test_porta_do_plano.py`, `backend/tests/test_chave_da_aprovacao.py`). `not_run`:
+  o painel (fatia seguinte) e qualquer execução real.
