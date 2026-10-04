@@ -2136,7 +2136,7 @@ class AppState:
             motivo = "; ".join(m for m in (veredito.reason, confirmacao, pelo_teto, repetida or "") if m)
             # 30.65: a etapa que usa a exceção sempre pede decisão nova; o aprovado de outra versão não vale para ela.
             return self._approval_gate(obj, srow, cap, profile_id, motivo=motivo, excecao=veredito.excecao,
-                                       pacote=pacote)
+                                       pacote=pacote, app_id=app_da_etapa_id)
         return None
 
     def vereditos_da_porta(self, obj: Row, srow: Row, run: Row) -> "PortaDaEtapa":
@@ -2466,7 +2466,7 @@ class AppState:
         return arvore
 
     def _approval_gate(self, obj: Any, srow: Any, cap: Any, profile_id: str, *, motivo: str = "",
-                       excecao: str | None = None, pacote: str | None = None) -> Any:
+                       excecao: str | None = None, pacote: str | None = None, app_id: str | None = None) -> Any:
         """Ação que exige aprovação: a decisão da pessoa acontece ANTES de digitar qualquer coisa.
 
         É por isso que a porta fica aqui e não no meio da etapa: etapa concluída é estado terminal, então não
@@ -2484,12 +2484,16 @@ class AppState:
         presa = self.excecoes.obter(excecao) if excecao else None
         if pedido is not None and presa is not None and presa.presa_em \
                 and parse_iso(pedido.created_at) < parse_iso(presa.presa_em):
+            # 31.49 (nota da revisão): o sim do plano anterior à exceção presa sai de cena como `expired`; ignorado e
+            # deixado `approved`, ele contava como "aprovada e não enviada" no `_repetido` de outras etapas até a faxina.
+            if pedido.origem == "plano":
+                self.approvals.descartar_do_plano(pedido.id, motivo="a exceção 30.65 foi presa a esta etapa depois do sim")
             pedido = None
         if pedido is not None and pedido.origem == "plano":
             # 30.61 (`pacote`: o app da etapa, para recalcular a chave). O sim do plano vale só para o item IDÊNTICO, na
             # validade e antes de o efeito sair. Senão sai de cena como `expired` (não fica "aprovado e não enviado"
             # contando contra outras etapas) e a porta pergunta de novo, como sempre.
-            descarte = self._sim_do_plano_nao_vale(pedido, obj, srow, cap, profile_id, pacote)
+            descarte = self._sim_do_plano_nao_vale(pedido, obj, srow, cap, profile_id, pacote, app_id)
             if descarte:
                 self.approvals.descartar_do_plano(pedido.id, motivo=descarte)
                 self.repo.decision(f"{obj['instance_id']}: o sim dado no plano para '{srow['title']}' não vale: "
@@ -2538,7 +2542,7 @@ class AppState:
                        hint="Abra Aprovações e escolha aprovar, editar ou rejeitar.")
 
     def _sim_do_plano_nao_vale(self, pedido: Approval, obj: Row, srow: Row, cap: Capability, profile_id: str,
-                               pacote: str | None) -> str:
+                               pacote: str | None, app_id: str | None = None) -> str:
         """30.61: por que o sim dado na prévia NÃO cobre esta etapa ('' quando cobre). Falha fechado: vencido, já gasto,
         ou a chave da etapa RELIDA (texto, alvo, objeto, mídia, perfil, aparelho, app) diferente da aprovada."""
         if pedido.status != "approved":
@@ -2561,6 +2565,16 @@ class AppState:
             fechado, texto = texto_exato(cap, bindings)
             if not fechado or texto is None or (pedido.content or "").strip() != texto.strip():
                 return "o sim do plano não traz o texto que vai sair"
+        # 31.49 (F1 da revisão): a chave não leva estado de fora do item. A mensagem repetida que SURGIU depois do sim
+        # (outra execução mandou, ou teve aprovada, o mesmo texto ao mesmo alvo) é estado mudado: o dono não a viu na
+        # prévia, então o sim não a cobre. A que já existia antes do sim estava no motivo da prévia e segue coberta.
+        # (A confirmação do ADR-055 desta porta é a do mesmo pedido a várias contas DESTA execução: sai dos objetivos da
+        # própria execução, que a prévia já via; a frota entre execuções RECUSA no `check`, antes de o sim ser lido.)
+        if pedido.decided_at:
+            nova = self.policies.mensagem_repetida(profile_id, cap, bindings, app_id=app_id, step_id=srow["id"],
+                                                   desde=parse_iso(pedido.decided_at))
+            if nova:
+                return f"depois do sim, {nova}"
         return ""
 
     def _seed_apps(self) -> None:

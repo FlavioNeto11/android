@@ -5828,7 +5828,10 @@ texto ainda por escrever (briefing) fica para a execução: aprovar no plano exi
   com texto só vale se o `content` gravado for o texto exato que vai sair ("o sim do plano não traz o texto que vai
   sair"): aprovação sem texto nunca libera escrita; (2) o `_draft_gate` não trata o sim de origem `plano` como texto
   já mostrado, então a etapa com briefing escreve o texto e a execução pergunta COM ele; (3) o pedido novo de origem
-  `execucao` leva no `summary` "o sim dado no plano não vale: <porquê>". Prova `simulated`:
+  `execucao` leva no `summary` "o sim dado no plano não vale: <porquê>"; (4) a mensagem repetida que surge DEPOIS do
+  `decided_at` do sim (`mensagem_repetida(..., desde=)`: outra execução mandou ou teve aprovado o mesmo texto ao mesmo
+  alvo) descarta o sim ("depois do sim, …"); a que já existia antes estava no motivo da prévia e segue coberta. O sim do
+  plano anterior à exceção 30.65 presa sai como `expired`, não fica `approved`. Prova `simulated`:
   `backend/tests/test_executor_honra_o_plano.py` e
   `test_porta_do_plano.py::test_chave_solta_aprovada_no_plano_e_honrada_pela_porta_na_execucao` (`:-{`).
 - **`Approval`** (lista de aprovações, eventos) ganha `origem`, `expires_at` e `plan_version`.

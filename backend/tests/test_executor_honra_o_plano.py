@@ -5,7 +5,10 @@ fecha o resto do contrato com a Aprendizado (`.claude/handoffs/chave-da-aprovaca
 - aprovação sem texto nunca libera escrita (a conferência explícita, depois da chave);
 - o `_draft_gate` não trata o sim do plano como texto já mostrado: briefing com sim do plano escreve o texto, e o sim
   (que não cobre briefing) sai de cena;
-- o pedido novo da execução diz por que o sim do plano não valeu.
+- o pedido novo da execução diz por que o sim do plano não valeu;
+- a mensagem repetida que surge DEPOIS do sim (outra execução mandou o mesmo texto ao mesmo alvo) descarta o sim: é
+  estado mudado que o dono não viu (F1 da revisão). A que já existia antes do sim segue coberta por ele
+  (`test_porta_do_plano.py::test_dm_editada_para_um_texto_ja_enviado_segue_no_cadeado_com_a_regra_real`).
 O caso do texto com chave solta (`:-{`) aprovado no plano e não perguntado de novo está em
 `test_porta_do_plano.py::test_chave_solta_aprovada_no_plano_e_honrada_pela_porta_na_execucao`; aqui ele se repete com
 a conferência do texto ligada.
@@ -15,12 +18,15 @@ Nível de prova: `simulated` (harness, catálogo do Instagram, banco de teste; o
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any
 
 from app.porta_do_plano import AprovarPlanoBody, ItemAprovado, aprovar_plano, previa_da_porta
 
-from .test_porta_do_plano import DM, _gate, _plano, _por_chave, _sem_iniciar
+from app.util import now, to_iso
+
+from .test_porta_do_plano import ALVO, DM, _gate, _plano, _por_chave, _sem_iniciar
 
 
 def _aprovado_no_plano(state: Any, bindings: dict[str, Any]) -> dict[str, Any]:
@@ -78,8 +84,8 @@ async def test_briefing_com_sim_do_plano_escreve_o_texto_e_pergunta_com_ele(harn
                                   capability="SEND_MESSAGE", summary="dm", target=DM["username"],
                                   content="cumprimente a pessoa", run_id="run-p", objective_id=etapa["objective_id"],
                                   step_id=etapa["id"])
-    state.db.execute("UPDATE pending_approvals SET origem='plano', status='approved', chave_sha256='x' WHERE id=?",
-                     (pedido.id,))
+    state.db.execute("UPDATE pending_approvals SET origem='plano', status='approved', chave_sha256='x', expires_at=?,"
+                     " decided_at=? WHERE id=?", (to_iso(now() + timedelta(hours=1)), to_iso(now()), pedido.id))
     escrito = "Oi! Tudo bem por aí?"
 
     async def draft_response(*_a: Any, **_k: Any) -> Any:
@@ -91,5 +97,43 @@ async def test_briefing_com_sim_do_plano_escreve_o_texto_e_pergunta_com_ele(harn
     assert veredito is not None and not veredito.allowed
     assert json.loads(state.db.scalar("SELECT bindings FROM steps WHERE key='dm'"))["content"] == escrito
     linhas = {r["origem"]: r for r in state.db.query("SELECT * FROM pending_approvals")}
-    assert linhas["plano"]["status"] == "expired"
+    # Passou da validade e chegou à chave: a etapa agora tem o texto escrito, e a chave dela não é a do sim forçado.
+    assert linhas["plano"]["status"] == "expired" and "chave divergiu" in linhas["plano"]["decided_note"]
     assert linhas["execucao"]["status"] == "pending" and linhas["execucao"]["generated_content"] == escrito
+
+
+async def test_a_mesma_dm_mandada_depois_do_sim_faz_a_execucao_perguntar_de_novo(harness: Any,
+                                                                                 monkeypatch: Any) -> None:
+    """F1: sim dado no plano; depois dele, outra execução manda a MESMA DM ao mesmo alvo. A chave do item é a mesma, mas
+    a repetição é nova: a execução aprovada para e pergunta, com o motivo da repetição."""
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    item = _aprovado_no_plano(state, DM)
+    state.social_repo.record_interaction(str(item["profile_id"]), type="dm_sent", direction="outbound",
+                                         status="confirmed", counterparty=ALVO, outgoing_content=DM["content"],
+                                         app_id="ig", run_id="r-outra", occurred_at=to_iso(now() + timedelta(seconds=1)))
+    veredito = await _gate(state, "dm")
+    assert veredito is not None and not veredito.allowed and veredito.policy == "approval_required"
+    linhas = {r["origem"]: r for r in state.db.query("SELECT * FROM pending_approvals")}
+    assert linhas["plano"]["status"] == "expired" and "depois do sim" in linhas["plano"]["decided_note"]
+    assert "esta conta já mandou ESTA mensagem" in linhas["plano"]["decided_note"]
+    assert linhas["execucao"]["status"] == "pending"
+    assert "esta conta já mandou ESTA mensagem" in linhas["execucao"]["summary"]
+    assert "o sim dado no plano não vale: depois do sim" in linhas["execucao"]["summary"]
+
+
+async def test_a_mesma_dm_mandada_antes_do_sim_segue_coberta_por_ele(harness: Any, monkeypatch: Any) -> None:
+    """Controle do F1: a repetição que já existia antes do sim estava no motivo da prévia; o sim a cobre."""
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    _plano(state, [{"key": "dm", "cap": "SEND_MESSAGE", "bindings": DM}])
+    pid = str(state.db.scalar("SELECT profile_id FROM objectives"))
+    state.social_repo.record_interaction(pid, type="dm_sent", direction="outbound", status="confirmed",
+                                         counterparty=ALVO, outgoing_content=DM["content"], app_id="ig",
+                                         run_id="r-antiga", occurred_at=to_iso(now() - timedelta(days=1)))
+    item = _por_chave(previa_da_porta(state, "run-p"))["dm"]
+    assert item["selo"] == "aprovacao" and "repetição passa por confirmação" in item["motivo"]
+    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(step_id=item["step_id"], chave=item["chave"])]),
+                  por="flavio")
+    assert await _gate(state, "dm") is None
+    assert [r["origem"] for r in state.db.query("SELECT origem FROM pending_approvals")] == ["plano"]
