@@ -1,3 +1,4 @@
+import { metaDeSaude } from './detalhe';
 import { isLivroKind, type LivroKind } from './model';
 
 /**
@@ -83,7 +84,11 @@ export function lerRelatorioDaAprovacao(raw: unknown): RelatorioDaAprovacao {
 /** Os fatos do motivo, sem o prefixo da regra (`auto:<regra> v1 — `) nem o da confirmação: é o que a pessoa lê. */
 export function fatosDoMotivo(motivo: string): string {
   const i = motivo.indexOf(' — ');
-  return i >= 0 ? motivo.slice(i + 3) : motivo;
+  const fatos = i >= 0 ? motivo.slice(i + 3) : motivo;
+  // 30.63: os rótulos que a própria tela usa, não a palavra crua da régua ("saúde pouca_amostra", "parecer observar (lr-…)").
+  return fatos
+    .replace(/saúde ([a-z_]+)/g, (_m, r: string) => `saúde: ${metaDeSaude(r)?.label ?? r}`)
+    .replace(/parecer ([a-z_]+) \(lr-[0-9a-f]+\)/g, (_m, d: string) => `parecer do curador: ${d.replace(/_/g, ' ')}`);
 }
 
 export const ROTULO_DO_GESTO: Record<GestoDaPlataforma, string> = {

@@ -1,4 +1,4 @@
-"""30.42 (o despachante e o fechamento da validação de fluxo): o limite de 2 provas por versão do conteúdo em 7 dias
+"""30.42 (o despachante e o fechamento da validação de fluxo): o limite de `MAXIMO_DE_PROVAS` provas (4 desde o 29.75) por versão do conteúdo em 7 dias
 (`limite_de_provas`), o aparelho NOVO quando a falta pede reprodução noutro aparelho (`sem_aparelho_novo`) e o
 fechamento do pedido pela linha `invalida` que a execução de prova deixou (`efeito_repetido`, `ponto_de_partida`,
 `ator_sem_acao`). Banco migrado (SQLite, ou PostgreSQL com `TEST_DATABASE_URL`), parque e fila falsos. Nível de prova:
@@ -15,7 +15,8 @@ from app.modules.learning.application.validacao import ServicoDeValidacao
 from app.modules.learning.domain.curador import Decisao, Falta, Parecer
 from app.modules.learning.domain.prova import MotivoDaInvalida, detalhe_da_invalida
 from app.modules.learning.domain.validacao import (AparelhoCandidato, Grupo, ProvaAnterior, conta_para_o_limite,
-                                                   escolher_aparelho, excluidos_da_validacao, limite_de_provas_atingido,
+                                                   MAXIMO_DE_PROVAS, escolher_aparelho, excluidos_da_validacao,
+                                                   limite_de_provas_atingido,
                                                    marca_da_evidencia, motivo_da_prova_invalida, sobra_aparelho_novo)
 from app.modules.learning.infrastructure.validacoes_sql import FontesDaValidacaoSql, RegistroDeValidacoesSql
 from app.modules.skills.domain.document import content_hash
@@ -38,14 +39,15 @@ def _prova(dias: float, *marcas: str | None, aparelho: str = "android-02") -> Pr
     return ProvaAnterior(aparelho=aparelho, quando=AGORA - timedelta(days=dias), marcas=marcas)
 
 
-def test_a_regra_pura_conta_duas_provas_da_mesma_versao_na_janela_de_7_dias() -> None:
+def test_a_regra_pura_conta_as_provas_da_mesma_versao_na_janela_de_7_dias() -> None:
+    quase = [_prova(1 + i, MARCA) for i in range(MAXIMO_DE_PROVAS - 1)]      # uma a menos que o limite
     assert not limite_de_provas_atingido([], MARCA, AGORA)
-    assert not limite_de_provas_atingido([_prova(1, MARCA)], MARCA, AGORA)
-    assert limite_de_provas_atingido([_prova(1, MARCA), _prova(6.9, MARCA)], MARCA, AGORA)
-    assert not limite_de_provas_atingido([_prova(1, MARCA), _prova(7.1, MARCA)], MARCA, AGORA)     # fora da janela
-    assert not limite_de_provas_atingido([_prova(1, MARCA), _prova(2, OUTRA)], MARCA, AGORA)       # outra versão
+    assert not limite_de_provas_atingido(quase, MARCA, AGORA)
+    assert limite_de_provas_atingido([*quase, _prova(6.9, MARCA)], MARCA, AGORA)
+    assert not limite_de_provas_atingido([*quase, _prova(7.1, MARCA)], MARCA, AGORA)     # fora da janela
+    assert not limite_de_provas_atingido([*quase, _prova(2, OUTRA)], MARCA, AGORA)       # outra versão
     # a marca compara pelos 12 primeiros caracteres (o `detail` grava `content_hash[:12]`)
-    assert limite_de_provas_atingido([_prova(1, MARCA), _prova(2, MARCA)], MARCA + "ffff", AGORA)
+    assert limite_de_provas_atingido([*quase, _prova(2, MARCA)], MARCA + "ffff", AGORA)
 
 
 def test_a_prova_sem_linha_ou_sem_marca_conta_e_sem_marca_de_agora_tudo_conta() -> None:
@@ -95,6 +97,12 @@ def test_o_motivo_da_invalida_e_o_dela_e_o_ilegivel_fecha_sem_evidencia() -> Non
 
 # ------------------------------------------------------------------ o que o banco guarda de provas anteriores
 _n = 0
+
+
+def _no_limite(db: Database, quantas: int = MAXIMO_DE_PROVAS, *, primeiro: int = 2, **kw: str) -> None:
+    """`quantas` provas anteriores do `f-qa`, da versão de agora e dentro da janela, cada uma num aparelho."""
+    for i in range(quantas):
+        _anterior(db, "f-qa", f"android-{primeiro + i:02d}", 1 + i * 0.5, **kw)  # type: ignore[arg-type]
 
 
 def _anterior(db: Database, fid: str, aparelho: str, dias: float, marca: str | None = MARCA, *,
@@ -147,11 +155,10 @@ def _pede(db: Database, servico: ServicoDeValidacao, parecer: Parecer = PEDE, fi
     return pid
 
 
-def test_a_terceira_prova_da_mesma_versao_fecha_limite_de_provas_sem_enfileirar(mundo: Mundo) -> None:  # noqa: F811
+def test_a_prova_alem_do_limite_fecha_limite_de_provas_sem_enfileirar(mundo: Mundo) -> None:  # noqa: F811
     db, servico, parque, _relogio, _ = mundo
     pid = _pede(db, servico)
-    _anterior(db, "f-qa", "android-02", 3)
-    _anterior(db, "f-qa", "android-03", 1)
+    _no_limite(db)
     assert servico.uma_volta(lambda: 1) is None
     linha = _linha(db, pid)
     assert (linha["estado"], linha["motivo"], linha["run_id"]) == ("recusada", "limite_de_provas", None)
@@ -192,11 +199,11 @@ def test_as_provas_de_outra_marca_nao_contam_mesmo_sendo_duas(mundo: Mundo) -> N
 @pytest.mark.parametrize("sem", [SEM_LINHA, SEM_MARCA, None])
 def test_a_prova_sem_marca_conta_para_o_limite(mundo: Mundo, sem: str | None) -> None:  # noqa: F811
     """Sem linha de evidência, ou com linha sem a marca do conteúdo, a prova conta (lado seguro): uma assim e uma da
-    versão de agora já são duas."""
+    versão de agora já completam o limite."""
     db, servico, parque, _relogio, _ = mundo
     pid = _pede(db, servico)
     _anterior(db, "f-qa", "android-02", 3, sem)
-    _anterior(db, "f-qa", "android-03", 1)
+    _no_limite(db, MAXIMO_DE_PROVAS - 1, primeiro=3)
     assert servico.uma_volta(lambda: 1) is None
     assert _linha(db, pid)["motivo"] == "limite_de_provas" and parque.enfileiradas == []
 
@@ -267,8 +274,7 @@ def test_sem_reproducao_em_outro_aparelho_so_a_origem_e_excluida(mundo: Mundo) -
 def test_o_limite_vem_antes_do_aparelho_novo(mundo: Mundo) -> None:  # noqa: F811
     db, servico, parque, _relogio, _ = mundo
     pid = _pede(db, servico)
-    _anterior(db, "f-qa", "android-02", 3)
-    _anterior(db, "f-qa", "android-03", 1)
+    _no_limite(db)
     parque.lista = [_ap("android-02"), _ap("android-03")]
     assert servico.uma_volta(lambda: 1) is None and _linha(db, pid)["motivo"] == "limite_de_provas"
 
@@ -361,7 +367,6 @@ def test_a_prova_invalida_conta_para_o_limite_com_a_marca_dela(mundo: Mundo) -> 
     """A execução que deixou `invalida` gastou: entra na contagem do limite (a linha leva a marca do conteúdo)."""
     db, servico, parque, relogio, _ = mundo
     _pede(db, servico)
-    _anterior(db, "f-qa", "android-02", 3, MARCA, estado="recusada", stance="invalida")
-    _anterior(db, "f-qa", "android-03", 1, MARCA, estado="recusada", stance="invalida")
+    _no_limite(db, estado="recusada", stance="invalida")
     assert servico.uma_volta(lambda: 1) is None
     assert RegistroDeValidacoesSql(db).pendentes() == [] and parque.enfileiradas == []

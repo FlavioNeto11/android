@@ -40,6 +40,9 @@ from app.util import to_iso
 
 log = logging.getLogger("poc.aprendizado")
 
+#: 30.63 (a): quantas revisões do item se leem para achar a real mais recente (as simuladas de um ensaio vêm por cima).
+REVISOES_LIDAS = 20
+
 
 class RevisoesDoItem(Protocol):
     def do_item(self, item_ref: str, limite: int) -> list[RevisaoGravada]: ...
@@ -177,7 +180,9 @@ class ServicoDeAprovacaoAutomatica:
     def _avaliar(self, e: EntradaDoLivro, fila: Fila, saude: Saude | None, teste: frozenset[str],
                  ja: frozenset[str]) -> AvaliacaoDoItem:
         ref = e.trail_ref
-        r = next(iter(self._revisoes.do_item(ref, 1)), None)
+        # 30.63 (a): a revisão REAL mais recente. A mais recente de todas podia ser simulada (um ensaio) e esconder um
+        # parecer real anterior contra ou uma classe C; a simulada nunca pesou, então ela não pode tomar o lugar da real.
+        r = next((x for x in self._revisoes.do_item(ref, REVISOES_LIDAS) if not x.simulated), None)
         d = self._dossies.dossie(e)
         classe = mais_restritiva(r.classe_efetiva if r is not None else None,
                                  d.classe if d is not None else ClasseDeRisco.C)

@@ -56,6 +56,9 @@ JANELA_DA_REINCIDENCIA = 2
 SEM_CONDUCAO = "-"
 #: Propostas (ADR-054, tipos "ação nova", "lição" e "tela").
 ACAO_EXECUCOES_MIN = 3
+#: 30.59: a etapa livre que já fecha sem IA (receita ou atalho do executor) em pelo menos esta fração das vezes não vira
+#: proposta de ação do catálogo: o ganho já está colhido.
+ACAO_SEM_IA_MAX = 0.8
 LICAO_AJUDA_DIAS = 14
 TELA_PUBLICADA_DIAS = 7
 
@@ -608,28 +611,38 @@ def linha_de_proposta(p: Proposta, agora: str) -> LinhaDoBacklog:
 
 @dataclass(frozen=True, slots=True)
 class AcaoLivre:
-    """Etapa livre (sem ação do catálogo) comprovada, agrupada pelo modelo (`steps.template_hash`)."""
+    """Etapa livre (sem ação do catálogo) comprovada, agrupada por (app, chave da etapa). 30.59: antes era por modelo
+    (`steps.template_hash`), e a mesma etapa com dois textos de objetivo virava duas propostas iguais para a pessoa.
+    `modelos` guarda os `template_hash` do grupo (o mais frequente primeiro); `etapas` e `sem_ia` contam as etapas
+    comprovadas e as que fecharam sem IA (receita ou atalho do executor)."""
 
     app: str
-    template_hash: str
     chave: str
     execucoes: int
+    modelos: tuple[str, ...] = ()
+    etapas: int = 0
+    sem_ia: int = 0
 
 
 def proposta_de_acao(a: AcaoLivre) -> Proposta | None:
-    """Etapa livre com o mesmo modelo comprovada em ≥3 execuções: candidata a ação do catálogo. SEMPRE pessoa: a
-    ação entra por habilidade publicada ou fragmento commitado, nunca por catálogo sobreposto no banco."""
+    """Etapa livre comprovada em ≥3 execuções: candidata a ação do catálogo. SEMPRE pessoa: a ação entra por habilidade
+    publicada ou fragmento commitado, nunca por catálogo sobreposto no banco. 30.59: a que já fecha sem IA em
+    `ACAO_SEM_IA_MAX` das vezes não é proposta (o ganho de virar ação já foi colhido pela receita)."""
     if a.execucoes < ACAO_EXECUCOES_MIN:
         return None
-    fragmento = (f"# proposta: ação de catálogo a partir da etapa livre '{a.chave}' (template_hash {a.template_hash})\n"
+    if a.etapas and a.sem_ia / a.etapas >= ACAO_SEM_IA_MAX:
+        return None
+    modelos = ", ".join(a.modelos) or "?"
+    fragmento = (f"# proposta: ação de catálogo a partir da etapa livre '{a.chave}' (template_hash {modelos})\n"
                  f"# comprovada em {a.execucoes} execuções reais em {a.app}; revise antes de commitar\n"
                  "- id: A_DEFINIR\n"
                  f"  # chave da etapa: {a.chave}\n"
                  "  side_effect: A_DEFINIR\n"
                  "  postcondition: A_DEFINIR")
-    return Proposta(TipoDeProposta.ACAO_DE_CATALOGO, f"{a.app}|{a.template_hash}", a.app,
+    sem_ia = f"; {a.sem_ia} de {a.etapas} etapas já fecharam sem IA" if a.etapas else ""
+    return Proposta(TipoDeProposta.ACAO_DE_CATALOGO, f"{a.app}|etapa:{a.chave}", a.app,
                     f"{a.app} · etapa livre '{a.chave}': virar ação do catálogo",
-                    f"comprovada em {a.execucoes} execuções", fragmento)
+                    f"comprovada em {a.execucoes} execuções{sem_ia}", fragmento)
 
 
 @dataclass(frozen=True, slots=True)

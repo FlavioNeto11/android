@@ -46,15 +46,17 @@ MAXIMO_POR_HORA = 4
 #: em 04/10 a fec1a1 caiu no android-04, sem `account_label`, e fechou `ator_sem_acao` no `check_account`.
 VARIAVEIS_DE_APARELHO = ("account_label",)
 
-#: 30.42: provas da MESMA versão do conteúdo do fluxo que o item aceita na janela; a 3ª fecha `limite_de_provas`.
-MAXIMO_DE_PROVAS = 2
+#: 30.42: provas da MESMA versão do conteúdo do fluxo que o item aceita na janela; a seguinte fecha `limite_de_provas`.
+#: 29.75 (04/10, orquestradora): 2 → 4. Medido em 7 dias: 1 recusa `limite_de_provas`; o ambiente é de calibração.
+MAXIMO_DE_PROVAS = 4
 JANELA_DE_PROVAS_DIAS = 7
 #: 30.41 (orquestradora, 03/10): o teto de IA da prova de fluxo é proporcional ao plano, `min(0,40; 0,05 + 0,02 ×
 #: etapas)`; o plano cujo teto passaria do máximo não despacha. Medido no P4: o `for_each` de 8 contatos gastou US$ 0,157
 #: contra o teto fixo de 0,15 depois de 3 envios (inteiro custaria 0,33 a 0,36); as provas de 6 e 11 etapas, 0,07 a 0,12.
 TETO_DA_PROVA_PISO_USD = 0.05
 TETO_DA_PROVA_POR_ETAPA_USD = 0.02
-TETO_DA_PROVA_MAXIMO_USD = 0.40
+#: 29.75 (04/10, orquestradora): máximo 0,40 → 0,80. Medido em 7 dias: 3 recusas `plano_acima_do_teto`.
+TETO_DA_PROVA_MAXIMO_USD = 0.80
 #: O pedido que não rodou em 72 h expira (o item muda, a volta seguinte pede de novo se ainda faltar).
 VALIDADE_DO_PEDIDO_H = 72
 
@@ -385,7 +387,7 @@ AMOSTRA_MAXIMA = 3
 
 
 def maximo_de_etapas_da_prova() -> int:
-    """30.48: o maior número de etapas cujo teto (`teto_da_prova`) ainda cabe no máximo (17 com 0,05 + 0,02 × e ≤ 0,40)."""
+    """30.48: o maior número de etapas cujo teto (`teto_da_prova`) ainda cabe no máximo (37 com 0,05 + 0,02 × e ≤ 0,80)."""
     return int((TETO_DA_PROVA_MAXIMO_USD - TETO_DA_PROVA_PISO_USD) / TETO_DA_PROVA_POR_ETAPA_USD + 1e-9)
 
 

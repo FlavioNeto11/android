@@ -2818,3 +2818,35 @@ export interface CanaisEstado {
   conversa_telegram: CanalConversaTelegram;
   trello: CanalTrello;
 }
+
+/** 28.24 F4: uma linha de `GET /api/canais/anexos`. Sem caminho de disco, sem `sha256` e sem o nome de quem mandou. */
+export interface CanalAnexo {
+  id: number;
+  canal: string;
+  direcao: 'entrada' | 'saida';
+  mime: string | null;
+  bytes: number;
+  estado: 'guardado' | 'recusado' | 'apagado';
+  motivo_recusa: string | null;
+  criado_em: string;
+  apagado_em: string | null;
+  /** A mensagem de origem é do dono (só a entrada tem dono; a saída é da Central). */
+  do_dono: boolean;
+  /** O arquivo sai por `/conteudo`: imagem ou PDF guardado, nunca o de convidado. */
+  tem_conteudo: boolean;
+  /** Pode ir a um cartão do Trello (`POST .../trello`): só a mensagem do dono, guardada. */
+  pode_ir_ao_cartao: boolean;
+}
+
+export interface CanalAnexosPagina {
+  items: CanalAnexo[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface CanalAnexoAoCartao {
+  anexo_id: number;
+  card: string;
+  trello_anexo: string;
+}

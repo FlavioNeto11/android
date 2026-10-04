@@ -32,7 +32,7 @@ from app.modules.avisos.domain.anexos import (
     sha256_valido,
     tamanho_legivel,
 )
-from app.modules.avisos.infrastructure.anexos import AnexoRecusado, ArmazemDeAnexos, CaminhoForaDoArmazem, caminho_em
+from app.modules.avisos.infrastructure.anexos import AnexoJaResolvido, AnexoRecusado, ArmazemDeAnexos, CaminhoForaDoArmazem, caminho_em
 from app.modules.avisos.infrastructure.entrada import (
     MOTIVO_TIPO_FORA,
     ConversaDoCanal,
@@ -489,6 +489,43 @@ async def test_file_path_estranho_do_telegram_e_recusado_antes_de_montar_o_ender
     assert TOKEN not in e.value.motivo
 
 
+async def test_download_lento_que_chega_aos_poucos_tem_prazo_total_e_nao_prende_a_conversa(c: CenarioAnexos) -> None:
+    """Achado 12 da revisão: o timeout do httpx é por leitura; um arquivo gotejando segurava o leitor indefinidamente."""
+    import asyncio
+
+    class Gota(httpx.AsyncByteStream):
+        async def __aiter__(self):  # noqa: ANN204
+            while True:                                                   # cada pedaço vem antes do timeout por leitura
+                await asyncio.sleep(0.02)
+                yield b"A" * 10
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if "/file/" in req.url.path:
+            return httpx.Response(200, stream=Gota())
+        return httpx.Response(200, json={"ok": True, "result": {"file_id": "x", "file_path": "docs/x"}})
+
+    canal = CanalTelegram(TOKEN, str(CHAT), client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+                          prazo_download_s=0.3)
+    with pytest.raises(FalhaDeEnvio) as e:
+        await asyncio.wait_for(canal.baixar_anexo("x", 10_000_000), timeout=5)
+    assert "tempo esgotado" in e.value.motivo and TOKEN not in e.value.motivo
+
+
+async def test_download_nao_trava_o_laco_de_eventos(c: CenarioAnexos) -> None:
+    """Achado 12, 1ª parte, refutada: `baixar_anexo` é assíncrono (httpx.AsyncClient); outra tarefa anda durante o download."""
+    import asyncio
+    c.bot.arquivos["g"] = Corpo(pedacos=5)
+    batidas: list[int] = []
+
+    async def pulso() -> None:
+        for _ in range(5):
+            batidas.append(1)
+            await asyncio.sleep(0)
+
+    await asyncio.gather(c.canal.baixar_anexo("g", 100_000), pulso())
+    assert len(batidas) == 5
+
+
 async def test_content_length_acima_do_teto_recusa_sem_ler_o_corpo(c: CenarioAnexos) -> None:
     corpo = Corpo(pedacos=100)
 
@@ -556,15 +593,45 @@ async def test_enviar_anexo_recusa_link_simbolico_para_fora(c: CenarioAnexos, tm
 
 async def test_enviar_anexo_aceita_arquivo_dentro_do_armazem_e_confere_o_conteudo(c: CenarioAnexos) -> None:
     c.pasta.mkdir(parents=True, exist_ok=True)
-    dentro = c.pasta / "gerado.png"
+    dentro = caminho_em(c.pasta, sha(PNG), "image/png")
+    dentro.parent.mkdir(parents=True, exist_ok=True)
     dentro.write_bytes(PNG)
     await c.conversa().enviar_anexo(SaidaDoTelegram(c.canal), dentro)                # type: ignore[arg-type]
     assert [e["metodo"] for e in c.bot.envios] == ["sendPhoto"]
-    ruim = c.pasta / "ruim.png"
+    ruim = caminho_em(c.pasta, sha(EXE), "image/png")
+    ruim.parent.mkdir(parents=True, exist_ok=True)
     ruim.write_bytes(EXE)                                                            # dentro da pasta, mas não é imagem
     with pytest.raises(AnexoRecusado):
         await c.conversa().enviar_anexo(SaidaDoTelegram(c.canal), ruim)              # type: ignore[arg-type]
     assert len(c.bot.envios) == 1
+
+
+async def test_enviar_anexo_por_caminho_recusa_tmp_nome_sem_sha_e_conteudo_que_nao_bate_com_o_nome(c: CenarioAnexos) -> None:
+    """Achado 11 da revisão: o caminho só era conferido pela pasta e pelo tipo, não pelo sha256 do nome."""
+    c.pasta.mkdir(parents=True, exist_ok=True)
+    certo = caminho_em(c.pasta, sha(PNG), "image/png")
+    certo.parent.mkdir(parents=True, exist_ok=True)
+    maus = {
+        "tmp": certo.parent / f".{certo.name}.ab12cd34.tmp",                          # sobra de `_gravar_atomico`
+        "sem_sha": certo.parent / "gerado.png",
+        "outro_sha": certo.parent / f"{sha(b'outro')}.png",                           # nome de sha, conteúdo de outro
+    }
+    for caminho in maus.values():
+        caminho.write_bytes(PNG)
+        with pytest.raises(AnexoRecusado):
+            await c.conversa().enviar_anexo(SaidaDoTelegram(c.canal), caminho)       # type: ignore[arg-type]
+    assert c.bot.envios == [] and c.linhas() == []
+
+
+async def test_enviar_anexo_por_id_recusa_arquivo_do_disco_que_mudou_depois_de_guardado(c: CenarioAnexos) -> None:
+    c.bot.arquivos["d-png"] = PNG
+    await c.volta(documento(5, "d-png", mime="image/png"))
+    [entrada] = c.linhas()
+    caminho = caminho_em(c.pasta, sha(PNG), "image/png")
+    caminho.write_bytes(PNG + b"corrompido")                                         # o conteúdo não é mais o do nome
+    with pytest.raises(AnexoRecusado):
+        await c.conversa().enviar_anexo(SaidaDoTelegram(c.canal), entrada["id"])     # type: ignore[arg-type]
+    assert c.bot.envios == []
 
 
 async def test_enviar_conteudo_do_produto_confere_o_tipo_guarda_e_manda(c: CenarioAnexos) -> None:
@@ -749,6 +816,57 @@ async def test_se_o_arquivo_nao_se_apaga_a_linha_fica_para_a_proxima_volta(f: Ce
     assert f.faxinar().anexos == 1 and f.estados() == {}
 
 
+async def test_anexo_novo_de_mesmo_conteudo_entre_a_conferencia_e_o_unlink_nao_perde_o_arquivo(
+        f: CenaFaxina, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Achado 9 da revisão: a faxina conferia o uso e depois apagava; um anexo igual que chegasse no meio ficava sem arquivo."""
+    velho = f.guardar(JPEG)
+    f.avancar(31)
+    original = FaxinaDosCanais._em_uso
+    chamadas: list[int] = []
+
+    def chega_no_meio(self: FaxinaDosCanais, sha_: str, canal: str, limite: str) -> bool:
+        chamadas.append(1)
+        achou = original(self, sha_, canal, limite)
+        if len(chamadas) == 1:                                       # depois da 1ª conferência (ninguém usa) chega o igual
+            assert achou is False
+            f.guardar(JPEG)                                          # o arquivo ainda está lá: só a linha é gravada
+        return achou
+
+    monkeypatch.setattr(FaxinaDosCanais, "_em_uso", chega_no_meio)
+    f.faxinar()
+    [(novo, estado)] = [(i, e) for i, e in f.estados().items() if i != velho]
+    assert estado == "guardado" and len(list(f.pasta.rglob("*.jpg"))) == 1             # o arquivo do novo está no disco
+    assert not list(f.pasta.rglob("*.apagando")) and f.arm.abrir(novo) is not None
+
+
+async def test_guardar_regrava_o_arquivo_que_a_faxina_tirou_depois_da_conferencia(f: CenaFaxina,
+                                                                              monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.modules.avisos.infrastructure import anexos as modulo
+    f.guardar(JPEG)
+    real = modulo._gravar_atomico
+    chamadas: list[int] = []
+
+    def faxina_tira_no_meio(destino: Path, conteudo: bytes) -> bool:
+        chamadas.append(1)
+        if len(chamadas) == 1:                                       # a conferência "já existe" e a faxina leva o arquivo
+            achou = real(destino, conteudo)
+            destino.unlink()
+            return achou
+        return real(destino, conteudo)
+
+    monkeypatch.setattr(modulo, "_gravar_atomico", faxina_tira_no_meio)
+    novo = f.guardar(JPEG)
+    assert f.arm.abrir(novo) is not None and len(list(f.pasta.rglob("*.jpg"))) == 1
+
+
+async def test_referencia_fora_do_armazem_nao_e_dona_de_arquivo_e_a_linha_vence(f: CenaFaxina) -> None:
+    """Achado 9 (1ª parte), refutado: sem `continue` de propósito. Sem caminho dentro do armazém não há arquivo a apagar."""
+    id_ = f.guardar(JPEG)
+    f.db.execute("UPDATE canal_anexos SET sha256='nao-e-sha' WHERE id=?", (id_,))
+    f.avancar(31)
+    assert f.faxinar().anexos == 1 and f.estados() == {}
+
+
 # ---------------------------------------------------------------- a rota de leitura
 def _cliente(h: Harness) -> httpx.AsyncClient:
     app = create_app(h.cfg, state=h.state)
@@ -866,3 +984,34 @@ async def test_a_falha_comum_responde_e_deixa_motivo_nao_deixa_pendente(c: Cenar
     [r] = c.linhas()
     assert r["estado"] == "recusado" and r["motivo_recusa"] and r["ref_externa"] is None
     assert "Mande de novo" in c.ultima()
+
+
+# ---------------------------------------------------------------- achado 10: sem `assert` guardando invariante de produção
+async def _pendente_ja_resolvido(c: CenarioAnexos) -> dict[str, object]:
+    """Uma linha `pendente` que OUTRO líder já resolveu (a cópia velha que este ainda tem na mão)."""
+    await c.volta(msg(5, "oi"))
+    velha = c.armazem.pendente("ref-x", entrada_id=int(str(c.entrada(5)["id"])), mime_declarado=None, tamanho=10)
+    c.armazem.recusar("o tipo não serve", linha_id=int(str(velha["id"])), tamanho=10)
+    return velha
+
+
+async def test_resolver_duas_vezes_o_pendente_levanta_erro_proprio_mesmo_sem_assert(c: CenarioAnexos) -> None:
+    velha = await _pendente_ja_resolvido(c)
+    with pytest.raises(AnexoJaResolvido) as exc:
+        c.armazem.recusar("de novo", linha_id=int(str(velha["id"])))
+    assert exc.value.linha is not None and exc.value.linha["estado"] == "recusado"
+    assert not isinstance(exc.value, AssertionError)
+
+
+async def test_pendente_ja_resolvido_nao_derruba_a_conversa_e_o_dono_ouve_o_resultado_gravado(c: CenarioAnexos) -> None:
+    velha = await _pendente_ja_resolvido(c)
+    c.bot.arquivos["ref-x"] = JPEG
+    texto = await c.conversa()._baixar(SaidaDoTelegram(c.canal), velha)               # type: ignore[arg-type]
+    assert texto.startswith("Não guardei o anexo:") and "o tipo não serve" in texto
+    assert [l["estado"] for l in c.linhas()] == ["recusado"]                          # nada duplicado, nada reaberto
+
+
+async def test_sem_armazem_o_baixar_responde_em_vez_de_levantar(tmp_path: Path) -> None:
+    c = CenarioAnexos(tmp_path, anexos=False)
+    texto = await c.conversa()._baixar(SaidaDoTelegram(c.canal), {"id": 1, "ref_externa": "x"})   # type: ignore[arg-type]
+    assert texto.startswith("Não guardei o anexo:")

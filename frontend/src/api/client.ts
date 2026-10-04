@@ -42,6 +42,8 @@ import type {
   ControlReleaseResponse,
   ControlTakeResponse,
   CanaisEstado,
+  CanalAnexoAoCartao,
+  CanalAnexosPagina,
   CommandRefinement,
   CreateRunRequest,
   CredentialCloneRequest,
@@ -416,6 +418,11 @@ export function profileAvatarUrl(profileId: string, temFoto: boolean | undefined
   return temFoto ? `${API_BASE}/instagram/profiles/${enc(profileId)}/avatar` : undefined;
 }
 
+/** 28.24 F4: o arquivo de um anexo dos canais (imagem ou PDF; a rota é do mesmo login do painel e não guarda cache). */
+export function canalAnexoConteudoUrl(id: number): string {
+  return `${API_BASE}/canais/anexos/${id}/conteudo`;
+}
+
 /** 29.30: URL de uma imagem da persona (a que a publicação aprovada vai levar). A rota só serve a imagem pronta. */
 export function personaImageUrl(personaId: string, imageId: string): string {
   return `${API_BASE}/personas/${enc(personaId)}/images/${enc(imageId)}`;
@@ -474,6 +481,12 @@ export const api = {
   metrics: () => request<Metrics>('GET', '/metrics'),
   /** Estado dos canais externos (Telegram e Trello), só leitura (32.5). */
   canaisEstado: (signal?: AbortSignal) => request<CanaisEstado>('GET', '/canais/estado', { signal }),
+  /** 28.24 F4: os anexos dos canais, do mais novo ao mais velho. `desde`/`ate` são ISO; `do_dono` só vale `'true'`. */
+  canaisAnexos: (query: { canal?: string; direcao?: string; do_dono?: string; desde?: string; limit?: number; offset?: number },
+                 signal?: AbortSignal) => request<CanalAnexosPagina>('GET', '/canais/anexos', { query, signal }),
+  /** Anexa ao cartão do Trello o arquivo que o dono mandou (`confirmar` é exigido pela rota: é efeito num sistema externo). */
+  canaisAnexarAoCartao: (id: number, card: string) =>
+    request<CanalAnexoAoCartao>('POST', `/canais/anexos/${id}/trello`, { body: { card, confirmar: true } }),
 
   getSettings: () => request<Settings>('GET', '/settings'),
   putSettings: (patch: Partial<Settings>) => request<Settings>('PUT', '/settings', { body: patch }),

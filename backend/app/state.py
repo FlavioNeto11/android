@@ -48,6 +48,7 @@ from .modules.avisos.infrastructure.espelho import EspelhoDoTrello, FontesDaCent
 from .modules.avisos.infrastructure.espelho_sql import CartoesDoTrello, CursorDoTrello
 from .devices.captura_pontual import capturar_para_o_dono
 from .modules.avisos.infrastructure.anexos import ArmazemDeAnexos
+from .modules.avisos.infrastructure.anexos_leitura import LeitorDeAnexo
 from .modules.avisos.infrastructure.faxina_sql import FaxinaDosCanais
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from .modules.avisos.infrastructure.portas_da_central import PortasReais
@@ -95,6 +96,7 @@ from .planning.decisao_fechada.intencao import ConsumidorDeIntencao
 from .planning.capabilities import (Capability, alvo_da_acao, capability_of, contraparte, efeito_fora_do_catalogo,
                                     texto_a_gerar)
 from .planning.catalog import capabilities_of, pacote_ancora, screen_reader_of, session_factory_of
+from .planning.anthropic_provider import AnthropicProvider
 from .planning.provider import AIProvider, build_provider
 from .planning.routing import perfis_para_o_painel
 from .modules.identity.infrastructure.persona_images import (compor_servico_de_imagens, identidade_para_foto,
@@ -562,10 +564,19 @@ class AppState:
         # A conversa de volta pelo Telegram (28.15, ADR-071): o mesmo bot dos avisos recebe; desligada de fábrica
         # (`avisos.entrada.enabled`). As portas chamam os MESMOS serviços das rotas do painel.
         triagem = TriagemDeCredencial()
+        # A IA lê a imagem do dono (28.24, F3): provedor da Anthropic FORA do hub, mas com o gasto conferido NO hub antes
+        # (teto do dia e saldo da conta) e o custo em `ai_calls` (`origem='canais'`). Simulado: texto fixo, sem chamada.
+        conferir = getattr(self.provider, "conferir_gasto", None)
+        self.leitor_de_anexos = LeitorDeAnexo(
+            cfg, self.db, self.anexos_canal, descritor=lambda: AnthropicProvider(cfg), redigir=triagem.redigir,
+            conferir_gasto=None if conferir is None else (lambda: conferir(run_id=None, origem="canais", conta="anthropic")),
+            registrar_uso=lambda u: self.repo.add_usage(None, None, u),
+            simulado=lambda: (cfg.env.ai_provider or "anthropic").strip().lower() == "simulated")
         portas_da_central = PortasReais(db=self.db, runs=self.runs, aprovacoes=self.approval_service, saude=self.health,
                                         online=lambda: [d.id for d in self.devices.list_dtos()
                                                         if str(d.state) == "online" and d.kind != "store"],
-                                        capturar=lambda alvo: capturar_para_o_dono(self.devices, alvo))
+                                        capturar=lambda alvo: capturar_para_o_dono(self.devices, alvo),
+                                        leitor_de_anexos=self.leitor_de_anexos)
         # Quem fala com o bot e não é o dono (28.18): apresentação, nome, o dono decide; desligado de fábrica
         # (`avisos.entrada.convidados.enabled`). A recusa de credencial é a mesma da conversa do dono.
         convidados = ConvidadosDoTelegram(
@@ -2114,7 +2125,8 @@ class AppState:
         # `package`: a política é do APP desta etapa (23.10) — SEND_MESSAGE do Instagram e o de outro catálogo são
         # escolhas diferentes do perfil.
         veredito = self.policies.check(profile_id, cap, run_id=obj["run_id"], counterparty=alvo,
-                                       app_id=app_da_etapa.id if app_da_etapa else None, package=pacote)
+                                       app_id=app_da_etapa.id if app_da_etapa else None, package=pacote,
+                                       step_id=srow["id"])
         if not veredito.allowed:
             return veredito
         # O texto é escrito AQUI, com a persona deste perfil, antes de qualquer digitação e antes da aprovação —

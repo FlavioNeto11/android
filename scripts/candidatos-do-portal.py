@@ -76,6 +76,14 @@ def url(base: str, *, dias: int, limite: int, simulados: bool = False, camada: s
     return base.rstrip("/") + ROTA + "?" + urllib.parse.urlencode(params)
 
 
+#: O token só vai para o próprio central nesta máquina; um `--base` de fora não recebe credencial (29.76).
+HOSTS_LOCAIS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def base_local(base: str) -> bool:
+    return (urllib.parse.urlsplit(base).hostname or "").lower() in HOSTS_LOCAIS
+
+
 def cabecalhos(token: str | None) -> dict[str, str]:
     """Sem token, nenhum `Authorization` — o loopback não exige credencial."""
     cab = {"Accept": "application/json"}
@@ -116,8 +124,13 @@ def de_lote_no_banco(caminho: Path) -> DeLote:
 
 
 def _amostra_de_lote(c: dict[str, Any], nossos: Mapping[str, bool]) -> tuple[int, int] | None:
-    ids = [e["run_id"] for e in c.get("exemplos") or [] if e.get("run_id") in nossos]
-    return (sum(1 for i in ids if nossos[i]), len(ids)) if ids else None
+    """(nossos, exemplos). O denominador é todo exemplo com run_id: o que o banco não achou conta como não sabido,
+    nunca como nosso — senão 2 ausentes e 1 de lote dariam "1 de 1" e rebaixariam o grupo (29.76). Nenhum achado =
+    `None` (banco ausente ou ilegível)."""
+    ids = [e["run_id"] for e in c.get("exemplos") or [] if e.get("run_id")]
+    if not any(i in nossos for i in ids):
+        return None
+    return sum(1 for i in ids if nossos.get(i)), len(ids)
 
 
 def _dias_sem_ocorrer(ultima: object, agora: datetime) -> float | None:
@@ -125,6 +138,8 @@ def _dias_sem_ocorrer(ultima: object, agora: datetime) -> float | None:
         quando = datetime.fromisoformat(str(ultima).replace("Z", "+00:00"))
     except ValueError:
         return None
+    if quando.tzinfo is None:  # sem fuso, o relatório grava em UTC; sem isto a subtração derruba com TypeError
+        quando = quando.replace(tzinfo=timezone.utc)
     return round((agora - quando) / timedelta(days=1), 1)
 
 
@@ -217,6 +232,9 @@ def main(argv: Sequence[str] | None = None, *, buscador: Buscador = buscar, agor
                     help="banco do central, aberto só para leitura, para a amostra de lote (padrão: data/poc.sqlite3)")
     a = ap.parse_args(argv)
     chave = token if token is not None else (os.environ.get("API_TOKEN") or None)
+    if chave and not base_local(a.base):
+        print(f"aviso: {a.base} não é endereço local; o pedido segue sem o token", file=sys.stderr)
+        chave = None
     relatorios: list[Mapping[str, Any]] = []
     for camada in (None, "pessoa"):
         endereco = url(a.base, dias=a.dias, limite=a.limite, simulados=a.simulados, camada=camada)

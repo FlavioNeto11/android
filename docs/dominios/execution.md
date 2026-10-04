@@ -791,6 +791,10 @@ não escolheu nenhuma, e o produto deu "1 de 1 com sucesso comprovado" com a cai
   `StepResult.vazio_comprovado=true` e `items=[]`, e o `for_each` expande para zero cópias. Lista com itens à vista e zero
   casamentos (seletor errado) ou julgamento em dúvida/erro: falha, com "O vazio não foi comprovado" no motivo.
 - **Sem saídas e sem coleta** (navegação pura): nada muda.
+- **Bloco com efeito e o próprio perfil (30.57):** antes da expansão, o item que é o próprio perfil que executa sai da
+  lista (o @ ou o autor de "autor said texto", normalizado contra o `username` e os `handle` do perfil). Ele não vira
+  etapa nem conta no `_settle_items`, e o rastro diz quantos saíram. O resto do leque passa pela porta de política
+  item a item (ver perfis e Instagram).
 
 Prova: `simulated` (`tests/test_saidas_obrigatorias.py`, QA Messenger falso com catálogo de teste, o caso real reconstruído
 inclusive). Real: `not_run` (repetir a leitura do Outlook no android-01).

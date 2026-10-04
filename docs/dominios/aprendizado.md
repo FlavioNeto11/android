@@ -107,7 +107,12 @@ gerenciador de aparelhos, de um lado, e o livro, do outro. Sem o livro ligado (`
 
 `failure_kind` é gravado em `repository.finish_attempt` (o erro final), na reconciliação (`interrompida`) e no desfecho
 da etapa. O vocabulário é fechado (`domain/falhas.py::FailureKind`), e uma catraca por AST exige que todo motivo do
-executor caia fora de `outro`. A camada e o "onde alterar" saem do tipo na hora da leitura.
+executor caia fora de `outro`. A catraca cobre também os motivos de `dado_ausente(...)` (30.58). A camada e o "onde
+alterar" saem do tipo na hora da leitura.
+
+O "Dado ausente: procurei …" da etapa de leitura (31.38) é `alvo_ausente`, qualquer que seja o motivo entre parênteses
+(30.58). A regra vem antes dos tetos de IA: "orçamento de chamadas da etapa esgotado" diz como a leitura desistiu, não
+que faltou crédito. Antes, as 7 tentativas de 04/10 caíam em `outro` e viravam candidato genérico no portal.
 
 Quando a etapa termina por erro de IA, o tipo vem dele e não do texto (RA-22, migração 081). O executor põe o
 `AIError.kind` no `StepOutcome.ai_error_kind` (o `desfecho_de_ia`, a verificação, e o `_run_guarded` do scheduler para o
@@ -390,6 +395,12 @@ com o banco aberto só para leitura.
   depois de `fixed` é medida nas últimas 2 × `prova_minimo` elegíveis. `fixed` e `reopened` nunca vêm de uma pessoa.
 - **Propostas** (sempre decisão de pessoa): `acao_de_catalogo` (ação nova não entra no catálogo pelo banco),
   `promover_licao` e `promover_tela`.
+  - Desde o 30.59, a `acao_de_catalogo` agrupa por (app, chave da etapa), com a referência `<pacote>|etapa:<chave>`.
+    Antes agrupava por `template_hash`, e a mesma etapa com dois objetivos virava duas propostas iguais.
+  - Ela não é proposta quando 80 % ou mais das etapas comprovadas fecharam sem IA (`driven_by` `recipe` ou
+    `sem_ator`, `ACAO_SEM_IA_MAX`): o ganho já foi colhido.
+  - As linhas antigas, por `template_hash` (`<pacote>|<hash>`), não são reescritas: o estado de uma linha é da pessoa.
+    Ficam abertas até alguém marcá-las `wontfix` pela rota do backlog.
 - `scripts/aprendizado-backlog.py` grava o md em `data/aprendizado/` e imprime o topo.
 - `scripts/candidatos-do-portal.py` (29.72) grava `data/aprendizado/candidatos-do-portal.json`: os grupos abertos e sem
   item do plano viram candidatos para a orquestradora numerar (contagem, ids de exemplo, frente sugerida). Ajuste de 04/10: `amostra_de_lote` (quantos dos exemplos são execução nossa, pela chave de idempotência
@@ -1564,7 +1575,7 @@ nunca chama IA.
 - a `invalida` da execução VENCE no fechamento (antes do `for`): o pedido fecha `recusada` com o motivo dela
   (`efeito_repetido`, `ponto_de_partida`, `ator_sem_acao`). Não devolve o item ao curador nem reabre. Um pedido já
   fechado `sem_evidencia` cuja execução ganha depois a `invalida` passa ao motivo dela (o mesmo molde do 30.36);
-- **limite de provas:** no máximo 2 provas por item e versão do conteúdo em 7 dias (`MAXIMO_DE_PROVAS`,
+- **limite de provas:** no máximo 4 provas por item e versão do conteúdo em 7 dias (era 2 até o 29.75; `MAXIMO_DE_PROVAS`,
   `JANELA_DE_PROVAS_DIAS`). A 3ª fecha `recusada/limite_de_provas` ao despachar, sem gastar. A versão é a marca
   `[xxxxxxxxxxxx]` (`content_hash` do plano); prova anterior com outra marca não conta, e prova sem marca conta (lado
   seguro). É aproximado, sem migração;
@@ -1587,7 +1598,7 @@ No P4 de 03/10, a prova do fluxo com `for_each` sobre 8 contatos gastou US$ 0,15
 enviou 3 mensagens e fechou `sem_evidencia`; inteira, custaria de 0,33 a 0,36. Decisão da orquestradora (03/10 21:44Z),
 sem migração:
 
-- **O teto da prova de fluxo** é `min(0,40; 0,05 + 0,02 × etapas)` (`domain/validacao.teto_da_prova`,
+- **O teto da prova de fluxo** é `min(0,80; 0,05 + 0,02 × etapas)` (máximo de 0,40 até o 29.75) (`domain/validacao.teto_da_prova`,
   `TETO_DA_PROVA_*`). Ele vai ao pedido no despacho, no mesmo UPDATE que liga a execução (`comecar(...,
   teto_da_prova=)`), e VENCE o teto gravado: o fixo de quando o pedido nasceu, ou o 0,15 gravado à mão em 03/10 20:56Z.
 - **O plano acima do máximo não despacha.** Com 18 etapas ou mais, ou de tamanho desconhecido, o pedido fecha
@@ -1635,7 +1646,7 @@ das versões). `real`: `not_run` até o deploy.
 O `for_each` de tamanho desconhecido nunca cabia no teto do 30.41 e o fluxo nunca se validava por pedido: o
 lv-5cf7389f13e4e0f0 (30.47, 04/10) fechou `plano_acima_do_teto`. Agora a PROVA de fluxo roda uma amostra:
 
-- **N** é o maior número de itens que cabe no máximo da prova (`maximo_de_etapas_da_prova()`, 17 etapas), entre
+- **N** é o maior número de itens que cabe no máximo da prova (`maximo_de_etapas_da_prova()`, 37 etapas desde o 29.75), entre
   `AMOSTRA_MINIMA` (2) e `AMOSTRA_MAXIMA` (3): `tamanho_da_amostra(fixas, por_item)` em `domain/validacao.py`. Sem
   laço, ou sem caber nem 2 itens, é `None` e o pedido fecha `plano_acima_do_teto` como antes.
 - **Os N primeiros, na ordem da tela.** Não há sorteio: o `Scheduler._expand_for_each`, só quando a execução tem
@@ -1868,7 +1879,12 @@ depois das duas filas, para o dono ver primeiro o que sobra para ele.
 - "Para aprovar" diz, em `on`, que os itens do app de teste que cumprem a régua a plataforma decide sozinha.
 
 **Config:** `aprendizado.aprovacao_automatica`, com `modo: off | shadow | on` (`off` de fábrica) e `intervalo_s`
-(900). O modo é relido a cada volta: mudar o config vale na próxima, sem reiniciar. Para desligar, `modo: "off"`.
+(900). O laço lê o modo a cada volta, mas do config CARREGADO: o `config.yaml` só é lido na subida, então mudar o modo
+pede reiniciar a tarefa `farm-central` (30.63; antes esta linha dizia o contrário). Escreva o modo entre aspas
+(`modo: "on"`). Sem aspas, o YAML lê `on`/`off` como booleano, e desde o 30.63 o booleano vale como a palavra.
+
+Revisão que a régua lê (30.63): a REAL mais recente do curador. Uma simulada mais nova não esconde um parecer real
+anterior contra nem uma classe C.
 
 **Prova:**
 - `simulated`: `backend/tests/test_aprovacao_automatica.py`.

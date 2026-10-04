@@ -86,6 +86,8 @@ def test_com_fato_o_id_e_o_do_fato_e_o_resto_e_a_nota_ou_a_resposta():
     assert (a.tipo, a.ref, a.texto) == ("aprovar", "apr-xyz", "")
     v = rotear("/vetar o tom ficou agressivo", fato="approval:apr-xyz")
     assert (v.tipo, v.ref, v.texto) == ("vetar", "apr-xyz", "o tom ficou agressivo")
+    # 28.26: a primeira palavra vai à parte, para quem decide conferir se é o id de outra pendência.
+    assert v.ref_digitado == "o" and a.ref_digitado is None
     r = rotear("/responder QA-001", fato="run:r-1:needs_input")
     assert (r.tipo, r.ref, r.texto) == ("responder", "r-1", "QA-001")
     assert rotear("/responder", fato="run:r-1:needs_input").tipo == "desconhecida"

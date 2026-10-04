@@ -109,6 +109,14 @@ do teto vale o espaçamento `fleet_min_spacing_between_accounts_s` (120) mais `f
 tetos por dia por balde (`likes_per_day` 150, `comments_per_day` 40, `follows_per_day` 40, `dms_per_day` 60) e o
 aquecimento (3 dias a 34%) são **padrão inicial, ajustável pelo dono** (`LimitsCfg` e `automation_policy.limits`).
 O que passa do teto de hora ou dia é represado antes de assumir a etapa (`retry_wait`, sem gastar tentativa).
+Resposta a comentário é uma vez por pessoa por conta na mesma janela (30.56, emenda do ADR-055): com resposta
+desta conta ao mesmo alvo (ou pedido dela em aberto), o `REPLY_COMMENT` é recusado antes do rascunho e da
+aprovação, sem chegar ao dono (`UMA_VEZ_POR_ALVO`; a da própria etapa não conta). Limite conhecido: sem a publicação gravada
+na interação, uma resposta legítima ao mesmo alvo noutro comentário dentro da janela também é recusada; a 2ª fatia
+do 30.56 grava publicação e comentário e passa a chave a ser por comentário.
+O teto por hora e por dia conta também os pedidos de aprovação desta conta ainda sem interação (30.57). É ele que
+limita o leque de um `for_each` com efeito em app real: com `comments_per_hour` 3, 5 itens viram 3 pedidos e 2
+adiados. Os valores são calibráveis em dev (29.75).
 Pendente (decisão do dono): se um perfil pode afrouxar a política do catálogo — hoje afrouxar é permitido e fica
 marcado (`ProfilePolicyDTO.loosened`), não recusado (#114 item 3). A política de um perfil vem em três
 camadas, nesta ordem: **escolha própria → grupo → padrão** (`_own`/`_group`/`origin_for`); `limits_origin()`
@@ -518,6 +526,24 @@ julga). Por timeout nunca se toca em Share de novo: a reconciliação confere a 
   `not_run`, à espera da exploração autorizada pelo dono.
 - **Pendente (PR-B).** O planejador só oferece ações não `internal`: falta inserir `PUT_MEDIA_IN_GALLERY` antes de
   `CREATE_POST` no plano, e o painel mostrar a imagem na aprovação (o `image_id` está nos `bindings` da etapa).
+- **Endurecido (30.60, revisão do deploy 29).**
+  - *Próprio perfil.* A prova é `count_gt:posts_antes:<contagem>&id=action_bar_title|text=={account_label}`. A guarda
+    depois de `&` exige o título do perfil da conta esperada (`profile_accounts.handle`, nunca o identificador de login).
+    Guarda que não casa ou variável sem valor dá `None`: o modelo julga, e a guarda nunca reprova.
+  - *Não fecha sozinha.* A contagem sobe de forma otimista antes de o upload terminar. Com efeito disparado, a prova
+    `count_gt` vira fato para o verificador e não atalho: o "sim" passa pelo rejulgamento do 17.10. As marcas
+    `pending_marks` ("Posting…", "Finishing up…") e `failure_marks` ("Couldn't post") estão declaradas, com os textos
+    NÃO MEDIDOS. O `sent_text` da DM segue como atalho, porque é o critério objetivo do ADR-055.
+  - *Galeria só com a imagem da etapa.* O editor abre na mídia mais recente. Antes do push, `Adb.enviar_midia_para_galeria`
+    tira do MediaStore e do disco o que estiver em `Pictures/Central/img_*`. Depois do push, o `ls` precisa mostrar só o
+    arquivo da etapa. A indexação é conferida por `content query` no MediaStore (até 5 s); sem ela, a etapa falha.
+  - *Persona do aparelho.* A persona do objetivo precisa ter vínculo ativo com o aparelho
+    (`SocialRepository.binding`). O vínculo secundário basta: o android-13 também é do André.
+  - *Aprovação.* A revisão do plano só reaproveita a aprovação com a mesma imagem (N1). O texto editado só se grava na
+    etapa se a decisão vencer a corrida pelo `pending` (N3). Publicar passa por aprovação mesmo com perfil autônomo (N4,
+    emenda do ADR-055).
+  - Prova `simulated` em `tests/test_create_post_endurecido.py`. Ficam `not_run`: os textos das marcas, o `content` do
+    MediaStore no aparelho real, o botão Share e o push remoto.
 
 ## O Outlook como dado (item 23.8)
 
