@@ -74,8 +74,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Executor: `step_blocked kind=missing_info` sai com `StepOutcome.falta_de_informacao` quando a razão NÃO é credencial
   (`TriagemDeCredencial.pergunta_sensivel`). Senha, código e 2FA seguem direto para a pessoa (ADR-009).
 - Scheduler: antes do `waiting_user`, `_revisao_cabe` (só leitura, as portas do `_try_recover`) e uma revisão com o
-  motivo `Recuperação automática (defeito de plano) …`. A revisão entra no mesmo teto por objetivo, sem laço; a
-  tentativa conta como falha. Marca `MOTIVO_DEFEITO_DE_PLANO` em `plan_versions.reason` e em `plan.revised.data.reason`
+  motivo `Recuperação automática (falta de informação) …`. A revisão entra no mesmo teto por objetivo, sem laço; a
+  tentativa conta como falha. Marca `MOTIVO_FALTA_DE_INFORMACAO` em `plan_versions.reason` e em `plan.revised.data.reason`
   para Aprendizado e Jev.
 - Testes: `test_falta_de_informacao.py` (falta comum revisa e conclui, com o evento marcado; falta de senha vai à
   pessoa sem revisão). `test_cascata_ator_barato.py` passa a esperar uma revisão antes da pessoa (`[0, 1, 0, 1]` e

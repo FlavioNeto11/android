@@ -2,7 +2,7 @@
 
 23 % dos objetivos paravam em `waiting_user`, e "o campo X não existe" chegava à pessoa sem passar pela recuperação.
 Agora a falta que não é credencial ganha UMA revisão do plano (a mesma da recuperação automática, com a marca
-"defeito de plano"); senha, código e 2FA continuam com a pessoa (ADR-009). `simulated`: provedor falso do harness.
+"falta de informação"); senha, código e 2FA continuam com a pessoa (ADR-009). `simulated`: provedor falso do harness.
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import json
 from typing import Any
 
 from app.planning.provider import Decision, Usage
-from app.taskqueue.scheduler import MOTIVO_DEFEITO_DE_PLANO
+from app.taskqueue.scheduler import MOTIVO_FALTA_DE_INFORMACAO
 
 from .conftest import Harness
 
@@ -48,12 +48,12 @@ async def test_falta_que_nao_e_credencial_revisa_o_plano_e_o_objetivo_conclui(ha
     obj = harness.state.db.one("SELECT status FROM objectives WHERE run_id=?", (run.id,))  # type: ignore[union-attr]
     assert obj["status"] == "succeeded"                      # sem pedir pessoa
     revisoes = _revisoes(harness, run.id)
-    assert len(revisoes) == 1 and MOTIVO_DEFEITO_DE_PLANO in revisoes[0]
+    assert len(revisoes) == 1 and MOTIVO_FALTA_DE_INFORMACAO in revisoes[0]
     assert revisoes[0].startswith("Recuperação automática")  # entra no MESMO teto da recuperação: sem laço
     # O contrato para Aprendizado e Jev: `plan.revised` com a marca em `data.reason`.
     eventos = [json.loads(r["data"]) for r in harness.state.db.query(
         "SELECT data FROM events WHERE kind='plan.revised' AND run_id=? ORDER BY id", (run.id,))]
-    assert eventos and MOTIVO_DEFEITO_DE_PLANO in eventos[-1]["reason"]
+    assert eventos and MOTIVO_FALTA_DE_INFORMACAO in eventos[-1]["reason"]
     assert len(harness.fakes["android-01"].messages) == 1    # a mensagem saiu uma vez
 
 

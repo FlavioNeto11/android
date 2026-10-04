@@ -37,8 +37,10 @@ from .repository import MOTIVO_REJEICAO, RENOVAR_POSSE_S, PosseDaEtapaPerdida, R
 log = logging.getLogger("poc.scheduler")
 MAX_PLAN_REVISIONS = 1
 #: 29.35: a marca, no motivo da versão do plano (`plan_versions.reason` e `plan.revised.data.reason`), da revisão feita
-#: porque o ator relatou falta de informação que não é credencial. Vocabulário para Aprendizado e Jev contarem.
-MOTIVO_DEFEITO_DE_PLANO = "defeito de plano"
+#: porque o ator relatou falta de informação que não é credencial. Vocabulário para Aprendizado e Jev contarem. Não é
+#: "defeito de plano" de propósito (nota da Jev): a revisão COPIA as etapas não comprovadas, o plano não muda, e a
+#: Aprendizado não pode minerar isto como lição do planejador.
+MOTIVO_FALTA_DE_INFORMACAO = "falta de informação"
 # estados que o rodízio pode ligar sob demanda
 WAKEABLE = {InstanceState.stopped, InstanceState.absent, InstanceState.hibernated}
 #: Quanto um objetivo ESPERA o worker que hospeda o aparelho dele voltar antes de parar para uma pessoa. Queda
@@ -1578,9 +1580,9 @@ class Scheduler:
             # Conta como falha (não devolve a tentativa): é um plano novo, não uma interrupção. A segunda vez, já com o
             # teto de recuperação gasto, cai no `waiting_user` de baixo.
             repo.finish_attempt(attempt_id, AttemptStatus.failed, error=detail, screen=out.tela_da_falha, error_kind=kind,
-                                recovery="Revisão do plano (defeito de plano) antes de pedir a pessoa")
+                                recovery="Revisão do plano (falta de informação) antes de pedir a pessoa")
             repo.transition_step(step.id, StepStatus.failed, detail=detail, level="warn", error_kind=kind)
-            rec = self._try_recover(obj, step, detail or "falta informação", app_vivo=app_vivo, defeito_de_plano=True)
+            rec = self._try_recover(obj, step, detail or "falta informação", app_vivo=app_vivo, falta_de_informacao=True)
             if rec.revisou:
                 return rec.da_tela_atual
             # Não deveria acontecer (`_revisao_cabe` acabou de conferir): sem revisão, a pessoa decide, como antes.
@@ -1981,7 +1983,7 @@ class Scheduler:
         return bool(steps) and self._revisao_condenada(obj["id"], run, steps) is None
 
     def _try_recover(self, obj: Any, step: Any, detail: str, *, app_vivo: bool | None = None,
-                     defeito_de_plano: bool = False) -> _Recuperacao:
+                     falta_de_informacao: bool = False) -> _Recuperacao:
         run = self.repo.run_row(obj["run_id"])
         if run is not None and run["prova_fluxo_id"]:
             # 30.42: a prova não replaneja: um plano novo não é mais o fluxo, e a prova dele já não diria nada sobre o
@@ -2003,7 +2005,7 @@ class Scheduler:
             return _Recuperacao(False, motivo=condenada)
         # O prefixo "Recuperação automática" é o que o teto (`_pode_recuperar`) conta: a revisão por falta de informação
         # (29.35) entra no MESMO teto, senão "falta informação → revisa → mesma tela" giraria sem fim.
-        reason = (f"Recuperação automática ({MOTIVO_DEFEITO_DE_PLANO}) após '{step.title}': {detail}" if defeito_de_plano
+        reason = (f"Recuperação automática ({MOTIVO_FALTA_DE_INFORMACAO}) após '{step.title}': {detail}" if falta_de_informacao
                   else f"Recuperação automática após falha em '{step.title}': {detail}")
         versao = self.repo.revise_plan(obj["id"], reason, steps)
         self.herdar_textos(obj["id"], versao)

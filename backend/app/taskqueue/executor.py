@@ -246,7 +246,7 @@ class StepOutcome:
     result: StepResult | None = None
     #: 29.35 (RA-9): o ator relatou `missing_info` e a falta NÃO é credencial (senha, código, 2FA ficam com a pessoa,
     #: ADR-009). O scheduler tenta UMA revisão determinística do plano (a mesma da recuperação automática, com o motivo
-    #: "defeito de plano") antes de parar o objetivo em `waiting_user`: "o campo X não existe" quase sempre é o plano
+    #: "falta de informação") antes de parar o objetivo em `waiting_user`: "o campo X não existe" quase sempre é o plano
     #: na tela errada, não informação que a pessoa precise dar.
     falta_de_informacao: bool = False
 

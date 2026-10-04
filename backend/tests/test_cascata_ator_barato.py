@@ -38,10 +38,10 @@ def _decide_que_bloqueia_no_tier0(harness: Harness, kind: str, needs_user: bool,
     inner.decide = decide
 
 
-def _revisoes_por_defeito_de_plano(harness: Harness, run_id: str) -> int:
+def _revisoes_por_falta_de_informacao(harness: Harness, run_id: str) -> int:
     return int(harness.state.db.scalar(
         "SELECT COUNT(*) FROM plan_versions v JOIN objectives o ON o.id = v.objective_id"
-        " WHERE o.run_id=? AND v.reason LIKE ?", (run_id, "%defeito de plano%")) or 0)
+        " WHERE o.run_id=? AND v.reason LIKE ?", (run_id, "%falta de informação%")) or 0)
 
 
 @pytest.mark.parametrize("kind", ["unexpected_screen", "missing_info", "other"])
@@ -76,7 +76,7 @@ async def test_se_o_tier_1_tambem_bloqueia_vale_o_caminho_de_sempre_e_sobe_uma_v
     # 29.35: a falta de informação (que não é credencial) ganha UMA revisão do plano antes da pessoa; na versão revisada,
     # a mesma subida ao tier 1. Uma subida por tentativa, nem laço nem terceira consulta por tentativa.
     assert tiers == [0, 1, 0, 1], tiers
-    assert _revisoes_por_defeito_de_plano(harness, run.id) == 1
+    assert _revisoes_por_falta_de_informacao(harness, run.id) == 1
 
 
 @pytest.mark.parametrize("kind", ["challenge", "auth_required", "wrong_account"])
@@ -96,7 +96,7 @@ async def test_cascata_desligada_na_configuracao_nao_sobe(harness: Harness) -> N
     await harness.wait_run(run.id, statuses=TERMINAIS)
     obj = harness.state.db.one("SELECT status FROM objectives WHERE run_id=?", (run.id,))      # type: ignore[union-attr]
     assert obj["status"] == "waiting_user" and tiers == [0, 0]     # 29.35: uma revisão do plano, depois a pessoa
-    assert _revisoes_por_defeito_de_plano(harness, run.id) == 1
+    assert _revisoes_por_falta_de_informacao(harness, run.id) == 1
 
 
 # ---------------------------------------------------------------- "sim" barato em etapa com efeito externo
