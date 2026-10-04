@@ -150,9 +150,11 @@ class AnthropicProvider:
 
     # ------------------------------------------------------------------ chamada base
     def _kwargs(self, *, model: str, system: str, content: list[dict[str, Any]], effort: str, max_tokens: int,
-                tools: bool, schema: dict[str, Any] | None, pensar: bool = True) -> dict[str, Any]:
+                tools: bool, schema: dict[str, Any] | None, pensar: bool = True,
+                cache_ttl: str | None = None) -> dict[str, Any]:
         """Monta a requisição respeitando a capacidade DECLARADA deste modelo (`ai.models`) e o que ele já recusou.
-        `pensar=False` (item 17.14, `thinking: false` da função) deixa de mandar `thinking`, como num modelo sem ele."""
+        `pensar=False` (item 17.14, `thinking: false` da função) deixa de mandar `thinking`, como num modelo sem ele.
+        `cache_ttl` (31.30): validade do ponto de cache; `None` é o padrão da API (5 min), sem o campo."""
         caps = self.cfg.model_caps(model)
         off = self._unsupported.setdefault(model, set())
         if tools and not caps.tools:
@@ -166,7 +168,10 @@ class AnthropicProvider:
         # subcontava os tokens: o ator dava 706 pela conta contra um prefixo real de 6 091 tokens, e o Sonnet 5
         # (mínimo 1024) e o Haiku 4.5 (4096) saíam sem `cache_control` — medido em 24/09: 46 decisões com
         # cache_read = cache_write = 0 e o dobro de tokens de entrada por decisão.
-        bloco: dict[str, Any] = {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+        cache: dict[str, Any] = {"type": "ephemeral"}
+        if cache_ttl and cache_ttl != "5m":
+            cache["ttl"] = cache_ttl
+        bloco: dict[str, Any] = {"type": "text", "text": system, "cache_control": cache}
         kwargs: dict[str, Any] = dict(model=model, max_tokens=max_tokens, system=[bloco],
                                       messages=[{"role": "user", "content": content}])
         if pensar and caps.thinking and "thinking" not in off:
@@ -204,8 +209,10 @@ class AnthropicProvider:
 
     async def _create(self, *, role: str, model: str, system: str, content: list[dict[str, Any]], effort: str,
                       max_tokens: int, tools: bool = False, schema: dict[str, Any] | None = None, tier: int = 0,
-                      with_image: bool = False, funcao: str | None = None) -> tuple[Any, Usage]:
-        """`funcao`: a função do hub que a chamada serve, quando difere de `role` (a decisão escalada é `escalation`)."""
+                      with_image: bool = False, funcao: str | None = None, cache_ttl: str | None = None
+                      ) -> tuple[Any, Usage]:
+        """`funcao`: a função do hub que a chamada serve, quando difere de `role` (a decisão escalada é `escalation`).
+        `cache_ttl`: validade do cache do prefixo (31.30); só o plano da execução pede outra que não a padrão."""
         if self._client is None:
             raise AIError("Provedor de IA sem chave configurada (ANTHROPIC_API_KEY).", kind="not_configured",
                           model=model)
@@ -217,7 +224,8 @@ class AnthropicProvider:
         try:
             for _ in range(len(_TUNABLE) + 2):
                 kwargs = self._kwargs(model=model, system=system, content=content, effort=effort,
-                                      max_tokens=max_tokens, tools=tools, schema=schema, pensar=pensar)
+                                      max_tokens=max_tokens, tools=tools, schema=schema, pensar=pensar,
+                                      cache_ttl=cache_ttl)
                 try:
                     resp = await self._send(model, kwargs)
                     break
@@ -344,7 +352,8 @@ class AnthropicProvider:
                                          system=prompts.PLANNER_SYSTEM_CURTO if curto else prompts.PLANNER_SYSTEM,
                                          content=[{"type": "text", "text": prompts.planner_user(req, max_steps)}],
                                          effort=self.cfg.env.ai_effort_planner, max_tokens=12000,
-                                         schema=strict_schema(_PlanCurtoOut if curto else _PlanOut))
+                                         schema=strict_schema(_PlanCurtoOut if curto else _PlanOut),
+                                         cache_ttl=self.cfg.file.ai.cache_ttl_do_plano)
         self._check_stop(resp, self.models["plan"])
         raw = next((b.text for b in resp.content if b.type == "text"), "")
         plan = plan_from_json(raw, req, provider=self.name, model=resp.model, max_steps=max_steps, curto=curto)
@@ -356,7 +365,8 @@ class AnthropicProvider:
         resp, usage = await self._create(
             role="plan", model=self.models["plan"], system=prompts.PLANNER_CAPABILITY_SYSTEM,
             content=[{"type": "text", "text": prompts.planner_capability_user(req, max_steps)}],
-            effort=self.cfg.env.ai_effort_planner, max_tokens=8000, schema=strict_schema(_CapPlanOut))
+            effort=self.cfg.env.ai_effort_planner, max_tokens=8000, schema=strict_schema(_CapPlanOut),
+            cache_ttl=self.cfg.file.ai.cache_ttl_do_plano)
         self._check_stop(resp, self.models["plan"])
         raw = next((b.text for b in resp.content if b.type == "text"), "")
         plan = catalog_plan_from_json(raw, req, provider=self.name, model=resp.model, max_steps=max_steps)
@@ -372,7 +382,8 @@ class AnthropicProvider:
             system=prompts.PLANNER_MULTIAPP_SYSTEM_CURTO if curto else prompts.PLANNER_MULTIAPP_SYSTEM,
             content=[{"type": "text", "text": prompts.planner_multiapp_user(req, max_steps)}],
             effort=self.cfg.env.ai_effort_planner, max_tokens=12000,
-            schema=strict_schema(_MultiPlanCurtoOut if curto else _MultiPlanOut))
+            schema=strict_schema(_MultiPlanCurtoOut if curto else _MultiPlanOut),
+            cache_ttl=self.cfg.file.ai.cache_ttl_do_plano)
         self._check_stop(resp, self.models["plan"])
         raw = next((b.text for b in resp.content if b.type == "text"), "")
         plan = catalog_plan_from_json(raw, req, provider=self.name, model=resp.model, max_steps=max_steps, curto=curto)

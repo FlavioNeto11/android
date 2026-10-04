@@ -362,6 +362,37 @@ def test_decisao_no_sonnet_pede_cache_com_o_system_real(tmp_path: Path) -> None:
     assert kwargs["system"][0]["cache_control"] == {"type": "ephemeral"} and kwargs["tools"]
 
 
+_PLANO_VAZIO = json.dumps({"summary": "nada", "app_id": "qa-messenger", "parameters": [], "success_criteria": [],
+                           "missing": [], "steps": []})
+
+
+@pytest.mark.parametrize(("ttl", "esperado"), [("1h", {"type": "ephemeral", "ttl": "1h"}), ("5m", {"type": "ephemeral"})])
+async def test_plano_da_execucao_pede_cache_de_1h_e_volta_a_5m_pela_config_31_30(
+        tmp_path: Path, ttl: str, esperado: dict[str, str]) -> None:
+    """31.30: o prefixo do plano da execução (system + esquema) fica 1 h no cache — comando de pessoa chega espaçado e
+    5 min perdia a releitura. `ai.cache_ttl_do_plano: 5m` devolve o pedido de antes, sem o campo `ttl`. O resto da
+    requisição não muda: o plano decidido é o mesmo. `simulated`: o fake só prova o que a requisição pede."""
+    p, fake = provider(tmp_path, [_resp([SimpleNamespace(type="text", text=_PLANO_VAZIO)])])
+    p.cfg.file.ai.cache_ttl_do_plano = ttl  # type: ignore[assignment]
+    await p.plan(PlanRequest(command="abra o app", run_id="r1", apps=[APP],
+                             instances=[{"instance_id": "android-01", "account_label": "qa-user-01", "app_id": "qa-messenger"}]))
+    assert fake.calls[0]["system"][0]["cache_control"] == esperado
+    assert "cache_control" not in json.dumps(fake.calls[0]["messages"])
+
+
+def test_padrao_e_1h_so_no_plano_da_execucao_31_30(tmp_path: Path) -> None:
+    """O padrão é 1 h, e só os três planejamentos da execução o pedem: as demais chamadas (ator, verificador, curador)
+    seguem sem `ttl`, que é o padrão de 5 min da API."""
+    p, _fake = provider(tmp_path, [])
+    assert p.cfg.file.ai.cache_ttl_do_plano == "1h"
+    sem = p._kwargs(model="claude-sonnet-5", system="s", content=[], effort="low", max_tokens=10,  # noqa: SLF001
+                    tools=False, schema=None)
+    assert sem["system"][0]["cache_control"] == {"type": "ephemeral"}
+    import inspect
+    fonte = inspect.getsource(type(p))
+    assert fonte.count("cache_ttl=self.cfg.file.ai.cache_ttl_do_plano") == 3
+
+
 def _resp_com_cache(texto: str, *, entrada: int, lido: int, gravado: int) -> Any:
     return SimpleNamespace(content=[SimpleNamespace(type="text", text=texto)], stop_reason="end_turn", model="claude-haiku-4-5",
                            usage=SimpleNamespace(input_tokens=entrada, output_tokens=40, cache_read_input_tokens=lido,

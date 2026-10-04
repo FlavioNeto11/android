@@ -476,6 +476,7 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
 | `ai.image.provider` / `model` / `per_persona` / `on_create` | `simulated` / `gpt-image-2` / 1 / `true` | os mesmos (`config.py::ImageCfg`); `quality: medium`, `price_per_image` (estimativa) low 0,02 / medium 0,06 / high 0,2 US$, `price_per_mtok` 5 / 8 / 30 US$ |
 | `ai.limits` (fatias por origem, 31.6) | comentado, com os padrões | `curador_max_usd_per_day` vazio (= 0,10 × teto do dia), `curador_fracao_do_dia` 0,10, `jev_max_usd_per_day` 0,50 (`config.py::AiLimitsCfg`) |
 | `ai.esquema_do_plano` (LT-4b, 17.13) | `longo` | `longo` (`config.py`); `curto` = etapa livre sem `description`, `precondition` e `max_attempts` (o backend preenche), com título e objetivo curtos |
+| `ai.cache_ttl_do_plano` (31.30) | ausente (= `1h`) | `1h` (`config.py`); validade do cache do prefixo do plano da execução (os três planejamentos). `5m` volta ao pedido de antes, sem `ttl`; ator, verificador e curador seguem em 5 min |
 | `ai.flows` | `true` | `false` (`config.py`) |
 | `ai.pathfinder_wait_s` | 240 | 0 (`config.py`) |
 | `android.auto_start_devices` | `true` | `false` (`config.py`) |
