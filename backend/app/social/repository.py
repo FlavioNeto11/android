@@ -1513,6 +1513,47 @@ class SocialRepository:
             f" AND type IN ({t}){por_app} LIMIT 1",
             (profile_id, counterparty, *types, *((app_id,) if app_id else ()))) is not None
 
+    def ultima_saida_para(self, profile_id: str, counterparty: str, *, types: tuple[str, ...],
+                          statuses: tuple[str, ...], since: str, app_id: str | None = None,
+                          capability: str | None = None,
+                          exclude_step_id: str | None = None) -> tuple[str, str] | None:
+        """A interação de SAÍDA mais recente deste perfil para a contraparte, destes tipos e estados, desde `since`:
+        `(id, occurred_at)`. Pergunta do próprio perfil (30.56); a da etapa `exclude_step_id` não conta.
+
+        `capability`: só a gravada por uma etapa DESTA ação (dois efeitos gravam o mesmo tipo, como comentar e responder);
+        a interação sem etapa conhecida conta, por segurança — não se sabe que não foi esta ação."""
+        if not types or not statuses or not counterparty:
+            return None
+        t, s = ",".join("?" * len(types)), ",".join("?" * len(statuses))
+        por_app = " AND (app_id=? OR app_id IS NULL)" if app_id else ""
+        da_acao = (" AND (step_id IS NULL OR NOT EXISTS (SELECT 1 FROM steps e WHERE e.id=social_interactions.step_id)"
+                   " OR EXISTS (SELECT 1 FROM steps e WHERE e.id=social_interactions.step_id AND e.capability=?))"
+                   if capability else "")
+        sem_a_etapa = " AND (step_id IS NULL OR step_id<>?)" if exclude_step_id else ""
+        linha = self.db.one(
+            f"SELECT id, occurred_at FROM social_interactions WHERE profile_id=? AND counterparty=?"
+            f" AND direction='outbound' AND occurred_at>=? AND type IN ({t}) AND status IN ({s}){por_app}{da_acao}"
+            f"{sem_a_etapa} ORDER BY occurred_at DESC, seq DESC LIMIT 1",
+            (profile_id, counterparty, since, *types, *statuses, *((app_id,) if app_id else ()),
+             *((capability,) if capability else ()), *((exclude_step_id,) if exclude_step_id else ())))
+        return (str(linha["id"]), str(linha["occurred_at"])) if linha else None
+
+    def pedido_em_aberto_para(self, profile_id: str, capability: str, counterparty: str, *, since: str,
+                              exclude_step_id: str | None = None) -> str | None:
+        """O pedido de aprovação deste perfil, desta ação e para esta contraparte, ainda sem interação (pendente ou
+        aprovado e não executado), desde `since`; `None` sem ele. O alvo antigo é gravado cru: compara-se normalizado,
+        como em `fleet_targeting`. O da etapa `exclude_step_id` não conta (30.56)."""
+        if not counterparty:
+            return None
+        sem_a_etapa = " AND (step_id IS NULL OR step_id<>?)" if exclude_step_id else ""
+        linha = self.db.one(
+            "SELECT id FROM pending_approvals WHERE profile_id=? AND capability=?"
+            " AND status IN ('pending','approved','edited') AND interaction_id IS NULL AND created_at>=?"
+            f" AND lower(ltrim(trim(target), '@'))=?{sem_a_etapa} ORDER BY created_at DESC, id DESC LIMIT 1",
+            (profile_id, capability, since, counterparty.lower().lstrip("@"),
+             *((exclude_step_id,) if exclude_step_id else ())))
+        return str(linha["id"]) if linha else None
+
     # ------------------------------------------------------------------ memória
     def insert_memory(self, profile_id: str, *, subject: str, content: str, source: str, fingerprint: str,
                       interaction_id: str | None = None, importance: float = 0.5, confidence: float = 0.5,
