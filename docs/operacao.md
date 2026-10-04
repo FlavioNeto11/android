@@ -769,6 +769,8 @@ comentado em `config/config.example.yaml`.
 - Mover o cartão de aprovação para ⛔ Vetado, "não" ou `/vetar` veta. Mover para ✅ Aprovado, "sim" ou `/aprovar` **não
   aprovam**: a Central comenta que a aprovação se confirma no painel ou no Telegram.
 - Comentário que começa com 🤖 é de IA e nunca é pedido. A Central assina `🤖 ANA · HH:MMZ ·`.
+- O link do painel no cartão leva só um id de formato permitido (32.4: execução, pedido, `receita:<n>`, `fluxo:<hex>`
+  ou `fluxo:f<n>`). Qualquer outro, como o slug do fluxo, não vai no link, e o link abre só a tela.
 - Senha ou código no comentário é recusado sem eco, e a resposta pede ao dono que apague o comentário.
 - Convidado não executa nada; o pedido dele vira um aviso ao dono (Telegram).
 

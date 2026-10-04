@@ -50,6 +50,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   painel usa o mesmo nome), `test_prompts_licoes.py` (hashes dos planejadores atualizados de propósito) e
   `ProfileDetail.test.tsx` (recusa com o nome). Real `not_run`: nenhuma chamada paga.
 
+## 2026-10-04 — 32.4: link do cartão do espelho sem texto derivado do pedido (branch `canais/32-4-link-sem-slug`)
+
+### Código
+- `modules/avisos/application/espelho.py`: o link do painel nos cartões do espelho leva só o id.
+  - O id de fluxo pode ser o slug do objetivo (`fluxo:ler-sem-abrir-conversas-nem-enviar-nada-`), e o quadro tem
+    convidados. Por isso vale uma LISTA DE PERMISSÃO dos formatos reais: `r-<14 dígitos>-<6 hex>`, `ped_` + 22
+    base64url, `receita:<número>`, `fluxo:<hex 8+>` e `fluxo:f<número>`. O resto abre só a tela (Aprendizado,
+    Pendências ou Pedidos), sem o item.
+  - Visto no 1º cartão do espelho, no deploy 18.
+- Prova `simulated`: `test_trello_espelho.py::test_link_do_cartao_leva_so_id_e_nunca_texto_derivado_do_pedido` e
+  105 testes de espelho, leitor e webhook.
+
 ## 2026-10-04 — Suíte 18 na main e deploy 18 no central (f1651ec8; sem migração; Trello na etapa 3)
 
 - **Integrado e implantado** (FF 02:05Z; deploy 02:06:05–02:06:41Z): #186 (29.63, esquema-modelo no harness de PG),

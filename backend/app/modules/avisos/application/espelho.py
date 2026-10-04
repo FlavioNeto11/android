@@ -113,6 +113,23 @@ def _seguro(valor: str) -> str:
     return _SEGURO.sub("_", valor.strip())[:80]
 
 
+#: LISTA DE PERMISSÃO dos ids que podem ir no link do cartão (32.4). O quadro tem convidados e o id de fluxo pode ser o
+#: slug do objetivo (`fluxo:ler-sem-abrir-conversas-nem-enviar-nada-`): o que não casar com um formato real de id abre
+#: só a tela. Formatos conferidos no código que gera cada id (04/10):
+#: - execução: `r-<AAAAMMDDhhmmss>-<6 hex>`;
+#: - pedido: `ped_` + 22 caracteres base64 url-safe (`pedidos/domain/previa.py`);
+#: - item do Livro: `receita:<número>`, `fluxo:<hex de 8+>` ou `fluxo:f<número>`.
+_ID_DE_EXECUCAO = re.compile(r"r-\d{14}-[0-9a-f]{6}")
+_ID_DE_PEDIDO = re.compile(r"ped_[A-Za-z0-9_-]{22}")
+_ID_DE_ITEM = re.compile(r"receita:\d+|fluxo:(?:[0-9a-f]{8,}|f\d+)")
+
+
+def _permitido(formato: re.Pattern[str], ident: str) -> str | None:
+    """O id, se casar INTEIRO com o formato; senão `None` (aí o link abre só a tela)."""
+    valor = (ident or "").strip()
+    return valor if formato.fullmatch(valor) else None
+
+
 def _descricao(leigo: str, tecnico: list[str], link: str | None, chave: str) -> str:
     partes = [*tecnico, f"painel: {link}"] if link else tecnico
     return (f"{PARA_LEIGO} {leigo}\n\n{TECNICO} " + " · ".join(partes)
@@ -126,7 +143,8 @@ def fato_de_pendencia(tipo: str, ident: str, url_painel: str | None) -> Fato | N
         estado = "pending"
     elif tipo == "pergunta":
         aviso, chave = "run.needs_input", chave_do_fato("run", ident, "needs_input")
-        link, estado = link_do_painel(url_painel, f"#/execucoes/{_seguro(ident)}"), "needs_input"
+        run = _permitido(_ID_DE_EXECUCAO, ident)
+        link, estado = link_do_painel(url_painel, f"#/execucoes/{run}" if run else "#/pendencias"), "needs_input"
     else:
         return None
     rotulo = ROTULOS[aviso]
@@ -141,17 +159,22 @@ def fato_de_pedido(ident: str, estado: str, url_painel: str | None) -> Fato | No
     titulo, leigo = _PEDIDO[estado]
     return Fato(chave_do_fato("pedido", ident), f"{titulo} · {sufixo(ident)}",
                 _descricao(leigo, ["tipo `pedido`", f"estado `{estado}`", f"id `{sufixo(ident)}`"],
-                           link_do_painel(url_painel, f"#/pedidos/{_seguro(ident)}"), chave_do_fato("pedido", ident)))
+                           link_do_painel(url_painel, f"#/pedidos/{ped}" if (ped := _permitido(_ID_DE_PEDIDO, ident))
+                                          else "#/pedidos"),
+                           chave_do_fato("pedido", ident)))
 
 
 def fato_de_validacao(ident: str, item_ref: str, estado: str, url_painel: str | None) -> Fato | None:
-    """Um pedido de validação do Livro (082) vivo. O `item_ref` é id ('receita:<id>', 'fluxo:<id>'), nunca texto."""
+    """Um pedido de validação do Livro (082) vivo. O `item_ref` é `<kind>:<id>` ('receita:87', 'fluxo:f1'); o id do fluxo
+    pode ser o slug do objetivo: só o formato permitido vai no link, o resto abre o Aprendizado sem o item (32.4)."""
     if estado not in _LIVRO:
         return None
     titulo, leigo = _LIVRO[estado]
+    item = _permitido(_ID_DE_ITEM, item_ref)
+    caminho = f"#/aprendizado?aba=aprendido&item={item}" if item else "#/aprendizado?aba=aprendido"
     return Fato(chave_do_fato("livro", ident), f"{titulo} · {sufixo(ident)}",
                 _descricao(leigo, ["tipo `livro.validacao`", f"estado `{estado}`", f"id `{sufixo(ident)}`"],
-                           link_do_painel(url_painel, f"#/aprendizado?aba=aprendido&item={_seguro(item_ref)}"),
+                           link_do_painel(url_painel, caminho),
                            chave_do_fato("livro", ident)))
 
 

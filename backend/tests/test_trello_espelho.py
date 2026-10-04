@@ -597,3 +597,35 @@ async def test_o_nome_da_ia_vem_do_contrato() -> None:
     from app.contracts.identidade import APRESENTACAO_DA_IA
 
     assert NOME_DA_IA == "ANA" and APRESENTACAO_DA_IA == "ANA, a IA Gerente de Operações da Central"
+
+
+async def test_link_do_cartao_leva_so_id_e_nunca_texto_derivado_do_pedido() -> None:
+    """32.4: só o formato real de id vai no link (lista de permissão). O id de fluxo pode ser o slug do objetivo, e o
+    quadro tem convidados: o resto abre só a tela."""
+    from app.modules.avisos.application.espelho import fato_de_pedido, fato_de_pendencia, fato_de_validacao
+
+    base = f"{PAINEL}/#/aprendizado?aba=aprendido"
+    # texto derivado do pedido: o do cartão de 04/10 e os três da revisão (uma palavra, curto, com número)
+    for ref in ("fluxo:ler-sem-abrir-conversas-nem-enviar-nada-", "fluxo:comentar", "fluxo:ler-x", "fluxo:post1-marca",
+                "receita:abc", "fluxo:F1", "fluxo:9a1c2e7"):
+        fato = fato_de_validacao("lv-32fded52ec729464", ref, "pendente", PAINEL)
+        assert fato is not None and base in fato.descricao, ref
+        assert "item=" not in fato.descricao and ref.split(":", 1)[1] not in fato.descricao, ref
+    # ids reais seguem no link
+    for ref in ("receita:87", "fluxo:f1", "fluxo:9a1c2e7b"):
+        fato = fato_de_validacao("lv-1", ref, "pendente", PAINEL)
+        assert fato is not None and f"{base}&item={ref}" in fato.descricao, ref
+    # execução: só `r-<14 dígitos>-<6 hex>`
+    run = fato_de_pendencia("pergunta", "r-20261004003742-e8e49e", PAINEL)
+    assert run is not None and f"{PAINEL}/#/execucoes/r-20261004003742-e8e49e" in run.descricao
+    for ident in ("r-comentar-no-post", "r-2026-abcdef"):
+        fato = fato_de_pendencia("pergunta", ident, PAINEL)
+        assert fato is not None and "#/execucoes/" not in fato.descricao and f"{PAINEL}/#/pendencias" in fato.descricao
+    # pedido: só `ped_` + 22 de base64 url-safe
+    real = "ped_" + "Ab3_dE-9" * 2 + "xYz012"
+    assert len(real) == 26
+    ped = fato_de_pedido(real, "ativo", PAINEL)
+    assert ped is not None and f"{PAINEL}/#/pedidos/{real}" in ped.descricao
+    for ident in ("comentar-no-post-da-marca", "ped_curto", "pd-aaaaaa"):
+        fato = fato_de_pedido(ident, "ativo", PAINEL)
+        assert fato is not None and "#/pedidos/" not in fato.descricao and f"{PAINEL}/#/pedidos" in fato.descricao
