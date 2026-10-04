@@ -74,6 +74,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Desligado (`colaboracao.enabled: false`, o padrão) o laço é o de antes, mesmo com a dependência gravada no banco.
 - Prova `simulated`: `test_pedidos_colaboracao_laco.py` (laço real em SQLite, relógio falso) e `test_pedidos_colaboracao_dominio.py`.
   `not_run`: PostgreSQL e o central. Fica para a F3 em diante: papel, consolidação e regras para fora.
+## 2026-10-04 — 31.35 B: o perfil de IA escolhe `acoes_por_decisao` (branch feat/31-35-perfil-encadear, sem migração)
+
+- `ai.profiles.<nome>.acoes_por_decisao` (1 a 3) vale só nas execuções do perfil, por cima do global; o painel o mostra.
+  É o que deixa o A/B do encadeamento rodar por execução sem ligá-lo no parque inteiro. Prova: `simulated`
+  (`backend/tests/test_aba_ia_esquema_e_perfis.py`).
 
 ## 2026-10-04 — 28.16 + 28.18: a faxina leva os eventos dos contatos do Telegram (branch canais/28-18-faxina-090, sem migração)
 

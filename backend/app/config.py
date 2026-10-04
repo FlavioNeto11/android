@@ -504,6 +504,9 @@ class AiProfileCfg(BaseModel):
     #: execuções DESTE perfil, por cima de `ai.screenshot_max_side` e `ai.rich_tree_min_elements`. Vazio = os globais.
     screenshot_max_side: int | None = Field(None, ge=320, le=2560)
     rich_tree_min_elements: int | None = Field(None, ge=0, le=200)
+    #: Item 31.35 (parte B): quantas ações cada decisão do ator pode trazer nas execuções DESTE perfil, por cima de
+    #: `ai.acoes_por_decisao`. É o que deixa o A/B rodar por execução, sem ligar o encadeamento para o parque inteiro.
+    acoes_por_decisao: int | None = Field(None, ge=1, le=3)
 
 
 class AiCanaryCfg(BaseModel):
@@ -1805,7 +1808,7 @@ class Config:
         perfil = ai.profiles.get(profile) if profile else None
         if perfil is None:
             return ai
-        troca = {campo: valor for campo in ("screenshot_max_side", "rich_tree_min_elements")
+        troca = {campo: valor for campo in ("screenshot_max_side", "rich_tree_min_elements", "acoes_por_decisao")
                  if (valor := getattr(perfil, campo)) is not None}
         return ai.model_copy(update=troca) if troca else ai
 
