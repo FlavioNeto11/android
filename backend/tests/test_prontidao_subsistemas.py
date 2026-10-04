@@ -594,7 +594,17 @@ async def test_b2_r4_boot_local_preparo_zumbi_drenado_nao_libera_esta_tentativa(
                                                                             monkeypatch: pytest.MonkeyPatch) -> None:
     libera, fim = threading.Event(), []
     monkeypatch.setattr(manager_mod, "ESPERA_DO_PREPARO_ZUMBI_S", 5.0)
-    threading.Timer(0.3, libera.set).start()
+    # O preparo termina quando o manager começa a drenar o zumbi, não num Timer de relógio: o Timer de 0,3 s corria
+    # contra a montagem dos dublês e, com a máquina carregada, soltava o preparo antes de ele estourar (sem zumbi, a
+    # escada rodava). Aqui o executor já desistiu do preparo, e o drain ainda tem de esperar o fim real da thread.
+    executor = harness.state.devices.get("android-01").executor   # type: ignore[union-attr]
+    drenar = executor.drain
+
+    async def drena_e_solta(*a: Any, **k: Any) -> bool:
+        assert executor.has_zombie, "o drain só começa depois de o preparo estourar o prazo"
+        libera.set()
+        return await drenar(*a, **k)
+    monkeypatch.setattr(executor, "drain", drena_e_solta)
     rt, ok, rodadas = await _wait_boot_saudavel(harness, monkeypatch, warm=False,
                                                 preparo=_preparo_bloqueado(libera, fim), encurtar={"prepare": 0.1})
     assert fim and not rt.executor.has_zombie, "o drain esperou o fim real antes de devolver"
