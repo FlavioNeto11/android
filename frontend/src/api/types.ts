@@ -2834,8 +2834,13 @@ export interface CanalAnexo {
   do_dono: boolean;
   /** O arquivo sai por `/conteudo`: imagem ou PDF guardado, nunca o de convidado. */
   tem_conteudo: boolean;
-  /** Pode ir a um cartão do Trello (`POST .../trello`): só a mensagem do dono, guardada. */
+  /** Pode ir a um cartão do Trello (`POST .../trello`): só a mensagem do dono, guardada, de um tipo que a entrada aceita. */
   pode_ir_ao_cartao: boolean;
+  /** F5: a IA pode descrevê-lo (`POST .../ler`): só a imagem guardada que o dono mandou. */
+  pode_ler: boolean;
+  /** F5: a descrição que a IA já fez (gravada; ler de novo não custa), ou `null`. */
+  descricao: string | null;
+  lida_em: string | null;
 }
 
 export interface CanalAnexosPagina {
@@ -2849,4 +2854,15 @@ export interface CanalAnexoAoCartao {
   anexo_id: number;
   card: string;
   trello_anexo: string;
+  /** F5: o anexo já estava no cartão (a rota não anexa duas vezes). */
+  ja_estava?: boolean;
+}
+
+/** 28.24 F5: resposta de `POST /api/canais/anexos/{id}/ler`. `do_cache`: a descrição já existia e não custou nada. */
+export interface CanalAnexoLeitura {
+  anexo_id: number;
+  descricao: string;
+  custo_usd: number;
+  do_cache: boolean;
+  modelo: string | null;
 }

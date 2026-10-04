@@ -25,7 +25,7 @@ PDF = b"%PDF-1.4\n" + b"\x01" * 40
 TEXTO = "anotação do dono, só texto".encode()
 TIPOS = ("image/png", "application/pdf", "text/plain")
 CHAVES = {"id", "canal", "direcao", "mime", "bytes", "estado", "motivo_recusa", "criado_em", "apagado_em", "do_dono",
-          "tem_conteudo", "pode_ir_ao_cartao"}
+          "tem_conteudo", "pode_ir_ao_cartao", "pode_ler", "descricao", "lida_em"}
 
 
 def _entrada(h: Harness, *, do_dono: bool = True, canal: str = "telegram", tipo: str = "mensagem") -> int:
@@ -194,3 +194,27 @@ async def test_lista_exige_o_mesmo_login_das_outras_rotas_de_canais(harness: Har
         for metodo in ("post", "put", "patch", "delete"):
             r = await getattr(cli, metodo)("/api/canais/anexos", headers={"Authorization": "Bearer tk-lista-anexos-3c7f"})
             assert r.status_code == 405, metodo
+
+
+async def test_f5_pode_ler_so_a_imagem_do_dono_e_a_descricao_gravada_vem_na_lista(harness: Harness) -> None:
+    """28.24 F5: o botão Ler aparece só na imagem do dono; a descrição gravada (já redigida na leitura) vem junto."""
+    imagem = _anexo(harness)
+    pdf = _anexo(harness, PDF)
+    saida = _anexo(harness, direcao="saida")
+    harness.state.db.execute("UPDATE canal_anexos SET descricao=?, lida_em=? WHERE id=?",
+                             ("Uma tela de login.", "2026-10-04T20:00:00.000Z", imagem))
+    async with _cliente(harness) as cli:
+        por_id = {i["id"]: i for i in (await cli.get("/api/canais/anexos")).json()["items"]}
+    assert por_id[imagem]["pode_ler"] is True and por_id[imagem]["descricao"] == "Uma tela de login."
+    assert por_id[imagem]["lida_em"] == "2026-10-04T20:00:00.000Z"
+    assert por_id[pdf]["pode_ler"] is False and por_id[saida]["pode_ler"] is False
+    assert por_id[pdf]["descricao"] is None
+
+
+async def test_f5_tipo_que_a_entrada_nao_aceita_nao_vai_ao_cartao(harness: Harness) -> None:
+    """28.24 F5: o PDF guardado antes de a lista de tipos mudar não oferece "Anexar ao cartão"."""
+    pdf = _anexo(harness, PDF)
+    harness.cfg.file.avisos.entrada.anexos.tipos = ["image/png"]
+    async with _cliente(harness) as cli:
+        item = (await cli.get("/api/canais/anexos")).json()["items"][0]
+    assert item["id"] == pdf and item["pode_ir_ao_cartao"] is False

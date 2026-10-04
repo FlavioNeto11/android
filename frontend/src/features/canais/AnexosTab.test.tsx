@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Aba Anexos da tela Canais (item 28.24, fatia 4): contra o formato de `GET /api/canais/anexos` e de
+ * Aba Anexos da tela Canais (item 28.24, fatias 4 e 5): contra o formato de `GET /api/canais/anexos` e de
  * `POST /api/canais/anexos/{id}/trello` (`backend/tests/test_canais_anexos_lista.py` e `test_canais_anexos_trello.py` travam
  * as chaves e as regras), com respostas falsas (FakeBackend) — prova `simulated`, nunca `real`.
  */
@@ -18,11 +18,11 @@ function anexo(parcial: Partial<CanalAnexo> & { id: number }): CanalAnexo {
   return {
     canal: 'telegram', direcao: 'entrada', mime: 'image/png', bytes: 123 * 1024, estado: 'guardado', motivo_recusa: null,
     criado_em: new Date(Date.now() - 3 * 3_600_000).toISOString(), apagado_em: null, do_dono: true, tem_conteudo: true,
-    pode_ir_ao_cartao: true, ...parcial,
+    pode_ir_ao_cartao: true, pode_ler: false, descricao: null, lida_em: null, ...parcial,
   };
 }
 
-const IMAGEM = anexo({ id: 3 });
+const IMAGEM = anexo({ id: 3, pode_ler: true });
 const PDF_ENVIADO = anexo({ id: 2, direcao: 'saida', mime: 'application/pdf', bytes: 2 * 1024 * 1024, do_dono: false, pode_ir_ao_cartao: false });
 const RECUSADO = anexo({ id: 1, mime: null, bytes: 0, estado: 'recusado', motivo_recusa: 'Voz não é aceita.', tem_conteudo: false,
                          pode_ir_ao_cartao: false });
@@ -40,6 +40,7 @@ beforeAll(() => installBrowserStubs());
 beforeEach(() => {
   backend = new FakeBackend();
   backend.install();
+  backend.on('GET', CONTEUDO, () => new Response(new Blob(['png'], { type: 'image/png' })));
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
@@ -55,6 +56,7 @@ async function abrir(): Promise<void> {
 }
 
 const LISTA = /^\/api\/canais\/anexos$/;
+const CONTEUDO = /^\/api\/canais\/anexos\/\d+\/conteudo$/;
 const ultimaConsulta = () => backend.callsTo('GET', LISTA).at(-1)?.query;
 
 describe('AnexosTab', () => {
@@ -69,7 +71,10 @@ describe('AnexosTab', () => {
     expect(imagem).toContain('Recebido de você');
     expect(imagem).toContain('123 KB');
     expect(imagem).toContain('há 3 h');
-    expect(container.querySelector('li img')?.getAttribute('src')).toBe('/api/canais/anexos/3/conteudo');
+    // A miniatura vem da memória da aba (F5): o arquivo baixa uma vez e vira URL `blob:`.
+    await waitFor(() => container.querySelector('li img'));
+    expect(container.querySelector('li img')?.getAttribute('src')).toMatch(/^blob:fake-/);
+    expect(backend.callsTo('GET', CONTEUDO).map((c) => c.path)).toEqual(['/api/canais/anexos/3/conteudo']);
     expect(pdf).toContain('Enviado pela Central');
     expect(pdf).toContain('PDF · 2 MB');
     expect(itens[1]?.querySelector('img')).toBeNull();                                  // PDF: ícone, não imagem
@@ -86,6 +91,7 @@ describe('AnexosTab', () => {
     await abrir();
     await waitFor(() => text().includes('Nenhum anexo ainda'));
     expect(text()).toContain('Mande uma foto ou um PDF ao bot do Telegram');
+    expect(text()).toContain('anexá-lo a um cartão do Trello pelo link ou pelo código do cartão');
     expect(text()).not.toContain('Limpar filtros');
   });
 
@@ -127,9 +133,11 @@ describe('AnexosTab', () => {
     await waitFor(() => text().includes('Mostrando 2 de 2'));
     const [li3, li2] = Array.from(container.querySelectorAll('li')) as HTMLElement[];
     expect(li3?.querySelector('img[alt^="Prévia"]')).toBeNull();
+    await waitFor(() => li3?.querySelector('img'));
     await click(byRole('button', /Ver prévia$/, li3));
     const previa = li3?.querySelector('img[alt="Prévia: Imagem 3"]');
-    expect(previa?.getAttribute('src')).toBe('/api/canais/anexos/3/conteudo');
+    expect(previa?.getAttribute('src')).toBe(li3?.querySelector('img')?.getAttribute('src'));    // o mesmo arquivo em memória
+    expect(backend.callsTo('GET', CONTEUDO)).toHaveLength(1);
     expect(li3?.getAttribute('data-expandido')).toBe('true');
     await click(byRole('button', /Fechar prévia$/, li3));
     expect(li3?.querySelector('img[alt^="Prévia"]')).toBeNull();
@@ -201,6 +209,92 @@ describe('AnexosTab', () => {
     expect(byRole('textbox', /Cartão do Trello/)).toBeTruthy();                         // o campo segue para corrigir
     await click(byRole('button', /^Cancelar$/));
     expect(Array.from(container.querySelectorAll('button')).some((b) => /Anexar ao cartão/.test(b.textContent ?? ''))).toBe(true);
+  });
+
+  it('F5: o anexo que já estava no cartão diz isso, não "Anexado"', async () => {
+    backend.on('GET', LISTA, () => json(pagina([IMAGEM])));
+    backend.on('POST', /trello$/, () => json({ anexo_id: 3, card: CARTAO, trello_anexo: 'a'.repeat(24), ja_estava: true }));
+    await abrir();
+    await waitFor(() => text().includes('Mostrando 1 de 1'));
+    await click(byRole('button', /Anexar ao cartão/));
+    await setValue(byRole('textbox', /Cartão do Trello/) as HTMLInputElement, CARTAO);
+    await click(byRole('button', /Confirmar e anexar ao cartão/));
+    await waitFor(() => text().includes('Já estava no cartão do Trello'));
+    expect(text()).not.toContain('Anexado ao cartão do Trello.');
+  });
+
+  it('F5: "Carregar mais" pede a mesma janela de tempo da primeira página', async () => {
+    backend.on('GET', LISTA, (c) => json(c.query.get('offset') === '1' ? pagina([PDF_ENVIADO], 2, 1) : pagina([IMAGEM], 2)));
+    await abrir();
+    await waitFor(() => text().includes('Mostrando 1 de 2'));
+    await setValue(byRole('combobox', 'Período') as HTMLSelectElement, '24h');
+    await waitFor(() => text().includes('Mostrando 1 de 2') && ultimaConsulta()?.get('desde') != null);
+    const primeira = ultimaConsulta()?.get('desde');
+    await new Promise((r) => setTimeout(r, 5));                                         // o relógio anda entre as duas
+    await click(byRole('button', /Carregar mais/));
+    await waitFor(() => text().includes('Mostrando 2 de 2'));
+    expect(ultimaConsulta()?.get('offset')).toBe('1');
+    expect(ultimaConsulta()?.get('desde')).toBe(primeira);
+  });
+
+  it('F5: a miniatura fica em memória enquanto a aba está aberta (trocar de filtro não baixa de novo)', async () => {
+    backend.on('GET', LISTA, () => json(pagina([IMAGEM])));
+    await abrir();
+    await waitFor(() => container.querySelector('li img'));
+    await setValue(byRole('combobox', 'Sentido') as HTMLSelectElement, 'entrada');
+    await waitFor(() => ultimaConsulta()?.get('direcao') === 'entrada' && container.querySelector('li img'));
+    await setValue(byRole('combobox', 'Sentido') as HTMLSelectElement, '');
+    await waitFor(() => ultimaConsulta()?.get('direcao') == null && container.querySelector('li img'));
+    expect(backend.callsTo('GET', CONTEUDO)).toHaveLength(1);
+  });
+
+  it('F5: o arquivo que não baixa vira o ícone de imagem quebrada e a prévia diz que não carregou', async () => {
+    backend.on('GET', CONTEUDO, () => apiError(404, 'anexo_sem_arquivo', 'O arquivo saiu da Central.'));
+    backend.on('GET', LISTA, () => json(pagina([IMAGEM])));
+    await abrir();
+    await waitFor(() => backend.callsTo('GET', CONTEUDO).length === 1);
+    await click(byRole('button', /Ver prévia$/));
+    await waitFor(() => text().includes('Não consegui carregar a imagem'));
+    expect(container.querySelector('li img')).toBeNull();
+  });
+
+  it('F5: "Ler pela IA" pede confirmação na linha, manda confirmar:true e mostra a descrição e o custo', async () => {
+    backend.on('GET', LISTA, () => json(pagina([IMAGEM, PDF_ENVIADO])));
+    backend.on('POST', /^\/api\/canais\/anexos\/3\/ler$/, () => json({ anexo_id: 3, descricao: 'Um print da tela de login.',
+                                                                      custo_usd: 0.0021, do_cache: false, modelo: 'm' }));
+    await abrir();
+    await waitFor(() => text().includes('Mostrando 2 de 2'));
+    const [li3, li2] = Array.from(container.querySelectorAll('li')) as HTMLElement[];
+    const temLer = (li?: HTMLElement) => Array.from(li?.querySelectorAll('button') ?? []).some((b) => /Ler pela IA/.test(b.textContent ?? ''));
+    expect(temLer(li2)).toBe(false);
+    await click(byRole('button', /^Ler pela IA$/, li3));
+    expect(backend.callsTo('POST', /ler$/)).toHaveLength(0);                             // abrir a confirmação não gasta
+    expect(text(li3)).toContain('chamada paga');
+    await click(byRole('button', /^Cancelar$/, li3));
+    expect(text(li3)).not.toContain('chamada paga');
+    await click(byRole('button', /^Ler pela IA$/, li3));
+    await click(byRole('button', /Confirmar e ler pela IA/, li3));
+    await waitFor(() => text(li3).includes('Um print da tela de login.'));
+    expect(backend.callsTo('POST', /ler$/)[0]?.body).toEqual({ confirmar: true });
+    expect(text(li3)).toContain('custou US$ 0,0021');
+    expect(temLer(li3)).toBe(false);
+  });
+
+  it('F5: a descrição gravada aparece sem botão; o erro da leitura fica na linha e deixa tentar de novo', async () => {
+    const lida = anexo({ id: 5, pode_ler: true, descricao: 'Foto de um documento.', lida_em: new Date().toISOString() });
+    backend.on('GET', LISTA, () => json(pagina([lida, IMAGEM])));
+    backend.on('POST', /ler$/, () => apiError(429, 'teto_do_dia', 'O teto de leituras de hoje acabou.'));
+    await abrir();
+    await waitFor(() => text().includes('Mostrando 2 de 2'));
+    const [li5, li3] = Array.from(container.querySelectorAll('li')) as HTMLElement[];
+    expect(text(li5)).toContain('Foto de um documento.');
+    expect(text(li5)).not.toContain('custou');
+    expect(Array.from(li5?.querySelectorAll('button') ?? []).some((b) => /Ler pela IA/.test(b.textContent ?? ''))).toBe(false);
+    await click(byRole('button', /^Ler pela IA$/, li3));
+    await click(byRole('button', /Confirmar e ler pela IA/, li3));
+    await waitFor(() => text(li3).includes('O teto de leituras de hoje acabou.'));
+    expect(byRole('alert', /teto de leituras/, li3)).toBeTruthy();
+    expect(byRole('button', /Confirmar e ler pela IA/, li3)).toBeTruthy();
   });
 
   it('erro de carga sem dado: estado de erro com "Tentar de novo", que lê de novo', async () => {

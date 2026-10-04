@@ -19,6 +19,24 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.24 F5: o botão "Ler pela IA" e as correções da revisão da aba Anexos (branch canais/28-24-f5-botao-ler)
+
+- **Painel:** a aba Anexos ganha "Ler pela IA" na imagem que o dono mandou. A confirmação fica na própria linha, porque é
+  uma chamada paga com teto por imagem. A descrição aparece no item, com o custo quando a leitura é nova; a já gravada
+  aparece sem botão. O erro da rota fica na linha, em português.
+- **Correções da revisão do painel do deploy 31:**
+  - o anexo que já estava no cartão diz "Já estava no cartão do Trello", não "Anexado";
+  - o "desde" do período é fixado na primeira página, e "Carregar mais" pede a mesma janela;
+  - a miniatura baixa uma vez e fica em memória (URL `blob:`, revogada ao sair da aba); a rota segue `no-store`, e a prévia
+    usa o mesmo arquivo;
+  - o estado vazio diz o que dá para fazer com um anexo.
+- **Backend:** a lista traz `pode_ler`, `descricao` e `lida_em`. O envio ao cartão recusa com 422 `tipo_nao_aceito` o tipo
+  que a entrada não aceita, antes de qualquer chamada ao Trello. `pode_ir_ao_cartao` passa a olhar também os tipos aceitos.
+  Sem migração; adendo v1.37.
+- **Prova:** `simulated`. Backend com 135 passed em `test_canais_anexos_lista.py`, `test_canais_anexos_trello.py` e nos
+  vizinhos. Frontend com 1535 passed: `AnexosTab.test.tsx` tem 6 testes novos, e o typecheck passa. O passeio no navegador
+  e a leitura paga real ficam `not_run`.
+
 ## 2026-10-04 — 28.28: pergunta ao bot do Telegram vai à orquestradora, e nome de persona não sai pelo canal (branch canais/28-28-pergunta-ao-bot)
 
 - **O defeito:** o dono perguntou ao bot "porque tem tanta coisa represada em validação?" e depois respondeu "no

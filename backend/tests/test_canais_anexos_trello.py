@@ -180,3 +180,14 @@ async def test_a_mesma_imagem_no_mesmo_cartao_vai_uma_vez_so(harness: Harness, t
     segundo = await _postar(harness, ident, {"card": f"https://trello.com/c/{CURTO}", "confirmar": True})
     assert primeiro.json()["ja_estava"] is False and segundo.json()["ja_estava"] is True
     assert segundo.json()["trello_anexo"] == primeiro.json()["trello_anexo"] and trello.anexou() == 1
+
+
+async def test_f5_tipo_que_a_entrada_nao_aceita_e_recusado_antes_do_trello(harness: Harness, trello: TrelloFalso) -> None:
+    """28.24 F5: o tipo fora da lista da entrada é recusa de regra (422 `tipo_nao_aceito`), não "arquivo sumido", e sai
+    antes de qualquer chamada ao Trello."""
+    _ligar(harness, trello)
+    ident = _anexo(harness)
+    harness.cfg.file.avisos.entrada.anexos.tipos = ["application/pdf"]
+    r = await _postar(harness, ident, {"card": CARTAO, "confirmar": True})
+    assert r.status_code == 422 and r.json()["detail"]["code"] == "tipo_nao_aceito"
+    assert trello.pedidos == []
