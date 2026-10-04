@@ -5439,7 +5439,9 @@ nem contestação, e não pesa contra o item. Quem recusou vai ao log do backend
 
 - `ultima_volta` é `null` antes da primeira volta deste processo (90 s depois do início).
 - `decididos_pela_plataforma` traz as últimas 50 linhas da trilha com `decided_by = "plataforma"`, da mais nova para a
-  mais antiga.
+  mais antiga. Cada uma vem com o item de AGORA: `kind`, `ref`, `titulo`, `app` e `estado` (o painel oferece Desligar
+  só ao que segue `published`); `gesto` (`publicar` ou `confirmar_que_fica`); `regra` e `versao` lidas do motivo. O
+  item que saiu do livro vem com `titulo`, `app` e `estado` nulos.
 - `itens` só vem com `itens=true`. Os motivos de fora são um vocabulário fechado
   (`domain/aprovacao_automatica.MotivoDeFora`).
 - **503** `not_ready`: a aprovação automática não foi composta.

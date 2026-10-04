@@ -237,8 +237,13 @@ def test_em_on_publica_e_confirma_pela_porta_da_pessoa(mundo: Mundo) -> None:
     assert refs["aprovar"] not in {e.trail_ref for e in mundo.servico.pendentes()}
     assert {e.trail_ref for e in mundo.servico.revisar()} == {refs["instagram"]}
     assert mundo.ap.uma_volta().decididos == ()                                # nada a decidir de novo
-    assert [d["item_ref"] for d in mundo.ap.relatorio()["decididos_pela_plataforma"]] == [  # type: ignore[index]
-        refs["revisar"], refs["aprovar"]]
+    decisoes = mundo.ap.relatorio()["decididos_pela_plataforma"]
+    assert [d["item_ref"] for d in decisoes] == [refs["revisar"], refs["aprovar"]]  # type: ignore[index]
+    # O painel lista com o item de agora: título, estado e o gesto (Desligar só no que segue vivo).
+    d = decisoes[1]  # type: ignore[index]
+    assert (d["kind"], d["ref"], d["gesto"], d["regra"], d["versao"], d["estado"], d["app"]) == (
+        "receita", refs["aprovar"].removeprefix("receita:"), "publicar", "qa_para_aprovar", 1, "published", QA)
+    assert d["titulo"] == "enviar (v1)" and decisoes[0]["gesto"] == "confirmar_que_fica"  # type: ignore[index]
 
 
 def test_o_que_o_dono_desfaz_fica_com_ele(mundo: Mundo) -> None:
@@ -305,3 +310,5 @@ async def test_desfazer_pela_rota_e_o_contrato_da_canais(mundo: Mundo, cliente: 
     de_novo = await cliente.post(f"/api/aprendizado/receita/{rid}/status", json=corpo)
     assert de_novo.status_code == 409 and de_novo.json()["detail"]["code"] == "transition_forbidden"
     assert (await asyncio.to_thread(mundo.ap.uma_volta)).decididos == ()
+    lida = (await cliente.get("/api/aprendizado/aprovacao-automatica")).json()
+    assert {x["item_ref"]: x["estado"] for x in lida["decididos_pela_plataforma"]}[refs["aprovar"]] == "disabled"

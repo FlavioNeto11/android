@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 30.55 (painel): "Decidido pela plataforma" na aba Para aprovar (branch feat/30-55-painel)
+
+- A seção nova fica depois de "Para aprovar" e "Revisar".
+  - Em `on`: as decisões da plataforma com o gesto, a regra, o "Por quê" e o "Desligar" (o desfazer), 5 por vez.
+  - Em `shadow`: o aviso de observação e o que ela decidiria.
+  - Em `off`, ou com backend sem a rota: a seção some.
+- Backend: `decididos_pela_plataforma` passa a trazer o item de agora (`kind`, `ref`, `titulo`, `app`, `estado`) mais
+  `gesto`, `regra` e `versao`. O motivo ganha o plural certo ("1 execução e 1 aparelho").
+- Prova `simulated`: `DecididoPelaPlataforma.test.tsx` (7) e `test_aprovacao_automatica.py`. Houve passe no navegador
+  embutido com o backend do worktree sobre a cópia do banco (IA simulada, porta 8765, painel na 5188):
+  - 18 decisões listadas, "Ver todas" e Desligar com o selo "Desligado depois";
+  - em 375 px, sem rolagem horizontal.
+
 ## 2026-10-04 — 30.55: a plataforma decide pela régua o que hoje espera o dono (branch feat/30-55-aprovacao-automatica, backend)
 
 - Pedido do dono (04/10): coisa demais para aprovar pelo portal. A plataforma passa a decidir a receita e o fluxo de

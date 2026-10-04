@@ -27,7 +27,8 @@ from app.modules.learning.application.ports import FonteDeDossies, RepositorioDe
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.aprovacao_automatica import (PLATAFORMA, Acao, Avaliacao, FatosDaAprovacao, Fila,
                                                               Gesto, ModoDaAprovacao, MotivoDeFora,
-                                                              ParecerParaAprovar, acao, avaliar, motivo)
+                                                              ParecerParaAprovar, acao, avaliar, motivo,
+                                                              regra_do_motivo)
 from app.modules.learning.domain.ciclo import ErroDeAprendizado, SkillState
 from app.modules.learning.domain.evidencia_invalida import run_invalidada
 from app.modules.learning.domain.livro import EntradaDoLivro, LivroKind
@@ -221,10 +222,27 @@ class ServicoDeAprovacaoAutomatica:
         e, com `itens`, a régua item a item com os motivos de fora."""
         saida: dict[str, object] = {"modo": self._modo().value, "ultima_volta": self.ultima_volta(),
                                     "casos_na_sombra": self._livro.marcados(),
-                                    "decididos_pela_plataforma": [_decisao(d) for d in self._livro.decisoes(50)]}
+                                    "decididos_pela_plataforma": [self._decisao(d) for d in self._livro.decisoes(50)]}
         if itens:
             saida["itens"] = [_item(x) for x in self.avaliar_filas()]
         return saida
+
+    def _decisao(self, d: DecisaoDaPlataforma) -> dict[str, object]:
+        """A linha da trilha com o item de AGORA (o painel lista com o título e oferece Desligar só ao que segue vivo).
+        O item que saiu do livro fica sem título e sem estado, e a linha continua (a trilha é o registro)."""
+        kind, _, ref = d.item_ref.partition(":")
+        e: EntradaDoLivro | None = None
+        try:
+            e = self._servico.entrada(LivroKind(kind), ref)
+        except (ErroDeAprendizado, ValueError):
+            e = None
+        regra = regra_do_motivo(d.motivo)
+        gesto = Gesto.PUBLICAR if (d.de, d.para) == ("validated", "published") else Gesto.CONFIRMAR
+        return {"item_ref": d.item_ref, "kind": kind, "ref": ref, "de": d.de, "para": d.para, "motivo": d.motivo,
+                "em": d.em, "gesto": gesto.value, "regra": regra[0] if regra else None,
+                "versao": regra[1] if regra else None, "titulo": e.title if e is not None else None,
+                "app": e.app if e is not None else None,
+                "estado": e.state.value if e is not None and e.state is not None else None}
 
     def ultima_volta(self) -> dict[str, object] | None:
         if self._ultima is None:
@@ -239,10 +257,6 @@ def _parecer(r: RevisaoGravada | None) -> ParecerParaAprovar | None:
         return None
     return ParecerParaAprovar(id=r.id, decisao=r.parecer.decisao if r.parecer is not None else None,
                               simulado=r.simulated, decidido=r.decidida)
-
-
-def _decisao(d: DecisaoDaPlataforma) -> dict[str, object]:
-    return {"item_ref": d.item_ref, "de": d.de, "para": d.para, "motivo": d.motivo, "em": d.em}
 
 
 def _item(x: AvaliacaoDoItem) -> dict[str, object]:
