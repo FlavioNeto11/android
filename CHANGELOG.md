@@ -24,7 +24,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Revisão do #307: a pergunta julga o VALOR ("o texto X é, inteiro, o nome mostrado nesse elemento?"), não só o
   elemento: um trecho como "há 2 horas" dentro do nó da manchete é recusado; "nome"/"name" sozinhos saem da lista;
   o "não" do juiz para a mesma (etapa, elemento, nome, valor) não se paga de novo; falha do juiz vira desfecho de IA
-  (), como na leitura visual. Testes: 206 direcionados ().
+  (`desfecho_de_ia`), como na leitura visual. Testes: 206 direcionados (`simulated`).
 - Achado real (df1212, Chrome, g1, android-09, banco central só leitura): `read_value(name=
   "manchete", element_id="e85")` recusado duas vezes com "sem relação com 'manchete'" (31.41) e a etapa `read_headline`
   em dado ausente. Nenhuma chamada de juiz existia na tentativa: a regra da árvore não achou rótulo nem forma e o nome
