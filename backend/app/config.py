@@ -1331,6 +1331,19 @@ class SensitiveScreenSeed(BaseModel):
     why: str | None = None            #: aparece na mensagem da etapa e na evidência
 
 
+class ColaboracaoCfg(BaseModel):
+    """Colaboração entre pedidos (item 28.10, fatia F1; `docs/design/pedidos-persistentes.md` §9): pedido pai com
+    sub-pedidos, dependências e papéis. A F1 é só a ESTRUTURA (grava, valida e encerra os filhos com o pai); o laço ainda
+    não olha para ela. Desligada de fábrica: com `enabled: false` a API recusa `pai_id`, `papel` e `dependencias` com
+    `colaboracao_desligada`, e todo pedido se comporta como antes."""
+
+    enabled: bool = False
+    #: Níveis da árvore, contando o pai: 2 = pai → filhos (o §9). O pedido sem pai tem profundidade 1; o neto, 3.
+    max_profundidade: int = Field(2, ge=2, le=4)
+    #: Filhos diretos de um mesmo pai (o §9: no máximo 5): trava a explosão de sub-pedidos, cada um com o próprio custo.
+    max_filhos: int = Field(5, ge=1, le=20)
+
+
 class PedidosCfg(BaseModel):
     """Laço de pedidos persistentes (item 28.4; `docs/design/pedidos-laco.md`). Desligado de fábrica (D1): cada
     ocorrência despachada chama o planejador PAGO e o orçamento (28.6) já limita o gasto, mas ligar segue sendo decisão do
@@ -1372,6 +1385,8 @@ class PedidosCfg(BaseModel):
     #: custo por ocorrência (1 h). Abaixo, a criação recusa com `frequencia_abaixo_do_piso`.
     piso_observar_s: int = Field(900, ge=60, le=86_400)
     piso_agir_s: int = Field(3600, ge=60, le=86_400)
+    #: Colaboração entre pedidos (28.10, F1): estrutura sem efeito no laço. Desligada de fábrica.
+    colaboracao: ColaboracaoCfg = ColaboracaoCfg()
 
 
 class AppConfigFile(BaseModel):
