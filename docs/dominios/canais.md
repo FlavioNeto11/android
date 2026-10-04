@@ -475,6 +475,39 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   (28.11), no líder da trava `avisos`.
 - **No produto:** a janela sobrevive a reinício (`decisoes_automaticas_estado`).
 
+**C-25 · Mensagem de visitante do site (28.32).**
+- **Origem:** dono, 04/10 ~20:56Z (portal 29.77: "uma região em que a pessoa manda uma mensagem diretamente para o meu
+  Telegram pelo bot que já usamos"); contrato com a frente Portal e decisões da orquestradora, 04/10 21:34Z e 22:06Z.
+- **Regra:**
+  - A rota do Portal chama UMA função, `state.avisos.avisar_contato_do_portal(ContatoDoPortal)`, depois de validar,
+    aplicar a taxa e gravar o contato. A função não monta resposta, não limita taxa e não fala com o visitante.
+  - O aviso é do tipo `portal.contato`, nível 1, e sai na hora, na ordem da fila, sem passar à frente de uma aprovação.
+    Sai um a um, sem rajada (`SEM_AGRUPAR`), só para o chat do dono. Nunca vai ao Trello: não tem rótulo em `ROTULOS`,
+    e o espelho não lê a fila.
+  - A chave é `portal:<contato_id>`. Chamar de novo com o mesmo id não gera segunda mensagem.
+  - O título é fixo: "ANA: 🌐 Mensagem de visitante do site (não verificada)". O corpo tem as linhas rotuladas `Nome:`,
+    `Empresa:` e `Telefone:` (as duas últimas só quando houver) e `Mensagem:`.
+  - Higiene: nome e empresa numa linha só; nenhum caractere de direção (bidi) nem de largura zero; o telefone só com
+    dígitos e `+ ( ) -`; cada linha da mensagem com `│ ` na frente, para um "ANA:" escrito pelo visitante aparecer como
+    citação.
+  - Nada do visitante fica tocável no chat: `https://` vira `hxxps://`, outro `esquema://` vira `esquema[:]//`, o ponto
+    de domínio e de IP vira `[.]`, `/comando` vira `⁄comando` (um toque do dono seria uma ordem DELE à Central) e
+    `@usuario` vira `＠usuario`.
+  - Exceção do ADR-075: o contato não passa por `texto_seguro` nem pelo redator. O nome e o telefone do visitante
+    chegam inteiros, porque o contato serve para o dono responder.
+  - No estado final (`enviado`, `falhou`, `incerto`, `descartado`), o corpo da linha é apagado. Ficam a chave, o tipo,
+    o estado e as horas. O `canal_enviadas` guarda só a chave do fato.
+  - A resposta do dono a essa mensagem só informa: nunca vira pedido, execução, cartão, aprovação nem chamada de IA, e
+    não vai ao visitante.
+  - O log leva só o id do contato e o motivo, nunca o texto.
+  - Recusa e falha não gravam nada na fila, e a rota tenta de novo depois:
+    - `campo_invalido`: a defesa repete os tetos 80, 80, 30 e 1500 e os campos obrigatórios;
+    - `canal_desligado`;
+    - `falha_interna`.
+- **Hoje:** `modules/avisos/domain/portal.py` (montagem e higiene),
+  `infrastructure/servico.py::avisar_contato_do_portal` e o apagamento do corpo em `infrastructure/fila_sql.py`. A rota,
+  a tabela dos contatos, a taxa e a retenção são da frente Portal (29.77).
+
 ## 7. Arquivos locais (fora do Git) e o que guardam
 
 Ficam em `.claude/handoffs/`, que o `.git/info/exclude` exclui: têm id de chat, vínculo com nome e estado da

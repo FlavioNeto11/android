@@ -19,6 +19,26 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.32: a mensagem do visitante do site chega ao Telegram do dono (branch canais/28-32-contato-do-portal)
+
+- `backend/app/modules/avisos/domain/portal.py`: `ContatoDoPortal`, `ContatoAvisado`, a defesa dos tetos, a higiene dos
+  campos e `desarmar_links`, que desarma esquema, domínio, IP, `/comando` e `@menção`. Também `aviso_do_contato`: tipo
+  `portal.contato`, nível 1, título fixo "não verificada", corpo rotulado e mensagem citada.
+- `ServicoDeAvisos.avisar_contato_do_portal`, a função que a rota do Portal (29.77) chama:
+  - idempotente pela chave `portal:<id>`;
+  - recusa `campo_invalido` ou `canal_desligado`, e falha `falha_interna`, sem gravar nada;
+  - log só com o id e o motivo.
+- Fila (`fila_sql.py`): `portal.` entra em `SEM_AGRUPAR`, e o corpo das linhas `portal.%` é apagado no estado final
+  (`enviado`, `falhou`, `incerto`, `descartado`).
+- Conversa: a resposta do dono à mensagem do visitante (`portal:<id>`) só informa. Nunca vira pedido, execução, cartão,
+  aprovação nem IA.
+- Regra C-25 em `docs/dominios/canais.md`; adendo v1.39 em `docs/api-contract.md`.
+- Prova `simulated`:
+  - `backend/tests/test_avisos_portal_contato.py` e `backend/tests/test_avisos_portal_servico.py`: 65 passed;
+  - os arquivos `test_avisos_*` e `test_canais_*`: 443 passed, em série e em Idle, sobre a junção da suíte 32
+    (`e910916b`).
+- `not_run`: envio real e a rota do Portal.
+
 ## 2026-10-04 — 28.31 F3: a rotina do resumo sai no máximo uma vez por hora; "Precisa de você" que muda sai já (branch canais/28-31-piso-da-rotina)
 
 - **Por quê:** a orquestradora pediu, no "liga" do laço (04/10 23:14Z), pela regra da rotina agrupada: a rotina sai no

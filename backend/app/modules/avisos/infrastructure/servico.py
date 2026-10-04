@@ -29,6 +29,15 @@ from app.models import Problem
 from app.modules.avisos.adapters.telegram import CanalTelegram
 from app.modules.avisos.application.entrega import Canal, Resultado, entregar
 from app.modules.avisos.domain.mensagem import Aviso, aviso_de_evento
+from app.modules.avisos.domain.portal import (
+    CAMPO_INVALIDO,
+    CANAL_DESLIGADO,
+    FALHA_INTERNA,
+    ContatoAvisado,
+    ContatoDoPortal,
+    aviso_do_contato,
+    motivo_de_recusa,
+)
 from app.modules.avisos.infrastructure.faxina_sql import Faxina, FaxinaDosCanais
 from app.modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from app.taskqueue.travas import AVISOS, Lideranca, TravaPerdida
@@ -153,6 +162,28 @@ class ServicoDeAvisos:
         except Exception:  # noqa: BLE001 - o aviso nunca derruba quem o pediu
             log.exception("avisos: não foi possível enfileirar %s", aviso.chave)
             return False
+
+    def avisar_contato_do_portal(self, contato: ContatoDoPortal) -> ContatoAvisado:
+        """28.32: a mensagem de um visitante do site ao Telegram do dono. A rota do Portal (29.77) chama depois de validar,
+        aplicar a taxa e gravar o contato (o `contato_id` é a linha dela). Idempotente pela chave `portal:<id>`: chamar
+        de novo devolve `enfileirado=True` sem segunda mensagem. Recusa (`campo_invalido`, `canal_desligado`) e falha
+        (`falha_interna`) não gravam nada, e a rota chama de novo depois. O log leva só o id e o motivo, nunca o texto.
+        Sem `texto_seguro` nem redator (ADR-075): o contato serve para o dono responder."""
+        cid = contato.contato_id if isinstance(contato.contato_id, int) else "?"
+        try:
+            if motivo_de_recusa(contato) is not None:
+                log.info("avisos: contato do portal %s recusado: %s", cid, CAMPO_INVALIDO)
+                return ContatoAvisado(False, CAMPO_INVALIDO)
+            aviso = aviso_do_contato(contato)
+            if aviso is None:
+                return ContatoAvisado(False, CAMPO_INVALIDO)
+            if not self.ligado or self.canal() is None:
+                return ContatoAvisado(False, CANAL_DESLIGADO)
+            self.fila.enfileirar(aviso)                  # False = já estava: a chave garante uma mensagem só
+            return ContatoAvisado(True)
+        except Exception as exc:  # noqa: BLE001 - a rota guarda o contato e tenta de novo; o texto não vai ao log
+            log.error("avisos: contato do portal %s não entrou na fila: %s", cid, type(exc).__name__)
+            return ContatoAvisado(False, FALHA_INTERNA)
 
     def _com_nome_da_acao(self, data: dict[str, object] | None) -> dict[str, object] | None:
         """31.50: põe `acao_nome` (o nome do catálogo) ao lado da `acao` do lembrete. A falha da leitura só tira o nome."""

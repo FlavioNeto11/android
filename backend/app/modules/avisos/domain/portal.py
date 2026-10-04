@@ -20,7 +20,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
-from .mensagem import Aviso, chave_do_fato, titulo_do_aviso
+from .mensagem import PRECISA_DE_VOCE, Aviso, chave_do_fato, titulo_do_aviso
 
 #: O tipo do aviso (fora da rajada e do espelho do Trello; nível 1 na amarração).
 TIPO_DO_CONTATO = "portal.contato"
@@ -162,4 +162,4 @@ def aviso_do_contato(contato: ContatoDoPortal) -> Aviso | None:
     if motivo_de_recusa(contato) is not None:
         return None
     return Aviso(chave=chave_do_contato(contato.contato_id), tipo=TIPO_DO_CONTATO, titulo=TITULO_DO_CONTATO,
-                 corpo=corpo_do_contato(contato), link=None)
+                 corpo=corpo_do_contato(contato), link=None, nivel=PRECISA_DE_VOCE)

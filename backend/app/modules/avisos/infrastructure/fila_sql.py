@@ -46,7 +46,12 @@ LIMITE_DA_VARREDURA = 500
 #: Os avisos sobre quem não é o dono (28.18) saem sempre um a um: o do convidado novo se decide respondendo a ELE (o
 #: agrupado não aceita resposta), e cada um leva o nome de uma pessoa diferente. O comentário do dono num cartão (28.30)
 #: também: o sim ou o não é a resposta àquela mensagem.
-SEM_AGRUPAR = ("telegram.", "trello.comentario")
+#: O contato do site (28.32) também: cada um é uma pessoa diferente, e o agrupado perderia o texto dela.
+SEM_AGRUPAR = ("telegram.", "trello.comentario", "portal.")
+#: O corpo destes tipos traz dado pessoal de quem não é o dono (o contato do site, 28.32, ADR-075): no estado final ele é
+#: apagado, e ficam a chave, o tipo, o estado e as horas. O `pendente` com retentativa ainda precisa dele.
+CORPO_PESSOAL_LIKE = "portal.%"
+_SEM_CORPO_PESSOAL = "corpo=CASE WHEN tipo LIKE ? THEN '' ELSE corpo END"
 
 
 def _curto(texto: str) -> str:
@@ -177,7 +182,8 @@ class FilaDeAvisos:
         orquestradora. `fato` troca a chave da linha (o agrupado do 28.19 grava `grupo:<tipo>`, que não é fato)."""
         agora = self._agora()
         self.db.execute("UPDATE avisos_entregas SET estado='enviado', enviado_em=?, proximo_envio_em=NULL,"
-                        " ultimo_erro=NULL WHERE id=? AND estado='enviando'", (agora, entrega_id))
+                        f" ultimo_erro=NULL, {_SEM_CORPO_PESSOAL} WHERE id=? AND estado='enviando'",
+                        (agora, CORPO_PESSOAL_LIKE, entrega_id))
         if message_id is not None:
             if fato is None:
                 self.db.execute(
@@ -197,8 +203,9 @@ class FilaDeAvisos:
                         " WHERE id=? AND estado='enviando'", (to_iso(ate), _curto(erro), entrega_id))
 
     def marcar_falhou(self, entrega_id: int, *, erro: str) -> None:
-        self.db.execute("UPDATE avisos_entregas SET estado='falhou', proximo_envio_em=NULL, ultimo_erro=?"
-                        " WHERE id=? AND estado='enviando'", (_curto(erro), entrega_id))
+        self.db.execute("UPDATE avisos_entregas SET estado='falhou', proximo_envio_em=NULL, ultimo_erro=?,"
+                        f" {_SEM_CORPO_PESSOAL} WHERE id=? AND estado='enviando'",
+                        (_curto(erro), CORPO_PESSOAL_LIKE, entrega_id))
 
     # ------------------------------------------------------------------ varreduras (líder, cercadas)
     def varrer_incertos(self, *, cerca: Cerca, parado_ha_s: float) -> int:
@@ -206,9 +213,9 @@ class FilaDeAvisos:
         limite = to_iso(self.relogio() - timedelta(seconds=parado_ha_s))
         with cerca():
             cur = self.db.execute(
-                "UPDATE avisos_entregas SET estado='incerto', ultimo_erro=?"
+                f"UPDATE avisos_entregas SET estado='incerto', ultimo_erro=?, {_SEM_CORPO_PESSOAL}"
                 " WHERE estado='enviando' AND iniciado_em < ?",
-                ("o processo parou durante o envio; pode ter saído, não foi reenviado", limite))
+                ("o processo parou durante o envio; pode ter saído, não foi reenviado", CORPO_PESSOAL_LIKE, limite))
         return int(cur.rowcount or 0)
 
     def vencer(self, *, cerca: Cerca, validade_h: float) -> int:
@@ -216,9 +223,9 @@ class FilaDeAvisos:
         limite = to_iso(self.relogio() - timedelta(hours=validade_h))
         with cerca():
             cur = self.db.execute(
-                "UPDATE avisos_entregas SET estado='descartado', ultimo_erro=?"
+                f"UPDATE avisos_entregas SET estado='descartado', ultimo_erro=?, {_SEM_CORPO_PESSOAL}"
                 " WHERE estado='pendente' AND criado_em < ?",
-                (f"venceu: ficou mais de {validade_h:g} h sem sair", limite))
+                (f"venceu: ficou mais de {validade_h:g} h sem sair", CORPO_PESSOAL_LIKE, limite))
         return int(cur.rowcount or 0)
 
     def purgar(self, *, cerca: Cerca, retencao_dias: float) -> int:

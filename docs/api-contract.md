@@ -5871,3 +5871,24 @@ Sem migração. Muda a v1.26 e a rota `POST .../trello`.
   `pode_ir_ao_cartao` passa a exigir também um mime da lista `avisos.entrada.anexos.tipos`.
 - `POST /api/canais/anexos/{id}/trello`: o anexo de tipo que a entrada não aceita, ou maior que o teto, é recusado com **422**
   `tipo_nao_aceito` antes de qualquer chamada ao Trello. O arquivo fora do armazém segue **409** `anexo_sem_arquivo`.
+
+## Adendo v1.39 (04/10/2026; número da orquestradora; item 28.32) — a mensagem do visitante do site chega ao Telegram do dono
+
+Sem rota HTTP nova. É o contrato interno que a rota de contato do Portal (29.77) chama. A regra de produto é a C-25 de
+`docs/dominios/canais.md`.
+
+- `state.avisos.avisar_contato_do_portal(ContatoDoPortal) -> ContatoAvisado`:
+  - entrada: `ContatoDoPortal(contato_id: int > 0, nome: 1..80, empresa: 0..80 | None, telefone: 0..30 | None,
+    mensagem: 1..1500)`, de `app.modules.avisos.domain.portal`;
+  - saída: `ContatoAvisado(enfileirado: bool, motivo: "campo_invalido" | "canal_desligado" | "falha_interna" | None)`.
+    `enfileirado=True` também quando o mesmo `contato_id` já estava na fila (chave `portal:<id>`, uma mensagem só);
+  - recusa e falha não gravam nada. A rota guarda o contato como "não entregue" e chama de novo depois.
+- O aviso, na fila `avisos_entregas`: tipo `portal.contato`, nível 1, sai na hora, um a um (`SEM_AGRUPAR`), sem link,
+  nunca no espelho do Trello. Título fixo "ANA: 🌐 Mensagem de visitante do site (não verificada)". O corpo tem as linhas
+  rotuladas, os campos de uma linha, a mensagem citada com `│ ` e os links, IPs, `/comandos` e `@menções` desarmados.
+  Não passa por `texto_seguro` nem pelo redator (ADR-075).
+- O corpo das linhas `portal.%` é apagado no estado final (`enviado`, `falhou`, `incerto`, `descartado`). A resposta do
+  dono à mensagem (fato `portal:<id>`) cai em `desconhecida` e só informa.
+- **Prova:** `simulated`. Arquivos `backend/tests/test_avisos_portal_contato.py` (domínio) e
+  `backend/tests/test_avisos_portal_servico.py` (fila, entrega, corpo apagado, Trello e resposta). `not_run`: envio real
+  ao Telegram e a rota do Portal.
