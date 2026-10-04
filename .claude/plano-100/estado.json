@@ -4074,16 +4074,16 @@
   },
   "23.2": {
    "id": "23.2",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Outlook 5.2635.3 importado da loja (c-20260929184859-0fe853) e assinatura aprovada em 29/09. Os canários de 29/09 no android-02 e no android-09 falharam porque o emulador caía com o renderizador SwiftShader-GL do host (diagnóstico corrigido em 30/09, K-062). Real, 30/09 15:37Z, central 0d70882: canário oficial no android-07 com a GPU do host (instances.overrides.android-07.gpu_mode: host), comando c-20260930153719-d11a00 succeeded — 4 splits instalados, 'app chegou ao primeiro plano em 7 s e permaneceu'; a release está em canary (android-07), fora da quarentena. No notebook (android-09, gpu_mode: host no worker.yaml) o app abre e fica 5 min no onboarding.",
-   "blocker": "Falta promover. A promoção espera a recusa por renderizador (item 29.11: abrir o Outlook num aparelho em SwiftShader derruba o emulador) e o fim da janela de observação do P16; a medição de RAM com os dois apps fica para a distribuição (29.12).",
-   "grupo": "29-registros-p15",
-   "modelo": "opus",
-   "esforco": "high",
+   "evidence": "Real (leitura do banco central em 04/10 15:38Z): release com.microsoft.office.outlook-72635119-293cc771fcd5 (5.2635.3, Play Store via android-11 em 29/09, assinatura aprovada) com channel=promoted em 2026-09-30T21:42:16Z ('canario aprovado em android-07, 10 e 12 com a GPU do host'); app_release_validations install e launch ok em android-01, 02, 03, 05, 06, 07, 08, 09, 10, 12, 13 e 14 (o 14 com um launch por timeout de adb em 01/10 10:28Z, ok às 11:37Z). As duas esperas da promoção caíram: recusa por renderizador no ar (29.11 implemented/real; app.yaml do Outlook com renderizador_recusado: [swiftshader]) e P16 com 6 h reais em 30/09 (29.4). A medição de MemAvailable com os dois apps NÃO está no 29.12 (implemented/real só com entrega e prontidão): segue aberta; posso medir num aparelho de QA sem conta (Instagram e Outlook abertos, leitura de /proc/meminfo), sem efeito externo.",
+   "blocker": null,
+   "grupo": "android-23.2",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-30T16:07:41+00:00"
+   "quando": "2026-10-04T16:03:31+00:00"
   },
   "25.10": {
    "id": "25.10",
@@ -6342,15 +6342,15 @@
   "29.51": {
    "id": "29.51",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "—",
-   "blocker": "Percurso no navegador (telas Rede e Aprendizado, itens 6 a 11), só leitura; faço depois do deploy 27, sem medida de latência em curso.",
-   "grupo": "android-validacao-29",
+   "proof": "real",
+   "evidence": "Real 04/10 ~15:40Z, central em ac7175ac, navegador embutido no painel local (só leitura): Rede com 'Saída pela casa: 14 aparelhos (android-01, android-02, android-03 e mais 11)', a lista inteira na dica, e devices/profiles/server/proxies lidos uma vez cada; Aprendizado sem lacuna {…} em claro (0 no texto, original em 2 dicas), Candidato e Desligado separados, desligado com 'desligado pelo sistema em 04/10/2026: vetado por 90 dias…', /api/aprendizado/pendentes lido 1 vez; /api/ai com 'é enviado ao provedor'; status_detail sem código nem id.",
+   "blocker": "Pela linha, fecha com o relatório do Chrome da orquestradora.",
+   "grupo": "android-suite28",
    "modelo": "claude-opus-5-5",
    "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T15:11:53+00:00"
+   "quando": "2026-10-04T16:03:30+00:00"
   },
   "31.11": {
    "blocker": "rótulos do dono",
@@ -6660,15 +6660,15 @@
   "29.65": {
    "id": "29.65",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "—",
-   "blocker": "Prova só com plano depois do 'no ar' da 27: uma execução em modo plano por persona (a de dois aparelhos, política one), ler na prévia o aparelho e o motivo, cancelar a planejada; nenhuma ação no aparelho.",
-   "grupo": "android-validacao-29",
+   "proof": "real",
+   "evidence": "Real 04/10, central em 1fc66a6c (deploy 28, 16:00:55Z): POST /api/runs/targets/resolve às 16:02:04Z, persona ig-KW1uWMsISqStNXbU com sessão pronta no android-06 (principal) e no android-13, política one: alvo android-06, origem 'vinculo', motivo 'aparelho principal da persona; android-13 (vinculado) também tinha sessão pronta'. Antes (deploy 27), execução só de plano r-20261004151117-b4e6f9 escolheu o 06 com origem só 'vinculo' (cancelada 4 s depois, sem ação no aparelho). PR #264 na suíte 28; simulated: test_roteamento_por_persona.py::test_e_principal_entre_dois_com_sessao_diz_o_motivo.",
+   "blocker": null,
+   "grupo": "android-suite28",
    "modelo": "claude-opus-5-5",
    "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T15:11:53+00:00"
+   "quando": "2026-10-04T16:03:30+00:00"
   },
   "29.60": {
    "id": "29.60",
@@ -7283,16 +7283,16 @@
   },
   "29.66": {
    "id": "29.66",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Real 04/10, depois do deploy 26 (13:14:51Z): abis 0 trocas e 0 voltas A→B→A (a parte dos abis funciona); supported_verbs 6 e renderer 10 trocas às 13:15:20-31Z em 09/10/12/13/14/15. Causa: o seed grava (com mensagem) o DTO provisório e o processo novo o lia como referência. Conserto no PR #259 (referência com renderer.configured conhecido entre as 20 últimas linhas; evento da janela com janela_do_seed), critério redefinido pela orquestradora: zero trocas fora da janela.",
-   "blocker": "PR #259 na suíte 28 e um reinício do backend depois dele.",
-   "grupo": "android-validacao-29",
+   "evidence": "Real 04/10, depois do deploy 28 (1fc66a6c, com o #259): desde o reinício do backend (~16:00Z) até 16:02Z, abis 0 e supported_verbs 0 trocas fora da janela do seed (30 eventos marcados janela_do_seed). renderer: 10 eventos às 16:01:29Z e 16:01:46Z nos 09/10/12/13/14/15, todos de preenchimento na reconexão do worker (null → configured host → gles/vulkan host, depois da sonda), sem nenhuma volta A→B→A. No deploy 26 eram 6 trocas de verbos e 10 de renderer com volta, pelo DTO provisório lido como referência. simulated: test_fontes_que_alternam.py (5).",
+   "blocker": "Ressalva para a orquestradora: o worker-lan-01 ficou worker_offline do reinício (16:00Z) até eu religar o agente (16:01:29Z), quando o central passou a esperar 0.1.0+1fc66a6 (agent_outdated=true só pela versão, nenhum arquivo do manifesto mudou). No deploy 27 ele reconectou sozinho. Vale conferir se o agente 'outdated' por versão é recusado no hello.",
+   "grupo": "android-suite28",
    "modelo": "claude-opus-5-5",
    "esforco": "sessao executora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T15:11:53+00:00"
+   "quando": "2026-10-04T16:03:30+00:00"
   },
   "29.37": {
    "id": "29.37",
@@ -7545,6 +7545,32 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-04T15:19:06+00:00"
+  },
+  "29.70": {
+   "id": "29.70",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #261 na suíte 28 (deploy 28, 1fc66a6c): o modo Automático usa os apps citados quando _app_do_comando vem vazio; tarefa só de app sem conta vai por previa_sem_conta (aparelhos com o app pronto, sem conta real logada antes; a prévia diz quando não deu). test_automatico_app_sem_conta.py (4, mutação conferida), mais test_orquestracao, test_roteamento_por_conjunto_de_apps e os de distribuição.",
+   "blocker": "Real: POST /api/runs/targets/suggest com o comando literal faz a prévia; o caminho sem conta não chama IA, mas a rota pode chamar a IA se houver persona candidata. Faço depois da suíte 29, só a sugestão (não cria execução).",
+   "grupo": "android-suite28",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T16:03:30+00:00"
+  },
+  "28.24": {
+   "id": "28.24",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "PR #267 (canais/28-24-anexos @ 78fbe914; 1cf6c3eb código + 78fbe914 renumera a regra para C-22), migração 101_canal_anexos, adendo v1.21, docs/dominios/canais.md C-22 (com as duas exceções do dono de 04/10 15:17Z). F1: o Telegram recebe foto/documento/legenda do dono (tipo conferido pelo conteúdo, teto antes e durante o download, guardado por sha256 em data/anexos com escrita atômica), convidado recusado sem download, saída por enviar_anexo/enviar_conteudo só de data/anexos ou do produto (sendPhoto/sendDocument), GET /api/canais/anexos/{id} e /conteudo, faxina 28.16 estendida; token fora de log/erro/banco. Simulado: backend/tests/test_canais_anexos.py (68 casos; 9 mutações derrubadas pelo teste certo), afetados avisos/canais/entrada/convidados/faxina/estado 326 passed, trello 154 passed, scripts/tests 544 passed, docs-check 0 erros. Real not_run: depois do deploy, o dono manda uma imagem pelo bot.",
+   "blocker": "F2: leitura da imagem pela IA quando o dono pede (paga, com teto), cartão do Trello com a imagem do dono, tela de anexos no painel e o chamador da captura de aparelho; prova real depois do deploy.",
+   "grupo": "canais",
+   "modelo": "sonnet (worker-impl)",
+   "esforco": "M",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T16:03:31+00:00"
   }
  },
  "rodadas": [
@@ -9806,6 +9832,36 @@
    ],
    "grupos": [
     "aprendizado-deploy27-provas"
+   ]
+  },
+  {
+   "quando": "2026-10-04T16:03:30+00:00",
+   "itens": [
+    "29.65",
+    "29.66",
+    "29.70",
+    "29.51"
+   ],
+   "grupos": [
+    "android-suite28"
+   ]
+  },
+  {
+   "quando": "2026-10-04T16:03:31+00:00",
+   "itens": [
+    "23.2"
+   ],
+   "grupos": [
+    "android-23.2"
+   ]
+  },
+  {
+   "quando": "2026-10-04T16:03:31+00:00",
+   "itens": [
+    "28.24"
+   ],
+   "grupos": [
+    "canais"
    ]
   }
  ]
