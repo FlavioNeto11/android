@@ -291,6 +291,13 @@ def parece_codigo(texto: str) -> bool:
     return bool(_CODIGO.fullmatch(texto))
 
 
+def _parece_id_curto(palavra: str) -> bool:
+    """Um pedaço de id curto demais para a `casar_ref` (1 a 3 caracteres de letra e número, com pelo menos um dígito):
+    "a1f" é id incompleto; "ok" e "sim" são começo de nota."""
+    p = palavra.strip().lower()
+    return 0 < len(p) < 4 and p.isalnum() and any(c.isdigit() for c in p)
+
+
 def _int(v: object) -> int | None:
     return v if isinstance(v, int) and not isinstance(v, bool) else None
 
@@ -916,6 +923,19 @@ class ConversaDoCanal:
         linhas.append("Decida com /aprovar <id>, /vetar <id> ou /responder <id> <texto>, ou responda ao aviso.")
         return "\n".join(linhas)
 
+    def _outros_ids(self) -> list[str]:
+        """Os ids que um id digitado pode estar indicando além das aprovações pendentes: as aprovações em qualquer
+        estado (`ids_de_aprovacoes`, se a porta tiver) e as execuções esperando resposta. Erro de leitura não decide nada
+        a mais: devolve o que conseguiu."""
+        ids: list[str] = []
+        todas = getattr(self.portas, "ids_de_aprovacoes", None)
+        for ler in ((todas,) if callable(todas) else ()) + (self.portas.execucoes_esperando,):
+            try:
+                ids.extend(ler())
+            except Exception:  # noqa: BLE001 - na dúvida, a conferência fica com as pendentes
+                log.exception("conversa: falha ao ler os ids para conferir o id digitado")
+        return ids
+
     @staticmethod
     def _um_id(ref: str, ids: list[str], o_que: str) -> tuple[str | None, str]:
         achados = casar_ref(ref, ids)
@@ -926,11 +946,34 @@ class ConversaDoCanal:
         return achados[0], ""
 
     async def _decidir(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
-        aid, erro = self._um_id(i.ref or "", self.portas.aprovacoes_pendentes(), "aprovação pendente")
+        pendentes = self.portas.aprovacoes_pendentes()
+        aid, erro = self._um_id(i.ref or "", pendentes, "aprovação pendente")
         if aid is None:
             await self._feita(saida, linha, i, erro)
             return
-        texto = self.portas.decidir(aid, "approve" if i.tipo == "aprovar" else "reject", i.texto or None)
+        nota = i.texto or None
+        if i.ref_digitado:
+            # Reply a um aviso E um id digitado (28.26): se o id é de OUTRA pendência, a pessoa pode estar decidindo a
+            # errada; nada se decide e a resposta diz qual é qual. Se é o mesmo item, segue, e o id sai da nota.
+            # Palavra que não casa com nenhuma pendência é só o começo da nota, como antes.
+            # A revisão da suíte 31 (04/10): o id de aprovação já decidida ou vencida, ou de execução esperando
+            # resposta, também é "outro item"; e um pedaço curto com dígito (menos de 4) é id incompleto, não nota.
+            digitados = casar_ref(i.ref_digitado, pendentes + self._outros_ids())
+            if not digitados and _parece_id_curto(i.ref_digitado):
+                await self._feita(saida, linha, i, (
+                    f"O id {i.ref_digitado} é curto demais para eu saber qual item é (use 4 ou mais caracteres, como a "
+                    "/pendencias mostra): nada foi decidido. Para decidir o aviso respondido, responda só com sim ou não."))
+                return
+            if digitados and aid not in digitados:
+                outro = digitados[0][-6:] if len(digitados) == 1 else "mais de um item"
+                await self._feita(saida, linha, i, (
+                    f"O aviso respondido é do item {aid[-6:]} e o id {i.ref_digitado} é de outro ({outro}): "
+                    f"nada foi decidido. Responda ao aviso só com sim ou não, ou mande /{i.tipo} {i.ref_digitado} "
+                    "sem responder ao aviso."))
+                return
+            if digitados:
+                nota = i.texto.split(maxsplit=1)[1] if len(i.texto.split(maxsplit=1)) > 1 else None
+        texto = self.portas.decidir(aid, "approve" if i.tipo == "aprovar" else "reject", nota)
         await self._feita(saida, linha, i, texto, alvo=f"approval:{aid}")
 
     async def _responder_pergunta(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:

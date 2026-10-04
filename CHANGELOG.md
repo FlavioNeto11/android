@@ -319,6 +319,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - O aviso `relatorio_pronto` leva só contagens ao Telegram ("N conflito(s) entre os filhos"). Sem filhos ou com a colaboração
   desligada, o relatório é o de antes (adendo v1.27; `docs/design/pedidos-persistentes.md` §9.1).
 - Prova `simulated`: `backend/tests/test_pedidos_colaboracao_consolidacao.py`. `not_run`: pedido pai de teste no app de teste.
+## 2026-10-04 — 28.26: "/aprovar <id>" em reply a um aviso de outra pendência não decide nada (branch canais/28-26-aprovar-id-e-reply)
+
+- Achado médio da revisão independente do deploy 29. Em reply a um aviso, o `/aprovar` ou `/vetar` decidia o item do
+  aviso e gravava o id digitado como nota. Com o id de outra pendência, aprovava-se o item errado sem dizer.
+- Agora o id digitado é conferido contra as pendências:
+  - outro item: nada se decide, e a resposta diz qual é qual;
+  - o mesmo item: a decisão segue, e o id sai da nota;
+  - uma palavra que não é id continua sendo nota.
+- Revisão da fila da suíte 31: o id também é conferido contra a aprovação já decidida ou vencida e contra a execução
+  esperando resposta, e um pedaço curto com dígito ("a1f") é recusado como id incompleto.
+- `simulated`: `tests/test_telegram_entrada.py` tem 5 casos novos, e 4 deles falham contra o código antigo. O teste do
+  roteador também foi coberto. Nos arquivos de canais tocados: 203 passed.
+- Doc: `docs/dominios/canais.md`, depois da C-13.
 
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
