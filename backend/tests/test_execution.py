@@ -148,6 +148,7 @@ async def test_timeout_no_toque_de_enviar_segura_o_aparelho_e_reconcilia(harness
 
 # ---------------------------------------------------------------- reinício do backend
 async def test_reinicio_do_backend_reconcilia_etapa_com_efeito_ja_disparado(harness: Harness) -> None:
+    harness.pular_o_tempo()   # T.2: o assentamento das ferramentas era ~1,8 s reais; o atraso do toque segue real
     fake = harness.fakes["android-01"]
     fake.action_delay_s = 0.05
     run = harness.run(["android-01"])
@@ -199,6 +200,7 @@ async def test_reinicio_com_acao_de_efeito_pendente_e_sem_prova_fica_incerto(har
 
 # ---------------------------------------------------------------- controle manual
 async def test_usuario_assume_no_ponto_seguro_e_devolve_para_a_ia(harness: Harness) -> None:
+    harness.pular_o_tempo()   # T.2: ~3,2 s de assentamento; a janela do ponto seguro (`action_delay_s`) segue real
     st = harness.state
     fake = harness.fakes["android-01"]
     fake.action_delay_s = 0.08
@@ -280,6 +282,7 @@ async def test_devolver_controle_nao_reobserva_perfil_sem_pendencia(harness: Har
 
 # ---------------------------------------------------------------- pausar / cancelar
 async def test_pausar_preserva_o_ponto_e_cancelar_explicita_o_que_ja_foi_feito(harness: Harness) -> None:
+    harness.pular_o_tempo()   # T.2: ~1,3 s de assentamento; a janela da pausa (`action_delay_s`) segue real
     st = harness.state
     for f in harness.fakes.values():
         f.action_delay_s = 0.06
