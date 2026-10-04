@@ -2886,7 +2886,7 @@
   "29.62": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac19805a9fd19f89e52f014",
    "url": "https://trello.com/c/11pyEfic",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": "canais",
    "nome": "Suíte em PostgreSQL em paralelo"
   },
@@ -2910,6 +2910,13 @@
    "lista": "proximas",
    "lote": "canais",
    "nome": "Polimentos da evidência e da validação automática"
+  },
+  "29.63": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac19ece641516bfebf1dd9f",
+   "url": "https://trello.com/c/fzyYiADk",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "Segundo corte no tempo dos testes em PostgreSQL"
   }
  },
  "falhas": [],
