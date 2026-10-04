@@ -26,8 +26,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   fora da lista são recusados com o motivo. `GET /api/canais/anexos/{id}` e `/conteudo` (só leitura), adendo v1.21, regra C-22.
 - A saída (`enviar_anexo`, `enviar_conteudo`) só manda o que está no armazém ou o que o produto gerou; caminho fora de
   `data/anexos` é recusado. O token do bot nunca aparece em log, erro, evento ou banco (o endereço do download o leva).
-- Prova `simulated`: `test_canais_anexos.py` (68; nove mutações conferidas). Real: `not_run`. Fica para a F2 a leitura da imagem
-  pela IA, o cartão do Trello com a imagem e a tela do painel.
+- Prova `simulated`: `test_canais_anexos.py` (73), `test_canais_anexos_trello.py` (9) e `test_canais_captura.py` (28);
+  mutações conferidas. Real: `not_run`.
+- F2: a falha no download nunca fica calada (anexo `pendente` retomado uma vez após queda; o dono é avisado); a imagem do dono vai
+  ao cartão do Trello por `POST /api/canais/anexos/{id}/trello` (exceção (b)); `/captura android-12` devolve a tela do aparelho só
+  ao chat do dono, pela prévia do painel (exceção (a)). A 101 (ainda não aplicada) ganhou o estado `pendente`. Fica para depois a
+  leitura da imagem pela IA e a tela do painel.
 
 ## 2026-10-04 — 30.52: o dossiê do curador pela marca do conteúdo e a recusa do pedido pela pessoa (branch fix/30-52-dossie-pela-marca)
 

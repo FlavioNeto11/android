@@ -5437,7 +5437,24 @@ Comportamento da conversa (sem rota nova):
   `sendDocument` para o resto; o nome no envio é `anexo-<sha>.<ext>`. A porta `SaidaComAnexos` é do canal: o Trello, que não a cumpre, recusa
   o anexo com o motivo.
 - A faxina por retenção (28.16) apaga o arquivo e a linha dos anexos vencidos, sem seguir link nem sair de `data/anexos`.
-- Config: `avisos.entrada.anexos` (`enabled`, `max_bytes`, `tipos`). A leitura da imagem pela IA não existe na F1.
+- Config: `avisos.entrada.anexos` (`enabled`, `max_bytes`, `tipos`). A leitura da imagem pela IA não existe ainda.
+
+Complemento (F2, mesmo item):
+- **Download que falha:** a mensagem do dono e os anexos a baixar entram juntos, na mesma transação (`estado = 'pendente'`, com
+  `ref_externa` e `mime_declarado`, que só existem nesse estado). A falha de rede ou da API vira `recusado` com o motivo e a resposta
+  ao dono ("… Mande de novo."). Se a Central cai entre gravar e baixar, a volta seguinte (anexo `pendente` com mais de 60 s) baixa UMA
+  vez e conta o resultado; se falhar, fecha como `recusado` e avisa. Escolhi avisar+uma tentativa, e não só avisar, porque a referência
+  do arquivo no Telegram costuma valer por horas e a retomada poupa o reenvio.
+- `POST /api/canais/anexos/{id}/trello` com `{"card": "<24 hex>", "confirmar": true}`: anexa ao cartão do Trello a imagem que o DONO
+  mandou (exceção (b) do dono, 04/10 15:17Z). Atrás do mesmo login. **200** `{anexo_id, card, trello_anexo}`; **400**
+  `confirmacao_necessaria`; **404** `anexo_desconhecido`; **409** `anexo_nao_permitido` (convidado, saída ou mensagem que não é do dono),
+  `anexo_sem_arquivo` (recusado, apagado ou sumido do disco) ou `cartao_fora_dos_quadros` (o cartão não é de um quadro de
+  `trello.quadros`, conferido pela API antes de anexar); **422** `cartao_invalido`; **502** `trello_falhou` (mensagem sem chave nem token);
+  **503** `trello_desligado`. O nome no cartão é `anexo-<sha>.<ext>`; a chave e o token do Trello vão só no cabeçalho.
+- Captura de aparelho ao dono (exceção (a)): `/captura <aparelho>` ou "captura do android-12" pelo canal do dono (intenção `captura`,
+  sem rota HTTP). A imagem é a prévia do painel (`rt.frame`): se está velha, o pedido registra um interesse de foco por 5 s e espera o
+  frame novo (até 8 s); tela sensível, loja ou aparelho fora do ar viram uma frase ao dono, sem imagem. Sai por
+  `ConversaDoCanal.enviar_conteudo` (legenda "Captura do android-12", guardada em `data/anexos` como `saida`, com a retenção do 28.16).
 
 ## Adendo v1.20 (04/10/2026; número da orquestradora; item 30.52) — a pessoa recusa um pedido de validação pendente
 

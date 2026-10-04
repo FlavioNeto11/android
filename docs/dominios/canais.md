@@ -292,17 +292,25 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
     mensagem e o arquivo não é baixado.
   - A saída só manda arquivo que o produto gerou ou que já está em `data/anexos/`, por referência (id ou sha256), nunca
     por caminho livre; um caminho fora de `data/anexos` (ou link) é recusado.
-  - **Exceção estreita (a), 04/10 15:17Z:** a captura de tela de um aparelho pode ir ao chat DO DONO no Telegram.
-  - **Exceção estreita (b), 04/10 15:17Z:** a imagem que o DONO mandar pode ir anexada ao cartão do Trello.
+  - **Exceção estreita (a), 04/10 15:17Z:** a captura de tela de um aparelho pode ir ao chat DO DONO no Telegram. Quem
+    pede é o dono (`/captura android-12` ou "captura do android-12"); a imagem é a MESMA prévia do painel, então tela
+    sensível (senha, código, loja) não sai; a legenda leva só o id do aparelho; o convidado não tem o comando.
+  - **Exceção estreita (b), 04/10 15:17Z:** a imagem que o DONO mandar pode ir anexada ao cartão do Trello. Só o anexo de
+    ENTRADA de mensagem do dono (nunca o do convidado, nunca o da saída), só em cartão de quadro configurado
+    (`trello.quadros`), por pedido explícito com confirmação (`POST /api/canais/anexos/{id}/trello`); nenhuma mensagem
+    cria cartão sozinha.
+  - Se o download do anexo do dono falha (rede, API, ou a Central cai entre gravar a mensagem e baixar), o dono é avisado
+    em português simples para reenviar e a linha fica com o motivo: nenhuma falha de anexo fica calada.
   - O TEXTO de mensagem e de cartão que acompanha o anexo segue sem nome de persona, conta, e-mail, telefone ou IP. As
     exceções são só do arquivo, e só ao chat do dono (a) e ao cartão que o dono pediu (b).
   - A leitura do conteúdo da imagem pela IA é chamada paga: só quando o dono pede, com teto por mensagem e custo
     registrado (F2; a F1 só guarda e referencia).
 - **Hoje:** nada na operação provisória.
-- **No produto:** F1 do item 28.24 (`modules/avisos/`: `domain/anexos.py`, `infrastructure/anexos.py`, o adaptador do
-  Telegram, `GET /api/canais/anexos/{id}`, migração 101). Falta: a leitura pela IA (F2), o cartão do Trello com a imagem
-  (exceção (b)) e a tela do painel.
-- **Prova:** `simulated` (`backend/tests/test_canais_anexos.py`); `not_run` com o bot e o disco reais.
+- **No produto:** item 28.24 (`modules/avisos/`: `domain/anexos.py`, `infrastructure/anexos.py`, `anexos_trello.py`, o
+  adaptador do Telegram, `GET /api/canais/anexos/{id}`, `POST /api/canais/anexos/{id}/trello`, `devices/captura_pontual.py`,
+  migração 101). Falta: a leitura pela IA (teto por imagem) e a tela do painel.
+- **Prova:** `simulated` (`backend/tests/test_canais_anexos.py`, `test_canais_anexos_trello.py`, `test_canais_captura.py`);
+  `not_run` com o bot, o Trello, o aparelho e o disco reais.
 
 ## 7. Arquivos locais (fora do Git) e o que guardam
 
