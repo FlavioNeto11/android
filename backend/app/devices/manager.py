@@ -1682,6 +1682,10 @@ class DeviceManager:
                             # ≤36 s e o cartão continuava dizendo "desligado" — a interface mentia duas vezes.
                             if rt.desired_state != InstanceState.stopped.value:
                                 await self._adopt_external(rt)
+                            else:
+                                # Parado de propósito: não readota, mas o motivo acompanha o servidor (29.36) — a
+                                # primeira batida depois da reconexão troca "não sabe o estado" por "desligado".
+                                self._recalcular_motivo_do_parado(rt)
                     # Aparelho parado em `error` com `desired_state=online` e ninguém no controle: o reparo é pedido
                     # de novo quando o prazo passa (600 s entre degraus; 6 h depois de esgotar a escada). Vale para
                     # o local também — antes só o externo era readotado, e o local em `error` ficava assim até
@@ -1769,12 +1773,37 @@ class DeviceManager:
         """
         mudados = []
         for rt in self.devices.values():
-            if rt.worker_id != worker_id or rt.worker_verbs == verbs:
+            if rt.worker_id != worker_id:
+                continue
+            # 29.36: a conexão e a queda mudam o MOTIVO do aparelho parado sem mudar o estado. Sem isto, o texto
+            # da queda ("servidor fora do ar") ficava preso depois da reconexão em quem foi parado de propósito:
+            # o monitor não readota `desired_state=stopped`, e era a readoção que trocava a frase.
+            if self._recalcular_motivo_do_parado(rt):
+                if rt.id not in mudados:
+                    mudados.append(rt.id)
+            if rt.worker_verbs == verbs:
                 continue
             rt.worker_verbs = verbs
-            mudados.append(rt.id)
+            if rt.id not in mudados:
+                mudados.append(rt.id)
             self.publish(rt)
         return mudados
+
+    def _recalcular_motivo_do_parado(self, rt: DeviceRuntime) -> bool:
+        """Reescreve o detalhe de um aparelho de worker PARADO com o motivo de agora, sem readotar. Devolve `True`
+        quando o texto mudou (e o estado foi republicado).
+
+        Só `stopped`: `error` tem frase própria (a do reparo), e o aparelho no ar não tem motivo de parado. Sem o
+        estado do ADB de propósito: quem chama não sondou, e o motivo que importa aqui é o do servidor e do processo
+        lá (item 29.36, RA-21: 5 de 6 aparelhos do notebook diziam "fora do ar" com o servidor conectado).
+        """
+        if not (rt.external and rt.worker_id and rt.state == InstanceState.stopped):
+            return False
+        novo = self._motivo_do_externo_parado(rt, None)
+        if novo == rt.state_detail:
+            return False
+        self._set_state(rt, InstanceState.stopped, novo)
+        return True
 
     # ------------------------------------------------------------------ capacidades declaradas
     def registrar_capacidades(self, rt: DeviceRuntime, campos: dict[str, Any], *, fonte: str,

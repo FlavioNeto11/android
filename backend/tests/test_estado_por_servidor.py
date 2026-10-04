@@ -172,3 +172,65 @@ async def test_processo_desconhecido_nao_vira_emulador_ligado(tmp_path: Path) ->
         assert motivo == f"servidor {NOME} não sabe o estado do emulador deste aparelho"
     finally:
         await h.state.stop()
+
+
+# ---------------------------------------------------------------- 29.36 (RA-21): o motivo acompanha a conexão e a queda
+def _parado_de_proposito(h: Harness, detalhe: str) -> object:
+    from app.models import InstanceState
+
+    rt = _amarrar(h)
+    rt.desired_state = InstanceState.stopped.value     # o monitor não readota: era a readoção que trocava a frase
+    h.state.devices._set_state(rt, InstanceState.stopped, detalhe)
+    return rt
+
+
+async def test_reconexao_troca_o_fora_do_ar_preso_no_aparelho_parado_de_proposito(tmp_path: Path) -> None:
+    """RA-21: 5 de 6 aparelhos do notebook diziam "servidor fora do ar" às 00:30Z com o servidor conectado."""
+    h = Harness(tmp_path, 2)
+    await h.boot()
+    try:
+        _inscrever(h, devices=[{"serial": "emulator-5554", "state": "stopped", "instance_id": "android-01"}],
+                   conectado=True)
+        rt = _parado_de_proposito(h, f"servidor {NOME} fora do ar — o estado do emulador lá é desconhecido")
+        mudados = h.state.devices.bind_worker(WORKER, ["start", "stop"])
+        assert rt.state_detail == f"emulador desligado em {NOME}"
+        assert "android-01" in mudados
+        assert rt.desired_state == "stopped"             # recalcular não é readotar nem religar
+    finally:
+        await h.state.stop()
+
+
+async def test_queda_do_servidor_troca_o_desligado_pelo_fora_do_ar(tmp_path: Path) -> None:
+    h = Harness(tmp_path, 2)
+    await h.boot()
+    try:
+        _inscrever(h, devices=[{"serial": "emulator-5554", "state": "stopped", "instance_id": "android-01"}],
+                   conectado=True)
+        rt = _parado_de_proposito(h, f"emulador desligado em {NOME}")
+        h.state.workers.detach(WORKER, "teste", h.state.workers.live[WORKER])
+        h.state.devices.bind_worker(WORKER, None)
+        assert rt.state_detail == f"servidor {NOME} fora do ar — o estado do emulador lá é desconhecido"
+    finally:
+        await h.state.stop()
+
+
+async def test_recalcular_so_mexe_no_parado_de_worker_e_nao_republica_sem_mudanca(tmp_path: Path) -> None:
+    from app.models import InstanceState
+
+    h = Harness(tmp_path, 2)
+    await h.boot()
+    try:
+        _inscrever(h, devices=[{"serial": "emulator-5554", "state": "stopped", "instance_id": "android-01"}],
+                   conectado=True)
+        rt = _parado_de_proposito(h, f"emulador desligado em {NOME}")
+        assert h.state.devices._recalcular_motivo_do_parado(rt) is False      # mesmo texto: nenhum evento
+        # `error` tem a frase do reparo: não é sobrescrita pelo motivo de parado.
+        h.state.devices._set_state(rt, InstanceState.error, "reparo esgotado")
+        assert h.state.devices._recalcular_motivo_do_parado(rt) is False
+        assert rt.state_detail == "reparo esgotado"
+        # Aparelho local (sem worker) não entra.
+        local = h.state.devices.get("android-02")
+        h.state.devices._set_state(local, InstanceState.stopped, "desligado")
+        assert h.state.devices._recalcular_motivo_do_parado(local) is False
+    finally:
+        await h.state.stop()
