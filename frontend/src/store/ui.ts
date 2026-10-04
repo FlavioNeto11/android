@@ -67,6 +67,12 @@ export interface Destino {
 interface UiStore {
   /** Rota atual, já canônica (`#/perfis` vira `personas`). */
   rota: Rota;
+  /** 29.61: o hash que não nomeia tela nenhuma (`#/runs`), para o aviso com atalho; `null` sem aviso. */
+  rotaDesconhecida: string | null;
+  dispensarRotaDesconhecida: () => void;
+  /** 29.61: a execução selecionada veio do navegador (`localStorage`), não de uma escolha nesta visita. Execuções sem
+   * id no link não a reabre: abre a mais recente. */
+  selecaoRestaurada: boolean;
   view: View;
   selectedIds: string[];
   /** Âncora do Shift+clique (último cartão alternado). */
@@ -140,6 +146,27 @@ function runDaRota(r: Rota): string | null {
   return r.tela === 'execucoes' ? r.segmentos[0] ?? null : null;
 }
 
+/** 29.61: o hash é de verdade um endereço que não existe? Vazio, `#` e `#/` são só "sem rota", sem aviso. Âncora de
+ * um elemento da página (`#conteudo`, o alvo do "Pular para o conteúdo") também não é endereço: rota sempre leva
+ * `/` ou nomeia uma tela, e avisar ali seria alarme à toa. */
+function hashDesconhecido(hash: string): string | null {
+  if (!hash || hash === '#' || hash === '#/') return null;
+  if (parseHash(hash)) return null;
+  const ancora = hash.slice(1);
+  if (!ancora.includes('/') && typeof document !== 'undefined' && document.getElementById(decodeURIComponent(ancora))) {
+    return null;
+  }
+  return hash;
+}
+
+/** A execução que a página abre: a do link; sem ela, a última escolhida, salvo em Execuções sem id (29.61), que abre
+ * a mais recente (a lista seleciona a primeira quando nada está selecionado). */
+function runInicial(r: Rota): string | null {
+  const daRota = runDaRota(r);
+  if (daRota || !temJanela || r.tela === 'execucoes') return daRota;
+  return loadJson('selectedRun', isString);
+}
+
 export function menuRecolhidoInicial(): boolean {
   if (!temJanela) return false;
   // Sem preferência: recolhido onde a largura é disputada (1024–1279 px, com o Foco aberto sobra pouco ao conteúdo).
@@ -172,10 +199,13 @@ function gravarHash(hash: string, modo: ModoHistorico): boolean {
 
 export const useUiStore = create<UiStore>((set, get) => ({
   rota: inicial,
+  rotaDesconhecida: temJanela ? hashDesconhecido(window.location.hash) : null,
+  dispensarRotaDesconhecida: () => set({ rotaDesconhecida: null }),
+  selecaoRestaurada: !runDaRota(inicial) && runInicial(inicial) !== null,
   view: inicial.tela,
   selectedIds: temJanela ? loadJson('selectedInstances', isStringArray) ?? [] : [],
   selectionAnchor: null,
-  selectedRunId: runDaRota(inicial) ?? (temJanela ? loadJson('selectedRun', isString) : null),
+  selectedRunId: runInicial(inicial),
   focusInstanceId: inicial.query[PARAM_FOCO] || null,
   commandDraftRequest: null,
   novoPedidoRequest: null,
@@ -183,6 +213,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
   menuAberto: false,
 
   navegar: (destino, modo = 'push') => {
+    if (get().rotaDesconhecida) set({ rotaDesconhecida: null });
     gravarHash(hashDoDestino(destino, get().focusInstanceId), modo);
     // Aplica mesmo sem mudança de hash: o store pode ter saído da URL (teste, estado semeado à mão).
     aplicarHash(true);
@@ -213,7 +244,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
 
   setView: (view) => {
     if (get().view === view) return;
-    const run = get().selectedRunId;
+    const run = get().selecaoRestaurada ? null : get().selectedRunId;
     // Ir para Execuções leva a execução selecionada no link: `selectRun(x); setView('execucoes')` (Infraestrutura,
     // Aprendizado, Aplicativos) já chega em `#/execucoes/x`.
     get().navegar({ tela: view, segmentos: view === 'execucoes' && run ? [run] : [] });
@@ -268,6 +299,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
       set({ selectedRunId: id });
       saveJson('selectedRun', id);
     }
+    if (get().selecaoRestaurada) set({ selecaoRestaurada: false });
     const { rota } = get();
     // Na tela Execuções o link acompanha a seleção, sem empilhar (seleção automática, execução recém-criada). A guia
     // é da execução anterior: sai do link.
@@ -282,6 +314,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
       set({ selectedRunId: id });
       saveJson('selectedRun', id);
     }
+    if (get().selecaoRestaurada) set({ selecaoRestaurada: false });
     if (rota.tela === 'execucoes' && rota.segmentos[0] === id) return;
     get().navegar({ tela: 'execucoes', segmentos: [id], query: rota.tela === 'execucoes' ? { ...rota.query, aba: undefined } : {} });
   },
@@ -335,8 +368,11 @@ function devolverFocoDoTeclado(): void {
 function aplicarRota(r: Rota): string | null {
   const prev = useUiStore.getState();
   const foco = r.query[PARAM_FOCO] || null;
-  const run = runDaRota(r) ?? prev.selectedRunId;
-  useUiStore.setState({ rota: r, view: r.tela, focusInstanceId: foco, selectedRunId: run, menuAberto: false });
+  const daRota = runDaRota(r);
+  // 29.61: Execuções sem id no link não reabre a execução que só veio do navegador; a lista abre a mais recente.
+  const run = daRota ?? (r.tela === 'execucoes' && prev.selecaoRestaurada ? null : prev.selectedRunId);
+  useUiStore.setState({ rota: r, view: r.tela, focusInstanceId: foco, selectedRunId: run, menuAberto: false,
+                        ...(daRota ? { selecaoRestaurada: false } : {}) });
   if (run !== prev.selectedRunId) saveJson('selectedRun', run);
   saveJson('view', r.tela);
   if (prev.focusInstanceId && !foco) devolverFocoDoTeclado();
@@ -353,6 +389,9 @@ export function aplicarHash(forcar = false): void {
   if (hash === ultimoAplicado && !forcar) return;
   const lida = parseHash(hash);
   if (!lida) {
+    // 29.61: link antigo ou digitado errado (`#/runs`) avisa, em vez de cair calado na tela atual.
+    const desconhecido = hashDesconhecido(hash);
+    if (desconhecido) useUiStore.setState({ rotaDesconhecida: desconhecido });
     const atual = hashDaRota(useUiStore.getState().rota);
     ultimoAplicado = atual;
     window.history.replaceState(window.history.state, '', atual);
@@ -390,4 +429,8 @@ export function bindHashRouting(): () => void {
 /** Ouvinte estável (o evento não pode cair no parâmetro `forcar`). */
 function aoMudarHash(): void {
   aplicarHash();
+  // A pessoa foi a outro endereço que existe: o aviso do endereço errado de antes sai.
+  if (parseHash(window.location.hash) && useUiStore.getState().rotaDesconhecida) {
+    useUiStore.setState({ rotaDesconhecida: null });
+  }
 }

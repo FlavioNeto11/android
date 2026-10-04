@@ -1,4 +1,4 @@
-import { WifiOff } from 'lucide-react';
+import { MapPinOff, WifiOff } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import styles from './App.module.css';
 import { Banner } from './components/Banner';
@@ -63,6 +63,32 @@ function ConnectionBanner() {
   );
 }
 
+/** 29.61: link antigo ou digitado errado (`#/runs`) não cai calado no Painel: diz que o endereço não existe e leva a ele. */
+function RotaDesconhecidaBanner() {
+  const hash = useUiStore((s) => s.rotaDesconhecida);
+  const dispensar = useUiStore((s) => s.dispensarRotaDesconhecida);
+  const navegar = useUiStore((s) => s.navegar);
+  if (!hash) return null;
+  return (
+    <Banner
+      className={styles.connBanner}
+      tone="warning"
+      icon={MapPinOff}
+      role="alert"
+      title="Este endereço não existe no painel"
+      actions={(
+        <>
+          <Button size="sm" onClick={() => navegar({ tela: 'painel' })}>Ir para o Painel</Button>
+          <Button size="sm" variant="outline" onClick={dispensar}>Dispensar</Button>
+        </>
+      )}
+    >
+      O link <code>{hash}</code> não leva a nenhuma tela (pode ser antigo ou ter sido digitado errado). Você continua na
+      tela em que estava.
+    </Banner>
+  );
+}
+
 export function App() {
   const view = useUiStore((s) => s.view);
   const focusId = useUiStore((s) => s.focusInstanceId);
@@ -117,6 +143,7 @@ export function App() {
         <MenuLateral />
         <main ref={mainRef} id="conteudo" tabIndex={-1} className={styles.main}>
           <ConnectionBanner />
+          <RotaDesconhecidaBanner />
           <div className={stale ? styles.stale : undefined}>
             {view === 'painel' ? <PainelPage /> : null}
             {view === 'personas' ? <ProfilesPage /> : null}
