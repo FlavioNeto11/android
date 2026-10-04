@@ -504,6 +504,10 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
 | `android.auto_start_devices` | `true` | `false` (`config.py`) |
 | `android.max_online_devices` | 2 — comentado como vagas desta máquina | 10 (`config.py`, teto do host; cada worker traz o próprio `max_slots`) |
 
+Prazo da etapa livre (a conduzida pelo ator de IA): o `timeout_s` vem do modelo, preso entre `PISO_DA_ETAPA_COM_IA_S`
+(120 s, item 29.75; era 30) e 600 s em `planning/parsing.py::_etapa_livre`. Em 7 dias até 04/10, 18 tentativas morreram
+por prazo, 12 delas com os 60 s que o modelo pedia, 8 com a chamada de IA passando do prazo restante.
+
 ## 12. O que foi MEDIDO (não confundir com configuração prevista)
 
 - **Bateria de 25/09/2026** (`relatorio-validacao.md` §11.1): 16/17 casos corretos, US$ 0,084 por caso; rejulgamento

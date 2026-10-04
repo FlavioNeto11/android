@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.75 (B): piso de 120 s no prazo da etapa com IA (branch fix/29-75-piso-da-etapa-com-ia)
+
+- Calibração em dev (pedido do dono, 04/10 ~17:53Z). Em 7 dias, 18 tentativas morreram por prazo da etapa, 12 com os
+  60 s que o modelo pediu e 8 com a chamada de IA passando do prazo restante.
+- `planning/parsing.py::_etapa_livre`: o `timeout_s` da etapa livre (a conduzida pelo ator de IA) fica entre
+  `PISO_DA_ETAPA_COM_IA_S` (120; era 30) e 600. Etapa de catálogo e receita não mudam.
+- Teste: `test_esquema_curto_do_plano.py` com o piso novo (30 → 120, 60 → 120, o teto de 600 mantido); 492 testes do
+  planejador e do parser aprovados. Prova: simulated. A Jev lê o diff antes do merge (arquivo do planejador).
+
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
 - Retorno do dono (04/10, Aprendizado › Para aprovar com 5 selecionados): o formulário do aceite abria com o botão
