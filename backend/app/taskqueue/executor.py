@@ -3222,9 +3222,11 @@ class StepExecutor:
             faltam, tela_da_marca = await self._marcas_depois_do_efeito(rt, cap, step, obs, account_label,
                                                                          call_timeout)
             if faltam:
+                # Sem o texto do juiz: ele pode trazer o que a tela mostrou (URL com token), e este motivo vai ao
+                # `detail`, à evidência e ao evento. A prova da publicação fica na evidência do verificador (S3).
                 motivo = ("publicado; o rótulo de IA não foi confirmado. Abra a publicação: se o rótulo não "
                           "estiver lá, ligue-o pelo app ou remova a publicação. Não publique de novo. (A publicação "
-                          "foi comprovada: " + text + "; " + ", ".join(f"'{m}'" for m in faltam) + " não apareceu "
+                          "foi comprovada pela verificação; " + ", ".join(f"'{m}'" for m in faltam) + " não apareceu "
                           "no cartão do topo, junto do nome da conta " + (account_label or "(desconhecida)") + ".)")
                 await evidence(tela_da_marca or obs, motivo)
                 return StepOutcome(Outcome.uncertain, motivo, delivery_level=level,

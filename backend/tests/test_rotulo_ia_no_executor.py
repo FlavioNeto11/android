@@ -306,7 +306,9 @@ class AtorQueVePublicado(AtorQueTocaNoShare):
     """O juiz diz que a publicação saiu (a contagem é outro assunto): o que está em prova é a conferência da marca."""
 
     async def verify(self, req: VerifyRequest) -> tuple[Verdict, Usage]:
-        return Verdict(satisfied="yes", evidence="[roteiro] publicação nova no feed"), Usage()
+        # S3: o texto do juiz traz o que a tela mostrou, inclusive URL com token; o motivo do incerto não o carrega.
+        return Verdict(satisfied="yes", evidence="[roteiro] publicação nova no feed; link https://x.test/p?token=SEGREDO1"
+                       ), Usage()
 
 
 async def test_com_a_marca_no_post_a_publicacao_rotulada_e_sucesso(tmp_path: Path,
@@ -337,6 +339,10 @@ async def test_sem_a_marca_no_post_publicado_rotulo_nao_confirmado(tmp_path: Pat
         assert (etapa["status_detail"] or "").startswith("publicado; o rótulo de IA não foi confirmado. Abra a "
                                                          "publicação")
         assert json.loads(etapa["result"])["efeito_comprovado"] is True
+        assert "SEGREDO1" not in (etapa["status_detail"] or "")                 # S3: o texto do juiz fica de fora
+        assert "SEGREDO1" not in json.loads(etapa["result"])["evidence_text"]
+        notas = [r["note"] or "" for r in _estado(h).db.query("SELECT note FROM evidence WHERE step_id=?", (etapa["id"],))]
+        assert all("SEGREDO1" not in n for n in notas if n.startswith("publicado;"))
         objetivo = _estado(h).db.one("SELECT needs FROM objectives WHERE id=?", (etapa["objective_id"],))
         assert objetivo is not None and "repetir" not in (objetivo["needs"] or "").lower().split("repetir faria")[0]
         assert "confirmar (com o print) ou abandonar" in (objetivo["needs"] or "")
