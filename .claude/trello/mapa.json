@@ -2145,13 +2145,13 @@
   "29.38": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1441df45a9563fa86c171",
    "url": "https://trello.com/c/K2m3OjZ4",
-   "lista": "proximas",
+   "lista": "bloqueado",
    "lote": "lote_A8_atuais_pendentes"
   },
   "29.39": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac14422f0d44be67a885f0a",
    "url": "https://trello.com/c/EWS6pr9Z",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": "lote_A8_atuais_pendentes"
   },
   "29.41": {
@@ -3145,14 +3145,14 @@
   "31.40": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2453c3d7db305de320be4",
    "url": "https://trello.com/c/T6qOPsdy",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": "canais",
    "nome": "31.40 — Limpeza inserida quando o juiz recusa por sobreposição"
   },
   "31.41": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac245403bf61696fe066112",
    "url": "https://trello.com/c/M7yrzce8",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": "canais",
    "nome": "31.41 — Leitura não aceita valor sem relação com o pedido"
   },
@@ -3183,10 +3183,31 @@
    "lista": "em_execucao",
    "lote": "canais",
    "nome": "28.23 — O limite de autonomia do pedido chega à execução"
+  },
+  "30.48": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac25209ffa8530ff33897a4",
+   "url": "https://trello.com/c/ttZESVlA",
+   "lista": "em_validacao",
+   "lote": "canais",
+   "nome": "30.48 — Validar fluxo que percorre uma lista de tamanho desconhecido"
+  },
+  "30.51": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2520e4ae1363a554c6eff",
+   "url": "https://trello.com/c/2wkgl0Gj",
+   "lista": "em_execucao",
+   "lote": "canais",
+   "nome": "30.51 — Execução comum que usa um fluxo aprendido deixa evidência"
+  },
+  "30.52": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac25212489bd6e45cc1d580",
+   "url": "https://trello.com/c/yks3udv7",
+   "lista": "em_execucao",
+   "lote": "canais",
+   "nome": "30.52 — O revisor de fluxos olha só as provas da versão atual"
   }
  },
  "falhas": [],
- "atualizado_em": "2026-10-04T12:34:29Z",
+ "atualizado_em": "2026-10-04T13:18:56Z",
  "arquivados": {
   "29.50": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac140b47c94d9584a3dc72e",
