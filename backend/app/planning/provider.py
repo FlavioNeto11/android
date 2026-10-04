@@ -243,6 +243,8 @@ class DecisionRequest:
     #: verificador recebe o mesmo `StepContext` (`VerifyRequest.ctx`), e lição no juiz o empurraria a aceitar
     #: (ADR-024). Vazio = o pedido de antes.
     lessons: list[str] = field(default_factory=list)
+    #: Item 31.35 (parte B): quantas ações esta decisão pode trazer (`ai.acoes_por_decisao`); 1 = uma só, como sempre.
+    encadear: int = 1
 
 
 @dataclass(slots=True)
@@ -250,6 +252,9 @@ class Decision:
     tool: str
     args: dict[str, Any]
     raw_text: str | None = None
+    #: Item 31.35 (parte B): as ações seguintes da MESMA resposta, em ordem, quando o pedido permitiu encadear
+    #: (`DecisionRequest.encadear > 1`). O executor confere o alvo de cada uma na tela nova antes de agir.
+    extras: list[Decision] = field(default_factory=list)
 
 
 class Verdict(BaseModel):

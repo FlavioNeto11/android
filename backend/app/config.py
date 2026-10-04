@@ -625,6 +625,13 @@ class AiCfg(BaseModel):
     # auto: só hierarquia quando a árvore é rica; imagem na 1ª decisão de etapa julgada por visão, em árvore pobre,
     # após erro/ciclo, ou quando o modelo pede (observe_screen.need_image)
     rich_tree_min_elements: int = 8
+    # Item 31.35 (parte B), DESLIGADO por padrão: quantas ações o ator pode mandar numa decisão de etapa SEM efeito
+    # (chamadas paralelas de ferramenta; o executor confere o alvo de cada uma na tela nova). 1 = uma só, como sempre.
+    # Liga só depois do A/B com teto (sucesso igual e >= 30 % menos decisões).
+    acoes_por_decisao: int = Field(1, ge=1, le=3)
+    # Item 31.35 (parte B), DESLIGADO por padrão: depois de um `open_url` concluído, o executor espera a tela parar
+    # (a espera adaptativa do 31.27) em vez de gastar uma decisão do ator num `wait_for`.
+    espera_apos_open_url: bool = False
     # Quando a etapa com efeito externo decide no modelo de escalonamento: `true` = sempre (era o único modo: em
     # 19-23/09, 39 % das decisões foram ao Opus, inclusive curtir com seletor de commit declarado); `false` = nunca
     # por efeito; `by_risk` = só risco alto do catálogo, risco médio SEM seletor de commit, ou app sem catálogo

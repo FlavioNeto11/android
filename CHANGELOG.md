@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.35 (parte B): ações encadeadas do ator, DESLIGADAS (branch feat/31-35-acoes-encadeadas, sem migração)
+
+- `ai.acoes_por_decisao` (1 = desligado, até 3): numa etapa SEM efeito, a decisão do ator libera chamadas paralelas
+  de ferramenta (Anthropic). O executor executa as seguintes sem nova chamada de IA, achando o MESMO alvo na tela nova
+  (os ids `eN` mudam depois de cada ação) e descartando o resto da fila se ele sumiu ou se o alvo é por coordenada;
+  `scroll` só como a última; nada com digitação, efeito ou controle de etapa. Desligado, o pedido é o de sempre.
+- `ai.espera_apos_open_url` (desligado): depois do `open_url`, a espera adaptativa do 31.27 (tela parada 1 s, teto 8 s)
+  no lugar de um `wait_for` pago.
+- Liga só depois do A/B com teto (US$ 1,00, aparelho de teste, navegação só de leitura; adota com sucesso igual e
+  >= 30 % menos decisões). Prova: `simulated` (`backend/tests/test_acoes_encadeadas.py`).
+
 ## 2026-10-04 — 29.36: o motivo do aparelho remoto parado acompanha a conexão e a queda (branch fix/29-36-detalhe-do-externo-parado, sem migração)
 
 - `DeviceManager._recalcular_motivo_do_parado`: reescreve o `state_detail` de um aparelho de worker `stopped` com o
