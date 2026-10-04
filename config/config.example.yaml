@@ -604,6 +604,7 @@ rede:                             # rede por aparelho (ADR-056): aplicação no 
     udp_dns: 8.8.4.4              # UDP de DNS de ida e volta (o cliente sequestra e resolve pelo túnel)
     udp_ntp: time.google.com      # UDP que não é DNS (NTP); udp_ok só com os dois
     reverificar_s: 600            # aparelho `parcial` é medido de novo depois disto (varredura ou porta da tarefa)
+    prazo_leitura_s: 90           # prazo de cada leitura da rede pelo adb (a fila dá +10 s); era 45 fixo (29.75)
     abrir_apps: false             # true = a sonda abre o app exigido sem tráfego na janela TAMBÉM sem tarefa esperando
                                   # (com tarefa segurada pela porta, abre sempre: é o que a tarefa faria; é usar a conta)
     espera_app_s: 15              # quanto o app aberto pela sonda fica na frente antes de voltar ao início
