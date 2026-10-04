@@ -5688,17 +5688,7 @@ Aditivo ao v1.22. Sem rota nova e sem migração.
 Prova:
 - `simulated`: `tests/test_decisoes_registro_coerente.py`.
 - `not_run`: PostgreSQL e o central depois do deploy.
-## Adendo v1.37 (04/10/2026; número da orquestradora; item 28.24, F5) — a lista diz o que dá para ler, e o cartão recusa o tipo
 
-Sem migração. Muda a v1.26 e a rota `POST .../trello`.
-- `GET /api/canais/anexos`: cada item ganha três chaves fixas.
-  - `pode_ler`: a imagem guardada que o dono mandou, a única que `POST .../ler` aceita.
-  - `descricao`: a descrição que a IA já gravou, ou `null`.
-  - `lida_em`: ISO, ou `null`.
-
-  `pode_ir_ao_cartao` passa a exigir também um mime da lista `avisos.entrada.anexos.tipos`.
-- `POST /api/canais/anexos/{id}/trello`: o anexo de tipo que a entrada não aceita, ou maior que o teto, é recusado com **422**
-  `tipo_nao_aceito` antes de qualquer chamada ao Trello. O arquivo fora do armazém segue **409** `anexo_sem_arquivo`.
 ## Adendo v1.30 (04/10/2026; número da orquestradora; item 30.65) — exceção de uso único à regra de uma conta por alvo
 
 Migração `104_excecoes_de_politica`. A porta de frota (ADR-055) recusa, sem caminho de aprovação, o efeito sobre um alvo que
@@ -5748,6 +5738,7 @@ sempre abre cartão novo: o aprovado de uma versão anterior com o mesmo texto e
   quando há, `interaction_id`; alvo, motivo e autorização ficam só no GET. Não entram no registro de decisões automáticas (28.25): é decisão de pessoa.
 - **Prova:** `simulated` (`backend/tests/test_excecao_de_politica.py`). `not_run`: a exceção do 31.26, que a orquestradora
   cria depois do deploy 32.
+
 ## Adendo v1.31 (04/10/2026; número da orquestradora; item 28.31 F2a) — o pedido guarda quem o criou, e o aviso diz se é do dono ou de um lote
 
 Migração 106 (`pedidos.criado_por_tipo`, `pedidos.lote`), decididas uma vez, na criação (`POST /api/pedidos`), nesta
@@ -5827,19 +5818,19 @@ texto ainda por escrever (briefing) fica para a execução: aprovar no plano exi
 - **`Approval`** (lista de aprovações, eventos) ganha `origem`, `expires_at` e `plan_version`.
 - **Prova:** `simulated` (`backend/tests/test_porta_do_plano.py`, `backend/tests/test_chave_da_aprovacao.py`). `not_run`:
   o painel (fatia seguinte) e qualquer execução real.
-## Adendo v1.35 (04/10/2026; número da orquestradora; item 28.30) — comentário do dono no Trello vira confirmação no Telegram; o login recusa o prefixo dos canais
 
-- **`POST /api/login`:** o `operator` que começa com `trello:` ou `telegram:` (sem diferença de caixa, espaços ignorados) é
-  recusado como nome inválido, a mesma resposta do nome curto ou com caractere de controle. Esse é o operador das conversas
-  dos canais, e `trello:<membro_dono>` é dono na criação do pedido (Adendo v1.31).
-- **Aviso novo do canal de fora, tipo `trello.comentario`:** o comentário do dono num cartão do quadro sem aviso da
-  Central vai à orquestradora (`canal_entradas.estado='orquestradora'`, `previa.repasse='comentario'`), recebe resposta
-  no cartão e gera um pedido de confirmação no Telegram dele. A chave é `comentario:<action>:<card>`, e o aviso nunca é
-  agrupado. O nome do cartão e o texto só vão se passarem inteiros pelos filtros do 28.31.
-- **Repasses novos:** o sim e o não do dono, em reply àquele aviso, ficam com a orquestradora (`previa.repasse` =
-  `comentario_sim` ou `comentario_nao`). Nada se executa e nada se aprova por eles.
-- **Prova:** `simulated` (`backend/tests/test_canais_comentario_do_dono.py`). `not_run`: comentário real num cartão de
-  teste.
+## Adendo v1.33 (04/10/2026; número da orquestradora; item 31.50) — `vence_em` e o lembrete antes do vencimento
+
+- `RunSummary.vence_em`, `Objective.vence_em` e o campo `vence_em` de cada item de `GET /api/approvals` (pendentes): o
+  instante ISO em que o item vence pelo sistema. O cálculo é o mais tardio entre a entrada na espera e a marca de quando
+  o vencimento foi ligado (`vencimento_ligado_desde`), mais `execucao.pergunta_vence_h`. É `null` fora da espera
+  (`needs_input`; objetivo `waiting_user` de execução terminada; aprovação `pending`) e com o vencimento desligado.
+  A aprovação vence junto com o objetivo que bloqueia. Campo novo e opcional: cliente antigo o ignora.
+- As listas (`GET /api/runs` e afins) leem as entradas em `needs_input` numa consulta só, para todas as execuções.
+- Evento novo `pendencia.vence_em` (tabela de eventos acima). Sai uma vez por ESPERA, 2 h antes de vencer, com a chave
+  `vencimento:lembrete:<id>:<entrada na espera>`: o objetivo retomado que volta a esperar ganha outro lembrete. O
+  texto ao dono é do montador dos avisos (28.31).
+
 ## Adendo v1.34 (04/10/2026; número da orquestradora; item 30.66) — a decisão da plataforma com o nome do catálogo
 
 `GET /api/aprendizado/aprovacao-automatica` (adendo v1.24): cada linha de `decididos_pela_plataforma` ganha três campos,
@@ -5854,14 +5845,29 @@ lidos do item de AGORA, em lote (os mesmos `capabilities`/`nomes_das_capabilitie
 O item que saiu do livro vem com os três nulos, como `titulo`. Campos novos e opcionais: quem não os lê não muda. O painel
 titula a decisão como as outras telas (`tituloDoItem`: "Enviar a mensagem (v1)"), e sem eles cai no título de antes.
 Prova `simulated`: `backend/tests/test_aprovacao_automatica.py` e `frontend/src/features/aprendizado/DecididoPelaPlataforma.test.tsx`.
-## Adendo v1.33 (04/10/2026; número da orquestradora; item 31.50) — `vence_em` e o lembrete antes do vencimento
 
-- `RunSummary.vence_em`, `Objective.vence_em` e o campo `vence_em` de cada item de `GET /api/approvals` (pendentes): o
-  instante ISO em que o item vence pelo sistema. O cálculo é o mais tardio entre a entrada na espera e a marca de quando
-  o vencimento foi ligado (`vencimento_ligado_desde`), mais `execucao.pergunta_vence_h`. É `null` fora da espera
-  (`needs_input`; objetivo `waiting_user` de execução terminada; aprovação `pending`) e com o vencimento desligado.
-  A aprovação vence junto com o objetivo que bloqueia. Campo novo e opcional: cliente antigo o ignora.
-- As listas (`GET /api/runs` e afins) leem as entradas em `needs_input` numa consulta só, para todas as execuções.
-- Evento novo `pendencia.vence_em` (tabela de eventos acima). Sai uma vez por ESPERA, 2 h antes de vencer, com a chave
-  `vencimento:lembrete:<id>:<entrada na espera>`: o objetivo retomado que volta a esperar ganha outro lembrete. O
-  texto ao dono é do montador dos avisos (28.31).
+## Adendo v1.35 (04/10/2026; número da orquestradora; item 28.30) — comentário do dono no Trello vira confirmação no Telegram; o login recusa o prefixo dos canais
+
+- **`POST /api/login`:** o `operator` que começa com `trello:` ou `telegram:` (sem diferença de caixa, espaços ignorados) é
+  recusado como nome inválido, a mesma resposta do nome curto ou com caractere de controle. Esse é o operador das conversas
+  dos canais, e `trello:<membro_dono>` é dono na criação do pedido (Adendo v1.31).
+- **Aviso novo do canal de fora, tipo `trello.comentario`:** o comentário do dono num cartão do quadro sem aviso da
+  Central vai à orquestradora (`canal_entradas.estado='orquestradora'`, `previa.repasse='comentario'`), recebe resposta
+  no cartão e gera um pedido de confirmação no Telegram dele. A chave é `comentario:<action>:<card>`, e o aviso nunca é
+  agrupado. O nome do cartão e o texto só vão se passarem inteiros pelos filtros do 28.31.
+- **Repasses novos:** o sim e o não do dono, em reply àquele aviso, ficam com a orquestradora (`previa.repasse` =
+  `comentario_sim` ou `comentario_nao`). Nada se executa e nada se aprova por eles.
+- **Prova:** `simulated` (`backend/tests/test_canais_comentario_do_dono.py`). `not_run`: comentário real num cartão de
+  teste.
+
+## Adendo v1.37 (04/10/2026; número da orquestradora; item 28.24, F5) — a lista diz o que dá para ler, e o cartão recusa o tipo
+
+Sem migração. Muda a v1.26 e a rota `POST .../trello`.
+- `GET /api/canais/anexos`: cada item ganha três chaves fixas.
+  - `pode_ler`: a imagem guardada que o dono mandou, a única que `POST .../ler` aceita.
+  - `descricao`: a descrição que a IA já gravou, ou `null`.
+  - `lida_em`: ISO, ou `null`.
+
+  `pode_ir_ao_cartao` passa a exigir também um mime da lista `avisos.entrada.anexos.tipos`.
+- `POST /api/canais/anexos/{id}/trello`: o anexo de tipo que a entrada não aceita, ou maior que o teto, é recusado com **422**
+  `tipo_nao_aceito` antes de qualquer chamada ao Trello. O arquivo fora do armazém segue **409** `anexo_sem_arquivo`.
