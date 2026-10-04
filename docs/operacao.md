@@ -393,7 +393,8 @@ fora às 22:49:15Z, sem tentativa de login: `Strict-Transport-Security: max-age=
 seguidas dá 405, 429 e 429, e 13 s depois volta a 405; as outras rotas não são afetadas. A tranca de login do app
 passou a ser por cliente no 29.56 (antes era global): a regra mantém um IP abaixo das 8 tentativas por minuto, e os
 chutes de um IP já não trancam os outros. Depois de errar a senha, espere 10 s para tentar de novo. O selo "agente
-defasado" do notebook depois desse reinício é falso (item 29.59).
+defasado" do notebook depois desse reinício era falso; desde o 29.59 o central compara o código do pacote do
+agente, e commit só de docs não acende o selo.
 
 **Recuo.** Tire `dev.nvit.com.br` de `server.public_hosts` e reinicie `farm-central`: tudo volta a 403, painel incluído.
 `python scripts/portal-config.py recuar` tira exatamente as sete linhas que o `ligar` pôs (com cópia de segurança; ele

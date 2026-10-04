@@ -39,14 +39,20 @@ import app.workers.protocol as protocolo_antigo
 #: ilegível vira "sem medida nova"); (3) `EnvioDeMidia` intocado; (4) sem subir versão nem feature: central antigo
 #: ignora (`extra="ignore"`) e segue com `clock_offset_s`; (5) não é mudança de forma do pydantic. Eram
 #: `074980b4f9d7d9df` (total) e `a4445ce3107bff89` (heartbeat).
-ESQUEMA_CONGELADO = "f93b70d6c866d979"
+#:
+#: 29.59 (04/10/2026): `hello` mudou de propósito — ganhou `agent_code`, a impressão do código do pacote do agente,
+#: que o central compara no lugar da versão para não acender `agente defasado` por commit só de docs. Checklist: (1)
+#: aditivo, padrão `None`; agente antigo não manda e o central cai na comparação de versão; (2) nenhuma restrição
+#: afrouxada; (3) `EnvioDeMidia` intocado; (4) sem subir versão nem feature: central antigo ignora (`extra="ignore"`);
+#: (5) não é mudança de forma do pydantic. Eram `f93b70d6c866d979` (total) e `e83b5bba0247b782` (hello).
+ESQUEMA_CONGELADO = "d840bd78f67ef1a8"
 HASH_POR_TIPO = {
     "EnvioDeMidia": "fdb1207c5b4f42e4",
     "ack": "33e561638726df19",
     "cancel": "4b3f1e8c98e90ec3",
     "dispatch": "51d36366c2fd424c",
     "heartbeat": "eb41cf4a6d0337ca",
-    "hello": "e83b5bba0247b782",
+    "hello": "4fe30e1ea9192cc9",
     "limits": "6d4b495c5750b4bc",
     "observe_image": "26eb5e83e5a347f4",
     "observe_result": "34513cb6edfbd781",

@@ -161,3 +161,50 @@ def test_a_copia_pelo_manifesto_importa_sem_o_backend(tmp_path: Path, com_pil: b
     assert isinstance(features, list)
     assert ("observe_local" in features) is com_pil, features
     assert "boot_reservations" in features
+
+
+def test_a_impressao_do_codigo_e_a_mesma_no_checkout_e_na_copia_do_instalador(tmp_path: Path) -> None:
+    """Item 29.59: o central calcula a impressão pelo manifesto; o agente, varrendo o `app/` que o instalador montou.
+    Se os dois conjuntos de arquivos não coincidirem, todo worker real aparece defasado — e nenhum teste de unidade
+    do registro veria. O que o instalador e o Python acrescentam na cópia (selo de build, cache) fica de fora."""
+    from app.version import codigo_do_agente, entradas_do_manifesto
+
+    assert entradas_do_manifesto(MANIFESTO) == ler_manifesto()
+    copia = tmp_path / "app"
+    copiar_pelo_manifesto(copia, ler_manifesto())
+    (copia / "BUILD_VERSION").write_text("0.1.0+outro00\n", encoding="ascii")
+    (copia / "worker" / "__pycache__").mkdir(exist_ok=True)
+    (copia / "worker" / "__pycache__" / "agent.cpython-312.pyc").write_bytes(b"\x00cache")
+    (copia / "solto.pyc").write_bytes(b"\x00cache")
+    for sobra in ("agent.py.orig", ".agent.py.swp", "agent.py~"):     # sobras de merge e de editor
+        (copia / "worker" / sobra).write_text("x\n", encoding="utf-8")
+
+    no_checkout = codigo_do_agente.__wrapped__(APP)
+    assert no_checkout is not None
+    assert codigo_do_agente.__wrapped__(copia) == no_checkout
+
+    # Fim de linha do Windows no checkout (autocrlf) não é outro código.
+    alvo = copia / "worker" / "agent.py"
+    alvo.write_bytes(alvo.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+    assert codigo_do_agente.__wrapped__(copia) == no_checkout
+
+    # Uma linha a mais no código do agente é outro código.
+    alvo.write_bytes(alvo.read_bytes() + b"\n# mudou\n")
+    assert codigo_do_agente.__wrapped__(copia) != no_checkout
+
+
+def test_codigo_so_do_central_nao_muda_a_impressao_do_agente(tmp_path: Path) -> None:
+    """O que não vai para o worker (docs, plano, módulos só do central) não pode mudar a impressão: é exatamente o
+    commit que acendia o selo sem motivo."""
+    from app.version import codigo_do_agente
+
+    raiz = tmp_path / "backend"
+    copiar_pelo_manifesto(raiz / "app", ler_manifesto())
+    shutil.copy2(MANIFESTO, raiz / "worker-manifest.txt")
+    antes = codigo_do_agente.__wrapped__(raiz / "app")
+    (raiz / "app" / "api.py").write_text("# só do central\n", encoding="utf-8")
+    (tmp_path / "CHANGELOG.md").write_text("docs\n", encoding="utf-8")
+    assert codigo_do_agente.__wrapped__(raiz / "app") == antes
+    (raiz / "app" / "version.py").write_text((raiz / "app" / "version.py").read_text(encoding="utf-8") + "\n#\n",
+                                             encoding="utf-8")
+    assert codigo_do_agente.__wrapped__(raiz / "app") != antes

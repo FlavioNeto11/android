@@ -140,7 +140,11 @@ sudo bash scripts/worker-install.sh                            # atualização
 
 O instalador grava `app/BUILD_VERSION` com a versão derivada do commit da árvore de origem (`0.1.0+<sha7>`). É
 o que faz o central conseguir dizer **agente defasado** no cartão do worker: antes, a cópia em `C:\farm\agent`
-não era checkout e as duas pontas diziam `0.1.0` para sempre, dessem elas o mesmo código ou não.
+não era checkout e as duas pontas diziam `0.1.0` para sempre, dessem elas o mesmo código ou não. Desde o 29.59 a
+decisão é pelo **código**, não pela versão: o agente manda no `hello` a impressão do pacote (`agent_code`, sha256 dos
+arquivos do manifesto, sem `BUILD_VERSION` nem cache e com `\r\n` normalizado), o central calcula a mesma coisa
+pelo manifesto e compara as duas. Um commit só de docs, de plano ou de código só do central muda a versão e não
+acende o selo. Agente anterior ao 29.59 não manda a impressão e segue pela comparação de versão.
 
 Atualizar é rodar o instalador de novo: ele para o serviço, troca os arquivos e o religa. Desde 27/09 ele monta
 o pacote numa pasta ao lado (`app.novo`) e troca `app/` inteiro: o que saiu do manifesto sai da máquina. Origem

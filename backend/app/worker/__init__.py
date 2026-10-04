@@ -9,6 +9,7 @@ continua central; o worker nunca recebe senha de perfil.
 """
 
 from ..version import agent_version as _agent_version
+from ..version import codigo_do_agente as _codigo_do_agente
 
 #: `0.1.0+<sha7>`: a versão semântica MAIS o commit que este pacote carrega. Era a constante `"0.1.0"`, e com ela
 #: o central não tinha como distinguir um agente de hoje de um de três semanas atrás — os dois diziam a mesma
@@ -16,3 +17,7 @@ from ..version import agent_version as _agent_version
 #: worker não é um checkout) ou do `.git` da árvore. Ver `workers/registry.py`, que compara com a do central e
 #: marca `agente defasado` na Infraestrutura.
 AGENT_VERSION = _agent_version()
+
+#: Impressão do código deste pacote (sem `BUILD_VERSION` nem cache): é ela, e não a versão, que o central compara
+#: para dizer `agente defasado` — um commit só de docs muda a versão e não o código (item 29.59).
+AGENT_CODE = _codigo_do_agente()

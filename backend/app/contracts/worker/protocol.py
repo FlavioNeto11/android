@@ -143,6 +143,10 @@ class Hello(BaseModel):
     worker_id: str = Field(min_length=3, max_length=64, pattern=r"^[A-Za-z0-9._-]+$")
     name: str = Field(min_length=1, max_length=120)
     agent_version: str = Field(max_length=40)
+    #: Impressão do CÓDIGO do pacote do agente (`app/version.py: codigo_do_agente`). A versão muda a cada commit,
+    #: inclusive os só de docs, e acendia `agente defasado` com o mesmo código dos dois lados (item 29.59); o
+    #: central compara esta impressão quando as duas pontas a têm. Opcional: agente antigo não manda.
+    agent_code: str | None = Field(default=None, max_length=64)
     os: str = Field(max_length=40)                  # windows | linux | darwin
     os_version: str | None = Field(default=None, max_length=120)
     #: Aceleração de virtualização MEDIDA na máquina do worker: `kvm`, `kvm-inacessivel`, `kvm-ausente` no Linux;

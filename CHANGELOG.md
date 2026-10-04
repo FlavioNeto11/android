@@ -19,6 +19,23 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.59: o selo "agente defasado" compara o código do agente, não o commit (branch fix/29-59-agente-defasado-por-codigo, sem migração)
+
+- `version.codigo_do_agente`: impressão (sha256, 16 hex) dos arquivos do pacote do agente. No checkout, pelas entradas
+  de `backend/worker-manifest.txt`; na máquina do worker, varrendo o `app/` que o instalador montou com elas. Ficam
+  fora `BUILD_VERSION`, `__pycache__` e `.pyc`; `\r\n` vira `\n` antes do hash.
+- Fio: `Hello.agent_code` (opcional, aditivo; esquema congelado atualizado com o checklist). O agente manda
+  `AGENT_CODE`; o registro guarda em memória por worker e `_defasado` compara as impressões quando as duas pontas as
+  têm. Agente antigo, sem a impressão, segue pela comparação de versão. O aviso no log do `hello` passa a dizer que o
+  código difere.
+- Motivo: achado 8 da validação do deploy 14. Todo reinício do central depois de um commit só de docs acendia o selo
+  com o mesmo código dos dois lados.
+- Prova `simulated`: `test_pacote_do_agente.py` (a impressão do checkout é a da cópia do instalador com selo de build,
+  cache e CRLF; código só do central não a muda; uma linha no agente muda) e `test_workers.py` (mesmo código com
+  versão diferente não é defasado; código diferente é; agente que deixa de mandar volta à regra da versão).
+  657 passed nos testes que tocam o worker e o contrato. Real `not_run`: o agente do notebook aparece defasado até
+  ser atualizado com o código novo, o que é correto, porque `version.py` está no pacote.
+
 ## 2026-10-04 — Suíte 18 na main e deploy 18 no central (f1651ec8; sem migração; Trello na etapa 3)
 
 - **Integrado e implantado** (FF 02:05Z; deploy 02:06:05–02:06:41Z): #186 (29.63, esquema-modelo no harness de PG),

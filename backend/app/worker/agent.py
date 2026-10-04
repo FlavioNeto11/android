@@ -23,7 +23,7 @@ from ..contracts.worker.protocol import (FEATURE_OBSERVACAO_LOCAL, FEATURE_RESER
 from ..contracts.worker.verbos import sem_hibernacao
 from ..devices.avd import capacidades_do_avd
 from ..util import now, now_iso, parse_iso
-from . import AGENT_VERSION
+from . import AGENT_CODE, AGENT_VERSION
 from .diario import DiarioDoAgente
 from .executor import EFEITO_INICIADO, VERBS, VerbFailed, VerbRefused, VerbUncertain, WorkerExecutor
 from .observacao import FEATURES_DE_OBSERVACAO, ObservacaoNaOrigem
@@ -177,7 +177,7 @@ class Agent:
             log.warning("sem aceleração utilizável nesta máquina (%s): o emulador não vai subir em tempo útil. "
                         "Confira /dev/kvm e se a conta que roda o agente está no grupo 'kvm'.", aceleracao)
         return Hello(worker_id=self.settings.worker_id, name=self.settings.name, agent_version=AGENT_VERSION,
-                     os=sistema, os_version=versao, accel=aceleracao, appium_mode=self.settings.appium,
+                     agent_code=AGENT_CODE, os=sistema, os_version=versao, accel=aceleracao, appium_mode=self.settings.appium,
                      appium_url=self.settings.appium_url,
                      # Declara o do ARQUIVO, não o efetivo: o central guarda a decisão do dono à parte e precisa
                      # saber para onde "voltar ao da máquina" retorna.
