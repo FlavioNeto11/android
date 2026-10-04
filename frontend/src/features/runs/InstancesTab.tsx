@@ -31,6 +31,7 @@ import {
 import { SideEffectFlag } from './PlanTab';
 import { type Confirmacao, resolveObjective } from './runActions';
 import styles from './Runs.module.css';
+import { fonteDoEfeitoRepetido, fraseDoEfeitoRepetido } from './resumo';
 
 /**
  * ONDE o objetivo rodou, do jeito que ficou GRAVADO — não do jeito que o parque está agora (#176).
@@ -406,6 +407,16 @@ function StepDetail({ detail, step: s, attempts }: { detail: RunDetail; step: St
               {s.result.verified ? 'Verificado' : 'Não verificado'}
               {s.result.delivery_level ? ` · ${metaOf(DELIVERY_LEVEL, s.result.delivery_level).label}` : ''}
               {s.result.evidence_text ? <> — “{s.result.evidence_text}”</> : null}
+            </dd>
+          </>
+        ) : null}
+        {/* 29.60: o efeito que saiu mais de uma vez (29.58). É o motivo do "incerto", e o número é o que a pessoa
+            precisa para decidir se apaga as cópias no app. */}
+        {s.result?.efeito_repetido ? (
+          <>
+            <dt className={styles.noteKey}>Efeito repetido</dt>
+            <dd className={styles.noteVal}>
+              {fraseDoEfeitoRepetido(s.result.efeito_repetido.copias)} ({fonteDoEfeitoRepetido(s.result.efeito_repetido.fonte)})
             </dd>
           </>
         ) : null}

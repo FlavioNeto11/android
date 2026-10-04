@@ -9,7 +9,8 @@ import { apiAprendizado } from '../aprendizado/api';
 import { useCarga } from '../aprendizado/useCarga';
 import { vereditoDoPedido } from '../aprendizado/validacao';
 import {
-  objetivosComSucesso, oQuePrecisaDaPessoa, pedidoEhLongo, resultadoDaExecucao, type AbaDaExecucao,
+  type AbaDaExecucao, pedidoEhLongo, fonteDoEfeitoRepetido, fraseDoEfeitoRepetido,
+  objetivosComSucesso, oQuePrecisaDaPessoa, resultadoDaExecucao,
 } from './resumo';
 import styles from './ResumoDaExecucao.module.css';
 import { SeloDeOrigem, ehDoSistema, origemDaExecucao } from './SeloDeProva';
@@ -49,8 +50,15 @@ function VereditoDaValidacao({ runId }: { runId: string }) {
   return <span data-veredito={veredito}>Veredito da validação: <strong>{veredito}</strong></span>;
 }
 
+/** 29.60: uma etapa com efeito repetido, já pronta para o resumo. */
+export interface EfeitoRepetidoNoResumo {
+  chave: string; titulo: string; aparelho: string; copias: number; fonte: 'verificador' | 'acoes';
+}
+
 interface Props {
   run: RunSummary;
+  /** 29.60: as etapas cujo efeito apareceu mais de uma vez (29.58). Vazio = a linha não aparece. */
+  repetidos?: readonly EfeitoRepetidoNoResumo[];
   /** Perguntas da IA que esperam resposta (execução `needs_input`). */
   perguntas: number;
   /** 29.52: o tipo da credencial que a pergunta pede; ela não se responde aqui. */
@@ -67,7 +75,7 @@ interface Props {
  * frase e o que depende da pessoa. A terceira só existe quando há algo a decidir.
  */
 export function ResumoDaExecucao({
-  run, perguntas, sensivel = null, bloqueados, textosParaAprovar, terminal, irParaAba,
+  run, repetidos = [], perguntas, sensivel = null, bloqueados, textosParaAprovar, terminal, irParaAba,
 }: Props) {
   const now = useNow();
   const idPedido = useId();
@@ -131,6 +139,21 @@ export function ResumoDaExecucao({
           ) : null}
         </dd>
       </div>
+      {repetidos.length > 0 ? (
+        <div className={cx(styles.linha, styles.linhaAtencao)}>
+          <dt className={styles.rotulo}>Efeito repetido</dt>
+          <dd className={styles.valor}>
+            <ul className={styles.precisa}>
+              {repetidos.map((r) => (
+                <li key={r.chave}>
+                  {r.titulo} no {r.aparelho}: {fraseDoEfeitoRepetido(r.copias)} ({fonteDoEfeitoRepetido(r.fonte)}).
+                  Confira no app e apague as cópias, se for o caso.
+                </li>
+              ))}
+            </ul>
+          </dd>
+        </div>
+      ) : null}
       {precisa.length > 0 ? (
         <div className={cx(styles.linha, styles.linhaAtencao)}>
           <dt className={styles.rotulo}>Precisa de você</dt>

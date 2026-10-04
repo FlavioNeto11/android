@@ -64,6 +64,27 @@ const CONCLUIDA = {
 };
 
 describe('resumo no topo do detalhe', () => {
+  it('29.60: o efeito repetido aparece no resumo com o número de cópias e quem contou, sem código cru', async () => {
+    const run = preparar({ ...CONCLUIDA, status: 'completed_with_issues' as const });
+    const detalhe = makeRunDetail({ ...run });
+    detalhe.steps = detalhe.steps.map((s) => (s.key === 'send' && s.instance_id === 'android-01'
+      ? { ...s, title: 'Enviar a mensagem', status: 'uncertain' as const,
+          result: { verified: false, evidence_text: null, efeito_repetido: { copias: 3, fonte: 'verificador' as const } } }
+      : s));
+    useAppStore.setState({ detail: { runId: RUN_ID, status: 'ready', error: null, eventsStatus: 'ready', data: detalhe, events: [] } });
+    await act(async () => root.render(<RunView />));
+    const resumo = container.querySelector('[aria-label="Resumo da execução"]') as HTMLElement;
+    expect(text(resumo)).toContain('Efeito repetido');
+    expect(text(resumo)).toContain('Enviar a mensagem no android-01: apareceu 3 vezes (contado na tela pelo verificador)');
+    expect(text(resumo)).not.toContain('efeito_repetido');
+
+    // Sem repetição, a linha não existe.
+    await remontar();
+    preparar(CONCLUIDA);
+    await act(async () => root.render(<RunView />));
+    expect(text(container.querySelector('[aria-label="Resumo da execução"]') as HTMLElement)).not.toContain('Efeito repetido');
+  });
+
   it('concluída: pedido, resultado com a duração e a legenda de sucesso comprovado por foco', async () => {
     preparar({ ...CONCLUIDA, command: LONGO });
     await act(async () => root.render(<RunView />));
