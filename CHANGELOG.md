@@ -31,6 +31,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   C-04 como "não adotado".
 - Prova `simulated`: `backend/tests/test_canais_leitura_anexo.py` (17), `test_canais_script_status.py` (3), e os testes de
   anexos, conversa, entrada, provider e origem sem regressão. A chamada paga real ao provedor é `not_run` (a Canais valida depois do deploy).
+- Seis achados baixos da revisão independente do 28.24, um commit por achado: captura pontual com interesse maior que a espera
+  e chave por pedido (7); erro ao guardar o rastro depois do envio não vira "não enviei" (8); a faxina reconfere o uso antes
+  de apagar o arquivo e `guardar` regrava o que a faxina tirou (9; o "sem continue" no `CaminhoForaDoArmazem` é de propósito);
+  `AnexoJaResolvido` e `_armazem()` no lugar de `assert` de produção (10); `conteudo_de` confere o sha256 contra o nome (11);
+  download do anexo com prazo total de 90 s (12; o laço de eventos nunca esteve bloqueado). Prova: `simulated`, em
+  `test_canais_captura.py`, `test_canais_anexos.py`.
+
 
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
