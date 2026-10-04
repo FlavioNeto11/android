@@ -18,6 +18,8 @@ from ..db import Row, dumps, loads
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter
 from ..metricas import metricas
 from ..modules.learning.domain.falhas import FailureKind
+from ..modules.learning.domain.prova import rastro_da_amostra
+from ..modules.learning.domain.validacao import tamanho_da_amostra
 from ..models import (ActionStatus, AttemptStatus, ControlOwner, DeliveryLevel, InstanceCurrent, InstanceState,
                       ObjectiveStatus, Plan, PlanStep, RunStatus, StepStatus)
 from ..planning.capabilities import capability_of
@@ -1856,18 +1858,30 @@ class Scheduler:
         return loads(self.repo.objective_row(objective_id)["collected"], {}) or {}
 
     def _expand_for_each(self, obj: Any, step: Any, items: list[str]) -> None:
-        """A coleta terminou: as etapas-modelo `for_each` viram uma cópia por item (nova versão do plano)."""
+        """A coleta terminou: as etapas-modelo `for_each` viram uma cópia por item (nova versão do plano).
+
+        30.48: na execução de PROVA de fluxo, só os N primeiros itens na ordem da tela (`tamanho_da_amostra`, o que cabe
+        no teto da prova); o rastro diz a amostra, ou que a prova é inteira quando a lista tem N itens ou menos. Os itens
+        que ficam de fora nem viram etapa: não contam como falha nem como sucesso. Fora da prova, a lista inteira."""
         repo = self.repo
+        run = repo.run_row(obj["run_id"])
+        plan = Plan.model_validate_json(run["plan"])
+        rastro = ""
+        if run["prova_fluxo_id"]:
+            n = tamanho_da_amostra(sum(1 for s in plan.steps if not s.for_each),
+                                   sum(1 for s in plan.steps if s.for_each))
+            if n is not None:
+                rastro = f" ({rastro_da_amostra(min(n, len(items)), len(items))})"
+                items = items[:n]
         collected = {**self._collected(obj["id"]), step.key: items}
         repo.db.execute("UPDATE objectives SET collected=? WHERE id=?", (dumps(collected), obj["id"]))
-        plan = Plan.model_validate_json(repo.run_row(obj["run_id"])["plan"])
         done = {r["key"] for r in repo.db.query("SELECT key FROM steps WHERE objective_id=? AND status='succeeded'",
                                                 (obj["id"],))}
         steps = [s for s in expand(plan.steps, collected) if s.key not in done]
         if steps:
             # O começo "Expandido para " é lido pelo veredito da prova de fluxo (30.42, `domain.prova.PREFIXO_DA_EXPANSAO`):
             # a versão que só expande não é replanejamento.
-            repo.revise_plan(obj["id"], f"Expandido para {len(items)} item(ns) lidos em '{step.title}'", steps)
+            repo.revise_plan(obj["id"], f"Expandido para {len(items)} item(ns) lidos em '{step.title}'{rastro}", steps)
 
     def _skip_failed_item(self, obj: Any, step: Any, detail: str) -> bool:
         """Etapa de UM item falhou de vez (sem efeito disparado): pula só o resto DESTE item; os demais seguem."""

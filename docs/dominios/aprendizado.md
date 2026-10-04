@@ -1537,6 +1537,28 @@ sem migração:
 `not_run` até o deploy que o levar. O esperado é que a próxima prova do P4 grave em `learning_validations.teto_usd` o
 proporcional ao plano dela.
 
+## A prova de fluxo por amostra (30.48)
+
+O `for_each` de tamanho desconhecido nunca cabia no teto do 30.41 e o fluxo nunca se validava por pedido: o
+lv-5cf7389f13e4e0f0 (30.47, 04/10) fechou `plano_acima_do_teto`. Agora a PROVA de fluxo roda uma amostra:
+
+- **N** é o maior número de itens que cabe no máximo da prova (`maximo_de_etapas_da_prova()`, 17 etapas), entre
+  `AMOSTRA_MINIMA` (2) e `AMOSTRA_MAXIMA` (3): `tamanho_da_amostra(fixas, por_item)` em `domain/validacao.py`. Sem
+  laço, ou sem caber nem 2 itens, é `None` e o pedido fecha `plano_acima_do_teto` como antes.
+- **Os N primeiros, na ordem da tela.** Não há sorteio: o `Scheduler._expand_for_each`, só quando a execução tem
+  `prova_fluxo_id`, corta a lista lida em N e grava no motivo da versão do plano o rastro (`rastro_da_amostra`):
+  "amostra de N de M itens" ou "prova inteira, M de M itens". Os itens de fora nem viram etapa. A execução comum segue
+  com a lista inteira.
+- **A estimativa** do teto (`FontesDaValidacao.etapas_da_execucao`) usa a amostra só na prova de FLUXO:
+  `fixas + Σ modelos × min(N, tamanho da origem)`. O tamanho desconhecido deixa de barrar. A receita não muda.
+- **O rótulo.** A evidência da prova com amostra termina em "provado em amostra de N (de M itens)"
+  (`ligar_nativos._prova`, lido do rastro). Ela conta como qualquer evidência a favor. O dossiê do curador leva
+  `amostra: "N de M"` no item e a explicação em `amostra_e`, só quando houve amostra.
+
+**Prova:** `simulated` em `backend/tests/test_learning_prova_amostra.py` (Harness com 5 contatos: a prova envia 3, a
+execução comum 5) e `test_learning_prova_teto.py` (os casos do 30.41 reescritos). `real`: `not_run` até o deploy; o
+esperado é o lv-5cf7389f13e4e0f0 de novo despachar e provar 3 de N contatos.
+
 ## A validação com rosto no item (30.43)
 
 Os achados 5 e 6 da validação do deploy 14 e o P4 de 03/10 (o 6f459c). Desenho aprovado pela orquestradora às 23:32Z,

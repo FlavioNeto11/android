@@ -56,6 +56,10 @@ FORMA_DA_EVIDENCIA = ("posicao `forma`: a execução fez o caminho do item e só
 INVALIDA_DA_EVIDENCIA = ("posicao `invalida`: a execução de prova não vale como evidência do item (efeito repetido, ponto "
                          "de partida que falhou, ou o ator que não agiu); não conta contra nem a favor, e o `for` ou "
                          "`against` da mesma execução que ela corrigiu não vem na lista")
+#: 30.48: só quando alguma evidência da lista é de prova em amostra.
+AMOSTRA_DA_EVIDENCIA = ("`amostra` \"N de M\": provado em amostra de N — a prova rodou só os N primeiros itens do laço, "
+                        "na ordem da tela; é uma evidência como outra, sobre a etapa do laço, e não diz que a lista "
+                        "inteira foi feita")
 #: 30.39: só no dossiê da receita. O contador acumulado não é evidência citável; a lista datada é.
 CONTADORES_DA_RECEITA = ("`conteudo.uso` (`replay_ok`, `replay_fail`) são contadores acumulados SEM data, aparelho, versão "
                          "do app nem marca de real ou simulado; incluem o histórico de antes da evidência datada e também "
@@ -120,6 +124,7 @@ class Evidencia:
     aparelho: str | None = None
     app_version: str | None = None
     simulated: bool = False
+    amostra: str | None = None              # 30.48: "N de M" na prova que rodou só os N primeiros itens do `for_each`
 
     @property
     def id_citavel(self) -> str:
@@ -331,6 +336,13 @@ class Dossie:
             evidencias["forma_e"] = FORMA_DA_EVIDENCIA
         if any(e.posicao == "invalida" for e in self.evidencias):
             evidencias["invalida_e"] = INVALIDA_DA_EVIDENCIA
+        lista = evidencias["lista"]
+        assert isinstance(lista, list)
+        for linha, e in zip(lista, self.evidencias, strict=True):
+            if e.amostra is not None and isinstance(linha, dict):
+                linha["amostra"] = e.amostra
+        if any(e.amostra is not None for e in self.evidencias):
+            evidencias["amostra_e"] = AMOSTRA_DA_EVIDENCIA
         if i.kind == "receita":
             evidencias["contadores_e"] = CONTADORES_DA_RECEITA
             if (self.conteudo.get("sombra") or {}).get("shadow_total") == 0:

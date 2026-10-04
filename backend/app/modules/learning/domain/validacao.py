@@ -373,6 +373,27 @@ def limite_de_provas_atingido(provas: Iterable[ProvaAnterior], marca_atual: str 
     return n >= MAXIMO_DE_PROVAS
 
 
+#: 30.48: a prova de fluxo com `for_each` roda uma AMOSTRA, os N primeiros itens na ordem da tela (sem sorteio), com N
+#: o maior que cabe no teto máximo da prova, entre o mínimo e o máximo daqui. Sem isso, o `for_each` de tamanho
+#: desconhecido nunca cabia no teto e o fluxo nunca se validava por pedido (o lv-5cf7389f13e4e0f0, 04/10).
+AMOSTRA_MINIMA = 2
+AMOSTRA_MAXIMA = 3
+
+
+def maximo_de_etapas_da_prova() -> int:
+    """30.48: o maior número de etapas cujo teto (`teto_da_prova`) ainda cabe no máximo (17 com 0,05 + 0,02 × e ≤ 0,40)."""
+    return int((TETO_DA_PROVA_MAXIMO_USD - TETO_DA_PROVA_PISO_USD) / TETO_DA_PROVA_POR_ETAPA_USD + 1e-9)
+
+
+def tamanho_da_amostra(fixas: int, por_item: int) -> int | None:
+    """30.48: quantos itens do `for_each` a prova roda (`fixas` etapas fora do laço, `por_item` etapas-modelo por item),
+    ou `None` quando nem o mínimo cabe (a prova não despacha) ou não há laço."""
+    if por_item <= 0:
+        return None
+    n = min(AMOSTRA_MAXIMA, (maximo_de_etapas_da_prova() - fixas) // por_item)
+    return n if n >= AMOSTRA_MINIMA else None
+
+
 def teto_da_prova(etapas: int | None) -> float | None:
     """30.41: o teto de IA de UMA execução de `etapas` etapas (`TETO_DA_PROVA_*`), ou `None` quando passa do máximo ou o
     tamanho não se sabe (`etapas is None`: o lado seguro, não despacha)."""
