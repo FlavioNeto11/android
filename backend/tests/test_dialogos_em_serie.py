@@ -214,3 +214,10 @@ async def test_fora_do_navegador_a_regra_nao_toca(harness: Harness, monkeypatch:
                                  sobra=lambda tree, area=None: "Aviso")
     assert _regras(harness, limpeza["id"]) == 0
     assert "A limpeza não fechou o diálogo do site" not in (limpeza["status_detail"] or "")
+
+def test_1d_o_veto_olha_text_e_desc_e_id() -> None:
+    """Releitura do #308: um "X" cujo content-desc é "Accept all" é aceite, mesmo com o rótulo "X" na lista."""
+    so_x = _no(7, "X", 640, 1010, 700, 1060)
+    assert botao_que_fecha(parse_hierarchy(_arvore(_PAGINA, _COOKIES, so_x))) is not None   # controle: o "X" fecha
+    botao = so_x.replace('content-desc=""', 'content-desc="Accept all cookies"')
+    assert botao_que_fecha(parse_hierarchy(_arvore(_PAGINA, _COOKIES, botao))) is None

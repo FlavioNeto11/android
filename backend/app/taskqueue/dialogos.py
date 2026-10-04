@@ -122,7 +122,8 @@ def botao_que_fecha(tree: UiTree, area: tuple[int, int, int, int] | None = None)
         if not e.clickable or not e.enabled or not any(_dentro(e, c) for c in caixas):
             continue
         rotulo, rid = _rotulo(e), e.resource_id or ""
-        if _NUNCA.search(rotulo) or _NUNCA.search(rid):
+        # Releitura do #308: o veto olha text, desc e id, os três; o rótulo usa só um deles (text "X", desc "Accept").
+        if any(_NUNCA.search(x) for x in (e.text or "", e.desc or "", rid)):
             continue
         normal = _normal(rotulo)
         if normal in _ROTULOS_QUE_FECHAM:
