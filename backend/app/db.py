@@ -60,8 +60,12 @@ _SEM_CHAVES = re.compile(r"^[ \t]*--[ \t]*@foreign_keys:off[ \t]*$", re.MULTILIN
 #: Abertura de texto entre cifrões do PostgreSQL: `$$` ou `$tag$`.
 _DOLAR = re.compile(r"\$[A-Za-z_]\w*\$|\$\$")
 
-#: Chave do lock de aplicação do PostgreSQL. Dois backends subindo juntos migrariam em paralelo sem isto.
+#: Chave do lock de aplicação do PostgreSQL. Dois backends subindo juntos migrariam em paralelo sem isto. É a 1ª das
+#: DUAS chaves de `pg_advisory_lock(int, int)`; a 2ª é o esquema corrente (29.62, `_trava_de_migracao`). Cabe em int4.
 _LOCK_MIGRACAO = 728_193_004
+#: A 2ª chave: o esquema em que a migração vai cair. `COALESCE`: com o `search_path` apontando para um esquema que
+#: não existe, `current_schema()` é NULL, e `pg_advisory_lock(k, NULL)` devolve NULL SEM travar (é estrita).
+_ESQUEMA_DA_TRAVA = "hashtext(COALESCE(current_schema(), ''))"
 
 
 #: Violação de unicidade, seja qual for o driver. Capturar `sqlite3.IntegrityError` direto amarraria a regra de
@@ -538,15 +542,26 @@ class Database:
 
     @contextmanager
     def _trava_de_migracao(self) -> Iterator[None]:
-        """No PostgreSQL, dois backends subindo juntos aplicariam a mesma migração em paralelo."""
+        """No PostgreSQL, dois backends subindo juntos aplicariam a mesma migração em paralelo.
+
+        29.62: a trava é POR ESQUEMA (a forma de duas chaves, com o esquema corrente na segunda). Em produção há um
+        esquema só, e dois backends no mesmo banco seguem em fila. Na suíte em PostgreSQL cada teste migra o PRÓPRIO
+        esquema (`tests/conftest.py::_dsn_de_teste`), e a chave única punha os workers do xdist em fila: 1006 testes
+        em 22 min com `-n 4`, mais devagar que em série.
+
+        A forma de uma chave (a de antes) e a de duas não se enxergam: um backend antigo e um novo subindo JUNTOS no
+        mesmo banco não se esperariam. O deploy para o antigo antes de subir o novo (`scripts/deploy.ps1`)."""
         if self.dialect != "postgres":
             yield
             return
-        self._conn.execute("SELECT pg_advisory_lock(%s)", (_LOCK_MIGRACAO,))
+        # A 2ª chave é lida UMA vez e o mesmo inteiro vai ao lock e ao unlock: recalculada no unlock, um `search_path`
+        # trocado no meio daria outra chave, e a trava ficaria presa até a sessão fechar.
+        esquema = int(self._conn.execute(f"SELECT {_ESQUEMA_DA_TRAVA} AS k").fetchone()["k"])
+        self._conn.execute("SELECT pg_advisory_lock(%s::int, %s::int)", (_LOCK_MIGRACAO, esquema))
         try:
             yield
         finally:
-            self._conn.execute("SELECT pg_advisory_unlock(%s)", (_LOCK_MIGRACAO,))
+            self._conn.execute("SELECT pg_advisory_unlock(%s::int, %s::int)", (_LOCK_MIGRACAO, esquema))
 
     def _impressao(self, script: str) -> str:
         """sha256 do script RENDERIZADO. Renderizado, e não o arquivo cru, porque é o texto renderizado que o banco

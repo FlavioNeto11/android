@@ -43,6 +43,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova real do 29.58 (r-20261004000108-fee44f, android-10, comando da 5f2de5): uma entrega só, uma ação de efeito,
   sem recusa falsa nem repetição marcada. A recusa em si segue `simulated`, porque a IA não errou desta vez.
 
+## 2026-10-03 — 29.62: a trava de migração do PostgreSQL por esquema (branch fix/29-62-trava-de-migracao-por-esquema)
+
+- `pg_advisory_lock` da migração passa à forma de duas chaves, com o esquema corrente na segunda. Na suíte em
+  PostgreSQL cada teste migra o próprio esquema e os workers do xdist não entram mais em fila (antes: 1006 testes em
+  22 min com `-n 4`). Em produção (um esquema) nada muda. Sem migração.
+- Teste: `backend/tests/test_trava_de_migracao_por_esquema.py` (só com `TEST_DATABASE_URL`).
+
 ## 2026-10-03 — 29.55: relatório de falha pendente do emulador não prende mais a subida (branch fix/29-55-crash-report)
 
 - Antes: um dump deixado pelo crashpad (`emu-crash-<versão>.db/reports/*.dmp`) fazia toda subida parar no diálogo de
