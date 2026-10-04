@@ -489,6 +489,43 @@ async def test_file_path_estranho_do_telegram_e_recusado_antes_de_montar_o_ender
     assert TOKEN not in e.value.motivo
 
 
+async def test_download_lento_que_chega_aos_poucos_tem_prazo_total_e_nao_prende_a_conversa(c: CenarioAnexos) -> None:
+    """Achado 12 da revisão: o timeout do httpx é por leitura; um arquivo gotejando segurava o leitor indefinidamente."""
+    import asyncio
+
+    class Gota(httpx.AsyncByteStream):
+        async def __aiter__(self):  # noqa: ANN204
+            while True:                                                   # cada pedaço vem antes do timeout por leitura
+                await asyncio.sleep(0.02)
+                yield b"A" * 10
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if "/file/" in req.url.path:
+            return httpx.Response(200, stream=Gota())
+        return httpx.Response(200, json={"ok": True, "result": {"file_id": "x", "file_path": "docs/x"}})
+
+    canal = CanalTelegram(TOKEN, str(CHAT), client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+                          prazo_download_s=0.3)
+    with pytest.raises(FalhaDeEnvio) as e:
+        await asyncio.wait_for(canal.baixar_anexo("x", 10_000_000), timeout=5)
+    assert "tempo esgotado" in e.value.motivo and TOKEN not in e.value.motivo
+
+
+async def test_download_nao_trava_o_laco_de_eventos(c: CenarioAnexos) -> None:
+    """Achado 12, 1ª parte, refutada: `baixar_anexo` é assíncrono (httpx.AsyncClient); outra tarefa anda durante o download."""
+    import asyncio
+    c.bot.arquivos["g"] = Corpo(pedacos=5)
+    batidas: list[int] = []
+
+    async def pulso() -> None:
+        for _ in range(5):
+            batidas.append(1)
+            await asyncio.sleep(0)
+
+    await asyncio.gather(c.canal.baixar_anexo("g", 100_000), pulso())
+    assert len(batidas) == 5
+
+
 async def test_content_length_acima_do_teto_recusa_sem_ler_o_corpo(c: CenarioAnexos) -> None:
     corpo = Corpo(pedacos=100)
 
