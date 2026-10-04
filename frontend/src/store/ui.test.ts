@@ -219,3 +219,53 @@ describe('menuRecolhidoInicial (padrão por largura, preferência vence)', () =>
     expect(menuRecolhidoInicial()).toBe(true);
   });
 });
+
+describe('29.61: rota desconhecida e Execuções sem id', () => {
+  beforeEach(() => useUiStore.setState({ rotaDesconhecida: null, selecaoRestaurada: false }));
+
+  it('#/runs avisa com o endereço, mantém a tela e some ao navegar', () => {
+    irPara('#/personas');
+    irPara('#/runs');
+    const st = useUiStore.getState();
+    expect(st.rotaDesconhecida).toBe('#/runs');
+    expect(st.view).toBe('personas');                         // não cai calado em outra tela
+    expect(window.location.hash).toBe('#/personas');          // o link volta ao canônico da tela atual
+    st.navegar({ tela: 'painel' });
+    expect(useUiStore.getState().rotaDesconhecida).toBeNull();
+  });
+
+  it('hash vazio não é endereço errado', () => {
+    irPara('#/');
+    expect(useUiStore.getState().rotaDesconhecida).toBeNull();
+  });
+
+  it('Dispensar tira o aviso', () => {
+    irPara('#/naoexiste/x');
+    expect(useUiStore.getState().rotaDesconhecida).toBe('#/naoexiste/x');
+    useUiStore.getState().dispensarRotaDesconhecida();
+    expect(useUiStore.getState().rotaDesconhecida).toBeNull();
+  });
+
+  it('Execuções sem id não reabre a execução que só veio do navegador', () => {
+    useUiStore.setState({ selectedRunId: 'r-velha', selecaoRestaurada: true });
+    irPara('#/execucoes');
+    expect(useUiStore.getState().selectedRunId).toBeNull();   // a lista abre a mais recente
+  });
+
+  it('a escolha desta visita continua valendo em Execuções sem id', () => {
+    useUiStore.setState({ selecaoRestaurada: true });
+    useUiStore.getState().selectRun('r-escolhida');
+    expect(useUiStore.getState().selecaoRestaurada).toBe(false);
+    irPara('#/painel');
+    irPara('#/execucoes');
+    expect(useUiStore.getState().selectedRunId).toBe('r-escolhida');
+  });
+
+  it('o menu para Execuções não leva a seleção restaurada no link', () => {
+    irPara('#/painel');
+    useUiStore.setState({ selectedRunId: 'r-velha', selecaoRestaurada: true });
+    useUiStore.getState().setView('execucoes');
+    expect(window.location.hash).toBe('#/execucoes');
+    expect(useUiStore.getState().selectedRunId).toBeNull();
+  });
+});
