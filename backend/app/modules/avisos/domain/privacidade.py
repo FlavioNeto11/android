@@ -25,8 +25,18 @@ CONTATO_OCULTO = "<contato>"
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _ARROBA = re.compile(r"(?<![\w@])@[\w.]{2,}")
 _IP = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
-#: Oito dígitos ou mais com separadores de telefone: ano, hora e valor em US$ não chegam a isso.
-_TELEFONE = re.compile(r"(?<!\w)\+?\d[\d\s().-]{6,}\d(?!\w)")
+#: Candidato a telefone: dígitos com separadores de telefone. Quem decide é `_e_telefone`.
+_TELEFONE = re.compile(r"(?<!\w)[+(]?\d[\d\s().-]{6,}\d(?!\w)")
+_DATA = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def _e_telefone(trecho: str) -> bool:
+    """Telefone tem 9 dígitos ou mais ("98888-7777"), ou começa com "+" ou "(" e tem 8 ou mais. Data ISO, hora, versão
+    e o número de item ("28.12-05") ficam: são o que diz QUAL pedido é, e o dono precisa disso."""
+    digitos = sum(ch.isdigit() for ch in trecho)
+    if _DATA.search(trecho):
+        return False
+    return digitos >= 9 or (trecho[0] in "+(" and digitos >= 8)
 
 
 def _sem_acento_minusculo(t: str) -> str:
@@ -72,9 +82,9 @@ def menciona_persona(texto: str, nomes: Iterable[str]) -> bool:
 def sem_contato(texto: str) -> str:
     """E-mail, @ de conta, IP e número de telefone viram `CONTATO_OCULTO`. O e-mail vem antes do @ (o @ do e-mail não é
     conta) e o IP antes do telefone (quatro grupos de dígitos)."""
-    for padrao in (_EMAIL, _ARROBA, _IP, _TELEFONE):
+    for padrao in (_EMAIL, _ARROBA, _IP):
         texto = padrao.sub(CONTATO_OCULTO, texto)
-    return texto
+    return _TELEFONE.sub(lambda m: CONTATO_OCULTO if _e_telefone(m.group(0)) else m.group(0), texto)
 
 
 def texto_livre(texto: str, nomes: Iterable[str], redigir: Callable[[str], str]) -> str:

@@ -66,7 +66,8 @@ from app.modules.avisos.domain.anexos import (
     normalizar_mime,
     tamanho_legivel,
 )
-from app.modules.avisos.domain.privacidade import PERSONA_OCULTA, sem_nome_de_persona  # noqa: F401 - reexport (28.28)
+from app.modules.avisos.domain.privacidade import PERSONA_OCULTA as PERSONA_OCULTA  # reexport (28.28)
+from app.modules.avisos.domain.privacidade import sem_nome_de_persona as sem_nome_de_persona
 from app.modules.avisos.infrastructure.anexos import AnexoJaResolvido, AnexoRecusado, ArmazemDeAnexos
 from app.modules.avisos.infrastructure.convidados import ConvidadosDoTelegram
 from app.modules.avisos.infrastructure.entrada_sql import EntradasDoCanal

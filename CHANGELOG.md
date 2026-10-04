@@ -30,7 +30,7 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
   Espera você: veja a falha no painel e retome ou cancele o pedido."
 - **Três níveis decidem a entrega** (`mensagem.NIVEL_POR_TIPO`, `entrega_do_tipo`): o 1 e o 2 que parou algo saem na
   hora. A rotina (relatório, encerramento, 80%, condição atendida, aprendizado) e o 2 que não parou nada esperam na fila
-  até a mais velha fazer 1 h (`JANELA_DA_ROTINA_S`). Aí saem numa mensagem só, uma linha cada, sem link; a
+  até a mais velha fazer 1 h (`JANELA_DA_ROTINA_S`). Aí saem numa mensagem só, uma linha cada, com o primeiro link que houver; a
   `canal_enviadas` grava `grupo:rotina`.
 - **Rajada** (28.19) com uma linha por item, até 5, mais "+N no painel" e o gesto.
 - **Privacidade** (`avisos/domain/privacidade.py`; o `sem_nome_de_persona` do 28.28 saiu de `entrada.py` para cá, e

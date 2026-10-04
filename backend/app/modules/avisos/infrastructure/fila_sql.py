@@ -126,9 +126,11 @@ class FilaDeAvisos:
                            tentativas=int(r["tentativas"]))
         titulos = [str(x["titulo"]) for x in linhas]
         if e_rotina:
-            # A rotina não pede gesto nem aceita reply: sem link (o link específico de cada item é do 28.31 F2).
+            # A rotina não pede gesto nem aceita reply; o link é o primeiro que houver (o específico de cada item é do
+            # 28.31 F2), como no agrupado.
             return Entrega(id=int(r["id"]), chave=str(r["chave"]), tipo=TIPO_DA_ROTINA,
-                           titulo=titulo_da_rotina(len(linhas)), corpo=corpo_da_rotina(titulos), link=None,
+                           titulo=titulo_da_rotina(len(linhas)), corpo=corpo_da_rotina(titulos),
+                           link=next((str(x["link"]) for x in linhas if x["link"]), None),
                            tentativas=max(int(x["tentativas"]) for x in linhas), ids=tuple(int(x["id"]) for x in linhas))
         # O link do agrupado é o da CAIXA, que o corpo manda abrir: todo link da fila é `link_da_caixa` (ou nenhum, no
         # aviso de pedido que não pede pessoa), então vale o primeiro que houver no grupo, e não o da primeira linha.

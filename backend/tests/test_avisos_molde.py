@@ -109,6 +109,13 @@ def test_privacidade_regua_estrita_e_contato() -> None:
     assert sem_contato("fale com maria@x.com, @maria.s, 192.168.1.19 ou +55 (11) 98888-7777") == \
         "fale com <contato>, <contato>, <contato> ou <contato>"
     assert sem_contato("US$ 4.02 de US$ 5.00 às 14:00 de 2026") == "US$ 4.02 de US$ 5.00 às 14:00 de 2026"
+    # Os títulos reais dos pedidos de 04/10 ficam: o número do item e a data dizem QUAL pedido é.
+    for titulo in ("Preço do Raspberry Pi 5 8GB (prova 28.12-05)", "Postagens 2026-10-04 14:00",
+                   "[canais 28.10f12] filho A", "US$ 1299.90"):
+        assert sem_contato(titulo) == titulo
+        assert texto_seguro(titulo, PERSONA, REDIGIR) == titulo
+    for fone in ("+55 11 98888-7777", "98888-7777", "(11) 98888-7777", "1198888777"):
+        assert sem_contato(f"fone {fone}") == "fone <contato>", fone
     assert texto_seguro("Preço do Pi", [], None) is None and texto_seguro("Preço do Pi", [], REDIGIR) == "Preço do Pi"
 
 
@@ -142,7 +149,7 @@ def test_rotina_espera_a_janela_e_sai_numa_mensagem_e_o_que_pede_o_dono_passa_na
     c.volta()
     assert len(c.canal.enviados) == 2
     titulo, corpo, link = c.canal.enviados[1]
-    assert titulo == "ANA: 📋 Rotina: 3 novidades desde a última mensagem" and link is None
+    assert titulo == "ANA: 📋 Rotina: 3 novidades desde a última mensagem" and link == "L"
     assert corpo.split("\n") == ["• t-pedido:rel1", "• t-pedido:enc1", "• t-learning:x", "Nada urgente: é rotina."]
     assert c.fila.contagens() == {"enviado": 4}
     fatos = [r["fato"] for r in c.db.query("SELECT fato FROM canal_enviadas ORDER BY ref_mensagem")]
