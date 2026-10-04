@@ -144,6 +144,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `sem_acao_do_catalogo`. Achado real do 23.14: a pergunta antiga não tinha resposta.
 - Prova: `simulated` (`backend/tests/test_recusa_fora_do_catalogo.py`, 6 testes); `real` depois do deploy, com as mesmas
   5 leituras mode=plan do 23.14.
+## 2026-10-04 — 31.35 (parte A): medida do prompt do ator e poda da barra do navegador (branch feat/31-35-medida-e-poda-do-chrome, migração 097)
+
+- Migração 097: `ai_calls.prompt_arvore_chars`, `prompt_historico_chars` e `prompt_podados` em cada decisão do ator.
+  Achado real do 28.12 (r-20261004090000-bbfe54): 10 decisões numa etapa, ~2,8 mil tokens novos cada, sem saber a divisão.
+- `ai.podar_ui_do_navegador` (ligada; `false` volta atrás): a barra do Chrome (endereço, abas, menu; lista fechada em
+  `executor.UI_DO_NAVEGADOR`) sai da árvore QUE VAI AO ATOR. A árvore local fica inteira; diálogos do Chrome seguem.
+- A justificativa de uma frase (item 3 da proposta) já estava no prompt do ator: nada a mudar.
+- Prova: `simulated` (`backend/tests/test_tamanho_do_prompt_do_ator.py`); `real` depois do deploy, numa navegação
+  livre no Chrome de aparelho de teste.
 
 ## 2026-10-04 — 29.36: o motivo do aparelho remoto parado acompanha a conexão e a queda (branch fix/29-36-detalhe-do-externo-parado, sem migração)
 

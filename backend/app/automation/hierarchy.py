@@ -380,7 +380,7 @@ class UiTree:
         return False
 
     def prompt_lines(self, max_lines: int, scale: float = 1.0, *, protect: tuple[str, ...] = (),
-                     boost: tuple[str, ...] = ()) -> list[str]:
+                     boost: tuple[str, ...] = (), ocultar: frozenset[str] = frozenset()) -> list[str]:
         """Linhas para o prompt. A árvore local fica COMPLETA (seletores, guardas e pós-condições usam tudo); só o
         que vai ao modelo é limitado — e por relevância, não pelo fim do documento: primeiro o que dá para operar
         (clicável/editável/rolável), depois o que tem texto ou descrição; ordem de tela preservada.
@@ -393,9 +393,11 @@ class UiTree:
         decoração; os vizinhos imediatos (mesma faixa de leitura) ganham +3, porque um rótulo ao lado do alvo
         costuma ser o que confirma que é ELE."""
         protect = tuple(norm_text(p) for p in protect if p and norm_text(p))
+        # `ocultar` (item 31.35): `resource_id` completos que não vão ao modelo (a barra do navegador).
+        elementos = [e for e in self.elements if e.resource_id not in ocultar] if ocultar else self.elements
         boost_terms = tuple(norm_text(b) for b in boost if b and norm_text(b))
-        if len(self.elements) <= max_lines:
-            return [e.line(scale, protect=protect) for e in self.elements]
+        if len(elementos) <= max_lines:
+            return [e.line(scale, protect=protect) for e in elementos]
 
         def casa_boost(e: UiElement) -> bool:
             if not boost_terms:
@@ -403,10 +405,10 @@ class UiTree:
             hay = norm_text(f"{e.text} {e.desc} {e.resource_id}")
             return any(b in hay for b in boost_terms)
 
-        boosted = {i for i, e in enumerate(self.elements) if casa_boost(e)}
+        boosted = {i for i, e in enumerate(elementos) if casa_boost(e)}
 
         def score(i: int) -> int:
-            e = self.elements[i]
+            e = elementos[i]
             base = (4 * (e.clickable or e.editable or e.scrollable) + 2 * bool(e.text) + bool(e.desc)
                     + (e.focused or e.checked) + e.enabled)
             if i in boosted:
@@ -415,9 +417,9 @@ class UiTree:
                 return base + 3
             return base
 
-        ranked = sorted(range(len(self.elements)), key=lambda i: (-score(i), i))[:max_lines]
-        lines = [self.elements[i].line(scale, protect=protect) for i in sorted(ranked)]
-        lines.append(f"(+{len(self.elements) - max_lines} elementos menos relevantes omitidos; use find_element para procurá-los)")
+        ranked = sorted(range(len(elementos)), key=lambda i: (-score(i), i))[:max_lines]
+        lines = [elementos[i].line(scale, protect=protect) for i in sorted(ranked)]
+        lines.append(f"(+{len(elementos) - max_lines} elementos menos relevantes omitidos; use find_element para procurá-los)")
         return lines
 
     def signature(self, *, estrutural: bool = False) -> str:

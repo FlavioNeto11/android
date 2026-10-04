@@ -634,6 +634,9 @@ class AiCfg(BaseModel):
     # Item 31.36: a etapa marcada `opcional` pelo planejador (só limpa a tela) roda com no máximo 3 decisões, sem
     # juiz e sem escalar, e falhar a deixa `skipped` sem derrubar o objetivo. `false` = a etapa de sempre.
     limpeza_opcional: bool = True
+    # Item 31.35: tira da árvore QUE VAI AO ATOR a barra do navegador (endereço, abas, menu); a árvore local fica
+    # completa para seletores, guardas e pós-condições. `false` volta ao prompt de antes, sem reinício de código.
+    podar_ui_do_navegador: bool = True
     # Quando a etapa com efeito externo decide no modelo de escalonamento: `true` = sempre (era o único modo: em
     # 19-23/09, 39 % das decisões foram ao Opus, inclusive curtir com seletor de commit declarado); `false` = nunca
     # por efeito; `by_risk` = só risco alto do catálogo, risco médio SEM seletor de commit, ou app sem catálogo
