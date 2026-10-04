@@ -305,6 +305,14 @@ def test_sal_nasce_uma_vez_e_fica(harness: Harness) -> None:
 
 
 # ---------------------------------------------------------------- contra a Canais REAL (28.32, #331)
+#: Sem o #331 na base (o PR da Canais mescla antes deste, mas o rebase pode vir antes do merge), estes dois pulam:
+#: o caminho sem a Canais é o de `test_sem_o_codigo_da_canais_o_contato_fica_pendente`.
+_CANAIS_REAL = pytest.mark.skipif(
+    not (Path(__file__).resolve().parents[1] / "app" / "modules" / "avisos" / "domain" / "portal.py").is_file(),
+    reason="o código da Canais (28.32, #331) ainda não está nesta base")
+
+
+@_CANAIS_REAL
 async def test_canal_desligado_na_canais_real_fica_pendente(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
     """Sem falso: o tipo e a função vêm de `app.modules.avisos` (resolvidos na hora de usar) e o aviso está desligado
     no harness."""
@@ -316,6 +324,7 @@ async def test_canal_desligado_na_canais_real_fica_pendente(harness: Harness, mo
     assert linha["estado"] == "pendente" and linha["motivo"] == "canal_desligado" and linha["tentativas"] == 0
 
 
+@_CANAIS_REAL
 async def test_canais_real_enfileira_uma_vez_pela_chave(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
     from .test_avisos_servico import CanalFalso
 
