@@ -19,6 +19,12 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — PG do funil no farm-pg-rapido (branch docs/pg-rapido-padrao)
+
+- O PG dirigido da suíte roda no `farm-pg-rapido` (tmpfs de 4 GB, `fsync`/`synchronous_commit`/`full_page_writes`
+  desligados, porta 55434), aprovado pela orquestradora pela medida da suíte 25: conexão aceita em 3,1 s contra
+  ~6 min do `farm-pg`, e ~10 % mais testes por segundo. O `farm-pg` fica para a suíte inteira em PG. Regras em
+  `docs/banco.md`, `docs/operacao.md` e `.claude/rules/testes.md`. Só documentação.
 ## 2026-10-04 — 28.13: fechamento da Fase 28 (branch canais/28-13-fechamento-fase-28, só docs)
 
 - `docs/relatorio-validacao.md` §30: os itens 28.1 a 28.21 com real × simulado × não executado, a fase cláusula por
