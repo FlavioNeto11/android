@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — Suíte 19 na main e deploy 19 no central (c683ab0e; sem migração)
+
+- **Integrado e implantado** (push 03:04:27Z; deploy 03:05Z): #194 (29.61, rota desconhecida e Execuções sem id),
+  #195 (29.59, selo "agente defasado" pelo código do pacote), #197 (29.57, nome ANA nas falas da IA à pessoa) e #196
+  (32.4, link do cartão do espelho por lista de permissão). Saúde ok, `problems` vazio às 03:05Z; o reparo de
+  android-01/03/06/13 ficou pausado durante o deploy (retirado às 03:06Z).
+- **Agente do notebook** atualizado para 0.1.0+c683ab0 às 03:05:50Z: reconectou com `agent_outdated=false`, prova real
+  do 29.59 (antes, o agente f1651ec, sem a impressão do código, seguia a regra da versão e aparecia defasado).
+- **Suíte 19** (integ/suite-19 c683ab0e): SQLite 9168 passed, 13 skipped; `scripts/tests` 544; front 1475; docs-check
+  0/0; PG dos afetados 2823 passed, 7 skipped (164 arquivos, `-n 8`). Conflitos só de CHANGELOG, juntados.
+- **Validação de fora** (orquestradora, 03:06Z a 03:08Z): o aviso de rota desconhecida do 29.61 NÃO aparece no central
+  (o item ficou `partial`); a correção vai num PR próprio. Às 03:06:33Z a saúde deu `degraded` por `ai_balance_stale`
+  (a conciliação do saldo com o relatório do provedor deu ReadTimeout).
+
 ## 2026-10-04 — 29.61: rota desconhecida avisa, e Execuções sem id abre a mais recente (branch feat/29-61-rota-e-execucao-recente, só painel)
 
 - Hash que não nomeia tela (`#/runs`, link antigo ou digitado errado): aviso "Este endereço não existe no painel" com o
