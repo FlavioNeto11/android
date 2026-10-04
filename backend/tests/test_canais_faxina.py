@@ -125,6 +125,27 @@ def test_cada_canal_com_o_seu_prazo_e_o_trello_leva_os_cartoes_arquivados(c: Cen
     assert [r["chave"] for r in c.db.query("SELECT chave FROM trello_cartoes")] == ["approval:2"]   # o ativo fica
 
 
+def test_os_eventos_do_contato_vencem_e_o_registro_do_contato_fica(c: Cena) -> None:
+    """28.16 + 28.18: o evento do convidado (texto redigido) vence com o prazo do canal; o registro do contato, com a
+    decisão do dono, não vence."""
+    from app.modules.avisos.infrastructure.contatos_sql import ContatosDoCanal
+
+    contatos = ContatosDoCanal(c.db, canal="telegram", relogio=c.r)
+    contatos.criar("900", {"first_name": "x"})
+    contatos.gravar_nome("900", "Convidado")
+    contatos.decidir("900", "autorizado")
+    contatos.evento("900", "mensagem", detalhe="velha", tamanho=5)
+    c.r.avancar(31)
+    contatos.evento("900", "mensagem", detalhe="nova", tamanho=4)
+    contatos.evento("901", "mensagem", detalhe="outro canal", tamanho=3)
+    c.db.execute("UPDATE canal_contato_eventos SET canal='trello' WHERE chat_id='901'")
+    f = c.faxinar("telegram")
+    assert f.eventos == 1 and f.algo
+    assert [r["detalhe"] for r in c.db.query("SELECT detalhe FROM canal_contato_eventos ORDER BY id")] == [
+        "nova", "outro canal"]
+    assert contatos.obter("900") is not None and contatos.obter("900").estado == "autorizado"
+
+
 def test_o_prazo_minimo_passa_da_janela_de_repeticao_dos_canais() -> None:
     with pytest.raises(ValidationError):
         EntradaDoTelegramCfg(retencao_dias=1)

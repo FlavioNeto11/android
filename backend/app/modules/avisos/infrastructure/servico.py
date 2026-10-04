@@ -227,8 +227,8 @@ class ServicoDeAvisos:
                 f = self._faxina_canais.faxinar(cerca=cerca, canal=canal, retencao_dias=dias)
                 feitas.append(f)
                 if f.algo:
-                    log.info("canais: faxina do %s (%d zerada(s), %d apagada(s), %d enviada(s), %d cartão(ões))",
-                             canal, f.zeradas, f.apagadas, f.enviadas, f.cartoes)
+                    log.info("canais: faxina do %s (%d zerada(s), %d apagada(s), %d enviada(s), %d cartão(ões),"
+                             " %d evento(s) de contato)", canal, f.zeradas, f.apagadas, f.enviadas, f.cartoes, f.eventos)
         except TravaPerdida as exc:
             log.warning("canais: faxina recusada, %s", exc)
             return feitas
