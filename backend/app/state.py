@@ -61,7 +61,7 @@ from .modules.decisoes.infrastructure.estado_sql import EstadoDasDecisoes
 from .modules.decisoes.infrastructure.registro_sql import RegistroSql as RegistroDeDecisoes
 from .modules.decisoes.infrastructure.resumo_sql import ResumoDasDecisoes
 from .modules.decisoes.infrastructure.servico import ServicoDeDecisoes
-from .modules.avisos.infrastructure.trello_leitor import LeitorDoTrello
+from .modules.avisos.infrastructure.trello_leitor import ComentariosDoTrello, LeitorDoTrello
 from .modules.avisos.infrastructure.trello_webhook import CadastroDoWebhook, PortaDoWebhook
 from .modules.avisos.infrastructure.trello_saude import problemas_do_trello
 from .modules.context_retrieval.adapters.jev import JevSemanticProvider
@@ -638,6 +638,9 @@ class AppState:
             CursorDoTrello(self.db, self.db.agora), portas_da_central, lider=self._lider, recusa=triagem.recusa,
             redigir=triagem.redigir, avisar_dono=self.avisos.enfileirar_aviso, relogio=self.db.agora,
             cadastro=self.trello_cadastro)
+        # 28.30: o sim do dono no Telegram ao comentário dele só vale se o comentário no Trello ainda é o mesmo.
+        self.telegram_entrada.conversa.comentarios = ComentariosDoTrello(EntradasDoCanal(self.db, canal="trello"),
+                                                                         self.trello_leitor.cliente)
         # O webhook do Trello (32.2, §8): a rota só confere a assinatura e ANOTA o id da action; o líder a relê pela API.
         # Desligado de fábrica (`trello.webhook.enabled`); a reconciliação do leitor cobre sozinha.
         self.trello_webhook = PortaDoWebhook(cfg, EntradasDoCanal(self.db, canal="trello"),

@@ -5826,3 +5826,16 @@ texto ainda por escrever (briefing) fica para a execução: aprovar no plano exi
 - **`Approval`** (lista de aprovações, eventos) ganha `origem`, `expires_at` e `plan_version`.
 - **Prova:** `simulated` (`backend/tests/test_porta_do_plano.py`, `backend/tests/test_chave_da_aprovacao.py`). `not_run`:
   o painel (fatia seguinte) e qualquer execução real.
+## Adendo v1.35 (04/10/2026; número da orquestradora; item 28.30) — comentário do dono no Trello vira confirmação no Telegram; o login recusa o prefixo dos canais
+
+- **`POST /api/login`:** o `operator` que começa com `trello:` ou `telegram:` (sem diferença de caixa, espaços ignorados) é
+  recusado como nome inválido, a mesma resposta do nome curto ou com caractere de controle. Esse é o operador das conversas
+  dos canais, e `trello:<membro_dono>` é dono na criação do pedido (Adendo v1.31).
+- **Aviso novo do canal de fora, tipo `trello.comentario`:** o comentário do dono num cartão do quadro sem aviso da
+  Central vai à orquestradora (`canal_entradas.estado='orquestradora'`, `previa.repasse='comentario'`), recebe resposta
+  no cartão e gera um pedido de confirmação no Telegram dele. A chave é `comentario:<action>:<card>`, e o aviso nunca é
+  agrupado. O nome do cartão e o texto só vão se passarem inteiros pelos filtros do 28.31.
+- **Repasses novos:** o sim e o não do dono, em reply àquele aviso, ficam com a orquestradora (`previa.repasse` =
+  `comentario_sim` ou `comentario_nao`). Nada se executa e nada se aprova por eles.
+- **Prova:** `simulated` (`backend/tests/test_canais_comentario_do_dono.py`). `not_run`: comentário real num cartão de
+  teste.

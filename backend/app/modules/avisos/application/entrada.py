@@ -157,6 +157,16 @@ class Fato:
         return self.tipo == "anexo"
 
     @property
+    def comentario(self) -> bool:
+        """O pedido de confirmação de um comentário do dono num cartão do Trello (28.30): `comentario:<action>:<card>`."""
+        return self.tipo == "comentario"
+
+    @property
+    def teto_de_comentarios(self) -> bool:
+        """O aviso de que o teto por hora segurou os pedidos de confirmação (28.30): `comentario-teto:<hora>`."""
+        return self.tipo == "comentario-teto"
+
+    @property
     def convidado(self) -> bool:
         """O aviso sobre quem não é o dono (28.18). `detalhe == "novo"` é o único que se decide."""
         return self.tipo == "convidado"
@@ -251,6 +261,11 @@ def _rotear_resposta(t: str, f: Fato) -> Intencao | None:
     if f.anexo:
         # Só o pedido de leitura é do anexo; "sim", um objetivo ou qualquer outra frase seguem a gramática comum (None).
         return Intencao("ler_anexo", ref=f.ident) if _LER.match(" ".join(_sem_acento(t).split())) else None
+    if f.teto_de_comentarios:
+        # Revisão da #314: o aviso do teto só informa. Sem este ramo, um "sim" a ele cairia no texto livre e viraria
+        # pedido.
+        return Intencao("desconhecida", motivo="Este aviso só informa: nada foi executado. Para confirmar um comentário, "
+                                               "responda à mensagem de confirmação dele ou comente no cartão.")
     if f.convidado:
         # Sem este ramo, o "sim" do dono ao aviso do convidado cairia no texto livre e viraria PEDIDO (28.18).
         if f.detalhe != "novo":
@@ -262,6 +277,16 @@ def _rotear_resposta(t: str, f: Fato) -> Intencao | None:
         if palavra in _NAO:
             return Intencao("recusar_convidado", ref=f.ident)
         return Intencao("desconhecida", motivo="Para autorizar quem chegou, responda \"sim\" ou \"não\".")
+    if f.comentario:
+        # 28.30: o sim ou o não do dono ao comentário que ele fez num cartão. Nada se executa aqui: a decisão vai à
+        # orquestradora, que age e responde no cartão. Sem este ramo o "sim" cairia no texto livre e viraria pedido.
+        palavra = _palavra(t)
+        if palavra in _SIM or palavra in _NAO:
+            sim = palavra in _SIM
+            return Intencao("orquestradora", ref=f.ident, repasse="comentario_sim" if sim else "comentario_nao",
+                            texto=(f"O dono {'CONFIRMOU (sim)' if sim else 'NEGOU (não)'} o comentário {f.ident} do cartão "
+                                   f"{f.detalhe} do Trello."))
+        return Intencao("desconhecida", motivo="Para confirmar o seu comentário no cartão, responda \"sim\" ou \"não\".")
     if f.aprovacao:
         palavra = _palavra(t)
         if palavra in _SIM:

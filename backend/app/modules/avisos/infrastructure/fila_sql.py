@@ -44,8 +44,9 @@ LOTE_LIKE = PREFIXO_DE_LOTE + "%"
 #: Quantas linhas devidas a reivindicação olha para achar a próxima mensagem: mais que qualquer rajada real.
 LIMITE_DA_VARREDURA = 500
 #: Os avisos sobre quem não é o dono (28.18) saem sempre um a um: o do convidado novo se decide respondendo a ELE (o
-#: agrupado não aceita resposta), e cada um leva o nome de uma pessoa diferente.
-SEM_AGRUPAR = "telegram."
+#: agrupado não aceita resposta), e cada um leva o nome de uma pessoa diferente. O comentário do dono num cartão (28.30)
+#: também: o sim ou o não é a resposta àquela mensagem.
+SEM_AGRUPAR = ("telegram.", "trello.comentario")
 
 
 def _curto(texto: str) -> str:

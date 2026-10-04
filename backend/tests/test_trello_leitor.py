@@ -79,6 +79,7 @@ class TrelloFalso:
         self.ignorar_since = False
         self.eco = True
         self.n = 0
+        self.nomes: dict[str, str] = {}                 # 28.30: o nome de cada cartão (GET /1/cards/{id}?fields=name)
 
     def acao(self, tipo: str, autor: str, card: str, *, texto: str | None = None, para: str | None = None,
              ha_s: float = 0, quadro: str = QUADRO, ident: str | None = None) -> dict[str, object]:
@@ -115,6 +116,9 @@ class TrelloFalso:
         if pedido.method == "GET" and caminho.startswith("/1/actions/"):
             achada = [a for a in self.acoes if a["id"] == caminho.split("/")[3]]
             return httpx.Response(200, json=achada[0]) if achada else httpx.Response(404, text="not found")
+        if pedido.method == "GET" and caminho.startswith("/1/cards/") and caminho.count("/") == 3:
+            card = caminho.split("/")[3]
+            return httpx.Response(200, json={"id": card, "name": self.nomes.get(card, "Cartão de teste")})
         if pedido.method == "POST" and caminho.endswith("/actions/comments"):
             corpo = json.loads(pedido.content)
             card = caminho.split("/")[3]
@@ -469,12 +473,17 @@ async def test_com_comando_livre_o_trello_so_mostra_a_previa_e_nao_executa(tmp_p
     assert resposta.startswith(PREFIXO + "Prévia: android-09.") and "abrir" not in resposta and "QA" not in resposta
 
 
-async def test_anotacao_solta_num_cartao_que_nao_e_da_central_so_e_registrada(c: Cenario) -> None:
+async def test_comentario_do_dono_num_cartao_sem_aviso_nao_fica_mudo(c: Cenario) -> None:
+    """28.30 (antes: anotação solta só registrada, e o "Autorizado" do dono ficou 1 h 30 sem ninguém ver). Nada executa: vai
+    à orquestradora, pede a confirmação dele no Telegram e responde no cartão. O cartão novo segue só registrado."""
     c.trello.comenta(DONO, C_MANUAL, "lembrar de olhar isto amanhã")
     c.trello.acao("createCard", DONO, C_MANUAL)
     await c.volta()
-    assert c.acoes_da_central() == [] and c.trello.escritas() == []
-    assert c.repo.contagens() == {"ignorada": 2}
+    assert c.acoes_da_central() == []
+    assert c.repo.contagens() == {"ignorada": 1, "orquestradora": 1}
+    assert [a.tipo for a in c.avisos] == ["trello.comentario"]
+    assert c.trello.textos() == [PREFIXO + "Recebi o seu comentário. Pedi a sua confirmação no Telegram: o sim de lá é "
+                                           "que vale."]
 
 
 # ---------------------------------------------------------------------------------------------- /status, /pendencias, /ajuda

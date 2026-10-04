@@ -103,14 +103,19 @@ def texto_livre(texto: str, nomes: Iterable[str], redigir: Callable[[str], str])
     return sem_nome_de_persona(sem_contato(redigir(texto)), nomes, minimo=2, poupar_ana=False)
 
 
+#: Link em texto livre: o texto inteiro fica de fora (`texto_seguro`).
+_LINK = re.compile(r"https?://|\bwww\.", re.IGNORECASE)
+
+
 def texto_seguro(texto: str | None, nomes: Iterable[str], redigir: Callable[[str], str] | None) -> str | None:
     """O texto como está, ou `None` se o redator, o filtro de contato ou a régua estrita de persona mudariam qualquer
-    coisa nele. Sem redator, ou com erro em qualquer filtro, também `None`: na dúvida, a reserva."""
+    coisa nele, ou se ele tem um link (o endereço de um perfil diz de quem se trata; revisão da #314). Sem redator, ou com
+    erro em qualquer filtro, também `None`: na dúvida, a reserva."""
     if not texto or redigir is None:
         return None
     try:
         limpo = texto.strip()
-        if not limpo or redigir(limpo).strip() != limpo or sem_contato(limpo) != limpo:
+        if not limpo or _LINK.search(limpo) or redigir(limpo).strip() != limpo or sem_contato(limpo) != limpo:
             return None
         return None if menciona_persona(limpo, nomes) else limpo
     except Exception:  # noqa: BLE001 - filtro com erro nunca deixa o texto cru sair

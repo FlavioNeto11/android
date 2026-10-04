@@ -93,6 +93,10 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   e vai com Brasília (UTC−3) ao lado quando é para o dono. Comentário com a hora errada é corrigido, não apagado.
 - **No produto:** `prefixo_da_ia()` no espelho do 32.2. O leitor ignora o eco das próprias respostas pelo prefixo e
   pelo registro de enviadas, porque o token é o do dono.
+- **Desde o 28.30 a regra é de segurança, não de estilo:** comentário sem 🤖 com o token do dono vira pedido de
+  confirmação no Telegram dele (C-24). O registro de enviadas (`canal_enviadas`) cobre o que o produto escreve, com ou
+  sem 🤖; o prefixo cobre quem escreve por fora do produto (a ANA da sessão Canais, a orquestradora, as frentes). Toda
+  sessão que comenta no Trello começa o texto com `🤖`.
 
 ## 3. Quem fala com os canais
 
@@ -271,6 +275,35 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
 - **Regra:** todo retorno do dono, venha do Telegram, do chat ou de um comentário, e toda correção da orquestradora
   sobre ele, atualiza **na hora** o cartão correspondente (descrição e comentário com 🤖). Só depois se responde ao
   dono. O arquivo de situação do resumo sozinho não basta.
+
+**C-24 · Comentário do dono em cartão nunca fica mudo (28.30).**
+- **Origem:** dono, Telegram 04/10 18:56Z: o "Autorizado" dele em dois cartões ficou 1 h 30 sem ninguém reconhecer.
+- **Regra:**
+  - Comentário do dono num cartão sem aviso da Central (os cartões do plano) não é pedido nem comando, e também não é
+    autorização: a ANA e as sessões escrevem no quadro com a conta dele. Ele vai à orquestradora (estado
+    `orquestradora`) e o cartão recebe a resposta na hora.
+  - Na mesma volta sai ao Telegram dele um pedido de confirmação de sim ou não, que nomeia o cartão e o comentário. O sim
+    de lá é que vale; o sim e o não vão à orquestradora, nunca viram pedido.
+  - O nome do cartão e o texto só vão se passarem inteiros pelos filtros do 28.31 (`texto_seguro`); senão, "num cartão
+    do Trello" e "o texto fica no cartão".
+  - Só o dono: a anotação de um membro autorizado segue só registrada, e a linha sem autor lido não é do dono.
+  - O recado que falha por erro interno responde com uma frase fixa, e o reply a ela segue à orquestradora (a entrada 1256
+    de 04/10 ficou `falhou` sem resposta).
+  - O login do painel recusa nome começado por `trello:` ou `telegram:`: esse é o operador dos canais. A sessão antiga
+    com esse nome deixa de valer.
+  - Travas do laço: no máximo um pedido em aberto por cartão (o que o dono não respondeu em 24 h) e 6 pedidos por hora no
+    quadro; acima disso o comentário só vai à orquestradora e o dono recebe uma linha por hora dizendo que parou
+    (`trello.teto_de_comentarios`, rotina: vai na janela, e responder a ela não vira pedido). Só destrava o cartão a
+    resposta que foi à orquestradora (o não, ou o sim que passou na conferência).
+  - O sim relê o comentário no Trello: se mudou, foi apagado ou não deu para conferir, nada é repassado e o dono ouve
+    uma linha. O repasse leva o texto gravado do comentário. O sim nunca é tratado como senha, mesmo com uma pergunta
+    de credencial aberta.
+  - O `texto_seguro` barra link (`http://`, `https://`, `www.`): o endereço de um perfil diz de quem se trata. Vale
+    também para o rótulo do pedido (28.31).
+- **No produto:** `ConversaDoTrello._comentario`, `Fato.comentario` e o ramo dele em `_rotear_resposta`, o tipo
+  `trello.comentario` (fora do agrupamento, `SEM_AGRUPAR`), `ClienteTrello.nome_do_cartao`.
+- **Prova:** `simulated` (`backend/tests/test_canais_comentario_do_dono.py`). `not_run`: o comentário real do dono num
+  cartão de teste e o tempo até a pergunta no Telegram.
 
 **C-17 · Forma dos cartões.**
 - **Regra:**

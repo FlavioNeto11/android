@@ -68,6 +68,7 @@ NIVEL_POR_TIPO: dict[str, int] = {
     "pedido.aprovacao_pendente": PRECISA_DE_VOCE,
     "pedido.pergunta": PRECISA_DE_VOCE,
     "pedido.ocorrencia_incerta": PRECISA_DE_VOCE,
+    "trello.comentario": PRECISA_DE_VOCE,          # 28.30: o pedido de confirmação de um comentário do dono
     "pedido.pausa_automatica": ALGO_FALHOU,
     "pedido.orcamento_esgotado": ALGO_FALHOU,
     "pedido.ocorrencia_perdida": ALGO_FALHOU,
@@ -77,6 +78,7 @@ NIVEL_POR_TIPO: dict[str, int] = {
     "pedido.encerramento": ROTINA,
     "pedido.condicao_atendida": ROTINA,
     "learning.needs_person": ROTINA,
+    "trello.teto_de_comentarios": ROTINA,          # 28.30: o teto por hora segurou os pedidos; nada a fazer
 }
 #: Os de nível 2 que PARARAM algo do dono: saem na hora. O resto do nível 2 vai à janela, com a rotina.
 PARARAM_ALGO = frozenset({"pedido.pausa_automatica", "pedido.orcamento_esgotado"})

@@ -29,6 +29,15 @@ MAX_ERRO = 300
 INICIO = "inicio"
 
 
+def _previa(bruta: object) -> dict[str, object]:
+    """A `previa` gravada pelo `marcar`, lida como JSON; o que não for um objeto vira vazio."""
+    try:
+        valor = json.loads(str(bruta)) if bruta else None
+    except ValueError:
+        return {}
+    return valor if isinstance(valor, dict) else {}
+
+
 def _curto(texto: str | None, n: int = MAX_CURTO) -> str | None:
     return None if texto is None else texto.strip()[:n]
 
@@ -211,6 +220,39 @@ class EntradasDoCanal:
     def marcar_desfecho(self, ident: int) -> None:
         self.db.execute("UPDATE canal_entradas SET resultado_em=? WHERE id=? AND canal=?",
                         (self._agora(), int(ident), self.canal))
+
+    # ------------------------------------------------------------------ o comentário do dono no Trello (28.30)
+    def comentarios_com_pedido(self, *, desde: str, card: str | None = None, exceto: int | None = None) -> list[str]:
+        """As actions (ids do Trello) dos comentários do dono que pediram confirmação no Telegram desde `desde` (ISO),
+        do cartão `card` se dado. A marca é `previa.confirmacao_pedida`; o estado da linha não entra (parte 12c: se quem
+        entrega a resposta da orquestradora marcar a linha `feita`, as travas não podem perder o que já foi pedido)."""
+        # O LIKE só estreita; quem decide é o JSON lido (revisão da #314: casar `"confirmacao_pedida": true` dependia do
+        # espaço do `json.dumps` do `marcar`, e um marcar compacto mataria as travas caladas).
+        sql = "SELECT id_externo, previa FROM canal_entradas WHERE canal=? AND recebida_em >= ? AND previa LIKE ?"
+        args: list[object] = [self.canal, desde, "%confirmacao_pedida%"]
+        if card:
+            sql += " AND ref_mensagem LIKE ?"
+            args.append(f"{card}/%")
+        if exceto is not None:
+            sql += " AND id <> ?"
+            args.append(int(exceto))
+        return [str(r["id_externo"]) for r in self.db.query(sql + " ORDER BY id", tuple(args))
+                if _previa(r["previa"]).get("confirmacao_pedida") is True]
+
+    def comentario_respondido(self, action: str) -> bool:
+        """O dono já respondeu ao pedido daquele comentário? A resposta é uma linha do TELEGRAM cujo repasse é
+        `comentario_sim`/`comentario_nao` e cujo texto leva o id da action: a consulta olha o outro canal de propósito.
+        Só conta a resposta que FOI à orquestradora (o não, ou o sim que passou na conferência): o sim recusado por
+        `mudou`, `apagado` ou `sem_conferir` grava `previa.conferencia` e não destrava o cartão (revisão da #314). Pela
+        prévia, não pelo estado: a linha repassada pode ser marcada `feita` depois (parte 12c)."""
+        linhas = self.db.query(
+            "SELECT previa FROM canal_entradas WHERE canal='telegram' AND previa LIKE ? ORDER BY id", (f"%{action}%",))
+        for r in linhas:
+            p = _previa(r["previa"])
+            if (p.get("repasse") in ("comentario_sim", "comentario_nao") and "conferencia" not in p
+                    and action in str(p.get("texto") or "")):
+                return True
+        return False
 
     # ------------------------------------------------------------------ leitura (saúde e orquestradora)
     def contagens(self) -> dict[str, int]:
