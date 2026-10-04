@@ -82,7 +82,8 @@ por porta: `backend/tests/conftest.py:48` fixa `base_console_port: 5640` (o padr
 
 **PostgreSQL de teste.** O contêiner `farm-pg` (PostgreSQL 17 na porta 55433; receita em
 [banco.md](banco.md#rodar-a-suíte-contra-o-postgresql)) é o banco das corridas com `TEST_DATABASE_URL`; em 29/09 a
-integração `c359f65` rodou nele. Ligar o Docker Desktop mexe no WSL, que o `CLAUDE.md` põe sob autorização explícita do
+integração `c359f65` rodou nele. O PG dirigido das suítes do funil roda desde 04/10 no `farm-pg-rapido` (tmpfs,
+`fsync` desligado, porta 55434, descartável; banco.md, "O portão de PostgreSQL de uma suíte"). Ligar o Docker Desktop mexe no WSL, que o `CLAUDE.md` põe sob autorização explícita do
 dono. Não aponte a variável para outro PostgreSQL da máquina: a credencial dele fica no `.env`, que não se lê.
 
 ## 5. CI
