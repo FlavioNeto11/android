@@ -7462,16 +7462,16 @@
   },
   "28.22": {
    "id": "28.22",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "PR #247 (canais/28-22-encerramento-e-motivo @ 019cc1bd, migração 099, adendo v1.17), suíte 26, deploy 26 (60b3a0a9, migração 099_pedido_cancelado_motivo). (b) REAL em 04/10/2026 13:17:18Z no central (WIN-7S2UASNLFOP), sem laço e sem IA: pedido ped_llz09XacVMyGLaanpZDOhg (lote:canais:28.22-prova, rascunho sem selo, nunca despachou, 0 runs) cancelado com motivo; GET /api/pedidos/{id} devolve cancelado_motivo; a resposta do cancelar (view) não o traz; 0 eventos e 0 pedido_avisos com o texto do motivo (3 eventos do pedido). Efeito colateral: o cancelamento gerou o relatório de encerramento e o aviso relatorio_pronto (avisos_entregas 34, Telegram do dono 13:17:19Z), explicado ao dono na msg 182. (a) relatório no encerramento por orçamento: simulated (backend/tests/test_pedidos_orcamento.py, 3 novos com contraprova); real not_run porque exige o laço, e pedidos está desligado até o 28.23.",
-   "blocker": "(a) relatório no encerramento por orçamento: prova real not_run, exige o laço de pedidos ligado, que segue desligado no central até o lado da execução do 28.23 ir ao ar; a parte (b), motivo do cancelamento, já tem prova real. Ajuste da orquestradora: a frente mandou implemented/real; fica partial até a prova real de (a).",
+   "evidence": "PR #247 (migração 099, adendo v1.17), suíte 26, deploy 26 (60b3a0a9). (b) motivo do cancelamento: REAL em 04/10/2026 13:17:18Z (ped_llz09XacVMyGLaanpZDOhg; motivo só no detalhe, 0 eventos e 0 avisos com ele) e tela validada no Chrome do dono pela orquestradora (passada do deploy 26, 14:44Z–14:53Z). (a) relatório no encerramento por orçamento: REAL em 04/10/2026 15:12:42Z–15:13:18Z, central WIN-7S2UASNLFOP, deploy 27 (ac7175ac, migração 100), laço de pedidos ligado: pedido ped_NHR2vsI5WAGs4JorbyXUlQ (lote:canais:28.22a, autonomia observar, android-12 sem conta, app QA Messenger, gatilho agora, orçamento total e por ocorrência US$ 0,02, max_tentativas 1), ocorrência r-20261004151243-7b13e3 (completed_with_issues, US$ 0,039454), pedido encerrado com encerrado_motivo='orcamento' às 15:13:15Z, pedido_relatorios rel47c199abceafef20 (gatilho encerramento, determinístico), pedido_avisos orcamento_esgotado e relatorio_pronto, avisos_entregas 35 e 36 enviados ao Telegram do dono (15:13:17Z e 15:13:18Z), com aviso prévio ao dono (Telegram msg 185, 15:12Z). Simulado: backend/tests/test_pedidos_orcamento.py (3, com contraprova).",
+   "blocker": null,
    "grupo": "canais",
    "modelo": "sessao",
-   "esforco": "M",
+   "esforco": "P",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T13:24:55+00:00"
+   "quando": "2026-10-04T15:15:34+00:00"
   },
   "31.40": {
    "id": "31.40",
@@ -9770,6 +9770,15 @@
    ],
    "grupos": [
     "aprendizado-validacao-0410"
+   ]
+  },
+  {
+   "quando": "2026-10-04T15:15:34+00:00",
+   "itens": [
+    "28.22"
+   ],
+   "grupos": [
+    "canais"
    ]
   }
  ]
