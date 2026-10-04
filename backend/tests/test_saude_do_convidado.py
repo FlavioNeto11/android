@@ -401,6 +401,7 @@ async def test_interrupcao_acumulada_no_ocioso_pede_um_reinicio_a_frio_e_so_um(t
             return "c-teste"
 
         d.on_health_restart = _pedir
+        d._cpu_do_host = lambda: 10.0  # type: ignore[method-assign]  # host calmo: a regra de IRQ conta (29.67)
         total, irq = 1000.0, 0.0
         rt.io.pressure = _ticks(total, irq)
         assert await d.conferir_saude(rt) is None          # primeira leitura: só guarda os ticks
@@ -437,6 +438,7 @@ async def test_interrupcao_com_alguem_no_controle_nao_reinicia(tmp_path: Path) -
         rt.state, rt.attention = InstanceState.online, None
         pedidos: list[str] = []
         d.on_health_restart = lambda iid, motivo: pedidos.append(iid) or None
+        d._cpu_do_host = lambda: 10.0  # type: ignore[method-assign]  # host calmo: a regra de IRQ conta (29.67)
         for dono in (ControlOwner.ai, ControlOwner.user):
             rt.control, rt.cpu_ticks, rt.irq_strikes = dono, None, 0
             total, irq = 1000.0, 0.0
@@ -495,6 +497,7 @@ async def test_interrupcao_do_boot_com_carga_alta_nao_conta_como_ocioso(tmp_path
         rt.state, rt.attention, rt.control = InstanceState.online, None, ControlOwner.none
         pedidos: list[str] = []
         d.on_health_restart = lambda iid, motivo: pedidos.append(iid) or None
+        d._cpu_do_host = lambda: 10.0  # type: ignore[method-assign]  # host calmo: a regra de IRQ conta (29.67)
         total, irq = 1000.0, 0.0
         for _ in range(5):
             rt.io.pressure = _ticks(total, irq, load1=25.0)
@@ -577,4 +580,69 @@ async def test_hospedeiro_sobrecarregado_adia_o_reparo_em_vez_de_subir_de_degrau
         finally:
             despacho_mod._do_action = original
     finally:
+        await h.state.stop()
+
+
+@pytest.mark.asyncio
+async def test_irq_com_host_saturado_nao_conta_e_o_host_calmo_volta_a_contar(tmp_path: Path) -> None:
+    """29.67 (ADR-053): com a CPU do host acima do limiar de admissão (29.33), a fração de interrupção do convidado
+    mede o host. Medido em 04/10: 2 vCPU em ~0,05 com o host calmo, acima de 0,10 sob as suítes, e o android-06 a 0,50
+    com a SQLite em -n 8. A amostra com o host saturado não sobe nem zera o contador; com o host calmo, conta na hora."""
+    h = Harness(tmp_path, 1)
+    await h.boot()
+    try:
+        d = h.state.devices
+        rt = d.get("android-01")
+        rt.state, rt.attention, rt.control = InstanceState.online, None, ControlOwner.none
+        pedidos: list[str] = []
+        d.on_health_restart = lambda iid, motivo: pedidos.append(iid) or None  # type: ignore[func-returns-value]
+        host = {"cpu": 10.0}
+        d._cpu_do_host = lambda: host["cpu"]  # type: ignore[method-assign]
+        total, irq = 1000.0, 0.0
+        rt.io.pressure = _ticks(total, irq)
+        await d.conferir_saude(rt)                         # primeira leitura: só guarda os ticks
+
+        async def sonda() -> None:
+            nonlocal total, irq
+            total, irq = total + 1000, irq + 300           # 30% em interrupção, ocioso
+            rt.io.pressure = _ticks(total, irq)
+            await d.conferir_saude(rt)
+
+        await sonda()
+        await sonda()
+        assert rt.irq_strikes == 2 and pedidos == []
+        host["cpu"] = 97.0                                 # host saturado: as amostras não contam
+        for _ in range(4):
+            await sonda()
+        assert rt.irq_strikes == 2 and pedidos == []       # nem subiu nem zerou
+        linhas = h.state.db.query("SELECT data FROM measurements WHERE kind='irq' ORDER BY id DESC LIMIT 1")
+        ultima = json.loads(linhas[0]["data"])
+        assert ultima["ignorada"] is True and ultima["host_cpu"] == 97.0
+        host["cpu"] = 40.0                                 # host calmo de novo: a regra age na próxima
+        await sonda()
+        assert pedidos == ["android-01"]
+    finally:
+        await h.state.stop()
+
+
+@pytest.mark.asyncio
+async def test_irq_de_aparelho_remoto_nao_olha_o_host_do_central(tmp_path: Path) -> None:
+    """O host de um aparelho do worker é a máquina dele: a CPU do central não tira a amostra da regra."""
+    h = Harness(tmp_path, 1)
+    await h.boot()
+    try:
+        d = h.state.devices
+        rt = d.get("android-01")
+        rt.state, rt.attention, rt.control = InstanceState.online, None, ControlOwner.none
+        d._cpu_do_host = lambda: 99.0  # type: ignore[method-assign]
+        rt.external = True
+        total, irq = 1000.0, 0.0
+        rt.io.pressure = _ticks(total, irq)
+        await d.conferir_saude(rt)
+        total, irq = total + 1000, irq + 300
+        rt.io.pressure = _ticks(total, irq)
+        await d.conferir_saude(rt)
+        assert rt.irq_strikes == 1
+    finally:
+        rt.external = False
         await h.state.stop()

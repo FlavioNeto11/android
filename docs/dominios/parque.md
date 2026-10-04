@@ -402,6 +402,14 @@ Desde 21.13 cada fração vira `measurements(kind='irq')` (série em `GET /api/d
 acúmulo segue aberta (item 21.15): em 29/09 o android-06, com o Instagram em primeiro plano, foi de ~4% (2,7 h no ar)
 a ~8% (6,4 h), e o android-04, no launcher, ficou em 2–3% (`data\logs\irq_convidados.csv`).
 
+**Host saturado não conta (29.67, ADR-053).** Medido em 04/10 (30 h de sondas ociosas): convidado de 2 vCPU no
+central fica em 0,04–0,07 de irq com o host calmo e passa de 0,10 sob as suítes. O de 4 vCPU (01) fica em
+0,02–0,06. O android-06 foi a 0,50 com a SQLite em `-n 8`. O 06 não tem defeito próprio: igual ao 03 em AVD e em
+taxa de interrupções. Com a CPU do host acima de `android.max_cpu_percent_before_boot` (o limiar de admissão do
+29.33, 85 %), a amostra da sonda não conta: o contador nem sobe nem zera, e a próxima amostra com o host calmo volta
+a contar. A decisão fica na própria linha `measurements(kind='irq')` (`host_cpu`, `ignorada`) e no contador
+`irq.amostra_ignorada`, sem evento por sonda. Aparelho do worker não olha o host do central.
+
 ### Apps de segundo plano (item 21.15)
 
 O preparo do aparelho da automação (`Adb.prepare_for_automation`, no boot, no wake e na readoção) desativa com `pm

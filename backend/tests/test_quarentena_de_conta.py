@@ -376,6 +376,7 @@ async def test_reinicio_por_interrupcao_nao_toca_aparelho_com_marcador(h: Harnes
     _marcar(h, "android-01")
     pedidos: list[str] = []
     d.on_health_restart = lambda iid, motivo: pedidos.append(iid) or None  # type: ignore[func-returns-value]
+    d._cpu_do_host = lambda: 10.0  # type: ignore[method-assign]  # host calmo: a regra de IRQ conta (29.67)
     total, irq = 1000.0, 0.0
     for _ in range(6):
         rt.io.pressure = {"load1": 0.5, "mem_total_mb": 2048.0, "mem_available_mb": 900.0, "ncpu": 2.0,

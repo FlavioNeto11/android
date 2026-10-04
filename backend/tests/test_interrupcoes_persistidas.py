@@ -57,6 +57,7 @@ async def test_cada_sonda_com_fracao_grava_uma_medida_com_instancia_irq_e_load(t
         assert h.state is not None
         d = h.state.devices
         d.on_health_restart = lambda iid, motivo: None
+        d._cpu_do_host = lambda: 10.0  # type: ignore[method-assign]  # host calmo: a regra de IRQ conta (29.67)
         total, irq = 1000.0, 0.0
         rt.io.pressure = _ticks(total, irq)
         await d.conferir_saude(rt)
@@ -89,6 +90,7 @@ async def test_medida_grava_com_alguem_no_controle_e_a_regra_do_reinicio_nao_mud
         d = h.state.devices
         pedidos: list[str] = []
         d.on_health_restart = lambda iid, motivo: pedidos.append(iid) or None
+        d._cpu_do_host = lambda: 10.0  # type: ignore[method-assign]  # host calmo: a regra de IRQ conta (29.67)
         rt.control = ControlOwner.ai
         total, irq = 1000.0, 0.0
         for _ in range(5):
@@ -113,6 +115,7 @@ async def test_sonda_sem_ticks_ou_com_convidado_reiniciado_nao_grava(tmp_path: P
         assert h.state is not None
         d = h.state.devices
         d.on_health_restart = lambda iid, motivo: None
+        d._cpu_do_host = lambda: 10.0  # type: ignore[method-assign]  # host calmo: a regra de IRQ conta (29.67)
         sem_ticks = {"load1": 0.5, "mem_total_mb": 2048.0, "mem_available_mb": 900.0, "ncpu": 2.0}
         for _ in range(3):
             rt.io.pressure = dict(sem_ticks)
@@ -157,6 +160,7 @@ async def test_rota_de_desempenho_devolve_a_serie_e_o_ultimo_valor_por_aparelho(
         assert h.state is not None
         d = h.state.devices
         d.on_health_restart = lambda iid, motivo: None
+        d._cpu_do_host = lambda: 10.0  # type: ignore[method-assign]  # host calmo: a regra de IRQ conta (29.67)
         total, irq = 1000.0, 0.0
         for fatia in (0, 100, 200, 300):                    # 3 frações: 10%, 20%, 30%
             irq += fatia
