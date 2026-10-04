@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.21: a pessoa resolve a ocorrência incerta e o pedido deixa de ficar preso (branch canais/28-21-resolver-incerta, migração 095)
+
+- Achado real do 28.12: `retomar` dava 409 `pendencia_aberta` para sempre num pedido com ocorrência `incerta`, porque ela só
+  saía das pendências quando uma ocorrência posterior concluía; a única saída era cancelar.
+- Migração 095: `pedido_ocorrencias.resolvida_em`, `resolvida_por`, `resolvida_nota` (nulas).
+- `POST /api/pedidos/{id}/ocorrencias/{oid}/resolver` (nota obrigatória): só marca, a ocorrência segue `incerta`, nada é
+  reexecutado; idempotente; 404/409 fora do caso. `pendencias` ignora a incerta resolvida e mantém a regra antiga.
+- Painel: "Marcar como resolvida" na pendência (diálogo com nota) e quem/quando/nota na guia Ocorrências.
+- Contrato: adendo v1.15 em `docs/api-contract.md`. Prova `simulated`: `backend/tests/test_pedidos_resolver_incerta.py` e
+  `PedidosPage.test.tsx`; `not_run` no central.
+
 ## 2026-10-04 — 29.36: o motivo do aparelho remoto parado acompanha a conexão e a queda (branch fix/29-36-detalhe-do-externo-parado, sem migração)
 
 - `DeviceManager._recalcular_motivo_do_parado`: reescreve o `state_detail` de um aparelho de worker `stopped` com o

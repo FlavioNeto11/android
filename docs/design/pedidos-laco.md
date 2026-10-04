@@ -367,6 +367,9 @@ Riscos:
   devidos ao mesmo tempo seguram o laço de eventos. Limite de `N` criações por volta (`lote_max` também aqui).
 - **R4. Formato de instante** (A5): comparação errada é silenciosa; o teste puro precisa de um caso no mesmo
   segundo.
+- **R5 (28.21): a saída da `incerta` é a pessoa.** O pedido em `aguardando_pessoa` por uma ocorrência `incerta` não materializa
+  nada, então nenhuma ocorrência posterior concluiria: `POST /api/pedidos/{id}/ocorrencias/{oid}/resolver` (nota obrigatória,
+  migração 095) marca a incerta como conferida, sem mudar o estado dela nem reexecutar, e o `retomar` volta a valer.
 - **R5. `needs_input` e `incerta` sem `aguardando_pessoa` até o 28.5**: com `pular`, a ocorrência aberta bloqueia as
   seguintes (não há efeito duplicado); com `permitir_todas` (`observar`) seguem nascendo — aceitável só para leitura.
 
