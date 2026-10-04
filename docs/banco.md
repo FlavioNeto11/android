@@ -306,6 +306,17 @@ Qualquer falha também troca o esquema: no pior caso o custo é o de antes. Fica
 grava, por worker, quantos reusos, migrações e trocas houve e por quê. Uma troca frequente é o achado a seguir, não
 ruído.
 
+Medido em 04/10 no farm-pg (PostgreSQL 17 de teste), mesmo commit e mesmos testes (os `test_learning_*` mais 2
+arquivos), `-n 8`, prioridade Idle:
+
+| Reuso | Resultado | Tempo | Horário |
+|---|---|---|---|
+| desligado (`ESQUEMA_MODELO=off`) | 1033 passed, 2 skipped | 8 min 49 s | 01:18:43–01:27:36Z |
+| ligado | 1033 passed, 2 skipped | 2 min 51 s | 01:27:36–01:30:31Z |
+
+Com o reuso ligado, os 8 workers migraram uma vez cada e reusaram o esquema 551 vezes. Nenhuma troca e nenhuma
+conexão encerrada.
+
 ## Dois backends no mesmo banco: o que já foi feito
 
 > **Histórico.** Esta seção chegou a se chamar "o que foi preciso para isso ser seguro", depois "e por que ainda

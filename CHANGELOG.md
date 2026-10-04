@@ -28,8 +28,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Qualquer falha ou mudança de estrutura troca o esquema, então o custo volta ao de antes, sem teste vermelho.
 - `ESQUEMA_MODELO=off` serve para a medida antes e depois.
 - Teste: `backend/tests/test_esquema_do_worker.py` (só com `TEST_DATABASE_URL`).
-- Prova: SQLite intacto (105 passed, 3 skipped; não prova o PG). A medida em PG (1016 testes, `-n 8`, antes e
-  depois) fica not_run até a vez da orquestradora, depois do deploy 17.
+- Prova em PG (farm-pg, 04/10, mesmo commit e mesmos testes, `-n 8`, Idle):
+  - com `ESQUEMA_MODELO=off`: 1033 passed, 2 skipped em 8 min 49 s;
+  - com o reuso: 1033 passed, 2 skipped em 2 min 51 s, com 8 migrações, 551 reusos e 0 trocas;
+  - os testes novos: 6 passed.
+- SQLite intacto.
 
 ## 2026-10-04 — 29.56: tranca de login por cliente, limite no Bearer e cabeçalhos de segurança (branch fix/29-56-tranca-por-cliente, sem migração)
 
