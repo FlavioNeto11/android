@@ -306,8 +306,8 @@ class LacoDePedidos:
         efeito = run_status is None or self.repo.efeito_possivel(o["run_id"])
         sem_orcamento: str | None = None
         if p["orcamento_total_usd"] is not None:
-            total, gasto, necessario = self._situacao_do_orcamento(p)
-            sem_orcamento = motivo_sem_orcamento(total, gasto + custo, necessario)
+            total, gasto, necessario, reservado = self._situacao_do_orcamento(p)
+            sem_orcamento = motivo_sem_orcamento(total, gasto + custo, necessario, reservado)
         teto = p["orcamento_ocorrencia_usd"]
         if sem_orcamento is None and teto is not None and float(o["custo_usd"] or 0.0) + custo >= float(teto):
             sem_orcamento = f"o teto da ocorrência (US$ {float(teto):.4f}) já foi gasto"
@@ -419,12 +419,40 @@ class LacoDePedidos:
                     r.puladas += 1
 
     # ------------------------------------------------------------------ 1b. orçamento total (28.6)
-    def _situacao_do_orcamento(self, p: Row) -> tuple[float | None, float, float]:
-        """`(total, gasto, necessario)`: o orçamento total do pedido, o que as ocorrências fechadas já gastaram e o que
-        a próxima deve custar (`domain/orcamento.py::custo_estimado`)."""
+    def _situacao_do_orcamento(self, p: Row) -> tuple[float | None, float, float, float]:
+        """`(total, gasto, necessario, reservado)`: o orçamento total do pedido, o que as ocorrências fechadas já gastaram,
+        o que a próxima deve custar (`domain/orcamento.py::custo_estimado`) e o que os filhos VIVOS seguram do saldo
+        (28.10 F2; sempre 0 sem `colaboracao.enabled`, sem filhos ou sem orçamento total). Os quatro vão juntos às
+        funções de `orcamento.py` (`motivo_sem_orcamento`, `quantas_cabem`)."""
         total = p["orcamento_total_usd"]
         necessario = custo_estimado(self.repo.ultimos_custos(p["id"], ULTIMAS_PARA_ESTIMAR), p["orcamento_ocorrencia_usd"])
-        return (None if total is None else float(total)), self.repo.custo_total(p["id"]), necessario
+        reservado = 0.0 if total is None else self._reservado_aos_filhos(p["id"])
+        return (None if total is None else float(total)), self.repo.custo_total(p["id"]), necessario, reservado
+
+    def _reservado_aos_filhos(self, pai_id: str) -> float:
+        """28.10 F2: o que os filhos diretos do pedido seguram do saldo dele, em US$ (`colaboracao.reservado_aos_filhos`).
+
+        O `orcamento_total_usd` de um filho foi RESERVADO do pai na criação (F1) e só o que o filho gasta sai de verdade:
+        enquanto ele vive, o pai não pode usar a reserva inteira; quando termina, só o gasto (`reservado − gasto`
+        volta ao saldo do pai). Os netos de um filho terminado entram no gasto dele pela mesma regra, porque a reserva
+        deles saiu do orçamento do filho. Desligado, o saldo do pai é só o dele, como antes da F2."""
+        if not self.cfg.colaboracao.enabled:
+            return 0.0
+        return colaboracao.reservado_aos_filhos(self._filhos_no_orcamento(pai_id, {pai_id}))
+
+    def _filhos_no_orcamento(self, pai_id: str, vistos: set[str]) -> list[colaboracao.FilhoNoOrcamento]:
+        saida: list[colaboracao.FilhoNoOrcamento] = []
+        for f in self.repo.filhos(pai_id):
+            if f["id"] in vistos:       # linhagem gravada em círculo não prende o laço
+                continue
+            vistos.add(f["id"])
+            vivo = f["estado"] not in colaboracao.ESTADOS_TERMINAIS
+            gasto = self.repo.custo_total(f["id"])
+            if not vivo:
+                gasto += colaboracao.reservado_aos_filhos(self._filhos_no_orcamento(f["id"], vistos))
+            reservado = f["orcamento_total_usd"]
+            saida.append(colaboracao.FilhoNoOrcamento(vivo, None if reservado is None else float(reservado), gasto))
+        return saida
 
     def _orcamentos(self, token: int, agora: datetime, r: Resumo) -> None:
         """Pedido cujo orçamento total não cobre outra ocorrência: o que ainda não virou execução é `pulada`
@@ -442,12 +470,17 @@ class LacoDePedidos:
 
     def _conferir_orcamento(self, p: Row, token: int, agora: datetime, r: Resumo) -> bool:
         """`True` = sem orçamento para outra ocorrência."""
-        total, gasto, necessario = self._situacao_do_orcamento(p)
-        motivo = motivo_sem_orcamento(total, gasto, necessario)
+        total, gasto, necessario, reservado = self._situacao_do_orcamento(p)
+        motivo = motivo_sem_orcamento(total, gasto, necessario, reservado)
         if motivo is None:
             if dominio_avisos.passou_de_80(gasto, total):
                 self._avisar_orcamento_80(p, float(total), gasto, agora)
             return False
+        if reservado > 0 and motivo_sem_orcamento(total, gasto, necessario) is None:
+            # 28.10 F2: o pedido TEM saldo; é a reserva dos filhos vivos que o segura. Nada é pulado (a `devida` espera o
+            # filho terminar e devolver o que não gastou: `quantas_cabem` já a segura no despacho) e o pai NÃO encerra por
+            # orçamento, o que levaria os filhos junto (`encerrar_filhos`). O alerta de 80 % segue o gasto real, não a reserva.
+            return True
         for linha in self.repo.ids_prevista_devida(p["id"]):
             self._pular([(linha["id"], f"orçamento: {motivo}")], token, agora, r, de=linha["estado"])
         if self.repo.quantas_em_aberto(p["id"]) == 0:

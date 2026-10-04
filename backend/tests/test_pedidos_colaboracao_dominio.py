@@ -248,3 +248,19 @@ def test_filho_vivo_reserva_o_total_e_o_terminado_so_o_que_gastou() -> None:
 def test_filho_vivo_que_gastou_alem_da_reserva_conta_o_gasto() -> None:
     assert c.reservado_aos_filhos([c.FilhoNoOrcamento(True, 2.0, 2.5)]) == 2.5
     assert c.reservado_aos_filhos([c.FilhoNoOrcamento(True, None, 0.5)]) == 0.5
+
+
+def test_orcamento_desconta_a_reserva_do_saldo_livre() -> None:
+    from app.modules.pedidos.domain.orcamento import motivo_sem_orcamento, quantas_cabem, restante
+    assert restante(10.0, 2.0) == 8.0 and restante(10.0, 2.0, 3.0) == 5.0 and restante(None, 2.0, 3.0) is None
+    # sem reserva, a conta é a de sempre
+    assert motivo_sem_orcamento(1.0, 0.0, 0.5) is None and quantas_cabem(1.0, 0.0, 0.5) == 2
+    # com reserva: 1.0 − 0.6 = 0.4 livres, não cobrem 0.5
+    assert quantas_cabem(1.0, 0.0, 0.5, 0.6) == 0
+    m = motivo_sem_orcamento(1.0, 0.0, 0.5, 0.6)
+    assert m is not None and "0.4000" in m and "0.6000" in m and "reservad" in m
+    # reserva que come todo o saldo: o motivo diz que é a reserva, não que o pedido gastou tudo
+    esgotado_por_reserva = motivo_sem_orcamento(1.0, 0.2, 0.5, 0.8)
+    assert esgotado_por_reserva is not None and "reservado" in esgotado_por_reserva and "gastou" not in esgotado_por_reserva
+    # gasto real esgotado continua com o texto de sempre
+    assert "esgotado" in (motivo_sem_orcamento(1.0, 1.0, 0.5, 0.0) or "")

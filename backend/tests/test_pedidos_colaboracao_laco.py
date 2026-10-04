@@ -228,6 +228,83 @@ async def test_a_nova_tentativa_nao_e_segurada_pela_dependencia(h: Harness) -> N
     assert (res.despachadas, res.seguradas, res.puladas) == (1, 0, 0)
 
 
+# =============================================================================================== orçamento do pai
+def _pai_com_orcamento(db, r: Relogio, *, total: float, por_ocorrencia: float, **kw) -> None:
+    _pedido(db, "ped1", criado=r.t - timedelta(hours=3), **kw)
+    db.execute("UPDATE pedidos SET orcamento_total_usd=?, orcamento_ocorrencia_usd=? WHERE id='ped1'", (total, por_ocorrencia))
+
+
+def _filho(db, r: Relogio, fid: str = "fil", *, reserva: float, estado: str = "pausado") -> None:
+    _pedido(db, fid, criado=r.t - timedelta(hours=2), estado=estado)
+    db.execute("UPDATE pedidos SET pai_id='ped1', orcamento_total_usd=? WHERE id=?", (reserva, fid))
+
+
+async def test_pai_com_filho_vivo_reservado_nao_despacha_alem_do_saldo_livre(h: Harness) -> None:
+    r = Relogio()
+    db = h.state.db
+    laco = _colab(h, r)
+    _agora(db, "ped1", r)
+    db.execute("UPDATE pedidos SET orcamento_total_usd=1.0, orcamento_ocorrencia_usd=0.5 WHERE id='ped1'")
+    _filho(db, r, reserva=0.6)                                            # saldo livre: 1.0 − 0.6 = 0.4 < 0.5
+
+    res = laco.uma_volta()
+    assert (res.despachadas, res.puladas, res.encerrados) == (0, 0, 0)
+    assert [o["estado"] for o in _ocs(db)] == ["devida"] and _runs(db) == []
+    assert db.one("SELECT estado FROM pedidos WHERE id='ped1'")["estado"] == "ativo", \
+        "a reserva dos filhos segura o despacho, não encerra o pai (isso levaria os filhos junto)"
+
+
+async def test_pai_despacha_so_quantas_o_saldo_livre_cobre(h: Harness) -> None:
+    r = Relogio()
+    r.t = datetime(2026, 10, 2, 12, 10, 0, tzinfo=UTC)
+    db = h.state.db
+    laco = _colab(h, r)
+    _horaria(db, dtstart="2026-10-02T11:00:00", janela=4 * 3600, coalescer=0, sobreposicao="permitir_todas")
+    db.execute("UPDATE pedidos SET orcamento_total_usd=1.2, orcamento_ocorrencia_usd=0.5 WHERE id='ped1'")
+    _filho(db, r, reserva=0.6)                                            # livre 0.6: cabe UMA de 0.5 (sem reserva caberiam 2)
+
+    assert laco.uma_volta().despachadas == 1
+    assert [x["estado"] for x in _ocs(db)[:2]] == ["despachada", "devida"]
+
+
+async def test_filho_terminado_libera_o_que_nao_gastou(h: Harness) -> None:
+    r = Relogio()
+    db = h.state.db
+    laco = _colab(h, r)
+    _agora(db, "ped1", r)
+    db.execute("UPDATE pedidos SET orcamento_total_usd=1.0, orcamento_ocorrencia_usd=0.5 WHERE id='ped1'")
+    _filho(db, r, reserva=0.6)
+    assert laco.uma_volta().despachadas == 0                              # filho vivo: 0.4 livres
+
+    # o filho termina tendo gasto 0.1 dos 0.6: sobram 0.5 e a ocorrência de 0.5 cabe (comprometido = só o gasto)
+    db.execute("UPDATE pedidos SET estado='concluido' WHERE id='fil'")
+    _oc(db, "fil", "concluida", r.t, custo=0.1)
+    assert laco.uma_volta().despachadas == 1
+
+
+async def test_filho_terminado_que_gastou_tudo_nao_devolve_nada(h: Harness) -> None:
+    r = Relogio()
+    db = h.state.db
+    laco = _colab(h, r)
+    _agora(db, "ped1", r)
+    db.execute("UPDATE pedidos SET orcamento_total_usd=1.0, orcamento_ocorrencia_usd=0.5 WHERE id='ped1'")
+    _filho(db, r, reserva=0.6, estado="concluido")
+    _oc(db, "fil", "concluida", r.t, custo=0.6)
+    assert laco.uma_volta().despachadas == 0, "o gasto ficou: 1.0 − 0.6 = 0.4 < 0.5"
+
+
+async def test_gasto_real_do_pai_sem_filhos_encerra_como_sempre(h: Harness) -> None:
+    r = Relogio()
+    db = h.state.db
+    laco = _colab(h, r)
+    _agora(db, "ped1", r)
+    db.execute("UPDATE pedidos SET orcamento_total_usd=1.0, orcamento_ocorrencia_usd=0.5 WHERE id='ped1'")
+    _oc(db, "ped1", "concluida", r.t - timedelta(seconds=1), custo=1.0, previsto=r.t - timedelta(hours=1))
+    res = laco.uma_volta()
+    assert res.encerrados == 1 and res.despachadas == 0
+    assert db.one("SELECT encerrado_motivo FROM pedidos WHERE id='ped1'")["encerrado_motivo"] == "orcamento"
+
+
 # =============================================================================================== desligado
 async def test_desligado_o_laco_e_identico_mesmo_com_a_dependencia_gravada_no_banco(h: Harness) -> None:
     r = Relogio()
@@ -243,3 +320,13 @@ async def test_desligado_o_laco_e_identico_mesmo_com_a_dependencia_gravada_no_ba
     assert (res.despachadas, res.seguradas, res.puladas) == (2, 0, 0)
     assert [o["estado"] for o in _ocs(db, "ped1")] == [o["estado"] for o in _ocs(db, "ped2")] == ["despachada"]
     assert len(_runs(db)) == 2
+
+
+async def test_desligado_a_reserva_dos_filhos_nao_entra_no_orcamento(h: Harness) -> None:
+    r = Relogio()
+    db = h.state.db
+    laco = _laco(h, r)
+    _agora(db, "ped1", r)
+    db.execute("UPDATE pedidos SET orcamento_total_usd=1.0, orcamento_ocorrencia_usd=0.5 WHERE id='ped1'")
+    _filho(db, r, reserva=0.6)
+    assert laco.uma_volta().despachadas == 1, "como antes da F2: o saldo do pai é só o dele"
