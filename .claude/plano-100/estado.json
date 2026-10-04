@@ -7188,15 +7188,15 @@
   "31.36": {
    "id": "31.36",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #232 (etapa de limpeza opcional), migração 098; tests/test_etapa_opcional.py (3 testes, 1 ponta a ponta); suíte 24 (integ/suite-24 @ 2c7ab99e: SQLite 9377 passed em -n 6, PG dirigido 3485 passed em 170 arquivos com 2 falhas tratadas, uma correção só de teste e um intermitente verde ao repetir; front 1491) e deploy 24 no ar em 04/10 (saúde ok às 11:08:36Z, migração 098_etapa_opcional, prova de fora ok às 11:08:43Z). Prova real pendente: ocorrências do 28.12 depois do deploy 24.",
+   "proof": "real",
+   "evidence": "04/10 19:57:26Z, central em 0ede1860: r-20261004195726-cb19de no android-09 (Chrome), chave lote:jev:31.36-01, comando da f8722d (28.12, todas as etapas sem efeito). O planejador marcou close_cookies como opcional (steps.opcional=1); a etapa ficou skipped depois de 1 tentativa, sem replano, e read_results deu succeeded. A execução fechou completed (a f8722d, antes do conserto, fechou completed_with_issues com replano e US$ 0,309). Custo: US$ 0,214914 em 20 chamadas de IA.",
    "blocker": null,
-   "grupo": "orquestradora-deploy24",
-   "modelo": "fable",
-   "esforco": "high",
+   "grupo": "resultado-orquestradora-deploy31-c",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T11:09:24+00:00"
+   "quando": "2026-10-04T20:05:31+00:00"
   },
   "31.37": {
    "id": "31.37",
@@ -7236,14 +7236,14 @@
    "id": "28.10",
    "status": "partial",
    "proof": "real",
-   "evidence": "F1/F2 REAL em 04/10/2026 18:35Z, central WIN-7S2UASNLFOP, deploy 30 (1b3568a7), aparelho android-12 (notebook, sem conta, QA Messenger), aviso prévio ao dono (Telegram msg 209). Pai ped_kUZTrLhVU5Cph-Di31vx4A (lote:canais:28.10-f1-01, horário amanhã, total US$ 1,05) com filho A ped_LP1dOeWVXoOpcwHvYqouCA (pesquisador, lote …-f1-02) e filho B ped_S8DuXfioX_StCeug1t9aXw (checador, lote …-f1-03, depende de A com precisa_de_resultado); GET do pai devolve filhos e dependencias (F1). F2 dependência: as duas ocorrências previstas para 18:35:29Z; A despachou (r-20261004183529-4bf401, completed 18:35:50.048Z) e B ficou 'devida' até A concluir (ocorrência concluida 18:35:50.076Z), despachando só depois (r-20261004183550-d27721, criada 18:35:50.127Z, completed 18:36:14Z); objetivos succeeded. F2 reserva: prévia de um terceiro filho de US$ 0,10 recusada com orcamento_do_pai ('o pai já gastou US$ 0.0000 e os outros filhos reservaram US$ 1.0000'), nada gravado. Custo: A US$ 0,0851 + B US$ 0,0388. Filhos encerrados por contagem; pai cancelado com motivo às ~18:36Z. | Antes desta prova: F1 PR #227 (migração 096, v1.16), deploy 24; F2 PR #240, deploy 25; F3 PR #252 (v1.18), deploy 26. F3 REAL em 04/10/2026 16:03Z, central WIN-7S2UASNLFOP, deploy 28 (1fc66a6c; pedidos.colaboracao.enabled ligado neste reinício): (1) papel pesquisador + autonomia agir: POST /api/pedidos/previa valido=false com bloqueio autonomia_acima_do_papel (campo autonomia) e sem selo; POST /api/pedidos (lote:canais:28.10-f3-01) 422 autonomia_acima_do_papel 'O papel `pesquisador` vai no máximo até `observar`; o pedido pede `agir`'; 0 pedidos gravados. (2) papel pesquisador + observar (lote:canais:28.10-f3-02): ped_U9TvCUHdVQaPCzaaZ1ub4w criado ativo, ocorrência r-20261004160341-2db829 (android-12 sem conta,",
-   "blocker": "F4 (#290) e F5 (#293/#295) em PR; a prova real deles espera o merge e o deploy.",
-   "grupo": "orquestradora-deploy30",
+   "evidence": "F1/F2 REAL em 04/10/2026 18:35Z, central WIN-7S2UASNLFOP, deploy 30 (1b3568a7), aparelho android-12 (notebook, sem conta, QA Messenger), aviso prévio ao dono (Telegram msg 209). Pai ped_kUZTrLhVU5Cph-Di31vx4A (lote:canais:28.10-f1-01, horário amanhã, total US$ 1,05) com filho A ped_LP1dOeWVXoOpcwHvYqouCA (pesquisador, lote …-f1-02) e filho B ped_S8DuXfioX_StCeug1t9aXw (checador, lote …-f1-03, depende de A com precisa_de_resultado); GET do pai devolve filhos e dependencias (F1). F2 dependência: as duas ocorrências previstas para 18:35:29Z; A despachou (r-20261004183529-4bf401, completed 18:35:50.048Z) e B ficou 'devida' até A concluir (ocorrência concluida 18:35:50.076Z), despachando só depois (r-20261004183550-d27721, criada 18:35:50.127Z, completed 18:36:14Z); objetivos succeeded. F2 reserva: prévia de um terceiro filho de US$ 0,10 recusada com orcamento_do_pai ('o pai já gastou US$ 0.0000 e os outros filhos reservaram US$ 1.0000'), nada gravado. Custo: A US$ 0,0851 + B US$ 0,0388. Filhos encerrados por contagem; pai cancelado com motivo às ~18:36Z. | Antes desta prova: F1 PR #227 (migração 096, v1.16), deploy 24; F2 PR #240, deploy 25; F3 PR #252 (v1.18), deploy 26. F3 REAL em 04/10/2026 16:03Z, central WIN-7S2UASNLFOP, deploy 28 (1fc66a6c; pedidos.colaboracao.enabled ligado neste reinício): (1) papel pesquisador + autonomia agir: POST /api/pedidos/previa valido=false com bloqueio autonomia_acima_do_papel (campo autonomia) e sem selo; POST /api/pedidos (lote:canais:28.10-f3-01) 422 autonomia_acima_do_papel 'O papel `pesquisador` vai no máximo até `observar`; o pedido pede `agir`'; 0 pedidos gravados. (2) papel pesquisador + observar (lote:canais:28.10-f3-02): ped_U9TvCUHdVQaPCzaaZ1ub4w criado ativo, ocorrência r-20261004160341-2db829 (android-12 sem conta, | DEPLOY 31 (no ar 04/10 19:53Z, central em 0ede1860, migração 103), fatias SIMULATED: F4 (o pai consolida observações e memória dos filhos; conflito vai ao relatório; o aviso leva só a contagem), PR #290 (f2d55032, c2401eee; conserto do ciclo relatorio↔consolidacao em 08435862, que na integ entrou como 6a2a7f2b), tests/test_pedidos_colaboracao_consolidacao.py com 17 testes. F5 parte 1 (numa família com porta-voz, quem não tem papel fica em 'observar'; prévia com autonomia_rebaixada_pela_familia; 422 reacao_repetida), PR #293 (774d3e56, 2e827c50, 789f3e2f), testes de pedidos. Nenhuma prova real da F4 nem da F5: proibida prova que crie pedido até o 28.31 F2 estar no ar.",
+   "blocker": "Falta: (1) F5b, o provedor contexto_do_pedido no PR #295 (merge do conserto da F4 em d6596d05), que só é LIGADO com o #305 da Aprendizado (porta_vozes como conjunto e a ligação ao _policy_gate); ordem de merge #295, #298, #305; (2) do lado do planejador (Jev), reação ao mesmo conteúdo com outras palavras e uma persona citar a outra; (3) prova real da F4 e da F5 (um pai de teste com colaboração ligada, no android-12) depois do 28.31 F2 no ar.",
+   "grupo": "resultado-orquestradora-deploy31-c",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T18:39:06+00:00"
+   "quando": "2026-10-04T20:05:31+00:00"
   },
   "14.13": {
    "id": "14.13",
@@ -7400,14 +7400,14 @@
    "id": "29.68",
    "status": "partial",
    "proof": "real",
-   "evidence": "04/10/2026, android-10 contra android-09 (notebook), sem IA. Antes do reboot (12:33Z): árvore pela API p50 252 ms (10) contra 283 ms (09); no convidado do 10, load 1,2 e kernel inflado nos mesmos processos (composer 8,8 % contra 4,5 %, surfaceflinger 7,4 % contra 3,6 %, HAL de sensores 8,8 % contra 0,9 %); load do 10 ~0,5 de noite e de dia contra 0,05-0,07 do 09. Boot a frio do 10 (stop 12:34:55Z, online 12:36:34Z): system_server em 47,0 s contra 29,9 s do 09. Leitura no notebook por ssh (só leitura): os 4 qemu iguais (BelowNormal, afinidade 0xFFF, sem power throttling, sem janela, mesma linha de comando e config.ini), CPU i7-9850H não híbrida, Ultimate Performance. Depois do boot (12:50Z): laço de CPU pura 1562/1284 ms (10) contra 1474/1431 ms (09); syscall/binder 257/239 contra 268/314 ms; tecla nula por adb 146 contra 153 ms. Causa: estado de longa duração do convidado/emulador (23 h no ar), desfeito pelo boot a frio; não é configuração do host. RODADA SEM IA DA JEV depois do deploy 26 (60b3a0a9), central calmo, fill_message por receita, uma execução por aparelho: android-10 em 6,0 s (r-20261004131626-d2f94d, 13:16Z) e android-09 em 4,3 s (r-20261004131718-b57272, 13:17Z); referências: 4,4 s no android-10 às 00:01Z e 8,5 s antes do boot a frio. O boot a frio desfez parte da lentidão (8,5 para 6,0 s), mas o 10 ainda fica ~40 % acima do 09 com n=1.",
-   "blocker": "Resto não explicado: 6,0 s contra 4,3 s com uma amostra por aparelho. Próxima medida: cinco execuções alternadas por aparelho, sem IA, com o central calmo, e os laços de CPU dentro do convidado na mesma hora. O 29.69 (religar a frio aparelho sem conta ocioso) só vira linha do plano se essa medida confirmar o efeito do tempo ligado.",
-   "grupo": "orquestradora-pos-deploy26",
+   "evidence": "04/10 20:00:00Z a 20:04:42Z, central em 0ede1860, android-09 com o painel fechado (passeio encerrado às 19:58:26Z), chaves lote:jev:29.68-03 a -07, comando da fee44f (QA Messenger). As 5 fecharam completed: 09306b, 1c6daf, 9154c7, 021f64 e 074480, com parede de 45,2 / 75,2 / 46,4 / 45,1 / 40,3 s. prep_arvore_ms por execução (n; máximo; mediana): 3; 1039; 315 | 4; 227; 225 | 3; 281; 213 | 3; 226; 187 | 3; 181; 161. 15 das 16 medidas ficaram abaixo de 1 s.",
+   "blocker": "Uma medida passou de 1 s (1039 ms), na primeira execução, a do aparelho ocioso. O critério 'abaixo de 1 s' não fecha em todas: a orquestradora decide se a primeira árvore depois de ocioso conta.",
+   "grupo": "resultado-orquestradora-deploy31-c",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T13:24:55+00:00"
+   "quando": "2026-10-04T20:05:31+00:00"
   },
   "28.22": {
    "id": "28.22",
@@ -7547,14 +7547,14 @@
    "id": "28.24",
    "status": "partial",
    "proof": "real",
-   "evidence": "real, 04/10 17:24:58Z, central C:\\git\\android em 1452f81d (deploy 29, migração 101_canal_anexos). Primeiro um aviso de uma linha ao dono (Telegram message_id 199). Depois UMA captura do android-12 (aparelho de teste, tela de Configurações do emulador, sem dado pessoal), frame android-12-2-1791134696757 de 720x1280 e 44944 bytes, mandada ao chat do DONO pelo CanalTelegram.enviar_anexo do produto (sendPhoto, message_id 200). A captura veio da MESMA prévia do painel (rt.frame), acordada por um watch com foco pelo /api/ws, a mesma fonte do capturar_para_o_dono. Script: scratchpad/prova_28_24_saida.py, fora do repo e sem segredo impresso. Limite: o caminho de conversa do /captura (ConversaDoCanal.enviar_conteudo) não foi exercido de ponta a ponta, porque /captura é comando do dono. Prova de ENTRADA: not_run, à espera de uma imagem natural do dono. canal_telegram sem entradas desde 13:14:52Z e getWebhookInfo pending_update_count=0.",
-   "blocker": "Faltam: (1) a entrada real com anexo (uma imagem do dono pelo Telegram, baixada para data/anexos e registrada em canal_anexos); (2) /captura pedido pelo próprio dono, o que é opcional; (3) as fatias 3 (leitura da imagem pela IA quando o dono pede, até US$ 0,05 por imagem) e 4 (tela de anexos no painel).",
-   "grupo": "canais-28-24-prova-saida",
-   "modelo": "opus (Canais)",
-   "esforco": "high",
+   "evidence": "real, 04/10 17:24:58Z, central C:\\git\\android em 1452f81d (deploy 29, migração 101_canal_anexos). Primeiro um aviso de uma linha ao dono (Telegram message_id 199). Depois UMA captura do android-12 (aparelho de teste, tela de Configurações do emulador, sem dado pessoal), frame android-12-2-1791134696757 de 720x1280 e 44944 bytes, mandada ao chat do DONO pelo CanalTelegram.enviar_anexo do produto (sendPhoto, message_id 200). A captura veio da MESMA prévia do painel (rt.frame), acordada por um watch com foco pelo /api/ws, a mesma fonte do capturar_para_o_dono. Script: scratchpad/prova_28_24_saida.py, fora do repo e sem segredo impresso. Limite: o caminho de conversa do /captura (ConversaDoCanal.enviar_conteudo) não foi exercido de ponta a ponta, porque /captura é comando do dono. Prova de ENTRADA: not_run, à espera de uma imagem natural do dono. canal_telegram sem entradas desde 13:14:52Z e getWebhookInfo pending_update_count=0. | DEPLOY 31 (no ar 04/10 19:53Z, central em 0ede1860, migração 103), fatias SIMULATED: F3 (a IA lê a imagem do dono, só JPEG/PNG/WEBP, teto US$ 0,05 por imagem, custo em ai_calls com origem='canais', migração 103 em canal_anexos), PR #286 (575f78b2, 1a589d90, 47cb4a86, b79c6366). F4 (tela de Anexos em Canais com prévia, filtros e 'Anexar ao cartão' pelo link, pelo código curto ou pelo id; anexo repetido devolve o que já estava), PR #284 (5f066872, 0b9cc793, 38ac13a6, acad6bf8); tests/test_canais_anexos_lista.py e test_canais_anexos_trello.py, AnexosTab.test.tsx. A revisão independente do painel do deploy 31 não achou bloqueio nem vazamento de dado de persona.",
+   "blocker": "Falta: (1) a entrada real com anexo (uma imagem do dono pelo Telegram) e a leitura paga dela (~US$ 0,003), conferindo ai_calls origem='canais' e a descrição em canal_anexos; depende de gesto dele; (2) F5: botão 'Ler' na aba Anexos, mais os 4 ajustes da revisão (dizer 'Já estava no cartão' com ja_estava; fixar o 'desde' na primeira carga; guardar a miniatura em memória; recusar no pode_ir_ao_cartao o tipo fora de entrada.anexos.tipos); (3) o passeio no navegador da aba depois do deploy.",
+   "grupo": "resultado-orquestradora-deploy31-c",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T17:29:26+00:00"
+   "quando": "2026-10-04T20:05:31+00:00"
   },
   "31.26": {
    "id": "31.26",
@@ -7741,15 +7741,15 @@
   "31.45": {
    "id": "31.45",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "PR #278 no deploy 30: OPEN_MAIL_INBOX prova por element_present id=conversation_list; saídas seguem pelo read_value/leitura visual. 172 testes direcionados.",
-   "blocker": "Prova real NÃO rodou na janela do deploy 30 (sessão Jev parada). Achado da revisão (31.50 a): conversation_list também existe em Enviados/Rascunhos, então a prova precisa do título da pasta; a prova real deve conferir na evidência que a pasta era a Caixa de Entrada.",
-   "grupo": "resultado-orquestradora-deploy31",
+   "proof": "real",
+   "evidence": "04/10 19:54:51Z, central em 0ede1860 (migração 103): r-20261004195451-7d3527 no android-01, chave lote:jev:31.45-01, comando da d62546 (uma etapa OPEN_MAIL_INBOX, sem efeito). completed, 1 tentativa, US$ 0,107296 (costs.spent_usd). A tela final é a Caixa de Entrada: o título 'Inbox' aparece na captura 2026-10-04T195635084Z_v1_open_inbox_a1_screenshot.jpg e no observed_result. Nada de login, desafio ou 'Confirm you're human'.",
+   "blocker": "A etapa foi por ai_actor (13 chamadas: decide 7, verify 3, leitura 2, decisao_fechada 1), não pela prova determinística element_present. Fica para o 31.50 (a): investigar por que não fechou sem ator e acrescentar a conferência do título da pasta.",
+   "grupo": "resultado-orquestradora-deploy31-c",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T19:55:16+00:00"
+   "quando": "2026-10-04T20:05:31+00:00"
   },
   "31.46": {
    "id": "31.46",
@@ -10307,6 +10307,19 @@
    ],
    "grupos": [
     "resultado-orquestradora-deploy31-b"
+   ]
+  },
+  {
+   "quando": "2026-10-04T20:05:31+00:00",
+   "itens": [
+    "31.45",
+    "31.36",
+    "29.68",
+    "28.10",
+    "28.24"
+   ],
+   "grupos": [
+    "resultado-orquestradora-deploy31-c"
    ]
   }
  ]
