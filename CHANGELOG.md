@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.46: o juiz sabe que a linha da lista do Outlook não tem texto (branch fix/31-46-dica-da-lista-do-outlook)
+
+- Achado (r-…-e7bc42, 01/10): a etapa livre `verify_sent` foi recusada com "a lista de e-mails está vazia" na pasta Sent,
+  porque a linha da lista do Outlook é um `ComposeView` sem texto nem descrição na árvore. O 31.45 cobriu a ação
+  OPEN_MAIL_INBOX do catálogo; este cobre a etapa livre, que o planejador escreve com pós-condição `model_judged`.
+- Canal novo (não havia um do conhecimento do app até o juiz): `dicas_ao_juiz` no `telas.yaml` (esquema fechado, falha na
+  carga), `VerifyRequest.dicas_da_tela` e o bloco `<dicas_da_tela>` no texto do juiz dos dois provedores. O
+  `VERIFIER_SYSTEM` não muda (snapshot de `test_prompts_licoes`); sem dica o texto é idêntico ao de antes, então os outros
+  apps não mudam.
+- O Outlook declara a dica (app inteiro; só a caixa foi inspecionada, e a mesma lista serve Enviados: SUPOSIÇÃO): linhas
+  presentes provam que a pasta tem mensagens; remetente ou assunto específico não se provam pela árvore, e vêm da leitura
+  visual (ADR-070). A ação VERIFY_SENT_MAIL no catálogo NÃO entrou.
+- Prova `simulated`: `tests/test_dica_de_tela_ao_juiz.py` (21) e 505 testes dos arquivos que tocam o conhecimento de telas,
+  o texto do juiz e os provedores. Execução real: `not_run` (enviar e-mail é efeito externo não autorizado).
+
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
 - Retorno do dono (04/10, Aprendizado › Para aprovar com 5 selecionados): o formulário do aceite abria com o botão

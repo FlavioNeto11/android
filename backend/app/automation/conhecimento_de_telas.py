@@ -135,6 +135,14 @@ class RegiaoVisual:
 
 
 @dataclass(frozen=True, slots=True)
+class DicaAoJuiz:
+    """Item 31.46: um fato sobre COMO a tela do app é desenhada, dito ao verificador. É sobre a árvore ("a linha da lista
+    não traz texto"), nunca sobre o que aceitar: o juiz segue julgando a pós-condição. `telas` vazio = o app inteiro."""
+    texto: str
+    telas: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class EstadoConhecido:
     telas: tuple[str, ...]
     voltar_max: int = 4
@@ -153,6 +161,13 @@ class ConhecimentoDeTelas:
     #: Item 12.5: as regiões em que a leitura visual vale (`leitura_visual.regioes`). Vazio = nenhuma saída pode ser lida
     #: da imagem neste app, e a leitura visual recusa com `regiao_nao_declarada`.
     regioes_visuais: tuple[RegiaoVisual, ...] = ()
+    #: Item 31.46: o que o juiz precisa saber da árvore deste app (`dicas_ao_juiz`). Vazio = o pedido de antes.
+    dicas_ao_juiz: tuple[DicaAoJuiz, ...] = ()
+
+    def dicas_para(self, tela: str | None) -> list[str]:
+        """Os textos que valem para a tela reconhecida `tela` (`None` = não reconhecida: só os do app inteiro), na ordem
+        do arquivo e sem repetir."""
+        return list(dict.fromkeys(d.texto for d in self.dicas_ao_juiz if not d.telas or tela in d.telas))
 
     def regiao_visual(self, tela: str | None, tree: UiTree, ancora: object, saida: str) -> RegiaoVisual | None:
         """A região declarada que cobre esta âncora para esta saída, na tela reconhecida `tela`; `None` se nenhuma."""
@@ -464,11 +479,37 @@ def de_dados(dados: object) -> ConhecimentoDeTelas:
     if not isinstance(voltar_max, int) or not 0 <= voltar_max <= 10:
         raise ConhecimentoInvalido("`estado_conhecido.voltar_max` precisa ser um inteiro de 0 a 10")
     regioes = _regioes_visuais(raiz.get("leitura_visual"), nomes)
+    dicas = _dicas_ao_juiz(raiz.get("dicas_ao_juiz"), nomes)
     return ConhecimentoDeTelas(app=app, versao=versao, idioma_padrao=idioma_padrao,
                                sinais=sinais, telas=tuple(regras), extracoes=extracoes,
                                estado_conhecido=EstadoConhecido(telas=casa, voltar_max=voltar_max,
                                                                 reabrir=bool(ec.get("reabrir", True))),
-                               regioes_visuais=regioes)
+                               regioes_visuais=regioes, dicas_ao_juiz=dicas)
+
+
+#: Uma dica é uma frase curta por tela: passar disto é o arquivo virando manual dentro do prompt do juiz.
+_DICA_TEXTO_MAX = 600
+
+
+def _dicas_ao_juiz(bruto: object, telas: set[str]) -> tuple[DicaAoJuiz, ...]:
+    """`dicas_ao_juiz` (item 31.46). Recusa na carga: item que não é mapa, campo desconhecido, `texto` vazio ou maior que
+    `_DICA_TEXTO_MAX`, `telas` com nome que o arquivo não declara. Sem o campo: nenhuma dica, o pedido de antes."""
+    if bruto is None:
+        return ()
+    out: list[DicaAoJuiz] = []
+    for i, item in enumerate(_lista(bruto, "dicas_ao_juiz")):
+        onde = f"dicas_ao_juiz[{i}]"
+        d = _mapa(item, onde)
+        if estranhos := sorted(set(d) - {"telas", "texto"}):
+            raise ConhecimentoInvalido(f"{onde}: campo desconhecido {', '.join(estranhos)}")
+        texto = " ".join(str(d.get("texto") or "").split())
+        if not texto or len(texto) > _DICA_TEXTO_MAX:
+            raise ConhecimentoInvalido(f"{onde}: `texto` precisa ter de 1 a {_DICA_TEXTO_MAX} caracteres")
+        alvo = tuple(str(t) for t in _lista(d.get("telas"), f"{onde}.telas"))
+        if desconhecidas := sorted(t for t in alvo if t not in telas):
+            raise ConhecimentoInvalido(f"{onde}: a tela {desconhecidas[0]!r} não está declarada em `telas`")
+        out.append(DicaAoJuiz(texto=texto, telas=alvo))
+    return tuple(out)
 
 
 def _regioes_visuais(bruto: object, telas: set[str]) -> tuple[RegiaoVisual, ...]:
@@ -617,3 +658,26 @@ def da_pasta(pasta: Path) -> ConhecimentoDeTelas | None:
     detector de conta travada fica com os sinais genéricos). Arquivo inválido levanta `ConhecimentoInvalido`."""
     caminho = pasta / "telas.yaml"
     return carregar(caminho) if caminho.is_file() else None
+
+
+@lru_cache(maxsize=32)
+def _da_pasta_com_data(caminho: str, mtime_ns: int) -> ConhecimentoDeTelas:
+    return carregar(Path(caminho))
+
+
+def dicas_da_tela(pasta: Path, tree: UiTree, *, package: str | None) -> list[str]:
+    """Item 31.46: as dicas do `telas.yaml` do app que está na frente, para a tela que a árvore mostra; é o que o juiz
+    recebe a mais. Lista vazia (o pedido de antes) quando o app não declara dica, não é o da frente ou o arquivo não
+    carrega: uma dica a menos nunca derruba a verificação. Lê o arquivo uma vez por modificação, porque roda a cada
+    julgamento."""
+    caminho = pasta / "telas.yaml"
+    try:
+        if (not package or not package.replace(".", "").replace("_", "").isalnum() or pasta.name != package
+                or not caminho.is_file()):
+            return []
+        k = _da_pasta_com_data(str(caminho), caminho.stat().st_mtime_ns)
+        if not k.dicas_ao_juiz:
+            return []
+        return k.dicas_para(classificar(k, tree, package=package).tela)
+    except (ConhecimentoInvalido, OSError, yaml.YAMLError):
+        return []
