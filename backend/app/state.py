@@ -44,6 +44,7 @@ from .modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
 from .modules.avisos.application.espelho import LinhaDeCusto
 from .modules.avisos.infrastructure.espelho import EspelhoDoTrello, FontesDaCentral
 from .modules.avisos.infrastructure.espelho_sql import CartoesDoTrello, CursorDoTrello
+from .modules.avisos.infrastructure.faxina_sql import FaxinaDosCanais
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from .modules.avisos.infrastructure.portas_da_central import PortasReais
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos
@@ -301,7 +302,8 @@ class AppState:
         self.lideranca = Lideranca(self.db, dono=cfg.owner_id)
         # Aviso fora do painel (28.11): espelho da caixa de Pendências no Telegram. Desligado de fábrica.
         self.avisos = ServicoDeAvisos(cfg, self.bus, FilaDeAvisos(self.db), self.lideranca, lider=self._lider,
-                                      redigir=TriagemDeCredencial().redigir)
+                                      redigir=TriagemDeCredencial().redigir,
+                                      faxina_canais=FaxinaDosCanais(self.db))
         self.transport = build_transport(cfg.env.command_transport, owner_id=cfg.owner_id or "local",
                                          url=cfg.env.nats_url)
         self.commands = CommandStore(self.db, owner_id=cfg.owner_id, outbox=self.outbox)

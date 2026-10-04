@@ -1141,6 +1141,9 @@ class EntradaDoTelegramCfg(BaseModel):
     # A mensagem escrita há mais que isto (a Central estava fora e o Telegram guardou) não é tratada: um "/aprovar" ou
     # um "sim" de horas atrás não executa. Gravada sem texto; o dono é avisado uma vez para mandar de novo.
     idade_max_s: float = Field(900.0, ge=60, le=86400)
+    #: Quanto o que veio e foi pelo Telegram fica guardado (28.16): depois disso o texto é zerado e a linha apagada.
+    #: Mínimo de 2 dias: passa da janela em que o Telegram guarda uma update (24 h), e o dedupe segue valendo.
+    retencao_dias: float = Field(30.0, ge=2, le=3650)
 
 
 class AvisosCfg(BaseModel):
@@ -1210,6 +1213,9 @@ class TrelloCfg(BaseModel):
     comando_livre: bool = False                              # false = a Central só espelha; true aceita comando por cartão
     # A action escrita há mais que isto (a Central estava fora) não é tratada: um "sim" de horas atrás não executa.
     idade_max_s: float = Field(900.0, ge=60, le=86400)
+    #: Quanto o que veio e foi pelo Trello fica guardado (28.16): depois disso o texto é zerado e a linha apagada, junto
+    #: com os cartões já arquivados. Mínimo de 2 dias: passa da janela em que o webhook reenvia uma action.
+    retencao_dias: float = Field(30.0, ge=2, le=3650)
     #: Quem o dono autorizou a PEDIR (além dele). Vazia de fábrica: o pedido de convidado vira aviso ao dono.
     membros_autorizados: list[str] = Field(default_factory=list)
     responder_convidados: bool = False                       # responde a pergunta de convidado no cartão, só com o já visível

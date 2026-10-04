@@ -510,6 +510,7 @@ avisos:                           # aviso fora do painel (item 28.11): espelho d
   #   espera_conflito_s: 60       # 409 (outro consumidor do bot): espera e avisa na saúde, não disputa
   #   ttl_previa_s: 900           # o botão Executar de uma prévia mais velha que isto não cria a execução
   #   idade_max_s: 900            # mensagem escrita há mais que isto (Central fora do ar) não é tratada; o dono é avisado
+  #   retencao_dias: 30           # (28.16) depois disso o texto da conversa é zerado e a linha apagada (mínimo 2)
 
 trello:                           # Trello do dono (item 32.2, ADR-072): espelho do plano e canal de comandos. Ligar exige TRELLO_API_KEY e TRELLO_TOKEN no .env
   enabled: false                  # (false) desligado = nenhuma chamada ao Trello. Os segredos NUNCA moram aqui (docs/operacao.md)
@@ -525,6 +526,7 @@ trello:                           # Trello do dono (item 32.2, ADR-072): espelho
   # reconciliar_s: 60             # leitura das actions do quadro (a rede de segurança do webhook; 300 com ele ligado)
   # comando_livre: false          # (false) só espelha; true aceita comando por comentário e por cartão movido
   # idade_max_s: 900              # action mais velha que isto (Central fora do ar) não é tratada
+  # retencao_dias: 30             # (28.16) depois disso o texto é zerado, a linha apagada e o cartão arquivado esquecido (mínimo 2)
   # membros_autorizados: []       # quem o dono autorizou a PEDIR além dele; vazia = o pedido de convidado vira aviso ao dono
   # responder_convidados: false   # responde a pergunta de convidado no cartão, só com o que o quadro já mostra
   # webhook:                      # caminho principal da entrada (§8 do desenho); exige TRELLO_API_SECRET no .env e o portal público
