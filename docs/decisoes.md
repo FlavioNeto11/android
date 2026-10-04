@@ -5483,6 +5483,9 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
    vêm do `guarda`. A página não tem script, estilo nem manipulador em linha, nem recurso de fora (há teste); o JS só
    escreve com `textContent` e posta com `credentials: "omit"`. O HSTS é dado pela Cloudflare (ADR-073, um mês). O site
    não põe cookie, não tem analytics e não carrega fonte de terceiros.
+   O nome público (`dev.nvit.com.br`, ADR-073) fica escrito no HTML estático no `canonical`, no `og:url` e no
+   `og:image` (a prévia de link exige endereço absoluto), sem marcador trocado pelo servidor; há teste que reprova se
+   os três divergirem. Servido por outro nome, a prévia aponta para esse.
 4. **Os contatos da página** vêm de `portal.contatos` (nome e telefone, validados) no `config.yaml` da instalação, fora
    do Git, e entram escapados no marcador `<!--portal:contatos-->`. Sem contatos, o bloco some. Número real nunca vai a
    código, teste, exemplo ou captura de PR.

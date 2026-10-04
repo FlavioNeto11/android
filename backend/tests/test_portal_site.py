@@ -239,3 +239,14 @@ def test_previa_de_link_e_icones_da_mesma_origem_e_leves() -> None:
     assert arquivos["/favicon.ico"].corpo[:4] == b"\x00\x00\x01\x00"
     pesados = {p: len(a.corpo) for p, a in arquivos.items() if len(a.corpo) > 200_000}
     assert not pesados, f"arquivo do site acima de 200 KB: {pesados}"
+
+
+def test_enderecos_absolutos_da_pagina_batem_entre_si() -> None:
+    """O nome público é fixo no HTML estático (ADR-073 e ADR-075): `canonical`, `og:url` e `og:image` levam o mesmo
+    `https://<nome>/`. Sem marcador trocado pelo servidor; se o nome mudar, os três mudam juntos."""
+    html = ler_site(SITE)["/index.html"].corpo.decode("utf-8")
+    canonical = re.search(r'<link rel="canonical" href="(https://[^/"]+)/"', html)
+    og_url = re.search(r'<meta property="og:url" content="(https://[^/"]+)/"', html)
+    og_imagem = re.search(r'<meta property="og:image" content="(https://[^/"]+)/assets/', html)
+    assert canonical and og_url and og_imagem
+    assert canonical.group(1) == og_url.group(1) == og_imagem.group(1) == f"https://{PUBLICO}"
