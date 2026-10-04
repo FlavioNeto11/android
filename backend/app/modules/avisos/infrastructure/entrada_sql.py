@@ -155,6 +155,12 @@ class EntradasDoCanal:
             "SELECT * FROM canal_entradas WHERE canal=? AND estado='executando' AND run_id IS NULL AND tratada_em < ?"
             " ORDER BY id LIMIT 20", (self.canal, limite))]
 
+    def planejando(self, limite: int = 20) -> list[dict[str, object]]:
+        """As linhas do Executar com a execução criada só de plano (28.27): quem lê a fase é a conversa."""
+        return [dict(r) for r in self.db.query(
+            "SELECT * FROM canal_entradas WHERE canal=? AND estado='executando' AND run_id IS NOT NULL ORDER BY id LIMIT ?",
+            (self.canal, limite))]
+
     def recusadas_sem_resposta(self, idade_max_s: float, limite: int = 20) -> list[dict[str, object]]:
         """As recusas de credencial ou de pergunta sensível dos últimos `idade_max_s` segundos a que a Central ainda
         não respondeu (nenhuma `canal_enviadas` com o `entrada_id` delas): as que `registrar` gravou sem saída, e as

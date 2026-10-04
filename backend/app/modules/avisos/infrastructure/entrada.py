@@ -37,6 +37,7 @@ chama IA.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -66,6 +67,7 @@ from app.modules.avisos.domain.anexos import (
     normalizar_mime,
     tamanho_legivel,
 )
+from app.modules.avisos.domain.porta import itens_da_previa, ler_porta, linha_sem_aprovacao, mensagens_da_porta
 from app.modules.avisos.domain.privacidade import PERSONA_OCULTA as PERSONA_OCULTA  # reexport (28.28)
 from app.modules.avisos.domain.privacidade import sem_nome_de_persona as sem_nome_de_persona
 from app.modules.avisos.infrastructure.anexos import AnexoJaResolvido, AnexoRecusado, ArmazemDeAnexos
@@ -73,6 +75,7 @@ from app.modules.avisos.infrastructure.convidados import ConvidadosDoTelegram
 from app.modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
 from app.security.sessions import OPERADOR
 from app.taskqueue.travas import AVISOS
+from app.util import parse_iso
 
 log = logging.getLogger("poc.avisos.entrada")
 
@@ -171,6 +174,10 @@ _CAUSA_DA_RECUSA = {
 OCIOSO_S = 15.0
 #: Quanto tempo uma linha pode ficar em `executando` sem execução criada antes de ser dada como interrompida.
 PRESA_S = 300.0
+#: As fases da linha do Executar (28.27), na `previa`: o plano sendo feito (o vigia espera `planned`) e a prévia da
+#: porta mostrada (o "Executar (aprova N)" manda os pares do retrato).
+FASE_PLANEJANDO = "planejando"
+FASE_PORTA = "porta"
 #: Espera padrão depois de uma falha de rede ou 5xx na leitura (o 429 manda a dele; o definitivo, `espera_conflito_s`).
 ESPERA_FALHA_S = 5.0
 Linha = dict[str, object]
