@@ -26,7 +26,7 @@ const ESTADO: Record<PortalContatoAchado['estado'], { rotulo: string; tom: Tone 
 };
 
 const MOTIVO_MANTIDO: Record<PortalMotivoMantido, string> = {
-  em_envio: 'a mensagem estava saindo agora; tente de novo em um minuto',
+  em_envio: 'a exclusão NÃO terminou: a mensagem estava saindo agora; exclua de novo em instantes',
   falhou: 'o canal não confirmou a exclusão da fila; nada foi apagado deste contato, tente de novo',
   canal_sem_exclusao: 'o canal ainda não sabe apagar; use o procedimento manual de docs/operacao.md',
 };
@@ -286,6 +286,14 @@ function Resultado({ r }: { r: PortalExclusaoResultado }) {
             ))}
           </ul>
         </>
+      ) : null}
+      {r.mantidos.some((m) => m.motivo === 'em_envio') ? (
+        // A garantia "nada sai depois da exclusão" depende deste segundo gesto (revisão do #340): o aviso que já
+        // estava saindo termina de sair, e é a nova exclusão que o apaga do chat ou o põe na lista à mão.
+        <p className={styles.paragrafo}>
+          <strong>A exclusão não terminou.</strong> Uma mensagem estava saindo para o Telegram agora. Exclua de novo em
+          instantes: é a segunda exclusão que apaga essa mensagem do chat (ou a põe na lista para apagar à mão).
+        </p>
       ) : null}
       {r.mantidos.length > 0 ? (
         <>

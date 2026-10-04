@@ -188,7 +188,9 @@ describe('Exclusão a pedido do titular', () => {
     const t = text(estado);
     expect(t).toContain('2 mensagens do bot apagadas');
     expect(t).toContain('Contato nº 7, enviada (ou que pode ter saído) em 20/09/2026');
-    expect(t).toContain('Contato nº 9: a mensagem estava saindo agora; tente de novo em um minuto');
+    expect(t).toContain('Contato nº 9: a exclusão NÃO terminou: a mensagem estava saindo agora; exclua de novo em instantes');
+    expect(t).toContain('A exclusão não terminou.');
+    expect(t).toContain('é a segunda exclusão que apaga essa mensagem do chat');
     // O que sobrou não herda a marca de quem foi apagado.
     expect(caixa(9).checked).toBe(true);
   });

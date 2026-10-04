@@ -330,6 +330,10 @@ async def test_canais_real_lapide_impede_o_aviso_depois_da_exclusao(harness: Har
     # A mensagem já enviada saiu do chat agora (menos de 47 h) ou ficou para apagar à mão, nunca esquecida.
     enviadas = sum(1 for x in linhas if x["estado"] == "enviado")
     assert r.json()["mensagens_apagadas"] + len(r.json()["mensagens_a_mao"]) >= enviadas, r.json()
+    # A premissa da repetição (falha do Portal depois do `ok`): chamar de novo sobre a lápide devolve `ok` outra vez.
+    for contato_id in (na_fila, fora_da_fila):
+        de_novo = await st.avisos.apagar_avisos_do_portal(contato_id, now())
+        assert de_novo.estado == "ok", (contato_id, de_novo)
 
 
 # ------------------------------------------------------------------ teto de buscas e a janela entre módulos
@@ -435,3 +439,25 @@ async def test_quem_sumiu_no_meio_nao_e_contado_como_apagado(harness: Harness, m
     assert r.json()["apagados"] == [fica] and r.json()["inexistentes"] == [leva]
     [reg] = _registros(harness)
     assert json.loads(str(reg["ids"])) == [fica]
+
+
+async def test_em_envio_mantem_e_o_segundo_gesto_fecha(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Com a ponta nova do #340, `em_envio` quer dizer "o aviso já reivindicado termina de sair": a primeira exclusão
+    mantém a linha, e é a SEGUNDA que fecha (a Canais apaga a mensagem pelo registro do envio, ou a põe em `a_mao`)."""
+    a = _gravar(harness, TEL_A)
+
+    class CanaisQueTerminaDeEnviar(CanaisFalsa):
+        async def __call__(self, contato_id: int, agora: datetime) -> ApagadoFalso:
+            self.chamados.append(contato_id)
+            return ApagadoFalso("em_envio") if len(self.chamados) == 1 else ApagadoFalso("ok", 1)
+
+    canais = _canais(harness, monkeypatch, CanaisQueTerminaDeEnviar())
+    async with _logado(harness) as c:
+        primeira = await c.post(EXCLUIR, json={"ids": [a], "pedido_por": "telefone"})
+        assert primeira.json()["mantidos"] == [{"id": a, "motivo": "em_envio"}] and _ids_no_banco(harness) == {a}
+        segunda = await c.post(EXCLUIR, json={"ids": [a], "pedido_por": "telefone"})
+    assert segunda.json()["apagados"] == [a] and segunda.json()["mensagens_apagadas"] == 1
+    assert _ids_no_banco(harness) == set() and canais is not None and canais.chamados == [a, a]
+    registros = _registros(harness)
+    assert [json.loads(str(r["mantidos"])) for r in registros] == [[{"id": a, "motivo": "em_envio"}], []]
+    assert [json.loads(str(r["ids"])) for r in registros] == [[], [a]]
