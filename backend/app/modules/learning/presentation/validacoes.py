@@ -1,6 +1,6 @@
 """A leitura dos pedidos de validação automática (item 30.38 b; adendo v1.02). Só leitura, sem IA, sem custo.
 
-- `GET /api/aprendizado/validacoes?estado=&limite=50&antes=`: os pedidos de `learning_validations`, dos mais novos para
+- `GET /api/aprendizado/validacoes?estado=&item=&run=&limite=50&antes=`: os pedidos de `learning_validations`, dos mais novos para
   os mais antigos (`antes`: o `created_at` do último da página anterior), a contagem por estado de todos os pedidos, o
   total e o `modo` do despachante agora (`off` = pausado: o painel explica a pausa). Cada item leva o motivo em código e
   `motivo_humano` (a tabela do domínio), o nome do app (`app_nome`) e o comando de origem cortado em 200.
@@ -43,9 +43,14 @@ def pedido_json(p: PedidoListado) -> JsonObject:
 @router.get("/validacoes", response_model=None)
 async def validacoes(request: Request, estado: EstadoDoPedido | None = None,
                      limite: int = Query(default=50, ge=1, le=LISTA_MAX),
-                     antes: str | None = Query(default=None, max_length=40)) -> JsonObject:
+                     antes: str | None = Query(default=None, max_length=40),
+                     item: str | None = Query(default=None, max_length=200),
+                     run: str | None = Query(default=None, max_length=64)) -> JsonObject:
+    """30.43: `item` (`<kind>:<ref>`, o `item_ref`) e `run` filtram a lista; a `contagem` e o `total` seguem sendo de
+    TODOS os pedidos (o painel da fila os usa como estão). Um filtro na rota de sempre, e não uma rota por item: o
+    item é só mais uma coluna da mesma lista."""
     servico, validacao = _servicos(request)
-    itens = [pedido_json(p) for p in validacao.listar(estado, limite, antes)]
+    itens = [pedido_json(p) for p in validacao.listar(estado, limite, antes, item=item, run=run)]
     nomear_apps(itens, servico)
     contagem = validacao.contagens()
     return {"itens": list[JsonValue](itens), "contagem": dict[str, JsonValue](contagem),

@@ -244,6 +244,10 @@ class EntradaDoLivro:
     #: A execução de que a receita ou o fluxo foi aprendido (`learned_from_step` / `source_run_id`); `None` no treino,
     #: nos outros tipos e no que não tem origem legível. É a única que a evidência inválida aceita (30.23).
     nasceu_de: str | None = None
+    #: 30.43: a receita aprendida DENTRO de uma execução de validação (`contracts.origem.ORIGENS_DE_VALIDACAO`:
+    #: `prova_fluxo` ou `validacao_qa`), ou `None`. Ninguém pediu esse conteúdo: ele veio de uma validação. Segue na
+    #: fila do dono (decisão da orquestradora em 03/10), com a origem à vista no painel e no dossiê.
+    nasceu_em: str | None = None
     #: Derivado da trilha pelo serviço (`evidencia_invalida.reaprendizado`), nunca gravado: o item (re)nasceu no escopo
     #: de uma evidência inválida e espera o dono (classe B forçada).
     reaprendido: Reaprendizado | None = None

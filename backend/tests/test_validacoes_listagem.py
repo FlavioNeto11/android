@@ -71,3 +71,17 @@ async def test_a_listagem_ordena_filtra_pagina_e_conta(harness: Harness) -> None
     assert so_recusadas["total"] == 3                             # a contagem é de todos, não do filtro
     assert [i["id"] for i in pagina["itens"]] == ["lv-2"]
     assert invalido.status_code == 422
+
+
+async def test_a_listagem_filtra_por_item_e_por_execucao(harness: Harness) -> None:
+    """30.43: a seção "Validações" do item (`item`) e o veredito no Resumo da execução (`run`) usam a rota de sempre."""
+    _pedido(harness, "lv-1", "2026-10-03T10:00:00Z", "feita", run_id="r-v1")
+    _pedido(harness, "lv-2", "2026-10-03T11:00:00Z", "recusada", motivo="sem_caminho", run_id="r-v2")
+    _pedido(harness, "lv-3", "2026-10-03T12:00:00Z", "recusada", motivo="sem_caminho")
+    async with _cliente(harness) as c:
+        do_item = (await c.get("/api/aprendizado/validacoes", params={"item": "receita:lv-2"})).json()
+        da_execucao = (await c.get("/api/aprendizado/validacoes", params={"run": "r-v1"})).json()
+        nenhum = (await c.get("/api/aprendizado/validacoes", params={"run": "r-nao-existe"})).json()
+    assert [i["id"] for i in do_item["itens"]] == ["lv-2"] and do_item["itens"][0]["run_id"] == "r-v2"
+    assert [i["id"] for i in da_execucao["itens"]] == ["lv-1"]
+    assert nenhum["itens"] == [] and nenhum["total"] == 3       # a contagem segue sendo de todos

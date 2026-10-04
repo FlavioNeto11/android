@@ -31,7 +31,9 @@ from pydantic import ValidationError
 from app.automation.tools import COMMIT_VOCAB
 from app.db import Database, Row
 from app.models import Plan, PlanStep
-from app.modules.learning.application.evidencia_da_receita import EvidenciaDaReceita, RetrocargaDaReceita
+from app.contracts.origem import PREFIXO_VALIDACAO, eh_execucao_de_validacao
+from app.modules.learning.application.evidencia_da_receita import (EvidenciaDaReceita, InvalidaDaReproducao,
+                                                                   ReproducaoAConferir, RetrocargaDaReceita)
 from app.modules.learning.application.nativos import (AssinaturaDoPlano, ContraGravado, D1Nativo, Decidir,
                                                       ExecucaoAssentada, ExecucaoDeHabilidade, FluxoEmProva,
                                                       ForDeProva, PassoAssinado, ProvaDaExecucao,
@@ -40,6 +42,7 @@ from app.modules.learning.application.nativos import (AssinaturaDoPlano, ContraG
 from app.modules.learning.application.ports import RepositorioDeAprendizado
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.evidencia_invalida import run_da_etapa
+from app.modules.learning.domain.promocao import ORIGEM_DA_REPRODUCAO
 from app.modules.learning.domain.prova import (PREFIXO_DA_EXPANSAO, AcaoDaProva, EtapaDaProva, TentativaDaProva,
                                                detalhe_da_invalida, efeito_repetido, veredito_da_prova)
 from app.modules.learning.domain.livro import (escopo_da_receita, estado_nativo, fluxo_tem_efeito, hash_da_receita,
@@ -167,10 +170,33 @@ class LeituraSql:
         texto = detalhe_da_invalida(v.motivo, v.texto) if v.motivo is not None else v.texto
         return ProvaDaExecucao(fluxo_id, content_hash(conteudo), v.posicao, texto)
 
-    def efeito_repetido_da_execucao(self, run_id: str) -> int | None:
+    def efeito_repetido_da_execucao(self, run_id: str, *, regra_propria: bool = True) -> int | None:
         """30.42: as cópias do efeito da execução (`domain.prova.efeito_repetido`), ou `None`. O passo da curadoria
-        aplica a MESMA regra do veredito às provas que já deixaram o `for`."""
-        return efeito_repetido(self._etapas_da_prova(run_id))
+        aplica a MESMA regra do veredito às provas que já deixaram o `for`. 30.43: `regra_propria=False`, só o 29.58."""
+        return efeito_repetido(self._etapas_da_prova(run_id), regra_propria=regra_propria)
+
+    def reproducoes_a_conferir(self, run_id: str | None = None) -> list[ReproducaoAConferir]:
+        """30.43: as linhas `reproducao:` (for/against) sem a `invalida` irmã, de execução de validação (a MESMA
+        derivação de `contracts.origem`) ou com o `efeito_repetido` do 29.58 em alguma etapa; `run_id` restringe a uma.
+        A execução sem repetição volta a ser conferida a cada passo: são poucas (o P4 e as do 29.58)."""
+        sql = ("SELECT e.item_ref, e.origin_ref, e.run_id, e.simulated, e.instance_id, r.prova_fluxo_id,"
+               " r.idempotency_key FROM learning_evidence e JOIN runs r ON r.id = e.run_id"
+               " WHERE e.origin_ref LIKE ? AND e.stance IN ('for', 'against')"
+               " AND NOT EXISTS (SELECT 1 FROM learning_evidence f WHERE f.item_ref = e.item_ref"
+               " AND f.origin_ref = e.origin_ref AND f.stance = 'invalida')"
+               " AND (r.prova_fluxo_id IS NOT NULL OR r.idempotency_key LIKE ?"
+               " OR EXISTS (SELECT 1 FROM steps s WHERE s.run_id = e.run_id AND s.result LIKE ?))")
+        args: list[object] = [ORIGEM_DA_REPRODUCAO + "%", PREFIXO_VALIDACAO + "%", "%efeito_repetido%"]
+        if run_id is not None:
+            sql += " AND e.run_id = ?"
+            args.append(run_id)
+        return [ReproducaoAConferir(
+                    item_ref=linhas.texto(r, "item_ref"), origin_ref=linhas.texto(r, "origin_ref"),
+                    run_id=linhas.texto(r, "run_id"), simulada=bool(linhas.inteiro(r, "simulated")),
+                    aparelho=linhas.texto_ou_nulo(r, "instance_id"),
+                    de_validacao=eh_execucao_de_validacao(linhas.texto_ou_nulo(r, "prova_fluxo_id"),
+                                                          linhas.texto_ou_nulo(r, "idempotency_key")))
+                for r in self._db.query(sql + " ORDER BY e.id", tuple(args))]
 
     def _expansoes(self, run_id: str) -> frozenset[int]:
         """As versões do plano da execução que a expansão do `for_each` criou (`plan_versions.reason`), que o veredito não
@@ -434,6 +460,11 @@ def ligar(servico: LearningService, repo: RepositorioDeAprendizado, db: Database
     servico.registrar_passo(ReclassificacaoDoEfeitoDuplicado(repo, leitura, decidir=decidir))   # 30.42
     reproducoes = ReproducoesSql(db)                                                  # 30.39: a evidência da receita
     servico.registrar_minerador(EvidenciaDaReceita(repo, reproducoes))
+    # 30.43: depois da evidência da receita (precisa da linha) e antes do fechamento do pedido de validação (ligado
+    # depois, em `ligar_validacao`): o pedido da receita fecha pela `invalida`
+    repetida = InvalidaDaReproducao(repo, leitura)
+    servico.registrar_minerador(repetida)
+    servico.registrar_passo(repetida)
     servico.registrar_passo(RetrocargaDaReceita(
         repo, reproducoes, limite_por_receita=lambda: servico.ajustes.retencao.evidencias_por_item))
     if habilidades is not None:

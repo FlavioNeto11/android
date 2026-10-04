@@ -86,3 +86,34 @@ export function rotuloDoItem(p: Pick<PedidoDeValidacao, 'item_kind' | 'item_ref'
   const kind = isLivroKind(p.item_kind) ? p.item_kind : isLivroKind(prefixo) ? prefixo : null;
   return kind ? rotuloDoKind(kind) : 'Item do aprendizado';
 }
+
+/** Os motivos de recusa em que a execução rodou mas a prova não vale (30.42): "inválida", nunca "contra" nem "a favor". */
+const MOTIVOS_DE_PROVA_INVALIDA: readonly string[] = ['efeito_repetido', 'ponto_de_partida', 'ator_sem_acao'];
+
+/**
+ * 30.43: o veredito do ITEM numa execução de validação, em palavras curtas. A execução pode terminar "concluída" e o
+ * item levar evidência contra (caso da e1b7d0); por isso a tela da execução mostra isto no lugar de "sucesso
+ * comprovado". `null` = nenhum pedido achado para a execução (a legenda de sempre).
+ */
+export function vereditoDoPedido(p: Pick<PedidoDeValidacao, 'estado' | 'motivo' | 'motivo_humano'> | null): string | null {
+  if (!p) return null;
+  if (p.estado === 'feita') return 'a favor';
+  if (p.estado === 'pendente' || p.estado === 'rodando') return 'em andamento';
+  const porque = p.motivo_humano ?? p.motivo;
+  if (p.motivo === 'evidencia_contra') return 'contra';
+  if (p.motivo === 'divergencia_de_forma') return 'só a forma (não conta)';
+  if (p.motivo && MOTIVOS_DE_PROVA_INVALIDA.includes(p.motivo)) return `inválida (${porque})`;
+  return `sem evidência (${porque ?? 'sem motivo registrado'})`;
+}
+
+/**
+ * 30.43: a leitura do histórico de um item. O MESMO motivo de recusa tem dois sentidos: com execução (`run_id`) o
+ * pedido rodou e foi reclassificado depois ("Rodou; depois: …"); sem ela foi recusado ao despachar, sem gasto
+ * ("Não rodou: …"). Sem motivo, vale o rótulo do estado.
+ */
+export function leituraDoPedido(p: Pick<PedidoDeValidacao, 'estado' | 'motivo' | 'motivo_humano' | 'run_id'>): string {
+  const porque = p.motivo_humano ?? p.motivo;
+  if (!porque) return META_DA_VALIDACAO[p.estado].label;
+  if (p.estado === 'recusada' || p.estado === 'expirada') return `${p.run_id ? 'Rodou; depois' : 'Não rodou'}: ${porque}`;
+  return porque;
+}

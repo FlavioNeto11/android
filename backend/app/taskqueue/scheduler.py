@@ -13,6 +13,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable
 
 from ..config import Config
+from ..contracts.origem import eh_execucao_de_validacao
 from ..db import Row, dumps, loads
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter
 from ..metricas import metricas
@@ -1247,7 +1248,9 @@ class Scheduler:
                     # Antes de assumir a etapa: nenhuma tentativa consumida, nenhuma chamada de modelo gasta.
                     self._hold(obj, srow, porta)
                     break
-                if run["prova_fluxo_id"]:
+                # 30.43: toda execução de validação (a prova de fluxo e a re-execução de receita do P4) parte de estado
+                # conhecido; no 6f459c a IA abriu o app dentro da conversa e enviou já na abertura
+                if eh_execucao_de_validacao(run["prova_fluxo_id"], run["idempotency_key"]):
                     await self._partir_da_prova(obj, run, rt)
                 attempt = repo.claim_step(srow["id"])
                 if attempt is None:
@@ -1467,8 +1470,9 @@ class Scheduler:
             log.info("%s: ponto de partida da prova não preparado — %s", rt.id, exc)
             abriu, detalhe = False, str(exc).splitlines()[0][:200] if str(exc) else type(exc).__name__
         pacotes = ", ".join(str(a.package) for a in apps)
+        quem = "Prova de fluxo (validação)" if run["prova_fluxo_id"] else "Validação do QA (re-execução)"
         self.repo.decision(
-            f"{rt.id}: Prova de fluxo (validação): ponto de partida. Encerrou {pacotes} (sem apagar dados) e abriu "
+            f"{rt.id}: {quem}: ponto de partida. Encerrou {pacotes} (sem apagar dados) e abriu "
             f"{apps[0].package}: " + ("o app está em primeiro plano." if abriu else f"não confirmado ({detalhe})."),
             run_id=run_id, instance_id=rt.id)
 

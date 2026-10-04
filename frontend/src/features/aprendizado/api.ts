@@ -128,10 +128,12 @@ export const apiAprendizado = {
       query: { app: q.app || undefined, decisao: q.decisao || undefined, limite: q.limite ?? 50, cursor: q.cursor || undefined }, signal,
     })),
 
-  /** 30.38 (b): os pedidos de validação automática, só leitura; `antes` é o `created_at` do último da página anterior. */
-  validacoes: async (q: { estado?: string; limite?: number; antes?: string | null }, signal?: AbortSignal): Promise<ListaDeValidacoes> =>
+  /** 30.38 (b): os pedidos de validação automática, só leitura; `antes` é o `created_at` do último da página anterior.
+   *  30.43: `item` (`<kind>:<ref>`) e `run` (id da execução) filtram o histórico de UM item e o veredito de UMA execução. */
+  validacoes: async (q: { estado?: string; limite?: number; antes?: string | null; item?: string; run?: string },
+                     signal?: AbortSignal): Promise<ListaDeValidacoes> =>
     lerListaDeValidacoes(await apiRequest<unknown>('GET', '/aprendizado/validacoes', {
-      query: { estado: q.estado || undefined, limite: q.limite ?? 50, antes: q.antes || undefined }, signal,
+      query: { estado: q.estado || undefined, limite: q.limite ?? 50, antes: q.antes || undefined, item: q.item || undefined, run: q.run || undefined }, signal,
     })),
 
   /** Os votos por item e os sinais implícitos de uma execução (A4). */

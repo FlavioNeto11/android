@@ -29,6 +29,16 @@ PREFIXOS_DE_ORIGEM: Mapping[str, OrigemDaExecucao] = {
 }
 
 
+#: 30.43: as origens que são EXECUÇÃO DE VALIDAÇÃO (a prova de fluxo e a re-execução da validação do QA): partem de
+#: estado conhecido (`Scheduler._partir_da_prova`) e o efeito repetido delas tira a evidência (`domain/prova.py`).
+ORIGENS_DE_VALIDACAO: tuple[OrigemDaExecucao, ...] = ("prova_fluxo", "validacao_qa")
+
+
+def eh_execucao_de_validacao(prova_fluxo_id: str | None, idempotency_key: str | None) -> bool:
+    """A execução é de validação, pela MESMA regra de `origem_da_execucao` (30.43)."""
+    return origem_da_execucao(prova_fluxo_id, idempotency_key)[0] in ORIGENS_DE_VALIDACAO
+
+
 def origem_da_execucao(prova_fluxo_id: str | None,
                        idempotency_key: str | None) -> tuple[OrigemDaExecucao | None, str | None]:
     """(origem, ref) de uma execução, pela regra do módulo. Sem marca: (None, None)."""

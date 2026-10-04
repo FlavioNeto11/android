@@ -200,6 +200,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Golden set: §8 (pré-registro do lote) e §2 (o `v2` medido antes e depois do 30.39; a regra da saúde).
 - Testes: `backend/tests/test_lote_intencao.py`, `scripts/tests/test_jev_braco_offline_intencao.py` e
   `scripts/tests/test_jev_braco_offline.py`.
+## 2026-10-03 — 30.43: a validação com rosto no item (branch feat/30-43-validacao-com-rosto)
+
+- A re-execução da validação do QA também parte de estado conhecido. O caso foi o 6f459c, que enviou duas vezes.
+- A linha `reproducao:` de execução que repetiu o efeito ganha a `invalida` irmã, e o pedido da receita fecha
+  `recusada/efeito_repetido`. Na execução orgânica só conta o 29.58. O passo reclassifica o que já existe por regra.
+- A receita nascida em validação mostra a origem (`nasceu_em`, no livro, na API e no dossiê) e segue na fila do dono.
+- A lista de validações ganha os filtros `item` e `run`. O item mostra os pedidos dele ("Rodou; depois: …" ou "Não
+  rodou: …"), e o Resumo da execução de validação mostra o veredito no lugar de "sucesso comprovado".
+- Sem migração. Adendo de contrato v1.10.
+
 ## 2026-10-03 — 30.41: o teto da prova proporcional ao plano (branch feat/30-41-teto-proporcional)
 
 - A prova de fluxo leva o teto `min(0,40; 0,05 + 0,02 × etapas)` no despacho, e ele vence o gravado. Com 18 etapas

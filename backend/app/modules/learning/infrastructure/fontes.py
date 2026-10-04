@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
 
+from app.contracts.origem import ORIGENS_DE_VALIDACAO, origem_da_execucao
 from app.db import Database, Row
 from app.modules.learning.domain.conteudo import (PREFIXO_DE_TREINO, EtapaDeOrigem, ReceitaLida, Vizinha,
                                                   capability_da_linha_da_receita, capability_da_receita,
@@ -318,7 +319,9 @@ class FontesSql:
 
 
 #: A receita com o título da etapa de que foi aprendida (`EntradaDoLivro.etapa`); a de treino não casa com `steps`.
-_RECEITAS = "SELECT r.*, s.title AS etapa_titulo FROM recipes r LEFT JOIN steps s ON s.id = r.learned_from_step"
+#: 30.43: e a marca da execução de origem (`origem_prova`, `origem_chave`) para `nasceu_em`.
+_RECEITAS = ("SELECT r.*, s.title AS etapa_titulo, ru.prova_fluxo_id AS origem_prova, ru.idempotency_key AS origem_chave"
+             " FROM recipes r LEFT JOIN steps s ON s.id = r.learned_from_step LEFT JOIN runs ru ON ru.id = s.run_id")
 
 
 def _receita(r: Row) -> EntradaDoLivro:
@@ -339,7 +342,14 @@ def _receita(r: Row) -> EntradaDoLivro:
                                     linhas.texto(r, "app_signature"), linhas.texto(r, "variant"),
                                     linhas.texto(r, "step_hash")),
         app_version=linhas.texto(r, "app_version"), falhas_seguidas=linhas.inteiro(r, "consecutive_fail"),
-        nasceu_de=run_da_etapa(aprendida), etapa=linhas.texto_ou_nulo(r, "etapa_titulo"))
+        nasceu_de=run_da_etapa(aprendida), etapa=linhas.texto_ou_nulo(r, "etapa_titulo"),
+        nasceu_em=_nasceu_em(r))
+
+
+def _nasceu_em(r: Row) -> str | None:
+    """30.43: a origem da execução que ensinou a receita, só quando é de validação (a mesma derivação do 30.38)."""
+    origem, _ = origem_da_execucao(linhas.texto_ou_nulo(r, "origem_prova"), linhas.texto_ou_nulo(r, "origem_chave"))
+    return origem if origem in ORIGENS_DE_VALIDACAO else None
 
 
 def _receita_lida(r: Row) -> ReceitaLida:

@@ -96,7 +96,7 @@ class DossiesSql:
                                       app_version=e.app_version, estado=None if e.state is None else e.state.value,
                                       origem=e.origin.value, side_effect=e.side_effect, human_origin=e.human_origin,
                                       criado_em=e.created_at, apps=self._apps(e, d.conteudo),
-                                      sem_caminho=self._sem_caminho(e))
+                                      sem_caminho=self._sem_caminho(e), nasceu_em=e.nasceu_em)
         trilha = [PassoDaTrilha(id=t.id, para=t.to_state.value, em=t.decided_at,
                                 de=None if t.from_state is None else t.from_state.value,
                                 por_pessoa=t.decided_by != SYSTEM_ACTOR, run_id=t.run_id) for t in d.trilha]
