@@ -435,6 +435,9 @@ class DeviceRuntime:
         #: publicação persiste.
         self.dto_publicado: str | None = None
         self.controle_anunciado: tuple[str, bool] | None = None
+        #: 29.66: o último DTO que foi ao log (o comparado, ver `publish`), lido do banco uma vez depois do reinício.
+        self.dto_persistido: dict[str, object] | None = None
+        self.dto_persistido_lido = False
         # frames
         self.frame: Frame | None = None
         self.frame_seq = 0
@@ -816,7 +819,8 @@ class DeviceManager:
         # 14.13: fato vai ao log (`instance.updated`); telemetria e troca de controle já anunciada vão ao painel como
         # `instance.progress`, efêmero. A regra e a medida estão em `devices/publicacao.py`.
         dto = self.dto(rt).model_dump(mode="json")
-        assinatura = assinatura_material(dto)
+        comparado = self._dto_para_comparar(rt, dto)
+        assinatura = assinatura_material(comparado)
         controle = (rt.control.value, rt.takeover_requested)
         # Mensagem explícita é registro ("inventário conferido", "adotado do worker…"): vai ao log mesmo sem campo novo.
         persistir = (message is not None or level != "info" or assinatura != rt.dto_publicado
@@ -824,7 +828,43 @@ class DeviceManager:
         self.bus.emit("instance.updated" if persistir else "instance.progress", message or f"{rt.id}: {rt.state.value}",
                       level=level, instance_id=rt.id, data={"instance": dto})
         if persistir:
-            rt.dto_publicado, rt.controle_anunciado = assinatura, controle
+            rt.dto_publicado, rt.controle_anunciado, rt.dto_persistido = assinatura, controle, comparado
+
+    def _dto_para_comparar(self, rt: DeviceRuntime, dto: dict[str, object]) -> dict[str, object]:
+        """29.66: o que muda só porque o worker ainda não falou não é fato novo.
+
+        Medido em 04/10: 1108 de 1114 trocas de `supported_verbs`, `renderer` e `abis` caíam em horas de reinício do
+        backend ou reconexão do worker. No seed, o aparelho do worker entra pelo túnel antes do `hello`: os verbos são os
+        de "externo sem worker" e o renderizador é nulo; segundos depois o `hello` devolve os de sempre. Nessa janela
+        (worker do aparelho conhecido e desconectado), os dois campos valem, PARA A COMPARAÇÃO, o último DTO gravado; o
+        painel recebe o DTO real. Fora da janela, o renderizador com `gles`/`vulkan` ainda desconhecidos (nulos) também
+        não apaga o que já se sabia: a sonda os preenche de novo depois de cada reinício.
+        """
+        ref = self._ultimo_dto_persistido(rt)
+        if not ref:
+            return dto
+        comparado = dict(dto)
+        if rt.worker_id and rt.worker_verbs is None:
+            comparado["supported_verbs"], comparado["renderer"] = ref.get("supported_verbs"), ref.get("renderer")
+        rend, rend_ref = comparado.get("renderer"), ref.get("renderer")
+        if isinstance(rend, dict) and isinstance(rend_ref, dict):
+            comparado["renderer"] = {**rend, **{k: rend_ref.get(k) for k in ("gles", "vulkan")
+                                               if rend.get(k) is None and rend_ref.get(k) is not None}}
+        return comparado
+
+    def _ultimo_dto_persistido(self, rt: DeviceRuntime) -> dict[str, object] | None:
+        if rt.dto_persistido is None and not rt.dto_persistido_lido:
+            rt.dto_persistido_lido = True              # uma leitura por aparelho e processo, achando ou não
+            linhas = self.db.query("SELECT data FROM events WHERE kind='instance.updated' AND instance_id=?"
+                                   " ORDER BY id DESC LIMIT 1", (rt.id,))
+            if linhas and linhas[0]["data"]:
+                try:
+                    instancia = loads(linhas[0]["data"], {}).get("instance")
+                except (ValueError, AttributeError):
+                    instancia = None
+                if isinstance(instancia, dict):
+                    rt.dto_persistido = instancia
+        return rt.dto_persistido
 
     def _set_state(self, rt: DeviceRuntime, state: InstanceState, detail: str | None = None,
                    *, level: str = "info", attention: str | None = None) -> None:
@@ -1823,7 +1863,7 @@ class DeviceManager:
 
     # ------------------------------------------------------------------ capacidades declaradas
     def registrar_capacidades(self, rt: DeviceRuntime, campos: dict[str, Any], *, fonte: str,
-                              publicar: bool = True) -> bool:
+                              publicar: bool = True, observado: bool = False) -> bool:
         """Grava o que se soube sobre o aparelho. Devolve `True` quando algo mudou.
 
         Só sobrescreve o que veio COM valor: uma batida que não sabe o nível de API não apaga o que o ADB já
@@ -1838,6 +1878,11 @@ class DeviceManager:
             if valor in (None, [], ""):
                 continue
             if getattr(rt, nome) == valor:
+                continue
+            if nome == "abis" and rt.abis and not observado:
+                # 29.66: o aparelho vence a declaração. O ADB lê `ro.product.cpu.abilist` (x86_64 e a tradução
+                # arm64-v8a); o worker declara o `abi.type` do config.ini (só x86_64). As duas fontes trocavam o valor a
+                # cada reinício do backend. A declaração só preenche o que ninguém leu.
                 continue
             setattr(rt, nome, valor)
             mudou = True
@@ -2305,7 +2350,7 @@ class DeviceManager:
             "kind": "emulator" if not rt.external else None,
             "api_level": int(sdk) if sdk.strip().isdigit() else None,
             "abis": [a.strip() for a in (abilist or "").split(",") if a.strip()],
-            "play_store": tem_gms}, fonte="o próprio aparelho (adb)")
+            "play_store": tem_gms}, fonte="o próprio aparelho (adb)", observado=True)
 
     def bind_worker_captura(self, worker_id: str, captura: Any) -> list[str]:
         """Liga (ou desliga, com `None`) a captura na origem dos aparelhos daquele worker. Mesmo desenho de

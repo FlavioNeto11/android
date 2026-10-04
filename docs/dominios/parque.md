@@ -95,6 +95,16 @@ pedido; `swiftshader_indirect` e `swiftshader` são o mesmo) aparece em `attenti
 pedido, o selecionado e o caminho do log. O aviso é derivado do que foi lido: cede a vez a outro assunto do cartão e
 volta sozinho. A Infraestrutura mostra o renderizador na linha de capacidades do aparelho.
 
+**Quem vence quando as fontes discordam (29.66).** Medido em 04/10: 1108 de 1114 trocas de `abis`,
+`supported_verbs` e `renderer` nos aparelhos do worker caíam em horas de reinício do backend ou de reconexão do
+worker. Em `abis`, o aparelho vence: o ADB lê `ro.product.cpu.abilist` (x86_64 e a tradução arm64-v8a), e a
+declaração do worker e o AVD local (`abi.type`, só x86_64) só preenchem o que ninguém leu
+(`registrar_capacidades(observado=...)`). No seed, antes do `hello`, o aparelho do worker entra pelo túnel como
+"externo sem worker". Nessa janela, os verbos e o renderizador valem o último DTO gravado na comparação do
+`publish` (lido do log uma vez depois do reinício), e o painel recebe o DTO real como `instance.progress`. Fora da
+janela, `gles`/`vulkan` ainda não sondados (nulos) não apagam o que já se sabia. O `stream` que diz "worker
+desconectado" continua contando: é fato.
+
 **Quem usa.** Um app declara em que renderizador ele não roda (`renderizador_recusado` no `app.yaml`), e a plataforma
 recusa instalar e abrir o app nesse aparelho: ver [apps e loja](apps-e-loja.md#compatibilidade).
 
