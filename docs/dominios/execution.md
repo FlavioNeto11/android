@@ -164,7 +164,12 @@ O prazo da 29.50 deixa de ser a constante e passa ao config (`execucao.pergunta_
   - `pergunta_vence_h` tem piso de 1 h: um "0.05" no lugar de "5" encerraria em minutos o que espera uma pessoa;
   - carência ao ligar: a marca `vencimento_ligado_desde` (`settings`) é gravada quando o vencimento é visto ligado e
     apagada quando desligado; nada vence antes da marca mais o prazo. Antes, ligar venceu de uma vez os 21 que já
-    estavam parados (primeira volta do deploy 30).
+    estavam parados (primeira volta do deploy 30);
+  - lembrete: a mesma volta (`RunService.lembrar_antes_de_vencer`) emite `pendencia.vence_em` UMA vez por item quando
+    faltam 2 h ou menos (`LEMBRETE_ANTES_H`). Os dados dizem o que é, o aparelho, a ação de catálogo, a chave da etapa
+    e o `vence_em`, nunca o comando nem o título. O texto ao dono é do montador dos avisos (28.31, Canais);
+  - `vence_em` (o mais tardio entre a espera e a marca, mais o prazo) vem no `RunSummary` em `needs_input`, no
+    `Objective` parado e na lista de aprovações pendentes (que vencem com o objetivo).
 
 ### Plano de fluxo salvo prova com o catálogo atual (31.50 a)
 

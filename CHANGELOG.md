@@ -28,6 +28,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - (c) `pergunta_vence_h` tem piso de 1 h.
 - (d) O rejulgamento do 17.10 vai sem a dica da tela.
 - Carência ao ligar: a marca `vencimento_ligado_desde` fica em `settings`. No deploy, o que hoje espera ganha mais 24 h.
+- Lembrete `pendencia.vence_em` 2 h antes, uma vez por item, com dados sem o comando; a Canais põe o tipo no
+  montador. `vence_em` no `RunSummary`, no `Objective` e na lista de aprovações pendentes.
 - Testes: `test_outlook_declarado.py`, `test_dica_de_tela_ao_juiz.py`, `test_pergunta_vence.py` e
   `test_needs_input_expira.py`, `simulated`. `real`: not_run.
 

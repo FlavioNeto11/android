@@ -342,6 +342,7 @@ interface ManualInput {
 | `plan.revised` | `{objective_id, version, reason}` | sim |
 | `control.changed` | `{instance_id, control, pending}` | sim |
 | `decision` | `{text}` | sim |
+| `pendencia.vence_em` | 31.50, uma vez por item, 2 h antes de vencer: `{o_que: aprovacao\|objetivo\|execucao, run_id, objective_id?, aparelho? \| aparelhos?, acao?, etapa?, vence_em, acontece_se_vencer, chave: "vencimento:lembrete:<id>", regra: "31.50"}`; nunca o comando nem o título. `vence_em` (ISO, nulo fora da espera) também vem em `RunSummary` (`needs_input`), `Objective` (parado) e na lista de aprovações pendentes | sim |
 | `log` | livre | sim |
 | `apps.updated` | `{apps: AppConfig[]}` | não |
 | `settings.updated` | `{settings: Settings}` | não |
