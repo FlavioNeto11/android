@@ -43,6 +43,9 @@ export interface PedidoDeValidacao {
   feito_em: string | null;
   expira_em: string | null;
   comando: string;
+  /** 30.45: a linha `invalida` que a execução deixou no item, mesmo chegada depois do fechamento (reclassificação).
+   *  Opcional: o backend de antes do 30.45 não manda. */
+  invalida_depois?: { motivo: string; motivo_humano: string | null } | null;
 }
 
 export interface ListaDeValidacoes {
@@ -67,7 +70,14 @@ function lerPedido(raw: unknown): PedidoDeValidacao | null {
     grupo: texto(r.grupo), run_id: texto(r.run_id), run_origem: texto(r.run_origem), aparelho: texto(r.aparelho),
     usd: numero(r.usd) ?? 0, teto_usd: numero(r.teto_usd), created_at: texto(r.created_at) ?? '',
     feito_em: texto(r.feito_em), expira_em: texto(r.expira_em), comando: typeof r.comando === 'string' ? r.comando : '',
+    invalida_depois: lerInvalidaDepois(r.invalida_depois),
   };
+}
+
+function lerInvalidaDepois(raw: unknown): PedidoDeValidacao['invalida_depois'] {
+  if (!raw || typeof raw !== 'object') return null;
+  const motivo = texto((raw as Record<string, unknown>).motivo);
+  return motivo ? { motivo, motivo_humano: texto((raw as Record<string, unknown>).motivo_humano) } : null;
 }
 
 export function lerListaDeValidacoes(raw: unknown): ListaDeValidacoes {
@@ -95,8 +105,12 @@ const MOTIVOS_DE_PROVA_INVALIDA: readonly string[] = ['efeito_repetido', 'ponto_
  * item levar evidência contra (caso da e1b7d0); por isso a tela da execução mostra isto no lugar de "sucesso
  * comprovado". `null` = nenhum pedido achado para a execução (a legenda de sempre).
  */
-export function vereditoDoPedido(p: Pick<PedidoDeValidacao, 'estado' | 'motivo' | 'motivo_humano'> | null): string | null {
+export function vereditoDoPedido(
+  p: Pick<PedidoDeValidacao, 'estado' | 'motivo' | 'motivo_humano' | 'invalida_depois'> | null,
+): string | null {
   if (!p) return null;
+  // 30.45: o pedido fechou `feita` e a evidência dele foi reclassificada inválida depois: não é "a favor".
+  if (p.estado === 'feita' && p.invalida_depois) return `inválida (${p.invalida_depois.motivo_humano ?? p.invalida_depois.motivo})`;
   if (p.estado === 'feita') return 'a favor';
   if (p.estado === 'pendente' || p.estado === 'rodando') return 'em andamento';
   const porque = p.motivo_humano ?? p.motivo;
@@ -109,9 +123,15 @@ export function vereditoDoPedido(p: Pick<PedidoDeValidacao, 'estado' | 'motivo' 
 /**
  * 30.43: a leitura do histórico de um item. O MESMO motivo de recusa tem dois sentidos: com execução (`run_id`) o
  * pedido rodou e foi reclassificado depois ("Rodou; depois: …"); sem ela foi recusado ao despachar, sem gasto
- * ("Não rodou: …"). Sem motivo, vale o rótulo do estado.
+ * ("Não rodou: …"). Sem motivo, vale o rótulo do estado. 30.45: o pedido `feita` cuja evidência foi reclassificada
+ * inválida depois lê "Rodou; depois: inválida — …" (o selo segue "Feita": é o estado gravado do pedido).
  */
-export function leituraDoPedido(p: Pick<PedidoDeValidacao, 'estado' | 'motivo' | 'motivo_humano' | 'run_id'>): string {
+export function leituraDoPedido(
+  p: Pick<PedidoDeValidacao, 'estado' | 'motivo' | 'motivo_humano' | 'run_id' | 'invalida_depois'>,
+): string {
+  if (p.estado === 'feita' && p.invalida_depois) {
+    return `Rodou; depois: inválida — ${p.invalida_depois.motivo_humano ?? p.invalida_depois.motivo}`;
+  }
   const porque = p.motivo_humano ?? p.motivo;
   if (!porque) return META_DA_VALIDACAO[p.estado].label;
   if (p.estado === 'recusada' || p.estado === 'expirada') return `${p.run_id ? 'Rodou; depois' : 'Não rodou'}: ${porque}`;

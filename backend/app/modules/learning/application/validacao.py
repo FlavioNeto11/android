@@ -131,6 +131,9 @@ class PedidoListado:
     expira_em: str
     revisao_nova_id: str | None
     comando: str
+    #: 30.45: o motivo da linha `invalida` que a execução do pedido deixou no item, mesmo chegada DEPOIS do fechamento
+    #: (a reclassificação do 30.42 e do 30.43). O pedido `feita` com ela não é "a favor". `None` sem a linha.
+    invalida_depois: str | None = None
 
 
 class RegistroDeValidacoes(Protocol):

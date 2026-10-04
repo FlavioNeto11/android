@@ -622,8 +622,10 @@ export function textoDaEvidencia(d: string, titulo?: string | null): string {
     const nome = titulo?.trim();
     if (!nome) return texto;
     // Só a primeira citação, e sem quebrar a frase: antes de ":" o título fecha a etapa; antes de palavra, uma vírgula.
-    return texto.replace(/\betapa (\d+) \(([A-Za-z0-9_.-]+)\)(?=[: ]|$)/, (citacao, _n: string, _k: string, pos: number) =>
-      `${citacao} — ${nome}${texto.charAt(pos + citacao.length) === ' ' ? ',' : ''}`);
+    // Com o título, a chave (snake_case, do planejador) sai do texto e fica no `title` da linha (o `detail` cru), como
+    // no título da receita (validação do deploy 17).
+    return texto.replace(/\betapa (\d+) \(([A-Za-z0-9_.-]+)\)(?=[: ]|$)/, (citacao, n: string, _k: string, pos: number) =>
+      `etapa ${n} — ${nome}${texto.charAt(pos + citacao.length) === ' ' ? ',' : ''}`);
   };
   const limpo = d
     .replace(/^\[[0-9a-f]{6,}\]\s*/, '')

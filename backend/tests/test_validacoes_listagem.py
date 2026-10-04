@@ -85,3 +85,38 @@ async def test_a_listagem_filtra_por_item_e_por_execucao(harness: Harness) -> No
     assert [i["id"] for i in do_item["itens"]] == ["lv-2"] and do_item["itens"][0]["run_id"] == "r-v2"
     assert [i["id"] for i in da_execucao["itens"]] == ["lv-1"]
     assert nenhum["itens"] == [] and nenhum["total"] == 3       # a contagem segue sendo de todos
+
+
+def _evidencia(h: Harness, item_ref: str, stance: str, run_id: str, detail: str, quando: str) -> None:
+    assert h.state is not None
+    h.state.db.execute("INSERT INTO learning_evidence(item_ref, stance, origin_ref, run_id, simulated, detail, observed_at)"
+                       " VALUES (?,?,?,?,?,?,?)", (item_ref, stance, f"run:{run_id}", run_id, 0, detail, quando))
+
+
+async def test_o_pedido_feito_cuja_evidencia_foi_reclassificada_traz_a_invalida(harness: Harness) -> None:
+    """30.45: o caso da 5f2de5 (04/10). O pedido fechou `feita` às 20:51Z; às 00:14Z a reclassificação do 30.42 deixou
+    a irmã `invalida` da mesma execução. O pedido segue `feita` (o log só cresce), e a listagem traz a `invalida` para
+    o veredito no Resumo e o histórico do item não dizerem "a favor"."""
+    _pedido(harness, "lv-1", "2026-10-03T20:50:00Z", "feita", run_id="r-v1")
+    _pedido(harness, "lv-2", "2026-10-03T21:00:00Z", "feita", run_id="r-v2")
+    _evidencia(harness, "receita:lv-1", "for", "r-v1", "[3251ec6f2171] prova: 6/6 etapas comprovadas", "2026-10-03T20:51:45Z")
+    _evidencia(harness, "receita:lv-1", "invalida", "r-v1",
+               "[3251ec6f2171] invalida:efeito_repetido — o efeito saiu 2 vezes (reclassificada)", "2026-10-04T00:14:05Z")
+    _evidencia(harness, "receita:lv-2", "invalida", "r-outra", "[3251ec6f2171] invalida:ponto_de_partida — x", "2026-10-04T00:15:00Z")
+    async with _cliente(harness) as c:
+        da_execucao = (await c.get("/api/aprendizado/validacoes", params={"run": "r-v1"})).json()
+        tudo = (await c.get("/api/aprendizado/validacoes")).json()
+    [p] = da_execucao["itens"]
+    assert p["estado"] == "feita"
+    assert p["invalida_depois"] == {"motivo": "efeito_repetido", "motivo_humano": MOTIVO_HUMANO[Motivo.EFEITO_REPETIDO]}
+    # a `invalida` de OUTRA execução do mesmo item não conta para este pedido
+    assert {i["id"]: i["invalida_depois"] for i in tudo["itens"]}["lv-2"] is None
+
+
+async def test_a_invalida_sem_detalhe_legivel_le_como_sem_evidencia(harness: Harness) -> None:
+    """O lado seguro do 30.42: a linha que não diz o porquê não vira "a favor" nem inventa um motivo."""
+    _pedido(harness, "lv-1", "2026-10-03T20:50:00Z", "feita", run_id="r-v1")
+    _evidencia(harness, "receita:lv-1", "invalida", "r-v1", "", "2026-10-04T00:14:05Z")
+    async with _cliente(harness) as c:
+        [p] = (await c.get("/api/aprendizado/validacoes", params={"run": "r-v1"})).json()["itens"]
+    assert p["invalida_depois"]["motivo"] == "sem_evidencia"

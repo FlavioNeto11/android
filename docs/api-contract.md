@@ -5185,6 +5185,11 @@ Aditivo aos v1.07, v1.09 e ao da lista de validações (30.38 b). Nenhuma rota n
   e pela chave, na hora da leitura, sem gravar; o `detail` segue só com a chave, porque o título pode trazer texto de
   pessoa. É `null` sem etapa citada, sem a execução ou quando a triagem de credencial recusa o título. A lista sai
   pela data do acontecido (`observed_at`), não pela ordem de gravação.
+- **30.45, aditivo:** cada pedido de `GET /api/aprendizado/validacoes` ganha `invalida_depois`, que é
+  `{"motivo", "motivo_humano"}` ou `null`. É a linha `invalida` que a execução do pedido deixou no item, mesmo
+  chegada depois do fechamento (a reclassificação do 30.42). O detalhe sem motivo legível lê `sem_evidencia`. O
+  pedido segue no estado gravado (`feita`); quem lê não diz "a favor". O painel diz "inválida (…)" no veredito da
+  execução e "Rodou; depois: inválida — …" no histórico do item. Um cliente antigo ignora o campo.
 
 Prova:
 - `simulated`: `backend/tests/test_learning_reproducao_repetida.py`, `test_learning_nasceu_em_validacao.py` e

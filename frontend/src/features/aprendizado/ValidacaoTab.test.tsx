@@ -149,6 +149,20 @@ describe('30.43: o veredito e a leitura do pedido', () => {
     expect(leituraDoPedido({ estado: 'pendente', motivo: null, motivo_humano: null, run_id: null })).toBe('Pendente');
   });
 
+  it('30.45: o pedido feito cuja evidência foi reclassificada inválida depois não é "a favor"', () => {
+    const invalida_depois = { motivo: 'efeito_repetido', motivo_humano: 'O efeito saiu mais de uma vez.' };
+    const feita = { estado: 'feita' as const, motivo: null, motivo_humano: null, run_id: 'r-1' };
+    expect(vereditoDoPedido({ ...feita, invalida_depois })).toBe('inválida (O efeito saiu mais de uma vez.)');
+    expect(leituraDoPedido({ ...feita, invalida_depois })).toBe('Rodou; depois: inválida — O efeito saiu mais de uma vez.');
+    expect(vereditoDoPedido({ ...feita, invalida_depois: null })).toBe('a favor');
+    expect(vereditoDoPedido({ ...feita, invalida_depois: { motivo: 'sem_evidencia', motivo_humano: null } })).toBe('inválida (sem_evidencia)');
+    // o backend de antes do 30.45 não manda o campo: a lista lê null e o veredito segue o estado
+    const l = lerListaDeValidacoes({ itens: [{ id: 'lv-1', estado: 'feita', item_ref: 'fluxo:x' }] });
+    expect(l.itens[0]?.invalida_depois).toBeNull();
+    const n = lerListaDeValidacoes({ itens: [{ id: 'lv-1', estado: 'feita', item_ref: 'fluxo:x', invalida_depois }] });
+    expect(n.itens[0]?.invalida_depois).toEqual(invalida_depois);
+  });
+
   it('vereditoDoPedido: sem pedido é null (a legenda de sempre); expirada sem motivo não afirma nada', () => {
     expect(vereditoDoPedido(null)).toBeNull();
     expect(vereditoDoPedido({ estado: 'expirada', motivo: null, motivo_humano: null })).toBe('sem evidência (sem motivo registrado)');

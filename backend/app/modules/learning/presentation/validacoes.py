@@ -37,7 +37,9 @@ def pedido_json(p: PedidoListado) -> JsonObject:
             "item_ref": p.item_ref, "item_kind": p.item_kind, "app": p.scope_app or None, "grupo": p.grupo,
             "run_id": p.run_id, "run_origem": p.run_origem, "aparelho": p.aparelho, "usd": round(p.usd, 4),
             "teto_usd": p.teto_usd, "created_at": p.created_at, "feito_em": p.feito_em, "expira_em": p.expira_em or None,
-            "revisao_nova_id": p.revisao_nova_id, "comando": p.comando}
+            "revisao_nova_id": p.revisao_nova_id, "comando": p.comando,
+            "invalida_depois": None if p.invalida_depois is None else {
+                "motivo": p.invalida_depois, "motivo_humano": motivo_humano(p.invalida_depois)}}
 
 
 @router.get("/validacoes", response_model=None)
