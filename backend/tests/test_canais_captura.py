@@ -265,3 +265,38 @@ async def test_com_o_gerenciador_real_do_harness_o_aparelho_fora_do_ar_e_dito(ha
         assert (jpeg is not None) != (motivo is not None)
 
 
+
+
+async def test_o_segundo_pedido_continua_com_interesse_quando_o_primeiro_termina() -> None:
+    """Achado 7, 2ª passada: o gerenciador real faz `pop` pela chave; com chave fixa o `finally` do 1º soltava o do 2º."""
+    rt = _rt(_frame(60))
+
+    class ComPop(Gerenciador):
+        def __init__(self, rt: SimpleNamespace) -> None:
+            super().__init__(rt)
+            self.vivos: dict[object, tuple[object, ...]] = {}
+
+        def registrar_interesse(self, *args: object) -> None:
+            self.vivos[args[0]] = args                                               # substitui, como o real
+
+        def soltar_interesse(self, conexao: str) -> None:
+            self.vivos.pop(conexao, None)
+
+    g = ComPop(rt)
+    visto: list[int] = []
+
+    async def lento(_s: float) -> None:
+        await asyncio.sleep(0.01)
+        if len(visto) == 0 and rt.frame.mono < time.monotonic() - 30:               # type: ignore[union-attr]
+            visto.append(len(g.vivos))
+            rt.frame = _frame(0.0)                                                   # o 1º recebe o frame e termina
+
+    async def espera(_s: float) -> None:
+        await asyncio.sleep(0.01)
+        visto.append(-1) if not g.vivos else None
+
+    a = asyncio.create_task(capturar_para_o_dono(g, "android-12", dormir=lento))
+    await asyncio.sleep(0)
+    b = asyncio.create_task(capturar_para_o_dono(g, "android-12", espera_s=0.3, dormir=espera))
+    await asyncio.gather(a, b)
+    assert visto[0] == 2 and -1 not in visto                                         # os dois tinham interesse vivo
