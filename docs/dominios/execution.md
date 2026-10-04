@@ -163,6 +163,15 @@ Quando nada casa, `RunService._catalogos` escolhe o que vai ao planejador. Os **
 mais os apps que o comando cita fora das aspas, pelo nome do cadastro ou pelo rótulo do manifesto
 (`planning/apps_do_comando.py::apps_citados`). "No Outlook" acha o cadastro "Microsoft Outlook".
 
+**Apelidos e acentos (item 31.29, 04/10/2026).** O casamento ignora acento e caixa. Os apps de SISTEMA também têm
+apelidos comuns, por pacote (`APELIDOS_POR_PACOTE`): `com.android.settings` atende por "Configurações", "Ajustes" e
+"Settings". Um apelido seguido de "do/da/de/no/na <outro app>" é uma tela daquele app ("as configurações do
+Instagram") e não cita o app de sistema. O padrão para o Instagram quando nenhum app é citado NÃO mudou, e é de
+propósito.
+
+Motivo medido: na linha de base de 04/10, 11 de 12 comandos com "Configurações" sem "do Android" não casaram app
+nenhum. Eles caíram no Instagram, e o planejador, com o catálogo dele, pediu a pessoa (`needs_input`).
+
 | Situação | Planejador | O que recebe |
 |---|---|---|
 | nenhum candidato tem catálogo | livre (`PLANNER_SYSTEM`) | todos os apps; `catalog` e `catalogs` vazios |
