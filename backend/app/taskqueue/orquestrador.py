@@ -25,7 +25,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ..models import DistributeSpec, ResolvedTargetDTO, RunTargetsResolveBody, alinhar_app_ids
+from ..models import ResolvedTargetDTO, RunTargetsResolveBody, alinhar_app_ids
 from ..modules.execution.application.alvos import Mundo, Resolucao
 from ..modules.execution.application.target_extractor import TargetExtractor
 from ..modules.execution.domain.orquestracao import (MAX_CANDIDATAS, CartaoDePersona, OrquestracaoInvalida,
@@ -128,7 +128,11 @@ class Orquestrador:
                 escolhidas=self._escolhidas_do_resolvedor(previa.targets, "citada no comando"))
         texto = destinos.command_sem_destinos
         # O CONJUNTO de apps do pedido (item 24.5): candidata é a persona com conta em todos os apps de conta dele.
-        apps = runs._app_do_comando(texto, [])  # noqa: SLF001
+        # Item 29.70: o app SEM conta citado sozinho ("No QA Messenger, leia …") também entra. Sem ele, os apps vinham
+        # vazios, toda persona com aparelho apto virava candidata e a IA mandava a leitura de QA para o aparelho de
+        # uma conta real. Com ele, nenhuma persona serve (ninguém tem conta no app de QA) e o caminho é o 2. O comando
+        # que cita app de conta E app sem conta já vinha inteiro de `_app_do_comando`: segue por persona.
+        apps = runs._app_do_comando(texto, []) or runs._apps_citados(texto)  # noqa: SLF001
         mundo = runs._mundo(apps)  # noqa: SLF001
         candidatas = self._candidatas(mundo, apps)
         if not candidatas:
@@ -226,14 +230,15 @@ class Orquestrador:
         """2. Nenhuma persona serve: tarefa só de apps sem conta vai pela carga dos servidores; o resto pede decisão.
 
         Entre apps (item 24.5), "sem conta" é o conjunto inteiro: basta um app de conta (o Instagram ao lado do
-        Chrome) para a tarefa precisar de uma persona. A distribuição de apps sem conta é a do modo "Distribuir" do
-        painel pelo comando (item 24.6): pelos aparelhos de QUALQUER app do pedido, não só do primeiro citado (que
-        dependeria da ordem do texto); os alvos levam o conjunto."""
+        Chrome) para a tarefa precisar de uma persona. A distribuição de apps sem conta é a `previa_sem_conta` (item
+        29.70): pelos aparelhos que têm os apps (principal ou sabidamente pronto), sem conta real logada antes; os
+        alvos levam o conjunto."""
         de_conta = [a for a in apps if a not in mundo.sem_conta]
         if apps and not de_conta:
             m = _APARELHOS_NO_TEXTO.search(texto)
             quantos = max(1, min(64, int(m.group(1)))) if m else 1
-            previa = self.runs.previa_de_distribuicao(DistributeSpec(count=quantos), app_ids=apps)
+            # 29.70: pelos aparelhos que têm o app, sem conta real logada antes (a prévia diz quando não deu).
+            previa = self.runs.previa_sem_conta(quantos, apps)
             alvos = [ResolvedTargetDTO(instance_id=p.instance_id, app_ids=apps, origem="balanceamento")
                      for p in previa.picks]
             return RunTargetsSuggestion(

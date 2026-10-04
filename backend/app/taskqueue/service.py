@@ -38,7 +38,7 @@ from ..security.redaction import redact
 from ..shared.costuras import SISTEMA
 from ..shared.resources import Target
 from ..util import now_iso, to_iso
-from .balanceamento import Candidato, distribuir
+from .balanceamento import Candidato, Distribuicao, Servidor, distribuir
 from .costuras import (SEM_COSTURAS, CancelamentoDeExecucao, CosturasDeAprendizado, PedidoDeLicoes,
                        RepeticaoDeExecucao, ResolucaoDeItem, avisar, pedir_licoes)
 from .perguntas import mensagem_da_palavra_solta, pergunta_sensivel_aberta, tipo_sensivel
@@ -519,8 +519,12 @@ class RunService:
             return [a for a in dict.fromkeys(app_ids) if a]
         if not command:
             return []
-        return self._app_do_comando(command, []) or [
-            str(a.id) for a in apps_citados(command, self._apps_configurados()) if a.id]
+        return self._app_do_comando(command, []) or self._apps_citados(command)
+
+    def _apps_citados(self, comando: str) -> list[str]:
+        """Os apps que o comando cita, todos, inclusive o app SEM conta citado sozinho que `_app_do_comando` deixa
+        de fora. É ele que diz de quais aparelhos se trata (a distribuição, o modo Automático: item 29.70)."""
+        return [str(a.id) for a in apps_citados(comando, self._apps_configurados()) if a.id]
 
     def _candidatos_dos_apps(self, apps: Sequence[str]) -> tuple[list[Candidato], list[str]]:
         """Os candidatos do balanceamento para um CONJUNTO de apps, e o que cortou aparelho pelo caminho.
@@ -582,13 +586,58 @@ class RunService:
                 f"o app {self._nomes_dos_apps(de_conta)} exige" if len(de_conta) == 1
                 else f"os apps {self._nomes_dos_apps(de_conta)} exigem")
             motivos.insert(0, f"{quem} conta: só {len(candidatos)} aparelho(s) têm perfil ativo vinculado")
+        return self._previa(spec.count, d, servidores, motivos)
+
+    def previa_sem_conta(self, quantos: int, app_ids: Sequence[str]) -> DistributionPreview:
+        """A distribuição da tarefa SEM conta do modo Automático (item 29.70: "No QA Messenger, leia …").
+
+        Candidato é o aparelho que tem os apps: o app principal dele é um dos do pedido, ou todos estão sabidamente
+        prontos nele (`device_app_state`; o QA Messenger está instalado no parque inteiro, mas nenhum aparelho o tem
+        como principal). Aparelho com conta real logada (perfil ATIVO vinculado) só entra se nenhum aparelho sem conta
+        estiver apto, e a prévia diz isso nos dois sentidos: tarefa sem conta não tem por que gastar o convidado de
+        uma conta real."""
+        apps = [a for a in dict.fromkeys(app_ids) if a]
+        servidores = self.scheduler.servidores()
+        db = self.repo.db
+        principal = {str(r["id"]): r["app_id"] for r in db.query("SELECT id, app_id FROM instances")}
+        pacote = self._pacote_por_app(apps)
+        pronto = {a: {str(r["instance_id"]) for r in db.query(
+            "SELECT instance_id FROM device_app_state WHERE package_name=? AND state IN (?,?)",
+            (pacote[a], *self._APP_PRONTO))} for a in apps if a in pacote}
+        fora = self._fora_de_pronto(apps)
+        com_conta = {str(r["instance_id"]) for r in db.query(
+            "SELECT b.instance_id FROM device_profile_bindings b JOIN instagram_profiles p ON p.id=b.profile_id"
+            " WHERE b.active=1 AND COALESCE(p.status, 'active')='active'")}
+        sem: list[str] = []
+        com: list[str] = []
+        for rt in self.devices.devices.values():
+            tem = principal.get(rt.id) in apps or all(rt.id in pronto.get(a, set()) for a in apps)
+            if rt.store or not tem or any(rt.id in fora.get(a, set()) for a in apps):
+                continue
+            (com if rt.id in com_conta else sem).append(rt.id)
+        d = distribuir(quantos, self.scheduler.candidatos_de(sem), servidores)
+        motivos = list(d.faltas)
+        if not d.escolhidos and com:
+            d = distribuir(quantos, self.scheduler.candidatos_de(com), servidores)
+            motivos = list(d.faltas)
+            if d.escolhidos:
+                motivos.insert(0, "nenhum aparelho sem conta está apto agora: a tarefa vai para aparelho com conta "
+                                  f"real logada ({', '.join(e.instance_id for e in d.escolhidos)})")
+        elif com:
+            motivos.append(f"aparelho(s) com conta real logada ({', '.join(sorted(com))}) ficam de fora: há "
+                           "aparelho sem conta apto")
+        return self._previa(quantos, d, servidores, motivos)
+
+    def _previa(self, pedidos: int, d: Distribuicao, servidores: Mapping[str, Servidor],
+                motivos: list[str]) -> DistributionPreview:
+        """A prévia que o painel mostra, com o aviso do teto geral do parque."""
         teto = int(self.scheduler.get_settings().max_active_devices)
         livres_no_geral = teto - len(self.scheduler.workers)
         if len(d.escolhidos) > livres_no_geral:
             motivos.append(f"o teto geral do parque ({teto} aparelhos trabalhando) segura "
                            f"{len(d.escolhidos) - max(0, livres_no_geral)} deles na fila até liberar vaga")
         return DistributionPreview(
-            requested=spec.count,
+            requested=pedidos,
             picks=[DistributionPick(instance_id=e.instance_id, server_id=e.servidor,
                                     server_name=servidores[e.servidor].nome, needs_start=e.precisa_ligar)
                    for e in d.escolhidos],
